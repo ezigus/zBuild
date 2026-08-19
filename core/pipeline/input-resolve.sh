@@ -291,6 +291,20 @@ _inputs_resolve_stage() {
             tsv+="${id}"$'\t'"A"$'\t'"${joined}"$'\n'
         else
             eff="$(_inputs_effective_path "${paths%%$'\n'*}")"
+            # #1894: an OPTIONAL input that is present but damaged is omitted
+            # from the index, so the consumer sees it exactly as it sees an
+            # absent one — a missing key, not an empty read. Degrading in
+            # silence is the failure shape this rule exists to close, so the
+            # omission is announced. A REQUIRED damaged input never reaches
+            # here; _inputs_check_required refuses the dispatch first.
+            if [[ "$req" != "true" ]] && _inputs_damaged "$eff"; then
+                if command -v eb_emit_event >/dev/null 2>&1; then
+                    eb_emit_event "stage.input.degraded" \
+                        "stage=$stage" "input=$id" "reason=damaged" \
+                        "format=$(_inputs_format_for "$eff")" "path=$eff" 2>/dev/null || true
+                fi
+                continue
+            fi
             tsv+="${id}"$'\t'"S"$'\t'"${eff}"$'\n'
         fi
     done < <(_inputs_declared "$manifest")
@@ -333,6 +347,42 @@ _inputs_render_violations() {
     } >&2
 }
 
+# ─── _inputs_format_for <path> ───────────────────────────────────────────────
+# The artifact's FORMAT — what kind of check applies — as distinct from its
+# type, which is what artifact it is. #1895 splits those into two declared
+# fields; until it lands the format is inferred from the extension, which is why
+# this is one function rather than an inline test: when `format:` becomes a
+# declared field there is exactly one site to change.
+_inputs_format_for() {
+    local pth="${1-}"
+    case "${pth##*.}" in
+        json)      printf 'json' ;;
+        md)        printf 'markdown' ;;
+        patch|diff) printf 'patch' ;;
+        *)         printf 'text' ;;
+    esac
+}
+
+# ─── _inputs_damaged <path> ──────────────────────────────────────────────────
+# rc 0 when the artifact is present but UNUSABLE (#1894). Damage is judged by
+# FORM, never by meaning — a syntactically valid file whose contents are wrong
+# stays the consumer's business.
+#
+#   any format : zero bytes            -> damaged (empty or a failed write)
+#   json       : `jq empty` rejects it -> damaged (truncated / partial write)
+#
+# An ABSENT file is not damaged; absence is the caller's separate case, and
+# conflating them is what #1894 opened with.
+_inputs_damaged() {
+    local pth="${1-}"
+    [[ -e "$pth" ]] || return 1
+    [[ -s "$pth" ]] || return 0
+    if [[ "$(_inputs_format_for "$pth")" == "json" ]]; then
+        jq empty "$pth" >/dev/null 2>&1 || return 0
+    fi
+    return 1
+}
+
 # ─── _inputs_check_required <stage> <plugins_root> <state_dir> [manifest] ────
 # The PRE-DISPATCH presence check. A missing `required: true` input means the
 # stage is never launched; the message names producer, output id and consumer so
@@ -346,7 +396,7 @@ _inputs_check_required() {
     _inputs_build_producer_index "$plugins_root" "$state_dir"
 
     local -a violations=()
-    local id req paths line eff producer present
+    local id req paths line eff producer present damaged
     while IFS='|' read -r id req; do
         [[ "$req" == "true" ]] || continue
         paths="${_IR_PATHS[$id]:-}"
@@ -355,13 +405,21 @@ _inputs_check_required() {
             violations+=("$stage|INPUT_UNRESOLVED|$id|no stage in the resolved flow declares an output named '$id', which stage '$stage' requires (ADR-055 §1.5)")
             continue
         fi
-        present=0
+        present=0; damaged=""
         while IFS= read -r line; do
             [[ -z "$line" ]] && continue
             eff="$(_inputs_effective_path "$line")"
+            # Damage is tested BEFORE presence, and this order is the whole
+            # point: a truncated file is non-empty, so `-s` accepts it and the
+            # stage receives half an artifact as though it were whole. That is
+            # the case #1894 opened with, and testing presence first silently
+            # restores it.
+            if _inputs_damaged "$eff"; then damaged="$eff"; continue; fi
             [[ -s "$eff" ]] && { present=1; break; }
         done <<< "$paths"
-        if [[ $present -eq 0 ]]; then
+        if [[ $present -eq 0 && -n "$damaged" ]]; then
+            violations+=("$stage|INPUT_DAMAGED|$id|producer '$producer' wrote output '$id' but it is unusable ($(_inputs_format_for "$damaged"), $(wc -c < "$damaged" 2>/dev/null | tr -d ' ') bytes); consumer '$stage' requires it: $damaged")
+        elif [[ $present -eq 0 ]]; then
             violations+=("$stage|INPUT_MISSING|$id|producer '$producer' declares output '$id' but its artifact is absent; consumer '$stage' requires it (looked for: ${paths//$'\n'/, })")
         fi
     done < <(_inputs_declared "$manifest")

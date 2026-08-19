@@ -20,6 +20,13 @@
 #                    written and ZBUILD_STAGE_INPUTS is unset
 #   SPEC-7 [guard] : role-resolved stages resolve to the manifest DISPATCH would
 #                    use — the id-only gap contract-validator.sh still carries
+#   SPEC-9 [guard] : a REQUIRED input that is present but DAMAGED refuses the
+#                    dispatch, and says damaged rather than absent (#1894)
+#   SPEC-10 [change]: an OPTIONAL input that is damaged is OMITTED from the
+#                    index — a missing key, not a path to a broken file — and
+#                    the omission is announced (#1894)
+#   SPEC-11 [guard]: the refusal resolves to a NON-RETRYABLE disposition, so a
+#                    missing input cannot become a retry storm under #1887
 #
 # shellcheck disable=SC2016  # SPEC-5 passes literal ${var} text as the INPUT under test
 set -uo pipefail
@@ -66,6 +73,10 @@ outputs:
     type: json
     required: true
     primary: true
+  - id: producer_hint
+    path: ${artifact_dir}/producer-hint.json
+    type: json
+    required: false
 EOF
 printf 'irp_run() { return 0; }\n' > "$PROOT/tool/ir-producer/plugin.sh"
 
@@ -99,6 +110,8 @@ inputs:
   - id: producer_out
     required: true
   - id: ir_lens_result
+    required: false
+  - id: producer_hint
     required: false
   - id: gh_issue_body
     source: external
@@ -392,6 +405,100 @@ EOF
     assert_contains "[SPEC-8-guard] and the body survives both" "$(cat "$IN1")" "SPEC8 BASELINE BODY"
 else
     assert_fail "[SPEC-8] _route_redact_prompt is available to test" "not defined after sourcing route.sh"
+fi
+
+# ─── SPEC-9: a REQUIRED input present-but-damaged refuses before dispatch ────
+print_test_section "9. a required input that is damaged refuses the dispatch"
+# SPEC-7 resolves against the LIVE plugin tree and leaves _TPL_STAGES holding the
+# real template's flow, in which none of this file's fixture stages appear. The
+# producer index is keyed on that flow, so without restoring it every input here
+# resolves to zero producers and these specs would pass for the wrong reason.
+_TPL_STAGES=(ir-producer ir_lenses ir-consumer)
+rm -f "$TEST_TEMP_DIR/irc-ran.txt" "$STATE/stage-inputs/ir-consumer.json"
+# Present, non-zero, and NOT valid JSON — the half-written file that passes an
+# existence test today and is copied downstream verbatim.
+printf '{"verdict":' > "$ART/producer-out.json"
+
+_err9="$TEST_TEMP_DIR/refusal9.txt"
+ZBUILD_INPUTS_RESOLVE=1 ZBUILD_STATE_DIR="$STATE" _dispatch_consumer >/dev/null 2>"$_err9"
+_rc9=$?
+_ref9="$(cat "$_err9" 2>/dev/null)"
+
+if [[ "$_rc9" -ne 0 ]]; then
+    assert_pass "[SPEC-9] a damaged required input was refused (rc=$_rc9)"
+else
+    assert_fail "[SPEC-9] a damaged required input was refused" \
+        "rc=0 — a truncated artifact was handed over as if it were complete"
+fi
+if [[ -f "$TEST_TEMP_DIR/irc-ran.txt" ]]; then
+    assert_fail "[SPEC-9] the entrypoint never ran" "the sentinel exists — the stage was launched"
+else
+    assert_pass "[SPEC-9] the entrypoint never ran"
+fi
+assert_contains "[SPEC-9] the refusal says DAMAGED, not absent" "$_ref9" "INPUT_DAMAGED"
+# [guard] the distinction is the point: reporting "absent" sends the operator to
+# the producer, when the producer DID write — it wrote something unusable.
+if grep -qF 'INPUT_MISSING' <<< "$_ref9"; then
+    assert_fail "[SPEC-9] it does not also claim the artifact is absent" \
+        "reported INPUT_MISSING for a file that exists"
+else
+    assert_pass "[SPEC-9] it does not also claim the artifact is absent"
+fi
+
+# ─── SPEC-10: an OPTIONAL damaged input is omitted, and announced ────────────
+print_test_section "10. an optional damaged input is omitted from the index"
+rm -f "$TEST_TEMP_DIR/irc-ran.txt" "$STATE/stage-inputs/ir-consumer.json"
+printf '{"verdict":"pass"}\n' > "$ART/producer-out.json"   # required one healthy again
+printf '{"hint":'                > "$ART/producer-hint.json" # optional one truncated
+: > "$EVENTS"
+
+ZBUILD_INPUTS_RESOLVE=1 ZBUILD_STATE_DIR="$STATE" _dispatch_consumer >/dev/null 2>&1
+_rc10=$?
+_idx10="$STATE/stage-inputs/ir-consumer.json"
+
+if jq -e '.inputs | has("producer_hint")' "$_idx10" >/dev/null 2>&1; then
+    assert_fail "[SPEC-10] the damaged optional input is not indexed" \
+        "producer_hint was handed over as a path to a broken file"
+else
+    assert_pass "[SPEC-10] the damaged optional input is not indexed"
+fi
+# [guard] omission must be SELECTIVE — dropping every optional input would pass
+# the assertion above while destroying the feature.
+if jq -e '.inputs | has("ir_lens_result")' "$_idx10" >/dev/null 2>&1; then
+    assert_pass "[SPEC-10] a healthy optional input is still indexed"
+else
+    assert_fail "[SPEC-10] a healthy optional input is still indexed" \
+        "ir_lens_result was dropped too — the check is not selective"
+fi
+assert_eq "[SPEC-10] the run was NOT stopped by an advisory input" "0" "$_rc10"
+assert_contains "[SPEC-10] the omission is announced" \
+    "$(cat "$EVENTS" 2>/dev/null)" "stage.input.degraded"
+
+# ─── SPEC-11: the refusal cannot become a retry storm (#1887) ────────────────
+print_test_section "11. a refused dispatch is not retryable"
+# #1887 wrapped cycle_dispatch_stage's plugin_hook_call in a disposition-driven
+# re-dispatch loop, which this change predates. A refusal returns rc=1 leaving no
+# result, which ADR-054 §6 calls `broken`; if `broken` were retryable a missing
+# input would re-dispatch until the budget ran out.
+# shellcheck source=../../core/pipeline/disposition.sh
+source "$REPO_ROOT/core/pipeline/disposition.sh"
+if disposition_retryable "broken" 2>/dev/null; then
+    assert_fail "[SPEC-11] a refusal's disposition is not retryable" \
+        "broken is retryable — a missing input becomes a re-dispatch loop"
+else
+    assert_pass "[SPEC-11] a refusal's disposition is not retryable"
+fi
+if disposition_halts "broken" 2>/dev/null; then
+    assert_pass "[SPEC-11] and it halts the run"
+else
+    assert_fail "[SPEC-11] and it halts the run" "broken does not halt"
+fi
+# [guard] not vacuous — a disposition that SHOULD retry still does.
+if disposition_retryable "interrupted" 2>/dev/null; then
+    assert_pass "[SPEC-11] the retryable set is not simply empty"
+else
+    assert_fail "[SPEC-11] the retryable set is not simply empty" \
+        "interrupted is not retryable either — the assertion above proves nothing"
 fi
 
 cleanup_test_env
