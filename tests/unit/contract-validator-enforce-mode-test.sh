@@ -71,15 +71,20 @@ err_out="$(ZBUILD_CONTRACT_VALIDATOR=warn _contract_validate_pipeline \
     "consumer" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
 assert_eq "TC-3: warn opt-out returns 0 even on violation" "0" "$rc"
 assert_contains "TC-3: warn mode still emits diagnostic" "$err_out" "Pipeline cannot start"
-# warn mode must NOT write a preflight_failed state stub
+# warn mode must NOT write a preflight_failed state stub.
+# The assertion is UNCONDITIONAL: it used to sit inside `if [[ -f ... ]]`, so on
+# the expected path — warn writes no file at all — the block was skipped and NO
+# assertion ran. A check that silently does not run reports the same green as one
+# that passed, which is the shape this whole file exists to catch (#1888 review).
+status_val=""
 if [[ -f "$STATE_FILE" ]]; then
     status_val="$(jq -r '.status // empty' "$STATE_FILE" 2>/dev/null || echo "")"
-    if [[ "$status_val" == "preflight_failed" ]]; then
-        assert_fail "TC-3: warn mode did NOT write preflight_failed stub" \
-            "got status=preflight_failed; warn mode should not fail-closed"
-    else
-        assert_pass "TC-3: warn mode did NOT write preflight_failed stub"
-    fi
+fi
+if [[ "$status_val" == "preflight_failed" ]]; then
+    assert_fail "TC-3: warn mode did NOT write preflight_failed stub" \
+        "got status=preflight_failed; warn mode should not fail-closed"
+else
+    assert_pass "TC-3: warn mode did NOT write preflight_failed stub (status='${status_val:-<no file>}')"
 fi
 
 # TC-4: Explicit ZBUILD_CONTRACT_VALIDATOR=enforce still rc=2 (back-compat)
