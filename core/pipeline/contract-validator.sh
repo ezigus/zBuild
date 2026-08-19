@@ -423,28 +423,17 @@ _contract_validate_pipeline() {
                             done <<< "$_fb_blob"
                             [[ $_wired -eq 1 ]] && break
                         done
-                        # #1768: HELD. Opening the required-only gate made this
-                        # branch reachable for the first time, and it immediately
-                        # found six real violations in the shipped templates —
-                        # `build` declares four cycle_feedback inputs and
-                        # simple.yaml wires exactly one (prior_gate_feedback).
-                        # The other three carry comments referencing
-                        # standard.yaml, deleted 2026-07-09, so build has expected
-                        # test-assessment and review feedback across iterations
-                        # that has never arrived since the move to simple.yaml.
-                        #
-                        # That is a genuine behavioural bug and it is NOT this
-                        # issue's to fix: deciding whether to wire those edges
-                        # (restoring intended behaviour) or delete the
-                        # declarations (accepting they are dead) changes the
-                        # build loop. Enabling the check first would write
-                        # preflight_failed and halt every run before intake —
-                        # ADR-057 gate 3, the exact hazard.
-                        #
-                        # So the branch is correct and reachable, and held behind
-                        # this flag until the drift it found is resolved. Set
-                        # ZBUILD_CONTRACT_CHECK_CYCLE_FB_UNWIRED=1 to see them. Tracked by #1865.
-                        if [[ $_wired -eq 0 && "${ZBUILD_CONTRACT_CHECK_CYCLE_FB_UNWIRED:-0}" == "1" ]]; then
+                        # #1768 made this branch reachable for the first time and
+                        # it immediately found three real violations, so it shipped
+                        # held behind ZBUILD_CONTRACT_CHECK_CYCLE_FB_UNWIRED rather
+                        # than halting every run before intake (ADR-057 gate 3).
+                        # #1865 resolved the drift — `build` declared four
+                        # cycle_feedback inputs and simple.yaml wired one; the other
+                        # three were deleted as superseded by the ADR-040 consolidated
+                        # gate-aggregator edge — so the flag is gone and the check is
+                        # unconditional. A held check that stays held is the pattern
+                        # Phase 0 exists to end.
+                        if [[ $_wired -eq 0 ]]; then
                             violations+=("$stage|CYCLE_FB_UNWIRED|$in_id|input declares source:cycle_feedback but no cycles[].feedback.to wires it [#511]")
                             fail_count=$((fail_count + 1))
                         fi

@@ -217,6 +217,41 @@ ZBUILD_TEMPLATES_ROOTS="$REPO_ROOT/config/templates" \
 bash "$REPO_ROOT/scripts/lib/lint-contract.sh" >/dev/null 2>&1 || rc=$?
 assert_eq "TC-7: real repo template + plugins pass cycle-feedback lint" "0" "$rc"
 
-cleanup_test_env
+
+# ─── #1865: every declared cycle_feedback input is WIRED by a shipped template ─
+# The CYCLE_FB_UNWIRED branch is unconditional as of #1865 (its
+# ZBUILD_CONTRACT_CHECK_CYCLE_FB_UNWIRED hold is gone), so a re-introduced
+# unwired declaration halts every run before intake. This pins the tree clean.
+#
+# The vacuity guard below counts rows THIS loop saw, not a separate scan: the
+# first draft grepped independently, so when manifest_graph_get_inputs turned out
+# not to be sourced the assertion passed on an empty loop while the guard passed
+# on its own grep. Ablation caught it; the counter now shares the loop it guards.
+# shellcheck source=../../scripts/lib/manifest-graph.sh
+source "$REPO_ROOT/scripts/lib/manifest-graph.sh"
+print_test_section "#1865 — no unwired cycle_feedback declaration survives"
+_cfb_unwired=0; _cfb_rows=0; _cfb_detail=""
+while IFS= read -r _m; do
+    [[ -n "$_m" ]] || continue
+    while IFS='|' read -r _id _t _src _req _p; do
+        [[ "$_src" == "cycle_feedback" ]] || continue
+        _cfb_rows=$((_cfb_rows + 1))
+        if ! grep -qE "input:[[:space:]]*${_id}([[:space:]]|$)" "$REPO_ROOT"/config/templates/*.yaml 2>/dev/null; then
+            _cfb_unwired=$((_cfb_unwired + 1))
+            _cfb_detail+="$(basename "$(dirname "$_m")"):$_id "
+        fi
+    done < <(manifest_graph_get_inputs "$_m" 2>/dev/null)
+done < <(find "$REPO_ROOT/plugins" -name manifest.yaml -not -path '*/tests/*' 2>/dev/null)
+
+if [[ $_cfb_rows -gt 0 ]]; then
+    assert_pass "[#1865] the loop parsed $_cfb_rows cycle_feedback input(s)"
+else
+    assert_fail "[#1865] the loop parsed at least one cycle_feedback input" \
+        "zero rows — the assertion below would pass vacuously"
+fi
+assert_eq "[#1865] every cycle_feedback input is wired by a shipped template" \
+    "0" "$_cfb_unwired"
+[[ $_cfb_unwired -ne 0 ]] && printf '    unwired: %s\n' "$_cfb_detail" >&2
+
 print_test_results
 exit $((FAIL > 0))

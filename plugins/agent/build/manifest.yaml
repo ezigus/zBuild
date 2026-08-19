@@ -74,47 +74,6 @@ inputs:
     path: "${artifact_dir}/plan.json"
     source: stage:plan
     required: true
-  # ADR-020 / ADR-021 / ADR-022 (#571): cross-iter feedback from the prior
-  # test_assessment stage when this stage executes inside a cycle. ALWAYS
-  # optional (required:false); absent/empty file → CURRENT ITERATION
-  # FEEDBACK section omitted entirely (see _build_read_prior_assessment).
-  # Path resolves via ${cycle_feedback_dir} → $ZBUILD_CYCLE_FEEDBACK_DIR
-  # exported by cycle-orchestrator::_cycle_apply_feedback. The feedback
-  # wiring (test_assessment → build) is declared in standard.yaml by #568.
-  # #1117: simple.yaml (which omits test_assessment) reuses this same input —
-  # its build_test_cycle feedback edge wires the test stage's
-  # test_failures_summary into this file, so the failure detail still reaches
-  # the build prompt without a second, dead input field.
-  - id: prior_test_assessment
-    type: text/markdown
-    path: "${cycle_feedback_dir}/prior_test_assessment.txt"
-    source: cycle_feedback
-    required: false
-  # ADR-026 / Wave 18-B (#707): cross-iter feedback from the prior review
-  # stage when build executes inside the review_remediation cycle (build_review_cycle
-  # in standard.yaml). ALWAYS optional (required:false); absent/empty file →
-  # PRIOR REVIEW FEEDBACK section omitted entirely (see
-  # _build_read_prior_review). Mirrors prior_test_assessment shape — path
-  # resolves via ${cycle_feedback_dir} → $ZBUILD_CYCLE_FEEDBACK_DIR exported
-  # by cycle-orchestrator::_cycle_apply_feedback. The feedback wiring (review
-  # → build) is declared in standard.yaml's build_review_cycle section by Wave 18-B.
-  - id: prior_review_feedback
-    type: text/markdown
-    path: "${cycle_feedback_dir}/prior_review_feedback.txt"
-    source: cycle_feedback
-    required: false
-  # #951 Layer 2 (ADR-036): structured acceptance-coverage gaps from the prior
-  # outer-cycle iter's acceptance-gate (gate_result → acceptance-gate-result.json).
-  # ALWAYS optional (required:false); absent/empty → ACCEPTANCE COVERAGE GAPS
-  # section omitted (see _build_read_prior_acceptance, which surfaces ONLY
-  # untagged_spec:<id> failures). Feedback wiring (acceptance-gate → build) is
-  # declared in standard.yaml's build_review_cycle by #951, and — after the
-  # ADR-040 cutover (#1138) — in simple.yaml's build_test_cycle as well.
-  - id: prior_acceptance_feedback
-    type: text/json
-    path: "${cycle_feedback_dir}/prior_acceptance_feedback.txt"
-    source: cycle_feedback
-    required: false
   # B2 (ADR-040): CONSOLIDATED gate→build feedback from the prior cycle iter's
   # gate-aggregator (gate_feedback → gate-feedback.md). After the ADR-040 roster
   # cutover, simple.yaml's build_test_cycle replaces the per-gate test→build /
