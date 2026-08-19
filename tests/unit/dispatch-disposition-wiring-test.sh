@@ -60,9 +60,17 @@ print_test_section "SPEC-2: the re-dispatch budget refuses nonsense"
 
 # Extract the helper from runner.sh without executing the whole file: sourcing
 # runner.sh is guarded to not run main(), but the helper is nested inside it.
-_budget_body="$(sed -n '/_runner_disposition_redispatch_budget() {/,/^    }/p' "$RUNNER")"
+_budget_body="$(sed -n '/_runner_disposition_redispatch_budget() {/,/^[[:space:]]*}$/p' "$RUNNER")"
+# Assert the extraction is COMPLETE, not merely non-empty. The first cut anchored
+# on `^    }` — a literal four-space indent — so if the helper were ever promoted
+# to top level or the file re-indented, sed would return a partial body or none,
+# the eval would define nothing, and every SPEC-2 assertion would be SKIPPED
+# while the file still reported green (#1887 review).
 if [[ -z "$_budget_body" ]]; then
     assert_fail "[SPEC-2] the budget helper exists" "not found in runner.sh"
+elif ! grep -q '}' <<< "$_budget_body"; then
+    assert_fail "[SPEC-2] the budget helper body is complete" \
+        "sed captured an unterminated body — the closing-brace anchor no longer matches"
 else
     assert_pass "[SPEC-2] the budget helper exists"
     eval "${_budget_body#"${_budget_body%%[![:space:]]*}"}" 2>/dev/null || true
@@ -73,12 +81,17 @@ else
             "0" "$(ZBUILD_DISPOSITION_REDISPATCH=0 _runner_disposition_redispatch_budget)"
         assert_eq "[SPEC-2] an explicit 3 is honoured" \
             "3" "$(ZBUILD_DISPOSITION_REDISPATCH=3 _runner_disposition_redispatch_budget)"
-        # A grinding budget is refused rather than trusted — the cycle already
-        # re-runs members; this exists to separate interrupted from failed.
-        assert_eq "[SPEC-2] an out-of-range value clamps to the default" \
-            "1" "$(ZBUILD_DISPOSITION_REDISPATCH=99 _runner_disposition_redispatch_budget)"
-        assert_eq "[SPEC-2] a non-numeric value clamps to the default" \
+        # Above the cap clamps to the CAP, not the default: an operator asking
+        # for more headroom must not silently get LESS than they asked for
+        # (#1887 review). The cycle already re-runs its members, so the cap
+        # exists to stop grinding, not to punish an over-ask.
+        assert_eq "[SPEC-2] a value above the cap clamps to the cap, not the default" \
+            "5" "$(ZBUILD_DISPOSITION_REDISPATCH=99 _runner_disposition_redispatch_budget)"
+        # A non-number is not a request at all, so it falls back to the default.
+        assert_eq "[SPEC-2] a non-numeric value falls back to the default" \
             "1" "$(ZBUILD_DISPOSITION_REDISPATCH=lots _runner_disposition_redispatch_budget)"
+        assert_eq "[SPEC-2] a negative value is non-numeric here and falls back" \
+            "1" "$(ZBUILD_DISPOSITION_REDISPATCH=-2 _runner_disposition_redispatch_budget)"
     else
         assert_fail "[SPEC-2] the budget helper is callable" "eval did not define it"
     fi
