@@ -2228,6 +2228,21 @@ main() {
         _run_dispatch_units=1
     fi
 
+    # ─── _runner_disposition_redispatch_budget (#1887) ──────────────────────
+    # How many times the dispatch boundary may re-dispatch a member whose
+    # disposition says it is retryable. Default 1: one automatic second attempt
+    # is what turns a SIGTERM or a rate limit from a dead run into a recovered
+    # one, and a second failure means the first was not transient after all.
+    #
+    # A cycle already re-runs its members, so this is deliberately NOT a budget
+    # for grinding — it is the difference between "the stage was interrupted"
+    # and "the stage failed", which the cycle cannot tell on its own.
+    # Out-of-range values clamp to the default rather than being trusted.
+    _runner_disposition_redispatch_budget() {
+        local v="${ZBUILD_DISPOSITION_REDISPATCH:-1}"
+        if [[ "$v" =~ ^[0-9]+$ ]] && (( v <= 5 )); then printf '%s' "$v"; else printf '1'; fi
+    }
+
     # cycle_dispatch_stage hook — F1 uses the same per-stage path that the
     # legacy stage loop uses. Returns the stage's rc; the orchestrator owns the
     # iteration semantics. Sets _CYCLE_DISPATCH_VERDICT / _CYCLE_DISPATCH_STATUS
@@ -2264,6 +2279,21 @@ main() {
         # earlier stage would classify this member's unexplained failure as
         # `throttled`, and `throttled` retries — one rate limit would become a
         # retry loop on an unrelated defect.
+        # #1887 (ADR-054 §6): retry is a property of the DISPOSITION, not of the
+        # stage. #1822 built the response table and #1823 made every dispatch
+        # resolve a disposition — but nothing consulted the table, so
+        # `disposition_retryable` had no production caller and recoverability
+        # was still decided by each stage's own `router.retries` knob. That is
+        # the per-stage divergence #1749 was closed to end, and it is why #1727
+        # had to add `router.retries: 1` to plan's manifest by hand.
+        #
+        # The re-dispatch lives HERE, at the dispatch boundary, because this is
+        # the first point at which a disposition EXISTS: the router's own retry
+        # (route.sh) runs inside a single call, before the plugin has written a
+        # result to have a disposition in.
+        local _cd_attempt=0 _cd_redispatch_max
+        _cd_redispatch_max="$(_runner_disposition_redispatch_budget)"
+        while :; do
         _router_clear_throttle_marker
         set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?; set -e
         local _cd_manifest="$_cd_plugin_dir/manifest.yaml"
@@ -2313,6 +2343,41 @@ main() {
         # the dispatch event; the response table that interprets it lives in
         # core/pipeline/disposition.sh, never in a plugin.
         _CYCLE_DISPATCH_DISPOSITION="$(runner_read_stage_disposition "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" "$_cd_observation" "$_cd_rate_limited" 2>/dev/null || echo "")"
+        # The table decides. `interrupted` re-dispatches at once; `throttled`
+        # waits first, because re-dispatching a throttled stage immediately is
+        # simply throttled again — a retry loop that burns budget to learn
+        # nothing. `exhausted`, `unavailable` and `broken` are not retryable and
+        # fall straight through; `complete` never reaches the test.
+        # A halting disposition is announced rather than inferred. The table
+        # guarantees nothing both halts and retries, so this cannot change which
+        # branch is taken — its job is that an operator reading the log sees the
+        # engine DECIDED to stop, and on which word, instead of reconstructing it
+        # from an rc. It is also what gives `disposition_halts` a caller on the
+        # dispatch path, which is the gap #1887 exists to close.
+        if [[ -n "$_CYCLE_DISPATCH_DISPOSITION" ]] \
+           && disposition_halts "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null; then
+            eb_emit_event "cycle.member.disposition.halt" \
+                "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" "member=$_cd_stage" \
+                "disposition=$_CYCLE_DISPATCH_DISPOSITION" "rc=$_cd_rc" \
+                2>/dev/null || true
+        fi
+        if [[ -n "$_CYCLE_DISPATCH_DISPOSITION" ]] \
+           && (( _cd_attempt < _cd_redispatch_max )) \
+           && disposition_retryable "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null; then
+            local _cd_wait; _cd_wait="$(disposition_wait_s "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null || printf '0')"
+            _cd_attempt=$(( _cd_attempt + 1 ))
+            eb_emit_event "cycle.member.disposition.redispatch" \
+                "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" "member=$_cd_stage" \
+                "disposition=$_CYCLE_DISPATCH_DISPOSITION" "attempt=$_cd_attempt" \
+                "of=$_cd_redispatch_max" "wait_s=${_cd_wait:-0}" "prior_rc=$_cd_rc" \
+                2>/dev/null || true
+            if [[ "${_cd_wait:-0}" =~ ^[0-9]+$ ]] && (( _cd_wait > 0 )); then
+                sleep "$_cd_wait"
+            fi
+            continue
+        fi
+        break
+        done
         if [[ $_cd_rc -eq 0 ]]; then
             _CYCLE_DISPATCH_STATUS="complete"
         else
