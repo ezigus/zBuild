@@ -4,8 +4,18 @@
 #
 # This test greps core/, plugins/, and config/ for the pattern
 #   "verdict"[[:space:]]*:[[:space:]]*"(did_not_finish|empty_diff|scope_too_large|inert_build)"
-# and fails if any match is found. It is RED at the merge-base baseline (where
-# all four strings appear in verdict positions) and GREEN after this migration.
+# and fails if any match is found.
+#
+# Scope of the evidence this provides, stated honestly: at the merge-base the
+# pattern matches exactly ONE line — design/plugin.sh's did_not_finish sidecar,
+# the only one of the four ever written as a JSON verdict literal. The other
+# three reached the verdict channel through shell assignment
+# (`build_verdict="empty_diff"`) or a manifest valid_verdicts entry, neither of
+# which a JSON-literal regex can see. So this guard reddens on one string, not
+# four, and the load-bearing evidence for the rest is SPEC-1..SPEC-10 plus
+# lint-verdict-classify (which pins every manifest's declared verdicts).
+# Widening this to cover the assignment and manifest surfaces would make the
+# SPEC self-sufficient; see the #1832 PR discussion.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

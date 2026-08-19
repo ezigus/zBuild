@@ -120,6 +120,12 @@ fi
 # CHANGE-behavior: at baseline (old code: _build_verdict != "empty_diff"), a
 # verdict=pass stub was not exempted → no_committed_changes fired → rc=5.
 # After #1832 (new code: _build_kind != "empty_diff"), kind=empty_diff is exempt.
+#
+# This REDEFINES cycle_dispatch_stage, shadowing the definition above for the
+# rest of the file. That is intentional and safe only because SPEC-10 is the
+# last section — a new section appended below would silently inherit THIS mock
+# (which returns verdict=pass + kind=empty_diff) instead of the original.
+# Add new sections ABOVE this line, or give them their own redefinition.
 cycle_dispatch_stage() {
     local stage="$1" state_file="$3"
     local state_dir; state_dir="$(dirname "$state_file")"
