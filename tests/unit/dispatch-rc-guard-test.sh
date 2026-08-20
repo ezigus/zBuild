@@ -233,20 +233,23 @@ fi
 
 # The 143 pattern must appear within _cycle_handle_terminal_rc specifically,
 # not just anywhere in the file (guard against a stray match elsewhere).
-_func_block="$($SYSGREP -A 40 '^_cycle_handle_terminal_rc()' "$_orch" 2>/dev/null | head -40)"
-if printf '%s\n' "$_func_block" | $SYSGREP -q '143)'; then
+# Bound the window to the function's own case block, not a fixed line count: a
+# `-A N` window silently starts missing the arm once the case grows past N, and
+# fails an unrelated edit with a message about the wrong thing.
+_func_block="$(awk '/^_cycle_handle_terminal_rc\(\) \{/ {f=1} f {print} f && /^    esac$/ {exit}' "$_orch")"
+if $SYSGREP -q '143)' <<< "$_func_block"; then
     assert_pass "[SPEC-5] the 143 arm is inside _cycle_handle_terminal_rc"
 else
     assert_fail "[SPEC-5] the 143 arm is inside _cycle_handle_terminal_rc" \
-        "143 not found in the first 40 lines of _cycle_handle_terminal_rc"
+        "143 not found in the _cycle_handle_terminal_rc case block"
 fi
 
 # The 130 arm must also still be present (distinct from 143 removal regression).
-if printf '%s\n' "$_func_block" | $SYSGREP -q '130'; then
+if $SYSGREP -q '130' <<< "$_func_block"; then
     assert_pass "[SPEC-5] the 130 arm is still present in _cycle_handle_terminal_rc"
 else
     assert_fail "[SPEC-5] the 130 arm is still present in _cycle_handle_terminal_rc" \
-        "130 not found in the first 40 lines of _cycle_handle_terminal_rc"
+        "130 not found in the _cycle_handle_terminal_rc case block"
 fi
 
 print_test_results
