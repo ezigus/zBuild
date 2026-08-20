@@ -60,7 +60,17 @@ _zbuild_make_fresh_shell() {
     local _v
     while IFS= read -r _v; do
         [[ -z "$_v" ]] && continue
-        unset "$_v"
+        # #1873: one `unset` clears ONE binding. A name bound both `local -x` in
+        # an enclosing frame and globally exported takes two — the first unset
+        # peels the local and reveals the global, and the scrub silently leaks.
+        # (lifecycle.sh's ADR-054 §3.1 `local -x` at the dispatch seam over the
+        # runner's global export is exactly that shape.) Unset until it is gone;
+        # `|| break` keeps a readonly name from spinning forever.
+        #
+        # `declare -p`, not `${!_v+x}`: the indirect form probes element 0, so an
+        # EMPTY array or hash reads as unset and would survive a scrub that the
+        # single-unset version cleared.
+        while declare -p "$_v" >/dev/null 2>&1; do unset "$_v" || break; done
     done < <(compgen -v 2>/dev/null | grep -E '^(ZBUILD_|_TPL_)' || true)
     exec 3>&-
 }
