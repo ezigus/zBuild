@@ -66,7 +66,11 @@ _zbuild_make_fresh_shell() {
         # (lifecycle.sh's ADR-054 §3.1 `local -x` at the dispatch seam over the
         # runner's global export is exactly that shape.) Unset until it is gone;
         # `|| break` keeps a readonly name from spinning forever.
-        while [[ -n "${!_v+x}" ]]; do unset "$_v" || break; done
+        #
+        # `declare -p`, not `${!_v+x}`: the indirect form probes element 0, so an
+        # EMPTY array or hash reads as unset and would survive a scrub that the
+        # single-unset version cleared.
+        while declare -p "$_v" >/dev/null 2>&1; do unset "$_v" || break; done
     done < <(compgen -v 2>/dev/null | grep -E '^(ZBUILD_|_TPL_)' || true)
     exec 3>&-
 }

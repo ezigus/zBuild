@@ -139,6 +139,36 @@ sgl_result="$(
 assert_contains "single-bound ZBUILD_CURRENT_STAGE still cleared (guard)" \
     "$sgl_result" "single=<unset>"
 
+print_test_section "5b. empty arrays/hashes still cleared (#1873 regression guard)"
+
+# The unset-until-gone loop needs an existence probe that is true for a set-but-
+# EMPTY array. `${!name+x}` is not: indirect expansion probes element 0, so an
+# empty array reads as unset and would survive a scrub the single-unset version
+# cleared. Guards the probe choice (declare -p), not the double-unset itself.
+arr_result="$(
+    # These fixtures exist to be scrubbed and are read back indirectly through
+    # $_n below, which shellcheck cannot follow.
+    # shellcheck disable=SC2034
+    declare -a ZBUILD_EMPTY_ARR=()
+    # shellcheck disable=SC2034
+    declare -A ZBUILD_EMPTY_HASH=()
+    # shellcheck disable=SC2034
+    declare -a ZBUILD_FULL_ARR=(a b)
+    export ZBUILD_EMPTY_STR=""
+    _zbuild_make_fresh_shell 2>/dev/null
+    for _n in ZBUILD_EMPTY_ARR ZBUILD_EMPTY_HASH ZBUILD_FULL_ARR ZBUILD_EMPTY_STR; do
+        if declare -p "$_n" >/dev/null 2>&1; then
+            printf '%s=SURVIVED\n' "$_n"
+        else
+            printf '%s=cleared\n' "$_n"
+        fi
+    done
+)"
+assert_contains "empty ZBUILD_* array cleared" "$arr_result" "ZBUILD_EMPTY_ARR=cleared"
+assert_contains "empty ZBUILD_* hash cleared"  "$arr_result" "ZBUILD_EMPTY_HASH=cleared"
+assert_contains "non-empty ZBUILD_* array cleared" "$arr_result" "ZBUILD_FULL_ARR=cleared"
+assert_contains "empty-string ZBUILD_* scalar cleared" "$arr_result" "ZBUILD_EMPTY_STR=cleared"
+
 print_test_section "6. a readonly ZBUILD_* name cannot spin the loop (#1873)"
 
 # The unset-until-gone loop must not become infinite on a name `unset` can never
