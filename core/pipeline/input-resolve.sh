@@ -234,7 +234,7 @@ _inputs_effective_path() {
         # never matched: gate_feedback's producer writes `gate-feedback.md`, so
         # the old form looked for `prior_gate-feedback.txt` while the
         # orchestrator wrote `prior_gate_feedback.txt` — hyphen against
-        # underscore, so the branch could not fire. Latent while
+        # underscore, so the branch could not fire.
         # Latent while the feature was gated off; #1825 turns it on.
         local f="$fb/${in_id}.txt"
         [[ -s "$f" ]] && { printf '%s' "$f"; return 0; }

@@ -138,10 +138,6 @@ while IFS= read -r -d '' m; do
         # every declared input makes this manifest a consumer node
         for _k in "${_keys[@]}"; do _LC_HAS_STAGE_INPUT["$_k"]=1; done
         _LC_INPUT_NAMES["$_in_id"]=1
-        if [[ "$_in_source" == stage:* ]]; then
-            for _k in "${_keys[@]}"; do _LC_HAS_STAGE_INPUT["$_k"]=1; done
-            _LC_PRODUCER_REF["${_in_source#stage:}"]=1
-        fi
     done < <(manifest_graph_get_inputs "$m")
 done < <(find "$_PLUGINS_ROOT" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
 

@@ -131,6 +131,55 @@ _mk optconsumer '  - id: also_not_declared
 _out7="$(_validate producer optconsumer)"
 assert_eq "[SPEC-6] an OPTIONAL input naming no producer is allowed" "" "$_out7"
 
+# ─── SPEC-7: a self-edge is legal INSIDE a cycle, a defect outside one ───────
+# ADR-055 §1.3: a producer that runs later is legal where the template declares a
+# re-entry reaching the consumer again, and shared cycle membership is one form
+# of that. `design` consuming its own prior design.md is the live case. Outside a
+# cycle the same shape is a stage waiting on itself, with no re-entry to deliver
+# it — so this branch must answer differently for the two, and both answers need
+# pinning. The helper reads _TPL_CYCLE_STAGES_<safe>, whose members are
+# COMMA-separated; a space-delimited test silently never matches and every cycle
+# member reads as straight-line, which is exactly the bug this would have hidden.
+print_test_section "7. a self-edge is legal in a cycle, a defect outside one"
+_mk selfer '  - id: selfer_out
+    required: false' '  - id: selfer_out
+    path: "${artifact_dir}/selfer.md"
+    type: markdown'
+
+# (a) OUTSIDE any cycle — no re-entry can deliver it.
+unset _TPL_CYCLES 2>/dev/null || true
+_out7a="$(_validate selfer)"
+if grep -q "SELF_REF" <<< "$_out7a"; then
+    assert_pass "[SPEC-7] a self-edge outside a cycle is SELF_REF"
+else
+    assert_fail "[SPEC-7] a self-edge outside a cycle is SELF_REF" \
+        "got: ${_out7a:-<no violations>}"
+fi
+
+# (b) INSIDE a declared cycle — the re-entry delivers it.
+_TPL_CYCLES=(selfcycle)
+# shellcheck disable=SC2034  # read by _cv_stage_in_any_cycle via indirect expansion
+_TPL_CYCLE_STAGES_selfcycle="selfer,other"
+_out7b="$(_validate selfer)"
+if grep -q "SELF_REF" <<< "$_out7b"; then
+    assert_fail "[SPEC-7] a self-edge INSIDE a cycle is allowed" \
+        "SELF_REF fired for a cycle member: $_out7b"
+else
+    assert_pass "[SPEC-7] a self-edge INSIDE a cycle is allowed"
+fi
+
+# [guard] membership must be read per-member, not "any cycle exists at all" —
+# a stage absent from the declared members is still outside.
+_TPL_CYCLE_STAGES_selfcycle="somethingelse,other"
+_out7c="$(_validate selfer)"
+if grep -q "SELF_REF" <<< "$_out7c"; then
+    assert_pass "[SPEC-7] a non-member is still outside, though a cycle exists"
+else
+    assert_fail "[SPEC-7] a non-member is still outside, though a cycle exists" \
+        "SELF_REF suppressed for a stage that is not a member"
+fi
+unset _TPL_CYCLES _TPL_CYCLE_STAGES_selfcycle 2>/dev/null || true
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
