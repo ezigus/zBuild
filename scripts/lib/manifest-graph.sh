@@ -214,6 +214,11 @@ manifest_graph_output_format() {
         }
         inb && cur == want && /^[[:space:]]+format:[[:space:]]*/ {
             l = $0; sub(/^[[:space:]]+format:[[:space:]]*/, "", l)
+            # A trailing `# comment` is part of the line, not part of the value.
+            # Without this the value parses as "json   # why" and fails the
+            # closed-set check — a spurious FORMAT_UNKNOWN on a valid manifest.
+            sub(/[[:space:]]*#.*$/, "", l)
+            sub(/[[:space:]]+$/, "", l)
             gsub(/["\047]/, "", l); print l; exit
         }
     ' "$manifest" 2>/dev/null || true

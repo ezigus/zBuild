@@ -237,6 +237,16 @@ _mk fmtconsumer '  - id: fmt_out
     required: false' ""
 assert_eq "[SPEC-8] the same consumer without format is clean" "" "$(_validate fmtproducer fmtconsumer)"
 
+# [guard] a trailing `# comment` is part of the LINE, not the value. Without
+# stripping it the format parses as "json   # why" and fails the closed-set
+# check — a spurious FORMAT_UNKNOWN on a manifest that is entirely valid, and
+# the manifests in this tree are heavily commented.
+_mk cmtfmt "" '  - id: cmt_out
+    path: "${artifact_dir}/cmt.json"
+    type: cmt.json
+    format: json   # the engine checks this with jq'
+assert_eq "[SPEC-8] a commented format line parses to the bare value" "" "$(_validate cmtfmt)"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
