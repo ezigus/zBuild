@@ -40,6 +40,9 @@ source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/test-output-sanitize.sh"
 # shellcheck source=../../../scripts/lib/framework-result.sh
 # ADR-040 / #1133: opt-in shared lint/coverage/mutation read-out helpers.
 source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/framework-result.sh"
+# shellcheck source=../../../scripts/lib/proc-group.sh
+# Shared setsid capability probe + process-group kill (extracted from route.sh).
+source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/proc-group.sh"
 
 # ─── _test_compute_target_files (ADR-034 / #846) ─────────────────────────────
 # Unions the prior-iter red-set (ZBUILD_TEST_RED_SET JSON array of relative
@@ -201,11 +204,12 @@ _test_run_inner() {
     mkdir -p "$_runtime_dir" 2>/dev/null || true
     local _staging_path_file="$_runtime_dir/test-staging-path"
     local _pid_file="$_runtime_dir/test-stage.pid"
+    local _pgid_file="$_runtime_dir/test-stage.pgid"
     printf '%s' "$tmp" > "$_staging_path_file" 2>/dev/null || true
     # #1829: RETURN trap kills any lingering eval subshell PGID; does NOT
     # rm -rf the staging dir — that is test_cleanup(purge)'s responsibility.
     # shellcheck disable=SC2064
-    trap "_test_kill_staging_pid '$_pid_file'" RETURN
+    trap "_test_kill_staging_pg '$_pid_file' '$_pgid_file'" RETURN
     local verdict="error"
     local exit_code=2
     local diff_applied=false
@@ -352,10 +356,44 @@ _test_run_inner() {
         # evaluated later at parse time (outside this fresh shell) and needs no
         # re-export here. Absent when the repo declares no contract.
         [[ -n "$_zbt_results_json" ]] && export ZBUILD_TEST_RESULTS_JSON="$_zbt_results_json"
-        # #1829 (ADR-054 §7): record this subshell's PID so the RETURN trap
-        # can kill it on an interrupted return path.
+        # #1829 (ADR-054 §7): record a PID the RETURN trap can kill on an
+        # interrupted return path. This is the setup window only — once the
+        # suite is spawned the record moves to the child, below.
         printf '%s' "$BASHPID" > "$_pid_file" 2>/dev/null || true
-        eval "$actual_test_cmd" 2>&1
+        # #1748: `set -m` makes a backgrounded job a process-group leader, so
+        # the suite and every worker it forks share one group teardown can
+        # signal — instead of a single PID whose children outlive it.
+        #
+        # Job control rather than the router's `setsid` prefix, for two reasons.
+        # setsid is absent on stock macOS (util-linux is keg-only), which is the
+        # platform the orphaned trees in #1748 were observed on; and setsid must
+        # exec, so the command would have to become `bash -c "$cmd"` and lose
+        # the eval's access to functions the caller defined — which is exactly
+        # what test-plugin-stage-io-banner-visible-test.sh (#645) asserts. The
+        # router keeps the prefix because it execs a binary and has no eval to
+        # preserve; both callers still share one resolve and one kill.
+        #
+        # Backgrounded rather than foreground because the PGID must be recorded
+        # while the child is alive — the RETURN trap fires on paths that never
+        # reach the `wait`. fds are inherited, so output still streams into the
+        # enclosing $( ) exactly as the plain eval did.
+        set -m
+        eval "$actual_test_cmd" 2>&1 &
+        _zbt_pg_child=$!
+        # Re-point .pid at the suite itself. `set -m` put it in its own group,
+        # so a TERM to this subshell — its parent — does NOT cascade; the PID
+        # fallback would kill the shell layer and leave the workers running,
+        # which is the exact bug this issue exists to end. The subshell needs no
+        # external kill: it is parked at `wait` and returns when the child dies.
+        printf '%s' "$_zbt_pg_child" > "$_pid_file" 2>/dev/null || true
+        # Only record a PGID we could prove distinct from the runner's own. An
+        # absent file is the honest signal for "PID kill only"; an empty one
+        # would read as evidence the group was captured.
+        _zbt_pg_id="$(zbuild_pg_resolve "$_zbt_pg_child")"
+        [[ -n "$_zbt_pg_id" ]] && \
+            printf '%s' "$_zbt_pg_id" > "$_pgid_file" 2>/dev/null || true
+        wait "$_zbt_pg_child"
+        exit $?
     )" || test_rc=$?
 
     # Truncate output to 10 KB to keep artifact manageable. Wave 15-C (#681)
@@ -803,25 +841,24 @@ _test_runtime_dir() {
     printf '%s' "${1%/}/runtime"
 }
 
-# ─── _test_kill_staging_pid <pid_file> ───────────────────────────────────────
-# Best-effort: read the PID from <pid_file> and TERM-then-KILL the eval
-# subshell (#1829, ADR-054 §7).
-#
-# Single PID, deliberately — NOT a process group. `_test_run_inner` does not
-# enable job control, so the `$( )` subshell that runs the suite shares the
-# RUNNER's process group; `kill -- -$pgid` here would take down the whole
-# pipeline, not the test tree. The cost is honest and bounded: a suite that
-# forks its own children (a node/pytest tree) can outlive this kill. Giving
-# those children their own group is a `set -m` change to the eval site, which
-# is a larger change than this issue carries — the file is named `.pid` rather
-# than `.pgid` so the limitation is legible at the call site.
-_test_kill_staging_pid() {
-    local _pf="${1:-}"
+# ─── _test_kill_staging_pg <pid_file> <pgid_file> ───────────────────────────
+# Best-effort teardown of the test subprocess tree (#1829, ADR-054 §7).
+# A recorded PGID kills the whole group so forked workers are reaped too; with
+# none, the single PID is all we can prove safe to signal. Both paths escalate
+# TERM→grace→KILL through proc-group.sh — a suite that flushes coverage or
+# writes partial results on SIGTERM needs that window whichever path kills it.
+_test_kill_staging_pg() {
+    local _pf="${1:-}" _gf="${2:-}"
+    if [[ -f "$_gf" ]]; then
+        local _pgid; _pgid="$(cat "$_gf" 2>/dev/null || true)"
+        if [[ -n "$_pgid" && "$_pgid" =~ ^[0-9]+$ ]]; then
+            zbuild_pg_kill "$_pgid"
+            return 0
+        fi
+    fi
     [[ -f "$_pf" ]] || return 0
     local _pid; _pid="$(cat "$_pf" 2>/dev/null || true)"
-    [[ -n "$_pid" && "$_pid" =~ ^[0-9]+$ ]] || return 0
-    kill -TERM "$_pid" 2>/dev/null || true
-    kill -KILL "$_pid" 2>/dev/null || true
+    zbuild_pid_kill "$_pid"
 }
 
 # ─── test_cleanup ─────────────────────────────────────────────────────────────
@@ -847,8 +884,11 @@ test_cleanup() {
     case "$_scope" in
         release)
             # Kill any lingering test subprocess; do NOT delete the staging dir.
-            if [[ -n "$_runtime_dir" && -f "$_runtime_dir/test-stage.pid" ]]; then
-                _test_kill_staging_pid "$_runtime_dir/test-stage.pid"
+            if [[ -n "$_runtime_dir" && \
+                  ( -f "$_runtime_dir/test-stage.pid" || -f "$_runtime_dir/test-stage.pgid" ) ]]; then
+                _test_kill_staging_pg \
+                    "$_runtime_dir/test-stage.pid" \
+                    "$_runtime_dir/test-stage.pgid"
             fi
             emit_event "plugin.result" "plugin=test" "kind=tool" "hook=cleanup" "scope=release" \
                 2>/dev/null || true
