@@ -98,9 +98,6 @@ inputs:
   # optional-input convention, #511) so the gate composes into templates that
   # do not run design — absent block → no-op pass.
   - id: design
-    type: file
-    path: "${artifact_dir}/design.md"
-    source: stage:design
     required: false
 
 outputs:

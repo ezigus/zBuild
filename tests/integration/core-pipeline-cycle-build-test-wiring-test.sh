@@ -58,12 +58,12 @@ assert_eq "T1: dispatch units include cycle:build_test_cycle" \
 assert_eq "T1: dispatch units include cycle:design_verify_cycle (ADR-046)" \
     "1" "$has_design_verify"
 # ADR-040 (#1138): the inner cycle's feedback edge is now the consolidated
-# gate-aggregator payload (gate-aggregator:gate_feedback → build:prior_gate_feedback)
+# gate-aggregator payload (gate-aggregator:gate_feedback → build:gate_feedback)
 # — the composable-gate successor to standard's test_assessment feedback.
 fb_var="_TPL_CYCLE_FEEDBACK_build_test_cycle"
 fb_value="${!fb_var:-}"
 assert_contains "T1: feedback wires gate-aggregator:gate_feedback" "$fb_value" "gate-aggregator:gate_feedback"
-assert_contains "T1: feedback wires build:prior_gate_feedback" "$fb_value" "build:prior_gate_feedback"
+assert_contains "T1: feedback wires build:gate_feedback" "$fb_value" "build:gate_feedback"
 
 # ─── T2: test plugin emits failures summary on fail, absent on pass ─────────
 # shellcheck disable=SC1090

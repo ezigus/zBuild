@@ -17,3 +17,10 @@
 ./pipeline-state.json
 ./platforms.json
 ./scope-manifest.md
+./stage-inputs/build.json
+./stage-inputs/intake.json
+./stage-inputs/plan.json
+./stage-inputs/pr.json
+./stage-inputs/review-aggregator.json
+./stage-inputs/teardown.json
+./stage-inputs/test.json

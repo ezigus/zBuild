@@ -64,9 +64,6 @@ config:
 
 inputs:
   - id: design
-    type: file
-    path: "${artifact_dir}/design.md"
-    source: stage:design
     required: true
 
 outputs:

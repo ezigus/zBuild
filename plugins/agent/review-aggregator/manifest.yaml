@@ -71,10 +71,7 @@ inputs:
   # The lens group's per-lens results, read by glob from the shared artifacts
   # dir (each review-lens stage writes lens-<name>.json there). required:false
   # keeps the aggregator composable — an empty group degrades to an empty report.
-  - id: lens_results
-    type: glob
-    path: "${artifact_dir}/lens-*.json"
-    source: stage:review-lens
+  - id: lens_result
     required: false
 
 outputs:

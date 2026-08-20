@@ -66,23 +66,12 @@ config:
 
 inputs:
   - id: scope_manifest
-    type: file
-    source: stage:intake
     required: true
   - id: plan
-    type: file
-    path: "${artifact_dir}/plan.json"
-    source: stage:plan
     required: false
   - id: diff_patch
-    type: file
-    path: "${artifact_dir}/diff.patch"
-    source: stage:build
     required: true
   - id: intake_goal
-    type: file
-    path: "${state_dir}/intake.md"
-    source: stage:intake
     required: false
 
 outputs:

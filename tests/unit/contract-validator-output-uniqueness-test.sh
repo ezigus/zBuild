@@ -49,7 +49,6 @@ hooks:
 inputs:
   - id: scope_manifest
     type: file
-    source: stage:intake
     required: true
 outputs:
   - id: diff_patch
@@ -69,7 +68,6 @@ hooks:
 inputs:
   - id: scope_manifest
     type: file
-    source: stage:intake
     required: true
 outputs:
   - id: diff_patch

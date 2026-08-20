@@ -44,14 +44,8 @@ config:
 
 inputs:
   - id: pr_url
-    type: file
-    path: "${artifact_dir}/pr-url.txt"
-    source: stage:pr
     required: true
   - id: gate_aggregator_result
-    type: file
-    path: "${artifact_dir}/gate-aggregator-result.json"
-    source: stage:gate-aggregator
     required: true
 
 outputs:

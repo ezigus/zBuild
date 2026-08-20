@@ -8,9 +8,10 @@
 # stage's declared inputs to concrete paths, writes them to an index file, and
 # the engine hands that index to `run`.
 #
-# Everything here is gated on ZBUILD_INPUTS_RESOLVE (default 0) by its CALLERS.
-# The functions themselves are pure; the flag lives at the three wiring sites
-# (runner.sh, lifecycle.sh, route.sh) so a defect cannot halt a run.
+# #1825 removed the ZBUILD_INPUTS_RESOLVE gate. #1826 shipped behind it so the
+# engine could land inert, but an inert flag that stays inert is the pattern
+# Phase 0 exists to end — the same reason #1865 un-held CYCLE_FB_UNWIRED.
+# Resolution is unconditional; the functions themselves are pure.
 #
 # Index shape, written to ${state_dir}/stage-inputs/<stage>.json:
 #
@@ -46,13 +47,6 @@ declare -F _verdict_resolve_path >/dev/null 2>&1 || \
 # _ZB_CHECKPOINT_MARKER is — the agentic loop redacts once per iteration against
 # the same file, so a plain append would stack the block.
 _ZB_STAGE_INPUTS_MARKER='## STAGE INPUTS (engine-resolved)'
-
-# ─── inputs_resolve_enabled ──────────────────────────────────────────────────
-# The one reading of ZBUILD_INPUTS_RESOLVE. Default 0: with the flag off every
-# wiring site is a no-op and the run is byte-identical to today.
-inputs_resolve_enabled() {
-    [[ "${ZBUILD_INPUTS_RESOLVE:-0}" == "1" ]]
-}
 
 # ─── _inputs_flow_stages ─────────────────────────────────────────────────────
 # The resolved flow, one stage per line.
@@ -216,7 +210,7 @@ _inputs_build_producer_index() {
     done < <(_inputs_flow_stages)
 }
 
-# ─── _inputs_effective_path <live_path> ──────────────────────────────────────
+# ─── _inputs_effective_path <live_path> [input_id] ───────────────────────────
 # Per-input existence precedence, unchanged from prior-output-reader.sh:12-16 —
 # the cycle-feedback copy (iteration >= 2) wins, then the restored cross-run
 # copy, then the live artifact. Returns a PATH rather than the content, which is
@@ -230,11 +224,19 @@ _inputs_build_producer_index() {
 # today, so the two namespaces do not collide — but a template that ever wired
 # `to.input: plan` would make them, and that is the seam to watch.
 _inputs_effective_path() {
-    local live="$1"
+    local live="$1" in_id="${2:-}"
     local base="${live##*/}"
     local iter="${ZBUILD_CYCLE_ITER:-}" fb="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
-    if [[ -n "$iter" && -n "$fb" && "$iter" =~ ^[0-9]+$ ]] && (( iter >= 2 )); then
-        local f="$fb/prior_${base%.*}.txt"
+    if [[ -n "$iter" && -n "$fb" && -n "$in_id" && "$iter" =~ ^[0-9]+$ ]] && (( iter >= 2 )); then
+        # The orchestrator names the copy after the TEMPLATE's `to.input`
+        # (cycle-orchestrator.sh:1196 — `dst="$fb_dir/${to_field}.txt"`), which
+        # is this input's id. Deriving it from the producer's FILENAME instead
+        # never matched: gate_feedback's producer writes `gate-feedback.md`, so
+        # the old form looked for `prior_gate-feedback.txt` while the
+        # orchestrator wrote `prior_gate_feedback.txt` — hyphen against
+        # underscore, so the branch could not fire.
+        # Latent while the feature was gated off; #1825 turns it on.
+        local f="$fb/${in_id}.txt"
         [[ -s "$f" ]] && { printf '%s' "$f"; return 0; }
     fi
     local restored="${ZBUILD_RESTORED_ARTIFACTS_DIR:-}"
@@ -285,7 +287,7 @@ _inputs_resolve_stage() {
             local joined=""
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
-                eff="$(_inputs_effective_path "$line")"
+                eff="$(_inputs_effective_path "$line" "$id")"
                 # A map input is a SET, and the per-element rule is the same one
                 # the scalar branch applies: a damaged member is not a usable
                 # member. Passing it through because its siblings are healthy is
@@ -303,7 +305,7 @@ _inputs_resolve_stage() {
             done <<< "$paths"
             tsv+="${id}"$'\t'"A"$'\t'"${joined}"$'\n'
         else
-            eff="$(_inputs_effective_path "${paths%%$'\n'*}")"
+            eff="$(_inputs_effective_path "${paths%%$'\n'*}" "$id")"
             # #1894: an OPTIONAL input that is present but damaged is omitted
             # from the index, so the consumer sees it exactly as it sees an
             # absent one — a missing key, not an empty read. Degrading in
@@ -421,7 +423,7 @@ _inputs_check_required() {
         present=0; damaged=""
         while IFS= read -r line; do
             [[ -z "$line" ]] && continue
-            eff="$(_inputs_effective_path "$line")"
+            eff="$(_inputs_effective_path "$line" "$id")"
             # Damage is tested BEFORE presence, and this order is the whole
             # point: a truncated file is non-empty, so `-s` accepts it and the
             # stage receives half an artifact as though it were whole. That is

@@ -57,22 +57,14 @@ config:
 
 inputs:
   - id: scope_manifest
-    type: file
-    source: stage:intake
     required: true
   # ADR-020 / #663: build reads the baseline ref captured by intake to
   # constrain diff generation when present. Optional because branch
   # capture is opt-out (ZBUILD_INTAKE_SKIP_BRANCH) and not all templates
   # wire intake → build directly.
   - id: intake_baseline_ref
-    type: text
-    path: "${state_dir}/intake-baseline-ref.txt"
-    source: stage:intake
     required: false
   - id: plan
-    type: file
-    path: "${artifact_dir}/plan.json"
-    source: stage:plan
     required: true
   # B2 (ADR-040): CONSOLIDATED gate→build feedback from the prior cycle iter's
   # gate-aggregator (gate_feedback → gate-feedback.md). After the ADR-040 roster
@@ -81,19 +73,13 @@ inputs:
   # input — the aggregator is the single collector of failure detail. ALWAYS
   # optional (required:false); absent/empty → PRIOR GATE FEEDBACK section omitted
   # (see _build_read_prior_gate). Path resolves via ${cycle_feedback_dir}.
-  - id: prior_gate_feedback
-    type: text/markdown
-    path: "${cycle_feedback_dir}/prior_gate_feedback.txt"
-    source: cycle_feedback
+  - id: gate_feedback
     required: false
   # #754: design stage produces design.md with a ```scope block that overrides
   # plan.json's files[] as the authoritative scope for the build agent.
   # Optional (required:false) — absent when design stage was skipped or not
   # wired in the template.
   - id: design
-    type: file
-    path: "${artifact_dir}/design.md"
-    source: stage:design
     required: false
 
 outputs:

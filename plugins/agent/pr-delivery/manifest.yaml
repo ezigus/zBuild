@@ -42,19 +42,10 @@ inputs:
   # no-ops when review.json is absent (plugin.sh `[[ -f "$review_json" ]]`) and the
   # auto_unless_flagged path reads review-report.json — behavior unchanged.
   - id: review_report
-    type: file
-    path: "${artifact_dir}/review-report.json"
-    source: stage:review-aggregator
     required: false
   - id: plan
-    type: file
-    path: "${artifact_dir}/plan.json"
-    source: stage:plan
     required: false
   - id: design
-    type: file
-    path: "${artifact_dir}/design.md"
-    source: stage:design
     required: false
 
 outputs:

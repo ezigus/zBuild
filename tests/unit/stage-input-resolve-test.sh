@@ -285,20 +285,23 @@ assert_eq "[SPEC-5-guard] \${artifact_dir} is unchanged" "$ART/a.md" \
 assert_eq "[SPEC-5-guard] a relative path still anchors under state_dir" "$STATE/rel.md" \
     "$(_verdict_resolve_path 'rel.md' "$STATE")"
 
-# ─── SPEC-6: the flag is OFF by default ─────────────────────────────────────
-print_test_section "6. with the flag off (the default) nothing happens"
+# ─── SPEC-6: resolution is unconditional, and does not leak ─────────────────
+# #1825 deleted ZBUILD_INPUTS_RESOLVE. #1826 shipped behind it so the engine
+# could land inert, but an inert flag that stays inert is the pattern Phase 0
+# exists to end. What still matters — and is what this spec now pins — is that
+# the index is scoped to ONE dispatch: `local -x` at plugin_hook_call means
+# stage N's index cannot bleed into stage N+1.
+print_test_section "6. resolution is unconditional and scoped to one dispatch"
 rm -rf "$STATE/stage-inputs"
 rm -f "$TEST_TEMP_DIR/irc-ran.txt" "$TEST_TEMP_DIR/irc-seen.txt"
-# Deliberately NOT setting ZBUILD_INPUTS_RESOLVE at all — the default path.
 ZBUILD_STATE_DIR="$STATE" _dispatch_consumer >/dev/null 2>&1
 _rc6=$?
-assert_eq "[SPEC-6] the dispatch is unaffected" "0" "$_rc6"
-assert_eq "[SPEC-6] the stage still ran" "ran" "$(cat "$TEST_TEMP_DIR/irc-ran.txt" 2>/dev/null || true)"
-assert_eq "[SPEC-6] ZBUILD_STAGE_INPUTS is unset inside the plugin" "<unset>" "$(_seen index)"
+assert_eq "[SPEC-6] the dispatch succeeds with no flag set" "0" "$_rc6"
+assert_eq "[SPEC-6] the stage ran" "ran" "$(cat "$TEST_TEMP_DIR/irc-ran.txt" 2>/dev/null || true)"
 if [[ -d "$STATE/stage-inputs" ]]; then
-    assert_fail "[SPEC-6] no index directory is created" "$STATE/stage-inputs exists with the flag off"
+    assert_pass "[SPEC-6] the index is written with no flag set"
 else
-    assert_pass "[SPEC-6] no index directory is created"
+    assert_fail "[SPEC-6] the index is written with no flag set" "no stage-inputs dir — resolution did not run"
 fi
 # [guard] and it stays unset in the CALLER after the dispatch (`local -x`).
 if [[ -v ZBUILD_STAGE_INPUTS ]]; then
@@ -379,12 +382,12 @@ EOF
     ZBUILD_INPUTS_RESOLVE=1 ZBUILD_STAGE_INPUTS="$IDX0" ZBUILD_SCOPE_MANIFEST="" \
         _route_redact_prompt "$IN0" "$TEST_TEMP_DIR/spec8-empty.out" 0 "" >/dev/null 2>&1 || true
 
-    # Same body, a FULL index, and the flag left at its default.
+    # Same body, and NO index at all — a stage dispatched before resolution ran.
     IN1="$TEST_TEMP_DIR/spec8-off-prompt.txt"; printf 'SPEC8 BASELINE BODY\n' > "$IN1"
-    ZBUILD_STAGE_INPUTS="$IDX" ZBUILD_SCOPE_MANIFEST="" \
+    ZBUILD_SCOPE_MANIFEST="" \
         _route_redact_prompt "$IN1" "$TEST_TEMP_DIR/spec8-off.out" 0 "" >/dev/null 2>&1 || true
 
-    assert_eq "[SPEC-8-guard] flag-off is byte-identical to a non-declaring stage" \
+    assert_eq "[SPEC-8-guard] an empty index and no index are byte-identical" \
         "$(cat "$IN0")" "$(cat "$IN1")"
     if grep -qF 'STAGE INPUTS' "$IN0" 2>/dev/null || grep -qF 'STAGE INPUTS' "$IN1" 2>/dev/null; then
         assert_fail "[SPEC-8-guard] neither run gets the block" "the block leaked"

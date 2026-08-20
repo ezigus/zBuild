@@ -142,6 +142,28 @@ _cv_redact_path() {
         printf '%s' "$path"
     fi
 }
+# ─── _cv_stage_in_any_cycle <stage> ──────────────────────────────────────────
+# rc 0 when the stage is a member of some `type: cycle` group. ADR-055 §1.3
+# legalises a backwards data edge only where the template declares a re-entry
+# that reaches the consumer again, and shared cycle membership is one of the two
+# forms of that. It is what makes design consuming its own prior design.md legal
+# while a straight-line stage waiting on itself stays a defect.
+_cv_stage_in_any_cycle() {
+    local _s="${1-}" _c _safe _var _stages
+    [[ -n "$_s" ]] || return 1
+    declare -p _TPL_CYCLES >/dev/null 2>&1 || return 1
+    for _c in "${_TPL_CYCLES[@]}"; do
+        _safe="${_c//-/_}"
+        _var="_TPL_CYCLE_STAGES_${_safe}"
+        # _TPL_CYCLE_STAGES_<x> is COMMA-separated ("design,design-gate"),
+        # so normalise before matching — a space-delimited test silently never
+        # matches and every cycle member reads as a straight-line stage.
+        _stages="${!_var:-}"
+        [[ ",${_stages// /}," == *",$_s,"* ]] && return 0
+    done
+    return 1
+}
+
 
 # ─── _contract_validate_pipeline <template_stage_list> <plugins_root> <state_file>
 # Public entry. The template_stage_list is a space-delimited ordered list of
@@ -223,7 +245,12 @@ _contract_validate_pipeline() {
     local fail_count=0
     local stage manifest
     for stage in "${stages[@]}"; do
-        manifest="$(manifest_graph_collect "$plugins_root" "$stage" 2>/dev/null || true)"
+        # Role-aware, matching dispatch: manifest_graph_collect is id-only, so
+        # `acceptance-gate` (role spec-acceptance) and the `review_lenses` map
+        # group resolved to NO manifest and their outputs never reached the
+        # producer index — which the ADR-055 §1.5 name check depends on.
+        manifest="$(manifest_graph_resolve_member "$plugins_root" "$stage" 2>/dev/null || true)"
+        [[ -n "$manifest" ]] || manifest="$(manifest_graph_collect "$plugins_root" "$stage" 2>/dev/null || true)"
         if [[ -z "$manifest" ]]; then
             # No manifest for this stage. NOT a contract violation by itself
             # (runner has its own fail-closed "no plugin registered" path);
@@ -335,177 +362,66 @@ _contract_validate_pipeline() {
             local _in_optional=0
             [[ "$in_required" == "false" ]] && _in_optional=1
 
-            # A required input must declare a source. An optional one need not —
-            # but if it declares one, it is validated like any other.
-            if [[ -z "$in_source" ]]; then
-                if [[ $_in_optional -eq 1 ]]; then
-                    continue
-                fi
-                violations+=("$stage|MISSING_SOURCE|$in_id|required input has no source: declared|$in_path")
-                fail_count=$((fail_count + 1))
-                continue
-            fi
-
+            # ADR-055 §1.2 leaves exactly TWO input kinds, so this switch has
+            # two live arms. `stage:<name>`, `artifacts` and `cycle_feedback`
+            # are gone: a consumer no longer names a producer, restates a path
+            # or restates a type, and the four CYCLE_FB_* codes retire with
+            # them (§4). What they protected is now §1.5's single rule, checked
+            # in the default arm below — and it covers EVERY input, where the
+            # old template-aware checks were skipped for `required: false`.
             case "$in_source" in
                 external)
+                    # The one kind that survives: it names something from
+                    # OUTSIDE the pipeline, so there is no producer to resolve
+                    # and the allowlist is the only thing that can validate it.
                     if [[ -z "${_CV_EXTERNAL_OK[$in_id]:-}" ]]; then
                         violations+=("$stage|BAD_EXTERNAL|$in_id|source: external used for id not in allowlist (allowed: $(manifest_graph_external_allowlist))")
                         fail_count=$((fail_count + 1))
                     fi
                     ;;
-                artifacts)
-                    # TRANSITIONAL (#1768, ADR-055 §1 retires this kind; #1825
-                    # removes it). Recognised so the gate above can open without
-                    # refusing 9 live inputs and halting every run at pre-flight.
-                    # The CI lint has always tolerated it (lint-contract.sh:194);
-                    # only this validator did not. No path-shape rule on purpose:
-                    # the 9 use two conventions and every path is decorative,
-                    # since the plugin rebuilds it in code.
-                    :
-                    ;;
-                cycle_feedback)
-                    # ADR-020 amendment (#511 / F2): cycle_feedback inputs are
-                    # OPTIONAL by construction (cross-iter only meaningful when
-                    # the cycle runs more than once).
-                    #
-                    # #1768: the note that used to sit here read "required:true is
-                    # a contradiction caught above; an unreachable branch here".
-                    # It was wrong on both counts. Nothing above catches it, and
-                    # CYCLE_FB_REQUIRED was always REACHABLE — a required:true
-                    # cycle_feedback input passed the old gate and fired it.
-                    # Verified against origin/main on a fixture.
-                    #
-                    # What WAS dead is the rest of this case. The old gate skipped
-                    # the switch for required:false, and CYCLE_FB_DIR and
-                    # CYCLE_FB_UNWIRED sit after the `continue` above, so they were
-                    # reachable for neither requiredness. Two codes, not three.
-                    # CYCLE_FB_UNWIRED was the worse of the pair:
-                    # lint-contract.sh:236-239 delegates it here ("runtime
-                    # validator owns that"), so nothing enforced it at all.
-                    if [[ "$in_required" == "true" ]]; then
-                        violations+=("$stage|CYCLE_FB_REQUIRED|$in_id|source: cycle_feedback cannot be required:true (#511)")
-                        fail_count=$((fail_count + 1))
-                        continue
-                    fi
-                    if [[ -n "$in_path" && "$in_path" == *'${artifact_dir}'* ]]; then
-                        violations+=("$stage|CYCLE_FB_DIR|$in_id|source:cycle_feedback path uses \${artifact_dir} (use \${cycle_feedback_dir}) [#511]|$in_path")
-                        fail_count=$((fail_count + 1))
-                        continue
-                    fi
-                    # Wiring check: input MUST be referenced by some
-                    # cycles[].feedback.to.input==<in_id> AND the consumer
-                    # stage MUST be a member of that cycle. Wiring data lives
-                    # in template-parser side-channel vars (_TPL_CYCLE_*).
-                    # Only enforced when template-parser state is loaded;
-                    # otherwise warn-skip (lint catches the static side).
-                    local _cyc_count=0
-                    if declare -p _TPL_CYCLES >/dev/null 2>&1; then
-                        _cyc_count="${#_TPL_CYCLES[@]}"
-                    fi
-                    if [[ $_cyc_count -gt 0 ]]; then
-                        local _wired=0 _cyc
-                        for _cyc in "${_TPL_CYCLES[@]}"; do
-                            local _safe="${_cyc//-/_}"
-                            local _fb_var="_TPL_CYCLE_FEEDBACK_${_safe}"
-                            local _fb_blob="${!_fb_var:-}"
-                            [[ -z "$_fb_blob" ]] && continue
-                            local _fb_line
-                            while IFS= read -r _fb_line; do
-                                [[ -z "$_fb_line" ]] && continue
-                                # "from_stage:from_output|to_stage:to_field:required"
-                                local _to_part="${_fb_line#*|}"
-                                local _to_stage="${_to_part%%:*}"
-                                local _rest="${_to_part#*:}"
-                                local _to_field="${_rest%%:*}"
-                                if [[ "$_to_stage" == "$stage" && "$_to_field" == "$in_id" ]]; then
-                                    _wired=1; break
-                                fi
-                            done <<< "$_fb_blob"
-                            [[ $_wired -eq 1 ]] && break
-                        done
-                        # #1768 made this branch reachable for the first time and
-                        # it immediately found three real violations, so it shipped
-                        # held behind ZBUILD_CONTRACT_CHECK_CYCLE_FB_UNWIRED rather
-                        # than halting every run before intake (ADR-057 gate 3).
-                        # #1865 resolved the drift — `build` declared four
-                        # cycle_feedback inputs and simple.yaml wired one; the other
-                        # three were deleted as superseded by the ADR-040 consolidated
-                        # gate-aggregator edge — so the flag is gone and the check is
-                        # unconditional. A held check that stays held is the pattern
-                        # Phase 0 exists to end.
-                        if [[ $_wired -eq 0 ]]; then
-                            violations+=("$stage|CYCLE_FB_UNWIRED|$in_id|input declares source:cycle_feedback but no cycles[].feedback.to wires it [#511]")
+                "")
+                    # A stage output, named and nothing else (ADR-055 §1.5).
+                    # The name must resolve to EXACTLY ONE producer in the
+                    # resolved flow; zero or two is a refused template, not a
+                    # runtime surprise. Two is what OUTPUT_DUP already prevents,
+                    # so it is reported here only if that guard is ever relaxed.
+                    local _prods="${_CV_OUTPUT_PRODUCERS[$in_id]:-}"
+                    if [[ -z "$_prods" ]]; then
+                        # ADR-055 §1.5 says zero producers is a refused template.
+                        # That holds for a REQUIRED input. For an optional one it
+                        # is too strict, and gate-aggregator is why: it declares
+                        # lint_result / coverage_result / mutation_result so it
+                        # adapts to whichever gates a template includes, and
+                        # simple.yaml includes none of those three. Refusing that
+                        # would forbid a plugin from working across templates,
+                        # which is the portability ADR-042 exists to protect.
+                        # Optional means "this may not exist in this flow" — the
+                        # engine already omits it from the index (#1894).
+                        if [[ "$in_required" != "false" ]]; then
+                            violations+=("$stage|INPUT_UNRESOLVED|$in_id|required input '$in_id' names an artifact no stage in the resolved flow produces (ADR-055 §1.5)")
                             fail_count=$((fail_count + 1))
+                        fi
+                    else
+                        local -a _pl=()
+                        # shellcheck disable=SC2206
+                        _pl=( $_prods )
+                        if [[ ${#_pl[@]} -gt 1 ]]; then
+                            violations+=("$stage|INPUT_AMBIGUOUS|$in_id|input name '$in_id' resolves to ${#_pl[@]} producers: ${_prods// /, } — a name must identify exactly one (ADR-055 §1.5)")
+                            fail_count=$((fail_count + 1))
+                        elif [[ "${_pl[0]}" == "$stage" ]]; then
+                            # A self-edge is legal ONLY as a declared re-entry
+                            # (ADR-055 §1.3): a cycle re-runs its own members, so
+                            # design consuming its own prior design.md is fine.
+                            # Outside a cycle it is a stage waiting on itself.
+                            if ! _cv_stage_in_any_cycle "$stage"; then
+                                violations+=("$stage|SELF_REF|$in_id|input '$in_id' resolves to this stage's own output, and '$stage' is not a cycle member — no re-entry can deliver it (ADR-055 §1.3)")
+                                fail_count=$((fail_count + 1))
+                            fi
                         fi
                     fi
                     ;;
-                stage:*)
-                    local producer="${in_source#stage:}"
-                    # Self-reference check
-                    if [[ "$producer" == "$stage" ]]; then
-                        violations+=("$stage|SELF_REF|$in_id|source: stage:$producer refers to itself")
-                        fail_count=$((fail_count + 1))
-                        continue
-                    fi
-                    # #1768: the three checks below are TEMPLATE-AWARE — they ask
-                    # where the producer sits in the resolved flow — and all three
-                    # are gated on `required`. Only the self-reference check above
-                    # applies to every input, because it needs no template.
-                    #
-                    # The carve-out is the same one the output-id check has always
-                    # had, and it generalises for the same reason: an OPTIONAL
-                    # input may name a producer GROUP rather than a flow stage.
-                    # review-aggregator declares `stage:review-lens`, but the
-                    # template's stage is `review_lenses` (a map group) and
-                    # `review-lens` is the PLUGIN id its members resolve to by
-                    # role. Template-aware checks read that as "stage not in
-                    # template" and MISORDERED/MISSING_OUTPUT follow.
-                    #
-                    # The CI lint does not hit this because it resolves producers
-                    # against plugin manifest ids (lint-contract.sh:221), where
-                    # `review-lens` exists, while this validator resolves against
-                    # template flow names, where it does not. That divergence is
-                    # #1770/#1704's territory; ADR-055 §1 removes it by matching
-                    # on artifact name instead. Until then, matching the lint's
-                    # BEHAVIOUR means not failing an optional input on it.
-                    if [[ $_in_optional -eq 1 ]]; then
-                        continue
-                    fi
-                    # Is producer in the template?
-                    local in_template=0 ts
-                    for ts in "${stages[@]}"; do
-                        [[ "$ts" == "$producer" ]] && { in_template=1; break; }
-                    done
-                    if [[ "$in_template" -eq 0 ]]; then
-                        violations+=("$stage|MISSING_STAGE|$in_id|source declared: stage:$producer; status: stage '$producer' is NOT in template — add it before '$stage'|$in_path")
-                        fail_count=$((fail_count + 1))
-                        continue
-                    fi
-                    # Is producer ordered before consumer? (Misordered)
-                    if [[ -z "${_CV_AVAILABLE[$producer]:-}" ]]; then
-                        # producer is in template but not yet seen → misordered
-                        violations+=("$stage|MISORDERED|$in_id|source declared: stage:$producer; status: stage '$producer' runs AFTER '$stage' in template")
-                        fail_count=$((fail_count + 1))
-                        continue
-                    fi
-                    # Does producer declare this output id? (Required inputs only
-                    # — an optional one already returned above.) The original
-                    # carve-out, for the same reason: review-lens declares
-                    # `lens_result`, one file per map member, while the consumer
-                    # names `lens_results`, the set. Mirrors lint-contract.sh
-                    # :225-231 (#1279, ADR-047 §5).
-                    if [[ -z "${_CV_STAGE_OUTPUTS_OK[$producer:$in_id]:-}" ]]; then
-                        violations+=("$stage|MISSING_OUTPUT|$in_id|source declared: stage:$producer; status: stage '$producer' does NOT declare output id '$in_id'")
-                        fail_count=$((fail_count + 1))
-                        continue
-                    fi
-                    ;;
                 *)
-                    # #1768: the message used to read "must be 'stage:<name>' or
-                    # 'external'", omitting two kinds the switch accepts seven
-                    # and thirty lines above it. An author hitting this was told
-                    # their valid value was not an option.
-                    violations+=("$stage|BAD_SOURCE|$in_id|source: '$in_source' is not a recognised kind (must be 'stage:<name>', 'external', 'artifacts' or 'cycle_feedback')")
+                    violations+=("$stage|BAD_SOURCE|$in_id|source: '$in_source' is not a recognised kind — a consumer declares 'external' or nothing at all (ADR-055 §1.2)")
                     fail_count=$((fail_count + 1))
                     ;;
             esac
@@ -543,12 +459,17 @@ _contract_validate_pipeline() {
                 while IFS= read -r _irec; do
                     [[ -z "$_irec" ]] && continue
                     IFS='|' read -r _iid _itype _isrc _ireq _ipath <<< "$_irec"
-                    if [[ "$_iid" == "$_to_field" && "$_isrc" == "cycle_feedback" ]]; then
+                    # ADR-055 §4: the `cycle_feedback` source kind is retired,
+                    # so the edge's target is an ordinary declared input. What
+                    # still matters — and is all that ever mattered — is that
+                    # the input EXISTS; keying on the source made this check
+                    # unenforceable the moment the kind went away.
+                    if [[ "$_iid" == "$_to_field" ]]; then
                         _has_input=1; break
                     fi
                 done < <(manifest_graph_get_inputs "$_to_manifest")
                 if [[ $_has_input -eq 0 ]]; then
-                    violations+=("$_to_stage|CYCLE_FB_UNDECLARED|$_to_field|cycle[$_cyc].feedback.to wires input '$_to_field' but stage '$_to_stage' declares no matching input with source:cycle_feedback [#511]")
+                    violations+=("$_to_stage|CYCLE_FB_UNDECLARED|$_to_field|cycle[$_cyc].feedback.to wires input '$_to_field' but stage '$_to_stage' declares no input by that name (ADR-055 §4)")
                     fail_count=$((fail_count + 1))
                 fi
             done <<< "$_fb_blob"
@@ -665,7 +586,7 @@ _contract_validate_pipeline() {
                 MISORDERED)
                     printf '  %s: expects %s\n    %s\n\n' "$sstage" "'$sid'" "$smsg"
                     ;;
-                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|MISSING_SOURCE|SELF_REF|MALFORMED|BAD_VAR|CYCLE_FB_REQUIRED|CYCLE_FB_DIR|CYCLE_FB_UNWIRED|CYCLE_FB_UNDECLARED|OUTPUT_DUP|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
+                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|SELF_REF|MALFORMED|BAD_VAR|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|CYCLE_FB_UNDECLARED|OUTPUT_DUP|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
                     printf '  %s: %s (id=%s)\n    %s\n\n' "$sstage" "$scode" "$sid" "$smsg"
                     ;;
                 *)

@@ -9,11 +9,11 @@
 # Verifies without invoking a real LLM:
 #   T1: _impact_extract_scope_from_design parses ```scope block from design.md
 #   T2: _impact_run_inner writes impact_feedback.md; content round-trips into
-#       design's prior_impact_feedback on iter 2 via _design_read_prior_impact_feedback
+#       design's prior_impact_feedback on iter 2 via _design_read_design_gate_feedback
 #   T3: design iter 2 prompt contains PRIOR DESIGN (self-feedback, #773 lesson)
-#       when ZBUILD_CYCLE_FEEDBACK_DIR/prior_design.txt is present
-#   T4: design iter 2 prompt contains PRIOR IMPACT FEEDBACK when
-#       prior_impact_feedback.txt is present
+#       when ZBUILD_CYCLE_FEEDBACK_DIR/design.txt is present
+#   T4: design iter 2 prompt contains PRIOR DESIGN-GATE FEEDBACK when
+#       design_gate_feedback.txt is present
 #   T5: impact verdict=complete suppresses both feedback files (no content to
 #       pipe back; complete exit is cycle convergence)
 set -euo pipefail
@@ -152,28 +152,28 @@ esac
 # Simulate cycle orchestrator wiring impact_feedback.md → design's prior_impact_feedback.
 T2_FB_DIR="$TEST_TEMP_DIR/t2-feedback-iter2"
 mkdir -p "$T2_FB_DIR"
-cp "$T2_ARTS/impact_feedback.md" "$T2_FB_DIR/prior_impact_feedback.txt"
+cp "$T2_ARTS/impact_feedback.md" "$T2_FB_DIR/design_gate_feedback.txt"
 
-# Verify _design_read_prior_impact_feedback returns the content.
+# Verify _design_read_design_gate_feedback returns the content.
 # shellcheck source=../../plugins/agent/design/plugin.sh
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 
 export ZBUILD_CYCLE_ITER=2
 export ZBUILD_CYCLE_FEEDBACK_DIR="$T2_FB_DIR"
-fb_body="$(_design_read_prior_impact_feedback 2>/dev/null || true)"
+fb_body="$(_design_read_design_gate_feedback 2>/dev/null || true)"
 case "$fb_body" in
     *"Gap report"*)
-        assert_pass "T2: _design_read_prior_impact_feedback returns gap report text" ;;
+        assert_pass "T2: _design_read_design_gate_feedback returns gap report text" ;;
     *)
-        assert_fail "T2: _design_read_prior_impact_feedback missing gap content" "got: $fb_body" ;;
+        assert_fail "T2: _design_read_design_gate_feedback missing gap content" "got: $fb_body" ;;
 esac
 unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
 
-# ─── T3: design iter 2 prompt contains PRIOR IMPACT FEEDBACK ──────────────────
+# ─── T3: design iter 2 prompt contains PRIOR DESIGN-GATE FEEDBACK ──────────────────
 T3_FB_DIR="$TEST_TEMP_DIR/t3-feedback-iter2"
 mkdir -p "$T3_FB_DIR"
 printf '## Gap report\n- Missing: tests/integration/design-pipeline-test.sh\n' \
-    > "$T3_FB_DIR/prior_impact_feedback.txt"
+    > "$T3_FB_DIR/design_gate_feedback.txt"
 
 export ZBUILD_CYCLE_ITER=2
 export ZBUILD_CYCLE_FEEDBACK_DIR="$T3_FB_DIR"
@@ -217,10 +217,10 @@ unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
 if [[ -f "$T3_PROMPT_CAPTURE" ]]; then
     t3_prompt="$(cat "$T3_PROMPT_CAPTURE")"
     case "$t3_prompt" in
-        *"PRIOR IMPACT FEEDBACK"*)
-            assert_pass "T3: design prompt includes PRIOR IMPACT FEEDBACK on iter 2" ;;
+        *"PRIOR DESIGN-GATE FEEDBACK"*)
+            assert_pass "T3: design prompt includes PRIOR DESIGN-GATE FEEDBACK on iter 2" ;;
         *)
-            assert_fail "T3: design prompt missing PRIOR IMPACT FEEDBACK" \
+            assert_fail "T3: design prompt missing PRIOR DESIGN-GATE FEEDBACK" \
                 "prompt snippet: $(head -30 "$T3_PROMPT_CAPTURE")" ;;
     esac
 else
@@ -231,7 +231,7 @@ fi
 T4_FB_DIR="$TEST_TEMP_DIR/t4-feedback-iter2"
 mkdir -p "$T4_FB_DIR"
 printf '# Design v1\n```scope\nplugins/agent/design/plugin.sh\n```\n' \
-    > "$T4_FB_DIR/prior_design.txt"
+    > "$T4_FB_DIR/design.txt"
 # No prior_impact_feedback — only self-feedback edge fires.
 
 export ZBUILD_CYCLE_ITER=2
@@ -285,8 +285,8 @@ fi
 
 # ─── T5: outside cycle context → _design_read helpers return empty ────────────
 unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR 2>/dev/null || true
-t5_fb_body="$(_design_read_prior_impact_feedback 2>/dev/null || true)"
-assert_eq "T5: _design_read_prior_impact_feedback empty outside cycle" "" "$t5_fb_body"
+t5_fb_body="$(_design_read_design_gate_feedback 2>/dev/null || true)"
+assert_eq "T5: _design_read_design_gate_feedback empty outside cycle" "" "$t5_fb_body"
 t5_design_body="$(_design_read_prior_design 2>/dev/null || true)"
 assert_eq "T5: _design_read_prior_design empty outside cycle" "" "$t5_design_body"
 

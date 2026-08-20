@@ -48,9 +48,6 @@ config:
 
 inputs:
   - id: test_results
-    type: file
-    path: "${artifact_dir}/test-results.json"
-    source: stage:test
     required: false
 
 outputs:

@@ -371,14 +371,14 @@ _route_redact_prompt() {
     # at the same point as the vision preamble and the checkpoint block: before
     # apply_scope_redaction, so it rides the ADR-004 chokepoint by construction.
     # Marker-guarded for idempotence (the loop redacts once per iteration).
-    if [[ "${ZBUILD_INPUTS_RESOLVE:-0}" == "1" && -n "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]]; then
         # Lazy + flag-gated, so route.sh's load shape is unchanged by default.
         if ! declare -F stage_inputs_prompt_block >/dev/null 2>&1; then
             # shellcheck source=../pipeline/input-resolve.sh
             source "$_ZBUILD_ROOT/core/pipeline/input-resolve.sh" 2>/dev/null || true
         fi
     fi
-    if [[ "${ZBUILD_INPUTS_RESOLVE:-0}" == "1" && -n "${ZBUILD_STAGE_INPUTS:-}" ]] \
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]] \
         && declare -F stage_inputs_prompt_block >/dev/null 2>&1; then
         local _si_block=""
         _si_block="$(stage_inputs_prompt_block "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"

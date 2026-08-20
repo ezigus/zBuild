@@ -106,13 +106,13 @@ _build_read_prior_review() {
 
 # _build_read_prior_gate (B2 / ADR-040)
 # Read the prior cycle iter's consolidated gate-aggregator feedback from
-# $ZBUILD_CYCLE_FEEDBACK_DIR/prior_gate_feedback.txt. Empty stdout when
+# $ZBUILD_CYCLE_FEEDBACK_DIR/gate_feedback.txt. Empty stdout when
 # not in a cycle, dir unset, or file missing/empty.
 _build_read_prior_gate() {
     local iter="${ZBUILD_CYCLE_ITER:-}"
     local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
     [[ -z "$iter" || -z "$fb_dir" ]] && return 0
-    local f="$fb_dir/prior_gate_feedback.txt"
+    local f="$fb_dir/gate_feedback.txt"
     [[ ! -s "$f" ]] && return 0
     local body
     body="$(cat "$f" 2>/dev/null)" || return 0

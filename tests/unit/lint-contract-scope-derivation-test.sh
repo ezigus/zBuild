@@ -33,22 +33,36 @@ setup_test_env "lint-contract-scope-derivation"
 # lint-contract does, then assert every curated id that has a manifest is a node.
 # The curated list is the independent ground truth (a hand-maintained subset);
 # the derivation must not drop any of it.
-declare -A _HAS_INPUT=() _PROD_REF=() _MANIFEST_ID=() _ROLE_ID=()
+declare -A _HAS_INPUT=() _PROD_REF=() _MANIFEST_ID=() _ROLE_ID=() _INPUT_NAME=() _OUT_OWNER=()
 while IFS= read -r -d '' m; do
     id="$(manifest_graph_get_stage_id "$m")"; [[ -z "$id" ]] && continue
     _MANIFEST_ID["$id"]=1
     _role="$(awk '/^provides:/{p=1;next} p&&/^[A-Za-z_]/{p=0} p&&/^[[:space:]]+role:/{sub(/^[[:space:]]+role:[[:space:]]*/,"");gsub(/["'"'"']/,"");print;exit}' "$m")"
     [[ -n "$_role" ]] && _ROLE_ID["$_role"]="$id"
+    # #1825: membership was read off `source: stage:X`; a consumer no longer names
+    # a producer, so it is read off the NAMES — any declared input makes this a
+    # consumer node, and a manifest whose output id some input names is a producer
+    # node. Mirrors _lc_id_in_scope, which this test exists to keep honest.
     while IFS= read -r rec; do
         [[ -z "$rec" ]] && continue
         IFS='|' read -r _iid _it _isrc _ir _ip <<< "$rec"
-        if [[ "$_isrc" == stage:* ]]; then
-            _HAS_INPUT["$id"]=1
-            [[ -n "$_role" ]] && _HAS_INPUT["role:$_role"]=1
-            _PROD_REF["${_isrc#stage:}"]=1
-        fi
+        [[ -z "$_iid" ]] && continue
+        _HAS_INPUT["$id"]=1
+        [[ -n "$_role" ]] && _HAS_INPUT["role:$_role"]=1
+        _INPUT_NAME["$_iid"]=1
     done < <(manifest_graph_get_inputs "$m")
+    while IFS= read -r rec; do
+        [[ -z "$rec" ]] && continue
+        _oid="${rec%%|*}"; [[ -z "$_oid" ]] && continue
+        _OUT_OWNER["$_oid"]+=" $id"
+    done < <(manifest_graph_get_outputs "$m")
 done < <(find "$REPO_ROOT/plugins" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
+
+# resolve producer membership by name, after every manifest is indexed
+for _on in "${!_OUT_OWNER[@]}"; do
+    [[ -n "${_INPUT_NAME[$_on]:-}" ]] || continue
+    for _ow in ${_OUT_OWNER[$_on]}; do _PROD_REF["$_ow"]=1; done
+done
 
 # in-scope iff data-graph node (mirrors _lc_id_in_scope). Resolve curated ids
 # that are role-bound stage names (e.g. acceptance-gate) via the role→id map.

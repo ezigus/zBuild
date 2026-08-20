@@ -17,9 +17,9 @@
 #   T1: simple.yaml load → _TPL_CYCLE_FEEDBACK_design_verify_cycle contains
 #       TWO newline-separated records: design-gate→design AND design→design.
 #   T2: _cycle_apply_feedback copies design iter-1's design.md to
-#       cycle-design_verify_cycle/iter-2/feedback/prior_design.txt verbatim.
-#   T3: Co-fires with impact_feedback_md edge — both prior_design.txt AND
-#       prior_impact_feedback.txt land in the same iter-2/feedback dir.
+#       cycle-design_verify_cycle/iter-2/feedback/design.txt verbatim.
+#   T3: Co-fires with impact_feedback_md edge — both design.txt AND
+#       design_gate_feedback.txt land in the same iter-2/feedback dir.
 #   T4: Empty (zero-byte) prior design.md + required=false → rc=0, no feedback
 #       file written, no fatal error (fail-soft contract).
 #   T5: required=true symmetric — missing required artifact → rc!=0 (fail-closed).
@@ -47,9 +47,9 @@ load_template "$REPO_ROOT/config/templates/simple.yaml"
 
 fb="${_TPL_CYCLE_FEEDBACK_design_verify_cycle:-}"
 assert_contains "[SPEC-6] T1: feedback contains design-gate→design edge" \
-    "$fb" "design-gate:design_gate_feedback|design:prior_impact_feedback"
+    "$fb" "design-gate:design_gate_feedback|design:design_gate_feedback"
 assert_contains "[SPEC-6] T1: feedback contains design→design self-edge (#842)" \
-    "$fb" "design:design|design:prior_design"
+    "$fb" "design:design|design:design"
 
 # Both edges present means two records separated by newline.
 edge_count="$(printf '%s\n' "$fb" | grep -c '|' || true)"
@@ -71,24 +71,24 @@ printf '%s' "$_IMPACT_FEEDBACK_SENTINEL" > "$STATE_DIR/artifacts/impact/impact_f
 _CYCLE_TRAP_CYCLE_ID="design_verify_cycle"
 # Wire BOTH edges as the orchestrator would (uses _TPL_CYCLE_FEEDBACK shape).
 _CYCLE_FEEDBACK=(
-    "impact:impact_feedback_md.md|design:prior_impact_feedback:false"
-    "design:design.md|design:prior_design:false"
+    "impact:impact_feedback_md.md|design:design_gate_feedback:false"
+    "design:design.md|design:design:false"
 )
 set +e; _cycle_apply_feedback 2 "$STATE_DIR"; rc=$?; set -e
 assert_eq "T2: both feedback edges apply → rc=0" "0" "$rc"
 
-# T2: prior_design.txt landed in iter-2 feedback dir.
-PRIOR_DESIGN_DST="$STATE_DIR/cycle-design_verify_cycle/iter-2/feedback/prior_design.txt"
-assert_file_exists "T2: prior_design.txt copied to iter-2 feedback dir" "$PRIOR_DESIGN_DST"
+# T2: design.txt landed in iter-2 feedback dir.
+PRIOR_DESIGN_DST="$STATE_DIR/cycle-design_verify_cycle/iter-2/feedback/design.txt"
+assert_file_exists "T2: design.txt copied to iter-2 feedback dir" "$PRIOR_DESIGN_DST"
 
 # T2: body is byte-identical (raw-copy convention).
-assert_eq "T2: prior_design.txt body matches iter-1 design.md verbatim" \
+assert_eq "T2: design.txt body matches iter-1 design.md verbatim" \
     "$_DESIGN_MD_SENTINEL" "$(cat "$PRIOR_DESIGN_DST")"
 
 # T3: impact_feedback_md side-edge co-fired.
-PRIOR_IMPACT_DST="$STATE_DIR/cycle-design_verify_cycle/iter-2/feedback/prior_impact_feedback.txt"
-assert_file_exists "T3: prior_impact_feedback.txt also copied (co-fire)" "$PRIOR_IMPACT_DST"
-assert_eq "T3: prior_impact_feedback.txt body matches iter-1 impact verbatim" \
+PRIOR_IMPACT_DST="$STATE_DIR/cycle-design_verify_cycle/iter-2/feedback/design_gate_feedback.txt"
+assert_file_exists "T3: design_gate_feedback.txt also copied (co-fire)" "$PRIOR_IMPACT_DST"
+assert_eq "T3: design_gate_feedback.txt body matches iter-1 impact verbatim" \
     "$_IMPACT_FEEDBACK_SENTINEL" "$(cat "$PRIOR_IMPACT_DST")"
 
 # ─── T4: fail-soft when prior design.md missing + required=false ────────────
@@ -98,16 +98,16 @@ mkdir -p "$STATE_DIR2/artifacts/design" "$STATE_DIR2/artifacts/impact"
 printf '%s' "$_IMPACT_FEEDBACK_SENTINEL" > "$STATE_DIR2/artifacts/impact/impact_feedback_md.md"
 
 _CYCLE_FEEDBACK=(
-    "design:design.md|design:prior_design:false"
+    "design:design.md|design:design:false"
 )
 : > "$ZBUILD_EVENTS_JSONL"
 set +e; _cycle_apply_feedback 2 "$STATE_DIR2"; rc=$?; set -e
 assert_eq "T4: missing optional self-edge from-artifact → rc=0 (fail-soft)" "0" "$rc"
 
-if [[ -f "$STATE_DIR2/cycle-design_verify_cycle/iter-2/feedback/prior_design.txt" ]]; then
-    assert_fail "T4: no prior_design.txt written when source missing"
+if [[ -f "$STATE_DIR2/cycle-design_verify_cycle/iter-2/feedback/design.txt" ]]; then
+    assert_fail "T4: no design.txt written when source missing"
 else
-    assert_pass "T4: no prior_design.txt written when source missing"
+    assert_pass "T4: no design.txt written when source missing"
 fi
 
 # T4: the orchestrator records the optional miss as cycle.feedback.absent (not .missing).
@@ -120,7 +120,7 @@ mkdir -p "$STATE_DIR3/artifacts/design"
 # design.md deliberately absent.
 
 _CYCLE_FEEDBACK=(
-    "design:design.md|design:prior_design:true"
+    "design:design.md|design:design:true"
 )
 : > "$ZBUILD_EVENTS_JSONL"
 set +e; _cycle_apply_feedback 2 "$STATE_DIR3"; rc=$?; set -e

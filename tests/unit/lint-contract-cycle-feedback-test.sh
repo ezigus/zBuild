@@ -60,12 +60,10 @@ requires:
 inputs:
   - id: producer_main
     type: file
-    source: stage:producer
     required: true
   - id: prior_feedback
     type: file
     path: ${cycle_feedback_dir}/prior_feedback.txt
-    source: cycle_feedback
     required: false
 outputs:
   - id: consumer_out
@@ -159,40 +157,11 @@ assert_eq "TC-3: missing to.input detected (rc=1)" "1" "$rc"
 assert_contains "TC-3: diagnostic names ghost input id" "$out" "ghost_input"
 assert_contains "TC-3: diagnostic names target stage" "$out" "consumer"
 
-# ─── TC-4: to.input declared but source != cycle_feedback ───────────────────
-write_good_plugins
-# Rewrite consumer so prior_feedback exists but source is stage:producer.
-cat > "$PLUGINS_ROOT/agent/consumer/manifest.yaml" <<'EOF'
-id: consumer
-name: Consumer
-kind: agent
-version: 0.1.0
-hooks:
-  run: r
-requires:
-  core: [redaction]
-inputs:
-  - id: producer_main
-    type: file
-    source: stage:producer
-    required: true
-  - id: prior_feedback
-    type: file
-    source: stage:producer
-    required: false
-outputs:
-  - id: consumer_out
-    type: file
-    path: ${artifact_dir}/consumer.json
-    required: true
-    primary: true
-EOF
-write_template "bad_to_source" "producer" "producer_feedback_md" "consumer" "prior_feedback"
-rc=0
-out="$(run_lint)" || rc=$?
-assert_eq "TC-4: wrong-source to.input detected (rc=1)" "1" "$rc"
-assert_contains "TC-4: diagnostic mentions cycle_feedback" "$out" "cycle_feedback"
-assert_contains "TC-4: diagnostic names input id" "$out" "prior_feedback"
+# ─── TC-4 removed by #1825 ──────────────────────────────────────────────────
+# It asserted that a feedback edge's target must declare `source: cycle_feedback`.
+# ADR-055 §4 retires that kind — a consumer declares only a name — so the rule
+# it tested no longer exists. What survives is TC-3: the target must declare an
+# input BY THAT NAME, which is the wiring integrity the source check stood in for.
 
 # ─── TC-5: from.stage not in template's stage set ───────────────────────────
 write_good_plugins
@@ -218,46 +187,43 @@ bash "$REPO_ROOT/scripts/lib/lint-contract.sh" >/dev/null 2>&1 || rc=$?
 assert_eq "TC-7: real repo template + plugins pass cycle-feedback lint" "0" "$rc"
 
 
-# ─── #1865: every declared cycle_feedback input is WIRED by a shipped template ─
-# The CYCLE_FB_UNWIRED branch is unconditional as of #1865 (its
-# ZBUILD_CONTRACT_CHECK_CYCLE_FB_UNWIRED hold is gone), so a re-introduced
-# unwired declaration halts every run before intake. This pins the tree clean.
-#
-# The vacuity guard below counts rows THIS loop saw, not a separate scan: the
-# first draft grepped independently, so when manifest_graph_get_inputs turned out
-# not to be sourced the assertion passed on an empty loop while the guard passed
-# on its own grep. Ablation caught it; the counter now shares the loop it guards.
-# shellcheck source=../../scripts/lib/manifest-graph.sh
-source "$REPO_ROOT/scripts/lib/manifest-graph.sh"
-print_test_section "#1865 — no unwired cycle_feedback declaration survives"
-_cfb_unwired=0; _cfb_rows=0; _cfb_detail=""; _id_re=""
-while IFS= read -r _m; do
-    [[ -n "$_m" ]] || continue
-    while IFS='|' read -r _id _t _src _req _p; do
-        [[ "$_src" == "cycle_feedback" ]] || continue
-        _cfb_rows=$((_cfb_rows + 1))
-        # $_id is interpolated into an ERE, so it is escaped first. Today's ids
-        # are [a-z0-9_-] and cannot carry a metacharacter, but an unescaped id
-        # containing `.` or `+` would match something it should not and report a
-        # real unwired declaration as WIRED — the guard would fail open, which is
-        # the one direction a guard must never fail.
-        _id_re="$(printf '%s' "$_id" | sed 's/[.[\*^$+?(){}|]/\\&/g')"
-        if ! grep -qE "input:[[:space:]]*${_id_re}([[:space:]]|$)" "$REPO_ROOT"/config/templates/*.yaml 2>/dev/null; then
-            _cfb_unwired=$((_cfb_unwired + 1))
-            _cfb_detail+="$(basename "$(dirname "$_m")"):$_id "
-        fi
-    done < <(manifest_graph_get_inputs "$_m" 2>/dev/null)
-done < <(find "$REPO_ROOT/plugins" -name manifest.yaml -not -path '*/tests/*' 2>/dev/null)
-
-if [[ $_cfb_rows -gt 0 ]]; then
-    assert_pass "[#1865] the loop parsed $_cfb_rows cycle_feedback input(s)"
+# ─── #1865/#1825: no feedback edge names an input that does not exist ────────
+# #1865 pinned "every declared cycle_feedback input is wired by a template". The
+# source kind is gone (ADR-055 §4), so the same integrity is now pinned from the
+# other end: every `feedback.to.input` in a shipped template must name an input
+# the target stage actually declares. A dangling wire and an inert declaration
+# are the same defect seen from opposite sides.
+print_test_section "#1865/#1825 — no feedback edge names a missing input"
+_fb_bad=0; _fb_rows=0; _fb_detail=""; _ids=""
+for _tpl in "$REPO_ROOT"/config/templates/*.yaml; do
+    [[ -f "$_tpl" ]] || continue
+    _cur_stage=""
+    while IFS= read -r _l; do
+        case "$_l" in
+            *"stage:"*) _cur_stage="$(printf '%s' "$_l" | sed 's/.*stage:[[:space:]]*//')" ;;
+            *"input:"*)
+                _in="$(printf '%s' "$_l" | sed 's/.*input:[[:space:]]*//')"
+                [[ -n "$_in" && -n "$_cur_stage" ]] || continue
+                _fb_rows=$((_fb_rows + 1))
+                _mf="$(manifest_graph_resolve_member "$REPO_ROOT/plugins" "$_cur_stage" 2>/dev/null || true)"
+                [[ -n "$_mf" ]] || _mf="$(manifest_graph_collect "$REPO_ROOT/plugins" "$_cur_stage" 2>/dev/null || true)"
+                [[ -n "$_mf" ]] || continue
+                _ids="$(manifest_graph_get_inputs "$_mf" 2>/dev/null | cut -d'|' -f1)"
+                if ! grep -qx "$_in" <<< "$_ids"; then
+                    _fb_bad=$((_fb_bad + 1)); _fb_detail+="$(basename "$_tpl"):$_cur_stage.$_in "
+                fi
+                ;;
+        esac
+    done < "$_tpl"
+done
+if [[ $_fb_rows -gt 0 ]]; then
+    assert_pass "[#1825] the scan parsed $_fb_rows feedback target(s)"
 else
-    assert_fail "[#1865] the loop parsed at least one cycle_feedback input" \
+    assert_fail "[#1825] the scan parsed at least one feedback target" \
         "zero rows — the assertion below would pass vacuously"
 fi
-assert_eq "[#1865] every cycle_feedback input is wired by a shipped template" \
-    "0" "$_cfb_unwired"
-[[ $_cfb_unwired -ne 0 ]] && printf '    unwired: %s\n' "$_cfb_detail" >&2
+assert_eq "[#1825] every feedback edge names a declared input" "0" "$_fb_bad"
+[[ $_fb_bad -ne 0 ]] && printf '    dangling: %s\n' "$_fb_detail" >&2
 
 print_test_results
 exit $((FAIL > 0))

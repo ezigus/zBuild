@@ -47,7 +47,6 @@ requires:
 inputs:
   - id: scope_manifest
     type: file
-    source: stage:intake
     required: true
   - id: goal_string
     type: string
@@ -72,7 +71,6 @@ requires:
 inputs:
   - id: plan
     type: file
-    source: stage:plan
     required: true
 outputs:
   - id: diff_patch
@@ -91,7 +89,6 @@ hooks:
 inputs:
   - id: diff_patch
     type: file
-    source: stage:build
     required: true
 outputs:
   - id: test_results
@@ -112,15 +109,12 @@ requires:
 inputs:
   - id: plan
     type: file
-    source: stage:plan
     required: true
   - id: diff_patch
     type: file
-    source: stage:build
     required: true
   - id: test_results
     type: file
-    source: stage:test
     required: true
 outputs:
   - id: review
@@ -182,15 +176,29 @@ else
 fi
 rm -f "$STATE_FILE"
 
-# TC-6: Misordered stages — review before test
+# TC-6: stage ORDER no longer decides validity (#1825)
 rc=0
 err_out="$(ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "intake
 plan
 build
 review
 test" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
-assert_eq "TC-6: misordered detected as rc=2" "2" "$rc"
-assert_contains_regex "TC-6: misordered diagnostic mentions ordering" "$err_out" "after|AFTER"
+# This ordering (review before test) was MISORDERED at the merge-base and is now
+# legal. ADR-055 §1.3 legalises a producer that runs later wherever the template
+# declares a re-entry reaching the consumer again — a cycle or a route_back — and
+# the old forward-only rule rejected exactly those cases, which is why
+# `source: artifacts` existed as an untyped escape hatch (#1768). Every name here
+# resolves, so there is nothing left to refuse.
+assert_eq "TC-6: a later producer is no longer refused on order alone" "0" "$rc"
+# [guard] not permissiveness — an unresolvable NAME in the same shape still fails.
+rc=0
+# Drop `build`, the producer of the `diff_patch` that `test` requires — dropping
+# `review` orphans nothing, so it would have proved the guard rather than the rule.
+err_out="$(ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "intake
+plan
+test" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
+assert_eq "TC-6: but a name no stage produces still fails enforce" "2" "$rc"
+assert_contains "TC-6: and is reported as unresolved, not misordered" "$err_out" "INPUT_UNRESOLVED"
 
 # TC-7: External source allowlist — goal_string is OK
 # (already covered by TC-1; check for negative case below)
@@ -238,7 +246,6 @@ requires:
 inputs:
   - id: scope_manifest
     type: file
-    source: stage:intake
     required: true
     path: \${bogus_var}/x.md
 outputs:
