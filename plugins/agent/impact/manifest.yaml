@@ -70,11 +70,13 @@ outputs:
   - id: impact
     path: "${artifact_dir}/impact.json"
     type: impact.json
+    format: json
     required: true
     primary: true
   - id: impact_feedback_md
     path: "${artifact_dir}/impact_feedback.md"
-    type: markdown
+    type: impact_feedback.md
+    format: markdown
     required: false
 
 state:

@@ -74,6 +74,7 @@ outputs:
   - id: plan
     path: ${artifact_dir}/plan.json
     type: plan.json
+    format: json
     required: true
     # ADR-020 amendment (#507): primary output. plan.json has no .verdict
     # field; runner falls back to pass when JSON is present and well-formed.
@@ -88,6 +89,7 @@ outputs:
   - id: plan-context
     path: ${artifact_dir}/plan-context.json
     type: plan-context.json
+    format: json
     required: false
   # #1879: the engine-generic stage checkpoint. `role: checkpoint` is what the
   # engine keys on — NOT the id, which must be unique across every stage in a
@@ -97,6 +99,7 @@ outputs:
   - id: plan-checkpoint
     path: ${artifact_dir}/plan-checkpoint.md
     type: checkpoint.md
+    format: markdown
     required: false
     role: checkpoint
 

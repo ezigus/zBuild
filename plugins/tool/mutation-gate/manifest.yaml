@@ -57,6 +57,7 @@ outputs:
   - id: mutation_result
     path: "${artifact_dir}/mutation-result.json"
     type: mutation-result.json
+    format: json
     required: true
     primary: true
 

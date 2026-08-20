@@ -33,6 +33,7 @@ outputs:
   - id: scope_manifest
     path: ${state_dir}/scope-manifest.md
     type: scope-manifest.md
+    format: markdown
     required: true
     # ADR-020 amendment (#507): primary output (non-JSON). Indicator falls
     # back to rc-only — present == pass; absent (rc=0 anyway) == warn.
@@ -40,6 +41,7 @@ outputs:
   - id: intake_goal
     path: ${state_dir}/intake.md
     type: intake.md
+    format: markdown
     required: true
   # ADR-020 / #663: side-channel outputs previously documented as
   # "intentional side-effects". intake-baseline-ref.txt is written when
@@ -51,12 +53,14 @@ outputs:
   # canonical primary artifact per #507.
   - id: intake_baseline_ref
     path: ${state_dir}/intake-baseline-ref.txt
-    type: text
+    type: intake-baseline-ref.txt
+    format: text
     primary: false
     required: false
   - id: intake_branch
     path: ${state_dir}/intake-branch.txt
-    type: text
+    type: intake-branch.txt
+    format: text
     primary: false
     required: false
 

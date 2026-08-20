@@ -50,6 +50,7 @@ outputs:
   - id: findings
     path: ${artifact_dir}/security-findings.json
     type: findings.json
+    format: json
     required: true
     # ADR-020 amendment (#507): primary output. ADR-019 informational role —
     # presence of findings.json == pass; the indicator never goes red on

@@ -85,11 +85,13 @@ inputs:
 outputs:
   - id: diff_patch
     path: "${artifact_dir}/diff.patch"
-    type: patch
+    type: diff.patch
+    format: patch
     required: true
   - id: build_summary
     path: "${artifact_dir}/build-summary.json"
     type: build-summary.json
+    format: json
     required: true
     # ADR-020 amendment (#507): primary output; .verdict (pass|scope_violation)
     # drives indicator. Added in build-summary schema_version=3.

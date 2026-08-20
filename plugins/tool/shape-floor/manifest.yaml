@@ -58,6 +58,7 @@ outputs:
   - id: shape_floor_result
     path: "${artifact_dir}/shape-floor-result.json"
     type: shape-floor-result.json
+    format: json
     required: true
     primary: true
 

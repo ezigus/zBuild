@@ -35,6 +35,7 @@ inputs: []
 outputs:
   - id: scope_manifest
     type: file
+    format: text
     path: ${state_dir}/scope-manifest.md
     required: true
 EOF
@@ -53,6 +54,7 @@ inputs:
 outputs:
   - id: diff_patch
     type: file
+    format: text
     path: ${artifact_dir}/diff.patch
     required: true
 EOF
@@ -72,6 +74,7 @@ inputs:
 outputs:
   - id: diff_patch
     type: file
+    format: text
     path: ${artifact_dir}/diff.patch
     required: true
 EOF

@@ -107,7 +107,8 @@ outputs:
   # engine halts only on disposition==terminal and knows NO SPEC vocabulary.
   - id: gate_result
     path: ${artifact_dir}/acceptance-gate-result.json
-    type: json
+    type: acceptance-gate-result.json
+    format: json
     required: true
     primary: true
 

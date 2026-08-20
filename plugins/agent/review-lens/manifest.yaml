@@ -66,6 +66,7 @@ outputs:
   - id: lens_result
     path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}.json"
     type: review-lens.json
+    format: json
     required: true
     primary: true
 

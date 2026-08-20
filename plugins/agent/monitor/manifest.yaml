@@ -53,6 +53,7 @@ outputs:
   - id: monitor_report
     path: "${artifact_dir}/monitor-report.json"
     type: monitor-report.json
+    format: json
     required: true
     primary: true
 

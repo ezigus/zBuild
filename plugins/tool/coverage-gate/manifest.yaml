@@ -58,6 +58,7 @@ outputs:
   - id: coverage_result
     path: "${artifact_dir}/coverage-result.json"
     type: coverage-result.json
+    format: json
     required: true
     primary: true
 

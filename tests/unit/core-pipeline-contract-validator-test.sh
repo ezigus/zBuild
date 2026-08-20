@@ -31,6 +31,7 @@ inputs: []
 outputs:
   - id: scope_manifest
     type: file
+    format: text
     path: \${state_dir}/scope-manifest.md
     required: true
 EOF
@@ -55,6 +56,7 @@ inputs:
 outputs:
   - id: plan
     type: file
+    format: text
     path: \${artifact_dir}/plan.json
     required: true
 EOF
@@ -75,6 +77,7 @@ inputs:
 outputs:
   - id: diff_patch
     type: file
+    format: text
     path: \${artifact_dir}/diff.patch
     required: true
 EOF
@@ -93,6 +96,7 @@ inputs:
 outputs:
   - id: test_results
     type: file
+    format: text
     path: \${artifact_dir}/test-results.json
     required: true
 EOF
@@ -119,6 +123,7 @@ inputs:
 outputs:
   - id: review
     type: file
+    format: text
     path: \${artifact_dir}/review.json
     required: true
 EOF
@@ -222,6 +227,7 @@ inputs:
 outputs:
   - id: design_doc
     type: file
+    format: text
     path: \${artifact_dir}/design.md
     required: true
 EOF
@@ -251,6 +257,7 @@ inputs:
 outputs:
   - id: design_doc
     type: file
+    format: text
     path: \${artifact_dir}/design.md
     required: true
 EOF

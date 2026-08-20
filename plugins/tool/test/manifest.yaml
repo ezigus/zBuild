@@ -64,6 +64,7 @@ outputs:
   - id: test_results
     path: "${artifact_dir}/test-results.json"
     type: test-results.json
+    format: json
     required: true
     # ADR-020 amendment (#507): primary output drives the runner's
     # stage-complete indicator via the .verdict field.
@@ -73,7 +74,8 @@ outputs:
   # (missing == empty semantics); never an empty-but-present file.
   - id: test_failures_summary
     path: "${artifact_dir}/test-failures-summary.md"
-    type: markdown
+    type: test-failures-summary.md
+    format: markdown
     required: false
 
 state:
