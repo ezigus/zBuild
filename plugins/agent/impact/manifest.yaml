@@ -26,7 +26,6 @@ requires:
 provides:
   artifact_type: impact.json
   role: impact_analyzer
-  schema_version: 1
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -69,13 +68,13 @@ inputs:
 outputs:
   - id: impact
     path: "${artifact_dir}/impact.json"
-    type: impact.json
+    type: impact.json@1
     format: json
     required: true
     primary: true
   - id: impact_feedback_md
     path: "${artifact_dir}/impact_feedback.md"
-    type: impact_feedback.md
+    type: impact_feedback.md@1
     format: markdown
     required: false
 

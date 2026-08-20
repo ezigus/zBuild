@@ -26,7 +26,6 @@ requires:
 provides:
   artifact_type: deploy-result.json
   role: deploy_agent
-  schema_version: 1
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -51,7 +50,7 @@ inputs:
 outputs:
   - id: deploy_result
     path: ${artifact_dir}/deploy-result.json
-    type: deploy-result.json
+    type: deploy-result.json@1
     format: json
     required: true
     primary: true

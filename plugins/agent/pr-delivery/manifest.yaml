@@ -25,7 +25,6 @@ requires:
 provides:
   artifact_type: pr-url.txt
   role: pr
-  schema_version: 1
 
 config:
   # Writes no .verdict on either verdict channel; the engine falls back to
@@ -51,13 +50,13 @@ inputs:
 outputs:
   - id: pr_url
     path: ${artifact_dir}/pr-url.txt
-    type: pr-url.txt
+    type: pr-url.txt@1
     format: text
     required: true
     primary: true
   - id: pr_result
     path: ${artifact_dir}/pr-result.json
-    type: pr-result.json
+    type: pr-result.json@1
     format: json
     required: true
 

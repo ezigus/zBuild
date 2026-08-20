@@ -130,7 +130,7 @@ while IFS= read -r -d '' m; do
     done < <(manifest_graph_get_outputs "$m")
     while IFS= read -r rec; do
         [[ -z "$rec" ]] && continue
-        IFS='|' read -r _in_id _in_type _in_source _in_required _in_path <<< "$rec"
+        IFS='|' read -r _in_id _ _in_source _in_required _in_path <<< "$rec"
         [[ -z "$_in_id" ]] && continue
         for _k in "${_keys[@]}"; do _LC_STAGE_INPUT_SOURCE["$_k:$_in_id"]="$_in_source"; done
         # ADR-047 §5 data-graph participation: record this manifest as a consumer and
@@ -189,8 +189,11 @@ for id in "${!_LC_STAGE_MANIFEST[@]}"; do
 
     while IFS= read -r rec; do
         [[ -z "$rec" ]] && continue
-        # shellcheck disable=SC2034  # in_type/in_path read for parity with validator parser
-        IFS='|' read -r in_id in_type in_source in_required in_path <<< "$rec"
+        # ADR-055 §8 (#1827): the type position is read past, not captured — the
+        # mirror of the validator's change, so the two parsers still agree on the
+        # record's shape without either holding a variable nothing compares.
+        # shellcheck disable=SC2034  # in_path read for parity with the validator parser
+        IFS='|' read -r in_id _ in_source in_required in_path <<< "$rec"
         [[ -z "$in_id" ]] && continue
 
         # required: must be true|false (if explicitly set)

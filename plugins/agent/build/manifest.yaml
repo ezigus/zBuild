@@ -23,7 +23,6 @@ requires:
 provides:
   artifact_type: build-summary.json
   role: builder
-  schema_version: 1
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -85,12 +84,12 @@ inputs:
 outputs:
   - id: diff_patch
     path: "${artifact_dir}/diff.patch"
-    type: diff.patch
+    type: diff.patch@1
     format: patch
     required: true
   - id: build_summary
     path: "${artifact_dir}/build-summary.json"
-    type: build-summary.json
+    type: build-summary.json@4
     format: json
     required: true
     # ADR-020 amendment (#507): primary output; .verdict (pass|scope_violation)

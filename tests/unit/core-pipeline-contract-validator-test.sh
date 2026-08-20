@@ -30,7 +30,7 @@ requires:
 inputs: []
 outputs:
   - id: scope_manifest
-    type: file
+    type: file@1
     format: text
     path: \${state_dir}/scope-manifest.md
     required: true
@@ -55,7 +55,7 @@ inputs:
     required: true
 outputs:
   - id: plan
-    type: file
+    type: file@1
     format: text
     path: \${artifact_dir}/plan.json
     required: true
@@ -76,7 +76,7 @@ inputs:
     required: true
 outputs:
   - id: diff_patch
-    type: file
+    type: file@1
     format: text
     path: \${artifact_dir}/diff.patch
     required: true
@@ -95,7 +95,7 @@ inputs:
     required: true
 outputs:
   - id: test_results
-    type: file
+    type: file@1
     format: text
     path: \${artifact_dir}/test-results.json
     required: true
@@ -122,7 +122,7 @@ inputs:
     required: true
 outputs:
   - id: review
-    type: file
+    type: file@1
     format: text
     path: \${artifact_dir}/review.json
     required: true
@@ -226,7 +226,7 @@ inputs:
     required: true
 outputs:
   - id: design_doc
-    type: file
+    type: file@1
     format: text
     path: \${artifact_dir}/design.md
     required: true
@@ -256,7 +256,7 @@ inputs:
     path: \${bogus_var}/x.md
 outputs:
   - id: design_doc
-    type: file
+    type: file@1
     format: text
     path: \${artifact_dir}/design.md
     required: true

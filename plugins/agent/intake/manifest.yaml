@@ -32,7 +32,7 @@ inputs: []
 outputs:
   - id: scope_manifest
     path: ${state_dir}/scope-manifest.md
-    type: scope-manifest.md
+    type: scope-manifest.md@1
     format: markdown
     required: true
     # ADR-020 amendment (#507): primary output (non-JSON). Indicator falls
@@ -40,7 +40,7 @@ outputs:
     primary: true
   - id: intake_goal
     path: ${state_dir}/intake.md
-    type: intake.md
+    type: intake.md@1
     format: markdown
     required: true
   # ADR-020 / #663: side-channel outputs previously documented as
@@ -53,13 +53,13 @@ outputs:
   # canonical primary artifact per #507.
   - id: intake_baseline_ref
     path: ${state_dir}/intake-baseline-ref.txt
-    type: intake-baseline-ref.txt
+    type: intake-baseline-ref.txt@1
     format: text
     primary: false
     required: false
   - id: intake_branch
     path: ${state_dir}/intake-branch.txt
-    type: intake-branch.txt
+    type: intake-branch.txt@1
     format: text
     primary: false
     required: false

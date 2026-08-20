@@ -49,7 +49,6 @@ provides:
   role: gate_aggregator
   primary: true
   artifact_type: gate-aggregator-result.json
-  schema_version: 1
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -87,7 +86,7 @@ inputs:
 outputs:
   - id: gate_aggregator_result
     path: "${artifact_dir}/gate-aggregator-result.json"
-    type: gate-aggregator-result.json
+    type: gate-aggregator-result.json@1
     format: json
     required: true
     primary: true
@@ -97,7 +96,7 @@ outputs:
   # gate-aggregator → build (prior_gate_feedback) cycle-feedback edge.
   - id: gate_feedback
     path: "${artifact_dir}/gate-feedback.md"
-    type: gate-feedback.md
+    type: gate-feedback.md@1
     format: markdown
     required: false
   # #1219 (ADR-045/ADR-046): FOCUSED design-rooted feedback. Written ONLY on a
@@ -107,7 +106,7 @@ outputs:
   # design_verify_cycle; persists across the rewind (shared per-run artifacts dir).
   - id: design_feedback
     path: "${artifact_dir}/design-feedback.md"
-    type: design-feedback.md
+    type: design-feedback.md@1
     format: markdown
     required: false
 

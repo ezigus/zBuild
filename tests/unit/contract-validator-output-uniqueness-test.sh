@@ -34,7 +34,7 @@ hooks:
 inputs: []
 outputs:
   - id: scope_manifest
-    type: file
+    type: file@1
     format: text
     path: ${state_dir}/scope-manifest.md
     required: true
@@ -53,7 +53,7 @@ inputs:
     required: true
 outputs:
   - id: diff_patch
-    type: file
+    type: file@1
     format: text
     path: ${artifact_dir}/diff.patch
     required: true
@@ -73,7 +73,7 @@ inputs:
     required: true
 outputs:
   - id: diff_patch
-    type: file
+    type: file@1
     format: text
     path: ${artifact_dir}/diff.patch
     required: true

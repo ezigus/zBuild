@@ -66,7 +66,6 @@ requires:
 provides:
   role: acceptance_gate
   artifact_type: acceptance-gate-result.json
-  schema_version: 1
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -107,7 +106,7 @@ outputs:
   # engine halts only on disposition==terminal and knows NO SPEC vocabulary.
   - id: gate_result
     path: ${artifact_dir}/acceptance-gate-result.json
-    type: acceptance-gate-result.json
+    type: acceptance-gate-result.json@1
     format: json
     required: true
     primary: true
