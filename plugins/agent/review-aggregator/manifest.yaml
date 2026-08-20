@@ -41,7 +41,6 @@ requires:
 
 provides:
   role: review_aggregator
-  schema_version: 1
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -79,13 +78,13 @@ outputs:
   # blocking artifact-contract (no provides.artifact_type above).
   - id: review_report
     path: "${artifact_dir}/review-report.json"
-    type: review-report.json
+    type: review-report.json@1
     format: json
     required: true
     primary: true
   - id: review_report_md
     path: "${artifact_dir}/review-report.md"
-    type: review-report.md
+    type: review-report.md@1
     format: markdown
     required: false
 

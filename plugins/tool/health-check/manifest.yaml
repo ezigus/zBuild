@@ -21,7 +21,6 @@ requires:
 
 provides:
   role: health_check_executor
-  schema_version: 1
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:

@@ -367,10 +367,12 @@ validate_manifest() {
     # than an unspeakable one. Never a warning: a version the engine cannot read
     # means every verdict it produces is uninterpretable.
     #
-    # NB `provides.result_contract`, NOT `provides.schema_version` — the latter
-    # is taken and versions the ARTIFACT's own schema, independently per artifact
-    # type (build-summary.json is at 4, #602). Same distinction verdict.sh:209
-    # draws for the result file's own key.
+    # NB `provides.result_contract`, NOT `provides.schema_version`. The latter is
+    # gone as of #1827: it versioned the ARTIFACT's own schema, but per-MANIFEST
+    # while artifacts are per-OUTPUT, and it drifted unnoticed because nothing
+    # read it — build declared 1 while summary.sh:193 wrote 4 (#602). That version
+    # now lives where the artifact does, in `outputs[].type: <schema-id>@<n>`.
+    # Same distinction verdict.sh:209 draws for the result file's own key.
     # Checked UNCONDITIONALLY — an absent declaration is a declaration of v1, and
     # it has to travel the same path as a stated one. Short-circuiting on empty
     # looks equivalent today (v1 is in range, so both accept) and stops being

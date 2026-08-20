@@ -74,7 +74,7 @@ write_fx() {
         printf 'version: 0.1.0\nhooks:\n  run: r\n'
         printf 'provides:\n  role: %s\n' "$5"
         printf 'inputs: []\n'
-        printf 'outputs:\n  - id: %s\n    type: %s.json\n    format: json\n    path: ${artifact_dir}/%s.json\n    required: true\n    primary: true\n' "$6" "$6" "$6"
+        printf 'outputs:\n  - id: %s\n    type: %s.json@1\n    format: json\n    path: ${artifact_dir}/%s.json\n    required: true\n    primary: true\n' "$6" "$6" "$6"
     } > "$1/manifest.yaml"
 }
 write_fx "$FX_ROOT/tool/g_gate" g_gate tool  gate     g_gate g_gate_result

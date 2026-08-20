@@ -282,6 +282,21 @@ _contract_validate_pipeline() {
             # `type:`, which says WHAT it is. It must name a check the engine
             # implements, so it is a closed set — free text would silently mean
             # "no check", which is the fail-open this epic exists to close.
+            # #1827: `type:` is <schema-id>@<version>. A bare type cannot say WHICH
+            # generation of an artifact it is, which is what #1824 put the pipeline
+            # into versioned coexistence to need. Enforced at load because a version
+            # nobody checks is the decoration this epic exists to remove.
+            # field 2 of id|type|source|required|path, via expansion rather than a
+            # pipe — `printf | cut` is the SIGPIPE antipattern #1886 removed.
+            # TWO statements: in a single `local a=.. b="${a..}"`, b is expanded
+            # before a is assigned, so _otype would silently come out empty and
+            # the check below would never fire. The ablation caught exactly that.
+            local _orest="${outrec#*|}"
+            local _otype="${_orest%%|*}"
+            if [[ -n "$_otype" && "$_otype" != *"@"* ]]; then
+                violations+=("$stage|TYPE_UNVERSIONED|$out_id|type: '$_otype' carries no @version (ADR-055 §8, #1827)")
+                fail_count=$((fail_count + 1))
+            fi
             local _ofmt; _ofmt="$(manifest_graph_output_format "$manifest" "$out_id" 2>/dev/null || true)"
             if [[ -z "$_ofmt" ]]; then
                 violations+=("$stage|FORMAT_MISSING|$out_id|output declares no format: — the engine cannot decide how to check it (ADR-055 §1, #1895)")
@@ -344,10 +359,14 @@ _contract_validate_pipeline() {
             input_lines+=("$rec")
         done < <(manifest_graph_get_inputs "$manifest" | LC_ALL=C sort)
 
-        local in_rec in_id in_type in_source in_required in_path
+        local in_rec in_id in_source in_required in_path
         for in_rec in "${input_lines[@]}"; do
-            # shellcheck disable=SC2034  # in_type captured for future schema-aware checks
-            IFS='|' read -r in_id in_type in_source in_required in_path <<< "$in_rec"
+            # ADR-055 §8: the type position is READ PAST, not captured. It held
+            # `in_type` from 2026-05-30 to #1827 "for future schema-aware checks"
+            # that could never be written — §1 removed the consumer-declared type,
+            # so there is no second declaration to compare against. Removed rather
+            # than implemented, which is what the ADR asks for.
+            IFS='|' read -r in_id _ in_source in_required in_path <<< "$in_rec"
             [[ -z "$in_id" ]] && continue
 
             # Default required=true if absent at parse time (decision #1).
@@ -606,7 +625,7 @@ _contract_validate_pipeline() {
                 MISORDERED)
                     printf '  %s: expects %s\n    %s\n\n' "$sstage" "'$sid'" "$smsg"
                     ;;
-                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|SELF_REF|MALFORMED|BAD_VAR|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|CYCLE_FB_UNDECLARED|OUTPUT_DUP|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
+                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|SELF_REF|MALFORMED|BAD_VAR|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|TYPE_UNVERSIONED|CYCLE_FB_UNDECLARED|OUTPUT_DUP|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
                     printf '  %s: %s (id=%s)\n    %s\n\n' "$sstage" "$scode" "$sid" "$smsg"
                     ;;
                 *)

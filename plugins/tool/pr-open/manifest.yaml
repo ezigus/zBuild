@@ -29,7 +29,6 @@ provides:
   # outputs[] below); both are written on success. See ADR-013 Implementation
   # Notes for the canonical vs. secondary artifact convention.
   artifact_type: pr-url.txt
-  schema_version: 1
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -58,7 +57,7 @@ inputs:
 outputs:
   - id: pr_url
     path: ${artifact_dir}/pr-url.txt
-    type: pr-url.txt
+    type: pr-url.txt@1
     format: text
     required: true
     # ADR-020 amendment (#507): canonical primary (non-JSON). Indicator
@@ -66,7 +65,7 @@ outputs:
     primary: true
   - id: pr_result
     path: ${artifact_dir}/pr-result.json
-    type: pr-result.json
+    type: pr-result.json@1
     format: json
     required: true
 

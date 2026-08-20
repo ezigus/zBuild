@@ -49,12 +49,12 @@ _raw() {
 
 # _validate <stage-list...> — the violation code lines only.
 _validate() {
-    _raw "$@" | grep -E "BAD_SOURCE|SELF_REF|MISSING_OUTPUT|BAD_EXTERNAL|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|CYCLE_FB" || true
+    _raw "$@" | grep -E "BAD_SOURCE|SELF_REF|MISSING_OUTPUT|BAD_EXTERNAL|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|TYPE_UNVERSIONED|CYCLE_FB" || true
 }
 
 _producer_outs='  - id: prod_out
     path: "${artifact_dir}/prod-out.md"
-    type: prod-out.md
+    type: prod-out.md@1
     format: markdown'
 
 # ─── SPEC-1: an OPTIONAL input with an unrecognised source is caught ─────────
@@ -107,7 +107,7 @@ done
 # is gone. A map producer still yields a SET under the one id (ADR-055 §1.4).
 _mk lensproducer "" '  - id: lens_result
     path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}.json"
-    type: review-lens.json
+    type: review-lens.json@1
     format: json'
 _mk lensconsumer '  - id: lens_result
     required: false' ""
@@ -146,8 +146,8 @@ print_test_section "7. a self-edge is legal in a cycle, a defect outside one"
 _mk selfer '  - id: selfer_out
     required: false' '  - id: selfer_out
     path: "${artifact_dir}/selfer.md"
-    type: markdown'
-
+    type: selfer.md@1
+    format: markdown'
 # (a) OUTSIDE any cycle — no re-entry can deliver it.
 unset _TPL_CYCLES 2>/dev/null || true
 _out7a="$(_validate selfer)"
@@ -192,7 +192,7 @@ print_test_section "8. format: is declared, closed, and producer-only"
 
 _mk fmtproducer "" '  - id: fmt_out
     path: "${artifact_dir}/fmt-out.json"
-    type: fmt-out.json
+    type: fmt-out.json@1
     format: json'
 _out8a="$(_validate fmtproducer)"
 assert_eq "[SPEC-8] a declared, in-set format is accepted" "" "$_out8a"
@@ -200,7 +200,7 @@ assert_eq "[SPEC-8] a declared, in-set format is accepted" "" "$_out8a"
 # (a) absent
 _mk nofmt "" '  - id: nofmt_out
     path: "${artifact_dir}/nofmt.json"
-    type: nofmt.json'
+    type: nofmt.json@1'
 if grep -q "FORMAT_MISSING" <<< "$(_validate nofmt)"; then
     assert_pass "[SPEC-8] an output with no format is refused"
 else
@@ -210,7 +210,7 @@ fi
 # (b) outside the closed set
 _mk badfmt "" '  - id: badfmt_out
     path: "${artifact_dir}/badfmt.json"
-    type: badfmt.json
+    type: badfmt.json@1
     format: yaml'
 _out8c="$(_validate badfmt)"
 if grep -q "FORMAT_UNKNOWN" <<< "$_out8c"; then
@@ -243,9 +243,47 @@ assert_eq "[SPEC-8] the same consumer without format is clean" "" "$(_validate f
 # the manifests in this tree are heavily commented.
 _mk cmtfmt "" '  - id: cmt_out
     path: "${artifact_dir}/cmt.json"
-    type: cmt.json
+    type: cmt.json@1
     format: json   # the engine checks this with jq'
 assert_eq "[SPEC-8] a commented format line parses to the bare value" "" "$(_validate cmtfmt)"
+
+# ─── SPEC-9: `type:` carries a version (#1827) ──────────────────────────────
+# ADR-055 §8. #1824 put the pipeline into versioned coexistence, so an artifact
+# type that cannot say WHICH generation it is leaves the engine unable to tell v1
+# from v2 of the same file. A version nobody checks is the decoration this epic
+# exists to remove, so it is enforced at load.
+print_test_section "9. an artifact type carries a version"
+_mk vok "" '  - id: v_out
+    path: "${artifact_dir}/v.json"
+    type: v.json@2
+    format: json'
+assert_eq "[SPEC-9] a versioned type is accepted" "" "$(_validate vok)"
+
+_mk vbare "" '  - id: vbare_out
+    path: "${artifact_dir}/vbare.json"
+    type: vbare.json
+    format: json'
+_out9="$(_validate vbare)"
+if grep -q "TYPE_UNVERSIONED" <<< "$_out9"; then
+    assert_pass "[SPEC-9] a bare type is refused"
+else
+    assert_fail "[SPEC-9] a bare type is refused" "got: ${_out9:-<none>}"
+fi
+
+# [guard] the check must read the TYPE field, not merely find an '@' anywhere in
+# the record. A path containing '@' with a bare type is still unversioned — and
+# the first version of this check read the field into an empty variable, so it
+# passed everything; only an ablation caught it.
+_mk vpath "" '  - id: vpath_out
+    path: "${artifact_dir}/v@2/out.json"
+    type: vpath.json
+    format: json'
+if grep -q "TYPE_UNVERSIONED" <<< "$(_validate vpath)"; then
+    assert_pass "[SPEC-9] an '@' in the path does not count as a version"
+else
+    assert_fail "[SPEC-9] an '@' in the path does not count as a version" \
+        "the check is matching the record, not the type field"
+fi
 
 cleanup_test_env
 print_test_results
