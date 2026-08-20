@@ -36,7 +36,7 @@ exercise rather than a new mechanism:
   behavior, and `feedback:` edges through ADR-020's inter-stage data
   contract (`source: cycle_feedback`). Wave 17-B (ADR-027 + #703) extends
   the framework with `abort_when:` as a sibling predicate that
-  propagates outward and terminates the pipeline (rc=5, cycle_abort
+  propagates outward and terminates the pipeline (rc=5 _[historical: rc=6 per ADR-021/ADR-045 — rc=5 was the build_review_cycle era value; corrected by #1860 2026-08-20]_, cycle_abort
   class from ADR-025).
 - **ADR-027** (Wave 17-A) reshapes the template format so cycles ARE
   stages and nest recursively. An outer cycle wrapping `build_test_cycle`
@@ -66,7 +66,7 @@ retry.
    (ADR-019); it means the diff is structurally broken in a way
    remediation cannot recover (corrupt diff, scope violation,
    never-build-this category). `abort_when` propagates outward and
-   terminates the pipeline with rc=5 (cycle_abort class, ADR-025) —
+   terminates the pipeline with rc=5 _[historical: rc=6 per ADR-021/ADR-045; corrected by #1860 2026-08-20]_ (cycle_abort class, ADR-025) —
    downstream stages do not run.
 3. **`max_iterations` safety cap.** The outer cycle declares
    `max_iterations: 2` in `standard.yaml` (default; configurable per
@@ -82,7 +82,7 @@ retry.
    (ADR-021 v2 #527/#528 amendment — `_RUNNER_CYCLE_UNCONVERGED` is
    set, `pipeline_status` is not silently `complete`). Templates that
    want hard termination on `max_iterations` instead declare
-   `on_max: abort_pipeline` and the runner exits rc=5.
+   `on_max: abort_pipeline` and the runner exits rc=5 _[historical: rc=6 per ADR-021/ADR-045; corrected by #1860 2026-08-20]_.
 5. **Feedback wiring.** The `feedback:` block declares one edge:
    `from: { stage: review, output: review_md }` → `to: { stage: build,
    input: prior_review_feedback, required: false }`. Build's
@@ -344,7 +344,7 @@ the outer cycle's lifecycle identically to the inner cycle's.
   `exit_when`, `abort_when`, `max_iterations`, `on_max`, `feedback:`,
   and `source: cycle_feedback` are all reused unchanged.
 - [ADR-025](ADR-025-abort-propagation.md) — abort propagation; the
-  `abort_when: block` path uses rc=5 cycle_abort class from this ADR.
+  `abort_when: block` path uses rc=5 _[historical: rc=6 per ADR-021/ADR-045; corrected by #1860 2026-08-20]_ cycle_abort class from this ADR.
 - [ADR-027](ADR-027-recursive-flow-template-format.md) — recursive
   flow template format; ADR-026's `build_review_cycle` declaration uses
   ADR-027's `type: cycle` shape with member stages at the top level.

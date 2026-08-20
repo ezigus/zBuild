@@ -214,5 +214,40 @@ fi
 _probe_uses="$($SYSGREP -c '_verdict_probe_contract "$state_dir"' "$_runner" 2>/dev/null)" || _probe_uses=0
 assert_eq "[SPEC-4] both boundaries fetch the version via stdout" "2" "${_probe_uses//[$'\n\r ']/}"
 
+# ─────────────────────────────────────────────────────────────────────────────
+print_test_section "5. _cycle_handle_terminal_rc has both 130 and 143 arms"
+
+# ADR-054 §4 recorded the asymmetry: _cycle_handle_terminal_rc had a 130) arm
+# but no 143) arm, so SIGTERM fell to *) reason="error". #1860 merged them into
+# a combined 130|143) arm. This assertion fails if only the 143 part is removed
+# (e.g. reverted to bare `130)`), proving it tests the arm not just the boundary.
+_orch="$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
+
+# The combined arm must exist: `130|143)` in the case statement.
+if $SYSGREP -q '130|143)[[:space:]]*reason="aborted"' "$_orch" 2>/dev/null; then
+    assert_pass "[SPEC-5] _cycle_handle_terminal_rc has a combined 130|143 arm"
+else
+    assert_fail "[SPEC-5] _cycle_handle_terminal_rc has a combined 130|143 arm" \
+        "the 130|143) reason=aborted arm is missing; SIGTERM falls to *) reason=error"
+fi
+
+# The 143 pattern must appear within _cycle_handle_terminal_rc specifically,
+# not just anywhere in the file (guard against a stray match elsewhere).
+_func_block="$($SYSGREP -A 40 '^_cycle_handle_terminal_rc()' "$_orch" 2>/dev/null | head -40)"
+if printf '%s\n' "$_func_block" | $SYSGREP -q '143)'; then
+    assert_pass "[SPEC-5] the 143 arm is inside _cycle_handle_terminal_rc"
+else
+    assert_fail "[SPEC-5] the 143 arm is inside _cycle_handle_terminal_rc" \
+        "143 not found in the first 40 lines of _cycle_handle_terminal_rc"
+fi
+
+# The 130 arm must also still be present (distinct from 143 removal regression).
+if printf '%s\n' "$_func_block" | $SYSGREP -q '130'; then
+    assert_pass "[SPEC-5] the 130 arm is still present in _cycle_handle_terminal_rc"
+else
+    assert_fail "[SPEC-5] the 130 arm is still present in _cycle_handle_terminal_rc" \
+        "130 not found in the first 40 lines of _cycle_handle_terminal_rc"
+fi
+
 print_test_results
 exit $((FAIL > 0))
