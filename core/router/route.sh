@@ -93,6 +93,11 @@ source "$_ZBUILD_ROOT/scripts/lib/stage-checkpoint.sh"
 # can inject the advisory Intent preamble into every stage prompt.
 _zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/vision.sh"
 source "$_ZBUILD_ROOT/scripts/lib/vision.sh"
+# Shared setsid capability probe + process-group kill helper.
+# Defines _ZBUILD_PG_PREFIX and zbuild_pg_kill (extracted from the inline
+# probe that used to live here, so the test plugin can share one impl).
+_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/proc-group.sh"
+source "$_ZBUILD_ROOT/scripts/lib/proc-group.sh"
 
 # route_to_model <tier> <prompt> [--skip-precondition] [--model <id>]
 # Exit codes: 0=success, 1=recoverable, 2=fatal
@@ -249,18 +254,14 @@ _ROUTE_CACHE_READ=0 _ROUTE_CACHE_CREATION=0
 # spawns) — not just the top-level PID. The narrow per-PID kill from Wave
 # 8 (#612) leaves trap-ignoring or fork-spawning children alive, so SIGINT
 # can take many seconds to unwind. With a PG kill we can guarantee a
-# bounded grace window. `_ROUTE_PG_PREFIX` is an array — empty when setsid
+# bounded grace window. `_ZBUILD_PG_PREFIX` is an array — empty when setsid
 # is unavailable (e.g. plain macOS without util-linux), in which case the
 # loop spawn falls back to the per-PID kill from Wave 8 (the signal handler
 # also adds a 1s-delayed SIGKILL backstop in that mode, so a wedged child
 # is still bounded — the PG-kill upgrade is what guarantees the <2.5s
 # budget). The `-w` flag waits for the child and forwards its exit code,
 # so callers see the same rc as before.
-if command -v setsid >/dev/null 2>&1 && setsid -w true >/dev/null 2>&1; then
-    _ROUTE_PG_PREFIX=(setsid -w)
-else
-    _ROUTE_PG_PREFIX=()
-fi
+# _ZBUILD_PG_PREFIX is now populated by scripts/lib/proc-group.sh (sourced above).
 # ADR-018 (#469): captured tool_uses[] envelope when JSON output mode is active.
 # Empty when JSON mode off or envelope lacked the field. Consumers (review
 # audit) read this AFTER route_to_model returns. Not exported to subshells —
@@ -1588,7 +1589,7 @@ ${_diff_pointer}"
         # then TERM/KILLs the whole group rather than the top-level PID, which
         # is what lets the loop pre-abort in <2.5s even when claude (or any
         # child it spawned) ignores or delays SIGTERM. When setsid is not
-        # installed (plain macOS without util-linux), _ROUTE_PG_PREFIX is
+        # installed (plain macOS without util-linux), _ZBUILD_PG_PREFIX is
         # empty and the signal handler falls back to the per-PID kill from
         # Wave 8 (#612) — same behavior as before this wave.
         #
@@ -1604,35 +1605,20 @@ ${_diff_pointer}"
             (
                 cd "$cwd" || exit 99
                 _zbuild_make_fresh_shell
-                exec "${_ROUTE_PG_PREFIX[@]}" "${_tout_cmd[@]}" claude "${_claude_args[@]}"
+                exec "${_ZBUILD_PG_PREFIX[@]}" "${_tout_cmd[@]}" claude "${_claude_args[@]}"
             ) >"$json_file" 2>"$stderr_file" &
         else
             (
                 cd "$cwd" || exit 99
                 _zbuild_make_fresh_shell
-                exec "${_ROUTE_PG_PREFIX[@]}" claude "${_claude_args[@]}"
+                exec "${_ZBUILD_PG_PREFIX[@]}" claude "${_claude_args[@]}"
             ) >"$json_file" 2>"$stderr_file" &
         fi
         _ROUTE_LOOP_CHILD_PID=$!
-        # Wave 15-G (#687): with setsid -w, the child IS the session/process
-        # group leader → PGID == PID, and `kill -- -PGID` is safe (targets
-        # only the claude tree, never the parent runner).
-        # Without setsid the spawn subshell inherits the parent's PGID, so
-        # using `kill -- -PGID` would also kill the runner. Only set the
-        # PGID when we can prove it differs from the runner's own PGID;
-        # otherwise leave it empty and the handler falls back to the per-
-        # PID kill (same behavior as Wave 8 #612, plus the 1s KILL backstop).
-        if [[ ${#_ROUTE_PG_PREFIX[@]} -gt 0 ]]; then
-            _ROUTE_LOOP_CHILD_PGID="$_ROUTE_LOOP_CHILD_PID"
-        else
-            _ROUTE_LOOP_CHILD_PGID=""
-            local _child_pgid _self_pgid
-            _child_pgid="$(ps -o pgid= -p "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null | tr -d ' ' || true)"
-            _self_pgid="$(ps -o pgid= -p "$$" 2>/dev/null | tr -d ' ' || true)"
-            if [[ -n "$_child_pgid" && -n "$_self_pgid" && "$_child_pgid" != "$_self_pgid" ]]; then
-                _ROUTE_LOOP_CHILD_PGID="$_child_pgid"
-            fi
-        fi
+        # Wave 15-G (#687), extracted in #1748. Empty means the group is not
+        # provably distinct from the runner's own, so the handler falls back to
+        # the per-PID kill (Wave 8 #612) rather than `kill -- -PGID`-ing itself.
+        _ROUTE_LOOP_CHILD_PGID="$(zbuild_pg_resolve "$_ROUTE_LOOP_CHILD_PID")"
         wait "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null || rc=$?
         _ROUTE_LOOP_CHILD_PID=""
         _ROUTE_LOOP_CHILD_PGID=""

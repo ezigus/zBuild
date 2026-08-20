@@ -42,7 +42,7 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "route.sh base-include guards (#1624)"
 setup_test_env "route-missing-include"
 
-# The ten libraries route.sh loads at file scope.
+# The eleven libraries route.sh loads at file scope.
 _INCLUDES=(
     scripts/lib/helpers.sh
     core/event-bus/event-bus.sh
@@ -57,6 +57,8 @@ _INCLUDES=(
     core/plugin-registry/manifest-validation.sh
     scripts/lib/persona-resolve.sh
     scripts/lib/vision.sh
+    # [SPEC-4] proc-group.sh is now a guarded include (issue #1748).
+    scripts/lib/proc-group.sh
 )
 
 # _stub_tree — a minimal install tree: route.sh verbatim, every include a stub.
