@@ -2030,8 +2030,8 @@ _cycle_handle_terminal_rc() {
         # halt. The runner translates it into a rewind; this restates the reason
         # on the cycle.complete event for legibility.
         11)  reason="route_back" ;;
-        130) reason="aborted" ;;
-        *)   reason="error" ;;
+        130|143) reason="aborted" ;;
+        *)       reason="error" ;;
     esac
     eb_emit_event "cycle.complete" \
         "cycle_id=$cycle_id" "iter=${_CYCLE_LAST_ITERATIONS}" \

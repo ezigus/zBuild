@@ -131,10 +131,10 @@ dispatch_rc_failure_disposition() {
 # may be added here — that is what the guard test in
 # tests/unit/dispatch-rc-guard-test.sh pins.
 #
-# 143 is mapped alongside 130 on purpose: `_cycle_handle_terminal_rc` has a
-# `130)` arm and no `143)` arm, so a SIGTERM currently falls through to
-# `*) reason="error"` and is reported to an operator as an ordinary error
-# rather than an abort. Naming it here is what makes the two agree.
+# 143 is mapped alongside 130: `_cycle_handle_terminal_rc` now has a combined
+# `130|143) reason="aborted"` arm (#1860), so SIGTERM and SIGINT agree at both
+# the dispatch boundary and the orchestrator's own fan-in table. Prior to #1860
+# only this boundary mapped 143→aborted; the orchestrator fell through to error.
 dispatch_rc_legacy_reason() {
     case "${1-}" in
         4)     printf 'config_invalid' ;;

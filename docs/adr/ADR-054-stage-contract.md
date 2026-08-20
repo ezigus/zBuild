@@ -157,7 +157,7 @@ The destination is never new. Every one of these already had a declared channel 
 
 **`5`, `6`, `8`, `11` and `4` deliberately map to NO disposition.** They are control-flow decisions the cycle made, not statements about whether a stage got far enough to produce a verdict worth reading. Forcing them into §6's set would be exactly the invented default this ADR forbids.
 
-**Two recorded discrepancies, neither resolved here.** ADR-026 says `cycle_abort` is rc=5 in four places, while ADR-045, this ADR and the code all say 6 — no issue owns the correction. And `_cycle_handle_terminal_rc` has a `130)` arm but no `143)` arm, so a SIGTERM falls to `*) reason="error"` and is reported as an ordinary error; `dispatch_rc_legacy_reason` maps both to `aborted` so the two signals agree at the boundary, but the orchestrator's own table is still asymmetric.
+**Two recorded discrepancies, both resolved by #1860 (2026-08-20).** ADR-026 said `cycle_abort` is rc=5 in four places, while ADR-045, this ADR and the code all say 6 — #1860 annotated the four stale sites as historical. And `_cycle_handle_terminal_rc` had a `130)` arm but no `143)` arm; #1860 merged them into `130|143) reason="aborted"` so SIGTERM and SIGINT agree at the orchestrator fan-in as well as at the dispatch boundary.
 
 #### 4b. Coexistence: v1 keeps its rc, v2 is narrowed
 
