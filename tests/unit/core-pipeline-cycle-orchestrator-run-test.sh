@@ -308,4 +308,27 @@ assert_eq "[SPEC-5] leaf member in stage_verdicts on abort propagation" "aborted
 t14_build_ss="$(jq -r '.stage_statuses.build // "missing"' "$STATE_FILE")"
 assert_eq "[SPEC-6] earlier member's record survives the aborting sibling" "complete" "$t14_build_ss"
 
+# T15 (#1860): the terminal-rc fan-in maps SIGTERM to `aborted`, like SIGINT.
+# ADR-054 §4 recorded the asymmetry: `_cycle_handle_terminal_rc` had a `130)`
+# arm and no `143)`, so a SIGTERM-killed cycle reported reason=error while
+# dispatch_rc_legacy_reason already called both `aborted` — the two layers
+# disagreed about the same signal. Asserted through the function itself, not at
+# the dispatch boundary, which is where the mapping was already correct.
+_t15_reason_for() {
+    : > "$ZBUILD_EVENTS_JSONL"
+    _CYCLE_EXIT_BANNER_EMITTED=0
+    _cycle_handle_terminal_rc "$1" "build-test" "$STATE_FILE" || true
+    jq -r 'select(.type == "cycle.complete") | .data.reason' \
+        "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1
+}
+assert_eq "[SPEC-8] rc=143 (SIGTERM) reports aborted, not error" \
+    "aborted" "$(_t15_reason_for 143)"
+assert_eq "[SPEC-8] rc=130 (SIGINT) still reports aborted" \
+    "aborted" "$(_t15_reason_for 130)"
+# Not decoration: an rc with no arm must still reach `*) reason="error"`, or the
+# two assertions above would pass against a function that answered `aborted` to
+# everything.
+assert_eq "[SPEC-8] an rc with no arm still falls through to error" \
+    "error" "$(_t15_reason_for 99)"
+
 print_test_results
