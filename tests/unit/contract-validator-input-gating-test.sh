@@ -270,6 +270,19 @@ else
     assert_fail "[SPEC-9] a bare type is refused" "got: ${_out9:-<none>}"
 fi
 
+# An ABSENT type is not versioned either. The first version guarded on -n, so
+# DELETING the type line passed while MANGLING it failed — the check refused the
+# smaller mistake and allowed the larger one. Found by claude-review, not by me.
+_mk vnone "" '  - id: vnone_out
+    path: "${artifact_dir}/vnone.json"
+    format: json'
+if grep -q "TYPE_UNVERSIONED" <<< "$(_validate vnone)"; then
+    assert_pass "[SPEC-9] an output with no type at all is refused"
+else
+    assert_fail "[SPEC-9] an output with no type at all is refused" \
+        "an absent type passed while a bare one failed"
+fi
+
 # [guard] the check must read the TYPE field, not merely find an '@' anywhere in
 # the record. A path containing '@' with a bare type is still unversioned — and
 # the first version of this check read the field into an empty variable, so it

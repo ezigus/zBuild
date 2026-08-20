@@ -293,7 +293,13 @@ _contract_validate_pipeline() {
             # the check below would never fire. The ablation caught exactly that.
             local _orest="${outrec#*|}"
             local _otype="${_orest%%|*}"
-            if [[ -n "$_otype" && "$_otype" != *"@"* ]]; then
+            # An ABSENT type is not versioned either. Guarding on -n skipped it
+            # entirely, so deleting the line passed while mangling it failed —
+            # the check refused the smaller mistake and allowed the larger one.
+            if [[ -z "$_otype" ]]; then
+                violations+=("$stage|TYPE_UNVERSIONED|$out_id|output declares no type: (ADR-055 §8, #1827)")
+                fail_count=$((fail_count + 1))
+            elif [[ "$_otype" != *"@"* ]]; then
                 violations+=("$stage|TYPE_UNVERSIONED|$out_id|type: '$_otype' carries no @version (ADR-055 §8, #1827)")
                 fail_count=$((fail_count + 1))
             fi
@@ -494,10 +500,11 @@ _contract_validate_pipeline() {
                 local _to_field="${_rest%%:*}"
                 local _to_manifest="${_CV_STAGE_MANIFEST[$_to_stage]:-}"
                 [[ -z "$_to_manifest" ]] && continue
-                local _has_input=0 _irec _iid _itype _isrc _ireq _ipath
+                local _has_input=0 _irec _iid _isrc _ireq _ipath
                 while IFS= read -r _irec; do
                     [[ -z "$_irec" ]] && continue
-                    IFS='|' read -r _iid _itype _isrc _ireq _ipath <<< "$_irec"
+                    # type position read past, not captured — #1827, same as :365
+                    IFS='|' read -r _iid _ _isrc _ireq _ipath <<< "$_irec"
                     # ADR-055 §4: the `cycle_feedback` source kind is retired,
                     # so the edge's target is an ordinary declared input. What
                     # still matters — and is all that ever mattered — is that
