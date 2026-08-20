@@ -100,5 +100,76 @@ idem_rc=0
 ) || idem_rc=$?
 assert_eq "second call returns 0 (no error)" "0" "$idem_rc"
 
+print_test_section "5. clears a DOUBLE-BOUND name (#1873)"
+
+# #1873: one `unset` clears one binding. When a name is bound BOTH as a `local -x`
+# in an enclosing function frame AND as a global export, a single unset peels the
+# local and reveals the global underneath — the scrub reports success and the
+# variable is still there in the spawned process.
+#
+# #1862 (c0d66a0) created exactly that shape: core/plugin-registry/lifecycle.sh
+# declares `local -x ZBUILD_CURRENT_STAGE` around every plugin hook dispatch,
+# while core/pipeline/runner.sh and the orchestrators already export the same
+# name globally. The test stage's suite therefore inherited ZBUILD_CURRENT_STAGE=test,
+# which event-bus.sh appends as a top-level `stage` key — breaking the canonical
+# 8-key envelope goldens in engine-event-shape-test.sh and the post-group
+# unset assertion in parallel-orchestrator-test.sh.
+_dbl_hook() {
+    # Mirrors lifecycle.sh's dispatch seam (ADR-054 §3.1) — this `local -x` is
+    # correct and stays; the scrub is what must hold under the nesting.
+    local -x ZBUILD_CURRENT_STAGE="test"
+    (
+        _zbuild_make_fresh_shell 2>/dev/null
+        bash -c 'printf "double=%s\n" "${ZBUILD_CURRENT_STAGE:-<unset>}"'
+    )
+}
+dbl_result="$(
+    export ZBUILD_CURRENT_STAGE=test   # runner.sh:2806 global export
+    _dbl_hook
+)"
+assert_contains "double-bound ZBUILD_CURRENT_STAGE cleared into spawned shell" \
+    "$dbl_result" "double=<unset>"
+
+# Guard: the single-bound case (pre-#1862 shape) must keep working.
+sgl_result="$(
+    export ZBUILD_CURRENT_STAGE=test
+    _zbuild_make_fresh_shell 2>/dev/null
+    bash -c 'printf "single=%s\n" "${ZBUILD_CURRENT_STAGE:-<unset>}"'
+)"
+assert_contains "single-bound ZBUILD_CURRENT_STAGE still cleared (guard)" \
+    "$sgl_result" "single=<unset>"
+
+print_test_section "6. a readonly ZBUILD_* name cannot spin the loop (#1873)"
+
+# The unset-until-gone loop must not become infinite on a name `unset` can never
+# clear. Bounded by an external timeout so a regression FAILS instead of hanging.
+_to_bin=""
+if   command -v gtimeout >/dev/null 2>&1; then _to_bin="gtimeout"
+elif command -v timeout  >/dev/null 2>&1; then _to_bin="timeout"
+fi
+
+if [[ -z "$_to_bin" ]]; then
+    # Section-scoped skip: skip_unless_capable ends the whole file, and the
+    # other sections here are still exercisable without a timeout binary.
+    SKIP=$((SKIP + 1))
+    echo -e "  ${YELLOW}SKIP${RESET}: readonly-spin guard (no timeout/gtimeout on PATH)" >&2
+else
+    ro_rc=0
+    "$_to_bin" 10 bash -c '
+        source "'"$REPO_ROOT"'/scripts/lib/env-scrub.sh"
+        readonly ZBUILD_READONLY_PROBE=stuck
+        export ZBUILD_ALSO_SET=clearme
+        _zbuild_make_fresh_shell 2>/dev/null
+        # Reaching here at all proves the inner loop terminated. The scrub must
+        # also have carried on past the stuck name to the rest of the namespace.
+        printf "also=%s\n" "${ZBUILD_ALSO_SET:-<unset>}"
+    ' > "$TEST_TEMP_DIR/ro-probe.out" 2>/dev/null || ro_rc=$?
+
+    assert_eq "scrub terminates on a readonly ZBUILD_* name (not rc=124)" \
+        "0" "$ro_rc"
+    assert_contains "scrub still clears other names after a readonly one" \
+        "$(cat "$TEST_TEMP_DIR/ro-probe.out" 2>/dev/null || true)" "also=<unset>"
+fi
+
 print_test_results
 exit $((FAIL > 0))
