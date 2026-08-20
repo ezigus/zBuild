@@ -278,7 +278,27 @@ _contract_validate_pipeline() {
             else
                 _CV_OUTPUT_PRODUCERS["$out_id"]="$_prev $stage"
             fi
+            # #1895: `format:` says HOW to check the artifact, as distinct from
+            # `type:`, which says WHAT it is. It must name a check the engine
+            # implements, so it is a closed set — free text would silently mean
+            # "no check", which is the fail-open this epic exists to close.
+            local _ofmt; _ofmt="$(manifest_graph_output_format "$manifest" "$out_id" 2>/dev/null || true)"
+            if [[ -z "$_ofmt" ]]; then
+                violations+=("$stage|FORMAT_MISSING|$out_id|output declares no format: — the engine cannot decide how to check it (ADR-055 §1, #1895)")
+                fail_count=$((fail_count + 1))
+            elif [[ " $(manifest_graph_formats) " != *" $_ofmt "* ]]; then
+                violations+=("$stage|FORMAT_UNKNOWN|$out_id|format: '$_ofmt' is not a check the engine implements (allowed: $(manifest_graph_formats))")
+                fail_count=$((fail_count + 1))
+            fi
         done < <(manifest_graph_get_outputs "$manifest")
+        # #1895: a consumer declares no format either — the producer owns how its
+        # artifact is checked, for the same reason it owns the type. Checked once
+        # over the inputs BLOCK because the field would not appear in the input
+        # record at all, so a per-input lookup could never see it.
+        if awk '/^inputs:[[:space:]]*$/{i=1;next} /^[a-zA-Z_]/{i=0} i && /^[[:space:]]+format:/{found=1} END{exit !found}' "$manifest" 2>/dev/null; then
+            violations+=("$stage|INPUT_FORMAT||an input declares format: — the producer owns it (ADR-055 §1, #1895)")
+            fail_count=$((fail_count + 1))
+        fi
     done
 
     # Output-uniqueness check (ADR-020 amendment §D, Wave 12-E #664):
@@ -586,7 +606,7 @@ _contract_validate_pipeline() {
                 MISORDERED)
                     printf '  %s: expects %s\n    %s\n\n' "$sstage" "'$sid'" "$smsg"
                     ;;
-                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|SELF_REF|MALFORMED|BAD_VAR|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|CYCLE_FB_UNDECLARED|OUTPUT_DUP|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
+                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|SELF_REF|MALFORMED|BAD_VAR|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|CYCLE_FB_UNDECLARED|OUTPUT_DUP|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
                     printf '  %s: %s (id=%s)\n    %s\n\n' "$sstage" "$scode" "$sid" "$smsg"
                     ;;
                 *)

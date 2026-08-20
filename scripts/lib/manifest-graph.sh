@@ -191,6 +191,44 @@ manifest_graph_get_outputs() {
     _mgraph_parse_block "$1" "outputs"
 }
 
+# ─── manifest_graph_output_format <manifest> <output_id> ─────────────────────
+# The declared `format:` of one output — how to CHECK the artifact, as distinct
+# from `type:`, which is WHAT artifact it is (#1895). Empty when undeclared.
+#
+# A dedicated accessor rather than a sixth field on the shared record, and the
+# reason is load-bearing: input-resolve.sh reads an output's path as
+# `${rec##*|}` — the LAST field — so appending anything would silently hand it
+# the format instead of the path and break resolution everywhere, with no error.
+# cycle-orchestrator.sh and plugin-primary-output-atomic-test.sh unpack five
+# named vars and would mis-bind the same way. The record shape is load-bearing
+# in a way its arity does not advertise.
+manifest_graph_output_format() {
+    local manifest="${1-}" want="${2-}"
+    [[ -f "$manifest" && -n "$want" ]] || return 0
+    awk -v want="$want" '
+        /^outputs:[[:space:]]*$/ { inb = 1; next }
+        /^[a-zA-Z_]/             { inb = 0 }
+        inb && /^[[:space:]]+-[[:space:]]+id:[[:space:]]*/ {
+            l = $0; sub(/^[[:space:]]+-[[:space:]]+id:[[:space:]]*/, "", l)
+            gsub(/["\047]/, "", l); cur = l; next
+        }
+        inb && cur == want && /^[[:space:]]+format:[[:space:]]*/ {
+            l = $0; sub(/^[[:space:]]+format:[[:space:]]*/, "", l)
+            # A trailing `# comment` is part of the line, not part of the value.
+            # Without this the value parses as "json   # why" and fails the
+            # closed-set check — a spurious FORMAT_UNKNOWN on a valid manifest.
+            sub(/[[:space:]]*#.*$/, "", l)
+            sub(/[[:space:]]+$/, "", l)
+            gsub(/["\047]/, "", l); print l; exit
+        }
+    ' "$manifest" 2>/dev/null || true
+}
+
+# ─── manifest_graph_formats ──────────────────────────────────────────────────
+# The closed set (#1895/#1894). A format names how the engine checks an artifact
+# for damage, so it must be a vocabulary the engine implements, not free text.
+manifest_graph_formats() { printf 'json markdown text patch'; }
+
 # ─── manifest_graph_primary_output <manifest> ──────────────────────────────────
 # Echoes the FIRST outputs[] row marked `primary: true` in the same
 # pipe-delimited shape as manifest_graph_get_outputs:

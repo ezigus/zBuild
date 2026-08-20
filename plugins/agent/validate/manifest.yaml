@@ -47,6 +47,7 @@ outputs:
   - id: validate_result
     path: ${artifact_dir}/validate-result.json
     type: validate-result.json
+    format: json
     required: true
     primary: true
 

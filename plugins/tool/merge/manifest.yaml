@@ -45,11 +45,13 @@ outputs:
   - id: merge_result
     path: ${artifact_dir}/merge-result.json
     type: merge-result.json
+    format: json
     required: true
     primary: true
   - id: pr_url
     path: ${artifact_dir}/pr-url.txt
     type: pr-url.txt
+    format: text
     required: false
 
 state:

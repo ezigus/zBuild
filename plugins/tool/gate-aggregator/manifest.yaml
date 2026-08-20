@@ -88,6 +88,7 @@ outputs:
   - id: gate_aggregator_result
     path: "${artifact_dir}/gate-aggregator-result.json"
     type: gate-aggregator-result.json
+    format: json
     required: true
     primary: true
   # B2 (ADR-040): consolidated gate→build feedback. Written ONLY on verdict=fail
@@ -96,7 +97,8 @@ outputs:
   # gate-aggregator → build (prior_gate_feedback) cycle-feedback edge.
   - id: gate_feedback
     path: "${artifact_dir}/gate-feedback.md"
-    type: markdown
+    type: gate-feedback.md
+    format: markdown
     required: false
   # #1219 (ADR-045/ADR-046): FOCUSED design-rooted feedback. Written ONLY on a
   # route_<target> verdict (a design-rooted acceptance failure, e.g. tautology).
@@ -105,7 +107,8 @@ outputs:
   # design_verify_cycle; persists across the rewind (shared per-run artifacts dir).
   - id: design_feedback
     path: "${artifact_dir}/design-feedback.md"
-    type: markdown
+    type: design-feedback.md
+    format: markdown
     required: false
 
 state:

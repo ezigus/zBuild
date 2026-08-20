@@ -54,6 +54,7 @@ outputs:
   - id: lint_result
     path: "${artifact_dir}/lint-result.json"
     type: lint-result.json
+    format: json
     required: true
     primary: true
 

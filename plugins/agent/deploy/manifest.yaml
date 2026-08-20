@@ -52,6 +52,7 @@ outputs:
   - id: deploy_result
     path: ${artifact_dir}/deploy-result.json
     type: deploy-result.json
+    format: json
     required: true
     primary: true
 

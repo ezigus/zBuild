@@ -49,12 +49,13 @@ _raw() {
 
 # _validate <stage-list...> — the violation code lines only.
 _validate() {
-    _raw "$@" | grep -E "BAD_SOURCE|SELF_REF|MISSING_OUTPUT|BAD_EXTERNAL|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|CYCLE_FB" || true
+    _raw "$@" | grep -E "BAD_SOURCE|SELF_REF|MISSING_OUTPUT|BAD_EXTERNAL|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|CYCLE_FB" || true
 }
 
 _producer_outs='  - id: prod_out
     path: "${artifact_dir}/prod-out.md"
-    type: text/markdown'
+    type: prod-out.md
+    format: markdown'
 
 # ─── SPEC-1: an OPTIONAL input with an unrecognised source is caught ─────────
 # CHANGE: at the merge-base this was silent — the required-only gate meant the
@@ -106,7 +107,8 @@ done
 # is gone. A map producer still yields a SET under the one id (ADR-055 §1.4).
 _mk lensproducer "" '  - id: lens_result
     path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}.json"
-    type: review-lens.json'
+    type: review-lens.json
+    format: json'
 _mk lensconsumer '  - id: lens_result
     required: false' ""
 _out5="$(_validate lensproducer lensconsumer)"
@@ -179,6 +181,71 @@ else
         "SELF_REF suppressed for a stage that is not a member"
 fi
 unset _TPL_CYCLES _TPL_CYCLE_STAGES_selfcycle 2>/dev/null || true
+
+# ─── SPEC-8: `format:` is declared, closed, and producer-only (#1895) ────────
+# `type:` says WHAT an artifact is; `format:` says HOW to check it. They were the
+# same field until #1895, which is why five of the tree's type values were
+# formats wearing the wrong hat. The engine reads `format:` to decide the damage
+# check (#1894), so it must name a check the engine implements — free text would
+# silently mean "no check", the fail-open this epic exists to close.
+print_test_section "8. format: is declared, closed, and producer-only"
+
+_mk fmtproducer "" '  - id: fmt_out
+    path: "${artifact_dir}/fmt-out.json"
+    type: fmt-out.json
+    format: json'
+_out8a="$(_validate fmtproducer)"
+assert_eq "[SPEC-8] a declared, in-set format is accepted" "" "$_out8a"
+
+# (a) absent
+_mk nofmt "" '  - id: nofmt_out
+    path: "${artifact_dir}/nofmt.json"
+    type: nofmt.json'
+if grep -q "FORMAT_MISSING" <<< "$(_validate nofmt)"; then
+    assert_pass "[SPEC-8] an output with no format is refused"
+else
+    assert_fail "[SPEC-8] an output with no format is refused" "no FORMAT_MISSING"
+fi
+
+# (b) outside the closed set
+_mk badfmt "" '  - id: badfmt_out
+    path: "${artifact_dir}/badfmt.json"
+    type: badfmt.json
+    format: yaml'
+_out8c="$(_validate badfmt)"
+if grep -q "FORMAT_UNKNOWN" <<< "$_out8c"; then
+    assert_pass "[SPEC-8] a format outside the closed set is refused"
+else
+    assert_fail "[SPEC-8] a format outside the closed set is refused" "got: ${_out8c:-<none>}"
+fi
+assert_contains "[SPEC-8] the refusal names the allowed set" "$(_raw badfmt)" "markdown"
+
+# (c) producer-only — a consumer declares no format, for the same reason it
+# declares no type: two declarations that can disagree are not a contract.
+_mk fmtconsumer '  - id: fmt_out
+    format: json
+    required: false' ""
+if grep -q "INPUT_FORMAT" <<< "$(_validate fmtproducer fmtconsumer)"; then
+    assert_pass "[SPEC-8] an input declaring format is refused"
+else
+    assert_fail "[SPEC-8] an input declaring format is refused" "no INPUT_FORMAT"
+fi
+
+# [guard] not blanket — the same consumer WITHOUT a format is clean, so the
+# check is finding the field rather than objecting to the manifest.
+_mk fmtconsumer '  - id: fmt_out
+    required: false' ""
+assert_eq "[SPEC-8] the same consumer without format is clean" "" "$(_validate fmtproducer fmtconsumer)"
+
+# [guard] a trailing `# comment` is part of the LINE, not the value. Without
+# stripping it the format parses as "json   # why" and fails the closed-set
+# check — a spurious FORMAT_UNKNOWN on a manifest that is entirely valid, and
+# the manifests in this tree are heavily commented.
+_mk cmtfmt "" '  - id: cmt_out
+    path: "${artifact_dir}/cmt.json"
+    type: cmt.json
+    format: json   # the engine checks this with jq'
+assert_eq "[SPEC-8] a commented format line parses to the bare value" "" "$(_validate cmtfmt)"
 
 cleanup_test_env
 print_test_results

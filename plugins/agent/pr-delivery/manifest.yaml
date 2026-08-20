@@ -52,11 +52,13 @@ outputs:
   - id: pr_url
     path: ${artifact_dir}/pr-url.txt
     type: pr-url.txt
+    format: text
     required: true
     primary: true
   - id: pr_result
     path: ${artifact_dir}/pr-result.json
     type: pr-result.json
+    format: json
     required: true
 
 state:

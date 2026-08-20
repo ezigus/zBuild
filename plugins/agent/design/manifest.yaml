@@ -62,7 +62,8 @@ inputs:
 outputs:
   - id: design
     path: "${artifact_dir}/design.md"
-    type: text/markdown
+    type: design.md
+    format: markdown
     required: true
     primary: true
 

@@ -177,7 +177,8 @@ _inputs_output_paths() {
 # flow (OUTPUT_DUP), which is the whole reason a consumer need not name a stage.
 declare -gA _IR_PRODUCER=()   # output_id → producing stage
 declare -gA _IR_PATHS=()      # output_id → newline-joined resolved paths
-declare -gA _IR_ISMAP=()      # output_id → 1 when the producer is a map group
+declare -gA _IR_ISMAP=()                    # output_id → 1 when the producer is a map group
+declare -gA _IR_FORMAT=()                   # output_id → the producer's declared format (#1895)
 # Memo key. Building the index costs one `find` per stage (resolve_stage_plugin),
 # and both the resolver and the presence check need it within one dispatch —
 # without this the flag doubles that scan on every stage.
@@ -189,7 +190,7 @@ _inputs_build_producer_index() {
     key="${plugins_root}|${state_dir}|${flow}"
     [[ "$key" == "$_IR_INDEX_KEY" ]] && return 0
     _IR_INDEX_KEY="$key"
-    _IR_PRODUCER=(); _IR_PATHS=(); _IR_ISMAP=()
+    _IR_PRODUCER=(); _IR_PATHS=(); _IR_ISMAP=(); _IR_FORMAT=()
     local stage manifest rec out_id out_path paths safe type_var
     while IFS= read -r stage; do
         [[ -z "$stage" ]] && continue
@@ -205,6 +206,10 @@ _inputs_build_producer_index() {
             paths="$(_inputs_output_paths "$stage" "$out_path" "$state_dir")"
             _IR_PRODUCER["$out_id"]="$stage"
             _IR_PATHS["$out_id"]="$paths"
+            # #1895: the producer DECLARES how its artifact is checked. Captured
+            # here because the producer index is the only place that already
+            # knows which manifest owns this id.
+            _IR_FORMAT["$out_id"]="$(manifest_graph_output_format "$manifest" "$out_id" 2>/dev/null || true)"
             [[ "${!type_var:-}" == "map" ]] && _IR_ISMAP["$out_id"]=1
         done < <(manifest_graph_get_outputs "$manifest")
     done < <(_inputs_flow_stages)
@@ -293,11 +298,11 @@ _inputs_resolve_stage() {
                 # member. Passing it through because its siblings are healthy is
                 # the silent degrade #1894 exists to close — the consumer cannot
                 # tell a truncated lens result from a complete one.
-                if _inputs_damaged "$eff"; then
+                if _inputs_damaged "$eff" "$id"; then
                     if declare -F eb_emit_event >/dev/null 2>&1; then
                         eb_emit_event "stage.input.degraded" \
                             "stage=$stage" "input=$id" "reason=damaged_member" \
-                            "format=$(_inputs_format_for "$eff")" "path=$eff" 2>/dev/null || true
+                            "format=$(_inputs_format_for "$eff" "$id")" "path=$eff" 2>/dev/null || true
                     fi
                     continue
                 fi
@@ -312,11 +317,11 @@ _inputs_resolve_stage() {
             # silence is the failure shape this rule exists to close, so the
             # omission is announced. A REQUIRED damaged input never reaches
             # here; _inputs_check_required refuses the dispatch first.
-            if [[ "$req" != "true" ]] && _inputs_damaged "$eff"; then
+            if [[ "$req" != "true" ]] && _inputs_damaged "$eff" "$id"; then
                 if declare -F eb_emit_event >/dev/null 2>&1; then
                     eb_emit_event "stage.input.degraded" \
                         "stage=$stage" "input=$id" "reason=damaged" \
-                        "format=$(_inputs_format_for "$eff")" "path=$eff" 2>/dev/null || true
+                        "format=$(_inputs_format_for "$eff" "$id")" "path=$eff" 2>/dev/null || true
                 fi
                 continue
             fi
@@ -362,14 +367,22 @@ _inputs_render_violations() {
     } >&2
 }
 
-# ─── _inputs_format_for <path> ───────────────────────────────────────────────
+# ─── _inputs_format_for <path> [output_id] ───────────────────────────────────
 # The artifact's FORMAT — what kind of check applies — as distinct from its
 # type, which is what artifact it is. #1895 splits those into two declared
 # fields; until it lands the format is inferred from the extension, which is why
 # this is one function rather than an inline test: when `format:` becomes a
 # declared field there is exactly one site to change.
 _inputs_format_for() {
-    local pth="${1-}"
+    local pth="${1-}" in_id="${2-}"
+    # #1895: the producer's DECLARED format wins. The extension fallback below is
+    # what #1826 shipped as an interim and is kept only for an artifact whose
+    # producer declares none — it guesses, and a name not ending in a recognised
+    # extension would silently get no check at all, which is why the field exists.
+    if [[ -n "$in_id" && -n "${_IR_FORMAT[$in_id]:-}" ]]; then
+        printf '%s' "${_IR_FORMAT[$in_id]}"
+        return 0
+    fi
     case "${pth##*.}" in
         json)      printf 'json' ;;
         md)        printf 'markdown' ;;
@@ -378,7 +391,7 @@ _inputs_format_for() {
     esac
 }
 
-# ─── _inputs_damaged <path> ──────────────────────────────────────────────────
+# ─── _inputs_damaged <path> [output_id] ──────────────────────────────────────
 # rc 0 when the artifact is present but UNUSABLE (#1894). Damage is judged by
 # FORM, never by meaning — a syntactically valid file whose contents are wrong
 # stays the consumer's business.
@@ -389,10 +402,10 @@ _inputs_format_for() {
 # An ABSENT file is not damaged; absence is the caller's separate case, and
 # conflating them is what #1894 opened with.
 _inputs_damaged() {
-    local pth="${1-}"
+    local pth="${1-}" in_id="${2-}"
     [[ -e "$pth" ]] || return 1
     [[ -s "$pth" ]] || return 0
-    if [[ "$(_inputs_format_for "$pth")" == "json" ]]; then
+    if [[ "$(_inputs_format_for "$pth" "$in_id")" == "json" ]]; then
         jq empty "$pth" >/dev/null 2>&1 || return 0
     fi
     return 1
@@ -429,7 +442,7 @@ _inputs_check_required() {
             # stage receives half an artifact as though it were whole. That is
             # the case #1894 opened with, and testing presence first silently
             # restores it.
-            if _inputs_damaged "$eff"; then damaged="$eff"; continue; fi
+            if _inputs_damaged "$eff" "$id"; then damaged="$eff"; continue; fi
             # A map input is a SET, so the loop does NOT stop at the first healthy
             # member — one good element must not excuse a broken sibling. For a
             # scalar there is only ever one path, so breaking is correct.
@@ -441,7 +454,7 @@ _inputs_check_required() {
         # N-1 broken lens results would otherwise ride in on the strength of one.
         [[ -n "${_IR_ISMAP[$id]:-}" && -n "$damaged" ]] && present=0
         if [[ $present -eq 0 && -n "$damaged" ]]; then
-            violations+=("$stage|INPUT_DAMAGED|$id|producer '$producer' wrote output '$id' but it is unusable ($(_inputs_format_for "$damaged"), $(wc -c < "$damaged" 2>/dev/null | tr -d ' ') bytes); consumer '$stage' requires it: $damaged")
+            violations+=("$stage|INPUT_DAMAGED|$id|producer '$producer' wrote output '$id' but it is unusable ($(_inputs_format_for "$damaged" "$id"), $(wc -c < "$damaged" 2>/dev/null | tr -d ' ') bytes); consumer '$stage' requires it: $damaged")
         elif [[ $present -eq 0 ]]; then
             violations+=("$stage|INPUT_MISSING|$id|producer '$producer' declares output '$id' but its artifact is absent; consumer '$stage' requires it (looked for: ${paths//$'\n'/, })")
         fi

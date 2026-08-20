@@ -70,6 +70,7 @@ outputs:
   - id: design_gate_result
     path: "${artifact_dir}/design-gate-result.json"
     type: design-gate-result.json
+    format: json
     required: true
     primary: true
   # Written ONLY on verdict=fail (all violations, actionable). required:false —
@@ -77,7 +78,8 @@ outputs:
   # design_verify_cycle as the design-gate → design (prior_impact_feedback) edge.
   - id: design_gate_feedback
     path: "${artifact_dir}/design-gate-feedback.md"
-    type: markdown
+    type: design-gate-feedback.md
+    format: markdown
     required: false
 
 state:

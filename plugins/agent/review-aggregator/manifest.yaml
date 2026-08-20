@@ -80,11 +80,13 @@ outputs:
   - id: review_report
     path: "${artifact_dir}/review-report.json"
     type: review-report.json
+    format: json
     required: true
     primary: true
   - id: review_report_md
     path: "${artifact_dir}/review-report.md"
-    type: markdown
+    type: review-report.md
+    format: markdown
     required: false
 
 state:
