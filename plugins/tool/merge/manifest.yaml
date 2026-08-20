@@ -33,9 +33,6 @@ config:
 
 inputs:
   - id: gate_aggregator_result
-    type: file
-    path: "${artifact_dir}/gate-aggregator-result.json"
-    source: stage:gate-aggregator
     required: false
   # #979 (EPIC #1277): the standard.yaml `review` stage was retired. Its
   # stage:review input dangled (no producing manifest) and tripped the

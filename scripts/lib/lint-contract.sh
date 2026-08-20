@@ -46,6 +46,10 @@ _LC_STAGE_IDS_TO_CHECK=(intake plan design build test acceptance-gate pr deploy 
 # _lc_id_in_scope <manifest-key> — in scope iff a data-dependency-graph node (ADR-047 §5).
 _lc_id_in_scope() {
     local id="$1"
+    # #1825: membership was derived from `source: stage:X` references, which no
+    # longer exist — a consumer names an artifact, not a producer. A node is now
+    # a manifest that declares at least one input, or one whose output id some
+    # input names. Same graph, read from the names instead of the wires.
     [[ -n "${_LC_HAS_STAGE_INPUT[$id]:-}" ]] && return 0
     [[ -n "${_LC_PRODUCER_REF[$id]:-}" ]] && return 0
     return 1
@@ -59,6 +63,8 @@ _lc_id_in_scope() {
 declare -A _LC_STAGE_MANIFEST=()
 declare -A _LC_STAGE_OUTPUTS=()
 declare -A _LC_STAGE_INPUT_SOURCE=()
+declare -A _LC_INPUT_NAMES=()   # #1825: every id some consumer names
+declare -A _LC_ANY_OUTPUT=()    # #1825: every output id declared anywhere in the tree
 declare -A _LC_STAGE_CONVERGENCE=()  # manifest id → convergence marker (gate|advisory|"") — ADR-040 §5
 declare -A _LC_ROLE_CONVERGENCE=()   # provides.role → convergence marker — for role-bound template stages
 # ADR-047 §5: contract-participation is DERIVED, not a hardcoded roster. A manifest
@@ -120,6 +126,7 @@ while IFS= read -r -d '' m; do
         [[ -z "$rec" ]] && continue
         out_id="${rec%%|*}"
         [[ -n "$out_id" ]] && for _k in "${_keys[@]}"; do _LC_STAGE_OUTPUTS["$_k:$out_id"]=1; done
+        [[ -n "$out_id" ]] && _LC_ANY_OUTPUT["$out_id"]=1
     done < <(manifest_graph_get_outputs "$m")
     while IFS= read -r rec; do
         [[ -z "$rec" ]] && continue
@@ -128,12 +135,25 @@ while IFS= read -r -d '' m; do
         for _k in "${_keys[@]}"; do _LC_STAGE_INPUT_SOURCE["$_k:$_in_id"]="$_in_source"; done
         # ADR-047 §5 data-graph participation: record this manifest as a consumer and
         # the referenced stage as a producer.
+        # every declared input makes this manifest a consumer node
+        for _k in "${_keys[@]}"; do _LC_HAS_STAGE_INPUT["$_k"]=1; done
+        _LC_INPUT_NAMES["$_in_id"]=1
         if [[ "$_in_source" == stage:* ]]; then
             for _k in "${_keys[@]}"; do _LC_HAS_STAGE_INPUT["$_k"]=1; done
             _LC_PRODUCER_REF["${_in_source#stage:}"]=1
         fi
     done < <(manifest_graph_get_inputs "$m")
 done < <(find "$_PLUGINS_ROOT" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
+
+# #1825: a manifest is a PRODUCER node when some consumer NAMES one of its
+# outputs. Under ADR-020 this was read off `source: stage:<id>` references;
+# names replace wires, so it is resolved here — after every manifest is indexed,
+# because a single pass cannot know an id is consumed until all consumers exist.
+for _key_out in "${!_LC_STAGE_OUTPUTS[@]}"; do
+    _pk="${_key_out%%:*}"; _po="${_key_out#*:}"
+    [[ -n "${_LC_INPUT_NAMES[$_po]:-}" ]] && _LC_PRODUCER_REF["$_pk"]=1
+done
+
 
 _complain() {
     printf 'lint-contract: %s\n' "$*" >&2
@@ -185,55 +205,36 @@ for id in "${!_LC_STAGE_MANIFEST[@]}"; do
         # Optional inputs may skip source declaration.
         eff_required="${in_required:-true}"
 
-        if [[ "$eff_required" == "true" && -z "$in_source" ]]; then
-            _complain "$rel: input '$in_id' is required but has no source: (use 'source: stage:<X>' or 'source: external')"
-            continue
-        fi
+        # #1825 / ADR-055 §1.2: a sourceless input is the DEFAULT kind — a stage
+        # output resolved by name — so "required implies a source" is retired.
 
         case "$in_source" in
-            ""|external|artifacts)
-                if [[ "$in_source" == "external" && -z "${_LC_EXTERNAL_OK[$in_id]:-}" ]]; then
-                    _complain "$rel: input '$in_id' uses source: external for id NOT in allowlist [$(manifest_graph_external_allowlist)] [ADR-020 decision 6]"
+            external)
+                if [[ -z "${_LC_EXTERNAL_OK[$in_id]:-}" ]]; then
+                    _complain "$rel: input '$in_id' uses source: external for id NOT in allowlist [$(manifest_graph_external_allowlist)] [ADR-055 §3]"
                 fi
                 ;;
-            cycle_feedback)
-                # ADR-020 amendment (#511 / F2): cycle_feedback inputs are
-                # wired by `cycles[].feedback.to.input==<id>`. Constraints:
-                #   - required:true is a contradiction (feedback is best-effort)
-                #   - path MUST use ${cycle_feedback_dir}, not ${artifact_dir}
-                if [[ "$eff_required" == "true" ]]; then
-                    _complain "$rel: input '$in_id' source:cycle_feedback cannot be required:true (#511; cross-iter feedback is best-effort)"
-                fi
-                if [[ -n "$in_path" && "$in_path" == *'${artifact_dir}'* ]]; then
-                    _complain "$rel: input '$in_id' source:cycle_feedback uses \${artifact_dir} in path (use \${cycle_feedback_dir}; cross-iter data must not pollute artifact namespace) [#511]"
-                fi
-                # Cross-template wiring (unwired/undeclared) is enforced by the
-                # runtime contract-validator when the active template + plugin
-                # set are known together. CI lint operates on plugins alone, so
-                # it cannot decide unwired here — runtime validator owns that.
-                ;;
-            stage:*)
-                producer="${in_source#stage:}"
-                if [[ "$producer" == "$id" ]]; then
-                    _complain "$rel: input '$in_id' is self-referential (source: stage:$producer == self)"
-                    continue
-                fi
-                if [[ -z "${_LC_STAGE_MANIFEST[$producer]:-}" ]]; then
-                    _complain "$rel: input '$in_id' references unknown stage '$producer' (no plugin manifest with id: $producer)"
-                    continue
-                fi
-                # Output-id existence is enforced only for REQUIRED inputs, mirroring
-                # the runtime validator (contract-validator.sh:317 treats required:false
-                # as informational). An OPTIONAL input may be a glob fan-in over a
-                # producer group (e.g. review-aggregator's lens_results globs
-                # lens-*.json across the review-lens parallel members) — it names the
-                # producer for ordering, not a single output id. #1279 (ADR-047 §5).
-                if [[ "$eff_required" == "true" && -z "${_LC_STAGE_OUTPUTS[$producer:$in_id]:-}" ]]; then
-                    _complain "$rel: input '$in_id' references stage:$producer but $producer does NOT declare output id '$in_id'"
+            "")
+                # A stage output, named. The LINT sees plugins without a template,
+                # so it cannot apply ADR-055 §1.5's flow-scoped rule — that is the
+                # runtime validator's, and only it knows the resolved flow. What
+                # the lint CAN decide is weaker and still worth having: does ANY
+                # manifest in the tree produce this id? A name matching nothing
+                # anywhere is a typo, and catching it at CI beats catching it at
+                # pre-flight. Optional inputs are exempt for the same reason the
+                # validator exempts them — gate-aggregator names gates a given
+                # template may omit.
+                if [[ "$eff_required" == "true" && -z "${_LC_ANY_OUTPUT[$in_id]:-}" ]]; then
+                    _complain "$rel: required input '$in_id' names an artifact NO plugin declares as an output (ADR-055 §1.5)"
                 fi
                 ;;
             *)
-                _complain "$rel: input '$in_id' has malformed source: '$in_source' (must be 'stage:<X>' or 'external')"
+                # ADR-055 §1.2 leaves TWO kinds. `cycle_feedback` and `stage:*`
+                # are retired with the wire-naming model they belonged to; the
+                # name-resolution rule (§1.5) replaces every check their arms
+                # carried, and the runtime validator owns it because it is the
+                # only side that knows the resolved flow.
+                _complain "$rel: input '$in_id' has an unrecognised source: '$in_source' (a consumer declares 'external' or nothing at all — ADR-055 §1.2)"
                 ;;
         esac
     done < <(manifest_graph_get_inputs "$m")
@@ -458,10 +459,10 @@ for _tpl_root in $_LC_TPL_ROOTS_NORMALIZED; do
                 _complain "$loc: feedback.to references stage '$fb_ts' input '$fb_ti' but '$fb_ts' manifest does NOT declare that input id"
                 continue
             fi
-            _src_val="${_LC_STAGE_INPUT_SOURCE[$_src_key]}"
-            if [[ "$_src_val" != "cycle_feedback" ]]; then
-                _complain "$loc: feedback.to references stage '$fb_ts' input '$fb_ti' but its declared source is '${_src_val:-<empty>}' (must be 'cycle_feedback' for cycle-feedback wires)"
-            fi
+            # #1825 / ADR-055 §4: the `cycle_feedback` source kind is retired, so
+            # the edge's target is an ordinary declared input. The existence check
+            # above is now the whole rule — keying on the source made this
+            # unenforceable the moment the kind went away.
         done
 
         unset _tpl_stages _tpl_cycle_members

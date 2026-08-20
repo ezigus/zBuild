@@ -40,9 +40,6 @@ config:
 
 inputs:
   - id: pr_url
-    type: file
-    path: "${artifact_dir}/pr-url.txt"
-    source: stage:pr-delivery
     required: false
 
 outputs:

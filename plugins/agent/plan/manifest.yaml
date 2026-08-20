@@ -65,11 +65,8 @@ config:
 
 inputs:
   - id: scope_manifest
-    type: file
-    source: stage:intake
     required: true
   - id: goal_string
-    type: string
     source: external
     required: true
 

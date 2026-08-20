@@ -272,13 +272,13 @@ plugin_hook_call() {
     # call is that script's last line), and `local -x` unsets on return so stage
     # N's index cannot bleed into stage N+1.
     #
-    # Gated OFF by default — with ZBUILD_INPUTS_RESOLVE unset the variable is
+    # Unconditional as of #1825 — the resolved-input index is always built and
     # never declared, so the dispatch is byte-identical to today.
     #
     # plugins_root is derived from plugin_dir (plugins/<kind>/<id>/), not read
     # from ZBUILD_PLUGINS_ROOT — ADR-024 / persona-resolve.sh forbid relying on
     # that override as a root, exactly as the block above says.
-    if [[ "${ZBUILD_INPUTS_RESOLVE:-0}" == "1" && "$hook_name" == "run" ]]; then
+    if [[ "$hook_name" == "run" ]]; then
         if ! declare -F _inputs_resolve_stage >/dev/null 2>&1; then
             # shellcheck source=../pipeline/input-resolve.sh
             source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../pipeline" && pwd)/input-resolve.sh" 2>/dev/null || true

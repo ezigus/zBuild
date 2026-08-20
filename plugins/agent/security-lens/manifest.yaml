@@ -45,8 +45,6 @@ inputs:
   # (intake goal vs diff.patch) is the separate V2 follow-up; if the scan pivots
   # to the diff, the input is re-introduced there as a consumed edge.
   - id: scope_manifest
-    type: file
-    source: stage:intake
     required: true
 outputs:
   - id: findings

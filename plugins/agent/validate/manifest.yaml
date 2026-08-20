@@ -41,9 +41,6 @@ config:
 
 inputs:
   - id: deploy_result
-    type: file
-    path: "${artifact_dir}/deploy-result.json"
-    source: stage:deploy
     required: true
 
 outputs:

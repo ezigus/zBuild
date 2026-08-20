@@ -59,19 +59,11 @@ config:
 
 inputs:
   - id: scope_manifest
-    type: file
-    source: stage:intake
     required: true
   - id: design
-    type: file
-    path: "${artifact_dir}/design.md"
-    source: stage:design
     required: true
   # Secondary: plan.json retained for the deterministic shape-change prefilter.
   - id: plan
-    type: file
-    path: "${artifact_dir}/plan.json"
-    source: stage:plan
     required: false
 
 outputs:

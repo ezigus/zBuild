@@ -44,15 +44,34 @@ for rel in "${STAGE_MANIFESTS[@]}"; do
             "no inputs: declared — use 'inputs: []' for zero-input plugins"
     fi
 
-    # Every input has source: and required: declared.
+    # #1825 / ADR-055 §1: an input declares its NAME and whether it is required,
+    # and nothing else. It names no producer, restates no path and restates no
+    # type — the producer already declared all three, and a second declaration
+    # that can disagree with the first is not a contract. `source: external` is
+    # the one survivor (§1.2), because it names something outside the pipeline
+    # and so has no producer to resolve.
+    #
+    # This replaces the inverse assertion ("every input HAS source:"), which was
+    # correct under ADR-020 and is exactly what this change deletes.
     while IFS= read -r rec; do
         [[ -z "$rec" ]] && continue
-        IFS='|' read -r in_id _t in_source in_required _p <<< "$rec"
+        IFS='|' read -r in_id in_type in_source in_required in_path <<< "$rec"
         [[ -z "$in_id" ]] && continue
-        if [[ -n "$in_source" ]]; then
-            assert_pass "$rel: input '$in_id' has source: ($in_source)"
+        if [[ -z "$in_source" || "$in_source" == "external" ]]; then
+            assert_pass "$rel: input '$in_id' declares no producer${in_source:+ (external)}"
         else
-            assert_fail "$rel: input '$in_id' has source:" "missing source: declaration"
+            assert_fail "$rel: input '$in_id' declares no producer" \
+                "source: '$in_source' — a consumer names an artifact, not a stage (ADR-055 §1.2)"
+        fi
+        if [[ -z "$in_path" ]]; then
+            assert_pass "$rel: input '$in_id' restates no path"
+        else
+            assert_fail "$rel: input '$in_id' restates no path" "path: '$in_path'"
+        fi
+        if [[ -z "$in_type" ]]; then
+            assert_pass "$rel: input '$in_id' restates no type"
+        else
+            assert_fail "$rel: input '$in_id' restates no type" "type: '$in_type'"
         fi
         case "${in_required:-}" in
             true|false)

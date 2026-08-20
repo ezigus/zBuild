@@ -70,32 +70,18 @@ config:
 # REQUIRED gate independently of this static-wiring flag.
 inputs:
   - id: test_results
-    source: artifacts
-    path: test-results.json
     required: false
   - id: shape_floor_result
-    source: artifacts
-    path: shape-floor-result.json
     required: false
   - id: gate_result
-    source: artifacts
-    path: acceptance-gate-result.json
     required: false
   - id: lint_result
-    source: artifacts
-    path: lint-result.json
     required: false
   - id: coverage_result
-    source: artifacts
-    path: coverage-result.json
     required: false
   - id: mutation_result
-    source: artifacts
-    path: mutation-result.json
     required: false
   - id: secret_scan_result
-    source: artifacts
-    path: secret-scan-result.json
     required: false
 
 outputs:

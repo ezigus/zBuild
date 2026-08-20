@@ -57,7 +57,7 @@ source "$_ZBUILD_ROOT/core/pipeline/contract-validator.sh"
 source "$_ZBUILD_ROOT/core/pipeline/verdict.sh"
 # ADR-055 §1 / ADR-054 §2 (#1826): the runtime half of the input contract —
 # declared inputs become resolved paths and are handed to `run`. Every behaviour
-# it adds is gated on ZBUILD_INPUTS_RESOLVE (default 0); sourced unconditionally
+# it adds is unconditional as of #1825; sourced unconditionally
 # because _runner_validate_startup_preflight delegates its renderer here.
 source "$_ZBUILD_ROOT/core/pipeline/input-resolve.sh"
 # #1823 (ADR-054 §4): rc ∈ {0,1} — the narrowing, the observation captured before
@@ -1419,7 +1419,7 @@ main() {
         # arm dispatches through a generated standalone script that inherits only
         # the environment. This scalar is the resolved flow that script needs to
         # build the producer index. Flag-gated: unset by default.
-        if [[ "${ZBUILD_INPUTS_RESOLVE:-0}" == "1" ]]; then
+        if true; then
             export ZBUILD_INPUTS_FLOW="${_TPL_STAGES[*]}"
         fi
         info "merge_policy: ${_TPL_MERGE_POLICY:-auto_unless_flagged}"

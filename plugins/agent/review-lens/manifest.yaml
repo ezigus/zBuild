@@ -58,13 +58,8 @@ config:
 
 inputs:
   - id: scope_manifest
-    type: file
-    source: stage:intake
     required: true
   - id: diff_patch
-    type: file
-    path: "${artifact_dir}/diff.patch"
-    source: stage:build
     required: true
 
 outputs:

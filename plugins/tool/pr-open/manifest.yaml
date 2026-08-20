@@ -53,9 +53,6 @@ inputs:
   # per-repo overlay could still emit one) and falls back to advisory mode when
   # it is absent — behavior unchanged; only the dead stage edge is removed.
   - id: review_report
-    type: file
-    path: "${artifact_dir}/review-report.json"
-    source: stage:review-aggregator
     required: false
 
 outputs:

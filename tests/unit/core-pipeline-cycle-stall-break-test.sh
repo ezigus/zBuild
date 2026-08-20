@@ -6,7 +6,7 @@
 #
 # SPEC-1: the feedback edge delivers failure detail — _cycle_apply_feedback writes
 #         a non-empty <to_field>.txt in the next-iter feedback dir referencing the
-#         failure (B2/ADR-040: build's prior_gate_feedback input).
+#         failure (B2/ADR-040: build's gate_feedback input).
 # SPEC-2: the simple.yaml edge parses + the producer (gate-aggregator:gate_feedback)
 #         resolves to a path that EXISTS in simple.yaml's flow (no required-edge
 #         cycle.feedback.missing surprise — it is required:false regardless).
@@ -50,7 +50,7 @@ print_test_section "SPEC-2: feedback edge parses + producer resolves to a real a
 # B2 (ADR-040): ONE consolidated feedback edge — the gate-aggregator→build edge
 # replaces the prior per-gate test→build / acceptance-gate→build edges. It parses
 # as a single FB record.
-_expected_fb="gate-aggregator:gate_feedback|build:prior_gate_feedback:false"
+_expected_fb="gate-aggregator:gate_feedback|build:gate_feedback:false"
 assert_eq "[SPEC-2] simple.yaml build_test_cycle feedback edge parsed" \
     "$_expected_fb" \
     "${_TPL_CYCLE_FEEDBACK_build_test_cycle:-}"
@@ -69,7 +69,7 @@ case "$_resolved_src" in
 esac
 
 # ─── SPEC-1 (feedback delivery) ──────────────────────────────────────────────
-print_test_section "SPEC-1: feedback edge writes non-empty prior_gate_feedback.txt"
+print_test_section "SPEC-1: feedback edge writes non-empty gate_feedback.txt"
 
 _CYCLE_TRAP_CYCLE_ID="build_test_cycle"
 FB_STATE="$TEST_TEMP_DIR/fb-state"
@@ -93,11 +93,11 @@ _cycle_apply_feedback 2 "$FB_STATE"; _fb_rc=$?
 set -e
 assert_eq "[SPEC-1] _cycle_apply_feedback rc=0 (optional producer present)" "0" "$_fb_rc"
 
-_FB_FILE="$FB_STATE/cycle-build_test_cycle/iter-2/feedback/prior_gate_feedback.txt"
-assert_file_exists "[SPEC-1] prior_gate_feedback.txt written to next-iter feedback dir" "$_FB_FILE"
+_FB_FILE="$FB_STATE/cycle-build_test_cycle/iter-2/feedback/gate_feedback.txt"
+assert_file_exists "[SPEC-1] gate_feedback.txt written to next-iter feedback dir" "$_FB_FILE"
 [[ -s "$_FB_FILE" ]] \
-    && assert_pass "[SPEC-1] prior_gate_feedback.txt is non-empty" \
-    || assert_fail "[SPEC-1] prior_gate_feedback.txt is non-empty" "file empty"
+    && assert_pass "[SPEC-1] gate_feedback.txt is non-empty" \
+    || assert_fail "[SPEC-1] gate_feedback.txt is non-empty" "file empty"
 assert_contains "[SPEC-1] feedback references the failure detail" \
     "$(cat "$_FB_FILE")" "[SPEC-3] foo"
 

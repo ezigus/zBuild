@@ -4,7 +4,7 @@
 **Date:** 2026-08-09
 **Issue:** #1820
 **Supersedes:** ADR-020 (inter-stage data contract) — presented as a clean v2 at the current stable state; ADR-020 is retired in-place for audit history.
-**Amended:** 2026-08-12 (#1768) — §1 replaced. A consumer no longer names its producer; it declares the artifact **names** it needs and the engine resolves each to the single stage in the flow that produces it. `source: artifacts` and `source: cycle_feedback` are retired into the one stage-output kind (§4), leaving two kinds total. Amended rather than superseded: this ADR is three days old and unimplemented, so a v3 would create archaeology for a document nothing was built against.
+**Amended:** 2026-08-19 (#1825) — §1's "no case needs an explicit binding" verified and made true by cleanup; §1.5 refined so the zero-producer refusal applies to required inputs only; §4's four codes retired in code; §5's output-id count corrected 29 → 27. Previously amended 2026-08-12 (#1768) — §1 replaced. A consumer no longer names its producer; it declares the artifact **names** it needs and the engine resolves each to the single stage in the flow that produces it. `source: artifacts` and `source: cycle_feedback` are retired into the one stage-output kind (§4), leaving two kinds total. Amended rather than superseded: this ADR is three days old and unimplemented, so a v3 would create archaeology for a document nothing was built against.
 **Related:** ADR-001 (plugin contract), ADR-006 (resume contract), ADR-013 (canonical stages), ADR-015 §v4 (stage I/O capture), ADR-019 (review fail-closed), ADR-042 (stage portability — completed by §1), ADR-045 (bounded typed backward route — legalises a backwards data edge, §1.3), ADR-046 (design-verify shift-left — the cross-cycle feedback edge this ADR previously failed to account for), ADR-047 (stage-agnostic mechanics)
 
 ## Context
@@ -13,7 +13,7 @@ ADR-020 codified the inter-stage data contract starting from status Proposed (20
 
 Two facts about ADR-020's lifetime are worth naming explicitly:
 
-**1. The mismatch check shipped as a stub.** The pre-flight validator at `core/pipeline/contract-validator.sh:289` contains a comment `# in_type captured for future schema-aware checks`. The validator's type-mismatch enforcement was never implemented; the `in_type` variable was captured but never compared to the producer's declared type. Throughout ADR-020's Proposed lifetime, the validator's default was `warn` (not `enforce`), so violations printed and emitted events but did not halt the pipeline.
+**1. The mismatch check shipped as a stub.** The pre-flight validator at `core/pipeline/contract-validator.sh:302` contains a comment `# in_type captured for future schema-aware checks`. The validator's type-mismatch enforcement was never implemented; the `in_type` variable was captured but never compared to the producer's declared type. Throughout ADR-020's Proposed lifetime, the validator's default was `warn` (not `enforce`), so violations printed and emitted events but did not halt the pipeline.
 
 **2. valid_verdicts was declared and never read.** ADR-020 §"Verdict convention (#507 amendment)" introduced the `primary: true` manifest field, and the upstream schema had carried `valid_verdicts` as a declared field. The engine never read `valid_verdicts`; the verdict vocabulary is governed by the v2 result file contract and the disposition set in ADR-054 §6.
 
@@ -47,6 +47,17 @@ inputs:
 ```
 
 The engine resolves each input name to the single stage in the flow that produces it, verifies presence **before** dispatch, and hands the resolved paths to `run` (#1826). The template declares the flow; **wiring is derived, not written.** A template may bind an input explicitly to disambiguate, but no case in the tree needs it.
+
+> **Verified 2026-08-19 (#1825).** This claim was *false when written*: nine declared
+> inputs resolved to zero producers, because feedback copied backwards was renamed on
+> the way (`build` asked for `prior_test_assessment` while the producer declared
+> `test_failures_summary`), and `prior_gate_feedback` named two different files across
+> `build` and `design`. #1865 deleted three as superseded and #1825 renamed the rest to
+> match their producers, so the claim is now true **by cleanup rather than by luck** —
+> no explicit binding exists, and none is needed. One case was not a rename but a
+> **merge**: `design` declared `prior_impact_feedback` and `design_gate_feedback` for
+> the *same* producer output, so its prompt received the same content twice at
+> iteration ≥2.
 
 #### 1.1 Why the consumer does not name its producer
 
@@ -90,9 +101,18 @@ When the producing stage is a `map` group, the consumer receives the set of its 
 
 #### 1.5 Load-time refusal
 
-Every declared input name must resolve to **exactly one** producer in the flow. Zero producers or two is a refused template, not a runtime surprise — consistent with ADR-047 §5's fail-closed preflights.
+Every declared input name must resolve to **exactly one** producer in the flow. Zero producers or two is a refused template, not a runtime surprise — **for a
+`required: true` input**. An optional one naming nothing is legal: `gate-aggregator`
+declares `lint_result`/`coverage_result`/`mutation_result` so it adapts to whichever
+gates a template includes, and `simple.yaml` includes none of the three. Refusing that
+would forbid a plugin from working across templates, which is the portability ADR-042
+protects. (Refined 2026-08-19 by #1825, which hit exactly that case.) Consistent with ADR-047 §5's fail-closed preflights.
 
-Delivered by #1825 (name-matched inputs), #1826 (engine resolves and hands inputs to `run`), #1827 (types declared once by the producer, versioned). Until they land, consumers use the current form — `source: stage:<producer-id>` with a restated `path` and `type` — and the engine validates order only. The 17 F-wave migrations (#1833–#1849) move the plugins one per PR.
+Delivered by #1825 (name-matched inputs, landed 2026-08-19), #1826 (engine resolves and
+hands inputs to `run`, landed 2026-08-19) and #1827 (types declared once by the
+producer, versioned — still open). A consumer now declares only `id` and `required:`;
+the `source: stage:<producer-id>` form with a restated `path` and `type` is gone, and
+the engine resolves by name rather than validating order. The 17 F-wave migrations (#1833–#1849) move the plugins one per PR.
 
 ### 2. Closed templating-var set
 
@@ -136,7 +156,14 @@ The consumer names the artifact; the engine resolves it to the producing stage; 
 
 `CYCLE_FB_REQUIRED` and `CYCLE_FB_UNDECLARED` were live. The validator carried a comment claiming the former was *"an unreachable branch"*; that was wrong — a `required: true` `cycle_feedback` input passed the old gate and fired it, verified against `origin/main` on a fixture (#1768).
 
-**Superseded codes:** `CYCLE_FB_REQUIRED`, `CYCLE_FB_DIR`, `CYCLE_FB_UNWIRED`, `CYCLE_FB_UNDECLARED`. The wiring integrity they were meant to protect is now §1.5's single rule: every declared input name resolves to exactly one producer, checked for every input regardless of requiredness.
+**Superseded codes:** `CYCLE_FB_REQUIRED`, `CYCLE_FB_DIR`, `CYCLE_FB_UNWIRED`, `CYCLE_FB_UNDECLARED`.
+
+> **Retired in code 2026-08-19 (#1825).** All four are gone from both checkers, along
+> with the `source:` field they keyed on. `CYCLE_FB_UNDECLARED`'s name survives on one
+> check only — that a template's `feedback.to.input` names an input the target stage
+> actually declares — rebased on **existence** rather than on the source kind, which is
+> the wiring integrity the source check always stood in for. Their replacement is §1.5,
+> enforced as `INPUT_UNRESOLVED` / `INPUT_AMBIGUOUS`. The wiring integrity they were meant to protect is now §1.5's single rule: every declared input name resolves to exactly one producer, checked for every input regardless of requiredness.
 
 The `${cycle_feedback_dir}` templating var (§2) is retained for the producer side while cycle feedback is written there.
 
@@ -148,7 +175,7 @@ Each output `id` value MUST be claimed by exactly one stage manifest across the 
 
 First, `OUTPUT_DUP` can no longer be relaxed without replacing the resolution model — it is the reason a consumer need not name a stage.
 
-Second, uniqueness is scoped to a **resolved flow**, not to the plugin tree. `pr_url` is declared by `merge`, `pr` and `pr-delivery`; `review_report` by both `review-aggregator` and `review-report`. These are alternative implementations selected per template, so each resolved flow still claims every id exactly once — verified: `simple.yaml`'s flow has 29 output ids and no duplicates. A template that admits two producers of one name is refused, which is the correct outcome: the name would be ambiguous.
+Second, uniqueness is scoped to a **resolved flow**, not to the plugin tree. `pr_url` is declared by `merge`, `pr` and `pr-delivery`; `review_report` by both `review-aggregator` and `review-report`. These are alternative implementations selected per template, so each resolved flow still claims every id exactly once — verified: `simple.yaml`'s flow has 27 output ids and no duplicates (this read 29 until #1825 recounted it). A template that admits two producers of one name is refused, which is the correct outcome: the name would be ambiguous.
 
 ### 6. Resume-mode artifact-existence check
 
@@ -168,7 +195,7 @@ The keystone integration test that verifies enforce-mode behavior is `tests/inte
 
 The following ADR-020 content is **not** carried forward into the v2 contract and is noted here for clarity:
 
-- **Type-mismatch check stub** (`contract-validator.sh:289`, `# in_type captured for future schema-aware checks`) — the validator captured the input type but never compared it against the producer's declared type. ~~This remains unimplemented; a follow-up issue will either implement it or remove the stub.~~ **Amended 2026-08-12 (#1768): the stub is to be removed, not implemented.** §1 removes the consumer-declared type, so there is no second declaration to compare against and the mismatch it guarded cannot occur. #1827 shrinks accordingly — from building a cross-check to versioning the producer's single declaration.
+- **Type-mismatch check stub** (`contract-validator.sh:302`, `# in_type captured for future schema-aware checks`) — the validator captured the input type but never compared it against the producer's declared type. ~~This remains unimplemented; a follow-up issue will either implement it or remove the stub.~~ **Amended 2026-08-12 (#1768): the stub is to be removed, not implemented.** §1 removes the consumer-declared type, so there is no second declaration to compare against and the mismatch it guarded cannot occur. #1827 shrinks accordingly — from building a cross-check to versioning the producer's single declaration.
 - **`valid_verdicts` field** — declared in the manifest schema under `outputs:`; never read by the runner or the pre-flight validator. The verdict vocabulary is governed by the v2 result file contract and ADR-054 §6.
 - **`warn` default note** — ADR-020 originally shipped with `warn` as the first-release default and a note to flip to `enforce`. The flip landed in Wave 12-E (#664). The v2 contract treats `enforce` as the operative default.
 

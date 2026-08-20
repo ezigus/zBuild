@@ -95,6 +95,10 @@ _VALIDATOR="$REPO_ROOT/core/pipeline/contract-validator.sh"
 # validator lists one per arm (`artifacts)`).
 _kinds_in() {
     local f="$1" k
+    # #1825 / ADR-055 §1.2: two kinds remain. `artifacts`, `cycle_feedback` and
+    # `stage:*` are retired, so a file still naming one of them has drifted BACK
+    # — which is exactly the divergence this test exists to catch, in the other
+    # direction from the one that motivated it.
     for k in external artifacts cycle_feedback 'stage:*'; do
         # A case label: start of line (any indent), the token, then `)` or `|`.
         if grep -qE "^[[:space:]]*([^)]*\|)?$(printf '%s' "$k" | sed 's/[*]/\\*/g')[)|]" "$f" 2>/dev/null; then
@@ -110,6 +114,14 @@ if [[ -n "$_lint_kinds" && "$_lint_kinds" == "$_val_kinds" ]]; then
 else
     assert_fail "TC-4: both implementations recognise the same source kinds" \
         "lint: [$(echo "$_lint_kinds" | tr '\n' ' ')] validator: [$(echo "$_val_kinds" | tr '\n' ' ')]"
+fi
+# [guard] and the shared set is the POST-#1825 one. Equality alone would pass if
+# both files drifted back to the retired kinds together.
+if [[ "$_val_kinds" == "external" ]]; then
+    assert_pass "TC-4: the shared vocabulary is ADR-055 §1.2's two kinds"
+else
+    assert_fail "TC-4: the shared vocabulary is ADR-055 §1.2's two kinds" \
+        "still names retired kinds: [$(echo "$_val_kinds" | tr '\n' ' ')]"
 fi
 
 # The gating difference itself, asserted BEHAVIOURALLY rather than by matching

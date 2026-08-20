@@ -87,14 +87,14 @@ design_verify_cycle:
         output: design_gate_feedback
       to:
         stage: design
-        input: prior_impact_feedback
+        input: design_gate_feedback
         required: false
     - from:
         stage: design
         output: design
       to:
         stage: design
-        input: prior_design
+        input: design
         required: false
 
 # ─── build_test_cycle (cycle) ────────────────────────────────────────────────
@@ -177,7 +177,7 @@ build_test_cycle:
         output: gate_feedback
       to:
         stage: build
-        input: prior_gate_feedback
+        input: gate_feedback
         required: false
 
 # ─── intake (leaf) ───────────────────────────────────────────────────────────

@@ -49,7 +49,7 @@ _raw() {
 
 # _validate <stage-list...> — the violation code lines only.
 _validate() {
-    _raw "$@" | grep -E "BAD_SOURCE|MISSING_SOURCE|MISSING_STAGE|MISORDERED|SELF_REF|MISSING_OUTPUT|BAD_EXTERNAL|CYCLE_FB" || true
+    _raw "$@" | grep -E "BAD_SOURCE|SELF_REF|MISSING_OUTPUT|BAD_EXTERNAL|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|CYCLE_FB" || true
 }
 
 _producer_outs='  - id: prod_out
@@ -79,7 +79,7 @@ fi
 # assignment and kills the run, which would hide every assertion after this one
 # in exactly the ablation case these SPECs exist to demonstrate.
 _msg="$( { grep -A 1 "BAD_SOURCE" <<< "$_out_full" || true; } | tail -1)"
-for _kind in "stage:<name>" "external" "artifacts" "cycle_feedback"; do
+for _kind in external; do
     if grep -qF "$_kind" <<< "$_msg"; then
         assert_pass "[SPEC-2] BAD_SOURCE message lists '$_kind'"
     else
@@ -87,89 +87,49 @@ for _kind in "stage:<name>" "external" "artifacts" "cycle_feedback"; do
     fi
 done
 
-# ─── SPEC-3: source: artifacts is recognised, at both requirednesses ────────
-# Nine live inputs use it (2 design, 7 gate-aggregator). Opening the gate
-# without recognising it would refuse all nine and halt every run at pre-flight.
-# TRANSITIONAL — ADR-055 §1 retires the kind; #1825 removes it.
-_mk c3opt '  - id: some_artifact
-    source: artifacts
-    path: "some-file.json"
-    required: false' ""
-_mk c3req '  - id: other_artifact
-    source: artifacts
-    path: "${artifact_dir}/other.json"
-    required: true' ""
-_out3="$(_validate producer c3opt c3req)"
-assert_eq "[SPEC-3] source: artifacts is accepted for required:false and required:true" "" "$_out3"
+# ─── SPEC-3 removed by #1825 ───────────────────────────────────────────────
+# It asserted `source: artifacts` is ACCEPTED at both requirednesses. ADR-055 §1
+# retires that kind, so acceptance is now the defect — the arm it tested is gone
+# and an unrecognised source is BAD_SOURCE (SPEC-2 covers that).
 
-# ─── SPEC-4: a cycle_feedback rule that could never fire, now fires ─────────
-# CYCLE_FB_DIR and CYCLE_FB_UNWIRED sat inside the required-only gate while this
-# kind is REQUIRED to be optional, so neither could ever run. Worse for UNWIRED:
-# lint-contract.sh:236-239 delegates it here ("runtime validator owns that"), so
-# it was enforced by nobody.
-_mk c4 '  - id: prior_thing
-    type: text/plain
-    path: "${artifact_dir}/prior-thing.txt"
-    source: cycle_feedback
-    required: false' ""
-_out4="$(_validate producer c4)"
-if grep -q "CYCLE_FB_DIR" <<< "$_out4"; then
-    assert_pass "[SPEC-4] CYCLE_FB_DIR fires on an optional cycle_feedback input"
-else
-    assert_fail "[SPEC-4] CYCLE_FB_DIR fires on an optional cycle_feedback input" \
-        "got: ${_out4:-<no violations>}"
-fi
+# ─── SPEC-4 / SPEC-4b removed by #1825 ─────────────────────────────────────
+# They asserted CYCLE_FB_DIR and CYCLE_FB_REQUIRED. ADR-055 §4 retires all four
+# CYCLE_FB_* codes with the `cycle_feedback` kind itself; what they protected is
+# now §1.5's single rule (INPUT_UNRESOLVED), which SPEC-6 exercises.
 
-# ─── SPEC-4b: CYCLE_FB_REQUIRED still fires, and always could ───────────────
-# Pinned because the validator carried a comment calling this "an unreachable
-# branch" and #1768's first draft repeated the error in a new form. It is not
-# unreachable: a required:true cycle_feedback input passed even the old gate.
-# Verified against origin/main on a fixture. Two codes were dead here, not three
-# — CYCLE_FB_DIR and CYCLE_FB_UNWIRED — and this assertion is what stops the
-# claim drifting again.
-_mk c4b '  - id: prior_required
-    type: text/plain
-    path: "${cycle_feedback_dir}/prior-required.txt"
-    source: cycle_feedback
-    required: true' ""
-_out4b="$(_validate producer c4b)"
-if grep -q "CYCLE_FB_REQUIRED" <<< "$_out4b"; then
-    assert_pass "[SPEC-4b] CYCLE_FB_REQUIRED fires on a required:true cycle_feedback input"
-else
-    assert_fail "[SPEC-4b] CYCLE_FB_REQUIRED fires on a required:true cycle_feedback input" \
-        "got: ${_out4b:-<no violations>}"
-fi
-
-# ─── SPEC-5: the glob fan-in exemption SURVIVES ─────────────────────────────
-# The one check that stays gated on required, deliberately. An optional input may
-# be a glob fan-in over a producer GROUP, naming the producer for ordering rather
-# than one output id — review-aggregator's lens_results globs lens-*.json across
-# the review-lens members. This is the real shape: consumer names the plural, the
-# producer declares the singular. Enforcing id-match here is a false positive,
-# and the issue's proposed "validate optional inputs too" would have caused it.
+# ─── SPEC-5: the glob fan-in no longer NEEDS an exemption ───────────────────
+# This used to pin a deliberate hole: review-aggregator declared `lens_results`
+# (plural) while review-lens produced `lens_result` (singular), so id-matching
+# was a false positive and the check had to be skipped for optional inputs.
+# #1825 renamed the consumer to match the producer, which is the whole point of
+# naming the artifact rather than the wire — the mismatch that needed excusing
+# is gone. A map producer still yields a SET under the one id (ADR-055 §1.4).
 _mk lensproducer "" '  - id: lens_result
     path: "${artifact_dir}/lens-${ZBUILD_REVIEW_LENS_ID}.json"
     type: review-lens.json'
-_mk lensconsumer '  - id: lens_results
-    type: glob
-    path: "${artifact_dir}/lens-*.json"
-    source: stage:lensproducer
+_mk lensconsumer '  - id: lens_result
     required: false' ""
 _out5="$(_validate lensproducer lensconsumer)"
-assert_eq "[SPEC-5] an optional glob fan-in is NOT reported as MISSING_OUTPUT" "" "$_out5"
+assert_eq "[SPEC-5] a map fan-in resolves by name with no exemption" "" "$_out5"
 
-# ─── SPEC-6: a REQUIRED input naming an undeclared output still fails ───────
-# The exemption is scoped to optional inputs only; it must not become a hole.
+# ─── SPEC-6: a REQUIRED input naming no producer still fails ────────────────
+# ADR-055 §1.5. The optional carve-out (a plugin may declare inputs for gates a
+# given template omits) must not become a hole for required ones.
 _mk reqconsumer '  - id: not_declared_anywhere
-    source: stage:producer
     required: true' ""
 _out6="$(_validate producer reqconsumer)"
-if grep -q "MISSING_OUTPUT" <<< "$_out6"; then
-    assert_pass "[SPEC-6] a required input naming an undeclared output still fails"
+if grep -q "INPUT_UNRESOLVED" <<< "$_out6"; then
+    assert_pass "[SPEC-6] a required input naming no producer still fails"
 else
-    assert_fail "[SPEC-6] a required input naming an undeclared output still fails" \
+    assert_fail "[SPEC-6] a required input naming no producer still fails" \
         "got: ${_out6:-<no violations>}"
 fi
+
+# [guard] and the optional carve-out is real, not blanket permissiveness.
+_mk optconsumer '  - id: also_not_declared
+    required: false' ""
+_out7="$(_validate producer optconsumer)"
+assert_eq "[SPEC-6] an OPTIONAL input naming no producer is allowed" "" "$_out7"
 
 cleanup_test_env
 print_test_results
