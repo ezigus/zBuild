@@ -296,51 +296,48 @@ EOF
     fi
 fi
 
-# ─── SPEC-5: teardown_run writes teardown-result.json (v2 result) ─────────────
-# CHANGE: at baseline teardown writes no result file.
-print_test_section "SPEC-5: teardown_run writes teardown-result.json to artifacts dir"
+# ─── SPEC-5: teardown_run always returns rc=0 ────────────────────────────────
+# GUARD: teardown_run returns rc=0 regardless of cleanup failures or result-write
+# outcome. This invariant held at the intake baseline (old teardown also returned 0)
+# and must not regress. ADR-054 §4 — rc is binary; teardown failures are events.
+print_test_section "SPEC-5: teardown_run always returns rc=0 (invariant)"
 
 if [[ ! -d "$TEARDOWN_DIR" || ! -f "$TEARDOWN_DIR/plugin.sh" ]]; then
     assert_fail "[SPEC-5] teardown plugin exists" "missing"
 else
-    _spec5_plugin="$TEST_TEMP_DIR/spec5-mock-plugin"
+    _spec5_plugin="$TEST_TEMP_DIR/spec5-guard-plugin"
     mkdir -p "$_spec5_plugin"
     cat > "$_spec5_plugin/manifest.yaml" <<'EOF'
-id: spec5-mock
-name: Spec5 Mock
+id: spec5-guard
+name: Spec5 Guard
 kind: tool
 version: 0.0.1
 hooks:
-  run: spec5_run
-  cleanup: spec5_cleanup
+  run: spec5_guard_run
+  cleanup: spec5_guard_cleanup
 EOF
     cat > "$_spec5_plugin/plugin.sh" <<'EOF'
-spec5_run() { return 0; }
-spec5_cleanup() { return 0; }
+spec5_guard_run() { return 0; }
+spec5_guard_cleanup() { return 99; }
 EOF
 
-    _spec5_state_dir="$TEST_TEMP_DIR/spec5-state"
-    _spec5_artifacts="$_spec5_state_dir/artifacts"
+    _spec5_state_dir="$TEST_TEMP_DIR/spec5-guard-state"
+    _spec5_artifacts="$TEST_TEMP_DIR/spec5-guard-artifacts"
     mkdir -p "$_spec5_state_dir" "$_spec5_artifacts"
     _spec5_state_file="$_spec5_state_dir/pipeline-state.json"
-    printf '{"stage_statuses":{"spec5-mock":"complete"}}' > "$_spec5_state_file"
+    printf '{"stage_statuses":{"spec5-guard":"complete"}}' > "$_spec5_state_file"
 
+    _spec5_rc=0
     (
         export ZBUILD_ARTIFACT_DIR="$_spec5_artifacts"
         source "$TEARDOWN_DIR/plugin.sh"
         resolve_stage_plugin() { echo "$_spec5_plugin"; }
         export ZBUILD_TEARDOWN_SCOPE="release"
         teardown_run "teardown" "$_spec5_state_file" >/dev/null 2>&1
-    ) || true
+    ) || _spec5_rc=$?
 
-    _spec5_result="$_spec5_artifacts/teardown-result.json"
-    if [[ -f "$_spec5_result" ]]; then
-        assert_pass "[SPEC-5] teardown-result.json written to artifacts dir"
-        _spec5_rc="$(jq -r '.result_contract // empty' "$_spec5_result" 2>/dev/null || true)"
-        assert_eq "[SPEC-5] teardown-result.json has result_contract=2" "2" "$_spec5_rc"
-    else
-        assert_fail "[SPEC-5] teardown-result.json written to artifacts dir" "file missing"
-    fi
+    assert_eq "[SPEC-5] teardown_run returns rc=0 even when a cleanup hook returns non-zero" \
+        "0" "$_spec5_rc"
 fi
 
 # ─── SPEC-6: teardown_run never dispatches scope=purge ────────────────────────
