@@ -259,9 +259,11 @@ else
     assert_pass "[SPEC-6] manifest has no teardown_result entry (guard: vacuously true)"
 fi
 
-_spec6_has_complete="$(grep -v "#" "$_spec6_manifest" 2>/dev/null | grep -c "complete" || echo 0)"
-_spec6_has_degraded="$(grep -v "#" "$_spec6_manifest" 2>/dev/null | grep -c "degraded" || echo 0)"
-if [[ "$_spec6_has_complete" -gt 0 || "$_spec6_has_degraded" -gt 0 ]]; then
+_spec6_has_valid_verdicts="$(grep -m1 "valid_verdicts:" "$_spec6_manifest" 2>/dev/null || echo '')"
+if [[ -n "$_spec6_has_valid_verdicts" ]]; then
+    # Match "- complete" and "- degraded" as standalone list items (not substrings like teardown.complete)
+    _spec6_has_complete="$(grep -v "^#" "$_spec6_manifest" | grep -c "^[[:space:]]*- complete$" || echo 0)"
+    _spec6_has_degraded="$(grep -v "^#" "$_spec6_manifest" | grep -c "^[[:space:]]*- degraded$" || echo 0)"
     if [[ "$_spec6_has_complete" -gt 0 && "$_spec6_has_degraded" -gt 0 ]]; then
         assert_pass "[SPEC-6] manifest valid_verdicts includes complete and degraded"
     else
