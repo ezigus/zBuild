@@ -210,6 +210,7 @@ manifest_graph_output_format() {
         /^[a-zA-Z_]/             { inb = 0 }
         inb && /^[[:space:]]+-[[:space:]]+id:[[:space:]]*/ {
             l = $0; sub(/^[[:space:]]+-[[:space:]]+id:[[:space:]]*/, "", l)
+            sub(/[[:space:]]+$/, "", l)
             gsub(/["\047]/, "", l); cur = l; next
         }
         inb && cur == want && /^[[:space:]]+format:[[:space:]]*/ {
@@ -237,6 +238,7 @@ manifest_graph_output_terminal() {
         /^[a-zA-Z_]/             { inb = 0 }
         inb && /^[[:space:]]+-[[:space:]]+id:[[:space:]]*/ {
             l = $0; sub(/^[[:space:]]+-[[:space:]]+id:[[:space:]]*/, "", l)
+            sub(/[[:space:]]+$/, "", l)
             gsub(/["\047]/, "", l); cur = l; next
         }
         inb && cur == want && /^[[:space:]]+terminal:[[:space:]]*/ {
@@ -258,6 +260,7 @@ manifest_graph_output_advisory() {
         /^[a-zA-Z_]/             { inb = 0 }
         inb && /^[[:space:]]+-[[:space:]]+id:[[:space:]]*/ {
             l = $0; sub(/^[[:space:]]+-[[:space:]]+id:[[:space:]]*/, "", l)
+            sub(/[[:space:]]+$/, "", l)
             gsub(/["\047]/, "", l); cur = l; next
         }
         inb && cur == want && /^[[:space:]]+advisory:[[:space:]]*/ {

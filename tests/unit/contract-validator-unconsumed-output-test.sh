@@ -318,6 +318,31 @@ fi
 assert_contains "[SPEC-6][guard] the re-raised violation names the unmarked output" \
     "$lint_out_tc6g" "orphan_out"
 
+# ─── SPEC-7: the accessors tolerate trailing whitespace on the `- id:` line ──
+# The id-capture stripped the `- id:` prefix but not trailing blanks, so `cur`
+# carried them and `cur == want` never matched. A manifest with a stray space
+# would have its marker silently ignored and the output reported
+# OUTPUT_UNCONSUMED — a false violation that is rc=2 in enforce mode. .editorconfig
+# forbids trailing whitespace, which is why this never bit; the failure mode is
+# bad enough (a correct manifest blocking a run) to pin anyway.
+print_test_section "7. terminal/advisory/format accessors ignore trailing whitespace on id"
+
+_ws_dir="$TEST_TEMP_DIR/ws"; mkdir -p "$_ws_dir"
+printf 'outputs:\n  - id: ws_out   \n    terminal: true\n'  > "$_ws_dir/term.yaml"
+printf 'outputs:\n  - id: ws_out\t\n    advisory: true\n'   > "$_ws_dir/adv.yaml"
+printf 'outputs:\n  - id: ws_out  \n    format: json\n'     > "$_ws_dir/fmt.yaml"
+
+assert_eq "[SPEC-7] terminal: survives a trailing space on the id line" \
+    "true" "$(manifest_graph_output_terminal "$_ws_dir/term.yaml" ws_out)"
+assert_eq "[SPEC-7] advisory: survives a trailing tab on the id line" \
+    "true" "$(manifest_graph_output_advisory "$_ws_dir/adv.yaml" ws_out)"
+assert_eq "[SPEC-7] format: survives a trailing space on the id line" \
+    "json" "$(manifest_graph_output_format "$_ws_dir/fmt.yaml" ws_out)"
+
+# Guard: whitespace tolerance must not degrade into matching the wrong id.
+assert_eq "[SPEC-7][guard] a non-matching id still returns nothing" \
+    "" "$(manifest_graph_output_terminal "$_ws_dir/term.yaml" other_out)"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
