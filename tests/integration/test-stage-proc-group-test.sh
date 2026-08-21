@@ -123,6 +123,15 @@ else
 
         kill -0 "$_c" 2>/dev/null && printf 'LEADER_ALIVE ' || printf 'LEADER_DEAD '
         if [[ -n "$_gc" && "$_gc" =~ ^[0-9]+$ ]]; then
+            # Poll, don't sample once (#1916): `wait` above reaps the LEADER only and
+            # group signal delivery is async, so a first-instant `kill -0` raced the
+            # kernel — ~1 macOS run in 3 went red. Unweakened: a genuinely leaked
+            # grandchild is a live `sleep 10` and survives all 40 iterations.
+            _gcw=0
+            while kill -0 "$_gc" 2>/dev/null && [[ "$_gcw" -lt 40 ]]; do
+                sleep 0.05 2>/dev/null || true
+                _gcw=$((_gcw + 1))
+            done
             kill -0 "$_gc" 2>/dev/null && printf 'GC_ALIVE' || printf 'GC_DEAD'
             kill -KILL "$_gc" 2>/dev/null || true
         else
