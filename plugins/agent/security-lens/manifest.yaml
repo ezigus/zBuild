@@ -22,7 +22,6 @@ requires:
 
 provides:
   role: security-auditor
-  artifact_type: findings.json
 
 config:
   # Writes no .verdict on either verdict channel; the engine falls back to

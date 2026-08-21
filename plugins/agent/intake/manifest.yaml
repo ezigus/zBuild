@@ -65,7 +65,6 @@ outputs:
     required: false
 
 provides:
-  artifact_type: [scope-manifest.md, intake.md]
   role: intake
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.

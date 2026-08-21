@@ -28,7 +28,6 @@ provides:
   # The plugin also writes pr-result.json (richer status payload, listed in
   # outputs[] below); both are written on success. See ADR-013 Implementation
   # Notes for the canonical vs. secondary artifact convention.
-  artifact_type: pr-url.txt
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:

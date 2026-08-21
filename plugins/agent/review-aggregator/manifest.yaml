@@ -21,11 +21,13 @@ description: |
   never gates the pipeline. It always writes review-report.json first and
   returns 0 (an empty / absent lens group degrades to an empty report).
 
-  Bound by ROLE (resolver.sh reads provides.role). Deliberately NO
-  provides.artifact_type: declaring it makes contracts.sh synthesize a BLOCKING
-  contract-violated findings.json on a miss — this stage is advisory, so it opts
-  out of that machinery. The C3 cutover wires it as the `aggregate: advisory`
-  group's aggregator and retires review-report's hand-rolled fan-out.
+  Bound by ROLE (resolver.sh reads provides.role). This stage is advisory: it
+  used to opt out of contracts.sh's blocking contract-violated machinery by
+  declining to declare provides.artifact_type. #1906 retired both the field and
+  that check; artifact enforcement is now outputs[].required alone, which this
+  stage already satisfies by always writing its first output. The C3 cutover
+  wires it as the `aggregate: advisory` group's aggregator and retires
+  review-report's hand-rolled fan-out.
 
 hooks:
   run: review_aggregator_run

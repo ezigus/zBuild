@@ -120,7 +120,6 @@ _strategy_run_map() {
     local dimension="${6:-platforms}" env_target="${7:-}"
     local max_raw="${8:-}" on_member_error="${9:-collect}"
     local success_count=0 fail_count=0 any_plugin_found=false
-    local state_dir; state_dir="$(dirname "$state_file")"
 
     # Resolve the iteration list. Capture output AND rc explicitly — a process
     # substitution would discard the resolver's status, collapsing an invalid
@@ -261,16 +260,8 @@ _strategy_run_map() {
 
             if [[ $collect_rc -eq 0 ]]; then
                 success_count=$(( success_count + 1 ))
-                if declare -F _check_artifact_contract >/dev/null 2>&1; then
-                    local dp
-                    declare -A _seen_dp=()
-                    for dp in "${batch_plugins[@]+"${batch_plugins[@]}"}"; do
-                        [[ -n "${_seen_dp[$dp]:-}" ]] && continue
-                        _seen_dp[$dp]=1
-                        _check_artifact_contract "$dp" "$state_dir" "$stage"
-                    done
-                    unset _seen_dp
-                fi
+                # #1906: artifact enforcement already ran per work unit inside
+                # plugin_hook_call (scan_plugin_outputs).
             elif [[ $collect_rc -eq 2 ]]; then
                 success_count=$(( success_count + 1 ))
                 fail_count=$(( fail_count + 1 ))

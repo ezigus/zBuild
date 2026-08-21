@@ -31,7 +31,6 @@ _strategy_run_fanout() {
     local pool_id="$1" stage="$2" roles_out="$3" state_file="$4" plugins_root="$5"
     local success_count=0 fail_count=0 any_plugin_found=false dispatch_count=0
     local -a work_units=() dispatched_plugins=()
-    local state_dir; state_dir="$(dirname "$state_file")"
 
     local role platform plugin_dir wu
     while IFS= read -r role; do
@@ -76,19 +75,9 @@ _strategy_run_fanout() {
         # orch_collect exit codes: 0=all pass, 1=all fail, 2=partial.
         if [[ $collect_rc -eq 0 ]]; then
             success_count=$((success_count + 1))
-            # Validate artifact contracts for all successfully-dispatched plugins.
-            # Deduplicate plugin dirs first — same generic plugin may appear for
-            # multiple platforms and each unique dir only needs one contract check.
-            if declare -F _check_artifact_contract >/dev/null 2>&1; then
-                local dp seen_dp
-                declare -A seen_dp=()
-                for dp in "${dispatched_plugins[@]+"${dispatched_plugins[@]}"}"; do
-                    [[ -n "${seen_dp[$dp]:-}" ]] && continue
-                    seen_dp[$dp]=1
-                    _check_artifact_contract "$dp" "$state_dir" "$stage"
-                done
-                unset seen_dp
-            fi
+            # #1906: no artifact check here. Each work unit calls plugin_hook_call
+            # (strategies/common.sh), so scan_plugin_outputs has already enforced
+            # every declared output for every dispatched plugin.
         elif [[ $collect_rc -eq 2 ]]; then
             success_count=$((success_count + 1))
             fail_count=$((fail_count + 1))
