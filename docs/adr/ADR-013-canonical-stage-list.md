@@ -134,7 +134,7 @@ stages executed in sequence within the `build_review_cycle` flow:
 | `cq-preflight` | Non-cyclic fast-fail checks (bash-compat, coverage floor, untested functions). Failure aborts immediately; the remaining three CQ stages are skipped. |
 | `cq-audit-plan` | Selects which audit lenses run and at what intensity, based on quality-score history from learning memory (ADR-011). Emits `audit-plan.json` consumed by `cq-cycle`. |
 | `cq-cycle` | Iterative audit loop. Dispatches selected lens plugins (security, logic, performance, architecture, correctness, edge-case, pessimist). Detects plateau and divergence. Emits `quality-feedback.md` and `review.findings.json`. |
-| `cq-backtrack` | If unresolved architecture-class findings remain after the cycle cap, emits `recovery.suggestion` targeting the design stage. Non-blocking: backtrack exhaustion degrades to "continue with warning" rather than halting. |
+| `cq-backtrack` | If unresolved architecture-class findings remain after the cycle cap, routes back to the design stage. Non-blocking: backtrack exhaustion degrades to "continue with warning" rather than halting. (As written this said it emits `recovery.suggestion`; that event and `kind: recovery` were retired by #1900 — the backward edge is `route_back`, ADR-045.) |
 
 ### Artifact paths and the fail-closed rule
 
@@ -148,7 +148,8 @@ every `expected_artifact` in the table above:
 
 > If a stage plugin exits 0 but its declared output path does not exist or is
 > empty, the engine emits a synthetic `stage.fail` with
-> `reason: "missing_artifact"` and routes to `kind: recovery` plugins.
+> `reason: "missing_artifact"`. (As written this added "and routes to `kind: recovery`
+> plugins"; that routing was deleted by ADR-054 §10 and the kind retired by #1900.)
 
 ### Stage skip conditions
 

@@ -59,9 +59,6 @@ labels:
   - name: tool-plugin
     color: "00d4ff"
     description: "kind: tool — non-AI integration"
-  - name: recovery-plugin
-    color: "00d4ff"
-    description: "kind: recovery — error→action mapping"
   - name: orchestrator-plugin
     color: "00d4ff"
     description: "kind: orchestrator — multi-step choreography"
@@ -145,7 +142,7 @@ milestones:
 #   ${spec_cite}      — KEEPERS section
 #   ${legacy_cite}    — file:line in legacy/
 #   ${behavior}       — one-paragraph behavior description
-#   ${plugin_kind}    — agent | tool | recovery | orchestrator | claim-coordinator | daemon | (none for safety)
+#   ${plugin_kind}    — agent | tool | orchestrator | claim-coordinator | daemon | (none for safety)
 #   ${depends_on}     — markdown list of dependent issue IDs (resolved to issue numbers by generator)
 #   ${blocks}         — markdown list of blocked issue IDs
 issues:
@@ -281,15 +278,15 @@ issues:
   - id: a-5
     title: "[A] Extract compound_quality backtrack-to-stage as its own concern"
     milestone: "Phase 1 — Pipeline & Intelligence"
-    labels: [phase-1, keeper, recovery-plugin]
+    labels: [phase-1, keeper]
     spec_cite: "KEEPERS §A"
     legacy_cite: "legacy/scripts/lib/pipeline-intelligence.sh — backtrack embedded in cycle loop"
     behavior: |
       The backtrack-to-stage logic (architecture findings → route to design,
       scope violations → override everything) is currently embedded in the
-      cycle loop. Lift it to a kind: recovery plugin so cycle/plateau and
-      backtrack don't share state.
-    plugin_kind: "recovery"
+      cycle loop. Lift it out so cycle/plateau and backtrack don't share
+      state. (Superseded: the backward edge is `route_back`, ADR-045;
+      `kind: recovery` was retired by #1900.)
   - id: a-6
     title: "[A] Preserve gate semantics (auto / approve / budget / score / scope / smoke)"
     milestone: "Phase 1 — Pipeline & Intelligence"
@@ -1038,7 +1035,7 @@ issues:
       - Reads state/platforms.json for detected platforms
       - Per stage: resolves roles via plat-3, dispatches per stage strategy
         (fanout / composite / sequential — see plat-9/10/11)
-      - Handles failure: classifies via recovery-plugin, decides retry/abort
+      - Handles failure: reads `disposition` (ADR-054 §6), decides retry/abort
       - Writes state via core/state/atomic.sh on every stage transition
       - Emits pipeline.{start,end,abort} + stage.{start,complete,fail} events
 
@@ -1430,7 +1427,7 @@ issues:
     body: |
       Enforce per-run token cap based on budget remaining (cost ledger).
       Refuse to dispatch further model calls when cap reached; emit
-      cost.budget_exceeded event; let recovery plugin decide abort vs degrade.
+      cost.budget_exceeded event; `disposition: exhausted` escalates (ADR-054 §6).
     state: closed
     closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T10:19:06Z). Recorded by manifest-sync.'
   - id: ccli-6
@@ -1616,7 +1613,7 @@ issues:
   - id: adapt-8
     title: "[Phase 3] Failure class taxonomy + per-class retry policy"
     milestone: "Phase 3 — Daemon & Autonomous Ops"
-    labels: [phase-3, keeper, recovery-plugin]
+    labels: [phase-3, keeper]
     body: |
       Classify failures into 5+ classes (auth_error, api_error, invalid_issue,
       context_exhaustion, build_failure); per-class max retries and backoff.
@@ -1791,7 +1788,7 @@ issues:
   - id: wf-3
     title: "[Phase 3] Workflow: zbuild-auto-retry.yml (failure-class aware retry)"
     milestone: "Phase 3 — Daemon & Autonomous Ops"
-    labels: [phase-3, keeper, recovery-plugin]
+    labels: [phase-3, keeper]
     body: |
       Triggered on pipeline.failed event; consults adapt-8 classifier to
       decide whether to retry, escalate, or close. Implements the retry

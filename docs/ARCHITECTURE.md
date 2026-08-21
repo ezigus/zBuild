@@ -35,20 +35,20 @@ System view, plugin contract, data flow, state model, glossary. Complements [KEE
 ┌──────────▼──────────────────────────────────────────────────────────┐
 │                            plugins/                                 │
 │                                                                     │
-│   kind: agent         kind: tool         kind: recovery             │
-│   (LLM-driven:        (non-LLM:          (error → action:           │
-│    5 review lenses,   git, gh, CLI       retry policies,            │
-│    stage handlers:    integrations)      self-heal strategies)      │
+│   kind: agent         kind: tool         kind: orchestrator         │
+│   (LLM-driven:        (non-LLM:          (patrol)                   │
+│    5 review lenses,    git, gh, CLI                                 │
+│    stage handlers:     integrations)                                │
 │    plan, design,                                                    │
 │    impact, build,                                                   │
 │    review-lens,                                                     │
 │    review-aggregator)                                               │
 │                                                                     │
-│   kind: orchestrator  kind: claim-       kind: daemon               │
-│   (patrol)            coordinator        (poll, triage, patrol,     │
-│                       (github-labels     fleet-failover)            │
-│                       default,                                      │
-│                       ttl-leases later)                             │
+│   kind: claim-        kind: daemon                                  │
+│   coordinator         (poll, triage,                                │
+│   (github-labels       patrol,                                      │
+│    default,            fleet-failover)                              │
+│    ttl-leases later)                                                │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -75,7 +75,7 @@ plugins/agent/security-lens/
 ```yaml
 id: security-lens                 # globally unique; lowercase-kebab
 name: Security Audit Lens         # human-readable
-kind: agent                       # agent | tool | recovery | orchestrator | claim-coordinator | daemon
+kind: agent                       # agent | tool | orchestrator | claim-coordinator | daemon
 version: 0.1.0
 description: |
   Detects auth, injection, secret leakage, and unsafe defaults in
@@ -128,7 +128,6 @@ outputs:
 |---|---|---|---|
 | `agent` | `run` | scope manifest, input artifact, tier | structured artifact (typed) |
 | `tool` | `run` | typed args | exit code + structured stdout/stderr |
-| `recovery` | `classify`, `act` | error context | action verb (`retry`, `backtrack`, `escalate`, `abort`) |
 | `orchestrator` | `run` | upstream artifacts | downstream artifact(s) + verdict |
 | `claim-coordinator` | `claim`, `release`, `heartbeat`, `list_claims` | issue id | acquired flag + lease id |
 | `daemon` | `tick` | poll interval | events to bus |
@@ -137,7 +136,7 @@ outputs:
 
 For each plugin discovered in a run, the engine calls:
 
-1. `run` (or kind-specific entry: `classify`/`claim`/`tick`) — possibly many times. On resume, `ZBUILD_RESUMING=1` is set; the `run` preamble reconstructs any needed state.
+1. `run` (or kind-specific entry: `claim`/`tick`) — possibly many times. On resume, `ZBUILD_RESUMING=1` is set; the `run` preamble reconstructs any needed state.
 2. `cleanup` — dispatched by a `teardown` stage with a `scope` (ADR-054 §7); release locks, write tombstone event. Absent `cleanup` emits `plugin.cleanup.absent` and returns rc=0 — the absence is distinguishable on the event, since rc is binary (ADR-054 §4).
 
 The engine is responsible for: discovery, manifest validation, lifecycle ordering, redaction enforcement, event emission. It does not call business logic directly.
@@ -148,7 +147,12 @@ The engine is responsible for: discovery, manifest validation, lifecycle orderin
   express with a third code — interrupted, throttled, exhausted, unavailable, broken —
   is carried by `disposition` in the result file, and the engine's response table
   decides recoverability (ADR-054 §6).
-- Plugins MAY emit `recovery.suggestion` events; the engine routes them to `kind: recovery` plugins for classification.
+- Nothing routes a failure to a plugin for classification, and there are no `recovery.*`
+  events. `kind: recovery` was retired (#1900): a stage does not get to suggest what
+  should happen to it — it declares `disposition` and the engine's response table above
+  decides. The four action verbs that kind existed to return are all owned elsewhere now
+  — retry, escalate and halt by `disposition` (ADR-054 §6), backtrack by `route_back`
+  (ADR-045).
 - The engine MUST emit a synthetic blocking finding if a plugin declares `provides.artifact_type` but no artifact exists at `outputs[].path` after `run` completes. (Fail-closed scanner from Keepers §C.4.)
 
 ### Discovery + lockfile
@@ -289,7 +293,6 @@ Required event types (lifted from legacy; carry forward):
 - `plugin.{run,cleanup,error}` (ADR-056 removed `init` and `finalize`)
 - `redaction.{applied,refused}`
 - `model.{route,outcome}`
-- `recovery.{suggestion,action,exhausted}`
 - `claim.{acquire,renew,release,expire}`
 - `cycle.{start,complete,plateau,divergence}`
 
@@ -324,7 +327,7 @@ zBuild has two distinct kinds of "memory." They share no storage and have indepe
 ## 7. Glossary
 
 - **Keeper** — a behavior we preserve from legacy (catalog in [KEEPERS.md](KEEPERS.md)). Each keeper has a citation and a 5-test trial.
-- **Plugin kind** — the type discriminator on a manifest: `agent | tool | recovery | orchestrator | claim-coordinator | daemon`. Determines required lifecycle hooks.
+- **Plugin kind** — the type discriminator on a manifest: `agent | tool | orchestrator | claim-coordinator | daemon`. Determines required lifecycle hooks.
 - **Chokepoint** — a single function/seam through which all data of a certain kind must pass (e.g., redaction). Enforced by code review + test, not by language-level access control.
 - **Tier (T0–T4)** — model routing ordinal. T0 = no LLM (Agent Booster / WASM); T1 = micro / haiku; T2 = sonnet; T3 = opus; T4 = experimental. Models are data in `config/models.json`; tier numbers are stable, model names are not referenced in code.
 - **Scope manifest** — fenced markdown block in `design.md` (or runtime equivalent) listing allowed paths. Artifact-as-contract: humans edit visually, engine parses with awk.
