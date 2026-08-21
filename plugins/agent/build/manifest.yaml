@@ -86,6 +86,7 @@ outputs:
     type: diff.patch@1
     format: patch
     required: true
+    advisory: true
   - id: build_summary
     path: "${artifact_dir}/build-summary.json"
     type: build-summary.json@4
