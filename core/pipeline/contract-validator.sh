@@ -525,12 +525,38 @@ _contract_validate_pipeline() {
         done
     fi
 
+    # ── Pass 3 pre-work: mark cycle exit_when stage outputs as consumed ─────────
+    # The cycle mechanism itself reads the exit_when stage's primary output (the
+    # verdict artifact) to decide convergence — this is not a manifest input but
+    # IS a form of consumption. Without this, gate_aggregator_result (or any other
+    # convergence aggregator output) would be false-alarmed in templates where no
+    # subsequent stage declares it as a direct input (e.g. simple.yaml after the
+    # build_test_cycle, which flows to pr-delivery, not merge/deploy).
+    local _ew_c _ew_safe _ew_var _ew_stage _ew_mf _ew_orec _ew_oid
+    if declare -p _TPL_CYCLES >/dev/null 2>&1 && [[ ${#_TPL_CYCLES[@]} -gt 0 ]]; then
+        for _ew_c in "${_TPL_CYCLES[@]}"; do
+            _ew_safe="${_ew_c//-/_}"
+            _ew_var="_TPL_CYCLE_UNTIL_STAGE_${_ew_safe}"
+            _ew_stage="${!_ew_var:-}"
+            [[ -z "$_ew_stage" ]] && continue
+            _ew_mf="${_CV_STAGE_MANIFEST[$_ew_stage]:-}"
+            [[ -z "$_ew_mf" ]] && continue
+            while IFS= read -r _ew_orec; do
+                [[ -z "$_ew_orec" ]] && continue
+                _ew_oid="${_ew_orec%%|*}"
+                [[ -n "$_ew_oid" ]] && _CV_INPUT_NAMES_SEEN["$_ew_oid"]=1
+            done < <(manifest_graph_get_outputs "$_ew_mf")
+        done
+    fi
+
     # ── Pass 3: OUTPUT_UNCONSUMED (ADR-020 bidirectional contract) ─────────────
     # Every declared output in the resolved flow must be named by at least one
     # consumer's input. Outputs marked terminal: true (pipeline terminus — no
     # downstream consumer is expected) or advisory: true (rendered for humans
-    # outside the stage graph) are exempt. Iterate sorted for stable ordering.
-    local _unc_id _unc_stage _unc_manifest _unc_term _unc_adv
+    # outside the stage graph) are exempt. Stages with convergence: advisory are
+    # also implicitly exempt — their outputs are rendered for human review, not
+    # consumed as pipeline stage inputs. Iterate sorted for stable ordering.
+    local _unc_id _unc_stage _unc_manifest _unc_term _unc_adv _unc_conv
     while IFS= read -r _unc_id; do
         [[ -z "$_unc_id" ]] && continue
         [[ -n "${_CV_INPUT_NAMES_SEEN[$_unc_id]:-}" ]] && continue
@@ -538,6 +564,10 @@ _contract_validate_pipeline() {
         _unc_stage="${_CV_OUTPUT_PRODUCERS[$_unc_id]%%' '*}"
         _unc_manifest="${_CV_STAGE_MANIFEST[$_unc_stage]:-}"
         [[ -z "$_unc_manifest" ]] && continue
+        # Advisory-convergence stages (review lenses, aggregators) are implicitly
+        # exempt — their outputs are rendered for humans outside the stage graph.
+        _unc_conv="$(_cv_stage_convergence "$plugins_root" "$_unc_stage")"
+        [[ "$_unc_conv" == "advisory" ]] && continue
         _unc_term="$(manifest_graph_output_terminal "$_unc_manifest" "$_unc_id" 2>/dev/null || true)"
         _unc_adv="$(manifest_graph_output_advisory "$_unc_manifest" "$_unc_id" 2>/dev/null || true)"
         if [[ "$_unc_term" != "true" && "$_unc_adv" != "true" ]]; then

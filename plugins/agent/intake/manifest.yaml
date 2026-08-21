@@ -43,6 +43,7 @@ outputs:
     type: intake.md@1
     format: markdown
     required: true
+    advisory: true
   # ADR-020 / #663: side-channel outputs previously documented as
   # "intentional side-effects". intake-baseline-ref.txt is written when
   # the intake-baseline capture succeeds; intake-branch.txt is written

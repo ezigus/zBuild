@@ -246,7 +246,22 @@ done
 # for humans outside the stage graph) are exempt. The flow-scoped check in the
 # runtime validator is stricter; the lint's weaker tree-wide version catches
 # typos and outright orphans at CI time.
+#
+# Guard: when running against a NARROW FIXTURE (custom ZBUILD_PLUGINS_ROOT that
+# is not the real plugins tree), the check is skipped unless the caller
+# explicitly sets ZBUILD_LINT_UNCONSUMED=1.  Narrow fixtures are deliberately
+# minimal; their last-stage outputs have no in-fixture consumer, which would
+# produce false positives against unrelated test runs.  The real-repo lint
+# (no custom ZBUILD_PLUGINS_ROOT, or ZBUILD_PLUGINS_ROOT == real plugins dir)
+# always runs the check.
+_lc_run_unconsumed=1
+if [[ -n "${ZBUILD_PLUGINS_ROOT:-}" \
+      && "$_PLUGINS_ROOT" != "$_LINT_CONTRACT_REPO/plugins" \
+      && "${ZBUILD_LINT_UNCONSUMED:-0}" != "1" ]]; then
+    _lc_run_unconsumed=0
+fi
 for _key_out in "${!_LC_STAGE_OUTPUTS[@]}"; do
+    [[ "$_lc_run_unconsumed" == "1" ]] || break
     [[ "$_key_out" == role:* ]] && continue
     _out_stage="${_key_out%%:*}"
     _out_id="${_key_out#*:}"

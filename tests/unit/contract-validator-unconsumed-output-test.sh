@@ -62,15 +62,20 @@ _validate_out() {
 }
 
 # _lint_offences — run lint against $_PL, count offences from exit code
+# ZBUILD_LINT_UNCONSUMED=1 enables the OUTPUT_UNCONSUMED check for this
+# narrow fixture root (the real-repo lint always runs it; custom roots skip
+# it by default to avoid false positives from legitimately minimal fixtures).
 _lint_offences() {
     local rc=0
-    ZBUILD_PLUGINS_ROOT="$_PL" bash "$REPO_ROOT/scripts/lib/lint-contract.sh" 2>&1 || rc=$?
+    ZBUILD_PLUGINS_ROOT="$_PL" ZBUILD_LINT_UNCONSUMED=1 \
+        bash "$REPO_ROOT/scripts/lib/lint-contract.sh" 2>&1 || rc=$?
     printf '%s' "$rc"
 }
 
 # _lint_out — capture stderr from lint
 _lint_out() {
-    ZBUILD_PLUGINS_ROOT="$_PL" bash "$REPO_ROOT/scripts/lib/lint-contract.sh" 2>&1 || true
+    ZBUILD_PLUGINS_ROOT="$_PL" ZBUILD_LINT_UNCONSUMED=1 \
+        bash "$REPO_ROOT/scripts/lib/lint-contract.sh" 2>&1 || true
 }
 
 # ─── Standard output declarations used across TCs ────────────────────────────
@@ -132,7 +137,7 @@ assert_contains "[SPEC-1] violation names the orphaned output id" \
     "$out_tc1" "orphan_out"
 
 # Guard: MISSING_OUTPUT must NOT fire — there is no consumer to complain about.
-if echo "$out_tc1" | grep -qF "MISSING_OUTPUT"; then
+if grep -qF "MISSING_OUTPUT" <<< "$out_tc1"; then
     assert_fail "[SPEC-1] MISSING_OUTPUT does not fire when there is no consumer (guard)" \
         "MISSING_OUTPUT appeared: $out_tc1"
 else
@@ -225,7 +230,7 @@ outputs:
 EOF
 
 lint_out_tc5="$(_lint_out)"
-if echo "$lint_out_tc5" | grep -qF "OUTPUT_UNCONSUMED"; then
+if grep -qF "OUTPUT_UNCONSUMED" <<< "$lint_out_tc5"; then
     assert_pass "[SPEC-5] lint flags orphaned output for in-scope stage"
 else
     assert_fail "[SPEC-5] lint flags orphaned output for in-scope stage" \
@@ -234,7 +239,7 @@ fi
 assert_contains "[SPEC-5] lint names the orphaned output id" "$lint_out_tc5" "orphan_out"
 
 # Guard: forward checks unaffected — scope_manifest IS consumed so no complaint.
-if echo "$lint_out_tc5" | grep -qE "scope_manifest.*OUTPUT_UNCONSUMED|OUTPUT_UNCONSUMED.*scope_manifest"; then
+if grep -qE "scope_manifest.*OUTPUT_UNCONSUMED|OUTPUT_UNCONSUMED.*scope_manifest" <<< "$lint_out_tc5"; then
     assert_fail "[SPEC-5] consumed output scope_manifest does not trigger OUTPUT_UNCONSUMED (guard)" \
         "False positive: $lint_out_tc5"
 else
