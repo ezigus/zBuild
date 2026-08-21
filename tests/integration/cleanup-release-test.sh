@@ -296,6 +296,53 @@ EOF
     fi
 fi
 
+# ─── SPEC-5: teardown_run writes teardown-result.json (v2 result) ─────────────
+# CHANGE: at baseline teardown writes no result file.
+print_test_section "SPEC-5: teardown_run writes teardown-result.json to artifacts dir"
+
+if [[ ! -d "$TEARDOWN_DIR" || ! -f "$TEARDOWN_DIR/plugin.sh" ]]; then
+    assert_fail "[SPEC-5] teardown plugin exists" "missing"
+else
+    _spec5_plugin="$TEST_TEMP_DIR/spec5-mock-plugin"
+    mkdir -p "$_spec5_plugin"
+    cat > "$_spec5_plugin/manifest.yaml" <<'EOF'
+id: spec5-mock
+name: Spec5 Mock
+kind: tool
+version: 0.0.1
+hooks:
+  run: spec5_run
+  cleanup: spec5_cleanup
+EOF
+    cat > "$_spec5_plugin/plugin.sh" <<'EOF'
+spec5_run() { return 0; }
+spec5_cleanup() { return 0; }
+EOF
+
+    _spec5_state_dir="$TEST_TEMP_DIR/spec5-state"
+    _spec5_artifacts="$_spec5_state_dir/artifacts"
+    mkdir -p "$_spec5_state_dir" "$_spec5_artifacts"
+    _spec5_state_file="$_spec5_state_dir/pipeline-state.json"
+    printf '{"stage_statuses":{"spec5-mock":"complete"}}' > "$_spec5_state_file"
+
+    (
+        export ZBUILD_ARTIFACT_DIR="$_spec5_artifacts"
+        source "$TEARDOWN_DIR/plugin.sh"
+        resolve_stage_plugin() { echo "$_spec5_plugin"; }
+        export ZBUILD_TEARDOWN_SCOPE="release"
+        teardown_run "teardown" "$_spec5_state_file" >/dev/null 2>&1
+    ) || true
+
+    _spec5_result="$_spec5_artifacts/teardown-result.json"
+    if [[ -f "$_spec5_result" ]]; then
+        assert_pass "[SPEC-5] teardown-result.json written to artifacts dir"
+        _spec5_rc="$(jq -r '.result_contract // empty' "$_spec5_result" 2>/dev/null || true)"
+        assert_eq "[SPEC-5] teardown-result.json has result_contract=2" "2" "$_spec5_rc"
+    else
+        assert_fail "[SPEC-5] teardown-result.json written to artifacts dir" "file missing"
+    fi
+fi
+
 # ─── SPEC-6: teardown_run never dispatches scope=purge ────────────────────────
 # CHANGE: at baseline teardown plugin doesn't exist; this verifies its code never
 # calls cleanup with scope=purge.

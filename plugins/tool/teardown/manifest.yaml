@@ -25,6 +25,7 @@ requires:
 
 provides:
   role: teardown
+  result_contract: 2
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -32,5 +33,17 @@ provides:
     - teardown.scope.invalid
     - teardown.start
 
+config:
+  valid_verdicts:
+    - complete
+    - degraded
+
 inputs: []
-outputs: []
+
+outputs:
+  - id: teardown_result
+    path: "${artifact_dir}/teardown-result.json"
+    type: teardown-result.json@1
+    format: json
+    required: true
+    primary: true

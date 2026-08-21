@@ -40,6 +40,27 @@ The discriminator is *can this be done tomorrow?* No → `release`. Yes → `pur
 
 Consequence, by construction: **a failed run leaves all of its evidence on disk.**
 
+## Result file (v2 contract)
+
+After every run, `teardown_run` writes `teardown-result.json` to the run's artifacts directory. The file speaks `result_contract: 2` (ADR-054 §5, ADR-055) and always carries the mandatory keys:
+
+| Key | Values | Meaning |
+|-----|--------|---------|
+| `result_contract` | `2` | ADR-054 contract version |
+| `verdict` | `complete`, `degraded` | `complete` — all cleanups succeeded; `degraded` — at least one cleanup returned non-zero |
+| `disposition` | `complete` | Teardown always completes its own work; failures are recorded, not propagated |
+| `reason` | free text | Human-readable summary |
+| `data.targets` | array | Per-stage outcome record |
+
+Each entry in `data.targets`:
+
+| Field | Values | Meaning |
+|-------|--------|---------|
+| `stage` | stage id string | The stage that was cleaned up |
+| `outcome` | `ok`, `failed`, `no_op` | `ok` — cleanup returned 0; `failed` — cleanup returned non-zero; `no_op` — plugin has no cleanup hook or no plugin was found |
+
+A failed cleanup does not abort remaining targets — every stage in the executed list is processed, and the aggregate `verdict` reflects the worst outcome.
+
 ## Events emitted
 
 | Event | When |
