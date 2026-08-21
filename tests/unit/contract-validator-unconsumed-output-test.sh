@@ -291,8 +291,32 @@ outputs:
 EOF
 
 lint_rc_tc6=0
-ZBUILD_PLUGINS_ROOT="$_PL" bash "$REPO_ROOT/scripts/lib/lint-contract.sh" >/dev/null 2>&1 || lint_rc_tc6=$?
+ZBUILD_PLUGINS_ROOT="$_PL" ZBUILD_LINT_UNCONSUMED=1 \
+    bash "$REPO_ROOT/scripts/lib/lint-contract.sh" >/dev/null 2>&1 || lint_rc_tc6=$?
 assert_eq "[SPEC-6] lint with terminal: true output returns rc=0" "0" "$lint_rc_tc6"
+
+# ─── SPEC-6 [guard]: prove the pass above is the MARKER, not a skipped check ──
+# ZBUILD_LINT_UNCONSUMED=1 is load-bearing: without it the narrow-fixture guard
+# in lint-contract.sh sets _lc_run_unconsumed=0 and the loop breaks immediately,
+# so the rc=0 above would hold with or without `terminal:`. Re-run the identical
+# fixture with the marker stripped — if that does not raise OUTPUT_UNCONSUMED,
+# SPEC-6 is inert and is asserting nothing about the suppressor it exists for.
+_tc6_unmarked="$TEST_TEMP_DIR/tc6-unmarked"
+rm -rf "$_tc6_unmarked"; cp -R "$_PL" "$_tc6_unmarked"
+grep -v '^    terminal: true$' "$_PL/agent/consumer/manifest.yaml" \
+    > "$_tc6_unmarked/agent/consumer/manifest.yaml"
+
+lint_rc_tc6g=0
+lint_out_tc6g="$(ZBUILD_PLUGINS_ROOT="$_tc6_unmarked" ZBUILD_LINT_UNCONSUMED=1 \
+    bash "$REPO_ROOT/scripts/lib/lint-contract.sh" 2>&1)" || lint_rc_tc6g=$?
+if [[ "$lint_rc_tc6g" != "0" ]] && grep -qF "OUTPUT_UNCONSUMED" <<< "$lint_out_tc6g"; then
+    assert_pass "[SPEC-6][guard] stripping terminal: true re-raises OUTPUT_UNCONSUMED (check was live)"
+else
+    assert_fail "[SPEC-6][guard] stripping terminal: true re-raises OUTPUT_UNCONSUMED (check was live)" \
+        "rc=$lint_rc_tc6g out: $lint_out_tc6g"
+fi
+assert_contains "[SPEC-6][guard] the re-raised violation names the unmarked output" \
+    "$lint_out_tc6g" "orphan_out"
 
 cleanup_test_env
 print_test_results
