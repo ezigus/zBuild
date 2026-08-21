@@ -258,6 +258,12 @@ else
     assert_fail "[SPEC-6] result file present (reusing SPEC-1 run)" "missing"
 fi
 
+# Manifest must declare result_contract:2 — makes manifest.yaml a load-bearing
+# wiring file; reverting it fails this [SPEC-6]-tagged assertion.
+_spec6_manifest="$REPO_ROOT/plugins/tool/teardown/manifest.yaml"
+_spec6_rc_val="$(grep "result_contract:" "$_spec6_manifest" | awk '{print $2}' || echo '')"
+assert_eq "[SPEC-6] manifest declares result_contract:2" "2" "$_spec6_rc_val"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

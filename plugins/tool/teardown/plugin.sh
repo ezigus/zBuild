@@ -152,7 +152,7 @@ teardown_run() {
   \"data\": {
     \"targets\": $_targets_json
   }
-}" > "$_result_file"
+}" | atomic_write "$_result_file"
 
     emit_event "teardown.complete" \
         "scope=$_scope" "failed=$_any_failed" 2>/dev/null || true
