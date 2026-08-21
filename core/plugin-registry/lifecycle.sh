@@ -16,9 +16,11 @@ _ZBUILD_REGISTRY_LIFECYCLE_LOADED=1
 
 # ─── scan_plugin_outputs — fail-closed artifact-presence scanner (#288) ─────
 # ADR-001 §Fail-closed scanner contract:
-#   "If a plugin declares provides.artifact_type but no artifact exists at
-#    outputs[].path after run completes with exit 0, the engine emits a
-#    synthetic blocking finding."
+#   "If a plugin declares an output but no artifact exists at outputs[].path
+#    after run completes with exit 0, the engine emits a synthetic blocking
+#    finding."
+# #1906 retired provides.artifact_type, which the original wording keyed on;
+# outputs[].required is the single declaration the scan now honours.
 #
 # Arguments:
 #   $1 — plugin_dir
@@ -45,7 +47,6 @@ scan_plugin_outputs() {
 
     local plugin_id; plugin_id="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
     local kind; kind="$(yaml_get "$manifest" "kind" 2>/dev/null || true)"
-    local artifact_type; artifact_type="$(yaml_get "$manifest" "provides.artifact_type" 2>/dev/null || true)"
     # ADR-047 §4 capability flag: build legitimately writes a zero-byte diff.patch
     # when a turn changed no code. The exemption is deliberately narrow — it never
     # covers a `primary: true` output, so a stage cannot mask an empty verdict
@@ -158,7 +159,6 @@ scan_plugin_outputs() {
             emit_event "$_event" \
                 "plugin=$plugin_id" \
                 "kind=$kind" \
-                "artifact_type=$artifact_type" \
                 "expected_path=$resolved" \
                 "template=$raw_path"
             # ADR-001 §Fail-closed contract: emit plugin.contract.violated and write
@@ -167,7 +167,6 @@ scan_plugin_outputs() {
             emit_event "plugin.contract.violated" \
                 "stage=$_stage_id" \
                 "plugin=$plugin_id" \
-                "artifact_type=$artifact_type" \
                 "expected_path=$resolved" \
                 "reason=artifact_missing_or_empty"
             if [[ -n "$state_dir" ]]; then
@@ -176,7 +175,6 @@ scan_plugin_outputs() {
                 jq -n \
                     --arg stage "$_stage_id" \
                     --arg plugin "$plugin_id" \
-                    --arg artifact_type "$artifact_type" \
                     --arg path "$resolved" \
                     --arg violation "$_violation" \
                     '{
@@ -190,9 +188,7 @@ scan_plugin_outputs() {
                             severity: "blocking",
                             stage: $stage,
                             plugin: $plugin,
-                            detail: ("Expected artifact at: " + $path +
-                                     (if $artifact_type == "" then ""
-                                      else " (provides.artifact_type=" + $artifact_type + ")" end))
+                            detail: ("Expected artifact at: " + $path)
                         }]
                     }' > "$_findings_file" 2>/dev/null || true
             fi

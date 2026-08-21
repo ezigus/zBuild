@@ -26,10 +26,11 @@ requires:
     - router
   plugins: []
 
-# Bound by ROLE (resolver.sh reads provides.role). Deliberately NO
-# provides.artifact_type: declaring it makes contracts.sh synthesize a BLOCKING
-# contract-violated findings.json on a miss — this stage is advisory, so we opt
-# out of that machinery. The plugin still always writes review-report.json first.
+# Bound by ROLE (resolver.sh reads provides.role). This stage is advisory: it
+# used to opt out of contracts.sh's blocking contract-violated machinery by
+# declining to declare provides.artifact_type. #1906 retired both the field and
+# that check; artifact enforcement is now outputs[].required alone. The plugin
+# still always writes review-report.json first, so it stays green.
 provides:
   role: review_report
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into

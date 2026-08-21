@@ -358,13 +358,18 @@ manifest_graph_resolve_member() {
 }
 
 # ─── manifest_graph_result_filename <manifest> ─────────────────────────────────
-# The member's recorded result artifact FILENAME: provides.artifact_type, else
-# the basename of the primary output's declared path. rc 1 if neither resolves.
+# The member's recorded result artifact FILENAME: the basename of the primary
+# output's declared path. rc 1 if it does not resolve.
+#
+# #1906: provides.artifact_type used to be consulted first. It was a TYPE name,
+# not a filename, and three plugins proved the difference — intake declared a
+# bracketed LIST that resolved as the literal "[scope-manifest.md, intake.md]",
+# security-lens declared `findings.json` while writing security-findings.json,
+# and output-github-comment named a file it never writes. A member whose result
+# path does not exist is skipped by both callers' `[[ -s ]]` test, so a terminal
+# member would go unnoticed. The primary output is the single declaration.
 manifest_graph_result_filename() {
-    local manifest="$1" at row path
-    _manifest_graph_ensure_yaml_get
-    at="$(yaml_get "$manifest" "provides.artifact_type" 2>/dev/null)"
-    if [[ -n "$at" ]]; then printf '%s\n' "$at"; return 0; fi
+    local manifest="$1" row path
     row="$(manifest_graph_primary_output "$manifest" 2>/dev/null)" || return 1
     path="${row##*|}"
     [[ -z "$path" ]] && return 1

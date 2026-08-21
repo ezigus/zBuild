@@ -33,9 +33,11 @@ requires:
     - router
   plugins: []
 
-# Bound by ROLE (resolver.sh reads provides.role). Deliberately NO
-# provides.artifact_type: this stage is advisory, so it opts out of the blocking
-# contract-violated machinery (contracts.sh). It always writes lens-<name>.json.
+# Bound by ROLE (resolver.sh reads provides.role). This stage is advisory: it
+# used to opt out of contracts.sh's blocking contract-violated machinery by
+# declining to declare provides.artifact_type. #1906 retired both the field and
+# that check; artifact enforcement is now outputs[].required alone. It always
+# writes lens-<name>.json, so it stays green.
 provides:
   role: review_lens
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into

@@ -18,8 +18,37 @@ requires:
     - state
 
 provides:
-  artifact_type: [report.md]
   role: output
 
 config:
   severity_order: [critical, high, medium, low, info]
+  # #1708 contract: a plugin with a primary output declares the verdicts it can
+  # write. This one writes rendered markdown, not a result document — no verdict
+  # is ever produced, so the set is explicitly empty rather than absent.
+  valid_verdicts: []
+
+# #1906: this plugin previously declared `provides.artifact_type: [report.md]`
+# and NO outputs[] at all — the one plugin whose artifact check came from
+# contracts.sh's "no outputs declared" fallback rather than from a declaration.
+# The old value was wrong twice over: bracketed (so it resolved as the literal
+# string "[report.md]") and naming a file that is never written. The real
+# artifacts are declared here, which is what retiring that fallback requires.
+outputs:
+  # Always written (plugin.sh: `atomic_write "$state_dir/output-body.md"`),
+  # before destination dispatch, for downstream consumers of the rendered body.
+  - id: output_body
+    path: ${state_dir}/output-body.md
+    type: output-body.md@1
+    format: markdown
+    required: true
+    primary: true
+  # Written by the local-report destination (core/output/destinations.sh:38),
+  # which is on by default but opt-out via ZBUILD_OUTPUT_LOCAL_REPORT=0 — hence
+  # required:false. The run id is expanded from the environment by #1803's
+  # ${VAR} substitution, the same mechanism review-lens uses for its per-lens
+  # output path.
+  - id: local_report
+    path: ${state_dir}/report-${ZBUILD_RUN_ID}.md
+    type: report.md@1
+    format: markdown
+    required: false

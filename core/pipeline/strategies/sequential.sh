@@ -21,7 +21,7 @@ source "${_ZBUILD_STRATEGIES_DIR_SEQ}/common.sh"
 # Dispatches one work unit at a time via orch_dispatch + orch_collect.
 # Halts on first failure (does not continue to next platform/role).
 # Always calls orch_shutdown on exit (success or failure).
-# _check_artifact_contract is called after each successful collect.
+# Artifact enforcement happens per work unit inside plugin_hook_call (#1906).
 #
 # Returns:
 #   0 — all succeeded
@@ -30,7 +30,6 @@ source "${_ZBUILD_STRATEGIES_DIR_SEQ}/common.sh"
 _strategy_run_sequential() {
     local pool_id="$1" stage="$2" roles_out="$3" state_file="$4" plugins_root="$5"
     local any_plugin_found=false
-    local state_dir; state_dir="$(dirname "$state_file")"
 
     local role platform plugin_dir wu prc
     while IFS= read -r role; do
@@ -65,10 +64,6 @@ _strategy_run_sequential() {
                 return 1
             fi
 
-            # Validate artifact contract eagerly after each successful step.
-            if declare -F _check_artifact_contract >/dev/null 2>&1; then
-                _check_artifact_contract "$plugin_dir" "$state_dir" "$stage"
-            fi
         done
     done <<< "$roles_out"
 

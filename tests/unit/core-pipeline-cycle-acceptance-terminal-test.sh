@@ -30,8 +30,11 @@ export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 
 # ── Manifest fixtures: two members with distinct artifact filenames. ───────────
-# acceptance-gate resolves via provides.artifact_type; custom-check via its
-# primary output basename — exercising BOTH resolution paths.
+# Both resolve via their primary output's basename. #1906 retired
+# provides.artifact_type, which acceptance-gate used to resolve through — there
+# is now one resolution path, so both fixtures exercise it. The real
+# spec-acceptance plugin already declares acceptance-gate-result.json as its
+# primary output, so this mirrors production rather than working around it.
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 mkdir -p "$PLUGINS_ROOT/agent/acceptance-gate" "$PLUGINS_ROOT/tool/custom-check"
 cat > "$PLUGINS_ROOT/agent/acceptance-gate/manifest.yaml" <<'EOF'
@@ -44,7 +47,12 @@ hooks:
   run: acceptance_gate_run
 provides:
   role: acceptance_gate
-  artifact_type: acceptance-gate-result.json
+outputs:
+  - id: acceptance_result
+    path: ${artifact_dir}/acceptance-gate-result.json
+    type: acceptance-gate-result.json@1
+    required: true
+    primary: true
 EOF
 cat > "$PLUGINS_ROOT/tool/custom-check/manifest.yaml" <<'EOF'
 id: custom-check

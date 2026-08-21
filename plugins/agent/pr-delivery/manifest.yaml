@@ -23,7 +23,6 @@ requires:
   plugins: []
 
 provides:
-  artifact_type: pr-url.txt
   role: pr
 
 config:

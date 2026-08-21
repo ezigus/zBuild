@@ -26,7 +26,10 @@ mechanics:
 
   - name: gates
     summary: auto vs blocking gates; verdicts that pass or fail a stage.
-    defined_in: core/pipeline/contracts.sh
+    # #1906: was core/pipeline/contracts.sh, which only ever checked artifact
+    # existence and is now retired. Verdict classification — what actually
+    # decides whether a stage passed — has always lived here.
+    defined_in: core/pipeline/verdict.sh
 
   - name: leaf
     summary: Run a single plugin (one stage).

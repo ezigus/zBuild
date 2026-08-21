@@ -49,7 +49,6 @@ source "$_ZBUILD_ROOT/core/pipeline/strategies/map.sh"
 # Runner helpers extracted from this file in #279 to keep it under the
 # CLAUDE.md 500-line cap.
 source "$_ZBUILD_ROOT/core/pipeline/dispatch.sh"
-source "$_ZBUILD_ROOT/core/pipeline/contracts.sh"
 source "$_ZBUILD_ROOT/core/pipeline/state_helpers.sh"
 # ADR-020 (#496) pre-flight inter-stage data contract validator.
 source "$_ZBUILD_ROOT/core/pipeline/contract-validator.sh"
@@ -104,9 +103,8 @@ Environment:
 EOF
 }
 
-# Helpers extracted to dispatch.sh / contracts.sh / state_helpers.sh in #279:
+# Helpers extracted to dispatch.sh / state_helpers.sh in #279:
 #   _find_plugin_for_stage       → core/pipeline/dispatch.sh
-#   _check_artifact_contract     → core/pipeline/contracts.sh
 #   write_scope_override
 #   _update_stage_status         } → core/pipeline/state_helpers.sh
 #   _set_pipeline_status
@@ -3289,11 +3287,12 @@ main() {
                 error "No plugin registered for required stage '$stage'"
                 return 1
             fi
+            # ARCHITECTURE.md §2 artifact enforcement is fail-closed inside
+            # plugin_hook_call itself (scan_plugin_outputs, #1803) — every declared
+            # output, honouring required:false. #1906 retired the coarser per-stage
+            # artifact check that used to run here: it gated on a field that no
+            # longer exists and tested only the FIRST declared output.
             set +e; plugin_hook_call "$plugin_dir" run "$stage" "$state_file"; rc=$?; set -e
-            # ARCHITECTURE.md §2: enforce artifact contract after plugin run (fail-closed)
-            if [[ $rc -eq 0 ]]; then
-                _check_artifact_contract "$plugin_dir" "$state_dir" "$stage"
-            fi
         else
             # Strategy dispatch via orch contract (ADR-011, issue #222).
             # Pool ID: stage-scoped, unique per run to prevent pool collision across stages.
@@ -3356,13 +3355,11 @@ main() {
                     error "No plugin registered for required stage '$stage' (roles: $roles_out)"
                     return 1
                 fi
+                # Artifact enforcement runs inside plugin_hook_call (#1803/#1906).
                 set +e; plugin_hook_call "$plugin_dir" run "$stage" "$state_file"; rc=$?; set -e
-                # ARCHITECTURE.md §2: enforce artifact contract after plugin run (fail-closed)
-                if [[ $rc -eq 0 ]]; then
-                    _check_artifact_contract "$plugin_dir" "$state_dir" "$stage"
-                fi
             fi
-            # rc=0: artifact contracts already checked inside fanout/sequential strategies.
+            # rc=0: the strategies dispatch generated work units that call
+            # plugin_hook_call, so scan_plugin_outputs has already run per member.
         fi
 
         if [[ $rc -eq 0 ]]; then
