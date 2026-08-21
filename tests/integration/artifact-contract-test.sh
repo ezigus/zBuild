@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# Tests: A3 artifact contract check — plugin declares provides.artifact_type
-# but writes nothing → plugin.contract.violated event + synthetic findings.json.
+# Tests: A3 artifact contract check — a plugin declares an output and writes
+# nothing → plugin.contract.violated event + synthetic findings.json.
 # ARCHITECTURE.md §2.
+#
+# #1906: the check used to be gated on provides.artifact_type being declared.
+# That field is retired; outputs[].required is the single declaration, enforced
+# by scan_plugin_outputs inside plugin_hook_call.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -35,7 +39,7 @@ A3_EVENTS_JSONL="$A3_EVENTS_DIR/events.jsonl"
 mkdir -p "$A3_PLUGINS/agent/noartifact" "$A3_PLUGINS/agent/security-lens" \
          "$A3_PLUGINS/tool/output" "$A3_STATE_DIR" "$A3_EVENTS_DIR"
 
-# ─── Fixture: plugin that declares provides.artifact_type but writes nothing ──
+# ─── Fixture: plugin that declares an output but writes nothing ──────────────
 cat > "$A3_PLUGINS/agent/noartifact/manifest.yaml" <<'EOF'
 id: intake
 name: No-Artifact Intake
@@ -50,7 +54,6 @@ provides:
   # artifact-contract-minimal.yaml declares roles: [intake]; resolve_stage_plugin
   # fails closed when a declared role resolves to nothing.
   role: intake
-  artifact_type: findings.json
 outputs:
   - name: findings
     path: artifacts/intake-findings.json
@@ -140,10 +143,12 @@ fi
 
 # ─── Assert the event names the correct plugin and artifact type ──────────────
 if [[ -f "$A3_EVENTS_JSONL" ]]; then
-    artifact_type="$(grep '"plugin.contract.violated"' "$A3_EVENTS_JSONL" 2>/dev/null \
-        | jq -r '.data.artifact_type // empty' 2>/dev/null | head -1 || true)"
-    assert_eq "plugin.contract.violated event carries correct artifact_type" \
-        "findings.json" "$artifact_type"
+    # #1906: the event used to carry .data.artifact_type. The field is retired,
+    # so the event names the expected PATH instead — the fact an operator can act on.
+    violated_path="$(grep '"plugin.contract.violated"' "$A3_EVENTS_JSONL" 2>/dev/null \
+        | jq -r '.data.expected_path // empty' 2>/dev/null | head -1 || true)"
+    assert_contains "plugin.contract.violated event names the expected artifact path" \
+        "$violated_path" "intake-findings.json"
 
     violation_reason="$(grep '"plugin.contract.violated"' "$A3_EVENTS_JSONL" 2>/dev/null \
         | jq -r '.data.reason // empty' 2>/dev/null | head -1 || true)"
@@ -151,9 +156,16 @@ if [[ -f "$A3_EVENTS_JSONL" ]]; then
         "artifact_missing_or_empty" "$violation_reason"
 fi
 
-# ─── Test the contract check also works when no outputs[] declared ────────────
-# Verify that a plugin declaring artifact_type but without outputs[] also fires
-# the check (uses the default artifacts/<stage>-findings.json path).
+# ─── A plugin declaring NO outputs has nothing to enforce (#1906) ────────────
+# The retired check fell back to artifacts/<stage>-findings.json when a plugin
+# declared provides.artifact_type but no outputs[]. That fallback is gone: a
+# declaration is now the only thing that can be enforced, so a plugin that
+# declares nothing is checked for nothing.
+#
+# This is asserted rather than left implicit because it is the reason
+# output-github-comment — the only plugin that had no outputs[] — was given a
+# real block in this change. A future plugin that declares nothing gets no
+# enforcement, and that must be a visible consequence rather than a silent one.
 B_DIR="$TEST_TEMP_DIR/b"
 B_PLUGINS="$B_DIR/plugins"
 B_STATE_DIR="$B_DIR/state"
@@ -174,7 +186,6 @@ requires:
     - redaction
 provides:
   role: intake
-  artifact_type: findings.json
 EOF
 cat > "$B_PLUGINS/agent/noartifact-nopaths/plugin.sh" <<'EOF'
 noartifact_nopaths_run() { return 0; }
@@ -194,14 +205,10 @@ cp "$A3_PLUGINS/tool/output/plugin.sh"            "$B_PLUGINS/tool/output/"
 
 if [[ -f "$B_EVENTS_JSONL" ]]; then
     b_violated="$(grep -c '"plugin.contract.violated"' "$B_EVENTS_JSONL" 2>/dev/null || true)"
-    if [[ "$b_violated" -gt 0 ]]; then
-        assert_pass "contract check fires for plugin with artifact_type but no outputs[] declared"
-    else
-        assert_fail "contract check fires for plugin with artifact_type but no outputs[] declared" \
-            "plugin.contract.violated not emitted"
-    fi
+    assert_eq "a plugin declaring no outputs raises no contract violation (#1906)" \
+        "0" "$b_violated"
 else
-    assert_fail "events.jsonl created for no-outputs-paths run"
+    assert_fail "events.jsonl created for no-outputs run"
 fi
 
 cleanup_test_env

@@ -31,7 +31,6 @@ build.diff.empty_after_done_sentinel
 build.commit.skipped
 plugin.result
 plugin.run.complete
-plugin.contract.violated
 stage.complete
 stage.start
 plugin.run.start

@@ -1,4 +1,3 @@
-./artifacts/build-build-contract-violated-findings.json
 ./artifacts/build-prompt.txt
 ./artifacts/build-summary.json
 ./artifacts/diff.patch
