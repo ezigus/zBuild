@@ -30,6 +30,7 @@ provides:
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
     - teardown.complete
+    - teardown.result.write_failed
     - teardown.scope.invalid
     - teardown.start
 
@@ -38,6 +39,11 @@ config:
     - complete
     - degraded
 
+# Empty by construction, not by omission. A declared input resolves to another
+# stage's declared OUTPUT (ADR-055 §5), and teardown's targets are the stages
+# that executed — a fact carried by `stage_statuses` in pipeline-state.json,
+# which no stage produces as an artifact. #1830 asked for targets-as-inputs; the
+# state file is where that list actually lives.
 inputs: []
 
 outputs:

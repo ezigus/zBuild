@@ -5,7 +5,12 @@
 # SPEC-2: one target cleanup failure is recorded; remaining targets still run; verdict=degraded
 # SPEC-3: no-cleanup-hook targets appear in data.targets with outcome=no_op
 # SPEC-4: aggregate verdict/disposition reflects partial failure (verdict=degraded, disposition=complete)
-# SPEC-6: clean run → verdict=complete, disposition=complete, all outcomes=ok|no_op
+# SPEC-6: manifest declares result_contract 2, the teardown_result output, and valid_verdicts
+# SPEC-7: an unwritable artifacts dir still yields rc=0 + teardown.complete, and names the loss
+#
+# SPEC-5 lives in tests/integration/cleanup-release-test.sh — it guards the rc=0
+# invariant against a failing cleanup HOOK, where this file's SPEC-7 guards it
+# against a failing result WRITE.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -155,6 +160,10 @@ _make_plugin_with_cleanup "$_spec2_fail_plugin" "spec2-fail" 7
 _make_plugin_with_cleanup "$_spec2_ok_plugin" "spec2-ok" 0
 _make_state_file "$_spec2_state" "spec2-fail" "spec2-ok"
 
+# rc is captured rather than `|| true`d: SPEC-4 reads this run's artifact, and a
+# swallowed failure here would surface there as "file missing" instead of naming
+# the real cause.
+_spec2_rc=0
 (
     export ZBUILD_ARTIFACT_DIR="$_spec2_artifacts"
     source "$TEARDOWN_DIR/plugin.sh"
@@ -166,7 +175,9 @@ _make_state_file "$_spec2_state" "spec2-fail" "spec2-ok"
     }
     export ZBUILD_TEARDOWN_SCOPE="release"
     teardown_run "teardown" "$_spec2_state" >/dev/null 2>&1
-) || true
+) || _spec2_rc=$?
+
+assert_eq "[SPEC-2] teardown_run exits 0 despite a failing cleanup hook" "0" "$_spec2_rc"
 
 _spec2_result="$_spec2_artifacts/teardown-result.json"
 if [[ -f "$_spec2_result" ]]; then
@@ -224,6 +235,9 @@ fi
 # CHANGE: at baseline teardown writes no result file.
 print_test_section "SPEC-4: partial failure → verdict=degraded, disposition=complete"
 
+# Reuses SPEC-2's run deliberately — same partial-failure scenario, different
+# claim. SPEC-2 above already asserted that run's rc, so a missing file here can
+# only mean the write itself failed.
 _spec4_result="$_spec2_artifacts/teardown-result.json"
 if [[ -f "$_spec4_result" ]]; then
     _spec4_verdict="$(jq -r '.verdict' "$_spec4_result" 2>/dev/null || true)"
@@ -252,11 +266,17 @@ else
     assert_pass "[SPEC-6] manifest has no result_contract declared (guard: vacuously true)"
 fi
 
+# Asserted, not guarded: both branches used to call assert_pass, so this went
+# green whether or not the output was declared. The declaration is load-bearing
+# — lint-verdict-classify requires config.valid_verdicts of any manifest with a
+# `primary: true` output, and #1831 dispatches teardown as an ordinary stage
+# whose required output the engine enforces.
 _spec6_has_td="$(grep "teardown_result" "$_spec6_manifest" 2>/dev/null || echo '')"
 if [[ -n "$_spec6_has_td" ]]; then
-    assert_pass "[SPEC-6] manifest outputs include teardown_result (if declared)"
+    assert_pass "[SPEC-6] manifest outputs declare teardown_result"
 else
-    assert_pass "[SPEC-6] manifest has no teardown_result entry (guard: vacuously true)"
+    assert_fail "[SPEC-6] manifest outputs declare teardown_result" \
+        "no teardown_result entry in $_spec6_manifest"
 fi
 
 _spec6_has_valid_verdicts="$(grep -m1 "valid_verdicts:" "$_spec6_manifest" 2>/dev/null || echo '')"
@@ -272,6 +292,81 @@ if [[ -n "$_spec6_has_valid_verdicts" ]]; then
     fi
 else
     assert_pass "[SPEC-6] manifest has no valid_verdicts declared (guard: vacuously true)"
+fi
+
+# ─── SPEC-7: a failed result write keeps the rc=0 guarantee ──────────────────
+# CHANGE: at baseline the write was an unguarded `| atomic_write`, and the loop
+# above leaves errexit ON, so a failed write aborted teardown_run before both
+# `teardown.complete` and the `return 0` ADR-054 §4 mandates.
+#
+# errexit has to be LIVE at the call site to observe this: bash suppresses it
+# inside a function invoked in a `||`/`if` list, which is why every other SPEC
+# here — and the old SPEC-5 in cleanup-release-test.sh — could not have caught
+# it. Hence the child `bash -e` that calls teardown_run bare and prints a
+# sentinel only if control reaches the next line.
+print_test_section "SPEC-7: unwritable artifacts dir → still rc=0, still teardown.complete"
+
+# Inline rather than skip_on_platform/skip_unless_capable: those print results and
+# end the FILE, which would mask any later failure (#1748). Only this SPEC is
+# unexercisable as root; the rest of the file must still run.
+if [[ "$(id -u)" == "0" ]]; then
+    SKIP=$((SKIP + 1))
+    echo -e "  ${YELLOW}SKIP${RESET}: [SPEC-7] running as root; chmod cannot deny writes" >&2
+else
+    _spec7_dir="$TEST_TEMP_DIR/spec7"
+    _spec7_artifacts="$_spec7_dir/artifacts"
+    _spec7_plugin="$_spec7_dir/plugin"
+    _spec7_events="$_spec7_dir/events.jsonl"
+    mkdir -p "$_spec7_dir/state" "$_spec7_artifacts"
+    _make_plugin_with_cleanup "$_spec7_plugin" "spec7-ok" 0
+    _make_state_file "$_spec7_dir/state/pipeline-state.json" "spec7-ok"
+    chmod 555 "$_spec7_artifacts"
+
+    _spec7_out=""
+    _spec7_rc=0
+    _spec7_out="$(
+        ZBUILD_ARTIFACT_DIR="$_spec7_artifacts" \
+        ZBUILD_TEARDOWN_SCOPE="release" \
+        ZBUILD_EVENTS_JSONL="$_spec7_events" \
+        TEARDOWN_DIR="$TEARDOWN_DIR" \
+        SPEC7_PLUGIN="$_spec7_plugin" \
+        SPEC7_STATE="$_spec7_dir/state/pipeline-state.json" \
+        bash -c '
+            set -euo pipefail
+            source "$TEARDOWN_DIR/plugin.sh"
+            resolve_stage_plugin() { echo "$SPEC7_PLUGIN"; }
+            teardown_run "teardown" "$SPEC7_STATE" >/dev/null 2>&1
+            echo "REACHED_RETURN"
+        ' 2>/dev/null
+    )" || _spec7_rc=$?
+
+    chmod 755 "$_spec7_artifacts"
+
+    assert_eq "[SPEC-7] teardown_run returns 0 when the result write fails" "0" "$_spec7_rc"
+    assert_eq "[SPEC-7] control reaches the end of teardown_run (not aborted by errexit)" \
+        "REACHED_RETURN" "$_spec7_out"
+
+    if [[ -f "$_spec7_events" ]] && grep -q '"teardown.result.write_failed"' "$_spec7_events"; then
+        assert_pass "[SPEC-7] the lost result is recorded on teardown.result.write_failed"
+    else
+        assert_fail "[SPEC-7] the lost result is recorded on teardown.result.write_failed" \
+            "event absent from $_spec7_events"
+    fi
+
+    if [[ -f "$_spec7_events" ]] && grep -q '"teardown.complete"' "$_spec7_events"; then
+        assert_pass "[SPEC-7] teardown.complete still emitted after a failed write"
+    else
+        assert_fail "[SPEC-7] teardown.complete still emitted after a failed write" \
+            "event absent from $_spec7_events"
+    fi
+
+    # The event is emitted, so it must be declared — #1717 composes the engine's
+    # known set from manifests, and an undeclared emit is a schema violation.
+    if grep -q "teardown.result.write_failed" "$REPO_ROOT/plugins/tool/teardown/manifest.yaml"; then
+        assert_pass "[SPEC-7] teardown.result.write_failed declared in provides.events"
+    else
+        assert_fail "[SPEC-7] teardown.result.write_failed declared in provides.events" "undeclared"
+    fi
 fi
 
 cleanup_test_env

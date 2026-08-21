@@ -68,6 +68,7 @@ A failed cleanup does not abort remaining targets — every stage in the execute
 | `teardown.start` | At the start of `teardown_run` |
 | `teardown.complete` | After all stages have been processed |
 | `teardown.scope.invalid` | An unrecognised scope was requested; `release` used instead |
+| `teardown.result.write_failed` | The result file could not be written; teardown still returns 0 |
 | `stage.cleanup.failed` | When a plugin's `cleanup` hook returns non-zero |
 
 ## Wiring

@@ -143,8 +143,15 @@ teardown_run() {
         _reason="one or more cleanup hooks returned non-zero; see stage.cleanup.failed events"
     fi
 
-    # Write the v2 result file (ADR-054 §5, ADR-055).
-    printf '%s\n' "{
+    # Write the v2 result file (ADR-054 §5, ADR-055). Guarded: the loop above
+    # re-enables errexit, so an unguarded pipe would abort teardown_run here on
+    # a failed write — before teardown.complete and before the `return 0` that
+    # ADR-054 §4 requires. The runner's EXIT-trap call site hides that today
+    # (runner.sh backgrounds the hook inside `|| true`), which only converts it
+    # into a silent loss of both the result and the completion event; dispatched
+    # as an ordinary stage (#1831) the rc would escape. Failure rides an event,
+    # like every other teardown failure.
+    if ! printf '%s\n' "{
   \"result_contract\": 2,
   \"verdict\": \"$_verdict\",
   \"disposition\": \"complete\",
@@ -152,7 +159,10 @@ teardown_run() {
   \"data\": {
     \"targets\": $_targets_json
   }
-}" | atomic_write "$_result_file"
+}" | atomic_write "$_result_file"; then
+        emit_event "teardown.result.write_failed" \
+            "file=$_result_file" "scope=$_scope" 2>/dev/null || true
+    fi
 
     emit_event "teardown.complete" \
         "scope=$_scope" "failed=$_any_failed" 2>/dev/null || true
