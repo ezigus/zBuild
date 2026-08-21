@@ -73,14 +73,41 @@ teardown_run() {
     emit_event "teardown.start" \
         "scope=$_scope" "stage_count=${#_executed[@]}" 2>/dev/null || true
 
+    # Derive artifacts dir from state_file (ADR-054 §2: plugins derive artifacts_dir
+    # from dirname($state_file)/artifacts). Fall back to ZBUILD_ARTIFACT_DIR or tmp.
+    local _artifacts_dir
+    if [[ -n "$_state_file" ]]; then
+        _artifacts_dir="${ZBUILD_ARTIFACT_DIR:-$(dirname "$_state_file")/artifacts}"
+    else
+        _artifacts_dir="${ZBUILD_ARTIFACT_DIR:-${TMPDIR:-/tmp}/zbuild-teardown-artifacts}"
+    fi
+    mkdir -p "$_artifacts_dir"
+    local _result_file="$_artifacts_dir/teardown-result.json"
+
     local _any_failed=0
-    local _stage _plugin_dir _rc
+    # Per-target outcome array: each entry is a JSON object string.
+    local -a _targets=()
+    local _stage _plugin_dir _rc _cleanup_fn
     for _stage in "${_executed[@]}"; do
         # Skip teardown itself to prevent circular cleanup dispatch.
         [[ "$_stage" == "teardown" ]] && continue
 
         _plugin_dir="$(resolve_stage_plugin "$_stage" "$_plugins_root" 2>/dev/null || true)"
-        [[ -z "$_plugin_dir" ]] && continue
+        if [[ -z "$_plugin_dir" ]]; then
+            _targets+=("{\"stage\":$(printf '%s' "$_stage" | jq -Rc .),\"outcome\":\"no_op\"}")
+            continue
+        fi
+
+        # Check if a cleanup hook is declared — absent hook is a no_op, not a failure.
+        _cleanup_fn="$(yaml_get "$_plugin_dir/manifest.yaml" "hooks.cleanup" 2>/dev/null || true)"
+        if [[ -z "$_cleanup_fn" ]]; then
+            # Emit the absence event (mirrors lifecycle.sh behaviour for callers
+            # that bypassed plugin_hook_call, e.g. in tests).
+            emit_event "plugin.cleanup.absent" \
+                "stage=$_stage" 2>/dev/null || true
+            _targets+=("{\"stage\":$(printf '%s' "$_stage" | jq -Rc .),\"outcome\":\"no_op\"}")
+            continue
+        fi
 
         _rc=0
         set +e
@@ -88,19 +115,54 @@ teardown_run() {
         _rc=$?
         set -e
 
-        # #1823: an absent cleanup hook now returns 0 (rc is binary — ADR-054 §4)
-        # and records itself on `plugin.cleanup.absent`. The former
-        # `[[ $_rc -eq $ZBUILD_HOOK_ABSENT ]] && continue` guard existed only to
-        # keep rc=3 out of the failure branch below; with rc=0 that branch
-        # already declines it, so the guard was dead weight and is gone. An
-        # absent hook is still fully distinguishable from one that ran — on the
-        # event, which is where #1828's acceptance asked for it.
         if [[ $_rc -ne 0 ]]; then
             emit_event "stage.cleanup.failed" \
                 "stage=$_stage" "scope=$_scope" "rc=$_rc" 2>/dev/null || true
             _any_failed=1
+            _targets+=("{\"stage\":$(printf '%s' "$_stage" | jq -Rc .),\"outcome\":\"failed\"}")
+        else
+            _targets+=("{\"stage\":$(printf '%s' "$_stage" | jq -Rc .),\"outcome\":\"ok\"}")
         fi
     done
+
+    # Build the data.targets JSON array from collected entries.
+    local _targets_json="["
+    local _i
+    for (( _i=0; _i<${#_targets[@]}; _i++ )); do
+        [[ $_i -gt 0 ]] && _targets_json+=","
+        _targets_json+="${_targets[$_i]}"
+    done
+    _targets_json+="]"
+
+    local _verdict _reason
+    if [[ $_any_failed -eq 0 ]]; then
+        _verdict="complete"
+        _reason="all cleanup hooks completed without error"
+    else
+        _verdict="degraded"
+        _reason="one or more cleanup hooks returned non-zero; see stage.cleanup.failed events"
+    fi
+
+    # Write the v2 result file (ADR-054 §5, ADR-055). Guarded: the loop above
+    # re-enables errexit, so an unguarded pipe would abort teardown_run here on
+    # a failed write — before teardown.complete and before the `return 0` that
+    # ADR-054 §4 requires. The runner's EXIT-trap call site hides that today
+    # (runner.sh backgrounds the hook inside `|| true`), which only converts it
+    # into a silent loss of both the result and the completion event; dispatched
+    # as an ordinary stage (#1831) the rc would escape. Failure rides an event,
+    # like every other teardown failure.
+    if ! printf '%s\n' "{
+  \"result_contract\": 2,
+  \"verdict\": \"$_verdict\",
+  \"disposition\": \"complete\",
+  \"reason\": \"$_reason\",
+  \"data\": {
+    \"targets\": $_targets_json
+  }
+}" | atomic_write "$_result_file"; then
+        emit_event "teardown.result.write_failed" \
+            "file=$_result_file" "scope=$_scope" 2>/dev/null || true
+    fi
 
     emit_event "teardown.complete" \
         "scope=$_scope" "failed=$_any_failed" 2>/dev/null || true

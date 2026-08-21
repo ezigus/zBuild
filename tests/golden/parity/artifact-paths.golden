@@ -9,6 +9,7 @@
 ./artifacts/review-aggregator-lenses.json
 ./artifacts/review-report.json
 ./artifacts/review-report.md
+./artifacts/teardown-result.json
 ./artifacts/test-results.json
 ./intake.md
 ./mock-repo/seed.txt

@@ -25,12 +25,31 @@ requires:
 
 provides:
   role: teardown
+  result_contract: 2
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
     - teardown.complete
+    - teardown.result.write_failed
     - teardown.scope.invalid
     - teardown.start
 
+config:
+  valid_verdicts:
+    - complete
+    - degraded
+
+# Empty by construction, not by omission. A declared input resolves to another
+# stage's declared OUTPUT (ADR-055 §5), and teardown's targets are the stages
+# that executed — a fact carried by `stage_statuses` in pipeline-state.json,
+# which no stage produces as an artifact. #1830 asked for targets-as-inputs; the
+# state file is where that list actually lives.
 inputs: []
-outputs: []
+
+outputs:
+  - id: teardown_result
+    path: "${artifact_dir}/teardown-result.json"
+    type: teardown-result.json@1
+    format: json
+    required: true
+    primary: true
