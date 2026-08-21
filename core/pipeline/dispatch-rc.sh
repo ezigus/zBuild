@@ -11,7 +11,9 @@
 # Everything anything needs to say beyond those two belongs in the result file
 # (ADR-054 §5), on `disposition` (§6), or on the routing state that already
 # carries it. ADR-001's rc=1 → `kind: recovery` routing is deleted: no recovery
-# plugin was ever registered and the path was never implemented.
+# plugin was ever registered and the path was never implemented. The KIND itself
+# is gone too as of #1900 — `disposition` answers every verb it would have
+# returned, so there is nothing left for such a plugin to decide.
 #
 # ─── Why an integer channel had to go ───────────────────────────────────────
 #

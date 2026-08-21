@@ -14,7 +14,7 @@ zbuild plugin list
 
 You may find a plugin that already does what you need, or one close enough to copy as a starting point. The full per-plugin reference is under [[Plugins]].
 
-## The six kinds of plugin
+## The five kinds of plugin
 
 Choose the kind that matches what your plugin does:
 
@@ -22,7 +22,6 @@ Choose the kind that matches what your plugin does:
 |---|---|
 | `agent` | LLM-driven work (writing code, drafting a plan). |
 | `tool` | Non-LLM integration — git, GitHub, gates, caches. |
-| `recovery` | Handles errors: retry, backtrack, escalate, or abort. |
 | `orchestrator` | Runs other plugins and aggregates their results. |
 | `claim-coordinator` | Coordinates work across machines (lock / release / list). |
 | `daemon` | Long-running background process. |
@@ -76,7 +75,7 @@ This section documents every manifest field and the complete plugin contract. Yo
 ```yaml
 id: <kebab-case-unique>
 name: <human-readable>
-kind: agent | tool | recovery | orchestrator | claim-coordinator | daemon
+kind: agent | tool | orchestrator | claim-coordinator | daemon
 version: <semver>
 description: | <one paragraph>
 hooks:      { init: <fn>, run: <fn>, finalize: <fn>, cleanup: <fn> }

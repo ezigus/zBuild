@@ -155,7 +155,7 @@ Still add golden-file diffing as a new capability (confirmed zero golden tests i
 | Original row | Revised landing |
 |---|---|
 | "Stage handlers → `kind: agent\|tool` plugins" | Already centralized at `legacy/scripts/sw-pipeline.sh:1572`; plugin registry wraps existing function-name dispatch. No refactor. |
-| "Self-healing loops → recovery plugin" | Lift error-classification, cost tracking, and stage-retry state into shared core first; otherwise recovery plugins re-introduce them each. |
+| "Self-healing loops → recovery plugin" | Landed in the engine, not a plugin: error-classification is `disposition` (ADR-054 §6) and the backward edge is `route_back` (ADR-045). `kind: recovery` was retired by #1900 — the shared-core-first warning was right, and the shared core absorbed the whole concern. |
 | "Compound-audit cascade" | 7 agent plugins + 1 orchestrator plugin + 4 phase modules (pre-flight, audit-plan, cycle, backtrack), not 2. |
 | "Vitals composite" | Core engine subsystem (not "side service"); already wired into circuit breaker at `legacy/scripts/lib/loop-convergence.sh:111`. |
 | "Memory recall (3-tier)" | Side service with two-backend split: native TF-IDF (`legacy/scripts/sw-memory.sh`) + ruflo HNSW (`legacy/scripts/lib/ruflo-adapter.sh:2376-2440`). |
@@ -176,7 +176,7 @@ Original NOT-keeping list + new additions:
 - The 1013-line `stage_compound_quality` monolith (split into 4 per Section A).
 - The 2974-line `legacy/scripts/lib/pipeline-intelligence.sh` junk drawer.
 - The 4309-line `legacy/scripts/sw-pipeline.sh` god-script (CLI + engine + selfheal + errors).
-- Three separate named self-healing loops — collapse into one engine driven by recovery plugins.
+- Three separate named self-healing loops — collapse into one engine driven by `disposition` (ADR-054 §6).
 - Hardcoded `_extract_blocking_items` source list — replaced by `plugins/*/findings.json` glob.
 - `_COMPOUND_AGENT_PROMPTS_*` bash variable indirection.
 - Anthropic-named tier strings (`haiku|sonnet|opus`) in code — replaced by T0-T4 ordinal with models as data.
@@ -281,11 +281,11 @@ Behaviors not wired today; build after migration stabilizes (not blocking Phase 
 
 **Wishlist (post-stabilization):** Section L items become a backlog with their own milestone, opened only after Phase 5 stabilizes.
 
-### Labels (16)
+### Labels (19)
 
 - **Phase:** `phase-0`, `phase-1`, `phase-2`, `phase-3`, `phase-4`, `phase-5`
 - **Type:** `keeper`, `wishlist`, `foundation`, `legacy-prune`
-- **Plugin kind:** `agent-plugin`, `tool-plugin`, `recovery-plugin`, `orchestrator-plugin`, `claim-coordinator`, `daemon-plugin`
+- **Plugin kind:** `agent-plugin`, `tool-plugin`, `orchestrator-plugin`, `claim-coordinator`, `daemon-plugin`
 - **Concern:** `safety-primitive`, `learning-loop`, `test-migration`, `cli-ux`
 
 ### Issue counts

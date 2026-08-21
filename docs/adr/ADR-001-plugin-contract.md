@@ -5,6 +5,7 @@
 **Amended by:** ADR-042 — a stage's flow-name need not equal its manifest `id`; stage→plugin resolution is role-then-id everywhere (leaf, cycle, parallel).
 **Amended:** 2026-08-09 (#1820, ADR-054) — hook lifecycle corrected: only run and cleanup are active at the stage-dispatch layer; init and finalize are never called there. rc table superseded: plugin rc is binary (0 success, 1 error); the rc=1→recovery routing never existed. See ADR-054.
 **Amended:** 2026-08-12 (#1768, ADR-055 §1) — the manifest `inputs:`/`outputs:` shape is corrected. The example used `name:` where the engine has always read `id:`, and predates the source vocabulary entirely. A consumer now declares the artifact **name** it needs and nothing else — no producer stage, no path, no type — and the engine resolves it to the single stage in the flow producing it. ADR-055 owns the data surface; this ADR shows the shape only.
+**Amended:** 2026-08-20 (#1900) — **`kind: recovery` is retired**, not merely unimplemented. It is removed from `ZBUILD_PLUGIN_KINDS`, its `classify`/`act` hooks are deleted, and the three never-emitted `recovery.*` event names are removed from `config/event-schema.json`. ADR-054 §6 superseded it: `disposition` covers `retry`/`escalate`/`abort` and ADR-045's `route_back` covers `backtrack`, and ADR-054 inverted its premise by moving retry policy out of plugins and into the engine. Five kinds remain in this document (`persona`, #1304, is a sixth the prose here never listed). See §"Error semantics".
 
 ## Context
 
@@ -25,7 +26,7 @@ Every plugin lives in `plugins/<kind>/<name>/` and provides a `manifest.yaml` pl
 ```yaml
 id: <kebab-case-globally-unique>
 name: <human-readable>
-kind: agent | tool | recovery | orchestrator | claim-coordinator | daemon
+kind: agent | tool | orchestrator | claim-coordinator | daemon
 convergence: gate | advisory   # OPTIONAL — ADR-040 §5/§7 convergence marker
 version: <semver>
 description: |
@@ -85,7 +86,6 @@ state:
 |---|---|---|---|
 | `agent` | `run` | scope manifest, input artifact, tier | structured artifact (typed) |
 | `tool` | `run` | typed args | exit code + structured stdout/stderr |
-| `recovery` | `classify`, `act` | error context | action verb (`retry`, `backtrack`, `escalate`, `abort`) |
 | `orchestrator` | `run` | upstream artifacts | downstream artifact(s) + verdict |
 | `claim-coordinator` | `claim`, `release`, `heartbeat`, `list_claims` | issue id | acquired flag + lease id |
 | `daemon` | `tick` | poll interval | events to bus |
@@ -155,10 +155,25 @@ The `rc=2 → fatal` and `rc=1 → kind: recovery` **routing rules** are deleted
 implemented; recoverability is now a declared field (`disposition`), not a number the
 engine re-interprets.
 
-This deletes the *routing*, not the *idea*: `kind: recovery` remains a keeper
-(`.github/issues/keepers-manifest.yaml`), and `recovery.suggestion` stays declared in
-`config/event-schema.json` with no emitter today. A future recovery layer reads
-`disposition` — the field that already answers the question its rc was guessing at.
+**The kind itself is retired (2026-08-20, #1900).** As accepted, this passage kept
+`kind: recovery` alive as "the *idea*, not the *routing*" — a keeper awaiting a future
+recovery layer. Measurement closed that out: the kind was never merely unbuilt, it was
+**superseded**, and by the very field this section points at. `disposition` (ADR-054 §6,
+`core/pipeline/disposition.sh`) answers all four action verbs a recovery plugin existed
+to return — `retry` → `interrupted`/`throttled`, `escalate` → `exhausted`, `abort` →
+`unavailable`/`broken` — and `backtrack` is `route_back` (ADR-045), shipped separately.
+
+More decisively, ADR-054 **inverted the premise**: *"The response table lives HERE, not in
+any plugin: no stage decides its own retry policy."* A kind whose entire job was to let a
+plugin decide retry policy has nothing left to own. The one keeper that actually declared
+`plugin_kind: "recovery"` (#16) was independently closed as `superseded` before this was
+noticed.
+
+So `recovery` is removed from `ZBUILD_PLUGIN_KINDS`, its `classify`/`act` hooks are gone,
+and the three `recovery.*` names — which never had an emitter, and whose only documented
+one (`cq-backtrack`, ADR-013) was never built either — are removed from
+`config/event-schema.json`. A future recovery layer builds on `disposition`; it would not
+have inherited this vocabulary anyway.
 
 ### Fail-closed scanner contract
 
@@ -201,8 +216,8 @@ exactly one file, and it is always a file already in scope for the plugin being 
 
 - **Engine** (`config/event-schema.json`): `pipeline.*`, `stage.*`, `stage_io.*`, `plugin.*`, `cycle.*`,
   `router.*`, `loop.*`, `state.*`, `registry.*`, `parallel.*`, `redaction.*`, `template.*`, `strategy.*`,
-  `artifact.*`, `model.*`, `cost.*`, plus the engine's contract layers — `recovery.*` (the `kind: recovery`
-  dispatch contract), `orch.*` (`core/orch/contract.sh`), `memory.*` (`core/memory/contract.sh`),
+  `artifact.*`, `model.*`, `cost.*`, plus the engine's contract layers —
+  `orch.*` (`core/orch/contract.sh`), `memory.*` (`core/memory/contract.sh`),
   `backend.*` (`core/config/config.sh`), `detection.*` (`core/detect`), `llm.*` (`scripts/lib/llm-agent.sh`),
   `selfhost.*`. These are named by the *contract*, not by whichever backend plugin is bound to it: the
   event means the same thing whichever `orch-*`/`memory-*` plugin is selected, so it cannot live in one
