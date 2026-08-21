@@ -67,6 +67,7 @@ outputs:
     type: pr-result.json@1
     format: json
     required: true
+    terminal: true
 
 state:
   persisted: [last_pr_url, last_pr_number]

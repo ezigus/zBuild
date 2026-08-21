@@ -239,6 +239,29 @@ for id in "${!_LC_STAGE_MANIFEST[@]}"; do
     done < <(manifest_graph_get_inputs "$m")
 done
 
+# ─── OUTPUT_UNCONSUMED tree-wide check (ADR-020 bidirectional contract) ─────
+# Every output declared by an in-scope manifest must be named by at least one
+# consumer's input anywhere in the plugins tree. Outputs marked terminal: true
+# (pipeline terminus; no stage ever consumes it) or advisory: true (rendered
+# for humans outside the stage graph) are exempt. The flow-scoped check in the
+# runtime validator is stricter; the lint's weaker tree-wide version catches
+# typos and outright orphans at CI time.
+for _key_out in "${!_LC_STAGE_OUTPUTS[@]}"; do
+    [[ "$_key_out" == role:* ]] && continue
+    _out_stage="${_key_out%%:*}"
+    _out_id="${_key_out#*:}"
+    _lc_id_in_scope "$_out_stage" || continue
+    [[ -n "${_LC_INPUT_NAMES[$_out_id]:-}" ]] && continue
+    _out_manifest="${_LC_STAGE_MANIFEST[$_out_stage]:-}"
+    [[ -z "$_out_manifest" ]] && continue
+    _out_rel="${_out_manifest#"$_LINT_CONTRACT_REPO"/}"
+    _unc_term="$(manifest_graph_output_terminal "$_out_manifest" "$_out_id" 2>/dev/null || true)"
+    _unc_adv="$(manifest_graph_output_advisory "$_out_manifest" "$_out_id" 2>/dev/null || true)"
+    if [[ "$_unc_term" != "true" && "$_unc_adv" != "true" ]]; then
+        _complain "$_out_rel: output '$_out_id' is named by no consumer — mark terminal: true or advisory: true, or wire a downstream consumer [ADR-020 OUTPUT_UNCONSUMED]"
+    fi
+done
+
 # ─── Wave 18-C (#708): cycle-feedback wiring lint ───────────────────────────
 # Every cycle definition's `feedback:` wire is statically verified against
 # the producer + consumer manifests:

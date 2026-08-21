@@ -94,6 +94,7 @@ outputs:
     # ADR-020 amendment (#507): primary output; .verdict (pass|scope_violation)
     # drives indicator. Added in build-summary schema_version=3.
     primary: true
+    advisory: true
 
 state:
   persisted: [last_files_changed, last_lines_added]

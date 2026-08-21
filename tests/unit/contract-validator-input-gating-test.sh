@@ -55,7 +55,8 @@ _validate() {
 _producer_outs='  - id: prod_out
     path: "${artifact_dir}/prod-out.md"
     type: prod-out.md@1
-    format: markdown'
+    format: markdown
+    terminal: true'
 
 # ─── SPEC-1: an OPTIONAL input with an unrecognised source is caught ─────────
 # CHANGE: at the merge-base this was silent — the required-only gate meant the

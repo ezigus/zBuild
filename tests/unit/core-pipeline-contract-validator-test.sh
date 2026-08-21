@@ -126,6 +126,7 @@ outputs:
     format: text
     path: \${artifact_dir}/review.json
     required: true
+    terminal: true
 EOF
 
 # Source the validator

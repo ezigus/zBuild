@@ -63,6 +63,7 @@ outputs:
     format: text
     primary: false
     required: false
+    advisory: true
 
 provides:
   role: intake

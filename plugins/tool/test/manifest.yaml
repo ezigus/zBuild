@@ -75,6 +75,7 @@ outputs:
     type: test-failures-summary.md@1
     format: markdown
     required: false
+    advisory: true
 
 state:
   persisted: [last_verdict, last_exit_code]

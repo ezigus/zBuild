@@ -54,6 +54,7 @@ outputs:
     path: \${artifact_dir}/plan.json
     required: true
     primary: true
+    terminal: true
 EOF
 
 # TC-1: clean fixture passes
