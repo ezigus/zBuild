@@ -186,6 +186,24 @@ else
     assert_pass "TC-4: the validator does not skip its source switch for optional inputs"
 fi
 
+# ─── TC-5 (ADR-020 #1750): both callers use the new terminal/advisory accessors ─
+# The bidirectional contract (OUTPUT_UNCONSUMED) adds manifest_graph_output_terminal
+# and manifest_graph_output_advisory to manifest-graph.sh. Both the validator
+# (Pass 3) and the lint (tree-wide OUTPUT_UNCONSUMED check) must call them — not
+# inline YAML reads — so a future accessor refactor breaks HERE, not silently.
+for _fn in manifest_graph_output_terminal manifest_graph_output_advisory; do
+    if grep -q "$_fn" "$_VALIDATOR" 2>/dev/null; then
+        assert_pass "TC-5: validator calls $_fn"
+    else
+        assert_fail "TC-5: validator calls $_fn" "not found in contract-validator.sh"
+    fi
+    if grep -q "$_fn" "$_LINT" 2>/dev/null; then
+        assert_pass "TC-5: lint calls $_fn"
+    else
+        assert_fail "TC-5: lint calls $_fn" "not found in lint-contract.sh"
+    fi
+done
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
