@@ -57,6 +57,7 @@ outputs:
     format: text
     path: ${artifact_dir}/diff.patch
     required: true
+    terminal: true
 EOF
 
 # Second stage that ALSO declares diff_patch as output — this is the violation
@@ -77,6 +78,7 @@ outputs:
     format: text
     path: ${artifact_dir}/diff.patch
     required: true
+    terminal: true
 EOF
 
 # shellcheck source=../../core/pipeline/contract-validator.sh
@@ -96,6 +98,10 @@ assert_contains "TC-1: error names producer 'build'" "$err_out" "build"
 assert_contains "TC-1: error names producer 'extra_build'" "$err_out" "extra_build"
 assert_contains_regex "TC-1: error indicates duplicate/multiple producers" \
     "$err_out" "multiple|more than one|OUTPUT_DUP"
+# [SPEC-7] guard: OUTPUT_DUP detection is unaffected by the OUTPUT_UNCONSUMED
+# check — both can coexist in the same violation set.
+assert_contains_regex "[SPEC-7] OUTPUT_DUP still fires alongside OUTPUT_UNCONSUMED (guard)" \
+    "$err_out" "OUTPUT_DUP"
 
 rm -f "$STATE_FILE"
 

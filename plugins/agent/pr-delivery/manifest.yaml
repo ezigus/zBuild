@@ -53,11 +53,13 @@ outputs:
     format: text
     required: true
     primary: true
+    terminal: true
   - id: pr_result
     path: ${artifact_dir}/pr-result.json
     type: pr-result.json@1
     format: json
     required: true
+    terminal: true
 
 state:
   persisted: []

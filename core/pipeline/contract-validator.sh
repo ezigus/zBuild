@@ -234,6 +234,8 @@ _contract_validate_pipeline() {
     declare -A _CV_AVAILABLE=()
     # Also build per-stage available list to check `stage:X` references
     declare -A _CV_STAGE_OUTPUTS_OK=()  # key="stage:id" → 1 if stage X has output id
+    # Pass 3 (OUTPUT_UNCONSUMED): every input id seen across all stages in the flow.
+    local -A _CV_INPUT_NAMES_SEEN=()
 
     # Pass 1: collect every stage's outputs into _CV_STAGE_OUTPUTS_OK.
     # Also track producers-per-output-id for the output-uniqueness check
@@ -374,6 +376,7 @@ _contract_validate_pipeline() {
             # than implemented, which is what the ADR asks for.
             IFS='|' read -r in_id _ in_source in_required in_path <<< "$in_rec"
             [[ -z "$in_id" ]] && continue
+            _CV_INPUT_NAMES_SEEN["$in_id"]=1
 
             # Default required=true if absent at parse time (decision #1).
             # Empty `required:` value (key present but no value) is malformed.
@@ -522,6 +525,57 @@ _contract_validate_pipeline() {
         done
     fi
 
+    # ── Pass 3 pre-work: mark cycle exit_when stage outputs as consumed ─────────
+    # The cycle mechanism itself reads the exit_when stage's primary output (the
+    # verdict artifact) to decide convergence — this is not a manifest input but
+    # IS a form of consumption. Without this, gate_aggregator_result (or any other
+    # convergence aggregator output) would be false-alarmed in templates where no
+    # subsequent stage declares it as a direct input (e.g. simple.yaml after the
+    # build_test_cycle, which flows to pr-delivery, not merge/deploy).
+    local _ew_c _ew_safe _ew_var _ew_stage _ew_mf _ew_orec _ew_oid
+    if declare -p _TPL_CYCLES >/dev/null 2>&1 && [[ ${#_TPL_CYCLES[@]} -gt 0 ]]; then
+        for _ew_c in "${_TPL_CYCLES[@]}"; do
+            _ew_safe="${_ew_c//-/_}"
+            _ew_var="_TPL_CYCLE_UNTIL_STAGE_${_ew_safe}"
+            _ew_stage="${!_ew_var:-}"
+            [[ -z "$_ew_stage" ]] && continue
+            _ew_mf="${_CV_STAGE_MANIFEST[$_ew_stage]:-}"
+            [[ -z "$_ew_mf" ]] && continue
+            while IFS= read -r _ew_orec; do
+                [[ -z "$_ew_orec" ]] && continue
+                _ew_oid="${_ew_orec%%|*}"
+                [[ -n "$_ew_oid" ]] && _CV_INPUT_NAMES_SEEN["$_ew_oid"]=1
+            done < <(manifest_graph_get_outputs "$_ew_mf")
+        done
+    fi
+
+    # ── Pass 3: OUTPUT_UNCONSUMED (ADR-020 bidirectional contract) ─────────────
+    # Every declared output in the resolved flow must be named by at least one
+    # consumer's input. Outputs marked terminal: true (pipeline terminus — no
+    # downstream consumer is expected) or advisory: true (rendered for humans
+    # outside the stage graph) are exempt. Stages with convergence: advisory are
+    # also implicitly exempt — their outputs are rendered for human review, not
+    # consumed as pipeline stage inputs. Iterate sorted for stable ordering.
+    local _unc_id _unc_stage _unc_manifest _unc_term _unc_adv _unc_conv
+    while IFS= read -r _unc_id; do
+        [[ -z "$_unc_id" ]] && continue
+        [[ -n "${_CV_INPUT_NAMES_SEEN[$_unc_id]:-}" ]] && continue
+        # Take the first (alphabetically earliest) producer for stable reporting.
+        _unc_stage="${_CV_OUTPUT_PRODUCERS[$_unc_id]%%' '*}"
+        _unc_manifest="${_CV_STAGE_MANIFEST[$_unc_stage]:-}"
+        [[ -z "$_unc_manifest" ]] && continue
+        # Advisory-convergence stages (review lenses, aggregators) are implicitly
+        # exempt — their outputs are rendered for humans outside the stage graph.
+        _unc_conv="$(_cv_stage_convergence "$plugins_root" "$_unc_stage")"
+        [[ "$_unc_conv" == "advisory" ]] && continue
+        _unc_term="$(manifest_graph_output_terminal "$_unc_manifest" "$_unc_id" 2>/dev/null || true)"
+        _unc_adv="$(manifest_graph_output_advisory "$_unc_manifest" "$_unc_id" 2>/dev/null || true)"
+        if [[ "$_unc_term" != "true" && "$_unc_adv" != "true" ]]; then
+            violations+=("$_unc_stage|OUTPUT_UNCONSUMED|$_unc_id|output '$_unc_id' is declared by stage '$_unc_stage' but named by no consumer in the resolved flow — add a downstream consumer or mark terminal: true / advisory: true (ADR-020)")
+            fail_count=$((fail_count + 1))
+        fi
+    done < <(printf '%s\n' "${!_CV_OUTPUT_PRODUCERS[@]}" | LC_ALL=C sort)
+
     # ── ADR-040 §3/§5/§7 (Phase 1): typed-aggregator preflight ─────────────
     # Make "aggregator" an explicit, PREFLIGHT-ENFORCED concept. The `convergence:`
     # manifest marker is the aggregator/gate TYPE (gate = blocking convergence,
@@ -632,7 +686,7 @@ _contract_validate_pipeline() {
                 MISORDERED)
                     printf '  %s: expects %s\n    %s\n\n' "$sstage" "'$sid'" "$smsg"
                     ;;
-                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|SELF_REF|MALFORMED|BAD_VAR|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|TYPE_UNVERSIONED|CYCLE_FB_UNDECLARED|OUTPUT_DUP|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
+                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|SELF_REF|MALFORMED|BAD_VAR|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|TYPE_UNVERSIONED|CYCLE_FB_UNDECLARED|OUTPUT_DUP|OUTPUT_UNCONSUMED|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
                     printf '  %s: %s (id=%s)\n    %s\n\n' "$sstage" "$scode" "$sid" "$smsg"
                     ;;
                 *)

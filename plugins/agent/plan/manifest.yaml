@@ -89,6 +89,7 @@ outputs:
     type: plan-context.json@1
     format: json
     required: false
+    advisory: true
   # #1879: the engine-generic stage checkpoint. `role: checkpoint` is what the
   # engine keys on — NOT the id, which must be unique across every stage in a
   # template (core/pipeline/contract-validator.sh raises OUTPUT_DUP on a repeat),
@@ -100,6 +101,7 @@ outputs:
     format: markdown
     required: false
     role: checkpoint
+    advisory: true
 
 state:
   persisted: [last_plan_steps, plan_context_status]

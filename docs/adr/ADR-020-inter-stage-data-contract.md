@@ -731,3 +731,70 @@ carries the section, ordered before ACCEPTANCE TESTS, fence content excluded).
 prompt so review can verify build honored design's directives — tracked
 separately because it requires extracting the helper to a shared lib and defining
 review's design-vs-plan-vs-issue precedence.
+
+---
+
+## Amendment: Bidirectional Contract Enforcement (issue #1750)
+
+**Status:** Accepted. Added to ADR-020 history because the issue body names this
+document as the target; the live contract is governed by ADR-055.
+
+### OUTPUT_UNCONSUMED violation code
+
+The contract now enforces both directions:
+
+1. **Forward (existing):** every consumer's required input must have a producer —
+   raised as `MISSING_OUTPUT`.
+2. **Reverse (new):** every producer's declared output must be named by at least
+   one consumer's input — raised as `OUTPUT_UNCONSUMED`.
+
+`OUTPUT_UNCONSUMED` fires when an output id in the resolved flow (runtime
+validator) or anywhere in the plugins tree (CI lint) is absent from every
+manifest's `inputs:` block. The violation is fatal in enforce mode (rc=2) and
+printed with the structured renderer alongside other violation codes.
+
+### Suppressor markers
+
+Two boolean output-entry fields suppress `OUTPUT_UNCONSUMED`:
+
+**`terminal: true`** — the output is a legitimate pipeline terminus. No
+downstream stage is expected to consume it; the data flow intentionally ends
+here. Examples: `pr_url`, `merge_result`, `pr_result`. Use when the artifact is
+the final deliverable and nothing downstream reads it.
+
+**`advisory: true`** — the output is rendered for humans (displayed in a
+report, posted as a GitHub comment, logged to a dashboard) rather than consumed
+by a downstream stage. The rendering obligation is intentionally outside the
+stage graph. Examples: `build_summary`, `findings`, `review_report_md`. Use when
+the artifact is human-facing but not chained into a subsequent stage's input.
+
+Neither marker affects the forward check (`MISSING_OUTPUT`).
+
+### Scope distinction
+
+The two enforcement sites differ in scope:
+
+- **Runtime validator** (`core/pipeline/contract-validator.sh`, Pass 3): checks
+  the _resolved template flow_ — only stages present in the template being
+  validated. An output is `OUTPUT_UNCONSUMED` if no other stage _in the same
+  flow_ names it as an input. This is the stricter check.
+
+- **CI lint** (`scripts/lib/lint-contract.sh`): checks _tree-wide_ — an output
+  is `OUTPUT_UNCONSUMED` if no plugin _anywhere in the plugins directory_ names
+  its id as an input. Catches typos and outright orphans before a template wires
+  anything. Scoped to data-dependency-graph participants (ADR-047 §5): stages
+  that have no declared inputs and are referenced by no other stage as a producer
+  are out of scope and not checked.
+
+### Accessor functions
+
+`manifest_graph_output_terminal <manifest> <output_id>` and
+`manifest_graph_output_advisory <manifest> <output_id>` (both in
+`scripts/lib/manifest-graph.sh`) return `true` when the matching marker is set.
+They are separate functions rather than extra fields in the pipe-delimited record
+because the five-field shape `id|type|source|required|path` is load-bearing in
+`input-resolve.sh` and cycle-orchestrator; a sixth field would silently break
+those callers.
+
+**Verification.** `tests/unit/contract-validator-unconsumed-output-test.sh`
+(TC-1 through TC-6 / SPEC-1 through SPEC-6).

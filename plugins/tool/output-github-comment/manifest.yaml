@@ -42,6 +42,7 @@ outputs:
     format: markdown
     required: true
     primary: true
+    terminal: true
   # Written by the local-report destination (core/output/destinations.sh:38),
   # which is on by default but opt-out via ZBUILD_OUTPUT_LOCAL_REPORT=0 — hence
   # required:false. The run id is expanded from the environment by #1803's
@@ -52,3 +53,4 @@ outputs:
     type: report.md@1
     format: markdown
     required: false
+    terminal: true

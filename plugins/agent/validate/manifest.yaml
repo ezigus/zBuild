@@ -48,6 +48,7 @@ outputs:
     format: json
     required: true
     primary: true
+    advisory: true
 
 state:
   persisted: []

@@ -71,6 +71,7 @@ outputs:
     format: json
     required: true
     primary: true
+    advisory: true
   # Written ONLY on verdict=fail (all violations, actionable). required:false —
   # absent on a passing gate (missing == empty). Wired by simple.yaml's
   # design_verify_cycle as the design-gate → design (prior_impact_feedback) edge.

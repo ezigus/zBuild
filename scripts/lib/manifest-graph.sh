@@ -210,6 +210,7 @@ manifest_graph_output_format() {
         /^[a-zA-Z_]/             { inb = 0 }
         inb && /^[[:space:]]+-[[:space:]]+id:[[:space:]]*/ {
             l = $0; sub(/^[[:space:]]+-[[:space:]]+id:[[:space:]]*/, "", l)
+            sub(/[[:space:]]+$/, "", l)
             gsub(/["\047]/, "", l); cur = l; next
         }
         inb && cur == want && /^[[:space:]]+format:[[:space:]]*/ {
@@ -217,6 +218,53 @@ manifest_graph_output_format() {
             # A trailing `# comment` is part of the line, not part of the value.
             # Without this the value parses as "json   # why" and fails the
             # closed-set check — a spurious FORMAT_UNKNOWN on a valid manifest.
+            sub(/[[:space:]]*#.*$/, "", l)
+            sub(/[[:space:]]+$/, "", l)
+            gsub(/["\047]/, "", l); print l; exit
+        }
+    ' "$manifest" 2>/dev/null || true
+}
+
+# ─── manifest_graph_output_terminal <manifest> <output_id> ──────────────────
+# Returns 'true' if the output entry is marked `terminal: true`.
+# A dedicated accessor — same reason as manifest_graph_output_format: appending
+# to the five-field pipe-delimited record would silently break callers that
+# unpack by position.
+manifest_graph_output_terminal() {
+    local manifest="${1-}" want="${2-}"
+    [[ -f "$manifest" && -n "$want" ]] || return 0
+    awk -v want="$want" '
+        /^outputs:[[:space:]]*$/ { inb = 1; next }
+        /^[a-zA-Z_]/             { inb = 0 }
+        inb && /^[[:space:]]+-[[:space:]]+id:[[:space:]]*/ {
+            l = $0; sub(/^[[:space:]]+-[[:space:]]+id:[[:space:]]*/, "", l)
+            sub(/[[:space:]]+$/, "", l)
+            gsub(/["\047]/, "", l); cur = l; next
+        }
+        inb && cur == want && /^[[:space:]]+terminal:[[:space:]]*/ {
+            l = $0; sub(/^[[:space:]]+terminal:[[:space:]]*/, "", l)
+            sub(/[[:space:]]*#.*$/, "", l)
+            sub(/[[:space:]]+$/, "", l)
+            gsub(/["\047]/, "", l); print l; exit
+        }
+    ' "$manifest" 2>/dev/null || true
+}
+
+# ─── manifest_graph_output_advisory <manifest> <output_id> ───────────────────
+# Returns 'true' if the output entry is marked `advisory: true`.
+manifest_graph_output_advisory() {
+    local manifest="${1-}" want="${2-}"
+    [[ -f "$manifest" && -n "$want" ]] || return 0
+    awk -v want="$want" '
+        /^outputs:[[:space:]]*$/ { inb = 1; next }
+        /^[a-zA-Z_]/             { inb = 0 }
+        inb && /^[[:space:]]+-[[:space:]]+id:[[:space:]]*/ {
+            l = $0; sub(/^[[:space:]]+-[[:space:]]+id:[[:space:]]*/, "", l)
+            sub(/[[:space:]]+$/, "", l)
+            gsub(/["\047]/, "", l); cur = l; next
+        }
+        inb && cur == want && /^[[:space:]]+advisory:[[:space:]]*/ {
+            l = $0; sub(/^[[:space:]]+advisory:[[:space:]]*/, "", l)
             sub(/[[:space:]]*#.*$/, "", l)
             sub(/[[:space:]]+$/, "", l)
             gsub(/["\047]/, "", l); print l; exit

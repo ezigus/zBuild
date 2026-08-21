@@ -71,11 +71,13 @@ outputs:
     format: json
     required: true
     primary: true
+    advisory: true
   - id: impact_feedback_md
     path: "${artifact_dir}/impact_feedback.md"
     type: impact_feedback.md@1
     format: markdown
     required: false
+    advisory: true
 
 state:
   persisted:
