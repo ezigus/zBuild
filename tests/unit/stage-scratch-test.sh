@@ -117,7 +117,10 @@ if [[ -d "$_made" ]]; then
 else
     assert_fail "[SPEC-1] stage_scratch_ensure creates the directory" "missing: $_made"
 fi
-_mode="$(/usr/bin/stat -f '%Lp' "$_made" 2>/dev/null || stat -c '%a' "$_made" 2>/dev/null)"
+# GNU `-c` FIRST, BSD `-f` second. The reverse order is silently wrong on Linux:
+# there `-f` means --file-system, so it SUCCEEDS with a filesystem blob and the
+# `||` fallback never fires. BSD `-c` fails cleanly, so this order works on both.
+_mode="$(stat -c '%a' "$_made" 2>/dev/null || /usr/bin/stat -f '%Lp' "$_made" 2>/dev/null)"
 assert_eq "[SPEC-1] scratch is 0700 — it holds raw prompts and raw model output" "700" "$_mode"
 
 # Creating twice must not disturb what is already there (the cycle-iteration

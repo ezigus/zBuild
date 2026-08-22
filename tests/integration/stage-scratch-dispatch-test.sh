@@ -79,8 +79,21 @@ _seen() { /usr/bin/grep -m1 "^$1=" "$REPORT" 2>/dev/null | cut -d= -f2-; }
 # ZBUILD_ARTIFACT_DIR around every test, and the new `local -x` layers over it.
 SANDBOX_ARTIFACTS="$TEST_TEMP_DIR/sandbox-artifacts"
 export ZBUILD_ARTIFACT_DIR="$SANDBOX_ARTIFACTS"
-ORIG_TMPDIR="${TMPDIR:-}"
 unset ZBUILD_STAGE_SCRATCH 2>/dev/null || true
+
+# Two renderings of the same fact, because two different things read it.
+#
+# ORIG_TMPDIR_SEEN matches how the FIXTURE prints it (`${TMPDIR:-<unset>}`), so
+# the report can be compared line-for-line. `${TMPDIR:-}` would not: TMPDIR is
+# unset on a Linux CI runner and always set on macOS, so an empty-string
+# expectation passes locally and fails on ubuntu against the `<unset>` sentinel.
+#
+# ORIG_TMPDIR_STATE keeps SET-ness separate from value for the restore
+# assertion, where "unset" and "set but empty" are genuinely different outcomes:
+# `local -x` must give back exactly what the caller had.
+ORIG_TMPDIR_SEEN="${TMPDIR:-<unset>}"
+_tmpdir_state() { printf '%s:%s' "${TMPDIR+set}" "${TMPDIR-}"; }
+ORIG_TMPDIR_STATE="$(_tmpdir_state)"
 
 # ── SPEC-2: the three vars reach the plugin subshell ────────────────────────
 : > "$REPORT"
@@ -121,7 +134,7 @@ else
     assert_fail "[SPEC-2] ZBUILD_STAGE_SCRATCH must not survive the dispatch" "${ZBUILD_STAGE_SCRATCH:-}"
 fi
 assert_eq "[SPEC-2] TMPDIR is restored to the caller's value, not left pointing at scratch" \
-    "$ORIG_TMPDIR" "${TMPDIR:-}"
+    "$ORIG_TMPDIR_STATE" "$(_tmpdir_state)"
 assert_eq "[SPEC-2] the harness's sandboxed ZBUILD_ARTIFACT_DIR is restored intact" \
     "$SANDBOX_ARTIFACTS" "${ZBUILD_ARTIFACT_DIR:-}"
 
@@ -167,7 +180,7 @@ mkdir -p "$_EMPTY_CWD"
     plugin_hook_call "$FIXTURE_DIR" "run" "stage-a" "" || true
 )
 assert_eq "[SPEC-2] an empty state_file gets no scratch dir" "<unset>" "$(_seen SCRATCH)"
-assert_eq "[SPEC-2] an empty state_file leaves TMPDIR alone" "$ORIG_TMPDIR" "$(_seen TMPDIR)"
+assert_eq "[SPEC-2] an empty state_file leaves TMPDIR alone" "$ORIG_TMPDIR_SEEN" "$(_seen TMPDIR)"
 assert_eq "[SPEC-2] an empty state_file leaves the ambient ZBUILD_ARTIFACT_DIR alone" \
     "$SANDBOX_ARTIFACTS" "$(_seen ARTIFACT)"
 _stray="$(find "$_EMPTY_CWD" -mindepth 1 2>/dev/null | sort | tr '\n' ' ')"
@@ -198,7 +211,7 @@ mkdir -p "$_REL_CWD"
     plugin_hook_call "$FIXTURE_DIR" "run" "arg1" "arg2" || true
 )
 assert_eq "[SPEC-2] a relative state_file gets no scratch dir" "<unset>" "$(_seen SCRATCH)"
-assert_eq "[SPEC-2] a relative state_file leaves TMPDIR alone" "$ORIG_TMPDIR" "$(_seen TMPDIR)"
+assert_eq "[SPEC-2] a relative state_file leaves TMPDIR alone" "$ORIG_TMPDIR_SEEN" "$(_seen TMPDIR)"
 assert_eq "[SPEC-2] a relative state_file leaves the ambient ZBUILD_ARTIFACT_DIR alone" \
     "$SANDBOX_ARTIFACTS" "$(_seen ARTIFACT)"
 _rel_stray="$(find "$_REL_CWD" -mindepth 1 2>/dev/null | sort | tr '\n' ' ')"
