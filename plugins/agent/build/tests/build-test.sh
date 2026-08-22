@@ -728,7 +728,7 @@ fi
 # $_diff_content is captured BEFORE scope validation, so without a refresh the
 # cleaned scratch paths survive into files_changed/lines_added.
 ts_fc="$(jq -c '.files_changed' "$OUT_SUMMARY_TS" 2>/dev/null || echo '[]')"
-if printf '%s' "$ts_fc" | grep -q 'scratch-target.txt.bak\|scratch-target.txt.head'; then
+if [[ "$ts_fc" == *scratch-target.txt.bak* || "$ts_fc" == *scratch-target.txt.head* ]]; then
     assert_fail "[SPEC-15] build-summary files_changed excludes cleaned scratch paths" \
         "files_changed=$ts_fc"
 else
