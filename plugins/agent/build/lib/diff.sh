@@ -178,6 +178,13 @@ _build_validate_scope_violations() {
                    && grep -Fxq -- "$_p" "$_preexist_untracked"; then
                     continue
                 fi
+                # Scratch-suffix pre-filter: debris left by sed -i.bak, git show
+                # HEAD:f > f.head, etc. Delete silently — never a scope violation.
+                if [[ "$_p" =~ \.(bak|orig|rej|head|tmp)$ ]] || [[ "$_p" == *~ ]]; then
+                    rm -f "$_repo_root/$_p" 2>/dev/null || true
+                    emit_event "build.scratch.cleaned" "plugin=build" "path=$_p"
+                    continue
+                fi
                 if ! _build_path_in_scope "$_p" _allowed_files; then
                     _scope_violation="true"
                     _scope_violations+=("$_p")
