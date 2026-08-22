@@ -136,6 +136,7 @@ _build_validate_scope_violations() {
     _BUILD_VSCP_DIFF_CONTENT="$_diff_content"
 
     local _scope_violation="false"
+    local _scratch_cleaned=0
     local -a _scope_violations=()
     local -a _scope_violations_created=()
 
@@ -197,6 +198,7 @@ _build_validate_scope_violations() {
                                 -- "$_p" >/dev/null 2>&1 || true
                             rm -f "$_repo_root/$_p" 2>/dev/null || true
                         fi
+                        _scratch_cleaned=$((_scratch_cleaned+1))
                         emit_event "build.scratch.cleaned" "plugin=build" \
                             "path=$_p" "status=$_status"
                         continue
@@ -213,6 +215,20 @@ _build_validate_scope_violations() {
 
     # #1265: drop the pre-existing-untracked scratch file.
     [[ -n "$_preexist_untracked" ]] && rm -f "$_preexist_untracked" 2>/dev/null || true
+
+    # A cleaned path is still present in $_diff_content, which was captured
+    # before this function ran — plugin.sh derives files_changed/lines_added
+    # from that string, so it would report files it just deleted.
+    if [[ "$_scratch_cleaned" -gt 0 && "$_scope_violation" != "true" ]]; then
+        git -C "$_repo_root" diff HEAD > "$_output_diff_patch" 2>/dev/null || true
+        if [[ -s "$_output_diff_patch" ]]; then
+            # printf x guards the trailing newline command substitution strips (#530).
+            _diff_content="$(cat "$_output_diff_patch"; printf x)"
+            _diff_content="${_diff_content%x}"
+        else
+            _diff_content=""
+        fi
+    fi
 
     local _pre_zero_numstat=""
     if [[ "$_scope_violation" == "true" ]]; then

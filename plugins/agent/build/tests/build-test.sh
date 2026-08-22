@@ -680,7 +680,7 @@ printf '%s' "$(git -C "$REPO_TS" rev-parse HEAD)" \
 # Mock: a turn that writes an in-scope edit AND strands two scratch siblings.
 MOCK_LOOP_EDIT_FILE="tests/fixtures/scratch-target.txt"
 MOCK_LOOP_EDIT_CONTENT="scratch-test-content"
-MOCK_LOOP_EXTRA_FILES="tests/fixtures/scratch-target.txt.bak tests/fixtures/scratch-target.txt.head"
+MOCK_LOOP_EXTRA_FILES="tests/fixtures/scratch-target.txt.bak tests/fixtures/scratch-target.txt.head tests/fixtures/scratch-target.txt.rej tests/fixtures/scratch-target.txt.tmp tests/fixtures/scratch-target.txt~"
 # rc=0, NOT rc=2: #827 already preserves in-scope work on the timeout path, so a
 # rc=2 mock would exercise a branch this change does not touch. #1789's loss came
 # from the CLEAN-run branch, where an OOS path zeroes diff.patch outright.
@@ -723,6 +723,19 @@ else
     assert_fail "[SPEC-12] scope_violation=false: scratch siblings do not void the commit" \
         "summary: $ts_summary"
 fi
+
+# SPEC-15 (CHANGE): build-summary.json must not report the files it just deleted.
+# $_diff_content is captured BEFORE scope validation, so without a refresh the
+# cleaned scratch paths survive into files_changed/lines_added.
+ts_fc="$(jq -c '.files_changed' "$OUT_SUMMARY_TS" 2>/dev/null || echo '[]')"
+if printf '%s' "$ts_fc" | grep -q 'scratch-target.txt.bak\|scratch-target.txt.head'; then
+    assert_fail "[SPEC-15] build-summary files_changed excludes cleaned scratch paths" \
+        "files_changed=$ts_fc"
+else
+    assert_pass "[SPEC-15] build-summary files_changed excludes cleaned scratch paths"
+fi
+assert_eq "[SPEC-15] build-summary lines_added counts only the in-scope edit" \
+    "1" "$(jq -r '.lines_added' "$OUT_SUMMARY_TS" 2>/dev/null || echo X)"
 
 # SPEC-13 (CHANGE): .bak file absent from working tree after the run.
 if [[ ! -f "$REPO_TS/tests/fixtures/scratch-target.txt.bak" ]]; then
@@ -808,6 +821,21 @@ assert_eq "tracked out-of-scope .orig is restored, not deleted" \
 # The in-scope edit still reaches diff.patch.
 assert_contains "diff.patch carries the in-scope .bak edit" \
     "$(cat "$OUT_DIFF_T2" 2>/dev/null || true)" "in-scope.bak"
+
+# SPEC-16 (CHANGE): every suffix _build_path_is_scratch claims is actually pruned.
+# .bak/.head are SPEC-13/14 above; these are the three the design did not name.
+for _sfx in rej tmp '~'; do
+    case "$_sfx" in
+        '~') _sf="$REPO_TS/tests/fixtures/scratch-target.txt~" ;;
+        *)   _sf="$REPO_TS/tests/fixtures/scratch-target.txt.$_sfx" ;;
+    esac
+    if [[ ! -f "$_sf" ]]; then
+        assert_pass "[SPEC-16] scratch suffix '$_sfx' pruned from working tree"
+    else
+        assert_fail "[SPEC-16] scratch suffix '$_sfx' pruned from working tree" \
+            "still present: $_sf"
+    fi
+done
 
 # Reset mock to defaults.
 MOCK_LOOP_EXTRA_FILES=""
