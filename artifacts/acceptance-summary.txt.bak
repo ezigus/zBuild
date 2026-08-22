@@ -1,0 +1,17 @@
+acceptance SPEC violations — SPEC-4/SPEC-5 tagged as [guard] but the assertion FAILS at the merge-base — a guard must hold there by definition, so either the assertion contradicts its SPEC text or the SPEC is a mislabelled [change]
+NEGCTL PASS SPEC-1
+      design : scratch-suffix file (.bak/.head/.orig/.rej/.tmp/~) stranded after a timed-out turn is deleted from t…
+      asserts: assert_eq "[SPEC-1] build _feedback_body ANSI escape bytes stripped before LLM prompt" \
+NEGCTL PASS SPEC-2
+      design : build.scratch.cleaned event is emitted when a scratch-suffix file is removed
+      asserts: assert_fail "[SPEC-2] build _review_feedback_body banner line dropped before LLM prompt"
+NEGCTL PASS SPEC-3
+      design : diff.patch is non-empty (in-scope work preserved) when the only OOS paths are scratch-suffix files a…
+      asserts: assert_pass "[SPEC-3] scope_violation=false: scratch siblings do not void the commit"
+NEGCTL FAIL SPEC-4 guard_regressed
+      design : a genuine out-of-scope source edit (no scratch suffix) on a clean run still produces scope_violation…
+      asserts: assert_pass "[SPEC-4] .bak scratch file absent from working tree after run"
+NEGCTL FAIL SPEC-5 guard_regressed
+      design : build.scope.violation event is NOT emitted for scratch-suffix paths
+      asserts: assert_pass "[SPEC-5] .head scratch file absent from working tree after run"
+REACHABILITY PASS plugins/agent/build/lib/diff.sh
