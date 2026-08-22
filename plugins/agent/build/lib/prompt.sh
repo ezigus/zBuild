@@ -76,7 +76,12 @@ when there is nothing left to do.
   publish, tag, push, or otherwise mutate state), run it in \`--dry-run\` mode.
   Do everything you can to verify behavior without side effects.
 - Keep changes minimal and aligned with the plan.
-- Do not leave scratch siblings (\`*.bak\`, \`*.head\`, \`*.orig\`, \`*.rej\`, \`*.tmp\`, \`*~\`): use \`sed -i\` instead of \`sed -i.bak\`, and never use \`git show HEAD:f > f.head\`. Scratch siblings are deleted as transient residue.
+- Clean up scratch siblings of the files you edit (\`*.bak\`, \`*.orig\`,
+  \`*.rej\`, \`*.head\`, \`*.tmp\`, \`*~\`). \`sed -i.bak\` and
+  \`git show HEAD:f > f.head\` both leave one behind — prefer \`sed -i\` with no
+  suffix, and delete any comparison scratch before you finish. Out-of-scope
+  scratch is removed for you; any OTHER out-of-scope path voids the whole
+  iteration, so do not rely on the cleanup.
 - If satisfying a gate requires a file outside your scope, do not work around it — emit \`BLOCKED: <gate> requires <file> (out of scope)\` and stop.
 
 ### Commit message (#608)
