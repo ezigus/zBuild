@@ -734,7 +734,7 @@ if printf '%s' "$ts_fc" | grep -q 'scratch-target.txt.bak\|scratch-target.txt.he
 else
     assert_pass "[SPEC-15] build-summary files_changed excludes cleaned scratch paths"
 fi
-assert_eq "[SPEC-15] build-summary lines_added counts only the in-scope edit" \
+assert_eq "[SPEC-16] build-summary lines_added counts only the in-scope edit" \
     "1" "$(jq -r '.lines_added' "$OUT_SUMMARY_TS" 2>/dev/null || echo X)"
 
 # SPEC-13 (CHANGE): .bak file absent from working tree after the run.
@@ -822,17 +822,21 @@ assert_eq "tracked out-of-scope .orig is restored, not deleted" \
 assert_contains "diff.patch carries the in-scope .bak edit" \
     "$(cat "$OUT_DIFF_T2" 2>/dev/null || true)" "in-scope.bak"
 
-# SPEC-16 (CHANGE): every suffix _build_path_is_scratch claims is actually pruned.
+# SPEC-17/18/19 (CHANGE): every suffix _build_path_is_scratch claims is pruned.
 # .bak/.head are SPEC-13/14 above; these are the three the design did not name.
-for _sfx in rej tmp '~'; do
+# One id per suffix, not one id for the loop: #1792's grep -m1 readout shows only
+# the FIRST tagged line per SPEC, so a passing sibling would mask a failing one.
+for _sfx_spec in "rej:SPEC-17" "tmp:SPEC-18" "~:SPEC-19"; do
+    _sfx="${_sfx_spec%%:*}"
+    _spec="${_sfx_spec#*:}"
     case "$_sfx" in
         '~') _sf="$REPO_TS/tests/fixtures/scratch-target.txt~" ;;
         *)   _sf="$REPO_TS/tests/fixtures/scratch-target.txt.$_sfx" ;;
     esac
     if [[ ! -f "$_sf" ]]; then
-        assert_pass "[SPEC-16] scratch suffix '$_sfx' pruned from working tree"
+        assert_pass "[$_spec] scratch suffix '$_sfx' pruned from working tree"
     else
-        assert_fail "[SPEC-16] scratch suffix '$_sfx' pruned from working tree" \
+        assert_fail "[$_spec] scratch suffix '$_sfx' pruned from working tree" \
             "still present: $_sf"
     fi
 done
