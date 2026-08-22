@@ -20,10 +20,13 @@ setup_test_env "zbuild-clean-no-target"
 
 ZBUILD_CLI="$REPO_ROOT/scripts/zbuild"
 
-# ─── SPEC-1: no target → rc=2 + usage message ────────────────────────────────
+# ─── SPEC-1: no target → rc=2 + refusal message ──────────────────────────────
 # CHANGE: at baseline the `clean` subcommand does not exist; `zbuild clean` exits
-# rc=2 with "Unknown command: clean". After this change it exits rc=2 with a
-# dedicated refusal message (different string, same code).
+# rc=2 with "Unknown command: clean" AND dumps the general usage block. rc alone
+# therefore cannot discriminate — nor can "--run-id", which that usage block
+# already prints three times (this is what made SPEC-1 tautological at baseline).
+# The load-bearing string is "a target is required", emitted only by the new
+# refusal path in scripts/zbuild.
 print_test_section "SPEC-1: zbuild clean with no target exits rc=2 with refusal"
 
 _out=""
@@ -32,10 +35,10 @@ _out="$(bash "$ZBUILD_CLI" clean 2>&1)" || _rc=$?
 
 assert_eq "[SPEC-1] zbuild clean (no args) exits rc=2" "2" "$_rc"
 
-if echo "$_out" | grep -q "target is required\|--run-id"; then
-    assert_pass "[SPEC-1] refusal message mentions required target or --run-id flag"
+if grep -qF "a target is required" <<< "$_out"; then
+    assert_pass "[SPEC-1] refusal names the required target (not the baseline usage dump)"
 else
-    assert_fail "[SPEC-1] refusal message mentions required target or --run-id flag" \
+    assert_fail "[SPEC-1] refusal names the required target (not the baseline usage dump)" \
         "got: $_out"
 fi
 
@@ -48,10 +51,10 @@ _out2="$(bash "$ZBUILD_CLI" clean --dry-run 2>&1)" || _rc2=$?
 
 assert_eq "[SPEC-1] zbuild clean --dry-run (no --run-id) exits rc=2" "2" "$_rc2"
 
-if echo "$_out2" | grep -q "target is required\|--run-id"; then
-    assert_pass "[SPEC-1] --dry-run without --run-id also produces refusal message"
+if grep -qF "a target is required" <<< "$_out2"; then
+    assert_pass "[SPEC-1] --dry-run without --run-id also produces the refusal"
 else
-    assert_fail "[SPEC-1] --dry-run without --run-id also produces refusal message" \
+    assert_fail "[SPEC-1] --dry-run without --run-id also produces the refusal" \
         "got: $_out2"
 fi
 
@@ -63,6 +66,13 @@ _rc3=0
 _out3="$(bash "$ZBUILD_CLI" clean --purge 2>&1)" || _rc3=$?
 
 assert_eq "[SPEC-1] zbuild clean --purge (no --run-id) exits rc=2" "2" "$_rc3"
+
+if grep -qF "a target is required" <<< "$_out3"; then
+    assert_pass "[SPEC-1] --purge without --run-id also produces the refusal"
+else
+    assert_fail "[SPEC-1] --purge without --run-id also produces the refusal" \
+        "got: $_out3"
+fi
 
 cleanup_test_env
 print_test_results

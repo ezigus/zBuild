@@ -242,13 +242,30 @@ gate_aggregator_run() {
     # PR path) never auto-merges — the runner owns the bounded rewind. The
     # aggregator stays the single convergence authority (ADR-040 §5): it merely
     # gains a route verdict alongside pass/fail.
-    local _ga_route_target="" _rt_i _rt
+    #
+    # Selection is deterministic: ROSTER ORDER, first non-empty wins. When the
+    # failed gates name more than one distinct target the loser used to be
+    # dropped with no log, no event and no record that a conflict existed
+    # (#1757), so the full scan below runs to completion and emits
+    # gate_aggregator.route_conflict naming every target it saw. No target is
+    # emitted today besides "design", so the event is expected to stay silent —
+    # it exists so that the day a second one appears, it is visible.
+    local _ga_route_target="" _rt_i _rt _ga_route_seen=""
     if [[ "$verdict" == "fail" ]]; then
         for _rt_i in "${!failed[@]}"; do
             _rt="$(jq -r '.route_target // empty' "$artifacts_dir/${failed_files[$_rt_i]}" 2>/dev/null || true)"
-            if [[ -n "$_rt" && "$_rt" != "null" ]]; then _ga_route_target="$_rt"; break; fi
+            [[ -z "$_rt" || "$_rt" == "null" ]] && continue
+            [[ -z "$_ga_route_target" ]] && _ga_route_target="$_rt"
+            case " $_ga_route_seen " in
+                *" $_rt "*) : ;;
+                *) _ga_route_seen="${_ga_route_seen:+$_ga_route_seen }$_rt" ;;
+            esac
         done
         [[ -n "$_ga_route_target" ]] && verdict="route_${_ga_route_target}"
+        if [[ "$_ga_route_seen" == *" "* ]]; then
+            _ga_emit "gate_aggregator.route_conflict" \
+                "targets=$_ga_route_seen" "selected=$_ga_route_target"
+        fi
     fi
 
     # Build the gates {name: status} object and the failed[] array via jq so the
@@ -271,37 +288,70 @@ gate_aggregator_run() {
          + (if $rt=="" then {} else {"route_target":$rt} end)' | atomic_write "$result_path"
 
     # ─── Feedback payloads ────────────────────────────────────────────────────
-    #  pass          → no feedback (drop any stale payloads).
-    #  route_<tgt>   → #1219: write the FOCUSED design-feedback.md (the design-
-    #                  rooted gates' detail) for the route_back rewind target; drop
-    #                  the build-facing gate-feedback.md (build is not the fix path).
-    #  plain fail    → B2 (ADR-040): the consolidated gate→build feedback so the
-    #                  next build iter sees every finding in one place.
+    # The failure set is MIXED in general, so the two payloads are INDEPENDENT,
+    # not a three-way choice (#1757). Partition failed[] by each gate's own
+    # route_target and write whichever payloads have members:
+    #   routed[]   (route_target == the winning target) → design-feedback.md,
+    #              the FOCUSED payload the route_back rewind carries to the
+    #              design_verify_cycle (#1219, ADR-045/ADR-046).
+    #   residual[] (everything else)                    → gate-feedback.md, the
+    #              consolidated gate→build payload (B2, ADR-040).
+    #
+    # Previously a route_<tgt> verdict took an `elif` that wrote design-feedback.md
+    # and `rm -f`'d gate-feedback.md unconditionally. One design-rooted gate
+    # (e.g. shape-floor's out-of-scope escalation) therefore SUPPRESSED the
+    # build-facing detail for every build-fixable gate failing beside it — a
+    # failing test suite and a `tautology:SPEC-n` (which by #1583 carries NO
+    # route_target precisely so it reaches build) both went to /dev/null, and the
+    # cycle spun on empty diffs because build was never told what was wrong.
+    #
+    # A gate carrying a non-winning route_target lands in residual[] rather than
+    # being dropped: only "design" is emitted today, so the set is empty in
+    # practice, and silently discarding a failure is the bug being fixed.
+    # On a plain fail (no route_target anywhere) routed[] is empty and
+    # residual[] == failed[] — byte-identical to the previous else branch.
     local _i
-    if [[ "$verdict" == "pass" ]]; then
-        rm -f "$feedback_path" "$design_feedback_path" 2>/dev/null || true
-    elif [[ -n "$_ga_route_target" ]]; then
+    local routed=() routed_files=() residual=() residual_files=()
+    for _i in "${!failed[@]}"; do
+        _rt="$(jq -r '.route_target // empty' "$artifacts_dir/${failed_files[$_i]}" 2>/dev/null || true)"
+        if [[ -n "$_ga_route_target" && "$_rt" == "$_ga_route_target" ]]; then
+            routed+=("${failed[$_i]}"); routed_files+=("${failed_files[$_i]}")
+        else
+            residual+=("${failed[$_i]}"); residual_files+=("${failed_files[$_i]}")
+        fi
+    done
+
+    if [[ "$verdict" == "pass" || ${#routed[@]} -eq 0 ]]; then
+        rm -f "$design_feedback_path" 2>/dev/null || true
+    else
         {
             printf '# Design-rooted gate feedback\n\n'
             printf 'The build_test_cycle cannot fix these — they route back to design.\n'
             printf 'Re-author the named acceptance assertions, then the pipeline re-verifies.\n\n'
-            for _i in "${!failed[@]}"; do
-                _rt="$(jq -r '.route_target // empty' "$artifacts_dir/${failed_files[$_i]}" 2>/dev/null || true)"
-                [[ "$_rt" == "$_ga_route_target" ]] || continue
-                _ga_gate_detail "${failed[$_i]}" "$artifacts_dir/${failed_files[$_i]}"
+            for _i in "${!routed[@]}"; do
+                _ga_gate_detail "${routed[$_i]}" "$artifacts_dir/${routed_files[$_i]}"
             done
         } | atomic_write "$design_feedback_path"
+    fi
+
+    if [[ "$verdict" == "pass" || ${#residual[@]} -eq 0 ]]; then
         rm -f "$feedback_path" 2>/dev/null || true
     else
         {
             printf '# Gate Aggregator Feedback\n\n'
-            printf 'The build_test_cycle did not converge: %d mechanical gate(s) failed. ' "${#failed[@]}"
+            printf 'The build_test_cycle did not converge: %d mechanical gate(s) failed. ' "${#residual[@]}"
             printf 'Address every finding below, then re-run.\n\n'
-            for _i in "${!failed[@]}"; do
-                _ga_gate_detail "${failed[$_i]}" "$artifacts_dir/${failed_files[$_i]}"
+            for _i in "${!residual[@]}"; do
+                _ga_gate_detail "${residual[$_i]}" "$artifacts_dir/${residual_files[$_i]}"
             done
+            # Name the routed gates without their detail, so build does not read a
+            # partial payload as the complete failure set and declare itself done.
+            if [[ ${#routed[@]} -gt 0 ]]; then
+                printf '## Handled elsewhere\n\n'
+                printf -- '- %d further gate(s) route to `%s` and are addressed there, not by build: %s\n\n' \
+                    "${#routed[@]}" "$_ga_route_target" "${routed[*]}"
+            fi
         } | atomic_write "$feedback_path"
-        rm -f "$design_feedback_path" 2>/dev/null || true
     fi
 
     if [[ "$verdict" == "pass" ]]; then

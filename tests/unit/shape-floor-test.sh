@@ -254,6 +254,79 @@ assert_eq "[SPEC-11] artifact carries a non-empty reason (pins the comparison be
 assert_contains "[SPEC-11] shape_floor.fail event names the failure 'reason=', matching the artifact" \
     "$_sf_fail_ev" "reason=$_sf_art_reason"
 
+# ─── SPEC-12 (#1924): comment-only template diff → SHAPE_FLOOR SKIP ──────────
+# `config/templates/*.yaml` matches on FILENAME, so adding a block of env-var
+# documentation to a template demanded edits to seven golden/order-assertion
+# files. That kept the floor red on a change that cannot move a stage, and its
+# out-of-scope escalation then set route_target=design — the route that made the
+# gate-aggregator suppress build's feedback (issue #1831's run).
+_sr4="$TEST_TEMP_DIR/tpl-comment-repo"
+mkdir -p "$_sr4/config" "$_sr4/tests/golden/mytest"
+printf 'config/templates/*.yaml\n' > "$_sr4/config/shape-change-paths.txt"
+printf 'golden-event-content\n' > "$_sr4/tests/golden/mytest/event-sequence.golden"
+
+set +e
+_spec12_out="$(ZBUILD_DIFF_CMD="printf 'config/templates/clean.yaml\n'" \
+    ZBUILD_TEMPLATE_DIFF_CMD="printf -- '--- a/config/templates/clean.yaml\n+++ b/config/templates/clean.yaml\n+# ZBUILD_TEARDOWN_SCOPE   release (default) | purge\n+\n-# the old note\n'" \
+    _sf_shape_floor "$_sr4")"
+set -e
+
+assert_contains "[SPEC-12] comment-only template diff → SHAPE_FLOOR SKIP" \
+    "$_spec12_out" "SHAPE_FLOOR SKIP template_comment_only"
+
+# ─── SPEC-13 (GUARD): a real template edit is still gated ────────────────────
+# One added non-comment line — a stage entry — must drop through to the floor
+# check. This is the assertion that keeps SPEC-12 from becoming a blanket
+# exemption for `config/templates/*.yaml`.
+set +e
+_spec13_out="$(ZBUILD_DIFF_CMD="printf 'config/templates/clean.yaml\n'" \
+    ZBUILD_TEMPLATE_DIFF_CMD="printf -- '--- a/config/templates/clean.yaml\n+++ b/config/templates/clean.yaml\n+# a comment\n+  - teardown\n'" \
+    _sf_shape_floor "$_sr4")"
+set -e
+
+assert_contains "[SPEC-13] template diff with a real line → SHAPE_FLOOR FAIL (not SKIP)" \
+    "$_spec13_out" "SHAPE_FLOOR FAIL missing_floor_files"
+
+# ─── SPEC-14 (GUARD): a removed stage line is gated too ──────────────────────
+# Deletions drift the shape exactly as additions do; the `-` side must be read.
+set +e
+_spec14_out="$(ZBUILD_DIFF_CMD="printf 'config/templates/clean.yaml\n'" \
+    ZBUILD_TEMPLATE_DIFF_CMD="printf -- '--- a/config/templates/clean.yaml\n+++ b/config/templates/clean.yaml\n-  - teardown\n+# replaced by a comment\n'" \
+    _sf_shape_floor "$_sr4")"
+set -e
+
+assert_contains "[SPEC-14] removed stage line → SHAPE_FLOOR FAIL (not SKIP)" \
+    "$_spec14_out" "SHAPE_FLOOR FAIL missing_floor_files"
+
+# ─── SPEC-15 (GUARD): a non-template match defeats the exemption ─────────────
+# The exemption is per-file but all-or-nothing: one matched file that is not a
+# comment-only template returns the whole change to the floor check.
+_sr5="$TEST_TEMP_DIR/tpl-mixed-repo"
+mkdir -p "$_sr5/config" "$_sr5/tests/golden/mytest"
+printf 'config/templates/*.yaml\ncore/pipeline/runner.sh\n' > "$_sr5/config/shape-change-paths.txt"
+printf 'golden-event-content\n' > "$_sr5/tests/golden/mytest/event-sequence.golden"
+
+set +e
+_spec15_out="$(ZBUILD_DIFF_CMD="printf 'config/templates/clean.yaml\ncore/pipeline/runner.sh\n'" \
+    ZBUILD_TEMPLATE_DIFF_CMD="printf -- '--- a/x\n+++ b/x\n+# just a comment\n'" \
+    _sf_shape_floor "$_sr5")"
+set -e
+
+assert_contains "[SPEC-15] comment-only template + a real shape file → SHAPE_FLOOR FAIL" \
+    "$_spec15_out" "SHAPE_FLOOR FAIL missing_floor_files"
+
+# ─── SPEC-16 (GUARD): an empty template diff is not an exemption ─────────────
+# No diff means the check could not read the file; fail closed rather than
+# treating "nothing to see" as proof of innocence.
+set +e
+_spec16_out="$(ZBUILD_DIFF_CMD="printf 'config/templates/clean.yaml\n'" \
+    ZBUILD_TEMPLATE_DIFF_CMD="printf ''" \
+    _sf_shape_floor "$_sr4")"
+set -e
+
+assert_contains "[SPEC-16] unreadable/empty template diff → SHAPE_FLOOR FAIL (fail-closed)" \
+    "$_spec16_out" "SHAPE_FLOOR FAIL missing_floor_files"
+
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 print_test_results
