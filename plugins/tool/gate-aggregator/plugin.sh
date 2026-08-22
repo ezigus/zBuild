@@ -254,8 +254,11 @@ gate_aggregator_run() {
     if [[ "$verdict" == "fail" ]]; then
         for _rt_i in "${!failed[@]}"; do
             _rt="$(jq -r '.route_target // empty' "$artifacts_dir/${failed_files[$_rt_i]}" 2>/dev/null || true)"
-            [[ -z "$_rt" || "$_rt" == "null" ]] && continue
-            [[ -z "$_ga_route_target" ]] && _ga_route_target="$_rt"
+            if [[ -z "$_rt" || "$_rt" == "null" ]]; then continue; fi
+            # `if`, not `[[ ]] && x` — the latter returns 1 once the target is
+            # already set, which is a live abort should this ever be sourced
+            # under errexit.
+            if [[ -z "$_ga_route_target" ]]; then _ga_route_target="$_rt"; fi
             case " $_ga_route_seen " in
                 *" $_rt "*) : ;;
                 *) _ga_route_seen="${_ga_route_seen:+$_ga_route_seen }$_rt" ;;
