@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "verdict": "pass",
+  "exit_code": 0,
+  "passed": 2,
+  "failed": 0,
+  "test_output": "unit: 2/2 passed",
+  "diff_applied": false,
+  "test_cmd": "bash scripts/run-tests.sh --files 'tests/unit/core-orch-parallel-test.sh' 'tests/unit/core-pipeline-verdict-test.sh'",
+  "run_mode": "targeted",
+  "timing": {
+    "tiers": {},
+    "slowest_files": [
+      {
+        "file": "tests/unit/core-orch-parallel-test.sh",
+        "ms": 2113
+      },
+      {
+        "file": "tests/unit/core-pipeline-verdict-test.sh",
+        "ms": 1486
+      }
+    ]
+  }
+}
