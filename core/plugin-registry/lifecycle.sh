@@ -191,6 +191,10 @@ scan_plugin_outputs() {
                             detail: ("Expected artifact at: " + $path)
                         }]
                     }' > "$_findings_file" 2>/dev/null || true
+                # #1809: file-backed marker so runner_read_stage_disposition (a separate
+                # process under map:) can detect the violation and return broken.
+                mkdir -p "${state_dir}/runtime"
+                touch "${state_dir}/runtime/artifact-contract-violated" 2>/dev/null || true
             fi
             missing=$((missing + 1))
         fi
@@ -327,6 +331,14 @@ plugin_hook_call() {
                 local -x TMPDIR="$_ws_scratch"
             fi
         fi
+
+        # #1809 (ADR-058 C9): load the write-boundary enforcer lazily, same
+        # pattern as stage-scratch.sh above. Fail-open: an unloadable module
+        # leaves the mark unset and write_boundary_check returns 0 immediately.
+        if ! declare -F write_boundary_mark >/dev/null 2>&1; then
+            # shellcheck source=../pipeline/write-boundary.sh
+            source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../pipeline" && pwd)/write-boundary.sh" 2>/dev/null || true
+        fi
     fi
 
     # ADR-055 §1 (#1826): the engine resolves what this stage DECLARED it needs
@@ -401,6 +413,12 @@ plugin_hook_call() {
         return 1
     fi
 
+    # #1809 (ADR-058 C9): mark the dispatch start so write_boundary_check can
+    # find files written during this dispatch. Fail-open: missing function = no-op.
+    if declare -F write_boundary_mark >/dev/null 2>&1; then
+        write_boundary_mark "${2:-}" || true
+    fi
+
     emit_event "plugin.$hook_name.start" "plugin=$plugin_id" "kind=$kind"
 
     # Run in a subshell to isolate plugin's variables/functions
@@ -429,6 +447,15 @@ plugin_hook_call() {
                 emit_event "plugin.$hook_name.artifact_check_failed" \
                     "plugin=$plugin_id" "kind=$kind"
                 return 1
+            fi
+            # #1809 (ADR-058 C9): sweep for writes outside declared outputs and
+            # engine-owned areas. Fail-open: unloaded module = write_boundary_check
+            # undefined = this arm is unreachable.
+            if declare -F write_boundary_check >/dev/null 2>&1; then
+                if ! write_boundary_check "$plugin_dir" "$state_file_arg" "$stage_arg" \
+                        "${ZBUILD_MAP_ELEMENT:-}"; then
+                    return 1
+                fi
             fi
         fi
         emit_event "plugin.$hook_name.complete" "plugin=$plugin_id" "kind=$kind"

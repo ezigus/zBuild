@@ -174,10 +174,81 @@ bash tests/unit/plugin-lifecycle-event-balance-test.sh   # the ad-hoc `… ""` c
 
 This issue is itself gate 3b's worked example under ADR-057 as amended: it edits `.github/workflows/**`, which the App token cannot push (#1780), so it was built by hand.
 
+## Implementation Notes (#1918, Phase 0 C8)
+
+`core/pipeline/stage-scratch.sh` is a sourced library — `stage_scratch_dir` resolves, `stage_scratch_ensure` resolves and creates. Both take `[<state_dir>] [<stage>] [<map_element>]` and fall back to the ambient dispatch identity, so a caller already inside `plugin_hook_call` can call them with no arguments.
+
+The exports deliberately live in `core/plugin-registry/lifecycle.sh` and **not** in `core/pipeline/runner.sh`. Moving them makes the change gate-3 `By-hand` under ADR-057 *and* trips the shape floor: `config/shape-change-paths.txt` demands that any diff touching `runner.sh` also carry every `event-sequence.golden` and every `_TPL_STAGES[N]` order test.
+
+Verification:
+
+```bash
+bash tests/unit/stage-scratch-test.sh
+bash tests/integration/stage-scratch-dispatch-test.sh
+bash tests/unit/ci-state-isolation-test.sh
+bash tests/unit/plugin-lifecycle-event-balance-test.sh   # the ad-hoc `… ""` caller must still reach the plugin
+```
+
+This issue is itself gate 3b's worked example under ADR-057 as amended: it edits `.github/workflows/**`, which the App token cannot push (#1780), so it was built by hand.
+
+---
+
+## C9: Post-dispatch write-boundary enforcement (#1809)
+
+### The sweep
+
+After each successful `run` dispatch, `write_boundary_check` (`core/pipeline/write-boundary.sh`) runs a depth-bounded sweep of the filesystem for files written during that dispatch:
+
+1. Before sourcing `plugin.sh`, `write_boundary_mark` touches `${state_dir}/runtime/write-boundary.marker`.
+2. After the dispatch returns rc=0, `write_boundary_check` runs `find -newer marker` across the six watch locations (configured in `config/write-boundary-watch.txt`; operator-overridable via `ZBUILD_WRITE_BOUNDARY_WATCH` env or `~/.zbuild/write-boundary-watch.txt`).
+3. Each candidate file is passed to `write_boundary_classify`, which returns `declared` (matches a manifest output), `allowed` (under an engine-owned root or the additive allow list), or `violation`.
+4. On the first `violation`, `write_boundary_violation_recorded` touches `${state_dir}/runtime/write-boundary-violated` and emits `stage.write_boundary.violated`. `write_boundary_check` returns 1 and `plugin_hook_call` returns 1 to the dispatch boundary.
+
+Both `write_boundary_mark` and `write_boundary_check` are guarded `[[ -z "$state_file" ]] && return 0` (and absolute-path-guarded), so ad-hoc callers with no job folder are unaffected.
+
+### Verdict precedence
+
+`runner_read_stage_disposition` (`core/pipeline/verdict.sh`) gains a precedence branch between the existing `_d_viol` block and the `_d_disp` block: if either `${state_dir}/runtime/write-boundary-violated` **or** `${state_dir}/runtime/artifact-contract-violated` exists, the function returns `broken` immediately, overriding any declared `disposition` (including `complete`).
+
+**Why file-backed markers, not shell globals.** The `map:` arm runs a generated standalone script in a separate process (`core/pipeline/strategies/common.sh`). A global assigned inside that process never reaches `runner_read_stage_disposition`, which runs in the runner's own process after all map members finish. File markers are the only channel between the two processes.
+
+**SPEC-3 fix.** `scan_plugin_outputs` already touched `${state_dir}/artifacts/` for findings and emitted `plugin.contract.violated`. The change adds a `touch ${state_dir}/runtime/artifact-contract-violated` in the same violation block. The new verdict precedence branch then catches this marker — making a missing declared output resolve to `broken` even when the stage wrote a v2 result declaring `disposition: complete`.
+
+### The asymmetric watch/allow contract
+
+**Watch list** uses three-tier override (env > `~/.zbuild/` > shipped default): a single override replaces the list. This lets an operator narrow the sweep in a constrained environment without fighting the engine.
+
+**Allow list** is additive: the engine hardcodes the four owned roots in code and loads every config tier additively. No override file can remove `ZBUILD_STATE_DIR`, `ZBUILD_REPO_ROOT`, or the scratch base.
+
+### Two golden-safety rules
+
+1. `stage.write_boundary.violated` is **never emitted on a clean dispatch** — the only emission site is `write_boundary_violation_recorded`, which is only called when `write_boundary_classify` returns `violation`.
+2. `config/event-schema.json` is the **sole shape-change-path file** in this diff. `shape-floor.sh` yields `SHAPE_FLOOR SKIP schema_append_only` because the entry is append-only.
+
+## Implementation Notes (#1809, Phase 0 C9)
+
+`core/pipeline/write-boundary.sh` owns the six functions. `config/write-boundary-watch.txt` and `config/write-boundary-allow.txt` ship the operator-facing defaults. `config/mechanics.yaml`'s `write-boundary.defined_in` is repointed from `core/pipeline/stage-scratch.sh` to `core/pipeline/write-boundary.sh` — the resolver now lives in the new file.
+
+Verification:
+
+```bash
+bash tests/unit/write-boundary-sweep-test.sh
+bash tests/integration/write-boundary-dispatch-test.sh
+bash tests/unit/dispatch-rc-guard-test.sh        # SPEC-7: lifecycle.sh rc count unchanged
+bash tests/unit/plugin-lifecycle-event-balance-test.sh   # ad-hoc caller guard
+bash tests/unit/stage-scratch-test.sh            # SPEC-3 guard: no TMPDIR read
+bash tests/integration/stage-scratch-dispatch-test.sh
+bash tests/integration/artifact-contract-test.sh
+```
+
 ## References
 
 - `core/pipeline/stage-scratch.sh` — the resolver (§2)
-- `core/plugin-registry/lifecycle.sh` — `plugin_hook_call`, the dispatch chokepoint (§3)
+- `core/pipeline/write-boundary.sh` — the enforcement sweep (C9)
+- `core/plugin-registry/lifecycle.sh` — `plugin_hook_call`, the dispatch chokepoint (§3, C9)
+- `core/pipeline/verdict.sh` — `runner_read_stage_disposition`, the verdict precedence branch (C9)
+- `config/write-boundary-watch.txt` — watch locations (C9)
+- `config/write-boundary-allow.txt` — allowed roots (C9)
 - `core/pipeline/strategies/common.sh` — `_strategy_orch_scratch_dir`, the per-run precedent §2 copies
 - `scripts/lib/env-scrub.sh` — the `ZBUILD_*` scrub that makes `TMPDIR` the only channel to the model (§3)
 - `scripts/lib/worktree.sh` — the `/var/folders` hazard (§4) and the stale CI note #1918 corrected

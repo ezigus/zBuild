@@ -1,0 +1,18 @@
+# write-boundary-watch.txt — locations the engine sweeps for out-of-bounds writes
+# after each stage dispatch (ADR-058 C9, #1809).
+#
+# One entry per line; blank lines and # comments are ignored.
+# Format: <path>[ maxdepth:<N>]
+# Variables are expanded at sweep time: ${VAR} references the runtime environment.
+# ${TMPDIR:-/tmp} is expanded to TMPDIR when set, otherwise /tmp.
+#
+# Three-tier override (highest to lowest priority):
+#   ZBUILD_WRITE_BOUNDARY_WATCH env var (path to alternative file)
+#   ~/.zbuild/write-boundary-watch.txt (user/operator override — replaces)
+#   this file (shipped engine default)
+#
+${HOME} maxdepth:1
+${HOME}/.zbuild
+${TMPDIR:-/tmp} maxdepth:1
+/tmp maxdepth:1
+${PWD} maxdepth:1

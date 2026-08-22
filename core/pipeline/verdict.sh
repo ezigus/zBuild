@@ -640,6 +640,15 @@ runner_read_stage_disposition() {
     if [[ -n "$_d_viol" ]]; then
         printf '%s' "broken"; return 0
     fi
+    # #1809 (ADR-058 C9): file-backed markers set by lifecycle.sh after dispatch.
+    # Checked between _d_viol and _d_disp so a stage that declared disposition=complete
+    # but violated the write boundary or the artifact contract still resolves to broken.
+    # File-backed (not a shell global) because the map: arm runs a generated standalone
+    # script in a separate process — a global assigned there never reaches this reader.
+    if [[ -f "${state_dir}/runtime/write-boundary-violated" ]] || \
+       [[ -f "${state_dir}/runtime/artifact-contract-violated" ]]; then
+        printf '%s' "broken"; return 0
+    fi
     if [[ -n "$_d_disp" ]]; then
         printf '%s' "$_d_disp"; return 0
     fi
