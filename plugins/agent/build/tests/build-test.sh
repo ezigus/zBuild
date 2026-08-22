@@ -695,6 +695,7 @@ _build_stage_run_inner \
     "$ARTIFACT_DIR_TS" >/dev/null 2>&1
 rc_ts=$?
 set -e
+assert_exit_code "T_SCRATCH inner run rc=0" "0" "$rc_ts"
 
 # SPEC-1 (GUARD): diff.patch is non-empty — in-scope work preserved.
 ts_size=0
@@ -720,7 +721,7 @@ else
         "summary: $ts_summary"
 fi
 
-# SPEC-4 (GUARD): .bak file absent from working tree after the run.
+# SPEC-4 (CHANGE): .bak file absent from working tree after the run.
 if [[ ! -f "$REPO_TS/tests/fixtures/scratch-target.txt.bak" ]]; then
     assert_pass "[SPEC-4] .bak scratch file absent from working tree after run"
 else
@@ -728,7 +729,7 @@ else
         "file still present: $REPO_TS/tests/fixtures/scratch-target.txt.bak"
 fi
 
-# SPEC-5 (GUARD): .head file absent from working tree after the run.
+# SPEC-5 (CHANGE): .head file absent from working tree after the run.
 if [[ ! -f "$REPO_TS/tests/fixtures/scratch-target.txt.head" ]]; then
     assert_pass "[SPEC-5] .head scratch file absent from working tree after run"
 else
