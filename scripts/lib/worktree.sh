@@ -22,12 +22,16 @@ _ZBUILD_WORKTREE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 #
 # Base precedence: $ZBUILD_RUN_ROOT > $HOME/.zbuild.
 #
-# KNOWN GAP: co-location is only fully realised once CI stops pinning
-# ZBUILD_STATE_DIR to ${{ github.workspace }}/state. That puts pipeline state
-# INSIDE the target repo — the same category of mixing #1629 fixed for the
-# engine — and a worktree cannot follow it there (see
-# zbuild_worktree_assert_outside). Until that moves, state and worktree share a
-# layout shape but not a parent in CI.
+# CLOSED (#1638, restated #1918): CI no longer pins ZBUILD_STATE_DIR to
+# ${{ github.workspace }}/state. The workflow resolves it to
+# $RUNNER_TEMP/zbuild-state — outside the workspace — so state is no longer
+# inside the repo the run is editing, and zbuild_worktree_assert_outside no
+# longer has a state dir it must refuse to follow.
+#
+# The stale version of this note claimed the opposite and is what made ADR-058's
+# per-stage scratch (a directory inside the job folder, uploaded from CI) look
+# impossible. State and worktree still have different parents in CI — that is a
+# layout choice, not the leak the note described.
 zbuild_run_root() {
     local run_id="${1:-}"
     [[ -n "$run_id" ]] || { printf 'zbuild_run_root: run_id required\n' >&2; return 2; }
