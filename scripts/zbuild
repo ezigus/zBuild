@@ -854,6 +854,21 @@ CLEANHELP
 
         # Event infrastructure: derive defaults from the run's state dir so
         # events are co-located with the run that generated them.
+        # This subcommand is documented for a COMPLETED run, but _find_state_file
+        # resolves a run_id whatever its status — so an operator could aim it at a
+        # live run and race the runner's own EXIT-trap teardown, with both calling
+        # the same cleanup hook. Hook idempotency is not enforced anywhere, so
+        # refuse instead of relying on it. --dry-run stays allowed: it invokes no
+        # hooks, which makes it the safe way to inspect a run still in flight.
+        if ! $cl_dry_run; then
+            _cl_status="$(jq -r '.status // empty' "$state_file" 2>/dev/null || true)"
+            if [[ "$_cl_status" == "in_progress" ]]; then
+                error "zbuild clean: run $cl_run_id is still in progress — refusing to race its teardown"
+                echo "  Use --dry-run to inspect it, or wait for the run to finish." >&2
+                exit 2
+            fi
+        fi
+
         _cl_run_dir="$(dirname "$state_file")"
         export ZBUILD_EVENTS_JSONL="${ZBUILD_EVENTS_JSONL:-$_cl_run_dir/events.jsonl}"
         export ZBUILD_EVENTS_DB="${ZBUILD_EVENTS_DB:-$_cl_run_dir/events.db}"

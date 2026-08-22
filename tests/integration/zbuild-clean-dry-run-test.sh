@@ -108,5 +108,35 @@ else
 fi
 
 cleanup_test_env
+# ─── #1757 review: clean refuses a run that is still in progress ─────────────
+# _find_state_file resolves a run_id whatever its status, so without this guard
+# an operator could race the runner's own EXIT-trap teardown into the same
+# cleanup hook. --dry-run invokes no hooks and stays allowed.
+# _find_state_file scans <state_dir>/runs/*/pipeline-state*.json, so the fixture
+# has to sit in a per-run dir to be resolvable at all.
+_ip_state="$TEST_TEMP_DIR/ip-state"
+mkdir -p "$_ip_state/runs/live-1"
+printf '{"run_id":"live-1","status":"in_progress","stage_statuses":{"plugin-stage-a":"complete"}}' \
+    > "$_ip_state/runs/live-1/pipeline-state.json"
+
+_ip_rc=0
+_ip_out="$(ZBUILD_STATE_DIR="$_ip_state" \
+    ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/ip-events.jsonl" \
+    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
+    ZBUILD_PLUGINS_ROOT="$TEST_TEMP_DIR" \
+    bash "$ZBUILD_CLI" clean --run-id live-1 2>&1)" || _ip_rc=$?
+assert_eq "clean on an in-progress run exits rc=2" "2" "$_ip_rc"
+assert_contains "clean names the in-progress run in its refusal" \
+    "$_ip_out" "still in progress"
+
+_ip_dry_rc=0
+ZBUILD_STATE_DIR="$_ip_state" \
+    ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/ip-events.jsonl" \
+    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
+    ZBUILD_PLUGINS_ROOT="$TEST_TEMP_DIR" \
+    bash "$ZBUILD_CLI" clean --run-id live-1 --dry-run >/dev/null 2>&1 || _ip_dry_rc=$?
+assert_eq "clean --dry-run on an in-progress run is still allowed (no hooks run)" \
+    "0" "$_ip_dry_rc"
+
 print_test_results
 exit $((FAIL > 0))

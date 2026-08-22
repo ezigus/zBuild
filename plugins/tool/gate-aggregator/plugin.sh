@@ -250,24 +250,33 @@ gate_aggregator_run() {
     # gate_aggregator.route_conflict naming every target it saw. No target is
     # emitted today besides "design", so the event is expected to stay silent —
     # it exists so that the day a second one appears, it is visible.
-    local _ga_route_target="" _rt_i _rt _ga_route_seen=""
+    # _ga_rt_of[] caches each failed gate's target by its failed[] index: this is
+    # the only place the artifacts are read for it, and the partition below reuses
+    # the cache rather than re-shelling jq per gate.
+    local _ga_route_target="" _rt_i _rt
+    local _ga_rt_of=() _ga_route_seen=() _ga_seen_i
     if [[ "$verdict" == "fail" ]]; then
         for _rt_i in "${!failed[@]}"; do
             _rt="$(jq -r '.route_target // empty' "$artifacts_dir/${failed_files[$_rt_i]}" 2>/dev/null || true)"
-            if [[ -z "$_rt" || "$_rt" == "null" ]]; then continue; fi
+            [[ "$_rt" == "null" ]] && _rt=""
+            _ga_rt_of[$_rt_i]="$_rt"
+            if [[ -z "$_rt" ]]; then continue; fi
             # `if`, not `[[ ]] && x` — the latter returns 1 once the target is
             # already set, which is a live abort should this ever be sourced
             # under errexit.
             if [[ -z "$_ga_route_target" ]]; then _ga_route_target="$_rt"; fi
-            case " $_ga_route_seen " in
-                *" $_rt "*) : ;;
-                *) _ga_route_seen="${_ga_route_seen:+$_ga_route_seen }$_rt" ;;
-            esac
+            # An ARRAY of distinct targets, not a space-joined string: a compound
+            # target name ("re plan") must count as one target, not two.
+            local _ga_dup=0
+            for _ga_seen_i in ${_ga_route_seen[@]+"${_ga_route_seen[@]}"}; do
+                [[ "$_ga_seen_i" == "$_rt" ]] && { _ga_dup=1; break; }
+            done
+            [[ $_ga_dup -eq 0 ]] && _ga_route_seen+=("$_rt")
         done
         [[ -n "$_ga_route_target" ]] && verdict="route_${_ga_route_target}"
-        if [[ "$_ga_route_seen" == *" "* ]]; then
+        if [[ ${#_ga_route_seen[@]} -gt 1 ]]; then
             _ga_emit "gate_aggregator.route_conflict" \
-                "targets=$_ga_route_seen" "selected=$_ga_route_target"
+                "targets=${_ga_route_seen[*]}" "selected=$_ga_route_target"
         fi
     fi
 
@@ -316,7 +325,7 @@ gate_aggregator_run() {
     local _i
     local routed=() routed_files=() residual=() residual_files=()
     for _i in "${!failed[@]}"; do
-        _rt="$(jq -r '.route_target // empty' "$artifacts_dir/${failed_files[$_i]}" 2>/dev/null || true)"
+        _rt="${_ga_rt_of[$_i]:-}"
         if [[ -n "$_ga_route_target" && "$_rt" == "$_ga_route_target" ]]; then
             routed+=("${failed[$_i]}"); routed_files+=("${failed_files[$_i]}")
         else
