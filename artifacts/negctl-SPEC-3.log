@@ -108,12 +108,12 @@
   [38;2;74;222;128m✓[0m T_SCRATCH inner run rc=0 (exit 0)
   [38;2;74;222;128m✓[0m [SPEC-1] diff.patch non-empty: in-scope work preserved on timeout
   [38;2;248;113;113m✗[0m [SPEC-2] build.scratch.cleaned event emitted for stranded scratch files
-    [2mevent 'build.scratch.cleaned' not found in /tmp/plugin-build.swdS9y/events/events.jsonl[0m
+    [2mevent 'build.scratch.cleaned' not found in /tmp/plugin-build.GgExSb/events/events.jsonl[0m
   [38;2;74;222;128m✓[0m [SPEC-3] scope_violation=false: scratch siblings do not void the commit
   [38;2;248;113;113m✗[0m [SPEC-4] .bak scratch file absent from working tree after run
-    [2mfile still present: /tmp/plugin-build.swdS9y/repo_ts/tests/fixtures/scratch-target.txt.bak[0m
+    [2mfile still present: /tmp/plugin-build.GgExSb/repo_ts/tests/fixtures/scratch-target.txt.bak[0m
   [38;2;248;113;113m✗[0m [SPEC-5] .head scratch file absent from working tree after run
-    [2mfile still present: /tmp/plugin-build.swdS9y/repo_ts/tests/fixtures/scratch-target.txt.head[0m
+    [2mfile still present: /tmp/plugin-build.GgExSb/repo_ts/tests/fixtures/scratch-target.txt.head[0m
 
 [2m  ──────────────────────────────────────────[0m
 
