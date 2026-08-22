@@ -68,7 +68,15 @@ write_boundary_allow_list() {
 
     # Engine-owned roots — always allowed, cannot be removed by any override.
     [[ -n "$_sd" ]] && printf '%s\n' "$_sd"
-    [[ -n "${ZBUILD_REPO_ROOT:-}" ]] && printf '%s\n' "$ZBUILD_REPO_ROOT"
+    if [[ -n "${ZBUILD_REPO_ROOT:-}" ]]; then
+        printf '%s\n' "$ZBUILD_REPO_ROOT"
+    else
+        # Fallback: derive from git when ZBUILD_REPO_ROOT is not yet exported
+        # (e.g. during in-place dispatch before the runner sets it, or in tests
+        # that explicitly unset it).
+        local _gr; _gr="$(git rev-parse --show-toplevel 2>/dev/null)" \
+            && [[ -n "$_gr" ]] && printf '%s\n' "$_gr" || true
+    fi
     local _sb="${ZBUILD_SCRATCH_ROOT:-$_sd}"
     [[ -n "$_sb" ]] && printf '%s\n' "${_sb%/}/scratch"
     # ADR-011 stores live under ~/.zbuild.

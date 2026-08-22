@@ -6,7 +6,7 @@
 #                 areas causes write_boundary_check to return 1 (dispatch fails).
 # SPEC-4[change]: write_boundary_classify returns declared|allowed|violation in
 #                 the correct precedence order.
-# SPEC-5[guard]:  write_boundary_mark and write_boundary_check are no-ops when
+# SPEC-5[change]: write_boundary_mark and write_boundary_check are no-ops when
 #                 state_file is empty; no events are emitted on a clean dispatch.
 #
 # Functions are called directly — no plugin_hook_call — so a Level-3 WIRING
@@ -78,7 +78,7 @@ export ZBUILD_WRITE_BOUNDARY_ALLOW="$CUSTOM_ALLOW"
 unset ZBUILD_REPO_ROOT 2>/dev/null || true
 unset ZBUILD_SCRATCH_ROOT 2>/dev/null || true
 
-# ── SPEC-5[guard]: mark and check are no-ops when state_file is empty ────────
+# ── SPEC-5[change]: mark and check are no-ops when state_file is empty ───────
 _WB_EVENTS=()
 write_boundary_mark "" 2>/dev/null || true
 assert_eq "[SPEC-5] write_boundary_mark with empty state_file does not create a marker" \
@@ -94,7 +94,7 @@ assert_eq "[SPEC-5] write_boundary_check with empty state_file emits no events" 
 assert_eq "[SPEC-5] no marker file exists after no-op mark" \
     "0" "$(ls "$JOB_DIR/runtime/" 2>/dev/null | wc -l | tr -d ' ')"
 
-# ── SPEC-5[guard]: clean dispatch emits no events ────────────────────────────
+# ── SPEC-5[change]: clean dispatch emits no events ───────────────────────────
 _WB_EVENTS=()
 write_boundary_mark "$STATE_FILE"
 # Don't write anything to WATCH_DIR → sweep finds nothing → no events.
