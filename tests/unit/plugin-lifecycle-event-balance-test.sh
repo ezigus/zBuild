@@ -174,7 +174,10 @@ _ebal_scratch="$(/usr/bin/grep -c '^SCRATCH=<unset>$' "$BOUNDARY_LOG" 2>/dev/nul
 assert_eq "[SPEC-6] a dispatch with an empty state_file gets no ZBUILD_STAGE_SCRATCH (both calls)" \
     "2" "$_ebal_scratch"
 
-_ebal_bad_tmpdir="$(/usr/bin/grep -c -v "^TMPDIR=${_EBAL_ORIG_TMPDIR}\$" \
+# -xF, not an interpolated BRE: a TMPDIR containing `.` (every macOS
+# /var/folders/... path does) would otherwise match any character in that
+# position, and the assertion would pass on a value it should reject.
+_ebal_bad_tmpdir="$(/usr/bin/grep -c -v -xF "TMPDIR=${_EBAL_ORIG_TMPDIR}" \
     <(/usr/bin/grep '^TMPDIR=' "$BOUNDARY_LOG") 2>/dev/null || true)"
 assert_eq "[SPEC-6] a dispatch with an empty state_file leaves TMPDIR untouched" \
     "0" "$_ebal_bad_tmpdir"

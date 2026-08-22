@@ -284,11 +284,17 @@ zbuild_worktree_run_id() {
 # The state file belonging to <run_id>, or rc=1 if none can be identified.
 #
 # Two layouts, because the runner writes two. A default-state run re-roots into
-# <base>/runs/<run_id>/ (#887); a run given an explicit ZBUILD_STATE_DIR — which
-# CI still pins to the workspace — keeps its state FLAT at that path, and skips
-# the re-root entirely (core/pipeline/runner.sh, `_state_is_default`). Searching
-# only the per-run layout finds nothing under CI's configuration, and a caller
-# that reads "no state" as "cannot prove it finished" would then refuse forever.
+# <base>/runs/<run_id>/ (#887); a run given an explicit ZBUILD_STATE_DIR keeps
+# its state FLAT at that path and skips the re-root entirely
+# (core/pipeline/runner.sh, `_state_is_default`). CI is the case that matters:
+# it sets one explicitly, so it gets the flat layout. Searching only the per-run
+# layout finds nothing under CI's configuration, and a caller that reads
+# "no state" as "cannot prove it finished" would then refuse forever.
+#
+# What CI pins it TO is not what selects the layout — that it pins one at all is.
+# The pre-#1638 version of this note said "which CI still pins to the workspace",
+# which stopped being true when #1638 moved it to $RUNNER_TEMP/zbuild-state, and
+# would now contradict zbuild_run_root's header above (#1918).
 #
 # The `.run_id` match is required, not decorative: the flat layout is ONE file
 # that any run may own, so identifying it by path alone would answer a liveness

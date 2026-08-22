@@ -40,6 +40,12 @@ _ZBUILD_STAGE_SCRATCH_LOADED=1
 _stage_scratch_key() {
     local stage="${1:-}"
     local element="${2:-}"
+    # A stage is required before the element is folded in. Without this a
+    # dispatch that knows its map element but not its stage yields the key
+    # "-security" — non-empty, so the caller gets a directory instead of the
+    # rc=2 refusal, and six lens members with no stage between them would share
+    # it. The element qualifies an owner; it cannot be one.
+    [[ -n "$stage" ]] || return 2
     local key="$stage"
     [[ -n "$element" ]] && key="${key}-${element}"
     key="${key//[^A-Za-z0-9_-]/_}"
