@@ -22,12 +22,16 @@ _ZBUILD_WORKTREE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 #
 # Base precedence: $ZBUILD_RUN_ROOT > $HOME/.zbuild.
 #
-# KNOWN GAP: co-location is only fully realised once CI stops pinning
-# ZBUILD_STATE_DIR to ${{ github.workspace }}/state. That puts pipeline state
-# INSIDE the target repo — the same category of mixing #1629 fixed for the
-# engine — and a worktree cannot follow it there (see
-# zbuild_worktree_assert_outside). Until that moves, state and worktree share a
-# layout shape but not a parent in CI.
+# CLOSED (#1638, restated #1918): CI no longer pins ZBUILD_STATE_DIR to
+# ${{ github.workspace }}/state. The workflow resolves it to
+# $RUNNER_TEMP/zbuild-state — outside the workspace — so state is no longer
+# inside the repo the run is editing, and zbuild_worktree_assert_outside no
+# longer has a state dir it must refuse to follow.
+#
+# The stale version of this note claimed the opposite and is what made ADR-058's
+# per-stage scratch (a directory inside the job folder, uploaded from CI) look
+# impossible. State and worktree still have different parents in CI — that is a
+# layout choice, not the leak the note described.
 zbuild_run_root() {
     local run_id="${1:-}"
     [[ -n "$run_id" ]] || { printf 'zbuild_run_root: run_id required\n' >&2; return 2; }
@@ -280,11 +284,17 @@ zbuild_worktree_run_id() {
 # The state file belonging to <run_id>, or rc=1 if none can be identified.
 #
 # Two layouts, because the runner writes two. A default-state run re-roots into
-# <base>/runs/<run_id>/ (#887); a run given an explicit ZBUILD_STATE_DIR — which
-# CI still pins to the workspace — keeps its state FLAT at that path, and skips
-# the re-root entirely (core/pipeline/runner.sh, `_state_is_default`). Searching
-# only the per-run layout finds nothing under CI's configuration, and a caller
-# that reads "no state" as "cannot prove it finished" would then refuse forever.
+# <base>/runs/<run_id>/ (#887); a run given an explicit ZBUILD_STATE_DIR keeps
+# its state FLAT at that path and skips the re-root entirely
+# (core/pipeline/runner.sh, `_state_is_default`). CI is the case that matters:
+# it sets one explicitly, so it gets the flat layout. Searching only the per-run
+# layout finds nothing under CI's configuration, and a caller that reads
+# "no state" as "cannot prove it finished" would then refuse forever.
+#
+# What CI pins it TO is not what selects the layout — that it pins one at all is.
+# The pre-#1638 version of this note said "which CI still pins to the workspace",
+# which stopped being true when #1638 moved it to $RUNNER_TEMP/zbuild-state, and
+# would now contradict zbuild_run_root's header above (#1918).
 #
 # The `.run_id` match is required, not decorative: the flat layout is ONE file
 # that any run may own, so identifying it by path alone would answer a liveness

@@ -260,6 +260,75 @@ plugin_hook_call() {
     local -x ZBUILD_PLUGIN_KIND="$kind"
     local -x ZBUILD_PLUGIN_DIR="$plugin_dir"
 
+    # ADR-058 §2 (#1918): the engine states WHERE this stage may write, for
+    # exactly the span of one dispatch. #1809 makes a declared output a write
+    # boundary; a boundary cannot be enforced until the permitted areas are
+    # defined, and the per-stage scratch area did not exist at all.
+    #
+    # Same site and same `local -x` as the identity block above, for the same
+    # reasons: it is the only site reaching all four dispatch arms (the `map:`
+    # arm runs a generated standalone script the runner cannot export into, and
+    # this call is that script's last line), and `local -x` restores the prior
+    # value AND the prior export attribute on return, so stage N's scratch
+    # cannot bleed into stage N+1 and the test harness's sandboxed
+    # ZBUILD_ARTIFACT_DIR (scripts/lib/test-helpers.sh) comes back intact.
+    #
+    # Guarded on `$2` being an ABSOLUTE path — the state_file, post-shift, per
+    # ADR-054 §2, the same argument scan_plugin_outputs reads below.
+    #
+    # Absolute, not merely non-empty, and the difference is load-bearing.
+    # `dirname` of a bare relative name is `.`, and by the time a stage
+    # dispatches, the runner has cd'd into the RUN'S WORKTREE (ADR-052) — so a
+    # relative state_file would put `scratch/` and `artifacts/` inside the
+    # repository under change. That is the exact leak this block exists to close,
+    # reintroduced by the block itself.
+    #
+    # It cannot happen from the engine: runner.sh absolutizes state_dir "BEFORE
+    # anything derives a path from state_dir" precisely so no caller has to think
+    # about this (ADR-052, #1640). A relative or empty `$2` therefore means an
+    # ad-hoc caller — the `plugin_hook_call … ""` of
+    # tests/unit/plugin-lifecycle-event-balance-test.sh, or the positional
+    # `… "arg1" "arg2"` of tests/integration/core-plugin-registry-test.sh — which
+    # has no job folder to be inside and must reach the plugin with the
+    # environment it has today.
+    #
+    # Setting TMPDIR is the load-bearing part. scripts/lib/env-scrub.sh
+    # wildcard-unsets every ZBUILD_* before each model spawn — with the
+    # unset-until-gone loop #1873 added specifically to defeat `local -x`
+    # layering at this seam — while TMPDIR is explicitly PRESERVED. It is
+    # therefore the only channel that reaches the model. Redirecting it puts the
+    # model's own temp writes in bounds and relocates every `${TMPDIR:-/tmp}`
+    # consumer in the engine and the plugins with zero plugin edits.
+    #
+    # ZBUILD_ARTIFACT_DIR is a definition, not a leak fix: the gate plugins test
+    # for a live state file first and only fall back to temp when invoked
+    # ad-hoc, so their outputs land correctly today. What changes is that the
+    # plugin's own fallback and scan_plugin_outputs' `${artifact_dir}`
+    # substitution below become the same directory BY CONSTRUCTION, instead of
+    # two independent derivations that a caller can silently split.
+    if [[ "${2:-}" == /* ]]; then
+        local _ws_state_dir; _ws_state_dir="$(dirname "$2")"
+        local -x ZBUILD_ARTIFACT_DIR="${_ws_state_dir}/artifacts"
+
+        if ! declare -F stage_scratch_ensure >/dev/null 2>&1; then
+            # shellcheck source=../pipeline/stage-scratch.sh
+            source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../pipeline" && pwd)/stage-scratch.sh" 2>/dev/null || true
+        fi
+        if declare -F stage_scratch_ensure >/dev/null 2>&1; then
+            local _ws_scratch
+            # Fail-open: an unnameable stage or an uncreatable directory leaves
+            # both vars unset and every consumer on the fallback it has today.
+            # A stage must not be refused dispatch because scratch was
+            # unavailable — that would make a diagnostic convenience a new way
+            # for a run to die.
+            if _ws_scratch="$(stage_scratch_ensure "$_ws_state_dir" "${ZBUILD_CURRENT_STAGE:-}" "${ZBUILD_MAP_ELEMENT:-}" 2>/dev/null)" \
+               && [[ -n "$_ws_scratch" ]]; then
+                local -x ZBUILD_STAGE_SCRATCH="$_ws_scratch"
+                local -x TMPDIR="$_ws_scratch"
+            fi
+        fi
+    fi
+
     # ADR-055 §1 (#1826): the engine resolves what this stage DECLARED it needs
     # and states where each artifact is, so a plugin stops hardcoding filenames.
     # Same site and same `local -x` as the identity vars above, for the same two

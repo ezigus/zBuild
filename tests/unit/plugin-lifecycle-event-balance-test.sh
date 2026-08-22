@@ -53,6 +53,13 @@ fixture_run() {
         "plugin=${ZBUILD_PLUGIN:-}" \
         "kind=${ZBUILD_PLUGIN_KIND:-}" \
         "verdict=pass"
+    # #1918 (SPEC-6 below): record the write-boundary vars as this subshell sees
+    # them. Written before the guard so the record exists at baseline too.
+    {
+        printf 'SCRATCH=%s\n'  "${ZBUILD_STAGE_SCRATCH:-<unset>}"
+        printf 'ARTIFACT=%s\n' "${ZBUILD_ARTIFACT_DIR:-<unset>}"
+        printf 'TMPDIR=%s\n'   "${TMPDIR:-<unset>}"
+    } >> "$ZB_EBAL_BOUNDARY_LOG"
     # Guard: at baseline ZBUILD_PLUGIN is not exported → empty → return 1.
     # This causes the subshell to exit non-zero, which triggers set -e in
     # plugin_hook_call, preventing plugin.run.complete from being emitted.
@@ -80,6 +87,13 @@ verify_plugin_for_source() { return 0; }
 
 # scan_plugin_outputs — always passes; no real artifacts in this fixture.
 scan_plugin_outputs() { return 0; }
+
+BOUNDARY_LOG="$TEST_TEMP_DIR/boundary.env"
+: > "$BOUNDARY_LOG"
+export ZB_EBAL_BOUNDARY_LOG="$BOUNDARY_LOG"
+# The value the write-boundary block must NOT disturb when there is no state
+# file to derive a job folder from.
+_EBAL_ORIG_TMPDIR="${TMPDIR:-<unset>}"
 
 # ── Exercise: invoke plugin_hook_call twice ───────────────────────────────────
 # Use || true so that at baseline (fixture fails → set -e in plugin_hook_call)
@@ -145,6 +159,34 @@ empty_plugin=$(grep '"type":"plugin\.result"' "$EVENTS_LOG" | grep -c '"plugin":
 empty_kind=$(grep '"type":"plugin\.result"' "$EVENTS_LOG" | grep -c '"kind":""' 2>/dev/null || true)
 assert_eq "[SPEC-1] no plugin.result event has empty .plugin field" "0" "$empty_plugin"
 assert_eq "[SPEC-1] no plugin.result event has empty .kind field" "0" "$empty_kind"
+
+# ── SPEC-6: the #1918 write-boundary block is guarded on a non-empty $2 ──────
+# GUARD (#1918). Both calls above pass "" as the state_file — the ad-hoc caller
+# shape. ADR-058 §3's exports are guarded on that argument being non-empty,
+# because `dirname ""` is "." and an unguarded block would silently point every
+# such dispatch at ./artifacts and ./scratch, relative to whatever CWD the
+# process happened to have. Worse, it would redirect TMPDIR there.
+#
+# This assertion lives in THIS file rather than only in the #1918 test files
+# because this is the caller that exercises the shape: a future change to the
+# block that drops the guard passes its own tests and breaks this one.
+_ebal_scratch="$(/usr/bin/grep -c '^SCRATCH=<unset>$' "$BOUNDARY_LOG" 2>/dev/null || true)"
+assert_eq "[SPEC-6] a dispatch with an empty state_file gets no ZBUILD_STAGE_SCRATCH (both calls)" \
+    "2" "$_ebal_scratch"
+
+# -xF, not an interpolated BRE: a TMPDIR containing `.` (every macOS
+# /var/folders/... path does) would otherwise match any character in that
+# position, and the assertion would pass on a value it should reject.
+_ebal_bad_tmpdir="$(/usr/bin/grep -c -v -xF "TMPDIR=${_EBAL_ORIG_TMPDIR}" \
+    <(/usr/bin/grep '^TMPDIR=' "$BOUNDARY_LOG") 2>/dev/null || true)"
+assert_eq "[SPEC-6] a dispatch with an empty state_file leaves TMPDIR untouched" \
+    "0" "$_ebal_bad_tmpdir"
+
+# `.` and `./artifacts` are what an unguarded `dirname "$2"` produces. Naming
+# them explicitly is what makes the failure legible when it happens.
+_ebal_cwd_artifact="$(/usr/bin/grep -cE '^ARTIFACT=(\.|\./artifacts|/artifacts)$' "$BOUNDARY_LOG" 2>/dev/null || true)"
+assert_eq "[SPEC-6] a dispatch with an empty state_file resolves no CWD-relative artifact dir" \
+    "0" "$_ebal_cwd_artifact"
 
 # ── SPEC-3: plugin.result is registered as a known event type in the schema ───
 # CHANGE: at baseline (before "plugin.result" is added to event-schema.json)

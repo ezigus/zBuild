@@ -34,3 +34,4 @@ The complete set. A template is a composition of these; there are no others.
 | [[mechanics/router-models-as-data]] | Tiered model routing from config, no model names in code (ADR-003). |
 | [[mechanics/vision-document]] | Required repo vision: location, format, word cap, and validator (ADR-049). |
 | [[mechanics/stage-io]] | Per-stage INPUT/OUTPUT banners; persona: field; ZBUILD_STAGE_IO_FD (ADR-015). |
+| [[mechanics/write-boundary]] | The four areas a stage may write into, incl. the per-stage scratch dir (ADR-058). |

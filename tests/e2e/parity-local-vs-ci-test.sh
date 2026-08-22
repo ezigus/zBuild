@@ -109,17 +109,28 @@ assert_eq "full pipeline-state.json identical after normalization" \
     "$local_state_norm" "$ci_state_norm"
 
 # ── Test 11: artifact tree (relative paths) identical across modes ──────────
-# Excludes runtime state files (events/, runtime/, *.lock, *.bak, *.db) —
-# keepers are stage outputs under artifacts/ and the top-level produced files.
+# Excludes runtime state files (events/, runtime/, scratch/, *.lock, *.bak, *.db)
+# — keepers are stage outputs under artifacts/ and the top-level produced files.
 # runtime/ holds live-resource bookkeeping for cleanup(release) (#1829): child
 # PIDs and staging paths, which are machine-specific by nature and so can never
 # be identical across modes. It is excluded for the same reason events/ is.
+#
+# scratch/ is excluded for exactly the runtime/ reason, one level further in
+# (#1918, ADR-058). The engine now points TMPDIR at <state_dir>/scratch/<stage>,
+# so the test stage's staging tree — a full copy of the repo under an mktemp
+# name, previously in /var/folders — lands inside the tree this walks. Its
+# CONTENTS are machine-specific and its NAME is random per run, so it can never
+# be identical across modes; nothing in it is a stage output. This exclusion is
+# also the standing proof of the relocation: delete it and this test reports the
+# staging tree at ./scratch/test/zbuild-test-stage.XXXXXX/, which is precisely
+# #1918's end-to-end acceptance criterion.
 _artifact_paths() {
     local dir="$1"
     ( cd "$dir" && \
       find . -type f \
         -not -path './events/*' \
         -not -path './runtime/*' \
+        -not -path './scratch/*' \
         -not -name '*.lock' \
         -not -name '*.bak' \
         -not -name '*.db' \

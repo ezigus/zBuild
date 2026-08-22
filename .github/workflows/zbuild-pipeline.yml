@@ -310,7 +310,23 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: "pipeline-artifacts-issue-${{ inputs.issue_number }}-${{ github.run_id }}"
-          path: ${{ env.ZBUILD_STATE_DIR }}
+          # ADR-058 §3 (#1918): everything under the state dir EXCEPT scratch.
+          # The engine now redirects TMPDIR into <state_dir>/scratch/<stage>, so
+          # the whole run's throwaway working set — the test stage's rsync'd
+          # staging tree, every router mktemp, and the model's own temp writes —
+          # lands inside the uploaded path. Two reasons it must not ship:
+          #   * volume — gigabytes per run, for files nothing diagnoses from;
+          #   * disclosure — scratch holds RAW, unredacted prompts and model
+          #     output. Uploading it would carry them off the machine, routing
+          #     around the redaction chokepoint (ADR-004) that exists to stop
+          #     exactly that. `artifacts/` and `stage-io/` stay, unchanged.
+          # Both globs: `scratch/**` for the direct child the CI layout produces
+          # ($RUNNER_TEMP/zbuild-state is the job folder), `**/scratch/**` for the
+          # per-run `runs/<id>/` nesting the local default uses.
+          path: |
+            ${{ env.ZBUILD_STATE_DIR }}
+            !${{ env.ZBUILD_STATE_DIR }}/scratch/**
+            !${{ env.ZBUILD_STATE_DIR }}/**/scratch/**
           # `warn`, not `ignore`: the path is now computed rather than a literal,
           # so a wrong one would upload nothing and say nothing — the run would
           # look fine and the diagnostics would just be missing. warn surfaces it

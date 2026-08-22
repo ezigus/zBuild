@@ -14,6 +14,13 @@
 # SPEC-4[change]: no workflow anywhere pins the state dir under github.workspace
 # SPEC-5[change]: an empty upload is reported (if-no-files-found == warn)
 # SPEC-6[change]: the resolve step still runs after an earlier step fails
+# SPEC-7[change]: the upload EXCLUDES the scratch directory (#1918 / ADR-058 §5)
+#
+# SPEC-7 is #1918's SPEC-4, renumbered to 7 because this file's SPEC ids are its
+# own and 1-6 were already taken by #1638. It lives here rather than in a new
+# file because it is the same invariant as SPEC-2 seen from the other side: the
+# upload path and the state dir are one value, and #1918 put something inside
+# that value which must not leave the machine.
 #
 # SPEC-1 executes the YAML's shell rather than pattern-matching it: a textual
 # assertion would pass against a step that sets the variable and is never reached.
@@ -87,16 +94,35 @@ assert_eq "[SPEC-6] the state dir is resolved even when an earlier step failed" 
 # ── SPEC-2: the upload path is the same value, not a second literal ─────────
 # Two independent literals would drift: the state moves, the upload keeps pointing
 # at the old place, and `if-no-files-found` means nobody hears about it.
-_UPLOAD_PATH="$(awk '
-    /^      - name: Upload pipeline artifacts/ { instep = 1 }
-    instep && /^          path: /              { sub(/^          path: /, ""); print; exit }
-' "$WF")"
+# #1918 made `path:` a block scalar (one include + two `!` exclusions), so this
+# reads the whole block rather than one line. Comment lines are dropped: the
+# block carries an explanation of why scratch is excluded and must be free to.
+_extract_upload_path_block() {
+    awk '
+        /^      - name: Upload pipeline artifacts/ { instep = 1 }
+        instep && /^      - name: / && !/Upload pipeline artifacts/ { exit }
+        # A lone block-scalar indicator (| |- > >-) is syntax, not a path.
+        instep && /^          path:/ { inpath = 1; sub(/^          path:[ ]*/, "");
+                                       if (NF && $0 !~ /^[|>][-+]?$/) print; next }
+        inpath && /^          [a-z-]+:/ { exit }          # next key at with: level
+        inpath && /^ *#/                { next }          # comment inside the block
+        inpath && NF                    { sub(/^ */, ""); print }
+    ' "$WF"
+}
+_UPLOAD_PATH="$(_extract_upload_path_block)"
 if [[ "$_UPLOAD_PATH" == *'env.ZBUILD_STATE_DIR'* ]]; then
     assert_pass "[SPEC-2] the upload path derives from the resolved state dir"
 else
     assert_fail "[SPEC-2] upload path must reference the state dir, not a second literal" \
         "path=[$_UPLOAD_PATH]"
 fi
+
+# The include line must still be the bare state dir. An exclusion-only or
+# narrowed include would upload nothing (or only part), and `if-no-files-found:
+# warn` means SPEC-5 would let it pass as an annotation nobody reads.
+_INCLUDES="$(printf '%s\n' "$_UPLOAD_PATH" | /usr/bin/grep -v '^!' || true)"
+assert_eq "[SPEC-2] the upload still includes the whole state dir, unnarrowed" \
+    '${{ env.ZBUILD_STATE_DIR }}' "$_INCLUDES"
 
 # ── SPEC-3: failures still upload (CI-5's actual purpose) ───────────────────
 # The reason state was pinned into the workspace was to get it uploaded. Moving it
@@ -120,6 +146,45 @@ _NOTFOUND="$(awk '
 # first stage) — the opposite of the intent, and a loose check would wave it through.
 assert_eq "[SPEC-5] an empty artifact upload is reported, not silently ignored" \
     "warn" "$_NOTFOUND"
+
+# ── SPEC-7: the upload excludes scratch (#1918, ADR-058 §5) ─────────────────
+# The engine now redirects TMPDIR into <state_dir>/scratch/<stage>, so the run's
+# entire throwaway working set — the test stage's staging copy of the repo, every
+# router mktemp, and the model's own temp writes — is inside the uploaded path.
+# It must not ship: gigabytes per run, and RAW UNREDACTED prompts and model
+# output carried off the machine, around the redaction chokepoint (ADR-004).
+#
+# Asserted against the parsed block rather than a `grep scratch` over the file:
+# the word appears in the surrounding comment, so a grep would stay green if the
+# exclusion lines themselves were deleted.
+_EXCLUSIONS="$(printf '%s\n' "$_UPLOAD_PATH" | /usr/bin/grep '^!' || true)"
+if printf '%s\n' "$_EXCLUSIONS" | /usr/bin/grep -qF '/scratch/**'; then
+    assert_pass "[SPEC-7] the artifact upload excludes the scratch directory"
+else
+    assert_fail "[SPEC-7] scratch must be excluded from the artifact upload — it holds raw model I/O" \
+        "exclusions=[${_EXCLUSIONS:-none}] block=[$_UPLOAD_PATH]"
+fi
+
+# Both layouts. The CI job folder IS $ZBUILD_STATE_DIR ($RUNNER_TEMP/zbuild-state),
+# so scratch is a direct child there; the local per-run default nests it under
+# runs/<id>/. One glob covers one of those, and a resume or a nested run would
+# silently ship the other.
+_missing_globs=()
+for _g in '${{ env.ZBUILD_STATE_DIR }}/scratch/**' '${{ env.ZBUILD_STATE_DIR }}/**/scratch/**'; do
+    printf '%s\n' "$_EXCLUSIONS" | /usr/bin/grep -qxF "!$_g" || _missing_globs+=("$_g")
+done
+assert_eq "[SPEC-7] both the direct-child and the nested scratch layouts are excluded (missing: ${_missing_globs[*]:-none})" \
+    "0" "${#_missing_globs[@]}"
+
+# The exclusions are exactly scratch. `!` patterns are how a whole subtree gets
+# silently dropped from a diagnostic upload, so anything else here is a defect
+# in this step regardless of what it names.
+_non_scratch="$(printf '%s\n' "$_EXCLUSIONS" | /usr/bin/grep -v '/scratch/\*\*$' || true)"
+if [[ -z "$_non_scratch" ]]; then
+    assert_pass "[SPEC-7] the upload excludes nothing except scratch"
+else
+    assert_fail "[SPEC-7] the upload must not silently drop anything but scratch" "$_non_scratch"
+fi
 
 # ── SPEC-4: no workflow pins state under the workspace ──────────────────────
 _OFFENDERS="$(grep -rn 'ZBUILD_STATE_DIR' "$REPO_ROOT/.github/workflows/" 2>/dev/null \

@@ -23,6 +23,15 @@ ruvector.db
 pipeline-state.json
 # Anchor to repo root only — core/state/ (source tree) must NOT be ignored.
 /state/
+# Same anchoring, same reason (#1918): ADR-058's per-stage scratch lives under
+# the job's state dir, but an ad-hoc caller that hands plugin_hook_call a
+# RELATIVE state file gets `dirname` == "." and writes ./scratch/<stage>/ into
+# whatever the CWD is. The engine refuses that (lifecycle.sh guards on an
+# absolute path) and a test that ablates the guard reproduces it — which is
+# exactly how five ephemeral event-bus files reached a commit here. The floor is
+# `git add` never sweeping one up. core/pipeline/stage-scratch.sh is a FILE, not
+# a directory, so it is unaffected.
+/scratch/
 *.db-wal
 *.db-shm
 

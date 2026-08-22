@@ -35,7 +35,7 @@ validator_rc=0
 bash "$VALIDATOR" >/dev/null 2>&1 || validator_rc=$?
 assert_eq "[SPEC-1] validator exits 0 on real registry" "0" "$validator_rc"
 
-# ── SPEC-2: all 17 expected mechanic names are present ───────────────────────
+# ── SPEC-2: all 18 expected mechanic names are present ───────────────────────
 EXPECTED_MECHANICS=(
     admission-gate
     aggregators
@@ -54,6 +54,7 @@ EXPECTED_MECHANICS=(
     stage-io
     state-and-resume
     vision-document
+    write-boundary
 )
 
 missing_mechanics=()
@@ -64,7 +65,7 @@ for mechanic in "${EXPECTED_MECHANICS[@]}"; do
 done
 
 missing_count="${#missing_mechanics[@]}"
-assert_eq "[SPEC-2] all 17 expected mechanics present in registry (missing: ${missing_mechanics[*]:-none})" "0" "$missing_count"
+assert_eq "[SPEC-2] all 18 expected mechanics present in registry (missing: ${missing_mechanics[*]:-none})" "0" "$missing_count"
 
 # ── SPEC-3: every defined_in path resolves to an existing file ───────────────
 # Extract defined_in values and check each one

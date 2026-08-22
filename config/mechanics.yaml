@@ -77,6 +77,11 @@ mechanics:
     defined_in: core/state/resume.sh
     adr: ADR-006
 
+  - name: write-boundary
+    summary: The four areas a stage may write into, incl. the per-stage scratch dir (ADR-058).
+    defined_in: core/pipeline/stage-scratch.sh
+    adr: ADR-058
+
   - name: vision-document
     summary: Required repo vision document; location, format, word cap, and validator (ADR-049).
     defined_in: scripts/lib/vision.sh
