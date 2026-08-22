@@ -1,6 +1,0 @@
-{"ts":"2026-08-22T15:52:30.000Z","run_id":"","issue":0,"type":"plugin.run.start","plugin":"fixture-agent","kind":"agent","data":{"plugin":"fixture-agent","kind":"agent"},"schema_version":1,"stage":"stage-a"}
-{"ts":"2026-08-22T15:52:31.000Z","run_id":"","issue":0,"type":"plugin.result","plugin":"fixture-agent","kind":"agent","data":{"plugin":"fixture-agent","kind":"agent","verdict":"pass"},"schema_version":1,"stage":"stage-a"}
-{"ts":"2026-08-22T15:52:31.000Z","run_id":"","issue":0,"type":"plugin.run.complete","plugin":"fixture-agent","kind":"agent","data":{"plugin":"fixture-agent","kind":"agent"},"schema_version":1,"stage":"stage-a"}
-{"ts":"2026-08-22T15:52:31.000Z","run_id":"","issue":0,"type":"plugin.run.start","plugin":"fixture-agent","kind":"agent","data":{"plugin":"fixture-agent","kind":"agent"},"schema_version":1,"stage":"stage-b"}
-{"ts":"2026-08-22T15:52:31.000Z","run_id":"","issue":0,"type":"plugin.result","plugin":"fixture-agent","kind":"agent","data":{"plugin":"fixture-agent","kind":"agent","verdict":"pass"},"schema_version":1,"stage":"stage-b"}
-{"ts":"2026-08-22T15:52:31.000Z","run_id":"","issue":0,"type":"plugin.run.complete","plugin":"fixture-agent","kind":"agent","data":{"plugin":"fixture-agent","kind":"agent"},"schema_version":1,"stage":"stage-b"}
