@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
+# DEPRECATED — use `zbuild clean` for run-scoped teardown cleanup (#E5, #1831).
+# This file is preserved (not deleted) because #1632's scheduled cron references
+# it by path. Do not remove it until #1632 is updated to call `zbuild clean`.
+#
+# GAP (#1632): the plan-context cache GC behaviour (--older-than, --status,
+# --repo, --issue, --max-entries) is NOT yet covered by clean.yaml. Until #1632
+# wires it, this script remains the authoritative path for plan-context pruning.
+# Per-run state teardown should be migrated to: zbuild clean --run-id <id>
+#
 # Operator CLI to prune the plan-context cache and per-run state dirs (#1052, Pillar F).
 # Both stores grow unbounded: the cross-run plan-context cache
 # ($ZBUILD_PLAN_CONTEXT_DIR) introduced by this issue, and the per-run state dirs
@@ -8,6 +17,10 @@
 #
 # Usage: bash scripts/cleanup-artifacts.sh [flags]   (see --help)
 set -euo pipefail
+# Emit the deprecation notice to stderr so callers are informed. Piped here so
+# it doesn't interfere with any stdout consumers.
+printf '[DEPRECATED] cleanup-artifacts.sh: use `zbuild clean` for run-scoped teardown.\n' >&2
+printf '  Plan-context GC (--older-than, --status, etc.) is not yet in clean.yaml (#1632).\n' >&2
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"

@@ -70,6 +70,22 @@ teardown_run() {
         ' "$_state_file" 2>/dev/null || true)
     fi
 
+    # ── dry-run fast path ─────────────────────────────────────────────────────
+    # When ZBUILD_CLEAN_DRY_RUN=1 (set by `zbuild clean --dry-run`), emit a
+    # teardown.dry_run.would_clean event for each stage that WOULD be cleaned
+    # and return 0 without invoking any cleanup hooks.
+    if [[ "${ZBUILD_CLEAN_DRY_RUN:-0}" == "1" ]]; then
+        local _s
+        for _s in "${_executed[@]}"; do
+            [[ "$_s" == "teardown" ]] && continue
+            emit_event "teardown.dry_run.would_clean" \
+                "stage=$_s" "scope=$_scope" 2>/dev/null || true
+        done
+        emit_event "teardown.complete" \
+            "scope=$_scope" "failed=0" "dry_run=1" 2>/dev/null || true
+        return 0
+    fi
+
     emit_event "teardown.start" \
         "scope=$_scope" "stage_count=${#_executed[@]}" 2>/dev/null || true
 
