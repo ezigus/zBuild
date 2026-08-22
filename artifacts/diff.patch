@@ -41,7 +41,7 @@ index 7b75080..a38d240 100644
  
  config:
 diff --git a/plugins/agent/build/tests/build-test.sh b/plugins/agent/build/tests/build-test.sh
-index 3c38837..9e956fd 100644
+index 3c38837..f42338f 100644
 --- a/plugins/agent/build/tests/build-test.sh
 +++ b/plugins/agent/build/tests/build-test.sh
 @@ -79,6 +79,7 @@ MOCK_LOOP_EDIT_CONTENT=""
@@ -66,7 +66,7 @@ index 3c38837..9e956fd 100644
      _ROUTE_LOOP_ITERATIONS="$MOCK_LOOP_ITERATIONS"
      _ROUTE_LOOP_TERMINATED_REASON="$MOCK_LOOP_REASON"
      _ROUTE_LOOP_INPUT_TOKENS=100
-@@ -643,6 +651,97 @@ MOCK_LOOP_ITERATIONS=1
+@@ -643,6 +651,98 @@ MOCK_LOOP_ITERATIONS=1
  MOCK_LOOP_REASON="done_sentinel"
  MOCK_LOOP_RC=0
  
@@ -114,6 +114,7 @@ index 3c38837..9e956fd 100644
 +    "$ARTIFACT_DIR_TS" >/dev/null 2>&1
 +rc_ts=$?
 +set -e
++assert_exit_code "T_SCRATCH inner run rc=0" "0" "$rc_ts"
 +
 +# SPEC-1 (GUARD): diff.patch is non-empty — in-scope work preserved.
 +ts_size=0
@@ -139,7 +140,7 @@ index 3c38837..9e956fd 100644
 +        "summary: $ts_summary"
 +fi
 +
-+# SPEC-4 (GUARD): .bak file absent from working tree after the run.
++# SPEC-4 (CHANGE): .bak file absent from working tree after the run.
 +if [[ ! -f "$REPO_TS/tests/fixtures/scratch-target.txt.bak" ]]; then
 +    assert_pass "[SPEC-4] .bak scratch file absent from working tree after run"
 +else
@@ -147,7 +148,7 @@ index 3c38837..9e956fd 100644
 +        "file still present: $REPO_TS/tests/fixtures/scratch-target.txt.bak"
 +fi
 +
-+# SPEC-5 (GUARD): .head file absent from working tree after the run.
++# SPEC-5 (CHANGE): .head file absent from working tree after the run.
 +if [[ ! -f "$REPO_TS/tests/fixtures/scratch-target.txt.head" ]]; then
 +    assert_pass "[SPEC-5] .head scratch file absent from working tree after run"
 +else
