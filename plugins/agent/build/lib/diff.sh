@@ -136,6 +136,7 @@ _build_validate_scope_violations() {
     _BUILD_VSCP_DIFF_CONTENT="$_diff_content"
 
     local _scope_violation="false"
+    local _scratch_cleaned=0
     local -a _scope_violations=()
     local -a _scope_violations_created=()
 
@@ -179,6 +180,29 @@ _build_validate_scope_violations() {
                     continue
                 fi
                 if ! _build_path_in_scope "$_p" _allowed_files; then
+                    # #1789: editor/VCS residue (sed -i.bak, git show HEAD:f >
+                    # f.head) is the agent comparing versions of a file it was
+                    # authorised to edit, not scope. Narrowing is by suffix and
+                    # applies only OUT of scope, so a tracked or in-scope file
+                    # carrying one of these suffixes is never touched.
+                    if _build_path_is_scratch "$_p"; then
+                        # Test against HEAD, not the index: the `git add -N`
+                        # above (intent-to-add) makes `ls-files --error-unmatch`
+                        # succeed for brand-new residue too.
+                        if git -C "$_repo_root" cat-file -e "HEAD:$_p" 2>/dev/null; then
+                            # Genuinely tracked: rm would leave a deletion in the
+                            # diff — still an OOS change. Restore it instead.
+                            git -C "$_repo_root" checkout HEAD -- "$_p" 2>/dev/null || true
+                        else
+                            git -C "$_repo_root" rm -q -f --cached --ignore-unmatch \
+                                -- "$_p" >/dev/null 2>&1 || true
+                            rm -f "$_repo_root/$_p" 2>/dev/null || true
+                        fi
+                        _scratch_cleaned=$((_scratch_cleaned+1))
+                        emit_event "build.scratch.cleaned" "plugin=build" \
+                            "path=$_p" "status=$_status"
+                        continue
+                    fi
                     _scope_violation="true"
                     _scope_violations+=("$_p")
                     [[ "$_status" =~ ^A ]] && _scope_violations_created+=("$_p")
@@ -191,6 +215,20 @@ _build_validate_scope_violations() {
 
     # #1265: drop the pre-existing-untracked scratch file.
     [[ -n "$_preexist_untracked" ]] && rm -f "$_preexist_untracked" 2>/dev/null || true
+
+    # A cleaned path is still present in $_diff_content, which was captured
+    # before this function ran — plugin.sh derives files_changed/lines_added
+    # from that string, so it would report files it just deleted.
+    if [[ "$_scratch_cleaned" -gt 0 && "$_scope_violation" != "true" ]]; then
+        git -C "$_repo_root" diff HEAD > "$_output_diff_patch" 2>/dev/null || true
+        if [[ -s "$_output_diff_patch" ]]; then
+            # printf x guards the trailing newline command substitution strips (#530).
+            _diff_content="$(cat "$_output_diff_patch"; printf x)"
+            _diff_content="${_diff_content%x}"
+        else
+            _diff_content=""
+        fi
+    fi
 
     local _pre_zero_numstat=""
     if [[ "$_scope_violation" == "true" ]]; then

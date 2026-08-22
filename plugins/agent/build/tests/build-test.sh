@@ -79,6 +79,7 @@ MOCK_LOOP_EDIT_CONTENT=""
 MOCK_LOOP_RC=0
 MOCK_LOOP_REASON="done_sentinel"
 MOCK_LOOP_ITERATIONS=1
+MOCK_LOOP_EXTRA_FILES=""
 route_to_model_loop() {
     # Args: tier prompt_file cwd max_iterations [flags...]
     local _prompt_file="$2"
@@ -87,6 +88,13 @@ route_to_model_loop() {
     if [[ -n "$MOCK_LOOP_EDIT_FILE" && -d "$_cwd" ]]; then
         mkdir -p "$_cwd/$(dirname "$MOCK_LOOP_EDIT_FILE")"
         printf '%s' "$MOCK_LOOP_EDIT_CONTENT" > "$_cwd/$MOCK_LOOP_EDIT_FILE"
+    fi
+    if [[ -n "$MOCK_LOOP_EXTRA_FILES" && -d "$_cwd" ]]; then
+        local _ef
+        for _ef in $MOCK_LOOP_EXTRA_FILES; do
+            mkdir -p "$_cwd/$(dirname "$_ef")"
+            printf 'scratch' > "$_cwd/$_ef"
+        done
     fi
     _ROUTE_LOOP_ITERATIONS="$MOCK_LOOP_ITERATIONS"
     _ROUTE_LOOP_TERMINATED_REASON="$MOCK_LOOP_REASON"
@@ -642,6 +650,202 @@ MOCK_LOOP_EDIT_CONTENT=""
 MOCK_LOOP_ITERATIONS=1
 MOCK_LOOP_REASON="done_sentinel"
 MOCK_LOOP_RC=0
+
+# ─── T_SCRATCH: scratch-suffix siblings deleted, not treated as OOS violations ─
+print_test_section "T_SCRATCH: .bak/.head siblings deleted as residue, not scope violations"
+
+ARTIFACT_DIR_TS="$TEST_TEMP_DIR/artifacts_ts"
+mkdir -p "$ARTIFACT_DIR_TS"
+
+PLAN_JSON_TS="$ARTIFACT_DIR_TS/plan.json"
+cat > "$PLAN_JSON_TS" <<'EOF'
+{
+  "schema_version": 1,
+  "goal": "Edit in-scope file (scratch siblings stranded by timeout)",
+  "files": ["tests/fixtures/scratch-target.txt"],
+  "steps": []
+}
+EOF
+
+OUT_DIFF_TS="$ARTIFACT_DIR_TS/diff.patch"
+OUT_SUMMARY_TS="$ARTIFACT_DIR_TS/build-summary.json"
+
+REPO_TS="$(setup_build_repo "repo_ts")"
+export ZBUILD_REPO_ROOT="$REPO_TS"
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_ts"
+mkdir -p "$ZBUILD_STATE_DIR"
+printf '%s' "$(git -C "$REPO_TS" rev-parse HEAD)" \
+    > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+
+# Mock: a turn that writes an in-scope edit AND strands two scratch siblings.
+MOCK_LOOP_EDIT_FILE="tests/fixtures/scratch-target.txt"
+MOCK_LOOP_EDIT_CONTENT="scratch-test-content"
+MOCK_LOOP_EXTRA_FILES="tests/fixtures/scratch-target.txt.bak tests/fixtures/scratch-target.txt.head tests/fixtures/scratch-target.txt.rej tests/fixtures/scratch-target.txt.tmp tests/fixtures/scratch-target.txt~"
+# rc=0, NOT rc=2: #827 already preserves in-scope work on the timeout path, so a
+# rc=2 mock would exercise a branch this change does not touch. #1789's loss came
+# from the CLEAN-run branch, where an OOS path zeroes diff.patch outright.
+MOCK_LOOP_RC=0
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_ITERATIONS=1
+
+: > "$ZBUILD_EVENTS_JSONL"
+set +e
+_build_stage_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$PLAN_JSON_TS" \
+    "$OUT_DIFF_TS" \
+    "$OUT_SUMMARY_TS" \
+    "$ARTIFACT_DIR_TS" >/dev/null 2>&1
+rc_ts=$?
+set -e
+assert_exit_code "T_SCRATCH inner run rc=0" "0" "$rc_ts"
+
+# SPEC-10 (CHANGE): diff.patch is non-empty — in-scope work preserved.
+ts_size=0
+[[ -f "$OUT_DIFF_TS" ]] && ts_size="$(wc -c < "$OUT_DIFF_TS" | tr -d ' ')"
+if [[ "$ts_size" -gt 0 ]]; then
+    assert_pass "[SPEC-10] diff.patch non-empty: in-scope work preserved alongside scratch siblings"
+else
+    assert_fail "[SPEC-10] diff.patch non-empty: in-scope work preserved alongside scratch siblings" \
+        "size=$ts_size"
+fi
+
+# SPEC-11 (CHANGE): build.scratch.cleaned event emitted for the stranded scratch files.
+# FAILS at merge-base baseline where the scratch-suffix filter does not exist.
+assert_event_emitted "[SPEC-11] build.scratch.cleaned event emitted for stranded scratch files" \
+    "$ZBUILD_EVENTS_JSONL" "build.scratch.cleaned"
+
+# SPEC-12 (CHANGE): scope_violation=false — scratch siblings do not void the commit.
+ts_summary="$(cat "$OUT_SUMMARY_TS" 2>/dev/null || echo '{}')"
+if printf '%s' "$ts_summary" | jq -e '.scope_violation == false' >/dev/null 2>&1; then
+    assert_pass "[SPEC-12] scope_violation=false: scratch siblings do not void the commit"
+else
+    assert_fail "[SPEC-12] scope_violation=false: scratch siblings do not void the commit" \
+        "summary: $ts_summary"
+fi
+
+# SPEC-15 (CHANGE): build-summary.json must not report the files it just deleted.
+# $_diff_content is captured BEFORE scope validation, so without a refresh the
+# cleaned scratch paths survive into files_changed/lines_added.
+ts_fc="$(jq -c '.files_changed' "$OUT_SUMMARY_TS" 2>/dev/null || echo '[]')"
+if [[ "$ts_fc" == *scratch-target.txt.bak* || "$ts_fc" == *scratch-target.txt.head* ]]; then
+    assert_fail "[SPEC-15] build-summary files_changed excludes cleaned scratch paths" \
+        "files_changed=$ts_fc"
+else
+    assert_pass "[SPEC-15] build-summary files_changed excludes cleaned scratch paths"
+fi
+assert_eq "[SPEC-16] build-summary lines_added counts only the in-scope edit" \
+    "1" "$(jq -r '.lines_added' "$OUT_SUMMARY_TS" 2>/dev/null || echo X)"
+
+# SPEC-13 (CHANGE): .bak file absent from working tree after the run.
+if [[ ! -f "$REPO_TS/tests/fixtures/scratch-target.txt.bak" ]]; then
+    assert_pass "[SPEC-13] .bak scratch file absent from working tree after run"
+else
+    assert_fail "[SPEC-13] .bak scratch file absent from working tree after run" \
+        "file still present: $REPO_TS/tests/fixtures/scratch-target.txt.bak"
+fi
+
+# SPEC-14 (CHANGE): .head file absent from working tree after the run.
+if [[ ! -f "$REPO_TS/tests/fixtures/scratch-target.txt.head" ]]; then
+    assert_pass "[SPEC-14] .head scratch file absent from working tree after run"
+else
+    assert_fail "[SPEC-14] .head scratch file absent from working tree after run" \
+        "file still present: $REPO_TS/tests/fixtures/scratch-target.txt.head"
+fi
+
+# ─── T_SCRATCH2: the suffix narrowing does not swallow legitimate files ───────
+# Guards on T_SCRATCH's narrowing. Cleanup keys off the suffix, but only for a
+# path ALREADY out of scope and not present at HEAD — so an in-scope file that
+# happens to end in .bak is real work, and a tracked one is real content.
+print_test_section "T_SCRATCH2: in-scope and tracked scratch-suffix files are not swallowed"
+
+ARTIFACT_DIR_T2="$TEST_TEMP_DIR/artifacts_ts2"
+mkdir -p "$ARTIFACT_DIR_T2"
+
+PLAN_JSON_T2="$ARTIFACT_DIR_T2/plan.json"
+cat > "$PLAN_JSON_T2" <<'EOF'
+{
+  "schema_version": 1,
+  "goal": "In-scope file carrying a scratch suffix is legitimate work",
+  "files": ["tests/fixtures/in-scope.bak"],
+  "steps": []
+}
+EOF
+
+OUT_DIFF_T2="$ARTIFACT_DIR_T2/diff.patch"
+OUT_SUMMARY_T2="$ARTIFACT_DIR_T2/build-summary.json"
+
+REPO_T2="$(setup_build_repo "repo_ts2")"
+# A TRACKED .orig file, out of scope — content, not residue.
+( cd "$REPO_T2" \
+  && printf 'tracked-original\n' > tests/fixtures/tracked.orig \
+  && git add tests/fixtures/tracked.orig \
+  && git commit -q -m "tracked scratch-suffix file" )
+export ZBUILD_REPO_ROOT="$REPO_T2"
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_ts2"
+mkdir -p "$ZBUILD_STATE_DIR"
+printf '%s' "$(git -C "$REPO_T2" rev-parse HEAD)" \
+    > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+
+MOCK_LOOP_EDIT_FILE="tests/fixtures/in-scope.bak"
+MOCK_LOOP_EDIT_CONTENT="legitimate-in-scope-work"
+MOCK_LOOP_EXTRA_FILES="tests/fixtures/tracked.orig"
+MOCK_LOOP_RC=0
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_ITERATIONS=1
+
+: > "$ZBUILD_EVENTS_JSONL"
+set +e
+_build_stage_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$PLAN_JSON_T2" \
+    "$OUT_DIFF_T2" \
+    "$OUT_SUMMARY_T2" \
+    "$ARTIFACT_DIR_T2" >/dev/null 2>&1
+rc_t2=$?
+set -e
+assert_exit_code "T_SCRATCH2 inner run rc=0" "0" "$rc_t2"
+
+# An in-scope path is legitimate work whatever its suffix: never deleted.
+if [[ -f "$REPO_T2/tests/fixtures/in-scope.bak" ]]; then
+    assert_pass "in-scope .bak file survives the scratch filter"
+else
+    assert_fail "in-scope .bak file survives the scratch filter" "file was deleted"
+fi
+
+# Tracked content is restored to its HEAD state, never removed from the tree.
+t2_tracked="$(cat "$REPO_T2/tests/fixtures/tracked.orig" 2>/dev/null || echo MISSING)"
+assert_eq "tracked out-of-scope .orig is restored, not deleted" \
+    "tracked-original" "$t2_tracked"
+
+# The in-scope edit still reaches diff.patch.
+assert_contains "diff.patch carries the in-scope .bak edit" \
+    "$(cat "$OUT_DIFF_T2" 2>/dev/null || true)" "in-scope.bak"
+
+# SPEC-17/18/19 (CHANGE): every suffix _build_path_is_scratch claims is pruned.
+# .bak/.head are SPEC-13/14 above; these are the three the design did not name.
+# One id per suffix, not one id for the loop: #1792's grep -m1 readout shows only
+# the FIRST tagged line per SPEC, so a passing sibling would mask a failing one.
+for _sfx_spec in "rej:SPEC-17" "tmp:SPEC-18" "~:SPEC-19"; do
+    _sfx="${_sfx_spec%%:*}"
+    _spec="${_sfx_spec#*:}"
+    case "$_sfx" in
+        '~') _sf="$REPO_TS/tests/fixtures/scratch-target.txt~" ;;
+        *)   _sf="$REPO_TS/tests/fixtures/scratch-target.txt.$_sfx" ;;
+    esac
+    if [[ ! -f "$_sf" ]]; then
+        assert_pass "[$_spec] scratch suffix '$_sfx' pruned from working tree"
+    else
+        assert_fail "[$_spec] scratch suffix '$_sfx' pruned from working tree" \
+            "still present: $_sf"
+    fi
+done
+
+# Reset mock to defaults.
+MOCK_LOOP_EXTRA_FILES=""
+MOCK_LOOP_RC=0
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_ITERATIONS=1
 
 # ─── Teardown ────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }
