@@ -11,6 +11,20 @@ _build_path_in_scope() {
     _numstat_path_in_scope "$@"
 }
 
+# _build_path_is_scratch <path> (#1789)
+# Well-known editor/VCS scratch suffixes. `sed -i.bak` and `git show HEAD:f >
+# f.head` leave these behind; they are residue of an agent comparing versions of
+# a file it was authorised to edit, never work in their own right. Callers must
+# apply this only to paths already known to be OUT of scope — an in-scope file
+# that happens to carry one of these suffixes is legitimate work.
+_build_path_is_scratch() {
+    local _p="$1"
+    [[ -z "$_p" ]] && return 1
+    [[ "$_p" =~ \.(bak|orig|rej|head|tmp)$ ]] && return 0
+    [[ "$_p" == *~ ]] && return 0
+    return 1
+}
+
 # _build_detect_out_of_scope_files <feedback_body> <plan_files_csv> (#792)
 # Detect when test_assessment's failure_summary_md names file paths NOT in
 # plan.files[]. Returns list of out-of-scope paths (one per line), empty if none.

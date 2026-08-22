@@ -178,14 +178,29 @@ _build_validate_scope_violations() {
                    && grep -Fxq -- "$_p" "$_preexist_untracked"; then
                     continue
                 fi
-                # Scratch-suffix pre-filter: debris left by sed -i.bak, git show
-                # HEAD:f > f.head, etc. Delete silently — never a scope violation.
-                if [[ "$_p" =~ \.(bak|orig|rej|head|tmp)$ ]] || [[ "$_p" == *~ ]]; then
-                    rm -f "$_repo_root/$_p" 2>/dev/null || true
-                    emit_event "build.scratch.cleaned" "plugin=build" "path=$_p"
-                    continue
-                fi
                 if ! _build_path_in_scope "$_p" _allowed_files; then
+                    # #1789: editor/VCS residue (sed -i.bak, git show HEAD:f >
+                    # f.head) is the agent comparing versions of a file it was
+                    # authorised to edit, not scope. Narrowing is by suffix and
+                    # applies only OUT of scope, so a tracked or in-scope file
+                    # carrying one of these suffixes is never touched.
+                    if _build_path_is_scratch "$_p"; then
+                        # Test against HEAD, not the index: the `git add -N`
+                        # above (intent-to-add) makes `ls-files --error-unmatch`
+                        # succeed for brand-new residue too.
+                        if git -C "$_repo_root" cat-file -e "HEAD:$_p" 2>/dev/null; then
+                            # Genuinely tracked: rm would leave a deletion in the
+                            # diff — still an OOS change. Restore it instead.
+                            git -C "$_repo_root" checkout HEAD -- "$_p" 2>/dev/null || true
+                        else
+                            git -C "$_repo_root" rm -q -f --cached --ignore-unmatch \
+                                -- "$_p" >/dev/null 2>&1 || true
+                            rm -f "$_repo_root/$_p" 2>/dev/null || true
+                        fi
+                        emit_event "build.scratch.cleaned" "plugin=build" \
+                            "path=$_p" "status=$_status"
+                        continue
+                    fi
                     _scope_violation="true"
                     _scope_violations+=("$_p")
                     [[ "$_status" =~ ^A ]] && _scope_violations_created+=("$_p")
