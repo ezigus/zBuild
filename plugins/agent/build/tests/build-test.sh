@@ -79,6 +79,7 @@ MOCK_LOOP_EDIT_CONTENT=""
 MOCK_LOOP_RC=0
 MOCK_LOOP_REASON="done_sentinel"
 MOCK_LOOP_ITERATIONS=1
+MOCK_LOOP_EXTRA_FILES=""
 route_to_model_loop() {
     # Args: tier prompt_file cwd max_iterations [flags...]
     local _prompt_file="$2"
@@ -87,6 +88,13 @@ route_to_model_loop() {
     if [[ -n "$MOCK_LOOP_EDIT_FILE" && -d "$_cwd" ]]; then
         mkdir -p "$_cwd/$(dirname "$MOCK_LOOP_EDIT_FILE")"
         printf '%s' "$MOCK_LOOP_EDIT_CONTENT" > "$_cwd/$MOCK_LOOP_EDIT_FILE"
+    fi
+    if [[ -n "$MOCK_LOOP_EXTRA_FILES" && -d "$_cwd" ]]; then
+        local _ef
+        for _ef in $MOCK_LOOP_EXTRA_FILES; do
+            mkdir -p "$_cwd/$(dirname "$_ef")"
+            printf 'scratch' > "$_cwd/$_ef"
+        done
     fi
     _ROUTE_LOOP_ITERATIONS="$MOCK_LOOP_ITERATIONS"
     _ROUTE_LOOP_TERMINATED_REASON="$MOCK_LOOP_REASON"
@@ -642,6 +650,97 @@ MOCK_LOOP_EDIT_CONTENT=""
 MOCK_LOOP_ITERATIONS=1
 MOCK_LOOP_REASON="done_sentinel"
 MOCK_LOOP_RC=0
+
+# ─── T_SCRATCH: scratch-suffix siblings deleted, not treated as OOS violations ─
+print_test_section "T_SCRATCH: .bak/.head siblings deleted on timeout, not scope violations"
+
+ARTIFACT_DIR_TS="$TEST_TEMP_DIR/artifacts_ts"
+mkdir -p "$ARTIFACT_DIR_TS"
+
+PLAN_JSON_TS="$ARTIFACT_DIR_TS/plan.json"
+cat > "$PLAN_JSON_TS" <<'EOF'
+{
+  "schema_version": 1,
+  "goal": "Edit in-scope file (scratch siblings stranded by timeout)",
+  "files": ["tests/fixtures/scratch-target.txt"],
+  "steps": []
+}
+EOF
+
+OUT_DIFF_TS="$ARTIFACT_DIR_TS/diff.patch"
+OUT_SUMMARY_TS="$ARTIFACT_DIR_TS/build-summary.json"
+
+REPO_TS="$(setup_build_repo "repo_ts")"
+export ZBUILD_REPO_ROOT="$REPO_TS"
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_ts"
+mkdir -p "$ZBUILD_STATE_DIR"
+printf '%s' "$(git -C "$REPO_TS" rev-parse HEAD)" \
+    > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+
+# Mock: timed-out turn — writes an in-scope edit AND two scratch siblings.
+MOCK_LOOP_EDIT_FILE="tests/fixtures/scratch-target.txt"
+MOCK_LOOP_EDIT_CONTENT="scratch-test-content"
+MOCK_LOOP_EXTRA_FILES="tests/fixtures/scratch-target.txt.bak tests/fixtures/scratch-target.txt.head"
+MOCK_LOOP_RC=2
+MOCK_LOOP_REASON="error"
+MOCK_LOOP_ITERATIONS=1
+
+: > "$ZBUILD_EVENTS_JSONL"
+set +e
+_build_stage_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$PLAN_JSON_TS" \
+    "$OUT_DIFF_TS" \
+    "$OUT_SUMMARY_TS" \
+    "$ARTIFACT_DIR_TS" >/dev/null 2>&1
+rc_ts=$?
+set -e
+
+# SPEC-1 (GUARD): diff.patch is non-empty — in-scope work preserved.
+ts_size=0
+[[ -f "$OUT_DIFF_TS" ]] && ts_size="$(wc -c < "$OUT_DIFF_TS" | tr -d ' ')"
+if [[ "$ts_size" -gt 0 ]]; then
+    assert_pass "[SPEC-1] diff.patch non-empty: in-scope work preserved on timeout"
+else
+    assert_fail "[SPEC-1] diff.patch non-empty: in-scope work preserved on timeout" \
+        "size=$ts_size"
+fi
+
+# SPEC-2 (CHANGE): build.scratch.cleaned event emitted for the stranded scratch files.
+# FAILS at merge-base baseline where the scratch-suffix filter does not exist.
+assert_event_emitted "[SPEC-2] build.scratch.cleaned event emitted for stranded scratch files" \
+    "$ZBUILD_EVENTS_JSONL" "build.scratch.cleaned"
+
+# SPEC-3 (GUARD): scope_violation=false — scratch siblings do not void the commit.
+ts_summary="$(cat "$OUT_SUMMARY_TS" 2>/dev/null || echo '{}')"
+if printf '%s' "$ts_summary" | jq -e '.scope_violation == false' >/dev/null 2>&1; then
+    assert_pass "[SPEC-3] scope_violation=false: scratch siblings do not void the commit"
+else
+    assert_fail "[SPEC-3] scope_violation=false: scratch siblings do not void the commit" \
+        "summary: $ts_summary"
+fi
+
+# SPEC-4 (GUARD): .bak file absent from working tree after the run.
+if [[ ! -f "$REPO_TS/tests/fixtures/scratch-target.txt.bak" ]]; then
+    assert_pass "[SPEC-4] .bak scratch file absent from working tree after run"
+else
+    assert_fail "[SPEC-4] .bak scratch file absent from working tree after run" \
+        "file still present: $REPO_TS/tests/fixtures/scratch-target.txt.bak"
+fi
+
+# SPEC-5 (GUARD): .head file absent from working tree after the run.
+if [[ ! -f "$REPO_TS/tests/fixtures/scratch-target.txt.head" ]]; then
+    assert_pass "[SPEC-5] .head scratch file absent from working tree after run"
+else
+    assert_fail "[SPEC-5] .head scratch file absent from working tree after run" \
+        "file still present: $REPO_TS/tests/fixtures/scratch-target.txt.head"
+fi
+
+# Reset mock to defaults.
+MOCK_LOOP_EXTRA_FILES=""
+MOCK_LOOP_RC=0
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_ITERATIONS=1
 
 # ─── Teardown ────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }
