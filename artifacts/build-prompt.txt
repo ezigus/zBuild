@@ -1,4 +1,4 @@
-============== ZBUILD BUILD — iter 4/10 ==============
+============== ZBUILD BUILD — iter 5/10 ==============
 ## ORIGINAL TASK (immutable across iterations)
 # Plan: Classify scratch suffixes as transient residue in scope validator
 
