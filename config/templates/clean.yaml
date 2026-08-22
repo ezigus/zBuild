@@ -6,7 +6,23 @@
 # Scope comes from ZBUILD_TEARDOWN_SCOPE and defaults to `release`. `purge` —
 # the scope that deletes persisted artifacts and staging trees — is reachable
 # ONLY here, by an operator who asks for it; no run path can select it. The
-# operator CLI subcommand that sets it is #E5.
+# operator CLI subcommand that sets it is `zbuild clean --purge` (#1831 §E5).
+#
+# ── Env-var contracts (ADR-054 §7) ──────────────────────────────────────────
+# ZBUILD_TEARDOWN_SCOPE   Scope passed to each plugin's cleanup hook.
+#                         Valid values: release (default) | purge.
+#                         release: free live resources only; delete nothing
+#                           persisted. The runner always pins to release from
+#                           its EXIT trap — no run path can override this.
+#                         purge: also delete persisted artifacts and staging
+#                           trees. Set by `zbuild clean --purge` only.
+#                         Unrecognised values degrade to release (fail-closed).
+#
+# ZBUILD_CLEAN_DRY_RUN    When set to 1, teardown_run emits a
+#                         teardown.dry_run.would_clean event for each stage
+#                         that would be cleaned, then returns 0 without
+#                         invoking any cleanup hooks. Set by
+#                         `zbuild clean --dry-run`.
 id: clean
 name: Clean Flow
 description: "Teardown stage entry point for operators (release by default; purge only on request)"

@@ -226,6 +226,158 @@ assert_json_key "[SPEC-3] route_target mirrored into aggregate" "$OUT" '.route_t
 assert_contains "[SPEC-3] failed[] names the acceptance-gate" "$OUT" "acceptance-gate"
 assert_file_exists "[SPEC-3] design-feedback.md written on route_design" "$AD/design-feedback.md"
 
+# ── TC-15 (#1757): a MIXED failure set feeds BOTH payloads ───────────────────
+# Reproduces run 20260822073243 (issue #1831): shape-floor escalates
+# route_target=design (its missing floor files are all out of build's scope)
+# while the suite and a `tautology:SPEC-1` fail beside it. The tautology carries
+# NO route_target on purpose (#1583 — build re-authors its own assertion), so it
+# is build-fixable. The old three-way branch let the one routed gate `rm -f` the
+# build-facing payload, and both build-fixable findings reached nobody: build saw
+# an empty prompt, made an empty diff, and the cycle spun for five iterations.
+SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
+write_all "$AD" "pass"
+printf '{"verdict":"fail","reason":"missing_floor_files","route_target":"design"}\n' \
+    > "$AD/shape-floor-result.json"
+printf '{"verdict":"fail","disposition":"recoverable","reason":"acceptance SPEC violations — SPEC-1 tautological (pass at baseline)","failures":["tautology:SPEC-1"]}\n' \
+    > "$AD/acceptance-gate-result.json"
+printf '{"verdict":"fail","test_output":"FAIL sigpipe-antipattern-guard-test.sh"}\n' \
+    > "$AD/test-results.json"
+OUT="$(run_agg "$SF")"
+
+assert_json_key "TC-15: one routed gate still sets verdict=route_design" \
+    "$OUT" '.verdict' "route_design"
+assert_file_exists "TC-15: design-feedback.md written for the routed gate" \
+    "$AD/design-feedback.md"
+# THE REGRESSION: this file used to be rm -f'd, taking both build-fixable
+# findings with it.
+assert_file_exists "TC-15: gate-feedback.md ALSO written for the residual gates" \
+    "$AD/gate-feedback.md"
+
+_D="$(cat "$AD/design-feedback.md")"
+_G="$(cat "$AD/gate-feedback.md")"
+assert_contains "TC-15: design payload carries the routed gate" "$_D" "shape-floor"
+assert_eq "TC-15: design payload omits the build-fixable acceptance detail" \
+    "0" "$( { grep -cF 'tautology:SPEC-1' <<< "$_D" || true; } )"
+assert_contains "TC-15: build payload carries the tautology" "$_G" "tautology:SPEC-1"
+assert_contains "TC-15: build payload carries the failing suite" \
+    "$_G" "sigpipe-antipattern-guard-test.sh"
+assert_contains "TC-15: build payload counts only the residual gates" \
+    "$_G" "2 mechanical gate(s) failed"
+# Build must not read a partial payload as the whole failure set.
+assert_contains "TC-15: build payload names the routed gate as handled elsewhere" \
+    "$_G" "Handled elsewhere"
+
+# ── TC-16 (#1757): an ALL-routed failure set still suppresses the build payload ─
+# No build-fixable gate failed, so there is nothing for build to act on and
+# gate-feedback.md must stay absent — the pre-#1757 behaviour, unchanged.
+SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
+write_all "$AD" "pass"
+printf '{"verdict":"fail","reason":"missing_floor_files","route_target":"design"}\n' \
+    > "$AD/shape-floor-result.json"
+OUT="$(run_agg "$SF")"
+assert_json_key "TC-16: all-routed → verdict=route_design" "$OUT" '.verdict' "route_design"
+assert_file_exists "TC-16: design-feedback.md written" "$AD/design-feedback.md"
+assert_file_not_exists "TC-16: gate-feedback.md absent (nothing build can fix)" \
+    "$AD/gate-feedback.md"
+
+# ── TC-17 (#1757): a plain fail is unchanged — build payload only ─────────────
+# Guards the byte-shape of the path #1757 must not touch: no route_target
+# anywhere → residual[] == failed[], design-feedback.md dropped.
+SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
+write_all "$AD" "pass"
+printf '{"verdict":"fail","reason":"coverage below floor"}\n' > "$AD/coverage-result.json"
+OUT="$(run_agg "$SF")"
+assert_json_key "TC-17: plain fail → verdict=fail (no route)" "$OUT" '.verdict' "fail"
+assert_file_exists "TC-17: gate-feedback.md written" "$AD/gate-feedback.md"
+assert_file_not_exists "TC-17: design-feedback.md absent on a plain fail" \
+    "$AD/design-feedback.md"
+assert_eq "TC-17: no 'Handled elsewhere' section when nothing routed" \
+    "0" "$( { grep -cF 'Handled elsewhere' "$AD/gate-feedback.md" || true; } )"
+
+# ── TC-18 (#1757): stale payloads from a prior iteration are dropped ──────────
+# The artifacts dir is shared across cycle iterations, so a payload left by the
+# previous verdict must not be read as current.
+write_all "$AD" "pass"
+OUT="$(run_agg "$SF")"
+assert_json_key "TC-18: all-pass after a fail → verdict=pass" "$OUT" '.verdict' "pass"
+assert_file_not_exists "TC-18: stale gate-feedback.md removed on pass" \
+    "$AD/gate-feedback.md"
+assert_file_not_exists "TC-18: stale design-feedback.md removed on pass" \
+    "$AD/design-feedback.md"
+
+# ── TC-19 (#1757): two distinct route targets emit a conflict signal ─────────
+# Roster order picks the winner. The loser used to vanish with no log, no event
+# and no record that a conflict existed. Only "design" is emitted today, so this
+# path is expected to stay dormant — it exists to be visible if that changes.
+_GA_EV_LOG="$TEST_TEMP_DIR/ga-events.log"
+: > "$_GA_EV_LOG"
+# run_agg captures stdout with $( ), so the plugin body runs in a SUBSHELL: a
+# stub appending to a shell variable would be discarded with it. Append to a
+# file, which outlives the subshell.
+eb_emit_event() { printf '%s\n' "$*" >> "$_GA_EV_LOG"; }
+
+SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
+write_all "$AD" "pass"
+printf '{"verdict":"fail","reason":"missing_floor_files","route_target":"design"}\n' \
+    > "$AD/shape-floor-result.json"
+printf '{"verdict":"fail","reason":"needs a re-plan","route_target":"plan"}\n' \
+    > "$AD/coverage-result.json"
+OUT="$(run_agg "$SF")"
+
+assert_json_key "TC-19: roster order picks the winner deterministically" \
+    "$OUT" '.verdict' "route_design"
+# The "design plan" ORDER below is roster order, not sorting: the legacy roster
+# puts shape-floor (index 1) ahead of coverage (index 4). Reordering the roster
+# flips it — and would fail `selected=design` on the line above too, so the
+# breakage is loud rather than silent.
+_GA_CONFLICT="$(grep -F 'route_conflict' "$_GA_EV_LOG" || true)"
+assert_contains "TC-19: conflict event emitted" \
+    "$_GA_CONFLICT" "gate_aggregator.route_conflict"
+assert_contains "TC-19: conflict event names the selected target" \
+    "$_GA_CONFLICT" "selected=design"
+assert_contains "TC-19: conflict event names BOTH targets, not just the winner" \
+    "$_GA_CONFLICT" "targets=design plan"
+
+# The losing-route gate must not vanish: it is not the rewind target's problem,
+# so it lands in residual[] and reaches build like any other unrouted failure.
+# This is the property residual[] exists for, and it was previously untested.
+assert_file_exists "TC-19: gate-feedback.md written for the non-winning-route gate" \
+    "$AD/gate-feedback.md"
+assert_contains "TC-19: build payload carries the losing-route gate" \
+    "$(cat "$AD/gate-feedback.md")" "coverage"
+assert_contains "TC-19: design payload carries only the winning-route gate" \
+    "$(cat "$AD/design-feedback.md")" "shape-floor"
+assert_eq "TC-19: design payload excludes the losing-route gate" \
+    "0" "$( { grep -cF 'coverage' "$AD/design-feedback.md" || true; } )"
+
+# ── TC-20 (GUARD, #1757): a single route target emits NO conflict ────────────
+# The #1720 single-routed path must not start emitting a conflict event.
+: > "$_GA_EV_LOG"
+SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
+write_all "$AD" "pass"
+printf '{"verdict":"fail","reason":"missing_floor_files","route_target":"design"}\n' \
+    > "$AD/shape-floor-result.json"
+OUT="$(run_agg "$SF")"
+assert_json_key "TC-20: single routed gate → verdict=route_design" "$OUT" '.verdict' "route_design"
+assert_eq "TC-20: no conflict event for a single route target" \
+    "0" "$( { grep -cF 'route_conflict' "$_GA_EV_LOG" || true; } )"
+# ── TC-21 (GUARD, #1757): a compound target name is ONE target ───────────────
+# The conflict test counts distinct targets rather than looking for a space, so
+# a hypothetical multi-word target cannot manufacture a conflict on its own.
+: > "$_GA_EV_LOG"
+SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
+write_all "$AD" "pass"
+printf '{"verdict":"fail","reason":"a","route_target":"re plan"}\n' \
+    > "$AD/shape-floor-result.json"
+printf '{"verdict":"fail","reason":"b","route_target":"re plan"}\n' \
+    > "$AD/coverage-result.json"
+OUT="$(run_agg "$SF")"
+assert_json_key "TC-21: compound target still routes" "$OUT" '.route_target' "re plan"
+assert_eq "TC-21: one distinct target → no conflict event" \
+    "0" "$( { grep -cF 'route_conflict' "$_GA_EV_LOG" || true; } )"
+
+unset -f eb_emit_event
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -30,6 +30,7 @@ provides:
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
     - teardown.complete
+    - teardown.dry_run.would_clean
     - teardown.result.write_failed
     - teardown.scope.invalid
     - teardown.start

@@ -53,6 +53,10 @@ provides:
   events:
     - gate_aggregator.fail
     - gate_aggregator.pass
+    # #1757: more than one distinct route_target among the failed gates. Roster
+    # order picks the winner; this names every target seen so the loser is not
+    # discarded silently.
+    - gate_aggregator.route_conflict
 
 config:
   valid_verdicts:

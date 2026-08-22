@@ -369,6 +369,69 @@ else
     fi
 fi
 
+# ─── SPEC-5: ZBUILD_CLEAN_DRY_RUN=1 emits would_clean events, skips hooks ────
+# CHANGE: at baseline the dry-run path does not exist; ZBUILD_CLEAN_DRY_RUN=1
+# has no effect and no teardown.dry_run.would_clean event is ever emitted.
+print_test_section "SPEC-5: ZBUILD_CLEAN_DRY_RUN=1 emits would_clean events; no hooks invoked"
+
+_spec5_state_dir="$TEST_TEMP_DIR/spec5-state"
+_spec5_artifacts="$_spec5_state_dir/artifacts"
+_spec5_events="$TEST_TEMP_DIR/spec5-events.jsonl"
+_spec5_sentinel="$TEST_TEMP_DIR/spec5-sentinel"
+mkdir -p "$_spec5_state_dir" "$_spec5_artifacts"
+
+_spec5_plugin="$TEST_TEMP_DIR/spec5-plugin"
+mkdir -p "$_spec5_plugin"
+cat > "$_spec5_plugin/manifest.yaml" <<EOF
+id: spec5-hook
+name: Spec5 Hook
+kind: tool
+version: 0.0.1
+hooks:
+  run: spec5_hook_run
+  cleanup: spec5_hook_cleanup
+EOF
+cat > "$_spec5_plugin/plugin.sh" <<EOF
+spec5_hook_run() { return 0; }
+spec5_hook_cleanup() { touch '$_spec5_sentinel'; return 0; }
+EOF
+
+_make_state_file "$_spec5_state_dir/pipeline-state.json" "spec5-hook"
+
+_spec5_rc=0
+(
+    export ZBUILD_CLEAN_DRY_RUN=1
+    export ZBUILD_TEARDOWN_SCOPE=release
+    export ZBUILD_ARTIFACT_DIR="$_spec5_artifacts"
+    export ZBUILD_EVENTS_JSONL="$_spec5_events"
+    source "$TEARDOWN_DIR/plugin.sh"
+    resolve_stage_plugin() { echo "$_spec5_plugin"; }
+    teardown_run "teardown" "$_spec5_state_dir/pipeline-state.json" >/dev/null 2>&1
+) || _spec5_rc=$?
+
+assert_eq "[SPEC-5] teardown_run exits 0 under ZBUILD_CLEAN_DRY_RUN=1" "0" "$_spec5_rc"
+
+if [[ -f "$_spec5_events" ]] && grep -q '"teardown.dry_run.would_clean"' "$_spec5_events"; then
+    assert_pass "[SPEC-5] teardown.dry_run.would_clean event emitted when dry-run=1"
+else
+    assert_fail "[SPEC-5] teardown.dry_run.would_clean event emitted when dry-run=1" \
+        "event absent from $_spec5_events"
+fi
+
+if [[ ! -f "$_spec5_sentinel" ]]; then
+    assert_pass "[SPEC-5] cleanup hook NOT invoked under dry-run (sentinel absent)"
+else
+    assert_fail "[SPEC-5] cleanup hook NOT invoked under dry-run (sentinel absent)" \
+        "sentinel found: $_spec5_sentinel"
+fi
+
+if grep -q "teardown.dry_run.would_clean" "$REPO_ROOT/plugins/tool/teardown/manifest.yaml"; then
+    assert_pass "[SPEC-5] teardown.dry_run.would_clean declared in provides.events"
+else
+    assert_fail "[SPEC-5] teardown.dry_run.would_clean declared in provides.events" \
+        "undeclared"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

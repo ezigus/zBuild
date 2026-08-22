@@ -82,6 +82,17 @@ Commands:
                                                           to working tree, then drop)
                          [--quiet]
                          Default: dry-run, all categories.
+  clean                  Invoke the teardown plugin for a completed run (ADR-054 §7).
+                         Requires a target selector: --run-id <id>.
+                         --dry-run    Emit teardown.dry_run.would_clean events; no
+                                      hooks are invoked (ZBUILD_CLEAN_DRY_RUN=1).
+                         --purge      Set ZBUILD_TEARDOWN_SCOPE=purge (default:
+                                      release). purge deletes persisted artifacts
+                                      and staging trees — operator-only; unreachable
+                                      from any normal pipeline run.
+                         --run-id <id>  Target a specific completed run.
+                         Note: --older-than / --state bulk selectors are planned
+                         but deferred to #1632 (cron integration).
   release                Cut a release: compute version, generate per-issue
                          release notes, update CHANGELOG.md, stamp VERSION, tag,
                          and publish the GitHub release.
@@ -775,6 +786,103 @@ UPHELP
                 git worktree prune >/dev/null 2>&1 || true
             fi
         fi
+        ;;
+    clean)
+        shift
+        REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+        cl_run_id=""
+        cl_dry_run=false
+        cl_purge=false
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --run-id)
+                    [[ -z "${2:-}" ]] && { error "--run-id requires a value"; exit 2; }
+                    cl_run_id="$2"; shift 2 ;;
+                --dry-run)
+                    cl_dry_run=true; shift ;;
+                --purge)
+                    cl_purge=true; shift ;;
+                -h|--help)
+                    cat <<'CLEANHELP'
+zbuild clean — invoke the teardown plugin for a completed run (ADR-054 §7).
+
+Usage:
+  zbuild clean --run-id <id> [--dry-run] [--purge]
+
+Flags:
+  --run-id <id>   Target a specific completed run by run_id (required).
+  --dry-run       Emit teardown.dry_run.would_clean events; invoke no hooks.
+                  Exports ZBUILD_CLEAN_DRY_RUN=1.
+  --purge         Set teardown scope to purge (default: release).
+                  purge deletes persisted artifacts and staging trees.
+                  Only reachable via this operator subcommand — the runner
+                  always pins to release from its EXIT trap (#1829).
+
+Planned (deferred to #1632):
+  --older-than <Nd|Nh>   Bulk-select runs older than N days/hours.
+  --state <status>       Bulk-select runs in a given state.
+CLEANHELP
+                    exit 0 ;;
+                *)
+                    error "Unknown zbuild clean flag: $1"
+                    echo "Usage: zbuild clean --run-id <id> [--dry-run] [--purge]" >&2
+                    exit 2 ;;
+            esac
+        done
+
+        # Target is required — refuse with rc=2 rather than silently operating
+        # on all runs, which would be an unintentional blast radius.
+        if [[ -z "$cl_run_id" ]]; then
+            error "zbuild clean: a target is required (--run-id <id>)"
+            echo "  Planned: --older-than <Nd|Nh>, --state <status> (deferred to #1632)" >&2
+            echo "  Usage: zbuild clean --run-id <id> [--dry-run] [--purge]" >&2
+            exit 2
+        fi
+
+        if $cl_dry_run; then
+            export ZBUILD_CLEAN_DRY_RUN=1
+        fi
+        if $cl_purge; then
+            export ZBUILD_TEARDOWN_SCOPE=purge
+        else
+            export ZBUILD_TEARDOWN_SCOPE=release
+        fi
+
+        state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
+        state_file="$(_find_state_file "$state_dir" "$cl_run_id")"
+        export ZBUILD_STATE_FILE="$state_file"
+
+        # Event infrastructure: derive defaults from the run's state dir so
+        # events are co-located with the run that generated them.
+        # This subcommand is documented for a COMPLETED run, but _find_state_file
+        # resolves a run_id whatever its status — so an operator could aim it at a
+        # live run and race the runner's own EXIT-trap teardown, with both calling
+        # the same cleanup hook. Hook idempotency is not enforced anywhere, so
+        # refuse instead of relying on it. --dry-run stays allowed: it invokes no
+        # hooks, which makes it the safe way to inspect a run still in flight.
+        if ! $cl_dry_run; then
+            _cl_status="$(jq -r '.status // empty' "$state_file" 2>/dev/null || true)"
+            if [[ "$_cl_status" == "in_progress" ]]; then
+                error "zbuild clean: run $cl_run_id is still in progress — refusing to race its teardown"
+                echo "  Use --dry-run to inspect it, or wait for the run to finish." >&2
+                exit 2
+            fi
+        fi
+
+        _cl_run_dir="$(dirname "$state_file")"
+        export ZBUILD_EVENTS_JSONL="${ZBUILD_EVENTS_JSONL:-$_cl_run_dir/events.jsonl}"
+        export ZBUILD_EVENTS_DB="${ZBUILD_EVENTS_DB:-$_cl_run_dir/events.db}"
+        export ZBUILD_EVENT_SCHEMA="${ZBUILD_EVENT_SCHEMA:-$REPO_ROOT/config/event-schema.json}"
+        export ZBUILD_RUN_ID="${ZBUILD_RUN_ID:-clean-$$}"
+
+        _cl_teardown_dir="$REPO_ROOT/plugins/tool/teardown"
+        if [[ ! -f "$_cl_teardown_dir/plugin.sh" ]]; then
+            error "teardown plugin not found at $_cl_teardown_dir/plugin.sh"
+            exit 1
+        fi
+        # shellcheck source=../plugins/tool/teardown/plugin.sh
+        source "$_cl_teardown_dir/plugin.sh"
+        teardown_run "teardown" "$state_file"
         ;;
     release)
         # #1466: default cadence is --minor when no explicit cadence flag is given.

@@ -199,4 +199,61 @@ fi
 # review-aggregator, never a merge-blocking container). That review-on-unconverged
 # container semantic no longer exists, so T6 was removed with the lattice.
 
+# ─── T6 (#1757): a MIXED gate failure reaches build across the real seam ─────
+# Unit coverage pins the aggregator's two payloads; this walks the whole chain
+# the #1831 run walked and found broken end-to-end: real gate_aggregator_run →
+# real _cycle_apply_feedback (manifest-driven, gate-aggregator:gate_feedback →
+# build:gate_feedback) → real _build_read_prior_gate. Before #1757 the chain
+# produced an EMPTY body whenever any gate carried a route_target, and build
+# was handed a prompt with no failure section at all.
+# shellcheck disable=SC1090
+source "$REPO_ROOT/plugins/tool/gate-aggregator/plugin.sh"
+
+T6_STATE_DIR="$TEST_TEMP_DIR/t6-state"
+T6_ART_DIR="$T6_STATE_DIR/artifacts"
+mkdir -p "$T6_ART_DIR"
+for _g in test-results shape-floor-result acceptance-gate-result lint-result \
+          coverage-result mutation-result secret-scan-result; do
+    printf '{"verdict":"pass"}\n' > "$T6_ART_DIR/$_g.json"
+done
+# shape-floor escalates to design; the suite and the tautology are build-fixable.
+printf '{"verdict":"fail","reason":"missing_floor_files","route_target":"design"}\n' \
+    > "$T6_ART_DIR/shape-floor-result.json"
+printf '{"verdict":"fail","disposition":"recoverable","failures":["tautology:SPEC-1"]}\n' \
+    > "$T6_ART_DIR/acceptance-gate-result.json"
+printf '{"verdict":"fail","test_output":"FAIL tests/unit/sigpipe-antipattern-guard-test.sh"}\n' \
+    > "$T6_ART_DIR/test-results.json"
+
+gate_aggregator_run "gate-aggregator" "$T6_STATE_DIR/state.json" >/dev/null 2>&1 || true
+
+assert_json_key "T6: mixed failure set still routes to design" \
+    "$(cat "$T6_ART_DIR/gate-aggregator-result.json")" '.verdict' "route_design"
+assert_file_exists "T6: aggregator wrote the build-facing gate-feedback.md" \
+    "$T6_ART_DIR/gate-feedback.md"
+
+_CYCLE_TRAP_CYCLE_ID="build_test_cycle"
+_CYCLE_FEEDBACK=("gate-aggregator:gate_feedback|build:gate_feedback:false")
+set +e
+_cycle_apply_feedback 3 "$T6_STATE_DIR"
+t6_rc=$?
+set -e
+assert_eq "T6: feedback edge applied rc=0" "0" "$t6_rc"
+
+T6_FB="$T6_STATE_DIR/cycle-build_test_cycle/iter-3/feedback"
+assert_file_exists "T6: gate_feedback.txt staged into the iter feedback dir" \
+    "$T6_FB/gate_feedback.txt"
+
+ZBUILD_CYCLE_ITER=3 ZBUILD_CYCLE_FEEDBACK_DIR="$T6_FB" \
+    _build_read_prior_gate > "$TEST_TEMP_DIR/t6-body.txt" 2>/dev/null || true
+T6_BODY="$(cat "$TEST_TEMP_DIR/t6-body.txt")"
+
+assert_gt "T6: build reads a NON-EMPTY prior-gate body (the #1831 regression)" \
+    "${#T6_BODY}" "0"
+assert_contains "T6: body carries the failing suite" \
+    "$T6_BODY" "sigpipe-antipattern-guard-test.sh"
+assert_contains "T6: body carries the tautology build must re-author" \
+    "$T6_BODY" "tautology:SPEC-1"
+assert_contains "T6: body names the design-routed gate as handled elsewhere" \
+    "$T6_BODY" "Handled elsewhere"
+
 print_test_results
