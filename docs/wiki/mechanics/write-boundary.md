@@ -1,14 +1,15 @@
 # write boundary
 
-The **write boundary** is the engine's answer to a plain question: when a stage runs, where is it allowed to put files? Four places, and the engine hands each one to the stage by name. You'd look here when a stage is writing somewhere surprising, when you want to know what a failed run left behind and where, or when you're writing a plugin that needs a temporary file.
+The **write boundary** is the engine's answer to a plain question: when a stage runs, where is it allowed to put files? Five places, and the engine hands each one to the stage by name. You'd look here when a stage is writing somewhere surprising, when you want to know what a failed run left behind and where, or when you're writing a plugin that needs a temporary file.
 
-## The four areas
+## The five areas
 
 | Area | How a stage finds it | What belongs there |
 |---|---|---|
 | The job's state dir | `$ZBUILD_STATE_DIR` | state, artifacts, events, stage I/O — the run's records |
 | The run's worktree | `$ZBUILD_REPO_ROOT` (ADR-052) | the code under change |
 | The per-stage scratch dir | `$ZBUILD_STAGE_SCRATCH`, and `$TMPDIR` points at it too | throwaway working files |
+| Live run bookkeeping | `<state_dir>/runtime/` | PIDs, process groups, staging paths, engine markers — things a later stage or the engine must read back |
 | The cache and memory stores | ADR-011 backends | the two stores that outlive a run |
 
 Anywhere else is out of bounds. That is what makes a declared output enforceable: a stage that writes outside its declared outputs is doing something the engine can name, rather than something indistinguishable from a legitimate temp file.
@@ -24,6 +25,17 @@ Created 0700 at dispatch, one per stage. Three properties matter:
 - **It is reused across cycle iterations.** The build stage re-runs up to eight times; the key carries no iteration counter, so iteration 8 finds iteration 7's files where it left them.
 - **It is keyed on the map element as well as the stage.** Under `map:`, all six review lenses receive the same stage name at the same time, so a stage-only key would hand six concurrent members one directory.
 - **It is never under the system `$TMPDIR`.** On macOS that resolves into `/var/folders/...`, where entries can vanish mid-run (#1571). Scratch holds live work between iterations, so it must not live where a reaper may collect it.
+
+## `runtime/` vs scratch — which one do I want?
+
+Both are engine-defined, both are machine-specific, and neither is a stage output. The difference is who reads the file back:
+
+- **Scratch** is *yours*, and it is per-stage. Use it for working files only your own stage cares about. It is keyed on the stage (and the map element, if any), so nothing outside your stage can reliably find it.
+- **`runtime/`** is *shared within the run*. Use it when the engine, or a later stage in a different process, has to read what you wrote — a process group to reap, a staging path to reclaim, a marker. It has one location per run and needs no key.
+
+A rule of thumb: if the answer to "who reads this?" is anything other than "me, later in this same stage", it belongs in `runtime/`.
+
+Nothing clears a `runtime/` file mid-run, so a recorded PID or process group can outlive the thing it names. Verify it is still alive before acting on it.
 
 ## `TMPDIR` is the channel to the model
 

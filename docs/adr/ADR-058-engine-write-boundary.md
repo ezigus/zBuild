@@ -3,6 +3,7 @@
 **Status:** Accepted (2026-08-22)
 **Date:** 2026-08-22
 **Issue:** #1918
+**Amended:** 2026-08-23 (#1809) — a fifth area, `runtime/`, for live run bookkeeping
 **Related:** ADR-052 (engine-owned run worktree), ADR-011 (pluggable backends — the cache and memory stores), ADR-024 (subprocess env isolation), ADR-004 (redaction chokepoint), ADR-054 §3 (the dispatch identity seam this reuses), ADR-056 (cleanup-only lifecycle — why nothing here deletes)
 
 ## Context
@@ -19,7 +20,7 @@ A fourth thing was true and made the fix look impossible: `scripts/lib/worktree.
 
 ## Decision
 
-### 1. Four areas, and only four
+### 1. Five areas, and only five
 
 A stage may write into:
 
@@ -28,9 +29,54 @@ A stage may write into:
 | the job's state dir | `ZBUILD_STATE_DIR` | state, artifacts, events, stage I/O | the run, then kept as evidence |
 | the run's worktree | `ZBUILD_REPO_ROOT` (ADR-052) | the code under change | the run |
 | **a per-stage scratch dir** | `ZBUILD_STAGE_SCRATCH` | throwaway working files | the run; reused across cycle iterations |
+| **live run bookkeeping** | `<state_dir>/runtime/` | PIDs, process groups, staging paths, engine markers | the run |
 | the cache and memory stores | ADR-011 | the two stores that outlive a run | across runs |
 
-Three already existed. The third is what this ADR adds.
+Three already existed. The per-stage scratch dir is what this ADR added; the
+`runtime/` area was named by the 2026-08-23 amendment (§2b).
+
+### 2b. `runtime/` — live run bookkeeping (amended 2026-08-23, #1809)
+
+**As accepted, this ADR listed four areas and `runtime/` was not among them.**
+It existed, but only as one plugin's private directory: `plugins/tool/test`
+invented it in #1829 to hold `test-stage.pgid`, `test-stage.pid` and
+`test-staging-path`, derived its location by hand, and no ADR named it. #1809
+then needed the same kind of storage for engine-owned files — a write-boundary
+marker and two violation flags — and had nothing to point at but that plugin's
+convention. Naming the area is what stops the second user copying the first
+user's private arrangement.
+
+```
+<state_dir>/runtime/
+```
+
+**Why not `scratch/`**, which this ADR already defines and which is superficially
+the same idea (not an output, machine-specific, excluded from the CI upload and
+the parity walk):
+
+- **Run-scoped and element-agnostic.** Scratch keys on
+  `<stage>[-<map_element>]`. A `map:` stage has six concurrent members and
+  `core/pipeline/verdict.sh` reads a violation flag cross-process *without*
+  knowing the element, so a scratch-keyed flag is unfindable for every member of
+  a mapped stage. `runtime/` has one location per run and needs no key.
+- **Not throwaway.** §2 defines scratch as throwaway working files reused across
+  cycle iterations. A flag that resolves `disposition: broken` is not throwaway,
+  and a `.pgid` that outlives its own iteration is a hazard rather than a
+  convenience.
+
+**Properties a writer may rely on.** `runtime/` is engine-owned; run-scoped;
+**not on the write-boundary watch list**, so a marker written there cannot
+trigger a violation by finding itself; excluded from the CI artifact upload and
+from the local-vs-CI parity walk, for the same volume and machine-specificity
+reasons as scratch; and reclaimed with the job folder rather than on its own
+schedule.
+
+**Consequence, deliberately accepted.** Nothing clears a `runtime/` file
+mid-run. A `.pgid` written in cycle iteration 1 is still present at iteration 5
+and at exit, and neither `_cycle_pre_iter_cleanup` (which deletes only
+manifest-declared primary outputs) nor anything else removes it. A reader must
+therefore verify liveness before acting on a recorded PID or process group —
+PID reuse is real and this ADR does not prevent it.
 
 ### 2. The per-stage scratch dir
 
@@ -88,7 +134,7 @@ There is a second, sharper reason the resolver itself must never read `$TMPDIR`:
 - A failed run's scratch is evidence in a known place, next to the state that explains it.
 
 **Negative / costs**
-- **The job folder grows, and nothing reclaims it.** Job folders are never reclaimed today (`scripts/lib/cleanup.sh` deletes only `pipeline-state.json{,.bak,.lock}`) and scratch makes that materially worse — the test stage alone stages a full repo copy per stage. Reclamation is **deliberately out of scope**: ADR-056/#1829 settled that automatic `cleanup(release)` frees live resources and deletes nothing, so a failed run keeps its evidence. Operator-invoked reclamation is #1920 (C11).
+- **The job folder grows, and nothing reclaims it.** Job folders are never reclaimed today (`scripts/lib/cleanup.sh` deletes only `pipeline-state.json{,.bak,.lock}`) and scratch makes that materially worse — the test stage alone stages a full repo copy per stage. Reclamation is **deliberately out of scope**: ADR-054 §7 settled that automatic `cleanup(release)` frees live resources and deletes nothing, so a failed run keeps its evidence. (This sentence previously cited ADR-056; the release/purge rule lives in ADR-054 §7. ADR-056 deletes `init`/`finalize` and defines how an absent hook is recorded.) Operator-invoked reclamation is #1920 (C11).
 - The state dir must live on a filesystem with room for a full working set, not just for JSON. On CI that is `$RUNNER_TEMP`, which has it.
 - A plugin that hardcodes `/tmp` rather than `${TMPDIR:-/tmp}` is unaffected and stays out of bounds. Nothing here detects that; #1809's boundary check is what will.
 
