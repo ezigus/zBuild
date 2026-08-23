@@ -205,8 +205,13 @@ and nothing else — no cache, no GC, no LLM, no I/O.
 `<repo_id>/<scope_key>/<goal_hash>`, and is the natural basis. It is **not reusable as it
 stands**, and must be extracted rather than cross-called:
 
-- `scope_key` is not a function — it is an inline expression at `plugins/agent/plan/plugin.sh:500`,
-  and `plan-test.sh:523` re-derives the same `shasum` by hand. One duplication already.
+- **The duplication is not hypothetical — a byte-identical copy already exists.**
+  `plugins/agent/plan/tests/plan-test.sh:482-484` defines `_spec_goal_hash` with the same body as
+  `plan_context_goal_hash`, character for character. A test that re-implements the formula it is
+  testing cannot detect a change to it.
+- `scope_key` is not a function at all — it is an inline expression at
+  `plugins/agent/plan/plugin.sh:500`, whose input is computed inline five lines earlier and whose
+  value is then threaded through eleven call sites in that one file.
 - The names claim a scope they do not have: `plan_context_repo_id` identifies a *repository*.
 - `plan-context.sh:33` sources `llm-agent.sh`, so reusing a sha256 pulls in LLM machinery.
 
