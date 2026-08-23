@@ -21,11 +21,11 @@ export ZBUILD_RUN_ID="run-test-0001"
 export ZBUILD_PLAN_RESUME=1
 export ZBUILD_PLAN_CONTEXT_GC=1
 
-REPO_ID="$(plan_context_repo_id)"
+REPO_ID="$(zbuild_repo_id)"
 
 # ─── [SPEC-1] write produces namespaced json+md; status round-trips ──────────
 GOAL="implement the resumable plan context cache"
-GH="$(plan_context_goal_hash "$GOAL")"
+GH="$(zbuild_goal_hash "$GOAL")"
 SCOPE_KEY="1052"
 SCOPE_REF="abc123scoperef"
 
@@ -166,7 +166,7 @@ assert_eq "[SPEC-4] absent sidecar → empty reasoning" "" "$side_empty"
 
 # ─── [SPEC-5] collision: same goal_hash, different repo_id ──────────────────
 SHARED_GOAL="byte identical issue text"
-SGH="$(plan_context_goal_hash "$SHARED_GOAL")"
+SGH="$(zbuild_goal_hash "$SHARED_GOAL")"
 # Write under the real repo_id and under a synthetic foreign repo_id via path.
 plan_context_write "$SGH" "9999" "scope_too_large" 5 "REPO-A-REASONING" "refA" >/dev/null
 real_path="$(plan_context_path "$REPO_ID" "9999" "$SGH")"

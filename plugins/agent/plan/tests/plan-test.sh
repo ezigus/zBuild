@@ -479,9 +479,10 @@ export ZBUILD_PLAN_CONTEXT_DIR="$TEST_TEMP_DIR/plan-context-cache"
 mkdir -p "$ZBUILD_PLAN_CONTEXT_DIR"
 
 # goal_hash formula (plan §Pillar A): normalized pre-redaction goal text.
-_spec_goal_hash() {
-    printf '%s' "$1" | tr -d '[:space:]' | shasum -a 256 | cut -d' ' -f1
-}
+# ADR-059 §6 (#1930): this used to be a byte-identical re-implementation of
+# plan_context_goal_hash. A test that re-derives the formula it is testing
+# cannot detect a change to it, so it now calls the real function — sourced
+# transitively through plugin.sh, like plan_context_repo_id below.
 
 # ─── [SPEC-1][change] plan persists plan-context.json on success ─────────────
 # On a successful plan run, the plugin must persist a durable plan-context
@@ -505,7 +506,7 @@ _ctx_status="$(jq -r '.status // empty' "$ARTIFACTS_DIR/plan-context.json" 2>/de
 assert_eq "[SPEC-1] plan-context status=complete on success" "complete" "$_ctx_status"
 _ctx_gh="$(jq -r '.goal_hash // empty' "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true)"
 assert_eq "[SPEC-1] plan-context goal_hash matches normalized goal" \
-    "$(_spec_goal_hash "test goal")" "$_ctx_gh"
+    "$(zbuild_goal_hash "test goal")" "$_ctx_gh"
 assert_file_exists "[SPEC-1] plan-context.md readable" \
     "$ARTIFACTS_DIR/plan-context.md"
 
@@ -519,7 +520,7 @@ print_test_section "[SPEC-2][change] resume splices prior exploration context"
 export ZBUILD_GOAL="resume me please"
 export ZBUILD_PLAN_RESUME=1
 _RESUME_TOKEN="PRIOR_EXPLORATION_SENTINEL_42"
-_gh="$(_spec_goal_hash "resume me please")"
+_gh="$(zbuild_goal_hash "resume me please")"
 _scope_ref="$(shasum -a 256 "$STATE_DIR/scope-manifest.md" | cut -d' ' -f1)"
 # Pre-seed the cache in the namespaced layout (Pillar E). repo_id/scope_key are
 # derived by the plugin; we seed all candidate leaves so resume resolves
@@ -547,11 +548,11 @@ _seed_plan_context() {
 }
 # Seed the EXACT namespaced leaf the plugin reads: <repo_id>/<scope_key>/
 # <goal_hash>.json. repo_id is derived the same way the plugin derives it (via
-# plan_context_repo_id, sourced transitively through plugin.sh); scope_key is
+# zbuild_repo_id, sourced transitively through plugin.sh); scope_key is
 # ZBUILD_ISSUE_NUMBER when present (Pillar E). The behavior under test is
 # "resume happened", not the namespace math (that is SPEC-5, owned elsewhere).
 export ZBUILD_ISSUE_NUMBER=999
-_seed_repo_id="$(plan_context_repo_id)"
+_seed_repo_id="$(zbuild_repo_id)"
 _seed_plan_context "$ZBUILD_PLAN_CONTEXT_DIR/$_seed_repo_id/999" "$_seed_repo_id" "999"
 set +e
 plan_run "plan" "$STATE_FILE" >/dev/null 2>&1

@@ -19,6 +19,9 @@
 _ZBUILD_RELEASE_TARBALL_LOADED=1
 
 _ZBUILD_RELEASE_TARBALL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# ADR-059 §6 (#1930): one owner/repo derivation, shared with the design stage.
+# shellcheck source=./identity.sh
+source "$_ZBUILD_RELEASE_TARBALL_DIR/identity.sh"
 
 # Emit a fail-loud message to stderr (uses helpers' `error` when available).
 _rt_err() {
@@ -190,15 +193,14 @@ _release_repo() {
     if [[ -n "${ZBUILD_RELEASE_REPO:-}" ]]; then
         printf '%s' "$ZBUILD_RELEASE_REPO"; return 0
     fi
-    local url slug=""
-    if command -v git >/dev/null 2>&1 && url="$(git config --get remote.origin.url 2>/dev/null)" && [[ -n "$url" ]]; then
-        # Strip trailing .git, then everything up to and including `github.com:`
-        # (ssh) or `github.com/` (https) → owner/repo. Non-github remotes leave a
-        # multi-slash residue that fails the shape check below and falls to default.
-        slug="${url%.git}"
-        slug="${slug#*github.com[:/]}"
+    # ADR-059 §6 (#1930): one slug derivation, shared with the design stage.
+    # zbuild_repo_slug returns 1 (and echoes nothing) for an absent or
+    # non-GitHub remote, which is precedence step 3 below.
+    local slug=""
+    if command -v git >/dev/null 2>&1; then
+        slug="$(zbuild_repo_slug || true)"
     fi
-    if [[ "$slug" =~ ^[^/]+/[^/]+$ ]]; then
+    if [[ -n "$slug" ]]; then
         printf '%s' "$slug"
     else
         printf '%s' "ezigus/zBuild"

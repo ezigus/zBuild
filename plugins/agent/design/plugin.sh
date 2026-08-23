@@ -40,6 +40,9 @@ source "$_DESIGN_ROOT/scripts/lib/prior-output-reader.sh"
 # Persona resolver + stage/lens composition seam (#1304, #1324).
 # shellcheck source=../../../core/plugin-registry/registry.sh
 source "$_DESIGN_ROOT/core/plugin-registry/registry.sh"
+# ADR-059 §6 (#1930): one owner/repo derivation, shared with release-tarball.sh.
+# shellcheck source=../../../scripts/lib/identity.sh
+source "$_DESIGN_ROOT/scripts/lib/identity.sh"
 # #963: read-only grammar lib from _ZBUILD_CONTRACT_LIB_DIR (self-host redirect).
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh"
@@ -139,15 +142,13 @@ _design_read_prior_design() {
 _design_state_blob_url() {
     local issue="${ZBUILD_ISSUE:-0}"
     [[ "$issue" =~ ^[0-9]+$ && "$issue" -gt 0 ]] || return 0
-    local url; url="$(git config --get remote.origin.url 2>/dev/null || true)"
-    local slug=""
-    case "$url" in
-        git@github.com:*)     slug="${url#git@github.com:}" ;;
-        https://github.com/*) slug="${url#https://github.com/}" ;;
-        *) return 0 ;;
-    esac
-    slug="${slug%.git}"
-    [[ -z "$slug" ]] && return 0
+    # ADR-059 §6 (#1930): one slug derivation, shared with release-tarball.sh.
+    # The local `case` this replaces matched exactly two literal prefixes and
+    # returned empty for anything else — so `ssh://git@github.com/o/r` produced
+    # a release tarball and NO blob URL. zbuild_repo_slug accepts it.
+    local slug
+    slug="$(zbuild_repo_slug || true)"
+    [[ -n "$slug" ]] || return 0
     printf 'https://github.com/%s/blob/zbuild/state/issue-%s/artifacts/design.md' "$slug" "$issue"
 }
 

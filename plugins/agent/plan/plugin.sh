@@ -489,15 +489,15 @@ $_plan_instructions"
     # may differ), so it gets its OWN redaction pass here — NEVER splice
     # unredacted cache (mirror the operator-override redaction below).
     local _resume_repo_id _resume_goal_hash _resume_scope_ref _resume_text
-    _resume_repo_id="$(plan_context_repo_id)"
-    _resume_goal_hash="$(plan_context_goal_hash "$goal_text")"
+    _resume_repo_id="$(zbuild_repo_id)"
+    _resume_goal_hash="$(zbuild_goal_hash "$goal_text")"
     if [[ -f "$scope_manifest" ]]; then
         _resume_scope_ref="$(shasum -a 256 "$scope_manifest" | cut -d' ' -f1)"
     else
         _resume_scope_ref="absent"
     fi
-    # scope_key mirrors Pillar E: issue number when present, else manifest hash.
-    local _resume_scope_key="${ZBUILD_ISSUE_NUMBER:-$_resume_scope_ref}"
+    local _resume_scope_key
+    _resume_scope_key="$(zbuild_scope_key "${ZBUILD_ISSUE_NUMBER:-}" "$_resume_scope_ref")"
     _resume_text="$(plan_context_read_for_resume \
         "$_resume_repo_id" "$_resume_scope_key" "$_resume_goal_hash" "$_resume_scope_ref" 2>/dev/null || true)"
     # Observability (#1052 review): when a cache leaf EXISTS for the computed key

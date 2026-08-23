@@ -181,7 +181,7 @@ Original NOT-keeping list + new additions:
 - `_COMPOUND_AGENT_PROMPTS_*` bash variable indirection.
 - Anthropic-named tier strings (`haiku|sonnet|opus`) in code — replaced by T0-T4 ordinal with models as data.
 - Bash 3.2 polyfills in `compat.sh`.
-- Multiple repo-hash schemes — unify on one.
+- Multiple repo-hash schemes — unify on one. **DONE (#1930, 2026-08-23):** `scripts/lib/identity.sh` owns the one derivation — a hash id for flat keys and an `owner/repo` slug for paths. Struck rather than deleted: it records that this was carried forward from legacy and has since been discharged (ADR-059 §6).
 - The `_design_rescue` heuristic for Claude CLI quirks — gate behind a config flag.
 - The "AI fallback in error classifier" — falsely claimed; moved to Section L as new-build.
 - The nudge-file mechanism — written but never read; remove rather than carry forward dead bytes.
