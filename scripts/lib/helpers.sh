@@ -64,6 +64,30 @@ atomic_replace() {
 
 # ─── Atomic write (tmp + mv + .bak rotation) ────────────────────────────────
 # Usage: atomic_write <target_path> < content_on_stdin
+# ─── zbuild_engine_tmpdir ────────────────────────────────────────────────────
+# Where the ENGINE may put a working file. ADR-058 §1 binds the engine as well as
+# the stages, so an engine temp outside the five areas is the same defect the
+# write boundary exists to catch. `${TMPDIR:-/tmp}` is only safe while §3's
+# per-dispatch redirect is in scope; where it is not — and TMPDIR is unset, as on
+# every Linux CI runner — it resolves to /tmp, a watched root, and the engine's
+# own scratch shows up as a stage violation.
+#
+# Order: the per-stage scratch dir, then the job's runtime/ area (§2b — engine
+# bookkeeping, excluded from the CI upload and the parity walk, so a stray temp
+# cannot drift a golden), then the system temp as a last resort for ad-hoc
+# invocations that have neither.
+zbuild_engine_tmpdir() {
+    if [[ -n "${ZBUILD_STAGE_SCRATCH:-}" && -d "${ZBUILD_STAGE_SCRATCH}" && -w "${ZBUILD_STAGE_SCRATCH}" ]]; then
+        printf '%s' "$ZBUILD_STAGE_SCRATCH"; return 0
+    fi
+    if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR}" ]]; then
+        if mkdir -p "${ZBUILD_STATE_DIR}/runtime" 2>/dev/null; then
+            printf '%s' "${ZBUILD_STATE_DIR}/runtime"; return 0
+        fi
+    fi
+    printf '%s' "${TMPDIR:-/tmp}"
+}
+
 atomic_write() {
     local target="$1"
     local dir; dir="$(dirname "$target")"

@@ -230,8 +230,8 @@ route_to_model_cli() {
     # universal-allow `+ ./`) make apply_scope_redaction wrap out-of-scope paths
     # (e.g. /etc/passwd, absolute $HOME paths) while in-repo paths pass through.
     local _ev _man _rc=0
-    _ev="$(mktemp "${TMPDIR:-/tmp}/zb-cli-events.XXXXXX")" || { error "route_to_model_cli: mktemp events failed"; return 2; }
-    _man="$(mktemp "${TMPDIR:-/tmp}/zb-cli-scope.XXXXXX")" || { rm -f "$_ev"; error "route_to_model_cli: mktemp manifest failed"; return 2; }
+    _ev="$(mktemp "$(zbuild_engine_tmpdir)/zb-cli-events.XXXXXX")" || { error "route_to_model_cli: mktemp events failed"; return 2; }
+    _man="$(mktemp "$(zbuild_engine_tmpdir)/zb-cli-scope.XXXXXX")" || { rm -f "$_ev"; error "route_to_model_cli: mktemp manifest failed"; return 2; }
     printf '+ core/\n+ scripts/\n+ plugins/\n+ tests/\n+ docs/\n+ config/\n' > "$_man"
 
     ZBUILD_RUN_ID="cli-$$" \
@@ -333,7 +333,7 @@ _route_redact_prompt() {
     if [[ -n "${_ROUTE_VISION_PREAMBLE:-}" ]] \
         && [[ "$(head -n1 "$input" 2>/dev/null)" != '# Intent (advisory)' ]]; then
         local _pre_tmp
-        _pre_tmp="$(mktemp "${TMPDIR:-/tmp}/zb-vis-pre.XXXXXX" 2>/dev/null)" || true
+        _pre_tmp="$(mktemp "$(zbuild_engine_tmpdir)/zb-vis-pre.XXXXXX" 2>/dev/null)" || true
         if [[ -n "$_pre_tmp" ]]; then
             { printf '%s' "$_ROUTE_VISION_PREAMBLE"; cat "$input"; } > "$_pre_tmp" \
                 && mv "$_pre_tmp" "$input" 2>/dev/null || rm -f "$_pre_tmp" 2>/dev/null || true
@@ -487,12 +487,12 @@ _route_ensure_redaction() {
 
     # ── Router redacts by construction now. ──
     local _tmp_in _tmp_out _rc=0
-    if ! _tmp_in="$(mktemp "${TMPDIR:-/tmp}/zb-route-redact-in.XXXXXX" 2>/dev/null)"; then
+    if ! _tmp_in="$(mktemp "$(zbuild_engine_tmpdir)/zb-route-redact-in.XXXXXX" 2>/dev/null)"; then
         error "router redaction refused: mktemp failed"
         eb_emit_event "router.precondition.refused" "tier=$tier" "reason=mktemp_failed" 2>/dev/null || true
         return 2
     fi
-    if ! _tmp_out="$(mktemp "${TMPDIR:-/tmp}/zb-route-redact-out.XXXXXX" 2>/dev/null)"; then
+    if ! _tmp_out="$(mktemp "$(zbuild_engine_tmpdir)/zb-route-redact-out.XXXXXX" 2>/dev/null)"; then
         rm -f "$_tmp_in"
         error "router redaction refused: mktemp failed"
         eb_emit_event "router.precondition.refused" "tier=$tier" "reason=mktemp_failed" 2>/dev/null || true
@@ -827,7 +827,7 @@ _route_call_claude() {
     if   command -v gtimeout >/dev/null 2>&1; then _tout_cmd=("gtimeout" "$_local_secs")
     elif command -v timeout  >/dev/null 2>&1; then _tout_cmd=("timeout"  "$_local_secs")
     fi
-    if ! stderr_file="$(mktemp "${TMPDIR:-/tmp}/zb-router-stderr.XXXXXX" 2>/dev/null)"; then
+    if ! stderr_file="$(mktemp "$(zbuild_engine_tmpdir)/zb-router-stderr.XXXXXX" 2>/dev/null)"; then
         error "router: mktemp failed"
         eb_emit_event "router.error" "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "reason=mktemp_failed"
         return 2
@@ -1376,7 +1376,7 @@ route_to_model_loop() {
 
     # Per-iteration temp dir outside the caller's artifacts dir so the parity
     # goldens that snapshot artifact filenames are not polluted by iter files.
-    local _loop_tmp; _loop_tmp="$(mktemp -d "${TMPDIR:-/tmp}/zb-loop-iters.XXXXXX")"
+    local _loop_tmp; _loop_tmp="$(mktemp -d "$(zbuild_engine_tmpdir)/zb-loop-iters.XXXXXX")"
     # #628: function-scoped RETURN trap self-cleans on every exit path
     # (SIGINT propagation, 3-consecutive-timeout fatal, capture_diff error,
     # done_sentinel, no_progress, max_iterations). Previously two of those
@@ -1544,8 +1544,7 @@ ${_diff_pointer}"
         # TMPDIR to it, but this loop also runs where that redirect is not in
         # scope, and `${TMPDIR:-/tmp}` then resolves to /tmp — outside every
         # ADR-058 area. Naming the area directly does not depend on inheritance.
-        local _rt_tmp="${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}"
-        [[ -d "$_rt_tmp" ]] || _rt_tmp="${TMPDIR:-/tmp}"
+        local _rt_tmp; _rt_tmp="$(zbuild_engine_tmpdir)"
         stderr_file="$(mktemp "${_rt_tmp}/zb-loop-stderr.XXXXXX")"
         json_file="$(mktemp "${_rt_tmp}/zb-loop-json.XXXXXX")"
 
@@ -2096,7 +2095,7 @@ _route_loop_capture_diff() {
     git -C "$cwd" add -N . 2>/dev/null || true
 
     # Stream directly to disk; do not let `$()` touch the byte stream.
-    local _diff_tmp; _diff_tmp="$(mktemp "${TMPDIR:-/tmp}/zb-loop-diff.XXXXXX")"
+    local _diff_tmp; _diff_tmp="$(mktemp "$(zbuild_engine_tmpdir)/zb-loop-diff.XXXXXX")"
     local diff_rc=0
     git -C "$cwd" diff HEAD > "$_diff_tmp" 2>/dev/null || diff_rc=$?
     if [[ $diff_rc -ne 0 ]]; then

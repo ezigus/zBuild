@@ -49,7 +49,7 @@ resolve_template_file() {
     else
         # macOS/BSD mktemp requires XXXXXX at end (no trailing extension).
         # Mirrors the ${TMPDIR:-/tmp}/name.XXXXXX pattern used elsewhere.
-        merged_file="$(mktemp "${TMPDIR:-/tmp}/zbuild-tpl.XXXXXX")"
+        merged_file="$(mktemp "$(zbuild_engine_tmpdir)/zbuild-tpl.XXXXXX")"
     fi
 
     # ADR-016 full-replace: emit base file minus its stages:/stage_definitions: blocks,
