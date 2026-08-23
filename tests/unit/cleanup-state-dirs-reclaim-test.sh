@@ -143,6 +143,26 @@ else
         "decision=$(_decision "$plan_clock" clock-probe) reason=$(_reason "$plan_clock" clock-probe)"
 fi
 
+# ── SPEC-2c: an unreadable mtime fails CLOSED ───────────────────────────────
+# The #1927 scanners default a failed stat to 0 because they reclaim throwaway or
+# regenerable trees. This one rm -rf's a run's whole evidence record, where the
+# epoch reads as "infinitely old" and would turn a degraded filesystem or a
+# restrictive ACL into an unconditional prune of every job folder at once.
+mock_binary "stat" 'exit 1'
+plan_nostat="$(PATH="$TEST_TEMP_DIR/bin:$PATH" _cleanup_scan_state_dirs "$STATE_DIR" 7 false)"
+rm -f "$TEST_TEMP_DIR/bin/stat"
+if ! grep -q $'\tprune\t' <<<"$plan_nostat"; then
+    assert_pass "[SPEC-2c] no prune candidate survives an unreadable mtime"
+else
+    assert_fail "[SPEC-2c] an unreadable mtime must fail closed, not prune everything" \
+        "pruned: $(grep -c $'\tprune\t' <<<"$plan_nostat")"
+fi
+if grep -q "mtime unreadable" <<<"$plan_nostat"; then
+    assert_pass "[SPEC-2c] the fail-closed guard names itself"
+else
+    assert_fail "[SPEC-2c] the fail-closed skip must name its guard" "plan: $plan_nostat"
+fi
+
 # ── SPEC-3: in_progress is never a candidate, even with --force ──────────────
 plan_force="$(_cleanup_scan_state_dirs "$STATE_DIR" 7 true)"
 if [[ "$(_decision "$plan_force" "live")" == "skip" ]]; then
