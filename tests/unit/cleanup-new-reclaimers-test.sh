@@ -75,6 +75,51 @@ else
     assert_fail "[SPEC-1] the real active-run predicate must be restored" "still undefined"
 fi
 
+# ── SPEC-2: state branches ──────────────────────────────────────────────────
+# Nothing pruned these before: _cleanup_scan_branches filters strictly on
+# `zbuild/issue-*`, so `zbuild/state/issue-*` was never even a candidate (#1632).
+# Exercised against a real throwaway repo — the scanner shells out to git, so a
+# pure-function test would prove nothing about whether it can see a branch.
+_SB_REPO="$TEST_TEMP_DIR/sbrepo"
+mkdir -p "$_SB_REPO"
+(
+    cd "$_SB_REPO" || exit 1
+    git init -q -b main . 2>/dev/null
+    git config user.email t@e.st; git config user.name t
+    : > f; git add f; git commit -q -m init
+    git branch zbuild/state/issue-200      # issue closed 30d ago (stubbed below)
+    git branch zbuild/state/issue-100      # issue open      (stubbed below)
+    git branch zbuild/issue-200-work       # a WORK branch, must not be scanned here
+) >/dev/null 2>&1
+
+# Stub the GitHub lookups before scanning — no network in tests.
+_cleanup_issue_state() { case "$1" in 100) printf 'open';; 200) printf 'closed';; \
+    300) printf 'missing';; *) printf 'unknown';; esac; }
+_cleanup_issue_closed_age_days() { [[ "$1" == "200" ]] && printf '30'; }
+
+_sb_plan="$( cd "$_SB_REPO" && _cleanup_scan_state_branches 7 )"
+
+assert_eq "[SPEC-2] a state branch whose issue closed 30d ago is a prune candidate" \
+    "prune" "$(_decision_for "$_sb_plan" "zbuild/state/issue-200")"
+assert_eq "[SPEC-2] a state branch for an OPEN issue is kept" \
+    "skip" "$(_decision_for "$_sb_plan" "zbuild/state/issue-100")"
+
+# The scanner owns the state namespace ONLY — work branches belong to
+# _cleanup_scan_branches, and double-scanning would double-report them.
+if printf '%s\n' "$_sb_plan" | /usr/bin/grep -q 'zbuild/issue-200-work'; then
+    assert_fail "[SPEC-2] the state scanner must not claim work branches" "$_sb_plan"
+else
+    assert_pass "[SPEC-2] the state scanner leaves zbuild/issue-* to the branch scanner"
+fi
+
+# Positive control: without the issue-close clock nothing here is prunable at
+# all, so prove the branch really is reachable and the decision is the variable.
+if [[ -n "$_sb_plan" ]]; then
+    assert_pass "[SPEC-2] the scanner sees state branches at all (it reported $(printf '%s\n' "$_sb_plan" | /usr/bin/grep -c .) )"
+else
+    assert_fail "[SPEC-2] the scanner reported nothing — it cannot see state branches" "empty plan"
+fi
+
 # ── SPEC-3: orch pools ──────────────────────────────────────────────────────
 export TMPDIR="$TEST_TEMP_DIR/tmp"; mkdir -p "$TMPDIR/zbuild-runs/deadpool"
 : > "$TMPDIR/zbuild-runs/deadpool/slot0"
@@ -109,10 +154,7 @@ assert_eq "[SPEC-5] an issue number is parsed from a work branch" \
 assert_eq "[SPEC-5] an issue number is parsed from a state branch" \
     "1809" "$(_cleanup_issue_from_ref 'zbuild/state/issue-1809')"
 
-# Stub the GitHub lookups — no network in tests.
-_cleanup_issue_state() { case "$1" in 100) printf 'open';; 200) printf 'closed';; \
-    300) printf 'missing';; *) printf 'unknown';; esac; }
-_cleanup_issue_closed_age_days() { [[ "$1" == "200" ]] && printf '30'; }
+# (GitHub lookups already stubbed above, at SPEC-2.)
 
 _d_open="$(_cleanup_issue_ref_decision 'zbuild/state/issue-100' 7 999)"
 assert_eq "[SPEC-5] a branch for an OPEN issue is kept, however old" \
