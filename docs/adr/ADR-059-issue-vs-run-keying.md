@@ -215,10 +215,27 @@ stands**, and must be extracted rather than cross-called:
 - The names claim a scope they do not have: `plan_context_repo_id` identifies a *repository*.
 - `plan-context.sh:33` sources `llm-agent.sh`, so reusing a sha256 pulls in LLM machinery.
 
-KEEPERS §I already records the underlying problem — *"Multiple repo-hash schemes — unify on
-one"* (`docs/KEEPERS.md:184`). There are four independent derivations of repo identity today
-(`plan-context.sh:42`, `release-tarball.sh:194`, `doc-publish.sh:35`,
-`plugins/agent/design/plugin.sh:142`).
+KEEPERS §I already records the underlying problem — *"Multiple repo-hash schemes — unify on one"*
+(`docs/KEEPERS.md:184`). Reading the four sites shows the problem is **not** four copies of one
+formula. It is **two different things derived from one input**, one of them three times with three
+different parsers:
+
+| site | derives | how |
+|---|---|---|
+| `scripts/lib/plan-context.sh:42` | a **hash id** | sha256 of the normalised URL — credentials stripped, `.git` trimmed, lowercased, toplevel-path fallback |
+| `scripts/lib/release-tarball.sh:194` | an **`owner/repo` slug** | `${slug#*github.com[:/]}` after trimming `.git`, with a shape check |
+| `plugins/agent/design/plugin.sh:142` | an **`owner/repo` slug** | a `case` on two literal prefixes (`git@github.com:`, `https://github.com/`); anything else returns empty |
+| `scripts/lib/doc-publish.sh:35` | a **remote URL**, not an identity | `${origin%.git}.wiki.git` |
+
+This sharpens the decision rather than weakening it. §6 and #141 propose **one derivation with two
+renderings** — a hash for flat keys, `{owner}/{repo}` for directories. The table shows the slug
+rendering **already exists and is already duplicated**, with the two copies disagreeing about which
+remote forms they accept: one handles any host with `github.com` in it, the other only two exact
+prefixes. A repository reachable by a form one parser accepts and the other does not gets a release
+tarball and no design blob URL, silently.
+
+`doc-publish.sh` is listed for completeness and is **not** in scope: it constructs a wiki remote,
+which is a different job that happens to start from the same string.
 
 **The test for whether the extraction succeeded:** the module must be sourceable by
 `scripts/lib/cleanup.sh` and `scripts/lib/worktree.sh` without pulling in anything from the plan
@@ -239,7 +256,7 @@ consumers disagree about how a run is keyed is not a layout.**
 - Prior work is on disk beside the run that needs it, and on a remote rather than one laptop.
 - One base directory: one `.gitignore` entry, one place to look for an issue's work.
 - `--goal` runs gain an identity they have never had.
-- Four repo-identity derivations collapse to one; KEEPERS §I is dischargeable.
+- One hash derivation and two divergent `owner/repo` slug parsers collapse to one derivation with two renderings; KEEPERS §I is dischargeable.
 - `legacy/` is materialised once per issue instead of once per run (#1802).
 
 **Negative / costs**
