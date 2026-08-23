@@ -946,10 +946,13 @@ _cleanup_scan_state_dirs() {
             printf '%s\tskip\tcurrent run (ZBUILD_RUN_ID)\n' "$d"
             continue
         fi
+        # No .bak/.lock filter: the glob ends in .json, so neither suffix can
+        # reach this loop. The older scanners in this file carry that guard and
+        # say so themselves ("we never glob them anyway"); copying it forward
+        # would only tell a future reader those files might turn up here.
         f=""
         for c in "$d"/pipeline-state*.json; do
             [[ -f "$c" ]] || continue
-            case "$c" in *.bak|*.lock) continue ;; esac
             f="$c"; break
         done
         status=""
