@@ -94,7 +94,7 @@ _make_fixture "$FX2" "wb-fx2" "
     echo '{}' > \"\${ZBUILD_ARTIFACT_DIR:-\${artifact_dir:-}}/wb-fx2-result.json\"
     # Write a v2 result declaring disposition=complete.
     cat > \"\${ZBUILD_ARTIFACT_DIR:-\${artifact_dir:-}}/wb-fx2-result.json\" <<'REOF'
-{\"result_contract\":2,\"disposition\":\"complete\",\"verdict\":\"pass\"}
+{\"result_contract\":2,\"disposition\":\"complete\",\"verdict\":\"pass\",\"reason\":\"declared complete on purpose\"}
 REOF
     # Write to the canary dir — a boundary violation.
     touch \"\$ZB_WB_CANARY_FILE\"
@@ -116,6 +116,12 @@ plugin_hook_call "$FX2" "run" "wb-test-stage" "$STATE_FILE" || true
 assert_file_exists "[SPEC-2] write-boundary-violated marker created after boundary violation" \
     "$JOB_DIR/runtime/write-boundary-violated"
 
+# The v2 result carries all three mandatory fields (verdict, disposition, reason)
+# ON PURPOSE. Omitting `reason` sets _d_viol=contract_violation:missing_field:reason
+# in _verdict_read_result, and _d_viol is checked BEFORE the marker branch this
+# issue adds — so the assertion below would pass through the contract-violation
+# path and prove nothing about write-boundary precedence. Caught by claude-review
+# on PR #1928; the ablation below pins that it stays honest.
 # The disposition must resolve to broken even though the stage declared complete.
 _disp2="$(runner_read_stage_disposition "$JOB_DIR" "$FX2/manifest.yaml" "wb-test-stage" 0 "" 0)"
 assert_eq "[SPEC-2] write-boundary violation overrides disposition=complete → broken" \

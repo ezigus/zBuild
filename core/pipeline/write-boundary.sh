@@ -154,7 +154,7 @@ write_boundary_sweep() {
 # ─── write_boundary_classify <candidate> <state_dir> <plugin_dir> ────────────
 # Print: declared | allowed | violation
 write_boundary_classify() {
-    local _cand="$1" _sd="${2:-}" _pd="${3:-}"
+    local _cand="$1" _sd="${2:-}" _pd="${3:-}" _allow="${4:-}"
 
     # Resolve candidate to a canonical absolute path.
     # pwd -P, not pwd: on macOS /var is a symlink to /private/var, and the
@@ -182,6 +182,12 @@ write_boundary_classify() {
     fi
 
     # 2. Check allowed areas.
+    # The caller may hand in a precomputed allow list. write_boundary_allow_list
+    # shells out to `git rev-parse --show-toplevel` when ZBUILD_REPO_ROOT is
+    # unset, and the sweep can hand this function many candidates — recomputing
+    # per candidate meant one git subprocess each. Computed here only when the
+    # caller did not (direct callers, including the unit tests, pass nothing).
+    [[ -z "$_allow" ]] && _allow="$(write_boundary_allow_list "$_sd")"
     local _ar _ca
     while IFS= read -r _ar; do
         [[ -z "$_ar" ]] && continue
@@ -198,7 +204,7 @@ write_boundary_classify() {
         if [[ "$_cd" == "$_ca" || "$_cd" == "${_ca}/"* || "$_ca" == "${_cd}/"* ]]; then
             printf 'allowed'; return 0
         fi
-    done <<< "$(write_boundary_allow_list "$_sd")"
+    done <<< "$_allow"
 
     printf 'violation'
 }
@@ -234,10 +240,12 @@ write_boundary_check() {
     local _sd; _sd="$(dirname "$_sf")"
     local _marker="${_sd}/runtime/write-boundary.marker"
     [[ -f "$_marker" ]] || return 0
+    # Resolve the allow list ONCE per dispatch, not once per swept candidate.
+    local _allow; _allow="$(write_boundary_allow_list "$_sd")"
     local _cand _cls
     while IFS= read -r _cand; do
         [[ -z "$_cand" ]] && continue
-        _cls="$(write_boundary_classify "$_cand" "$_sd" "$_pd")"
+        _cls="$(write_boundary_classify "$_cand" "$_sd" "$_pd" "$_allow")"
         if [[ "$_cls" == "violation" ]]; then
             write_boundary_violation_recorded "$_sd" "$_stage" "$_cand"
             return 1
