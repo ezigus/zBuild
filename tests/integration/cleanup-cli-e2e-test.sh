@@ -161,6 +161,58 @@ else
     assert_fail "recent state file survives"
 fi
 
+# ── TC-5b: --state-dirs reclaims the whole job folder, through the real CLI ──
+# The acceptance criterion for #1920. TC-5 above covers the LEGACY FLAT state
+# files; this covers runs/<run_id>/, which `--state-dirs` used to leave standing
+# after deleting the three JSON files inside it.
+_e2e_mkrun() {
+    local rid="$1" status="$2" days="$3"
+    local d="$STATE_DIR/runs/$rid"
+    mkdir -p "$d/artifacts" "$d/scratch/test"
+    printf 'evidence\n' > "$d/events.jsonl"
+    jq -n --arg s "$status" --arg id "$rid" \
+        '{schema_version:1, run_id:$id, issue:1, status:$s, stage_statuses:{},
+          current_iteration:0, self_heal_count:{}, updated_at:"2026-01-01T00:00:00.000Z"}' \
+        > "$d/pipeline-state.json"
+    local secs=$(( days * 86400 ))
+    if ! touch -d "@$(( $(date +%s) - secs ))" "$d/pipeline-state.json" 2>/dev/null; then
+        local ts; ts="$(date -r $(( $(date +%s) - secs )) "+%Y%m%d%H%M.%S")"
+        touch -t "$ts" "$d/pipeline-state.json"
+    fi
+}
+_e2e_mkrun stale-job   complete    30
+_e2e_mkrun fresh-job   complete     0
+_e2e_mkrun live-job    in_progress 30
+
+out="$("$ZBUILD" cleanup --dry-run --state-dirs --age-days 14 2>&1)"; rc=$?
+assert_exit_code "[#1920] state-dirs dry-run exit 0" 0 "$rc"
+if [[ -d "$STATE_DIR/runs/stale-job" ]]; then
+    assert_pass "[#1920] dry-run deletes no job folder"
+else
+    assert_fail "[#1920] dry-run deletes no job folder"
+fi
+# Every category reports, and a skip names its guard (#1634) — a silent scan and
+# a broken scan must not look the same.
+if grep -q "live-job" <<<"$out" && grep -q "active run\|in_progress" <<<"$out"; then
+    assert_pass "[#1920] the live run is REPORTED as skipped, with the guard named"
+else
+    assert_fail "[#1920] live run must appear in the plan with a named guard" "got: $out"
+fi
+
+out="$("$ZBUILD" cleanup --apply --state-dirs --age-days 14 2>&1)"; rc=$?
+assert_exit_code "[#1920] state-dirs apply exit 0" 0 "$rc"
+if [[ ! -e "$STATE_DIR/runs/stale-job" ]]; then
+    assert_pass "[#1920] apply reclaims the whole job folder (artifacts/, scratch/, events.jsonl)"
+else
+    assert_fail "[#1920] apply must remove runs/<id>/ entirely" \
+        "survivors: $(find "$STATE_DIR/runs/stale-job" 2>/dev/null | head -5 | tr '\n' ' ')"
+fi
+if [[ -d "$STATE_DIR/runs/fresh-job" && -d "$STATE_DIR/runs/live-job" ]]; then
+    assert_pass "[#1920] the in-window run and the live run survive the same apply"
+else
+    assert_fail "[#1920] apply must keep the in-window run and the live run"
+fi
+
 # ── TC-6: cannot delete current branch even with --force ────────────────────
 git checkout -q -b zbuild/issue-current
 git push -q -u origin zbuild/issue-current 2>/dev/null || true

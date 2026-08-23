@@ -3,6 +3,7 @@
 **Status:** Accepted (2026-08-09)
 **Date:** 2026-08-09
 **Issue:** #1820
+**Amended:** 2026-08-23 (#1920) — §7: the `release` "deletes nothing" promise scoped to the run's own lifecycle; operator-invoked reclamation (`zbuild cleanup --state-dirs`) named as a third actor with its own clock and guards.
 **Amended:** 2026-08-12 (#1862) — §3.1 added: the engine exports dispatch identity (`ZBUILD_CURRENT_STAGE`, `ZBUILD_PLUGIN`, `ZBUILD_PLUGIN_KIND`, `ZBUILD_PLUGIN_DIR`) at `plugin_hook_call`, scoped to one dispatch. A plugin is self-defining about what it is and can never be self-defining about which stage it serves. `ZBUILD_PLUGINS_ROOT` is explicitly excluded; identity is scrubbed by `env-scrub` per ADR-024, not exempted from it.
 **Amends:**
 - ADR-001 — the stage contract is two hooks (§1), rc ∈ {0,1} (§4), and one result file (§5). The rc=1→`kind: recovery` routing is deleted; it was never implemented and no recovery plugin was ever registered.
@@ -244,6 +245,23 @@ Two scopes, one discriminator — **can this be done tomorrow?**
 No → `release`. Yes → `purge`. The rule exists because the inverse destroys evidence: `plugins/tool/test/plugin.sh` `rm -rf`s its staging dir on return and kills nothing, which is exactly backwards — orphaned suites keep running against a deleted tree (#1748).
 
 The runner still owns the process trap (ADR-025); a trap firing does not turn into a `cleanup` dispatch by itself. Delivered by #1829, which depends on #1759 giving the signal traps a single owner.
+
+**Amended 2026-08-23 (#1920) — the "deletes nothing" promise is about the RUN, not about the disk forever.**
+
+`release` deletes nothing, so a run that fails still owns its complete evidence at the moment it ends, and neither a normal exit nor a trap can take that away. That is the promise, and it is unchanged.
+
+It was read more broadly than it says. `purge` was the only named deleter of a run's persisted state, and `purge` is reachable only through `zbuild clean --purge`, so a job folder was in practice permanent — including for the ~190 runs that had already accumulated when #1920 measured it. ADR-058 recorded that as an accepted cost, and named #1920 as the issue that would fix it.
+
+The reclaimer is `zbuild cleanup --state-dirs`. It is a **third** actor and neither trigger in the table above: not the run's own lifecycle, not a scoped teardown dispatch of one run, but an operator sweeping a store on a retention clock. The distinction that matters:
+
+| | `release` | `purge` | `zbuild cleanup --state-dirs` |
+|---|---|---|---|
+| Acts on | the run that is ending | one named run | every run in the store |
+| Clock | none — immediate | none — on request | retention (`--age-days`, default 7) |
+| Live run | is the caller | refused while `in_progress` | refused while `in_progress`, and refused for `$ZBUILD_RUN_ID` |
+| Resumable run | untouched | untouched | refused unless `--force` (ADR-018) |
+
+No stage and no hook may call it. Building a deletion path into the lifecycle is the thing this section exists to prevent, and reclamation being a separate operator command is what keeps that true.
 
 ### 8. Fail-closed artifact scanner contract
 

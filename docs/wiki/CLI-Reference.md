@@ -115,7 +115,7 @@ zbuild cleanup [--branches] [--state-dirs] [--stashes] [--tmpdirs]
 |---|---|
 | `--branches` | `zbuild/issue-*` work branches |
 | `--state-branches` | `zbuild/state/issue-*` prior-work snapshots |
-| `--state-dirs` | per-run state under `~/.zbuild/state/runs/` |
+| `--state-dirs` | whole job folders — `~/.zbuild/state/runs/<run_id>/` and everything in them (artifacts, events, stage I/O, scratch), plus legacy flat state files |
 | `--scratch` | per-stage scratch — usually the largest consumer on disk |
 | `--stashes` | `zb-applycheck-*` git stashes |
 | `--tmpdirs` | leaked zbuild temp directories |
