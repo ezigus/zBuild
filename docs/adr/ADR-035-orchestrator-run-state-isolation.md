@@ -1,6 +1,7 @@
 # ADR-035 — Orchestrator Run-State Isolation (scratch & pool dirs)
 
 **Status:** Accepted (2026-06-15)
+**Amended:** 2026-08-23 (#141) — pool dirs stay per-run under ADR-059's layout; this ADR's shared-dir hazard is answered by the issue retention clock
 **Amended:** 2026-08-22 — the "pool dirs are intentionally not in the cleanup scanner" decision below is reversed; they now have a reclaimer
 **Related:** ADR-024 (subprocess environment isolation), ADR-023 (install isolation), ADR-011 (pluggable orchestrator backends)
 **Issue:** #898; the orchestrator analog of #887/#889 (per-run state isolation)
@@ -140,3 +141,26 @@ runner exports `ZBUILD_EVENTS_*` to follow that dir. Two gaps remained:
 `_runner_clear_stale_global_event_artifacts`, `--no-resume` startup clear,
 `_runner_abort_trap` lock teardown), `scripts/lib/cleanup.sh` (pattern).
 Verified by `tests/integration/per-run-state-isolation-test.sh` T7–T9.
+
+## Amendment (#141) — per-run pool dirs stand; the shared-dir hazard is answered by retention
+
+**Status:** Accepted (2026-08-23). See [ADR-059](ADR-059-issue-vs-run-keying.md).
+
+This ADR keys the orchestrator's scratch and pool dirs per run, *"the orchestrator analog of
+#887/#889"*. ADR-059 re-keys the worktree and prior-work artifacts to the **issue**. The two do not
+conflict, and this amendment records why rather than changing anything:
+
+**Pool dirs stay per-run.** They hold live coordination state for one dispatch — nothing reads a
+finished run's pool to start the next one, which is the only property that would argue for an issue
+key. Under ADR-059's layout they move to `repos/<repo>/issues/<N>/runs/<run_id>/`, alongside the
+run's other per-run state and out of `${TMPDIR}/zbuild-runs/`. That is a path change, not a keying
+change.
+
+**This ADR's own hazard is the live objection to ADR-059, and is answered rather than refuted.** §
+Consequences warns against *"shared dirs that cannot be torn down with a single run, accumulating
+cruft"*. A per-issue worktree is exactly such a dir. The answer is that ADR-059 gives it the issue
+retention clock (#1927: live work while the issue is open, reclaimed after), not that the hazard is
+imaginary — #749 reached 1,261 directories and ~13GB before anyone noticed the equivalent. The
+2026-08-22 amendment above already conceded this direction once, reversing *"pool dirs are
+intentionally not in the cleanup scanner"* for the same reason: a dir with no reclaimer accumulates.
+

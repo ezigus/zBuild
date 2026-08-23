@@ -2,6 +2,7 @@
 
 **Status:** Accepted (2026-07-28)
 **Issue:** #1640 (Bugs-found EPIC #1600) — supersedes the ownership model introduced by #888
+**Amended:** 2026-08-23 (#141) — the tree is keyed by the **issue**, not the run (ADR-059)
 **Related:** [ADR-023](ADR-023-install-isolation.md) (engine isolation — "which zBuild code runs"),
 [ADR-051](ADR-051-engine-owned-stage-keyed-data-provision.md) (engine-owned, stage-keyed data
 provision), [ADR-047](ADR-047-stage-agnostic-mechanics.md) (stage-agnostic mechanics),
@@ -126,6 +127,43 @@ never passes `--force`.
 **Events.** `intake.branch.reclaimed` / `intake.branch.reclaim_refused`. These *do* keep the
 `intake.` prefix — unlike the acquisition events above — because they record what intake did about
 its own branch, not how the engine manages trees.
+
+## Amendment (#141) — the tree is keyed by the issue, not the run
+
+**Status:** Accepted (2026-08-23) — supersedes §Decision 1's *"Reuse is keyed on `run_id`"*
+and makes the #1869 amendment above reachable only in its concurrent case.
+See [ADR-059](ADR-059-issue-vs-run-keying.md).
+
+§Decision 1 keys the tree on `run_id`. That choice is defended here on an **ownership** argument —
+*"creation needs only `run_id` — which the engine has, and intake does not own"* — which establishes
+that the **engine** must acquire the tree. It does not establish which **key** the engine should
+acquire it under, and §Alternatives considered weighs three variations on ownership and timing
+without weighing the key at all.
+
+The key was inherited from #888, and it cost twice. A worktree holds a branch, and the branch is
+named for the **issue**. Keying the tree by run while the branch is keyed by issue is exactly the
+mismatch #1658 and #1869 describe in their own words — *"the path is keyed by `run_id`"*, and *"a
+bare `zbuild pipeline start --issue N` therefore collides with its own previous run, every time, and
+the collision is terminal."* The #1869 amendment above is machinery built to survive that mismatch
+rather than remove it.
+
+**Amended rule.** `zbuild_worktree_acquire` is keyed on the run's **issue** (or, for a `--goal` run,
+its goal hash — ADR-059 §5), not on `run_id`. One tree per issue, reused across that issue's runs.
+
+Everything else in this ADR stands unchanged, including the property the #1869 amendment named as
+the one always under threat: **no plugin decides which tree it works in.** Only the key changes; the
+engine still acquires, still enters, still fails closed.
+
+Two consequences that are not optional:
+
+- **The sequential collision disappears by construction**, so `zbuild_worktree_reclaim_dead`'s
+  dead-predecessor case becomes unreachable. Its **liveness predicate** is kept and reused —
+  ADR-059 §4 reaps a dead holder before admission rather than after a refusal.
+- **Concurrent runs of one issue are no longer isolated.** Under run keying the worst case was two
+  competing PRs (#1688) — cosmetic. Under one shared tree it is two runs mutating one `.git/index`.
+  ADR-059 §4 therefore makes issue exclusivity a **precondition of this amendment**, not a
+  follow-up: a run takes an exclusive lock on its issue before entering the tree, and refuses if it
+  cannot. Landing this key change without that lock trades a recoverable collision for a silent one.
 
 ## Alternatives considered
 
