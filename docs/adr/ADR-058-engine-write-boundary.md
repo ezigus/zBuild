@@ -5,6 +5,7 @@
 **Issue:** #1918
 **Amended:** 2026-08-23 (#1809) — a fifth area, `runtime/`, for live run bookkeeping
 **Amended:** 2026-08-23 (#1920) — the job folder is reclaimable; §1's "kept as evidence" gains a retention clock
+**Amended:** 2026-08-23 (#141) — a sixth lifetime, the **issue**; §6's clock premise is falsified (ADR-059)
 **Related:** ADR-052 (engine-owned run worktree), ADR-011 (pluggable backends — the cache and memory stores), ADR-024 (subprocess env isolation), ADR-004 (redaction chokepoint), ADR-054 §3 (the dispatch identity seam this reuses), ADR-054 §7 (release/purge — why nothing here deletes), ADR-056 (cleanup-only lifecycle)
 
 ## Context
@@ -144,6 +145,38 @@ There is a second, sharper reason the resolver itself must never read `$TMPDIR`:
 
 `runtime/` (§2b) and `scratch/` (§2) are reclaimed *with* the folder and need no schedule of their own.
 
+### 7. A sixth lifetime — the issue (amended 2026-08-23, #141)
+
+§1's Lifetime column has three values: *the run*, *across runs*, and *the run, then evidence*. It has
+no value for **belongs to this issue, across its runs** — because at the time it was written, nothing
+did.
+
+[ADR-059](ADR-059-issue-vs-run-keying.md) adds that lifetime and moves two things into it: the
+worktree (ADR-052's key changes from `run_id` to the issue) and prior-work artifacts. §1's areas are
+otherwise unchanged — this amends the **Lifetime** column, not the count. A stage still writes into
+the same five places, and the boundary sweep (§C9) still watches the same roots. What changes is how
+long two of them live and what path they sit under.
+
+**§6's central premise is falsified, and the conclusion still holds.** §6 gives a job folder the
+last-touch clock rather than the issue clock, on the ground that *"nothing reads a terminal run's job
+folder to start the next run of that issue."* Under ADR-059 something does: the next run of an issue
+reads that issue's artifacts. But it reads them from the **issue** directory, not from a terminal
+run's job folder — ADR-059 §1 puts `runs/<run_id>/` strictly below `issues/<N>/`, and only the
+per-run half stays inside the job folder. So the sentence stops being true of the *store* while
+remaining true of the *folder the clock is applied to*, and §6's rule is correct for the reason it
+gives.
+
+The issue directory above it takes the **issue clock** — the one #1927 defined for exactly this
+shape, *"live work while the issue is open."* A job folder can therefore be reclaimed while the
+issue directory containing it survives, which is the point: seven days of diagnostic evidence, and
+prior work that lasts as long as the issue does.
+
+**One thing this makes worse, and it is load-bearing.** §6's reclaimer is guarded by
+`_cleanup_is_active_run`, which globs the run root. ADR-059 §5 moves that root. A glob that matches
+nothing reports *no run is live* and un-gates three destructive scanners against running jobs — a
+silent failure, and the reason ADR-059 requires the six silent call sites be verified by
+**observation against a live run**, not by assertion.
+
 ## Consequences
 
 **Positive**
@@ -174,24 +207,6 @@ bash tests/unit/plugin-lifecycle-event-balance-test.sh   # the ad-hoc `… ""` c
 
 This issue is itself gate 3b's worked example under ADR-057 as amended: it edits `.github/workflows/**`, which the App token cannot push (#1780), so it was built by hand.
 
-## Implementation Notes (#1918, Phase 0 C8)
-
-`core/pipeline/stage-scratch.sh` is a sourced library — `stage_scratch_dir` resolves, `stage_scratch_ensure` resolves and creates. Both take `[<state_dir>] [<stage>] [<map_element>]` and fall back to the ambient dispatch identity, so a caller already inside `plugin_hook_call` can call them with no arguments.
-
-The exports deliberately live in `core/plugin-registry/lifecycle.sh` and **not** in `core/pipeline/runner.sh`. Moving them makes the change gate-3 `By-hand` under ADR-057 *and* trips the shape floor: `config/shape-change-paths.txt` demands that any diff touching `runner.sh` also carry every `event-sequence.golden` and every `_TPL_STAGES[N]` order test.
-
-Verification:
-
-```bash
-bash tests/unit/stage-scratch-test.sh
-bash tests/integration/stage-scratch-dispatch-test.sh
-bash tests/unit/ci-state-isolation-test.sh
-bash tests/unit/plugin-lifecycle-event-balance-test.sh   # the ad-hoc `… ""` caller must still reach the plugin
-```
-
-This issue is itself gate 3b's worked example under ADR-057 as amended: it edits `.github/workflows/**`, which the App token cannot push (#1780), so it was built by hand.
-
----
 
 ## C9: Post-dispatch write-boundary enforcement (#1809)
 

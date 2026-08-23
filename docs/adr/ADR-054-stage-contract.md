@@ -3,6 +3,7 @@
 **Status:** Accepted (2026-08-09)
 **Date:** 2026-08-09
 **Issue:** #1820
+**Amended:** 2026-08-23 (#141) — §7: the three-actor table is run-keyed in every row; the **issue** is a second scope, and `release` gains the `always-run` attribute plus a `persist` sibling (ADR-059).
 **Amended:** 2026-08-23 (#1920) — §7: the `release` "deletes nothing" promise scoped to the run's own lifecycle; operator-invoked reclamation (`zbuild cleanup --state-dirs`) named as a third actor with its own clock and guards.
 **Amended:** 2026-08-12 (#1862) — §3.1 added: the engine exports dispatch identity (`ZBUILD_CURRENT_STAGE`, `ZBUILD_PLUGIN`, `ZBUILD_PLUGIN_KIND`, `ZBUILD_PLUGIN_DIR`) at `plugin_hook_call`, scoped to one dispatch. A plugin is self-defining about what it is and can never be self-defining about which stage it serves. `ZBUILD_PLUGINS_ROOT` is explicitly excluded; identity is scrubbed by `env-scrub` per ADR-024, not exempted from it.
 **Amends:**
@@ -262,6 +263,27 @@ The reclaimer is `zbuild cleanup --state-dirs`. It is a **third** actor and neit
 | Resumable run | untouched | untouched | refused unless `--force` (ADR-018) |
 
 No stage and no hook may call it. Building a deletion path into the lifecycle is the thing this section exists to prevent, and reclamation being a separate operator command is what keeps that true.
+
+**Amended 2026-08-23 (#141) — the table is run-keyed in every row; the issue is a second scope.**
+See [ADR-059](ADR-059-issue-vs-run-keying.md).
+
+Every actor above is scoped to a **run**: `release` frees the run's live resources, `purge` deletes
+the run's persisted state, and `zbuild cleanup --state-dirs` reclaims a run's job folder. That was
+complete while a run was the only thing anything was keyed to. ADR-059 keys the worktree and prior
+work to the **issue**, so there is now a scope above the run that nothing here names.
+
+Three consequences:
+
+- **`release` gains an always-run declaration and a sibling.** §7's release becomes a template stage
+  carrying the `always-run` attribute, and ADR-059 §3 adds `persist` beside it — always-run, later,
+  with a longer timeout, because it does network I/O and release must stay fast enough that Ctrl-C
+  never hangs. The "deletes nothing" promise is unchanged and now covers both.
+- **The issue scope needs the same "refused while `in_progress`" guard the run scope has.** An issue
+  directory is reclaimable only when no run of that issue is live — which is the same predicate
+  ADR-059 §4's admission lock already computes, and it should be read from there rather than
+  re-derived.
+- **`purge` follows the same pattern.** It is a deleter like the `clean_*` stages, and there is no
+  reason for it to be engine code while its siblings are template-composed.
 
 ### 8. Fail-closed artifact scanner contract
 

@@ -432,6 +432,28 @@ too broad — tests legitimately read git identity / ssh / npm cache from the re
 `HOME` (this ADR preserves `HOME` on purpose). `ZBUILD_STATE_ROOT` is surgical:
 it fences ONLY zBuild's own state tree.
 
+## Amendment 2026-08-23 (#141) — the nested-run fence must widen before the layout moves
+
+The #1127 fence is surgical by design: it fences *"ONLY zBuild's own state tree"*. Under
+[ADR-059](ADR-059-issue-vs-run-keying.md) that stops being enough. An unfenced nested write lands in
+the parent's **run** directory today and dies with the run; afterwards it lands in an **issue**
+directory that outlives every run of that issue — so a nested `test` stage could corrupt durable
+work, or the very tree its parent is building in.
+
+**Two obligations, both BEFORE the layout moves rather than after** — this is #1214 and #1127's
+territory and widens with them:
+
+- **Fence the new roots, not just the state tree.** `ZBUILD_STATE_ROOT` fences state; the worktree
+  is reached through `ZBUILD_RUN_ROOT` / `ZBUILD_WORKTREE_ROOT`. ADR-059's single base makes one
+  fence sufficient where three are needed today — but only once every derivation goes through it.
+  Until then the fence is partial in exactly the place that now matters.
+- **The #897 test contract is unchanged in substance.** A test asserting over `${TMPDIR}`-rooted
+  artifacts still pins `TMPDIR` under `TEST_TEMP_DIR`. Only the engine's dispatch-time `TMPDIR`
+  target moves (ADR-058 §3), which follows the layout automatically.
+
+Recursion safety is unchanged: the fence variables are `ZBUILD_*`, so a nested run re-scrubs and
+re-exports its own.
+
 ## Amendment 2026-07-07 (#1270) — `ZBUILD_TEMPLATES_DIR` fence reverted; test-template hermeticity via CWD-scoped per-repo overlay
 
 `#1268` had added `ZBUILD_TEMPLATES_DIR` to the test-stage fence set (a post-scrub

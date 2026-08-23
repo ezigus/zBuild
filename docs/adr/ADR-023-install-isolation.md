@@ -2,6 +2,7 @@
 
 **Status:** Accepted (issue #595)
 **Date:** 2026-05-31
+**Amended:** 2026-08-23 (#141) — the #888 worktree layout string is re-keyed to the issue, and its "co-located with the per-run state dir" claim corrected (ADR-059)
 
 ## Context
 
@@ -106,6 +107,37 @@ Pinned design (#595 implementation):
 - **Symlink with `realpath` capture**: pin `REPO_ROOT` to the symlink target
   *as resolved at process start*. Rejected — still mutable mid-run; doesn't
   fix the underlying class of bug.
+
+## Amendment (#141) — the layout string, and one claim in it that was already false
+
+**Status:** Accepted (2026-08-23). See [ADR-059](ADR-059-issue-vs-run-keying.md).
+
+The #888 amendment above states the worktree layout as
+`<base>/runs/<run_id>/worktree`, *"co-located with the per-run state dir (#887) so resume has one
+place to look and cleanup one place to delete."*
+
+**Two corrections, of different kinds.**
+
+**The co-location claim is stale, and was stale before this amendment.** The worktree lives under
+`~/.zbuild/runs/<run_id>/`; the state dir lives under `~/.zbuild/state/runs/<run_id>/`. Different
+roots, two places to look, two places to delete — the opposite of what the sentence promises. That
+divergence is one of five separate roots ADR-059 measured, and it is the reason the goal *"one place
+to look"* had to be restated as a decision rather than assumed as a fact.
+
+**The layout is re-keyed.** ADR-059 §1 replaces it with
+`$ZBUILD_HOME/repos/<repo>/issues/<N>/worktree/`, with the run's own state one level below at
+`runs/<run_id>/`. The co-location this amendment wanted becomes true for the first time, and the
+`ZBUILD_RUN_ROOT` / `ZBUILD_WORKTREE_ROOT` / `config.worktree_root` overrides are unaffected.
+
+**Everything else here survives, and one part of it is why ADR-059 exists at all.** The governing
+principle — *"nothing the pipeline owns lives inside the repo it is working on"* — is untouched;
+ADR-059 changes where outside the repo, not whether. The `$TMPDIR` rejection stands on its own
+evidence (#1571, #1609/#1611: macOS `/var/folders/...` entries vanishing mid-run), and applies with
+more force to an issue-scoped tree, which by design outlives the run that created it.
+
+The refusal rule — *"a branch already checked out elsewhere is refused, not forced"* — also stands,
+and ADR-059 §2 removes most of what triggers it: under one tree per issue, an issue's runs share the
+branch's only checkout instead of competing for it.
 
 ## Implementation Notes (issue #595)
 

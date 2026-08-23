@@ -1,6 +1,7 @@
 # ADR-050 — Prior-Work Reuse Contract (durable artifact store + per-stage self-seeding)
 
 **Status:** Accepted (2026-07-23)
+**Amended:** 2026-08-23 (#141) — §7: git is the store, the folder is the working copy, and the push moves from CI into an always-run `persist` stage (ADR-059)
 
 **Confirmed unchanged:** 2026-08-12 (#1768, ADR-055 §1.2) — ADR-055's data contract was reviewed against this one and prior-work reuse is deliberately **outside the input model**. It is not a declared input, not a third source kind, and not `external`. §1 below is the reason: a stage detects *its own* prior artifact in its own working area, so there is no producer to resolve and no wire to declare. Modelling it as an input would require the engine to know that `build`'s prior `build_summary` belongs to `build` — exactly what §1 forbids. No change to this ADR.
 
@@ -144,6 +145,50 @@ A plugin author, when creating or changing a stage, MUST observe:
   MUST NOT reuse a prior verdict.
 - **Never write anything that must not reach main into the work branch** — durable
   cross-run state belongs on the state branch (engine-managed), not in the code diff.
+
+### 7. Amendment (#141) — git is the store, the folder is the working copy, and every run pushes
+
+**Status:** Accepted (2026-08-23). See [ADR-059](ADR-059-issue-vs-run-keying.md) §3.
+
+This ADR is already keyed by the issue, so ADR-059's layout does not compete with it. What ADR-059
+settles is **which of the two is authoritative**, because there are now two places an issue's prior
+work can live: the state branch above, and the on-disk `issues/<N>/artifacts/` directory.
+
+**Git is the store. The folder is the working copy. On a disagreement, git wins.**
+
+The disk is not a second store and does not gain independent authority by being closer to hand. It
+is what a run reads and writes during its life; §2's branch is what survives it.
+
+**The push moves out of CI and into the pipeline.** §4 says *"push the state branch once at the end,
+pass or fail"*, and the #1878 amendments below add ordering and advisory-failure rules on top of it —
+all of which read as engine behaviour. They are not. `core/state/artifact-persist.sh` has **no `git
+push`**; it writes a local ref. The only state-branch push in the repository is a shell block in
+`.github/workflows/zbuild-pipeline.yml`. A local run therefore snapshots to a branch nobody ever
+sends anywhere, which is why #1921 measured hundreds of local commits and zero on origin.
+
+ADR-059 §3 fixes this by making persistence a **stage** rather than engine code:
+
+- **hydrate**, before intake — pulls the state branch into the folder. Git wins; it overwrites.
+- **release**, at the end, **always-run**, short timeout — frees live resources, deletes nothing.
+- **persist**, at the end after release, **always-run**, longer timeout — snapshots **and pushes**.
+
+`_artifact_persist_restore` (`core/pipeline/runner.sh:1813`) becomes hydrate;
+`_runner_snapshot_artifacts` (`:146`) becomes persist. This file stays as the shared library both
+stages source. The #1878 amendments survive intact and finally have somewhere to be enforced: the
+push-order rule becomes stage order in the template, and the "advisory but never silent" rule
+becomes the persist stage's own disposition.
+
+**§3's exclusion is unchanged and gets no relaxation here.** Deterministic gate verdicts are still
+*"always re-evaluated fresh"*. That rule exists because reuse produced **observed** false greens, and
+a durable, pushed, cross-machine store makes stale-verdict leakage easier rather than harder.
+Widening what may be reused is a separate decision from moving where work lives, and must not ride
+along with it.
+
+**One hazard this creates, to be designed for rather than discovered.** *Git wins* plus *persist
+failed* loses unpushed work: a run whose push fails, followed by a re-run, has its newer local
+artifacts overwritten by the older git copy. The window is small because persist is always-run, but
+it is real. Hydrate must detect "local is newer than git" and refuse or warn rather than clobber
+silently, and a failed persist must leave a marker hydrate honours.
 
 ## Consequences
 
