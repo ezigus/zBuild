@@ -216,6 +216,29 @@ _cls_stray="$(ZBUILD_REPO_ROOT="$_ANC_STATE" write_boundary_classify "$_STRAY" "
 assert_eq "[SPEC-4c] a stray directory holding no allowed root is still a violation" \
     "violation" "$_cls_stray"
 
+# ─── SPEC-4d: the engine's own event log is not a stage violation ───────────
+# With no events path pinned, core/event-bus/event-bus.sh falls back to an
+# ephemeral per-process dir under $TMPDIR — which is /tmp on Linux, where TMPDIR
+# is unset. That is inside a watched root, so every emit_event during a dispatch
+# looked like the stage writing out of bounds. Caught by CI (ubuntu red, macOS
+# green) once the violation started naming the path it flagged.
+# CHANGE: fails at baseline (the event-bus files were not engine-owned roots).
+
+_EV_DIR="$TEST_TEMP_DIR/ephemeral-events"
+mkdir -p "$_EV_DIR"
+printf '{}\n' > "$_EV_DIR/events.jsonl"
+_cls_ev="$(ZBUILD_EVENTS_DIR="$_EV_DIR" \
+    write_boundary_classify "$_EV_DIR/events.jsonl" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-4d] the engine's own event log classifies as allowed" \
+    "allowed" "$_cls_ev"
+
+# A pinned JSONL with no dir set must allow its parent too — that is the shape
+# the test harness uses (it pins only ZBUILD_EVENTS_JSONL).
+_cls_ev2="$(ZBUILD_EVENTS_JSONL="$_EV_DIR/events.jsonl" \
+    write_boundary_classify "$_EV_DIR/events.jsonl" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-4d] a pinned events JSONL allows its own directory" \
+    "allowed" "$_cls_ev2"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

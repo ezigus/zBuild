@@ -86,6 +86,22 @@ write_boundary_allow_list() {
     [[ -n "$_sb" ]] && printf '%s\n' "${_sb%/}/scratch"
     # ADR-011 stores live under ~/.zbuild.
     printf '%s\n' "$HOME/.zbuild"
+    # The event bus's own files. With nothing pinned it falls back to an
+    # ephemeral per-process dir under $TMPDIR (core/event-bus/event-bus.sh:37),
+    # which resolves to /tmp on Linux where TMPDIR is unset — i.e. inside a
+    # watched root. The engine writing its own event log during a dispatch is
+    # not a stage writing out of bounds, and every emit_event on the path does
+    # exactly that. /dev/null is the "JSONL only, no mirror" sentinel and has no
+    # meaningful parent to allow.
+    if [[ -n "${ZBUILD_EVENTS_DIR:-}" ]]; then
+        printf '%s\n' "$ZBUILD_EVENTS_DIR"
+    fi
+    if [[ -n "${ZBUILD_EVENTS_JSONL:-}" && "${ZBUILD_EVENTS_JSONL}" != "/dev/null" ]]; then
+        printf '%s\n' "$(dirname "$ZBUILD_EVENTS_JSONL")"
+    fi
+    if [[ -n "${ZBUILD_EVENTS_DB:-}" && "${ZBUILD_EVENTS_DB}" != "/dev/null" ]]; then
+        printf '%s\n' "$(dirname "$ZBUILD_EVENTS_DB")"
+    fi
 
     # Config additions (all tiers loaded — truly additive, not override).
     local _shipped="$_ZBUILD_WB_ROOT/config/write-boundary-allow.txt"
