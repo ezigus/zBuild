@@ -98,6 +98,7 @@ for _url in \
     "https://github.com/ezigus/zBuild" \
     "ssh://git@github.com/ezigus/zBuild.git" \
     "https://user:tok@github.com/ezigus/zBuild.git" \
+    "https://GitHub.com/ezigus/zBuild.git" \
 ; do
     _set_origin "$_url"
     assert_eq "[SPEC-3] slug from '$_url'" "ezigus/zBuild" \
@@ -116,7 +117,21 @@ assert_eq "[SPEC-3] ssh:// — empty under the old design/plugin.sh parser" \
 # every caller already has a degraded path for "no slug".
 print_test_section "[SPEC-4][guard] non-GitHub and unsafe remotes are refused"
 
+# NOTE on the loop shape: this loop captures rc (`|| _rc=$?`) because refusal is
+# what it asserts. SPEC-3 above uses `|| true` because it asserts a VALUE. Do not
+# add a should-accept case here — assert_exit_code "1" would then pass on a
+# false-positive refusal from a path that should have succeeded.
+#
+# The first four cases are HOST CONFUSION, and they are the reason this function
+# parses the host instead of pattern-stripping to it. `${url#*github.com[:/]}`
+# strips the shortest matching prefix and `*` matches `git@not`, so
+# `git@notgithub.com:evil/target` used to yield `evil/target` — which
+# `_release_repo` hands to `gh release download --repo`.
 for _bad in \
+    "git@notgithub.com:evil/target" \
+    "https://evilgithub.com/evil/target" \
+    "https://github.com.evil.io/evil/target" \
+    "https://user:tok@notgithub.com/evil/target" \
     "https://gitlab.com/ezigus/zBuild.git" \
     "https://github.com/ezigus/zBuild/extra" \
     "git@github.com:../../etc/passwd" \
@@ -151,5 +166,13 @@ assert_eq "[SPEC-5] unset issue → fallback"  "manifesthash" "$(zbuild_scope_ke
 # here because ADR-059 §5 retires it and this assertion has to change with it.
 assert_eq "[SPEC-5] issue=0 passes through (the --goal sentinel, ADR-059 §5)" \
     "0" "$(zbuild_scope_key "0" "manifesthash")"
+
+# Both empty is a caller bug. Echoing "" would collapse <repo_id>/<key>/<hash>
+# into <repo_id>/<hash> — two issues sharing a goal_hash would then overwrite
+# each other's cache entry, silently resuming the wrong context.
+_sk_rc=0
+_sk_out="$(zbuild_scope_key "" "")" || _sk_rc=$?
+assert_exit_code "[SPEC-5][guard] both empty → refused" "1" "$_sk_rc"
+assert_eq "[SPEC-5][guard] both empty → echoes nothing" "" "$_sk_out"
 
 print_test_results

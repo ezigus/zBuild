@@ -57,8 +57,9 @@ zbuild_repo_id() {
 # release-tarball.sh accepted any URL containing `github.com`, while
 # design/plugin.sh matched exactly two literal prefixes and returned empty on
 # anything else. A repo reachable by a form one accepted and the other did not
-# got a release tarball and NO design blob URL, silently. The permissive parse
-# wins, guarded by the shape check below.
+# got a release tarball and NO design blob URL, silently. This accepts every
+# legitimate form the two missed between them, and rejects the host confusion
+# the first one allowed.
 zbuild_repo_slug() {
     local repo_root="${1:-}" url slug
     if [[ -n "$repo_root" ]]; then
@@ -68,12 +69,33 @@ zbuild_repo_slug() {
     fi
     [[ -n "$url" ]] || return 1
 
-    slug="${url%.git}"
-    # Drop credentials, then everything up to and including `github.com:` (ssh)
-    # or `github.com/` (https). A non-github remote leaves the whole URL, which
-    # the shape check below rejects.
-    slug="$(printf '%s' "$slug" | sed -E 's#^([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@]*@#\1#')"
-    slug="${slug#*github.com[:/]}"
+    local rest hostpart host
+    rest="${url%.git}"
+
+    # Parse the HOST explicitly rather than pattern-stripping to it. The obvious
+    # `${url#*github.com[:/]}` strips the SHORTEST matching prefix, and `*` will
+    # happily match `git@not` — so `git@notgithub.com:evil/target` yields
+    # `evil/target`, which `_release_repo` then hands to
+    # `gh release download --repo`. release-tarball.sh shipped that hole; the
+    # design stage's stricter literal-prefix `case` did not, and unifying on the
+    # permissive parse would have spread it. Host EQUALITY is the check.
+
+    # 1. Drop the scheme, if any. Absent one (scp-style `git@host:path`) the
+    #    pattern does not match and this is a no-op.
+    rest="${rest#*://}"
+    # 2. Drop credentials, but ONLY when the `@` precedes the first `/` — an `@`
+    #    inside the path is part of the path, not a userinfo delimiter.
+    hostpart="${rest%%/*}"
+    if [[ "$hostpart" == *@* ]]; then
+        rest="${rest#*@}"
+    fi
+    # 3. Split the host off at the first `:` or `/` and require it to BE the
+    #    host, not merely end with it. Hosts are case-insensitive.
+    host="${rest%%[:/]*}"
+    host="$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')"
+    [[ "$host" == "github.com" ]] || return 1
+    rest="${rest#"${rest%%[:/]*}"}"
+    slug="${rest#[:/]}"
 
     # Shape check: exactly one slash, and neither half empty or path-unsafe.
     # This is the boundary where a remote URL becomes a directory name
@@ -114,6 +136,13 @@ zbuild_goal_hash() {
 # callers must not pass 0 expecting the fallback. ADR-059 §5 retires that
 # sentinel in favour of a goal hash; until then, guard at the call site.
 zbuild_scope_key() {
-    local issue="${1:-}" fallback="${2:-}"
-    printf '%s' "${issue:-$fallback}"
+    local issue="${1:-}" fallback="${2:-}" key
+    key="${issue:-$fallback}"
+    # Both empty is a CALLER bug, and echoing "" would hide it: the key is a
+    # path segment, so an empty one collapses `<repo_id>/<key>/<hash>.json` into
+    # `<repo_id>/<hash>.json`. Two issues with different goals but the same
+    # goal_hash would then overwrite each other's cache entry — silently, and
+    # with the wrong context resumed. Refuse instead.
+    [[ -n "$key" ]] || return 1
+    printf '%s' "$key"
 }
