@@ -78,7 +78,7 @@ mechanics:
     adr: ADR-006
 
   - name: write-boundary
-    summary: The four areas a stage may write into, incl. the per-stage scratch dir (ADR-058).
+    summary: The five areas a stage may write into, incl. per-stage scratch and run bookkeeping (ADR-058).
     defined_in: core/pipeline/stage-scratch.sh
     adr: ADR-058
 

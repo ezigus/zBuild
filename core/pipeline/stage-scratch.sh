@@ -3,7 +3,9 @@
 # ║  stage-scratch — the engine-owned per-stage scratch directory (ADR-058)    ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 #
-# ADR-058 §1 names four areas a stage may write into. Three already existed —
+# ADR-058 §1 names five areas a stage may write into (four as accepted; the
+# `runtime/` bookkeeping area was added by the #1809 amendment, §2b). Three
+# already existed —
 # the job's state dir, the run's worktree (ADR-052), and the two stores that
 # outlive a run (ADR-011). This file owns the fourth, which did not: a stage
 # that needs a throwaway working file took one from the system temp directory,
