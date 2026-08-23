@@ -170,6 +170,27 @@ else
         "got: $_cls_decl"
 fi
 
+# ─── SPEC-4b: a symlinked allow root still matches (macOS /var → /private/var) ─
+# The allow roots arrive already canonicalised — git rev-parse --show-toplevel
+# returns /private/... on macOS — while sweep candidates come back through the
+# logical /var path. Canonicalising with bare `pwd` leaves the two disagreeing,
+# so every in-place dispatch reports a false violation (caught by
+# tests/integration/worktree-run-isolation-test.sh SPEC-6). Both sides must
+# resolve symlinks.
+# CHANGE: fails at baseline (the classifier used `pwd`, not `pwd -P`).
+
+_SYM_REAL="$TEST_TEMP_DIR/real-root"
+_SYM_LINK="$TEST_TEMP_DIR/linked-root"
+mkdir -p "$_SYM_REAL/sub"
+ln -sfn "$_SYM_REAL" "$_SYM_LINK"
+printf 'x\n' > "$_SYM_REAL/sub/written.txt"
+
+# Allow the REAL path; classify the candidate reached through the SYMLINK.
+_cls_sym="$(ZBUILD_WRITE_BOUNDARY_ALLOW="" ZBUILD_REPO_ROOT="$_SYM_REAL" \
+    write_boundary_classify "$_SYM_LINK/sub/written.txt" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-4b] symlinked candidate matches a canonical allow root" \
+    "allowed" "$_cls_sym"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

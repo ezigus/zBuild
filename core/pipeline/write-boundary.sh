@@ -132,7 +132,12 @@ write_boundary_classify() {
     local _cand="$1" _sd="${2:-}" _pd="${3:-}"
 
     # Resolve candidate to a canonical absolute path.
-    local _cd; _cd="$(cd "$(dirname "$_cand")" 2>/dev/null && pwd)/$(basename "$_cand")" \
+    # pwd -P, not pwd: on macOS /var is a symlink to /private/var, and the
+    # allow roots arrive already canonicalised (git rev-parse --show-toplevel
+    # returns /private/...). Bare pwd returns the LOGICAL path, so the candidate
+    # and the root disagree and every in-place dispatch reports a false
+    # violation. cleanup.sh:534-537 paid for this once already.
+    local _cd; _cd="$(cd "$(dirname "$_cand")" 2>/dev/null && pwd -P)/$(basename "$_cand")" \
         || _cd="$_cand"
 
     # 1. Check declared outputs from plugin manifest.
@@ -142,7 +147,7 @@ write_boundary_classify() {
         while IFS=$'\t' read -r _rp _; do
             [[ -z "$_rp" ]] && continue
             _res="$(_registry_resolve_output_path "$_rp" "$_sd" "$_art")"
-            local _cr; _cr="$(cd "$(dirname "$_res")" 2>/dev/null && pwd)/$(basename "$_res")" \
+            local _cr; _cr="$(cd "$(dirname "$_res")" 2>/dev/null && pwd -P)/$(basename "$_res")" \
                 || _cr="$_res"
             local _dd; _dd="$(dirname "$_cr")"
             if [[ "$_cd" == "$_cr" || "$_cd" == "${_dd}/"* ]]; then
@@ -155,7 +160,7 @@ write_boundary_classify() {
     local _ar _ca
     while IFS= read -r _ar; do
         [[ -z "$_ar" ]] && continue
-        _ca="$(cd "$_ar" 2>/dev/null && pwd)" || _ca="$_ar"
+        _ca="$(cd "$_ar" 2>/dev/null && pwd -P)" || _ca="$_ar"
         if [[ "$_cd" == "$_ca" || "$_cd" == "${_ca}/"* ]]; then
             printf 'allowed'; return 0
         fi
