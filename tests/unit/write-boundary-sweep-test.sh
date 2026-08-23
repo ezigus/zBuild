@@ -191,6 +191,31 @@ _cls_sym="$(ZBUILD_WRITE_BOUNDARY_ALLOW="" ZBUILD_REPO_ROOT="$_SYM_REAL" \
 assert_eq "[SPEC-4b] symlinked candidate matches a canonical allow root" \
     "allowed" "$_cls_sym"
 
+# ─── SPEC-4c: a directory CONTAINING an allowed root is not a violation ──────
+# `find` reports directories, and a directory's mtime changes when a child is
+# created inside it. So the state dir's own PARENT surfaces in the sweep whenever
+# the state dir lives under a watched root — the normal shape on Linux, where
+# TMPDIR is unset and everything lands under /tmp. Classifying that parent as a
+# violation halts the run on a write that landed INSIDE an allowed root.
+# (Caught by CI: all three ubuntu jobs red, all macOS green, because on macOS the
+# test temp sits under $TMPDIR, which ADR-058 §3 redirects to scratch mid-dispatch
+# and so is never swept.)
+# CHANGE: fails at baseline (the classifier tested only "candidate under root").
+
+_ANC_STATE="$TEST_TEMP_DIR/anc/state"
+mkdir -p "$_ANC_STATE"
+_cls_anc="$(write_boundary_classify "$TEST_TEMP_DIR/anc" "$_ANC_STATE" "" 2>/dev/null)"
+assert_eq "[SPEC-4c] a directory containing the state dir classifies as allowed" \
+    "allowed" "$_cls_anc"
+
+# GUARD: the ancestor arm must not become a blanket pass. A stray directory that
+# holds no allowed root is still a violation.
+_STRAY="$TEST_TEMP_DIR/stray-dir"
+mkdir -p "$_STRAY"
+_cls_stray="$(ZBUILD_REPO_ROOT="$_ANC_STATE" write_boundary_classify "$_STRAY" "$_ANC_STATE" "" 2>/dev/null)"
+assert_eq "[SPEC-4c] a stray directory holding no allowed root is still a violation" \
+    "violation" "$_cls_stray"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

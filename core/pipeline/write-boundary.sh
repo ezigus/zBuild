@@ -161,7 +161,16 @@ write_boundary_classify() {
     while IFS= read -r _ar; do
         [[ -z "$_ar" ]] && continue
         _ca="$(cd "$_ar" 2>/dev/null && pwd -P)" || _ca="$_ar"
-        if [[ "$_cd" == "$_ca" || "$_cd" == "${_ca}/"* ]]; then
+        # Candidate under an allowed root, OR the candidate is a strict ANCESTOR
+        # of one. The ancestor arm is not a loophole: `find` reports directories,
+        # and a directory's mtime changes when a child is created inside it — so
+        # the state dir's own parent surfaces in the sweep whenever the state dir
+        # lives under a watched root. That is the normal shape on Linux, where
+        # TMPDIR is unset and everything lands under /tmp; the write it reflects
+        # landed INSIDE an allowed root. A file can never be an ancestor, and a
+        # genuinely stray directory (/tmp/newdir holding no allowed root) still
+        # classifies as a violation.
+        if [[ "$_cd" == "$_ca" || "$_cd" == "${_ca}/"* || "$_ca" == "${_cd}/"* ]]; then
             printf 'allowed'; return 0
         fi
     done <<< "$(write_boundary_allow_list "$_sd")"
