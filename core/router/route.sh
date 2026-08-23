@@ -1540,8 +1540,14 @@ ${_diff_pointer}"
         fi
 
         local stderr_file rc=0 json_file
-        stderr_file="$(mktemp "${TMPDIR:-/tmp}/zb-loop-stderr.XXXXXX")"
-        json_file="$(mktemp "${TMPDIR:-/tmp}/zb-loop-json.XXXXXX")"
+        # ZBUILD_STAGE_SCRATCH first (ADR-058 §2): the dispatch seam redirects
+        # TMPDIR to it, but this loop also runs where that redirect is not in
+        # scope, and `${TMPDIR:-/tmp}` then resolves to /tmp — outside every
+        # ADR-058 area. Naming the area directly does not depend on inheritance.
+        local _rt_tmp="${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}"
+        [[ -d "$_rt_tmp" ]] || _rt_tmp="${TMPDIR:-/tmp}"
+        stderr_file="$(mktemp "${_rt_tmp}/zb-loop-stderr.XXXXXX")"
+        json_file="$(mktemp "${_rt_tmp}/zb-loop-json.XXXXXX")"
 
         local -a _claude_args=(-p "$final_prompt" --print --model "$_ROUTE_MODEL_ID")
         # ADR-018 Amendment N (#762): omit --max-turns when sentinel mt=0.
