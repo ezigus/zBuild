@@ -181,11 +181,18 @@ write_boundary_classify() {
 # ─── write_boundary_violation_recorded <state_dir> <stage> ──────────────────
 # Mark the violation and emit the declared event.
 write_boundary_violation_recorded() {
-    local _sd="$1" _stage="${2:-}"
+    local _sd="$1" _stage="${2:-}" _path="${3:-}"
     mkdir -p "${_sd}/runtime" 2>/dev/null || true
     touch "${_sd}/runtime/write-boundary-violated" 2>/dev/null || true
+    # The offending path, on both channels. A run that halts naming no path
+    # leaves the operator with nothing to act on, and the disposition is
+    # `broken` — terminal, not retryable — so there is no second chance to
+    # observe it. `path=` is a data field on an already-declared event, so the
+    # event NAME set is unchanged and the sequence goldens are untouched.
+    printf 'write-boundary violation: stage=%s wrote outside every allowed area: %s\n' \
+        "$_stage" "$_path" >&2
     if declare -F emit_event >/dev/null 2>&1; then
-        emit_event "stage.write_boundary.violated" "stage=${_stage}" || true
+        emit_event "stage.write_boundary.violated" "stage=${_stage}" "path=${_path}" || true
     fi
 }
 
@@ -204,7 +211,7 @@ write_boundary_check() {
         [[ -z "$_cand" ]] && continue
         _cls="$(write_boundary_classify "$_cand" "$_sd" "$_pd")"
         if [[ "$_cls" == "violation" ]]; then
-            write_boundary_violation_recorded "$_sd" "$_stage"
+            write_boundary_violation_recorded "$_sd" "$_stage" "$_cand"
             return 1
         fi
     done <<< "$(write_boundary_sweep "$_marker")"
