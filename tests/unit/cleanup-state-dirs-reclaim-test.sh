@@ -52,6 +52,10 @@ _mkrun() {
             > "$d/pipeline-state.json"
         _age "$d/pipeline-state.json" "$days"
     else
+        # events.jsonl is the clock for a state-less folder. Ageing the DIRECTORY
+        # instead would not reproduce a real one: removing pipeline-state.json is
+        # what created these folders, and removing an entry restamps the dir.
+        _age "$d/events.jsonl" "$days"
         _age "$d" "$days"
     fi
 }
@@ -79,11 +83,17 @@ _mkrun live             in_progress 30
 _mkrun old-interrupted  interrupted 30
 _mkrun weird-status     banana      30
 _mkrun no-state         NOSTATE     30
+_mkrun no-state-fresh   NOSTATE      0
 
 plan="$(_cleanup_scan_state_dirs "$STATE_DIR" 7 false)"
 
 # ── SPEC-1: terminal job folders older than retention are prune candidates ───
-for rid in old-complete old-failed old-aborted; do
+# `no-state` is in this list deliberately. An absent state file is not an unknown
+# state — it is the residue of the bug being fixed: the old --state-dirs deleted
+# pipeline-state.json out of a folder it had already judged prunable and left the
+# folder. 112 of the 189 dirs measured for #1920 look like that, so requiring
+# --force for them would ship a reclaimer that reclaims nothing.
+for rid in old-complete old-failed old-aborted no-state; do
     if [[ "$(_decision "$plan" "$rid")" == "prune" ]]; then
         assert_pass "[SPEC-1] $rid is a prune candidate"
     else
@@ -112,7 +122,26 @@ _expect_skip live            "active run"
 _expect_skip fresh-complete  "newer than 7d"
 _expect_skip old-interrupted "interrupted"
 _expect_skip weird-status    "unrecognised"
-_expect_skip no-state        "no pipeline-state.json"
+# The retention window is what protects a run that is still STARTING UP and has
+# not written its first state file — the only live run the status guards cannot
+# see. It must hold before the absent-state decision above ever applies.
+_expect_skip no-state-fresh  "newer than 7d"
+
+# ── SPEC-2b: the clock is events.jsonl, not the directory's own mtime ───────
+# Removing an entry from a directory restamps it, and removing pipeline-state.json
+# is exactly what produced these folders — so a dir-mtime clock reports a job
+# folder whose contents are six weeks old as newer than the window. It did, for
+# 92 of the 189 folders on the store #1920 was measured against.
+_mkrun clock-probe NOSTATE 30
+touch "$RUNS/clock-probe"                      # fresh dir, stale events.jsonl
+plan_clock="$(_cleanup_scan_state_dirs "$STATE_DIR" 7 false)"
+if [[ "$(_decision "$plan_clock" clock-probe)" == "prune" ]] \
+   && [[ "$(_reason "$plan_clock" clock-probe)" == *"events.jsonl"* ]]; then
+    assert_pass "[SPEC-2b] a restamped directory does not hide a stale run; clock is named"
+else
+    assert_fail "[SPEC-2b] stale events.jsonl must decide, not the fresh dir mtime" \
+        "decision=$(_decision "$plan_clock" clock-probe) reason=$(_reason "$plan_clock" clock-probe)"
+fi
 
 # ── SPEC-3: in_progress is never a candidate, even with --force ──────────────
 plan_force="$(_cleanup_scan_state_dirs "$STATE_DIR" 7 true)"
@@ -122,8 +151,11 @@ else
     assert_fail "[SPEC-3] in_progress skipped even with --force" "plan: $plan_force"
 fi
 
-# ── SPEC-4: --force releases interrupted, unknown-status and state-less dirs ─
-for rid in old-interrupted weird-status no-state; do
+# ── SPEC-4: --force releases interrupted and unknown-status dirs ────────────
+# An unrecognised status stays --force-only where an absent one does not: the
+# file is present and says something this code does not understand, which is a
+# reason to stop rather than a reason to sweep.
+for rid in old-interrupted weird-status; do
     if [[ "$(_decision "$plan_force" "$rid")" == "prune" ]]; then
         assert_pass "[SPEC-4] $rid becomes a candidate with --force"
     else

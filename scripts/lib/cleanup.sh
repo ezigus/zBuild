@@ -933,7 +933,7 @@ _cleanup_scan_state_dirs() {
     [[ -d "$root" ]] || return 0
     local now; now="$(date +%s)"
     local cutoff=$(( now - age_days * 86400 ))
-    local d rid f c status mtime age_d
+    local d rid f c status mtime age_d clock
     for d in "$root"/*; do
         [[ -d "$d" ]] || continue
         rid="$(basename "$d")"
@@ -965,14 +965,23 @@ _cleanup_scan_state_dirs() {
             printf '%s\tskip\tinterrupted — resume preserved (ADR-018); --force to prune\n' "$d"
             continue
         fi
+        # An ABSENT state file is not an unknown state — on a real store it is
+        # the residue of this very bug. The old --state-dirs deleted
+        # pipeline-state.json{,.bak,.lock} out of a job folder it had already
+        # judged prunable and left the folder standing; 112 of the 189 dirs
+        # measured for #1920 look exactly like that, holding artifacts/,
+        # events.db and intake.md with no state file above them. Requiring
+        # --force for those would ship a reclaimer that reclaims nothing on the
+        # machine the issue was filed about. A run that died BEFORE writing its
+        # first state file lands here too and is equally finished. What protects
+        # a run still starting up is the retention window below: its clock reads
+        # seconds old, so the age gate holds it long before this decision counts.
+        #
+        # An UNRECOGNISED status is different and stays --force-only: the file is
+        # there and says something this code does not understand, which is a
+        # reason to stop rather than a reason to sweep.
         case "$status" in
-            complete|failed|aborted|interrupted) ;;
-            "")
-                if [[ "$force" != "true" ]]; then
-                    printf '%s\tskip\tno pipeline-state.json (fail-closed); --force to prune\n' "$d"
-                    continue
-                fi
-                ;;
+            complete|failed|aborted|interrupted|"") ;;
             *)
                 if [[ "$force" != "true" ]]; then
                     printf '%s\tskip\tstatus=%s unrecognised (fail-closed); --force to prune\n' "$d" "$status"
@@ -980,14 +989,25 @@ _cleanup_scan_state_dirs() {
                 fi
                 ;;
         esac
-        # Age from the state file when there is one, the dir otherwise. GNU stat
-        # first (Linux CI), then BSD (macOS dev) — BSD stat -f returns garbage
-        # with rc=0 on Linux, so trying it first leaves non-numeric text behind.
-        if [[ -n "$f" ]]; then
-            mtime="$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)"
-        else
-            mtime="$(stat -c %Y "$d" 2>/dev/null || stat -f %m "$d" 2>/dev/null || echo 0)"
-        fi
+        # THE CLOCK: state file, then events.jsonl, then the directory.
+        #
+        # The directory's own mtime is the WRONG answer whenever anything was
+        # removed from the folder, because removing an entry restamps it. That is
+        # not hypothetical: the bug being fixed here deleted pipeline-state.json
+        # out of these very folders, so on the store measured for #1920 a
+        # dir-mtime clock reported 92 job folders whose contents are six weeks
+        # old as newer than the retention window. events.jsonl is the run's own
+        # log — written while the run is alive, never touched afterwards — so it
+        # dates the RUN rather than the last thing to touch the folder.
+        #
+        # GNU stat first (Linux CI), then BSD (macOS dev): BSD stat -f does not
+        # clean-fail on Linux, it returns garbage with rc=0, so trying it first
+        # leaves non-numeric text in $mtime.
+        clock=""
+        [[ -n "$f" ]] && clock="$f"
+        [[ -z "$clock" && -f "$d/events.jsonl" ]] && clock="$d/events.jsonl"
+        [[ -z "$clock" ]] && clock="$d"
+        mtime="$(stat -c %Y "$clock" 2>/dev/null || stat -f %m "$clock" 2>/dev/null || echo 0)"
         # FAIL-CLOSED on an unreadable mtime, unlike the #1927 scanners that
         # default it to 0. Those reclaim throwaway or regenerable trees; this one
         # rm -rf's a run's whole evidence record, and an epoch fallback reads as
@@ -998,10 +1018,10 @@ _cleanup_scan_state_dirs() {
         fi
         age_d=$(( (now - mtime) / 86400 ))
         if [[ "$mtime" -gt "$cutoff" ]]; then
-            printf '%s\tskip\tnewer than %sd (age %sd)\n' "$d" "$age_days" "$age_d"
+            printf '%s\tskip\tnewer than %sd (age %sd by %s)\n' "$d" "$age_days" "$age_d" "$(basename "$clock")"
             continue
         fi
-        printf '%s\tprune\trun=%s status=%s age=%sd\n' "$d" "$rid" "${status:-none}" "$age_d"
+        printf '%s\tprune\trun=%s status=%s age=%sd by %s\n' "$d" "$rid" "${status:-no-state-file}" "$age_d" "$(basename "$clock")"
     done
 }
 
