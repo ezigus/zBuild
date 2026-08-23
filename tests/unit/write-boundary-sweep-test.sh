@@ -124,6 +124,15 @@ assert_eq "[SPEC-1] write_boundary_check returns 1 when a file is written outsid
 assert_file_exists "[SPEC-1] write-boundary-violated marker created in runtime/" \
     "$JOB_DIR/runtime/write-boundary-violated"
 
+# ...and that it NAMES the offending path. Only the marker's existence is
+# load-bearing for verdict.sh, so nothing else would notice this regressing to a
+# bare `touch` — but the disposition is `broken`, which is terminal, so the
+# marker body is the operator's only surviving evidence of WHICH path halted the
+# run. Asserting existence alone left that diagnostic unprotected.
+_marker_body="$(cat "$JOB_DIR/runtime/write-boundary-violated" 2>/dev/null || true)"
+assert_contains "[SPEC-1] the marker names the offending path" \
+    "$_marker_body" "$WATCH_DIR/forbidden-file.txt"
+
 # Verify the event was emitted.
 _ev_count=0
 for _ev in "${_WB_EVENTS[@]}"; do
@@ -135,6 +144,17 @@ else
     assert_fail "[SPEC-1] stage.write_boundary.violated event emitted on violation" \
         "events: ${_WB_EVENTS[*]:-none}"
 fi
+
+# The event must carry the offending path, not just the event name. Counting the
+# name alone let the `path=` argument be dropped from emit_event without any test
+# reddening — the event stream is the durable record of a halt, and a violation
+# that names no path leaves an operator nothing to act on.
+_ev_with_path=""
+for _ev in "${_WB_EVENTS[@]}"; do
+    [[ "$_ev" == *"stage.write_boundary.violated"* ]] && _ev_with_path="$_ev"
+done
+assert_contains "[SPEC-1] the violation event carries path= naming the offending file" \
+    "$_ev_with_path" "path=$WATCH_DIR/forbidden-file.txt"
 
 # ── SPEC-4[change]: classifier precedence — declared → allowed → violation ───
 # Set up paths to classify:
@@ -192,11 +212,13 @@ assert_eq "[SPEC-4b] symlinked candidate matches a canonical allow root" \
     "allowed" "$_cls_sym"
 
 # ─── SPEC-4c: a directory CONTAINING an allowed root is not a violation ──────
-# `find` reports directories, and a directory's mtime changes when a child is
-# created inside it. So the state dir's own PARENT surfaces in the sweep whenever
-# the state dir lives under a watched root — the normal shape on Linux, where
-# TMPDIR is unset and everything lands under /tmp. Classifying that parent as a
-# violation halts the run on a write that landed INSIDE an allowed root.
+# A directory's mtime changes when a child is created inside it, so a directory
+# entry can surface as "changed" because of activity that is entirely legitimate
+# — the state dir's own PARENT does exactly that whenever the state dir lives
+# under a watched root. write_boundary_sweep no longer surfaces directories at
+# all (`-type f`), so this arm is now reached only by a direct call like the one
+# below; it stays because write_boundary_classify is a public entry point and
+# must classify a directory candidate correctly on its own terms.
 # (Caught by CI: all three ubuntu jobs red, all macOS green, because on macOS the
 # test temp sits under $TMPDIR, which ADR-058 §3 redirects to scratch mid-dispatch
 # and so is never swept.)

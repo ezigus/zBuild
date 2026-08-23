@@ -88,11 +88,11 @@ jobs:
           export ZBUILD_TEST_TMP="$(mktemp -d "${TMPDIR:-/tmp}/zbuild-unit.XXXXXX")"
           # #629: `| tee` masks the script's non-zero exit under GHA's default
           # `bash -e {0}` (no pipefail). Use PIPESTATUS to preserve test rc.
-          bash scripts/run-tests.sh --tier unit 2>&1 | tee /tmp/zbuild-unit-results.txt
+          bash scripts/run-tests.sh --tier unit 2>&1 | tee "$RUNNER_TEMP/zbuild-unit-results.txt"
           exit "${PIPESTATUS[0]}"
         env:
           ZBUILD_TEST_TMP: ""
-          ZBUILD_TEST_TIMING_FILE: /tmp/zbuild-unit-timing.txt
+          ZBUILD_TEST_TIMING_FILE: ${{ runner.temp }}/zbuild-unit-timing.txt
       - name: Upload unit results
         uses: actions/upload-artifact@v7
         if: always()
@@ -101,8 +101,8 @@ jobs:
           # on upload-artifact@v4+. Nothing downloads this (coverage re-runs).
           name: unit-results-${{ matrix.os }}
           path: |
-            /tmp/zbuild-unit-results.txt
-            /tmp/zbuild-unit-timing.txt
+            ${{ runner.temp }}/zbuild-unit-results.txt
+            ${{ runner.temp }}/zbuild-unit-timing.txt
           if-no-files-found: ignore
 
   integration:
@@ -143,10 +143,10 @@ jobs:
           export ZBUILD_TEST_TMP="$(mktemp -d "${TMPDIR:-/tmp}/zbuild-integration.XXXXXX")"
           # #629: `| tee` masks the script's non-zero exit under GHA's default
           # `bash -e {0}` (no pipefail). Use PIPESTATUS to preserve test rc.
-          bash scripts/run-tests.sh --tier integration 2>&1 | tee /tmp/zbuild-integration-results.txt
+          bash scripts/run-tests.sh --tier integration 2>&1 | tee "$RUNNER_TEMP/zbuild-integration-results.txt"
           exit "${PIPESTATUS[0]}"
         env:
-          ZBUILD_TEST_TIMING_FILE: /tmp/zbuild-integration-timing.txt
+          ZBUILD_TEST_TIMING_FILE: ${{ runner.temp }}/zbuild-integration-timing.txt
       - name: Upload integration results
         uses: actions/upload-artifact@v7
         if: always()
@@ -155,8 +155,8 @@ jobs:
           # on upload-artifact@v4+ (cf. the unit job).
           name: integration-results-${{ matrix.os }}
           path: |
-            /tmp/zbuild-integration-results.txt
-            /tmp/zbuild-integration-timing.txt
+            ${{ runner.temp }}/zbuild-integration-results.txt
+            ${{ runner.temp }}/zbuild-integration-timing.txt
           if-no-files-found: ignore
 
   e2e-mocked:
