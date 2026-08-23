@@ -1,0 +1,38 @@
+id: always-run-minimal
+name: Always-Run Minimal Pipeline
+extends: simple
+defaults:
+  strategy: fanout
+
+# #1831 fixture: the smallest template that exercises `always_run:`.
+#
+# NEW shape (`flow:` + top-level sections) on purpose — `always_run:` is a
+# new-shape key, and the old `stages:` shape routes through the legacy parser
+# which has no notion of it.
+#
+# `outcome` is the only flow stage. Its plugin is replaced per-case by the test
+# so one fixture can drive every exit path: rc=0, rc=1, SIGINT (rc=130), SIGTERM
+# and a hang past the timeout. `release` is never in the flow — the whole point
+# is that it runs anyway.
+flow:
+  - outcome
+
+always_run:
+  - release
+
+outcome:
+  gate: auto
+  io:
+    destinations: [file]
+    tail_lines: 50
+
+# timeout_s is deliberately small so the watchdog case does not stretch the
+# suite's wall clock. The bound itself is what SPEC-5 asserts.
+release:
+  gate: auto
+  roles: [teardown]
+  router:
+    timeout_s: 2
+  io:
+    destinations: [file]
+    tail_lines: 50
