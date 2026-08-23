@@ -9,6 +9,7 @@
 # SPEC-5[change]: issue-keyed refs age from the issue's CLOSE, not from last touch.
 # SPEC-6[guard]:  an issue whose state cannot be established is KEPT, never pruned.
 # SPEC-7[guard]:  the shared dir applier refuses a target outside its declared root.
+# SPEC-8[guard]:  --force does NOT prune the work branch of a provably OPEN issue.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -119,6 +120,56 @@ if [[ -n "$_sb_plan" ]]; then
 else
     assert_fail "[SPEC-2] the scanner reported nothing — it cannot see state branches" "empty plan"
 fi
+
+# ── SPEC-8[guard]: --force must not outrank a provably open issue ───────────
+# The regression this exists for: the issue-close block emitted a decision for
+# `prune` and for `skip without --force`, but fell THROUGH for `skip WITH
+# --force` — so `cleanup --force` re-classified an open issue's work branch as
+# `prune  force` and deleted the branch holding its unmerged code. Caught in
+# review, not by the first version of this file.
+#
+# The fixture needs a real UPSTREAM. _cleanup_has_unpushed_commits treats "no
+# upstream" as unpushed and skips, which sits AHEAD of the issue clock — a
+# first attempt at this test used plain local branches and passed vacuously,
+# reporting `skip  unpushed commits / no upstream` while never reaching the code
+# under test. Its positive control is what exposed that.
+_FR_REMOTE="$TEST_TEMP_DIR/remote.git"
+_FR_REPO="$TEST_TEMP_DIR/forcerepo"
+git init -q --bare "$_FR_REMOTE" 2>/dev/null
+mkdir -p "$_FR_REPO"
+(
+    cd "$_FR_REPO" || exit 1
+    git init -q -b main .
+    git config user.email t@e.st; git config user.name t
+    git remote add origin "$_FR_REMOTE"
+    : > f; git add f; git commit -q -m init
+    git push -q -u origin main
+    git branch zbuild/issue-100-open        # issue OPEN   → must survive --force
+    git branch zbuild/issue-300-gone        # issue MISSING, age 0 → --force prunes
+    git push -q -u origin zbuild/issue-100-open zbuild/issue-300-gone
+    git checkout -q main
+) >/dev/null 2>&1
+
+_fr_plan="$( cd "$_FR_REPO" && _cleanup_scan_branches "true" 7 )"
+
+# Prove the fixture actually reaches the code under test before asserting on it.
+if printf '%s\n' "$_fr_plan" | /usr/bin/grep -q 'unpushed'; then
+    assert_fail "[SPEC-8] fixture must get PAST the unpushed guard to test the issue clock" \
+        "$_fr_plan"
+else
+    assert_pass "[SPEC-8] fixture branches are pushed, so the issue clock is reached"
+fi
+
+assert_eq "[SPEC-8] --force does NOT prune the work branch of an OPEN issue" \
+    "skip" "$(_decision_for "$_fr_plan" "zbuild/issue-100-open")"
+assert_contains "[SPEC-8] and says the open issue outranked --force" \
+    "$(_reason_for "$_fr_plan" "zbuild/issue-100-open")" "outrank"
+
+# Positive control, same invocation: --force still prunes a branch nothing
+# protects. Without it, a scanner that skipped everything would satisfy the
+# assertion above.
+assert_eq "[SPEC-8] positive control: --force still prunes where nothing protects the branch" \
+    "prune" "$(_decision_for "$_fr_plan" "zbuild/issue-300-gone")"
 
 # ── SPEC-3: orch pools ──────────────────────────────────────────────────────
 export TMPDIR="$TEST_TEMP_DIR/tmp"; mkdir -p "$TMPDIR/zbuild-runs/deadpool"

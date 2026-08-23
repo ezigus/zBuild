@@ -195,6 +195,21 @@ _cleanup_scan_branches() {
                 printf '%s\t%s\n' "$b" "$_b_dec"
                 continue
             fi
+            # A PROVABLY OPEN issue outranks --force. --force means "this branch
+            # is dead even though no PR merged"; it does not mean "delete the
+            # work branch of an issue I am still working on". Without this the
+            # decision fell through to the force arm below and was emitted as
+            # `prune  force`, which is precisely the mid-flight destruction the
+            # issue clock exists to prevent.
+            if [[ "$_b_dec" == *"is open"* ]]; then
+                printf '%s\t%s (open issues outrank --force)\n' "$b" "$_b_dec"
+                continue
+            fi
+            # Every other skip — unknown state, unreadable close date — is
+            # fail-closed for the ordinary path but MUST yield to --force.
+            # Making "I cannot tell" unforceable would leave anyone without
+            # working `gh` unable to prune a branch at all, which is a worse
+            # failure than the one being guarded against.
             if [[ "$force" != "true" ]]; then
                 printf '%s\t%s\n' "$b" "$_b_dec"
                 continue
@@ -749,14 +764,16 @@ _cleanup_issue_state() {
     local n="${1:-}"
     [[ "$n" =~ ^[0-9]+$ ]] || { printf 'unknown'; return 0; }
     command -v gh >/dev/null 2>&1 || { printf 'unknown'; return 0; }
+    # ONE call, not two. Distinguishing "no such issue" from "could not ask"
+    # needs the error text, and gh exits non-zero for both — but asking twice
+    # doubles the API load AND can race, since a transient failure followed by a
+    # permanent one (or the reverse) would classify off the second answer while
+    # the first decided the rc. Capture stdout and stderr together instead: on
+    # success the jq filter emits only the state, so there is nothing to confuse.
     local out rc=0
-    out="$(gh issue view "$n" --json state --jq '.state' 2>/dev/null)" || rc=$?
+    out="$(gh issue view "$n" --json state --jq '.state' 2>&1)" || rc=$?
     if [[ "$rc" -ne 0 ]]; then
-        # Distinguish "no such issue" from "could not ask". gh exits non-zero for
-        # both, so re-ask for the error text rather than guessing.
-        local err
-        err="$(gh issue view "$n" --json state 2>&1 >/dev/null || true)"
-        case "$err" in
+        case "$out" in
             *"not found"*|*"Not Found"*|*"Could not resolve"*) printf 'missing' ;;
             *) printf 'unknown' ;;
         esac
