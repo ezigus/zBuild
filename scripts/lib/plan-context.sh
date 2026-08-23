@@ -31,36 +31,12 @@ _ZBUILD_PLAN_CONTEXT_LOADED=1
 _PLAN_CONTEXT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./llm-agent.sh
 source "$_PLAN_CONTEXT_LIB_DIR/llm-agent.sh"
-
-# ─── plan_context_repo_id ────────────────────────────────────────────────────
-# Stable hash identifying THIS repo so a cache uploaded from repo A never
-# resolves for repo B (Pillar E). Normalizes the canonical remote: strip a
-# trailing .git, lowercase the host, drop any embedded credentials. Falls back
-# to a hash of the toplevel path when there is no remote. Echoes the hash.
-plan_context_repo_id() {
-    local url normalized
-    url="$(git config --get remote.origin.url 2>/dev/null || true)"
-    if [[ -n "$url" ]]; then
-        # Drop credentials in the userinfo@ portion of an https/ssh URL.
-        normalized="$(printf '%s' "$url" | sed -E 's#^([a-zA-Z][a-zA-Z0-9+.-]*://)[^/@]*@#\1#')"
-        # Strip a single trailing .git
-        normalized="${normalized%.git}"
-        # Lowercase the entire normalized URL (host case-insensitive; paths are
-        # typically lowercase on the canonical remote — over-normalizing is
-        # acceptable since this value only ever compares against itself).
-        normalized="$(printf '%s' "$normalized" | tr '[:upper:]' '[:lower:]')"
-    else
-        normalized="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-    fi
-    printf '%s' "$normalized" | shasum -a 256 | cut -d' ' -f1
-}
-
-# ─── plan_context_goal_hash <goal_text> ──────────────────────────────────────
-# Stable hash of the (pre-redaction) goal text, whitespace-insensitive so scope
-# churn / reflow does not change the leaf key.
-plan_context_goal_hash() {
-    printf '%s' "${1:-}" | tr -d '[:space:]' | shasum -a 256 | cut -d' ' -f1
-}
+# ADR-059 §6 (#1930): repo id and goal hash moved to the identity module, which
+# owns identity and nothing else. This file is one of its consumers, not its
+# owner — the whole point of the extraction is that cleanup.sh and worktree.sh
+# can source identity.sh WITHOUT the llm-agent.sh line above coming with it.
+# shellcheck source=./identity.sh
+source "$_PLAN_CONTEXT_LIB_DIR/identity.sh"
 
 # ─── plan_context_dir ────────────────────────────────────────────────────────
 # Root of the cross-run cache. Test- and operator-overridable.
@@ -92,7 +68,7 @@ plan_context_write() {
     local goal_hash="$1" scope_key="$2" status="$3" num_turns="$4" reasoning="$5" scope_ref="$6"
 
     local repo_id branch created_at run_id num_turns_json candidate_split
-    repo_id="$(plan_context_repo_id)"
+    repo_id="$(zbuild_repo_id)"
     branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || printf 'unknown')"
     created_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     run_id="${ZBUILD_RUN_ID:-}"
