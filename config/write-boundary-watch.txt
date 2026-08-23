@@ -1,0 +1,30 @@
+# write-boundary-watch.txt — locations the engine sweeps for out-of-bounds writes
+# after each stage dispatch (ADR-058 C9, #1809).
+#
+# One entry per line; blank lines and # comments are ignored.
+# Format: <path>[ maxdepth:<N>]
+# Variables are expanded at sweep time: ${VAR} references the runtime environment.
+# ${TMPDIR:-/tmp} is expanded to TMPDIR when set, otherwise /tmp.
+#
+# Three-tier override (highest to lowest priority):
+#   ZBUILD_WRITE_BOUNDARY_WATCH env var (path to alternative file)
+#   ~/.zbuild/write-boundary-watch.txt (user/operator override — replaces)
+#   this file (shipped engine default)
+#
+${HOME} maxdepth:1
+${HOME}/.zbuild
+# NOT the system temp, deliberately — see ADR-058 C9 "What the sweep does not
+# cover". scripts/lib/env-scrub.sh wipes every ZBUILD_* before a model spawn, so
+# engine code running in a spawned child cannot see ZBUILD_STAGE_SCRATCH and its
+# temps land in the system temp. Those writes are the engine's own and are not
+# attributable to the stage being swept, so watching /tmp here halts runs on the
+# engine doing its job. Closing it needs a RUN-scoped TMPDIR that survives the
+# scrub, which is C10 (#1919). An operator who wants the coverage today can add
+# the roots back via the override file — the watch list replaces, so uncomment:
+#   ${TMPDIR:-/tmp} maxdepth:1
+#   /tmp maxdepth:1
+${PWD} maxdepth:1
+# The engine root at 2, per the issue's sweep spec. _ZBUILD_WB_ROOT is set by
+# core/pipeline/write-boundary.sh; the built-in fallback list already carried
+# this entry, so without it here the shipped config swept less than the default.
+${_ZBUILD_WB_ROOT} maxdepth:2

@@ -1303,8 +1303,8 @@ _stage_io_redact_outbound() {
         return 0
     fi
     local tmp_in tmp_out
-    tmp_in="$(mktemp "${TMPDIR:-/tmp}/zbio-in.XXXXXX" 2>/dev/null)" || { return 1; }
-    tmp_out="$(mktemp "${TMPDIR:-/tmp}/zbio-out.XXXXXX" 2>/dev/null)" || { rm -f "$tmp_in"; return 1; }
+    tmp_in="$(mktemp "$(zbuild_engine_tmpdir)/zbio-in.XXXXXX" 2>/dev/null)" || { return 1; }
+    tmp_out="$(mktemp "$(zbuild_engine_tmpdir)/zbio-out.XXXXXX" 2>/dev/null)" || { rm -f "$tmp_in"; return 1; }
     # Cleanup on every return path including SIGPIPE. Double-quote the trap arg
     # so $tmp_in/$tmp_out expand to literal paths at trap-registration time —
     # protects against the locals going out of scope before the trap fires and

@@ -1,0 +1,20 @@
+# write-boundary-allow.txt — roots a stage may write into without triggering a
+# boundary violation (ADR-058 C9, #1809).
+#
+# ADDITIVE ONLY: engine-owned roots (ZBUILD_STATE_DIR, ZBUILD_REPO_ROOT,
+# ZBUILD_STAGE_SCRATCH base, ADR-011 stores under ~/.zbuild) are always allowed
+# from code and cannot be removed by any config override.
+#
+# This file adds the adjacent tool directories a stage may legitimately write to.
+# One path per line; blank lines and # comments are ignored.
+# Variables are expanded at check time: ${VAR} references the runtime environment.
+#
+# Three-tier loading (ALL tiers loaded additively — this file is never replaced):
+#   this file (shipped engine defaults)
+#   ~/.zbuild/write-boundary-allow.txt (user/operator additions)
+#   ZBUILD_WRITE_BOUNDARY_ALLOW env var (path to additional file)
+#
+${CLAUDE_CONFIG_DIR:-${HOME}/.claude}
+${HOME}/.npm
+${HOME}/.cache
+${HOME}/Library/Caches

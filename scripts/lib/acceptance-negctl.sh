@@ -302,7 +302,7 @@ acceptance_negctl_check() {
                 # plugin always exports ZBUILD_NEGCTL_ARTIFACT_DIR) and the path
                 # the unit tests take now run the same code.
                 local _g_capfile
-                _g_capfile="$(mktemp "${TMPDIR:-/tmp}/zb-negctl-guard.XXXXXX")" || _g_capfile=""
+                _g_capfile="$(mktemp "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zb-negctl-guard.XXXXXX")" || _g_capfile=""
                 _negctl_run "$wt_dir/$_g_tf" "$wt_dir" "$_g_capfile" || _g_rc=$?
                 # Fold the capture into the per-SPEC diagnostic log, preserving
                 # the pre-#1737 artifact shape operators read.

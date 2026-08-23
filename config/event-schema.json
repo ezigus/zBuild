@@ -140,6 +140,7 @@
     "cycle.test.full_suite_gate",
     "llm.cli_fail",
     "pipeline.llm_unavailable",
-    "stage.cleanup.failed"
+    "stage.cleanup.failed",
+    "stage.write_boundary.violated"
   ]
 }

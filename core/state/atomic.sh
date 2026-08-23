@@ -37,8 +37,15 @@ locked_state_update() {
     [[ -d "$lock_dir" ]] || mkdir -p "$lock_dir"
     : > "$lock_file"
 
-    local current; current="$(mktemp)"
-    local next; next="$(mktemp)"
+    # Next to the state file, not in $TMPDIR — the same convention atomic_write
+    # already uses (`mktemp "${target}.tmp.XXXXXX"`). Two reasons. The temp must
+    # share a filesystem with the target or the final rename degrades to a
+    # cross-device copy and stops being atomic. And a bare `mktemp` lands in /tmp
+    # whenever TMPDIR is unset (every Linux CI runner), which is outside every
+    # ADR-058 area: the engine's own state bookkeeping showed up in another
+    # concurrently-running run's write-boundary sweep as `/tmp/tmp.XXXXXXXXXX`.
+    local current; current="$(mktemp "${state_file}.lsu-cur.XXXXXX")"
+    local next; next="$(mktemp "${state_file}.lsu-new.XXXXXX")"
     # shellcheck disable=SC2064
     trap "rm -f '$current' '$next'" RETURN
 

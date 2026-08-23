@@ -252,5 +252,17 @@ else
         "130 not found in the _cycle_handle_terminal_rc case block"
 fi
 
+# ─────────────────────────────────────────────────────────────────────────────
+print_test_section "6. write-boundary wiring leaves lifecycle.sh rc-clean"
+
+# [SPEC-7] GUARD: #1809 adds write_boundary_mark and write_boundary_check calls
+# to lifecycle.sh. Both are invoked via `declare -F` guards and return 0 or 1
+# only. This assertion verifies that the write-boundary wiring introduces no new
+# legacy rc code into lifecycle.sh — the _PINNED count must stay at 0.
+_wb_lc="$(_count_legacy "$REPO_ROOT/core/plugin-registry/lifecycle.sh")"
+_wb_lc="${_wb_lc//[$'\n\r ']/}"
+assert_eq "[SPEC-7] lifecycle.sh still has 0 legacy rc returns after write-boundary wiring (#1809)" \
+    "0" "$_wb_lc"
+
 print_test_results
 exit $((FAIL > 0))

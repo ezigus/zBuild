@@ -68,7 +68,15 @@ _sanitize() {
     local s="$1"
     # Replace any /tmp/... or /var/folders/... or $TMPDIR-style path with <TMP>.
     # The %q-encoded test_cmd will contain the mock script's absolute path.
+    # ADR-058 §3 points TMPDIR at ${state_dir}/scratch/<stage>/ for the span of a
+    # dispatch, so under a live run the harness root matches neither shape below.
+    # Normalising TEST_TEMP_DIR itself is location-independent; the two path-shape
+    # rules stay as a fallback for anything mktemp'd outside the harness root.
+    if [[ -n "${TEST_TEMP_DIR:-}" ]]; then
+        s="${s//"$TEST_TEMP_DIR"/@@TMPROOT@@}"
+    fi
     s="$(printf '%s' "$s" | sed -E \
+        -e 's|@@TMPROOT@@[^ ]*|<TMP>|g' \
         -e 's|/var/folders/[^ ]+|<TMP>|g' \
         -e 's|/tmp/[^ ]+|<TMP>|g')"
     # Heading duration (always at the same column, format "N.Ns").

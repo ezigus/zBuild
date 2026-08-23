@@ -14,6 +14,12 @@
 [[ -n "${_ZBUILD_REGISTRY_LIFECYCLE_LOADED:-}" ]] && return 0
 _ZBUILD_REGISTRY_LIFECYCLE_LOADED=1
 
+# #1809 (ADR-058 C9): declared-output path resolution is shared with
+# core/pipeline/write-boundary.sh so the artifact scanner and the write-boundary
+# classifier can never disagree about where a declared output lives.
+# shellcheck source=output-paths.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/output-paths.sh"
+
 # ─── scan_plugin_outputs — fail-closed artifact-presence scanner (#288) ─────
 # ADR-001 §Fail-closed scanner contract:
 #   "If a plugin declares an output but no artifact exists at outputs[].path
@@ -73,70 +79,15 @@ scan_plugin_outputs() {
     # would flag the missing optional artifact as a fail-closed contract
     # violation on every passing run, breaking the parity goldens.
     local paths
-    paths="$(awk '
-        BEGIN { in_block = 0; cur_path = ""; cur_required = ""; cur_primary = "" }
-        function flush() {
-            if (cur_path != "" && cur_required != "false") {
-                print cur_path "\t" cur_primary
-            }
-            cur_path = ""; cur_required = ""; cur_primary = ""
-        }
-        /^outputs:[[:space:]]*$/ { in_block = 1; next }
-        in_block && /^[a-zA-Z_]/ { flush(); in_block = 0 }
-        in_block && /^[[:space:]]*-[[:space:]]/ { flush() }
-        in_block && /^[[:space:]]+path:[[:space:]]*/ {
-            line = $0
-            sub(/^[[:space:]]+path:[[:space:]]*/, "", line)
-            sub(/[[:space:]]*#.*/, "", line)
-            gsub(/^["'"'"']|["'"'"']$/, "", line)
-            cur_path = line
-            next
-        }
-        in_block && /^[[:space:]]+required:[[:space:]]*/ {
-            line = $0
-            sub(/^[[:space:]]+required:[[:space:]]*/, "", line)
-            sub(/[[:space:]]*#.*/, "", line)
-            gsub(/^["'"'"']|["'"'"']$/, "", line)
-            cur_required = line
-            next
-        }
-        in_block && /^[[:space:]]+primary:[[:space:]]*/ {
-            line = $0
-            sub(/^[[:space:]]+primary:[[:space:]]*/, "", line)
-            sub(/[[:space:]]*#.*/, "", line)
-            gsub(/^["'"'"']|["'"'"']$/, "", line)
-            # Case-folded: a manifest writing `primary: True` must not read as
-            # non-primary and so slip past the empty-artifact guard below.
-            # `required` is deliberately NOT folded — a non-canonical value there
-            # already fails closed (treated as required).
-            cur_primary = tolower(line)
-            next
-        }
-        END { flush() }
-    ' "$manifest" 2>/dev/null)"
+    paths="$(_registry_output_path_rows "$manifest")"
 
     [[ -z "$paths" ]] && return 0
 
     local missing=0
-    local raw_path raw_primary resolved _violation _event _var _expansions
+    local raw_path raw_primary resolved _violation _event
     while IFS=$'\t' read -r raw_path raw_primary; do
         [[ -z "$raw_path" ]] && continue
-        resolved="$raw_path"
-        # Phase 0.5 substitutions.
-        resolved="${resolved//\$\{state_dir\}/$state_dir}"
-        resolved="${resolved//\$\{artifact_dir\}/$artifact_dir}"
-        resolved="${resolved//\$\{artifacts_dir\}/$artifact_dir}"
-        # Remaining ${VAR} tokens come from the work unit's exported env (the
-        # template's `as:` mapping, e.g. ZBUILD_REVIEW_LENS_ID). Indirect
-        # expansion only — never eval — so a manifest cannot inject a command.
-        # Bounded, and an unset var is left literal so the check fails loudly.
-        _expansions=0
-        while [[ $_expansions -lt 16 ]] && [[ "$resolved" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)\} ]]; do
-            _var="${BASH_REMATCH[1]}"
-            [[ -z "${!_var+x}" ]] && break
-            resolved="${resolved//\$\{$_var\}/${!_var}}"
-            _expansions=$((_expansions + 1))
-        done
+        resolved="$(_registry_resolve_output_path "$raw_path" "$state_dir" "$artifact_dir")"
 
         # An absent output always violates; a zero-byte one violates unless the
         # plugin declared the empty-diff capability AND this is not its primary.
@@ -191,6 +142,10 @@ scan_plugin_outputs() {
                             detail: ("Expected artifact at: " + $path)
                         }]
                     }' > "$_findings_file" 2>/dev/null || true
+                # #1809: file-backed marker so runner_read_stage_disposition (a separate
+                # process under map:) can detect the violation and return broken.
+                mkdir -p "${state_dir}/runtime"
+                touch "${state_dir}/runtime/artifact-contract-violated" 2>/dev/null || true
             fi
             missing=$((missing + 1))
         fi
@@ -327,6 +282,14 @@ plugin_hook_call() {
                 local -x TMPDIR="$_ws_scratch"
             fi
         fi
+
+        # #1809 (ADR-058 C9): load the write-boundary enforcer lazily, same
+        # pattern as stage-scratch.sh above. Fail-open: an unloadable module
+        # leaves the mark unset and write_boundary_check returns 0 immediately.
+        if ! declare -F write_boundary_mark >/dev/null 2>&1; then
+            # shellcheck source=../pipeline/write-boundary.sh
+            source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../pipeline" && pwd)/write-boundary.sh" 2>/dev/null || true
+        fi
     fi
 
     # ADR-055 §1 (#1826): the engine resolves what this stage DECLARED it needs
@@ -401,6 +364,12 @@ plugin_hook_call() {
         return 1
     fi
 
+    # #1809 (ADR-058 C9): mark the dispatch start so write_boundary_check can
+    # find files written during this dispatch. Fail-open: missing function = no-op.
+    if declare -F write_boundary_mark >/dev/null 2>&1; then
+        write_boundary_mark "${2:-}" || true
+    fi
+
     emit_event "plugin.$hook_name.start" "plugin=$plugin_id" "kind=$kind"
 
     # Run in a subshell to isolate plugin's variables/functions
@@ -429,6 +398,15 @@ plugin_hook_call() {
                 emit_event "plugin.$hook_name.artifact_check_failed" \
                     "plugin=$plugin_id" "kind=$kind"
                 return 1
+            fi
+            # #1809 (ADR-058 C9): sweep for writes outside declared outputs and
+            # engine-owned areas. Fail-open: unloaded module = write_boundary_check
+            # undefined = this arm is unreachable.
+            if declare -F write_boundary_check >/dev/null 2>&1; then
+                if ! write_boundary_check "$plugin_dir" "$state_file_arg" "$stage_arg" \
+                        "${ZBUILD_MAP_ELEMENT:-}"; then
+                    return 1
+                fi
             fi
         fi
         emit_event "plugin.$hook_name.complete" "plugin=$plugin_id" "kind=$kind"

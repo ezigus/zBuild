@@ -103,6 +103,36 @@ set -e
 assert_contains "[SPEC-6] non-append-only event-schema diff → SHAPE_FLOOR FAIL (not SKIP)" \
     "$_spec6_out" "SHAPE_FLOOR FAIL"
 
+# ─── SPEC-5b: END-of-array append → SHAPE_FLOOR SKIP ────────────────────────
+# Appending an element to the END of a JSON array forces a separator comma onto
+# the previous last element, so git reports that line as removed AND re-added.
+# SPEC-5 above only covers a MID-array insert (added line, nothing removed), so
+# the exemption was structurally unreachable for the end-of-array shape every
+# real event-schema.json append actually has. #1809's dogfood failed on it.
+# CHANGE: fails at baseline (the old predicate rejected on ANY removed line).
+
+set +e
+_spec5b_out="$(ZBUILD_DIFF_CMD="printf 'config/event-schema.json\n'" \
+    ZBUILD_SCHEMA_DIFF_CMD="printf -- '-    \"stage.cleanup.failed\"\n+    \"stage.cleanup.failed\",\n+    \"stage.write_boundary.violated\"\n'" \
+    _sf_shape_floor "$_sr2")"
+set -e
+
+assert_contains "[SPEC-5b] end-of-array append (comma on prior line) → SHAPE_FLOOR SKIP" \
+    "$_spec5b_out" "SHAPE_FLOOR SKIP"
+
+# ─── SPEC-6b (GUARD): a genuine deletion is still gated ─────────────────────
+# The comma-only tolerance must not let a real removal through: an element
+# deleted outright has no added line matching "<removed text>,".
+
+set +e
+_spec6b_out="$(ZBUILD_DIFF_CMD="printf 'config/event-schema.json\n'" \
+    ZBUILD_SCHEMA_DIFF_CMD="printf -- '-    \"deleted.event\",\n+    \"added.event\",\n'" \
+    _sf_shape_floor "$_sr2")"
+set -e
+
+assert_contains "[SPEC-6b] outright deletion → SHAPE_FLOOR FAIL (comma tolerance not a loophole)" \
+    "$_spec6b_out" "SHAPE_FLOOR FAIL"
+
 # ─── SPEC-7 (GUARD): multiple shape-change files → exemption does not apply ───
 # When event-schema.json AND another shape-change file are both in the diff, the
 # append-only exemption must not suppress the floor check.

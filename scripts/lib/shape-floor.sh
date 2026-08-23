@@ -73,16 +73,28 @@ _sf_schema_diff() {
 # ZBUILD_SCHEMA_DIFF_CMD overrides the diff call for testability.
 _sf_is_schema_append_only() {
     local repo_root="$1"
-    local diff_out added
+    local diff_out added removed _r _body
     diff_out="$(_sf_schema_diff "$repo_root")"
     [[ -z "$diff_out" ]] && return 1
-    # Fail if any content line was removed (lines starting with '-' but not '---' header)
-    if grep -qE '^-[^-]' <<< "$diff_out"; then
-        return 1
-    fi
     # Must have at least one added content line (not just headers)
     added="$(printf '%s\n' "$diff_out" | grep -E '^\+[^+]' || true)"
     [[ -z "$added" ]] && return 1
+    # A removed content line normally disqualifies the exemption. The ONE benign
+    # case: appending to the END of a JSON array puts a separator comma on the
+    # previous last element, so git reports that line as removed AND re-added.
+    # Without this, the exemption is unreachable for an end-of-array append and
+    # only ever fires for a mid-array insert (#1809 burned a dogfood on exactly
+    # that). Benign means the identical text plus a trailing comma is among the
+    # added lines — the sole edit was the separator. Any other removal is a real
+    # deletion and stays gated (#1900: a deletion is gated where an add SKIPs).
+    removed="$(printf '%s\n' "$diff_out" | grep -E '^-[^-]' || true)"
+    if [[ -n "$removed" ]]; then
+        while IFS= read -r _r; do
+            [[ -z "$_r" ]] && continue
+            _body="${_r#-}"
+            grep -qxF "+${_body}," <<< "$added" || return 1
+        done <<< "$removed"
+    fi
     # Every added line must be a bare array element; any other added shape
     # (an object key, a nested structure) is not a known_types append.
     if grep -qvE '^\+[[:space:]]*"[^"]+",?[[:space:]]*$' <<< "$added"; then

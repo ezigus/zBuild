@@ -419,10 +419,20 @@ set -e
 assert_eq "scan_plugin_outputs returns 0 when declared output exists" "0" "$rc"
 
 set +e
-plugin_hook_call "$FIXTURE_ROOT/agent/declares-output" "run" "stage-id" "$PLUG_STATE_FILE" >/dev/null 2>&1
+_phc_err="$TEST_TEMP_DIR/plugin-hook-call-stderr.txt"
+plugin_hook_call "$FIXTURE_ROOT/agent/declares-output" "run" "stage-id" "$PLUG_STATE_FILE" >/dev/null 2>"$_phc_err"
 hook_rc=$?
 set -e
-assert_eq "plugin_hook_call returns 0 when scanner passes" "0" "$hook_rc"
+# A bare rc comparison reports "expected 0, got 1" and nothing else. Every check
+# that can refuse this dispatch (scan_plugin_outputs, write_boundary_check)
+# explains itself on stderr and, for the boundary, in a runtime/ marker — so
+# carry both into the failure detail rather than discarding them.
+if [[ "$hook_rc" -eq 0 ]]; then
+    assert_pass "plugin_hook_call returns 0 when scanner passes"
+else
+    assert_fail "plugin_hook_call returns 0 when scanner passes" \
+        "rc=$hook_rc; stderr: $(tr '\n' ' ' < "$_phc_err" 2>/dev/null | tail -c 300); marker: $(cat "$PLUG_STATE_DIR/runtime/write-boundary-violated" 2>/dev/null || echo none)"
+fi
 
 # ── SPEC-3: scanner is a no-op for plugins with neither outputs nor artifact_type ─
 # GUARD: existing behavior — a plugin with no outputs section and no
