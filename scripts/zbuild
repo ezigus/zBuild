@@ -68,15 +68,26 @@ Commands:
                          [--run-id <id>] [--from-stage <stage>] [--force]
   pipeline status        Show resume recommendation for the current state file
                          [--run-id <id>]
-  cleanup                Prune stale zbuild/issue-* branches + old state files
-                         + zb-applycheck-* stashes + leaked zbuild tmpdirs
-                         (patterns: ZBUILD_TMPDIR_PATTERNS in lib/cleanup.sh).
+  cleanup                Prune stale run artifacts: zbuild/issue-* and
+                         zbuild/state/issue-* branches, state dirs, per-stage
+                         scratch, zb-applycheck-* stashes, leaked zbuild tmpdirs
+                         (ZBUILD_TMPDIR_PATTERNS in lib/cleanup.sh), orch pool
+                         dirs, and the content cache. The MEMORY store is never
+                         reclaimed — it is agnostic to the issues it supports.
                          --worktrees reclaims dead-run worktrees (opt-in, never
                          part of the default set; honours --age-days, so use
                          --age-days 0 to reclaim a run that died today).
-                         [--branches] [--state-dirs] [--stashes] [--tmpdirs] [--worktrees]
+                         [--branches] [--state-dirs] [--stashes] [--tmpdirs]
+                         [--scratch] [--state-branches] [--orch-pools] [--cache]
+                         [--worktrees]
+                         Retention is one number (--age-days, default 7) on two
+                         clocks: targets keyed to an ISSUE (branches,
+                         state-branches) age from the issue's CLOSE, because they
+                         are live work while it is open; everything else ages
+                         from last touch. An issue whose state cannot be
+                         established is kept, never pruned.
                          [--dry-run|--apply|--force]
-                         [--age-days N]    (state files; default 14)
+                         [--age-days N]    (default 7; see the two clocks above)
                          [--age-hours N]   (stashes + tmpdirs; default 1)
                          [--restore-stash <N> --apply]  (pop a zb-applycheck stash
                                                           to working tree, then drop)
@@ -642,9 +653,16 @@ UPHELP
         cl_stashes=false
         cl_tmpdirs=false
         cl_worktrees=false
+        cl_scratch=false
+        cl_state_branches=false
+        cl_orch_pools=false
+        cl_cache=false
         cl_dry_run=""
         cl_force=false
-        cl_age_days=14
+        # 7, not 14 (#1632's already-decided state-branch retention, generalised).
+        # NOTE: _cleanup_scan_worktrees carries its OWN `${1:-7}` default; the two
+        # are independent and must be changed together or they silently disagree.
+        cl_age_days=7
         cl_age_hours=1
         cl_quiet=false
         cl_restore_idx=""
@@ -655,6 +673,10 @@ UPHELP
                 --stashes)    cl_stashes=true; shift ;;
                 --tmpdirs)    cl_tmpdirs=true; shift ;;
                 --worktrees)  cl_worktrees=true; shift ;;
+                --scratch)        cl_scratch=true;        shift ;;
+                --state-branches) cl_state_branches=true; shift ;;
+                --orch-pools)     cl_orch_pools=true;     shift ;;
+                --cache)          cl_cache=true;          shift ;;
                 --dry-run)    cl_dry_run=true; shift ;;
                 --apply)      cl_dry_run=false; shift ;;
                 --force)      cl_force=true; cl_dry_run="${cl_dry_run:-false}"; shift ;;
@@ -711,11 +733,22 @@ UPHELP
         # --worktrees is deliberately NOT in the default set: reclaiming a worktree
         # discards a whole checkout, a strictly larger blast radius than the other
         # categories, so it stays opt-in (design SPEC-5).
-        if ! $cl_branches && ! $cl_state_dirs && ! $cl_stashes && ! $cl_tmpdirs && ! $cl_worktrees; then
+        if ! $cl_branches && ! $cl_state_dirs && ! $cl_stashes && ! $cl_tmpdirs \
+           && ! $cl_worktrees && ! $cl_scratch && ! $cl_state_branches \
+           && ! $cl_orch_pools && ! $cl_cache; then
             cl_branches=true
             cl_state_dirs=true
             cl_stashes=true
             cl_tmpdirs=true
+            # In the default set from the start. These four had NO reclaimer at
+            # all before this change, and scratch alone is the largest consumer
+            # on disk — leaving them opt-in would repeat the mistake --worktrees
+            # made, where 24 stale trees accumulated because nothing reported
+            # them unless you already knew to ask.
+            cl_scratch=true
+            cl_state_branches=true
+            cl_orch_pools=true
+            cl_cache=true
         fi
 
         $cl_quiet || {
@@ -731,7 +764,7 @@ UPHELP
         fi
 
         if $cl_branches; then
-            cl_branch_plan="$(_cleanup_scan_branches "$cl_force" || true)"
+            cl_branch_plan="$(_cleanup_scan_branches "$cl_force" "$cl_age_days" || true)"
             _cleanup_render_plan "branches" "$cl_branch_plan" "$cl_dry_run" "$cl_quiet"
             _cleanup_apply_branch_plan "$cl_branch_plan" "$cl_dry_run"
         fi
@@ -752,6 +785,35 @@ UPHELP
             # read ZBUILD_TMPDIR_PATTERNS — an inline whitelist here drifted
             # from the scanner twice (#628, #749).
             _cleanup_apply_tmpdir_plan "$cl_tmp_plan" "$cl_dry_run"
+        fi
+
+        if $cl_scratch; then
+            cl_scratch_plan="$(_cleanup_scan_scratch "$cl_age_days" || true)"
+            _cleanup_render_plan "scratch" "$cl_scratch_plan" "$cl_dry_run" "$cl_quiet"
+            _cleanup_apply_dir_plan "$cl_scratch_plan" "$cl_dry_run" \
+                "${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}/runs"
+        fi
+
+        if $cl_state_branches; then
+            if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+                cl_sb_plan="$(_cleanup_scan_state_branches "$cl_age_days" || true)"
+                _cleanup_render_plan "state branches" "$cl_sb_plan" "$cl_dry_run" "$cl_quiet"
+                _cleanup_apply_branch_plan "$cl_sb_plan" "$cl_dry_run"
+            fi
+        fi
+
+        if $cl_orch_pools; then
+            cl_pool_plan="$(_cleanup_scan_orch_pools "$cl_age_hours" || true)"
+            _cleanup_render_plan "orch pools" "$cl_pool_plan" "$cl_dry_run" "$cl_quiet"
+            cl_pool_root="${TMPDIR:-/tmp}"; cl_pool_root="${cl_pool_root%/}/zbuild-runs"
+            _cleanup_apply_dir_plan "$cl_pool_plan" "$cl_dry_run" "$cl_pool_root"
+        fi
+
+        if $cl_cache; then
+            cl_cache_plan="$(_cleanup_scan_cache "$cl_age_days" || true)"
+            _cleanup_render_plan "cache" "$cl_cache_plan" "$cl_dry_run" "$cl_quiet"
+            _cleanup_apply_dir_plan "$cl_cache_plan" "$cl_dry_run" \
+                "${ZBUILD_CACHE_DIR:-$HOME/.zbuild/cache}"
         fi
 
         if $cl_worktrees; then

@@ -145,11 +145,22 @@ _cleanup_scan_state_files() {
 }
 
 # ─── Branch scanner ─────────────────────────────────────────────────────────
-# _cleanup_scan_branches <force_bool>
+# _cleanup_scan_branches <force_bool> [age_days]
 # Prints: "<branch>\t<decision>\t<reason>"
 # decision ∈ {prune, skip}
+#
+# age_days added alongside the issue-close clock. Before it, branches were the
+# ONLY category with no age gate of any kind: a merged PR made a branch
+# instantly prunable no matter how recent, and nothing else ever aged one out.
+#
+# A `zbuild/issue-*` branch holds the actual CODE for an issue, so it ages from
+# the issue's close, not from last touch — the strongest case for the second
+# clock. The merged-PR fast path is kept ahead of it: once the work is merged the
+# branch is redundant regardless of whether the issue is still open, and that is
+# the common case this command was written for.
 _cleanup_scan_branches() {
     local force="$1"
+    local age_days="${2:-}"
     git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
     local b
     while IFS= read -r b; do
@@ -171,6 +182,23 @@ _cleanup_scan_branches() {
         if _cleanup_has_merged_pr "$b"; then
             printf '%s\tprune\tmerged PR\n' "$b"
             continue
+        fi
+        # Issue-close clock. Only consulted when an age was asked for, so every
+        # existing caller keeps its exact behaviour.
+        if [[ "$age_days" =~ ^[0-9]+$ ]]; then
+            local _b_mtime _b_age _b_dec
+            _b_mtime="$(git log -1 --format='%ct' "$b" 2>/dev/null || echo 0)"
+            [[ "$_b_mtime" =~ ^[0-9]+$ ]] || _b_mtime=0
+            _b_age=$(( ( $(date +%s) - _b_mtime ) / 86400 ))
+            _b_dec="$(_cleanup_issue_ref_decision "$b" "$age_days" "$_b_age")"
+            if [[ "$_b_dec" == prune* ]]; then
+                printf '%s\t%s\n' "$b" "$_b_dec"
+                continue
+            fi
+            if [[ "$force" != "true" ]]; then
+                printf '%s\t%s\n' "$b" "$_b_dec"
+                continue
+            fi
         fi
         if [[ "$force" == "true" ]]; then
             printf '%s\tprune\tforce (clean, pushed, no merged PR)\n' "$b"
@@ -458,16 +486,23 @@ _cleanup_render_plan() {
         local target rest decision reason
         target="${line%%$'\t'*}"
         rest="${line#*$'\t'}"
-        if [[ "$kind" == "branches" || "$kind" == "stashes" || "$kind" == "tmpdirs" \
-              || "$kind" == "worktrees" ]]; then
+        # INVERTED: the 3-field `<target>\t<decision>\t<reason>` shape is the
+        # contract, and `state files` is the lone 2-field holdout. This used to
+        # be an allowlist of kinds, which meant every scanner added after it
+        # rendered its decision column as part of the reason string until someone
+        # noticed and extended the list. Naming the exception instead makes a new
+        # scanner correct by default.
+        if [[ "$kind" != "state files" ]]; then
             decision="${rest%%$'\t'*}"
             reason="${rest#*$'\t'}"
-            # Worktree targets are absolute paths and routinely exceed 40 chars,
-            # which would push the decision column out of alignment on every real
-            # invocation. Keep the 60-wide column worktrees rendered with before
-            # they joined this shared decision/reason format (#1634).
+            # Path-shaped targets routinely exceed 40 chars, which would push the
+            # decision column out of alignment on every real invocation. Keep the
+            # 60-wide column worktrees rendered with before they joined this
+            # shared decision/reason format (#1634).
             local _w=40
-            [[ "$kind" == "worktrees" ]] && _w=60
+            case "$kind" in
+                worktrees|scratch|"orch pools"|cache|tmpdirs) _w=60 ;;
+            esac
             printf '  %-*s  %-6s  %s\n' "$_w" "$target" "$decision" "$reason"
         else
             reason="$rest"
@@ -504,7 +539,10 @@ _cleanup_render_plan() {
 #     named branch is NOT in that set — see the note at the check itself.
 # Worktrees outside the run root are not ours and are filtered silently.
 _cleanup_scan_worktrees() {
-    local age_days="${1:-14}"
+    # 7, matching scripts/zbuild's cl_age_days. These two defaults are
+    # INDEPENDENT — this scanner is called directly by tests and by the intake
+    # diagnostic path, not only through the CLI — so both must move together.
+    local age_days="${1:-7}"
     local now; now="$(date +%s)"
     local cutoff=$(( now - age_days * 86400 ))
     # MUST be called from inside the target repository: the git invocations below
@@ -663,4 +701,303 @@ _cleanup_apply_worktree_plan() {
     done
     git -C "$repo_root" worktree prune 2>/dev/null || true
     return $rc
+}
+
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║  Issue-keyed retention — the second clock (#1632 policy, generalised)      ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+#
+# One retention number, two clocks. Most targets age from their own last touch:
+# they are garbage or regenerable. Three do not — `zbuild/issue-*` branches,
+# `zbuild/state/issue-*` branches, and the plan-context cache are LIVE WORK for
+# an open issue. A work branch holds unmerged code; the state branch and the
+# context cache are the prior work ADR-050 feeds into the next run of that same
+# issue. Ageing those from last touch destroys work mid-flight, so they age from
+# the issue's CLOSE instead.
+
+# ─── _cleanup_issue_from_ref <ref> ──────────────────────────────────────────
+# Extract the issue number from a zbuild ref. Handles both shapes:
+#   zbuild/issue-1809-some-slug   → 1809
+#   zbuild/state/issue-1809       → 1809
+# Prints nothing and returns 1 when the ref carries no issue number.
+_cleanup_issue_from_ref() {
+    local ref="${1:-}"
+    [[ -n "$ref" ]] || return 1
+    local n=""
+    case "$ref" in
+        zbuild/state/issue-*) n="${ref#zbuild/state/issue-}" ;;
+        zbuild/issue-*)       n="${ref#zbuild/issue-}" ;;
+        *) return 1 ;;
+    esac
+    n="${n%%-*}"
+    [[ "$n" =~ ^[0-9]+$ ]] || return 1
+    printf '%s' "$n"
+}
+
+# ─── _cleanup_issue_state <issue_number> ────────────────────────────────────
+# Prints one of: open | closed | missing | unknown
+#
+# FAIL-CLOSED, exactly like _cleanup_has_merged_pr above: `gh` absent, an API
+# error, or an unparseable answer all yield `unknown`, and every caller treats
+# `unknown` as "keep". A reclaimer that cannot establish an issue's state must
+# never be the thing that deletes a branch holding unmerged work.
+#
+# `missing` is distinct from `unknown` and is NOT fail-closed: the issue was
+# looked up successfully and does not exist. #1632 settled that case — fall back
+# to plain age.
+_cleanup_issue_state() {
+    local n="${1:-}"
+    [[ "$n" =~ ^[0-9]+$ ]] || { printf 'unknown'; return 0; }
+    command -v gh >/dev/null 2>&1 || { printf 'unknown'; return 0; }
+    local out rc=0
+    out="$(gh issue view "$n" --json state --jq '.state' 2>/dev/null)" || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        # Distinguish "no such issue" from "could not ask". gh exits non-zero for
+        # both, so re-ask for the error text rather than guessing.
+        local err
+        err="$(gh issue view "$n" --json state 2>&1 >/dev/null || true)"
+        case "$err" in
+            *"not found"*|*"Not Found"*|*"Could not resolve"*) printf 'missing' ;;
+            *) printf 'unknown' ;;
+        esac
+        return 0
+    fi
+    case "$out" in
+        OPEN|open)     printf 'open' ;;
+        CLOSED|closed) printf 'closed' ;;
+        *)             printf 'unknown' ;;
+    esac
+}
+
+# ─── _cleanup_issue_closed_age_days <issue_number> ──────────────────────────
+# Days since the issue closed, or empty when that cannot be established.
+_cleanup_issue_closed_age_days() {
+    local n="${1:-}"
+    [[ "$n" =~ ^[0-9]+$ ]] || return 1
+    command -v gh >/dev/null 2>&1 || return 1
+    local closed_at
+    closed_at="$(gh issue view "$n" --json closedAt --jq '.closedAt // empty' 2>/dev/null)" || return 1
+    [[ -n "$closed_at" ]] || return 1
+    # _zbuild_iso8601_to_epoch lives in core/state/resume.sh, which this library
+    # does not source. Pull it in lazily; if it cannot be loaded, return 1 and let
+    # the caller fail closed rather than hand-rolling a date parse here — GNU
+    # `date -d` and BSD `date -j` disagree, and getting that wrong would silently
+    # mis-age every issue-keyed target.
+    if ! declare -F _zbuild_iso8601_to_epoch >/dev/null 2>&1; then
+        local _cl_resume="${_CLEANUP_LIB_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}/../../core/state/resume.sh"
+        # shellcheck source=../../core/state/resume.sh
+        [[ -f "$_cl_resume" ]] && source "$_cl_resume" 2>/dev/null || true
+    fi
+    declare -F _zbuild_iso8601_to_epoch >/dev/null 2>&1 || return 1
+    local closed_epoch now
+    closed_epoch="$(_zbuild_iso8601_to_epoch "$closed_at" 2>/dev/null || echo "")"
+    [[ "$closed_epoch" =~ ^[0-9]+$ ]] || return 1
+    now="$(date +%s)"
+    printf '%s' $(( (now - closed_epoch) / 86400 ))
+}
+
+# ─── _cleanup_issue_ref_decision <ref> <age_days> <fallback_age_days> ───────
+# The issue-close clock, as a decision string: "prune\t<reason>" or "skip\t<reason>".
+# <fallback_age_days> is the target's own last-touch age, used only when the
+# issue no longer exists.
+_cleanup_issue_ref_decision() {
+    local ref="$1" age_days="$2" fallback_age="${3:-}"
+    local n
+    if ! n="$(_cleanup_issue_from_ref "$ref")"; then
+        printf 'skip\tno issue number in ref'
+        return 0
+    fi
+    local st; st="$(_cleanup_issue_state "$n")"
+    case "$st" in
+        open)
+            printf 'skip\tissue #%s is open' "$n"
+            ;;
+        unknown)
+            printf 'skip\tissue #%s state unprovable (fail-closed)' "$n"
+            ;;
+        missing)
+            # #1632: issue gone → plain age against the same number.
+            if [[ "$fallback_age" =~ ^[0-9]+$ ]] && [[ "$fallback_age" -ge "$age_days" ]]; then
+                printf 'prune\tissue #%s no longer exists, age %sd' "$n" "$fallback_age"
+            else
+                printf 'skip\tissue #%s no longer exists, newer than %sd' "$n" "$age_days"
+            fi
+            ;;
+        closed)
+            local cd; cd="$(_cleanup_issue_closed_age_days "$n" || true)"
+            if [[ "$cd" =~ ^[0-9]+$ ]]; then
+                if [[ "$cd" -ge "$age_days" ]]; then
+                    printf 'prune\tissue #%s closed %sd ago' "$n" "$cd"
+                else
+                    printf 'skip\tissue #%s closed %sd ago (<%sd)' "$n" "$cd" "$age_days"
+                fi
+            else
+                printf 'skip\tissue #%s closed, close date unreadable (fail-closed)' "$n"
+            fi
+            ;;
+        *)
+            printf 'skip\tissue #%s state unrecognised (fail-closed)' "$n"
+            ;;
+    esac
+}
+
+# ╔═══════════════════════════════════════════════════════════════════════════╗
+# ║  The four categories that had no reclaimer at all                          ║
+# ╚═══════════════════════════════════════════════════════════════════════════╝
+#
+# Every scanner below emits the 3-field shape `<target>\t<prune|skip>\t<reason>`
+# and NAMES THE GUARD that fired on a skip. #1634: reporting only the selected
+# entries made a clean scan and a broken scan indistinguishable — "nothing to do"
+# and "the filter matched nothing" produced identical empty output, and four
+# defects shipped behind that silence.
+
+# ─── _cleanup_scan_scratch <age_days> ───────────────────────────────────────
+# Per-stage scratch under <state_root>/runs/<run_id>/scratch (ADR-058).
+#
+# The single largest consumer on disk and, until now, reclaimed by nothing: the
+# test stage rsyncs a full repo copy per stage, and #1918 moved that inside the
+# job folder where it accumulates. Throwaway by definition — ADR-058 says nothing
+# in scratch is ever an output — so this ages from last touch, not from an issue.
+_cleanup_scan_scratch() {
+    local age_days="${1:-7}"
+    local now; now="$(date +%s)"
+    local cutoff=$(( now - age_days * 86400 ))
+    local root="${ZBUILD_STATE_ROOT:-${HOME}/.zbuild/state}/runs"
+    [[ -d "$root" ]] || return 0
+    local d rid scratch mtime age_d
+    for d in "$root"/*; do
+        [[ -d "$d" ]] || continue
+        scratch="$d/scratch"
+        [[ -d "$scratch" ]] || continue
+        rid="$(basename "$d")"
+        if _cleanup_is_active_run "$rid"; then
+            printf '%s\tskip\tactive run\n' "$scratch"
+            continue
+        fi
+        mtime="$(stat -c %Y "$scratch" 2>/dev/null || stat -f %m "$scratch" 2>/dev/null || echo 0)"
+        [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
+        age_d=$(( (now - mtime) / 86400 ))
+        if [[ "$mtime" -gt "$cutoff" ]]; then
+            printf '%s\tskip\tnewer than %sd (age %sd)\n' "$scratch" "$age_days" "$age_d"
+            continue
+        fi
+        printf '%s\tprune\trun=%s age=%sd\n' "$scratch" "$rid" "$age_d"
+    done
+}
+
+# ─── _cleanup_scan_state_branches <age_days> ────────────────────────────────
+# zbuild/state/issue-* — ADR-050 prior-work snapshots. Nothing has ever pruned
+# these: _cleanup_scan_branches filters strictly on `zbuild/issue-*`, so the
+# state namespace was never even considered (#1632).
+#
+# Issue-close clock: a state branch for an OPEN issue is the prior work the next
+# run of that issue reuses. Deleting it mid-issue is the one outcome this branch
+# exists to prevent.
+_cleanup_scan_state_branches() {
+    local age_days="${1:-7}"
+    git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+    local now; now="$(date +%s)"
+    local b mtime age_d dec
+    while IFS= read -r b; do
+        [[ -n "$b" ]] || continue
+        if _cleanup_is_current_branch "$b"; then
+            printf '%s\tskip\tcurrent branch / active worktree\n' "$b"
+            continue
+        fi
+        mtime="$(git log -1 --format='%ct' "$b" 2>/dev/null || echo 0)"
+        [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
+        age_d=$(( (now - mtime) / 86400 ))
+        dec="$(_cleanup_issue_ref_decision "$b" "$age_days" "$age_d")"
+        printf '%s\t%s\n' "$b" "$dec"
+    done < <(git branch --list 'zbuild/state/issue-*' --format '%(refname:short)' 2>/dev/null || true)
+}
+
+# ─── _cleanup_scan_orch_pools <age_hours> ───────────────────────────────────
+# ${TMPDIR}/zbuild-runs/<run_id>/ — orchestrator slot pools (#898).
+#
+# ADR-035:44-45 deliberately EXCLUDED these from ZBUILD_TMPDIR_PATTERNS, on the
+# reasoning that orch_shutdown reaps them. That holds for a run that exits
+# normally and fails for every run that does not — a killed run leaves its pool
+# behind and nothing has ever collected it. ADR-035 is amended alongside this.
+#
+# Nested one level deeper than the flat patterns, which is why the single-level
+# glob could never have reached them even if they were listed.
+_cleanup_scan_orch_pools() {
+    local age_hours="${1:-1}"
+    local now; now="$(date +%s)"
+    local cutoff=$(( now - age_hours * 3600 ))
+    local root="${TMPDIR:-/tmp}"; root="${root%/}/zbuild-runs"
+    [[ -d "$root" ]] || return 0
+    local d rid mtime age_h
+    for d in "$root"/*; do
+        [[ -d "$d" ]] || continue
+        rid="$(basename "$d")"
+        if _cleanup_is_active_run "$rid"; then
+            printf '%s\tskip\tactive run\n' "$d"
+            continue
+        fi
+        mtime="$(stat -c %Y "$d" 2>/dev/null || stat -f %m "$d" 2>/dev/null || echo 0)"
+        [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
+        age_h=$(( (now - mtime) / 3600 ))
+        if [[ "$mtime" -gt "$cutoff" ]]; then
+            printf '%s\tskip\tnewer than %sh (age %sh)\n' "$d" "$age_hours" "$age_h"
+            continue
+        fi
+        printf '%s\tprune\trun=%s age=%sh\n' "$d" "$rid" "$age_h"
+    done
+}
+
+# ─── _cleanup_scan_cache <age_days> ─────────────────────────────────────────
+# ~/.zbuild/cache/<key> — the ADR-011 cache backend. Content-addressed and
+# regenerable by construction: cache_pull prints CACHE_MISS and returns 0, so a
+# miss is a normal outcome and deleting an entry costs a recomputation, nothing
+# more. ADR-011 defines no retention at all today.
+#
+# The MEMORY store is deliberately absent from this file and must stay absent —
+# it is agnostic to the issues it supports and is never reclaimed.
+_cleanup_scan_cache() {
+    local age_days="${1:-7}"
+    local now; now="$(date +%s)"
+    local cutoff=$(( now - age_days * 86400 ))
+    local root="${ZBUILD_CACHE_DIR:-${HOME}/.zbuild/cache}"
+    root="${root%/}"
+    [[ -d "$root" ]] || return 0
+    local d mtime age_d
+    for d in "$root"/*; do
+        [[ -e "$d" ]] || continue
+        case "$(basename "$d")" in *.tmp) continue ;; esac
+        mtime="$(stat -c %Y "$d" 2>/dev/null || stat -f %m "$d" 2>/dev/null || echo 0)"
+        [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
+        age_d=$(( (now - mtime) / 86400 ))
+        if [[ "$mtime" -gt "$cutoff" ]]; then
+            printf '%s\tskip\tnewer than %sd (age %sd)\n' "$d" "$age_days" "$age_d"
+            continue
+        fi
+        printf '%s\tprune\tage=%sd\n' "$d" "$age_d"
+    done
+}
+
+# ─── _cleanup_apply_dir_plan <plan_TSV> <dry_run_bool> <root_prefix> ────────
+# Shared applier for the directory-shaped scanners above (scratch, orch pools,
+# cache). Re-validates that every target still sits under the expected root at
+# DELETE time — same defence-in-depth discipline as the tmpdir and stash
+# appliers, and the reason a scanner bug cannot become an `rm -rf` outside the
+# store. Refuses a bare root.
+_cleanup_apply_dir_plan() {
+    local data="$1" dry_run="$2" root="$3"
+    [[ -z "$data" ]] && return 0
+    [[ -n "$root" ]] || return 1
+    root="${root%/}"
+    local line target
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        [[ "$line" == *$'\t'prune$'\t'* ]] || continue
+        target="${line%%$'\t'*}"
+        [[ "$dry_run" == "true" ]] && continue
+        # Strictly INSIDE the root, never equal to it.
+        [[ "$target" == "$root"/?* ]] || continue
+        [[ -d "$target" ]] || continue
+        rm -rf -- "$target" 2>/dev/null || true
+    done <<<"$data"
+    return 0
 }

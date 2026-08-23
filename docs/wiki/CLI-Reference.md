@@ -96,18 +96,45 @@ zbuild pipeline status [--run-id <id>]
 
 ### `cleanup`
 
-Prune stale artifacts left behind by previous runs: old branches, state files, git stashes, temp directories, and worktree orphans.
+Prune stale artifacts left behind by previous runs. Every category is reported whether or not it has anything in it, so you can see what is accumulating without deleting a thing.
 
-**Default behavior: dry-run, all categories.** Nothing is deleted unless you pass `--apply` or `--force`.
+**Default behavior: dry-run, all categories except `--worktrees`.** Nothing is deleted unless you pass `--apply` or `--force`.
 
 ```
 zbuild cleanup [--branches] [--state-dirs] [--stashes] [--tmpdirs]
+               [--scratch] [--state-branches] [--orch-pools] [--cache]
+               [--worktrees]
                [--dry-run|--apply|--force]
-               [--age-days N]   (state files; default 14)
-               [--age-hours N]  (stashes + tmpdirs; default 1)
+               [--age-days N]   (default 7 — see "two clocks" below)
+               [--age-hours N]  (stashes, tmpdirs, orch pools; default 1)
                [--restore-stash <N> --apply]
                [--quiet]
 ```
+
+| Category | What it reclaims |
+|---|---|
+| `--branches` | `zbuild/issue-*` work branches |
+| `--state-branches` | `zbuild/state/issue-*` prior-work snapshots |
+| `--state-dirs` | per-run state under `~/.zbuild/state/runs/` |
+| `--scratch` | per-stage scratch — usually the largest consumer on disk |
+| `--stashes` | `zb-applycheck-*` git stashes |
+| `--tmpdirs` | leaked zbuild temp directories |
+| `--orch-pools` | orchestrator slot pools from runs that did not exit cleanly |
+| `--cache` | the content cache at `~/.zbuild/cache/` |
+| `--worktrees` | dead-run worktrees + stale git worktree registrations (opt-in) |
+
+**The memory store is never reclaimed.** It is deliberately agnostic to the issues it supports, so no category targets it.
+
+#### Two clocks
+
+There is one retention number, but it is measured from different starting points depending on what the thing is:
+
+- **Things keyed to an issue** — `--branches`, `--state-branches` — age from the moment the **issue closes**. While an issue is open, its work branch holds unmerged code and its state branch holds the prior work the next run reuses, so ageing them from last touch would delete live work mid-flight.
+- **Everything else** ages from its own **last touch**. Scratch, temp dirs, pools and cache entries are garbage or regenerable.
+
+If the issue's state cannot be established — no `gh`, an API error, an unreadable answer — the target is **kept, never pruned**. An issue that no longer exists falls back to plain age.
+
+`--worktrees` stays opt-in because reclaiming a worktree discards a whole checkout. It honours `--age-days`, so `--age-days 0` reclaims a run that died today. It never touches a tree with uncommitted work, and the branch itself always survives — a branch ref lives in the repository, not in the worktree holding it.
 
 ### Other commands
 

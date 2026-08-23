@@ -1,6 +1,7 @@
 # ADR-011: Pluggable Backends (Memory, Orchestrator, Cache)
 
 **Status:** Accepted
+**Amended:** 2026-08-22 — retention: the cache store is reclaimable, the memory store never is
 **Date:** 2026-05-24
 
 > **Memory split:** The "memory backend" in this ADR is **learning memory** —
@@ -164,6 +165,29 @@ The plugin registry can list all backends of a role: `zbuild plugin list --role 
 **Open questions:**
 - Should backends be per-namespace? (e.g., "use SQLite for cost ledger, ruflo HNSW for embeddings"). Initial design: per-capability is the unit (memory backend is one choice; can't split). Revisit if real demand.
 - Should `_capabilities` results be cached or queried every run? Initial: queried once at backend init.
+
+## Retention (amended 2026-08-22)
+
+This ADR defined two stores that outlive a run and said nothing about ever
+reclaiming either. They are not the same, and the difference is now a rule:
+
+| Store | Default location | Reclaimed? |
+|---|---|---|
+| **Cache** | `${ZBUILD_CACHE_DIR:-~/.zbuild/cache}/<key>` | **Yes** — `zbuild cleanup --cache`, in the default set, aged from last touch |
+| **Memory** | `~/.zbuild/state/memory.db` | **Never** |
+
+**The cache is reclaimable because a miss is a normal outcome.** `cache_pull`
+prints `CACHE_MISS` and returns 0 by contract, so deleting an entry costs a
+recomputation and nothing else. It is content-addressed by key, not keyed to an
+issue, so it ages from last touch like any other regenerable artifact.
+
+**The memory store is never reclaimed, and this is a rule, not an omission.** It
+is deliberately agnostic to the issues it supports — the knowledge it holds is
+not the residue of any one run and does not expire when that run's artifacts do.
+No cleanup target may name it, and `tests/unit/cleanup-new-reclaimers-test.sh`
+SPEC-4 asserts that `scripts/lib/cleanup.sh` contains no reference to it. If a
+future need to prune memory arises, it belongs behind its own deliberate command
+with its own reasoning, not folded into artifact reclamation.
 
 ## Implementation Notes (Phase 0.5 — issue #291)
 
