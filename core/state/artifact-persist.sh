@@ -101,7 +101,7 @@ _artifact_persist_snapshot() {
     # A NON-existent path: git initializes a fresh index there. A pre-created
     # empty file (plain mktemp) is rejected as "index file smaller than expected".
     local tmp_index
-    if ! tmp_index="$(mktemp -u "$(zbuild_engine_tmpdir)/zbuild-persist-idx.XXXXXX")"; then
+    if ! tmp_index="$(mktemp -u "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zbuild-persist-idx.XXXXXX")"; then
         _ARTIFACT_PERSIST_LAST_STATUS="failed"
         _ARTIFACT_PERSIST_LAST_REASON="mktemp for throwaway index failed (TMPDIR=${TMPDIR:-/tmp})"
         return 1
@@ -196,7 +196,7 @@ _artifact_persist_snapshot() {
     # no captured stderr — a silent failure inside the code whose whole purpose is
     # to stop silent failures. /dev/null is the honest fallback: we lose the
     # stderr detail but still report the real git failure.
-    local _ct_err; _ct_err="$(mktemp -u "$(zbuild_engine_tmpdir)/zbuild-persist-err.XXXXXX" 2>/dev/null)" || _ct_err="/dev/null"
+    local _ct_err; _ct_err="$(mktemp -u "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zbuild-persist-err.XXXXXX" 2>/dev/null)" || _ct_err="/dev/null"
     [[ -n "$_ct_err" ]] || _ct_err="/dev/null"
     if [[ -n "$parent" ]]; then
         commit="$(GIT_DIR="$_gd" git commit-tree "$tree" -p "$parent" -m "$msg" 2>"$_ct_err")" || commit=""
@@ -215,7 +215,7 @@ _artifact_persist_snapshot() {
     rm -f "$_ct_err"
 
     # PR #1880 review: guarded (see the _ct_err note above).
-    local _ur_err; _ur_err="$(mktemp -u "$(zbuild_engine_tmpdir)/zbuild-persist-err.XXXXXX" 2>/dev/null)" || _ur_err="/dev/null"
+    local _ur_err; _ur_err="$(mktemp -u "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zbuild-persist-err.XXXXXX" 2>/dev/null)" || _ur_err="/dev/null"
     [[ -n "$_ur_err" ]] || _ur_err="/dev/null"
     if ! GIT_DIR="$_gd" git update-ref "refs/heads/$branch" "$commit" 2>"$_ur_err"; then
         err="$(cat "$_ur_err" 2>/dev/null | tr '\n' ' ')"
@@ -277,7 +277,7 @@ _artifact_persist_restore() {
     # #1878: PIPESTATUS, not the pipeline rc — a failing `git archive` piped into
     # a happy `tar` yields rc=0, so a broken restore reported success.
     # PR #1880 review: guarded (see the _ct_err note above).
-    local _ar_err; _ar_err="$(mktemp -u "$(zbuild_engine_tmpdir)/zbuild-restore-err.XXXXXX" 2>/dev/null)" || _ar_err="/dev/null"
+    local _ar_err; _ar_err="$(mktemp -u "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zbuild-restore-err.XXXXXX" 2>/dev/null)" || _ar_err="/dev/null"
     [[ -n "$_ar_err" ]] || _ar_err="/dev/null"
     GIT_DIR="$_gd" git archive "$ref" 2>"$_ar_err" | tar -x -C "$restored_dir" 2>>"$_ar_err"
     local _st=("${PIPESTATUS[@]}")

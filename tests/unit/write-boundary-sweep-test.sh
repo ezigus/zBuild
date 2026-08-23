@@ -261,6 +261,28 @@ _cls_ev2="$(ZBUILD_EVENTS_JSONL="$_EV_DIR/events.jsonl" \
 assert_eq "[SPEC-4d] a pinned events JSONL allows its own directory" \
     "allowed" "$_cls_ev2"
 
+# ─── SPEC-4e: every zbuild_engine_tmpdir caller can actually see it ─────────
+# The helper lives in scripts/lib/helpers.sh. A file that calls it without
+# sourcing helpers gets an UNDEFINED function, and `$(undefined)` in a path
+# expands to the empty string rather than failing — producing `/zbuild-x.XXXX`,
+# a write at the filesystem root. That is silent and only shows up as a
+# "Read-only file system" mktemp error at runtime, which is how it reached CI.
+# A static check is the cheap guard.
+
+_bad_callers=""
+while IFS= read -r _f; do
+    [[ -z "$_f" ]] && continue
+    [[ "$_f" == *"scripts/lib/helpers.sh" ]] && continue   # the definition itself
+    grep -q "helpers.sh" "$_f" || _bad_callers="${_bad_callers}${_f} "
+done < <(grep -rl "zbuild_engine_tmpdir" "$REPO_ROOT/core" "$REPO_ROOT/scripts" 2>/dev/null || true)
+
+if [[ -z "$_bad_callers" ]]; then
+    assert_pass "[SPEC-4e] every zbuild_engine_tmpdir caller sources helpers.sh"
+else
+    assert_fail "[SPEC-4e] a zbuild_engine_tmpdir caller does not source helpers.sh" \
+        "callers missing the source: $_bad_callers"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
