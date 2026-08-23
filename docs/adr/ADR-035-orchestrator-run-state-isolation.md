@@ -152,9 +152,11 @@ conflict, and this amendment records why rather than changing anything:
 
 **Pool dirs stay per-run.** They hold live coordination state for one dispatch — nothing reads a
 finished run's pool to start the next one, which is the only property that would argue for an issue
-key. Under ADR-059's layout they move to `repos/<repo>/issues/<N>/runs/<run_id>/`, alongside the
-run's other per-run state and out of `${TMPDIR}/zbuild-runs/`. That is a path change, not a keying
-change.
+key. ADR-059 §1 places them at `repos/<repo>/issues/<N>/runs/<run_id>/pool/`: **the keying is
+unchanged, but the storage class is not.** Leaving `${TMPDIR}` is the substantive half, and ADR-059
+§1 carries the reasoning — ADR-023 rejected `${TMPDIR}` for the worktree on measured evidence
+(macOS `/var/folders/...` entries vanishing mid-run, #1571, #1609/#1611), and a pool dir holding
+live dispatch state has the same exposure. Do not read this as a mechanical relocation.
 
 **This ADR's own hazard is the live objection to ADR-059, and is answered rather than refuted.** §
 Consequences warns against *"shared dirs that cannot be torn down with a single run, accumulating

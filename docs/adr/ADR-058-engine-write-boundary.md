@@ -207,24 +207,6 @@ bash tests/unit/plugin-lifecycle-event-balance-test.sh   # the ad-hoc `… ""` c
 
 This issue is itself gate 3b's worked example under ADR-057 as amended: it edits `.github/workflows/**`, which the App token cannot push (#1780), so it was built by hand.
 
-## Implementation Notes (#1918, Phase 0 C8)
-
-`core/pipeline/stage-scratch.sh` is a sourced library — `stage_scratch_dir` resolves, `stage_scratch_ensure` resolves and creates. Both take `[<state_dir>] [<stage>] [<map_element>]` and fall back to the ambient dispatch identity, so a caller already inside `plugin_hook_call` can call them with no arguments.
-
-The exports deliberately live in `core/plugin-registry/lifecycle.sh` and **not** in `core/pipeline/runner.sh`. Moving them makes the change gate-3 `By-hand` under ADR-057 *and* trips the shape floor: `config/shape-change-paths.txt` demands that any diff touching `runner.sh` also carry every `event-sequence.golden` and every `_TPL_STAGES[N]` order test.
-
-Verification:
-
-```bash
-bash tests/unit/stage-scratch-test.sh
-bash tests/integration/stage-scratch-dispatch-test.sh
-bash tests/unit/ci-state-isolation-test.sh
-bash tests/unit/plugin-lifecycle-event-balance-test.sh   # the ad-hoc `… ""` caller must still reach the plugin
-```
-
-This issue is itself gate 3b's worked example under ADR-057 as amended: it edits `.github/workflows/**`, which the App token cannot push (#1780), so it was built by hand.
-
----
 
 ## C9: Post-dispatch write-boundary enforcement (#1809)
 

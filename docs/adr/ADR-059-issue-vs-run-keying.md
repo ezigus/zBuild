@@ -3,9 +3,9 @@
 **Status:** Accepted (2026-08-23)
 **Date:** 2026-08-23
 **Issue:** #141
-**Amends:** ADR-023 (§#888 layout string), ADR-035 (§2 pool-dir exclusion rationale), ADR-050 (§storage layer), ADR-054 §7 (three-actor table is run-keyed throughout), ADR-058 (§1 area lifetimes, §6 retention clock)
+**Amends:** ADR-023 (§#888 layout string), ADR-024 (the nested-run fence must widen before the layout moves), ADR-035 (§2 pool-dir exclusion rationale), ADR-050 (§storage layer), ADR-054 §7 (three-actor table is run-keyed throughout), ADR-058 (§1 area lifetimes, §6 retention clock)
 **Supersedes:** ADR-052 §Decision 1 ("Reuse is keyed on `run_id`") and its #1869 amendment
-**Related:** ADR-006 (resume), ADR-011 (cache and memory stores), ADR-024 (`latest` symlink), ADR-050 (prior-work reuse)
+**Related:** ADR-006 (resume — supplies the liveness predicate §4 reuses), ADR-011 (the cache and memory stores, which this does not re-key), ADR-052 (engine-owned run worktree)
 
 ## Context
 
@@ -80,9 +80,21 @@ $ZBUILD_HOME/                              default ~/.zbuild
       artifacts/                 prior work, readable by the next run
       runs/<run_id>/
         scratch/  runtime/  events.jsonl  pipeline-state.json
+        pool/                    orchestrator pool dirs (ADR-035)
   cache/<key>                    content-keyed — neither issue nor run (ADR-011)
   memory.db                      never reclaimed (ADR-011)
 ```
+
+**Pool dirs move here from `${TMPDIR}/zbuild-runs/`, and that is a storage-class
+change, not only a path change.** ADR-035 keys them per run and that keying is correct —
+nothing reads a finished run's pool to start the next one. What changes is the medium.
+`${TMPDIR}` is ephemeral by contract, and ADR-023 already rejected it for the worktree
+on measured evidence: on macOS it resolves into `/var/folders/...`, where entries can
+**vanish mid-run** (#1571, #1609/#1611). A pool dir holds live coordination state for a
+dispatch, so it has the same exposure the worktree had, for the same reason. Bringing it
+under `$ZBUILD_HOME` also puts it inside something a reclaimer can name — which the
+2026-08-22 amendment to ADR-035 already conceded when it reversed *"pool dirs are
+intentionally not in the cleanup scanner."*
 
 **The path is the keying.** No registry, no table of "which things are per-run", nothing to drift.
 A reclaimer deletes a `runs/<id>/` or an `issues/<N>/` and the scope follows from where it sits.

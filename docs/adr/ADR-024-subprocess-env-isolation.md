@@ -434,31 +434,25 @@ it fences ONLY zBuild's own state tree.
 
 ## Amendment 2026-08-23 (#141) — the nested-run fence must widen before the layout moves
 
-See [ADR-059](ADR-059-issue-vs-run-keying.md).
+The #1127 fence is surgical by design: it fences *"ONLY zBuild's own state tree"*. Under
+[ADR-059](ADR-059-issue-vs-run-keying.md) that stops being enough. An unfenced nested write lands in
+the parent's **run** directory today and dies with the run; afterwards it lands in an **issue**
+directory that outlives every run of that issue — so a nested `test` stage could corrupt durable
+work, or the very tree its parent is building in.
 
-The #1127 fence exists because a nested run re-derives the default state root under the real `HOME`
-and mutates the **parent run's** shared artifacts. `ZBUILD_STATE_ROOT` is surgical by design: it
-fences *"ONLY zBuild's own state tree"*.
+**Two obligations, both BEFORE the layout moves rather than after** — this is #1214 and #1127's
+territory and widens with them:
 
-ADR-059 changes what is at stake on the other side of that fence. Today an unfenced nested write
-lands in the parent's **run** directory, and dies with the run. Under ADR-059 the parent's worktree
-and prior-work artifacts live in an **issue** directory that outlives every run of that issue — so
-the same escape corrupts durable work, and a nested `test` stage could write into the tree its own
-parent is building in.
+- **Fence the new roots, not just the state tree.** `ZBUILD_STATE_ROOT` fences state; the worktree
+  is reached through `ZBUILD_RUN_ROOT` / `ZBUILD_WORKTREE_ROOT`. ADR-059's single base makes one
+  fence sufficient where three are needed today — but only once every derivation goes through it.
+  Until then the fence is partial in exactly the place that now matters.
+- **The #897 test contract is unchanged in substance.** A test asserting over `${TMPDIR}`-rooted
+  artifacts still pins `TMPDIR` under `TEST_TEMP_DIR`. Only the engine's dispatch-time `TMPDIR`
+  target moves (ADR-058 §3), which follows the layout automatically.
 
-**Two obligations, both before the layout moves rather than after:**
-
-- **The fence must cover the new roots, not just the state tree.** `ZBUILD_STATE_ROOT` fences state;
-  the worktree root is reached through `ZBUILD_RUN_ROOT` / `ZBUILD_WORKTREE_ROOT`. ADR-059's single
-  base makes one fence sufficient where three are needed today, which is a simplification — but only
-  once every derivation actually goes through it. Until then the fence is partial in exactly the
-  place that now matters. This is #1214 and #1127's territory and widens with them.
-- **The #897 test contract is unaffected in substance and moves in target.** A test asserting over
-  `${TMPDIR}`-rooted artifacts still pins `TMPDIR` under `TEST_TEMP_DIR`. What changes is where the
-  engine points `TMPDIR` at dispatch (ADR-058 §3), which follows the layout automatically.
-
-The recursion-safety argument is unchanged: the fence variables are `ZBUILD_*`, so a nested run
-re-scrubs and re-exports its own.
+Recursion safety is unchanged: the fence variables are `ZBUILD_*`, so a nested run re-scrubs and
+re-exports its own.
 
 ## Amendment 2026-07-07 (#1270) — `ZBUILD_TEMPLATES_DIR` fence reverted; test-template hermeticity via CWD-scoped per-repo overlay
 
