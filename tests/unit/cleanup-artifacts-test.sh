@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests: scripts/cleanup-artifacts.sh — plan-context cache + per-run state prune (#1052, Pillar F)
+# Tests: scripts/cleanup-artifacts.sh — plan-context cache GC (#1052, Pillar F)
 # [SPEC-6] dry-run lists/keeps; --status complete --force removes complete keeps scope_too_large;
 #          --max-entries LRU; refuses out-of-root paths; never deletes active run; --older-than by mtime/created_at.
 set -euo pipefail
@@ -147,7 +147,10 @@ rm -f "$ZBUILD_PLAN_CONTEXT_DIR"
 export ZBUILD_PLAN_CONTEXT_DIR="$TEST_TEMP_DIR/plan-context"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# [SPEC-6] never deletes the active $ZBUILD_RUN_ID state dir
+# [SPEC-6] state dirs are OUT OF SCOPE here — `zbuild cleanup --state-dirs` owns
+# job-folder reclamation (#1920). The loop this replaces aged run dirs on mtime
+# alone, with no in_progress / resume / unknown-status guard at all, so the
+# harshest invocation the CLI accepts must now leave every run dir standing.
 # ─────────────────────────────────────────────────────────────────────────────
 runs_dir="$ZBUILD_STATE_DIR/runs"
 mkdir -p "$runs_dir/active-run" "$runs_dir/stale-run"
@@ -159,10 +162,11 @@ if [[ -d "$runs_dir/active-run" ]]; then
 else
     assert_fail "[SPEC-6] active run dir is never deleted"
 fi
-if [[ ! -d "$runs_dir/stale-run" ]]; then
-    assert_pass "[SPEC-6] stale (non-active) run dir is pruned"
+if [[ -d "$runs_dir/stale-run" ]]; then
+    assert_pass "[SPEC-6] stale run dir survives — state dirs are not this script's store"
 else
-    assert_fail "[SPEC-6] stale (non-active) run dir is pruned"
+    assert_fail "[SPEC-6] stale run dir survives — state dirs are not this script's store" \
+        "cleanup-artifacts.sh deleted a job folder; that belongs to zbuild cleanup --state-dirs"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

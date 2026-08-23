@@ -4,6 +4,7 @@
 **Date:** 2026-08-22
 **Issue:** #1918
 **Amended:** 2026-08-23 (#1809) — a fifth area, `runtime/`, for live run bookkeeping
+**Amended:** 2026-08-23 (#1920) — the job folder is reclaimable; §1's "kept as evidence" gains a retention clock
 **Related:** ADR-052 (engine-owned run worktree), ADR-011 (pluggable backends — the cache and memory stores), ADR-024 (subprocess env isolation), ADR-004 (redaction chokepoint), ADR-054 §3 (the dispatch identity seam this reuses), ADR-054 §7 (release/purge — why nothing here deletes), ADR-056 (cleanup-only lifecycle)
 
 ## Context
@@ -26,7 +27,7 @@ A stage may write into:
 
 | Area | Env var | Purpose | Lifetime |
 |---|---|---|---|
-| the job's state dir | `ZBUILD_STATE_DIR` | state, artifacts, events, stage I/O | the run, then kept as evidence |
+| the job's state dir | `ZBUILD_STATE_DIR` | state, artifacts, events, stage I/O | the run, then kept as evidence for a retention window (§6) |
 | the run's worktree | `ZBUILD_REPO_ROOT` (ADR-052) | the code under change | the run |
 | **a per-stage scratch dir** | `ZBUILD_STAGE_SCRATCH` | throwaway working files | the run; reused across cycle iterations |
 | **live run bookkeeping** | `<state_dir>/runtime/` | PIDs, process groups, staging paths, engine markers | the run |
@@ -125,6 +126,20 @@ There is a second, sharper reason the resolver itself must never read `$TMPDIR`:
 
 `artifacts/` and `stage-io/` are untouched, so CI-5's diagnostic purpose survives intact.
 
+### 6. Evidence has a retention window (added 2026-08-23, #1920)
+
+§1 says the state dir is "kept as evidence". As accepted that meant *kept forever*, because no command could remove one — and the areas this ADR added are the largest thing in it. `zbuild cleanup --state-dirs` now reclaims the whole job folder, so the promise needs a number.
+
+**Seven days, from last touch, and no second number.** #1927 established one retention across every category and two clocks to apply it on: targets keyed to an ISSUE age from that issue's close, because they are live work while it is open; everything else ages from its own last touch. A job folder takes the last-touch clock, deliberately:
+
+- The issue clock exists for what the **next run reads back** — a work branch's unmerged code, ADR-050's state branch, the plan-context cache. Nothing reads a terminal run's job folder to start the next run of that issue.
+- A job folder is read by a **human diagnosing one failure**, days at most after it happens, and by `zbuild resume` for a run that stopped mid-flight. Retention serves the first; the scanner's `interrupted` guard serves the second by refusing a resumable run outright unless `--force` is passed (ADR-018).
+- Keying it to the issue would cost one `gh` call per run dir — ~190 on the machine where this was measured — and buy no safety the two guards above do not already give.
+
+**What the reclaimer will not touch**, in the scanner rather than in a caller: a run whose status is `in_progress` (never, not even under `--force`); the run named by `$ZBUILD_RUN_ID`; a run inside the retention window; a resumable `interrupted` run; a run whose status is unrecognised or whose state file is missing; and a run whose mtime cannot be read, which fails **closed** here rather than defaulting to the epoch the way the #1927 scanners do — an epoch fallback reads as "infinitely old" and would turn a degraded filesystem into an unconditional `rm -rf`.
+
+`runtime/` (§2b) and `scratch/` (§2) are reclaimed *with* the folder and need no schedule of their own.
+
 ## Consequences
 
 **Positive**
@@ -134,7 +149,7 @@ There is a second, sharper reason the resolver itself must never read `$TMPDIR`:
 - A failed run's scratch is evidence in a known place, next to the state that explains it.
 
 **Negative / costs**
-- **The job folder grows, and nothing reclaims it.** Job folders are never reclaimed today (`scripts/lib/cleanup.sh` deletes only `pipeline-state.json{,.bak,.lock}`) and scratch makes that materially worse — the test stage alone stages a full repo copy per stage. Reclamation is **deliberately out of scope**: ADR-054 §7 settled that automatic `cleanup(release)` frees live resources and deletes nothing, so a failed run keeps its evidence. (This sentence previously cited ADR-056; the release/purge rule lives in ADR-054 §7. ADR-056 deletes `init`/`finalize` and defines how an absent hook is recorded.) Operator-invoked reclamation is #1920 (C11).
+- **The job folder grows.** Scratch made an existing leak materially worse — the test stage alone stages a full repo copy per stage — and when this ADR was accepted nothing reclaimed a job folder at all. Reclamation was **deliberately out of scope here** and was delivered separately: #1927 for the scratch inside a folder, #1920 for the folder itself. See §6 for the retention that resulted. Nothing in the run's own lifecycle deletes: ADR-054 §7's `cleanup(release)` frees live resources and deletes nothing, so a failed run still ends owning its complete evidence. (This bullet previously cited ADR-056 for that rule; it lives in ADR-054 §7. ADR-056 deletes `init`/`finalize` and defines how an absent hook is recorded.)
 - The state dir must live on a filesystem with room for a full working set, not just for JSON. On CI that is `$RUNNER_TEMP`, which has it.
 - A plugin that hardcodes `/tmp` rather than `${TMPDIR:-/tmp}` is unaffected and stays out of bounds. Nothing here detects that; #1809's boundary check is what will.
 

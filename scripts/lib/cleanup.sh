@@ -108,8 +108,11 @@ _cleanup_scan_state_files() {
     local now; now="$(date +%s)"
     local cutoff=$(( now - age_days * 86400 ))
     local f
-    # #887: per-run state lives under runs/<id>/; scan those AND the legacy flat path.
-    for f in "$state_dir"/runs/*/pipeline-state*.json "$state_dir"/pipeline-state*.json; do
+    # LEGACY FLAT PATH ONLY. Per-run state under runs/<id>/ moved to
+    # _cleanup_scan_state_dirs (#1920), which reclaims the whole job folder
+    # instead of the three JSON files inside it. Scanning both here would leave
+    # two scanners deciding the same run — the drift #1682 exists to prevent.
+    for f in "$state_dir"/pipeline-state*.json; do
         [[ -f "$f" ]] || continue
         # Skip .bak / .lock siblings (we never glob them anyway since pattern
         # ends in .json, but stay defensive).
@@ -516,7 +519,7 @@ _cleanup_render_plan() {
             # shared decision/reason format (#1634).
             local _w=40
             case "$kind" in
-                worktrees|scratch|"orch pools"|cache|tmpdirs) _w=60 ;;
+                worktrees|scratch|"orch pools"|cache|tmpdirs|"state dirs") _w=60 ;;
             esac
             printf '  %-*s  %-6s  %s\n' "$_w" "$target" "$decision" "$reason"
         else
@@ -899,6 +902,106 @@ _cleanup_scan_scratch() {
             continue
         fi
         printf '%s\tprune\trun=%s age=%sd\n' "$scratch" "$rid" "$age_d"
+    done
+}
+
+# ─── _cleanup_scan_state_dirs <state_dir> <age_days> <force_bool> ───────────
+# The job folder itself — <state_dir>/runs/<run_id>/ (ADR-058 §1).
+#
+# `--state-dirs` deleted three JSON files per run and left the directory holding
+# them standing, so artifacts/, events.jsonl, stage-io/, orch/, runtime/ and
+# (since #1918) scratch/ accumulated forever. #1927 reclaimed the scratch INSIDE
+# a job folder; this reclaims the folder. Applied with _cleanup_apply_dir_plan
+# rooted at <state_dir>/runs, which refuses any target not strictly inside it.
+#
+# LAST-TOUCH CLOCK, deliberately, not the issue clock. The issue clock (#1632,
+# generalised by #1927) is for targets the NEXT run of an issue reads back: a
+# work branch's unmerged code, ADR-050's state branch, the plan-context cache.
+# A terminal job folder is read by a human diagnosing one failure, and by
+# `zbuild resume` for a run that stopped mid-flight — the first is what retention
+# serves, the second is what the `interrupted` guard below preserves. Nothing
+# reads a terminal run's folder to start the next one, so keying it to the issue
+# would buy no safety and cost one `gh` call per run dir.
+#
+# DIRECTORY-DRIVEN, not glob-driven. Iterating runs/* rather than
+# runs/*/pipeline-state*.json is what lets a run dir with no state file be
+# REPORTED instead of being invisible to the scan (#1634).
+_cleanup_scan_state_dirs() {
+    local state_dir="$1" age_days="${2:-7}" force="${3:-false}"
+    [[ -d "$state_dir" ]] || return 0
+    local root="$state_dir/runs"
+    [[ -d "$root" ]] || return 0
+    local now; now="$(date +%s)"
+    local cutoff=$(( now - age_days * 86400 ))
+    local d rid f c status mtime age_d
+    for d in "$root"/*; do
+        [[ -d "$d" ]] || continue
+        rid="$(basename "$d")"
+        # Live run — never pruned, not even with --force.
+        if _cleanup_is_active_run "$rid"; then
+            printf '%s\tskip\tactive run\n' "$d"
+            continue
+        fi
+        if [[ -n "${ZBUILD_RUN_ID:-}" && "$rid" == "${ZBUILD_RUN_ID}" ]]; then
+            printf '%s\tskip\tcurrent run (ZBUILD_RUN_ID)\n' "$d"
+            continue
+        fi
+        f=""
+        for c in "$d"/pipeline-state*.json; do
+            [[ -f "$c" ]] || continue
+            case "$c" in *.bak|*.lock) continue ;; esac
+            f="$c"; break
+        done
+        status=""
+        [[ -n "$f" ]] && status="$(jq -r '.status // ""' "$f" 2>/dev/null || echo "")"
+        # _cleanup_is_active_run reads $ZBUILD_STATE_DIR, which need not be the
+        # <state_dir> argument. Re-check in_progress against the file actually
+        # found here so a mismatched pair cannot let a live run through.
+        if [[ "$status" == "in_progress" ]]; then
+            printf '%s\tskip\tstatus=in_progress (live)\n' "$d"
+            continue
+        fi
+        if [[ "$status" == "interrupted" && "$force" != "true" ]]; then
+            printf '%s\tskip\tinterrupted — resume preserved (ADR-018); --force to prune\n' "$d"
+            continue
+        fi
+        case "$status" in
+            complete|failed|aborted|interrupted) ;;
+            "")
+                if [[ "$force" != "true" ]]; then
+                    printf '%s\tskip\tno pipeline-state.json (fail-closed); --force to prune\n' "$d"
+                    continue
+                fi
+                ;;
+            *)
+                if [[ "$force" != "true" ]]; then
+                    printf '%s\tskip\tstatus=%s unrecognised (fail-closed); --force to prune\n' "$d" "$status"
+                    continue
+                fi
+                ;;
+        esac
+        # Age from the state file when there is one, the dir otherwise. GNU stat
+        # first (Linux CI), then BSD (macOS dev) — BSD stat -f returns garbage
+        # with rc=0 on Linux, so trying it first leaves non-numeric text behind.
+        if [[ -n "$f" ]]; then
+            mtime="$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)"
+        else
+            mtime="$(stat -c %Y "$d" 2>/dev/null || stat -f %m "$d" 2>/dev/null || echo 0)"
+        fi
+        # FAIL-CLOSED on an unreadable mtime, unlike the #1927 scanners that
+        # default it to 0. Those reclaim throwaway or regenerable trees; this one
+        # rm -rf's a run's whole evidence record, and an epoch fallback reads as
+        # "infinitely old" — turning a degraded stat into an unconditional prune.
+        if ! [[ "$mtime" =~ ^[1-9][0-9]*$ ]]; then
+            printf '%s\tskip\tmtime unreadable (fail-closed)\n' "$d"
+            continue
+        fi
+        age_d=$(( (now - mtime) / 86400 ))
+        if [[ "$mtime" -gt "$cutoff" ]]; then
+            printf '%s\tskip\tnewer than %sd (age %sd)\n' "$d" "$age_days" "$age_d"
+            continue
+        fi
+        printf '%s\tprune\trun=%s status=%s age=%sd\n' "$d" "$rid" "${status:-none}" "$age_d"
     done
 }
 

@@ -69,7 +69,9 @@ Commands:
   pipeline status        Show resume recommendation for the current state file
                          [--run-id <id>]
   cleanup                Prune stale run artifacts: zbuild/issue-* and
-                         zbuild/state/issue-* branches, state dirs, per-stage
+                         zbuild/state/issue-* branches, whole job folders
+                         (--state-dirs reclaims runs/<id>/ entirely, not just
+                         the state JSON inside it), per-stage
                          scratch, zb-applycheck-* stashes, leaked zbuild tmpdirs
                          (ZBUILD_TMPDIR_PATTERNS in lib/cleanup.sh), orch pool
                          dirs, and the content cache. The MEMORY store is never
@@ -758,9 +760,17 @@ UPHELP
 
         if $cl_state_dirs; then
             cl_state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
+            # Two scanners, one category, disjoint targets: the legacy FLAT
+            # state files at the root, then the per-run job folders under runs/.
+            # Splitting them is what lets the second reclaim a whole directory
+            # while the first keeps deleting single files (#1920).
             cl_state_candidates="$(_cleanup_scan_state_files "$cl_state_dir" "$cl_age_days" "$cl_force" || true)"
             _cleanup_render_plan "state files" "$cl_state_candidates" "$cl_dry_run" "$cl_quiet"
             _cleanup_apply_plan "$cl_state_candidates" "$cl_dry_run"
+
+            cl_state_dir_plan="$(_cleanup_scan_state_dirs "$cl_state_dir" "$cl_age_days" "$cl_force" || true)"
+            _cleanup_render_plan "state dirs" "$cl_state_dir_plan" "$cl_dry_run" "$cl_quiet"
+            _cleanup_apply_dir_plan "$cl_state_dir_plan" "$cl_dry_run" "$cl_state_dir/runs"
         fi
 
         if $cl_branches; then

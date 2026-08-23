@@ -1,26 +1,29 @@
 #!/usr/bin/env bash
-# DEPRECATED — use `zbuild clean` for run-scoped teardown cleanup (#E5, #1831).
-# This file is preserved (not deleted) because #1632's scheduled cron references
-# it by path. Do not remove it until #1632 is updated to call `zbuild clean`.
+# Operator CLI for the PLAN-CONTEXT CACHE ($ZBUILD_PLAN_CONTEXT_DIR, #1052
+# Pillar F). Default-safe (dry-run unless --force), path-sanitized (refuses
+# anything outside that one root).
 #
-# GAP (#1632): the plan-context cache GC behaviour (--older-than, --status,
-# --repo, --issue, --max-entries) is NOT yet covered by clean.yaml. Until #1632
-# wires it, this script remains the authoritative path for plan-context pruning.
-# Per-run state teardown should be migrated to: zbuild clean --run-id <id>
+# ── The overlap, resolved (#1920) ────────────────────────────────────────────
+# This file used to prune per-run state dirs as well, which made it the second
+# implementation of a job-folder reclaimer. `zbuild cleanup --state-dirs` is now
+# the only one: it has an in_progress guard, an ADR-018 resume guard, a
+# fail-closed unknown-status guard and a root-prefix revalidation at delete
+# time, none of which the loop removed from here had — it aged run dirs on
+# mtime alone and would delete a LIVE run that merely wasn't the one named in
+# $ZBUILD_RUN_ID. Two pruners for one store is the drift #1682 exists to
+# prevent, so the weaker one is gone.
 #
-# Operator CLI to prune the plan-context cache and per-run state dirs (#1052, Pillar F).
-# Both stores grow unbounded: the cross-run plan-context cache
-# ($ZBUILD_PLAN_CONTEXT_DIR) introduced by this issue, and the per-run state dirs
-# ($HOME/.zbuild/state/runs/<run_id>). This prunes both, default-safe (dry-run
-# unless --force), path-sanitized (refuses anything outside the two roots), and
-# never touches the currently-active $ZBUILD_RUN_ID.
+# What keeps this script alive is the half `zbuild cleanup` does NOT have: the
+# plan-context GC semantics — --status (retaining resumable scope_too_large
+# entries), --repo/--issue namespace scoping, and --max-entries LRU. Retiring
+# the file means moving those, and that is #1632's work, not this one's.
+#
+# The header this replaces claimed the file was preserved because "#1632's
+# scheduled cron references it by path". Nothing under .github/ references it —
+# verified 2026-08-23. The plan-context GC gap is the real reason.
 #
 # Usage: bash scripts/cleanup-artifacts.sh [flags]   (see --help)
 set -euo pipefail
-# Emit the deprecation notice to stderr so callers are informed. Piped here so
-# it doesn't interfere with any stdout consumers.
-printf '[DEPRECATED] cleanup-artifacts.sh: use `zbuild clean` for run-scoped teardown.\n' >&2
-printf '  Plan-context GC (--older-than, --status, etc.) is not yet in clean.yaml (#1632).\n' >&2
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -28,10 +31,6 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # Roots we are allowed to touch. Resolve to absolute (canonical) paths so the
 # containment guard below can never be fooled by .. or a symlink escape.
 PLAN_CONTEXT_DIR="${ZBUILD_PLAN_CONTEXT_DIR:-$HOME/.zbuild/plan-context}"
-# Honor the same state-base override the `zbuild` CLI uses so an operator (or a
-# hermetic test) can repoint pruning away from the real ~/.zbuild/state — a bare
-# `--older-than 0d --force` against the real root would otherwise prune live runs.
-STATE_ROOT="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
 
 # Source plan-context.sh if a sibling agent has written it (for plan_context_gc
 # parity), but DEGRADE GRACEFULLY — this CLI implements its own pruning so the
@@ -59,8 +58,10 @@ usage() {
     cat <<'EOF'
 Usage: cleanup-artifacts.sh [flags]
 
-Prune the plan-context cache ($ZBUILD_PLAN_CONTEXT_DIR, default ~/.zbuild/plan-context)
-and per-run state dirs ($HOME/.zbuild/state/runs/<run_id>).
+Prune the plan-context cache ($ZBUILD_PLAN_CONTEXT_DIR, default ~/.zbuild/plan-context).
+
+Per-run state dirs are NOT pruned here: `zbuild cleanup --state-dirs` owns job-folder
+reclamation (#1920).
 
 Flags:
   --older-than <Nd|Nh>   Prune entries older than N days/hours by mtime
@@ -77,7 +78,7 @@ Flags:
   -h, --help             Show this help.
 
 Safety:
-  Refuses to delete anything outside $ZBUILD_PLAN_CONTEXT_DIR or $HOME/.zbuild/state.
+  Refuses to delete anything outside $ZBUILD_PLAN_CONTEXT_DIR.
   Never deletes the directory of the currently-active $ZBUILD_RUN_ID.
 EOF
 }
@@ -174,20 +175,13 @@ _size_bytes() {
 # strictly *inside* one of the allowed roots (never equal to a root, never
 # outside it, no .. escape, no symlink escape). Returns 0 if safe to delete.
 _is_within_roots() {
-    local target canon root_pc root_st
+    local target canon root_pc
     target="$1"
     canon="$(_canonical "$target")"
     root_pc="$(_canonical "$PLAN_CONTEXT_DIR")"
-    root_st="$(_canonical "$STATE_ROOT")"
-    local r
-    for r in "$root_pc" "$root_st"; do
-        [[ -z "$r" ]] && continue
-        # Must be strictly under the root (root + '/' prefix), not the root itself.
-        if [[ "$canon" == "$r"/* ]]; then
-            return 0
-        fi
-    done
-    return 1
+    [[ -z "$root_pc" ]] && return 1
+    # Must be strictly under the root (root + '/' prefix), not the root itself.
+    [[ "$canon" == "$root_pc"/* ]]
 }
 
 # Delete (or in dry-run, just report) a path after the safety gate.
@@ -366,28 +360,6 @@ _remove_context_leaf() {
 }
 
 # ── per-run state dir prune ──────────────────────────────────────────────────
-prune_state_runs() {
-    local runs_dir="$STATE_ROOT/runs"
-    [[ -d "$runs_dir" ]] || return 0
-
-    local max_age now cutoff
-    max_age="$(_duration_to_secs "$OLDER_THAN")"
-    now="$(date +%s)"
-    cutoff=$(( now - max_age ))
-
-    local run_dir
-    for run_dir in "$runs_dir"/*; do
-        [[ -d "$run_dir" ]] || continue
-        local run_id; run_id="$(basename "$run_dir")"
-        # Never delete the active run (also guarded in _remove_path).
-        [[ -n "${ZBUILD_RUN_ID:-}" && "$run_id" == "$ZBUILD_RUN_ID" ]] && continue
-        local mtime; mtime="$(_mtime "$run_dir")"
-        if [[ "$mtime" -le "$cutoff" ]]; then
-            _remove_path "$run_dir" "older-than=$OLDER_THAN"
-        fi
-    done
-}
-
 # ── Summary ──────────────────────────────────────────────────────────────────
 print_summary() {
     if [[ "$DRY_RUN" == true ]]; then
@@ -403,7 +375,6 @@ main() {
         prune_wipe_all
     else
         prune_plan_context
-        prune_state_runs
     fi
     print_summary
 }
