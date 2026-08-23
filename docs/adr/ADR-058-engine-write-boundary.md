@@ -4,7 +4,7 @@
 **Date:** 2026-08-22
 **Issue:** #1918
 **Amended:** 2026-08-23 (#1809) — a fifth area, `runtime/`, for live run bookkeeping
-**Related:** ADR-052 (engine-owned run worktree), ADR-011 (pluggable backends — the cache and memory stores), ADR-024 (subprocess env isolation), ADR-004 (redaction chokepoint), ADR-054 §3 (the dispatch identity seam this reuses), ADR-056 (cleanup-only lifecycle — why nothing here deletes)
+**Related:** ADR-052 (engine-owned run worktree), ADR-011 (pluggable backends — the cache and memory stores), ADR-024 (subprocess env isolation), ADR-004 (redaction chokepoint), ADR-054 §3 (the dispatch identity seam this reuses), ADR-054 §7 (release/purge — why nothing here deletes), ADR-056 (cleanup-only lifecycle)
 
 ## Context
 

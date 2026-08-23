@@ -67,7 +67,7 @@ The pipeline workflow uploads the whole state dir as an artifact, on success and
 
 ## Nothing here is deleted automatically
 
-A run's scratch survives the run. That is deliberate: automatic cleanup frees live resources and deletes nothing (ADR-056), so a failed run keeps its evidence. Reclaiming job folders is operator-invoked, not part of the stage lifecycle.
+A run's scratch survives the run. That is deliberate: automatic cleanup frees live resources and deletes nothing (ADR-054 §7), so a failed run keeps its evidence. Reclaiming job folders is operator-invoked, not part of the stage lifecycle.
 
 ## Related
 
