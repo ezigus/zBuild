@@ -312,6 +312,33 @@ else
         "unexpected: $_wb_log2"
 fi
 
+# ─── SPEC-4g: the system temp is swept only when TMPDIR was redirected ──────
+# ADR-058 §3 points TMPDIR at the per-stage scratch dir for the span of a
+# dispatch. Only then is a file in the system temp attributable to a stage:
+# where the redirect is not in effect, the engine's own temps (template merge,
+# redaction buffers, router captures) land there legitimately, as does anything
+# else running on the box. Sweeping it then halts runs on the engine doing its
+# job — observed on ubuntu CI as stage=intake path=/tmp/zb-route-redact-out.*
+# CHANGE: fails at baseline (the roots were swept unconditionally).
+
+# Against the SHIPPED config, not this file's canary override — the system-temp
+# roots only exist in the default list.
+_wl_off="$(unset ZBUILD_WRITE_BOUNDARY_WATCH; write_boundary_watch_list)"
+if grep -qE '^(/tmp|/private/tmp)( |$)' <<< "$_wl_off"; then
+    assert_fail "[SPEC-4g] system temp is NOT swept when ZBUILD_STAGE_SCRATCH is unset" \
+        "watch list still contains a system-temp root: $_wl_off"
+else
+    assert_pass "[SPEC-4g] system temp is NOT swept when ZBUILD_STAGE_SCRATCH is unset"
+fi
+
+_wl_on="$(unset ZBUILD_WRITE_BOUNDARY_WATCH; ZBUILD_STAGE_SCRATCH="$TEST_TEMP_DIR" write_boundary_watch_list)"
+if grep -qE '^(/tmp|/private/tmp)( |$)' <<< "$_wl_on"; then
+    assert_pass "[SPEC-4g] system temp IS swept once the redirect is in effect"
+else
+    assert_fail "[SPEC-4g] system temp IS swept once the redirect is in effect" \
+        "watch list: $_wl_on"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
