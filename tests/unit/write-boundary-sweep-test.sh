@@ -283,6 +283,35 @@ else
         "callers missing the source: $_bad_callers"
 fi
 
+# ─── SPEC-4f: ZBUILD_WRITE_BOUNDARY_LOG captures the violation ──────────────
+# Most integration tests send the runner's stderr to /dev/null, so a halt there
+# reports rc=1 and nothing else. The sink is the channel that survives that.
+# CHANGE: fails at baseline (the variable is not read).
+
+_wb_log="$TEST_TEMP_DIR/wb-violations.log"
+: > "$_wb_log"
+rm -f "$JOB_DIR/runtime/write-boundary-violated"
+write_boundary_mark "$STATE_FILE"
+touch "$WATCH_DIR/sink-probe.txt"
+ZBUILD_WRITE_BOUNDARY_LOG="$_wb_log" \
+    write_boundary_check "$FIXTURE_DIR" "$STATE_FILE" "sink-stage" "" >/dev/null 2>&1 || true
+assert_contains "[SPEC-4f] the violation log names the stage and the path" \
+    "$(cat "$_wb_log" 2>/dev/null || true)" "stage=sink-stage"
+
+# GUARD: unset variable writes nothing anywhere — a diagnostic must not change
+# behaviour, and must not create files of its own.
+_wb_log2="$TEST_TEMP_DIR/wb-violations-2.log"
+rm -f "$JOB_DIR/runtime/write-boundary-violated"
+write_boundary_mark "$STATE_FILE"
+touch "$WATCH_DIR/sink-probe-2.txt"
+write_boundary_check "$FIXTURE_DIR" "$STATE_FILE" "sink-stage" "" >/dev/null 2>&1 || true
+if [[ ! -e "$_wb_log2" ]]; then
+    assert_pass "[SPEC-4f] no sink file is created when the variable is unset"
+else
+    assert_fail "[SPEC-4f] no sink file is created when the variable is unset" \
+        "unexpected: $_wb_log2"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

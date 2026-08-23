@@ -225,6 +225,16 @@ write_boundary_violation_recorded() {
     # event NAME set is unchanged and the sequence goldens are untouched.
     printf 'write-boundary violation: stage=%s wrote outside every allowed area: %s\n' \
         "$_stage" "$_path" >&2
+    # ZBUILD_WRITE_BOUNDARY_LOG: an append-only sink for the same line, for
+    # contexts that discard the dispatch's stderr. Most integration tests send
+    # the runner's stderr to /dev/null, so a halt there reports only a non-zero
+    # rc and the operator (or CI) never learns which path caused it. Off unless
+    # the variable is set; failure to write is ignored, since a diagnostic must
+    # never be the reason a run behaves differently.
+    if [[ -n "${ZBUILD_WRITE_BOUNDARY_LOG:-}" ]]; then
+        printf 'stage=%s path=%s\n' "$_stage" "$_path" \
+            >> "$ZBUILD_WRITE_BOUNDARY_LOG" 2>/dev/null || true
+    fi
     if declare -F emit_event >/dev/null 2>&1; then
         emit_event "stage.write_boundary.violated" "stage=${_stage}" "path=${_path}" || true
     fi

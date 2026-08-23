@@ -147,6 +147,9 @@ jobs:
           exit "${PIPESTATUS[0]}"
         env:
           ZBUILD_TEST_TIMING_FILE: ${{ runner.temp }}/zbuild-integration-timing.txt
+          # Most integration tests discard the runner's stderr, so a write-boundary
+          # halt otherwise reports only rc=1 with no path (ADR-058 C9, #1809).
+          ZBUILD_WRITE_BOUNDARY_LOG: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
       - name: Upload integration results
         uses: actions/upload-artifact@v7
         if: always()
@@ -157,6 +160,7 @@ jobs:
           path: |
             ${{ runner.temp }}/zbuild-integration-results.txt
             ${{ runner.temp }}/zbuild-integration-timing.txt
+            ${{ runner.temp }}/zbuild-write-boundary-violations.txt
           if-no-files-found: ignore
 
   e2e-mocked:
