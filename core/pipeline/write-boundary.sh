@@ -60,16 +60,6 @@ write_boundary_watch_list() {
             # Sweeping it then reports the engine doing its job as a stage writing
             # out of bounds. Skip those roots rather than allowlisting engine
             # filenames, which would grow forever and let a stage evade by naming.
-            # Exact roots only — never a prefix. A watch entry that merely LIVES
-            # under the system temp (an operator's canary dir, a test fixture) is
-            # a deliberate target and must still be swept.
-            local _exp_path="${_exp%% maxdepth:*}"; _exp_path="${_exp_path%% *}"
-            _exp_path="${_exp_path%/}"
-            local _sys_tmp="${TMPDIR:-/tmp}"; _sys_tmp="${_sys_tmp%/}"
-            if [[ "$_exp_path" == "/tmp" || "$_exp_path" == "$_sys_tmp" ]] \
-               && [[ -z "${ZBUILD_STAGE_SCRATCH:-}" || ! -d "${ZBUILD_STAGE_SCRATCH:-}" ]]; then
-                continue
-            fi
             printf '%s\n' "$_exp"
         done < "$_cfg"
     else

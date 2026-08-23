@@ -312,32 +312,38 @@ else
         "unexpected: $_wb_log2"
 fi
 
-# ─── SPEC-4g: the system temp is swept only when TMPDIR was redirected ──────
-# ADR-058 §3 points TMPDIR at the per-stage scratch dir for the span of a
-# dispatch. Only then is a file in the system temp attributable to a stage:
-# where the redirect is not in effect, the engine's own temps (template merge,
-# redaction buffers, router captures) land there legitimately, as does anything
-# else running on the box. Sweeping it then halts runs on the engine doing its
-# job — observed on ubuntu CI as stage=intake path=/tmp/zb-route-redact-out.*
-# CHANGE: fails at baseline (the roots were swept unconditionally).
+# ─── SPEC-4g: the shipped default does not sweep the system temp ────────────
+# scripts/lib/env-scrub.sh wipes every ZBUILD_* before a model spawn, so engine
+# code in a spawned child cannot see ZBUILD_STAGE_SCRATCH and its temps land in
+# the system temp. Those are the ENGINE's writes, not the swept stage's, and
+# halting on them kills runs on the engine doing its job — ubuntu CI showed
+# stage=intake path=/tmp/zb-route-redact-out.*, stage=test path=/tmp/zb-numstat.*
+# (the latter from the INSTALLED engine, in a nested run). Coverage returns with
+# a run-scoped TMPDIR, which is C10 (#1919). An operator can opt back in via the
+# override file.
+# CHANGE: fails at baseline (the shipped list carried both roots).
 
-# Against the SHIPPED config, not this file's canary override — the system-temp
-# roots only exist in the default list.
-_wl_off="$(unset ZBUILD_WRITE_BOUNDARY_WATCH; write_boundary_watch_list)"
-if grep -qE '^(/tmp|/private/tmp)( |$)' <<< "$_wl_off"; then
-    assert_fail "[SPEC-4g] system temp is NOT swept when ZBUILD_STAGE_SCRATCH is unset" \
-        "watch list still contains a system-temp root: $_wl_off"
+_wl_default="$(unset ZBUILD_WRITE_BOUNDARY_WATCH; write_boundary_watch_list)"
+# Exact roots only. $HOME is redirected under the system temp in this harness,
+# so a prefix match would flag the (legitimate) $HOME entry.
+_sys_tmp_root="${TMPDIR:-/tmp}"; _sys_tmp_root="${_sys_tmp_root%/}"
+if awk -v a="/tmp" -v b="$_sys_tmp_root" \
+     '{p=$1} p==a||p==b{found=1} END{exit !found}' <<< "$_wl_default"; then
+    assert_fail "[SPEC-4g] the shipped watch list does not carry a system-temp root" \
+        "watch list: $_wl_default"
 else
-    assert_pass "[SPEC-4g] system temp is NOT swept when ZBUILD_STAGE_SCRATCH is unset"
+    assert_pass "[SPEC-4g] the shipped watch list does not carry a system-temp root"
 fi
 
-_wl_on="$(unset ZBUILD_WRITE_BOUNDARY_WATCH; ZBUILD_STAGE_SCRATCH="$TEST_TEMP_DIR" write_boundary_watch_list)"
-if grep -qE '^(/tmp|/private/tmp)( |$)' <<< "$_wl_on"; then
-    assert_pass "[SPEC-4g] system temp IS swept once the redirect is in effect"
-else
-    assert_fail "[SPEC-4g] system temp IS swept once the redirect is in effect" \
-        "watch list: $_wl_on"
-fi
+# GUARD: the roots an operator CAN attribute are still swept.
+for _need in "$HOME" "$PWD"; do
+    if grep -qF "$_need" <<< "$_wl_default"; then
+        assert_pass "[SPEC-4g] the shipped watch list still covers $_need"
+    else
+        assert_fail "[SPEC-4g] the shipped watch list still covers $_need" \
+            "watch list: $_wl_default"
+    fi
+done
 
 cleanup_test_env
 print_test_results
