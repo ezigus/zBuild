@@ -1,6 +1,7 @@
 # ADR-035 — Orchestrator Run-State Isolation (scratch & pool dirs)
 
 **Status:** Accepted (2026-06-15)
+**Amended:** 2026-08-22 — the "pool dirs are intentionally not in the cleanup scanner" decision below is reversed; they now have a reclaimer
 **Related:** ADR-024 (subprocess environment isolation), ADR-023 (install isolation), ADR-011 (pluggable orchestrator backends)
 **Issue:** #898; the orchestrator analog of #887/#889 (per-run state isolation)
 
@@ -44,6 +45,20 @@ default-only re-root (an explicit override always wins):
    they are intentionally NOT added to `cleanup.sh`'s single-level
    `ZBUILD_TMPDIR_PATTERNS` scanner — same as the pre-#898 flat `zbuild-pool-*`
    dirs, which were never in it either (no leak regression).
+
+   > **Amended 2026-08-22 — reversed.** The reasoning above holds for a run that
+   > exits normally and fails for every run that does not. `orch_shutdown` reaps
+   > the pool on the success path; a run that is killed, times out, or dies on a
+   > signal never reaches it, and nothing has ever collected what it left. "No
+   > leak regression" was measured against a baseline that also leaked.
+   >
+   > Pool dirs now have a dedicated reclaimer, `_cleanup_scan_orch_pools`,
+   > surfaced as `zbuild cleanup --orch-pools` and in the default set. It is a
+   > separate scanner rather than a `ZBUILD_TMPDIR_PATTERNS` entry because the
+   > original objection was structurally correct: these live one level deeper
+   > than the flat patterns, so the single-level glob could never have reached
+   > them even if they were listed. The scanner skips a pool whose run is still
+   > active, and reports every skip with the guard that fired.
 
 `run_id` falls back to `default` only if somehow unset, preserving behavior outside
 a runner-managed pipeline.
