@@ -16,3 +16,7 @@ ${HOME}/.zbuild
 ${TMPDIR:-/tmp} maxdepth:1
 /tmp maxdepth:1
 ${PWD} maxdepth:1
+# The engine root at 2, per the issue's sweep spec. _ZBUILD_WB_ROOT is set by
+# core/pipeline/write-boundary.sh; the built-in fallback list already carried
+# this entry, so without it here the shipped config swept less than the default.
+${_ZBUILD_WB_ROOT} maxdepth:2

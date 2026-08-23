@@ -138,7 +138,16 @@ write_boundary_sweep() {
         _depth=3
         [[ "$_entry" =~ maxdepth:([0-9]+) ]] && _depth="${BASH_REMATCH[1]}"
         [[ -d "$_path" ]] || continue
-        find "$_path" -maxdepth "$_depth" -mindepth 1 -newer "$_marker" 2>/dev/null || true
+        # -type f: the sweep asks "did this stage drop a FILE where nothing
+        # should be?" — the issue's own honesty argument for -maxdepth 1. A bare
+        # directory entry cannot answer it. A directory's mtime changes whenever
+        # ANY process creates a child inside it, and mtime does not carry
+        # authorship, so directory hits are unattributable by construction: CI
+        # flagged two other integration tests' mktemp -d dirs and a child
+        # process's event dir, none of them written by the stage under check.
+        # Restricting to regular files keeps the measured defect (a stage wrote
+        # to /tmp) and drops the class that cannot be attributed.
+        find "$_path" -maxdepth "$_depth" -mindepth 1 -type f -newer "$_marker" 2>/dev/null || true
     done <<< "$(write_boundary_watch_list)"
 }
 
