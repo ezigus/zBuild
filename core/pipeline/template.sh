@@ -32,6 +32,10 @@ fi
 _TPL_DEFAULT_STRATEGY="fanout"
 _TPL_MERGE_POLICY="auto_unless_flagged"
 _TPL_STAGES=()
+# #1831: ordered stage ids that run on EVERY exit path (success, non-zero rc,
+# SIGINT, SIGTERM, timeout). Declared by the template's top-level `always_run:`
+# list, NOT part of _TPL_STAGES[] — an always-run stage is not in the flow.
+_TPL_ALWAYS_RUN=()
 # ADR-021 (#512): list of dispatch units in template order. Each entry is
 # "stage:<id>" or "cycle:<id>". Empty `cycles:` block → every unit is "stage:<id>"
 # (backwards-compat — runner behavior identical to today).
@@ -119,6 +123,7 @@ load_template() {
     done
 
     _TPL_STAGES=()
+    _TPL_ALWAYS_RUN=()
     _TPL_CYCLES=()
     _TPL_PARALLEL_GROUPS=()
     _TPL_MAP_GROUPS=()
@@ -604,6 +609,15 @@ load_template() {
                 # shellcheck disable=SC2163
                 export "${var?}"
                 ;;
+            AR)
+                # #1831: the ordered always-run list. Payload is the CSV itself
+                # (no stage-id field — the row IS the list), so it is read whole
+                # rather than split on the leading `|` like every other row.
+                local _ar_ifs="$IFS"; IFS=','
+                # shellcheck disable=SC2206
+                _TPL_ALWAYS_RUN=($payload)
+                IFS="$_ar_ifs"
+                ;;
             BL)
                 # ADR-013 blocking attribute (CQ-3 / issue #863).
                 # Format: <stage_id>|true
@@ -650,6 +664,40 @@ load_template() {
                "_TPL_STAGE_ROUTER_MAX_TURNS_${safe_id}" \
                "_TPL_STAGE_ROUTER_MAX_ITERATIONS_${safe_id}" \
                "_TPL_STAGE_ROUTER_RETRIES_${safe_id}"
+    done
+
+    # ── #1831: always-run stage attributes ────────────────────────────────────
+    # These stages are NOT in _TPL_STAGES[], so the loop above never saw them.
+    # They still need their roles and router.timeout_s exported, because the
+    # runner resolves and bounds them from the EXIT trap exactly like any other
+    # dispatch. Fail CLOSED on a member with no section: an always-run stage
+    # that silently does not exist is the failure this attribute was built to
+    # remove (#1878 — "the snapshot was never called"), so a typo in the list
+    # must refuse the template, not degrade to running nothing.
+    local _ar_id _ar_row _ar_safe
+    local _ar_roles _ar_strat _ar_iod _ar_iot _ar_ior _ar_rt _ar_rmt _ar_rmi _ar_rre
+    for _ar_id in "${_TPL_ALWAYS_RUN[@]}"; do
+        _ar_row="${stage_def_row[$_ar_id]:-}"
+        if [[ -z "$_ar_row" ]]; then
+            error "load_template: always_run names '$_ar_id' but no top-level section defines it"
+            return 1
+        fi
+        IFS='|' read -r _ar_roles _ar_strat _ar_iod _ar_iot _ar_ior _ar_rt _ar_rmt _ar_rmi _ar_rre <<< "$_ar_row"
+        if [[ -z "$_ar_roles" ]]; then
+            error "load_template: always_run stage '$_ar_id' declares no roles: — the runner resolves it by role"
+            return 1
+        fi
+        _ar_safe="${_ar_id//-/_}"
+        printf -v "_TPL_STAGE_ROLES_${_ar_safe}"          '%s' "$_ar_roles"
+        printf -v "_TPL_STAGE_IO_DESTS_${_ar_safe}"       '%s' "$_ar_iod"
+        printf -v "_TPL_STAGE_IO_TAIL_${_ar_safe}"        '%s' "$_ar_iot"
+        printf -v "_TPL_STAGE_IO_REDACT_${_ar_safe}"      '%s' "$_ar_ior"
+        printf -v "_TPL_STAGE_ROUTER_TIMEOUT_${_ar_safe}" '%s' "$_ar_rt"
+        export "_TPL_STAGE_ROLES_${_ar_safe}" \
+               "_TPL_STAGE_IO_DESTS_${_ar_safe}" \
+               "_TPL_STAGE_IO_TAIL_${_ar_safe}" \
+               "_TPL_STAGE_IO_REDACT_${_ar_safe}" \
+               "_TPL_STAGE_ROUTER_TIMEOUT_${_ar_safe}"
     done
 
     _tpl_validate_cycles || return 1
@@ -1682,11 +1730,19 @@ _tpl_translate_new_shape() {
         # ADR-037 §4 per-template knob; reserving it stops the new-shape
         # translator from emitting it as a phantom stage definition (#968 review).
         return (k == "id" || k == "name" || k == "extends" || k == "defaults" \
-                || k == "flow" || k == "_comment" || k == "merge_policy")
+                || k == "flow" || k == "_comment" || k == "merge_policy" \
+                || k == "always_run")
     }
     BEGIN {
         in_flow = 0
         flow_n = 0
+        # #1831: top-level `always_run:` — an ORDERED list of stage ids that run
+        # on every exit path. Parsed exactly like `flow:`, and deliberately kept
+        # out of it: an always-run stage is not part of the flow, so it must not
+        # reach _TPL_STAGES[] (which drives dispatch units, canonical-order
+        # validation and every test that pins a stage count).
+        in_always_run = 0
+        ar_n = 0
         cur_key = ""
         cur_indent_unit = 2
         # per-section accumulators
@@ -1855,9 +1911,35 @@ _tpl_translate_new_shape() {
         if (item != "") { flow_n++; flow[flow_n] = item }
         next
     }
+
+    # ── Top-level always_run: list (#1831) ────────────────────────────────────
+    # Same two forms `flow:` accepts, for the same reason: a template author
+    # should not have to remember which top-level list takes which syntax.
+    /^always_run:[[:space:]]*$/ {
+        flush_section(); reset_section(); cur_key = ""
+        in_flow = 0; in_always_run = 1; next
+    }
+    /^always_run:[[:space:]]*\[/ {
+        flush_section(); reset_section(); cur_key = ""
+        line = $0
+        sub(/^[^[]*\[/, "", line); sub(/\].*$/, "", line)
+        gsub(/[[:space:]]/, "", line)
+        n = split(line, items, /,/)
+        for (i = 1; i <= n; i++) {
+            if (items[i] != "") { ar_n++; ar[ar_n] = items[i] }
+        }
+        in_always_run = 0
+        next
+    }
+    in_always_run && /^[[:space:]]+-[[:space:]]/ {
+        item = $0; sub(/^[[:space:]]+-[[:space:]]+/, "", item); item = trim(item)
+        if (item != "") { ar_n++; ar[ar_n] = item }
+        next
+    }
     # Top-level non-indented line — end any current scope.
     /^[a-zA-Z_]/ {
         in_flow = 0
+        in_always_run = 0
         flush_section(); reset_section()
         line = $0
         cur_key = line; sub(/:.*$/, "", cur_key); cur_key = trim(cur_key)
@@ -2271,6 +2353,15 @@ _tpl_translate_new_shape() {
         # ADR-013 (CQ-3 / issue #863): BL| rows for blocking leaf stages.
         for (k in sec_blocking_val) {
             if (sec_blocking_val[k] == "true") print "BL|" k "|true"
+        }
+        # #1831: one AR| row carrying the ordered always-run list as CSV. Emitted
+        # even when empty is pointless, so it is emitted only when non-empty —
+        # a template with no always-run stages produces no row, and the loader
+        # leaves _TPL_ALWAYS_RUN[] empty.
+        if (ar_n > 0) {
+            ar_csv = ar[1]
+            for (i = 2; i <= ar_n; i++) ar_csv = ar_csv "," ar[i]
+            print "AR|" ar_csv
         }
         # Now defs stream (separator US, second half)
         printf "%s", US

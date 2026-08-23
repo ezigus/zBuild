@@ -30,6 +30,29 @@ flow:
   - validate
   - monitor
 
+# ─── always_run (#1831) ──────────────────────────────────────────────────────
+# Stages that run on EVERY exit path — success, non-zero rc, SIGINT, SIGTERM,
+# timeout — in the order listed, after the flow has ended.
+#
+# This replaces a hardcoded dispatch in the runner's EXIT trap, which named one
+# plugin by DIRECTORY (`plugins/tool/teardown`) and degraded silently to a no-op
+# if it was absent. "Runs on every exit path" is a property of the FLOW, so it
+# belongs in the template that defines the flow — not at a line number inside a
+# 3000-line runner, where an edit can drop it without anything noticing. #1878
+# found exactly that failure in the sibling mechanism: the snapshot was never
+# called.
+#
+# An always-run stage is NOT part of `flow:` and never enters the flow's stage
+# list: it has no place in the pipeline's data dependencies and must not affect
+# convergence, verdicts, or the run's exit status.
+#
+# Each entry is an ordinary top-level stage section — resolved by `roles:` like
+# any other stage, and bounded by its own `router.timeout_s`. A name here with
+# no section, or a section with no `roles:`, REFUSES the template rather than
+# quietly running nothing.
+always_run:
+  - release
+
 # ─── design_verify_cycle (cycle) ─────────────────────────────────────────────
 design_verify_cycle:
   type: cycle
@@ -273,3 +296,21 @@ monitor:
   router:
     timeout_s: 300
     max_turns: 10
+
+# ─── release (always-run, ADR-054 §7) ────────────────────────────────────────
+# Frees live resources — process groups, locks, handles — and DELETES NOTHING,
+# so a failed run keeps every byte of its evidence on disk. The teardown plugin
+# pins its own scope to `release`; `purge` is operator-only and unreachable from
+# any run path (`zbuild clean --purge`).
+#
+# timeout_s is 30 and is load-bearing, not a formality: this stage runs inside
+# the EXIT trap, so a cleanup hook that blocks would turn Ctrl-C into a hang —
+# the exact class of bug the mechanism exists to prevent.
+release:
+  gate: auto
+  roles: [teardown]
+  router:
+    timeout_s: 30
+  io:
+    destinations: [file]
+    tail_lines: 50

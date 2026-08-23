@@ -28,7 +28,7 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 export ZBUILD_RUN_ID="purge-not-in-run-test-$$"
 
 # ─── SPEC-4: runner's EXIT-trap teardown dispatch always uses scope=release ───
-# GUARD: the runner's _runner_dispatch_release always exports
+# GUARD: the runner's _runner_dispatch_always_run always exports
 # ZBUILD_TEARDOWN_SCOPE=release before calling plugin_hook_call. Even if an
 # ambient ZBUILD_TEARDOWN_SCOPE=purge is present in the environment, the
 # export inside the subshell overrides it. This invariant is structural (the
@@ -66,7 +66,7 @@ printf '{"stage_statuses":{"spec4-scope-capture":"complete"}}' \
     > "$_spec4_state_dir/pipeline-state.json"
 
 # Call teardown_run with ZBUILD_TEARDOWN_SCOPE=purge in the ENVIRONMENT but
-# simulate the runner's _runner_dispatch_release pattern: export
+# simulate the runner's _runner_dispatch_always_run pattern: export
 # ZBUILD_TEARDOWN_SCOPE=release in a subshell, which is exactly what the runner
 # does. This proves the structural override works.
 (
