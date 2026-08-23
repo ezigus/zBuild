@@ -171,4 +171,37 @@ load_template "$_tpl_inline" >/dev/null 2>&1
 assert_eq "[SPEC-5] inline form preserves declared order" \
     "first second" "${_TPL_ALWAYS_RUN[*]}"
 
+# ─── [SPEC-6][guard] the OLD template shape gets always_run too ─────────────
+# `always_run:` is a top-level key in both shapes, and its members are top-level
+# sections in both. The first cut of this parsed it inside the NEW-shape
+# translator only, so every old-shape template silently lost its always-run
+# stages — the parity fixture (old shape, `extends: simple`) stopped running
+# teardown at all, and only the event-sequence golden noticed.
+#
+# The old shape is deprecated, not dead. Silently dropping resource cleanup for
+# it is worse than refusing to load it.
+print_test_section "[SPEC-6][guard] an old-shape template inherits always_run from its base"
+
+# shellcheck source=../../core/pipeline/template-resolver.sh
+source "$REPO_ROOT/core/pipeline/template-resolver.sh"
+
+_ovl_repo="$TEST_TEMP_DIR/oldshape-repo"
+mkdir -p "$_ovl_repo/.zbuild/templates"
+cat > "$_ovl_repo/.zbuild/templates/oldar.yaml" <<'EOF'
+id: oldar
+name: Old Shape With Inherited always_run
+extends: simple
+stages:
+  - id: intake
+    gate: auto
+EOF
+_ovl_file="$(resolve_template_file oldar "$_ovl_repo")"
+load_template "$_ovl_file" >/dev/null 2>&1
+assert_eq "[SPEC-6] old-shape overlay still gets always_run: [release]" \
+    "release" "${_TPL_ALWAYS_RUN[*]}"
+assert_eq "[SPEC-6] and its own single stage, not the base's flow" \
+    "1" "${#_TPL_STAGES[@]}"
+assert_eq "[SPEC-6] the release role survives the old-shape path" \
+    "teardown" "${_TPL_STAGE_ROLES_release:-<unset>}"
+
 print_test_results
