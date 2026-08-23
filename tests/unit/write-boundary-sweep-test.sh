@@ -295,8 +295,13 @@ write_boundary_mark "$STATE_FILE"
 touch "$WATCH_DIR/sink-probe.txt"
 ZBUILD_WRITE_BOUNDARY_LOG="$_wb_log" \
     write_boundary_check "$FIXTURE_DIR" "$STATE_FILE" "sink-stage" "" >/dev/null 2>&1 || true
-assert_contains "[SPEC-4f] the violation log names the stage and the path" \
-    "$(cat "$_wb_log" 2>/dev/null || true)" "stage=sink-stage"
+_wb_log_body="$(cat "$_wb_log" 2>/dev/null || true)"
+assert_contains "[SPEC-4f] the violation log names the stage" \
+    "$_wb_log_body" "stage=sink-stage"
+# The path is the whole reason the sink exists — asserting only the stage let the
+# `path=%s` half of the format string be dropped without reddening anything.
+assert_contains "[SPEC-4f] the violation log names the offending path" \
+    "$_wb_log_body" "path=$WATCH_DIR/sink-probe.txt"
 
 # GUARD: unset variable writes nothing anywhere — a diagnostic must not change
 # behaviour, and must not create files of its own.

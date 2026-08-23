@@ -52,14 +52,10 @@ write_boundary_watch_list() {
                 _exp="${_exp//\$\{$_v\}/${!_v}}"
                 _n=$((_n + 1))
             done
-            # The system-temp roots are only attributable when ADR-058 §3's
-            # per-dispatch TMPDIR redirect is actually in effect. Where it is not,
-            # ZBUILD_STAGE_SCRATCH is unset and every engine temp — the template
-            # merge, the redaction buffers, the router captures — legitimately
-            # lands in the system temp, alongside whatever else runs on the box.
-            # Sweeping it then reports the engine doing its job as a stage writing
-            # out of bounds. Skip those roots rather than allowlisting engine
-            # filenames, which would grow forever and let a stage evade by naming.
+            # Emit every configured entry, unconditionally. The shipped config
+            # deliberately carries no system-temp root — see ADR-058 C9, "What
+            # the sweep does not cover" — so the omission lives in the config an
+            # operator can override, not in logic they cannot.
             printf '%s\n' "$_exp"
         done < "$_cfg"
     else
