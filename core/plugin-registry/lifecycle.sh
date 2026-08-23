@@ -14,6 +14,12 @@
 [[ -n "${_ZBUILD_REGISTRY_LIFECYCLE_LOADED:-}" ]] && return 0
 _ZBUILD_REGISTRY_LIFECYCLE_LOADED=1
 
+# #1809 (ADR-058 C9): declared-output path resolution is shared with
+# core/pipeline/write-boundary.sh so the artifact scanner and the write-boundary
+# classifier can never disagree about where a declared output lives.
+# shellcheck source=output-paths.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/output-paths.sh"
+
 # ─── scan_plugin_outputs — fail-closed artifact-presence scanner (#288) ─────
 # ADR-001 §Fail-closed scanner contract:
 #   "If a plugin declares an output but no artifact exists at outputs[].path
@@ -73,70 +79,15 @@ scan_plugin_outputs() {
     # would flag the missing optional artifact as a fail-closed contract
     # violation on every passing run, breaking the parity goldens.
     local paths
-    paths="$(awk '
-        BEGIN { in_block = 0; cur_path = ""; cur_required = ""; cur_primary = "" }
-        function flush() {
-            if (cur_path != "" && cur_required != "false") {
-                print cur_path "\t" cur_primary
-            }
-            cur_path = ""; cur_required = ""; cur_primary = ""
-        }
-        /^outputs:[[:space:]]*$/ { in_block = 1; next }
-        in_block && /^[a-zA-Z_]/ { flush(); in_block = 0 }
-        in_block && /^[[:space:]]*-[[:space:]]/ { flush() }
-        in_block && /^[[:space:]]+path:[[:space:]]*/ {
-            line = $0
-            sub(/^[[:space:]]+path:[[:space:]]*/, "", line)
-            sub(/[[:space:]]*#.*/, "", line)
-            gsub(/^["'"'"']|["'"'"']$/, "", line)
-            cur_path = line
-            next
-        }
-        in_block && /^[[:space:]]+required:[[:space:]]*/ {
-            line = $0
-            sub(/^[[:space:]]+required:[[:space:]]*/, "", line)
-            sub(/[[:space:]]*#.*/, "", line)
-            gsub(/^["'"'"']|["'"'"']$/, "", line)
-            cur_required = line
-            next
-        }
-        in_block && /^[[:space:]]+primary:[[:space:]]*/ {
-            line = $0
-            sub(/^[[:space:]]+primary:[[:space:]]*/, "", line)
-            sub(/[[:space:]]*#.*/, "", line)
-            gsub(/^["'"'"']|["'"'"']$/, "", line)
-            # Case-folded: a manifest writing `primary: True` must not read as
-            # non-primary and so slip past the empty-artifact guard below.
-            # `required` is deliberately NOT folded — a non-canonical value there
-            # already fails closed (treated as required).
-            cur_primary = tolower(line)
-            next
-        }
-        END { flush() }
-    ' "$manifest" 2>/dev/null)"
+    paths="$(_registry_output_path_rows "$manifest")"
 
     [[ -z "$paths" ]] && return 0
 
     local missing=0
-    local raw_path raw_primary resolved _violation _event _var _expansions
+    local raw_path raw_primary resolved _violation _event
     while IFS=$'\t' read -r raw_path raw_primary; do
         [[ -z "$raw_path" ]] && continue
-        resolved="$raw_path"
-        # Phase 0.5 substitutions.
-        resolved="${resolved//\$\{state_dir\}/$state_dir}"
-        resolved="${resolved//\$\{artifact_dir\}/$artifact_dir}"
-        resolved="${resolved//\$\{artifacts_dir\}/$artifact_dir}"
-        # Remaining ${VAR} tokens come from the work unit's exported env (the
-        # template's `as:` mapping, e.g. ZBUILD_REVIEW_LENS_ID). Indirect
-        # expansion only — never eval — so a manifest cannot inject a command.
-        # Bounded, and an unset var is left literal so the check fails loudly.
-        _expansions=0
-        while [[ $_expansions -lt 16 ]] && [[ "$resolved" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)\} ]]; do
-            _var="${BASH_REMATCH[1]}"
-            [[ -z "${!_var+x}" ]] && break
-            resolved="${resolved//\$\{$_var\}/${!_var}}"
-            _expansions=$((_expansions + 1))
-        done
+        resolved="$(_registry_resolve_output_path "$raw_path" "$state_dir" "$artifact_dir")"
 
         # An absent output always violates; a zero-byte one violates unless the
         # plugin declared the empty-diff capability AND this is not its primary.

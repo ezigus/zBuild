@@ -14,6 +14,11 @@ _ZBUILD_WRITE_BOUNDARY_LOADED=1
 _ZBUILD_WB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ZBUILD_WB_ROOT="$(cd "$_ZBUILD_WB_DIR/../.." && pwd)"
 
+# #1809 (ADR-058 C9): the SAME resolver scan_plugin_outputs uses. Two copies of
+# this logic is how the two halves of the boundary drift apart.
+# shellcheck source=../plugin-registry/output-paths.sh
+source "$_ZBUILD_WB_ROOT/core/plugin-registry/output-paths.sh"
+
 # ─── write_boundary_mark <state_file> ────────────────────────────────────────
 # Touch the per-dispatch marker. No-op when state_file is empty or relative.
 write_boundary_mark() {
@@ -133,42 +138,17 @@ write_boundary_classify() {
     # 1. Check declared outputs from plugin manifest.
     if [[ -n "$_pd" && -f "$_pd/manifest.yaml" ]]; then
         local _art="${_sd}/artifacts"
-        local _rp _res _v _n
+        local _rp _res
         while IFS=$'\t' read -r _rp _; do
             [[ -z "$_rp" ]] && continue
-            _res="$_rp"
-            _res="${_res//\$\{state_dir\}/$_sd}"
-            _res="${_res//\$\{artifact_dir\}/$_art}"
-            _res="${_res//\$\{artifacts_dir\}/$_art}"
-            _n=0
-            while [[ $_n -lt 16 ]] && [[ "$_res" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)\} ]]; do
-                _v="${BASH_REMATCH[1]}"
-                [[ -z "${!_v+x}" ]] && break
-                _res="${_res//\$\{$_v\}/${!_v}}"
-                _n=$((_n + 1))
-            done
+            _res="$(_registry_resolve_output_path "$_rp" "$_sd" "$_art")"
             local _cr; _cr="$(cd "$(dirname "$_res")" 2>/dev/null && pwd)/$(basename "$_res")" \
                 || _cr="$_res"
             local _dd; _dd="$(dirname "$_cr")"
             if [[ "$_cd" == "$_cr" || "$_cd" == "${_dd}/"* ]]; then
                 printf 'declared'; return 0
             fi
-        done < <(awk '
-            BEGIN { b=0; p=""; r="" }
-            function flush() { if (p!="" && r!="false") print p"\t"; p=""; r="" }
-            /^outputs:[[:space:]]*$/ { b=1; next }
-            b && /^[a-zA-Z_]/ { flush(); b=0 }
-            b && /^[[:space:]]*-[[:space:]]/ { flush() }
-            b && /^[[:space:]]+path:[[:space:]]*/ {
-                l=$0; sub(/^[[:space:]]+path:[[:space:]]*/,"",l)
-                sub(/[[:space:]]*#.*/,"",l); gsub(/^["'"'"']|["'"'"']$/,"",l)
-                p=l; next }
-            b && /^[[:space:]]+required:[[:space:]]*/ {
-                l=$0; sub(/^[[:space:]]+required:[[:space:]]*/,"",l)
-                sub(/[[:space:]]*#.*/,"",l); gsub(/^["'"'"']|["'"'"']$/,"",l)
-                r=l; next }
-            END { flush() }
-        ' "$_pd/manifest.yaml" 2>/dev/null)
+        done < <(_registry_output_path_rows "$_pd/manifest.yaml")
     fi
 
     # 2. Check allowed areas.

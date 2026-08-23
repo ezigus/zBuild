@@ -229,6 +229,16 @@ Both `write_boundary_mark` and `write_boundary_check` are guarded `[[ -z "$state
 
 `core/pipeline/write-boundary.sh` owns the six functions. `config/write-boundary-watch.txt` and `config/write-boundary-allow.txt` ship the operator-facing defaults. `config/mechanics.yaml`'s `write-boundary.defined_in` is repointed from `core/pipeline/stage-scratch.sh` to `core/pipeline/write-boundary.sh` — the resolver now lives in the new file.
 
+**One resolver, two consumers.** `core/plugin-registry/output-paths.sh` is extracted from `scan_plugin_outputs` and carries both halves of "where does this declared output live?" — `_registry_output_path_rows` (the manifest parser, including the `required: false` omission from #511 F2) and `_registry_resolve_output_path` (the `${state_dir}` / `${artifact_dir}` substitutions plus the bounded indirect `${VAR}` expansion). `scan_plugin_outputs` and `write_boundary_classify` both source it. The two copies were byte-equivalent when first written, so this fixes no live defect; it removes the drift hazard. A boundary whose two halves disagree about where a declared output lives is not a boundary.
+
+### Two harness defects fixed here, because C9 cannot be verified past them
+
+Both were found by the #1809 dogfood (run `20260822155737-9554`), which spent 3h44m failing on them without ever reaching a real finding. Neither is write-boundary logic; both block any run that would exercise it.
+
+**`_sf_is_schema_append_only` could never fire for a real append** (`scripts/lib/shape-floor.sh`). The predicate rejected on *any* removed content line. Appending an element to the END of a JSON array forces a separator comma onto the previous last element, which git reports as a removed line — so the exemption was reachable only for a mid-array insert. `tests/unit/shape-floor-test.sh` SPEC-5 used exactly that shape and passed, hiding it. C9 must append `stage.write_boundary.violated` to `config/event-schema.json` and depends on the resulting `SHAPE_FLOOR SKIP schema_append_only` (golden-safety rule 2), so the bug is on C9's critical path. The fix tolerates a removed line only when the identical text plus a trailing comma is among the added lines — the sole edit was the separator. SPEC-5b pins the end-of-array shape; SPEC-6b guards that an outright deletion is still gated.
+
+**`tests/unit/test-stage-banner-golden-test.sh` regressed on #1918.** Its sanitizer normalised `/var/folders/…` and `/tmp/…` to `<TMP>`. §3 of this ADR points `TMPDIR` at `${state_dir}/scratch/<stage>/` for the span of a dispatch, which matches neither shape, so the mock script's absolute path leaked into the golden comparison. It passes standalone and fails inside any run — i.e. it reds the test stage of every dogfood, on every issue. The sanitizer now normalises `TEST_TEMP_DIR` itself, which is location-independent; the two path-shape rules remain as a fallback.
+
 Verification:
 
 ```bash
@@ -239,6 +249,8 @@ bash tests/unit/plugin-lifecycle-event-balance-test.sh   # ad-hoc caller guard
 bash tests/unit/stage-scratch-test.sh            # SPEC-3 guard: no TMPDIR read
 bash tests/integration/stage-scratch-dispatch-test.sh
 bash tests/integration/artifact-contract-test.sh
+bash tests/unit/shape-floor-test.sh              # SPEC-5b end-of-array append, SPEC-6b deletion still gated
+bash tests/unit/test-stage-banner-golden-test.sh # passes with TMPDIR inside and outside a run
 ```
 
 ## References
@@ -246,6 +258,8 @@ bash tests/integration/artifact-contract-test.sh
 - `core/pipeline/stage-scratch.sh` — the resolver (§2)
 - `core/pipeline/write-boundary.sh` — the enforcement sweep (C9)
 - `core/plugin-registry/lifecycle.sh` — `plugin_hook_call`, the dispatch chokepoint (§3, C9)
+- `core/plugin-registry/output-paths.sh` — the shared declared-output resolver (C9)
+- `scripts/lib/shape-floor.sh` — `_sf_is_schema_append_only`, the exemption C9's schema append depends on
 - `core/pipeline/verdict.sh` — `runner_read_stage_disposition`, the verdict precedence branch (C9)
 - `config/write-boundary-watch.txt` — watch locations (C9)
 - `config/write-boundary-allow.txt` — allowed roots (C9)
