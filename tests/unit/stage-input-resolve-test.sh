@@ -176,10 +176,19 @@ printf '{"lens":"alpha"}\n' > "$ART/irlens-alpha.json"
 printf '{"lens":"beta"}\n'  > "$ART/irlens-beta.json"
 rm -f "$TEST_TEMP_DIR/irc-ran.txt" "$TEST_TEMP_DIR/irc-seen.txt"
 
-ZBUILD_INPUTS_RESOLVE=1 ZBUILD_STATE_DIR="$STATE" _dispatch_consumer >/dev/null 2>&1
+_disp_err="$TEST_TEMP_DIR/dispatch1-stderr.txt"
+ZBUILD_INPUTS_RESOLVE=1 ZBUILD_STATE_DIR="$STATE" _dispatch_consumer >/dev/null 2>"$_disp_err"
 _rc1=$?
 
-assert_eq "[SPEC-1] the dispatch succeeded" "0" "$_rc1"
+# A bare rc comparison here reports "expected 0, got 1" and nothing else, which
+# is useless when the dispatch is refused by a check that already explained
+# itself on stderr. Carry that explanation into the failure detail.
+if [[ "$_rc1" -eq 0 ]]; then
+    assert_pass "[SPEC-1] the dispatch succeeded"
+else
+    assert_fail "[SPEC-1] the dispatch succeeded" \
+        "rc=$_rc1; stderr: $(tr '\n' ' ' < "$_disp_err" 2>/dev/null | tail -c 400)"
+fi
 assert_file_exists "[SPEC-1] the index was written" "$STATE/stage-inputs/ir-consumer.json"
 assert_eq "[SPEC-1] the plugin saw ZBUILD_STAGE_INPUTS" \
     "$STATE/stage-inputs/ir-consumer.json" "$(_seen index)"

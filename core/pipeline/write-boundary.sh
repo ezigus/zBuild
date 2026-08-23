@@ -183,7 +183,10 @@ write_boundary_classify() {
 write_boundary_violation_recorded() {
     local _sd="$1" _stage="${2:-}" _path="${3:-}"
     mkdir -p "${_sd}/runtime" 2>/dev/null || true
-    touch "${_sd}/runtime/write-boundary-violated" 2>/dev/null || true
+    # The marker carries the offending path as its content. Only its EXISTENCE
+    # is load-bearing (verdict.sh tests -f), so the body is free to be evidence:
+    # `broken` is terminal, and the state dir is what survives the run.
+    printf '%s\n' "$_path" > "${_sd}/runtime/write-boundary-violated" 2>/dev/null || true
     # The offending path, on both channels. A run that halts naming no path
     # leaves the operator with nothing to act on, and the disposition is
     # `broken` — terminal, not retryable — so there is no second chance to
