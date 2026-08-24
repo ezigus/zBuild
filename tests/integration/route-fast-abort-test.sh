@@ -85,6 +85,8 @@ done
 exit 0
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
+# The identity the leftover check matches on (#1949). Unique per run.
+_RFA_STUB_PATH="$TEST_TEMP_DIR/bin/claude"
 export PATH="$TEST_TEMP_DIR/bin:$PATH"
 export ZB_STUB_MARKER="$MARKER"
 
@@ -210,6 +212,46 @@ fi
 #     `{ sleep 1 && kill -KILL; } &` backstop raced the caller's exit).
 #     Millisecond-precise deadline (not integer `date +%s`, whose second-
 #     granularity made the old window race between ~1s and ~2s under load).
+# _rfa_is_my_stub <pid> — true only when <pid> is a stub-claude THIS test spawned.
+# Reads /proc/<pid>/cmdline and matches the stub path, which is unique per run
+# because TEST_TEMP_DIR is. A zombie's cmdline is EMPTY, so this also subsumes
+# the #1942 zombie exclusion rather than duplicating it; the `ps` check below is
+# kept as a second, independent signal so a future regression in either one is
+# still caught by the other.
+# Returns 0 = count it, 1 = do not. Deliberately TRI-state internally, because
+# the two "cannot read it" cases mean opposite things and collapsing them makes
+# a leak detector fail OPEN — the permissive-direction failure this whole
+# initiative exists to remove:
+#
+#   /proc/<pid> absent          -> process is gone            -> skip
+#   cmdline present but EMPTY   -> zombie (#1942)             -> skip
+#   cmdline non-empty, no match -> PID reuse, a stranger      -> skip
+#   cmdline non-empty, matches  -> our stub is alive          -> COUNT
+#   /proc/<pid> exists, cmdline unreadable -> AMBIGUOUS       -> COUNT (fail closed)
+#
+# The last row is the one worth stating: an unreadable cmdline on a directory
+# that still exists is not evidence of absence, so it is counted and the
+# diagnostic below says why. Better a rare explained failure than a detector
+# that quietly stops detecting.
+# Identity check lives in tests/lib/proc-identity.sh so it can be driven on a
+# platform that never runs this file (#1949). See that file for the five cases.
+# shellcheck source=../lib/proc-identity.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/proc-identity.sh"
+_rfa_is_my_stub() { proc_is_my_process "$1" "$_RFA_STUB_PATH"; }
+
+# _rfa_describe <pid> — everything needed to tell a real leak from a false
+# positive, WITHOUT re-running CI. Two fixes have now been attempted on this
+# assertion (#1943 zombies, and the identity check above) and each time the
+# failure output was a bare count, which is why the second attempt was still a
+# guess. A count that cannot be explained is not evidence.
+_rfa_describe() {
+    local _p="$1"
+    printf '    pid=%s state=%s ppid=%s cmd=[%s]\n' "$_p" \
+        "$(ps -o state= -p "$_p" 2>/dev/null | tr -d ' ' || echo '?')" \
+        "$(ps -o ppid= -p "$_p" 2>/dev/null | tr -d ' ' || echo '?')" \
+        "$(tr '\0' ' ' < "$_RFA_PROC/$_p/cmdline" 2>/dev/null || echo '<unreadable>')" >&2
+}
+
 _st=""
 leftover=0
 deadline_ns=$(( $(date +%s%N) + 500000000 ))
@@ -218,6 +260,20 @@ while [[ $(date +%s%N) -lt $deadline_ns ]]; do
     if [[ -f "$PID_FILE" ]]; then
         while IFS= read -r p; do
             [[ -z "$p" ]] && continue
+            # IDENTITY, not liveness (#1942 follow-up). `kill -0` answers "does
+            # something own this PID", which is NOT the question. Two ways that
+            # differs from "my stub is still running":
+            #   - PID REUSE. The stub file is appended to (`>> $PID_FILE`), so a
+            #     retried spawn leaves earlier PIDs in it. Once such a PID is
+            #     reaped the kernel is free to hand the number to an unrelated
+            #     process, and on a loaded CI runner it does. `kill -0` then
+            #     succeeds and `ps -o state=` says `S`, so a stranger is counted
+            #     as OUR leftover. That is a false FAIL with no bug behind it.
+            #   - ZOMBIES, the #1942 case, still handled — see below.
+            # /proc is safe here: this whole file is `skip_unless_platform linux`.
+            if ! _rfa_is_my_stub "$p"; then
+                continue
+            fi
             if kill -0 "$p" 2>/dev/null; then
                 # `kill -0` SUCCEEDS for a zombie: a process that has exited but
                 # has not been reaped still owns its PID slot and still answers.
@@ -258,6 +314,15 @@ if [[ -f "$PID_FILE" ]]; then
     while IFS= read -r p; do
         [[ -z "$p" ]] && continue
         kill -KILL "$p" 2>/dev/null || true
+    done < "$PID_FILE"
+fi
+# Explain a non-zero count before asserting on it, so the next occurrence
+# arrives with its own diagnosis attached.
+if [[ $leftover -ne 0 && -f "$PID_FILE" ]]; then
+    echo "  DIAGNOSTIC: ${leftover} leftover stub(s) after the 500ms reap window:" >&2
+    while IFS= read -r p; do
+        [[ -z "$p" ]] && continue
+        _rfa_is_my_stub "$p" && _rfa_describe "$p"
     done < "$PID_FILE"
 fi
 assert_eq "no leftover stub-claude processes after abort" "0" "$leftover"
