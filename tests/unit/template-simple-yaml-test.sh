@@ -43,7 +43,7 @@ set -e
 
 assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 
-# ─── SPEC-2: _TPL_STAGES has exactly 14 entries in canonical order ────────────
+# ─── SPEC-2: _TPL_STAGES has exactly 15 entries in canonical order ────────────
 # CHANGE (B6 #1138, ADR-040): build_test_cycle is recomposed from the retired
 # monolithic objective-gate to the decomposed mechanical gates + gate-aggregator
 # (the objective-gate plugin was then removed in B7 #1139).
@@ -66,9 +66,11 @@ assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 # (review_lenses occupies ONE slot, not five — elements are work-unit env vars.)
 # objective-gate AND review-report are UNREFERENCED here; test_assessment omitted.
 
-assert_eq "[SPEC-2] _TPL_STAGES count is 14" "14" "${#_TPL_STAGES[@]}"
+# 14 -> 15: #1074 adds `hydrate` as the first flow stage. release/persist are
+# always-run and deliberately NOT here (#1831).
+assert_eq "[SPEC-2] _TPL_STAGES count is 15" "15" "${#_TPL_STAGES[@]}"
 
-_expected_stages=(intake plan design design-gate impact build test shape-floor acceptance-gate secret-scan gate-aggregator review_lenses review-aggregator pr)
+_expected_stages=(hydrate intake plan design design-gate impact build test shape-floor acceptance-gate secret-scan gate-aggregator review_lenses review-aggregator pr)
 _i=0
 for _s in "${_expected_stages[@]}"; do
     assert_eq "[SPEC-2] _TPL_STAGES[$_i] == $_s" "$_s" "${_TPL_STAGES[$_i]}"
@@ -188,18 +190,20 @@ assert_eq "[SPEC-4] resolve_template_file 'simple' returns shipped path" \
 # #1218 (ADR-046): design + design-gate collapse into ONE design_verify_cycle
 # dispatch unit, and impact is its own stage unit right after it.
 # #1295 (ADR-047 §2): review_lenses converted from parallel:→map:review_lenses.
-# Count is now 8: intake, plan, cycle:design_verify_cycle, stage:impact,
-# cycle:build_test_cycle, map:review_lenses, stage:review-aggregator, pr.
-
-assert_eq "[SPEC-11] dispatch units count is 8" "8" "${#_TPL_DISPATCH_UNITS[@]}"
-assert_eq "[SPEC-11] dispatch[0] stage:intake"         "stage:intake"         "${_TPL_DISPATCH_UNITS[0]}"
-assert_eq "[SPEC-11] dispatch[1] stage:plan"           "stage:plan"           "${_TPL_DISPATCH_UNITS[1]}"
-assert_eq "[SPEC-11] dispatch[2] cycle:design_verify_cycle" "cycle:design_verify_cycle" "${_TPL_DISPATCH_UNITS[2]}"
-assert_eq "[SPEC-11] dispatch[3] stage:impact"         "stage:impact"         "${_TPL_DISPATCH_UNITS[3]}"
-assert_eq "[SPEC-11] dispatch[4] cycle:build_test_cycle" "cycle:build_test_cycle" "${_TPL_DISPATCH_UNITS[4]}"
-assert_eq "[SPEC-11] dispatch[5] map:review_lenses"    "map:review_lenses"    "${_TPL_DISPATCH_UNITS[5]}"
-assert_eq "[SPEC-11] dispatch[6] stage:review-aggregator" "stage:review-aggregator" "${_TPL_DISPATCH_UNITS[6]}"
-assert_eq "[SPEC-11] dispatch[7] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[7]}"
+# #1074: hydrate is a leaf and therefore its own dispatch unit, at index 0.
+# Count is now 9: hydrate, intake, plan, cycle:design_verify_cycle,
+# stage:impact, cycle:build_test_cycle, map:review_lenses,
+# stage:review-aggregator, pr.
+assert_eq "[SPEC-11] dispatch units count is 9" "9" "${#_TPL_DISPATCH_UNITS[@]}"
+assert_eq "[SPEC-11] dispatch[0] stage:hydrate"        "stage:hydrate"        "${_TPL_DISPATCH_UNITS[0]}"
+assert_eq "[SPEC-11] dispatch[1] stage:intake"         "stage:intake"         "${_TPL_DISPATCH_UNITS[1]}"
+assert_eq "[SPEC-11] dispatch[2] stage:plan"           "stage:plan"           "${_TPL_DISPATCH_UNITS[2]}"
+assert_eq "[SPEC-11] dispatch[3] cycle:design_verify_cycle" "cycle:design_verify_cycle" "${_TPL_DISPATCH_UNITS[3]}"
+assert_eq "[SPEC-11] dispatch[4] stage:impact"         "stage:impact"         "${_TPL_DISPATCH_UNITS[4]}"
+assert_eq "[SPEC-11] dispatch[5] cycle:build_test_cycle" "cycle:build_test_cycle" "${_TPL_DISPATCH_UNITS[5]}"
+assert_eq "[SPEC-11] dispatch[6] map:review_lenses"    "map:review_lenses"    "${_TPL_DISPATCH_UNITS[6]}"
+assert_eq "[SPEC-11] dispatch[7] stage:review-aggregator" "stage:review-aggregator" "${_TPL_DISPATCH_UNITS[7]}"
+assert_eq "[SPEC-11] dispatch[8] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[8]}"
 
 # ─── SPEC-16 (#1218, ADR-046): design_verify_cycle registered correctly ───────
 # _TPL_CYCLES must ALSO contain design_verify_cycle (design → design-gate); its
@@ -275,17 +279,19 @@ assert_eq "[SPEC-17] route_back.max == 1 (one re-author pass)" \
 # gate-aggregator from 8 to 10 (design=2,design-gate=3,impact=4,build=5,test=6,
 # shape-floor=7,acceptance-gate=8,secret-scan=9,gate-aggregator=10).
 
-assert_eq "[SPEC-12] _TPL_STAGES[7] == shape-floor" "shape-floor" "${_TPL_STAGES[7]}"
-assert_eq "[SPEC-12] _TPL_STAGES[10] == gate-aggregator (cycle exit_when source)" \
-    "gate-aggregator" "${_TPL_STAGES[10]}"
+assert_eq "[SPEC-12] _TPL_STAGES[8] == shape-floor" "shape-floor" "${_TPL_STAGES[8]}"
+assert_eq "[SPEC-12] _TPL_STAGES[11] == gate-aggregator (cycle exit_when source)" \
+    "gate-aggregator" "${_TPL_STAGES[11]}"
 
-# ─── SPEC-13: design is at index 2; design-gate at 3, impact at 4 ─────────────
-# CHANGE: design sits at index 2 (after intake, plan); its verifier design-gate
-# follows at 3, then the advisory impact at 4 (#1218, ADR-046).
+# ─── SPEC-13: design is at index 3; design-gate at 4, impact at 5 ─────────────
+# CHANGE: design sits at index 3 (after hydrate, intake, plan); its verifier
+# design-gate follows at 4, then the advisory impact at 5 (#1218, ADR-046).
+# Every index here shifted by one when #1074 put `hydrate` first — the relative
+# ORDER, which is what ADR-046 actually constrains, is unchanged.
 
-assert_eq "[SPEC-13] _TPL_STAGES[2] == design" "design" "${_TPL_STAGES[2]}"
-assert_eq "[SPEC-13] _TPL_STAGES[3] == design-gate" "design-gate" "${_TPL_STAGES[3]}"
-assert_eq "[SPEC-13] _TPL_STAGES[4] == impact" "impact" "${_TPL_STAGES[4]}"
+assert_eq "[SPEC-13] _TPL_STAGES[3] == design" "design" "${_TPL_STAGES[3]}"
+assert_eq "[SPEC-13] _TPL_STAGES[4] == design-gate" "design-gate" "${_TPL_STAGES[4]}"
+assert_eq "[SPEC-13] _TPL_STAGES[5] == impact" "impact" "${_TPL_STAGES[5]}"
 
 # ─── SPEC-6 (guard, A3-pr #756): simple.yaml pr role unchanged by standard migration ──
 # GUARD: simple.yaml's pr stage declares roles: [pr]. Since #1704 that role is

@@ -150,6 +150,12 @@ defaults:
   strategy: fanout
 
 stages:
+  # #1074: hydrate is a FLOW stage, and an old-shape template's flow is its own
+  # `stages:` list — it inherits nothing from the base (ADR-016 full replace).
+  # Listed explicitly so this fixture keeps exercising prior-work restore.
+  - id: hydrate
+    gate: auto
+    roles: [hydrate]
   - id: intake
     gate: auto
   - id: plan

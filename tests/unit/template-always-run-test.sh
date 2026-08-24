@@ -56,8 +56,11 @@ for _s in "${_TPL_STAGES[@]}"; do
     [[ "$_s" == "release" || "$_s" == "persist" ]] && _in_flow=1
 done
 assert_eq "[SPEC-2] neither release nor persist is in _TPL_STAGES[]" "0" "$_in_flow"
-assert_eq "[SPEC-2] simple.yaml stage count is unchanged at 14" \
-    "14" "${#_TPL_STAGES[@]}"
+# The number is 15 because #1074 added `hydrate` as a FLOW stage. The assertion
+# is about the always-run stages NOT being in here: release and persist are two
+# more entries that would make it 17 if they leaked into the flow.
+assert_eq "[SPEC-2] simple.yaml flow count excludes both always-run stages" \
+    "15" "${#_TPL_STAGES[@]}"
 
 # ─── [SPEC-3][guard] state does not leak between loads ──────────────────────
 # load_template is called repeatedly in one process. A template with no

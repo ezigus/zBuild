@@ -18,6 +18,7 @@ defaults:
 # Full simple pipeline + post-PR delivery: deploy → validate → monitor.
 # All three post-PR stages are ADR-018 Pattern 1 (one-shot) leaf stages.
 flow:
+  - hydrate
   - intake
   - plan
   - design_verify_cycle
@@ -330,6 +331,23 @@ persist:
   roles: [persist]
   router:
     timeout_s: 120
+  io:
+    destinations: [file]
+    tail_lines: 50
+
+# ─── hydrate (first in flow, ADR-050 §7 / ADR-059 §3) ────────────────────────
+# Pulls prior artifacts for this issue out of zbuild/state/issue-<N> so each
+# stage's prior-output seam can seed from earlier work. Runs BEFORE intake, and
+# is NOT always-run — there is nothing to hydrate at the end of a run.
+#
+# It fetches origin's copy first, which is what makes a fresh CI clone able to
+# restore at all; a LOCAL snapshot still wins on read, because it may carry work
+# an earlier push never delivered.
+hydrate:
+  gate: auto
+  roles: [hydrate]
+  router:
+    timeout_s: 60
   io:
     destinations: [file]
     tail_lines: 50
