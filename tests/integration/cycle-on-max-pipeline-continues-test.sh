@@ -205,6 +205,11 @@ PLUG
 }
 
 # Stubs for every role simple.yaml needs.
+# #1074: hydrate is the FIRST stage in simple.yaml. This test enumerates the
+# roster, and the runner's resolvability preflight refuses to start when any
+# leaf has no plugin — so without this stub the pipeline aborts before intake
+# and every assertion below fails for a reason unrelated to what it tests.
+_make_plugin "hydrate"         "hydrate"
 _make_plugin "intake"          "intake"
 _make_plan_plugin
 _make_design_plugin

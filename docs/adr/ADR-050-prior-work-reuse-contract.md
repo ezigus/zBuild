@@ -172,9 +172,14 @@ ADR-059 §3 fixes this by making persistence a **stage** rather than engine code
 - **release**, at the end, **always-run**, short timeout — frees live resources, deletes nothing.
 - **persist**, at the end after release, **always-run**, longer timeout — snapshots **and pushes**.
 
-`_artifact_persist_restore` (`core/pipeline/runner.sh:1813`) becomes hydrate;
-`_runner_snapshot_artifacts` (`:146`) becomes persist. This file stays as the shared library both
-stages source. The #1878 amendments survive intact and finally have somewhere to be enforced: the
+`_artifact_persist_restore` (`core/pipeline/runner.sh:1813`) becomes hydrate; the RUN-END snapshot
+and the push become persist. This file stays as the shared library both stages source.
+
+**Corrected 2026-08-23 (#1071).** An earlier draft said `_runner_snapshot_artifacts` "becomes
+persist", which reads as moving it wholesale. §4's per-stage-boundary snapshots — six call sites —
+are that section's own design and **stay engine-side**. The persist stage owns what never existed:
+a final snapshot at run end, and the push. `_artifact_persist_push` is new in this file; nothing
+in it has ever pushed before. The #1878 amendments survive intact and finally have somewhere to be enforced: the
 push-order rule becomes stage order in the template, and the "advisory but never silent" rule
 becomes the persist stage's own disposition.
 
@@ -184,11 +189,24 @@ a durable, pushed, cross-machine store makes stale-verdict leakage easier rather
 Widening what may be reused is a separate decision from moving where work lives, and must not ride
 along with it.
 
-**One hazard this creates, to be designed for rather than discovered.** *Git wins* plus *persist
-failed* loses unpushed work: a run whose push fails, followed by a re-run, has its newer local
-artifacts overwritten by the older git copy. The window is small because persist is always-run, but
-it is real. Hydrate must detect "local is newer than git" and refuse or warn rather than clobber
-silently, and a failed persist must leave a marker hydrate honours.
+**A hazard was flagged here and is now DISPROVEN — recorded rather than deleted, because the
+reasoning is what stops it being re-invented.** The claim was: *git wins* plus *persist failed*
+loses unpushed work, because a re-run would overwrite newer local artifacts with an older git copy.
+Building #1074 showed the sequence cannot happen:
+
+- **Restore never writes over live artifacts.** It extracts into a separate `restored-artifacts/`
+  area, and `input-resolve.sh` reads the live path first — a stage's own output is never replaced
+  by an older copy of itself.
+- **Fetch cannot move a local snapshot.** `git fetch` updates only the remote-tracking ref;
+  `refs/heads/<branch>` is untouched, so unpushed work survives.
+- **The local ref wins on read, deliberately.** `_artifact_persist_restore` prefers
+  `refs/heads/<branch>` over `refs/remotes/origin/<branch>` precisely because the local one may hold
+  more. "Git wins" is about **durability** — where work survives a dead laptop — not about read
+  precedence.
+
+So hydrate needs no "local is newer" detector and persist needs no failure marker. What hydrate
+does need, and what was actually missing, is the **fetch**: on a fresh clone neither ref exists, so
+restore reported "first run" for an issue with plenty of prior work.
 
 ## Consequences
 

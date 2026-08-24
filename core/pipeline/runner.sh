@@ -1798,42 +1798,26 @@ main() {
         ln -sfn "$state_dir" "${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}/latest" 2>/dev/null || true
     fi
 
-    # ADR-050 (#1581): restore prior-run artifacts ONCE at startup so each stage's
-    # _read_prior_output seam can seed from a previous attempt (cross-run reuse).
-    # Stage-agnostic — the engine restores the whole artifact tree from the state
-    # branch (zbuild/state/issue-<N>); absent branch → dir not created → the seam
-    # falls through to fresh. Best-effort: a restore failure never blocks the run.
-    # The snapshot stores files under an `artifacts/` prefix (see artifact-persist
-    # T4), so the seam's ZBUILD_RESTORED_ARTIFACTS_DIR points at that subdir.
+    # ADR-050 (#1581) / #1074: the RESTORED-ARTIFACTS AREA.
+    #
+    # The engine owns the PATH; the hydrate stage owns the CONTENT. That split
+    # is forced, not stylistic: a stage runs in its own subshell, so an export
+    # from hydrate would die with it — ADR-052's whole diagnosis of #888. So the
+    # runner derives this location and exports it unconditionally, before any
+    # dispatch, and hydrate fills it.
+    #
+    # Exported even when nothing is there. Every consumer
+    # (`prior-output-reader.sh`, `input-resolve.sh`, `stage-checkpoint.sh`,
+    # `design/plugin.sh`) guards on `-s <file>`, so an absent or empty area
+    # falls through to fresh — which is the documented behaviour and was already
+    # the behaviour for a first-ever run.
+    #
+    # The engine no longer RESTORES here. That moved to the hydrate stage
+    # (#1074), which extracts to a staging dir and promotes with a single `mv` —
+    # so the partial-tree hazard PR #1880's review caught is removed by
+    # construction rather than gated on a status.
     if [[ "$_runner_issue" =~ ^[0-9]+$ && "$_runner_issue" -gt 0 ]]; then
-        local _restored_root="$state_dir/restored-artifacts"
-        # #1878: no longer 2>/dev/null. A restore that FAILS (as opposed to
-        # finding no prior state) is now reported — the cross-run seam silently
-        # falling back to fresh is exactly how this went unnoticed.
-        _artifact_persist_restore "$_runner_issue" "$_restored_root" || true
-        local _restore_status="${_ARTIFACT_PERSIST_LAST_STATUS:-}"
-        if [[ "$_restore_status" == "failed" ]]; then
-            eb_emit_event "artifact.restore.failed" \
-                "issue=$_runner_issue" \
-                "reason=${_ARTIFACT_PERSIST_LAST_REASON:-unknown}" 2>/dev/null || true
-            warn "prior-artifact restore failed: ${_ARTIFACT_PERSIST_LAST_REASON:-unknown}"
-        fi
-        # PR #1880 review: gate the ADOPTION on the status, not just on the
-        # directory being non-empty. `git archive | tar` can fail MID-STREAM
-        # (disk full, permissions) leaving a partially-extracted tree — which
-        # satisfies a bare -d/-n check. Without this gate the run would emit
-        # artifact.restore.failed AND artifact.restore.applied for the same
-        # restore, and then feed the truncated tree to every stage's
-        # _read_prior_output seam as if it were complete prior work. Seeding a
-        # stage from a half-restored artifact set is worse than not seeding it.
-        if [[ "$_restore_status" != "failed" ]] \
-           && [[ -d "$_restored_root/artifacts" ]] \
-           && [[ -n "$(ls -A "$_restored_root/artifacts" 2>/dev/null)" ]]; then
-            export ZBUILD_RESTORED_ARTIFACTS_DIR="$_restored_root/artifacts"
-            eb_emit_event "artifact.restore.applied" \
-                "issue=$_runner_issue" "dir=$_restored_root/artifacts" 2>/dev/null || true
-            info "Restored prior-run artifacts for #$_runner_issue → $_restored_root/artifacts"
-        fi
+        export ZBUILD_RESTORED_ARTIFACTS_DIR="$state_dir/restored-artifacts/artifacts"
     fi
 
     # #963: self-host — redirect the read-only acceptance-grammar libs that the

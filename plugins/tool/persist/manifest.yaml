@@ -1,0 +1,61 @@
+id: persist
+name: Persist Stage
+kind: tool
+version: 0.1.0
+description: |
+  Snapshots the run's artifact area to the ADR-050 state branch
+  (zbuild/state/issue-<N>) and PUSHES it to origin, on every pipeline exit path
+  — pass, fail, abort, SIGINT, SIGTERM, timeout.
+
+  Declared always-run in the template, AFTER release. The two are separate
+  stages on purpose: release runs first and must stay fast (a hang in the exit
+  trap turns Ctrl-C into a lockup), while this one does network I/O and can
+  block on auth or a dead remote. Separate timeout_s, persist last, so a bad
+  network can never delay an abort.
+
+  Scans every artifact for credentials before pushing and REFUSES the push if
+  one is found — snapshotting to a local branch and publishing to a remote are
+  different risks, and this is the stage that makes it the second one.
+
+  Always returns 0. A failed push degrades to "state is local only", which is
+  today's behaviour for every local run.
+
+hooks:
+  run: persist_run
+
+requires:
+  core:
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  role: persist
+  result_contract: 2
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+  # the engine's known set at load.
+  events:
+    - persist.start
+    - persist.complete
+    - persist.push.failed
+    - persist.push.refused
+    - persist.snapshot.failed
+    - persist.result.write_failed
+
+config:
+  valid_verdicts:
+    - complete
+    - degraded
+
+# Empty by construction, like teardown's. A declared input resolves to another
+# stage's declared OUTPUT (ADR-055 §5); this stage's subject is the whole
+# artifact AREA, which no single stage produces.
+inputs: []
+
+outputs:
+  - id: persist_result
+    path: "${artifact_dir}/persist-result.json"
+    type: persist-result.json@1
+    format: json
+    required: true
+    primary: true

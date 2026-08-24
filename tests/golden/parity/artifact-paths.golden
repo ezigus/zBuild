@@ -1,6 +1,8 @@
 ./artifacts/build-prompt.txt
 ./artifacts/build-summary.json
 ./artifacts/diff.patch
+./artifacts/hydrate-result.json
+./artifacts/persist-result.json
 ./artifacts/plan-context.json
 ./artifacts/plan-context.md
 ./artifacts/plan.json
@@ -18,7 +20,9 @@
 ./platforms.json
 ./scope-manifest.md
 ./stage-inputs/build.json
+./stage-inputs/hydrate.json
 ./stage-inputs/intake.json
+./stage-inputs/persist.json
 ./stage-inputs/plan.json
 ./stage-inputs/pr.json
 ./stage-inputs/release.json

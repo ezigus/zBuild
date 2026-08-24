@@ -1,0 +1,64 @@
+id: hydrate
+name: Hydrate Stage
+kind: tool
+version: 0.1.0
+description: |
+  Pulls a prior run's artifacts for this issue out of the ADR-050 state branch
+  (zbuild/state/issue-<N>) and into the run's restored-artifacts area, so each
+  stage's prior-output seam can seed from earlier work.
+
+  Runs FIRST in the flow, before intake. Not always-run: there is nothing to
+  hydrate at the end of a run.
+
+  Fetches origin's copy of the branch first, so a fresh clone (every CI runner)
+  can restore at all. A LOCAL snapshot still wins on read when both exist — it
+  may carry work an earlier push never delivered, and preferring origin there
+  would lose it.
+
+  Extracts to a staging directory and promotes it atomically, so the area a
+  stage reads is either complete or absent — never half a tree.
+
+hooks:
+  run: hydrate_run
+
+requires:
+  core:
+    - event-bus
+    - state
+  plugins: []
+
+provides:
+  role: hydrate
+  result_contract: 2
+  events:
+    - hydrate.start
+    - hydrate.complete
+    - hydrate.fetch.failed
+    - hydrate.restore.failed
+    - hydrate.result.write_failed
+
+config:
+  valid_verdicts:
+    - complete
+    - degraded
+
+# Empty by construction. A declared input resolves to another stage's declared
+# OUTPUT (ADR-055 §5); this stage's source is a git ref, which no stage produces.
+inputs: []
+
+outputs:
+  - id: hydrate_result
+    path: "${artifact_dir}/hydrate-result.json"
+    type: hydrate-result.json@1
+    format: json
+    required: true
+    primary: true
+    # ADR-020: this stage IS in the flow, so its declared output is checked for
+    # a consumer — unlike release/persist, which are always-run and never in
+    # `flow:`. hydrate-result.json is a REPORT: what was restored and from
+    # where. Nothing downstream reads it, and nothing should — the restored
+    # ARTIFACTS are the real product, and stages reach those through the
+    # prior-output seam (ZBUILD_RESTORED_ARTIFACTS_DIR), not through this file.
+    # Marking it advisory says that, rather than inventing a consumer to
+    # satisfy the validator.
+    advisory: true

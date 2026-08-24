@@ -32,6 +32,7 @@ defaults:
 # exit_when/convergence (that remains the gate-aggregator, ADR-040 §5) and never
 # blocks merge. The B5 no-LLM-on-convergence-path invariant therefore holds.
 flow:
+  - hydrate
   - intake
   - plan
   - design_verify_cycle
@@ -63,6 +64,7 @@ flow:
 # quietly running nothing.
 always_run:
   - release
+  - persist
 
 # ─── design_verify_cycle (cycle) ─────────────────────────────────────────────
 # ADR-046 (#1218, EPIC #1216): give the design stage an independent verifier that
@@ -420,6 +422,41 @@ release:
   roles: [teardown]
   router:
     timeout_s: 30
+  io:
+    destinations: [file]
+    tail_lines: 50
+
+# ─── persist (always-run, ADR-050 §7 / ADR-059 §3) ───────────────────────────
+# Snapshots the artifact area to zbuild/state/issue-<N> and PUSHES it, on every
+# exit path. Runs AFTER release, and that order is load-bearing: release frees
+# live resources and must stay fast, while this does network I/O and can block
+# on auth or a dead remote. Persist last means a bad network can never delay an
+# abort.
+#
+# timeout_s is 120, four times release's 30. A push crosses the network; a
+# process-group kill does not.
+persist:
+  gate: auto
+  roles: [persist]
+  router:
+    timeout_s: 120
+  io:
+    destinations: [file]
+    tail_lines: 50
+
+# ─── hydrate (first in flow, ADR-050 §7 / ADR-059 §3) ────────────────────────
+# Pulls prior artifacts for this issue out of zbuild/state/issue-<N> so each
+# stage's prior-output seam can seed from earlier work. Runs BEFORE intake, and
+# is NOT always-run — there is nothing to hydrate at the end of a run.
+#
+# It fetches origin's copy first, which is what makes a fresh CI clone able to
+# restore at all; a LOCAL snapshot still wins on read, because it may carry work
+# an earlier push never delivered.
+hydrate:
+  gate: auto
+  roles: [hydrate]
+  router:
+    timeout_s: 60
   io:
     destinations: [file]
     tail_lines: 50

@@ -292,6 +292,11 @@ PLUG
 # For a non-terminal disposition the gate-aggregator passes → the cycle converges
 # normally → status=success WITHOUT relying on the retired review-stage rescue
 # path (see the T2/T3 #979 notes below). A terminal disposition hard-halts (rc=8).
+# #1074: hydrate is the FIRST stage in simple.yaml. This test enumerates the
+# roster, and the runner's resolvability preflight refuses to start when any
+# leaf has no plugin — so without this stub the pipeline aborts before intake
+# and every assertion below fails for a reason unrelated to what it tests.
+_make_plugin "hydrate"         "hydrate"
 _make_plugin "intake"          "intake"
 _make_plan_plugin
 _make_design_plugin

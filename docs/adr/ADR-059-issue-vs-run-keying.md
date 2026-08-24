@@ -118,8 +118,29 @@ which tree it works in.** The engine still acquires it; only the key changes.
 ADR-050 already keys prior work by issue (`zbuild/state/issue-<N>`). This ADR does not add a
 competing store. It states which is authoritative:
 
-**Git is the store. Every run pushes to it — local and CI alike. The folder is the working copy.
-On a disagreement, git wins.**
+**Git is the store. Every run pushes to it — local and CI alike. The folder is the working copy.**
+
+**Amended 2026-08-23, while building #1074.** This paragraph originally ended *"On a disagreement,
+git wins"*, and §3's hydrate row said hydrate must *"detect 'local is newer than git' and refuse or
+warn rather than clobber"*. Building it showed both to be wrong, in a way worth recording rather
+than quietly dropping:
+
+- **"Git wins" is about DURABILITY, not read precedence.** `_artifact_persist_restore` prefers
+  `refs/heads/<branch>` over `refs/remotes/origin/<branch>`, deliberately. A local snapshot may
+  carry work an earlier push never delivered; preferring origin there would **lose** that work,
+  which is the opposite of what this decision exists to achieve. `git fetch` moves only the
+  remote-tracking ref and never `refs/heads`, so fetching cannot clobber an unpushed local
+  snapshot.
+- **The clobber hazard does not exist in this architecture.** Restore extracts into a SEPARATE
+  `restored-artifacts/` area and never writes over the live `artifacts/` dir, and `input-resolve.sh`
+  reads the live path first. So a stage's own output is never overwritten by an older copy of
+  itself, and the "failed persist then re-run" sequence loses nothing.
+
+What hydrate genuinely adds is the **fetch** — on a fresh clone (every CI runner) neither ref
+exists until something fetches, so restore reported "first run" for an issue with plenty of prior
+work — and an **atomic promote**, which removes the partial-tree hazard PR #1880's review had to
+gate on. The corrected rule: **git is where the work survives; the local ref wins on read because
+it may hold more.**
 
 This satisfies ADR-050's own requirement — *"identically locally and in GitHub CI … through one
 mechanism, not two code paths"* — **literally**, where the present arrangement satisfies it only
@@ -140,14 +161,23 @@ Three stages carry this, declared in the pipeline template rather than buried in
 
 | stage | position | always-run | does |
 |---|---|---|---|
-| **hydrate** | before intake | no | pull the branch into the folder; git wins |
+| **hydrate** | before intake | no | fetch the branch, then restore into the run's area (local ref wins on read — it may hold unpushed work) |
 | **release** | end | **yes** | free live resources — kill process groups, drop locks. **Deletes nothing** |
 | **persist** | end, after release | **yes** | snapshot **and push** to `zbuild/state/issue-<N>` |
 
 Two of the three already exist as engine code and **move out of the engine into plugins**:
-`_artifact_persist_restore` (`core/pipeline/runner.sh:1813`) becomes hydrate;
-`_runner_snapshot_artifacts` (`:146`) becomes persist, plus the push that was never written.
-`core/state/artifact-persist.sh` remains as the shared library both source. This follows
+`_artifact_persist_restore` (`core/pipeline/runner.sh:1813`) becomes hydrate; the RUN-END snapshot
+becomes persist, plus the push that was never written. `core/state/artifact-persist.sh` remains as
+the shared library both source.
+
+**Corrected 2026-08-23, while building #1071.** This sentence first said
+*"`_runner_snapshot_artifacts` (`:146`) becomes persist"*, which reads as moving the function
+wholesale. It is called from **six** stage-boundary sites, and that is ADR-050 §4's incremental
+design — *"commit a snapshot at each stage boundary, so a mid-run crash still leaves every
+completed stage recoverable"*. Those stay engine-side; they are stage-boundary bookkeeping, like
+events. What was missing is only the **run-end** half: a final snapshot catching whatever the last
+stage produced (including the stage that failed and ended the run, which no boundary call covers),
+and the push. That is what the persist stage owns. This follows
 `docs/VISION.md` — *"a minimal core, with all behavior plugin-delivered and template-composed"* —
 and makes the behaviour visible and reorderable in the template.
 
@@ -157,8 +187,8 @@ auth or a dead remote. Separate stages with separate `timeout_s`, persist last, 
 can never delay an abort — and a failed push degrades to "state is local only", which is
 today's behaviour and therefore a proven fallback.
 
-**Always-run is what makes this trustworthy.** `_runner_snapshot_artifacts` is called from
-exactly one site and gated on `issue > 0`. A snapshot that happens only where someone remembered
+**Always-run is what makes this trustworthy.** The run-end snapshot had no call site at all, and
+the push existed only inside a CI workflow's `run:` block. A snapshot that happens only where someone remembered
 to wire it is the failure #1878 already found once — *"the snapshot was never called."*
 Declaring it in the template makes "on every exit path" a property of the flow rather than a
 line number a future edit can silently drop.
