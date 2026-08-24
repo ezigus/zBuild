@@ -27,6 +27,9 @@ source "$_SS_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 source "$_ZBUILD_CONTRACT_LIB_DIR/merge-base.sh" 2>/dev/null || true
 
 # Resilient emit — no-op when event-bus is unavailable (unit-test isolation).
+# shellcheck source=../../../scripts/lib/secret-patterns.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/secret-patterns.sh"
+
 _ss_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
 # ─── _ss_scan_content ─────────────────────────────────────────────────────────
@@ -34,42 +37,10 @@ _ss_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || t
 # returns 0 on a match, returns 1 (silent) otherwise. The PEM header pattern is
 # assembled from fragments so this file's own source never contains the literal
 # header string — that would otherwise let the gate flag its own plugin.sh.
-_ss_scan_content() {
-    local content="$1"
-
-    # AWS access-key id: AKIA followed by exactly 16 base32-ish chars.
-    if grep -qE 'AKIA[0-9A-Z]{16}' <<< "$content"; then
-        printf 'aws_access_key_id'
-        return 0
-    fi
-
-    # PEM private-key header (-----BEGIN ... PRIVATE KEY-----), fragments joined
-    # at runtime to keep the literal out of this source file.
-    local _begin='BEGIN' _pk='PRIVATE'' KEY'
-    if grep -qE -- "-----${_begin} [A-Z0-9 ]*${_pk}-----" <<< "$content"; then
-        printf 'private_key_header'
-        return 0
-    fi
-
-    # High-entropy credential assignment (quoted or unquoted, #1755). The value
-    # must be a single contiguous run of >=8 non-space characters, and the
-    # whitespace exclusion is what makes the rest of the guard hold:
-    # `[[:space:]]*` can match zero characters, so without it the leading
-    # `[^$...]` happily consumes the space in `token: ${{ secrets.X }}` and the
-    # variable-reference exclusion is defeated — that alone flagged every
-    # workflow env block in this repo. Parens and commas are excluded too: no
-    # real credential contains them, but `token = substr(rest, RSTART)` does.
-    # 8-char minimum keeps bare `keyword=` references from matching. The
-    # optional quote BEFORE the delimiter is for JSON keys: `"api_key": "v..."`.
-    local _cred_re
-    _cred_re=$'(api[_-]?key|secret|token|password|passwd)[\'"]?[[:space:]]*[:=][[:space:]]*[\'"]?[^$\'"[:space:](),][^[:space:]\'"(),]{7,}'
-    if grep -qiE -- "$_cred_re" <<< "$content"; then
-        printf 'credential_assignment'
-        return 0
-    fi
-
-    return 1
-}
+# #1071: the patterns moved to scripts/lib/secret-patterns.sh when the persist
+# stage became a second consumer. This stays as the plugin-local name every
+# call site in this file already uses.
+_ss_scan_content() { zbuild_scan_secret_content "$@"; }
 
 # ─── _ss_path_is_env ──────────────────────────────────────────────────────────
 # True (rc=0) when the path is a real .env secrets file. Example/template

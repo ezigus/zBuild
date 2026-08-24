@@ -52,6 +52,7 @@ flow:
 # quietly running nothing.
 always_run:
   - release
+  - persist
 
 # ─── design_verify_cycle (cycle) ─────────────────────────────────────────────
 design_verify_cycle:
@@ -311,6 +312,24 @@ release:
   roles: [teardown]
   router:
     timeout_s: 30
+  io:
+    destinations: [file]
+    tail_lines: 50
+
+# ─── persist (always-run, ADR-050 §7 / ADR-059 §3) ───────────────────────────
+# Snapshots the artifact area to zbuild/state/issue-<N> and PUSHES it, on every
+# exit path. Runs AFTER release, and that order is load-bearing: release frees
+# live resources and must stay fast, while this does network I/O and can block
+# on auth or a dead remote. Persist last means a bad network can never delay an
+# abort.
+#
+# timeout_s is 120, four times release's 30. A push crosses the network; a
+# process-group kill does not.
+persist:
+  gate: auto
+  roles: [persist]
+  router:
+    timeout_s: 120
   io:
     destinations: [file]
     tail_lines: 50

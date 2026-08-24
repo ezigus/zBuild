@@ -231,6 +231,70 @@ _artifact_persist_snapshot() {
     return 0
 }
 
+# ─── _artifact_persist_push <issue> [repo_root] (#1071) ─────────────────────
+# Push `zbuild/state/issue-<N>` to origin.
+#
+# WHY THIS DID NOT EXIST: this file has never contained a `git push`. It writes
+# a LOCAL ref with plumbing and reads `refs/remotes/origin/<branch>` only as a
+# restore fallback. The only state-branch push in the repository is a shell
+# block inside `.github/workflows/zbuild-pipeline.yml`, which no local run
+# executes — so ADR-050 §4's "push the state branch once at the end, pass or
+# fail" was true of CI and of nothing else. #1921 measured the consequence.
+#
+# BEST-EFFORT BY CONTRACT. A failed push degrades to "state is local only",
+# which is today's behaviour for every local run — so the fallback is already
+# proven in production. It sets status/reason for the caller to REPORT; a silent
+# failure here is precisely how #1921 went unnoticed for the life of the
+# feature.
+#
+# `--force` matches the existing CI push: the state branch is a snapshot, not a
+# history, and a snapshot that refuses to advance because it is not a
+# fast-forward is a snapshot nobody can use. The concurrency hazard that creates
+# is #1764's, and it is answered by ADR-059 §4's per-issue admission lock — not
+# by making this a non-force push, which would simply fail instead.
+_artifact_persist_push() {
+    _artifact_persist_reset_status
+    local issue="${1:-0}" repo_root="${2:-$(git rev-parse --show-toplevel 2>/dev/null)}"
+    [[ "$issue" =~ ^[0-9]+$ && "$issue" -gt 0 ]] || {
+        _ARTIFACT_PERSIST_LAST_STATUS="empty"
+        _ARTIFACT_PERSIST_LAST_REASON="no issue number (issue=${issue:-<empty>})"
+        return 0
+    }
+    local _gd=""
+    [[ -n "$repo_root" ]] && _gd="$(_artifact_persist_git_dir "$repo_root")"
+    if [[ -z "$repo_root" || ! -d "$_gd" ]]; then
+        _ARTIFACT_PERSIST_LAST_STATUS="failed"
+        _ARTIFACT_PERSIST_LAST_REASON="unresolvable repo: repo_root=[${repo_root:-<empty>}] git_dir=[${_gd:-<empty>}]"
+        return 1
+    fi
+
+    local branch; branch="$(_artifact_persist_branch "$issue")"
+    if ! GIT_DIR="$_gd" git rev-parse -q --verify "refs/heads/$branch" >/dev/null 2>&1; then
+        _ARTIFACT_PERSIST_LAST_STATUS="empty"
+        _ARTIFACT_PERSIST_LAST_REASON="no local branch $branch to push (nothing was snapshotted)"
+        return 0
+    fi
+    if ! GIT_DIR="$_gd" git remote get-url origin >/dev/null 2>&1; then
+        _ARTIFACT_PERSIST_LAST_STATUS="empty"
+        _ARTIFACT_PERSIST_LAST_REASON="no origin remote configured"
+        return 0
+    fi
+
+    local _p_err; _p_err="$(mktemp "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zbuild-push-err.XXXXXX" 2>/dev/null || printf '')"
+    if GIT_DIR="$_gd" git push --force origin \
+            "refs/heads/$branch:refs/heads/$branch" 2>"${_p_err:-/dev/null}"; then
+        _ARTIFACT_PERSIST_LAST_STATUS="saved"
+        _ARTIFACT_PERSIST_LAST_REASON="pushed $branch to origin"
+        [[ -n "$_p_err" ]] && rm -f "$_p_err"
+        return 0
+    fi
+    local err=""; [[ -n "$_p_err" ]] && err="$(tr '\n' ' ' < "$_p_err" 2>/dev/null | cut -c1-300)"
+    [[ -n "$_p_err" ]] && rm -f "$_p_err"
+    _ARTIFACT_PERSIST_LAST_STATUS="failed"
+    _ARTIFACT_PERSIST_LAST_REASON="git push $branch failed: ${err:-<no stderr>}"
+    return 1
+}
+
 # ─── _artifact_persist_restore <issue> <restored_dir> [repo_root] ───────────
 # Extract the tip of the state branch into <restored_dir> (created if absent).
 # Prefers a local refs/heads/<branch>; falls back to refs/remotes/origin/<branch>
