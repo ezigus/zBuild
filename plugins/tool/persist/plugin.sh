@@ -85,11 +85,10 @@ persist_run() {
 
     local _verdict="complete" _reason="" _pushed="false" _snapshot="skipped"
 
-    if [[ ! "$_issue" =~ ^[0-9]+$ || "$_issue" -le 0 ]]; then
-        # A --goal run has no issue number and therefore no state branch to push
-        # to. ADR-059 §5 gives goal runs an identity of their own (#1931); until
-        # that lands this is a genuine no-op, not a failure.
-        _reason="no issue number — nothing to persist (a --goal run; see #1931)"
+    if ! _artifact_persist_has_identity "$_issue"; then
+        # Neither an issue nor a goal: no identity, so nothing to persist under.
+        # A --goal run DOES have one (#1931) and no longer lands here.
+        _reason="no identity — neither an issue nor a goal"
         _persist_write_result "$_artifacts_dir" "complete" "$_reason" "$_snapshot" "$_pushed"
         emit_event "persist.complete" "stage=$_stage_id" "issue=$_issue" \
             "pushed=false" "reason=no_issue" 2>/dev/null || true

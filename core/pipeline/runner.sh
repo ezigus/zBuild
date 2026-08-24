@@ -145,7 +145,10 @@ _runner_snapshot_artifacts() {
     local _snap_state_dir="${1:-}" _snap_stage="${2:-unknown}"
     [[ -n "$_snap_state_dir" ]] || _snap_state_dir="${ZBUILD_STATE_DIR:-}"
     [[ -n "$_snap_state_dir" ]] || return 0
-    [[ "$_runner_issue" =~ ^[0-9]+$ && "$_runner_issue" -gt 0 ]] || return 0
+    # #1931: identity, not issue number. `issue > 0` excluded every --goal run
+    # from the durable store, so nothing was ever snapshotted for one and the
+    # push had nothing to send.
+    _artifact_persist_has_identity "$_runner_issue" || return 0
 
     _artifact_persist_snapshot "$_snap_state_dir" "$_runner_issue" || true
     case "${_ARTIFACT_PERSIST_LAST_STATUS:-}" in
@@ -1820,7 +1823,8 @@ main() {
     # (#1074), which extracts to a staging dir and promotes with a single `mv` —
     # so the partial-tree hazard PR #1880's review caught is removed by
     # construction rather than gated on a status.
-    if [[ "$_runner_issue" =~ ^[0-9]+$ && "$_runner_issue" -gt 0 ]]; then
+    # #1931: a --goal run has prior work to restore too, once it has an identity.
+    if _artifact_persist_has_identity "$_runner_issue"; then
         export ZBUILD_RESTORED_ARTIFACTS_DIR="$state_dir/restored-artifacts/artifacts"
     fi
 

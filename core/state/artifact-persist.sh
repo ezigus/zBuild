@@ -50,6 +50,22 @@ _artifact_persist_reset_status() {
     _ARTIFACT_PERSIST_LAST_SKIPPED=0
 }
 
+# ─── _artifact_persist_has_identity <issue> [goal] ───────────────────────────
+# rc=0 when this run has an identity to persist UNDER — an issue number, or a
+# goal (#1931). Replaces the `issue > 0` idiom, which predates goal identity and
+# silently excluded every --goal run from the durable store.
+#
+# The guard must be the IDENTITY, not the issue number. Guarding on `issue > 0`
+# and then deriving the branch means the derivation never runs for a goal run,
+# so `zbuild/state/goal-<hash>` is computed correctly and never used — which is
+# exactly the gap review found: the branch NAME was right and nothing pushed to
+# it.
+_artifact_persist_has_identity() {
+    local issue="${1:-0}" goal="${2:-${ZBUILD_GOAL:-}}"
+    [[ "$issue" =~ ^[0-9]+$ && "$issue" -gt 0 ]] && return 0
+    [[ -n "${goal//[[:space:]]/}" ]] && declare -F zbuild_run_key >/dev/null 2>&1
+}
+
 # ─── _artifact_persist_branch <issue> ───────────────────────────────────────
 # The state branch name for an issue. Sibling to the work branch; never merged.
 # #1931: takes the goal text as an optional second argument so a `--goal` run
@@ -279,9 +295,9 @@ _artifact_persist_snapshot() {
 _artifact_persist_push() {
     _artifact_persist_reset_status
     local issue="${1:-0}" repo_root="${2:-$(git rev-parse --show-toplevel 2>/dev/null)}"
-    [[ "$issue" =~ ^[0-9]+$ && "$issue" -gt 0 ]] || {
+    _artifact_persist_has_identity "$issue" || {
         _ARTIFACT_PERSIST_LAST_STATUS="empty"
-        _ARTIFACT_PERSIST_LAST_REASON="no issue number (issue=${issue:-<empty>})"
+        _ARTIFACT_PERSIST_LAST_REASON="no identity to push under (issue=${issue:-<empty>}, no goal)"
         return 0
     }
     local _gd=""

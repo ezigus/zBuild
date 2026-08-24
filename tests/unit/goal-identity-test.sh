@@ -126,6 +126,60 @@ assert_contains "[SPEC-5] a goal state branch carries the goal key" "$_sb" "zbui
 assert_eq "[SPEC-5] neither issue nor goal keeps the old shape" \
     "zbuild/state/issue-0" "$(ZBUILD_GOAL='' _artifact_persist_branch 0)"
 
+# ─── [SPEC-6][change] the whole PIPELINE reaches a goal run, not just the name ─
+# The gap review found: `_artifact_persist_branch 0` returned the right NAME
+# while three `issue > 0` guards — in _artifact_persist_push, in
+# _runner_snapshot_artifacts, and around the ZBUILD_RESTORED_ARTIFACTS_DIR
+# export — bailed out before ever reaching it. So the branch was computed
+# correctly and nothing was ever snapshotted to it or pushed from it, and
+# asserting on the name alone could not see that.
+#
+# This drives the real functions against a real repo and remote.
+print_test_section "[SPEC-6][change] a --goal run actually snapshots and pushes"
+
+_G_REMOTE="$TEST_TEMP_DIR/goal-remote.git"
+_G_REPO="$TEST_TEMP_DIR/goal-repo"
+git init -q --bare "$_G_REMOTE" 2>/dev/null
+mkdir -p "$_G_REPO"
+(
+    cd "$_G_REPO" || exit 1
+    git init -q -b main .
+    git config user.email t@e.st; git config user.name t
+    git remote add origin "$_G_REMOTE"
+    : > f; git add f; git commit -q -m init
+    git push -q -u origin main
+) >/dev/null 2>&1
+
+_G_STATE="$TEST_TEMP_DIR/goal-state"
+mkdir -p "$_G_STATE/artifacts"
+printf 'goal work
+' > "$_G_STATE/artifacts/plan.json"
+
+_G_TEXT='make the uploader retry'
+_G_KEY="$(zbuild_run_key 0 "$_G_TEXT")"
+
+# The identity guard itself — the thing every call site now shares.
+if ( ZBUILD_GOAL="$_G_TEXT" _artifact_persist_has_identity 0 ); then
+    assert_pass "[SPEC-6] a goal run HAS an identity to persist under"
+else
+    assert_fail "[SPEC-6] a goal run must have an identity" "guard refused it"
+fi
+if ( ZBUILD_GOAL='' _artifact_persist_has_identity 0 ); then
+    assert_fail "[SPEC-6] no issue and no goal must have NO identity" "guard allowed it"
+else
+    assert_pass "[SPEC-6] control: no issue and no goal has no identity"
+fi
+
+_g_snap_rc=0
+( cd "$_G_REPO" && ZBUILD_GOAL="$_G_TEXT" _artifact_persist_snapshot "$_G_STATE" 0 )     >/dev/null 2>&1 || _g_snap_rc=$?
+assert_exit_code "[SPEC-6] a goal run snapshots" "0" "$_g_snap_rc"
+assert_eq "[SPEC-6] and the local branch carries its goal key" "1"     "$( cd "$_G_REPO" && git rev-parse -q --verify "refs/heads/zbuild/state/$_G_KEY" >/dev/null 2>&1 && echo 1 || echo 0 )"
+
+_g_push_status="$( cd "$_G_REPO" && ZBUILD_GOAL="$_G_TEXT" _artifact_persist_push 0 >/dev/null 2>&1
+    printf '%s' "${_ARTIFACT_PERSIST_LAST_STATUS:-}" )"
+assert_eq "[SPEC-6] the push is NOT skipped as 'empty' for a goal run" "saved" "$_g_push_status"
+assert_eq "[SPEC-6] and the goal state branch reaches ORIGIN" "1"     "$( cd "$_G_REPO" && git ls-remote --heads origin "refs/heads/zbuild/state/$_G_KEY" 2>/dev/null | /usr/bin/grep -c . )"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
