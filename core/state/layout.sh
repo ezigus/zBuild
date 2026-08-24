@@ -73,6 +73,10 @@ zbuild_layout_run_dir() {
 # gets the same PATTERNS relative to it. Without that argument the override
 # path had to inline its own copy — which is precisely the divergence this
 # function exists to prevent.
+# shellcheck disable=SC2120  # the ROOT argument IS passed — from
+# scripts/lib/cleanup.sh's _cleanup_is_active_run, which shellcheck cannot see
+# because it analyses each file independently. Needed for shellcheck 0.9.0 (what
+# CI installs); 0.11.0 does not raise it, which is why local lint passed.
 zbuild_layout_state_file_globs() {
     local root="${1:-}"
     [[ -n "$root" ]] || root="$(zbuild_layout_state_root)"
