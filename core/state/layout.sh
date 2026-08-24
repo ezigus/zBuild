@@ -28,6 +28,14 @@
 [[ -n "${_ZBUILD_LAYOUT_LOADED:-}" ]] && return 0
 _ZBUILD_LAYOUT_LOADED=1
 
+# zbuild_repo_slug (#1930). Guarded: this file is sourced from contexts that may
+# not have scripts/lib on hand, and the segment has a fallback for that.
+_ZBUILD_LAYOUT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$_ZBUILD_LAYOUT_DIR/../../scripts/lib/identity.sh" ]]; then
+    # shellcheck source=../../scripts/lib/identity.sh
+    source "$_ZBUILD_LAYOUT_DIR/../../scripts/lib/identity.sh"
+fi
+
 # ─── zbuild_layout_state_root ────────────────────────────────────────────────
 # The root every run's state lives under. Honours ZBUILD_STATE_ROOT, which is
 # ADR-024's nested-run fence (#1127) and must keep working.
@@ -83,4 +91,67 @@ zbuild_layout_has_any_run_state() {
         done
     done < <(zbuild_layout_state_file_globs)
     return 1
+}
+
+# ─── zbuild_layout_data_root ─────────────────────────────────────────────────
+# Where zBuild keeps a repository's WORK. Deliberately NOT $ZBUILD_HOME: that is
+# ADR-023's INSTALL root (`~/.local/share/zbuild`, the copied engine), and
+# ADR-059 §1's diagram calls the data root `$ZBUILD_HOME` by mistake — pointing
+# run state at the engine's own install directory would put mutable work inside
+# the immutable tree ADR-023 exists to protect. The data root is `~/.zbuild`,
+# which is what every existing path already resolves to.
+zbuild_layout_data_root() {
+    printf '%s' "${ZBUILD_DATA_ROOT:-$HOME/.zbuild}"
+}
+
+# ─── zbuild_layout_repo_segment ──────────────────────────────────────────────
+# The `<repo>` path segment: `owner/repo` as GITHUB spells it, taken from
+# `remote.origin.url` — never from the local directory name.
+#
+# That distinction is the point. One repository is commonly checked out at
+# several local paths (this repo lives at three), and a directory-derived
+# segment would scatter one repository's work across three trees that never see
+# each other's prior work. The remote is the identity; the path is an accident
+# of where someone cloned it. Case is preserved, so the directory reads exactly
+# as GitHub spells it.
+#
+# NO REMOTE: there is no GitHub name, so the fallback is namespaced under
+# `local/` to be unmistakable. A bare directory name would look exactly like a
+# real repo segment and silently mix the two.
+zbuild_layout_repo_segment() {
+    local slug=""
+    if declare -F zbuild_repo_slug >/dev/null 2>&1; then
+        slug="$(zbuild_repo_slug || true)"
+    fi
+    if [[ -n "$slug" ]]; then
+        printf '%s' "$slug"
+        return 0
+    fi
+    local top base
+    top="$(git rev-parse --show-toplevel 2>/dev/null || printf '')"
+    base="$(basename "${top:-$PWD}")"
+    base="${base//[^A-Za-z0-9._-]/_}"
+    [[ -n "$base" ]] || base="unknown"
+    printf 'local/%s' "$base"
+}
+
+# ─── zbuild_layout_repo_root ─────────────────────────────────────────────────
+# `<data_root>/repos/<owner>/<repo>` — the base everything for this repository
+# hangs off (ADR-059 §1).
+zbuild_layout_repo_root() {
+    printf '%s/repos/%s' "$(zbuild_layout_data_root)" "$(zbuild_layout_repo_segment)"
+}
+
+# ─── zbuild_layout_key_root <run_key> ────────────────────────────────────────
+# The directory for one issue or one goal. <run_key> is zbuild_run_key's output
+# — `issue-<N>` or `goal-<hash>` — split so the tree reads the way ADR-059 §1
+# draws it: `issues/1809/`, `goals/goal-47bc…/`.
+zbuild_layout_key_root() {
+    local key="${1:-}"
+    [[ -n "$key" ]] || return 1
+    case "$key" in
+        issue-*) printf '%s/issues/%s' "$(zbuild_layout_repo_root)" "${key#issue-}" ;;
+        goal-*)  printf '%s/goals/%s'  "$(zbuild_layout_repo_root)" "$key" ;;
+        *)       return 1 ;;
+    esac
 }

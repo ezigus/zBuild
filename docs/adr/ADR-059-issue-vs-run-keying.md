@@ -73,7 +73,7 @@ exercised constantly.
 | **the run** | scratch, runtime bookkeeping, events, `pipeline-state.json` | the run, then evidence |
 
 ```
-$ZBUILD_HOME/                              default ~/.zbuild
+$ZBUILD_DATA_ROOT/                         default ~/.zbuild
   repos/<repo>/
     issues/<N>/          or  goals/<goal_hash>/
       worktree/                  one tree, reused across runs
@@ -84,6 +84,26 @@ $ZBUILD_HOME/                              default ~/.zbuild
   cache/<key>                    content-keyed — neither issue nor run (ADR-011)
   memory.db                      never reclaimed (ADR-011)
 ```
+
+**Corrected 2026-08-23, while building #141.** The diagram above originally
+named the data root `$ZBUILD_HOME`. That variable is already taken:
+[ADR-023](ADR-023-install-isolation.md) defines it as the **install** root — the
+copied engine at `~/.local/share/zbuild`. Pointing run state at it would put
+mutable per-run work inside the immutable tree ADR-023 exists to protect, and
+`install.sh --delete` would reap it. The data root is `~/.zbuild`, overridable
+as `ZBUILD_DATA_ROOT`, which is where every existing path already resolves.
+
+**The `<repo>` segment is the GITHUB `owner/repo`, from `remote.origin.url` —
+never the local directory name.** One repository is commonly checked out at
+several local paths (this one lives at three), and a directory-derived segment
+would scatter its work across trees that never see each other's prior work. The
+remote is the identity; the path is an accident of where someone cloned it.
+Case is preserved, so the directory reads as GitHub spells it. A clone with no
+remote has no GitHub name and falls back to `local/<dirname>`, namespaced so it
+cannot be mistaken for a real repo segment. Decided with #141's other
+renderings: `{owner}/{repo}` for directories, the full 64-char hash retained for
+flat keys (truncating would invalidate every existing plan-context leaf, and a
+resume miss is indistinguishable from a cold start).
 
 **Pool dirs move here from `${TMPDIR}/zbuild-runs/`, and that is a storage-class
 change, not only a path change.** ADR-035 keys them per run and that keying is correct —

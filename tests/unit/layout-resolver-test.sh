@@ -106,6 +106,78 @@ else
     assert_pass "[SPEC-4] a completed run is not active"
 fi
 
+# ─── [SPEC-5][change] the segment is GITHUB's name, not the local path ─────
+# One repository is commonly checked out at several local paths — this one lives
+# at three. A directory-derived segment would scatter one repository's work
+# across three trees that never see each other's prior work. The remote is the
+# identity; the path is an accident of where someone cloned it.
+print_test_section "[SPEC-5][change] the repo segment comes from the remote"
+
+_L_REMOTE="$TEST_TEMP_DIR/seg-remote.git"
+git init -q --bare "$_L_REMOTE" 2>/dev/null
+
+# Two clones with DELIBERATELY different directory names, one remote.
+for _d in checkout-alpha totally-different-name; do
+    git clone -q "$_L_REMOTE" "$TEST_TEMP_DIR/$_d" 2>/dev/null
+    ( cd "$TEST_TEMP_DIR/$_d" && git remote set-url origin 'git@github.com:ezigus/zBuild.git' ) 2>/dev/null
+done
+
+_seg_a="$( cd "$TEST_TEMP_DIR/checkout-alpha" && zbuild_layout_repo_segment )"
+_seg_b="$( cd "$TEST_TEMP_DIR/totally-different-name" && zbuild_layout_repo_segment )"
+assert_eq "[SPEC-5] the segment is the GitHub owner/repo" "ezigus/zBuild" "$_seg_a"
+assert_eq "[SPEC-5] a differently-NAMED checkout resolves identically" "$_seg_a" "$_seg_b"
+
+# Case is preserved — the directory reads exactly as GitHub spells it. Asserted
+# explicitly because zbuild_repo_id lowercases for hashing, and it would be easy
+# to reuse that normalisation here by accident.
+assert_contains "[SPEC-5] GitHub's casing is preserved (zBuild, not zbuild)" "$_seg_a" "zBuild"
+
+# ─── [SPEC-6][guard] a remoteless clone is unmistakably local ──────────────
+# There is no GitHub name for it. A bare directory name would look exactly like
+# a real repo segment and silently mix the two.
+print_test_section "[SPEC-6][guard] no remote falls back under local/"
+
+_L_BARE="$TEST_TEMP_DIR/no-remote-repo"
+mkdir -p "$_L_BARE"
+( cd "$_L_BARE" && git init -q -b main . ) >/dev/null 2>&1
+_seg_local="$( cd "$_L_BARE" && zbuild_layout_repo_segment )"
+assert_contains "[SPEC-6] a remoteless clone is namespaced under local/" "$_seg_local" "local/"
+if [[ "$_seg_local" == "ezigus/"* ]]; then
+    assert_fail "[SPEC-6] it must not look like a GitHub segment" "$_seg_local"
+else
+    assert_pass "[SPEC-6] it cannot be confused with a GitHub segment"
+fi
+
+# ─── [SPEC-7][change] issues and goals sit where ADR-059 §1 draws them ─────
+print_test_section "[SPEC-7][change] the key root splits issues from goals"
+
+_r="$( cd "$TEST_TEMP_DIR/checkout-alpha" && zbuild_layout_key_root issue-1809 )"
+assert_contains "[SPEC-7] an issue lands under issues/<N>" "$_r" "/repos/ezigus/zBuild/issues/1809"
+_r="$( cd "$TEST_TEMP_DIR/checkout-alpha" && zbuild_layout_key_root goal-47bcb1fe9278 )"
+assert_contains "[SPEC-7] a goal lands under goals/<key>" "$_r" "/repos/ezigus/zBuild/goals/goal-47bcb1fe9278"
+
+# An unrecognised key is refused rather than placed somewhere plausible —
+# `issue-0` is exactly the shape #1931 removed, and it must not come back.
+for _bad in "" "issue0" "nonsense"; do
+    _rc=0; zbuild_layout_key_root "$_bad" >/dev/null 2>&1 || _rc=$?
+    assert_exit_code "[SPEC-7] key '$_bad' is refused" "1" "$_rc"
+done
+
+# ─── [SPEC-8][guard] the data root is NOT the install root ────────────────
+# ADR-023's $ZBUILD_HOME is the copied ENGINE (~/.local/share/zbuild). ADR-059
+# §1's diagram calls the data root $ZBUILD_HOME by mistake; pointing run state
+# there would put mutable work inside the immutable tree ADR-023 exists to
+# protect.
+print_test_section "[SPEC-8][guard] run data never lands in the install tree"
+
+_data="$(ZBUILD_DATA_ROOT='' HOME="$TEST_TEMP_DIR/fakehome" zbuild_layout_data_root)"
+assert_eq "[SPEC-8] the data root is ~/.zbuild" "$TEST_TEMP_DIR/fakehome/.zbuild" "$_data"
+if [[ "$_data" == *".local/share/zbuild"* ]]; then
+    assert_fail "[SPEC-8] the data root must not be the install root" "$_data"
+else
+    assert_pass "[SPEC-8] the data root is distinct from ADR-023's install root"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
