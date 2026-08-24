@@ -1,0 +1,192 @@
+### core/router/route.sh reverted tests/unit/router-claude-flags-test.sh
+
+[38;2;0;212;255m[1m  router-claude-flags — ADR-018 flag-set adoption (#466)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m T1: route returns rc=0
+    [2mexpected: 0, got: 2[0m
+/Users/ericziegler/.zbuild/state/runs/20260824174903-48827/scratch/acceptance-gate/zb-reach.RGkNAe/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824174903-48827/scratch/acceptance-gate/router-claude-flags.k5lAL0/last_args: No such file or directory
+  [38;2;248;113;113m✗[0m T1: argv contains --max-turns
+    [2moutput missing: --max-turns[0m
+  [38;2;248;113;113m✗[0m T1: argv contains default max_turns=25 as its own token
+    [2margv: [0m
+  [38;2;248;113;113m✗[0m T1: argv contains --disallowed-tools
+    [2moutput missing: --disallowed-tools[0m
+  [38;2;248;113;113m✗[0m T1: disallowed-tools value is single token with comma intact
+    [2margv: [0m
+  [38;2;248;113;113m✗[0m [SPEC-1] T1: argv contains --permission-mode
+    [2margv: [0m
+  [38;2;248;113;113m✗[0m [SPEC-1] T1: argv contains acceptEdits
+    [2margv: [0m
+  [38;2;248;113;113m✗[0m [SPEC-5] T1: argv contains --settings
+    [2margv: [0m
+  [38;2;248;113;113m✗[0m T1: argv preserves -p
+    [2moutput missing: -p[0m
+  [38;2;248;113;113m✗[0m T1: argv preserves --print
+    [2moutput missing: --print[0m
+  [38;2;248;113;113m✗[0m T1: argv preserves --model
+    [2moutput missing: --model[0m
+/Users/ericziegler/.zbuild/state/runs/20260824174903-48827/scratch/acceptance-gate/zb-reach.RGkNAe/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824174903-48827/scratch/acceptance-gate/router-claude-flags.k5lAL0/last_args: No such file or directory
+  [38;2;248;113;113m✗[0m T2: --output-format coexists with new flags
+    [2moutput missing: --output-format[0m
+  [38;2;248;113;113m✗[0m T2: json token present
+    [2moutput missing: json[0m
+  [38;2;248;113;113m✗[0m T2: --max-turns still present in JSON mode
+    [2moutput missing: --max-turns[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] T2: --permission-mode still present in JSON mode
+    [2margv: [0m
+  [38;2;248;113;113m✗[0m [SPEC-1] T2: acceptEdits still present in JSON mode
+    [2margv: [0m
+  [38;2;248;113;113m✗[0m T3: env override route returns rc=0
+    [2mexpected: 0, got: 2[0m
+/Users/ericziegler/.zbuild/state/runs/20260824174903-48827/scratch/acceptance-gate/zb-reach.RGkNAe/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824174903-48827/scratch/acceptance-gate/router-claude-flags.k5lAL0/last_args: No such file or directory
+  [38;2;248;113;113m✗[0m T3: env ZBUILD_ROUTER_MAX_TURNS=10 reflected in argv
+    [2margv: [0m
+  [38;2;74;222;128m✓[0m T4: invalid max_turns '-3' → rc=2
+  [38;2;248;113;113m✗[0m T4: invalid '-3' emits reason=invalid_max_turns
+    [2mexpected: invalid_max_turns, got: [0m
+  [38;2;74;222;128m✓[0m T4: invalid max_turns '-1' → rc=2
+  [38;2;248;113;113m✗[0m T4: invalid '-1' emits reason=invalid_max_turns
+    [2mexpected: invalid_max_turns, got: [0m
+  [38;2;74;222;128m✓[0m T4: invalid max_turns 'abc' → rc=2
+  [38;2;248;113;113m✗[0m T4: invalid 'abc' emits reason=invalid_max_turns
+    [2mexpected: invalid_max_turns, got: [0m
+  [38;2;74;222;128m✓[0m T4: invalid max_turns '201' → rc=2
+  [38;2;248;113;113m✗[0m T4: invalid '201' emits reason=invalid_max_turns
+    [2mexpected: invalid_max_turns, got: [0m
+  [38;2;248;113;113m✗[0m T4b: max_turns=0 sentinel → rc=0 (valid)
+    [2mexpected: 0, got: 2[0m
+/Users/ericziegler/.zbuild/state/runs/20260824174903-48827/scratch/acceptance-gate/zb-reach.RGkNAe/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824174903-48827/scratch/acceptance-gate/router-claude-flags.k5lAL0/last_args: No such file or directory
+  [38;2;74;222;128m✓[0m T4b: --max-turns flag omitted when sentinel=0
+### core/router/route.sh head tests/unit/router-claude-flags-test.sh
+
+[38;2;0;212;255m[1m  router-claude-flags — ADR-018 flag-set adoption (#466)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m T1: route returns rc=0
+    [2mexpected: 0, got: 2[0m
+/Users/ericziegler/.zbuild/runs/20260824174903-48827/worktree/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824174903-48827/scratch/acceptance-gate/router-claude-flags.bLQTIu/last_args: No such file or directory
+  [38;2;248;113;113m✗[0m T1: argv contains --max-turns
+    [2moutput missing: --max-turns[0m
+  [38;2;248;113;113m✗[0m T1: argv contains default max_turns=25 as its own token
+    [2margv: [0m
+  [38;2;248;113;113m✗[0m T1: argv contains --disallowed-tools
+    [2moutput missing: --disallowed-tools[0m
+  [38;2;248;113;113m✗[0m T1: disallowed-tools value is single token with comma intact
+    [2margv: [0m
+  [38;2;248;113;113m✗[0m [SPEC-1] T1: argv contains --permission-mode
+    [2margv: [0m
+  [38;2;248;113;113m✗[0m [SPEC-1] T1: argv contains acceptEdits
+    [2margv: [0m
+  [38;2;248;113;113m✗[0m [SPEC-5] T1: argv contains --settings
+    [2margv: [0m
+  [38;2;248;113;113m✗[0m T1: argv preserves -p
+    [2moutput missing: -p[0m
+  [38;2;248;113;113m✗[0m T1: argv preserves --print
+    [2moutput missing: --print[0m
+  [38;2;248;113;113m✗[0m T1: argv preserves --model
+    [2moutput missing: --model[0m
+/Users/ericziegler/.zbuild/runs/20260824174903-48827/worktree/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824174903-48827/scratch/acceptance-gate/router-claude-flags.bLQTIu/last_args: No such file or directory
+  [38;2;248;113;113m✗[0m T2: --output-format coexists with new flags
+    [2moutput missing: --output-format[0m
+  [38;2;248;113;113m✗[0m T2: json token present
+    [2moutput missing: json[0m
+  [38;2;248;113;113m✗[0m T2: --max-turns still present in JSON mode
+    [2moutput missing: --max-turns[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] T2: --permission-mode still present in JSON mode
+    [2margv: [0m
+  [38;2;248;113;113m✗[0m [SPEC-1] T2: acceptEdits still present in JSON mode
+    [2margv: [0m
+  [38;2;248;113;113m✗[0m T3: env override route returns rc=0
+    [2mexpected: 0, got: 2[0m
+/Users/ericziegler/.zbuild/runs/20260824174903-48827/worktree/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824174903-48827/scratch/acceptance-gate/router-claude-flags.bLQTIu/last_args: No such file or directory
+  [38;2;248;113;113m✗[0m T3: env ZBUILD_ROUTER_MAX_TURNS=10 reflected in argv
+    [2margv: [0m
+  [38;2;74;222;128m✓[0m T4: invalid max_turns '-3' → rc=2
+  [38;2;248;113;113m✗[0m T4: invalid '-3' emits reason=invalid_max_turns
+    [2mexpected: invalid_max_turns, got: [0m
+  [38;2;74;222;128m✓[0m T4: invalid max_turns '-1' → rc=2
+  [38;2;248;113;113m✗[0m T4: invalid '-1' emits reason=invalid_max_turns
+    [2mexpected: invalid_max_turns, got: [0m
+  [38;2;74;222;128m✓[0m T4: invalid max_turns 'abc' → rc=2
+  [38;2;248;113;113m✗[0m T4: invalid 'abc' emits reason=invalid_max_turns
+    [2mexpected: invalid_max_turns, got: [0m
+  [38;2;74;222;128m✓[0m T4: invalid max_turns '201' → rc=2
+  [38;2;248;113;113m✗[0m T4: invalid '201' emits reason=invalid_max_turns
+    [2mexpected: invalid_max_turns, got: [0m
+  [38;2;248;113;113m✗[0m T4b: max_turns=0 sentinel → rc=0 (valid)
+    [2mexpected: 0, got: 2[0m
+/Users/ericziegler/.zbuild/runs/20260824174903-48827/worktree/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824174903-48827/scratch/acceptance-gate/router-claude-flags.bLQTIu/last_args: No such file or directory
+  [38;2;74;222;128m✓[0m T4b: --max-turns flag omitted when sentinel=0
+### core/router/route.sh reverted tests/integration/router-claude-flags-test.sh
+
+[38;2;0;212;255m[1m  router-claude-flags e2e — subprocess boundary (#466, ADR-018)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m e2e: argv has --max-turns
+  [38;2;74;222;128m✓[0m e2e: per-stage max_turns=42 propagates through subprocess (export not regressed)
+  [38;2;74;222;128m✓[0m e2e: argv has --disallowed-tools
+  [38;2;74;222;128m✓[0m e2e: disallowed-tools comma preserved as single argv token
+  [38;2;248;113;113m✗[0m [SPEC-1] e2e: argv has --permission-mode
+    [2margv: -p
+ping
+--print
+--model
+claude-sonnet-4-6
+--max-turns
+42
+--disallowed-tools
+EnterPlanMode,ExitPlanMode
+--dangerously-skip-permissions[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] e2e: argv has acceptEdits
+    [2margv: -p
+ping
+--print
+--model
+claude-sonnet-4-6
+--max-turns
+42
+--disallowed-tools
+EnterPlanMode,ExitPlanMode
+--dangerously-skip-permissions[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] e2e: argv has --settings
+    [2margv: -p
+ping
+--print
+--model
+claude-sonnet-4-6
+--max-turns
+42
+--disallowed-tools
+EnterPlanMode,ExitPlanMode
+--dangerously-skip-permissions[0m
+  [38;2;74;222;128m✓[0m e2e: C6 redaction.applied gate respected (still in events log)
+  [38;2;74;222;128m✓[0m e2e: model.route emitted from child subprocess
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m3 of 9 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-1] e2e: argv has --permission-mode
+  [38;2;248;113;113m✗[0m [SPEC-1] e2e: argv has acceptEdits
+  [38;2;248;113;113m✗[0m [SPEC-1] e2e: argv has --settings
+
+### core/router/route.sh head tests/integration/router-claude-flags-test.sh
+
+[38;2;0;212;255m[1m  router-claude-flags e2e — subprocess boundary (#466, ADR-018)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m e2e: argv has --max-turns
+  [38;2;74;222;128m✓[0m e2e: per-stage max_turns=42 propagates through subprocess (export not regressed)
+  [38;2;74;222;128m✓[0m e2e: argv has --disallowed-tools
+  [38;2;74;222;128m✓[0m e2e: disallowed-tools comma preserved as single argv token
+  [38;2;74;222;128m✓[0m [SPEC-1] e2e: argv has --permission-mode
+  [38;2;74;222;128m✓[0m [SPEC-1] e2e: argv has acceptEdits
+  [38;2;74;222;128m✓[0m [SPEC-1] e2e: argv has --settings
+  [38;2;74;222;128m✓[0m e2e: C6 redaction.applied gate respected (still in events log)
+  [38;2;74;222;128m✓[0m e2e: model.route emitted from child subprocess
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 9 tests passed[0m
+

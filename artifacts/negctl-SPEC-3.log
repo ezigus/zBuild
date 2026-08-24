@@ -1,0 +1,29 @@
+### SPEC-3 baseline tests/unit/router-permissions-test.sh
+
+[38;2;0;212;255m[1m  router-permissions — #1919 C10 acceptEdits settings (#1919)[0m
+[2m  ══════════════════════════════════════════[0m
+
+/Users/ericziegler/.zbuild/state/runs/20260824174903-48827/scratch/acceptance-gate/zb-negctl.Sx0B9d/tests/unit/router-permissions-test.sh: line 30: /Users/ericziegler/.zbuild/state/runs/20260824174903-48827/scratch/acceptance-gate/zb-negctl.Sx0B9d/core/router/permissions.sh: No such file or directory
+### SPEC-3 head tests/unit/router-permissions-test.sh
+
+[38;2;0;212;255m[1m  router-permissions — #1919 C10 acceptEdits settings (#1919)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-2] P1: _zbuild_build_permissions_settings returns rc=0
+  [38;2;74;222;128m✓[0m [SPEC-2] P1: settings file path is non-empty
+  [38;2;74;222;128m✓[0m [SPEC-2] P1: settings file exists on disk
+  [38;2;74;222;128m✓[0m [SPEC-2] P1: allowedDirectories contains ZBUILD_REPO_ROOT
+  [38;2;74;222;128m✓[0m [SPEC-2] P1: allowedDirectories contains ZBUILD_STAGE_SCRATCH
+  [38;2;74;222;128m✓[0m [SPEC-2] P2: fallback path returns rc=0
+  [38;2;74;222;128m✓[0m [SPEC-2] P2: settings file still written on scratch fallback
+  [38;2;74;222;128m✓[0m [SPEC-2] P2: scratch_fallback event emitted
+  [38;2;74;222;128m✓[0m [SPEC-3] P3: unwritable scratch causes rc≠0 (spawn refusal)
+  [38;2;74;222;128m✓[0m [SPEC-4] P4: no non-comment dangerously-skip-permissions in core/router/
+  [38;2;74;222;128m✓[0m [SPEC-2] P5: _zbuild_permission_args emits --permission-mode
+  [38;2;74;222;128m✓[0m [SPEC-2] P5: _zbuild_permission_args emits acceptEdits
+  [38;2;74;222;128m✓[0m [SPEC-2] P5: _zbuild_permission_args emits --settings
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 13 tests passed[0m
+
