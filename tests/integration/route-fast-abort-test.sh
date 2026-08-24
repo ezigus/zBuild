@@ -236,7 +236,12 @@ while [[ $(date +%s%N) -lt $deadline_ns ]]; do
                 # backstop (`{ sleep 1 && kill -KILL; } &`). Widening it past 1s
                 # would trade this flake for a blind spot in exactly the
                 # regression #906 added this test to catch.
-                _st="$(ps -o state= -p "$p" 2>/dev/null | tr -d ' ')"
+                # `|| _st="Z"` is NOT cosmetic. Under `set -euo pipefail`, if the process
+                # exits between the `kill -0` above and this `ps`, the pipeline returns
+                # non-zero, the assignment fails, and set -e kills the whole FILE —
+                # silently, because stderr is redirected. Absorbing it routes a
+                # now-dead process through the Z branch, which is what it is.
+                _st="$(ps -o state= -p "$p" 2>/dev/null | tr -d ' ')" || _st="Z"
                 case "$_st" in
                     Z*) : ;;                                  # already dead
                     *)  leftover=$(( leftover + 1 )) ;;
