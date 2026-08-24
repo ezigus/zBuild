@@ -6,9 +6,12 @@ defaults:
 
 # #1831 fixture: the smallest template that exercises `always_run:`.
 #
-# NEW shape (`flow:` + top-level sections) on purpose — `always_run:` is a
-# new-shape key, and the old `stages:` shape routes through the legacy parser
-# which has no notion of it.
+# NEW shape (`flow:` + top-level sections) on purpose — but NOT because
+# `always_run:` needs it. The key is shape-INDEPENDENT: `_tpl_parse_always_run`
+# reads it straight from the file, and SPEC-6 in tests/unit/template-always-run-test.sh
+# proves an old-shape template inherits it too. The new shape is used here only
+# because it is the smaller fixture, and because it exercises the per-repo
+# overlay's new-shape path alongside it.
 #
 # `outcome` is the only flow stage. Its plugin is replaced per-case by the test
 # so one fixture can drive every exit path: rc=0, rc=1, SIGINT (rc=130), SIGTERM

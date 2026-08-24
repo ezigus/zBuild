@@ -1712,26 +1712,44 @@ _tpl_parse_always_run() {
         }
         # Any other top-level key closes the list and opens a possible section.
         /^[a-zA-Z_]/ {
-            in_ar = 0; in_router = 0
+            in_ar = 0; in_router = 0; in_roles = 0
             in_sec = $0; sub(/:.*$/, "", in_sec); in_sec = trim(in_sec)
             seen[in_sec] = 1
             next
         }
         # Within a section: roles: and router.timeout_s.
+        # BOTH list forms, because `_tpl_parse_stages_v2` accepts both and a
+        # template author will model an always-run section on a flow stage.
+        # Accepting only the inline form here would refuse a section that looks
+        # exactly like every other one in the file.
         in_sec != "" && /^[[:space:]]+roles:/ {
             v = $0; sub(/^[[:space:]]+roles:[[:space:]]*/, "", v); v = trim(v)
-            gsub(/^\[|\]$/, "", v); gsub(/[[:space:]]/, "", v)
-            roles[in_sec] = v
+            if (v ~ /\[/) {
+                gsub(/^\[|\]$/, "", v); gsub(/[[:space:]]/, "", v)
+                roles[in_sec] = v
+                in_roles = 0
+            } else if (v == "") {
+                # Block form: the items are the indented `- x` lines below.
+                in_roles = 1; roles[in_sec] = ""
+            } else {
+                roles[in_sec] = v
+                in_roles = 0
+            }
             in_router = 0
             next
         }
-        in_sec != "" && /^[[:space:]]+router:[[:space:]]*$/ { in_router = 1; next }
+        in_sec != "" && in_roles && /^[[:space:]]+-[[:space:]]/ {
+            v = $0; sub(/^[[:space:]]+-[[:space:]]+/, "", v); v = trim(v)
+            if (v != "") roles[in_sec] = (roles[in_sec] == "" ? v : roles[in_sec] "," v)
+            next
+        }
+        in_sec != "" && /^[[:space:]]+router:[[:space:]]*$/ { in_router = 1; in_roles = 0; next }
         in_sec != "" && in_router && /^[[:space:]]+timeout_s:/ {
             v = $0; sub(/^[[:space:]]+timeout_s:[[:space:]]*/, "", v); to[in_sec] = trim(v)
             next
         }
         # A key at section-attribute depth that is not router: closes the router block.
-        in_sec != "" && /^[[:space:]]+[a-zA-Z_]+:/ && !/^[[:space:]]+timeout_s:/ { in_router = 0 }
+        in_sec != "" && /^[[:space:]]+[a-zA-Z_]+:/ && !/^[[:space:]]+timeout_s:/ { in_router = 0; in_roles = 0 }
         END {
             for (i = 1; i <= ar_n; i++) {
                 id = ar[i]

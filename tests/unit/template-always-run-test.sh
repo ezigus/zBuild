@@ -204,4 +204,42 @@ assert_eq "[SPEC-6] and its own single stage, not the base's flow" \
 assert_eq "[SPEC-6] the release role survives the old-shape path" \
     "teardown" "${_TPL_STAGE_ROLES_release:-<unset>}"
 
+# ─── [SPEC-7][change] both roles: list forms, like every other stage ────────
+# `_tpl_parse_stages_v2` accepts inline AND block form, so an always-run section
+# modelled on a flow stage — which is what a template author will write — must
+# work too. The first cut accepted only the inline form; a block-form section
+# then hit the fail-closed "declares no roles:" refusal, which is a confusing
+# way to say "unsupported syntax".
+print_test_section "[SPEC-7][change] roles: parses in block form as well as inline"
+
+_tpl_block_roles="$TEST_TEMP_DIR/blockroles.yaml"
+_write_tpl "$_tpl_block_roles" 'flow:
+  - alpha
+
+always_run:
+  - blockform
+
+alpha:
+  gate: auto
+  roles: [intake]
+  io:
+    destinations: [file]
+
+blockform:
+  gate: auto
+  roles:
+    - teardown
+  router:
+    timeout_s: 12
+  io:
+    destinations: [file]
+'
+_rc=0
+load_template "$_tpl_block_roles" >/dev/null 2>&1 || _rc=$?
+assert_exit_code "[SPEC-7] a block-form roles: section loads" "0" "$_rc"
+assert_eq "[SPEC-7] block-form roles: is captured" \
+    "teardown" "${_TPL_STAGE_ROLES_blockform:-<unset>}"
+assert_eq "[SPEC-7] and timeout_s after it still parses" \
+    "12" "${_TPL_STAGE_ROUTER_TIMEOUT_blockform:-<unset>}"
+
 print_test_results

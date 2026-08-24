@@ -1950,7 +1950,7 @@ main() {
                 # LOUD, unlike the old `[[ -d ... ]] || return 0`. An always-run
                 # stage that cannot be resolved has not run, and the operator
                 # needs to know that rather than infer it from a missing effect.
-                emit_event "stage.always_run.unresolved" "stage=$_ar_stage" "role=$_ar_role" 2>/dev/null || true
+                eb_emit_event "stage.always_run.unresolved" "stage=$_ar_stage" "role=$_ar_role" 2>/dev/null || true
                 continue
             fi
 
