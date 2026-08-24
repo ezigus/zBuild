@@ -28,9 +28,12 @@ _RFA_PROC="${_RFA_PROC:-/proc}"
 #   cmdline readable but EMPTY             zombie (#1942)            -> 1
 #   cmdline non-empty, needle absent       PID reuse, a stranger     -> 1
 #   cmdline non-empty, needle present      ours, alive               -> 0
+#   /proc/<pid> exists, cmdline MISSING    ambiguous                 -> 0
 #   /proc/<pid> exists, cmdline UNREADABLE ambiguous                 -> 0
 #
-# The last row is the deliberate one: an unreadable cmdline under a directory
+# The last TWO rows are the deliberate ones. They reach the same branch by
+# different routes — a missing file and an unreadable file both make the
+# redirect fail — and both mean the same thing: an unreadable cmdline under a directory
 # that still exists is not evidence of absence. Count it and let the caller's
 # diagnostic explain, rather than silently stop detecting.
 proc_is_my_process() {

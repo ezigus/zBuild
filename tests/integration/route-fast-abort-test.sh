@@ -64,7 +64,6 @@ export ZBUILD_SCOPE_OVERRIDE=1
 
 # Unique marker so we can pgrep for OUR stub-claude processes only —
 # even if some other stub `claude` is around in the test env.
-MARKER="ZB-W15G-MARKER-$$-$(date +%s)"
 
 # Stub claude: trap-and-ignore SIGTERM/INT, sleep long. Records its PID
 # into a file so we can verify it was actually reaped.
@@ -72,7 +71,6 @@ mkdir -p "$TEST_TEMP_DIR/bin"
 PID_FILE="$TEST_TEMP_DIR/stub-claude.pid"
 cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
 #!/usr/bin/env bash
-# Marker arg so pgrep can find us by cmdline: $MARKER
 echo \$\$ >> "$PID_FILE"
 trap '' TERM INT
 # Burn 60s in 1s slices so the trap-ignore is observable AND so a kernel
@@ -88,7 +86,6 @@ chmod +x "$TEST_TEMP_DIR/bin/claude"
 # The identity the leftover check matches on (#1949). Unique per run.
 _RFA_STUB_PATH="$TEST_TEMP_DIR/bin/claude"
 export PATH="$TEST_TEMP_DIR/bin:$PATH"
-export ZB_STUB_MARKER="$MARKER"
 
 # Throwaway repo for route_to_model_loop's git diff capture.
 REPO="$TEST_TEMP_DIR/repo"
