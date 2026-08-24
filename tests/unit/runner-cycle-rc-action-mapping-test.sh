@@ -74,9 +74,20 @@ _cases=(
     "130|aborted|interrupted|0"
 )
 
+# ONE drive per case (#1946). Each _drive runs the WHOLE runner and writes both
+# pipeline-state.json and events.jsonl into the same dir; the loops below want
+# one file each, so re-driving to read the second was 9 redundant full-pipeline
+# runs — 53% of this file's wall clock, and what pushed the macOS unit tier past
+# its 480s bound. Drive once, index the results.
+declare -a _dirs=()
 for _row in "${_cases[@]}"; do
-    IFS='|' read -r _rc _reason _exp_status _exp_review <<< "$_row"
-    _dir="$(_drive "$_rc" "$_reason")"
+    IFS='|' read -r _rc _reason _ _ <<< "$_row"
+    _dirs+=("$(_drive "$_rc" "$_reason")")
+done
+
+for _i in "${!_cases[@]}"; do
+    IFS='|' read -r _rc _reason _exp_status _exp_review <<< "${_cases[$_i]}"
+    _dir="${_dirs[$_i]}"
     _state="$_dir/state/pipeline-state.json"
     _got_status="$(jq -r '.status' "$_state" 2>/dev/null)"
     assert_eq "rc=$_rc → pipeline_status=$_exp_status" "$_exp_status" "$_got_status"
@@ -96,10 +107,9 @@ done
 
 # _RUNNER_CYCLE_UNCONVERGED flag — verified indirectly through pipeline_status,
 # but also assert the cycle.unconverged event ONLY fires for rc∈{1,2,3}.
-for _row in "${_cases[@]}"; do
-    IFS='|' read -r _rc _reason _exp_status _exp_review <<< "$_row"
-    _dir="$(_drive "$_rc" "$_reason")"
-    _ev="$_dir/events/events.jsonl"
+for _i in "${!_cases[@]}"; do
+    IFS='|' read -r _rc _reason _exp_status _exp_review <<< "${_cases[$_i]}"
+    _ev="${_dirs[$_i]}/events/events.jsonl"
     _count="$(grep -c '"type":"cycle.unconverged"' "$_ev" 2>/dev/null)"
     [[ -z "$_count" ]] && _count=0
     case "$_rc" in
@@ -111,16 +121,32 @@ done
 # [SPEC-3]: rc=8 (blocking_member_failure) → state-file status=failed, not interrupted.
 # ADR-013 specifies blocking_member_failure → HALT; status=failed. This assertion
 # fails at baseline where the rc=8 catch-all writes status=interrupted.
-_dir8="$(_drive 8 "blocking_member_failure")"
-_state8="$_dir8/state/pipeline-state.json"
-# Diagnostic: a missing state file would make the status check silently compare
-# an empty/'null' value against 'failed'. Surface the real cause instead.
-if [[ ! -f "$_state8" ]]; then
-    echo "  DIAGNOSTIC: expected state file not found: $_state8" >&2
-    echo "  DIAGNOSTIC: _drive 8 dir contents:" >&2
-    ls -R "$_dir8" >&2 2>/dev/null || true
+# Reuse the rc=8 drive rather than running the pipeline a THIRD time for the
+# same scenario (#1946). Looked up by rc, NOT by a literal index: a hardcoded
+# _dirs[6] would keep passing while silently asserting on a different scenario
+# the moment a case is added or reordered above.
+_dir8=""
+for _i in "${!_cases[@]}"; do
+    [[ "${_cases[$_i]%%|*}" == "8" ]] && { _dir8="${_dirs[$_i]}"; break; }
+done
+# ONE failure per cause. If the rc=8 case is gone the assertion below cannot
+# run at all, and letting it run anyway against an empty path reported a SECOND,
+# misleading failure ("status was not failed") for the same single defect —
+# sending the reader after a state-file bug that does not exist.
+if [[ -z "$_dir8" ]]; then
+    echo "  DIAGNOSTIC: no rc=8 case in _cases — [SPEC-3] cannot run" >&2
+    FAIL=$((FAIL + 1))
+else
+    _state8="$_dir8/state/pipeline-state.json"
+    # A missing state file would make the status check silently compare an
+    # empty/'null' value against 'failed'. Surface the real cause instead.
+    if [[ ! -f "$_state8" ]]; then
+        echo "  DIAGNOSTIC: expected state file not found: $_state8" >&2
+        echo "  DIAGNOSTIC: _drive 8 dir contents:" >&2
+        ls -R "$_dir8" >&2 2>/dev/null || true
+    fi
+    _got8="$(jq -r '.status' "$_state8" 2>/dev/null)"
+    assert_eq "[SPEC-3] rc=8 (blocking_member_failure) → state-file status=failed" "failed" "$_got8"
 fi
-_got8="$(jq -r '.status' "$_state8" 2>/dev/null)"
-assert_eq "[SPEC-3] rc=8 (blocking_member_failure) → state-file status=failed" "failed" "$_got8"
 
 print_test_results
