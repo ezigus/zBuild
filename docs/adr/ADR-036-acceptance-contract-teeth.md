@@ -655,3 +655,56 @@ build genuinely closes in one iteration never reaches the escalation guard.
 **Scope.** The escalation is implemented only for `inert_wiring:*`. The same guard pattern applies to
 `tautology:*` and `untagged_spec:*` in principle, but the acceptance criteria only test
 `inert_wiring`; generalisation is a follow-up if the pipeline owner wants it.
+
+## Amendment (#1777, 2026-08-24) — the guard check runs at the design-gate too, and `guard_regressed` routes to design
+
+**Problem.** ADR-036 §"Amendment (#1670)" made a `[guard]` SPEC's assertion answerable at the
+merge-base, and the gate has been catching mislabels correctly ever since. It catches them in the
+wrong *place*. The check lives at the post-build acceptance gate, so a two-word error — `[guard]`
+where the author meant `[change]` — is not visible until build has spent its entire iteration
+budget on the design. #1789 lost 5 iterations and 2h06m; #1809 lost 2 more (~1h39m and ~1h05m) and
+was aborted at iteration 3 of 5. Both wanted the same two-word fix.
+
+Worse, the rewind that exists for exactly this could not deliver it. `simple.yaml` declares
+`route_back: {to: design_verify_cycle, when: gate-aggregator.verdict == route_design}`, but
+`guard_regressed` set **no** `route_target`, so the gate-aggregator's #1757 partition put it in
+`residual[]` and wrote it to the BUILD-facing `gate-feedback.md`. On #1809 the winning
+`route_target` came from shape-floor, so `design-feedback.md` — the payload the rewind carries —
+named only shape-floor. Design re-authored nothing, build re-ran, the same guard failed again.
+
+**Decision.**
+
+1. **`guard_regressed` is design-rooted.** `spec-acceptance` sets `route_target=design` for it,
+   alongside `wiring_not_on_path` (#1583) and escalated `inert_wiring` (#1711). Build cannot fix a
+   mislabelled tag; the correction is the tag or the assertion, and both live in the design.
+   Disposition stays `recoverable` — `terminal` would halt the cycle before the aggregator reads
+   `route_target`, the same rationale as #1686/#1711.
+
+2. **The design-gate gains C6**, applying the §"Amendment (#1670)" rule one stage earlier via
+   `acceptance_negctl_guard_precheck`. The per-SPEC resolution and the ✓/✗ discrimination (#1737)
+   are *extracted*, not reimplemented — `_negctl_guard_resolve_tfs` and `_negctl_guard_verdict` are
+   shared by both callers, so the two gates cannot come to disagree about the same design.
+
+**What C6 does NOT do, stated plainly.** It cannot save the *first* build cycle. At the first
+design pass the branch has no commits, so the merge-base IS HEAD and there is nothing to revert to;
+more fundamentally the assertion does not exist yet, because since #1477 BUILD authors every
+assertion body. C6 earns its keep on the **rewind** — after `route_design` sends the run back, it
+rejects the design in one design turn instead of a second full build cycle. It converts an
+unbounded spiral into one wasted cycle. Decision (1) is what makes that rewind actionable at all.
+
+**Fail-open, and loud about it.** C6 emits `GUARD SKIP` — never `GUARD FAIL` — for a missing
+baseline, an unresolvable worktree, a timeout, an unparseable baseline copy, or an untagged guard
+(#1255). A structural gate must not become a new way for a correct design to be rejected; the
+acceptance gate remains the authority.
+
+But a gate that skips *silently* is indistinguishable from one that works, which is the
+green-but-inert shape this repo keeps paying for (#845, #1044, and the vacuous
+`asserts: <none found>` in #1777's own second occurrence). So `design-gate-result.json` records a
+`guard_precheck` block — `declared`, `verified`, `failed`, and a reason per unverified SPEC — and
+the feedback file states it in prose. "verified 0 of 3, testfiles absent" is a fact an operator can
+read; "verified 0 of 3, worktree_failed" is visibly a bug and not a pass. The key is absent
+entirely when a design declares no `[guard]` SPEC, so a guard-less design's artifact shape is
+unchanged.
+
+**Unchanged.** Level-2 at the acceptance gate is untouched — C6 is an earlier net, not a
+replacement. `tautology` still carries no `route_target` and still reaches build (#1583).

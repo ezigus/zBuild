@@ -466,6 +466,26 @@ acceptance_gate_run() {
     for f in "${failures[@]:-}"; do
         [[ "$f" == wiring_not_on_path:* ]] && route_target="design" && break
     done
+    # #1777: guard_regressed is design-rooted by construction. Build cannot fix a
+    # SPEC tagged [guard] whose assertion asserts a change — the correction is
+    # the tag (or the assertion), and both live in the design. Without a
+    # route_target the failure landed in the gate-aggregator's residual[]
+    # partition and was written to the BUILD-facing gate-feedback.md, so on #1809
+    # the run rewound to design carrying a design-feedback.md that named only
+    # shape-floor and never mentioned the offending SPEC. Design re-authored
+    # nothing, build re-ran, and the same guard failed again.
+    #
+    # Disposition stays recoverable: terminal would halt the cycle before the
+    # aggregator reads route_target and emits route_design (same rationale as
+    # #1686/#1711 above).
+    if [[ -z "$route_target" ]]; then
+        for f in "${failures[@]:-}"; do
+            if [[ "$f" == guard_regressed:* ]]; then
+                route_target="design"
+                break
+            fi
+        done
+    fi
     # #1711: inert_wiring on iter≥2 escalates to route_target=design. First
     # build attempt (iter=1) is preserved as a real try; a still-inert target
     # on iter≥2 is unreachable by build and must be corrected by design.
