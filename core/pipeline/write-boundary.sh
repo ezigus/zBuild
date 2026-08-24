@@ -225,8 +225,17 @@ write_boundary_classify() {
                 _gc="$(cd "$_gd" 2>/dev/null && pwd -P)" || _gc="$_gd"
                 _ar="${_gc}/${_gp}"
             fi
+            # The pattern must match the candidate ITSELF, and only within one
+            # path segment: `*` in a [[ == ]] pattern also matches `/`, so a
+            # bare `.claude.json*` match would hand over the whole subtree of a
+            # directory named to fit it — `.claude.json.evil/secrets` reads as
+            # allowed. Comparing the parent directories pins the glob to the
+            # basename. A glob entry names files, not roots; an operator who
+            # wants a subtree writes the root without a glob. An entry whose
+            # DIRECTORY part carries a glob matches nothing here, which fails
+            # closed — the safe direction for a fence.
             # shellcheck disable=SC2053  # the RHS glob is the point of this arm
-            if [[ "$_cd" == $_ar || "$_cd" == $_ar/* ]]; then
+            if [[ "$_cd" == $_ar && "${_cd%/*}" == "${_ar%/*}" ]]; then
                 printf 'allowed'; return 0
             fi
             continue

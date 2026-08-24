@@ -393,6 +393,34 @@ _cls_hstray="$(write_boundary_classify "$_HOME_STRAY" "$JOB_DIR" "" 2>/dev/null)
 assert_eq "[SPEC-4] an unrelated file at the same depth is still a violation" \
     "violation" "$_cls_hstray"
 
+# Both readings of where CLAUDE_CONFIG_DIR puts the state file are covered, and
+# neither was exercised before — the suite only ever ran with the variable
+# unset, so a home-relative-only entry and a config-dir-only entry were
+# indistinguishable (claude-review flagged the gap on PR #1953).
+_CCD="$TEST_TEMP_DIR/custom-claude-config"
+mkdir -p "$_CCD"
+printf '{}\n' > "$_CCD/.claude.json"
+_cls_ccd="$(CLAUDE_CONFIG_DIR="$_CCD" \
+    write_boundary_classify "$_CCD/.claude.json" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-1] the state file under a custom CLAUDE_CONFIG_DIR classifies as allowed" \
+    "allowed" "$_cls_ccd"
+
+_cls_home_ccd="$(CLAUDE_CONFIG_DIR="$_CCD" \
+    write_boundary_classify "$_CLI_STATE" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-1] the home-relative state file stays allowed when CLAUDE_CONFIG_DIR is set" \
+    "allowed" "$_cls_home_ccd"
+
+# GUARD (SPEC-4): a glob entry names FILES, not roots. Without this, the glob
+# arm reads `.claude.json*` as `.claude.json*/*` and a directory named to match
+# — `.claude.json.evil/` — carries its whole subtree in with it. Raised by
+# claude-review on PR #1953 and confirmed: the probe returned `allowed`.
+_EVIL_DIR="$HOME/.claude.json.evil"
+mkdir -p "$_EVIL_DIR"
+printf 'x\n' > "$_EVIL_DIR/inside.txt"
+_cls_evil="$(write_boundary_classify "$_EVIL_DIR/inside.txt" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-4] a glob entry does not grant the subtree of a directory it matches" \
+    "violation" "$_cls_evil"
+
 # ─── SPEC-3: ${VAR:-default} expands generally, not per hardcoded token ─────
 # The expander handled that form with one hardcoded string substitution PER
 # TOKEN — two for CLAUDE_CONFIG_DIR, one for TMPDIR. Every new default form
