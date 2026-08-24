@@ -40,6 +40,7 @@ provides:
     - persist.push.failed
     - persist.push.refused
     - persist.snapshot.failed
+    - persist.result.write_failed
 
 config:
   valid_verdicts:
