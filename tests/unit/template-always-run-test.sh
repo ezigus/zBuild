@@ -36,7 +36,8 @@ _write_tpl() {
 print_test_section "[SPEC-1][change] simple.yaml declares always_run: release"
 
 load_template "$REPO_ROOT/config/templates/simple.yaml" >/dev/null 2>&1
-assert_eq "[SPEC-1] _TPL_ALWAYS_RUN is [release]" "release" "${_TPL_ALWAYS_RUN[*]}"
+assert_eq "[SPEC-1] _TPL_ALWAYS_RUN is [release persist], in that order" \
+    "release persist" "${_TPL_ALWAYS_RUN[*]}"
 assert_eq "[SPEC-1] release resolves by role, not by directory" \
     "teardown" "${_TPL_STAGE_ROLES_release:-<unset>}"
 assert_eq "[SPEC-1] release carries its own timeout_s" \
@@ -52,9 +53,9 @@ print_test_section "[SPEC-2][guard] always-run stages never enter _TPL_STAGES[]"
 
 _in_flow=0
 for _s in "${_TPL_STAGES[@]}"; do
-    [[ "$_s" == "release" ]] && _in_flow=1
+    [[ "$_s" == "release" || "$_s" == "persist" ]] && _in_flow=1
 done
-assert_eq "[SPEC-2] release is absent from _TPL_STAGES[]" "0" "$_in_flow"
+assert_eq "[SPEC-2] neither release nor persist is in _TPL_STAGES[]" "0" "$_in_flow"
 assert_eq "[SPEC-2] simple.yaml stage count is unchanged at 14" \
     "14" "${#_TPL_STAGES[@]}"
 
@@ -197,8 +198,8 @@ stages:
 EOF
 _ovl_file="$(resolve_template_file oldar "$_ovl_repo")"
 load_template "$_ovl_file" >/dev/null 2>&1
-assert_eq "[SPEC-6] old-shape overlay still gets always_run: [release]" \
-    "release" "${_TPL_ALWAYS_RUN[*]}"
+assert_eq "[SPEC-6] old-shape overlay still gets always_run from its base" \
+    "release persist" "${_TPL_ALWAYS_RUN[*]}"
 assert_eq "[SPEC-6] and its own single stage, not the base's flow" \
     "1" "${#_TPL_STAGES[@]}"
 assert_eq "[SPEC-6] the release role survives the old-shape path" \
