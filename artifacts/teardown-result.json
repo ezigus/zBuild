@@ -1,9 +1,0 @@
-{
-  "result_contract": 2,
-  "verdict": "complete",
-  "disposition": "complete",
-  "reason": "all cleanup hooks completed without error",
-  "data": {
-    "targets": [{"stage":"hydrate","outcome":"no_op"},{"stage":"intake","outcome":"no_op"},{"stage":"plan","outcome":"ok"},{"stage":"design","outcome":"ok"},{"stage":"design-gate","outcome":"ok"},{"stage":"impact","outcome":"ok"},{"stage":"build","outcome":"ok"},{"stage":"test","outcome":"ok"},{"stage":"shape-floor","outcome":"ok"},{"stage":"acceptance-gate","outcome":"no_op"},{"stage":"secret-scan","outcome":"ok"},{"stage":"gate-aggregator","outcome":"ok"}]
-  }
-}

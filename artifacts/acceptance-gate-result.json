@@ -1,1 +1,0 @@
-{"verdict":"fail","disposition":"terminal","reason":"acceptance SPEC violations — SPEC-2/SPEC-3/SPEC-4 not passing at HEAD — fix the implementation or the assertion","failures":["not_passing_at_head:SPEC-2","not_passing_at_head:SPEC-3","not_passing_at_head:SPEC-4"]}
