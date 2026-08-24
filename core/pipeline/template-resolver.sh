@@ -52,7 +52,27 @@ resolve_template_file() {
         merged_file="$(mktemp "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zbuild-tpl.XXXXXX")"
     fi
 
-    # ADR-016 full-replace: emit base file minus its stages:/stage_definitions: blocks,
+    # ADR-016 lock 1 is "full replace: there is no field-level merge with the
+    # shipped file." A NEW-shape override (ADR-027: top-level `flow:` plus
+    # per-stage sections) already IS the whole template, so full replace means
+    # using it verbatim.
+    #
+    # Without this branch the awk below — which knows only the OLD shape's
+    # `stages:`/`stage_definitions:` blocks — copies the base wholesale and
+    # appends nothing, because a new-shape override has neither block. The
+    # override is discarded, the BASE template runs, and nothing says so. The
+    # implementation contradicted the ADR for every new-shape override; the spec
+    # wins (CLAUDE.md).
+    #
+    # `extends:` stays required and its base still has to exist (locks 2 and 3):
+    # those are about declaring lineage, not about merging fields.
+    if awk 'BEGIN{rc=1} /^flow:[[:space:]]*$/ {rc=0; exit} /^flow:[[:space:]]*\[/ {rc=0; exit} END{exit rc}' "$per_repo_file"; then
+        cp "$per_repo_file" "$merged_file"
+        echo "$merged_file"
+        return 0
+    fi
+
+    # OLD shape: emit base file minus its stages:/stage_definitions: blocks,
     # then append the per-repo stages:/stage_definitions: blocks wholesale.
     awk '
         /^stages:[[:space:]]*$/ { in_stages=1; next }

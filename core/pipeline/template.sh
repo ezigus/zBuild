@@ -32,6 +32,10 @@ fi
 _TPL_DEFAULT_STRATEGY="fanout"
 _TPL_MERGE_POLICY="auto_unless_flagged"
 _TPL_STAGES=()
+# #1831: ordered stage ids that run on EVERY exit path (success, non-zero rc,
+# SIGINT, SIGTERM, timeout). Declared by the template's top-level `always_run:`
+# list, NOT part of _TPL_STAGES[] — an always-run stage is not in the flow.
+_TPL_ALWAYS_RUN=()
 # ADR-021 (#512): list of dispatch units in template order. Each entry is
 # "stage:<id>" or "cycle:<id>". Empty `cycles:` block → every unit is "stage:<id>"
 # (backwards-compat — runner behavior identical to today).
@@ -119,6 +123,7 @@ load_template() {
     done
 
     _TPL_STAGES=()
+    _TPL_ALWAYS_RUN=()
     _TPL_CYCLES=()
     _TPL_PARALLEL_GROUPS=()
     _TPL_MAP_GROUPS=()
@@ -651,6 +656,40 @@ load_template() {
                "_TPL_STAGE_ROUTER_MAX_ITERATIONS_${safe_id}" \
                "_TPL_STAGE_ROUTER_RETRIES_${safe_id}"
     done
+
+    # ── #1831: always-run stages ──────────────────────────────────────────────
+    # Parsed from the FILE, not from either shape's row stream, because
+    # `always_run:` is a top-level key in BOTH shapes and its members are
+    # top-level sections in both. Routing it through the new-shape translator —
+    # which is what the first cut of this did — silently dropped it for every
+    # old-shape template, and the parity fixture (old shape, `extends: simple`)
+    # lost its teardown entirely. The golden caught it; nothing else would have.
+    #
+    # These stages are NOT in _TPL_STAGES[] and must never be: they have no
+    # place in the flow's data dependencies and must not affect convergence,
+    # verdicts, or the run's exit status.
+    #
+    # Fail CLOSED on a member with no section. An always-run stage that silently
+    # does not exist is the failure this attribute was built to remove (#1878 —
+    # "the snapshot was never called"), so a typo must refuse the template
+    # rather than degrade to running nothing.
+    local _ar_line _ar_id _ar_roles _ar_to _ar_safe
+    while IFS='|' read -r _ar_id _ar_roles _ar_to; do
+        [[ -z "$_ar_id" ]] && continue
+        if [[ "$_ar_roles" == "__MISSING__" ]]; then
+            error "load_template: always_run names '$_ar_id' but no top-level section defines it"
+            return 1
+        fi
+        if [[ -z "$_ar_roles" ]]; then
+            error "load_template: always_run stage '$_ar_id' declares no roles: — the runner resolves it by role"
+            return 1
+        fi
+        _TPL_ALWAYS_RUN+=("$_ar_id")
+        _ar_safe="${_ar_id//-/_}"
+        printf -v "_TPL_STAGE_ROLES_${_ar_safe}"          '%s' "$_ar_roles"
+        printf -v "_TPL_STAGE_ROUTER_TIMEOUT_${_ar_safe}" '%s' "$_ar_to"
+        export "_TPL_STAGE_ROLES_${_ar_safe}" "_TPL_STAGE_ROUTER_TIMEOUT_${_ar_safe}"
+    done < <(_tpl_parse_always_run "$template_file")
 
     _tpl_validate_cycles || return 1
     _tpl_validate_parallel || return 1
@@ -1635,6 +1674,92 @@ _tpl_validate_io_dests() {
 
 # ─── ADR-027 helpers (Wave 17-B #703) ─────────────────────────────────────────
 #
+# ─── _tpl_parse_always_run <file> (#1831) ────────────────────────────────────
+# Emit one `<id>|<roles>|<timeout_s>` line per entry in the template's top-level
+# `always_run:` list, in declared order.
+#
+# SHAPE-INDEPENDENT on purpose. `always_run:` is a top-level key and its members
+# are top-level sections in BOTH the ADR-027 shape and the legacy one, so this
+# reads the file directly rather than riding either shape's row stream. The
+# first cut of #1831 parsed it inside the new-shape translator; every old-shape
+# template then silently lost its always-run stages, and the parity fixture
+# (old shape, `extends: simple`) stopped running teardown at all.
+#
+# `roles` is emitted as the sentinel `__MISSING__` when the named stage has no
+# top-level section, so the caller can tell "declared but undefined" (refuse the
+# template) from "defined but roles-less" (also refuse, different message).
+# Order is preserved by walking the list, not the section map.
+_tpl_parse_always_run() {
+    local file="$1"
+    [[ -f "$file" ]] || return 0
+    awk '
+        function trim(x) { gsub(/^[[:space:]]+|[[:space:]]+$/, "", x); return x }
+        # Top-level always_run:, block form.
+        /^always_run:[[:space:]]*$/ { in_ar = 1; in_sec = ""; next }
+        # Inline form: always_run: [a, b]
+        /^always_run:[[:space:]]*\[/ {
+            line = $0
+            sub(/^[^[]*\[/, "", line); sub(/\].*$/, "", line)
+            gsub(/[[:space:]]/, "", line)
+            n = split(line, items, /,/)
+            for (i = 1; i <= n; i++) if (items[i] != "") { ar_n++; ar[ar_n] = items[i] }
+            in_ar = 0; in_sec = ""; next
+        }
+        in_ar && /^[[:space:]]+-[[:space:]]/ {
+            item = $0; sub(/^[[:space:]]+-[[:space:]]+/, "", item); item = trim(item)
+            if (item != "") { ar_n++; ar[ar_n] = item }
+            next
+        }
+        # Any other top-level key closes the list and opens a possible section.
+        /^[a-zA-Z_]/ {
+            in_ar = 0; in_router = 0; in_roles = 0
+            in_sec = $0; sub(/:.*$/, "", in_sec); in_sec = trim(in_sec)
+            seen[in_sec] = 1
+            next
+        }
+        # Within a section: roles: and router.timeout_s.
+        # BOTH list forms, because `_tpl_parse_stages_v2` accepts both and a
+        # template author will model an always-run section on a flow stage.
+        # Accepting only the inline form here would refuse a section that looks
+        # exactly like every other one in the file.
+        in_sec != "" && /^[[:space:]]+roles:/ {
+            v = $0; sub(/^[[:space:]]+roles:[[:space:]]*/, "", v); v = trim(v)
+            if (v ~ /\[/) {
+                gsub(/^\[|\]$/, "", v); gsub(/[[:space:]]/, "", v)
+                roles[in_sec] = v
+                in_roles = 0
+            } else if (v == "") {
+                # Block form: the items are the indented `- x` lines below.
+                in_roles = 1; roles[in_sec] = ""
+            } else {
+                roles[in_sec] = v
+                in_roles = 0
+            }
+            in_router = 0
+            next
+        }
+        in_sec != "" && in_roles && /^[[:space:]]+-[[:space:]]/ {
+            v = $0; sub(/^[[:space:]]+-[[:space:]]+/, "", v); v = trim(v)
+            if (v != "") roles[in_sec] = (roles[in_sec] == "" ? v : roles[in_sec] "," v)
+            next
+        }
+        in_sec != "" && /^[[:space:]]+router:[[:space:]]*$/ { in_router = 1; in_roles = 0; next }
+        in_sec != "" && in_router && /^[[:space:]]+timeout_s:/ {
+            v = $0; sub(/^[[:space:]]+timeout_s:[[:space:]]*/, "", v); to[in_sec] = trim(v)
+            next
+        }
+        # A key at section-attribute depth that is not router: closes the router block.
+        in_sec != "" && /^[[:space:]]+[a-zA-Z_]+:/ && !/^[[:space:]]+timeout_s:/ { in_router = 0; in_roles = 0 }
+        END {
+            for (i = 1; i <= ar_n; i++) {
+                id = ar[i]
+                if (!(id in seen)) { printf "%s|__MISSING__|\n", id; continue }
+                printf "%s|%s|%s\n", id, (id in roles ? roles[id] : ""), (id in to ? to[id] : "")
+            }
+        }
+    ' "$file"
+}
+
 # _tpl_is_new_shape — heuristic: top-level `flow:` key AND NO top-level
 # `stages:` key indicates ADR-027 shape. The two never coexist; if both
 # appear we treat as old shape (safer default — old-shape parser is mature).
@@ -1682,7 +1807,8 @@ _tpl_translate_new_shape() {
         # ADR-037 §4 per-template knob; reserving it stops the new-shape
         # translator from emitting it as a phantom stage definition (#968 review).
         return (k == "id" || k == "name" || k == "extends" || k == "defaults" \
-                || k == "flow" || k == "_comment" || k == "merge_policy")
+                || k == "flow" || k == "_comment" || k == "merge_policy" \
+                || k == "always_run")
     }
     BEGIN {
         in_flow = 0
@@ -1855,6 +1981,7 @@ _tpl_translate_new_shape() {
         if (item != "") { flow_n++; flow[flow_n] = item }
         next
     }
+
     # Top-level non-indented line — end any current scope.
     /^[a-zA-Z_]/ {
         in_flow = 0

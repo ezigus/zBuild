@@ -1908,50 +1908,85 @@ main() {
         set -m
     fi
 
-    # ── ADR-054 §7 (#1829): cleanup(release) on EVERY exit path ──────────────
+    # ── ADR-054 §7 (#1829) / #1831: always-run stages on EVERY exit path ─────
     # Success, non-zero rc, SIGINT, SIGTERM and timeout all funnel through the
     # EXIT trap below, which is why the dispatch lives there and not at the end
     # of main() — an exit path that skipped it would leak whatever the stage
     # spawned. #1759 is the prerequisite: without re-armed INT/TERM traps there
     # is no signal path for this to hang off.
     #
-    # Scope is pinned to `release`: free live resources (process groups, locks,
-    # handles) and delete NOTHING, so a failed run keeps all of its evidence on
-    # disk. `purge` is operator-only and unreachable from any run path — the
-    # export below overrides any ambient ZBUILD_TEARDOWN_SCOPE.
-    _runner_dispatch_release() {
-        [[ "${_RUNNER_RELEASE_DISPATCHED:-0}" == "1" ]] && return 0
-        _RUNNER_RELEASE_DISPATCHED=1
+    # #1831: WHICH stages run here is the TEMPLATE's decision, not the engine's.
+    # This used to name one plugin by directory (`plugins/tool/teardown`) and
+    # degrade to a no-op if it was absent — the engine knowing one plugin's path
+    # is the coupling ADR-047 forbids, and a silent no-op is how #1878's sibling
+    # mechanism went uninvoked without anything noticing. The list now comes
+    # from the template's `always_run:`, resolved by role through the same
+    # `resolve_plugin_for_role` seam every dispatch strategy uses.
+    #
+    # Scope stays pinned to `release` for the teardown role: free live resources
+    # and delete NOTHING, so a failed run keeps all of its evidence on disk.
+    # `purge` is operator-only and unreachable from any run path.
+    _runner_dispatch_always_run() {
         [[ -n "${_runner_state_file:-}" && -f "${_runner_state_file}" ]] || return 0
-        local _td_dir="${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}/tool/teardown"
-        [[ -d "$_td_dir" ]] || return 0
-        # Subshell contains the export; `|| true` because a cleanup failure is
-        # recorded as an event and must never change the run's exit status.
-        #
-        # Bounded, because this runs inside the EXIT trap: a cleanup hook that
-        # blocks would turn a Ctrl-C into a hang — the exact class of bug this
-        # mechanism exists to prevent. A timeout BINARY cannot be used here
-        # (plugin_hook_call is a shell function; timeout can only exec a
-        # command, so the wrapper would fail with "command not found" and
-        # silently skip every release). The bound is therefore a watchdog that
-        # is CANCELLED on the normal path, so no stray `sleep` outlives the run.
-        (
-            export ZBUILD_TEARDOWN_SCOPE=release
-            plugin_hook_call "$_td_dir" run teardown "$_runner_state_file" &
-            _td_pid=$!
-            ( sleep "${ZBUILD_RELEASE_TIMEOUT:-30}"; kill -TERM "$_td_pid" 2>/dev/null || true ) &
-            _wd_pid=$!
-            wait "$_td_pid" 2>/dev/null || true
-            kill -TERM "$_wd_pid" 2>/dev/null || true
-            wait "$_wd_pid" 2>/dev/null || true
-        ) >/dev/null 2>&1 || true
+        [[ "${#_TPL_ALWAYS_RUN[@]}" -gt 0 ]] || return 0
+        local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}"
+        local _ar_stage _ar_safe _ar_role _ar_to _ar_dir _ar_guard
+        for _ar_stage in "${_TPL_ALWAYS_RUN[@]}"; do
+            _ar_safe="${_ar_stage//-/_}"
+            # Per-stage, not global: the trap can be reached more than once, and
+            # there is now more than one always-run stage to keep track of.
+            _ar_guard="_RUNNER_AR_DISPATCHED_${_ar_safe}"
+            [[ "${!_ar_guard:-0}" == "1" ]] && continue
+            printf -v "$_ar_guard" '%s' 1
+
+            local _ar_roles_var="_TPL_STAGE_ROLES_${_ar_safe}"
+            _ar_role="${!_ar_roles_var:-}"
+            [[ -n "$_ar_role" ]] || continue
+            # roles: is a list; an always-run stage takes the first.
+            _ar_role="${_ar_role%%,*}"
+
+            _ar_dir="$(resolve_plugin_for_role "$_ar_role" "" "$plugins_root" 2>/dev/null || true)"
+            if [[ -z "$_ar_dir" || ! -d "$_ar_dir" ]]; then
+                # LOUD, unlike the old `[[ -d ... ]] || return 0`. An always-run
+                # stage that cannot be resolved has not run, and the operator
+                # needs to know that rather than infer it from a missing effect.
+                eb_emit_event "stage.always_run.unresolved" "stage=$_ar_stage" "role=$_ar_role" 2>/dev/null || true
+                continue
+            fi
+
+            local _ar_to_var="_TPL_STAGE_ROUTER_TIMEOUT_${_ar_safe}"
+            _ar_to="${!_ar_to_var:-}"
+            [[ "$_ar_to" =~ ^[0-9]+$ && "$_ar_to" -gt 0 ]] || _ar_to="${ZBUILD_RELEASE_TIMEOUT:-30}"
+
+            # Bounded, because this runs inside the EXIT trap: a hook that blocks
+            # would turn a Ctrl-C into a hang — the exact class of bug this
+            # mechanism exists to prevent. A timeout BINARY cannot be used here
+            # (plugin_hook_call is a shell function; timeout can only exec a
+            # command, so the wrapper would fail with "command not found" and
+            # silently skip every dispatch). The bound is therefore a watchdog
+            # that is CANCELLED on the normal path, so no stray `sleep` outlives
+            # the run.
+            #
+            # `|| true` because an always-run stage's failure is recorded as an
+            # event and must NEVER change the run's exit status.
+            (
+                export ZBUILD_TEARDOWN_SCOPE=release
+                plugin_hook_call "$_ar_dir" run "$_ar_stage" "$_runner_state_file" &
+                _ar_pid=$!
+                ( sleep "$_ar_to"; kill -TERM "$_ar_pid" 2>/dev/null || true ) &
+                _wd_pid=$!
+                wait "$_ar_pid" 2>/dev/null || true
+                kill -TERM "$_wd_pid" 2>/dev/null || true
+                wait "$_wd_pid" 2>/dev/null || true
+            ) >/dev/null 2>&1 || true
+        done
         return 0
     }
 
     _runner_abort_trap() {
         # #1829: free live resources first, while the state file and the
         # process tree are still intact.
-        _runner_dispatch_release
+        _runner_dispatch_always_run
         # ADR-025 (Wave 15-B #684): the sentinel must be cleared on EVERY
         # exit path — clean end, normal failure, or abort — so a follow-on
         # zbuild invocation in the same state_dir never sees a stale
