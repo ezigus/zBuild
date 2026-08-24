@@ -53,3 +53,12 @@ outputs:
     format: json
     required: true
     primary: true
+    # ADR-020: this stage IS in the flow, so its declared output is checked for
+    # a consumer — unlike release/persist, which are always-run and never in
+    # `flow:`. hydrate-result.json is a REPORT: what was restored and from
+    # where. Nothing downstream reads it, and nothing should — the restored
+    # ARTIFACTS are the real product, and stages reach those through the
+    # prior-output seam (ZBUILD_RESTORED_ARTIFACTS_DIR), not through this file.
+    # Marking it advisory says that, rather than inventing a consumer to
+    # satisfy the validator.
+    advisory: true

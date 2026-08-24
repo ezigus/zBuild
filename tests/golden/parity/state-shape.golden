@@ -12,6 +12,7 @@
   "self_heal_count": {},
   "stage_statuses": {
     "build": "complete",
+    "hydrate": "complete",
     "intake": "complete",
     "plan": "complete",
     "pr": "complete",
@@ -20,6 +21,7 @@
   },
   "stage_verdicts": {
     "build": "pass",
+    "hydrate": "warn",
     "intake": "pass",
     "plan": "pass",
     "pr": "pass",

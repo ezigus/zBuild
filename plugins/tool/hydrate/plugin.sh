@@ -103,7 +103,13 @@ hydrate_run() {
     else
         _status="failed"
         _verdict="degraded"
-        _reason="restore failed: ${_ARTIFACT_PERSIST_LAST_REASON:-unknown}"
+        # PATH-FREE on purpose. The library's reason embeds absolute paths
+        # (`repo_root=… git_dir=… cwd=…`), which differ between two runs of the
+        # same pipeline — the parity test caught exactly that. ADR-016 also
+        # lists path leakage as mandatory: a result artifact can be quoted into
+        # a GitHub comment. The detail still reaches the operator, on the event
+        # and the warn below, which stay local.
+        _reason="restore failed (see hydrate.restore.failed)"
         emit_event "hydrate.restore.failed" "stage=$_stage_id" "issue=$_issue" \
             "reason=${_ARTIFACT_PERSIST_LAST_REASON:-unknown}" 2>/dev/null || true
         warn "hydrate: restore failed: ${_ARTIFACT_PERSIST_LAST_REASON:-unknown}"

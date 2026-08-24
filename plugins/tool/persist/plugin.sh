@@ -105,7 +105,9 @@ persist_run() {
     else
         _snapshot="failed"
         _verdict="degraded"
-        _reason="snapshot failed: ${_ARTIFACT_PERSIST_LAST_REASON:-unknown}"
+        # Path-free: the library reason carries absolute paths, which differ
+        # between runs and can be quoted into a GitHub comment (ADR-016).
+        _reason="snapshot failed (see persist.snapshot.failed)"
         emit_event "persist.snapshot.failed" "stage=$_stage_id" "issue=$_issue" \
             "reason=${_ARTIFACT_PERSIST_LAST_REASON:-unknown}" 2>/dev/null || true
     fi
@@ -130,12 +132,14 @@ persist_run() {
         case "${_ARTIFACT_PERSIST_LAST_STATUS:-}" in
             saved) _pushed="true" ;;
             *)     _pushed="false"
-                   [[ -n "$_reason" ]] || _reason="${_ARTIFACT_PERSIST_LAST_REASON:-nothing to push}" ;;
+                   # Also path-free: "no origin remote configured" is safe, but
+                   # "unresolvable repo: …cwd=…" is not, and both arrive here.
+                   [[ -n "$_reason" ]] || _reason="nothing was pushed (see persist.complete)" ;;
         esac
     else
         _pushed="false"
         _verdict="degraded"
-        _reason="push failed: ${_ARTIFACT_PERSIST_LAST_REASON:-unknown}"
+        _reason="push failed (see persist.push.failed)"
         # Loud. A silent push failure is how #1921 went unnoticed for the life
         # of the feature — hundreds of local commits and nothing on origin, with
         # no event anywhere saying so.
