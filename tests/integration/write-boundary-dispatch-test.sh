@@ -280,6 +280,12 @@ unset ZBUILD_REPO_ROOT 2>/dev/null || true
 _DISP_EVENTS=()
 plugin_hook_call "$FX_CLI" "run" "wb-cli-stage" "$SF_CLI" || true
 
+# NON-VACUITY: the fixture must actually have made the write. "No violation"
+# is also what you get when the write never happened or landed somewhere the
+# sweep does not look — and that reads as a pass.
+assert_file_exists "[SPEC-1] the fixture actually wrote the CLI's state file into \$HOME" \
+    "$HOME/.claude.json"
+
 if [[ -f "$JOB_CLI/runtime/write-boundary-violated" ]]; then
     assert_fail "[SPEC-1] a dispatch that rewrites the CLI's own state file does not halt" \
         "violation marker names: $(cat "$JOB_CLI/runtime/write-boundary-violated" 2>/dev/null)"
@@ -312,8 +318,23 @@ _make_fixture "$FX_STRAY" "wb-stray" "
 _DISP_EVENTS=()
 plugin_hook_call "$FX_STRAY" "run" "wb-stray-stage" "$SF_STRAY" || true
 
-assert_file_exists "[SPEC-4] an unrelated \$HOME-level write still halts the dispatch" \
-    "$JOB_STRAY/runtime/write-boundary-violated"
+if [[ -f "$JOB_STRAY/runtime/write-boundary-violated" ]]; then
+    assert_pass "[SPEC-4] an unrelated \$HOME-level write still halts the dispatch"
+else
+    # The negative failing means the positive above proved nothing, so the
+    # failure detail carries the whole picture rather than just the absent
+    # marker: what the fixture wrote, what the engine watched, and what it
+    # allowed. Reconstructed after the fact, so a stale marker cannot forge it.
+    _wb_marker="$JOB_STRAY/runtime/write-boundary.marker"
+    assert_fail "[SPEC-4] an unrelated \$HOME-level write still halts the dispatch" \
+        "stray file written: $([[ -f "$HOME/stray-note.txt" ]] && echo yes || echo NO)
+  HOME=$HOME
+  home listing: $(ls -a "$HOME" 2>&1 | tr '\n' ' ')
+  dispatch marker: $([[ -f "$_wb_marker" ]] && echo present || echo ABSENT)
+  watch list: $(write_boundary_watch_list 2>&1 | tr '\n' '|')
+  allow list: $(write_boundary_allow_list "$JOB_STRAY" 2>&1 | tr '\n' '|')
+  sweep saw: $(write_boundary_sweep "$_wb_marker" 2>&1 | tr '\n' '|')"
+fi
 
 cleanup_test_env
 print_test_results
