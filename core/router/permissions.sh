@@ -24,6 +24,7 @@ _zbuild_build_permissions_settings() {
     else
         _scratch_dir="$(zbuild_engine_tmpdir)"
         warn "router: permissions: ZBUILD_STAGE_SCRATCH unset, using engine tmpdir: $_scratch_dir"
+        eb_emit_event "router.permissions.scratch_fallback" "scratch_dir=$_scratch_dir" 2>/dev/null || true
     fi
 
     local _repo_root="${ZBUILD_REPO_ROOT:-}"

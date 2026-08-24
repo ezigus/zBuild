@@ -89,7 +89,7 @@ else
     assert_fail "[SPEC-2] P2: settings file still written on scratch fallback" ""
 fi
 
-fallback_evt="$(grep '"router.permissions.scratch_fallback"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+fallback_evt="$(grep '"router.permissions.scratch_fallback"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ' || echo 0)"
 if [[ "$fallback_evt" -gt 0 ]]; then
     assert_pass "[SPEC-2] P2: scratch_fallback event emitted"
 else

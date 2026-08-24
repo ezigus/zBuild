@@ -78,7 +78,8 @@ does NOT declare Pattern 1 vs Pattern 2 — that is baked into `plugin.sh`.
 
 Single `claude --print` invocation. Tools (Read/Edit/Write/Bash) are available;
 only `EnterPlanMode`/`ExitPlanMode` are disallowed. `--max-turns 25`,
-`--dangerously-skip-permissions`.
+`--permission-mode acceptEdits --settings <file>` (see amendment block above;
+`bypassPermissions` is the renamed equivalent and MUST NOT be used).
 
 The stage emits a final structured artifact (JSON or markdown) as its terminal
 response.
@@ -360,7 +361,8 @@ Once Issues A + B ship, adding any new stage requires zero changes to
 
 1. `route_to_model` (`core/router/route.sh`) adopts shipwright's flag set —
    `--max-turns 25`, `--disallowed-tools "EnterPlanMode,ExitPlanMode"`,
-   `--dangerously-skip-permissions` — enabling Pattern 1. *(Issue A)*
+   `--permission-mode acceptEdits --settings <file>` — enabling Pattern 1. *(Issue A)*
+   *(Amended by #1919: `--dangerously-skip-permissions` replaced; see amendment block.)*
 2. New `route_to_model_loop` function enables Pattern 2. *(Issue B)*
 3. Plan and review prompts stop forbidding tool calls; invite Read for
    context-gathering. *(Issues C, D)*
