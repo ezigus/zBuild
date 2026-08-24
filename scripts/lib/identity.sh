@@ -146,3 +146,45 @@ zbuild_scope_key() {
     [[ -n "$key" ]] || return 1
     printf '%s' "$key"
 }
+
+# ─── zbuild_goal_key <goal_text> ─────────────────────────────────────────────
+# The identity of a `--goal` run: `goal-<12 hex>`, derived from the goal text.
+#
+# WHY A RUN NEEDS ONE. `issue=0` is the sentinel for "no issue", and it works
+# today only by accident: everything is keyed by `run_id`, so two goal runs land
+# in two directories regardless. ADR-059 §1 re-keys to the issue, under which
+# EVERY goal run in history would share `issues/0/` — one worktree, one
+# artifacts dir, for unrelated goals. And `zbuild_worktree_acquire`
+# creates-or-REUSES, so it would not refuse: it would hand the second goal run
+# the first one's tree with the first one's branch checked out. That is #1640's
+# wrong-tree defect class, rebuilt.
+#
+# 12 hex characters, not the full 64: this is a directory segment and a branch
+# component, both of which a human reads. Collision risk at 48 bits is
+# negligible for the number of goals one repository sees, and a collision costs
+# a shared tree rather than a wrong answer.
+#
+# Whitespace-insensitive via zbuild_goal_hash, so reflowing a goal in an editor
+# does not orphan its prior work.
+zbuild_goal_key() {
+    local text="${1:-}"
+    [[ -n "${text//[[:space:]]/}" ]] || return 1
+    printf 'goal-%s' "$(zbuild_goal_hash "$text" | cut -c1-12)"
+}
+
+# ─── zbuild_run_key <issue> <goal_text> ──────────────────────────────────────
+# What this run is FOR, as a single path- and ref-safe token: `issue-<N>` when
+# there is an issue, else `goal-<hash>`. Returns 1 when neither is available —
+# a run with no issue AND no goal has no identity, and inventing one would key
+# unrelated work together.
+#
+# This is the function every keyed consumer should call. `issue-0` is not a
+# valid answer and is never returned.
+zbuild_run_key() {
+    local issue="${1:-}" goal="${2:-}"
+    if [[ "$issue" =~ ^[0-9]+$ && "$issue" -gt 0 ]]; then
+        printf 'issue-%s' "$issue"
+        return 0
+    fi
+    zbuild_goal_key "$goal"
+}

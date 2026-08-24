@@ -22,6 +22,10 @@ source "$_ZBUILD_ROOT/scripts/lib/runner-final-status.sh"
 source "$_ZBUILD_ROOT/core/output/stage-colors.sh"
 source "$_ZBUILD_ROOT/core/state/atomic.sh"
 source "$_ZBUILD_ROOT/core/state/resume.sh"
+# shellcheck source=../state/issue-lock.sh
+source "$_ZBUILD_ROOT/core/state/issue-lock.sh"
+# shellcheck source=../../scripts/lib/identity.sh
+source "$_ZBUILD_ROOT/scripts/lib/identity.sh"
 # #887: capture whether the operator PINNED any events location BEFORE
 # event-bus.sh defaults them to $HOME/.zbuild/state — so per-run isolation
 # overrides only the default, never an explicit operator/test override.
@@ -141,7 +145,10 @@ _runner_snapshot_artifacts() {
     local _snap_state_dir="${1:-}" _snap_stage="${2:-unknown}"
     [[ -n "$_snap_state_dir" ]] || _snap_state_dir="${ZBUILD_STATE_DIR:-}"
     [[ -n "$_snap_state_dir" ]] || return 0
-    [[ "$_runner_issue" =~ ^[0-9]+$ && "$_runner_issue" -gt 0 ]] || return 0
+    # #1931: identity, not issue number. `issue > 0` excluded every --goal run
+    # from the durable store, so nothing was ever snapshotted for one and the
+    # push had nothing to send.
+    _artifact_persist_has_identity "$_runner_issue" || return 0
 
     _artifact_persist_snapshot "$_snap_state_dir" "$_runner_issue" || true
     case "${_ARTIFACT_PERSIST_LAST_STATUS:-}" in
@@ -1816,7 +1823,8 @@ main() {
     # (#1074), which extracts to a staging dir and promotes with a single `mv` —
     # so the partial-tree hazard PR #1880's review caught is removed by
     # construction rather than gated on a status.
-    if [[ "$_runner_issue" =~ ^[0-9]+$ && "$_runner_issue" -gt 0 ]]; then
+    # #1931: a --goal run has prior work to restore too, once it has an identity.
+    if _artifact_persist_has_identity "$_runner_issue"; then
         export ZBUILD_RESTORED_ARTIFACTS_DIR="$state_dir/restored-artifacts/artifacts"
     fi
 
@@ -1839,6 +1847,31 @@ main() {
     # here so the per-dispatch refresh sees it regardless of how it was given.
     if $self_host; then
         export ZBUILD_SELF_HOST=1
+    fi
+
+    # ADR-059 §4 (#1688/#1764): one run per issue, decided HERE — immediately
+    # before the tree is entered, because the tree is what two runs of one issue
+    # would corrupt once ADR-059 §2 re-keys it to the issue. Refusing costs a
+    # run that has not started; not refusing costs a `.git/index`.
+    #
+    # A dead holder's lock is reaped by the acquire, so this never blocks on a
+    # run that is already gone.
+    # #1931: keyed on the RUN's identity, not on the issue number — a --goal run
+    # has one too now, and two concurrent runs of the same goal would share a
+    # tree for exactly the same reason two runs of one issue would.
+    local _runner_lock_key=""
+    if declare -F zbuild_run_key >/dev/null 2>&1; then
+        _runner_lock_key="$(zbuild_run_key "$_runner_issue" "${goal:-}" 2>/dev/null || true)"
+    fi
+    if [[ -n "$_runner_lock_key" ]]; then
+        if ! zbuild_issue_lock_acquire "$_runner_lock_key" "$_runner_run_id" "$state_file"; then
+            eb_emit_event "pipeline.refused.issue_locked" \
+                "key=$_runner_lock_key" "holder=${_ZBUILD_ISSUE_LOCK_HOLDER:-unknown}" \
+                2>/dev/null || true
+            error "another run already holds $_runner_lock_key: ${_ZBUILD_ISSUE_LOCK_HOLDER:-unknown}"
+            error "wait for it to finish, or set ZBUILD_NO_ISSUE_LOCK=1 to override (see ADR-059 §4)"
+            return 1
+        fi
     fi
 
     # ADR-052 (#1640): LAST thing before any stage runs. Everything above is
@@ -1971,6 +2004,14 @@ main() {
         # #1829: free live resources first, while the state file and the
         # process tree are still intact.
         _runner_dispatch_always_run
+        # #1688: release the issue lock EXPLICITLY. Relying on process death is
+        # not enough — a flock belongs to the open file description, which every
+        # child inherits, so one lingering child would keep the issue locked
+        # after this run is gone. Released after the always-run stages, which
+        # still belong to this run.
+        if declare -F zbuild_issue_lock_release >/dev/null 2>&1; then
+            zbuild_issue_lock_release || true
+        fi
         # ADR-025 (Wave 15-B #684): the sentinel must be cleared on EVERY
         # exit path — clean end, normal failure, or abort — so a follow-on
         # zbuild invocation in the same state_dir never sees a stale

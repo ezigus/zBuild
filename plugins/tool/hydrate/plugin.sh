@@ -71,11 +71,11 @@ hydrate_run() {
 
     emit_event "hydrate.start" "stage=$_stage_id" "issue=$_issue" 2>/dev/null || true
 
-    if [[ ! "$_issue" =~ ^[0-9]+$ || "$_issue" -le 0 ]]; then
-        # A --goal run has no state branch. ADR-059 §5 gives goal runs an
-        # identity of their own (#1931); until then this is a genuine no-op.
+    if ! _artifact_persist_has_identity "$_issue"; then
+        # Neither an issue nor a goal: no identity, so nothing to hydrate from.
+        # A --goal run DOES have one (#1931) and no longer lands here.
         _hydrate_write_result "$_artifacts_dir" "complete" \
-            "no issue number — nothing to hydrate (a --goal run; see #1931)" "skipped" 0
+            "no identity — neither an issue nor a goal" "skipped" 0
         emit_event "hydrate.complete" "stage=$_stage_id" "issue=$_issue" \
             "restored=0" "reason=no_issue" 2>/dev/null || true
         return 0
