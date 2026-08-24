@@ -189,11 +189,24 @@ a durable, pushed, cross-machine store makes stale-verdict leakage easier rather
 Widening what may be reused is a separate decision from moving where work lives, and must not ride
 along with it.
 
-**One hazard this creates, to be designed for rather than discovered.** *Git wins* plus *persist
-failed* loses unpushed work: a run whose push fails, followed by a re-run, has its newer local
-artifacts overwritten by the older git copy. The window is small because persist is always-run, but
-it is real. Hydrate must detect "local is newer than git" and refuse or warn rather than clobber
-silently, and a failed persist must leave a marker hydrate honours.
+**A hazard was flagged here and is now DISPROVEN — recorded rather than deleted, because the
+reasoning is what stops it being re-invented.** The claim was: *git wins* plus *persist failed*
+loses unpushed work, because a re-run would overwrite newer local artifacts with an older git copy.
+Building #1074 showed the sequence cannot happen:
+
+- **Restore never writes over live artifacts.** It extracts into a separate `restored-artifacts/`
+  area, and `input-resolve.sh` reads the live path first — a stage's own output is never replaced
+  by an older copy of itself.
+- **Fetch cannot move a local snapshot.** `git fetch` updates only the remote-tracking ref;
+  `refs/heads/<branch>` is untouched, so unpushed work survives.
+- **The local ref wins on read, deliberately.** `_artifact_persist_restore` prefers
+  `refs/heads/<branch>` over `refs/remotes/origin/<branch>` precisely because the local one may hold
+  more. "Git wins" is about **durability** — where work survives a dead laptop — not about read
+  precedence.
+
+So hydrate needs no "local is newer" detector and persist needs no failure marker. What hydrate
+does need, and what was actually missing, is the **fetch**: on a fresh clone neither ref exists, so
+restore reported "first run" for an issue with plenty of prior work.
 
 ## Consequences
 

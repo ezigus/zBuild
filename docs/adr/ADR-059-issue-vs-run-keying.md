@@ -118,8 +118,29 @@ which tree it works in.** The engine still acquires it; only the key changes.
 ADR-050 already keys prior work by issue (`zbuild/state/issue-<N>`). This ADR does not add a
 competing store. It states which is authoritative:
 
-**Git is the store. Every run pushes to it — local and CI alike. The folder is the working copy.
-On a disagreement, git wins.**
+**Git is the store. Every run pushes to it — local and CI alike. The folder is the working copy.**
+
+**Amended 2026-08-23, while building #1074.** This paragraph originally ended *"On a disagreement,
+git wins"*, and §3's hydrate row said hydrate must *"detect 'local is newer than git' and refuse or
+warn rather than clobber"*. Building it showed both to be wrong, in a way worth recording rather
+than quietly dropping:
+
+- **"Git wins" is about DURABILITY, not read precedence.** `_artifact_persist_restore` prefers
+  `refs/heads/<branch>` over `refs/remotes/origin/<branch>`, deliberately. A local snapshot may
+  carry work an earlier push never delivered; preferring origin there would **lose** that work,
+  which is the opposite of what this decision exists to achieve. `git fetch` moves only the
+  remote-tracking ref and never `refs/heads`, so fetching cannot clobber an unpushed local
+  snapshot.
+- **The clobber hazard does not exist in this architecture.** Restore extracts into a SEPARATE
+  `restored-artifacts/` area and never writes over the live `artifacts/` dir, and `input-resolve.sh`
+  reads the live path first. So a stage's own output is never overwritten by an older copy of
+  itself, and the "failed persist then re-run" sequence loses nothing.
+
+What hydrate genuinely adds is the **fetch** — on a fresh clone (every CI runner) neither ref
+exists until something fetches, so restore reported "first run" for an issue with plenty of prior
+work — and an **atomic promote**, which removes the partial-tree hazard PR #1880's review had to
+gate on. The corrected rule: **git is where the work survives; the local ref wins on read because
+it may hold more.**
 
 This satisfies ADR-050's own requirement — *"identically locally and in GitHub CI … through one
 mechanism, not two code paths"* — **literally**, where the present arrangement satisfies it only
@@ -140,7 +161,7 @@ Three stages carry this, declared in the pipeline template rather than buried in
 
 | stage | position | always-run | does |
 |---|---|---|---|
-| **hydrate** | before intake | no | pull the branch into the folder; git wins |
+| **hydrate** | before intake | no | fetch the branch, then restore into the run's area (local ref wins on read — it may hold unpushed work) |
 | **release** | end | **yes** | free live resources — kill process groups, drop locks. **Deletes nothing** |
 | **persist** | end, after release | **yes** | snapshot **and push** to `zbuild/state/issue-<N>` |
 
