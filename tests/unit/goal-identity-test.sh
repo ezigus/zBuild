@@ -94,6 +94,15 @@ _b_none="$(ZBUILD_GOAL='' _intake_derive_branch_name 0 '')"
 assert_eq "[SPEC-4] no issue and no goal keeps the old shape" \
     "zbuild/issue-0-untitled" "$_b_none"
 
+# A TITLE IS NOT A GOAL. The first cut fell back to ${ZBUILD_GOAL:-$title},
+# which manufactures an identity for a run that has none — contradicting
+# SPEC-3's rule above. plugins/agent/intake/tests/intake-branch-test.sh caught
+# it, and that test was right: a run invoked without --goal must keep the old
+# shape even when it has a perfectly good title.
+_b_titled="$(ZBUILD_GOAL='' _intake_derive_branch_name 0 'something')"
+assert_eq "[SPEC-4][guard] a title alone does NOT become a goal identity" \
+    "zbuild/issue-0-something" "$_b_titled"
+
 # Every branch produced must pass the existing validator — the key becomes a
 # ref component, and a ref with bad characters is refused by git, not by us.
 for _b in "$_b_issue" "$_b_goal" "$_b_a" "$_b_none"; do

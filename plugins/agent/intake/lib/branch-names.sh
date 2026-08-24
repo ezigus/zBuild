@@ -51,9 +51,17 @@ _intake_derive_branch_name() {
     #
     # The goal text is the only identity a goal run has, so key on it.
     # zbuild_run_key returns `goal-<12 hex>`; the slug stays for readability.
+    # ZBUILD_GOAL ONLY — never the title. A title is not a goal: a run invoked
+    # without --goal has no goal text, and falling back to its title would
+    # MANUFACTURE an identity for a run that has none. That contradicts this
+    # change's own rule (no issue AND no goal ⇒ no identity ⇒ keep the old
+    # shape), and `plugins/agent/intake/tests/intake-branch-test.sh` caught it:
+    # `_intake_derive_branch_name 0 "something"` must still be
+    # `zbuild/issue-0-something`. The runner exports ZBUILD_GOAL for every real
+    # --goal run, so it is the whole signal.
     local key=""
-    if declare -F zbuild_run_key >/dev/null 2>&1; then
-        key="$(zbuild_run_key "0" "${ZBUILD_GOAL:-$title}" 2>/dev/null || true)"
+    if [[ -n "${ZBUILD_GOAL:-}" ]] && declare -F zbuild_run_key >/dev/null 2>&1; then
+        key="$(zbuild_run_key "0" "$ZBUILD_GOAL" 2>/dev/null || true)"
     fi
     if [[ -n "$key" ]]; then
         printf 'zbuild/%s-%s\n' "$key" "$slug"
