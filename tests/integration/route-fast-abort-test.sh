@@ -210,6 +210,7 @@ fi
 #     `{ sleep 1 && kill -KILL; } &` backstop raced the caller's exit).
 #     Millisecond-precise deadline (not integer `date +%s`, whose second-
 #     granularity made the old window race between ~1s and ~2s under load).
+_st=""
 leftover=0
 deadline_ns=$(( $(date +%s%N) + 500000000 ))
 while [[ $(date +%s%N) -lt $deadline_ns ]]; do
@@ -218,7 +219,33 @@ while [[ $(date +%s%N) -lt $deadline_ns ]]; do
         while IFS= read -r p; do
             [[ -z "$p" ]] && continue
             if kill -0 "$p" 2>/dev/null; then
-                leftover=$(( leftover + 1 ))
+                # `kill -0` SUCCEEDS for a zombie: a process that has exited but
+                # has not been reaped still owns its PID slot and still answers.
+                # Counting those made this assertion flaky (#1942). When the
+                # driver exits the stub is reparented to PID 1, and how fast
+                # PID 1 reaps is its scheduling decision — under an ubuntu CI
+                # runner's load that is not reliably inside the 500ms window.
+                #
+                # It presents as "ubuntu-only" ONLY because this whole file is
+                # `skip_unless_platform linux` (line 51) — macOS never runs it,
+                # so there is no macOS evidence either way. Do not read the
+                # asymmetry as a platform difference in reaping.
+                #
+                # The 500ms window above is NOT the thing to relax: it is what
+                # distinguishes a correct synchronous abort from the pre-#905
+                # backstop (`{ sleep 1 && kill -KILL; } &`). Widening it past 1s
+                # would trade this flake for a blind spot in exactly the
+                # regression #906 added this test to catch.
+                # `|| _st="Z"` is NOT cosmetic. Under `set -euo pipefail`, if the process
+                # exits between the `kill -0` above and this `ps`, the pipeline returns
+                # non-zero, the assignment fails, and set -e kills the whole FILE —
+                # silently, because stderr is redirected. Absorbing it routes a
+                # now-dead process through the Z branch, which is what it is.
+                _st="$(ps -o state= -p "$p" 2>/dev/null | tr -d ' ')" || _st="Z"
+                case "$_st" in
+                    Z*) : ;;                                  # already dead
+                    *)  leftover=$(( leftover + 1 )) ;;
+                esac
             fi
         done < "$PID_FILE"
     fi
