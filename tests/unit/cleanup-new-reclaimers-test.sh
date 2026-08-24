@@ -275,7 +275,13 @@ mkdir -p "$_RS_PUSHER"
     git push -q -u origin main
     git branch zbuild/state/issue-200        # closed 30d ago per the stubs above
     git branch zbuild/state/issue-100        # open
-    git push -q origin zbuild/state/issue-200 zbuild/state/issue-100
+    # A WORK branch, deliberately deletable: it is outside the state namespace
+    # AND outside git's own protection, so the fence is the only thing that can
+    # save it. `main` is NOT a usable subject here — a bare remote refuses to
+    # delete its own HEAD branch, so `main` survives whether the fence exists or
+    # not, and an ablation of the fence leaves the assertion green.
+    git branch zbuild/issue-999-work
+    git push -q origin zbuild/state/issue-200 zbuild/state/issue-100 zbuild/issue-999-work
 ) >/dev/null 2>&1
 
 # A SECOND clone that fetched only main — no remote-tracking refs for either
@@ -317,7 +323,17 @@ _rs_remote_has() {
     "zbuild/state/issue-200"$'\tprune\tissue closed 30d ago' "true" )
 assert_eq "[SPEC-10] dry-run deletes nothing from origin" "1" "$(_rs_remote_has zbuild/state/issue-200)"
 
-# A crafted line outside the namespace is refused — main must survive.
+# A crafted line outside the namespace is refused. The subject is a WORK branch,
+# not `main`: a bare remote refuses to delete its own HEAD, so `main` would
+# survive with or without the fence and the assertion would be inert. Ablating
+# the fence must redden this — and with `main` as the subject, it did not.
+( cd "$_RS_SCANNER" && _cleanup_apply_remote_branch_plan \
+    "zbuild/issue-999-work"$'\tprune\tcrafted' "false" )
+assert_eq "[SPEC-10] a prune line outside the state namespace is refused" \
+    "1" "$(_rs_remote_has zbuild/issue-999-work)"
+
+# And `main` too, belt-and-braces — this one IS partly git's own protection, and
+# is kept as a second line of evidence rather than as the primary assertion.
 ( cd "$_RS_SCANNER" && _cleanup_apply_remote_branch_plan \
     "main"$'\tprune\tcrafted' "false" )
 assert_eq "[SPEC-10] a prune line naming main is refused" "1" "$(_rs_remote_has main)"
