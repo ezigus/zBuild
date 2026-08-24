@@ -6,7 +6,7 @@
   [38;2;74;222;128m✓[0m T1: route returns rc=0
   [38;2;74;222;128m✓[0m T1: argv contains --max-turns
   [38;2;74;222;128m✓[0m T1: argv contains default max_turns=25 as its own token
-  [38;2;74;222;128m✓[0m T1: argv contains --disallowed-tools
+  [38;2;74;222;128m✓[0m [SPEC-5] T1: argv contains --disallowed-tools
   [38;2;74;222;128m✓[0m T1: disallowed-tools value is single token with comma intact
   [38;2;248;113;113m✗[0m [SPEC-1] T1: argv contains --permission-mode
     [2margv: -p
@@ -30,7 +30,7 @@ claude-sonnet-4-6
 --disallowed-tools
 EnterPlanMode,ExitPlanMode
 --dangerously-skip-permissions[0m
-  [38;2;248;113;113m✗[0m [SPEC-5] T1: argv contains --settings
+  [38;2;248;113;113m✗[0m [SPEC-1] T1: argv contains --settings
     [2margv: -p
 ping
 --print
@@ -107,7 +107,7 @@ json[0m
 
   [38;2;248;113;113m✗[0m [SPEC-1] T1: argv contains --permission-mode
   [38;2;248;113;113m✗[0m [SPEC-1] T1: argv contains acceptEdits
-  [38;2;248;113;113m✗[0m [SPEC-5] T1: argv contains --settings
+  [38;2;248;113;113m✗[0m [SPEC-1] T1: argv contains --settings
   [38;2;248;113;113m✗[0m [SPEC-1] T2: --permission-mode still present in JSON mode
   [38;2;248;113;113m✗[0m [SPEC-1] T2: acceptEdits still present in JSON mode
 

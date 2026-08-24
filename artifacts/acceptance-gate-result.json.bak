@@ -1,0 +1,1 @@
+{"verdict":"fail","disposition":"recoverable","reason":"acceptance SPEC violations — SPEC-5/SPEC-6 tagged as [guard] but the assertion FAILS at the merge-base — a guard must hold there by definition, so either the assertion contradicts its SPEC text or the SPEC is a mislabelled [change]","failures":["guard_regressed:SPEC-5","guard_regressed:SPEC-6"]}
