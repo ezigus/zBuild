@@ -1,0 +1,5 @@
+The `stage-checkpoint-test.sh` line 233 uses `--dangerously-skip-permissions` only as part of a test fixture `_args` array to verify `--max-turns` escalation arithmetic. The assertions at lines 241-252 only check `--max-turns` values — no assertion pins the presence or absence of `--dangerously-skip-permissions`. This file is already in scope and the reference is safe.
+
+The `plugins/agent/plan/tests/plan-test.sh:147` reference is comment-only (confirmed by prior analysis), and `.github/issues/keepers-manifest.yaml:4142` is a title string. Neither contains a live assertion.
+
+All live references to changed symbols are accounted for in the design scope block.
