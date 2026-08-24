@@ -1,0 +1,114 @@
+name: state-branch-reclaim
+
+# Reclaims ADR-050 prior-work state branches (`zbuild/state/issue-*`) from
+# ORIGIN. Nothing has ever pruned them — `_cleanup_scan_branches` filters
+# strictly on `zbuild/issue-*`, so the state namespace was never considered
+# (#1632).
+#
+# WHY NOW, when the problem is nearly invisible: origin holds almost no state
+# branches today, because `core/state/artifact-persist.sh` writes a LOCAL ref
+# and the only push in the repository lives in a workflow `run:` block that no
+# local run executes (#1921). The always-run `persist` stage (#1071) makes every
+# run push, from developer machines as well as CI — at which point origin starts
+# accumulating a branch per issue, per machine, forever. This has to exist
+# BEFORE that, not after: #749 reached 1,261 directories and ~13GB before anyone
+# noticed the equivalent locally.
+#
+# SAFETY. The cron NEVER deletes. It reports, every day, into the job summary,
+# and applying requires a human to dispatch it with apply=true. A scheduled job
+# that deletes branches can destroy work, and a report nobody has read yet is
+# not a report anyone should trust.
+#
+# The retention policy is not this workflow's: `zbuild cleanup` owns it, on one
+# number and two clocks (#1927). A state branch is ISSUE-KEYED, so it ages from
+# the issue's CLOSE — a branch for an open issue is the prior work the next run
+# of that issue reuses, and deleting it mid-issue is the single outcome the
+# branch exists to prevent. An issue whose state cannot be established is kept.
+
+on:
+  schedule:
+    - cron: '15 3 * * *'   # 03:15 UTC — offset from deferred-tracker (02:30)
+                           # and manifest-sync (02:00) so the three never race.
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Actually delete pruned branches from origin (default: report only)'
+        required: false
+        default: false
+        type: boolean
+      age_days:
+        description: 'Retention in days, measured from issue close (default: 7)'
+        required: false
+        default: '7'
+        type: string
+
+permissions:
+  contents: write   # deleting a branch on origin is a contents write
+  issues: read      # the issue clock reads issue state + closedAt
+
+concurrency:
+  group: state-branch-reclaim
+  cancel-in-progress: false
+
+jobs:
+  reclaim:
+    # Fork guard — a fork must never delete branches on this repository.
+    if: github.repository == 'ezigus/zBuild'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # fetch-depth 0 so the commit behind each state branch can be DATED.
+          # The scan itself uses `git ls-remote` and does not need it — but the
+          # age fallback for a branch whose issue no longer exists does, and
+          # without the commit that case fails closed and never prunes.
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Reclaim state branches
+        id: reclaim
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          AGE="${{ github.event.inputs.age_days || '7' }}"
+          # Anything other than a literal `true` from an explicit dispatch is a
+          # report. The default for the CRON path is therefore always dry-run,
+          # because github.event.inputs is empty there.
+          if [[ "${{ github.event.inputs.apply }}" == "true" ]]; then
+            MODE_FLAG="--apply"
+            MODE_LABEL="APPLY — branches will be deleted from origin"
+          else
+            MODE_FLAG="--dry-run"
+            MODE_LABEL="report only — nothing will be deleted"
+          fi
+
+          {
+            echo "## state-branch reclamation"
+            echo ""
+            echo "**Mode:** ${MODE_LABEL}"
+            echo "**Retention:** ${AGE} days, from each issue's close"
+            echo ""
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # `| tee` would mask the exit status behind tee's; capture first, then
+          # report, then propagate. #619's pipefail lesson.
+          set +e
+          bash scripts/zbuild cleanup --state-branches --remote \
+              --age-days "$AGE" "$MODE_FLAG" > /tmp/reclaim.out 2>&1
+          rc=$?
+          set -e
+
+          cat /tmp/reclaim.out
+          cat /tmp/reclaim.out >> "$GITHUB_STEP_SUMMARY"
+
+          {
+            echo '```'
+            echo ""
+            if [[ "$MODE_FLAG" == "--dry-run" ]]; then
+              echo "_No branches were deleted. Re-run this workflow with **apply: true** to act on the plan above._"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$rc"

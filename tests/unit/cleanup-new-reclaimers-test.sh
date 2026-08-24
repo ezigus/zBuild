@@ -249,6 +249,91 @@ else
     assert_fail "[SPEC-7] the root itself must never be removed" "$ZBUILD_CACHE_DIR gone"
 fi
 
+# ── SPEC-9[change]: the REMOTE scope, which is the one CI needs (#1632) ─────
+# A CI runner is a fresh checkout: it has no local state branches at all, so a
+# local-only scan reports nothing and reads as "nothing to reclaim" rather than
+# "wrong scope". The remote scope asks origin.
+#
+# The fixture is deliberately built so `git branch -r` CANNOT see the branch —
+# it is pushed to the bare remote from a DIFFERENT clone, so this clone has no
+# remote-tracking ref for it. That is the shape actions/checkout produces with
+# its shallow single-branch default, and it is why the scanner uses ls-remote:
+# a remote-tracking scan would silently report nothing here.
+print_test_section "[SPEC-9][change] remote scope sees branches this clone never fetched"
+
+_RS_REMOTE="$TEST_TEMP_DIR/rs-remote.git"
+_RS_PUSHER="$TEST_TEMP_DIR/rs-pusher"
+_RS_SCANNER="$TEST_TEMP_DIR/rs-scanner"
+git init -q --bare "$_RS_REMOTE" 2>/dev/null
+mkdir -p "$_RS_PUSHER"
+(
+    cd "$_RS_PUSHER" || exit 1
+    git init -q -b main .
+    git config user.email t@e.st; git config user.name t
+    git remote add origin "$_RS_REMOTE"
+    : > f; git add f; git commit -q -m init
+    git push -q -u origin main
+    git branch zbuild/state/issue-200        # closed 30d ago per the stubs above
+    git branch zbuild/state/issue-100        # open
+    git push -q origin zbuild/state/issue-200 zbuild/state/issue-100
+) >/dev/null 2>&1
+
+# A SECOND clone that fetched only main — no remote-tracking refs for either
+# state branch. This is the CI shape.
+git clone -q --single-branch --branch main "$_RS_REMOTE" "$_RS_SCANNER" 2>/dev/null
+
+# Prove the premise before relying on it: if this clone COULD see them via
+# remote-tracking refs, the test would not be testing what it claims to.
+_rs_tracking="$( cd "$_RS_SCANNER" && git branch -r --list 'origin/zbuild/state/issue-*' 2>/dev/null | /usr/bin/grep -c . || true )"
+assert_eq "[SPEC-9] premise: this clone has NO remote-tracking state refs" "0" "$_rs_tracking"
+
+_rs_plan="$( cd "$_RS_SCANNER" && _cleanup_scan_state_branches 7 remote )"
+assert_eq "[SPEC-9] remote scope still finds the closed-issue branch" \
+    "prune" "$(_decision_for "$_rs_plan" "zbuild/state/issue-200")"
+assert_eq "[SPEC-9] remote scope keeps the open-issue branch" \
+    "skip" "$(_decision_for "$_rs_plan" "zbuild/state/issue-100")"
+
+# The two scopes are genuinely different questions: the LOCAL scan of the same
+# clone must find nothing, or the remote result above proves nothing.
+_rs_local="$( cd "$_RS_SCANNER" && _cleanup_scan_state_branches 7 )"
+if [[ -z "$_rs_local" ]]; then
+    assert_pass "[SPEC-9] the local scope correctly finds nothing in a fresh clone"
+else
+    assert_fail "[SPEC-9] the local scope should find nothing here" "$_rs_local"
+fi
+
+# ── SPEC-10[guard]: the remote applier is fenced and honours dry-run ─────────
+# Deleting a branch on ORIGIN is the most destructive thing in this file, and it
+# is driven by a plan line — which is data. The namespace fence makes a
+# malformed or crafted line inert rather than destructive.
+print_test_section "[SPEC-10][guard] the remote applier deletes only inside its namespace"
+
+_rs_remote_has() {
+    ( cd "$_RS_SCANNER" && git ls-remote --heads origin "refs/heads/$1" 2>/dev/null | /usr/bin/grep -c . ) || true
+}
+
+# Dry-run deletes nothing, even for a prune line.
+( cd "$_RS_SCANNER" && _cleanup_apply_remote_branch_plan \
+    "zbuild/state/issue-200"$'\tprune\tissue closed 30d ago' "true" )
+assert_eq "[SPEC-10] dry-run deletes nothing from origin" "1" "$(_rs_remote_has zbuild/state/issue-200)"
+
+# A crafted line outside the namespace is refused — main must survive.
+( cd "$_RS_SCANNER" && _cleanup_apply_remote_branch_plan \
+    "main"$'\tprune\tcrafted' "false" )
+assert_eq "[SPEC-10] a prune line naming main is refused" "1" "$(_rs_remote_has main)"
+
+# Positive control: inside the namespace, apply really does delete — otherwise
+# the two assertions above would pass on a function that does nothing at all.
+( cd "$_RS_SCANNER" && _cleanup_apply_remote_branch_plan \
+    "zbuild/state/issue-200"$'\tprune\tissue closed 30d ago' "false" )
+assert_eq "[SPEC-10] positive control: an in-namespace prune IS deleted" \
+    "0" "$(_rs_remote_has zbuild/state/issue-200)"
+
+# And a `skip` line is never acted on.
+( cd "$_RS_SCANNER" && _cleanup_apply_remote_branch_plan \
+    "zbuild/state/issue-100"$'\tskip\tissue is open' "false" )
+assert_eq "[SPEC-10] a skip line is never deleted" "1" "$(_rs_remote_has zbuild/state/issue-100)"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

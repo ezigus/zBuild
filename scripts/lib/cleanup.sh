@@ -1028,7 +1028,18 @@ _cleanup_scan_state_dirs() {
     done
 }
 
-# ─── _cleanup_scan_state_branches <age_days> ────────────────────────────────
+# ─── _cleanup_scan_state_branches <age_days> [scope] ────────────────────────
+# scope: `local` (default) scans refs/heads; `remote` scans
+# refs/remotes/origin. ONE scanner and ONE decision helper for both — #1632's
+# "reuse, do not reimplement" instruction, and the same anti-pattern #888 calls
+# out for worktree parsing.
+#
+# The remote scope is the one that matters in CI: every runner is fresh, so
+# there are no local state branches to find. It was also latent until now —
+# #1921 measured ZERO state branches on origin, because nothing has ever pushed
+# one (core/state/artifact-persist.sh writes a LOCAL ref; the only push lives in
+# a workflow `run:` block). The always-run persist stage (#1071) changes that on
+# the day it lands, which is why this must be in place before or with it.
 # zbuild/state/issue-* — ADR-050 prior-work snapshots. Nothing has ever pruned
 # these: _cleanup_scan_branches filters strictly on `zbuild/issue-*`, so the
 # state namespace was never even considered (#1632).
@@ -1037,22 +1048,88 @@ _cleanup_scan_state_dirs() {
 # run of that issue reuses. Deleting it mid-issue is the one outcome this branch
 # exists to prevent.
 _cleanup_scan_state_branches() {
-    local age_days="${1:-7}"
+    local age_days="${1:-7}" scope="${2:-local}"
     git rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
     local now; now="$(date +%s)"
-    local b mtime age_d dec
+    local b ref mtime age_d dec
     while IFS= read -r b; do
         [[ -n "$b" ]] || continue
-        if _cleanup_is_current_branch "$b"; then
-            printf '%s\tskip\tcurrent branch / active worktree\n' "$b"
-            continue
+        if [[ "$scope" == "remote" ]]; then
+            # ls-remote yields the branch name directly. Dating it needs the
+            # COMMIT, which a shallow clone will not have — so prefer the
+            # remote-tracking ref when it happens to be present and accept "no
+            # date" otherwise. That degrades to fail-closed: an undateable branch
+            # gets an empty fallback age, and the only decision that consults the
+            # fallback (issue no longer exists) then SKIPS rather than prunes.
+            if git rev-parse -q --verify "refs/remotes/origin/$b" >/dev/null 2>&1; then
+                ref="refs/remotes/origin/$b"
+            else
+                ref=""
+            fi
+        else
+            ref="$b"
+            if _cleanup_is_current_branch "$b"; then
+                printf '%s\tskip\tcurrent branch / active worktree\n' "$b"
+                continue
+            fi
         fi
-        mtime="$(git log -1 --format='%ct' "$b" 2>/dev/null || echo 0)"
-        [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
-        age_d=$(( (now - mtime) / 86400 ))
+        if [[ -n "$ref" ]]; then
+            mtime="$(git log -1 --format='%ct' "$ref" 2>/dev/null || echo 0)"
+            [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
+            age_d=$(( (now - mtime) / 86400 ))
+        else
+            age_d=""
+        fi
         dec="$(_cleanup_issue_ref_decision "$b" "$age_days" "$age_d")"
         printf '%s\t%s\n' "$b" "$dec"
-    done < <(git branch --list 'zbuild/state/issue-*' --format '%(refname:short)' 2>/dev/null || true)
+    done < <(
+        if [[ "$scope" == "remote" ]]; then
+            # ls-remote, NOT `git branch -r`. Remote-tracking refs only show what
+            # this clone has FETCHED, and actions/checkout defaults to a shallow
+            # single-branch fetch — so `git branch -r` would report nothing on a
+            # CI runner while the branches exist, which reads as "nothing to
+            # reclaim" rather than "wrong question". ls-remote asks the remote.
+            git ls-remote --heads origin 'refs/heads/zbuild/state/issue-*' 2>/dev/null \
+                | sed 's#^[0-9a-f]*\trefs/heads/##' || true
+        else
+            git branch --list 'zbuild/state/issue-*' --format '%(refname:short)' 2>/dev/null || true
+        fi
+    )
+}
+
+# ─── _cleanup_apply_remote_branch_plan <plan> <dry_run> ─────────────────────
+# Delete pruned branches from ORIGIN. Deliberately NOT folded into
+# _cleanup_apply_branch_plan: that one re-verifies `_cleanup_has_unpushed_commits`
+# and `_cleanup_is_current_branch`, neither of which means anything for a branch
+# that exists only on the remote — reusing it would run guards that always pass
+# and read as safety that is not there.
+#
+# The real guard for a remote delete is the decision itself (issue open /
+# unprovable / inside the window are all `skip`, fail-closed), plus the refusal
+# below to touch anything outside the `zbuild/state/issue-*` namespace. A plan
+# line is data; the namespace check makes a malformed one inert rather than
+# destructive.
+_cleanup_apply_remote_branch_plan() {
+    local data="$1" dry_run="$2"
+    [[ -z "$data" ]] && return 0
+    local line b rest decision
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        b="${line%%$'\t'*}"
+        rest="${line#*$'\t'}"
+        decision="${rest%%$'\t'*}"
+        [[ "$decision" != "prune" ]] && continue
+        # Namespace fence: never delete outside the state namespace, whatever a
+        # plan line claims.
+        case "$b" in
+            zbuild/state/issue-*) : ;;
+            *) continue ;;
+        esac
+        if [[ "$dry_run" == "true" ]]; then
+            continue
+        fi
+        git push origin --delete "$b" >/dev/null 2>&1 || true
+    done <<<"$data"
 }
 
 # ─── _cleanup_scan_orch_pools <age_hours> ───────────────────────────────────

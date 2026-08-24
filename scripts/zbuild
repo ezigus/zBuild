@@ -81,6 +81,7 @@ Commands:
                          --age-days 0 to reclaim a run that died today).
                          [--branches] [--state-dirs] [--stashes] [--tmpdirs]
                          [--scratch] [--state-branches] [--orch-pools] [--cache]
+                         [--remote]
                          [--worktrees]
                          Retention is one number (--age-days, default 7) on two
                          clocks: targets keyed to an ISSUE (branches,
@@ -88,6 +89,10 @@ Commands:
                          are live work while it is open; everything else ages
                          from last touch. An issue whose state cannot be
                          established is kept, never pruned.
+                         --remote scopes --state-branches to ORIGIN instead of
+                         the local clone. This is the scope that matters in CI,
+                         where every runner is fresh and has no local state
+                         branches at all (#1632).
                          [--dry-run|--apply|--force]
                          [--age-days N]    (default 7; see the two clocks above)
                          [--age-hours N]   (stashes + tmpdirs; default 1)
@@ -657,6 +662,7 @@ UPHELP
         cl_worktrees=false
         cl_scratch=false
         cl_state_branches=false
+        cl_remote=false
         cl_orch_pools=false
         cl_cache=false
         cl_dry_run=""
@@ -677,6 +683,7 @@ UPHELP
                 --worktrees)  cl_worktrees=true; shift ;;
                 --scratch)        cl_scratch=true;        shift ;;
                 --state-branches) cl_state_branches=true; shift ;;
+                --remote) cl_remote=true; shift ;;
                 --orch-pools)     cl_orch_pools=true;     shift ;;
                 --cache)          cl_cache=true;          shift ;;
                 --dry-run)    cl_dry_run=true; shift ;;
@@ -806,9 +813,18 @@ UPHELP
 
         if $cl_state_branches; then
             if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-                cl_sb_plan="$(_cleanup_scan_state_branches "$cl_age_days" || true)"
-                _cleanup_render_plan "state branches" "$cl_sb_plan" "$cl_dry_run" "$cl_quiet"
-                _cleanup_apply_branch_plan "$cl_sb_plan" "$cl_dry_run"
+                if $cl_remote; then
+                    # #1632: the scope that matters in CI. A fresh runner has no
+                    # local state branches, so a local-only scan reports nothing
+                    # and reads as "nothing to reclaim" rather than "wrong scope".
+                    cl_sb_plan="$(_cleanup_scan_state_branches "$cl_age_days" remote || true)"
+                    _cleanup_render_plan "state branches (origin)" "$cl_sb_plan" "$cl_dry_run" "$cl_quiet"
+                    _cleanup_apply_remote_branch_plan "$cl_sb_plan" "$cl_dry_run"
+                else
+                    cl_sb_plan="$(_cleanup_scan_state_branches "$cl_age_days" || true)"
+                    _cleanup_render_plan "state branches" "$cl_sb_plan" "$cl_dry_run" "$cl_quiet"
+                    _cleanup_apply_branch_plan "$cl_sb_plan" "$cl_dry_run"
+                fi
             fi
         fi
 
