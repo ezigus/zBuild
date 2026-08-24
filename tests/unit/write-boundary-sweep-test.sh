@@ -350,6 +350,133 @@ for _need in "$HOME" "$PWD"; do
     fi
 done
 
+# ─── SPEC-1: the Claude CLI's own state file is not a stage violation ────────
+# ~/.claude.json is the CLI's global state file — project/session history,
+# onboarding flags, MCP config. The `claude` process the engine spawns rewrites
+# it on EVERY dispatch, with zero tool use required (measured on CLI 2.1.241: a
+# `claude -p` run in an empty dir with no tools rewrote it). That is the engine's
+# own tool doing bookkeeping, not the stage writing out of bounds — the same
+# class already exempted for the event bus in SPEC-4d above.
+#
+# #1809 allowed the DIRECTORY ~/.claude. The state file is a SIBLING of that
+# directory, sitting directly in $HOME, which the shipped watch list sweeps at
+# maxdepth:1 — so every LLM stage halted with disposition=broken. $HOME is
+# sandboxed under the test temp here, and the SHIPPED allow list is loaded
+# additively on every call, so this exercises the entry an operator gets.
+# CHANGE: fails at baseline (the entry covered the directory, not the file).
+
+_CLI_STATE="$HOME/.claude.json"
+mkdir -p "$HOME"
+printf '{}\n' > "$_CLI_STATE"
+_cls_cli="$(write_boundary_classify "$_CLI_STATE" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-1] the Claude CLI's own top-level state file classifies as allowed" \
+    "allowed" "$_cls_cli"
+
+# ─── SPEC-2: a glob allow entry covers the whole backup family ──────────────
+# The backups are timestamped and unbounded (.claude.json.backup-20251221-084359),
+# so no exact entry can name them. They are written rarely — migration or repair
+# — but the disposition is `broken`, terminal, so one landing mid-run kills it
+# with no retry. The matcher did root/root-slash-star only, no globs.
+# CHANGE: fails at baseline (allow entries were matched literally).
+
+_CLI_BAK="$HOME/.claude.json.backup-20251221-084359"
+printf '{}\n' > "$_CLI_BAK"
+_cls_bak="$(write_boundary_classify "$_CLI_BAK" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-2] a timestamped backup in the same family classifies as allowed" \
+    "allowed" "$_cls_bak"
+
+# GUARD (SPEC-4): the glob arm must not become a blanket pass. An unrelated file
+# at the same depth, under the same watched root, is still a violation.
+_HOME_STRAY="$HOME/stray-note.txt"
+printf 'x\n' > "$_HOME_STRAY"
+_cls_hstray="$(write_boundary_classify "$_HOME_STRAY" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-4] an unrelated file at the same depth is still a violation" \
+    "violation" "$_cls_hstray"
+
+# Both readings of where CLAUDE_CONFIG_DIR puts the state file are covered, and
+# neither was exercised before — the suite only ever ran with the variable
+# unset, so a home-relative-only entry and a config-dir-only entry were
+# indistinguishable (claude-review flagged the gap on PR #1953).
+_CCD="$TEST_TEMP_DIR/custom-claude-config"
+mkdir -p "$_CCD"
+printf '{}\n' > "$_CCD/.claude.json"
+_cls_ccd="$(CLAUDE_CONFIG_DIR="$_CCD" \
+    write_boundary_classify "$_CCD/.claude.json" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-1] the state file under a custom CLAUDE_CONFIG_DIR classifies as allowed" \
+    "allowed" "$_cls_ccd"
+
+_cls_home_ccd="$(CLAUDE_CONFIG_DIR="$_CCD" \
+    write_boundary_classify "$_CLI_STATE" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-1] the home-relative state file stays allowed when CLAUDE_CONFIG_DIR is set" \
+    "allowed" "$_cls_home_ccd"
+
+# GUARD (SPEC-4): a glob entry names FILES, not roots. Without this, the glob
+# arm reads `.claude.json*` as `.claude.json*/*` and a directory named to match
+# — `.claude.json.evil/` — carries its whole subtree in with it. Raised by
+# claude-review on PR #1953 and confirmed: the probe returned `allowed`.
+_EVIL_DIR="$HOME/.claude.json.evil"
+mkdir -p "$_EVIL_DIR"
+printf 'x\n' > "$_EVIL_DIR/inside.txt"
+_cls_evil="$(write_boundary_classify "$_EVIL_DIR/inside.txt" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-4] a glob entry does not grant the subtree of a directory it matches" \
+    "violation" "$_cls_evil"
+
+# ─── SPEC-3: ${VAR:-default} expands generally, not per hardcoded token ─────
+# The expander handled that form with one hardcoded string substitution PER
+# TOKEN — two for CLAUDE_CONFIG_DIR, one for TMPDIR. Every new default form
+# needed another, and a config line an operator writes with any other variable
+# expanded to nothing at all.
+# CHANGE: fails at baseline (only the three hardcoded tokens expanded).
+
+_EXP_ALLOW="$TEST_TEMP_DIR/expand-allow.txt"
+_EXP_DIR="$TEST_TEMP_DIR/expand-fallback"
+mkdir -p "$_EXP_DIR"
+printf 'x\n' > "$_EXP_DIR/written.txt"
+unset ZB_WB_NO_SUCH_VAR 2>/dev/null || true
+printf '${ZB_WB_NO_SUCH_VAR:-%s}\n' "$_EXP_DIR" > "$_EXP_ALLOW"
+_cls_exp="$(ZBUILD_WRITE_BOUNDARY_ALLOW="$_EXP_ALLOW" \
+    write_boundary_classify "$_EXP_DIR/written.txt" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-3] an unset \${VAR:-default} falls back to the default" \
+    "allowed" "$_cls_exp"
+
+_EXP_SET="$TEST_TEMP_DIR/expand-set"
+mkdir -p "$_EXP_SET"
+printf 'x\n' > "$_EXP_SET/written.txt"
+printf '${ZB_WB_SET_VAR:-%s}\n' "$_EXP_DIR" > "$_EXP_ALLOW"
+_cls_exp2="$(ZB_WB_SET_VAR="$_EXP_SET" ZBUILD_WRITE_BOUNDARY_ALLOW="$_EXP_ALLOW" \
+    write_boundary_classify "$_EXP_SET/written.txt" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-3] a set \${VAR:-default} uses the variable, not the default" \
+    "allowed" "$_cls_exp2"
+
+# The nested shape already shipped in config/write-boundary-allow.txt —
+# ${CLAUDE_CONFIG_DIR:-${HOME}/.claude} — must survive the generalisation. Plain
+# references expand innermost-first so the default is brace-free by the time the
+# defaulted form is matched.
+_NEST_ALLOW="$TEST_TEMP_DIR/expand-nested.txt"
+printf '${ZB_WB_NO_SUCH_VAR:-${TEST_TEMP_DIR}/expand-fallback}\n' > "$_NEST_ALLOW"
+_cls_nest="$(ZBUILD_WRITE_BOUNDARY_ALLOW="$_NEST_ALLOW" \
+    write_boundary_classify "$_EXP_DIR/written.txt" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-3] a nested \${VAR} inside a default expands too" \
+    "allowed" "$_cls_nest"
+
+# GUARD: the per-token substitutions are gone. CLAUDE_CONFIG_DIR is config data;
+# once the expander is general it has no business being named in engine code.
+# Comment lines are exempt: the expander's own comment cites the nested shape it
+# has to keep handling, and naming it there is documentation, not a code path.
+_hardcoded="$(grep -n 'CLAUDE_CONFIG_DIR' "$WB_LIB" | grep -v '^[0-9]*: *#' || true)"
+if [[ -n "$_hardcoded" ]]; then
+    assert_fail "[SPEC-3] no per-token hardcoded expansion remains in the lib" \
+        "$_hardcoded"
+else
+    assert_pass "[SPEC-3] no per-token hardcoded expansion remains in the lib"
+fi
+if grep -qF 'TMPDIR:-\/tmp' "$WB_LIB"; then
+    assert_fail "[SPEC-3] no hardcoded TMPDIR substitution remains in the lib" \
+        "$(grep -nF 'TMPDIR:-\/tmp' "$WB_LIB")"
+else
+    assert_pass "[SPEC-3] no hardcoded TMPDIR substitution remains in the lib"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

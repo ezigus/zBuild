@@ -15,6 +15,23 @@
 #   ZBUILD_WRITE_BOUNDARY_ALLOW env var (path to additional file)
 #
 ${CLAUDE_CONFIG_DIR:-${HOME}/.claude}
+# The CLI's own top-level state file, which is a SIBLING of the directory above
+# rather than a child. The `claude` process the engine spawns rewrites it on
+# EVERY dispatch — project/session history, onboarding flags, MCP config — with
+# zero tool use required, so without this line every LLM stage halts as a
+# boundary violation (#1952). That is the engine's own tool doing bookkeeping,
+# the same class as the event-bus exemption in write_boundary_allow_list. The
+# trailing glob takes the unbounded .claude.json.backup-<stamp> family with it.
+${CLAUDE_CONFIG_DIR:-${HOME}}/.claude.json*
+# Measured on CLI 2.1.241: with CLAUDE_CONFIG_DIR set, the CLI creates
+# $CLAUDE_CONFIG_DIR/.claude.json and leaves $HOME/.claude.json untouched (its
+# mtime does not move), so the line above is the one that covers both cases —
+# and when CLAUDE_CONFIG_DIR is set the entry above THIS block already covers
+# the whole directory anyway. The home-relative line below is belt-and-braces
+# for the opposite reading (claude-review on PR #1953 held that the state file
+# is always home-relative): under that reading the line above would miss it.
+# Granting both costs one entry and one file family the CLI owns either way.
+${HOME}/.claude.json*
 ${HOME}/.npm
 ${HOME}/.cache
 ${HOME}/Library/Caches
