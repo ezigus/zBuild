@@ -286,7 +286,23 @@ _cleanup_is_active_run() {
     # running jobs. That is the FAIL-OPEN direction, and it is indistinguishable
     # from "nothing is running". Sharing one definition with the writer is what
     # makes the two impossible to disagree about.
-    local state_dir="${ZBUILD_STATE_DIR:-$(zbuild_layout_state_root)}"
+    local state_dir="${ZBUILD_STATE_DIR:-}"
+    if [[ -z "$state_dir" ]]; then
+        if declare -F zbuild_layout_state_root >/dev/null 2>&1; then
+            state_dir="$(zbuild_layout_state_root)"
+        else
+            # layout.sh is sourced DEFENSIVELY above, so it can be absent on a
+            # damaged install. Calling the resolver unconditionally would then
+            # yield an empty state_dir, `[[ -d "" ]]` would fail, and this would
+            # answer "no run is live" — the FAIL-OPEN direction, on the very
+            # predicate three destructive scanners are gated by. The literal
+            # expression is the floor, and it is what this line used to be.
+            state_dir="${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}"
+        fi
+    fi
+    # No "uncomputable root" branch, deliberately: the fallback cannot yield an
+    # empty string — with HOME unset it is `/.zbuild/state`. A guard for an
+    # unreachable case implies a protection that never engages.
     [[ -d "$state_dir" ]] || return 1
     local f
     # #887: include per-run dirs (runs/<id>/) alongside the legacy flat path.

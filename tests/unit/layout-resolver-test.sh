@@ -178,6 +178,38 @@ else
     assert_pass "[SPEC-8] the data root is distinct from ADR-023's install root"
 fi
 
+# ─── [SPEC-9][guard] the resolver's ABSENCE must not fail open ─────────────
+# Self-review caught this: cleanup.sh sources layout.sh defensively, so on a
+# damaged install `zbuild_layout_state_root` is undefined. The first cut let
+# that produce an EMPTY state_dir, so `[[ -d "" ]]` failed and the function
+# answered "no run is live" — fail-open, on the predicate three destructive
+# scanners are gated by. The original inlined expression had no such dependency,
+# so the indirection introduced the risk.
+print_test_section "[SPEC-9][guard] a missing resolver does not un-gate the reclaimers"
+
+# Self-contained: create the live run this section needs rather than relying on
+# one an earlier section left behind. Depending on prior state made this pass
+# standalone and fail inside the tier — an order dependency, not a real defect,
+# but the kind that wastes a CI cycle to diagnose.
+mkdir -p "$ZBUILD_STATE_ROOT/runs/r-spec9"
+printf '{"run_id":"r-spec9","status":"in_progress"}\n' \
+    > "$ZBUILD_STATE_ROOT/runs/r-spec9/pipeline-state.json"
+
+# With the resolver unavailable, the literal floor still resolves the root and
+# a live run is still seen.
+_no_resolver="$(bash -c '
+    source "'"$REPO_ROOT"'/scripts/lib/helpers.sh"
+    export ZBUILD_STATE_ROOT="'"$ZBUILD_STATE_ROOT"'"
+    source "'"$REPO_ROOT"'/scripts/lib/cleanup.sh"
+    unset -f zbuild_layout_state_root 2>/dev/null || true
+    unset ZBUILD_STATE_DIR 2>/dev/null || true
+    if _cleanup_is_active_run r-spec9; then echo ACTIVE; else echo NOT_ACTIVE; fi
+' 2>/dev/null)"
+assert_eq "[SPEC-9] a live run is still seen without the resolver" "ACTIVE" "$_no_resolver"
+
+# NOTE: there is deliberately no "uncomputable root" case here. The fallback
+# cannot produce an empty string, so such a test would assert dead code.
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
