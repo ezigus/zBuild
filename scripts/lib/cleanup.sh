@@ -300,17 +300,37 @@ _cleanup_is_active_run() {
             state_dir="${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}"
         fi
     fi
-    # No "uncomputable root" branch, deliberately: the fallback cannot yield an
-    # empty string — with HOME unset it is `/.zbuild/state`. A guard for an
-    # unreachable case implies a protection that never engages.
-    [[ -d "$state_dir" ]] || return 1
+    # #141: DO NOT early-return on `[[ -d "$state_dir" ]]` in the default case.
+    # Runs now nest under the DATA root (`repos/<repo>/issues/<N>/runs/...`), so
+    # the STATE root can be absent on a machine with live runs — "that one
+    # directory is missing" no longer means "nothing is running". Gating on it
+    # answered "no run is live" WHILE a run was in progress: the FAIL-OPEN
+    # direction, on the predicate three destructive scanners are gated by.
+    # Caught by tests/unit/layout-switch-test.sh SPEC-3.
+    #
+    # Only the pinned-override case still has one authoritative root, so only it
+    # keeps the early return.
+    if [[ -n "${ZBUILD_STATE_DIR:-}" ]]; then
+        [[ -d "$state_dir" ]] || return 1
+    fi
     # #887: per-run dirs (runs/<id>/) plus the legacy flat path — and the
     # PATTERNS come from the resolver too, not just the root. Inlining them here
     # would leave this function silently stale the next time layout.sh's globs
     # change, which is the exact divergence this shares a definition to prevent.
     local f _glob _globs
     if declare -F zbuild_layout_state_file_globs >/dev/null 2>&1; then
-        _globs="$(zbuild_layout_state_file_globs "$state_dir")"
+        # Pass the root ONLY when the operator pinned one (ZBUILD_STATE_DIR).
+        # Otherwise let the resolver answer for itself — since #141 the run dirs
+        # live under the DATA root (`repos/<repo>/issues/<N>/runs/...`), not
+        # under the state root, so forcing $state_dir as the base makes the
+        # issue-keyed globs point at a directory that does not exist and the
+        # predicate answers "no run is live". That is the FAIL-OPEN direction
+        # this whole file exists to avoid.
+        if [[ -n "${ZBUILD_STATE_DIR:-}" ]]; then
+            _globs="$(zbuild_layout_state_file_globs "$state_dir")"
+        else
+            _globs="$(zbuild_layout_state_file_globs)"
+        fi
     else
         _globs="$state_dir/runs/*/pipeline-state*.json
 $state_dir/pipeline-state*.json"
@@ -964,14 +984,23 @@ _cleanup_scan_scratch() {
 # REPORTED instead of being invisible to the scan (#1634).
 _cleanup_scan_state_dirs() {
     local state_dir="$1" age_days="${2:-7}" force="${3:-false}"
-    [[ -d "$state_dir" ]] || return 0
-    local root="$state_dir/runs"
-    [[ -d "$root" ]] || return 0
     local now; now="$(date +%s)"
     local cutoff=$(( now - age_days * 86400 ))
-    local d rid f c status mtime age_d clock
-    for d in "$root"/*; do
-        [[ -d "$d" ]] || continue
+    local d rid f c status mtime age_d clock _dirs
+    # #141: enumerate through the resolver. Runs live under their ISSUE now, so
+    # a scanner walking only "$state_dir/runs" reports "nothing to clean" for a
+    # store full of them — indistinguishable from a clean machine, and the
+    # FAIL-OPEN direction for anything downstream that trusts the answer.
+    # An operator-pinned state dir keeps its own root; otherwise the resolver
+    # enumerates both the new and the pre-#141 shapes so old runs still drain.
+    if [[ -n "${ZBUILD_STATE_DIR:-}" ]] || ! declare -F zbuild_layout_run_dirs >/dev/null 2>&1; then
+        [[ -d "$state_dir/runs" ]] || return 0
+        _dirs="$(for d in "$state_dir"/runs/*/; do [[ -d "$d" ]] && printf '%s\n' "${d%/}"; done)"
+    else
+        _dirs="$(zbuild_layout_run_dirs)"
+    fi
+    while IFS= read -r d; do
+        [[ -n "$d" && -d "$d" ]] || continue
         rid="$(basename "$d")"
         # Live run — never pruned, not even with --force.
         if _cleanup_is_active_run "$rid"; then
@@ -1061,7 +1090,7 @@ _cleanup_scan_state_dirs() {
             continue
         fi
         printf '%s\tprune\trun=%s status=%s age=%sd by %s\n' "$d" "$rid" "${status:-no-state-file}" "$age_d" "$(basename "$clock")"
-    done
+    done <<< "$_dirs"
 }
 
 # ─── _cleanup_scan_state_branches <age_days> [scope] ────────────────────────

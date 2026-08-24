@@ -653,6 +653,14 @@ UPHELP
         ;;
     cleanup)
         shift
+        # #141: the layout resolver, so the CLI's own containment roots follow
+        # the same definition the scanners and the writer use. cleanup.sh
+        # sources it defensively for its internals, but `declare -F` guards HERE
+        # need it in this shell too — without it the apply's second containment
+        # root is silently skipped and nothing under the new layout is ever
+        # removed, while the dry-run looks correct.
+        # shellcheck source=../core/state/layout.sh
+        source "$SCRIPT_DIR/../core/state/layout.sh"
         # shellcheck source=lib/cleanup.sh
         source "$SCRIPT_DIR/lib/cleanup.sh"
         cl_branches=false
@@ -778,7 +786,24 @@ UPHELP
 
             cl_state_dir_plan="$(_cleanup_scan_state_dirs "$cl_state_dir" "$cl_age_days" "$cl_force" || true)"
             _cleanup_render_plan "state dirs" "$cl_state_dir_plan" "$cl_dry_run" "$cl_quiet"
+            # #141: the plan can now name paths under TWO roots — the new
+            # issue-keyed one under the data root, and the pre-switch flat one
+            # under the state root. _cleanup_apply_dir_plan contains against a
+            # SINGLE root and refuses anything outside it, so passing only the
+            # old root made apply silently delete nothing while the dry-run
+            # looked correct. That is the exact "correct dry-run, apply deletes
+            # nothing" failure ADR-059 listed. Apply once per root; each call
+            # ignores what it does not contain.
             _cleanup_apply_dir_plan "$cl_state_dir_plan" "$cl_dry_run" "$cl_state_dir/runs"
+            # zbuild_layout_repo_root never returns empty — outside a git
+            # context it falls back to `local/<basename>`, so this call always
+            # gets a real containment root and rejects every target as "outside
+            # root" rather than widening the blast radius. Emptiness is not a
+            # case to defend against here; it cannot occur.
+            if declare -F zbuild_layout_repo_root >/dev/null 2>&1 && [[ -z "${ZBUILD_STATE_DIR:-}" ]]; then
+                _cleanup_apply_dir_plan "$cl_state_dir_plan" "$cl_dry_run" \
+                    "$(zbuild_layout_repo_root)"
+            fi
         fi
 
         if $cl_branches; then
