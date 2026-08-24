@@ -15,6 +15,14 @@
 #   ZBUILD_WRITE_BOUNDARY_ALLOW env var (path to additional file)
 #
 ${CLAUDE_CONFIG_DIR:-${HOME}/.claude}
+# The CLI's own top-level state file, which is a SIBLING of the directory above
+# rather than a child. The `claude` process the engine spawns rewrites it on
+# EVERY dispatch — project/session history, onboarding flags, MCP config — with
+# zero tool use required, so without this line every LLM stage halts as a
+# boundary violation (#1952). That is the engine's own tool doing bookkeeping,
+# the same class as the event-bus exemption in write_boundary_allow_list. The
+# trailing glob takes the unbounded .claude.json.backup-<stamp> family with it.
+${CLAUDE_CONFIG_DIR:-${HOME}}/.claude.json*
 ${HOME}/.npm
 ${HOME}/.cache
 ${HOME}/Library/Caches

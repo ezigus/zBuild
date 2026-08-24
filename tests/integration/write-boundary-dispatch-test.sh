@@ -237,6 +237,84 @@ else
         "write-boundary-violated marker was created — engine-owned root was incorrectly blocked"
 fi
 
+# ─── SPEC-1: the CLI's own state file does not halt a dispatch ──────────────
+print_test_section "SPEC-1: the Claude CLI's own state file does not halt a dispatch"
+
+# The `claude` process the engine spawns rewrites ~/.claude.json on every
+# dispatch — project/session history, onboarding flags, MCP config — with zero
+# tool use required. #1809 allowed the DIRECTORY ~/.claude; the state file is a
+# SIBLING of it, directly in $HOME, which the shipped watch list sweeps at
+# maxdepth:1. Every LLM stage therefore halted with disposition=broken: run
+# 20260824102650-38506 died at `plan`, the first one.
+#
+# No test could see it. The unit suite never named the CLI at all, $HOME is
+# sandboxed under the test temp, and CI mocks `claude` with an argv-recording
+# PATH shim — so the real CLI never writes the file under test. This fixture is
+# the honest stand-in: a dispatch that makes exactly the write the CLI makes.
+# The SHIPPED allow list is loaded additively on every call regardless of the
+# override, so this exercises the entry an operator actually gets.
+# CHANGE: fails at baseline (the shipped entry covered the directory, not the file).
+
+JOB_CLI="$TEST_TEMP_DIR/state/runs/20260824-wb-cli"
+SF_CLI="$JOB_CLI/pipeline-state.json"
+mkdir -p "$JOB_CLI/artifacts" "$JOB_CLI/runtime"
+echo '{}' > "$SF_CLI"
+
+WATCH_HOME="$TEST_TEMP_DIR/watch-home.txt"
+printf '%s maxdepth:1\n' "$HOME" > "$WATCH_HOME"
+
+ALLOW_CLI="$TEST_TEMP_DIR/allow-cli.txt"
+printf '# nothing extra — the shipped list must carry this on its own\n' > "$ALLOW_CLI"
+
+FX_CLI="$TEST_TEMP_DIR/plugins/wb-cli"
+_make_fixture "$FX_CLI" "wb-cli" "
+    echo '{}' > \"\${ZBUILD_ARTIFACT_DIR:-\${artifact_dir:-}}/wb-cli-result.json\"
+    printf '{}\n' > \"\$HOME/.claude.json\"
+"
+
+scan_plugin_outputs() { return 0; }
+export ZBUILD_WRITE_BOUNDARY_WATCH="$WATCH_HOME"
+export ZBUILD_WRITE_BOUNDARY_ALLOW="$ALLOW_CLI"
+unset ZBUILD_REPO_ROOT 2>/dev/null || true
+
+_DISP_EVENTS=()
+plugin_hook_call "$FX_CLI" "run" "wb-cli-stage" "$SF_CLI" || true
+
+if [[ -f "$JOB_CLI/runtime/write-boundary-violated" ]]; then
+    assert_fail "[SPEC-1] a dispatch that rewrites the CLI's own state file does not halt" \
+        "violation marker names: $(cat "$JOB_CLI/runtime/write-boundary-violated" 2>/dev/null)"
+else
+    assert_pass "[SPEC-1] a dispatch that rewrites the CLI's own state file does not halt"
+fi
+
+_disp_cli="$(runner_read_stage_disposition "$JOB_CLI" "$FX_CLI/manifest.yaml" "wb-cli-stage" 0 "" 0)"
+if [[ "$_disp_cli" == "broken" ]]; then
+    assert_fail "[SPEC-1] the CLI's own state file does not resolve the stage to broken" \
+        "disposition: $_disp_cli"
+else
+    assert_pass "[SPEC-1] the CLI's own state file does not resolve the stage to broken"
+fi
+
+# PAIRED NEGATIVE (SPEC-4): without this, the assertion above cannot tell
+# "allowed" from "$HOME was never swept" — and a watch list that silently stopped
+# covering $HOME would read as a pass.
+JOB_STRAY="$TEST_TEMP_DIR/state/runs/20260824-wb-stray"
+SF_STRAY="$JOB_STRAY/pipeline-state.json"
+mkdir -p "$JOB_STRAY/artifacts" "$JOB_STRAY/runtime"
+echo '{}' > "$SF_STRAY"
+
+FX_STRAY="$TEST_TEMP_DIR/plugins/wb-stray"
+_make_fixture "$FX_STRAY" "wb-stray" "
+    echo '{}' > \"\${ZBUILD_ARTIFACT_DIR:-\${artifact_dir:-}}/wb-stray-result.json\"
+    printf 'x\n' > \"\$HOME/stray-note.txt\"
+"
+
+_DISP_EVENTS=()
+plugin_hook_call "$FX_STRAY" "run" "wb-stray-stage" "$SF_STRAY" || true
+
+assert_file_exists "[SPEC-4] an unrelated \$HOME-level write still halts the dispatch" \
+    "$JOB_STRAY/runtime/write-boundary-violated"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

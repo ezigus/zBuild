@@ -19,6 +19,39 @@ _ZBUILD_WB_ROOT="$(cd "$_ZBUILD_WB_DIR/../.." && pwd)"
 # shellcheck source=../plugin-registry/output-paths.sh
 source "$_ZBUILD_WB_ROOT/core/plugin-registry/output-paths.sh"
 
+# ─── _wb_expand_line <line> ──────────────────────────────────────────────────
+# Expand ${VAR} and ${VAR:-default} in a config line. Plain references go first
+# and innermost-first, so a nested default like ${CLAUDE_CONFIG_DIR:-${HOME}/.claude}
+# is brace-free by the time the defaulted form is matched. One expander for both
+# lists: the watch and allow lists carried near-identical copies, and the
+# defaulted form was handled by a hardcoded substitution PER TOKEN — three of
+# them — so every new default form needed a fourth and any variable an operator
+# chose themselves expanded to nothing (#1952).
+_wb_expand_line() {
+    local _exp="$1" _v _d _tok _rep _n=0
+    while [[ $_n -lt 16 ]]; do
+        _n=$((_n + 1))
+        if [[ "$_exp" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)\} ]]; then
+            _v="${BASH_REMATCH[1]}"
+            # An unset plain reference cannot be resolved. Stop rather than
+            # expand it to the empty string, which would silently rewrite the
+            # entry into a filesystem-root path.
+            [[ -z "${!_v+x}" ]] && break
+            _tok="${BASH_REMATCH[0]}"; _rep="${!_v}"
+        elif [[ "$_exp" =~ \$\{([A-Za-z_][A-Za-z0-9_]*):-([^{}]*)\} ]]; then
+            _v="${BASH_REMATCH[1]}"; _d="${BASH_REMATCH[2]}"
+            _tok="${BASH_REMATCH[0]}"; _rep="${!_v:-$_d}"
+        else
+            break
+        fi
+        # Slice, not ${var//pat/rep}: a pattern built from config data would
+        # treat * and ? in a value as globs. Quoting inside %% / # keeps the
+        # token literal while the bare * stays a wildcard.
+        _exp="${_exp%%"$_tok"*}${_rep}${_exp#*"$_tok"}"
+    done
+    printf '%s' "$_exp"
+}
+
 # ─── write_boundary_mark <state_file> ────────────────────────────────────────
 # Touch the per-dispatch marker. No-op when state_file is empty or relative.
 write_boundary_mark() {
@@ -43,15 +76,7 @@ write_boundary_watch_list() {
     if [[ -f "$_cfg" ]]; then
         while IFS= read -r _line; do
             [[ -z "$_line" || "$_line" =~ ^# ]] && continue
-            # Expand simple ${VAR} tokens. Handle ${TMPDIR:-/tmp} and ${PWD} as specials.
-            local _exp="$_line" _v _n=0
-            _exp="${_exp//\$\{TMPDIR:-\/tmp\}/${TMPDIR:-/tmp}}"
-            while [[ $_n -lt 8 ]] && [[ "$_exp" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)\} ]]; do
-                _v="${BASH_REMATCH[1]}"
-                [[ -z "${!_v+x}" ]] && break
-                _exp="${_exp//\$\{$_v\}/${!_v}}"
-                _n=$((_n + 1))
-            done
+            local _exp; _exp="$(_wb_expand_line "$_line")"
             # Emit every configured entry, unconditionally. The shipped config
             # deliberately carries no system-temp root — see ADR-058 C9, "What
             # the sweep does not cover" — so the omission lives in the config an
@@ -115,15 +140,7 @@ write_boundary_allow_list() {
         [[ -f "$_cfg" ]] || continue
         while IFS= read -r _line; do
             [[ -z "$_line" || "$_line" =~ ^# ]] && continue
-            local _exp="$_line" _v _n=0
-            _exp="${_exp//\$\{CLAUDE_CONFIG_DIR:-\$\{HOME\}\/.claude\}/${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
-            _exp="${_exp//\$\{CLAUDE_CONFIG_DIR:-\$HOME\/.claude\}/${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
-            while [[ $_n -lt 8 ]] && [[ "$_exp" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)\} ]]; do
-                _v="${BASH_REMATCH[1]}"
-                [[ -z "${!_v+x}" ]] && break
-                _exp="${_exp//\$\{$_v\}/${!_v}}"
-                _n=$((_n + 1))
-            done
+            local _exp; _exp="$(_wb_expand_line "$_line")"
             printf '%s\n' "$_exp"
         done < "$_cfg"
     done
@@ -195,6 +212,25 @@ write_boundary_classify() {
     local _ar _ca
     while IFS= read -r _ar; do
         [[ -z "$_ar" ]] && continue
+        # An entry may name a FAMILY of files rather than a root. The Claude
+        # CLI's own state file has an unbounded timestamped backup family
+        # (.claude.json.backup-<stamp>), so no exact entry can cover it. The
+        # directory part is canonicalised like every other root — on macOS /var
+        # is a symlink to /private/var and the candidate arrives canonical — and
+        # the pattern part is matched against it. Not a loophole: only entries
+        # that actually carry a glob reach this arm.
+        if [[ "$_ar" == *[*?]* ]]; then
+            local _gd="${_ar%/*}" _gp="${_ar##*/}" _gc
+            if [[ "$_gd" != "$_ar" && "$_gd" != *[*?]* ]]; then
+                _gc="$(cd "$_gd" 2>/dev/null && pwd -P)" || _gc="$_gd"
+                _ar="${_gc}/${_gp}"
+            fi
+            # shellcheck disable=SC2053  # the RHS glob is the point of this arm
+            if [[ "$_cd" == $_ar || "$_cd" == $_ar/* ]]; then
+                printf 'allowed'; return 0
+            fi
+            continue
+        fi
         _ca="$(cd "$_ar" 2>/dev/null && pwd -P)" || _ca="$_ar"
         # Candidate under an allowed root, OR the candidate is a strict ANCESTOR
         # of one. The ancestor arm is not a loophole: `find` reports directories,
