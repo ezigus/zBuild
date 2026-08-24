@@ -183,7 +183,10 @@ design_gate_run() {
                     _g_spec="${_g_line#GUARD SKIP }"
                     _g_reason="${_g_spec#* }"; _g_spec="${_g_spec%% *}"
                     _gp_declared=$((_gp_declared + 1))
-                    _gp_skips+=("$_g_spec:$_g_reason")
+                    # TAB, not ':' — a reason is free text and the day one
+                    # carries a colon, splitting on the first would silently
+                    # truncate it. A tab cannot appear in either field.
+                    _gp_skips+=("$_g_spec"$'\t'"$_g_reason")
                     ;;
             esac
         done < <(acceptance_negctl_guard_precheck "$design_md" "$repo_root" 2>/dev/null || true)
@@ -207,7 +210,7 @@ design_gate_run() {
         local _gp_skips_json="[]"
         if [[ ${#_gp_skips[@]} -gt 0 ]]; then
             _gp_skips_json="$(printf '%s\n' "${_gp_skips[@]}" \
-                | jq -R 'select(length>0) | (index(":")) as $i | {spec: .[:$i], reason: .[$i+1:]}' \
+                | jq -R 'select(length>0) | split("\t") | {spec: .[0], reason: (.[1:] | join("\t"))}' \
                 | jq -sc .)"
         fi
         _gp_json="$(jq -nc --argjson d "$_gp_declared" --argjson v "$_gp_verified" \

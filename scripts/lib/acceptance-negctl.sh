@@ -22,6 +22,15 @@
 # assertion per file) for precise attribution; a file mixing a load-bearing and a
 # tautological [change] SPEC is judged load-bearing.
 #
+# Size (CLAUDE.md "under 500 lines unless there is a strong reason"): this file
+# is over, and stays over deliberately. The guard helpers below are shared by the
+# acceptance gate and the design-gate pre-check (#1777); splitting them into a
+# sibling under scripts/lib would add that file to _runner_contract_lib_closure —
+# runner.sh derives the hot-reloaded contract-reader set by following
+# same-directory `source` lines — which widens ADR-057 gate 2 and changes which
+# future issues must be built by hand. That is a real architectural cost for a
+# cosmetic gain.
+#
 # Source-only; no `set -e` at top level (would mutate caller options).
 
 [[ -n "${_ACCEPTANCE_NEGCTL_LOADED:-}" ]] && return 0

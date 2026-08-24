@@ -189,6 +189,83 @@ assert_contains "[SPEC-7] the fail-open reason is recorded, not silent" \
 assert_eq "[SPEC-7] nothing was verified, and the artifact says so" \
     "0" "$(jq -r '.guard_precheck.verified // "MISSING"' <<< "$RESULT")"
 
+# ─── 6b. The other fail-open paths are covered too, not hand-verified ────────
+# The claim this change makes is "fails open, and says so". Two of the six skip
+# reasons were exercised above (no_baseline, guard_untested); these are the rest
+# that can be triggered deterministically. #1686's lesson is about not
+# re-implementing DETECTION logic in a test — it does not exempt the error paths,
+# and an untested fail-open path is how a gate goes quietly inert.
+
+# harness — the baseline copy does not parse, so it never reached an assertion.
+HREPO="$(setup_git_temp_repo "guard-harness")"
+(
+    cd "$HREPO"
+    mkdir -p scripts tests; : > scripts/doctor.sh
+    "$GIT" add -A && "$GIT" commit -q -m baseline
+    "$GIT" checkout -q -b feature
+    printf 'changed\n' > scripts/doctor.sh
+    # Deliberately unparseable: `bash -n` fails, so _negctl_baseline_parses is false.
+    printf '#!/usr/bin/env bash\n# [SPEC-1] never parses\nif [[ 1 -eq 1 ]; then :; fi\n' \
+        > tests/guard-bad-test.sh
+    chmod +x tests/guard-bad-test.sh
+    "$GIT" add -A && "$GIT" commit -q -m feature
+)
+_run_gate "$HREPO" "$_DESIGN_MD"
+if grep -q "GUARD_REGRESSED_AT_BASELINE SPEC-1" <<< "$VIOL"; then
+    assert_fail "[SPEC-9] an unparseable baseline copy SKIPs (harness), never fails the design" "$VIOL"
+else
+    assert_pass "[SPEC-9] an unparseable baseline copy SKIPs (harness), never fails the design"
+fi
+assert_contains "[SPEC-9] and the harness skip is recorded, not silent" \
+    "$(jq -rc '.guard_precheck.skipped // []' <<< "$RESULT")" "harness"
+
+# timeout — the baseline run is killed, so pass/fail is unknown (infrastructure).
+TREPO="$(setup_git_temp_repo "guard-timeout")"
+(
+    cd "$TREPO"
+    mkdir -p scripts tests; : > scripts/doctor.sh
+    "$GIT" add -A && "$GIT" commit -q -m baseline
+    "$GIT" checkout -q -b feature
+    printf 'changed\n' > scripts/doctor.sh
+    printf '#!/usr/bin/env bash\n# [SPEC-1] outlives the timeout\nsleep 30\n' \
+        > tests/guard-bad-test.sh
+    chmod +x tests/guard-bad-test.sh
+    "$GIT" add -A && "$GIT" commit -q -m feature
+)
+ZBUILD_NEGCTL_TIMEOUT=1 _run_gate "$TREPO" "$_DESIGN_MD"
+if grep -q "GUARD_REGRESSED_AT_BASELINE SPEC-1" <<< "$VIOL"; then
+    assert_fail "[SPEC-10] a killed baseline run SKIPs (timeout), never fails the design" "$VIOL"
+else
+    assert_pass "[SPEC-10] a killed baseline run SKIPs (timeout), never fails the design"
+fi
+assert_contains "[SPEC-10] and the timeout skip is recorded, not silent" \
+    "$(jq -rc '.guard_precheck.skipped // []' <<< "$RESULT")" "timeout"
+
+# worktree_failed — the baseline worktree cannot be created at all. Driven by a
+# read-only TMPDIR: mktemp -d fails, so the worktree path is empty and
+# `git worktree add` cannot succeed. No git stub, no mocking of the code under test.
+WREPO="$(setup_git_temp_repo "guard-wtfail")"
+(
+    cd "$WREPO"
+    mkdir -p scripts tests; : > scripts/doctor.sh
+    printf '#!/usr/bin/env bash\n# [SPEC-1] holds\nexit 0\n' > tests/guard-bad-test.sh
+    chmod +x tests/guard-bad-test.sh
+    "$GIT" add -A && "$GIT" commit -q -m baseline
+    "$GIT" checkout -q -b feature
+    printf 'changed\n' > scripts/doctor.sh
+    "$GIT" add -A && "$GIT" commit -q -m feature
+)
+RO_TMP="$TEST_TEMP_DIR/ro-tmp"; mkdir -p "$RO_TMP"; chmod 500 "$RO_TMP"
+TMPDIR="$RO_TMP" _run_gate "$WREPO" "$_DESIGN_MD"
+chmod 700 "$RO_TMP"
+if grep -q "GUARD_REGRESSED_AT_BASELINE" <<< "$VIOL"; then
+    assert_fail "[SPEC-11] an uncreatable baseline worktree SKIPs, never fails the design" "$VIOL"
+else
+    assert_pass "[SPEC-11] an uncreatable baseline worktree SKIPs, never fails the design"
+fi
+assert_contains "[SPEC-11] and the worktree failure is recorded, not silent" \
+    "$(jq -rc '.guard_precheck.skipped // []' <<< "$RESULT")" "worktree_failed"
+
 # ─── 7. A guard-less design keeps today's exact artifact shape ───────────────
 _NOGUARD_MD='# Design
 
