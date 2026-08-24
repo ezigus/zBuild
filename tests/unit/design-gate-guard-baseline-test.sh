@@ -256,15 +256,26 @@ WREPO="$(setup_git_temp_repo "guard-wtfail")"
     "$GIT" add -A && "$GIT" commit -q -m feature
 )
 RO_TMP="$TEST_TEMP_DIR/ro-tmp"; mkdir -p "$RO_TMP"; chmod 500 "$RO_TMP"
-TMPDIR="$RO_TMP" _run_gate "$WREPO" "$_DESIGN_MD"
-chmod 700 "$RO_TMP"
-if grep -q "GUARD_REGRESSED_AT_BASELINE" <<< "$VIOL"; then
-    assert_fail "[SPEC-11] an uncreatable baseline worktree SKIPs, never fails the design" "$VIOL"
+# PROBE the precondition rather than assume it. `chmod 500` is toothless for
+# root, and a silently-passing test of a fail-open path is the very thing these
+# three cases exist to prevent: without this probe, a root runner would create
+# the worktree, run the (exit 0) testfile, get `held`, and redden the assertion
+# below for a reason that has nothing to do with the code under test.
+if : > "$RO_TMP/.probe" 2>/dev/null; then
+    rm -f "$RO_TMP/.probe"; chmod 700 "$RO_TMP"
+    SKIP=$((SKIP + 1))
+    echo -e "  ${YELLOW}SKIP${RESET}: [SPEC-11] a read-only TMPDIR does not block writes here (root?)" >&2
 else
-    assert_pass "[SPEC-11] an uncreatable baseline worktree SKIPs, never fails the design"
+    TMPDIR="$RO_TMP" _run_gate "$WREPO" "$_DESIGN_MD"
+    chmod 700 "$RO_TMP"
+    if grep -q "GUARD_REGRESSED_AT_BASELINE" <<< "$VIOL"; then
+        assert_fail "[SPEC-11] an uncreatable baseline worktree SKIPs, never fails the design" "$VIOL"
+    else
+        assert_pass "[SPEC-11] an uncreatable baseline worktree SKIPs, never fails the design"
+    fi
+    assert_contains "[SPEC-11] and the worktree failure is recorded, not silent" \
+        "$(jq -rc '.guard_precheck.skipped // []' <<< "$RESULT")" "worktree_failed"
 fi
-assert_contains "[SPEC-11] and the worktree failure is recorded, not silent" \
-    "$(jq -rc '.guard_precheck.skipped // []' <<< "$RESULT")" "worktree_failed"
 
 # ─── 7. A guard-less design keeps today's exact artifact shape ───────────────
 _NOGUARD_MD='# Design
