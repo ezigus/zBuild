@@ -249,6 +249,140 @@ else
     assert_fail "[SPEC-7] the root itself must never be removed" "$ZBUILD_CACHE_DIR gone"
 fi
 
+# ── SPEC-9[change]: the REMOTE scope, which is the one CI needs (#1632) ─────
+# A CI runner is a fresh checkout: it has no local state branches at all, so a
+# local-only scan reports nothing and reads as "nothing to reclaim" rather than
+# "wrong scope". The remote scope asks origin.
+#
+# The fixture is deliberately built so `git branch -r` CANNOT see the branch —
+# it is pushed to the bare remote from a DIFFERENT clone, so this clone has no
+# remote-tracking ref for it. That is the shape actions/checkout produces with
+# its shallow single-branch default, and it is why the scanner uses ls-remote:
+# a remote-tracking scan would silently report nothing here.
+print_test_section "[SPEC-9][change] remote scope sees branches this clone never fetched"
+
+_RS_REMOTE="$TEST_TEMP_DIR/rs-remote.git"
+_RS_PUSHER="$TEST_TEMP_DIR/rs-pusher"
+_RS_SCANNER="$TEST_TEMP_DIR/rs-scanner"
+git init -q --bare "$_RS_REMOTE" 2>/dev/null
+mkdir -p "$_RS_PUSHER"
+(
+    cd "$_RS_PUSHER" || exit 1
+    git init -q -b main .
+    git config user.email t@e.st; git config user.name t
+    git remote add origin "$_RS_REMOTE"
+    : > f; git add f; git commit -q -m init
+    git push -q -u origin main
+    git branch zbuild/state/issue-200        # closed 30d ago per the stubs above
+    git branch zbuild/state/issue-100        # open
+    # A WORK branch, deliberately deletable: it is outside the state namespace
+    # AND outside git's own protection, so the fence is the only thing that can
+    # save it. `main` is NOT a usable subject here — a bare remote refuses to
+    # delete its own HEAD branch, so `main` survives whether the fence exists or
+    # not, and an ablation of the fence leaves the assertion green.
+    git branch zbuild/issue-999-work
+    git push -q origin zbuild/state/issue-200 zbuild/state/issue-100 zbuild/issue-999-work
+) >/dev/null 2>&1
+
+# A SECOND clone that fetched only main — no remote-tracking refs for either
+# state branch. This is the CI shape.
+git clone -q --single-branch --branch main "$_RS_REMOTE" "$_RS_SCANNER" 2>/dev/null
+
+# Prove the premise before relying on it: if this clone COULD see them via
+# remote-tracking refs, the test would not be testing what it claims to.
+_rs_tracking="$( cd "$_RS_SCANNER" && git branch -r --list 'origin/zbuild/state/issue-*' 2>/dev/null | /usr/bin/grep -c . || true )"
+assert_eq "[SPEC-9] premise: this clone has NO remote-tracking state refs" "0" "$_rs_tracking"
+
+_rs_plan="$( cd "$_RS_SCANNER" && _cleanup_scan_state_branches 7 remote )"
+assert_eq "[SPEC-9] remote scope still finds the closed-issue branch" \
+    "prune" "$(_decision_for "$_rs_plan" "zbuild/state/issue-200")"
+assert_eq "[SPEC-9] remote scope keeps the open-issue branch" \
+    "skip" "$(_decision_for "$_rs_plan" "zbuild/state/issue-100")"
+
+# The two scopes are genuinely different questions: the LOCAL scan of the same
+# clone must find nothing, or the remote result above proves nothing.
+_rs_local="$( cd "$_RS_SCANNER" && _cleanup_scan_state_branches 7 )"
+if [[ -z "$_rs_local" ]]; then
+    assert_pass "[SPEC-9] the local scope correctly finds nothing in a fresh clone"
+else
+    assert_fail "[SPEC-9] the local scope should find nothing here" "$_rs_local"
+fi
+
+# ── SPEC-10[guard]: the remote applier is fenced and honours dry-run ─────────
+# Deleting a branch on ORIGIN is the most destructive thing in this file, and it
+# is driven by a plan line — which is data. The namespace fence makes a
+# malformed or crafted line inert rather than destructive.
+print_test_section "[SPEC-10][guard] the remote applier deletes only inside its namespace"
+
+_rs_remote_has() {
+    ( cd "$_RS_SCANNER" && git ls-remote --heads origin "refs/heads/$1" 2>/dev/null | /usr/bin/grep -c . ) || true
+}
+
+# Dry-run deletes nothing, even for a prune line.
+( cd "$_RS_SCANNER" && _cleanup_apply_remote_branch_plan \
+    "zbuild/state/issue-200"$'\tprune\tissue closed 30d ago' "true" )
+assert_eq "[SPEC-10] dry-run deletes nothing from origin" "1" "$(_rs_remote_has zbuild/state/issue-200)"
+
+# A crafted line outside the namespace is refused. The subject is a WORK branch,
+# not `main`: a bare remote refuses to delete its own HEAD, so `main` would
+# survive with or without the fence and the assertion would be inert. Ablating
+# the fence must redden this — and with `main` as the subject, it did not.
+( cd "$_RS_SCANNER" && _cleanup_apply_remote_branch_plan \
+    "zbuild/issue-999-work"$'\tprune\tcrafted' "false" )
+assert_eq "[SPEC-10] a prune line outside the state namespace is refused" \
+    "1" "$(_rs_remote_has zbuild/issue-999-work)"
+
+# And `main` too, belt-and-braces — this one IS partly git's own protection, and
+# is kept as a second line of evidence rather than as the primary assertion.
+( cd "$_RS_SCANNER" && _cleanup_apply_remote_branch_plan \
+    "main"$'\tprune\tcrafted' "false" )
+assert_eq "[SPEC-10] a prune line naming main is refused" "1" "$(_rs_remote_has main)"
+
+# Positive control: inside the namespace, apply really does delete — otherwise
+# the two assertions above would pass on a function that does nothing at all.
+( cd "$_RS_SCANNER" && _cleanup_apply_remote_branch_plan \
+    "zbuild/state/issue-200"$'\tprune\tissue closed 30d ago' "false" )
+assert_eq "[SPEC-10] positive control: an in-namespace prune IS deleted" \
+    "0" "$(_rs_remote_has zbuild/state/issue-200)"
+
+# And a `skip` line is never acted on.
+( cd "$_RS_SCANNER" && _cleanup_apply_remote_branch_plan \
+    "zbuild/state/issue-100"$'\tskip\tissue is open' "false" )
+assert_eq "[SPEC-10] a skip line is never deleted" "1" "$(_rs_remote_has zbuild/state/issue-100)"
+
+# ── SPEC-11[guard]: a failed delete is REPORTED, not swallowed ──────────────
+# The original used `|| true`. In --apply mode the workflow's exit status is the
+# only signal reaching the human who dispatched it, so a swallowed failure means
+# the job summary says success, the branch is still on origin, and the next cron
+# silently re-lists it. The situation that makes apply mode risky is exactly the
+# one where a silent failure is least acceptable.
+print_test_section "[SPEC-11][guard] a delete that fails is reported, and the rest still run"
+
+# Point the clone at a remote that does not exist: every delete must fail.
+_RS_BROKEN="$TEST_TEMP_DIR/rs-broken"
+git clone -q --single-branch --branch main "$_RS_REMOTE" "$_RS_BROKEN" 2>/dev/null
+( cd "$_RS_BROKEN" && git remote set-url origin "$TEST_TEMP_DIR/no-such-remote.git" ) >/dev/null 2>&1
+
+_rs_rc=0
+( cd "$_RS_BROKEN" && _cleanup_apply_remote_branch_plan \
+    "zbuild/state/issue-100"$'\tprune\tissue closed' "false" ) >/dev/null 2>&1 || _rs_rc=$?
+assert_exit_code "[SPEC-11] a failed delete returns non-zero" "1" "$_rs_rc"
+
+# And a plan with a failure in the MIDDLE still processes what follows — one
+# unreachable branch must not strand the others.
+_rs_seen="$TEST_TEMP_DIR/rs-seen"
+: > "$_rs_seen"
+_rs_multi="zbuild/state/issue-100"$'\tprune\tfirst'$'\n'"zbuild/state/issue-200"$'\tprune\tsecond'
+( cd "$_RS_BROKEN" && _cleanup_apply_remote_branch_plan "$_rs_multi" "false" ) >>"$_rs_seen" 2>&1 || true
+assert_contains "[SPEC-11] the first failure is named" "$(cat "$_rs_seen")" "issue-100"
+assert_contains "[SPEC-11] and the plan continued to the second" "$(cat "$_rs_seen")" "issue-200"
+
+# Dry-run is unaffected: nothing is attempted, so nothing can fail.
+_rs_rc=0
+( cd "$_RS_BROKEN" && _cleanup_apply_remote_branch_plan \
+    "zbuild/state/issue-100"$'\tprune\tissue closed' "true" ) >/dev/null 2>&1 || _rs_rc=$?
+assert_exit_code "[SPEC-11] dry-run against a broken remote still returns 0" "0" "$_rs_rc"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
