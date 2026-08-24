@@ -18,6 +18,14 @@
 [[ -n "${_ZBUILD_ARTIFACT_PERSIST_LOADED:-}" ]] && return 0
 _ZBUILD_ARTIFACT_PERSIST_LOADED=1
 
+# #1931: zbuild_run_key, for a --goal run's own state branch. Guarded — this
+# file is sourced from contexts that may not have scripts/lib on hand.
+_ZBUILD_AP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "$_ZBUILD_AP_DIR/../../scripts/lib/identity.sh" ]]; then
+    # shellcheck source=../../scripts/lib/identity.sh
+    source "$_ZBUILD_AP_DIR/../../scripts/lib/identity.sh"
+fi
+
 # ─── Outcome channel (#1878) ─────────────────────────────────────────────────
 # rc alone cannot distinguish "persisted", "nothing to persist" and "failed" —
 # and it used to report the middle one as the first, so the runner emitted
@@ -44,9 +52,25 @@ _artifact_persist_reset_status() {
 
 # ─── _artifact_persist_branch <issue> ───────────────────────────────────────
 # The state branch name for an issue. Sibling to the work branch; never merged.
+# #1931: takes the goal text as an optional second argument so a `--goal` run
+# gets its own durable branch instead of sharing `issue-0` with every other one.
+# Callers that pass only an issue are unchanged.
 _artifact_persist_branch() {
-    local issue="${1:-0}"
-    printf 'zbuild/state/issue-%s' "$issue"
+    local issue="${1:-0}" goal="${2:-${ZBUILD_GOAL:-}}"
+    if [[ "$issue" =~ ^[0-9]+$ && "$issue" -gt 0 ]]; then
+        printf 'zbuild/state/issue-%s' "$issue"
+        return 0
+    fi
+    local key=""
+    if declare -F zbuild_run_key >/dev/null 2>&1; then
+        key="$(zbuild_run_key "$issue" "$goal" 2>/dev/null || true)"
+    fi
+    if [[ -n "$key" ]]; then
+        printf 'zbuild/state/%s' "$key"
+    else
+        # Unchanged fallback: no issue and no goal is no identity.
+        printf 'zbuild/state/issue-%s' "$issue"
+    fi
 }
 # ─── _artifact_persist_git_dir <repo_root> ───────────────────────────────────
 # Resolve the git dir to use for plumbing. NOT "$repo_root/.git": in a linked

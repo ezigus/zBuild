@@ -24,6 +24,8 @@ source "$_ZBUILD_ROOT/core/state/atomic.sh"
 source "$_ZBUILD_ROOT/core/state/resume.sh"
 # shellcheck source=../state/issue-lock.sh
 source "$_ZBUILD_ROOT/core/state/issue-lock.sh"
+# shellcheck source=../../scripts/lib/identity.sh
+source "$_ZBUILD_ROOT/scripts/lib/identity.sh"
 # #887: capture whether the operator PINNED any events location BEFORE
 # event-bus.sh defaults them to $HOME/.zbuild/state — so per-run isolation
 # overrides only the default, never an explicit operator/test override.
@@ -1850,12 +1852,19 @@ main() {
     #
     # A dead holder's lock is reaped by the acquire, so this never blocks on a
     # run that is already gone.
-    if [[ "$_runner_issue" =~ ^[0-9]+$ && "$_runner_issue" -gt 0 ]]; then
-        if ! zbuild_issue_lock_acquire "$_runner_issue" "$_runner_run_id" "$state_file"; then
+    # #1931: keyed on the RUN's identity, not on the issue number — a --goal run
+    # has one too now, and two concurrent runs of the same goal would share a
+    # tree for exactly the same reason two runs of one issue would.
+    local _runner_lock_key=""
+    if declare -F zbuild_run_key >/dev/null 2>&1; then
+        _runner_lock_key="$(zbuild_run_key "$_runner_issue" "${goal:-}" 2>/dev/null || true)"
+    fi
+    if [[ -n "$_runner_lock_key" ]]; then
+        if ! zbuild_issue_lock_acquire "$_runner_lock_key" "$_runner_run_id" "$state_file"; then
             eb_emit_event "pipeline.refused.issue_locked" \
-                "issue=$_runner_issue" "holder=${_ZBUILD_ISSUE_LOCK_HOLDER:-unknown}" \
+                "key=$_runner_lock_key" "holder=${_ZBUILD_ISSUE_LOCK_HOLDER:-unknown}" \
                 2>/dev/null || true
-            error "another run already holds issue #$_runner_issue: ${_ZBUILD_ISSUE_LOCK_HOLDER:-unknown}"
+            error "another run already holds $_runner_lock_key: ${_ZBUILD_ISSUE_LOCK_HOLDER:-unknown}"
             error "wait for it to finish, or set ZBUILD_NO_ISSUE_LOCK=1 to override (see ADR-059 §4)"
             return 1
         fi
