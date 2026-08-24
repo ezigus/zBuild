@@ -22,6 +22,8 @@ source "$_ZBUILD_ROOT/scripts/lib/runner-final-status.sh"
 source "$_ZBUILD_ROOT/core/output/stage-colors.sh"
 source "$_ZBUILD_ROOT/core/state/atomic.sh"
 source "$_ZBUILD_ROOT/core/state/resume.sh"
+# shellcheck source=../state/issue-lock.sh
+source "$_ZBUILD_ROOT/core/state/issue-lock.sh"
 # #887: capture whether the operator PINNED any events location BEFORE
 # event-bus.sh defaults them to $HOME/.zbuild/state — so per-run isolation
 # overrides only the default, never an explicit operator/test override.
@@ -1839,6 +1841,24 @@ main() {
     # here so the per-dispatch refresh sees it regardless of how it was given.
     if $self_host; then
         export ZBUILD_SELF_HOST=1
+    fi
+
+    # ADR-059 §4 (#1688/#1764): one run per issue, decided HERE — immediately
+    # before the tree is entered, because the tree is what two runs of one issue
+    # would corrupt once ADR-059 §2 re-keys it to the issue. Refusing costs a
+    # run that has not started; not refusing costs a `.git/index`.
+    #
+    # A dead holder's lock is reaped by the acquire, so this never blocks on a
+    # run that is already gone.
+    if [[ "$_runner_issue" =~ ^[0-9]+$ && "$_runner_issue" -gt 0 ]]; then
+        if ! zbuild_issue_lock_acquire "$_runner_issue" "$_runner_run_id" "$state_file"; then
+            eb_emit_event "pipeline.refused.issue_locked" \
+                "issue=$_runner_issue" "holder=${_ZBUILD_ISSUE_LOCK_HOLDER:-unknown}" \
+                2>/dev/null || true
+            error "another run already holds issue #$_runner_issue: ${_ZBUILD_ISSUE_LOCK_HOLDER:-unknown}"
+            error "wait for it to finish, or set ZBUILD_NO_ISSUE_LOCK=1 to override (see ADR-059 §4)"
+            return 1
+        fi
     fi
 
     # ADR-052 (#1640): LAST thing before any stage runs. Everything above is
