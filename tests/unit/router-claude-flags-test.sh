@@ -80,7 +80,7 @@ if grep -qx -- "25" <<< "$argv"; then
 else
     assert_fail "T1: argv contains default max_turns=25 as its own token" "argv: $argv"
 fi
-assert_contains "T1: argv contains --disallowed-tools" "$argv" "--disallowed-tools"
+assert_contains "[SPEC-5] T1: argv contains --disallowed-tools" "$argv" "--disallowed-tools"
 # Comma must remain intact in a single argv token (no shell expansion).
 if grep -qx -- "EnterPlanMode,ExitPlanMode" <<< "$argv"; then
     assert_pass "T1: disallowed-tools value is single token with comma intact"
@@ -99,9 +99,9 @@ else
     assert_fail "[SPEC-1] T1: argv contains acceptEdits" "argv: $argv"
 fi
 if grep -qx -- "--settings" <<< "$argv"; then
-    assert_pass "[SPEC-5] T1: argv contains --settings"
+    assert_pass "[SPEC-1] T1: argv contains --settings"
 else
-    assert_fail "[SPEC-5] T1: argv contains --settings" "argv: $argv"
+    assert_fail "[SPEC-1] T1: argv contains --settings" "argv: $argv"
 fi
 assert_contains "T1: argv preserves -p" "$argv" "-p"
 assert_contains "T1: argv preserves --print" "$argv" "--print"

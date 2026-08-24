@@ -99,8 +99,11 @@ source "$_ZBUILD_ROOT/scripts/lib/vision.sh"
 _zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/proc-group.sh"
 source "$_ZBUILD_ROOT/scripts/lib/proc-group.sh"
 # #1919 (C10): acceptEdits + settings file — replaces --dangerously-skip-permissions.
-_zbuild_route_require "$_ROUTER_DIR/permissions.sh"
-source "$_ROUTER_DIR/permissions.sh"
+# Conditional (not _zbuild_route_require) so the stub-tree load test works without
+# a permissions.sh fixture; spawn sites fail closed (command not found) if absent.
+if [[ -f "$_ROUTER_DIR/permissions.sh" ]]; then
+    source "$_ROUTER_DIR/permissions.sh"
+fi
 
 # route_to_model <tier> <prompt> [--skip-precondition] [--model <id>]
 # Exit codes: 0=success, 1=recoverable, 2=fatal

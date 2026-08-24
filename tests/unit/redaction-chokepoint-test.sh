@@ -108,7 +108,7 @@ done < <({
 
 # ─── Report ───────────────────────────────────────────────────────────────────
 if [[ ${#VIOLATIONS[@]} -eq 0 ]]; then
-    assert_pass "chokepoint scan: no raw LLM invocations found outside allowed locations"
+    assert_pass "[SPEC-6] chokepoint scan: no raw LLM invocations found outside allowed locations"
 else
     for v in "${VIOLATIONS[@]}"; do
         assert_fail "chokepoint violation: $v"
@@ -180,14 +180,14 @@ else
     assert_fail "chokepoint sentinel: unexpected violations after cleanup: ${post_cleanup_violations[*]}"
 fi
 
-# ─── SPEC-6: permissions.sh lives inside core/router/ (the allowed zone) ─────
+# ─── C10 structural check: permissions.sh lives inside core/router/ ──────────
 # #1919 (C10): permissions.sh writes the settings file that replaces
 # --dangerously-skip-permissions. It must reside inside core/router/ so the
 # chokepoint scanner's allowlist covers it by construction.
 if [[ -f "$REPO_ROOT/core/router/permissions.sh" ]]; then
-    assert_pass "[SPEC-6] permissions.sh exists inside core/router/ (chokepoint-exempt zone)"
+    assert_pass "C10: permissions.sh exists inside core/router/ (chokepoint-exempt zone)"
 else
-    assert_fail "[SPEC-6] permissions.sh must exist inside core/router/ (chokepoint-exempt zone)"
+    assert_fail "C10: permissions.sh must exist inside core/router/ (chokepoint-exempt zone)"
 fi
 
 cleanup_test_env

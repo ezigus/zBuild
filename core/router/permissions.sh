@@ -3,11 +3,13 @@
 # Replaces --dangerously-skip-permissions at both spawn sites with a jq-validated
 # settings file that grants write access only to the worktree and stage scratch dir.
 # Sourced by route.sh after the env-scrub and base-include block.
+#
+# zbuild_engine_tmpdir is defined in scripts/lib/helpers.sh, which route.sh
+# sources before loading this file.
+# shellcheck source=../../scripts/lib/helpers.sh
 
 [[ -n "${_ZBUILD_PERMISSIONS_LOADED:-}" ]] && return 0
 _ZBUILD_PERMISSIONS_LOADED=1
-
-_PERMISSIONS_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # _zbuild_build_permissions_settings
 # Writes ${ZBUILD_STAGE_SCRATCH:-$(zbuild_engine_tmpdir)}/claude-settings.json with
@@ -21,8 +23,7 @@ _zbuild_build_permissions_settings() {
         _scratch_dir="$ZBUILD_STAGE_SCRATCH"
     else
         _scratch_dir="$(zbuild_engine_tmpdir)"
-        eb_emit_event "router.permissions.scratch_fallback" \
-            "reason=ZBUILD_STAGE_SCRATCH_unset" 2>/dev/null || true
+        warn "router: permissions: ZBUILD_STAGE_SCRATCH unset, using engine tmpdir: $_scratch_dir"
     fi
 
     local _repo_root="${ZBUILD_REPO_ROOT:-}"
