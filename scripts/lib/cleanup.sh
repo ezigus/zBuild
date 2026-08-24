@@ -984,14 +984,23 @@ _cleanup_scan_scratch() {
 # REPORTED instead of being invisible to the scan (#1634).
 _cleanup_scan_state_dirs() {
     local state_dir="$1" age_days="${2:-7}" force="${3:-false}"
-    [[ -d "$state_dir" ]] || return 0
-    local root="$state_dir/runs"
-    [[ -d "$root" ]] || return 0
     local now; now="$(date +%s)"
     local cutoff=$(( now - age_days * 86400 ))
-    local d rid f c status mtime age_d clock
-    for d in "$root"/*; do
-        [[ -d "$d" ]] || continue
+    local d rid f c status mtime age_d clock _dirs
+    # #141: enumerate through the resolver. Runs live under their ISSUE now, so
+    # a scanner walking only "$state_dir/runs" reports "nothing to clean" for a
+    # store full of them — indistinguishable from a clean machine, and the
+    # FAIL-OPEN direction for anything downstream that trusts the answer.
+    # An operator-pinned state dir keeps its own root; otherwise the resolver
+    # enumerates both the new and the pre-#141 shapes so old runs still drain.
+    if [[ -n "${ZBUILD_STATE_DIR:-}" ]] || ! declare -F zbuild_layout_run_dirs >/dev/null 2>&1; then
+        [[ -d "$state_dir/runs" ]] || return 0
+        _dirs="$(for d in "$state_dir"/runs/*/; do [[ -d "$d" ]] && printf '%s\n' "${d%/}"; done)"
+    else
+        _dirs="$(zbuild_layout_run_dirs)"
+    fi
+    while IFS= read -r d; do
+        [[ -n "$d" && -d "$d" ]] || continue
         rid="$(basename "$d")"
         # Live run — never pruned, not even with --force.
         if _cleanup_is_active_run "$rid"; then
@@ -1081,7 +1090,7 @@ _cleanup_scan_state_dirs() {
             continue
         fi
         printf '%s\tprune\trun=%s status=%s age=%sd by %s\n' "$d" "$rid" "${status:-no-state-file}" "$age_d" "$(basename "$clock")"
-    done
+    done <<< "$_dirs"
 }
 
 # ─── _cleanup_scan_state_branches <age_days> [scope] ────────────────────────

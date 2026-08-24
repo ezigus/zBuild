@@ -196,3 +196,29 @@ zbuild_layout_run_state_dir() {
         printf '%s/%s' "$(zbuild_layout_runs_root)" "$rid"
     fi
 }
+
+# ─── zbuild_layout_run_dirs ──────────────────────────────────────────────────
+# Every directory that IS a run, newline-separated — new layout first, then the
+# pre-#141 flat one.
+#
+# The readers each used to derive their own root, which is how a layout change
+# turns into a blind reclaimer: the writer moves and five scanners keep walking
+# an empty directory, reporting "nothing to clean" for a store full of runs.
+# That is indistinguishable from a clean machine, and it is the FAIL-OPEN
+# direction. One enumerator, shared, so they cannot disagree.
+#
+# The flat root is retained deliberately: migration is "leave old, no reads" for
+# WRITES, but a reclaimer that cannot see pre-switch runs would strand them
+# forever. Reading both is what lets the old location drain.
+zbuild_layout_run_dirs() {
+    local d repo
+    repo="$(zbuild_layout_repo_root 2>/dev/null || true)"
+    if [[ -n "$repo" ]]; then
+        for d in "$repo"/issues/*/runs/*/ "$repo"/goals/*/runs/*/; do
+            [[ -d "$d" ]] && printf '%s\n' "${d%/}"
+        done
+    fi
+    for d in "$(zbuild_layout_runs_root)"/*/; do
+        [[ -d "$d" ]] && printf '%s\n' "${d%/}"
+    done
+}
