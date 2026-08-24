@@ -210,6 +210,43 @@ assert_eq "[SPEC-9] a live run is still seen without the resolver" "ACTIVE" "$_n
 # NOTE: there is deliberately no "uncomputable root" case here. The fallback
 # cannot produce an empty string, so such a test would assert dead code.
 
+# ─── [SPEC-10][change] the reader uses the resolver's GLOBS, not a copy ────
+# Review caught this: `zbuild_layout_state_file_globs` existed so callers share
+# ONE definition, and `_cleanup_is_active_run` used the resolver for the ROOT
+# while still inlining its own glob patterns. That leaves the reader silently
+# stale the next time the patterns change — the exact divergence this file
+# exists to prevent, reproduced inside the fix for it.
+#
+# The proof is behavioural: EXTEND the resolver's globs and the reader must see
+# the new shape. Asserting that the two strings match would only compare two
+# copies; this asserts they are the same definition.
+print_test_section "[SPEC-10][change] extending the resolver's globs changes what the reader finds"
+
+_glob_probe="$(bash -c '
+    source "'"$REPO_ROOT"'/scripts/lib/helpers.sh"
+    export ZBUILD_STATE_ROOT="'"$ZBUILD_STATE_ROOT"'"
+    source "'"$REPO_ROOT"'/core/state/layout.sh"
+    source "'"$REPO_ROOT"'/scripts/lib/cleanup.sh"
+    unset ZBUILD_STATE_DIR 2>/dev/null || true
+    # A run parked somewhere the shipped globs do NOT reach.
+    mkdir -p "$ZBUILD_STATE_ROOT/elsewhere/r-ext"
+    printf "{\"run_id\":\"r-ext\",\"status\":\"in_progress\"}\n"         > "$ZBUILD_STATE_ROOT/elsewhere/r-ext/pipeline-state.json"
+    _cleanup_is_active_run r-ext && echo BEFORE_SEEN || echo BEFORE_UNSEEN
+    # Extend ONLY the resolver. If the reader shares it, this is enough.
+    zbuild_layout_state_file_globs() {
+        local root="${1:-$(zbuild_layout_state_root)}"
+        printf "%s/runs/*/pipeline-state*.json\n" "$root"
+        printf "%s/pipeline-state*.json\n" "$root"
+        printf "%s/elsewhere/*/pipeline-state*.json\n" "$root"
+    }
+    _cleanup_is_active_run r-ext && echo AFTER_SEEN || echo AFTER_UNSEEN
+' 2>/dev/null)"
+
+assert_contains "[SPEC-10] premise: the run is invisible under the shipped globs" \
+    "$_glob_probe" "BEFORE_UNSEEN"
+assert_contains "[SPEC-10] extending ONLY the resolver makes the reader see it" \
+    "$_glob_probe" "AFTER_SEEN"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

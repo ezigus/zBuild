@@ -304,9 +304,20 @@ _cleanup_is_active_run() {
     # empty string — with HOME unset it is `/.zbuild/state`. A guard for an
     # unreachable case implies a protection that never engages.
     [[ -d "$state_dir" ]] || return 1
-    local f
-    # #887: include per-run dirs (runs/<id>/) alongside the legacy flat path.
-    for f in "$state_dir"/runs/*/pipeline-state*.json "$state_dir"/pipeline-state*.json; do
+    # #887: per-run dirs (runs/<id>/) plus the legacy flat path — and the
+    # PATTERNS come from the resolver too, not just the root. Inlining them here
+    # would leave this function silently stale the next time layout.sh's globs
+    # change, which is the exact divergence this shares a definition to prevent.
+    local f _glob _globs
+    if declare -F zbuild_layout_state_file_globs >/dev/null 2>&1; then
+        _globs="$(zbuild_layout_state_file_globs "$state_dir")"
+    else
+        _globs="$state_dir/runs/*/pipeline-state*.json
+$state_dir/pipeline-state*.json"
+    fi
+    while IFS= read -r _glob; do
+        [[ -n "$_glob" ]] || continue
+        for f in $_glob; do
         [[ -f "$f" ]] || continue
         case "$f" in *.bak|*.lock) continue ;; esac
         local file_rid status
@@ -319,7 +330,8 @@ _cleanup_is_active_run() {
         [[ "$file_rid" != "$rid" ]] && continue
         status="$(jq -r '.status // ""' "$f" 2>/dev/null || echo "")"
         [[ "$status" == "in_progress" ]] && return 0
-    done
+        done
+    done <<< "$_globs"
     return 1
 }
 

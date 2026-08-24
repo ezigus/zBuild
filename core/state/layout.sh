@@ -69,8 +69,13 @@ zbuild_layout_run_dir() {
 #
 # The flat `<root>/pipeline-state*.json` entry is the pre-#887 shape and is kept
 # deliberately: an operator upgrading across the change still has runs there.
+# Takes an optional ROOT so a caller with its own override (ZBUILD_STATE_DIR)
+# gets the same PATTERNS relative to it. Without that argument the override
+# path had to inline its own copy — which is precisely the divergence this
+# function exists to prevent.
 zbuild_layout_state_file_globs() {
-    local root; root="$(zbuild_layout_state_root)"
+    local root="${1:-}"
+    [[ -n "$root" ]] || root="$(zbuild_layout_state_root)"
     printf '%s/runs/*/pipeline-state*.json\n' "$root"
     printf '%s/pipeline-state*.json\n' "$root"
 }
