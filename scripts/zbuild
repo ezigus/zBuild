@@ -795,6 +795,11 @@ UPHELP
             # nothing" failure ADR-059 listed. Apply once per root; each call
             # ignores what it does not contain.
             _cleanup_apply_dir_plan "$cl_state_dir_plan" "$cl_dry_run" "$cl_state_dir/runs"
+            # zbuild_layout_repo_root never returns empty — outside a git
+            # context it falls back to `local/<basename>`, so this call always
+            # gets a real containment root and rejects every target as "outside
+            # root" rather than widening the blast radius. Emptiness is not a
+            # case to defend against here; it cannot occur.
             if declare -F zbuild_layout_repo_root >/dev/null 2>&1 && [[ -z "${ZBUILD_STATE_DIR:-}" ]]; then
                 _cleanup_apply_dir_plan "$cl_state_dir_plan" "$cl_dry_run" \
                     "$(zbuild_layout_repo_root)"

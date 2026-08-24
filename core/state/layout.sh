@@ -210,6 +210,12 @@ zbuild_layout_run_state_dir() {
 # The flat root is retained deliberately: migration is "leave old, no reads" for
 # WRITES, but a reclaimer that cannot see pre-switch runs would strand them
 # forever. Reading both is what lets the old location drain.
+#
+# The `[[ -d ]]` guards below are LOAD-BEARING, not redundant with the trailing
+# `/` in each glob. `nullglob` is not set here, so an unmatched pattern is
+# iterated as its own literal text — dropping the test would emit
+# `.../issues/*/runs/*` as if it were a run directory, and every caller reclaims
+# by path. Do not remove them as "the glob already guarantees a directory".
 zbuild_layout_run_dirs() {
     local d repo
     repo="$(zbuild_layout_repo_root 2>/dev/null || true)"
