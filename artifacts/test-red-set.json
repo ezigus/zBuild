@@ -1,10 +1,3 @@
 [
-  "tests/golden/golden-contracts-test.sh",
-  "tests/integration/build-test-cycle-fallthrough-to-review-test.sh",
-  "tests/integration/route-tautology-to-design-test.sh",
-  "tests/unit/event-schema-emitted-coverage-test.sh",
-  "tests/unit/route-back-budget-config-test.sh",
-  "tests/unit/route-missing-include-test.sh",
-  "tests/unit/runner-cycle-rc-action-mapping-test.sh",
-  "tests/unit/write-boundary-sweep-test.sh"
+  "tests/unit/router-permissions-test.sh"
 ]
