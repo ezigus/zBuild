@@ -286,6 +286,12 @@ plugin_hook_call "$FX_CLI" "run" "wb-cli-stage" "$SF_CLI" || true
 assert_file_exists "[SPEC-1] the fixture actually wrote the CLI's state file into \$HOME" \
     "$HOME/.claude.json"
 
+# The other vacuity path: write_boundary_check returns 0 immediately when the
+# dispatch never marked a sweep window, so "no violation" can also mean "nothing
+# was ever swept". Assert the window exists rather than infer it.
+assert_file_exists "[SPEC-1] the dispatch actually marked a sweep window" \
+    "$JOB_CLI/runtime/write-boundary.marker"
+
 if [[ -f "$JOB_CLI/runtime/write-boundary-violated" ]]; then
     assert_fail "[SPEC-1] a dispatch that rewrites the CLI's own state file does not halt" \
         "violation marker names: $(cat "$JOB_CLI/runtime/write-boundary-violated" 2>/dev/null)"
