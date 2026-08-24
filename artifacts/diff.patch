@@ -1,19 +1,21 @@
 diff --git a/core/router/permissions.sh b/core/router/permissions.sh
 new file mode 100644
-index 0000000..cb63efb
+index 0000000..2c45405
 --- /dev/null
 +++ b/core/router/permissions.sh
-@@ -0,0 +1,66 @@
+@@ -0,0 +1,67 @@
 +#!/usr/bin/env bash
 +# core/router/permissions.sh — ADR-018 (#1919 C10): build acceptEdits settings file.
 +# Replaces --dangerously-skip-permissions at both spawn sites with a jq-validated
 +# settings file that grants write access only to the worktree and stage scratch dir.
 +# Sourced by route.sh after the env-scrub and base-include block.
++#
++# zbuild_engine_tmpdir is defined in scripts/lib/helpers.sh, which route.sh
++# sources before loading this file.
++# shellcheck source=../../scripts/lib/helpers.sh
 +
 +[[ -n "${_ZBUILD_PERMISSIONS_LOADED:-}" ]] && return 0
 +_ZBUILD_PERMISSIONS_LOADED=1
-+
-+_PERMISSIONS_SH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 +
 +# _zbuild_build_permissions_settings
 +# Writes ${ZBUILD_STAGE_SCRATCH:-$(zbuild_engine_tmpdir)}/claude-settings.json with
@@ -27,8 +29,7 @@ index 0000000..cb63efb
 +        _scratch_dir="$ZBUILD_STAGE_SCRATCH"
 +    else
 +        _scratch_dir="$(zbuild_engine_tmpdir)"
-+        eb_emit_event "router.permissions.scratch_fallback" \
-+            "reason=ZBUILD_STAGE_SCRATCH_unset" 2>/dev/null || true
++        warn "router: permissions: ZBUILD_STAGE_SCRATCH unset, using engine tmpdir: $_scratch_dir"
 +    fi
 +
 +    local _repo_root="${ZBUILD_REPO_ROOT:-}"
@@ -71,20 +72,23 @@ index 0000000..cb63efb
 +        "--settings" "$_ZBUILD_PERMISSIONS_SETTINGS_FILE"
 +}
 diff --git a/core/router/route.sh b/core/router/route.sh
-index 603bc87..b64a666 100644
+index 603bc87..bdb6494 100644
 --- a/core/router/route.sh
 +++ b/core/router/route.sh
-@@ -98,6 +98,9 @@ source "$_ZBUILD_ROOT/scripts/lib/vision.sh"
+@@ -98,6 +98,12 @@ source "$_ZBUILD_ROOT/scripts/lib/vision.sh"
  # probe that used to live here, so the test plugin can share one impl).
  _zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/proc-group.sh"
  source "$_ZBUILD_ROOT/scripts/lib/proc-group.sh"
 +# #1919 (C10): acceptEdits + settings file — replaces --dangerously-skip-permissions.
-+_zbuild_route_require "$_ROUTER_DIR/permissions.sh"
-+source "$_ROUTER_DIR/permissions.sh"
++# Conditional (not _zbuild_route_require) so the stub-tree load test works without
++# a permissions.sh fixture; spawn sites fail closed (command not found) if absent.
++if [[ -f "$_ROUTER_DIR/permissions.sh" ]]; then
++    source "$_ROUTER_DIR/permissions.sh"
++fi
  
  # route_to_model <tier> <prompt> [--skip-precondition] [--model <id>]
  # Exit codes: 0=success, 1=recoverable, 2=fatal
-@@ -804,7 +807,10 @@ _route_call_claude() {
+@@ -804,7 +810,10 @@ _route_call_claude() {
              "resolved=0" "source=$(_route_classify_max_turns_source)" 2>/dev/null || true
      fi
      _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
@@ -96,7 +100,7 @@ index 603bc87..b64a666 100644
      [[ "${ZBUILD_ROUTER_JSON_OUTPUT:-0}" == "1" ]] && _claude_args+=(--output-format json)
  
      # ADR-029 (#1230): retry-on-timeout. On rc=124 (gtimeout SIGTERM) and while
-@@ -1559,7 +1565,10 @@ ${_diff_pointer}"
+@@ -1559,7 +1568,10 @@ ${_diff_pointer}"
                  "resolved=0" "source=$(_route_classify_max_turns_source)" 2>/dev/null || true
          fi
          _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
@@ -179,28 +183,37 @@ index c4ab1f1..1a0348b 100755
  # C6 precondition precondition: the redaction.applied event we seeded must still
  # be visible — the child invoked route_to_model WITHOUT --skip-precondition,
 diff --git a/tests/unit/redaction-chokepoint-test.sh b/tests/unit/redaction-chokepoint-test.sh
-index 80623aa..6e93957 100755
+index 80623aa..381404c 100755
 --- a/tests/unit/redaction-chokepoint-test.sh
 +++ b/tests/unit/redaction-chokepoint-test.sh
+@@ -108,7 +108,7 @@ done < <({
+ 
+ # ─── Report ───────────────────────────────────────────────────────────────────
+ if [[ ${#VIOLATIONS[@]} -eq 0 ]]; then
+-    assert_pass "chokepoint scan: no raw LLM invocations found outside allowed locations"
++    assert_pass "[SPEC-6] chokepoint scan: no raw LLM invocations found outside allowed locations"
+ else
+     for v in "${VIOLATIONS[@]}"; do
+         assert_fail "chokepoint violation: $v"
 @@ -180,6 +180,16 @@ else
      assert_fail "chokepoint sentinel: unexpected violations after cleanup: ${post_cleanup_violations[*]}"
  fi
  
-+# ─── SPEC-6: permissions.sh lives inside core/router/ (the allowed zone) ─────
++# ─── C10 structural check: permissions.sh lives inside core/router/ ──────────
 +# #1919 (C10): permissions.sh writes the settings file that replaces
 +# --dangerously-skip-permissions. It must reside inside core/router/ so the
 +# chokepoint scanner's allowlist covers it by construction.
 +if [[ -f "$REPO_ROOT/core/router/permissions.sh" ]]; then
-+    assert_pass "[SPEC-6] permissions.sh exists inside core/router/ (chokepoint-exempt zone)"
++    assert_pass "C10: permissions.sh exists inside core/router/ (chokepoint-exempt zone)"
 +else
-+    assert_fail "[SPEC-6] permissions.sh must exist inside core/router/ (chokepoint-exempt zone)"
++    assert_fail "C10: permissions.sh must exist inside core/router/ (chokepoint-exempt zone)"
 +fi
 +
  cleanup_test_env
  print_test_results
  exit $((FAIL > 0))
 diff --git a/tests/unit/router-claude-flags-test.sh b/tests/unit/router-claude-flags-test.sh
-index fb64800..18e1a56 100755
+index fb64800..25c38ca 100755
 --- a/tests/unit/router-claude-flags-test.sh
 +++ b/tests/unit/router-claude-flags-test.sh
 @@ -1,8 +1,8 @@
@@ -227,7 +240,15 @@ index fb64800..18e1a56 100755
  
  # Operator override scope token so --skip-precondition works.
  export HOME="$TEST_TEMP_DIR/home"
-@@ -83,7 +87,22 @@ if grep -qx -- "EnterPlanMode,ExitPlanMode" <<< "$argv"; then
+@@ -76,14 +80,29 @@ if grep -qx -- "25" <<< "$argv"; then
+ else
+     assert_fail "T1: argv contains default max_turns=25 as its own token" "argv: $argv"
+ fi
+-assert_contains "T1: argv contains --disallowed-tools" "$argv" "--disallowed-tools"
++assert_contains "[SPEC-5] T1: argv contains --disallowed-tools" "$argv" "--disallowed-tools"
+ # Comma must remain intact in a single argv token (no shell expansion).
+ if grep -qx -- "EnterPlanMode,ExitPlanMode" <<< "$argv"; then
+     assert_pass "T1: disallowed-tools value is single token with comma intact"
  else
      assert_fail "T1: disallowed-tools value is single token with comma intact" "argv: $argv"
  fi
@@ -244,9 +265,9 @@ index fb64800..18e1a56 100755
 +    assert_fail "[SPEC-1] T1: argv contains acceptEdits" "argv: $argv"
 +fi
 +if grep -qx -- "--settings" <<< "$argv"; then
-+    assert_pass "[SPEC-5] T1: argv contains --settings"
++    assert_pass "[SPEC-1] T1: argv contains --settings"
 +else
-+    assert_fail "[SPEC-5] T1: argv contains --settings" "argv: $argv"
++    assert_fail "[SPEC-1] T1: argv contains --settings" "argv: $argv"
 +fi
  assert_contains "T1: argv preserves -p" "$argv" "-p"
  assert_contains "T1: argv preserves --print" "$argv" "--print"
