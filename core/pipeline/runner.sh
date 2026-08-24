@@ -24,6 +24,8 @@ source "$_ZBUILD_ROOT/core/state/atomic.sh"
 source "$_ZBUILD_ROOT/core/state/resume.sh"
 # shellcheck source=../state/issue-lock.sh
 source "$_ZBUILD_ROOT/core/state/issue-lock.sh"
+# shellcheck source=../state/layout.sh
+source "$_ZBUILD_ROOT/core/state/layout.sh"
 # shellcheck source=../../scripts/lib/identity.sh
 source "$_ZBUILD_ROOT/scripts/lib/identity.sh"
 # #887: capture whether the operator PINNED any events location BEFORE
@@ -1710,7 +1712,21 @@ main() {
         # never share artifacts. run_id is path-sanitized above. Done before
         # init_state so the per-run state file is the one created.
         if $_state_is_default; then
-            state_dir="${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}/runs/$_runner_run_id"
+            # #141 (ADR-059 §1): nest the run under its ISSUE (or goal), so
+            # everything for an issue lives in one place:
+            #   ~/.zbuild/repos/<owner>/<repo>/issues/<N>/runs/<run_id>/
+            # A run with no identity keeps the flat shape — there is nothing to
+            # nest it under. Resolved through core/state/layout.sh so the
+            # reclaimers read the same definition the writer uses.
+            local _rk=""
+            if declare -F zbuild_run_key >/dev/null 2>&1; then
+                _rk="$(zbuild_run_key "$_runner_issue" "${goal:-}" 2>/dev/null || true)"
+            fi
+            if declare -F zbuild_layout_run_state_dir >/dev/null 2>&1; then
+                state_dir="$(zbuild_layout_run_state_dir "$_rk" "$_runner_run_id")"
+            else
+                state_dir="${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}/runs/$_runner_run_id"
+            fi
             mkdir -p "$state_dir"
             state_file="$state_dir/pipeline-state.json"
             _runner_state_file="$state_file"
@@ -1801,8 +1817,13 @@ main() {
     # #887: latest-run pointer so `zbuild resume --latest` / `--attach` resolve
     # the most recent per-run dir without a scan. Only for the per-run default
     # (never pollute an explicit/test state dir). Atomic swap via ln -sfn.
-    if [[ "$state_dir" == "${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}/runs/"* ]]; then
-        ln -sfn "$state_dir" "${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}/latest" 2>/dev/null || true
+    # #141: the prefix test was `<state_root>/runs/`, which stops matching the
+    # moment a run nests under its issue — so `--resume-latest` would silently
+    # stop working. Gate on "this is the default per-run dir" instead of on one
+    # literal shape, and keep the symlink itself at the state root where every
+    # reader already looks for it.
+    if $_state_is_default; then
+        ln -sfn "$state_dir" "$(zbuild_layout_state_root)/latest" 2>/dev/null || true
     fi
 
     # ADR-050 (#1581) / #1074: the RESTORED-ARTIFACTS AREA.

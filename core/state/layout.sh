@@ -80,6 +80,14 @@ zbuild_layout_run_dir() {
 zbuild_layout_state_file_globs() {
     local root="${1:-}"
     [[ -n "$root" ]] || root="$(zbuild_layout_state_root)"
+    # #141: runs now nest under their issue or goal, so the readers need those
+    # shapes too. Emitted FIRST because they are where new runs land; the flat
+    # shapes stay for runs written before the switch and for identity-less runs.
+    local _repo; _repo="$(zbuild_layout_repo_root 2>/dev/null || true)"
+    if [[ -n "$_repo" ]]; then
+        printf '%s/issues/*/runs/*/pipeline-state*.json\n' "$_repo"
+        printf '%s/goals/*/runs/*/pipeline-state*.json\n' "$_repo"
+    fi
     printf '%s/runs/*/pipeline-state*.json\n' "$root"
     printf '%s/pipeline-state*.json\n' "$root"
 }
@@ -163,4 +171,28 @@ zbuild_layout_key_root() {
         goal-*)  printf '%s/goals/%s'  "$(zbuild_layout_repo_root)" "$key" ;;
         *)       return 1 ;;
     esac
+}
+
+# ─── zbuild_layout_run_state_dir <run_key> <run_id> ──────────────────────────
+# WHERE A RUN'S STATE ACTUALLY GOES (#141, ADR-059 §1) — the writer's answer.
+#
+# `<repo>/issues/<N>/runs/<run_id>/` or `<repo>/goals/<key>/runs/<run_id>/`.
+# The per-run level stays, because scratch, runtime/, events and
+# pipeline-state.json genuinely belong to one run. What changes is that they now
+# sit UNDER the issue, so everything for an issue is in one place and a reader
+# can find it without a scan.
+#
+# Falls back to the flat `<state_root>/runs/<run_id>` when the run has no
+# identity — a run with neither issue nor goal has nothing to nest under, and
+# inventing a bucket would key unrelated work together.
+zbuild_layout_run_state_dir() {
+    local key="${1:-}" rid="${2:-}"
+    [[ -n "$rid" ]] || return 1
+    local base=""
+    [[ -n "$key" ]] && base="$(zbuild_layout_key_root "$key" 2>/dev/null || true)"
+    if [[ -n "$base" ]]; then
+        printf '%s/runs/%s' "$base" "$rid"
+    else
+        printf '%s/%s' "$(zbuild_layout_runs_root)" "$rid"
+    fi
 }
