@@ -98,6 +98,9 @@ source "$_ZBUILD_ROOT/scripts/lib/vision.sh"
 # probe that used to live here, so the test plugin can share one impl).
 _zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/proc-group.sh"
 source "$_ZBUILD_ROOT/scripts/lib/proc-group.sh"
+# #1919 (C10): acceptEdits + settings file — replaces --dangerously-skip-permissions.
+_zbuild_route_require "$_ROUTER_DIR/permissions.sh"
+source "$_ROUTER_DIR/permissions.sh"
 
 # route_to_model <tier> <prompt> [--skip-precondition] [--model <id>]
 # Exit codes: 0=success, 1=recoverable, 2=fatal
@@ -804,7 +807,10 @@ _route_call_claude() {
             "resolved=0" "source=$(_route_classify_max_turns_source)" 2>/dev/null || true
     fi
     _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
-    _claude_args+=(--dangerously-skip-permissions)
+    # #1919 (C10): abort spawn on settings build failure (SPEC-3).
+    _zbuild_build_permissions_settings || return 2
+    # shellcheck disable=SC2207
+    _claude_args+=($(_zbuild_permission_args))
     [[ "${ZBUILD_ROUTER_JSON_OUTPUT:-0}" == "1" ]] && _claude_args+=(--output-format json)
 
     # ADR-029 (#1230): retry-on-timeout. On rc=124 (gtimeout SIGTERM) and while
@@ -1559,7 +1565,10 @@ ${_diff_pointer}"
                 "resolved=0" "source=$(_route_classify_max_turns_source)" 2>/dev/null || true
         fi
         _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
-        _claude_args+=(--dangerously-skip-permissions)
+        # #1919 (C10): abort iteration on settings build failure (SPEC-3).
+        _zbuild_build_permissions_settings || { rc=2; break; }
+        # shellcheck disable=SC2207
+        _claude_args+=($(_zbuild_permission_args))
         _claude_args+=(--output-format json)
 
         # ADR-029 (#1230): intra-iteration retry-on-timeout. router.retries is the

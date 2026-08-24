@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Tests: ADR-018 (#466) — router adopts shipwright's claude flag set.
-# Locks the argv shape: --max-turns N --disallowed-tools "..." --dangerously-skip-permissions
-# coexist with --print/--model/--output-format and resolve max_turns via
-# the per-stage > env > 25 precedence rule (mirrors ADR-017's timeout_s).
+# Tests: ADR-018 (#466, #1919 C10) — router adopts shipwright's claude flag set.
+# Locks the argv shape: --max-turns N --disallowed-tools "..." --permission-mode acceptEdits
+# --settings <file> coexist with --print/--model/--output-format and resolve max_turns
+# via the per-stage > env > 25 precedence rule (mirrors ADR-017's timeout_s).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -23,6 +23,10 @@ export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
 export ZBUILD_EVENTS_DB="$TEST_TEMP_DIR/events/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$TEST_TEMP_DIR/events"
+# #1919 (C10): permissions.sh needs these to build the settings file.
+export ZBUILD_STAGE_SCRATCH="$TEST_TEMP_DIR/scratch"
+export ZBUILD_REPO_ROOT="$REPO_ROOT"
+mkdir -p "$TEST_TEMP_DIR/scratch"
 
 # Operator override scope token so --skip-precondition works.
 export HOME="$TEST_TEMP_DIR/home"
@@ -83,7 +87,22 @@ if grep -qx -- "EnterPlanMode,ExitPlanMode" <<< "$argv"; then
 else
     assert_fail "T1: disallowed-tools value is single token with comma intact" "argv: $argv"
 fi
-assert_contains "T1: argv contains --dangerously-skip-permissions" "$argv" "--dangerously-skip-permissions"
+# [SPEC-1] C10: --dangerously-skip-permissions replaced by acceptEdits mode + settings file.
+if grep -qx -- "--permission-mode" <<< "$argv"; then
+    assert_pass "[SPEC-1] T1: argv contains --permission-mode"
+else
+    assert_fail "[SPEC-1] T1: argv contains --permission-mode" "argv: $argv"
+fi
+if grep -qx -- "acceptEdits" <<< "$argv"; then
+    assert_pass "[SPEC-1] T1: argv contains acceptEdits"
+else
+    assert_fail "[SPEC-1] T1: argv contains acceptEdits" "argv: $argv"
+fi
+if grep -qx -- "--settings" <<< "$argv"; then
+    assert_pass "[SPEC-5] T1: argv contains --settings"
+else
+    assert_fail "[SPEC-5] T1: argv contains --settings" "argv: $argv"
+fi
 assert_contains "T1: argv preserves -p" "$argv" "-p"
 assert_contains "T1: argv preserves --print" "$argv" "--print"
 assert_contains "T1: argv preserves --model" "$argv" "--model"
@@ -101,7 +120,17 @@ argv="$(_read_argv)"
 assert_contains "T2: --output-format coexists with new flags" "$argv" "--output-format"
 assert_contains "T2: json token present" "$argv" "json"
 assert_contains "T2: --max-turns still present in JSON mode" "$argv" "--max-turns"
-assert_contains "T2: --dangerously-skip-permissions still present in JSON mode" "$argv" "--dangerously-skip-permissions"
+# [SPEC-1] C10: acceptEdits replaces --dangerously-skip-permissions in JSON mode too.
+if grep -qx -- "--permission-mode" <<< "$argv"; then
+    assert_pass "[SPEC-1] T2: --permission-mode still present in JSON mode"
+else
+    assert_fail "[SPEC-1] T2: --permission-mode still present in JSON mode" "argv: $argv"
+fi
+if grep -qx -- "acceptEdits" <<< "$argv"; then
+    assert_pass "[SPEC-1] T2: acceptEdits still present in JSON mode"
+else
+    assert_fail "[SPEC-1] T2: acceptEdits still present in JSON mode" "argv: $argv"
+fi
 
 unset ZBUILD_ROUTER_JSON_OUTPUT
 

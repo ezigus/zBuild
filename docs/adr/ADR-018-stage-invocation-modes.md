@@ -4,6 +4,19 @@
 **Date:** 2026-05-29
 **Amends:** ADR-004 (extends scope-enforcement interpretation)
 
+---
+
+**Amended:** 2026-08-24 — Issue #1919 (C10): `--dangerously-skip-permissions` replaced by
+`--permission-mode acceptEdits` backed by a jq-validated settings file
+(`core/router/permissions.sh`). The `acceptEdits` mode keeps Read/Edit/Write/Bash
+accessible in headless invocations while restricting write paths to the worktree root
+(`ZBUILD_REPO_ROOT`) and the stage scratch directory (`ZBUILD_STAGE_SCRATCH`).
+The Bash surface is NOT blocked by this permission mode; it remains governed by
+the TMPDIR/C8 constraint and the #1809 scope sweep. `bypassPermissions` is the
+renamed equivalent of `--dangerously-skip-permissions` and MUST NOT be used.
+
+---
+
 ## Context
 
 ### Triggering failure

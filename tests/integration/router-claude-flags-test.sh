@@ -75,6 +75,8 @@ jq -cn --arg rid "$ZBUILD_RUN_ID" \
 # Fork a real subprocess. Inside: source libs from scratch, load template,
 # set ZBUILD_CURRENT_STAGE=build + ZBUILD_ROUTER_MAX_TURNS=10 (env that would
 # win if the per-stage export regressed), call route_to_model.
+_e2e_scratch="$TEST_TEMP_DIR/e2e-scratch"
+mkdir -p "$_e2e_scratch"
 bash -c "
 set -euo pipefail
 export PATH='$TEST_TEMP_DIR/bin:$PATH'
@@ -86,6 +88,8 @@ export ZBUILD_EVENTS_JSONL='$ZBUILD_EVENTS_JSONL'
 export ZBUILD_EVENTS_DB='$ZBUILD_EVENTS_DB'
 export ZBUILD_EVENT_SCHEMA='$ZBUILD_EVENT_SCHEMA'
 export ZBUILD_RUN_ID='$ZBUILD_RUN_ID'
+export ZBUILD_STAGE_SCRATCH='$_e2e_scratch'
+export ZBUILD_REPO_ROOT='$REPO_ROOT'
 source '$REPO_ROOT/scripts/lib/helpers.sh'
 source '$REPO_ROOT/core/pipeline/template.sh'
 source '$REPO_ROOT/core/router/route.sh'
@@ -111,7 +115,22 @@ if grep -qx -- "EnterPlanMode,ExitPlanMode" <<< "$argv_nl"; then
 else
     assert_fail "e2e: disallowed-tools comma preserved" "argv: $argv_nl"
 fi
-assert_contains "e2e: argv has --dangerously-skip-permissions" "$argv_nl" "--dangerously-skip-permissions"
+# [SPEC-1] C10: --dangerously-skip-permissions replaced by acceptEdits + settings file.
+if grep -qx -- "--permission-mode" <<< "$argv_nl"; then
+    assert_pass "[SPEC-1] e2e: argv has --permission-mode"
+else
+    assert_fail "[SPEC-1] e2e: argv has --permission-mode" "argv: $argv_nl"
+fi
+if grep -qx -- "acceptEdits" <<< "$argv_nl"; then
+    assert_pass "[SPEC-1] e2e: argv has acceptEdits"
+else
+    assert_fail "[SPEC-1] e2e: argv has acceptEdits" "argv: $argv_nl"
+fi
+if grep -qx -- "--settings" <<< "$argv_nl"; then
+    assert_pass "[SPEC-1] e2e: argv has --settings"
+else
+    assert_fail "[SPEC-1] e2e: argv has --settings" "argv: $argv_nl"
+fi
 
 # C6 precondition precondition: the redaction.applied event we seeded must still
 # be visible — the child invoked route_to_model WITHOUT --skip-precondition,
