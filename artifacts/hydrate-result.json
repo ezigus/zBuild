@@ -2,9 +2,9 @@
   "result_contract": 2,
   "verdict": "complete",
   "disposition": "complete",
-  "reason": "no prior work for issue 1919 (first run)",
+  "reason": "restored 8 artifact(s) from zbuild/state/issue-1919",
   "data": {
-    "status": "empty",
-    "restored": 0
+    "status": "restored",
+    "restored": 8
   }
 }
