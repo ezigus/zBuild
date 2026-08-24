@@ -278,7 +278,15 @@ _cleanup_apply_branch_plan() {
 _cleanup_is_active_run() {
     local rid="$1"
     [[ -z "$rid" ]] && return 1
-    local state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
+
+    # #141: the globs come from core/state/layout.sh, which the WRITER uses too.
+    # This function decides whether a run is live, and three destructive
+    # scanners are gated on its answer — so a glob that stops matching when the
+    # layout moves would report "no run is live" and un-gate all three against
+    # running jobs. That is the FAIL-OPEN direction, and it is indistinguishable
+    # from "nothing is running". Sharing one definition with the writer is what
+    # makes the two impossible to disagree about.
+    local state_dir="${ZBUILD_STATE_DIR:-$(zbuild_layout_state_root)}"
     [[ -d "$state_dir" ]] || return 1
     local f
     # #887: include per-run dirs (runs/<id>/) alongside the legacy flat path.
