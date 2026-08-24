@@ -31,9 +31,14 @@ _ZBUILD_ISSUE_LOCK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_ZBUILD_ISSUE_LOCK_DIR/resume.sh"
 
 # The FD the held lock lives on. A flock lasts exactly as long as an open
-# descriptor, so this is what keeps the lock for the run's lifetime — and why
-# releasing on exit is the kernel's job, not a trap's. 201 avoids atomic.sh's 9
-# and event-bus's own descriptors.
+# descriptor. 201 avoids atomic.sh's 9 and event-bus's own descriptors.
+#
+# THE KERNEL IS NOT ENOUGH. A flock belongs to the open file DESCRIPTION, which
+# every child inherits — and the runner spawns many (stage dispatches, watchdog
+# subshells, orchestrator pools). One lingering child therefore holds the issue
+# locked after the run that took it has exited, and nothing would ever release
+# it. So the lock is released explicitly at run end AND a provably-dead holder
+# is reaped on the next acquire; neither alone is sufficient.
 _ZBUILD_ISSUE_LOCK_FD=201
 _ZBUILD_ISSUE_LOCK_FILE=""
 _ZBUILD_ISSUE_LOCK_HOLDER=""
@@ -115,9 +120,22 @@ zbuild_issue_lock_acquire() {
         # live blocker in the refusal.
         eval "exec ${_ZBUILD_ISSUE_LOCK_FD}>>\"\$lock_file\"" 2>/dev/null || return 0
         if ! flock -n "$_ZBUILD_ISSUE_LOCK_FD" 2>/dev/null; then
-            _ZBUILD_ISSUE_LOCK_HOLDER="$(zbuild_issue_lock_holder "$lock_file" || printf 'unknown')"
-            eval "exec ${_ZBUILD_ISSUE_LOCK_FD}>&-" 2>/dev/null || true
-            return 1
+            # Held — but by WHOM? A flock is inherited by every child of the
+            # holder, so a lingering grandchild of a run that finished long ago
+            # can be the one holding it. Refusing on the flock alone would let a
+            # single orphaned descriptor lock an issue out permanently, with no
+            # way back short of a reboot.
+            #
+            # So consult the record: if the run that took it is provably gone,
+            # take it anyway. `flock -n` failing is evidence that SOMETHING holds
+            # the descriptor; it is not evidence that a run is still working.
+            if [[ -f "$lock_file" ]] && ! _zbuild_issue_lock_holder_is_live "$lock_file"; then
+                _ZBUILD_ISSUE_LOCK_HOLDER=""
+            else
+                _ZBUILD_ISSUE_LOCK_HOLDER="$(zbuild_issue_lock_holder "$lock_file" || printf 'unknown')"
+                eval "exec ${_ZBUILD_ISSUE_LOCK_FD}>&-" 2>/dev/null || true
+                return 1
+            fi
         fi
     else
         # No flock (a macOS box without one). Fall back to the record plus

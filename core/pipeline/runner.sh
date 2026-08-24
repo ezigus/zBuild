@@ -1991,6 +1991,14 @@ main() {
         # #1829: free live resources first, while the state file and the
         # process tree are still intact.
         _runner_dispatch_always_run
+        # #1688: release the issue lock EXPLICITLY. Relying on process death is
+        # not enough — a flock belongs to the open file description, which every
+        # child inherits, so one lingering child would keep the issue locked
+        # after this run is gone. Released after the always-run stages, which
+        # still belong to this run.
+        if declare -F zbuild_issue_lock_release >/dev/null 2>&1; then
+            zbuild_issue_lock_release || true
+        fi
         # ADR-025 (Wave 15-B #684): the sentinel must be cleared on EVERY
         # exit path — clean end, normal failure, or abort — so a follow-on
         # zbuild invocation in the same state_dir never sees a stale

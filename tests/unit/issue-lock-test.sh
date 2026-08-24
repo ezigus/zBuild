@@ -161,6 +161,63 @@ _r="$(ZBUILD_NO_ISSUE_LOCK=1 bash -c '
 ' 2>/dev/null)"
 assert_contains "[SPEC-5] the override admits a run that would be refused" "$_r" "ACQUIRED"
 
+# ─── [SPEC-6][guard] an inherited descriptor must not lock an issue forever ──
+# THE BUG THIS EXISTS FOR, found by the parity test: a flock belongs to the open
+# file DESCRIPTION, which every child inherits. The runner spawns many — stage
+# dispatches, watchdog subshells, orchestrator pools — so one lingering child
+# keeps the issue locked after the run that took it has exited. `flock -n`
+# failing is evidence that SOMETHING holds the descriptor; it is not evidence
+# that a RUN is still working.
+#
+# Without the reap, an orphaned descriptor locks an issue out permanently.
+print_test_section "[SPEC-6][guard] a dead run's orphaned descriptor is reaped"
+
+_S_ORPHAN="$TEST_TEMP_DIR/orphan/pipeline-state.json"
+_mk_state "$_S_ORPHAN" "complete" 5
+
+# A holder process that takes the lock, spawns a child which INHERITS the
+# descriptor, then exits — leaving the child holding it. This is the shape the
+# runner produces, reproduced deliberately.
+bash -c '
+    source "'"$REPO_ROOT"'/scripts/lib/helpers.sh"
+    source "'"$REPO_ROOT"'/core/state/issue-lock.sh"
+    export ZBUILD_STATE_ROOT="'"$ZBUILD_STATE_ROOT"'"
+    zbuild_issue_lock_acquire 7777 run-orphan "'"$_S_ORPHAN"'" || exit 1
+    # The child inherits FD 201 and outlives its parent.
+    ( sleep 20 ) &
+    printf ready > "'"$TEST_TEMP_DIR"'/orphan-ready"
+    exit 0
+' >/dev/null 2>&1
+_w=0
+while [[ ! -f "$TEST_TEMP_DIR/orphan-ready" && $_w -lt 100 ]]; do sleep 0.1; _w=$((_w+1)); done
+sleep 0.3
+
+# The recorded holder is gone (its state file says complete and its PID exited),
+# so a new run must take the lock despite the descriptor still being held.
+_r="$(_try_acquire_in_subprocess 7777 run-after-orphan "$_S_ORPHAN")"
+assert_contains "[SPEC-6] an orphaned descriptor does not block a new run" "$_r" "ACQUIRED"
+
+# And the guard is not simply "always acquire": a LIVE holder still refuses.
+# Without this the assertion above passes on a lock that never refuses anything.
+_S_LIVE="$TEST_TEMP_DIR/stillrunning/pipeline-state.json"
+_mk_state "$_S_LIVE" "in_progress" 5
+bash -c '
+    source "'"$REPO_ROOT"'/scripts/lib/helpers.sh"
+    source "'"$REPO_ROOT"'/core/state/issue-lock.sh"
+    export ZBUILD_STATE_ROOT="'"$ZBUILD_STATE_ROOT"'"
+    zbuild_issue_lock_acquire 7778 run-live "'"$_S_LIVE"'" || exit 1
+    printf ready > "'"$TEST_TEMP_DIR"'/live-ready"
+    sleep 20
+' >/dev/null 2>&1 &
+_live_pid=$!
+_w=0
+while [[ ! -f "$TEST_TEMP_DIR/live-ready" && $_w -lt 100 ]]; do sleep 0.1; _w=$((_w+1)); done
+
+_r="$(_try_acquire_in_subprocess 7778 run-blocked "$_S_LIVE")"
+assert_contains "[SPEC-6] control: a LIVE holder still refuses" "$_r" "REFUSED"
+kill "$_live_pid" 2>/dev/null || true
+wait "$_live_pid" 2>/dev/null || true
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
