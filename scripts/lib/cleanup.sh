@@ -278,11 +278,46 @@ _cleanup_apply_branch_plan() {
 _cleanup_is_active_run() {
     local rid="$1"
     [[ -z "$rid" ]] && return 1
-    local state_dir="${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}"
+
+    # #141: the globs come from core/state/layout.sh, which the WRITER uses too.
+    # This function decides whether a run is live, and three destructive
+    # scanners are gated on its answer — so a glob that stops matching when the
+    # layout moves would report "no run is live" and un-gate all three against
+    # running jobs. That is the FAIL-OPEN direction, and it is indistinguishable
+    # from "nothing is running". Sharing one definition with the writer is what
+    # makes the two impossible to disagree about.
+    local state_dir="${ZBUILD_STATE_DIR:-}"
+    if [[ -z "$state_dir" ]]; then
+        if declare -F zbuild_layout_state_root >/dev/null 2>&1; then
+            state_dir="$(zbuild_layout_state_root)"
+        else
+            # layout.sh is sourced DEFENSIVELY above, so it can be absent on a
+            # damaged install. Calling the resolver unconditionally would then
+            # yield an empty state_dir, `[[ -d "" ]]` would fail, and this would
+            # answer "no run is live" — the FAIL-OPEN direction, on the very
+            # predicate three destructive scanners are gated by. The literal
+            # expression is the floor, and it is what this line used to be.
+            state_dir="${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}"
+        fi
+    fi
+    # No "uncomputable root" branch, deliberately: the fallback cannot yield an
+    # empty string — with HOME unset it is `/.zbuild/state`. A guard for an
+    # unreachable case implies a protection that never engages.
     [[ -d "$state_dir" ]] || return 1
-    local f
-    # #887: include per-run dirs (runs/<id>/) alongside the legacy flat path.
-    for f in "$state_dir"/runs/*/pipeline-state*.json "$state_dir"/pipeline-state*.json; do
+    # #887: per-run dirs (runs/<id>/) plus the legacy flat path — and the
+    # PATTERNS come from the resolver too, not just the root. Inlining them here
+    # would leave this function silently stale the next time layout.sh's globs
+    # change, which is the exact divergence this shares a definition to prevent.
+    local f _glob _globs
+    if declare -F zbuild_layout_state_file_globs >/dev/null 2>&1; then
+        _globs="$(zbuild_layout_state_file_globs "$state_dir")"
+    else
+        _globs="$state_dir/runs/*/pipeline-state*.json
+$state_dir/pipeline-state*.json"
+    fi
+    while IFS= read -r _glob; do
+        [[ -n "$_glob" ]] || continue
+        for f in $_glob; do
         [[ -f "$f" ]] || continue
         case "$f" in *.bak|*.lock) continue ;; esac
         local file_rid status
@@ -295,7 +330,8 @@ _cleanup_is_active_run() {
         [[ "$file_rid" != "$rid" ]] && continue
         status="$(jq -r '.status // ""' "$f" 2>/dev/null || echo "")"
         [[ "$status" == "in_progress" ]] && return 0
-    done
+        done
+    done <<< "$_globs"
     return 1
 }
 
