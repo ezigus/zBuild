@@ -1,0 +1,20 @@
+{
+  "schema_version": 4,
+  "issue": 1919,
+  "files_changed": [
+    "core/router/permissions.sh",
+    "docs/adr/ADR-018-stage-invocation-modes.md",
+    "tests/unit/router-permissions-test.sh"
+  ],
+  "lines_added": 6,
+  "lines_removed": 3,
+  "diff_patch_path": "/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/artifacts/diff.patch",
+  "iterations": 1,
+  "terminated_reason": "done_sentinel",
+  "verdict": "pass",
+  "scope_violation": false,
+  "scope_violations": [],
+  "loop_input_tokens": 27,
+  "loop_output_tokens": 11456,
+  "notes": "Build stage completed. Diff written to artifact; not applied."
+}

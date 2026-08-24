@@ -1,0 +1,49 @@
+diff --git a/core/router/permissions.sh b/core/router/permissions.sh
+index 2c45405..c44c0b4 100644
+--- a/core/router/permissions.sh
++++ b/core/router/permissions.sh
+@@ -24,6 +24,7 @@ _zbuild_build_permissions_settings() {
+     else
+         _scratch_dir="$(zbuild_engine_tmpdir)"
+         warn "router: permissions: ZBUILD_STAGE_SCRATCH unset, using engine tmpdir: $_scratch_dir"
++        eb_emit_event "router.permissions.scratch_fallback" "scratch_dir=$_scratch_dir" 2>/dev/null || true
+     fi
+ 
+     local _repo_root="${ZBUILD_REPO_ROOT:-}"
+diff --git a/docs/adr/ADR-018-stage-invocation-modes.md b/docs/adr/ADR-018-stage-invocation-modes.md
+index 14f2cd7..cb35049 100644
+--- a/docs/adr/ADR-018-stage-invocation-modes.md
++++ b/docs/adr/ADR-018-stage-invocation-modes.md
+@@ -78,7 +78,8 @@ does NOT declare Pattern 1 vs Pattern 2 — that is baked into `plugin.sh`.
+ 
+ Single `claude --print` invocation. Tools (Read/Edit/Write/Bash) are available;
+ only `EnterPlanMode`/`ExitPlanMode` are disallowed. `--max-turns 25`,
+-`--dangerously-skip-permissions`.
++`--permission-mode acceptEdits --settings <file>` (see amendment block above;
++`bypassPermissions` is the renamed equivalent and MUST NOT be used).
+ 
+ The stage emits a final structured artifact (JSON or markdown) as its terminal
+ response.
+@@ -360,7 +361,8 @@ Once Issues A + B ship, adding any new stage requires zero changes to
+ 
+ 1. `route_to_model` (`core/router/route.sh`) adopts shipwright's flag set —
+    `--max-turns 25`, `--disallowed-tools "EnterPlanMode,ExitPlanMode"`,
+-   `--dangerously-skip-permissions` — enabling Pattern 1. *(Issue A)*
++   `--permission-mode acceptEdits --settings <file>` — enabling Pattern 1. *(Issue A)*
++   *(Amended by #1919: `--dangerously-skip-permissions` replaced; see amendment block.)*
+ 2. New `route_to_model_loop` function enables Pattern 2. *(Issue B)*
+ 3. Plan and review prompts stop forbidding tool calls; invite Read for
+    context-gathering. *(Issues C, D)*
+diff --git a/tests/unit/router-permissions-test.sh b/tests/unit/router-permissions-test.sh
+index 1780faa..03e9d68 100755
+--- a/tests/unit/router-permissions-test.sh
++++ b/tests/unit/router-permissions-test.sh
+@@ -89,7 +89,7 @@ else
+     assert_fail "[SPEC-2] P2: settings file still written on scratch fallback" ""
+ fi
+ 
+-fallback_evt="$(grep '"router.permissions.scratch_fallback"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
++fallback_evt="$(grep '"router.permissions.scratch_fallback"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ' || echo 0)"
+ if [[ "$fallback_evt" -gt 0 ]]; then
+     assert_pass "[SPEC-2] P2: scratch_fallback event emitted"
+ else
