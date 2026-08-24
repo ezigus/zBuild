@@ -1112,7 +1112,7 @@ _cleanup_scan_state_branches() {
 _cleanup_apply_remote_branch_plan() {
     local data="$1" dry_run="$2"
     [[ -z "$data" ]] && return 0
-    local line b rest decision
+    local line b rest decision _failed=0
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue
         b="${line%%$'\t'*}"
@@ -1128,8 +1128,21 @@ _cleanup_apply_remote_branch_plan() {
         if [[ "$dry_run" == "true" ]]; then
             continue
         fi
-        git push origin --delete "$b" >/dev/null 2>&1 || true
+        # NOT `|| true`. In --apply mode the workflow's exit status is the ONLY
+        # signal reaching the human who dispatched it: a swallowed failure means
+        # the job summary says success, the branch is still on origin, and the
+        # next cron silently re-lists it. The situation that makes apply mode
+        # risky is exactly the one where a silent failure is least acceptable.
+        #
+        # Keep going through the rest of the plan rather than returning early —
+        # one unreachable branch should not strand the others — and report at
+        # the end.
+        if ! git push origin --delete "$b" 2>&1; then
+            printf 'cleanup: failed to delete %s from origin\n' "$b" >&2
+            _failed=1
+        fi
     done <<<"$data"
+    return "$_failed"
 }
 
 # ─── _cleanup_scan_orch_pools <age_hours> ───────────────────────────────────

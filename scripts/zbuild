@@ -663,6 +663,7 @@ UPHELP
         cl_scratch=false
         cl_state_branches=false
         cl_remote=false
+        cl_rc=0
         cl_orch_pools=false
         cl_cache=false
         cl_dry_run=""
@@ -819,7 +820,10 @@ UPHELP
                     # and reads as "nothing to reclaim" rather than "wrong scope".
                     cl_sb_plan="$(_cleanup_scan_state_branches "$cl_age_days" remote || true)"
                     _cleanup_render_plan "state branches (origin)" "$cl_sb_plan" "$cl_dry_run" "$cl_quiet"
-                    _cleanup_apply_remote_branch_plan "$cl_sb_plan" "$cl_dry_run"
+                    # Remember a delete failure and keep going: the remaining
+                    # categories still deserve to run. Reported at the end, so
+                    # the workflow's exit status carries it.
+                    _cleanup_apply_remote_branch_plan "$cl_sb_plan" "$cl_dry_run" || cl_rc=1
                 else
                     cl_sb_plan="$(_cleanup_scan_state_branches "$cl_age_days" || true)"
                     _cleanup_render_plan "state branches" "$cl_sb_plan" "$cl_dry_run" "$cl_quiet"
@@ -874,6 +878,9 @@ UPHELP
                 git worktree prune >/dev/null 2>&1 || true
             fi
         fi
+        # A reclaimer that could not do what it reported must not exit 0 — the
+        # workflow's status is the only channel back to whoever dispatched it.
+        exit "$cl_rc"
         ;;
     clean)
         shift

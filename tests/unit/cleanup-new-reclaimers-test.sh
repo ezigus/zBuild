@@ -350,6 +350,39 @@ assert_eq "[SPEC-10] positive control: an in-namespace prune IS deleted" \
     "zbuild/state/issue-100"$'\tskip\tissue is open' "false" )
 assert_eq "[SPEC-10] a skip line is never deleted" "1" "$(_rs_remote_has zbuild/state/issue-100)"
 
+# ── SPEC-11[guard]: a failed delete is REPORTED, not swallowed ──────────────
+# The original used `|| true`. In --apply mode the workflow's exit status is the
+# only signal reaching the human who dispatched it, so a swallowed failure means
+# the job summary says success, the branch is still on origin, and the next cron
+# silently re-lists it. The situation that makes apply mode risky is exactly the
+# one where a silent failure is least acceptable.
+print_test_section "[SPEC-11][guard] a delete that fails is reported, and the rest still run"
+
+# Point the clone at a remote that does not exist: every delete must fail.
+_RS_BROKEN="$TEST_TEMP_DIR/rs-broken"
+git clone -q --single-branch --branch main "$_RS_REMOTE" "$_RS_BROKEN" 2>/dev/null
+( cd "$_RS_BROKEN" && git remote set-url origin "$TEST_TEMP_DIR/no-such-remote.git" ) >/dev/null 2>&1
+
+_rs_rc=0
+( cd "$_RS_BROKEN" && _cleanup_apply_remote_branch_plan \
+    "zbuild/state/issue-100"$'\tprune\tissue closed' "false" ) >/dev/null 2>&1 || _rs_rc=$?
+assert_exit_code "[SPEC-11] a failed delete returns non-zero" "1" "$_rs_rc"
+
+# And a plan with a failure in the MIDDLE still processes what follows — one
+# unreachable branch must not strand the others.
+_rs_seen="$TEST_TEMP_DIR/rs-seen"
+: > "$_rs_seen"
+_rs_multi="zbuild/state/issue-100"$'\tprune\tfirst'$'\n'"zbuild/state/issue-200"$'\tprune\tsecond'
+( cd "$_RS_BROKEN" && _cleanup_apply_remote_branch_plan "$_rs_multi" "false" ) >>"$_rs_seen" 2>&1 || true
+assert_contains "[SPEC-11] the first failure is named" "$(cat "$_rs_seen")" "issue-100"
+assert_contains "[SPEC-11] and the plan continued to the second" "$(cat "$_rs_seen")" "issue-200"
+
+# Dry-run is unaffected: nothing is attempted, so nothing can fail.
+_rs_rc=0
+( cd "$_RS_BROKEN" && _cleanup_apply_remote_branch_plan \
+    "zbuild/state/issue-100"$'\tprune\tissue closed' "true" ) >/dev/null 2>&1 || _rs_rc=$?
+assert_exit_code "[SPEC-11] dry-run against a broken remote still returns 0" "0" "$_rs_rc"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
