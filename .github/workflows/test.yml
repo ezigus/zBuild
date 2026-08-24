@@ -243,3 +243,66 @@ jobs:
           echo "| golden | ${{ needs.golden.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| mutation-lint | ${{ needs.mutation-lint.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| coverage | ${{ needs.coverage.result }} |" >> "$GITHUB_STEP_SUMMARY"
+
+  # TEMPORARY — scratch branch only, never merged. Hunts the ubuntu-only
+  # [SPEC-4] write-boundary flake (one red in nine, never reproduced locally).
+  # The test costs ~400ms, so 500 iterations buys certainty for ~4 minutes of
+  # runner time. Two lanes because the one observed failure happened on the
+  # parallel tier path, which is NOT how npm test runs integration.
+  flake-hunt:
+    name: Flake hunt (write-boundary SPEC-4)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Lane A — 500x standalone
+        env:
+          ZBUILD_WRITE_BOUNDARY_LOG: ${{ runner.temp }}/wb-sweep-a.txt
+        run: |
+          fails=0
+          : > "$RUNNER_TEMP/failures-a.txt"
+          for i in $(seq 1 500); do
+            out="$(bash tests/integration/write-boundary-dispatch-test.sh 2>&1)" || true
+            if ! grep -q "tests passed" <<<"$out"; then
+              fails=$((fails + 1))
+              { echo "########## lane A iteration $i ##########"; echo "$out"; } \
+                >> "$RUNNER_TEMP/failures-a.txt"
+            fi
+          done
+          echo "lane A: $fails / 500 failed"
+          echo "- lane A (standalone): **$fails / 500** failed" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Lane B — 500x under full integration-tier load
+        env:
+          ZBUILD_WRITE_BOUNDARY_LOG: ${{ runner.temp }}/wb-sweep-b.txt
+          ZBUILD_TEST_TIMING_FILE: ${{ runner.temp }}/flake-hunt-timing.txt
+        run: |
+          bash scripts/run-tests.sh --tier integration > "$RUNNER_TEMP/tier.log" 2>&1 &
+          tier_pid=$!
+          fails=0 i=0
+          : > "$RUNNER_TEMP/failures-b.txt"
+          while [[ $i -lt 500 ]] && kill -0 "$tier_pid" 2>/dev/null; do
+            i=$((i + 1))
+            out="$(bash tests/integration/write-boundary-dispatch-test.sh 2>&1)" || true
+            if ! grep -q "tests passed" <<<"$out"; then
+              fails=$((fails + 1))
+              { echo "########## lane B iteration $i ##########"; echo "$out"; } \
+                >> "$RUNNER_TEMP/failures-b.txt"
+            fi
+          done
+          wait "$tier_pid" || true
+          echo "lane B: $fails / $i failed (under tier load)"
+          echo "- lane B (under tier load): **$fails / $i** failed" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload captured failures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: flake-hunt-ubuntu
+          path: |
+            ${{ runner.temp }}/failures-a.txt
+            ${{ runner.temp }}/failures-b.txt
+            ${{ runner.temp }}/wb-sweep-a.txt
+            ${{ runner.temp }}/wb-sweep-b.txt
+            ${{ runner.temp }}/tier.log
+          if-no-files-found: ignore
