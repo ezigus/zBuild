@@ -145,9 +145,18 @@ Three stages carry this, declared in the pipeline template rather than buried in
 | **persist** | end, after release | **yes** | snapshot **and push** to `zbuild/state/issue-<N>` |
 
 Two of the three already exist as engine code and **move out of the engine into plugins**:
-`_artifact_persist_restore` (`core/pipeline/runner.sh:1813`) becomes hydrate;
-`_runner_snapshot_artifacts` (`:146`) becomes persist, plus the push that was never written.
-`core/state/artifact-persist.sh` remains as the shared library both source. This follows
+`_artifact_persist_restore` (`core/pipeline/runner.sh:1813`) becomes hydrate; the RUN-END snapshot
+becomes persist, plus the push that was never written. `core/state/artifact-persist.sh` remains as
+the shared library both source.
+
+**Corrected 2026-08-23, while building #1071.** This sentence first said
+*"`_runner_snapshot_artifacts` (`:146`) becomes persist"*, which reads as moving the function
+wholesale. It is called from **six** stage-boundary sites, and that is ADR-050 §4's incremental
+design — *"commit a snapshot at each stage boundary, so a mid-run crash still leaves every
+completed stage recoverable"*. Those stay engine-side; they are stage-boundary bookkeeping, like
+events. What was missing is only the **run-end** half: a final snapshot catching whatever the last
+stage produced (including the stage that failed and ended the run, which no boundary call covers),
+and the push. That is what the persist stage owns. This follows
 `docs/VISION.md` — *"a minimal core, with all behavior plugin-delivered and template-composed"* —
 and makes the behaviour visible and reorderable in the template.
 
@@ -157,8 +166,8 @@ auth or a dead remote. Separate stages with separate `timeout_s`, persist last, 
 can never delay an abort — and a failed push degrades to "state is local only", which is
 today's behaviour and therefore a proven fallback.
 
-**Always-run is what makes this trustworthy.** `_runner_snapshot_artifacts` is called from
-exactly one site and gated on `issue > 0`. A snapshot that happens only where someone remembered
+**Always-run is what makes this trustworthy.** The run-end snapshot had no call site at all, and
+the push existed only inside a CI workflow's `run:` block. A snapshot that happens only where someone remembered
 to wire it is the failure #1878 already found once — *"the snapshot was never called."*
 Declaring it in the template makes "on every exit path" a property of the flow rather than a
 line number a future edit can silently drop.
