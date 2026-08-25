@@ -313,6 +313,15 @@ if [[ -f "$NESTED_STATE_COPY" ]]; then
         *",build,"*)
             assert_pass "[SPEC-7] nested run used the fixture roster (build ran; no built-in fallback)" ;;
         *)
+            # An EMPTY key list means no stage dispatched at all, which is a
+            # different failure from "the wrong roster ran" and needs the log to
+            # tell them apart: state-init succeeded (asserted above), so the run
+            # aborted between init_state and the first dispatch — where
+            # _runner_enter_worktree sits.
+            printf '  DIAGNOSTIC: nested runner log (tail):\n' >&2
+            tail -30 "$NESTED_LOG" 2>/dev/null | sed 's/^/    /' >&2 || true
+            printf '  DIAGNOSTIC: copied state: %s\n' \
+                "$(tr -d '\n' < "$NESTED_STATE_COPY" 2>/dev/null | head -c 400)" >&2
             assert_fail "[SPEC-7] nested run used the fixture roster" \
                 "stage_statuses keys=$ns_stages (expected the intake→build fixture, not the built-in fallback)" ;;
     esac
