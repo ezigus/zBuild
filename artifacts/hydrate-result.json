@@ -1,0 +1,10 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "restored 10 artifact(s) from zbuild/state/issue-1833",
+  "data": {
+    "status": "restored",
+    "restored": 10
+  }
+}
