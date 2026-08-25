@@ -5,7 +5,7 @@
 
   [38;2;248;113;113m✗[0m T1: route returns rc=0
     [2mexpected: 0, got: 2[0m
-/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/zb-reach.gxjIps/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/router-claude-flags.PT9UfD/last_args: No such file or directory
+/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/zb-reach.qtVnHQ/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/router-claude-flags.8a07qe/last_args: No such file or directory
   [38;2;248;113;113m✗[0m T1: argv contains --max-turns
     [2moutput missing: --max-turns[0m
   [38;2;248;113;113m✗[0m T1: argv contains default max_turns=25 as its own token
@@ -26,7 +26,7 @@
     [2moutput missing: --print[0m
   [38;2;248;113;113m✗[0m T1: argv preserves --model
     [2moutput missing: --model[0m
-/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/zb-reach.gxjIps/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/router-claude-flags.PT9UfD/last_args: No such file or directory
+/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/zb-reach.qtVnHQ/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/router-claude-flags.8a07qe/last_args: No such file or directory
   [38;2;248;113;113m✗[0m T2: --output-format coexists with new flags
     [2moutput missing: --output-format[0m
   [38;2;248;113;113m✗[0m T2: json token present
@@ -39,7 +39,7 @@
     [2margv: [0m
   [38;2;248;113;113m✗[0m T3: env override route returns rc=0
     [2mexpected: 0, got: 2[0m
-/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/zb-reach.gxjIps/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/router-claude-flags.PT9UfD/last_args: No such file or directory
+/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/zb-reach.qtVnHQ/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/router-claude-flags.8a07qe/last_args: No such file or directory
   [38;2;248;113;113m✗[0m T3: env ZBUILD_ROUTER_MAX_TURNS=10 reflected in argv
     [2margv: [0m
   [38;2;74;222;128m✓[0m T4: invalid max_turns '-3' → rc=2
@@ -56,7 +56,7 @@
     [2mexpected: invalid_max_turns, got: [0m
   [38;2;248;113;113m✗[0m T4b: max_turns=0 sentinel → rc=0 (valid)
     [2mexpected: 0, got: 2[0m
-/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/zb-reach.gxjIps/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/router-claude-flags.PT9UfD/last_args: No such file or directory
+/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/zb-reach.qtVnHQ/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/router-claude-flags.8a07qe/last_args: No such file or directory
   [38;2;74;222;128m✓[0m T4b: --max-turns flag omitted when sentinel=0
 ### core/router/route.sh head tests/unit/router-claude-flags-test.sh
 
@@ -65,7 +65,7 @@
 
   [38;2;248;113;113m✗[0m T1: route returns rc=0
     [2mexpected: 0, got: 2[0m
-/Users/ericziegler/.zbuild/runs/20260824192938-55825/worktree/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/router-claude-flags.6IQTXT/last_args: No such file or directory
+/Users/ericziegler/.zbuild/runs/20260824192938-55825/worktree/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/router-claude-flags.oHkygn/last_args: No such file or directory
   [38;2;248;113;113m✗[0m T1: argv contains --max-turns
     [2moutput missing: --max-turns[0m
   [38;2;248;113;113m✗[0m T1: argv contains default max_turns=25 as its own token
@@ -86,7 +86,7 @@
     [2moutput missing: --print[0m
   [38;2;248;113;113m✗[0m T1: argv preserves --model
     [2moutput missing: --model[0m
-/Users/ericziegler/.zbuild/runs/20260824192938-55825/worktree/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/router-claude-flags.6IQTXT/last_args: No such file or directory
+/Users/ericziegler/.zbuild/runs/20260824192938-55825/worktree/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/router-claude-flags.oHkygn/last_args: No such file or directory
   [38;2;248;113;113m✗[0m T2: --output-format coexists with new flags
     [2moutput missing: --output-format[0m
   [38;2;248;113;113m✗[0m T2: json token present
@@ -99,7 +99,7 @@
     [2margv: [0m
   [38;2;248;113;113m✗[0m T3: env override route returns rc=0
     [2mexpected: 0, got: 2[0m
-/Users/ericziegler/.zbuild/runs/20260824192938-55825/worktree/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/router-claude-flags.6IQTXT/last_args: No such file or directory
+/Users/ericziegler/.zbuild/runs/20260824192938-55825/worktree/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/router-claude-flags.oHkygn/last_args: No such file or directory
   [38;2;248;113;113m✗[0m T3: env ZBUILD_ROUTER_MAX_TURNS=10 reflected in argv
     [2margv: [0m
   [38;2;74;222;128m✓[0m T4: invalid max_turns '-3' → rc=2
@@ -116,7 +116,7 @@
     [2mexpected: invalid_max_turns, got: [0m
   [38;2;248;113;113m✗[0m T4b: max_turns=0 sentinel → rc=0 (valid)
     [2mexpected: 0, got: 2[0m
-/Users/ericziegler/.zbuild/runs/20260824192938-55825/worktree/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/router-claude-flags.6IQTXT/last_args: No such file or directory
+/Users/ericziegler/.zbuild/runs/20260824192938-55825/worktree/tests/unit/router-claude-flags-test.sh: line 56: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/router-claude-flags.oHkygn/last_args: No such file or directory
   [38;2;74;222;128m✓[0m T4b: --max-turns flag omitted when sentinel=0
 ### core/router/route.sh reverted tests/integration/router-claude-flags-test.sh
 
