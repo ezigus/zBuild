@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "verdict": "pass",
+  "violations": [],
+  "guard_precheck": {
+    "declared": 3,
+    "verified": 0,
+    "failed": 0,
+    "skipped": [
+      {
+        "spec": "SPEC-8",
+        "reason": "no_impl_delta"
+      },
+      {
+        "spec": "SPEC-9",
+        "reason": "no_impl_delta"
+      },
+      {
+        "spec": "SPEC-10",
+        "reason": "no_impl_delta"
+      }
+    ]
+  }
+}
