@@ -12,6 +12,10 @@
 #       succeeds under --add-dir. Do not re-add it believing it grants anything.
 #   P5  `permissions.deny` IS honoured, but only in `Edit(...)` form — a
 #       `Write(...)` rule silently matches nothing (the CLI warns).
+#   P6  (#1961) a --add-dir path that does not exist yet is TOLERATED — rc=0, no
+#       warning. The grant therefore never needs the directory pre-created, and
+#       must not be made conditional on its existence: a stage whose artifact dir
+#       is created lazily would silently lose its grant.
 #
 # So: the SPAWN grants (--add-dir), and the settings file is the jq-validated
 # policy seam the spawn refuses on (SPEC-3) and where the evidence-based deny
@@ -37,6 +41,20 @@ _ZBUILD_PERMISSIONS_LOADED=1
 # `ps` and shell history, and it is a durable diffable record of the spawn.
 _ZBUILD_PERMISSIONS_SETTINGS_FILE=""
 _ZBUILD_PERMISSIONS_DIRS=()
+
+# _zbuild_permissions_artifact_dir
+# The run's artifact dir — where EVERY model-written stage output lands (#1961).
+#
+# The fallback chain is copied verbatim from core/router/route.sh (two sites,
+# ~962 and ~1773), and must stay identical to them: those sites decide where the
+# stage-io diagnostics are WRITTEN, this one decides where the model is ALLOWED
+# to write, and a grant that resolves somewhere other than the write target is
+# the exact failure #1961 records. Kept as a function so the divergence is one
+# edit away from being caught, not three.
+_zbuild_permissions_artifact_dir() {
+    printf '%s' "${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}/artifacts}"
+}
+
 _zbuild_build_permissions_settings() {
     local _scratch_dir
     if [[ -n "${ZBUILD_STAGE_SCRATCH:-}" ]]; then
@@ -74,7 +92,21 @@ _zbuild_build_permissions_settings() {
     # ADR-059: derive the granted roots from the exported env, never from a path
     # literal — six existing call sites already fail silently when the layout
     # moves, and a permission grant that silently widens would be a worse seventh.
-    _ZBUILD_PERMISSIONS_DIRS=("$_repo_root" "$_scratch_dir")
+    #
+    # #1961: THE ARTIFACT DIR IS A GRANT, NOT AN EXTRA. This list answers "where
+    # is the model allowed to write", and the only correct source for that answer
+    # is "where does the engine TELL stages to write". Two directories are told
+    # to models as literal paths: the design prompt's `$output_design_md` and
+    # every `role: checkpoint` output (scripts/lib/stage-checkpoint.sh injects the
+    # resolved path into the prompt, because env-scrub means a model cannot read
+    # an exported one). Both resolve under ${artifact_dir}. Omitting it made every
+    # design stage die on a refused write while the grant looked deliberate.
+    #
+    # The run STATE dir is deliberately NOT granted. artifacts/ is the model's
+    # output surface; pipeline-state.json and events.jsonl are the engine's
+    # ledger, and a model that can rewrite its own run state can rewrite its own
+    # verdict. Granting the parent to save one flag would hand it exactly that.
+    _ZBUILD_PERMISSIONS_DIRS=("$_repo_root" "$_scratch_dir" "$(_zbuild_permissions_artifact_dir)")
     return 0
 }
 

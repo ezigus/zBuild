@@ -81,7 +81,12 @@ jq -cn --arg rid "$ZBUILD_RUN_ID" \
 # argv tokens and silently grants a directory nobody named. This path is the only
 # place that regression is observable, because it is real recorded argv.
 _e2e_scratch="$TEST_TEMP_DIR/e2e scratch dir"
-mkdir -p "$_e2e_scratch"
+# #1961: artifacts/ is a SIBLING of scratch/, never a child — that is precisely
+# why granting scratch did not reach it and every design stage died on a refused
+# write. Laid out as siblings here so the assertion below is not accidentally
+# satisfied by containment.
+_e2e_artifacts="$TEST_TEMP_DIR/e2e-run-state/artifacts"
+mkdir -p "$_e2e_scratch" "$_e2e_artifacts"
 bash -c "
 set -euo pipefail
 export PATH='$TEST_TEMP_DIR/bin:$PATH'
@@ -95,6 +100,7 @@ export ZBUILD_EVENT_SCHEMA='$ZBUILD_EVENT_SCHEMA'
 export ZBUILD_RUN_ID='$ZBUILD_RUN_ID'
 export ZBUILD_STAGE_SCRATCH='$_e2e_scratch'
 export ZBUILD_REPO_ROOT='$REPO_ROOT'
+export ZBUILD_ARTIFACT_DIR='$_e2e_artifacts'
 source '$REPO_ROOT/scripts/lib/helpers.sh'
 source '$REPO_ROOT/core/pipeline/template.sh'
 source '$REPO_ROOT/core/router/route.sh'
@@ -144,6 +150,16 @@ if grep -qx -- "--add-dir" <<< "$argv_nl"; then
     assert_pass "[SPEC-1] e2e: argv carries the --add-dir grant"
 else
     assert_fail "[SPEC-1] e2e: argv carries the --add-dir grant" "argv: $argv_nl"
+fi
+# [SPEC-1] #1961: the ARTIFACT dir reaches real argv. The unit test proves the
+# helper emits it; only this path proves it survives route.sh's assembly and the
+# subprocess boundary into the argv `claude` is actually spawned with. That gap
+# is where #1919 shipped green — the helper was right about two directories and
+# nothing checked the one the engine tells models to write.
+if grep -qxF -- "$_e2e_artifacts" <<< "$argv_nl"; then
+    assert_pass "[SPEC-1] e2e: argv grants the run artifact dir (#1961)"
+else
+    assert_fail "[SPEC-1] e2e: argv grants the run artifact dir (#1961)" "argv: $argv_nl"
 fi
 # The granted path must survive assembly as ONE token, spaces and all.
 if grep -qxF -- "$_e2e_scratch" <<< "$argv_nl"; then
