@@ -1,0 +1,90 @@
+### SPEC-3 baseline tests/unit/persist-stage-test.sh
+
+[38;2;0;212;255m[1m  persist stage (#1071)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[SPEC-1][change] _artifact_persist_push puts the branch on origin[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] premise: the snapshot wrote a LOCAL branch
+  [38;2;74;222;128m✓[0m [SPEC-1] premise: a snapshot alone reaches origin NOT AT ALL
+  [38;2;74;222;128m✓[0m [SPEC-1] the push succeeds (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-1] the state branch is now ON ORIGIN
+
+  [38;2;0;212;255m[SPEC-2][guard] an unreachable remote sets a reportable status[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] an unreachable remote returns non-zero (exit 1)
+  [38;2;74;222;128m✓[0m [SPEC-2] and names the failing operation
+  [38;2;74;222;128m✓[0m [SPEC-2] no local branch to push is not a failure (exit 0)
+
+  [38;2;0;212;255m[SPEC-3][guard] an artifact carrying a credential refuses the push[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] a clean artifact area scans clean
+  [38;2;74;222;128m✓[0m [SPEC-3] a credential-shaped artifact is found
+  [38;2;74;222;128m✓[0m [SPEC-3] and the finding names the FILE
+
+  [38;2;0;212;255m[SPEC-4][guard] the extracted patterns behave identically[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] AWS key id
+  [38;2;74;222;128m✓[0m [SPEC-4] credential assignment
+  [38;2;74;222;128m✓[0m [SPEC-4] a ${{ secrets.X }} reference is not a finding (#1755)
+  [38;2;74;222;128m✓[0m [SPEC-4] ordinary prose is not a finding
+
+  [38;2;0;212;255m[SPEC-5][guard] persist_run always returns 0[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] a --goal run (no issue) returns 0 (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-5] and still writes its result file
+  [38;2;74;222;128m✓[0m [SPEC-5] a refused push still returns 0 (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-5] and records degraded, not complete
+  [38;2;74;222;128m✓[0m [SPEC-5] and records that nothing was pushed
+
+  [38;2;0;212;255m[SPEC-6][guard] data.snapshot=skipped when no identity[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] no-identity run writes data.snapshot=skipped in persist-result.json
+
+  [38;2;0;212;255m[SPEC-7][guard] data.snapshot non-null after credential-refused push[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] credential-refused persist writes a non-null/non-skipped data.snapshot (got: saved)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 21 tests passed[0m
+
+### SPEC-3 head tests/unit/persist-stage-test.sh
+
+[38;2;0;212;255m[1m  persist stage (#1071)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[SPEC-1][change] _artifact_persist_push puts the branch on origin[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] premise: the snapshot wrote a LOCAL branch
+  [38;2;74;222;128m✓[0m [SPEC-1] premise: a snapshot alone reaches origin NOT AT ALL
+  [38;2;74;222;128m✓[0m [SPEC-1] the push succeeds (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-1] the state branch is now ON ORIGIN
+
+  [38;2;0;212;255m[SPEC-2][guard] an unreachable remote sets a reportable status[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] an unreachable remote returns non-zero (exit 1)
+  [38;2;74;222;128m✓[0m [SPEC-2] and names the failing operation
+  [38;2;74;222;128m✓[0m [SPEC-2] no local branch to push is not a failure (exit 0)
+
+  [38;2;0;212;255m[SPEC-3][guard] an artifact carrying a credential refuses the push[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] a clean artifact area scans clean
+  [38;2;74;222;128m✓[0m [SPEC-3] a credential-shaped artifact is found
+  [38;2;74;222;128m✓[0m [SPEC-3] and the finding names the FILE
+
+  [38;2;0;212;255m[SPEC-4][guard] the extracted patterns behave identically[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] AWS key id
+  [38;2;74;222;128m✓[0m [SPEC-4] credential assignment
+  [38;2;74;222;128m✓[0m [SPEC-4] a ${{ secrets.X }} reference is not a finding (#1755)
+  [38;2;74;222;128m✓[0m [SPEC-4] ordinary prose is not a finding
+
+  [38;2;0;212;255m[SPEC-5][guard] persist_run always returns 0[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] a --goal run (no issue) returns 0 (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-5] and still writes its result file
+  [38;2;74;222;128m✓[0m [SPEC-5] a refused push still returns 0 (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-5] and records degraded, not complete
+  [38;2;74;222;128m✓[0m [SPEC-5] and records that nothing was pushed
+
+  [38;2;0;212;255m[SPEC-6][guard] data.snapshot=skipped when no identity[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] no-identity run writes data.snapshot=skipped in persist-result.json
+
+  [38;2;0;212;255m[SPEC-7][guard] data.snapshot non-null after credential-refused push[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] credential-refused persist writes a non-null/non-skipped data.snapshot (got: saved)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 21 tests passed[0m
+

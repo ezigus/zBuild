@@ -1,0 +1,14 @@
+acceptance SPEC violations — SPEC-1/SPEC-2/SPEC-3 tautological (pass at baseline) — re-author the assertions
+NEGCTL FAIL SPEC-1 tautology
+      design : _artifact_persist_restore returns rc=0 and status='restored' when the state branch exists only as re…
+      asserts: assert_eq "[SPEC-1] T16 premise: cold-start repo has no local state branch" "no" "$_t16_local"
+NEGCTL FAIL SPEC-2 tautology
+      design : persist-result.json data.snapshot field equals 'skipped' when persist_run is called with no issue id…
+      asserts: assert_exit_code "[SPEC-2] an unreachable remote returns non-zero" "1" "$_rc"
+NEGCTL FAIL SPEC-3 tautology
+      design : persist-result.json data.snapshot field is a non-empty string when the push is refused due to a cred…
+      asserts: assert_fail "[SPEC-3] a clean artifact area must scan clean" "reported a finding"
+NEGCTL PASS SPEC-4
+      design : zbuild-pipeline.yml contains an always-run step after 'Push work branch' that locates persist-result…
+      asserts: assert_pass "[SPEC-4] no workflow pins ZBUILD_STATE_DIR inside github.workspace"
+REACHABILITY EXEMPT none

@@ -1,0 +1,144 @@
+### SPEC-1 baseline tests/unit/artifact-persist-test.sh
+
+[38;2;0;212;255m[1m  core/state/artifact-persist (#1581 durable prior-run store)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m T1 snapshot returns 0
+  [38;2;74;222;128m✓[0m T1 state branch exists
+  [38;2;74;222;128m✓[0m T1 state branch has a commit
+  [38;2;74;222;128m✓[0m T1 tree has artifacts/design.md
+  [38;2;74;222;128m✓[0m T1 tree has artifacts/plan.json
+  [38;2;74;222;128m✓[0m T1 tree has scope-manifest.md
+  [38;2;74;222;128m✓[0m T2 HEAD unchanged after snapshot
+  [38;2;74;222;128m✓[0m T2 working status unchanged
+  [38;2;74;222;128m✓[0m T2 still on work branch
+  [38;2;74;222;128m✓[0m T3 state branch is not an ancestor of work branch
+  [38;2;74;222;128m✓[0m T4 restore returns 0
+  [38;2;74;222;128m✓[0m T4 restored design.md content
+  [38;2;74;222;128m✓[0m T4 restored plan.json present
+  [38;2;74;222;128m✓[0m T4 plan.json non-empty
+  [38;2;74;222;128m✓[0m T5 second snapshot advances the state branch
+  [38;2;74;222;128m✓[0m T5 new commit is parented on the prior snapshot
+  [38;2;74;222;128m✓[0m T6 identical snapshot does not create a commit
+  [38;2;74;222;128m✓[0m T7 restore of absent issue returns 0
+
+  [38;2;0;212;255mT8 production call shape — 2 args, repo_root from CWD[0m
+  [38;2;74;222;128m✓[0m [T8] 2-arg snapshot returns 0
+  [38;2;74;222;128m✓[0m [T8] 2-arg snapshot reports saved
+  [38;2;74;222;128m✓[0m [T8] 2-arg snapshot created the state branch in the shared ref store
+
+  [38;2;0;212;255mT9 empty is not success[0m
+  [38;2;74;222;128m✓[0m [T9] absent artifact dir returns 0
+  [38;2;74;222;128m✓[0m [T9] absent artifact dir reports empty, not saved
+  [38;2;74;222;128m✓[0m [T9] empty artifact dir reports empty, not saved
+
+  [38;2;0;212;255mT10 unchanged is distinguishable from saved[0m
+  [38;2;74;222;128m✓[0m [T10] re-snapshot of an identical tree reports unchanged
+
+  [38;2;0;212;255mT11 one bad file does not discard the snapshot[0m
+  [38;2;74;222;128m✓[0m [T11] snapshot still succeeds
+  [38;2;74;222;128m✓[0m [T11] status is saved despite the skip
+  [38;2;74;222;128m✓[0m [T11] the bad file is counted as skipped
+  [38;2;74;222;128m✓[0m [T11] the readable files were still committed
+
+  [38;2;0;212;255mT12 a failure explains itself[0m
+  [38;2;74;222;128m✓[0m [T12] an unresolvable repo is a FAILURE, not a silent success
+  [38;2;74;222;128m✓[0m [T12] status is failed
+  [38;2;74;222;128m✓[0m [T12] the failure carries a non-empty reason
+
+  [38;2;0;212;255mT13 restore of an absent issue is empty, not failed[0m
+  [38;2;74;222;128m✓[0m [T13] absent state branch returns 0
+  [38;2;74;222;128m✓[0m [T13] absent state branch reports empty, not failed
+
+  [38;2;0;212;255mT14 restore and snapshot are distinguishable on one channel[0m
+  [38;2;74;222;128m✓[0m [T14] a successful restore returns 0
+  [38;2;74;222;128m✓[0m [T14] and reports 'restored', not 'saved'
+
+  [38;2;0;212;255mT15 an unusable TMPDIR does not corrupt the failure report[0m
+mktemp: mkstemp failed on /nonexistent-dir-for-1878/zbuild-persist-idx.gymBWG: No such file or directory
+  [38;2;74;222;128m✓[0m [T15] status is coherent under an unusable TMPDIR (got: failed, rc=1)
+  [38;2;74;222;128m✓[0m [T15] a failure still carries a reason
+
+  [38;2;0;212;255mT16 [SPEC-1] restore from refs/remotes/origin (CI cold start)[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] T16 premise: cold-start repo has no local state branch
+  [38;2;74;222;128m✓[0m [SPEC-1] T16 premise: but it does have the remote-tracking ref
+  [38;2;74;222;128m✓[0m [SPEC-1] CI cold-start restore returns 0
+  [38;2;74;222;128m✓[0m [SPEC-1] CI cold-start restore reports restored, not empty or failed
+  [38;2;74;222;128m✓[0m [SPEC-1] CI cold-start restore extracts the artifact
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 43 tests passed[0m
+
+### SPEC-1 head tests/unit/artifact-persist-test.sh
+
+[38;2;0;212;255m[1m  core/state/artifact-persist (#1581 durable prior-run store)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m T1 snapshot returns 0
+  [38;2;74;222;128m✓[0m T1 state branch exists
+  [38;2;74;222;128m✓[0m T1 state branch has a commit
+  [38;2;74;222;128m✓[0m T1 tree has artifacts/design.md
+  [38;2;74;222;128m✓[0m T1 tree has artifacts/plan.json
+  [38;2;74;222;128m✓[0m T1 tree has scope-manifest.md
+  [38;2;74;222;128m✓[0m T2 HEAD unchanged after snapshot
+  [38;2;74;222;128m✓[0m T2 working status unchanged
+  [38;2;74;222;128m✓[0m T2 still on work branch
+  [38;2;74;222;128m✓[0m T3 state branch is not an ancestor of work branch
+  [38;2;74;222;128m✓[0m T4 restore returns 0
+  [38;2;74;222;128m✓[0m T4 restored design.md content
+  [38;2;74;222;128m✓[0m T4 restored plan.json present
+  [38;2;74;222;128m✓[0m T4 plan.json non-empty
+  [38;2;74;222;128m✓[0m T5 second snapshot advances the state branch
+  [38;2;74;222;128m✓[0m T5 new commit is parented on the prior snapshot
+  [38;2;74;222;128m✓[0m T6 identical snapshot does not create a commit
+  [38;2;74;222;128m✓[0m T7 restore of absent issue returns 0
+
+  [38;2;0;212;255mT8 production call shape — 2 args, repo_root from CWD[0m
+  [38;2;74;222;128m✓[0m [T8] 2-arg snapshot returns 0
+  [38;2;74;222;128m✓[0m [T8] 2-arg snapshot reports saved
+  [38;2;74;222;128m✓[0m [T8] 2-arg snapshot created the state branch in the shared ref store
+
+  [38;2;0;212;255mT9 empty is not success[0m
+  [38;2;74;222;128m✓[0m [T9] absent artifact dir returns 0
+  [38;2;74;222;128m✓[0m [T9] absent artifact dir reports empty, not saved
+  [38;2;74;222;128m✓[0m [T9] empty artifact dir reports empty, not saved
+
+  [38;2;0;212;255mT10 unchanged is distinguishable from saved[0m
+  [38;2;74;222;128m✓[0m [T10] re-snapshot of an identical tree reports unchanged
+
+  [38;2;0;212;255mT11 one bad file does not discard the snapshot[0m
+  [38;2;74;222;128m✓[0m [T11] snapshot still succeeds
+  [38;2;74;222;128m✓[0m [T11] status is saved despite the skip
+  [38;2;74;222;128m✓[0m [T11] the bad file is counted as skipped
+  [38;2;74;222;128m✓[0m [T11] the readable files were still committed
+
+  [38;2;0;212;255mT12 a failure explains itself[0m
+  [38;2;74;222;128m✓[0m [T12] an unresolvable repo is a FAILURE, not a silent success
+  [38;2;74;222;128m✓[0m [T12] status is failed
+  [38;2;74;222;128m✓[0m [T12] the failure carries a non-empty reason
+
+  [38;2;0;212;255mT13 restore of an absent issue is empty, not failed[0m
+  [38;2;74;222;128m✓[0m [T13] absent state branch returns 0
+  [38;2;74;222;128m✓[0m [T13] absent state branch reports empty, not failed
+
+  [38;2;0;212;255mT14 restore and snapshot are distinguishable on one channel[0m
+  [38;2;74;222;128m✓[0m [T14] a successful restore returns 0
+  [38;2;74;222;128m✓[0m [T14] and reports 'restored', not 'saved'
+
+  [38;2;0;212;255mT15 an unusable TMPDIR does not corrupt the failure report[0m
+mktemp: mkstemp failed on /nonexistent-dir-for-1878/zbuild-persist-idx.ZwNjUE: No such file or directory
+  [38;2;74;222;128m✓[0m [T15] status is coherent under an unusable TMPDIR (got: failed, rc=1)
+  [38;2;74;222;128m✓[0m [T15] a failure still carries a reason
+
+  [38;2;0;212;255mT16 [SPEC-1] restore from refs/remotes/origin (CI cold start)[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] T16 premise: cold-start repo has no local state branch
+  [38;2;74;222;128m✓[0m [SPEC-1] T16 premise: but it does have the remote-tracking ref
+  [38;2;74;222;128m✓[0m [SPEC-1] CI cold-start restore returns 0
+  [38;2;74;222;128m✓[0m [SPEC-1] CI cold-start restore reports restored, not empty or failed
+  [38;2;74;222;128m✓[0m [SPEC-1] CI cold-start restore extracts the artifact
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 43 tests passed[0m
+

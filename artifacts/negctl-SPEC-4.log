@@ -1,0 +1,45 @@
+### SPEC-4 baseline tests/unit/ci-state-isolation-test.sh
+
+[38;2;0;212;255m[1m  CI state isolation — state outside the workspace (#1638)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] the resolved state dir is outside the workspace
+  [38;2;74;222;128m✓[0m [SPEC-6] the state dir is resolved even when an earlier step failed
+  [38;2;74;222;128m✓[0m [SPEC-2] the upload path derives from the resolved state dir
+  [38;2;74;222;128m✓[0m [SPEC-2] the upload still includes the whole state dir, unnarrowed
+  [38;2;74;222;128m✓[0m [SPEC-3] pipeline artifacts upload on failure too
+  [38;2;74;222;128m✓[0m [SPEC-5] an empty artifact upload is reported, not silently ignored
+  [38;2;74;222;128m✓[0m [SPEC-7] the artifact upload excludes the scratch directory
+  [38;2;74;222;128m✓[0m [SPEC-7] both the direct-child and the nested scratch layouts are excluded (missing: none)
+  [38;2;74;222;128m✓[0m [SPEC-7] the upload excludes nothing except scratch
+  [38;2;74;222;128m✓[0m [SPEC-4] no workflow pins ZBUILD_STATE_DIR inside github.workspace
+  [38;2;248;113;113m✗[0m [SPEC-4] Surface persist result step exists and runs on always()
+    [2mexpected: always(), got: [0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 11 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-4] Surface persist result step exists and runs on always()
+
+### SPEC-4 head tests/unit/ci-state-isolation-test.sh
+
+[38;2;0;212;255m[1m  CI state isolation — state outside the workspace (#1638)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] the resolved state dir is outside the workspace
+  [38;2;74;222;128m✓[0m [SPEC-6] the state dir is resolved even when an earlier step failed
+  [38;2;74;222;128m✓[0m [SPEC-2] the upload path derives from the resolved state dir
+  [38;2;74;222;128m✓[0m [SPEC-2] the upload still includes the whole state dir, unnarrowed
+  [38;2;74;222;128m✓[0m [SPEC-3] pipeline artifacts upload on failure too
+  [38;2;74;222;128m✓[0m [SPEC-5] an empty artifact upload is reported, not silently ignored
+  [38;2;74;222;128m✓[0m [SPEC-7] the artifact upload excludes the scratch directory
+  [38;2;74;222;128m✓[0m [SPEC-7] both the direct-child and the nested scratch layouts are excluded (missing: none)
+  [38;2;74;222;128m✓[0m [SPEC-7] the upload excludes nothing except scratch
+  [38;2;74;222;128m✓[0m [SPEC-4] no workflow pins ZBUILD_STATE_DIR inside github.workspace
+  [38;2;74;222;128m✓[0m [SPEC-4] Surface persist result step exists and runs on always()
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 11 tests passed[0m
+
