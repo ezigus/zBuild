@@ -112,7 +112,7 @@ cycle_dispatch_stage() {
         test)
             local tv="pass" nf=0
             [[ "$v" == "fail" ]] && { tv="fail"; nf=3; }
-            printf '{"schema_version":2,"verdict":"%s","exit_code":0,"passed":5,"failed":%d,"run_mode":"full"}' \
+            printf '{"result_contract":2,"verdict":"%s","disposition":"complete","reason":"mock","data":{"exit_code":0,"passed":5,"failed":%d,"run_mode":"full"}}' \
                 "$tv" "$nf" > "$art/test-results.json"
             _CYCLE_DISPATCH_VERDICT="$(verdict_classify "$tv" 2>/dev/null || echo fail)"
             _CYCLE_DISPATCH_VERDICT_RAW="$tv"

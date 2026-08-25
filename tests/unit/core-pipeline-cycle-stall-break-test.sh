@@ -126,7 +126,7 @@ cycle_dispatch_stage() {
             _CYCLE_DISPATCH_DATA_KIND="empty_diff"
             ;;
         test)
-            printf '{"schema_version":1,"verdict":"pass","exit_code":0,"passed":1,"failed":0}' \
+            printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"mock","data":{"exit_code":0,"passed":1,"failed":0}}' \
                 > "$_art/test-results.json"
             ;;
         gate-aggregator)

@@ -47,7 +47,7 @@ lint_gate_run() {
     # Read the lint.status field. Absent file / missing block → "" → skip.
     local status=""
     if [[ -f "$results_json" ]]; then
-        status="$(jq -r '.lint.status // empty' "$results_json" 2>/dev/null || echo)"
+        status="$(jq -r '.data.lint.status // empty' "$results_json" 2>/dev/null || echo)"
     fi
 
     local verdict detail=""

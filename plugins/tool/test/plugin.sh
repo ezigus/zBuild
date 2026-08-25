@@ -218,7 +218,7 @@ _test_run_inner() {
     # ── Guard: diff.patch must exist ──────────────────────────────────────────
     if [[ ! -f "$diff_patch_path" ]]; then
         _test_write_result "$output_json" \
-            "error" 2 0 0 "" "false" "$test_cmd"
+            "error" "broken" 2 0 0 "" "false" "$test_cmd" "missing_diff_patch"
         # #628: $tmp cleanup handled by RETURN trap above.
         emit_event "plugin.result" "plugin=test" "verdict=error" "reason=missing_diff_patch"
         return 0
@@ -527,8 +527,10 @@ _test_run_inner() {
     fi
 
     # Record the command that actually ran (targeted or full), not the base cmd.
+    local _disposition
+    _disposition="$(_test_disposition_from_rc "$exit_code" "$verdict")"
     _test_write_result "$output_json" \
-        "$verdict" "$exit_code" "$passed" "$failed" \
+        "$verdict" "$_disposition" "$exit_code" "$passed" "$failed" \
         "$test_output" "$diff_applied" "$actual_test_cmd" "$reason" "$run_mode" \
         "$_timing_json" "$_tree_sha" "$_fr_lint" "$_fr_cov" "$_fr_mut"
 
@@ -731,36 +733,71 @@ _test_sanitize_bool() {
     fi
 }
 
+# ─── _test_disposition_from_rc (#1836, ADR-054 §5) ───────────────────────────
+# Maps (rc, verdict) → ADR-054 disposition token:
+#   pass|fail (test ran to completion)  → complete
+#   rc=130/137/143 (signal death)       → interrupted  (recoverable retry)
+#   everything else                     → broken
+# Called once per run, AFTER verdict is finalized.
+# Usage: _test_disposition_from_rc <rc> <verdict>
+_test_disposition_from_rc() {
+    local rc="$1" verdict="$2"
+    case "$verdict" in
+        pass|fail) printf 'complete'; return 0 ;;
+    esac
+    # verdict=error — distinguish signal deaths (interrupted) from config bugs (broken)
+    case "$rc" in
+        130|137|143) printf 'interrupted'; return 0 ;;
+    esac
+    printf 'broken'
+}
+
+# ─── _test_write_result ───────────────────────────────────────────────────────
+# Writes test-results.json atomically via a temp file (v2 result contract,
+# ADR-054 §5, #1836). Top-level: result_contract, verdict, disposition, reason.
+# Plugin-specific detail lives under data:{}.
+# Usage: _test_write_result <path> <verdict> <disposition> <exit_code> <passed> <failed>
+#                            <test_output> <diff_applied> <test_cmd> [reason]
+#                            [run_mode] [timing_json] [tree_sha]
+#                            [lint_json] [coverage_json] [mutation_json]
+# #584: passed/failed may be the literal token "null" to record that the
+# parser did not recognize this runner's output (honest fail-safe — never
+# fabricate counts). The `reason` field is emitted only when non-empty;
+# disposition is always emitted (mandatory v2 top-level field).
+# #626: sanitize a numeric slot — accept "null", integers, or fall back to "null".
+# Anything else (whitespace, "abc", embedded quotes) becomes JSON null so jq
+# --argjson never barfs and the writer stays fail-CLOSED.
 _test_write_result() {
     local path="$1"
     local verdict="$2"
-    local exit_code="$3"
-    local passed="$4"
-    local failed="$5"
-    local test_output="$6"
-    local diff_applied="$7"
-    local test_cmd="$8"
-    local reason="${9:-}"
+    local disposition="$3"
+    local exit_code="$4"
+    local passed="$5"
+    local failed="$6"
+    local test_output="$7"
+    local diff_applied="$8"
+    local test_cmd="$9"
+    local reason="${10:-}"
     # ADR-034 / #846: run_mode field (full|targeted). Defaults to "full" so
     # callers that do not pass the arg (e.g. the missing-diff guard path) get
     # the safe default that does not suppress cycle convergence.
-    local run_mode="${10:-full}"
+    local run_mode="${11:-full}"
     # #1058 Phase A: optional pre-rendered `timing` JSON object. Empty string →
     # field omitted (mirrors the `reason` field's omit-when-empty contract). A
     # malformed value is dropped by the jq fromjson guard below — never crashes.
-    local timing_json="${11:-}"
+    local timing_json="${12:-}"
     # #1058 Phase B: optional committed work-tree SHA. Written ONLY for an
     # authoritative full-suite run (caller passes empty otherwise). Empty string
     # → field omitted, so a consumer (objective gate) that requires a matching
     # tree_sha fails closed and re-runs. Never written for targeted runs.
-    local tree_sha="${12:-}"
+    local tree_sha="${13:-}"
     # ADR-040 / #1133: optional pre-rendered framework-result blocks. Each is a
     # JSON object string or "" — empty → field omitted (mirrors timing's
     # omit-when-empty contract) so the default test path stays byte-unchanged.
     # A malformed value is dropped by the jq fromjson guard below — never crashes.
-    local lint_json="${13:-}"
-    local coverage_json="${14:-}"
-    local mutation_json="${15:-}"
+    local lint_json="${14:-}"
+    local coverage_json="${15:-}"
+    local mutation_json="${16:-}"
 
     local dir
     dir="$(dirname "$path")"
@@ -788,13 +825,14 @@ _test_write_result() {
     # suppressed so internal sanitization failures never leak.
     jq -n \
         --arg verdict "$verdict" \
+        --arg disposition "$disposition" \
+        --arg reason "$reason" \
         --argjson exit_code "$exit_code_json" \
         --argjson passed "$passed_json" \
         --argjson failed "$failed_json" \
         --arg test_output "$test_output" \
         --argjson diff_applied "$diff_applied_json" \
         --arg test_cmd "$test_cmd" \
-        --arg reason "$reason" \
         --arg run_mode "$run_mode" \
         --arg timing "$timing_json" \
         --arg tree_sha "$tree_sha" \
@@ -802,22 +840,29 @@ _test_write_result() {
         --arg coverage "$coverage_json" \
         --arg mutation "$mutation_json" \
         '{
-            schema_version: 1,
+            result_contract: 2,
             verdict: $verdict,
-            exit_code: $exit_code,
-            passed: $passed,
-            failed: $failed,
-            test_output: $test_output,
-            diff_applied: $diff_applied,
-            test_cmd: $test_cmd,
-            run_mode: $run_mode
+            disposition: $disposition
         }
         + (if $reason != "" then {reason: $reason} else {} end)
-        + (if $timing != "" then (try {timing: ($timing | fromjson)} catch {}) else {} end)
-        + (if $tree_sha != "" then {tree_sha: $tree_sha} else {} end)
-        + (if $lint != "" then (try {lint: ($lint | fromjson)} catch {}) else {} end)
-        + (if $coverage != "" then (try {coverage: ($coverage | fromjson)} catch {}) else {} end)
-        + (if $mutation != "" then (try {mutation: ($mutation | fromjson)} catch {}) else {} end)' \
+        + {
+            data: (
+                {
+                    exit_code: $exit_code,
+                    passed: $passed,
+                    failed: $failed,
+                    test_output: $test_output,
+                    diff_applied: $diff_applied,
+                    test_cmd: $test_cmd,
+                    run_mode: $run_mode
+                }
+                + (if $timing != "" then (try {timing: ($timing | fromjson)} catch {}) else {} end)
+                + (if $tree_sha != "" then {tree_sha: $tree_sha} else {} end)
+                + (if $lint != "" then (try {lint: ($lint | fromjson)} catch {}) else {} end)
+                + (if $coverage != "" then (try {coverage: ($coverage | fromjson)} catch {}) else {} end)
+                + (if $mutation != "" then (try {mutation: ($mutation | fromjson)} catch {}) else {} end)
+            )
+        }' \
         2>/dev/null \
       | atomic_write "$path"
     local _jq_rc="${PIPESTATUS[0]}"
@@ -826,7 +871,7 @@ _test_write_result() {
         # Fail-closed: overwrite with a degenerate-but-valid JSON object so
         # the primary output always parses. Sanitizers already constrained
         # exit_code_json to {integer, "null"} so %s interpolation is safe.
-        printf '{"schema_version":1,"verdict":"error","reason":"result_write_failed","exit_code":%s,"passed":null,"failed":null,"test_output":"","diff_applied":false,"test_cmd":""}\n' \
+        printf '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"result_write_failed","data":{"exit_code":%s,"passed":null,"failed":null,"test_output":"","diff_applied":false,"test_cmd":""}}\n' \
             "$exit_code_json" | atomic_write "$path"
         emit_event "test.result_write.fallback" "path=$path" 2>/dev/null || true
     fi

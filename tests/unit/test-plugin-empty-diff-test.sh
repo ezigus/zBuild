@@ -70,21 +70,21 @@ else
     assert_pass "empty-diff: skips apply-check (reason='$APPLY_REASON')"
 fi
 
-# Test command output must appear in .test_output — proves it ran.
-TEST_OUT="$(jq -r '.test_output' "$OUT_JSON" 2>/dev/null)"
+# Test command output must appear in .data.test_output — proves it ran.
+TEST_OUT="$(jq -r '.data.test_output' "$OUT_JSON" 2>/dev/null)"
 if [[ "$TEST_OUT" == *"$MARKER"* ]]; then
     assert_pass "empty-diff: test command was executed (marker present)"
 else
     assert_fail "empty-diff: test command was executed" \
-        "marker '$MARKER' missing from .test_output: $TEST_OUT"
+        "marker '$MARKER' missing from .data.test_output: $TEST_OUT"
 fi
 
 # exit_code numeric + verdict=pass (3 passed, 0 failed → pass per parser).
-EC="$(jq -r '.exit_code' "$OUT_JSON" 2>/dev/null)"
+EC="$(jq -r '.data.exit_code' "$OUT_JSON" 2>/dev/null)"
 if [[ "$EC" =~ ^[0-9]+$ ]]; then
-    assert_pass "empty-diff: .exit_code is numeric ($EC)"
+    assert_pass "empty-diff: .data.exit_code is numeric ($EC)"
 else
-    assert_fail "empty-diff: .exit_code is numeric" "got: $EC"
+    assert_fail "empty-diff: .data.exit_code is numeric" "got: $EC"
 fi
 
 assert_eq "empty-diff: verdict=pass" "pass" \
@@ -100,8 +100,8 @@ _test_run_inner "$EMPTY_PATCH" "$REPO_FIXTURE" "$OUT_FAIL_JSON" "$FAIL_CMD" \
 
 assert_eq "empty-diff fail: verdict=fail" "fail" \
     "$(jq -r '.verdict' "$OUT_FAIL_JSON" 2>/dev/null)"
-assert_eq "empty-diff fail: exit_code=1" "1" \
-    "$(jq -r '.exit_code' "$OUT_FAIL_JSON" 2>/dev/null)"
+assert_eq "empty-diff fail: data.exit_code=1" "1" \
+    "$(jq -r '.data.exit_code' "$OUT_FAIL_JSON" 2>/dev/null)"
 
 print_test_results
 exit $((FAIL > 0))

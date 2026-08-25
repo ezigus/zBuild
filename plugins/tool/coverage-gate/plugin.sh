@@ -63,7 +63,7 @@ coverage_gate_run() {
     local status="" pct="" floor=""
     if [[ -f "$results_json" ]]; then
         local _parsed
-        _parsed="$(jq -r '[(.coverage.status // ""), (.coverage.pct // ""), (.coverage.floor // "")] | @tsv' \
+        _parsed="$(jq -r '[(.data.coverage.status // ""), (.data.coverage.pct // ""), (.data.coverage.floor // "")] | @tsv' \
             "$results_json" 2>/dev/null || echo)"
         IFS=$'\t' read -r status pct floor <<< "$_parsed"
     fi

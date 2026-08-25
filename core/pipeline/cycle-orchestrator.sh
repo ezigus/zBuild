@@ -1984,7 +1984,7 @@ _cycle_read_test_run_mode() {
     local trj="$state_dir/artifacts/test-results.json"
     if [[ -s "$trj" ]]; then
         local _mode
-        _mode="$(jq -r '.run_mode // "full"' "$trj" 2>/dev/null || echo "full")"
+        _mode="$(jq -r '(.data.run_mode) // "full"' "$trj" 2>/dev/null || echo "full")"
         case "$_mode" in
             targeted|full) printf '%s' "$_mode"; return 0 ;;
         esac
@@ -2513,7 +2513,7 @@ cycle_orchestrator_run() {
             _exh_test_verdict="$(jq -r '.test.verdict // ""' <<< "$verdicts_blob" 2>/dev/null || true)"
             _exh_trj="$state_dir/artifacts/test-results.json"
             if [[ -s "$_exh_trj" ]]; then
-                _exh_test_failed="$(jq -r '.failed // empty' "$_exh_trj" 2>/dev/null || true)"
+                _exh_test_failed="$(jq -r '.data.failed // empty' "$_exh_trj" 2>/dev/null || true)"
             fi
             # #1261: reason-aware exhaustion (timeout-exhaustion exception to the
             # ADR-019 on_max=continue fall-through). When the TERMINATING iteration

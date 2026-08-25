@@ -53,7 +53,7 @@ mutation_gate_run() {
     local status="" score="" floor=""
     if [[ -f "$results_json" ]]; then
         local _parsed
-        _parsed="$(jq -r '[(.mutation.status // ""), (.mutation.score // ""), (.mutation.floor // "")] | @tsv' \
+        _parsed="$(jq -r '[(.data.mutation.status // ""), (.data.mutation.score // ""), (.data.mutation.floor // "")] | @tsv' \
             "$results_json" 2>/dev/null || echo)"
         IFS=$'\t' read -r status score floor <<< "$_parsed"
     fi

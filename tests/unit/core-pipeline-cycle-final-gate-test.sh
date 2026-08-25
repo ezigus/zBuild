@@ -29,7 +29,7 @@ _write_test_results() {
     local run_mode="${1:-full}" verdict="${2:-pass}"
     mkdir -p "$STATE_DIR/artifacts"
     jq -n --arg rm "$run_mode" --arg v "$verdict" \
-        '{schema_version:1, verdict:$v, run_mode:$rm, exit_code:0, passed:1, failed:0}' \
+        '{result_contract:2, verdict:$v, disposition:"complete", reason:"mock", data:{run_mode:$rm, exit_code:0, passed:1, failed:0}}' \
         > "$STATE_DIR/artifacts/test-results.json"
 }
 

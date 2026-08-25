@@ -146,7 +146,7 @@ _ga_gate_detail() {
         printf -- '- findings:\n'
         while IFS= read -r f; do [[ -n "$f" ]] && printf '    - %s\n' "$f"; done <<< "$finds"
     fi
-    test_output="$(jq -r '.test_output // empty' "$path" 2>/dev/null)"
+    test_output="$(jq -r '(.data.test_output // .test_output) // empty' "$path" 2>/dev/null)"
     if [[ -n "$test_output" ]]; then
         printf -- '- test output:\n'
         printf '```\n%s\n```\n' "$test_output"
