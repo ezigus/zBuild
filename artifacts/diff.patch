@@ -1,0 +1,186 @@
+diff --git a/.github/workflows/zbuild-pipeline.yml b/.github/workflows/zbuild-pipeline.yml
+index 09261467..79a20d60 100644
+--- a/.github/workflows/zbuild-pipeline.yml
++++ b/.github/workflows/zbuild-pipeline.yml
+@@ -256,6 +256,40 @@ jobs:
+             fi
+           fi
+ 
++      - name: Surface persist result
++        # #1921: persist-result.json records why a snapshot was skipped/failed/pushed,
++        # but the file lives inside the artifact zip — operators must download it to
++        # learn the outcome. Surface the key fields as ::notice:: annotations so the
++        # reason is visible directly in the job log without downloading anything.
++        # find is used rather than a hardcoded path so a run that writes no state dir
++        # at all (early abort) simply produces a "not found" notice rather than an
++        # error. Fail-open: an absent file is not itself a failure.
++        if: always()
++        env:
++          ZBUILD_STATE_DIR: ${{ env.ZBUILD_STATE_DIR }}
++        run: |
++          result_file="$(find "${ZBUILD_STATE_DIR:-}" -name 'persist-result.json' -print -quit 2>/dev/null || true)"
++          if [[ -z "$result_file" ]]; then
++            echo "::notice::persist-result.json not found (run aborted before persist stage or state dir absent)"
++            exit 0
++          fi
++          verdict="$(jq -r '.verdict // empty' "$result_file" 2>/dev/null || true)"
++          snapshot="$(jq -r '.data.snapshot // empty' "$result_file" 2>/dev/null || true)"
++          pushed="$(jq -r '.data.pushed // empty' "$result_file" 2>/dev/null || true)"
++          reason="$(jq -r '.reason // empty' "$result_file" 2>/dev/null || true)"
++          echo "::notice::persist: verdict=${verdict:-?} snapshot=${snapshot:-?} pushed=${pushed:-?} reason=${reason:-?}"
++
++      - name: Delete stale test-residue state branch
++        # One-time cleanup: zbuild/state/issue-4244 was pushed by a pre-secret-gate
++        # version of persist-stage-test.sh. Idempotent — git push --delete exits 0
++        # when the ref is already absent (|| true catches the non-zero from a truly
++        # missing remote ref, which some git versions do return).
++        if: always()
++        run: |
++          git push --delete origin zbuild/state/issue-4244 2>/dev/null \
++            && echo "::notice::deleted stale test-residue branch zbuild/state/issue-4244" \
++            || true
++
+       - name: Collect claude session transcripts (diagnostics)
+         # #1728: a SIGTERM'd stage emits zero bytes into stage-io, so the
+         # incrementally-written session JSONL is the only evidence of what the
+diff --git a/tests/unit/artifact-persist-test.sh b/tests/unit/artifact-persist-test.sh
+index 192b25e7..3df35bbd 100755
+--- a/tests/unit/artifact-persist-test.sh
++++ b/tests/unit/artifact-persist-test.sh
+@@ -217,5 +217,62 @@ else
+     assert_pass "[T15] a failure still carries a reason"
+ fi
+ 
++# ── T16 [SPEC-1] [guard]: CI cold-start restore via refs/remotes/origin ──────
++# _artifact_persist_restore prefers refs/heads/<branch> but falls back to
++# refs/remotes/origin/<branch> on a CI cold start where the local ref is absent.
++# This path (line ~365 of artifact-persist.sh) had no test — a regression there
++# would be invisible.
++print_test_section "T16 [SPEC-1] restore from refs/remotes/origin (CI cold start)"
++_sd16="$TEST_TEMP_DIR/t16-remote.git"
++_rd16="$TEST_TEMP_DIR/t16-restored"
++_fx16="$TEST_TEMP_DIR/t16-origin-repo"
++_fx16b="$TEST_TEMP_DIR/t16-cold-repo"
++
++# Build a bare remote and a repo with the state branch committed and pushed.
++git init -q --bare "$_sd16" 2>/dev/null
++(
++    git init -q -b main "$_fx16" 2>/dev/null
++    cd "$_fx16" || exit 1
++    git config user.email t@t.t; git config user.name t
++    git remote add origin "$_sd16"
++    : > f; git add f; git commit -q -m init
++    git push -q -u origin main
++) >/dev/null 2>&1
++state16="$TEST_TEMP_DIR/t16-state"
++mkdir -p "$state16/artifacts"
++printf 't16-artifact\n' > "$state16/artifacts/t16.json"
++_artifact_persist_snapshot "$state16" 886 "$_fx16" >/dev/null 2>&1
++( cd "$_fx16" && git push -q origin \
++    "refs/heads/zbuild/state/issue-886:refs/heads/zbuild/state/issue-886" ) >/dev/null 2>&1
++
++# Build a cold-start repo: has the remote-tracking ref but NO local branch.
++(
++    git init -q -b main "$_fx16b" 2>/dev/null
++    cd "$_fx16b" || exit 1
++    git config user.email t@t.t; git config user.name t
++    git remote add origin "$_sd16"
++    # Fetch the state branch only into refs/remotes/origin (not refs/heads).
++    git fetch -q origin \
++        "refs/heads/zbuild/state/issue-886:refs/remotes/origin/zbuild/state/issue-886" \
++        2>/dev/null
++) >/dev/null 2>&1
++
++# Verify the premise: local branch must not exist, only the remote-tracking ref.
++_t16_local="$(git -C "$_fx16b" rev-parse -q --verify \
++    refs/heads/zbuild/state/issue-886 >/dev/null 2>&1 && echo yes || echo no)"
++assert_eq "[SPEC-1] T16 premise: cold-start repo has no local state branch" "no" "$_t16_local"
++_t16_remote="$(git -C "$_fx16b" rev-parse -q --verify \
++    refs/remotes/origin/zbuild/state/issue-886 >/dev/null 2>&1 && echo yes || echo no)"
++assert_eq "[SPEC-1] T16 premise: but it does have the remote-tracking ref" "yes" "$_t16_remote"
++
++# Now restore — must fall through to the refs/remotes/origin path.
++_artifact_persist_restore 886 "$_rd16" "$_fx16b"
++_rc16=$?
++assert_eq "[SPEC-1] CI cold-start restore returns 0" "0" "$_rc16"
++assert_eq "[SPEC-1] CI cold-start restore reports restored, not empty or failed" \
++    "restored" "$_ARTIFACT_PERSIST_LAST_STATUS"
++assert_file_exists "[SPEC-1] CI cold-start restore extracts the artifact" \
++    "$_rd16/artifacts/t16.json"
++
+ cleanup_test_env
+ print_test_results
+diff --git a/tests/unit/ci-state-isolation-test.sh b/tests/unit/ci-state-isolation-test.sh
+index 4da9890c..50a45878 100755
+--- a/tests/unit/ci-state-isolation-test.sh
++++ b/tests/unit/ci-state-isolation-test.sh
+@@ -195,6 +195,21 @@ else
+     assert_fail "[SPEC-4] state must never be pinned inside the workspace" "$_OFFENDERS"
+ fi
+ 
++# ── SPEC-4 [extended / change]: Surface persist result step is always-run ───
++# This step (#1921) surfaces persist-result.json fields as ::notice:: annotations
++# so an operator can see why a snapshot was skipped or why a push failed without
++# downloading the artifact zip. It must run on every outcome — if it were
++# conditional it would be absent on the failure cases where it matters most.
++# Checking the `if:` key extracted from the YAML also proves the step EXISTS:
++# a missing step produces an empty string, which fails the assert_eq below.
++_SURFACE_IF="$(awk '
++    /^      - name: Surface persist result/ { instep = 1; next }
++    instep && /^      - name: /            { exit }
++    instep && /^        if: /              { sub(/^        if: /, ""); print; exit }
++' "$WF")"
++assert_eq "[SPEC-4] Surface persist result step exists and runs on always()" \
++    "always()" "$_SURFACE_IF"
++
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
+diff --git a/tests/unit/persist-stage-test.sh b/tests/unit/persist-stage-test.sh
+index db25e4c9..38d367e3 100755
+--- a/tests/unit/persist-stage-test.sh
++++ b/tests/unit/persist-stage-test.sh
+@@ -165,6 +165,43 @@ assert_eq "[SPEC-5] and records degraded, not complete" "degraded" \
+ assert_eq "[SPEC-5] and records that nothing was pushed" "false" \
+     "$(jq -r '.data.pushed' "$ZBUILD_ARTIFACT_DIR/persist-result.json" 2>/dev/null)"
+ 
++# ─── [SPEC-6][guard] data.snapshot == 'skipped' for the no-identity path ─────
++# persist_run initialises _snapshot="skipped" and short-circuits BEFORE the
++# snapshot call when there is no identity. The result file must carry that
++# value through _persist_write_result — a future refactor that re-orders the
++# guard and the snapshot would silently corrupt it.
++print_test_section "[SPEC-6][guard] data.snapshot=skipped when no identity"
++
++_s2dir="$TEST_TEMP_DIR/s2"
++mkdir -p "$_s2dir/artifacts"
++printf 'clean\n' > "$_s2dir/artifacts/plan.json"
++( ZBUILD_ISSUE_NUMBER=0 ZBUILD_ARTIFACT_DIR="$_s2dir/artifacts" \
++  ZBUILD_STATE_DIR="$_s2dir" persist_run persist "" ) >/dev/null 2>&1 || true
++assert_eq "[SPEC-2] no-identity run writes data.snapshot=skipped in persist-result.json" \
++    "skipped" \
++    "$(jq -r '.data.snapshot // empty' "$_s2dir/artifacts/persist-result.json" 2>/dev/null)"
++
++# ─── [SPEC-7][guard] data.snapshot is non-null after a credential-refused push ─
++# The snapshot runs at step 1 of persist_run, BEFORE the secret gate at step 2.
++# A push refused by the gate still has a non-null, non-skipped snapshot outcome.
++# If _persist_write_result were called before the snapshot, or if the snapshot
++# value were not threaded through correctly, this would surface it.
++print_test_section "[SPEC-7][guard] data.snapshot non-null after credential-refused push"
++
++_s3dir="$TEST_TEMP_DIR/s3"
++mkdir -p "$_s3dir/artifacts"
++printf 'clean\n' > "$_s3dir/artifacts/plan.json"
++printf 'aws: AKIA%s\n' "ABCDEFGHIJKLMNOP" > "$_s3dir/artifacts/leak.txt"
++( ZBUILD_ISSUE_NUMBER=4244 ZBUILD_ARTIFACT_DIR="$_s3dir/artifacts" \
++  ZBUILD_STATE_DIR="$_s3dir" persist_run persist "" ) >/dev/null 2>&1 || true
++_snap3="$(jq -r '.data.snapshot // empty' "$_s3dir/artifacts/persist-result.json" 2>/dev/null)"
++if [[ -n "$_snap3" && "$_snap3" != "skipped" && "$_snap3" != "null" ]]; then
++    assert_pass "[SPEC-3] credential-refused persist writes a non-null/non-skipped data.snapshot (got: $_snap3)"
++else
++    assert_fail "[SPEC-3] credential-refused persist must write data.snapshot from the snapshot that ran before the gate" \
++        "got: [${_snap3:-<empty>}]"
++fi
++
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
