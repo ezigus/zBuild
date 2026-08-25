@@ -2,9 +2,11 @@
 # plugins/tool/design-gate/plugin.sh — Design Gate Stage (ADR-046, ADR-037 §1/§3, #1218)
 #
 # Kind: tool  Tier: T0  (NO LLM — ADR-037 §3 invariant)
-# The PRE-build mechanical structural gate for the design stage. Pure grep over
-# design.md; runs five structural checks (C1..C5), reports ALL violations in
-# one pass, and writes verdict=pass|fail to design-gate-result.json. Always
+# The PRE-build mechanical structural gate for the design stage. Runs six checks
+# (C1..C6), reports ALL violations in one pass, and writes verdict=pass|fail to
+# design-gate-result.json. C1..C5 are pure grep over design.md; C6 (#1777) is
+# the one check that executes anything — it runs each [guard] SPEC's assertion
+# at the merge-base, and fails open on every infrastructure signal. Always
 # returns rc=0 — the verdict lives in the artifact (ADR-040 verdict-in-artifact
 # convention); the design_verify_cycle's exit_when reads .verdict.
 #
@@ -26,6 +28,11 @@ source "$_DG_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 # edits the block grammar must be gated by ITS copy, not the installed one.
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh" 2>/dev/null || true
+# #1777: C6 runs each [guard] SPEC's assertion at the merge-base, reusing the
+# acceptance gate's own machinery rather than a second implementation of it.
+# Same contract-lib seam and same reason as acceptance-block.sh above.
+# shellcheck source=../../../scripts/lib/acceptance-negctl.sh
+source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-negctl.sh" 2>/dev/null || true
 
 # Resilient emit — no-op when the event-bus is unavailable (unit-test isolation).
 _dg_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
@@ -136,6 +143,55 @@ design_gate_run() {
         fi
     fi
 
+    # ── C6 GUARD-BASELINE: a [guard] SPEC must hold at the merge-base ───────
+    # The number is free — the original C6 (tag-presence) was deleted by #1477.
+    #
+    # A [guard] SPEC asserts an invariant, so its assertion holds at the baseline
+    # by definition. One that FAILS there is a mislabelled [change], or an
+    # assertion inverted relative to its own SPEC text. The acceptance gate
+    # already rejects this (`guard_regressed`), but only AFTER build has spent
+    # its whole iteration budget on the design: #1789 burned 5 iterations and
+    # 2h06m, #1809 burned 2 more and was aborted manually, and both wanted the
+    # same two-word correction. Catching it here costs one design turn.
+    #
+    # FAIL-OPEN, and LOUD ABOUT IT. acceptance_negctl_guard_precheck emits GUARD
+    # SKIP — never GUARD FAIL — for a missing baseline, an unresolvable worktree,
+    # a timeout, an unparseable file, or an untagged guard (#1255), so a design is
+    # never rejected because the check could not run. But a gate that skips
+    # SILENTLY is indistinguishable from a gate that works: that is the
+    # green-but-inert shape this repo keeps paying for (#845, #1044, and the
+    # vacuous `asserts: <none found>` in #1777's own second occurrence). So the
+    # coverage is recorded in the artifact — declared vs verified, with a reason
+    # per unverified SPEC. "verified 0 of 3, testfiles absent" is a fact an
+    # operator can read; "verified 0 of 3, worktree_failed" is visibly a bug and
+    # not a pass.
+    local _gp_declared=0 _gp_verified=0 _gp_failed=0
+    local -a _gp_skips=()
+    if [[ $_accept_ok -eq 1 ]] && declare -f acceptance_negctl_guard_precheck >/dev/null 2>&1; then
+        local _g_line _g_spec _g_reason
+        while IFS= read -r _g_line; do
+            case "$_g_line" in
+                "GUARD FAIL "*)
+                    _g_spec="${_g_line#GUARD FAIL }"; _g_spec="${_g_spec%% *}"
+                    _gp_declared=$((_gp_declared + 1)); _gp_failed=$((_gp_failed + 1))
+                    violations+=("GUARD_REGRESSED_AT_BASELINE $_g_spec (tagged [guard] but its assertion FAILS at the merge-base — a guard holds there by definition; if this SPEC describes a change, tag it [change])")
+                    ;;
+                "GUARD PASS "*)
+                    _gp_declared=$((_gp_declared + 1)); _gp_verified=$((_gp_verified + 1))
+                    ;;
+                "GUARD SKIP "*)
+                    _g_spec="${_g_line#GUARD SKIP }"
+                    _g_reason="${_g_spec#* }"; _g_spec="${_g_spec%% *}"
+                    _gp_declared=$((_gp_declared + 1))
+                    # TAB, not ':' — a reason is free text and the day one
+                    # carries a colon, splitting on the first would silently
+                    # truncate it. A tab cannot appear in either field.
+                    _gp_skips+=("$_g_spec"$'\t'"$_g_reason")
+                    ;;
+            esac
+        done < <(acceptance_negctl_guard_precheck "$design_md" "$repo_root" 2>/dev/null || true)
+    fi
+
     # ── Verdict + artifact ───────────────────────────────────────────────────
     local verdict violations_json
     if [[ ${#violations[@]} -eq 0 ]]; then
@@ -146,14 +202,39 @@ design_gate_run() {
         violations_json="$(printf '%s\n' "${violations[@]}" | jq -R . | jq -s .)"
     fi
 
-    jq -n --arg v "$verdict" --argjson viol "$violations_json" \
-        '{"schema_version":1,"verdict":$v,"violations":$viol}' | atomic_write "$result_path"
+    # Coverage block, present ONLY when the design declares a [guard] SPEC — a
+    # guard-less design keeps today's exact artifact shape (same absent-when-empty
+    # convention as route_target).
+    local _gp_json="null"
+    if [[ $_gp_declared -gt 0 ]]; then
+        local _gp_skips_json="[]"
+        if [[ ${#_gp_skips[@]} -gt 0 ]]; then
+            _gp_skips_json="$(printf '%s\n' "${_gp_skips[@]}" \
+                | jq -R 'select(length>0) | split("\t") | {spec: .[0], reason: (.[1:] | join("\t"))}' \
+                | jq -sc .)"
+        fi
+        _gp_json="$(jq -nc --argjson d "$_gp_declared" --argjson v "$_gp_verified" \
+            --argjson f "$_gp_failed" --argjson s "$_gp_skips_json" \
+            '{declared:$d,verified:$v,failed:$f,skipped:$s}')"
+    fi
+
+    jq -n --arg v "$verdict" --argjson viol "$violations_json" --argjson gp "$_gp_json" \
+        '{"schema_version":1,"verdict":$v,"violations":$viol}
+         + (if $gp==null then {} else {"guard_precheck":$gp} end)' | atomic_write "$result_path"
 
     if [[ "$verdict" == "fail" ]]; then
         {
             printf '# Design-gate: structural violations\n\n'
             printf 'The design contract is not build-ready. Fix these and re-emit design.md:\n\n'
             printf -- '- %s\n' "${violations[@]}"
+            # Say what C6 actually managed to check, so a design author is never
+            # left inferring coverage from silence.
+            if [[ $_gp_declared -gt 0 ]]; then
+                printf '\n## Guard baseline coverage\n\n'
+                printf -- '- %d [guard] SPEC(s) declared; %d verified at the merge-base, %d failed.\n' \
+                    "$_gp_declared" "$_gp_verified" "$_gp_failed"
+                [[ ${#_gp_skips[@]} -gt 0 ]] && printf -- '- not verified: %s\n' "${_gp_skips[*]}"
+            fi
         } | atomic_write "$feedback_path"
         _dg_emit "design_gate.fail" "plugin=design-gate" "violations=${#violations[@]}"
     else

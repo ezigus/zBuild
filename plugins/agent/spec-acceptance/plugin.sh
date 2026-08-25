@@ -19,6 +19,13 @@
 # (verdict=pass, reason=precondition_unmet) so it is safe to compose into repos
 # that do not use the SPEC methodology. No model call.
 
+# Size (CLAUDE.md "under 500 lines unless there is a strong reason"): over, and
+# left that way. The file is one contract end to end — SPEC failure vocabulary →
+# disposition → reason → route_target — and ADR-021 puts that mapping HERE
+# precisely so the cycle engine stays generic and knows none of this gate's
+# vocabulary. Splitting it would scatter one mapping across two files for a line
+# count, which is how the engine learned a plugin's vocabulary in the first place.
+
 [[ -n "${_ZBUILD_ACCEPTANCE_GATE_LOADED:-}" ]] && return 0
 _ZBUILD_ACCEPTANCE_GATE_LOADED=1
 
@@ -466,6 +473,26 @@ acceptance_gate_run() {
     for f in "${failures[@]:-}"; do
         [[ "$f" == wiring_not_on_path:* ]] && route_target="design" && break
     done
+    # #1777: guard_regressed is design-rooted by construction. Build cannot fix a
+    # SPEC tagged [guard] whose assertion asserts a change — the correction is
+    # the tag (or the assertion), and both live in the design. Without a
+    # route_target the failure landed in the gate-aggregator's residual[]
+    # partition and was written to the BUILD-facing gate-feedback.md, so on #1809
+    # the run rewound to design carrying a design-feedback.md that named only
+    # shape-floor and never mentioned the offending SPEC. Design re-authored
+    # nothing, build re-ran, and the same guard failed again.
+    #
+    # Disposition stays recoverable: terminal would halt the cycle before the
+    # aggregator reads route_target and emits route_design (same rationale as
+    # #1686/#1711 above).
+    if [[ -z "$route_target" ]]; then
+        for f in "${failures[@]:-}"; do
+            if [[ "$f" == guard_regressed:* ]]; then
+                route_target="design"
+                break
+            fi
+        done
+    fi
     # #1711: inert_wiring on iter≥2 escalates to route_target=design. First
     # build attempt (iter=1) is preserved as a real try; a still-inert target
     # on iter≥2 is unreachable by build and must be corrected by design.

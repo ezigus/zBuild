@@ -22,6 +22,15 @@
 # assertion per file) for precise attribution; a file mixing a load-bearing and a
 # tautological [change] SPEC is judged load-bearing.
 #
+# Size (CLAUDE.md "under 500 lines unless there is a strong reason"): this file
+# is over, and stays over deliberately. The guard helpers below are shared by the
+# acceptance gate and the design-gate pre-check (#1777); splitting them into a
+# sibling under scripts/lib would add that file to _runner_contract_lib_closure —
+# runner.sh derives the hot-reloaded contract-reader set by following
+# same-directory `source` lines — which widens ADR-057 gate 2 and changes which
+# future issues must be built by hand. That is a real architectural cost for a
+# cosmetic gain.
+#
 # Source-only; no `set -e` at top level (would mutate caller options).
 
 [[ -n "${_ACCEPTANCE_NEGCTL_LOADED:-}" ]] && return 0
@@ -166,6 +175,89 @@ _negctl_emit_whole_run_skip() {
     return 0
 }
 
+# _negctl_guard_resolve_tfs <design_md> <repo_root> <spec_id> [<pool>...]
+# Echoes the TESTFILEs a [guard] SPEC is measured against, one per line, keeping
+# only those present on disk under <repo_root>. Per-SPEC binding wins (#1480, no
+# sibling-riding); with no binding, fall back to scanning the declared <pool> for
+# the [spec_id] tag.
+#
+# #1777: extracted so the design-gate pre-check and this file's own guard arm
+# resolve the SAME set. Two copies of "which files does this guard own" is how
+# the pre-check and the gate would come to disagree about the same design.
+_negctl_guard_resolve_tfs() {
+    local design_md="$1" repo_root="$2" spec_id="$3"; shift 3
+    local _tf
+    if acceptance_spec_has_binding "$design_md" "$spec_id"; then
+        while IFS= read -r _tf; do
+            [[ -n "$_tf" && -f "$repo_root/$_tf" ]] && printf '%s\n' "$_tf"
+        done < <(acceptance_list_testfiles_for_spec "$design_md" "$spec_id")
+    else
+        for _tf in "$@"; do
+            [[ -z "$_tf" ]] && continue
+            grep -qF "[$spec_id]" "$repo_root/$_tf" 2>/dev/null || continue
+            printf '%s\n' "$_tf"
+        done
+    fi
+    return 0
+}
+
+# _negctl_guard_verdict <wt_dir> <spec_id> <logfile> <testfile>...
+# Runs a [guard] SPEC's TESTFILEs inside the baseline worktree and echoes ONE of:
+#   held       — every tagged assertion holds at the merge-base (a real guard)
+#   regressed  — the guard's own assertion FAILS there, so it is not an invariant
+#   timeout    — a run was killed; pass/fail unknown (infrastructure)
+#   harness    — unparseable at baseline, or the runner could not execute it
+# <logfile> may be empty to discard the per-TESTFILE capture.
+#
+# #1777: extracted verbatim from acceptance_negctl_check's guard arm so the
+# design-gate can apply the identical rule one stage earlier. The #1737 ✓/✗
+# discrimination lives here and therefore cannot drift between the two callers.
+_negctl_guard_verdict() {
+    local wt_dir="$1" spec_id="$2" logfile="$3"; shift 3
+    local _g_tf _g_rc _g_capfile _g_lv
+    for _g_tf in "$@"; do
+        # A baseline run that never reached an assertion (unparseable at the
+        # merge-base, or a runner that could not execute it) proves nothing
+        # either way — warn, never block. Distinguishing this from a real
+        # assertion failure is what keeps a guard whose test depends on code
+        # this change introduces from being unlandable.
+        if ! _negctl_baseline_parses "$wt_dir/$_g_tf"; then printf 'harness'; return 0; fi
+        _g_rc=0
+        # #1737: capture PER TESTFILE, never into the shared per-SPEC log.
+        # $logfile accumulates every TESTFILE bound to this SPEC, so scanning it
+        # would let file A's passing ✓ clear file B's failure.
+        _g_capfile="$(mktemp "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zb-negctl-guard.XXXXXX")" || _g_capfile=""
+        _negctl_run "$wt_dir/$_g_tf" "$wt_dir" "$_g_capfile" || _g_rc=$?
+        # Fold the capture into the per-SPEC diagnostic log, preserving the
+        # pre-#1737 artifact shape operators read.
+        if [[ -n "$logfile" ]]; then
+            printf '### %s baseline %s\n' "$spec_id" "$_g_tf" >> "$logfile"
+            [[ -n "$_g_capfile" ]] && cat "$_g_capfile" >> "$logfile" 2>/dev/null
+        fi
+        if _negctl_is_timeout_rc "$_g_rc"; then
+            [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
+            printf 'timeout'; return 0
+        fi
+        if _negctl_is_harness_rc "$_g_rc"; then
+            [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
+            printf 'harness'; return 0
+        fi
+        # lv=1 (a ✓-marked [spec_id] line, no ✗) is the ONLY outcome that clears
+        # a non-zero file rc: a sibling [change] assertion reddened the file
+        # while the guard's own assertion held. Everything else — ✗ found,
+        # nothing marked, custom runner — keeps the file-rc verdict.
+        _g_lv=1
+        if [[ "$_g_rc" -ne 0 ]]; then
+            _negctl_guard_log_check "$_g_capfile" "$spec_id" && _g_lv=0 || _g_lv=$?
+        fi
+        [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
+        if [[ "$_g_rc" -ne 0 && "$_g_lv" -ne 1 ]]; then printf 'regressed'; return 0; fi
+    done
+    printf 'held'
+    return 0
+}
+
+
 # acceptance_negctl_check <design_md> <repo_root>
 # Prints one verdict line per SPEC-n:
 #   NEGCTL PASS <spec_id>      — ≥1 tagged testfile fails at baseline, passes at HEAD
@@ -264,17 +356,10 @@ acceptance_negctl_check() {
             fi
             local -a _g_tfs=()
             local _g_tf
-            if acceptance_spec_has_binding "$design_md" "$spec_id"; then
-                while IFS= read -r _g_tf; do
-                    [[ -n "$_g_tf" && -f "$repo_root/$_g_tf" ]] && _g_tfs+=("$_g_tf")
-                done < <(acceptance_list_testfiles_for_spec "$design_md" "$spec_id")
-            else
-                for _g_tf in "${testfiles[@]:-}"; do
-                    [[ -z "$_g_tf" ]] && continue
-                    grep -qF "[$spec_id]" "$repo_root/$_g_tf" 2>/dev/null || continue
-                    _g_tfs+=("$_g_tf")
-                done
-            fi
+            while IFS= read -r _g_tf; do
+                [[ -n "$_g_tf" ]] && _g_tfs+=("$_g_tf")
+            done < <(_negctl_guard_resolve_tfs "$design_md" "$repo_root" "$spec_id" \
+                        ${testfiles[@]+"${testfiles[@]}"})
             # #1255 exempts [guard] SPECs from the design-gate's tag-coverage
             # rule, so an untagged guard is LEGAL input here. Failing it would
             # deadlock the pipeline: design-gate admits the design, this gate
@@ -283,63 +368,18 @@ acceptance_negctl_check() {
             if [[ ${#_g_tfs[@]} -eq 0 ]]; then
                 printf 'NEGCTL SKIP %s guard_untested\n' "$spec_id"; continue
             fi
-            local _g_regressed=0 _g_timeout=0 _g_harness=0
-            for _g_tf in "${_g_tfs[@]}"; do
-                # A baseline run that never reached an assertion (unparseable at
-                # the merge-base, or a runner that could not execute it) proves
-                # nothing either way — warn, never block. Distinguishing this
-                # from a real assertion failure is what keeps a guard whose test
-                # depends on code this change introduces from being unlandable.
-                if ! _negctl_baseline_parses "$wt_dir/$_g_tf"; then
-                    _g_harness=1; break
-                fi
-                local _g_rc=0
-                # #1737: capture PER TESTFILE, never into the shared per-SPEC log.
-                # $_g_logfile accumulates every TESTFILE bound to this SPEC, so
-                # scanning it would let file A's passing ✓ clear file B's failure.
-                # The scratch is also what makes the artifact-dir-set and
-                # artifact-dir-unset paths identical — the production path (the
-                # plugin always exports ZBUILD_NEGCTL_ARTIFACT_DIR) and the path
-                # the unit tests take now run the same code.
-                local _g_capfile
-                _g_capfile="$(mktemp "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zb-negctl-guard.XXXXXX")" || _g_capfile=""
-                _negctl_run "$wt_dir/$_g_tf" "$wt_dir" "$_g_capfile" || _g_rc=$?
-                # Fold the capture into the per-SPEC diagnostic log, preserving
-                # the pre-#1737 artifact shape operators read.
-                if [[ -n "$_g_logfile" ]]; then
-                    printf '### %s baseline %s\n' "$spec_id" "$_g_tf" >> "$_g_logfile"
-                    [[ -n "$_g_capfile" ]] && cat "$_g_capfile" >> "$_g_logfile" 2>/dev/null
-                fi
-                if _negctl_is_timeout_rc "$_g_rc"; then
-                    [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
-                    _g_timeout=1; break
-                fi
-                if _negctl_is_harness_rc "$_g_rc"; then
-                    [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
-                    _g_harness=1; break
-                fi
-                # lv=1 (a ✓-marked [spec_id] line, no ✗) is the ONLY outcome that
-                # clears a non-zero file rc: a sibling [change] assertion reddened
-                # the file while the guard's own assertion held. Everything else —
-                # ✗ found, nothing marked, custom runner — keeps the file-rc verdict.
-                local _g_lv=1
-                if [[ "$_g_rc" -ne 0 ]]; then
-                    _negctl_guard_log_check "$_g_capfile" "$spec_id" && _g_lv=0 || _g_lv=$?
-                fi
-                [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
-                if [[ "$_g_rc" -ne 0 && "$_g_lv" -ne 1 ]]; then
-                    _g_regressed=1; break
-                fi
-            done
+            local _g_out
+            _g_out="$(_negctl_guard_verdict "$wt_dir" "$spec_id" "$_g_logfile" "${_g_tfs[@]}")"
             _negctl_bound_log "$_g_logfile"
             # SPEC id leads every token, as on the [change] lines: the #1684
             # summary enrichment and the plugin's generic FAIL parser both key
             # off that position, so guard verdicts need no special-casing.
-            if   [[ "$_g_timeout"   -eq 1 ]]; then printf 'NEGCTL ERROR timeout:%s\n' "$spec_id"; rc=1
-            elif [[ "$_g_harness"   -eq 1 ]]; then printf 'NEGCTL ERROR harness:%s\n' "$spec_id"; rc=1
-            elif [[ "$_g_regressed" -eq 1 ]]; then printf 'NEGCTL FAIL %s guard_regressed\n' "$spec_id"; rc=1
-            else                                    printf 'NEGCTL PASS %s guard_spec\n' "$spec_id"
-            fi
+            case "$_g_out" in
+                timeout)   printf 'NEGCTL ERROR timeout:%s\n' "$spec_id"; rc=1 ;;
+                harness)   printf 'NEGCTL ERROR harness:%s\n' "$spec_id"; rc=1 ;;
+                regressed) printf 'NEGCTL FAIL %s guard_regressed\n' "$spec_id"; rc=1 ;;
+                *)         printf 'NEGCTL PASS %s guard_spec\n' "$spec_id" ;;
+            esac
             continue
         fi
         local found_control=0 saw_tautology=0 saw_tagged=0 only_head_fail=0 saw_timeout=0
@@ -408,5 +448,98 @@ acceptance_negctl_check() {
         fi
     done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
 
+    return "$rc"
+}
+
+# acceptance_negctl_guard_precheck <design_md> <repo_root>
+# #1777 — the same [guard] rule as acceptance_negctl_check, applied ONE STAGE
+# EARLIER so a mislabelled SPEC costs a design turn instead of a build cycle.
+#
+# A [guard] SPEC claims an invariant: its assertion must hold at the merge-base
+# by definition. An assertion that FAILS there is not a guard — it is a
+# mislabelled [change], or an assertion inverted relative to its own SPEC text.
+# The acceptance gate already catches this, but only after build has spent its
+# entire iteration budget: #1789 lost 5 iterations and 2h06m, #1809 lost 2 more
+# and was aborted, and both needed the same two-word fix.
+#
+# Prints one line per [guard] SPEC:
+#   GUARD PASS <spec_id>
+#   GUARD FAIL <spec_id> guard_regressed
+#   GUARD SKIP <spec_id> <reason>
+# Returns 0 when nothing FAILed, 1 otherwise.
+#
+# FAIL-OPEN on every infrastructure signal — no baseline, no git, no worktree, a
+# timeout, an unparseable file. This runs in a T0 structural gate that must not
+# become a new way for a correct design to be rejected; the acceptance gate is
+# still the authority, this is only an earlier net (ADR-036).
+#
+# Design-time note: on the FIRST pass of a fresh branch the merge-base IS HEAD,
+# so every guard skips `no_impl_delta` and the gate costs nothing. The check
+# earns its keep on the REWIND — after build has committed, `route_design` sent
+# the run back here, and the same mislabel would otherwise consume another full
+# build cycle before being caught again.
+acceptance_negctl_guard_precheck() {
+    local design_md="${1:-}" repo_root="${2:-}"
+    [[ -z "$design_md" || -z "$repo_root" || ! -f "$design_md" ]] && return 0
+
+    # Roster first: with no [guard] SPEC declared there is nothing to measure,
+    # and no worktree is created.
+    local -a guards=()
+    local spec_id
+    while IFS= read -r spec_id; do
+        [[ -z "$spec_id" ]] && continue
+        acceptance_spec_is_guard "$design_md" "$spec_id" && guards+=("$spec_id")
+    done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
+    [[ ${#guards[@]} -eq 0 ]] && return 0
+
+    local base_sha; base_sha="$(zbuild_resolve_merge_base "$repo_root")"
+    if [[ -z "$base_sha" ]]; then
+        printf 'GUARD SKIP %s no_baseline\n' "${guards[@]}"; return 0
+    fi
+    local head_sha; head_sha="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
+    if [[ -z "$head_sha" || "$base_sha" == "$head_sha" ]]; then
+        printf 'GUARD SKIP %s no_impl_delta\n' "${guards[@]}"; return 0
+    fi
+
+    # The declared pool, for guards that carry no per-SPEC binding.
+    local -a testfiles=()
+    local tf
+    while IFS= read -r tf; do
+        [[ -n "$tf" && -f "$repo_root/$tf" ]] && testfiles+=("$tf")
+    done < <(acceptance_list_testfiles "$design_md" 2>/dev/null || true)
+
+    local wt_dir; wt_dir="$(mktemp -d "${TMPDIR:-/tmp}/zb-guardpre.XXXXXX")"
+    # shellcheck disable=SC2064
+    trap "git -C '$repo_root' worktree remove --force '$wt_dir' >/dev/null 2>&1 || true; rm -rf '$wt_dir' 2>/dev/null || true" RETURN
+    if ! git -C "$repo_root" worktree add --detach "$wt_dir" "$base_sha" >/dev/null 2>&1; then
+        printf 'GUARD SKIP %s worktree_failed\n' "${guards[@]}"; return 0
+    fi
+    # Overlay each declared TESTFILE from HEAD: impl reverted, assertion current.
+    for tf in ${testfiles[@]+"${testfiles[@]}"}; do
+        [[ -z "$tf" ]] && continue
+        mkdir -p "$wt_dir/$(dirname "$tf")"
+        git -C "$repo_root" show "HEAD:$tf" > "$wt_dir/$tf" 2>/dev/null || true
+        chmod +x "$wt_dir/$tf" 2>/dev/null || true
+    done
+
+    local rc=0 out
+    for spec_id in "${guards[@]}"; do
+        local -a _tfs=()
+        while IFS= read -r tf; do
+            [[ -n "$tf" ]] && _tfs+=("$tf")
+        done < <(_negctl_guard_resolve_tfs "$design_md" "$repo_root" "$spec_id" \
+                    ${testfiles[@]+"${testfiles[@]}"})
+        # #1255: an untagged [guard] is legal input — the design-gate exempts it
+        # from tag-coverage. Nothing tagged → nothing to measure → skip.
+        if [[ ${#_tfs[@]} -eq 0 ]]; then
+            printf 'GUARD SKIP %s guard_untested\n' "$spec_id"; continue
+        fi
+        out="$(_negctl_guard_verdict "$wt_dir" "$spec_id" "" "${_tfs[@]}")"
+        case "$out" in
+            regressed)       printf 'GUARD FAIL %s guard_regressed\n' "$spec_id"; rc=1 ;;
+            timeout|harness) printf 'GUARD SKIP %s %s\n' "$spec_id" "$out" ;;
+            *)               printf 'GUARD PASS %s\n' "$spec_id" ;;
+        esac
+    done
     return "$rc"
 }
