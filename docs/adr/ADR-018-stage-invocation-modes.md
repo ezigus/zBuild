@@ -48,8 +48,11 @@ self-inflicted.
 - **`bypassPermissions` MUST NOT be used** — `claude --help` defines it as *"Bypass all permission
   checks"*, i.e. the blanket bypass under a new name.
 
-The granted roots are derived from `ZBUILD_REPO_ROOT` and `ZBUILD_STAGE_SCRATCH`, never from a
-path literal, so the ADR-059 layout move cannot silently widen or narrow them.
+The granted roots are derived from `ZBUILD_REPO_ROOT`, `ZBUILD_STAGE_SCRATCH`, and
+`ZBUILD_ARTIFACT_DIR`, never from a path literal, so the ADR-059 layout move cannot silently widen
+or narrow them. The third is not an afterthought: it is the one the model is TOLD to write to, and
+omitting it is what #1961 records. The run state dir is deliberately absent — `artifacts/` is the
+model's output surface, `pipeline-state.json` and `events.jsonl` are the engine's ledger.
 
 ---
 
