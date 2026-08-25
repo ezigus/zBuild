@@ -1,0 +1,1 @@
+The integration tests reference `_artifact_persist_restore` and `_artifact_persist_snapshot` but don't pin `persist-result.json`, `data.snapshot`, or the `refs/remotes/origin/` restore path. No library code is changing. The referenced files outside the scope block are not invalidated by this change.
