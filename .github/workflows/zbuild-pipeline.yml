@@ -222,7 +222,14 @@ jobs:
           # the runner's EXIT trap fires. That is what this is for, and the guard
           # on `pushed` is what keeps it EXACTLY ONCE: on a healthy run persist has
           # already pushed and this is a no-op.
-          persist_result="$(find "${ZBUILD_STATE_DIR:-}" -name 'persist-result.json' -print -quit 2>/dev/null || true)"
+          # NOT `find "${ZBUILD_STATE_DIR:-}"`: an empty first argument is a path
+          # error, `2>/dev/null || true` swallows it, the empty result reads as
+          # "the stage never ran", and the backstop then pushes UNCONDITIONALLY —
+          # breaking exactly-once on a healthy run that already pushed.
+          persist_result=""
+          if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR:-}" ]]; then
+            persist_result="$(find "$ZBUILD_STATE_DIR" -name 'persist-result.json' -print -quit 2>/dev/null || true)"
+          fi
           if [[ -z "$persist_result" ]]; then
             echo "::notice::no persist-result.json — run ended before the persist stage; pushing as backstop"
             "$HOME/.local/bin/zbuild" persist --push || true
@@ -260,7 +267,12 @@ jobs:
         # absent file is not itself a failure.
         if: always()
         run: |
-          result_file="$(find "${ZBUILD_STATE_DIR:-}" -name 'persist-result.json' -print -quit 2>/dev/null || true)"
+          # Same empty-path trap as the backstop step; here it would only
+          # misreport, but a diagnostic that lies is worse than none.
+          result_file=""
+          if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR:-}" ]]; then
+            result_file="$(find "$ZBUILD_STATE_DIR" -name 'persist-result.json' -print -quit 2>/dev/null || true)"
+          fi
           if [[ -z "$result_file" ]]; then
             echo "::notice::persist-result.json not found (run ended before the persist stage)"
             exit 0

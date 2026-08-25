@@ -170,6 +170,51 @@ cd "$CLONE"; _artifact_persist_restore 774 "$TEST_TEMP_DIR/r-remote" >/dev/null 
 assert_eq "[SPEC-7] a restore from refs/remotes/origin reports source=remote" \
     "remote" "${_ARTIFACT_PERSIST_LAST_SOURCE:-MISSING}"
 
+# ─── [SPEC-8][guard] a partial plugin load must be LOUD ────────────────────
+# `source … || { error; exit 2; }` only fires when source itself returns
+# non-zero — which it does not when the file exists and reaches EOF despite an
+# inner source failing. persist_run is then undefined, `command not found` is
+# swallowed by `|| true`, and the backstop exits 0 having pushed nothing: a
+# silent no-op in exactly the situation it exists for.
+print_test_section "[SPEC-8][guard] backstop refuses rather than no-opping"
+
+_FAKE="$TEST_TEMP_DIR/fakeroot"
+mkdir -p "$_FAKE/scripts" "$_FAKE/plugins/tool/persist" "$_FAKE/core"
+cp "$REPO_ROOT/scripts/zbuild" "$_FAKE/scripts/zbuild"
+ln -s "$REPO_ROOT/scripts/lib" "$_FAKE/scripts/lib"
+ln -s "$REPO_ROOT/core/state" "$_FAKE/core/state"
+# A plugin that loads cleanly and defines nothing — the partial-load shape.
+printf '#!/usr/bin/env bash\n# defines no persist_run\n' > "$_FAKE/plugins/tool/persist/plugin.sh"
+
+_rc=0
+_out="$( cd "$REPO" && ZBUILD_STATE_DIR="$TEST_TEMP_DIR/s8" ZBUILD_ISSUE_NUMBER=775 \
+    bash "$_FAKE/scripts/zbuild" persist --push 2>&1 )" || _rc=$?
+if [[ "$_rc" -eq 0 ]]; then
+    assert_fail "[SPEC-8] a plugin that defines no persist_run exited 0" \
+        "the backstop silently pushed nothing. output: $(printf '%s' "$_out" | tr '\n' '|' | head -c 160)"
+else
+    assert_pass "[SPEC-8] an unusable persist plugin is refused, not silently skipped"
+fi
+
+# ─── [SPEC-9][guard] the backstop never hands find an empty path ───────────
+# `find "" -name …` is a path error: it exits non-zero, `2>/dev/null || true`
+# swallows it, the result reads as "no persist-result.json", and the backstop
+# then pushes UNCONDITIONALLY — breaking the exactly-once guarantee on a healthy
+# run that already pushed.
+print_test_section "[SPEC-9][guard] no unguarded find on ZBUILD_STATE_DIR"
+
+# Comment lines are stripped first: the fix carries a comment quoting the bad
+# form to explain it, and a guard that its own explanation can trip is a guard
+# that will be deleted the first time someone documents the hazard.
+_bad_find="$(grep -vE '^\s*#' "$REPO_ROOT/.github/workflows/zbuild-pipeline.yml" 2>/dev/null \
+             | grep -n 'find "\${ZBUILD_STATE_DIR:-}"' || true)"
+if [[ -n "$_bad_find" ]]; then
+    assert_fail "[SPEC-9] find can be handed an empty path" \
+        "an empty state dir reads as 'no result' and forces a second push: $(printf '%s' "$_bad_find" | head -2)"
+else
+    assert_pass "[SPEC-9] the state dir is checked before find is called"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

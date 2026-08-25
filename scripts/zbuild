@@ -698,6 +698,16 @@ UPHELP
         # shellcheck source=../plugins/tool/persist/plugin.sh
         source "$_pp_root/plugins/tool/persist/plugin.sh" 2>/dev/null || {
             error "cannot load the persist plugin"; exit 2; }
+        # `source` returning 0 is NOT proof the plugin is usable: a file that
+        # reaches EOF while an inner source failed leaves persist_run undefined,
+        # `command not found` is swallowed by the `|| true` below, and this exits
+        # 0 having pushed nothing — a silent no-op in exactly the situation the
+        # backstop exists for. Assert the function, not the source's rc.
+        declare -F persist_run >/dev/null 2>&1 || {
+            error "the persist plugin loaded but defines no persist_run — refusing to report success"
+            exit 2; }
+        # `|| true` here is deliberate and narrow: it absorbs a FAILED PUSH,
+        # which is advisory. It no longer hides a missing implementation.
         persist_run persist "${ZBUILD_STATE_FILE:-}" || true
         # ALWAYS 0. Persistence is advisory (ADR-050 §4): a run that produced
         # good work and could not reach the network still produced good work.
