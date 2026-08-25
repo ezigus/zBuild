@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "verdict": "fail",
+  "exit_code": 1,
+  "passed": 625,
+  "failed": 5,
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 360/363 passed (5 skipped)\nintegration: 233/234 passed (1 skipped)\ne2e: 8/8 passed (1 skipped)\ngolden: 0/1 passed\n\n─── Mutation test results ──────────────────────────────\n  PASS  atomic-state-mutations.md  (caught: rc=3)\n  PASS  cache.md  (caught: rc=1)\n  PASS  cleanup-worktree-age-guard.md  (caught: rc=2)\n  PASS  cleanup-worktree-dirty-guard.md  (caught: rc=2)\n  PASS  detect-platforms.md  (caught: rc=11)\n  PASS  event-bus-ansi-strip.md  (caught: rc=4)\n  PASS  event-bus.md  (caught: rc=3)\n  INFRA memory.md  (patch failed after retries)\n  PASS  orch.md  (caught: rc=1)\n  PASS  output-destinations.md  (caught: rc=1)\n  PASS  pipeline-contracts.md  (caught: rc=2)\n  PASS  pipeline-dispatch-arg-mutations.md  (caught: rc=4)\n  PASS  pipeline-dispatch-failopen-mutations.md  (caught: rc=7)\n  PASS  pipeline-dispatch-mutations.md  (caught: rc=9)\n  PASS  pipeline-dispatch-prefix-mutations.md  (caught: rc=1)\n  PASS  pipeline-dispatch-selfsource-mutations.md  (caught: rc=1)\n  PASS  pipeline-resolver.md  (caught: rc=1)\n  PASS  rc-semantics.md  (caught: rc=1)\n  PASS  registry-role-resolution.md  (caught: rc=1)\n  PASS  registry-validate-manifest-mutations.md  (caught: rc=1)\n  PASS  resume-recommendation-mutations.md  (caught: rc=1)\n  PASS  router-route-mutations.md  (caught: rc=30)\n  PASS  runner-fail-closed-mutations.md  (caught: rc=1)\n  PASS  scope-redaction-mutations.md  (caught: rc=3)\nmutation-infra: 1 non-fatal (worktree/patch contention; excluded from score — #1184)\nmutation: 23/23 passed\nlint: 1/1 passed\nunit: FAIL /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/test/zbuild-test-stage.cm72sZ/tests/unit/event-schema-emitted-coverage-test.sh\n\n  event-schema emitted-⊆-composed known types (all plugins + core)\n\n  ✗ emitted type 'router.permissions.scratch_fallback' is in the composed known set\n    not in config/event-schema.json nor any manifest's provides.events\n  ✓ [SPEC-1717-1] every plugin-emitted event is declared in that plugin's own manifest\n  ✓ [SPEC-1717-2] config/event-schema.json carries no plugin-owned namespace\n  ✓ [SPEC-1717-3] acceptance.gate.wiring_not_on_path is declared by spec-acceptance itself\n  ✓ [SPEC-5] redaction.marker_neutralized is registered in event-schema.json known_types\n\n\n  1 of 5 tests failed\n\n  ✗ emitted type 'router.permissions.scratch_fallback' is in the composed known set\n\nunit: FAIL /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/test/zbuild-test-stage.cm72sZ/tests/unit/route-back-budget-config-test.sh\n\n  route_back budget default 2 + config override (#1217)\n\n  ✓ S4: default budget (unset) → 1 route_back (=2 total passes)\n  ✓ S4: ZBUILD_ROUTE_BACK_BUDGET=1 → 0 route_backs\n  ✓ S4: ZBUILD_ROUTE_BACK_BUDGET=3 → 2 route_backs\n  ✓ S4: budget=5 + per-edge max=1 → edge cap wins (1 route_back)\n  ✓ S4: budget=2 + per-edge max=5 → global ceiling wins (1 route_back)\n  ✗ S4: ZBUILD_ROUTE_BACK_BUDGET=0 clamps to 1 (warn denom '1', not '0')\n    expected: 1, got: \n\n\n  1 of 6 tests failed\n\n  ✗ S4: ZBUILD_ROUTE_BACK_BUDGET=0 clamps to 1 (warn denom '1', not '0')\n\nunit: FAIL /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/test/zbuild-test-stage.cm72sZ/tests/unit/runner-cycle-rc-action-mapping-test.sh\n\n  runner cycle rc → (action, status) mapping (#527)\n\n  ✓ rc=0 → pipeline_status=complete\n  ✓ rc=0 → intake dispatched (stage_statuses.intake=complete) [#842]\n  ✓ rc=1 → pipeline_status=failed\n  ✓ rc=1 → intake dispatched (stage_statuses.intake=complete) [#842]\n  ✓ rc=2 → pipeline_status=failed\n  ✓ rc=2 → intake dispatched (stage_statuses.intake=complete) [#842]\n  ✓ rc=3 → pipeline_status=failed\n  ✓ rc=3 → intake dispatched (stage_statuses.intake=complete) [#842]\n  ✓ rc=4 → pipeline_status=interrupted\n  ✓ rc=5 → pipeline_status=interrupted\n  ✓ rc=8 → pipeline_status=failed\n  ✓ rc=130 → pipeline_status=interrupted\n  ✓ rc=0 → cycle.unconverged NOT emitted\n  ✓ rc=1 → cycle.unconverged emitted once\n  ✓ rc=2 → cycle.unconverged emitted once\n  ✓ rc=3 → cycle.unconverged emitted once\n  ✓ rc=4 → cycle.unconverged NOT emitted\n  ✓ rc=5 → cycle.unconverged NOT emitted\n  ✓ rc=8 → cycle.unconverged NOT emitted\n  ✓ rc=130 → cycle.unconverged NOT emitted\n  ✗ [SPEC-3] rc=8 (blocking_member_failure) → state-file status=failed\n    expected: failed, got: null\n\n\n  1 of 21 tests failed\n\n  ✗ [SPEC-3] rc=8 (blocking_member_failure) → state-file status=failed\n\nintegration: FAIL /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/test/zbuild-test-stage.cm72sZ/tests/integration/route-tautology-to-design-test.sh\n\n  route_back plumbing → design_verify_cycle (retained/dormant; #1219, #1583)\n\n  ✗ S1: impact leaf dispatched TWICE (initial + one replay after rewind)\n    expected: 2, got: 0\n  ✗ S1: cycle.route_back emitted exactly once\n    expected: 1, got: 0\n  ✗ S1: pipeline completes after the bounded rewind\n    expected: complete, got: null\n  ✗ S2: cycle.route_back emitted exactly once (budget=2 → one jump, no ping-pong)\n    expected: 1, got: 0\n  ✗ S2: impact dispatched TWICE then budget spent (no third design pass)\n    expected: 2, got: 0\n  ✗ S2: budget spent → fallback rc=8 → status=failed (clean hard-fail)\n    expected: failed, got: null\n\n\n  6 of 6 tests failed\n\n  ✗ S1: impact leaf dispatched TWICE (initial + one replay after rewind)\n  ✗ S1: cycle.route_back emitted exactly once\n  ✗ S1: pipeline completes after the bounded rewind\n  ✗ S2: cycle.route_back emitted exactly once (budget=2 → one jump, no ping-pong)\n  ✗ S2: impact dispatched TWICE then budget spent (no third design pass)\n  ✗ S2: budget spent → fallback rc=8 → status=failed (clean hard-fail)\n\ngolden: FAIL /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/test/zbuild-test-stage.cm72sZ/tests/golden/golden-contracts-test.sh\n\n  golden contracts — assert_golden harness (E.1 seed set)\n\n  ✓ G1: redaction.applied event shape matches golden\n  ✓ G2: init_state JSON shape matches golden\n  ✓ G3: CLI dry-run output matches golden\n  ✓ G4: canonical plugin lifecycle event types match golden\n  ✓ [SPEC-6] plugin.init/finalize complete events absent from event schema\n  ✓ [SPEC-7] plugin lifecycle golden has exactly 2 event types (run + cleanup)\nmock-response\n  [golden] DIFF for router-success-event-sequence:\n2a3\n> router.permissions.scratch_fallback\n  ✗ G5: router success event sequence\n    assert_golden returned 1\n  ✓ G5b: model.route event data keys match golden\n\n\n  1 of 8 tests failed\n\n  ✗ G5: router success event sequence\n\n\ntotal: 625/630 passed (7 skipped)",
+  "diff_applied": false,
+  "test_cmd": "npm test",
+  "run_mode": "full",
+  "timing": {
+    "tiers": {
+      "golden": 4707,
+      "lint": 99600,
+      "e2e": 218108,
+      "unit": 532526,
+      "integration": 1591777
+    },
+    "slowest_files": [
+      {
+        "file": "/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/test/zbuild-test-stage.cm72sZ/tests/unit/runner-cycle-rc-action-mapping-test.sh",
+        "ms": 184851
+      },
+      {
+        "file": "/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/test/zbuild-test-stage.cm72sZ/tests/unit/runner-render-cycle-divider-test.sh",
+        "ms": 150824
+      },
+      {
+        "file": "/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/test/zbuild-test-stage.cm72sZ/tests/unit/template-resolvability-preflight-test.sh",
+        "ms": 146892
+      },
+      {
+        "file": "/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/test/zbuild-test-stage.cm72sZ/tests/e2e/parity-local-vs-ci-test.sh",
+        "ms": 113179
+      },
+      {
+        "file": "/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/test/zbuild-test-stage.cm72sZ/tests/unit/route-back-budget-config-test.sh",
+        "ms": 103374
+      },
+      {
+        "file": "/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/test/zbuild-test-stage.cm72sZ/tests/integration/runner-release-exit-paths-test.sh",
+        "ms": 88191
+      },
+      {
+        "file": "/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/test/zbuild-test-stage.cm72sZ/tests/integration/engine-isolation-test.sh",
+        "ms": 83427
+      },
+      {
+        "file": "/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/test/zbuild-test-stage.cm72sZ/tests/integration/build-test-cycle-fallthrough-to-review-test.sh",
+        "ms": 83095
+      },
+      {
+        "file": "/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/test/zbuild-test-stage.cm72sZ/tests/integration/core-pipeline-runner-test.sh",
+        "ms": 79328
+      },
+      {
+        "file": "/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/test/zbuild-test-stage.cm72sZ/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+        "ms": 75938
+      }
+    ]
+  },
+  "tree_sha": "236825e48fe8d3d15c13efbed239d56b3e638918"
+}
