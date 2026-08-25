@@ -77,6 +77,15 @@ jobs:
             3. **Security** — path traversal, command injection, unredacted secrets reaching LLM calls
             4. **CLAUDE.md compliance** — files over 500 lines, docs committed to root, secrets hardcoded
             5. **Test coverage** — new code paths without corresponding test assertions
+            6. **Test-first ordering** — CLAUDE.md requires the test be written and seen to FAIL
+               before the implementation. You cannot see authoring order from a squashed diff, so
+               check what you CAN: does the PR body state the red step (which assertion, how it
+               failed before the fix)? And does each new assertion describe a REQUIREMENT rather
+               than restate the implementation? An assertion that reads like a paraphrase of the
+               code it checks — "the list is exactly X and Y", "the function returns what it
+               returns" — is the signature of a test written afterwards, and it stays green when
+               the implementation is itself the defect. Flag those two things; do not guess at
+               ordering beyond them.
 
             Post specific issues as inline comments. Use a top-level comment only for a summary.
             If no significant issues are found, say so clearly — do not invent findings.

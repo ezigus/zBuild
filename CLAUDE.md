@@ -56,6 +56,19 @@ npm run test:unit  # unit tests only
 npm run lint       # shellcheck + lint
 ```
 
+- **Write the test first.** Before editing any file under `core/`, `plugins/`, or `scripts/`,
+  write (or amend) the test that expresses the required behavior, run it, and confirm it FAILS —
+  and fails for the reason you intend, not on a typo or a missing fixture. Only then write the
+  implementation. Then re-run and watch it go green.
+- **A test written after the implementation asserts what the code does, not what was required.**
+  This is not a style preference — it is the defect class that shipped #1919: its test asserted
+  the grant was "exactly the repo root + stage scratch", a faithful description of the code, which
+  therefore stayed green while every design stage died on a refused write (#1961). Order the work
+  so the test cannot be shaped by the implementation.
+- **Reverting the implementation afterwards to check the test goes red is NOT test-first.** It
+  produces the same two files and a weaker test, because the assertion was still authored while
+  looking at the code. Use it to verify an inherited test, never as a substitute for the ordering.
+- **State the red step in the PR body**: the assertion, and how it failed before the fix.
 - ALWAYS run tests after making code changes.
 - CI enforces a **29% statement coverage floor** on `core/` + `scripts/lib/` (issue #372, raised in Wave 4). Target is 70% — will be raised incrementally as test depth improves. If Coverage CI fails, run `bash scripts/check-coverage.sh` locally to see per-file coverage. The denominator counts every in-scope `.sh` file on disk, including ones no test ever sources (#1761) — a new untested file lowers the number rather than being invisible to it.
 - ALWAYS verify the relevant test passes before opening a PR.
