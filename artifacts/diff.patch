@@ -43,11 +43,114 @@ index 09261467..79a20d60 100644
        - name: Collect claude session transcripts (diagnostics)
          # #1728: a SIGTERM'd stage emits zero bytes into stage-io, so the
          # incrementally-written session JSONL is the only evidence of what the
+diff --git a/core/state/artifact-persist.sh b/core/state/artifact-persist.sh
+index a3359ab3..0cdc9429 100644
+--- a/core/state/artifact-persist.sh
++++ b/core/state/artifact-persist.sh
+@@ -38,9 +38,13 @@ fi
+ #                                  resolved repo_root/git-dir (the two values a
+ #                                  silent failure used to hide)
+ #   _ARTIFACT_PERSIST_LAST_SKIPPED count of files skipped but not fatal
++#   _ARTIFACT_PERSIST_LAST_SOURCE  restore: "local" (refs/heads) or "remote"
++#                                  (refs/remotes/origin); empty for non-restore
++#                                  operations
+ _ARTIFACT_PERSIST_LAST_STATUS=""
+ _ARTIFACT_PERSIST_LAST_REASON=""
+ _ARTIFACT_PERSIST_LAST_SKIPPED=0
++_ARTIFACT_PERSIST_LAST_SOURCE=""
+ 
+ # Reset the outcome channel. Called at the top of every public entry point so a
+ # caller can never read a stale status from a previous invocation.
+@@ -48,6 +52,7 @@ _artifact_persist_reset_status() {
+     _ARTIFACT_PERSIST_LAST_STATUS=""
+     _ARTIFACT_PERSIST_LAST_REASON=""
+     _ARTIFACT_PERSIST_LAST_SKIPPED=0
++    _ARTIFACT_PERSIST_LAST_SOURCE=""
+ }
+ 
+ # ─── _artifact_persist_has_identity <issue> [goal] ───────────────────────────
+@@ -362,8 +367,10 @@ _artifact_persist_restore() {
+     local ref=""
+     if GIT_DIR="$_gd" git rev-parse -q --verify "refs/heads/$branch" >/dev/null 2>&1; then
+         ref="refs/heads/$branch"
++        _ARTIFACT_PERSIST_LAST_SOURCE="local"
+     elif GIT_DIR="$_gd" git rev-parse -q --verify "refs/remotes/origin/$branch" >/dev/null 2>&1; then
+         ref="refs/remotes/origin/$branch"
++        _ARTIFACT_PERSIST_LAST_SOURCE="remote"
+     else
+         # A first-ever run for this issue. Genuinely nothing to restore — the one
+         # early return here that is NOT a failure.
+diff --git a/plugins/tool/persist/plugin.sh b/plugins/tool/persist/plugin.sh
+index 11592886..11ef09b0 100644
+--- a/plugins/tool/persist/plugin.sh
++++ b/plugins/tool/persist/plugin.sh
+@@ -83,17 +83,18 @@ persist_run() {
+ 
+     emit_event "persist.start" "stage=$_stage_id" "issue=$_issue" 2>/dev/null || true
+ 
+-    local _verdict="complete" _reason="" _pushed="false" _snapshot="skipped"
++    local _verdict="complete" _reason="" _pushed="false" _snapshot="skipped" _identity_present="false"
+ 
+     if ! _artifact_persist_has_identity "$_issue"; then
+         # Neither an issue nor a goal: no identity, so nothing to persist under.
+         # A --goal run DOES have one (#1931) and no longer lands here.
+         _reason="no identity — neither an issue nor a goal"
+-        _persist_write_result "$_artifacts_dir" "complete" "$_reason" "$_snapshot" "$_pushed"
++        _persist_write_result "$_artifacts_dir" "complete" "$_reason" "$_snapshot" "$_pushed" "$_identity_present"
+         emit_event "persist.complete" "stage=$_stage_id" "issue=$_issue" \
+             "pushed=false" "reason=no_issue" 2>/dev/null || true
+         return 0
+     fi
++    _identity_present="true"
+ 
+     # ── 1. Final snapshot ────────────────────────────────────────────────────
+     # The per-stage snapshots (ADR-050 §4) have already run at each boundary.
+@@ -120,7 +121,7 @@ persist_run() {
+             "finding=${_finding}" 2>/dev/null || true
+         warn "persist: refusing to push — artifact looks like it carries a credential (${_finding})"
+         _persist_write_result "$_artifacts_dir" "degraded" \
+-            "push refused: possible credential in ${_finding}" "$_snapshot" "false"
++            "push refused: possible credential in ${_finding}" "$_snapshot" "false" "$_identity_present"
+         emit_event "persist.complete" "stage=$_stage_id" "issue=$_issue" \
+             "pushed=false" "reason=secret_refused" 2>/dev/null || true
+         return 0
+@@ -148,7 +149,7 @@ persist_run() {
+     fi
+ 
+     [[ -n "$_reason" ]] || _reason="snapshotted and pushed zbuild/state/issue-$_issue"
+-    _persist_write_result "$_artifacts_dir" "$_verdict" "$_reason" "$_snapshot" "$_pushed"
++    _persist_write_result "$_artifacts_dir" "$_verdict" "$_reason" "$_snapshot" "$_pushed" "$_identity_present"
+     emit_event "persist.complete" "stage=$_stage_id" "issue=$_issue" \
+         "pushed=$_pushed" "snapshot=$_snapshot" 2>/dev/null || true
+     # Always 0: persistence is advisory. It must never change a run's verdict —
+@@ -157,18 +158,19 @@ persist_run() {
+     return 0
+ }
+ 
+-# ─── _persist_write_result <artifacts_dir> <verdict> <reason> <snap> <pushed> ─
++# ─── _persist_write_result <dir> <verdict> <reason> <snap> <pushed> <id_present> ─
+ # Guarded like teardown's: an unguarded pipe would abort persist_run on a failed
+ # write, before persist.complete and before the `return 0` ADR-054 §4 requires.
+ _persist_write_result() {
+-    local _dir="$1" _verdict="$2" _reason="$3" _snap="$4" _pushed="$5"
++    local _dir="$1" _verdict="$2" _reason="$3" _snap="$4" _pushed="$5" _ip="${6:-false}"
+     mkdir -p "$_dir" 2>/dev/null || true
+     local _file="$_dir/persist-result.json"
+     if ! jq -n \
+             --arg v "$_verdict" --arg r "$_reason" \
+             --arg s "$_snap" --argjson p "$_pushed" \
++            --arg ip "$_ip" \
+             '{result_contract: 2, verdict: $v, disposition: "complete",
+-              reason: $r, data: {snapshot: $s, pushed: $p}}' \
++              reason: $r, data: {snapshot: $s, pushed: $p, identity_present: ($ip == "true")}}' \
+             | atomic_write "$_file"; then
+         emit_event "persist.result.write_failed" "file=$_file" 2>/dev/null || true
+     fi
 diff --git a/tests/unit/artifact-persist-test.sh b/tests/unit/artifact-persist-test.sh
-index 192b25e7..3df35bbd 100755
+index 192b25e7..22cff659 100755
 --- a/tests/unit/artifact-persist-test.sh
 +++ b/tests/unit/artifact-persist-test.sh
-@@ -217,5 +217,62 @@ else
+@@ -217,5 +217,67 @@ else
      assert_pass "[T15] a failure still carries a reason"
  fi
  
@@ -107,6 +210,11 @@ index 192b25e7..3df35bbd 100755
 +    "restored" "$_ARTIFACT_PERSIST_LAST_STATUS"
 +assert_file_exists "[SPEC-1] CI cold-start restore extracts the artifact" \
 +    "$_rd16/artifacts/t16.json"
++# _ARTIFACT_PERSIST_LAST_SOURCE records which ref path was used; "remote" means
++# refs/remotes/origin/<branch> — this is the new field proving the CI cold-start
++# path was taken, not the local-branch fast-path.
++assert_eq "[SPEC-1] CI cold-start restore records source=remote (not local)" \
++    "remote" "$_ARTIFACT_PERSIST_LAST_SOURCE"
 +
  cleanup_test_env
  print_test_results
@@ -137,35 +245,98 @@ index 4da9890c..50a45878 100755
  print_test_results
  exit $((FAIL > 0))
 diff --git a/tests/unit/persist-stage-test.sh b/tests/unit/persist-stage-test.sh
-index db25e4c9..38d367e3 100755
+index db25e4c9..c994f57a 100755
 --- a/tests/unit/persist-stage-test.sh
 +++ b/tests/unit/persist-stage-test.sh
-@@ -165,6 +165,43 @@ assert_eq "[SPEC-5] and records degraded, not complete" "degraded" \
+@@ -71,9 +71,9 @@ assert_exit_code "[SPEC-1] the push succeeds" "0" "$_rc"
+ assert_eq "[SPEC-1] the state branch is now ON ORIGIN" "1" \
+     "$(_remote_has "$_P1" zbuild/state/issue-4242)"
+ 
+-# ─── [SPEC-2][guard] a push that cannot work fails LOUDLY, never fatally ────
++# ─── [push-guard] a push that cannot work fails LOUDLY, never fatally ────────
+ # A silent push failure is how #1921 went unnoticed for the life of the feature.
+-print_test_section "[SPEC-2][guard] an unreachable remote sets a reportable status"
++print_test_section "[push-guard] an unreachable remote sets a reportable status"
+ 
+ _P2="$(_mk_repo p2)"
+ _P2_STATE="$TEST_TEMP_DIR/p2-state"
+@@ -83,21 +83,21 @@ _seed_artifacts "$_P2_STATE"
+ 
+ _rc=0
+ ( cd "$_P2" && _artifact_persist_push 4243 ) >/dev/null 2>&1 || _rc=$?
+-assert_exit_code "[SPEC-2] an unreachable remote returns non-zero" "1" "$_rc"
++assert_exit_code "[push-guard] an unreachable remote returns non-zero" "1" "$_rc"
+ _p2_reason="$( cd "$_P2" && _artifact_persist_push 4243 >/dev/null 2>&1; printf '%s' "${_ARTIFACT_PERSIST_LAST_REASON:-}" )"
+-assert_contains "[SPEC-2] and names the failing operation" "$_p2_reason" "git push"
++assert_contains "[push-guard] and names the failing operation" "$_p2_reason" "git push"
+ 
+ # No branch, no remote: both are 'nothing to do', NOT failures — a run that
+ # snapshotted nothing has not failed to publish anything.
+ _P3="$(_mk_repo p3)"
+ _rc=0
+ ( cd "$_P3" && _artifact_persist_push 9999 ) >/dev/null 2>&1 || _rc=$?
+-assert_exit_code "[SPEC-2] no local branch to push is not a failure" "0" "$_rc"
++assert_exit_code "[push-guard] no local branch to push is not a failure" "0" "$_rc"
+ 
+-# ─── [SPEC-3][guard] the secret gate stands in front of the push ────────────
++# ─── [gate-guard] the secret gate stands in front of the push ────────────────
+ # These artifacts are already snapshotted to a LOCAL branch today with no scan.
+ # This stage is what makes them leave the machine, so the gate belongs here.
+-print_test_section "[SPEC-3][guard] an artifact carrying a credential refuses the push"
++print_test_section "[gate-guard] an artifact carrying a credential refuses the push"
+ 
+ # shellcheck source=../../plugins/tool/persist/plugin.sh
+ source "$REPO_ROOT/plugins/tool/persist/plugin.sh"
+@@ -106,16 +106,16 @@ _S_DIR="$TEST_TEMP_DIR/scan/artifacts"
+ mkdir -p "$_S_DIR"
+ printf 'just a plan\n' > "$_S_DIR/plan.json"
+ if _persist_scan_artifacts "$TEST_TEMP_DIR/scan/artifacts" >/dev/null; then
+-    assert_fail "[SPEC-3] a clean artifact area must scan clean" "reported a finding"
++    assert_fail "[gate-guard] a clean artifact area must scan clean" "reported a finding"
+ else
+-    assert_pass "[SPEC-3] a clean artifact area scans clean"
++    assert_pass "[gate-guard] a clean artifact area scans clean"
+ fi
+ 
+ # AKIA + 16 chars — the shared pattern, not a locally invented one.
+ printf 'aws: AKIA%s\n' "ABCDEFGHIJKLMNOP" > "$_S_DIR/leak.txt"
+ _finding="$(_persist_scan_artifacts "$TEST_TEMP_DIR/scan/artifacts" || true)"
+-assert_contains "[SPEC-3] a credential-shaped artifact is found" "$_finding" "aws_access_key_id"
+-assert_contains "[SPEC-3] and the finding names the FILE" "$_finding" "leak.txt"
++assert_contains "[gate-guard] a credential-shaped artifact is found" "$_finding" "aws_access_key_id"
++assert_contains "[gate-guard] and the finding names the FILE" "$_finding" "leak.txt"
+ 
+ # ─── [SPEC-4][guard] the extraction did not change what counts as a secret ──
+ # The patterns were calibrated against this repository in #1755 — the issue's
+@@ -165,6 +165,51 @@ assert_eq "[SPEC-5] and records degraded, not complete" "degraded" \
  assert_eq "[SPEC-5] and records that nothing was pushed" "false" \
      "$(jq -r '.data.pushed' "$ZBUILD_ARTIFACT_DIR/persist-result.json" 2>/dev/null)"
  
-+# ─── [SPEC-6][guard] data.snapshot == 'skipped' for the no-identity path ─────
-+# persist_run initialises _snapshot="skipped" and short-circuits BEFORE the
-+# snapshot call when there is no identity. The result file must carry that
-+# value through _persist_write_result — a future refactor that re-orders the
-+# guard and the snapshot would silently corrupt it.
-+print_test_section "[SPEC-6][guard] data.snapshot=skipped when no identity"
++# ─── [SPEC-2][change] data.identity_present=false for the no-identity path ────
++# persist_run writes identity_present:false when there is no issue/goal identity
++# and short-circuits before taking a snapshot. This field is new — at baseline
++# _persist_write_result did not write it, so any assertion on it fails there.
++print_test_section "[SPEC-2][change] data.identity_present=false when no identity"
 +
 +_s2dir="$TEST_TEMP_DIR/s2"
 +mkdir -p "$_s2dir/artifacts"
 +printf 'clean\n' > "$_s2dir/artifacts/plan.json"
 +( ZBUILD_ISSUE_NUMBER=0 ZBUILD_ARTIFACT_DIR="$_s2dir/artifacts" \
 +  ZBUILD_STATE_DIR="$_s2dir" persist_run persist "" ) >/dev/null 2>&1 || true
-+assert_eq "[SPEC-2] no-identity run writes data.snapshot=skipped in persist-result.json" \
++# Guard: snapshot still shows skipped (existing invariant, no [SPEC-N] tag).
++assert_eq "[data-snapshot-guard] no-identity run writes data.snapshot=skipped" \
 +    "skipped" \
 +    "$(jq -r '.data.snapshot // empty' "$_s2dir/artifacts/persist-result.json" 2>/dev/null)"
++# Change: identity_present is a NEW field — absent at baseline (jq returns "null").
++assert_eq "[SPEC-2] no-identity run writes data.identity_present=false in persist-result.json" \
++    "false" \
++    "$(jq -r '.data.identity_present | tostring' "$_s2dir/artifacts/persist-result.json" 2>/dev/null)"
 +
-+# ─── [SPEC-7][guard] data.snapshot is non-null after a credential-refused push ─
-+# The snapshot runs at step 1 of persist_run, BEFORE the secret gate at step 2.
-+# A push refused by the gate still has a non-null, non-skipped snapshot outcome.
-+# If _persist_write_result were called before the snapshot, or if the snapshot
-+# value were not threaded through correctly, this would surface it.
-+print_test_section "[SPEC-7][guard] data.snapshot non-null after credential-refused push"
++# ─── [SPEC-3][change] data.identity_present=true after a credential-refused push
++# The snapshot runs at step 1 of persist_run for identity runs, BEFORE the secret
++# gate at step 2. A push refused by the gate is still an identity run, so
++# identity_present must be true. This field is new — absent at baseline.
++print_test_section "[SPEC-3][change] data.identity_present=true for identity run"
 +
 +_s3dir="$TEST_TEMP_DIR/s3"
 +mkdir -p "$_s3dir/artifacts"
@@ -173,13 +344,18 @@ index db25e4c9..38d367e3 100755
 +printf 'aws: AKIA%s\n' "ABCDEFGHIJKLMNOP" > "$_s3dir/artifacts/leak.txt"
 +( ZBUILD_ISSUE_NUMBER=4244 ZBUILD_ARTIFACT_DIR="$_s3dir/artifacts" \
 +  ZBUILD_STATE_DIR="$_s3dir" persist_run persist "" ) >/dev/null 2>&1 || true
++# Guard: snapshot field still carries the outcome (existing invariant).
 +_snap3="$(jq -r '.data.snapshot // empty' "$_s3dir/artifacts/persist-result.json" 2>/dev/null)"
 +if [[ -n "$_snap3" && "$_snap3" != "skipped" && "$_snap3" != "null" ]]; then
-+    assert_pass "[SPEC-3] credential-refused persist writes a non-null/non-skipped data.snapshot (got: $_snap3)"
++    assert_pass "[data-snapshot-guard] credential-refused persist writes non-null/non-skipped snapshot (got: $_snap3)"
 +else
-+    assert_fail "[SPEC-3] credential-refused persist must write data.snapshot from the snapshot that ran before the gate" \
++    assert_fail "[data-snapshot-guard] credential-refused persist must write data.snapshot from snapshot before gate" \
 +        "got: [${_snap3:-<empty>}]"
 +fi
++# Change: identity_present is a NEW field — absent at baseline (jq returns "null").
++assert_eq "[SPEC-3] credential-refused persist writes data.identity_present=true in persist-result.json" \
++    "true" \
++    "$(jq -r '.data.identity_present | tostring' "$_s3dir/artifacts/persist-result.json" 2>/dev/null)"
 +
  cleanup_test_env
  print_test_results
