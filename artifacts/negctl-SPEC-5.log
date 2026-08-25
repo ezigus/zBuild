@@ -58,7 +58,7 @@
   [38;2;74;222;128m✓[0m input banner found in stream
   [38;2;74;222;128m✓[0m output banner found in stream
   [38;2;74;222;128m✓[0m input banner line precedes output banner line
-  [38;2;74;222;128m✓[0m wall delta >= 1s proves bracketing window (delta=1s)
+  [38;2;74;222;128m✓[0m wall delta >= 1s proves bracketing window (delta=2s)
 
   [38;2;0;212;255m11. #497 subprocess-boundary integration on fd 3[0m
   [38;2;74;222;128m✓[0m driver subprocess exits 0 (exit 0)
@@ -127,7 +127,7 @@
     [2mexpected: true, got: false[0m
   [38;2;248;113;113m✗[0m [SPEC-7] exit_code absent at top level
     [2mexpected: false, got: true[0m
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.FM6DYl/plugins/tool/test/tests/test-test.sh: line 649: _test_disposition_from_rc: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.GxyELi/plugins/tool/test/tests/test-test.sh: line 649: _test_disposition_from_rc: command not found
 ### SPEC-5 head plugins/tool/test/tests/test-test.sh
 
 [38;2;0;212;255m[1m  plugin: test-stage (tool/test — issue #342)[0m

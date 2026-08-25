@@ -127,7 +127,7 @@
     [2mexpected: true, got: false[0m
   [38;2;248;113;113m✗[0m [SPEC-7] exit_code absent at top level
     [2mexpected: false, got: true[0m
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.FM6DYl/plugins/tool/test/tests/test-test.sh: line 649: _test_disposition_from_rc: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.GxyELi/plugins/tool/test/tests/test-test.sh: line 649: _test_disposition_from_rc: command not found
 ### SPEC-2 head plugins/tool/test/tests/test-test.sh
 
 [38;2;0;212;255m[1m  plugin: test-stage (tool/test — issue #342)[0m
