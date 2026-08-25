@@ -55,7 +55,7 @@
   [38;2;74;222;128m✓[0m [T14] and reports 'restored', not 'saved'
 
   [38;2;0;212;255mT15 an unusable TMPDIR does not corrupt the failure report[0m
-mktemp: mkstemp failed on /nonexistent-dir-for-1878/zbuild-persist-idx.gymBWG: No such file or directory
+mktemp: mkstemp failed on /nonexistent-dir-for-1878/zbuild-persist-idx.Yk6gSX: No such file or directory
   [38;2;74;222;128m✓[0m [T15] status is coherent under an unusable TMPDIR (got: failed, rc=1)
   [38;2;74;222;128m✓[0m [T15] a failure still carries a reason
 
@@ -65,10 +65,14 @@ mktemp: mkstemp failed on /nonexistent-dir-for-1878/zbuild-persist-idx.gymBWG: N
   [38;2;74;222;128m✓[0m [SPEC-1] CI cold-start restore returns 0
   [38;2;74;222;128m✓[0m [SPEC-1] CI cold-start restore reports restored, not empty or failed
   [38;2;74;222;128m✓[0m [SPEC-1] CI cold-start restore extracts the artifact
+  [38;2;248;113;113m✗[0m [SPEC-1] CI cold-start restore records source=remote (not local)
+    [2mexpected: remote, got: [0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 43 tests passed[0m
+  [38;2;248;113;113m[1m1 of 44 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-1] CI cold-start restore records source=remote (not local)
 
 ### SPEC-1 head tests/unit/artifact-persist-test.sh
 
@@ -127,7 +131,7 @@ mktemp: mkstemp failed on /nonexistent-dir-for-1878/zbuild-persist-idx.gymBWG: N
   [38;2;74;222;128m✓[0m [T14] and reports 'restored', not 'saved'
 
   [38;2;0;212;255mT15 an unusable TMPDIR does not corrupt the failure report[0m
-mktemp: mkstemp failed on /nonexistent-dir-for-1878/zbuild-persist-idx.ZwNjUE: No such file or directory
+mktemp: mkstemp failed on /nonexistent-dir-for-1878/zbuild-persist-idx.aaiFPn: No such file or directory
   [38;2;74;222;128m✓[0m [T15] status is coherent under an unusable TMPDIR (got: failed, rc=1)
   [38;2;74;222;128m✓[0m [T15] a failure still carries a reason
 
@@ -137,8 +141,9 @@ mktemp: mkstemp failed on /nonexistent-dir-for-1878/zbuild-persist-idx.ZwNjUE: N
   [38;2;74;222;128m✓[0m [SPEC-1] CI cold-start restore returns 0
   [38;2;74;222;128m✓[0m [SPEC-1] CI cold-start restore reports restored, not empty or failed
   [38;2;74;222;128m✓[0m [SPEC-1] CI cold-start restore extracts the artifact
+  [38;2;74;222;128m✓[0m [SPEC-1] CI cold-start restore records source=remote (not local)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 43 tests passed[0m
+  [38;2;74;222;128m[1mAll 44 tests passed[0m
 

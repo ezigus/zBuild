@@ -10,15 +10,15 @@
   [38;2;74;222;128m✓[0m [SPEC-1] the push succeeds (exit 0)
   [38;2;74;222;128m✓[0m [SPEC-1] the state branch is now ON ORIGIN
 
-  [38;2;0;212;255m[SPEC-2][guard] an unreachable remote sets a reportable status[0m
-  [38;2;74;222;128m✓[0m [SPEC-2] an unreachable remote returns non-zero (exit 1)
-  [38;2;74;222;128m✓[0m [SPEC-2] and names the failing operation
-  [38;2;74;222;128m✓[0m [SPEC-2] no local branch to push is not a failure (exit 0)
+  [38;2;0;212;255m[push-guard] an unreachable remote sets a reportable status[0m
+  [38;2;74;222;128m✓[0m [push-guard] an unreachable remote returns non-zero (exit 1)
+  [38;2;74;222;128m✓[0m [push-guard] and names the failing operation
+  [38;2;74;222;128m✓[0m [push-guard] no local branch to push is not a failure (exit 0)
 
-  [38;2;0;212;255m[SPEC-3][guard] an artifact carrying a credential refuses the push[0m
-  [38;2;74;222;128m✓[0m [SPEC-3] a clean artifact area scans clean
-  [38;2;74;222;128m✓[0m [SPEC-3] a credential-shaped artifact is found
-  [38;2;74;222;128m✓[0m [SPEC-3] and the finding names the FILE
+  [38;2;0;212;255m[gate-guard] an artifact carrying a credential refuses the push[0m
+  [38;2;74;222;128m✓[0m [gate-guard] a clean artifact area scans clean
+  [38;2;74;222;128m✓[0m [gate-guard] a credential-shaped artifact is found
+  [38;2;74;222;128m✓[0m [gate-guard] and the finding names the FILE
 
   [38;2;0;212;255m[SPEC-4][guard] the extracted patterns behave identically[0m
   [38;2;74;222;128m✓[0m [SPEC-4] AWS key id
@@ -33,15 +33,22 @@
   [38;2;74;222;128m✓[0m [SPEC-5] and records degraded, not complete
   [38;2;74;222;128m✓[0m [SPEC-5] and records that nothing was pushed
 
-  [38;2;0;212;255m[SPEC-6][guard] data.snapshot=skipped when no identity[0m
-  [38;2;74;222;128m✓[0m [SPEC-2] no-identity run writes data.snapshot=skipped in persist-result.json
+  [38;2;0;212;255m[SPEC-2][change] data.identity_present=false when no identity[0m
+  [38;2;74;222;128m✓[0m [data-snapshot-guard] no-identity run writes data.snapshot=skipped
+  [38;2;248;113;113m✗[0m [SPEC-2] no-identity run writes data.identity_present=false in persist-result.json
+    [2mexpected: false, got: null[0m
 
-  [38;2;0;212;255m[SPEC-7][guard] data.snapshot non-null after credential-refused push[0m
-  [38;2;74;222;128m✓[0m [SPEC-3] credential-refused persist writes a non-null/non-skipped data.snapshot (got: saved)
+  [38;2;0;212;255m[SPEC-3][change] data.identity_present=true for identity run[0m
+  [38;2;74;222;128m✓[0m [data-snapshot-guard] credential-refused persist writes non-null/non-skipped snapshot (got: saved)
+  [38;2;248;113;113m✗[0m [SPEC-3] credential-refused persist writes data.identity_present=true in persist-result.json
+    [2mexpected: true, got: null[0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 21 tests passed[0m
+  [38;2;248;113;113m[1m2 of 23 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-2] no-identity run writes data.identity_present=false in persist-result.json
+  [38;2;248;113;113m✗[0m [SPEC-3] credential-refused persist writes data.identity_present=true in persist-result.json
 
 ### SPEC-2 head tests/unit/persist-stage-test.sh
 
@@ -55,15 +62,15 @@
   [38;2;74;222;128m✓[0m [SPEC-1] the push succeeds (exit 0)
   [38;2;74;222;128m✓[0m [SPEC-1] the state branch is now ON ORIGIN
 
-  [38;2;0;212;255m[SPEC-2][guard] an unreachable remote sets a reportable status[0m
-  [38;2;74;222;128m✓[0m [SPEC-2] an unreachable remote returns non-zero (exit 1)
-  [38;2;74;222;128m✓[0m [SPEC-2] and names the failing operation
-  [38;2;74;222;128m✓[0m [SPEC-2] no local branch to push is not a failure (exit 0)
+  [38;2;0;212;255m[push-guard] an unreachable remote sets a reportable status[0m
+  [38;2;74;222;128m✓[0m [push-guard] an unreachable remote returns non-zero (exit 1)
+  [38;2;74;222;128m✓[0m [push-guard] and names the failing operation
+  [38;2;74;222;128m✓[0m [push-guard] no local branch to push is not a failure (exit 0)
 
-  [38;2;0;212;255m[SPEC-3][guard] an artifact carrying a credential refuses the push[0m
-  [38;2;74;222;128m✓[0m [SPEC-3] a clean artifact area scans clean
-  [38;2;74;222;128m✓[0m [SPEC-3] a credential-shaped artifact is found
-  [38;2;74;222;128m✓[0m [SPEC-3] and the finding names the FILE
+  [38;2;0;212;255m[gate-guard] an artifact carrying a credential refuses the push[0m
+  [38;2;74;222;128m✓[0m [gate-guard] a clean artifact area scans clean
+  [38;2;74;222;128m✓[0m [gate-guard] a credential-shaped artifact is found
+  [38;2;74;222;128m✓[0m [gate-guard] and the finding names the FILE
 
   [38;2;0;212;255m[SPEC-4][guard] the extracted patterns behave identically[0m
   [38;2;74;222;128m✓[0m [SPEC-4] AWS key id
@@ -78,13 +85,15 @@
   [38;2;74;222;128m✓[0m [SPEC-5] and records degraded, not complete
   [38;2;74;222;128m✓[0m [SPEC-5] and records that nothing was pushed
 
-  [38;2;0;212;255m[SPEC-6][guard] data.snapshot=skipped when no identity[0m
-  [38;2;74;222;128m✓[0m [SPEC-2] no-identity run writes data.snapshot=skipped in persist-result.json
+  [38;2;0;212;255m[SPEC-2][change] data.identity_present=false when no identity[0m
+  [38;2;74;222;128m✓[0m [data-snapshot-guard] no-identity run writes data.snapshot=skipped
+  [38;2;74;222;128m✓[0m [SPEC-2] no-identity run writes data.identity_present=false in persist-result.json
 
-  [38;2;0;212;255m[SPEC-7][guard] data.snapshot non-null after credential-refused push[0m
-  [38;2;74;222;128m✓[0m [SPEC-3] credential-refused persist writes a non-null/non-skipped data.snapshot (got: saved)
+  [38;2;0;212;255m[SPEC-3][change] data.identity_present=true for identity run[0m
+  [38;2;74;222;128m✓[0m [data-snapshot-guard] credential-refused persist writes non-null/non-skipped snapshot (got: saved)
+  [38;2;74;222;128m✓[0m [SPEC-3] credential-refused persist writes data.identity_present=true in persist-result.json
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 21 tests passed[0m
+  [38;2;74;222;128m[1mAll 23 tests passed[0m
 
