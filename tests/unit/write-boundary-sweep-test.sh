@@ -490,6 +490,10 @@ _SW_LOG="$TEST_TEMP_DIR/sweep-fail.log"
 mkdir -p "$_SW_ROOT/readable" "$_SW_ROOT/locked"
 _SW_MARKER="$TEST_TEMP_DIR/sweep-fail.marker"
 touch "$_SW_MARKER"
+# Wait for the stamp to move before writing, or on Linux these files share the
+# marker's tick and `find -newer` skips them — this fixture hit the very defect
+# SPEC-9 fixes, and failed on ubuntu while passing on macOS.
+_wb_clock_advance_past "$_SW_MARKER"
 # Both files are newer than the marker; one of them sits where find cannot look.
 printf 'x\n' > "$_SW_ROOT/readable/seen.txt"
 printf 'x\n' > "$_SW_ROOT/locked/unseen.txt"
