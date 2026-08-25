@@ -79,7 +79,13 @@ zbuild_layout_run_dir() {
 # CI installs); 0.11.0 does not raise it, which is why local lint passed.
 zbuild_layout_state_file_globs() {
     local root="${1:-}"
-    [[ -n "$root" ]] || root="$(zbuild_layout_state_root)"
+    [[ -n "$root" ]] || root="$(zbuild_layout_state_root 2>/dev/null || true)"
+    # An EMPTY root would emit `/runs/*/pipeline-state*.json` — a glob anchored
+    # at the FILESYSTEM ROOT, handed to readers that gate destructive scanners.
+    # Fall back to the literal default rather than emitting it: the patterns are
+    # this function's job, and a root it cannot resolve is not a reason to point
+    # them at `/`.
+    [[ -n "$root" ]] || root="${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}"
     # #141: runs now nest under their issue or goal, so the readers need those
     # shapes too. Emitted FIRST because they are where new runs land; the flat
     # shapes stay for runs written before the switch and for identity-less runs.
@@ -117,8 +123,38 @@ zbuild_layout_has_any_run_state() {
 # run state at the engine's own install directory would put mutable work inside
 # the immutable tree ADR-023 exists to protect. The data root is `~/.zbuild`,
 # which is what every existing path already resolves to.
+# Precedence: $ZBUILD_DATA_ROOT > the PARENT of $ZBUILD_STATE_ROOT > $HOME/.zbuild.
+#
+# The middle term is not a convenience — it is what keeps #1127's fence intact.
+# That fence works by exporting ZBUILD_STATE_ROOT to a throwaway dir so a nested
+# runner (the in-pipeline `test` stage spawns the suite in a scrubbed shell that
+# PRESERVES HOME, ADR-024) roots its ENTIRE tree inside it and cannot clobber the
+# parent's `latest` symlink or global event log.
+#
+# #141 moved run state under the DATA root, which ZBUILD_STATE_ROOT does not
+# control — so a fenced nested run with an issue would have escaped into the real
+# ~/.zbuild/repos/ and reintroduced exactly the defect #1127 fixed. Deriving the
+# data root from the fence closes that. The parent is the right derivation
+# because it is the default relationship: $HOME/.zbuild/state -> $HOME/.zbuild.
+#
+# Caught by tests/integration/state-root-isolation-test.sh, which asserts the
+# fence directly. It is the reason that file exists.
 zbuild_layout_data_root() {
-    printf '%s' "${ZBUILD_DATA_ROOT:-$HOME/.zbuild}"
+    if [[ -n "${ZBUILD_DATA_ROOT:-}" ]]; then
+        printf '%s' "$ZBUILD_DATA_ROOT"; return 0
+    fi
+    if [[ -n "${ZBUILD_STATE_ROOT:-}" ]]; then
+        # The state root ITSELF, not its parent. The parent was tried and is
+        # wrong: #1127's fence is `$tmp/.zbuild-nested-state` where `$tmp` is the
+        # rsync'd STAGING REPO itself (plugins/tool/test/plugin.sh rsyncs the repo
+        # to $tmp, then fences inside it). Taking the parent therefore put run
+        # data INSIDE the repo under test — which ADR-023 forbids outright, and
+        # which made zbuild_worktree_assert_outside refuse the tree, aborting
+        # every nested run between init_state and the first dispatch. Green on
+        # macOS only because /tmp -> /private/tmp made the prefix compare miss.
+        printf '%s' "${ZBUILD_STATE_ROOT%/}"; return 0
+    fi
+    printf '%s' "$HOME/.zbuild"
 }
 
 # ─── zbuild_layout_repo_segment ──────────────────────────────────────────────
@@ -171,6 +207,49 @@ zbuild_layout_key_root() {
         goal-*)  printf '%s/goals/%s'  "$(zbuild_layout_repo_root)" "$key" ;;
         *)       return 1 ;;
     esac
+}
+
+# ─── zbuild_layout_worktree_repo_root ───────────────────────────────────────
+# The base every issue/goal tree hangs off. ONE definition, because the WRITER
+# (zbuild_layout_key_worktree) and the RECLAIMER (_cleanup_scan_worktrees) must
+# not disagree about it — a scanner looking somewhere the writer never writes
+# reports "no candidates" for a full store, which is the fail-OPEN direction and
+# the whole hazard ADR-059 was written about. It differs from
+# zbuild_layout_repo_root deliberately: state follows the fence, the worktree
+# follows the RUN root (see zbuild_layout_key_worktree).
+zbuild_layout_worktree_repo_root() {
+    printf '%s/repos/%s' "${ZBUILD_RUN_ROOT:-${HOME}/.zbuild}" "$(zbuild_layout_repo_segment)"
+}
+
+# ─── zbuild_layout_key_worktree <key> ────────────────────────────────────────
+# The ONE tree for an issue (or goal), reused across every run of it.
+#
+# ADR-059 §2, and the reason the whole redesign exists: a worktree holds a
+# BRANCH, and the branch is named for the issue (`zbuild/issue-<N>-<slug>`).
+# Keying the tree by run while the branch is keyed by issue is the mismatch that
+# produced #1658 and #1869 — two runs of one issue want one branch in two trees,
+# and git refuses, terminally. One tree per issue removes that by construction
+# instead of reclaiming after the fact.
+#
+# Returns non-zero for a key with no identity; the caller then keeps the
+# pre-#141 per-run path. Exclusivity is NOT this function's job — #1940's
+# per-issue lock (ADR-059 §4) is what stops two live runs sharing the tree.
+# Hangs off the RUN root ($ZBUILD_RUN_ROOT, default ~/.zbuild) — deliberately
+# NOT the data root. #1127's fence sets ZBUILD_STATE_ROOT (and cost/cache) but
+# never ZBUILD_RUN_ROOT, because the fence lives INSIDE the rsync'd staging repo:
+# a worktree derived from it would sit inside the repo the run is editing, and
+# zbuild_worktree_assert_outside rightly refuses that. Keeping the tree on the
+# run root preserves exactly where pre-#141 trees lived; only the KEY changes.
+zbuild_layout_key_worktree() {
+    local key="${1:-}"
+    [[ -n "$key" ]] || return 1
+    local sub
+    case "$key" in
+        issue-*) sub="issues/${key#issue-}" ;;
+        goal-*)  sub="goals/$key" ;;
+        *)       return 1 ;;
+    esac
+    printf '%s/%s/worktree' "$(zbuild_layout_worktree_repo_root)" "$sub"
 }
 
 # ─── zbuild_layout_run_state_dir <run_key> <run_id> ──────────────────────────

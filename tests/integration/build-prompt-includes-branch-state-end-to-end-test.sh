@@ -34,7 +34,18 @@ PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 # is that the runner exports the resolved (now per-run) dir for its children.
 HOME_DIR="$TEST_TEMP_DIR/home"; mkdir -p "$HOME_DIR/.zbuild"
 RUN_ID="run-618-$$"
-STATE_DIR="$HOME_DIR/.zbuild/state/runs/$RUN_ID"
+# The runner below runs with cwd = $OVERLAY_REPO, so create it FIRST: its remote
+# is what decides the repo segment of the derived path.
+OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
+
+# #141: the per-run state dir now nests under the run's ISSUE. Derived from the
+# same resolver the writer uses rather than pinned as a literal — this file
+# tests that the build prompt carries branch state, not the layout shape.
+STATE_DIR="$( HOME="$HOME_DIR" \
+    env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_DATA_ROOT \
+    bash -c 'source "$1/scripts/lib/test-helpers.sh" >/dev/null 2>&1
+             zb_expected_run_state_dir "$2" 618 "" "$3"' _ \
+    "$REPO_ROOT" "$OVERLAY_REPO" "$RUN_ID" )"
 EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
 PROMPT_CAPTURE="$TEST_TEMP_DIR/build-prompt-capture.txt"
 
@@ -129,7 +140,16 @@ EOF
 # minimal test-owned fixture (runner-state-dir-minimal.yaml) via a per-repo
 # `.zbuild/templates/` overlay (#1270), replacing the retired 14-stage standard
 # roster (#979). No downstream stub roster is required.
-OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
+# #141: the per-run state dir now nests under the run's ISSUE. Derive it from
+# the same resolver the writer uses rather than pinning a layout shape — this
+# file tests that the build prompt carries branch state, not where the layout puts things.
+_sd_for() {
+    HOME="$HOME_DIR" env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_DATA_ROOT \
+        bash -c 'source "$1/scripts/lib/test-helpers.sh" >/dev/null 2>&1
+                 zb_expected_run_state_dir "$2" "$3" "" "$4"' _ \
+        "$REPO_ROOT" "$OVERLAY_REPO" "618" "$1"
+}
+
 install_template_overlay "$OVERLAY_REPO" runner-state-dir-minimal
 
 # ─── Mock claude shim: capture the iter-1 prompt to PROMPT_CAPTURE ──────────

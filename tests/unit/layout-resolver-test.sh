@@ -170,8 +170,36 @@ done
 # protect.
 print_test_section "[SPEC-8][guard] run data never lands in the install tree"
 
-_data="$(ZBUILD_DATA_ROOT='' HOME="$TEST_TEMP_DIR/fakehome" zbuild_layout_data_root)"
+# ZBUILD_STATE_ROOT is unset HERE deliberately: this case pins the DEFAULT of
+# the precedence chain, and #141 added a middle term (the fence, below) that
+# would otherwise answer first.
+_data="$(ZBUILD_DATA_ROOT='' ZBUILD_STATE_ROOT='' HOME="$TEST_TEMP_DIR/fakehome" zbuild_layout_data_root)"
 assert_eq "[SPEC-8] the data root is ~/.zbuild" "$TEST_TEMP_DIR/fakehome/.zbuild" "$_data"
+
+# ─── [SPEC-8b][guard] the data root honours #1127's fence ──────────────────
+# The whole point of ZBUILD_STATE_ROOT is that a nested runner roots its ENTIRE
+# tree inside a throwaway dir and cannot clobber the parent's `latest` symlink
+# or global event log. #141 moved run state under the DATA root, so if that root
+# ignored the fence a fenced nested run WITH AN ISSUE would escape into the real
+# ~/.zbuild/repos/ — reintroducing exactly the defect #1127 fixed.
+_fence="$TEST_TEMP_DIR/fence/.zbuild-nested-state"
+_fenced="$(ZBUILD_DATA_ROOT='' ZBUILD_STATE_ROOT="$_fence" \
+           HOME="$TEST_TEMP_DIR/fakehome" zbuild_layout_data_root)"
+# The state root ITSELF, not its parent. The parent was tried and was wrong:
+# #1127's fence is `$tmp/.zbuild-nested-state` where `$tmp` IS the rsync'd
+# staging repo, so the parent put run data inside the repo under test — which
+# ADR-023 forbids, and which made worktree acquisition refuse and abort every
+# nested run. This case pins the derivation so that cannot be reintroduced.
+assert_eq "[SPEC-8b] a fenced state root IS the data root (not its parent)" \
+    "$_fence" "$_fenced"
+case "$_fenced" in
+    "$TEST_TEMP_DIR"/fence/*|"$TEST_TEMP_DIR"/fence) assert_pass "[SPEC-8b] and stays inside the fence" ;;
+    *) assert_fail "[SPEC-8b] the derived data root escaped the fence" "got: $_fenced" ;;
+esac
+_explicit="$(ZBUILD_DATA_ROOT="$TEST_TEMP_DIR/explicit" ZBUILD_STATE_ROOT="$TEST_TEMP_DIR/fence/s" \
+             zbuild_layout_data_root)"
+assert_eq "[SPEC-8b] an explicit data root still wins over the fence" \
+    "$TEST_TEMP_DIR/explicit" "$_explicit"
 if [[ "$_data" == *".local/share/zbuild"* ]]; then
     assert_fail "[SPEC-8] the data root must not be the install root" "$_data"
 else
@@ -201,7 +229,13 @@ _no_resolver="$(bash -c '
     source "'"$REPO_ROOT"'/scripts/lib/helpers.sh"
     export ZBUILD_STATE_ROOT="'"$ZBUILD_STATE_ROOT"'"
     source "'"$REPO_ROOT"'/scripts/lib/cleanup.sh"
-    unset -f zbuild_layout_state_root 2>/dev/null || true
+    # Ablate the resolver the way it can actually be absent — the whole module,
+    # not one function out of it. Unsetting a single function left the others
+    # calling into a hole and emitting a glob rooted at "", which is a state that
+    # cannot occur in production and told us nothing.
+    unset -f zbuild_layout_state_root zbuild_layout_state_file_globs \
+             zbuild_layout_repo_root zbuild_layout_run_dirs \
+             zbuild_layout_runs_root zbuild_layout_data_root 2>/dev/null || true
     unset ZBUILD_STATE_DIR 2>/dev/null || true
     if _cleanup_is_active_run r-spec9; then echo ACTIVE; else echo NOT_ACTIVE; fi
 ' 2>/dev/null)"

@@ -412,6 +412,38 @@ else
         "gone=$([[ ! -d "$WT_UNPUSHED" ]] && echo yes || echo no) before=$_unpushed_sha after=$_unpushed_after"
 fi
 
+# ── SPEC-15: an ISSUE-keyed tree fails CLOSED when the lock can't be consulted ─
+# #141 gave an issue ONE tree shared by every run of it, so ZBUILD_RUN_ID can no
+# longer identify the active run's tree — the per-issue lock (#1940) is what
+# knows. The guard that asks it must fail CLOSED: if the lock machinery is not
+# loaded, the scanner cannot tell a live tree from a dead one, and pruning on
+# "we could not check" deletes a running job's working tree.
+#
+# The first draft short-circuited (`[[ -n $key ]] && declare -F lock_path`) and
+# fell through to the age check, so an unanswerable question read as "not live"
+# — the fail-OPEN direction, under a comment that claimed the opposite.
+print_test_section "[SPEC-15][guard] an unanswerable lock question keeps the tree"
+
+_WT_ISSUE="$ZBUILD_RUN_ROOT/repos/local/repo/issues/9931/worktree"
+mkdir -p "$(dirname "$_WT_ISSUE")"
+git -C "$R" worktree add -q --detach "$_WT_ISSUE" >/dev/null 2>&1
+_backdate "$_WT_ISSUE" 30
+
+# Ablate the lock machinery the guard depends on, exactly as a caller that
+# sourced cleanup.sh without core/state/issue-lock.sh would present it.
+_saved_lock_path="$(declare -f zbuild_issue_lock_path 2>/dev/null || true)"
+_saved_lock_live="$(declare -f _zbuild_issue_lock_holder_is_live 2>/dev/null || true)"
+unset -f zbuild_issue_lock_path _zbuild_issue_lock_holder_is_live 2>/dev/null || true
+
+if _scan_has "$_WT_ISSUE" 14; then
+    assert_fail "[SPEC-15] an issue tree was PRUNED with the lock unreadable"         "fail-open: a live run's working tree is deletable. line: $(_scan_line "$_WT_ISSUE" 14)"
+else
+    assert_pass "[SPEC-15] an issue tree is kept when the lock cannot be consulted"
+fi
+
+[[ -n "$_saved_lock_path" ]] && eval "$_saved_lock_path"
+[[ -n "$_saved_lock_live" ]] && eval "$_saved_lock_live"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
