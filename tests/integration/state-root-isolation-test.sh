@@ -253,6 +253,13 @@ F_OUT="$STAGE_ARTIFACTS/test-results.json"
 #
 # #1270 SPEC-7: capture the nested runner's output to an inspectable absolute
 # log, and (deferred-expansion) copy its resolved pipeline-state.json out of the
+# The state file is located by `find` because the fence is set INSIDE the fresh
+# shell and is not knowable out here. It searches the ISSUE-keyed shape FIRST and
+# `sort`s before taking one: #141 means a `--issue 1127` run lands under
+# issues/1127/, and an unsorted `find | head -1` picked a different match on
+# ubuntu than on macOS — green locally, red in CI, with an empty stage_statuses.
+# Deterministic order, and the preferred shape first.
+#
 # plugin's throwaway fence ($ZBUILD_STATE_ROOT, set INSIDE the fresh shell)
 # before the RETURN trap reaps it — so we can prove the nested runner actually
 # resolved the committed overlay (carried into the staging dir by the rsync) and
@@ -260,7 +267,7 @@ F_OUT="$STAGE_ARTIFACTS/test-results.json"
 # parent-untouched assertions pass hollowly, #913).
 NESTED_LOG="$TEST_TEMP_DIR/f-nested-runner.log"
 NESTED_STATE_COPY="$TEST_TEMP_DIR/f-nested-state.json"
-F_CMD="ZBUILD_PLUGINS_ROOT='$PLUGINS_ROOT' ZBUILD_EVENT_SCHEMA='$REPO_ROOT/config/event-schema.json' ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn ZBUILD_VISION_GATE=off ZBUILD_RUN_ID='nested-suite' bash '$RUNNER' --issue 1127 --no-resume --template runner-state-dir-minimal > '$NESTED_LOG' 2>&1 || true; _ns=\"\$(find \"\$(dirname \"\$ZBUILD_STATE_ROOT\")\" -path '*/runs/nested-suite/pipeline-state.json' -print 2>/dev/null | head -1)\"; cp \"\$_ns\" '$NESTED_STATE_COPY' 2>/dev/null || true; echo suite-ok"
+F_CMD="ZBUILD_PLUGINS_ROOT='$PLUGINS_ROOT' ZBUILD_EVENT_SCHEMA='$REPO_ROOT/config/event-schema.json' ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn ZBUILD_VISION_GATE=off ZBUILD_RUN_ID='nested-suite' bash '$RUNNER' --issue 1127 --no-resume --template runner-state-dir-minimal > '$NESTED_LOG' 2>&1 || true; _nsroot=\"\$(dirname \"\$ZBUILD_STATE_ROOT\")\"; _ns=\"\$(find \"\$_nsroot\" -path '*/issues/*/runs/nested-suite/pipeline-state.json' -print 2>/dev/null | sort | head -1)\"; [ -n \"\$_ns\" ] || _ns=\"\$(find \"\$_nsroot\" -path '*/runs/nested-suite/pipeline-state.json' -print 2>/dev/null | sort | head -1)\"; cp \"\$_ns\" '$NESTED_STATE_COPY' 2>/dev/null || true; echo suite-ok"
 
 set +e
 # #1268: _test_run_inner is a shell FUNCTION — invoke it in a subshell with
