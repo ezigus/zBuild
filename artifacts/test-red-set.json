@@ -1,5 +1,0 @@
-[
-  "tests/integration/route-tautology-to-design-test.sh",
-  "tests/unit/route-back-budget-config-test.sh",
-  "tests/unit/runner-cycle-rc-action-mapping-test.sh"
-]
