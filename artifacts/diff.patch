@@ -1,8 +1,248 @@
+diff --git a/config/write-boundary-allow.txt b/config/write-boundary-allow.txt
+index 8677eb5..b0ad49c 100644
+--- a/config/write-boundary-allow.txt
++++ b/config/write-boundary-allow.txt
+@@ -15,6 +15,23 @@
+ #   ZBUILD_WRITE_BOUNDARY_ALLOW env var (path to additional file)
+ #
+ ${CLAUDE_CONFIG_DIR:-${HOME}/.claude}
++# The CLI's own top-level state file, which is a SIBLING of the directory above
++# rather than a child. The `claude` process the engine spawns rewrites it on
++# EVERY dispatch — project/session history, onboarding flags, MCP config — with
++# zero tool use required, so without this line every LLM stage halts as a
++# boundary violation (#1952). That is the engine's own tool doing bookkeeping,
++# the same class as the event-bus exemption in write_boundary_allow_list. The
++# trailing glob takes the unbounded .claude.json.backup-<stamp> family with it.
++${CLAUDE_CONFIG_DIR:-${HOME}}/.claude.json*
++# Measured on CLI 2.1.241: with CLAUDE_CONFIG_DIR set, the CLI creates
++# $CLAUDE_CONFIG_DIR/.claude.json and leaves $HOME/.claude.json untouched (its
++# mtime does not move), so the line above is the one that covers both cases —
++# and when CLAUDE_CONFIG_DIR is set the entry above THIS block already covers
++# the whole directory anyway. The home-relative line below is belt-and-braces
++# for the opposite reading (claude-review on PR #1953 held that the state file
++# is always home-relative): under that reading the line above would miss it.
++# Granting both costs one entry and one file family the CLI owns either way.
++${HOME}/.claude.json*
+ ${HOME}/.npm
+ ${HOME}/.cache
+ ${HOME}/Library/Caches
+diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
+index 46a25f0..c10059d 100755
+--- a/core/pipeline/runner.sh
++++ b/core/pipeline/runner.sh
+@@ -24,6 +24,8 @@ source "$_ZBUILD_ROOT/core/state/atomic.sh"
+ source "$_ZBUILD_ROOT/core/state/resume.sh"
+ # shellcheck source=../state/issue-lock.sh
+ source "$_ZBUILD_ROOT/core/state/issue-lock.sh"
++# shellcheck source=../state/layout.sh
++source "$_ZBUILD_ROOT/core/state/layout.sh"
+ # shellcheck source=../../scripts/lib/identity.sh
+ source "$_ZBUILD_ROOT/scripts/lib/identity.sh"
+ # #887: capture whether the operator PINNED any events location BEFORE
+@@ -1710,7 +1712,21 @@ main() {
+         # never share artifacts. run_id is path-sanitized above. Done before
+         # init_state so the per-run state file is the one created.
+         if $_state_is_default; then
+-            state_dir="${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}/runs/$_runner_run_id"
++            # #141 (ADR-059 §1): nest the run under its ISSUE (or goal), so
++            # everything for an issue lives in one place:
++            #   ~/.zbuild/repos/<owner>/<repo>/issues/<N>/runs/<run_id>/
++            # A run with no identity keeps the flat shape — there is nothing to
++            # nest it under. Resolved through core/state/layout.sh so the
++            # reclaimers read the same definition the writer uses.
++            local _rk=""
++            if declare -F zbuild_run_key >/dev/null 2>&1; then
++                _rk="$(zbuild_run_key "$_runner_issue" "${goal:-}" 2>/dev/null || true)"
++            fi
++            if declare -F zbuild_layout_run_state_dir >/dev/null 2>&1; then
++                state_dir="$(zbuild_layout_run_state_dir "$_rk" "$_runner_run_id")"
++            else
++                state_dir="${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}/runs/$_runner_run_id"
++            fi
+             mkdir -p "$state_dir"
+             state_file="$state_dir/pipeline-state.json"
+             _runner_state_file="$state_file"
+@@ -1801,8 +1817,13 @@ main() {
+     # #887: latest-run pointer so `zbuild resume --latest` / `--attach` resolve
+     # the most recent per-run dir without a scan. Only for the per-run default
+     # (never pollute an explicit/test state dir). Atomic swap via ln -sfn.
+-    if [[ "$state_dir" == "${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}/runs/"* ]]; then
+-        ln -sfn "$state_dir" "${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}/latest" 2>/dev/null || true
++    # #141: the prefix test was `<state_root>/runs/`, which stops matching the
++    # moment a run nests under its issue — so `--resume-latest` would silently
++    # stop working. Gate on "this is the default per-run dir" instead of on one
++    # literal shape, and keep the symlink itself at the state root where every
++    # reader already looks for it.
++    if $_state_is_default; then
++        ln -sfn "$state_dir" "$(zbuild_layout_state_root)/latest" 2>/dev/null || true
+     fi
+ 
+     # ADR-050 (#1581) / #1074: the RESTORED-ARTIFACTS AREA.
+diff --git a/core/pipeline/write-boundary.sh b/core/pipeline/write-boundary.sh
+index 4339ba7..7b2349a 100644
+--- a/core/pipeline/write-boundary.sh
++++ b/core/pipeline/write-boundary.sh
+@@ -19,6 +19,39 @@ _ZBUILD_WB_ROOT="$(cd "$_ZBUILD_WB_DIR/../.." && pwd)"
+ # shellcheck source=../plugin-registry/output-paths.sh
+ source "$_ZBUILD_WB_ROOT/core/plugin-registry/output-paths.sh"
+ 
++# ─── _wb_expand_line <line> ──────────────────────────────────────────────────
++# Expand ${VAR} and ${VAR:-default} in a config line. Plain references go first
++# and innermost-first, so a nested default like ${CLAUDE_CONFIG_DIR:-${HOME}/.claude}
++# is brace-free by the time the defaulted form is matched. One expander for both
++# lists: the watch and allow lists carried near-identical copies, and the
++# defaulted form was handled by a hardcoded substitution PER TOKEN — three of
++# them — so every new default form needed a fourth and any variable an operator
++# chose themselves expanded to nothing (#1952).
++_wb_expand_line() {
++    local _exp="$1" _v _d _tok _rep _n=0
++    while [[ $_n -lt 16 ]]; do
++        _n=$((_n + 1))
++        if [[ "$_exp" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)\} ]]; then
++            _v="${BASH_REMATCH[1]}"
++            # An unset plain reference cannot be resolved. Stop rather than
++            # expand it to the empty string, which would silently rewrite the
++            # entry into a filesystem-root path.
++            [[ -z "${!_v+x}" ]] && break
++            _tok="${BASH_REMATCH[0]}"; _rep="${!_v}"
++        elif [[ "$_exp" =~ \$\{([A-Za-z_][A-Za-z0-9_]*):-([^{}]*)\} ]]; then
++            _v="${BASH_REMATCH[1]}"; _d="${BASH_REMATCH[2]}"
++            _tok="${BASH_REMATCH[0]}"; _rep="${!_v:-$_d}"
++        else
++            break
++        fi
++        # Slice, not ${var//pat/rep}: a pattern built from config data would
++        # treat * and ? in a value as globs. Quoting inside %% / # keeps the
++        # token literal while the bare * stays a wildcard.
++        _exp="${_exp%%"$_tok"*}${_rep}${_exp#*"$_tok"}"
++    done
++    printf '%s' "$_exp"
++}
++
+ # ─── write_boundary_mark <state_file> ────────────────────────────────────────
+ # Touch the per-dispatch marker. No-op when state_file is empty or relative.
+ write_boundary_mark() {
+@@ -43,15 +76,7 @@ write_boundary_watch_list() {
+     if [[ -f "$_cfg" ]]; then
+         while IFS= read -r _line; do
+             [[ -z "$_line" || "$_line" =~ ^# ]] && continue
+-            # Expand simple ${VAR} tokens. Handle ${TMPDIR:-/tmp} and ${PWD} as specials.
+-            local _exp="$_line" _v _n=0
+-            _exp="${_exp//\$\{TMPDIR:-\/tmp\}/${TMPDIR:-/tmp}}"
+-            while [[ $_n -lt 8 ]] && [[ "$_exp" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)\} ]]; do
+-                _v="${BASH_REMATCH[1]}"
+-                [[ -z "${!_v+x}" ]] && break
+-                _exp="${_exp//\$\{$_v\}/${!_v}}"
+-                _n=$((_n + 1))
+-            done
++            local _exp; _exp="$(_wb_expand_line "$_line")"
+             # Emit every configured entry, unconditionally. The shipped config
+             # deliberately carries no system-temp root — see ADR-058 C9, "What
+             # the sweep does not cover" — so the omission lives in the config an
+@@ -115,15 +140,7 @@ write_boundary_allow_list() {
+         [[ -f "$_cfg" ]] || continue
+         while IFS= read -r _line; do
+             [[ -z "$_line" || "$_line" =~ ^# ]] && continue
+-            local _exp="$_line" _v _n=0
+-            _exp="${_exp//\$\{CLAUDE_CONFIG_DIR:-\$\{HOME\}\/.claude\}/${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
+-            _exp="${_exp//\$\{CLAUDE_CONFIG_DIR:-\$HOME\/.claude\}/${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
+-            while [[ $_n -lt 8 ]] && [[ "$_exp" =~ \$\{([A-Za-z_][A-Za-z0-9_]*)\} ]]; do
+-                _v="${BASH_REMATCH[1]}"
+-                [[ -z "${!_v+x}" ]] && break
+-                _exp="${_exp//\$\{$_v\}/${!_v}}"
+-                _n=$((_n + 1))
+-            done
++            local _exp; _exp="$(_wb_expand_line "$_line")"
+             printf '%s\n' "$_exp"
+         done < "$_cfg"
+     done
+@@ -195,6 +212,34 @@ write_boundary_classify() {
+     local _ar _ca
+     while IFS= read -r _ar; do
+         [[ -z "$_ar" ]] && continue
++        # An entry may name a FAMILY of files rather than a root. The Claude
++        # CLI's own state file has an unbounded timestamped backup family
++        # (.claude.json.backup-<stamp>), so no exact entry can cover it. The
++        # directory part is canonicalised like every other root — on macOS /var
++        # is a symlink to /private/var and the candidate arrives canonical — and
++        # the pattern part is matched against it. Not a loophole: only entries
++        # that actually carry a glob reach this arm.
++        if [[ "$_ar" == *[*?]* ]]; then
++            local _gd="${_ar%/*}" _gp="${_ar##*/}" _gc
++            if [[ "$_gd" != "$_ar" && "$_gd" != *[*?]* ]]; then
++                _gc="$(cd "$_gd" 2>/dev/null && pwd -P)" || _gc="$_gd"
++                _ar="${_gc}/${_gp}"
++            fi
++            # The pattern must match the candidate ITSELF, and only within one
++            # path segment: `*` in a [[ == ]] pattern also matches `/`, so a
++            # bare `.claude.json*` match would hand over the whole subtree of a
++            # directory named to fit it — `.claude.json.evil/secrets` reads as
++            # allowed. Comparing the parent directories pins the glob to the
++            # basename. A glob entry names files, not roots; an operator who
++            # wants a subtree writes the root without a glob. An entry whose
++            # DIRECTORY part carries a glob matches nothing here, which fails
++            # closed — the safe direction for a fence.
++            # shellcheck disable=SC2053  # the RHS glob is the point of this arm
++            if [[ "$_cd" == $_ar && "${_cd%/*}" == "${_ar%/*}" ]]; then
++                printf 'allowed'; return 0
++            fi
++            continue
++        fi
+         _ca="$(cd "$_ar" 2>/dev/null && pwd -P)" || _ca="$_ar"
+         # Candidate under an allowed root, OR the candidate is a strict ANCESTOR
+         # of one. The ancestor arm is not a loophole: `find` reports directories,
 diff --git a/core/router/permissions.sh b/core/router/permissions.sh
-index 2c45405..a4b9702 100644
+index 2c45405..afe5498 100644
 --- a/core/router/permissions.sh
 +++ b/core/router/permissions.sh
-@@ -24,6 +24,10 @@ _zbuild_build_permissions_settings() {
+@@ -1,7 +1,21 @@
+ #!/usr/bin/env bash
+-# core/router/permissions.sh — ADR-018 (#1919 C10): build acceptEdits settings file.
+-# Replaces --dangerously-skip-permissions at both spawn sites with a jq-validated
+-# settings file that grants write access only to the worktree and stage scratch dir.
++# core/router/permissions.sh — ADR-018 (#1919 C10): acceptEdits + scoped grants.
++# Replaces --dangerously-skip-permissions at both spawn sites.
++#
++# MEASURED on CLI 2.1.241 (#1919 P0-P5), not assumed — the ADR-018 claim this
++# supersedes went stale precisely because nobody re-measured:
++#   P0  --permission-mode acceptEdits ALONE writes fine. The blanket bypass was
++#       never needed for headless Pattern 1.
++#   P4  --add-dir IS the grant.
++#   P2b `permissions.allowedDirectories` in a --settings file is NOT a grant. It
++#       is silently ignored: the identical write is refused under that key and
++#       succeeds under --add-dir. Do not re-add it believing it grants anything.
++#   P5  `permissions.deny` IS honoured, but only in `Edit(...)` form — a
++#       `Write(...)` rule silently matches nothing (the CLI warns).
++#
++# So: the SPAWN grants (--add-dir), and the settings file is the jq-validated
++# policy seam the spawn refuses on (SPEC-3) and where the evidence-based deny
++# list from the #1809 sweep will land.
+ # Sourced by route.sh after the env-scrub and base-include block.
+ #
+ # zbuild_engine_tmpdir is defined in scripts/lib/helpers.sh, which route.sh
+@@ -12,11 +26,17 @@
+ _ZBUILD_PERMISSIONS_LOADED=1
+ 
+ # _zbuild_build_permissions_settings
+-# Writes ${ZBUILD_STAGE_SCRATCH:-$(zbuild_engine_tmpdir)}/claude-settings.json with
+-# allowedDirectories = [ZBUILD_REPO_ROOT, scratch_dir]. Validates with jq.
+-# Sets _ZBUILD_PERMISSIONS_SETTINGS_FILE to the written path.
+-# Returns rc=1 on jq parse failure (caller must abort spawn).
++# Writes ${ZBUILD_STAGE_SCRATCH:-$(zbuild_engine_tmpdir)}/claude-settings.json and
++# validates it with jq. Sets _ZBUILD_PERMISSIONS_SETTINGS_FILE to the written path
++# and _ZBUILD_PERMISSIONS_DIRS to the roots the spawn will grant via --add-dir.
++# Returns rc=1 on jq/write failure (caller must abort the spawn — SPEC-3).
++#
++# `deny` starts empty by design: the Ordering note on #1919 requires the deny list
++# be written from real stage.write_boundary.violated records (#1809), not guessed.
++# The file still earns its place — it is the refusal seam, it keeps policy out of
++# `ps` and shell history, and it is a durable diffable record of the spawn.
+ _ZBUILD_PERMISSIONS_SETTINGS_FILE=""
++_ZBUILD_PERMISSIONS_DIRS=()
+ _zbuild_build_permissions_settings() {
+     local _scratch_dir
+     if [[ -n "${ZBUILD_STAGE_SCRATCH:-}" ]]; then
+@@ -24,6 +44,10 @@ _zbuild_build_permissions_settings() {
      else
          _scratch_dir="$(zbuild_engine_tmpdir)"
          warn "router: permissions: ZBUILD_STAGE_SCRATCH unset, using engine tmpdir: $_scratch_dir"
@@ -13,6 +253,44 @@ index 2c45405..a4b9702 100644
      fi
  
      local _repo_root="${ZBUILD_REPO_ROOT:-}"
+@@ -34,10 +58,7 @@ _zbuild_build_permissions_settings() {
+ 
+     local _settings_file="${_scratch_dir}/claude-settings.json"
+     local _json
+-    _json="$(jq -cn \
+-        --arg repo "$_repo_root" \
+-        --arg scratch "$_scratch_dir" \
+-        '{permissions: {allowedDirectories: [$repo, $scratch]}}')" \
++    _json="$(jq -cn '{permissions: {deny: []}}')" \
+         || { error "router: permissions: jq failed to build settings JSON"; return 1; }
+ 
+     printf '%s\n' "$_json" > "$_settings_file" \
+@@ -50,6 +71,10 @@ _zbuild_build_permissions_settings() {
+     fi
+ 
+     _ZBUILD_PERMISSIONS_SETTINGS_FILE="$_settings_file"
++    # ADR-059: derive the granted roots from the exported env, never from a path
++    # literal — six existing call sites already fail silently when the layout
++    # moves, and a permission grant that silently widens would be a worse seventh.
++    _ZBUILD_PERMISSIONS_DIRS=("$_repo_root" "$_scratch_dir")
+     return 0
+ }
+ 
+@@ -61,7 +86,11 @@ _zbuild_permission_args() {
+         error "router: permissions: _zbuild_build_permissions_settings not called"
+         return 1
+     fi
+-    printf '%s\n' \
+-        "--permission-mode" "acceptEdits" \
+-        "--settings" "$_ZBUILD_PERMISSIONS_SETTINGS_FILE"
++    printf '%s\n' "--permission-mode" "acceptEdits"
++    # P4: --add-dir is the grant. One flag per root; the CLI accepts repeats.
++    local _d
++    for _d in ${_ZBUILD_PERMISSIONS_DIRS[@]+"${_ZBUILD_PERMISSIONS_DIRS[@]}"}; do
++        [[ -n "$_d" ]] && printf '%s\n' "--add-dir" "$_d"
++    done
++    printf '%s\n' "--settings" "$_ZBUILD_PERMISSIONS_SETTINGS_FILE"
+ }
 diff --git a/core/router/route.sh b/core/router/route.sh
 index bdb6494..7d3ff9c 100644
 --- a/core/router/route.sh
@@ -37,35 +315,1957 @@ index bdb6494..7d3ff9c 100644
          # #1919 (C10): abort iteration on settings build failure (SPEC-3).
          _zbuild_build_permissions_settings || { rc=2; break; }
          # shellcheck disable=SC2207
+diff --git a/core/state/layout.sh b/core/state/layout.sh
+index 524e6d3..34e31cd 100644
+--- a/core/state/layout.sh
++++ b/core/state/layout.sh
+@@ -80,6 +80,14 @@ zbuild_layout_run_dir() {
+ zbuild_layout_state_file_globs() {
+     local root="${1:-}"
+     [[ -n "$root" ]] || root="$(zbuild_layout_state_root)"
++    # #141: runs now nest under their issue or goal, so the readers need those
++    # shapes too. Emitted FIRST because they are where new runs land; the flat
++    # shapes stay for runs written before the switch and for identity-less runs.
++    local _repo; _repo="$(zbuild_layout_repo_root 2>/dev/null || true)"
++    if [[ -n "$_repo" ]]; then
++        printf '%s/issues/*/runs/*/pipeline-state*.json\n' "$_repo"
++        printf '%s/goals/*/runs/*/pipeline-state*.json\n' "$_repo"
++    fi
+     printf '%s/runs/*/pipeline-state*.json\n' "$root"
+     printf '%s/pipeline-state*.json\n' "$root"
+ }
+@@ -164,3 +172,59 @@ zbuild_layout_key_root() {
+         *)       return 1 ;;
+     esac
+ }
++
++# ─── zbuild_layout_run_state_dir <run_key> <run_id> ──────────────────────────
++# WHERE A RUN'S STATE ACTUALLY GOES (#141, ADR-059 §1) — the writer's answer.
++#
++# `<repo>/issues/<N>/runs/<run_id>/` or `<repo>/goals/<key>/runs/<run_id>/`.
++# The per-run level stays, because scratch, runtime/, events and
++# pipeline-state.json genuinely belong to one run. What changes is that they now
++# sit UNDER the issue, so everything for an issue is in one place and a reader
++# can find it without a scan.
++#
++# Falls back to the flat `<state_root>/runs/<run_id>` when the run has no
++# identity — a run with neither issue nor goal has nothing to nest under, and
++# inventing a bucket would key unrelated work together.
++zbuild_layout_run_state_dir() {
++    local key="${1:-}" rid="${2:-}"
++    [[ -n "$rid" ]] || return 1
++    local base=""
++    [[ -n "$key" ]] && base="$(zbuild_layout_key_root "$key" 2>/dev/null || true)"
++    if [[ -n "$base" ]]; then
++        printf '%s/runs/%s' "$base" "$rid"
++    else
++        printf '%s/%s' "$(zbuild_layout_runs_root)" "$rid"
++    fi
++}
++
++# ─── zbuild_layout_run_dirs ──────────────────────────────────────────────────
++# Every directory that IS a run, newline-separated — new layout first, then the
++# pre-#141 flat one.
++#
++# The readers each used to derive their own root, which is how a layout change
++# turns into a blind reclaimer: the writer moves and five scanners keep walking
++# an empty directory, reporting "nothing to clean" for a store full of runs.
++# That is indistinguishable from a clean machine, and it is the FAIL-OPEN
++# direction. One enumerator, shared, so they cannot disagree.
++#
++# The flat root is retained deliberately: migration is "leave old, no reads" for
++# WRITES, but a reclaimer that cannot see pre-switch runs would strand them
++# forever. Reading both is what lets the old location drain.
++#
++# The `[[ -d ]]` guards below are LOAD-BEARING, not redundant with the trailing
++# `/` in each glob. `nullglob` is not set here, so an unmatched pattern is
++# iterated as its own literal text — dropping the test would emit
++# `.../issues/*/runs/*` as if it were a run directory, and every caller reclaims
++# by path. Do not remove them as "the glob already guarantees a directory".
++zbuild_layout_run_dirs() {
++    local d repo
++    repo="$(zbuild_layout_repo_root 2>/dev/null || true)"
++    if [[ -n "$repo" ]]; then
++        for d in "$repo"/issues/*/runs/*/ "$repo"/goals/*/runs/*/; do
++            [[ -d "$d" ]] && printf '%s\n' "${d%/}"
++        done
++    fi
++    for d in "$(zbuild_layout_runs_root)"/*/; do
++        [[ -d "$d" ]] && printf '%s\n' "${d%/}"
++    done
++}
 diff --git a/docs/adr/ADR-018-stage-invocation-modes.md b/docs/adr/ADR-018-stage-invocation-modes.md
-index 14f2cd7..cb35049 100644
+index 14f2cd7..da7dd3c 100644
 --- a/docs/adr/ADR-018-stage-invocation-modes.md
 +++ b/docs/adr/ADR-018-stage-invocation-modes.md
-@@ -78,7 +78,8 @@ does NOT declare Pattern 1 vs Pattern 2 — that is baked into `plugin.sh`.
+@@ -6,14 +6,38 @@
+ 
+ ---
+ 
+-**Amended:** 2026-08-24 — Issue #1919 (C10): `--dangerously-skip-permissions` replaced by
+-`--permission-mode acceptEdits` backed by a jq-validated settings file
+-(`core/router/permissions.sh`). The `acceptEdits` mode keeps Read/Edit/Write/Bash
+-accessible in headless invocations while restricting write paths to the worktree root
+-(`ZBUILD_REPO_ROOT`) and the stage scratch directory (`ZBUILD_STAGE_SCRATCH`).
+-The Bash surface is NOT blocked by this permission mode; it remains governed by
+-the TMPDIR/C8 constraint and the #1809 scope sweep. `bypassPermissions` is the
+-renamed equivalent of `--dangerously-skip-permissions` and MUST NOT be used.
++**Amended:** 2026-08-25 — Issue #1919 (C10). `--dangerously-skip-permissions` is replaced at
++both spawn sites by:
++
++```
++--permission-mode acceptEdits --add-dir <repo_root> --add-dir <scratch> --settings <file>
++```
++
++**Every claim below was measured on CLI 2.1.241 (#1919 P0–P5), not reasoned about.** The claim
++this amendment supersedes went stale because it was never re-measured; repeating that would be
++self-inflicted.
++
++- **The original premise is false on 2.1.241.** This ADR said tools are *"off by default in
++  headless invocations"* without the bypass. **P0:** `--permission-mode acceptEdits` alone wrote
++  a file with no settings and no bypass flag. The blanket bypass was never required for Pattern 1
++  to work headless.
++- **`--add-dir` is the grant; the settings file is not.** **P2b:** a directory listed under
++  `permissions.allowedDirectories` in a `--settings` file is **silently ignored** — the identical
++  write is refused under that key and succeeds under `--add-dir` (**P4**). Do not re-introduce
++  `allowedDirectories` believing it grants anything.
++- **The Bash surface IS blocked**, contrary to this issue's expectation. **P3:**
++  `echo x > $HOME/…` via the Bash tool was refused as outside the session's working directory.
++  Prevention therefore covers the command-line surface too, not only Edit/Write. C8's `TMPDIR`
++  redirect and #1809's sweep remain defence in depth, but they are no longer the only control there.
++- **Deny rules must be written as `Edit(...)`.** **P5:** a `Write(**/…)` deny rule matches nothing
++  and the CLI warns *"only `Edit(path)` rules are [matched] … Edit rules cover all file-editing
++  tools"*. The evidence-based deny list called for in #1919's Ordering note must use that form or
++  it will be inert.
++- **`bypassPermissions` MUST NOT be used** — `claude --help` defines it as *"Bypass all permission
++  checks"*, i.e. the blanket bypass under a new name.
++
++The granted roots are derived from `ZBUILD_REPO_ROOT` and `ZBUILD_STAGE_SCRATCH`, never from a
++path literal, so the ADR-059 layout move cannot silently widen or narrow them.
+ 
+ ---
+ 
+@@ -38,6 +62,13 @@ included:
+ --dangerously-skip-permissions
+ ```
+ 
++> **SUPERSEDED by the #1919 amendment (2026-08-25).** The paragraph below was written
++> against a 2026-05 CLI and was never re-measured. On **CLI 2.1.241** it is false:
++> `--permission-mode acceptEdits` alone leaves Read/Edit/Write/Bash available headless
++> (#1919 **P0**), so the blanket bypass was not what made tools work. The historical
++> reasoning is kept because the rest of the diagnosis — that the prompts and the tool
++> availability were inconsistent — still stands.
++
+ Without `--dangerously-skip-permissions`, tools (Read/Edit/Write/Bash) are off by
+ default in headless invocations. The prompts told Claude not to use tools, which
+ happened to be consistent with the actual absence of tools — but the architecture
+@@ -50,8 +81,8 @@ build's task requires reading before writing.
+ | Stage | Mode | `claude` flags |
+ |---|---|---|
+ | intake | bash only (no LLM) | `gh issue view` |
+-| plan, design, review, compound_quality, TDD | **one-shot** `claude --print` with tools | `--disallowed-tools "EnterPlanMode,ExitPlanMode" --max-turns 25 --dangerously-skip-permissions` |
+-| build | **agent-loop** — multi-turn; Claude edits the working tree; `git diff` fed back between turns | `claude -p … --output-format json --disallowed-tools "EnterPlanMode,ExitPlanMode" --max-turns N --dangerously-skip-permissions` |
++| plan, design, review, compound_quality, TDD | **one-shot** `claude --print` with tools | `--disallowed-tools "EnterPlanMode,ExitPlanMode" --max-turns 25 --dangerously-skip-permissions` *(bypass superseded by #1919)* |
++| build | **agent-loop** — multi-turn; Claude edits the working tree; `git diff` fed back between turns | `claude -p … --output-format json --disallowed-tools "EnterPlanMode,ExitPlanMode" --max-turns N --dangerously-skip-permissions` *(bypass superseded by #1919)* |
+ 
+ `claude --print` is **not** a "no-tools" mode. Tools are available unless explicitly
+ disallowed. Shipwright only disallows `EnterPlanMode`/`ExitPlanMode`. Plan/review
+@@ -78,7 +109,8 @@ does NOT declare Pattern 1 vs Pattern 2 — that is baked into `plugin.sh`.
  
  Single `claude --print` invocation. Tools (Read/Edit/Write/Bash) are available;
  only `EnterPlanMode`/`ExitPlanMode` are disallowed. `--max-turns 25`,
 -`--dangerously-skip-permissions`.
-+`--permission-mode acceptEdits --settings <file>` (see amendment block above;
-+`bypassPermissions` is the renamed equivalent and MUST NOT be used).
++`--permission-mode acceptEdits --add-dir <repo_root> --add-dir <scratch> --settings <file>`
++(see amendment block above; `bypassPermissions` is the renamed equivalent and MUST NOT be used).
  
  The stage emits a final structured artifact (JSON or markdown) as its terminal
  response.
-@@ -360,7 +361,8 @@ Once Issues A + B ship, adding any new stage requires zero changes to
+@@ -360,7 +392,8 @@ Once Issues A + B ship, adding any new stage requires zero changes to
  
  1. `route_to_model` (`core/router/route.sh`) adopts shipwright's flag set —
     `--max-turns 25`, `--disallowed-tools "EnterPlanMode,ExitPlanMode"`,
 -   `--dangerously-skip-permissions` — enabling Pattern 1. *(Issue A)*
-+   `--permission-mode acceptEdits --settings <file>` — enabling Pattern 1. *(Issue A)*
++   `--permission-mode acceptEdits --add-dir … --settings <file>` — enabling Pattern 1. *(Issue A)*
 +   *(Amended by #1919: `--dangerously-skip-permissions` replaced; see amendment block.)*
  2. New `route_to_model_loop` function enables Pattern 2. *(Issue B)*
  3. Plan and review prompts stop forbidding tool calls; invite Read for
     context-gathering. *(Issues C, D)*
+@@ -472,7 +505,7 @@ branch `feat/466-router-flags`:
+ - `_route_call_claude` in `core/router/route.sh` now appends three flags
+   before the JSON-mode toggle: `--max-turns <N>`,
+   `--disallowed-tools "EnterPlanMode,ExitPlanMode"`,
+-  `--dangerously-skip-permissions`.
++  `--dangerously-skip-permissions` *(superseded by #1919 — see the amendment block)*.
+ - New helper `_route_resolve_max_turns` mirrors ADR-017's
+   `_route_resolve_timeout` and reuses `_route_resolve_knob` (extended with
+   an optional 4th event-name argument so the override-ignored event type
+diff --git a/docs/adr/ADR-036-acceptance-contract-teeth.md b/docs/adr/ADR-036-acceptance-contract-teeth.md
+index ed055d2..c8e6339 100644
+--- a/docs/adr/ADR-036-acceptance-contract-teeth.md
++++ b/docs/adr/ADR-036-acceptance-contract-teeth.md
+@@ -655,3 +655,56 @@ build genuinely closes in one iteration never reaches the escalation guard.
+ **Scope.** The escalation is implemented only for `inert_wiring:*`. The same guard pattern applies to
+ `tautology:*` and `untagged_spec:*` in principle, but the acceptance criteria only test
+ `inert_wiring`; generalisation is a follow-up if the pipeline owner wants it.
++
++## Amendment (#1777, 2026-08-24) — the guard check runs at the design-gate too, and `guard_regressed` routes to design
++
++**Problem.** ADR-036 §"Amendment (#1670)" made a `[guard]` SPEC's assertion answerable at the
++merge-base, and the gate has been catching mislabels correctly ever since. It catches them in the
++wrong *place*. The check lives at the post-build acceptance gate, so a two-word error — `[guard]`
++where the author meant `[change]` — is not visible until build has spent its entire iteration
++budget on the design. #1789 lost 5 iterations and 2h06m; #1809 lost 2 more (~1h39m and ~1h05m) and
++was aborted at iteration 3 of 5. Both wanted the same two-word fix.
++
++Worse, the rewind that exists for exactly this could not deliver it. `simple.yaml` declares
++`route_back: {to: design_verify_cycle, when: gate-aggregator.verdict == route_design}`, but
++`guard_regressed` set **no** `route_target`, so the gate-aggregator's #1757 partition put it in
++`residual[]` and wrote it to the BUILD-facing `gate-feedback.md`. On #1809 the winning
++`route_target` came from shape-floor, so `design-feedback.md` — the payload the rewind carries —
++named only shape-floor. Design re-authored nothing, build re-ran, the same guard failed again.
++
++**Decision.**
++
++1. **`guard_regressed` is design-rooted.** `spec-acceptance` sets `route_target=design` for it,
++   alongside `wiring_not_on_path` (#1583) and escalated `inert_wiring` (#1711). Build cannot fix a
++   mislabelled tag; the correction is the tag or the assertion, and both live in the design.
++   Disposition stays `recoverable` — `terminal` would halt the cycle before the aggregator reads
++   `route_target`, the same rationale as #1686/#1711.
++
++2. **The design-gate gains C6**, applying the §"Amendment (#1670)" rule one stage earlier via
++   `acceptance_negctl_guard_precheck`. The per-SPEC resolution and the ✓/✗ discrimination (#1737)
++   are *extracted*, not reimplemented — `_negctl_guard_resolve_tfs` and `_negctl_guard_verdict` are
++   shared by both callers, so the two gates cannot come to disagree about the same design.
++
++**What C6 does NOT do, stated plainly.** It cannot save the *first* build cycle. At the first
++design pass the branch has no commits, so the merge-base IS HEAD and there is nothing to revert to;
++more fundamentally the assertion does not exist yet, because since #1477 BUILD authors every
++assertion body. C6 earns its keep on the **rewind** — after `route_design` sends the run back, it
++rejects the design in one design turn instead of a second full build cycle. It converts an
++unbounded spiral into one wasted cycle. Decision (1) is what makes that rewind actionable at all.
++
++**Fail-open, and loud about it.** C6 emits `GUARD SKIP` — never `GUARD FAIL` — for a missing
++baseline, an unresolvable worktree, a timeout, an unparseable baseline copy, or an untagged guard
++(#1255). A structural gate must not become a new way for a correct design to be rejected; the
++acceptance gate remains the authority.
++
++But a gate that skips *silently* is indistinguishable from one that works, which is the
++green-but-inert shape this repo keeps paying for (#845, #1044, and the vacuous
++`asserts: <none found>` in #1777's own second occurrence). So `design-gate-result.json` records a
++`guard_precheck` block — `declared`, `verified`, `failed`, and a reason per unverified SPEC — and
++the feedback file states it in prose. "verified 0 of 3, testfiles absent" is a fact an operator can
++read; "verified 0 of 3, worktree_failed" is visibly a bug and not a pass. The key is absent
++entirely when a design declares no `[guard]` SPEC, so a guard-less design's artifact shape is
++unchanged.
++
++**Unchanged.** Level-2 at the acceptance gate is untouched — C6 is an earlier net, not a
++replacement. `tautology` still carries no `route_target` and still reaches build (#1583).
+diff --git a/docs/wiki/plugins/design-gate.md b/docs/wiki/plugins/design-gate.md
+index dc931c2..57f2190 100644
+--- a/docs/wiki/plugins/design-gate.md
++++ b/docs/wiki/plugins/design-gate.md
+@@ -22,9 +22,10 @@ convergence: gate
+ version: 0.1.0
+ description: |
+   Deterministic, LLM-free T0 tool stage (ADR-046, ADR-037 §1/§3, EPIC #1216
+-  issue #1218). The PRE-build mechanical structural gate for the design stage:
+-  pure grep over design.md + the red-first stubs design already writes, with NO
+-  baseline run and NO model call (ADR-037 §3 invariant).
++  issue #1218). The PRE-build mechanical structural gate for the design stage.
++  C1..C5 are pure grep over design.md, with NO model call (ADR-037 §3 invariant).
++  C6 (#1777) is the one check that runs anything: it executes each [guard] SPEC's
++  assertion at the merge-base.
+ 
+   Runs six structural checks and reports ALL violations in ONE pass (no
+   whack-a-mole):
+@@ -35,17 +36,35 @@ description: |
+                          declared testfile exists on disk.
+     C5 WIRING          — a WIRING: section is present ("none" ok); each concrete
+                          path exists on disk.
+-    C6 LEVEL-1 TAGS    — every SPEC-n has a [SPEC-n] tag in a declared testfile
+-                         (acceptance-coverage.sh, shifted left from acceptance-gate).
++    C6 GUARD-BASELINE  — every [guard] SPEC's tagged assertion HOLDS at the
++                         merge-base. One that fails there is a mislabelled
++                         [change] (#1777, ADR-036 §Amendment #1670).
++
++  (The original C6, Level-1 tag-presence, was deleted by #1477 when build became
++  the sole author of assertion bodies; #1777 reuses the free number.)
++
++  C6 FAILS OPEN — no baseline, no worktree, a timeout, an unparseable baseline
++  copy or an untagged guard (#1255) all SKIP, never fail. Because a silent skip
++  is indistinguishable from a working check, design-gate-result.json records a
++  `guard_precheck` block (declared / verified / failed / per-SPEC skip reason)
++  and the feedback file states it in prose. The key is absent when a design
++  declares no [guard] SPEC.
++
++  C6 cannot save the FIRST build cycle: at the first design pass the branch has
++  no commits and the assertion does not exist yet (build authors it). It earns
++  its keep on the rewind, rejecting a re-submitted mislabel in one design turn
++  instead of another full build cycle.
+ 
+   verdict = pass IFF zero violations, else fail (verdict-in-artifact, ADR-040).
+   Always returns rc=0; the verdict lives in design-gate-result.json and the
+   design_verify_cycle's exit_when reads it. design-gate-feedback.md is written
+   ONLY on fail and is wired back into design.prior_impact_feedback.
+ 
+-  Level-2 (negative-control / tautology) and Level-3 (reachability) CANNOT shift
+-  left — they need a built assertion + baseline-vs-HEAD run — and remain at the
+-  post-build acceptance-gate (ADR-036). This gate is repo-agnostic (ADR-042):
++  Level-2's [change] half (negative-control / tautology) and Level-3
++  (reachability) CANNOT shift left — they need a built assertion + baseline-vs-
++  HEAD run — and remain at the post-build acceptance-gate (ADR-036). Level-2's
++  [guard] half needs only a baseline run, which is why C6 can shift left at all;
++  the acceptance-gate check remains the authority, C6 is an earlier net. This gate is repo-agnostic (ADR-042):
+   generic grep over the contract, no plugin/lang/path assumptions.
+ 
+ hooks:
+diff --git a/plugins/agent/spec-acceptance/plugin.sh b/plugins/agent/spec-acceptance/plugin.sh
+index 9cdf23c..63a8a88 100644
+--- a/plugins/agent/spec-acceptance/plugin.sh
++++ b/plugins/agent/spec-acceptance/plugin.sh
+@@ -19,6 +19,13 @@
+ # (verdict=pass, reason=precondition_unmet) so it is safe to compose into repos
+ # that do not use the SPEC methodology. No model call.
+ 
++# Size (CLAUDE.md "under 500 lines unless there is a strong reason"): over, and
++# left that way. The file is one contract end to end — SPEC failure vocabulary →
++# disposition → reason → route_target — and ADR-021 puts that mapping HERE
++# precisely so the cycle engine stays generic and knows none of this gate's
++# vocabulary. Splitting it would scatter one mapping across two files for a line
++# count, which is how the engine learned a plugin's vocabulary in the first place.
++
+ [[ -n "${_ZBUILD_ACCEPTANCE_GATE_LOADED:-}" ]] && return 0
+ _ZBUILD_ACCEPTANCE_GATE_LOADED=1
+ 
+@@ -466,6 +473,26 @@ acceptance_gate_run() {
+     for f in "${failures[@]:-}"; do
+         [[ "$f" == wiring_not_on_path:* ]] && route_target="design" && break
+     done
++    # #1777: guard_regressed is design-rooted by construction. Build cannot fix a
++    # SPEC tagged [guard] whose assertion asserts a change — the correction is
++    # the tag (or the assertion), and both live in the design. Without a
++    # route_target the failure landed in the gate-aggregator's residual[]
++    # partition and was written to the BUILD-facing gate-feedback.md, so on #1809
++    # the run rewound to design carrying a design-feedback.md that named only
++    # shape-floor and never mentioned the offending SPEC. Design re-authored
++    # nothing, build re-ran, and the same guard failed again.
++    #
++    # Disposition stays recoverable: terminal would halt the cycle before the
++    # aggregator reads route_target and emits route_design (same rationale as
++    # #1686/#1711 above).
++    if [[ -z "$route_target" ]]; then
++        for f in "${failures[@]:-}"; do
++            if [[ "$f" == guard_regressed:* ]]; then
++                route_target="design"
++                break
++            fi
++        done
++    fi
+     # #1711: inert_wiring on iter≥2 escalates to route_target=design. First
+     # build attempt (iter=1) is preserved as a real try; a still-inert target
+     # on iter≥2 is unreachable by build and must be corrected by design.
+diff --git a/plugins/tool/design-gate/plugin.sh b/plugins/tool/design-gate/plugin.sh
+index f0b74f5..b8cd5da 100644
+--- a/plugins/tool/design-gate/plugin.sh
++++ b/plugins/tool/design-gate/plugin.sh
+@@ -2,9 +2,11 @@
+ # plugins/tool/design-gate/plugin.sh — Design Gate Stage (ADR-046, ADR-037 §1/§3, #1218)
+ #
+ # Kind: tool  Tier: T0  (NO LLM — ADR-037 §3 invariant)
+-# The PRE-build mechanical structural gate for the design stage. Pure grep over
+-# design.md; runs five structural checks (C1..C5), reports ALL violations in
+-# one pass, and writes verdict=pass|fail to design-gate-result.json. Always
++# The PRE-build mechanical structural gate for the design stage. Runs six checks
++# (C1..C6), reports ALL violations in one pass, and writes verdict=pass|fail to
++# design-gate-result.json. C1..C5 are pure grep over design.md; C6 (#1777) is
++# the one check that executes anything — it runs each [guard] SPEC's assertion
++# at the merge-base, and fails open on every infrastructure signal. Always
+ # returns rc=0 — the verdict lives in the artifact (ADR-040 verdict-in-artifact
+ # convention); the design_verify_cycle's exit_when reads .verdict.
+ #
+@@ -26,6 +28,11 @@ source "$_DG_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
+ # edits the block grammar must be gated by ITS copy, not the installed one.
+ # shellcheck source=../../../scripts/lib/acceptance-block.sh
+ source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh" 2>/dev/null || true
++# #1777: C6 runs each [guard] SPEC's assertion at the merge-base, reusing the
++# acceptance gate's own machinery rather than a second implementation of it.
++# Same contract-lib seam and same reason as acceptance-block.sh above.
++# shellcheck source=../../../scripts/lib/acceptance-negctl.sh
++source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-negctl.sh" 2>/dev/null || true
+ 
+ # Resilient emit — no-op when the event-bus is unavailable (unit-test isolation).
+ _dg_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
+@@ -136,6 +143,55 @@ design_gate_run() {
+         fi
+     fi
+ 
++    # ── C6 GUARD-BASELINE: a [guard] SPEC must hold at the merge-base ───────
++    # The number is free — the original C6 (tag-presence) was deleted by #1477.
++    #
++    # A [guard] SPEC asserts an invariant, so its assertion holds at the baseline
++    # by definition. One that FAILS there is a mislabelled [change], or an
++    # assertion inverted relative to its own SPEC text. The acceptance gate
++    # already rejects this (`guard_regressed`), but only AFTER build has spent
++    # its whole iteration budget on the design: #1789 burned 5 iterations and
++    # 2h06m, #1809 burned 2 more and was aborted manually, and both wanted the
++    # same two-word correction. Catching it here costs one design turn.
++    #
++    # FAIL-OPEN, and LOUD ABOUT IT. acceptance_negctl_guard_precheck emits GUARD
++    # SKIP — never GUARD FAIL — for a missing baseline, an unresolvable worktree,
++    # a timeout, an unparseable file, or an untagged guard (#1255), so a design is
++    # never rejected because the check could not run. But a gate that skips
++    # SILENTLY is indistinguishable from a gate that works: that is the
++    # green-but-inert shape this repo keeps paying for (#845, #1044, and the
++    # vacuous `asserts: <none found>` in #1777's own second occurrence). So the
++    # coverage is recorded in the artifact — declared vs verified, with a reason
++    # per unverified SPEC. "verified 0 of 3, testfiles absent" is a fact an
++    # operator can read; "verified 0 of 3, worktree_failed" is visibly a bug and
++    # not a pass.
++    local _gp_declared=0 _gp_verified=0 _gp_failed=0
++    local -a _gp_skips=()
++    if [[ $_accept_ok -eq 1 ]] && declare -f acceptance_negctl_guard_precheck >/dev/null 2>&1; then
++        local _g_line _g_spec _g_reason
++        while IFS= read -r _g_line; do
++            case "$_g_line" in
++                "GUARD FAIL "*)
++                    _g_spec="${_g_line#GUARD FAIL }"; _g_spec="${_g_spec%% *}"
++                    _gp_declared=$((_gp_declared + 1)); _gp_failed=$((_gp_failed + 1))
++                    violations+=("GUARD_REGRESSED_AT_BASELINE $_g_spec (tagged [guard] but its assertion FAILS at the merge-base — a guard holds there by definition; if this SPEC describes a change, tag it [change])")
++                    ;;
++                "GUARD PASS "*)
++                    _gp_declared=$((_gp_declared + 1)); _gp_verified=$((_gp_verified + 1))
++                    ;;
++                "GUARD SKIP "*)
++                    _g_spec="${_g_line#GUARD SKIP }"
++                    _g_reason="${_g_spec#* }"; _g_spec="${_g_spec%% *}"
++                    _gp_declared=$((_gp_declared + 1))
++                    # TAB, not ':' — a reason is free text and the day one
++                    # carries a colon, splitting on the first would silently
++                    # truncate it. A tab cannot appear in either field.
++                    _gp_skips+=("$_g_spec"$'\t'"$_g_reason")
++                    ;;
++            esac
++        done < <(acceptance_negctl_guard_precheck "$design_md" "$repo_root" 2>/dev/null || true)
++    fi
++
+     # ── Verdict + artifact ───────────────────────────────────────────────────
+     local verdict violations_json
+     if [[ ${#violations[@]} -eq 0 ]]; then
+@@ -146,14 +202,39 @@ design_gate_run() {
+         violations_json="$(printf '%s\n' "${violations[@]}" | jq -R . | jq -s .)"
+     fi
+ 
+-    jq -n --arg v "$verdict" --argjson viol "$violations_json" \
+-        '{"schema_version":1,"verdict":$v,"violations":$viol}' | atomic_write "$result_path"
++    # Coverage block, present ONLY when the design declares a [guard] SPEC — a
++    # guard-less design keeps today's exact artifact shape (same absent-when-empty
++    # convention as route_target).
++    local _gp_json="null"
++    if [[ $_gp_declared -gt 0 ]]; then
++        local _gp_skips_json="[]"
++        if [[ ${#_gp_skips[@]} -gt 0 ]]; then
++            _gp_skips_json="$(printf '%s\n' "${_gp_skips[@]}" \
++                | jq -R 'select(length>0) | split("\t") | {spec: .[0], reason: (.[1:] | join("\t"))}' \
++                | jq -sc .)"
++        fi
++        _gp_json="$(jq -nc --argjson d "$_gp_declared" --argjson v "$_gp_verified" \
++            --argjson f "$_gp_failed" --argjson s "$_gp_skips_json" \
++            '{declared:$d,verified:$v,failed:$f,skipped:$s}')"
++    fi
++
++    jq -n --arg v "$verdict" --argjson viol "$violations_json" --argjson gp "$_gp_json" \
++        '{"schema_version":1,"verdict":$v,"violations":$viol}
++         + (if $gp==null then {} else {"guard_precheck":$gp} end)' | atomic_write "$result_path"
+ 
+     if [[ "$verdict" == "fail" ]]; then
+         {
+             printf '# Design-gate: structural violations\n\n'
+             printf 'The design contract is not build-ready. Fix these and re-emit design.md:\n\n'
+             printf -- '- %s\n' "${violations[@]}"
++            # Say what C6 actually managed to check, so a design author is never
++            # left inferring coverage from silence.
++            if [[ $_gp_declared -gt 0 ]]; then
++                printf '\n## Guard baseline coverage\n\n'
++                printf -- '- %d [guard] SPEC(s) declared; %d verified at the merge-base, %d failed.\n' \
++                    "$_gp_declared" "$_gp_verified" "$_gp_failed"
++                [[ ${#_gp_skips[@]} -gt 0 ]] && printf -- '- not verified: %s\n' "${_gp_skips[*]}"
++            fi
+         } | atomic_write "$feedback_path"
+         _dg_emit "design_gate.fail" "plugin=design-gate" "violations=${#violations[@]}"
+     else
+diff --git a/scripts/lib/acceptance-negctl.sh b/scripts/lib/acceptance-negctl.sh
+index d5b76a2..9e572a6 100644
+--- a/scripts/lib/acceptance-negctl.sh
++++ b/scripts/lib/acceptance-negctl.sh
+@@ -22,6 +22,15 @@
+ # assertion per file) for precise attribution; a file mixing a load-bearing and a
+ # tautological [change] SPEC is judged load-bearing.
+ #
++# Size (CLAUDE.md "under 500 lines unless there is a strong reason"): this file
++# is over, and stays over deliberately. The guard helpers below are shared by the
++# acceptance gate and the design-gate pre-check (#1777); splitting them into a
++# sibling under scripts/lib would add that file to _runner_contract_lib_closure —
++# runner.sh derives the hot-reloaded contract-reader set by following
++# same-directory `source` lines — which widens ADR-057 gate 2 and changes which
++# future issues must be built by hand. That is a real architectural cost for a
++# cosmetic gain.
++#
+ # Source-only; no `set -e` at top level (would mutate caller options).
+ 
+ [[ -n "${_ACCEPTANCE_NEGCTL_LOADED:-}" ]] && return 0
+@@ -166,6 +175,89 @@ _negctl_emit_whole_run_skip() {
+     return 0
+ }
+ 
++# _negctl_guard_resolve_tfs <design_md> <repo_root> <spec_id> [<pool>...]
++# Echoes the TESTFILEs a [guard] SPEC is measured against, one per line, keeping
++# only those present on disk under <repo_root>. Per-SPEC binding wins (#1480, no
++# sibling-riding); with no binding, fall back to scanning the declared <pool> for
++# the [spec_id] tag.
++#
++# #1777: extracted so the design-gate pre-check and this file's own guard arm
++# resolve the SAME set. Two copies of "which files does this guard own" is how
++# the pre-check and the gate would come to disagree about the same design.
++_negctl_guard_resolve_tfs() {
++    local design_md="$1" repo_root="$2" spec_id="$3"; shift 3
++    local _tf
++    if acceptance_spec_has_binding "$design_md" "$spec_id"; then
++        while IFS= read -r _tf; do
++            [[ -n "$_tf" && -f "$repo_root/$_tf" ]] && printf '%s\n' "$_tf"
++        done < <(acceptance_list_testfiles_for_spec "$design_md" "$spec_id")
++    else
++        for _tf in "$@"; do
++            [[ -z "$_tf" ]] && continue
++            grep -qF "[$spec_id]" "$repo_root/$_tf" 2>/dev/null || continue
++            printf '%s\n' "$_tf"
++        done
++    fi
++    return 0
++}
++
++# _negctl_guard_verdict <wt_dir> <spec_id> <logfile> <testfile>...
++# Runs a [guard] SPEC's TESTFILEs inside the baseline worktree and echoes ONE of:
++#   held       — every tagged assertion holds at the merge-base (a real guard)
++#   regressed  — the guard's own assertion FAILS there, so it is not an invariant
++#   timeout    — a run was killed; pass/fail unknown (infrastructure)
++#   harness    — unparseable at baseline, or the runner could not execute it
++# <logfile> may be empty to discard the per-TESTFILE capture.
++#
++# #1777: extracted verbatim from acceptance_negctl_check's guard arm so the
++# design-gate can apply the identical rule one stage earlier. The #1737 ✓/✗
++# discrimination lives here and therefore cannot drift between the two callers.
++_negctl_guard_verdict() {
++    local wt_dir="$1" spec_id="$2" logfile="$3"; shift 3
++    local _g_tf _g_rc _g_capfile _g_lv
++    for _g_tf in "$@"; do
++        # A baseline run that never reached an assertion (unparseable at the
++        # merge-base, or a runner that could not execute it) proves nothing
++        # either way — warn, never block. Distinguishing this from a real
++        # assertion failure is what keeps a guard whose test depends on code
++        # this change introduces from being unlandable.
++        if ! _negctl_baseline_parses "$wt_dir/$_g_tf"; then printf 'harness'; return 0; fi
++        _g_rc=0
++        # #1737: capture PER TESTFILE, never into the shared per-SPEC log.
++        # $logfile accumulates every TESTFILE bound to this SPEC, so scanning it
++        # would let file A's passing ✓ clear file B's failure.
++        _g_capfile="$(mktemp "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zb-negctl-guard.XXXXXX")" || _g_capfile=""
++        _negctl_run "$wt_dir/$_g_tf" "$wt_dir" "$_g_capfile" || _g_rc=$?
++        # Fold the capture into the per-SPEC diagnostic log, preserving the
++        # pre-#1737 artifact shape operators read.
++        if [[ -n "$logfile" ]]; then
++            printf '### %s baseline %s\n' "$spec_id" "$_g_tf" >> "$logfile"
++            [[ -n "$_g_capfile" ]] && cat "$_g_capfile" >> "$logfile" 2>/dev/null
++        fi
++        if _negctl_is_timeout_rc "$_g_rc"; then
++            [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
++            printf 'timeout'; return 0
++        fi
++        if _negctl_is_harness_rc "$_g_rc"; then
++            [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
++            printf 'harness'; return 0
++        fi
++        # lv=1 (a ✓-marked [spec_id] line, no ✗) is the ONLY outcome that clears
++        # a non-zero file rc: a sibling [change] assertion reddened the file
++        # while the guard's own assertion held. Everything else — ✗ found,
++        # nothing marked, custom runner — keeps the file-rc verdict.
++        _g_lv=1
++        if [[ "$_g_rc" -ne 0 ]]; then
++            _negctl_guard_log_check "$_g_capfile" "$spec_id" && _g_lv=0 || _g_lv=$?
++        fi
++        [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
++        if [[ "$_g_rc" -ne 0 && "$_g_lv" -ne 1 ]]; then printf 'regressed'; return 0; fi
++    done
++    printf 'held'
++    return 0
++}
++
++
+ # acceptance_negctl_check <design_md> <repo_root>
+ # Prints one verdict line per SPEC-n:
+ #   NEGCTL PASS <spec_id>      — ≥1 tagged testfile fails at baseline, passes at HEAD
+@@ -264,17 +356,10 @@ acceptance_negctl_check() {
+             fi
+             local -a _g_tfs=()
+             local _g_tf
+-            if acceptance_spec_has_binding "$design_md" "$spec_id"; then
+-                while IFS= read -r _g_tf; do
+-                    [[ -n "$_g_tf" && -f "$repo_root/$_g_tf" ]] && _g_tfs+=("$_g_tf")
+-                done < <(acceptance_list_testfiles_for_spec "$design_md" "$spec_id")
+-            else
+-                for _g_tf in "${testfiles[@]:-}"; do
+-                    [[ -z "$_g_tf" ]] && continue
+-                    grep -qF "[$spec_id]" "$repo_root/$_g_tf" 2>/dev/null || continue
+-                    _g_tfs+=("$_g_tf")
+-                done
+-            fi
++            while IFS= read -r _g_tf; do
++                [[ -n "$_g_tf" ]] && _g_tfs+=("$_g_tf")
++            done < <(_negctl_guard_resolve_tfs "$design_md" "$repo_root" "$spec_id" \
++                        ${testfiles[@]+"${testfiles[@]}"})
+             # #1255 exempts [guard] SPECs from the design-gate's tag-coverage
+             # rule, so an untagged guard is LEGAL input here. Failing it would
+             # deadlock the pipeline: design-gate admits the design, this gate
+@@ -283,63 +368,18 @@ acceptance_negctl_check() {
+             if [[ ${#_g_tfs[@]} -eq 0 ]]; then
+                 printf 'NEGCTL SKIP %s guard_untested\n' "$spec_id"; continue
+             fi
+-            local _g_regressed=0 _g_timeout=0 _g_harness=0
+-            for _g_tf in "${_g_tfs[@]}"; do
+-                # A baseline run that never reached an assertion (unparseable at
+-                # the merge-base, or a runner that could not execute it) proves
+-                # nothing either way — warn, never block. Distinguishing this
+-                # from a real assertion failure is what keeps a guard whose test
+-                # depends on code this change introduces from being unlandable.
+-                if ! _negctl_baseline_parses "$wt_dir/$_g_tf"; then
+-                    _g_harness=1; break
+-                fi
+-                local _g_rc=0
+-                # #1737: capture PER TESTFILE, never into the shared per-SPEC log.
+-                # $_g_logfile accumulates every TESTFILE bound to this SPEC, so
+-                # scanning it would let file A's passing ✓ clear file B's failure.
+-                # The scratch is also what makes the artifact-dir-set and
+-                # artifact-dir-unset paths identical — the production path (the
+-                # plugin always exports ZBUILD_NEGCTL_ARTIFACT_DIR) and the path
+-                # the unit tests take now run the same code.
+-                local _g_capfile
+-                _g_capfile="$(mktemp "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zb-negctl-guard.XXXXXX")" || _g_capfile=""
+-                _negctl_run "$wt_dir/$_g_tf" "$wt_dir" "$_g_capfile" || _g_rc=$?
+-                # Fold the capture into the per-SPEC diagnostic log, preserving
+-                # the pre-#1737 artifact shape operators read.
+-                if [[ -n "$_g_logfile" ]]; then
+-                    printf '### %s baseline %s\n' "$spec_id" "$_g_tf" >> "$_g_logfile"
+-                    [[ -n "$_g_capfile" ]] && cat "$_g_capfile" >> "$_g_logfile" 2>/dev/null
+-                fi
+-                if _negctl_is_timeout_rc "$_g_rc"; then
+-                    [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
+-                    _g_timeout=1; break
+-                fi
+-                if _negctl_is_harness_rc "$_g_rc"; then
+-                    [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
+-                    _g_harness=1; break
+-                fi
+-                # lv=1 (a ✓-marked [spec_id] line, no ✗) is the ONLY outcome that
+-                # clears a non-zero file rc: a sibling [change] assertion reddened
+-                # the file while the guard's own assertion held. Everything else —
+-                # ✗ found, nothing marked, custom runner — keeps the file-rc verdict.
+-                local _g_lv=1
+-                if [[ "$_g_rc" -ne 0 ]]; then
+-                    _negctl_guard_log_check "$_g_capfile" "$spec_id" && _g_lv=0 || _g_lv=$?
+-                fi
+-                [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
+-                if [[ "$_g_rc" -ne 0 && "$_g_lv" -ne 1 ]]; then
+-                    _g_regressed=1; break
+-                fi
+-            done
++            local _g_out
++            _g_out="$(_negctl_guard_verdict "$wt_dir" "$spec_id" "$_g_logfile" "${_g_tfs[@]}")"
+             _negctl_bound_log "$_g_logfile"
+             # SPEC id leads every token, as on the [change] lines: the #1684
+             # summary enrichment and the plugin's generic FAIL parser both key
+             # off that position, so guard verdicts need no special-casing.
+-            if   [[ "$_g_timeout"   -eq 1 ]]; then printf 'NEGCTL ERROR timeout:%s\n' "$spec_id"; rc=1
+-            elif [[ "$_g_harness"   -eq 1 ]]; then printf 'NEGCTL ERROR harness:%s\n' "$spec_id"; rc=1
+-            elif [[ "$_g_regressed" -eq 1 ]]; then printf 'NEGCTL FAIL %s guard_regressed\n' "$spec_id"; rc=1
+-            else                                    printf 'NEGCTL PASS %s guard_spec\n' "$spec_id"
+-            fi
++            case "$_g_out" in
++                timeout)   printf 'NEGCTL ERROR timeout:%s\n' "$spec_id"; rc=1 ;;
++                harness)   printf 'NEGCTL ERROR harness:%s\n' "$spec_id"; rc=1 ;;
++                regressed) printf 'NEGCTL FAIL %s guard_regressed\n' "$spec_id"; rc=1 ;;
++                *)         printf 'NEGCTL PASS %s guard_spec\n' "$spec_id" ;;
++            esac
+             continue
+         fi
+         local found_control=0 saw_tautology=0 saw_tagged=0 only_head_fail=0 saw_timeout=0
+@@ -410,3 +450,96 @@ acceptance_negctl_check() {
+ 
+     return "$rc"
+ }
++
++# acceptance_negctl_guard_precheck <design_md> <repo_root>
++# #1777 — the same [guard] rule as acceptance_negctl_check, applied ONE STAGE
++# EARLIER so a mislabelled SPEC costs a design turn instead of a build cycle.
++#
++# A [guard] SPEC claims an invariant: its assertion must hold at the merge-base
++# by definition. An assertion that FAILS there is not a guard — it is a
++# mislabelled [change], or an assertion inverted relative to its own SPEC text.
++# The acceptance gate already catches this, but only after build has spent its
++# entire iteration budget: #1789 lost 5 iterations and 2h06m, #1809 lost 2 more
++# and was aborted, and both needed the same two-word fix.
++#
++# Prints one line per [guard] SPEC:
++#   GUARD PASS <spec_id>
++#   GUARD FAIL <spec_id> guard_regressed
++#   GUARD SKIP <spec_id> <reason>
++# Returns 0 when nothing FAILed, 1 otherwise.
++#
++# FAIL-OPEN on every infrastructure signal — no baseline, no git, no worktree, a
++# timeout, an unparseable file. This runs in a T0 structural gate that must not
++# become a new way for a correct design to be rejected; the acceptance gate is
++# still the authority, this is only an earlier net (ADR-036).
++#
++# Design-time note: on the FIRST pass of a fresh branch the merge-base IS HEAD,
++# so every guard skips `no_impl_delta` and the gate costs nothing. The check
++# earns its keep on the REWIND — after build has committed, `route_design` sent
++# the run back here, and the same mislabel would otherwise consume another full
++# build cycle before being caught again.
++acceptance_negctl_guard_precheck() {
++    local design_md="${1:-}" repo_root="${2:-}"
++    [[ -z "$design_md" || -z "$repo_root" || ! -f "$design_md" ]] && return 0
++
++    # Roster first: with no [guard] SPEC declared there is nothing to measure,
++    # and no worktree is created.
++    local -a guards=()
++    local spec_id
++    while IFS= read -r spec_id; do
++        [[ -z "$spec_id" ]] && continue
++        acceptance_spec_is_guard "$design_md" "$spec_id" && guards+=("$spec_id")
++    done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
++    [[ ${#guards[@]} -eq 0 ]] && return 0
++
++    local base_sha; base_sha="$(zbuild_resolve_merge_base "$repo_root")"
++    if [[ -z "$base_sha" ]]; then
++        printf 'GUARD SKIP %s no_baseline\n' "${guards[@]}"; return 0
++    fi
++    local head_sha; head_sha="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
++    if [[ -z "$head_sha" || "$base_sha" == "$head_sha" ]]; then
++        printf 'GUARD SKIP %s no_impl_delta\n' "${guards[@]}"; return 0
++    fi
++
++    # The declared pool, for guards that carry no per-SPEC binding.
++    local -a testfiles=()
++    local tf
++    while IFS= read -r tf; do
++        [[ -n "$tf" && -f "$repo_root/$tf" ]] && testfiles+=("$tf")
++    done < <(acceptance_list_testfiles "$design_md" 2>/dev/null || true)
++
++    local wt_dir; wt_dir="$(mktemp -d "${TMPDIR:-/tmp}/zb-guardpre.XXXXXX")"
++    # shellcheck disable=SC2064
++    trap "git -C '$repo_root' worktree remove --force '$wt_dir' >/dev/null 2>&1 || true; rm -rf '$wt_dir' 2>/dev/null || true" RETURN
++    if ! git -C "$repo_root" worktree add --detach "$wt_dir" "$base_sha" >/dev/null 2>&1; then
++        printf 'GUARD SKIP %s worktree_failed\n' "${guards[@]}"; return 0
++    fi
++    # Overlay each declared TESTFILE from HEAD: impl reverted, assertion current.
++    for tf in ${testfiles[@]+"${testfiles[@]}"}; do
++        [[ -z "$tf" ]] && continue
++        mkdir -p "$wt_dir/$(dirname "$tf")"
++        git -C "$repo_root" show "HEAD:$tf" > "$wt_dir/$tf" 2>/dev/null || true
++        chmod +x "$wt_dir/$tf" 2>/dev/null || true
++    done
++
++    local rc=0 out
++    for spec_id in "${guards[@]}"; do
++        local -a _tfs=()
++        while IFS= read -r tf; do
++            [[ -n "$tf" ]] && _tfs+=("$tf")
++        done < <(_negctl_guard_resolve_tfs "$design_md" "$repo_root" "$spec_id" \
++                    ${testfiles[@]+"${testfiles[@]}"})
++        # #1255: an untagged [guard] is legal input — the design-gate exempts it
++        # from tag-coverage. Nothing tagged → nothing to measure → skip.
++        if [[ ${#_tfs[@]} -eq 0 ]]; then
++            printf 'GUARD SKIP %s guard_untested\n' "$spec_id"; continue
++        fi
++        out="$(_negctl_guard_verdict "$wt_dir" "$spec_id" "" "${_tfs[@]}")"
++        case "$out" in
++            regressed)       printf 'GUARD FAIL %s guard_regressed\n' "$spec_id"; rc=1 ;;
++            timeout|harness) printf 'GUARD SKIP %s %s\n' "$spec_id" "$out" ;;
++            *)               printf 'GUARD PASS %s\n' "$spec_id" ;;
++        esac
++    done
++    return "$rc"
++}
+diff --git a/scripts/lib/cleanup.sh b/scripts/lib/cleanup.sh
+index 744defe..e02fabf 100644
+--- a/scripts/lib/cleanup.sh
++++ b/scripts/lib/cleanup.sh
+@@ -300,17 +300,37 @@ _cleanup_is_active_run() {
+             state_dir="${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}"
+         fi
+     fi
+-    # No "uncomputable root" branch, deliberately: the fallback cannot yield an
+-    # empty string — with HOME unset it is `/.zbuild/state`. A guard for an
+-    # unreachable case implies a protection that never engages.
+-    [[ -d "$state_dir" ]] || return 1
++    # #141: DO NOT early-return on `[[ -d "$state_dir" ]]` in the default case.
++    # Runs now nest under the DATA root (`repos/<repo>/issues/<N>/runs/...`), so
++    # the STATE root can be absent on a machine with live runs — "that one
++    # directory is missing" no longer means "nothing is running". Gating on it
++    # answered "no run is live" WHILE a run was in progress: the FAIL-OPEN
++    # direction, on the predicate three destructive scanners are gated by.
++    # Caught by tests/unit/layout-switch-test.sh SPEC-3.
++    #
++    # Only the pinned-override case still has one authoritative root, so only it
++    # keeps the early return.
++    if [[ -n "${ZBUILD_STATE_DIR:-}" ]]; then
++        [[ -d "$state_dir" ]] || return 1
++    fi
+     # #887: per-run dirs (runs/<id>/) plus the legacy flat path — and the
+     # PATTERNS come from the resolver too, not just the root. Inlining them here
+     # would leave this function silently stale the next time layout.sh's globs
+     # change, which is the exact divergence this shares a definition to prevent.
+     local f _glob _globs
+     if declare -F zbuild_layout_state_file_globs >/dev/null 2>&1; then
+-        _globs="$(zbuild_layout_state_file_globs "$state_dir")"
++        # Pass the root ONLY when the operator pinned one (ZBUILD_STATE_DIR).
++        # Otherwise let the resolver answer for itself — since #141 the run dirs
++        # live under the DATA root (`repos/<repo>/issues/<N>/runs/...`), not
++        # under the state root, so forcing $state_dir as the base makes the
++        # issue-keyed globs point at a directory that does not exist and the
++        # predicate answers "no run is live". That is the FAIL-OPEN direction
++        # this whole file exists to avoid.
++        if [[ -n "${ZBUILD_STATE_DIR:-}" ]]; then
++            _globs="$(zbuild_layout_state_file_globs "$state_dir")"
++        else
++            _globs="$(zbuild_layout_state_file_globs)"
++        fi
+     else
+         _globs="$state_dir/runs/*/pipeline-state*.json
+ $state_dir/pipeline-state*.json"
+@@ -964,14 +984,23 @@ _cleanup_scan_scratch() {
+ # REPORTED instead of being invisible to the scan (#1634).
+ _cleanup_scan_state_dirs() {
+     local state_dir="$1" age_days="${2:-7}" force="${3:-false}"
+-    [[ -d "$state_dir" ]] || return 0
+-    local root="$state_dir/runs"
+-    [[ -d "$root" ]] || return 0
+     local now; now="$(date +%s)"
+     local cutoff=$(( now - age_days * 86400 ))
+-    local d rid f c status mtime age_d clock
+-    for d in "$root"/*; do
+-        [[ -d "$d" ]] || continue
++    local d rid f c status mtime age_d clock _dirs
++    # #141: enumerate through the resolver. Runs live under their ISSUE now, so
++    # a scanner walking only "$state_dir/runs" reports "nothing to clean" for a
++    # store full of them — indistinguishable from a clean machine, and the
++    # FAIL-OPEN direction for anything downstream that trusts the answer.
++    # An operator-pinned state dir keeps its own root; otherwise the resolver
++    # enumerates both the new and the pre-#141 shapes so old runs still drain.
++    if [[ -n "${ZBUILD_STATE_DIR:-}" ]] || ! declare -F zbuild_layout_run_dirs >/dev/null 2>&1; then
++        [[ -d "$state_dir/runs" ]] || return 0
++        _dirs="$(for d in "$state_dir"/runs/*/; do [[ -d "$d" ]] && printf '%s\n' "${d%/}"; done)"
++    else
++        _dirs="$(zbuild_layout_run_dirs)"
++    fi
++    while IFS= read -r d; do
++        [[ -n "$d" && -d "$d" ]] || continue
+         rid="$(basename "$d")"
+         # Live run — never pruned, not even with --force.
+         if _cleanup_is_active_run "$rid"; then
+@@ -1061,7 +1090,7 @@ _cleanup_scan_state_dirs() {
+             continue
+         fi
+         printf '%s\tprune\trun=%s status=%s age=%sd by %s\n' "$d" "$rid" "${status:-no-state-file}" "$age_d" "$(basename "$clock")"
+-    done
++    done <<< "$_dirs"
+ }
+ 
+ # ─── _cleanup_scan_state_branches <age_days> [scope] ────────────────────────
+diff --git a/scripts/zbuild b/scripts/zbuild
+index 0542dd8..db71e55 100755
+--- a/scripts/zbuild
++++ b/scripts/zbuild
+@@ -653,6 +653,14 @@ UPHELP
+         ;;
+     cleanup)
+         shift
++        # #141: the layout resolver, so the CLI's own containment roots follow
++        # the same definition the scanners and the writer use. cleanup.sh
++        # sources it defensively for its internals, but `declare -F` guards HERE
++        # need it in this shell too — without it the apply's second containment
++        # root is silently skipped and nothing under the new layout is ever
++        # removed, while the dry-run looks correct.
++        # shellcheck source=../core/state/layout.sh
++        source "$SCRIPT_DIR/../core/state/layout.sh"
+         # shellcheck source=lib/cleanup.sh
+         source "$SCRIPT_DIR/lib/cleanup.sh"
+         cl_branches=false
+@@ -778,7 +786,24 @@ UPHELP
+ 
+             cl_state_dir_plan="$(_cleanup_scan_state_dirs "$cl_state_dir" "$cl_age_days" "$cl_force" || true)"
+             _cleanup_render_plan "state dirs" "$cl_state_dir_plan" "$cl_dry_run" "$cl_quiet"
++            # #141: the plan can now name paths under TWO roots — the new
++            # issue-keyed one under the data root, and the pre-switch flat one
++            # under the state root. _cleanup_apply_dir_plan contains against a
++            # SINGLE root and refuses anything outside it, so passing only the
++            # old root made apply silently delete nothing while the dry-run
++            # looked correct. That is the exact "correct dry-run, apply deletes
++            # nothing" failure ADR-059 listed. Apply once per root; each call
++            # ignores what it does not contain.
+             _cleanup_apply_dir_plan "$cl_state_dir_plan" "$cl_dry_run" "$cl_state_dir/runs"
++            # zbuild_layout_repo_root never returns empty — outside a git
++            # context it falls back to `local/<basename>`, so this call always
++            # gets a real containment root and rejects every target as "outside
++            # root" rather than widening the blast radius. Emptiness is not a
++            # case to defend against here; it cannot occur.
++            if declare -F zbuild_layout_repo_root >/dev/null 2>&1 && [[ -z "${ZBUILD_STATE_DIR:-}" ]]; then
++                _cleanup_apply_dir_plan "$cl_state_dir_plan" "$cl_dry_run" \
++                    "$(zbuild_layout_repo_root)"
++            fi
+         fi
+ 
+         if $cl_branches; then
+diff --git a/tests/integration/acceptance-guard-regressed-routes-design-test.sh b/tests/integration/acceptance-guard-regressed-routes-design-test.sh
+new file mode 100755
+index 0000000..139620f
+--- /dev/null
++++ b/tests/integration/acceptance-guard-regressed-routes-design-test.sh
+@@ -0,0 +1,160 @@
++#!/usr/bin/env bash
++# Integration (#1777): a `guard_regressed` acceptance failure is DESIGN-ROOTED,
++# and the rewind it triggers must carry the reason with it.
++#
++# #1809 rewound correctly and still could not converge. The acceptance gate
++# reported `guard_regressed:SPEC-5` but set no route_target, so the gate-
++# aggregator partitioned it into residual[] and wrote it to the BUILD-facing
++# gate-feedback.md. The winning route_target came from shape-floor, so
++# design-feedback.md — the payload the route_back carries to the
++# design_verify_cycle — named only shape-floor and never mentioned the
++# mislabelled SPEC. Design re-authored nothing; build re-ran; the same guard
++# failed again; the run was aborted at iteration 3 of 5.
++#
++# Both halves are driven through the REAL plugins. Asserting the condition in
++# the test instead would stay green with the implementation deleted — the
++# #1686 lesson recorded in acceptance-gate-inert-wiring-iter1-test.sh.
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "guard_regressed routes to design, and design-feedback says why (#1777)"
++setup_test_env "guard-regressed-routes-design"
++_test_cleanup_hook() { cleanup_test_env; }
++
++export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
++export ZBUILD_EVENTS_DB="/dev/null"
++export ZBUILD_NEGCTL_TIMEOUT="${ZBUILD_NEGCTL_TIMEOUT:-30}"
++GIT="$(command -v git)"
++
++# ── Fixture: #1777's own shape ───────────────────────────────────────────────
++# baseline: doctor.sh carries a warn line.  HEAD: the line is removed.
++# SPEC-1 is tagged [guard] but asserts the REMOVAL — impossible at the baseline.
++REPO="$(setup_git_temp_repo "guard-routes")"
++(
++    cd "$REPO"
++    mkdir -p scripts tests
++    printf '#!/usr/bin/env bash\necho "bash 4 functional but 5 recommended"\n' > scripts/doctor.sh
++    chmod +x scripts/doctor.sh
++    "$GIT" add -A && "$GIT" commit -q -m "baseline: doctor warns"
++
++    "$GIT" checkout -q -b feature
++    printf '#!/usr/bin/env bash\necho ok\n' > scripts/doctor.sh
++    chmod +x scripts/doctor.sh
++    cat > tests/guard-bad-test.sh <<'EOF'
++#!/usr/bin/env bash
++# [SPEC-1] doctor.sh no longer carries the bash-4 warn
++root="$(cd "$(dirname "$0")/.." && pwd)"
++if grep -q "functional but 5 recommended" "$root/scripts/doctor.sh"; then
++    echo "✗ [SPEC-1] warn line still present"
++    exit 1
++fi
++echo "✓ [SPEC-1] warn line removed"
++EOF
++    chmod +x tests/guard-bad-test.sh
++    cat > design.md <<'EOF'
++# Design
++
++```scope
++scripts/doctor.sh
++```
++
++```acceptance
++SPEC-1[guard]: doctor.sh no longer carries the bash-4 warn
++TESTFILES:
++SPEC-1: tests/guard-bad-test.sh
++WIRING: scripts/doctor.sh
++```
++EOF
++    "$GIT" add -A && "$GIT" commit -q -m "feat: drop the warn line"
++)
++
++# ── Half 1: the acceptance gate marks guard_regressed design-rooted ──────────
++STATE_DIR="$REPO/.zbuild-state"
++ART="$STATE_DIR/artifacts"
++mkdir -p "$ART"
++export ZBUILD_EVENTS_DIR="$STATE_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
++export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
++cp "$REPO/design.md" "$ART/design.md"
++
++unset _ZBUILD_ACCEPTANCE_GATE_LOADED _ACCEPTANCE_REACHABILITY_LOADED \
++      _ACCEPTANCE_NEGCTL_LOADED _ACCEPTANCE_BLOCK_LOADED _ZBUILD_MERGE_BASE_LOADED \
++      _ACCEPTANCE_COVERAGE_LOADED
++set +e
++( cd "$REPO" && source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" \
++    && acceptance_gate_run "acceptance-gate" "$STATE_DIR/pipeline-state.json" ) >/dev/null 2>&1
++set -e
++AG_RESULT="$(cat "$ART/acceptance-gate-result.json" 2>/dev/null || echo '{}')"
++
++assert_contains "[SPEC-1] the gate reports guard_regressed for the mislabelled SPEC" \
++    "$(jq -rc '.failures // []' <<< "$AG_RESULT")" "guard_regressed:SPEC-1"
++assert_eq "[SPEC-2] guard_regressed sets route_target=design — build cannot fix a mislabelled tag" \
++    "design" "$(jq -r '.route_target // "ABSENT"' <<< "$AG_RESULT")"
++assert_eq "[SPEC-3] the disposition stays recoverable, so the aggregator still reads route_target" \
++    "recoverable" "$(jq -r '.disposition // "MISSING"' <<< "$AG_RESULT")"
++
++# ── Half 2: the aggregator carries it into design-feedback.md ───────────────
++# _ga_build_roster falls back to the legacy must-pass set with no cycle in
++# scope, so the other gates read as `missing` (fail-closed) and land in
++# residual[] — precisely the mixed failure set #1757 fixed the partition for.
++_run_aggregator() {
++    local art="$1"
++    unset _ZBUILD_GATE_AGGREGATOR_LOADED
++    set +e
++    (
++        export ZBUILD_ARTIFACT_DIR="$art"
++        # shellcheck disable=SC1090
++        source "$REPO_ROOT/plugins/tool/gate-aggregator/plugin.sh"
++        gate_aggregator_run "gate-aggregator" ""
++    ) >/dev/null 2>&1
++    set -e
++    GA_RESULT="$(cat "$art/gate-aggregator-result.json" 2>/dev/null || echo '{}')"
++    DESIGN_FB="$(cat "$art/design-feedback.md" 2>/dev/null || true)"
++    GATE_FB="$(cat "$art/gate-feedback.md" 2>/dev/null || true)"
++}
++
++AGG_DIR="$TEST_TEMP_DIR/agg"; mkdir -p "$AGG_DIR"
++cp "$ART/acceptance-gate-result.json" "$AGG_DIR/acceptance-gate-result.json"
++_run_aggregator "$AGG_DIR"
++
++assert_eq "[SPEC-4] the aggregate verdict is route_design" \
++    "route_design" "$(jq -r '.verdict // "MISSING"' <<< "$GA_RESULT")"
++assert_file_exists "[SPEC-4] design-feedback.md is written for the rewind" \
++    "$AGG_DIR/design-feedback.md"
++assert_contains "[SPEC-5] design-feedback.md names the acceptance gate that routed" \
++    "$DESIGN_FB" "acceptance-gate"
++assert_contains "[SPEC-5] design-feedback.md names the offending SPEC — the #1809 gap" \
++    "$DESIGN_FB" "guard_regressed:SPEC-1"
++
++# ── Additive guard: a non-acceptance route_design still renders as today ────
++# shape-floor's missing_floor_files was the ONLY thing #1809's design-feedback
++# did carry; that path must be untouched by this change.
++SF_DIR="$TEST_TEMP_DIR/agg-shapefloor"; mkdir -p "$SF_DIR"
++jq -n '{verdict:"fail",reason:"missing_floor_files: tests/golden/x.golden",route_target:"design"}' \
++    > "$SF_DIR/shape-floor-result.json"
++_run_aggregator "$SF_DIR"
++assert_eq "[SPEC-6] a shape-floor-rooted route_design is unchanged by this issue" \
++    "route_design" "$(jq -r '.verdict // "MISSING"' <<< "$GA_RESULT")"
++assert_contains "[SPEC-6] its design-feedback still carries the shape-floor reason" \
++    "$DESIGN_FB" "missing_floor_files"
++
++# ── Guard: a build-fixable failure still reaches BUILD, not design (#1583) ──
++# tautology deliberately carries NO route_target so build re-authors its own
++# assertion. C6 and the guard_regressed routing must not have widened that.
++TA_DIR="$TEST_TEMP_DIR/agg-tautology"; mkdir -p "$TA_DIR"
++jq -n '{verdict:"fail",disposition:"recoverable",reason:"acceptance SPEC violations",
++        failures:["tautology:SPEC-9"]}' > "$TA_DIR/acceptance-gate-result.json"
++_run_aggregator "$TA_DIR"
++assert_eq "[SPEC-7] a tautology failure still yields a plain fail, not route_design" \
++    "fail" "$(jq -r '.verdict // "MISSING"' <<< "$GA_RESULT")"
++assert_contains "[SPEC-7] and its detail goes to the BUILD-facing gate-feedback.md" \
++    "$GATE_FB" "tautology:SPEC-9"
++
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/integration/route-fast-abort-test.sh b/tests/integration/route-fast-abort-test.sh
+index 2c28925..28696be 100755
+--- a/tests/integration/route-fast-abort-test.sh
++++ b/tests/integration/route-fast-abort-test.sh
+@@ -64,7 +64,6 @@ export ZBUILD_SCOPE_OVERRIDE=1
+ 
+ # Unique marker so we can pgrep for OUR stub-claude processes only —
+ # even if some other stub `claude` is around in the test env.
+-MARKER="ZB-W15G-MARKER-$$-$(date +%s)"
+ 
+ # Stub claude: trap-and-ignore SIGTERM/INT, sleep long. Records its PID
+ # into a file so we can verify it was actually reaped.
+@@ -72,7 +71,6 @@ mkdir -p "$TEST_TEMP_DIR/bin"
+ PID_FILE="$TEST_TEMP_DIR/stub-claude.pid"
+ cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
+ #!/usr/bin/env bash
+-# Marker arg so pgrep can find us by cmdline: $MARKER
+ echo \$\$ >> "$PID_FILE"
+ trap '' TERM INT
+ # Burn 60s in 1s slices so the trap-ignore is observable AND so a kernel
+@@ -85,8 +83,9 @@ done
+ exit 0
+ MOCK
+ chmod +x "$TEST_TEMP_DIR/bin/claude"
++# The identity the leftover check matches on (#1949). Unique per run.
++_RFA_STUB_PATH="$TEST_TEMP_DIR/bin/claude"
+ export PATH="$TEST_TEMP_DIR/bin:$PATH"
+-export ZB_STUB_MARKER="$MARKER"
+ 
+ # Throwaway repo for route_to_model_loop's git diff capture.
+ REPO="$TEST_TEMP_DIR/repo"
+@@ -210,6 +209,46 @@ fi
+ #     `{ sleep 1 && kill -KILL; } &` backstop raced the caller's exit).
+ #     Millisecond-precise deadline (not integer `date +%s`, whose second-
+ #     granularity made the old window race between ~1s and ~2s under load).
++# _rfa_is_my_stub <pid> — true only when <pid> is a stub-claude THIS test spawned.
++# Reads /proc/<pid>/cmdline and matches the stub path, which is unique per run
++# because TEST_TEMP_DIR is. A zombie's cmdline is EMPTY, so this also subsumes
++# the #1942 zombie exclusion rather than duplicating it; the `ps` check below is
++# kept as a second, independent signal so a future regression in either one is
++# still caught by the other.
++# Returns 0 = count it, 1 = do not. Deliberately TRI-state internally, because
++# the two "cannot read it" cases mean opposite things and collapsing them makes
++# a leak detector fail OPEN — the permissive-direction failure this whole
++# initiative exists to remove:
++#
++#   /proc/<pid> absent          -> process is gone            -> skip
++#   cmdline present but EMPTY   -> zombie (#1942)             -> skip
++#   cmdline non-empty, no match -> PID reuse, a stranger      -> skip
++#   cmdline non-empty, matches  -> our stub is alive          -> COUNT
++#   /proc/<pid> exists, cmdline unreadable -> AMBIGUOUS       -> COUNT (fail closed)
++#
++# The last row is the one worth stating: an unreadable cmdline on a directory
++# that still exists is not evidence of absence, so it is counted and the
++# diagnostic below says why. Better a rare explained failure than a detector
++# that quietly stops detecting.
++# Identity check lives in tests/lib/proc-identity.sh so it can be driven on a
++# platform that never runs this file (#1949). See that file for the five cases.
++# shellcheck source=../lib/proc-identity.sh
++source "$(dirname "${BASH_SOURCE[0]}")/../lib/proc-identity.sh"
++_rfa_is_my_stub() { proc_is_my_process "$1" "$_RFA_STUB_PATH"; }
++
++# _rfa_describe <pid> — everything needed to tell a real leak from a false
++# positive, WITHOUT re-running CI. Two fixes have now been attempted on this
++# assertion (#1943 zombies, and the identity check above) and each time the
++# failure output was a bare count, which is why the second attempt was still a
++# guess. A count that cannot be explained is not evidence.
++_rfa_describe() {
++    local _p="$1"
++    printf '    pid=%s state=%s ppid=%s cmd=[%s]\n' "$_p" \
++        "$(ps -o state= -p "$_p" 2>/dev/null | tr -d ' ' || echo '?')" \
++        "$(ps -o ppid= -p "$_p" 2>/dev/null | tr -d ' ' || echo '?')" \
++        "$(tr '\0' ' ' < "$_RFA_PROC/$_p/cmdline" 2>/dev/null || echo '<unreadable>')" >&2
++}
++
+ _st=""
+ leftover=0
+ deadline_ns=$(( $(date +%s%N) + 500000000 ))
+@@ -218,6 +257,20 @@ while [[ $(date +%s%N) -lt $deadline_ns ]]; do
+     if [[ -f "$PID_FILE" ]]; then
+         while IFS= read -r p; do
+             [[ -z "$p" ]] && continue
++            # IDENTITY, not liveness (#1942 follow-up). `kill -0` answers "does
++            # something own this PID", which is NOT the question. Two ways that
++            # differs from "my stub is still running":
++            #   - PID REUSE. The stub file is appended to (`>> $PID_FILE`), so a
++            #     retried spawn leaves earlier PIDs in it. Once such a PID is
++            #     reaped the kernel is free to hand the number to an unrelated
++            #     process, and on a loaded CI runner it does. `kill -0` then
++            #     succeeds and `ps -o state=` says `S`, so a stranger is counted
++            #     as OUR leftover. That is a false FAIL with no bug behind it.
++            #   - ZOMBIES, the #1942 case, still handled — see below.
++            # /proc is safe here: this whole file is `skip_unless_platform linux`.
++            if ! _rfa_is_my_stub "$p"; then
++                continue
++            fi
+             if kill -0 "$p" 2>/dev/null; then
+                 # `kill -0` SUCCEEDS for a zombie: a process that has exited but
+                 # has not been reaped still owns its PID slot and still answers.
+@@ -260,6 +313,15 @@ if [[ -f "$PID_FILE" ]]; then
+         kill -KILL "$p" 2>/dev/null || true
+     done < "$PID_FILE"
+ fi
++# Explain a non-zero count before asserting on it, so the next occurrence
++# arrives with its own diagnosis attached.
++if [[ $leftover -ne 0 && -f "$PID_FILE" ]]; then
++    echo "  DIAGNOSTIC: ${leftover} leftover stub(s) after the 500ms reap window:" >&2
++    while IFS= read -r p; do
++        [[ -z "$p" ]] && continue
++        _rfa_is_my_stub "$p" && _rfa_describe "$p"
++    done < "$PID_FILE"
++fi
+ assert_eq "no leftover stub-claude processes after abort" "0" "$leftover"
+ 
+ # (3) The driver actually saw rc=130 (or any signal exit) — i.e. the loop
+diff --git a/tests/integration/write-boundary-dispatch-test.sh b/tests/integration/write-boundary-dispatch-test.sh
+index 850edb5..7833cc9 100644
+--- a/tests/integration/write-boundary-dispatch-test.sh
++++ b/tests/integration/write-boundary-dispatch-test.sh
+@@ -237,6 +237,111 @@ else
+         "write-boundary-violated marker was created — engine-owned root was incorrectly blocked"
+ fi
+ 
++# ─── SPEC-1: the CLI's own state file does not halt a dispatch ──────────────
++print_test_section "SPEC-1: the Claude CLI's own state file does not halt a dispatch"
++
++# The `claude` process the engine spawns rewrites ~/.claude.json on every
++# dispatch — project/session history, onboarding flags, MCP config — with zero
++# tool use required. #1809 allowed the DIRECTORY ~/.claude; the state file is a
++# SIBLING of it, directly in $HOME, which the shipped watch list sweeps at
++# maxdepth:1. Every LLM stage therefore halted with disposition=broken: run
++# 20260824102650-38506 died at `plan`, the first one.
++#
++# No test could see it. The unit suite never named the CLI at all, $HOME is
++# sandboxed under the test temp, and CI mocks `claude` with an argv-recording
++# PATH shim — so the real CLI never writes the file under test. This fixture is
++# the honest stand-in: a dispatch that makes exactly the write the CLI makes.
++# The SHIPPED allow list is loaded additively on every call regardless of the
++# override, so this exercises the entry an operator actually gets.
++# CHANGE: fails at baseline (the shipped entry covered the directory, not the file).
++
++JOB_CLI="$TEST_TEMP_DIR/state/runs/20260824-wb-cli"
++SF_CLI="$JOB_CLI/pipeline-state.json"
++mkdir -p "$JOB_CLI/artifacts" "$JOB_CLI/runtime"
++echo '{}' > "$SF_CLI"
++
++WATCH_HOME="$TEST_TEMP_DIR/watch-home.txt"
++printf '%s maxdepth:1\n' "$HOME" > "$WATCH_HOME"
++
++ALLOW_CLI="$TEST_TEMP_DIR/allow-cli.txt"
++printf '# nothing extra — the shipped list must carry this on its own\n' > "$ALLOW_CLI"
++
++FX_CLI="$TEST_TEMP_DIR/plugins/wb-cli"
++_make_fixture "$FX_CLI" "wb-cli" "
++    echo '{}' > \"\${ZBUILD_ARTIFACT_DIR:-\${artifact_dir:-}}/wb-cli-result.json\"
++    printf '{}\n' > \"\$HOME/.claude.json\"
++"
++
++scan_plugin_outputs() { return 0; }
++export ZBUILD_WRITE_BOUNDARY_WATCH="$WATCH_HOME"
++export ZBUILD_WRITE_BOUNDARY_ALLOW="$ALLOW_CLI"
++unset ZBUILD_REPO_ROOT 2>/dev/null || true
++
++_DISP_EVENTS=()
++plugin_hook_call "$FX_CLI" "run" "wb-cli-stage" "$SF_CLI" || true
++
++# NON-VACUITY: the fixture must actually have made the write. "No violation"
++# is also what you get when the write never happened or landed somewhere the
++# sweep does not look — and that reads as a pass.
++assert_file_exists "[SPEC-1] the fixture actually wrote the CLI's state file into \$HOME" \
++    "$HOME/.claude.json"
++
++# The other vacuity path: write_boundary_check returns 0 immediately when the
++# dispatch never marked a sweep window, so "no violation" can also mean "nothing
++# was ever swept". Assert the window exists rather than infer it.
++assert_file_exists "[SPEC-1] the dispatch actually marked a sweep window" \
++    "$JOB_CLI/runtime/write-boundary.marker"
++
++if [[ -f "$JOB_CLI/runtime/write-boundary-violated" ]]; then
++    assert_fail "[SPEC-1] a dispatch that rewrites the CLI's own state file does not halt" \
++        "violation marker names: $(cat "$JOB_CLI/runtime/write-boundary-violated" 2>/dev/null)"
++else
++    assert_pass "[SPEC-1] a dispatch that rewrites the CLI's own state file does not halt"
++fi
++
++_disp_cli="$(runner_read_stage_disposition "$JOB_CLI" "$FX_CLI/manifest.yaml" "wb-cli-stage" 0 "" 0)"
++if [[ "$_disp_cli" == "broken" ]]; then
++    assert_fail "[SPEC-1] the CLI's own state file does not resolve the stage to broken" \
++        "disposition: $_disp_cli"
++else
++    assert_pass "[SPEC-1] the CLI's own state file does not resolve the stage to broken"
++fi
++
++# PAIRED NEGATIVE (SPEC-4): without this, the assertion above cannot tell
++# "allowed" from "$HOME was never swept" — and a watch list that silently stopped
++# covering $HOME would read as a pass.
++JOB_STRAY="$TEST_TEMP_DIR/state/runs/20260824-wb-stray"
++SF_STRAY="$JOB_STRAY/pipeline-state.json"
++mkdir -p "$JOB_STRAY/artifacts" "$JOB_STRAY/runtime"
++echo '{}' > "$SF_STRAY"
++
++FX_STRAY="$TEST_TEMP_DIR/plugins/wb-stray"
++_make_fixture "$FX_STRAY" "wb-stray" "
++    echo '{}' > \"\${ZBUILD_ARTIFACT_DIR:-\${artifact_dir:-}}/wb-stray-result.json\"
++    printf 'x\n' > \"\$HOME/stray-note.txt\"
++"
++
++_DISP_EVENTS=()
++plugin_hook_call "$FX_STRAY" "run" "wb-stray-stage" "$SF_STRAY" || true
++
++if [[ -f "$JOB_STRAY/runtime/write-boundary-violated" ]]; then
++    assert_pass "[SPEC-4] an unrelated \$HOME-level write still halts the dispatch"
++else
++    # The negative failing means the positive above proved nothing, so the
++    # failure detail carries the whole picture rather than just the absent
++    # marker: what the fixture wrote, what the engine watched, and what it
++    # allowed. Reconstructed after the fact, so a stale marker cannot forge it.
++    _wb_marker="$JOB_STRAY/runtime/write-boundary.marker"
++    assert_fail "[SPEC-4] an unrelated \$HOME-level write still halts the dispatch" \
++        "stray file written: $([[ -f "$HOME/stray-note.txt" ]] && echo yes || echo NO)
++  HOME=$HOME
++  home listing: $(ls -a "$HOME" 2>&1 | tr '\n' ' ')
++  dispatch marker: $([[ -f "$_wb_marker" ]] && echo present || echo ABSENT)
++  watch list: $(write_boundary_watch_list 2>&1 | tr '\n' '|')
++  allow list: $(write_boundary_allow_list "$JOB_STRAY" 2>&1 | tr '\n' '|')
++  sweep saw: $(write_boundary_sweep "$_wb_marker" 2>&1 | tr '\n' '|')"
++fi
++
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
+diff --git a/tests/lib/proc-identity.sh b/tests/lib/proc-identity.sh
+new file mode 100644
+index 0000000..0e6ac77
+--- /dev/null
++++ b/tests/lib/proc-identity.sh
+@@ -0,0 +1,52 @@
++#!/usr/bin/env bash
++# Process IDENTITY for test assertions, as distinct from process liveness (#1949).
++#
++# `kill -0 <pid>` answers "does something own this PID". Tests that hunt their own
++# leaked children need "is the process I spawned still running", and the two come
++# apart: a reaped PID is reissued by the kernel, so on a loaded CI runner an
++# unrelated process answers to a PID a test recorded earlier. route-fast-abort
++# counted exactly that and failed with no bug behind it, twice.
++#
++# Lives here rather than inside the integration file it serves because that file
++# is `skip_unless_platform linux` — on a macOS developer machine it never runs,
++# so logic embedded in it ships on reasoning alone. That is how #1943 went out.
++# Extracted, it is driven by tests/unit/route-fast-abort-identity-test.sh on every
++# platform. Do NOT re-implement this check in a caller (#1692).
++
++# _RFA_PROC — the procfs root. A seam for testing, not configuration.
++_RFA_PROC="${_RFA_PROC:-/proc}"
++
++# proc_is_my_process <pid> <needle>
++#   0 = this PID is a live process whose cmdline contains <needle> (count it)
++#   1 = it is not (skip it)
++#
++# The two "cannot read it" cases mean OPPOSITE things and must not collapse.
++# Collapsing them makes a leak detector fail OPEN, which is the permissive
++# direction #1796 exists to remove:
++#
++#   /proc/<pid> absent                     process is gone           -> 1
++#   cmdline readable but EMPTY             zombie (#1942)            -> 1
++#   cmdline non-empty, needle absent       PID reuse, a stranger     -> 1
++#   cmdline non-empty, needle present      ours, alive               -> 0
++#   /proc/<pid> exists, cmdline MISSING    ambiguous                 -> 0
++#   /proc/<pid> exists, cmdline UNREADABLE ambiguous                 -> 0
++#
++# The last TWO rows are the deliberate ones. They reach the same branch by
++# different routes — a missing file and an unreadable file both make the
++# redirect fail — and both mean the same thing: an unreadable cmdline under a directory
++# that still exists is not evidence of absence. Count it and let the caller's
++# diagnostic explain, rather than silently stop detecting.
++proc_is_my_process() {
++    local _p="$1" _needle="$2" _cl=""
++    [[ -n "$_p" && -n "$_needle" ]] || return 1
++    [[ -d "$_RFA_PROC/$_p" ]] || return 1
++    # Braces, not `tr ... 2>/dev/null`: a FAILED REDIRECT is reported by the
++    # shell itself, not by tr, so stderr must be redirected around the whole
++    # compound or the "unreadable" case prints a Permission denied line while
++    # claiming to be silent (#1631's class).
++    if ! _cl="$( { tr '\0' ' ' < "$_RFA_PROC/$_p/cmdline"; } 2>/dev/null )"; then
++        return 0
++    fi
++    [[ -z "$_cl" ]] && return 1
++    [[ "$_cl" == *"$_needle"* ]]
++}
+diff --git a/tests/unit/design-gate-guard-baseline-test.sh b/tests/unit/design-gate-guard-baseline-test.sh
+new file mode 100755
+index 0000000..9c5f8d5
+--- /dev/null
++++ b/tests/unit/design-gate-guard-baseline-test.sh
+@@ -0,0 +1,299 @@
++#!/usr/bin/env bash
++# Tests: design-gate C6 (#1777) — a [guard] SPEC must hold at the merge-base.
++#
++# A [guard] SPEC claims an invariant, so its assertion holds at the baseline by
++# definition. One that FAILS there is a mislabelled [change]. The acceptance gate
++# already rejects that (`guard_regressed`) but only after build has spent its
++# whole iteration budget: #1789 lost 5 iterations and 2h06m, #1809 lost 2 more
++# and was aborted. C6 applies the identical rule one stage earlier.
++#
++# The gate must FAIL OPEN — an unrunnable check never rejects a correct design —
++# and must be LOUD about it, because a silently-skipping gate is indistinguishable
++# from a working one (the green-but-inert shape of #845/#1044).
++#
++# Drives the REAL design_gate_run against a REAL git repo. No condition is
++# re-implemented in the test: the #1686 lesson (acceptance-gate-inert-wiring-
++# iter1-test.sh) is that a test asserting the condition itself stays green with
++# the entire implementation deleted.
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "design-gate C6 — [guard] SPEC must hold at the merge-base (#1777)"
++setup_test_env "design-gate-guard-baseline"
++_test_cleanup_hook() { cleanup_test_env; }
++
++export ZBUILD_EVENTS_DB="/dev/null"
++export ZBUILD_NEGCTL_TIMEOUT="${ZBUILD_NEGCTL_TIMEOUT:-30}"
++GIT="$(command -v git)"
++
++# ── Fixture ───────────────────────────────────────────────────────────────────
++# main (baseline): doctor.sh carries a deprecation warn line.
++# feature (HEAD):  the warn line is REMOVED — that is the change.
++#
++# SPEC-1 asserts the line is absent  → true at HEAD, FALSE at baseline.
++#        Tagged [guard], it is a mislabelled [change]: #1777's exact shape.
++# SPEC-2 asserts doctor.sh is executable → true at baseline AND HEAD: a real guard.
++# SPEC-3 is tagged [guard] with no testfile at all → #1255 exempts it; skip.
++REPO="$(setup_git_temp_repo "guard-baseline")"
++(
++    cd "$REPO"
++    mkdir -p scripts tests
++    printf '#!/usr/bin/env bash\necho "bash 4 functional but 5 recommended"\necho ok\n' > scripts/doctor.sh
++    chmod +x scripts/doctor.sh
++    "$GIT" add -A && "$GIT" commit -q -m "baseline: doctor warns"
++
++    "$GIT" checkout -q -b feature
++    printf '#!/usr/bin/env bash\necho ok\n' > scripts/doctor.sh
++    chmod +x scripts/doctor.sh
++
++    cat > tests/guard-bad-test.sh <<'EOF'
++#!/usr/bin/env bash
++# [SPEC-1] doctor.sh no longer carries the bash-4 warn
++root="$(cd "$(dirname "$0")/.." && pwd)"
++if grep -q "functional but 5 recommended" "$root/scripts/doctor.sh"; then
++    echo "✗ [SPEC-1] warn line still present"
++    exit 1
++fi
++echo "✓ [SPEC-1] warn line removed"
++EOF
++
++    cat > tests/guard-good-test.sh <<'EOF'
++#!/usr/bin/env bash
++# [SPEC-2] doctor.sh is executable
++root="$(cd "$(dirname "$0")/.." && pwd)"
++if [[ -x "$root/scripts/doctor.sh" ]]; then
++    echo "✓ [SPEC-2] doctor.sh is executable"
++    exit 0
++fi
++echo "✗ [SPEC-2] doctor.sh not executable"
++exit 1
++EOF
++    chmod +x tests/*.sh
++    "$GIT" add -A && "$GIT" commit -q -m "feat: drop the warn line"
++)
++
++_DESIGN_MD='# Design
++
++## Decision
++Drop the deprecation warn.
++
++```scope
++scripts/doctor.sh
++```
++
++```acceptance
++SPEC-1[guard]: doctor.sh no longer carries the bash-4 warn
++SPEC-2[guard]: doctor.sh is executable
++SPEC-3[guard]: the parallel pool behaviour is unchanged
++TESTFILES:
++SPEC-1: tests/guard-bad-test.sh
++SPEC-2: tests/guard-good-test.sh
++WIRING: scripts/doctor.sh
++```
++'
++
++# ── _run_gate <repo_root> <design_md_text> ───────────────────────────────────
++# Runs the REAL design-gate against <repo_root>; sets VERDICT / RESULT / VIOL /
++# FEEDBACK / GATE_RC.
++_seq=0
++_run_gate() {
++    local root="$1" md="$2"
++    _seq=$((_seq + 1))
++    local state_dir="$TEST_TEMP_DIR/state-$_seq"
++    local art="$state_dir/artifacts"
++    mkdir -p "$art"
++    printf '%s' "$md" > "$art/design.md"
++    printf '{"schema_version":1}' > "$state_dir/pipeline-state.json"
++    unset _ZBUILD_DESIGN_GATE_PLUGIN_LOADED _ACCEPTANCE_BLOCK_LOADED \
++          _ACCEPTANCE_NEGCTL_LOADED _ACCEPTANCE_COVERAGE_LOADED \
++          _ZBUILD_MERGE_BASE_LOADED _ZBUILD_ENV_SCRUB_LOADED
++    set +e
++    (
++        export ZBUILD_REPO_ROOT="$root"
++        # shellcheck disable=SC1090
++        source "$REPO_ROOT/plugins/tool/design-gate/plugin.sh"
++        design_gate_run "design-gate" "$state_dir/pipeline-state.json"
++    )
++    GATE_RC=$?
++    set -e
++    RESULT="$(cat "$art/design-gate-result.json" 2>/dev/null || echo '{}')"
++    VERDICT="$(jq -r '.verdict // "MISSING"' <<< "$RESULT")"
++    VIOL="$(jq -r '(.violations // [])[]' <<< "$RESULT" 2>/dev/null || true)"
++    FEEDBACK="$(cat "$art/design-gate-feedback.md" 2>/dev/null || true)"
++}
++
++_run_gate "$REPO" "$_DESIGN_MD"
++
++# ─── 1. The mislabelled guard is rejected, and named ─────────────────────────
++assert_eq "[SPEC-1] a [guard] whose assertion fails at the merge-base fails the design-gate" \
++    "fail" "$VERDICT"
++assert_contains "[SPEC-1] the violation names the offending SPEC" \
++    "$VIOL" "GUARD_REGRESSED_AT_BASELINE SPEC-1"
++assert_contains "[SPEC-2] the violation suggests the likely correction ([change])" \
++    "$VIOL" "tag it [change]"
++assert_contains "[SPEC-2] the feedback file names the offending SPEC" \
++    "$FEEDBACK" "GUARD_REGRESSED_AT_BASELINE SPEC-1"
++
++# ─── 2. A legitimate guard is NOT rejected ───────────────────────────────────
++if grep -q "GUARD_REGRESSED_AT_BASELINE SPEC-2" <<< "$VIOL"; then
++    assert_fail "[SPEC-3] a guard that holds at the merge-base passes unchanged" \
++        "SPEC-2 holds at baseline but was reported regressed"
++else
++    assert_pass "[SPEC-3] a guard that holds at the merge-base passes unchanged"
++fi
++
++# ─── 3. An untagged [guard] skips rather than failing (#1255) ────────────────
++if grep -q "GUARD_REGRESSED_AT_BASELINE SPEC-3" <<< "$VIOL"; then
++    assert_fail "[SPEC-4] an untagged [guard] skips rather than failing (#1255)" \
++        "SPEC-3 has no testfile and must not be a violation"
++else
++    assert_pass "[SPEC-4] an untagged [guard] skips rather than failing (#1255)"
++fi
++assert_contains "[SPEC-4] the untagged guard is RECORDED as unverified, not silently dropped" \
++    "$(jq -rc '.guard_precheck.skipped' <<< "$RESULT")" 'SPEC-3'
++
++# ─── 4. Coverage is recorded — the gate cannot lie about what it checked ─────
++assert_eq "[SPEC-5] guard_precheck records every declared [guard] SPEC" \
++    "3" "$(jq -r '.guard_precheck.declared // "MISSING"' <<< "$RESULT")"
++assert_eq "[SPEC-5] guard_precheck records how many were verified at the baseline" \
++    "1" "$(jq -r '.guard_precheck.verified // "MISSING"' <<< "$RESULT")"
++assert_eq "[SPEC-5] guard_precheck records how many failed" \
++    "1" "$(jq -r '.guard_precheck.failed // "MISSING"' <<< "$RESULT")"
++assert_contains "[SPEC-5] the feedback states the coverage in prose" \
++    "$FEEDBACK" "Guard baseline coverage"
++
++# ─── 5. rc is ALWAYS 0 — the verdict lives in the artifact (ADR-040) ─────────
++assert_eq "[SPEC-6] design_gate_run still returns rc=0 with C6 violations present" \
++    "0" "$GATE_RC"
++
++# ─── 6. FAIL-OPEN: no git repo → no violation, and the reason is recorded ────
++NOGIT="$TEST_TEMP_DIR/not-a-repo"
++mkdir -p "$NOGIT/tests" "$NOGIT/scripts"
++: > "$NOGIT/scripts/doctor.sh"
++_run_gate "$NOGIT" "$_DESIGN_MD"
++if grep -q "GUARD_REGRESSED_AT_BASELINE" <<< "$VIOL"; then
++    assert_fail "[SPEC-7] an unrunnable C6 never rejects the design (fail-open)" \
++        "violations: $VIOL"
++else
++    assert_pass "[SPEC-7] an unrunnable C6 never rejects the design (fail-open)"
++fi
++assert_contains "[SPEC-7] the fail-open reason is recorded, not silent" \
++    "$(jq -rc '.guard_precheck.skipped // []' <<< "$RESULT")" "no_baseline"
++assert_eq "[SPEC-7] nothing was verified, and the artifact says so" \
++    "0" "$(jq -r '.guard_precheck.verified // "MISSING"' <<< "$RESULT")"
++
++# ─── 6b. The other fail-open paths are covered too, not hand-verified ────────
++# The claim this change makes is "fails open, and says so". Two of the six skip
++# reasons were exercised above (no_baseline, guard_untested); these are the rest
++# that can be triggered deterministically. #1686's lesson is about not
++# re-implementing DETECTION logic in a test — it does not exempt the error paths,
++# and an untested fail-open path is how a gate goes quietly inert.
++
++# harness — the baseline copy does not parse, so it never reached an assertion.
++HREPO="$(setup_git_temp_repo "guard-harness")"
++(
++    cd "$HREPO"
++    mkdir -p scripts tests; : > scripts/doctor.sh
++    "$GIT" add -A && "$GIT" commit -q -m baseline
++    "$GIT" checkout -q -b feature
++    printf 'changed\n' > scripts/doctor.sh
++    # Deliberately unparseable: `bash -n` fails, so _negctl_baseline_parses is false.
++    printf '#!/usr/bin/env bash\n# [SPEC-1] never parses\nif [[ 1 -eq 1 ]; then :; fi\n' \
++        > tests/guard-bad-test.sh
++    chmod +x tests/guard-bad-test.sh
++    "$GIT" add -A && "$GIT" commit -q -m feature
++)
++_run_gate "$HREPO" "$_DESIGN_MD"
++if grep -q "GUARD_REGRESSED_AT_BASELINE SPEC-1" <<< "$VIOL"; then
++    assert_fail "[SPEC-9] an unparseable baseline copy SKIPs (harness), never fails the design" "$VIOL"
++else
++    assert_pass "[SPEC-9] an unparseable baseline copy SKIPs (harness), never fails the design"
++fi
++assert_contains "[SPEC-9] and the harness skip is recorded, not silent" \
++    "$(jq -rc '.guard_precheck.skipped // []' <<< "$RESULT")" "harness"
++
++# timeout — the baseline run is killed, so pass/fail is unknown (infrastructure).
++TREPO="$(setup_git_temp_repo "guard-timeout")"
++(
++    cd "$TREPO"
++    mkdir -p scripts tests; : > scripts/doctor.sh
++    "$GIT" add -A && "$GIT" commit -q -m baseline
++    "$GIT" checkout -q -b feature
++    printf 'changed\n' > scripts/doctor.sh
++    printf '#!/usr/bin/env bash\n# [SPEC-1] outlives the timeout\nsleep 30\n' \
++        > tests/guard-bad-test.sh
++    chmod +x tests/guard-bad-test.sh
++    "$GIT" add -A && "$GIT" commit -q -m feature
++)
++ZBUILD_NEGCTL_TIMEOUT=1 _run_gate "$TREPO" "$_DESIGN_MD"
++if grep -q "GUARD_REGRESSED_AT_BASELINE SPEC-1" <<< "$VIOL"; then
++    assert_fail "[SPEC-10] a killed baseline run SKIPs (timeout), never fails the design" "$VIOL"
++else
++    assert_pass "[SPEC-10] a killed baseline run SKIPs (timeout), never fails the design"
++fi
++assert_contains "[SPEC-10] and the timeout skip is recorded, not silent" \
++    "$(jq -rc '.guard_precheck.skipped // []' <<< "$RESULT")" "timeout"
++
++# worktree_failed — the baseline worktree cannot be created at all. Driven by a
++# read-only TMPDIR: mktemp -d fails, so the worktree path is empty and
++# `git worktree add` cannot succeed. No git stub, no mocking of the code under test.
++WREPO="$(setup_git_temp_repo "guard-wtfail")"
++(
++    cd "$WREPO"
++    mkdir -p scripts tests; : > scripts/doctor.sh
++    printf '#!/usr/bin/env bash\n# [SPEC-1] holds\nexit 0\n' > tests/guard-bad-test.sh
++    chmod +x tests/guard-bad-test.sh
++    "$GIT" add -A && "$GIT" commit -q -m baseline
++    "$GIT" checkout -q -b feature
++    printf 'changed\n' > scripts/doctor.sh
++    "$GIT" add -A && "$GIT" commit -q -m feature
++)
++RO_TMP="$TEST_TEMP_DIR/ro-tmp"; mkdir -p "$RO_TMP"; chmod 500 "$RO_TMP"
++# PROBE the precondition rather than assume it. `chmod 500` is toothless for
++# root, and a silently-passing test of a fail-open path is the very thing these
++# three cases exist to prevent: without this probe, a root runner would create
++# the worktree, run the (exit 0) testfile, get `held`, and redden the assertion
++# below for a reason that has nothing to do with the code under test.
++if : > "$RO_TMP/.probe" 2>/dev/null; then
++    rm -f "$RO_TMP/.probe"; chmod 700 "$RO_TMP"
++    SKIP=$((SKIP + 1))
++    echo -e "  ${YELLOW}SKIP${RESET}: [SPEC-11] a read-only TMPDIR does not block writes here (root?)" >&2
++else
++    TMPDIR="$RO_TMP" _run_gate "$WREPO" "$_DESIGN_MD"
++    chmod 700 "$RO_TMP"
++    if grep -q "GUARD_REGRESSED_AT_BASELINE" <<< "$VIOL"; then
++        assert_fail "[SPEC-11] an uncreatable baseline worktree SKIPs, never fails the design" "$VIOL"
++    else
++        assert_pass "[SPEC-11] an uncreatable baseline worktree SKIPs, never fails the design"
++    fi
++    assert_contains "[SPEC-11] and the worktree failure is recorded, not silent" \
++        "$(jq -rc '.guard_precheck.skipped // []' <<< "$RESULT")" "worktree_failed"
++fi
++
++# ─── 7. A guard-less design keeps today's exact artifact shape ───────────────
++_NOGUARD_MD='# Design
++
++```scope
++scripts/doctor.sh
++```
++
++```acceptance
++SPEC-1[change]: the warn line is gone
++TESTFILES:
++SPEC-1: tests/guard-bad-test.sh
++WIRING: scripts/doctor.sh
++```
++'
++_run_gate "$REPO" "$_NOGUARD_MD"
++assert_eq "[SPEC-8] a design declaring no [guard] SPEC carries no guard_precheck key" \
++    "false" "$(jq -r 'has("guard_precheck")' <<< "$RESULT")"
++
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/layout-switch-test.sh b/tests/unit/layout-switch-test.sh
+new file mode 100755
+index 0000000..85bc04b
+--- /dev/null
++++ b/tests/unit/layout-switch-test.sh
+@@ -0,0 +1,94 @@
++#!/usr/bin/env bash
++# Tests: runs actually LAND in the issue-keyed layout (#141, ADR-059 §1), and
++# the reclaimers still see them.
++#
++# The resolver landed first (#1941) and returned the new paths while nothing
++# wrote there. This is the switch: the writer now uses it. The risk this file
++# exists for is the one ADR-059 names — a reader whose glob stops matching
++# reports "no run is live" and un-gates three destructive scanners.
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++# shellcheck source=../../core/state/layout.sh
++source "$REPO_ROOT/core/state/layout.sh"
++
++print_test_header "layout switch — runs land under their issue (#141)"
++setup_test_env "zb-layout-switch"
++export ZBUILD_STATE_ROOT="$TEST_TEMP_DIR/state"
++export ZBUILD_DATA_ROOT="$TEST_TEMP_DIR/data"
++
++_repo="$TEST_TEMP_DIR/repo"; mkdir -p "$_repo"
++( cd "$_repo" && git init -q -b main . && git remote add origin 'git@github.com:ezigus/zBuild.git' ) >/dev/null 2>&1
++
++# ─── [SPEC-1][change] an issue run nests under its issue ────────────────────
++print_test_section "[SPEC-1][change] issues/<N>/runs/<run_id>"
++
++_d="$( cd "$_repo" && zbuild_layout_run_state_dir issue-1809 r-001 )"
++assert_contains "[SPEC-1] the run is under the repo" "$_d" "/repos/ezigus/zBuild/"
++assert_contains "[SPEC-1] and under its ISSUE" "$_d" "/issues/1809/runs/r-001"
++# The per-run level survives: scratch, runtime/, events belong to ONE run.
++assert_contains "[SPEC-1] the per-run level is kept" "$_d" "/runs/r-001"
++
++_g="$( cd "$_repo" && zbuild_layout_run_state_dir goal-47bcb1fe9278 r-002 )"
++assert_contains "[SPEC-1] a goal run nests under goals/" "$_g" "/goals/goal-47bcb1fe9278/runs/r-002"
++
++# ─── [SPEC-2][guard] no identity ⇒ the flat shape, not an invented bucket ───
++print_test_section "[SPEC-2][guard] a run with no identity stays flat"
++
++_f="$( cd "$_repo" && zbuild_layout_run_state_dir "" r-003 )"
++assert_eq "[SPEC-2] falls back to <state_root>/runs/<id>" \
++    "$ZBUILD_STATE_ROOT/runs/r-003" "$_f"
++_rc=0; zbuild_layout_run_state_dir issue-1 "" >/dev/null 2>&1 || _rc=$?
++assert_exit_code "[SPEC-2] an empty run_id is refused" "1" "$_rc"
++
++# ─── [SPEC-3][guard] THE ONE THAT MATTERS: cleanup still sees a live run ────
++# ADR-059's named hazard. `_cleanup_is_active_run` gates three destructive
++# scanners; if its globs stop matching the new shape it answers "no run is
++# live" — the FAIL-OPEN direction — and they run against live work.
++print_test_section "[SPEC-3][guard] the reclaimers still see a run in the NEW path"
++
++# shellcheck source=../../scripts/lib/cleanup.sh
++source "$REPO_ROOT/scripts/lib/cleanup.sh"
++unset ZBUILD_STATE_DIR 2>/dev/null || true
++
++_live="$( cd "$_repo" && zbuild_layout_run_state_dir issue-1809 r-live )"
++mkdir -p "$_live"
++printf '{"run_id":"r-live","status":"in_progress"}\n' > "$_live/pipeline-state.json"
++
++if ( cd "$_repo" && _cleanup_is_active_run r-live ); then
++    assert_pass "[SPEC-3] a live run in the NEW layout is seen as active"
++else
++    assert_fail "[SPEC-3] cleanup went BLIND to the new layout" \
++        "three destructive scanners would run against live work"
++fi
++
++# A run in the OLD flat location is still seen — operators upgrading mid-flight
++# have runs there, and going blind to them is the same hazard.
++_old="$ZBUILD_STATE_ROOT/runs/r-old"; mkdir -p "$_old"
++printf '{"run_id":"r-old","status":"in_progress"}\n' > "$_old/pipeline-state.json"
++if ( cd "$_repo" && _cleanup_is_active_run r-old ); then
++    assert_pass "[SPEC-3] a live run in the OLD layout is still seen"
++else
++    assert_fail "[SPEC-3] cleanup went blind to pre-switch runs" "in-flight runs unprotected"
++fi
++
++# Control: a COMPLETED run is not active. Without this, a predicate that always
++# said "active" would pass both assertions above and gate every reclaimer forever.
++_done="$( cd "$_repo" && zbuild_layout_run_state_dir issue-1809 r-done )"
++mkdir -p "$_done"
++printf '{"run_id":"r-done","status":"complete"}\n' > "$_done/pipeline-state.json"
++if ( cd "$_repo" && _cleanup_is_active_run r-done ); then
++    assert_fail "[SPEC-3] a completed run must not read as active" "reclaimers gated forever"
++else
++    assert_pass "[SPEC-3] control: a completed run is not active"
++fi
++
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/route-fast-abort-identity-test.sh b/tests/unit/route-fast-abort-identity-test.sh
+new file mode 100755
+index 0000000..7e38b63
+--- /dev/null
++++ b/tests/unit/route-fast-abort-identity-test.sh
+@@ -0,0 +1,113 @@
++#!/usr/bin/env bash
++# Tests: tests/lib/proc-identity.sh — process IDENTITY vs process liveness (#1949).
++#
++# WHY THIS FILE EXISTS. The caller, tests/integration/route-fast-abort-test.sh, is
++# `skip_unless_platform linux` and every developer machine here is macOS, so it
++# never runs locally. Two fixes to its leftover assertion (#1943 zombies, then the
++# identity check) therefore shipped on reasoning rather than observation, and the
++# first did not hold. A fixture procfs makes all five cases drivable anywhere.
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "proc identity vs liveness (#1949)"
++setup_test_env "zb-proc-identity"
++
++NEEDLE="/tmp/zb-run-XYZ/bin/claude"
++export _RFA_PROC="$TEST_TEMP_DIR/proc"
++mkdir -p "$_RFA_PROC"
++# shellcheck source=../lib/proc-identity.sh
++source "$REPO_ROOT/tests/lib/proc-identity.sh"
++
++# _mk <pid> <cmdline|__EMPTY__|__NOCMD__|__UNREADABLE__>
++_mk() {
++    local pid="$1" what="$2" d="$_RFA_PROC/$1"
++    mkdir -p "$d"
++    case "$what" in
++        __NOCMD__)      : ;;                                   # dir, no cmdline file
++        __EMPTY__)      : > "$d/cmdline" ;;
++        __UNREADABLE__) printf 'x' > "$d/cmdline"; chmod 000 "$d/cmdline" ;;
++        *)              printf '%s' "$what" > "$d/cmdline" ;;
++    esac
++}
++
++print_test_section "[SPEC-1] the five cases"
++
++# 1. /proc/<pid> absent -> gone -> do NOT count
++if proc_is_my_process 9001 "$NEEDLE"; then
++    assert_fail "[SPEC-1] absent /proc entry must not count"
++else
++    assert_pass "[SPEC-1] absent /proc entry -> not counted (process is gone)"
++fi
++
++# 2. cmdline present but EMPTY -> zombie (#1942) -> do NOT count
++_mk 9002 __EMPTY__
++if proc_is_my_process 9002 "$NEEDLE"; then
++    assert_fail "[SPEC-1] a zombie (empty cmdline) must not count"
++else
++    assert_pass "[SPEC-1] zombie (empty cmdline) -> not counted (#1942)"
++fi
++
++# 3. cmdline non-empty but NOT ours -> PID reuse -> do NOT count
++_mk 9003 "/usr/bin/some-unrelated-daemon --serve"
++if proc_is_my_process 9003 "$NEEDLE"; then
++    assert_fail "[SPEC-1] a recycled PID must not count as our leftover"
++else
++    assert_pass "[SPEC-1] PID reuse (stranger's cmdline) -> not counted"
++fi
++
++# 4. cmdline non-empty and OURS -> a real leftover -> COUNT
++_mk 9004 "/bin/bash $NEEDLE --model x"
++if proc_is_my_process 9004 "$NEEDLE"; then
++    assert_pass "[SPEC-1] our stub, alive -> counted"
++else
++    assert_fail "[SPEC-1] a live stub of ours MUST be counted"
++fi
++
++# 5. dir exists, cmdline UNREADABLE -> ambiguous -> COUNT (fail CLOSED)
++#    The whole point: a leak detector that skips what it cannot read has
++#    stopped detecting.
++_mk 9005 __UNREADABLE__
++if [[ -r "$_RFA_PROC/9005/cmdline" ]]; then
++    skip_test "[SPEC-1] unreadable-cmdline case (running as root: chmod 000 still readable)"
++else
++    if proc_is_my_process 9005 "$NEEDLE"; then
++        assert_pass "[SPEC-1] unreadable cmdline -> counted (fails CLOSED, not open)"
++    else
++        assert_fail "[SPEC-1] unreadable cmdline must fail CLOSED and be counted"
++    fi
++fi
++chmod 644 "$_RFA_PROC/9005/cmdline" 2>/dev/null || true
++
++# 6. dir exists, no cmdline file at all -> same ambiguity -> COUNT
++_mk 9006 __NOCMD__
++if proc_is_my_process 9006 "$NEEDLE"; then
++    assert_pass "[SPEC-1] missing cmdline file under a live dir -> counted (fails closed)"
++else
++    assert_fail "[SPEC-1] missing cmdline file must fail CLOSED and be counted"
++fi
++
++print_test_section "[SPEC-2][guard] refuses to answer without both inputs"
++# A needle-less call would match EVERYTHING (`*""*` is always true), turning the
++# check into "count every live PID". Refuse rather than answer wrongly.
++_mk 9007 "/bin/bash $NEEDLE"
++if proc_is_my_process 9007 ""; then
++    assert_fail "[SPEC-2] an empty needle must not match"
++else
++    assert_pass "[SPEC-2] empty needle -> refused, not a universal match"
++fi
++if proc_is_my_process "" "$NEEDLE"; then
++    assert_fail "[SPEC-2] an empty pid must not match"
++else
++    assert_pass "[SPEC-2] empty pid -> refused"
++fi
++
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
 diff --git a/tests/unit/router-permissions-test.sh b/tests/unit/router-permissions-test.sh
-index 1780faa..03e9d68 100755
+index 1780faa..665c7f0 100755
 --- a/tests/unit/router-permissions-test.sh
 +++ b/tests/unit/router-permissions-test.sh
-@@ -89,7 +89,7 @@ else
+@@ -1,6 +1,6 @@
+ #!/usr/bin/env bash
+ # Tests: #1919 (C10) — permissions.sh builds acceptEdits settings file.
+-# SPEC-2: settings file contains correct allowedDirectories.
++# SPEC-2: the spawn grants exactly the repo root + stage scratch, via --add-dir.
+ # SPEC-3: missing jq causes spawn refusal (rc≠0), not silent bypass.
+ # SPEC-4: grep core/router/ for skip-permissions returns nothing.
+ set -euo pipefail
+@@ -29,7 +29,7 @@ source "$REPO_ROOT/core/event-bus/event-bus.sh"
+ # shellcheck source=../../core/router/permissions.sh
+ source "$REPO_ROOT/core/router/permissions.sh"
+ 
+-# ─── P1: SPEC-2 — settings file contains correct allowedDirectories ──────────
++# ─── P1: SPEC-2 — the spawn grants repo root + scratch via --add-dir ─────────
+ export ZBUILD_STAGE_SCRATCH="$TEST_TEMP_DIR/scratch-p1"
+ export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/repo-p1"
+ mkdir -p "$ZBUILD_STAGE_SCRATCH" "$ZBUILD_REPO_ROOT"
+@@ -53,19 +53,31 @@ else
+     assert_fail "[SPEC-2] P1: settings file exists on disk" "file missing: $_ZBUILD_PERMISSIONS_SETTINGS_FILE"
+ fi
+ 
+-# Validate allowedDirectories contains repo root.
+-_dirs="$(jq -r '.permissions.allowedDirectories[]' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE" 2>/dev/null || true)"
+-if grep -qxF "$ZBUILD_REPO_ROOT" <<< "$_dirs"; then
+-    assert_pass "[SPEC-2] P1: allowedDirectories contains ZBUILD_REPO_ROOT"
++# The GRANT is argv, not the settings file. #1919 P2b measured on CLI 2.1.241:
++# a dir listed in `permissions.allowedDirectories` is NOT writable — the identical
++# write is refused under that key and succeeds under --add-dir (P4). Asserting the
++# JSON key would therefore have passed while the stage's scratch dir stayed
++# unwritable, which is exactly the state this branch shipped in before the probes
++# were run. Assert the flags the spawn actually carries.
++_args="$(_zbuild_permission_args)"
++if grep -qxF "$ZBUILD_REPO_ROOT" <<< "$(grep -A1 -xF -- '--add-dir' <<< "$_args" | grep -vxF -- '--add-dir')"; then
++    assert_pass "[SPEC-2] P1: spawn grants ZBUILD_REPO_ROOT via --add-dir"
+ else
+-    assert_fail "[SPEC-2] P1: allowedDirectories contains ZBUILD_REPO_ROOT" "dirs: $_dirs"
++    assert_fail "[SPEC-2] P1: spawn grants ZBUILD_REPO_ROOT via --add-dir" "args: $_args"
++fi
++if grep -qxF "$ZBUILD_STAGE_SCRATCH" <<< "$(grep -A1 -xF -- '--add-dir' <<< "$_args" | grep -vxF -- '--add-dir')"; then
++    assert_pass "[SPEC-2] P1: spawn grants ZBUILD_STAGE_SCRATCH via --add-dir"
++else
++    assert_fail "[SPEC-2] P1: spawn grants ZBUILD_STAGE_SCRATCH via --add-dir" "args: $_args"
+ fi
+ 
+-# Validate allowedDirectories contains scratch dir.
+-if grep -qxF "$ZBUILD_STAGE_SCRATCH" <<< "$_dirs"; then
+-    assert_pass "[SPEC-2] P1: allowedDirectories contains ZBUILD_STAGE_SCRATCH"
++# The inert key must not come back: a future edit re-adding it would read as a
++# grant and silently be none.
++if jq -e '.permissions | has("allowedDirectories")' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE" >/dev/null 2>&1; then
++    assert_fail "[SPEC-2] P1: settings file carries no inert allowedDirectories key (P2b)" \
++        "the key is ignored by the CLI and must not masquerade as the grant"
+ else
+-    assert_fail "[SPEC-2] P1: allowedDirectories contains ZBUILD_STAGE_SCRATCH" "dirs: $_dirs"
++    assert_pass "[SPEC-2] P1: settings file carries no inert allowedDirectories key (P2b)"
+ fi
+ 
+ unset ZBUILD_STAGE_SCRATCH ZBUILD_REPO_ROOT
+@@ -89,7 +101,7 @@ else
      assert_fail "[SPEC-2] P2: settings file still written on scratch fallback" ""
  fi
  
@@ -74,3 +2274,225 @@ index 1780faa..03e9d68 100755
  if [[ "$fallback_evt" -gt 0 ]]; then
      assert_pass "[SPEC-2] P2: scratch_fallback event emitted"
  else
+diff --git a/tests/unit/runner-cycle-rc-action-mapping-test.sh b/tests/unit/runner-cycle-rc-action-mapping-test.sh
+index e84cc54..f487ce2 100755
+--- a/tests/unit/runner-cycle-rc-action-mapping-test.sh
++++ b/tests/unit/runner-cycle-rc-action-mapping-test.sh
+@@ -74,9 +74,20 @@ _cases=(
+     "130|aborted|interrupted|0"
+ )
+ 
++# ONE drive per case (#1946). Each _drive runs the WHOLE runner and writes both
++# pipeline-state.json and events.jsonl into the same dir; the loops below want
++# one file each, so re-driving to read the second was 9 redundant full-pipeline
++# runs — 53% of this file's wall clock, and what pushed the macOS unit tier past
++# its 480s bound. Drive once, index the results.
++declare -a _dirs=()
+ for _row in "${_cases[@]}"; do
+-    IFS='|' read -r _rc _reason _exp_status _exp_review <<< "$_row"
+-    _dir="$(_drive "$_rc" "$_reason")"
++    IFS='|' read -r _rc _reason _ _ <<< "$_row"
++    _dirs+=("$(_drive "$_rc" "$_reason")")
++done
++
++for _i in "${!_cases[@]}"; do
++    IFS='|' read -r _rc _reason _exp_status _exp_review <<< "${_cases[$_i]}"
++    _dir="${_dirs[$_i]}"
+     _state="$_dir/state/pipeline-state.json"
+     _got_status="$(jq -r '.status' "$_state" 2>/dev/null)"
+     assert_eq "rc=$_rc → pipeline_status=$_exp_status" "$_exp_status" "$_got_status"
+@@ -96,10 +107,9 @@ done
+ 
+ # _RUNNER_CYCLE_UNCONVERGED flag — verified indirectly through pipeline_status,
+ # but also assert the cycle.unconverged event ONLY fires for rc∈{1,2,3}.
+-for _row in "${_cases[@]}"; do
+-    IFS='|' read -r _rc _reason _exp_status _exp_review <<< "$_row"
+-    _dir="$(_drive "$_rc" "$_reason")"
+-    _ev="$_dir/events/events.jsonl"
++for _i in "${!_cases[@]}"; do
++    IFS='|' read -r _rc _reason _exp_status _exp_review <<< "${_cases[$_i]}"
++    _ev="${_dirs[$_i]}/events/events.jsonl"
+     _count="$(grep -c '"type":"cycle.unconverged"' "$_ev" 2>/dev/null)"
+     [[ -z "$_count" ]] && _count=0
+     case "$_rc" in
+@@ -111,16 +121,32 @@ done
+ # [SPEC-3]: rc=8 (blocking_member_failure) → state-file status=failed, not interrupted.
+ # ADR-013 specifies blocking_member_failure → HALT; status=failed. This assertion
+ # fails at baseline where the rc=8 catch-all writes status=interrupted.
+-_dir8="$(_drive 8 "blocking_member_failure")"
+-_state8="$_dir8/state/pipeline-state.json"
+-# Diagnostic: a missing state file would make the status check silently compare
+-# an empty/'null' value against 'failed'. Surface the real cause instead.
+-if [[ ! -f "$_state8" ]]; then
+-    echo "  DIAGNOSTIC: expected state file not found: $_state8" >&2
+-    echo "  DIAGNOSTIC: _drive 8 dir contents:" >&2
+-    ls -R "$_dir8" >&2 2>/dev/null || true
++# Reuse the rc=8 drive rather than running the pipeline a THIRD time for the
++# same scenario (#1946). Looked up by rc, NOT by a literal index: a hardcoded
++# _dirs[6] would keep passing while silently asserting on a different scenario
++# the moment a case is added or reordered above.
++_dir8=""
++for _i in "${!_cases[@]}"; do
++    [[ "${_cases[$_i]%%|*}" == "8" ]] && { _dir8="${_dirs[$_i]}"; break; }
++done
++# ONE failure per cause. If the rc=8 case is gone the assertion below cannot
++# run at all, and letting it run anyway against an empty path reported a SECOND,
++# misleading failure ("status was not failed") for the same single defect —
++# sending the reader after a state-file bug that does not exist.
++if [[ -z "$_dir8" ]]; then
++    echo "  DIAGNOSTIC: no rc=8 case in _cases — [SPEC-3] cannot run" >&2
++    FAIL=$((FAIL + 1))
++else
++    _state8="$_dir8/state/pipeline-state.json"
++    # A missing state file would make the status check silently compare an
++    # empty/'null' value against 'failed'. Surface the real cause instead.
++    if [[ ! -f "$_state8" ]]; then
++        echo "  DIAGNOSTIC: expected state file not found: $_state8" >&2
++        echo "  DIAGNOSTIC: _drive 8 dir contents:" >&2
++        ls -R "$_dir8" >&2 2>/dev/null || true
++    fi
++    _got8="$(jq -r '.status' "$_state8" 2>/dev/null)"
++    assert_eq "[SPEC-3] rc=8 (blocking_member_failure) → state-file status=failed" "failed" "$_got8"
+ fi
+-_got8="$(jq -r '.status' "$_state8" 2>/dev/null)"
+-assert_eq "[SPEC-3] rc=8 (blocking_member_failure) → state-file status=failed" "failed" "$_got8"
+ 
+ print_test_results
+diff --git a/tests/unit/write-boundary-sweep-test.sh b/tests/unit/write-boundary-sweep-test.sh
+index 8e5d558..628e489 100644
+--- a/tests/unit/write-boundary-sweep-test.sh
++++ b/tests/unit/write-boundary-sweep-test.sh
+@@ -350,6 +350,133 @@ for _need in "$HOME" "$PWD"; do
+     fi
+ done
+ 
++# ─── SPEC-1: the Claude CLI's own state file is not a stage violation ────────
++# ~/.claude.json is the CLI's global state file — project/session history,
++# onboarding flags, MCP config. The `claude` process the engine spawns rewrites
++# it on EVERY dispatch, with zero tool use required (measured on CLI 2.1.241: a
++# `claude -p` run in an empty dir with no tools rewrote it). That is the engine's
++# own tool doing bookkeeping, not the stage writing out of bounds — the same
++# class already exempted for the event bus in SPEC-4d above.
++#
++# #1809 allowed the DIRECTORY ~/.claude. The state file is a SIBLING of that
++# directory, sitting directly in $HOME, which the shipped watch list sweeps at
++# maxdepth:1 — so every LLM stage halted with disposition=broken. $HOME is
++# sandboxed under the test temp here, and the SHIPPED allow list is loaded
++# additively on every call, so this exercises the entry an operator gets.
++# CHANGE: fails at baseline (the entry covered the directory, not the file).
++
++_CLI_STATE="$HOME/.claude.json"
++mkdir -p "$HOME"
++printf '{}\n' > "$_CLI_STATE"
++_cls_cli="$(write_boundary_classify "$_CLI_STATE" "$JOB_DIR" "" 2>/dev/null)"
++assert_eq "[SPEC-1] the Claude CLI's own top-level state file classifies as allowed" \
++    "allowed" "$_cls_cli"
++
++# ─── SPEC-2: a glob allow entry covers the whole backup family ──────────────
++# The backups are timestamped and unbounded (.claude.json.backup-20251221-084359),
++# so no exact entry can name them. They are written rarely — migration or repair
++# — but the disposition is `broken`, terminal, so one landing mid-run kills it
++# with no retry. The matcher did root/root-slash-star only, no globs.
++# CHANGE: fails at baseline (allow entries were matched literally).
++
++_CLI_BAK="$HOME/.claude.json.backup-20251221-084359"
++printf '{}\n' > "$_CLI_BAK"
++_cls_bak="$(write_boundary_classify "$_CLI_BAK" "$JOB_DIR" "" 2>/dev/null)"
++assert_eq "[SPEC-2] a timestamped backup in the same family classifies as allowed" \
++    "allowed" "$_cls_bak"
++
++# GUARD (SPEC-4): the glob arm must not become a blanket pass. An unrelated file
++# at the same depth, under the same watched root, is still a violation.
++_HOME_STRAY="$HOME/stray-note.txt"
++printf 'x\n' > "$_HOME_STRAY"
++_cls_hstray="$(write_boundary_classify "$_HOME_STRAY" "$JOB_DIR" "" 2>/dev/null)"
++assert_eq "[SPEC-4] an unrelated file at the same depth is still a violation" \
++    "violation" "$_cls_hstray"
++
++# Both readings of where CLAUDE_CONFIG_DIR puts the state file are covered, and
++# neither was exercised before — the suite only ever ran with the variable
++# unset, so a home-relative-only entry and a config-dir-only entry were
++# indistinguishable (claude-review flagged the gap on PR #1953).
++_CCD="$TEST_TEMP_DIR/custom-claude-config"
++mkdir -p "$_CCD"
++printf '{}\n' > "$_CCD/.claude.json"
++_cls_ccd="$(CLAUDE_CONFIG_DIR="$_CCD" \
++    write_boundary_classify "$_CCD/.claude.json" "$JOB_DIR" "" 2>/dev/null)"
++assert_eq "[SPEC-1] the state file under a custom CLAUDE_CONFIG_DIR classifies as allowed" \
++    "allowed" "$_cls_ccd"
++
++_cls_home_ccd="$(CLAUDE_CONFIG_DIR="$_CCD" \
++    write_boundary_classify "$_CLI_STATE" "$JOB_DIR" "" 2>/dev/null)"
++assert_eq "[SPEC-1] the home-relative state file stays allowed when CLAUDE_CONFIG_DIR is set" \
++    "allowed" "$_cls_home_ccd"
++
++# GUARD (SPEC-4): a glob entry names FILES, not roots. Without this, the glob
++# arm reads `.claude.json*` as `.claude.json*/*` and a directory named to match
++# — `.claude.json.evil/` — carries its whole subtree in with it. Raised by
++# claude-review on PR #1953 and confirmed: the probe returned `allowed`.
++_EVIL_DIR="$HOME/.claude.json.evil"
++mkdir -p "$_EVIL_DIR"
++printf 'x\n' > "$_EVIL_DIR/inside.txt"
++_cls_evil="$(write_boundary_classify "$_EVIL_DIR/inside.txt" "$JOB_DIR" "" 2>/dev/null)"
++assert_eq "[SPEC-4] a glob entry does not grant the subtree of a directory it matches" \
++    "violation" "$_cls_evil"
++
++# ─── SPEC-3: ${VAR:-default} expands generally, not per hardcoded token ─────
++# The expander handled that form with one hardcoded string substitution PER
++# TOKEN — two for CLAUDE_CONFIG_DIR, one for TMPDIR. Every new default form
++# needed another, and a config line an operator writes with any other variable
++# expanded to nothing at all.
++# CHANGE: fails at baseline (only the three hardcoded tokens expanded).
++
++_EXP_ALLOW="$TEST_TEMP_DIR/expand-allow.txt"
++_EXP_DIR="$TEST_TEMP_DIR/expand-fallback"
++mkdir -p "$_EXP_DIR"
++printf 'x\n' > "$_EXP_DIR/written.txt"
++unset ZB_WB_NO_SUCH_VAR 2>/dev/null || true
++printf '${ZB_WB_NO_SUCH_VAR:-%s}\n' "$_EXP_DIR" > "$_EXP_ALLOW"
++_cls_exp="$(ZBUILD_WRITE_BOUNDARY_ALLOW="$_EXP_ALLOW" \
++    write_boundary_classify "$_EXP_DIR/written.txt" "$JOB_DIR" "" 2>/dev/null)"
++assert_eq "[SPEC-3] an unset \${VAR:-default} falls back to the default" \
++    "allowed" "$_cls_exp"
++
++_EXP_SET="$TEST_TEMP_DIR/expand-set"
++mkdir -p "$_EXP_SET"
++printf 'x\n' > "$_EXP_SET/written.txt"
++printf '${ZB_WB_SET_VAR:-%s}\n' "$_EXP_DIR" > "$_EXP_ALLOW"
++_cls_exp2="$(ZB_WB_SET_VAR="$_EXP_SET" ZBUILD_WRITE_BOUNDARY_ALLOW="$_EXP_ALLOW" \
++    write_boundary_classify "$_EXP_SET/written.txt" "$JOB_DIR" "" 2>/dev/null)"
++assert_eq "[SPEC-3] a set \${VAR:-default} uses the variable, not the default" \
++    "allowed" "$_cls_exp2"
++
++# The nested shape already shipped in config/write-boundary-allow.txt —
++# ${CLAUDE_CONFIG_DIR:-${HOME}/.claude} — must survive the generalisation. Plain
++# references expand innermost-first so the default is brace-free by the time the
++# defaulted form is matched.
++_NEST_ALLOW="$TEST_TEMP_DIR/expand-nested.txt"
++printf '${ZB_WB_NO_SUCH_VAR:-${TEST_TEMP_DIR}/expand-fallback}\n' > "$_NEST_ALLOW"
++_cls_nest="$(ZBUILD_WRITE_BOUNDARY_ALLOW="$_NEST_ALLOW" \
++    write_boundary_classify "$_EXP_DIR/written.txt" "$JOB_DIR" "" 2>/dev/null)"
++assert_eq "[SPEC-3] a nested \${VAR} inside a default expands too" \
++    "allowed" "$_cls_nest"
++
++# GUARD: the per-token substitutions are gone. CLAUDE_CONFIG_DIR is config data;
++# once the expander is general it has no business being named in engine code.
++# Comment lines are exempt: the expander's own comment cites the nested shape it
++# has to keep handling, and naming it there is documentation, not a code path.
++_hardcoded="$(grep -n 'CLAUDE_CONFIG_DIR' "$WB_LIB" | grep -v '^[0-9]*: *#' || true)"
++if [[ -n "$_hardcoded" ]]; then
++    assert_fail "[SPEC-3] no per-token hardcoded expansion remains in the lib" \
++        "$_hardcoded"
++else
++    assert_pass "[SPEC-3] no per-token hardcoded expansion remains in the lib"
++fi
++if grep -qF 'TMPDIR:-\/tmp' "$WB_LIB"; then
++    assert_fail "[SPEC-3] no hardcoded TMPDIR substitution remains in the lib" \
++        "$(grep -nF 'TMPDIR:-\/tmp' "$WB_LIB")"
++else
++    assert_pass "[SPEC-3] no hardcoded TMPDIR substitution remains in the lib"
++fi
++
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
