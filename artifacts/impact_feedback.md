@@ -1,28 +1,33 @@
-## Scope gaps found — three files missing
+## Scope gaps — two files still missing (unchanged from prior iter)
 
-### 1. `tests/unit/test-plugin-result-write-fallback-test.sh` (step-2)
+Both files flagged in the prior iteration are still missing from the design scope block and still contain the broken references.
 
-This test sources `plugins/tool/test/plugin.sh` and calls `_test_write_result` directly, then asserts several top-level field paths that step-2 moves under `data:{}`:
+### 1. `tests/unit/readout-gates-test.sh` (step-2)
 
-| Line | Assertion | Field moving to |
-|------|-----------|----------------|
-| 73 | `jq -r '.passed'` | `data.passed` |
-| 83 | `jq -r '.failed'` | `data.failed` |
-| 106 | `jq -r '.test_cmd'` | `data.test_cmd` |
-| 117 | `jq -r '.diff_applied'` | `data.diff_applied` |
-| 128 | `jq -r '.exit_code'` | `data.exit_code` |
-| 138-141 | `.verdict`, `.exit_code`, `.passed`, `.diff_applied` | verdict stays top-level; others move to data |
+`_seed_results()` is called at ~15 sites throughout the file and writes top-level JSON blocks:
 
-All data-field assertions must be updated to read from `.data.*`.
+```bash
+_seed_results "$W" '{lint:{status:"pass",exit_code:0,summary:"clean"}}'
+_seed_results "$W" '{coverage:{status:"measured",pct:42.5,floor:29}}'
+_seed_results "$W" '{mutation:{status:"measured",score:"20/22",floor:15}}'
+```
 
-### 2. `tests/unit/readout-gates-test.sh` (step-2)
+But the gate plugins (already updated in this worktree) now read:
+- `lint-gate/plugin.sh:50` — `jq -r '.data.lint.status // empty'`
+- `coverage-gate/plugin.sh:66` — `jq -r '[(.data.coverage.status // ""), ...]'`
+- `mutation-gate/plugin.sh:56` — `jq -r '[(.data.mutation.status // ""), ...]'`
 
-`_seed_results()` at line 46 writes `jq -n "$block" > test-results.json`, and every lint/coverage/mutation test case passes a top-level block like `'{lint:{status:"pass",...}}'`. After step-2 updates `lint-gate`, `coverage-gate`, and `mutation-gate` to read `.data.lint`, `.data.coverage`, `.data.mutation`, these fixtures must be reseeded as `{data:{lint:{...}}}`. Without this change, every L1–M6 assertion in the file fails silently (returns `skip` instead of the expected `pass`/`fail`).
+All L1–L5, C1–C7, and M1–M6 assertions silently produce `skip` (empty path → no match) instead of `pass`/`fail`. The fixtures must be rewritten as `{data:{lint:{...}}}`, `{data:{coverage:{...}}}`, `{data:{mutation:{...}}}`.
 
-### 3. `tests/integration/build-test-cycle-targeted-rerun-test.sh` (step-2)
+### 2. `tests/integration/build-test-cycle-targeted-rerun-test.sh` (step-2)
 
-Line 102 reads `.run_mode // "?"` from the live test plugin's `test-results.json` output:
+Line 102:
 ```bash
 local rm; rm="$(jq -r '.run_mode // "?"' "$ad/test-results.json" 2>/dev/null || echo "?")"
 ```
-Line 123 then asserts `"targeted"`. After step-2 moves `run_mode` under `data`, the top-level path silently returns `null`, the `// "?"` fallback fires, `iter2_mode` becomes `"?"`, and the assertion fails. The jq path must be updated to `.data.run_mode // "?"`.
+Line 123:
+```bash
+assert_eq "T1: iter-2 test stage runs run_mode=targeted (red-set engaged)" "targeted" "$iter2_mode"
+```
+
+After step-2 moves `run_mode` under `data:{}`, the top-level `.run_mode` path returns null, `// "?"` fires, `iter2_mode` becomes `"?"`, and the assertion fails. Fix: change line 102 to `.data.run_mode // "?"`.

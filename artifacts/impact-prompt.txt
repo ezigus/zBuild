@@ -96,37 +96,27 @@ BUDGET DISCIPLINE (read this — you have a BOUNDED tool-call budget):
   no ` ``` ` or ` ```json ` fence, no summary sentence.
 
 DESIGN SCOPE BLOCK:
-- plugins/tool/test/manifest.yaml
 - plugins/tool/test/plugin.sh
+- plugins/tool/test/manifest.yaml
 - plugins/tool/test/tests/test-test.sh
-- plugins/tool/test/tests/parse-unit-test.sh
-- docs/adr/ADR-054-stage-contract.md
-- docs/adr/ADR-055-inter-stage-data-contract-v2.md
-- docs/wiki/plugins/test.md
-- core/contract/version.sh
-- core/pipeline/disposition.sh
-- core/pipeline/verdict.sh
-- core/pipeline/cycle-orchestrator.sh
-- plugins/tool/gate-aggregator/plugin.sh
 - plugins/tool/coverage-gate/plugin.sh
+- plugins/tool/gate-aggregator/plugin.sh
 - plugins/tool/lint-gate/plugin.sh
 - plugins/tool/mutation-gate/plugin.sh
-- tests/unit/gate-aggregator-test.sh
-- tests/unit/core-pipeline-cycle-final-gate-test.sh
-- tests/unit/design-timeout-exhaustion-halt-1261-test.sh
+- core/pipeline/cycle-orchestrator.sh
 - tests/unit/convergence-timeouts-never-fatal-1208-test.sh
+- tests/unit/core-pipeline-cycle-final-gate-test.sh
 - tests/unit/core-pipeline-cycle-stall-break-test.sh
+- tests/unit/design-timeout-exhaustion-halt-1261-test.sh
+- tests/unit/framework-result-test.sh
 - tests/unit/test-plugin-empty-diff-test.sh
 - tests/unit/test-plugin-positional-args-test.sh
-- tests/unit/framework-result-test.sh
 - tests/unit/test-targeted-advisory-hint-test.sh
-- tests/unit/core-pipeline-verdict-test.sh
-- tests/unit/core-pipeline-disposition-test.sh
-- tests/unit/lint-verdict-classify-test.sh
-- tests/unit/artifact-type-retirement-test.sh
-- tests/unit/cycle-orchestrator-capability-flags-test.sh
-- tests/integration/test-stage-proc-group-test.sh
-- tests/integration/cycle-blocked-real-artifact-test.sh
+- tests/unit/test-plugin-result-write-fallback-test.sh
+- docs/adr/ADR-054-stage-contract.md
+
+## PRIOR IMPACT (a previous attempt on this issue — reference & refine; re-validate against the CURRENT design)
+{"schema_version": 1, "verdict": "incomplete", "missing": [{"step_id": "step-2", "files_to_add": ["tests/unit/test-plugin-result-write-fallback-test.sh"], "reason": "Directly sources plugin.sh and calls _test_write_result, then asserts top-level field paths .passed (line 73), .failed (line 83), .test_cmd (line 106), .diff_applied (line 117), .exit_code (line 128), plus multiple fields on the happy-path at lines 138-141 — all of which move under data:{} in step-2."}, {"step_id": "step-2", "files_to_add": ["tests/unit/readout-gates-test.sh"], "reason": "_seed_results() writes synthetic test-results.json as top-level jq objects e.g. '{lint:{status:\"pass\",...}}' (lines 53, 61, 67, 73, 86, 94). After step-2 gate plugins update their jq paths to read data.lint / data.coverage / data.mutation, these top-level fixtures no longer match and every L1-M6 assertion will fail."}, {"step_id": "step-2", "files_to_add": ["tests/integration/build-test-cycle-targeted-rerun-test.sh"], "reason": "Reads .run_mode from live test-results.json output (line 102: jq -r '.run_mode // \"?\"') and asserts its value is \"targeted\" (line 123). After step-2 moves run_mode under data:{}, the top-level path returns null, the // \"?\" fallback fires, and the assertion fails."}], "impact_feedback_md": "## Scope gaps found — three files missing\n\n### 1. `tests/unit/test-plugin-result-write-fallback-test.sh` (step-2)\n\nThis test sources `plugins/tool/test/plugin.sh` and calls `_test_write_result` directly, then asserts several top-level field paths that step-2 moves under `data:{}`:\n\n| Line | Assertion | Field moving to |\n|------|-----------|----------------|\n| 73 | `jq -r '.passed'` | `data.passed` |\n| 83 | `jq -r '.failed'` | `data.failed` |\n| 106 | `jq -r '.test_cmd'` | `data.test_cmd` |\n| 117 | `jq -r '.diff_applied'` | `data.diff_applied` |\n| 128 | `jq -r '.exit_code'` | `data.exit_code` |\n| 138-141 | `.verdict`, `.exit_code`, `.passed`, `.diff_applied` | verdict stays top-level; others move to data |\n\nAll data-field assertions must be updated to read from `.data.*`.\n\n### 2. `tests/unit/readout-gates-test.sh` (step-2)\n\n`_seed_results()` at line 46 writes `jq -n \"$block\" > test-results.json`, and every lint/coverage/mutation test case passes a top-level block like `'{lint:{status:\"pass\",...}}'`. After step-2 updates `lint-gate`, `coverage-gate`, and `mutation-gate` to read `.data.lint`, `.data.coverage`, `.data.mutation`, these fixtures must be reseeded as `{data:{lint:{...}}}`. Without this change, every L1–M6 assertion in the file fails silently (returns `skip` instead of the expected `pass`/`fail`).\n\n### 3. `tests/integration/build-test-cycle-targeted-rerun-test.sh` (step-2)\n\nLine 102 reads `.run_mode // \"?\"` from the live test plugin's `test-results.json` output:\n```bash\nlocal rm; rm=\"$(jq -r '.run_mode // \"?\"' \"$ad/test-results.json\" 2>/dev/null || echo \"?\")\"\n```\nLine 123 then asserts `\"targeted\"`. After step-2 moves `run_mode` under `data`, the top-level path silently returns `null`, the `// \"?\"` fallback fires, `iter2_mode` becomes `\"?\"`, and the assertion fails. The jq path must be updated to `.data.run_mode // \"?\"`.\n"}
 
 
 
