@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "verdict": "pass",
+  "violations": [],
+  "guard_precheck": {
+    "declared": 2,
+    "verified": 0,
+    "failed": 0,
+    "skipped": [
+      {
+        "spec": "SPEC-9",
+        "reason": "harness"
+      },
+      {
+        "spec": "SPEC-10",
+        "reason": "harness"
+      }
+    ]
+  }
+}
