@@ -84,12 +84,17 @@ persist_run() {
     emit_event "persist.start" "stage=$_stage_id" "issue=$_issue" 2>/dev/null || true
 
     local _verdict="complete" _reason="" _pushed="false" _snapshot="skipped"
+    # #1966: the CI backstop must tell "nothing to push" (no issue, no goal) from
+    # "did not push" (identity existed, the push did not happen). Without the
+    # distinction it either fires on every identity-less run or cannot fire at all.
+    local _identity_present="false"
+    _artifact_persist_has_identity "$_issue" && _identity_present="true"
 
     if ! _artifact_persist_has_identity "$_issue"; then
         # Neither an issue nor a goal: no identity, so nothing to persist under.
         # A --goal run DOES have one (#1931) and no longer lands here.
         _reason="no identity — neither an issue nor a goal"
-        _persist_write_result "$_artifacts_dir" "complete" "$_reason" "$_snapshot" "$_pushed"
+        _persist_write_result "$_artifacts_dir" "complete" "$_reason" "$_snapshot" "$_pushed" "$_identity_present"
         emit_event "persist.complete" "stage=$_stage_id" "issue=$_issue" \
             "pushed=false" "reason=no_issue" 2>/dev/null || true
         return 0
@@ -120,7 +125,7 @@ persist_run() {
             "finding=${_finding}" 2>/dev/null || true
         warn "persist: refusing to push — artifact looks like it carries a credential (${_finding})"
         _persist_write_result "$_artifacts_dir" "degraded" \
-            "push refused: possible credential in ${_finding}" "$_snapshot" "false"
+            "push refused: possible credential in ${_finding}" "$_snapshot" "false" "$_identity_present"
         emit_event "persist.complete" "stage=$_stage_id" "issue=$_issue" \
             "pushed=false" "reason=secret_refused" 2>/dev/null || true
         return 0
@@ -148,7 +153,7 @@ persist_run() {
     fi
 
     [[ -n "$_reason" ]] || _reason="snapshotted and pushed zbuild/state/issue-$_issue"
-    _persist_write_result "$_artifacts_dir" "$_verdict" "$_reason" "$_snapshot" "$_pushed"
+    _persist_write_result "$_artifacts_dir" "$_verdict" "$_reason" "$_snapshot" "$_pushed" "$_identity_present"
     emit_event "persist.complete" "stage=$_stage_id" "issue=$_issue" \
         "pushed=$_pushed" "snapshot=$_snapshot" 2>/dev/null || true
     # Always 0: persistence is advisory. It must never change a run's verdict —
@@ -157,18 +162,18 @@ persist_run() {
     return 0
 }
 
-# ─── _persist_write_result <artifacts_dir> <verdict> <reason> <snap> <pushed> ─
+# ─── _persist_write_result <dir> <verdict> <reason> <snap> <pushed> [id_present] ─
 # Guarded like teardown's: an unguarded pipe would abort persist_run on a failed
 # write, before persist.complete and before the `return 0` ADR-054 §4 requires.
 _persist_write_result() {
-    local _dir="$1" _verdict="$2" _reason="$3" _snap="$4" _pushed="$5"
+    local _dir="$1" _verdict="$2" _reason="$3" _snap="$4" _pushed="$5" _ip="${6:-false}"
     mkdir -p "$_dir" 2>/dev/null || true
     local _file="$_dir/persist-result.json"
     if ! jq -n \
             --arg v "$_verdict" --arg r "$_reason" \
-            --arg s "$_snap" --argjson p "$_pushed" \
+            --arg s "$_snap" --argjson p "$_pushed" --argjson ip "$_ip" \
             '{result_contract: 2, verdict: $v, disposition: "complete",
-              reason: $r, data: {snapshot: $s, pushed: $p}}' \
+              reason: $r, data: {snapshot: $s, pushed: $p, identity_present: $ip}}' \
             | atomic_write "$_file"; then
         emit_event "persist.result.write_failed" "file=$_file" 2>/dev/null || true
     fi

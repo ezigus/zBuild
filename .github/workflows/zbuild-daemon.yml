@@ -59,8 +59,13 @@ jobs:
     name: "Post-run — remove label + comment"
     needs: pipeline
     runs-on: ubuntu-latest
-    # Always run so the label is removed even if the pipeline fails.
-    if: always()
+    # Run when the pipeline FAILED (so the label is still removed), but NOT when
+    # it was SKIPPED. `always()` fires on a skipped dependency too, and this
+    # workflow triggers on ANY label added to ANY issue — so every unrelated
+    # label change ran this job, stripped the `zbuild-run` trigger, and commented
+    # "pipeline finished with result: `skipped`" on an issue where nothing ran.
+    # Observed on #1957, #1959 and #1961 (#1966 F4).
+    if: always() && needs.pipeline.result != 'skipped'
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       ISSUE_NUMBER: ${{ github.event.issue.number }}
