@@ -113,9 +113,15 @@ set +e
     bash "$RUNNER" --issue 618 --template runner-state-dir-minimal ) >/dev/null 2>&1
 rc=$?
 set -e
-# #887: with ZBUILD_STATE_DIR unset, a fresh run roots state under
-# $HOME/.zbuild/state/runs/<run_id>/ (per-run isolation). run_id derived from $$, not hardcoded.
-EXPECTED_STATE_DIR="$TEST_TEMP_DIR/home/.zbuild/state/runs/$ZBUILD_RUN_ID"
+# #887: with ZBUILD_STATE_DIR unset, a fresh run gets its own state dir. #141
+# moved that dir under the run's ISSUE, so the path is DERIVED from the same
+# resolver the writer uses instead of pinned as a literal — this test is about
+# the runner EXPORTING its state dir to the child, not about the layout shape.
+EXPECTED_STATE_DIR="$( HOME="$TEST_TEMP_DIR/home" \
+    env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_DATA_ROOT \
+    bash -c 'source "$1/scripts/lib/test-helpers.sh" >/dev/null 2>&1
+             zb_expected_run_state_dir "$2" 618 "" "$3"' _ \
+    "$REPO_ROOT" "$OVERLAY_REPO" "$ZBUILD_RUN_ID" )"
 
 assert_eq "runner exits 0" "0" "$rc"
 assert_file_exists "build stub captured its env" "$ENV_CAPTURE"

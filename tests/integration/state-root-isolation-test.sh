@@ -113,14 +113,33 @@ else
     assert_fail "A: fenced latest symlink not created under FENCE"
 fi
 
+
+# #141: a nested run WITH AN ISSUE nests under it, and that path hangs off the
+# DATA root — which now derives from the fence (layout.sh:zbuild_layout_data_root)
+# precisely so the fence keeps fencing. Derive the expected path from the same
+# resolver the writer uses; pinning "<fence>/runs/<id>" would assert the LAYOUT
+# SHAPE, when what this file exists to prove is CONTAINMENT.
+_nested_sd() {   # <state_root> <home> <run_id>
+    HOME="$2" ZBUILD_STATE_ROOT="$1" env -u ZBUILD_STATE_DIR -u ZBUILD_DATA_ROOT \
+        bash -c 'source "$1/scripts/lib/test-helpers.sh" >/dev/null 2>&1
+                 zb_expected_run_state_dir "$2" 1127 "" "$3"' _ \
+        "$REPO_ROOT" "$OVERLAY_REPO" "$3"
+}
 # ─── SPEC-B: parent state byte-identical; nested state under the fence ───────
 if cmp -s "$PARENT_STATE" "$PARENT_STATE_GOLD"; then
     assert_pass "B: parent pipeline-state.json byte-identical"
 else
     assert_fail "B: parent pipeline-state.json was modified"
 fi
+_NESTED_SD="$(_nested_sd "$FENCE" "$HOME_DIR" nested-aaa)"
 assert_file_exists "B: nested state under the fence" \
-    "$FENCE/runs/nested-aaa/pipeline-state.json"
+    "$_NESTED_SD/pipeline-state.json"
+# The containment property itself, independent of shape: the nested run must be
+# inside the throwaway fence tree and nowhere near the real home.
+case "$_NESTED_SD" in
+    "$TEST_TEMP_DIR"/*) assert_pass "B: nested state is contained by the fence tree" ;;
+    *) assert_fail "B: nested state ESCAPED the fence" "landed at: $_NESTED_SD" ;;
+esac
 if [[ -e "$PARENT_ROOT/runs/nested-aaa" ]]; then
     assert_fail "B: nested run must NOT land under the parent root"
 else
@@ -135,7 +154,7 @@ else
 fi
 
 # ─── SPEC-D: nested run still functions inside the fence ─────────────────────
-nested_state="$FENCE/runs/nested-aaa/pipeline-state.json"
+nested_state="$_NESTED_SD/pipeline-state.json"
 if [[ -f "$nested_state" ]]; then
     nrid="$(jq -r '.run_id // empty' "$nested_state" 2>/dev/null)"
     nstatus="$(jq -r '.status // empty' "$nested_state" 2>/dev/null)"
@@ -146,7 +165,7 @@ if [[ -f "$nested_state" ]]; then
         *) assert_fail "D: nested run not terminal" "status=$nstatus" ;;
     esac
     assert_file_exists "D: nested events under the fence" \
-        "$FENCE/runs/nested-aaa/events.jsonl"
+        "$_NESTED_SD/events.jsonl"
 else
     assert_fail "D: nested state file missing under fence"
 fi
@@ -164,8 +183,16 @@ set +e
     bash "$RUNNER" --issue 1127 --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
 e_rc=$?
 assert_eq "E: default-root run exits 0" "0" "$e_rc"
-assert_file_exists "E: unset root → state under \$HOME/.zbuild/state/runs/" \
-    "$HOME_DIR2/.zbuild/state/runs/def-1/pipeline-state.json"
+# #141: with the root unset the run still roots at $HOME/.zbuild — under the
+# ISSUE now, not the flat runs/. Derived, and then asserted to be HOME-anchored,
+# which is the property this case guards.
+_E_SD="$(_nested_sd "" "$HOME_DIR2" def-1)"
+assert_file_exists "E: unset root → state under \$HOME/.zbuild/" \
+    "$_E_SD/pipeline-state.json"
+case "$_E_SD" in
+    "$HOME_DIR2"/.zbuild/*) assert_pass "E: and it is HOME-anchored" ;;
+    *) assert_fail "E: default root is not HOME-anchored" "got: $_E_SD" ;;
+esac
 
 # E2: `zbuild --resume-latest` reads the resolved root. Point ZBUILD_STATE_ROOT
 # at an EMPTY dir while HOME has a valid latest; a threaded CLI reads the fenced
@@ -233,7 +260,7 @@ F_OUT="$STAGE_ARTIFACTS/test-results.json"
 # parent-untouched assertions pass hollowly, #913).
 NESTED_LOG="$TEST_TEMP_DIR/f-nested-runner.log"
 NESTED_STATE_COPY="$TEST_TEMP_DIR/f-nested-state.json"
-F_CMD="ZBUILD_PLUGINS_ROOT='$PLUGINS_ROOT' ZBUILD_EVENT_SCHEMA='$REPO_ROOT/config/event-schema.json' ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn ZBUILD_VISION_GATE=off ZBUILD_RUN_ID='nested-suite' bash '$RUNNER' --issue 1127 --no-resume --template runner-state-dir-minimal > '$NESTED_LOG' 2>&1 || true; cp \"\$ZBUILD_STATE_ROOT/runs/nested-suite/pipeline-state.json\" '$NESTED_STATE_COPY' 2>/dev/null || true; echo suite-ok"
+F_CMD="ZBUILD_PLUGINS_ROOT='$PLUGINS_ROOT' ZBUILD_EVENT_SCHEMA='$REPO_ROOT/config/event-schema.json' ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn ZBUILD_VISION_GATE=off ZBUILD_RUN_ID='nested-suite' bash '$RUNNER' --issue 1127 --no-resume --template runner-state-dir-minimal > '$NESTED_LOG' 2>&1 || true; _ns=\"\$(find \"\$(dirname \"\$ZBUILD_STATE_ROOT\")\" -path '*/runs/nested-suite/pipeline-state.json' -print 2>/dev/null | head -1)\"; cp \"\$_ns\" '$NESTED_STATE_COPY' 2>/dev/null || true; echo suite-ok"
 
 set +e
 # #1268: _test_run_inner is a shell FUNCTION — invoke it in a subshell with

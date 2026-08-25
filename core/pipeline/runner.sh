@@ -1216,7 +1216,7 @@ _runner_worktree_record() {
     return 1
 }
 
-# ─── _runner_enter_worktree <state_dir> <run_id> ─────────────────────────────
+# ─── _runner_enter_worktree <state_dir> <run_id> [wt_key] ────────────────────
 # ADR-052 (#1640): put the runner in the run's own worktree BEFORE the first
 # stage dispatches, so every stage inherits it and no stage has to know it exists.
 #
@@ -1242,7 +1242,12 @@ _runner_worktree_record() {
 # acquire that fails, both abort: continuing in the main checkout is precisely the
 # damage this exists to prevent, and it is silent damage.
 _runner_enter_worktree() {
-    local state_dir="${1:-}" run_id="${2:-}"
+    local state_dir="${1:-}" run_id="${2:-}" wt_key="${3:-}"
+    # #141 (ADR-059 §2): the tree is keyed by the ISSUE, not the run, so every
+    # run of an issue lands in the same tree and the #1658/#1869 branch
+    # collision cannot arise. Falls back to run_id for a run with no identity,
+    # which is the only case that still needs a per-run tree.
+    [[ -n "$wt_key" ]] || wt_key="$run_id"
 
     # The main checkout stays addressable after the re-root. intake's dirty-tree
     # preflight targets it deliberately (a freshly-acquired worktree is always
@@ -1284,12 +1289,12 @@ _runner_enter_worktree() {
     if [[ -z "$wt" ]]; then
         declare -F zbuild_worktree_enabled >/dev/null 2>&1 || return 0
         zbuild_worktree_enabled || return 0
-        # Worktree isolation is a PER-RUN concept and needs a run id to key the
-        # path. The runner always has one; this guards direct callers only.
-        [[ -n "$run_id" ]] || return 0
-        if ! wt="$(zbuild_worktree_acquire "$run_id" "$ZBUILD_MAIN_REPO_ROOT")"; then
+        # Needs a key to derive the path. The runner always supplies one; this
+        # guards direct callers only.
+        [[ -n "$wt_key" ]] || return 0
+        if ! wt="$(zbuild_worktree_acquire "$wt_key" "$ZBUILD_MAIN_REPO_ROOT")"; then
             error "could not acquire the run's worktree (see above)"
-            emit_event "pipeline.worktree.acquire_failed" "run_id=$run_id" 2>/dev/null || true
+            emit_event "pipeline.worktree.acquire_failed" "run_id=$run_id" "wt_key=$wt_key" 2>/dev/null || true
             return 1
         fi
         printf '%s\n' "$wt" > "$state_dir/run-worktree.txt"
@@ -1708,6 +1713,14 @@ main() {
         _runner_run_id="${_raw_run_id//[^a-zA-Z0-9_.-]/}"
         # Fall back to generated ID if sanitization emptied the value
         [[ -z "$_runner_run_id" ]] && _runner_run_id="$(date +%Y%m%d%H%M%S)-$$"
+        # #141: assigned HERE, not after init_state. The layout switch below
+        # reads it to derive the run key, and it used to be set ~35 lines later
+        # — so on a fresh run the switch always saw an EMPTY issue, produced an
+        # empty key, and took the no-identity fallback. Every run since the
+        # switch landed kept the flat shape and nothing said so
+        # (`~/.zbuild/repos/` was never created). Resume paths above set it from
+        # state and are unaffected.
+        _runner_issue="${issue:-0}"
         # #887: default state → isolate under runs/<run_id>/ so concurrent runs
         # never share artifacts. run_id is path-sanitized above. Done before
         # init_state so the per-run state file is the one created.
@@ -1721,6 +1734,15 @@ main() {
             local _rk=""
             if declare -F zbuild_run_key >/dev/null 2>&1; then
                 _rk="$(zbuild_run_key "$_runner_issue" "${goal:-}" 2>/dev/null || true)"
+            fi
+            # An EMPTY key is a legitimate answer only for a run with neither an
+            # issue nor a goal. If this run HAS an identity and the key came back
+            # empty, the nesting silently degrades to the flat shape — which is
+            # indistinguishable from the legitimate case and is exactly how the
+            # ordering defect above survived undetected. Say so.
+            if [[ -z "$_rk" ]] \
+               && { [[ -n "$_runner_issue" && "$_runner_issue" != "0" ]] || [[ -n "${goal:-}" ]]; }; then
+                warn "run key is empty despite issue='${_runner_issue}' goal='${goal:-}' — state will use the pre-#141 flat layout"
             fi
             if declare -F zbuild_layout_run_state_dir >/dev/null 2>&1; then
                 state_dir="$(zbuild_layout_run_state_dir "$_rk" "$_runner_run_id")"
@@ -1747,7 +1769,6 @@ main() {
         if [[ -f "$state_file" ]]; then
             rm -f "$state_file" "${state_file}.bak" "${state_file}.lock"
         fi
-        _runner_issue="${issue:-0}"
         # A refused state write means the ADR-006 resume contract has no origin
         # point — abort rather than run the whole pipeline in memory (#1773).
         # #1791: stamp the engine that will grade this run. ADR-023 froze it at
@@ -1899,7 +1920,14 @@ main() {
     # engine bookkeeping that belongs in the main checkout (state, events,
     # artifact restore, the self-host snapshot of the operator's working tree);
     # everything below is stage work, which belongs in the run's own tree.
-    _runner_enter_worktree "$state_dir" "$_runner_run_id" || return 1
+    # #141: hand the worktree the run's IDENTITY key so one issue gets one
+    # tree. Empty for a run with neither issue nor goal — the callee then keys
+    # by run_id exactly as before.
+    local _wt_key=""
+    if declare -F zbuild_run_key >/dev/null 2>&1; then
+        _wt_key="$(zbuild_run_key "$_runner_issue" "${goal:-}" 2>/dev/null || true)"
+    fi
+    _runner_enter_worktree "$state_dir" "$_runner_run_id" "$_wt_key" || return 1
 
     # Mark pipeline as in_progress
     _set_pipeline_status "$state_file" "in_progress"

@@ -54,6 +54,16 @@ mock_plugin_factory "intake" "agent" 0 "" "" >/dev/null
 mock_plugin_factory "build"  "agent" 0 "" "" >/dev/null
 
 HOME_DIR="$TEST_TEMP_DIR/home"; mkdir -p "$HOME_DIR/.zbuild"
+# #141: the per-run state dir now nests under the run's ISSUE. Derive it from
+# the same resolver the writer uses rather than pinning a layout shape — this
+# file tests that two concurrent runs do not share a state dir, not where the layout puts things.
+_sd_for() {
+    HOME="$HOME_DIR" env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_DATA_ROOT \
+        bash -c 'source "$1/scripts/lib/test-helpers.sh" >/dev/null 2>&1
+                 zb_expected_run_state_dir "$2" "$3" "" "$4"' _ \
+        "$REPO_ROOT" "$OVERLAY_REPO" "887" "$1"
+}
+
 
 # run_pipeline <run_id> [extra env KEY=VAL ...] — default-state run under HOME_DIR.
 run_pipeline() {
@@ -76,10 +86,10 @@ run_pipeline() {
 # ─── T1 + T2: two distinct runs isolate ─────────────────────────────────────
 run_pipeline "run-aaa"; assert_eq "T1: run-aaa exits 0" "0" "$?"
 run_pipeline "run-bbb"; assert_eq "T2: run-bbb exits 0" "0" "$?"
-assert_file_exists "T1: run-aaa state under runs/run-aaa/" "$HOME_DIR/.zbuild/state/runs/run-aaa/pipeline-state.json"
-assert_file_exists "T2: run-bbb state under runs/run-bbb/" "$HOME_DIR/.zbuild/state/runs/run-bbb/pipeline-state.json"
-a_run="$(jq -r '.run_id' "$HOME_DIR/.zbuild/state/runs/run-aaa/pipeline-state.json" 2>/dev/null)"
-b_run="$(jq -r '.run_id' "$HOME_DIR/.zbuild/state/runs/run-bbb/pipeline-state.json" 2>/dev/null)"
+assert_file_exists "T1: run-aaa state under runs/run-aaa/" "$(_sd_for run-aaa)/pipeline-state.json"
+assert_file_exists "T2: run-bbb state under runs/run-bbb/" "$(_sd_for run-bbb)/pipeline-state.json"
+a_run="$(jq -r '.run_id' "$(_sd_for run-aaa)/pipeline-state.json" 2>/dev/null)"
+b_run="$(jq -r '.run_id' "$(_sd_for run-bbb)/pipeline-state.json" 2>/dev/null)"
 assert_eq "T2: run-aaa state has its own run_id (no clobber)" "run-aaa" "$a_run"
 assert_eq "T2: run-bbb state has its own run_id (no clobber)" "run-bbb" "$b_run"
 
@@ -185,7 +195,7 @@ fi
 
 # ─── T8: an engine run never writes to the shared global default event log ───
 assert_file_exists "T8: run-hyg events under its per-run dir" \
-    "$GLOBAL_STATE/runs/run-hyg/events.jsonl"
+    "$(_sd_for run-hyg)/events.jsonl"
 if [[ -e "$GLOBAL_STATE/events.jsonl" ]]; then
     assert_fail "T8: engine run must NOT recreate the shared global events.jsonl"
 else

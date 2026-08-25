@@ -62,20 +62,41 @@ zbuild_worktree_root() {
     return 0   # empty: co-locate under the run root
 }
 
-# ─── zbuild_worktree_path <run_id> ───────────────────────────────────────────
-# Co-located by default: <run_root>/worktree. An explicit worktree root overrides
-# it, keyed by run_id so concurrent runs cannot collide either way, and so resume
-# can re-derive the path from state alone.
+# ─── zbuild_worktree_path <key> ──────────────────────────────────────────────
+# <key> is an IDENTITY key (`issue-<N>` / `goal-<hash>`) where the run has one,
+# else a run_id.
+#
+#   issue-1921  ->  <data_root>/repos/<owner>/<repo>/issues/1921/worktree
+#   goal-<hash> ->  <data_root>/repos/<owner>/<repo>/goals/goal-<hash>/worktree
+#   <run_id>    ->  <run_root>/<run_id>/worktree          (pre-#141 shape)
+#
+# An explicit ZBUILD_WORKTREE_ROOT overrides all three, keyed by whatever was
+# passed, so resume can re-derive the path from state alone.
 zbuild_worktree_path() {
-    local run_id="${1:-}"
-    [[ -n "$run_id" ]] || { printf 'zbuild_worktree_path: run_id required\n' >&2; return 2; }
+    local key="${1:-}"
+    [[ -n "$key" ]] || { printf 'zbuild_worktree_path: run_id or identity key required\n' >&2; return 2; }
     local override
     override="$(zbuild_worktree_root)"
     if [[ -n "$override" ]]; then
-        printf '%s/%s\n' "${override%/}" "$run_id"
+        printf '%s/%s\n' "${override%/}" "$key"
         return 0
     fi
-    printf '%s/worktree\n' "$(zbuild_run_root "$run_id")"
+    # #141 (ADR-059 §2): an IDENTITY key (issue-<N> / goal-<hash>) gets the one
+    # tree that issue reuses across runs. Anything else — a bare run_id, a run
+    # with neither an issue nor a goal — keeps the pre-#141 per-run path, which
+    # is still correct for work that has nothing to nest under.
+    #
+    # The operator override above deliberately wins over BOTH: someone who
+    # pinned ZBUILD_WORKTREE_ROOT asked for a flat directory of trees, and
+    # silently re-nesting under it would break that.
+    if declare -F zbuild_layout_key_worktree >/dev/null 2>&1; then
+        local _kw
+        if _kw="$(zbuild_layout_key_worktree "$key" 2>/dev/null)" && [[ -n "$_kw" ]]; then
+            printf '%s\n' "$_kw"
+            return 0
+        fi
+    fi
+    printf '%s/worktree\n' "$(zbuild_run_root "$key")"
 }
 
 # ─── zbuild_worktree_enabled ─────────────────────────────────────────────────
@@ -263,13 +284,37 @@ zbuild_worktree_enter() {
     return 0
 }
 
+# ─── _zbuild_worktree_identity <worktree_path> ──────────────────────────────
+# "issues <N>" | "goals <key>" for a #141 identity-keyed tree, else nothing
+# (rc=1). Reads the SHAPE — <...>/issues/<N>/worktree — rather than resolving
+# the layout, so it still classifies a path from another repo or an older root.
+_zbuild_worktree_identity() {
+    local wt="${1:-}"
+    [[ -n "$wt" ]] || return 1
+    wt="${wt%/}"
+    [[ "${wt##*/}" == "worktree" ]] || return 1
+    local parent="${wt%/worktree}"
+    local leaf="${parent##*/}" bucket="${parent%/*}"; bucket="${bucket##*/}"
+    case "$bucket" in
+        issues|goals) [[ -n "$leaf" ]] || return 1; printf '%s %s\n' "$bucket" "$leaf" ;;
+        *) return 1 ;;
+    esac
+}
+
 # ─── zbuild_worktree_run_id <worktree_path> ─────────────────────────────────
-# The run that owns <worktree_path>, inverting zbuild_worktree_path's two
-# layouts: co-located <run_root>/<run_id>/worktree, or <override_root>/<run_id>.
-# Prints nothing (rc=1) when the path carries no run id.
+# The RUN that owns <worktree_path>: co-located <run_root>/<run_id>/worktree, or
+# <override_root>/<run_id>. Prints nothing (rc=1) when the path carries no run id.
+#
+# REFUSES a #141 identity-keyed tree (<...>/issues/<N>/worktree). The naive leaf
+# walk would return "<N>" — an ISSUE NUMBER TYPED AS A RUN_ID, rc=0 — which the
+# ADR-059 plan listed among the six sites that fail silently. A tree shared by
+# every run of an issue has no single owning run to name, so the honest answer
+# is "not a run id", not a plausible-looking wrong one. Callers wanting a label
+# for diagnostics use zbuild_worktree_owner.
 zbuild_worktree_run_id() {
     local wt="${1:-}"
     [[ -n "$wt" ]] || return 1
+    _zbuild_worktree_identity "$wt" >/dev/null 2>&1 && return 1
     wt="${wt%/}"
     local leaf="${wt##*/}"
     if [[ "$leaf" == "worktree" ]]; then
@@ -278,6 +323,25 @@ zbuild_worktree_run_id() {
     fi
     [[ -n "$leaf" && "$leaf" != "/" ]] || return 1
     printf '%s\n' "$leaf"
+}
+
+# ─── zbuild_worktree_owner <worktree_path> ──────────────────────────────────
+# A human label for whoever owns <worktree_path> — "issue 1921", "goal goal-ab…"
+# or "run 20260824-1". For OPERATOR MESSAGES only; never parse it. Exists so the
+# #141 move does not cost the diagnostics that used to say which run held a
+# branch (intake/lib/branch-ops.sh), now that the answer is an issue, not a run.
+zbuild_worktree_owner() {
+    local wt="${1:-}" ident
+    [[ -n "$wt" ]] || return 1
+    if ident="$(_zbuild_worktree_identity "$wt" 2>/dev/null)"; then
+        case "${ident%% *}" in
+            issues) printf 'issue %s\n' "${ident#* }" ;;
+            goals)  printf 'goal %s\n'  "${ident#* }" ;;
+        esac
+        return 0
+    fi
+    local rid; rid="$(zbuild_worktree_run_id "$wt" 2>/dev/null)" || return 1
+    printf 'run %s\n' "$rid"
 }
 
 # ─── _zbuild_worktree_state_file <run_id> ───────────────────────────────────

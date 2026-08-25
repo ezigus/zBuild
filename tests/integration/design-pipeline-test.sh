@@ -166,7 +166,11 @@ set +e
 rc=$?
 set -e
 
-ACTUAL_STATE_DIR="$TEST_TEMP_DIR/home/.zbuild/state"
+# #141: a run with an issue now writes under the DATA root (.zbuild/repos/...),
+# not under .zbuild/state. This assertion only wants to FIND design.md wherever
+# the run put it, so search the whole zbuild home — which covers the pre-#141
+# state/ shape and the issue-keyed one without pinning either.
+ACTUAL_STATE_DIR="$TEST_TEMP_DIR/home/.zbuild"
 
 assert_eq "runner exits 0" "0" "$rc"
 

@@ -117,8 +117,35 @@ zbuild_layout_has_any_run_state() {
 # run state at the engine's own install directory would put mutable work inside
 # the immutable tree ADR-023 exists to protect. The data root is `~/.zbuild`,
 # which is what every existing path already resolves to.
+# Precedence: $ZBUILD_DATA_ROOT > the PARENT of $ZBUILD_STATE_ROOT > $HOME/.zbuild.
+#
+# The middle term is not a convenience — it is what keeps #1127's fence intact.
+# That fence works by exporting ZBUILD_STATE_ROOT to a throwaway dir so a nested
+# runner (the in-pipeline `test` stage spawns the suite in a scrubbed shell that
+# PRESERVES HOME, ADR-024) roots its ENTIRE tree inside it and cannot clobber the
+# parent's `latest` symlink or global event log.
+#
+# #141 moved run state under the DATA root, which ZBUILD_STATE_ROOT does not
+# control — so a fenced nested run with an issue would have escaped into the real
+# ~/.zbuild/repos/ and reintroduced exactly the defect #1127 fixed. Deriving the
+# data root from the fence closes that. The parent is the right derivation
+# because it is the default relationship: $HOME/.zbuild/state -> $HOME/.zbuild.
+#
+# Caught by tests/integration/state-root-isolation-test.sh, which asserts the
+# fence directly. It is the reason that file exists.
 zbuild_layout_data_root() {
-    printf '%s' "${ZBUILD_DATA_ROOT:-$HOME/.zbuild}"
+    if [[ -n "${ZBUILD_DATA_ROOT:-}" ]]; then
+        printf '%s' "$ZBUILD_DATA_ROOT"; return 0
+    fi
+    if [[ -n "${ZBUILD_STATE_ROOT:-}" ]]; then
+        local _sr="${ZBUILD_STATE_ROOT%/}"
+        local _parent="${_sr%/*}"
+        # A root with no parent component (e.g. "state") would yield itself and
+        # silently un-fence; keep the state root itself in that case.
+        [[ -n "$_parent" && "$_parent" != "$_sr" ]] || _parent="$_sr"
+        printf '%s' "$_parent"; return 0
+    fi
+    printf '%s' "$HOME/.zbuild"
 }
 
 # ─── zbuild_layout_repo_segment ──────────────────────────────────────────────
@@ -185,6 +212,27 @@ zbuild_layout_key_root() {
 # Falls back to the flat `<state_root>/runs/<run_id>` when the run has no
 # identity — a run with neither issue nor goal has nothing to nest under, and
 # inventing a bucket would key unrelated work together.
+# ─── zbuild_layout_key_worktree <key> ────────────────────────────────────────
+# The ONE tree for an issue (or goal), reused across every run of it.
+#
+# ADR-059 §2, and the reason the whole redesign exists: a worktree holds a
+# BRANCH, and the branch is named for the issue (`zbuild/issue-<N>-<slug>`).
+# Keying the tree by run while the branch is keyed by issue is the mismatch that
+# produced #1658 and #1869 — two runs of one issue want one branch in two trees,
+# and git refuses, terminally. One tree per issue removes that by construction
+# instead of reclaiming after the fact.
+#
+# Returns non-zero for a key with no identity; the caller then keeps the
+# pre-#141 per-run path. Exclusivity is NOT this function's job — #1940's
+# per-issue lock (ADR-059 §4) is what stops two live runs sharing the tree.
+zbuild_layout_key_worktree() {
+    local key="${1:-}"
+    local base
+    base="$(zbuild_layout_key_root "$key" 2>/dev/null)" || return 1
+    [[ -n "$base" ]] || return 1
+    printf '%s/worktree' "$base"
+}
+
 zbuild_layout_run_state_dir() {
     local key="${1:-}" rid="${2:-}"
     [[ -n "$rid" ]] || return 1

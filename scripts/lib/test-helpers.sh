@@ -955,3 +955,31 @@ MOCKEOF
   chmod +x "$mock_dir/curl"
   export PATH="$mock_dir:$PATH"
 }
+
+# ─── zb_expected_run_state_dir <repo_dir> <issue> <goal> <run_id> ────────────
+# The state dir a run WILL use, derived from the SAME resolver the writer uses
+# (#141, ADR-059 §1) rather than by hardcoding a layout shape.
+#
+# Six integration tests pinned `<state_root>/runs/<run_id>` as a literal. That
+# made them assertions about the SHAPE of the layout rather than about the
+# isolation property each was actually written to prove — so the #141 move broke
+# all six at once while none of them was testing the thing that moved. Deriving
+# the path keeps each test pinned to its own property and lets the layout change
+# again without a six-file sweep.
+#
+# Honours the caller's HOME / ZBUILD_*_ROOT, and runs with cwd = <repo_dir>
+# because the repo segment comes from that repo's git remote.
+zb_expected_run_state_dir() {
+    local repo="${1:-}" issue="${2:-}" goal="${3:-}" rid="${4:-}"
+    local root; root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    (
+        cd "$repo" 2>/dev/null || exit 1
+        # shellcheck source=../../core/state/layout.sh
+        source "$root/core/state/layout.sh" || exit 1
+        # shellcheck source=./identity.sh
+        source "$root/scripts/lib/identity.sh" || exit 1
+        local key=""
+        key="$(zbuild_run_key "$issue" "$goal" 2>/dev/null || true)"
+        zbuild_layout_run_state_dir "$key" "$rid"
+    )
+}

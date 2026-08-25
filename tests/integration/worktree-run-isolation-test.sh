@@ -103,7 +103,14 @@ run_pipeline() {
     return $?
 }
 
-_state_dir_for() { printf '%s\n' "$HOME_DIR/.zbuild/state/runs/$1"; }
+# #141: derived, not pinned — this file tests worktree ISOLATION, not the
+# layout shape, and the per-run state dir now nests under the run's issue.
+_state_dir_for() {
+    HOME="$HOME_DIR" env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_DATA_ROOT \
+        bash -c 'source "$1/scripts/lib/test-helpers.sh" >/dev/null 2>&1
+                 zb_expected_run_state_dir "$2" 1640 "" "$3"' _ \
+        "$REPO_ROOT" "$TARGET" "$1"
+}
 _main_head()     { git -C "$TARGET" rev-parse HEAD 2>/dev/null; }
 _main_branch()   { git -C "$TARGET" rev-parse --abbrev-ref HEAD 2>/dev/null; }
 

@@ -262,10 +262,16 @@ _intake_checkout_branch() {
                         "plugin=intake" "branch=$target" \
                         "reason=checkout_failed_after_reclaim" "holder=$_holder"
                 elif [[ -n "$_holder" ]]; then
-                    local _dead_run_id
-                    _dead_run_id="$(zbuild_worktree_run_id "$_holder" 2>/dev/null || true)"
+                    # #141: the holder may now be an ISSUE-keyed tree shared by
+                    # every run of that issue, which has no single owning run.
+                    # zbuild_worktree_owner labels either shape; the old call
+                    # would have printed an issue number under "holding run:".
+                    local _holder_owner=""
+                    if declare -F zbuild_worktree_owner >/dev/null 2>&1; then
+                        _holder_owner="$(zbuild_worktree_owner "$_holder" 2>/dev/null || true)"
+                    fi
                     error "intake_branch: branch '$target' is already checked out at $_holder"
-                    error "  holding run: ${_dead_run_id:-unknown}"
+                    error "  held by: ${_holder_owner:-unknown}"
                     # --age-days 0 is REQUIRED, not decorative: the scanner's default
                     # is 14 days, so the bare form reclaims nothing for a run that
                     # died today — which is exactly the case that lands here.

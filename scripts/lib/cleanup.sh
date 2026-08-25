@@ -634,19 +634,29 @@ _cleanup_scan_worktrees() {
     #   override:             $ZBUILD_WORKTREE_ROOT/<run_id>   (no /worktree suffix)
     # Matching only the first made cleanup a silent no-op for override installs.
     local run_root="${ZBUILD_RUN_ROOT:-${HOME}/.zbuild}/runs"
+    # #141 (ADR-059 §2): trees are now keyed by ISSUE and live at
+    # <repo_root>/issues/<N>/worktree. A scanner that knows only the two older
+    # shapes reports "no candidates" for a store full of them — indistinguishable
+    # from a clean machine, and the fail-OPEN direction, which is the same defect
+    # class the state-dir scanners had.
+    local layout_root=""
+    if declare -F zbuild_layout_repo_root >/dev/null 2>&1; then
+        layout_root="$(zbuild_layout_repo_root 2>/dev/null || true)"
+    fi
     local override_root=""
     if declare -F zbuild_worktree_root >/dev/null 2>&1; then
         override_root="$(zbuild_worktree_root 2>/dev/null || true)"
     else
         override_root="${ZBUILD_WORKTREE_ROOT:-}"
     fi
-    [[ -d "$run_root" || -n "$override_root" ]] || return 0
+    [[ -d "$run_root" || -n "$override_root" || -d "$layout_root" ]] || return 0
     # CANONICALISE. `git worktree list` reports resolved paths (/private/tmp/... on
     # macOS, where /tmp and /var are symlinks), so comparing against an unresolved
     # run root silently matches nothing and the scanner reports no candidates —
     # a pruner that appears to work and reclaims nothing.
     run_root="$( (cd "$run_root" 2>/dev/null && pwd -P) || printf '%s' "$run_root" )"
     [[ -n "$override_root" ]] && override_root="$( (cd "$override_root" 2>/dev/null && pwd -P) || printf '%s' "$override_root" )"
+    [[ -n "$layout_root" ]] && layout_root="$( (cd "$layout_root" 2>/dev/null && pwd -P) || printf '%s' "$layout_root" )"
 
     local wt branch mtime age_d
     while IFS= read -r wt; do
@@ -657,6 +667,11 @@ _cleanup_scan_worktrees() {
         local _mine=0
         case "$wt" in "$run_root"/*/worktree) _mine=1 ;; esac
         [[ -n "$override_root" ]] && case "$wt" in "$override_root"/*) _mine=1 ;; esac
+        if [[ -n "$layout_root" ]]; then
+            case "$wt" in
+                "$layout_root"/issues/*/worktree|"$layout_root"/goals/*/worktree) _mine=1 ;;
+            esac
+        fi
         [[ "$_mine" -eq 1 ]] || continue
         # Never the active run.
         if [[ -n "${ZBUILD_RUN_ID:-}" ]] \
@@ -668,6 +683,30 @@ _cleanup_scan_worktrees() {
             local _rid="${ZBUILD_RUN_ID//[$'\t\n']/ }"
             printf '%s\tskip\tactive run (ZBUILD_RUN_ID=%s)\n' "$wt" "$_rid"
             continue
+        fi
+        # #141: an ISSUE-keyed tree is shared by every run of that issue, so
+        # ZBUILD_RUN_ID cannot identify it — the guard above would let a LIVE
+        # run's tree be pruned out from under it. Ask the per-issue lock
+        # (ADR-059 §4, #1940) instead: it is the thing that knows whether a run
+        # currently owns this issue. Fail CLOSED — if the lock cannot be
+        # consulted, keep the tree.
+        if declare -F _zbuild_worktree_identity >/dev/null 2>&1; then
+            local _wt_ident _wt_key=""
+            if _wt_ident="$(_zbuild_worktree_identity "$wt" 2>/dev/null)"; then
+                case "${_wt_ident%% *}" in
+                    issues) _wt_key="issue-${_wt_ident#* }" ;;
+                    goals)  _wt_key="${_wt_ident#* }" ;;
+                esac
+            fi
+            if [[ -n "$_wt_key" ]] && declare -F zbuild_issue_lock_path >/dev/null 2>&1; then
+                local _lk; _lk="$(zbuild_issue_lock_path "$_wt_key" 2>/dev/null || true)"
+                if [[ -n "$_lk" && -f "$_lk" ]] \
+                   && declare -F _zbuild_issue_lock_holder_is_live >/dev/null 2>&1 \
+                   && _zbuild_issue_lock_holder_is_live "$_lk" 2>/dev/null; then
+                    printf '%s\tskip\tactive run holds %s\n' "$wt" "$_wt_key"
+                    continue
+                fi
+            fi
         fi
         mtime="$(stat -c %Y "$wt" 2>/dev/null || stat -f %m "$wt" 2>/dev/null || echo 0)"
         [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=0
