@@ -39,12 +39,19 @@ fi
 #                                  silent failure used to hide)
 #   _ARTIFACT_PERSIST_LAST_SKIPPED count of files skipped but not fatal
 _ARTIFACT_PERSIST_LAST_STATUS=""
+# #1921: WHERE a restore came from — "local" (refs/heads) or "remote"
+# (refs/remotes/origin); empty for non-restore operations. "The branch exists"
+# and "this run fetched it from origin" are different facts, and only the second
+# answers whether a CI run started WARM. Without this the question can only be
+# inferred from log lines.
+_ARTIFACT_PERSIST_LAST_SOURCE=""
 _ARTIFACT_PERSIST_LAST_REASON=""
 _ARTIFACT_PERSIST_LAST_SKIPPED=0
 
 # Reset the outcome channel. Called at the top of every public entry point so a
 # caller can never read a stale status from a previous invocation.
 _artifact_persist_reset_status() {
+    _ARTIFACT_PERSIST_LAST_SOURCE=""
     _ARTIFACT_PERSIST_LAST_STATUS=""
     _ARTIFACT_PERSIST_LAST_REASON=""
     _ARTIFACT_PERSIST_LAST_SKIPPED=0
@@ -362,8 +369,10 @@ _artifact_persist_restore() {
     local ref=""
     if GIT_DIR="$_gd" git rev-parse -q --verify "refs/heads/$branch" >/dev/null 2>&1; then
         ref="refs/heads/$branch"
+        _ARTIFACT_PERSIST_LAST_SOURCE="local"
     elif GIT_DIR="$_gd" git rev-parse -q --verify "refs/remotes/origin/$branch" >/dev/null 2>&1; then
         ref="refs/remotes/origin/$branch"
+        _ARTIFACT_PERSIST_LAST_SOURCE="remote"
     else
         # A first-ever run for this issue. Genuinely nothing to restore — the one
         # early return here that is NOT a failure.

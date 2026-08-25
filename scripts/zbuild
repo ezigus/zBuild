@@ -651,6 +651,58 @@ UPHELP
                 ;;
         esac
         ;;
+    persist)
+        shift
+        # #1966: THE one entrypoint for the state-branch push.
+        #
+        # It existed twice — the always-run `persist` stage, and an inline
+        # `git push` in .github/workflows/zbuild-pipeline.yml — and the copies
+        # disagreed: CI's was gated on an issue number, so `--goal` runs
+        # snapshotted to a branch that never left the runner. ADR-050 §7 already
+        # said the push belongs to the pipeline; the CI block was simply never
+        # deleted.
+        #
+        # This subcommand exists so CI can still cover the ONE case the stage
+        # cannot — a SIGKILL or job timeout before the runner's EXIT trap fires
+        # — by INVOKING the same code rather than reimplementing it (#1692).
+        # It is not the primary path: on a healthy run the stage has already
+        # pushed and CI's guard makes this a no-op.
+        _persist_push=false
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --push) _persist_push=true; shift ;;
+                -h|--help)
+                    printf 'usage: zbuild persist --push\n\n'
+                    printf '  Snapshot and push this run'"'"'s state branch to origin.\n'
+                    printf '  Advisory: never changes the caller'"'"'s exit code. Normally\n'
+                    printf '  done by the always-run persist stage; this is the seam CI\n'
+                    printf '  uses as a backstop when the run died before that stage.\n'
+                    exit 0 ;;
+                *) error "unknown argument to persist: $1"; exit 2 ;;
+            esac
+        done
+        if ! $_persist_push; then
+            error "persist requires --push"
+            exit 2
+        fi
+        # REUSE THE STAGE ITSELF — not a re-sequenced copy of it.
+        #
+        # The first draft of this seam re-did snapshot/scan/push by hand and got
+        # it wrong on the first probe (it pushed a ref the snapshot had not
+        # created yet, and reported "empty"). Re-implementing the sequence here
+        # would recreate, one level up, exactly the duplication this issue
+        # deletes. persist_run already owns the order, the secret gate, the
+        # result artifact and the events; calling it means this seam cannot
+        # drift from the stage because it IS the stage.
+        _pp_root="$(cd "$SCRIPT_DIR/.." && pwd)"
+        # shellcheck source=../plugins/tool/persist/plugin.sh
+        source "$_pp_root/plugins/tool/persist/plugin.sh" 2>/dev/null || {
+            error "cannot load the persist plugin"; exit 2; }
+        persist_run persist "${ZBUILD_STATE_FILE:-}" || true
+        # ALWAYS 0. Persistence is advisory (ADR-050 §4): a run that produced
+        # good work and could not reach the network still produced good work.
+        exit 0
+        ;;
     cleanup)
         shift
         # #141: the layout resolver, so the CLI's own containment roots follow

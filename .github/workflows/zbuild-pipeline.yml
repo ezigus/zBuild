@@ -34,27 +34,6 @@ on:
     # workflow file invalid, which causes GitHub to emit a phantom "workflow
     # file issue" failure on every push to the default branch.
 
-  workflow_dispatch:
-    inputs:
-      issue_number:
-        description: "GitHub issue number to run the pipeline for"
-        required: true
-        type: number
-      goal:
-        description: "Optional free-text goal"
-        required: false
-        type: string
-        default: ""
-      dry_run:
-        description: "Dry run (no side effects)"
-        required: false
-        type: boolean
-        default: false
-      template:
-        description: "Pipeline template id (e.g. simple, deployed). Empty = zbuild default (simple)."
-        required: false
-        type: string
-        default: ""
 
 permissions:
   contents: write # pr-open pushes the work branch (CI-3 #1002)
@@ -117,12 +96,15 @@ jobs:
 
       - name: Fetch prior work + state branches (ADR-050 #1581)
         # Prior-work reuse: a fresh runner's shallow checkout has neither the
-        # issue's work branch (zbuild/issue-N-ci) nor its state branch
-        # (zbuild/state/issue-N). Fetch both into remote-tracking refs so intake
-        # can ADOPT the existing work branch (its gate checks refs/remotes/origin/…)
-        # and the runner can RESTORE prior artifacts from the state branch. Guarded
-        # so a first-ever run (no such branch on origin) is a clean no-op. Skipped
-        # for goal-only runs (no issue number → no deterministic branch name).
+        # issue's WORK branch (zbuild/issue-N-ci). Fetch it into a remote-tracking
+        # ref so intake can ADOPT it (its gate checks refs/remotes/origin/…).
+        # Guarded so a first-ever run is a clean no-op. Skipped for goal-only runs
+        # (no issue number → no deterministic work-branch name).
+        #
+        # #1966: the STATE branch is deliberately NOT fetched here. The `hydrate`
+        # stage owns that (_hydrate_fetch), and it resolves identity through
+        # zbuild_run_key — so it covers `--goal` runs, which this step never
+        # could, being gated on an issue number.
         if: ${{ inputs.issue_number != '' }}
         env:
           # Pass the input through env (not inline ${{ }}) so a crafted value can
@@ -131,13 +113,9 @@ jobs:
         run: |
           n="$ISSUE_NUMBER"
           work="zbuild/issue-${n}-ci"
-          state="zbuild/state/issue-${n}"
           git fetch origin "refs/heads/${work}:refs/remotes/origin/${work}" 2>/dev/null \
             && echo "::notice::fetched prior work branch '${work}'" \
             || echo "::notice::no prior work branch '${work}' on origin (first run)"
-          git fetch origin "refs/heads/${state}:refs/remotes/origin/${state}" 2>/dev/null \
-            && echo "::notice::fetched prior state branch '${state}'" \
-            || echo "::notice::no prior state branch '${state}' on origin (first run)"
 
       - name: Resolve state directory (outside the workspace)
         # #1638: state must NOT live inside the repository the run is editing.
@@ -232,14 +210,30 @@ jobs:
           # lacks `workflows` permission) and the whole run's artifacts were lost
           # with it. Durable state is the LAST thing that should be sacrificed to
           # a work-branch failure, so it goes first.
-          if [[ -n "$ISSUE_NUMBER" ]]; then
-            state_branch="zbuild/state/issue-${ISSUE_NUMBER}"
-            if git rev-parse --verify --quiet "refs/heads/$state_branch" >/dev/null; then
-              git push --force origin "refs/heads/$state_branch:refs/heads/$state_branch" \
-                && echo "::notice::pushed state branch '$state_branch' to origin" \
-                || echo "::warning::failed to push state branch '$state_branch'"
+          # #1966: BACKSTOP ONLY — the always-run `persist` stage is the pusher.
+          #
+          # This block used to push the state branch itself, which made two
+          # implementations of one operation: this one gated on an issue number,
+          # and the stage's, which resolves identity through zbuild_run_key and so
+          # also covers `--goal` runs. ADR-050 §7 settled it — the push belongs to
+          # the pipeline — and this copy was simply never deleted.
+          #
+          # The one case the stage cannot cover is a SIGKILL or job timeout before
+          # the runner's EXIT trap fires. That is what this is for, and the guard
+          # on `pushed` is what keeps it EXACTLY ONCE: on a healthy run persist has
+          # already pushed and this is a no-op.
+          persist_result="$(find "${ZBUILD_STATE_DIR:-}" -name 'persist-result.json' -print -quit 2>/dev/null || true)"
+          if [[ -z "$persist_result" ]]; then
+            echo "::notice::no persist-result.json — run ended before the persist stage; pushing as backstop"
+            "$HOME/.local/bin/zbuild" persist --push || true
+          else
+            pushed="$(jq -r '.data.pushed // false' "$persist_result" 2>/dev/null || echo false)"
+            ident="$(jq -r 'if .data|has("identity_present") then (.data.identity_present|tostring) else "true" end' "$persist_result" 2>/dev/null || echo true)"
+            if [[ "$ident" == "true" && "$pushed" != "true" ]]; then
+              echo "::warning::persist did not push — invoking the backstop"
+              "$HOME/.local/bin/zbuild" persist --push || true
             else
-              echo "::notice::no state branch '$state_branch' to push (nothing was snapshotted)"
+              echo "::notice::persist already pushed (or had no identity) — backstop is a no-op"
             fi
           fi
 
@@ -255,6 +249,27 @@ jobs:
                 || { echo "::error::failed to push '$branch'"; exit 1; }
             fi
           fi
+
+      - name: Surface persist result
+        # #1921/#1966: persist-result.json records WHY a snapshot was skipped,
+        # failed or pushed — but it lives inside the artifact zip, so the outcome
+        # was invisible without downloading it. Rendering it here means CI and a
+        # local run report the SAME artifact, rather than CI annotating a push of
+        # its own. `find` (not a fixed path) so a run that never wrote a state dir
+        # produces a plain "not found" notice instead of an error. Fail-open: an
+        # absent file is not itself a failure.
+        if: always()
+        run: |
+          result_file="$(find "${ZBUILD_STATE_DIR:-}" -name 'persist-result.json' -print -quit 2>/dev/null || true)"
+          if [[ -z "$result_file" ]]; then
+            echo "::notice::persist-result.json not found (run ended before the persist stage)"
+            exit 0
+          fi
+          verdict="$(jq -r '.verdict // empty' "$result_file" 2>/dev/null || true)"
+          snapshot="$(jq -r '.data.snapshot // empty' "$result_file" 2>/dev/null || true)"
+          pushed="$(jq -r '.data.pushed // false' "$result_file" 2>/dev/null || true)"
+          reason="$(jq -r '.reason // empty' "$result_file" 2>/dev/null || true)"
+          echo "::notice::persist: verdict=${verdict:-?} snapshot=${snapshot:-?} pushed=${pushed:-?} reason=${reason:-?}"
 
       - name: Collect claude session transcripts (diagnostics)
         # #1728: a SIGTERM'd stage emits zero bytes into stage-io, so the
