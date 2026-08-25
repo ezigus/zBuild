@@ -151,7 +151,7 @@ assert_eq "[SPEC-7] that window has a readable timestamp to compare" \
     "0" "$([[ "$_alpha_before" == none ]] && echo 1 || echo 0)"
 write_boundary_mark "$_KEY_SF" "stage-beta" ""
 write_boundary_mark "$_KEY_SF" "stage-alpha" "element-9"
-_alpha_after="$(python3 -c "import os,sys;print(os.stat(sys.argv[1]).st_mtime_ns)" "$_alpha_marker")"
+_alpha_after="$(python3 -c "import os,sys;print(os.stat(sys.argv[1]).st_mtime_ns)" "$_alpha_marker" 2>/dev/null || echo none)"
 assert_eq "[SPEC-7] a sibling dispatch does not move this dispatch's window" \
     "$_alpha_before" "$_alpha_after"
 
