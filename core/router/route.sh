@@ -98,6 +98,12 @@ source "$_ZBUILD_ROOT/scripts/lib/vision.sh"
 # probe that used to live here, so the test plugin can share one impl).
 _zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/proc-group.sh"
 source "$_ZBUILD_ROOT/scripts/lib/proc-group.sh"
+# #1919 (C10): acceptEdits + settings file — replaces --dangerously-skip-permissions.
+# Conditional (not _zbuild_route_require) so the stub-tree load test works without
+# a permissions.sh fixture; spawn sites fail closed (command not found) if absent.
+if [[ -f "$_ROUTER_DIR/permissions.sh" ]]; then
+    source "$_ROUTER_DIR/permissions.sh"
+fi
 
 # route_to_model <tier> <prompt> [--skip-precondition] [--model <id>]
 # Exit codes: 0=success, 1=recoverable, 2=fatal
@@ -804,7 +810,20 @@ _route_call_claude() {
             "resolved=0" "source=$(_route_classify_max_turns_source)" 2>/dev/null || true
     fi
     _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
-    _claude_args+=(--dangerously-skip-permissions)
+    # Ensure scratch dir is set before permissions.sh runs; in test/golden
+    # contexts ZBUILD_STAGE_SCRATCH may be unset and the fallback warning event
+    # would appear in the golden sequence. Pick the engine tmpdir as the default
+    # (same value permissions.sh would fall back to, without emitting the event).
+    : "${ZBUILD_STAGE_SCRATCH:="$(zbuild_engine_tmpdir)"}"
+    # #1919 (C10): abort spawn on settings build failure (SPEC-3).
+    _zbuild_build_permissions_settings || return 2
+    # mapfile, not $( ) word-splitting: --add-dir IS the grant now, and a scratch
+    # path containing a space would split into two tokens, silently granting a
+    # directory nobody named. A visible failure would be safer than that; a
+    # correct tokenisation is safer still.
+    local -a _perm_args=()
+    mapfile -t _perm_args < <(_zbuild_permission_args)
+    _claude_args+=("${_perm_args[@]}")
     [[ "${ZBUILD_ROUTER_JSON_OUTPUT:-0}" == "1" ]] && _claude_args+=(--output-format json)
 
     # ADR-029 (#1230): retry-on-timeout. On rc=124 (gtimeout SIGTERM) and while
@@ -1559,7 +1578,13 @@ ${_diff_pointer}"
                 "resolved=0" "source=$(_route_classify_max_turns_source)" 2>/dev/null || true
         fi
         _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
-        _claude_args+=(--dangerously-skip-permissions)
+        : "${ZBUILD_STAGE_SCRATCH:="$_rt_tmp"}"
+        # #1919 (C10): abort iteration on settings build failure (SPEC-3).
+        _zbuild_build_permissions_settings || { rc=2; break; }
+        # mapfile, not $( ) word-splitting — see the single-shot site above.
+        local -a _perm_args=()
+        mapfile -t _perm_args < <(_zbuild_permission_args)
+        _claude_args+=("${_perm_args[@]}")
         _claude_args+=(--output-format json)
 
         # ADR-029 (#1230): intra-iteration retry-on-timeout. router.retries is the

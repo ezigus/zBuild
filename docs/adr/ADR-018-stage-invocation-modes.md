@@ -4,6 +4,43 @@
 **Date:** 2026-05-29
 **Amends:** ADR-004 (extends scope-enforcement interpretation)
 
+---
+
+**Amended:** 2026-08-25 — Issue #1919 (C10). `--dangerously-skip-permissions` is replaced at
+both spawn sites by:
+
+```
+--permission-mode acceptEdits --add-dir <repo_root> --add-dir <scratch> --settings <file>
+```
+
+**Every claim below was measured on CLI 2.1.241 (#1919 P0–P5), not reasoned about.** The claim
+this amendment supersedes went stale because it was never re-measured; repeating that would be
+self-inflicted.
+
+- **The original premise is false on 2.1.241.** This ADR said tools are *"off by default in
+  headless invocations"* without the bypass. **P0:** `--permission-mode acceptEdits` alone wrote
+  a file with no settings and no bypass flag. The blanket bypass was never required for Pattern 1
+  to work headless.
+- **`--add-dir` is the grant; the settings file is not.** **P2b:** a directory listed under
+  `permissions.allowedDirectories` in a `--settings` file is **silently ignored** — the identical
+  write is refused under that key and succeeds under `--add-dir` (**P4**). Do not re-introduce
+  `allowedDirectories` believing it grants anything.
+- **The Bash surface IS blocked**, contrary to this issue's expectation. **P3:**
+  `echo x > $HOME/…` via the Bash tool was refused as outside the session's working directory.
+  Prevention therefore covers the command-line surface too, not only Edit/Write. C8's `TMPDIR`
+  redirect and #1809's sweep remain defence in depth, but they are no longer the only control there.
+- **Deny rules must be written as `Edit(...)`.** **P5:** a `Write(**/…)` deny rule matches nothing
+  and the CLI warns *"only `Edit(path)` rules are [matched] … Edit rules cover all file-editing
+  tools"*. The evidence-based deny list called for in #1919's Ordering note must use that form or
+  it will be inert.
+- **`bypassPermissions` MUST NOT be used** — `claude --help` defines it as *"Bypass all permission
+  checks"*, i.e. the blanket bypass under a new name.
+
+The granted roots are derived from `ZBUILD_REPO_ROOT` and `ZBUILD_STAGE_SCRATCH`, never from a
+path literal, so the ADR-059 layout move cannot silently widen or narrow them.
+
+---
+
 ## Context
 
 ### Triggering failure
@@ -25,6 +62,13 @@ included:
 --dangerously-skip-permissions
 ```
 
+> **SUPERSEDED by the #1919 amendment (2026-08-25).** The paragraph below was written
+> against a 2026-05 CLI and was never re-measured. On **CLI 2.1.241** it is false:
+> `--permission-mode acceptEdits` alone leaves Read/Edit/Write/Bash available headless
+> (#1919 **P0**), so the blanket bypass was not what made tools work. The historical
+> reasoning is kept because the rest of the diagnosis — that the prompts and the tool
+> availability were inconsistent — still stands.
+
 Without `--dangerously-skip-permissions`, tools (Read/Edit/Write/Bash) are off by
 default in headless invocations. The prompts told Claude not to use tools, which
 happened to be consistent with the actual absence of tools — but the architecture
@@ -37,8 +81,8 @@ build's task requires reading before writing.
 | Stage | Mode | `claude` flags |
 |---|---|---|
 | intake | bash only (no LLM) | `gh issue view` |
-| plan, design, review, compound_quality, TDD | **one-shot** `claude --print` with tools | `--disallowed-tools "EnterPlanMode,ExitPlanMode" --max-turns 25 --dangerously-skip-permissions` |
-| build | **agent-loop** — multi-turn; Claude edits the working tree; `git diff` fed back between turns | `claude -p … --output-format json --disallowed-tools "EnterPlanMode,ExitPlanMode" --max-turns N --dangerously-skip-permissions` |
+| plan, design, review, compound_quality, TDD | **one-shot** `claude --print` with tools | `--disallowed-tools "EnterPlanMode,ExitPlanMode" --max-turns 25 --dangerously-skip-permissions` *(bypass superseded by #1919)* |
+| build | **agent-loop** — multi-turn; Claude edits the working tree; `git diff` fed back between turns | `claude -p … --output-format json --disallowed-tools "EnterPlanMode,ExitPlanMode" --max-turns N --dangerously-skip-permissions` *(bypass superseded by #1919)* |
 
 `claude --print` is **not** a "no-tools" mode. Tools are available unless explicitly
 disallowed. Shipwright only disallows `EnterPlanMode`/`ExitPlanMode`. Plan/review
@@ -65,7 +109,8 @@ does NOT declare Pattern 1 vs Pattern 2 — that is baked into `plugin.sh`.
 
 Single `claude --print` invocation. Tools (Read/Edit/Write/Bash) are available;
 only `EnterPlanMode`/`ExitPlanMode` are disallowed. `--max-turns 25`,
-`--dangerously-skip-permissions`.
+`--permission-mode acceptEdits --add-dir <repo_root> --add-dir <scratch> --settings <file>`
+(see amendment block above; `bypassPermissions` is the renamed equivalent and MUST NOT be used).
 
 The stage emits a final structured artifact (JSON or markdown) as its terminal
 response.
@@ -347,7 +392,8 @@ Once Issues A + B ship, adding any new stage requires zero changes to
 
 1. `route_to_model` (`core/router/route.sh`) adopts shipwright's flag set —
    `--max-turns 25`, `--disallowed-tools "EnterPlanMode,ExitPlanMode"`,
-   `--dangerously-skip-permissions` — enabling Pattern 1. *(Issue A)*
+   `--permission-mode acceptEdits --add-dir … --settings <file>` — enabling Pattern 1. *(Issue A)*
+   *(Amended by #1919: `--dangerously-skip-permissions` replaced; see amendment block.)*
 2. New `route_to_model_loop` function enables Pattern 2. *(Issue B)*
 3. Plan and review prompts stop forbidding tool calls; invite Read for
    context-gathering. *(Issues C, D)*
@@ -459,7 +505,7 @@ branch `feat/466-router-flags`:
 - `_route_call_claude` in `core/router/route.sh` now appends three flags
   before the JSON-mode toggle: `--max-turns <N>`,
   `--disallowed-tools "EnterPlanMode,ExitPlanMode"`,
-  `--dangerously-skip-permissions`.
+  `--dangerously-skip-permissions` *(superseded by #1919 — see the amendment block)*.
 - New helper `_route_resolve_max_turns` mirrors ADR-017's
   `_route_resolve_timeout` and reuses `_route_resolve_knob` (extended with
   an optional 4th event-name argument so the override-ignored event type
