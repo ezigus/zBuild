@@ -154,6 +154,9 @@
     "llm.cli_fail",
     "pipeline.llm_unavailable",
     "stage.cleanup.failed",
-    "stage.write_boundary.violated"
+    "stage.write_boundary.violated",
+    "stage.write_boundary.sweep_failed",
+    "stage.write_boundary.mark_failed",
+    "stage.write_boundary.window_unbounded"
   ]
 }

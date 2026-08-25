@@ -289,8 +289,11 @@ assert_file_exists "[SPEC-1] the fixture actually wrote the CLI's state file int
 # The other vacuity path: write_boundary_check returns 0 immediately when the
 # dispatch never marked a sweep window, so "no violation" can also mean "nothing
 # was ever swept". Assert the window exists rather than infer it.
+# Keyed on the stage (#1956 defect 2): with one shared filename per run, a
+# nested/map/parallel sibling's mark re-stamps the window and hides writes that
+# already happened. Asserting the keyed name pins that keying.
 assert_file_exists "[SPEC-1] the dispatch actually marked a sweep window" \
-    "$JOB_CLI/runtime/write-boundary.marker"
+    "$JOB_CLI/runtime/write-boundary.wb-cli-stage.marker"
 
 if [[ -f "$JOB_CLI/runtime/write-boundary-violated" ]]; then
     assert_fail "[SPEC-1] a dispatch that rewrites the CLI's own state file does not halt" \
@@ -331,7 +334,7 @@ else
     # failure detail carries the whole picture rather than just the absent
     # marker: what the fixture wrote, what the engine watched, and what it
     # allowed. Reconstructed after the fact, so a stale marker cannot forge it.
-    _wb_marker="$JOB_STRAY/runtime/write-boundary.marker"
+    _wb_marker="$JOB_STRAY/runtime/write-boundary.wb-stray-stage.marker"
     assert_fail "[SPEC-4] an unrelated \$HOME-level write still halts the dispatch" \
         "stray file written: $([[ -f "$HOME/stray-note.txt" ]] && echo yes || echo NO)
   HOME=$HOME
