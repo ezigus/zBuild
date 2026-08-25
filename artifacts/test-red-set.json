@@ -1,0 +1,5 @@
+[
+  "tests/integration/build-test-cycle-fallthrough-to-review-test.sh",
+  "tests/integration/route-tautology-to-design-test.sh",
+  "tests/unit/runner-cycle-rc-action-mapping-test.sh"
+]
