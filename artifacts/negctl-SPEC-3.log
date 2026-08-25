@@ -3,7 +3,7 @@
 [38;2;0;212;255m[1m  router-permissions — #1919 C10 acceptEdits settings (#1919)[0m
 [2m  ══════════════════════════════════════════[0m
 
-/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/zb-negctl.l1mtCg/tests/unit/router-permissions-test.sh: line 30: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/zb-negctl.l1mtCg/core/router/permissions.sh: No such file or directory
+/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/zb-negctl.8U25dx/tests/unit/router-permissions-test.sh: line 30: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/zb-negctl.8U25dx/core/router/permissions.sh: No such file or directory
 ### SPEC-3 head tests/unit/router-permissions-test.sh
 
 [38;2;0;212;255m[1m  router-permissions — #1919 C10 acceptEdits settings (#1919)[0m
@@ -12,8 +12,9 @@
   [38;2;74;222;128m✓[0m [SPEC-2] P1: _zbuild_build_permissions_settings returns rc=0
   [38;2;74;222;128m✓[0m [SPEC-2] P1: settings file path is non-empty
   [38;2;74;222;128m✓[0m [SPEC-2] P1: settings file exists on disk
-  [38;2;74;222;128m✓[0m [SPEC-2] P1: allowedDirectories contains ZBUILD_REPO_ROOT
-  [38;2;74;222;128m✓[0m [SPEC-2] P1: allowedDirectories contains ZBUILD_STAGE_SCRATCH
+  [38;2;74;222;128m✓[0m [SPEC-2] P1: spawn grants ZBUILD_REPO_ROOT via --add-dir
+  [38;2;74;222;128m✓[0m [SPEC-2] P1: spawn grants ZBUILD_STAGE_SCRATCH via --add-dir
+  [38;2;74;222;128m✓[0m [SPEC-2] P1: settings file carries no inert allowedDirectories key (P2b)
 [38;2;250;204;21m[1m⚠[0m router: permissions: ZBUILD_STAGE_SCRATCH unset, using engine tmpdir: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate
   [38;2;74;222;128m✓[0m [SPEC-2] P2: fallback path returns rc=0
   [38;2;74;222;128m✓[0m [SPEC-2] P2: settings file still written on scratch fallback
@@ -26,5 +27,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 13 tests passed[0m
+  [38;2;74;222;128m[1mAll 14 tests passed[0m
 

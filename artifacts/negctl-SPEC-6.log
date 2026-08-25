@@ -6,6 +6,6 @@
   [38;2;74;222;128m✓[0m [SPEC-6] chokepoint scan: no raw LLM invocations found outside allowed locations
   [38;2;74;222;128m✓[0m chokepoint: scanner detects gh-automation raw-claude shape (exempt via explicit allowlist, not arg-ordering)
   [38;2;74;222;128m✓[0m chokepoint: gh-automation.sh raw-claude exception carries AUDITED-EXCEPTION marker
-  [38;2;74;222;128m✓[0m chokepoint sentinel: scanner detects injected violation in /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/redaction-chokepoint.KIXG3P/scratch-violation.sh
+  [38;2;74;222;128m✓[0m chokepoint sentinel: scanner detects injected violation in /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/redaction-chokepoint.jgxqr7/scratch-violation.sh
   [38;2;74;222;128m✓[0m chokepoint sentinel: no violations after scratch file removed
   [38;2;248;113;113m✗[0m C10: permissions.sh must exist inside core/router/ (chokepoint-exempt zone)
