@@ -24,7 +24,7 @@ golden: 1/1 passed
   PASS  event-bus-ansi-strip.md  (caught: rc=4)
   PASS  event-bus.md  (caught: rc=3)
   INFRA memory.md  (patch failed after retries)
-  PASS  orch.md  (caught: rc=2)
+  PASS  orch.md  (caught: rc=1)
   PASS  output-destinations.md  (caught: rc=1)
   PASS  pipeline-contracts.md  (caught: rc=127)
   PASS  pipeline-dispatch-arg-mutations.md  (caught: rc=4)
@@ -43,7 +43,7 @@ golden: 1/1 passed
 mutation-infra: 1 non-fatal (worktree/patch contention; excluded from score — #1184)
 mutation: 23/23 passed
 lint: 1/1 passed
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3svT0U/tests/unit/test-plugin-result-write-fallback-test.sh
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q1jER6/tests/unit/test-plugin-result-write-fallback-test.sh
 
   test-plugin _test_write_result defensive fallback (#626)
 
@@ -61,7 +61,7 @@ unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3
   ✓ abc-failed: .failed sanitized to null
 
   3. control-char test_output is accepted, JSON still valid
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3svT0U/tests/unit/readout-gates-test.sh
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q1jER6/tests/unit/readout-gates-test.sh
 
   read-out gates — lint/coverage/mutation (#1135, ADR-040)
 
@@ -112,7 +112,7 @@ unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3
   ✗ [M2] measured N<floor → verdict=fail
   ✗ [M4] default floor 0 → verdict=pass
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3svT0U/tests/integration/test-plugin-fresh-shell-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q1jER6/tests/integration/test-plugin-fresh-shell-test.sh
 
   integration: test-plugin fresh-user-shell scrub (#671)
 
@@ -122,7 +122,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   ✗ subshell exit_code is 0 (all ZBUILD_* unset AND fd 3 closed)
     expected: 0, got: null
   ✗ test_output should contain 'OK: fresh shell', got: null
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3svT0U/tests/integration/test-plugin-runs-against-committed-head-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q1jER6/tests/integration/test-plugin-runs-against-committed-head-test.sh
 
   integration: test plugin runs against committed HEAD (Wave 12-C #662)
 
@@ -132,7 +132,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   ✓ no diff_apply_failed verdict (reason='')
   ✓ verdict=pass from parsed test_cmd output
   ✗ test_cmd executed against rsync'd HEAD
-    marker 'ZBUILD_W12C_MARKER_14999' missing from .test_output: null
+    marker 'ZBUILD_W12C_MARKER_6943' missing from .test_output: null
   ✗ .exit_code is numeric
     got: null
 
@@ -149,7 +149,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   ✗ test_cmd executed against rsync'd HEAD
   ✗ .exit_code is numeric
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3svT0U/tests/integration/build-test-cycle-targeted-rerun-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q1jER6/tests/integration/build-test-cycle-targeted-rerun-test.sh
 
   build_test_cycle: real targeted re-run + full-suite gate (#846)
 
@@ -191,7 +191,7 @@ iter=3 run_mode=?
   ✗ T1: iter-2 test stage runs run_mode=targeted (red-set engaged)
   ✗ T3: iter-3 (gate) runs full suite
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3svT0U/tests/integration/test-plugin-stage-io-banner-visible-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q1jER6/tests/integration/test-plugin-stage-io-banner-visible-test.sh
 
   integration: test-plugin stage-io banner visible (#645)
 
@@ -199,7 +199,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   1. capture_stage_io banner from test subshell is visible in test_output
   ✓ test-results.json written
   ✗ test_cmd did not produce marker; got: null
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3svT0U/tests/integration/test-plugin-tmpdir-cleanup-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q1jER6/tests/integration/test-plugin-tmpdir-cleanup-test.sh
 
   integration: _test_run_inner tmpdir self-cleanup (#628)
 
@@ -226,7 +226,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
 
   ✗ success: artifact written
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3svT0U/tests/integration/test-plugin-summary-format-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q1jER6/tests/integration/test-plugin-summary-format-test.sh
 
   integration: test-plugin parser → test-results.json (#584)
 
@@ -272,7 +272,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   ✗ runall: passed=191
   ✗ runall: failed=1
 
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.3svT0U/tests/integration/pipeline-test-stage-fresh-shell-test.sh
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Q1jER6/tests/integration/pipeline-test-stage-fresh-shell-test.sh
 
   integration: pipeline test stage _TPL_* leak (Wave 15-I / #683)
 
@@ -301,7 +301,7 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
 
 ## acceptance-gate
 
-- reason: acceptance SPEC violations — SPEC-1/SPEC-2/SPEC-3/SPEC-4/SPEC-5/SPEC-6/SPEC-7/SPEC-8 not passing at HEAD — fix the implementation or the assertion; infra: negctl_error:harness:SPEC-9/negctl_error:harness:SPEC-10
+- reason: acceptance SPEC violations — SPEC-1/SPEC-2/SPEC-3/SPEC-4/SPEC-5/SPEC-6/SPEC-7 not passing at HEAD — fix the implementation or the assertion; WIRING plugins/tool/test/manifest.yaml inert — reverting it breaks no TESTFILE; infra: negctl_error:harness:SPEC-8/negctl_error:harness:SPEC-9/negctl_error:harness:SPEC-10
 - failures:
     - not_passing_at_head:SPEC-1
     - not_passing_at_head:SPEC-2
@@ -310,9 +310,10 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
     - not_passing_at_head:SPEC-5
     - not_passing_at_head:SPEC-6
     - not_passing_at_head:SPEC-7
-    - not_passing_at_head:SPEC-8
+    - negctl_error:harness:SPEC-8
     - negctl_error:harness:SPEC-9
     - negctl_error:harness:SPEC-10
+    - inert_wiring:plugins/tool/test/manifest.yaml
 
 ## Handled elsewhere
 
