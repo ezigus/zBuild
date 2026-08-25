@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # Tests: #1919 (C10) — permissions.sh builds acceptEdits settings file.
-# SPEC-2: the spawn grants exactly the repo root + stage scratch, via --add-dir.
+# SPEC-2: the spawn grants the repo root + stage scratch + run artifact dir, via
+#         --add-dir. The artifact dir joined in #1961: this file's original claim
+#         was "exactly the repo root + stage scratch", which described the code
+#         rather than the requirement and so stayed green while every design
+#         stage died on a refused write. The REQUIREMENT — the grant covers every
+#         path the engine hands a model as a literal write target — is asserted,
+#         manifest-derived, in tests/unit/router-permissions-grant-coverage-test.sh.
 # SPEC-3: missing jq causes spawn refusal (rc≠0), not silent bypass.
 # SPEC-4: grep core/router/ for skip-permissions returns nothing.
 set -euo pipefail
@@ -32,7 +38,8 @@ source "$REPO_ROOT/core/router/permissions.sh"
 # ─── P1: SPEC-2 — the spawn grants repo root + scratch via --add-dir ─────────
 export ZBUILD_STAGE_SCRATCH="$TEST_TEMP_DIR/scratch-p1"
 export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/repo-p1"
-mkdir -p "$ZBUILD_STAGE_SCRATCH" "$ZBUILD_REPO_ROOT"
+export ZBUILD_ARTIFACT_DIR="$TEST_TEMP_DIR/run-p1/artifacts"
+mkdir -p "$ZBUILD_STAGE_SCRATCH" "$ZBUILD_REPO_ROOT" "$ZBUILD_ARTIFACT_DIR"
 
 _ZBUILD_PERMISSIONS_SETTINGS_FILE=""
 set +e
@@ -70,6 +77,13 @@ if grep -qxF "$ZBUILD_STAGE_SCRATCH" <<< "$(grep -A1 -xF -- '--add-dir' <<< "$_a
 else
     assert_fail "[SPEC-2] P1: spawn grants ZBUILD_STAGE_SCRATCH via --add-dir" "args: $_args"
 fi
+# #1961: measured on CLI 2.1.241 — with repo+scratch alone the design stage's
+# write to <artifacts>/design.md is REFUSED; with this root it lands.
+if grep -qxF "$ZBUILD_ARTIFACT_DIR" <<< "$(grep -A1 -xF -- '--add-dir' <<< "$_args" | grep -vxF -- '--add-dir')"; then
+    assert_pass "[SPEC-2] P1: spawn grants ZBUILD_ARTIFACT_DIR via --add-dir (#1961)"
+else
+    assert_fail "[SPEC-2] P1: spawn grants ZBUILD_ARTIFACT_DIR via --add-dir (#1961)" "args: $_args"
+fi
 
 # The inert key must not come back: a future edit re-adding it would read as a
 # grant and silently be none.
@@ -80,7 +94,7 @@ else
     assert_pass "[SPEC-2] P1: settings file carries no inert allowedDirectories key (P2b)"
 fi
 
-unset ZBUILD_STAGE_SCRATCH ZBUILD_REPO_ROOT
+unset ZBUILD_STAGE_SCRATCH ZBUILD_REPO_ROOT ZBUILD_ARTIFACT_DIR
 
 # ─── P2: SPEC-2 — scratch fallback when ZBUILD_STAGE_SCRATCH unset ───────────
 unset ZBUILD_STAGE_SCRATCH

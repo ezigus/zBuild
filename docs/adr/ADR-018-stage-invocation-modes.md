@@ -6,11 +6,11 @@
 
 ---
 
-**Amended:** 2026-08-25 — Issue #1919 (C10). `--dangerously-skip-permissions` is replaced at
+**Amended:** 2026-08-25 — Issue #1919 (C10), corrected the same day by #1961. `--dangerously-skip-permissions` is replaced at
 both spawn sites by:
 
 ```
---permission-mode acceptEdits --add-dir <repo_root> --add-dir <scratch> --settings <file>
+--permission-mode acceptEdits --add-dir <repo_root> --add-dir <scratch> --add-dir <artifact_dir> --settings <file>
 ```
 
 **Every claim below was measured on CLI 2.1.241 (#1919 P0–P5), not reasoned about.** The claim
@@ -29,6 +29,18 @@ self-inflicted.
   `echo x > $HOME/…` via the Bash tool was refused as outside the session's working directory.
   Prevention therefore covers the command-line surface too, not only Edit/Write. C8's `TMPDIR`
   redirect and #1809's sweep remain defence in depth, but they are no longer the only control there.
+- **The granted roots are derived from where the engine TELLS stages to write** — not from
+  what the CLI needs in order to edit the repo. Those are different questions, and #1961 is what
+  answering the second one costs: the grant shipped as repo + scratch, the design stage is told in
+  its prompt to write `<artifact_dir>/design.md`, and `artifacts/` is a *sibling* of `scratch/`.
+  Every design stage on `c2ad4f3` died on a refused write, and `design-gate`/`impact` then refused
+  to launch on `INPUT_MISSING`. **P6 (#1961, re-measured on 2.1.241):** with repo + scratch alone
+  the write is refused; adding `--add-dir <artifact_dir>` it lands — one variable, both directions.
+  Also measured: a `--add-dir` path that does not exist yet is tolerated (rc=0), so the grant must
+  never be made conditional on the directory existing.
+- **The run STATE dir is deliberately NOT granted.** `artifacts/` is the model's output surface;
+  `pipeline-state.json` and `events.jsonl` are the engine's ledger. Granting the shared parent
+  would be one flag fewer and would let a model rewrite its own run state — and so its own verdict.
 - **Deny rules must be written as `Edit(...)`.** **P5:** a `Write(**/…)` deny rule matches nothing
   and the CLI warns *"only `Edit(path)` rules are [matched] … Edit rules cover all file-editing
   tools"*. The evidence-based deny list called for in #1919's Ordering note must use that form or
@@ -109,7 +121,7 @@ does NOT declare Pattern 1 vs Pattern 2 — that is baked into `plugin.sh`.
 
 Single `claude --print` invocation. Tools (Read/Edit/Write/Bash) are available;
 only `EnterPlanMode`/`ExitPlanMode` are disallowed. `--max-turns 25`,
-`--permission-mode acceptEdits --add-dir <repo_root> --add-dir <scratch> --settings <file>`
+`--permission-mode acceptEdits --add-dir <repo_root> --add-dir <scratch> --add-dir <artifact_dir> --settings <file>`
 (see amendment block above; `bypassPermissions` is the renamed equivalent and MUST NOT be used).
 
 The stage emits a final structured artifact (JSON or markdown) as its terminal
