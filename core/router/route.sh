@@ -810,6 +810,11 @@ _route_call_claude() {
             "resolved=0" "source=$(_route_classify_max_turns_source)" 2>/dev/null || true
     fi
     _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
+    # Ensure scratch dir is set before permissions.sh runs; in test/golden
+    # contexts ZBUILD_STAGE_SCRATCH may be unset and the fallback warning event
+    # would appear in the golden sequence. Pick the engine tmpdir as the default
+    # (same value permissions.sh would fall back to, without emitting the event).
+    : "${ZBUILD_STAGE_SCRATCH:="$(zbuild_engine_tmpdir)"}"
     # #1919 (C10): abort spawn on settings build failure (SPEC-3).
     _zbuild_build_permissions_settings || return 2
     # shellcheck disable=SC2207
@@ -1568,6 +1573,7 @@ ${_diff_pointer}"
                 "resolved=0" "source=$(_route_classify_max_turns_source)" 2>/dev/null || true
         fi
         _claude_args+=(--disallowed-tools "EnterPlanMode,ExitPlanMode")
+        : "${ZBUILD_STAGE_SCRATCH:="$_rt_tmp"}"
         # #1919 (C10): abort iteration on settings build failure (SPEC-3).
         _zbuild_build_permissions_settings || { rc=2; break; }
         # shellcheck disable=SC2207
