@@ -1,7 +1,0 @@
-[
-  "tests/golden/golden-contracts-test.sh",
-  "tests/integration/route-tautology-to-design-test.sh",
-  "tests/unit/event-schema-emitted-coverage-test.sh",
-  "tests/unit/route-back-budget-config-test.sh",
-  "tests/unit/runner-cycle-rc-action-mapping-test.sh"
-]
