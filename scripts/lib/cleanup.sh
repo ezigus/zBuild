@@ -12,6 +12,26 @@
 [[ -n "${_ZBUILD_CLEANUP_LOADED:-}" ]] && return 0
 _ZBUILD_CLEANUP_LOADED=1
 
+# #141: the scanners here must resolve paths through the SAME definitions the
+# writer uses, and identify a live issue through the SAME lock the runner takes.
+# Two comments below already claimed layout.sh was "sourced defensively above" —
+# it was not sourced anywhere, so `declare -F` guarded against functions that
+# were never going to exist: the worktree scanner silently matched nothing under
+# the #141 layout, and the live-issue guard was dead code. A guard whose
+# dependency is never loaded is not defensive, it is off.
+#
+# Sourced with `|| true`: a caller that has already loaded them wins via each
+# file's own load-once sentinel, and a stripped install must not break the
+# predicates that need none of this.
+_ZBUILD_CLEANUP_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+for _cl_dep in "$_ZBUILD_CLEANUP_LIB_DIR/../../core/state/layout.sh" \
+               "$_ZBUILD_CLEANUP_LIB_DIR/../../core/state/issue-lock.sh" \
+               "$_ZBUILD_CLEANUP_LIB_DIR/worktree.sh"; do
+    # shellcheck source=/dev/null
+    [[ -f "$_cl_dep" ]] && source "$_cl_dep" 2>/dev/null || true
+done
+unset _cl_dep
+
 # ─── Safety predicates ──────────────────────────────────────────────────────
 # Contract: exit code only (0 = condition true, 1 = condition false).
 # Predicates print nothing on stdout. Missing tools / errors => fail-closed
@@ -639,9 +659,12 @@ _cleanup_scan_worktrees() {
     # shapes reports "no candidates" for a store full of them — indistinguishable
     # from a clean machine, and the fail-OPEN direction, which is the same defect
     # class the state-dir scanners had.
+    # The WORKTREE base, not the state base — they are different roots on
+    # purpose (state follows #1127's fence, the worktree follows the run root),
+    # and reading the wrong one made this scanner blind to every #141 tree.
     local layout_root=""
-    if declare -F zbuild_layout_repo_root >/dev/null 2>&1; then
-        layout_root="$(zbuild_layout_repo_root 2>/dev/null || true)"
+    if declare -F zbuild_layout_worktree_repo_root >/dev/null 2>&1; then
+        layout_root="$(zbuild_layout_worktree_repo_root 2>/dev/null || true)"
     fi
     local override_root=""
     if declare -F zbuild_worktree_root >/dev/null 2>&1; then
@@ -698,11 +721,24 @@ _cleanup_scan_worktrees() {
                     goals)  _wt_key="${_wt_ident#* }" ;;
                 esac
             fi
-            if [[ -n "$_wt_key" ]] && declare -F zbuild_issue_lock_path >/dev/null 2>&1; then
+            if [[ -n "$_wt_key" ]]; then
+                # FAIL CLOSED, and it has to be spelled out rather than left to
+                # `&&`: the first draft short-circuited here, so "the lock cannot
+                # be consulted" fell through to the age check and read as "no run
+                # is live". For a tree shared by every run of an issue that means
+                # deleting a RUNNING job's working tree — the fail-OPEN direction,
+                # under a comment that claimed the opposite.
+                if ! declare -F zbuild_issue_lock_path >/dev/null 2>&1 \
+                   || ! declare -F _zbuild_issue_lock_holder_is_live >/dev/null 2>&1; then
+                    printf '%s\tskip\tcannot consult the issue lock for %s (keeping)\n' "$wt" "$_wt_key"
+                    continue
+                fi
                 local _lk; _lk="$(zbuild_issue_lock_path "$_wt_key" 2>/dev/null || true)"
-                if [[ -n "$_lk" && -f "$_lk" ]] \
-                   && declare -F _zbuild_issue_lock_holder_is_live >/dev/null 2>&1 \
-                   && _zbuild_issue_lock_holder_is_live "$_lk" 2>/dev/null; then
+                if [[ -z "$_lk" ]]; then
+                    printf '%s\tskip\tno lock path for %s (keeping)\n' "$wt" "$_wt_key"
+                    continue
+                fi
+                if [[ -f "$_lk" ]] && _zbuild_issue_lock_holder_is_live "$_lk" 2>/dev/null; then
                     printf '%s\tskip\tactive run holds %s\n' "$wt" "$_wt_key"
                     continue
                 fi

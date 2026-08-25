@@ -229,7 +229,13 @@ _no_resolver="$(bash -c '
     source "'"$REPO_ROOT"'/scripts/lib/helpers.sh"
     export ZBUILD_STATE_ROOT="'"$ZBUILD_STATE_ROOT"'"
     source "'"$REPO_ROOT"'/scripts/lib/cleanup.sh"
-    unset -f zbuild_layout_state_root 2>/dev/null || true
+    # Ablate the resolver the way it can actually be absent — the whole module,
+    # not one function out of it. Unsetting a single function left the others
+    # calling into a hole and emitting a glob rooted at "", which is a state that
+    # cannot occur in production and told us nothing.
+    unset -f zbuild_layout_state_root zbuild_layout_state_file_globs \
+             zbuild_layout_repo_root zbuild_layout_run_dirs \
+             zbuild_layout_runs_root zbuild_layout_data_root 2>/dev/null || true
     unset ZBUILD_STATE_DIR 2>/dev/null || true
     if _cleanup_is_active_run r-spec9; then echo ACTIVE; else echo NOT_ACTIVE; fi
 ' 2>/dev/null)"

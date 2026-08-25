@@ -79,7 +79,13 @@ zbuild_layout_run_dir() {
 # CI installs); 0.11.0 does not raise it, which is why local lint passed.
 zbuild_layout_state_file_globs() {
     local root="${1:-}"
-    [[ -n "$root" ]] || root="$(zbuild_layout_state_root)"
+    [[ -n "$root" ]] || root="$(zbuild_layout_state_root 2>/dev/null || true)"
+    # An EMPTY root would emit `/runs/*/pipeline-state*.json` — a glob anchored
+    # at the FILESYSTEM ROOT, handed to readers that gate destructive scanners.
+    # Fall back to the literal default rather than emitting it: the patterns are
+    # this function's job, and a root it cannot resolve is not a reason to point
+    # them at `/`.
+    [[ -n "$root" ]] || root="${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}"
     # #141: runs now nest under their issue or goal, so the readers need those
     # shapes too. Emitted FIRST because they are where new runs land; the flat
     # shapes stay for runs written before the switch and for identity-less runs.
@@ -203,18 +209,18 @@ zbuild_layout_key_root() {
     esac
 }
 
-# ─── zbuild_layout_run_state_dir <run_key> <run_id> ──────────────────────────
-# WHERE A RUN'S STATE ACTUALLY GOES (#141, ADR-059 §1) — the writer's answer.
-#
-# `<repo>/issues/<N>/runs/<run_id>/` or `<repo>/goals/<key>/runs/<run_id>/`.
-# The per-run level stays, because scratch, runtime/, events and
-# pipeline-state.json genuinely belong to one run. What changes is that they now
-# sit UNDER the issue, so everything for an issue is in one place and a reader
-# can find it without a scan.
-#
-# Falls back to the flat `<state_root>/runs/<run_id>` when the run has no
-# identity — a run with neither issue nor goal has nothing to nest under, and
-# inventing a bucket would key unrelated work together.
+# ─── zbuild_layout_worktree_repo_root ───────────────────────────────────────
+# The base every issue/goal tree hangs off. ONE definition, because the WRITER
+# (zbuild_layout_key_worktree) and the RECLAIMER (_cleanup_scan_worktrees) must
+# not disagree about it — a scanner looking somewhere the writer never writes
+# reports "no candidates" for a full store, which is the fail-OPEN direction and
+# the whole hazard ADR-059 was written about. It differs from
+# zbuild_layout_repo_root deliberately: state follows the fence, the worktree
+# follows the RUN root (see zbuild_layout_key_worktree).
+zbuild_layout_worktree_repo_root() {
+    printf '%s/repos/%s' "${ZBUILD_RUN_ROOT:-${HOME}/.zbuild}" "$(zbuild_layout_repo_segment)"
+}
+
 # ─── zbuild_layout_key_worktree <key> ────────────────────────────────────────
 # The ONE tree for an issue (or goal), reused across every run of it.
 #
@@ -243,10 +249,21 @@ zbuild_layout_key_worktree() {
         goal-*)  sub="goals/$key" ;;
         *)       return 1 ;;
     esac
-    printf '%s/repos/%s/%s/worktree' \
-        "${ZBUILD_RUN_ROOT:-${HOME}/.zbuild}" "$(zbuild_layout_repo_segment)" "$sub"
+    printf '%s/%s/worktree' "$(zbuild_layout_worktree_repo_root)" "$sub"
 }
 
+# ─── zbuild_layout_run_state_dir <run_key> <run_id> ──────────────────────────
+# WHERE A RUN'S STATE ACTUALLY GOES (#141, ADR-059 §1) — the writer's answer.
+#
+# `<repo>/issues/<N>/runs/<run_id>/` or `<repo>/goals/<key>/runs/<run_id>/`.
+# The per-run level stays, because scratch, runtime/, events and
+# pipeline-state.json genuinely belong to one run. What changes is that they now
+# sit UNDER the issue, so everything for an issue is in one place and a reader
+# can find it without a scan.
+#
+# Falls back to the flat `<state_root>/runs/<run_id>` when the run has no
+# identity — a run with neither issue nor goal has nothing to nest under, and
+# inventing a bucket would key unrelated work together.
 zbuild_layout_run_state_dir() {
     local key="${1:-}" rid="${2:-}"
     [[ -n "$rid" ]] || return 1
