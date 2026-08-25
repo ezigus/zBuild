@@ -52,22 +52,10 @@ _wb_expand_line() {
     printf '%s' "$_exp"
 }
 
-# ─── _wb_marker_path <state_dir> <stage> <map_element> ───────────────────────
-# The sweep window's filename. Keyed on stage AND map element, not just the run.
-#
-# With one shared filename every dispatch against a state file shares a window,
-# and write_boundary_mark RE-STAMPS it (touch, not create) at the start of each.
-# Teardown dispatches nested cleanups from inside its own run (teardown/plugin.sh),
-# `map:` emits one work unit per element and parallel members one per member —
-# all against the same state file. A sibling's mark then moves the window past
-# writes that already happened, and they stop being visible to the check.
-#
-# runner.sh:2543-2552 keyed the router's throttle marker per stage for exactly
-# this reason (#1823): "With one shared filename this clear would race — a member
-# could wipe a live sibling's marker." This is the same hazard, same fix.
-#
-# The legacy unkeyed name is still honoured by the reader when no keyed marker
-# exists, so a dispatch marked by an older engine mid-upgrade is not orphaned.
+# Keyed on stage + element: nested teardown, map elements and parallel members
+# share one state file, so a shared filename lets a sibling's mark move this
+# dispatch's window past writes that already happened. Same hazard the throttle
+# marker was keyed for at runner.sh:2543-2552 (#1823).
 _wb_marker_path() {
     local _sd="$1" _stage="${2:-}" _el="${3:-}"
     local _key="${_stage}${_el:+.$_el}"
@@ -79,29 +67,21 @@ _wb_marker_path() {
     fi
 }
 
-# ─── _wb_clock_advance_past <reference_file> ─────────────────────────────────
-# Return only once a newly created file would be STRICTLY newer than <reference>.
-#
-# Linux stamps inode times from a coarse clock that only advances once per timer
-# tick, so everything stamped inside one tick shares a byte-identical mtime —
-# and `find -newer` is strictly greater. A stage that wrote out of bounds within
-# a tick of its own dispatch marker was therefore invisible to the sweep. Not
-# theory: 222 of 222 sweep misses captured on ubuntu had marker and write mtimes
-# equal to the nanosecond and an empty sweep (#1956 defect 3, from #1953).
-#
-# macOS stamps from a fine-grained clock and leaves this loop on the first pass,
-# which is exactly why the failure never reproduced there.
-#
-# Bounded: one tick is ~1-4ms, so the cap is far above any real granularity and
-# the cost is invisible against a dispatch measured in seconds. If the clock
-# somehow never advances we give up rather than hang — a fence must not be able
-# to wedge a run — and say so, because a silently degraded window is the class
-# of defect this whole issue is about.
+# Return only once a new file would be STRICTLY newer than <reference>. Linux
+# stamps inode times from a coarse clock that advances once per tick, so a write
+# in the marker's own tick gets an identical mtime and `find -newer` skips it —
+# 222 of 222 ubuntu sweep misses looked exactly like that (#1956). Bounded, so a
+# stopped clock cannot wedge a run; no-op where the clock is fine-grained.
 _wb_clock_advance_past() {
     local _ref="$1" _probe="${1}.tick.$$" _n=0
     [[ -e "$_ref" ]] || return 0
     while [[ $_n -lt 200 ]]; do
-        : > "$_probe" 2>/dev/null || return 0
+        if ! : > "$_probe" 2>/dev/null; then
+            # Same class this whole file is about: the window is left open at
+            # the marker's own tick, so returning quietly would hide it.
+            _wb_report_degraded "window_unbounded" "ref=$_ref" "probe not creatable"
+            return 0
+        fi
         if [[ "$_probe" -nt "$_ref" ]]; then
             rm -f "$_probe" 2>/dev/null || true
             return 0
@@ -114,11 +94,9 @@ _wb_clock_advance_past() {
     return 0
 }
 
-# ─── _wb_report_degraded <kind> <field>... ───────────────────────────────────
-# One reporting path for "the fence could not do its job". Three channels
-# because each is the only one some caller has: stderr for an operator watching
-# a run, the append-only sink for the many integration tests that discard
-# stderr, and the event stream for anything querying a run after the fact.
+# One path for "the fence could not do its job". Three channels because each is
+# the only one some caller has: stderr, the sink for callers that discard it,
+# and the event stream for anything reading the run afterwards.
 _wb_report_degraded() {
     local _kind="$1"; shift
     printf 'write-boundary %s: %s\n' "$_kind" "$*" >&2
