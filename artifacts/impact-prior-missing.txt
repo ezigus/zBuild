@@ -1,0 +1,3 @@
+tests/integration/build-test-cycle-targeted-rerun-test.sh
+tests/unit/readout-gates-test.sh
+tests/unit/test-plugin-result-write-fallback-test.sh
