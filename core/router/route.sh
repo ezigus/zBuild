@@ -817,8 +817,13 @@ _route_call_claude() {
     : "${ZBUILD_STAGE_SCRATCH:="$(zbuild_engine_tmpdir)"}"
     # #1919 (C10): abort spawn on settings build failure (SPEC-3).
     _zbuild_build_permissions_settings || return 2
-    # shellcheck disable=SC2207
-    _claude_args+=($(_zbuild_permission_args))
+    # mapfile, not $( ) word-splitting: --add-dir IS the grant now, and a scratch
+    # path containing a space would split into two tokens, silently granting a
+    # directory nobody named. A visible failure would be safer than that; a
+    # correct tokenisation is safer still.
+    local -a _perm_args=()
+    mapfile -t _perm_args < <(_zbuild_permission_args)
+    _claude_args+=("${_perm_args[@]}")
     [[ "${ZBUILD_ROUTER_JSON_OUTPUT:-0}" == "1" ]] && _claude_args+=(--output-format json)
 
     # ADR-029 (#1230): retry-on-timeout. On rc=124 (gtimeout SIGTERM) and while
@@ -1576,8 +1581,10 @@ ${_diff_pointer}"
         : "${ZBUILD_STAGE_SCRATCH:="$_rt_tmp"}"
         # #1919 (C10): abort iteration on settings build failure (SPEC-3).
         _zbuild_build_permissions_settings || { rc=2; break; }
-        # shellcheck disable=SC2207
-        _claude_args+=($(_zbuild_permission_args))
+        # mapfile, not $( ) word-splitting — see the single-shot site above.
+        local -a _perm_args=()
+        mapfile -t _perm_args < <(_zbuild_permission_args)
+        _claude_args+=("${_perm_args[@]}")
         _claude_args+=(--output-format json)
 
         # ADR-029 (#1230): intra-iteration retry-on-timeout. router.retries is the

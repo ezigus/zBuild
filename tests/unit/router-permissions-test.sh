@@ -132,6 +132,26 @@ fi
 
 unset ZBUILD_STAGE_SCRATCH ZBUILD_REPO_ROOT
 
+# ─── P3b: SPEC-3 — jq unavailable refuses the spawn, never bypasses ─────────
+# The file header claims "missing jq causes spawn refusal (rc≠0), not silent
+# bypass", and nothing exercised it: P3 refuses via an unwritable dir, P4 greps
+# for a flag. A future edit that fell back instead of failing would keep both
+# green while the stated SPEC-3 clause silently stopped being true.
+export ZBUILD_STAGE_SCRATCH="$TEST_TEMP_DIR/scratch-p3b"
+export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/repo-p3b"
+mkdir -p "$ZBUILD_STAGE_SCRATCH" "$ZBUILD_REPO_ROOT"
+_ZBUILD_PERMISSIONS_SETTINGS_FILE=""
+set +e
+( PATH="/nonexistent-for-jq-probe"; _zbuild_build_permissions_settings ) 2>/dev/null
+rc_p3b=$?
+set -e
+if [[ "$rc_p3b" -ne 0 ]]; then
+    assert_pass "[SPEC-3] P3b: jq unavailable refuses the spawn (rc≠0)"
+else
+    assert_fail "[SPEC-3] P3b: jq unavailable must refuse the spawn" "rc=$rc_p3b"
+fi
+unset ZBUILD_STAGE_SCRATCH ZBUILD_REPO_ROOT
+
 # ─── P4: SPEC-4 — no dangerously-skip-permissions in core/router/ ────────────
 _skips="$(grep -rn 'dangerously-skip-permissions' "$REPO_ROOT/core/router/" \
     | grep -v '^[^:]*:[0-9]*:[[:space:]]*#' || true)"

@@ -75,7 +75,12 @@ jq -cn --arg rid "$ZBUILD_RUN_ID" \
 # Fork a real subprocess. Inside: source libs from scratch, load template,
 # set ZBUILD_CURRENT_STAGE=build + ZBUILD_ROUTER_MAX_TURNS=10 (env that would
 # win if the per-stage export regressed), call route_to_model.
-_e2e_scratch="$TEST_TEMP_DIR/e2e-scratch"
+# A SPACE in the scratch path, deliberately. --add-dir is the grant (#1919 P4),
+# and route.sh used to assemble it with `_claude_args+=($(_zbuild_permission_args))`
+# — an unquoted command substitution, which splits "e2e scratch dir" into three
+# argv tokens and silently grants a directory nobody named. This path is the only
+# place that regression is observable, because it is real recorded argv.
+_e2e_scratch="$TEST_TEMP_DIR/e2e scratch dir"
 mkdir -p "$_e2e_scratch"
 bash -c "
 set -euo pipefail
@@ -130,6 +135,22 @@ if grep -qx -- "--settings" <<< "$argv_nl"; then
     assert_pass "[SPEC-1] e2e: argv has --settings"
 else
     assert_fail "[SPEC-1] e2e: argv has --settings" "argv: $argv_nl"
+fi
+# --add-dir IS the grant (#1919 P4) — the settings file grants nothing (P2b).
+# Without this assertion a regression dropping --add-dir leaves every stage
+# unable to write its scratch dir while the three checks above stay green: the
+# exact shape of the bug this issue corrected.
+if grep -qx -- "--add-dir" <<< "$argv_nl"; then
+    assert_pass "[SPEC-1] e2e: argv carries the --add-dir grant"
+else
+    assert_fail "[SPEC-1] e2e: argv carries the --add-dir grant" "argv: $argv_nl"
+fi
+# The granted path must survive assembly as ONE token, spaces and all.
+if grep -qxF -- "$_e2e_scratch" <<< "$argv_nl"; then
+    assert_pass "[SPEC-2] e2e: a granted path containing spaces stays one argv token"
+else
+    assert_fail "[SPEC-2] e2e: a granted path containing spaces stays one argv token" \
+        "argv: $argv_nl"
 fi
 
 # C6 precondition precondition: the redaction.applied event we seeded must still

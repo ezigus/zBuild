@@ -89,7 +89,7 @@ _zbuild_permission_args() {
     printf '%s\n' "--permission-mode" "acceptEdits"
     # P4: --add-dir is the grant. One flag per root; the CLI accepts repeats.
     local _d
-    for _d in ${_ZBUILD_PERMISSIONS_DIRS[@]+"${_ZBUILD_PERMISSIONS_DIRS[@]}"}; do
+    for _d in "${_ZBUILD_PERMISSIONS_DIRS[@]+"${_ZBUILD_PERMISSIONS_DIRS[@]}"}"; do
         [[ -n "$_d" ]] && printf '%s\n' "--add-dir" "$_d"
     done
     printf '%s\n' "--settings" "$_ZBUILD_PERMISSIONS_SETTINGS_FILE"
