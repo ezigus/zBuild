@@ -55,7 +55,7 @@
   [38;2;74;222;128m✓[0m [T14] and reports 'restored', not 'saved'
 
   [38;2;0;212;255mT15 an unusable TMPDIR does not corrupt the failure report[0m
-mktemp: mkstemp failed on /nonexistent-dir-for-1878/zbuild-persist-idx.LmQxfw: No such file or directory
+mktemp: mkstemp failed on /nonexistent-dir-for-1878/zbuild-persist-idx.uiL3SO: No such file or directory
   [38;2;74;222;128m✓[0m [T15] status is coherent under an unusable TMPDIR (got: failed, rc=1)
   [38;2;74;222;128m✓[0m [T15] a failure still carries a reason
 
@@ -131,7 +131,7 @@ mktemp: mkstemp failed on /nonexistent-dir-for-1878/zbuild-persist-idx.LmQxfw: N
   [38;2;74;222;128m✓[0m [T14] and reports 'restored', not 'saved'
 
   [38;2;0;212;255mT15 an unusable TMPDIR does not corrupt the failure report[0m
-mktemp: mkstemp failed on /nonexistent-dir-for-1878/zbuild-persist-idx.elQOMA: No such file or directory
+mktemp: mkstemp failed on /nonexistent-dir-for-1878/zbuild-persist-idx.Ys0sCw: No such file or directory
   [38;2;74;222;128m✓[0m [T15] status is coherent under an unusable TMPDIR (got: failed, rc=1)
   [38;2;74;222;128m✓[0m [T15] a failure still carries a reason
 
