@@ -52,14 +52,82 @@ _wb_expand_line() {
     printf '%s' "$_exp"
 }
 
+# Keyed on stage + element: nested teardown, map elements and parallel members
+# share one state file, so a shared filename lets a sibling's mark move this
+# dispatch's window past writes that already happened. Same hazard the throttle
+# marker was keyed for at runner.sh:2543-2552 (#1823).
+_wb_marker_path() {
+    local _sd="$1" _stage="${2:-}" _el="${3:-}"
+    local _key="${_stage}${_el:+.$_el}"
+    _key="${_key//[^A-Za-z0-9._-]/_}"
+    if [[ -z "$_key" ]]; then
+        printf '%s/runtime/write-boundary.marker' "$_sd"
+    else
+        printf '%s/runtime/write-boundary.%s.marker' "$_sd" "$_key"
+    fi
+}
+
+# Return only once a new file would be STRICTLY newer than <reference>. Linux
+# stamps inode times from a coarse clock that advances once per tick, so a write
+# in the marker's own tick gets an identical mtime and `find -newer` skips it —
+# 222 of 222 ubuntu sweep misses looked exactly like that (#1956). Bounded, so a
+# stopped clock cannot wedge a run; no-op where the clock is fine-grained.
+_wb_clock_advance_past() {
+    local _ref="$1" _probe="${1}.tick.$$" _n=0
+    [[ -e "$_ref" ]] || return 0
+    while [[ $_n -lt 200 ]]; do
+        if ! : > "$_probe" 2>/dev/null; then
+            # Same class this whole file is about: the window is left open at
+            # the marker's own tick, so returning quietly would hide it.
+            _wb_report_degraded "window_unbounded" "ref=$_ref" "probe not creatable"
+            return 0
+        fi
+        if [[ "$_probe" -nt "$_ref" ]]; then
+            rm -f "$_probe" 2>/dev/null || true
+            return 0
+        fi
+        _n=$((_n + 1))
+        sleep 0.001 2>/dev/null || true
+    done
+    rm -f "$_probe" 2>/dev/null || true
+    _wb_report_degraded "window_unbounded" "ref=$_ref" "clock did not advance in 200 probes"
+    return 0
+}
+
+# One path for "the fence could not do its job". Three channels because each is
+# the only one some caller has: stderr, the sink for callers that discard it,
+# and the event stream for anything reading the run afterwards.
+_wb_report_degraded() {
+    local _kind="$1"; shift
+    printf 'write-boundary %s: %s\n' "$_kind" "$*" >&2
+    if [[ -n "${ZBUILD_WRITE_BOUNDARY_LOG:-}" ]]; then
+        printf '%s %s\n' "$_kind" "$*" >> "$ZBUILD_WRITE_BOUNDARY_LOG" 2>/dev/null || true
+    fi
+    if declare -F emit_event >/dev/null 2>&1; then
+        emit_event "stage.write_boundary.${_kind}" "$@" || true
+    fi
+}
+
 # ─── write_boundary_mark <state_file> ────────────────────────────────────────
 # Touch the per-dispatch marker. No-op when state_file is empty or relative.
 write_boundary_mark() {
-    local state_file="${1:-}"
+    local state_file="${1:-}" _stage="${2:-}" _el="${3:-}"
     [[ "$state_file" == /* ]] || return 0
     local state_dir; state_dir="$(dirname "$state_file")"
-    mkdir -p "${state_dir}/runtime" 2>/dev/null || return 0
-    touch "${state_dir}/runtime/write-boundary.marker" 2>/dev/null || true
+    local _marker; _marker="$(_wb_marker_path "$state_dir" "$_stage" "$_el")"
+    local _err
+    if ! _err="$(mkdir -p "${state_dir}/runtime" 2>&1)"; then
+        _wb_report_degraded "mark_failed" "dir=${state_dir}/runtime" "${_err//$'\n'/ }"
+        return 0
+    fi
+    # A snapshot that was never taken is not a clean dispatch: write_boundary_check
+    # returns 0 before sweeping anything when the marker is absent.
+    if ! _err="$(touch "$_marker" 2>&1)"; then
+        _wb_report_degraded "mark_failed" "marker=$_marker" "${_err//$'\n'/ }"
+        return 0
+    fi
+    # Close the window the stage would otherwise write inside undetected.
+    _wb_clock_advance_past "$_marker"
 }
 
 # ─── write_boundary_watch_list ───────────────────────────────────────────────
@@ -168,8 +236,23 @@ write_boundary_sweep() {
         # process's event dir, none of them written by the stage under check.
         # Restricting to regular files keeps the measured defect (a stage wrote
         # to /tmp) and drops the class that cannot be attributed.
-        find "$_path" -maxdepth "$_depth" -mindepth 1 -type f -newer "$_marker" 2>/dev/null || true
-    done <<< "$(write_boundary_watch_list)"
+        # A find that FAILS and a find that finds nothing are the same
+        # observation once stderr and status are discarded — the fence reports
+        # "clean" without having looked, and nothing records that it could not.
+        #
+        # Deliberately NOT fail-closed: find returns non-zero on a PARTIAL error
+        # while still enumerating everything it could read, and on a real machine
+        # `find $HOME -maxdepth 1` hits permission-denied on other users' entries
+        # routinely. Halting on rc!=0 would resolve nearly every dispatch to
+        # `broken` — terminal per verdict.sh:648-651. The defect is that the
+        # failure is invisible, not that it is tolerated.
+        local _ferr _frc
+        _ferr="$(find "$_path" -maxdepth "$_depth" -mindepth 1 -type f -newer "$_marker" 2>&1 >&3)"
+        _frc=$?
+        if [[ $_frc -ne 0 ]]; then
+            _wb_report_degraded "sweep_failed" "path=$_path" "rc=$_frc" "${_ferr//$'\n'/ }"
+        fi
+    done 3>&1 <<< "$(write_boundary_watch_list)"
 }
 
 # ─── write_boundary_classify <candidate> <state_dir> <plugin_dir> ────────────
@@ -297,7 +380,10 @@ write_boundary_check() {
     [[ -z "$_sf" ]] && return 0
     [[ "$_sf" == /* ]] || return 0
     local _sd; _sd="$(dirname "$_sf")"
-    local _marker="${_sd}/runtime/write-boundary.marker"
+    local _marker; _marker="$(_wb_marker_path "$_sd" "$_stage" "$_el")"
+    # Fall back to the unkeyed name so a dispatch marked by an older engine
+    # mid-upgrade still gets swept rather than silently skipped.
+    [[ -f "$_marker" ]] || _marker="${_sd}/runtime/write-boundary.marker"
     [[ -f "$_marker" ]] || return 0
     # Resolve the allow list ONCE per dispatch, not once per swept candidate.
     local _allow; _allow="$(write_boundary_allow_list "$_sd")"

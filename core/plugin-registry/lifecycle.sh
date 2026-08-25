@@ -367,7 +367,9 @@ plugin_hook_call() {
     # #1809 (ADR-058 C9): mark the dispatch start so write_boundary_check can
     # find files written during this dispatch. Fail-open: missing function = no-op.
     if declare -F write_boundary_mark >/dev/null 2>&1; then
-        write_boundary_mark "${2:-}" || true
+        # Keyed on stage + map element so nested, map and parallel dispatches
+        # against one state file do not share (and re-stamp) one window.
+        write_boundary_mark "${2:-}" "${1:-}" "${ZBUILD_MAP_ELEMENT:-}" || true
     fi
 
     emit_event "plugin.$hook_name.start" "plugin=$plugin_id" "kind=$kind"
