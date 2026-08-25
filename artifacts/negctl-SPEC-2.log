@@ -3,7 +3,7 @@
 [38;2;0;212;255m[1m  router-permissions — #1919 C10 acceptEdits settings (#1919)[0m
 [2m  ══════════════════════════════════════════[0m
 
-/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/zb-negctl.Yyq9rg/tests/unit/router-permissions-test.sh: line 30: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/zb-negctl.Yyq9rg/core/router/permissions.sh: No such file or directory
+/Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/zb-negctl.l1mtCg/tests/unit/router-permissions-test.sh: line 30: /Users/ericziegler/.zbuild/state/runs/20260824192938-55825/scratch/acceptance-gate/zb-negctl.l1mtCg/core/router/permissions.sh: No such file or directory
 ### SPEC-2 head tests/unit/router-permissions-test.sh
 
 [38;2;0;212;255m[1m  router-permissions — #1919 C10 acceptEdits settings (#1919)[0m
