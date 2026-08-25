@@ -182,10 +182,20 @@ assert_eq "[SPEC-8] the data root is ~/.zbuild" "$TEST_TEMP_DIR/fakehome/.zbuild
 # or global event log. #141 moved run state under the DATA root, so if that root
 # ignored the fence a fenced nested run WITH AN ISSUE would escape into the real
 # ~/.zbuild/repos/ — reintroducing exactly the defect #1127 fixed.
-_fenced="$(ZBUILD_DATA_ROOT='' ZBUILD_STATE_ROOT="$TEST_TEMP_DIR/fence/.zbuild-nested-state" \
+_fence="$TEST_TEMP_DIR/fence/.zbuild-nested-state"
+_fenced="$(ZBUILD_DATA_ROOT='' ZBUILD_STATE_ROOT="$_fence" \
            HOME="$TEST_TEMP_DIR/fakehome" zbuild_layout_data_root)"
-assert_eq "[SPEC-8b] a fenced state root re-roots the data root too" \
-    "$TEST_TEMP_DIR/fence" "$_fenced"
+# The state root ITSELF, not its parent. The parent was tried and was wrong:
+# #1127's fence is `$tmp/.zbuild-nested-state` where `$tmp` IS the rsync'd
+# staging repo, so the parent put run data inside the repo under test — which
+# ADR-023 forbids, and which made worktree acquisition refuse and abort every
+# nested run. This case pins the derivation so that cannot be reintroduced.
+assert_eq "[SPEC-8b] a fenced state root IS the data root (not its parent)" \
+    "$_fence" "$_fenced"
+case "$_fenced" in
+    "$TEST_TEMP_DIR"/fence/*|"$TEST_TEMP_DIR"/fence) assert_pass "[SPEC-8b] and stays inside the fence" ;;
+    *) assert_fail "[SPEC-8b] the derived data root escaped the fence" "got: $_fenced" ;;
+esac
 _explicit="$(ZBUILD_DATA_ROOT="$TEST_TEMP_DIR/explicit" ZBUILD_STATE_ROOT="$TEST_TEMP_DIR/fence/s" \
              zbuild_layout_data_root)"
 assert_eq "[SPEC-8b] an explicit data root still wins over the fence" \

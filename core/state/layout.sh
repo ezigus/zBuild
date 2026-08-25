@@ -138,12 +138,15 @@ zbuild_layout_data_root() {
         printf '%s' "$ZBUILD_DATA_ROOT"; return 0
     fi
     if [[ -n "${ZBUILD_STATE_ROOT:-}" ]]; then
-        local _sr="${ZBUILD_STATE_ROOT%/}"
-        local _parent="${_sr%/*}"
-        # A root with no parent component (e.g. "state") would yield itself and
-        # silently un-fence; keep the state root itself in that case.
-        [[ -n "$_parent" && "$_parent" != "$_sr" ]] || _parent="$_sr"
-        printf '%s' "$_parent"; return 0
+        # The state root ITSELF, not its parent. The parent was tried and is
+        # wrong: #1127's fence is `$tmp/.zbuild-nested-state` where `$tmp` is the
+        # rsync'd STAGING REPO itself (plugins/tool/test/plugin.sh rsyncs the repo
+        # to $tmp, then fences inside it). Taking the parent therefore put run
+        # data INSIDE the repo under test — which ADR-023 forbids outright, and
+        # which made zbuild_worktree_assert_outside refuse the tree, aborting
+        # every nested run between init_state and the first dispatch. Green on
+        # macOS only because /tmp -> /private/tmp made the prefix compare miss.
+        printf '%s' "${ZBUILD_STATE_ROOT%/}"; return 0
     fi
     printf '%s' "$HOME/.zbuild"
 }
@@ -225,12 +228,23 @@ zbuild_layout_key_root() {
 # Returns non-zero for a key with no identity; the caller then keeps the
 # pre-#141 per-run path. Exclusivity is NOT this function's job — #1940's
 # per-issue lock (ADR-059 §4) is what stops two live runs sharing the tree.
+# Hangs off the RUN root ($ZBUILD_RUN_ROOT, default ~/.zbuild) — deliberately
+# NOT the data root. #1127's fence sets ZBUILD_STATE_ROOT (and cost/cache) but
+# never ZBUILD_RUN_ROOT, because the fence lives INSIDE the rsync'd staging repo:
+# a worktree derived from it would sit inside the repo the run is editing, and
+# zbuild_worktree_assert_outside rightly refuses that. Keeping the tree on the
+# run root preserves exactly where pre-#141 trees lived; only the KEY changes.
 zbuild_layout_key_worktree() {
     local key="${1:-}"
-    local base
-    base="$(zbuild_layout_key_root "$key" 2>/dev/null)" || return 1
-    [[ -n "$base" ]] || return 1
-    printf '%s/worktree' "$base"
+    [[ -n "$key" ]] || return 1
+    local sub
+    case "$key" in
+        issue-*) sub="issues/${key#issue-}" ;;
+        goal-*)  sub="goals/$key" ;;
+        *)       return 1 ;;
+    esac
+    printf '%s/repos/%s/%s/worktree' \
+        "${ZBUILD_RUN_ROOT:-${HOME}/.zbuild}" "$(zbuild_layout_repo_segment)" "$sub"
 }
 
 zbuild_layout_run_state_dir() {
