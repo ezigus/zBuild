@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests: #1919 (C10) — permissions.sh builds acceptEdits settings file.
-# SPEC-2: settings file contains correct allowedDirectories.
+# SPEC-2: the spawn grants exactly the repo root + stage scratch, via --add-dir.
 # SPEC-3: missing jq causes spawn refusal (rc≠0), not silent bypass.
 # SPEC-4: grep core/router/ for skip-permissions returns nothing.
 set -euo pipefail
@@ -29,7 +29,7 @@ source "$REPO_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../core/router/permissions.sh
 source "$REPO_ROOT/core/router/permissions.sh"
 
-# ─── P1: SPEC-2 — settings file contains correct allowedDirectories ──────────
+# ─── P1: SPEC-2 — the spawn grants repo root + scratch via --add-dir ─────────
 export ZBUILD_STAGE_SCRATCH="$TEST_TEMP_DIR/scratch-p1"
 export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/repo-p1"
 mkdir -p "$ZBUILD_STAGE_SCRATCH" "$ZBUILD_REPO_ROOT"
@@ -53,19 +53,31 @@ else
     assert_fail "[SPEC-2] P1: settings file exists on disk" "file missing: $_ZBUILD_PERMISSIONS_SETTINGS_FILE"
 fi
 
-# Validate allowedDirectories contains repo root.
-_dirs="$(jq -r '.permissions.allowedDirectories[]' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE" 2>/dev/null || true)"
-if grep -qxF "$ZBUILD_REPO_ROOT" <<< "$_dirs"; then
-    assert_pass "[SPEC-2] P1: allowedDirectories contains ZBUILD_REPO_ROOT"
+# The GRANT is argv, not the settings file. #1919 P2b measured on CLI 2.1.241:
+# a dir listed in `permissions.allowedDirectories` is NOT writable — the identical
+# write is refused under that key and succeeds under --add-dir (P4). Asserting the
+# JSON key would therefore have passed while the stage's scratch dir stayed
+# unwritable, which is exactly the state this branch shipped in before the probes
+# were run. Assert the flags the spawn actually carries.
+_args="$(_zbuild_permission_args)"
+if grep -qxF "$ZBUILD_REPO_ROOT" <<< "$(grep -A1 -xF -- '--add-dir' <<< "$_args" | grep -vxF -- '--add-dir')"; then
+    assert_pass "[SPEC-2] P1: spawn grants ZBUILD_REPO_ROOT via --add-dir"
 else
-    assert_fail "[SPEC-2] P1: allowedDirectories contains ZBUILD_REPO_ROOT" "dirs: $_dirs"
+    assert_fail "[SPEC-2] P1: spawn grants ZBUILD_REPO_ROOT via --add-dir" "args: $_args"
+fi
+if grep -qxF "$ZBUILD_STAGE_SCRATCH" <<< "$(grep -A1 -xF -- '--add-dir' <<< "$_args" | grep -vxF -- '--add-dir')"; then
+    assert_pass "[SPEC-2] P1: spawn grants ZBUILD_STAGE_SCRATCH via --add-dir"
+else
+    assert_fail "[SPEC-2] P1: spawn grants ZBUILD_STAGE_SCRATCH via --add-dir" "args: $_args"
 fi
 
-# Validate allowedDirectories contains scratch dir.
-if grep -qxF "$ZBUILD_STAGE_SCRATCH" <<< "$_dirs"; then
-    assert_pass "[SPEC-2] P1: allowedDirectories contains ZBUILD_STAGE_SCRATCH"
+# The inert key must not come back: a future edit re-adding it would read as a
+# grant and silently be none.
+if jq -e '.permissions | has("allowedDirectories")' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE" >/dev/null 2>&1; then
+    assert_fail "[SPEC-2] P1: settings file carries no inert allowedDirectories key (P2b)" \
+        "the key is ignored by the CLI and must not masquerade as the grant"
 else
-    assert_fail "[SPEC-2] P1: allowedDirectories contains ZBUILD_STAGE_SCRATCH" "dirs: $_dirs"
+    assert_pass "[SPEC-2] P1: settings file carries no inert allowedDirectories key (P2b)"
 fi
 
 unset ZBUILD_STAGE_SCRATCH ZBUILD_REPO_ROOT
