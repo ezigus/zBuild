@@ -5078,10 +5078,11 @@ issues:
     title: "Wave-447 sub-2: feat(runner): template resolver with .zbuild/templates/ search path + required extends:"
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1]
-    state: open
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/653
       Backfilled by manifest-sync orphan reconciliation; see issue for full context.
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-06-05T15:09:26Z). Recorded by manifest-sync.'
   - id: wave-447-sub-3-feat-runner-emit-pipeline-template-resolved-e-654
     title: "Wave-447 sub-3: feat(runner): emit pipeline.template.resolved event with resolved shape"
     milestone: "Phase 1 — Pipeline & Intelligence"
@@ -5371,7 +5372,8 @@ issues:
     title: "feat(sanitize): extend test-output-sanitize coverage to build/plan/security-lens (contingent)"
     milestone: "Phase 1 — Pipeline & Intelligence"
     labels: [phase-1]
-    state: open
+    state: closed
     body: |
       Live issue: https://github.com/ezigus/zBuild/issues/721
       Backfilled by manifest-sync orphan reconciliation; see issue for full context.
+    closed_reason: 'Closed via GitHub (live state: closed at 2026-06-22T01:35:00Z). Recorded by manifest-sync.'
