@@ -77,7 +77,7 @@ else
 fi
 
 # Event emitted with a count >= 1.
-cap_count=$(grep -c '"intake.untracked_baseline.captured"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0)
+cap_count=$(grep -c '"intake.untracked_baseline.captured"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null) || cap_count=0
 cap_count="${cap_count:-0}"
 assert_gt "intake.untracked_baseline.captured emitted" "$cap_count" "0"
 evt_n="$(jq -r 'select(.type=="intake.untracked_baseline.captured") | .data.count' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)"

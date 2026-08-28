@@ -47,33 +47,33 @@ MAP_ARM=$(awk '/[[:space:]]map:\*\)/{found=1; count=0} found{print; count++; if(
 print_test_section "1–5: parallel: arm envelope"
 
 # SPEC-1
-pg_start_hit=$(grep -cF 'eb_emit_event "stage.start" "stage=$_pg_id"' "$RUNNER_SH" 2>/dev/null || echo 0)
+pg_start_hit=$(grep -cF 'eb_emit_event "stage.start" "stage=$_pg_id"' "$RUNNER_SH" 2>/dev/null) || pg_start_hit=0
 assert_eq "[SPEC-1] parallel: dispatch arm emits stage.start" "1" "$pg_start_hit"
 
 # SPEC-2
-pg_complete_hit=$(grep -cF 'eb_emit_event "stage.complete" "stage=$_pg_id"' "$RUNNER_SH" 2>/dev/null || echo 0)
+pg_complete_hit=$(grep -cF 'eb_emit_event "stage.complete" "stage=$_pg_id"' "$RUNNER_SH" 2>/dev/null) || pg_complete_hit=0
 assert_eq "[SPEC-2] parallel: dispatch arm emits stage.complete" "1" "$pg_complete_hit"
 
 # SPEC-3 — pattern is arm-unique: map: arm uses $_mg_id, so this only matches parallel: arm
-pg_update_hit=$(grep -cF '_update_stage_status "$state_file" "$_pg_id"' "$RUNNER_SH" 2>/dev/null || echo 0)
+pg_update_hit=$(grep -cF '_update_stage_status "$state_file" "$_pg_id"' "$RUNNER_SH" 2>/dev/null) || pg_update_hit=0
 assert_eq "[SPEC-3] parallel: dispatch arm writes stage_statuses[id]=complete" "1" "$pg_update_hit"
 
 # SPEC-4 — same uniqueness: $_pg_id only appears in the parallel: arm for verdict calls
-pg_verdict_hit=$(grep -cF '_zbuild_state_set_stage_verdict "$state_file" "$_pg_id"' "$RUNNER_SH" 2>/dev/null || echo 0)
+pg_verdict_hit=$(grep -cF '_zbuild_state_set_stage_verdict "$state_file" "$_pg_id"' "$RUNNER_SH" 2>/dev/null) || pg_verdict_hit=0
 assert_eq "[SPEC-4] parallel: dispatch arm writes stage_verdicts[id]=pass" "1" "$pg_verdict_hit"
 
 # SPEC-5
-pg_stage_var_hit=$(grep -cF 'export ZBUILD_CURRENT_STAGE="$_pg_id"' "$RUNNER_SH" 2>/dev/null || echo 0)
+pg_stage_var_hit=$(grep -cF 'export ZBUILD_CURRENT_STAGE="$_pg_id"' "$RUNNER_SH" 2>/dev/null) || pg_stage_var_hit=0
 assert_eq "[SPEC-5] parallel: dispatch arm exports ZBUILD_CURRENT_STAGE=id" "1" "$pg_stage_var_hit"
 
 print_test_section "6–10: map: arm envelope"
 
 # SPEC-6
-mg_start_hit=$(grep -cF 'eb_emit_event "stage.start" "stage=$_mg_id"' "$RUNNER_SH" 2>/dev/null || echo 0)
+mg_start_hit=$(grep -cF 'eb_emit_event "stage.start" "stage=$_mg_id"' "$RUNNER_SH" 2>/dev/null) || mg_start_hit=0
 assert_eq "[SPEC-6] map: dispatch arm emits stage.start" "1" "$mg_start_hit"
 
 # SPEC-7
-mg_complete_hit=$(grep -cF 'eb_emit_event "stage.complete" "stage=$_mg_id"' "$RUNNER_SH" 2>/dev/null || echo 0)
+mg_complete_hit=$(grep -cF 'eb_emit_event "stage.complete" "stage=$_mg_id"' "$RUNNER_SH" 2>/dev/null) || mg_complete_hit=0
 assert_eq "[SPEC-7] map: dispatch arm emits stage.complete" "1" "$mg_complete_hit"
 
 # SPEC-8
@@ -87,7 +87,7 @@ assert_contains "[SPEC-9] map: dispatch arm writes stage_verdicts[id]=pass" \
     "$MAP_ARM" '_zbuild_state_set_stage_verdict'
 
 # SPEC-10
-mg_stage_var_hit=$(grep -cF 'export ZBUILD_CURRENT_STAGE="$_mg_id"' "$RUNNER_SH" 2>/dev/null || echo 0)
+mg_stage_var_hit=$(grep -cF 'export ZBUILD_CURRENT_STAGE="$_mg_id"' "$RUNNER_SH" 2>/dev/null) || mg_stage_var_hit=0
 assert_eq "[SPEC-10] map: dispatch arm exports ZBUILD_CURRENT_STAGE=id" "1" "$mg_stage_var_hit"
 
 # ═══════════════════════════════════════════════════════════════════════════════

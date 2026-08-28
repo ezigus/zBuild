@@ -73,7 +73,7 @@ byte_count=$(wc -c < "$STATE_DIR/intake-baseline-ref.txt" | tr -d ' ')
 assert_eq "baseline file is 40 bytes (no trailing newline)" "40" "$byte_count"
 
 # Event emitted
-baseline_count=$(grep -c '"intake.baseline.captured"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0)
+baseline_count=$(grep -c '"intake.baseline.captured"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null) || baseline_count=0
 # grep -c can output blank when missing; normalize
 baseline_count="${baseline_count:-0}"
 assert_gt "intake.baseline.captured emitted" "$baseline_count" "0"

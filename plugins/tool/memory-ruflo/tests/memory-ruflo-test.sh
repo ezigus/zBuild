@@ -230,7 +230,7 @@ memory_put "limit-rt-ns" "item-ccc" "content-ccc"
 memory_put "limit-rt-ns" "item-ddd" "content-ddd"
 
 limit_out="$(memory_search "limit-rt-ns" "item" --limit 2)"
-limit_line_count="$(printf '%s\n' "$limit_out" | grep -c 'item' 2>/dev/null || echo 0)"
+limit_line_count="$(printf '%s\n' "$limit_out" | grep -c 'item' 2>/dev/null || true)"
 
 if [[ "$limit_line_count" -le 2 ]]; then
     assert_pass "search --limit 2: at most 2 results returned (got $limit_line_count)"
@@ -307,7 +307,7 @@ assert_contains "list_namespaces: list-ns-beta present"  "$ns_list" "list-ns-bet
 assert_contains "list_namespaces: list-ns-gamma present" "$ns_list" "list-ns-gamma"
 
 # Each namespace name must appear on its own line, not fused with siblings.
-alpha_lines="$(printf '%s\n' "$ns_list" | grep -c '^list-ns-alpha$' 2>/dev/null || echo 0)"
+alpha_lines="$(printf '%s\n' "$ns_list" | grep -c '^list-ns-alpha$' 2>/dev/null || true)"
 assert_eq "list_namespaces: list-ns-alpha is on its own line" "1" "$alpha_lines"
 
 # ─── Test 7: namespace_exists true after put, false after clear ───────────────

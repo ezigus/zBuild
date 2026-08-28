@@ -91,7 +91,7 @@ fi
 
 # Verify that teardown.dry_run.would_clean was emitted for at least one stage.
 if [[ -f "$_events_file" ]]; then
-    _wc_count="$(grep -c '"teardown.dry_run.would_clean"' "$_events_file" 2>/dev/null || echo 0)"
+    _wc_count="$(grep -c '"teardown.dry_run.would_clean"' "$_events_file" 2>/dev/null)" || _wc_count=0
     if [[ "$_wc_count" -ge 1 ]]; then
         assert_pass "[SPEC-3] at least one would_clean event emitted (count: $_wc_count)"
     else
