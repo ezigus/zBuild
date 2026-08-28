@@ -193,6 +193,11 @@ _artifact_persist_restore 881 "$TEST_TEMP_DIR/restored-881" "$fx"
 assert_eq "[T14] a successful restore returns 0" "0" "$?"
 assert_eq "[T14] and reports 'restored', not 'saved'" \
     "restored" "$_ARTIFACT_PERSIST_LAST_STATUS"
+# The complement to T16's source=remote. Without both directions the field
+# could be hardcoded to either value and still satisfy one of them — the
+# point of _ARTIFACT_PERSIST_LAST_SOURCE is that it DISCRIMINATES.
+assert_eq "[T14] and records source=local (the local-ref path)" \
+    "local" "$_ARTIFACT_PERSIST_LAST_SOURCE"
 
 # ── T15 [guard]: mktemp guards — a failure must not be attributed to git ────
 # PR #1880 review: an unguarded `mktemp -u` left the stderr path empty, `2>""`
@@ -216,6 +221,68 @@ if [[ "$_ARTIFACT_PERSIST_LAST_STATUS" == "failed" && -z "$_ARTIFACT_PERSIST_LAS
 else
     assert_pass "[T15] a failure still carries a reason"
 fi
+
+# ── T16 [SPEC-1] [guard]: CI cold-start restore via refs/remotes/origin ──────
+# _artifact_persist_restore prefers refs/heads/<branch> but falls back to
+# refs/remotes/origin/<branch> on a CI cold start where the local ref is absent.
+# This path (line ~365 of artifact-persist.sh) had no test — a regression there
+# would be invisible.
+print_test_section "T16 [SPEC-1] restore from refs/remotes/origin (CI cold start)"
+_sd16="$TEST_TEMP_DIR/t16-remote.git"
+_rd16="$TEST_TEMP_DIR/t16-restored"
+_fx16="$TEST_TEMP_DIR/t16-origin-repo"
+_fx16b="$TEST_TEMP_DIR/t16-cold-repo"
+
+# Build a bare remote and a repo with the state branch committed and pushed.
+git init -q --bare "$_sd16" 2>/dev/null
+(
+    git init -q -b main "$_fx16" 2>/dev/null
+    cd "$_fx16" || exit 1
+    git config user.email t@t.t; git config user.name t
+    git remote add origin "$_sd16"
+    : > f; git add f; git commit -q -m init
+    git push -q -u origin main
+) >/dev/null 2>&1
+state16="$TEST_TEMP_DIR/t16-state"
+mkdir -p "$state16/artifacts"
+printf 't16-artifact\n' > "$state16/artifacts/t16.json"
+_artifact_persist_snapshot "$state16" 886 "$_fx16" >/dev/null 2>&1
+( cd "$_fx16" && git push -q origin \
+    "refs/heads/zbuild/state/issue-886:refs/heads/zbuild/state/issue-886" ) >/dev/null 2>&1
+
+# Build a cold-start repo: has the remote-tracking ref but NO local branch.
+(
+    git init -q -b main "$_fx16b" 2>/dev/null
+    cd "$_fx16b" || exit 1
+    git config user.email t@t.t; git config user.name t
+    git remote add origin "$_sd16"
+    # Fetch the state branch only into refs/remotes/origin (not refs/heads).
+    git fetch -q origin \
+        "refs/heads/zbuild/state/issue-886:refs/remotes/origin/zbuild/state/issue-886" \
+        2>/dev/null
+) >/dev/null 2>&1
+
+# Verify the premise: local branch must not exist, only the remote-tracking ref.
+_t16_local="$(git -C "$_fx16b" rev-parse -q --verify \
+    refs/heads/zbuild/state/issue-886 >/dev/null 2>&1 && echo yes || echo no)"
+assert_eq "[SPEC-1] T16 premise: cold-start repo has no local state branch" "no" "$_t16_local"
+_t16_remote="$(git -C "$_fx16b" rev-parse -q --verify \
+    refs/remotes/origin/zbuild/state/issue-886 >/dev/null 2>&1 && echo yes || echo no)"
+assert_eq "[SPEC-1] T16 premise: but it does have the remote-tracking ref" "yes" "$_t16_remote"
+
+# Now restore — must fall through to the refs/remotes/origin path.
+_artifact_persist_restore 886 "$_rd16" "$_fx16b"
+_rc16=$?
+assert_eq "[SPEC-1] CI cold-start restore returns 0" "0" "$_rc16"
+assert_eq "[SPEC-1] CI cold-start restore reports restored, not empty or failed" \
+    "restored" "$_ARTIFACT_PERSIST_LAST_STATUS"
+assert_file_exists "[SPEC-1] CI cold-start restore extracts the artifact" \
+    "$_rd16/artifacts/t16.json"
+# _ARTIFACT_PERSIST_LAST_SOURCE records which ref path was used; "remote" means
+# refs/remotes/origin/<branch> — this is the new field proving the CI cold-start
+# path was taken, not the local-branch fast-path.
+assert_eq "[SPEC-1] CI cold-start restore records source=remote (not local)" \
+    "remote" "$_ARTIFACT_PERSIST_LAST_SOURCE"
 
 cleanup_test_env
 print_test_results

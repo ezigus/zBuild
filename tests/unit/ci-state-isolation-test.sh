@@ -15,6 +15,12 @@
 # SPEC-5[change]: an empty upload is reported (if-no-files-found == warn)
 # SPEC-6[change]: the resolve step still runs after an earlier step fails
 # SPEC-7[change]: the upload EXCLUDES the scratch directory (#1918 / ADR-058 §5)
+# SPEC-8[change]: the persist outcome is surfaced in the job log, always (#1921)
+#
+# SPEC-8 is #1921's requirement that a CI run's persist outcome be readable from
+# the job log, renumbered to 8 on the same rule as SPEC-7 below: this file's SPEC
+# ids are its own. It belongs here because it is an assertion about the same
+# workflow's step list that SPEC-3 and SPEC-5 already make.
 #
 # SPEC-7 is #1918's SPEC-4, renumbered to 7 because this file's SPEC ids are its
 # own and 1-6 were already taken by #1638. It lives here rather than in a new
@@ -194,6 +200,21 @@ if [[ -z "$_OFFENDERS" ]]; then
 else
     assert_fail "[SPEC-4] state must never be pinned inside the workspace" "$_OFFENDERS"
 fi
+
+# ── SPEC-8 [change]: Surface persist result step is always-run ──────────────
+# This step (#1921) surfaces persist-result.json fields as ::notice:: annotations
+# so an operator can see why a snapshot was skipped or why a push failed without
+# downloading the artifact zip. It must run on every outcome — if it were
+# conditional it would be absent on the failure cases where it matters most.
+# Checking the `if:` key extracted from the YAML also proves the step EXISTS:
+# a missing step produces an empty string, which fails the assert_eq below.
+_SURFACE_IF="$(awk '
+    /^      - name: Surface persist result/ { instep = 1; next }
+    instep && /^      - name: /            { exit }
+    instep && /^        if: /              { sub(/^        if: /, ""); print; exit }
+' "$WF")"
+assert_eq "[SPEC-8] Surface persist result step exists and runs on always()" \
+    "always()" "$_SURFACE_IF"
 
 cleanup_test_env
 print_test_results
