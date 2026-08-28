@@ -193,6 +193,11 @@ _artifact_persist_restore 881 "$TEST_TEMP_DIR/restored-881" "$fx"
 assert_eq "[T14] a successful restore returns 0" "0" "$?"
 assert_eq "[T14] and reports 'restored', not 'saved'" \
     "restored" "$_ARTIFACT_PERSIST_LAST_STATUS"
+# The complement to T16's source=remote. Without both directions the field
+# could be hardcoded to either value and still satisfy one of them — the
+# point of _ARTIFACT_PERSIST_LAST_SOURCE is that it DISCRIMINATES.
+assert_eq "[T14] and records source=local (the local-ref path)" \
+    "local" "$_ARTIFACT_PERSIST_LAST_SOURCE"
 
 # ── T15 [guard]: mktemp guards — a failure must not be attributed to git ────
 # PR #1880 review: an unguarded `mktemp -u` left the stderr path empty, `2>""`
