@@ -180,8 +180,8 @@ cp -f "$DIFF_PATCH" "$ITER2_DIFF"
 if grep -q 'file_A.txt' "$ITER2_DIFF" && grep -q 'file_B.txt' "$ITER2_DIFF"; then
     assert_pass "iter2: diff.patch contains BOTH file_A.txt AND file_B.txt (cumulative)"
 else
-    has_a="$(grep -c 'file_A.txt' "$ITER2_DIFF" || echo 0)"
-    has_b="$(grep -c 'file_B.txt' "$ITER2_DIFF" || echo 0)"
+    has_a="$(grep -c 'file_A.txt' "$ITER2_DIFF")" || has_a=0
+    has_b="$(grep -c 'file_B.txt' "$ITER2_DIFF")" || has_b=0
     assert_fail "iter2: diff.patch contains BOTH A + B" \
         "A_lines=$has_a B_lines=$has_b"
 fi

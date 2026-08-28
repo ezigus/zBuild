@@ -110,7 +110,7 @@ rm -f "$PR_BODY_PATH"
 rc=0
 bash "$REPO_ROOT/scripts/manifest-sync.sh" --apply --manifest "$TEST_MANIFEST" >/dev/null 2>&1 || rc=$?
 if [[ -f "$PR_BODY_PATH" ]]; then
-    match_count=$(grep -c "↳ possible match:" "$PR_BODY_PATH" 2>/dev/null || echo 0)
+    match_count=$(grep -c "↳ possible match:" "$PR_BODY_PATH" 2>/dev/null) || match_count=0
     if (( match_count >= 1 )); then
         assert_pass "MS4: at least one ↳ possible match annotation present"
     else

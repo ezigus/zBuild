@@ -133,11 +133,11 @@ if declare -F _route_redact_prompt >/dev/null 2>&1; then
     ZBUILD_PLUGIN_DIR="$PLUGDIR" ZBUILD_STATE_DIR="$STATE" ZBUILD_SCOPE_MANIFEST="" \
         _route_redact_prompt "$IN" "$OUT" 0 "" >/dev/null 2>&1 || true
     assert_contains "[SPEC-7] the funnel injects the block" "$(cat "$IN")" "STAGE CHECKPOINT"
-    n1="$(grep -c 'STAGE CHECKPOINT' "$IN" 2>/dev/null || echo 0)"
+    n1="$(grep -c 'STAGE CHECKPOINT' "$IN" 2>/dev/null)" || n1=0
     # Second pass = the loop's per-iteration redaction of the same file.
     ZBUILD_PLUGIN_DIR="$PLUGDIR" ZBUILD_STATE_DIR="$STATE" ZBUILD_SCOPE_MANIFEST="" \
         _route_redact_prompt "$IN" "$OUT" 1 "" >/dev/null 2>&1 || true
-    n2="$(grep -c 'STAGE CHECKPOINT' "$IN" 2>/dev/null || echo 0)"
+    n2="$(grep -c 'STAGE CHECKPOINT' "$IN" 2>/dev/null)" || n2=0
     # Pinned to EXACTLY 1, not merely n1 == n2: with the injection ablated both
     # counts are 0 and an equality assertion passes vacuously — proving nothing
     # about idempotence and nothing about injection.

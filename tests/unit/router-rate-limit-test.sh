@@ -77,7 +77,7 @@ assert_contains "T2: honest rate-limited message on stderr" "$stderr_out" "rate-
 assert_contains "T2: reset time surfaced" "$stderr_out" "resets 10:30am (America/New_York)"
 
 # ─── T3: NOT immediately auto-retried (claude invoked exactly once) ──────────
-call_count="$(grep -c . "$_CALL_COUNT_FILE" 2>/dev/null || echo 0)"
+call_count="$(grep -c . "$_CALL_COUNT_FILE" 2>/dev/null)" || call_count=0
 assert_eq "T3: rate-limit not auto-retried (single claude invocation)" "1" "$call_count"
 
 # ─── T4: a distinct router.rate_limited event is emitted ─────────────────────

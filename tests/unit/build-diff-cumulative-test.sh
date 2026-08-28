@@ -163,8 +163,8 @@ fi
 if grep -q 'file_iter1.txt' "$DIFF_PATCH" && grep -q 'file_iter2.txt' "$DIFF_PATCH"; then
     assert_pass "A3: diff.patch contains BOTH prior-iter (M1) and current-iter (M2) work — cumulative"
 else
-    has1="$(grep -c 'file_iter1.txt' "$DIFF_PATCH" 2>/dev/null || echo 0)"
-    has2="$(grep -c 'file_iter2.txt' "$DIFF_PATCH" 2>/dev/null || echo 0)"
+    has1="$(grep -c 'file_iter1.txt' "$DIFF_PATCH" 2>/dev/null)" || has1=0
+    has2="$(grep -c 'file_iter2.txt' "$DIFF_PATCH" 2>/dev/null)" || has2=0
     assert_fail "A3: diff.patch contains BOTH prior-iter + current-iter work" \
         "file_iter1_lines=$has1 file_iter2_lines=$has2"
 fi

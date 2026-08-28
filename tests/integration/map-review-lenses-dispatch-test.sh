@@ -125,16 +125,16 @@ assert_eq "[SPEC-2] exactly 6 work units dispatched" "6" "$_dispatch_count"
 # Each element must appear exactly once.
 _expected_elements=("security" "performance" "red-team" "correctness" "scope" "sre")
 for _el in "${_expected_elements[@]}"; do
-    _found=$(/usr/bin/grep -c "elem=\[${_el}\]" "$WU_ENV_LOG" 2>/dev/null || echo 0)
+    _found=$(/usr/bin/grep -c "elem=\[${_el}\]" "$WU_ENV_LOG" 2>/dev/null) || _found=0
     assert_eq "[SPEC-3] element '$_el' dispatched exactly once" "1" "$_found"
     # The `as:` env-target (ZBUILD_REVIEW_LENS_ID) must carry the same element —
     # this is what the UNCHANGED review-lens plugin reads for its identity.
-    _lens_found=$(/usr/bin/grep -c "elem=\[${_el}\] plat=\[generic\] lens=\[${_el}\]" "$WU_ENV_LOG" 2>/dev/null || echo 0)
+    _lens_found=$(/usr/bin/grep -c "elem=\[${_el}\] plat=\[generic\] lens=\[${_el}\]" "$WU_ENV_LOG" 2>/dev/null) || _lens_found=0
     assert_eq "[SPEC-3] ZBUILD_REVIEW_LENS_ID=='$_el' for element '$_el'" "1" "$_lens_found"
 done
 
 # All work units must have platform=generic (not hijacked by element name).
-_generic_count=$(/usr/bin/grep -c "plat=\[generic\]" "$WU_ENV_LOG" 2>/dev/null || echo 0)
+_generic_count=$(/usr/bin/grep -c "plat=\[generic\]" "$WU_ENV_LOG" 2>/dev/null) || _generic_count=0
 assert_eq "[SPEC-5] all 6 work units have platform=generic" "6" "$_generic_count"
 
 # ─── SPEC-4: ZBUILD_MAP_ELEMENT readable inside the work unit ────────────────

@@ -77,7 +77,7 @@ assert_eq "T3: block escape under hostile caller LC_ALL → rc=0" \
 
 # ─── T4: source-line guard — both sites carry LC_ALL=C prefix ──────────────
 TARGET="$REPO_ROOT/scripts/lib/artifact-render.sh"
-hits=$(grep -cE 'LC_ALL=C[[:space:]]+sed[[:space:]]+-E' "$TARGET" 2>/dev/null || echo 0)
+hits=$(grep -cE 'LC_ALL=C[[:space:]]+sed[[:space:]]+-E' "$TARGET" 2>/dev/null) || hits=0
 if [[ "$hits" -ge 2 ]]; then
     assert_pass "T4: source carries LC_ALL=C on both escape helpers (hits=$hits)"
 else

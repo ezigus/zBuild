@@ -82,8 +82,9 @@ set +e; impact_run "impact" "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
 assert_eq "P2: iter2 impact_run rc=0" "0" "$rc"
 assert_eq "P2: iter2 collateral plateau -> verdict flips to complete" \
     "complete" "$(jq -r '.verdict' "$ARTIFACTS_DIR/impact.json" 2>/dev/null)"
+_p3_plateau_n="$(grep -c 'impact.scope.plateau' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)" || _p3_plateau_n=0
 assert_eq "P3: impact.scope.plateau emitted exactly once" "1" \
-    "$(grep -c 'impact.scope.plateau' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0)"
+    "$_p3_plateau_n"
 
 # ─── P4 (control): a STRUCTURAL file in the set blocks convergence ──────────
 rm -f "$ARTIFACTS_DIR/impact-prior-missing.txt"

@@ -382,7 +382,7 @@ acceptance_negctl_check() {
             esac
             continue
         fi
-        local found_control=0 saw_tautology=0 saw_tagged=0 only_head_fail=0 saw_timeout=0
+        local found_control=0 saw_tautology=0 saw_tagged=0 only_head_fail=0 saw_timeout=0 saw_harness=0
         # Per-SPEC diagnostic log (opt-in via ZBUILD_NEGCTL_ARTIFACT_DIR, set by
         # the plugin from the pipeline state dir). Empty → output discarded.
         local logfile=""
@@ -414,20 +414,75 @@ acceptance_negctl_check() {
             # The baseline run is EXPECTED to fail; capture rc via `|| rc=$?`
             # so a non-zero exit never aborts the caller under `set -e`.
             local rc_base=0 rc_head=0
-            [[ -n "$logfile" ]] && printf '### %s baseline %s\n' "$spec_id" "$tf" >> "$logfile"
-            _negctl_run "$wt_dir/$tf" "$wt_dir" "$logfile" || rc_base=$?
-            [[ -n "$logfile" ]] && printf '### %s head %s\n' "$spec_id" "$tf" >> "$logfile"
-            _negctl_run "$repo_root/$tf" "$repo_root" "$logfile" || rc_head=$?
+            # #1969: capture each run separately so the per-assertion scan can
+            # tell the baseline's evidence from HEAD's. Appending both to the
+            # shared per-SPEC log (pre-#1969) made that impossible — a ✓ from
+            # the HEAD run would clear a ✗ from the baseline run and vice
+            # versa. The scratch files are folded into $logfile afterwards, so
+            # the artifact shape operators read is unchanged.
+            local _cap_base _cap_head
+            _cap_base="$(mktemp "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zb-negctl-base.XXXXXX")" || _cap_base=""
+            _cap_head="$(mktemp "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zb-negctl-head.XXXXXX")" || _cap_head=""
+            _negctl_run "$wt_dir/$tf" "$wt_dir" "$_cap_base" || rc_base=$?
+            _negctl_run "$repo_root/$tf" "$repo_root" "$_cap_head" || rc_head=$?
+            if [[ -n "$logfile" ]]; then
+                printf '### %s baseline %s\n' "$spec_id" "$tf" >> "$logfile"
+                [[ -n "$_cap_base" ]] && cat "$_cap_base" >> "$logfile" 2>/dev/null
+                printf '### %s head %s\n' "$spec_id" "$tf" >> "$logfile"
+                [[ -n "$_cap_head" ]] && cat "$_cap_head" >> "$logfile" 2>/dev/null
+            fi
             # A timeout on EITHER run leaves pass/fail unknown → INFRA, not a
             # control or a not_passing_at_head violation. Skip this testfile.
             if _negctl_is_timeout_rc "$rc_base" || _negctl_is_timeout_rc "$rc_head"; then
+                [[ -n "$_cap_base" ]] && rm -f "$_cap_base"
+                [[ -n "$_cap_head" ]] && rm -f "$_cap_head"
                 saw_timeout=1; continue
             fi
-            if [[ "$rc_base" -ne 0 && "$rc_head" -eq 0 ]]; then
+            # #1969: judge THIS SPEC by its own [spec_id]-tagged assertions, not
+            # by the file's exit code. A file mixes many assertions; before this
+            # a single unrelated red one condemned every SPEC bound to the file.
+            # Run 32886585375 lost 4h to exactly that: SPEC-1..SPEC-8 were each
+            # ✓ at HEAD and all eight were reported not_passing_at_head because
+            # a ninth, untagged assertion had a `grep -c … || echo 0` typo.
+            # 0 = a ✗ line for this SPEC, 1 = a ✓ line and no ✗, 2 = no verdict.
+            local _lv_base=2 _lv_head=2
+            _negctl_guard_log_check "$_cap_base" "$spec_id" && _lv_base=0 || _lv_base=$?
+            _negctl_guard_log_check "$_cap_head" "$spec_id" && _lv_head=0 || _lv_head=$?
+            [[ -n "$_cap_base" ]] && rm -f "$_cap_base"
+            [[ -n "$_cap_head" ]] && rm -f "$_cap_head"
+            # Fall back to the file rc only where the log carries no verdict for
+            # this SPEC — a custom runner, an empty capture, or a run that died
+            # before reaching the assertion. That is pre-#1969 behaviour, i.e.
+            # the safe direction, and it is the same fallback #1737 chose.
+            local _base_failed _head_failed
+            case "$_lv_base" in
+                0) _base_failed=1 ;;
+                1) _base_failed=0 ;;
+                *) [[ "$rc_base" -ne 0 ]] && _base_failed=1 || _base_failed=0 ;;
+            esac
+            case "$_lv_head" in
+                0) _head_failed=1 ;;
+                1) _head_failed=0 ;;
+                *) [[ "$rc_head" -ne 0 ]] && _head_failed=1 || _head_failed=0 ;;
+            esac
+            # #1969: 126/127 means "the runner could not execute this file",
+            # never "the assertion failed" — the [guard] path has classified it
+            # as infrastructure since #1670 and the [change] path did not, so a
+            # baseline that died on a function the change introduces was
+            # silently accepted as a valid negative control. Only consulted
+            # where the log gave no verdict: a SPEC that printed its own ✗
+            # before the abort has real evidence and keeps it.
+            if [[ "$_lv_base" -eq 2 ]] && _negctl_is_harness_rc "$rc_base"; then
+                saw_harness=1; continue
+            fi
+            if [[ "$_lv_head" -eq 2 ]] && _negctl_is_harness_rc "$rc_head"; then
+                saw_harness=1; continue
+            fi
+            if [[ "$_base_failed" -eq 1 && "$_head_failed" -eq 0 ]]; then
                 found_control=1; break
-            elif [[ "$rc_base" -eq 0 ]]; then
+            elif [[ "$_base_failed" -eq 0 ]]; then
                 saw_tautology=1
-            elif [[ "$rc_head" -ne 0 ]]; then
+            elif [[ "$_head_failed" -eq 1 ]]; then
                 only_head_fail=1
             fi
         done
@@ -443,6 +498,11 @@ acceptance_negctl_check() {
         elif [[ "$saw_timeout" -eq 1 ]]; then
             # Only-signal was a timeout: infra, not a genuine violation.
             printf 'NEGCTL ERROR timeout:%s\n' "$spec_id"; rc=1
+        elif [[ "$saw_harness" -eq 1 ]]; then
+            # Only-signal was 126/127: the runner could not execute the file, so
+            # pass/fail is unknown (#1969). Infra, like a timeout — never a
+            # control and never a violation.
+            printf 'NEGCTL ERROR harness:%s\n' "$spec_id"; rc=1
         else
             printf 'NEGCTL FAIL %s tautology\n' "$spec_id"; rc=1
         fi
