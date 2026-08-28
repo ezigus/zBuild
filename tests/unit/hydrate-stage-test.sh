@@ -161,6 +161,10 @@ print_test_section "[SPEC-4][change] hydrate records data.source"
 _H_SRC="$TEST_TEMP_DIR/srcfield"
 _h_clone "$_H_SRC"
 _S_STATE="$TEST_TEMP_DIR/srcfield-state"
+# Own artifact dir, like every section above. Inheriting SPEC-2's would make the
+# guard below read SPEC-2's file: a failed write here would then be masked by
+# stale data that already says status=restored.
+export ZBUILD_ARTIFACT_DIR="$_S_STATE/artifacts"
 ( cd "$_H_SRC" && ZBUILD_ISSUE_NUMBER=7001 ZBUILD_STATE_DIR="$_S_STATE" \
     hydrate_run hydrate "" ) >/dev/null 2>&1 || true
 # Guard: the restore itself still worked (existing invariant, no [SPEC-N] tag).
