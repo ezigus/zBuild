@@ -176,7 +176,7 @@ assert_eq "[SPEC-8] the marker is per-line: an unmarked sibling still fails" "1"
 assert_contains "[SPEC-8] only the unmarked line is reported" "$out" "mixed.sh:3"
 
 # ─── Wiring: the rule must actually run somewhere ────────────────────────────
-print_test_section "7. wiring: CI configuration references lint-grep-c.sh"
+print_test_section "9. wiring: CI configuration references lint-grep-c.sh"
 
 pkg_lint="$(jq -r '.scripts.lint // ""' "$REPO_ROOT/package.json")"
 assert_contains "[SPEC-4] package.json lint script includes lint-grep-c.sh" \
