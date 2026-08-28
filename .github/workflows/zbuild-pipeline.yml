@@ -283,6 +283,32 @@ jobs:
           reason="$(jq -r '.reason // empty' "$result_file" 2>/dev/null || true)"
           echo "::notice::persist: verdict=${verdict:-?} snapshot=${snapshot:-?} pushed=${pushed:-?} reason=${reason:-?}"
 
+      - name: Surface hydrate result
+        # #1921: the persist step above says what was SAVED; this says what was
+        # RESTORED and FROM WHERE. `source=remote` is the only direct evidence
+        # that a run started warm off origin rather than from a local ref — and
+        # #1836 is the standing example of state-branch evidence being credited
+        # to the wrong mechanism. Same shape as the persist step: always-run so
+        # it is present on the failure paths that matter most, and fail-open,
+        # because an absent file is not itself a failure.
+        if: always()
+        run: |
+          # Same empty-path guard as the persist step: `find` with an empty
+          # first argument searches the CWD and would report a foreign file.
+          result_file=""
+          if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR:-}" ]]; then
+            result_file="$(find "$ZBUILD_STATE_DIR" -name 'hydrate-result.json' -print -quit 2>/dev/null || true)"
+          fi
+          if [[ -z "$result_file" ]]; then
+            echo "::notice::hydrate-result.json not found (run ended before the hydrate stage)"
+            exit 0
+          fi
+          status="$(jq -r '.data.status // empty' "$result_file" 2>/dev/null || true)"
+          restored="$(jq -r '.data.restored // 0' "$result_file" 2>/dev/null || true)"
+          source="$(jq -r '.data.source // "none"' "$result_file" 2>/dev/null || true)"
+          reason="$(jq -r '.reason // empty' "$result_file" 2>/dev/null || true)"
+          echo "::notice::hydrate: status=${status:-?} restored=${restored:-?} source=${source:-?} reason=${reason:-?}"
+
       - name: Collect claude session transcripts (diagnostics)
         # #1728: a SIGTERM'd stage emits zero bytes into stage-io, so the
         # incrementally-written session JSONL is the only evidence of what the

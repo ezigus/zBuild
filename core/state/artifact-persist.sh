@@ -278,6 +278,70 @@ _artifact_persist_snapshot() {
     return 0
 }
 
+# ─── _artifact_persist_adopt_remote <issue> [repo_root] (#1921) ─────────────
+# Point the LOCAL `refs/heads/<branch>` at the fetched remote-tracking ref, but
+# ONLY when the local ref does not already exist.
+#
+# WHY: `_hydrate_fetch` updates `refs/remotes/origin/<branch>` and deliberately
+# never touches `refs/heads`. On a CI runner refs/heads therefore never exists —
+# so `_artifact_persist_snapshot` finds no parent (:229) and ROOTS a new history,
+# and the `--force` push then orphans everything already on origin. The branch
+# could never accumulate in CI, the `unchanged` short-circuit could never fire,
+# and two concurrent runs could clobber each other with no common ancestor.
+#
+# ABSENT-ONLY IS THE POINT, not a micro-optimisation. hydrate's manifest states
+# the invariant: a LOCAL snapshot wins on read when both exist, because it may
+# carry work an earlier push never delivered. Adopting unconditionally would
+# discard exactly that work.
+_artifact_persist_adopt_remote() {
+    _artifact_persist_reset_status
+    local issue="${1:-0}" repo_root="${2:-$(git rev-parse --show-toplevel 2>/dev/null)}"
+
+    _artifact_persist_has_identity "$issue" || {
+        _ARTIFACT_PERSIST_LAST_STATUS="empty"
+        _ARTIFACT_PERSIST_LAST_REASON="no identity to adopt under"
+        return 0
+    }
+
+    local _gd=""
+    [[ -n "$repo_root" ]] && _gd="$(_artifact_persist_git_dir "$repo_root")"
+    if [[ -z "$repo_root" || ! -d "$_gd" ]]; then
+        _ARTIFACT_PERSIST_LAST_STATUS="failed"
+        _ARTIFACT_PERSIST_LAST_REASON="unresolvable repo: repo_root=[${repo_root:-<empty>}] git_dir=[${_gd:-<empty>}]"
+        return 1
+    fi
+
+    local branch; branch="$(_artifact_persist_branch "$issue")"
+
+    if GIT_DIR="$_gd" git rev-parse -q --verify "refs/heads/$branch" >/dev/null 2>&1; then
+        _ARTIFACT_PERSIST_LAST_STATUS="kept"
+        _ARTIFACT_PERSIST_LAST_REASON="local $branch already exists — left untouched"
+        return 0
+    fi
+
+    local remote_tip
+    if ! remote_tip="$(GIT_DIR="$_gd" git rev-parse -q --verify "refs/remotes/origin/$branch" 2>/dev/null)" \
+            || [[ -z "$remote_tip" ]]; then
+        _ARTIFACT_PERSIST_LAST_STATUS="empty"
+        _ARTIFACT_PERSIST_LAST_REASON="no refs/remotes/origin/$branch to adopt (first run)"
+        return 0
+    fi
+
+    local _ar_err; _ar_err="$(mktemp -u "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zbuild-adopt-err.XXXXXX" 2>/dev/null)" || _ar_err="/dev/null"
+    [[ -n "$_ar_err" ]] || _ar_err="/dev/null"
+    if ! GIT_DIR="$_gd" git update-ref "refs/heads/$branch" "$remote_tip" 2>"$_ar_err"; then
+        local err; err="$(cat "$_ar_err" 2>/dev/null | tr '\n' ' ')"
+        [[ "$_ar_err" != "/dev/null" ]] && rm -f "$_ar_err"
+        _ARTIFACT_PERSIST_LAST_STATUS="failed"
+        _ARTIFACT_PERSIST_LAST_REASON="git update-ref $branch failed: ${err:-<no stderr>} (git_dir=$_gd)"
+        return 1
+    fi
+    [[ "$_ar_err" != "/dev/null" ]] && rm -f "$_ar_err"
+    _ARTIFACT_PERSIST_LAST_STATUS="adopted"
+    _ARTIFACT_PERSIST_LAST_REASON="adopted origin/$branch as the local snapshot parent"
+    return 0
+}
+
 # ─── _artifact_persist_push <issue> [repo_root] (#1071) ─────────────────────
 # Push `zbuild/state/issue-<N>` to origin.
 #

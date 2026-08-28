@@ -284,5 +284,92 @@ assert_file_exists "[SPEC-1] CI cold-start restore extracts the artifact" \
 assert_eq "[SPEC-1] CI cold-start restore records source=remote (not local)" \
     "remote" "$_ARTIFACT_PERSIST_LAST_SOURCE"
 
+# ── T17 [SPEC-2] [change]: a CI-shaped repo CHAINS onto the fetched tip ──────
+# On a CI runner hydrate creates only refs/remotes/origin/<branch>; the local
+# refs/heads/<branch> never exists. _artifact_persist_snapshot reads its parent
+# from refs/heads, so every CI snapshot used to ROOT a new history — and the
+# force-push then orphaned everything already on origin. The state branch could
+# never accumulate in CI (local issue-999 has 344 commits across runs;
+# CI issue-1836 had 20 from a single run).
+print_test_section "T17 [SPEC-2] CI-shaped repo chains instead of rooting"
+
+_sd17="$TEST_TEMP_DIR/t17-remote.git"
+_fx17="$TEST_TEMP_DIR/t17-origin-repo"
+_fx17b="$TEST_TEMP_DIR/t17-cold-repo"
+
+git init -q --bare "$_sd17" 2>/dev/null
+(
+    git init -q -b main "$_fx17" 2>/dev/null
+    cd "$_fx17" || exit 1
+    git config user.email t@t.t; git config user.name t
+    git remote add origin "$_sd17"
+    : > f; git add f; git commit -q -m init
+    git push -q -u origin main
+) >/dev/null 2>&1
+
+# Run A: seed the state branch and publish it.
+_state17="$TEST_TEMP_DIR/t17-state"
+mkdir -p "$_state17/artifacts"
+printf 't17-run-a\n' > "$_state17/artifacts/a.json"
+_artifact_persist_snapshot "$_state17" 887 "$_fx17" >/dev/null 2>&1
+( cd "$_fx17" && git push -q origin \
+    "refs/heads/zbuild/state/issue-887:refs/heads/zbuild/state/issue-887" ) >/dev/null 2>&1
+_t17_runa_tip="$( git -C "$_fx17" rev-parse refs/heads/zbuild/state/issue-887 )"
+
+# Run B: a COLD runner — remote-tracking ref only, exactly what _hydrate_fetch
+# leaves behind. No local refs/heads.
+(
+    git init -q -b main "$_fx17b" 2>/dev/null
+    cd "$_fx17b" || exit 1
+    git config user.email t@t.t; git config user.name t
+    git remote add origin "$_sd17"
+    git fetch -q origin \
+        "refs/heads/zbuild/state/issue-887:refs/remotes/origin/zbuild/state/issue-887" \
+        2>/dev/null
+) >/dev/null 2>&1
+assert_eq "[SPEC-2] T17 premise: cold repo has no local state branch" "no" \
+    "$(git -C "$_fx17b" rev-parse -q --verify refs/heads/zbuild/state/issue-887 >/dev/null 2>&1 && echo yes || echo no)"
+
+# Adopt the fetched tip, then snapshot as run B would.
+_artifact_persist_adopt_remote 887 "$_fx17b" >/dev/null 2>&1
+_state17b="$TEST_TEMP_DIR/t17-state-b"
+mkdir -p "$_state17b/artifacts"
+printf 't17-run-b\n' > "$_state17b/artifacts/b.json"
+_artifact_persist_snapshot "$_state17b" 887 "$_fx17b" >/dev/null 2>&1
+_t17_runb_tip="$( git -C "$_fx17b" rev-parse refs/heads/zbuild/state/issue-887 2>/dev/null || echo none )"
+
+# THE ASSERTION: run B builds ON run A, rather than orphaning it.
+if git -C "$_fx17b" merge-base --is-ancestor "$_t17_runa_tip" "$_t17_runb_tip" 2>/dev/null; then
+    assert_pass "[SPEC-2] run B's snapshot keeps run A's commit as an ancestor"
+else
+    assert_fail "[SPEC-2] run B must chain onto run A, not orphan it" \
+        "runA=$_t17_runa_tip runB=$_t17_runb_tip"
+fi
+# Ancestry alone could be satisfied by an empty chain, so assert the retained
+# history is USABLE: run A's artifact is still readable at its own commit,
+# reachable from run B's tip. (Run B's own tree correctly holds only run B's
+# artifacts — a snapshot captures the current state dir, and prior work reaches
+# a stage through hydrate's separate restored-artifacts seam, not through this
+# tree.)
+assert_eq "[SPEC-2] run A's artifact is still readable from the retained history" \
+    "t17-run-a" \
+    "$(git -C "$_fx17b" show "${_t17_runa_tip}:artifacts/a.json" 2>/dev/null | tr -d '\n')"
+
+# ── T18 [SPEC-3] [guard]: adopt NEVER overwrites an existing local ref ───────
+# plugins/tool/hydrate/manifest.yaml states the invariant: a LOCAL snapshot wins
+# on read when both exist, because it may carry work an earlier push never
+# delivered. An unconditional update-ref would destroy exactly that.
+print_test_section "T18 [SPEC-3] adopt leaves an existing local ref alone"
+
+_t18_local_tip="$( git -C "$_fx17" rev-parse refs/heads/zbuild/state/issue-887 )"
+# Give the origin-side repo a DIFFERENT remote-tracking tip, then adopt.
+( cd "$_fx17" && git fetch -q origin \
+    "+refs/heads/zbuild/state/issue-887:refs/remotes/origin/zbuild/state/issue-887" ) >/dev/null 2>&1
+_artifact_persist_adopt_remote 887 "$_fx17" >/dev/null 2>&1
+assert_eq "[SPEC-3] an existing local ref is not moved by adopt" "$_t18_local_tip" \
+    "$( git -C "$_fx17" rev-parse refs/heads/zbuild/state/issue-887 )"
+assert_eq "[SPEC-3] and adopt reports it kept the local ref" "kept" \
+    "$_ARTIFACT_PERSIST_LAST_STATUS"
+
 cleanup_test_env
 print_test_results

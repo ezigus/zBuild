@@ -16,6 +16,7 @@
 # SPEC-6[change]: the resolve step still runs after an earlier step fails
 # SPEC-7[change]: the upload EXCLUDES the scratch directory (#1918 / ADR-058 §5)
 # SPEC-8[change]: the persist outcome is surfaced in the job log, always (#1921)
+# SPEC-9[change]: the hydrate outcome is surfaced the same way, always (#1921)
 #
 # SPEC-8 is #1921's requirement that a CI run's persist outcome be readable from
 # the job log, renumbered to 8 on the same rule as SPEC-7 below: this file's SPEC
@@ -215,6 +216,18 @@ _SURFACE_IF="$(awk '
 ' "$WF")"
 assert_eq "[SPEC-8] Surface persist result step exists and runs on always()" \
     "always()" "$_SURFACE_IF"
+
+# ── SPEC-9 [change]: Surface hydrate result step is always-run ───────────────
+# The persist half says what was SAVED; this says what was RESTORED and from
+# where. Without it a warm start is inferred rather than read — and #1836 is the
+# standing example of an inference credited to the wrong mechanism.
+_HYDRATE_IF="$(awk '
+    /^      - name: Surface hydrate result/ { instep = 1; next }
+    instep && /^      - name: /             { exit }
+    instep && /^        if: /               { sub(/^        if: /, ""); print; exit }
+' "$WF")"
+assert_eq "[SPEC-9] Surface hydrate result step exists and runs on always()" \
+    "always()" "$_HYDRATE_IF"
 
 cleanup_test_env
 print_test_results
