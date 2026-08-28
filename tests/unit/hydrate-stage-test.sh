@@ -165,6 +165,7 @@ _S_STATE="$TEST_TEMP_DIR/srcfield-state"
 # guard below read SPEC-2's file: a failed write here would then be masked by
 # stale data that already says status=restored.
 export ZBUILD_ARTIFACT_DIR="$_S_STATE/artifacts"
+export ZBUILD_RESTORED_ARTIFACTS_DIR="$_S_STATE/restored-artifacts/artifacts"
 ( cd "$_H_SRC" && ZBUILD_ISSUE_NUMBER=7001 ZBUILD_STATE_DIR="$_S_STATE" \
     hydrate_run hydrate "" ) >/dev/null 2>&1 || true
 # Guard: the restore itself still worked (existing invariant, no [SPEC-N] tag).
