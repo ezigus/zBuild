@@ -150,6 +150,42 @@ assert_contains "[SPEC-2] and the LOCAL (unpushed) content is what got restored"
 # git archive | tar can fail mid-stream leaving a half-extracted tree that
 # satisfies a bare -d/-n check. PR #1880's review caught the engine adopting one
 # and gated on a status; staging + a single mv removes the failure mode instead.
+# ─── [SPEC-4][change] the result records WHERE the restore came from ────────
+# hydrate-result.json recorded {status, restored} but not the source, so a warm
+# start could only ever be INFERRED. #1836 is the standing proof that inference
+# gets misattributed: its state branch was credited to a push path that had
+# already been deleted. The core tracks _ARTIFACT_PERSIST_LAST_SOURCE; hydrate
+# simply never read it.
+print_test_section "[SPEC-4][change] hydrate records data.source"
+
+_H_SRC="$TEST_TEMP_DIR/srcfield"
+_h_clone "$_H_SRC"
+_S_STATE="$TEST_TEMP_DIR/srcfield-state"
+# Own artifact dir, like every section above. Inheriting SPEC-2's would make the
+# guard below read SPEC-2's file: a failed write here would then be masked by
+# stale data that already says status=restored.
+export ZBUILD_ARTIFACT_DIR="$_S_STATE/artifacts"
+export ZBUILD_RESTORED_ARTIFACTS_DIR="$_S_STATE/restored-artifacts/artifacts"
+( cd "$_H_SRC" && ZBUILD_ISSUE_NUMBER=7001 ZBUILD_STATE_DIR="$_S_STATE" \
+    hydrate_run hydrate "" ) >/dev/null 2>&1 || true
+# Guard: the restore itself still worked (existing invariant, no [SPEC-N] tag).
+assert_eq "[source-guard] the fresh-clone restore still reports restored" "restored" \
+    "$(jq -r '.data.status' "$ZBUILD_ARTIFACT_DIR/hydrate-result.json" 2>/dev/null)"
+# Change: source is a NEW field — absent at baseline, so jq returns "null".
+assert_eq "[SPEC-4] a fresh clone records source=remote, not local" "remote" \
+    "$(jq -r '.data.source | tostring' "$ZBUILD_ARTIFACT_DIR/hydrate-result.json" 2>/dev/null)"
+
+# ─── [SPEC-5][change] hydrate leaves a local ref for the snapshot to chain on ─
+# Without this the CI path can never accumulate: _artifact_persist_snapshot
+# reads its parent from refs/heads, which a fetch never creates, so every CI
+# snapshot roots a new history and the force-push orphans origin's.
+print_test_section "[SPEC-5][change] hydrate adopts the fetched tip locally"
+
+_h_remote_tip="$( cd "$_H_SRC" && git rev-parse refs/remotes/origin/zbuild/state/issue-7001 )"
+_h_local_tip="$( cd "$_H_SRC" && git rev-parse -q --verify refs/heads/zbuild/state/issue-7001 2>/dev/null || echo absent )"
+assert_eq "[SPEC-5] the local state ref now exists and matches the fetched tip" \
+    "$_h_remote_tip" "$_h_local_tip"
+
 print_test_section "[SPEC-3][guard] a failed restore leaves the area absent, not partial"
 
 _P_STATE="$TEST_TEMP_DIR/partial-state"

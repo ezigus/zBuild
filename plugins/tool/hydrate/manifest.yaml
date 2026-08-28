@@ -18,6 +18,15 @@ description: |
   Extracts to a staging directory and promotes it atomically, so the area a
   stage reads is either complete or absent — never half a tree.
 
+  Then adopts the fetched tip as the LOCAL `refs/heads/<branch>`, but only when
+  no local ref exists. A fetch alone writes just the remote-tracking ref, so on
+  a CI runner the snapshot stage finds no parent and roots a new history, and
+  the force-push orphans everything already on origin — the state branch could
+  never accumulate in CI (#1921). Absent-only keeps the invariant above intact.
+
+  Records `data.source` (`local` | `remote`) so a warm start is provable from
+  the result rather than inferred from the absence of a local ref.
+
 hooks:
   run: hydrate_run
 
@@ -35,6 +44,7 @@ provides:
     - hydrate.complete
     - hydrate.fetch.failed
     - hydrate.restore.failed
+    - hydrate.adopt.failed
     - hydrate.result.write_failed
 
 config:

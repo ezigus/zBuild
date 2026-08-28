@@ -6,6 +6,7 @@ stage.start
 plugin.run.start
 hydrate.start
 hydrate.restore.failed
+hydrate.adopt.failed
 hydrate.complete
 plugin.run.complete
 stage.complete
