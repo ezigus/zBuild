@@ -1,4 +1,4 @@
-============== ZBUILD BUILD — iter 4/10 ==============
+============== ZBUILD BUILD — iter 5/10 ==============
 ## ORIGINAL TASK (immutable across iterations)
 # Plan: Migrate test plugin to contract v2
 
@@ -201,6 +201,7 @@ unit: FAIL tests/integration/test-plugin-tmpdir-cleanup-test.sh
 
   ✗ success: artifact written
 
+skip non-test: tests/lib/test-harness.sh
 unit: 1/2 passed
 ```
 
