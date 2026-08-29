@@ -80,11 +80,11 @@ _test_run_inner "$EMPTY_PATCH" "$REPO_FIXTURE" "$OUT_JSON" "$ISO_CMD" \
 # test-results.json::.exit_code. If isolation works, exit_code should be 0.
 assert_file_exists "test-results.json written" "$OUT_JSON"
 
-actual_exit="$(jq -r '.exit_code' "$OUT_JSON" 2>/dev/null || echo "missing")"
+actual_exit="$(jq -r '.data.exit_code' "$OUT_JSON" 2>/dev/null || echo "missing")"
 assert_eq "subshell exit_code is 0 (env var unset AND fd 3 closed)" "0" "$actual_exit"
 
 # Belt-and-suspenders: the JSON's captured test_output should contain "OK: isolated"
-output_snippet="$(jq -r '.test_output' "$OUT_JSON" 2>/dev/null || echo "")"
+output_snippet="$(jq -r '.data.test_output' "$OUT_JSON" 2>/dev/null || echo "")"
 case "$output_snippet" in
     *"OK: isolated"*)
         assert_pass "test_output confirms isolated subshell"

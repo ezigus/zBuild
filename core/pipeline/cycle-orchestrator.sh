@@ -1911,7 +1911,7 @@ _cycle_iter_dispatch() {
         local _tr="$_state_dir/artifacts/$_dfc_artifact"
         if [[ -s "$_tr" ]]; then
             local _failed_n
-            _failed_n="$(jq -r --arg f "$_dfc_field" '.[$f] // 0' "$_tr" 2>/dev/null || echo 0)"
+            _failed_n="$(jq -r --arg f "$_dfc_field" '(.data[$f] // .[$f]) // 0' "$_tr" 2>/dev/null || echo 0)"
             if [[ "$_failed_n" =~ ^[0-9]+$ ]]; then
                 _CYCLE_LAST_FAILURE_COUNT="$_failed_n"
             fi
