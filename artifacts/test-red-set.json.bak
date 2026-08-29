@@ -1,0 +1,7 @@
+[
+  "plugins/tool/test/tests/test-test.sh",
+  "tests/integration/build-test-cycle-targeted-rerun-test.sh",
+  "tests/integration/test-plugin-stage-io-banner-visible-test.sh",
+  "tests/integration/test-plugin-tmpdir-cleanup-test.sh",
+  "tests/unit/readout-gates-test.sh"
+]
