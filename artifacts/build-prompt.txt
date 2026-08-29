@@ -1,4 +1,4 @@
-============== ZBUILD BUILD — iter 2/10 ==============
+============== ZBUILD BUILD — iter 3/10 ==============
 ## ORIGINAL TASK (immutable across iterations)
 # Plan: Migrate test plugin to contract v2
 
@@ -174,172 +174,7 @@ The build_test_cycle did not converge: 1 mechanical gate(s) failed. Address ever
 
 - test output:
 ```
-
-> zbuild@0.1.0 test
-> bash tests/run-all.sh
-
-unit: 369/370 passed (4 skipped)
-integration: 231/235 passed
-e2e: 8/8 passed
-golden: 1/1 passed
-
-─── Mutation test results ──────────────────────────────
-  PASS  atomic-state-mutations.md  (caught: rc=3)
-  PASS  cache.md  (caught: rc=1)
-  PASS  cleanup-worktree-age-guard.md  (caught: rc=2)
-  PASS  cleanup-worktree-dirty-guard.md  (caught: rc=2)
-  PASS  detect-platforms.md  (caught: rc=11)
-  PASS  event-bus-ansi-strip.md  (caught: rc=4)
-  PASS  event-bus.md  (caught: rc=3)
-  INFRA memory.md  (patch failed after retries)
-  PASS  orch.md  (caught: rc=2)
-  PASS  output-destinations.md  (caught: rc=1)
-  PASS  pipeline-contracts.md  (caught: rc=127)
-  PASS  pipeline-dispatch-arg-mutations.md  (caught: rc=4)
-  PASS  pipeline-dispatch-failopen-mutations.md  (caught: rc=7)
-  PASS  pipeline-dispatch-mutations.md  (caught: rc=9)
-  PASS  pipeline-dispatch-prefix-mutations.md  (caught: rc=1)
-  PASS  pipeline-dispatch-selfsource-mutations.md  (caught: rc=1)
-  PASS  pipeline-resolver.md  (caught: rc=1)
-  PASS  rc-semantics.md  (caught: rc=1)
-  PASS  registry-role-resolution.md  (caught: rc=1)
-  PASS  registry-validate-manifest-mutations.md  (caught: rc=1)
-  PASS  resume-recommendation-mutations.md  (caught: rc=1)
-  PASS  router-route-mutations.md  (caught: rc=1)
-  PASS  runner-fail-closed-mutations.md  (caught: rc=127)
-  PASS  scope-redaction-mutations.md  (caught: rc=3)
-mutation-infra: 1 non-fatal (worktree/patch contention; excluded from score — #1184)
-mutation: 23/23 passed
-lint: 1/1 passed
-unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.KrOd8W/tests/unit/readout-gates-test.sh
-
-  read-out gates — lint/coverage/mutation (#1135, ADR-040)
-
-  ✓ [L1] lint pass: rc=0
-  ✗ [L1] lint pass → verdict=pass
-    key .verdict: expected pass, got: skip
-  ✗ [L2] lint fail → verdict=fail
-    key .verdict: expected fail, got: skip
-  ✓ [L3] lint skipped → verdict=skip
-  ✓ [L4] missing lint block → verdict=skip
-  ✓ [L5] absent test-results → verdict=skip
-  ✓ [C1] coverage pass: rc=0
-  ✗ [C1] measured pct>=floor → verdict=pass
-    key .verdict: expected pass, got: skip
-  ✗ [C2] measured pct<floor → verdict=fail
-    key .verdict: expected fail, got: skip
-  ✗ [C3] status below_floor → verdict=fail
-    key .verdict: expected fail, got: skip
-  ✓ [C4] status skipped → verdict=skip
-  ✓ [C5] status error → verdict=skip
-  ✗ [C6] recorded floor wins → verdict=fail
-    key .verdict: expected fail, got: skip
-  ✗ [C6] recorded floor reported
-    key .floor: expected 50, got: 10
-  ✓ [C7] missing coverage block → verdict=skip
-  ✓ [M1] mutation pass: rc=0
-  ✗ [M1] measured N>=floor → verdict=pass
-    key .verdict: expected pass, got: skip
-  ✗ [M2] measured N<floor → verdict=fail
-    key .verdict: expected fail, got: skip
-  ✓ [M3] status skipped → verdict=skip
-  ✗ [M4] default floor 0 → verdict=pass
-    key .verdict: expected pass, got: skip
-  ✓ [M5] missing mutation block → verdict=skip
-  ✓ [M6] absent test-results → verdict=skip
-
-
-  10 of 22 tests failed
-
-  ✗ [L1] lint pass → verdict=pass
-  ✗ [L2] lint fail → verdict=fail
-  ✗ [C1] measured pct>=floor → verdict=pass
-  ✗ [C2] measured pct<floor → verdict=fail
-  ✗ [C3] status below_floor → verdict=fail
-  ✗ [C6] recorded floor wins → verdict=fail
-  ✗ [C6] recorded floor reported
-  ✗ [M1] measured N>=floor → verdict=pass
-  ✗ [M2] measured N<floor → verdict=fail
-  ✗ [M4] default floor 0 → verdict=pass
-
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.KrOd8W/tests/integration/build-test-cycle-targeted-rerun-test.sh
-
-  build_test_cycle: real targeted re-run + full-suite gate (#846)
-
---- banner ---
-(no feedback — first iteration)
-
-
-exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
-health: progress=0 (no progress) - defects=1 → score=-1
-
-(no feedback — first iteration)
-
-
-exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
-health: progress=0 (no progress) - defects=0 → score=0
-targeted pass — running full suite to confirm before converging
-
-(no feedback — first iteration)
-
-
-exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
-health: progress=0 (no progress) - defects=0 → score=0
---- run_modes ---
-iter=1 run_mode=?
-iter=2 run_mode=?
-iter=3 run_mode=?
-  ✗ T1: iter-2 test stage runs run_mode=targeted (red-set engaged)
-    expected: targeted, got: ?
-  ✓ T2: cycle.test.full_suite_gate emitted on targeted convergence
-  ✗ T3: iter-3 (gate) runs full suite
-    expected: full, got: ?
-  ✓ T4: cycle converged (rc=0)
-  ✓ T5: reason=converged
-  ✓ T6: operator line explains the held targeted pass (full-suite confirm)
-
-
-  2 of 6 tests failed
-
-  ✗ T1: iter-2 test stage runs run_mode=targeted (red-set engaged)
-  ✗ T3: iter-3 (gate) runs full suite
-
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.KrOd8W/tests/integration/test-plugin-stage-io-banner-visible-test.sh
-
-  integration: test-plugin stage-io banner visible (#645)
-
-
-  1. capture_stage_io banner from test subshell is visible in test_output
-  ✓ test-results.json written
-  ✗ test_cmd did not produce marker; got: null
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.KrOd8W/tests/integration/test-plugin-tmpdir-cleanup-test.sh
-
-  integration: _test_run_inner tmpdir self-cleanup (#628)
-
-
-  1. missing diff.patch (early-return guard)
-  ✓ missing-diff: artifact still written
-  ✓ missing-diff: no zbuild-test-stage.* leaked in TMPDIR
-
-  2. non-empty diff.patch path (W12-C: diff ignored, tmpdir still cleaned)
-  ✓ non-empty-diff: verdict=pass (diff ignored, test_cmd parsed)
-  ✓ non-empty-diff: no diff_apply_failed reason (reason='')
-  ✓ non-empty-diff: no zbuild-test-stage.* leaked in TMPDIR
-
-  3. success path (empty diff + trivial passing cmd)
-  ✗ success: artifact written
-    expected: 0, got: null
-  ✓ success: no zbuild-test-stage.* leaked in TMPDIR
-
-  4. [SPEC-5] test_cleanup(purge) is the lifecycle-correct rm-rf path
-  ✓ [SPEC-5] test_cleanup(purge) removes the staging directory
-
-
-  1 of 8 tests failed
-
-  ✗ success: artifact written
-
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.KrOd8W/plugins/tool/test/tests/test-test.sh
+unit: FAIL plugins/tool/test/tests/test-test.sh
 
   plugin: test-stage (tool/test — issue #342)
 
@@ -448,12 +283,58 @@ integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-
   ✓ [SPEC-3] disposition=complete when verdict=pass
   ✓ [SPEC-4] disposition=complete when verdict=fail
   ✓ [SPEC-5] disposition=broken on error (missing diff)
-  ✓ [SPEC-6] reason=missing_diff_pa
+  ✓ [SPEC-6] reason=missing_diff_patch emitted on missing diff
+  ✓ [SPEC-7] exit_code lives under data block
+  ✓ [SPEC-7] exit_code absent at top level
+  ✓ [SPEC-8] rc=143 (SIGTERM) → disposition=interrupted
+  ✓ [SPEC-8] rc=137 (SIGKILL) → disposition=interrupted
+  ✓ [SPEC-8] rc=130 (SIGINT) → disposition=interrupted
+  ✓ [SPEC-8] rc=1 (non-signal error) → disposition=broken (not interrupted)
+  ✗ [SPEC-9] _test_write_result does not construct artifact paths from artifact_dir
+    expected: 0, got: 0
+0
+  ✓ [SPEC-10] valid_verdicts covers pass
+  ✓ [SPEC-10] valid_verdicts covers fail
+  ✓ [SPEC-10] valid_verdicts covers error
+
+
+  1 of 78 tests failed
+
+  ✗ [SPEC-9] _test_write_result does not construct artifact paths from artifact_dir
+
+unit: FAIL tests/integration/test-plugin-tmpdir-cleanup-test.sh
+
+  integration: _test_run_inner tmpdir self-cleanup (#628)
+
+
+  1. missing diff.patch (early-return guard)
+  ✓ missing-diff: artifact still written
+  ✓ missing-diff: no zbuild-test-stage.* leaked in TMPDIR
+
+  2. non-empty diff.patch path (W12-C: diff ignored, tmpdir still cleaned)
+  ✓ non-empty-diff: verdict=pass (diff ignored, test_cmd parsed)
+  ✓ non-empty-diff: no diff_apply_failed reason (reason='')
+  ✓ non-empty-diff: no zbuild-test-stage.* leaked in TMPDIR
+
+  3. success path (empty diff + trivial passing cmd)
+  ✗ success: artifact written
+    expected: 0, got: null
+  ✓ success: no zbuild-test-stage.* leaked in TMPDIR
+
+  4. [SPEC-5] test_cleanup(purge) is the lifecycle-correct rm-rf path
+  ✓ [SPEC-5] test_cleanup(purge) removes the staging directory
+
+
+  1 of 8 tests failed
+
+  ✗ success: artifact written
+
+unit: 58/60 passed
 ```
 
 ## Handled elsewhere
 
-- 2 further gate(s) route to `design` and are addressed there, not by build: shape-floor acceptance-gate
+- 1 further gate(s) route to `design` and are addressed there, not by build: acceptance-gate
 These mechanical gates BLOCK convergence — resolve every finding above before emitting LOOP_COMPLETE.
 
 ## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
