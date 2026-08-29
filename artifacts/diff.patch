@@ -1,0 +1,244 @@
+diff --git a/core/pipeline/cycle-orchestrator.sh b/core/pipeline/cycle-orchestrator.sh
+index a413ae8..101e754 100644
+--- a/core/pipeline/cycle-orchestrator.sh
++++ b/core/pipeline/cycle-orchestrator.sh
+@@ -1911,7 +1911,7 @@ _cycle_iter_dispatch() {
+         local _tr="$_state_dir/artifacts/$_dfc_artifact"
+         if [[ -s "$_tr" ]]; then
+             local _failed_n
+-            _failed_n="$(jq -r --arg f "$_dfc_field" '.[$f] // 0' "$_tr" 2>/dev/null || echo 0)"
++            _failed_n="$(jq -r --arg f "$_dfc_field" '(.data[$f] // .[$f]) // 0' "$_tr" 2>/dev/null || echo 0)"
+             if [[ "$_failed_n" =~ ^[0-9]+$ ]]; then
+                 _CYCLE_LAST_FAILURE_COUNT="$_failed_n"
+             fi
+diff --git a/tests/integration/test-plugin-fd-isolation-test.sh b/tests/integration/test-plugin-fd-isolation-test.sh
+index ed2c36a..1dc7c92 100755
+--- a/tests/integration/test-plugin-fd-isolation-test.sh
++++ b/tests/integration/test-plugin-fd-isolation-test.sh
+@@ -80,11 +80,11 @@ _test_run_inner "$EMPTY_PATCH" "$REPO_FIXTURE" "$OUT_JSON" "$ISO_CMD" \
+ # test-results.json::.exit_code. If isolation works, exit_code should be 0.
+ assert_file_exists "test-results.json written" "$OUT_JSON"
+ 
+-actual_exit="$(jq -r '.exit_code' "$OUT_JSON" 2>/dev/null || echo "missing")"
++actual_exit="$(jq -r '.data.exit_code' "$OUT_JSON" 2>/dev/null || echo "missing")"
+ assert_eq "subshell exit_code is 0 (env var unset AND fd 3 closed)" "0" "$actual_exit"
+ 
+ # Belt-and-suspenders: the JSON's captured test_output should contain "OK: isolated"
+-output_snippet="$(jq -r '.test_output' "$OUT_JSON" 2>/dev/null || echo "")"
++output_snippet="$(jq -r '.data.test_output' "$OUT_JSON" 2>/dev/null || echo "")"
+ case "$output_snippet" in
+     *"OK: isolated"*)
+         assert_pass "test_output confirms isolated subshell"
+diff --git a/tests/integration/test-plugin-fresh-shell-test.sh b/tests/integration/test-plugin-fresh-shell-test.sh
+index 9262076..58b9c9a 100755
+--- a/tests/integration/test-plugin-fresh-shell-test.sh
++++ b/tests/integration/test-plugin-fresh-shell-test.sh
+@@ -84,10 +84,10 @@ _test_run_inner "$EMPTY_PATCH" "$REPO_FIXTURE" "$OUT_JSON" "$ISO_CMD" \
+ 
+ assert_file_exists "test-results.json written" "$OUT_JSON"
+ 
+-actual_exit="$(jq -r '.exit_code' "$OUT_JSON" 2>/dev/null || echo "missing")"
++actual_exit="$(jq -r '.data.exit_code' "$OUT_JSON" 2>/dev/null || echo "missing")"
+ assert_eq "subshell exit_code is 0 (all ZBUILD_* unset AND fd 3 closed)" "0" "$actual_exit"
+ 
+-output_snippet="$(jq -r '.test_output' "$OUT_JSON" 2>/dev/null || echo "")"
++output_snippet="$(jq -r '.data.test_output' "$OUT_JSON" 2>/dev/null || echo "")"
+ case "$output_snippet" in
+     *"OK: fresh shell"*)
+         assert_pass "test_output confirms fresh-user-shell isolation"
+diff --git a/tests/integration/test-plugin-runs-against-committed-head-test.sh b/tests/integration/test-plugin-runs-against-committed-head-test.sh
+index 742f04e..2c427fa 100755
+--- a/tests/integration/test-plugin-runs-against-committed-head-test.sh
++++ b/tests/integration/test-plugin-runs-against-committed-head-test.sh
+@@ -106,7 +106,7 @@ assert_eq "verdict=pass from parsed test_cmd output" "pass" \
+ 
+ # Marker present in test_output proves the test_cmd actually executed
+ # (not short-circuited by an apply check).
+-TEST_OUT_A="$(jq -r '.test_output' "$OUT_JSON_A" 2>/dev/null)"
++TEST_OUT_A="$(jq -r '.data.test_output' "$OUT_JSON_A" 2>/dev/null)"
+ if [[ "$TEST_OUT_A" == *"$MARKER"* ]]; then
+     assert_pass "test_cmd executed against rsync'd HEAD (marker present)"
+ else
+@@ -115,7 +115,7 @@ else
+ fi
+ 
+ # exit_code is numeric (no string-label regression — #625 invariant survives).
+-EC_A="$(jq -r '.exit_code' "$OUT_JSON_A" 2>/dev/null)"
++EC_A="$(jq -r '.data.exit_code' "$OUT_JSON_A" 2>/dev/null)"
+ if [[ "$EC_A" =~ ^[0-9]+$ ]]; then
+     assert_pass ".exit_code is numeric ($EC_A)"
+ else
+diff --git a/tests/integration/test-plugin-summary-format-test.sh b/tests/integration/test-plugin-summary-format-test.sh
+index bf480e1..2702633 100644
+--- a/tests/integration/test-plugin-summary-format-test.sh
++++ b/tests/integration/test-plugin-summary-format-test.sh
+@@ -63,9 +63,9 @@ JEST_CMD=$'printf "%s\\n" "Test Suites: 3 failed, 12 passed, 15 total" "Tests:
+ JSON="$(_run_with_cmd jest "$JEST_CMD")"
+ 
+ assert_file_exists "jest: artifact written" "$JSON"
+-assert_eq "jest: verdict=fail" "fail"     "$(jq -r '.verdict' "$JSON")"
+-assert_eq "jest: passed=108"   "108"      "$(jq -r '.passed'  "$JSON")"
+-assert_eq "jest: failed=18"    "18"       "$(jq -r '.failed'  "$JSON")"
++assert_eq "jest: verdict=fail" "fail"     "$(jq -r '.verdict'       "$JSON")"
++assert_eq "jest: passed=108"   "108"      "$(jq -r '.data.passed'   "$JSON")"
++assert_eq "jest: failed=18"    "18"       "$(jq -r '.data.failed'   "$JSON")"
+ 
+ # ───────────────────────────────────────────────────────────────────────────
+ # pytest-shaped output
+@@ -75,9 +75,9 @@ print_test_section "2. pytest-shaped output parsed correctly"
+ PYTEST_CMD=$'printf "%s\\n" "============================= test session starts =============================" "....FFF......." "=========================== 3 failed, 42 passed in 1.23s ==========================="; exit 1'
+ JSON="$(_run_with_cmd pytest "$PYTEST_CMD")"
+ 
+-assert_eq "pytest: verdict=fail" "fail" "$(jq -r '.verdict' "$JSON")"
+-assert_eq "pytest: passed=42"    "42"   "$(jq -r '.passed'  "$JSON")"
+-assert_eq "pytest: failed=3"     "3"    "$(jq -r '.failed'  "$JSON")"
++assert_eq "pytest: verdict=fail" "fail" "$(jq -r '.verdict'       "$JSON")"
++assert_eq "pytest: passed=42"    "42"   "$(jq -r '.data.passed'   "$JSON")"
++assert_eq "pytest: failed=3"     "3"    "$(jq -r '.data.failed'   "$JSON")"
+ 
+ # ───────────────────────────────────────────────────────────────────────────
+ # run-all.sh-shaped output (real shape from scripts/run-tests.sh)
+@@ -87,9 +87,9 @@ print_test_section "3. run-all-shaped output parsed correctly"
+ RUNALL_CMD=$'printf "%s\\n" "unit: FAIL /repo/tests/unit/foo-test.sh" "unit: 108/126 passed" "integration: 75/77 passed" "e2e: 7/7 passed" "golden: 1/1 passed"; exit 1'
+ JSON="$(_run_with_cmd runall "$RUNALL_CMD")"
+ 
+-assert_eq "runall: verdict=fail" "fail" "$(jq -r '.verdict' "$JSON")"
+-assert_eq "runall: passed=191"   "191"  "$(jq -r '.passed'  "$JSON")"
+-assert_eq "runall: failed=1"     "1"    "$(jq -r '.failed'  "$JSON")"
++assert_eq "runall: verdict=fail" "fail" "$(jq -r '.verdict'       "$JSON")"
++assert_eq "runall: passed=191"   "191"  "$(jq -r '.data.passed'   "$JSON")"
++assert_eq "runall: failed=1"     "1"    "$(jq -r '.data.failed'   "$JSON")"
+ 
+ # ───────────────────────────────────────────────────────────────────────────
+ # Fail-safe: gibberish (no pattern matches) → summary_unavailable
+@@ -99,10 +99,13 @@ print_test_section "4. unrecognized output → reason=summary_unavailable + null
+ GIBBERISH_CMD=$'printf "%s\\n" "make: *** [Makefile:42: test] Error 1" "ld: symbol not found"; exit 2'
+ JSON="$(_run_with_cmd gibberish "$GIBBERISH_CMD")"
+ 
+-assert_eq "failsafe: verdict=error"             "error"                "$(jq -r '.verdict' "$JSON")"
+-assert_eq "failsafe: reason=summary_unavailable" "summary_unavailable" "$(jq -r '.reason'  "$JSON")"
+-assert_eq "failsafe: passed is null"            "null"                 "$(jq -r '.passed'  "$JSON")"
+-assert_eq "failsafe: failed is null"            "null"                 "$(jq -r '.failed'  "$JSON")"
++assert_eq "failsafe: verdict=error"             "error"                "$(jq -r '.verdict'       "$JSON")"
++assert_eq "failsafe: reason=summary_unavailable" "summary_unavailable" "$(jq -r '.reason'        "$JSON")"
++assert_eq "failsafe: passed is null"            "null"                 "$(jq -r '.data.passed'   "$JSON")"
++assert_eq "failsafe: failed is null"            "null"                 "$(jq -r '.data.failed'   "$JSON")"
++# [SPEC-11] companion summary-format test uses v2 data.* paths (change from baseline .passed/.failed at top level)
++assert_eq "[SPEC-11] data block present in v2 result (summary-format)" "true" \
++    "$(jq 'has("data")' "$JSON" 2>/dev/null)"
+ 
+ # ───────────────────────────────────────────────────────────────────────────
+ # Empty output (e.g. `true`) — fail-safe SUPERSEDES the old #485 no-op
+diff --git a/tests/unit/test-plugin-result-write-fallback-test.sh b/tests/unit/test-plugin-result-write-fallback-test.sh
+index 91457cd..85b9b72 100755
+--- a/tests/unit/test-plugin-result-write-fallback-test.sh
++++ b/tests/unit/test-plugin-result-write-fallback-test.sh
+@@ -66,11 +66,11 @@ print_test_section "1. whitespace in passed slot triggers fallback"
+ OUT1="$ARTIFACT_DIR/results-ws-passed.json"
+ ERR1="$TEST_TEMP_DIR/ws-passed.stderr"
+ _drive_writer "ws-passed" "$OUT1" "$ERR1" -- \
+-    "$OUT1" "error" 0 "  " 0 "out" "false" "cmd" "bad_passed"
++    "$OUT1" "error" "broken" 0 "  " 0 "out" "false" "cmd" "bad_passed"
+ 
+ # Sanitized passed should be null (not 0 — we don't silently coerce garbage).
+-assert_eq "ws-passed: .passed sanitized to null" "null" \
+-    "$(jq -r '.passed' "$OUT1" 2>/dev/null)"
++assert_eq "ws-passed: .data.passed sanitized to null" "null" \
++    "$(jq -r '.data.passed' "$OUT1" 2>/dev/null)"
+ 
+ # ─── 2. non-numeric `failed` slot (`abc`) ────────────────────────────────────
+ print_test_section "2. non-numeric failed slot triggers sanitizer"
+@@ -78,10 +78,10 @@ print_test_section "2. non-numeric failed slot triggers sanitizer"
+ OUT2="$ARTIFACT_DIR/results-abc-failed.json"
+ ERR2="$TEST_TEMP_DIR/abc-failed.stderr"
+ _drive_writer "abc-failed" "$OUT2" "$ERR2" -- \
+-    "$OUT2" "error" 0 0 "abc" "out" "false" "cmd" "bad_failed"
++    "$OUT2" "error" "broken" 0 0 "abc" "out" "false" "cmd" "bad_failed"
+ 
+-assert_eq "abc-failed: .failed sanitized to null" "null" \
+-    "$(jq -r '.failed' "$OUT2" 2>/dev/null)"
++assert_eq "abc-failed: .data.failed sanitized to null" "null" \
++    "$(jq -r '.data.failed' "$OUT2" 2>/dev/null)"
+ 
+ # ─── 3. control-char test_output ──────────────────────────────────────────────
+ print_test_section "3. control-char test_output is accepted, JSON still valid"
+@@ -90,7 +90,7 @@ OUT3="$ARTIFACT_DIR/results-ctl.json"
+ ERR3="$TEST_TEMP_DIR/ctl.stderr"
+ CTL_OUT=$'\x01\x02bad\x03'
+ _drive_writer "ctl-output" "$OUT3" "$ERR3" -- \
+-    "$OUT3" "error" 1 0 1 "$CTL_OUT" "false" "cmd"
++    "$OUT3" "error" "broken" 1 0 1 "$CTL_OUT" "false" "cmd"
+ 
+ # ─── 4. embedded-quote test_cmd ───────────────────────────────────────────────
+ print_test_section "4. embedded quotes/backticks in test_cmd survive"
+@@ -99,10 +99,10 @@ OUT4="$ARTIFACT_DIR/results-quotes.json"
+ ERR4="$TEST_TEMP_DIR/quotes.stderr"
+ EVIL_CMD='"npm" '\''test'\'' `evil`'
+ _drive_writer "quotes" "$OUT4" "$ERR4" -- \
+-    "$OUT4" "error" 1 0 1 "" "false" "$EVIL_CMD"
++    "$OUT4" "error" "broken" 1 0 1 "" "false" "$EVIL_CMD"
+ 
+-# .test_cmd should round-trip verbatim through jq.
+-GOT_CMD="$(jq -r '.test_cmd' "$OUT4" 2>/dev/null)"
++# .data.test_cmd should round-trip verbatim through jq.
++GOT_CMD="$(jq -r '.data.test_cmd' "$OUT4" 2>/dev/null)"
+ assert_eq "quotes: .test_cmd round-trips" "$EVIL_CMD" "$GOT_CMD"
+ 
+ # ─── 5. non-bool diff_applied slot ────────────────────────────────────────────
+@@ -111,10 +111,10 @@ print_test_section "5. non-bool diff_applied is sanitized to false"
+ OUT5="$ARTIFACT_DIR/results-bad-bool.json"
+ ERR5="$TEST_TEMP_DIR/bad-bool.stderr"
+ _drive_writer "bad-bool" "$OUT5" "$ERR5" -- \
+-    "$OUT5" "error" 0 0 0 "out" "garbage" "cmd"
++    "$OUT5" "error" "broken" 0 0 0 "out" "garbage" "cmd"
+ 
+-assert_eq "bad-bool: .diff_applied sanitized to false" "false" \
+-    "$(jq -r '.diff_applied' "$OUT5" 2>/dev/null)"
++assert_eq "bad-bool: .data.diff_applied sanitized to false" "false" \
++    "$(jq -r '.data.diff_applied' "$OUT5" 2>/dev/null)"
+ 
+ # ─── 6. whitespace exit_code slot ─────────────────────────────────────────────
+ print_test_section "6. whitespace exit_code is sanitized to null"
+@@ -122,10 +122,10 @@ print_test_section "6. whitespace exit_code is sanitized to null"
+ OUT6="$ARTIFACT_DIR/results-ws-ec.json"
+ ERR6="$TEST_TEMP_DIR/ws-ec.stderr"
+ _drive_writer "ws-exit" "$OUT6" "$ERR6" -- \
+-    "$OUT6" "error" "  " 0 0 "" "false" "cmd"
++    "$OUT6" "error" "broken" "  " 0 0 "" "false" "cmd"
+ 
+-assert_eq "ws-exit: .exit_code sanitized to null" "null" \
+-    "$(jq -r '.exit_code' "$OUT6" 2>/dev/null)"
++assert_eq "ws-exit: .data.exit_code sanitized to null" "null" \
++    "$(jq -r '.data.exit_code' "$OUT6" 2>/dev/null)"
+ 
+ # ─── 7. all-good happy path still works (no regression) ──────────────────────
+ print_test_section "7. happy path (no regression)"
+@@ -133,12 +133,15 @@ print_test_section "7. happy path (no regression)"
+ OUT7="$ARTIFACT_DIR/results-happy.json"
+ ERR7="$TEST_TEMP_DIR/happy.stderr"
+ _drive_writer "happy" "$OUT7" "$ERR7" -- \
+-    "$OUT7" "pass" 0 5 0 "ok" "true" "npm test"
++    "$OUT7" "pass" "complete" 0 5 0 "ok" "true" "npm test"
+ 
+ assert_eq "happy: .verdict" "pass" "$(jq -r '.verdict' "$OUT7" 2>/dev/null)"
+-assert_eq "happy: .exit_code" "0" "$(jq -r '.exit_code' "$OUT7" 2>/dev/null)"
+-assert_eq "happy: .passed" "5" "$(jq -r '.passed' "$OUT7" 2>/dev/null)"
+-assert_eq "happy: .diff_applied" "true" "$(jq -r '.diff_applied' "$OUT7" 2>/dev/null)"
++assert_eq "happy: .data.exit_code" "0" "$(jq -r '.data.exit_code' "$OUT7" 2>/dev/null)"
++assert_eq "happy: .data.passed" "5" "$(jq -r '.data.passed' "$OUT7" 2>/dev/null)"
++assert_eq "happy: .data.diff_applied" "true" "$(jq -r '.data.diff_applied' "$OUT7" 2>/dev/null)"
++# [SPEC-11] v2 calling convention wired: result_contract=2 and data block present
++assert_eq "[SPEC-11] result_contract=2 in writer output (v2 calling convention)" "2" \
++    "$(jq -r '.result_contract' "$OUT7" 2>/dev/null)"
+ 
+ # ─── 8. forced jq failure exercises the fallback branch + event emission ────
+ # Copilot P1 on #640: without this case the suite proved sanitization works
+@@ -170,7 +173,7 @@ ERR8="$TEST_TEMP_DIR/forced-fail.stderr"
+ : > "$ZBUILD_EVENTS_JSONL"
+ 
+ PATH="$JQ_SHIM_DIR:$PATH" _test_write_result \
+-    "$OUT8" "error" 0 0 0 "out" "false" "cmd" 2>"$ERR8" || true
++    "$OUT8" "error" "broken" 0 0 0 "out" "false" "cmd" 2>"$ERR8" || true
+ 
+ assert_file_exists "forced-fail: results file written" "$OUT8"
+ 
