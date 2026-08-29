@@ -1,0 +1,14 @@
+{
+  "verdict": "route_design",
+  "gates": {
+    "test": "fail",
+    "shape-floor": "skip",
+    "acceptance-gate": "fail",
+    "secret-scan": "pass"
+  },
+  "failed": [
+    "test",
+    "acceptance-gate"
+  ],
+  "route_target": "design"
+}
