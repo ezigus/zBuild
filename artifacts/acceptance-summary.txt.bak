@@ -1,0 +1,35 @@
+acceptance SPEC violations — SPEC-1/SPEC-2/SPEC-3/SPEC-4/SPEC-5/SPEC-6/SPEC-7/SPEC-8/SPEC-11 tautological (pass at baseline) — re-author the assertions; SPEC-9 tagged as [guard] but the assertion FAILS at the merge-base — a guard must hold there by definition, so either the assertion contradicts its SPEC text or the SPEC is a mislabelled [change]
+NEGCTL FAIL SPEC-1 tautology
+      design : test-results.json emits result_contract=2 at the top level (not schema_version:1)
+      asserts: assert_eq "[SPEC-1] result_contract=2 at top level" "2" "$_spec1_rc"
+NEGCTL FAIL SPEC-2 tautology
+      design : disposition field is present at the top level of test-results.json on every code path
+      asserts: assert_eq "[SPEC-2] disposition field present in v2 result" "true" "$_spec2_has_disp"
+NEGCTL FAIL SPEC-3 tautology
+      design : disposition=complete when verdict is pass
+      asserts: assert_eq "[SPEC-3] disposition=complete when verdict=pass" "complete" "$_spec3_disp"
+NEGCTL FAIL SPEC-4 tautology
+      design : disposition=complete when verdict is fail (test ran to completion)
+      asserts: assert_eq "[SPEC-4] disposition=complete when verdict=fail" "complete" "$_spec4_disp"
+NEGCTL FAIL SPEC-5 tautology
+      design : disposition=broken on the missing-diff-patch error path
+      asserts: assert_eq "[SPEC-5] disposition=broken on error (missing diff)" "broken" "$_spec5_disp"
+NEGCTL FAIL SPEC-6 tautology
+      design : reason=missing_diff_patch is emitted on the missing-diff error path
+      asserts: assert_eq "[SPEC-6] reason=missing_diff_patch emitted on missing diff" "missing_diff_patch" "$_spec6…
+NEGCTL FAIL SPEC-7 tautology
+      design : plugin-specific fields (exit_code, passed, failed, test_output, test_cmd, run_mode) live under data:…
+      asserts: assert_eq "[SPEC-7] exit_code lives under data block" "true" "$_spec7_data_exit"
+NEGCTL FAIL SPEC-8 tautology
+      design : _test_disposition_from_rc maps rc=130/137/143 (signal death) to interrupted, and other non-zero rc t…
+      asserts: assert_eq "[SPEC-8] rc=143 (SIGTERM) → disposition=interrupted" "interrupted" "$_spec8_term"
+NEGCTL FAIL SPEC-9 guard_regressed
+      design : _test_write_result does not construct artifact paths from artifact_dir internally (path is a caller …
+      asserts: assert_eq "[SPEC-9] _test_write_result does not construct artifact paths from artifact_dir" "0" "$_s…
+NEGCTL PASS SPEC-10 guard_spec
+      design : manifest valid_verdicts enumerates every verdict the plugin emits (pass, fail, error)
+      asserts: assert_contains "[SPEC-10] valid_verdicts covers pass" "$_spec10_vv" "- pass"
+NEGCTL FAIL SPEC-11 tautology
+      design : _test_write_result caller signature includes disposition at position 3; companion tests (fallback, s…
+      asserts: assert_eq "[SPEC-11] result_contract=2 in writer output (v2 calling convention)" "2" \
+REACHABILITY EXEMPT none
