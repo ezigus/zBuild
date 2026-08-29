@@ -33,6 +33,7 @@ unit: FAIL tests/integration/test-plugin-tmpdir-cleanup-test.sh
 
   ✗ success: artifact written
 
+skip non-test: tests/lib/test-harness.sh
 unit: 1/2 passed
 ```
 
