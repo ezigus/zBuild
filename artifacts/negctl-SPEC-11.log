@@ -1,0 +1,204 @@
+### SPEC-11 baseline tests/unit/test-plugin-result-write-fallback-test.sh
+
+[38;2;0;212;255m[1m  test-plugin _test_write_result defensive fallback (#626)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m1. whitespace in passed slot triggers fallback[0m
+  [38;2;74;222;128m✓[0m ws-passed: results file written
+  [38;2;74;222;128m✓[0m ws-passed: results file is valid JSON
+  [38;2;74;222;128m✓[0m ws-passed: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m ws-passed: .data.passed sanitized to null
+
+  [38;2;0;212;255m2. non-numeric failed slot triggers sanitizer[0m
+  [38;2;74;222;128m✓[0m abc-failed: results file written
+  [38;2;74;222;128m✓[0m abc-failed: results file is valid JSON
+  [38;2;74;222;128m✓[0m abc-failed: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m abc-failed: .data.failed sanitized to null
+
+  [38;2;0;212;255m3. control-char test_output is accepted, JSON still valid[0m
+  [38;2;74;222;128m✓[0m ctl-output: results file written
+  [38;2;74;222;128m✓[0m ctl-output: results file is valid JSON
+  [38;2;74;222;128m✓[0m ctl-output: no jq error leaked to stderr
+
+  [38;2;0;212;255m4. embedded quotes/backticks in test_cmd survive[0m
+  [38;2;74;222;128m✓[0m quotes: results file written
+  [38;2;74;222;128m✓[0m quotes: results file is valid JSON
+  [38;2;74;222;128m✓[0m quotes: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m quotes: .test_cmd round-trips
+
+  [38;2;0;212;255m5. non-bool diff_applied is sanitized to false[0m
+  [38;2;74;222;128m✓[0m bad-bool: results file written
+  [38;2;74;222;128m✓[0m bad-bool: results file is valid JSON
+  [38;2;74;222;128m✓[0m bad-bool: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m bad-bool: .data.diff_applied sanitized to false
+
+  [38;2;0;212;255m6. whitespace exit_code is sanitized to null[0m
+  [38;2;74;222;128m✓[0m ws-exit: results file written
+  [38;2;74;222;128m✓[0m ws-exit: results file is valid JSON
+  [38;2;74;222;128m✓[0m ws-exit: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m ws-exit: .data.exit_code sanitized to null
+
+  [38;2;0;212;255m7. happy path (no regression)[0m
+  [38;2;74;222;128m✓[0m happy: results file written
+  [38;2;74;222;128m✓[0m happy: results file is valid JSON
+  [38;2;74;222;128m✓[0m happy: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m happy: .verdict
+  [38;2;74;222;128m✓[0m happy: .data.exit_code
+  [38;2;74;222;128m✓[0m happy: .data.passed
+  [38;2;74;222;128m✓[0m happy: .data.diff_applied
+  [38;2;74;222;128m✓[0m [SPEC-11] result_contract=2 in writer output (v2 calling convention)
+
+  [38;2;0;212;255m8. forced jq failure: fallback JSON + event emitted[0m
+  [38;2;74;222;128m✓[0m forced-fail: results file written
+  [38;2;74;222;128m✓[0m forced-fail: fallback JSON is parseable
+  [38;2;74;222;128m✓[0m forced-fail: .reason=result_write_failed
+  [38;2;74;222;128m✓[0m forced-fail: .verdict=error
+  [38;2;74;222;128m✓[0m forced-fail: test.result_write.fallback event emitted
+
+  [38;2;0;212;255m9. test.result_write.fallback declared by the test plugin's manifest[0m
+  [38;2;74;222;128m✓[0m schema: test.result_write.fallback declared in provides.events
+  [38;2;74;222;128m✓[0m schema: test.result_write.fallback is in the composed known set
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 38 tests passed[0m
+
+### SPEC-11 head tests/unit/test-plugin-result-write-fallback-test.sh
+
+[38;2;0;212;255m[1m  test-plugin _test_write_result defensive fallback (#626)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m1. whitespace in passed slot triggers fallback[0m
+  [38;2;74;222;128m✓[0m ws-passed: results file written
+  [38;2;74;222;128m✓[0m ws-passed: results file is valid JSON
+  [38;2;74;222;128m✓[0m ws-passed: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m ws-passed: .data.passed sanitized to null
+
+  [38;2;0;212;255m2. non-numeric failed slot triggers sanitizer[0m
+  [38;2;74;222;128m✓[0m abc-failed: results file written
+  [38;2;74;222;128m✓[0m abc-failed: results file is valid JSON
+  [38;2;74;222;128m✓[0m abc-failed: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m abc-failed: .data.failed sanitized to null
+
+  [38;2;0;212;255m3. control-char test_output is accepted, JSON still valid[0m
+  [38;2;74;222;128m✓[0m ctl-output: results file written
+  [38;2;74;222;128m✓[0m ctl-output: results file is valid JSON
+  [38;2;74;222;128m✓[0m ctl-output: no jq error leaked to stderr
+
+  [38;2;0;212;255m4. embedded quotes/backticks in test_cmd survive[0m
+  [38;2;74;222;128m✓[0m quotes: results file written
+  [38;2;74;222;128m✓[0m quotes: results file is valid JSON
+  [38;2;74;222;128m✓[0m quotes: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m quotes: .test_cmd round-trips
+
+  [38;2;0;212;255m5. non-bool diff_applied is sanitized to false[0m
+  [38;2;74;222;128m✓[0m bad-bool: results file written
+  [38;2;74;222;128m✓[0m bad-bool: results file is valid JSON
+  [38;2;74;222;128m✓[0m bad-bool: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m bad-bool: .data.diff_applied sanitized to false
+
+  [38;2;0;212;255m6. whitespace exit_code is sanitized to null[0m
+  [38;2;74;222;128m✓[0m ws-exit: results file written
+  [38;2;74;222;128m✓[0m ws-exit: results file is valid JSON
+  [38;2;74;222;128m✓[0m ws-exit: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m ws-exit: .data.exit_code sanitized to null
+
+  [38;2;0;212;255m7. happy path (no regression)[0m
+  [38;2;74;222;128m✓[0m happy: results file written
+  [38;2;74;222;128m✓[0m happy: results file is valid JSON
+  [38;2;74;222;128m✓[0m happy: no jq error leaked to stderr
+  [38;2;74;222;128m✓[0m happy: .verdict
+  [38;2;74;222;128m✓[0m happy: .data.exit_code
+  [38;2;74;222;128m✓[0m happy: .data.passed
+  [38;2;74;222;128m✓[0m happy: .data.diff_applied
+  [38;2;74;222;128m✓[0m [SPEC-11] result_contract=2 in writer output (v2 calling convention)
+
+  [38;2;0;212;255m8. forced jq failure: fallback JSON + event emitted[0m
+  [38;2;74;222;128m✓[0m forced-fail: results file written
+  [38;2;74;222;128m✓[0m forced-fail: fallback JSON is parseable
+  [38;2;74;222;128m✓[0m forced-fail: .reason=result_write_failed
+  [38;2;74;222;128m✓[0m forced-fail: .verdict=error
+  [38;2;74;222;128m✓[0m forced-fail: test.result_write.fallback event emitted
+
+  [38;2;0;212;255m9. test.result_write.fallback declared by the test plugin's manifest[0m
+  [38;2;74;222;128m✓[0m schema: test.result_write.fallback declared in provides.events
+  [38;2;74;222;128m✓[0m schema: test.result_write.fallback is in the composed known set
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 38 tests passed[0m
+
+### SPEC-11 baseline tests/integration/test-plugin-summary-format-test.sh
+
+[38;2;0;212;255m[1m  integration: test-plugin parser → test-results.json (#584)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m1. jest-shaped output parsed correctly[0m
+  [38;2;74;222;128m✓[0m jest: artifact written
+  [38;2;74;222;128m✓[0m jest: verdict=fail
+  [38;2;74;222;128m✓[0m jest: passed=108
+  [38;2;74;222;128m✓[0m jest: failed=18
+
+  [38;2;0;212;255m2. pytest-shaped output parsed correctly[0m
+  [38;2;74;222;128m✓[0m pytest: verdict=fail
+  [38;2;74;222;128m✓[0m pytest: passed=42
+  [38;2;74;222;128m✓[0m pytest: failed=3
+
+  [38;2;0;212;255m3. run-all-shaped output parsed correctly[0m
+  [38;2;74;222;128m✓[0m runall: verdict=fail
+  [38;2;74;222;128m✓[0m runall: passed=191
+  [38;2;74;222;128m✓[0m runall: failed=1
+
+  [38;2;0;212;255m4. unrecognized output → reason=summary_unavailable + null counts[0m
+  [38;2;74;222;128m✓[0m failsafe: verdict=error
+  [38;2;74;222;128m✓[0m failsafe: reason=summary_unavailable
+  [38;2;74;222;128m✓[0m failsafe: passed is null
+  [38;2;74;222;128m✓[0m failsafe: failed is null
+  [38;2;74;222;128m✓[0m [SPEC-11] data block present in v2 result (summary-format)
+
+  [38;2;0;212;255m5. empty output (no-op cmd) → verdict=error[0m
+  [38;2;74;222;128m✓[0m noop: verdict=error
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 16 tests passed[0m
+
+### SPEC-11 head tests/integration/test-plugin-summary-format-test.sh
+
+[38;2;0;212;255m[1m  integration: test-plugin parser → test-results.json (#584)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m1. jest-shaped output parsed correctly[0m
+  [38;2;74;222;128m✓[0m jest: artifact written
+  [38;2;74;222;128m✓[0m jest: verdict=fail
+  [38;2;74;222;128m✓[0m jest: passed=108
+  [38;2;74;222;128m✓[0m jest: failed=18
+
+  [38;2;0;212;255m2. pytest-shaped output parsed correctly[0m
+  [38;2;74;222;128m✓[0m pytest: verdict=fail
+  [38;2;74;222;128m✓[0m pytest: passed=42
+  [38;2;74;222;128m✓[0m pytest: failed=3
+
+  [38;2;0;212;255m3. run-all-shaped output parsed correctly[0m
+  [38;2;74;222;128m✓[0m runall: verdict=fail
+  [38;2;74;222;128m✓[0m runall: passed=191
+  [38;2;74;222;128m✓[0m runall: failed=1
+
+  [38;2;0;212;255m4. unrecognized output → reason=summary_unavailable + null counts[0m
+  [38;2;74;222;128m✓[0m failsafe: verdict=error
+  [38;2;74;222;128m✓[0m failsafe: reason=summary_unavailable
+  [38;2;74;222;128m✓[0m failsafe: passed is null
+  [38;2;74;222;128m✓[0m failsafe: failed is null
+  [38;2;74;222;128m✓[0m [SPEC-11] data block present in v2 result (summary-format)
+
+  [38;2;0;212;255m5. empty output (no-op cmd) → verdict=error[0m
+  [38;2;74;222;128m✓[0m noop: verdict=error
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 16 tests passed[0m
+
