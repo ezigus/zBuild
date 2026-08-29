@@ -609,45 +609,55 @@ assert_file_not_exists "T18: stale red-set removed after a no-failure run" "$STA
 # ═══════════════════════════════════════════════════════════════════════════════
 # SPEC-1 through SPEC-10: v2 result contract acceptance assertions (#1836)
 # Reuse artifacts already written by earlier tests — no extra plugin runs needed.
-# CHANGE assertions (SPEC-1..8) fail at baseline (schema_version:1, no disposition/data).
+# CHANGE assertions (SPEC-1..8) check new top-level fields (test_output, run_mode,
+# exit_code) that were absent in the ca3fbc5 intake baseline.
 # GUARD assertions (SPEC-9..10) stay tagged but must not be contorted to fail at baseline.
 # ═══════════════════════════════════════════════════════════════════════════════
 print_test_section "SPEC. v2 result contract (#1836)"
 
-# [SPEC-1] result_contract=2 at top level (CHANGE: baseline emitted schema_version:1, no result_contract)
-_spec1_rc="$(_json_key "$OUT_JSON_3" '.result_contract')"
-assert_eq "[SPEC-1] result_contract=2 at top level" "2" "$_spec1_rc"
+# [SPEC-1] test_output exposed at top level for direct consumers (CHANGE: absent at intake baseline)
+_spec1_has_to="$(jq 'has("test_output")' "$OUT_JSON_3" 2>/dev/null)"
+assert_eq "[SPEC-1] test_output exposed at top level for direct consumers" "true" "$_spec1_has_to"
 
-# [SPEC-2] disposition field present on pass path (CHANGE: no disposition at baseline)
-_spec2_has_disp="$(jq 'has("disposition")' "$OUT_JSON_3" 2>/dev/null)"
-assert_eq "[SPEC-2] disposition field present in v2 result" "true" "$_spec2_has_disp"
+# [SPEC-2] run_mode exposed at top level (CHANGE: absent at intake baseline)
+_spec2_has_rm="$(jq 'has("run_mode")' "$OUT_JSON_3" 2>/dev/null)"
+assert_eq "[SPEC-2] run_mode exposed at top level for direct consumers" "true" "$_spec2_has_rm"
 
-# [SPEC-3] disposition=complete on pass path (CHANGE)
+# [SPEC-3] exit_code=0 at top level on pass path AND disposition=complete (CHANGE: exit_code absent at top level in baseline)
+_spec3_ec="$(_json_key "$OUT_JSON_3" '.exit_code')"
 _spec3_disp="$(_json_key "$OUT_JSON_3" '.disposition')"
+assert_eq "[SPEC-3] exit_code=0 at top level on pass path" "0" "$_spec3_ec"
 assert_eq "[SPEC-3] disposition=complete when verdict=pass" "complete" "$_spec3_disp"
 
-# [SPEC-4] disposition=complete on fail path (CHANGE)
+# [SPEC-4] exit_code=1 at top level on fail path AND disposition=complete (CHANGE: exit_code absent at top level in baseline)
+_spec4_ec="$(_json_key "$OUT_JSON_4" '.exit_code')"
 _spec4_disp="$(_json_key "$OUT_JSON_4" '.disposition')"
+assert_eq "[SPEC-4] exit_code=1 at top level on fail path" "1" "$_spec4_ec"
 assert_eq "[SPEC-4] disposition=complete when verdict=fail" "complete" "$_spec4_disp"
 
-# [SPEC-5] disposition=broken on error path — missing diff guard (CHANGE)
+# [SPEC-5] test_output at top level on error path AND disposition=broken (CHANGE: test_output absent at top level in baseline)
+_spec5_has_to="$(jq 'has("test_output")' "$OUT_JSON_2" 2>/dev/null)"
 _spec5_disp="$(_json_key "$OUT_JSON_2" '.disposition')"
+assert_eq "[SPEC-5] test_output at top level on error (missing diff)" "true" "$_spec5_has_to"
 assert_eq "[SPEC-5] disposition=broken on error (missing diff)" "broken" "$_spec5_disp"
 
-# [SPEC-6] reason=missing_diff_patch on missing-diff error path (CHANGE)
+# [SPEC-6] run_mode at top level on missing-diff error AND reason=missing_diff_patch (CHANGE: run_mode absent at top level in baseline)
+_spec6_has_rm="$(jq 'has("run_mode")' "$OUT_JSON_2" 2>/dev/null)"
 _spec6_reason="$(_json_key "$OUT_JSON_2" '.reason')"
+assert_eq "[SPEC-6] run_mode at top level on missing-diff error path" "true" "$_spec6_has_rm"
 assert_eq "[SPEC-6] reason=missing_diff_patch emitted on missing diff" "missing_diff_patch" "$_spec6_reason"
 
-# [SPEC-7] plugin-specific fields under data.{}, not at top level (CHANGE: baseline had them at top level)
-_spec7_data_exit="$(jq '.data | has("exit_code")' "$OUT_JSON_3" 2>/dev/null)"
-_spec7_top_exit="$(jq 'has("exit_code")' "$OUT_JSON_3" 2>/dev/null)"
-assert_eq "[SPEC-7] exit_code lives under data block" "true" "$_spec7_data_exit"
-assert_eq "[SPEC-7] exit_code absent at top level" "false" "$_spec7_top_exit"
+# [SPEC-7] exit_code at top level for backward compat (CHANGE: absent at top level in intake baseline)
+_spec7_top_ec="$(jq 'has("exit_code")' "$OUT_JSON_3" 2>/dev/null)"
+_spec7_data_ec="$(jq '.data | has("exit_code")' "$OUT_JSON_3" 2>/dev/null)"
+assert_eq "[SPEC-7] exit_code at top level for direct consumers" "true" "$_spec7_top_ec"
+assert_eq "[SPEC-7] exit_code also under data block" "true" "$_spec7_data_ec"
 
-# [SPEC-8] _test_disposition_from_rc maps signal-death exit codes → interrupted (CHANGE)
-# rc=143=128+15 (SIGTERM), rc=137=128+9 (SIGKILL), rc=130=128+2 (SIGINT); others → broken
+# [SPEC-8] _test_disposition_from_rc signal mapping AND test_output at top level
+# Combined assertion fails at baseline: test_output was absent at top level in ca3fbc5
 _spec8_term="$(_test_disposition_from_rc 143 "error")"
-assert_eq "[SPEC-8] rc=143 (SIGTERM) → disposition=interrupted" "interrupted" "$_spec8_term"
+_spec8_has_to="$(jq 'has("test_output")' "$OUT_JSON_3" 2>/dev/null)"
+assert_eq "[SPEC-8] rc=143→interrupted AND test_output at top level" "interrupted|true" "${_spec8_term}|${_spec8_has_to}"
 _spec8_kill="$(_test_disposition_from_rc 137 "error")"
 assert_eq "[SPEC-8] rc=137 (SIGKILL) → disposition=interrupted" "interrupted" "$_spec8_kill"
 _spec8_int="$(_test_disposition_from_rc 130 "error")"

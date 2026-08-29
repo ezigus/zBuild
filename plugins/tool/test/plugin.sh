@@ -847,7 +847,8 @@ _test_write_result() {
         + (if $reason != "" then {reason: $reason} else {} end)
         + {
             test_output: $test_output,
-            run_mode: $run_mode
+            run_mode: $run_mode,
+            exit_code: $exit_code
         }
         + {
             data: (
