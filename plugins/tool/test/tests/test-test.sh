@@ -658,7 +658,7 @@ assert_eq "[SPEC-8] rc=1 (non-signal error) → disposition=broken (not interrup
 # [SPEC-9] _test_write_result receives path as arg — does not construct artifact paths internally (GUARD)
 # Drop trailing '$' anchor so pattern matches '_test_write_result() {' (line has ' {' suffix).
 _spec9_fn="$(awk '/^_test_write_result\(\)/,/^\}/' "$PLUGIN_DIR/plugin.sh" 2>/dev/null)"
-_spec9_artdir="$(printf '%s\n' "$_spec9_fn" | grep -c 'artifact_dir' || echo 0)"
+_spec9_artdir="$(printf '%s\n' "$_spec9_fn" | grep -c 'artifact_dir' || true)"
 assert_eq "[SPEC-9] _test_write_result does not construct artifact paths from artifact_dir" "0" "$_spec9_artdir"
 
 # [SPEC-10] manifest valid_verdicts covers every verdict the plugin emits (GUARD)
