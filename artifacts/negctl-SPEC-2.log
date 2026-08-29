@@ -103,15 +103,22 @@
   [38;2;74;222;128m✓[0m T18: stale red-set removed after a no-failure run
 
   [38;2;0;212;255mSPEC. v2 result contract (#1836)[0m
-  [38;2;74;222;128m✓[0m [SPEC-1] result_contract=2 at top level
-  [38;2;74;222;128m✓[0m [SPEC-2] disposition field present in v2 result
+  [38;2;74;222;128m✓[0m [SPEC-1] test_output exposed at top level for direct consumers
+  [38;2;74;222;128m✓[0m [SPEC-2] run_mode exposed at top level for direct consumers
+  [38;2;248;113;113m✗[0m [SPEC-3] exit_code=0 at top level on pass path
+    [2mexpected: 0, got: null[0m
   [38;2;74;222;128m✓[0m [SPEC-3] disposition=complete when verdict=pass
+  [38;2;248;113;113m✗[0m [SPEC-4] exit_code=1 at top level on fail path
+    [2mexpected: 1, got: null[0m
   [38;2;74;222;128m✓[0m [SPEC-4] disposition=complete when verdict=fail
+  [38;2;74;222;128m✓[0m [SPEC-5] test_output at top level on error (missing diff)
   [38;2;74;222;128m✓[0m [SPEC-5] disposition=broken on error (missing diff)
+  [38;2;74;222;128m✓[0m [SPEC-6] run_mode at top level on missing-diff error path
   [38;2;74;222;128m✓[0m [SPEC-6] reason=missing_diff_patch emitted on missing diff
-  [38;2;74;222;128m✓[0m [SPEC-7] exit_code lives under data block
-  [38;2;74;222;128m✓[0m [SPEC-7] exit_code absent at top level
-  [38;2;74;222;128m✓[0m [SPEC-8] rc=143 (SIGTERM) → disposition=interrupted
+  [38;2;248;113;113m✗[0m [SPEC-7] exit_code at top level for direct consumers
+    [2mexpected: true, got: false[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] exit_code also under data block
+  [38;2;74;222;128m✓[0m [SPEC-8] rc=143→interrupted AND test_output at top level
   [38;2;74;222;128m✓[0m [SPEC-8] rc=137 (SIGKILL) → disposition=interrupted
   [38;2;74;222;128m✓[0m [SPEC-8] rc=130 (SIGINT) → disposition=interrupted
   [38;2;74;222;128m✓[0m [SPEC-8] rc=1 (non-signal error) → disposition=broken (not interrupted)
@@ -122,7 +129,11 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 78 tests passed[0m
+  [38;2;248;113;113m[1m3 of 82 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-3] exit_code=0 at top level on pass path
+  [38;2;248;113;113m✗[0m [SPEC-4] exit_code=1 at top level on fail path
+  [38;2;248;113;113m✗[0m [SPEC-7] exit_code at top level for direct consumers
 
 ### SPEC-2 head plugins/tool/test/tests/test-test.sh
 
@@ -179,7 +190,7 @@
   [38;2;74;222;128m✓[0m input banner found in stream
   [38;2;74;222;128m✓[0m output banner found in stream
   [38;2;74;222;128m✓[0m input banner line precedes output banner line
-  [38;2;74;222;128m✓[0m wall delta >= 1s proves bracketing window (delta=2s)
+  [38;2;74;222;128m✓[0m wall delta >= 1s proves bracketing window (delta=1s)
 
   [38;2;0;212;255m11. #497 subprocess-boundary integration on fd 3[0m
   [38;2;74;222;128m✓[0m driver subprocess exits 0 (exit 0)
@@ -229,15 +240,19 @@
   [38;2;74;222;128m✓[0m T18: stale red-set removed after a no-failure run
 
   [38;2;0;212;255mSPEC. v2 result contract (#1836)[0m
-  [38;2;74;222;128m✓[0m [SPEC-1] result_contract=2 at top level
-  [38;2;74;222;128m✓[0m [SPEC-2] disposition field present in v2 result
+  [38;2;74;222;128m✓[0m [SPEC-1] test_output exposed at top level for direct consumers
+  [38;2;74;222;128m✓[0m [SPEC-2] run_mode exposed at top level for direct consumers
+  [38;2;74;222;128m✓[0m [SPEC-3] exit_code=0 at top level on pass path
   [38;2;74;222;128m✓[0m [SPEC-3] disposition=complete when verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-4] exit_code=1 at top level on fail path
   [38;2;74;222;128m✓[0m [SPEC-4] disposition=complete when verdict=fail
+  [38;2;74;222;128m✓[0m [SPEC-5] test_output at top level on error (missing diff)
   [38;2;74;222;128m✓[0m [SPEC-5] disposition=broken on error (missing diff)
+  [38;2;74;222;128m✓[0m [SPEC-6] run_mode at top level on missing-diff error path
   [38;2;74;222;128m✓[0m [SPEC-6] reason=missing_diff_patch emitted on missing diff
-  [38;2;74;222;128m✓[0m [SPEC-7] exit_code lives under data block
-  [38;2;74;222;128m✓[0m [SPEC-7] exit_code absent at top level
-  [38;2;74;222;128m✓[0m [SPEC-8] rc=143 (SIGTERM) → disposition=interrupted
+  [38;2;74;222;128m✓[0m [SPEC-7] exit_code at top level for direct consumers
+  [38;2;74;222;128m✓[0m [SPEC-7] exit_code also under data block
+  [38;2;74;222;128m✓[0m [SPEC-8] rc=143→interrupted AND test_output at top level
   [38;2;74;222;128m✓[0m [SPEC-8] rc=137 (SIGKILL) → disposition=interrupted
   [38;2;74;222;128m✓[0m [SPEC-8] rc=130 (SIGINT) → disposition=interrupted
   [38;2;74;222;128m✓[0m [SPEC-8] rc=1 (non-signal error) → disposition=broken (not interrupted)
@@ -248,5 +263,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 78 tests passed[0m
+  [38;2;74;222;128m[1mAll 82 tests passed[0m
 

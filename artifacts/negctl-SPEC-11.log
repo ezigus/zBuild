@@ -47,7 +47,7 @@
   [38;2;74;222;128m✓[0m happy: .data.exit_code
   [38;2;74;222;128m✓[0m happy: .data.passed
   [38;2;74;222;128m✓[0m happy: .data.diff_applied
-  [38;2;74;222;128m✓[0m [SPEC-11] result_contract=2 in writer output (v2 calling convention)
+  [38;2;74;222;128m✓[0m [SPEC-11] run_mode=full at top level in v2 writer output
 
   [38;2;0;212;255m8. forced jq failure: fallback JSON + event emitted[0m
   [38;2;74;222;128m✓[0m forced-fail: results file written
@@ -113,7 +113,7 @@
   [38;2;74;222;128m✓[0m happy: .data.exit_code
   [38;2;74;222;128m✓[0m happy: .data.passed
   [38;2;74;222;128m✓[0m happy: .data.diff_applied
-  [38;2;74;222;128m✓[0m [SPEC-11] result_contract=2 in writer output (v2 calling convention)
+  [38;2;74;222;128m✓[0m [SPEC-11] run_mode=full at top level in v2 writer output
 
   [38;2;0;212;255m8. forced jq failure: fallback JSON + event emitted[0m
   [38;2;74;222;128m✓[0m forced-fail: results file written
@@ -157,7 +157,7 @@
   [38;2;74;222;128m✓[0m failsafe: reason=summary_unavailable
   [38;2;74;222;128m✓[0m failsafe: passed is null
   [38;2;74;222;128m✓[0m failsafe: failed is null
-  [38;2;74;222;128m✓[0m [SPEC-11] data block present in v2 result (summary-format)
+  [38;2;74;222;128m✓[0m [SPEC-11] test_output at top level in v2 result (summary-format)
 
   [38;2;0;212;255m5. empty output (no-op cmd) → verdict=error[0m
   [38;2;74;222;128m✓[0m noop: verdict=error
@@ -193,7 +193,7 @@
   [38;2;74;222;128m✓[0m failsafe: reason=summary_unavailable
   [38;2;74;222;128m✓[0m failsafe: passed is null
   [38;2;74;222;128m✓[0m failsafe: failed is null
-  [38;2;74;222;128m✓[0m [SPEC-11] data block present in v2 result (summary-format)
+  [38;2;74;222;128m✓[0m [SPEC-11] test_output at top level in v2 result (summary-format)
 
   [38;2;0;212;255m5. empty output (no-op cmd) → verdict=error[0m
   [38;2;74;222;128m✓[0m noop: verdict=error
