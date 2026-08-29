@@ -1,0 +1,1 @@
+Both prior gaps are confirmed still present and unresolved. The gate-aggregator plugin uses a `// .test_output` fallback so `gate-aggregator-test.sh` is not broken. No new gaps found beyond the two already identified.
