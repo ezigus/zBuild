@@ -115,18 +115,14 @@
   [38;2;74;222;128m✓[0m [SPEC-8] rc=137 (SIGKILL) → disposition=interrupted
   [38;2;74;222;128m✓[0m [SPEC-8] rc=130 (SIGINT) → disposition=interrupted
   [38;2;74;222;128m✓[0m [SPEC-8] rc=1 (non-signal error) → disposition=broken (not interrupted)
-  [38;2;248;113;113m✗[0m [SPEC-9] _test_write_result does not construct artifact paths from artifact_dir
-    [2mexpected: 0, got: 0
-0[0m
+  [38;2;74;222;128m✓[0m [SPEC-9] _test_write_result does not construct artifact paths from artifact_dir
   [38;2;74;222;128m✓[0m [SPEC-10] valid_verdicts covers pass
   [38;2;74;222;128m✓[0m [SPEC-10] valid_verdicts covers fail
   [38;2;74;222;128m✓[0m [SPEC-10] valid_verdicts covers error
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 78 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [SPEC-9] _test_write_result does not construct artifact paths from artifact_dir
+  [38;2;74;222;128m[1mAll 78 tests passed[0m
 
 ### SPEC-4 head plugins/tool/test/tests/test-test.sh
 
@@ -183,7 +179,7 @@
   [38;2;74;222;128m✓[0m input banner found in stream
   [38;2;74;222;128m✓[0m output banner found in stream
   [38;2;74;222;128m✓[0m input banner line precedes output banner line
-  [38;2;74;222;128m✓[0m wall delta >= 1s proves bracketing window (delta=1s)
+  [38;2;74;222;128m✓[0m wall delta >= 1s proves bracketing window (delta=2s)
 
   [38;2;0;212;255m11. #497 subprocess-boundary integration on fd 3[0m
   [38;2;74;222;128m✓[0m driver subprocess exits 0 (exit 0)
@@ -245,16 +241,12 @@
   [38;2;74;222;128m✓[0m [SPEC-8] rc=137 (SIGKILL) → disposition=interrupted
   [38;2;74;222;128m✓[0m [SPEC-8] rc=130 (SIGINT) → disposition=interrupted
   [38;2;74;222;128m✓[0m [SPEC-8] rc=1 (non-signal error) → disposition=broken (not interrupted)
-  [38;2;248;113;113m✗[0m [SPEC-9] _test_write_result does not construct artifact paths from artifact_dir
-    [2mexpected: 0, got: 0
-0[0m
+  [38;2;74;222;128m✓[0m [SPEC-9] _test_write_result does not construct artifact paths from artifact_dir
   [38;2;74;222;128m✓[0m [SPEC-10] valid_verdicts covers pass
   [38;2;74;222;128m✓[0m [SPEC-10] valid_verdicts covers fail
   [38;2;74;222;128m✓[0m [SPEC-10] valid_verdicts covers error
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 78 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [SPEC-9] _test_write_result does not construct artifact paths from artifact_dir
+  [38;2;74;222;128m[1mAll 78 tests passed[0m
 

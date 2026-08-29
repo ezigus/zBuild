@@ -115,18 +115,14 @@
   [38;2;74;222;128m✓[0m [SPEC-8] rc=137 (SIGKILL) → disposition=interrupted
   [38;2;74;222;128m✓[0m [SPEC-8] rc=130 (SIGINT) → disposition=interrupted
   [38;2;74;222;128m✓[0m [SPEC-8] rc=1 (non-signal error) → disposition=broken (not interrupted)
-  [38;2;248;113;113m✗[0m [SPEC-9] _test_write_result does not construct artifact paths from artifact_dir
-    [2mexpected: 0, got: 0
-0[0m
+  [38;2;74;222;128m✓[0m [SPEC-9] _test_write_result does not construct artifact paths from artifact_dir
   [38;2;74;222;128m✓[0m [SPEC-10] valid_verdicts covers pass
   [38;2;74;222;128m✓[0m [SPEC-10] valid_verdicts covers fail
   [38;2;74;222;128m✓[0m [SPEC-10] valid_verdicts covers error
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 78 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [SPEC-9] _test_write_result does not construct artifact paths from artifact_dir
+  [38;2;74;222;128m[1mAll 78 tests passed[0m
 
 ### SPEC-8 head plugins/tool/test/tests/test-test.sh
 
@@ -245,16 +241,12 @@
   [38;2;74;222;128m✓[0m [SPEC-8] rc=137 (SIGKILL) → disposition=interrupted
   [38;2;74;222;128m✓[0m [SPEC-8] rc=130 (SIGINT) → disposition=interrupted
   [38;2;74;222;128m✓[0m [SPEC-8] rc=1 (non-signal error) → disposition=broken (not interrupted)
-  [38;2;248;113;113m✗[0m [SPEC-9] _test_write_result does not construct artifact paths from artifact_dir
-    [2mexpected: 0, got: 0
-0[0m
+  [38;2;74;222;128m✓[0m [SPEC-9] _test_write_result does not construct artifact paths from artifact_dir
   [38;2;74;222;128m✓[0m [SPEC-10] valid_verdicts covers pass
   [38;2;74;222;128m✓[0m [SPEC-10] valid_verdicts covers fail
   [38;2;74;222;128m✓[0m [SPEC-10] valid_verdicts covers error
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 78 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [SPEC-9] _test_write_result does not construct artifact paths from artifact_dir
+  [38;2;74;222;128m[1mAll 78 tests passed[0m
 
