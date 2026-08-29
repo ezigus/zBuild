@@ -198,8 +198,23 @@ wait "$RUNNER_PID" 2>/dev/null || true
 for _ in $(seq 1 50); do grep -q ':release' "$RELEASE_MARKER" 2>/dev/null && break; sleep 0.1; done
 _assert_released "SPEC-4"
 
-# ── SPEC-5: external timeout ─────────────────────────────────────────────────
-print_test_section "SPEC-5: exit path = external timeout"
+# ── SPEC-5: external hard kill (what an overrunning `timeout` produces) ──────
+# ADR-053 §2: assert on an observable event, never a wall-clock budget.
+#
+# This case used to run the whole runner under `timeout 6`. Those 6 seconds had
+# to cover process startup, template resolution AND reaching the build stage —
+# so the budget was really a bet on host speed. Under the parallel pool (#991,
+# the tier is parallel by default and the serial-pin list is empty) startup
+# alone outran it: the runner was killed before any stage dispatched, the marker
+# came back empty, and the failure read as a cleanup regression that standalone
+# runs could never reproduce.
+#
+# The supervising timeout stays, but only as a runaway guard with a ceiling no
+# healthy run approaches. The kill that this case actually asserts on is driven
+# from BUILD_STARTED — the runner is provably inside the build stage — and
+# escalates TERM→KILL the way `timeout` itself does, which is what separates
+# this case from SPEC-4's plain SIGTERM.
+print_test_section "SPEC-5: exit path = external hard kill (timeout-style)"
 _prep timeout
 export BUILD_RC=0 BUILD_SLEEP=1
 _tbin=""
@@ -208,12 +223,20 @@ elif command -v timeout  >/dev/null 2>&1; then _tbin=timeout
 fi
 if [[ -z "$_tbin" ]]; then
     SKIP=$((SKIP + 1))
-    echo -e "  ${YELLOW}SKIP${RESET}: [SPEC-5] external timeout (no timeout binary available)" >&2
+    echo -e "  ${YELLOW}SKIP${RESET}: [SPEC-5] external hard kill (no timeout binary available)" >&2
 else
-    set +e
-    ( cd "$OVERLAY_REPO" && "$_tbin" 6 bash "$RUNNER" --template resume-minimal \
-        --goal "release-timeout" ) >"$CASE_DIR/out" 2>&1
-    set -e
+    set -m
+    bash -c 'cd "$1" && exec "$4" 120 bash "$2" --template resume-minimal --goal "$3"' \
+        _ "$OVERLAY_REPO" "$RUNNER" "release-timeout" "$_tbin" >"$CASE_DIR/out" 2>&1 &
+    RUNNER_PID=$!
+    set +m
+    for _ in $(seq 1 300); do [[ -f "$BUILD_STARTED" ]] && break; sleep 0.1; done
+    kill -TERM -"$RUNNER_PID" 2>/dev/null || kill -TERM "$RUNNER_PID" 2>/dev/null || true
+    ( sleep 3; kill -KILL -"$RUNNER_PID" 2>/dev/null || kill -KILL "$RUNNER_PID" 2>/dev/null || true ) &
+    _spec5_killer=$!
+    wait "$RUNNER_PID" 2>/dev/null || true
+    kill "$_spec5_killer" 2>/dev/null || true
+    wait "$_spec5_killer" 2>/dev/null || true
     for _ in $(seq 1 50); do grep -q ':release' "$RELEASE_MARKER" 2>/dev/null && break; sleep 0.1; done
     _assert_released "SPEC-5"
 fi
