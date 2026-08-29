@@ -1,2 +1,2 @@
-file 6231 plugins/tool/test/tests/test-test.sh
-file 953 tests/integration/test-plugin-tmpdir-cleanup-test.sh
+file 958 tests/integration/test-plugin-tmpdir-cleanup-test.sh
+file 1016 tests/unit/test-stage-banner-golden-test.sh

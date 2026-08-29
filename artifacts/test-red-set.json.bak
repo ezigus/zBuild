@@ -1,4 +1,3 @@
 [
-  "plugins/tool/test/tests/test-test.sh",
   "tests/integration/test-plugin-tmpdir-cleanup-test.sh"
 ]
