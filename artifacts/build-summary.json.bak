@@ -1,9 +1,14 @@
 {
   "schema_version": 4,
   "issue": 1836,
-  "files_changed": [],
-  "lines_added": 0,
-  "lines_removed": 0,
+  "files_changed": [
+    "plugins/tool/coverage-gate/plugin.sh",
+    "plugins/tool/lint-gate/plugin.sh",
+    "plugins/tool/mutation-gate/plugin.sh",
+    "plugins/tool/test/plugin.sh"
+  ],
+  "lines_added": 15,
+  "lines_removed": 3,
   "diff_patch_path": "/home/runner/work/_temp/zbuild-state/artifacts/diff.patch",
   "iterations": 3,
   "terminated_reason": "router_timeout",

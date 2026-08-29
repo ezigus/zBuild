@@ -11,6 +11,76 @@ index a413ae8..101e754 100644
              if [[ "$_failed_n" =~ ^[0-9]+$ ]]; then
                  _CYCLE_LAST_FAILURE_COUNT="$_failed_n"
              fi
+diff --git a/plugins/tool/coverage-gate/plugin.sh b/plugins/tool/coverage-gate/plugin.sh
+index 75431da..fb9bd6b 100644
+--- a/plugins/tool/coverage-gate/plugin.sh
++++ b/plugins/tool/coverage-gate/plugin.sh
+@@ -60,10 +60,13 @@ coverage_gate_run() {
+     local results_json="$artifacts_dir/test-results.json"
+ 
+     # Read status, pct, floor in one jq pass. Absent file / block → all empty.
++    # Try v2 path (.data.coverage) first; fall back to v1 top-level (.coverage)
++    # for fixtures / older result files that predate the data block.
+     local status="" pct="" floor=""
+     if [[ -f "$results_json" ]]; then
+         local _parsed
+-        _parsed="$(jq -r '[(.data.coverage.status // ""), (.data.coverage.pct // ""), (.data.coverage.floor // "")] | @tsv' \
++        _parsed="$(jq -r '(.data.coverage // .coverage) as $c |
++            [($c.status // ""), ($c.pct // ""), ($c.floor // "")] | @tsv' \
+             "$results_json" 2>/dev/null || echo)"
+         IFS=$'\t' read -r status pct floor <<< "$_parsed"
+     fi
+diff --git a/plugins/tool/lint-gate/plugin.sh b/plugins/tool/lint-gate/plugin.sh
+index c75a37c..03243ee 100644
+--- a/plugins/tool/lint-gate/plugin.sh
++++ b/plugins/tool/lint-gate/plugin.sh
+@@ -45,9 +45,11 @@ lint_gate_run() {
+     local results_json="$artifacts_dir/test-results.json"
+ 
+     # Read the lint.status field. Absent file / missing block → "" → skip.
++    # Try v2 path (.data.lint) first; fall back to v1 top-level (.lint) for
++    # fixtures / older result files that predate the data block.
+     local status=""
+     if [[ -f "$results_json" ]]; then
+-        status="$(jq -r '.data.lint.status // empty' "$results_json" 2>/dev/null || echo)"
++        status="$(jq -r '(.data.lint.status // .lint.status) // empty' "$results_json" 2>/dev/null || echo)"
+     fi
+ 
+     local verdict detail=""
+diff --git a/plugins/tool/mutation-gate/plugin.sh b/plugins/tool/mutation-gate/plugin.sh
+index 4d75ab4..15a8057 100644
+--- a/plugins/tool/mutation-gate/plugin.sh
++++ b/plugins/tool/mutation-gate/plugin.sh
+@@ -50,10 +50,13 @@ mutation_gate_run() {
+     local results_json="$artifacts_dir/test-results.json"
+ 
+     # Read status, score, floor in one jq pass. Absent file / block → all empty.
++    # Try v2 path (.data.mutation) first; fall back to v1 top-level (.mutation)
++    # for fixtures / older result files that predate the data block.
+     local status="" score="" floor=""
+     if [[ -f "$results_json" ]]; then
+         local _parsed
+-        _parsed="$(jq -r '[(.data.mutation.status // ""), (.data.mutation.score // ""), (.data.mutation.floor // "")] | @tsv' \
++        _parsed="$(jq -r '(.data.mutation // .mutation) as $m |
++            [($m.status // ""), ($m.score // ""), ($m.floor // "")] | @tsv' \
+             "$results_json" 2>/dev/null || echo)"
+         IFS=$'\t' read -r status score floor <<< "$_parsed"
+     fi
+diff --git a/plugins/tool/test/plugin.sh b/plugins/tool/test/plugin.sh
+index 798e268..d22ca26 100644
+--- a/plugins/tool/test/plugin.sh
++++ b/plugins/tool/test/plugin.sh
+@@ -845,6 +845,10 @@ _test_write_result() {
+             disposition: $disposition
+         }
+         + (if $reason != "" then {reason: $reason} else {} end)
++        + {
++            test_output: $test_output,
++            run_mode: $run_mode
++        }
+         + {
+             data: (
+                 {
 diff --git a/tests/integration/test-plugin-fd-isolation-test.sh b/tests/integration/test-plugin-fd-isolation-test.sh
 index ed2c36a..1dc7c92 100755
 --- a/tests/integration/test-plugin-fd-isolation-test.sh
