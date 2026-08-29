@@ -632,17 +632,38 @@ render_impact_md() {
 
     input="$_json"
 
-    local verdict missing_count feedback_md
+    local verdict missing_count
     verdict="$(printf '%s' "$input" | jq -r '.verdict // empty' 2>/dev/null)"
     missing_count="$(printf '%s' "$input" | jq -r '.missing | if type=="array" then length else 0 end' 2>/dev/null || printf '0')"
-    feedback_md="$(printf '%s' "$input" | jq -r '.impact_feedback_md // empty' 2>/dev/null)"
 
     printf 'Impact: verdict=%s, missing=%s\n' \
         "$(_artifact_md_escape_inline "${verdict:-unknown}")" \
         "$(_artifact_md_escape_inline "${missing_count:-0}")"
 
-    if [[ -n "$feedback_md" ]]; then
-        printf '\n%s\n' "$(_artifact_md_escape_block "$feedback_md")"
+    # ADR-060: the narrative is BUILT from missing[], never copied from a
+    # model-authored prose field (the retired impact_feedback_md). #777 applies
+    # here too - backticks are NOT escaped, so inline-code spans in reason and
+    # evidence render as monospace rather than literal backslash-backtick.
+    # A top-level reason explains a non-complete verdict that produced no gaps
+    # (router_timeout, envelope_unparseable). Pre-ADR-060 this rode in a
+    # model-authored prose note; it is structured now, so the engine surfaces it.
+    local _reason
+    _reason="$(printf '%s' "$input" | jq -r '.reason // empty' 2>/dev/null)"
+    if [[ -n "$_reason" ]]; then
+        printf '\nReason: %s\n' "$(_artifact_md_escape_inline "$_reason")"
+    fi
+
+    local _jq_esc='def esc: tostring
+        | gsub("\u001b\\[[0-9;?]*[A-Za-z~]"; "")
+        | gsub("\u001b."; "")
+        | gsub("[\r\n]"; " ");'
+    if [[ "$missing_count" =~ ^[0-9]+$ && "$missing_count" -gt 0 ]]; then
+        printf '%s' "$input" | jq -r "$_jq_esc"'
+            (.missing // [])[] |
+            "\n**\(.step_id // "(unnamed step)" | esc)** - \((.files_to_add // []) | length) file(s)",
+            ((.files_to_add // [])[] | "- `\(esc)`"),
+            (if (.reason // "") != "" then "Why: \(.reason|esc)" else empty end),
+            (if (.evidence // "") != "" then "Evidence: \(.evidence|esc)" else empty end)' 2>/dev/null || true
     fi
 
     _artifact_emit_llm_comment "$_prose"

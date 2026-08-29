@@ -26,6 +26,8 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 # shellcheck source=../../scripts/lib/impact-prefilter.sh
+source "$REPO_ROOT/scripts/lib/llm-agent.sh"
+# shellcheck source=../../scripts/lib/impact-prefilter.sh
 source "$REPO_ROOT/scripts/lib/impact-prefilter.sh"
 
 print_test_header "unit: impact schema-aware envelope recovery (#908)"
@@ -101,6 +103,44 @@ Based on my comprehensive analysis, the changes look good.
 u8_out="$(_impact_recover_envelope_json "$u8_raw" 2>/dev/null)"
 assert_eq "U8: stray-fence postamble -> envelope verdict recovered" \
     "complete" "$(printf '%s' "$u8_out" | jq -r '.verdict' 2>/dev/null)"
+
+# ─── ADR-060 / #1833: the retired impact_feedback_md field ──────────────────
+# The gate must accept an envelope that does NOT carry impact_feedback_md.
+# The field was a model-authored markdown blob; ADR-060 removes it.
+u9_env='{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"s1","files_to_add":["a.sh"],"reason":"r"}]}'
+if _impact_envelope_schema_ok "$u9_env"; then
+    assert_pass "U9: gate accepts an envelope with no impact_feedback_md (ADR-060)"
+else
+    assert_fail "U9: gate accepts an envelope with no impact_feedback_md (ADR-060)" \
+        "gate rejected: $u9_env"
+fi
+
+# A legacy envelope that still carries the field must ALSO pass (artifacts
+# restored from a prior run's state branch predate the removal).
+u9b_env='{"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":"legacy"}'
+if _impact_envelope_schema_ok "$u9b_env"; then
+    assert_pass "U9b: gate still accepts a legacy envelope carrying the retired field"
+else
+    assert_fail "U9b: gate still accepts a legacy envelope carrying the retired field" \
+        "gate rejected: $u9b_env"
+fi
+
+# ─── U10-U12 (#1833): a PARSE failure is distinguishable from a SCHEMA one ──
+# Run 32886190954 died on `done\_sentinel` inside impact_feedback_md. `\_` is
+# not a legal JSON escape, so jq could not parse the object at all -- yet the
+# error said "requires schema_version=1, verdict in {...}", naming five checks
+# and identifying none. The classifier separates the two causes.
+u10_raw='{"schema_version":1,"verdict":"incomplete","missing":[],"impact_feedback_md":"the done\_sentinel branch"}'
+assert_eq "U10: invalid JSON escape classifies as unparseable (#1833)" \
+    "unparseable" "$(_llm_envelope_classify "$u10_raw")"
+
+u11_raw='{"schema_version":1,"verdict":"banana","missing":[]}'
+assert_eq "U11: parseable JSON with a bad verdict classifies as schema" \
+    "schema" "$(_llm_envelope_classify "$u11_raw" _impact_envelope_schema_ok)"
+
+u12_raw='{"schema_version":1,"verdict":"complete","missing":[]}'
+assert_eq "U12: a conformant envelope classifies as ok" \
+    "ok" "$(_llm_envelope_classify "$u12_raw" _impact_envelope_schema_ok)"
 
 cleanup_test_env
 print_test_results

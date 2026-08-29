@@ -215,6 +215,44 @@ _llm_recover_envelope_json() {
     return 0
 }
 
+# ─── _llm_envelope_classify <json> [<schema_gate_func>] ────────────────
+# ADR-060 / #1833: says WHY an envelope was rejected. Prints exactly one of:
+#   unparseable — jq cannot parse it at all (bad escape, truncation, stray text)
+#   schema      — parses fine, but the schema gate says no
+#   ok          — parses and passes the gate
+#
+# Run 32886190954 died on `done\_sentinel` inside a markdown field. `\_` is not
+# a legal JSON escape, so jq refused the whole object -- but the error printed a
+# fixed list of five requirements and named none of them, so a two-character
+# typo read as a contract-version mismatch. Callers use this to say which.
+_llm_envelope_classify() {
+    local _json="${1:-}" _gate="${2:-}"
+    if ! printf '%s' "$_json" | jq empty >/dev/null 2>&1; then
+        printf 'unparseable'
+        return 0
+    fi
+    if [[ -n "$_gate" ]] && ! "$_gate" "$_json"; then
+        printf 'schema'
+        return 0
+    fi
+    printf 'ok'
+}
+
+# ─── _llm_envelope_parse_error <json> ───────────────────────────────
+# jq's ACTUAL complaint (e.g. "Invalid escape at line 1, column 2410"), for the
+# diagnostic. Previously discarded via 2>/dev/null, which is what turned #1833
+# into a multi-hour investigation.
+_llm_envelope_parse_error() {
+    local _err
+    # No `| head` here: #1886 bans it as a SIGPIPE hazard. Capture in full,
+    # then flatten and clamp in bash.
+    _err="$(printf '%s' "${1:-}" | jq empty 2>&1 >/dev/null || true)"
+    _err="${_err//$'\n'/ }"
+    _err="${_err//$'\r'/ }"
+    if [[ ${#_err} -gt 300 ]]; then _err="${_err:0:300}..."; fi
+    printf '%s' "$_err"
+}
+
 # ─── _llm_envelope_parse ────────────────────────────────────────────────────
 # Thin wrapper over extract_json_and_surrounding_prose (helpers.sh).
 # Preserves __PROSE__/__JSON__ sentinel semantics for renderer interop

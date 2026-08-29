@@ -2,6 +2,7 @@
 
 **Status:** Proposed (2026-06-11)
 **Supersedes:** N/A (formalizes pattern across ADR-018, ADR-020, ADR-022)
+**Amended:** 2026-08-28 (ADR-060) — the `--markdown-fields` escaping block is retired along with the markdown-document fields it existed to protect. It cited ADR-022, which has been Retired since #979. Envelopes carry structured data; the engine renders prose.
 
 ## Context
 

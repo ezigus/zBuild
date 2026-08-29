@@ -7,7 +7,7 @@ description: |
   ```scope block (the exhaustive enumeration produced by the design stage)
   and finds files that the change touches, invalidates, or requires updating
   but that are MISSING from that scope block. Emits impact.json with a
-  structured verdict (complete | incomplete) plus impact_feedback.md
+  structured verdict (complete | incomplete) plus missing[]
   rendered for cycle feedback wiring back into the design stage. plan.json
   retained as secondary input for the deterministic shape-change prefilter.
 
@@ -29,6 +29,7 @@ provides:
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
     - impact.contract.violation
+    - impact.envelope.malformed
     - impact.envelope.recovered
     - impact.hallucination.filtered
     - impact.scope.expanded
@@ -71,12 +72,6 @@ outputs:
     format: json
     required: true
     primary: true
-    advisory: true
-  - id: impact_feedback_md
-    path: "${artifact_dir}/impact_feedback.md"
-    type: impact_feedback.md@1
-    format: markdown
-    required: false
     advisory: true
 
 state:
