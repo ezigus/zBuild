@@ -163,6 +163,24 @@ _build_read_tautology_ids() {
 
 # _build_load_context — extracted context-loading block from _build_stage_run_inner.
 # Uses dynamic scoping: reads plan_json + artifact_dir from caller's locals; writes
+# _build_gather_acceptance_specs <design_md>  (#1978)
+# One line per SPEC: "SPEC-n<TAB>what it requires". A SPEC whose text cannot be
+# resolved emits the bare id, so the prompt degrades to the id-only form rather
+# than dropping a SPEC the gate will still demand coverage for.
+_build_gather_acceptance_specs() {
+    local design_md="${1:-}" sid text
+    [[ -n "$design_md" && -f "$design_md" ]] || return 0
+    while IFS= read -r sid; do
+        [[ -n "$sid" ]] || continue
+        text="$(acceptance_spec_text "$design_md" "$sid" 2>/dev/null || true)"
+        if [[ -n "$text" ]]; then
+            printf '%s\t%s\n' "$sid" "$text"
+        else
+            printf '%s\n' "$sid"
+        fi
+    done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
+}
+
 # plan_files_csv, _acceptance_testfiles, _acceptance_spec_ids, _design_decisions
 # back into caller's scope (no `local` on those names here — bash dynamic scope).
 _build_load_context() {
@@ -192,9 +210,12 @@ _build_load_context() {
     fi
 
     # #951 Layer 1: enumerate the design's stable SPEC ids.
+    # #1978: each id is paired with what it REQUIRES. The id alone made the
+    # prompt's demand a shape requirement — "an assertion tagged [SPEC-n] that
+    # fails at baseline" — which an assertion about any field satisfies.
     _acceptance_spec_ids=""
     if [[ -f "$_ctx_design_md_path" ]]; then
-        _acceptance_spec_ids="$(acceptance_list_spec_ids "$_ctx_design_md_path" 2>/dev/null || true)"
+        _acceptance_spec_ids="$(_build_gather_acceptance_specs "$_ctx_design_md_path" 2>/dev/null || true)"
     fi
 
     # #916 (ADR-020): design.md decision prose.

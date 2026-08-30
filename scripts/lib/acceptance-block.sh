@@ -104,6 +104,28 @@ acceptance_list_spec_ids() {
     [[ $ids_found -eq 1 ]]
 }
 
+# acceptance_spec_text <design_md> <spec_id>  (#1978)
+# Echoes what the SPEC REQUIRES — the prose after `SPEC-n[classifier]:` — with
+# no id and no classifier. Empty when the id is absent or the block is missing.
+#
+# Stops at TESTFILES: for the same reason acceptance_list_spec_ids does: the
+# per-SPEC binding lines there share the `SPEC-n:` shape, and a path is not a
+# requirement.
+acceptance_spec_text() {
+    local design_md="${1:-}" spec_id="${2:-}" line block_output
+    [[ -n "$design_md" && -n "$spec_id" && -f "$design_md" ]] || return 0
+    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
+    [[ -z "$block_output" ]] && return 0
+    while IFS= read -r line; do
+        [[ "$line" == "TESTFILES:" ]] && break
+        if [[ "$line" =~ ^${spec_id}(\[[a-z]+\])?:[[:space:]]*(.*)$ ]]; then
+            printf '%s\n' "${BASH_REMATCH[2]}"
+            return 0
+        fi
+    done <<< "$block_output"
+    return 0
+}
+
 # acceptance_spec_is_guard <design_md> <spec_id>
 # Returns 0 when the SPEC line for spec_id carries a [guard] classifier,
 # 1 otherwise (unclassified or [change] = not a guard).
