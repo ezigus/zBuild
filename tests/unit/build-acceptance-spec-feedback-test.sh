@@ -181,10 +181,20 @@ grep -qF "## TAUTOLOGICAL ASSERTIONS" <<< "$p" \
 grep -qF "[SPEC-3]" <<< "$(grep -A4 'TAUTOLOGICAL ASSERTIONS' <<< "$p")" \
     && assert_pass "L2d: tautology block names [SPEC-3]" \
     || assert_fail "L2d: tautology block must name [SPEC-3]" "(missing)"
-# charter now grants the re-author exception
-grep -qF "EXCEPT gate-flagged TAUTOLOGICAL assertions" <<< "$p" \
-    && assert_pass "L2d: charter grants the tautology re-author exception" \
-    || assert_fail "L2d: charter must note the tautology exception" "(missing)"
+# #1978: the charter used to grant a bare licence — "EXCEPT gate-flagged
+# TAUTOLOGICAL assertions ... which you MUST re-author" — with no statement of
+# what the rewrite must MEAN. That licensed the drift it was meant to correct:
+# assertions were re-authored until they went green, not until they tested their
+# SPEC. The charter now says what a re-authored assertion has to satisfy.
+grep -qF "TAUTOLOGICAL" <<< "$p" \
+    && assert_pass "L2d: charter still addresses gate-flagged tautologies" \
+    || assert_fail "L2d: charter must address tautologies" "(missing)"
+grep -qF "would fail without the implementation" <<< "$p" \
+    && assert_pass "L2d: a re-authored assertion must still discriminate" \
+    || assert_fail "L2d: charter must require the re-author to discriminate" "(missing)"
+grep -qF "not so it tests something easier" <<< "$p" \
+    && assert_pass "L2d: and must not drift to an easier assertion" \
+    || assert_fail "L2d: charter must forbid drifting to an easier assertion" "(missing)"
 # absent → block omitted
 rm -f "$FB/prior_acceptance_feedback.txt"
 p="$(_drive_build)"

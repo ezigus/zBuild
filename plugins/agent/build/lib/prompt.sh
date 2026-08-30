@@ -127,7 +127,8 @@ _build_compose_prompt_body() {
             printf 'Where a design decision above conflicts with the plan, follow the design decision.\n'
         fi
         if [[ -n "$_acceptance_testfiles" ]]; then
-            printf '\n## ACCEPTANCE TESTS (you MUST make these pass — you MUST NOT weaken, modify assertions of, or delete them, EXCEPT gate-flagged TAUTOLOGICAL assertions listed in the TAUTOLOGICAL ASSERTIONS section below, if any, which you MUST re-author)\n'
+            printf '\n## ACCEPTANCE TESTS (you MUST make these pass)\n'
+            printf 'Each assertion must test what its SPEC states. If an assertion does not test its SPEC, correct the assertion so that it does — never change the SPEC to match the assertion. If an assertion DOES test its SPEC and is failing, fix the code. You MUST NOT weaken or delete an assertion that tests its SPEC. A gate-flagged TAUTOLOGICAL assertion is one that passes at the merge-base without your change: re-author it so it tests its SPEC and would fail without the implementation — not so it tests something easier.\n'
             printf 'Each test MUST contain an assert call whose label includes the [SPEC-n] tag for the SPEC it verifies (e.g. assert_eq "[SPEC-1] ..." exp act). The acceptance-gate (ADR-036) requires every SPEC-n to have a [SPEC-n]-tagged assertion. A CHANGE-behavior SPEC-n MUST have a tagged assertion that FAILS at the merge-base baseline and passes here (a tautological change-SPEC that passes without your implementation is rejected); a GUARD/invariant SPEC-n is tagged but NOT contorted to fail at baseline. See the per-id list below.\n'
             local _at_tf
             while IFS= read -r _at_tf; do
@@ -135,11 +136,35 @@ _build_compose_prompt_body() {
             done <<< "$_acceptance_testfiles"
         fi
         if [[ -n "$_acceptance_spec_ids" ]]; then
+            printf '\nWhat each SPEC requires:\n'
+            local _rq_sid _rq_text _rq_line
+            while IFS= read -r _rq_line; do
+                [[ -n "$_rq_line" ]] || continue
+                [[ "$_rq_line" == *$'\t'* ]] || continue
+                _rq_sid="${_rq_line%%$'\t'*}"; _rq_text="${_rq_line#*$'\t'}"
+                [[ -n "$_rq_text" ]] && printf -- '- [%s] %s\n' "$_rq_sid" "$_rq_text"
+            done <<< "$_acceptance_spec_ids"
+        fi
+        if [[ -n "$_acceptance_spec_ids" ]]; then
             printf '\n### SPEC IDS YOU MUST COVER (acceptance gate, ADR-036)\n'
             printf 'Every SPEC id below needs at least one assertion whose label carries its [SPEC-n] tag; self-verify the FULL set is tagged before emitting LOOP_COMPLETE. A CHANGE-behavior SPEC (new behavior this change introduces) MUST have a [SPEC-n] assertion that FAILS at the merge-base baseline. A GUARD/invariant SPEC (behavior that must stay unchanged) is tagged but MUST NOT be contorted to fail at baseline.\n'
-            local _sid
-            while IFS= read -r _sid; do
-                [[ -n "$_sid" ]] && printf -- '- [%s] needs a `[%s]`-tagged assertion (change → fails at baseline; guard → tagged, not contorted)\n' "$_sid" "$_sid"
+            # #1978: each line is "SPEC-n<TAB>requirement". Naming the id alone
+            # made the demand a SHAPE requirement — "an assertion tagged
+            # [SPEC-n] that fails at baseline" — satisfiable by an assertion
+            # about any field. A line with no tab is an id whose text could not
+            # be resolved; it degrades to the id-only form rather than dropping.
+            local _sid _stext _sline
+            while IFS= read -r _sline; do
+                [[ -n "$_sline" ]] || continue
+                _sid="${_sline%%$'\t'*}"
+                _stext=""
+                [[ "$_sline" == *$'\t'* ]] && _stext="${_sline#*$'\t'}"
+                if [[ -n "$_stext" ]]; then
+                    printf -- '- [%s] %s\n' "$_sid" "$_stext"
+                    printf -- '  → needs a `[%s]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)\n' "$_sid"
+                else
+                    printf -- '- [%s] needs a `[%s]`-tagged assertion (change → fails at baseline; guard → tagged, not contorted)\n' "$_sid" "$_sid"
+                fi
             done <<< "$_acceptance_spec_ids"
         fi
         if [[ -n "$_review_feedback_body" ]]; then
