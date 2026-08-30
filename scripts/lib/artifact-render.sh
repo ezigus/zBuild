@@ -593,10 +593,13 @@ render_test_assessment_md() {
 
 # ─── render_impact_md (#768) ─────────────────────────────────────────────────
 # Renders the impact stage's JSON envelope to a one-line summary header
-# (Impact: verdict=<v>, missing=<n>) followed by the structured
-# `impact_feedback_md` field as raw markdown. Empty feedback (verdict=complete
-# with no gaps) renders the header only. Prose preamble (contract violations
-# from haiku at T1, see #767) is preserved as an LLM comment for forensics.
+# (Impact: verdict=<v>, missing=<n>), then BUILDS the narrative from missing[]
+# -- step_id, files_to_add, reason, evidence. ADR-060: the model authors no
+# prose here; a legacy envelope still carrying the retired impact_feedback_md
+# is ignored, never rendered. A top-level `reason` explains a non-complete
+# verdict that produced no gaps (router_timeout, envelope_unparseable).
+# verdict=complete with no gaps renders the header only. Prose preamble
+# (contract violations, see #767) is kept as an LLM comment for forensics.
 render_impact_md() {
     local input="$1"
     if [[ -z "$input" ]]; then

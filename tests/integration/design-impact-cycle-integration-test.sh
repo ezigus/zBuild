@@ -11,12 +11,11 @@
 #   T2 (ADR-060): _impact_run_inner writes a STRUCTURED impact.json; the
 #       human-readable feedback is RENDERED from missing[] by render_impact_md
 #       and round-trips into design via _design_read_design_gate_feedback.
-#   T3: design iter 2 prompt contains PRIOR DESIGN (self-feedback, #773 lesson)
-#       when ZBUILD_CYCLE_FEEDBACK_DIR/design.txt is present
-#   T4: design iter 2 prompt contains PRIOR DESIGN-GATE FEEDBACK when
+#   T3: design iter 2 prompt contains PRIOR DESIGN-GATE FEEDBACK when
 #       design_gate_feedback.txt is present
-#   T5: impact verdict=complete suppresses both feedback files (no content to
-#       pipe back; complete exit is cycle convergence)
+#   T4: design iter 2 prompt contains PRIOR DESIGN (self-feedback, #773 lesson)
+#       when ZBUILD_CYCLE_FEEDBACK_DIR/design.txt is present
+#   T5: the _design_read_* helpers return empty outside cycle context
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

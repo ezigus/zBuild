@@ -25,7 +25,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
-# shellcheck source=../../scripts/lib/impact-prefilter.sh
+# shellcheck source=../../scripts/lib/llm-agent.sh
 source "$REPO_ROOT/scripts/lib/llm-agent.sh"
 # shellcheck source=../../scripts/lib/impact-prefilter.sh
 source "$REPO_ROOT/scripts/lib/impact-prefilter.sh"
