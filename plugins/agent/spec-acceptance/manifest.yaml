@@ -109,6 +109,18 @@ outputs:
     format: json
     required: true
     primary: true
+  # #1977: the design↔assertion pairing this gate has always written
+  # (plugin.sh: acceptance-summary.txt) and never declared — the only undeclared
+  # output in the tree. Its own comment framed it as post-hoc audit, so nothing
+  # consumed it and the build agent saw only SPEC ids and the word
+  # "tautological". `summary: true` (#1976) hands it to downstream prompts as
+  # ambient context; required:false because a no-op run writes no summary.
+  - id: acceptance_detail
+    path: ${artifact_dir}/acceptance-summary.txt
+    type: acceptance-summary.txt@1
+    format: text
+    required: false
+    summary: true
 
 state:
   persisted: []

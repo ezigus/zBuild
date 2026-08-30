@@ -77,6 +77,10 @@ outputs:
     format: markdown
     required: false
     advisory: true
+    # #1977: `advisory` says no stage CONSUMES it as an input (ADR-020 #1750);
+    # `summary` says it is offered as prompt context (#1976). Both hold — the
+    # extracted failing assertions are exactly what a re-running build needs.
+    summary: true
 
 state:
   persisted: [last_verdict, last_exit_code]

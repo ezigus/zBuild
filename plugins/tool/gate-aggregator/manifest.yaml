@@ -102,6 +102,9 @@ outputs:
     type: gate-feedback.md@1
     format: markdown
     required: false
+    # #1977: this consolidated gate roster is what a re-entering stage most
+    # needs; summary: true (#1976) delivers it without a per-consumer wire.
+    summary: true
   # #1219 (ADR-045/ADR-046): FOCUSED design-rooted feedback. Written ONLY on a
   # route_<target> verdict (a design-rooted acceptance failure, e.g. tautology).
   # required:false — absent on pass / plain-fail. Read by the design stage's
