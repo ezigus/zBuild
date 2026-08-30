@@ -225,15 +225,15 @@ manifest_graph_output_format() {
     ' "$manifest" 2>/dev/null || true
 }
 
-# ─── manifest_graph_output_terminal <manifest> <output_id> ──────────────────
-# Returns 'true' if the output entry is marked `terminal: true`.
-# A dedicated accessor — same reason as manifest_graph_output_format: appending
-# to the five-field pipe-delimited record would silently break callers that
-# unpack by position.
-manifest_graph_output_terminal() {
-    local manifest="${1-}" want="${2-}"
-    [[ -f "$manifest" && -n "$want" ]] || return 0
-    awk -v want="$want" '
+# ─── _mgraph_output_bool <manifest> <output_id> <field> ─────────────────────
+# Shared reader for the boolean markers on an output entry (terminal, advisory,
+# summary). A dedicated accessor per marker rather than extra fields on the
+# five-field pipe record: appending to that record would silently break callers
+# that unpack by position (see _mgraph_parse_block above).
+_mgraph_output_bool() {
+    local manifest="${1-}" want="${2-}" field="${3-}"
+    [[ -f "$manifest" && -n "$want" && -n "$field" ]] || return 0
+    awk -v want="$want" -v field="$field" '
         /^outputs:[[:space:]]*$/ { inb = 1; next }
         /^[a-zA-Z_]/             { inb = 0 }
         inb && /^[[:space:]]+-[[:space:]]+id:[[:space:]]*/ {
@@ -241,8 +241,8 @@ manifest_graph_output_terminal() {
             sub(/[[:space:]]+$/, "", l)
             gsub(/["\047]/, "", l); cur = l; next
         }
-        inb && cur == want && /^[[:space:]]+terminal:[[:space:]]*/ {
-            l = $0; sub(/^[[:space:]]+terminal:[[:space:]]*/, "", l)
+        inb && cur == want && $0 ~ ("^[[:space:]]+" field ":[[:space:]]*") {
+            l = $0; sub("^[[:space:]]+" field ":[[:space:]]*", "", l)
             sub(/[[:space:]]*#.*$/, "", l)
             sub(/[[:space:]]+$/, "", l)
             gsub(/["\047]/, "", l); print l; exit
@@ -250,27 +250,19 @@ manifest_graph_output_terminal() {
     ' "$manifest" 2>/dev/null || true
 }
 
+# ─── manifest_graph_output_terminal <manifest> <output_id> ──────────────────
+# Returns 'true' if the output entry is marked `terminal: true`.
+manifest_graph_output_terminal() { _mgraph_output_bool "${1-}" "${2-}" terminal; }
+
 # ─── manifest_graph_output_advisory <manifest> <output_id> ───────────────────
 # Returns 'true' if the output entry is marked `advisory: true`.
-manifest_graph_output_advisory() {
-    local manifest="${1-}" want="${2-}"
-    [[ -f "$manifest" && -n "$want" ]] || return 0
-    awk -v want="$want" '
-        /^outputs:[[:space:]]*$/ { inb = 1; next }
-        /^[a-zA-Z_]/             { inb = 0 }
-        inb && /^[[:space:]]+-[[:space:]]+id:[[:space:]]*/ {
-            l = $0; sub(/^[[:space:]]+-[[:space:]]+id:[[:space:]]*/, "", l)
-            sub(/[[:space:]]+$/, "", l)
-            gsub(/["\047]/, "", l); cur = l; next
-        }
-        inb && cur == want && /^[[:space:]]+advisory:[[:space:]]*/ {
-            l = $0; sub(/^[[:space:]]+advisory:[[:space:]]*/, "", l)
-            sub(/[[:space:]]*#.*$/, "", l)
-            sub(/[[:space:]]+$/, "", l)
-            gsub(/["\047]/, "", l); print l; exit
-        }
-    ' "$manifest" 2>/dev/null || true
-}
+manifest_graph_output_advisory() { _mgraph_output_bool "${1-}" "${2-}" advisory; }
+
+# ─── manifest_graph_output_summary <manifest> <output_id> ────────────────────
+# Returns 'true' if the output entry is marked `summary: true` (#1976) — the ONE
+# output a stage offers downstream as ambient prompt context. Distinct from
+# `inputs:`, which stay required, resolved and programmatic (ADR-055 amendment).
+manifest_graph_output_summary() { _mgraph_output_bool "${1-}" "${2-}" summary; }
 
 # ─── manifest_graph_formats ──────────────────────────────────────────────────
 # The closed set (#1895/#1894). A format names how the engine checks an artifact

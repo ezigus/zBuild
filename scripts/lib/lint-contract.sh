@@ -187,6 +187,21 @@ for id in "${!_LC_STAGE_MANIFEST[@]}"; do
         _complain "$rel: $primary_count outputs[] entries declare 'primary: true' (must be exactly one) [#507]"
     fi
 
+    # ── #1976: at most one outputs[].summary: true ────────────────────────
+    # The summary is "the ONE thing this stage offers downstream". Two would
+    # make that ambiguous and leave the collector's first-match scan dependent
+    # on declaration order. Zero is legal — the marker is opt-in.
+    summary_count=$(awk '
+        BEGIN { in_out=0; n=0 }
+        /^outputs:/ { in_out=1; next }
+        in_out && /^[a-zA-Z_]/ { in_out=0 }
+        in_out && /^[[:space:]]+summary:[[:space:]]*true([[:space:]]|$|#)/ { n++ }
+        END { print n }
+    ' "$m" 2>/dev/null)
+    if [[ "$summary_count" -gt 1 ]]; then
+        _complain "$rel: $summary_count outputs[] entries declare 'summary: true' (at most one) [#1976]"
+    fi
+
     while IFS= read -r rec; do
         [[ -z "$rec" ]] && continue
         # ADR-055 §8 (#1827): the type position is read past, not captured — the
@@ -272,8 +287,13 @@ for _key_out in "${!_LC_STAGE_OUTPUTS[@]}"; do
     _out_rel="${_out_manifest#"$_LINT_CONTRACT_REPO"/}"
     _unc_term="$(manifest_graph_output_terminal "$_out_manifest" "$_out_id" 2>/dev/null || true)"
     _unc_adv="$(manifest_graph_output_advisory "$_out_manifest" "$_out_id" 2>/dev/null || true)"
-    if [[ "$_unc_term" != "true" && "$_unc_adv" != "true" ]]; then
-        _complain "$_out_rel: output '$_out_id' is named by no consumer — mark terminal: true or advisory: true, or wire a downstream consumer [ADR-020 OUTPUT_UNCONSUMED]"
+    # #1976: a summary IS consumed — by the engine, into downstream prompts —
+    # but by design no `inputs:` names it (ADR-055 §9). Neither existing escape
+    # fits: it is not a terminus, and `advisory` asserts "not consumed by
+    # stages" (#1750), which would be false.
+    _unc_sum="$(manifest_graph_output_summary "$_out_manifest" "$_out_id" 2>/dev/null || true)"
+    if [[ "$_unc_term" != "true" && "$_unc_adv" != "true" && "$_unc_sum" != "true" ]]; then
+        _complain "$_out_rel: output '$_out_id' is named by no consumer — mark terminal: true, advisory: true or summary: true, or wire a downstream consumer [ADR-020 OUTPUT_UNCONSUMED]"
     fi
 done
 

@@ -4,7 +4,7 @@
 **Date:** 2026-08-09
 **Issue:** #1820
 **Supersedes:** ADR-020 (inter-stage data contract) — presented as a clean v2 at the current stable state; ADR-020 is retired in-place for audit history.
-**Amended:** 2026-08-19 (#1825) — §1's "no case needs an explicit binding" verified and made true by cleanup; §1.5 refined so the zero-producer refusal applies to required inputs only; §4's four codes retired in code; §5's output-id count corrected 29 → 27. Previously amended 2026-08-12 (#1768) — §1 replaced. A consumer no longer names its producer; it declares the artifact **names** it needs and the engine resolves each to the single stage in the flow that produces it. `source: artifacts` and `source: cycle_feedback` are retired into the one stage-output kind (§4), leaving two kinds total. Amended rather than superseded: this ADR is three days old and unimplemented, so a v3 would create archaeology for a document nothing was built against.
+**Amended:** 2026-08-30 (#1976) — §9 added: a stage may mark ONE output `summary: true`, which the engine collects and injects as ambient prompt context. This is deliberately NOT an input: a consumer declares nothing. Previously amended 2026-08-19 (#1825) — §1's "no case needs an explicit binding" verified and made true by cleanup; §1.5 refined so the zero-producer refusal applies to required inputs only; §4's four codes retired in code; §5's output-id count corrected 29 → 27. Previously amended 2026-08-12 (#1768) — §1 replaced. A consumer no longer names its producer; it declares the artifact **names** it needs and the engine resolves each to the single stage in the flow that produces it. `source: artifacts` and `source: cycle_feedback` are retired into the one stage-output kind (§4), leaving two kinds total. Amended rather than superseded: this ADR is three days old and unimplemented, so a v3 would create archaeology for a document nothing was built against.
 **Related:** ADR-001 (plugin contract), ADR-006 (resume contract), ADR-013 (canonical stages), ADR-015 §v4 (stage I/O capture), ADR-019 (review fail-closed), ADR-042 (stage portability — completed by §1), ADR-045 (bounded typed backward route — legalises a backwards data edge, §1.3), ADR-046 (design-verify shift-left — the cross-cycle feedback edge this ADR previously failed to account for), ADR-047 (stage-agnostic mechanics)
 
 ## Context
@@ -198,6 +198,66 @@ The following ADR-020 content is **not** carried forward into the v2 contract an
 - **Type-mismatch check stub** (`contract-validator.sh:302`, `# in_type captured for future schema-aware checks`) — the validator captured the input type but never compared it against the producer's declared type. ~~This remains unimplemented; a follow-up issue will either implement it or remove the stub.~~ **Amended 2026-08-12 (#1768): the stub is to be removed, not implemented.** §1 removes the consumer-declared type, so there is no second declaration to compare against and the mismatch it guarded cannot occur. #1827 shrinks accordingly — from building a cross-check to versioning the producer's single declaration.
 - **`valid_verdicts` field** — declared in the manifest schema under `outputs:`; never read by the runner or the pre-flight validator. The verdict vocabulary is governed by the v2 result file contract and ADR-054 §6.
 - **`warn` default note** — ADR-020 originally shipped with `warn` as the first-release default and a note to flip to `enforce`. The flip landed in Wave 12-E (#664). The v2 contract treats `enforce` as the operative default.
+
+### 9. Stage summaries — ambient context, not an input (added 2026-08-30, #1976)
+
+A producer MAY mark **at most one** output `summary: true`:
+
+```yaml
+outputs:
+  - id: acceptance_detail
+    path: ${artifact_dir}/acceptance-summary.txt
+    type: text
+    required: false
+    summary: true
+```
+
+The engine collects the summaries of every **completed** stage and injects them
+into each agent prompt as a `## STAGE SUMMARIES (engine-collected)` block, at the
+same point as §1's resolved-input block and for the same reason: before
+`apply_scope_redaction`, so it rides the ADR-004 chokepoint by construction.
+
+**A consumer declares nothing.** This is the deliberate asymmetry with §1, and
+the distinction is load-bearing:
+
+| | `inputs:` (§1) | summaries (§9) |
+|---|---|---|
+| declared by consumer | yes | no |
+| resolved to a path | yes | no — rendered as text |
+| read programmatically | yes | no — context only |
+| missing when required | refuses dispatch | renders nothing |
+
+§1's model is right for data a stage *operates on*: naming it proves the stage
+knows what it needs, and the engine can refuse before dispatch. It is the wrong
+model for context that is merely *useful*, because every new consumer costs a
+declaration and a bespoke reader — which is how `acceptance-summary.txt` came to
+be written by `spec-acceptance` and read by nobody. It was the only undeclared
+output in the tree.
+
+**Bounds (ADR-029).** Per-iteration prompt growth previously caused three
+consecutive 900s `max_turns` timeouts. The block is therefore **latest-wins per
+stage** — flat in the number of stages, never in the number of iterations — and
+capped per summary and in total, truncating with an explicit marker so a reader
+can distinguish truncation from absence.
+
+**Roster (ADR-040 §4, #1898).** Only stages declaring `convergence: gate`
+contribute. Whether an *advisory* stage's output may reach the build loop is an
+open decision in #1898 requiring an ADR-040 §4 amendment; collecting every
+summary indiscriminately would answer it by accident. ADR-040 §5's
+machine-enforced invariant is not weakened: it governs whether a stage may
+**block**, and injecting text into a prompt does not place a stage on a
+convergence path.
+
+**OUTPUT_UNCONSUMED.** §4's bidirectional check rejects an output no `inputs:`
+names, offering `terminal: true` or `advisory: true` as the escapes. Neither
+fits a summary: it is not a pipeline terminus, and `advisory` asserts "not
+consumed by stages" (ADR-020 #1750), which would be false — the engine consumes
+it. `summary: true` is therefore a third exemption, applied identically in
+`lint-contract.sh` and `contract-validator.sh` so the two views cannot drift.
+
+**Ordering** follows completion, read from `.stage_statuses` key order in
+`pipeline-state.json` (jq preserves insertion order), so no new bookkeeping
+exists to drift.
 
 ## Alternatives considered for §1 (added 2026-08-12, #1768)
 
