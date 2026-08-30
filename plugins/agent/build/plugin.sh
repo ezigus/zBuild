@@ -192,19 +192,10 @@ _build_stage_run_inner() {
     local _acceptance_tautology_ids
     _acceptance_tautology_ids="$(_build_read_tautology_ids 2>/dev/null || true)"
 
-    # B2 (ADR-040): consolidated gate-aggregator feedback from the prior cycle
-    # iter (simple.yaml's build_test_cycle wires gate-aggregator → build via
-    # prior_gate_feedback). Empty when not in a cycle / dir unset / file
-    # missing-or-empty. Sanitized — it is captured pipeline output (banner noise).
-    local _gate_feedback_body
-    _gate_feedback_body="$(_build_read_prior_gate 2>/dev/null || true)"
-    [[ -n "$_gate_feedback_body" ]] && \
-        _gate_feedback_body="$(printf '%s' "$_gate_feedback_body" | _zbuild_sanitize_for_llm)"
-
     _build_compose_prompt_body "$prompt_input_file" "$_task_header" "$plan_payload" \
         "$_build_instructions" "$_design_decisions" "$_acceptance_testfiles" \
         "$_acceptance_spec_ids" "$_review_feedback_body" "$_acceptance_gap_ids" \
-        "$_feedback_body" "$_iter_n" "$_gate_feedback_body" \
+        "$_feedback_body" "$_iter_n" \
         "$_acceptance_tautology_ids"
 
     # ADR-050 (#1581): cross-run seed — when a prior RUN of this issue produced a

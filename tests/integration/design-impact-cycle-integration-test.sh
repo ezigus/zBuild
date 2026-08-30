@@ -168,20 +168,30 @@ T2_FB_DIR="$TEST_TEMP_DIR/t2-feedback-iter2"
 mkdir -p "$T2_FB_DIR"
 printf '%s\n' "$t2_fb_content" > "$T2_FB_DIR/design_gate_feedback.txt"
 
-# Verify _design_read_design_gate_feedback returns the content.
 # shellcheck source=../../plugins/agent/design/plugin.sh
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 
-export ZBUILD_CYCLE_ITER=2
-export ZBUILD_CYCLE_FEEDBACK_DIR="$T2_FB_DIR"
-fb_body="$(_design_read_design_gate_feedback 2>/dev/null || true)"
-case "$fb_body" in
-    *"Gap report"*)
-        assert_pass "T2: _design_read_design_gate_feedback returns gap report text" ;;
-    *)
-        assert_fail "T2: _design_read_design_gate_feedback missing gap content" "got: $fb_body" ;;
-esac
-unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
+# #1979: design no longer reads this file itself — the engine collects
+# design-gate's feedback as a summary (#1976) and splices it once. What design
+# still decides is HOW to word the refinement instruction, from the gate's
+# recorded verdict. That is the behaviour asserted here now.
+T2_STATE="$TEST_TEMP_DIR/t2-state"; mkdir -p "$T2_STATE/artifacts"
+printf '{"schema_version":1,"stage_verdicts":{"design-gate":"fail"}}\n' \
+    > "$T2_STATE/pipeline-state.json"
+if _design_gate_failed "$T2_STATE/artifacts"; then
+    assert_pass "T2: a failed design-gate selects the gap-filling instruction"
+else
+    assert_fail "T2: a failed design-gate selects the gap-filling instruction" \
+        "verdict not detected from run state"
+fi
+printf '{"schema_version":1,"stage_verdicts":{"design-gate":"pass"}}\n' \
+    > "$T2_STATE/pipeline-state.json"
+if _design_gate_failed "$T2_STATE/artifacts"; then
+    assert_fail "T2: a passing design-gate selects the plain refine instruction" \
+        "a passing gate was treated as failed"
+else
+    assert_pass "T2: a passing design-gate selects the plain refine instruction"
+fi
 
 # ─── T3: design iter 2 prompt contains PRIOR DESIGN-GATE FEEDBACK ──────────────────
 T3_FB_DIR="$TEST_TEMP_DIR/t3-feedback-iter2"
@@ -230,13 +240,15 @@ unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
 
 if [[ -f "$T3_PROMPT_CAPTURE" ]]; then
     t3_prompt="$(cat "$T3_PROMPT_CAPTURE")"
-    case "$t3_prompt" in
-        *"PRIOR DESIGN-GATE FEEDBACK"*)
-            assert_pass "T3: design prompt includes PRIOR DESIGN-GATE FEEDBACK on iter 2" ;;
-        *)
-            assert_fail "T3: design prompt missing PRIOR DESIGN-GATE FEEDBACK" \
-                "prompt snippet: $(head -30 "$T3_PROMPT_CAPTURE")" ;;
-    esac
+    # #1979: design must NOT splice this itself — the engine's STAGE SUMMARIES
+    # block is the single source. That is #1825's one-splice invariant with the
+    # splice moved, not duplicated.
+    if grep -qF 'PRIOR DESIGN-GATE FEEDBACK' "$T3_PROMPT_CAPTURE"; then
+        assert_fail "T3: design does not re-splice the gate summary on iter 2" \
+            "the retired section is still emitted"
+    else
+        assert_pass "T3: design does not re-splice the gate summary on iter 2"
+    fi
 else
     assert_fail "T3: prompt capture file not written (route_to_model_loop stub issue)" ""
 fi

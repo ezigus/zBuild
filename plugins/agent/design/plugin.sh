@@ -86,28 +86,23 @@ _design_read_prior_gate_feedback() {
     printf '%s' "$body"
 }
 
-# #1479 design-gate structural violations, and #1825's merge: this ALSO absorbs
-# what `prior_impact_feedback` used to read. Both inputs named the same producer
-# output (design-gate.design_gate_feedback) — one via the cycle-feedback copy,
-# one via the live artifact — so design's prompt received the same content twice
-# under two headings at iter>=2. One input now, with the same precedence the
-# engine applies: the prior-iteration copy wins, else the live file.
-_design_read_design_gate_feedback() {
+# _design_gate_failed <artifact_dir>  (#1979)
+# True when the design-gate's recorded verdict for this run is a failure.
+#
+# This replaces reading design-gate-feedback.md to decide how to word the PRIOR
+# DESIGN instruction. The content itself now reaches the prompt as an
+# engine-collected summary (#1976, ADR-055 §9), so the old reader would have
+# spliced it a second time — recreating exactly the duplication #1825 removed.
+# Keying on the recorded verdict keeps ONE source for the content and makes the
+# switch a fact read from state rather than a side effect of a file read.
+_design_gate_failed() {
     local artifact_dir="${1:-}"
-    local iter="${ZBUILD_CYCLE_ITER:-}" fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
-    local f=""
-    # The prior-iteration copy is checked FIRST and does not depend on
-    # artifact_dir — returning early on an empty one would block the very path
-    # that needs no artifact dir, which is how the cycle case reaches this.
-    if [[ -n "$iter" && -n "$fb_dir" && "$iter" =~ ^[0-9]+$ ]] && (( iter >= 2 )); then
-        [[ -s "$fb_dir/design_gate_feedback.txt" ]] && f="$fb_dir/design_gate_feedback.txt"
-    fi
-    [[ -z "$f" && -n "$artifact_dir" ]] && f="$artifact_dir/design-gate-feedback.md"
-    [[ -z "$f" || ! -s "$f" ]] && return 0
-    local body
-    body="$(cat "$f" 2>/dev/null)" || return 0
-    [[ -z "${body//[[:space:]]/}" ]] && return 0
-    printf '%s' "$body"
+    [[ -n "$artifact_dir" ]] || return 1
+    local state_file; state_file="$(dirname "$artifact_dir")/pipeline-state.json"
+    [[ -s "$state_file" ]] || return 1
+    local v
+    v="$(jq -r '.stage_verdicts["design-gate"] // empty' "$state_file" 2>/dev/null || true)"
+    [[ "$v" == "fail" || "$v" == "failed" ]]
 }
 
 # design_impact_cycle self-feedback (mirrors #773 lesson): design's own prior
@@ -342,15 +337,10 @@ DESIGN_PROMPT
     # design_impact_cycle feedback: on iter ≥ 2, splice prior impact gap-report
     # and prior design.md into the prompt so design EXPANDS its scope block
     # (impact feedback) and REFINES rather than re-creates (self-feedback).
-    # #1825: prior_impact_feedback is gone. It named design-gate's
-    # design_gate_feedback output — the same artifact the DESIGN-GATE FEEDBACK
-    # section below already splices — so this section duplicated it at iter>=2.
-    # _design_gate_fb_body (below) is now the single source, and the refinement
-    # instruction under PRIOR DESIGN keys on it.
-    # Read BEFORE the PRIOR DESIGN block, which keys its refinement instruction on
-    # it. The splice itself still happens further down, in section order.
-    local _design_gate_fb_body
-    _design_gate_fb_body="$(_design_read_design_gate_feedback "$artifact_dir" 2>/dev/null || true)"
+    # #1825 established that this content is spliced exactly ONCE. #1979 keeps
+    # that invariant with the splice moved: the engine's STAGE SUMMARIES block
+    # carries design-gate's feedback now, so design only decides how to WORD the
+    # refinement instruction — from the recorded verdict, not from a file read.
     local _prior_design_body
     _prior_design_body="$(_design_read_prior_design 2>/dev/null || true)"
     if [[ -n "$_prior_design_body" ]]; then
@@ -365,8 +355,8 @@ DESIGN_PROMPT
             [[ -n "$_prior_design_blob" ]] && printf '\n(Durable copy: %s — reference it, but VERIFY against the CURRENT inputs above; the code may have moved on since.)\n' \
                 "$_prior_design_blob" >> "$prompt_input_file"
         fi
-        if [[ -n "$_design_gate_fb_body" ]]; then
-            printf '\nExpand the PRIOR DESIGN scope block to cover the gaps named in PRIOR DESIGN-GATE FEEDBACK. Preserve all existing scope entries; only ADD the missing ones.\n' \
+        if _design_gate_failed "$artifact_dir"; then
+            printf '\nExpand the PRIOR DESIGN scope block to cover the gaps the design-gate reported in the STAGE SUMMARIES section. Preserve all existing scope entries; only ADD the missing ones.\n' \
                 >> "$prompt_input_file"
         else
             printf '\nRefine the PRIOR DESIGN. Preserve all existing scope entries unless one is clearly wrong.\n' \
@@ -385,12 +375,6 @@ DESIGN_PROMPT
             "$_gate_fb_body" >> "$prompt_input_file"
         printf '\nThe acceptance gate found the named SPEC(s) tautological (they pass at the merge-base baseline, so they assert nothing). RE-AUTHOR each named [change] SPEC and its tagged assertion so it FAILS at baseline and PASSES at HEAD. Preserve all other scope and acceptance entries.\n' \
             >> "$prompt_input_file"
-    fi
-
-    # #1479: design-gate structural violations.
-    if [[ -n "$_design_gate_fb_body" ]]; then
-        printf '\n## PRIOR DESIGN-GATE FEEDBACK (structural violations from the design-gate)\n%s\n' \
-            "$_design_gate_fb_body" >> "$prompt_input_file"
     fi
 
     # ADR-032: append the per-repo prompt override AFTER the core contract (so

@@ -80,6 +80,11 @@ outputs:
     type: design-gate-feedback.md@1
     format: markdown
     required: false
+    # #1979: reaches design as an engine-collected summary (#1976) instead of a
+    # template wire plus a bespoke reader. design keys its refinement wording on
+    # this gate's recorded VERDICT, so the content is spliced exactly once —
+    # the #1825 invariant, with the splice moved rather than duplicated.
+    summary: true
 
 state:
   persisted: [last_verdict]

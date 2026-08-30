@@ -99,7 +99,7 @@ BUILD_PROMPT
 # _build_compose_prompt_body <output_file> <task_header> <plan_payload>
 #   <instructions> <design_decisions> <acceptance_testfiles>
 #   <acceptance_spec_ids> <review_feedback_body> <acceptance_gap_ids>
-#   <feedback_body> <iter_n> <gate_feedback_body>
+#   <feedback_body> <iter_n>
 # Assembles the full framed prompt and writes it to <output_file>.
 _build_compose_prompt_body() {
     local _prompt_input_file="$1"
@@ -113,8 +113,7 @@ _build_compose_prompt_body() {
     local _acceptance_gap_ids="$9"
     local _feedback_body="${10}"
     local _iter_n="${11}"
-    local _gate_feedback_body="${12}"
-    local _acceptance_tautology_ids="${13}"
+    local _acceptance_tautology_ids="${12}"
 
     {
         printf '%s\n' "$_task_header"
@@ -188,14 +187,9 @@ _build_compose_prompt_body() {
             printf '%s\n' "$_feedback_body"
             printf 'Fix the issues above before emitting LOOP_COMPLETE.\n'
         fi
-        if [[ -n "$_gate_feedback_body" ]]; then
-            printf '\n## PRIOR GATE FEEDBACK (consolidated, from the gate-aggregator)\n'
-            printf '%s\n' "$_gate_feedback_body"
-            printf 'These mechanical gates BLOCK convergence — resolve every finding above before emitting LOOP_COMPLETE.\n'
-        fi
         if [[ -n "$_acceptance_tautology_ids" ]]; then
             printf '\n## TAUTOLOGICAL ASSERTIONS (you MUST re-author these — #1583)\n'
-            printf 'The acceptance gate flagged these [change] SPEC ids as TAUTOLOGICAL: their tagged assertion PASSED even at the merge-base baseline, WITHOUT your implementation — so the test proves nothing (the classic "green but inert" defect). This overrides the don'"'"'t-weaken charter above for THESE ids ONLY: re-authoring a false assertion into a real one is NOT weakening. Rewrite each so the assertion FAILS at the merge-base baseline (revert the change'"'"'s WIRING file → the assertion must fail) and PASSES with your implementation. See the PRIOR GATE FEEDBACK above for the per-SPEC diagnosis. The mechanical negative-control re-runs next iteration and will reject a still-tautological result, so make it a genuine control:\n'
+            printf 'The acceptance gate flagged these [change] SPEC ids as TAUTOLOGICAL: their tagged assertion PASSED even at the merge-base baseline, WITHOUT your implementation — so the test proves nothing (the classic "green but inert" defect). This overrides the don'"'"'t-weaken charter above for THESE ids ONLY: re-authoring a false assertion into a real one is NOT weakening. Rewrite each so the assertion FAILS at the merge-base baseline (revert the change'"'"'s WIRING file → the assertion must fail) and PASSES with your implementation. See the STAGE SUMMARIES section for the per-SPEC diagnosis. The mechanical negative-control re-runs next iteration and will reject a still-tautological result, so make it a genuine control:\n'
             local _tid
             while IFS= read -r _tid; do
                 [[ -n "$_tid" ]] && printf -- '- [%s] re-author so the [%s]-tagged assertion FAILS at the merge-base baseline (reverting the WIRING file must break it)\n' "$_tid" "$_tid"

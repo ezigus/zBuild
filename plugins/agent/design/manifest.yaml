@@ -54,8 +54,6 @@ inputs:
   # the rewind). required:false — absent on the FIRST design pass (no-op).
   - id: design_feedback
     required: false
-  - id: design_gate_feedback
-    required: false
 
 outputs:
   - id: design
