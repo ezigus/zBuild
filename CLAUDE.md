@@ -86,6 +86,7 @@ npm run lint       # shellcheck + lint
 - **Function headers**: one-line comment above a function only when the WHY is non-obvious (hidden constraint, workaround, invariant). Never multi-line docstrings. Apply this on touch — no mass backfill.
 - **Shellcheck**: `.shellcheckrc` at repo root sets `shell=bash` and disables SC1090/SC1091 (dynamic source paths). Per-file `# shellcheck disable=SCXXXX` is still fine for local suppressions.
 - **Editor conventions**: `.editorconfig` at repo root: 4-space indent for `.sh`, 2-space for YAML/JSON, LF line endings, final newline, no trailing whitespace.
+- **No SIGPIPE-prone pipes**: never `printf`/`echo "$var" | grep -q`, and no bare `| head`, in `scripts/`, `core/`, or `plugins/`. The reader exits early, the writer takes SIGPIPE, and under `set -euo pipefail` the surrounding function dies for a reason nothing logs. Use a here-string (`grep -q ... <<< "$var"`), or capture in full and trim in bash. `tests/unit/sigpipe-antipattern-guard-test.sh` enforces this; a genuinely safe pipe is annotated `# sigpipe-ok: <reason>`.
 
 ## Models as data, not strings
 

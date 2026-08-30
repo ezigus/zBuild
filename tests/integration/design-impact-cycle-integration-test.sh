@@ -8,14 +8,14 @@
 #
 # Verifies without invoking a real LLM:
 #   T1: _impact_extract_scope_from_design parses ```scope block from design.md
-#   T2: _impact_run_inner writes impact_feedback.md; content round-trips into
-#       design's prior_impact_feedback on iter 2 via _design_read_design_gate_feedback
-#   T3: design iter 2 prompt contains PRIOR DESIGN (self-feedback, #773 lesson)
-#       when ZBUILD_CYCLE_FEEDBACK_DIR/design.txt is present
-#   T4: design iter 2 prompt contains PRIOR DESIGN-GATE FEEDBACK when
+#   T2 (ADR-060): _impact_run_inner writes a STRUCTURED impact.json; the
+#       human-readable feedback is RENDERED from missing[] by render_impact_md
+#       and round-trips into design via _design_read_design_gate_feedback.
+#   T3: design iter 2 prompt contains PRIOR DESIGN-GATE FEEDBACK when
 #       design_gate_feedback.txt is present
-#   T5: impact verdict=complete suppresses both feedback files (no content to
-#       pipe back; complete exit is cycle convergence)
+#   T4: design iter 2 prompt contains PRIOR DESIGN (self-feedback, #773 lesson)
+#       when ZBUILD_CYCLE_FEEDBACK_DIR/design.txt is present
+#   T5: the _design_read_* helpers return empty outside cycle context
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -110,7 +110,7 @@ printf '# stub\n' > "$FAKE_REPO_ROOT/tests/integration/design-pipeline-test.sh"
 
 # Stub route_to_model to return a synthetic incomplete response.
 route_to_model() {
-    printf '%s' '{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"s1","files_to_add":["tests/integration/design-pipeline-test.sh"],"reason":"test pins cycle count"}],"impact_feedback_md":"## Gap report\\n- Missing: tests/integration/design-pipeline-test.sh (pins cycle count)"}'
+    printf '%s' '{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"s1","files_to_add":["tests/integration/design-pipeline-test.sh"],"reason":"test pins cycle count","evidence":"Gap report: the test asserts the cycle count directly"}]}'
 }
 # Stub apply_scope_redaction to just copy (redaction tested separately).
 apply_scope_redaction() {
@@ -135,24 +135,38 @@ set -e
 assert_eq "T2: _impact_run_inner rc=0" "0" "$t2_rc"
 
 assert_file_exists "T2: impact.json written" "$T2_ARTS/impact.json"
-assert_file_exists "T2: impact_feedback.md written" "$T2_ARTS/impact_feedback.md"
+# ADR-060: no prose sidecar is produced any more.
+if [[ -e "$T2_ARTS/impact_feedback.md" ]]; then
+    assert_fail "T2: no impact_feedback.md sidecar (ADR-060)" "sidecar still written"
+else
+    assert_pass "T2: no impact_feedback.md sidecar (ADR-060)"
+fi
 
 t2_verdict="$(jq -r '.verdict' "$T2_ARTS/impact.json" 2>/dev/null)"
 assert_eq "T2: impact.json verdict=incomplete" "incomplete" "$t2_verdict"
 
-# The feedback content must be in impact_feedback.md.
-t2_fb_content="$(cat "$T2_ARTS/impact_feedback.md" 2>/dev/null)"
+# ADR-060: the feedback text is RENDERED from the structured envelope by the
+# engine, not authored by the model. render_impact_md is the one renderer.
+# shellcheck source=../../scripts/lib/artifact-render.sh
+source "$REPO_ROOT/scripts/lib/artifact-render.sh"
+t2_fb_content="$(render_impact_md "$(cat "$T2_ARTS/impact.json")")"
 case "$t2_fb_content" in
     *"Gap report"*)
-        assert_pass "T2: impact_feedback.md contains gap report text" ;;
+        assert_pass "T2: rendered feedback carries the gap detail from missing[]" ;;
     *)
-        assert_fail "T2: impact_feedback.md missing expected gap content" "got: $t2_fb_content" ;;
+        assert_fail "T2: rendered feedback missing expected gap content" "got: $t2_fb_content" ;;
+esac
+case "$t2_fb_content" in
+    *"design-pipeline-test.sh"*)
+        assert_pass "T2: rendered feedback names the missing file" ;;
+    *)
+        assert_fail "T2: rendered feedback names the missing file" "got: $t2_fb_content" ;;
 esac
 
-# Simulate cycle orchestrator wiring impact_feedback.md → design's prior_impact_feedback.
+# Simulate the cycle orchestrator handing that rendered text to design.
 T2_FB_DIR="$TEST_TEMP_DIR/t2-feedback-iter2"
 mkdir -p "$T2_FB_DIR"
-cp "$T2_ARTS/impact_feedback.md" "$T2_FB_DIR/design_gate_feedback.txt"
+printf '%s\n' "$t2_fb_content" > "$T2_FB_DIR/design_gate_feedback.txt"
 
 # Verify _design_read_design_gate_feedback returns the content.
 # shellcheck source=../../plugins/agent/design/plugin.sh

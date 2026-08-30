@@ -98,10 +98,17 @@ done
 assert_contains "T7: prompt has explicit FORBIDDEN heading" \
     "$PROMPT_BODY" "FORBIDDEN"
 
-# T8: prominent escape valve directing observations into the JSON field
-# instead of around the envelope. Phrased so the model can't miss it.
-assert_contains "T8: prompt directs observations into impact_feedback_md field" \
-    "$PROMPT_BODY" "impact_feedback_md"
+# T8: the escape valve still exists, but ADR-060 moves it INSIDE the structured
+# envelope. Supporting detail goes in missing[].reason / missing[].evidence --
+# never a markdown document in a JSON string (the #1833 shape).
+case "$PROMPT_BODY" in
+    *impact_feedback_md*)
+        assert_fail "T8: prompt must NOT declare the retired impact_feedback_md field (ADR-060)" ;;
+    *)
+        assert_pass "T8: prompt no longer declares impact_feedback_md (ADR-060)" ;;
+esac
+assert_contains "T8: prompt directs supporting detail into missing[].evidence" \
+    "$PROMPT_BODY" "evidence"
 assert_contains "T8: prompt explicitly forbids prose AROUND the envelope" \
     "$PROMPT_BODY" "before, after, or around"
 

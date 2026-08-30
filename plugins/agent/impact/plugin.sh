@@ -6,8 +6,9 @@
 # Member of design_impact_cycle. Reads design.md's ```scope block (the
 # exhaustive enumeration produced by the design stage) and adversarially
 # finds post-design CONSEQUENCES: files the change touches but design missed.
-# Emits impact.json { verdict: complete | incomplete, ... } and
-# impact_feedback.md wired back into design.prior_impact_feedback.
+# Emits impact.json { verdict: complete | incomplete, missing[] }. ADR-060:
+# the envelope is structured only — the human-readable narrative is rendered
+# from missing[] by render_impact_md, not authored by the model.
 # plan.json is retained as secondary input for the deterministic prefilter.
 
 [[ -n "${_ZBUILD_IMPACT_LOADED:-}" ]] && return 0
@@ -121,8 +122,9 @@ _impact_run_inner() {
     # ADR-028: canonical OUTPUT CONTRACT from framework. Consolidates the
     # quadruple-redundant "begins with `{`" / FORBIDDEN / INCORRECT-examples
     # / REMINDER triplets that PRs #767/#771/#774/#783 accreted (see plan
-    # in docs/adr/ADR-028). impact_feedback_md is a markdown free-text
-    # field → ADR-022 v2 escape requirement applies.
+    # in docs/adr/ADR-028). ADR-060: every field here is structured or short
+    # plain text — no markdown-document field, so no escape requirement and
+    # nothing for the model to hand-serialize wrongly (#1833).
     local _impact_schema
     _impact_schema="$(cat <<'IMPACT_SCHEMA'
   {
@@ -132,10 +134,10 @@ _impact_run_inner() {
       {
         "step_id": "<id of the plan step that needs expanded scope>",
         "files_to_add": ["<repo-relative path>", "..."],
-        "reason": "<why these files need to be in scope>"
+        "reason": "<why these files need to be in scope>",
+        "evidence": "<the specific symbol, assertion, or line that links them; plain text, one or two sentences>"
       }
-    ],
-    "impact_feedback_md": "<markdown report fed back to the design agent on the next cycle iter>"
+    ]
   }
 IMPACT_SCHEMA
 )"
@@ -143,8 +145,7 @@ IMPACT_SCHEMA
     _output_contract_block="$(_llm_output_contract \
         --stage impact \
         --verdicts "complete,incomplete" \
-        --schema-json "$_impact_schema" \
-        --markdown-fields "impact_feedback_md")"
+        --schema-json "$_impact_schema")"
 
     # Build design.md scope summary for the prompt.
     local _scope_list=""
@@ -200,9 +201,11 @@ Rules:
   every file that pins a CHANGED symbol/count/order/path is already in the
   DESIGN SCOPE BLOCK, even if topically-related files remain unlisted.
 - If no gaps found, return verdict="complete" with missing=[].
-- The impact_feedback_md is what the design agent reads on iter N+1 when
-  you returned incomplete. Make it actionable: name the missing files,
-  cite the symbol or reference that linked them.
+- missing[] is what the design agent reads on iter N+1 when you returned
+  incomplete. Make it actionable: name the missing files in files_to_add,
+  say why in reason, and cite the specific symbol, assertion, or line that
+  linked them in evidence. Do NOT write a markdown report — there is no
+  field for one, and prose around the envelope is a contract violation.
 
 BUDGET DISCIPLINE (read this — you have a BOUNDED tool-call budget):
 - You have a LIMITED number of tool calls. Do NOT exhaust them grepping
@@ -339,7 +342,7 @@ $_impact_instructions"
         # for postmortems. Genuine infra errors (OOM rc=137, claude crash) keep
         # verdict=error so the cycle's blocked-predicate can flag them.
         if [[ "$_rc_verdict" == "error" && "$_rc_reason" != "router_timeout" ]]; then
-            printf '{"schema_version":1,"verdict":"error","reason":"%s","missing":[],"impact_feedback_md":""}\n' \
+            printf '{"schema_version":1,"verdict":"error","reason":"%s","missing":[]}\n' \
                 "$_rc_reason" > "$output_impact_json"
             # Emit verdict event for cycle predicate consumption.
             emit_event "impact.verdict.error" "plugin=impact" "artifact=impact.json" "reason=$_rc_reason"
@@ -349,16 +352,13 @@ $_impact_instructions"
         # rc=1 (max_turns) OR rc=124 (timeout). Was a fail-CLOSED return 1 with
         # NO impact.json, which gave the cycle a MISSING artifact and an empty
         # iteration. Instead write verdict=incomplete (so the cycle RE-ITERATES,
-        # another shot) with a best-effort note. The reason field carries the
-        # classified reason ($_rc_reason — e.g. router_timeout) so the artifact,
-        # not just the event, records what failed.
-        local _be_md
-        _be_md="$(printf 'Impact analysis did not complete (router rc=%s, reason=%s). The design scope block was NOT adversarially verified this iteration; treat it as unconfirmed. Re-run impact with a tighter, verdict-first pass.' \
-            "$router_rc" "$_rc_reason")"
-        jq -nc --arg md "$_be_md" --arg reason "$_rc_reason" \
-            '{schema_version:1, verdict:"incomplete", reason:$reason, missing:[], impact_feedback_md:$md}' \
+        # another shot). ADR-060: the signal is structural — reason carries the
+        # classification ($_rc_reason, e.g. router_timeout) and router_rc the
+        # raw code, so the artifact records what failed without a prose note.
+        jq -nc --arg reason "$_rc_reason" --arg rc "$router_rc" \
+            '{schema_version:1, verdict:"incomplete", reason:$reason, router_rc:$rc, missing:[]}' \
             > "$output_impact_json" 2>/dev/null \
-            || printf '{"schema_version":1,"verdict":"incomplete","reason":"%s","missing":[],"impact_feedback_md":"impact did not complete (router rc=%s)"}\n' "$_rc_reason" "$router_rc" > "$output_impact_json"
+            || printf '{"schema_version":1,"verdict":"incomplete","reason":"%s","router_rc":"%s","missing":[]}\n' "$_rc_reason" "$router_rc" > "$output_impact_json"
         emit_event "impact.verdict.incomplete" "plugin=impact" "artifact=impact.json" "reason=router_failed_best_effort"
         return 0
     fi
@@ -418,9 +418,33 @@ $_impact_instructions"
                 "prose_length=${#impact_prose}" \
                 "recovered_bytes=${#_recovered}" "artifact=impact.json"
         else
-            error "_impact_run_inner: impact.json schema violation (requires schema_version=1, verdict ∈ {complete,incomplete,error}, missing[], impact_feedback_md string)"
-            emit_event "plugin.result" "verdict=error" "plugin=impact" "reason=schema_violation"
-            return 1
+            # ADR-060 / #1833: say WHICH check failed, and re-ask rather than
+            # abort. The old message printed a fixed list of five requirements
+            # and named none of them, so a two-character bad escape inside a
+            # markdown field read as a contract-version mismatch and killed a
+            # 24-minute run. A malformed reply is transient -- same class as a
+            # router timeout -- so it takes the same #892/#937 treatment:
+            # verdict=incomplete, and the cycle re-runs the stage. The engine
+            # never rewrites what the model returned.
+            local _cls _detail
+            _cls="$(_llm_envelope_classify "$impact_json" _impact_envelope_schema_ok)"
+            if [[ "$_cls" == "unparseable" ]]; then
+                _detail="$(_llm_envelope_parse_error "$impact_json")"
+                error "_impact_run_inner: impact.json is not parseable JSON — ${_detail:-jq gave no detail}"
+            else
+                _detail="requires schema_version=1, verdict ∈ {complete,incomplete,error}, missing[] array"
+                error "_impact_run_inner: impact.json parsed but violates the schema — $_detail"
+            fi
+            emit_event "impact.envelope.malformed" "plugin=impact" \
+                "classification=$_cls" "detail=$_detail" \
+                "raw_bytes=${#raw_response}" "artifact=impact.json"
+            jq -nc --arg cls "$_cls" \
+                '{schema_version:1, verdict:"incomplete", reason:("envelope_" + $cls), missing:[]}' \
+                > "$output_impact_json" 2>/dev/null \
+                || printf '{"schema_version":1,"verdict":"incomplete","reason":"envelope_%s","missing":[]}\n' "$_cls" > "$output_impact_json"
+            emit_event "impact.verdict.incomplete" "plugin=impact" \
+                "artifact=impact.json" "reason=envelope_malformed_best_effort"
+            return 0
         fi
     fi
 
@@ -484,14 +508,6 @@ $_impact_instructions"
 
     # Write impact.json
     printf '%s\n' "$impact_json" | atomic_write "$output_impact_json"
-
-    # Extract and write impact_feedback.md sibling for cycle feedback wiring.
-    # Copilot #747: atomic_write preserves the rename-into-place contract so
-    # a mid-write interrupt doesn't leave a partial feedback file that the
-    # cycle orchestrator could read on the next iter.
-    local feedback_md
-    feedback_md="$(printf '%s' "$impact_json" | jq -r '.impact_feedback_md // ""' 2>/dev/null || true)"
-    printf '%s\n' "$feedback_md" | atomic_write "$artifact_dir/impact_feedback.md"
 
     # Emit verdict event for cycle predicate consumption.
     case "$verdict" in

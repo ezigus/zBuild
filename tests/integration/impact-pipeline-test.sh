@@ -5,8 +5,9 @@
 #
 # Drives _impact_run_inner directly with a stubbed route_to_model that
 # returns a synthetic verdict. Asserts:
-#   1. impact.json is written with verdict + missing[] + impact_feedback_md
-#   2. impact_feedback_md sibling file is written for cycle feedback wiring
+#   1. impact.json is written with verdict + structured missing[]
+#   2. ADR-060: NO prose sidecar is produced -- the narrative is rendered
+#      from missing[] by render_impact_md, not authored by the model
 #   3. The verdict field controls cycle convergence (complete → exit, incomplete → iter)
 #   4. Backward-compat: when given a plan-shaped JSON from any planner, the
 #      shape is processed identically (forward compat with multi-planner futures)
@@ -102,7 +103,7 @@ print_test_section "1. impact returns verdict=incomplete with missing[] when pla
 
 # Stub route_to_model to return a synthetic impact verdict.
 route_to_model() {
-    printf '%s' '{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"step-1","files_to_add":["tests/unit/template-test.sh","tests/integration/runner-test.sh"],"reason":"simple.yaml flow shape change requires test updates"}],"impact_feedback_md":"## Impact gap on step-1\nThe simple.yaml flow change at step-1 will break assumptions in: tests/unit/template-test.sh, tests/integration/runner-test.sh. Add these to files[].\n"}'
+    printf '%s' '{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"step-1","files_to_add":["tests/unit/template-test.sh","tests/integration/runner-test.sh"],"reason":"simple.yaml flow shape change requires test updates","evidence":"both tests pin the simple.yaml flow shape"}]}'
     return 0
 }
 
@@ -126,19 +127,28 @@ assert_eq "T4: missing[] has 1 entry" "1" "$missing_count"
 missing_files=$(jq -r '.missing[0].files_to_add | join(",")' "$IMPACT_OUT" 2>/dev/null)
 assert_eq "T5: missing[0].files_to_add preserved" "tests/unit/template-test.sh,tests/integration/runner-test.sh" "$missing_files"
 
-# T6: impact_feedback.md sibling file written for cycle feedback wiring.
-assert_file_exists "T6: impact_feedback.md sibling written" "$ARTIFACTS/impact_feedback.md"
-
-if grep -q "Impact gap on step-1" "$ARTIFACTS/impact_feedback.md"; then
-    assert_pass "T7: impact_feedback.md contains the LLM markdown"
+# T6 (ADR-060): the prose sidecar is NO LONGER produced. It duplicated
+# missing[] in markdown, nothing consumed it, and it is the field whose bad
+# escape killed run 32886190954.
+if [[ -e "$ARTIFACTS/impact_feedback.md" ]]; then
+    assert_fail "T6: no impact_feedback.md sidecar is written (ADR-060)" \
+        "sidecar still present at $ARTIFACTS/impact_feedback.md"
 else
-    assert_fail "T7: impact_feedback.md should contain LLM markdown" "missing"
+    assert_pass "T6: no impact_feedback.md sidecar is written (ADR-060)"
+fi
+
+# T7: the detail the sidecar used to carry now lives in the structured envelope.
+if jq -e '.missing[0] | has("reason") and has("evidence")' "$IMPACT_OUT" >/dev/null 2>&1; then
+    assert_pass "T7: missing[] carries reason + evidence in the envelope"
+else
+    assert_fail "T7: missing[] carries reason + evidence in the envelope" \
+        "got: $(head -c 300 "$IMPACT_OUT" 2>/dev/null)"
 fi
 
 print_test_section "2. impact returns verdict=complete when plan covers everything"
 
 route_to_model() {
-    printf '%s' '{"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":"All step files[] are complete. No gaps."}'
+    printf '%s' '{"schema_version":1,"verdict":"complete","missing":[]}'
     return 0
 }
 
@@ -187,7 +197,7 @@ cat > "$UNIFIED_PLAN" <<'EOF'
 EOF
 
 route_to_model() {
-    printf '%s' '{"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":""}'
+    printf '%s' '{"schema_version":1,"verdict":"complete","missing":[]}'
     return 0
 }
 
