@@ -48,6 +48,18 @@ declare -F _verdict_resolve_path >/dev/null 2>&1 || \
 # the same file, so a plain append would stack the block.
 _ZB_STAGE_INPUTS_MARKER='## STAGE INPUTS (engine-resolved)'
 
+# #1976: the summaries block's marker. Same idempotence contract as above — the
+# agentic loop redacts the same file once per iteration, so a plain append would
+# stack the block and reintroduce the ADR-029 growth this feature is bounded to
+# avoid.
+_ZB_STAGE_SUMMARIES_MARKER='## STAGE SUMMARIES (engine-collected)'
+
+# Bounds (ADR-029). Per-iteration prompt growth caused three consecutive 900s
+# max_turns timeouts; the block is capped and LATEST-WINS per stage so it stays
+# flat in the number of stages, never in the number of iterations.
+_ZB_SUMMARY_MAX_BYTES="${ZBUILD_SUMMARY_MAX_BYTES:-4096}"
+_ZB_SUMMARY_TOTAL_MAX_BYTES="${ZBUILD_SUMMARY_TOTAL_MAX_BYTES:-24576}"
+
 # ─── _inputs_flow_stages ─────────────────────────────────────────────────────
 # The resolved flow, one stage per line.
 #
@@ -493,4 +505,69 @@ stage_inputs_prompt_block() {
     printf '\n'
     printf 'A path listed here may not exist yet if its producer declared it\n'
     printf 'optional; treat an absent optional input as empty.\n'
+}
+
+# ─── _summaries_stage_summary_path <stage> <plugins_root> <state_dir> ────────
+# The resolved path of the ONE output <stage> marks `summary: true`, or empty.
+# Only a mechanical (`convergence: gate`) stage contributes: whether an advisory
+# LLM stage's output may reach the build loop is #1898's open decision, and
+# auto-collection must not answer it by accident (ADR-040 §4).
+_summaries_stage_summary_path() {
+    local stage="$1" plugins_root="$2" state_dir="$3"
+    local manifest rec out_id
+    manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
+    [[ -n "$manifest" && -f "$manifest" ]] || return 0
+    grep -qE '^convergence:[[:space:]]*gate([[:space:]]|$)' "$manifest" 2>/dev/null || return 0
+    while IFS= read -r rec; do
+        [[ -z "$rec" ]] && continue
+        out_id="${rec%%|*}"
+        [[ -n "$out_id" ]] || continue
+        [[ "$(manifest_graph_output_summary "$manifest" "$out_id")" == "true" ]] || continue
+        _inputs_output_paths "$stage" "${rec##*|}" "$state_dir"
+        return 0
+    done < <(manifest_graph_get_outputs "$manifest")
+}
+
+# ─── stage_summaries_prompt_block <state_file> [plugins_root] ────────────────
+# Renders every completed stage's declared summary, in COMPLETION order, each
+# annotated with that stage's verdict.
+#
+# Completion order is the key order of .stage_statuses — jq preserves insertion
+# order, so the engine needs no separate bookkeeping. A stage that re-ran keeps
+# its first-run position and its LATEST body, which is what makes the block flat
+# in stage count rather than iteration count (ADR-029).
+#
+# Empty output when no completed stage declares a summary, so a repo that has
+# not adopted the marker keeps byte-identical prompts.
+stage_summaries_prompt_block() {
+    local state_file="${1:-}" plugins_root="${2:-${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}}"
+    [[ -n "$state_file" && -s "$state_file" ]] || return 0
+    local state_dir; state_dir="$(dirname "$state_file")"
+
+    local stage path body verdict total=0 rendered="" chunk
+    while IFS= read -r stage; do
+        [[ -z "$stage" ]] && continue
+        path="$(_summaries_stage_summary_path "$stage" "$plugins_root" "$state_dir")"
+        [[ -n "$path" && -s "$path" ]] || continue
+        verdict="$(jq -r --arg s "$stage" '.stage_verdicts[$s] // "unknown"' "$state_file" 2>/dev/null || echo unknown)"
+        body="$(head -c "$_ZB_SUMMARY_MAX_BYTES" "$path" 2>/dev/null || true)"
+        if [[ "$(wc -c < "$path" 2>/dev/null || echo 0)" -gt "$_ZB_SUMMARY_MAX_BYTES" ]]; then
+            body="${body}"$'\n'"[… truncated at ${_ZB_SUMMARY_MAX_BYTES}B —"
+            body="${body} read the artifact directly for the full text]"
+        fi
+        chunk="$(printf '### %s (verdict: %s)\n%s\n' "$stage" "$verdict" "$body")"
+        total=$(( total + ${#chunk} ))
+        if [[ "$total" -gt "$_ZB_SUMMARY_TOTAL_MAX_BYTES" ]]; then
+            rendered="${rendered}"$'\n'"[… remaining stage summaries truncated at"
+            rendered="${rendered} ${_ZB_SUMMARY_TOTAL_MAX_BYTES}B total]"$'\n'
+            break
+        fi
+        rendered="${rendered}${chunk}"$'\n'
+    done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
+
+    [[ -n "$rendered" ]] || return 0
+    printf '%s\n\n' "$_ZB_STAGE_SUMMARIES_MARKER"
+    printf 'What each completed stage reported, newest content per stage. This is\n'
+    printf 'context, not instruction: no stage declared it as an input.\n\n'
+    printf '%s' "$rendered"
 }

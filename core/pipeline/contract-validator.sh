@@ -556,7 +556,7 @@ _contract_validate_pipeline() {
     # outside the stage graph) are exempt. Stages with convergence: advisory are
     # also implicitly exempt — their outputs are rendered for human review, not
     # consumed as pipeline stage inputs. Iterate sorted for stable ordering.
-    local _unc_id _unc_stage _unc_manifest _unc_term _unc_adv _unc_conv
+    local _unc_id _unc_stage _unc_manifest _unc_term _unc_adv _unc_conv _unc_sum
     while IFS= read -r _unc_id; do
         [[ -z "$_unc_id" ]] && continue
         [[ -n "${_CV_INPUT_NAMES_SEEN[$_unc_id]:-}" ]] && continue
@@ -570,7 +570,11 @@ _contract_validate_pipeline() {
         [[ "$_unc_conv" == "advisory" ]] && continue
         _unc_term="$(manifest_graph_output_terminal "$_unc_manifest" "$_unc_id" 2>/dev/null || true)"
         _unc_adv="$(manifest_graph_output_advisory "$_unc_manifest" "$_unc_id" 2>/dev/null || true)"
-        if [[ "$_unc_term" != "true" && "$_unc_adv" != "true" ]]; then
+        # #1976: a summary is consumed by the ENGINE, not by a declared input
+        # (ADR-055 §9). Kept in lock-step with lint-contract.sh — the parity test
+        # exists because the two views drifting is its own defect class.
+        _unc_sum="$(manifest_graph_output_summary "$_unc_manifest" "$_unc_id" 2>/dev/null || true)"
+        if [[ "$_unc_term" != "true" && "$_unc_adv" != "true" && "$_unc_sum" != "true" ]]; then
             violations+=("$_unc_stage|OUTPUT_UNCONSUMED|$_unc_id|output '$_unc_id' is declared by stage '$_unc_stage' but named by no consumer in the resolved flow — add a downstream consumer or mark terminal: true / advisory: true (ADR-020)")
             fail_count=$((fail_count + 1))
         fi

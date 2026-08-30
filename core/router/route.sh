@@ -394,6 +394,28 @@ _route_redact_prompt() {
         fi
     fi
 
+    # #1976: what each completed stage reported, collected from the outputs they
+    # marked `summary: true`. Unlike the block above this needs no declaration
+    # from the consumer — it is ambient context, not a resolved input. Injected
+    # at the same point and for the same reason: before apply_scope_redaction,
+    # so it rides the ADR-004 chokepoint by construction. Marker-guarded, and
+    # bounded per ADR-029 by the renderer.
+    if [[ -n "${ZBUILD_STATE_DIR:-}" && -s "${ZBUILD_STATE_DIR}/pipeline-state.json" ]]; then
+        if ! declare -F stage_summaries_prompt_block >/dev/null 2>&1; then
+            # shellcheck source=../pipeline/input-resolve.sh
+            source "$_ZBUILD_ROOT/core/pipeline/input-resolve.sh" 2>/dev/null || true
+        fi
+        if declare -F stage_summaries_prompt_block >/dev/null 2>&1 \
+            && ! grep -qF "$_ZB_STAGE_SUMMARIES_MARKER" "$input" 2>/dev/null; then
+            local _ss_block=""
+            _ss_block="$(stage_summaries_prompt_block \
+                "${ZBUILD_STATE_DIR}/pipeline-state.json" 2>/dev/null || true)"
+            if [[ -n "$_ss_block" ]]; then
+                printf '\n\n%s\n' "$_ss_block" >> "$input" 2>/dev/null || true
+            fi
+        fi
+    fi
+
     if [[ -n "$manifest" ]] && declare -F apply_scope_redaction >/dev/null 2>&1; then
         # A configured manifest is authoritative: apply_scope_redaction handles a
         # missing/empty file itself by emitting redaction.refused (rc1, fail-closed)
