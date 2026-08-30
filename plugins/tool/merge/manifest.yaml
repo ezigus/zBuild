@@ -44,13 +44,11 @@ outputs:
     format: json
     required: true
     primary: true
-    terminal: true
   - id: pr_url
     path: ${artifact_dir}/pr-url.txt
     type: pr-url.txt@1
     format: text
     required: false
-    terminal: true
 
 state:
   persisted: []

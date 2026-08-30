@@ -226,8 +226,9 @@ manifest_graph_output_format() {
 }
 
 # ─── _mgraph_output_bool <manifest> <output_id> <field> ─────────────────────
-# Shared reader for the boolean markers on an output entry (terminal, advisory,
-# summary). A dedicated accessor per marker rather than extra fields on the
+# Shared reader for the boolean markers on an output entry. `terminal` and
+# `advisory` were retired with the unconsumed check (#1980); `summary` (#1976)
+# is the one that remains. A dedicated accessor per marker rather than extra fields on the
 # five-field pipe record: appending to that record would silently break callers
 # that unpack by position (see _mgraph_parse_block above).
 _mgraph_output_bool() {
@@ -249,14 +250,6 @@ _mgraph_output_bool() {
         }
     ' "$manifest" 2>/dev/null || true
 }
-
-# ─── manifest_graph_output_terminal <manifest> <output_id> ──────────────────
-# Returns 'true' if the output entry is marked `terminal: true`.
-manifest_graph_output_terminal() { _mgraph_output_bool "${1-}" "${2-}" terminal; }
-
-# ─── manifest_graph_output_advisory <manifest> <output_id> ───────────────────
-# Returns 'true' if the output entry is marked `advisory: true`.
-manifest_graph_output_advisory() { _mgraph_output_bool "${1-}" "${2-}" advisory; }
 
 # ─── manifest_graph_output_summary <manifest> <output_id> ────────────────────
 # Returns 'true' if the output entry is marked `summary: true` (#1976) — the ONE

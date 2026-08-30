@@ -71,4 +71,3 @@ outputs:
     # prior-output seam (ZBUILD_RESTORED_ARTIFACTS_DIR), not through this file.
     # Marking it advisory says that, rather than inventing a consumer to
     # satisfy the validator.
-    advisory: true
