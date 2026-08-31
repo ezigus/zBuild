@@ -21,6 +21,8 @@ _ZBUILD_DESIGN_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _DESIGN_DIR="$_ZBUILD_PLUGIN_DIR"
 _DESIGN_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -160,6 +162,9 @@ _design_stage_run_inner() {
 
     if [[ ! -f "$plan_json_path" ]]; then
         error "_design_stage_run_inner: plan.json not found at $plan_json_path"
+        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+            "no plan.json to design against" \
+            "The plan stage produced nothing this stage could read; no design was authored."
         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_plan_json"
         return 2
     fi
@@ -421,6 +426,9 @@ DESIGN_PROMPT
     # masking it with rc=0 and leaving the cycle with no artifact.
     if [[ "${_ROUTE_LOOP_TERMINATED_REASON:-}" == "router_timeout" ]]; then
         error "_design_stage_run_inner: router loop timed out (reason=router_timeout) — writing gate-failing marker to re-iterate"
+        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+            "the model call timed out before a design was returned" \
+            "No design.md was authored. This is an infrastructure fault, not a design one."
         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=router_timeout" "rc=$router_rc"
         mkdir -p "$artifact_dir"
         if printf '# Design incomplete — router timeout, re-iterating\n\nDesign did not complete (reason=router_timeout). No acceptance block is emitted, so the design-gate rejects this artifact and the design cycle re-iterates.\n' \
@@ -442,6 +450,9 @@ DESIGN_PROMPT
             return 0
         fi
         error "_design_stage_run_inner: failed to write timeout marker to $output_design_md"
+        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+            "could not record the design marker" \
+            "A design may have been authored but could not be committed to the artifact dir."
         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=marker_write_failed" "rc=$router_rc"
         return 1
     fi
@@ -454,6 +465,9 @@ DESIGN_PROMPT
         local _rc_verdict _rc_reason
         _router_rc_classify "$router_rc" _rc_verdict _rc_reason
         error "_design_stage_run_inner: router rc=$router_rc → verdict=$_rc_verdict reason=$_rc_reason"
+        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+            "the model call failed ($_rc_reason)" \
+            "No usable design.md was returned."
         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=$_rc_reason" "rc=$router_rc"
         return 1
     fi
@@ -485,6 +499,9 @@ DESIGN_PROMPT
     # Assert the scope block is present in design.md.
     if [[ ! -f "$output_design_md" ]]; then
         error "_design_stage_run_inner: design.md not produced at $output_design_md"
+        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+            "no design.md was produced" \
+            "The model returned without writing the artifact this stage exists to produce."
         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_design_md"
         return 1
     fi
@@ -496,6 +513,9 @@ DESIGN_PROMPT
     # below already uses the unescaped form, so this aligns the two.
     if ! grep -q '^```scope' "$output_design_md" 2>/dev/null; then
         warn "_design_stage_run_inner: design.md missing scope block — design output incomplete"
+        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+            "design.md has no fenced scope block" \
+            "Without a scope block the build stage has no declared boundary to work inside."
         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_scope_block"
         # Failure path: don't override the banner output; let the deferred
         # close (if any) flush claude's stdout summary so the operator sees
@@ -509,6 +529,9 @@ DESIGN_PROMPT
     # Assert the acceptance block is present in design.md.
     if ! extract_acceptance_block "$output_design_md" >/dev/null 2>&1; then
         warn "_design_stage_run_inner: design.md missing acceptance block — design output incomplete"
+        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+            "design.md has no fenced acceptance block" \
+            "Without acceptance SPECs there is nothing for the acceptance gate to verify."
         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_acceptance_block"
         if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
             _route_loop_close_final_banner || true
@@ -531,6 +554,16 @@ DESIGN_PROMPT
     # Atomically finalize design.md (#507 contract).
     cat "$output_design_md" | atomic_write "$output_design_md"
 
+    # ADR-055 §9: state the SHAPE of the design a later stage is held to —
+    # the boundary it may touch and the SPECs it must satisfy.
+    local _scope_csv="" _scope_n=0 _acc="" _spec_n=0
+    _scope_csv="$(_extract_scope_from_design "$output_design_md" 2>/dev/null || true)"
+    [[ -n "$_scope_csv" ]] && _scope_n="$(awk -F, '{print NF}' <<< "$_scope_csv")"
+    _acc="$(extract_acceptance_block "$output_design_md" 2>/dev/null || true)"
+    _spec_n="$(grep -c '^SPEC-[0-9]' <<< "$_acc" || true)"
+    stage_summary_write "$artifact_dir/design-summary.md" "design" "pass" \
+        "authored design.md — $_scope_n file(s) in scope, $_spec_n acceptance SPEC(s)" \
+        "$(printf -- '- scope: %s\n- artifact: design.md' "${_scope_csv:-<none>}")"
     emit_event "plugin.result" "stage=design" \
         "plugin=design" \
         "artifact=design.md"

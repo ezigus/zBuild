@@ -17,6 +17,8 @@ _ZBUILD_IMPACT_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _IMPACT_DIR="$_ZBUILD_PLUGIN_DIR"
 _IMPACT_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -104,6 +106,9 @@ _impact_run_inner() {
 
     if [[ ! -f "$design_md_path" ]]; then
         error "_impact_run_inner: design.md not found at $design_md_path"
+        stage_summary_write "$artifact_dir/impact-summary.md" "impact" "error" \
+            "no design.md to assess impact against" \
+            "There was no design to compare the change against."
         emit_event "plugin.result" "verdict=error" "plugin=impact" "reason=missing_design_md"
         return 2
     fi
@@ -334,6 +339,9 @@ $_impact_instructions"
         local _rc_verdict _rc_reason
         _router_rc_classify "$router_rc" _rc_verdict _rc_reason
         error "_impact_run_inner: router rc=$router_rc → verdict=$_rc_verdict reason=$_rc_reason"
+        stage_summary_write "$artifact_dir/impact-summary.md" "impact" "error" \
+            "the model call failed ($_rc_reason)" \
+            "No impact assessment was produced this iteration."
         emit_event "plugin.result" "verdict=error" "plugin=impact" "reason=$_rc_reason" "router_rc=$router_rc"
         # #937: a TIMEOUT (rc=124, reason=router_timeout) is RECOVERABLE — fall
         # through to the #892 best-effort verdict=incomplete path (re-iterate)
@@ -390,6 +398,9 @@ $_impact_instructions"
 
     if [[ -z "$impact_json" ]]; then
         error "_impact_run_inner: empty or malformed response from LLM"
+        stage_summary_write "$artifact_dir/impact-summary.md" "impact" "error" \
+            "the model returned an empty impact response" \
+            "No impact assessment was produced this iteration."
         emit_event "plugin.result" "verdict=error" "plugin=impact" "reason=empty_response"
         return 1
     fi
@@ -467,6 +478,9 @@ $_impact_instructions"
             ($forced - $present | unique)
         ' 2>/dev/null)"; then
             error "_impact_run_inner: prefilter floor merge (jq) failed — refusing to ship LLM verdict unchanged (#781)"
+            stage_summary_write "$artifact_dir/impact-summary.md" "impact" "error" \
+                "could not merge the prefilter results into impact.json" \
+                "The assessment ran but could not be assembled into its artifact."
             emit_event "plugin.result" "verdict=error" "plugin=impact" "reason=prefilter_merge_failed"
             return 1
         fi
@@ -482,6 +496,9 @@ $_impact_instructions"
                 }]
             ' 2>/dev/null)"; then
                 error "_impact_run_inner: prefilter floor injection (jq) failed — refusing to ship (#781)"
+                stage_summary_write "$artifact_dir/impact-summary.md" "impact" "error" \
+                    "could not inject the prefilter results into impact.json" \
+                    "The assessment ran but could not be assembled into its artifact."
                 emit_event "plugin.result" "verdict=error" "plugin=impact" "reason=prefilter_inject_failed"
                 return 1
             fi
@@ -530,6 +547,9 @@ $_impact_instructions"
             ;;
     esac
 
+    stage_summary_write "$artifact_dir/impact-summary.md" "impact" "pass" \
+        "assessed the change against the design" \
+        "$(printf -- '- artifact: impact.json')"
     emit_event "plugin.result" "stage=impact" \
         "plugin=impact" "verdict=$verdict" "artifact=impact.json"
     return 0

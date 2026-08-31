@@ -18,6 +18,8 @@ _ZBUILD_REVIEW_REPORT_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _RR_DIR="$_ZBUILD_PLUGIN_DIR"
 _RR_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -119,6 +121,9 @@ _rr_run_inner() {
         [[ $gh_rc -ne 0 ]] && warn "review_report: gh pr comment failed (rc=$gh_rc); continuing"
     fi
 
+    stage_summary_write "$artifact_dir/review-report-summary.md" "review-report" "pass" \
+        "aggregated $lens_count review lens(es) — merge readiness: $merge_readiness" \
+        "$(printf -- '- artifact: review-report.md')"
     emit_event "plugin.result" \
         "plugin=review-report" \
         "merge_readiness=$merge_readiness" \

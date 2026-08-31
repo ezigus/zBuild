@@ -258,16 +258,16 @@ assert_file_not_exists "T6: the aggregator renders no payload of its own" \
 #
 # The fixture writes the detail artifacts the gate plugins write, so the chain
 # under test is still "gate output on disk -> prompt body".
-# shellcheck source=../../scripts/lib/gate-detail.sh
-source "$REPO_ROOT/scripts/lib/gate-detail.sh"
+# shellcheck source=../../scripts/lib/stage-summary.sh
+source "$REPO_ROOT/scripts/lib/stage-summary.sh"
 # shellcheck source=../../core/pipeline/input-resolve.sh
 source "$REPO_ROOT/core/pipeline/input-resolve.sh"
 
-gate_detail_write "$T6_ART_DIR/test-failures-summary.md" "suite" "fail" \
+stage_summary_write "$T6_ART_DIR/test-failures-summary.md" "suite" "fail" \
     "FAIL tests/unit/sigpipe-antipattern-guard-test.sh"
-gate_detail_write "$T6_ART_DIR/acceptance-summary.txt" "acceptance-gate" "fail" \
+stage_summary_write "$T6_ART_DIR/acceptance-summary.txt" "acceptance-gate" "fail" \
     "tautology:SPEC-1"
-gate_detail_write "$T6_ART_DIR/shape-floor-detail.md" "shape-floor" "fail" \
+stage_summary_write "$T6_ART_DIR/shape-floor-detail.md" "shape-floor" "fail" \
     "missing_floor_files"
 
 printf '{"schema_version":1,"stage_statuses":{"test":"failed","acceptance-gate":"failed","shape-floor":"failed"},"stage_verdicts":{"test":"fail","acceptance-gate":"fail","shape-floor":"fail"}}\n' \

@@ -17,11 +17,11 @@ _ZBUILD_SECRET_SCAN_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
-# shellcheck source=../../../scripts/lib/gate-detail.sh
+# shellcheck source=../../../scripts/lib/stage-summary.sh
 # NOT `|| true`: this helper is how the gate's findings reach a prompt at
-# all. Swallowing a failed load would leave gate_detail_write undefined and
+# all. Swallowing a failed load would leave stage_summary_write undefined and
 # every finding silently unpublished — the exact shape #1991 guards.
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/gate-detail.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _SS_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -195,7 +195,7 @@ secret_scan_run() {
         # the actionable part and never reached a prompt — the aggregator
         # rendered a count. Values are deliberately NOT included: this gate
         # exists because secrets must not spread, and a summary is LLM-bound.
-        gate_detail_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "fail" \
+        stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "fail" \
             "$count secret(s) found in the diff — remove them, do not merge" \
             "$(printf '%s\n' "$findings_json" | jq -r '.[] | "- \(.file):\(.line) — \(.rule)"' 2>/dev/null || true)"
         _ss_emit "secret_scan.fail" "finding_count=$count"
@@ -205,7 +205,7 @@ secret_scan_run() {
 
     printf '{"verdict":"pass","reason":"clean","baseline":"%s","finding_count":0,"findings":[]}\n' "$base" \
         | atomic_write "$result_path"
-    gate_detail_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "pass" ""
+    stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "pass" ""
     _ss_emit "secret_scan.pass"
     _ss_emit "plugin.result" "plugin=secret-scan" "verdict=pass"
     return 0

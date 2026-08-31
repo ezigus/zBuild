@@ -21,11 +21,11 @@ _ZBUILD_MUTATION_GATE_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
-# shellcheck source=../../../scripts/lib/gate-detail.sh
+# shellcheck source=../../../scripts/lib/stage-summary.sh
 # NOT `|| true`: this helper is how the gate's findings reach a prompt at
-# all. Swallowing a failed load would leave gate_detail_write undefined and
+# all. Swallowing a failed load would leave stage_summary_write undefined and
 # every finding silently unpublished — the exact shape #1991 guards.
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/gate-detail.sh"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _MG_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -102,7 +102,7 @@ mutation_gate_run() {
     # prompt only through the aggregator's rendering; it is now a declared
     # summary output (#1976), and cleared on a non-fail so a stale file from a
     # previous iteration never renders as a current finding.
-    gate_detail_write "$artifacts_dir/mutation-detail.md" "mutation" "$verdict" "$detail"
+    stage_summary_write "$artifacts_dir/mutation-detail.md" "mutation" "$verdict" "$detail"
 
     _mg_emit "plugin.result" "plugin=mutation-gate" "verdict=$verdict"
     return 0

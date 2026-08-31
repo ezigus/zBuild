@@ -9,6 +9,8 @@ _ZBUILD_INTAKE_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _INTAKE_DIR="$_ZBUILD_PLUGIN_DIR"
 _INTAKE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -31,6 +33,10 @@ source "$_INTAKE_DIR/lib/branch-ops.sh"
 # Writes: $(dirname $state_file)/scope-manifest.md
 #         $(dirname $state_file)/intake.md
 intake_run() {
+    # ADR-055 §9: resolved up-front, because the closed-issue refusal below
+    # returns long before state_dir is derived and must still say why.
+    local _intake_art=""
+    [[ -n "${2:-}" ]] && _intake_art="$(dirname "${2:-}")/artifacts"
     local goal="${ZBUILD_GOAL:-}"
     local issue="${ZBUILD_ISSUE:-0}"
 
@@ -42,6 +48,9 @@ intake_run() {
             local _state_rc=0
             _intake_check_issue_state "$issue" || _state_rc=$?
             if [[ $_state_rc -ne 0 ]]; then
+                stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "fail" \
+                    "refused issue #$issue — it is not in an actionable state" \
+                    "No goal was taken in. A closed or locked issue is not work to start."
                 return $_state_rc
             fi
 
@@ -92,6 +101,9 @@ intake_run() {
     sanitized="$(_intake_strip_synthesized "$goal")"
     if [[ -z "$sanitized" ]]; then
         error "intake_run: goal empty after sentinel sanitization"
+        stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "fail" \
+            "the goal was empty after sanitization, so there is nothing to plan" \
+            "No goal was taken in. Every downstream stage would have had no subject."
         return 2
     fi
 
@@ -145,10 +157,16 @@ intake_run() {
         _intake_create_workspace_branch "$state_dir" "$issue" "$_title_line" \
             || _branch_rc=$?
         if [[ $_branch_rc -ne 0 ]]; then
+            stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "fail" \
+                "could not create the workspace branch" \
+                "Fail-closed: work does not proceed on the current branch, which may be main."
             return $_branch_rc
         fi
     fi
 
+    stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "pass" \
+        "took in the goal for issue #$issue: ${_title_line:0:60}" \
+        "$(printf -- '- goal length: %s chars\n- platforms: %s' "${#sanitized}" "${#platforms[@]}")"
     emit_event "plugin.result" "plugin=intake" \
         "goal_len=${#sanitized}" \
         "platform_count=${#platforms[@]}"

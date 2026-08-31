@@ -13,6 +13,8 @@ _ZBUILD_PR_OPEN_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _PR_OPEN_DIR="$_ZBUILD_PLUGIN_DIR"
 _PR_OPEN_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -188,6 +190,9 @@ _pr_open_run_inner() {
     current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
     if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
         error "pr_open: refusing to open PR from branch '${current_branch}' — use a feature branch"
+        stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
+            "refused to open a PR from ${current_branch}" \
+            "No PR was opened; a PR from the trunk into itself is never correct."
         emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
             "reason=branch_is_main" "branch=${current_branch}"
         jq -n \
@@ -211,6 +216,9 @@ _pr_open_run_inner() {
         verdict="$(jq -r '.verdict // ""' "$review_json_path" 2>/dev/null || echo "")"
         if [[ "$verdict" == "block" ]]; then
             error "pr_open: refusing to open PR — review verdict is 'block'"
+            stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
+                "the review verdict blocks opening a PR" \
+                "No PR was opened. The review stage judged the change not ready."
             emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                 "reason=review_verdict_block" "verdict=${verdict}"
             jq -n \
@@ -223,6 +231,9 @@ _pr_open_run_inner() {
         warn "pr_open: review.json absent — advisory-review mode (review-report.json present; ADR-040 lenses never block, #1142)"
     else
         error "pr_open: refusing to open PR — no review signal (neither review.json nor review-report.json; fail-closed per ADR-001)"
+        stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
+            "no review signal was available to authorise a PR" \
+            "No PR was opened. Fail-closed: absence of a review is not approval."
         emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
             "reason=review_signal_missing" "path=${review_json_path}"
         jq -n \
@@ -253,6 +264,9 @@ _pr_open_run_inner() {
     if [[ "$current_branch" != "$target_branch" ]]; then
         git checkout -b "$target_branch" 2>/dev/null || git checkout "$target_branch" 2>/dev/null || {
             error "pr_open: failed to create or switch to branch '${target_branch}'"
+            stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
+                "could not check out the branch to open a PR from" \
+                "No PR was opened."
             emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                 "reason=branch_checkout_failed" "branch=${target_branch}"
             jq -n \
@@ -295,6 +309,9 @@ _pr_open_run_inner() {
                 # fall through to push (no-op on strictly-ahead remote) + PR reuse
             else
                 error "pr_open: refusing to open PR — no commits between merge-base and '${current_branch}', and origin/${target_branch} has no prior work either (nothing to ship anywhere)"
+                stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
+                    "there are no committed changes to open a PR for" \
+                    "No PR was opened. The build stage produced no commit."
                 emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                     "reason=no_committed_changes" "branch=${current_branch}"
                 jq -n \
@@ -313,6 +330,9 @@ _pr_open_run_inner() {
     # default branch — that plus the main/master refusal above is defense-in-depth.
     if ! zbuild_push_reconcile "$target_branch"; then
         error "pr_open: push reconcile failed for '${target_branch}': ${ZBUILD_PUSH_RECONCILE_ERR}"
+        stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
+            "could not push the branch to the remote" \
+            "No PR was opened."
         emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
             "reason=branch_push_failed" "branch=${target_branch}"
         jq -n --arg branch "$target_branch" --arg detail "$ZBUILD_PUSH_RECONCILE_ERR" \
@@ -385,6 +405,9 @@ _pr_open_run_inner() {
         # PR already exists: update it instead of creating
         if ! gh_output="$(gh pr edit "$existing_pr_number" --title "$pr_title" --body "$pr_body" 2>&1)"; then
             error "pr_open: gh pr edit failed: $gh_output"
+            stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
+                "could not update the existing PR" \
+                "The PR exists but its body or title is not current."
             emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                 "reason=gh_pr_edit_failed"
             jq -n \
@@ -408,6 +431,9 @@ _pr_open_run_inner() {
                     # Re-update the PR and treat as updated
                     if ! gh_output="$(gh pr edit "$existing_pr_number" --title "$pr_title" --body "$pr_body" 2>&1)"; then
                         error "pr_open: gh pr edit (race recovery) failed: $gh_output"
+                        stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
+                            "could not update the existing PR" \
+                            "The PR exists but its body or title is not current."
                         emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                             "reason=gh_pr_edit_failed"
                         jq -n \
@@ -421,6 +447,9 @@ _pr_open_run_inner() {
                     pr_number="$existing_pr_number"
                 else
                     error "pr_open: gh pr create failed and race recovery found no PR: $gh_output"
+                    stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
+                        "could not create the PR" \
+                        "No PR was opened."
                     emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                         "reason=gh_pr_create_failed"
                     jq -n \
@@ -432,6 +461,9 @@ _pr_open_run_inner() {
                 fi
             else
                 error "pr_open: gh pr create failed: $gh_output"
+                stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
+                    "could not create the PR" \
+                    "No PR was opened."
                 emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                     "reason=gh_pr_create_failed"
                 jq -n \
@@ -478,6 +510,9 @@ _pr_open_run_inner() {
           pr_number: $pr_number, draft: $draft, branch: $branch, issue: $issue}' \
         > "$output_pr_result_json"
 
+    stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "pass" \
+        "opened PR ${pr_number}" \
+        "$(printf -- '- pr: %s' "${pr_url}")"
     emit_event "plugin.result" "plugin=pr-open" \
         "stage=pr" "pr_url=${pr_url}" "pr_number=${pr_number}" "action=${pr_status}"
     return 0

@@ -26,6 +26,8 @@ _ZBUILD_DEPLOY_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _DEPLOY_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_DEPLOY_ROOT/core/event-bus/event-bus.sh"
@@ -56,6 +58,9 @@ _deploy_agent_run_inner() {
         emit_event "deploy.input.missing" "plugin=deploy" "input=pr-url.txt"
         printf '{"schema_version":1,"verdict":"error","reason":"missing pr-url.txt"}\n' \
             > "$deploy_result_out"
+        stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "error" \
+            "no pr-url.txt, so there was nothing to deploy" \
+            "The pr-delivery stage produced no PR; no release was attempted."
         return 2
     fi
 
@@ -67,6 +72,9 @@ _deploy_agent_run_inner() {
         jq -n --arg pr_url "$pr_url" \
             '{schema_version:1,verdict:"deployed",mode:"dry_run",pr_url:$pr_url}' \
             | atomic_write "$deploy_result_out"
+        stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "skip" \
+            "dry run — no release side-effect was executed" \
+            "Nothing was deployed. This verdict asserts nothing about a real deploy."
         return 0
     fi
 
@@ -79,6 +87,9 @@ _deploy_agent_run_inner() {
         emit_event "deploy.gate.missing" "plugin=deploy"
         jq -n '{schema_version:1,verdict:"error",reason:"gate-aggregator-result.json missing"}' \
             > "$deploy_result_out"
+        stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "error" \
+            "refused to deploy: no gate-aggregator verdict was present" \
+            "Fail-closed. An absent gate decision is not an approval to deploy."
         return 2
     fi
     local gate_verdict
@@ -93,6 +104,9 @@ _deploy_agent_run_inner() {
         jq -n --arg pr_url "$pr_url" --arg v "${gate_verdict:-<none>}" \
             '{schema_version:1,verdict:"skipped",reason:("gate-aggregator verdict not pass: "+$v),pr_url:$pr_url}' \
             > "$deploy_result_out"
+        stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "skip" \
+            "skipped the deploy: the gate verdict was ${gate_verdict:-<none>}, not pass" \
+            "Nothing was deployed. Only an explicit pass authorises the release side-effect."
         return 0
     fi
 
@@ -108,8 +122,14 @@ _deploy_agent_run_inner() {
                 jq -n --argjson rc "$_rc" \
                     '{schema_version:1,verdict:"error",reason:"deploy-release failed",rc:$rc}' \
                     > "$deploy_result_out"
+                stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "fail" \
+                    "the release step failed (rc=$_rc)" \
+                    "The gate authorised a deploy but the release did not complete."
                 return "$_rc"
             }
+            stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "pass" \
+                "deployed the change" \
+                "$(printf -- '- pr: %s\n- see deploy-release-summary.md for the tag' "$pr_url")"
             return 0
         fi
     fi
@@ -117,6 +137,9 @@ _deploy_agent_run_inner() {
     error "deploy: deploy-release plugin not found at: $release_plugin"
     printf '{"schema_version":1,"verdict":"error","reason":"deploy-release plugin missing"}\n' \
         > "$deploy_result_out"
+    stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "error" \
+        "the deploy-release plugin is missing, so nothing was deployed" \
+        "This is an installation fault, not a pipeline one."
     return 2
 }
 

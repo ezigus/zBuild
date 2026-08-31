@@ -20,6 +20,8 @@ _ZBUILD_GATE_AGGREGATOR_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _GA_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -287,6 +289,13 @@ gate_aggregator_run() {
     # to be collected as current findings.
     rm -f "$feedback_path" "$design_feedback_path" 2>/dev/null || true
 
+    # ADR-055 §9: this stage covers a roster, so its summary is the one the
+    # engine ships — it must carry the roll-up the members no longer send.
+    local _ga_failed_list="none"
+    [[ ${#failed[@]} -gt 0 ]] && _ga_failed_list="$(printf '%s, ' "${failed[@]}")" && _ga_failed_list="${_ga_failed_list%, }"
+    stage_summary_write "$artifacts_dir/gate-aggregator-summary.md" "gate-aggregator" "$verdict" \
+        "rolled up ${#gate_pairs[@]} gate(s) into verdict $verdict" \
+        "$(printf -- '- failed: %s\n- fault: %s' "$_ga_failed_list" "${_ga_fault:-none declared}")"
 }
 
 # ─── gate_aggregator_cleanup ──────────────────────────────────────────────────

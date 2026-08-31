@@ -26,6 +26,8 @@ _ZBUILD_VALIDATE_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _VALIDATE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_VALIDATE_ROOT/core/event-bus/event-bus.sh"
@@ -55,6 +57,9 @@ _validate_agent_run_inner() {
         emit_event "validate.input.missing" "plugin=validate" "input=deploy-result.json"
         printf '{"schema_version":1,"verdict":"error","reason":"missing deploy-result.json"}\n' \
             > "$validate_result_out"
+        stage_summary_write "$artifacts_dir/validate-summary.md" "validate" "error" \
+            "no deploy-result.json, so nothing could be validated" \
+            "The deploy stage produced no result; the health probe never ran."
         return 2
     fi
 
@@ -62,6 +67,9 @@ _validate_agent_run_inner() {
     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
         printf '{"schema_version":1,"verdict":"healthy","mode":"dry_run"}\n' \
             | atomic_write "$validate_result_out"
+        stage_summary_write "$artifacts_dir/validate-summary.md" "validate" "skip" \
+            "dry run — the health probe was not executed" \
+            "No deployment was validated. This verdict asserts nothing about service health."
         return 0
     fi
 
@@ -78,6 +86,9 @@ _validate_agent_run_inner() {
             if [[ $hc_rc -eq 0 ]]; then
                 printf '{"schema_version":1,"verdict":"healthy"}\n' \
                     | atomic_write "$validate_result_out"
+                stage_summary_write "$artifacts_dir/validate-summary.md" "validate" "pass" \
+                    "the health probe reported the deployment healthy" \
+                    "$(printf -- '- probe: health-check\n- verdict: healthy')"
                 return 0
             fi
             local hc_snippet; hc_snippet="${hc_out:0:500}"
@@ -85,6 +96,9 @@ _validate_agent_run_inner() {
             jq -n --argjson rc "$hc_rc" --arg detail "$hc_snippet" \
                 '{schema_version:1,verdict:"error",rc:$rc,detail:$detail}' \
                 | atomic_write "$validate_result_out"
+            stage_summary_write "$artifacts_dir/validate-summary.md" "validate" "fail" \
+                "the health probe failed (rc=$hc_rc)" \
+                "$(printf -- '- probe output: %s' "$hc_snippet")"
             return "$hc_rc"
         fi
     fi
@@ -92,6 +106,9 @@ _validate_agent_run_inner() {
     error "validate: health-check plugin not found at: $hc_plugin"
     printf '{"schema_version":1,"verdict":"error","reason":"health-check plugin missing"}\n' \
         > "$validate_result_out"
+    stage_summary_write "$artifacts_dir/validate-summary.md" "validate" "error" \
+        "the health-check plugin is missing, so nothing could be validated" \
+        "No probe ran. This is an installation fault, not a deployment one."
     return 2
 }
 

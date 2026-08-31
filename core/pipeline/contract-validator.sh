@@ -359,6 +359,33 @@ _contract_validate_pipeline() {
                 "$stage" >&2
         fi
 
+        # ADR-055 §9 (#2000): every stage-bound plugin declares EXACTLY ONE
+        # summary output. A stage that publishes nothing is indistinguishable
+        # from one that had nothing to say, and the pipeline cannot tell those
+        # apart — so the second silently absorbs the first.
+        #
+        # Checked HERE and not only in the tree lint because this walks the
+        # RESOLVED flow against the configured plugins_root: a stage may be
+        # authored outside this repository, which a lint over plugins/ cannot
+        # see. It would report a clean tree while a third-party stage published
+        # nothing.
+        #
+        # Refused, not warned: the failure mode is silence, and a warning about
+        # silence is easy to not hear.
+        local _sum_n=0 _sum_rec
+        while IFS= read -r _sum_rec; do
+            [[ -n "$_sum_rec" ]] || continue
+            [[ "$(manifest_graph_output_summary "$manifest" "${_sum_rec%%|*}")" == "true" ]] \
+                && _sum_n=$(( _sum_n + 1 ))
+        done < <(manifest_graph_get_outputs "$manifest")
+        if [[ "$_sum_n" -eq 0 ]]; then
+            violations+=("$stage|SUMMARY_MISSING|-|stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)")
+            fail_count=$(( fail_count + 1 ))
+        elif [[ "$_sum_n" -gt 1 ]]; then
+            violations+=("$stage|SUMMARY_DUP|-|stage declares $_sum_n summary outputs — exactly one (ADR-055 §9)")
+            fail_count=$(( fail_count + 1 ))
+        fi
+
         # Collect inputs and sort by id for stable error ordering (decision: stable ordering)
         local -a input_lines=()
         local rec
@@ -665,7 +692,7 @@ _contract_validate_pipeline() {
                 MISORDERED)
                     printf '  %s: expects %s\n    %s\n\n' "$sstage" "'$sid'" "$smsg"
                     ;;
-                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|SELF_REF|MALFORMED|BAD_VAR|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|TYPE_UNVERSIONED|CYCLE_FB_UNDECLARED|OUTPUT_DUP|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
+                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|SELF_REF|MALFORMED|BAD_VAR|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|TYPE_UNVERSIONED|CYCLE_FB_UNDECLARED|OUTPUT_DUP|SUMMARY_MISSING|SUMMARY_DUP|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
                     printf '  %s: %s (id=%s)\n    %s\n\n' "$sstage" "$scode" "$sid" "$smsg"
                     ;;
                 *)

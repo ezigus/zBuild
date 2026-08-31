@@ -54,6 +54,14 @@ outputs:
     format: markdown
     required: true
     primary: true
+  # ADR-055 §9: this stage's statement of what it DID. required:true —
+  # written on every terminal verdict, so absence means something went wrong.
+  - id: design_summary
+    path: "${artifact_dir}/design-summary.md"
+    type: design-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 
 state:
   persisted: []

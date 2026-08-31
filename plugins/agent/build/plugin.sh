@@ -21,6 +21,8 @@ _ZBUILD_BUILD_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _BUILD_DIR="$_ZBUILD_PLUGIN_DIR"
 _BUILD_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -109,6 +111,9 @@ _build_stage_run_inner() {
 
     if [[ ! -f "$plan_json_path" ]]; then
         error "_build_stage_run_inner: plan.json not found at $plan_json_path"
+        stage_summary_write "$artifact_dir/build-summary.md" "build" "error" \
+            "no plan.json to build from" \
+            "The plan stage produced nothing to implement; no code was written."
         emit_event "plugin.result" "verdict=error" "plugin=build" "reason=missing_plan_json"
         return 2
     fi
@@ -405,6 +410,9 @@ _build_stage_run_inner() {
     _build_rewrite_cumulative_diff "$scope_violation" "$artifact_dir" "$repo_root" \
         "$output_diff_patch" "$_diff_failure" || true
 
+    stage_summary_write "$artifact_dir/build-summary.md" "build" "pass" \
+        "changed $files_changed_count file(s) over $iterations iteration(s)" \
+        "$(printf -- '- lines: +%s / -%s\n- terminated: %s\n- scope violation: %s' "$lines_added" "$lines_removed" "$terminated_reason" "$scope_violation")"
     emit_event "plugin.result" "stage=build" \
         "plugin=build" \
         "files_changed_count=$files_changed_count" \
