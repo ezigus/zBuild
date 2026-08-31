@@ -1,0 +1,2 @@
+tests/golden/build-summary-artifact.golden
+tests/unit/plugin-artifact-goldens-test.sh
