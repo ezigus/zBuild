@@ -78,7 +78,6 @@ outputs:
     type: diff.patch@1
     format: patch
     required: true
-    advisory: true
   - id: build_summary
     path: "${artifact_dir}/build-summary.json"
     type: build-summary.json@4
@@ -87,7 +86,6 @@ outputs:
     # ADR-020 amendment (#507): primary output; .verdict (pass|scope_violation)
     # drives indicator. Added in build-summary schema_version=3.
     primary: true
-    advisory: true
 
 state:
   persisted: [last_files_changed, last_lines_added]

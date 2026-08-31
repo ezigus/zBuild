@@ -248,12 +248,14 @@ machine-enforced invariant is not weakened: it governs whether a stage may
 **block**, and injecting text into a prompt does not place a stage on a
 convergence path.
 
-**OUTPUT_UNCONSUMED.** §4's bidirectional check rejects an output no `inputs:`
-names, offering `terminal: true` or `advisory: true` as the escapes. Neither
-fits a summary: it is not a pipeline terminus, and `advisory` asserts "not
-consumed by stages" (ADR-020 #1750), which would be false — the engine consumes
-it. `summary: true` is therefore a third exemption, applied identically in
-`lint-contract.sh` and `contract-validator.sh` so the two views cannot drift.
+**OUTPUT_UNCONSUMED (retired 2026-08-30, #1980).** §4's bidirectional check
+rejected an output no `inputs:` named. A summary needed a third exemption
+because neither existing escape fitted — it is not a terminus, and `advisory`
+asserts "not consumed by stages", which is false when the engine consumes it.
+That exemption is gone with the check: the annotation lived in the PRODUCER's
+manifest while the fact it asserted is a property of the TEMPLATE, so a producer
+was asked to declare something it cannot know. The mirror direction — a required
+input naming no producer — remains enforced; that one breaks a run.
 
 **Ordering** follows completion, read from `.stage_statuses` key order in
 `pipeline-state.json` (jq preserves insertion order), so no new bookkeeping

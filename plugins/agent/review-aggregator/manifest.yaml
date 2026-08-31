@@ -89,7 +89,6 @@ outputs:
     type: review-report.md@1
     format: markdown
     required: false
-    advisory: true
 
 state:
   persisted:
