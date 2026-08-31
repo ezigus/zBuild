@@ -1,0 +1,12 @@
+{
+  "verdict": "fail",
+  "gates": {
+    "test": "pass",
+    "shape-floor": "skip",
+    "acceptance-gate": "fail",
+    "secret-scan": "pass"
+  },
+  "failed": [
+    "acceptance-gate"
+  ]
+}

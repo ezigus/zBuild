@@ -4,15 +4,12 @@ The build_test_cycle did not converge: 1 mechanical gate(s) failed. Address ever
 
 ## acceptance-gate
 
-- reason: acceptance SPEC violations — SPEC-1/SPEC-2/SPEC-3/SPEC-4/SPEC-5/SPEC-6/SPEC-7/SPEC-8/SPEC-11 tautological (pass at baseline) — re-author the assertions
+- reason: acceptance SPEC violations — SPEC-1/SPEC-2/SPEC-5/SPEC-6/SPEC-8/SPEC-11 tautological (pass at baseline) — re-author the assertions
 - failures:
     - tautology:SPEC-1
     - tautology:SPEC-2
-    - tautology:SPEC-3
-    - tautology:SPEC-4
     - tautology:SPEC-5
     - tautology:SPEC-6
-    - tautology:SPEC-7
     - tautology:SPEC-8
     - tautology:SPEC-11
 
