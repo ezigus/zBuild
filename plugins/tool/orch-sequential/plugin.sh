@@ -31,7 +31,20 @@ _orch_seq_validate_pool_id() {
 # _orch_par_pool_dir. ZBUILD_POOL_ROOT overrides (default:
 # ${TMPDIR}/zbuild-runs/<run_id>). ZBUILD_RUN_ID is exported by the runner.
 _orch_seq_pool_dir() {
-    local _root="${ZBUILD_POOL_ROOT:-${TMPDIR:-/tmp}/zbuild-runs/${ZBUILD_RUN_ID:-default}}"
+    # ADR-059 §1: pool dirs live at runs/<run_id>/pool/ under the issue's (or
+    # goal's) area. ZBUILD_STATE_DIR already resolves to runs/<run_id>/, so the
+    # pool sits inside something a reclaimer can name. The pre-#2004 default was
+    # ${TMPDIR}-rooted, which is outside every reclaimable path by construction.
+    # ZBUILD_POOL_ROOT still overrides. The ${TMPDIR} arm remains only for a
+    # caller with no state dir at all, and is never taken in an engine run.
+    local _root="${ZBUILD_POOL_ROOT:-}"
+    if [[ -z "$_root" ]]; then
+        if [[ -n "${ZBUILD_STATE_DIR:-}" ]]; then
+            _root="${ZBUILD_STATE_DIR%/}/pool"
+        else
+            _root="${TMPDIR:-/tmp}/zbuild-runs/${ZBUILD_RUN_ID:-default}"
+        fi
+    fi
     printf '%s' "${_root}/zbuild-pool-${1}"
 }
 
