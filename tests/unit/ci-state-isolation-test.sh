@@ -17,6 +17,8 @@
 # SPEC-7[change]: the upload EXCLUDES the scratch directory (#1918 / ADR-058 §5)
 # SPEC-8[change]: the persist outcome is surfaced in the job log, always (#1921)
 # SPEC-9[change]: the hydrate outcome is surfaced the same way, always (#1921)
+# SPEC-10[change]: both surface steps read the LIVE artifacts/ path, never a
+#                  restored copy of a previous run's result (ADR-059)
 #
 # SPEC-8 is #1921's requirement that a CI run's persist outcome be readable from
 # the job log, renumbered to 8 on the same rule as SPEC-7 below: this file's SPEC
@@ -228,6 +230,35 @@ _HYDRATE_IF="$(awk '
 ' "$WF")"
 assert_eq "[SPEC-9] Surface hydrate result step exists and runs on always()" \
     "always()" "$_HYDRATE_IF"
+
+# ── SPEC-10 [change]: the surface steps must not read restored-artifacts/ ────
+# ADR-059: restore extracts into a SEPARATE restored-artifacts/ area and
+# "input-resolve.sh reads the live path first". An unanchored
+# `find "$ZBUILD_STATE_DIR" -name '<stage>-result.json' -print -quit` does not:
+# it returns whatever readdir yields first, which on run 33359409653 was the
+# RESTORED copy — the job log reported a previous run's hydrate (restored=76)
+# while the run itself had restored 95. A diagnostic that reports another run's
+# outcome is worse than none.
+print_test_section "[SPEC-10][change] surface steps read the live artifacts path"
+
+# grep -q, not `grep -c || printf 0`: grep -c prints 0 AND exits 1, so the
+# fallback would append a second 0 and the comparison would read "00".
+# lint-grep-c bans that idiom repo-wide, and #1969 extended it to tests/.
+if grep -q "find \"\$ZBUILD_STATE_DIR\" -name '[a-z]*-result.json' -print -quit" "$WF"; then
+    assert_fail "[SPEC-10] no surface step may search the whole state dir for a result file" \
+        "an unanchored find remains — it can return restored-artifacts/"
+else
+    assert_pass "[SPEC-10] no surface step searches the whole state dir for a result file"
+fi
+
+# And each step must name the live path explicitly.
+for _stage in persist hydrate; do
+    if grep -q "ZBUILD_STATE_DIR}\?/artifacts/${_stage}-result.json" "$WF"; then
+        assert_pass "[SPEC-10] the ${_stage} step names \$ZBUILD_STATE_DIR/artifacts/${_stage}-result.json"
+    else
+        assert_fail "[SPEC-10] the ${_stage} step must read the live artifacts path" "not found in workflow"
+    fi
+done
 
 cleanup_test_env
 print_test_results
