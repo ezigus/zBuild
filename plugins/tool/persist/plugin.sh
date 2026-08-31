@@ -24,6 +24,8 @@ _ZBUILD_PERSIST_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _ZBUILD_PERSIST_DIR="$_ZBUILD_PLUGIN_DIR"
 _ZBUILD_PERSIST_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
@@ -177,4 +179,10 @@ _persist_write_result() {
             | atomic_write "$_file"; then
         emit_event "persist.result.write_failed" "file=$_file" 2>/dev/null || true
     fi
+    # ADR-055 §9: pushed=false is the fact #1921 hid for the life of the
+    # feature, so the summary states it rather than implying success.
+    local _p_did="did NOT push"; [[ "$_pushed" == "true" ]] && _p_did="pushed"
+    stage_summary_write "$_dir/persist-summary.md" "persist" "$_verdict" \
+        "snapshot ${_snap:-unknown}; $_p_did to origin" \
+        "$(printf -- '- detail: %s\n- identity present: %s' "${_reason:-none}" "${_ip}")"
 }

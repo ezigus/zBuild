@@ -34,6 +34,9 @@ pr_open_run() {
 
     if [[ -z "$state_file" ]]; then
         error "pr_open_run: state_file argument required"
+        stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/pr-open-summary.md}" "pr-open" "error" \
+            "the engine dispatched this stage with no state file, so it could not run" \
+            "No work was attempted. This is an engine contract violation, not a fault in the change."
         return 2
     fi
 

@@ -44,6 +44,9 @@ review_report_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
         error "review_report_run: state_file argument required"
+        stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/review-report-summary.md}" "review-report" "error" \
+            "the engine dispatched this stage with no state file, so it could not run" \
+            "No work was attempted. This is an engine contract violation, not a fault in the change."
         return 2
     fi
     local state_dir; state_dir="$(dirname "$state_file")"
@@ -67,6 +70,9 @@ _rr_run_inner() {
     local scope_manifest="$1" evidence="$2" out_json="$3" out_md="$4"
     if [[ -z "$out_json" ]]; then
         error "_rr_run_inner: output path required"
+        stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/review-report-summary.md}" "review-report" "error" \
+            "no output path was supplied, so no review report could be written" \
+            "No work was attempted. This is an engine contract violation, not a fault in the change."
         return 2
     fi
     local artifact_dir; artifact_dir="$(dirname "$out_json")"

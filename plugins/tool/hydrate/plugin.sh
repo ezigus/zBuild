@@ -25,6 +25,8 @@ _ZBUILD_HYDRATE_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _ZBUILD_HYDRATE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -168,4 +170,9 @@ _hydrate_write_result() {
             | atomic_write "$_file"; then
         emit_event "hydrate.result.write_failed" "file=$_file" 2>/dev/null || true
     fi
+    # ADR-055 §9: every hydrate terminal funnels through here, and the real
+    # counts are already in hand.
+    stage_summary_write "$_dir/hydrate-summary.md" "hydrate" "$_verdict" \
+        "restored ${_count:-0} artifact(s) from prior runs (${_status:-unknown})" \
+        "$(printf -- '- source: %s\n- detail: %s' "${_src:-none}" "${_reason:-none}")"
 }

@@ -71,6 +71,9 @@ build_stage_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
         error "build_stage_run: state_file argument required"
+        stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/build-summary.md}" "build" "error" \
+            "the engine dispatched this stage with no state file, so it could not run" \
+            "No work was attempted. This is an engine contract violation, not a fault in the change."
         return 2
     fi
     local state_dir; state_dir="$(dirname "$state_file")"

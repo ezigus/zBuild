@@ -15,6 +15,8 @@ _ZBUILD_TEARDOWN_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _ZBUILD_TEARDOWN_DIR="$_ZBUILD_PLUGIN_DIR"
 _ZBUILD_TEARDOWN_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
@@ -180,6 +182,11 @@ teardown_run() {
             "file=$_result_file" "scope=$_scope" 2>/dev/null || true
     fi
 
+    # ADR-055 §9: teardown always returns 0, so its summary is the only place a
+    # failed cleanup is stated as such rather than inferred from an event.
+    stage_summary_write "$(dirname "$_result_file")/teardown-summary.md" "teardown" "$_verdict" \
+        "cleaned up scope $_scope" \
+        "$(printf -- '- failures: %s\n- detail: %s' "$_any_failed" "${_reason:-none}")"
     emit_event "teardown.complete" \
         "scope=$_scope" "failed=$_any_failed" 2>/dev/null || true
     # Always return 0: cleanup failures are recorded via events, not propagated.
