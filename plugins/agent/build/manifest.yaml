@@ -22,6 +22,7 @@ requires:
 
 provides:
   role: builder
+  result_contract: 2
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -53,6 +54,9 @@ config:
     - incomplete
     - fail
   tier_default: T2
+  router:
+    retries: 25
+    retry_on_exhaustion: 1
 
 inputs:
   - id: scope_manifest

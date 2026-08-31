@@ -288,6 +288,48 @@ else
     assert_pass "[SPEC-8] orchestrator convergence path is repo-neutral (no runner/language hardcode)"
 fi
 
+# ─── SPEC-9: build plugin emits result_contract:2, disposition:interrupted on router_timeout ─
+# GUARD: this path already existed; tagged here per ADR-036 for acceptance-gate tracking.
+print_test_section "SPEC-9: build-summary.json carries result_contract:2, disposition:interrupted on router_timeout"
+
+# Stubs for scope helpers not reached on the router_timeout path.
+# shellcheck disable=SC2317
+_build_pending_collateral_request() { return 0; }
+
+# Source summary.sh — defines _build_write_build_summary; no side-effects on source.
+# shellcheck source=../../plugins/agent/build/lib/summary.sh
+source "$REPO_ROOT/plugins/agent/build/lib/summary.sh"
+
+_spec9_summary="$TEST_TEMP_DIR/spec9-build-summary.json"
+# Set the dynamic-scope variables _build_write_build_summary reads from its caller.
+scope_violation="false"
+terminated_reason="router_timeout"
+files_changed_count=0
+files_changed_json='[]'
+lines_added=0
+lines_removed=0
+iterations=3
+loop_input_tokens=100
+loop_output_tokens=50
+output_diff_patch="$TEST_TEMP_DIR/spec9-diff.patch"
+output_summary_json="$_spec9_summary"
+_acceptance_testfiles=""
+repo_root="$TEST_TEMP_DIR"
+scope_violations=()
+scope_violations_created=()
+_feedback_body=""
+plan_files_csv=""
+issue=0
+router_rc=2
+build_verdict=""
+
+_build_write_build_summary 2>/dev/null
+
+_s9_rc="$(jq -r '.result_contract // ""' "$_spec9_summary" 2>/dev/null || echo "")"
+_s9_disp="$(jq -r '.disposition // ""' "$_spec9_summary" 2>/dev/null || echo "")"
+assert_eq "[SPEC-9] router_timeout build-summary has result_contract:2" "2" "$_s9_rc"
+assert_eq "[SPEC-9] router_timeout build-summary has disposition:interrupted" "interrupted" "$_s9_disp"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -108,6 +108,8 @@ _build_write_build_summary() {
     local build_disposition="" build_reason="" build_data_kind=""
     if [[ "${scope_violation:-false}" == "true" ]]; then
         build_verdict="scope_violation"
+        build_disposition="broken"
+        build_reason="scope_violation"
     elif [[ "${terminated_reason:-error}" == "router_timeout" || "${terminated_reason:-error}" == "error" ]]; then
         build_verdict="incomplete"
         build_disposition="interrupted"
@@ -118,6 +120,15 @@ _build_write_build_summary() {
         build_disposition="complete"
         build_reason="build_complete_no_changes"
         build_data_kind="empty_diff"
+    elif [[ "${terminated_reason:-}" == "done_sentinel" ]]; then
+        # done_sentinel with files changed: normal pass (ADR-054 disposition:complete)
+        build_disposition="complete"
+        build_reason="build_complete"
+    else
+        # Any other terminated_reason (max_iterations, etc.): incomplete
+        build_verdict="incomplete"
+        build_disposition="interrupted"
+        build_reason="${terminated_reason:-unknown}"
     fi
 
     # #1532: when done_sentinel + 0-diff but a declared acceptance TESTFILE still
@@ -213,6 +224,7 @@ _build_write_build_summary() {
         --arg build_data_kind "${build_data_kind:-}" \
         '{
             schema_version: $schema_version,
+            result_contract: 2,
             issue: $issue,
             files_changed: $files_changed,
             lines_added: $lines_added,
@@ -221,6 +233,8 @@ _build_write_build_summary() {
             iterations: $iterations,
             terminated_reason: $terminated_reason,
             verdict: $verdict,
+            disposition: $build_disposition,
+            reason: $build_reason_v2,
             scope_violation: $scope_violation,
             scope_violations: $scope_violations,
             loop_input_tokens: $loop_input_tokens,
@@ -230,7 +244,6 @@ _build_write_build_summary() {
         + (if $reason != "" then {reason: $reason, out_of_scope_files: $out_of_scope_files} else {} end)
         + (if $scope_expansion_request != null then {scope_expansion_request: $scope_expansion_request} else {} end)
         + (if $failing_acceptance_testfile != "" then {failing_acceptance_testfile: $failing_acceptance_testfile} else {} end)
-        + (if $build_disposition != "" then {result_contract: 2, disposition: $build_disposition, reason: $build_reason_v2} else {} end)
         + (if $build_data_kind != "" then {data: {build_kind: $build_data_kind}} else {} end)
         ' | atomic_write "$output_summary_json"
 }
