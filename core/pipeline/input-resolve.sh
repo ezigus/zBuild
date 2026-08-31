@@ -517,7 +517,6 @@ _summaries_stage_summary_path() {
     local manifest rec out_id
     manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
     [[ -n "$manifest" && -f "$manifest" ]] || return 0
-    grep -qE '^convergence:[[:space:]]*gate([[:space:]]|$)' "$manifest" 2>/dev/null || return 0
     while IFS= read -r rec; do
         [[ -z "$rec" ]] && continue
         out_id="${rec%%|*}"
@@ -526,6 +525,23 @@ _summaries_stage_summary_path() {
         _inputs_output_paths "$stage" "${rec##*|}" "$state_dir"
         return 0
     done < <(manifest_graph_get_outputs "$manifest")
+}
+
+# ─── _summaries_stage_marker <stage> <plugins_root> <key> ────────────────────
+# A top-level scalar from the stage's manifest (`convergence:` / `aggregates:`),
+# or empty. Read rather than inferred: ADR-040 §5 makes `convergence:` the
+# authoritative mechanical-vs-advisory discriminator precisely because inferring
+# it from `kind:` mis-classified acceptance-gate.
+_summaries_stage_marker() {
+    local stage="$1" plugins_root="$2" key="$3" manifest
+    manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
+    [[ -n "$manifest" && -f "$manifest" ]] || return 0
+    awk -v k="$key" '
+        $0 ~ "^" k ":[[:space:]]*" {
+            sub("^" k ":[[:space:]]*", ""); sub(/[[:space:]]*#.*/, "")
+            gsub(/^["\047]|["\047]$/, ""); print; exit
+        }
+    ' "$manifest" 2>/dev/null || true
 }
 
 # ─── stage_summaries_prompt_block <state_file> [plugins_root] ────────────────
@@ -544,9 +560,29 @@ stage_summaries_prompt_block() {
     [[ -n "$state_file" && -s "$state_file" ]] || return 0
     local state_dir; state_dir="$(dirname "$state_file")"
 
-    local stage path body verdict total=0 rendered="" chunk
+    # #1986: an aggregator declares the roster it COVERS (`aggregates: <marker>`).
+    # Where one is present, its members' own summaries are suppressed and only
+    # the aggregate ships — otherwise the prompt carries a member's detail AND
+    # the aggregator's rendering of that same detail, which is the contradiction
+    # #1979 removed, arriving from the other side. Removing it by construction
+    # rather than by convention is the point.
+    local _covered=" " _agg_of
     while IFS= read -r stage; do
         [[ -z "$stage" ]] && continue
+        _agg_of="$(_summaries_stage_marker "$stage" "$plugins_root" aggregates)"
+        [[ -n "$_agg_of" ]] && _covered="${_covered}${_agg_of} "
+    done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
+
+    local stage path body verdict total=0 rendered="" chunk _conv _aggregates
+    while IFS= read -r stage; do
+        [[ -z "$stage" ]] && continue
+        # An aggregator is never suppressed by the roster it covers — it is the
+        # one shipping the aggregate, and matching naively would delete it.
+        _aggregates="$(_summaries_stage_marker "$stage" "$plugins_root" aggregates)"
+        if [[ -z "$_aggregates" ]]; then
+            _conv="$(_summaries_stage_marker "$stage" "$plugins_root" convergence)"
+            [[ -n "$_conv" && "$_covered" == *" $_conv "* ]] && continue
+        fi
         path="$(_summaries_stage_summary_path "$stage" "$plugins_root" "$state_dir")"
         [[ -n "$path" && -s "$path" ]] || continue
         verdict="$(jq -r --arg s "$stage" '.stage_verdicts[$s] // "unknown"' "$state_file" 2>/dev/null || echo unknown)"

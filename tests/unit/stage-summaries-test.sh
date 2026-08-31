@@ -14,9 +14,10 @@
 #                    UNCHANGED — callers unpack path as ${rec##*|} (:117)
 #   SPEC-3 [change]: the block renders a completed stage's summary body, in
 #                    completion order, annotated with that stage's verdict
-#   SPEC-4 [guard] : ONLY `convergence: gate` stages contribute. Whether an
-#                    advisory/LLM stage may reach the build loop is #1898's
-#                    open decision — this must not answer it by accident
+#   SPEC-4 [change]: an ADVISORY stage contributes too. This asserted the
+#                    opposite until #1986 — the filter existed to hold #1898's
+#                    question open, and #1898 is now decided: advisory output
+#                    does reach downstream prompts (ADR-040 §4)
 #   SPEC-5 [guard] : one entry per stage however many times it ran. ADR-029
 #                    exists because per-iteration prompt growth caused three
 #                    consecutive 900s max_turns timeouts
@@ -183,7 +184,7 @@ EOF
 printf 'GATE-DETAIL-BODY\n  design : fields live under data\n  asserts: top level\n' \
     > "$ART/ss-gate-detail.txt"
 printf 'SECOND-DETAIL-BODY\n' > "$ART/ss-second-detail.txt"
-printf 'LENS-DETAIL-BODY-MUST-NOT-APPEAR\n' > "$ART/ss-lens-detail.txt"
+printf 'LENS-DETAIL-BODY\n' > "$ART/ss-lens-detail.txt"
 
 _block() {
     stage_summaries_prompt_block "$STATE/pipeline-state.json" "$PROOT" 2>/dev/null || true
@@ -234,18 +235,13 @@ else
         "second=$_pos_second gate=$_pos_gate (expected second < gate)"
 fi
 
-# ─── SPEC-4: advisory stages are excluded ────────────────────────────────────
-# #1898 asks whether an advisory stage's output may reach the build loop, and
-# requires a recorded decision plus an ADR-040 §4 amendment. Auto-sharing every
-# summary would answer it by accident.
-print_test_section "4. advisory stages do not contribute (#1898 not pre-empted)"
+# ─── SPEC-4: advisory stages contribute ──────────────────────────────────────
+# #1986 (closes #1898). ADR-040 §5 is untouched: it governs whether a stage may
+# BLOCK, and injecting text into a prompt places nothing on a convergence path.
+print_test_section "4. an advisory stage contributes (#1898 decided)"
 
-if grep -qF 'LENS-DETAIL-BODY-MUST-NOT-APPEAR' <<< "$OUT_B"; then
-    assert_fail "[SPEC-4] an advisory stage's summary is excluded" \
-        "the advisory lens body leaked into the block"
-else
-    assert_pass "[SPEC-4] an advisory stage's summary is excluded"
-fi
+assert_contains "[SPEC-4] the advisory stage's summary is present" \
+    "$OUT_B" "LENS-DETAIL-BODY"
 
 # ─── SPEC-5: one entry per stage, however many iterations ────────────────────
 print_test_section "5. one entry per stage — no per-iteration accumulation"

@@ -13,10 +13,12 @@
 #                    the only undeclared output in the tree
 #   SPEC-2 [change]: gate-aggregator's gate_feedback is marked summary: true
 #   SPEC-3 [change]: test's test_failures_summary is marked summary: true
-#   SPEC-4 [guard] : every declared summary producer is `convergence: gate`.
-#                    Whether an advisory stage may reach the build loop is
-#                    #1898's open decision (ADR-040 §4) — declaring an advisory
-#                    producer here would answer it by accident
+#   SPEC-4 [guard] : every declared summary output resolves to a real path.
+#                    This used to assert every producer was `convergence: gate`,
+#                    holding #1898's question open. #1986 decided it — advisory
+#                    stages DO publish — so the guard that remains is the one
+#                    that still means something: a declaration must point at a
+#                    file the plugin writes
 #   SPEC-5 [change]: the declared path is the one the plugin actually writes —
 #                    a declaration pointing at a file nobody writes is inert
 #   SPEC-6 [guard] : each producer still declares exactly one primary, and at
@@ -63,9 +65,9 @@ assert_eq "[SPEC-3] test_failures_summary is the test stage's summary" "true" \
 # ─── SPEC-4: no advisory producer sneaks in ──────────────────────────────────
 # The engine's collector already filters on convergence, but a declaration on an
 # advisory plugin would be a standing invitation to relax that filter later.
-print_test_section "4. every summary producer is mechanical (#1898 untouched)"
+print_test_section "4. every declared summary resolves to a real path"
 
-_advisory_producers=""
+_bad_paths=""
 while IFS= read -r -d '' _m; do
     _sid="$(manifest_graph_get_stage_id "$_m")"
     [[ -n "$_sid" ]] || continue
@@ -73,14 +75,14 @@ while IFS= read -r -d '' _m; do
         [[ -n "$_rec" ]] || continue
         _oid="${_rec%%|*}"
         [[ "$(manifest_graph_output_summary "$_m" "$_oid")" == "true" ]] || continue
-        if ! grep -qE '^convergence:[[:space:]]*gate([[:space:]]|$)' "$_m" 2>/dev/null; then
-            _advisory_producers="${_advisory_producers}${_sid}:${_oid} "
-        fi
+        _p="${_rec##*|}"
+        [[ "$_p" == *'${artifact_dir}'* || "$_p" == *'${state_dir}'* ]] \
+            || _bad_paths="${_bad_paths}${_sid}:${_oid} "
     done < <(manifest_graph_get_outputs "$_m")
 done < <(find "$REPO_ROOT/plugins" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
 
-assert_eq "[SPEC-4] no non-gate plugin declares a summary output" "" \
-    "$(printf '%s' "$_advisory_producers" | sed 's/[[:space:]]*$//')"
+assert_eq "[SPEC-4] every summary output is rooted in a run directory" "" \
+    "$(printf '%s' "$_bad_paths" | sed 's/[[:space:]]*$//')"
 
 # ─── SPEC-5: the declaration points at the file the plugin writes ────────────
 # A declared path nothing writes is the mirror of an undeclared file nothing
