@@ -83,6 +83,37 @@ blocking `fail`, never appears in any `exit_when`, never coerces an `approve`/`r
 mutation. Escalation to a human PR is decided by ADR-037's `merge_policy` reading the report's
 top-severity findings — the report is the *input* to that policy, not a gate.
 
+**Amendment (2026-08-31, #1986 — closes #1898): advisory output DOES reach
+downstream prompts.**
+
+#1898 asked whether an advisory stage's findings should feed the build loop, and
+required a recorded decision rather than an inherited default. The decision:
+**every stage publishes a summary and every following stage ingests them,
+advisory included.**
+
+This does not weaken §5. That invariant governs whether a stage may **block** —
+whether it can appear in a must-pass set or an `exit_when` predicate — and is
+checked against template *structure*. Injecting a stage's text into a prompt
+places it on no convergence path. The B5 no-LLM-on-the-convergence-path
+invariant is untouched: advisory stages still never gate, never aggregate to a
+blocking verdict, and never appear in a predicate.
+
+What changes is the *reading* side, which §4 governs. The argument that settled
+it: review finds real defects (#1707 measured 17 lens findings, 1 high, on one
+run), and a build re-running without ever seeing them lets the same defect class
+survive several iterations, with a human only learning at PR time. The
+counter-argument — that feeding advisory findings into build lets a non-blocking
+signal shape the code — is answered by the separation this ADR already draws:
+shaping the code is what build does with *all* its context, and nothing here
+lets an advisory stage decide whether the work converges.
+
+**Duplication is prevented by construction.** An aggregator declares the roster
+it covers (`aggregates: <convergence-marker>`); the engine ships only the
+aggregate and suppresses those members' own summaries. An aggregator that
+suppresses a roster must itself publish a summary — deleting a roster's findings
+and contributing nothing in their place is a silent loss, and is guarded by a
+tree-wide test rather than left to review.
+
 ### 5. The convergence-path invariant (machine-enforced)
 
 > **No `advisory` stage may appear in the must-pass set or in any `exit_when` predicate.**

@@ -8,6 +8,12 @@ kind: tool
 # put the aggregator into its own roster — _ga_build_roster excludes the
 # aggregator by id (never aggregates self).
 convergence: gate
+# #1986: this stage AGGREGATES the gate stages in its flow — the mechanical gates it already rolls up into one convergence verdict.
+# The engine therefore ships only this aggregate downstream and
+# suppresses those members' own summaries, so a prompt never carries
+# a member's detail and this stage's rendering of that same detail
+# (the #1979 duplication, arriving from the other side).
+aggregates: gate
 version: 0.1.0
 description: |
   Deterministic, LLM-free T0 convergence aggregator (ADR-040 §2, EPIC #1129 B5,
