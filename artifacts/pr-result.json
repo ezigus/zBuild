@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "status": "updated",
+  "pr_url": "https://github.com/ezigus/zBuild/pull/1973",
+  "pr_number": 1973,
+  "draft": false,
+  "branch": "zbuild/issue-1836-ci",
+  "issue": 1836
+}
