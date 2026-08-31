@@ -8,12 +8,10 @@ kind: tool
 # put the aggregator into its own roster — _ga_build_roster excludes the
 # aggregator by id (never aggregates self).
 convergence: gate
-# #1986: this stage AGGREGATES the gate stages in its flow — the mechanical gates it already rolls up into one convergence verdict.
-# The engine therefore ships only this aggregate downstream and
-# suppresses those members' own summaries, so a prompt never carries
-# a member's detail and this stage's rendering of that same detail
-# (the #1979 duplication, arriving from the other side).
-aggregates: gate
+# #1988: this stage no longer aggregates a roster for prompt purposes. It
+# stopped rendering gate detail — every gate publishes its own summary now
+# — so covering the roster would suppress the members and ship an aggregate
+# containing nothing. It remains the convergence gate and the fault roll-up.
 version: 0.1.0
 description: |
   Deterministic, LLM-free T0 convergence aggregator (ADR-040 §2, EPIC #1129 B5,
@@ -105,28 +103,6 @@ outputs:
     format: json
     required: true
     primary: true
-  # B2 (ADR-040): consolidated gate→build feedback. Written ONLY on verdict=fail
-  # (merges every failing gate's actionable detail). required:false — absent on a
-  # passing aggregate. Wired by simple.yaml's build_test_cycle as the
-  # gate-aggregator → build (prior_gate_feedback) cycle-feedback edge.
-  - id: gate_feedback
-    path: "${artifact_dir}/gate-feedback.md"
-    type: gate-feedback.md@1
-    format: markdown
-    required: false
-    # #1977: this consolidated gate roster is what a re-entering stage most
-    # needs; summary: true (#1976) delivers it without a per-consumer wire.
-    summary: true
-  # #1219 (ADR-045/ADR-046): FOCUSED design-rooted feedback. Written ONLY on a
-  # route_<target> verdict (a design-rooted acceptance failure, e.g. tautology).
-  # required:false — absent on pass / plain-fail. Read by the design stage's
-  # prior_gate_feedback input after the build_test_cycle route_back rewinds to
-  # design_verify_cycle; persists across the rewind (shared per-run artifacts dir).
-  - id: design_feedback
-    path: "${artifact_dir}/design-feedback.md"
-    type: design-feedback.md@1
-    format: markdown
-    required: false
 
 state:
   persisted: [last_verdict]

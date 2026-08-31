@@ -119,46 +119,6 @@ _ga_build_roster() {
     return 0
 }
 
-# ─── _ga_gate_detail <name> <result_path> ────────────────────────────────────
-# B2 (ADR-040): render one failing gate's actionable detail for the consolidated
-# gate→build feedback. Best-effort jq extraction of the common result fields
-# (summary / reason / failures[] / findings[] / test_output); a missing artifact
-# is a fail-closed "did not run" note.
-# #1244: the suite gate (test-results.json) records failing-test detail in
-# `.test_output` (already sanitized + ≤10KB by the test plugin), NOT in any of
-# the list fields — harvest it too so the gate→build feedback lists WHICH tests
-# failed instead of the empty "no structured detail" fallback. Repo-agnostic: any
-# gate that writes `.test_output` benefits; gates that don't are unaffected.
-_ga_gate_detail() {
-    local name="$1" path="$2" reason summary fails finds test_output f
-    printf '## %s\n\n' "$name"
-    if [[ ! -f "$path" ]]; then
-        printf -- '- artifact missing: the gate did not run (fail-closed).\n\n'
-        return 0
-    fi
-    summary="$(jq -r '.summary // empty' "$path" 2>/dev/null)"
-    reason="$(jq -r '.reason // empty' "$path" 2>/dev/null)"
-    [[ -n "$summary" ]] && printf -- '- summary: %s\n' "$summary"
-    [[ -n "$reason" ]] && printf -- '- reason: %s\n' "$reason"
-    fails="$(jq -r '(.failures // [])[]? | tostring' "$path" 2>/dev/null)"
-    if [[ -n "$fails" ]]; then
-        printf -- '- failures:\n'
-        while IFS= read -r f; do [[ -n "$f" ]] && printf '    - %s\n' "$f"; done <<< "$fails"
-    fi
-    finds="$(jq -rc '(.findings // [])[]?' "$path" 2>/dev/null)"
-    if [[ -n "$finds" ]]; then
-        printf -- '- findings:\n'
-        while IFS= read -r f; do [[ -n "$f" ]] && printf '    - %s\n' "$f"; done <<< "$finds"
-    fi
-    test_output="$(jq -r '.test_output // empty' "$path" 2>/dev/null)"
-    if [[ -n "$test_output" ]]; then
-        printf -- '- test output:\n'
-        printf '```\n%s\n```\n' "$test_output"
-    fi
-    [[ -z "$summary$reason$fails$finds$test_output" ]] && printf -- '- verdict=fail (no structured detail in artifact).\n'
-    printf '\n'
-}
-
 # ─── _ga_read_gate_verdict ────────────────────────────────────────────────────
 # Reads one gate's recorded verdict from its result artifact. Echoes a status
 # token for the aggregate:
@@ -252,12 +212,11 @@ gate_aggregator_run() {
     # dropped silently (#1757). The full scan still runs to completion and emits
     # gate_aggregator.fault_conflict naming every class it saw.
     local _ga_fault="" _rt_i _rt _fc
-    local _ga_rt_of=() _ga_seen=() _ga_seen_i
+    local _ga_seen=() _ga_seen_i
     if [[ "$verdict" == "fail" ]]; then
         for _rt_i in "${!failed[@]}"; do
             _rt="$(jq -r '.fault // empty' "$artifacts_dir/${failed_files[$_rt_i]}" 2>/dev/null || true)"
             [[ "$_rt" == "null" ]] && _rt=""
-            _ga_rt_of[$_rt_i]="$_rt"
             [[ -z "$_rt" ]] && continue
             # #1987: a word outside the closed set is never selected — the
             # scan below only iterates vocabulary members. Announce it rather
@@ -312,81 +271,22 @@ gate_aggregator_run() {
         '{"verdict":$v,"gates":$g,"failed":$f}
          + (if $ft=="" then {} else {"fault":$ft} end)' | atomic_write "$result_path"
 
-    # ─── Feedback payloads ────────────────────────────────────────────────────
-    # The failure set is MIXED in general, so the two payloads are INDEPENDENT,
-    # not a three-way choice (#1757). Partition failed[] by each gate's own
-    # declared fault and write whichever payloads have members:
-    #   routed[]   (fault == the winning class) → design-feedback.md,
-    #              the FOCUSED payload the route_back rewind carries to the
-    #              design_verify_cycle (#1219, ADR-045/ADR-046).
-    #   residual[] (everything else)                    → gate-feedback.md, the
-    #              consolidated gate→build payload (B2, ADR-040).
+    # ─── #1988: the aggregator no longer renders prose ───────────────────────
+    # It used to partition failed[] and write gate-feedback.md / design-feedback.md,
+    # because it was the ONLY path for gate detail to reach a prompt — five gates
+    # declared just a result JSON. #1976 made another path and #1988 gave each
+    # gate its own `summary: true` detail output, so every failing gate now
+    # speaks for itself, framed by its verdict.
     #
-    # Previously a route_<tgt> verdict took an `elif` that wrote design-feedback.md
-    # and `rm -f`'d gate-feedback.md unconditionally. One design-rooted gate
-    # (e.g. shape-floor's out-of-scope escalation) therefore SUPPRESSED the
-    # build-facing detail for every build-fixable gate failing beside it — a
-    # failing test suite and a `tautology:SPEC-n` (which by #1583 carries NO
-    # a fault precisely so it reaches build) both went to /dev/null, and the
-    # cycle spun on empty diffs because build was never told what was wrong.
+    # What remains here is what only this stage can do: ONE convergence verdict
+    # for exit_when to bind to (ADR-040 §5), and the fault roll-up (#1987).
+    # Authoring prose ABOUT design was never its business — it relays a class
+    # each gate declares; it does not decide what design ought to read.
     #
-    # A gate carrying a non-winning fault lands in residual[] rather than
-    # being dropped: only "design" is emitted today, so the set is empty in
-    # practice, and silently discarding a failure is the bug being fixed.
-    # On a plain fail (no fault declared anywhere) routed[] is empty and
-    # residual[] == failed[] — byte-identical to the previous else branch.
-    local _i
-    local routed=() routed_files=() residual=() residual_files=()
-    for _i in "${!failed[@]}"; do
-        _rt="${_ga_rt_of[$_i]:-}"
-        if [[ -n "$_ga_fault" && "$_rt" == "$_ga_fault" ]]; then
-            routed+=("${failed[$_i]}"); routed_files+=("${failed_files[$_i]}")
-        else
-            residual+=("${failed[$_i]}"); residual_files+=("${failed_files[$_i]}")
-        fi
-    done
+    # Stale payloads from a run on an older engine are removed rather than left
+    # to be collected as current findings.
+    rm -f "$feedback_path" "$design_feedback_path" 2>/dev/null || true
 
-    if [[ "$verdict" == "pass" || ${#routed[@]} -eq 0 ]]; then
-        rm -f "$design_feedback_path" 2>/dev/null || true
-    else
-        {
-            printf '# Design-rooted gate feedback\n\n'
-            printf 'The build_test_cycle cannot fix these — they route back to design.\n'
-            printf 'Re-author the named acceptance assertions, then the pipeline re-verifies.\n\n'
-            for _i in "${!routed[@]}"; do
-                _ga_gate_detail "${routed[$_i]}" "$artifacts_dir/${routed_files[$_i]}"
-            done
-        } | atomic_write "$design_feedback_path"
-    fi
-
-    if [[ "$verdict" == "pass" || ${#residual[@]} -eq 0 ]]; then
-        rm -f "$feedback_path" 2>/dev/null || true
-    else
-        {
-            printf '# Gate Aggregator Feedback\n\n'
-            printf 'The build_test_cycle did not converge: %d mechanical gate(s) failed. ' "${#residual[@]}"
-            printf 'Address every finding below, then re-run.\n\n'
-            for _i in "${!residual[@]}"; do
-                _ga_gate_detail "${residual[$_i]}" "$artifacts_dir/${residual_files[$_i]}"
-            done
-            # Name the routed gates without their detail, so build does not read a
-            # partial payload as the complete failure set and declare itself done.
-            if [[ ${#routed[@]} -gt 0 ]]; then
-                printf '## Handled elsewhere\n\n'
-                printf -- '- %d further gate(s) route to `%s` and are addressed there, not by build: %s\n\n' \
-                    "${#routed[@]}" "$_ga_fault" "${routed[*]}"
-            fi
-        } | atomic_write "$feedback_path"
-    fi
-
-    if [[ "$verdict" == "pass" ]]; then
-        _ga_emit "gate_aggregator.pass"
-    else
-        _ga_emit "gate_aggregator.fail" "failed=${failed[*]}" "verdict=$verdict"
-    fi
-
-    _ga_emit "plugin.result" "plugin=gate-aggregator" "verdict=$verdict"
-    return 0
 }
 
 # ─── gate_aggregator_cleanup ──────────────────────────────────────────────────

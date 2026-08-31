@@ -59,10 +59,27 @@ export MOCK_DESIGN_WRITE_PATH="$AD1/design.md"
 _design_stage_run_inner "$(dirname "$AD1")/scope-manifest.md" "$AD1/plan.json" "$AD1/design.md" "$AD1" >/dev/null 2>&1 || true
 PROMPT1="$AD1/design-prompt.txt"
 assert_file_exists "T1: design prompt written" "$PROMPT1"
-assert_contains "T1: prompt carries the design-rooted gate feedback body" \
-    "$(cat "$PROMPT1")" "SPEC-7 is tautological"
-assert_contains_regex "T1: prompt instructs re-authoring the tautological SPEC" \
-    "$(cat "$PROMPT1")" "[Rr]e-author"
+# #1988: design no longer splices design-feedback.md — the aggregator stopped
+# writing it, and the acceptance gate's own summary carries the detail now. What
+# design still owns is the INSTRUCTION, which it emits when the gate's recorded
+# verdict is a failure. The body assertion moves to where that summary is
+# produced; the instruction is asserted here, because design owns it.
+if grep -qF 'SPEC-7 is tautological' "$PROMPT1"; then
+    assert_fail "T1: design does not re-splice the gate's detail" \
+        "the retired section is still emitted"
+else
+    assert_pass "T1: design does not re-splice the gate's detail"
+fi
+# Driven as its own fixture: the instruction is keyed on the gate's recorded
+# verdict, so the state must exist before the stage runs.
+AD1B="$(_setup_fixture)"
+printf '{"schema_version":1,"stage_verdicts":{"acceptance-gate":"fail"}}\n' \
+    > "$(dirname "$AD1B")/pipeline-state.json"
+export MOCK_DESIGN_WRITE_PATH="$AD1B/design.md"
+_design_stage_run_inner "$(dirname "$AD1B")/scope-manifest.md" "$AD1B/plan.json" \
+    "$AD1B/design.md" "$AD1B" >/dev/null 2>&1 || true
+assert_contains_regex "T1: a failing acceptance gate yields the re-author instruction" \
+    "$(cat "$AD1B/design-prompt.txt" 2>/dev/null)" "RE-AUTHOR"
 
 # ── T2: design-feedback.md absent → prompt has NO gate-feedback section (no-op) ─
 AD2="$(_setup_fixture)"

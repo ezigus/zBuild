@@ -17,6 +17,11 @@ _ZBUILD_SHAPE_FLOOR_PLUGIN_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/gate-detail.sh
+# NOT `|| true`: this helper is how the gate's findings reach a prompt at
+# all. Swallowing a failed load would leave gate_detail_write undefined and
+# every finding silently unpublished — the exact shape #1991 guards.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/gate-detail.sh"
 _SF_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -105,6 +110,11 @@ shape_floor_run() {
     if [[ -n "$fault" ]]; then
         jq -n --arg v "$verdict" --arg r "$detail" --arg f "$fault" \
             '{"verdict":$v,"reason":$r,"fault":$f}' | atomic_write "$result_path"
+    # #1988: publish what only this gate knows. Its detail used to reach a
+    # prompt only through the aggregator's rendering; it is now a declared
+    # summary output (#1976), and cleared on a non-fail so a stale file from a
+    # previous iteration never renders as a current finding.
+    gate_detail_write "$artifacts_dir/shape-floor-detail.md" "shape-floor" "$verdict" "$detail"
     else
         jq -n --arg v "$verdict" --arg r "$detail" \
             '{"verdict":$v,"reason":$r}' | atomic_write "$result_path"

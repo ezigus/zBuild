@@ -69,23 +69,6 @@ design_stage_run() {
 }
 
 
-# #1219 (ADR-045/ADR-046): design-rooted gate feedback carried back by the
-# build_test_cycle route_back rewind. Unlike prior_impact_feedback (intra-cycle,
-# gated on ZBUILD_CYCLE_ITER≥2), this arrives from the OTHER cycle via the shared
-# artifacts dir (design-feedback.md), so it is keyed on FILE PRESENCE, not the
-# design_verify_cycle iteration counter: on the FIRST design pass the file is
-# absent (no-op); after a route_back it is present and design re-authors the SPEC.
-_design_read_prior_gate_feedback() {
-    local artifact_dir="${1:-}"
-    [[ -z "$artifact_dir" ]] && return 0
-    local f="$artifact_dir/design-feedback.md"
-    [[ ! -s "$f" ]] && return 0
-    local body
-    body="$(cat "$f" 2>/dev/null)" || return 0
-    [[ -z "${body//[[:space:]]/}" ]] && return 0
-    printf '%s' "$body"
-}
-
 # _design_gate_failed <artifact_dir>  (#1979)
 # True when the design-gate's recorded verdict for this run is a failure.
 #
@@ -368,12 +351,14 @@ DESIGN_PROMPT
     # gate feedback so design RE-AUTHORS the named tautological [change] SPEC(s)
     # (build is forbidden to touch acceptance assertions, ADR-036). Keyed on file
     # presence (see reader) — absent on the first pass → no-op, byte-identical prompt.
-    local _gate_fb_body
-    _gate_fb_body="$(_design_read_prior_gate_feedback "$artifact_dir" 2>/dev/null || true)"
-    if [[ -n "$_gate_fb_body" ]]; then
-        printf '\n## PRIOR GATE FEEDBACK (design-rooted — from the acceptance gate, via route_back)\n%s\n' \
-            "$_gate_fb_body" >> "$prompt_input_file"
-        printf '\nThe acceptance gate found the named SPEC(s) tautological (they pass at the merge-base baseline, so they assert nothing). RE-AUTHOR each named [change] SPEC and its tagged assertion so it FAILS at baseline and PASSES at HEAD. Preserve all other scope and acceptance entries.\n' \
+    # #1988: the acceptance gate's detail now reaches this prompt as an
+    # engine-collected summary (#1976) — the aggregator no longer renders a
+    # design-facing payload, and no longer suppresses the gates that do. What
+    # design still needs stated is what to DO about a specification fault, which
+    # is not something a gate should be authoring prose about.
+    if [[ "$(jq -r '.stage_verdicts["acceptance-gate"] // empty' \
+            "$(dirname "$artifact_dir")/pipeline-state.json" 2>/dev/null || true)" == "fail" ]]; then
+        printf '\nIf the STAGE SUMMARIES name a tautological [change] SPEC — one that passes at the merge-base baseline, so it asserts nothing — RE-AUTHOR that SPEC and its tagged assertion so it FAILS at baseline and PASSES at HEAD. Build is forbidden to touch acceptance assertions (ADR-036), so only this stage can. Preserve all other scope and acceptance entries.\n' \
             >> "$prompt_input_file"
     fi
 

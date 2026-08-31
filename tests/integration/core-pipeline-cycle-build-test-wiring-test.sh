@@ -68,8 +68,18 @@ fb_value="${!fb_var:-}"
 assert_eq "T1: build_test_cycle declares no feedback edge" "" "$fb_value"
 # shellcheck source=../../scripts/lib/manifest-graph.sh
 source "$REPO_ROOT/scripts/lib/manifest-graph.sh"
-assert_eq "T1: gate-aggregator declares gate_feedback as its summary" "true" \
-    "$(manifest_graph_output_summary "$REPO_ROOT/plugins/tool/gate-aggregator/manifest.yaml" gate_feedback)"
+# #1988: the aggregator no longer renders gate detail — each gate publishes its
+# own. The invariant is that the GATES declare summaries, which is what makes
+# the engine deliver their findings.
+for _g in shape-floor secret-scan lint-gate coverage-gate mutation-gate; do
+    _gm="$REPO_ROOT/plugins/tool/$_g/manifest.yaml"
+    _has=0
+    while IFS= read -r _r; do
+        [[ -n "$_r" ]] || continue
+        [[ "$(manifest_graph_output_summary "$_gm" "${_r%%|*}")" == "true" ]] && _has=1
+    done < <(manifest_graph_get_outputs "$_gm")
+    assert_eq "T1: $_g declares its own summary" "1" "$_has"
+done
 
 # ─── T2: test plugin emits failures summary on fail, absent on pass ─────────
 # shellcheck disable=SC1090
@@ -237,34 +247,35 @@ assert_json_key "T6: mixed failure set still leaves verdict=fail" \
     "$(cat "$T6_ART_DIR/gate-aggregator-result.json")" '.verdict' "fail"
 assert_json_key "T6: and the rolled-up fault is scope (shape-floor's escalation)" \
     "$(cat "$T6_ART_DIR/gate-aggregator-result.json")" '.fault' "scope"
-assert_file_exists "T6: aggregator wrote the build-facing gate-feedback.md" \
+assert_file_not_exists "T6: the aggregator renders no payload of its own" \
     "$T6_ART_DIR/gate-feedback.md"
 
-_CYCLE_TRAP_CYCLE_ID="build_test_cycle"
-_CYCLE_FEEDBACK=("gate-aggregator:gate_feedback|build:gate_feedback:false")
-set +e
-_cycle_apply_feedback 3 "$T6_STATE_DIR"
-t6_rc=$?
-set -e
-assert_eq "T6: feedback edge applied rc=0" "0" "$t6_rc"
-
-T6_FB="$T6_STATE_DIR/cycle-build_test_cycle/iter-3/feedback"
-assert_file_exists "T6: gate_feedback.txt staged into the iter feedback dir" \
-    "$T6_FB/gate_feedback.txt"
-
-# #1979: the last hop is no longer _build_read_prior_gate but the engine's
-# summary collector. Same chain otherwise — real gate_aggregator_run wrote the
-# artifact; this reads it the way build's prompt now receives it. Re-pointed
-# rather than deleted: this is the only proof the payload actually arrives, and
-# the #1831 regression it guards (a declared fault producing an EMPTY body) is
-# just as possible on the new path.
+# #1988: the last hop is the engine's summary collector reading each GATE's own
+# detail, not the aggregator's rendering. Re-pointed rather than deleted: this is
+# the only proof the payload actually arrives, and the #1831 regression it guards
+# — a routing signal producing an EMPTY body — is just as possible here, where it
+# would mean a gate published nothing.
+#
+# The fixture writes the detail artifacts the gate plugins write, so the chain
+# under test is still "gate output on disk -> prompt body".
+# shellcheck source=../../scripts/lib/gate-detail.sh
+source "$REPO_ROOT/scripts/lib/gate-detail.sh"
 # shellcheck source=../../core/pipeline/input-resolve.sh
 source "$REPO_ROOT/core/pipeline/input-resolve.sh"
-printf '{"schema_version":1,"stage_statuses":{"gate-aggregator":"failed"},"stage_verdicts":{"gate-aggregator":"fail"}}\n' \
+
+gate_detail_write "$T6_ART_DIR/test-failures-summary.md" "suite" "fail" \
+    "FAIL tests/unit/sigpipe-antipattern-guard-test.sh"
+gate_detail_write "$T6_ART_DIR/acceptance-summary.txt" "acceptance-gate" "fail" \
+    "tautology:SPEC-1"
+gate_detail_write "$T6_ART_DIR/shape-floor-detail.md" "shape-floor" "fail" \
+    "missing_floor_files"
+
+printf '{"schema_version":1,"stage_statuses":{"test":"failed","acceptance-gate":"failed","shape-floor":"failed"},"stage_verdicts":{"test":"fail","acceptance-gate":"fail","shape-floor":"fail"}}\n' \
     > "$T6_STATE_DIR/pipeline-state.json"
-_TPL_STAGES=(gate-aggregator)
+_TPL_STAGES=(test acceptance-gate shape-floor)
 T6_BODY="$(stage_summaries_prompt_block "$T6_STATE_DIR/pipeline-state.json" \
     "$REPO_ROOT/plugins" 2>/dev/null || true)"
+
 
 assert_gt "T6: build receives a NON-EMPTY gate summary (the #1831 regression)" \
     "${#T6_BODY}" "0"
@@ -272,7 +283,9 @@ assert_contains "T6: body carries the failing suite" \
     "$T6_BODY" "sigpipe-antipattern-guard-test.sh"
 assert_contains "T6: body carries the tautology build must re-author" \
     "$T6_BODY" "tautology:SPEC-1"
-assert_contains "T6: body names the design-routed gate as handled elsewhere" \
-    "$T6_BODY" "Handled elsewhere"
+# No longer described as "handled elsewhere" by a renderer — the design-routed
+# gate publishes its own finding like any other, and the fault class routes it.
+assert_contains "T6: the design-routed gate's finding is present too" \
+    "$T6_BODY" "missing_floor_files"
 
 print_test_results

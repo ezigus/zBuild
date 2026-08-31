@@ -4,7 +4,7 @@
 **Date:** 2026-08-09
 **Issue:** #1820
 **Supersedes:** ADR-020 (inter-stage data contract) — presented as a clean v2 at the current stable state; ADR-020 is retired in-place for audit history.
-**Amended:** 2026-08-30 (#1976) — §9 added: a stage may mark ONE output `summary: true`, which the engine collects and injects as ambient prompt context. This is deliberately NOT an input: a consumer declares nothing. Previously amended 2026-08-19 (#1825) — §1's "no case needs an explicit binding" verified and made true by cleanup; §1.5 refined so the zero-producer refusal applies to required inputs only; §4's four codes retired in code; §5's output-id count corrected 29 → 27. Previously amended 2026-08-12 (#1768) — §1 replaced. A consumer no longer names its producer; it declares the artifact **names** it needs and the engine resolves each to the single stage in the flow that produces it. `source: artifacts` and `source: cycle_feedback` are retired into the one stage-output kind (§4), leaving two kinds total. Amended rather than superseded: this ADR is three days old and unimplemented, so a v3 would create archaeology for a document nothing was built against.
+**Amended:** 2026-08-31 (#1986) — §9's `MAY` becomes `MUST`: every stage-bound plugin declares exactly one summary output, enforced at pre-flight rather than by tree lint, because a stage may be authored outside this repository. Previously amended 2026-08-30 (#1976) — §9 added: a stage may mark ONE output `summary: true`, which the engine collects and injects as ambient prompt context. This is deliberately NOT an input: a consumer declares nothing. Previously amended 2026-08-19 (#1825) — §1's "no case needs an explicit binding" verified and made true by cleanup; §1.5 refined so the zero-producer refusal applies to required inputs only; §4's four codes retired in code; §5's output-id count corrected 29 → 27. Previously amended 2026-08-12 (#1768) — §1 replaced. A consumer no longer names its producer; it declares the artifact **names** it needs and the engine resolves each to the single stage in the flow that produces it. `source: artifacts` and `source: cycle_feedback` are retired into the one stage-output kind (§4), leaving two kinds total. Amended rather than superseded: this ADR is three days old and unimplemented, so a v3 would create archaeology for a document nothing was built against.
 **Related:** ADR-001 (plugin contract), ADR-006 (resume contract), ADR-013 (canonical stages), ADR-015 §v4 (stage I/O capture), ADR-019 (review fail-closed), ADR-042 (stage portability — completed by §1), ADR-045 (bounded typed backward route — legalises a backwards data edge, §1.3), ADR-046 (design-verify shift-left — the cross-cycle feedback edge this ADR previously failed to account for), ADR-047 (stage-agnostic mechanics)
 
 ## Context
@@ -199,23 +199,74 @@ The following ADR-020 content is **not** carried forward into the v2 contract an
 - **`valid_verdicts` field** — declared in the manifest schema under `outputs:`; never read by the runner or the pre-flight validator. The verdict vocabulary is governed by the v2 result file contract and ADR-054 §6.
 - **`warn` default note** — ADR-020 originally shipped with `warn` as the first-release default and a note to flip to `enforce`. The flip landed in Wave 12-E (#664). The v2 contract treats `enforce` as the operative default.
 
-### 9. Stage summaries — ambient context, not an input (added 2026-08-30, #1976)
+### 9. Stage summaries — ambient context, not an input (added 2026-08-30, #1976; obligation added 2026-08-31, #1986)
 
-A producer MAY mark **at most one** output `summary: true`:
+Every stage-bound plugin **MUST** carry the `summary` marker on **exactly one**
+output — not zero, not two:
 
 ```yaml
 outputs:
   - id: acceptance_detail
     path: ${artifact_dir}/acceptance-summary.txt
     type: text
-    required: false
+    required: true
     summary: true
 ```
+
+**The marker's placement is the declaration; its value carries nothing.** There
+is no opting out, so `summary: false` states nothing that absence does not
+already state, and a second `summary` is refused. `true` is written for YAML's
+sake, not the contract's — a reader should take the *key* as the signal.
 
 The engine collects the summaries of every **completed** stage and injects them
 into each agent prompt as a `## STAGE SUMMARIES (engine-collected)` block, at the
 same point as §1's resolved-input block and for the same reason: before
 `apply_scope_redaction`, so it rides the ADR-004 chokepoint by construction.
+
+**A summary states what the stage DID, not what went wrong.** That is the
+purpose, and it decides the content: a later stage needs to know what has
+already been checked, attempted or ruled out — not merely what failed. A gate
+that passed still did work; a downstream reader who cannot see its conclusion
+must either assume the work never happened or redo it.
+
+**So it is written on every terminal verdict — pass, fail and skip.** "This gate
+ran and found nothing" and "this gate published nothing" are different facts,
+and if absence is a legitimate state the pipeline cannot tell them apart.
+Writing unconditionally collapses that ambiguity: a missing summary then means
+something went wrong, full stop.
+
+Two consequences, both simplifications:
+
+- **`required: true`.** Absence is never legitimate, so the artifact contract
+  says so and the existing missing-output machinery enforces it — no new code.
+- **The stale-file hazard disappears.** A summary left from a previous iteration
+  renders as a *current* finding, silently. When every run rewrites the file,
+  the clear-on-non-fail step that guarded against that stops needing to exist.
+
+**Why mandatory rather than permitted.** A stage that publishes nothing is
+indistinguishable from a stage that had nothing to say. The two are different
+facts and the pipeline cannot tell them apart, so the second silently absorbs
+the first. That is not hypothetical: `acceptance-summary.txt` — the design↔
+assertion pairing that explains every acceptance failure — was written by
+`spec-acceptance` and declared by nobody for months, so no prompt ever carried
+it and no reader knew it existed. `MAY` is what allowed that.
+
+**Scope.** Stage-bound plugins only. Backend services — cache, memory,
+orchestrator, claim-coordinator — are exempt for the same reason they are exempt
+from the rest of this contract: they are not nodes in the stage graph
+(ADR-047 §5).
+
+**Enforcement is at RUNTIME, not in the tree lint.** The authority is the
+pre-flight validator (`_contract_validate_pipeline`, called from the runner
+before dispatch), because it walks the **resolved** stage list against the
+configured `plugins_root`. A stage may be authored outside this repository —
+that is the whole point of the plugin contract — and a lint over `plugins/`
+cannot see it. The tree-wide lint remains as the fast local signal for plugins
+that DO live here, and `preflight-lint-parity-test.sh` keeps the two views from
+drifting, exactly as it does for the rest of §4's codes.
+
+A missing summary is a refused template, not a warning. The failure mode it
+prevents is silence, and a warning about silence is itself easy to not hear.
 
 **A consumer declares nothing.** This is the deliberate asymmetry with §1, and
 the distinction is load-bearing:
