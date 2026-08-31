@@ -1,4 +1,4 @@
-============== ZBUILD BUILD — iter 2/10 ==============
+============== ZBUILD BUILD — iter 3/10 ==============
 ## ORIGINAL TASK (immutable across iterations)
 # Plan: Migrate test plugin to contract v2
 
