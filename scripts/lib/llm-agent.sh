@@ -42,19 +42,16 @@ source "$_LLM_AGENT_LIB_DIR/router-rc-classify.sh"
 #                               entirely (use for plan which has no .verdict
 #                               field; the schema MUST NOT assert .verdict)
 #   --schema-json <inline>    — required JSON schema shape (multi-line)
-#   --markdown-fields <csv>   — fields that may contain markdown; framework
-#                               appends the ADR-022 escape requirement when set
 #   [--extras <path>]         — per-stage extras file (FORBIDDEN extensions,
 #                               CORRECT examples, etc.); appended verbatim
 #                               between the schema block and the closing rule.
 _llm_output_contract() {
-    local stage="" verdicts="" schema_json="" markdown_fields="" extras_file=""
+    local stage="" verdicts="" schema_json="" extras_file=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --stage) stage="$2"; shift 2 ;;
             --verdicts) verdicts="$2"; shift 2 ;;
             --schema-json) schema_json="$2"; shift 2 ;;
-            --markdown-fields) markdown_fields="$2"; shift 2 ;;
             --extras) extras_file="$2"; shift 2 ;;
             *) shift ;;
         esac
@@ -62,6 +59,37 @@ _llm_output_contract() {
 
     [[ -z "$stage" ]] && { printf '_llm_output_contract: --stage required\n' >&2; return 2; }
     [[ -z "$schema_json" ]] && { printf '_llm_output_contract: --schema-json required\n' >&2; return 2; }
+
+    # ADR-060 §1: a parsed envelope carries structured data only. A field
+    # holding a markdown DOCUMENT is refused here, at prompt-build time, before
+    # a model call is made — the stage cannot ask for the shape at all.
+    #
+    # Why the check exists rather than a note in the ADR: #767, #774, #783 and
+    # #908 were four symptomatic fixes to the same seam, and #1972 was the
+    # fifth. A single markdown-escaped underscore inside impact_feedback_md
+    # (`done\_sentinel` — not a legal JSON escape) killed a 24-minute run.
+    # The rule was written down after that; nothing enforced it, so the next
+    # stage added would have reintroduced the shape and its author would not
+    # have been wrong.
+    #
+    # Two signals, both taken from the field that actually caused it: a name
+    # ending in `_md`, or a placeholder that says "markdown". Short plain-text
+    # fields (reason, message, summary, description, evidence) are data and
+    # stay — see ADR-060 §5 for the line this must not be read past.
+    local _md_field=""
+    _md_field="$(grep -oE '"[A-Za-z0-9_]*_md"[[:space:]]*:' <<< "$schema_json" \
+        | sed -nE '1s/"([^"]*)".*/\1/p' || true)"
+    if [[ -z "$_md_field" ]]; then
+        _md_field="$(grep -oiE '"[A-Za-z0-9_]+"[[:space:]]*:[[:space:]]*"<[^"]*markdown[^"]*>"' <<< "$schema_json" \
+            | sed -nE '1s/"([^"]*)".*/\1/p' || true)"
+    fi
+    if [[ -n "$_md_field" ]]; then
+        printf '_llm_output_contract: stage %s declares a markdown-document field: %s\n' \
+            "$stage" "$_md_field" >&2
+        printf '  ADR-060 §1: an envelope carries structured data only. Put the detail in\n' >&2
+        printf '  short plain-text fields, and render any narrative from them (§3).\n' >&2
+        return 1
+    fi
 
     # Canonical opening — never varies across stages.
     cat <<'CONTRACT_HEAD'
@@ -93,17 +121,6 @@ not before the JSON, not after it, not inside any field:
   - "I have all the information"
 _FORBIDDEN_BLOCK
 
-    # Markdown-field escape requirement (ADR-022 v2).
-    if [[ -n "$markdown_fields" ]]; then
-        cat <<MD_ESCAPE
-
-JSON-STRING ESCAPING (ADR-022 v2 — applies to: $markdown_fields):
-- Every \` " \` inside a string field MUST be escaped as \` \\" \`.
-- Newlines inside a string field MUST be \` \\n \`, not raw newlines.
-- A markdown body containing a table cell like \` "3" \` MUST be encoded as
-  \` \\"3\\" \` in the JSON. Unescaped quotes break the JSON parse.
-MD_ESCAPE
-    fi
 
     cat <<'FINAL_RULE'
 
