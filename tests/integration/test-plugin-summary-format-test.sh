@@ -103,9 +103,9 @@ assert_eq "failsafe: verdict=error"             "error"                "$(jq -r 
 assert_eq "failsafe: reason=summary_unavailable" "summary_unavailable" "$(jq -r '.reason'        "$JSON")"
 assert_eq "failsafe: passed is null"            "null"                 "$(jq -r '.data.passed'   "$JSON")"
 assert_eq "failsafe: failed is null"            "null"                 "$(jq -r '.data.failed'   "$JSON")"
-# [SPEC-11] test_output at top level in v2 result (CHANGE: absent at top level in intake baseline)
+# [SPEC-11] test_output at top level in v2 result contract (result_contract:2 absent in v1 baseline)
 assert_eq "[SPEC-11] test_output at top level in v2 result (summary-format)" "true" \
-    "$(jq 'has("test_output")' "$JSON" 2>/dev/null)"
+    "$(jq '(.result_contract == 2) and has("test_output")' "$JSON" 2>/dev/null)"
 
 # ───────────────────────────────────────────────────────────────────────────
 # Empty output (e.g. `true`) — fail-safe SUPERSEDES the old #485 no-op

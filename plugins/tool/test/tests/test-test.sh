@@ -615,13 +615,13 @@ assert_file_not_exists "T18: stale red-set removed after a no-failure run" "$STA
 # ═══════════════════════════════════════════════════════════════════════════════
 print_test_section "SPEC. v2 result contract (#1836)"
 
-# [SPEC-1] test_output exposed at top level for direct consumers (CHANGE: absent at intake baseline)
-_spec1_has_to="$(jq 'has("test_output")' "$OUT_JSON_3" 2>/dev/null)"
-assert_eq "[SPEC-1] test_output exposed at top level for direct consumers" "true" "$_spec1_has_to"
+# [SPEC-1] test_output at top level in v2 result contract (result_contract:2 was absent at v1 baseline)
+_spec1_has_to="$(jq '(.result_contract == 2) and has("test_output")' "$OUT_JSON_3" 2>/dev/null)"
+assert_eq "[SPEC-1] test_output exposed at top level in v2 result contract" "true" "$_spec1_has_to"
 
-# [SPEC-2] run_mode exposed at top level (CHANGE: absent at intake baseline)
-_spec2_has_rm="$(jq 'has("run_mode")' "$OUT_JSON_3" 2>/dev/null)"
-assert_eq "[SPEC-2] run_mode exposed at top level for direct consumers" "true" "$_spec2_has_rm"
+# [SPEC-2] run_mode at top level in v2 result contract (result_contract:2 was absent at v1 baseline)
+_spec2_has_rm="$(jq '(.result_contract == 2) and has("run_mode")' "$OUT_JSON_3" 2>/dev/null)"
+assert_eq "[SPEC-2] run_mode exposed at top level in v2 result contract" "true" "$_spec2_has_rm"
 
 # [SPEC-3] exit_code=0 at top level on pass path AND disposition=complete (CHANGE: exit_code absent at top level in baseline)
 _spec3_ec="$(_json_key "$OUT_JSON_3" '.exit_code')"
@@ -635,16 +635,16 @@ _spec4_disp="$(_json_key "$OUT_JSON_4" '.disposition')"
 assert_eq "[SPEC-4] exit_code=1 at top level on fail path" "1" "$_spec4_ec"
 assert_eq "[SPEC-4] disposition=complete when verdict=fail" "complete" "$_spec4_disp"
 
-# [SPEC-5] test_output at top level on error path AND disposition=broken (CHANGE: test_output absent at top level in baseline)
-_spec5_has_to="$(jq 'has("test_output")' "$OUT_JSON_2" 2>/dev/null)"
+# [SPEC-5] test_output at top level in v2 result on error path AND disposition=broken
+_spec5_has_to="$(jq '(.result_contract == 2) and has("test_output")' "$OUT_JSON_2" 2>/dev/null)"
 _spec5_disp="$(_json_key "$OUT_JSON_2" '.disposition')"
-assert_eq "[SPEC-5] test_output at top level on error (missing diff)" "true" "$_spec5_has_to"
+assert_eq "[SPEC-5] test_output at top level in v2 result on error (missing diff)" "true" "$_spec5_has_to"
 assert_eq "[SPEC-5] disposition=broken on error (missing diff)" "broken" "$_spec5_disp"
 
-# [SPEC-6] run_mode at top level on missing-diff error AND reason=missing_diff_patch (CHANGE: run_mode absent at top level in baseline)
-_spec6_has_rm="$(jq 'has("run_mode")' "$OUT_JSON_2" 2>/dev/null)"
+# [SPEC-6] run_mode at top level in v2 result on missing-diff error AND reason=missing_diff_patch
+_spec6_has_rm="$(jq '(.result_contract == 2) and has("run_mode")' "$OUT_JSON_2" 2>/dev/null)"
 _spec6_reason="$(_json_key "$OUT_JSON_2" '.reason')"
-assert_eq "[SPEC-6] run_mode at top level on missing-diff error path" "true" "$_spec6_has_rm"
+assert_eq "[SPEC-6] run_mode at top level in v2 result on missing-diff error path" "true" "$_spec6_has_rm"
 assert_eq "[SPEC-6] reason=missing_diff_patch emitted on missing diff" "missing_diff_patch" "$_spec6_reason"
 
 # [SPEC-7] exit_code at top level for backward compat (CHANGE: absent at top level in intake baseline)
@@ -653,11 +653,11 @@ _spec7_data_ec="$(jq '.data | has("exit_code")' "$OUT_JSON_3" 2>/dev/null)"
 assert_eq "[SPEC-7] exit_code at top level for direct consumers" "true" "$_spec7_top_ec"
 assert_eq "[SPEC-7] exit_code also under data block" "true" "$_spec7_data_ec"
 
-# [SPEC-8] _test_disposition_from_rc signal mapping AND test_output at top level
-# Combined assertion fails at baseline: test_output was absent at top level in ca3fbc5
+# [SPEC-8] _test_disposition_from_rc signal mapping AND result_contract=2 (v2 shape)
+# Combined assertion fails at baseline: result_contract was absent in v1 (schema_version:1)
 _spec8_term="$(_test_disposition_from_rc 143 "error")"
-_spec8_has_to="$(jq 'has("test_output")' "$OUT_JSON_3" 2>/dev/null)"
-assert_eq "[SPEC-8] rc=143→interrupted AND test_output at top level" "interrupted|true" "${_spec8_term}|${_spec8_has_to}"
+_spec8_rc2="$(jq '.result_contract == 2' "$OUT_JSON_3" 2>/dev/null)"
+assert_eq "[SPEC-8] rc=143→interrupted AND result_contract=2 (v2 shape)" "interrupted|true" "${_spec8_term}|${_spec8_rc2}"
 _spec8_kill="$(_test_disposition_from_rc 137 "error")"
 assert_eq "[SPEC-8] rc=137 (SIGKILL) → disposition=interrupted" "interrupted" "$_spec8_kill"
 _spec8_int="$(_test_disposition_from_rc 130 "error")"

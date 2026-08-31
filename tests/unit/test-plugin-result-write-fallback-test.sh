@@ -139,9 +139,9 @@ assert_eq "happy: .verdict" "pass" "$(jq -r '.verdict' "$OUT7" 2>/dev/null)"
 assert_eq "happy: .data.exit_code" "0" "$(jq -r '.data.exit_code' "$OUT7" 2>/dev/null)"
 assert_eq "happy: .data.passed" "5" "$(jq -r '.data.passed' "$OUT7" 2>/dev/null)"
 assert_eq "happy: .data.diff_applied" "true" "$(jq -r '.data.diff_applied' "$OUT7" 2>/dev/null)"
-# [SPEC-11] run_mode at top level in v2 writer output (CHANGE: absent at top level in intake baseline)
-assert_eq "[SPEC-11] run_mode=full at top level in v2 writer output" "full" \
-    "$(jq -r '.run_mode' "$OUT7" 2>/dev/null)"
+# [SPEC-11] run_mode at top level in v2 result contract (result_contract:2 absent in v1 baseline)
+_spec11_rm="$(jq '(.result_contract == 2) and (.run_mode == "full")' "$OUT7" 2>/dev/null)"
+assert_eq "[SPEC-11] run_mode=full at top level in v2 result contract" "true" "$_spec11_rm"
 
 # ─── 8. forced jq failure exercises the fallback branch + event emission ────
 # Copilot P1 on #640: without this case the suite proved sanitization works
