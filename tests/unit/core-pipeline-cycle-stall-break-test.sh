@@ -60,14 +60,17 @@ assert_eq "[SPEC-2] simple.yaml build_test_cycle declares no feedback edge" \
 
 _RESOLVE_DIR="$TEST_TEMP_DIR/resolve"
 mkdir -p "$_RESOLVE_DIR"
+# #1988: gate_feedback is retired — the aggregator renders nothing. The
+# surviving invariant is that a GATE's own detail resolves by output id, which
+# is what the summaries collector depends on.
 set +e
-_resolved_src="$(_cycle_resolve_from_path "$_RESOLVE_DIR" "gate-aggregator" "gate_feedback")"
+_resolved_src="$(_cycle_resolve_from_path "$_RESOLVE_DIR" "test" "test_failures_summary")"
 set -e
 case "$_resolved_src" in
-    */gate-feedback.md)
-        assert_pass "[SPEC-2] gate-aggregator:gate_feedback resolves to gate-feedback.md" ;;
+    */test-failures-summary.md)
+        assert_pass "[SPEC-2] a gate's own detail resolves by output id" ;;
     *)
-        assert_fail "[SPEC-2] gate-aggregator:gate_feedback resolves to gate-feedback.md" \
+        assert_fail "[SPEC-2] a gate's own detail resolves by output id" \
             "got: $_resolved_src" ;;
 esac
 
@@ -81,7 +84,7 @@ _CYCLE_TRAP_CYCLE_ID="build_test_cycle"
 # re-pointing it would have removed the only proof the cycle can still converge.
 FB_STATE="$TEST_TEMP_DIR/fb-state"
 mkdir -p "$FB_STATE/artifacts"
-cat > "$FB_STATE/artifacts/gate-feedback.md" <<'TFS'
+cat > "$FB_STATE/artifacts/test-failures-summary.md" <<'TFS'
 # Gate Aggregator Feedback
 ## suite
 - failures:
@@ -89,8 +92,8 @@ cat > "$FB_STATE/artifacts/gate-feedback.md" <<'TFS'
 TFS
 cat > "$FB_STATE/pipeline-state.json" <<'TFS'
 {"schema_version":1,
- "stage_statuses":{"gate-aggregator":"failed"},
- "stage_verdicts":{"gate-aggregator":"fail"}}
+ "stage_statuses":{"test":"failed"},
+ "stage_verdicts":{"test":"fail"}}
 TFS
 
 # shellcheck source=../../core/event-bus/event-bus.sh
@@ -100,7 +103,7 @@ source "$REPO_ROOT/core/plugin-registry/registry.sh" 2>/dev/null || true
 # shellcheck source=../../core/pipeline/input-resolve.sh
 source "$REPO_ROOT/core/pipeline/input-resolve.sh"
 
-_TPL_STAGES=(gate-aggregator)
+_TPL_STAGES=(test)
 _SUMMARY_BLOCK="$(stage_summaries_prompt_block "$FB_STATE/pipeline-state.json" \
     "$REPO_ROOT/plugins" 2>/dev/null || true)"
 

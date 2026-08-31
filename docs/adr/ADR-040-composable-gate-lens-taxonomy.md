@@ -114,6 +114,32 @@ suppresses a roster must itself publish a summary — deleting a roster's findin
 and contributing nothing in their place is a silent loss, and is guarded by a
 tree-wide test rather than left to review.
 
+**Amendment (2026-08-31, #1988): the aggregator stops rendering; each gate
+publishes its own detail.**
+
+The gate-aggregator did three jobs. Two are irreplaceable: it produces the ONE
+convergence verdict §5 requires a cycle to bind to, and it rolls up the declared
+fault class (ADR-061). The third — rendering `gate-feedback.md` and
+`design-feedback.md` — existed only because it was the sole path for gate detail
+to reach a prompt: five gates declared nothing but a result JSON.
+
+ADR-055 §9 made another path, so each gate now publishes its own detail as a
+`summary: true` output and speaks for itself. Authoring prose *about design* was
+never this stage's business — it relays a fault class each gate declares; it
+does not decide what design ought to read.
+
+Two consequences, both structural rather than stylistic:
+
+- The aggregator also stops declaring `aggregates: gate`. It publishes no text,
+  so covering the roster would suppress the members and ship an aggregate
+  containing nothing.
+- The routed/residual **partition disappears as a concept**. It existed because
+  build read a *partial* payload and had to be told the remainder was "handled
+  elsewhere". With every failing gate publishing its own finding there is no
+  partial view to caveat. The property #1757 established — that a routed gate
+  never takes build-fixable findings with it — survives as: every failing gate
+  is named in the aggregate and publishes its own detail.
+
 ### 5. The convergence-path invariant (machine-enforced)
 
 > **No `advisory` stage may appear in the must-pass set or in any `exit_when` predicate.**

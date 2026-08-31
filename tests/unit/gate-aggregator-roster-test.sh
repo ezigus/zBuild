@@ -97,9 +97,12 @@ write_verdict "$AD" "g-role-result.json"  "pass"
 OUT="$(run_agg "$SF")"
 assert_json_key "TC-3: g_beta fail → verdict=fail" "$OUT" '.verdict' "fail"
 assert_contains "TC-3: failed[] names g_beta" "$OUT" "g_beta"
-# B2: consolidated feedback artifact written on fail.
-assert_file_exists "TC-3: gate-feedback.md written on fail" "$AD/gate-feedback.md"
-assert_contains "TC-3: feedback names the failing gate" "$(cat "$AD/gate-feedback.md")" "g_beta"
+# #1988: the consolidated artifact is retired — each gate publishes its own
+# detail now. The roster property this file tests is unchanged: a failing
+# `convergence: gate` member is in the must-pass set and is NAMED in the
+# aggregate, which the two assertions above already pin.
+assert_file_not_exists "TC-3: the aggregator renders no consolidated payload" \
+    "$AD/gate-feedback.md"
 
 # ─── TC-4: removing a gate from the cycle changes the must-pass set (no plugin
 #          edit) — g_beta is no longer required, so its fail no longer blocks ──

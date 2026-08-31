@@ -128,12 +128,16 @@ assert_eq "[SPEC-4] the aggregate verdict stays fail" \
     "fail" "$(jq -r '.verdict // "MISSING"' <<< "$GA_RESULT")"
 assert_eq "[SPEC-4] and the rolled-up fault is specification" \
     "specification" "$(jq -r '.fault // "MISSING"' <<< "$GA_RESULT")"
-assert_file_exists "[SPEC-4] design-feedback.md is written for the rewind" \
+# #1988: the aggregator renders no payloads at all — every gate publishes its
+# own detail now. This fixture drives the AGGREGATOR with synthetic results and
+# never runs the acceptance gate, so what it can assert is the roll-up. The
+# #1809 guarantee (a rewind carries the offending SPEC, not just the gate name)
+# now lives on the acceptance gate's own summary and is asserted where that gate
+# actually runs — tests/integration/acceptance-gate-test.sh.
+assert_file_not_exists "[SPEC-5] the aggregator renders no design payload" \
     "$AGG_DIR/design-feedback.md"
-assert_contains "[SPEC-5] design-feedback.md names the acceptance gate that routed" \
-    "$DESIGN_FB" "acceptance-gate"
-assert_contains "[SPEC-5] design-feedback.md names the offending SPEC — the #1809 gap" \
-    "$DESIGN_FB" "guard_regressed:SPEC-1"
+assert_file_not_exists "[SPEC-5] nor a build-facing one" \
+    "$AGG_DIR/gate-feedback.md"
 
 # ── Additive guard: a non-acceptance specification still renders as today ────
 # shape-floor's missing_floor_files was the ONLY thing #1809's design-feedback
@@ -144,8 +148,8 @@ jq -n '{verdict:"fail",reason:"missing_floor_files: tests/golden/x.golden",fault
 _run_aggregator "$SF_DIR"
 assert_eq "[SPEC-6] a shape-floor-rooted fault is unchanged by this issue" \
     "fail" "$(jq -r '.verdict // "MISSING"' <<< "$GA_RESULT")"
-assert_contains "[SPEC-6] its design-feedback still carries the shape-floor reason" \
-    "$DESIGN_FB" "missing_floor_files"
+assert_eq "[SPEC-6] and its scope fault rolls up" \
+    "scope" "$(jq -r '.fault // "MISSING"' <<< "$GA_RESULT")"
 
 # ── Guard: a build-fixable failure still reaches BUILD, not design (#1583) ──
 # tautology deliberately carries NO fault so build re-authors its own
@@ -156,8 +160,8 @@ jq -n '{verdict:"fail",disposition:"recoverable",reason:"acceptance SPEC violati
 _run_aggregator "$TA_DIR"
 assert_eq "[SPEC-7] a tautology failure still yields a plain fail, not specification" \
     "fail" "$(jq -r '.verdict // "MISSING"' <<< "$GA_RESULT")"
-assert_contains "[SPEC-7] and its detail goes to the BUILD-facing gate-feedback.md" \
-    "$GATE_FB" "tautology:SPEC-9"
+assert_eq "[SPEC-7] and declares NO fault, so nothing rewinds" \
+    "" "$(jq -r '.fault // ""' <<< "$GA_RESULT")"
 
 print_test_results
 exit $((FAIL > 0))

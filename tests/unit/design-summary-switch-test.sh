@@ -124,11 +124,14 @@ fi
 # ─── SPEC-5: the route_back path is a different input and survives ───────────
 print_test_section "5. the route_back design-rooted feedback still works"
 
+# #1988 retired this one too: the aggregator stopped writing design-feedback.md,
+# so the input had no producer. Design now keys its re-author instruction on the
+# acceptance gate's recorded verdict and reads the detail from the summaries.
 if grep -qF '_design_read_prior_gate_feedback' "$_p" 2>/dev/null; then
-    assert_pass "[SPEC-5] design_feedback (source: artifacts) is untouched"
+    assert_fail "[SPEC-5] the producerless route_back reader is retired" \
+        "the reader survives with nothing to read"
 else
-    assert_fail "[SPEC-5] design_feedback (source: artifacts) is untouched" \
-        "the route_back reader was removed — a different input, out of scope"
+    assert_pass "[SPEC-5] the producerless route_back reader is retired"
 fi
 
 cleanup_test_env

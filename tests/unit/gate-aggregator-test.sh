@@ -148,8 +148,9 @@ OUT="$(run_agg "$SF")"
 assert_json_key "TC-10: design-rooted fail → verdict stays fail" "$OUT" '.verdict' "fail"
 assert_json_key "TC-10: the declared fault is mirrored into the aggregate" "$OUT" '.fault' "specification"
 assert_contains "TC-10: failed[] still names the acceptance-gate" "$OUT" "acceptance-gate"
-assert_file_exists "TC-10: design-feedback.md written for a specification fault" "$AD/design-feedback.md"
-assert_contains "TC-10: design-feedback names the SPEC" "$(cat "$AD/design-feedback.md")" "SPEC-1"
+# #1988: the aggregator renders nothing. The SPEC reaches design through the
+# acceptance gate's own summary; what this stage still owns is the roll-up.
+assert_file_not_exists "TC-10: the aggregator renders no design payload" "$AD/design-feedback.md"
 
 # ── TC-10b (#1583): a TAUTOLOGY failure carries NO fault → build-routed fail ─
 # Since #1477 removed design's stub-writer, BUILD authors assertion bodies, so a
@@ -165,8 +166,9 @@ OUT="$(run_agg "$SF")"
 assert_json_key "TC-10b: tautology (no fault) → verdict=fail" "$OUT" '.verdict' "fail"
 assert_eq "TC-10b: no fault mirrored for tautology" "" "$(jq -r '.fault // ""' <<< "$OUT")"
 assert_file_not_exists "TC-10b: NO design-feedback.md for a tautology (build-fixable)" "$AD/design-feedback.md"
-assert_file_exists "TC-10b: gate-feedback.md written (routes to build)" "$AD/gate-feedback.md"
-assert_contains "TC-10b: gate-feedback surfaces the tautological SPEC for build" "$(cat "$AD/gate-feedback.md")" "SPEC-1"
+assert_file_not_exists "TC-10b: the aggregator renders no build payload" \
+    "$AD/gate-feedback.md"
+# The tautology reaches build through the acceptance gate's own summary now.
 
 # ── TC-11 (#1219): a FAILED gate WITHOUT fault → plain verdict=fail ─────
 # The existing verdict=fail path is UNCHANGED when no failing gate is design-
@@ -188,29 +190,19 @@ printf '{"verdict":"pass","fault":"specification"}\n' > "$AD/acceptance-gate-res
 OUT="$(run_agg "$SF")"
 assert_json_key "TC-12: fault on a passing gate ignored → verdict=pass" "$OUT" '.verdict' "pass"
 
-# ── TC-13 (#1244): the suite gate's .test_output is surfaced in gate-feedback ─
-# The test stage writes failing-test detail into test-results.json's .test_output
-# (NOT .summary/.reason/.failures[]/.findings[]). The gate→build feedback MUST
-# list WHICH tests failed so the next build iter has an actionable path — not just
-# "verdict=fail (no structured detail)".
+# ── TC-13 (#1244 → #1988): the suite gate's output reaches a reader ──────────
+# The aggregator used to surface .test_output in its rendered payload. It
+# renders nothing now; the test stage publishes test-failures-summary.md as its
+# own summary, and tests/integration/core-pipeline-cycle-build-test-wiring-test.sh
+# T6 asserts that chain end-to-end. What remains here is that a failing suite
+# still lands in the aggregate's failed[] list.
 SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
 write_all "$AD" "pass"
-# jq -n so the multi-line .test_output is a VALID JSON string (escaped \n), exactly
-# as the test plugin writes it — a raw newline inside the JSON literal is invalid.
-jq -n '{verdict:"fail",exit_code:1,passed:482,failed:2,
-        test_output:"FAIL tests/unit/foo-test.sh: expected 3 got 4\nFAIL tests/unit/bar-test.sh: assertion baz failed"}' \
-    > "$AD/test-results.json"
-run_agg "$SF" >/dev/null
-FB="$(cat "$AD/gate-feedback.md")"
-assert_file_exists "TC-13: gate-feedback.md written on suite fail" "$AD/gate-feedback.md"
-assert_contains "TC-13: feedback lists the first failing test" "$FB" "tests/unit/foo-test.sh"
-assert_contains "TC-13: feedback lists the second failing test" "$FB" "tests/unit/bar-test.sh"
-if grep -qF -- "no structured detail" <<< "$FB"; then
-    assert_fail "TC-13: feedback is NOT the empty 'no structured detail' fallback" \
-        "fallback text still present despite test_output detail"
-else
-    assert_pass "TC-13: feedback is NOT the empty 'no structured detail' fallback"
-fi
+printf '{"verdict":"fail","test_output":"FAIL tests/unit/x-test.sh"}\n' > "$AD/test-results.json"
+OUT="$(run_agg "$SF")"
+assert_contains "TC-13: a failing suite is named in failed[]" "$OUT" "suite"
+assert_file_not_exists "TC-13: and no payload is rendered" "$AD/gate-feedback.md"
+
 
 # ── TC-14 (#1686, [SPEC-3]): wiring_not_on_path + fault=specification → a specification fault ─
 # First live activation of the dormant fault carrier (ADR-036 #1583):
@@ -227,7 +219,7 @@ assert_json_key "[SPEC-3] wiring_not_on_path → verdict stays fail" \
     "$OUT" '.verdict' "fail"
 assert_json_key "[SPEC-3] fault mirrored into aggregate" "$OUT" '.fault' "specification"
 assert_contains "[SPEC-3] failed[] names the acceptance-gate" "$OUT" "acceptance-gate"
-assert_file_exists "[SPEC-3] design-feedback.md written on a specification fault" "$AD/design-feedback.md"
+assert_file_not_exists "[SPEC-3] the aggregator renders no design payload" "$AD/design-feedback.md"
 
 # ── TC-15 (#1757): a MIXED failure set feeds BOTH payloads ───────────────────
 # Reproduces run 20260822073243 (issue #1831): shape-floor escalates
@@ -249,26 +241,23 @@ OUT="$(run_agg "$SF")"
 
 assert_json_key "TC-15: one routed gate still leaves verdict=fail" \
     "$OUT" '.verdict' "fail"
-assert_file_exists "TC-15: design-feedback.md written for the routed gate" \
+assert_file_not_exists "TC-15: the aggregator renders no design payload" \
     "$AD/design-feedback.md"
 # THE REGRESSION: this file used to be rm -f'd, taking both build-fixable
 # findings with it.
-assert_file_exists "TC-15: gate-feedback.md ALSO written for the residual gates" \
+assert_file_not_exists "TC-15: the aggregator renders no build payload" \
     "$AD/gate-feedback.md"
 
-_D="$(cat "$AD/design-feedback.md")"
-_G="$(cat "$AD/gate-feedback.md")"
-assert_contains "TC-15: design payload carries the routed gate" "$_D" "shape-floor"
-assert_eq "TC-15: design payload omits the build-fixable acceptance detail" \
-    "0" "$( { grep -cF 'tautology:SPEC-1' <<< "$_D" || true; } )"
-assert_contains "TC-15: build payload carries the tautology" "$_G" "tautology:SPEC-1"
-assert_contains "TC-15: build payload carries the failing suite" \
-    "$_G" "sigpipe-antipattern-guard-test.sh"
-assert_contains "TC-15: build payload counts only the residual gates" \
-    "$_G" "2 mechanical gate(s) failed"
-# Build must not read a partial payload as the whole failure set.
-assert_contains "TC-15: build payload names the routed gate as handled elsewhere" \
-    "$_G" "Handled elsewhere"
+# #1988: there are no payloads to partition. Every failing gate publishes its
+# own detail and all of them reach the prompt — so the routed/residual split
+# this block tested no longer exists as a concept. What survives is that BOTH
+# kinds of failure are still named in the aggregate, which is what the #1757
+# regression (a routed gate taking build-fixable findings with it) was about.
+assert_contains "TC-15: the routed gate is named in the aggregate" "$OUT" "shape-floor"
+assert_contains "TC-15: and so is the build-fixable one" "$OUT" "acceptance-gate"
+# The "handled elsewhere" framing existed because build read a PARTIAL payload
+# and had to be told the rest went to design. With no partition, build sees every
+# failing gate's own detail — there is no partial view to caveat.
 
 # ── TC-16 (#1757): an ALL-routed failure set still suppresses the build payload ─
 # No build-fixable gate failed, so there is nothing for build to act on and
@@ -280,7 +269,7 @@ printf '{"verdict":"fail","reason":"missing_floor_files","fault":"specification"
 OUT="$(run_agg "$SF")"
 assert_json_key "TC-16: all-routed → verdict stays fail" "$OUT" '.verdict' "fail"
 assert_json_key "TC-16: and the fault is specification" "$OUT" '.fault' "specification"
-assert_file_exists "TC-16: design-feedback.md written" "$AD/design-feedback.md"
+assert_file_not_exists "TC-16: the aggregator renders no design payload" "$AD/design-feedback.md"
 assert_file_not_exists "TC-16: gate-feedback.md absent (nothing build can fix)" \
     "$AD/gate-feedback.md"
 
@@ -292,11 +281,12 @@ write_all "$AD" "pass"
 printf '{"verdict":"fail","reason":"coverage below floor"}\n' > "$AD/coverage-result.json"
 OUT="$(run_agg "$SF")"
 assert_json_key "TC-17: plain fail → verdict=fail (no route)" "$OUT" '.verdict' "fail"
-assert_file_exists "TC-17: gate-feedback.md written" "$AD/gate-feedback.md"
+assert_file_not_exists "TC-17: the aggregator renders no build payload" \
+    "$AD/gate-feedback.md"
 assert_file_not_exists "TC-17: design-feedback.md absent on a plain fail" \
     "$AD/design-feedback.md"
-assert_eq "TC-17: no 'Handled elsewhere' section when nothing routed" \
-    "0" "$( { grep -cF 'Handled elsewhere' "$AD/gate-feedback.md" || true; } )"
+# #1988: no payloads at all, so no partial-view caveat to emit.
+assert_file_not_exists "TC-17: nor a build payload" "$AD/gate-feedback.md"
 
 # ── TC-18 (#1757): stale payloads from a prior iteration are dropped ──────────
 # The artifacts dir is shared across cycle iterations, so a payload left by the
@@ -346,14 +336,12 @@ assert_contains "TC-19: conflict event names BOTH classes, not just the winner" 
 # The losing-route gate must not vanish: it is not the rewind target's problem,
 # so it lands in residual[] and reaches build like any other unrouted failure.
 # This is the property residual[] exists for, and it was previously untested.
-assert_file_exists "TC-19: gate-feedback.md written for the non-winning-route gate" \
+assert_file_not_exists "TC-19: the aggregator renders no build payload" \
     "$AD/gate-feedback.md"
-assert_contains "TC-19: build payload carries the losing-route gate" \
-    "$(cat "$AD/gate-feedback.md")" "coverage"
-assert_contains "TC-19: design payload carries only the winning-route gate" \
-    "$(cat "$AD/design-feedback.md")" "shape-floor"
-assert_eq "TC-19: design payload excludes the losing-route gate" \
-    "0" "$( { grep -cF 'coverage' "$AD/design-feedback.md" || true; } )"
+# The losing-route gate must still be NAMED — that is the #1757 property. With
+# no payloads to partition, it is the aggregate's failed[] that must carry both.
+assert_contains "TC-19: the losing-route gate is still named" "$OUT" "coverage"
+assert_contains "TC-19: alongside the winning one" "$OUT" "shape-floor"
 
 # ── TC-20 (GUARD, #1757): a single route target emits NO conflict ────────────
 # The #1720 single-routed path must not start emitting a conflict event.

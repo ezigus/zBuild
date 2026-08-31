@@ -54,8 +54,10 @@ assert_eq "[SPEC-1] declared optional — a no-op run writes no summary" "false"
     "$(manifest_graph_get_outputs "$ACC_M" | grep '^acceptance_detail|' | cut -d'|' -f4)"
 
 # ─── SPEC-2 / SPEC-3: the two already-declared summaries are marked ──────────
-print_test_section "2. gate-aggregator's feedback is marked a summary"
-assert_eq "[SPEC-2] gate_feedback is the aggregator's summary" "true" \
+print_test_section "2. the aggregator publishes no summary of its own"
+# #1988: it stopped rendering prose, so it has nothing to publish — each gate
+# speaks for itself. It remains the convergence verdict and the fault roll-up.
+assert_eq "[SPEC-2] gate_feedback is retired" "" \
     "$(manifest_graph_output_summary "$AGG_M" gate_feedback)"
 
 print_test_section "3. the test stage's failure summary is marked"
@@ -115,7 +117,7 @@ _count_in_outputs() {
     ' "$1" 2>/dev/null
 }
 
-for _m in "$ACC_M" "$AGG_M" "$TEST_M"; do
+for _m in "$ACC_M" "$TEST_M"; do
     _name="$(basename "$(dirname "$_m")")"
     assert_eq "[SPEC-6] $_name declares exactly one primary output" "1" \
         "$(_count_in_outputs "$_m" primary)"
