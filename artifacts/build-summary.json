@@ -1,22 +1,20 @@
 {
   "schema_version": 4,
   "issue": 1836,
-  "files_changed": [],
-  "lines_added": 0,
-  "lines_removed": 0,
+  "files_changed": [
+    "plugins/tool/test/tests/test-test.sh",
+    "tests/integration/test-plugin-summary-format-test.sh",
+    "tests/unit/test-plugin-result-write-fallback-test.sh"
+  ],
+  "lines_added": 21,
+  "lines_removed": 21,
   "diff_patch_path": "/home/runner/work/_temp/zbuild-state/artifacts/diff.patch",
   "iterations": 2,
   "terminated_reason": "done_sentinel",
   "verdict": "pass",
   "scope_violation": false,
   "scope_violations": [],
-  "loop_input_tokens": 16,
-  "loop_output_tokens": 5127,
-  "notes": "Build stage completed. Diff written to artifact; not applied.",
-  "result_contract": 2,
-  "disposition": "complete",
-  "reason": "build_complete_no_changes",
-  "data": {
-    "build_kind": "empty_diff"
-  }
+  "loop_input_tokens": 28,
+  "loop_output_tokens": 26856,
+  "notes": "Build stage completed. Diff written to artifact; not applied."
 }
