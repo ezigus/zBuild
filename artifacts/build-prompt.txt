@@ -1,0 +1,240 @@
+============== ZBUILD BUILD — iter 1/10 ==============
+## ORIGINAL TASK (immutable across iterations)
+# Plan: Migrate build plugin to contract v2
+
+**Goal:** Adopt result_contract:2 in the build plugin: unconditional v2 result on every exit path, disposition on all branches, rc∈{0,1}, name-matched inputs from engine-resolved ZBUILD_STAGE_INPUTS, router budgets in manifest.
+
+## Steps
+1. Extend tests/build-test.sh with test cases that FAIL against the current implementation, covering every acceptance criterion: (a) result_contract:2 and disposition+reason present in build-summary.json on every exit path — pass (with files), scope_violation, incomplete/router_timeout, SIGINT, and missing-plan; (b) each valid_verdict (pass, scope_violation, incomplete, fail) driven through a dedicated test case and asserted in the summary; (c) grep-assertion that plugin.sh contains no hardcoded artifact path constructions (scope-manifest.md path joins, plan.json path joins); (d) assertion that build_stage_run reads scope_manifest and plan from ZBUILD_STAGE_INPUTS when set. All existing tests must still run. Run the new tests and confirm they go RED for the right reasons before touching implementation.
+   - Files: `plugins/agent/build/tests/build-test.sh`
+   - Estimated lines: 150
+2. Add \`result_contract: 2\` to the \`provides:\` block and a \`router:\` budget section (retries: 25, retry_on_exhaustion: 1) to the \`config:\` block in the manifest. The manifest already has valid_verdicts, primary:true on build_summary, provides.role, provides.events, name-matched inputs (no from:/path/type), and a cleanup hook — those stay unchanged.
+   - Files: `plugins/agent/build/manifest.yaml`
+   - Estimated lines: 8
+3. Rewrite _build_write_build_summary in lib/summary.sh so EVERY branch sets build_disposition and build_reason before reaching jq: pass (with files changed) → disposition:complete, reason:build_complete; scope_violation → disposition:broken, reason:scope_violation; incomplete (router_timeout/error) → disposition:interrupted, reason:<terminated_reason>; inert_build → already sets disposition:broken (no change). Move result_contract:2 + disposition + reason from the conditional \`+ (if $build_disposition != ...)\` guard into the unconditional main jq object so they appear on every exit path. Preserve the existing \`data.build_kind\` conditional for non-pass detail.
+   - Files: `plugins/agent/build/lib/summary.sh`
+   - Estimated lines: 35
+4. Fix build_stage_run in plugin.sh to read scope_manifest and plan paths from ZBUILD_STAGE_INPUTS (jq \`.inputs.scope_manifest\` / \`.inputs.plan\`) when that env var is set, falling back to the current hardcoded construction ($state_dir/scope-manifest.md, $artifacts_dir/plan.json) only when ZBUILD_STAGE_INPUTS is absent (test-harness compat — _build_stage_run_inner continues to accept explicit path args unchanged). Fix the two rc∉{0,1} violations: (1) the missing-plan-json path (currently \`return 2\`) must call _build_write_build_summary with disposition:broken/reason:missing_plan_json then return 1; (2) the SIGINT path (\`return 130\`) must call _build_write_build_summary with disposition:interrupted/reason:sigint then return 1.
+   - Files: `plugins/agent/build/plugin.sh`
+   - Estimated lines: 45
+5. Run \`npm test\` (or \`bash plugins/agent/build/tests/build-test.sh\`) and confirm green. Run \`bash scripts/check-coverage.sh\` and confirm the 29% floor is not broken. Verify grep shows no hardcoded artifact path constructions remaining in plugin.sh. Confirm the before/after golden diff on the stage's own output is unchanged for a passing run. State the red step in the PR body per CLAUDE.md.
+   - Estimated lines: 0
+
+## Notes
+1. ZBUILD_STAGE_INPUTS fallback in step-4: build_stage_run is the public entry point called by the engine with ZBUILD_STAGE_INPUTS set; _build_stage_run_inner accepts explicit paths and is called directly by unit tests — only build_stage_run changes. 2. The did_not_finish/SIGINT carve-out (#1208) expressed as disposition:interrupted is the regression guard for #1822 — the before/after golden diff test in step-1 must cover the interrupted path. 3. SIGINT return 1 (not 130) is safe because the engine's response table now drives retry policy from disposition; the rc value only signals fatal vs. non-fatal to the engine. 4. The scope_violation path in summary.sh today emits NO v2 fields (build_disposition is empty) — this is the primary defect step-3 fixes. 5. The cleanup hook (manifest + plugin.sh) is a confirmed no-op (#1705) and stays as-is — the hook exists for engine bracketing (#1705); removing it would violate a different invariant; a note in the PR body records this. 6. Router budget retries:25 matches the historic 25-iteration upper bound already cycle-clamped in plugin.sh; retry_on_exhaustion:1 follows plan plugin precedent.
+
+## INSTRUCTIONS
+Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
+
+You have Read, Edit, Write, and
+Bash tools available. Your job is to edit the working tree to implement the
+ORIGINAL TASK above.
+
+### Scope (plan.files[])
+You may ONLY touch files listed here. Refuse any out-of-scope edit.
+  - plugins/agent/build/manifest.yaml
+  - plugins/agent/build/plugin.sh
+  - plugins/agent/build/lib/summary.sh
+  - plugins/agent/build/lib/context.sh
+  - plugins/agent/build/lib/commit.sh
+  - plugins/agent/build/lib/diff.sh
+  - plugins/agent/build/lib/prompt.sh
+  - plugins/agent/build/lib/scope.sh
+  - plugins/agent/build/tests/build-test.sh
+  - tests/unit/build-false-completion-guard-test.sh
+  - tests/unit/build-no-progress-diagnostic-test.sh
+  - tests/unit/build-scope-expansion-test.sh
+  - tests/unit/build-acceptance-charter-test.sh
+  - tests/unit/build-acceptance-spec-feedback-test.sh
+  - tests/unit/build-design-decisions-test.sh
+  - tests/unit/build-diff-cumulative-test.sh
+  - tests/unit/build-discrepancy-warn-inside-banner-test.sh
+  - tests/unit/build-edited-oos-request-test.sh
+  - tests/unit/build-lib-source-wiring-test.sh
+  - tests/unit/build-nul-detection-test.sh
+  - tests/unit/build-oos-pass-request-test.sh
+  - tests/unit/build-persona-framing-test.sh
+  - tests/unit/build-plugin-commit-msg-parser-test.sh
+  - tests/unit/build-prompt-framing-test.sh
+  - tests/unit/build-prompt-loop-complete-rule-test.sh
+  - tests/unit/build-prompt-override-test.sh
+  - tests/unit/build-timeout-banner-clean-iter-test.sh
+  - tests/unit/build-timeout-scope-violation-preserves-inscope-test.sh
+  - tests/unit/build-timeout-truncation-banner-test.sh
+  - tests/unit/build-prompt-spec-text-test.sh
+  - tests/integration/build-empty-diff-done-sentinel-test.sh
+  - tests/integration/build-banner-llm-prompt-visible-test.sh
+  - tests/integration/build-changed-files-summary-test.sh
+  - tests/integration/build-commit-msg-multi-inner-iter-test.sh
+  - tests/integration/build-created-oos-still-violation-test.sh
+  - tests/integration/build-loop-banner-test.sh
+  - tests/integration/build-no-stash-flow-test.sh
+  - tests/integration/build-preexisting-untracked-not-violation-test.sh
+  - tests/integration/build-prompt-includes-branch-state-end-to-end-test.sh
+  - tests/integration/build-test-cycle-fallthrough-to-review-test.sh
+  - tests/integration/build-test-cycle-multi-iter-test.sh
+  - tests/integration/build-test-cycle-progress-test.sh
+  - tests/integration/build-test-cycle-targeted-rerun-test.sh
+  - tests/integration/cycle-no-committed-changes-fail-fast-test.sh
+  - tests/integration/cycle-scope-violation-no-commit-test.sh
+  - tests/integration/dispatch-rc-signal-boundary-test.sh
+  - tests/integration/write-boundary-dispatch-test.sh
+  - tests/unit/core-contract-version-test.sh
+  - tests/unit/core-pipeline-disposition-test.sh
+  - tests/unit/core-pipeline-verdict-test.sh
+  - tests/unit/convergence-timeouts-never-fatal-1208-test.sh
+  - tests/unit/dispatch-rc-test.sh
+  - tests/unit/dispatch-rc-guard-test.sh
+  - tests/unit/docs-adr-054-references-test.sh
+  - tests/unit/lifecycle-required-output-test.sh
+  - tests/unit/plugin-manifest-contract-audit-test.sh
+  - tests/unit/preflight-lint-parity-test.sh
+  - tests/unit/stage-input-resolve-test.sh
+  - core/contract/version.sh
+  - core/pipeline/disposition.sh
+  - core/pipeline/input-resolve.sh
+  - core/pipeline/verdict.sh
+  - core/plugin-registry/lifecycle.sh
+  - core/plugin-registry/manifest-validation.sh
+  - docs/adr/ADR-054-stage-contract.md
+  - docs/adr/ADR-055-inter-stage-data-contract-v2.md
+  - docs/adr/ADR-060-stages-return-structure.md
+  - docs/wiki/plugins/build.md
+
+### How the loop works
+- Each iteration you may make code changes via Edit/Write/Bash.
+- After each iteration the pipeline captures `git diff HEAD` and feeds it
+  back to you so you can verify progress.
+- Do NOT emit a unified diff in your response — the pipeline derives the
+  canonical `diff.patch` artifact from `git diff HEAD` automatically.
+
+### Completion sentinel
+Emit `LOOP_COMPLETE` on its own line as the FINAL line of your response
+WHEN the implementation is complete — whether you just finished it OR
+it was already done before you started. If the branch already contains
+the required changes (check `git log` for commits + `git diff` for any
+remaining gap), emit `LOOP_COMPLETE` immediately. Do NOT keep iterating
+when there is nothing left to do.
+
+### Rules
+- Touch only files in the scope list above.
+- Do not run `git commit` — the pipeline owns commit semantics.
+- NEVER run a command that mutates git branch state or the working tree —
+  no `git checkout -b`/`switch`/`commit`/`push`/`tag`/`reset`. You are running
+  INSIDE the pipeline's own checkout; switching or creating a branch hijacks the
+  run. The pipeline owns the branch.
+- If you must exercise a command you are building (or any command that could
+  publish, tag, push, or otherwise mutate state), run it in `--dry-run` mode.
+  Do everything you can to verify behavior without side effects.
+- Keep changes minimal and aligned with the plan.
+- Clean up scratch siblings of the files you edit (`*.bak`, `*.orig`,
+  `*.rej`, `*.head`, `*.tmp`, `*~`). `sed -i.bak` and
+  `git show HEAD:f > f.head` both leave one behind — prefer `sed -i` with no
+  suffix, and delete any comparison scratch before you finish. Out-of-scope
+  scratch is removed for you; any OTHER out-of-scope path voids the whole
+  iteration, so do not rely on the cleanup.
+- If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.
+
+### Commit message (#608)
+Before the final `LOOP_COMPLETE` line, emit a single line of the form:
+
+    COMMIT_SUMMARY: <one-line description of this iteration's change>
+
+Keep it under 72 characters, present tense, imperative mood (e.g.
+"add foo parser" not "added"). The pipeline uses this as the git commit
+message for the per-iteration commit it creates on your behalf. If you
+omit this line the pipeline falls back to the plan title.
+
+## DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
+# Design: Migrate build plugin to result_contract:2 (issue #1833)
+
+## Architectural Decision Summary
+
+**Goal.** Bring the build plugin fully into conformance with ADR-054's Stage Contract v2: unconditional `result_contract:2` in every result file, `disposition` declared on every verdict branch, exit codes narrowed to `{0,1}`, inputs read from the engine-resolved `ZBUILD_STAGE_INPUTS` index, and router budget knobs declared as manifest data (ADR-017/ADR-054 §9).
+
+**Context.** The build plugin is the F-wave migration entry #1833. Four gaps relative to v2 exist today:
+
+1. **Conditional v2 output.** `_build_write_build_summary` in `lib/summary.sh` emits `result_contract:2`, `disposition`, and `reason` only when `build_disposition != ""` (line 233). The `scope_violation` branch leaves `build_disposition` empty (only sets `build_verdict="scope_violation"`, no disposition). The normal-pass branch where `done_sentinel + files_changed > 0` also leaves `build_disposition` empty (falls through all `if/elif` conditions). Both produce v1-shaped results: no `result_contract`, no `disposition`. The engine's `_verdict_probe_contract` reads the result file at dispatch; a missing key reads as v1 and skips the disposition validation that a v2 plugin is supposed to satisfy.
+
+2. **Non-binary exit codes — three sites.** `build_stage_run` returns `rc=2` when the `state_file` argument is absent (plugin.sh line 72). `_build_stage_run_inner` returns `rc=2` when `plan.json` is missing (plugin.sh line 113, before writing any result file) and `rc=130` on SIGINT (plugin.sh line 294, also before writing any result). ADR-054 §4b: a v2 stage is held to `rc∈{0,1}`; everything else belongs in `disposition`. For the SIGINT path, write a minimal v2 `disposition:interrupted` result, return `1`, and let the ADR-025 abort sentinel carry the abort signal across subshells — the router already wrote the sentinel before returning 130, so it is already in place; the build plugin only needs to stop propagating the raw signal number.
+
+3. **Hardcoded input paths.** `build_stage_run` constructs `scope_manifest` as `"$state_dir/scope-manifest.md"` and `plan_json_path` as `"$artifacts_dir/plan.json"` (plugin.sh lines 78-79). ADR-055 §1 / #1826: the engine resolves each declared input and hands the index to the hook via `ZBUILD_STAGE_INPUTS`. The plugin should read from the index when it is present and non-empty (`jq -r '.inputs.<id> // empty' "$ZBUILD_STAGE_INPUTS"`); the hardcoded derivation remains as the fallback for callers (e.g. unit tests) that do not export the index.
+
+4. **Missing manifest declarations.** `provides:` has no `result_contract: 2` and `config:` has no `router:` section, so the budget parameters the plugin reads at runtime have no manifest-layer defaults per ADR-017 §8.
+
+**Decision.** Four file groups change together:
+
+- **`manifest.yaml`** — add `result_contract: 2` to `provides:`; add `config.router:` section to make the budget parameters the plugin already uses data-driven per ADR-017 §8.
+- **`lib/summary.sh`** — make `result_contract:2` unconditional in the jq template; add `disposition: "complete"` to the normal-pass branch (done_sentinel + changed files); add `disposition: "broken"` and `reason: "scope_violation"` to the `scope_violation` branch.
+- **`plugin.sh`** — `build_stage_run` reads `scope_manifest` and `plan` paths from `ZBUILD_STAGE_INPUTS` when the index file is present (falls back to hardcoded derivation when unset or absent); `build_stage_run` returns `rc=1` (not `rc=2`) for a missing `state_file`; `_build_stage_run_inner` writes a minimal v2 `disposition:broken` result and returns `rc=1` for missing `plan.json`; writes a minimal v2 `disposition:interrupted` result and returns `rc=1` for the SIGINT path (was `rc=2` and `rc=130`).
+- **`tests/build-test.sh`** — update T2 assertion from `rc=2` to `rc=1`; add SPEC-tagged assertions for unconditional `result_contract:2`, `disposition` on the scope_violation branch, `disposition` on the normal-pass branch, ZBUILD_STAGE_INPUTS-based input resolution, `build_stage_run` missing-state-file rc, and the SIGINT rc+result.
+
+
+
+LOOP_COMPLETE
+Where a design decision above conflicts with the plan, follow the design decision.
+
+## ACCEPTANCE TESTS (you MUST make these pass)
+Each assertion must test what its SPEC states. If an assertion does not test its SPEC, correct the assertion so that it does — never change the SPEC to match the assertion. If an assertion DOES test its SPEC and is failing, fix the code. You MUST NOT weaken or delete an assertion that tests its SPEC. A gate-flagged TAUTOLOGICAL assertion is one that passes at the merge-base without your change: re-author it so it tests its SPEC and would fail without the implementation — not so it tests something easier.
+Each test MUST contain an assert call whose label includes the [SPEC-n] tag for the SPEC it verifies (e.g. assert_eq "[SPEC-1] ..." exp act). The acceptance-gate (ADR-036) requires every SPEC-n to have a [SPEC-n]-tagged assertion. A CHANGE-behavior SPEC-n MUST have a tagged assertion that FAILS at the merge-base baseline and passes here (a tautological change-SPEC that passes without your implementation is rejected); a GUARD/invariant SPEC-n is tagged but NOT contorted to fail at baseline. See the per-id list below.
+- SPEC-1: plugins/agent/build/tests/build-test.sh
+- SPEC-2: plugins/agent/build/tests/build-test.sh
+- SPEC-3: plugins/agent/build/tests/build-test.sh
+- SPEC-4: plugins/agent/build/tests/build-test.sh
+- SPEC-5: plugins/agent/build/tests/build-test.sh
+- SPEC-6: plugins/agent/build/tests/build-test.sh
+- SPEC-7: plugins/agent/build/tests/build-test.sh
+- SPEC-8: plugins/agent/build/tests/build-test.sh
+- SPEC-9: tests/unit/convergence-timeouts-never-fatal-1208-test.sh
+- SPEC-10: tests/unit/build-false-completion-guard-test.sh
+- SPEC-11: plugins/agent/build/tests/build-test.sh
+- SPEC-12: tests/unit/core-pipeline-disposition-test.sh
+- SPEC-13: plugins/agent/build/tests/build-test.sh
+- SPEC-14: plugins/agent/build/tests/build-test.sh
+
+What each SPEC requires:
+- [SPEC-1] build-summary.json carries result_contract:2 on the normal-pass branch (done_sentinel + changed files, no prior scope_violation)
+- [SPEC-2] build-summary.json carries disposition:complete on the normal-pass branch (done_sentinel + changed files)
+- [SPEC-3] build-summary.json carries result_contract:2 on the scope_violation branch
+- [SPEC-4] build-summary.json carries disposition:broken on the scope_violation branch
+- [SPEC-5] _build_stage_run_inner returns rc=1 (not rc=2) when plan.json is missing
+- [SPEC-6] build_stage_run reads scope_manifest path from ZBUILD_STAGE_INPUTS when that env var names a non-empty index file
+- [SPEC-7] build_stage_run reads plan path from ZBUILD_STAGE_INPUTS when that env var names a non-empty index file
+- [SPEC-8] manifest.yaml declares result_contract:2 under provides
+- [SPEC-9] build-summary.json carries result_contract:2, disposition:interrupted on the router_timeout/error branch (unchanged from prior work)
+- [SPEC-10] build-summary.json carries result_contract:2, disposition:broken, data.build_kind=inert_build on the false-completion branch (unchanged from prior work)
+- [SPEC-11] build-summary.json schema_version remains 4 (result_contract and schema_version are independent keys)
+- [SPEC-12] disposition values emitted by the build plugin are all members of the engine's closed vocabulary (complete, interrupted, broken)
+- [SPEC-13] build_stage_run returns rc=1 (not rc=2) when state_file argument is absent
+- [SPEC-14] _build_stage_run_inner writes a v2 disposition:interrupted result to output_summary_json and returns rc=1 (not rc=130) when route_to_model_loop signals SIGINT (router_rc=130)
+
+### SPEC IDS YOU MUST COVER (acceptance gate, ADR-036)
+Every SPEC id below needs at least one assertion whose label carries its [SPEC-n] tag; self-verify the FULL set is tagged before emitting LOOP_COMPLETE. A CHANGE-behavior SPEC (new behavior this change introduces) MUST have a [SPEC-n] assertion that FAILS at the merge-base baseline. A GUARD/invariant SPEC (behavior that must stay unchanged) is tagged but MUST NOT be contorted to fail at baseline.
+- [SPEC-1] build-summary.json carries result_contract:2 on the normal-pass branch (done_sentinel + changed files, no prior scope_violation)
+  → needs a `[SPEC-1]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-2] build-summary.json carries disposition:complete on the normal-pass branch (done_sentinel + changed files)
+  → needs a `[SPEC-2]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-3] build-summary.json carries result_contract:2 on the scope_violation branch
+  → needs a `[SPEC-3]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-4] build-summary.json carries disposition:broken on the scope_violation branch
+  → needs a `[SPEC-4]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-5] _build_stage_run_inner returns rc=1 (not rc=2) when plan.json is missing
+  → needs a `[SPEC-5]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-6] build_stage_run reads scope_manifest path from ZBUILD_STAGE_INPUTS when that env var names a non-empty index file
+  → needs a `[SPEC-6]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-7] build_stage_run reads plan path from ZBUILD_STAGE_INPUTS when that env var names a non-empty index file
+  → needs a `[SPEC-7]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-8] manifest.yaml declares result_contract:2 under provides
+  → needs a `[SPEC-8]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-9] build-summary.json carries result_contract:2, disposition:interrupted on the router_timeout/error branch (unchanged from prior work)
+  → needs a `[SPEC-9]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-10] build-summary.json carries result_contract:2, disposition:broken, data.build_kind=inert_build on the false-completion branch (unchanged from prior work)
+  → needs a `[SPEC-10]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-11] build-summary.json schema_version remains 4 (result_contract and schema_version are independent keys)
+  → needs a `[SPEC-11]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-12] disposition values emitted by the build plugin are all members of the engine's closed vocabulary (complete, interrupted, broken)
+  → needs a `[SPEC-12]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-13] build_stage_run returns rc=1 (not rc=2) when state_file argument is absent
+  → needs a `[SPEC-13]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-14] _build_stage_run_inner writes a v2 disposition:interrupted result to output_summary_json and returns rc=1 (not rc=130) when route_to_model_loop signals SIGINT (router_rc=130)
+  → needs a `[SPEC-14]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
