@@ -1,0 +1,35 @@
+acceptance SPEC violations — SPEC-1/SPEC-2/SPEC-5/SPEC-6/SPEC-8/SPEC-11 tautological (pass at baseline) — re-author the assertions
+NEGCTL FAIL SPEC-1 tautology
+      design : test_output is emitted at the top level of test-results.json for direct consumers (was absent at the…
+      asserts: assert_eq "[SPEC-1] test_output exposed at top level for direct consumers" "true" "$_spec1_has_to"
+NEGCTL FAIL SPEC-2 tautology
+      design : run_mode is emitted at the top level of test-results.json (was absent at the top level in v1)
+      asserts: assert_eq "[SPEC-2] run_mode exposed at top level for direct consumers" "true" "$_spec2_has_rm"
+NEGCTL PASS SPEC-3
+      design : exit_code=0 is present at the top level on the pass path and disposition=complete is set
+      asserts: assert_eq "[SPEC-3] exit_code=0 at top level on pass path" "0" "$_spec3_ec"
+NEGCTL PASS SPEC-4
+      design : exit_code=1 is present at the top level on the fail path and disposition=complete is set
+      asserts: assert_eq "[SPEC-4] exit_code=1 at top level on fail path" "1" "$_spec4_ec"
+NEGCTL FAIL SPEC-5 tautology
+      design : test_output is present at the top level on the error path and disposition=broken is set on the missi…
+      asserts: assert_eq "[SPEC-5] test_output at top level on error (missing diff)" "true" "$_spec5_has_to"
+NEGCTL FAIL SPEC-6 tautology
+      design : run_mode is present at the top level on the missing-diff error path and reason=missing_diff_patch is…
+      asserts: assert_eq "[SPEC-6] run_mode at top level on missing-diff error path" "true" "$_spec6_has_rm"
+NEGCTL PASS SPEC-7
+      design : exit_code appears both at the top level and under data.exit_code in the same artifact
+      asserts: assert_eq "[SPEC-7] exit_code at top level for direct consumers" "true" "$_spec7_top_ec"
+NEGCTL FAIL SPEC-8 tautology
+      design : _test_disposition_from_rc maps rc=130/137/143 (signal death) to interrupted and other non-zero rc to…
+      asserts: assert_eq "[SPEC-8] rc=143→interrupted AND test_output at top level" "interrupted|true" "${_spec8_te…
+NEGCTL PASS SPEC-9 guard_spec
+      design : _test_write_result does not reference artifact_dir internally — path is supplied entirely by the cal…
+      asserts: assert_eq "[SPEC-9] _test_write_result does not construct artifact paths from artifact_dir" "0" "$_s…
+NEGCTL PASS SPEC-10 guard_spec
+      design : manifest valid_verdicts enumerates every verdict the plugin emits: pass, fail, and error
+      asserts: assert_contains "[SPEC-10] valid_verdicts covers pass" "$_spec10_vv" "- pass"
+NEGCTL FAIL SPEC-11 tautology
+      design : top-level shortcut fields (run_mode, test_output) appear in the v2 writer output and in integration …
+      asserts: assert_eq "[SPEC-11] run_mode=full at top level in v2 writer output" "full" \
+REACHABILITY EXEMPT none

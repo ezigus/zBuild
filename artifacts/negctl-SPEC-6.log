@@ -1,0 +1,267 @@
+### SPEC-6 baseline plugins/tool/test/tests/test-test.sh
+
+[38;2;0;212;255m[1m  plugin: test-stage (tool/test — issue #342)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m2. missing diff.patch → error artifact[0m
+  [38;2;74;222;128m✓[0m plugin exits 0 even when diff.patch missing (exit 0)
+  [38;2;74;222;128m✓[0m test-results.json written on missing patch
+  [38;2;74;222;128m✓[0m verdict is 'error' for missing patch
+  [38;2;74;222;128m✓[0m diff_applied is false for missing patch
+
+  [38;2;0;212;255m3. good diff.patch + passing test_cmd → pass[0m
+  [38;2;74;222;128m✓[0m plugin exits 0 on passing test (exit 0)
+  [38;2;74;222;128m✓[0m test-results.json written for passing test
+  [38;2;74;222;128m✓[0m verdict is 'pass'
+  [38;2;74;222;128m✓[0m exit_code is 0
+  [38;2;74;222;128m✓[0m diff_applied is false (W12-C deprecated)
+
+  [38;2;0;212;255m4. failing test_cmd → verdict=fail, plugin exits 0[0m
+  [38;2;74;222;128m✓[0m plugin exits 0 even when tests fail (exit 0)
+  [38;2;74;222;128m✓[0m test-results.json written for failing test
+  [38;2;74;222;128m✓[0m verdict is 'fail' when test_cmd exits 1
+  [38;2;74;222;128m✓[0m exit_code is 1 in artifact
+
+  [38;2;0;212;255m4b. #485: no-op test_cmd → verdict=error (silent-failure guard)[0m
+  [38;2;74;222;128m✓[0m plugin still exits 0 on no-op run (exit 0)
+  [38;2;74;222;128m✓[0m test-results.json written
+  [38;2;74;222;128m✓[0m #485 no-op: verdict=error (not pass)
+  [38;2;74;222;128m✓[0m #485 no-op: exit_code=0 still recorded
+  [38;2;74;222;128m✓[0m #485/#584 no-op: passed=null (honest)
+  [38;2;74;222;128m✓[0m #485/#584 no-op: failed=null (honest)
+
+  [38;2;0;212;255m6. #497 input banner emitted; kind=command; contains test_cmd[0m
+  [38;2;74;222;128m✓[0m _test_run_inner exits 0 (exit 0)
+  [38;2;74;222;128m✓[0m input banner emitted to fd 3
+  [38;2;74;222;128m✓[0m banner kind is command
+  [38;2;74;222;128m✓[0m banner references stage=test
+  [38;2;74;222;128m✓[0m input banner shows test_cmd path
+
+  [38;2;0;212;255m7. #497 pass verdict → output summary 'N passed, M failed'[0m
+  [38;2;74;222;128m✓[0m output summary: jest '47 passed, 0 failed'
+  [38;2;74;222;128m✓[0m output banner present (seq=1 output)
+  [38;2;74;222;128m✓[0m end stage-io trailer present
+
+  [38;2;0;212;255m8. #497 fail verdict → summary has '(exit N)' suffix[0m
+  [38;2;74;222;128m✓[0m fail summary: jest '44 passed, 3 failed (exit 1)'
+
+  [38;2;0;212;255m9a. #497 #485 no-op guard → 'no-op: 0 tests detected'[0m
+  [38;2;74;222;128m✓[0m no-op summary: 'summary unavailable'
+
+  [38;2;0;212;255m10. #497 input banner timestamp < output banner timestamp[0m
+  [38;2;74;222;128m✓[0m input banner found in stream
+  [38;2;74;222;128m✓[0m output banner found in stream
+  [38;2;74;222;128m✓[0m input banner line precedes output banner line
+  [38;2;74;222;128m✓[0m wall delta >= 1s proves bracketing window (delta=2s)
+
+  [38;2;0;212;255m11. #497 subprocess-boundary integration on fd 3[0m
+  [38;2;74;222;128m✓[0m driver subprocess exits 0 (exit 0)
+  [38;2;74;222;128m✓[0m [subprocess] input banner on fd 3
+  [38;2;74;222;128m✓[0m [subprocess] output banner on fd 3
+  [38;2;74;222;128m✓[0m [subprocess] summary in output banner (jest)
+  [38;2;74;222;128m✓[0m [subprocess] test-results.json still written
+  [38;2;74;222;128m✓[0m [subprocess] verdict=pass preserved
+
+  [38;2;0;212;255m12. #602: dirty WT rsyncs intact (no reset, no apply)[0m
+  [38;2;74;222;128m✓[0m #548: plugin exits 0 with dirty working tree (exit 0)
+  [38;2;74;222;128m✓[0m #548: test-results.json written
+  [38;2;74;222;128m✓[0m #548: verdict=pass (patch applied against clean HEAD)
+  [38;2;74;222;128m✓[0m W12-C: diff_applied=false (deprecated)
+
+  [38;2;0;212;255mT13. _test_extract_failing_files extracts FAIL paths[0m
+  [38;2;74;222;128m✓[0m T13: foo-test.sh present
+  [38;2;74;222;128m✓[0m T13: bar-test.sh present
+  [38;2;74;222;128m✓[0m T13: exactly 2 paths extracted
+
+  [38;2;0;212;255mT13b. _test_extract_failing_files returns empty on all-pass[0m
+  [38;2;74;222;128m✓[0m T13b: empty output when no FAIL lines
+
+  [38;2;0;212;255mT14. _test_compute_target_files unions red-set and grep-affected[0m
+  [38;2;74;222;128m✓[0m T14: red-set path included
+  [38;2;74;222;128m✓[0m T14: grep-matched path included
+  [38;2;74;222;128m✓[0m T14: unrelated test not included
+  [38;2;74;222;128m✓[0m T14b: unresolvable red-set hint dropped (advisory, not a target)
+
+  [38;2;0;212;255mT15. _test_build_targeted_cmd renders the {files} template[0m
+  [38;2;74;222;128m✓[0m T15: {files} replaced with the quoted file list
+  [38;2;74;222;128m✓[0m T15: cmd references bar-test.sh
+  [38;2;74;222;128m✓[0m T15: empty template returns empty
+  [38;2;74;222;128m✓[0m T15: empty file list returns empty
+
+  [38;2;0;212;255mT16. _test_run_inner with ZBUILD_TEST_RED_SET writes run_mode=targeted[0m
+  [38;2;74;222;128m✓[0m T16: plugin exits 0 (exit 0)
+  [38;2;74;222;128m✓[0m T16: test-results.json written
+  [38;2;74;222;128m✓[0m T16: run_mode=targeted written to JSON
+
+  [38;2;0;212;255mT17. ZBUILD_TEST_FULL_SUITE_GATE=1 forces full suite, run_mode=full[0m
+  [38;2;74;222;128m✓[0m T17: plugin exits 0 (exit 0)
+  [38;2;74;222;128m✓[0m T17: test-results.json written
+  [38;2;74;222;128m✓[0m T17: run_mode=full (gate forces full suite)
+
+  [38;2;0;212;255mT18. clean run removes a stale test-red-set.json[0m
+  [38;2;74;222;128m✓[0m T18: stale red-set removed after a no-failure run
+
+  [38;2;0;212;255mSPEC. v2 result contract (#1836)[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] test_output exposed at top level for direct consumers
+  [38;2;74;222;128m✓[0m [SPEC-2] run_mode exposed at top level for direct consumers
+  [38;2;248;113;113m✗[0m [SPEC-3] exit_code=0 at top level on pass path
+    [2mexpected: 0, got: null[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] disposition=complete when verdict=pass
+  [38;2;248;113;113m✗[0m [SPEC-4] exit_code=1 at top level on fail path
+    [2mexpected: 1, got: null[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] disposition=complete when verdict=fail
+  [38;2;74;222;128m✓[0m [SPEC-5] test_output at top level on error (missing diff)
+  [38;2;74;222;128m✓[0m [SPEC-5] disposition=broken on error (missing diff)
+  [38;2;74;222;128m✓[0m [SPEC-6] run_mode at top level on missing-diff error path
+  [38;2;74;222;128m✓[0m [SPEC-6] reason=missing_diff_patch emitted on missing diff
+  [38;2;248;113;113m✗[0m [SPEC-7] exit_code at top level for direct consumers
+    [2mexpected: true, got: false[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] exit_code also under data block
+  [38;2;74;222;128m✓[0m [SPEC-8] rc=143→interrupted AND test_output at top level
+  [38;2;74;222;128m✓[0m [SPEC-8] rc=137 (SIGKILL) → disposition=interrupted
+  [38;2;74;222;128m✓[0m [SPEC-8] rc=130 (SIGINT) → disposition=interrupted
+  [38;2;74;222;128m✓[0m [SPEC-8] rc=1 (non-signal error) → disposition=broken (not interrupted)
+  [38;2;74;222;128m✓[0m [SPEC-9] _test_write_result does not construct artifact paths from artifact_dir
+  [38;2;74;222;128m✓[0m [SPEC-10] valid_verdicts covers pass
+  [38;2;74;222;128m✓[0m [SPEC-10] valid_verdicts covers fail
+  [38;2;74;222;128m✓[0m [SPEC-10] valid_verdicts covers error
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m3 of 82 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-3] exit_code=0 at top level on pass path
+  [38;2;248;113;113m✗[0m [SPEC-4] exit_code=1 at top level on fail path
+  [38;2;248;113;113m✗[0m [SPEC-7] exit_code at top level for direct consumers
+
+### SPEC-6 head plugins/tool/test/tests/test-test.sh
+
+[38;2;0;212;255m[1m  plugin: test-stage (tool/test — issue #342)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m2. missing diff.patch → error artifact[0m
+  [38;2;74;222;128m✓[0m plugin exits 0 even when diff.patch missing (exit 0)
+  [38;2;74;222;128m✓[0m test-results.json written on missing patch
+  [38;2;74;222;128m✓[0m verdict is 'error' for missing patch
+  [38;2;74;222;128m✓[0m diff_applied is false for missing patch
+
+  [38;2;0;212;255m3. good diff.patch + passing test_cmd → pass[0m
+  [38;2;74;222;128m✓[0m plugin exits 0 on passing test (exit 0)
+  [38;2;74;222;128m✓[0m test-results.json written for passing test
+  [38;2;74;222;128m✓[0m verdict is 'pass'
+  [38;2;74;222;128m✓[0m exit_code is 0
+  [38;2;74;222;128m✓[0m diff_applied is false (W12-C deprecated)
+
+  [38;2;0;212;255m4. failing test_cmd → verdict=fail, plugin exits 0[0m
+  [38;2;74;222;128m✓[0m plugin exits 0 even when tests fail (exit 0)
+  [38;2;74;222;128m✓[0m test-results.json written for failing test
+  [38;2;74;222;128m✓[0m verdict is 'fail' when test_cmd exits 1
+  [38;2;74;222;128m✓[0m exit_code is 1 in artifact
+
+  [38;2;0;212;255m4b. #485: no-op test_cmd → verdict=error (silent-failure guard)[0m
+  [38;2;74;222;128m✓[0m plugin still exits 0 on no-op run (exit 0)
+  [38;2;74;222;128m✓[0m test-results.json written
+  [38;2;74;222;128m✓[0m #485 no-op: verdict=error (not pass)
+  [38;2;74;222;128m✓[0m #485 no-op: exit_code=0 still recorded
+  [38;2;74;222;128m✓[0m #485/#584 no-op: passed=null (honest)
+  [38;2;74;222;128m✓[0m #485/#584 no-op: failed=null (honest)
+
+  [38;2;0;212;255m6. #497 input banner emitted; kind=command; contains test_cmd[0m
+  [38;2;74;222;128m✓[0m _test_run_inner exits 0 (exit 0)
+  [38;2;74;222;128m✓[0m input banner emitted to fd 3
+  [38;2;74;222;128m✓[0m banner kind is command
+  [38;2;74;222;128m✓[0m banner references stage=test
+  [38;2;74;222;128m✓[0m input banner shows test_cmd path
+
+  [38;2;0;212;255m7. #497 pass verdict → output summary 'N passed, M failed'[0m
+  [38;2;74;222;128m✓[0m output summary: jest '47 passed, 0 failed'
+  [38;2;74;222;128m✓[0m output banner present (seq=1 output)
+  [38;2;74;222;128m✓[0m end stage-io trailer present
+
+  [38;2;0;212;255m8. #497 fail verdict → summary has '(exit N)' suffix[0m
+  [38;2;74;222;128m✓[0m fail summary: jest '44 passed, 3 failed (exit 1)'
+
+  [38;2;0;212;255m9a. #497 #485 no-op guard → 'no-op: 0 tests detected'[0m
+  [38;2;74;222;128m✓[0m no-op summary: 'summary unavailable'
+
+  [38;2;0;212;255m10. #497 input banner timestamp < output banner timestamp[0m
+  [38;2;74;222;128m✓[0m input banner found in stream
+  [38;2;74;222;128m✓[0m output banner found in stream
+  [38;2;74;222;128m✓[0m input banner line precedes output banner line
+  [38;2;74;222;128m✓[0m wall delta >= 1s proves bracketing window (delta=2s)
+
+  [38;2;0;212;255m11. #497 subprocess-boundary integration on fd 3[0m
+  [38;2;74;222;128m✓[0m driver subprocess exits 0 (exit 0)
+  [38;2;74;222;128m✓[0m [subprocess] input banner on fd 3
+  [38;2;74;222;128m✓[0m [subprocess] output banner on fd 3
+  [38;2;74;222;128m✓[0m [subprocess] summary in output banner (jest)
+  [38;2;74;222;128m✓[0m [subprocess] test-results.json still written
+  [38;2;74;222;128m✓[0m [subprocess] verdict=pass preserved
+
+  [38;2;0;212;255m12. #602: dirty WT rsyncs intact (no reset, no apply)[0m
+  [38;2;74;222;128m✓[0m #548: plugin exits 0 with dirty working tree (exit 0)
+  [38;2;74;222;128m✓[0m #548: test-results.json written
+  [38;2;74;222;128m✓[0m #548: verdict=pass (patch applied against clean HEAD)
+  [38;2;74;222;128m✓[0m W12-C: diff_applied=false (deprecated)
+
+  [38;2;0;212;255mT13. _test_extract_failing_files extracts FAIL paths[0m
+  [38;2;74;222;128m✓[0m T13: foo-test.sh present
+  [38;2;74;222;128m✓[0m T13: bar-test.sh present
+  [38;2;74;222;128m✓[0m T13: exactly 2 paths extracted
+
+  [38;2;0;212;255mT13b. _test_extract_failing_files returns empty on all-pass[0m
+  [38;2;74;222;128m✓[0m T13b: empty output when no FAIL lines
+
+  [38;2;0;212;255mT14. _test_compute_target_files unions red-set and grep-affected[0m
+  [38;2;74;222;128m✓[0m T14: red-set path included
+  [38;2;74;222;128m✓[0m T14: grep-matched path included
+  [38;2;74;222;128m✓[0m T14: unrelated test not included
+  [38;2;74;222;128m✓[0m T14b: unresolvable red-set hint dropped (advisory, not a target)
+
+  [38;2;0;212;255mT15. _test_build_targeted_cmd renders the {files} template[0m
+  [38;2;74;222;128m✓[0m T15: {files} replaced with the quoted file list
+  [38;2;74;222;128m✓[0m T15: cmd references bar-test.sh
+  [38;2;74;222;128m✓[0m T15: empty template returns empty
+  [38;2;74;222;128m✓[0m T15: empty file list returns empty
+
+  [38;2;0;212;255mT16. _test_run_inner with ZBUILD_TEST_RED_SET writes run_mode=targeted[0m
+  [38;2;74;222;128m✓[0m T16: plugin exits 0 (exit 0)
+  [38;2;74;222;128m✓[0m T16: test-results.json written
+  [38;2;74;222;128m✓[0m T16: run_mode=targeted written to JSON
+
+  [38;2;0;212;255mT17. ZBUILD_TEST_FULL_SUITE_GATE=1 forces full suite, run_mode=full[0m
+  [38;2;74;222;128m✓[0m T17: plugin exits 0 (exit 0)
+  [38;2;74;222;128m✓[0m T17: test-results.json written
+  [38;2;74;222;128m✓[0m T17: run_mode=full (gate forces full suite)
+
+  [38;2;0;212;255mT18. clean run removes a stale test-red-set.json[0m
+  [38;2;74;222;128m✓[0m T18: stale red-set removed after a no-failure run
+
+  [38;2;0;212;255mSPEC. v2 result contract (#1836)[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] test_output exposed at top level for direct consumers
+  [38;2;74;222;128m✓[0m [SPEC-2] run_mode exposed at top level for direct consumers
+  [38;2;74;222;128m✓[0m [SPEC-3] exit_code=0 at top level on pass path
+  [38;2;74;222;128m✓[0m [SPEC-3] disposition=complete when verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-4] exit_code=1 at top level on fail path
+  [38;2;74;222;128m✓[0m [SPEC-4] disposition=complete when verdict=fail
+  [38;2;74;222;128m✓[0m [SPEC-5] test_output at top level on error (missing diff)
+  [38;2;74;222;128m✓[0m [SPEC-5] disposition=broken on error (missing diff)
+  [38;2;74;222;128m✓[0m [SPEC-6] run_mode at top level on missing-diff error path
+  [38;2;74;222;128m✓[0m [SPEC-6] reason=missing_diff_patch emitted on missing diff
+  [38;2;74;222;128m✓[0m [SPEC-7] exit_code at top level for direct consumers
+  [38;2;74;222;128m✓[0m [SPEC-7] exit_code also under data block
+  [38;2;74;222;128m✓[0m [SPEC-8] rc=143→interrupted AND test_output at top level
+  [38;2;74;222;128m✓[0m [SPEC-8] rc=137 (SIGKILL) → disposition=interrupted
+  [38;2;74;222;128m✓[0m [SPEC-8] rc=130 (SIGINT) → disposition=interrupted
+  [38;2;74;222;128m✓[0m [SPEC-8] rc=1 (non-signal error) → disposition=broken (not interrupted)
+  [38;2;74;222;128m✓[0m [SPEC-9] _test_write_result does not construct artifact paths from artifact_dir
+  [38;2;74;222;128m✓[0m [SPEC-10] valid_verdicts covers pass
+  [38;2;74;222;128m✓[0m [SPEC-10] valid_verdicts covers fail
+  [38;2;74;222;128m✓[0m [SPEC-10] valid_verdicts covers error
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 82 tests passed[0m
+
