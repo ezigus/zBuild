@@ -585,6 +585,27 @@ runner_read_stage_contract() {
     printf '%s' "${_c_contract:-1}"
 }
 
+# ─── runner_read_stage_fault <state_dir> <manifest> <stage> <rc> ─────────────
+# The fault class a stage declared, or empty (#1987).
+#
+# Deliberately much thinner than runner_read_stage_disposition below: there is
+# no legacy-rc translation and no fallback. `fault` is a v2-only declared field
+# — a stage that did not declare one has not made a claim, and inventing one
+# from an exit code is exactly the re-interpretation ADR-054 §6 exists to stop.
+#
+# An unrecognised word is returned as-is rather than silently dropped; the
+# caller validates against the closed set and reports the disagreement.
+runner_read_stage_fault() {
+    local state_dir="$1" manifest="$2" stage="$3" rc="$4"
+    local _f_state _f_contract _f_verdict _f_disp _f_reason _f_viol _f_path _f_present
+    _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _f
+    [[ -n "$_f_path" && -s "$_f_path" ]] || return 0
+    local _f_fault
+    _f_fault="$(jq -r '.fault // empty' "$_f_path" 2>/dev/null || true)"
+    [[ "$_f_fault" == "null" ]] && _f_fault=""
+    printf '%s' "$_f_fault"
+}
+
 # ─── runner_read_stage_disposition <state_dir> <manifest> <stage> <rc> ───────
 # ADR-054 §6 (#1821 exposed the field; #1822 gave it a vocabulary). Resolves the
 # disposition for one dispatch. Four outcomes, in precedence order:

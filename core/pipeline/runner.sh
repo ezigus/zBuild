@@ -2379,6 +2379,7 @@ main() {
         _CYCLE_DISPATCH_STATUS=""
         _CYCLE_DISPATCH_REASON=""
         _CYCLE_DISPATCH_DISPOSITION=""
+        _CYCLE_DISPATCH_FAULT=""
         _CYCLE_DISPATCH_DATA_KIND=""
         local _cd_plugin_dir _cd_rc=0
         # #1783: refresh the contract-reader snapshot before EVERY member, so a
@@ -2473,6 +2474,12 @@ main() {
             # the dispatch event; the response table that interprets it lives in
             # core/pipeline/disposition.sh, never in a plugin.
             _CYCLE_DISPATCH_DISPOSITION="$(runner_read_stage_disposition "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" "$_cd_observation" "$_cd_rate_limited" 2>/dev/null || echo "")"
+            # #1987: the declared fault class, captured on the same channel as
+            # the disposition. The two are different axes — disposition says
+            # whether the stage got far enough to be believed, fault says whose
+            # problem the failure is — and the cycle's route_back predicate
+            # reads this one.
+            _CYCLE_DISPATCH_FAULT="$(runner_read_stage_fault "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "")"
             # ADR-054: read the data.build_kind field from the primary artifact so the
             # cycle orchestrator can distinguish the empty_diff resting point from a
             # true pass without reading the string "empty_diff" from the verdict channel.

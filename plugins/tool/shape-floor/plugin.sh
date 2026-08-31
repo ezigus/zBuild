@@ -76,7 +76,7 @@ shape_floor_run() {
     # Out-of-scope escalation: if every missing floor file is absent from build's scope,
     # route back to design so scope can be expanded rather than spinning in build.
     # Empty scope (pre-plan runs) is treated as unconstrained — no escalation.
-    local route_target=""
+    local fault=""
     if [[ "$verdict" == "fail" ]]; then
         local _scope="${ZBUILD_SHAPE_FLOOR_SCOPE:-${ZBUILD_SCOPE_ALLOWLIST:-}}"
         if [[ -n "$_scope" ]] && declare -f _sf_collect_missing_floor_files >/dev/null 2>&1 \
@@ -92,15 +92,19 @@ shape_floor_run() {
                 fi
             done < <(_sf_collect_missing_floor_files "$repo_root" "$_diff_files")
             if [[ $_total -gt 0 && $_oos -eq $_total ]]; then
-                route_target="design"
+                # #1987: the BOUNDARY is wrong — every missing floor file is
+                # outside the build's scope allowlist, so build cannot touch
+                # them. This gate knows that much about its own failure; where
+                # a scope fault is corrected is the template's to decide.
+                fault="scope"
                 _sf_emit "shape_floor.oos_escalation"
             fi
         fi
     fi
 
-    if [[ -n "$route_target" ]]; then
-        jq -n --arg v "$verdict" --arg r "$detail" --arg rt "$route_target" \
-            '{"verdict":$v,"reason":$r,"route_target":$rt}' | atomic_write "$result_path"
+    if [[ -n "$fault" ]]; then
+        jq -n --arg v "$verdict" --arg r "$detail" --arg f "$fault" \
+            '{"verdict":$v,"reason":$r,"fault":$f}' | atomic_write "$result_path"
     else
         jq -n --arg v "$verdict" --arg r "$detail" \
             '{"verdict":$v,"reason":$r}' | atomic_write "$result_path"

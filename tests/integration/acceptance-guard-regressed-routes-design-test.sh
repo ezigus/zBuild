@@ -3,9 +3,9 @@
 # and the rewind it triggers must carry the reason with it.
 #
 # #1809 rewound correctly and still could not converge. The acceptance gate
-# reported `guard_regressed:SPEC-5` but set no route_target, so the gate-
+# reported `guard_regressed:SPEC-5` but set no fault, so the gate-
 # aggregator partitioned it into residual[] and wrote it to the BUILD-facing
-# gate-feedback.md. The winning route_target came from shape-floor, so
+# gate-feedback.md. The winning fault came from shape-floor, so
 # design-feedback.md — the payload the route_back carries to the
 # design_verify_cycle — named only shape-floor and never mentioned the
 # mislabelled SPEC. Design re-authored nothing; build re-ran; the same guard
@@ -94,9 +94,9 @@ AG_RESULT="$(cat "$ART/acceptance-gate-result.json" 2>/dev/null || echo '{}')"
 
 assert_contains "[SPEC-1] the gate reports guard_regressed for the mislabelled SPEC" \
     "$(jq -rc '.failures // []' <<< "$AG_RESULT")" "guard_regressed:SPEC-1"
-assert_eq "[SPEC-2] guard_regressed sets route_target=design — build cannot fix a mislabelled tag" \
-    "design" "$(jq -r '.route_target // "ABSENT"' <<< "$AG_RESULT")"
-assert_eq "[SPEC-3] the disposition stays recoverable, so the aggregator still reads route_target" \
+assert_eq "[SPEC-2] guard_regressed sets fault=specification — build cannot fix a mislabelled tag" \
+    "specification" "$(jq -r '.fault // "ABSENT"' <<< "$AG_RESULT")"
+assert_eq "[SPEC-3] the disposition stays recoverable, so the aggregator still reads fault" \
     "recoverable" "$(jq -r '.disposition // "MISSING"' <<< "$AG_RESULT")"
 
 # ── Half 2: the aggregator carries it into design-feedback.md ───────────────
@@ -123,8 +123,11 @@ AGG_DIR="$TEST_TEMP_DIR/agg"; mkdir -p "$AGG_DIR"
 cp "$ART/acceptance-gate-result.json" "$AGG_DIR/acceptance-gate-result.json"
 _run_aggregator "$AGG_DIR"
 
-assert_eq "[SPEC-4] the aggregate verdict is route_design" \
-    "route_design" "$(jq -r '.verdict // "MISSING"' <<< "$GA_RESULT")"
+# #1987: the verdict stays fail; the declared fault says whose problem it is.
+assert_eq "[SPEC-4] the aggregate verdict stays fail" \
+    "fail" "$(jq -r '.verdict // "MISSING"' <<< "$GA_RESULT")"
+assert_eq "[SPEC-4] and the rolled-up fault is specification" \
+    "specification" "$(jq -r '.fault // "MISSING"' <<< "$GA_RESULT")"
 assert_file_exists "[SPEC-4] design-feedback.md is written for the rewind" \
     "$AGG_DIR/design-feedback.md"
 assert_contains "[SPEC-5] design-feedback.md names the acceptance gate that routed" \
@@ -132,26 +135,26 @@ assert_contains "[SPEC-5] design-feedback.md names the acceptance gate that rout
 assert_contains "[SPEC-5] design-feedback.md names the offending SPEC — the #1809 gap" \
     "$DESIGN_FB" "guard_regressed:SPEC-1"
 
-# ── Additive guard: a non-acceptance route_design still renders as today ────
+# ── Additive guard: a non-acceptance specification still renders as today ────
 # shape-floor's missing_floor_files was the ONLY thing #1809's design-feedback
 # did carry; that path must be untouched by this change.
 SF_DIR="$TEST_TEMP_DIR/agg-shapefloor"; mkdir -p "$SF_DIR"
-jq -n '{verdict:"fail",reason:"missing_floor_files: tests/golden/x.golden",route_target:"design"}' \
+jq -n '{verdict:"fail",reason:"missing_floor_files: tests/golden/x.golden",fault:"scope"}' \
     > "$SF_DIR/shape-floor-result.json"
 _run_aggregator "$SF_DIR"
-assert_eq "[SPEC-6] a shape-floor-rooted route_design is unchanged by this issue" \
-    "route_design" "$(jq -r '.verdict // "MISSING"' <<< "$GA_RESULT")"
+assert_eq "[SPEC-6] a shape-floor-rooted fault is unchanged by this issue" \
+    "fail" "$(jq -r '.verdict // "MISSING"' <<< "$GA_RESULT")"
 assert_contains "[SPEC-6] its design-feedback still carries the shape-floor reason" \
     "$DESIGN_FB" "missing_floor_files"
 
 # ── Guard: a build-fixable failure still reaches BUILD, not design (#1583) ──
-# tautology deliberately carries NO route_target so build re-authors its own
+# tautology deliberately carries NO fault so build re-authors its own
 # assertion. C6 and the guard_regressed routing must not have widened that.
 TA_DIR="$TEST_TEMP_DIR/agg-tautology"; mkdir -p "$TA_DIR"
 jq -n '{verdict:"fail",disposition:"recoverable",reason:"acceptance SPEC violations",
         failures:["tautology:SPEC-9"]}' > "$TA_DIR/acceptance-gate-result.json"
 _run_aggregator "$TA_DIR"
-assert_eq "[SPEC-7] a tautology failure still yields a plain fail, not route_design" \
+assert_eq "[SPEC-7] a tautology failure still yields a plain fail, not specification" \
     "fail" "$(jq -r '.verdict // "MISSING"' <<< "$GA_RESULT")"
 assert_contains "[SPEC-7] and its detail goes to the BUILD-facing gate-feedback.md" \
     "$GATE_FB" "tautology:SPEC-9"

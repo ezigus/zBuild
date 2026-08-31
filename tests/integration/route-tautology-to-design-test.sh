@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # [S1/S2] Integration (#1219, ADR-045/ADR-046): the build_test_cycle route_back
 # edge rewinds to the EARLIER design_verify_cycle when the gate-aggregator surfaces
-# a design-rooted failure (verdict==route_design). NOTE (#1583): tautology is no
+# a design-rooted failure (verdict==specification). NOTE (#1583): tautology is no
 # longer design-rooted (it is build-fixable), so this exercises the RETAINED, now
 # dormant route_back PLUMBING generically — the cycle is STUBBED to emit route_back
 # directly; no real tautology drives it. This drives the REAL runner over the

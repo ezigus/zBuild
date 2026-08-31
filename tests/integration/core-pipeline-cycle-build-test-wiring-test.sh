@@ -210,7 +210,7 @@ fi
 # the #1831 run walked and found broken end-to-end: real gate_aggregator_run →
 # real _cycle_apply_feedback (manifest-driven, gate-aggregator:gate_feedback →
 # build:gate_feedback) → real _build_read_prior_gate. Before #1757 the chain
-# produced an EMPTY body whenever any gate carried a route_target, and build
+# produced an EMPTY body whenever any gate declared a fault, and build
 # was handed a prompt with no failure section at all.
 # shellcheck disable=SC1090
 source "$REPO_ROOT/plugins/tool/gate-aggregator/plugin.sh"
@@ -223,7 +223,7 @@ for _g in test-results shape-floor-result acceptance-gate-result lint-result \
     printf '{"verdict":"pass"}\n' > "$T6_ART_DIR/$_g.json"
 done
 # shape-floor escalates to design; the suite and the tautology are build-fixable.
-printf '{"verdict":"fail","reason":"missing_floor_files","route_target":"design"}\n' \
+printf '{"verdict":"fail","reason":"missing_floor_files","fault":"scope"}\n' \
     > "$T6_ART_DIR/shape-floor-result.json"
 printf '{"verdict":"fail","disposition":"recoverable","failures":["tautology:SPEC-1"]}\n' \
     > "$T6_ART_DIR/acceptance-gate-result.json"
@@ -232,8 +232,11 @@ printf '{"verdict":"fail","test_output":"FAIL tests/unit/sigpipe-antipattern-gua
 
 gate_aggregator_run "gate-aggregator" "$T6_STATE_DIR/state.json" >/dev/null 2>&1 || true
 
-assert_json_key "T6: mixed failure set still routes to design" \
-    "$(cat "$T6_ART_DIR/gate-aggregator-result.json")" '.verdict' "route_design"
+# #1987: the verdict stays fail; the rolled-up fault says whose problem it is.
+assert_json_key "T6: mixed failure set still leaves verdict=fail" \
+    "$(cat "$T6_ART_DIR/gate-aggregator-result.json")" '.verdict' "fail"
+assert_json_key "T6: and the rolled-up fault is scope (shape-floor's escalation)" \
+    "$(cat "$T6_ART_DIR/gate-aggregator-result.json")" '.fault' "scope"
 assert_file_exists "T6: aggregator wrote the build-facing gate-feedback.md" \
     "$T6_ART_DIR/gate-feedback.md"
 
@@ -253,7 +256,7 @@ assert_file_exists "T6: gate_feedback.txt staged into the iter feedback dir" \
 # summary collector. Same chain otherwise — real gate_aggregator_run wrote the
 # artifact; this reads it the way build's prompt now receives it. Re-pointed
 # rather than deleted: this is the only proof the payload actually arrives, and
-# the #1831 regression it guards (a route_target producing an EMPTY body) is
+# the #1831 regression it guards (a declared fault producing an EMPTY body) is
 # just as possible on the new path.
 # shellcheck source=../../core/pipeline/input-resolve.sh
 source "$REPO_ROOT/core/pipeline/input-resolve.sh"
