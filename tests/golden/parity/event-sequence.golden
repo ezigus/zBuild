@@ -76,6 +76,7 @@ plugin.run.complete
 plugin.run.start
 persist.start
 persist.snapshot.failed
+persist.snapshot.failed
 persist.push.failed
 persist.complete
 plugin.run.complete
