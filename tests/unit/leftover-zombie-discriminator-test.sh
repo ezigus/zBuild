@@ -113,13 +113,24 @@ else
         "route-fast-abort-test.sh counts zombies again"
 fi
 
-# And the 500ms window must survive — widening it past 1s would retire the
-# pre-#905 backstop regression this test exists to catch.
-if /usr/bin/grep -q '500000000' "$_RFA"; then
-    assert_pass "[SPEC-3] the 500ms reap window is unchanged"
+# #1975: the pre-#905 backstop check no longer rides on the reap window.
+#
+# It used to: a window under 1s was the only thing separating a synchronous
+# abort from the disowned `{ sleep 1 && kill -KILL; } &` shape, so widening it
+# blinded that check. But the window is also the leak detector, and as a leak
+# detector it is load-sensitive — how fast PID 1 reaps is its scheduling
+# decision, and on a loaded ubuntu runner it is not reliably inside 500ms. One
+# assertion carrying both jobs could satisfy neither.
+#
+# The discriminator moved to an elapsed_ms LOWER bound, which is load-monotone:
+# the handler cannot return before its own 1s watchdog fires, and load can only
+# push wall-clock up. Guard THAT now — the window is free to be generous,
+# because a genuine leak is a live 60s stub that outlives any window.
+if /usr/bin/grep -q 'elapsed_ms -ge 800' "$_RFA"; then
+    assert_pass "[SPEC-3] the synchronous-abort lower bound is present"
 else
-    assert_fail "[SPEC-3] the 500ms window changed" \
-        "widening past 1s blinds the pre-#905 backstop check"
+    assert_fail "[SPEC-3] the synchronous-abort lower bound is missing" \
+        "without it nothing separates a synchronous abort from the pre-#905 disowned backstop"
 fi
 
 cleanup_test_env
