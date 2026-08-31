@@ -1,0 +1,200 @@
+============== ZBUILD BUILD — iter 1/10 ==============
+## ORIGINAL TASK (immutable across iterations)
+# Plan: Migrate test plugin to contract v2
+
+**Goal:** Migrate plugins/tool/test to the v2 result contract with result_contract:2, mandatory disposition+reason on every exit path, interrupted disposition for signal-killed runs (#1747), setsid process-group isolation with release hook (#1748), no artifact path construction in code, valid_verdicts enforced, and all acceptance criteria proven by tests written first.
+
+## Steps
+1. Write failing SPEC-1..10 assertions in test-test.sh (red step). SPEC-1..8 are CHANGE assertions that must fail at the merge-base commit (ca3fbc5 or earlier), covering: result_contract=2 at top level, test_output/run_mode/exit_code hoisted to top level, disposition=complete on pass/fail paths, disposition=broken on error path, reason=missing_diff_patch on missing-diff error, exit_code duplication in data block, and rc→disposition signal mapping (143→interrupted, 137→interrupted, 130→interrupted, 1→broken). SPEC-9..10 are GUARD assertions (no artifact_dir reference in _test_write_result, manifest valid_verdicts covers pass/fail/error). Tag each with [SPEC-N] and confirm each CHANGE assertion fails before implementation.
+   - Files: `plugins/tool/test/tests/test-test.sh`
+   - Estimated lines: 120
+2. Update _test_write_result in plugin.sh to emit the v2 result shape. Replace schema_version:1 with result_contract:2 at top level. Add mandatory disposition (third positional arg after path and verdict) and reason fields at top level. Hoist exit_code, test_output, and run_mode to top level for backward-compat direct consumers while also keeping them under data:. Move all remaining plugin-specific scalars (passed, failed, diff_applied, test_cmd) and optional blocks (timing, tree_sha, lint, coverage, mutation) under data:. The degenerate fallback JSON (PIPESTATUS[0]!=0 guard) also gets result_contract:2, disposition=broken, reason=result_write_failed.
+   - Files: `plugins/tool/test/plugin.sh`
+   - Estimated lines: 60
+3. Add _test_disposition_from_rc helper and wire disposition on every non-success exit path. Helper logic: rc in {143,137,130} (SIGTERM/SIGKILL/SIGINT) → interrupted; all other non-zero rcs → broken. Wire the helper at the main result-emit call site. Structural error paths (missing-diff-patch guard, silent-failure guard, summary_unavailable guard) each explicitly pass disposition=broken with their own reason string. Preserve #1747 nuance: rc=0 with unrecognised output is verdict=error disposition=broken (config bug, not recoverable); only a signalled death becomes disposition=interrupted.
+   - Files: `plugins/tool/test/plugin.sh`
+   - Estimated lines: 35
+4. Implement setsid-wrapped subprocess spawn and release hook for #1748 (#1829). Wrap the test runner invocation so the subprocess tree belongs to a controllable process group (using job control on macOS where setsid is absent, or setsid on Linux). Add a TERM trap that sends SIGTERM to the process group and writes disposition=interrupted to the result file before exiting. Implement the release branch of test_cleanup: send SIGTERM to the process group and exit — do NOT delete the staging directory (inversion from the prior RETURN trap rm -rf). The existing RETURN trap rm -rf must be moved exclusively to the purge branch. Reuse _ROUTE_PG_PREFIX from core/router/route.sh:245 rather than reinventing it. Add a companion test: kill the running plugin mid-test, assert no surviving process group members and the staging directory still present on disk.
+   - Files: `plugins/tool/test/plugin.sh`, `plugins/tool/test/tests/test-test.sh`
+   - Estimated lines: 55
+5. Update manifest.yaml: add result_contract: 2 under the provides: section. Verify that primary: true output, valid_verdicts (pass, fail, error), provides.role, provides.events, and inputs: [] are already declared and require no change. The test plugin is T0 (no LLM calls) so no router: budget block is required — omitting it is correct and intentional. Record this explicitly in a manifest comment so future audits do not flag the absence as an oversight.
+   - Files: `plugins/tool/test/manifest.yaml`
+   - Estimated lines: 5
+6. Run npm test and verify all SPEC-1..10 assertions pass. Produce a before/after golden diff of the stage output on a passing run (merge-base vs HEAD) and confirm only the schema_version→result_contract rename, new disposition/reason fields, data-block restructuring, and hoisted top-level fields appear — no behavioural regression. Record the SPEC-1..8 red step in the PR body: the assertion text and exact failure message observed at the merge-base commit.
+   - Estimated lines: 0
+
+## Notes
+From prior commits (ca3fbc5, 2292bae, 5d1a311, da10b1c, 237609f), the implementation is largely in place: _test_write_result emits result_contract:2 with disposition/reason/data, _test_disposition_from_rc maps signal rcs, SPEC-1..10 are committed, manifest.yaml has result_contract:2, and the release hook kills the process group without deleting the staging directory. The plan reflects the full required shape for any gap-filling or final verification. primary:true output is already declared in the manifest — no change needed. valid_verdicts, provides.role, and provides.events are already declared. The test stage is already wired into deployed.yaml flow under build_test_cycle — no template change required. T0 plugin has no LLM calls so no router budget block is needed. Coordination with #1772 (zero discovered test files → exit 0) and #1784 (tree_sha) is handled by carrying those fields in the data block with no separate code path. The _ROUTE_PG_PREFIX constant from core/router/route.sh:245 must be reused rather than reinvented when wiring the process-group prefix.
+
+## INSTRUCTIONS
+Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
+
+You have Read, Edit, Write, and
+Bash tools available. Your job is to edit the working tree to implement the
+ORIGINAL TASK above.
+
+### Scope (plan.files[])
+You may ONLY touch files listed here. Refuse any out-of-scope edit.
+  - plugins/tool/test/plugin.sh
+  - plugins/tool/test/manifest.yaml
+  - plugins/tool/test/tests/test-test.sh
+  - plugins/tool/coverage-gate/plugin.sh
+  - plugins/tool/gate-aggregator/plugin.sh
+  - plugins/tool/lint-gate/plugin.sh
+  - plugins/tool/mutation-gate/plugin.sh
+  - core/pipeline/cycle-orchestrator.sh
+  - scripts/lib/proc-group.sh
+  - tests/unit/convergence-timeouts-never-fatal-1208-test.sh
+  - tests/unit/core-pipeline-cycle-final-gate-test.sh
+  - tests/unit/core-pipeline-cycle-stall-break-test.sh
+  - tests/unit/design-timeout-exhaustion-halt-1261-test.sh
+  - tests/unit/framework-result-test.sh
+  - tests/unit/test-plugin-empty-diff-test.sh
+  - tests/unit/test-plugin-positional-args-test.sh
+  - tests/unit/test-targeted-advisory-hint-test.sh
+  - tests/unit/test-plugin-result-write-fallback-test.sh
+  - tests/integration/test-plugin-summary-format-test.sh
+  - tests/integration/test-plugin-fresh-shell-test.sh
+  - tests/integration/test-plugin-runs-against-committed-head-test.sh
+  - tests/integration/test-plugin-fd-isolation-test.sh
+  - docs/adr/ADR-054-stage-contract.md
+
+### How the loop works
+- Each iteration you may make code changes via Edit/Write/Bash.
+- After each iteration the pipeline captures `git diff HEAD` and feeds it
+  back to you so you can verify progress.
+- Do NOT emit a unified diff in your response — the pipeline derives the
+  canonical `diff.patch` artifact from `git diff HEAD` automatically.
+
+### Completion sentinel
+Emit `LOOP_COMPLETE` on its own line as the FINAL line of your response
+WHEN the implementation is complete — whether you just finished it OR
+it was already done before you started. If the branch already contains
+the required changes (check `git log` for commits + `git diff` for any
+remaining gap), emit `LOOP_COMPLETE` immediately. Do NOT keep iterating
+when there is nothing left to do.
+
+### Rules
+- Touch only files in the scope list above.
+- Do not run `git commit` — the pipeline owns commit semantics.
+- NEVER run a command that mutates git branch state or the working tree —
+  no `git checkout -b`/`switch`/`commit`/`push`/`tag`/`reset`. You are running
+  INSIDE the pipeline's own checkout; switching or creating a branch hijacks the
+  run. The pipeline owns the branch.
+- If you must exercise a command you are building (or any command that could
+  publish, tag, push, or otherwise mutate state), run it in `--dry-run` mode.
+  Do everything you can to verify behavior without side effects.
+- Keep changes minimal and aligned with the plan.
+- Clean up scratch siblings of the files you edit (`*.bak`, `*.orig`,
+  `*.rej`, `*.head`, `*.tmp`, `*~`). `sed -i.bak` and
+  `git show HEAD:f > f.head` both leave one behind — prefer `sed -i` with no
+  suffix, and delete any comparison scratch before you finish. Out-of-scope
+  scratch is removed for you; any OTHER out-of-scope path voids the whole
+  iteration, so do not rely on the cleanup.
+- If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.
+
+### Commit message (#608)
+Before the final `LOOP_COMPLETE` line, emit a single line of the form:
+
+    COMMIT_SUMMARY: <one-line description of this iteration's change>
+
+Keep it under 72 characters, present tense, imperative mood (e.g.
+"add foo parser" not "added"). The pipeline uses this as the git commit
+message for the per-iteration commit it creates on your behalf. If you
+omit this line the pipeline falls back to the plan title.
+
+## DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
+# Design: Migrate test plugin to v2 result contract (issue #1836)
+
+## Decision summary
+
+**Goal:** Bring `plugins/tool/test` into conformance with ADR-054 §5 — the v2 result
+file contract. This means: `result_contract: 2` at the top level; mandatory `disposition`
+at the top level on every exit path; top-level shortcut fields (`exit_code`, `run_mode`,
+`test_output`) duplicated at top level for direct consumers; plugin-specific data nested
+under `data: {}`; signal deaths mapped to `disposition=interrupted`; a `test_cleanup`
+release hook verified; no artifact path construction in `_test_write_result`; and
+`valid_verdicts` declared in the manifest.
+
+**Context:** The test plugin was the last major `kind: tool` plugin on the v1 flat schema
+(`schema_version: 1`, no `disposition`, no `data` block). Gate readers
+(`coverage-gate`, `lint-gate`, `mutation-gate`, `gate-aggregator`) and the cycle
+orchestrator read paths out of `test-results.json` that moved under `data: {}` (e.g.
+`.data.failed`, `.data.run_mode`, `.data.coverage`). ADR-054 §6 defines the closed
+`disposition` vocabulary; ADR-055 defines the inter-stage data contract. Several companion
+test files (positional-args, empty-diff, targeted-advisory-hint, fd-isolation, fresh-shell,
+and committed-head tests) are updated in the same change to use `.data.*` field paths. The
+fallback test and summary-format integration test carry the SPEC-11 assertion that
+`run_mode` and `test_output` appear at the top level of v2 output (for direct consumers).
+
+**Decision:** Migrate `_test_write_result` to the v2 shape with `result_contract: 2`,
+mandatory `disposition`, and top-level shortcut copies of `exit_code`, `run_mode`, and
+`test_output` alongside the canonical `data: {}` block (dual exposure — direct consumers
+read the top-level shortcuts; structured consumers read `data.*`). Add
+`_test_disposition_from_rc` to map `(rc, verdict) → disposition` (pass|fail → complete,
+rc=130/137/143 → interrupted, other → broken). Update companion test files to use
+`.data.*` paths and the v2 calling convention for `_test_write_result` (disposition at
+position 3). Declare `result_contract: 2` and `valid_verdicts` in the manifest.
+Acceptance assertions are co-located in `test-test.sh` (SPEC-1..10) and companion files
+(SPEC-11) so the acceptance gate can prove each [change] assertion fails at baseline.
+
+
+
+LOOP_COMPLETE
+Where a design decision above conflicts with the plan, follow the design decision.
+
+## ACCEPTANCE TESTS (you MUST make these pass)
+Each assertion must test what its SPEC states. If an assertion does not test its SPEC, correct the assertion so that it does — never change the SPEC to match the assertion. If an assertion DOES test its SPEC and is failing, fix the code. You MUST NOT weaken or delete an assertion that tests its SPEC. A gate-flagged TAUTOLOGICAL assertion is one that passes at the merge-base without your change: re-author it so it tests its SPEC and would fail without the implementation — not so it tests something easier.
+Each test MUST contain an assert call whose label includes the [SPEC-n] tag for the SPEC it verifies (e.g. assert_eq "[SPEC-1] ..." exp act). The acceptance-gate (ADR-036) requires every SPEC-n to have a [SPEC-n]-tagged assertion. A CHANGE-behavior SPEC-n MUST have a tagged assertion that FAILS at the merge-base baseline and passes here (a tautological change-SPEC that passes without your implementation is rejected); a GUARD/invariant SPEC-n is tagged but NOT contorted to fail at baseline. See the per-id list below.
+- SPEC-1: plugins/tool/test/tests/test-test.sh
+- SPEC-2: plugins/tool/test/tests/test-test.sh
+- SPEC-3: plugins/tool/test/tests/test-test.sh
+- SPEC-4: plugins/tool/test/tests/test-test.sh
+- SPEC-5: plugins/tool/test/tests/test-test.sh
+- SPEC-6: plugins/tool/test/tests/test-test.sh
+- SPEC-7: plugins/tool/test/tests/test-test.sh
+- SPEC-8: plugins/tool/test/tests/test-test.sh
+- SPEC-9: plugins/tool/test/tests/test-test.sh
+- SPEC-10: plugins/tool/test/tests/test-test.sh
+- SPEC-11: tests/unit/test-plugin-result-write-fallback-test.sh tests/integration/test-plugin-summary-format-test.sh
+
+What each SPEC requires:
+- [SPEC-1] test_output is emitted at the top level of test-results.json for direct consumers (was absent at the top level in the v1 schema)
+- [SPEC-2] run_mode is emitted at the top level of test-results.json (was absent at the top level in v1)
+- [SPEC-3] exit_code=0 is present at the top level on the pass path and disposition=complete is set
+- [SPEC-4] exit_code=1 is present at the top level on the fail path and disposition=complete is set
+- [SPEC-5] test_output is present at the top level on the error path and disposition=broken is set on the missing-diff error
+- [SPEC-6] run_mode is present at the top level on the missing-diff error path and reason=missing_diff_patch is emitted
+- [SPEC-7] exit_code appears both at the top level and under data.exit_code in the same artifact
+- [SPEC-8] _test_disposition_from_rc maps rc=130/137/143 (signal death) to interrupted and other non-zero rc to broken; test_output is present at top level confirming the v2 shape
+- [SPEC-9] _test_write_result does not reference artifact_dir internally — path is supplied entirely by the caller
+- [SPEC-10] manifest valid_verdicts enumerates every verdict the plugin emits: pass, fail, and error
+- [SPEC-11] top-level shortcut fields (run_mode, test_output) appear in the v2 writer output and in integration scenarios driven by companion test files
+
+### SPEC IDS YOU MUST COVER (acceptance gate, ADR-036)
+Every SPEC id below needs at least one assertion whose label carries its [SPEC-n] tag; self-verify the FULL set is tagged before emitting LOOP_COMPLETE. A CHANGE-behavior SPEC (new behavior this change introduces) MUST have a [SPEC-n] assertion that FAILS at the merge-base baseline. A GUARD/invariant SPEC (behavior that must stay unchanged) is tagged but MUST NOT be contorted to fail at baseline.
+- [SPEC-1] test_output is emitted at the top level of test-results.json for direct consumers (was absent at the top level in the v1 schema)
+  → needs a `[SPEC-1]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-2] run_mode is emitted at the top level of test-results.json (was absent at the top level in v1)
+  → needs a `[SPEC-2]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-3] exit_code=0 is present at the top level on the pass path and disposition=complete is set
+  → needs a `[SPEC-3]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-4] exit_code=1 is present at the top level on the fail path and disposition=complete is set
+  → needs a `[SPEC-4]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-5] test_output is present at the top level on the error path and disposition=broken is set on the missing-diff error
+  → needs a `[SPEC-5]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-6] run_mode is present at the top level on the missing-diff error path and reason=missing_diff_patch is emitted
+  → needs a `[SPEC-6]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-7] exit_code appears both at the top level and under data.exit_code in the same artifact
+  → needs a `[SPEC-7]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-8] _test_disposition_from_rc maps rc=130/137/143 (signal death) to interrupted and other non-zero rc to broken; test_output is present at top level confirming the v2 shape
+  → needs a `[SPEC-8]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-9] _test_write_result does not reference artifact_dir internally — path is supplied entirely by the caller
+  → needs a `[SPEC-9]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-10] manifest valid_verdicts enumerates every verdict the plugin emits: pass, fail, and error
+  → needs a `[SPEC-10]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-11] top-level shortcut fields (run_mode, test_output) appear in the v2 writer output and in integration scenarios driven by companion test files
+  → needs a `[SPEC-11]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+
+## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
+A previous attempt on this issue ended build with verdict=pass and touched 4 file(s): plugins/tool/test/plugin.sh, plugins/tool/test/tests/test-test.sh, tests/integration/test-plugin-summary-format-test.sh, tests/unit/test-plugin-result-write-fallback-test.sh. That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present.
