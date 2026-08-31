@@ -251,6 +251,15 @@ else
     assert_pass "[SPEC-10] no surface step searches the whole state dir for a result file"
 fi
 
+# The prune is the actual protection: without it the fallback can still walk
+# into restored-artifacts/. Dropping it would otherwise stay green.
+if grep -qE "restored-artifacts'? -prune|-prune.*restored-artifacts" "$WF"; then
+    assert_pass "[SPEC-10] the find fallback prunes restored-artifacts/"
+else
+    assert_fail "[SPEC-10] the find fallback must prune restored-artifacts/" \
+        "no -prune guard found in the workflow"
+fi
+
 # And each step must name the live path explicitly.
 for _stage in persist hydrate; do
     if grep -q "ZBUILD_STATE_DIR}\?/artifacts/${_stage}-result.json" "$WF"; then

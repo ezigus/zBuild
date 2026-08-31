@@ -137,7 +137,16 @@ persist_run() {
     # most ONE commit per persist run.
     local _snap_mode=""
     [[ "$_snapshot" == "saved" ]] && _snap_mode="amend"
-    _artifact_persist_snapshot "$_state_dir" "$_issue" "" "$_snap_mode" >/dev/null 2>&1 || true
+    # Loud, for the same reason step 1 is. A silent failure here means
+    # persist-result.json never reaches the branch — which is the exact defect
+    # this ordering was written to fix, just relocated. The verdict is NOT
+    # demoted: the push can still succeed and the local copy still carries the
+    # truth, so this degrades the record, not the run.
+    if ! _artifact_persist_snapshot "$_state_dir" "$_issue" "" "$_snap_mode" >/dev/null 2>&1; then
+        emit_event "persist.snapshot.failed" "stage=$_stage_id" "issue=$_issue" \
+            "reason=${_ARTIFACT_PERSIST_LAST_REASON:-second snapshot failed}" 2>/dev/null || true
+        warn "persist: result snapshot failed — persist-result.json will not reach the state branch"
+    fi
 
     # ── 3. Secret gate, before anything leaves the machine ───────────────────
     # After the write above, so the gate scans persist-result.json too: nothing

@@ -226,15 +226,10 @@ jobs:
           # error, `2>/dev/null || true` swallows it, the empty result reads as
           # "the stage never ran", and the backstop then pushes UNCONDITIONALLY —
           # breaking exactly-once on a healthy run that already pushed.
-          # ADR-059: the live artifacts/ dir is the run's own output; the
-          # restored-artifacts/ area holds a PREVIOUS run's copy, extracted by
-          # hydrate. Read the live path first, exactly as input-resolve.sh does.
-          # The old unanchored `find ... -print -quit` returned whichever readdir
-          # yielded first: on run 33359409653 that was the restored copy, so the
-          # log reported a previous run's hydrate (restored=76) while the run had
-          # restored 95. A diagnostic that reports another run's outcome is worse
-          # than none. The find remains only as a fallback for layouts that nest
-          # the run dir, and it prunes restored-artifacts/ so it cannot regress.
+          # ADR-059: read the LIVE artifacts/ path first, as input-resolve.sh
+          # does; the find fallback prunes restored-artifacts/, which holds a
+          # previous run's copy. An unanchored find reported one (run
+          # 33359409653: log said restored=76, the run had restored 95).
           persist_result=""
           if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR:-}" ]]; then
             if [[ -f "$ZBUILD_STATE_DIR/artifacts/persist-result.json" ]]; then
@@ -283,15 +278,10 @@ jobs:
         run: |
           # Same empty-path trap as the backstop step; here it would only
           # misreport, but a diagnostic that lies is worse than none.
-          # ADR-059: the live artifacts/ dir is the run's own output; the
-          # restored-artifacts/ area holds a PREVIOUS run's copy, extracted by
-          # hydrate. Read the live path first, exactly as input-resolve.sh does.
-          # The old unanchored `find ... -print -quit` returned whichever readdir
-          # yielded first: on run 33359409653 that was the restored copy, so the
-          # log reported a previous run's hydrate (restored=76) while the run had
-          # restored 95. A diagnostic that reports another run's outcome is worse
-          # than none. The find remains only as a fallback for layouts that nest
-          # the run dir, and it prunes restored-artifacts/ so it cannot regress.
+          # ADR-059: read the LIVE artifacts/ path first, as input-resolve.sh
+          # does; the find fallback prunes restored-artifacts/, which holds a
+          # previous run's copy. An unanchored find reported one (run
+          # 33359409653: log said restored=76, the run had restored 95).
           result_file=""
           if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR:-}" ]]; then
             if [[ -f "$ZBUILD_STATE_DIR/artifacts/persist-result.json" ]]; then
@@ -323,15 +313,10 @@ jobs:
         run: |
           # Same empty-path guard as the persist step: `find` with an empty
           # first argument searches the CWD and would report a foreign file.
-          # ADR-059: the live artifacts/ dir is the run's own output; the
-          # restored-artifacts/ area holds a PREVIOUS run's copy, extracted by
-          # hydrate. Read the live path first, exactly as input-resolve.sh does.
-          # The old unanchored `find ... -print -quit` returned whichever readdir
-          # yielded first: on run 33359409653 that was the restored copy, so the
-          # log reported a previous run's hydrate (restored=76) while the run had
-          # restored 95. A diagnostic that reports another run's outcome is worse
-          # than none. The find remains only as a fallback for layouts that nest
-          # the run dir, and it prunes restored-artifacts/ so it cannot regress.
+          # ADR-059: read the LIVE artifacts/ path first, as input-resolve.sh
+          # does; the find fallback prunes restored-artifacts/, which holds a
+          # previous run's copy. An unanchored find reported one (run
+          # 33359409653: log said restored=76, the run had restored 95).
           result_file=""
           if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR:-}" ]]; then
             if [[ -f "$ZBUILD_STATE_DIR/artifacts/hydrate-result.json" ]]; then
