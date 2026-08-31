@@ -1,0 +1,285 @@
+Judge a change by its structure, not only its behavior: how it fits the system's existing boundaries, whether it keeps coupling low and cohesion high, and whether it preserves conceptual integrity. Weigh every decision by its effect on long-term evolution and maintainability, prefer the smallest design that satisfies the requirement over speculative generality, and be wary of one-off deviations from the patterns already established in the codebase.
+
+Your job is to produce an ADR-style design.md for the task described in the plan below.
+
+## Plan
+Migrate test plugin to contract v2
+
+Migrate plugins/tool/test to the v2 result contract with result_contract:2, mandatory disposition+reason on every exit path, interrupted disposition for signal-killed runs (#1747), setsid process-group isolation with release hook (#1748), no artifact path construction in code, valid_verdicts enforced, and all acceptance criteria proven by tests written first.
+
+## Seed scope (from plan.files[])
+- plugins/tool/test/manifest.yaml
+- plugins/tool/test/plugin.sh
+- plugins/tool/test/tests/test-test.sh
+
+## Tools (read-only — this stage may NOT modify the working tree)
+- You MAY use the Read tool to inspect any file in the repository.
+- You MAY use the Grep tool to search the whole repository for symbols,
+  constants, references, and hardcoded values.
+- You MAY use the Glob tool to discover files by pattern.
+- Do NOT call Edit, Write, or Bash for implementation. The ONLY file you
+  write is the design.md at the exact path below. Your job is to ENUMERATE
+  scope, not to implement.
+
+## Instructions
+
+Write the design document to this EXACT absolute path:
+  /home/runner/work/_temp/zbuild-state/artifacts/design.md
+Do NOT write to ./design.md, design.md, or any other path. The harvester
+expects the file at the absolute path above; any other location is a
+contract violation that will fail this stage.
+
+The design document MUST include:
+1. A brief architectural decision summary (goal, context, decision).
+2. A ```scope fenced block that is an EXHAUSTIVE enumeration of every file
+   in the repository that this change touches, invalidates, references,
+   validates, documents, or assumes anything about — NOT merely the seed
+   scope. The seed above is a starting point, never the answer. You MUST
+   actively search the repo (Read/Grep/Glob) and include:
+     - every TEST that asserts behavior you are changing — INCLUDING tests
+       that hardcode a value you are changing (a stage count, an event
+       count, a name list, an ordering). For every constant, count, list,
+       or name your change alters, GREP the repo for the OLD value and add
+       every file that pins it.
+     - every file that EXHAUSTIVELY ENUMERATES a set you are GROWING and would
+       silently break by OMISSION. When your change adds a member to a closed
+       set — a new case, branch, entry, member, route, or stage — there is NO
+       old value to grep: the breakage is the MISSING new line, not a stale
+       one. Find these by the ENUMERATION PATTERN, not by a value — every place
+       that lists the CURRENT membership in full (a branch handling each
+       member, a registry or table naming each member, a fixture or assertion
+       pinning the set's SIZE or its exact roster). A downstream build that
+       grows the set but leaves an exhaustive enumeration untouched ships a
+       file that is now wrong by absence. If your repository defines which
+       enumerations matter, consult its design override overlay below, if present.
+     - every CONFIG/SCHEMA/GOLDEN that encodes a shape you are changing
+       (config/, *.json, event-schema, tests/golden/, snapshots).
+     - every DOC/ADR that describes the contract you are changing.
+     - every SOURCE file that references a symbol you add, remove, or rename.
+   A scope that merely echoes the seed is a FAILURE of this stage — the
+   downstream build can only touch files you list here.
+
+The ```scope block format (one repo-relative path per line):
+```scope
+path/to/file1
+path/to/file2
+```
+
+3. A ```acceptance fenced block listing behavioral claims with STABLE NUMERIC
+   IDS and CLASSIFICATION TAGS, and test file paths (TESTFILES: section). Each
+   SPEC line carries a permanent id, a type tag, and describes ONE observable,
+   testable behavior change this implementation must satisfy.
+
+   CLASSIFICATION (required on every SPEC-n line):
+   - `SPEC-n[change]:` — a NEW behavior that did not exist before; the tagged
+     test MUST FAIL at the merge-base baseline and PASS after this change.
+   - `SPEC-n[guard]:` — an INVARIANT that must not regress; do NOT contort it
+     to fail at baseline. The acceptance-gate skips the negative control for
+     guards.
+   Unclassified `SPEC-n:` lines are accepted for backward compatibility but
+   new designs should always classify.
+
+   TAGGING RULE (ADR-036, enforced mechanically by the acceptance-gate stage):
+   each TESTFILE must contain at least one assertion whose LABEL includes the
+   matching [SPEC-n] tag, e.g. assert_eq "[SPEC-1] carry-over count" exp act.
+   The gate fails the build if any SPEC-n has no [SPEC-n]-tagged assertion, AND
+   it runs each [change]-tagged assertion against the merge-base baseline —
+   the assertion MUST FAIL there. Write ONE SPEC per assertion so the negative
+   control can isolate each behavior.
+
+The ```acceptance block format:
+```acceptance
+SPEC-1[change]: <one new behavior this change introduces>
+SPEC-2[guard]: <an invariant this change must not break>
+WIRING: <repo-relative-path-to-wiring-file>
+TESTFILES:
+SPEC-1: tests/unit/some-test.sh
+SPEC-2: tests/integration/other-test.sh
+```
+
+Per-SPEC TESTFILES binding (preferred for new designs):
+- Prefix each testfile path with `SPEC-n: ` to bind it exclusively to that SPEC.
+  Example: `SPEC-1: tests/unit/foo-test.sh`
+- Multiple paths for one SPEC: `SPEC-1: tests/unit/a-test.sh tests/unit/b-test.sh`
+- Plain (unqualified) paths remain valid as a global fallback for backward
+  compatibility, but new designs SHOULD author one `SPEC-n: path` line per
+  `[change]` SPEC. This lets the gate prove each SPEC is tested by its own
+  dedicated file, not a sibling's passing control.
+
+WIRING field (ADR-036 Level-3, mandatory for behavioral-change issues):
+- Declare the SEPARABLE wiring file that connects the new behavior to the
+  live production call-path (e.g. the plugin registration file, the source
+  directive, the dispatch table entry). This is NOT the implementation file
+  itself — it is the file whose presence/modification routes the live path
+  to the new implementation.
+- One repo-relative path per line (multi-line WIRING: section is allowed):
+    WIRING:
+    plugins/agent/acceptance-gate/plugin.sh
+    config/event-schema.json
+- For pure-utility changes (helpers with no live dispatch path), declare
+  `WIRING: none` to explicitly exempt the reachability check.
+- The acceptance-gate will revert the declared WIRING file to the merge-base
+  (keeping all other implementation changes at HEAD) and require ≥1 TESTFILE
+  to flip pass→fail — proving the wiring is load-bearing, not inert.
+
+Keep the prose focused and under 200 lines (the scope block and acceptance
+block may be as long as completeness requires). Emit LOOP_COMPLETE when done.
+
+## PRIOR DESIGN (a previous attempt on this issue — refine, do not recreate)
+# Design: Migrate test plugin to v2 result contract (issue #1836)
+
+## Decision summary
+
+**Goal:** Bring `plugins/tool/test` into conformance with ADR-054 §5 — the v2 result
+file contract. This means: `result_contract: 2` at the top level; mandatory `disposition`
+and `reason` fields at the top level; plugin-specific data nested under `data: {}`; signal
+deaths mapped to `disposition=interrupted`; a `test_cleanup` release hook verified; no
+artifact path construction in `_test_write_result`; and `valid_verdicts` declared in the
+manifest.
+
+**Context:** The test plugin was the last major `kind: tool` plugin on the v1 flat schema
+(`schema_version: 1`, no `disposition`, no `data` block). Gate readers
+(`coverage-gate`, `lint-gate`, `mutation-gate`, `gate-aggregator`) and the cycle
+orchestrator read paths out of `test-results.json` that changed when data moved under
+`data: {}`. ADR-054 §6 defines the closed `disposition` vocabulary; ADR-055 defines the
+inter-stage data contract. Several companion test files (the fallback test, summary-format
+integration test, fd-isolation test, fresh-shell test, and committed-head test) pin v1
+field paths (`.passed`, `.failed`, `.exit_code` at top level) that moved to `.data.*` and
+must be updated in the same change.
+
+**Decision:** Migrate `_test_write_result` to the v2 shape; add `_test_disposition_from_rc`
+to map `(rc, verdict) → disposition`; update companion test files to use `.data.*` paths
+and the new v2 calling convention for `_test_write_result` (which inserts `disposition` at
+position 3); declare `result_contract: 2` and `valid_verdicts` in the manifest. Acceptance
+assertions are co-located in the existing `test-test.sh` (which exists at baseline) so the
+acceptance gate can locate the file and prove each [change] assertion fails against the
+baseline implementation.
+
+```scope
+plugins/tool/test/plugin.sh
+plugins/tool/test/manifest.yaml
+plugins/tool/test/tests/test-test.sh
+plugins/tool/coverage-gate/plugin.sh
+plugins/tool/gate-aggregator/plugin.sh
+plugins/tool/lint-gate/plugin.sh
+plugins/tool/mutation-gate/plugin.sh
+core/pipeline/cycle-orchestrator.sh
+tests/unit/convergence-timeouts-never-fatal-1208-test.sh
+tests/unit/core-pipeline-cycle-final-gate-test.sh
+tests/unit/core-pipeline-cycle-stall-break-test.sh
+tests/unit/design-timeout-exhaustion-halt-1261-test.sh
+tests/unit/framework-result-test.sh
+tests/unit/test-plugin-empty-diff-test.sh
+tests/unit/test-plugin-positional-args-test.sh
+tests/unit/test-targeted-advisory-hint-test.sh
+tests/unit/test-plugin-result-write-fallback-test.sh
+tests/integration/test-plugin-summary-format-test.sh
+tests/integration/test-plugin-fresh-shell-test.sh
+tests/integration/test-plugin-runs-against-committed-head-test.sh
+tests/integration/test-plugin-fd-isolation-test.sh
+docs/adr/ADR-054-stage-contract.md
+```
+
+```acceptance
+SPEC-1[change]: test-results.json emits result_contract=2 at the top level (not schema_version:1)
+SPEC-2[change]: disposition field is present at the top level of test-results.json on every code path
+SPEC-3[change]: disposition=complete when verdict is pass
+SPEC-4[change]: disposition=complete when verdict is fail (test ran to completion)
+SPEC-5[change]: disposition=broken on the missing-diff-patch error path
+SPEC-6[change]: reason=missing_diff_patch is emitted on the missing-diff error path
+SPEC-7[change]: plugin-specific fields (exit_code, passed, failed, test_output, test_cmd, run_mode) live under data:{} not at the top level
+SPEC-8[change]: _test_disposition_from_rc maps rc=130/137/143 (signal death) to interrupted, and other non-zero rc to broken
+SPEC-9[guard]: _test_write_result does not construct artifact paths from artifact_dir internally (path is a caller arg)
+SPEC-10[guard]: manifest valid_verdicts enumerates every verdict the plugin emits (pass, fail, error)
+SPEC-11[change]: _test_write_result caller signature includes disposition at position 3; companion tests (fallback, summary-format, fd-isolation, fresh-shell, committed-head) read counts from .data.passed/.data.failed/.data.exit_code rather than top-level paths
+WIRING: none
+TESTFILES:
+SPEC-1: plugins/tool/test/tests/test-test.sh
+SPEC-2: plugins/tool/test/tests/test-test.sh
+SPEC-3: plugins/tool/test/tests/test-test.sh
+SPEC-4: plugins/tool/test/tests/test-test.sh
+SPEC-5: plugins/tool/test/tests/test-test.sh
+SPEC-6: plugins/tool/test/tests/test-test.sh
+SPEC-7: plugins/tool/test/tests/test-test.sh
+SPEC-8: plugins/tool/test/tests/test-test.sh
+SPEC-9: plugins/tool/test/tests/test-test.sh
+SPEC-10: plugins/tool/test/tests/test-test.sh
+SPEC-11: tests/unit/test-plugin-result-write-fallback-test.sh tests/integration/test-plugin-summary-format-test.sh
+```
+
+LOOP_COMPLETE
+
+(Durable copy: https://github.com/ezigus/zBuild/blob/zbuild/state/issue-1836/artifacts/design.md — reference it, but VERIFY against the CURRENT inputs above; the code may have moved on since.)
+
+Refine the PRIOR DESIGN. Preserve all existing scope entries unless one is clearly wrong.
+
+
+## Project-specific guidance (operator override)
+
+# zBuild design-stage scope overrides
+
+Per-repo overlay to the generic design charter's "enumerated set / absence-by-
+omission" principle (ADR-032/033). The shipped engine states the principle; this
+file states this repo's genuine domain-specific enumerations that break by
+OMISSION. Consult this when a change grows, shrinks, or renames a closed set in
+this repository.
+
+> **ADR-047 tombstone (EPIC #1277 / #1282).** zBuild's pipeline stage set is NO
+> LONGER a closed, engine-owned vocabulary. `_ZBUILD_CANONICAL_STAGES` was
+> demoted (ADR-047 §5): stage membership is now a manifest-derived, fail-closed
+> resolvability preflight and stage ordering a data-dependency DAG — both keyed
+> on declared data, not a hardcoded roster. The former Rules ABS-1/ABS-2/ABS-3
+> here enumerated that now-open roster and are retired. What remains below is the
+> **generic** principle only (it names no stage), plus this repo's real closed
+> sets. A change that adds/removes/renames a pipeline stage is now a template +
+> plugin change; it no longer breaks an engine-owned roster enumeration.
+
+## Rule ABS — generic enumerated-set / absence-by-omission wisdom
+
+Some closed sets in this repo break by OMISSION rather than by a stale token you
+can grep: the breakage is a MISSING (or orphaned) line, not a changed one. When a
+change grows, shrinks, or renames such a set, every enumeration of that set is
+wrong by omission — yet there is nothing to grep for, because the defect is the
+absent entry.
+
+When a change touches a genuinely-closed, exhaustively-enumerated set in this
+repo, design MUST include in scope every test or config that enumerates or COUNTS
+that set. Because the breakage is an absence, do not trust a hardcoded list of
+sites to stay complete — rediscover the sites each time (see "How to find them").
+
+This principle is target-agnostic: it applies to any closed set, and it does not
+presume the pipeline stage set is closed (per the ADR-047 tombstone above, it is
+not). Use it for sets that are genuinely closed in this repo, declared here per
+ADR-032 as this repo's domain-specific enumerations.
+
+## How to find them
+
+Enumeration/count sites are most often mock-plugin roster blocks (one call per
+member) or literal counts of the set. Rediscover them with:
+
+```
+grep -rln '_make_plugin\|_make_role_plugin\|_make_verdict_plugin\|mock_plugin_factory' tests/
+grep -rln 'stage\.complete\|plugin\.run\.start\|started .*UTC\|finished .*UTC' tests/
+```
+
+Every match that enumerates or counts a closed set you are changing belongs in
+the design scope block. Re-run the greps each time — new enumeration sites arrive
+with new tests, and the defect (a missing line) leaves no token to search for.
+
+## Rule ABS-W — new plugin directory requires a wiki page
+
+Any change that creates `plugins/<kind>/<id>/manifest.yaml` MUST include
+`docs/wiki/plugins/<id>.md` in scope. The `lint-doc-freshness` gate
+(`scripts/lib/lint-doc-freshness.sh`) enforces this at test time against the
+real repo tree — it fails if the wiki page is absent or lacks a prose opening
+paragraph. This is an absence-by-omission gap: there is no old value to grep
+for, because the defect is the missing new file.
+
+**Exception — `kind: persona` plugins:** `kind: persona` manifests are
+data-only (no `plugin.sh`, no hooks) and share a single index page at
+`docs/wiki/plugins/personas.md`. Adding a new persona requires editing
+`docs/wiki/plugins/personas.md` to list the new id (one known, stable file)
+rather than creating a per-id page. The `lint-doc-freshness` gate enforces
+that `personas.md` exists and that every persona id appears as a literal
+string in it; per-id pages for personas are not required and will trigger
+orphan failures if present.
