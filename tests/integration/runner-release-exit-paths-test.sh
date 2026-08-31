@@ -121,14 +121,34 @@ _prep() {
     unset BUILD_RC BUILD_SLEEP 2>/dev/null || true
 }
 
-# _assert_released <case> — release recorded, purge never.
+# _assert_released <case> <stage>... — EVERY named stage released, purge never.
+#
+# #1989: this used to grep the shared marker for any ':release' and pass. Three
+# stages append to that one file, so one stage releasing masked two that never
+# did — measured: neutering build_cleanup alone left the suite green, and it
+# took neutering all three to turn it red. The assertion could only ever detect
+# a TOTAL failure of the mechanism, never a partial one, which is the shape a
+# real regression takes (#1748: suites observed alive 15+ min after exit).
+#
+# Each case now names the stages whose cleanup must have run. The sets differ
+# by exit path because the teardown plugin iterates stages recorded EXECUTED in
+# pipeline-state.json: a stage killed mid-flight was never recorded, so it gets
+# no cleanup. SPEC-4/SPEC-5 therefore expect intake only. Whether an INTERRUPTED
+# stage should also be released is an engine question, not a test question —
+# raised separately; this assertion pins today's behaviour so a change to it
+# cannot pass unnoticed in either direction.
 _assert_released() {
-    local _case="$1" _marker; _marker="$(cat "$RELEASE_MARKER" 2>/dev/null || true)"
-    if grep -q ':release' <<< "$_marker"; then
-        assert_pass "[$_case] cleanup dispatched with scope=release"
+    local _case="$1"; shift
+    local _marker; _marker="$(cat "$RELEASE_MARKER" 2>/dev/null || true)"
+    local _stage _missing=""
+    for _stage in "$@"; do
+        grep -q "^${_stage}:release$" <<< "$_marker" || _missing="${_missing}${_stage} "
+    done
+    if [[ -z "$_missing" ]]; then
+        assert_pass "[$_case] cleanup dispatched with scope=release for: $*"
     else
-        assert_fail "[$_case] cleanup dispatched with scope=release" \
-            "marker=$(tr '\n' ' ' <<< "$_marker")"
+        assert_fail "[$_case] cleanup dispatched with scope=release for: $*" \
+            "no release from: ${_missing}| marker=$(tr '\n' ' ' <<< "$_marker")"
     fi
     if grep -q ':purge' <<< "$_marker"; then
         assert_fail "[$_case] purge is never reachable from a run" "marker contained purge"
@@ -147,7 +167,7 @@ set +e
 _rc=$?
 set -e
 assert_eq "[SPEC-1] runner exits 0 on the success path" "0" "$_rc"
-_assert_released "SPEC-1"
+_assert_released "SPEC-1" intake build test
 
 # ── SPEC-2: non-zero stage rc ────────────────────────────────────────────────
 print_test_section "SPEC-2: exit path = non-zero stage rc"
@@ -163,7 +183,7 @@ if [[ "$_rc" -ne 0 ]]; then
 else
     assert_fail "[SPEC-2] runner exits non-zero when a stage fails" "rc=0"
 fi
-_assert_released "SPEC-2"
+_assert_released "SPEC-2" intake build
 
 # ── SPEC-3: SIGINT propagation chain (child rc=130) ──────────────────────────
 print_test_section "SPEC-3: exit path = SIGINT chain (stage rc 130)"
@@ -173,7 +193,7 @@ set +e
 ( cd "$OVERLAY_REPO" && bash "$RUNNER" --template resume-minimal --goal "release-sigint" ) \
     >"$CASE_DIR/out" 2>&1
 set -e
-_assert_released "SPEC-3"
+_assert_released "SPEC-3" intake build
 
 # ── SPEC-4: external SIGTERM ─────────────────────────────────────────────────
 print_test_section "SPEC-4: exit path = external SIGTERM"
@@ -196,7 +216,7 @@ wait "$RUNNER_PID" 2>/dev/null || true
 # The EXIT trap dispatches release asynchronously w.r.t. this shell's `wait`
 # on some platforms; give the marker a bounded moment to appear.
 for _ in $(seq 1 50); do grep -q ':release' "$RELEASE_MARKER" 2>/dev/null && break; sleep 0.1; done
-_assert_released "SPEC-4"
+_assert_released "SPEC-4" intake
 
 # ── SPEC-5: external hard kill (what an overrunning `timeout` produces) ──────
 # ADR-053 §2: assert on an observable event, never a wall-clock budget.
@@ -238,7 +258,7 @@ else
     kill "$_spec5_killer" 2>/dev/null || true
     wait "$_spec5_killer" 2>/dev/null || true
     for _ in $(seq 1 50); do grep -q ':release' "$RELEASE_MARKER" 2>/dev/null && break; sleep 0.1; done
-    _assert_released "SPEC-5"
+    _assert_released "SPEC-5" intake
 fi
 
 # ── SPEC-6: a blocking cleanup hook cannot hold the exit open ────────────────
