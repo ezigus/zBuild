@@ -75,6 +75,10 @@ write_fx() {
         printf 'provides:\n  role: %s\n' "$5"
         printf 'inputs: []\n'
         printf 'outputs:\n  - id: %s\n    type: %s.json@1\n    format: json\n    path: ${artifact_dir}/%s.json\n    required: true\n    primary: true\n' "$6" "$6" "$6"
+        # ADR-055 §9 (#2000): every stage-bound plugin declares exactly one
+        # summary. A fixture that omits it is refused at pre-flight, which is
+        # the contract working — so the fixture declares one too.
+        printf '  - id: %s_summary\n    type: %s-summary.md@1\n    format: markdown\n    path: ${artifact_dir}/%s-summary.md\n    required: true\n    summary: true\n' "$6" "$6" "$6"
     } > "$1/manifest.yaml"
 }
 write_fx "$FX_ROOT/tool/g_gate" g_gate tool  gate     g_gate g_gate_result
