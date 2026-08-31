@@ -29,7 +29,8 @@
 # and returning immediately. The old detached backstop raced the caller's
 # exit, intermittently leaving the stub alive past the assertion window
 # (the route-fast-abort CI flake). Assertion (2) below now requires the
-# stub dead within 500ms of loop-return, encoding that synchronous contract.
+# stub dead shortly after loop-return, plus an elapsed_ms floor (1b) proving
+# the handler waited rather than arming a detached backstop (#1975).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -199,14 +200,40 @@ else
         "actual=${elapsed_ms}ms — per-PID kill bounced off claude's TERM trap (Wave 15-G regression)"
 fi
 
+# (1b) #1975: the SYNCHRONOUS-abort discriminator, moved here from the reap
+#      window below.
+#
+#      _route_loop_on_signal must not return until the child tree it signalled
+#      has actually been reaped (ADR-025). The stub ignores TERM, so `wait`
+#      cannot return until the handler's own `{ sleep 1 && kill -KILL; }`
+#      watchdog fires — a floor of ~1000ms. The pre-#905 backstop was a
+#      DISOWNED subshell: the handler armed it and returned immediately, ~0ms.
+#
+#      That gap is the regression signal, and unlike the reap window it is
+#      LOAD-MONOTONE: load can only make wall-clock larger, never smaller, so a
+#      loaded runner cannot fake a synchronous abort. The reap window could only
+#      ever be made unreliable by load, which is why #1975 kept failing on CI
+#      while finding nothing wrong.
+#
+#      800ms floor: post-#905 measures ~1000ms, pre-#905 ~0-100ms. Wide margin
+#      on both sides of a 10x separation.
+if [[ $elapsed_ms -ge 800 ]]; then
+    assert_pass "abort was SYNCHRONOUS, not a disowned backstop (actual=${elapsed_ms}ms >= 800ms)"
+else
+    assert_fail "abort was SYNCHRONOUS, not a disowned backstop" \
+        "actual=${elapsed_ms}ms — handler returned before the child was reaped; the pre-#905 disowned-backstop shape is back (#905, ADR-025)"
+fi
+
 # (2) No stub-claude process from this driver is still running. #905 made the
 #     abort SYNCHRONOUS — _route_loop_on_signal does not return until the child
 #     tree has been SIGKILLed and reaped, so by the time the driver exited (the
 #     `wait "$DRV_PID"` above returned) the stub is already dead. We allow only
-#     a short 500ms reap window for the kernel to clear the reparented zombie's
-#     PID slot — NOT a multi-second wait for a detached backstop to fire. If the
-#     stub is still alive after 500ms the abort leaked (the pre-#905 bug: the
-#     `{ sleep 1 && kill -KILL; } &` backstop raced the caller's exit).
+#     a 2s reap window for the kernel to clear the reparented zombie's PID slot.
+#     #1975: this window used to be 500ms because it was ALSO the check that a
+#     detached backstop had not fired. It no longer carries that job — assertion
+#     (1b) does, via a load-monotone elapsed_ms floor — so it can be generous
+#     enough to survive a loaded runner. A genuine leak is a live 60s stub and
+#     outlives any window; a slow reap is not a leak.
 #     Millisecond-precise deadline (not integer `date +%s`, whose second-
 #     granularity made the old window race between ~1s and ~2s under load).
 # _rfa_is_my_stub <pid> — true only when <pid> is a stub-claude THIS test spawned.
@@ -251,7 +278,7 @@ _rfa_describe() {
 
 _st=""
 leftover=0
-deadline_ns=$(( $(date +%s%N) + 500000000 ))
+deadline_ns=$(( $(date +%s%N) + 2000000000 ))
 while [[ $(date +%s%N) -lt $deadline_ns ]]; do
     leftover=0
     if [[ -f "$PID_FILE" ]]; then
@@ -277,18 +304,28 @@ while [[ $(date +%s%N) -lt $deadline_ns ]]; do
                 # Counting those made this assertion flaky (#1942). When the
                 # driver exits the stub is reparented to PID 1, and how fast
                 # PID 1 reaps is its scheduling decision — under an ubuntu CI
-                # runner's load that is not reliably inside the 500ms window.
+                # runner's load that is not reliably inside a tight window.
                 #
                 # It presents as "ubuntu-only" ONLY because this whole file is
                 # `skip_unless_platform linux` (line 51) — macOS never runs it,
                 # so there is no macOS evidence either way. Do not read the
                 # asymmetry as a platform difference in reaping.
                 #
-                # The 500ms window above is NOT the thing to relax: it is what
-                # distinguishes a correct synchronous abort from the pre-#905
-                # backstop (`{ sleep 1 && kill -KILL; } &`). Widening it past 1s
-                # would trade this flake for a blind spot in exactly the
-                # regression #906 added this test to catch.
+                # This comment previously said the window must NOT be relaxed,
+                # because it was the only thing distinguishing a synchronous
+                # abort from the pre-#905 backstop (`{ sleep 1 && kill -KILL; } &`).
+                # That was true, and it made the window unfixable: it carried
+                # both the leak check and the backstop check, and the two want
+                # opposite things — generous for load-tolerance, tight for
+                # discrimination.
+                #
+                # #1975 split them. Assertion (1b) discriminates on an
+                # elapsed_ms FLOOR: the handler cannot return before its own 1s
+                # watchdog fires, whereas the disowned backstop returned in
+                # ~0ms. Load can only push wall-clock UP, so that floor cannot
+                # be faked by a loaded runner — the property this window never
+                # had. Widening the window is now safe, and #906's regression
+                # is still caught, by (1b).
                 # `|| _st="Z"` is NOT cosmetic. Under `set -euo pipefail`, if the process
                 # exits between the `kill -0` above and this `ps`, the pipeline returns
                 # non-zero, the assignment fails, and set -e kills the whole FILE —
@@ -316,7 +353,7 @@ fi
 # Explain a non-zero count before asserting on it, so the next occurrence
 # arrives with its own diagnosis attached.
 if [[ $leftover -ne 0 && -f "$PID_FILE" ]]; then
-    echo "  DIAGNOSTIC: ${leftover} leftover stub(s) after the 500ms reap window:" >&2
+    echo "  DIAGNOSTIC: ${leftover} leftover stub(s) after the 2s reap window:" >&2
     while IFS= read -r p; do
         [[ -z "$p" ]] && continue
         _rfa_is_my_stub "$p" && _rfa_describe "$p"
