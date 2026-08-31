@@ -96,6 +96,8 @@ Resolved by `core/pipeline/stage-scratch.sh`; `mkdir -p` + `chmod 700`, copied f
 
 **Fail-open.** An unnameable stage or an uncreatable directory leaves the variables unset and every consumer on the `${TMPDIR:-/tmp}` fallback it has today. A stage is never refused dispatch because scratch was unavailable; that would turn a diagnostic convenience into a new way for a run to die.
 
+**Amended 2026-08-31 — the cost of that fallback, which this ADR did not state.** [ADR-059](ADR-059-issue-vs-run-keying.md) §1 makes the path the keying: a reclaimer deletes a `runs/<id>/` or an `issues/<N>/` and the scope follows from where it sits. A write that lands in `${TMPDIR}` therefore sits outside every reclaimable path **by construction** — no reclaimer can name it — which is why `cleanup.sh` needs a separate `ZBUILD_TMPDIR_PATTERNS` scanner at all. That scanner is a workaround for this fallback, not a feature. Fail-open remains correct: a run must not die because scratch was unavailable. But the fallback is a **leak**, not a neutral default, and every `${TMPDIR:-/tmp}` site is a place reclamation cannot reach.
+
 ### 3. Exported at the dispatch chokepoint, with `TMPDIR`
 
 `plugin_hook_call` (`core/plugin-registry/lifecycle.sh`) exports three variables for exactly the span of one dispatch, all guarded on the state_file argument being an **absolute** path:
