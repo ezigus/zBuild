@@ -47,7 +47,7 @@
   [38;2;74;222;128m✓[0m happy: .data.exit_code
   [38;2;74;222;128m✓[0m happy: .data.passed
   [38;2;74;222;128m✓[0m happy: .data.diff_applied
-  [38;2;74;222;128m✓[0m [SPEC-11] run_mode=full at top level in v2 writer output
+  [38;2;74;222;128m✓[0m [SPEC-11] run_mode=full at top level in v2 result contract
 
   [38;2;0;212;255m8. forced jq failure: fallback JSON + event emitted[0m
   [38;2;74;222;128m✓[0m forced-fail: results file written
@@ -113,7 +113,7 @@
   [38;2;74;222;128m✓[0m happy: .data.exit_code
   [38;2;74;222;128m✓[0m happy: .data.passed
   [38;2;74;222;128m✓[0m happy: .data.diff_applied
-  [38;2;74;222;128m✓[0m [SPEC-11] run_mode=full at top level in v2 writer output
+  [38;2;74;222;128m✓[0m [SPEC-11] run_mode=full at top level in v2 result contract
 
   [38;2;0;212;255m8. forced jq failure: fallback JSON + event emitted[0m
   [38;2;74;222;128m✓[0m forced-fail: results file written
