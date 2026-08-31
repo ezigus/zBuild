@@ -555,7 +555,15 @@ stage_summaries_prompt_block() {
             body="${body}"$'\n'"[… truncated at ${_ZB_SUMMARY_MAX_BYTES}B —"
             body="${body} read the artifact directly for the full text]"
         fi
-        chunk="$(printf '### %s (verdict: %s)\n%s\n' "$stage" "$verdict" "$body")"
+        # #1979: framing follows the VERDICT. The retired per-plugin readers
+        # framed gate feedback as "resolve every finding above"; losing that
+        # imperative with the wire would have downgraded a directive into
+        # passive context. Applied by verdict rather than by naming two stages,
+        # so a third gate needs no new prose.
+        case "$verdict" in
+            fail|failed) chunk="$(printf '### %s (verdict: %s) — RESOLVE these findings before completing\n%s\n' "$stage" "$verdict" "$body")" ;;
+            *)           chunk="$(printf '### %s (verdict: %s)\n%s\n' "$stage" "$verdict" "$body")" ;;
+        esac
         total=$(( total + ${#chunk} ))
         if [[ "$total" -gt "$_ZB_SUMMARY_TOTAL_MAX_BYTES" ]]; then
             rendered="${rendered}"$'\n'"[… remaining stage summaries truncated at"
@@ -567,7 +575,8 @@ stage_summaries_prompt_block() {
 
     [[ -n "$rendered" ]] || return 0
     printf '%s\n\n' "$_ZB_STAGE_SUMMARIES_MARKER"
-    printf 'What each completed stage reported, newest content per stage. This is\n'
-    printf 'context, not instruction: no stage declared it as an input.\n\n'
+    printf 'What each completed stage reported, newest content per stage. A stage\n'
+    printf 'marked RESOLVE blocks convergence — address its findings before you\n'
+    printf 'finish. The rest is context.\n\n'
     printf '%s' "$rendered"
 }

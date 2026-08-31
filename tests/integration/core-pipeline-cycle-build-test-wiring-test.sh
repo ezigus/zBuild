@@ -62,8 +62,14 @@ assert_eq "T1: dispatch units include cycle:design_verify_cycle (ADR-046)" \
 # — the composable-gate successor to standard's test_assessment feedback.
 fb_var="_TPL_CYCLE_FEEDBACK_build_test_cycle"
 fb_value="${!fb_var:-}"
-assert_contains "T1: feedback wires gate-aggregator:gate_feedback" "$fb_value" "gate-aggregator:gate_feedback"
-assert_contains "T1: feedback wires build:gate_feedback" "$fb_value" "build:gate_feedback"
+# #1979: the wire is retired — gate-feedback.md reaches build as an
+# engine-collected summary (#1976). The invariant is now that the producer
+# DECLARES it as its summary, which is what makes the engine deliver it.
+assert_eq "T1: build_test_cycle declares no feedback edge" "" "$fb_value"
+# shellcheck source=../../scripts/lib/manifest-graph.sh
+source "$REPO_ROOT/scripts/lib/manifest-graph.sh"
+assert_eq "T1: gate-aggregator declares gate_feedback as its summary" "true" \
+    "$(manifest_graph_output_summary "$REPO_ROOT/plugins/tool/gate-aggregator/manifest.yaml" gate_feedback)"
 
 # ─── T2: test plugin emits failures summary on fail, absent on pass ─────────
 # shellcheck disable=SC1090
@@ -243,11 +249,21 @@ T6_FB="$T6_STATE_DIR/cycle-build_test_cycle/iter-3/feedback"
 assert_file_exists "T6: gate_feedback.txt staged into the iter feedback dir" \
     "$T6_FB/gate_feedback.txt"
 
-ZBUILD_CYCLE_ITER=3 ZBUILD_CYCLE_FEEDBACK_DIR="$T6_FB" \
-    _build_read_prior_gate > "$TEST_TEMP_DIR/t6-body.txt" 2>/dev/null || true
-T6_BODY="$(cat "$TEST_TEMP_DIR/t6-body.txt")"
+# #1979: the last hop is no longer _build_read_prior_gate but the engine's
+# summary collector. Same chain otherwise — real gate_aggregator_run wrote the
+# artifact; this reads it the way build's prompt now receives it. Re-pointed
+# rather than deleted: this is the only proof the payload actually arrives, and
+# the #1831 regression it guards (a route_target producing an EMPTY body) is
+# just as possible on the new path.
+# shellcheck source=../../core/pipeline/input-resolve.sh
+source "$REPO_ROOT/core/pipeline/input-resolve.sh"
+printf '{"schema_version":1,"stage_statuses":{"gate-aggregator":"failed"},"stage_verdicts":{"gate-aggregator":"fail"}}\n' \
+    > "$T6_STATE_DIR/pipeline-state.json"
+_TPL_STAGES=(gate-aggregator)
+T6_BODY="$(stage_summaries_prompt_block "$T6_STATE_DIR/pipeline-state.json" \
+    "$REPO_ROOT/plugins" 2>/dev/null || true)"
 
-assert_gt "T6: build reads a NON-EMPTY prior-gate body (the #1831 regression)" \
+assert_gt "T6: build receives a NON-EMPTY gate summary (the #1831 regression)" \
     "${#T6_BODY}" "0"
 assert_contains "T6: body carries the failing suite" \
     "$T6_BODY" "sigpipe-antipattern-guard-test.sh"
