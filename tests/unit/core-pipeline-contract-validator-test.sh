@@ -34,6 +34,13 @@ outputs:
     format: text
     path: \${state_dir}/scope-manifest.md
     required: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: intake_summary
+    path: "\${artifact_dir}/intake-summary.md"
+    type: intake-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 
 cat > "$PLUGINS_ROOT/agent/plan/manifest.yaml" <<EOF
@@ -59,6 +66,13 @@ outputs:
     format: text
     path: \${artifact_dir}/plan.json
     required: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: plan_summary
+    path: "\${artifact_dir}/plan-summary.md"
+    type: plan-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 
 cat > "$PLUGINS_ROOT/agent/build/manifest.yaml" <<EOF
@@ -80,6 +94,13 @@ outputs:
     format: text
     path: \${artifact_dir}/diff.patch
     required: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: build_summary
+    path: "\${artifact_dir}/build-summary.md"
+    type: build-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 
 cat > "$PLUGINS_ROOT/tool/test/manifest.yaml" <<EOF
@@ -99,6 +120,13 @@ outputs:
     format: text
     path: \${artifact_dir}/test-results.json
     required: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: test_summary
+    path: "\${artifact_dir}/test-summary.md"
+    type: test-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 
 cat > "$PLUGINS_ROOT/agent/review/manifest.yaml" <<EOF
@@ -127,6 +155,13 @@ outputs:
     path: \${artifact_dir}/review.json
     required: true
     terminal: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: review_summary
+    path: "\${artifact_dir}/review-summary.md"
+    type: review-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 
 # Source the validator
@@ -231,6 +266,13 @@ outputs:
     format: text
     path: \${artifact_dir}/design.md
     required: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: design_summary
+    path: "\${artifact_dir}/design-summary.md"
+    type: design-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 rc=0
 err_out="$(ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "design" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
@@ -261,6 +303,13 @@ outputs:
     format: text
     path: \${artifact_dir}/design.md
     required: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: design_summary
+    path: "\${artifact_dir}/design-summary.md"
+    type: design-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 rc=0
 err_out="$(ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "intake

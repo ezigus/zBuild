@@ -57,6 +57,13 @@ outputs:
     type: json
     required: true
     primary: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: uc_producer_summary
+    path: "${artifact_dir}/uc-producer-summary.md"
+    type: uc-producer-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 printf 'ucp_run() { return 0; }\n' > "$PL/tool/uc-producer/plugin.sh"
 
@@ -77,6 +84,13 @@ outputs:
     type: json
     required: true
     primary: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: uc_consumer_summary
+    path: "${artifact_dir}/uc-consumer-summary.md"
+    type: uc-consumer-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 printf 'ucc_run() { return 0; }\n' > "$PL/tool/uc-consumer/plugin.sh"
 
@@ -124,6 +138,13 @@ outputs:
     type: json
     required: true
     primary: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: uc_consumer_summary
+    path: "${artifact_dir}/uc-consumer-summary.md"
+    type: uc-consumer-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 _out2="$(_lint)"
 assert_contains "[SPEC-2] a required input with no producer is reported" \

@@ -38,6 +38,13 @@ outputs:
     format: text
     path: ${state_dir}/scope-manifest.md
     required: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: intake_summary
+    path: "${artifact_dir}/intake-summary.md"
+    type: intake-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 
 cat > "$PLUGINS_ROOT/agent/build/manifest.yaml" <<'EOF'
@@ -58,6 +65,13 @@ outputs:
     path: ${artifact_dir}/diff.patch
     required: true
     terminal: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: build_summary
+    path: "${artifact_dir}/build-summary.md"
+    type: build-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 
 # Second stage that ALSO declares diff_patch as output — this is the violation
@@ -79,6 +93,13 @@ outputs:
     path: ${artifact_dir}/diff.patch
     required: true
     terminal: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: extra_build_summary
+    path: "${artifact_dir}/extra_build-summary.md"
+    type: extra_build-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 
 # shellcheck source=../../core/pipeline/contract-validator.sh

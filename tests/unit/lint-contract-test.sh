@@ -33,6 +33,13 @@ outputs:
     path: \${state_dir}/scope-manifest.md
     required: true
     primary: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: intake_summary
+    path: "\${artifact_dir}/intake-summary.md"
+    type: intake-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 
 cat > "$PLUGINS_ROOT/agent/plan/manifest.yaml" <<EOF
@@ -55,6 +62,13 @@ outputs:
     required: true
     primary: true
     terminal: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: plan_summary
+    path: "\${artifact_dir}/plan-summary.md"
+    type: plan-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 
 # TC-1: clean fixture passes
@@ -81,6 +95,13 @@ outputs:
     type: file
     path: \${artifact_dir}/plan.json
     required: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: plan_summary
+    path: "\${artifact_dir}/plan-summary.md"
+    type: plan-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 rc=0
 out="$(ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" bash "$REPO_ROOT/scripts/lib/lint-contract.sh" 2>&1)" || rc=$?
@@ -110,6 +131,13 @@ outputs:
     type: file
     path: \${artifact_dir}/plan.json
     required: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: plan_summary
+    path: "\${artifact_dir}/plan-summary.md"
+    type: plan-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 rc=0
 out="$(ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" bash "$REPO_ROOT/scripts/lib/lint-contract.sh" 2>&1)" || rc=$?
@@ -135,6 +163,13 @@ outputs:
     type: file
     path: \${artifact_dir}/plan.json
     required: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: plan_summary
+    path: "\${artifact_dir}/plan-summary.md"
+    type: plan-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 rc=0
 out="$(ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" bash "$REPO_ROOT/scripts/lib/lint-contract.sh" 2>&1)" || rc=$?
@@ -179,6 +214,13 @@ outputs:
     path: \${artifact_dir}/plan.json
     required: true
     primary: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: plan_summary
+    path: "\${artifact_dir}/plan-summary.md"
+    type: plan-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 rc=0
 out="$(ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" bash "$REPO_ROOT/scripts/lib/lint-contract.sh" 2>&1)" || rc=$?
@@ -205,6 +247,13 @@ outputs:
     path: \${artifact_dir}/plan.json
     required: true
     primary: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: plan_summary
+    path: "\${artifact_dir}/plan-summary.md"
+    type: plan-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 cat > "$PLUGINS_ROOT/agent/consumer/manifest.yaml" <<EOF
 id: consumer
@@ -225,6 +274,13 @@ outputs:
     path: \${artifact_dir}/cout.json
     required: true
     primary: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: consumer_summary
+    path: "\${artifact_dir}/consumer-summary.md"
+    type: consumer-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 rc=0
 out="$(ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" bash "$REPO_ROOT/scripts/lib/lint-contract.sh" 2>&1)" || rc=$?
@@ -252,6 +308,13 @@ outputs:
     type: file
     path: \${artifact_dir}/plan.json
     required: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: plan_summary
+    path: "\${artifact_dir}/plan-summary.md"
+    type: plan-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 rc=0
 out="$(ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" bash "$REPO_ROOT/scripts/lib/lint-contract.sh" 2>&1)" || rc=$?
