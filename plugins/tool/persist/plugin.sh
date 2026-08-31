@@ -130,7 +130,14 @@ persist_run() {
     _persist_write_result "$_artifacts_dir" "$_verdict" \
         "${_reason:-snapshotted zbuild/state/issue-$_issue}" \
         "$_snapshot" "null" "$_identity_present"
-    _artifact_persist_snapshot "$_state_dir" "$_issue" >/dev/null 2>&1 || true
+    # AMEND only when the snapshot above created the tip ("saved"). On
+    # unchanged/empty/failed it created nothing, so the tip belongs to an earlier
+    # stage boundary and amending would discard that legitimate commit — this
+    # second snapshot must then extend normally. Either way the branch gains at
+    # most ONE commit per persist run.
+    local _snap_mode=""
+    [[ "$_snapshot" == "saved" ]] && _snap_mode="amend"
+    _artifact_persist_snapshot "$_state_dir" "$_issue" "" "$_snap_mode" >/dev/null 2>&1 || true
 
     # ── 3. Secret gate, before anything leaves the machine ───────────────────
     # After the write above, so the gate scans persist-result.json too: nothing

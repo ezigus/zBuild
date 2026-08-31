@@ -121,6 +121,15 @@ second snapshot exists because the first cannot contain the file that describes 
 The gate moved *after* the write so it scans `persist-result.json` too — nothing
 reaches origin unscanned.
 
+**The second snapshot AMENDS the first rather than stacking on it**, so the branch
+gains exactly **one** commit per persist run. A second commit whose only delta is a
+status file is precisely the empty-commit spam this section already rules out.
+Amend is opt-in per call and used *only* when the caller created the current tip in
+that same invocation: when persist's own snapshot reports `unchanged` or `empty` it
+created nothing, the tip belongs to an earlier stage boundary, and amending there
+would silently delete a legitimate commit. In that case the second snapshot extends
+normally — still one commit.
+
 **The branch copy carries `data.pushed: null`, and that does not mean the push
 failed.** A push cannot record its own outcome; recording `false` would be a lie
 whenever the push then succeeded, which is the common case. The authoritative value

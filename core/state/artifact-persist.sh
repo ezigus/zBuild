@@ -124,6 +124,13 @@ _artifact_persist_git_dir() {
 _artifact_persist_snapshot() {
     _artifact_persist_reset_status
     local state_dir="$1" issue="${2:-0}" repo_root="${3:-$(git rev-parse --show-toplevel 2>/dev/null)}"
+    # #1921: "amend" replaces the branch tip instead of committing on top of it.
+    # persist must snapshot twice — the first snapshot cannot contain the result
+    # file that describes it — and a second commit whose only delta is a status
+    # file is the commit spam ADR-050 §4 rules out. Callers pass this ONLY when
+    # they created the current tip themselves this invocation; amending a tip
+    # written by someone else would discard a legitimate boundary snapshot.
+    local mode="${4:-}"
     # Resolve the SHARED git dir before the guard uses it. The guard previously
     # tested `-d "$repo_root/.git"`, which is FALSE in a linked worktree (.git is
     # a file there), so persistence would silently no-op inside a worktree.
@@ -226,15 +233,25 @@ _artifact_persist_snapshot() {
     fi
     rm -f "$tmp_index" "$tmp_index.err"
 
-    parent="$(GIT_DIR="$_gd" git rev-parse -q --verify "refs/heads/$branch" 2>/dev/null || true)"
-    # Skip an empty commit when the tree is identical to the current tip.
-    if [[ -n "$parent" ]]; then
-        local parent_tree; parent_tree="$(GIT_DIR="$_gd" git rev-parse -q --verify "$parent^{tree}" 2>/dev/null || true)"
-        if [[ "$parent_tree" == "$tree" ]]; then
+    local tip; tip="$(GIT_DIR="$_gd" git rev-parse -q --verify "refs/heads/$branch" 2>/dev/null || true)"
+
+    # Unchanged is judged against the TIP in both modes: it asks "does the branch
+    # already say this?", which amending does not change.
+    if [[ -n "$tip" ]]; then
+        local tip_tree; tip_tree="$(GIT_DIR="$_gd" git rev-parse -q --verify "$tip^{tree}" 2>/dev/null || true)"
+        if [[ "$tip_tree" == "$tree" ]]; then
             _ARTIFACT_PERSIST_LAST_STATUS="unchanged"
             _ARTIFACT_PERSIST_LAST_REASON="tree identical to $branch tip"
             return 0
         fi
+    fi
+
+    if [[ "$mode" == "amend" && -n "$tip" ]]; then
+        # Parent is the tip's parent, so the new commit REPLACES the tip. Empty
+        # when the tip is a root commit, which correctly yields a new root.
+        parent="$(GIT_DIR="$_gd" git rev-parse -q --verify "${tip}^" 2>/dev/null || true)"
+    else
+        parent="$tip"
     fi
 
     local msg="zbuild: persist artifacts for #$issue [skip ci]"
