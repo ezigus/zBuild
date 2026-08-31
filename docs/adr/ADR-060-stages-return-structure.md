@@ -86,7 +86,18 @@ Two helpers are added there:
 
 `_llm_envelope_parse_error` captures in full and trims in bash rather than piping to `head`: a bare `| head` is banned in `scripts/`, `core/`, and `plugins/` as a SIGPIPE hazard (`tests/unit/sigpipe-antipattern-guard-test.sh`, #1886), and that guard caught the first draft of this function.
 
-`impact` still parses through its own `_impact_recover_envelope_json` rather than the shared `_llm_envelope_parse`. That duplication is real and predates this ADR — the same brace-scanning grammar exists three times (`impact-prefilter.sh`, `plan-context.sh`, `llm-agent.sh`), each commented as mirroring the others. Collapsing them is follow-up work; §6 and §7 are wired into impact's own gate-failure path in the meantime.
+`impact` parses through its own `_impact_recover_envelope_json` rather than the shared `_llm_envelope_parse`, and **that is deliberate, not duplication awaiting collapse.**
+
+*Corrected 2026-08-31 (#1989).* This paragraph originally said the brace-scanning grammar "exists three times (`impact-prefilter.sh`, `plan-context.sh`, `llm-agent.sh`)" and called collapsing it follow-up work. Both halves were wrong. It exists **twice** — `_plan_recover_envelope_json` (`scripts/lib/plan-context.sh`) has been a one-line delegation to the shared helper since #944 — and collapsing the remaining two would be a **regression**.
+
+The awk grammar in the two is byte-identical. The *selection predicate* is not:
+
+| | rule |
+|---|---|
+| `_impact_recover_envelope_json` | count `has("schema_version")` bearers → require exactly one → **then** gate it (two-phase) |
+| `_llm_recover_envelope_json` | count full-gate **passers** → require exactly one (one-phase) |
+
+Given a valid envelope plus a `{"schema_version":1,"verdict":"banana"}` postamble — 2 bearers, 1 passer — impact fails closed while the shared helper **recovers the first object**. Collapsing therefore loosens impact in the accepting direction: a preamble *example* would be shipped as the verdict when the real answer is malformed. That is precisely the risk U6 exists to prevent, and `tests/unit/impact-envelope-recovery-test.sh` now asserts the divergence directly (U6/U6b), so a future collapse cannot pass silently.
 
 `impact.envelope.malformed` is declared in `plugins/agent/impact/manifest.yaml` under `provides.events`, in the plugin's own namespace per ADR-001. The first draft named it `llm.envelope.malformed`, which the #1717 event-declaration audit rejected — correctly, since the emitting plugin owns the namespace.
 

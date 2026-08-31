@@ -8,14 +8,15 @@
 #
 # Verifies without invoking a real LLM:
 #   T1: _impact_extract_scope_from_design parses ```scope block from design.md
-#   T2 (ADR-060): _impact_run_inner writes a STRUCTURED impact.json; the
-#       human-readable feedback is RENDERED from missing[] by render_impact_md
-#       and round-trips into design via _design_read_design_gate_feedback.
-#   T3: design iter 2 prompt contains PRIOR DESIGN-GATE FEEDBACK when
-#       design_gate_feedback.txt is present
+#   T2 (ADR-060): _impact_run_inner writes a STRUCTURED impact.json and NO
+#       prose sidecar; the human-readable feedback is RENDERED from missing[]
+#       by render_impact_md.
+#   T3 (#1979): design does NOT re-splice the gate summary on iter 2 — the
+#       bespoke reader and its section were retired; the summaries block is
+#       now the single splice point.
 #   T4: design iter 2 prompt contains PRIOR DESIGN (self-feedback, #773 lesson)
 #       when ZBUILD_CYCLE_FEEDBACK_DIR/design.txt is present
-#   T5: the _design_read_* helpers return empty outside cycle context
+#   T5: _design_read_prior_design returns empty outside cycle context
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -78,7 +79,7 @@ esac
 entry_count="$(printf '%s' "$scope_csv" | tr ',' '\n' | grep -c '.' || true)"
 assert_eq "T1: 4 scope entries parsed" "4" "$entry_count"
 
-# ─── T2: _impact_run_inner writes impact_feedback.md + wires into design ──────
+# ─── T2: _impact_run_inner writes a structured impact.json, no sidecar ───────
 T2_STATE="$TEST_TEMP_DIR/t2-state"
 T2_ARTS="$T2_STATE/artifacts"
 mkdir -p "$T2_ARTS"
@@ -193,7 +194,7 @@ else
     assert_pass "T2: a passing design-gate selects the plain refine instruction"
 fi
 
-# ─── T3: design iter 2 prompt contains PRIOR DESIGN-GATE FEEDBACK ──────────────────
+# ─── T3 (#1979): design does not re-splice the gate summary on iter 2 ───────
 T3_FB_DIR="$TEST_TEMP_DIR/t3-feedback-iter2"
 mkdir -p "$T3_FB_DIR"
 printf '## Gap report\n- Missing: tests/integration/design-pipeline-test.sh\n' \
@@ -309,12 +310,28 @@ else
     assert_fail "T4: prompt capture file not written" ""
 fi
 
-# ─── T5: outside cycle context → _design_read helpers return empty ────────────
+# ─── T5: outside cycle context → the _design_read helper returns empty ───────
+#
+# #1989: this block used to assert the same property of TWO helpers. #1979
+# deleted `_design_read_design_gate_feedback`, and because the call was written
+# `$(fn 2>/dev/null || true)`, `command not found` went to the suppressed
+# stderr, `|| true` cleared the rc, and an assertion that the result IS empty
+# succeeded. The test reported green while exercising nothing — and nobody
+# edited it; a deletion three files away disarmed it. That half is removed;
+# `design-summary-switch-test.sh` SPEC-4 already asserts the reader is gone.
+#
+# The surviving helper is guarded against the identical decay: assert it is
+# DEFINED before asserting anything about what it returns. Without this, the
+# next deletion turns the assertion below into another silent pass.
 unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR 2>/dev/null || true
-t5_fb_body="$(_design_read_design_gate_feedback 2>/dev/null || true)"
-assert_eq "T5: _design_read_design_gate_feedback empty outside cycle" "" "$t5_fb_body"
-t5_design_body="$(_design_read_prior_design 2>/dev/null || true)"
-assert_eq "T5: _design_read_prior_design empty outside cycle" "" "$t5_design_body"
+if declare -F _design_read_prior_design >/dev/null 2>&1; then
+    assert_pass "T5: _design_read_prior_design is defined (guards against silent decay)"
+    t5_design_body="$(_design_read_prior_design 2>/dev/null || true)"
+    assert_eq "T5: _design_read_prior_design empty outside cycle" "" "$t5_design_body"
+else
+    assert_fail "T5: _design_read_prior_design is defined (guards against silent decay)" \
+        "the helper is gone — this assertion would otherwise pass vacuously"
+fi
 
 cleanup_test_env
 print_test_results
