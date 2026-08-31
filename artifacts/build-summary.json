@@ -5,15 +5,12 @@
   "lines_added": 0,
   "lines_removed": 0,
   "diff_patch_path": "/home/runner/work/_temp/zbuild-state/artifacts/diff.patch",
-  "iterations": 3,
-  "terminated_reason": "router_timeout",
-  "verdict": "incomplete",
+  "iterations": 1,
+  "terminated_reason": "router_rate_limited",
+  "verdict": "pass",
   "scope_violation": false,
   "scope_violations": [],
   "loop_input_tokens": 0,
   "loop_output_tokens": 0,
-  "notes": "Build stage completed. Diff written to artifact; not applied.",
-  "result_contract": 2,
-  "disposition": "interrupted",
-  "reason": "router_timeout"
+  "notes": "Build stage completed. Diff written to artifact; not applied."
 }
