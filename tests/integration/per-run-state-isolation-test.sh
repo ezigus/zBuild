@@ -209,17 +209,32 @@ EPHEMERAL_TMP="$TEST_TEMP_DIR/ephemeral-tmp"; mkdir -p "$EPHEMERAL_TMP"
 rm -f "$GLOBAL_STATE/events.jsonl" 2>/dev/null || true
 set +e
 # #1240: scrub ZBUILD_STATE_ROOT too — event-bus.sh derives its default events dir
-# from ${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}, so a leaked fence (from the #1127
-# nested sandbox) would divert this unpinned emit away from the ephemeral $TMPDIR.
+# from the data-root precedence, so a leaked fence (from the #1127 nested
+# sandbox) would divert this unpinned emit away from the expected location.
+#
+# #2004: that location is now under the DATA ROOT, not ${TMPDIR}. ADR-059 §1
+# makes the path the keying — a reclaimer deletes a `runs/<id>/` or an
+# `issues/<N>/` and the scope follows from where it sits — so a ${TMPDIR}
+# default sat outside every reclaimable path by construction. HOME is pinned to
+# $HOME_DIR here and no data/state root is set, so the default resolves to
+# $HOME_DIR/.zbuild/ephemeral-events/<pid>. TMPDIR stays pinned to prove the
+# emit does NOT land there.
 env -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_EVENTS_DB -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
     HOME="$HOME_DIR" TMPDIR="$EPHEMERAL_TMP" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" PATH="$PATH" \
     bash -c 'source "'"$REPO_ROOT"'/core/event-bus/event-bus.sh"; eb_emit_event "pipeline.start" k=v' >/dev/null 2>&1
 set -e
-if compgen -G "$EPHEMERAL_TMP/zbuild-ephemeral-events.*/events.jsonl" >/dev/null; then
-    assert_pass "T9: unpinned ad-hoc emit → ephemeral \$TMPDIR events dir"
+if compgen -G "$HOME_DIR/.zbuild/ephemeral-events/*/events.jsonl" >/dev/null; then
+    assert_pass "T9: unpinned ad-hoc emit → ephemeral dir under the data root"
+    # And explicitly NOT in $TMPDIR — the regression #2004 fixed.
+    if compgen -G "$EPHEMERAL_TMP/zbuild-ephemeral-events.*" >/dev/null; then
+        assert_fail "T9: unpinned ad-hoc emit must NOT write under \$TMPDIR (#2004)" \
+            "found a \${TMPDIR}-rooted events dir — unreclaimable by construction"
+    else
+        assert_pass "T9: unpinned ad-hoc emit wrote nothing under \$TMPDIR (#2004)"
+    fi
 else
-    assert_fail "T9: unpinned ad-hoc emit should write to an ephemeral \$TMPDIR dir" \
+    assert_fail "T9: unpinned ad-hoc emit should write under the data root (#2004)" \
         "no zbuild-ephemeral-events.* under $EPHEMERAL_TMP"
 fi
 if [[ -e "$GLOBAL_STATE/events.jsonl" ]]; then
