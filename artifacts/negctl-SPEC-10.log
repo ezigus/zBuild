@@ -1,0 +1,28 @@
+### SPEC-10 baseline tests/unit/build-false-completion-guard-test.sh
+
+[38;2;0;212;255m[1m  build _build_guard_false_completion — false-completion guard (#1532)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mA: failing acceptance testfile → returns failing path[0m
+  [38;2;74;222;128m✓[0m A: failing testfile → helper exits 1
+  [38;2;74;222;128m✓[0m A: failing_out is the failing testfile path
+
+  [38;2;0;212;255mB: passing acceptance testfile → no override[0m
+  [38;2;74;222;128m✓[0m B: passing testfile → helper exits 0
+  [38;2;74;222;128m✓[0m B: passing_out is empty (no failing testfile)
+
+  [38;2;0;212;255mC: no acceptance block (empty testfiles) → no override[0m
+  [38;2;74;222;128m✓[0m C: empty testfiles → helper exits 0
+  [38;2;74;222;128m✓[0m C: empty_out is empty (no testfiles)
+
+  [38;2;0;212;255mSPEC-7 [change]: inert_build → verdict=fail + data.build_kind=inert_build (#1832)[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] inert_build summary: verdict=fail (#1832)
+  [38;2;74;222;128m✓[0m [SPEC-7] inert_build summary: data.build_kind=inert_build (#1832)
+  [38;2;74;222;128m✓[0m [SPEC-7] inert_build summary: disposition=broken (#1832)
+  [38;2;74;222;128m✓[0m [SPEC-10] inert_build summary: result_contract:2 present
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 10 tests passed[0m
+
