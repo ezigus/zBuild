@@ -221,6 +221,85 @@ assert_eq "[SPEC-3] credential-refused persist writes data.identity_present=true
     "true" \
     "$(jq -r '.data.identity_present | tostring' "$_s3dir/artifacts/persist-result.json" 2>/dev/null)"
 
+# ─── [SPEC-7][change] the state branch carries persist's own result ─────────
+# Every other stage's result file is in the state branch — hydrate, the gates,
+# pr, teardown. persist's was in NEITHER branch: it was written AFTER the
+# snapshot, so the snapshot could never contain it, and the work branch carries
+# code only. The stage whose whole job is durability was the one stage with no
+# durable record (measured on zbuild/state/issue-1836: 90 commits, 8 result
+# files, no persist-result.json in any of them).
+#
+# A push cannot record its own outcome, so the branch copy carries
+# data.pushed = null. The authoritative pushed value stays in the LOCAL file
+# and the CI log. ADR-050 §3 amendment.
+print_test_section "[SPEC-7][change] persist-result.json reaches the state branch"
+
+_P7="$(_mk_repo p7)"
+_P7_STATE="$TEST_TEMP_DIR/p7-state"
+_seed_artifacts "$_P7_STATE"
+( cd "$_P7" && ZBUILD_ISSUE_NUMBER=4247 ZBUILD_ARTIFACT_DIR="$_P7_STATE/artifacts" \
+    ZBUILD_STATE_DIR="$_P7_STATE" persist_run persist "" ) >/dev/null 2>&1 || true
+
+_p7_branch="zbuild/state/issue-4247"
+
+# ONE commit, not two. The result file cannot be in the snapshot that describes
+# it, so persist snapshots twice — but the second AMENDS the first rather than
+# stacking on it. A second commit whose only delta is a status file is exactly
+# the commit spam ADR-050 §4 rules out ("identical snapshots are no-ops").
+_p7_commits="$( cd "$_P7" && git rev-list --count "$_p7_branch" 2>/dev/null || printf '0' )"
+assert_eq "[SPEC-7] a persist run adds exactly ONE commit to the state branch" \
+    "1" "$_p7_commits"
+# grep -q inside an if: `grep -c` exits 1 on zero matches, which under
+# `set -euo pipefail` aborts the whole file — and lint-grep-c bans the idiom.
+if ( cd "$_P7" && git ls-tree -r --name-only "$_p7_branch" 2>/dev/null ) \
+        | /usr/bin/grep -q 'artifacts/persist-result.json'; then
+    assert_pass "[SPEC-7] the snapshot on the state branch contains persist-result.json"
+else
+    assert_fail "[SPEC-7] the state branch must carry persist-result.json" \
+        "absent from $_p7_branch"
+fi
+
+# The branch copy is honest about what it cannot know.
+_p7_pushed="$( cd "$_P7" && git show "${_p7_branch}:artifacts/persist-result.json" 2>/dev/null \
+    | jq -r '.data.pushed | tostring' 2>/dev/null )"
+assert_eq "[SPEC-7] and records pushed=null there — a push cannot describe itself" \
+    "null" "$_p7_pushed"
+
+# The LOCAL copy carries the authoritative outcome.
+assert_eq "[SPEC-7] while the local copy records the real push outcome" "true" \
+    "$(jq -r '.data.pushed | tostring' "$_P7_STATE/artifacts/persist-result.json" 2>/dev/null)"
+assert_eq "[SPEC-7] and the local copy still reports its snapshot status" "saved" \
+    "$(jq -r '.data.snapshot' "$_P7_STATE/artifacts/persist-result.json" 2>/dev/null)"
+
+# ─── [amend-guard] amend must never discard an earlier boundary snapshot ────
+# persist amends ONLY when its own snapshot created the tip. If that snapshot
+# reports `unchanged` it created nothing, so the tip belongs to an earlier stage
+# boundary — amending there would silently delete a legitimate commit. This is
+# the failure mode that makes amend dangerous, so it is pinned directly.
+print_test_section "[amend-guard] an earlier boundary commit survives persist"
+
+_P8="$(_mk_repo p8)"
+_P8_STATE="$TEST_TEMP_DIR/p8-state"
+_seed_artifacts "$_P8_STATE"
+# A stage-boundary snapshot, taken by someone other than persist.
+( cd "$_P8" && _artifact_persist_snapshot "$_P8_STATE" 4248 ) >/dev/null 2>&1
+_p8_boundary="$( cd "$_P8" && git rev-parse refs/heads/zbuild/state/issue-4248 )"
+
+# persist now runs over the SAME artifacts, so its own snapshot is `unchanged`.
+( cd "$_P8" && ZBUILD_ISSUE_NUMBER=4248 ZBUILD_ARTIFACT_DIR="$_P8_STATE/artifacts" \
+    ZBUILD_STATE_DIR="$_P8_STATE" persist_run persist "" ) >/dev/null 2>&1 || true
+
+if ( cd "$_P8" && git merge-base --is-ancestor "$_p8_boundary" \
+        refs/heads/zbuild/state/issue-4248 ) 2>/dev/null; then
+    assert_pass "[amend-guard] the earlier boundary commit is still an ancestor"
+else
+    assert_fail "[amend-guard] persist must not amend a commit it did not create" \
+        "boundary $_p8_boundary was discarded"
+fi
+assert_eq "[amend-guard] and the result file still reached the branch" "1" \
+    "$( cd "$_P8" && git ls-tree -r --name-only refs/heads/zbuild/state/issue-4248 2>/dev/null \
+        | /usr/bin/grep -q 'artifacts/persist-result.json' && echo 1 || echo 0 )"
+
 # ─── [SPEC-6][guard] the suite leaves no state refs in the real checkout ─────
 # Every persist_run above must run inside a throwaway repo. If one does not, the
 # snapshot lands in this repository and a later push publishes it to origin.

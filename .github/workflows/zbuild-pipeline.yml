@@ -226,9 +226,18 @@ jobs:
           # error, `2>/dev/null || true` swallows it, the empty result reads as
           # "the stage never ran", and the backstop then pushes UNCONDITIONALLY —
           # breaking exactly-once on a healthy run that already pushed.
+          # ADR-059: read the LIVE artifacts/ path first, as input-resolve.sh
+          # does; the find fallback prunes restored-artifacts/, which holds a
+          # previous run's copy. An unanchored find reported one (run
+          # 33359409653: log said restored=76, the run had restored 95).
           persist_result=""
           if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR:-}" ]]; then
-            persist_result="$(find "$ZBUILD_STATE_DIR" -name 'persist-result.json' -print -quit 2>/dev/null || true)"
+            if [[ -f "$ZBUILD_STATE_DIR/artifacts/persist-result.json" ]]; then
+              persist_result="$ZBUILD_STATE_DIR/artifacts/persist-result.json"
+            else
+              persist_result="$(find "$ZBUILD_STATE_DIR" -type d -name 'restored-artifacts' -prune -o \
+                            -name 'persist-result.json' -print -quit 2>/dev/null || true)"
+            fi
           fi
           if [[ -z "$persist_result" ]]; then
             echo "::notice::no persist-result.json — run ended before the persist stage; pushing as backstop"
@@ -269,9 +278,18 @@ jobs:
         run: |
           # Same empty-path trap as the backstop step; here it would only
           # misreport, but a diagnostic that lies is worse than none.
+          # ADR-059: read the LIVE artifacts/ path first, as input-resolve.sh
+          # does; the find fallback prunes restored-artifacts/, which holds a
+          # previous run's copy. An unanchored find reported one (run
+          # 33359409653: log said restored=76, the run had restored 95).
           result_file=""
           if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR:-}" ]]; then
-            result_file="$(find "$ZBUILD_STATE_DIR" -name 'persist-result.json' -print -quit 2>/dev/null || true)"
+            if [[ -f "$ZBUILD_STATE_DIR/artifacts/persist-result.json" ]]; then
+              result_file="$ZBUILD_STATE_DIR/artifacts/persist-result.json"
+            else
+              result_file="$(find "$ZBUILD_STATE_DIR" -type d -name 'restored-artifacts' -prune -o \
+                            -name 'persist-result.json' -print -quit 2>/dev/null || true)"
+            fi
           fi
           if [[ -z "$result_file" ]]; then
             echo "::notice::persist-result.json not found (run ended before the persist stage)"
@@ -295,9 +313,18 @@ jobs:
         run: |
           # Same empty-path guard as the persist step: `find` with an empty
           # first argument searches the CWD and would report a foreign file.
+          # ADR-059: read the LIVE artifacts/ path first, as input-resolve.sh
+          # does; the find fallback prunes restored-artifacts/, which holds a
+          # previous run's copy. An unanchored find reported one (run
+          # 33359409653: log said restored=76, the run had restored 95).
           result_file=""
           if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR:-}" ]]; then
-            result_file="$(find "$ZBUILD_STATE_DIR" -name 'hydrate-result.json' -print -quit 2>/dev/null || true)"
+            if [[ -f "$ZBUILD_STATE_DIR/artifacts/hydrate-result.json" ]]; then
+              result_file="$ZBUILD_STATE_DIR/artifacts/hydrate-result.json"
+            else
+              result_file="$(find "$ZBUILD_STATE_DIR" -type d -name 'restored-artifacts' -prune -o \
+                            -name 'hydrate-result.json' -print -quit 2>/dev/null || true)"
+            fi
           fi
           if [[ -z "$result_file" ]]; then
             echo "::notice::hydrate-result.json not found (run ended before the hydrate stage)"
