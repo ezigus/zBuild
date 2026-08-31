@@ -494,6 +494,12 @@ _cycle_eval_one_condition() {
     case "$op" in
         eq) [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
         ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
+        # #1987: `in` matches any member of a space-separated set. Added because
+        # a closed vocabulary makes one-of genuinely necessary — two fault
+        # classes can share a destination, and expressing that as two edges
+        # needs a list grammar this parser does not have. `eq`/`ne` are
+        # unchanged, so every existing predicate behaves identically.
+        in) [[ " $expected " == *" $actual "* ]] && { _match="true"; _rc=0; } ;;
     esac
     _cycle_emit_predicate "exit_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
     return $_rc
@@ -562,6 +568,12 @@ _cycle_check_until() {
     case "$op" in
         eq) [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
         ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
+        # #1987: `in` matches any member of a space-separated set. Added because
+        # a closed vocabulary makes one-of genuinely necessary — two fault
+        # classes can share a destination, and expressing that as two edges
+        # needs a list grammar this parser does not have. `eq`/`ne` are
+        # unchanged, so every existing predicate behaves identically.
+        in) [[ " $expected " == *" $actual "* ]] && { _match="true"; _rc=0; } ;;
     esac
     _cycle_emit_predicate "exit_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
     # #833: stash the just-evaluated predicate so _cycle_render_predicate_result
@@ -773,6 +785,12 @@ _cycle_check_abort_when() {
     case "$op" in
         eq) [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
         ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
+        # #1987: `in` matches any member of a space-separated set. Added because
+        # a closed vocabulary makes one-of genuinely necessary — two fault
+        # classes can share a destination, and expressing that as two edges
+        # needs a list grammar this parser does not have. `eq`/`ne` are
+        # unchanged, so every existing predicate behaves identically.
+        in) [[ " $expected " == *" $actual "* ]] && { _match="true"; _rc=0; } ;;
     esac
     _cycle_emit_predicate "abort_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
     # #833 NOTE #2: only let abort_when overwrite the OUTPUT-banner predicate
@@ -816,6 +834,12 @@ _cycle_check_route_back() {
     case "$op" in
         eq) [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
         ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
+        # #1987: `in` matches any member of a space-separated set. Added because
+        # a closed vocabulary makes one-of genuinely necessary — two fault
+        # classes can share a destination, and expressing that as two edges
+        # needs a list grammar this parser does not have. `eq`/`ne` are
+        # unchanged, so every existing predicate behaves identically.
+        in) [[ " $expected " == *" $actual "* ]] && { _match="true"; _rc=0; } ;;
     esac
     _cycle_emit_predicate "route_back" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
     if [[ "$_match" == "true" ]]; then
@@ -1433,6 +1457,7 @@ _cycle_iter_dispatch() {
         # #1822: same defensive clear. A stale disposition bleeding into the
         # next member's dispatch event would misreport why THAT member stopped.
         _CYCLE_DISPATCH_DISPOSITION=""
+        _CYCLE_DISPATCH_FAULT=""
         _CYCLE_DISPATCH_DATA_KIND=""
         # ADR-025 (Wave 15-B #684) pre-flight: the sentinel may have been
         # armed by the runner's SIGINT trap between this stage and the last.
@@ -1624,7 +1649,8 @@ _cycle_iter_dispatch() {
             verdict="$_CYCLE_DISPATCH_VERDICT"
             status="$_CYCLE_DISPATCH_STATUS"
             blob="$(jq -c --arg s "$s" --arg v "$verdict" --arg st "$status" \
-                '. + {($s): {verdict:$v, status:$st}}' <<< "$blob" 2>/dev/null)" || blob="{}"
+                --arg ft "${_CYCLE_DISPATCH_FAULT:-}" \
+                '. + {($s): {verdict:$v, status:$st, fault:$ft}}' <<< "$blob" 2>/dev/null)" || blob="{}"
             if [[ $rc -ne 0 ]]; then
                 fail=$(( fail + 1 ))
             fi
@@ -1687,7 +1713,8 @@ _cycle_iter_dispatch() {
             verdict="$_CYCLE_DISPATCH_VERDICT"
             status="$_CYCLE_DISPATCH_STATUS"
             blob="$(jq -c --arg s "$s" --arg v "$verdict" --arg st "$status" \
-                '. + {($s): {verdict:$v, status:$st}}' <<< "$blob" 2>/dev/null)" || blob="{}"
+                --arg ft "${_CYCLE_DISPATCH_FAULT:-}" \
+                '. + {($s): {verdict:$v, status:$st, fault:$ft}}' <<< "$blob" 2>/dev/null)" || blob="{}"
             if [[ $rc -ne 0 ]]; then
                 fail=$(( fail + 1 ))
             fi
@@ -1786,7 +1813,8 @@ _cycle_iter_dispatch() {
         fi
         blob="$(jq -c --arg s "$s" --arg v "$verdict" --arg st "$status" \
             --arg d "${_CYCLE_DISPATCH_DISPOSITION:-}" --arg k "${_CYCLE_DISPATCH_DATA_KIND:-}" \
-            '. + {($s): {verdict:$v, status:$st, disposition:$d, kind:$k}}' <<< "$blob" 2>/dev/null)" || blob="{}"
+            --arg ft "${_CYCLE_DISPATCH_FAULT:-}" \
+            '. + {($s): {verdict:$v, status:$st, disposition:$d, kind:$k, fault:$ft}}' <<< "$blob" 2>/dev/null)" || blob="{}"
         if [[ $rc -ne 0 ]]; then
             fail=$(( fail + 1 ))
         fi

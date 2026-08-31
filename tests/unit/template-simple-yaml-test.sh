@@ -264,12 +264,16 @@ assert_eq "[SPEC-17] route_back.to == design_verify_cycle (earlier top-level uni
     "design_verify_cycle" "${_TPL_CYCLE_ROUTE_BACK_TO_build_test_cycle:-}"
 assert_eq "[SPEC-17] route_back.when.stage == gate-aggregator" \
     "gate-aggregator" "${_TPL_CYCLE_ROUTE_BACK_STAGE_build_test_cycle:-}"
-assert_eq "[SPEC-17] route_back.when.field == verdict" \
-    "verdict" "${_TPL_CYCLE_ROUTE_BACK_FIELD_build_test_cycle:-}"
-assert_eq "[SPEC-17] route_back.when.op == eq" \
-    "eq" "${_TPL_CYCLE_ROUTE_BACK_OP_build_test_cycle:-}"
-assert_eq "[SPEC-17] route_back.when.value == route_design" \
-    "route_design" "${_TPL_CYCLE_ROUTE_BACK_VALUE_build_test_cycle:-}"
+# #1987: the predicate keys on the declared FAULT class, not on a verdict that
+# had mutated into route_<target>. `in` because `specification` and `scope`
+# share this destination — with only `eq` available, one of them would have
+# silently stopped rewinding.
+assert_eq "[SPEC-17] route_back.when.field == fault" \
+    "fault" "${_TPL_CYCLE_ROUTE_BACK_FIELD_build_test_cycle:-}"
+assert_eq "[SPEC-17] route_back.when.op == in" \
+    "in" "${_TPL_CYCLE_ROUTE_BACK_OP_build_test_cycle:-}"
+assert_eq "[SPEC-17] route_back.when.value names both routable classes" \
+    "specification scope" "${_TPL_CYCLE_ROUTE_BACK_VALUE_build_test_cycle:-}"
 assert_eq "[SPEC-17] route_back.max == 1 (one re-author pass)" \
     "1" "${_TPL_CYCLE_ROUTE_BACK_MAX_build_test_cycle:-}"
 

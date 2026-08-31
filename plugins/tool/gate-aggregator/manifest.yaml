@@ -53,16 +53,22 @@ provides:
   events:
     - gate_aggregator.fail
     - gate_aggregator.pass
-    # #1757: more than one distinct route_target among the failed gates. Roster
-    # order picks the winner; this names every target seen so the loser is not
-    # discarded silently.
-    - gate_aggregator.route_conflict
+    # #1757/#1987: more than one distinct fault class among the failed gates.
+    # The vocabulary's table order picks the winner; this names every class seen
+    # so the loser is not discarded silently.
+    - gate_aggregator.fault_conflict
+    # #1987: a failed gate declared a word outside the closed vocabulary. Never
+    # selected, and never dropped in silence — gate and engine disagreeing about
+    # the contract is itself the finding.
+    - gate_aggregator.fault_unrecognised
 
 config:
+  # #1987: the aggregate verdict no longer mutates into route_<target>.
+  # exit_when still binds to verdict==pass; the template's route_back keys on
+  # the declared fault class.
   valid_verdicts:
     - pass
     - fail
-    - route_design
   tier_default: T0
 
 # The gate results are read by filename from the shared artifacts dir (the same

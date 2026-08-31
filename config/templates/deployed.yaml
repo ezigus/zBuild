@@ -100,9 +100,13 @@ build_test_cycle:
     to: design_verify_cycle
     when:
       stage: gate-aggregator
-      field: verdict
-      op: eq
-      value: route_design
+      # #1987: the template owns the mapping from a declared FAULT class to a
+      # destination. The gate says what KIND of problem it found; only the
+      # template knows that specifications and scope are authored upstream in
+      # design_verify_cycle. `in` because two classes share this destination.
+      field: fault
+      op: in
+      value: specification scope
     max: 1
 
 # ─── intake (leaf) ───────────────────────────────────────────────────────────

@@ -21,7 +21,7 @@
 
 # Size (CLAUDE.md "under 500 lines unless there is a strong reason"): over, and
 # left that way. The file is one contract end to end — SPEC failure vocabulary →
-# disposition → reason → route_target — and ADR-021 puts that mapping HERE
+# disposition → reason → fault — and ADR-021 puts that mapping HERE
 # precisely so the cycle engine stays generic and knows none of this gate's
 # vocabulary. Splitting it would scatter one mapping across two files for a line
 # count, which is how the engine learned a plugin's vocabulary in the first place.
@@ -101,7 +101,7 @@ _ag_classify_disposition() {
             # un-fixable case exhausts the budget and terminates cleanly.
             untagged_spec:* | tautology:* | inert_wiring:*)  had_recoverable=1 ;;
             # #1686: design-rooted, but NOT terminal — the cycle must reach the
-            # gate-aggregator for route_target=design to become verdict=route_design
+            # gate-aggregator for the declared fault to drive the rewind
             # and fire the route_back edge. Terminal would halt before the rewind.
             wiring_not_on_path:*)                           had_recoverable=1 ;;
             # #1670: a guard assertion that fails at the merge-base is the same
@@ -450,16 +450,16 @@ acceptance_gate_run() {
     # Since #1477 removed design's stub-writer, BUILD authors every test assertion
     # body — so a tautological [change] SPEC (assertion passes at the merge-base
     # baseline) can only be fixed by build re-authoring its own assertion. The gate
-    # therefore sets NO route_target for tautology: it flows through the existing
+    # therefore declares NO specification fault for tautology: it flows through the existing
     # gate_feedback → build edge and stays in build_test_cycle, with the gate-
     # aggregator surfacing the per-SPEC negctl diagnosis so build knows precisely
     # what to fix. Re-authoring is safe by construction — the mechanical negative
     # control re-runs next iteration and rejects a still-tautological result. NO
-    # terminal class currently sets route_target; the `route_target` carrier is
+    # terminal class currently declares a fault; the carrier is
     # retained (absent-when-empty) for any future genuinely design-rooted class.
     # SPEC-vocabulary → generic-field mapping stays HERE (ADR-021). verdict /
     # disposition / rc UNCHANGED.
-    local route_target=""
+    local fault=""
     if [[ ${#failures[@]} -gt 0 ]]; then
         failures_json="$(printf '%s\n' "${failures[@]}" | jq -R . | jq -s .)"
         disposition="$(_ag_classify_disposition "${failures[@]}")"
@@ -467,41 +467,46 @@ acceptance_gate_run() {
     else
         disposition="none"
     fi
-    # First live activation of the dormant route_target carrier (ADR-036 #1583):
-    # only design can fix a WIRING declaration, so route back instead of blaming build.
+    # #1987: these three classes are all "the SPECIFICATION is wrong" — the
+    # declaration, the classification, or the wiring the design asserted. The
+    # gate knows THAT much about its own failure; it does not name the stage
+    # that fixes it (ADR-055's rule for data, applied to control).
+    #
+    # ADR-036 #1583: only design can fix a WIRING declaration, so the failure
+    # must not be blamed on build.
     local f
     for f in "${failures[@]:-}"; do
-        [[ "$f" == wiring_not_on_path:* ]] && route_target="design" && break
+        [[ "$f" == wiring_not_on_path:* ]] && fault="specification" && break
     done
     # #1777: guard_regressed is design-rooted by construction. Build cannot fix a
     # SPEC tagged [guard] whose assertion asserts a change — the correction is
     # the tag (or the assertion), and both live in the design. Without a
-    # route_target the failure landed in the gate-aggregator's residual[]
+    # declared fault the failure landed in the gate-aggregator's residual[]
     # partition and was written to the BUILD-facing gate-feedback.md, so on #1809
     # the run rewound to design carrying a design-feedback.md that named only
     # shape-floor and never mentioned the offending SPEC. Design re-authored
     # nothing, build re-ran, and the same guard failed again.
     #
     # Disposition stays recoverable: terminal would halt the cycle before the
-    # aggregator reads route_target and emits route_design (same rationale as
+    # aggregator reads the fault and routes on it (same rationale as
     # #1686/#1711 above).
-    if [[ -z "$route_target" ]]; then
+    if [[ -z "$fault" ]]; then
         for f in "${failures[@]:-}"; do
             if [[ "$f" == guard_regressed:* ]]; then
-                route_target="design"
+                fault="specification"
                 break
             fi
         done
     fi
-    # #1711: inert_wiring on iter≥2 escalates to route_target=design. First
-    # build attempt (iter=1) is preserved as a real try; a still-inert target
-    # on iter≥2 is unreachable by build and must be corrected by design.
+    # #1711: inert_wiring on iter≥2 is a specification fault. The first build
+    # attempt (iter=1) is preserved as a real try; a still-inert target on
+    # iter≥2 is unreachable by build and the declaration itself is wrong.
     # Disposition stays recoverable — terminal would halt before the aggregator
-    # reads route_target and emits route_design (same rationale as #1686).
-    if [[ -z "$route_target" && "${ZBUILD_CYCLE_ITER:-1}" -ge 2 ]]; then
+    # reads the fault (same rationale as #1686).
+    if [[ -z "$fault" && "${ZBUILD_CYCLE_ITER:-1}" -ge 2 ]]; then
         for f in "${failures[@]:-}"; do
             if [[ "$f" == inert_wiring:* ]]; then
-                route_target="design"
+                fault="specification"
                 eb_emit_event "acceptance.gate.inert_wiring_escalated" \
                     "stage=acceptance-gate" \
                     "target=${f#inert_wiring:}" "iter=${ZBUILD_CYCLE_ITER:-1}"
@@ -535,19 +540,21 @@ acceptance_gate_run() {
     fi
 
     # ── Write result artifact ────────────────────────────────────────────────
-    # #1219: add the generic route_target scalar ONLY when set (design-rooted).
+    # #1219/#1987: add the declared fault class ONLY when set. An absent fault
+    # on a failing gate means "fixed where it was found" is not yet declared —
+    # the lint refuses that, so absence here is never silently a routing answer.
     # `--arg rt ""` + a `(if $rt=="" ...)` conditional keeps it absent otherwise,
     # so a build-fixable failure's artifact is byte-shape-identical to today.
     if [[ -n "$reason_msg" ]]; then
         jq -cn --arg v "$verdict" --arg d "$disposition" --arg r "$reason_msg" \
-            --arg rt "$route_target" --argjson f "$failures_json" \
+            --arg ft "$fault" --argjson f "$failures_json" \
             '{verdict:$v,disposition:$d,reason:$r,failures:$f}
-             + (if $rt=="" then {} else {route_target:$rt} end)' | atomic_write "$result_file"
+             + (if $ft=="" then {} else {fault:$ft} end)' | atomic_write "$result_file"
     else
         jq -cn --arg v "$verdict" --arg d "$disposition" \
-            --arg rt "$route_target" --argjson f "$failures_json" \
+            --arg ft "$fault" --argjson f "$failures_json" \
             '{verdict:$v,disposition:$d,failures:$f}
-             + (if $rt=="" then {} else {route_target:$rt} end)' | atomic_write "$result_file"
+             + (if $ft=="" then {} else {fault:$ft} end)' | atomic_write "$result_file"
     fi
 
     eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=$verdict"

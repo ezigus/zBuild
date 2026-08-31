@@ -85,10 +85,12 @@ provides:
     - acceptance.gate.worktree_failed
 
 config:
+  # #1987: `route_design` is retired. The verdict says pass/fail; a declared
+  # `fault` class says whose problem a failure is, and the template maps that
+  # class to a destination — so no stage names a stage.
   valid_verdicts:
     - pass
     - fail
-    - route_design
   tier_default: T1
 
 inputs:

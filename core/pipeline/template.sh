@@ -1308,8 +1308,8 @@ _tpl_validate_cycles() {
                     *) error "cycle '$cid': exit_when condition $ew_i: field must be verdict|status, got: $ew_f"; return 1 ;;
                 esac
                 case "$ew_o" in
-                    eq|ne) : ;;
-                    *) error "cycle '$cid': exit_when condition $ew_i: op must be eq|ne, got: $ew_o"; return 1 ;;
+                    eq|ne|in) : ;;
+                    *) error "cycle '$cid': exit_when condition $ew_i: op must be eq|ne|in, got: $ew_o"; return 1 ;;
                 esac
                 local found=0
                 for s in "${cs[@]}"; do
@@ -2563,8 +2563,8 @@ _tpl_validate_route_back() {
         local op_var="_TPL_CYCLE_ROUTE_BACK_OP_${safe}"
         op="${!op_var:-}"
         case "$op" in
-            eq|ne) ;;
-            *) error "load_template: cycle '$cid' route_back.when.op='${op:-<empty>}' is unsupported (only 'eq' and 'ne' are implemented, ADR-045)"
+            eq|ne|in) ;;
+            *) error "load_template: cycle '$cid' route_back.when.op='${op:-<empty>}' is unsupported (only 'eq', 'ne' and 'in' are implemented, ADR-045/#1987)"
                return 1 ;;
         esac
         local max_var="_TPL_CYCLE_ROUTE_BACK_MAX_${safe}"

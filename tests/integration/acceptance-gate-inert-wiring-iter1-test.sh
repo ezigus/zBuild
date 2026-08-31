@@ -3,12 +3,12 @@
 # inert_wiring escalation — build's FIRST attempt is preserved.
 #
 # [SPEC-2] (GUARD): on iteration 1 (ZBUILD_CYCLE_ITER unset or 1), an
-#   inert_wiring failure does NOT set route_target in the result artifact.
+#   inert_wiring failure does NOT set fault in the result artifact.
 #   Build still gets a real try before anything escalates to design.
 #
 # Deliberately its own file, for two reasons:
 #
-#  1. The escalation's [change] half (iter>=2 -> route_target=design) lives in
+#  1. The escalation's [change] half (iter>=2 -> fault=specification) lives in
 #     acceptance-gate-reachability-test.sh and correctly FAILS at the
 #     merge-base. The [guard] negative control runs a whole testfile and keys
 #     on the FILE's exit code, so a guard sharing that file is reported
@@ -106,9 +106,9 @@ assert_contains "iter=1: failures record the inert_wiring YAML target" \
 # The guard proper: the gate reached the escalation branch and declined to take
 # it. Read from the RESULT ARTIFACT the aggregator consumes, not from a
 # re-derived condition.
-route_target="$(jq -r '.route_target // empty' <<<"$RESULT" 2>/dev/null || echo '')"
-assert_eq "[SPEC-2] iter=1 inert_wiring sets no route_target — build keeps its first attempt" \
-    "" "$route_target"
+fault="$(jq -r '.fault // empty' <<<"$RESULT" 2>/dev/null || echo '')"
+assert_eq "[SPEC-2] iter=1 inert_wiring sets no fault — build keeps its first attempt" \
+    "" "$fault"
 
 # Corollary: the escalation event must be silent on the first attempt, or an
 # operator reading the stream would see an escalation that did not happen.
