@@ -123,27 +123,14 @@ _build_read_prior_acceptance() {
         end' "$f" 2>/dev/null || return 0
 }
 
-# _build_read_tautology_ids (#1583 / ADR-036)
-# Read the prior outer-cycle iter's acceptance-gate-result.json from
-# $ZBUILD_CYCLE_FEEDBACK_DIR/prior_acceptance_feedback.txt. Prints ONLY
-# tautology:<id> failure ids, one per line — the [change] SPECs whose tagged
-# assertion PASSES at the merge-base baseline (asserts nothing). Since #1477
-# BUILD owns the assertion bodies, build must re-author these to fail-at-baseline;
-# the negative control re-verifies next iteration. Empty when not in a cycle, dir
-# unset, file missing/empty, verdict=pass, or no tautology failures.
-_build_read_tautology_ids() {
-    local iter="${ZBUILD_CYCLE_ITER:-}"
-    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
-    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
-    local f="$fb_dir/prior_acceptance_feedback.txt"
-    [[ ! -s "$f" ]] && return 0
-    jq -r '
-        if (.verdict? // "pass") == "pass" then empty
-        else (.failures // [])[]
-             | select(type == "string" and startswith("tautology:"))
-             | sub("^tautology:"; "")
-        end' "$f" 2>/dev/null || return 0
-}
+# _build_read_tautology_ids — RETIRED (#2022).
+# Since #1477 build owned the assertion bodies, so the gate's tautology finding
+# was fed here for build to re-author. That is the agent whose control was found
+# inert rewriting the control. Assertion authorship now belongs to test-author,
+# and so does this feedback: the same
+# acceptance-gate-result.json -> cycle-feedback/prior_acceptance_feedback.txt
+# path carries it there. Removed rather than left unused so no future prompt
+# builder finds it and re-wires the defect.
 
 # _build_load_context — extracted context-loading block from _build_stage_run_inner.
 # Uses dynamic scoping: reads plan_json + artifact_dir from caller's locals; writes

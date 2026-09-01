@@ -23,8 +23,10 @@
 #                    rather than dropping the id or crashing the stage
 #   SPEC-6 [change]: context.sh actually BUILDS the id+text list — a formatter
 #                    that can render text nothing feeds it is inert
-#   SPEC-5 [change]: the unconditional "you MUST re-author" is replaced by a
-#                    rule that branches on whether the assertion tests its SPEC
+#   SPEC-5 [change]: build does not author or modify assertions at all (#2022).
+#                    The branching rule this SPEC once described still let build
+#                    decide an assertion did not test its SPEC and rewrite it —
+#                    self-certified correspondence, which is the defect
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -150,21 +152,28 @@ else
     assert_fail "[SPEC-4] the stage still produces a prompt" "prompt file empty"
 fi
 
-# ─── SPEC-5: the re-author instruction branches ──────────────────────────────
-# The old header licensed rewriting exactly the assertions the gate flagged,
-# with no statement of what the rewrite must mean. The replacement has to guard
-# BOTH directions: an assertion that does not test its SPEC is the thing to fix,
-# but code must not be bent to satisfy an assertion that is simply wrong.
-print_test_section "5. the re-author licence is replaced by a branching rule"
+# ─── SPEC-5: build does not author assertions (#2022) ────────────────────────
+# This SPEC used to assert a BRANCHING rule: correct the assertion when it does
+# not test its SPEC, else fix the code. Build was still the one judging which
+# branch applied, and still the one rewriting — self-certified correspondence,
+# and the defect two runs shipped (ADR-036:512, #1978). Assertion authorship now
+# belongs to test-author, so the branch is gone: a failing assertion means the
+# CODE is wrong, full stop.
+print_test_section "5. build does not author or modify assertions"
 
-assert_contains "[SPEC-5] the rule requires the assertion to test its SPEC" \
-    "$PROMPT" "must test what its SPEC"
-assert_contains "[SPEC-5] correcting a mismatched assertion is the remedy" \
-    "$PROMPT" "correct the assertion"
-assert_contains "[SPEC-5] the SPEC itself is never the thing that changes" \
-    "$PROMPT" "never change the SPEC"
-assert_contains "[SPEC-5] otherwise the code is what gets fixed" \
+assert_contains "[SPEC-5] build is told it does not author assertions" \
+    "$PROMPT" "do NOT author or modify acceptance assertions"
+assert_contains "[SPEC-5] a failing assertion means the code is wrong" \
     "$PROMPT" "fix the code"
+assert_contains "[SPEC-5] and the testfiles are off limits" \
+    "$PROMPT" "must not edit the testfiles"
+
+if grep -qF 'correct the assertion' <<< "$PROMPT"; then
+    assert_fail "[SPEC-5] the licence to correct an assertion is gone" \
+        "the old 'correct the assertion' wording is still present"
+else
+    assert_pass "[SPEC-5] the licence to correct an assertion is gone"
+fi
 
 if grep -qF 'which you MUST re-author' <<< "$PROMPT"; then
     assert_fail "[SPEC-5] the unconditional re-author licence is gone" \
