@@ -746,13 +746,9 @@ if [[ -n "$_ORIG_PSF" ]]; then eval "$_ORIG_PSF"; fi
 # (this block overwrote it, mirroring the SPEC-5 restore above).
 CANNED_PLAN="$_SAVED_CANNED_PLAN"
 
-# ─── Bonus: plan_cleanup runs cleanly ────────────────────────────────────────
-set +e
-plan_cleanup >/dev/null 2>&1
-rc=$?
-set -e
-
-assert_eq "plan_cleanup returns rc=0" "0" "$rc"
+# plan_cleanup was deleted in #2001 (ADR-062 §3): its entire body was
+# `return 0`. The engine now reclaims by reading the process group recorded
+# at dispatch, so a no-op per-stage hook has nothing left to assert.
 
 # ═══ #1727: a wall-clock timeout (rc=124) must reach the recovery path ═══════
 # At the merge-base `_plan_run_inner` returned 1 the moment router_rc != 0, and
