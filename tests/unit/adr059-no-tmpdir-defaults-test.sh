@@ -74,6 +74,44 @@ _s5="$(TMPDIR="$FAKE_TMP" ZBUILD_STATE_DIR="$STATE_DIR" ZBUILD_POOL_ROOT="$TEST_
 assert_eq "[SPEC-5] an explicit ZBUILD_POOL_ROOT pin still wins" \
     "$TEST_TEMP_DIR/pinned-pool/zbuild-pool-p1" "$_s5"
 
+# ─── SPEC-6 (#2004 audit): the ruflo-hive backend agrees with the other two ─
+# It was missed when the bash-parallel and sequential backends were fixed, and
+# it is worse than they were: no per-run namespace at all, and `zbuild-hive-*`
+# is absent from ZBUILD_TMPDIR_PATTERNS, so nothing swept it either.
+_s6="$(env -u ZBUILD_POOL_ROOT TMPDIR="$FAKE_TMP" ZBUILD_STATE_DIR="$STATE_DIR" ZBUILD_RUN_ID="r1" \
+        bash -c 'source "'"$REPO_ROOT"'/plugins/tool/orch-ruflo-hive/plugin.sh" >/dev/null 2>&1; _orch_hive_pool_dir p1')"
+case "$_s6" in
+    "$STATE_DIR"/pool/*) assert_pass "[SPEC-6] ruflo-hive pool dir is under runs/<run_id>/pool" ;;
+    "$FAKE_TMP"/*)       assert_fail "[SPEC-6] ruflo-hive pool dir is under runs/<run_id>/pool" \
+                             "landed in \$TMPDIR: $_s6" ;;
+    *)                   assert_fail "[SPEC-6] ruflo-hive pool dir is under runs/<run_id>/pool" "got: $_s6" ;;
+esac
+
+# ─── SPEC-7: an explicit ZBUILD_POOL_ROOT still wins for hive too ──────────
+_s7="$(TMPDIR="$FAKE_TMP" ZBUILD_STATE_DIR="$STATE_DIR" ZBUILD_POOL_ROOT="$TEST_TEMP_DIR/pinned-hive" \
+        bash -c 'source "'"$REPO_ROOT"'/plugins/tool/orch-ruflo-hive/plugin.sh" >/dev/null 2>&1; _orch_hive_pool_dir p1')"
+assert_eq "[SPEC-7] hive honours an explicit ZBUILD_POOL_ROOT" \
+    "$TEST_TEMP_DIR/pinned-hive/zbuild-hive-p1" "$_s7"
+
+# ─── SPEC-8: with NO state dir at all, the fallback is still reclaimable ────
+# The ad-hoc/test caller. This arm used to root in ${TMPDIR}, which quietly
+# reintroduced the leak the rest of this file exists to prevent — the event bus
+# and the pool backends had answered the same question two different ways.
+for _b in orch-bash-parallel orch-sequential orch-ruflo-hive; do
+    _fn="_orch_par_pool_dir"
+    [[ "$_b" == "orch-sequential" ]] && _fn="_orch_seq_pool_dir"
+    [[ "$_b" == "orch-ruflo-hive" ]] && _fn="_orch_hive_pool_dir"
+    _s8="$(env -u ZBUILD_POOL_ROOT -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
+            TMPDIR="$FAKE_TMP" ZBUILD_DATA_ROOT="$DATA_ROOT" ZBUILD_RUN_ID="r1" \
+            bash -c 'source "'"$REPO_ROOT"'/plugins/tool/'"$_b"'/plugin.sh" >/dev/null 2>&1; '"$_fn"' p1')"
+    case "$_s8" in
+        "$DATA_ROOT"/*) assert_pass "[SPEC-8] $_b falls back to the data root, not \$TMPDIR" ;;
+        "$FAKE_TMP"/*)  assert_fail "[SPEC-8] $_b falls back to the data root, not \$TMPDIR" \
+                            "landed in \$TMPDIR: $_s8" ;;
+        *)              assert_fail "[SPEC-8] $_b falls back to the data root, not \$TMPDIR" "got: $_s8" ;;
+    esac
+done
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

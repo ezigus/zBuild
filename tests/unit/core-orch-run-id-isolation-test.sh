@@ -53,8 +53,11 @@ unset ZBUILD_ORCH_SCRATCH
 unset ZBUILD_POOL_ROOT
 export ZBUILD_RUN_ID="run-AAA"
 p_a="$(_orch_par_pool_dir poolX)"
-assert_contains "P1 default pool dir is per-run (zbuild-runs/run-AAA)" \
-    "$p_a" "zbuild-runs/run-AAA/zbuild-pool-poolX"
+# #2004 (ADR-059 §1): pool dirs live under the run's area, not
+# ${TMPDIR}/zbuild-runs/. The per-run isolation this test exists for is
+# unchanged — only where the per-run directory sits.
+assert_contains "P1 default pool dir is per-run (run-AAA)" \
+    "$p_a" "run-AAA/pool/zbuild-pool-poolX"
 
 export ZBUILD_RUN_ID="run-BBB"
 p_b="$(_orch_par_pool_dir poolX)"
@@ -74,8 +77,8 @@ unset ZBUILD_POOL_ROOT
 source "$REPO_ROOT/plugins/tool/orch-sequential/plugin.sh"
 export ZBUILD_RUN_ID="run-AAA"
 sp_a="$(_orch_seq_pool_dir poolX)"
-assert_contains "P4 sequential pool dir is per-run (zbuild-runs/run-AAA)" \
-    "$sp_a" "zbuild-runs/run-AAA/zbuild-pool-poolX"
+assert_contains "P4 sequential pool dir is per-run (run-AAA)" \
+    "$sp_a" "run-AAA/pool/zbuild-pool-poolX"
 export ZBUILD_POOL_ROOT="/tmp/seqpools-898"
 assert_eq "P5 sequential ZBUILD_POOL_ROOT overrides" \
     "/tmp/seqpools-898/zbuild-pool-poolX" "$(_orch_seq_pool_dir poolX)"
