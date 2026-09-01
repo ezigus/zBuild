@@ -1,0 +1,11 @@
+[
+  "plugins/agent/build/tests/build-test.sh",
+  "tests/e2e/parity-local-vs-ci-test.sh",
+  "tests/e2e/plugin-event-balance-full-run-test.sh",
+  "tests/integration/full-pipeline-enforce-mode-test.sh",
+  "tests/integration/pipeline-preflight-missing-stage-test.sh",
+  "tests/unit/router-manifest-budget-test.sh",
+  "tests/unit/stage-checkpoint-test.sh",
+  "tests/unit/stage-resolution-parity-test.sh",
+  "tests/unit/template-resolvability-preflight-test.sh"
+]
