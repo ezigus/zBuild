@@ -111,7 +111,7 @@ _build_stage_run_inner() {
 
     if [[ -z "$scope_manifest" || -z "$plan_json_path" || -z "$output_diff_patch" || -z "$output_summary_json" ]]; then
         error "_build_stage_run_inner: requires <scope_manifest> <plan_json_path> <output_diff_patch> <output_summary_json> [artifact_dir]"
-        return 2
+        return 1
     fi
 
     mkdir -p "$artifact_dir"

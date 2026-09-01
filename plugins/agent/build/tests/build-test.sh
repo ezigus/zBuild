@@ -930,6 +930,11 @@ else
     assert_fail "[SPEC-7] build_stage_run reads plan path from ZBUILD_STAGE_INPUTS (rc=$rc_si)"
 fi
 
+# SPEC-7 grep assertion: diff.patch references the file declared in the custom plan.
+_si_diff="$STATE_DIR_SI/artifacts/diff.patch"
+assert_contains "[SPEC-7] diff.patch from ZBUILD_STAGE_INPUTS run references si-test.txt" \
+    "$(cat "$_si_diff" 2>/dev/null || true)" "si-test.txt"
+
 MOCK_LOOP_EDIT_FILE=""
 MOCK_LOOP_EDIT_CONTENT=""
 MOCK_LOOP_ITERATIONS=1
@@ -974,6 +979,83 @@ assert_eq "[SPEC-14] SIGINT summary has reason:sigint" "sigint" "$_s14_rsn"
 MOCK_LOOP_RC=0
 MOCK_LOOP_REASON="done_sentinel"
 MOCK_LOOP_ITERATIONS=1
+
+# ─── SPEC-15: empty args to _build_stage_run_inner returns rc=1 (not rc=2) ───
+print_test_section "SPEC-15: _build_stage_run_inner empty required args returns rc=1"
+
+set +e
+_build_stage_run_inner "" "" "" "" >/dev/null 2>&1
+rc_s15=$?
+set -e
+assert_exit_code "[SPEC-15] _build_stage_run_inner empty args returns rc=1 (not rc=2)" "1" "$rc_s15"
+
+# ─── SPEC-16: _build_load_context reads design.md from ZBUILD_STAGE_INPUTS ───
+print_test_section "SPEC-16: _build_load_context reads design.md path from ZBUILD_STAGE_INPUTS"
+
+ARTIFACT_DIR_S16="$TEST_TEMP_DIR/artifacts_s16"
+mkdir -p "$ARTIFACT_DIR_S16"
+PLAN_JSON_S16="$ARTIFACT_DIR_S16/plan.json"
+cat > "$PLAN_JSON_S16" <<'EOF'
+{
+  "schema_version": 1,
+  "goal": "SPEC-16 design path test",
+  "files": ["tests/fixtures/s16-test.txt"],
+  "steps": []
+}
+EOF
+
+# Custom design.md with a unique marker — not at the default artifact_dir location.
+CUSTOM_DESIGN_S16="$TEST_TEMP_DIR/custom-design-s16.md"
+cat > "$CUSTOM_DESIGN_S16" <<'EOF'
+# Design: SPEC-16 test
+
+SPEC-16-UNIQUE-DESIGN-ACCEPTANCE-TEXT-MARKER
+
+## Decision
+This is a custom design.md injected via ZBUILD_STAGE_INPUTS.
+EOF
+
+# ZBUILD_STAGE_INPUTS index with .inputs.design pointing to the custom path.
+STAGE_INPUTS_S16="$TEST_TEMP_DIR/stage-inputs-s16.json"
+jq -n \
+    --arg design "$CUSTOM_DESIGN_S16" \
+    '{"schema_version":1,"stage":"build","inputs":{"design":$design}}' \
+    > "$STAGE_INPUTS_S16"
+
+REPO_S16="$(setup_build_repo "repo_s16")"
+export ZBUILD_REPO_ROOT="$REPO_S16"
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_s16"
+mkdir -p "$ZBUILD_STATE_DIR"
+printf '%s' "$(git -C "$REPO_S16" rev-parse HEAD)" \
+    > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+MOCK_LOOP_EDIT_FILE=""
+MOCK_LOOP_EDIT_CONTENT=""
+MOCK_LOOP_ITERATIONS=1
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_RC=0
+
+: > "$_CAPTURED_PROMPT_FILE"
+export ZBUILD_STAGE_INPUTS="$STAGE_INPUTS_S16"
+set +e
+_build_stage_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$PLAN_JSON_S16" \
+    "$ARTIFACT_DIR_S16/diff.patch" \
+    "$ARTIFACT_DIR_S16/build-summary.json" \
+    "$ARTIFACT_DIR_S16" >/dev/null 2>&1
+set -e
+unset ZBUILD_STAGE_INPUTS
+
+_s16_prompt="$(cat "$_CAPTURED_PROMPT_FILE")"
+assert_contains \
+    "[SPEC-16] custom design.md text from ZBUILD_STAGE_INPUTS appears in build prompt" \
+    "$_s16_prompt" "SPEC-16-UNIQUE-DESIGN-ACCEPTANCE-TEXT-MARKER"
+
+MOCK_LOOP_EDIT_FILE=""
+MOCK_LOOP_EDIT_CONTENT=""
+MOCK_LOOP_ITERATIONS=1
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_RC=0
 
 # ─── Teardown ────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }
