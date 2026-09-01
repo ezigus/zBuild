@@ -227,15 +227,18 @@ jobs:
           # "the stage never ran", and the backstop then pushes UNCONDITIONALLY —
           # breaking exactly-once on a healthy run that already pushed.
           # ADR-059: read the LIVE artifacts/ path first, as input-resolve.sh
-          # does; the find fallback prunes restored-artifacts/, which holds a
-          # previous run's copy. An unanchored find reported one (run
-          # 33359409653: log said restored=76, the run had restored 95).
+          # does; the find fallback prunes restored-artifacts/ AND scratch/. Both hold
+          # copies that are not this run's result: restored-artifacts/ is a previous
+          # run's (33359409653 reported its restored=76 instead of this run's 95), and
+          # scratch/ holds throwaway writes because the engine redirects TMPDIR there
+          # (33474879520: the backstop and Surface disagreed one second apart, each
+          # finding a different scratch copy).
           persist_result=""
           if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR:-}" ]]; then
             if [[ -f "$ZBUILD_STATE_DIR/artifacts/persist-result.json" ]]; then
               persist_result="$ZBUILD_STATE_DIR/artifacts/persist-result.json"
             else
-              persist_result="$(find "$ZBUILD_STATE_DIR" -type d -name 'restored-artifacts' -prune -o \
+              persist_result="$(find "$ZBUILD_STATE_DIR" -type d \( -name 'restored-artifacts' -o -name 'scratch' \) -prune -o \
                             -name 'persist-result.json' -print -quit 2>/dev/null || true)"
             fi
           fi
@@ -279,15 +282,18 @@ jobs:
           # Same empty-path trap as the backstop step; here it would only
           # misreport, but a diagnostic that lies is worse than none.
           # ADR-059: read the LIVE artifacts/ path first, as input-resolve.sh
-          # does; the find fallback prunes restored-artifacts/, which holds a
-          # previous run's copy. An unanchored find reported one (run
-          # 33359409653: log said restored=76, the run had restored 95).
+          # does; the find fallback prunes restored-artifacts/ AND scratch/. Both hold
+          # copies that are not this run's result: restored-artifacts/ is a previous
+          # run's (33359409653 reported its restored=76 instead of this run's 95), and
+          # scratch/ holds throwaway writes because the engine redirects TMPDIR there
+          # (33474879520: the backstop and Surface disagreed one second apart, each
+          # finding a different scratch copy).
           result_file=""
           if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR:-}" ]]; then
             if [[ -f "$ZBUILD_STATE_DIR/artifacts/persist-result.json" ]]; then
               result_file="$ZBUILD_STATE_DIR/artifacts/persist-result.json"
             else
-              result_file="$(find "$ZBUILD_STATE_DIR" -type d -name 'restored-artifacts' -prune -o \
+              result_file="$(find "$ZBUILD_STATE_DIR" -type d \( -name 'restored-artifacts' -o -name 'scratch' \) -prune -o \
                             -name 'persist-result.json' -print -quit 2>/dev/null || true)"
             fi
           fi
@@ -314,15 +320,18 @@ jobs:
           # Same empty-path guard as the persist step: `find` with an empty
           # first argument searches the CWD and would report a foreign file.
           # ADR-059: read the LIVE artifacts/ path first, as input-resolve.sh
-          # does; the find fallback prunes restored-artifacts/, which holds a
-          # previous run's copy. An unanchored find reported one (run
-          # 33359409653: log said restored=76, the run had restored 95).
+          # does; the find fallback prunes restored-artifacts/ AND scratch/. Both hold
+          # copies that are not this run's result: restored-artifacts/ is a previous
+          # run's (33359409653 reported its restored=76 instead of this run's 95), and
+          # scratch/ holds throwaway writes because the engine redirects TMPDIR there
+          # (33474879520: the backstop and Surface disagreed one second apart, each
+          # finding a different scratch copy).
           result_file=""
           if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR:-}" ]]; then
             if [[ -f "$ZBUILD_STATE_DIR/artifacts/hydrate-result.json" ]]; then
               result_file="$ZBUILD_STATE_DIR/artifacts/hydrate-result.json"
             else
-              result_file="$(find "$ZBUILD_STATE_DIR" -type d -name 'restored-artifacts' -prune -o \
+              result_file="$(find "$ZBUILD_STATE_DIR" -type d \( -name 'restored-artifacts' -o -name 'scratch' \) -prune -o \
                             -name 'hydrate-result.json' -print -quit 2>/dev/null || true)"
             fi
           fi
