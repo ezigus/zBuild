@@ -266,7 +266,7 @@ if : > "$RO_TMP/.probe" 2>/dev/null; then
     SKIP=$((SKIP + 1))
     echo -e "  ${YELLOW}SKIP${RESET}: [SPEC-11] a read-only scratch dir does not block writes here (root?)" >&2
 else
-    # #2010: the baseline worktree is created under zbuild_engine_tmp, which
+    # #2010: the baseline worktree is created under zbuild_engine_tmpdir, which
     # prefers ZBUILD_STAGE_SCRATCH and no longer reads TMPDIR first. Pinning a
     # read-only TMPDIR stopped inducing the failure this case exists to check —
     # the assertion is unchanged, only the way the failure is induced.
@@ -274,7 +274,16 @@ else
     # mkdir -p on an existing directory succeeds even when it is read-only, so
     # the helper hands back $RO_TMP and the mktemp inside it fails, which is
     # exactly the uncreatable-worktree condition being exercised.
-    ZBUILD_STAGE_SCRATCH="$RO_TMP" TMPDIR="$RO_TMP" _run_gate "$WREPO" "$_DESIGN_MD"
+    # #2017: zbuild_engine_tmpdir tries, in order, the stage scratch (only when
+    # writable), the job's runtime/ area, the data root, and finally ${TMPDIR}.
+    # Every tier has to be unwritable for the uncreatable-worktree condition to
+    # arise — pinning one just makes it fall through to the next, which is the
+    # fail-open behaviour working as intended.
+    # `env` cannot invoke a shell function, so save/restore around a prefixed call.
+    _sd_save="${ZBUILD_STATE_DIR:-}"; unset ZBUILD_STATE_DIR
+    ZBUILD_STAGE_SCRATCH="$RO_TMP" ZBUILD_DATA_ROOT="$RO_TMP" TMPDIR="$RO_TMP" \
+        _run_gate "$WREPO" "$_DESIGN_MD"
+    [[ -n "$_sd_save" ]] && export ZBUILD_STATE_DIR="$_sd_save"
     chmod 700 "$RO_TMP"
     if grep -q "GUARD_REGRESSED_AT_BASELINE" <<< "$VIOL"; then
         assert_fail "[SPEC-11] an uncreatable baseline worktree SKIPs, never fails the design" "$VIOL"

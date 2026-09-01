@@ -439,13 +439,16 @@ _cleanup_scan_stashes() {
 # (#898: orch pool dirs now live under ${TMPDIR}/zbuild-runs/<run_id>/ and are
 # reaped by orch_shutdown — same as the pre-#898 flat zbuild-pool-* dirs, they
 # are intentionally NOT in this single-level scanner's pattern list.)
+# #2017: entries are deleted as their producers move in-tree. `zb-applycheck-*`
+# and `zbuild-ephemeral-events.*` both have zero producers now (#2004, #2010),
+# so sweeping for them is sweeping for nothing. An empty list is the evidence
+# that engine writes are reclaimable by path; a growing one is evidence they
+# are not.
 ZBUILD_TMPDIR_PATTERNS=(
-    "zb-applycheck-*"
     "zbuild-test-stage.*"
     "zb-loop-iters.*"
     "zb-test-auto.*"
     "zb-test.*"
-    "zbuild-ephemeral-events.*"
 )
 
 # ─── Tmpdir scanner (#594) ──────────────────────────────────────────────────

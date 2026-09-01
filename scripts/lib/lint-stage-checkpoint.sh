@@ -37,11 +37,11 @@ source "$_LSC_ROOT/core/pipeline/verdict.sh" >/dev/null 2>&1 || true
 # shellcheck source=./stage-checkpoint.sh
 source "$_LSC_ROOT/scripts/lib/stage-checkpoint.sh"
 
-# #2010: zbuild_engine_tmp names where engine code writes temp files.
+# #2010: zbuild_engine_tmpdir names where engine code writes temp files.
 # Lazy-sourced, same pattern lifecycle.sh uses for stage-scratch.sh: this
 # file is sourced from several entry points and cannot assume helpers.sh
 # arrived first. helpers.sh sources only compat.sh, so there is no cycle.
-if ! declare -F zbuild_engine_tmp >/dev/null 2>&1; then
+if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
     # shellcheck source=./helpers.sh
     source "$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/helpers.sh" 2>/dev/null || true
 fi
@@ -54,7 +54,7 @@ fi
 
 # A state dir that is definitively OUTSIDE the repo, used to resolve declared
 # paths for the containment check.
-_probe_state="$(mktemp -d "$(zbuild_engine_tmp)/zb-lint-cp.XXXXXX")"
+_probe_state="$(mktemp -d "$(zbuild_engine_tmpdir)/zb-lint-cp.XXXXXX")"
 trap 'rm -rf "$_probe_state"' EXIT
 mkdir -p "$_probe_state/artifacts"
 

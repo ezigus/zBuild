@@ -34,11 +34,11 @@
 # Source-only; no `set -e` at top level (would mutate caller options).
 
 
-# #2010: zbuild_engine_tmp names where engine code writes temp files.
+# #2010: zbuild_engine_tmpdir names where engine code writes temp files.
 # Lazy-sourced, same pattern lifecycle.sh uses for stage-scratch.sh: this
 # file is sourced from several entry points and cannot assume helpers.sh
 # arrived first. helpers.sh sources only compat.sh, so there is no cycle.
-if ! declare -F zbuild_engine_tmp >/dev/null 2>&1; then
+if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
     # shellcheck source=./helpers.sh
     source "$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/helpers.sh" 2>/dev/null || true
 fi
@@ -236,7 +236,7 @@ _negctl_guard_verdict() {
         # #1737: capture PER TESTFILE, never into the shared per-SPEC log.
         # $logfile accumulates every TESTFILE bound to this SPEC, so scanning it
         # would let file A's passing ✓ clear file B's failure.
-        _g_capfile="$(mktemp "$(zbuild_engine_tmp)/zb-negctl-guard.XXXXXX")" || _g_capfile=""
+        _g_capfile="$(mktemp "$(zbuild_engine_tmpdir)/zb-negctl-guard.XXXXXX")" || _g_capfile=""
         _negctl_run "$wt_dir/$_g_tf" "$wt_dir" "$_g_capfile" || _g_rc=$?
         # Fold the capture into the per-SPEC diagnostic log, preserving the
         # pre-#1737 artifact shape operators read.
@@ -337,7 +337,7 @@ acceptance_negctl_check() {
     done < <(acceptance_list_testfiles "$design_md")
 
     # Detached worktree at baseline; overlay each TESTFILE from HEAD.
-    local wt_dir; wt_dir="$(mktemp -d "$(zbuild_engine_tmp)/zb-negctl.XXXXXX")"
+    local wt_dir; wt_dir="$(mktemp -d "$(zbuild_engine_tmpdir)/zb-negctl.XXXXXX")"
     # shellcheck disable=SC2064
     trap "git -C '$repo_root' worktree remove --force '$wt_dir' >/dev/null 2>&1 || true; rm -rf '$wt_dir' 2>/dev/null || true" RETURN
     if ! git -C "$repo_root" worktree add --detach "$wt_dir" "$base_sha" >/dev/null 2>&1; then
@@ -431,8 +431,8 @@ acceptance_negctl_check() {
             # versa. The scratch files are folded into $logfile afterwards, so
             # the artifact shape operators read is unchanged.
             local _cap_base _cap_head
-            _cap_base="$(mktemp "$(zbuild_engine_tmp)/zb-negctl-base.XXXXXX")" || _cap_base=""
-            _cap_head="$(mktemp "$(zbuild_engine_tmp)/zb-negctl-head.XXXXXX")" || _cap_head=""
+            _cap_base="$(mktemp "$(zbuild_engine_tmpdir)/zb-negctl-base.XXXXXX")" || _cap_base=""
+            _cap_head="$(mktemp "$(zbuild_engine_tmpdir)/zb-negctl-head.XXXXXX")" || _cap_head=""
             _negctl_run "$wt_dir/$tf" "$wt_dir" "$_cap_base" || rc_base=$?
             _negctl_run "$repo_root/$tf" "$repo_root" "$_cap_head" || rc_head=$?
             if [[ -n "$logfile" ]]; then
@@ -578,7 +578,7 @@ acceptance_negctl_guard_precheck() {
         [[ -n "$tf" && -f "$repo_root/$tf" ]] && testfiles+=("$tf")
     done < <(acceptance_list_testfiles "$design_md" 2>/dev/null || true)
 
-    local wt_dir; wt_dir="$(mktemp -d "$(zbuild_engine_tmp)/zb-guardpre.XXXXXX")"
+    local wt_dir; wt_dir="$(mktemp -d "$(zbuild_engine_tmpdir)/zb-guardpre.XXXXXX")"
     # shellcheck disable=SC2064
     trap "git -C '$repo_root' worktree remove --force '$wt_dir' >/dev/null 2>&1 || true; rm -rf '$wt_dir' 2>/dev/null || true" RETURN
     if ! git -C "$repo_root" worktree add --detach "$wt_dir" "$base_sha" >/dev/null 2>&1; then
