@@ -105,7 +105,7 @@ set -e
 
 assert_exit_code "orch_spawn valid pool_id exits 0" "0" "$rc_spawn"
 
-pool_dir="${TMPDIR}/zbuild-hive-${pool}"
+pool_dir="$(_orch_hive_pool_dir "$pool")"   # #2004: derive, never hardcode
 
 if [[ -d "$pool_dir" ]]; then
     assert_pass "orch_spawn creates pool directory: $pool_dir"
@@ -302,7 +302,7 @@ set -e
 
 assert_exit_code "orch_shutdown valid pool_id exits 0" "0" "$rc_shut"
 
-pool_dir="${TMPDIR}/zbuild-hive-${pool}"
+pool_dir="$(_orch_hive_pool_dir "$pool")"   # #2004: derive, never hardcode
 if [[ ! -d "$pool_dir" ]]; then
     assert_pass "orch_shutdown removes pool directory"
 else
