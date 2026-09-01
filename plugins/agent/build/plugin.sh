@@ -194,17 +194,15 @@ _build_stage_run_inner() {
     local _acceptance_gap_ids
     _acceptance_gap_ids="$(_build_read_prior_acceptance 2>/dev/null || true)"
 
-    # #1583: tautological [change] SPECs (assertion passes at baseline) the gate
-    # flagged — build OWNS these assertion bodies (#1477) and must re-author them
-    # to fail-at-baseline. Explicitly re-authorable (the negative control polices it).
-    local _acceptance_tautology_ids
-    _acceptance_tautology_ids="$(_build_read_tautology_ids 2>/dev/null || true)"
+    # #2022: the tautology feed is gone. It handed build the SPECs whose
+    # control the gate had just condemned, for build to re-author — the agent
+    # whose control was found inert rewriting the control. It now reaches
+    # test-author, which owns assertion bodies.
 
     _build_compose_prompt_body "$prompt_input_file" "$_task_header" "$plan_payload" \
         "$_build_instructions" "$_design_decisions" "$_acceptance_testfiles" \
         "$_acceptance_spec_ids" "$_review_feedback_body" "$_acceptance_gap_ids" \
-        "$_feedback_body" "$_iter_n" \
-        "$_acceptance_tautology_ids"
+        "$_feedback_body" "$_iter_n"
 
     # ADR-050 (#1581): cross-run seed — when a prior RUN of this issue produced a
     # build-summary (restored onto this runner), append a short advisory note so

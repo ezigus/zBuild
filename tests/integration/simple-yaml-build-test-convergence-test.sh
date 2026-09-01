@@ -63,7 +63,7 @@ print_test_section "SPEC-2: cycle roster is the decomposed mechanical gate set"
 
 # #1129 Change C (ADR-012): lint/coverage/mutation dropped as cycle members.
 assert_eq "[SPEC-2] _TPL_CYCLE_STAGES_build_test_cycle" \
-    "build,test,shape-floor,acceptance-gate,secret-scan,gate-aggregator" \
+    "test-author,build,test,shape-floor,acceptance-gate,secret-scan,assertion-integrity,gate-aggregator" \
     "${_TPL_CYCLE_STAGES_build_test_cycle:-}"
 
 # ─── SPEC-3: fail→pass convergence at iter 2 ─────────────────────────────────

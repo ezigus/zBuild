@@ -113,7 +113,8 @@ _build_compose_prompt_body() {
     local _acceptance_gap_ids="$9"
     local _feedback_body="${10}"
     local _iter_n="${11}"
-    local _acceptance_tautology_ids="${12}"
+    # ${12} was _acceptance_tautology_ids — retired in #2022 with the
+    # re-author mandate it fed. Build no longer authors assertions.
 
     {
         printf '%s\n' "$_task_header"
@@ -127,7 +128,7 @@ _build_compose_prompt_body() {
         fi
         if [[ -n "$_acceptance_testfiles" ]]; then
             printf '\n## ACCEPTANCE TESTS (you MUST make these pass)\n'
-            printf 'Each assertion must test what its SPEC states. If an assertion does not test its SPEC, correct the assertion so that it does — never change the SPEC to match the assertion. If an assertion DOES test its SPEC and is failing, fix the code. You MUST NOT weaken or delete an assertion that tests its SPEC. A gate-flagged TAUTOLOGICAL assertion is one that passes at the merge-base without your change: re-author it so it tests its SPEC and would fail without the implementation — not so it tests something easier.\n'
+            printf 'You do NOT author or modify acceptance assertions. They were written from the design contract by a separate stage, before your implementation existed, and they are the contract you implement against. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion, and you must not edit the testfiles listed below; the spawn denies it and a mechanical guard checks it. If you believe an assertion genuinely does not test its SPEC, say so in your output and leave it alone: correcting it is the author stage\047s job, not yours (#2022, ADR-036).\n'
             printf 'Each test MUST contain an assert call whose label includes the [SPEC-n] tag for the SPEC it verifies (e.g. assert_eq "[SPEC-1] ..." exp act). The acceptance-gate (ADR-036) requires every SPEC-n to have a [SPEC-n]-tagged assertion. A CHANGE-behavior SPEC-n MUST have a tagged assertion that FAILS at the merge-base baseline and passes here (a tautological change-SPEC that passes without your implementation is rejected); a GUARD/invariant SPEC-n is tagged but NOT contorted to fail at baseline. See the per-id list below.\n'
             local _at_tf
             while IFS= read -r _at_tf; do
@@ -186,14 +187,6 @@ _build_compose_prompt_body() {
                 "$_prev_iter"
             printf '%s\n' "$_feedback_body"
             printf 'Fix the issues above before emitting LOOP_COMPLETE.\n'
-        fi
-        if [[ -n "$_acceptance_tautology_ids" ]]; then
-            printf '\n## TAUTOLOGICAL ASSERTIONS (you MUST re-author these — #1583)\n'
-            printf 'The acceptance gate flagged these [change] SPEC ids as TAUTOLOGICAL: their tagged assertion PASSED even at the merge-base baseline, WITHOUT your implementation — so the test proves nothing (the classic "green but inert" defect). This overrides the don'"'"'t-weaken charter above for THESE ids ONLY: re-authoring a false assertion into a real one is NOT weakening. Rewrite each so the assertion FAILS at the merge-base baseline (revert the change'"'"'s WIRING file → the assertion must fail) and PASSES with your implementation. See the STAGE SUMMARIES section for the per-SPEC diagnosis. The mechanical negative-control re-runs next iteration and will reject a still-tautological result, so make it a genuine control:\n'
-            local _tid
-            while IFS= read -r _tid; do
-                [[ -n "$_tid" ]] && printf -- '- [%s] re-author so the [%s]-tagged assertion FAILS at the merge-base baseline (reverting the WIRING file must break it)\n' "$_tid" "$_tid"
-            done <<< "$_acceptance_tautology_ids"
         fi
     } > "$_prompt_input_file"
 }

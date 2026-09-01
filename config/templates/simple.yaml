@@ -115,6 +115,22 @@ design_verify_cycle:
         input: design
         required: false
 
+# ─── test-author (leaf, advisory) ────────────────────────────────────────────
+# ADR-040 §5: it makes a model call, so it may not sit on the convergence path.
+# Its work is verified mechanically downstream — the test stage runs the
+# assertions and acceptance-gate proves they discriminate.
+test-author:
+  gate: auto
+  roles: [test_author]
+  router:
+    timeout_s: 600
+
+# ─── assertion-integrity (leaf, gate) ────────────────────────────────────────
+# Mechanical, no model.route — so it MAY gate (ADR-040 §5).
+assertion-integrity:
+  gate: auto
+  roles: [assertion_integrity]
+
 # ─── build_test_cycle (cycle) ────────────────────────────────────────────────
 # B6 (#1138, ADR-040 §2/§5): the cycle re-runs build/test then the decomposed
 # mechanical gates (shape-floor, acceptance-gate, secret-scan) and finally the
@@ -138,11 +154,22 @@ build_test_cycle:
   type: cycle
   description: Build, test, and run the mechanical gates until gate-aggregator passes
   flow:
+    # #2022: test-author runs FIRST. It authors the acceptance assertions from
+    # the design's SPEC sentences before build implements against them, so the
+    # code and the assertion are two independent readings rather than two
+    # artifacts of one. It never sees the diff.
+    - test-author
     - build
     - test
     - shape-floor
     - acceptance-gate
     - secret-scan
+    # #2022: mechanical backstop. The spawn denies build Edit() on the declared
+    # TESTFILES, but #1919 P5 measured that a Write(...) deny rule matches
+    # nothing — prevention is incomplete by construction. A fail here makes the
+    # aggregate non-pass, so the cycle iterates rather than converging on a
+    # rewritten assertion.
+    - assertion-integrity
     - gate-aggregator
   exit_when:
     stage: gate-aggregator
