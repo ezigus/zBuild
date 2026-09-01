@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "verdict": "pass",
+  "violations": [],
+  "guard_precheck": {
+    "declared": 4,
+    "verified": 4,
+    "failed": 0,
+    "skipped": []
+  }
+}
