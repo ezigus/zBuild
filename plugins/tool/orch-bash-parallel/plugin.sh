@@ -8,7 +8,7 @@
 # the backend-specific bits: pool-dir naming, pool_id validation, and the
 # orch_capabilities declaration.
 #
-# Pool layout: ${ZBUILD_POOL_ROOT:-${TMPDIR}/zbuild-runs/<run_id>}/zbuild-pool-<pool_id>/{results,pids}/ (#898)
+# Pool layout: ${ZBUILD_POOL_ROOT:-<issue-or-goal-area>/runs/<run_id>/pool}/zbuild-pool-<pool_id>/{results,pids}/ (#898, ADR-059 §1)
 #
 # Sourced library: inherits caller's pipefail; no set -euo pipefail.
 
@@ -26,21 +26,26 @@ source "$_ZBUILD_ORCH_PAR_ROOT/core/orch/local_engine.sh"
 
 # ─── _orch_par_pool_dir ──────────────────────────────────────────────────────
 _orch_par_pool_dir() {
-    # #898: namespace pool dirs per run so concurrent runs never share the
-    # ${TMPDIR}/zbuild-pool-* namespace. ZBUILD_POOL_ROOT overrides (default:
-    # ${TMPDIR}/zbuild-runs/<run_id>). ZBUILD_RUN_ID is exported by the runner.
+    # #898: namespace pool dirs per run so concurrent runs never share a pool
+    # namespace. ZBUILD_POOL_ROOT overrides. ZBUILD_RUN_ID is exported by the
+    # runner.
     # ADR-059 §1: pool dirs live at runs/<run_id>/pool/ under the issue's (or
     # goal's) area. ZBUILD_STATE_DIR already resolves to runs/<run_id>/, so the
     # pool sits inside something a reclaimer can name. The pre-#2004 default was
     # ${TMPDIR}-rooted, which is outside every reclaimable path by construction.
-    # ZBUILD_POOL_ROOT still overrides. The ${TMPDIR} arm remains only for a
-    # caller with no state dir at all, and is never taken in an engine run.
+    # ZBUILD_POOL_ROOT still overrides. A caller with no state dir at all
+    # resolves under the data root too — nothing here roots in ${TMPDIR}.
     local _root="${ZBUILD_POOL_ROOT:-}"
     if [[ -z "$_root" ]]; then
         if [[ -n "${ZBUILD_STATE_DIR:-}" ]]; then
             _root="${ZBUILD_STATE_DIR%/}/pool"
         else
-            _root="${TMPDIR:-/tmp}/zbuild-runs/${ZBUILD_RUN_ID:-default}"
+            # No state dir means no run — an ad-hoc or test caller. It still
+            # goes under the DATA ROOT, not ${TMPDIR}: ADR-059 §1 makes the path
+            # the keying, so a ${TMPDIR} fallback would be unreclaimable by
+            # construction and would reintroduce the very leak #2004 fixed.
+            # Same precedence the event bus uses for its unpinned default.
+            _root="${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}/runs/${ZBUILD_RUN_ID:-default}/pool"
         fi
     fi
     printf '%s' "${_root}/zbuild-pool-${1}"
