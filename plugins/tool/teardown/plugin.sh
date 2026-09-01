@@ -72,6 +72,29 @@ teardown_run() {
         ' "$_state_file" 2>/dev/null || true)
     fi
 
+    # ADR-062 §2: union in every stage recorded at DISPATCH.
+    #
+    # stage_statuses is written by _update_stage_status only on complete/failed
+    # — after a stage RETURNS. A stage killed mid-flight never returns, so it
+    # never appeared above and was never released: the external-signal paths
+    # freed `intake` only while `build` was demonstrably running (#1748, #2001).
+    #
+    # runtime/stages/<stage>.pgid is written by plugin_hook_call at dispatch
+    # (ADR-058 §1's declared purpose for runtime/), so it exists for exactly the
+    # stages that started, whether or not they finished.
+    if [[ -n "$_state_dir" && -d "$_state_dir/runtime/stages" ]]; then
+        local _pgf _pgstage _seen
+        for _pgf in "$_state_dir"/runtime/stages/*.pgid; do
+            [[ -e "$_pgf" ]] || continue
+            _pgstage="$(basename "$_pgf" .pgid)"
+            _seen=0
+            for _s in "${_executed[@]+"${_executed[@]}"}"; do
+                [[ "$_s" == "$_pgstage" ]] && { _seen=1; break; }
+            done
+            [[ "$_seen" -eq 0 ]] && _executed+=("$_pgstage")
+        done
+    fi
+
     # ── dry-run fast path ─────────────────────────────────────────────────────
     # When ZBUILD_CLEAN_DRY_RUN=1 (set by `zbuild clean --dry-run`), emit a
     # teardown.dry_run.would_clean event for each stage that WOULD be cleaned

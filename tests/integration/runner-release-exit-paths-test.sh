@@ -131,12 +131,15 @@ _prep() {
 # real regression takes (#1748: suites observed alive 15+ min after exit).
 #
 # Each case now names the stages whose cleanup must have run. The sets differ
-# by exit path because the teardown plugin iterates stages recorded EXECUTED in
-# pipeline-state.json: a stage killed mid-flight was never recorded, so it gets
-# no cleanup. SPEC-4/SPEC-5 therefore expect intake only. Whether an INTERRUPTED
-# stage should also be released is an engine question, not a test question —
-# raised separately; this assertion pins today's behaviour so a change to it
-# cannot pass unnoticed in either direction.
+# by exit path because a stage only reaches release once it has been dispatched.
+#
+# ADR-062 §2: reclamation reads the process group recorded at DISPATCH, not the
+# completion status map, so a stage killed mid-flight IS reclaimable. SPEC-4 and
+# SPEC-5 therefore expect `build` as well as `intake` — build had demonstrably
+# started (it wrote BUILD_STARTED) before the signal landed. Before #2001 both
+# freed `intake` only, because teardown iterated `.stage_statuses`, which
+# `_update_stage_status` writes only on complete/failed — i.e. after a stage
+# returns, which a killed stage never does.
 _assert_released() {
     local _case="$1"; shift
     local _marker; _marker="$(cat "$RELEASE_MARKER" 2>/dev/null || true)"
@@ -216,7 +219,7 @@ wait "$RUNNER_PID" 2>/dev/null || true
 # The EXIT trap dispatches release asynchronously w.r.t. this shell's `wait`
 # on some platforms; give the marker a bounded moment to appear.
 for _ in $(seq 1 50); do grep -q ':release' "$RELEASE_MARKER" 2>/dev/null && break; sleep 0.1; done
-_assert_released "SPEC-4" intake
+_assert_released "SPEC-4" intake build
 
 # ── SPEC-5: external hard kill (what an overrunning `timeout` produces) ──────
 # ADR-053 §2: assert on an observable event, never a wall-clock budget.
@@ -258,7 +261,7 @@ else
     kill "$_spec5_killer" 2>/dev/null || true
     wait "$_spec5_killer" 2>/dev/null || true
     for _ in $(seq 1 50); do grep -q ':release' "$RELEASE_MARKER" 2>/dev/null && break; sleep 0.1; done
-    _assert_released "SPEC-5" intake
+    _assert_released "SPEC-5" intake build
 fi
 
 # ── SPEC-6: a blocking cleanup hook cannot hold the exit open ────────────────

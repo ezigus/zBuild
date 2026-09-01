@@ -283,6 +283,43 @@ plugin_hook_call() {
             fi
         fi
 
+        # ADR-062 §1: record the dispatched stage's process group, at DISPATCH.
+        #
+        # This is what makes an interrupted stage reclaimable. Reclamation used
+        # to iterate `.stage_statuses`, which `_update_stage_status` writes only
+        # on complete/failed — i.e. after a stage RETURNS. A stage killed
+        # mid-flight never returns, so it was never recorded and never released:
+        # the external-signal paths freed `intake` only while `build` was
+        # demonstrably running (#1748, #2001).
+        #
+        # A record written here survives the stage's death; a cleanup hook
+        # cannot, because it needs the stage alive to run. That asymmetry is the
+        # whole reason this moved into the engine.
+        #
+        # `runtime/` is the area ADR-058 §1 already defines for "PIDs, process
+        # groups" — the definition existed with nothing writing to it. It sits
+        # under the run's area, so the record is reclaimable by path like
+        # everything else (ADR-059 §1).
+        #
+        # Fail-open, same rationale as scratch above: a stage is never refused
+        # dispatch because bookkeeping was unavailable.
+        if [[ "$hook_name" == "run" && -n "${ZBUILD_CURRENT_STAGE:-}" ]]; then
+            local _pg_dir="${_ws_state_dir}/runtime/stages"
+            if mkdir -p "$_pg_dir" 2>/dev/null; then
+                local _pg_id=""
+                if declare -F zbuild_pg_resolve >/dev/null 2>&1; then
+                    _pg_id="$(zbuild_pg_resolve "$$" 2>/dev/null || true)"
+                fi
+                [[ -n "$_pg_id" ]] || _pg_id="$(ps -o pgid= -p "$$" 2>/dev/null | tr -d ' ' || true)"
+                # The stage id is sanitised the same way stage scratch keys are:
+                # one path component, so no stage name can climb out of runtime/.
+                local _pg_key="${ZBUILD_CURRENT_STAGE//[^A-Za-z0-9_-]/_}"
+                if [[ -n "$_pg_id" && "$_pg_id" =~ ^[0-9]+$ ]]; then
+                    printf '%s' "$_pg_id" > "${_pg_dir}/${_pg_key}.pgid" 2>/dev/null || true
+                fi
+            fi
+        fi
+
         # #1809 (ADR-058 C9): load the write-boundary enforcer lazily, same
         # pattern as stage-scratch.sh above. Fail-open: an unloadable module
         # leaves the mark unset and write_boundary_check returns 0 immediately.
