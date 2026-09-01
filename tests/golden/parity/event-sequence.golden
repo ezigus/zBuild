@@ -63,9 +63,7 @@ plugin.cleanup.absent
 plugin.cleanup.absent
 plugin.cleanup.absent
 plugin.cleanup.absent
-plugin.cleanup.start
-plugin.result
-plugin.cleanup.complete
+plugin.cleanup.absent
 plugin.cleanup.absent
 plugin.cleanup.absent
 plugin.cleanup.absent
