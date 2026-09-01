@@ -397,8 +397,19 @@ zb_test_issue() {
 
 # Goal fixtures get the same treatment: the marker makes zbuild/state/goal-<hash>
 # traceable back to a test even though the hash itself is opaque.
+#
+# The hash is RECORDED as it is handed out, exactly as zb_test_issue records ids.
+# Without that, goal refs had no teardown and no guard — which is precisely how
+# the leak fixed in this branch survived a full identity sweep unnoticed. The
+# derivation mirrors zbuild_goal_key: sha256 of the text with all whitespace
+# stripped, truncated to 12 hex.
 zb_test_goal() {
-    printf '[zb-test] %s' "${1:-fixture}"
+    local text; text="$(printf '[zb-test] %s' "${1:-fixture}")"
+    local dir="${TEST_TEMP_DIR:-${TMPDIR:-/tmp}}"
+    local h
+    h="$(printf '%s' "$text" | tr -d '[:space:]' | shasum -a 256 | cut -c1-12)"
+    printf '%s\n' "$h" >> "$dir/.zb-test-goal-minted" 2>/dev/null || true
+    printf '%s' "$text"
 }
 
 # A throwaway repo WITH an origin. setup_git_temp_repo builds the working tree;
@@ -459,6 +470,15 @@ cleanup_test_env() {
             git -C "${REPO_ROOT:-$PWD}" update-ref -d \
                 "refs/heads/zbuild/state/issue-$_id" 2>/dev/null || true
         done < "$_minted"
+    fi
+    local _gminted="${TEST_TEMP_DIR:-}/.zb-test-goal-minted"
+    if [[ -n "${TEST_TEMP_DIR:-}" && -r "$_gminted" ]]; then
+        local _h
+        while IFS= read -r _h; do
+            [[ "$_h" =~ ^[0-9a-f]{12}$ ]] || continue
+            git -C "${REPO_ROOT:-$PWD}" update-ref -d \
+                "refs/heads/zbuild/state/goal-$_h" 2>/dev/null || true
+        done < "$_gminted"
     fi
 
     if [[ -n "$TEST_TEMP_DIR" && -d "$TEST_TEMP_DIR" ]]; then

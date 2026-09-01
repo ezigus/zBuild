@@ -248,6 +248,10 @@ export ZBUILD_SCOPE_OVERRIDE=1
 # We bypass intake by skipping the issue fetch — drive with --goal so it
 # doesn't try to gh-CLI an issue.
 RUNNER_STDERR="$TEST_TEMP_DIR/runner.stderr"
+# Assert the throwaway repo before the subshell: without this a failed cd would
+# be captured in runner_rc and read as a runner exit code rather than a setup
+# failure.
+[[ -d "$_ZB_REPO" ]] || { echo "zb_test_repo did not produce a repo" >&2; exit 1; }
 set +e
 ( cd "$_ZB_REPO" && bash "$REPO_ROOT/core/pipeline/runner.sh" \
     --goal "$_ZB_GOAL" \
@@ -255,6 +259,9 @@ set +e
     --no-resume \
     >"$TEST_TEMP_DIR/runner.stdout" \
     2>"$RUNNER_STDERR" )
+# shellcheck disable=SC2034  # captured so `set -e` below cannot swallow a
+# non-zero runner exit before the assertions run; the test asserts on the event
+# stream rather than the rc. Pre-existing, kept deliberately.
 runner_rc=$?
 set -e
 
