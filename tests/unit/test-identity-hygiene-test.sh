@@ -108,7 +108,12 @@ if git -C "$REPO_ROOT" rev-parse -q --verify "$_real_ref" >/dev/null 2>&1; then
     git -C "$REPO_ROOT" update-ref -d "$_real_ref" 2>/dev/null || true
     setup_test_env "zb-test-identity-3"
 else
+    # Re-establish the env on this path too. Without it SPEC-5 would run in the
+    # previous block's environment, and SPEC-4's invariant would be silently
+    # unverified while the file still reported a single failure.
     assert_fail "[SPEC-4] premise: could not create the sentinel ref" "$_real_ref absent"
+    cleanup_test_env
+    setup_test_env "zb-test-identity-3"
 fi
 
 # ─── [SPEC-5][guard] the suite leaves no state refs in the real checkout ────

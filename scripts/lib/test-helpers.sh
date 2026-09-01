@@ -426,8 +426,23 @@ zb_test_repo() {
 # looks unpassed from inside this file alone.
 zb_test_reserved_refs() {
     local repo="${1:-${REPO_ROOT:-$PWD}}"
-    git -C "$repo" for-each-ref --format='%(refname)' \
-        'refs/heads/zbuild/state/issue-9???????' 2>/dev/null || true
+    # Prefix glob, then a NUMERIC filter — not 'issue-9???????'. That counted
+    # characters, so it covered 90000000-99999999 only, while lint-test-identity
+    # and _cleanup_issue_ref_decision both gate on >= 90000000. An id above the
+    # 8-digit range would have passed both and been invisible here.
+    local _ref _n
+    while IFS= read -r _ref; do
+        [[ -n "$_ref" ]] || continue
+        _n="${_ref##*/issue-}"
+        [[ "$_n" =~ ^[0-9]+$ ]] || continue
+        # An explicit if, not `[[ … ]] && printf`: the && form returns non-zero
+        # when the test is false, and as the last command in the loop body that
+        # aborts callers running under `set -e`.
+        if [[ "$_n" -ge "${ZB_TEST_ISSUE_FLOOR:-90000000}" ]]; then
+            printf '%s\n' "$_ref"
+        fi
+    done < <(git -C "$repo" for-each-ref --format='%(refname)' \
+        'refs/heads/zbuild/state/issue-9*' 2>/dev/null || true)
 }
 
 cleanup_test_env() {

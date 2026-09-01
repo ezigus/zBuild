@@ -110,7 +110,7 @@ set +e
 ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID1" --resume 2>"$TEST_TEMP_DIR/stderr1"
 rc=$?
 set -e
-assert_eq "mismatch (state=100, --issue="$_ZB_ID1") exits non-zero" "2" "$rc"
+assert_eq "mismatch (state=$_ZB_ID2, --issue=$_ZB_ID1) exits non-zero" "2" "$rc"
 if grep -q "mismatch\|aborting" "$TEST_TEMP_DIR/stderr1"; then
     assert_pass "mismatch error message is clear"
 else
@@ -124,7 +124,7 @@ set +e
 ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr2"
 rc=$?
 set -e
-assert_eq "matching (state=100, --issue="$_ZB_ID2") exits 0 via dry-run" "0" "$rc"
+assert_eq "matching (state=$_ZB_ID2, --issue=$_ZB_ID2) exits 0 via dry-run" "0" "$rc"
 if ! grep -q "mismatch" "$TEST_TEMP_DIR/stderr2"; then
     assert_pass "matching values produce no 'mismatch' error"
 else

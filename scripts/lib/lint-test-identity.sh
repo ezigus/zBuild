@@ -47,7 +47,7 @@ while IFS= read -r hit; do
     [[ "$num" -ge 90000000 ]] && continue    # reserved test range
 
     _offenders+="  $file:$line: ${trimmed:0:90}"$'\n'
-done < <(grep -rnE "$PATTERN" tests/ core/ plugins/ 2>/dev/null || true)
+done < <(grep -rnE "$PATTERN" tests/ core/ plugins/ scripts/ 2>/dev/null || true)
 
 if [[ -n "$_offenders" ]]; then
     printf 'lint-test-identity: FAIL — a real issue number is used as test identity\n\n'
