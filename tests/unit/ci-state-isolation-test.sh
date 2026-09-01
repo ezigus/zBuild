@@ -19,6 +19,8 @@
 # SPEC-9[change]: the hydrate outcome is surfaced the same way, always (#1921)
 # SPEC-10[change]: both surface steps read the LIVE artifacts/ path, never a
 #                  restored copy of a previous run's result (ADR-059)
+# SPEC-11[change]: and the find fallback prunes scratch/ too — the engine
+#                  redirects TMPDIR there, so it holds throwaway copies
 #
 # SPEC-8 is #1921's requirement that a CI run's persist outcome be readable from
 # the job log, renumbered to 8 on the same rule as SPEC-7 below: this file's SPEC
@@ -253,7 +255,7 @@ fi
 
 # The prune is the actual protection: without it the fallback can still walk
 # into restored-artifacts/. Dropping it would otherwise stay green.
-if grep -qE "restored-artifacts'? -prune|-prune.*restored-artifacts" "$WF"; then
+if grep -qE "restored-artifacts.*-prune" "$WF"; then
     assert_pass "[SPEC-10] the find fallback prunes restored-artifacts/"
 else
     assert_fail "[SPEC-10] the find fallback must prune restored-artifacts/" \
@@ -268,6 +270,27 @@ for _stage in persist hydrate; do
         assert_fail "[SPEC-10] the ${_stage} step must read the live artifacts path" "not found in workflow"
     fi
 done
+
+# ── SPEC-11 [change]: the fallback must prune scratch/ as well ───────────────
+# Run 33474879520 proved restored-artifacts/ was only half the hazard. The
+# backstop step and the Surface step ran the same lookup ONE SECOND apart and
+# disagreed — the backstop parsed a result file ("backstop is a no-op") while
+# Surface printed verdict=? snapshot=? pushed=? reason=?. The uploaded artifact
+# had no persist-result.json under artifacts/ at all, because the upload
+# excludes scratch/ (ADR-058 §3) — which is exactly where the copies they each
+# found were living. The engine redirects TMPDIR into <state_dir>/scratch, so
+# every stage's throwaway writes land there.
+print_test_section "[SPEC-11][change] the find fallback prunes scratch/"
+
+_FALLBACKS="$(grep -cE "find \"\\\$ZBUILD_STATE_DIR\"" "$WF" || true)"
+_PRUNES_SCRATCH="$(grep -cE "\-name 'scratch' .*-prune|-prune.*'scratch'" "$WF" || true)"
+assert_eq "[SPEC-11] every result-file fallback prunes scratch/" \
+    "$_FALLBACKS" "$_PRUNES_SCRATCH"
+if [[ "${_FALLBACKS:-0}" -gt 0 ]]; then
+    assert_pass "[SPEC-11] and there is at least one fallback to guard"
+else
+    assert_fail "[SPEC-11] expected at least one result-file fallback" "found none"
+fi
 
 cleanup_test_env
 print_test_results
