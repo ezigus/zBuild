@@ -17,6 +17,12 @@ print_test_header "plugin: plan — integration (real claude stub, subprocess bo
 
 setup_test_env "plugin-plan-integration"
 
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
+
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
@@ -29,7 +35,7 @@ STATE_DIR="$TEST_TEMP_DIR/state"
 STATE_FILE="$STATE_DIR/pipeline-state.json"
 ARTIFACTS_DIR="$STATE_DIR/artifacts"
 mkdir -p "$STATE_DIR" "$ARTIFACTS_DIR"
-echo '{"schema_version":1,"run_id":"test","issue":"999","stage_statuses":{}}' > "$STATE_FILE"
+echo '{"schema_version":1,"run_id":"test","issue":"'"$_ZB_ID"'","stage_statuses":{}}' > "$STATE_FILE"
 
 cat > "$STATE_DIR/scope-manifest.md" <<'SCOPE'
 + core/
@@ -43,7 +49,7 @@ export ZBUILD_SCOPE_MANIFEST="$STATE_DIR/scope-manifest.md"
 
 export ZBUILD_GOAL="integration test goal"
 export ZBUILD_RUN_ID="integ-test"
-export ZBUILD_ISSUE=999
+export ZBUILD_ISSUE="$_ZB_ID"
 
 # Stub a real `claude` binary on PATH. route_to_model -> _route_call_claude
 # resolves it via `command -v claude` and then execs it.
@@ -335,7 +341,7 @@ rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null 
 : > "$ZBUILD_EVENTS_JSONL"
 export ZBUILD_GOAL="dogfood resume goal across two runs"
 export ZBUILD_PLAN_RESUME=1
-export ZBUILD_ISSUE_NUMBER=999
+export ZBUILD_ISSUE_NUMBER="$_ZB_ID"
 # Run 1: error mock with a distinctive partial reasoning sentinel (file channel,
 # scrub-safe). This must produce a scope_too_large context the second run resumes.
 _R1_RESULT="$TEST_TEMP_DIR/dogfood-run1-result.txt"

@@ -50,7 +50,7 @@ if printf '%s' "$prompt" | grep -q "LOOP_COMPLETE"; then
        '{result:$r, usage:{input_tokens:5, output_tokens:3}}'
 else
     # plan stage (default — wrapped per #476)
-    jq -n --arg r '{"schema_version":1,"issue":359,"title":"parity fixture","goal":"parity fixture goal","steps":[{"id":"step-1","description":"add parity fixture file","files":["tests/fixtures/parity-fixture.txt"],"estimated_lines":1}],"estimated_total_lines":1,"notes":""}' \
+    jq -n --arg r '{"schema_version":1,"issue":90000359,"title":"parity fixture","goal":"parity fixture goal","steps":[{"id":"step-1","description":"add parity fixture file","files":["tests/fixtures/parity-fixture.txt"],"estimated_lines":1}],"estimated_total_lines":1,"notes":""}' \
        '{type:"result",subtype:"success",result:$r,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 fi
 exit 0
@@ -63,7 +63,7 @@ cat > "$FIXTURE_BIN_DIR/gh" <<'MOCK'
 case "${1:-}" in
     pr)
         case "${2:-}" in
-            create) echo "https://github.com/testuser/testrepo/pull/359" ;;
+            create) echo "https://github.com/testuser/testrepo/pull/90000359" ;;
             *)      echo "" ;;
         esac
         ;;
@@ -86,7 +86,7 @@ done
 case "${1:-}" in
     rev-parse)
         if [[ "${2:-}" == "--abbrev-ref" ]]; then
-            echo "zbuild/issue-359"
+            echo "zbuild/issue-90000359"
         elif [[ "${2:-}" == "--show-toplevel" ]]; then
             echo "/tmp/mock-repo"
         else
@@ -229,5 +229,5 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 
 # #1270: CWD = the overlay repo so the resolver finds the fixture template.
 ( cd "$_FIXTURE_TPL_REPO" && bash "$REPO_ROOT/core/pipeline/runner.sh" \
-    --issue 359 \
+    --issue 90000359 \
     --template wave-b-parity-fixture )

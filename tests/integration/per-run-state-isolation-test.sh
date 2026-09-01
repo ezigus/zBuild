@@ -25,6 +25,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "per-run state isolation (#887)"
 setup_test_env "per-run-state-isolation-887"
+
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
 export ZBUILD_CONTRACT_VALIDATOR=warn
 
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
@@ -61,7 +67,7 @@ _sd_for() {
     HOME="$HOME_DIR" env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_DATA_ROOT \
         bash -c 'source "$1/scripts/lib/test-helpers.sh" >/dev/null 2>&1
                  zb_expected_run_state_dir "$2" "$3" "" "$4"' _ \
-        "$REPO_ROOT" "$OVERLAY_REPO" "887" "$1"
+        "$REPO_ROOT" "$OVERLAY_REPO" "$_ZB_ID" "$1"
 }
 
 
@@ -79,7 +85,7 @@ run_pipeline() {
         ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
         ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
         ZBUILD_RUN_ID="$run_id" HOME="$HOME_DIR" PATH="$PATH" "$@" \
-        bash "$RUNNER" --issue 887 --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
+        bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
     local rc=$?; set -e; return $rc
 }
 
@@ -113,7 +119,7 @@ set +e
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_RUN_ID="run-ccc" HOME="$HOME_DIR" PATH="$PATH" \
-    bash "$RUNNER" --issue 887 --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
+    bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
 rc=$?; set -e
 assert_eq "T4: explicit-state run exits 0" "0" "$rc"
 assert_file_exists "T4: explicit ZBUILD_STATE_DIR used verbatim (no runs/)" "$EXPLICIT/pipeline-state.json"
@@ -152,7 +158,7 @@ set +e
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_RUN_ID="run-eee" HOME="$HOME_DIR" PATH="$PATH" \
-    bash "$RUNNER" --issue 887 --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
+    bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
 t6_rc=$?; set -e
 # macOS $TMPDIR is /var/folders (/var -> /private/var symlink), so a literal
 # substring match on the captured ZBUILD_EVENTS_DIR can disagree with the

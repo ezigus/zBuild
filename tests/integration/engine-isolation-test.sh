@@ -28,6 +28,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "ADR-023 engine isolation (#1629)"
 setup_test_env "engine-isolation"
 
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
+
 # A throwaway git repo standing in for the target being worked on.
 TARGET="$TEST_TEMP_DIR/target"
 mkdir -p "$TARGET"
@@ -39,7 +45,7 @@ git -C "$TARGET" config user.email t@t; git -C "$TARGET" config user.name t
 # --dry-run keeps this cheap: the guard fires before any stage dispatch.
 _run_in() {
     local dir="$1"; shift
-    _OUT="$(cd "$dir" && bash "$REPO_ROOT/scripts/zbuild" pipeline start --issue 999 --dry-run "$@" 2>&1)"
+    _OUT="$(cd "$dir" && bash "$REPO_ROOT/scripts/zbuild" pipeline start --issue "$_ZB_ID" --dry-run "$@" 2>&1)"
     _RC=$?
 }
 
@@ -69,7 +75,7 @@ else
 fi
 
 # ── SPEC-4: env-var escape hatch is equivalent ──────────────────────────────
-_OUT="$(cd "$REPO_ROOT" && ZBUILD_DEV_ENGINE=1 bash "$REPO_ROOT/scripts/zbuild" pipeline start --issue 999 --dry-run 2>&1)"
+_OUT="$(cd "$REPO_ROOT" && ZBUILD_DEV_ENGINE=1 bash "$REPO_ROOT/scripts/zbuild" pipeline start --issue "$_ZB_ID" --dry-run 2>&1)"
 _RC=$?
 if [[ "$_RC" -ne 2 ]] && grep -q "dev-engine" <<< "$_OUT"; then
     assert_pass "[SPEC-4] ZBUILD_DEV_ENGINE=1 is an equivalent escape hatch"
@@ -111,7 +117,7 @@ fi
 # every dogfood run. Symlinking the repo reproduces it without copying the tree.
 LINK="$TEST_TEMP_DIR/engine-via-symlink"
 ln -s "$REPO_ROOT" "$LINK"
-_sl_out="$(cd "$LINK" && bash "$LINK/scripts/zbuild" pipeline start --issue 999 --dry-run 2>&1)"
+_sl_out="$(cd "$LINK" && bash "$LINK/scripts/zbuild" pipeline start --issue "$_ZB_ID" --dry-run 2>&1)"
 _sl_rc=$?
 if [[ "$_sl_rc" -eq 2 ]] && grep -q "engine isolation" <<< "$_sl_out"; then
     assert_pass "[SPEC-7] the guard still refuses when the engine is reached via a symlink"
@@ -123,7 +129,7 @@ fi
 # ── SPEC-8: the escape hatch still works through a symlink ─────────────────
 # Canonicalising must not make --dev-engine unreachable in the spelling where the
 # guard newly fires — otherwise SPEC-7 would trade a silent hole for a hard block.
-_sl_dev_out="$(cd "$LINK" && bash "$LINK/scripts/zbuild" pipeline start --issue 999 --dry-run --dev-engine 2>&1)"
+_sl_dev_out="$(cd "$LINK" && bash "$LINK/scripts/zbuild" pipeline start --issue "$_ZB_ID" --dry-run --dev-engine 2>&1)"
 _sl_dev_rc=$?
 if [[ "$_sl_dev_rc" -ne 2 ]] && grep -q "dev-engine" <<< "$_sl_dev_out"; then
     assert_pass "[SPEC-8] --dev-engine still permits the run via a symlinked path"

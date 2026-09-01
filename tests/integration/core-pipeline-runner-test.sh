@@ -14,6 +14,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "core/pipeline/runner — orchestrator behaviors (ADR-001, ADR-006)"
 setup_test_env "pipeline-runner"
+
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID2="$(zb_test_issue)"
 # Wave 12-E (#664): default is enforce. Stub plugins below lack honest
 # inputs/outputs blocks; opt out — this suite tests runner mechanics.
 export ZBUILD_CONTRACT_VALIDATOR=warn
@@ -95,6 +101,9 @@ set +e; bash "$RUNNER" --help >/dev/null 2>&1; rc=$?; set -e
 assert_eq "--help exits 0" "0" "$rc"
 
 # ─── Test 3: --issue with no value → exits 2 (controlled, not unbound var) ──
+# NOT an identity: `--issue` is deliberately given NO value here, and the 2 is
+# the file descriptor in `2>/dev/null`. The test asserts the runner rejects a
+# valueless flag with rc=2.  # lint-test-identity:allow
 set +e; bash "$RUNNER" --issue 2>/dev/null; rc=$?; set -e
 assert_eq "--issue with no value exits 2" "2" "$rc"
 
@@ -103,7 +112,7 @@ assert_eq "--goal with no value exits 2" "2" "$rc"
 
 # ─── Test 4: dry-run prints the plan without executing ──────────────────────
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
-out="$(bash "$RUNNER" --template runner-state-dir-minimal --issue 83 --dry-run 2>&1)"
+out="$(bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" --dry-run 2>&1)"
 # Fixture stages: intake → build (re-pointed from standard's intake/build/review).
 assert_contains "dry-run shows intake stage" "$out" "intake"
 assert_contains "dry-run shows build stage"  "$out" "build"
@@ -111,7 +120,7 @@ assert_file_not_exists "dry-run leaves state file untouched" "$STATE_DIR/pipelin
 
 # ─── Test 5: happy path → exits 0, emits pipeline.start + pipeline.end ──────
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
-set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
+set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "happy path exits 0" "0" "$rc"
 assert_file_exists "events.jsonl created" "$EVENTS_JSONL"
 
@@ -146,7 +155,7 @@ assert_eq "build stage_status=complete (ADR-006 enum)" "complete" "$build_status
 _make_plugin "build" "agent" 1
 rm -f "$EVENTS_JSONL" "$STATE_FILE"
 
-set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
+set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "mid-stage failure exits 1" "1" "$rc"
 assert_file_exists "events.jsonl present on failure" "$EVENTS_JSONL"
 
@@ -172,7 +181,7 @@ assert_eq "build stage_status=failed in state" "failed" "$build_fail_status"
 rm -rf "$PLUGINS_ROOT/agent/intake"
 rm -f "$EVENTS_JSONL" "$STATE_FILE"
 
-set +e; _no_plugin_out="$(bash "$RUNNER" --template runner-state-dir-minimal --issue 83 2>&1)"; rc=$?; set -e
+set +e; _no_plugin_out="$(bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" 2>&1)"; rc=$?; set -e
 assert_eq "missing required plugin exits 1 (warn: caught at dispatch)" "1" "$rc"
 assert_contains "dispatch-time missing-plugin error names the unresolved stage 'intake'" "$_no_plugin_out" "intake"
 
@@ -204,7 +213,7 @@ cat > "$PLUGINS_ROOT/agent/intake/plugin.sh" <<'EOF'
 intake_run() { sleep 5; return 0; }
 EOF
 
-bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1 &
+bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" >/dev/null 2>&1 &
 runner_pid=$!
 # #1149: wait for the SLOW intake stage's plugin.run.start, not merely
 # pipeline.start. plugin.run.start is emitted strictly AFTER pipeline.start
@@ -233,14 +242,14 @@ _make_plugin "build"   "agent" 0
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$STATE_DIR/platforms.json"
 
 # Re-pointed: the fixture's dry-run lists intake/build (was standard's intake/plan/build/review).
-out="$(bash "$RUNNER" --issue 83 --dry-run --template runner-state-dir-minimal 2>&1)"
+out="$(bash "$RUNNER" --issue "$_ZB_ID2" --dry-run --template runner-state-dir-minimal 2>&1)"
 assert_contains "--template runner-state-dir-minimal dry-run shows intake"  "$out" "intake"
 assert_contains "--template runner-state-dir-minimal dry-run shows build"   "$out" "build"
 
 # #1283 (ADR-047 §6): a named template whose file is absent now FAILS CLOSED
 # (was a hardcoded built-in `intake security-lens output` roster — `output` was
 # never a real stage). A run/preview needs a valid template.
-set +e; out="$(bash "$RUNNER" --issue 83 --dry-run --template nonexistent 2>&1)"; _rc_nt=$?; set -e
+set +e; out="$(bash "$RUNNER" --issue "$_ZB_ID2" --dry-run --template nonexistent 2>&1)"; _rc_nt=$?; set -e
 assert_eq "missing template fails closed (rc=2) [#1283]" "2" "$_rc_nt"
 assert_contains "missing template error names the template" "$out" "not found"
 
@@ -275,7 +284,7 @@ _make_role_plugin "intake-agent" "intake"  0
 _make_role_plugin "build-agent"  "builder" 0
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json" "$STATE_DIR/platforms.json"
 
-set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
+set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "role-based dispatch exits 0" "0" "$rc"
 
 role_complete=$(grep -c '"stage.complete"' "$EVENTS_JSONL" || true)
@@ -296,7 +305,7 @@ printf '{"schema_version":1,"repo_head_sha":"%s","detected":["node","ios"],"over
     "$current_sha" > "$STATE_DIR/platforms.json"
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 
-set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
+set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "fanout 2 platforms exits 0" "0" "$rc"
 
 # Re-pointed: fixture's 2 stages × 2 platforms = 4 plugin.run.start events via fanout.
@@ -338,7 +347,7 @@ rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 # ios:  resolve finds build-agent (generic)             → exit 1
 # → success_count=1, fail_count=1 → partial (rc=2)
 
-set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
+set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "partial fanout failure exits 1" "1" "$rc"
 
 partial_stage_fail=$(grep '"stage.fail"' "$EVENTS_JSONL" | grep -c '"partial"' || true)
@@ -410,7 +419,7 @@ ZBUILD_STATE_DIR="$A2_STATE_DIR" \
 ZBUILD_EVENTS_DIR="$A2_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$A2_EVENTS_JSONL" \
 ZBUILD_EVENTS_DB="/dev/null" \
-bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1 &   # #619: suppress info banner
+bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" >/dev/null 2>&1 &   # #619: suppress info banner
 a2_pid=$!
 # #1149: anchor the kill on the slow stage's plugin.run.start (not just
 # pipeline.start). It is emitted after the abort trap installs AND after intake
@@ -516,7 +525,7 @@ ZBUILD_STATE_DIR="$A3_STATE_DIR" \
 ZBUILD_EVENTS_DIR="$A3_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$A3_EVENTS_JSONL" \
 ZBUILD_EVENTS_DB="/dev/null" \
-bash "$RUNNER" --template runner-state-dir-minimal --issue 83 >/dev/null 2>&1 || true   # #619: suppress info banner
+bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" >/dev/null 2>&1 || true   # #619: suppress info banner
 
 if [[ -f "$A3_EVENTS_JSONL" ]]; then
     a3_violated=$(grep -c '"plugin.contract.violated"' "$A3_EVENTS_JSONL" || true)
@@ -548,7 +557,7 @@ rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 ZBUILD_TERM_WIDTH_OVERRIDE=100 \
 ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12345000 \
 NO_COLOR=1 \
-bash "$RUNNER" --template runner-state-dir-minimal --issue 83 2>"$I1_STDERR" >/dev/null
+bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" 2>"$I1_STDERR" >/dev/null
 
 I1_OUT="$(cat "$I1_STDERR")"
 assert_contains "I1 #508: stderr carries UTC timestamps" "$I1_OUT" "UTC"
@@ -570,7 +579,7 @@ set +e
 ZBUILD_TERM_WIDTH_OVERRIDE=100 \
 ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12345000 \
 NO_COLOR=1 \
-bash "$RUNNER" --template runner-state-dir-minimal --issue 83 2>"$I2_STDERR" >/dev/null
+bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" 2>"$I2_STDERR" >/dev/null
 set -e
 
 I2_OUT="$(cat "$I2_STDERR")"
@@ -584,14 +593,14 @@ rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 ZBUILD_TERM_WIDTH_OVERRIDE=100 \
 ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12345000 \
 NO_COLOR=1 \
-bash "$RUNNER" --template runner-state-dir-minimal --issue 83 2>"$I3_STDERR" >/dev/null
+bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" 2>"$I3_STDERR" >/dev/null
 I3_OUT="$(cat "$I3_STDERR")"
 
 assert_contains "I3 #525: terminal banner frame uses ═"            "$I3_OUT" "═"
 assert_contains "I3 #525: terminal banner labels pipeline.end"     "$I3_OUT" "pipeline.end"
 assert_contains "I3 #525: banner status word maps success→complete" "$I3_OUT" "Pipeline complete:"
 assert_contains "I3 #525: banner carries status=complete"          "$I3_OUT" "status=complete"
-assert_contains "I3 #525: banner carries run_id=83-derived"        "$I3_OUT" "issue=83"
+assert_contains "I3 #525: banner carries run_id=83-derived"        "$I3_OUT" "issue=$_ZB_ID2"
 assert_contains "I3 #525: banner carries 'took ' duration token"   "$I3_OUT" "(took "
 
 # Regression: event payload contract unchanged — pipeline.end event count = 1
@@ -606,7 +615,7 @@ set +e
 ZBUILD_TERM_WIDTH_OVERRIDE=100 \
 ZBUILD_STAGE_IO_NOW_MS_OVERRIDE=12345000 \
 NO_COLOR=1 \
-bash "$RUNNER" --template runner-state-dir-minimal --issue 83 2>"$I4_STDERR" >/dev/null
+bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" 2>"$I4_STDERR" >/dev/null
 set -e
 I4_OUT="$(cat "$I4_STDERR")"
 
@@ -686,7 +695,7 @@ ZBUILD_EVENTS_DIR="$I6_EVENTS_DIR" \
 ZBUILD_EVENTS_JSONL="$I6_EVENTS_JSONL" \
 ZBUILD_EVENTS_DB="/dev/null" \
 NO_COLOR=1 \
-bash "$RUNNER" --template runner-state-dir-minimal --issue 83 2>"$I6_STDERR" >/dev/null &
+bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" 2>"$I6_STDERR" >/dev/null &
 i6_pid=$!
 # Anchor the kill on plugin.run.start (trap armed + live child). Fail-fast (~15s):
 # locally it is near-instant; a box that can't get there in 15s is too sick to

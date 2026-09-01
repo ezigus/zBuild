@@ -21,6 +21,14 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "runner cycle rc → (action, status) mapping (#527)"
 setup_test_env "runner-cycle-rc-mapping-527"
 
+# #1921 follow-up: the runner resolves repo_root from CWD, so an in-process
+# `main` snapshots into whatever repository the test stands in. These files used
+# REAL issue numbers from the working checkout, adding commits to real issues'
+# state branches (measured: 3 per run onto issue-698). Reserved id + throwaway
+# repo; the cd below is what actually contains it.
+_ZB_ISSUE="$(zb_test_issue)"
+_ZB_REPO="$(zb_test_repo rc-action-mapping)"
+
 _drive() {
     local _rc="$1" _reason="$2"
     local _tmp; _tmp="$(mktemp -d "$TEST_TEMP_DIR/m-XXXXXX")"
@@ -35,6 +43,7 @@ _drive() {
         export ZBUILD_CONTRACT_VALIDATOR=warn
         export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
         # shellcheck disable=SC1091
+        cd "$_ZB_REPO" || exit 1
         source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
         # #979: resolve the owned route-back-cycles fixture (retired standard.yaml).
         resolve_template_file() { echo "$REPO_ROOT/tests/fixtures/templates/route-back-cycles.yaml"; }
@@ -57,7 +66,7 @@ _drive() {
             printf '{"verdict":"request_changes"}' > "$artdir/review.json"
             return 0
         }
-        main --issue 999 --template route-back-cycles >/dev/null 2>&1
+        main --issue "$_ZB_ISSUE" --template route-back-cycles >/dev/null 2>&1
     )
     printf '%s' "$_tmp"
 }

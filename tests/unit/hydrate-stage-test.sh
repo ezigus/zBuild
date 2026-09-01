@@ -18,6 +18,11 @@ source "$REPO_ROOT/plugins/tool/hydrate/plugin.sh"
 print_test_header "hydrate stage (#1074)"
 setup_test_env "zb-hydrate"
 
+# #1921 follow-up: reserved test identity (see zb_test_issue). The literals
+# here were real issue numbers; a run keyed to one writes fabricated prior
+# work onto that issue's state branch.
+_ZB_ID="$(zb_test_issue)"
+
 # _artifact_persist_snapshot builds a throwaway git index under
 # ${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}. Inheriting whatever the harness or
 # the CI job left in ZBUILD_STAGE_SCRATCH makes this test depend on ambient
@@ -46,7 +51,7 @@ mkdir -p "$_A_STATE/artifacts"
 printf 'prior plan\n' > "$_A_STATE/artifacts/plan.json"
 printf 'prior design\n' > "$_A_STATE/artifacts/design.md"
 _seed_rc=0
-( cd "$_H_AUTHOR" && _artifact_persist_snapshot "$_A_STATE" 7001 && _artifact_persist_push 7001 ) \
+( cd "$_H_AUTHOR" && _artifact_persist_snapshot "$_A_STATE" $_ZB_ID && _artifact_persist_push $_ZB_ID ) \
     >"$TEST_TEMP_DIR/seed.log" 2>&1 || _seed_rc=$?
 assert_exit_code "[SETUP] the author run snapshotted and pushed" "0" "$_seed_rc"
 [[ $_seed_rc -eq 0 ]] || cat "$TEST_TEMP_DIR/seed.log" >&2
@@ -72,9 +77,9 @@ _H_FRESH="$TEST_TEMP_DIR/fresh"
 _h_clone "$_H_FRESH"
 
 # Premise, asserted rather than assumed: this clone has neither ref.
-_h_refs="$( cd "$_H_FRESH" && git rev-parse -q --verify refs/heads/zbuild/state/issue-7001 >/dev/null 2>&1 && echo 1 || echo 0 )"
+_h_refs="$( cd "$_H_FRESH" && git rev-parse -q --verify refs/heads/zbuild/state/issue-$_ZB_ID >/dev/null 2>&1 && echo 1 || echo 0 )"
 assert_eq "[SPEC-1] premise: no local state ref in a fresh clone" "0" "$_h_refs"
-_h_refs="$( cd "$_H_FRESH" && git rev-parse -q --verify refs/remotes/origin/zbuild/state/issue-7001 >/dev/null 2>&1 && echo 1 || echo 0 )"
+_h_refs="$( cd "$_H_FRESH" && git rev-parse -q --verify refs/remotes/origin/zbuild/state/issue-$_ZB_ID >/dev/null 2>&1 && echo 1 || echo 0 )"
 assert_eq "[SPEC-1] premise: no remote-tracking state ref either" "0" "$_h_refs"
 
 # And the control: restore ALONE finds nothing here. Without this the SPEC below
@@ -83,7 +88,7 @@ assert_eq "[SPEC-1] premise: no remote-tracking state ref either" "0" "$_h_refs"
 # so echo it OUT rather than reading it after, which returns the parent's empty
 # copy and passes for the wrong reason.
 _h_control="$( cd "$_H_FRESH" \
-    && _artifact_persist_restore 7001 "$TEST_TEMP_DIR/control" >/dev/null 2>&1
+    && _artifact_persist_restore $_ZB_ID "$TEST_TEMP_DIR/control" >/dev/null 2>&1
     printf '%s' "${_ARTIFACT_PERSIST_LAST_STATUS:-}" )"
 assert_eq "[SPEC-1] control: restore without a fetch reports first-run" \
     "empty" "$_h_control"
@@ -93,7 +98,7 @@ mkdir -p "$_H_STATE/artifacts"
 export ZBUILD_ARTIFACT_DIR="$_H_STATE/artifacts"
 export ZBUILD_RESTORED_ARTIFACTS_DIR="$_H_STATE/restored-artifacts/artifacts"
 _rc=0
-( cd "$_H_FRESH" && ZBUILD_ISSUE_NUMBER=7001 ZBUILD_STATE_DIR="$_H_STATE" \
+( cd "$_H_FRESH" && ZBUILD_ISSUE_NUMBER=$_ZB_ID ZBUILD_STATE_DIR="$_H_STATE" \
     hydrate_run hydrate "" ) >/dev/null 2>&1 || _rc=$?
 assert_exit_code "[SPEC-1] hydrate returns 0" "0" "$_rc"
 assert_file_exists "[SPEC-1] prior plan.json was restored" \
@@ -118,7 +123,7 @@ printf 'NEWER local work\n' > "$_L_STATE/artifacts/plan.json"
 # kills the whole file, and with stderr redirected it does so SILENTLY — the
 # section header prints and nothing follows. That is uninterpretable in CI.
 _snap_rc=0
-( cd "$_H_LOCAL" && _artifact_persist_snapshot "$_L_STATE" 7001 ) \
+( cd "$_H_LOCAL" && _artifact_persist_snapshot "$_L_STATE" $_ZB_ID ) \
     >"$TEST_TEMP_DIR/localsnap.log" 2>&1 || _snap_rc=$?
 assert_exit_code "[SPEC-2] the local snapshot succeeded" "0" "$_snap_rc"
 [[ $_snap_rc -eq 0 ]] || cat "$TEST_TEMP_DIR/localsnap.log" >&2
@@ -126,9 +131,9 @@ assert_exit_code "[SPEC-2] the local snapshot succeeded" "0" "$_snap_rc"
 # `set -e`. Without it the section aborts and every later assertion silently
 # never runs — which is how this reached CI looking like one failure instead of
 # a whole section that never executed.
-_l_before="$( cd "$_H_LOCAL" && git rev-parse refs/heads/zbuild/state/issue-7001 2>/dev/null || true )"
+_l_before="$( cd "$_H_LOCAL" && git rev-parse refs/heads/zbuild/state/issue-$_ZB_ID 2>/dev/null || true )"
 if [[ -z "$_l_before" ]]; then
-    assert_fail "[SPEC-2] premise: local snapshot must create refs/heads/zbuild/state/issue-7001" \
+    assert_fail "[SPEC-2] premise: local snapshot must create refs/heads/zbuild/state/issue-$_ZB_ID" \
         "no ref — check git identity in the clone"
 else
     assert_pass "[SPEC-2] premise: the local snapshot created a ref"
@@ -138,10 +143,10 @@ _R_STATE="$TEST_TEMP_DIR/localwins-state"
 mkdir -p "$_R_STATE/artifacts"
 export ZBUILD_ARTIFACT_DIR="$_R_STATE/artifacts"
 export ZBUILD_RESTORED_ARTIFACTS_DIR="$_R_STATE/restored-artifacts/artifacts"
-( cd "$_H_LOCAL" && ZBUILD_ISSUE_NUMBER=7001 ZBUILD_STATE_DIR="$_R_STATE" \
+( cd "$_H_LOCAL" && ZBUILD_ISSUE_NUMBER=$_ZB_ID ZBUILD_STATE_DIR="$_R_STATE" \
     hydrate_run hydrate "" ) >/dev/null 2>&1
 
-_l_after="$( cd "$_H_LOCAL" && git rev-parse refs/heads/zbuild/state/issue-7001 2>/dev/null || true )"
+_l_after="$( cd "$_H_LOCAL" && git rev-parse refs/heads/zbuild/state/issue-$_ZB_ID 2>/dev/null || true )"
 assert_eq "[SPEC-2] the local branch ref is unmoved by the fetch" "$_l_before" "$_l_after"
 assert_contains "[SPEC-2] and the LOCAL (unpushed) content is what got restored" \
     "$(cat "$ZBUILD_RESTORED_ARTIFACTS_DIR/plan.json" 2>/dev/null)" "NEWER local work"
@@ -166,7 +171,7 @@ _S_STATE="$TEST_TEMP_DIR/srcfield-state"
 # stale data that already says status=restored.
 export ZBUILD_ARTIFACT_DIR="$_S_STATE/artifacts"
 export ZBUILD_RESTORED_ARTIFACTS_DIR="$_S_STATE/restored-artifacts/artifacts"
-( cd "$_H_SRC" && ZBUILD_ISSUE_NUMBER=7001 ZBUILD_STATE_DIR="$_S_STATE" \
+( cd "$_H_SRC" && ZBUILD_ISSUE_NUMBER=$_ZB_ID ZBUILD_STATE_DIR="$_S_STATE" \
     hydrate_run hydrate "" ) >/dev/null 2>&1 || true
 # Guard: the restore itself still worked (existing invariant, no [SPEC-N] tag).
 assert_eq "[source-guard] the fresh-clone restore still reports restored" "restored" \
@@ -181,8 +186,8 @@ assert_eq "[SPEC-4] a fresh clone records source=remote, not local" "remote" \
 # snapshot roots a new history and the force-push orphans origin's.
 print_test_section "[SPEC-5][change] hydrate adopts the fetched tip locally"
 
-_h_remote_tip="$( cd "$_H_SRC" && git rev-parse refs/remotes/origin/zbuild/state/issue-7001 )"
-_h_local_tip="$( cd "$_H_SRC" && git rev-parse -q --verify refs/heads/zbuild/state/issue-7001 2>/dev/null || echo absent )"
+_h_remote_tip="$( cd "$_H_SRC" && git rev-parse refs/remotes/origin/zbuild/state/issue-$_ZB_ID )"
+_h_local_tip="$( cd "$_H_SRC" && git rev-parse -q --verify refs/heads/zbuild/state/issue-$_ZB_ID 2>/dev/null || echo absent )"
 assert_eq "[SPEC-5] the local state ref now exists and matches the fetched tip" \
     "$_h_remote_tip" "$_h_local_tip"
 
@@ -204,7 +209,7 @@ _artifact_persist_restore() {
     return 1
 }
 _rc=0
-( cd "$_H_FRESH" && ZBUILD_ISSUE_NUMBER=7001 ZBUILD_STATE_DIR="$_P_STATE" \
+( cd "$_H_FRESH" && ZBUILD_ISSUE_NUMBER=$_ZB_ID ZBUILD_STATE_DIR="$_P_STATE" \
     hydrate_run hydrate "" ) >/dev/null 2>&1 || _rc=$?
 assert_exit_code "[SPEC-3] hydrate still returns 0 on a failed restore" "0" "$_rc"
 assert_file_not_exists "[SPEC-3] the half-extracted file was NOT promoted" \

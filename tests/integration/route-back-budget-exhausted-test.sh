@@ -20,6 +20,14 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "route_back budget exhausted → by-severity terminal (#1217)"
 setup_test_env "route-back-budget-exhausted"
 
+# #1921 follow-up: the runner resolves repo_root from CWD, so an in-process
+# `main` snapshots into whatever repository the test stands in. These files used
+# REAL issue numbers from the working checkout, adding commits to real issues'
+# state branches (measured: 3 per run onto issue-698). Reserved id + throwaway
+# repo; the cd below is what actually contains it.
+_ZB_ISSUE="$(zb_test_issue)"
+_ZB_REPO="$(zb_test_repo rb-exhausted)"
+
 _tmp="$(mktemp -d "$TEST_TEMP_DIR/rb-XXXXXX")"
 (
     set +e
@@ -32,6 +40,7 @@ _tmp="$(mktemp -d "$TEST_TEMP_DIR/rb-XXXXXX")"
     export ZBUILD_CONTRACT_VALIDATOR=warn
     export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
     # shellcheck disable=SC1091
+    cd "$_ZB_REPO" || exit 1
     source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
 
     cycle_orchestrator_run() {
@@ -53,7 +62,7 @@ _tmp="$(mktemp -d "$TEST_TEMP_DIR/rb-XXXXXX")"
     runner_read_stage_verdict() { echo "request_changes"; }
     plugin_hook_call() { return 0; }
 
-    main --issue 999 --template simple >/dev/null 2>&1
+    main --issue "$_ZB_ISSUE" --template simple >/dev/null 2>&1
 )
 
 _state="$_tmp/state/pipeline-state.json"

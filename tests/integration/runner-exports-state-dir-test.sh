@@ -20,6 +20,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "runner: exports ZBUILD_STATE_DIR to child plugins (#618)"
 setup_test_env "runner-618-export-state-dir"
+
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
 # Wave 12-E (#664): default is enforce. This test uses synthetic stub
 # plugins without honest inputs/outputs blocks; opt out of contract
 # validation since the assertions target runner mechanics, not contracts.
@@ -110,7 +116,7 @@ set +e
     ZBUILD_RUN_ID="$ZBUILD_RUN_ID" \
     HOME="$TEST_TEMP_DIR/home" \
     PATH="$PATH" \
-    bash "$RUNNER" --issue 618 --template runner-state-dir-minimal ) >/dev/null 2>&1
+    bash "$RUNNER" --issue "$_ZB_ID" --template runner-state-dir-minimal ) >/dev/null 2>&1
 rc=$?
 set -e
 # #887: with ZBUILD_STATE_DIR unset, a fresh run gets its own state dir. #141
@@ -120,8 +126,8 @@ set -e
 EXPECTED_STATE_DIR="$( HOME="$TEST_TEMP_DIR/home" \
     env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_DATA_ROOT \
     bash -c 'source "$1/scripts/lib/test-helpers.sh" >/dev/null 2>&1
-             zb_expected_run_state_dir "$2" 618 "" "$3"' _ \
-    "$REPO_ROOT" "$OVERLAY_REPO" "$ZBUILD_RUN_ID" )"
+             zb_expected_run_state_dir "$2" "$3" "" "$4"' _ \
+    "$REPO_ROOT" "$OVERLAY_REPO" "$_ZB_ID" "$ZBUILD_RUN_ID" )"
 
 assert_eq "runner exits 0" "0" "$rc"
 assert_file_exists "build stub captured its env" "$ENV_CAPTURE"

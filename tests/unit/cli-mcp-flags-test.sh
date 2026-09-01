@@ -15,6 +15,12 @@ print_test_header "zbuild CLI --mcp-* flags — unit tests (issue #96)"
 
 setup_test_env "cli-mcp-flags"
 
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
+
 _test_cleanup_hook() { cleanup_test_env; }
 
 # Locate bash 5 (required by compat.sh).
@@ -61,7 +67,7 @@ _run_mcp() {
 }
 
 # ─── TC-1: --mcp-server populates ZBUILD_MCP_SERVERS ────────────────────────
-_out="$(_run_mcp --mcp-server "http://mcp.example.com:8080" --issue 1)"
+_out="$(_run_mcp --mcp-server "http://mcp.example.com:8080" --issue "$_ZB_ID")"
 assert_contains "TC-1: ZBUILD_MCP_SERVERS contains the URL" \
     "$_out" "ZBUILD_MCP_SERVERS=http://mcp.example.com:8080"
 
@@ -69,7 +75,7 @@ assert_contains "TC-1: ZBUILD_MCP_SERVERS contains the URL" \
 _out="$(_run_mcp \
     --mcp-server "http://a.example.com" \
     --mcp-server "http://b.example.com" \
-    --issue 1)"
+    --issue "$_ZB_ID")"
 assert_contains "TC-2: first server URL present"  "$_out" "http://a.example.com"
 assert_contains "TC-2: second server URL present" "$_out" "http://b.example.com"
 # Verify newline-delimited accumulation: the two URLs must appear on consecutive lines
@@ -83,19 +89,19 @@ else
 fi
 
 # ─── TC-3: --mcp-transport sse sets ZBUILD_MCP_TRANSPORT=sse ─────────────────
-_out="$(_run_mcp --mcp-transport sse --issue 1)"
+_out="$(_run_mcp --mcp-transport sse --issue "$_ZB_ID")"
 assert_contains "TC-3: ZBUILD_MCP_TRANSPORT=sse" "$_out" "ZBUILD_MCP_TRANSPORT=sse"
 
 # ─── TC-4: --mcp-transport stdio sets ZBUILD_MCP_TRANSPORT=stdio ─────────────
-_out="$(_run_mcp --mcp-transport stdio --issue 1)"
+_out="$(_run_mcp --mcp-transport stdio --issue "$_ZB_ID")"
 assert_contains "TC-4: ZBUILD_MCP_TRANSPORT=stdio" "$_out" "ZBUILD_MCP_TRANSPORT=stdio"
 
 # ─── TC-5: --mcp-timeout sets ZBUILD_MCP_TIMEOUT ────────────────────────────
-_out="$(_run_mcp --mcp-timeout 60 --issue 1)"
+_out="$(_run_mcp --mcp-timeout 60 --issue "$_ZB_ID")"
 assert_contains "TC-5: ZBUILD_MCP_TIMEOUT=60" "$_out" "ZBUILD_MCP_TIMEOUT=60"
 
 # ─── TC-6: no MCP flags → vars remain unset (stub reports __unset__) ─────────
-_out="$(_run_mcp --issue 1)"
+_out="$(_run_mcp --issue "$_ZB_ID")"
 assert_contains "TC-6: ZBUILD_MCP_SERVERS unset"   "$_out" "ZBUILD_MCP_SERVERS=__unset__"
 assert_contains "TC-6: ZBUILD_MCP_TRANSPORT unset" "$_out" "ZBUILD_MCP_TRANSPORT=__unset__"
 assert_contains "TC-6: ZBUILD_MCP_TIMEOUT unset"   "$_out" "ZBUILD_MCP_TIMEOUT=__unset__"
@@ -103,7 +109,7 @@ assert_contains "TC-6: ZBUILD_MCP_TIMEOUT unset"   "$_out" "ZBUILD_MCP_TIMEOUT=_
 # ─── TC-7: unknown --mcp-transport value exits 1 ────────────────────────────
 _rc=0
 "$_BASH5" "$_fake_root/scripts/zbuild" pipeline start \
-    --mcp-transport grpc --issue 1 >/dev/null 2>&1 || _rc=$?
+    --mcp-transport grpc --issue "$_ZB_ID" >/dev/null 2>&1 || _rc=$?
 assert_eq "TC-7: unknown --mcp-transport exits 1" "1" "$_rc"
 
 print_test_results

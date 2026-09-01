@@ -18,6 +18,12 @@ print_test_header "artifact contract — A3: missing artifact triggers plugin.co
 
 setup_test_env "artifact-contract"
 
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
+
 EVENTS_DIR="$TEST_TEMP_DIR/events"
 # #511 F2: this test pins the standard template explicitly (#978 flipped the
 # default to simple); the F2 cycle wiring is irrelevant to artifact-contract
@@ -156,7 +162,7 @@ install_template_overlay "$OVERLAY_REPO" artifact-contract-minimal
     ZBUILD_EVENTS_DIR="$A3_EVENTS_DIR" \
     ZBUILD_EVENTS_JSONL="$A3_EVENTS_JSONL" \
     ZBUILD_EVENTS_DB="$A3_DIR/events.db" \
-    bash "$RUNNER" --template artifact-contract-minimal --issue 83 2>/dev/null ) || true
+    bash "$RUNNER" --template artifact-contract-minimal --issue "$_ZB_ID" 2>/dev/null ) || true
 
 # ─── Assert plugin.contract.violated event emitted ───────────────────────────
 if [[ -f "$A3_EVENTS_JSONL" ]]; then
@@ -258,7 +264,7 @@ cp "$A3_PLUGINS/tool/output/plugin.sh"            "$B_PLUGINS/tool/output/"
     ZBUILD_EVENTS_DIR="$B_EVENTS_DIR" \
     ZBUILD_EVENTS_JSONL="$B_EVENTS_JSONL" \
     ZBUILD_EVENTS_DB="$B_DIR/events.db" \
-    bash "$RUNNER" --template artifact-contract-minimal --issue 83 2>/dev/null ) || true
+    bash "$RUNNER" --template artifact-contract-minimal --issue "$_ZB_ID" 2>/dev/null ) || true
 
 if [[ -f "$B_EVENTS_JSONL" ]]; then
     b_violated="$(grep -c '"plugin.contract.violated"' "$B_EVENTS_JSONL" 2>/dev/null || true)"

@@ -23,6 +23,15 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "persist: one push entrypoint, invoked once (#1966)"
 setup_test_env "zb-persist-push"
 
+# #1921 follow-up: reserved test identity (see zb_test_issue). The literals
+# here were real issue numbers; a run keyed to one writes fabricated prior
+# work onto that issue's state branch.
+_ZB_ID1="$(zb_test_issue)"
+_ZB_ID2="$(zb_test_issue)"
+_ZB_ID3="$(zb_test_issue)"
+_ZB_ID4="$(zb_test_issue)"
+_ZB_ID5="$(zb_test_issue)"
+
 # A repo with a real (bare) origin, so a push is a push.
 ORIGIN="$TEST_TEMP_DIR/origin.git"; git init -q --bare "$ORIGIN"
 REPO="$TEST_TEMP_DIR/repo"; mkdir -p "$REPO"
@@ -43,9 +52,9 @@ print_test_section "[SPEC-1][change] zbuild persist --push (issue run)"
 _S1="$TEST_TEMP_DIR/s1"; _seed "$_S1"
 _rc=0
 ( cd "$REPO" && ZBUILD_STATE_DIR="$_S1" ZBUILD_ARTIFACT_DIR="$_S1/artifacts" \
-    ZBUILD_ISSUE_NUMBER=771 bash "$REPO_ROOT/scripts/zbuild" persist --push ) >/dev/null 2>&1 || _rc=$?
+    ZBUILD_ISSUE_NUMBER=$_ZB_ID1 bash "$REPO_ROOT/scripts/zbuild" persist --push ) >/dev/null 2>&1 || _rc=$?
 assert_exit_code "[SPEC-1] the subcommand exists and succeeds" "0" "$_rc"
-if git -C "$ORIGIN" rev-parse --verify --quiet "refs/heads/zbuild/state/issue-771" >/dev/null 2>&1; then
+if git -C "$ORIGIN" rev-parse --verify --quiet "refs/heads/zbuild/state/issue-$_ZB_ID1" >/dev/null 2>&1; then
     assert_pass "[SPEC-1] the issue's state branch reached origin"
 else
     assert_fail "[SPEC-1] no state branch on origin for an issue run" \
@@ -81,9 +90,9 @@ _S3="$TEST_TEMP_DIR/s3"; _seed "$_S3"
 printf 'aws: AKIA%s\n' "ABCDEFGHIJKLMNOP" > "$_S3/artifacts/leak.txt"
 _rc=0
 ( cd "$REPO" && ZBUILD_STATE_DIR="$_S3" ZBUILD_ARTIFACT_DIR="$_S3/artifacts" \
-    ZBUILD_ISSUE_NUMBER=772 bash "$REPO_ROOT/scripts/zbuild" persist --push ) >/dev/null 2>&1 || _rc=$?
+    ZBUILD_ISSUE_NUMBER=$_ZB_ID2 bash "$REPO_ROOT/scripts/zbuild" persist --push ) >/dev/null 2>&1 || _rc=$?
 assert_exit_code "[SPEC-3] still advisory: never changes the caller's fate" "0" "$_rc"
-if git -C "$ORIGIN" rev-parse --verify --quiet "refs/heads/zbuild/state/issue-772" >/dev/null 2>&1; then
+if git -C "$ORIGIN" rev-parse --verify --quiet "refs/heads/zbuild/state/issue-$_ZB_ID2" >/dev/null 2>&1; then
     assert_fail "[SPEC-3] a credential was PUSHED to origin" "the secret gate did not cover this path"
 else
     assert_pass "[SPEC-3] the push was refused — the gate covers the entrypoint"
@@ -108,7 +117,7 @@ _ip="$(jq -r 'if .data|has("identity_present") then (.data.identity_present|tost
 assert_eq "[SPEC-4] a run with no identity records identity_present=false" "false" "$_ip"
 
 _S5="$TEST_TEMP_DIR/s5"; _seed "$_S5"
-( cd "$REPO" && ZBUILD_ISSUE_NUMBER=773 ZBUILD_STATE_DIR="$_S5" \
+( cd "$REPO" && ZBUILD_ISSUE_NUMBER=$_ZB_ID3 ZBUILD_STATE_DIR="$_S5" \
     ZBUILD_ARTIFACT_DIR="$_S5/artifacts" bash "$REPO_ROOT/scripts/zbuild" persist --push ) >/dev/null 2>&1 || true
 _ip2="$(jq -r 'if .data|has("identity_present") then (.data.identity_present|tostring) else "MISSING" end' \
         "$_S5/artifacts/persist-result.json" 2>/dev/null)"
@@ -152,21 +161,21 @@ source "$REPO_ROOT/core/state/artifact-persist.sh"
 
 _S7="$TEST_TEMP_DIR/s7"; _seed "$_S7"
 ( cd "$REPO" && ZBUILD_STATE_DIR="$_S7" ZBUILD_ARTIFACT_DIR="$_S7/artifacts" \
-    ZBUILD_ISSUE_NUMBER=774 bash "$REPO_ROOT/scripts/zbuild" persist --push ) >/dev/null 2>&1 || true
+    ZBUILD_ISSUE_NUMBER=$_ZB_ID4 bash "$REPO_ROOT/scripts/zbuild" persist --push ) >/dev/null 2>&1 || true
 
 # Run IN-PROCESS, not in a subshell: _ARTIFACT_PERSIST_LAST_SOURCE is the thing
 # under test, and a subshell's assignment dies with it.
 _here="$PWD"
 # LOCAL: refs/heads/<branch> is present in this clone.
-cd "$REPO"; _artifact_persist_restore 774 "$TEST_TEMP_DIR/r-local" >/dev/null 2>&1 || true; cd "$_here"
+cd "$REPO"; _artifact_persist_restore $_ZB_ID4 "$TEST_TEMP_DIR/r-local" >/dev/null 2>&1 || true; cd "$_here"
 assert_eq "[SPEC-7] a restore from refs/heads reports source=local" \
     "local" "${_ARTIFACT_PERSIST_LAST_SOURCE:-MISSING}"
 
 # REMOTE: a fresh clone has only refs/remotes/origin/<branch> — the CI shape.
 CLONE="$TEST_TEMP_DIR/clone"
 git clone -q "$ORIGIN" "$CLONE" >/dev/null 2>&1
-( cd "$CLONE" && git fetch -q origin "+refs/heads/zbuild/state/issue-774:refs/remotes/origin/zbuild/state/issue-774" ) >/dev/null 2>&1 || true
-cd "$CLONE"; _artifact_persist_restore 774 "$TEST_TEMP_DIR/r-remote" >/dev/null 2>&1 || true; cd "$_here"
+( cd "$CLONE" && git fetch -q origin "+refs/heads/zbuild/state/issue-$_ZB_ID4:refs/remotes/origin/zbuild/state/issue-$_ZB_ID4" ) >/dev/null 2>&1 || true
+cd "$CLONE"; _artifact_persist_restore $_ZB_ID4 "$TEST_TEMP_DIR/r-remote" >/dev/null 2>&1 || true; cd "$_here"
 assert_eq "[SPEC-7] a restore from refs/remotes/origin reports source=remote" \
     "remote" "${_ARTIFACT_PERSIST_LAST_SOURCE:-MISSING}"
 
@@ -187,7 +196,7 @@ ln -s "$REPO_ROOT/core/state" "$_FAKE/core/state"
 printf '#!/usr/bin/env bash\n# defines no persist_run\n' > "$_FAKE/plugins/tool/persist/plugin.sh"
 
 _rc=0
-_out="$( cd "$REPO" && ZBUILD_STATE_DIR="$TEST_TEMP_DIR/s8" ZBUILD_ISSUE_NUMBER=775 \
+_out="$( cd "$REPO" && ZBUILD_STATE_DIR="$TEST_TEMP_DIR/s8" ZBUILD_ISSUE_NUMBER=$_ZB_ID5 \
     bash "$_FAKE/scripts/zbuild" persist --push 2>&1 )" || _rc=$?
 if [[ "$_rc" -eq 0 ]]; then
     assert_fail "[SPEC-8] a plugin that defines no persist_run exited 0" \

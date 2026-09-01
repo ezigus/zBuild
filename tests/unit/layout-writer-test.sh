@@ -28,6 +28,11 @@ source "$REPO_ROOT/scripts/lib/worktree.sh"
 print_test_header "layout WRITER — a real run lands under its issue (#141)"
 setup_test_env "zb-layout-writer"
 
+# #1921 follow-up: 1809 is a real issue. Every occurrence here is the SAME
+# logical id — the identity, the run-id suffix and the expected paths — so it
+# becomes one reserved id rather than N literals that could drift apart.
+_ZB_ISSUE="$(zb_test_issue)"
+
 # A repo with a known remote, so the repo segment is deterministic.
 _repo="$TEST_TEMP_DIR/repo"; mkdir -p "$_repo"
 (
@@ -72,15 +77,15 @@ export ZBUILD_RUN_ROOT="$TEST_TEMP_DIR/runroot"
 # ─── [SPEC-1][change] a real run's STATE lands under its issue ──────────────
 print_test_section "[SPEC-1][change] the writer nests state under issues/<N>"
 
-_drive 1809
-_expect_state="$( cd "$_repo" && zbuild_layout_run_state_dir issue-1809 r-1809 )"
+_drive "$_ZB_ISSUE"
+_expect_state="$( cd "$_repo" && zbuild_layout_run_state_dir issue-$_ZB_ISSUE r-$_ZB_ISSUE )"
 assert_file_exists "[SPEC-1] state written at the ISSUE-keyed path" \
     "$_expect_state/pipeline-state.json"
 # And NOT at the flat one. Asserting only the positive would still pass if the
 # writer wrote both, or if the expectation itself drifted.
-if [[ -f "$ZBUILD_STATE_ROOT/runs/r-1809/pipeline-state.json" ]]; then
+if [[ -f "$ZBUILD_STATE_ROOT/runs/r-$_ZB_ISSUE/pipeline-state.json" ]]; then
     assert_fail "[SPEC-1] state ALSO landed in the pre-#141 flat path" \
-        "the switch did not take effect: $ZBUILD_STATE_ROOT/runs/r-1809"
+        "the switch did not take effect: $ZBUILD_STATE_ROOT/runs/r-$_ZB_ISSUE"
 else
     assert_pass "[SPEC-1] and NOT in the pre-#141 flat path"
 fi
@@ -90,8 +95,8 @@ fi
 # One tree per issue is what removes the #1658/#1869 collision by construction.
 print_test_section "[SPEC-2][change] one tree per ISSUE (ADR-059 §2)"
 
-_wt_issue="$( cd "$_repo" && zbuild_worktree_path issue-1809 )"
-assert_contains "[SPEC-2] the tree path is issue-keyed" "$_wt_issue" "/issues/1809/worktree"
+_wt_issue="$( cd "$_repo" && zbuild_worktree_path issue-$_ZB_ISSUE )"
+assert_contains "[SPEC-2] the tree path is issue-keyed" "$_wt_issue" "/issues/$_ZB_ISSUE/worktree"
 _rec="$_expect_state/run-worktree.txt"
 if [[ -f "$_rec" ]]; then
     assert_eq "[SPEC-2] the run recorded the ISSUE-keyed tree" "$_wt_issue" "$(head -1 "$_rec")"
@@ -102,8 +107,8 @@ fi
 # ─── [SPEC-3][change] two runs of one issue share ONE tree ─────────────────
 print_test_section "[SPEC-3][change] a second run of the same issue reuses the tree"
 
-_a="$( cd "$_repo" && zbuild_worktree_path issue-1809 )"
-_b="$( cd "$_repo" && zbuild_worktree_path issue-1809 )"
+_a="$( cd "$_repo" && zbuild_worktree_path issue-$_ZB_ISSUE )"
+_b="$( cd "$_repo" && zbuild_worktree_path issue-$_ZB_ISSUE )"
 assert_eq "[SPEC-3] same issue, same tree" "$_a" "$_b"
 _c="$( cd "$_repo" && zbuild_worktree_path issue-1810 )"
 if [[ "$_a" == "$_c" ]]; then
@@ -126,7 +131,7 @@ print_test_section "[SPEC-5][guard] an issue tree is not mistaken for a run id"
 _rc=0; zbuild_worktree_run_id "$_wt_issue" >/dev/null 2>&1 || _rc=$?
 assert_exit_code "[SPEC-5] refuses to type an issue number as a run_id" "1" "$_rc"
 assert_eq "[SPEC-5] but still labels the owner for diagnostics" \
-    "issue 1809" "$(zbuild_worktree_owner "$_wt_issue")"
+    "issue $_ZB_ISSUE" "$(zbuild_worktree_owner "$_wt_issue")"
 assert_eq "[SPEC-5] a per-run tree still yields its run id" \
     "20260825-1" "$(zbuild_worktree_run_id "$_wt_run")"
 

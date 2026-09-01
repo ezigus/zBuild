@@ -15,6 +15,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "design: design stage runs in pipeline and produces scope block (#754)"
 setup_test_env "design-pipeline-754"
+
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
 export ZBUILD_CONTRACT_VALIDATOR=warn
 
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
@@ -162,7 +168,7 @@ set +e
     ZBUILD_CYCLES_ENABLED=0 \
     HOME="$TEST_TEMP_DIR/home" \
     PATH="$PATH" \
-    bash "$RUNNER" --template design-scope-minimal --issue 754 ) >/dev/null 2>&1
+    bash "$RUNNER" --template design-scope-minimal --issue "$_ZB_ID" ) >/dev/null 2>&1
 rc=$?
 set -e
 

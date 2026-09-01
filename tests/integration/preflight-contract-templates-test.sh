@@ -22,10 +22,16 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "preflight inter-stage contract — shipped templates (#1142 regression, ADR-020)"
 setup_test_env "preflight-contract-templates"
+
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
 _test_cleanup_hook() { cleanup_test_env; }
 
 export ZBUILD_EVENTS_DB="/dev/null"
-export ZBUILD_ISSUE=1
+export ZBUILD_ISSUE="$_ZB_ID"
 
 # shellcheck source=../../core/event-bus/event-bus.sh
 source "$REPO_ROOT/core/event-bus/event-bus.sh"

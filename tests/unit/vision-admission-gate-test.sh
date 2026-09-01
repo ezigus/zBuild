@@ -30,6 +30,12 @@ source "$REPO_ROOT/scripts/lib/vision.sh"
 print_test_header "scripts/lib/vision.sh — admission gate enforcement (ADR-049 #1360)"
 setup_test_env "vision-admission-gate"
 
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
+
 # ── Fixture helpers ───────────────────────────────────────────────────────────
 
 make_valid_doc() {
@@ -174,7 +180,7 @@ gate_out="$(
     ZBUILD_EVENTS_DB="/dev/null" \
     ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_VISION_GATE=enforce \
-    bash "$RUNNER" --template runner-state-dir-minimal --issue 1 2>&1
+    bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" 2>&1
 )" || rc=$?
 assert_eq "[SPEC-7] runner rc=2 on missing vision (enforce)" "2" "$rc"
 assert_contains "[SPEC-7] runner names search paths in message" "$gate_out" ".zbuild/vision.md"
@@ -199,7 +205,7 @@ malformed_out="$(
     ZBUILD_EVENTS_DB="/dev/null" \
     ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_VISION_GATE=enforce \
-    bash "$RUNNER" --template runner-state-dir-minimal --issue 1 2>&1
+    bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" 2>&1
 )" || rc=$?
 assert_eq "[SPEC-8] runner rc=2 on malformed vision (enforce)" "2" "$rc"
 assert_contains "[SPEC-8] runner message references --condense" "$malformed_out" "--condense"
@@ -219,7 +225,7 @@ gate_off_out="$(
     ZBUILD_EVENTS_DB="/dev/null" \
     ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_VISION_GATE=off \
-    bash "$RUNNER" --template runner-state-dir-minimal --issue 1 2>&1
+    bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" 2>&1
 )" || rc=$?
 # rc=0 means the pipeline ran (and possibly succeeded); rc=2 would mean the gate fired.
 # We assert rc is NOT 2 (gate did not fire on missing vision when off).
