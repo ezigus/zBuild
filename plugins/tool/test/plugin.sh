@@ -194,7 +194,7 @@ _test_run_inner() {
     local _zbt_results_json="${ZBUILD_TEST_RESULTS_JSON:-}"
 
     local tmp
-    tmp="$(mktemp -d "${TMPDIR:-/tmp}/zbuild-test-stage.XXXXXX")"
+    tmp="$(mktemp -d "$(zbuild_engine_tmp)/zbuild-test-stage.XXXXXX")"
     # ADR-054 §7 (#1829): persist staging path + child PID so cleanup can find
     # them from a later stage (a different process). These live under
     # state_dir/runtime/, NOT artifacts/ — a PID and a mktemp path are live
