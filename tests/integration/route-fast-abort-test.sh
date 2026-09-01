@@ -273,7 +273,13 @@ _rfa_describe() {
     printf '    pid=%s state=%s ppid=%s cmd=[%s]\n' "$_p" \
         "$(ps -o state= -p "$_p" 2>/dev/null | tr -d ' ' || echo '?')" \
         "$(ps -o ppid= -p "$_p" 2>/dev/null | tr -d ' ' || echo '?')" \
-        "$(tr '\0' ' ' < "$_RFA_PROC/$_p/cmdline" 2>/dev/null || echo '<unreadable>')" >&2
+        "$( { tr '\0' ' ' < "$_RFA_PROC/$_p/cmdline"; } 2>/dev/null || echo '<unreadable>')" >&2
+    # WHY it was counted, not just that it was (#2020). A failed REDIRECT is
+    # reported by the shell, not by tr, so `2>/dev/null` on the command alone
+    # leaks a raw "No such file or directory" line from this very function —
+    # which is exactly what the last failure printed. proc-identity.sh already
+    # gets this right and documents it as #1631's class; this copy did not.
+    printf '    classification=%s\n' "${PROC_IDENTITY_REASON:-<none>}" >&2
 }
 
 _st=""
