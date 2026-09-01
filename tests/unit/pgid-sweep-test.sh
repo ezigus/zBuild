@@ -119,14 +119,26 @@ else
 fi
 rm -f "$RUNTIME/self.pgid"
 
-# ── SPEC-9: the dispatch record carries a start time (ADR-062 §1 writer) ────
+# ── SPEC-9: the WRITER records a start time ─────────────────────────────────
 # Without it every record lands in SPEC-4's unprovable bucket and the sweep can
 # never act — the reading half would be inert the way the writing half was.
-if grep -qE 'lstart' "$REPO_ROOT/core/plugin-registry/lifecycle.sh"; then
-    assert_pass "SPEC-9: the dispatch record includes a start time"
+#
+# The writer moved in #2024: it was the dispatch seam in lifecycle.sh, which
+# could only ever observe the ENGINE's own group, so the record it wrote was
+# unkillable. Groups are registered by whoever creates them now, so this asserts
+# on zbuild_pg_register — and on lifecycle.sh NOT writing one, because a record
+# from that seam is unactionable by construction.
+if grep -qE 'lstart' "$REPO_ROOT/scripts/lib/proc-group.sh"; then
+    assert_pass "SPEC-9: the registered record includes a start time"
 else
-    assert_fail "SPEC-9: the dispatch record includes a start time" \
-        "lifecycle.sh writes a bare pgid — nothing the sweep can prove identity from"
+    assert_fail "SPEC-9: the registered record includes a start time" \
+        "zbuild_pg_register writes a bare pgid — nothing the sweep can prove identity from"
+fi
+if grep -qE '\.pgid"' "$REPO_ROOT/core/plugin-registry/lifecycle.sh"; then
+    assert_fail "SPEC-9: the dispatch seam writes no record (#2024)" \
+        "lifecycle.sh writes a pgid again — at that seam it can only be the engine's own, and unkillable"
+else
+    assert_pass "SPEC-9: the dispatch seam writes no record (#2024)"
 fi
 
 # ── SPEC-10: both run layouts are found, and the run id is read from either ─

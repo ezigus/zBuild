@@ -84,15 +84,40 @@ teardown_run() {
     # stages that started, whether or not they finished.
     if [[ -n "$_state_dir" && -d "$_state_dir/runtime/stages" ]]; then
         local _pgf _pgstage _seen
-        for _pgf in "$_state_dir"/runtime/stages/*.pgid; do
+        # BOTH markers (#2024): `.started` is written at dispatch for every
+        # stage that began, `.pgid` by whoever spawned a real process group.
+        # The union is what covers a stage killed mid-flight — it never reached
+        # stage_statuses, and it may never have spawned a group either.
+        for _pgf in "$_state_dir"/runtime/stages/*.started "$_state_dir"/runtime/stages/*.pgid; do
             [[ -e "$_pgf" ]] || continue
-            _pgstage="$(basename "$_pgf" .pgid)"
+            _pgstage="$(basename "$(basename "$_pgf" .pgid)" .started)"
             _seen=0
             for _s in "${_executed[@]+"${_executed[@]}"}"; do
                 [[ "$_s" == "$_pgstage" ]] && { _seen=1; break; }
             done
             [[ "$_seen" -eq 0 ]] && _executed+=("$_pgstage")
         done
+    fi
+
+    # ── purge: the scratch tree, and nothing else (ADR-062 §3, #2024) ────────
+    # This was `tool/test`'s cleanup hook. It is a PATH operation, so it belongs
+    # to whoever owns the paths — and the engine does: the staging tree is made
+    # with zbuild_engine_tmpdir, which under dispatch resolves to
+    # ZBUILD_STAGE_SCRATCH, i.e. `<run>/scratch/<stage>`. No plugin has to be
+    # asked where its files went, which is what let the last per-stage hook go.
+    #
+    # ADR-054 §7 is the boundary and it does not move: `scratch/` only. Never
+    # artifacts/, never pipeline-state.json, never runtime/. A failed run keeps
+    # its complete evidence, and a purge that ate evidence would make every
+    # failure unexplainable — a far worse outcome than a stale directory.
+    if [[ "$_scope" == "purge" && -n "$_state_dir" && -d "$_state_dir/scratch" ]]; then
+        # Re-validate the target sits under the run dir at DELETE time, and
+        # refuse a bare root — same defence-in-depth as the cleanup appliers.
+        local _scratch="${_state_dir%/}/scratch"
+        if [[ "$_scratch" == "${_state_dir%/}"/?* && -d "$_scratch" ]]; then
+            rm -rf -- "$_scratch" 2>/dev/null || true
+            emit_event "teardown.scratch.purged" "scope=purge" 2>/dev/null || true
+        fi
     fi
 
     # ── dry-run fast path ─────────────────────────────────────────────────────

@@ -19,7 +19,12 @@ description: |
 
 hooks:
   run: test_run
-  cleanup: test_cleanup
+  # cleanup: retired in #2024 (ADR-062 §3). Its two halves are engine-owned
+  # now: the suite's process group is registered at spawn and freed by
+  # teardown(release), and the staging tree lives under <run>/scratch/ so
+  # teardown(purge) removes it as a path. §4 required proving the engine
+  # reclaims BEFORE this line came out — see tests/integration/
+  # hard-kill-sweep-e2e-test.sh, which kills the runner outright.
 
 requires:
   core:

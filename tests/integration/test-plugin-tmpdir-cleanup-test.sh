@@ -147,30 +147,46 @@ assert_eq "success: no zbuild-test-stage.* leaked in TMPDIR" \
     "0" "$(_count_leaked)"
 
 # ───────────────────────────────────────────────────────────────────────────
-print_test_section "4. [SPEC-5] test_cleanup(purge) is the lifecycle-correct rm-rf path"
+print_test_section "4. [SPEC-5] purge removes the staging tree, and the engine does it"
 # ───────────────────────────────────────────────────────────────────────────
-# At baseline (pre-#1829) test_cleanup did not exist; the RETURN trap did
-# rm -rf. Post-#1829: RETURN trap only kills PGID; purge is test_cleanup's
-# responsibility. This assertion fails at baseline because test_cleanup is new.
+# History: pre-#1829 the RETURN trap did the rm -rf; #1829 moved purge into
+# `test_cleanup`; #2024 (ADR-062 §3) retired that hook and moved purge to the
+# engine. The plugin no longer has a cleanup hook at all.
+#
+# It needed no plugin knowledge in the end. The staging tree is created through
+# zbuild_engine_tmpdir, which under dispatch resolves to ZBUILD_STAGE_SCRATCH —
+# `<run>/scratch/<stage>` — so it was already inside an engine-owned area, and
+# teardown(purge) deletes that tree as a path.
+#
+# What is asserted here is the OUTCOME at this seam: after a purge, a staging
+# tree under the run's scratch is gone. ADR-054 §7's boundary is asserted where
+# it belongs, in tests/unit/teardown-purge-scratch-test.sh: purge takes
+# `scratch/` and spares artifacts, runtime/ and pipeline-state.json.
 
-SPEC5_STAGING="$ISOLATED_TMP/spec5-staging"
+SPEC5_STATE_DIR="$(dirname "$_STATE_FILE")"
+SPEC5_STAGING="$SPEC5_STATE_DIR/scratch/test/zbuild-test-stage.SPEC5"
 mkdir -p "$SPEC5_STAGING"
 printf 'sentinel' > "$SPEC5_STAGING/sentinel.txt"
-# Write the staging path so test_cleanup(purge) can find it. This lives under
-# state_dir/runtime/, not artifacts/ — a live staging path is machine-specific
-# bookkeeping, and keeping it in artifacts/ broke the local-vs-CI parity
-# contract by construction (#1829).
-SPEC5_RUNTIME="$(dirname "$_STATE_FILE")/runtime"
-mkdir -p "$SPEC5_RUNTIME"
-printf '%s' "$SPEC5_STAGING" > "$SPEC5_RUNTIME/test-staging-path"
 
-test_cleanup "test" "$_STATE_FILE" "purge" >/dev/null 2>&1 || true
+(
+    export ZBUILD_TEARDOWN_SCOPE=purge ZBUILD_STATE_DIR="$SPEC5_STATE_DIR"
+    source "$REPO_ROOT/scripts/lib/proc-group.sh"
+    emit_event() { :; }
+    source "$REPO_ROOT/plugins/tool/teardown/plugin.sh"
+    teardown_run "teardown" "$_STATE_FILE"
+) >/dev/null 2>&1 || true
 
 if [[ -d "$SPEC5_STAGING" ]]; then
-    assert_fail "[SPEC-5] test_cleanup(purge) removes the staging directory" \
-        "dir still exists after purge"
+    assert_fail "[SPEC-5] purge removes the staging tree" "dir still exists after purge"
 else
-    assert_pass "[SPEC-5] test_cleanup(purge) removes the staging directory"
+    assert_pass "[SPEC-5] purge removes the staging tree"
+fi
+
+# The retirement itself, so an accidental re-declaration is caught here too.
+if grep -qE '^[[:space:]]*cleanup:' "$REPO_ROOT/plugins/tool/test/manifest.yaml"; then
+    assert_fail "[SPEC-5] tool/test declares no cleanup hook (ADR-062 §3)" "still declared"
+else
+    assert_pass "[SPEC-5] tool/test declares no cleanup hook (ADR-062 §3)"
 fi
 
 cleanup_test_env
