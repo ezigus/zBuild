@@ -1,0 +1,1087 @@
+ mentions Read/Edit/Write/Bash tools
+  [38;2;74;222;128m✓[0m prompt mentions LOOP_COMPLETE sentinel
+  [38;2;74;222;128m✓[0m prompt mentions scope (plan.files[])
+  [38;2;74;222;128m✓[0m prompt lists the in-scope file
+  [38;2;74;222;128m✓[0m prompt forbids out-of-scope edits
+  [38;2;74;222;128m✓[0m prompt includes BLOCKED escape-hatch rule
+
+  [38;2;0;212;255mT_PROMPT_2: agent edit → non-empty diff.patch[0m
+  [38;2;248;113;113m✗[0m diff.patch unexpectedly empty after agent edit
+### plugins/agent/build/plugin.sh reverted plugins/agent/build/tests/build-test.sh
+
+[38;2;0;212;255m[1m  plugin: build (agent-loop + git-derived diff — issue #467)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mT_PROMPT_1: prompt invites tools and declares scope + sentinel[0m
+  [38;2;74;222;128m✓[0m T_PROMPT_1 inner run returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m prompt mentions Read/Edit/Write/Bash tools
+  [38;2;74;222;128m✓[0m prompt mentions LOOP_COMPLETE sentinel
+  [38;2;74;222;128m✓[0m prompt mentions scope (plan.files[])
+  [38;2;74;222;128m✓[0m prompt lists the in-scope file
+  [38;2;74;222;128m✓[0m prompt forbids out-of-scope edits
+  [38;2;74;222;128m✓[0m prompt includes BLOCKED escape-hatch rule
+
+  [38;2;0;212;255mT_PROMPT_2: agent edit → non-empty diff.patch[0m
+  [38;2;248;113;113m✗[0m diff.patch unexpectedly empty after agent edit
+### plugins/agent/build/plugin.sh head plugins/agent/build/tests/build-test.sh
+
+[38;2;0;212;255m[1m  plugin: build (agent-loop + git-derived diff — issue #467)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mT_PROMPT_1: prompt invites tools and declares scope + sentinel[0m
+  [38;2;74;222;128m✓[0m T_PROMPT_1 inner run returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m prompt mentions Read/Edit/Write/Bash tools
+  [38;2;74;222;128m✓[0m prompt mentions LOOP_COMPLETE sentinel
+  [38;2;74;222;128m✓[0m prompt mentions scope (plan.files[])
+  [38;2;74;222;128m✓[0m prompt lists the in-scope file
+  [38;2;74;222;128m✓[0m prompt forbids out-of-scope edits
+  [38;2;74;222;128m✓[0m prompt includes BLOCKED escape-hatch rule
+
+  [38;2;0;212;255mT_PROMPT_2: agent edit → non-empty diff.patch[0m
+  [38;2;248;113;113m✗[0m diff.patch unexpectedly empty after agent edit
+### plugins/agent/build/plugin.sh reverted plugins/agent/build/tests/build-test.sh
+
+[38;2;0;212;255m[1m  plugin: build (agent-loop + git-derived diff — issue #467)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mT_PROMPT_1: prompt invites tools and declares scope + sentinel[0m
+  [38;2;74;222;128m✓[0m T_PROMPT_1 inner run returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m prompt mentions Read/Edit/Write/Bash tools
+  [38;2;74;222;128m✓[0m prompt mentions LOOP_COMPLETE sentinel
+  [38;2;74;222;128m✓[0m prompt mentions scope (plan.files[])
+  [38;2;74;222;128m✓[0m prompt lists the in-scope file
+  [38;2;74;222;128m✓[0m prompt forbids out-of-scope edits
+  [38;2;74;222;128m✓[0m prompt includes BLOCKED escape-hatch rule
+
+  [38;2;0;212;255mT_PROMPT_2: agent edit → non-empty diff.patch[0m
+  [38;2;248;113;113m✗[0m diff.patch unexpectedly empty after agent edit
+### plugins/agent/build/plugin.sh head plugins/agent/build/tests/build-test.sh
+
+[38;2;0;212;255m[1m  plugin: build (agent-loop + git-derived diff — issue #467)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mT_PROMPT_1: prompt invites tools and declares scope + sentinel[0m
+  [38;2;74;222;128m✓[0m T_PROMPT_1 inner run returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m prompt mentions Read/Edit/Write/Bash tools
+  [38;2;74;222;128m✓[0m prompt mentions LOOP_COMPLETE sentinel
+  [38;2;74;222;128m✓[0m prompt mentions scope (plan.files[])
+  [38;2;74;222;128m✓[0m prompt lists the in-scope file
+  [38;2;74;222;128m✓[0m prompt forbids out-of-scope edits
+  [38;2;74;222;128m✓[0m prompt includes BLOCKED escape-hatch rule
+
+  [38;2;0;212;255mT_PROMPT_2: agent edit → non-empty diff.patch[0m
+  [38;2;248;113;113m✗[0m diff.patch unexpectedly empty after agent edit
+### plugins/agent/build/plugin.sh reverted plugins/agent/build/tests/build-test.sh
+
+[38;2;0;212;255m[1m  plugin: build (agent-loop + git-derived diff — issue #467)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mT_PROMPT_1: prompt invites tools and declares scope + sentinel[0m
+  [38;2;74;222;128m✓[0m T_PROMPT_1 inner run returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m prompt mentions Read/Edit/Write/Bash tools
+  [38;2;74;222;128m✓[0m prompt mentions LOOP_COMPLETE sentinel
+  [38;2;74;222;128m✓[0m prompt mentions scope (plan.files[])
+  [38;2;74;222;128m✓[0m prompt lists the in-scope file
+  [38;2;74;222;128m✓[0m prompt forbids out-of-scope edits
+  [38;2;74;222;128m✓[0m prompt includes BLOCKED escape-hatch rule
+
+  [38;2;0;212;255mT_PROMPT_2: agent edit → non-empty diff.patch[0m
+  [38;2;248;113;113m✗[0m diff.patch unexpectedly empty after agent edit
+### plugins/agent/build/plugin.sh head plugins/agent/build/tests/build-test.sh
+
+[38;2;0;212;255m[1m  plugin: build (agent-loop + git-derived diff — issue #467)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mT_PROMPT_1: prompt invites tools and declares scope + sentinel[0m
+  [38;2;74;222;128m✓[0m T_PROMPT_1 inner run returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m prompt mentions Read/Edit/Write/Bash tools
+  [38;2;74;222;128m✓[0m prompt mentions LOOP_COMPLETE sentinel
+  [38;2;74;222;128m✓[0m prompt mentions scope (plan.files[])
+  [38;2;74;222;128m✓[0m prompt lists the in-scope file
+  [38;2;74;222;128m✓[0m prompt forbids out-of-scope edits
+  [38;2;74;222;128m✓[0m prompt includes BLOCKED escape-hatch rule
+
+  [38;2;0;212;255mT_PROMPT_2: agent edit → non-empty diff.patch[0m
+  [38;2;248;113;113m✗[0m diff.patch unexpectedly empty after agent edit
+### plugins/agent/build/plugin.sh reverted tests/unit/convergence-timeouts-never-fatal-1208-test.sh
+
+[38;2;0;212;255m[1m  convergence: timeouts never fatal; only fatal = exhaustion (#1208)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1: build times out every iter (tests green) → never a halt; runs all iters[0m
+══ build-test [cycle] seq=1 input ══════════════════════════════ 20:45:14 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=1 output OK 2.0s ═════════════════════ 20:45:16 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=2 input ══════════════════════════════ 20:45:16 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=2 output OK 2.0s ═════════════════════ 20:45:18 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=3 input ══════════════════════════════ 20:45:18 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=3 output OK 1.7s ═════════════════════ 20:45:20 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=4 input ══════════════════════════════ 20:45:20 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=4 output OK 1.4s ═════════════════════ 20:45:21 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=5 input ══════════════════════════════ 20:45:22 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=5 output OK 1.4s ═════════════════════ 20:45:23 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+  [38;2;74;222;128m✓[0m [SPEC-1] cycle does not halt on timeout — rc=2 (unconverged→review)
+  [38;2;74;222;128m✓[0m [SPEC-1] ran all 5 iterations (no early abandon), got 5
+  [38;2;74;222;128m✓[0m [SPEC-1] no cycle.member.timeout_abandoned (G2 abandon removed)
+
+  [38;2;0;212;255mSPEC-2/SPEC-5: build disposition=interrupted + tests pass → NOT converged; suppression event[0m
+══ build-test [cycle] seq=1 input ══════════════════════════════ 20:45:23 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=1 output OK 1.7s ═════════════════════ 20:45:25 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=2 input ══════════════════════════════ 20:45:25 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=2 output OK 1.6s ═════════════════════ 20:45:27 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=3 input ══════════════════════════════ 20:45:27 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=3 output OK 2.1s ═════════════════════ 20:45:29 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+  [38;2;74;222;128m✓[0m [SPEC-2] not converged (mid-flight build) — rc=2
+  [38;2;74;222;128m✓[0m [SPEC-2] suppression event emitted
+  [38;2;74;222;128m✓[0m [SPEC-2] never a false converge on unfinished build
+  [38;2;74;222;128m✓[0m [SPEC-5] suppression event carries build_verdict=incomplete (disposition-based check, #1832)
+
+  [38;2;0;212;255mSPEC-3/SPEC-9: clean empty_diff (kind=empty_diff) + tests green → converge iter 1[0m
+══ build-test [cycle] seq=1 input ══════════════════════════════ 20:45:30 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=1 output OK 1.6s ═════════════════════ 20:45:31 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+  [38;2;74;222;128m✓[0m [SPEC-3] converged (rc=0)
+  [38;2;74;222;128m✓[0m [SPEC-3] converged at iter 1 (nothing-to-do, not a stall)
+  [38;2;74;222;128m✓[0m [SPEC-9] empty_diff resting-point converges at iter 1 (kind-based check, #1832)
+  [38;2;74;222;128m✓[0m [SPEC-3] clean stall converges (not suppressed, not stalled)
+
+  [38;2;0;212;255mSPEC-4/6: red for iters 1-3 then green at iter 4 → converges (not abandoned early)[0m
+══ build-test [cycle] seq=1 input ══════════════════════════════ 20:45:32 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=1 output OK 1.6s ═════════════════════ 20:45:33 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=3 → score=-3
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=2 input ══════════════════════════════ 20:45:33 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=2 output OK 1.4s ═════════════════════ 20:45:35 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=3 → score=-3
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=3 input ══════════════════════════════ 20:45:35 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=3 output OK 1.4s ═════════════════════ 20:45:36 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=3 → score=-3
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=4 input ══════════════════════════════ 20:45:36 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=4 output OK 1.6s ═════════════════════ 20:45:38 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+  [38;2;74;222;128m✓[0m [SPEC-4/6] converges at iter 4 (rc=0) — no early terminator
+  [38;2;74;222;128m✓[0m [SPEC-4/6] iteration count is 4 (>2, G2 does not bite)
+
+  [38;2;0;212;255mSPEC-5a: exhausted with tests failing → rc=8 (status=failed halt)[0m
+══ build-test [cycle] seq=1 input ══════════════════════════════ 20:45:38 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=1 output OK 1.3s ═════════════════════ 20:45:40 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=3 → score=-3
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=2 input ══════════════════════════════ 20:45:40 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=2 output OK 1.5s ═════════════════════ 20:45:41 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=3 → score=-3
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=3 input ══════════════════════════════ 20:45:41 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=3 output OK 1.4s ═════════════════════ 20:45:43 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=3 → score=-3
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=4 input ══════════════════════════════ 20:45:43 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=4 output OK 1.4s ═════════════════════ 20:45:44 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=3 → score=-3
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=5 input ══════════════════════════════ 20:45:44 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=5 output OK 1.4s ═════════════════════ 20:45:46 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=3 → score=-3
+── end stage-io: build-test ✓ ──
+  [38;2;74;222;128m✓[0m [SPEC-5a] exhausted + failing tests → rc=8
+
+  [38;2;0;212;255mSPEC-5b/9: exhausted, tests pass but build mid-flight every iter → rc=2 (review)[0m
+══ build-test [cycle] seq=1 input ══════════════════════════════ 20:45:46 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=1 output OK 1.4s ═════════════════════ 20:45:47 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=2 input ══════════════════════════════ 20:45:48 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=2 output OK 1.6s ═════════════════════ 20:45:49 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=3 input ══════════════════════════════ 20:45:49 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=3 output OK 2.0s ═════════════════════ 20:45:51 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=4 input ══════════════════════════════ 20:45:51 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=4 output OK 1.4s ═════════════════════ 20:45:53 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=5 input ══════════════════════════════ 20:45:53 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=5 output OK 1.4s ═════════════════════ 20:45:54 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+  [38;2;74;222;128m✓[0m [SPEC-5b] exhausted + passing tests (unclean) → rc=2 (unconverged→review)
+
+  [38;2;0;212;255mSPEC-5c: failing non-test gate + passing tests + no test-results → rc=2 (not rc=8)[0m
+══ build-test [cycle] seq=1 input ══════════════════════════════ 20:45:55 UTC ══
+(no feedback — first iteration)
+
+
+
+══ build-test [cycle] seq=1 output OK 1.5s ═════════════════════ 20:45:56 UTC ══
+exit_when stage=shape-floor field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=1 → score=-1
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=2 input ══════════════════════════════ 20:45:56 UTC ══
+(no feedback — first iteration)
+
+
+
+══ build-test [cycle] seq=2 output OK 1.5s ═════════════════════ 20:45:58 UTC ══
+exit_when stage=shape-floor field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=1 → score=-1
+── end stage-io: build-test ✓ ──
+  [38;2;74;222;128m✓[0m [SPEC-5c] non-test gate fail + tests pass + no test-results → rc=2 (not rc=8)
+
+  [38;2;0;212;255mSPEC-8: exercised convergence path is repo-neutral (generic member ids only)[0m
+  [38;2;74;222;128m✓[0m [SPEC-8] orchestrator convergence path is repo-neutral (no runner/language hardcode)
+
+  [38;2;0;212;255mSPEC-9: build-summary.json carries result_contract:2, disposition:interrupted on router_timeout[0m
+  [38;2;74;222;128m✓[0m [SPEC-9] router_timeout build-summary has result_contract:2
+  [38;2;74;222;128m✓[0m [SPEC-9] router_timeout build-summary has disposition:interrupted
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 19 tests passed[0m
+
+### plugins/agent/build/plugin.sh head tests/unit/convergence-timeouts-never-fatal-1208-test.sh
+
+[38;2;0;212;255m[1m  convergence: timeouts never fatal; only fatal = exhaustion (#1208)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1: build times out every iter (tests green) → never a halt; runs all iters[0m
+══ build-test [cycle] seq=1 input ══════════════════════════════ 20:45:58 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=1 output OK 1.2s ═════════════════════ 20:45:59 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=2 input ══════════════════════════════ 20:45:59 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=2 output OK 1.4s ═════════════════════ 20:46:01 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=3 input ══════════════════════════════ 20:46:01 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=3 output OK 1.4s ═════════════════════ 20:46:02 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=4 input ══════════════════════════════ 20:46:02 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=4 output OK 1.4s ═════════════════════ 20:46:04 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=5 input ══════════════════════════════ 20:46:04 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=5 output OK 1.6s ═════════════════════ 20:46:06 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+  [38;2;74;222;128m✓[0m [SPEC-1] cycle does not halt on timeout — rc=2 (unconverged→review)
+  [38;2;74;222;128m✓[0m [SPEC-1] ran all 5 iterations (no early abandon), got 5
+  [38;2;74;222;128m✓[0m [SPEC-1] no cycle.member.timeout_abandoned (G2 abandon removed)
+
+  [38;2;0;212;255mSPEC-2/SPEC-5: build disposition=interrupted + tests pass → NOT converged; suppression event[0m
+══ build-test [cycle] seq=1 input ══════════════════════════════ 20:46:06 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=1 output OK 1.4s ═════════════════════ 20:46:07 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=2 input ══════════════════════════════ 20:46:08 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=2 output OK 1.7s ═════════════════════ 20:46:10 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=3 input ══════════════════════════════ 20:46:10 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=3 output OK 1.7s ═════════════════════ 20:46:12 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+  [38;2;74;222;128m✓[0m [SPEC-2] not converged (mid-flight build) — rc=2
+  [38;2;74;222;128m✓[0m [SPEC-2] suppression event emitted
+  [38;2;74;222;128m✓[0m [SPEC-2] never a false converge on unfinished build
+  [38;2;74;222;128m✓[0m [SPEC-5] suppression event carries build_verdict=incomplete (disposition-based check, #1832)
+
+  [38;2;0;212;255mSPEC-3/SPEC-9: clean empty_diff (kind=empty_diff) + tests green → converge iter 1[0m
+══ build-test [cycle] seq=1 input ══════════════════════════════ 20:46:12 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=1 output OK 1.5s ═════════════════════ 20:46:14 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+  [38;2;74;222;128m✓[0m [SPEC-3] converged (rc=0)
+  [38;2;74;222;128m✓[0m [SPEC-3] converged at iter 1 (nothing-to-do, not a stall)
+  [38;2;74;222;128m✓[0m [SPEC-9] empty_diff resting-point converges at iter 1 (kind-based check, #1832)
+  [38;2;74;222;128m✓[0m [SPEC-3] clean stall converges (not suppressed, not stalled)
+
+  [38;2;0;212;255mSPEC-4/6: red for iters 1-3 then green at iter 4 → converges (not abandoned early)[0m
+══ build-test [cycle] seq=1 input ══════════════════════════════ 20:46:14 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=1 output OK 1.3s ═════════════════════ 20:46:15 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=3 → score=-3
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=2 input ══════════════════════════════ 20:46:16 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=2 output OK 1.7s ═════════════════════ 20:46:17 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=3 → score=-3
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=3 input ══════════════════════════════ 20:46:17 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=3 output OK 1.5s ═════════════════════ 20:46:19 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=3 → score=-3
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=4 input ══════════════════════════════ 20:46:19 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=4 output OK 1.6s ═════════════════════ 20:46:21 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+  [38;2;74;222;128m✓[0m [SPEC-4/6] converges at iter 4 (rc=0) — no early terminator
+  [38;2;74;222;128m✓[0m [SPEC-4/6] iteration count is 4 (>2, G2 does not bite)
+
+  [38;2;0;212;255mSPEC-5a: exhausted with tests failing → rc=8 (status=failed halt)[0m
+══ build-test [cycle] seq=1 input ══════════════════════════════ 20:46:21 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=1 output OK 1.3s ═════════════════════ 20:46:22 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=3 → score=-3
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=2 input ══════════════════════════════ 20:46:23 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=2 output OK 1.4s ═════════════════════ 20:46:24 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=3 → score=-3
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=3 input ══════════════════════════════ 20:46:24 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=3 output OK 1.5s ═════════════════════ 20:46:26 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=3 → score=-3
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=4 input ══════════════════════════════ 20:46:26 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=4 output OK 1.3s ═════════════════════ 20:46:27 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=3 → score=-3
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=5 input ══════════════════════════════ 20:46:27 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=5 output OK 1.4s ═════════════════════ 20:46:29 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=3 → score=-3
+── end stage-io: build-test ✓ ──
+  [38;2;74;222;128m✓[0m [SPEC-5a] exhausted + failing tests → rc=8
+
+  [38;2;0;212;255mSPEC-5b/9: exhausted, tests pass but build mid-flight every iter → rc=2 (review)[0m
+══ build-test [cycle] seq=1 input ══════════════════════════════ 20:46:29 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=1 output OK 1.5s ═════════════════════ 20:46:31 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=2 input ══════════════════════════════ 20:46:31 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=2 output OK 1.6s ═════════════════════ 20:46:32 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=3 input ══════════════════════════════ 20:46:32 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=3 output OK 1.4s ═════════════════════ 20:46:34 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=4 input ══════════════════════════════ 20:46:34 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=4 output OK 1.8s ═════════════════════ 20:46:36 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=5 input ══════════════════════════════ 20:46:36 UTC ══
+(no feedback — first iteration)
+
+
+══ build-test [cycle] seq=5 output OK 1.6s ═════════════════════ 20:46:38 UTC ══
+exit_when stage=test field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: build-test ✓ ──
+  [38;2;74;222;128m✓[0m [SPEC-5b] exhausted + passing tests (unclean) → rc=2 (unconverged→review)
+
+  [38;2;0;212;255mSPEC-5c: failing non-test gate + passing tests + no test-results → rc=2 (not rc=8)[0m
+══ build-test [cycle] seq=1 input ══════════════════════════════ 20:46:38 UTC ══
+(no feedback — first iteration)
+
+
+
+══ build-test [cycle] seq=1 output OK 1.7s ═════════════════════ 20:46:40 UTC ══
+exit_when stage=shape-floor field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=1 → score=-1
+── end stage-io: build-test ✓ ──
+
+══ build-test [cycle] seq=2 input ══════════════════════════════ 20:46:40 UTC ══
+(no feedback — first iteration)
+
+
+
+══ build-test [cycle] seq=2 output OK 1.6s ═════════════════════ 20:46:41 UTC ══
+exit_when stage=shape-floor field=verdict op=eq value=pass → NOT MATCHED (got=fail)
+health: progress=0 (no progress) - defects=1 → score=-1
+── end stage-io: build-test ✓ ──
+  [38;2;74;222;128m✓[0m [SPEC-5c] non-test gate fail + tests pass + no test-results → rc=2 (not rc=8)
+
+  [38;2;0;212;255mSPEC-8: exercised convergence path is repo-neutral (generic member ids only)[0m
+  [38;2;74;222;128m✓[0m [SPEC-8] orchestrator convergence path is repo-neutral (no runner/language hardcode)
+
+  [38;2;0;212;255mSPEC-9: build-summary.json carries result_contract:2, disposition:interrupted on router_timeout[0m
+  [38;2;74;222;128m✓[0m [SPEC-9] router_timeout build-summary has result_contract:2
+  [38;2;74;222;128m✓[0m [SPEC-9] router_timeout build-summary has disposition:interrupted
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 19 tests passed[0m
+
+### plugins/agent/build/plugin.sh reverted tests/unit/build-false-completion-guard-test.sh
+
+[38;2;0;212;255m[1m  build _build_guard_false_completion — false-completion guard (#1532)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mA: failing acceptance testfile → returns failing path[0m
+  [38;2;74;222;128m✓[0m A: failing testfile → helper exits 1
+  [38;2;74;222;128m✓[0m A: failing_out is the failing testfile path
+
+  [38;2;0;212;255mB: passing acceptance testfile → no override[0m
+  [38;2;74;222;128m✓[0m B: passing testfile → helper exits 0
+  [38;2;74;222;128m✓[0m B: passing_out is empty (no failing testfile)
+
+  [38;2;0;212;255mC: no acceptance block (empty testfiles) → no override[0m
+  [38;2;74;222;128m✓[0m C: empty testfiles → helper exits 0
+  [38;2;74;222;128m✓[0m C: empty_out is empty (no testfiles)
+
+  [38;2;0;212;255mSPEC-7 [change]: inert_build → verdict=fail + data.build_kind=inert_build (#1832)[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] inert_build summary: verdict=fail (#1832)
+  [38;2;74;222;128m✓[0m [SPEC-7] inert_build summary: data.build_kind=inert_build (#1832)
+  [38;2;74;222;128m✓[0m [SPEC-7] inert_build summary: disposition=broken (#1832)
+  [38;2;74;222;128m✓[0m [SPEC-10] inert_build summary: result_contract:2 present
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 10 tests passed[0m
+
+### plugins/agent/build/plugin.sh head tests/unit/build-false-completion-guard-test.sh
+
+[38;2;0;212;255m[1m  build _build_guard_false_completion — false-completion guard (#1532)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mA: failing acceptance testfile → returns failing path[0m
+  [38;2;74;222;128m✓[0m A: failing testfile → helper exits 1
+  [38;2;74;222;128m✓[0m A: failing_out is the failing testfile path
+
+  [38;2;0;212;255mB: passing acceptance testfile → no override[0m
+  [38;2;74;222;128m✓[0m B: passing testfile → helper exits 0
+  [38;2;74;222;128m✓[0m B: passing_out is empty (no failing testfile)
+
+  [38;2;0;212;255mC: no acceptance block (empty testfiles) → no override[0m
+  [38;2;74;222;128m✓[0m C: empty testfiles → helper exits 0
+  [38;2;74;222;128m✓[0m C: empty_out is empty (no testfiles)
+
+  [38;2;0;212;255mSPEC-7 [change]: inert_build → verdict=fail + data.build_kind=inert_build (#1832)[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] inert_build summary: verdict=fail (#1832)
+  [38;2;74;222;128m✓[0m [SPEC-7] inert_build summary: data.build_kind=inert_build (#1832)
+  [38;2;74;222;128m✓[0m [SPEC-7] inert_build summary: disposition=broken (#1832)
+  [38;2;74;222;128m✓[0m [SPEC-10] inert_build summary: result_contract:2 present
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 10 tests passed[0m
+
+### plugins/agent/build/plugin.sh reverted plugins/agent/build/tests/build-test.sh
+
+[38;2;0;212;255m[1m  plugin: build (agent-loop + git-derived diff — issue #467)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mT_PROMPT_1: prompt invites tools and declares scope + sentinel[0m
+  [38;2;74;222;128m✓[0m T_PROMPT_1 inner run returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m prompt mentions Read/Edit/Write/Bash tools
+  [38;2;74;222;128m✓[0m prompt mentions LOOP_COMPLETE sentinel
+  [38;2;74;222;128m✓[0m prompt mentions scope (plan.files[])
+  [38;2;74;222;128m✓[0m prompt lists the in-scope file
+  [38;2;74;222;128m✓[0m prompt forbids out-of-scope edits
+  [38;2;74;222;128m✓[0m prompt includes BLOCKED escape-hatch rule
+
+  [38;2;0;212;255mT_PROMPT_2: agent edit → non-empty diff.patch[0m
+  [38;2;248;113;113m✗[0m diff.patch unexpectedly empty after agent edit
+### plugins/agent/build/plugin.sh head plugins/agent/build/tests/build-test.sh
+
+[38;2;0;212;255m[1m  plugin: build (agent-loop + git-derived diff — issue #467)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mT_PROMPT_1: prompt invites tools and declares scope + sentinel[0m
+  [38;2;74;222;128m✓[0m T_PROMPT_1 inner run returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m prompt mentions Read/Edit/Write/Bash tools
+  [38;2;74;222;128m✓[0m prompt mentions LOOP_COMPLETE sentinel
+  [38;2;74;222;128m✓[0m prompt mentions scope (plan.files[])
+  [38;2;74;222;128m✓[0m prompt lists the in-scope file
+  [38;2;74;222;128m✓[0m prompt forbids out-of-scope edits
+  [38;2;74;222;128m✓[0m prompt includes BLOCKED escape-hatch rule
+
+  [38;2;0;212;255mT_PROMPT_2: agent edit → non-empty diff.patch[0m
+  [38;2;248;113;113m✗[0m diff.patch unexpectedly empty after agent edit
+### plugins/agent/build/plugin.sh reverted tests/unit/core-pipeline-disposition-test.sh
+
+[38;2;0;212;255m[1m  core/pipeline/disposition — vocabulary + engine response table (#1822)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mthe vocabulary is a closed set of exactly six words[0m
+  [38;2;74;222;128m✓[0m the closed set is exactly the ADR-054 §6 vocabulary
+  [38;2;74;222;128m✓[0m `complete` is a member of the closed set (exit 0)
+  [38;2;74;222;128m✓[0m `interrupted` is a member of the closed set (exit 0)
+  [38;2;74;222;128m✓[0m `throttled` is a member of the closed set (exit 0)
+  [38;2;74;222;128m✓[0m `exhausted` is a member of the closed set (exit 0)
+  [38;2;74;222;128m✓[0m `unavailable` is a member of the closed set (exit 0)
+  [38;2;74;222;128m✓[0m `broken` is a member of the closed set (exit 0)
+  [38;2;74;222;128m✓[0m `terminal` is NOT a member of the closed set (exit 1)
+  [38;2;74;222;128m✓[0m `recoverable` is NOT a member of the closed set (exit 1)
+  [38;2;74;222;128m✓[0m `advisory` is NOT a member of the closed set (exit 1)
+  [38;2;74;222;128m✓[0m `none` is NOT a member of the closed set (exit 1)
+  [38;2;74;222;128m✓[0m `pass` is NOT a member of the closed set (exit 1)
+  [38;2;74;222;128m✓[0m `fail` is NOT a member of the closed set (exit 1)
+  [38;2;74;222;128m✓[0m `error` is NOT a member of the closed set (exit 1)
+  [38;2;74;222;128m✓[0m `` is NOT a member of the closed set (exit 1)
+  [38;2;74;222;128m✓[0m `COMPLETE` is NOT a member of the closed set (exit 1)
+  [38;2;74;222;128m✓[0m `complete ` is NOT a member of the closed set (exit 1)
+
+  [38;2;0;212;255meach disposition maps to its own engine response[0m
+  [38;2;74;222;128m✓[0m complete    -> proceed
+  [38;2;74;222;128m✓[0m interrupted -> retry
+  [38;2;74;222;128m✓[0m throttled   -> retry_after_wait
+  [38;2;74;222;128m✓[0m exhausted   -> escalate
+  [38;2;74;222;128m✓[0m unavailable -> halt_unavailable
+  [38;2;74;222;128m✓[0m broken      -> halt_broken
+  [38;2;74;222;128m✓[0m all six responses are distinct from one another
+
+  [38;2;0;212;255mhalt / retry predicates follow the table, not the stage[0m
+  [38;2;74;222;128m✓[0m `unavailable` halts the run (exit 0)
+  [38;2;74;222;128m✓[0m `broken` halts the run (exit 0)
+  [38;2;74;222;128m✓[0m `complete` does not halt the run (exit 1)
+  [38;2;74;222;128m✓[0m `interrupted` does not halt the run (exit 1)
+  [38;2;74;222;128m✓[0m `throttled` does not halt the run (exit 1)
+  [38;2;74;222;128m✓[0m `exhausted` does not halt the run (exit 1)
+  [38;2;74;222;128m✓[0m `interrupted` is retryable (exit 0)
+  [38;2;74;222;128m✓[0m `throttled` is retryable (exit 0)
+  [38;2;74;222;128m✓[0m `complete` is NOT retryable (exit 1)
+  [38;2;74;222;128m✓[0m `exhausted` is NOT retryable (exit 1)
+  [38;2;74;222;128m✓[0m `unavailable` is NOT retryable (exit 1)
+  [38;2;74;222;128m✓[0m `broken` is NOT retryable (exit 1)
+  [38;2;74;222;128m✓[0m interrupted retries immediately (no wait)
+  [38;2;74;222;128m✓[0m throttled waits before retrying
+  [38;2;74;222;128m✓[0m `complete` has no wait — the call is refused (exit 1)
+  [38;2;74;222;128m✓[0m `complete` prints no wait value
+  [38;2;74;222;128m✓[0m `exhausted` has no wait — the call is refused (exit 1)
+  [38;2;74;222;128m✓[0m `exhausted` prints no wait value
+  [38;2;74;222;128m✓[0m `unavailable` has no wait — the call is refused (exit 1)
+  [38;2;74;222;128m✓[0m `unavailable` prints no wait value
+  [38;2;74;222;128m✓[0m `broken` has no wait — the call is refused (exit 1)
+  [38;2;74;222;128m✓[0m `broken` prints no wait value
+
+  [38;2;0;212;255mguard: broken halts and can never be retried[0m
+  [38;2;74;222;128m✓[0m broken halts (exit 0)
+  [38;2;74;222;128m✓[0m broken is not retryable (exit 1)
+  [38;2;74;222;128m✓[0m broken's response is not in the retry family
+  [38;2;74;222;128m✓[0m `unavailable` halts, therefore is not retryable (exit 1)
+  [38;2;74;222;128m✓[0m `broken` halts, therefore is not retryable (exit 1)
+
+  [38;2;0;212;255man unknown disposition is a structural failure[0m
+  [38;2;74;222;128m✓[0m disposition_response refuses an unknown word (exit 1)
+  [38;2;74;222;128m✓[0m disposition_response prints nothing for an unknown word
+  [38;2;74;222;128m✓[0m disposition_halts returns 2 (not 1) for an unknown word (exit 2)
+  [38;2;74;222;128m✓[0m disposition_retryable returns 2 (not 1) for an unknown word (exit 2)
+  [38;2;74;222;128m✓[0m v2 result with an off-list disposition -> structural failure (error)
+  [38;2;74;222;128m✓[0m the raw channel agrees it is a structural failure
+  [38;2;74;222;128m✓[0m the violation names the offending word on the reason channel
+  [38;2;74;222;128m✓[0m an off-list disposition resolves to broken (channels agree)
+  [38;2;74;222;128m✓[0m a valid disposition on a result missing its verdict -> broken
+  [38;2;74;222;128m✓[0m ...and that result is a structural failure on the verdict channel
+
+  [38;2;0;212;255ma dispatch that left no result is broken[0m
+  [38;2;74;222;128m✓[0m died (rc=1) with no result -> broken
+  [38;2;74;222;128m✓[0m the engine did not fabricate a result file
+  [38;2;74;222;128m✓[0m died (rc=1) with no manifest to read -> broken
+  [38;2;74;222;128m✓[0m ...but a CLEAN exit with no manifest declares nothing (v1 contract-bypass)
+  [38;2;74;222;128m✓[0m died with an unparseable result -> broken
+  [38;2;74;222;128m✓[0m died (rc=1) but declared interrupted -> interrupted, not broken
+
+  [38;2;0;212;255mv1 results declare no disposition (the table is not consulted)[0m
+  [38;2;74;222;128m✓[0m v1 result -> empty disposition
+  [38;2;74;222;128m✓[0m v1 result still classifies exactly as before
+  [38;2;74;222;128m✓[0m v1 ADR-021 disposition=terminal is NOT a structural failure
+  [38;2;74;222;128m✓[0m v1 ADR-021 disposition is not surfaced on the v2 channel
+
+  [38;2;0;212;255mthe disposition is surfaced on the dispatch event[0m
+  [38;2;74;222;128m✓[0m dispatch.complete is emitted
+  [38;2;74;222;128m✓[0m the event carries the disposition
+  [38;2;74;222;128m✓[0m the event carries the engine's response to it
+  [38;2;74;222;128m✓[0m a v1 dispatch reports an empty disposition, not a default
+  [38;2;74;222;128m✓[0m an off-list word is reported verbatim on the event
+  [38;2;74;222;128m✓[0m ...with no response invented for it
+
+  [38;2;0;212;255mSPEC-12: build plugin dispositions are members of the engine's closed vocabulary[0m
+  [38;2;74;222;128m✓[0m [SPEC-12] build plugin disposition 'complete' is a valid engine vocabulary member (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-12] build plugin disposition 'interrupted' is a valid engine vocabulary member (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-12] build plugin disposition 'broken' is a valid engine vocabulary member (exit 0)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 80 tests passed[0m
+
+### plugins/agent/build/plugin.sh head tests/unit/core-pipeline-disposition-test.sh
+
+[38;2;0;212;255m[1m  core/pipeline/disposition — vocabulary + engine response table (#1822)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mthe vocabulary is a closed set of exactly six words[0m
+  [38;2;74;222;128m✓[0m the closed set is exactly the ADR-054 §6 vocabulary
+  [38;2;74;222;128m✓[0m `complete` is a member of the closed set (exit 0)
+  [38;2;74;222;128m✓[0m `interrupted` is a member of the closed set (exit 0)
+  [38;2;74;222;128m✓[0m `throttled` is a member of the closed set (exit 0)
+  [38;2;74;222;128m✓[0m `exhausted` is a member of the closed set (exit 0)
+  [38;2;74;222;128m✓[0m `unavailable` is a member of the closed set (exit 0)
+  [38;2;74;222;128m✓[0m `broken` is a member of the closed set (exit 0)
+  [38;2;74;222;128m✓[0m `terminal` is NOT a member of the closed set (exit 1)
+  [38;2;74;222;128m✓[0m `recoverable` is NOT a member of the closed set (exit 1)
+  [38;2;74;222;128m✓[0m `advisory` is NOT a member of the closed set (exit 1)
+  [38;2;74;222;128m✓[0m `none` is NOT a member of the closed set (exit 1)
+  [38;2;74;222;128m✓[0m `pass` is NOT a member of the closed set (exit 1)
+  [38;2;74;222;128m✓[0m `fail` is NOT a member of the closed set (exit 1)
+  [38;2;74;222;128m✓[0m `error` is NOT a member of the closed set (exit 1)
+  [38;2;74;222;128m✓[0m `` is NOT a member of the closed set (exit 1)
+  [38;2;74;222;128m✓[0m `COMPLETE` is NOT a member of the closed set (exit 1)
+  [38;2;74;222;128m✓[0m `complete ` is NOT a member of the closed set (exit 1)
+
+  [38;2;0;212;255meach disposition maps to its own engine response[0m
+  [38;2;74;222;128m✓[0m complete    -> proceed
+  [38;2;74;222;128m✓[0m interrupted -> retry
+  [38;2;74;222;128m✓[0m throttled   -> retry_after_wait
+  [38;2;74;222;128m✓[0m exhausted   -> escalate
+  [38;2;74;222;128m✓[0m unavailable -> halt_unavailable
+  [38;2;74;222;128m✓[0m broken      -> halt_broken
+  [38;2;74;222;128m✓[0m all six responses are distinct from one another
+
+  [38;2;0;212;255mhalt / retry predicates follow the table, not the stage[0m
+  [38;2;74;222;128m✓[0m `unavailable` halts the run (exit 0)
+  [38;2;74;222;128m✓[0m `broken` halts the run (exit 0)
+  [38;2;74;222;128m✓[0m `complete` does not halt the run (exit 1)
+  [38;2;74;222;128m✓[0m `interrupted` does not halt the run (exit 1)
+  [38;2;74;222;128m✓[0m `throttled` does not halt the run (exit 1)
+  [38;2;74;222;128m✓[0m `exhausted` does not halt the run (exit 1)
+  [38;2;74;222;128m✓[0m `interrupted` is retryable (exit 0)
+  [38;2;74;222;128m✓[0m `throttled` is retryable (exit 0)
+  [38;2;74;222;128m✓[0m `complete` is NOT retryable (exit 1)
+  [38;2;74;222;128m✓[0m `exhausted` is NOT retryable (exit 1)
+  [38;2;74;222;128m✓[0m `unavailable` is NOT retryable (exit 1)
+  [38;2;74;222;128m✓[0m `broken` is NOT retryable (exit 1)
+  [38;2;74;222;128m✓[0m interrupted retries immediately (no wait)
+  [38;2;74;222;128m✓[0m throttled waits before retrying
+  [38;2;74;222;128m✓[0m `complete` has no wait — the call is refused (exit 1)
+  [38;2;74;222;128m✓[0m `complete` prints no wait value
+  [38;2;74;222;128m✓[0m `exhausted` has no wait — the call is refused (exit 1)
+  [38;2;74;222;128m✓[0m `exhausted` prints no wait value
+  [38;2;74;222;128m✓[0m `unavailable` has no wait — the call is refused (exit 1)
+  [38;2;74;222;128m✓[0m `unavailable` prints no wait value
+  [38;2;74;222;128m✓[0m `broken` has no wait — the call is refused (exit 1)
+  [38;2;74;222;128m✓[0m `broken` prints no wait value
+
+  [38;2;0;212;255mguard: broken halts and can never be retried[0m
+  [38;2;74;222;128m✓[0m broken halts (exit 0)
+  [38;2;74;222;128m✓[0m broken is not retryable (exit 1)
+  [38;2;74;222;128m✓[0m broken's response is not in the retry family
+  [38;2;74;222;128m✓[0m `unavailable` halts, therefore is not retryable (exit 1)
+  [38;2;74;222;128m✓[0m `broken` halts, therefore is not retryable (exit 1)
+
+  [38;2;0;212;255man unknown disposition is a structural failure[0m
+  [38;2;74;222;128m✓[0m disposition_response refuses an unknown word (exit 1)
+  [38;2;74;222;128m✓[0m disposition_response prints nothing for an unknown word
+  [38;2;74;222;128m✓[0m disposition_halts returns 2 (not 1) for an unknown word (exit 2)
+  [38;2;74;222;128m✓[0m disposition_retryable returns 2 (not 1) for an unknown word (exit 2)
+  [38;2;74;222;128m✓[0m v2 result with an off-list disposition -> structural failure (error)
+  [38;2;74;222;128m✓[0m the raw channel agrees it is a structural failure
+  [38;2;74;222;128m✓[0m the violation names the offending word on the reason channel
+  [38;2;74;222;128m✓[0m an off-list disposition resolves to broken (channels agree)
+  [38;2;74;222;128m✓[0m a valid disposition on a result missing its verdict -> broken
+  [38;2;74;222;128m✓[0m ...and that result is a structural failure on the verdict channel
+
+  [38;2;0;212;255ma dispatch that left no result is broken[0m
+  [38;2;74;222;128m✓[0m died (rc=1) with no result -> broken
+  [38;2;74;222;128m✓[0m the engine did not fabricate a result file
+  [38;2;74;222;128m✓[0m died (rc=1) with no manifest to read -> broken
+  [38;2;74;222;128m✓[0m ...but a CLEAN exit with no manifest declares nothing (v1 contract-bypass)
+  [38;2;74;222;128m✓[0m died with an unparseable result -> broken
+  [38;2;74;222;128m✓[0m died (rc=1) but declared interrupted -> interrupted, not broken
+
+  [38;2;0;212;255mv1 results declare no disposition (the table is not consulted)[0m
+  [38;2;74;222;128m✓[0m v1 result -> empty disposition
+  [38;2;74;222;128m✓[0m v1 result still classifies exactly as before
+  [38;2;74;222;128m✓[0m v1 ADR-021 disposition=terminal is NOT a structural failure
+  [38;2;74;222;128m✓[0m v1 ADR-021 disposition is not surfaced on the v2 channel
+
+  [38;2;0;212;255mthe disposition is surfaced on the dispatch event[0m
+  [38;2;74;222;128m✓[0m dispatch.complete is emitted
+  [38;2;74;222;128m✓[0m the event carries the disposition
+  [38;2;74;222;128m✓[0m the event carries the engine's response to it
+  [38;2;74;222;128m✓[0m a v1 dispatch reports an empty disposition, not a default
+  [38;2;74;222;128m✓[0m an off-list word is reported verbatim on the event
+  [38;2;74;222;128m✓[0m ...with no response invented for it
+
+  [38;2;0;212;255mSPEC-12: build plugin dispositions are members of the engine's closed vocabulary[0m
+  [38;2;74;222;128m✓[0m [SPEC-12] build plugin disposition 'complete' is a valid engine vocabulary member (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-12] build plugin disposition 'interrupted' is a valid engine vocabulary member (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-12] build plugin disposition 'broken' is a valid engine vocabulary member (exit 0)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 80 tests passed[0m
+
+### plugins/agent/build/plugin.sh reverted plugins/agent/build/tests/build-test.sh
+
+[38;2;0;212;255m[1m  plugin: build (agent-loop + git-derived diff — issue #467)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mT_PROMPT_1: prompt invites tools and declares scope + sentinel[0m
+  [38;2;74;222;128m✓[0m T_PROMPT_1 inner run returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m prompt mentions Read/Edit/Write/Bash tools
+  [38;2;74;222;128m✓[0m prompt mentions LOOP_COMPLETE sentinel
+  [38;2;74;222;128m✓[0m prompt mentions scope (plan.files[])
+  [38;2;74;222;128m✓[0m prompt lists the in-scope file
+  [38;2;74;222;128m✓[0m prompt forbids out-of-scope edits
+  [38;2;74;222;128m✓[0m prompt includes BLOCKED escape-hatch rule
+
+  [38;2;0;212;255mT_PROMPT_2: agent edit → non-empty diff.patch[0m
+  [38;2;248;113;113m✗[0m diff.patch unexpectedly empty after agent edit
+### plugins/agent/build/plugin.sh head plugins/agent/build/tests/build-test.sh
+
+[38;2;0;212;255m[1m  plugin: build (agent-loop + git-derived diff — issue #467)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mT_PROMPT_1: prompt invites tools and declares scope + sentinel[0m
+  [38;2;74;222;128m✓[0m T_PROMPT_1 inner run returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m prompt mentions Read/Edit/Write/Bash tools
+  [38;2;74;222;128m✓[0m prompt mentions LOOP_COMPLETE sentinel
+  [38;2;74;222;128m✓[0m prompt mentions scope (plan.files[])
+  [38;2;74;222;128m✓[0m prompt lists the in-scope file
+  [38;2;74;222;128m✓[0m prompt forbids out-of-scope edits
+  [38;2;74;222;128m✓[0m prompt includes BLOCKED escape-hatch rule
+
+  [38;2;0;212;255mT_PROMPT_2: agent edit → non-empty diff.patch[0m
+  [38;2;248;113;113m✗[0m diff.patch unexpectedly empty after agent edit
+### plugins/agent/build/plugin.sh reverted plugins/agent/build/tests/build-test.sh
+
+[38;2;0;212;255m[1m  plugin: build (agent-loop + git-derived diff — issue #467)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mT_PROMPT_1: prompt invites tools and declares scope + sentinel[0m
+  [38;2;74;222;128m✓[0m T_PROMPT_1 inner run returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m prompt mentions Read/Edit/Write/Bash tools
+  [38;2;74;222;128m✓[0m prompt mentions LOOP_COMPLETE sentinel
+  [38;2;74;222;128m✓[0m prompt mentions scope (plan.files[])
+  [38;2;74;222;128m✓[0m prompt lists the in-scope file
+  [38;2;74;222;128m✓[0m prompt forbids out-of-scope edits
+  [38;2;74;222;128m✓[0m prompt includes BLOCKED escape-hatch rule
+
+  [38;2;0;212;255mT_PROMPT_2: agent edit → non-empty diff.patch[0m
+  [38;2;248;113;113m✗[0m diff.patch unexpectedly empty after agent edit
+### plugins/agent/build/plugin.sh head plugins/agent/build/tests/build-test.sh
+
+[38;2;0;212;255m[1m  plugin: build (agent-loop + git-derived diff — issue #467)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mT_PROMPT_1: prompt invites tools and declares scope + sentinel[0m
+  [38;2;74;222;128m✓[0m T_PROMPT_1 inner run returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m prompt mentions Read/Edit/Write/Bash tools
+  [38;2;74;222;128m✓[0m prompt mentions LOOP_COMPLETE sentinel
+  [38;2;74;222;128m✓[0m prompt mentions scope (plan.files[])
+  [38;2;74;222;128m✓[0m prompt lists the in-scope file
+  [38;2;74;222;128m✓[0m prompt forbids out-of-scope edits
+  [38;2;74;222;128m✓[0m prompt includes BLOCKED escape-hatch rule
+
+  [38;2;0;212;255mT_PROMPT_2: agent edit → non-empty diff.patch[0m
+  [38;2;248;113;113m✗[0m diff.patch unexpectedly empty after agent edit
+### plugins/agent/build/plugin.sh reverted plugins/agent/build/tests/build-test.sh
+
+[38;2;0;212;255m[1m  plugin: build (agent-loop + git-derived diff — issue #467)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mT_PROMPT_1: prompt invites tools and declares scope + sentinel[0m
+  [38;2;74;222;128m✓[0m T_PROMPT_1 inner run returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m prompt mentions Read/Edit/Write/Bash tools
+  [38;2;74;222;128m✓[0m prompt mentions LOOP_COMPLETE sentinel
+  [38;2;74;222;128m✓[0m prompt mentions scope (plan.files[])
+  [38;2;74;222;128m✓[0m prompt lists the in-scope file
+  [38;2;74;222;128m✓[0m prompt forbids out-of-scope edits
+  [38;2;74;222;128m✓[0m prompt includes BLOCKED escape-hatch rule
+
+  [38;2;0;212;255mT_PROMPT_2: agent edit → non-empty diff.patch[0m
+  [38;2;248;113;113m✗[0m diff.patch unexpectedly empty after agent edit
+### plugins/agent/build/plugin.sh head plugins/agent/build/tests/build-test.sh
+
+[38;2;0;212;255m[1m  plugin: build (agent-loop + git-derived diff — issue #467)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mT_PROMPT_1: prompt invites tools and declares scope + sentinel[0m
+  [38;2;74;222;128m✓[0m T_PROMPT_1 inner run returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m prompt mentions Read/Edit/Write/Bash tools
+  [38;2;74;222;128m✓[0m prompt mentions LOOP_COMPLETE sentinel
+  [38;2;74;222;128m✓[0m prompt mentions scope (plan.files[])
+  [38;2;74;222;128m✓[0m prompt lists the in-scope file
+  [38;2;74;222;128m✓[0m prompt forbids out-of-scope edits
+  [38;2;74;222;128m✓[0m prompt includes BLOCKED escape-hatch rule
+
+  [38;2;0;212;255mT_PROMPT_2: agent edit → non-empty diff.patch[0m
+  [38;2;248;113;113m✗[0m diff.patch unexpectedly empty after agent edit
+### plugins/agent/build/plugin.sh reverted plugins/agent/build/tests/build-test.sh
+
+[38;2;0;212;255m[1m  plugin: build (agent-loop + git-derived diff — issue #467)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mT_PROMPT_1: prompt invites tools and declares scope + sentinel[0m
+  [38;2;74;222;128m✓[0m T_PROMPT_1 inner run returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m prompt mentions Read/Edit/Write/Bash tools
+  [38;2;74;222;128m✓[0m prompt mentions LOOP_COMPLETE sentinel
+  [38;2;74;222;128m✓[0m prompt mentions scope (plan.files[])
+  [38;2;74;222;128m✓[0m prompt lists the in-scope file
+  [38;2;74;222;128m✓[0m prompt forbids out-of-scope edits
+  [38;2;74;222;128m✓[0m prompt includes BLOCKED escape-hatch rule
+
+  [38;2;0;212;255mT_PROMPT_2: agent edit → non-empty diff.patch[0m
+  [38;2;248;113;113m✗[0m diff.patch unexpectedly empty after agent edit
+### plugins/agent/build/plugin.sh head plugins/agent/build/tests/build-test.sh
+
+[38;2;0;212;255m[1m  plugin: build (agent-loop + git-derived diff — issue #467)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mT_PROMPT_1: prompt invites tools and declares scope + sentinel[0m
+  [38;2;74;222;128m✓[0m T_PROMPT_1 inner run returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m prompt mentions Read/Edit/Write/Bash tools
+  [38;2;74;222;128m✓[0m prompt mentions LOOP_COMPLETE sentinel
+  [38;2;74;222;128m✓[0m prompt mentions scope (plan.files[])
+  [38;2;74;222;128m✓[0m prompt lists the in-scope file
+  [38;2;74;222;128m✓[0m prompt forbids out-of-scope edits
+  [38;2;74;222;128m✓[0m prompt includes BLOCKED escape-hatch rule
+
+  [38;2;0;212;255mT_PROMPT_2: agent edit → non-empty diff.patch[0m
+  [38;2;248;113;113m✗[0m diff.patch unexpectedly empty after agent edit

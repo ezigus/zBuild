@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "findings": [
+    {
+      "id": "artifact-contract-violated",
+      "title": "Plugin contract violated: shape-floor declared a required output but wrote no artifact",
+      "severity": "blocking",
+      "stage": "shape-floor",
+      "plugin": "shape-floor",
+      "detail": "Expected artifact at: /home/runner/work/_temp/zbuild-state/artifacts/shape-floor-detail.md"
+    }
+  ]
+}
