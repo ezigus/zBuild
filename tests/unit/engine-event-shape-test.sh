@@ -18,9 +18,11 @@ print_test_header "engine event shapes (#385) — model.route, model.outcome, bu
 
 setup_test_env "engine-event-shape"
 
-# #1921 follow-up: reserved test identity — the QUOTED assignment form.
-# These were real issue numbers used as run identity.
-_ZB_ID="$(zb_test_issue)"
+# #1921 follow-up: a FIXED reserved id, not zb_test_issue. Minted ids are
+# PID-keyed so they vary per run, and this file compares against a golden,
+# which pins bytes. 90000042 keeps the trail back to the original 42.
+_ZB_ID=90000042
+
 
 # ── Event bus pointing at isolated temp dir ──────────────────────────────────
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
