@@ -95,7 +95,7 @@ _setup timeout
 _TA_RC=124
 set +e; test_author_run "test-author" "$_S/pipeline-state.json"; _rc2=$?; set -e
 assert_eq "[SPEC-5][change] a router timeout is NOT reported as a clean authoring pass" \
-    "1" "$([[ "$(_res '.verdict')" != "authored" ]] && echo 1 || echo 0)"
+    "degraded" "$(_res '.verdict')"
 assert_eq "[SPEC-5][change] and it maps to a non-complete disposition" \
     "1" "$([[ "$(_res '.disposition')" != "complete" ]] && echo 1 || echo 0)"
 assert_eq "[SPEC-4][guard] rc stays binary on failure" \

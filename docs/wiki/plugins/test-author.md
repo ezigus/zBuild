@@ -1,3 +1,16 @@
+# test-author
+
+The test-author plugin writes the acceptance assertions from the design contract, before build implements against them — so the code and the assertion are two independent readings of the SPEC rather than two artifacts of one.
+
+**Test Author**
+
+- **Kind:** `agent`
+- **Role:** `test_author`
+- **Manifest:** `plugins/agent/test-author/manifest.yaml`
+
+## Manifest
+
+```yaml
 id: test-author
 name: Test Author
 kind: agent
@@ -68,3 +81,4 @@ outputs:
     format: markdown
     required: true
     summary: true
+```

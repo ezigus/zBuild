@@ -62,7 +62,7 @@ test_author_run() {
 
     if [[ ! -f "$design" ]] || ! declare -f acceptance_list_spec_ids >/dev/null 2>&1; then
         _ta_emit "test_author.no_contract" "reason=no_design"
-        _ta_write_result "$art" "unchanged" "complete" \
+        _ta_write_result "$art" "complete" "complete" \
             "no design.md acceptance block — there is no contract to author against" 0
         return 0
     fi
@@ -84,7 +84,7 @@ test_author_run() {
 
     if [[ "$n" -eq 0 ]]; then
         _ta_emit "test_author.no_contract" "reason=no_specs"
-        _ta_write_result "$art" "unchanged" "complete" \
+        _ta_write_result "$art" "complete" "complete" \
             "the acceptance block declares no SPECs — nothing to author" 0
         return 0
     fi
@@ -140,7 +140,7 @@ Write or amend only the testfile(s) named above. Do not write, modify or stub an
         && assertion_integrity_record "$art" "$repo"
 
     _ta_emit "test_author.authored" "specs=$n"
-    _ta_write_result "$art" "authored" "complete" \
+    _ta_write_result "$art" "complete" "complete" \
         "authored acceptance assertions for $n SPEC(s) from the design contract" "$n"
     return 0
 }
