@@ -24,15 +24,29 @@ _offenders=""
 while IFS= read -r hit; do
     [[ -n "$hit" ]] || continue
     file="${hit%%:*}"; rest="${hit#*:}"; line="${rest%%:*}"; text="${rest#*:}"
-    # Comments are provenance (`#1931`), never identity.
-    [[ "$(printf '%s' "$text" | sed 's/^[[:space:]]*//' | cut -c1)" == "#" ]] && continue
-    printf '%s' "$text" | grep -q 'lint-test-identity:allow' && continue
-    # Extract the number and let anything in the reserved range through.
-    num="$(printf '%s' "$text" | grep -oE "$PATTERN" | grep -oE '[0-9]+' | head -1)"
+
+    # Pure-bash matching below, deliberately: `printf ... | grep -q` is the
+    # SIGPIPE antipattern this repo guards against (#1015, #1260), and a bare
+    # `| head` trips #1886. Parameter expansion and [[ =~ ]] need neither.
+    trimmed="${text#"${text%%[![:space:]]*}"}"
+    [[ "$trimmed" == "#"* ]] && continue                       # provenance, not identity
+    [[ "$text" == *"lint-test-identity:allow"* ]] && continue
+
+    num=""
+    if [[ "$text" =~ (ZBUILD_ISSUE_NUMBER|ZBUILD_ISSUE)=\"?([0-9]+) ]]; then
+        num="${BASH_REMATCH[2]}"
+    elif [[ "$text" =~ --issue[\ =]+([0-9]+) ]]; then
+        num="${BASH_REMATCH[1]}"
+    elif [[ "$text" =~ _artifact_persist_[a-z_]+\ ([0-9]+) ]]; then
+        num="${BASH_REMATCH[1]}"
+    elif [[ "$text" =~ zbuild_run_key\ ([0-9]+) ]]; then
+        num="${BASH_REMATCH[1]}"
+    fi
     [[ -z "$num" ]] && continue
     [[ "$num" == "0" ]] && continue          # the no-identity sentinel
     [[ "$num" -ge 90000000 ]] && continue    # reserved test range
-    _offenders+="  $file:$line: $(printf '%s' "$text" | sed 's/^[[:space:]]*//' | cut -c1-90)"$'\n'
+
+    _offenders+="  $file:$line: ${trimmed:0:90}"$'\n'
 done < <(grep -rnE "$PATTERN" tests/ core/ plugins/ 2>/dev/null || true)
 
 if [[ -n "$_offenders" ]]; then
