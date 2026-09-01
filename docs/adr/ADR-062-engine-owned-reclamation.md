@@ -81,7 +81,11 @@ Concretely: §1 and §2 land and are proven equivalent to today's behaviour *inc
 - **`tool/test`'s private mechanism becomes the engine's.** Its `test-stage.pgid` write and `_test_kill_staging_pg` reader move to the dispatch seam and apply to every stage.
 - **21 no-op hooks and their manifest declarations disappear.** Nothing observable changes for them, which is the point: they were contract surface with no behaviour behind it.
 - **The staging-tree deletion in `test_cleanup(purge)` is not a process concern** and moves with `zbuild clean --purge` as a path operation.
-- **A SIGKILLed runner still leaves orphans.** Dispatch runs from an `EXIT` trap and `SIGKILL` cannot be trapped. Persisting the pgid is what makes an *operator-run* sweep possible afterwards — an in-process trap never could, under either design.
+- **A SIGKILLed runner still leaves orphans until an operator sweeps.** Dispatch runs from an `EXIT` trap and `SIGKILL` cannot be trapped, so nothing in-process can free those groups. The persisted pgid is what makes a *later* sweep possible, and `zbuild cleanup --pgroups` is that sweep (#2018): it reads the records, proves each pgid still names what recorded it, and frees only the proven ones.
+
+  The record therefore carries the group leader's **start time** alongside the pgid. A pgid on its own is a number the kernel reissues once the leader is reaped, so a bare record cannot distinguish a leaked group from a stranger holding the same number — and a sweep that guessed would kill someone else's work. Where identity cannot be proven, the sweep skips and names the record; four of its five outcomes refuse to signal anything. A missed leak costs an idle process the operator can see; a wrong kill costs work, silently.
+
+  Both formats are on disk — the engine's record with a start time, `tool/test`'s bare `test-stage.pgid`, and any record written before #2018 — so `zbuild_pg_record_pgid` in `scripts/lib/proc-group.sh` is the single reader. Do not re-parse a `.pgid` in a caller: the guard that rejects an unexpected format is a `continue`, so a second parser does not fail loudly, it kills nothing and reports success.
 - **Reclamation stays bounded.** `ZBUILD_RELEASE_TIMEOUT` (default 30s) still applies; an unbounded reclaim turns Ctrl-C into a hang, which is the failure the bound exists for.
 - **Writes outside the data root remain unreclaimable** (#2004). Path-based reclamation cannot reach `${TMPDIR}`; that is fixed by putting writes in bounds, not here.
 

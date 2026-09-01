@@ -81,6 +81,7 @@ Commands:
                          --age-days 0 to reclaim a run that died today).
                          [--branches] [--state-dirs] [--stashes] [--tmpdirs]
                          [--scratch] [--state-branches] [--orch-pools] [--cache]
+                         [--pgroups]
                          [--remote]
                          [--worktrees]
                          Retention is one number (--age-days, default 7) on two
@@ -736,6 +737,7 @@ UPHELP
         cl_rc=0
         cl_orch_pools=false
         cl_cache=false
+        cl_pgroups=false
         cl_dry_run=""
         cl_force=false
         # 7, not 14 (#1632's already-decided state-branch retention, generalised).
@@ -757,6 +759,7 @@ UPHELP
                 --remote) cl_remote=true; shift ;;
                 --orch-pools)     cl_orch_pools=true;     shift ;;
                 --cache)          cl_cache=true;          shift ;;
+                --pgroups)        cl_pgroups=true;        shift ;;
                 --dry-run)    cl_dry_run=true; shift ;;
                 --apply)      cl_dry_run=false; shift ;;
                 --force)      cl_force=true; cl_dry_run="${cl_dry_run:-false}"; shift ;;
@@ -829,6 +832,7 @@ UPHELP
             cl_state_branches=true
             cl_orch_pools=true
             cl_cache=true
+            cl_pgroups=true
         fi
 
         $cl_quiet || {
@@ -924,6 +928,17 @@ UPHELP
             _cleanup_render_plan "orch pools" "$cl_pool_plan" "$cl_dry_run" "$cl_quiet"
             cl_pool_root="${TMPDIR:-/tmp}"; cl_pool_root="${cl_pool_root%/}/zbuild-runs"
             _cleanup_apply_dir_plan "$cl_pool_plan" "$cl_dry_run" "$cl_pool_root"
+        fi
+
+        if $cl_pgroups; then
+            # #2018: the leaked-process-group sweep. Reads the ADR-062 §1
+            # dispatch records that nothing read after a hard kill. In the
+            # default set, not opt-in, for the reason above: a leak nobody is
+            # told about is a leak nobody fixes, and this one holds real CPU.
+            cl_pg_root="${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}"
+            cl_pg_plan="$(_cleanup_scan_pgids "$cl_pg_root" || true)"
+            _cleanup_render_plan "process groups" "$cl_pg_plan" "$cl_dry_run" "$cl_quiet"
+            _cleanup_apply_pgid_plan "$cl_pg_plan" "$cl_dry_run" "$cl_pg_root"
         fi
 
         if $cl_cache; then

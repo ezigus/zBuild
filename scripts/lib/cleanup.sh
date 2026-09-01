@@ -1363,6 +1363,136 @@ _cleanup_scan_cache() {
     done
 }
 
+# proc-group.sh supplies zbuild_pg_kill for the sweep below. Sourced here, not
+# left to the caller: an absent zbuild_pg_kill would make _cleanup_apply_pgid_plan
+# reap every record while killing nothing, which reports the leak as fixed and
+# destroys the only evidence it existed — the fail-open direction, on the one
+# section of this file whose whole job is to act.
+if ! declare -F zbuild_pg_kill >/dev/null 2>&1; then
+    # shellcheck source=proc-group.sh
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/proc-group.sh"
+fi
+
+# ─── _cleanup_scan_pgids <data_root> ────────────────────────────────────────
+# ADR-062 §1 records, at dispatch, the process group the engine just spawned:
+# `runs/<run_id>/runtime/stages/<stage>.pgid`. Teardown reads those on a normal
+# exit. Nothing read them on a LATER invocation, so `kill -9` on zbuild itself —
+# a closed lid, a reclaimed CI runner — left the groups running and the records
+# on disk. That is #1748 reached by a different route (#2018).
+#
+# The whole difficulty is PID RECYCLING. A pgid is just a number, and once the
+# group leader is reaped the kernel is free to hand that number to anything.
+# Signalling it then kills a stranger — a far worse outcome than the leak this
+# exists to fix. So the sweep must PROVE the number still names what recorded
+# it, and where it cannot prove that it skips and says why.
+#
+# The proof is the group leader's start time, captured beside the pgid at
+# dispatch. A recycled pid cannot have the recorded start time, because it is a
+# different process that began at a different moment.
+#
+# Five outcomes, and only ONE of them signals anything:
+#   group has no members                     -> stale   (reap the record)
+#   record has no start time (pre-#2018)     -> skip    (unprovable)
+#   group alive, leader gone                 -> skip    (unprovable)
+#   leader's start time differs from record  -> skip    (RECYCLED)
+#   leader's start time matches the record   -> kill    (proven ours)
+#
+# Four of the five refuse to act. That asymmetry is deliberate: a missed leak
+# costs an idle process, and the operator sees it named in the report. A wrong
+# kill costs someone else's work with no warning at all.
+_cleanup_scan_pgids() {
+    local data_root="${1:-${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}}"
+    data_root="${data_root%/}"
+    [[ -d "$data_root" ]] || return 0
+    local self_pgid; self_pgid="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ' || true)"
+    local rec pgid rec_start now_start rid
+    while IFS= read -r rec; do
+        [[ -n "$rec" && -f "$rec" ]] || continue
+        # The record is `<pgid>` (pre-#2018) or `<pgid>\t<start time>`.
+        IFS=$'\t' read -r pgid rec_start < "$rec" || true
+        pgid="${pgid//[^0-9]/}"
+        if [[ -z "$pgid" ]]; then
+            printf '%s\tskip\tmalformed record — no pgid\n' "$rec"
+            continue
+        fi
+        # `runs/<run_id>/runtime/stages/<stage>.pgid` — the run id is four
+        # components up. ADR-059 §1: the path is the keying.
+        rid="$(basename "$(dirname "$(dirname "$(dirname "$rec")")")")"
+        if _cleanup_is_active_run "$rid"; then
+            printf '%s\tskip\tactive run %s\n' "$rec" "$rid"
+            continue
+        fi
+        if [[ -n "$self_pgid" && "$self_pgid" == "$pgid" ]]; then
+            printf '%s\tskip\tour own process group\n' "$rec"
+            continue
+        fi
+        # Group liveness, not leader liveness: `-PGID` asks whether ANY member
+        # survives, which is the question — an orphaned child outliving its
+        # leader is exactly the leak being hunted.
+        if ! kill -0 -- "-$pgid" 2>/dev/null; then
+            printf '%s\tstale\tpgid=%s no surviving members\n' "$rec" "$pgid"
+            continue
+        fi
+        if [[ -z "${rec_start:-}" ]]; then
+            printf '%s\tskip\tpgid=%s alive but record predates #2018 — identity unprovable\n' "$rec" "$pgid"
+            continue
+        fi
+        now_start="$(ps -o lstart= -p "$pgid" 2>/dev/null | tr -s ' ' | sed 's/^ *//;s/ *$//' || true)"
+        if [[ -z "$now_start" ]]; then
+            printf '%s\tskip\tpgid=%s alive but leader gone — identity unprovable\n' "$rec" "$pgid"
+            continue
+        fi
+        if [[ "$now_start" != "$rec_start" ]]; then
+            printf '%s\tskip\tpgid=%s recycled — leader started %s, record says %s\n' \
+                "$rec" "$pgid" "$now_start" "$rec_start"
+            continue
+        fi
+        printf '%s\tkill\tpgid=%s proven ours (leader started %s)\n' "$rec" "$pgid" "$now_start"
+    done < <(find "$data_root" -type f -name '*.pgid' -path '*/runtime/stages/*' 2>/dev/null)
+}
+
+# ─── _cleanup_apply_pgid_plan <plan_TSV> <dry_run_bool> <data_root> ─────────
+# `kill` frees the group and reaps the record; `stale` reaps the record only.
+# `skip` touches nothing — a record the sweep could not prove is a record it
+# must leave for the operator to look at, not quietly delete.
+#
+# Every target is re-validated as a path under the data root at DELETE time,
+# and the pgid is re-read from the file rather than trusted from the plan text,
+# so a malformed plan line cannot become a signal to an arbitrary number. Same
+# defence-in-depth as the other appliers in this file.
+_cleanup_apply_pgid_plan() {
+    local data="$1" dry_run="$2" root="${3:-}"
+    [[ -z "$data" ]] && return 0
+    root="${root%/}"
+    [[ -n "$root" ]] || return 1
+    local line rec verdict pgid _i
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        rec="${line%%$'\t'*}"
+        verdict="${line#*$'\t'}"; verdict="${verdict%%$'\t'*}"
+        case "$verdict" in kill|stale) ;; *) continue ;; esac
+        [[ "$dry_run" == "true" ]] && continue
+        [[ "$rec" == "$root"/?* ]] || continue
+        [[ -f "$rec" ]] || continue
+        if [[ "$verdict" == "kill" ]]; then
+            IFS=$'\t' read -r pgid _ < "$rec" || true
+            pgid="${pgid//[^0-9]/}"
+            [[ -n "$pgid" ]] || continue
+            zbuild_pg_kill "$pgid" 2>/dev/null || true
+            # Only reap the record once the group is actually gone, so a group
+            # that survived the kill stays visible to the next sweep instead of
+            # losing the only evidence it existed.
+            _i=0
+            while kill -0 -- "-$pgid" 2>/dev/null && [[ $_i -lt 30 ]]; do
+                sleep 0.1; _i=$(( _i + 1 ))
+            done
+            kill -0 -- "-$pgid" 2>/dev/null && continue
+        fi
+        rm -f -- "$rec" 2>/dev/null || true
+    done <<<"$data"
+    return 0
+}
+
 # ─── _cleanup_apply_dir_plan <plan_TSV> <dry_run_bool> <root_prefix> ────────
 # Shared applier for the directory-shaped scanners above (scratch, orch pools,
 # cache). Re-validates that every target still sits under the expected root at

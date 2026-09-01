@@ -130,7 +130,10 @@ teardown_run() {
         local _kpgf _kpgid _killed=0
         for _kpgf in "$_state_dir"/runtime/stages/*.pgid; do
             [[ -e "$_kpgf" ]] || continue
-            _kpgid="$(cat "$_kpgf" 2>/dev/null || true)"
+            # Shared reader (#2018): the dispatch record gained a start-time
+            # field, and `cat` + a numeric guard silently rejects it — teardown
+            # would kill nothing and say it succeeded.
+            _kpgid="$(zbuild_pg_record_pgid "$_kpgf" 2>/dev/null || true)"
             [[ "$_kpgid" =~ ^[0-9]+$ ]] || continue
             # Never signal our own group: teardown runs inside the run's process
             # group, so killing it would take the runner down with the stages.

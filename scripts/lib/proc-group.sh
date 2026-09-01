@@ -74,6 +74,26 @@ _zbuild_pg_grace() {
     [[ "$_g" =~ ^[0-9]+$ && "$_g" -gt 0 ]] && printf '%s' "$_g" || printf '1'
 }
 
+# zbuild_pg_record_pgid <file> — the pgid out of a `.pgid` record.
+#
+# ONE reader, because there are two formats on disk and three places that read
+# them (#2018). The engine's dispatch record is `<pgid>\t<leader start time>`;
+# tool/test's own `test-stage.pgid` is a bare number; and a record written before
+# #2018 is bare too. A reader that only understands one of those does not error —
+# it fails the numeric guard and `continue`s, so the caller kills NOTHING and
+# reports success. That is how a format change here silently disables ADR-062 §2
+# reclamation, which is the path that actually runs on every normal exit.
+#
+# Prints nothing and returns 1 when there is no usable pgid, so a caller can
+# still distinguish "no record" from "record says 1234".
+zbuild_pg_record_pgid() {
+    local _f="${1:-}" _pgid=""
+    [[ -n "$_f" && -f "$_f" ]] || return 1
+    IFS=$'\t' read -r _pgid _ < "$_f" 2>/dev/null || true
+    [[ "$_pgid" =~ ^[0-9]+$ ]] || return 1
+    printf '%s' "$_pgid"
+}
+
 # TERM then KILL a whole process group. `-PGID` is the negative-pid convention.
 zbuild_pg_kill() {
     local _pgid="${1:-}"

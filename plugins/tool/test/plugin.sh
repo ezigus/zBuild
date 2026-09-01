@@ -850,7 +850,7 @@ _test_runtime_dir() {
 _test_kill_staging_pg() {
     local _pf="${1:-}" _gf="${2:-}"
     if [[ -f "$_gf" ]]; then
-        local _pgid; _pgid="$(cat "$_gf" 2>/dev/null || true)"
+        local _pgid; _pgid="$(zbuild_pg_record_pgid "$_gf" 2>/dev/null || true)"
         if [[ -n "$_pgid" && "$_pgid" =~ ^[0-9]+$ ]]; then
             zbuild_pg_kill "$_pgid"
             return 0
