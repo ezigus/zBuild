@@ -107,3 +107,4 @@ stage_scratch_ensure() {
     fi
     printf '%s\n' "$dir"
 }
+
