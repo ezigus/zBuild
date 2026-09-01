@@ -56,6 +56,17 @@ assert_eq "[SPEC-2] and it has an origin to push to" "origin" \
 assert_eq "[SPEC-2] and it is NOT the real checkout" "different" \
     "$( [[ "$(cd "$_R" && git rev-parse --show-toplevel)" == "$REPO_ROOT" ]] && echo same || echo different )"
 
+# A snapshot commits, so it needs a committer identity. A fresh CI runner has
+# none configured and git's implicit fallback (runner@fv-az...(none)) is not a
+# valid address, so commit-tree fails and no ref appears — which is exactly what
+# these premises assert. Supplied via env so the real checkout's config is not
+# touched. Local machines usually derive a usable identity, which is why this
+# only failed on CI.
+_zb_git_id() {
+    GIT_AUTHOR_NAME=zbuild-test GIT_AUTHOR_EMAIL=test@zbuild.local \
+    GIT_COMMITTER_NAME=zbuild-test GIT_COMMITTER_EMAIL=test@zbuild.local "$@"
+}
+
 # ─── [SPEC-3][change] a leaked reserved ref is cleaned up ───────────────────
 # Simulates exactly what the in-process runner tests do: snapshot with the real
 # checkout as CWD. The teardown must remove it.
@@ -65,7 +76,7 @@ _leak_issue="$(zb_test_issue)"
 _leak_state="$TEST_TEMP_DIR/leak-state"
 mkdir -p "$_leak_state/artifacts"
 printf 'leaked\n' > "$_leak_state/artifacts/plan.json"
-( cd "$REPO_ROOT" && _artifact_persist_snapshot "$_leak_state" "$_leak_issue" ) >/dev/null 2>&1 || true
+( cd "$REPO_ROOT" && _zb_git_id _artifact_persist_snapshot "$_leak_state" "$_leak_issue" ) >/dev/null 2>&1 || true
 assert_eq "[SPEC-3] premise: the snapshot landed in the real checkout" "1" \
     "$( git -C "$REPO_ROOT" rev-parse -q --verify "refs/heads/zbuild/state/issue-$_leak_issue" >/dev/null 2>&1 && echo 1 || echo 0 )"
 assert_contains "[SPEC-3] and zb_test_reserved_refs sees it" \
@@ -86,7 +97,7 @@ _real_ref="refs/heads/zbuild/state/issue-424242"
 _sentinel_state="$TEST_TEMP_DIR/sentinel-state"
 mkdir -p "$_sentinel_state/artifacts"
 printf 'not-a-test\n' > "$_sentinel_state/artifacts/plan.json"
-( cd "$REPO_ROOT" && _artifact_persist_snapshot "$_sentinel_state" 424242 ) >/dev/null 2>&1 || true
+( cd "$REPO_ROOT" && _zb_git_id _artifact_persist_snapshot "$_sentinel_state" 424242 ) >/dev/null 2>&1 || true
 if git -C "$REPO_ROOT" rev-parse -q --verify "$_real_ref" >/dev/null 2>&1; then
     cleanup_test_env
     if git -C "$REPO_ROOT" rev-parse -q --verify "$_real_ref" >/dev/null 2>&1; then

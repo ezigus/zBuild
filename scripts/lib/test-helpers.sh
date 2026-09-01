@@ -421,6 +421,9 @@ zb_test_repo() {
 
 # Reserved-range state refs in a repo (default: the real checkout). Used by both
 # the teardown below and the suite-wide hygiene guard.
+# shellcheck disable=SC2120  # callers live in tests/, which CI's shellcheck step
+# does not scan (it covers scripts core plugins), so the optional repo argument
+# looks unpassed from inside this file alone.
 zb_test_reserved_refs() {
     local repo="${1:-${REPO_ROOT:-$PWD}}"
     git -C "$repo" for-each-ref --format='%(refname)' \
