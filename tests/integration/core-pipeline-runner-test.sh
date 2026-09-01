@@ -103,8 +103,8 @@ assert_eq "--help exits 0" "0" "$rc"
 # ─── Test 3: --issue with no value → exits 2 (controlled, not unbound var) ──
 # NOT an identity: `--issue` is deliberately given NO value here, and the 2 is
 # the file descriptor in `2>/dev/null`. The test asserts the runner rejects a
-# valueless flag with rc=2.  # lint-test-identity:allow
-set +e; bash "$RUNNER" --issue 2>/dev/null; rc=$?; set -e
+# valueless flag with rc=2.
+set +e; bash "$RUNNER" --issue 2>/dev/null; rc=$?; set -e  # lint-test-identity:allow
 assert_eq "--issue with no value exits 2" "2" "$rc"
 
 set +e; bash "$RUNNER" --goal 2>/dev/null; rc=$?; set -e
