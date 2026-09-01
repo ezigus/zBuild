@@ -360,7 +360,10 @@ TIMEOUT_EOF
 # 9_0000000+ is unreachable: this repo is ~2000 issues in. A stray
 # zbuild/state/issue-9xxxxxxx ref is therefore unmistakably test residue, safe to
 # reclaim, and can never be confused with someone's work.
-ZB_TEST_ISSUE_BASE=90000000
+# The floor of the reserved range. Read by lint-test-identity and the hygiene
+# test; zb_test_issue composes its ids to always land at or above it.
+ZB_TEST_ISSUE_FLOOR=90000000
+export ZB_TEST_ISSUE_FLOOR
 
 # Sequential within a test file: 90000001, 90000002, … Files repeat the same ids,
 # which is safe because each runs in its own throwaway repo — and if one ever
@@ -368,6 +371,14 @@ ZB_TEST_ISSUE_BASE=90000000
 # The counter lives in a FILE, not a shell variable: callers use $(zb_test_issue),
 # which runs in a subshell, so an in-memory counter would never advance and every
 # call would return the same id.
+#
+# The id is keyed on the PID so two test files running in PARALLEL never mint the
+# same one. They otherwise all start at 90000001, and the teardown below deletes
+# refs from the SHARED checkout — so one file's cleanup could delete a ref another
+# file was still asserting on. The unit tier is parallel by default (#984), and
+# more cores make that likelier, which is why it showed on Linux CI first.
+#
+# Shape: 9 + PID%1000 (3) + seq (4) — always 8 digits, always >= 90000000.
 zb_test_issue() {
     local dir="${TEST_TEMP_DIR:-${TMPDIR:-/tmp}}"
     local f="$dir/.zb-test-issue-seq"
@@ -376,7 +387,12 @@ zb_test_issue() {
     [[ "$n" =~ ^[0-9]+$ ]] || n=0
     n=$(( n + 1 ))
     printf '%d' "$n" > "$f" 2>/dev/null || true
-    printf '%d' "$(( ZB_TEST_ISSUE_BASE + n ))"
+    local id
+    id="$(printf '9%03d%04d' "$(( $$ % 1000 ))" "$n")"
+    # Record it, so teardown removes exactly the refs THIS file minted rather
+    # than every reserved ref it happens to find.
+    printf '%s\n' "$id" >> "$dir/.zb-test-issue-minted" 2>/dev/null || true
+    printf '%s' "$id"
 }
 
 # Goal fixtures get the same treatment: the marker makes zbuild/state/goal-<hash>
@@ -412,14 +428,20 @@ zb_test_reserved_refs() {
 }
 
 cleanup_test_env() {
-    # Remove reserved-range state refs this test may have written into the real
-    # checkout. Scoped to 9xxxxxxx ON PURPOSE: a real issue's branch is never
-    # touched here, not even one already contaminated.
-    local _ref
-    while IFS= read -r _ref; do
-        [[ -n "$_ref" ]] || continue
-        git -C "${REPO_ROOT:-$PWD}" update-ref -d "$_ref" 2>/dev/null || true
-    done < <(zb_test_reserved_refs 2>/dev/null)
+    # Remove state refs THIS FILE minted and may have written into the real
+    # checkout. Deliberately not "every reserved ref present": the unit tier runs
+    # in parallel, so deleting another file's in-flight ref would fail its
+    # assertions. Reserved-range by construction, so a real issue's branch is
+    # never touched — not even one already contaminated.
+    local _minted="${TEST_TEMP_DIR:-}/.zb-test-issue-minted"
+    if [[ -n "${TEST_TEMP_DIR:-}" && -r "$_minted" ]]; then
+        local _id
+        while IFS= read -r _id; do
+            [[ "$_id" =~ ^9[0-9]{7}$ ]] || continue
+            git -C "${REPO_ROOT:-$PWD}" update-ref -d \
+                "refs/heads/zbuild/state/issue-$_id" 2>/dev/null || true
+        done < "$_minted"
+    fi
 
     if [[ -n "$TEST_TEMP_DIR" && -d "$TEST_TEMP_DIR" ]]; then
         rm -rf "$TEST_TEMP_DIR" 2>/dev/null || true

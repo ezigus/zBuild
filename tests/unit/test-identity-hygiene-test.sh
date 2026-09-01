@@ -25,12 +25,15 @@ setup_test_env "zb-test-identity"
 print_test_section "[SPEC-1][change] zb_test_issue mints reserved ids"
 
 _a="$(zb_test_issue)"; _b="$(zb_test_issue)"
-assert_eq "[SPEC-1] the first minted id is 90000001" "90000001" "$_a"
-# Sequential ACROSS command substitutions — the counter must survive the subshell
+# Advances ACROSS command substitutions — the counter must survive the subshell
 # that $(zb_test_issue) creates, which an in-memory variable does not.
-assert_eq "[SPEC-1] and ids advance across subshells" "$(( _a + 1 ))" "$_b"
+assert_eq "[SPEC-1] ids advance across subshells" "$(( _a + 1 ))" "$_b"
+# PID-keyed, so two test files running in PARALLEL never mint the same id and
+# one file's teardown cannot delete a ref another is still asserting on.
+assert_eq "[SPEC-1] the id is keyed on this process" "9$(printf '%03d' "$(( $$ % 1000 ))")" \
+    "${_a:0:4}"
 # The whole point: unreachable by a real repository.
-if [[ "$_a" -gt 50000000 ]]; then
+if [[ "$_a" -ge "${ZB_TEST_ISSUE_FLOOR:-90000000}" ]]; then
     assert_pass "[SPEC-1] minted ids are far beyond any real issue number"
 else
     assert_fail "[SPEC-1] minted ids must be unreachable" "got $_a"
