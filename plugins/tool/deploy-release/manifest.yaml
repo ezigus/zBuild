@@ -12,8 +12,6 @@ description: |
 
 hooks:
   run: deploy_release_run
-  cleanup: deploy_release_cleanup
-
 requires:
   core:
     - event-bus

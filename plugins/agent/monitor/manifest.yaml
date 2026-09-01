@@ -16,8 +16,6 @@ description: |
 
 hooks:
   run: monitor_stage_run
-  cleanup: monitor_stage_cleanup
-
 requires:
   core:
     - redaction

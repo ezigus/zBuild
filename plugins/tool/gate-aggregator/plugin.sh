@@ -299,9 +299,3 @@ gate_aggregator_run() {
 }
 
 # ─── gate_aggregator_cleanup ──────────────────────────────────────────────────
-gate_aggregator_cleanup() {
-    # No self-emit (#1705): plugin_hook_call already brackets this hook with
-    # plugin.cleanup.start/complete. A second pair from here is the same
-    # two-emitters-one-name collision the run pair was filed for.
-    return 0
-}

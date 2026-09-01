@@ -60,9 +60,15 @@ At the dispatch chokepoint the engine writes the spawned process group to `runs/
 
 Because the record is written at spawn rather than at completion, a stage killed mid-flight is reclaimable. That is the entire point, and it is what the status-map approach could not do.
 
-### 3. `cleanup` leaves the plugin contract
+### 3. Declared no-op hooks leave the contract; the last real one follows
 
-The lifecycle becomes `run` only. The 22 `cleanup:` declarations, their 22 functions, the `plugins/tool/teardown` stage, and the `plugin.cleanup.*` event pair retire together. `zbuild clean --purge` — the operator-only deletion path — becomes an engine subcommand acting on paths, which is what it always was underneath.
+**Now.** The 21 `cleanup:` hooks whose entire body is `return 0` are deleted, along with their manifest declarations. Nothing observable changes, which is the point: they were contract surface with no behaviour behind them, and they made `cleanup` look like a live per-stage responsibility when 21 times out of 22 it was not.
+
+**`tool/test` keeps its hook for now, and the reason is worth stating rather than hiding.** Its `release` arm is genuinely superseded by §2 — the engine now kills the process group it used to kill. Its `purge` arm is not: it deletes the staging tree, which is a **path** operation, not a process one, and belongs with `zbuild clean --purge`. Retiring the hook before that move would delete the deletion.
+
+**Then.** Once `purge`'s staging-tree deletion is a path operation in `zbuild clean`, the last `cleanup:` declaration, the hook name in the plugin contract, `plugins/tool/teardown`'s per-stage dispatch loop, and the `plugin.cleanup.*` event pair retire together, and the lifecycle becomes `run` only.
+
+Splitting it this way keeps §4's ordering intact at every step: nothing is removed before the thing that replaces it exists.
 
 ### 4. Ordering is not negotiable
 

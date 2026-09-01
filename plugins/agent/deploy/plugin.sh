@@ -147,6 +147,3 @@ _deploy_agent_run_inner() {
 }
 
 # ─── cleanup ─────────────────────────────────────────────────────────────────
-deploy_agent_cleanup() {
-    return 0
-}

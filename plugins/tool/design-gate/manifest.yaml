@@ -37,8 +37,6 @@ description: |
 
 hooks:
   run: design_gate_run
-  cleanup: design_gate_cleanup
-
 requires:
   core:
     - event-bus

@@ -23,8 +23,6 @@ description: |
 
 hooks:
   run: coverage_gate_run
-  cleanup: coverage_gate_cleanup
-
 requires:
   core:
     - event-bus

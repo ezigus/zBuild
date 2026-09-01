@@ -23,8 +23,6 @@ description: |
 
 hooks:
   run: review_lens_run
-  cleanup: review_lens_cleanup
-
 requires:
   core:
     - redaction

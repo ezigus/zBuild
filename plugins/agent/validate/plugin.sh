@@ -116,6 +116,3 @@ _validate_agent_run_inner() {
 }
 
 # ─── cleanup ─────────────────────────────────────────────────────────────────
-validate_agent_cleanup() {
-    return 0
-}

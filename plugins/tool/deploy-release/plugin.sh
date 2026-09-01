@@ -92,6 +92,3 @@ deploy_release_run() {
 }
 
 # ─── deploy_release_cleanup ──────────────────────────────────────────────────
-deploy_release_cleanup() {
-    return 0
-}

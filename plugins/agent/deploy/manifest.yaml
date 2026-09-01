@@ -14,8 +14,6 @@ description: |
 
 hooks:
   run: deploy_agent_run
-  cleanup: deploy_agent_cleanup
-
 requires:
   core:
     - redaction

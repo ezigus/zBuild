@@ -41,8 +41,6 @@ description: |
 
 hooks:
   run: gate_aggregator_run
-  cleanup: gate_aggregator_cleanup
-
 requires:
   core:
     - event-bus

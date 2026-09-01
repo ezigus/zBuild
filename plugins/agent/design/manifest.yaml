@@ -12,8 +12,6 @@ description: |
 
 hooks:
   run: design_stage_run
-  cleanup: design_stage_cleanup
-
 requires:
   core:
     - redaction

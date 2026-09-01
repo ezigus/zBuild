@@ -13,8 +13,6 @@ description: |
 
 hooks:
   run: pr_stage_run
-  cleanup: pr_stage_cleanup
-
 requires:
   core:
     - redaction

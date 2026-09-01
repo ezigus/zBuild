@@ -170,6 +170,3 @@ _monitor_stage_run_inner() {
 }
 
 # ─── cleanup ────────────────────────────────────────────────────────────────
-monitor_stage_cleanup() {
-    return 0
-}
