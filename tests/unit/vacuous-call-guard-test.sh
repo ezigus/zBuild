@@ -30,7 +30,7 @@ setup_test_env "vacuous-call-guard"
 # Whole tree on purpose: helpers legitimately live in tests/lib/ and in the
 # calling test itself, so a narrower search would invent false positives.
 _vcg_defs() {
-    grep -rhoE '^[[:space:]]*(function[[:space:]]+)?_[A-Za-z0-9_]+[[:space:]]*\(\)' \
+    grep -rhoE '^[[:space:]]*(function[[:space:]]+)?[A-Za-z_][A-Za-z0-9_]*[[:space:]]*\(\)' \
         --include='*.sh' "$1" 2>/dev/null \
         | sed -E 's/^[[:space:]]*(function[[:space:]]+)?//; s/[[:space:]]*\(\)//' \
         | sort -u
@@ -57,12 +57,31 @@ _vcg_scan() {
             _cmd="$(sed -E 's/^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+//' <<< "$_cmd")"
         done
         _fn="$(sed -E 's/[^A-Za-z0-9_].*$//' <<< "$_cmd")"
-        [[ "$_fn" == _* ]] || continue
+        # #2013: the old rule was `[[ "$_fn" == _* ]]`, chosen to keep the
+        # false-positive budget at zero. It cost the guard its own bug class —
+        # `zbuild_engine_tmp` was deleted in #2017 and seven files went on
+        # calling it in swallowed form, invisibly, because the name starts with
+        # `z`. The prefix was never the property that mattered.
+        #
+        # What matters: the name resolves to NOTHING. Three filters, in cost
+        # order, each load-bearing:
+        #   - an underscore somewhere in the name. Repo functions have them;
+        #     external commands almost never do (`pkg-config`, not `pkg_config`).
+        #     This keeps `git`, `jq` and `date` out of the report without
+        #     depending on what happens to be installed on the runner.
+        #   - `command -v` — a real command, builtin or keyword.
+        #   - defined somewhere in the tree.
+        # Anything surviving all three is a call that silently yields "".
+        [[ "$_fn" == *_* ]] || continue
+        command -v "$_fn" >/dev/null 2>&1 && continue
         grep -qx "$_fn" <<< "$_defs" || printf '%s %s:%s\n' "$_fn" "${_file#"$_root"/}" "$_lno"
     done | sort -u
 }
 
 # ─── SPEC-1: the tree is clean ──────────────────────────────────────────────
+# Under the WIDENED rule (#2013), so this covers both shapes now: `_`-prefixed
+# helpers and repo functions like `zbuild_engine_tmp` that never had a prefix.
+# A hit here is a live bug of the #2017 shape, not a test to relax.
 _vcg_found="$(_vcg_scan "$REPO_ROOT" \
     "$REPO_ROOT/tests" "$REPO_ROOT/plugins" "$REPO_ROOT/scripts" "$REPO_ROOT/core")"
 if [[ -z "$_vcg_found" ]]; then
@@ -116,6 +135,51 @@ out="$(_vcg_helper_fn 2>/dev/null || true)"
 FX
 _vcg_lib="$(_vcg_scan "$_vcg_fx" "$_vcg_fx")"
 assert_eq "[SPEC-5] a definition in a sibling lib counts as defined" "" "$_vcg_lib"
+
+# ─── SPEC-6: a repo function WITHOUT the leading underscore is caught ───────
+# #2013. The narrowing to `_`-prefixed names was a false-positive budget
+# decision, and it cost the guard the very bug it exists for: #2010 added
+# `zbuild_engine_tmp` to helpers.sh, #2017 removed it, and SEVEN files went on
+# calling it in swallowed form. Nothing flagged them — this guard skipped the
+# name because it starts with `z`, not `_`.
+#
+# The prefix was never the property that mattered. What matters is that the name
+# resolves to NOTHING: not a function in the tree, not a command on PATH, not a
+# shell builtin. Anything else is a call that silently produces an empty string.
+cat > "$_vcg_fx/lib/helper.sh" <<'FX'
+_vcg_helper_fn() { printf 'y'; }
+FX
+cat > "$_vcg_fx/good.sh" <<'FX'
+d="$(zbuild_vcg_engine_tmp 2>/dev/null || true)"
+FX
+_vcg_np="$(_vcg_scan "$_vcg_fx" "$_vcg_fx")"
+case "$_vcg_np" in
+    *zbuild_vcg_engine_tmp*) assert_pass "[SPEC-6] an undefined non-underscore repo function is caught" ;;
+    *) assert_fail "[SPEC-6] an undefined non-underscore repo function is caught" \
+        "scanner returned: '$_vcg_np' — this is the #2017 bug, still invisible" ;;
+esac
+
+# ─── SPEC-7: external commands are NOT flagged ─────────────────────────────
+# Widening the name filter is only safe if the resolve check holds. `git`,
+# `date` and friends are called in swallowed form all over the tree and are
+# defined nowhere in it; reporting them would drown the real signal and the
+# guard would be switched off within a week.
+cat > "$_vcg_fx/good.sh" <<'FX'
+a="$(git rev-parse HEAD 2>/dev/null || true)"
+b="$(date +%s 2>/dev/null || true)"
+c="$(command -v jq 2>/dev/null || true)"
+FX
+_vcg_ext="$(_vcg_scan "$_vcg_fx" "$_vcg_fx")"
+assert_eq "[SPEC-7] external commands are not flagged" "" "$_vcg_ext"
+
+# ─── SPEC-8: shell builtins and keywords are NOT flagged ───────────────────
+cat > "$_vcg_fx/good.sh" <<'FX'
+a="$(printf '%s' x 2>/dev/null || true)"
+b="$(type -t ls 2>/dev/null || true)"
+c="$(read -r _x 2>/dev/null || true)"
+FX
+_vcg_bi="$(_vcg_scan "$_vcg_fx" "$_vcg_fx")"
+assert_eq "[SPEC-8] builtins are not flagged" "" "$_vcg_bi"
 
 cleanup_test_env
 print_test_results
