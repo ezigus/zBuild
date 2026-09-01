@@ -264,9 +264,17 @@ RO_TMP="$TEST_TEMP_DIR/ro-tmp"; mkdir -p "$RO_TMP"; chmod 500 "$RO_TMP"
 if : > "$RO_TMP/.probe" 2>/dev/null; then
     rm -f "$RO_TMP/.probe"; chmod 700 "$RO_TMP"
     SKIP=$((SKIP + 1))
-    echo -e "  ${YELLOW}SKIP${RESET}: [SPEC-11] a read-only TMPDIR does not block writes here (root?)" >&2
+    echo -e "  ${YELLOW}SKIP${RESET}: [SPEC-11] a read-only scratch dir does not block writes here (root?)" >&2
 else
-    TMPDIR="$RO_TMP" _run_gate "$WREPO" "$_DESIGN_MD"
+    # #2010: the baseline worktree is created under zbuild_engine_tmp, which
+    # prefers ZBUILD_STAGE_SCRATCH and no longer reads TMPDIR first. Pinning a
+    # read-only TMPDIR stopped inducing the failure this case exists to check —
+    # the assertion is unchanged, only the way the failure is induced.
+    #
+    # mkdir -p on an existing directory succeeds even when it is read-only, so
+    # the helper hands back $RO_TMP and the mktemp inside it fails, which is
+    # exactly the uncreatable-worktree condition being exercised.
+    ZBUILD_STAGE_SCRATCH="$RO_TMP" TMPDIR="$RO_TMP" _run_gate "$WREPO" "$_DESIGN_MD"
     chmod 700 "$RO_TMP"
     if grep -q "GUARD_REGRESSED_AT_BASELINE" <<< "$VIOL"; then
         assert_fail "[SPEC-11] an uncreatable baseline worktree SKIPs, never fails the design" "$VIOL"
