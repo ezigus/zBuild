@@ -19,6 +19,10 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "core/output/stage-io — kind=cycle banners (#833, ADR-015 §G)"
 setup_test_env "stage-io-cycle-kind"
 
+# #1921 follow-up: reserved test identity — the QUOTED assignment form.
+# These were real issue numbers used as run identity.
+_ZB_ID="$(zb_test_issue)"
+
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
@@ -98,7 +102,7 @@ echo "GH_CALLED" >> "$ghdir/calls.log"
 exit 0
 EOF
 chmod +x "$ghdir/gh"
-export ZBUILD_ISSUE="999"
+export ZBUILD_ISSUE="$_ZB_ID"
 spec5_stdout_file="$TEST_TEMP_DIR/spec5.stdout"
 spec5_stderr_file="$TEST_TEMP_DIR/spec5.stderr"
 saved_path="$PATH"; PATH="$ghdir:$PATH"

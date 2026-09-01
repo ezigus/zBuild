@@ -34,6 +34,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "pipeline pre-flight keystone — missing plan producer (#496, ADR-020)"
 setup_test_env "preflight-keystone"
 
+# #1921 follow-up: reserved goal text, so the zbuild/state/goal-<hash> ref this
+# run produces is traceable to a test. No repo isolation needed here — the driver
+# already runs inside OVERLAY_REPO, and the template resolves through THAT repo's
+# .zbuild overlay, so a cd of our own would break template resolution.
+_ZB_GOAL="$(zb_test_goal preflight-missing-producer)"
+
 # ── Pre-conditions: a fixture template that omits `plan` ────────────────────
 # #1270: install the fixture as a per-repo `.zbuild/templates/` overlay in a temp
 # repo. The DRIVER runs with CWD = that repo (below) so the resolver reads the
@@ -65,7 +71,7 @@ set +e
 source "$REPO_ROOT/core/pipeline/runner.sh"
 set +e
 ZBUILD_CONTRACT_VALIDATOR="\${ZBUILD_CONTRACT_VALIDATOR:-enforce}" \
-    main --goal "test goal — pre-flight should reject this" --template broken-contract-missing-producer
+    main --goal "$_ZB_GOAL" --template broken-contract-missing-producer
 _rc=\$?
 set -e
 echo "EXIT_CODE=\$_rc"

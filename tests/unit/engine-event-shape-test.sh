@@ -18,6 +18,12 @@ print_test_header "engine event shapes (#385) — model.route, model.outcome, bu
 
 setup_test_env "engine-event-shape"
 
+# #1921 follow-up: a FIXED reserved id, not zb_test_issue. Minted ids are
+# PID-keyed so they vary per run, and this file compares against a golden,
+# which pins bytes. 90000042 keeps the trail back to the original 42.
+_ZB_ID=90000042
+
+
 # ── Event bus pointing at isolated temp dir ──────────────────────────────────
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
@@ -41,7 +47,7 @@ _normalise_event() {
 # ── G1: event-bus envelope shape ────────────────────────────────────────────
 # Emit a well-known event with all envelope fields populated via env.
 export ZBUILD_RUN_ID="test-run-385"
-export ZBUILD_ISSUE="42"
+export ZBUILD_ISSUE="$_ZB_ID"
 export ZBUILD_PLUGIN="test-plugin"
 export ZBUILD_PLUGIN_KIND="agent"
 eb_emit_event "pipeline.start" "stage=intake"

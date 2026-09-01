@@ -958,6 +958,16 @@ _cleanup_issue_ref_decision() {
         printf 'skip\tno issue number in ref'
         return 0
     fi
+    # #1921 follow-up: the reserved test range (zb_test_issue, 90000000+) is
+    # ALWAYS prunable. No such issue exists, so the lookup below would return
+    # `missing` at best and `unknown` at worst — and unknown is fail-closed, i.e.
+    # skip forever. That is exactly why zbuild/state/issue-4244 sat on origin
+    # indefinitely: test residue the reclaimer could never justify deleting.
+    # Deliberately BEFORE the issue-state lookup, so it needs no network.
+    if [[ "$n" =~ ^[0-9]+$ ]] && [[ "$n" -ge 90000000 ]]; then
+        printf 'prune\treserved test-identity range (zb_test_issue)'
+        return 0
+    fi
     local st; st="$(_cleanup_issue_state "$n")"
     case "$st" in
         open)

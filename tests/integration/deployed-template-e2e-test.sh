@@ -27,6 +27,10 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "deployed.yaml e2e — deploy+validate+monitor dry-run dispatch (#1328-A6)"
 setup_test_env "deployed-template-e2e"
+
+# #1921 follow-up: reserved test identity — the QUOTED assignment form.
+# These were real issue numbers used as run identity.
+_ZB_ID="$(zb_test_issue)"
 _test_cleanup_hook() { cleanup_test_env; }
 
 STATE_DIR="$TEST_TEMP_DIR/state"
@@ -41,7 +45,7 @@ export ZBUILD_EVENTS_DB="$EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_RUN_ID="deployed-e2e-$$"
-export ZBUILD_ISSUE="1328"
+export ZBUILD_ISSUE="$_ZB_ID"
 export ZBUILD_DRY_RUN=1
 export NO_GITHUB=true
 export ZBUILD_OUTPUT_GH_COMMENT=0

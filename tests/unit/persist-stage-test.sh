@@ -18,6 +18,16 @@ source "$REPO_ROOT/core/state/artifact-persist.sh"
 print_test_header "persist stage (#1071)"
 setup_test_env "zb-persist"
 
+# #1921 follow-up: reserved test identity (see zb_test_issue). The literals
+# here were real issue numbers; a run keyed to one writes fabricated prior
+# work onto that issue's state branch.
+_ZB_ID1="$(zb_test_issue)"
+_ZB_ID2="$(zb_test_issue)"
+_ZB_ID3="$(zb_test_issue)"
+_ZB_ID4="$(zb_test_issue)"
+_ZB_ID5="$(zb_test_issue)"
+_ZB_ID6="$(zb_test_issue)"
+
 # #1921: persist_run snapshots into whatever repo is CWD. A call made outside a
 # throwaway repo writes refs/heads/zbuild/state/* into the developer's OWN
 # checkout — and pushes it, which is how the origin residue branch was created.
@@ -64,19 +74,19 @@ _P1="$(_mk_repo p1)"
 _P1_STATE="$TEST_TEMP_DIR/p1-state"
 _seed_artifacts "$_P1_STATE"
 
-( cd "$_P1" && _artifact_persist_snapshot "$_P1_STATE" 4242 ) >/dev/null 2>&1
+( cd "$_P1" && _artifact_persist_snapshot "$_P1_STATE" $_ZB_ID1 ) >/dev/null 2>&1
 assert_eq "[SPEC-1] premise: the snapshot wrote a LOCAL branch" "1" \
-    "$( cd "$_P1" && git rev-parse -q --verify refs/heads/zbuild/state/issue-4242 >/dev/null 2>&1 && echo 1 || echo 0 )"
+    "$( cd "$_P1" && git rev-parse -q --verify refs/heads/zbuild/state/issue-$_ZB_ID1 >/dev/null 2>&1 && echo 1 || echo 0 )"
 # And that local branch is, on its own, invisible to origin — which is the whole
 # defect. Asserted rather than assumed, so SPEC-1 cannot pass vacuously.
 assert_eq "[SPEC-1] premise: a snapshot alone reaches origin NOT AT ALL" "0" \
-    "$(_remote_has "$_P1" zbuild/state/issue-4242)"
+    "$(_remote_has "$_P1" zbuild/state/issue-$_ZB_ID1)"
 
 _rc=0
-( cd "$_P1" && _artifact_persist_push 4242 ) >/dev/null 2>&1 || _rc=$?
+( cd "$_P1" && _artifact_persist_push $_ZB_ID1 ) >/dev/null 2>&1 || _rc=$?
 assert_exit_code "[SPEC-1] the push succeeds" "0" "$_rc"
 assert_eq "[SPEC-1] the state branch is now ON ORIGIN" "1" \
-    "$(_remote_has "$_P1" zbuild/state/issue-4242)"
+    "$(_remote_has "$_P1" zbuild/state/issue-$_ZB_ID1)"
 
 # ─── [push-guard] a push that cannot work fails LOUDLY, never fatally ────────
 # A silent push failure is how #1921 went unnoticed for the life of the feature.
@@ -85,20 +95,20 @@ print_test_section "[push-guard] an unreachable remote sets a reportable status"
 _P2="$(_mk_repo p2)"
 _P2_STATE="$TEST_TEMP_DIR/p2-state"
 _seed_artifacts "$_P2_STATE"
-( cd "$_P2" && _artifact_persist_snapshot "$_P2_STATE" 4243 ) >/dev/null 2>&1
+( cd "$_P2" && _artifact_persist_snapshot "$_P2_STATE" $_ZB_ID2 ) >/dev/null 2>&1
 ( cd "$_P2" && git remote set-url origin "$TEST_TEMP_DIR/does-not-exist.git" ) >/dev/null 2>&1
 
 _rc=0
-( cd "$_P2" && _artifact_persist_push 4243 ) >/dev/null 2>&1 || _rc=$?
+( cd "$_P2" && _artifact_persist_push $_ZB_ID2 ) >/dev/null 2>&1 || _rc=$?
 assert_exit_code "[push-guard] an unreachable remote returns non-zero" "1" "$_rc"
-_p2_reason="$( cd "$_P2" && _artifact_persist_push 4243 >/dev/null 2>&1; printf '%s' "${_ARTIFACT_PERSIST_LAST_REASON:-}" )"
+_p2_reason="$( cd "$_P2" && _artifact_persist_push $_ZB_ID2 >/dev/null 2>&1; printf '%s' "${_ARTIFACT_PERSIST_LAST_REASON:-}" )"
 assert_contains "[push-guard] and names the failing operation" "$_p2_reason" "git push"
 
 # No branch, no remote: both are 'nothing to do', NOT failures — a run that
 # snapshotted nothing has not failed to publish anything.
 _P3="$(_mk_repo p3)"
 _rc=0
-( cd "$_P3" && _artifact_persist_push 9999 ) >/dev/null 2>&1 || _rc=$?
+( cd "$_P3" && _artifact_persist_push $_ZB_ID3 ) >/dev/null 2>&1 || _rc=$?
 assert_exit_code "[push-guard] no local branch to push is not a failure" "0" "$_rc"
 
 # ─── [gate-guard] the secret gate stands in front of the push ────────────────
@@ -168,7 +178,7 @@ _rc=0
 # In a throwaway repo: persist_run snapshots into CWD, so an identity run made
 # from the source checkout writes a state ref there (guarded by SPEC-6).
 _R5="$(_mk_repo r5repo)"
-( cd "$_R5" && ZBUILD_ISSUE_NUMBER=4244 ZBUILD_STATE_DIR="$TEST_TEMP_DIR/r5" persist_run persist "" ) >/dev/null 2>&1 || _rc=$?
+( cd "$_R5" && ZBUILD_ISSUE_NUMBER=$_ZB_ID4 ZBUILD_STATE_DIR="$TEST_TEMP_DIR/r5" persist_run persist "" ) >/dev/null 2>&1 || _rc=$?
 assert_exit_code "[SPEC-5] a refused push still returns 0" "0" "$_rc"
 assert_eq "[SPEC-5] and records degraded, not complete" "degraded" \
     "$(jq -r '.verdict' "$ZBUILD_ARTIFACT_DIR/persist-result.json" 2>/dev/null)"
@@ -206,7 +216,7 @@ mkdir -p "$_s3dir/artifacts"
 printf 'clean\n' > "$_s3dir/artifacts/plan.json"
 printf 'aws: AKIA%s\n' "ABCDEFGHIJKLMNOP" > "$_s3dir/artifacts/leak.txt"
 _S3REPO="$(_mk_repo s3repo)"
-( cd "$_S3REPO" && ZBUILD_ISSUE_NUMBER=4244 ZBUILD_ARTIFACT_DIR="$_s3dir/artifacts" \
+( cd "$_S3REPO" && ZBUILD_ISSUE_NUMBER=$_ZB_ID4 ZBUILD_ARTIFACT_DIR="$_s3dir/artifacts" \
   ZBUILD_STATE_DIR="$_s3dir" persist_run persist "" ) >/dev/null 2>&1 || true
 # Guard: snapshot field still carries the outcome (existing invariant).
 _snap3="$(jq -r '.data.snapshot // empty' "$_s3dir/artifacts/persist-result.json" 2>/dev/null)"
@@ -237,10 +247,10 @@ print_test_section "[SPEC-7][change] persist-result.json reaches the state branc
 _P7="$(_mk_repo p7)"
 _P7_STATE="$TEST_TEMP_DIR/p7-state"
 _seed_artifacts "$_P7_STATE"
-( cd "$_P7" && ZBUILD_ISSUE_NUMBER=4247 ZBUILD_ARTIFACT_DIR="$_P7_STATE/artifacts" \
+( cd "$_P7" && ZBUILD_ISSUE_NUMBER=$_ZB_ID5 ZBUILD_ARTIFACT_DIR="$_P7_STATE/artifacts" \
     ZBUILD_STATE_DIR="$_P7_STATE" persist_run persist "" ) >/dev/null 2>&1 || true
 
-_p7_branch="zbuild/state/issue-4247"
+_p7_branch="zbuild/state/issue-$_ZB_ID5"
 
 # ONE commit, not two. The result file cannot be in the snapshot that describes
 # it, so persist snapshots twice — but the second AMENDS the first rather than
@@ -282,22 +292,22 @@ _P8="$(_mk_repo p8)"
 _P8_STATE="$TEST_TEMP_DIR/p8-state"
 _seed_artifacts "$_P8_STATE"
 # A stage-boundary snapshot, taken by someone other than persist.
-( cd "$_P8" && _artifact_persist_snapshot "$_P8_STATE" 4248 ) >/dev/null 2>&1
-_p8_boundary="$( cd "$_P8" && git rev-parse refs/heads/zbuild/state/issue-4248 )"
+( cd "$_P8" && _artifact_persist_snapshot "$_P8_STATE" $_ZB_ID6 ) >/dev/null 2>&1
+_p8_boundary="$( cd "$_P8" && git rev-parse refs/heads/zbuild/state/issue-$_ZB_ID6 )"
 
 # persist now runs over the SAME artifacts, so its own snapshot is `unchanged`.
-( cd "$_P8" && ZBUILD_ISSUE_NUMBER=4248 ZBUILD_ARTIFACT_DIR="$_P8_STATE/artifacts" \
+( cd "$_P8" && ZBUILD_ISSUE_NUMBER=$_ZB_ID6 ZBUILD_ARTIFACT_DIR="$_P8_STATE/artifacts" \
     ZBUILD_STATE_DIR="$_P8_STATE" persist_run persist "" ) >/dev/null 2>&1 || true
 
 if ( cd "$_P8" && git merge-base --is-ancestor "$_p8_boundary" \
-        refs/heads/zbuild/state/issue-4248 ) 2>/dev/null; then
+        refs/heads/zbuild/state/issue-$_ZB_ID6 ) 2>/dev/null; then
     assert_pass "[amend-guard] the earlier boundary commit is still an ancestor"
 else
     assert_fail "[amend-guard] persist must not amend a commit it did not create" \
         "boundary $_p8_boundary was discarded"
 fi
 assert_eq "[amend-guard] and the result file still reached the branch" "1" \
-    "$( cd "$_P8" && git ls-tree -r --name-only refs/heads/zbuild/state/issue-4248 2>/dev/null \
+    "$( cd "$_P8" && git ls-tree -r --name-only refs/heads/zbuild/state/issue-$_ZB_ID6 2>/dev/null \
         | /usr/bin/grep -q 'artifacts/persist-result.json' && echo 1 || echo 0 )"
 
 # ─── [SPEC-6][guard] the suite leaves no state refs in the real checkout ─────

@@ -17,6 +17,14 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "runner — ZBUILD_STATE_FILE vs --issue cross-check (#296 Δ-4)"
 setup_test_env "runner-state-file-issue-cross-check"
 
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID1="$(zb_test_issue)"
+_ZB_ID2="$(zb_test_issue)"
+_ZB_ID3="$(zb_test_issue)"
+
 # Mirror the standard runner test scaffolding so the runner can boot.
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 STATE_DIR="$TEST_TEMP_DIR/state"
@@ -87,7 +95,7 @@ cat > "$STATE_FILE" <<EOF
 {
   "schema_version": 1,
   "run_id": "20260526120000-9999",
-  "issue": 100,
+  "issue": $_ZB_ID2,
   "status": "in_progress",
   "current_iteration": 0,
   "self_heal_count": 0,
@@ -99,10 +107,10 @@ EOF
 
 # ─── Test 1: ZBUILD_STATE_FILE points at issue 100 + --issue 200 → exits 2 ─
 set +e
-ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --template runner-state-dir-minimal --issue 200 --resume 2>"$TEST_TEMP_DIR/stderr1"
+ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID1" --resume 2>"$TEST_TEMP_DIR/stderr1"
 rc=$?
 set -e
-assert_eq "mismatch (state=100, --issue=200) exits non-zero" "2" "$rc"
+assert_eq "mismatch (state=$_ZB_ID2, --issue=$_ZB_ID1) exits non-zero" "2" "$rc"
 if grep -q "mismatch\|aborting" "$TEST_TEMP_DIR/stderr1"; then
     assert_pass "mismatch error message is clear"
 else
@@ -113,10 +121,10 @@ fi
 # Use --dry-run because the cross-check now fires BEFORE dry-run early-return.
 # Matching values should result in rc=0 (dry-run success) and no "mismatch".
 set +e
-ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --template runner-state-dir-minimal --issue 100 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr2"
+ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr2"
 rc=$?
 set -e
-assert_eq "matching (state=100, --issue=100) exits 0 via dry-run" "0" "$rc"
+assert_eq "matching (state=$_ZB_ID2, --issue=$_ZB_ID2) exits 0 via dry-run" "0" "$rc"
 if ! grep -q "mismatch" "$TEST_TEMP_DIR/stderr2"; then
     assert_pass "matching values produce no 'mismatch' error"
 else
@@ -139,7 +147,7 @@ fi
 
 # ─── Test 4: ZBUILD_STATE_FILE unset → no cross-check at all ───────────────
 set +e
-bash "$RUNNER" --template runner-state-dir-minimal --issue 42 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr4"
+bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID3" --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr4"
 rc=$?
 set -e
 assert_eq "no env var, --issue only, exits 0 via dry-run" "0" "$rc"
@@ -155,7 +163,7 @@ fi
 # downstream by the resume logic.)
 set +e
 ZBUILD_STATE_FILE="$TEST_TEMP_DIR/nonexistent-state.json" \
-    bash "$RUNNER" --template runner-state-dir-minimal --issue 42 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr5"
+    bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID3" --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr5"
 rc=$?
 set -e
 assert_eq "missing state file exits 0 via dry-run" "0" "$rc"
@@ -174,7 +182,7 @@ CORRUPT_STATE_FILE="$TEST_TEMP_DIR/corrupt-state.json"
 echo "this is not json {" > "$CORRUPT_STATE_FILE"
 set +e
 ZBUILD_STATE_FILE="$CORRUPT_STATE_FILE" \
-    bash "$RUNNER" --template runner-state-dir-minimal --issue 42 --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr6"
+    bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID3" --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr6"
 rc=$?
 set -e
 assert_eq "corrupt state file + --issue → exits 2 (fail-closed)" "2" "$rc"

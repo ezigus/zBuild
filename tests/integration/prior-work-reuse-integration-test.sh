@@ -33,6 +33,11 @@ source "$REPO_ROOT/scripts/lib/git-remote.sh"
 print_test_header "prior-work reuse — cross-run chain (ADR-050 / #1581)"
 setup_test_env "prior-work-reuse-integration"
 
+# #1921 follow-up: reserved test identity (see zb_test_issue). The literals
+# here were real issue numbers; a run keyed to one writes fabricated prior
+# work onto that issue's state branch.
+_ZB_ID="$(zb_test_issue)"
+
 GIT="$(command -v git)"
 ISSUE=4242
 WORK="zbuild/issue-${ISSUE}-ci"
@@ -126,7 +131,7 @@ fi
 runner_ws2="$TEST_TEMP_DIR/ci-runner-firstrun"
 "$GIT" clone -q --branch main --single-branch "$bare" "$runner_ws2"
 none_root="$runner_ws2/state/restored-artifacts"
-_artifact_persist_restore 999999 "$none_root" "$runner_ws2"
+_artifact_persist_restore $_ZB_ID "$none_root" "$runner_ws2"
 if [[ ! -d "$none_root/artifacts" ]]; then
     assert_pass "T6 restore of an issue with no state branch is a clean no-op"
 else

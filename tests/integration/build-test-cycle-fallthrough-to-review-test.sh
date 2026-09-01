@@ -24,6 +24,14 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "cycle fall-through → review → pipeline=failed (#527)"
 setup_test_env "cycle-fallthrough-527"
 
+# #1921 follow-up: the runner resolves repo_root from CWD, so an in-process
+# `main` snapshots into whatever repository the test stands in. These files used
+# REAL issue numbers from the working checkout, adding commits to real issues'
+# state branches (measured: 3 per run onto issue-698). Reserved id + throwaway
+# repo; the cd below is what actually contains it.
+_ZB_ISSUE="$(zb_test_issue)"
+_ZB_REPO="$(zb_test_repo btc-fallthrough)"
+
 # ─── Source-once optimization (#1096 / PC3) ────────────────────────────────────
 # runner.sh transitively sources ~20 core modules; doing that per case (×7)
 # dominated runtime. Hoist the source to the parent ONCE; each case still runs
@@ -44,6 +52,7 @@ export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/_source_once_events"
 # during init can't abort the harness, then drop back to lenient mode.
 set +e
 # shellcheck disable=SC1091
+cd "$_ZB_REPO" || exit 1
 source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
 set +e
 
@@ -133,7 +142,7 @@ _run_case() {
         # Keep the runner's output: discarding it to /dev/null is why #1609's
         # empty-state failures carried no diagnostic signal for months.
         cd "$CFT_OVERLAY_REPO" || exit 1
-        main --issue 999 --template cycle-fallthrough-minimal >"$_case_tmp/runner.log" 2>&1
+        main --issue "$_ZB_ISSUE" --template cycle-fallthrough-minimal >"$_case_tmp/runner.log" 2>&1
         printf '%s' "$?" > "$_case_tmp/runner.rc"
     )
     printf '%s' "$_case_tmp"

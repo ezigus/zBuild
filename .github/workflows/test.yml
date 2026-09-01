@@ -31,6 +31,13 @@ jobs:
         if: always()
         # ONE definition, shared with `npm run lint` (#1682).
         run: bash scripts/lib/lint-grep-c.sh
+      - name: Tests use no real issue number as identity (#1921)
+        if: always()
+        # ONE definition, shared with `npm run lint` (#1682). 25 of the 29 numbers
+        # tests used were real issues; a run keyed to one writes fabricated prior
+        # work onto that issue's state branch, and since #1970/#2006 that reaches
+        # origin.
+        run: bash scripts/lib/lint-test-identity.sh
       - name: Declared stage checkpoints resolve (#1879)
         if: always()
         # ONE definition, shared with `npm run lint` (#1682). A `role: checkpoint`

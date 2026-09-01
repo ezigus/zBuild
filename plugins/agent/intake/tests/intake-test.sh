@@ -14,6 +14,10 @@ print_test_header "plugin: intake (goal capture + scope manifest — issue #85)"
 
 setup_test_env "plugin-intake"
 
+# #1921 follow-up: reserved test identity — the QUOTED assignment form.
+# These were real issue numbers used as run identity.
+_ZB_ID="$(zb_test_issue)"
+
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
@@ -272,7 +276,7 @@ _clear_gh_mock() {
 # ─── Test 10: --issue mode fetches real title+body via gh ────────────────────
 _set_gh_mock "Fix login crash on launch" $'Steps to reproduce:\n1. Open app\n2. Tap login' 0
 unset ZBUILD_GOAL 2>/dev/null || true
-export ZBUILD_ISSUE="42"
+export ZBUILD_ISSUE="$_ZB_ID"
 
 set +e
 intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
@@ -295,9 +299,9 @@ set -e
 
 assert_eq "gh failure still returns rc=0 (placeholder fallback)" "0" "$rc"
 assert_contains "fallback intake.md contains placeholder issue ref" \
-    "$(cat "$STATE_DIR/intake.md")" "GitHub issue #42"
+    "$(cat "$STATE_DIR/intake.md")" "GitHub issue #$_ZB_ID"
 assert_contains "gh failure emits visible warn" \
-    "$intake_stderr" "gh issue view #42 failed"
+    "$intake_stderr" "gh issue view #$_ZB_ID failed"
 
 # ─── Test 10c: null body — title-only fetch is acceptable ───────────────────
 _set_gh_mock "Refactor cache layer" "" 0
@@ -322,7 +326,7 @@ _reset_events() {
 }
 
 unset ZBUILD_GOAL 2>/dev/null || true
-export ZBUILD_ISSUE="42"
+export ZBUILD_ISSUE="$_ZB_ID"
 
 # ─── T_456_a: CLOSED/COMPLETED → refuse rc=2, event emitted ─────────────────
 _set_gh_mock "Should not be read" "body" 0 CLOSED COMPLETED
@@ -334,13 +338,13 @@ rc=$?
 set -e
 
 assert_eq "T_456_a: CLOSED/COMPLETED returns rc=2" "2" "$rc"
-assert_contains "T_456_a: stderr mentions #42" "$t456a_err" "#42"
+assert_contains "T_456_a: stderr mentions the issue" "$t456a_err" "#$_ZB_ID"
 assert_contains "T_456_a: stderr mentions CLOSED" "$t456a_err" "CLOSED"
 assert_contains "T_456_a: stderr mentions COMPLETED" "$t456a_err" "COMPLETED"
 assert_contains "T_456_a: stderr mentions ZBUILD_ALLOW_CLOSED_ISSUE" \
     "$t456a_err" "ZBUILD_ALLOW_CLOSED_ISSUE"
 assert_contains "T_456_a: stderr contains issue URL" \
-    "$t456a_err" "github.com/acme/zbuild/issues/42"
+    "$t456a_err" "github.com/acme/zbuild/issues/$_ZB_ID"
 refused_count=$(grep -c '"intake.refused.issue_closed"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
 assert_gt "T_456_a: intake.refused.issue_closed event emitted" "$refused_count" "0"
 state_reason_field="$(grep '"intake.refused.issue_closed"' "$ZBUILD_EVENTS_JSONL" \
@@ -469,7 +473,7 @@ set -e
 
 assert_eq "T_456_i: gh fail → state check passes through, rc=0" "0" "$rc"
 assert_contains "T_456_i: intake.md has placeholder" \
-    "$(cat "$STATE_DIR/intake.md")" "GitHub issue #42"
+    "$(cat "$STATE_DIR/intake.md")" "GitHub issue #$_ZB_ID"
 
 # ─── T_456_j: MOCK_GH_REPO_RC=1 + CLOSED still refuses cleanly ──────────────
 _set_gh_mock "x" "y" 0 CLOSED COMPLETED

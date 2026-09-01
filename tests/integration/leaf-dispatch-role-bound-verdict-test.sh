@@ -30,6 +30,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "leaf dispatch — a role-bound stage reports its real verdict (#1770)"
 setup_test_env "leaf-role-verdict"
 
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
+
 RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 STATE_DIR="$TEST_TEMP_DIR/state"
@@ -88,7 +94,7 @@ install_template_overlay "$OVERLAY_REPO" leaf-role-bound
 
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 set +e
-( cd "$OVERLAY_REPO" && bash "$RUNNER" --issue 1770 --template leaf-role-bound ) \
+( cd "$OVERLAY_REPO" && bash "$RUNNER" --issue "$_ZB_ID" --template leaf-role-bound ) \
     >"$TEST_TEMP_DIR/runner.out" 2>"$TEST_TEMP_DIR/runner.err"
 _run_rc=$?
 set -e

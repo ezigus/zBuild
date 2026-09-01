@@ -20,13 +20,17 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "build #1265: pre-existing untracked stray is NOT a scope_violation"
 setup_test_env "build-1265-preexisting-untracked"
 
+# #1921 follow-up: reserved test identity — the QUOTED assignment form.
+# These were real issue numbers used as run identity.
+_ZB_ID="$(zb_test_issue)"
+
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 export ZBUILD_RUN_ID="build-1265-pre-$$"
-export ZBUILD_ISSUE="1265"
+export ZBUILD_ISSUE="$_ZB_ID"
 mkdir -p "$ZBUILD_EVENTS_DIR" "$ZBUILD_STATE_DIR/artifacts/stage-io"
 
 export HOME="$TEST_TEMP_DIR/home"
@@ -89,7 +93,7 @@ EOF
 printf 'config/templates/runner-state-dir-minimal.yaml\0' \
     > "$STATE_DIR/intake-untracked-baseline.txt"
 STATE_FILE="$STATE_DIR/state.json"
-printf '{"issue":1265,"branch":"feat/1265"}' > "$STATE_FILE"
+printf '{"issue":$_ZB_ID,"branch":"feat/1265"}' > "$STATE_FILE"
 
 DRIVER="$TEST_TEMP_DIR/driver.sh"
 cat > "$DRIVER" <<EOF

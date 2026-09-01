@@ -4,7 +4,7 @@
   "current_iteration": 0,
   "engine_branch": "__ENGINE_BRANCH__",
   "engine_sha": "__ENGINE_SHA__",
-  "issue": 359,
+  "issue": 90000359,
   "plugin_state": {},
   "run_id": "parity-fixture-run-001",
   "schema_version": 1,

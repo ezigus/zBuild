@@ -24,6 +24,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "runner post-stage hook + derived fallback — stage-agnostic (#1283)"
 setup_test_env "runner-post-stage-capability"
 
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
+
 # ─── SPEC-1: the mechanic names no stage for these behaviors ─────────────────
 if grep -qE '"\$stage"[[:space:]]*==[[:space:]]*"intake"' "$RUNNER"; then
     assert_fail "SPEC-1a: runner.sh does not key the scope-override on the literal 'intake'" "found == \"intake\""
@@ -86,7 +92,7 @@ assert_eq "SPEC-2c: a stage without the capability reads empty (merge skipped)" 
 
 # ─── SPEC-3: missing template fails closed (no bogus built-in roster) ─────────
 set +e
-out="$(bash "$RUNNER" --issue 83 --dry-run --template no_such_template_xyz 2>&1)"; _rc=$?
+out="$(bash "$RUNNER" --issue "$_ZB_ID" --dry-run --template no_such_template_xyz 2>&1)"; _rc=$?
 set -e
 assert_eq "SPEC-3: missing template → fail-closed (rc=2)" "2" "$_rc"
 assert_contains "SPEC-3: error names the missing template / not found" "$out" "not found"

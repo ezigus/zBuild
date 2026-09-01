@@ -28,6 +28,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "runner — init_state write failure aborts the run (#1773)"
 setup_test_env "runner-init-state-abort"
 
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
+
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
@@ -102,7 +108,7 @@ export -f df
 
 set +e
 ZBUILD_STATE_DIR="$BAD_STATE_DIR" \
-    bash "$RUNNER" --template runner-state-dir-minimal --issue 1773 --no-resume \
+    bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" --no-resume \
     >"$TEST_TEMP_DIR/out-bad" 2>"$TEST_TEMP_DIR/err-bad"
 bad_rc=$?
 set -e
@@ -148,7 +154,7 @@ mkdir -p "$GOOD_STATE_DIR"
 
 set +e
 ZBUILD_STATE_DIR="$GOOD_STATE_DIR" \
-    bash "$RUNNER" --template runner-state-dir-minimal --issue 1773 --no-resume \
+    bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" --no-resume \
     >"$TEST_TEMP_DIR/out-good" 2>"$TEST_TEMP_DIR/err-good"
 good_rc=$?
 set -e

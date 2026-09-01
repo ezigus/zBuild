@@ -14,6 +14,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "runner verdict-driven indicators (#507)"
 setup_test_env "verdict-indicators"
+
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
 # Wave 12-E (#664): default is enforce. Stub plugins used here lack honest
 # inputs/outputs blocks; opt out — this suite tests verdict indicators.
 export ZBUILD_CONTRACT_VALIDATOR=warn
@@ -97,7 +103,7 @@ _install_verdict_fixture() {
 # _run_pipeline_template <template-id> — single-stage fixture run.
 _run_pipeline_template() {
     rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
-    ( cd "$VERDICT_OVERLAY_REPO" && bash "$RUNNER" --issue 83 --template "$1" ) \
+    ( cd "$VERDICT_OVERLAY_REPO" && bash "$RUNNER" --issue "$_ZB_ID" --template "$1" ) \
         2>"$TEST_TEMP_DIR/runner.err" >/dev/null
 }
 
