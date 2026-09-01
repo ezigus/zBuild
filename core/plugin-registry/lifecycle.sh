@@ -315,7 +315,17 @@ plugin_hook_call() {
                 # one path component, so no stage name can climb out of runtime/.
                 local _pg_key="${ZBUILD_CURRENT_STAGE//[^A-Za-z0-9_-]/_}"
                 if [[ -n "$_pg_id" && "$_pg_id" =~ ^[0-9]+$ ]]; then
-                    printf '%s' "$_pg_id" > "${_pg_dir}/${_pg_key}.pgid" 2>/dev/null || true
+                    # The START TIME of the group leader goes in beside the pgid
+                    # (#2018). A pgid alone is just a number: once the leader is
+                    # reaped the kernel reissues it, so a later sweep reading a
+                    # bare record cannot tell "our leaked group" from "a stranger
+                    # holding the number", and must refuse to signal either. The
+                    # start time is what makes the record provable — a recycled
+                    # pid cannot carry the moment the original began.
+                    local _pg_start
+                    _pg_start="$(ps -o lstart= -p "$_pg_id" 2>/dev/null | tr -s ' ' | sed 's/^ *//;s/ *$//' || true)"
+                    printf '%s\t%s' "$_pg_id" "$_pg_start" \
+                        > "${_pg_dir}/${_pg_key}.pgid" 2>/dev/null || true
                 fi
             fi
         fi
