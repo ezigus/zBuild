@@ -22,6 +22,10 @@ print_test_header "plugin: validate agent (kind:agent, ADR-018 P1, issue #757)"
 
 setup_test_env "plugin-validate"
 
+# #1921 follow-up: reserved test identity — the QUOTED assignment form.
+# These were real issue numbers used as run identity.
+_ZB_ID="$(zb_test_issue)"
+
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
@@ -30,7 +34,7 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 
 export ZBUILD_RUN_ID="validate-test-$$"
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
-export ZBUILD_ISSUE="757"
+export ZBUILD_ISSUE="$_ZB_ID"
 
 PLUGIN_FILE="$REPO_ROOT/plugins/agent/validate/plugin.sh"
 
@@ -54,7 +58,7 @@ apply_scope_redaction() {
 _make_state() {
     local dir="$1"
     mkdir -p "$dir/artifacts"
-    printf '{"issue":"757","run_id":"%s"}\n' "$ZBUILD_RUN_ID" > "$dir/state.json"
+    printf '{"issue":"$_ZB_ID","run_id":"%s"}\n' "$ZBUILD_RUN_ID" > "$dir/state.json"
     printf '%s\n' "$dir/state.json"
 }
 

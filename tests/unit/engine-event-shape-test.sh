@@ -18,6 +18,10 @@ print_test_header "engine event shapes (#385) — model.route, model.outcome, bu
 
 setup_test_env "engine-event-shape"
 
+# #1921 follow-up: reserved test identity — the QUOTED assignment form.
+# These were real issue numbers used as run identity.
+_ZB_ID="$(zb_test_issue)"
+
 # ── Event bus pointing at isolated temp dir ──────────────────────────────────
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
@@ -41,7 +45,7 @@ _normalise_event() {
 # ── G1: event-bus envelope shape ────────────────────────────────────────────
 # Emit a well-known event with all envelope fields populated via env.
 export ZBUILD_RUN_ID="test-run-385"
-export ZBUILD_ISSUE="42"
+export ZBUILD_ISSUE="$_ZB_ID"
 export ZBUILD_PLUGIN="test-plugin"
 export ZBUILD_PLUGIN_KIND="agent"
 eb_emit_event "pipeline.start" "stage=intake"

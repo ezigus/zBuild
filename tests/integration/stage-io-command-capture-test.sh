@@ -15,6 +15,10 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "stage-io command-kind capture — intake + build adoption (ADR-015 v2, #439)"
 setup_test_env "stage-io-command-int"
 
+# #1921 follow-up: reserved test identity — the QUOTED assignment form.
+# These were real issue numbers used as run identity.
+_ZB_ID="$(zb_test_issue)"
+
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
@@ -85,10 +89,10 @@ source "$REPO_ROOT/plugins/agent/intake/plugin.sh"
 STATE_DIR="$TEST_TEMP_DIR/intake-state"
 STATE_FILE="$STATE_DIR/pipeline-state.json"
 mkdir -p "$STATE_DIR"
-echo '{"schema_version":1,"run_id":"test","issue":"439","stage_statuses":{}}' > "$STATE_FILE"
+echo '{"schema_version":1,"run_id":"test","issue":"$_ZB_ID","stage_statuses":{}}' > "$STATE_FILE"
 
 unset ZBUILD_GOAL 2>/dev/null || true
-export ZBUILD_ISSUE="439"
+export ZBUILD_ISSUE="$_ZB_ID"
 
 set +e
 intake_run "intake" "$STATE_FILE" >/dev/null 2>&1

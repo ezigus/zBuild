@@ -26,11 +26,15 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "stage-io gh_comment body has zero ANSI escapes (#492)"
 setup_test_env "stage-io-gh-ansi-strip"
 
+# #1921 follow-up: reserved test identity — the QUOTED assignment form.
+# These were real issue numbers used as run identity.
+_ZB_ID="$(zb_test_issue)"
+
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 export ZBUILD_RUN_ID="gh-ansi-strip-$$"
-export ZBUILD_ISSUE="42"
+export ZBUILD_ISSUE="$_ZB_ID"
 export ZBUILD_OUTPUT_GH_COMMENT=1
 mkdir -p "$ZBUILD_EVENTS_DIR" "$ZBUILD_STATE_DIR/artifacts/stage-io"
 

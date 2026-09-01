@@ -15,6 +15,10 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "stage-io capture — end-to-end via router (ADR-015 v1, #438)"
 setup_test_env "stage-io-integration"
 
+# #1921 follow-up: reserved test identity — the QUOTED assignment form.
+# These were real issue numbers used as run identity.
+_ZB_ID="$(zb_test_issue)"
+
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
@@ -132,7 +136,7 @@ exit 0
 EOF
 chmod +x "$ghdir_int/gh"
 export PATH="$ghdir_int:$PATH"
-export ZBUILD_ISSUE="999"
+export ZBUILD_ISSUE="$_ZB_ID"
 export ZBUILD_CURRENT_STAGE="plan"
 
 set +e

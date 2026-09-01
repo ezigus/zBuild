@@ -15,6 +15,10 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "intake refuse-on-closed — subprocess boundary (#456)"
 setup_test_env "intake-refuse-subprocess"
 
+# #1921 follow-up: reserved test identity — the QUOTED assignment form.
+# These were real issue numbers used as run identity.
+_ZB_ID="$(zb_test_issue)"
+
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
@@ -24,7 +28,7 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 STATE_DIR="$TEST_TEMP_DIR/state"
 STATE_FILE="$STATE_DIR/pipeline-state.json"
 mkdir -p "$STATE_DIR"
-echo '{"schema_version":1,"run_id":"t","issue":"77","stage_statuses":{}}' > "$STATE_FILE"
+echo '{"schema_version":1,"run_id":"t","issue":"$_ZB_ID","stage_statuses":{}}' > "$STATE_FILE"
 
 # Mock `gh` via PATH shim — CLOSED/COMPLETED for state, repo slug for URL.
 mock_binary "gh" '
@@ -61,7 +65,7 @@ subprocess_err="$(
     ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_JSONL" \
     ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DB" \
     ZBUILD_EVENT_SCHEMA="$ZBUILD_EVENT_SCHEMA" \
-    ZBUILD_ISSUE="77" \
+    ZBUILD_ISSUE="$_ZB_ID" \
     PATH="$TEST_TEMP_DIR/bin:$PATH" \
     bash -c "
         set -euo pipefail
@@ -76,7 +80,7 @@ set -e
 
 assert_eq "subprocess: refuse propagates rc=2" "2" "$subprocess_rc"
 assert_contains "subprocess: stderr mentions CLOSED" "$subprocess_err" "CLOSED"
-assert_contains "subprocess: stderr mentions issue #77" "$subprocess_err" "#77"
+assert_contains "subprocess: stderr mentions the issue" "$subprocess_err" "#$_ZB_ID"
 
 # No intake.md should have been written
 if [[ -e "$STATE_DIR/intake.md" ]]; then

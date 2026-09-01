@@ -14,6 +14,10 @@ print_test_header "core/output/destinations.sh (issue #213)"
 
 setup_test_env "core-output-destinations"
 
+# #1921 follow-up: reserved test identity — the QUOTED assignment form.
+# These were real issue numbers used as run identity.
+_ZB_ID="$(zb_test_issue)"
+
 STATE_DIR="$TEST_TEMP_DIR/state"
 mkdir -p "$STATE_DIR"
 RUN_ID="test-run-213"
@@ -76,21 +80,21 @@ chmod +x "$TEST_TEMP_DIR/bin/gh"
 (
     unset _ZBUILD_OUTPUT_DESTINATIONS_LOADED 2>/dev/null || true
     source "$REPO_ROOT/core/output/destinations.sh"
-    export ZBUILD_ISSUE="99"
+    export ZBUILD_ISSUE="$_ZB_ID"
     export ZBUILD_OUTPUT_GH_COMMENT=1
     _dest_gh_comment "$CONTENT" "$RUN_ID" "$STATE_DIR"
 )
 assert_file_exists "gh was called (log file created)" "$GH_CALL_LOG"
 assert_contains "gh called with 'issue'" "$(cat "$GH_CALL_LOG")" "issue"
 assert_contains "gh called with 'comment'" "$(cat "$GH_CALL_LOG")" "comment"
-assert_contains "gh called with issue number 99" "$(cat "$GH_CALL_LOG")" "99"
+assert_contains "gh called with the run's issue number" "$(cat "$GH_CALL_LOG")" "$_ZB_ID"
 rm -f "$GH_CALL_LOG"
 
 # ─── Test 4: gh-comment skipped when ZBUILD_OUTPUT_GH_COMMENT=0 ──────────────
 (
     unset _ZBUILD_OUTPUT_DESTINATIONS_LOADED 2>/dev/null || true
     source "$REPO_ROOT/core/output/destinations.sh"
-    export ZBUILD_ISSUE="99"
+    export ZBUILD_ISSUE="$_ZB_ID"
     export ZBUILD_OUTPUT_GH_COMMENT=0
     _dest_gh_comment "$CONTENT" "$RUN_ID" "$STATE_DIR"
 ) 2>/dev/null

@@ -29,7 +29,7 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 
 export ZBUILD_RUN_ID="build-test-$$"
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
-export ZBUILD_ISSUE="341"
+export ZBUILD_ISSUE="$_ZB_ID"
 
 PLUGIN_DIR="$REPO_ROOT/plugins/agent/build"
 
@@ -315,7 +315,7 @@ assert_json_key "verdict field present (#507)" "$summary_json_t3" ".verdict" "pa
 files_changed_type="$(printf '%s' "$summary_json_t3" | jq -r '.files_changed | type' 2>/dev/null || echo "missing")"
 assert_eq "files_changed is an array" "array" "$files_changed_type"
 
-assert_json_key "issue matches ZBUILD_ISSUE="$_ZB_ID"" "$summary_json_t3" ".issue" "341"
+assert_json_key "issue matches ZBUILD_ISSUE" "$summary_json_t3" ".issue" "$_ZB_ID"
 assert_json_key "iterations == 3"               "$summary_json_t3" ".iterations" "3"
 assert_json_key "terminated_reason == done_sentinel" "$summary_json_t3" ".terminated_reason" "done_sentinel"
 assert_json_key "scope_violation == false"      "$summary_json_t3" ".scope_violation" "false"

@@ -1,1 +1,1 @@
-{"data":{"stage":"intake"},"issue":42,"kind":"agent","plugin":"test-plugin","run_id":"test-run-385","schema_version":1,"ts":"2026-01-01T00:00:00.000Z","type":"pipeline.start"}
+{"data":{"stage":"intake"},"issue":90000001,"kind":"agent","plugin":"test-plugin","run_id":"test-run-385","schema_version":1,"ts":"2026-01-01T00:00:00.000Z","type":"pipeline.start"}
