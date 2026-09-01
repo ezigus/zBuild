@@ -261,6 +261,8 @@ LOOP_COMPLETE
 
 Refine the PRIOR DESIGN. Preserve all existing scope entries unless one is clearly wrong.
 
+If the STAGE SUMMARIES name a tautological [change] SPEC — one that passes at the merge-base baseline, so it asserts nothing — RE-AUTHOR that SPEC and its tagged assertion so it FAILS at baseline and PASSES at HEAD. Build is forbidden to touch acceptance assertions (ADR-036), so only this stage can. Preserve all other scope and acceptance entries.
+
 
 ## Project-specific guidance (operator override)
 
