@@ -31,6 +31,7 @@ provides:
   events:
     - teardown.complete
     - teardown.dry_run.would_clean
+    - teardown.pgroups.killed
     - teardown.result.write_failed
     - teardown.scope.invalid
     - teardown.start

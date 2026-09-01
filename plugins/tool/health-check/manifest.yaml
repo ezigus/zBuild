@@ -12,8 +12,6 @@ description: |
 
 hooks:
   run: health_check_run
-  cleanup: health_check_cleanup
-
 requires:
   core:
     - event-bus

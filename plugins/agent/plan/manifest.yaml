@@ -9,8 +9,6 @@ description: |
 
 hooks:
   run: plan_run
-  cleanup: plan_cleanup
-
 requires:
   core:
     - redaction

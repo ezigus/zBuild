@@ -20,8 +20,6 @@ description: |
 
 hooks:
   run: lint_gate_run
-  cleanup: lint_gate_cleanup
-
 requires:
   core:
     - event-bus

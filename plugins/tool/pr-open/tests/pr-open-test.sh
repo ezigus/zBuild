@@ -239,15 +239,9 @@ fi
 unset -f git
 unset -f gh
 
-# ─── Test 6: pr_open_cleanup runs cleanly ────────────────────────────────────
-print_test_section "6. pr_open_cleanup runs cleanly"
-
-set +e
-pr_open_cleanup >/dev/null 2>&1
-rc=$?
-set -e
-
-assert_exit_code "pr_open_cleanup returns rc=0" "0" "$rc"
+# Test 6 removed in #2001 (ADR-062 §3): pr_open_cleanup's entire body was
+# `return 0`. The engine now reclaims by reading the process group recorded
+# at dispatch, so a no-op per-stage hook has nothing left to assert.
 
 # ─── Test 7: redaction chokepoint regression guard (issue #360) ──────────────
 # Per ADR-004 every LLM-bound prompt must pass through apply_scope_redaction.

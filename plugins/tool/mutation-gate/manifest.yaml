@@ -22,8 +22,6 @@ description: |
 
 hooks:
   run: mutation_gate_run
-  cleanup: mutation_gate_cleanup
-
 requires:
   core:
     - event-bus

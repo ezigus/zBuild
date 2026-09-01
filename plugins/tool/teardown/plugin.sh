@@ -72,6 +72,29 @@ teardown_run() {
         ' "$_state_file" 2>/dev/null || true)
     fi
 
+    # ADR-062 §2: union in every stage recorded at DISPATCH.
+    #
+    # stage_statuses is written by _update_stage_status only on complete/failed
+    # — after a stage RETURNS. A stage killed mid-flight never returns, so it
+    # never appeared above and was never released: the external-signal paths
+    # freed `intake` only while `build` was demonstrably running (#1748, #2001).
+    #
+    # runtime/stages/<stage>.pgid is written by plugin_hook_call at dispatch
+    # (ADR-058 §1's declared purpose for runtime/), so it exists for exactly the
+    # stages that started, whether or not they finished.
+    if [[ -n "$_state_dir" && -d "$_state_dir/runtime/stages" ]]; then
+        local _pgf _pgstage _seen
+        for _pgf in "$_state_dir"/runtime/stages/*.pgid; do
+            [[ -e "$_pgf" ]] || continue
+            _pgstage="$(basename "$_pgf" .pgid)"
+            _seen=0
+            for _s in "${_executed[@]+"${_executed[@]}"}"; do
+                [[ "$_s" == "$_pgstage" ]] && { _seen=1; break; }
+            done
+            [[ "$_seen" -eq 0 ]] && _executed+=("$_pgstage")
+        done
+    fi
+
     # ── dry-run fast path ─────────────────────────────────────────────────────
     # When ZBUILD_CLEAN_DRY_RUN=1 (set by `zbuild clean --dry-run`), emit a
     # teardown.dry_run.would_clean event for each stage that WOULD be cleaned
@@ -90,6 +113,37 @@ teardown_run() {
 
     emit_event "teardown.start" \
         "scope=$_scope" "stage_count=${#_executed[@]}" 2>/dev/null || true
+
+    # ADR-062 §2: on `release`, the ENGINE kills the process groups recorded at
+    # dispatch. This is what a per-stage hook was for, and it is strictly better
+    # here: the record is on disk, so a stage that was killed before it could
+    # run any hook is still freed. `release` deletes nothing — ADR-054 §7's rule
+    # is unchanged and load-bearing: a failed run keeps its complete evidence.
+    #
+    # tool/test proved the pattern privately (test-stage.pgid + zbuild_pg_kill);
+    # this is the same mechanism applied to every dispatched stage.
+    if [[ "$_scope" == "release" && -n "$_state_dir" && -d "$_state_dir/runtime/stages" ]]; then
+        if ! declare -F zbuild_pg_kill >/dev/null 2>&1; then
+            # shellcheck source=../../../scripts/lib/proc-group.sh
+            source "$_ZBUILD_TEARDOWN_ROOT/scripts/lib/proc-group.sh" 2>/dev/null || true
+        fi
+        local _kpgf _kpgid _killed=0
+        for _kpgf in "$_state_dir"/runtime/stages/*.pgid; do
+            [[ -e "$_kpgf" ]] || continue
+            _kpgid="$(cat "$_kpgf" 2>/dev/null || true)"
+            [[ "$_kpgid" =~ ^[0-9]+$ ]] || continue
+            # Never signal our own group: teardown runs inside the run's process
+            # group, so killing it would take the runner down with the stages.
+            local _self_pg; _self_pg="$(ps -o pgid= -p "$$" 2>/dev/null | tr -d ' ' || true)"
+            [[ "$_kpgid" == "$_self_pg" ]] && continue
+            if declare -F zbuild_pg_kill >/dev/null 2>&1; then
+                zbuild_pg_kill "$_kpgid" 2>/dev/null || true
+                _killed=$(( _killed + 1 ))
+            fi
+        done
+        [[ "$_killed" -gt 0 ]] && emit_event "teardown.pgroups.killed" \
+            "scope=$_scope" "count=$_killed" 2>/dev/null || true
+    fi
 
     # Derive artifacts dir from state_file (ADR-054 §2: plugins derive artifacts_dir
     # from dirname($state_file)/artifacts). Fall back to ZBUILD_ARTIFACT_DIR or tmp.

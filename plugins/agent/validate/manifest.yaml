@@ -14,8 +14,6 @@ description: |
 
 hooks:
   run: validate_agent_run
-  cleanup: validate_agent_cleanup
-
 requires:
   core:
     - redaction

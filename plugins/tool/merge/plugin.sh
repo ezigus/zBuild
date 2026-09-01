@@ -230,9 +230,3 @@ _merge_run_inner() {
 }
 
 # ─── merge_cleanup ───────────────────────────────────────────────────────────
-merge_cleanup() {
-    # No self-emit (#1705): plugin_hook_call already brackets this hook with
-    # plugin.cleanup.start/complete. A second `complete` from here is the same
-    # two-emitters-one-name collision the run pair was filed for.
-    return 0
-}

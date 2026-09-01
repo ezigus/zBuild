@@ -13,8 +13,6 @@ description: |
 
 hooks:
   run: merge_run
-  cleanup: merge_cleanup
-
 requires:
   core:
     - event-bus

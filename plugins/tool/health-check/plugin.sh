@@ -59,6 +59,3 @@ health_check_run() {
 }
 
 # ─── health_check_cleanup ────────────────────────────────────────────────────
-health_check_cleanup() {
-    return 0
-}

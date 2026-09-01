@@ -11,8 +11,6 @@ description: |
 
 hooks:
   run: security_lens_run
-  cleanup: security_lens_cleanup
-
 requires:
   core:
     - redaction

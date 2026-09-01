@@ -16,8 +16,6 @@ description: |
 
 hooks:
   run: pr_open_run
-  cleanup: pr_open_cleanup
-
 requires:
   core:
     - event-bus

@@ -13,8 +13,6 @@ description: |
 
 hooks:
   run: impact_run
-  cleanup: impact_cleanup
-
 requires:
   core:
     - redaction

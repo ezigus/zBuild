@@ -10,8 +10,6 @@ description: |
 
 hooks:
   run: build_stage_run
-  cleanup: build_stage_cleanup
-
 requires:
   core:
     - redaction
