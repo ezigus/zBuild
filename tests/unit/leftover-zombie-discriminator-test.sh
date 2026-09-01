@@ -133,6 +133,54 @@ else
         "without it nothing separates a synchronous abort from the pre-#905 disowned backstop"
 fi
 
+# ─── [SPEC-4][guard] the reap window is generous ───────────────────────────
+# #2029. The note above already concluded this — "the window is free to be
+# generous, because a genuine leak is a live 60s stub that outlives any window"
+# — and then left the window at 2s anyway. It kept failing: ubuntu CI red on
+# PR #2028, on a diff that cannot reach this code, with both timing assertions
+# green and the stub gone microseconds after the deadline expired.
+#
+# A stub that is still shutting down when a fixed wall-clock bound expires is
+# not a leak. The leak this detects is a 60s sleep that ignored its signal, and
+# no plausible amount of load makes that finish inside 15s. Widening costs a
+# few seconds on the rare failing run and nothing at all on a passing one.
+#
+# The bound is asserted here rather than left to a comment because this is the
+# third time this window has been tuned (#1943, #1975, now) and each previous
+# value looked equally reasonable when it was written.
+_win="$(/usr/bin/grep -oE 'deadline_ns=\$\(\( \$\(date \+%s%N\) \+ [0-9]+ \)\)' "$_RFA" | /usr/bin/grep -oE '[0-9]{8,}' | head -1)"
+if [[ -n "$_win" && "$_win" -ge 10000000000 ]]; then
+    assert_pass "[SPEC-4] the reap window is at least 10s (got ${_win}ns)"
+else
+    assert_fail "[SPEC-4] the reap window is at least 10s" \
+        "got '${_win:-<not found>}'ns — a shutting-down stub will be counted as a leak under load"
+fi
+
+# ─── [SPEC-5][guard] a non-zero count is always explained ──────────────────
+# The diagnostic exists so a failure arrives with its own diagnosis instead of
+# needing another CI run. On PR #2028 it printed its header —
+#
+#   DIAGNOSTIC: 1 leftover stub(s) after the 2s reap window:
+#
+# — and then NOTHING, because it describes a pid only while
+# `_rfa_is_my_stub` still says the pid is ours, and by diagnosis time the stub
+# had exited. So the one run where the diagnostic was most needed produced a
+# bare count, which is the exact thing it was built to stop.
+#
+# "Counted during the poll, gone by the time we looked" is the single most
+# useful line that could have appeared there, and it was the one the guard
+# suppressed. Describe every pid; let the classification say what it is.
+# Comment lines are stripped first: the fix's own comment quotes the old code
+# as the thing it replaced, and a guard that matches its own documentation
+# reports the defect forever. (Same trap as T8 in the impact-prompt guard.)
+if /usr/bin/grep -vE '^[[:space:]]*#' "$_RFA" \
+    | /usr/bin/grep -qE '_rfa_is_my_stub "\$p" && _rfa_describe'; then
+    assert_fail "[SPEC-5] the diagnostic explains every pid it counted" \
+        "it still describes only pids still classified as ours — a stub that exited leaves a bare count"
+else
+    assert_pass "[SPEC-5] the diagnostic explains every pid it counted"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
