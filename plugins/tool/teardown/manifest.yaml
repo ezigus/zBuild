@@ -33,6 +33,7 @@ provides:
     - teardown.dry_run.would_clean
     - teardown.pgroups.killed
     - teardown.result.write_failed
+    - teardown.scratch.purged
     - teardown.scope.invalid
     - teardown.start
 

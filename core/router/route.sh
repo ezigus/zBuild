@@ -1671,6 +1671,12 @@ ${_diff_pointer}"
         # provably distinct from the runner's own, so the handler falls back to
         # the per-PID kill (Wave 8 #612) rather than `kill -- -PGID`-ing itself.
         _ROUTE_LOOP_CHILD_PGID="$(zbuild_pg_resolve "$_ROUTE_LOOP_CHILD_PID")"
+        # #2024: register it, so the group survives this shell. The in-memory
+        # variable above is enough for the signal handler, which runs while the
+        # runner is alive — but a SIGKILLed runner leaves nothing behind, and a
+        # model spawn is the longest-lived child a stage has. On disk it is
+        # reachable by `zbuild cleanup --pgroups` afterwards (#2018).
+        zbuild_pg_register "$_ROUTE_LOOP_CHILD_PGID" 2>/dev/null || true
         wait "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null || rc=$?
         _ROUTE_LOOP_CHILD_PID=""
         _ROUTE_LOOP_CHILD_PGID=""

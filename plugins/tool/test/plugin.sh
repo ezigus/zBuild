@@ -392,6 +392,13 @@ _test_run_inner() {
         _zbt_pg_id="$(zbuild_pg_resolve "$_zbt_pg_child")"
         [[ -n "$_zbt_pg_id" ]] && \
             printf '%s' "$_zbt_pg_id" > "$_pgid_file" 2>/dev/null || true
+        # #2024: ALSO register it with the engine. `set -m` above made this
+        # suite a group leader, and until now that group was known only to this
+        # plugin — which is why its private cleanup hook was the one mechanism
+        # in the tree that ever killed a stage's children. Registering it is
+        # what lets teardown free the suite, and what makes retiring that hook
+        # a removal of duplication rather than of the only thing that works.
+        zbuild_pg_register "$_zbt_pg_id" "test" 2>/dev/null || true
         wait "$_zbt_pg_child"
         exit $?
     )" || test_rc=$?
@@ -861,53 +868,10 @@ _test_kill_staging_pg() {
     zbuild_pid_kill "$_pid"
 }
 
-# ─── test_cleanup ─────────────────────────────────────────────────────────────
-# ADR-054 §7 (#1829): accepts (stage_id, state_file, scope).
-# scope=release — kill any lingering test subprocess PGID; leave staging dir intact.
-# scope=purge   — delete the staging directory.
-# Called by the teardown plugin at pipeline exit; never by the RETURN trap.
-# Usage: test_cleanup <stage_id> <state_file> [scope]
-test_cleanup() {
-    local _stage_id="${1:-test}"
-    local _state_file="${2:-}"
-    local _scope="${3:-release}"
-
-    local _runtime_dir=""
-    if [[ -n "$_state_file" ]]; then
-        _runtime_dir="$(_test_runtime_dir "$(dirname "$_state_file")")"
-    fi
-
-    # `plugin.result`, not `plugin.cleanup.complete` (#1705): which scope was
-    # honoured is a DOMAIN result, and plugin_hook_call already brackets this
-    # hook with its own cleanup pair. `hook=cleanup` separates these from the
-    # run-hook results that share the name.
-    case "$_scope" in
-        release)
-            # Kill any lingering test subprocess; do NOT delete the staging dir.
-            if [[ -n "$_runtime_dir" && \
-                  ( -f "$_runtime_dir/test-stage.pid" || -f "$_runtime_dir/test-stage.pgid" ) ]]; then
-                _test_kill_staging_pg \
-                    "$_runtime_dir/test-stage.pid" \
-                    "$_runtime_dir/test-stage.pgid"
-            fi
-            emit_event "plugin.result" "plugin=test" "kind=tool" "hook=cleanup" "scope=release" \
-                2>/dev/null || true
-            ;;
-        purge)
-            # Delete the staging directory located by the persisted path.
-            if [[ -n "$_runtime_dir" && -f "$_runtime_dir/test-staging-path" ]]; then
-                local _staging; _staging="$(cat "$_runtime_dir/test-staging-path" 2>/dev/null || true)"
-                if [[ -n "$_staging" && -d "$_staging" ]]; then
-                    rm -rf "$_staging" 2>/dev/null || true
-                fi
-            fi
-            emit_event "plugin.result" "plugin=test" "kind=tool" "hook=cleanup" "scope=purge" \
-                2>/dev/null || true
-            ;;
-        *)
-            emit_event "plugin.result" "plugin=test" "kind=tool" "hook=cleanup" "scope=$_scope" \
-                2>/dev/null || true
-            ;;
-    esac
-    return 0
-}
+# test_cleanup was retired in #2024 (ADR-062 §3). Both halves are engine-owned:
+# teardown(release) frees the suite's process group from the record registered
+# at spawn, and teardown(purge) deletes `<run>/scratch/` as a path.
+#
+# The RETURN trap's _test_kill_staging_pg STAYS. It runs while the stage is
+# alive, which is a different job from reclaiming after it dies — retiring the
+# hook does not make in-process cleanup someone else’s problem.

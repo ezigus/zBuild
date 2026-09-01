@@ -80,7 +80,7 @@ Concretely: §1 and §2 land and are proven equivalent to today's behaviour *inc
 
 - **`tool/test`'s private mechanism becomes the engine's.** Its `test-stage.pgid` write and `_test_kill_staging_pg` reader move to the dispatch seam and apply to every stage.
 - **21 no-op hooks and their manifest declarations disappear.** Nothing observable changes for them, which is the point: they were contract surface with no behaviour behind it.
-- **The staging-tree deletion in `test_cleanup(purge)` is not a process concern** and moves with `zbuild clean --purge` as a path operation.
+- **The staging-tree deletion in `test_cleanup(purge)` is not a process concern** and moved to `teardown(purge)` as a path operation (#2024). It needed no plugin knowledge in the end: the staging tree is created through `zbuild_engine_tmpdir`, which under dispatch resolves to `ZBUILD_STAGE_SCRATCH` — `<run>/scratch/<stage>` — so it was already inside an engine-owned area. ADR-054 §7's line does not move: purge deletes `scratch/` and nothing else, so a failed run keeps its complete evidence.
 - **A SIGKILLed runner still leaves orphans until an operator sweeps.** Dispatch runs from an `EXIT` trap and `SIGKILL` cannot be trapped, so nothing in-process can free those groups. The persisted pgid is what makes a *later* sweep possible, and `zbuild cleanup --pgroups` is that sweep (#2018): it reads the records, proves each pgid still names what recorded it, and frees only the proven ones.
 
   The record therefore carries the group leader's **start time** alongside the pgid. A pgid on its own is a number the kernel reissues once the leader is reaped, so a bare record cannot distinguish a leaked group from a stranger holding the same number — and a sweep that guessed would kill someone else's work. Where identity cannot be proven, the sweep skips and names the record; four of its five outcomes refuse to signal anything. A missed leak costs an idle process the operator can see; a wrong kill costs work, silently.
@@ -119,3 +119,11 @@ npm run test:unit && npm test && npm run lint
 ```
 
 The discriminating case is the external hard kill: today it frees `intake` only. If it still frees `intake` only after §1 and §2, the record is not being written at spawn and nothing else in this ADR works.
+
+**That test was never run, and §1 as originally written could not have passed it (#2024).** The record was taken at the dispatch seam from `$$` — but a stage is a bash function call, not a subprocess, so no group exists there and `$$` names the *engine's own* group. teardown skipped every record, correctly, because signalling your own group takes the runner down. §2's kill loop freed nothing, and the number on disk looked entirely plausible.
+
+The correction reverses the direction: the engine cannot observe a group that does not exist yet, so **whoever creates one registers it** — `zbuild_pg_register` (`scripts/lib/proc-group.sh`), called from the two sites that make groups, `tool/test`'s `set -m` suite and the router's `setsid` spawn. Registering your own group is refused, because that is precisely the unkillable record. The dispatch-time write is deleted rather than fixed: any pgid observable at that seam is by definition one that cannot be signalled from inside the run.
+
+§4's ordering held up exactly as written. `tool/test`'s hook was the only mechanism in the tree that had ever killed a stage's children; retiring it before the engine worked would have removed the one thing that functioned and replaced it with one that never had.
+
+`tests/integration/hard-kill-sweep-e2e-test.sh` is the discriminating test, and it is now real: it SIGKILLs the runner, confirms the suite outlives it, and asserts the next sweep frees it. It does not skip when it cannot stage the scenario — a skip here is indistinguishable from the mechanism being broken.
