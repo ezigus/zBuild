@@ -284,7 +284,14 @@ _rfa_describe() {
 
 _st=""
 leftover=0
-deadline_ns=$(( $(date +%s%N) + 2000000000 ))
+# #2029: 15s, not 2s. The leak this hunts is a 60s stub that ignored its
+# signal; no plausible load makes that finish inside 15s, so widening cannot
+# hide one. What 2s DID catch was a stub still shutting down when a fixed
+# wall-clock bound expired — a false red, on ubuntu CI, on diffs that could not
+# reach this code. The synchronous-abort discrimination does not ride on this
+# number any more (#1975 moved it to an elapsed_ms floor, which load can only
+# push in the safe direction), so the window is free to be generous.
+deadline_ns=$(( $(date +%s%N) + 15000000000 ))
 while [[ $(date +%s%N) -lt $deadline_ns ]]; do
     leftover=0
     if [[ -f "$PID_FILE" ]]; then
@@ -360,9 +367,16 @@ fi
 # arrives with its own diagnosis attached.
 if [[ $leftover -ne 0 && -f "$PID_FILE" ]]; then
     echo "  DIAGNOSTIC: ${leftover} leftover stub(s) after the 2s reap window:" >&2
+    # #2029: describe EVERY pid, not only ones still classified as ours. The
+    # guard used to be `_rfa_is_my_stub "$p" && _rfa_describe "$p"`, so a stub
+    # that was counted during the poll and then exited produced a header and no
+    # lines — a bare count, on the one run where the diagnosis was most needed.
+    # "Counted during the poll, gone by the time we looked" is the most useful
+    # thing that could be said there, and the guard was suppressing exactly it.
     while IFS= read -r p; do
         [[ -z "$p" ]] && continue
-        _rfa_is_my_stub "$p" && _rfa_describe "$p"
+        _rfa_is_my_stub "$p" || true          # sets PROC_IDENTITY_REASON
+        _rfa_describe "$p"
     done < "$PID_FILE"
 fi
 assert_eq "no leftover stub-claude processes after abort" "0" "$leftover"
