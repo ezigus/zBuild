@@ -27,7 +27,8 @@ make_old_dir() {
     touch -t 200001010000 "$d"
 }
 
-make_old_dir "zb-applycheck-abc123"
+# #2017: the zb-applycheck-* fixture is gone with its pattern — nothing in the
+# tree creates that directory since #2004 moved the write in-tree.
 make_old_dir "zbuild-test-stage.1234"
 make_old_dir "zb-loop-iters.5678"
 make_old_dir "zb-test-auto.9012"
@@ -64,7 +65,6 @@ assert_kept() {
 # Run cleanup with the fake TMPDIR so we don't touch the real one.
 TMPDIR="$FAKE_TMP" "$ZBUILD" cleanup --tmpdirs --apply --age-hours 0
 
-assert_deleted "zb-applycheck-abc123"
 assert_deleted "zbuild-test-stage.1234"
 assert_deleted "zb-loop-iters.5678"
 assert_deleted "zb-test-auto.9012"
