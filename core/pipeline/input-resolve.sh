@@ -573,7 +573,8 @@ stage_summaries_prompt_block() {
         [[ -n "$_agg_of" ]] && _covered="${_covered}${_agg_of} "
     done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
 
-    local stage path body verdict total=0 rendered="" chunk _conv _aggregates
+    local stage path body verdict chunk _conv _aggregates
+    local -a _chunks=()
     while IFS= read -r stage; do
         [[ -z "$stage" ]] && continue
         # An aggregator is never suppressed by the roster it covers — it is the
@@ -600,14 +601,38 @@ stage_summaries_prompt_block() {
             fail|failed) chunk="$(printf '### %s (verdict: %s) — RESOLVE these findings before completing\n%s\n' "$stage" "$verdict" "$body")" ;;
             *)           chunk="$(printf '### %s (verdict: %s)\n%s\n' "$stage" "$verdict" "$body")" ;;
         esac
-        total=$(( total + ${#chunk} ))
-        if [[ "$total" -gt "$_ZB_SUMMARY_TOTAL_MAX_BYTES" ]]; then
-            rendered="${rendered}"$'\n'"[… remaining stage summaries truncated at"
-            rendered="${rendered} ${_ZB_SUMMARY_TOTAL_MAX_BYTES}B total]"$'\n'
-            break
-        fi
-        rendered="${rendered}${chunk}"$'\n'
+        _chunks+=("$chunk")
     done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
+
+    # #2011: keep the NEWEST. This used to accumulate in completion order and
+    # break on the cap, which retained the summaries FURTHEST from the stage
+    # about to run and discarded its most recent findings. Latent while a handful
+    # of gates declared summaries; #2000 took the tree to 28 producers (114,688B
+    # potential against a 24,576B cap), making overflow the normal path.
+    # Raising the cap is not the fix — ADR-029 records that per-iteration prompt
+    # growth caused three consecutive 900s max_turns timeouts. Which END is
+    # dropped is the defect.
+    local total=0 _keep_from=${#_chunks[@]} _i
+    for (( _i=${#_chunks[@]}-1; _i>=0; _i-- )); do
+        total=$(( total + ${#_chunks[_i]} ))
+        [[ "$total" -gt "$_ZB_SUMMARY_TOTAL_MAX_BYTES" ]] && break
+        _keep_from=$_i
+    done
+    # The newest always ships, even alone and even if it alone exceeds the
+    # budget: it is already per-summary capped, and a block that drops the very
+    # findings it exists to carry is worse than one slightly over budget.
+    [[ ${#_chunks[@]} -gt 0 && "$_keep_from" -ge ${#_chunks[@]} ]] && _keep_from=$(( ${#_chunks[@]} - 1 ))
+
+    local rendered=""
+    # Marked, and counted, so an elision stays distinguishable from a stage that
+    # produced nothing — the property the per-summary marker already gets right.
+    if [[ "$_keep_from" -gt 0 ]]; then
+        rendered="[… ${_keep_from} earlier stage summaries truncated at"
+        rendered="${rendered} ${_ZB_SUMMARY_TOTAL_MAX_BYTES}B total]"$'\n'
+    fi
+    for (( _i=_keep_from; _i<${#_chunks[@]}; _i++ )); do
+        rendered="${rendered}${_chunks[_i]}"$'\n'
+    done
 
     [[ -n "$rendered" ]] || return 0
     printf '%s\n\n' "$_ZB_STAGE_SUMMARIES_MARKER"
