@@ -17,6 +17,8 @@ _ZBUILD_PLAN_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _PLAN_DIR="$_ZBUILD_PLUGIN_DIR"
 _PLAN_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -97,6 +99,9 @@ plan_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
         error "plan_run: state_file argument required"
+        stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/plan-summary.md}" "plan" "error" \
+            "the engine dispatched this stage with no state file, so it could not run" \
+            "No work was attempted. This is an engine contract violation, not a fault in the change."
         return 2
     fi
     local state_dir; state_dir="$(dirname "$state_file")"
@@ -831,6 +836,9 @@ $_plan_instructions"
             [[ $router_rc -eq 0 && -z "$raw_response" ]] && _reason="empty_result_envelope"
             [[ $schema_failed -eq 1 ]] && _reason="schema_violation"
             error "_plan_run_inner: no valid plan.json produced (reason=$_reason)"
+            stage_summary_write "$artifact_dir/plan-summary.md" "plan" "error" \
+                "no valid plan.json produced ($_reason)" \
+                "The goal was not decomposed into steps. A downstream stage has no plan to build against."
             emit_event "plugin.result" "verdict=error" "plugin=plan" "reason=$_reason"
             return 1
         fi
@@ -879,6 +887,12 @@ $_plan_instructions"
         fi
     fi
 
+    # ADR-055 §9: state what this stage DID — the shape of the plan a later
+    # stage will be held to, not merely that it finished.
+    stage_summary_write "$artifact_dir/plan-summary.md" "plan" "pass" \
+        "decomposed the goal into $step_count step(s)" \
+        "$(printf -- '- scope violations: %s\n- DoD discipline: %s\n- artifact: plan.json' \
+            "$scope_violations" "$dod_discipline_pass")"
     emit_event "plugin.result" "stage=plan" \
         "plugin=plan" \
         "step_count=$step_count" \

@@ -46,6 +46,13 @@ outputs:
     type: markdown
     path: ${artifact_dir}/producer.md
     required: false
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: producer_summary
+    path: "${artifact_dir}/producer-summary.md"
+    type: producer-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 
     cat > "$PLUGINS_ROOT/agent/consumer/manifest.yaml" <<'EOF'
@@ -71,6 +78,13 @@ outputs:
     path: ${artifact_dir}/consumer.json
     required: true
     primary: true
+  # ADR-055 §9 (#2000): every stage-bound plugin declares one summary.
+  - id: consumer_summary
+    path: "${artifact_dir}/consumer-summary.md"
+    type: consumer-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 }
 

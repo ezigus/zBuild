@@ -187,10 +187,12 @@ for id in "${!_LC_STAGE_MANIFEST[@]}"; do
         _complain "$rel: $primary_count outputs[] entries declare 'primary: true' (must be exactly one) [#507]"
     fi
 
-    # ── #1976: at most one outputs[].summary: true ────────────────────────
-    # The summary is "the ONE thing this stage offers downstream". Two would
-    # make that ambiguous and leave the collector's first-match scan dependent
-    # on declaration order. Zero is legal — the marker is opt-in.
+    # ── ADR-055 §9 (#2000): EXACTLY ONE outputs[].summary: true ───────────
+    # A stage that publishes nothing is indistinguishable from one that had
+    # nothing to say, so zero is no longer legal. This is the tree-wide echo of
+    # the pre-flight SUMMARY_MISSING check — the validator is the AUTHORITY,
+    # because it walks the resolved flow and can see a stage authored outside
+    # this repository, which this scan structurally cannot.
     summary_count=$(awk '
         BEGIN { in_out=0; n=0 }
         /^outputs:/ { in_out=1; next }
@@ -198,8 +200,10 @@ for id in "${!_LC_STAGE_MANIFEST[@]}"; do
         in_out && /^[[:space:]]+summary:[[:space:]]*true([[:space:]]|$|#)/ { n++ }
         END { print n }
     ' "$m" 2>/dev/null)
-    if [[ "$summary_count" -gt 1 ]]; then
-        _complain "$rel: $summary_count outputs[] entries declare 'summary: true' (at most one) [#1976]"
+    if [[ "$summary_count" -eq 0 ]]; then
+        _complain "$rel: declares no outputs[] entry with 'summary: true' — every stage-bound plugin must state what it did [ADR-055 §9 SUMMARY_MISSING]"
+    elif [[ "$summary_count" -gt 1 ]]; then
+        _complain "$rel: $summary_count outputs[] entries declare 'summary: true' (exactly one) [ADR-055 §9 SUMMARY_DUP]"
     fi
 
     while IFS= read -r rec; do

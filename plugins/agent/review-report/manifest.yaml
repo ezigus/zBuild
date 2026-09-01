@@ -88,6 +88,14 @@ outputs:
     type: review-report.md@1
     format: markdown
     required: false
+  # ADR-055 §9: this stage's statement of what it DID. required:true —
+  # written on every terminal verdict, so absence means something went wrong.
+  - id: review_report_summary
+    path: "${artifact_dir}/review-report-summary.md"
+    type: review-report-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 
 state:
   persisted:

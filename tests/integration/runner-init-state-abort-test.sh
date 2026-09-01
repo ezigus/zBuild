@@ -55,9 +55,24 @@ hooks:
 requires:
   core:
     - redaction
+outputs:
+  # ADR-055 §9 (#2000): every stage-bound plugin declares exactly one summary.
+  - id: ${id//-/_}_summary
+    type: $id-summary.md@1
+    format: markdown
+    path: \${artifact_dir}/$id-summary.md
+    required: true
+    summary: true
 EOF
     cat > "$dir/plugin.sh" <<EOF
-${fn}() { return 0; }
+${fn}() {
+    # ADR-055 §9 (#2000): the summary is a required output, so the stub writes
+    # one — a declared-but-unwritten artifact is a contract violation.
+    local _d="\${ZBUILD_ARTIFACT_DIR:-\$(dirname "\${2:-/tmp/x}")/artifacts}"
+    mkdir -p "\$_d" 2>/dev/null || true
+    printf '## %s — pass\n\n- stub stage\n' "$id" > "\$_d/$id-summary.md" 2>/dev/null || true
+    return 0
+}
 EOF
 }
 # Roles mirror runner-state-dir-minimal.yaml's roles: declarations.

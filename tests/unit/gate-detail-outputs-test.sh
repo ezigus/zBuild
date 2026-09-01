@@ -68,11 +68,11 @@ print_test_section "2. detail is written on fail and absent on pass"
 
 # Behavioural, not a grep for a write site: the guarantee is "every gate always
 # speaks", and asserting WHERE that lives would pin the implementation instead.
-# shellcheck source=../../scripts/lib/gate-detail.sh
-source "$REPO_ROOT/scripts/lib/gate-detail.sh"
+# shellcheck source=../../scripts/lib/stage-summary.sh
+source "$REPO_ROOT/scripts/lib/stage-summary.sh"
 
 _GD="$TEST_TEMP_DIR/gd-detail.md"
-gate_detail_write "$_GD" "sample-gate" "fail" "the floor is missing two files" "- a.sh
+stage_summary_write "$_GD" "sample-gate" "fail" "the floor is missing two files" "- a.sh
 - b.sh"
 assert_file_exists "[SPEC-2] a failing gate writes its summary" "$_GD"
 assert_contains "[SPEC-2] the summary names the gate" "$(cat "$_GD")" "sample-gate"
@@ -82,21 +82,21 @@ assert_contains "[SPEC-2] and the body" "$(cat "$_GD")" "a.sh"
 # ADR-055 §9: "ran and found nothing" and "published nothing" are different
 # facts. If absence were legitimate the pipeline could not tell them apart, so a
 # passing gate states its conclusion rather than staying silent.
-gate_detail_write "$_GD" "sample-gate" "pass" ""
+stage_summary_write "$_GD" "sample-gate" "pass" ""
 assert_file_exists "[SPEC-2] a PASSING gate still writes its summary" "$_GD"
 assert_contains "[SPEC-2] and states the verdict it reached" "$(cat "$_GD")" "pass"
 assert_contains "[SPEC-2] saying so explicitly rather than being empty" \
     "$(cat "$_GD")" "no findings"
 
-gate_detail_write "$_GD" "sample-gate" "skip" "no shape change in the diff"
+stage_summary_write "$_GD" "sample-gate" "skip" "no shape change in the diff"
 assert_contains "[SPEC-2] a SKIPPING gate says why it skipped" \
     "$(cat "$_GD")" "no shape change in the diff"
 
 # Because every run rewrites the file, a previous iteration's finding cannot
 # survive to be read as a current one — the stale-file hazard is gone by
 # construction rather than by a clear step someone has to remember.
-gate_detail_write "$_GD" "sample-gate" "fail" "OLD-FINDING"
-gate_detail_write "$_GD" "sample-gate" "pass" ""
+stage_summary_write "$_GD" "sample-gate" "fail" "OLD-FINDING"
+stage_summary_write "$_GD" "sample-gate" "pass" ""
 if grep -qF 'OLD-FINDING' "$_GD"; then
     assert_fail "[SPEC-2] a prior iteration's finding cannot survive" "stale content remains"
 else
@@ -105,7 +105,7 @@ fi
 
 # Every gate must actually CALL it — a helper nothing invokes is inert (#1919).
 for _g in $_GATES; do
-    if grep -qF 'gate_detail_write' "$REPO_ROOT/plugins/tool/$_g/plugin.sh" 2>/dev/null; then
+    if grep -qF 'stage_summary_write' "$REPO_ROOT/plugins/tool/$_g/plugin.sh" 2>/dev/null; then
         assert_pass "[SPEC-2] $_g publishes through the shared helper"
     else
         assert_fail "[SPEC-2] $_g publishes through the shared helper" "no call found"

@@ -58,10 +58,22 @@ outputs:
   - name: findings
     path: artifacts/intake-findings.json
     type: findings.json
+  # ADR-055 §9 (#2000): required of every stage-bound plugin. The
+  # findings output below stays deliberately unwritten — that is what
+  # this fixture is testing.
+  - id: intake_summary
+    path: ${artifact_dir}/intake-summary.md
+    type: intake-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 cat > "$A3_PLUGINS/agent/noartifact/plugin.sh" <<'EOF'
 noartifact_run() {
     # Intentionally does NOT write artifacts/intake-findings.json
+    _d="${ZBUILD_ARTIFACT_DIR:-$(dirname "${2:-/tmp/x}")/artifacts}"
+    mkdir -p "$_d" 2>/dev/null || true
+    printf '## %s — pass\n\n- stub\n' "intake" > "$_d/intake-summary.md" 2>/dev/null || true
     return 0
 }
 EOF
@@ -77,9 +89,24 @@ hooks:
 requires:
   core:
     - redaction
+outputs:
+  # ADR-055 §9 (#2000): required of every stage-bound plugin. The
+  # findings output below stays deliberately unwritten — that is what
+  # this fixture is testing.
+  - id: security-lens_summary
+    path: ${artifact_dir}/security-lens-summary.md
+    type: security-lens-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 cat > "$A3_PLUGINS/agent/security-lens/plugin.sh" <<'EOF'
-sl_run() { return 0; }
+sl_run() {
+    _d="${ZBUILD_ARTIFACT_DIR:-$(dirname "${2:-/tmp/x}")/artifacts}"
+    mkdir -p "$_d" 2>/dev/null || true
+    printf '## %s — pass\n\n- stub\n' "security-lens" > "$_d/security-lens-summary.md" 2>/dev/null || true
+    return 0
+}
 EOF
 cat > "$A3_PLUGINS/tool/output/manifest.yaml" <<'EOF'
 id: output
@@ -88,9 +115,24 @@ kind: tool
 version: 0.0.1
 hooks:
   run: out_run
+outputs:
+  # ADR-055 §9 (#2000): required of every stage-bound plugin. The
+  # findings output below stays deliberately unwritten — that is what
+  # this fixture is testing.
+  - id: output_summary
+    path: ${artifact_dir}/output-summary.md
+    type: output-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 cat > "$A3_PLUGINS/tool/output/plugin.sh" <<'EOF'
-out_run() { return 0; }
+out_run() {
+    _d="${ZBUILD_ARTIFACT_DIR:-$(dirname "${2:-/tmp/x}")/artifacts}"
+    mkdir -p "$_d" 2>/dev/null || true
+    printf '## %s — pass\n\n- stub\n' "output" > "$_d/output-summary.md" 2>/dev/null || true
+    return 0
+}
 EOF
 
 # ─── Run the runner with the no-artifact plugin ───────────────────────────────
@@ -186,9 +228,24 @@ requires:
     - redaction
 provides:
   role: intake
+outputs:
+  # ADR-055 §9 (#2000): required of every stage-bound plugin. The
+  # findings output below stays deliberately unwritten — that is what
+  # this fixture is testing.
+  - id: intake_summary
+    path: ${artifact_dir}/intake-summary.md
+    type: intake-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 cat > "$B_PLUGINS/agent/noartifact-nopaths/plugin.sh" <<'EOF'
-noartifact_nopaths_run() { return 0; }
+noartifact_nopaths_run() {
+    _d="${ZBUILD_ARTIFACT_DIR:-$(dirname "${2:-/tmp/x}")/artifacts}"
+    mkdir -p "$_d" 2>/dev/null || true
+    printf '## %s — pass\n\n- stub\n' "intake" > "$_d/intake-summary.md" 2>/dev/null || true
+    return 0
+}
 EOF
 cp "$A3_PLUGINS/agent/security-lens/manifest.yaml" "$B_PLUGINS/agent/security-lens/"
 cp "$A3_PLUGINS/agent/security-lens/plugin.sh"    "$B_PLUGINS/agent/security-lens/"

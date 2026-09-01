@@ -45,9 +45,23 @@ hooks:
 requires:
   core:
     - redaction
+outputs:
+  # ADR-055 §9 (#2000): every stage-bound plugin declares exactly one summary.
+  - id: ${id//-/_}_summary
+    type: $id-summary.md@1
+    format: markdown
+    path: \${artifact_dir}/$id-summary.md
+    required: true
+    summary: true
 EOF
     cat > "$dir/plugin.sh" <<EOF
-${fn}() { return 0; }
+${fn}() {
+    # A declared-but-unwritten output is a contract violation, so write it.
+    local _d="\${ZBUILD_ARTIFACT_DIR:-\$(dirname "\${2:-/tmp/x}")/artifacts}"
+    mkdir -p "\$_d" 2>/dev/null || true
+    printf '## %s — pass\n\n- stub stage\n' "$id" > "\$_d/$id-summary.md" 2>/dev/null || true
+    return 0
+}
 EOF
 }
 # TEMPLATE-AGNOSTIC (#966): the state-file/issue cross-check is a generic runner

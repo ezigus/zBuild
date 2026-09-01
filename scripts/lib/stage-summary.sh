@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
-# scripts/lib/gate-detail.sh — a gate publishes what only it knows (#1988).
+# scripts/lib/stage-summary.sh — every stage states what it did (#2000).
 #
-# Five gates declared only a result JSON, so the gate-aggregator was the sole
-# path for their failure detail to reach a prompt — it read seven scattered
-# result files and rendered them as prose. #1976 made another path: a gate marks
-# one output `summary: true` and the engine delivers it.
+# ADR-055 §9 makes this mandatory for every stage-bound plugin, not just the
+# gates #1988 covered. A stage that publishes nothing is indistinguishable from
+# one that had nothing to say, and the pipeline cannot tell those apart — so the
+# second silently absorbs the first. `acceptance-summary.txt` is the worked
+# example: written by spec-acceptance, declared by nobody, unread for months.
 #
 # Shared rather than hand-rolled five times: the write is identical everywhere,
 # and centralising it is what makes "every gate always speaks" enforceable
@@ -12,10 +13,10 @@
 #
 # Source-only; no `set -e` at top level (would mutate caller options).
 
-[[ -n "${_ZBUILD_GATE_DETAIL_SH_LOADED:-}" ]] && return 0
-_ZBUILD_GATE_DETAIL_SH_LOADED=1
+[[ -n "${_ZBUILD_STAGE_SUMMARY_SH_LOADED:-}" ]] && return 0
+_ZBUILD_STAGE_SUMMARY_SH_LOADED=1
 
-# ─── gate_detail_write <path> <gate> <verdict> <reason> [body] ───────────────
+# ─── stage_summary_write <path> <stage> <verdict> <reason> [body] ────────────
 # Writes the gate's summary on EVERY terminal verdict — pass, fail and skip.
 #
 # ADR-055 §9: a summary states what the stage DID, not what went wrong. A gate
@@ -25,14 +26,14 @@ _ZBUILD_GATE_DETAIL_SH_LOADED=1
 # and "published nothing" — a missing summary now means something went wrong,
 # full stop, which is why the output is `required: true`.
 #
-# The heading names the gate so a reader of the assembled prompt can tell whose
+# The heading names the stage so a reader of the assembled prompt can tell whose
 # statement it is once several are stacked.
-gate_detail_write() {
-    local path="${1:-}" gate="${2:-}" verdict="${3:-}" reason="${4:-}" body="${5:-}"
+stage_summary_write() {
+    local path="${1:-}" stage="${2:-}" verdict="${3:-}" reason="${4:-}" body="${5:-}"
     [[ -n "$path" ]] || return 0
     mkdir -p "$(dirname "$path")" 2>/dev/null || true
     {
-        printf '## %s — %s\n\n' "${gate:-gate}" "${verdict:-unknown}"
+        printf '## %s — %s\n\n' "${stage:-stage}" "${verdict:-unknown}"
         if [[ -n "$reason" ]]; then
             printf -- '- %s\n' "$reason"
         else

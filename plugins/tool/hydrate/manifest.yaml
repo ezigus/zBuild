@@ -71,3 +71,11 @@ outputs:
     # prior-output seam (ZBUILD_RESTORED_ARTIFACTS_DIR), not through this file.
     # Marking it advisory says that, rather than inventing a consumer to
     # satisfy the validator.
+  # ADR-055 §9: this stage's statement of what it DID. required:true —
+  # written on every terminal verdict, so absence means something went wrong.
+  - id: hydrate_summary
+    path: "${artifact_dir}/hydrate-summary.md"
+    type: hydrate-summary.md@1
+    format: markdown
+    required: true
+    summary: true

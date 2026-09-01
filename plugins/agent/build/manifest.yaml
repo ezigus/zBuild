@@ -86,6 +86,14 @@ outputs:
     # ADR-020 amendment (#507): primary output; .verdict (pass|scope_violation)
     # drives indicator. Added in build-summary schema_version=3.
     primary: true
+  # ADR-055 §9: this stage's statement of what it DID. required:true —
+  # written on every terminal verdict, so absence means something went wrong.
+  - id: build_stage_summary
+    path: "${artifact_dir}/build-summary.md"
+    type: build-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 
 state:
   persisted: [last_files_changed, last_lines_added]

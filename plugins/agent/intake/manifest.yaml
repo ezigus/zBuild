@@ -63,6 +63,14 @@ outputs:
     format: text
     primary: false
     required: false
+  # ADR-055 §9: this stage's statement of what it DID. required:true —
+  # written on every terminal verdict, so absence means something went wrong.
+  - id: intake_summary
+    path: "${artifact_dir}/intake-summary.md"
+    type: intake-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 
 provides:
   role: intake

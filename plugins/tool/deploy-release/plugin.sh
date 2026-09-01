@@ -10,6 +10,8 @@ _ZBUILD_DEPLOY_RELEASE_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _DR_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_DR_ROOT/core/event-bus/event-bus.sh"
@@ -21,6 +23,9 @@ deploy_release_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
         error "deploy_release_run: state_file argument required"
+        stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/deploy-release-summary.md}" "deploy-release" "error" \
+            "the engine dispatched this stage with no state file, so it could not run" \
+            "No work was attempted. This is an engine contract violation, not a fault in the change."
         return 2
     fi
 
@@ -39,6 +44,9 @@ deploy_release_run() {
             '{schema_version:1,verdict:"deployed",mode:"dry_run",pr_url:$pr_url}' \
             | atomic_write "$deploy_result_out"
         emit_event "deploy.release.dry_run" "plugin=deploy-release"
+        stage_summary_write "$artifacts_dir/deploy-release-summary.md" "deploy-release" "skip" \
+            "dry run — no tag was created and nothing was pushed" \
+            "No release was cut. This verdict asserts nothing about a real deploy."
         return 0
     fi
 
@@ -54,6 +62,9 @@ deploy_release_run() {
         jq -n --arg tag "$tag_name" \
             '{schema_version:1,verdict:"error",reason:"git tag failed",tag:$tag}' \
             > "$deploy_result_out"
+        stage_summary_write "$artifacts_dir/deploy-release-summary.md" "deploy-release" "fail" \
+            "could not create the release tag $tag_name" \
+            "No release was cut. The tag may already exist from an earlier run."
         return 1
     fi
 
@@ -64,6 +75,9 @@ deploy_release_run() {
         jq -n --arg tag "$tag_name" \
             '{schema_version:1,verdict:"error",reason:"git push tag failed",tag:$tag}' \
             > "$deploy_result_out"
+        stage_summary_write "$artifacts_dir/deploy-release-summary.md" "deploy-release" "fail" \
+            "could not push the release tag $tag_name to origin" \
+            "No release was cut. The local tag was rolled back so a retry is not blocked."
         return 1
     fi
 
@@ -71,6 +85,9 @@ deploy_release_run() {
         '{schema_version:1,verdict:"deployed",tag:$tag,pr_url:$pr_url}' \
         | atomic_write "$deploy_result_out"
     emit_event "deploy.release.complete" "plugin=deploy-release" "tag=$tag_name"
+    stage_summary_write "$artifacts_dir/deploy-release-summary.md" "deploy-release" "pass" \
+        "cut release tag $tag_name and pushed it to origin" \
+        "$(printf -- '- tag: %s\n- pr: %s' "$tag_name" "${pr_url:-<none>}")"
     return 0
 }
 

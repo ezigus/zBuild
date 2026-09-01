@@ -67,6 +67,14 @@ outputs:
     type: pr-result.json@1
     format: json
     required: true
+  # ADR-055 §9: this stage's statement of what it DID. required:true —
+  # written on every terminal verdict, so absence means something went wrong.
+  - id: pr_open_summary
+    path: "${artifact_dir}/pr-open-summary.md"
+    type: pr-open-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 
 state:
   persisted: [last_pr_url, last_pr_number]
