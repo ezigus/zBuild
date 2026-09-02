@@ -1,6 +1,0 @@
-## gate-aggregator — fail
-
-- rolled up 4 gate(s) into verdict fail
-
-- failed: test, acceptance-gate
-- fault: specification
