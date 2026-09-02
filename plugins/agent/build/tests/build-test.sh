@@ -857,8 +857,7 @@ MOCK_LOOP_ITERATIONS=1
 # ─── SPEC-8: manifest declares result_contract:2 ──────────────────────────────
 print_test_section "SPEC-8: build manifest declares result_contract:2 under provides"
 
-_manifest_rc="$(awk '/^provides:/,/^[a-zA-Z]/' "$PLUGIN_DIR/manifest.yaml" \
-    | grep 'result_contract' | grep -o '[0-9]*' | head -1 || echo "")"
+_manifest_rc="$(grep -oE 'result_contract:[[:space:]]*[0-9]+' "$PLUGIN_DIR/manifest.yaml" | grep -oE '[0-9]+')"
 assert_eq "[SPEC-8] manifest provides.result_contract == 2" "2" "$_manifest_rc"
 
 # ─── SPEC-13: build_stage_run returns rc=1 when state_file absent ─────────────
