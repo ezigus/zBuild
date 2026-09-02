@@ -3,10 +3,6 @@
 ## Failing lines (extracted)
 
 ```
-unit: FAIL plugins/agent/build/tests/build-test.sh
-  [38;2;248;113;113m✗[0m [SPEC-8] manifest provides.result_contract == 2
-    [2mexpected: 2, got: [0m
-  [38;2;248;113;113m✗[0m [SPEC-8] manifest provides.result_contract == 2
 unit: FAIL tests/e2e/parity-local-vs-ci-test.sh
   [38;2;248;113;113m✗[0m fixture runs exit 0 in local mode
     [2mexpected: 0, got: 2[0m
