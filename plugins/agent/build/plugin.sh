@@ -75,8 +75,8 @@ build_stage_run() {
     local artifacts_dir="$state_dir/artifacts"
     mkdir -p "$artifacts_dir"
 
-    local scope_manifest="$state_dir/scope-manifest.md"
-    local plan_json_path="$artifacts_dir/plan.json"
+    local scope_manifest=""
+    local plan_json_path=""
 
     # ADR-055 §1: read input paths from engine-resolved index when available.
     if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS}" ]]; then

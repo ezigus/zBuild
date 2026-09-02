@@ -1057,6 +1057,15 @@ MOCK_LOOP_ITERATIONS=1
 MOCK_LOOP_REASON="done_sentinel"
 MOCK_LOOP_RC=0
 
+# ─── SPEC-20: plugin.sh contains no hardcoded input-path fallbacks ────────────
+print_test_section "SPEC-20: plugin.sh has no hardcoded fallback constructions for input artifact paths"
+
+_plugin_sh="$PLUGIN_DIR/plugin.sh"
+_spec20_sm_count="$(grep -v '^[[:space:]]*#' "$_plugin_sh" | grep -c 'state_dir/scope-manifest\.md' || true)"
+_spec20_pl_count="$(grep -v '^[[:space:]]*#' "$_plugin_sh" | grep -c 'artifacts_dir/plan\.json' || true)"
+assert_eq "[SPEC-20] plugin.sh has no hardcoded state_dir/scope-manifest.md construction" "0" "$_spec20_sm_count"
+assert_eq "[SPEC-20] plugin.sh has no hardcoded artifacts_dir/plan.json construction" "0" "$_spec20_pl_count"
+
 # ─── Teardown ────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }
 cleanup_test_env
