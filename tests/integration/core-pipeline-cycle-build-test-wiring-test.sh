@@ -6,8 +6,10 @@
 #      cycle-aware dispatch when ZBUILD_CYCLES_ENABLED is unset (auto-enable).
 #      (#979: re-pointed from the retired standard.yaml to the shipped default
 #      simple.yaml, which carries the same inner build_test_cycle.)
-#   2) The test plugin emits test-failures-summary.md WHEN failures present,
-#      and the file is ABSENT when verdict=pass (missing == empty semantics).
+#   2) The test plugin emits test-failures-summary.md on EVERY terminal verdict
+#      — pass, fail and error alike (ADR-055 §9, amended #1988). "Ran and found
+#      nothing" and "published nothing" are different facts, so absence is a
+#      contract violation, not the old #511 F2 "missing == empty" signal.
 #   3) _cycle_apply_feedback resolves the from-path through the test plugin's
 #      manifest (Pin 2 — manifest-driven, not legacy stage/output path).
 #   4) The build plugin reads $ZBUILD_CYCLE_FEEDBACK_DIR/prior_test_failures.txt
