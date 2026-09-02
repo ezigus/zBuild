@@ -128,8 +128,12 @@ spec_correspondence_run() {
         n=$(( n + 1 ))
 
         _raw=""
-        declare -f route_to_model >/dev/null 2>&1 \
-            && _raw="$(route_to_model "$tier" "$(_sc_prompt "$_txt" "$_src")" 2>/dev/null || true)"
+        # No 2>/dev/null here: the stage-io input banner writes to fd 2, and
+        # suppressing it drops the banner and breaks ADR-015 §v4's
+        # input-before-action ordering — the #491 defect.
+        if declare -f route_to_model >/dev/null 2>&1; then
+            _raw="$(route_to_model "$tier" "$(_sc_prompt "$_txt" "$_src")" || true)"
+        fi
         # No `| head`: the reader exits early, the writer takes SIGPIPE, and
         # under errexit the surrounding function dies for a reason nothing logs
         # (#1886). Capture in full, trim in bash.
