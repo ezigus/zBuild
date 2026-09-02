@@ -320,3 +320,72 @@ This is additive: a roster with no `route_target` on any failed gate behaves exa
 (`pass`/`fail`), so `standard.yaml` and every existing gate-aggregator test are unchanged. See
 ADR-045 (the route_back edge that consumes `route_design`) and ADR-036 (the acceptance-gate that
 produces `route_target: design` on a tautology).
+
+## Amendment (#2039, 2026-09-02) — what makes a stage admissible on a convergence path
+
+**Problem.** §5 above states the invariant as *mechanical vs. model*: every
+merge-blocking stage is `convergence: gate` — "mechanical, no model.route". But
+§5's own justification is a different property:
+
+> it does not read what a stage *does*, it reads where a stage *sits* in the
+> convergence graph … un-gameable by prompt wording
+
+**Un-gameability is the property. Mechanical-ness was a proxy for it** — a good
+one, and the only one available when §5 was written, because every model-judged
+stage then in existence read the artifact it was grading. A review lens reads the
+change and judges its quality; the thing being graded is authored by the thing
+being judged, so it can be talked into a verdict. That is what §5 closed, and it
+stays closed.
+
+But the proxy and the property came apart once a stage existed whose inputs are
+**fixed and upstream-authored**. `spec-correspondence` (#2034) sees one SPEC
+sentence — written by design, before any code — and one assertion. It never sees
+the diff, and at its position in the cycle the implementation for that iteration
+does not exist yet. Build's only lever on it is the assertion text, and the only
+way to move that verdict toward `corresponds` is to make the assertion genuinely
+correspond. **That is compliance, not gaming.**
+
+**Decision.** A stage may sit on a merge-blocking convergence path when it is
+either:
+
+- **(a) mechanical** — no `model.route` call, as before; or
+- **(b) model-judged over fixed, upstream-authored inputs, with no access to the
+  artifact under review** — declared in `inputs:` and checked structurally.
+
+Both forms are admissible. §5's property survives intact under (b): the validator
+still reads where a stage sits and *what it can see*, never what it does, and the
+admissibility of (b) is as un-gameable by prompt wording as (a) — a stage cannot
+talk its way into having different inputs.
+
+**What (b) requires, structurally:**
+
+- The stage declares its `inputs:`, and none of them is the artifact under
+  review. For a build-loop gate that means: not the diff, not the build summary,
+  not the implementation under any name.
+- The declaration is checked at load, in the same walk that enforces §5 today —
+  not asserted in prose and not inferred from the prompt. The test is
+  **cycle-relative**: an output produced by a member of the same cycle IS the
+  artifact under review, because the cycle is what re-runs to change it. Inputs
+  from outside the cycle are fixed for its duration and authored upstream, so
+  the judged party cannot influence them.
+- `GATE_SEES_REVIEWED` — a model-judged gate consuming a same-cycle member's
+  output, named with the offending input.
+- `GATE_ISOLATION_UNPROVEN` — a model-judged gate declaring no inputs. Absence
+  of a declaration is not proof of isolation, so it fails closed.
+- "Model-judged" is itself a DECLARED property: the manifest says it requires
+  the router. It is not inferred from `kind:` — `spec-acceptance` is
+  `kind: agent` and wholly mechanical, which is why §5 keys on the convergence
+  marker rather than the kind in the first place.
+
+**Explicitly rejected: a blanket "LLM stages may gate."** It would reopen exactly
+what §5 closed, and the next author who wants a review lens to block would cite
+it. The clause is narrow by construction: the isolation is the whole of it.
+
+**On promotion.** Whether any *particular* (b)-form stage should gate is an
+operational decision about that stage, separate from this one. The recommended
+safeguard is the second-measurement pattern ADR-036 already uses for
+`inert_wiring` (#1711): advisory on iteration 1, authoritative on iteration 2+,
+which bounds a wrong verdict to one wasted iteration. Measuring a stage's
+false-positive rate before promoting it is sound practice and belongs in that
+stage's issue — it is not a condition of this clause. The architecture decides
+what is *admissible*; a stage's own evidence decides whether it is *ready*.

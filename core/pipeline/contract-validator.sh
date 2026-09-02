@@ -626,6 +626,85 @@ _contract_validate_pipeline() {
         done
     fi
 
+    # (A2) #2040, ADR-040 §5 amendment: a model-judged stage MAY gate, but only
+    #      when it cannot see what it grades.
+    #
+    #      §5 stated the invariant as mechanical-vs-model, but its own
+    #      justification names a different property — it "does not read what a
+    #      stage DOES, it reads where a stage SITS … un-gameable by prompt
+    #      wording". Mechanical-ness was a PROXY for un-gameability, and the only
+    #      one available while every model-judged stage read the artifact it was
+    #      grading. A review lens reads the change and judges its quality: the
+    #      thing graded is authored by the thing being judged, so it can be
+    #      talked into a verdict. That stays refused.
+    #
+    #      The structural test is CYCLE-RELATIVE. An output produced by a member
+    #      of the same cycle is the artifact under review, because the cycle is
+    #      what re-runs to change it. Inputs from outside the cycle are fixed for
+    #      the cycle's duration and authored upstream, so the judged party cannot
+    #      influence them. That is checkable from where a stage sits and what it
+    #      declares — never from what its prompt says.
+    #
+    #      A model-judged gate declaring NO inputs fails closed: absence of a
+    #      declaration is not proof of isolation, and ADR-054 §10 is explicit
+    #      that an unenforced declaration is how the contract became fiction.
+    local _icyc_n=0
+    [[ -n "${_TPL_CYCLES+x}" ]] && _icyc_n=${#_TPL_CYCLES[@]}
+    if [[ $_icyc_n -gt 0 ]]; then
+        local _ic _icsafe _im _imf _iconv _in_rec _in_id _prod_rec _prod_id
+        for _ic in "${_TPL_CYCLES[@]}"; do
+            _icsafe="${_ic//-/_}"
+            local _imems_var="_TPL_CYCLE_STAGES_${_icsafe}"
+            local _imem_csv="${!_imems_var:-}"
+            [[ -z "$_imem_csv" ]] && continue
+            local _IFS_i="$IFS"; IFS=','
+            # shellcheck disable=SC2206
+            local -a _imems=($_imem_csv)
+            IFS="$_IFS_i"
+
+            # Outputs produced INSIDE this cycle — the artifacts under review.
+            local -A _cycle_outputs=()
+            for _im in "${_imems[@]}"; do
+                _imf="${_CV_STAGE_MANIFEST[$_im]:-}"
+                [[ -z "$_imf" ]] && continue
+                while IFS= read -r _prod_rec; do
+                    [[ -z "$_prod_rec" ]] && continue
+                    _prod_id="${_prod_rec%%|*}"
+                    [[ -n "$_prod_id" ]] && _cycle_outputs["$_prod_id"]="$_im"
+                done < <(manifest_graph_get_outputs "$_imf")
+            done
+
+            for _im in "${_imems[@]}"; do
+                _imf="${_CV_STAGE_MANIFEST[$_im]:-}"
+                [[ -z "$_imf" ]] && continue
+                _iconv="$(_cv_stage_convergence "$plugins_root" "$_im")"
+                [[ "$_iconv" == "gate" ]] || continue
+                # Model-judged is a DECLARED property: the manifest says it needs
+                # the router. Not inferred from `kind:` — spec-acceptance is
+                # kind:agent and wholly mechanical, which is why §5 keys on the
+                # convergence marker rather than the kind in the first place.
+                grep -qE '^[[:space:]]*-[[:space:]]*router[[:space:]]*$' "$_imf" 2>/dev/null || continue
+
+                local _n_in=0
+                while IFS= read -r _in_rec; do
+                    [[ -z "$_in_rec" ]] && continue
+                    _in_id="${_in_rec%%|*}"
+                    [[ -z "$_in_id" ]] && continue
+                    _n_in=$(( _n_in + 1 ))
+                    if [[ -n "${_cycle_outputs[$_in_id]:-}" ]]; then
+                        violations+=("$_im|GATE_SEES_REVIEWED|$_in_id|stage '$_im' is a model-judged convergence:gate but consumes '$_in_id', produced by same-cycle member '${_cycle_outputs[$_in_id]}' — a gate may not read the artifact it grades [ADR-040 §5]")
+                        fail_count=$((fail_count + 1))
+                    fi
+                done < <(manifest_graph_get_inputs "$_imf")
+
+                if [[ $_n_in -eq 0 ]]; then
+                    violations+=("$_im|GATE_ISOLATION_UNPROVEN|-|stage '$_im' is a model-judged convergence:gate declaring no inputs — isolation from the artifact under review cannot be established, so it fails closed [ADR-040 §5]")
+                    fail_count=$((fail_count + 1))
+                fi
+            done
+        done
+    fi
+
     # (B) Every parallel group declaring `aggregate: advisory` must have an
     #     EXPLICIT advisory aggregator present — a stage declaring
     #     `convergence: advisory` that is NOT a member of the group (e.g.
@@ -692,7 +771,7 @@ _contract_validate_pipeline() {
                 MISORDERED)
                     printf '  %s: expects %s\n    %s\n\n' "$sstage" "'$sid'" "$smsg"
                     ;;
-                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|SELF_REF|MALFORMED|BAD_VAR|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|TYPE_UNVERSIONED|CYCLE_FB_UNDECLARED|OUTPUT_DUP|SUMMARY_MISSING|SUMMARY_DUP|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
+                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|SELF_REF|MALFORMED|BAD_VAR|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|TYPE_UNVERSIONED|CYCLE_FB_UNDECLARED|OUTPUT_DUP|SUMMARY_MISSING|SUMMARY_DUP|GATE_SEES_REVIEWED|GATE_ISOLATION_UNPROVEN|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
                     printf '  %s: %s (id=%s)\n    %s\n\n' "$sstage" "$scode" "$sid" "$smsg"
                     ;;
                 *)
