@@ -1,7 +1,7 @@
 ## build — pass
 
-- changed 1 file(s) over 4 iteration(s)
+- changed 0 file(s) over 3 iteration(s)
 
-- lines: +1 / -2
-- terminated: done_sentinel
+- lines: +0 / -0
+- terminated: no_progress
 - scope violation: false
