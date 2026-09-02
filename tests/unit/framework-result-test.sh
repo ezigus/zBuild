@@ -121,36 +121,36 @@ print_test_section "9. opt-in gate (_test_framework_enabled)"
 print_test_section "10. test-results.json carries lint/coverage/mutation (opt-in)"
 
 OPT_OUT="$ARTIFACT_DIR/results-optin.json"
-_test_write_result "$OPT_OUT" "pass" 0 10 0 "ok" "true" "npm test" "" "full" \
+_test_write_result "$OPT_OUT" "pass" "complete" 0 10 0 "ok" "true" "npm test" "" "full" \
     "" "deadbeef" "$LINT_PASS" "$COV_MEAS" "$MUT_MEAS"
 
 assert_file_exists "optin: results written" "$OPT_OUT"
 jq empty "$OPT_OUT" >/dev/null 2>&1 \
     && assert_pass "optin: valid JSON" \
     || assert_fail "optin: valid JSON" "$(head -c 200 "$OPT_OUT")"
-assert_json_key "optin: .lint.status" "$(cat "$OPT_OUT")" ".lint.status" "pass"
-assert_json_key "optin: .coverage.status" "$(cat "$OPT_OUT")" ".coverage.status" "measured"
-assert_json_key "optin: .coverage.pct" "$(cat "$OPT_OUT")" ".coverage.pct" "50.0"
-assert_json_key "optin: .mutation.score" "$(cat "$OPT_OUT")" ".mutation.score" "18/20"
+assert_json_key "optin: .data.lint.status" "$(cat "$OPT_OUT")" ".data.lint.status" "pass"
+assert_json_key "optin: .data.coverage.status" "$(cat "$OPT_OUT")" ".data.coverage.status" "measured"
+assert_json_key "optin: .data.coverage.pct" "$(cat "$OPT_OUT")" ".data.coverage.pct" "50.0"
+assert_json_key "optin: .data.mutation.score" "$(cat "$OPT_OUT")" ".data.mutation.score" "18/20"
 
 # ─── 11. default writer OMITS the blocks (byte-unchanged) ──────────────────────
 print_test_section "11. default path omits the blocks + stays byte-unchanged"
 
 # Baseline: the pre-#1133 12-arg call shape (no framework args).
 BASE_OUT="$ARTIFACT_DIR/results-base.json"
-_test_write_result "$BASE_OUT" "pass" 0 10 0 "ok" "true" "npm test" "" "full" "" "deadbeef"
+_test_write_result "$BASE_OUT" "pass" "complete" 0 10 0 "ok" "true" "npm test" "" "full" "" "deadbeef"
 
-assert_eq "default: .lint absent" "false" \
-    "$(jq 'has("lint")' "$BASE_OUT" 2>/dev/null)"
-assert_eq "default: .coverage absent" "false" \
-    "$(jq 'has("coverage")' "$BASE_OUT" 2>/dev/null)"
-assert_eq "default: .mutation absent" "false" \
-    "$(jq 'has("mutation")' "$BASE_OUT" 2>/dev/null)"
+assert_eq "default: .data.lint absent" "false" \
+    "$(jq '.data | has("lint")' "$BASE_OUT" 2>/dev/null)"
+assert_eq "default: .data.coverage absent" "false" \
+    "$(jq '.data | has("coverage")' "$BASE_OUT" 2>/dev/null)"
+assert_eq "default: .data.mutation absent" "false" \
+    "$(jq '.data | has("mutation")' "$BASE_OUT" 2>/dev/null)"
 
 # Passing EMPTY framework args (the disabled-opt-in path) must produce a
 # byte-identical artifact to the bare 12-arg call.
 EMPTY_OUT="$ARTIFACT_DIR/results-empty.json"
-_test_write_result "$EMPTY_OUT" "pass" 0 10 0 "ok" "true" "npm test" "" "full" "" "deadbeef" "" "" ""
+_test_write_result "$EMPTY_OUT" "pass" "complete" 0 10 0 "ok" "true" "npm test" "" "full" "" "deadbeef" "" "" ""
 
 if cmp -s "$BASE_OUT" "$EMPTY_OUT"; then
     assert_pass "default: empty framework args are byte-identical to baseline"

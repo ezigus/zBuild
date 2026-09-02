@@ -55,10 +55,13 @@ mutation_gate_run() {
     local results_json="$artifacts_dir/test-results.json"
 
     # Read status, score, floor in one jq pass. Absent file / block → all empty.
+    # Try v2 path (.data.mutation) first; fall back to v1 top-level (.mutation)
+    # for fixtures / older result files that predate the data block.
     local status="" score="" floor=""
     if [[ -f "$results_json" ]]; then
         local _parsed
-        _parsed="$(jq -r '[(.mutation.status // ""), (.mutation.score // ""), (.mutation.floor // "")] | @tsv' \
+        _parsed="$(jq -r '(.data.mutation // .mutation) as $m |
+            [($m.status // ""), ($m.score // ""), ($m.floor // "")] | @tsv' \
             "$results_json" 2>/dev/null || echo)"
         IFS=$'\t' read -r status score floor <<< "$_parsed"
     fi

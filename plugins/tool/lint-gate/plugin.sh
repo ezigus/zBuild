@@ -50,9 +50,11 @@ lint_gate_run() {
     local results_json="$artifacts_dir/test-results.json"
 
     # Read the lint.status field. Absent file / missing block → "" → skip.
+    # Try v2 path (.data.lint) first; fall back to v1 top-level (.lint) for
+    # fixtures / older result files that predate the data block.
     local status=""
     if [[ -f "$results_json" ]]; then
-        status="$(jq -r '.lint.status // empty' "$results_json" 2>/dev/null || echo)"
+        status="$(jq -r '(.data.lint.status // .lint.status) // empty' "$results_json" 2>/dev/null || echo)"
     fi
 
     local verdict detail=""

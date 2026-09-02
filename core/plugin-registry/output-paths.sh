@@ -19,9 +19,10 @@ _ZBUILD_REGISTRY_OUTPUT_PATHS_LOADED=1
 #   outputs:
 #     - name: foo
 #       path: ${artifact_dir}/foo.json
-# #511 F2: `required: false` outputs are omitted — the test plugin's
-# test_failures_summary is intentionally ABSENT on a passing run, and flagging it
-# would break the parity goldens.
+# #511 F2: `required: false` outputs are omitted, so a genuinely optional
+# artifact is not flagged as a fail-closed contract violation when absent.
+# (The test plugin's test_failures_summary was the original example; ADR-055 §9
+# since made it `required: true`, so it is now enforced like any other output.)
 _registry_output_path_rows() {
     local manifest="$1"
     awk '

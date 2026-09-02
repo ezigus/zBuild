@@ -154,7 +154,7 @@ RUN
     _test_run_inner "$DIFF3" "$REPO3" "$OUT3" "bash $RUNNER3" >/dev/null 2>&1 || true
 )
 
-run_mode3="$(jq -r '.run_mode // "?"' "$OUT3" 2>/dev/null)"
+run_mode3="$(jq -r '.data.run_mode // "?"' "$OUT3" 2>/dev/null)"
 verdict3="$(jq -r '.verdict // "?"' "$OUT3" 2>/dev/null)"
 assert_eq "3: all-dead red-set -> full regression (never a broken targeted run)" \
     "full" "$run_mode3"

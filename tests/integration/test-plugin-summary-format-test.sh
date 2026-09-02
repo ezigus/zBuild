@@ -63,9 +63,9 @@ JEST_CMD=$'printf "%s\\n" "Test Suites: 3 failed, 12 passed, 15 total" "Tests:  
 JSON="$(_run_with_cmd jest "$JEST_CMD")"
 
 assert_file_exists "jest: artifact written" "$JSON"
-assert_eq "jest: verdict=fail" "fail"     "$(jq -r '.verdict' "$JSON")"
-assert_eq "jest: passed=108"   "108"      "$(jq -r '.passed'  "$JSON")"
-assert_eq "jest: failed=18"    "18"       "$(jq -r '.failed'  "$JSON")"
+assert_eq "jest: verdict=fail" "fail"     "$(jq -r '.verdict'       "$JSON")"
+assert_eq "jest: passed=108"   "108"      "$(jq -r '.data.passed'   "$JSON")"
+assert_eq "jest: failed=18"    "18"       "$(jq -r '.data.failed'   "$JSON")"
 
 # ───────────────────────────────────────────────────────────────────────────
 # pytest-shaped output
@@ -75,9 +75,9 @@ print_test_section "2. pytest-shaped output parsed correctly"
 PYTEST_CMD=$'printf "%s\\n" "============================= test session starts =============================" "....FFF......." "=========================== 3 failed, 42 passed in 1.23s ==========================="; exit 1'
 JSON="$(_run_with_cmd pytest "$PYTEST_CMD")"
 
-assert_eq "pytest: verdict=fail" "fail" "$(jq -r '.verdict' "$JSON")"
-assert_eq "pytest: passed=42"    "42"   "$(jq -r '.passed'  "$JSON")"
-assert_eq "pytest: failed=3"     "3"    "$(jq -r '.failed'  "$JSON")"
+assert_eq "pytest: verdict=fail" "fail" "$(jq -r '.verdict'       "$JSON")"
+assert_eq "pytest: passed=42"    "42"   "$(jq -r '.data.passed'   "$JSON")"
+assert_eq "pytest: failed=3"     "3"    "$(jq -r '.data.failed'   "$JSON")"
 
 # ───────────────────────────────────────────────────────────────────────────
 # run-all.sh-shaped output (real shape from scripts/run-tests.sh)
@@ -87,9 +87,9 @@ print_test_section "3. run-all-shaped output parsed correctly"
 RUNALL_CMD=$'printf "%s\\n" "unit: FAIL /repo/tests/unit/foo-test.sh" "unit: 108/126 passed" "integration: 75/77 passed" "e2e: 7/7 passed" "golden: 1/1 passed"; exit 1'
 JSON="$(_run_with_cmd runall "$RUNALL_CMD")"
 
-assert_eq "runall: verdict=fail" "fail" "$(jq -r '.verdict' "$JSON")"
-assert_eq "runall: passed=191"   "191"  "$(jq -r '.passed'  "$JSON")"
-assert_eq "runall: failed=1"     "1"    "$(jq -r '.failed'  "$JSON")"
+assert_eq "runall: verdict=fail" "fail" "$(jq -r '.verdict'       "$JSON")"
+assert_eq "runall: passed=191"   "191"  "$(jq -r '.data.passed'   "$JSON")"
+assert_eq "runall: failed=1"     "1"    "$(jq -r '.data.failed'   "$JSON")"
 
 # ───────────────────────────────────────────────────────────────────────────
 # Fail-safe: gibberish (no pattern matches) → summary_unavailable
@@ -99,10 +99,15 @@ print_test_section "4. unrecognized output → reason=summary_unavailable + null
 GIBBERISH_CMD=$'printf "%s\\n" "make: *** [Makefile:42: test] Error 1" "ld: symbol not found"; exit 2'
 JSON="$(_run_with_cmd gibberish "$GIBBERISH_CMD")"
 
-assert_eq "failsafe: verdict=error"             "error"                "$(jq -r '.verdict' "$JSON")"
-assert_eq "failsafe: reason=summary_unavailable" "summary_unavailable" "$(jq -r '.reason'  "$JSON")"
-assert_eq "failsafe: passed is null"            "null"                 "$(jq -r '.passed'  "$JSON")"
-assert_eq "failsafe: failed is null"            "null"                 "$(jq -r '.failed'  "$JSON")"
+assert_eq "failsafe: verdict=error"             "error"                "$(jq -r '.verdict'       "$JSON")"
+assert_eq "failsafe: reason=summary_unavailable" "summary_unavailable" "$(jq -r '.reason'        "$JSON")"
+assert_eq "failsafe: passed is null"            "null"                 "$(jq -r '.data.passed'   "$JSON")"
+assert_eq "failsafe: failed is null"            "null"                 "$(jq -r '.data.failed'   "$JSON")"
+# [SPEC-11] test_output mirrored at top level with the SAME value as data.test_output.
+# Value equality (not has()) so the guard also reddens on a partial regression
+# that keeps result_contract:2 but moves the field back to data-only.
+assert_eq "[SPEC-11] test_output mirrored at top level in v2 result (summary-format)" "true" \
+    "$(jq '(.result_contract == 2) and (.data.test_output != null) and (.test_output == .data.test_output)' "$JSON" 2>/dev/null || echo false)"
 
 # ───────────────────────────────────────────────────────────────────────────
 # Empty output (e.g. `true`) — fail-safe SUPERSEDES the old #485 no-op

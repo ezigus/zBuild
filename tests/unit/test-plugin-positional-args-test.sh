@@ -87,11 +87,11 @@ else
 fi
 
 # .exit_code must be numeric (#625 invariant — sanitizer survives W12-C)
-APPLY_FAIL_EC="$(jq -r '.exit_code' "$APPLY_FAIL_JSON" 2>/dev/null || echo PARSE_FAIL)"
+APPLY_FAIL_EC="$(jq -r '.data.exit_code' "$APPLY_FAIL_JSON" 2>/dev/null || echo PARSE_FAIL)"
 if [[ "$APPLY_FAIL_EC" =~ ^[0-9]+$ ]]; then
-    assert_pass "bad-patch: .exit_code is numeric ($APPLY_FAIL_EC)"
+    assert_pass "bad-patch: .data.exit_code is numeric ($APPLY_FAIL_EC)"
 else
-    assert_fail "bad-patch: .exit_code is numeric" \
+    assert_fail "bad-patch: .data.exit_code is numeric" \
         "got: $APPLY_FAIL_EC"
 fi
 
@@ -125,11 +125,11 @@ else
     assert_pass "missing-diff: jq did not crash"
 fi
 
-MISSING_EC="$(jq -r '.exit_code' "$MISSING_JSON" 2>/dev/null || echo PARSE_FAIL)"
+MISSING_EC="$(jq -r '.data.exit_code' "$MISSING_JSON" 2>/dev/null || echo PARSE_FAIL)"
 if [[ "$MISSING_EC" =~ ^[0-9]+$ ]]; then
-    assert_pass "missing-diff: .exit_code is numeric ($MISSING_EC)"
+    assert_pass "missing-diff: .data.exit_code is numeric ($MISSING_EC)"
 else
-    assert_fail "missing-diff: .exit_code is numeric" "got: $MISSING_EC"
+    assert_fail "missing-diff: .data.exit_code is numeric" "got: $MISSING_EC"
 fi
 
 # ─── 3. happy path (terminal write): numeric exit_code, no crash ────────────
@@ -153,11 +153,11 @@ else
     assert_pass "happy: jq did not crash"
 fi
 
-HAPPY_EC="$(jq -r '.exit_code' "$HAPPY_JSON" 2>/dev/null || echo PARSE_FAIL)"
+HAPPY_EC="$(jq -r '.data.exit_code' "$HAPPY_JSON" 2>/dev/null || echo PARSE_FAIL)"
 if [[ "$HAPPY_EC" =~ ^[0-9]+$ ]]; then
-    assert_pass "happy: .exit_code is numeric ($HAPPY_EC)"
+    assert_pass "happy: .data.exit_code is numeric ($HAPPY_EC)"
 else
-    assert_fail "happy: .exit_code is numeric" "got: $HAPPY_EC"
+    assert_fail "happy: .data.exit_code is numeric" "got: $HAPPY_EC"
 fi
 
 print_test_results

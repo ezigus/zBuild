@@ -218,7 +218,14 @@ _test_run_inner() {
     # ── Guard: diff.patch must exist ──────────────────────────────────────────
     if [[ ! -f "$diff_patch_path" ]]; then
         _test_write_result "$output_json" \
-            "error" 2 0 0 "" "false" "$test_cmd"
+            "error" "broken" 2 0 0 "" "false" "$test_cmd" "missing_diff_patch"
+        # ADR-055 §9: this is the earliest exit, and it still has to publish a
+        # summary — the stage ran and reached a conclusion. The output is
+        # `required: true`, so returning without one is a fail-closed contract
+        # violation, not a nicety skipped on a short path.
+        _test_emit_failures_summary \
+            "$(dirname "$output_json")/test-failures-summary.md" \
+            "error" 0 2 "missing_diff_patch: no diff.patch at $diff_patch_path"
         # #628: $tmp cleanup handled by RETURN trap above.
         emit_event "plugin.result" "plugin=test" "verdict=error" "reason=missing_diff_patch"
         return 0
@@ -448,17 +455,19 @@ _test_run_inner() {
     _test_emit_io_end "$_test_seq" "$_test_t0_us" "$verdict" "$exit_code" \
         "$passed" "$failed" "$_test_summary"
 
-    # ── ADR-021 amendment (#511 F2): derive test-failures-summary.md ────────
-    # Pre-verdict-write, post-verdict-derivation. Consumed by the build stage
-    # as cycle feedback on the next iter (manifest input `prior_test_failures`,
-    # source: cycle_feedback). "missing == empty" — file is ABSENT when no
-    # failures present; never empty-but-present (mitigates silent-failure #1).
+    # ── ADR-055 §9: publish this stage's summary ────────────────────────────
+    # Pre-verdict-write, post-verdict-derivation. Written unconditionally — a
+    # summary states what the stage DID, so a passing run reports its counts
+    # rather than leaving the reader to guess whether the stage ran at all.
     local _tfs_path
     _tfs_path="$(dirname "$output_json")/test-failures-summary.md"
     # failures-summary expects a numeric `failed_count`; translate null→0 here.
     local _failed_for_summary="$failed"
     [[ "$_failed_for_summary" == "null" ]] && _failed_for_summary=0
-    _test_emit_failures_summary "$_tfs_path" "$verdict" "$_failed_for_summary" "$exit_code" "$raw_output"
+    # `passed` is forwarded verbatim, "null" included: #584 forbids fabricating
+    # a count the parser never recognised, and the summary says so plainly.
+    _test_emit_failures_summary "$_tfs_path" "$verdict" "$_failed_for_summary" \
+        "$exit_code" "$raw_output" "$passed"
 
     # ── ADR-034 / #846: write test-red-set.json from this run's failures ──────
     # Stores the repo-relative paths of files that failed so the next iter can
@@ -534,8 +543,10 @@ _test_run_inner() {
     fi
 
     # Record the command that actually ran (targeted or full), not the base cmd.
+    local _disposition
+    _disposition="$(_test_disposition_from_rc "$exit_code" "$verdict")"
     _test_write_result "$output_json" \
-        "$verdict" "$exit_code" "$passed" "$failed" \
+        "$verdict" "$_disposition" "$exit_code" "$passed" "$failed" \
         "$test_output" "$diff_applied" "$actual_test_cmd" "$reason" "$run_mode" \
         "$_timing_json" "$_tree_sha" "$_fr_lint" "$_fr_cov" "$_fr_mut"
 
@@ -570,64 +581,75 @@ _test_emit_io_end() {
     return 0
 }
 
-# ─── _test_emit_failures_summary (#511 F2) ──────────────────────────────────
-# Write a small markdown summary of the test failures when the verdict is
-# fail|error AND there is something concrete to report. ABSENT-on-empty
-# semantics: if there are no detectable failures, do NOT write the file
-# (so the cycle feedback layer sees "missing == nothing to inject" and the
-# build FEEDBACK section is omitted entirely — see _build_read_prior_assessment).
+# ─── _test_emit_failures_summary (#511 F2, ADR-055 §9) ──────────────────────
+# This stage's SUMMARY output. Written on EVERY terminal verdict — pass, fail
+# and error alike — because §9 (amended #1988) makes absence illegitimate: "this
+# stage ran and found nothing" and "this stage published nothing" are different
+# facts, and if the file may be missing the pipeline cannot tell them apart. A
+# summary states what the stage DID, not only what went wrong, so a passing run
+# still reports the suite it ran and the counts it saw.
 #
-# Size cap: 8 KB (cycle feedback files must stay small — they are appended
-# to the next iter's build prompt). When truncated, append a `[truncated]`
-# marker so the consumer knows the slice is partial.
+# This inverts the older #511 F2 "missing == empty" contract, and the clear-on-
+# non-fail step it needed goes with it: when every run rewrites the file, a
+# stale summary from a previous iter can no longer render as a current finding.
 #
-# Usage: _test_emit_failures_summary <out_path> <verdict> <failed_count> <exit_code> <raw_output>
+# Size cap: 8 KB (summaries are injected as prompt context and must stay small).
+# When truncated, append a `[truncated]` marker so the reader knows the slice is
+# partial.
+#
+# Usage: _test_emit_failures_summary <out_path> <verdict> <failed_count>
+#                                    <exit_code> <raw_output> [passed_count]
 _test_emit_failures_summary() {
     local out_path="$1" verdict="$2" failed_count="$3" exit_code="$4" raw_output="$5"
-    # Best-effort: nothing useful to emit → ensure file is ABSENT (do not
-    # leave a stale prior-iter summary around to mislead the next build).
-    if [[ "$verdict" == "pass" ]]; then
-        rm -f "$out_path" 2>/dev/null || true
-        return 0
-    fi
-    # error verdict with no recognizable failure content → ABSENT too.
-    if [[ "$verdict" == "error" && -z "$raw_output" ]]; then
-        rm -f "$out_path" 2>/dev/null || true
-        return 0
-    fi
+    local passed_count="${6:-}"
 
     # Extract failing test lines (best-effort across common formats).
     # We keep matched lines verbatim — the build agent reads them as-is.
-    local extracted
-    # sigpipe-ok: || true, and an explicit empty-check plus absent-file pin follow
-    extracted="$(printf '%s' "$raw_output" \
-        | grep -E '(FAIL|✗|✘|Error:|Failure:|AssertionError|expected|Expected)' \
-        | head -n 60 || true)"
+    local extracted=""
+    if [[ "$verdict" != "pass" ]]; then
+        # sigpipe-ok: || true, and an explicit empty-check follows
+        extracted="$(printf '%s' "$raw_output" \
+            | grep -E '(FAIL|✗|✘|Error:|Failure:|AssertionError|expected|Expected)' \
+            | head -n 60 || true)"
 
-    # If nothing matched but verdict says fail/error, fall back to first ~40
-    # lines of raw output so the build agent at least sees something.
-    if [[ -z "$extracted" ]]; then
-        extracted="$(printf '%s' "$raw_output" | head -n 40 || true)"  # sigpipe-ok: || true, and an absent-file pin follows
-    fi
+        # If nothing matched but verdict says fail/error, fall back to first ~40
+        # lines of raw output so the build agent at least sees something.
+        if [[ -z "$extracted" ]]; then
+            extracted="$(printf '%s' "$raw_output" | head -n 40 || true)"  # sigpipe-ok: || true, empty-check follows
+        fi
 
-    # Pin: if extraction still yields zero non-whitespace content, file must
-    # be ABSENT (empty-but-present is impossible — silent-failure guard #1).
-    local _nows
-    _nows="$(printf '%s' "$extracted" | tr -d '[:space:]')"
-    if [[ -z "$_nows" ]]; then
-        rm -f "$out_path" 2>/dev/null || true
-        return 0
+        # Whitespace-only extraction carries no signal — treat as none, and let
+        # the no-output branch below say so explicitly. §9 forbids the file
+        # being absent; it does not permit it to be empty-but-present.
+        local _nows
+        _nows="$(printf '%s' "$extracted" | tr -d '[:space:]')"
+        [[ -z "$_nows" ]] && extracted=""
     fi
 
     mkdir -p "$(dirname "$out_path")" 2>/dev/null || true
     local tmp; tmp="$(mktemp "${out_path}.XXXXXX" 2>/dev/null || echo "${out_path}.tmp")"
     {
-        printf '# Test failures summary\n\n'
-        printf '- verdict: %s\n' "$verdict"
-        printf '- failed: %s\n' "$failed_count"
-        printf '- exit_code: %s\n\n' "$exit_code"
-        printf '## Failing lines (extracted)\n\n'
-        printf '```\n%s\n```\n' "$extracted"
+        printf '# Test stage summary\n\n'
+        # `--` is mandatory: bash's printf option-parses a format beginning with
+        # `-` and dies with "invalid option". The group redirects stderr to
+        # /dev/null, so without this the metadata lines vanished in silence —
+        # every summary shipped as heading + body with no verdict or counts.
+        printf -- '- verdict: %s\n' "$verdict"
+        if [[ -n "$passed_count" ]]; then
+            printf -- '- passed: %s\n' "$passed_count"
+        fi
+        printf -- '- failed: %s\n' "$failed_count"
+        printf -- '- exit_code: %s\n\n' "$exit_code"
+        if [[ "$verdict" == "pass" ]]; then
+            printf 'The suite ran to completion with no failing assertions.\n'
+        elif [[ -n "$extracted" ]]; then
+            printf '## Failing lines (extracted)\n\n'
+            printf '```\n%s\n```\n' "$extracted"
+        else
+            printf 'The suite produced no readable test output, so no failing\n'
+            printf 'assertions could be extracted. Treat the verdict above as the\n'
+            printf 'only reliable signal from this run.\n'
+        fi
     } > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 0; }
 
     # 8 KB cap with truncation marker.
@@ -703,18 +725,6 @@ _test_framework_enabled() {
     return 1
 }
 
-# ─── _test_write_result ───────────────────────────────────────────────────────
-# Writes test-results.json atomically via a temp file.
-# Usage: _test_write_result <path> <verdict> <exit_code> <passed> <failed>
-#                            <test_output> <diff_applied> <test_cmd> [reason]
-#                            [run_mode] [timing_json] [tree_sha]
-#                            [lint_json] [coverage_json] [mutation_json]
-# #584: passed/failed may be the literal token "null" to record that the
-# parser did not recognize this runner's output (honest fail-safe — never
-# fabricate counts). The `reason` field is optional and emitted only when
-# non-empty; values include `summary_unavailable` (#584 fail-safe),
-# `silent_failure` (#485 no-op guard). Wave 12-C (#662) removed the
-# `diff_apply_failed` reason — no caller writes it anymore.
 # #626: sanitize a numeric slot — accept "null", integers, or fall back to "null".
 # Anything else (whitespace, "abc", embedded quotes) becomes JSON null so jq
 # --argjson never barfs and the writer stays fail-CLOSED.
@@ -738,36 +748,79 @@ _test_sanitize_bool() {
     fi
 }
 
+# ─── _test_disposition_from_rc (#1836, ADR-054 §5) ───────────────────────────
+# Maps (rc, verdict) → ADR-054 disposition token:
+#   pass|fail (test ran to completion)   → complete
+#   rc=130/137/143 (signal death)        → interrupted  (recoverable retry)
+#   rc=124 (timeout, ADR-054 §6 table)   → interrupted  (recoverable retry)
+#   everything else                      → broken
+# #1747: only a signalled death or a true timeout is recoverable. An rc=0 exit
+# with unrecognised output is a real config bug and stays `broken` — it falls
+# through to the default precisely because it is NOT in this set.
+# Called once per run, AFTER verdict is finalized.
+# Usage: _test_disposition_from_rc <rc> <verdict>
+_test_disposition_from_rc() {
+    local rc="$1" verdict="$2"
+    case "$verdict" in
+        pass|fail) printf 'complete'; return 0 ;;
+    esac
+    # verdict=error — distinguish signal deaths and timeouts (interrupted) from
+    # config bugs (broken). ADR-054 §6: 124 is the timeout row; the router
+    # absorbs it today, so this arm is contract conformance, not a live path.
+    case "$rc" in
+        124|130|137|143) printf 'interrupted'; return 0 ;;
+    esac
+    printf 'broken'
+}
+
+# ─── _test_write_result ───────────────────────────────────────────────────────
+# Writes test-results.json atomically via a temp file (v2 result contract,
+# ADR-054 §5, #1836). Top-level: result_contract, verdict, disposition, reason.
+# Plugin-specific detail lives under data:{}.
+# Usage: _test_write_result <path> <verdict> <disposition> <exit_code> <passed> <failed>
+#                            <test_output> <diff_applied> <test_cmd> [reason]
+#                            [run_mode] [timing_json] [tree_sha]
+#                            [lint_json] [coverage_json] [mutation_json]
+# #584: passed/failed may be the literal token "null" to record that the
+# parser did not recognize this runner's output (honest fail-safe — never
+# fabricate counts). The `reason` field is emitted only when non-empty; values
+# include `summary_unavailable` (#584 fail-safe), `silent_failure` (#485 no-op
+# guard) and `missing_diff_patch`. Wave 12-C (#662) removed `diff_apply_failed`
+# — no caller writes it anymore. disposition is always emitted (mandatory v2
+# top-level field).
+# #626: numeric and boolean slots pass through the sanitizers above, so jq
+# --argjson never barfs and the writer stays fail-CLOSED.
 _test_write_result() {
     local path="$1"
     local verdict="$2"
-    local exit_code="$3"
-    local passed="$4"
-    local failed="$5"
-    local test_output="$6"
-    local diff_applied="$7"
-    local test_cmd="$8"
-    local reason="${9:-}"
+    local disposition="$3"
+    local exit_code="$4"
+    local passed="$5"
+    local failed="$6"
+    local test_output="$7"
+    local diff_applied="$8"
+    local test_cmd="$9"
+    local reason="${10:-}"
     # ADR-034 / #846: run_mode field (full|targeted). Defaults to "full" so
     # callers that do not pass the arg (e.g. the missing-diff guard path) get
     # the safe default that does not suppress cycle convergence.
-    local run_mode="${10:-full}"
+    local run_mode="${11:-full}"
     # #1058 Phase A: optional pre-rendered `timing` JSON object. Empty string →
     # field omitted (mirrors the `reason` field's omit-when-empty contract). A
     # malformed value is dropped by the jq fromjson guard below — never crashes.
-    local timing_json="${11:-}"
+    local timing_json="${12:-}"
     # #1058 Phase B: optional committed work-tree SHA. Written ONLY for an
     # authoritative full-suite run (caller passes empty otherwise). Empty string
     # → field omitted, so a consumer (objective gate) that requires a matching
     # tree_sha fails closed and re-runs. Never written for targeted runs.
-    local tree_sha="${12:-}"
+    local tree_sha="${13:-}"
     # ADR-040 / #1133: optional pre-rendered framework-result blocks. Each is a
     # JSON object string or "" — empty → field omitted (mirrors timing's
     # omit-when-empty contract) so the default test path stays byte-unchanged.
     # A malformed value is dropped by the jq fromjson guard below — never crashes.
-    local lint_json="${13:-}"
-    local coverage_json="${14:-}"
-    local mutation_json="${15:-}"
+    local lint_json="${14:-}"
+    local coverage_json="${15:-}"
+    local mutation_json="${16:-}"
 
     local dir
     dir="$(dirname "$path")"
@@ -795,13 +848,14 @@ _test_write_result() {
     # suppressed so internal sanitization failures never leak.
     jq -n \
         --arg verdict "$verdict" \
+        --arg disposition "$disposition" \
+        --arg reason "$reason" \
         --argjson exit_code "$exit_code_json" \
         --argjson passed "$passed_json" \
         --argjson failed "$failed_json" \
         --arg test_output "$test_output" \
         --argjson diff_applied "$diff_applied_json" \
         --arg test_cmd "$test_cmd" \
-        --arg reason "$reason" \
         --arg run_mode "$run_mode" \
         --arg timing "$timing_json" \
         --arg tree_sha "$tree_sha" \
@@ -809,22 +863,34 @@ _test_write_result() {
         --arg coverage "$coverage_json" \
         --arg mutation "$mutation_json" \
         '{
-            schema_version: 1,
+            result_contract: 2,
             verdict: $verdict,
-            exit_code: $exit_code,
-            passed: $passed,
-            failed: $failed,
-            test_output: $test_output,
-            diff_applied: $diff_applied,
-            test_cmd: $test_cmd,
-            run_mode: $run_mode
+            disposition: $disposition
         }
         + (if $reason != "" then {reason: $reason} else {} end)
-        + (if $timing != "" then (try {timing: ($timing | fromjson)} catch {}) else {} end)
-        + (if $tree_sha != "" then {tree_sha: $tree_sha} else {} end)
-        + (if $lint != "" then (try {lint: ($lint | fromjson)} catch {}) else {} end)
-        + (if $coverage != "" then (try {coverage: ($coverage | fromjson)} catch {}) else {} end)
-        + (if $mutation != "" then (try {mutation: ($mutation | fromjson)} catch {}) else {} end)' \
+        + {
+            test_output: $test_output,
+            run_mode: $run_mode,
+            exit_code: $exit_code
+        }
+        + {
+            data: (
+                {
+                    exit_code: $exit_code,
+                    passed: $passed,
+                    failed: $failed,
+                    test_output: $test_output,
+                    diff_applied: $diff_applied,
+                    test_cmd: $test_cmd,
+                    run_mode: $run_mode
+                }
+                + (if $timing != "" then (try {timing: ($timing | fromjson)} catch {}) else {} end)
+                + (if $tree_sha != "" then {tree_sha: $tree_sha} else {} end)
+                + (if $lint != "" then (try {lint: ($lint | fromjson)} catch {}) else {} end)
+                + (if $coverage != "" then (try {coverage: ($coverage | fromjson)} catch {}) else {} end)
+                + (if $mutation != "" then (try {mutation: ($mutation | fromjson)} catch {}) else {} end)
+            )
+        }' \
         2>/dev/null \
       | atomic_write "$path"
     local _jq_rc="${PIPESTATUS[0]}"
@@ -833,8 +899,16 @@ _test_write_result() {
         # Fail-closed: overwrite with a degenerate-but-valid JSON object so
         # the primary output always parses. Sanitizers already constrained
         # exit_code_json to {integer, "null"} so %s interpolation is safe.
-        printf '{"schema_version":1,"verdict":"error","reason":"result_write_failed","exit_code":%s,"passed":null,"failed":null,"test_output":"","diff_applied":false,"test_cmd":""}\n' \
-            "$exit_code_json" | atomic_write "$path"
+        # The top-level mirrors are emitted here too: a consumer cannot tell
+        # which writer produced the artifact, so a fallback that dropped them
+        # would hand `.exit_code` back as null purely because the primary write
+        # failed. Same shape, degenerate values — not a v2-flavoured subset.
+        # run_mode is interpolated raw (no jq --arg here), so constrain it to
+        # the two declared tokens rather than trusting the caller's string.
+        local _fb_run_mode="full"
+        [[ "$run_mode" == "targeted" ]] && _fb_run_mode="targeted"
+        printf '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"result_write_failed","test_output":"","run_mode":"%s","exit_code":%s,"data":{"exit_code":%s,"passed":null,"failed":null,"test_output":"","diff_applied":false,"test_cmd":"","run_mode":"%s"}}\n' \
+            "$_fb_run_mode" "$exit_code_json" "$exit_code_json" "$_fb_run_mode" | atomic_write "$path"
         emit_event "test.result_write.fallback" "path=$path" 2>/dev/null || true
     fi
 }

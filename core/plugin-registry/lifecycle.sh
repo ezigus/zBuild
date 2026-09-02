@@ -73,11 +73,11 @@ scan_plugin_outputs() {
     #     - name: foo
     #       path: ${artifact_dir}/foo.json
     #       type: foo.json
-    # #511 F2: respect `required: false` on outputs (e.g. test plugin's
-    # `test_failures_summary` which is intentionally ABSENT when the test
-    # verdict is `pass` — missing == empty). Without this, the scanner
-    # would flag the missing optional artifact as a fail-closed contract
-    # violation on every passing run, breaking the parity goldens.
+    # #511 F2: respect `required: false` on outputs. Without this, the scanner
+    # would flag a legitimately optional artifact as a fail-closed contract
+    # violation. (test_failures_summary was the original example; ADR-055 §9
+    # since made it `required: true` — a summary is published on every terminal
+    # verdict, so its absence IS a violation now.)
     local paths
     paths="$(_registry_output_path_rows "$manifest")"
 

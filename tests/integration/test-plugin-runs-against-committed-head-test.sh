@@ -106,7 +106,7 @@ assert_eq "verdict=pass from parsed test_cmd output" "pass" \
 
 # Marker present in test_output proves the test_cmd actually executed
 # (not short-circuited by an apply check).
-TEST_OUT_A="$(jq -r '.test_output' "$OUT_JSON_A" 2>/dev/null)"
+TEST_OUT_A="$(jq -r '.data.test_output' "$OUT_JSON_A" 2>/dev/null)"
 if [[ "$TEST_OUT_A" == *"$MARKER"* ]]; then
     assert_pass "test_cmd executed against rsync'd HEAD (marker present)"
 else
@@ -115,7 +115,7 @@ else
 fi
 
 # exit_code is numeric (no string-label regression — #625 invariant survives).
-EC_A="$(jq -r '.exit_code' "$OUT_JSON_A" 2>/dev/null)"
+EC_A="$(jq -r '.data.exit_code' "$OUT_JSON_A" 2>/dev/null)"
 if [[ "$EC_A" =~ ^[0-9]+$ ]]; then
     assert_pass ".exit_code is numeric ($EC_A)"
 else

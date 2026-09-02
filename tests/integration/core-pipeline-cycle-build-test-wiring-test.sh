@@ -6,8 +6,10 @@
 #      cycle-aware dispatch when ZBUILD_CYCLES_ENABLED is unset (auto-enable).
 #      (#979: re-pointed from the retired standard.yaml to the shipped default
 #      simple.yaml, which carries the same inner build_test_cycle.)
-#   2) The test plugin emits test-failures-summary.md WHEN failures present,
-#      and the file is ABSENT when verdict=pass (missing == empty semantics).
+#   2) The test plugin emits test-failures-summary.md on EVERY terminal verdict
+#      — pass, fail and error alike (ADR-055 §9, amended #1988). "Ran and found
+#      nothing" and "published nothing" are different facts, so absence is a
+#      contract violation, not the old #511 F2 "missing == empty" signal.
 #   3) _cycle_apply_feedback resolves the from-path through the test plugin's
 #      manifest (Pin 2 — manifest-driven, not legacy stage/output path).
 #   4) The build plugin reads $ZBUILD_CYCLE_FEEDBACK_DIR/prior_test_failures.txt
@@ -81,20 +83,26 @@ for _g in shape-floor secret-scan lint-gate coverage-gate mutation-gate; do
     assert_eq "T1: $_g declares its own summary" "1" "$_has"
 done
 
-# ─── T2: test plugin emits failures summary on fail, absent on pass ─────────
+# ─── T2: test plugin publishes its summary on EVERY terminal verdict ────────
+# ADR-055 §9 (amended #1988): a summary states what the stage DID, not what went
+# wrong, and is written on pass, fail and skip alike. "This gate ran and found
+# nothing" and "this gate published nothing" are different facts; if absence
+# were legitimate the pipeline could not tell them apart.
 # shellcheck disable=SC1090
 source "$REPO_ROOT/plugins/tool/test/plugin.sh"
 ART_DIR="$TEST_TEMP_DIR/artifacts-t2"; mkdir -p "$ART_DIR"
 SUM="$ART_DIR/test-failures-summary.md"
 
-# T2a: verdict=pass → file absent
+# T2a: verdict=pass → file PRESENT, stating what the stage did (ADR-055 §9)
 rm -f "$SUM"
-_test_emit_failures_summary "$SUM" "pass" "0" "0" "all good"
-if [[ ! -e "$SUM" ]]; then
-    assert_pass "T2a: pass verdict → summary file ABSENT (missing == empty)"
+_test_emit_failures_summary "$SUM" "pass" "0" "0" "all good" "42"
+if [[ -s "$SUM" ]]; then
+    assert_pass "T2a: pass verdict → summary file PRESENT (ADR-055 §9)"
 else
-    assert_fail "T2a: pass verdict → summary file should be absent" "found $SUM"
+    assert_fail "T2a: pass verdict → summary must still be published" "missing or empty $SUM"
 fi
+assert_contains "T2a: pass summary records the verdict" "$(cat "$SUM")" "verdict: pass"
+assert_contains "T2a: pass summary states no failing assertions" "$(cat "$SUM")" "no failing assertions"
 
 # T2b: verdict=fail with FAIL line → file present, non-empty
 rm -f "$SUM"
@@ -108,14 +116,20 @@ else
 fi
 assert_contains "T2b: contains failing line" "$(cat "$SUM")" "FAIL: some test"
 
-# T2c: verdict=error with empty raw output → file ABSENT (silent-failure guard #1)
+# T2c: verdict=error with empty raw output → file PRESENT, and says so.
+# The old contract made this ABSENT to avoid an empty-but-present file. §9
+# inverts it: absence is what is forbidden now, so the file must exist AND name
+# the condition rather than being empty — otherwise "ran, produced nothing
+# readable" is indistinguishable from "never ran".
 rm -f "$SUM"
 _test_emit_failures_summary "$SUM" "error" "0" "2" ""
-if [[ ! -e "$SUM" ]]; then
-    assert_pass "T2c: error+empty raw → summary file ABSENT (empty-but-present forbidden)"
+if [[ -s "$SUM" ]]; then
+    assert_pass "T2c: error+empty raw → summary file PRESENT and non-empty"
 else
-    assert_fail "T2c: error+empty raw should yield no file" "found $SUM"
+    assert_fail "T2c: error+empty raw must still publish a summary" "missing or empty $SUM"
 fi
+assert_contains "T2c: error summary records the verdict" "$(cat "$SUM")" "verdict: error"
+assert_contains "T2c: error summary names the no-output condition" "$(cat "$SUM")" "no readable test output"
 
 # ─── T3: build feedback section — present when prior_test_assessment non-empty
 # (#571 renamed _build_read_prior_failures → _build_read_prior_assessment;

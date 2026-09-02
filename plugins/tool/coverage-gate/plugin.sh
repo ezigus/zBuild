@@ -65,10 +65,13 @@ coverage_gate_run() {
     local results_json="$artifacts_dir/test-results.json"
 
     # Read status, pct, floor in one jq pass. Absent file / block → all empty.
+    # Try v2 path (.data.coverage) first; fall back to v1 top-level (.coverage)
+    # for fixtures / older result files that predate the data block.
     local status="" pct="" floor=""
     if [[ -f "$results_json" ]]; then
         local _parsed
-        _parsed="$(jq -r '[(.coverage.status // ""), (.coverage.pct // ""), (.coverage.floor // "")] | @tsv' \
+        _parsed="$(jq -r '(.data.coverage // .coverage) as $c |
+            [($c.status // ""), ($c.pct // ""), ($c.floor // "")] | @tsv' \
             "$results_json" 2>/dev/null || echo)"
         IFS=$'\t' read -r status pct floor <<< "$_parsed"
     fi
