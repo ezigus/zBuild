@@ -144,6 +144,21 @@ if declare -F _route_redact_prompt >/dev/null 2>&1; then
     assert_eq "[SPEC-7] exactly one block after the first pass" "1" "$n1"
     assert_eq "[SPEC-7] still exactly one after a second pass (idempotent)" "1" "$n2"
 
+    # #2042: the SPEC says the funnel is SHARED by the single-shot and loop
+    # paths. Calling _route_redact_prompt twice proves the function injects and
+    # is idempotent — it does not prove both callers route through it, which is
+    # the part that would silently break if one path grew its own redaction.
+    # Structural, because it is a property of where the calls SIT.
+    _rt="$REPO_ROOT/core/router/route.sh"
+    _single_hit="$(awk '/^route_to_model\(\)/,/^}/' "$_rt" \
+        | grep -c '_route_ensure_redaction' || true)"
+    _loop_hit="$(awk '/^_route_model_loop_run\(\)|^route_to_model_loop\(\)/,/^}/' "$_rt" \
+        | grep -c '_route_redact_prompt' || true)"
+    assert_eq "[SPEC-7] the single-shot path routes through the funnel" \
+        "1" "$([[ "${_single_hit:-0}" -ge 1 ]] && echo 1 || echo 0)"
+    assert_eq "[SPEC-7] and the loop path routes through the same funnel" \
+        "1" "$([[ "${_loop_hit:-0}" -ge 1 ]] && echo 1 || echo 0)"
+
     # [guard] the original prompt body must survive the injection.
     assert_contains "[SPEC-8] the original prompt body is preserved" "$(cat "$IN")" "ORIGINAL PROMPT BODY"
 

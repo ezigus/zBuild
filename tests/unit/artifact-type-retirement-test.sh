@@ -103,6 +103,41 @@ else
     assert_pass "[SPEC-6] provides.artifact_type removed from the allowed-keys list"
 fi
 
+# #2042: the grep above is a proxy — it establishes a string is absent from one
+# source file, not that a manifest carrying the key behaves as retired. Assert
+# the BEHAVIOUR the retirement actually promises.
+#
+# Note what that behaviour IS: #1906 moved artifact enforcement to
+# outputs[].required alone, so a manifest carrying the key is not REFUSED — it
+# is simply inert. Asserting a refusal here would assert a contract the tree
+# does not have, which is the same defect this issue is closing.
+_s6_mf="$TEST_TEMP_DIR/s6-legacy-key/manifest.yaml"
+mkdir -p "$(dirname "$_s6_mf")"
+cat > "$_s6_mf" <<'S6EOF'
+id: s6-legacy
+name: S6 Legacy Key
+kind: tool
+version: 0.0.1
+hooks:
+  run: s6_run
+provides:
+  role: s6_legacy
+  artifact_type: findings.json
+outputs:
+  - id: s6_result
+    path: ${artifact_dir}/s6-result.json
+    type: s6-result.json@1
+    format: json
+    required: true
+    primary: true
+S6EOF
+_s6_rc=0
+validate_manifest "$_s6_mf" >/dev/null 2>&1 || _s6_rc=$?
+assert_eq "[SPEC-6] a manifest still carrying provides.artifact_type validates" "0" "$_s6_rc"
+_s6_read="$(yaml_get "$_s6_mf" "provides.artifact_type" 2>/dev/null || true)"
+assert_eq "[SPEC-6] the key is present in the file, so the assertion is not vacuous" \
+    "findings.json" "$_s6_read"
+
 print_test_results
 cleanup_test_env
 exit $((FAIL > 0))

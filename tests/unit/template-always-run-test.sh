@@ -222,6 +222,7 @@ _write_tpl "$_tpl_block_roles" 'flow:
 
 always_run:
   - blockform
+  - inlineform
 
 alpha:
   gate: auto
@@ -237,6 +238,14 @@ blockform:
     timeout_s: 12
   io:
     destinations: [file]
+
+inlineform:
+  gate: auto
+  roles: [persist]
+  router:
+    timeout_s: 13
+  io:
+    destinations: [file]
 '
 _rc=0
 load_template "$_tpl_block_roles" >/dev/null 2>&1 || _rc=$?
@@ -245,5 +254,13 @@ assert_eq "[SPEC-7] block-form roles: is captured" \
     "teardown" "${_TPL_STAGE_ROLES_blockform:-<unset>}"
 assert_eq "[SPEC-7] and timeout_s after it still parses" \
     "12" "${_TPL_STAGE_ROUTER_TIMEOUT_blockform:-<unset>}"
+# #2042: the SPEC says BOTH list forms. Asserting only the block form left the
+# inline form — for an always-run section, which is the case this SPEC is about
+# — unverified, so a regression there would have passed. `alpha` above uses the
+# inline form but is a FLOW stage, which is a different parse path.
+assert_eq "[SPEC-7] inline-form roles: is captured on an always-run section too" \
+    "persist" "${_TPL_STAGE_ROLES_inlineform:-<unset>}"
+assert_eq "[SPEC-7] and its timeout_s parses as well" \
+    "13" "${_TPL_STAGE_ROUTER_TIMEOUT_inlineform:-<unset>}"
 
 print_test_results
