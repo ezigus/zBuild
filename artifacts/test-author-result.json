@@ -1,0 +1,9 @@
+{
+  "result_contract": 2,
+  "verdict": "degraded",
+  "disposition": "unavailable",
+  "reason": "no router available to author assertions",
+  "data": {
+    "specs_covered": 1
+  }
+}
