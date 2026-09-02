@@ -163,6 +163,16 @@ print_test_section "5. design's self-feedback wire is untouched"
 _sf="$(awk '/^ *feedback:/,/^[a-z_]+:/' "$REPO_ROOT/config/templates/simple.yaml")"
 assert_contains "[SPEC-5] design still receives its own prior design" "$_sf" "output: design"
 
+# #2042: the SPEC says the wire carries design's OWN prior output, NOT another
+# stage's summary. A `contains` check establishes the first half only — it would
+# pass just as well on a feedback block that ALSO wired a summary in, which is
+# precisely the regression the sentence rules out. Pin the edge's endpoints.
+_dfb="$(sed -n '/^design_verify_cycle:/,/^# ───/p' "$REPO_ROOT/config/templates/simple.yaml" \
+        | sed -n '/feedback:/,$p')"
+assert_contains "[SPEC-5] the edge's source stage is design itself" "$_dfb" "stage: design"
+assert_eq "[SPEC-5] and it wires no OTHER stage's output into design" \
+    "0" "$(grep -cE '^ +output: (summary|gate_feedback|acceptance|impact)' <<< "$_dfb" || true)"
+
 # ─── SPEC-6: no dangling cross-reference ─────────────────────────────────────
 # The tautology section pointed at "the PRIOR GATE FEEDBACK above". A heading
 # that no longer exists is a prompt asserting an engine fact nothing provides

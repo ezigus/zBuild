@@ -116,6 +116,19 @@ _ip="$(jq -r 'if .data|has("identity_present") then (.data.identity_present|tost
         "$_S4/artifacts/persist-result.json" 2>/dev/null)"
 assert_eq "[SPEC-4] a run with no identity records identity_present=false" "false" "$_ip"
 
+# #2042: the SPEC says the field DISTINGUISHES two failure kinds. Pinning only
+# the no-identity half left the distinction unproven — a field hardcoded to
+# `false` would have satisfied it exactly as well as one that discriminates.
+# The contrasting case is the whole point of the field.
+_S4b="$TEST_TEMP_DIR/s4b"; _seed "$_S4b"
+( cd "$REPO" && ZBUILD_ISSUE_NUMBER=4242 ZBUILD_GOAL="" ZBUILD_STATE_DIR="$_S4b" \
+    ZBUILD_ARTIFACT_DIR="$_S4b/artifacts" bash "$REPO_ROOT/scripts/zbuild" persist --push ) >/dev/null 2>&1 || true
+_ip_b="$(jq -r 'if .data|has("identity_present") then (.data.identity_present|tostring) else "MISSING" end' \
+    "$_S4b/artifacts/persist-result.json" 2>/dev/null || echo MISSING)"
+assert_eq "[SPEC-4] a run WITH identity records identity_present=true" "true" "$_ip_b"
+assert_eq "[SPEC-4] so the field discriminates rather than being a constant" \
+    "1" "$([[ "$_ip" != "$_ip_b" ]] && echo 1 || echo 0)"
+
 _S5="$TEST_TEMP_DIR/s5"; _seed "$_S5"
 ( cd "$REPO" && ZBUILD_ISSUE_NUMBER=$_ZB_ID3 ZBUILD_STATE_DIR="$_S5" \
     ZBUILD_ARTIFACT_DIR="$_S5/artifacts" bash "$REPO_ROOT/scripts/zbuild" persist --push ) >/dev/null 2>&1 || true
