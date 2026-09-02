@@ -700,6 +700,24 @@ assert_eq "[SPEC-9] artifact_dir is derived in exactly one place" "1" "$_spec9_a
 _spec9_unrooted="$(grep -E '(^|[^_[:alnum:]])artifact_dir=' "$PLUGIN_DIR/plugin.sh" 2>/dev/null | grep -vc 'ZBUILD_ARTIFACT_DIR' || true)"
 assert_eq "[SPEC-9] every artifact_dir derivation is rooted in engine-provided ZBUILD_ARTIFACT_DIR" "0" "$_spec9_unrooted"
 
+# [SPEC-12] ADR-055 §9: the summary is published on EVERY terminal verdict,
+# including the earliest bail-out. The missing-diff guard returns before the
+# main summary write, so it is the one exit path that could still publish
+# nothing — and with `required: true` on the output, publishing nothing is now
+# a fail-closed contract violation rather than a silent nicety.
+# A FRESH artifact dir: $ARTIFACT_DIR already holds a summary from an earlier
+# test, and asserting presence there passes on that stale file no matter what
+# the guard path does. Isolation is what makes this assertion mean anything.
+_spec12_dir="$TEST_TEMP_DIR/spec12-artifacts"; mkdir -p "$_spec12_dir"
+_spec12_sum="$_spec12_dir/test-failures-summary.md"
+set +e
+_test_run_inner "$_spec12_dir/nonexistent.patch" "$TEST_TEMP_DIR/repo" \
+    "$_spec12_dir/test-results.json" "true" >/dev/null 2>&1
+set -e
+assert_file_exists "[SPEC-12] summary published on the missing-diff guard path" "$_spec12_sum"
+assert_contains "[SPEC-12] guard summary records the verdict" "$(cat "$_spec12_sum" 2>/dev/null)" "verdict: error"
+assert_contains "[SPEC-12] guard summary names the missing patch" "$(cat "$_spec12_sum" 2>/dev/null)" "missing_diff_patch"
+
 # [SPEC-10] manifest valid_verdicts covers every verdict the plugin emits (GUARD)
 _spec10_vv="$(grep -A10 'valid_verdicts:' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null)"
 assert_contains "[SPEC-10] valid_verdicts covers pass" "$_spec10_vv" "- pass"
