@@ -104,22 +104,6 @@ _build_read_prior_review() {
     printf '%s' "$body"
 }
 
-# _build_read_prior_gate (B2 / ADR-040)
-# Read the prior cycle iter's consolidated gate-aggregator feedback from
-# $ZBUILD_CYCLE_FEEDBACK_DIR/gate_feedback.txt. Empty stdout when
-# not in a cycle, dir unset, or file missing/empty.
-_build_read_prior_gate() {
-    local iter="${ZBUILD_CYCLE_ITER:-}"
-    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
-    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
-    local f="$fb_dir/gate_feedback.txt"
-    [[ ! -s "$f" ]] && return 0
-    local body
-    body="$(cat "$f" 2>/dev/null)" || return 0
-    [[ -z "$body" ]] && return 0
-    printf '%s' "$body"
-}
-
 # _build_read_prior_acceptance (#951 Layer 2 / ADR-036)
 # Read the prior outer-cycle iter's acceptance-gate-result.json from
 # $ZBUILD_CYCLE_FEEDBACK_DIR/prior_acceptance_feedback.txt. Prints ONLY
@@ -139,30 +123,35 @@ _build_read_prior_acceptance() {
         end' "$f" 2>/dev/null || return 0
 }
 
-# _build_read_tautology_ids (#1583 / ADR-036)
-# Read the prior outer-cycle iter's acceptance-gate-result.json from
-# $ZBUILD_CYCLE_FEEDBACK_DIR/prior_acceptance_feedback.txt. Prints ONLY
-# tautology:<id> failure ids, one per line — the [change] SPECs whose tagged
-# assertion PASSES at the merge-base baseline (asserts nothing). Since #1477
-# BUILD owns the assertion bodies, build must re-author these to fail-at-baseline;
-# the negative control re-verifies next iteration. Empty when not in a cycle, dir
-# unset, file missing/empty, verdict=pass, or no tautology failures.
-_build_read_tautology_ids() {
-    local iter="${ZBUILD_CYCLE_ITER:-}"
-    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
-    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
-    local f="$fb_dir/prior_acceptance_feedback.txt"
-    [[ ! -s "$f" ]] && return 0
-    jq -r '
-        if (.verdict? // "pass") == "pass" then empty
-        else (.failures // [])[]
-             | select(type == "string" and startswith("tautology:"))
-             | sub("^tautology:"; "")
-        end' "$f" 2>/dev/null || return 0
-}
+# _build_read_tautology_ids — RETIRED (#2022).
+# Since #1477 build owned the assertion bodies, so the gate's tautology finding
+# was fed here for build to re-author. That is the agent whose control was found
+# inert rewriting the control. Assertion authorship now belongs to test-author,
+# and so does this feedback: the same
+# acceptance-gate-result.json -> cycle-feedback/prior_acceptance_feedback.txt
+# path carries it there. Removed rather than left unused so no future prompt
+# builder finds it and re-wires the defect.
 
 # _build_load_context — extracted context-loading block from _build_stage_run_inner.
 # Uses dynamic scoping: reads plan_json + artifact_dir from caller's locals; writes
+# _build_gather_acceptance_specs <design_md>  (#1978)
+# One line per SPEC: "SPEC-n<TAB>what it requires". A SPEC whose text cannot be
+# resolved emits the bare id, so the prompt degrades to the id-only form rather
+# than dropping a SPEC the gate will still demand coverage for.
+_build_gather_acceptance_specs() {
+    local design_md="${1:-}" sid text
+    [[ -n "$design_md" && -f "$design_md" ]] || return 0
+    while IFS= read -r sid; do
+        [[ -n "$sid" ]] || continue
+        text="$(acceptance_spec_text "$design_md" "$sid" 2>/dev/null || true)"
+        if [[ -n "$text" ]]; then
+            printf '%s\t%s\n' "$sid" "$text"
+        else
+            printf '%s\n' "$sid"
+        fi
+    done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
+}
+
 # plan_files_csv, _acceptance_testfiles, _acceptance_spec_ids, _design_decisions
 # back into caller's scope (no `local` on those names here — bash dynamic scope).
 _build_load_context() {
@@ -192,9 +181,12 @@ _build_load_context() {
     fi
 
     # #951 Layer 1: enumerate the design's stable SPEC ids.
+    # #1978: each id is paired with what it REQUIRES. The id alone made the
+    # prompt's demand a shape requirement — "an assertion tagged [SPEC-n] that
+    # fails at baseline" — which an assertion about any field satisfies.
     _acceptance_spec_ids=""
     if [[ -f "$_ctx_design_md_path" ]]; then
-        _acceptance_spec_ids="$(acceptance_list_spec_ids "$_ctx_design_md_path" 2>/dev/null || true)"
+        _acceptance_spec_ids="$(_build_gather_acceptance_specs "$_ctx_design_md_path" 2>/dev/null || true)"
     fi
 
     # #916 (ADR-020): design.md decision prose.

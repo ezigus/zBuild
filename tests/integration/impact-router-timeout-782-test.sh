@@ -74,11 +74,13 @@ assert_eq "I2: rc=124 → verdict=incomplete (best-effort, re-iterate)" "incompl
 reason="$(jq -r '.reason // empty' "$IMPACT_OUT" 2>/dev/null)"
 assert_eq "I2: reason=router_timeout preserved in artifact" "router_timeout" "$reason"
 
-_i2_fb="$(jq -r '.impact_feedback_md // ""' "$IMPACT_OUT" 2>/dev/null)"
-if [[ -n "${_i2_fb//[[:space:]]/}" ]]; then
-    assert_pass "I2: best-effort note present (re-iterate signal)"
+# ADR-060: the best-effort note was a model-free prose string duplicating what
+# reason + router_rc already say. The re-iterate signal is now structural.
+if jq -e '.reason != null and .reason != "" and (.router_rc != null)' "$IMPACT_OUT" >/dev/null 2>&1; then
+    assert_pass "I2: structured re-iterate signal present (reason + router_rc)"
 else
-    assert_fail "I2: impact_feedback_md should carry a best-effort note"
+    assert_fail "I2: structured re-iterate signal present (reason + router_rc)" \
+        "got: $(head -c 200 "$IMPACT_OUT" 2>/dev/null)"
 fi
 
 events="$(cat "$ZBUILD_EVENTS_JSONL")"
@@ -110,11 +112,11 @@ _impact_run_inner "$SCOPE_MANIFEST" "$DESIGN_MD" "$PLAN_JSON" "$IMPACT_OUT" "$AR
 assert_eq "I5: plugin returns rc=0 (best-effort, not fail-closed)" "0" "$rc"
 assert_file_exists "I5: impact.json written (never empty)" "$IMPACT_OUT"
 assert_eq "I5: verdict=incomplete" "incomplete" "$(jq -r '.verdict' "$IMPACT_OUT" 2>/dev/null)"
-_i5_fb="$(jq -r '.impact_feedback_md // ""' "$IMPACT_OUT" 2>/dev/null)"
-if [[ -n "${_i5_fb//[[:space:]]/}" ]]; then
-    assert_pass "I5: impact_feedback_md is a non-empty best-effort note"
+if jq -e '.reason != null and .reason != ""' "$IMPACT_OUT" >/dev/null 2>&1; then
+    assert_pass "I5: structured reason carries the best-effort signal"
 else
-    assert_fail "I5: impact_feedback_md should carry a best-effort note"
+    assert_fail "I5: structured reason carries the best-effort signal" \
+        "got: $(head -c 200 "$IMPACT_OUT" 2>/dev/null)"
 fi
 case "$(cat "$ZBUILD_EVENTS_JSONL" 2>/dev/null)" in
     *'"type":"impact.verdict.incomplete"'*) assert_pass "I5: impact.verdict.incomplete emitted" ;;

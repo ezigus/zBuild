@@ -77,7 +77,7 @@ assert_contains "T2: honest rate-limited message on stderr" "$stderr_out" "rate-
 assert_contains "T2: reset time surfaced" "$stderr_out" "resets 10:30am (America/New_York)"
 
 # ─── T3: NOT immediately auto-retried (claude invoked exactly once) ──────────
-call_count="$(grep -c . "$_CALL_COUNT_FILE" 2>/dev/null || echo 0)"
+call_count="$(grep -c . "$_CALL_COUNT_FILE" 2>/dev/null)" || call_count=0
 assert_eq "T3: rate-limit not auto-retried (single claude invocation)" "1" "$call_count"
 
 # ─── T4: a distinct router.rate_limited event is emitted ─────────────────────
@@ -98,6 +98,55 @@ if grep -q "router.rate_limited" "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
 else
     assert_pass "T5: non-limit error did NOT emit router.rate_limited"
 fi
+
+# ─── T6 [SPEC-1][change] the LOOP path must not retry a rate-limited timeout ──
+# The sync path has honoured 429 since #1237. route_to_model_loop never did, and
+# that is the path `build` uses. Measured on run 33474879520: the CLI reported
+# HTTP 429 in 514ms, then hung; gtimeout killed it at 900s (rc=124); the loop
+# saw no LOOP_COMPLETE sentinel and retried with an ESCALATED timeout. Ten of
+# those = 2.5h of waiting for an answer already known, and the job hit GitHub's
+# 6h ceiling with nothing to show.
+print_test_section "[SPEC-1][change] a rate-limited timeout is not retried in the loop"
+
+_LOOP_PROMPT="$TEST_TEMP_DIR/loop-prompt.txt"
+printf 'do the thing\n' > "$_LOOP_PROMPT"
+_LOOP_REPO="$(setup_git_temp_repo looprl)"
+
+# Mock: emit the 429 envelope IMMEDIATELY, then hang so gtimeout returns 124 —
+# exactly the shape observed in production.
+cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
+#!/usr/bin/env bash
+printf 'x\n' >> "$_CALL_COUNT_FILE"
+cat <<'JSON'
+$RL_JSON
+JSON
+sleep 30
+MOCK
+chmod +x "$TEST_TEMP_DIR/bin/claude"
+
+: > "$_CALL_COUNT_FILE"
+: > "$ZBUILD_EVENTS_JSONL"
+export ZBUILD_ROUTER_TIMEOUT=1     # force the timeout fast
+export ZBUILD_ROUTER_RETRIES=2     # retries available, so a retry WOULD happen
+set +e
+( cd "$_LOOP_REPO" && route_to_model_loop T2 "$_LOOP_PROMPT" "$_LOOP_REPO" 1 ) >/dev/null 2>&1
+set -e
+unset ZBUILD_ROUTER_TIMEOUT ZBUILD_ROUTER_RETRIES
+
+_loop_calls=0
+if [[ -s "$_CALL_COUNT_FILE" ]]; then
+    _loop_calls="$(/usr/bin/grep -c . "$_CALL_COUNT_FILE" || true)"
+fi
+assert_eq "[SPEC-1] a rate-limited timeout is NOT retried (one claude call)" \
+    "1" "$_loop_calls"
+
+# ─── T7 [SPEC-2][change] and the loop path says so ───────────────────────────
+# A silent stop is only half the fix: the operator has to learn the run stopped
+# because the account is over its limit, not because the model went quiet.
+print_test_section "[SPEC-2][change] the loop reports the rate limit"
+
+assert_contains "[SPEC-2] router.rate_limited emitted from the loop path" \
+    "$(cat "$ZBUILD_EVENTS_JSONL")" "router.rate_limited"
 
 cleanup_test_env
 print_test_results

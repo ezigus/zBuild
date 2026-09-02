@@ -17,6 +17,8 @@ _ZBUILD_PLAN_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _PLAN_DIR="$_ZBUILD_PLUGIN_DIR"
 _PLAN_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -97,6 +99,9 @@ plan_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
         error "plan_run: state_file argument required"
+        stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/plan-summary.md}" "plan" "error" \
+            "the engine dispatched this stage with no state file, so it could not run" \
+            "No work was attempted. This is an engine contract violation, not a fault in the change."
         return 2
     fi
     local state_dir; state_dir="$(dirname "$state_file")"
@@ -161,6 +166,16 @@ _plan_validate_dod_discipline() {
     fi
 
     # Flatten plan steps + notes into a single searchable blob.
+    #
+    # `notes` is long by design, not by drift. The prompt tells the model three
+    # separate times to put gaps and assumptions there, because a usable partial
+    # plan beats burning the whole budget and emitting nothing. Do not cap it and
+    # do not restructure it into an array without moving this consumer in the
+    # same commit — it reads notes as a flat string.
+    #
+    # ADR-060 does not apply: its line is a multi-paragraph MARKDOWN DOCUMENT in
+    # an envelope field. Long plain text in a declared data field is data, which
+    # the ADR states explicitly, and lint-llm-envelope.sh agrees.
     local plan_blob=""
     plan_blob="$(printf '%s' "$plan_json" | jq -r '
         [(.title // ""),
@@ -377,7 +392,7 @@ _plan_run_inner() {
       }
     ],
     "estimated_total_lines": <integer>,
-    "notes": "<optional caveats; empty string if none>"
+    "notes": "<gaps, assumptions and caveats behind this plan — the prompt above directs partial understanding here; not length-capped>"
   }
 PLAN_SCHEMA
 )"
@@ -831,6 +846,9 @@ $_plan_instructions"
             [[ $router_rc -eq 0 && -z "$raw_response" ]] && _reason="empty_result_envelope"
             [[ $schema_failed -eq 1 ]] && _reason="schema_violation"
             error "_plan_run_inner: no valid plan.json produced (reason=$_reason)"
+            stage_summary_write "$artifact_dir/plan-summary.md" "plan" "error" \
+                "no valid plan.json produced ($_reason)" \
+                "The goal was not decomposed into steps. A downstream stage has no plan to build against."
             emit_event "plugin.result" "verdict=error" "plugin=plan" "reason=$_reason"
             return 1
         fi
@@ -879,6 +897,12 @@ $_plan_instructions"
         fi
     fi
 
+    # ADR-055 §9: state what this stage DID — the shape of the plan a later
+    # stage will be held to, not merely that it finished.
+    stage_summary_write "$artifact_dir/plan-summary.md" "plan" "pass" \
+        "decomposed the goal into $step_count step(s)" \
+        "$(printf -- '- scope violations: %s\n- DoD discipline: %s\n- artifact: plan.json' \
+            "$scope_violations" "$dod_discipline_pass")"
     emit_event "plugin.result" "stage=plan" \
         "plugin=plan" \
         "step_count=$step_count" \
@@ -895,9 +919,3 @@ $_plan_instructions"
 }
 
 # ─── cleanup ────────────────────────────────────────────────────────────────
-plan_cleanup() {
-    # No self-emit (#1705): plugin_hook_call already brackets this hook with
-    # plugin.cleanup.start/complete. A second `complete` from here is the same
-    # two-emitters-one-name collision the run pair was filed for.
-    return 0
-}

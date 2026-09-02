@@ -19,6 +19,8 @@ _ZBUILD_SECURITY_LENS_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _SEC_LENS_DIR="$_ZBUILD_PLUGIN_DIR"
 _SEC_LENS_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -51,6 +53,9 @@ security_lens_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
         error "security_lens_run: state_file argument required"
+        stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/security-lens-summary.md}" "security-lens" "error" \
+            "the engine dispatched this stage with no state file, so it could not run" \
+            "No work was attempted. This is an engine contract violation, not a fault in the change."
         return 2
     fi
     local state_dir; state_dir="$(dirname "$state_file")"
@@ -151,6 +156,9 @@ _security_lens_run_inner() {
         warn "security_lens_run: router rc=1 (recoverable); using empty findings"
     elif [[ $router_rc -ne 0 ]]; then
         error "security_lens_run: router rc=$router_rc (fatal); refusing to emit"
+        stage_summary_write "$artifact_dir/security-lens-summary.md" "security-lens" "error" \
+            "the model call failed, so no security review happened" \
+            "This lens contributed no findings; absence here is not evidence of safety."
         emit_event "plugin.result" "verdict=error" "plugin=security-lens" \
             "reason=router_fatal" "router_rc=$router_rc"
         return 1
@@ -172,6 +180,9 @@ _security_lens_run_inner() {
             stub: false
         }' | atomic_write "$output"
 
+    stage_summary_write "$artifact_dir/security-lens-summary.md" "security-lens" "pass" \
+        "reviewed the change for security issues — $findings_count finding(s)" \
+        "$(printf -- '- artifact: findings.json')"
     emit_event "plugin.result" "plugin=security-lens" \
         "findings_count=$findings_count" \
         "router_rc=$router_rc"
@@ -179,9 +190,3 @@ _security_lens_run_inner() {
 }
 
 # ─── cleanup ────────────────────────────────────────────────────────────────
-security_lens_cleanup() {
-    # No self-emit (#1705): plugin_hook_call already brackets this hook with
-    # plugin.cleanup.start/complete. A second `complete` from here is the same
-    # two-emitters-one-name collision the run pair was filed for.
-    return 0
-}

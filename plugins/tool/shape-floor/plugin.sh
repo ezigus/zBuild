@@ -17,6 +17,11 @@ _ZBUILD_SHAPE_FLOOR_PLUGIN_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+# NOT `|| true`: this helper is how the gate's findings reach a prompt at
+# all. Swallowing a failed load would leave stage_summary_write undefined and
+# every finding silently unpublished — the exact shape #1991 guards.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _SF_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -76,7 +81,7 @@ shape_floor_run() {
     # Out-of-scope escalation: if every missing floor file is absent from build's scope,
     # route back to design so scope can be expanded rather than spinning in build.
     # Empty scope (pre-plan runs) is treated as unconstrained — no escalation.
-    local route_target=""
+    local fault=""
     if [[ "$verdict" == "fail" ]]; then
         local _scope="${ZBUILD_SHAPE_FLOOR_SCOPE:-${ZBUILD_SCOPE_ALLOWLIST:-}}"
         if [[ -n "$_scope" ]] && declare -f _sf_collect_missing_floor_files >/dev/null 2>&1 \
@@ -92,15 +97,24 @@ shape_floor_run() {
                 fi
             done < <(_sf_collect_missing_floor_files "$repo_root" "$_diff_files")
             if [[ $_total -gt 0 && $_oos -eq $_total ]]; then
-                route_target="design"
+                # #1987: the BOUNDARY is wrong — every missing floor file is
+                # outside the build's scope allowlist, so build cannot touch
+                # them. This gate knows that much about its own failure; where
+                # a scope fault is corrected is the template's to decide.
+                fault="scope"
                 _sf_emit "shape_floor.oos_escalation"
             fi
         fi
     fi
 
-    if [[ -n "$route_target" ]]; then
-        jq -n --arg v "$verdict" --arg r "$detail" --arg rt "$route_target" \
-            '{"verdict":$v,"reason":$r,"route_target":$rt}' | atomic_write "$result_path"
+    if [[ -n "$fault" ]]; then
+        jq -n --arg v "$verdict" --arg r "$detail" --arg f "$fault" \
+            '{"verdict":$v,"reason":$r,"fault":$f}' | atomic_write "$result_path"
+    # #1988: publish what only this gate knows. Its detail used to reach a
+    # prompt only through the aggregator's rendering; it is now a declared
+    # summary output (#1976), and cleared on a non-fail so a stale file from a
+    # previous iteration never renders as a current finding.
+    stage_summary_write "$artifacts_dir/shape-floor-detail.md" "shape-floor" "$verdict" "$detail"
     else
         jq -n --arg v "$verdict" --arg r "$detail" \
             '{"verdict":$v,"reason":$r}' | atomic_write "$result_path"
@@ -111,9 +125,3 @@ shape_floor_run() {
 }
 
 # ─── shape_floor_cleanup ──────────────────────────────────────────────────────
-shape_floor_cleanup() {
-    # No self-emit (#1705): plugin_hook_call already brackets this hook with
-    # plugin.cleanup.start/complete. A second pair from here is the same
-    # two-emitters-one-name collision the run pair was filed for.
-    return 0
-}

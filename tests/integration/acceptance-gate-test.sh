@@ -330,27 +330,27 @@ assert_contains "S11: reason names SPEC-1" "$REASON" "SPEC-1"
 assert_contains "S11: reason names SPEC-2" "$REASON" "SPEC-2"
 assert_contains_regex "S11: reason names the tautology class" "$REASON" "[Tt]autolog"
 
-# ── S12 (#1583 + #1585): a tautology is BUILD-FIXABLE → NO route_target, RECOVERABLE ─
+# ── S12 (#1583 + #1585): a tautology is BUILD-FIXABLE → NO fault, RECOVERABLE ─
 # Since #1477 removed design's stub-writer, BUILD authors assertion bodies, so a
 # tautological [change] SPEC is fixed by build re-authoring it (the mechanical
-# negative-control re-verifies). The gate sets NO route_target (#1583) AND classifies
+# negative-control re-verifies). The gate sets NO fault (#1583) AND classifies
 # it as disposition=recoverable (#1585) so the build_test_cycle RE-ITERATES and feeds
 # the tautology to build — instead of halting terminally at iter 1. verdict / rc
 # unchanged (still a fail until build fixes it).
 # RESULT here still holds REPO10's run (tautology SPEC-1 + untagged SPEC-2).
-assert_eq "S12: tautology → route_target absent (build-fixable, #1583)" "" "$(jq -r '.route_target // ""' <<<"$RESULT")"
+assert_eq "S12: tautology → fault absent (build-fixable, #1583)" "" "$(jq -r '.fault // ""' <<<"$RESULT")"
 assert_eq "S12: tautology verdict unchanged (still fail)" "fail" "$(jq -r .verdict <<<"$RESULT")"
 assert_eq "S12: tautology disposition=recoverable (#1585 — cycle re-iterates, not terminal)" "recoverable" "$(jq -r .disposition <<<"$RESULT")"
 
-# ── S13 (#1219): a build-fixable failure does NOT set route_target ─────────────
+# ── S13 (#1219): a build-fixable failure does NOT set fault ─────────────
 # As of #1583 NO failure class is design-rooted (tautology became build-fixable
 # too — see S12). An untagged_spec (recoverable, build-fixable) stays in the build
-# cycle — no route_target, so the gate-aggregator keeps verdict=fail and the
+# cycle — no fault, so the gate-aggregator keeps verdict=fail and the
 # route_back never fires. REPO3 = untagged-only.
 set +e; _run_gate "$REPO3"; set -e
-assert_eq "S13: untagged-only (build-fixable) → route_target absent" "" "$(jq -r '.route_target // ""' <<<"$RESULT")"
+assert_eq "S13: untagged-only (build-fixable) → fault absent" "" "$(jq -r '.fault // ""' <<<"$RESULT")"
 
-# ── S14 (#1219): a not_passing_at_head failure does NOT set route_target ───────
+# ── S14 (#1219): a not_passing_at_head failure does NOT set fault ───────
 # not_passing_at_head is build-fixable/terminal (fix the impl) — out of #1219
 # scope; it must NOT route to design. REPO with a [change] SPEC whose tagged test
 # fails at BOTH baseline and HEAD (a real not_passing_at_head, not a tautology).
@@ -365,7 +365,7 @@ tests/feature-test.sh
 ```
 EOF
 set +e; _run_gate "$REPO14"; set -e
-assert_eq "S14: not_passing_at_head → route_target absent (build-fixable)" "" "$(jq -r '.route_target // ""' <<<"$RESULT")"
+assert_eq "S14: not_passing_at_head → fault absent (build-fixable)" "" "$(jq -r '.fault // ""' <<<"$RESULT")"
 
   # exits with $FAIL
 
@@ -402,7 +402,7 @@ assert_eq "S10b: unfulfilled promise is recoverable (cycle re-iterates)" \
 # ── S15 (#1686): WIRING target not in this commit's diff → wiring_not_on_path ───
 # A WIRING file declared in design.md that this commit never touched cannot flip
 # when reverted. The gate must emit verdict=fail, disposition=recoverable and
-# route_target=design, so the aggregator fires route_design and route_back rewinds
+# fault=specification, so the aggregator fires specification and route_back rewinds
 # to design_verify_cycle — the first live activation of the dormant carrier.
 #
 # NOT the #1664 shape: PR #1680 DID change .github/workflows/test.yml (+9/-2), so
@@ -434,8 +434,8 @@ assert_eq "[SPEC-3] S15: wiring_not_on_path → rc=1" "1" "$RC15"
 assert_eq "[SPEC-3] S15: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT15")"
 assert_eq "[SPEC-3] S15: disposition=recoverable (design-rewind, not terminal halt)" \
     "recoverable" "$(jq -r .disposition <<<"$RESULT15")"
-assert_eq "[SPEC-3] S15: route_target=design (first live activation of dormant carrier)" \
-    "design" "$(jq -r '.route_target // ""' <<<"$RESULT15")"
+assert_eq "[SPEC-3] S15: fault=specification (first live activation of dormant carrier)" \
+    "specification" "$(jq -r '.fault // ""' <<<"$RESULT15")"
 assert_contains "[SPEC-3] S15: failures[] contains wiring_not_on_path" \
     "$(jq -rc .failures <<<"$RESULT15")" "wiring_not_on_path"
 assert_event_emitted "[SPEC-3] S15: wiring_not_on_path event emitted" \

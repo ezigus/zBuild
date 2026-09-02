@@ -19,7 +19,7 @@
     "test:e2e": "bash scripts/run-tests.sh --tier e2e",
     "test:golden": "bash scripts/run-tests.sh --tier golden",
     "test:mutation": "bash scripts/run-tests.sh --tier mutation",
-    "lint": "bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 | xargs -0 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-verdict-classify.sh && bash scripts/lib/lint-stage-checkpoint.sh"
+    "lint": "bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 | xargs -0 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-test-identity.sh && bash scripts/lib/lint-llm-envelope.sh && bash scripts/lib/lint-verdict-classify.sh && bash scripts/lib/lint-stage-checkpoint.sh"
   },
   "engines": {
     "bash": ">=5.0.0",

@@ -22,10 +22,16 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "preflight inter-stage contract — shipped templates (#1142 regression, ADR-020)"
 setup_test_env "preflight-contract-templates"
+
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
 _test_cleanup_hook() { cleanup_test_env; }
 
 export ZBUILD_EVENTS_DB="/dev/null"
-export ZBUILD_ISSUE=1
+export ZBUILD_ISSUE="$_ZB_ID"
 
 # shellcheck source=../../core/event-bus/event-bus.sh
 source "$REPO_ROOT/core/event-bus/event-bus.sh"
@@ -75,6 +81,10 @@ write_fx() {
         printf 'provides:\n  role: %s\n' "$5"
         printf 'inputs: []\n'
         printf 'outputs:\n  - id: %s\n    type: %s.json@1\n    format: json\n    path: ${artifact_dir}/%s.json\n    required: true\n    primary: true\n' "$6" "$6" "$6"
+        # ADR-055 §9 (#2000): every stage-bound plugin declares exactly one
+        # summary. A fixture that omits it is refused at pre-flight, which is
+        # the contract working — so the fixture declares one too.
+        printf '  - id: %s_summary\n    type: %s-summary.md@1\n    format: markdown\n    path: ${artifact_dir}/%s-summary.md\n    required: true\n    summary: true\n' "$6" "$6" "$6"
     } > "$1/manifest.yaml"
 }
 write_fx "$FX_ROOT/tool/g_gate" g_gate tool  gate     g_gate g_gate_result

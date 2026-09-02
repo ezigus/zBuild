@@ -14,6 +14,12 @@ print_test_header "plugin: plan (plan-stage agent plugin — issue #340)"
 
 setup_test_env "plugin-plan"
 
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
+
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
@@ -27,7 +33,7 @@ STATE_DIR="$TEST_TEMP_DIR/state"
 STATE_FILE="$STATE_DIR/pipeline-state.json"
 ARTIFACTS_DIR="$STATE_DIR/artifacts"
 mkdir -p "$STATE_DIR" "$ARTIFACTS_DIR"
-echo '{"schema_version":1,"run_id":"test","issue":"999","stage_statuses":{}}' > "$STATE_FILE"
+echo '{"schema_version":1,"run_id":"test","issue":"'"$_ZB_ID"'","stage_statuses":{}}' > "$STATE_FILE"
 
 # Scope manifest required by redaction chokepoint
 cat > "$STATE_DIR/scope-manifest.md" <<'SCOPE'
@@ -40,7 +46,7 @@ SCOPE
 # needing to redefine the mock body.
 # shellcheck disable=SC2089,SC2090  # JSON literal stored verbatim; mocked
 # route_to_model echoes it as-is.
-CANNED_PLAN='{"schema_version":1,"issue":999,"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
+CANNED_PLAN='{"schema_version":1,"issue":'"$_ZB_ID"',"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
 
 # ─── Source plugin under test ─────────────────────────────────────────────────
 # Source the plugin first so its sourced dependencies (scope-redaction.sh,
@@ -341,7 +347,7 @@ assert_contains "#478 / ADR-028: prompt forbids prose before/after JSON" \
     "$captured_prompt_478" "NO prose before, after, or around the JSON envelope"
 
 # Restore the original canned plan for any tests below
-CANNED_PLAN='{"schema_version":1,"issue":999,"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
+CANNED_PLAN='{"schema_version":1,"issue":'"$_ZB_ID"',"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
 
 # ─── Test 4: redaction fail-closed moved to the router (ADR-043) ─────────────
 # Redaction is now owned by route_to_model, so plan_run no longer fail-closes on
@@ -551,9 +557,9 @@ _seed_plan_context() {
 # zbuild_repo_id, sourced transitively through plugin.sh); scope_key is
 # ZBUILD_ISSUE_NUMBER when present (Pillar E). The behavior under test is
 # "resume happened", not the namespace math (that is SPEC-5, owned elsewhere).
-export ZBUILD_ISSUE_NUMBER=999
+export ZBUILD_ISSUE_NUMBER="$_ZB_ID"
 _seed_repo_id="$(zbuild_repo_id)"
-_seed_plan_context "$ZBUILD_PLAN_CONTEXT_DIR/$_seed_repo_id/999" "$_seed_repo_id" "999"
+_seed_plan_context "$ZBUILD_PLAN_CONTEXT_DIR/$_seed_repo_id/$_ZB_ID" "$_seed_repo_id" "$_ZB_ID"
 set +e
 plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
 rc=$?
@@ -713,7 +719,7 @@ _ORIG_PSF="$(declare -f persona_stage_framing || true)"
 persona_stage_framing() { return 1; }
 
 : > "$_CAPTURED_PROMPT_FILE"
-CANNED_PLAN='{"schema_version":1,"issue":999,"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
+CANNED_PLAN='{"schema_version":1,"issue":'"$_ZB_ID"',"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
 set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; _spf_rc=$?; set -e
 assert_eq "[SPEC-1] plan_run rc=0 with persona absent" "0" "$_spf_rc"
 _spf_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
@@ -746,13 +752,9 @@ if [[ -n "$_ORIG_PSF" ]]; then eval "$_ORIG_PSF"; fi
 # (this block overwrote it, mirroring the SPEC-5 restore above).
 CANNED_PLAN="$_SAVED_CANNED_PLAN"
 
-# ─── Bonus: plan_cleanup runs cleanly ────────────────────────────────────────
-set +e
-plan_cleanup >/dev/null 2>&1
-rc=$?
-set -e
-
-assert_eq "plan_cleanup returns rc=0" "0" "$rc"
+# plan_cleanup was deleted in #2001 (ADR-062 §3): its entire body was
+# `return 0`. The engine now reclaims by reading the process group recorded
+# at dispatch, so a no-op per-stage hook has nothing left to assert.
 
 # ═══ #1727: a wall-clock timeout (rc=124) must reach the recovery path ═══════
 # At the merge-base `_plan_run_inner` returned 1 the moment router_rc != 0, and

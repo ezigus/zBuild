@@ -157,6 +157,17 @@ scan_plugin_outputs() {
 # ─── plugin_hook_call ───────────────────────────────────────────────────────
 # Source the plugin's plugin.sh and call a lifecycle hook by name.
 # Plugin functions are isolated by sub-shell to prevent namespace pollution.
+# _lc_manifest_role <plugin_dir>
+# The role a plugin declares (provides.role), or empty. Used to decide the
+# assertion write-boundary by ROLE rather than by stage id (#2022).
+_lc_manifest_role() {
+    local _d="${1:-}"
+    [[ -n "$_d" && -f "$_d/manifest.yaml" ]] || return 0
+    if declare -F yaml_get >/dev/null 2>&1; then
+        yaml_get "$_d/manifest.yaml" "provides.role" 2>/dev/null || true
+    fi
+}
+
 plugin_hook_call() {
     local plugin_dir="$1"
     local hook_name="$2"   # run | cleanup (or kind-specific)
@@ -265,6 +276,30 @@ plugin_hook_call() {
         local _ws_state_dir; _ws_state_dir="$(dirname "$2")"
         local -x ZBUILD_ARTIFACT_DIR="${_ws_state_dir}/artifacts"
 
+        # #2022: the acceptance TESTFILES belong to the stage that AUTHORS them.
+        # Every other spawn is denied Edit() on them, so build cannot rewrite an
+        # assertion to agree with its own implementation. Derived from the role
+        # the plugin declares, never from a stage id: naming `build` here would
+        # be a stage naming a stage, the shape #1767 removed from routing.
+        # core/router/permissions.sh renders the rules; the decision is here.
+        local -x ZBUILD_PERMISSION_DENY_EDIT=""
+        if [[ "$(_lc_manifest_role "$1")" != "test_author" ]]; then
+            local _lc_design="${ZBUILD_ARTIFACT_DIR}/design.md" _lc_tf
+            local _lc_lib; _lc_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts/lib" 2>/dev/null && pwd)"
+            if [[ -f "$_lc_design" && -f "$_lc_lib/acceptance-block.sh" ]]; then
+                # Read in a subshell that sources the lib, mirroring the WIRING
+                # reader at runner.sh:1118: acceptance-block.sh is a plugin-side
+                # library and must not leak into the dispatch shell. A `declare
+                # -F` guard here would have left the deny list silently empty,
+                # which is the failure mode this boundary exists to prevent.
+                while IFS= read -r _lc_tf; do
+                    [[ -n "$_lc_tf" ]] || continue
+                    ZBUILD_PERMISSION_DENY_EDIT+="${ZBUILD_REPO_ROOT:-.}/${_lc_tf}"$'\n'
+                done < <( ( source "$_lc_lib/acceptance-block.sh" >/dev/null 2>&1 \
+                            && acceptance_list_testfiles "$_lc_design" ) 2>/dev/null || true )
+            fi
+        fi
+
         if ! declare -F stage_scratch_ensure >/dev/null 2>&1; then
             # shellcheck source=../pipeline/stage-scratch.sh
             source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../pipeline" && pwd)/stage-scratch.sh" 2>/dev/null || true
@@ -280,6 +315,31 @@ plugin_hook_call() {
                && [[ -n "$_ws_scratch" ]]; then
                 local -x ZBUILD_STAGE_SCRATCH="$_ws_scratch"
                 local -x TMPDIR="$_ws_scratch"
+            fi
+        fi
+
+        # #2024: this seam records that a stage STARTED. It does not record a
+        # process group, and the distinction is the whole point.
+        #
+        # It used to write `<stage>.pgid` from `$$`, which conflated two jobs.
+        # As a process handle it was inert: a stage is a bash function call, so
+        # no group exists at this seam and `$$` names the ENGINE's group, which
+        # teardown then skipped — correctly, since signalling your own group
+        # takes the runner down. But as a STARTED MARKER it was load-bearing:
+        # `stage_statuses` is written only when a stage completes, so a stage
+        # killed mid-flight is known to teardown by this file alone.
+        #
+        # One file could not honestly be both. Groups are registered by whoever
+        # creates one (zbuild_pg_register); this writes `<stage>.started`, and
+        # nothing reads it as a pgid. Do not reinstate a `.pgid` write here: any
+        # pgid observable at dispatch cannot be signalled from inside the run.
+        if [[ "$hook_name" == "run" && -n "${ZBUILD_CURRENT_STAGE:-}" ]]; then
+            local _st_dir="${_ws_state_dir}/runtime/stages"
+            if mkdir -p "$_st_dir" 2>/dev/null; then
+                # One path component, so no stage name can climb out of runtime/.
+                local _st_key="${ZBUILD_CURRENT_STAGE//[^A-Za-z0-9_-]/_}"
+                # Fail-open: a stage is never refused dispatch over bookkeeping.
+                : > "${_st_dir}/${_st_key}.started" 2>/dev/null || true
             fi
         fi
 

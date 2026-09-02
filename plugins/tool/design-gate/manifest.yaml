@@ -37,8 +37,6 @@ description: |
 
 hooks:
   run: design_gate_run
-  cleanup: design_gate_cleanup
-
 requires:
   core:
     - event-bus
@@ -71,7 +69,6 @@ outputs:
     format: json
     required: true
     primary: true
-    advisory: true
   # Written ONLY on verdict=fail (all violations, actionable). required:false —
   # absent on a passing gate (missing == empty). Wired by simple.yaml's
   # design_verify_cycle as the design-gate → design (prior_impact_feedback) edge.
@@ -80,6 +77,11 @@ outputs:
     type: design-gate-feedback.md@1
     format: markdown
     required: false
+    # #1979: reaches design as an engine-collected summary (#1976) instead of a
+    # template wire plus a bespoke reader. design keys its refinement wording on
+    # this gate's recorded VERDICT, so the content is spliced exactly once —
+    # the #1825 invariant, with the splice moved rather than duplicated.
+    summary: true
 
 state:
   persisted: [last_verdict]

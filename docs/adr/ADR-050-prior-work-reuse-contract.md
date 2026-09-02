@@ -107,6 +107,40 @@ engine reported `artifact.snapshot.saved` for a snapshot that had saved nothing 
 and a real failure produced no signal anywhere. A single unstageable file now
 skips-and-counts rather than discarding the whole snapshot.
 
+**Amendment (#1921) — persist's own result joins the store, and what `pushed: null` means.**
+Every stage's result file reaches the state branch except the one whose job is
+durability. `persist_run` wrote `persist-result.json` *after* its only snapshot, so
+the snapshot could never contain it, and the work branch carries code only —
+measured on `zbuild/state/issue-1836`: 90 commits, eight `*-result.json` files, no
+`persist-result.json` in any of them. The stage with no durable record of itself is
+the one an operator most needs a record of, because its failure mode is silence.
+
+The order is now: snapshot → **write the result** → snapshot again → secret gate →
+push **once** (§4 unchanged) → rewrite the local copy with the push outcome. The
+second snapshot exists because the first cannot contain the file that describes it.
+The gate moved *after* the write so it scans `persist-result.json` too — nothing
+reaches origin unscanned.
+
+**The second snapshot AMENDS the first rather than stacking on it**, so the branch
+gains exactly **one** commit per persist run. A second commit whose only delta is a
+status file is precisely the empty-commit spam this section already rules out.
+Amend is opt-in per call and used *only* when the caller created the current tip in
+that same invocation: when persist's own snapshot reports `unchanged` or `empty` it
+created nothing, the tip belongs to an earlier stage boundary, and amending there
+would silently delete a legitimate commit. In that case the second snapshot extends
+normally — still one commit.
+
+**The branch copy carries `data.pushed: null`, and that does not mean the push
+failed.** A push cannot record its own outcome; recording `false` would be a lie
+whenever the push then succeeded, which is the common case. The authoritative value
+is in the **local** `persist-result.json` and in the CI job log. `null` reads as
+"not attempted at the time this was written". Anything reading the branch copy and
+treating `null` as failure is reading it wrong — this paragraph exists because that
+misreading is the same class of defect #1921 was filed to eliminate.
+
+Note this is *stored, not reused* — the same category §3 already puts deterministic
+gate verdicts in. Nothing seeds from it; it is a record.
+
 **Amendment (#1878) — push order.** The state-branch push runs **before** the
 work-branch push in `zbuild-pipeline.yml`. Both live in one `run:` block and the
 work push legitimately `exit 1`s on failure, which previously skipped the state

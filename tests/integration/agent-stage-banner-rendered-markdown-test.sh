@@ -27,6 +27,12 @@ print_test_header "agent-stage banner: rendered markdown across subprocess bound
 
 setup_test_env "agent-banner-rendered-md"
 
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
+
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
@@ -73,7 +79,7 @@ export ZBUILD_STAGE_IO_FD=3
 source "$REPO_ROOT/plugins/agent/plan/plugin.sh"
 
 export ZBUILD_GOAL="banner integration test"
-export ZBUILD_ISSUE=999
+export ZBUILD_ISSUE="$_ZB_ID"
 
 set +e
 plan_run "plan" "$STATE_FILE" >/dev/null 2>&1

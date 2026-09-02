@@ -1,0 +1,55 @@
+id: assertion-integrity
+name: Assertion Integrity
+kind: tool
+# ADR-040 §5: mechanical, no model.route — so it may sit on the convergence
+# path. Its fail verdict is what keeps the cycle from converging when build has
+# rewritten an assertion.
+convergence: gate
+version: 0.1.0
+description: |
+  Compares the declared acceptance TESTFILES against the digests the
+  test-author stage recorded for this iteration. Build is denied Edit() on
+  those files at the spawn (#1919 P5), but P5 also measured that a Write(...)
+  deny rule matches nothing — so prevention is incomplete by construction and
+  this is the backstop that cannot be bypassed.
+
+  Un-gameable in ADR-040 §5's sense: it reads what changed on disk, never what
+  a prompt asked for.
+
+hooks:
+  run: assertion_integrity_run
+
+requires:
+  core:
+    - event-bus
+
+provides:
+  role: assertion_integrity
+  result_contract: 2
+  events:
+    - assertion_integrity.violation
+    - assertion_integrity.result.write_failed
+
+config:
+  valid_verdicts:
+    - pass
+    - fail
+    - skip
+
+inputs: []
+
+outputs:
+  - id: assertion_integrity_result
+    path: "${artifact_dir}/assertion-integrity-result.json"
+    type: assertion-integrity-result.json@1
+    format: json
+    required: true
+    primary: true
+  # ADR-055 §9: this stage's statement of what it DID. required:true —
+  # written on every terminal verdict, so absence means something went wrong.
+  - id: assertion_integrity_summary
+    path: "${artifact_dir}/assertion-integrity-summary.md"
+    type: assertion-integrity-summary.md@1
+    format: markdown
+    required: true
+    summary: true

@@ -68,9 +68,15 @@ assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 
 # 14 -> 15: #1074 adds `hydrate` as the first flow stage. release/persist are
 # always-run and deliberately NOT here (#1831).
-assert_eq "[SPEC-2] _TPL_STAGES count is 15" "15" "${#_TPL_STAGES[@]}"
+# 17 -> 18: #2034 adds spec-correspondence, which judges whether each
+# assertion tests what its SPEC says — before build, since its question needs
+# the requirement and the assertion, not the implementation.
+# 15 -> 17: #2022 splits assertion authorship out of build — `test-author`
+# leads build_test_cycle (assertions written from the SPEC before any code
+# exists) and `assertion-integrity` guards them just before the aggregate.
+assert_eq "[SPEC-2] _TPL_STAGES count is 18" "18" "${#_TPL_STAGES[@]}"
 
-_expected_stages=(hydrate intake plan design design-gate impact build test shape-floor acceptance-gate secret-scan gate-aggregator review_lenses review-aggregator pr)
+_expected_stages=(hydrate intake plan design design-gate impact test-author spec-correspondence build test shape-floor acceptance-gate secret-scan assertion-integrity gate-aggregator review_lenses review-aggregator pr)
 _i=0
 for _s in "${_expected_stages[@]}"; do
     assert_eq "[SPEC-2] _TPL_STAGES[$_i] == $_s" "$_s" "${_TPL_STAGES[$_i]}"
@@ -234,7 +240,7 @@ _btc_in_cycles=0
 for _cyc in "${_TPL_CYCLES[@]}"; do [[ "$_cyc" == "build_test_cycle" ]] && _btc_in_cycles=1; done
 assert_eq "[SPEC-14] _TPL_CYCLES contains build_test_cycle" "1" "$_btc_in_cycles"
 assert_eq "[SPEC-14] _TPL_CYCLE_STAGES_build_test_cycle" \
-    "build,test,shape-floor,acceptance-gate,secret-scan,gate-aggregator" \
+    "test-author,spec-correspondence,build,test,shape-floor,acceptance-gate,secret-scan,assertion-integrity,gate-aggregator" \
     "$_TPL_CYCLE_STAGES_build_test_cycle"
 assert_eq "[SPEC-5] [SPEC-14] _TPL_CYCLE_MAX_build_test_cycle is 5 (I10-B)" \
     "5" "$_TPL_CYCLE_MAX_build_test_cycle"
@@ -264,12 +270,16 @@ assert_eq "[SPEC-17] route_back.to == design_verify_cycle (earlier top-level uni
     "design_verify_cycle" "${_TPL_CYCLE_ROUTE_BACK_TO_build_test_cycle:-}"
 assert_eq "[SPEC-17] route_back.when.stage == gate-aggregator" \
     "gate-aggregator" "${_TPL_CYCLE_ROUTE_BACK_STAGE_build_test_cycle:-}"
-assert_eq "[SPEC-17] route_back.when.field == verdict" \
-    "verdict" "${_TPL_CYCLE_ROUTE_BACK_FIELD_build_test_cycle:-}"
-assert_eq "[SPEC-17] route_back.when.op == eq" \
-    "eq" "${_TPL_CYCLE_ROUTE_BACK_OP_build_test_cycle:-}"
-assert_eq "[SPEC-17] route_back.when.value == route_design" \
-    "route_design" "${_TPL_CYCLE_ROUTE_BACK_VALUE_build_test_cycle:-}"
+# #1987: the predicate keys on the declared FAULT class, not on a verdict that
+# had mutated into route_<target>. `in` because `specification` and `scope`
+# share this destination — with only `eq` available, one of them would have
+# silently stopped rewinding.
+assert_eq "[SPEC-17] route_back.when.field == fault" \
+    "fault" "${_TPL_CYCLE_ROUTE_BACK_FIELD_build_test_cycle:-}"
+assert_eq "[SPEC-17] route_back.when.op == in" \
+    "in" "${_TPL_CYCLE_ROUTE_BACK_OP_build_test_cycle:-}"
+assert_eq "[SPEC-17] route_back.when.value names both routable classes" \
+    "specification scope" "${_TPL_CYCLE_ROUTE_BACK_VALUE_build_test_cycle:-}"
 assert_eq "[SPEC-17] route_back.max == 1 (one re-author pass)" \
     "1" "${_TPL_CYCLE_ROUTE_BACK_MAX_build_test_cycle:-}"
 
@@ -279,9 +289,9 @@ assert_eq "[SPEC-17] route_back.max == 1 (one re-author pass)" \
 # gate-aggregator from 8 to 10 (design=2,design-gate=3,impact=4,build=5,test=6,
 # shape-floor=7,acceptance-gate=8,secret-scan=9,gate-aggregator=10).
 
-assert_eq "[SPEC-12] _TPL_STAGES[8] == shape-floor" "shape-floor" "${_TPL_STAGES[8]}"
-assert_eq "[SPEC-12] _TPL_STAGES[11] == gate-aggregator (cycle exit_when source)" \
-    "gate-aggregator" "${_TPL_STAGES[11]}"
+assert_eq "[SPEC-12] _TPL_STAGES[10] == shape-floor" "shape-floor" "${_TPL_STAGES[10]}"
+assert_eq "[SPEC-12] _TPL_STAGES[14] == gate-aggregator (cycle exit_when source)" \
+    "gate-aggregator" "${_TPL_STAGES[14]}"
 
 # ─── SPEC-13: design is at index 3; design-gate at 4, impact at 5 ─────────────
 # CHANGE: design sits at index 3 (after hydrate, intake, plan); its verifier

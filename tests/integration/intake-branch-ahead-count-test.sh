@@ -115,7 +115,7 @@ git checkout -q master
 _reset_events
 _intake_checkout_branch "zbuild/issue-1648-reused" >/dev/null 2>&1
 
-reused_count="$(grep -c '"intake.branch.reused"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0)"
+reused_count="$(grep -c '"intake.branch.reused"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)" || reused_count=0
 assert_gt "[SPEC-1] intake.branch.reused emitted on feature branch re-checkout" \
     "$reused_count" "0"
 
@@ -149,7 +149,7 @@ git branch -D zbuild/issue-1648-adopted
 _reset_events
 _intake_checkout_branch "zbuild/issue-1648-adopted" >/dev/null 2>&1
 
-adopted_count="$(grep -c '"intake.branch.adopted"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0)"
+adopted_count="$(grep -c '"intake.branch.adopted"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)" || adopted_count=0
 assert_gt "[SPEC-2] intake.branch.adopted emitted for remote-only branch" \
     "$adopted_count" "0"
 
@@ -186,7 +186,7 @@ cd "$REPO_C"
 _reset_events
 _intake_checkout_branch "zbuild/issue-1648-unresolvable" >/dev/null 2>&1
 
-reused_c="$(grep -c '"intake.branch.reused"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || echo 0)"
+reused_c="$(grep -c '"intake.branch.reused"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null)" || reused_c=0
 assert_gt "unresolvable: intake.branch.reused emitted" "$reused_c" "0"
 
 unknown_ahead="$(_last_event_field "intake.branch.reused" "ahead_count")"

@@ -45,6 +45,13 @@ setup_test_env "full-pipeline-cycle-seq-3level"
 
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 STATE_DIR="$TEST_TEMP_DIR/state"
+# #1921 follow-up: the runner resolves repo_root from CWD, so an in-process
+# `main --issue N` snapshots into whatever repository the test happens to be
+# standing in. This file used a REAL issue number and ran from the working
+# checkout, adding 3 commits per run to refs/heads/zbuild/state/issue-698 —
+# fabricated prior work on a real issue, which a later run would restore.
+_ZB_ISSUE="$(zb_test_issue)"
+_ZB_REPO="$(zb_test_repo cycle-seq-3level)"
 EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
 LABEL_LOG="$TEST_TEMP_DIR/labels.log"
 export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
@@ -174,10 +181,14 @@ set +e
 # resolve_template_file can be overridden to read the fixture from tests/fixtures/
 # without copying it into the real engine tree (SPEC-6 hermeticity).
 (
+    # cd FIRST: repo_root is resolved from CWD, so this is what keeps the
+    # snapshot out of the real checkout. The engine is still sourced by
+    # absolute path, so moving CWD does not change which code runs.
+    cd "$_ZB_REPO" || exit 1
     # shellcheck disable=SC1091
     source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
     resolve_template_file() { echo "$_FIXTURE_TPL"; }
-    main --issue 698 --template nested-cycle-seq
+    main --issue "$_ZB_ISSUE" --template nested-cycle-seq
 ) >"$TEST_TEMP_DIR/runner.out" 2>&1
 rc=$?
 set -e

@@ -36,6 +36,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "engine-owned per-run worktree (ADR-052, #1640)"
 setup_test_env "worktree-run-isolation"
+
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
 export ZBUILD_CONTRACT_VALIDATOR=warn
 # Keep worktrees in the sandbox rather than the developer's real ~/.zbuild.
 export ZBUILD_RUN_ROOT="$TEST_TEMP_DIR/runroot"
@@ -51,7 +57,7 @@ install_template_overlay "$TARGET" runner-state-dir-minimal
 mock_plugin_factory "intake" "agent" 0 "" "" >/dev/null
 mock_plugin_factory "build"  "agent" 0 "" "" >/dev/null
 
-WORK_BRANCH="zbuild/issue-1640-wt"
+WORK_BRANCH="zbuild/issue-$_ZB_ID-wt"
 
 # Stage 1 stub — stands in for intake's branch checkout. It does exactly what the
 # real plugin does (checkout in whatever tree it is standing in) and, crucially,
@@ -99,7 +105,7 @@ run_pipeline() {
         ZBUILD_RUN_ROOT="$ZBUILD_RUN_ROOT" \
         ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
         ZBUILD_RUN_ID="$run_id" HOME="$HOME_DIR" PATH="$PATH" "$@" \
-        bash "$RUNNER" --issue 1640 --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
+        bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
     return $?
 }
 
@@ -108,8 +114,8 @@ run_pipeline() {
 _state_dir_for() {
     HOME="$HOME_DIR" env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_DATA_ROOT \
         bash -c 'source "$1/scripts/lib/test-helpers.sh" >/dev/null 2>&1
-                 zb_expected_run_state_dir "$2" 1640 "" "$3"' _ \
-        "$REPO_ROOT" "$TARGET" "$1"
+                 zb_expected_run_state_dir "$2" "$3" "" "$4"' _ \
+        "$REPO_ROOT" "$TARGET" "$_ZB_ID" "$1"
 }
 _main_head()     { git -C "$TARGET" rev-parse HEAD 2>/dev/null; }
 _main_branch()   { git -C "$TARGET" rev-parse --abbrev-ref HEAD 2>/dev/null; }

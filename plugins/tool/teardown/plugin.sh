@@ -15,6 +15,8 @@ _ZBUILD_TEARDOWN_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _ZBUILD_TEARDOWN_DIR="$_ZBUILD_PLUGIN_DIR"
 _ZBUILD_TEARDOWN_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
@@ -70,6 +72,54 @@ teardown_run() {
         ' "$_state_file" 2>/dev/null || true)
     fi
 
+    # ADR-062 §2: union in every stage recorded at DISPATCH.
+    #
+    # stage_statuses is written by _update_stage_status only on complete/failed
+    # — after a stage RETURNS. A stage killed mid-flight never returns, so it
+    # never appeared above and was never released: the external-signal paths
+    # freed `intake` only while `build` was demonstrably running (#1748, #2001).
+    #
+    # runtime/stages/<stage>.pgid is written by plugin_hook_call at dispatch
+    # (ADR-058 §1's declared purpose for runtime/), so it exists for exactly the
+    # stages that started, whether or not they finished.
+    if [[ -n "$_state_dir" && -d "$_state_dir/runtime/stages" ]]; then
+        local _pgf _pgstage _seen
+        # BOTH markers (#2024): `.started` is written at dispatch for every
+        # stage that began, `.pgid` by whoever spawned a real process group.
+        # The union is what covers a stage killed mid-flight — it never reached
+        # stage_statuses, and it may never have spawned a group either.
+        for _pgf in "$_state_dir"/runtime/stages/*.started "$_state_dir"/runtime/stages/*.pgid; do
+            [[ -e "$_pgf" ]] || continue
+            _pgstage="$(basename "$(basename "$_pgf" .pgid)" .started)"
+            _seen=0
+            for _s in "${_executed[@]+"${_executed[@]}"}"; do
+                [[ "$_s" == "$_pgstage" ]] && { _seen=1; break; }
+            done
+            [[ "$_seen" -eq 0 ]] && _executed+=("$_pgstage")
+        done
+    fi
+
+    # ── purge: the scratch tree, and nothing else (ADR-062 §3, #2024) ────────
+    # This was `tool/test`'s cleanup hook. It is a PATH operation, so it belongs
+    # to whoever owns the paths — and the engine does: the staging tree is made
+    # with zbuild_engine_tmpdir, which under dispatch resolves to
+    # ZBUILD_STAGE_SCRATCH, i.e. `<run>/scratch/<stage>`. No plugin has to be
+    # asked where its files went, which is what let the last per-stage hook go.
+    #
+    # ADR-054 §7 is the boundary and it does not move: `scratch/` only. Never
+    # artifacts/, never pipeline-state.json, never runtime/. A failed run keeps
+    # its complete evidence, and a purge that ate evidence would make every
+    # failure unexplainable — a far worse outcome than a stale directory.
+    if [[ "$_scope" == "purge" && -n "$_state_dir" && -d "$_state_dir/scratch" ]]; then
+        # Re-validate the target sits under the run dir at DELETE time, and
+        # refuse a bare root — same defence-in-depth as the cleanup appliers.
+        local _scratch="${_state_dir%/}/scratch"
+        if [[ "$_scratch" == "${_state_dir%/}"/?* && -d "$_scratch" ]]; then
+            rm -rf -- "$_scratch" 2>/dev/null || true
+            emit_event "teardown.scratch.purged" "scope=purge" 2>/dev/null || true
+        fi
+    fi
+
     # ── dry-run fast path ─────────────────────────────────────────────────────
     # When ZBUILD_CLEAN_DRY_RUN=1 (set by `zbuild clean --dry-run`), emit a
     # teardown.dry_run.would_clean event for each stage that WOULD be cleaned
@@ -88,6 +138,40 @@ teardown_run() {
 
     emit_event "teardown.start" \
         "scope=$_scope" "stage_count=${#_executed[@]}" 2>/dev/null || true
+
+    # ADR-062 §2: on `release`, the ENGINE kills the process groups recorded at
+    # dispatch. This is what a per-stage hook was for, and it is strictly better
+    # here: the record is on disk, so a stage that was killed before it could
+    # run any hook is still freed. `release` deletes nothing — ADR-054 §7's rule
+    # is unchanged and load-bearing: a failed run keeps its complete evidence.
+    #
+    # tool/test proved the pattern privately (test-stage.pgid + zbuild_pg_kill);
+    # this is the same mechanism applied to every dispatched stage.
+    if [[ "$_scope" == "release" && -n "$_state_dir" && -d "$_state_dir/runtime/stages" ]]; then
+        if ! declare -F zbuild_pg_kill >/dev/null 2>&1; then
+            # shellcheck source=../../../scripts/lib/proc-group.sh
+            source "$_ZBUILD_TEARDOWN_ROOT/scripts/lib/proc-group.sh" 2>/dev/null || true
+        fi
+        local _kpgf _kpgid _killed=0
+        for _kpgf in "$_state_dir"/runtime/stages/*.pgid; do
+            [[ -e "$_kpgf" ]] || continue
+            # Shared reader (#2018): the dispatch record gained a start-time
+            # field, and `cat` + a numeric guard silently rejects it — teardown
+            # would kill nothing and say it succeeded.
+            _kpgid="$(zbuild_pg_record_pgid "$_kpgf" 2>/dev/null || true)"
+            [[ "$_kpgid" =~ ^[0-9]+$ ]] || continue
+            # Never signal our own group: teardown runs inside the run's process
+            # group, so killing it would take the runner down with the stages.
+            local _self_pg; _self_pg="$(ps -o pgid= -p "$$" 2>/dev/null | tr -d ' ' || true)"
+            [[ "$_kpgid" == "$_self_pg" ]] && continue
+            if declare -F zbuild_pg_kill >/dev/null 2>&1; then
+                zbuild_pg_kill "$_kpgid" 2>/dev/null || true
+                _killed=$(( _killed + 1 ))
+            fi
+        done
+        [[ "$_killed" -gt 0 ]] && emit_event "teardown.pgroups.killed" \
+            "scope=$_scope" "count=$_killed" 2>/dev/null || true
+    fi
 
     # Derive artifacts dir from state_file (ADR-054 §2: plugins derive artifacts_dir
     # from dirname($state_file)/artifacts). Fall back to ZBUILD_ARTIFACT_DIR or tmp.
@@ -180,6 +264,11 @@ teardown_run() {
             "file=$_result_file" "scope=$_scope" 2>/dev/null || true
     fi
 
+    # ADR-055 §9: teardown always returns 0, so its summary is the only place a
+    # failed cleanup is stated as such rather than inferred from an event.
+    stage_summary_write "$(dirname "$_result_file")/teardown-summary.md" "teardown" "$_verdict" \
+        "cleaned up scope $_scope" \
+        "$(printf -- '- failures: %s\n- detail: %s' "$_any_failed" "${_reason:-none}")"
     emit_event "teardown.complete" \
         "scope=$_scope" "failed=$_any_failed" 2>/dev/null || true
     # Always return 0: cleanup failures are recorded via events, not propagated.

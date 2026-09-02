@@ -48,6 +48,18 @@ declare -F _verdict_resolve_path >/dev/null 2>&1 || \
 # the same file, so a plain append would stack the block.
 _ZB_STAGE_INPUTS_MARKER='## STAGE INPUTS (engine-resolved)'
 
+# #1976: the summaries block's marker. Same idempotence contract as above — the
+# agentic loop redacts the same file once per iteration, so a plain append would
+# stack the block and reintroduce the ADR-029 growth this feature is bounded to
+# avoid.
+_ZB_STAGE_SUMMARIES_MARKER='## STAGE SUMMARIES (engine-collected)'
+
+# Bounds (ADR-029). Per-iteration prompt growth caused three consecutive 900s
+# max_turns timeouts; the block is capped and LATEST-WINS per stage so it stays
+# flat in the number of stages, never in the number of iterations.
+_ZB_SUMMARY_MAX_BYTES="${ZBUILD_SUMMARY_MAX_BYTES:-4096}"
+_ZB_SUMMARY_TOTAL_MAX_BYTES="${ZBUILD_SUMMARY_TOTAL_MAX_BYTES:-24576}"
+
 # ─── _inputs_flow_stages ─────────────────────────────────────────────────────
 # The resolved flow, one stage per line.
 #
@@ -493,4 +505,139 @@ stage_inputs_prompt_block() {
     printf '\n'
     printf 'A path listed here may not exist yet if its producer declared it\n'
     printf 'optional; treat an absent optional input as empty.\n'
+}
+
+# ─── _summaries_stage_summary_path <stage> <plugins_root> <state_dir> ────────
+# The resolved path of the ONE output <stage> marks `summary: true`, or empty.
+# Only a mechanical (`convergence: gate`) stage contributes: whether an advisory
+# LLM stage's output may reach the build loop is #1898's open decision, and
+# auto-collection must not answer it by accident (ADR-040 §4).
+_summaries_stage_summary_path() {
+    local stage="$1" plugins_root="$2" state_dir="$3"
+    local manifest rec out_id
+    manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
+    [[ -n "$manifest" && -f "$manifest" ]] || return 0
+    while IFS= read -r rec; do
+        [[ -z "$rec" ]] && continue
+        out_id="${rec%%|*}"
+        [[ -n "$out_id" ]] || continue
+        [[ "$(manifest_graph_output_summary "$manifest" "$out_id")" == "true" ]] || continue
+        _inputs_output_paths "$stage" "${rec##*|}" "$state_dir"
+        return 0
+    done < <(manifest_graph_get_outputs "$manifest")
+}
+
+# ─── _summaries_stage_marker <stage> <plugins_root> <key> ────────────────────
+# A top-level scalar from the stage's manifest (`convergence:` / `aggregates:`),
+# or empty. Read rather than inferred: ADR-040 §5 makes `convergence:` the
+# authoritative mechanical-vs-advisory discriminator precisely because inferring
+# it from `kind:` mis-classified acceptance-gate.
+_summaries_stage_marker() {
+    local stage="$1" plugins_root="$2" key="$3" manifest
+    manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
+    [[ -n "$manifest" && -f "$manifest" ]] || return 0
+    awk -v k="$key" '
+        $0 ~ "^" k ":[[:space:]]*" {
+            sub("^" k ":[[:space:]]*", ""); sub(/[[:space:]]*#.*/, "")
+            gsub(/^["\047]|["\047]$/, ""); print; exit
+        }
+    ' "$manifest" 2>/dev/null || true
+}
+
+# ─── stage_summaries_prompt_block <state_file> [plugins_root] ────────────────
+# Renders every completed stage's declared summary, in COMPLETION order, each
+# annotated with that stage's verdict.
+#
+# Completion order is the key order of .stage_statuses — jq preserves insertion
+# order, so the engine needs no separate bookkeeping. A stage that re-ran keeps
+# its first-run position and its LATEST body, which is what makes the block flat
+# in stage count rather than iteration count (ADR-029).
+#
+# Empty output when no completed stage declares a summary, so a repo that has
+# not adopted the marker keeps byte-identical prompts.
+stage_summaries_prompt_block() {
+    local state_file="${1:-}" plugins_root="${2:-${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}}"
+    [[ -n "$state_file" && -s "$state_file" ]] || return 0
+    local state_dir; state_dir="$(dirname "$state_file")"
+
+    # #1986: an aggregator declares the roster it COVERS (`aggregates: <marker>`).
+    # Where one is present, its members' own summaries are suppressed and only
+    # the aggregate ships — otherwise the prompt carries a member's detail AND
+    # the aggregator's rendering of that same detail, which is the contradiction
+    # #1979 removed, arriving from the other side. Removing it by construction
+    # rather than by convention is the point.
+    local _covered=" " _agg_of
+    while IFS= read -r stage; do
+        [[ -z "$stage" ]] && continue
+        _agg_of="$(_summaries_stage_marker "$stage" "$plugins_root" aggregates)"
+        [[ -n "$_agg_of" ]] && _covered="${_covered}${_agg_of} "
+    done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
+
+    local stage path body verdict chunk _conv _aggregates
+    local -a _chunks=()
+    while IFS= read -r stage; do
+        [[ -z "$stage" ]] && continue
+        # An aggregator is never suppressed by the roster it covers — it is the
+        # one shipping the aggregate, and matching naively would delete it.
+        _aggregates="$(_summaries_stage_marker "$stage" "$plugins_root" aggregates)"
+        if [[ -z "$_aggregates" ]]; then
+            _conv="$(_summaries_stage_marker "$stage" "$plugins_root" convergence)"
+            [[ -n "$_conv" && "$_covered" == *" $_conv "* ]] && continue
+        fi
+        path="$(_summaries_stage_summary_path "$stage" "$plugins_root" "$state_dir")"
+        [[ -n "$path" && -s "$path" ]] || continue
+        verdict="$(jq -r --arg s "$stage" '.stage_verdicts[$s] // "unknown"' "$state_file" 2>/dev/null || echo unknown)"
+        body="$(head -c "$_ZB_SUMMARY_MAX_BYTES" "$path" 2>/dev/null || true)"
+        if [[ "$(wc -c < "$path" 2>/dev/null || echo 0)" -gt "$_ZB_SUMMARY_MAX_BYTES" ]]; then
+            body="${body}"$'\n'"[… truncated at ${_ZB_SUMMARY_MAX_BYTES}B —"
+            body="${body} read the artifact directly for the full text]"
+        fi
+        # #1979: framing follows the VERDICT. The retired per-plugin readers
+        # framed gate feedback as "resolve every finding above"; losing that
+        # imperative with the wire would have downgraded a directive into
+        # passive context. Applied by verdict rather than by naming two stages,
+        # so a third gate needs no new prose.
+        case "$verdict" in
+            fail|failed) chunk="$(printf '### %s (verdict: %s) — RESOLVE these findings before completing\n%s\n' "$stage" "$verdict" "$body")" ;;
+            *)           chunk="$(printf '### %s (verdict: %s)\n%s\n' "$stage" "$verdict" "$body")" ;;
+        esac
+        _chunks+=("$chunk")
+    done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
+
+    # #2011: keep the NEWEST. This used to accumulate in completion order and
+    # break on the cap, which retained the summaries FURTHEST from the stage
+    # about to run and discarded its most recent findings. Latent while a handful
+    # of gates declared summaries; #2000 took the tree to 28 producers (114,688B
+    # potential against a 24,576B cap), making overflow the normal path.
+    # Raising the cap is not the fix — ADR-029 records that per-iteration prompt
+    # growth caused three consecutive 900s max_turns timeouts. Which END is
+    # dropped is the defect.
+    local total=0 _keep_from=${#_chunks[@]} _i
+    for (( _i=${#_chunks[@]}-1; _i>=0; _i-- )); do
+        total=$(( total + ${#_chunks[_i]} ))
+        [[ "$total" -gt "$_ZB_SUMMARY_TOTAL_MAX_BYTES" ]] && break
+        _keep_from=$_i
+    done
+    # The newest always ships, even alone and even if it alone exceeds the
+    # budget: it is already per-summary capped, and a block that drops the very
+    # findings it exists to carry is worse than one slightly over budget.
+    [[ ${#_chunks[@]} -gt 0 && "$_keep_from" -ge ${#_chunks[@]} ]] && _keep_from=$(( ${#_chunks[@]} - 1 ))
+
+    local rendered=""
+    # Marked, and counted, so an elision stays distinguishable from a stage that
+    # produced nothing — the property the per-summary marker already gets right.
+    if [[ "$_keep_from" -gt 0 ]]; then
+        rendered="[… ${_keep_from} earlier stage summaries truncated at"
+        rendered="${rendered} ${_ZB_SUMMARY_TOTAL_MAX_BYTES}B total]"$'\n'
+    fi
+    for (( _i=_keep_from; _i<${#_chunks[@]}; _i++ )); do
+        rendered="${rendered}${_chunks[_i]}"$'\n'
+    done
+
+    [[ -n "$rendered" ]] || return 0
+    printf '%s\n\n' "$_ZB_STAGE_SUMMARIES_MARKER"
+    printf 'What each completed stage reported, newest content per stage. A stage\n'
+    printf 'marked RESOLVE blocks convergence — address its findings before you\n'
+    printf 'finish. The rest is context.\n\n'
+    printf '%s' "$rendered"
 }

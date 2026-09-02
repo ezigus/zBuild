@@ -25,6 +25,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# shellcheck source=../../scripts/lib/llm-agent.sh
+source "$REPO_ROOT/scripts/lib/llm-agent.sh"
 # shellcheck source=../../scripts/lib/impact-prefilter.sh
 source "$REPO_ROOT/scripts/lib/impact-prefilter.sh"
 
@@ -74,16 +76,41 @@ assert_eq "U5: two schema-bearing objects -> rc=1 (no recovery)" "1" "$u5_rc"
 # bearing schema_version -> ambiguous -> NO recovery. Prevents shipping the
 # example as the verdict when the real (LAST) object is malformed. This is the
 # exact half-validated-plan risk the strict gate was avoiding.
-u6_raw='Example: {"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":"EXAMPLE"}
-Real answer: {"schema_version":1,"verdict":"incomplete","missing":[]}'
+#
+# #1989: the ORIGINAL fixture stopped discriminating. It relied on the real
+# answer FAILING the gate for want of impact_feedback_md; #1972 removed that
+# field from _impact_envelope_schema_ok, so both objects began passing and both
+# implementations returned rc=1 for an unrelated reason. Measured on the old
+# fixture: impact rc=1, shared rc=1 -- identical, so it proved nothing about
+# the rule it names. The real answer now fails the gate on `verdict`, which no
+# schema change can quietly repair.
+u6_raw='Example: {"schema_version":1,"verdict":"complete","missing":[]}
+Real answer: {"schema_version":1,"verdict":"banana","missing":[]}'
 set +e
 u6_out="$(_impact_recover_envelope_json "$u6_raw" 2>/dev/null)"; u6_rc=$?
 set -e
 case "$u6_out" in
-    *EXAMPLE*) assert_fail "U6: must NOT recover the preamble example as the verdict" "$u6_out" ;;
+    *'"complete"'*) assert_fail "U6: must NOT recover the preamble example as the verdict" "$u6_out" ;;
     *) assert_pass "U6: did not ship the preamble example as the verdict" ;;
 esac
-assert_eq "U6: example + malformed-real (2 schema objects) -> rc=1 (fail closed)" "1" "$u6_rc"
+assert_eq "U6: example + gate-failing real answer (2 schema bearers) -> rc=1 (fail closed)" "1" "$u6_rc"
+
+# ─── U6b (#1989): the two-phase rule is the REASON impact keeps its own
+# recovery, and this is the case that separates it from the shared helper.
+#
+#   impact  — count `has("schema_version")` bearers, require exactly one, THEN gate
+#   shared  — count full-gate PASSERS, require exactly one
+#
+# On u6_raw there are 2 bearers but only 1 passer, so the shared helper recovers
+# the EXAMPLE while impact fails closed. Asserting the divergence directly means
+# a future attempt to collapse the two cannot pass silently: whoever collapses
+# them must delete this assertion and say why.
+set +e
+u6b_out="$(_llm_recover_envelope_json "$u6_raw" _impact_envelope_schema_ok 2>/dev/null)"; u6b_rc=$?
+set -e
+assert_eq "U6b: the shared ONE-phase helper recovers where impact must not (rc=0)" "0" "$u6b_rc"
+assert_eq "U6b: and what it recovers is the EXAMPLE -- the outcome impact prevents" \
+    "complete" "$(printf '%s' "$u6b_out" | jq -r '.verdict' 2>/dev/null)"
 
 # ─── U7: braces inside a JSON string value are not mis-split ─────────────────
 u7_raw='{"schema_version":1,"verdict":"incomplete","missing":[],"impact_feedback_md":"see {a} and }{ here"}
@@ -101,6 +128,44 @@ Based on my comprehensive analysis, the changes look good.
 u8_out="$(_impact_recover_envelope_json "$u8_raw" 2>/dev/null)"
 assert_eq "U8: stray-fence postamble -> envelope verdict recovered" \
     "complete" "$(printf '%s' "$u8_out" | jq -r '.verdict' 2>/dev/null)"
+
+# ─── ADR-060 / #1833: the retired impact_feedback_md field ──────────────────
+# The gate must accept an envelope that does NOT carry impact_feedback_md.
+# The field was a model-authored markdown blob; ADR-060 removes it.
+u9_env='{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"s1","files_to_add":["a.sh"],"reason":"r"}]}'
+if _impact_envelope_schema_ok "$u9_env"; then
+    assert_pass "U9: gate accepts an envelope with no impact_feedback_md (ADR-060)"
+else
+    assert_fail "U9: gate accepts an envelope with no impact_feedback_md (ADR-060)" \
+        "gate rejected: $u9_env"
+fi
+
+# A legacy envelope that still carries the field must ALSO pass (artifacts
+# restored from a prior run's state branch predate the removal).
+u9b_env='{"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":"legacy"}'
+if _impact_envelope_schema_ok "$u9b_env"; then
+    assert_pass "U9b: gate still accepts a legacy envelope carrying the retired field"
+else
+    assert_fail "U9b: gate still accepts a legacy envelope carrying the retired field" \
+        "gate rejected: $u9b_env"
+fi
+
+# ─── U10-U12 (#1833): a PARSE failure is distinguishable from a SCHEMA one ──
+# Run 32886190954 died on `done\_sentinel` inside impact_feedback_md. `\_` is
+# not a legal JSON escape, so jq could not parse the object at all -- yet the
+# error said "requires schema_version=1, verdict in {...}", naming five checks
+# and identifying none. The classifier separates the two causes.
+u10_raw='{"schema_version":1,"verdict":"incomplete","missing":[],"impact_feedback_md":"the done\_sentinel branch"}'
+assert_eq "U10: invalid JSON escape classifies as unparseable (#1833)" \
+    "unparseable" "$(_llm_envelope_classify "$u10_raw")"
+
+u11_raw='{"schema_version":1,"verdict":"banana","missing":[]}'
+assert_eq "U11: parseable JSON with a bad verdict classifies as schema" \
+    "schema" "$(_llm_envelope_classify "$u11_raw" _impact_envelope_schema_ok)"
+
+u12_raw='{"schema_version":1,"verdict":"complete","missing":[]}'
+assert_eq "U12: a conformant envelope classifies as ok" \
+    "ok" "$(_llm_envelope_classify "$u12_raw" _impact_envelope_schema_ok)"
 
 cleanup_test_env
 print_test_results

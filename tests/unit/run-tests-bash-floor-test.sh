@@ -24,14 +24,14 @@ COMPAT="$REPO_ROOT/scripts/lib/compat.sh"
 
 # ── [SPEC-1] CHANGE: tests/run-all.sh sources compat.sh ──────────────────────
 # At merge-base run-all.sh did not source compat.sh; after this change it does.
-_compat_in_runall=$(grep -c '^source.*compat\.sh' "$RUN_ALL" 2>/dev/null || echo 0)
+_compat_in_runall=$(grep -c '^source.*compat\.sh' "$RUN_ALL" 2>/dev/null) || _compat_in_runall=0
 assert_eq "[SPEC-1] tests/run-all.sh sources compat.sh for the bash floor check" \
     "1" "$_compat_in_runall"
 
 # ── [SPEC-3] CHANGE: _zbuild_check_bash rejects Bash major < 5 ───────────────
 
 # Static: the function must exist in compat.sh.
-_floor_fn_count=$(grep -c '_zbuild_check_bash' "$COMPAT" 2>/dev/null || echo 0)
+_floor_fn_count=$(grep -c '_zbuild_check_bash' "$COMPAT" 2>/dev/null) || _floor_fn_count=0
 assert_gt "[SPEC-3] _zbuild_check_bash is defined in compat.sh" \
     "$_floor_fn_count" "0"
 

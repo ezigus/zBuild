@@ -71,13 +71,6 @@ design_verify_cycle:
   on_max: continue
   feedback:
     - from:
-        stage: design-gate
-        output: design_gate_feedback
-      to:
-        stage: design
-        input: design_gate_feedback
-        required: false
-    - from:
         stage: design
         output: design
       to:
@@ -107,18 +100,14 @@ build_test_cycle:
     to: design_verify_cycle
     when:
       stage: gate-aggregator
-      field: verdict
-      op: eq
-      value: route_design
+      # #1987: the template owns the mapping from a declared FAULT class to a
+      # destination. The gate says what KIND of problem it found; only the
+      # template knows that specifications and scope are authored upstream in
+      # design_verify_cycle. `in` because two classes share this destination.
+      field: fault
+      op: in
+      value: specification scope
     max: 1
-  feedback:
-    - from:
-        stage: gate-aggregator
-        output: gate_feedback
-      to:
-        stage: build
-        input: gate_feedback
-        required: false
 
 # ─── intake (leaf) ───────────────────────────────────────────────────────────
 intake:

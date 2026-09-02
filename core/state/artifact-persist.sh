@@ -15,6 +15,16 @@
 # All operations are best-effort: a failure returns non-zero but never aborts the
 # run (callers treat persistence as advisory).
 
+
+# #2010: zbuild_engine_tmpdir names where engine code writes temp files.
+# Lazy-sourced, same pattern lifecycle.sh uses for stage-scratch.sh: this
+# file is sourced from several entry points and cannot assume helpers.sh
+# arrived first. helpers.sh sources only compat.sh, so there is no cycle.
+if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
+    # shellcheck source=../../scripts/lib/helpers.sh
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts/lib" && pwd)/helpers.sh" 2>/dev/null || true
+fi
+
 [[ -n "${_ZBUILD_ARTIFACT_PERSIST_LOADED:-}" ]] && return 0
 _ZBUILD_ARTIFACT_PERSIST_LOADED=1
 
@@ -39,12 +49,19 @@ fi
 #                                  silent failure used to hide)
 #   _ARTIFACT_PERSIST_LAST_SKIPPED count of files skipped but not fatal
 _ARTIFACT_PERSIST_LAST_STATUS=""
+# #1921: WHERE a restore came from — "local" (refs/heads) or "remote"
+# (refs/remotes/origin); empty for non-restore operations. "The branch exists"
+# and "this run fetched it from origin" are different facts, and only the second
+# answers whether a CI run started WARM. Without this the question can only be
+# inferred from log lines.
+_ARTIFACT_PERSIST_LAST_SOURCE=""
 _ARTIFACT_PERSIST_LAST_REASON=""
 _ARTIFACT_PERSIST_LAST_SKIPPED=0
 
 # Reset the outcome channel. Called at the top of every public entry point so a
 # caller can never read a stale status from a previous invocation.
 _artifact_persist_reset_status() {
+    _ARTIFACT_PERSIST_LAST_SOURCE=""
     _ARTIFACT_PERSIST_LAST_STATUS=""
     _ARTIFACT_PERSIST_LAST_REASON=""
     _ARTIFACT_PERSIST_LAST_SKIPPED=0
@@ -117,6 +134,13 @@ _artifact_persist_git_dir() {
 _artifact_persist_snapshot() {
     _artifact_persist_reset_status
     local state_dir="$1" issue="${2:-0}" repo_root="${3:-$(git rev-parse --show-toplevel 2>/dev/null)}"
+    # #1921: "amend" replaces the branch tip instead of committing on top of it.
+    # persist must snapshot twice — the first snapshot cannot contain the result
+    # file that describes it — and a second commit whose only delta is a status
+    # file is the commit spam ADR-050 §4 rules out. Callers pass this ONLY when
+    # they created the current tip themselves this invocation; amending a tip
+    # written by someone else would discard a legitimate boundary snapshot.
+    local mode="${4:-}"
     # Resolve the SHARED git dir before the guard uses it. The guard previously
     # tested `-d "$repo_root/.git"`, which is FALSE in a linked worktree (.git is
     # a file there), so persistence would silently no-op inside a worktree.
@@ -141,7 +165,7 @@ _artifact_persist_snapshot() {
     # A NON-existent path: git initializes a fresh index there. A pre-created
     # empty file (plain mktemp) is rejected as "index file smaller than expected".
     local tmp_index
-    if ! tmp_index="$(mktemp -u "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zbuild-persist-idx.XXXXXX")"; then
+    if ! tmp_index="$(mktemp -u "$(zbuild_engine_tmpdir)/zbuild-persist-idx.XXXXXX")"; then
         _ARTIFACT_PERSIST_LAST_STATUS="failed"
         _ARTIFACT_PERSIST_LAST_REASON="mktemp for throwaway index failed (TMPDIR=${TMPDIR:-/tmp})"
         return 1
@@ -219,15 +243,25 @@ _artifact_persist_snapshot() {
     fi
     rm -f "$tmp_index" "$tmp_index.err"
 
-    parent="$(GIT_DIR="$_gd" git rev-parse -q --verify "refs/heads/$branch" 2>/dev/null || true)"
-    # Skip an empty commit when the tree is identical to the current tip.
-    if [[ -n "$parent" ]]; then
-        local parent_tree; parent_tree="$(GIT_DIR="$_gd" git rev-parse -q --verify "$parent^{tree}" 2>/dev/null || true)"
-        if [[ "$parent_tree" == "$tree" ]]; then
+    local tip; tip="$(GIT_DIR="$_gd" git rev-parse -q --verify "refs/heads/$branch" 2>/dev/null || true)"
+
+    # Unchanged is judged against the TIP in both modes: it asks "does the branch
+    # already say this?", which amending does not change.
+    if [[ -n "$tip" ]]; then
+        local tip_tree; tip_tree="$(GIT_DIR="$_gd" git rev-parse -q --verify "$tip^{tree}" 2>/dev/null || true)"
+        if [[ "$tip_tree" == "$tree" ]]; then
             _ARTIFACT_PERSIST_LAST_STATUS="unchanged"
             _ARTIFACT_PERSIST_LAST_REASON="tree identical to $branch tip"
             return 0
         fi
+    fi
+
+    if [[ "$mode" == "amend" && -n "$tip" ]]; then
+        # Parent is the tip's parent, so the new commit REPLACES the tip. Empty
+        # when the tip is a root commit, which correctly yields a new root.
+        parent="$(GIT_DIR="$_gd" git rev-parse -q --verify "${tip}^" 2>/dev/null || true)"
+    else
+        parent="$tip"
     fi
 
     local msg="zbuild: persist artifacts for #$issue [skip ci]"
@@ -236,7 +270,7 @@ _artifact_persist_snapshot() {
     # no captured stderr — a silent failure inside the code whose whole purpose is
     # to stop silent failures. /dev/null is the honest fallback: we lose the
     # stderr detail but still report the real git failure.
-    local _ct_err; _ct_err="$(mktemp -u "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zbuild-persist-err.XXXXXX" 2>/dev/null)" || _ct_err="/dev/null"
+    local _ct_err; _ct_err="$(mktemp -u "$(zbuild_engine_tmpdir)/zbuild-persist-err.XXXXXX" 2>/dev/null)" || _ct_err="/dev/null"
     [[ -n "$_ct_err" ]] || _ct_err="/dev/null"
     if [[ -n "$parent" ]]; then
         commit="$(GIT_DIR="$_gd" git commit-tree "$tree" -p "$parent" -m "$msg" 2>"$_ct_err")" || commit=""
@@ -255,7 +289,7 @@ _artifact_persist_snapshot() {
     rm -f "$_ct_err"
 
     # PR #1880 review: guarded (see the _ct_err note above).
-    local _ur_err; _ur_err="$(mktemp -u "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zbuild-persist-err.XXXXXX" 2>/dev/null)" || _ur_err="/dev/null"
+    local _ur_err; _ur_err="$(mktemp -u "$(zbuild_engine_tmpdir)/zbuild-persist-err.XXXXXX" 2>/dev/null)" || _ur_err="/dev/null"
     [[ -n "$_ur_err" ]] || _ur_err="/dev/null"
     if ! GIT_DIR="$_gd" git update-ref "refs/heads/$branch" "$commit" 2>"$_ur_err"; then
         err="$(cat "$_ur_err" 2>/dev/null | tr '\n' ' ')"
@@ -268,6 +302,70 @@ _artifact_persist_snapshot() {
 
     _ARTIFACT_PERSIST_LAST_STATUS="saved"
     _ARTIFACT_PERSIST_LAST_REASON="staged $added file(s), skipped $skipped"
+    return 0
+}
+
+# ─── _artifact_persist_adopt_remote <issue> [repo_root] (#1921) ─────────────
+# Point the LOCAL `refs/heads/<branch>` at the fetched remote-tracking ref, but
+# ONLY when the local ref does not already exist.
+#
+# WHY: `_hydrate_fetch` updates `refs/remotes/origin/<branch>` and deliberately
+# never touches `refs/heads`. On a CI runner refs/heads therefore never exists —
+# so `_artifact_persist_snapshot` finds no parent (:229) and ROOTS a new history,
+# and the `--force` push then orphans everything already on origin. The branch
+# could never accumulate in CI, the `unchanged` short-circuit could never fire,
+# and two concurrent runs could clobber each other with no common ancestor.
+#
+# ABSENT-ONLY IS THE POINT, not a micro-optimisation. hydrate's manifest states
+# the invariant: a LOCAL snapshot wins on read when both exist, because it may
+# carry work an earlier push never delivered. Adopting unconditionally would
+# discard exactly that work.
+_artifact_persist_adopt_remote() {
+    _artifact_persist_reset_status
+    local issue="${1:-0}" repo_root="${2:-$(git rev-parse --show-toplevel 2>/dev/null)}"
+
+    _artifact_persist_has_identity "$issue" || {
+        _ARTIFACT_PERSIST_LAST_STATUS="empty"
+        _ARTIFACT_PERSIST_LAST_REASON="no identity to adopt under"
+        return 0
+    }
+
+    local _gd=""
+    [[ -n "$repo_root" ]] && _gd="$(_artifact_persist_git_dir "$repo_root")"
+    if [[ -z "$repo_root" || ! -d "$_gd" ]]; then
+        _ARTIFACT_PERSIST_LAST_STATUS="failed"
+        _ARTIFACT_PERSIST_LAST_REASON="unresolvable repo: repo_root=[${repo_root:-<empty>}] git_dir=[${_gd:-<empty>}]"
+        return 1
+    fi
+
+    local branch; branch="$(_artifact_persist_branch "$issue")"
+
+    if GIT_DIR="$_gd" git rev-parse -q --verify "refs/heads/$branch" >/dev/null 2>&1; then
+        _ARTIFACT_PERSIST_LAST_STATUS="kept"
+        _ARTIFACT_PERSIST_LAST_REASON="local $branch already exists — left untouched"
+        return 0
+    fi
+
+    local remote_tip
+    if ! remote_tip="$(GIT_DIR="$_gd" git rev-parse -q --verify "refs/remotes/origin/$branch" 2>/dev/null)" \
+            || [[ -z "$remote_tip" ]]; then
+        _ARTIFACT_PERSIST_LAST_STATUS="empty"
+        _ARTIFACT_PERSIST_LAST_REASON="no refs/remotes/origin/$branch to adopt (first run)"
+        return 0
+    fi
+
+    local _ar_err; _ar_err="$(mktemp -u "$(zbuild_engine_tmpdir)/zbuild-adopt-err.XXXXXX" 2>/dev/null)" || _ar_err="/dev/null"
+    [[ -n "$_ar_err" ]] || _ar_err="/dev/null"
+    if ! GIT_DIR="$_gd" git update-ref "refs/heads/$branch" "$remote_tip" 2>"$_ar_err"; then
+        local err; err="$(cat "$_ar_err" 2>/dev/null | tr '\n' ' ')"
+        [[ "$_ar_err" != "/dev/null" ]] && rm -f "$_ar_err"
+        _ARTIFACT_PERSIST_LAST_STATUS="failed"
+        _ARTIFACT_PERSIST_LAST_REASON="git update-ref $branch failed: ${err:-<no stderr>} (git_dir=$_gd)"
+        return 1
+    fi
+    [[ "$_ar_err" != "/dev/null" ]] && rm -f "$_ar_err"
+    _ARTIFACT_PERSIST_LAST_STATUS="adopted"
+    _ARTIFACT_PERSIST_LAST_REASON="adopted origin/$branch as the local snapshot parent"
     return 0
 }
 
@@ -320,7 +418,7 @@ _artifact_persist_push() {
         return 0
     fi
 
-    local _p_err; _p_err="$(mktemp "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zbuild-push-err.XXXXXX" 2>/dev/null || printf '')"
+    local _p_err; _p_err="$(mktemp "$(zbuild_engine_tmpdir)/zbuild-push-err.XXXXXX" 2>/dev/null || printf '')"
     if GIT_DIR="$_gd" git push --force origin \
             "refs/heads/$branch:refs/heads/$branch" 2>"${_p_err:-/dev/null}"; then
         _ARTIFACT_PERSIST_LAST_STATUS="saved"
@@ -362,8 +460,10 @@ _artifact_persist_restore() {
     local ref=""
     if GIT_DIR="$_gd" git rev-parse -q --verify "refs/heads/$branch" >/dev/null 2>&1; then
         ref="refs/heads/$branch"
+        _ARTIFACT_PERSIST_LAST_SOURCE="local"
     elif GIT_DIR="$_gd" git rev-parse -q --verify "refs/remotes/origin/$branch" >/dev/null 2>&1; then
         ref="refs/remotes/origin/$branch"
+        _ARTIFACT_PERSIST_LAST_SOURCE="remote"
     else
         # A first-ever run for this issue. Genuinely nothing to restore — the one
         # early return here that is NOT a failure.
@@ -381,7 +481,7 @@ _artifact_persist_restore() {
     # #1878: PIPESTATUS, not the pipeline rc — a failing `git archive` piped into
     # a happy `tar` yields rc=0, so a broken restore reported success.
     # PR #1880 review: guarded (see the _ct_err note above).
-    local _ar_err; _ar_err="$(mktemp -u "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zbuild-restore-err.XXXXXX" 2>/dev/null)" || _ar_err="/dev/null"
+    local _ar_err; _ar_err="$(mktemp -u "$(zbuild_engine_tmpdir)/zbuild-restore-err.XXXXXX" 2>/dev/null)" || _ar_err="/dev/null"
     [[ -n "$_ar_err" ]] || _ar_err="/dev/null"
     GIT_DIR="$_gd" git archive "$ref" 2>"$_ar_err" | tar -x -C "$restored_dir" 2>>"$_ar_err"
     local _st=("${PIPESTATUS[@]}")

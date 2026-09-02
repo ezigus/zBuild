@@ -152,16 +152,18 @@ grep -qF "ACCEPTANCE COVERAGE GAPS" <<< "$p" \
     || assert_pass "L2b: gap block omits when no gap file present"
 unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
 
-# ─── L2c (#1583): _build_read_tautology_ids returns ONLY tautology ids ────────
-printf '%s' '{"verdict":"fail","failures":["untagged_spec:SPEC-2","tautology:SPEC-3","tautology:SPEC-5","negctl_error:worktree_failed"]}' \
-    > "$FB/prior_acceptance_feedback.txt"
-got_t="$(ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$FB" _build_read_tautology_ids | tr '\n' ',' | sed 's/,$//')"
-assert_eq "L2c: reader returns ONLY tautology ids (untagged/infra filtered)" "SPEC-3,SPEC-5" "$got_t"
-printf '%s' '{"verdict":"pass","failures":[]}' > "$FB/prior_acceptance_feedback.txt"
-got_t2="$(ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$FB" _build_read_tautology_ids)"
-assert_eq "L2c: verdict=pass → no tautology ids" "" "$got_t2"
+# ─── L2c/L2d (#2022): the tautology feed no longer reaches build ─────────────
+# #1583 fed the gate's tautology finding to build so build could re-author the
+# assertion — the agent whose control was found inert rewriting the control.
+# #1978 tightened the WORDING of that licence; #2022 removes the licence. The
+# same feedback now reaches test-author, which owns assertion bodies.
+if declare -f _build_read_tautology_ids >/dev/null 2>&1; then
+    assert_fail "L2c: the tautology reader is retired from build" \
+        "_build_read_tautology_ids is still defined"
+else
+    assert_pass "L2c: the tautology reader is retired from build"
+fi
 
-# ─── L2d (#1583): tautology present → prompt injects TAUTOLOGICAL ASSERTIONS ──
 cat > "$DESIGN_MD" <<'DESIGN'
 # Design
 
@@ -176,15 +178,15 @@ printf '%s' '{"verdict":"fail","failures":["tautology:SPEC-3"]}' \
 export ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$FB"
 p="$(_drive_build)"
 grep -qF "## TAUTOLOGICAL ASSERTIONS" <<< "$p" \
-    && assert_pass "L2d: prompt injects TAUTOLOGICAL ASSERTIONS block" \
-    || assert_fail "L2d: tautology block must inject when tautology present" "(missing)"
-grep -qF "[SPEC-3]" <<< "$(grep -A4 'TAUTOLOGICAL ASSERTIONS' <<< "$p")" \
-    && assert_pass "L2d: tautology block names [SPEC-3]" \
-    || assert_fail "L2d: tautology block must name [SPEC-3]" "(missing)"
-# charter now grants the re-author exception
-grep -qF "EXCEPT gate-flagged TAUTOLOGICAL assertions" <<< "$p" \
-    && assert_pass "L2d: charter grants the tautology re-author exception" \
-    || assert_fail "L2d: charter must note the tautology exception" "(missing)"
+    && assert_fail "L2d: a tautology finding no longer reaches build" "(block present)" \
+    || assert_pass "L2d: a tautology finding no longer reaches build"
+grep -qF "which you MUST re-author" <<< "$p" \
+    && assert_fail "L2d: the re-author licence is gone from build's prompt" "(present)" \
+    || assert_pass "L2d: the re-author licence is gone from build's prompt"
+grep -qF "do NOT author or modify acceptance assertions" <<< "$p" \
+    && assert_pass "L2d: build is told the assertions are not its to touch" \
+    || assert_fail "L2d: build must be told the assertions are not its to touch" "(missing)"
+
 # absent → block omitted
 rm -f "$FB/prior_acceptance_feedback.txt"
 p="$(_drive_build)"

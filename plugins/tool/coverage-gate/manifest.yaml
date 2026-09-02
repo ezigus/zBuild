@@ -23,8 +23,6 @@ description: |
 
 hooks:
   run: coverage_gate_run
-  cleanup: coverage_gate_cleanup
-
 requires:
   core:
     - event-bus
@@ -59,6 +57,16 @@ outputs:
     format: json
     required: true
     primary: true
+  # #1988: the failure detail only this gate knows. It reached a prompt
+  # only through the aggregator's rendering before; `summary: true` (#1976)
+  # delivers it directly. required:true — ADR-055 §9: written on every
+  # terminal verdict, so absence means something went wrong, full stop.
+  - id: coverage_detail
+    path: "${artifact_dir}/coverage-detail.md"
+    type: coverage-detail.md@1
+    format: markdown
+    required: true
+    summary: true
 
 state:
   persisted: []

@@ -9,8 +9,6 @@ description: |
 
 hooks:
   run: plan_run
-  cleanup: plan_cleanup
-
 requires:
   core:
     - redaction
@@ -89,7 +87,6 @@ outputs:
     type: plan-context.json@1
     format: json
     required: false
-    advisory: true
   # #1879: the engine-generic stage checkpoint. `role: checkpoint` is what the
   # engine keys on — NOT the id, which must be unique across every stage in a
   # template (core/pipeline/contract-validator.sh raises OUTPUT_DUP on a repeat),
@@ -101,7 +98,14 @@ outputs:
     format: markdown
     required: false
     role: checkpoint
-    advisory: true
+  # ADR-055 §9: this stage's statement of what it DID. required:true —
+  # written on every terminal verdict, so absence means something went wrong.
+  - id: plan_summary
+    path: "${artifact_dir}/plan-summary.md"
+    type: plan-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 
 state:
   persisted: [last_plan_steps, plan_context_status]

@@ -24,6 +24,14 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "route_back NESTED-cycle propagation (#1225 / ADR-045)"
 setup_test_env "route-back-nested-propagates"
 
+# #1921 follow-up: the runner resolves repo_root from CWD, so an in-process
+# `main` snapshots into whatever repository the test stands in. These files used
+# REAL issue numbers from the working checkout, adding commits to real issues'
+# state branches (measured: 3 per run onto issue-698). Reserved id + throwaway
+# repo; the cd below is what actually contains it.
+_ZB_ISSUE="$(zb_test_issue)"
+_ZB_REPO="$(zb_test_repo rb-nested)"
+
 # Emit a nested-cycle template: top-level [plan, outer]; outer is a cycle whose
 # only member is the cycle `inner`; inner routes back to `plan`. $1 = inner max.
 _write_nested_tpl() {
@@ -96,6 +104,7 @@ _run() {
         export _NRB_TEST_CALLS="$_tmp/test-calls"; : > "$_NRB_TEST_CALLS"
         export _NRB_MODE="$_mode"
         # shellcheck disable=SC1091
+        cd "$_ZB_REPO" || exit 1
         source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
 
         # Point template resolution at our custom nested fixture.
@@ -122,7 +131,7 @@ _run() {
             echo "pass"
         }
 
-        main --issue 999 --template nested-rb-prop >/dev/null 2>&1
+        main --issue "$_ZB_ISSUE" --template nested-rb-prop >/dev/null 2>&1
     )
 }
 

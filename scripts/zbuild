@@ -81,6 +81,7 @@ Commands:
                          --age-days 0 to reclaim a run that died today).
                          [--branches] [--state-dirs] [--stashes] [--tmpdirs]
                          [--scratch] [--state-branches] [--orch-pools] [--cache]
+                         [--pgroups]
                          [--remote]
                          [--worktrees]
                          Retention is one number (--age-days, default 7) on two
@@ -651,6 +652,68 @@ UPHELP
                 ;;
         esac
         ;;
+    persist)
+        shift
+        # #1966: THE one entrypoint for the state-branch push.
+        #
+        # It existed twice — the always-run `persist` stage, and an inline
+        # `git push` in .github/workflows/zbuild-pipeline.yml — and the copies
+        # disagreed: CI's was gated on an issue number, so `--goal` runs
+        # snapshotted to a branch that never left the runner. ADR-050 §7 already
+        # said the push belongs to the pipeline; the CI block was simply never
+        # deleted.
+        #
+        # This subcommand exists so CI can still cover the ONE case the stage
+        # cannot — a SIGKILL or job timeout before the runner's EXIT trap fires
+        # — by INVOKING the same code rather than reimplementing it (#1692).
+        # It is not the primary path: on a healthy run the stage has already
+        # pushed and CI's guard makes this a no-op.
+        _persist_push=false
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --push) _persist_push=true; shift ;;
+                -h|--help)
+                    printf 'usage: zbuild persist --push\n\n'
+                    printf '  Snapshot and push this run'"'"'s state branch to origin.\n'
+                    printf '  Advisory: never changes the caller'"'"'s exit code. Normally\n'
+                    printf '  done by the always-run persist stage; this is the seam CI\n'
+                    printf '  uses as a backstop when the run died before that stage.\n'
+                    exit 0 ;;
+                *) error "unknown argument to persist: $1"; exit 2 ;;
+            esac
+        done
+        if ! $_persist_push; then
+            error "persist requires --push"
+            exit 2
+        fi
+        # REUSE THE STAGE ITSELF — not a re-sequenced copy of it.
+        #
+        # The first draft of this seam re-did snapshot/scan/push by hand and got
+        # it wrong on the first probe (it pushed a ref the snapshot had not
+        # created yet, and reported "empty"). Re-implementing the sequence here
+        # would recreate, one level up, exactly the duplication this issue
+        # deletes. persist_run already owns the order, the secret gate, the
+        # result artifact and the events; calling it means this seam cannot
+        # drift from the stage because it IS the stage.
+        _pp_root="$(cd "$SCRIPT_DIR/.." && pwd)"
+        # shellcheck source=../plugins/tool/persist/plugin.sh
+        source "$_pp_root/plugins/tool/persist/plugin.sh" 2>/dev/null || {
+            error "cannot load the persist plugin"; exit 2; }
+        # `source` returning 0 is NOT proof the plugin is usable: a file that
+        # reaches EOF while an inner source failed leaves persist_run undefined,
+        # `command not found` is swallowed by the `|| true` below, and this exits
+        # 0 having pushed nothing — a silent no-op in exactly the situation the
+        # backstop exists for. Assert the function, not the source's rc.
+        declare -F persist_run >/dev/null 2>&1 || {
+            error "the persist plugin loaded but defines no persist_run — refusing to report success"
+            exit 2; }
+        # `|| true` here is deliberate and narrow: it absorbs a FAILED PUSH,
+        # which is advisory. It no longer hides a missing implementation.
+        persist_run persist "${ZBUILD_STATE_FILE:-}" || true
+        # ALWAYS 0. Persistence is advisory (ADR-050 §4): a run that produced
+        # good work and could not reach the network still produced good work.
+        exit 0
+        ;;
     cleanup)
         shift
         # #141: the layout resolver, so the CLI's own containment roots follow
@@ -674,6 +737,7 @@ UPHELP
         cl_rc=0
         cl_orch_pools=false
         cl_cache=false
+        cl_pgroups=false
         cl_dry_run=""
         cl_force=false
         # 7, not 14 (#1632's already-decided state-branch retention, generalised).
@@ -695,6 +759,7 @@ UPHELP
                 --remote) cl_remote=true; shift ;;
                 --orch-pools)     cl_orch_pools=true;     shift ;;
                 --cache)          cl_cache=true;          shift ;;
+                --pgroups)        cl_pgroups=true;        shift ;;
                 --dry-run)    cl_dry_run=true; shift ;;
                 --apply)      cl_dry_run=false; shift ;;
                 --force)      cl_force=true; cl_dry_run="${cl_dry_run:-false}"; shift ;;
@@ -767,6 +832,7 @@ UPHELP
             cl_state_branches=true
             cl_orch_pools=true
             cl_cache=true
+            cl_pgroups=true
         fi
 
         $cl_quiet || {
@@ -862,6 +928,17 @@ UPHELP
             _cleanup_render_plan "orch pools" "$cl_pool_plan" "$cl_dry_run" "$cl_quiet"
             cl_pool_root="${TMPDIR:-/tmp}"; cl_pool_root="${cl_pool_root%/}/zbuild-runs"
             _cleanup_apply_dir_plan "$cl_pool_plan" "$cl_dry_run" "$cl_pool_root"
+        fi
+
+        if $cl_pgroups; then
+            # #2018: the leaked-process-group sweep. Reads the ADR-062 §1
+            # dispatch records that nothing read after a hard kill. In the
+            # default set, not opt-in, for the reason above: a leak nobody is
+            # told about is a leak nobody fixes, and this one holds real CPU.
+            cl_pg_root="${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}"
+            cl_pg_plan="$(_cleanup_scan_pgids "$cl_pg_root" || true)"
+            _cleanup_render_plan "process groups" "$cl_pg_plan" "$cl_dry_run" "$cl_quiet"
+            _cleanup_apply_pgid_plan "$cl_pg_plan" "$cl_dry_run" "$cl_pg_root"
         fi
 
         if $cl_cache; then

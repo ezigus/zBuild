@@ -18,6 +18,13 @@ print_test_header "core/pipeline/runner — flag parsing + state export (#368)"
 
 setup_test_env "core-pipeline-runner"
 
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID1="$(zb_test_issue)"
+_ZB_ID2="$(zb_test_issue)"
+
 # ── Environment shared by all subprocess tests ────────────────────────────────
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 export ZBUILD_PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
@@ -110,13 +117,13 @@ assert_eq "--template with no value → exit 2" "2" "$rc"
 # ─── Section 8: --from-stage without --resume → exit 2 ──────────────────────
 print_test_section "Section 8: --from-stage without --resume → exit 2"
 
-rc="$(_run_runner_rc --issue 42 --from-stage intake)"
+rc="$(_run_runner_rc --issue "$_ZB_ID1" --from-stage intake)"
 assert_eq "--from-stage without --resume → exit 2" "2" "$rc"
 
 # ─── Section 9: --from-stage with no value → exit 2 ─────────────────────────
 print_test_section "Section 9: --from-stage with no value → exit 2"
 
-rc="$(_run_runner_rc --issue 42 --resume --from-stage)"
+rc="$(_run_runner_rc --issue "$_ZB_ID1" --resume --from-stage)"
 assert_eq "--from-stage with no value → exit 2" "2" "$rc"
 
 # ─── Section 10: --resume with no existing state file → exit 1 ───────────────
@@ -124,14 +131,14 @@ print_test_section "Section 10: --resume with no state file → exit 1"
 
 unset ZBUILD_STATE_FILE
 rm -f "$ZBUILD_STATE_DIR/pipeline-state.json"
-rc="$(_run_runner_rc_in_overlay --template runner-state-dir-minimal --issue 42 --resume)"
+rc="$(_run_runner_rc_in_overlay --template runner-state-dir-minimal --issue "$_ZB_ID1" --resume)"
 assert_eq "--resume + no state file → exit 1" "1" "$rc"
 
 # ─── Section 11: --dry-run prints plan, exits 0 ──────────────────────────────
 print_test_section "Section 11: --dry-run exits 0 with plan output"
 
-out="$(_run_runner_in_overlay --template runner-state-dir-minimal --issue 99 --dry-run 2>&1)" || true
-rc="$(_run_runner_rc_in_overlay --template runner-state-dir-minimal --issue 99 --dry-run)"
+out="$(_run_runner_in_overlay --template runner-state-dir-minimal --issue "$_ZB_ID2" --dry-run 2>&1)" || true
+rc="$(_run_runner_rc_in_overlay --template runner-state-dir-minimal --issue "$_ZB_ID2" --dry-run)"
 assert_eq "--dry-run → exit 0" "0" "$rc"
 assert_contains "--dry-run output mentions 'dry-run'" "$out" "dry-run"
 
@@ -139,6 +146,8 @@ assert_contains "--dry-run output mentions 'dry-run'" "$out" "dry-run"
 print_test_section "Section 12: ZBUILD_STATE_FILE with wrong issue → exit 2"
 
 MISMATCH_STATE="$TEST_TEMP_DIR/state/mismatch-state.json"
+# issue:7 is deliberately NOT the id the run is started with — this fixture
+# exists to trip the mismatch guard, so it must stay different.
 jq -n '{schema_version:1,run_id:"r1",issue:7,stage_statuses:{},
          current_iteration:0,self_heal_count:{},
          scope_manifest_hash:"",cost_ledger_pointer:0,
@@ -146,7 +155,7 @@ jq -n '{schema_version:1,run_id:"r1",issue:7,stage_statuses:{},
          status:"in_progress",
          updated_at:"2026-01-01T00:00:00Z"}' > "$MISMATCH_STATE"
 
-rc="$(_run_runner_rc_env "ZBUILD_STATE_FILE=$MISMATCH_STATE" --issue 42)"
+rc="$(_run_runner_rc_env "ZBUILD_STATE_FILE=$MISMATCH_STATE" --issue "$_ZB_ID1")"
 assert_eq "ZBUILD_STATE_FILE issue mismatch → exit 2" "2" "$rc"
 
 # ─── Section 13: ZBUILD_STATE_FILE with corrupt JSON → exit 2 ────────────────
@@ -154,14 +163,14 @@ print_test_section "Section 13: ZBUILD_STATE_FILE with corrupt JSON → exit 2"
 
 CORRUPT_STATE="$TEST_TEMP_DIR/state/corrupt-state.json"
 printf 'not valid json {{{\n' > "$CORRUPT_STATE"
-rc="$(_run_runner_rc_env "ZBUILD_STATE_FILE=$CORRUPT_STATE" --issue 42)"
+rc="$(_run_runner_rc_env "ZBUILD_STATE_FILE=$CORRUPT_STATE" --issue "$_ZB_ID1")"
 assert_eq "ZBUILD_STATE_FILE corrupt JSON → exit 2" "2" "$rc"
 
 # ─── Section 14: ZBUILD_STATE_FILE matching issue passes the cross-check ──────
 print_test_section "Section 14: ZBUILD_STATE_FILE with matching issue passes cross-check"
 
 MATCH_STATE="$TEST_TEMP_DIR/state/match-state.json"
-jq -n '{schema_version:1,run_id:"r2",issue:42,stage_statuses:{},
+jq -n --argjson issue "$_ZB_ID1" '{schema_version:1,run_id:"r2",issue:$issue,stage_statuses:{},
          current_iteration:0,self_heal_count:{},
          scope_manifest_hash:"",cost_ledger_pointer:0,
          claim_lease_id:"",plugin_state:{},
@@ -169,12 +178,12 @@ jq -n '{schema_version:1,run_id:"r2",issue:42,stage_statuses:{},
          updated_at:"2026-01-01T00:00:00Z"}' > "$MATCH_STATE"
 
 # The cross-check only fires; the run still fails downstream (no plugin). rc != 2.
-rc="$(_run_runner_rc_env "ZBUILD_STATE_FILE=$MATCH_STATE" --issue 42)"
+rc="$(_run_runner_rc_env "ZBUILD_STATE_FILE=$MATCH_STATE" --issue "$_ZB_ID1")"
 # Should NOT be rc=2 (the mismatch sentinel); the cross-check passes.
 if [[ "$rc" != "2" ]]; then
     assert_pass "ZBUILD_STATE_FILE matching issue does not hit mismatch guard (rc=$rc)"
 else
-    out_check="$(env "ZBUILD_STATE_FILE=$MATCH_STATE" bash "$REPO_ROOT/core/pipeline/runner.sh" --issue 42 2>&1)" || true
+    out_check="$(env "ZBUILD_STATE_FILE=$MATCH_STATE" bash "$REPO_ROOT/core/pipeline/runner.sh" --issue "$_ZB_ID1" 2>&1)" || true
     if grep -q "mismatch" <<< "$out_check"; then
         assert_fail "ZBUILD_STATE_FILE matching issue should not trigger mismatch guard"
     else

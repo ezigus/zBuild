@@ -259,13 +259,13 @@ EOF
     assert_eq "[SPEC-7] R5: python3 {files} seam → verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
 fi
 
-# ── R6: inert_wiring at ZBUILD_CYCLE_ITER≥2 escalates to route_target=design ───
+# ── R6: inert_wiring at ZBUILD_CYCLE_ITER≥2 escalates to fault=specification ───
 # Setup: WIRING target is a CI YAML file in the diff (the #1664 shape).
 # The sole TESTFILE is a bash script that cannot source YAML, so no flip is
 # possible regardless of how many build iterations run. At ZBUILD_CYCLE_ITER unset
-# (iter=1), inert_wiring is emitted with no route_target — build gets a real try.
+# (iter=1), inert_wiring is emitted with no fault — build gets a real try.
 # At ZBUILD_CYCLE_ITER=2, the same still-inert target escalates to
-# route_target=design via the #1711 second-measurement mechanism.
+# fault=specification via the #1711 second-measurement mechanism.
 REPO_R6="$(setup_git_temp_repo "reach-r6")"
 (
     cd "$REPO_R6"
@@ -300,7 +300,7 @@ tests/feature-test.sh
 ```
 EOF
 
-# R6a: ZBUILD_CYCLE_ITER unset — inert_wiring with no route_target (first attempt).
+# R6a: ZBUILD_CYCLE_ITER unset — inert_wiring with no fault (first attempt).
 # The [SPEC-2] guard for this half lives in its own file,
 # tests/integration/acceptance-gate-inert-wiring-iter1-test.sh: the guard negative
 # control runs a whole testfile and keys on the FILE's exit code, so a guard tagged
@@ -313,10 +313,10 @@ assert_eq "R6a: iter=1 inert_wiring → rc=1" "1" "$RC"
 r6a_failures="$(jq -r '.failures[]' <<<"$RESULT" 2>/dev/null || echo '')"
 assert_contains "R6a: iter=1 failures contain inert_wiring YAML target" \
     "$r6a_failures" "inert_wiring:.github/workflows/test.yml"
-r6a_rt="$(jq -r '.route_target // empty' <<<"$RESULT" 2>/dev/null || echo '')"
-assert_eq "R6a: iter=1 → no route_target (build gets first attempt)" "" "$r6a_rt"
+r6a_rt="$(jq -r '.fault // empty' <<<"$RESULT" 2>/dev/null || echo '')"
+assert_eq "R6a: iter=1 → no fault (build gets first attempt)" "" "$r6a_rt"
 
-# R6b: ZBUILD_CYCLE_ITER=2 — still-inert target escalates to route_target=design
+# R6b: ZBUILD_CYCLE_ITER=2 — still-inert target escalates to fault=specification
 export ZBUILD_CYCLE_ITER=2
 set +e; _run_gate "$REPO_R6"; set -e
 unset ZBUILD_CYCLE_ITER
@@ -327,8 +327,8 @@ assert_contains "[SPEC-1] R6b: iter=2 failures contain inert_wiring YAML target"
     "$r6b_failures" "inert_wiring:.github/workflows/test.yml"
 assert_eq "[SPEC-1] R6b: iter=2 → disposition=recoverable" "recoverable" \
     "$(jq -r '.disposition' <<<"$RESULT")"
-assert_eq "[SPEC-1] R6b: iter=2 → route_target=design (iter=1 had none)" "design" \
-    "$(jq -r '.route_target // empty' <<<"$RESULT")"
+assert_eq "[SPEC-1] R6b: iter=2 → fault=specification (iter=1 had none)" "specification" \
+    "$(jq -r '.fault // empty' <<<"$RESULT")"
 assert_event_emitted "[SPEC-1] R6b: inert_wiring_escalated event emitted" \
     "$EVENTS" "acceptance.gate.inert_wiring_escalated"
 

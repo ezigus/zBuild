@@ -143,6 +143,8 @@ BUILD_PLUGIN="$REPO_ROOT/plugins/agent/build"
 if [[ -f "$BUILD_PLUGIN/manifest.yaml" ]]; then
     : > "$STATE_DIR/artifacts/diff.patch"
     echo '{"verdict":"pass"}' > "$STATE_DIR/artifacts/build-summary.json"
+    # ADR-055 §9 (#2000): build now declares a required summary output too.
+    printf '## build — pass\n\n- staged by fixture\n' > "$STATE_DIR/artifacts/build-summary.md"
     set +e
     scan_plugin_outputs "$BUILD_PLUGIN" "$STATE_FILE" 2>/dev/null
     rc=$?
@@ -192,6 +194,10 @@ LENS_PLUGIN="$REPO_ROOT/plugins/agent/review-lens"
 if [[ -f "$LENS_PLUGIN/manifest.yaml" ]]; then
     export ZBUILD_REVIEW_LENS_ID="security"
     echo '{"lens":"security"}' > "$STATE_DIR/artifacts/lens-security.json"
+    # ADR-055 §9 (#2000): the lens summary is per-member too, so its path
+    # carries the same ${ZBUILD_REVIEW_LENS_ID} expansion the .json does.
+    printf '## review-lens-security — pass\n\n- staged by fixture\n' \
+        > "$STATE_DIR/artifacts/lens-security-summary.md"
     set +e
     scan_plugin_outputs "$LENS_PLUGIN" "$STATE_FILE" 2>/dev/null
     rc=$?

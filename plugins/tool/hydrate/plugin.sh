@@ -25,6 +25,8 @@ _ZBUILD_HYDRATE_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _ZBUILD_HYDRATE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -96,10 +98,13 @@ hydrate_run() {
     fi
 
     rm -rf "$_staging" 2>/dev/null || true
-    local _verdict="complete" _reason="" _status="empty" _count=0
+    local _verdict="complete" _reason="" _status="empty" _count=0 _source=""
 
     if _artifact_persist_restore "$_issue" "$_staging"; then
         _status="${_ARTIFACT_PERSIST_LAST_STATUS:-unknown}"
+        # Read the source BEFORE anything else touches the outcome channel:
+        # _artifact_persist_adopt_remote below resets it. #1921.
+        _source="${_ARTIFACT_PERSIST_LAST_SOURCE:-}"
     else
         _status="failed"
         _verdict="degraded"
@@ -134,23 +139,40 @@ hydrate_run() {
         [[ -n "$_reason" ]] || _reason="no prior work for issue $_issue (first run)"
     fi
 
-    _hydrate_write_result "$_artifacts_dir" "$_verdict" "$_reason" "$_status" "$_count"
+    # Give the snapshot a parent to chain onto. A fetch only ever writes
+    # refs/remotes/origin/<branch>, so on a CI runner refs/heads never exists —
+    # _artifact_persist_snapshot then roots a new history and the force-push
+    # orphans everything already on origin (#1921). Adopt is absent-only, so the
+    # unpushed-local-work invariant above is untouched. Deliberately AFTER the
+    # restore, whose source we captured before this resets the channel.
+    if ! _artifact_persist_adopt_remote "$_issue"; then
+        emit_event "hydrate.adopt.failed" "stage=$_stage_id" "issue=$_issue" \
+            "reason=${_ARTIFACT_PERSIST_LAST_REASON:-unknown}" 2>/dev/null || true
+    fi
+
+    _hydrate_write_result "$_artifacts_dir" "$_verdict" "$_reason" "$_status" "$_count" "$_source"
     emit_event "hydrate.complete" "stage=$_stage_id" "issue=$_issue" \
-        "restored=$_count" "status=$_status" 2>/dev/null || true
+        "restored=$_count" "status=$_status" "source=${_source:-none}" 2>/dev/null || true
     # Always 0. Prior work is an optimisation: a run that cannot find any still
     # has everything it needs to do the work from scratch.
     return 0
 }
 
 _hydrate_write_result() {
-    local _dir="$1" _verdict="$2" _reason="$3" _status="$4" _count="$5"
+    local _dir="$1" _verdict="$2" _reason="$3" _status="$4" _count="$5" _src="${6:-}"
     mkdir -p "$_dir" 2>/dev/null || true
     local _file="$_dir/hydrate-result.json"
     if ! jq -n --arg v "$_verdict" --arg r "$_reason" --arg s "$_status" \
-            --argjson c "${_count:-0}" \
+            --argjson c "${_count:-0}" --arg src "$_src" \
             '{result_contract: 2, verdict: $v, disposition: "complete",
-              reason: $r, data: {status: $s, restored: $c}}' \
+              reason: $r, data: {status: $s, restored: $c,
+                                 source: (if $src == "" then null else $src end)}}' \
             | atomic_write "$_file"; then
         emit_event "hydrate.result.write_failed" "file=$_file" 2>/dev/null || true
     fi
+    # ADR-055 §9: every hydrate terminal funnels through here, and the real
+    # counts are already in hand.
+    stage_summary_write "$_dir/hydrate-summary.md" "hydrate" "$_verdict" \
+        "restored ${_count:-0} artifact(s) from prior runs (${_status:-unknown})" \
+        "$(printf -- '- source: %s\n- detail: %s' "${_src:-none}" "${_reason:-none}")"
 }

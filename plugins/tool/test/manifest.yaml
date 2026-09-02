@@ -19,7 +19,12 @@ description: |
 
 hooks:
   run: test_run
-  cleanup: test_cleanup
+  # cleanup: retired in #2024 (ADR-062 §3). Its two halves are engine-owned
+  # now: the suite's process group is registered at spawn and freed by
+  # teardown(release), and the staging tree lives under <run>/scratch/ so
+  # teardown(purge) removes it as a path. §4 required proving the engine
+  # reclaims BEFORE this line came out — see tests/integration/
+  # hard-kill-sweep-e2e-test.sh, which kills the runner outright.
 
 requires:
   core:
@@ -68,7 +73,6 @@ outputs:
     # ADR-020 amendment (#507): primary output drives the runner's
     # stage-complete indicator via the .verdict field.
     primary: true
-    advisory: true
   # ADR-021 amendment (#511 F2): derived markdown summary consumed by the
   # build stage as cycle feedback. ABSENT when no failures present
   # (missing == empty semantics); never an empty-but-present file.
@@ -77,7 +81,10 @@ outputs:
     type: test-failures-summary.md@1
     format: markdown
     required: false
-    advisory: true
+    # #1977: `advisory` says no stage CONSUMES it as an input (ADR-020 #1750);
+    # `summary` says it is offered as prompt context (#1976). Both hold — the
+    # extracted failing assertions are exactly what a re-running build needs.
+    summary: true
 
 state:
   persisted: [last_verdict, last_exit_code]

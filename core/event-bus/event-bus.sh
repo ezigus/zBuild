@@ -27,14 +27,22 @@ source "$_ZBUILD_EVENT_BUS_DIR/known-types.sh"
 # ${HOME}/.zbuild/state/events.{jsonl,db}: that store grows unbounded across
 # ad-hoc invocations and a stale events.jsonl.lock left by a killed run can
 # hang a later run's `flock -w` (#run-hygiene). Resolve the defaults coherently:
-#   1. Nothing pinned  → ephemeral, process-scoped dir under $TMPDIR (reaped by
-#      the OS / `zbuild cleanup`), never the durable shared global default.
+#   1. Nothing pinned  → ephemeral, process-scoped dir under the DATA ROOT,
+#      never the durable shared global default and never ${TMPDIR}. ADR-059 §1
+#      makes the path the keying: a reclaimer deletes a `runs/<id>/` or an
+#      `issues/<N>/` and the scope follows from where it sits, so a ${TMPDIR}
+#      default is outside every reclaimable path by construction — which is why
+#      cleanup.sh needed a ZBUILD_TMPDIR_PATTERNS scanner to sweep ~2300 of
+#      these (#2004). ADR-023/ADR-059 §1 also reject ${TMPDIR} for durable
+#      state: on macOS its entries can vanish mid-run (#1571, #1609/#1611).
 #   2. Only JSONL pinned → derive the dir (hence the SQLite mirror + lock) from
 #      it, so a pinned jsonl never leaks a mirror/lock back to the global
 #      default (the test harness pins only ZBUILD_EVENTS_JSONL).
 # Explicit ZBUILD_EVENTS_DIR / _DB always win.
 if [[ -z "${ZBUILD_EVENTS_DIR:-}${ZBUILD_EVENTS_JSONL:-}${ZBUILD_EVENTS_DB:-}" ]]; then
-    ZBUILD_EVENTS_DIR="${TMPDIR:-/tmp}/zbuild-ephemeral-events.$$"
+    # Same precedence as zbuild_layout_data_root (core/state/layout.sh); inlined
+    # because the event bus deliberately sources almost nothing.
+    ZBUILD_EVENTS_DIR="${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}/ephemeral-events/$$"
 elif [[ -z "${ZBUILD_EVENTS_DIR:-}" && -n "${ZBUILD_EVENTS_JSONL:-}" ]]; then
     ZBUILD_EVENTS_DIR="$(dirname "$ZBUILD_EVENTS_JSONL")"
 fi

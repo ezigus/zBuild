@@ -1,7 +1,7 @@
 # ADR-035 — Orchestrator Run-State Isolation (scratch & pool dirs)
 
 **Status:** Accepted (2026-06-15)
-**Amended:** 2026-08-23 (#141) — pool dirs stay per-run under ADR-059's layout; this ADR's shared-dir hazard is answered by the issue retention clock
+**Amended:** 2026-08-23 (#141) — pool dirs live at `runs/<run_id>/pool/` under the issue's (or goal's) area, per [ADR-059](ADR-059-issue-vs-run-keying.md) §1. Superseded paths have been removed from this document rather than annotated, so nothing here can be implemented by mistake; this ADR's shared-dir hazard is answered by the issue retention clock
 **Amended:** 2026-08-22 — the "pool dirs are intentionally not in the cleanup scanner" decision below is reversed; they now have a reclaimer
 **Related:** ADR-024 (subprocess environment isolation), ADR-023 (install isolation), ADR-011 (pluggable orchestrator backends)
 **Issue:** #898; the orchestrator analog of #887/#889 (per-run state isolation)
@@ -16,8 +16,8 @@ were left shared, run-global:
 - **Scratch** — `ZBUILD_ORCH_SCRATCH`, defaulted to a flat `~/.zbuild/state/orch`
   at *source* time in `core/orch/contract.sh` (before `run_id` exists). Work-unit
   temp files (`wu-XXXXXX`) from every run accumulate there.
-- **Pool dirs** — `${TMPDIR}/zbuild-pool-<pool_id>`, created by
-  `plugins/tool/orch-bash-parallel/plugin.sh`.
+- **Pool dirs** — created by `plugins/tool/orch-bash-parallel/plugin.sh`, in a
+  single flat namespace shared by every run.
 
 Both use unique names (mktemp / `pid`+nanosecond `pool_id`), so there is **no active
 filename collision** between concurrent runs — the corruption class #887 fixed does
@@ -38,7 +38,10 @@ default-only re-root (an explicit override always wins):
    bakes the flat default. Explicit `ZBUILD_ORCH_SCRATCH` overrides. Because the
    scratch now lives under `runs/<run_id>/`, #889's per-run state teardown reaps it.
 
-2. **Pool dirs** → `${TMPDIR}/zbuild-runs/<run_id>/zbuild-pool-<pool_id>`, in
+2. **Pool dirs** → `runs/<run_id>/pool/zbuild-pool-<pool_id>` under the issue's
+   (or goal's) area — see [ADR-059](ADR-059-issue-vs-run-keying.md) §1 for the
+   full layout. A pool dir holds live coordination state for a dispatch, so it
+   must sit on durable storage inside something a reclaimer can name. In
    `_orch_par_pool_dir` (bash-parallel backend) and `_orch_seq_pool_dir`
    (sequential backend) — both backends are covered. Explicit `ZBUILD_POOL_ROOT`
    overrides. Pool dirs are reaped by `orch_shutdown` (and grouped under
@@ -70,8 +73,8 @@ a runner-managed pipeline.
 - The scratch default moves from source-time (`contract.sh`) to use-time
   (`common.sh`) — the only reader. No other consumer depends on `contract.sh`
   setting `ZBUILD_ORCH_SCRATCH`.
-- Tests that hardcoded the flat `${TMPDIR}/zbuild-pool-*` path must derive it from
-  `_orch_par_pool_dir` instead (`core-orch-parallel-test.sh` updated).
+- Tests must derive the pool path from `_orch_par_pool_dir` rather than hardcoding
+  it (`core-orch-parallel-test.sh` updated).
 - Explicit `ZBUILD_ORCH_SCRATCH` / `ZBUILD_POOL_ROOT` overrides are unaffected (every
   test that sets them keeps working).
 
@@ -93,10 +96,11 @@ a runner-managed pipeline.
   `~/.zbuild/state/runs/<run_id>/orch`); `_strategy_make_work_unit` consumes it.
 - `plugins/tool/orch-bash-parallel/plugin.sh` (`_orch_par_pool_dir`) and
   `plugins/tool/orch-sequential/plugin.sh` (`_orch_seq_pool_dir`) — both root pool
-  dirs at `${ZBUILD_POOL_ROOT:-${TMPDIR}/zbuild-runs/<run_id>}/zbuild-pool-<id>`.
+  dirs at `${ZBUILD_POOL_ROOT:-<issue-or-goal-area>/runs/<run_id>/pool}/zbuild-pool-<id>`
+  (ADR-059 §1).
 - Tests — `tests/unit/core-orch-run-id-isolation-test.sh` (new); the unit and
   integration `core-orch-parallel-test.sh` derive the pool path via
-  `_orch_par_pool_dir` instead of hardcoding the flat `${TMPDIR}/zbuild-pool-*`.
+  `_orch_par_pool_dir` rather than hardcoding a pool path.
 
 ## Amendment — run-artifact hygiene for the event log (#run-hygiene)
 
@@ -120,10 +124,17 @@ runner exports `ZBUILD_EVENTS_*` to follow that dir. Two gaps remained:
 
 **Decision (additive, default-only — an explicit pin always wins):**
 
-- **Unpinned event location → ephemeral, not global.** When *no* `ZBUILD_EVENTS_*`
-  is pinned, the event-bus defaults to a process-scoped
-  `${TMPDIR}/zbuild-ephemeral-events.<pid>` dir instead of the durable
-  `${HOME}/.zbuild/state`. When only `ZBUILD_EVENTS_JSONL` is pinned, the dir
+- **Unpinned event location → process-scoped, not global.** When *no*
+  `ZBUILD_EVENTS_*` is pinned, the event-bus defaults to a process-scoped
+  directory rather than the shared durable one. **That directory must sit under
+  the data root**, so it is reclaimable by path per
+  [ADR-059](ADR-059-issue-vs-run-keying.md) §1 — a reclaimer deletes a
+  `runs/<id>/` or an `issues/<N>/` and the scope follows from where it sits.
+  A `${TMPDIR}`-rooted default is outside every reclaimable path by construction
+  and is not permitted; ADR-023 and ADR-059 §1 reject `${TMPDIR}` for durable
+  state on measured evidence (its entries can vanish mid-run on macOS).
+  *The implementation has not yet followed this — see #2004.*
+  When only `ZBUILD_EVENTS_JSONL` is pinned, the dir
   (hence the SQLite mirror + lock) is *derived* from it, so a pinned jsonl never
   leaks a mirror/lock back to the global default. Engine runs are unaffected
   (the runner still pins `ZBUILD_EVENTS_*` to `runs/<run_id>/`).

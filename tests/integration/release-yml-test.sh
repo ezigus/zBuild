@@ -135,7 +135,7 @@ fi
 # the auto_merge same-job publish step (open-release-pr) and once in the
 # pull_request:closed publish job. The prepare/apply step still uses "${args[@]}"
 # (no --force). Also assert the merge-polling step keyword is present.
-_spec11_force_count="$(grep -c 'release.sh --force' "$WORKFLOW_FILE" 2>/dev/null || echo 0)"
+_spec11_force_count="$(grep -c 'release.sh --force' "$WORKFLOW_FILE" 2>/dev/null)" || _spec11_force_count=0
 _spec11_poll=false
 grep -qE 'gh pr view.*state|until.*MERGED' "$WORKFLOW_FILE" 2>/dev/null && _spec11_poll=true
 if [[ "$_spec11_force_count" == "2" ]] && $_spec11_poll; then
@@ -188,7 +188,7 @@ fi
 
 # ── SPEC-17 (#1502): docs publish --wiki-only appears in BOTH the auto_merge
 # same-job step AND the pull_request:closed publish job (DOC-F parity).
-_spec17_wiki_count="$(grep -c 'docs publish --wiki-only' "$WORKFLOW_FILE" 2>/dev/null || echo 0)"
+_spec17_wiki_count="$(grep -c 'docs publish --wiki-only' "$WORKFLOW_FILE" 2>/dev/null)" || _spec17_wiki_count=0
 if [[ "$_spec17_wiki_count" -ge 2 ]]; then
     assert_pass "[SPEC-17] docs publish --wiki-only appears in both auto_merge path and publish job"
 else

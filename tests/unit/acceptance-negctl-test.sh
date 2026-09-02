@@ -893,8 +893,9 @@ set -e
 assert_eq "[SPEC-1] NC-S2: verdict is identical with the artifact dir set" \
     "NEGCTL PASS SPEC-2 guard_spec" "$(grep 'SPEC-2' <<<"$OUT_S2")"
 assert_eq "[SPEC-1] NC-S2: rc identical with the artifact dir set" "$RC_S" "$RC_S2"
+_nc_s2_hits="$(grep -cF '[SPEC-2] guard_anchor.sh found' "$LOGDIR_S2/negctl-SPEC-2.log" 2>/dev/null)" || _nc_s2_hits=0
 assert_eq "[SPEC-1] NC-S2: the per-SPEC diagnostic log still captures the run" "1" \
-    "$(grep -cF '[SPEC-2] guard_anchor.sh found' "$LOGDIR_S2/negctl-SPEC-2.log" 2>/dev/null || echo 0)"
+    "$_nc_s2_hits"
 rm -rf "$LOGDIR_S2"
 
 # ── NC-T: [SPEC-2] a genuinely regressed guard is still condemned ───────────────

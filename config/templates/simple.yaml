@@ -108,19 +108,37 @@ design_verify_cycle:
   on_max: continue
   feedback:
     - from:
-        stage: design-gate
-        output: design_gate_feedback
-      to:
-        stage: design
-        input: design_gate_feedback
-        required: false
-    - from:
         stage: design
         output: design
       to:
         stage: design
         input: design
         required: false
+
+# ─── test-author (leaf, advisory) ────────────────────────────────────────────
+# ADR-040 §5: it makes a model call, so it may not sit on the convergence path.
+# Its work is verified mechanically downstream — the test stage runs the
+# assertions and acceptance-gate proves they discriminate.
+test-author:
+  gate: auto
+  roles: [test_author]
+  router:
+    timeout_s: 600
+
+# ─── spec-correspondence (leaf, advisory) ────────────────────────────────────
+# ADR-040 §5: it makes a model call, so it may not gate. Its finding reaches
+# test-author on the next iteration through the summary channel.
+spec-correspondence:
+  gate: auto
+  roles: [spec_correspondence]
+  router:
+    timeout_s: 600
+
+# ─── assertion-integrity (leaf, gate) ────────────────────────────────────────
+# Mechanical, no model.route — so it MAY gate (ADR-040 §5).
+assertion-integrity:
+  gate: auto
+  roles: [assertion_integrity]
 
 # ─── build_test_cycle (cycle) ────────────────────────────────────────────────
 # B6 (#1138, ADR-040 §2/§5): the cycle re-runs build/test then the decomposed
@@ -145,11 +163,29 @@ build_test_cycle:
   type: cycle
   description: Build, test, and run the mechanical gates until gate-aggregator passes
   flow:
+    # #2022: test-author runs FIRST. It authors the acceptance assertions from
+    # the design's SPEC sentences before build implements against them, so the
+    # code and the assertion are two independent readings rather than two
+    # artifacts of one. It never sees the diff.
+    - test-author
+    # #2034: judges whether each assertion tests what its SPEC SAYS — the one
+    # link execution cannot reach (a passing test proves the implementation
+    # satisfies the ASSERTION, never that the assertion satisfies the SENTENCE).
+    # Before build, because its question needs the requirement and the assertion
+    # and not the implementation — which at this point does not exist yet, so
+    # its isolation is a fact of placement rather than a rule to enforce.
+    - spec-correspondence
     - build
     - test
     - shape-floor
     - acceptance-gate
     - secret-scan
+    # #2022: mechanical backstop. The spawn denies build Edit() on the declared
+    # TESTFILES, but #1919 P5 measured that a Write(...) deny rule matches
+    # nothing — prevention is incomplete by construction. A fail here makes the
+    # aggregate non-pass, so the cycle iterates rather than converging on a
+    # rewritten assertion.
+    - assertion-integrity
     - gate-aggregator
   exit_when:
     stage: gate-aggregator
@@ -158,20 +194,13 @@ build_test_cycle:
     value: pass
   max_iterations: 5
   on_max: continue
-  # ONE consolidated feedback edge so the cycle can CONVERGE instead of spinning
-  # build(no-op)→…→gate-aggregator(fail). B2 (ADR-040): the gate-aggregator is the
-  # SINGLE collector of failure detail — it merges every failing mechanical gate
-  # (failing tests, acceptance-coverage gaps, secret-scan hits, …) into ONE
-  # gate-feedback.md. This REPLACES the prior per-gate edges (test→build
-  # prior_test_assessment, #1117; acceptance-gate→build prior_acceptance_feedback,
-  # #1138) — build now reads the consolidated payload via prior_gate_feedback,
-  # which the build plugin splices into its prompt (_build_read_prior_gate).
-  # required:false — gate-feedback.md is ABSENT on a passing aggregate (missing==
-  # empty semantics), and a missing producer must NOT abort the cycle. NB (Wave
-  # 18-B): the `to:` MUST use block form (the template translator handles block
-  # `to:`, not the inline `to: { ... }` form). from.output MUST be the manifest
-  # output id `gate_feedback` (NOT a filename) — _cycle_resolve_from_path looks it
-  # up in gate-aggregator's outputs[].
+  # The cycle CONVERGES rather than spinning build(no-op)→…→gate-aggregator(fail)
+  # because the aggregator's consolidated gate-feedback.md reaches build. B2
+  # (ADR-040): the gate-aggregator is the SINGLE collector of failure detail,
+  # merging every failing mechanical gate into one document. It used to arrive
+  # through a feedback: wire plus a bespoke reader; #1979 retired both — the
+  # aggregator marks that output `summary: true` (#1976) and the engine injects
+  # it, framed by verdict, with no per-consumer wiring.
   # ─── route_back (#1219, ADR-045/ADR-046 — final EPIC #1216 wiring) ──────────
   # A DESIGN-ROOTED acceptance failure (a tautological [change] SPEC that cannot
   # be made to fail-at-baseline) CANNOT be fixed by build — ADR-036 forbids build
@@ -192,18 +221,14 @@ build_test_cycle:
     to: design_verify_cycle
     when:
       stage: gate-aggregator
-      field: verdict
-      op: eq
-      value: route_design
+      # #1987: the template owns the mapping from a declared FAULT class to a
+      # destination. The gate says what KIND of problem it found; only the
+      # template knows that specifications and scope are authored upstream in
+      # design_verify_cycle. `in` because two classes share this destination.
+      field: fault
+      op: in
+      value: specification scope
     max: 1
-  feedback:
-    - from:
-        stage: gate-aggregator
-        output: gate_feedback
-      to:
-        stage: build
-        input: gate_feedback
-        required: false
 
 # ─── intake (leaf) ───────────────────────────────────────────────────────────
 intake:

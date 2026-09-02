@@ -4,6 +4,12 @@ kind: agent
 # ADR-040 §5: convergence marker. `advisory` = NEVER blocks convergence; must
 # NOT appear on a must-pass / exit_when path.
 convergence: advisory
+# #1986: this stage AGGREGATES the advisory stages in its flow — the advisory lenses it already merges into one merge-readiness report.
+# The engine therefore ships only this aggregate downstream and
+# suppresses those members' own summaries, so a prompt never carries
+# a member's detail and this stage's rendering of that same detail
+# (the #1979 duplication, arriving from the other side).
+aggregates: advisory
 version: 0.1.0
 description: |
   Collapses N parallel advisory review-lens outputs into ONE advisory
@@ -89,7 +95,11 @@ outputs:
     type: review-report.md@1
     format: markdown
     required: false
-    advisory: true
+    # #1986: this stage suppresses the lens summaries it aggregates, so it MUST
+    # publish one itself — otherwise the roster's findings reach no prompt at
+    # all and the loss is silent. The merged merge-readiness report IS that
+    # summary; it is what the lenses were rendered into.
+    summary: true
 
 state:
   persisted:

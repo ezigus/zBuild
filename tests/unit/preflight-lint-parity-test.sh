@@ -186,21 +186,32 @@ else
     assert_pass "TC-4: the validator does not skip its source switch for optional inputs"
 fi
 
-# ─── TC-5 (ADR-020 #1750): both callers use the new terminal/advisory accessors ─
-# The bidirectional contract (OUTPUT_UNCONSUMED) adds manifest_graph_output_terminal
-# and manifest_graph_output_advisory to manifest-graph.sh. Both the validator
-# (Pass 3) and the lint (tree-wide OUTPUT_UNCONSUMED check) must call them — not
-# inline YAML reads — so a future accessor refactor breaks HERE, not silently.
+# ─── TC-5 (#1980): neither caller reads the retired terminal/advisory fields ───
+# This used to assert BOTH callers went through the accessors rather than doing
+# inline YAML reads, so an accessor refactor broke here instead of silently. The
+# unconsumed check those accessors served is retired (#1980), so the parity
+# claim inverts: neither view may read the dead vocabulary, and — the part that
+# still matters — the two views must not drift apart.
 for _fn in manifest_graph_output_terminal manifest_graph_output_advisory; do
     if grep -q "$_fn" "$_VALIDATOR" 2>/dev/null; then
-        assert_pass "TC-5: validator calls $_fn"
+        assert_fail "TC-5: validator no longer reads $_fn" "retired accessor still called"
     else
-        assert_fail "TC-5: validator calls $_fn" "not found in contract-validator.sh"
+        assert_pass "TC-5: validator no longer reads $_fn"
     fi
     if grep -q "$_fn" "$_LINT" 2>/dev/null; then
-        assert_pass "TC-5: lint calls $_fn"
+        assert_fail "TC-5: lint no longer reads $_fn" "retired accessor still called"
     else
-        assert_fail "TC-5: lint calls $_fn" "not found in lint-contract.sh"
+        assert_pass "TC-5: lint no longer reads $_fn"
+    fi
+done
+
+# The surviving parity claim: OUTPUT_UNCONSUMED is gone from BOTH views, not one.
+for _f in "$_VALIDATOR" "$_LINT"; do
+    _n="$(basename "$_f")"
+    if grep -qE 'violations\+=.*OUTPUT_UNCONSUMED|_complain.*OUTPUT_UNCONSUMED' "$_f" 2>/dev/null; then
+        assert_fail "TC-5: $_n no longer raises OUTPUT_UNCONSUMED" "the check survives here"
+    else
+        assert_pass "TC-5: $_n no longer raises OUTPUT_UNCONSUMED"
     fi
 done
 

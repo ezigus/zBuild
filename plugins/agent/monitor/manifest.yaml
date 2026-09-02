@@ -16,8 +16,6 @@ description: |
 
 hooks:
   run: monitor_stage_run
-  cleanup: monitor_stage_cleanup
-
 requires:
   core:
     - redaction
@@ -54,7 +52,14 @@ outputs:
     format: json
     required: true
     primary: true
-    advisory: true
+  # ADR-055 §9: this stage's statement of what it DID. required:true —
+  # written on every terminal verdict, so absence means something went wrong.
+  - id: monitor_summary
+    path: "${artifact_dir}/monitor-summary.md"
+    type: monitor-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 
 state:
   persisted: []

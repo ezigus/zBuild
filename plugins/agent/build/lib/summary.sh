@@ -2,6 +2,16 @@
 # plugins/agent/build/lib/summary.sh — diff stats, numstat, and build-summary.json helpers.
 # Sourced by plugin.sh after shared libs (numstat-format.sh, etc.) are loaded.
 
+
+# #2010: zbuild_engine_tmpdir names where engine code writes temp files.
+# Lazy-sourced, same pattern lifecycle.sh uses for stage-scratch.sh: this
+# file is sourced from several entry points and cannot assume helpers.sh
+# arrived first. helpers.sh sources only compat.sh, so there is no cycle.
+if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
+    # shellcheck source=../../../../scripts/lib/helpers.sh
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../scripts/lib" && pwd)/helpers.sh" 2>/dev/null || true
+fi
+
 [[ -n "${_ZBUILD_BUILD_SUMMARY_LOADED:-}" ]] && return 0
 _ZBUILD_BUILD_SUMMARY_LOADED=1
 
@@ -67,7 +77,7 @@ _build_emit_changed_files_summary() {
         IFS="$IFS_save"
     fi
 
-    local _fmt_tmp; _fmt_tmp="$(mktemp "${TMPDIR:-/tmp}/zb-numstat.XXXXXX")"
+    local _fmt_tmp; _fmt_tmp="$(mktemp "$(zbuild_engine_tmpdir)/zb-numstat.XXXXXX")"
     _build_format_numstat "$numstat_out" allowed_files > "$_fmt_tmp"
     local formatted; formatted="$(cat "$_fmt_tmp")"
     rm -f "$_fmt_tmp"

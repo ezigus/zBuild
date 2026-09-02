@@ -43,7 +43,6 @@ outputs:
     type: intake.md@1
     format: markdown
     required: true
-    advisory: true
   # ADR-020 / #663: side-channel outputs previously documented as
   # "intentional side-effects". intake-baseline-ref.txt is written when
   # the intake-baseline capture succeeds; intake-branch.txt is written
@@ -64,7 +63,14 @@ outputs:
     format: text
     primary: false
     required: false
-    advisory: true
+  # ADR-055 §9: this stage's statement of what it DID. required:true —
+  # written on every terminal verdict, so absence means something went wrong.
+  - id: intake_summary
+    path: "${artifact_dir}/intake-summary.md"
+    type: intake-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 
 provides:
   role: intake

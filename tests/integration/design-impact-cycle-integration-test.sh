@@ -8,14 +8,15 @@
 #
 # Verifies without invoking a real LLM:
 #   T1: _impact_extract_scope_from_design parses ```scope block from design.md
-#   T2: _impact_run_inner writes impact_feedback.md; content round-trips into
-#       design's prior_impact_feedback on iter 2 via _design_read_design_gate_feedback
-#   T3: design iter 2 prompt contains PRIOR DESIGN (self-feedback, #773 lesson)
+#   T2 (ADR-060): _impact_run_inner writes a STRUCTURED impact.json and NO
+#       prose sidecar; the human-readable feedback is RENDERED from missing[]
+#       by render_impact_md.
+#   T3 (#1979): design does NOT re-splice the gate summary on iter 2 — the
+#       bespoke reader and its section were retired; the summaries block is
+#       now the single splice point.
+#   T4: design iter 2 prompt contains PRIOR DESIGN (self-feedback, #773 lesson)
 #       when ZBUILD_CYCLE_FEEDBACK_DIR/design.txt is present
-#   T4: design iter 2 prompt contains PRIOR DESIGN-GATE FEEDBACK when
-#       design_gate_feedback.txt is present
-#   T5: impact verdict=complete suppresses both feedback files (no content to
-#       pipe back; complete exit is cycle convergence)
+#   T5: _design_read_prior_design returns empty outside cycle context
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -78,7 +79,7 @@ esac
 entry_count="$(printf '%s' "$scope_csv" | tr ',' '\n' | grep -c '.' || true)"
 assert_eq "T1: 4 scope entries parsed" "4" "$entry_count"
 
-# ─── T2: _impact_run_inner writes impact_feedback.md + wires into design ──────
+# ─── T2: _impact_run_inner writes a structured impact.json, no sidecar ───────
 T2_STATE="$TEST_TEMP_DIR/t2-state"
 T2_ARTS="$T2_STATE/artifacts"
 mkdir -p "$T2_ARTS"
@@ -110,7 +111,7 @@ printf '# stub\n' > "$FAKE_REPO_ROOT/tests/integration/design-pipeline-test.sh"
 
 # Stub route_to_model to return a synthetic incomplete response.
 route_to_model() {
-    printf '%s' '{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"s1","files_to_add":["tests/integration/design-pipeline-test.sh"],"reason":"test pins cycle count"}],"impact_feedback_md":"## Gap report\\n- Missing: tests/integration/design-pipeline-test.sh (pins cycle count)"}'
+    printf '%s' '{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"s1","files_to_add":["tests/integration/design-pipeline-test.sh"],"reason":"test pins cycle count","evidence":"Gap report: the test asserts the cycle count directly"}]}'
 }
 # Stub apply_scope_redaction to just copy (redaction tested separately).
 apply_scope_redaction() {
@@ -135,41 +136,65 @@ set -e
 assert_eq "T2: _impact_run_inner rc=0" "0" "$t2_rc"
 
 assert_file_exists "T2: impact.json written" "$T2_ARTS/impact.json"
-assert_file_exists "T2: impact_feedback.md written" "$T2_ARTS/impact_feedback.md"
+# ADR-060: no prose sidecar is produced any more.
+if [[ -e "$T2_ARTS/impact_feedback.md" ]]; then
+    assert_fail "T2: no impact_feedback.md sidecar (ADR-060)" "sidecar still written"
+else
+    assert_pass "T2: no impact_feedback.md sidecar (ADR-060)"
+fi
 
 t2_verdict="$(jq -r '.verdict' "$T2_ARTS/impact.json" 2>/dev/null)"
 assert_eq "T2: impact.json verdict=incomplete" "incomplete" "$t2_verdict"
 
-# The feedback content must be in impact_feedback.md.
-t2_fb_content="$(cat "$T2_ARTS/impact_feedback.md" 2>/dev/null)"
+# ADR-060: the feedback text is RENDERED from the structured envelope by the
+# engine, not authored by the model. render_impact_md is the one renderer.
+# shellcheck source=../../scripts/lib/artifact-render.sh
+source "$REPO_ROOT/scripts/lib/artifact-render.sh"
+t2_fb_content="$(render_impact_md "$(cat "$T2_ARTS/impact.json")")"
 case "$t2_fb_content" in
     *"Gap report"*)
-        assert_pass "T2: impact_feedback.md contains gap report text" ;;
+        assert_pass "T2: rendered feedback carries the gap detail from missing[]" ;;
     *)
-        assert_fail "T2: impact_feedback.md missing expected gap content" "got: $t2_fb_content" ;;
+        assert_fail "T2: rendered feedback missing expected gap content" "got: $t2_fb_content" ;;
+esac
+case "$t2_fb_content" in
+    *"design-pipeline-test.sh"*)
+        assert_pass "T2: rendered feedback names the missing file" ;;
+    *)
+        assert_fail "T2: rendered feedback names the missing file" "got: $t2_fb_content" ;;
 esac
 
-# Simulate cycle orchestrator wiring impact_feedback.md → design's prior_impact_feedback.
+# Simulate the cycle orchestrator handing that rendered text to design.
 T2_FB_DIR="$TEST_TEMP_DIR/t2-feedback-iter2"
 mkdir -p "$T2_FB_DIR"
-cp "$T2_ARTS/impact_feedback.md" "$T2_FB_DIR/design_gate_feedback.txt"
+printf '%s\n' "$t2_fb_content" > "$T2_FB_DIR/design_gate_feedback.txt"
 
-# Verify _design_read_design_gate_feedback returns the content.
 # shellcheck source=../../plugins/agent/design/plugin.sh
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 
-export ZBUILD_CYCLE_ITER=2
-export ZBUILD_CYCLE_FEEDBACK_DIR="$T2_FB_DIR"
-fb_body="$(_design_read_design_gate_feedback 2>/dev/null || true)"
-case "$fb_body" in
-    *"Gap report"*)
-        assert_pass "T2: _design_read_design_gate_feedback returns gap report text" ;;
-    *)
-        assert_fail "T2: _design_read_design_gate_feedback missing gap content" "got: $fb_body" ;;
-esac
-unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
+# #1979: design no longer reads this file itself — the engine collects
+# design-gate's feedback as a summary (#1976) and splices it once. What design
+# still decides is HOW to word the refinement instruction, from the gate's
+# recorded verdict. That is the behaviour asserted here now.
+T2_STATE="$TEST_TEMP_DIR/t2-state"; mkdir -p "$T2_STATE/artifacts"
+printf '{"schema_version":1,"stage_verdicts":{"design-gate":"fail"}}\n' \
+    > "$T2_STATE/pipeline-state.json"
+if _design_gate_failed "$T2_STATE/artifacts"; then
+    assert_pass "T2: a failed design-gate selects the gap-filling instruction"
+else
+    assert_fail "T2: a failed design-gate selects the gap-filling instruction" \
+        "verdict not detected from run state"
+fi
+printf '{"schema_version":1,"stage_verdicts":{"design-gate":"pass"}}\n' \
+    > "$T2_STATE/pipeline-state.json"
+if _design_gate_failed "$T2_STATE/artifacts"; then
+    assert_fail "T2: a passing design-gate selects the plain refine instruction" \
+        "a passing gate was treated as failed"
+else
+    assert_pass "T2: a passing design-gate selects the plain refine instruction"
+fi
 
-# ─── T3: design iter 2 prompt contains PRIOR DESIGN-GATE FEEDBACK ──────────────────
+# ─── T3 (#1979): design does not re-splice the gate summary on iter 2 ───────
 T3_FB_DIR="$TEST_TEMP_DIR/t3-feedback-iter2"
 mkdir -p "$T3_FB_DIR"
 printf '## Gap report\n- Missing: tests/integration/design-pipeline-test.sh\n' \
@@ -216,13 +241,15 @@ unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
 
 if [[ -f "$T3_PROMPT_CAPTURE" ]]; then
     t3_prompt="$(cat "$T3_PROMPT_CAPTURE")"
-    case "$t3_prompt" in
-        *"PRIOR DESIGN-GATE FEEDBACK"*)
-            assert_pass "T3: design prompt includes PRIOR DESIGN-GATE FEEDBACK on iter 2" ;;
-        *)
-            assert_fail "T3: design prompt missing PRIOR DESIGN-GATE FEEDBACK" \
-                "prompt snippet: $(head -30 "$T3_PROMPT_CAPTURE")" ;;
-    esac
+    # #1979: design must NOT splice this itself — the engine's STAGE SUMMARIES
+    # block is the single source. That is #1825's one-splice invariant with the
+    # splice moved, not duplicated.
+    if grep -qF 'PRIOR DESIGN-GATE FEEDBACK' "$T3_PROMPT_CAPTURE"; then
+        assert_fail "T3: design does not re-splice the gate summary on iter 2" \
+            "the retired section is still emitted"
+    else
+        assert_pass "T3: design does not re-splice the gate summary on iter 2"
+    fi
 else
     assert_fail "T3: prompt capture file not written (route_to_model_loop stub issue)" ""
 fi
@@ -283,12 +310,28 @@ else
     assert_fail "T4: prompt capture file not written" ""
 fi
 
-# ─── T5: outside cycle context → _design_read helpers return empty ────────────
+# ─── T5: outside cycle context → the _design_read helper returns empty ───────
+#
+# #1989: this block used to assert the same property of TWO helpers. #1979
+# deleted `_design_read_design_gate_feedback`, and because the call was written
+# `$(fn 2>/dev/null || true)`, `command not found` went to the suppressed
+# stderr, `|| true` cleared the rc, and an assertion that the result IS empty
+# succeeded. The test reported green while exercising nothing — and nobody
+# edited it; a deletion three files away disarmed it. That half is removed;
+# `design-summary-switch-test.sh` SPEC-4 already asserts the reader is gone.
+#
+# The surviving helper is guarded against the identical decay: assert it is
+# DEFINED before asserting anything about what it returns. Without this, the
+# next deletion turns the assertion below into another silent pass.
 unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR 2>/dev/null || true
-t5_fb_body="$(_design_read_design_gate_feedback 2>/dev/null || true)"
-assert_eq "T5: _design_read_design_gate_feedback empty outside cycle" "" "$t5_fb_body"
-t5_design_body="$(_design_read_prior_design 2>/dev/null || true)"
-assert_eq "T5: _design_read_prior_design empty outside cycle" "" "$t5_design_body"
+if declare -F _design_read_prior_design >/dev/null 2>&1; then
+    assert_pass "T5: _design_read_prior_design is defined (guards against silent decay)"
+    t5_design_body="$(_design_read_prior_design 2>/dev/null || true)"
+    assert_eq "T5: _design_read_prior_design empty outside cycle" "" "$t5_design_body"
+else
+    assert_fail "T5: _design_read_prior_design is defined (guards against silent decay)" \
+        "the helper is gone — this assertion would otherwise pass vacuously"
+fi
 
 cleanup_test_env
 print_test_results

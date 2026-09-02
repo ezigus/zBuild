@@ -74,6 +74,68 @@ _zbuild_pg_grace() {
     [[ "$_g" =~ ^[0-9]+$ && "$_g" -gt 0 ]] && printf '%s' "$_g" || printf '1'
 }
 
+# zbuild_pg_record_pgid <file> — the pgid out of a `.pgid` record.
+#
+# ONE reader, because there are two formats on disk and three places that read
+# them (#2018). The engine's dispatch record is `<pgid>\t<leader start time>`;
+# tool/test's own `test-stage.pgid` is a bare number; and a record written before
+# #2018 is bare too. A reader that only understands one of those does not error —
+# it fails the numeric guard and `continue`s, so the caller kills NOTHING and
+# reports success. That is how a format change here silently disables ADR-062 §2
+# reclamation, which is the path that actually runs on every normal exit.
+#
+# Prints nothing and returns 1 when there is no usable pgid, so a caller can
+# still distinguish "no record" from "record says 1234".
+zbuild_pg_record_pgid() {
+    local _f="${1:-}" _pgid=""
+    [[ -n "$_f" && -f "$_f" ]] || return 1
+    IFS=$'\t' read -r _pgid _ < "$_f" 2>/dev/null || true
+    [[ "$_pgid" =~ ^[0-9]+$ ]] || return 1
+    printf '%s' "$_pgid"
+}
+
+# zbuild_pg_register <pgid> — record a process group the caller just created.
+#
+# ADR-062 §1 had the ENGINE record this at dispatch. It could not, and the reason
+# is structural: a stage is a bash function call, not a subprocess, so at the
+# dispatch seam no group exists yet. That code fell back to `$$`'s group — the
+# engine's own — which teardown then skipped, correctly, because signalling your
+# own group takes the runner down with it. Every record was unkillable, every
+# record was skipped, and §2's kill loop never freed anything (#2024).
+#
+# So the direction reverses: whoever CREATES a group registers it. Two sites do,
+# and only two — `tool/test`'s `set -m` suite and the router's `setsid` spawn.
+#
+# Refusing to register our own group is the invariant, not a safety check. A
+# record naming the registrar's own group is strictly worse than no record: it
+# cannot be acted on, and it makes the mechanism look live while it does nothing
+# — which is exactly how the original defect survived #2001, #2018 and an ADR.
+#
+# Fail-open throughout: a spawn is never refused because bookkeeping was
+# unavailable. Silence here costs a possible leak; failing here costs the run.
+zbuild_pg_register() {
+    local _pgid="${1:-}"
+    [[ -n "$_pgid" && "$_pgid" =~ ^[0-9]+$ ]] || return 0
+    local _self
+    _self="$(ps -o pgid= -p "$$" 2>/dev/null | tr -d ' ' || true)"
+    [[ -n "$_self" && "$_self" == "$_pgid" ]] && return 0
+    local _sd="${ZBUILD_STATE_DIR:-}"
+    [[ -n "$_sd" && -d "$_sd" ]] || return 0
+    local _stage="${2:-${ZBUILD_CURRENT_STAGE:-}}"
+    [[ -n "$_stage" ]] || return 0
+    # One path component, sanitised the same way stage scratch keys are, so no
+    # stage name can climb out of runtime/.
+    _stage="${_stage//[^A-Za-z0-9_-]/_}"
+    local _dir="${_sd}/runtime/stages"
+    mkdir -p "$_dir" 2>/dev/null || return 0
+    # #2018 format: the leader's start time proves the pgid still names what
+    # recorded it, so a later sweep cannot signal a recycled pid.
+    local _start
+    _start="$(ps -o lstart= -p "$_pgid" 2>/dev/null | tr -s ' ' | sed 's/^ *//;s/ *$//' || true)"
+    printf '%s\t%s' "$_pgid" "$_start" > "${_dir}/${_stage}.pgid" 2>/dev/null || true
+    return 0
+}
+
 # TERM then KILL a whole process group. `-PGID` is the negative-pid convention.
 zbuild_pg_kill() {
     local _pgid="${1:-}"

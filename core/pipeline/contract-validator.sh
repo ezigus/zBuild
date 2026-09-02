@@ -359,6 +359,33 @@ _contract_validate_pipeline() {
                 "$stage" >&2
         fi
 
+        # ADR-055 §9 (#2000): every stage-bound plugin declares EXACTLY ONE
+        # summary output. A stage that publishes nothing is indistinguishable
+        # from one that had nothing to say, and the pipeline cannot tell those
+        # apart — so the second silently absorbs the first.
+        #
+        # Checked HERE and not only in the tree lint because this walks the
+        # RESOLVED flow against the configured plugins_root: a stage may be
+        # authored outside this repository, which a lint over plugins/ cannot
+        # see. It would report a clean tree while a third-party stage published
+        # nothing.
+        #
+        # Refused, not warned: the failure mode is silence, and a warning about
+        # silence is easy to not hear.
+        local _sum_n=0 _sum_rec
+        while IFS= read -r _sum_rec; do
+            [[ -n "$_sum_rec" ]] || continue
+            [[ "$(manifest_graph_output_summary "$manifest" "${_sum_rec%%|*}")" == "true" ]] \
+                && _sum_n=$(( _sum_n + 1 ))
+        done < <(manifest_graph_get_outputs "$manifest")
+        if [[ "$_sum_n" -eq 0 ]]; then
+            violations+=("$stage|SUMMARY_MISSING|-|stage declares no summary output — every stage-bound plugin must state what it did (ADR-055 §9)")
+            fail_count=$(( fail_count + 1 ))
+        elif [[ "$_sum_n" -gt 1 ]]; then
+            violations+=("$stage|SUMMARY_DUP|-|stage declares $_sum_n summary outputs — exactly one (ADR-055 §9)")
+            fail_count=$(( fail_count + 1 ))
+        fi
+
         # Collect inputs and sort by id for stable error ordering (decision: stable ordering)
         local -a input_lines=()
         local rec
@@ -549,32 +576,11 @@ _contract_validate_pipeline() {
         done
     fi
 
-    # ── Pass 3: OUTPUT_UNCONSUMED (ADR-020 bidirectional contract) ─────────────
-    # Every declared output in the resolved flow must be named by at least one
-    # consumer's input. Outputs marked terminal: true (pipeline terminus — no
-    # downstream consumer is expected) or advisory: true (rendered for humans
-    # outside the stage graph) are exempt. Stages with convergence: advisory are
-    # also implicitly exempt — their outputs are rendered for human review, not
-    # consumed as pipeline stage inputs. Iterate sorted for stable ordering.
-    local _unc_id _unc_stage _unc_manifest _unc_term _unc_adv _unc_conv
-    while IFS= read -r _unc_id; do
-        [[ -z "$_unc_id" ]] && continue
-        [[ -n "${_CV_INPUT_NAMES_SEEN[$_unc_id]:-}" ]] && continue
-        # Take the first (alphabetically earliest) producer for stable reporting.
-        _unc_stage="${_CV_OUTPUT_PRODUCERS[$_unc_id]%%' '*}"
-        _unc_manifest="${_CV_STAGE_MANIFEST[$_unc_stage]:-}"
-        [[ -z "$_unc_manifest" ]] && continue
-        # Advisory-convergence stages (review lenses, aggregators) are implicitly
-        # exempt — their outputs are rendered for humans outside the stage graph.
-        _unc_conv="$(_cv_stage_convergence "$plugins_root" "$_unc_stage")"
-        [[ "$_unc_conv" == "advisory" ]] && continue
-        _unc_term="$(manifest_graph_output_terminal "$_unc_manifest" "$_unc_id" 2>/dev/null || true)"
-        _unc_adv="$(manifest_graph_output_advisory "$_unc_manifest" "$_unc_id" 2>/dev/null || true)"
-        if [[ "$_unc_term" != "true" && "$_unc_adv" != "true" ]]; then
-            violations+=("$_unc_stage|OUTPUT_UNCONSUMED|$_unc_id|output '$_unc_id' is declared by stage '$_unc_stage' but named by no consumer in the resolved flow — add a downstream consumer or mark terminal: true / advisory: true (ADR-020)")
-            fail_count=$((fail_count + 1))
-        fi
-    done < <(printf '%s\n' "${!_CV_OUTPUT_PRODUCERS[@]}" | LC_ALL=C sort)
+    # #1980: Pass 3 (OUTPUT_UNCONSUMED) is retired. It asked a PRODUCER whether
+    # anyone consumes its output — a property of the TEMPLATE, so the same plugin
+    # in a different flow needed a different answer. The mirror direction (a
+    # required input naming no producer) is a real error and is still enforced
+    # above.
 
     # ── ADR-040 §3/§5/§7 (Phase 1): typed-aggregator preflight ─────────────
     # Make "aggregator" an explicit, PREFLIGHT-ENFORCED concept. The `convergence:`
@@ -686,7 +692,7 @@ _contract_validate_pipeline() {
                 MISORDERED)
                     printf '  %s: expects %s\n    %s\n\n' "$sstage" "'$sid'" "$smsg"
                     ;;
-                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|SELF_REF|MALFORMED|BAD_VAR|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|TYPE_UNVERSIONED|CYCLE_FB_UNDECLARED|OUTPUT_DUP|OUTPUT_UNCONSUMED|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
+                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|SELF_REF|MALFORMED|BAD_VAR|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|TYPE_UNVERSIONED|CYCLE_FB_UNDECLARED|OUTPUT_DUP|SUMMARY_MISSING|SUMMARY_DUP|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
                     printf '  %s: %s (id=%s)\n    %s\n\n' "$sstage" "$scode" "$sid" "$smsg"
                     ;;
                 *)

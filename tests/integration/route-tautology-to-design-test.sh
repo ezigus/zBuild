@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # [S1/S2] Integration (#1219, ADR-045/ADR-046): the build_test_cycle route_back
 # edge rewinds to the EARLIER design_verify_cycle when the gate-aggregator surfaces
-# a design-rooted failure (verdict==route_design). NOTE (#1583): tautology is no
+# a design-rooted failure (verdict==specification). NOTE (#1583): tautology is no
 # longer design-rooted (it is build-fixable), so this exercises the RETAINED, now
 # dormant route_back PLUMBING generically — the cycle is STUBBED to emit route_back
 # directly; no real tautology drives it. This drives the REAL runner over the
@@ -29,6 +29,14 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "route_back plumbing → design_verify_cycle (retained/dormant; #1219, #1583)"
 setup_test_env "route-tautology-to-design"
 
+# #1921 follow-up: the runner resolves repo_root from CWD, so an in-process
+# `main` snapshots into whatever repository the test stands in. These files used
+# REAL issue numbers from the working checkout, adding commits to real issues'
+# state branches (measured: 3 per run onto issue-698). Reserved id + throwaway
+# repo; the cd below is what actually contains it.
+_ZB_ISSUE="$(zb_test_issue)"
+_ZB_REPO="$(zb_test_repo route-tautology)"
+
 # _drive <mode> <events_dir> <state_file>  (mode: once|always)
 _drive() {
     local mode="$1" evd="$2" stf="$3" calls="$4"
@@ -44,6 +52,7 @@ _drive() {
         export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
         export _RTD_MODE="$mode" _RTD_CALLS="$calls"
         # shellcheck disable=SC1091
+        cd "$_ZB_REPO" || exit 1
         source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
 
         cycle_orchestrator_run() {
@@ -76,7 +85,7 @@ _drive() {
         plugin_hook_call() { return 0; }
         parallel_group_run() { return 0; }
 
-        main --issue 999 --template simple >/dev/null 2>&1
+        main --issue "$_ZB_ISSUE" --template simple >/dev/null 2>&1
     )
 }
 

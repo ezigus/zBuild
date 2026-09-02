@@ -76,7 +76,23 @@ _zbuild_build_permissions_settings() {
 
     local _settings_file="${_scratch_dir}/claude-settings.json"
     local _json
-    _json="$(jq -cn '{permissions: {deny: []}}')" \
+    # #2022: the deny list's first occupant. #1919 P5 measured that
+    # permissions.deny is honoured only in Edit(...) form, and the Ordering note
+    # reserved this list for evidence-based rules rather than guesses. The
+    # acceptance TESTFILES belong to the stage that AUTHORS them, so every other
+    # spawn is denied Edit on them — otherwise build can rewrite an assertion to
+    # agree with its own implementation, which is the defect #2022 exists for.
+    #
+    # WHICH paths is the engine's decision and arrives via the environment; this
+    # renders them. Same discipline as the ADR-059 note on the grants below: a
+    # permission decision spelled out in two places drifts in one of them.
+    local _deny_json='[]'
+    if [[ -n "${ZBUILD_PERMISSION_DENY_EDIT:-}" ]]; then
+        _deny_json="$(jq -R 'select(length > 0) | "Edit(" + . + ")"' \
+                        <<< "${ZBUILD_PERMISSION_DENY_EDIT}" | jq -sc .)" \
+            || { error "router: permissions: jq failed to build deny rules"; return 1; }
+    fi
+    _json="$(jq -cn --argjson d "$_deny_json" '{permissions: {deny: $d}}')" \
         || { error "router: permissions: jq failed to build settings JSON"; return 1; }
 
     printf '%s\n' "$_json" > "$_settings_file" \

@@ -75,7 +75,7 @@ assert_eq "[SPEC-6] plugin.init/finalize complete events absent from event schem
 # ─── SPEC-7: golden file has exactly two lifecycle entries (run and cleanup) ──
 # CHANGE: before ADR-056 the golden had 4 entries (init, run, finalize, cleanup);
 # after removal it must have exactly 2.
-_golden_count="$(grep -c . "$REPO_ROOT/tests/golden/plugin-lifecycle-event-types.golden" 2>/dev/null || echo 0)"
+_golden_count="$(grep -c . "$REPO_ROOT/tests/golden/plugin-lifecycle-event-types.golden" 2>/dev/null)" || _golden_count=0
 assert_eq "[SPEC-7] plugin lifecycle golden has exactly 2 event types (run + cleanup)" "2" "$_golden_count"
 
 # ─── G5: router success event sequence golden ────────────────────────────────

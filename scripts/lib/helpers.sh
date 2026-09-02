@@ -74,8 +74,24 @@ atomic_replace() {
 #
 # Order: the per-stage scratch dir, then the job's runtime/ area (§2b — engine
 # bookkeeping, excluded from the CI upload and the parity walk, so a stray temp
-# cannot drift a golden), then the system temp as a last resort for ad-hoc
+# cannot drift a golden), then a directory under the data root for ad-hoc
 # invocations that have neither.
+#
+# Every returned path EXISTS — callers mktemp into it, and mktemp fails on a
+# missing directory, so a name-only helper would turn every call site into a new
+# failure mode.
+#
+# `TMPDIR` keeps the one job it cannot delegate: it is the only channel that
+# reaches a spawned model, because env-scrub wildcard-unsets every ZBUILD_*
+# before the spawn (#1873). Engine code has no such constraint — it can read
+# ZBUILD_STAGE_SCRATCH directly, so it should. That is why a `${TMPDIR}` line in
+# engine code is correct INSIDE a dispatch and a leak OUTSIDE one, with nothing
+# in the line to tell the two apart.
+#
+# This is the ONLY answer to "where does engine code write a scratch file"
+# (#2017). A second one existed for a week and the two disagreed about both the
+# writability check and the last resort, which is how a write reached ${TMPDIR}
+# at all.
 zbuild_engine_tmpdir() {
     if [[ -n "${ZBUILD_STAGE_SCRATCH:-}" && -d "${ZBUILD_STAGE_SCRATCH}" && -w "${ZBUILD_STAGE_SCRATCH}" ]]; then
         printf '%s' "$ZBUILD_STAGE_SCRATCH"; return 0
@@ -84,6 +100,16 @@ zbuild_engine_tmpdir() {
         if mkdir -p "${ZBUILD_STATE_DIR}/runtime" 2>/dev/null; then
             printf '%s' "${ZBUILD_STATE_DIR}/runtime"; return 0
         fi
+    fi
+    # #2017: the last resort is the DATA ROOT, not ${TMPDIR}. ADR-059 §1 makes
+    # the path the keying — a reclaimer deletes a `runs/<id>/` or an
+    # `issues/<N>/` and the scope follows from where it sits — so a ${TMPDIR}
+    # answer is unreclaimable by construction. ${TMPDIR} survives only if the
+    # data root cannot be created, because failing a run over a temp file is
+    # worse than a stray directory.
+    local _dr="${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}/tmp"
+    if mkdir -p "$_dr" 2>/dev/null; then
+        printf '%s' "$_dr"; return 0
     fi
     printf '%s' "${TMPDIR:-/tmp}"
 }
@@ -484,7 +510,7 @@ run_captured_command() {
     # Use explicit template form (router precedent — `mktemp -t` resolution
     # varies across BSD/GNU; this idiom matches `core/router/route.sh`).
     local capfile
-    capfile="$(mktemp "${TMPDIR:-/tmp}/zbuild-capcmd.XXXXXX")"
+    capfile="$(mktemp "$(zbuild_engine_tmpdir)/zbuild-capcmd.XXXXXX")"
     # EPOCHREALTIME is a Bash 5+ builtin: "<sec>.<usec>". Strip the dot
     # to convert to an all-microsecond integer for arithmetic.
     local _t0_us="${EPOCHREALTIME/./}"

@@ -394,6 +394,28 @@ _route_redact_prompt() {
         fi
     fi
 
+    # #1976: what each completed stage reported, collected from the outputs they
+    # marked `summary: true`. Unlike the block above this needs no declaration
+    # from the consumer — it is ambient context, not a resolved input. Injected
+    # at the same point and for the same reason: before apply_scope_redaction,
+    # so it rides the ADR-004 chokepoint by construction. Marker-guarded, and
+    # bounded per ADR-029 by the renderer.
+    if [[ -n "${ZBUILD_STATE_DIR:-}" && -s "${ZBUILD_STATE_DIR}/pipeline-state.json" ]]; then
+        if ! declare -F stage_summaries_prompt_block >/dev/null 2>&1; then
+            # shellcheck source=../pipeline/input-resolve.sh
+            source "$_ZBUILD_ROOT/core/pipeline/input-resolve.sh" 2>/dev/null || true
+        fi
+        if declare -F stage_summaries_prompt_block >/dev/null 2>&1 \
+            && ! grep -qF "$_ZB_STAGE_SUMMARIES_MARKER" "$input" 2>/dev/null; then
+            local _ss_block=""
+            _ss_block="$(stage_summaries_prompt_block \
+                "${ZBUILD_STATE_DIR}/pipeline-state.json" 2>/dev/null || true)"
+            if [[ -n "$_ss_block" ]]; then
+                printf '\n\n%s\n' "$_ss_block" >> "$input" 2>/dev/null || true
+            fi
+        fi
+    fi
+
     if [[ -n "$manifest" ]] && declare -F apply_scope_redaction >/dev/null 2>&1; then
         # A configured manifest is authoritative: apply_scope_redaction handles a
         # missing/empty file itself by emitting redaction.refused (rc1, fail-closed)
@@ -1649,6 +1671,12 @@ ${_diff_pointer}"
         # provably distinct from the runner's own, so the handler falls back to
         # the per-PID kill (Wave 8 #612) rather than `kill -- -PGID`-ing itself.
         _ROUTE_LOOP_CHILD_PGID="$(zbuild_pg_resolve "$_ROUTE_LOOP_CHILD_PID")"
+        # #2024: register it, so the group survives this shell. The in-memory
+        # variable above is enough for the signal handler, which runs while the
+        # runner is alive — but a SIGKILLed runner leaves nothing behind, and a
+        # model spawn is the longest-lived child a stage has. On disk it is
+        # reachable by `zbuild cleanup --pgroups` afterwards (#2018).
+        zbuild_pg_register "$_ROUTE_LOOP_CHILD_PGID" 2>/dev/null || true
         wait "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null || rc=$?
         _ROUTE_LOOP_CHILD_PID=""
         _ROUTE_LOOP_CHILD_PGID=""
@@ -1699,15 +1727,32 @@ ${_diff_pointer}"
         # loop cleanly). Otherwise emit router.timeout.retry, escalate the LOCAL
         # timeout, and re-spawn within THIS iteration (timeout_recur unchanged).
         if [[ $rc -eq 124 && $_iter_attempt -lt $_iter_retries ]]; then
-            local _rr_done="false"
+            local _rr_done="false" _rr_limited="false"
             if [[ -s "$json_file" ]]; then
                 local _rr_res; _rr_res="$(jq -r '.result // empty' "$json_file" 2>/dev/null || true)"
                 if printf '%s\n' "$_rr_res" | \
                    grep -qE "^[[:space:]]*${done_sentinel}[[:space:]]*\$" 2>/dev/null; then
                     _rr_done="true"
                 fi
+                # #1237 covered the sync path; this is the loop path, which build
+                # and design use. A rate/session limit is reported in well under a
+                # second and then the CLI hangs, so gtimeout returns 124 with the
+                # 429 envelope ALREADY on disk. Retrying re-asks a question whose
+                # answer is known and cannot change until the limit resets — run
+                # 33474879520 spent 10 x 900s doing exactly that and hit GitHub's
+                # 6h ceiling with nothing to show. Read the envelope we already
+                # have and stop.
+                if _router_is_rate_limit "$(cat "$json_file" 2>/dev/null || true)"; then
+                    _rr_limited="true"
+                fi
             fi
-            if [[ "$_rr_done" != "true" ]]; then
+            if [[ "$_rr_limited" == "true" ]]; then
+                warn "router: ${_iter_stage_id:-stage} rate-limited — not retrying (the limit will not clear inside this run)"
+                eb_emit_event "router.timeout.rate_limited" \
+                    "tier=$tier" "model_id=$_ROUTE_MODEL_ID" \
+                    "stage=${_iter_stage_id:-unknown}" "path=loop" \
+                    "iteration=$iter" "attempt=$_iter_attempt" 2>/dev/null || true
+            elif [[ "$_rr_done" != "true" ]]; then
                 _iter_attempt=$(( _iter_attempt + 1 ))
                 local _rr_next; _rr_next="$(_route_escalate_timeout "$secs" "$_iter_attempt")"
                 # #1241: surface the loop-path retry on the operator terminal too

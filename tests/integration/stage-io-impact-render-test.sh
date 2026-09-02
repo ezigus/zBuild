@@ -2,7 +2,7 @@
 # Integration (#768): impact plugin produces stage-io captures tagged with
 # metadata.artifact=impact, AND the rendered terminal output shows the
 # markdown header (Impact: verdict=..., missing=...) followed by the
-# impact_feedback_md field — not the raw JSON envelope.
+# structured missing[] entries — not the raw JSON envelope (ADR-060).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,13 +20,15 @@ setup_test_env "stage-io-impact-render"
 source "$REPO_ROOT/scripts/lib/artifact-render.sh"
 
 # Synthesize the impact JSON envelope (matches plugins/agent/impact contract).
-impact_json='{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"step-2","files_to_add":["tests/foo.sh"],"reason":"references modified symbol"}],"impact_feedback_md":"## Test Coverage Gaps\n- tests/foo.sh references `foo()` defined in step-2 files"}'
+impact_json='{"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"step-2","files_to_add":["tests/foo.sh"],"reason":"references modified symbol","evidence":"tests/foo.sh calls foo() defined in step-2 files"}]}'
 
 # T1: render_artifact with id=impact dispatches to render_impact_md
 out="$(render_artifact "impact" "$impact_json")"
 assert_contains "T1: render_artifact id=impact dispatches to impact renderer" "$out" "Impact: verdict=incomplete"
 assert_contains "T1: renderer shows missing count" "$out" "missing=1"
-assert_contains "T1: renderer renders impact_feedback_md as markdown" "$out" "## Test Coverage Gaps"
+assert_contains "T1: renderer builds the narrative from missing[] (ADR-060)" "$out" "step-2"
+assert_contains "T1: renderer renders the reason" "$out" "references modified symbol"
+assert_contains "T1: renderer renders the evidence" "$out" "calls foo() defined in step-2 files"
 assert_contains "T1: renderer preserves the bullet body" "$out" "tests/foo.sh"
 
 # T2: render_artifact with id=impact does NOT dump raw JSON (the bug we fixed)
@@ -36,7 +38,7 @@ case "$out" in
 esac
 
 # T3: complete + empty feedback → header only (no spurious markdown body)
-complete_json='{"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":""}'
+complete_json='{"schema_version":1,"verdict":"complete","missing":[]}'
 out="$(render_artifact "impact" "$complete_json")"
 assert_contains "T3: complete verdict header" "$out" "Impact: verdict=complete"
 # Should not have any "## " heading when feedback is empty

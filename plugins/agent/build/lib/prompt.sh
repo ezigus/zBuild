@@ -99,7 +99,7 @@ BUILD_PROMPT
 # _build_compose_prompt_body <output_file> <task_header> <plan_payload>
 #   <instructions> <design_decisions> <acceptance_testfiles>
 #   <acceptance_spec_ids> <review_feedback_body> <acceptance_gap_ids>
-#   <feedback_body> <iter_n> <gate_feedback_body>
+#   <feedback_body> <iter_n>
 # Assembles the full framed prompt and writes it to <output_file>.
 _build_compose_prompt_body() {
     local _prompt_input_file="$1"
@@ -113,8 +113,8 @@ _build_compose_prompt_body() {
     local _acceptance_gap_ids="$9"
     local _feedback_body="${10}"
     local _iter_n="${11}"
-    local _gate_feedback_body="${12}"
-    local _acceptance_tautology_ids="${13}"
+    # ${12} was _acceptance_tautology_ids — retired in #2022 with the
+    # re-author mandate it fed. Build no longer authors assertions.
 
     {
         printf '%s\n' "$_task_header"
@@ -127,7 +127,8 @@ _build_compose_prompt_body() {
             printf 'Where a design decision above conflicts with the plan, follow the design decision.\n'
         fi
         if [[ -n "$_acceptance_testfiles" ]]; then
-            printf '\n## ACCEPTANCE TESTS (you MUST make these pass — you MUST NOT weaken, modify assertions of, or delete them, EXCEPT gate-flagged TAUTOLOGICAL assertions listed in the TAUTOLOGICAL ASSERTIONS section below, if any, which you MUST re-author)\n'
+            printf '\n## ACCEPTANCE TESTS (you MUST make these pass)\n'
+            printf 'You do NOT author or modify acceptance assertions. They were written from the design contract by a separate stage, before your implementation existed, and they are the contract you implement against. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion, and you must not edit the testfiles listed below; the spawn denies it and a mechanical guard checks it. If you believe an assertion genuinely does not test its SPEC, say so in your output and leave it alone: correcting it is the author stage\047s job, not yours (#2022, ADR-036).\n'
             printf 'Each test MUST contain an assert call whose label includes the [SPEC-n] tag for the SPEC it verifies (e.g. assert_eq "[SPEC-1] ..." exp act). The acceptance-gate (ADR-036) requires every SPEC-n to have a [SPEC-n]-tagged assertion. A CHANGE-behavior SPEC-n MUST have a tagged assertion that FAILS at the merge-base baseline and passes here (a tautological change-SPEC that passes without your implementation is rejected); a GUARD/invariant SPEC-n is tagged but NOT contorted to fail at baseline. See the per-id list below.\n'
             local _at_tf
             while IFS= read -r _at_tf; do
@@ -135,11 +136,35 @@ _build_compose_prompt_body() {
             done <<< "$_acceptance_testfiles"
         fi
         if [[ -n "$_acceptance_spec_ids" ]]; then
+            printf '\nWhat each SPEC requires:\n'
+            local _rq_sid _rq_text _rq_line
+            while IFS= read -r _rq_line; do
+                [[ -n "$_rq_line" ]] || continue
+                [[ "$_rq_line" == *$'\t'* ]] || continue
+                _rq_sid="${_rq_line%%$'\t'*}"; _rq_text="${_rq_line#*$'\t'}"
+                [[ -n "$_rq_text" ]] && printf -- '- [%s] %s\n' "$_rq_sid" "$_rq_text"
+            done <<< "$_acceptance_spec_ids"
+        fi
+        if [[ -n "$_acceptance_spec_ids" ]]; then
             printf '\n### SPEC IDS YOU MUST COVER (acceptance gate, ADR-036)\n'
             printf 'Every SPEC id below needs at least one assertion whose label carries its [SPEC-n] tag; self-verify the FULL set is tagged before emitting LOOP_COMPLETE. A CHANGE-behavior SPEC (new behavior this change introduces) MUST have a [SPEC-n] assertion that FAILS at the merge-base baseline. A GUARD/invariant SPEC (behavior that must stay unchanged) is tagged but MUST NOT be contorted to fail at baseline.\n'
-            local _sid
-            while IFS= read -r _sid; do
-                [[ -n "$_sid" ]] && printf -- '- [%s] needs a `[%s]`-tagged assertion (change → fails at baseline; guard → tagged, not contorted)\n' "$_sid" "$_sid"
+            # #1978: each line is "SPEC-n<TAB>requirement". Naming the id alone
+            # made the demand a SHAPE requirement — "an assertion tagged
+            # [SPEC-n] that fails at baseline" — satisfiable by an assertion
+            # about any field. A line with no tab is an id whose text could not
+            # be resolved; it degrades to the id-only form rather than dropping.
+            local _sid _stext _sline
+            while IFS= read -r _sline; do
+                [[ -n "$_sline" ]] || continue
+                _sid="${_sline%%$'\t'*}"
+                _stext=""
+                [[ "$_sline" == *$'\t'* ]] && _stext="${_sline#*$'\t'}"
+                if [[ -n "$_stext" ]]; then
+                    printf -- '- [%s] %s\n' "$_sid" "$_stext"
+                    printf -- '  → needs a `[%s]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)\n' "$_sid"
+                else
+                    printf -- '- [%s] needs a `[%s]`-tagged assertion (change → fails at baseline; guard → tagged, not contorted)\n' "$_sid" "$_sid"
+                fi
             done <<< "$_acceptance_spec_ids"
         fi
         if [[ -n "$_review_feedback_body" ]]; then
@@ -162,19 +187,6 @@ _build_compose_prompt_body() {
                 "$_prev_iter"
             printf '%s\n' "$_feedback_body"
             printf 'Fix the issues above before emitting LOOP_COMPLETE.\n'
-        fi
-        if [[ -n "$_gate_feedback_body" ]]; then
-            printf '\n## PRIOR GATE FEEDBACK (consolidated, from the gate-aggregator)\n'
-            printf '%s\n' "$_gate_feedback_body"
-            printf 'These mechanical gates BLOCK convergence — resolve every finding above before emitting LOOP_COMPLETE.\n'
-        fi
-        if [[ -n "$_acceptance_tautology_ids" ]]; then
-            printf '\n## TAUTOLOGICAL ASSERTIONS (you MUST re-author these — #1583)\n'
-            printf 'The acceptance gate flagged these [change] SPEC ids as TAUTOLOGICAL: their tagged assertion PASSED even at the merge-base baseline, WITHOUT your implementation — so the test proves nothing (the classic "green but inert" defect). This overrides the don'"'"'t-weaken charter above for THESE ids ONLY: re-authoring a false assertion into a real one is NOT weakening. Rewrite each so the assertion FAILS at the merge-base baseline (revert the change'"'"'s WIRING file → the assertion must fail) and PASSES with your implementation. See the PRIOR GATE FEEDBACK above for the per-SPEC diagnosis. The mechanical negative-control re-runs next iteration and will reject a still-tautological result, so make it a genuine control:\n'
-            local _tid
-            while IFS= read -r _tid; do
-                [[ -n "$_tid" ]] && printf -- '- [%s] re-author so the [%s]-tagged assertion FAILS at the merge-base baseline (reverting the WIRING file must break it)\n' "$_tid" "$_tid"
-            done <<< "$_acceptance_tautology_ids"
         fi
     } > "$_prompt_input_file"
 }

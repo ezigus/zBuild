@@ -374,13 +374,17 @@ _impact_drop_nonexistent_missing() {
 # The impact envelope schema gate, factored out so the happy-path validation in
 # plugin.sh AND the recovery helper below share ONE definition and never drift.
 # rc=0 iff $1 is a valid impact envelope.
+# ADR-060 (#1833): impact_feedback_md is NOT required. It was a model-authored
+# markdown document inside a JSON string -- the shape that broke run 32886190954
+# and the four prose-in-envelope bugs before it (#767/#774/#783/#908). The
+# narrative is now rendered from missing[] by render_impact_md. A legacy
+# envelope that still carries the field is accepted; the field is ignored.
 _impact_envelope_schema_ok() {
     printf '%s' "${1:-}" | jq -e '
         type == "object"
         and (.schema_version == 1)
         and (.verdict | type == "string" and (. == "complete" or . == "incomplete" or . == "error"))
         and (.missing | type == "array")
-        and (.impact_feedback_md | type == "string")
     ' >/dev/null 2>&1
 }
 

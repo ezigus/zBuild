@@ -83,6 +83,63 @@ blocking `fail`, never appears in any `exit_when`, never coerces an `approve`/`r
 mutation. Escalation to a human PR is decided by ADR-037's `merge_policy` reading the report's
 top-severity findings — the report is the *input* to that policy, not a gate.
 
+**Amendment (2026-08-31, #1986 — closes #1898): advisory output DOES reach
+downstream prompts.**
+
+#1898 asked whether an advisory stage's findings should feed the build loop, and
+required a recorded decision rather than an inherited default. The decision:
+**every stage publishes a summary and every following stage ingests them,
+advisory included.**
+
+This does not weaken §5. That invariant governs whether a stage may **block** —
+whether it can appear in a must-pass set or an `exit_when` predicate — and is
+checked against template *structure*. Injecting a stage's text into a prompt
+places it on no convergence path. The B5 no-LLM-on-the-convergence-path
+invariant is untouched: advisory stages still never gate, never aggregate to a
+blocking verdict, and never appear in a predicate.
+
+What changes is the *reading* side, which §4 governs. The argument that settled
+it: review finds real defects (#1707 measured 17 lens findings, 1 high, on one
+run), and a build re-running without ever seeing them lets the same defect class
+survive several iterations, with a human only learning at PR time. The
+counter-argument — that feeding advisory findings into build lets a non-blocking
+signal shape the code — is answered by the separation this ADR already draws:
+shaping the code is what build does with *all* its context, and nothing here
+lets an advisory stage decide whether the work converges.
+
+**Duplication is prevented by construction.** An aggregator declares the roster
+it covers (`aggregates: <convergence-marker>`); the engine ships only the
+aggregate and suppresses those members' own summaries. An aggregator that
+suppresses a roster must itself publish a summary — deleting a roster's findings
+and contributing nothing in their place is a silent loss, and is guarded by a
+tree-wide test rather than left to review.
+
+**Amendment (2026-08-31, #1988): the aggregator stops rendering; each gate
+publishes its own detail.**
+
+The gate-aggregator did three jobs. Two are irreplaceable: it produces the ONE
+convergence verdict §5 requires a cycle to bind to, and it rolls up the declared
+fault class (ADR-061). The third — rendering `gate-feedback.md` and
+`design-feedback.md` — existed only because it was the sole path for gate detail
+to reach a prompt: five gates declared nothing but a result JSON.
+
+ADR-055 §9 made another path, so each gate now publishes its own detail as a
+`summary: true` output and speaks for itself. Authoring prose *about design* was
+never this stage's business — it relays a fault class each gate declares; it
+does not decide what design ought to read.
+
+Two consequences, both structural rather than stylistic:
+
+- The aggregator also stops declaring `aggregates: gate`. It publishes no text,
+  so covering the roster would suppress the members and ship an aggregate
+  containing nothing.
+- The routed/residual **partition disappears as a concept**. It existed because
+  build read a *partial* payload and had to be told the remainder was "handled
+  elsewhere". With every failing gate publishing its own finding there is no
+  partial view to caveat. The property #1757 established — that a routed gate
+  never takes build-fixable findings with it — survives as: every failing gate
+  is named in the aggregate and publishes its own detail.
+
 ### 5. The convergence-path invariant (machine-enforced)
 
 > **No `advisory` stage may appear in the must-pass set or in any `exit_when` predicate.**

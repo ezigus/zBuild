@@ -179,10 +179,13 @@ set -e
 _sf_oos_result="$_sf_art_oos/shape-floor-result.json"
 _sf_oos_rt=""
 [[ -f "$_sf_oos_result" ]] \
-    && _sf_oos_rt="$(jq -r '.route_target // empty' "$_sf_oos_result" 2>/dev/null)"
+    && _sf_oos_rt="$(jq -r '.fault // empty' "$_sf_oos_result" 2>/dev/null)"
 
-assert_eq "[SPEC-2] out-of-scope missing floor files → route_target=design in artifact" \
-    "design" "$_sf_oos_rt"
+# #1987: the gate declares the KIND of fault — the boundary is wrong — and the
+# template maps that class to a destination. It no longer names `design`, which
+# would be meaningless in a flow without a design stage.
+assert_eq "[SPEC-2] out-of-scope missing floor files → fault=scope in artifact" \
+    "scope" "$_sf_oos_rt"
 
 # ─── SPEC-8 (GUARD): additive but STRUCTURAL schema change → FAIL, not SKIP ──
 # The append-only exemption covers known_types entries only. A diff that adds a

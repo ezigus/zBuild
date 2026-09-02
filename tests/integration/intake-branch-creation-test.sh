@@ -24,6 +24,12 @@ print_test_header "intake branch creation — subprocess + real git repo (#484)"
 
 setup_test_env "intake-branch-int"
 
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
+
 REPO="$(setup_git_temp_repo zbuild-484-int-repo)"
 if [[ -z "$REPO" || ! -d "$REPO/.git" ]]; then
     assert_fail "setup_git_temp_repo created a usable repo" "no .git at $REPO"
@@ -63,7 +69,7 @@ subprocess_out="$(
     ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DB" \
     ZBUILD_EVENT_SCHEMA="$ZBUILD_EVENT_SCHEMA" \
     ZBUILD_GOAL="add branch creation to intake" \
-    ZBUILD_ISSUE=484 \
+    ZBUILD_ISSUE="$_ZB_ID" \
     ZBUILD_ALLOW_CLOSED_ISSUE=1 \
     bash -c "
         set -uo pipefail
@@ -81,18 +87,18 @@ assert_eq "intake_run subprocess rc=0" "0" "$rc"
 
 cur_branch="$(cd "$REPO" && git symbolic-ref --short HEAD 2>/dev/null)"
 assert_eq "real repo HEAD is on derived branch" \
-    "zbuild/issue-484-add-branch-creation-to-intake" "$cur_branch"
+    "zbuild/issue-$_ZB_ID-add-branch-creation-to-intake" "$cur_branch"
 
 assert_file_exists "state/intake.md written" "$STATE_DIR/intake.md"
 assert_file_exists "state/intake-branch.txt written" "$STATE_DIR/intake-branch.txt"
 
 br_text="$(cat "$STATE_DIR/intake-branch.txt")"
 assert_eq "intake-branch.txt records the branch name" \
-    "zbuild/issue-484-add-branch-creation-to-intake" "$br_text"
+    "zbuild/issue-$_ZB_ID-add-branch-creation-to-intake" "$br_text"
 
 state_branch="$(jq -r '.branch // empty' "$STATE_FILE")"
 assert_eq "pipeline-state.json .branch field set" \
-    "zbuild/issue-484-add-branch-creation-to-intake" "$state_branch"
+    "zbuild/issue-$_ZB_ID-add-branch-creation-to-intake" "$state_branch"
 
 # Exactly one intake.branch.created event with full payload.
 created_lines="$(grep '"intake.branch.created"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
@@ -102,7 +108,7 @@ assert_eq "exactly one intake.branch.created event" "1" "$created_count"
 # Payload must contain branch + base + previous_head fields.
 branch_field="$(printf '%s' "$created_lines" | jq -r '.data.branch // empty' 2>/dev/null | tail -1)"
 assert_eq "event payload branch matches" \
-    "zbuild/issue-484-add-branch-creation-to-intake" "$branch_field"
+    "zbuild/issue-$_ZB_ID-add-branch-creation-to-intake" "$branch_field"
 
 base_field="$(printf '%s' "$created_lines" | jq -r '.data.base // empty' 2>/dev/null | tail -1)"
 if [[ -n "$base_field" && "$base_field" != "unknown" ]]; then
@@ -115,7 +121,7 @@ fi
 set +e
 env -u CI \
 ZBUILD_GOAL="add branch creation to intake" \
-ZBUILD_ISSUE=484 \
+ZBUILD_ISSUE="$_ZB_ID" \
 ZBUILD_ALLOW_CLOSED_ISSUE=1 \
 bash -c "
     set -uo pipefail

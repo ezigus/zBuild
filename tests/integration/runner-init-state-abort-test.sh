@@ -28,6 +28,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "runner — init_state write failure aborts the run (#1773)"
 setup_test_env "runner-init-state-abort"
 
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
+
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 export ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
@@ -55,9 +61,24 @@ hooks:
 requires:
   core:
     - redaction
+outputs:
+  # ADR-055 §9 (#2000): every stage-bound plugin declares exactly one summary.
+  - id: ${id//-/_}_summary
+    type: $id-summary.md@1
+    format: markdown
+    path: \${artifact_dir}/$id-summary.md
+    required: true
+    summary: true
 EOF
     cat > "$dir/plugin.sh" <<EOF
-${fn}() { return 0; }
+${fn}() {
+    # ADR-055 §9 (#2000): the summary is a required output, so the stub writes
+    # one — a declared-but-unwritten artifact is a contract violation.
+    local _d="\${ZBUILD_ARTIFACT_DIR:-\$(dirname "\${2:-/tmp/x}")/artifacts}"
+    mkdir -p "\$_d" 2>/dev/null || true
+    printf '## %s — pass\n\n- stub stage\n' "$id" > "\$_d/$id-summary.md" 2>/dev/null || true
+    return 0
+}
 EOF
 }
 # Roles mirror runner-state-dir-minimal.yaml's roles: declarations.
@@ -87,7 +108,7 @@ export -f df
 
 set +e
 ZBUILD_STATE_DIR="$BAD_STATE_DIR" \
-    bash "$RUNNER" --template runner-state-dir-minimal --issue 1773 --no-resume \
+    bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" --no-resume \
     >"$TEST_TEMP_DIR/out-bad" 2>"$TEST_TEMP_DIR/err-bad"
 bad_rc=$?
 set -e
@@ -133,7 +154,7 @@ mkdir -p "$GOOD_STATE_DIR"
 
 set +e
 ZBUILD_STATE_DIR="$GOOD_STATE_DIR" \
-    bash "$RUNNER" --template runner-state-dir-minimal --issue 1773 --no-resume \
+    bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" --no-resume \
     >"$TEST_TEMP_DIR/out-good" 2>"$TEST_TEMP_DIR/err-good"
 good_rc=$?
 set -e

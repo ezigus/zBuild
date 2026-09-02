@@ -42,64 +42,78 @@ load_template "$REPO_ROOT/config/templates/simple.yaml"
 source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
 
 # ─── SPEC-2 (parse + producer resolution) ────────────────────────────────────
-# Assert the simple.yaml feedback edge parsed into the expected FB record and the
-# producer resolves to the test plugin's test-failures-summary.md (a producer that
-# EXISTS in simple.yaml's flow — the test stage is a cycle member).
-print_test_section "SPEC-2: feedback edge parses + producer resolves to a real artifact"
+# #1979: the edge is retired, so this now asserts its ABSENCE plus the surviving
+# invariant — the producer's artifact is still resolvable by output id, which is
+# what the summaries collector depends on.
+print_test_section "SPEC-2: no feedback edge, and the producer still resolves"
 
-# B2 (ADR-040): ONE consolidated feedback edge — the gate-aggregator→build edge
-# replaces the prior per-gate test→build / acceptance-gate→build edges. It parses
-# as a single FB record.
-_expected_fb="gate-aggregator:gate_feedback|build:gate_feedback:false"
-assert_eq "[SPEC-2] simple.yaml build_test_cycle feedback edge parsed" \
-    "$_expected_fb" \
+# #1979: the gate-aggregator→build edge is retired. gate-feedback.md reaches
+# build as an engine-collected summary (#1976) instead of a template wire plus a
+# bespoke reader, so build_test_cycle declares no feedback edge at all.
+#
+# The invariant that MATTERS is not the edge — it is that the payload is still
+# resolvable from the producer that writes it. That is what the resolution
+# assertion below pins, and it is unchanged by the rewiring.
+assert_eq "[SPEC-2] simple.yaml build_test_cycle declares no feedback edge" \
+    "" \
     "${_TPL_CYCLE_FEEDBACK_build_test_cycle:-}"
 
 _RESOLVE_DIR="$TEST_TEMP_DIR/resolve"
 mkdir -p "$_RESOLVE_DIR"
+# #1988: gate_feedback is retired — the aggregator renders nothing. The
+# surviving invariant is that a GATE's own detail resolves by output id, which
+# is what the summaries collector depends on.
 set +e
-_resolved_src="$(_cycle_resolve_from_path "$_RESOLVE_DIR" "gate-aggregator" "gate_feedback")"
+_resolved_src="$(_cycle_resolve_from_path "$_RESOLVE_DIR" "test" "test_failures_summary")"
 set -e
 case "$_resolved_src" in
-    */gate-feedback.md)
-        assert_pass "[SPEC-2] gate-aggregator:gate_feedback resolves to gate-feedback.md" ;;
+    */test-failures-summary.md)
+        assert_pass "[SPEC-2] a gate's own detail resolves by output id" ;;
     *)
-        assert_fail "[SPEC-2] gate-aggregator:gate_feedback resolves to gate-feedback.md" \
+        assert_fail "[SPEC-2] a gate's own detail resolves by output id" \
             "got: $_resolved_src" ;;
 esac
 
 # ─── SPEC-1 (feedback delivery) ──────────────────────────────────────────────
-print_test_section "SPEC-1: feedback edge writes non-empty gate_feedback.txt"
+print_test_section "SPEC-1: a failing gate\x27s detail reaches the prompt"
 
 _CYCLE_TRAP_CYCLE_ID="build_test_cycle"
+# #1979: the payload no longer travels a feedback wire. It reaches build as an
+# engine-collected summary, so the surviving invariant — "a failing gate's
+# detail actually arrives" — is asserted on THAT path. Deleting this rather than
+# re-pointing it would have removed the only proof the cycle can still converge.
 FB_STATE="$TEST_TEMP_DIR/fb-state"
 mkdir -p "$FB_STATE/artifacts"
-# The gate-aggregator's consolidated feedback (the producer present in simple.yaml's flow).
-cat > "$FB_STATE/artifacts/gate-feedback.md" <<'TFS'
+cat > "$FB_STATE/artifacts/test-failures-summary.md" <<'TFS'
 # Gate Aggregator Feedback
 ## suite
 - failures:
     - tests/unit/example-test.sh: assert_eq "[SPEC-3] foo" expected=3 actual=2 FAILED
 TFS
+cat > "$FB_STATE/pipeline-state.json" <<'TFS'
+{"schema_version":1,
+ "stage_statuses":{"test":"failed"},
+ "stage_verdicts":{"test":"fail"}}
+TFS
 
-# Load the parsed edge into the orchestrator's feedback array (mirrors what
-# _cycle_load_template does at cycle entry: split the newline-joined FB records).
-_fb_IFS_save="$IFS"; IFS=$'\n'
-# shellcheck disable=SC2206
-_CYCLE_FEEDBACK=(${_TPL_CYCLE_FEEDBACK_build_test_cycle})
-IFS="$_fb_IFS_save"
-set +e
-_cycle_apply_feedback 2 "$FB_STATE"; _fb_rc=$?
-set -e
-assert_eq "[SPEC-1] _cycle_apply_feedback rc=0 (optional producer present)" "0" "$_fb_rc"
+# shellcheck source=../../core/event-bus/event-bus.sh
+source "$REPO_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
+# shellcheck source=../../core/plugin-registry/registry.sh
+source "$REPO_ROOT/core/plugin-registry/registry.sh" 2>/dev/null || true
+# shellcheck source=../../core/pipeline/input-resolve.sh
+source "$REPO_ROOT/core/pipeline/input-resolve.sh"
 
-_FB_FILE="$FB_STATE/cycle-build_test_cycle/iter-2/feedback/gate_feedback.txt"
-assert_file_exists "[SPEC-1] gate_feedback.txt written to next-iter feedback dir" "$_FB_FILE"
-[[ -s "$_FB_FILE" ]] \
-    && assert_pass "[SPEC-1] gate_feedback.txt is non-empty" \
-    || assert_fail "[SPEC-1] gate_feedback.txt is non-empty" "file empty"
-assert_contains "[SPEC-1] feedback references the failure detail" \
-    "$(cat "$_FB_FILE")" "[SPEC-3] foo"
+_TPL_STAGES=(test)
+_SUMMARY_BLOCK="$(stage_summaries_prompt_block "$FB_STATE/pipeline-state.json" \
+    "$REPO_ROOT/plugins" 2>/dev/null || true)"
+
+[[ -n "$_SUMMARY_BLOCK" ]] \
+    && assert_pass "[SPEC-1] a failing gate contributes a summary" \
+    || assert_fail "[SPEC-1] a failing gate contributes a summary" "block was empty"
+assert_contains "[SPEC-1] the failure detail reaches the prompt" \
+    "$_SUMMARY_BLOCK" "[SPEC-3] foo"
+assert_contains "[SPEC-1] and it is framed as blocking, not passive context" \
+    "$_SUMMARY_BLOCK" "RESOLVE"
 
 # ─── SPEC-3 / SPEC-4 (stall-break vs converge) ───────────────────────────────
 # Drive the REAL cycle_orchestrator_run with a stubbed dispatch hook. build always

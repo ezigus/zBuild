@@ -2,6 +2,16 @@
 # plugins/agent/build/lib/diff.sh — diff-harvest and scope-validation helpers.
 # Sourced by plugin.sh after shared libs (numstat-format.sh, event-bus.sh) are loaded.
 
+
+# #2010: zbuild_engine_tmpdir names where engine code writes temp files.
+# Lazy-sourced, same pattern lifecycle.sh uses for stage-scratch.sh: this
+# file is sourced from several entry points and cannot assume helpers.sh
+# arrived first. helpers.sh sources only compat.sh, so there is no cycle.
+if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
+    # shellcheck source=../../../../scripts/lib/helpers.sh
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../scripts/lib" && pwd)/helpers.sh" 2>/dev/null || true
+fi
+
 [[ -n "${_ZBUILD_BUILD_DIFF_LOADED:-}" ]] && return 0
 _ZBUILD_BUILD_DIFF_LOADED=1
 
@@ -14,7 +24,7 @@ _build_load_preexisting_untracked() {
     local baseline="$state_dir/intake-untracked-baseline.txt"
     [[ -f "$baseline" ]] || return 1
     local tmp
-    tmp="$(mktemp "${TMPDIR:-/tmp}/zbuild-preexist.XXXXXX")" || return 1
+    tmp="$(mktemp "$(zbuild_engine_tmpdir)/zbuild-preexist.XXXXXX")" || return 1
     tr '\0' '\n' < "$baseline" | sort -u > "$tmp"
     printf '%s' "$tmp"
     return 0

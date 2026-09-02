@@ -13,7 +13,7 @@ flow:
   - stage: build
 ```
 
-`impact` is a member of `design_impact_cycle`. When its verdict is `incomplete`, `impact_feedback.md` is fed back to `design.prior_impact_feedback` and the cycle repeats. No manual wiring is needed if the cycle is declared in your template.
+`impact` is a member of `design_impact_cycle`. When its verdict is `incomplete`, the structured `missing[]` entries say which files the design left out, and the cycle repeats. No manual wiring is needed if the cycle is declared in your template.
 
 ## Reference
 
@@ -52,7 +52,6 @@ flow:
 | ID                 | Path                              | Type         | Required |
 |--------------------|-----------------------------------|--------------|----------|
 | `impact`           | `${artifact_dir}/impact.json`     | `impact.json`| yes (primary) |
-| `impact_feedback_md` | `${artifact_dir}/impact_feedback.md` | markdown | no       |
 
 ### Output schema (`impact.json`)
 
@@ -64,10 +63,10 @@ flow:
     {
       "step_id": "<plan step id>",
       "files_to_add": ["<repo-relative path>"],
-      "reason": "<why these files need to be in scope>"
+      "reason": "<why these files need to be in scope>",
+      "evidence": "<the symbol, assertion, or line that links them; plain text>"
     }
-  ],
-  "impact_feedback_md": "<markdown report fed back to design on next cycle iter>"
+  ]
 }
 ```
 
@@ -91,6 +90,6 @@ _Newcomers can skip this section._
 
 **Budget discipline.** The agent prompt enforces a hard stop: emit a verdict before the tool-call budget runs out. A partial `incomplete` verdict with known gaps is preferable to running out of turns and returning nothing.
 
-**Cycle wiring.** `impact_feedback_md` is consumed by the design stage as `prior_impact_feedback` on the next iteration. The cycle is bounded; a stuck-detector (A→B→A pattern) and a kill-switch prevent infinite loops. See ADR-040 §5 and [[design_impact_cycle]] for the convergence contract.
+**Reading the result.** The envelope is structured only (ADR-060). The human-readable narrative you see in the terminal is rendered from `missing[]` by `render_impact_md`, not written by the model. The cycle is bounded; a stuck-detector (A→B→A pattern) and a kill-switch prevent infinite loops. See ADR-040 §5 and [[design_impact_cycle]] for the convergence contract.
 
 _See docs/DOC-STYLE.md for the full prose standard._

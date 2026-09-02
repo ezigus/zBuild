@@ -62,6 +62,81 @@ _acceptance_trim_label() {
 #
 # Residual: SPEC ids are file-global, so a file carrying the same id for a
 # DIFFERENT design's SPEC can still win pass 1 — see #1691.
+# _acceptance_strip_comment <line>
+# Drops a trailing comment, but only a real one. Comments are how a SPEC
+# sentence leaks into an assertion and buys a false `corresponds`, so they must
+# go — but a naive split on '#' also severs any assertion message containing
+# one, which corrupts the very text being judged. Track quoting; cut only a '#'
+# that actually starts a comment.
+_acceptance_strip_comment() {
+    local line="${1-}" out="" q="" c i=0 n
+    # Separate statement: bash expands every word of a `local` BEFORE the
+    # locals exist, so `n=${#line}` on the line that assigns `line` reads the
+    # OUTER scope and silently yields 0 — the loop then never runs.
+    n=${#line}
+    while (( i < n )); do
+        c="${line:i:1}"
+        if [[ -n "$q" ]]; then
+            [[ "$c" == "$q" ]] && q=""
+            out+="$c"
+        elif [[ "$c" == '"' || "$c" == "'" ]]; then
+            q="$c"; out+="$c"
+        elif [[ "$c" == "#" ]] && { (( i == 0 )) || [[ "${line:i-1:1}" == [[:space:]] ]]; }; then
+            break
+        else
+            out+="$c"
+        fi
+        (( i++ ))
+    done
+    # shellcheck disable=SC2001
+    printf '%s' "$(sed 's/[[:space:]]*$//' <<< "$out")"
+}
+
+# ─── acceptance_find_assertion_sources <repo_root> <spec_id> <testfiles...> ──
+# EVERY assertion tagged with the SPEC, in full, with its enclosing stanza.
+#
+# Distinct from acceptance_find_assertion_label above, which is the OPERATOR
+# readout: first match, trimmed to 100 chars. Judging correspondence from that
+# fragment is garbage-in — the repo's dominant shape is
+# `if <predicate>; then assert_pass "[SPEC-n] …"`, where all the meaning lives
+# in the predicate. Stripping it leaves a bare label that reads as a vacuous
+# test, and a reader will (correctly) report exactly that about the mutilation.
+#
+# The stanza is the contiguous non-blank run containing the tagged line.
+# Comments are stripped: pasting the SPEC sentence beside a weak assertion is
+# the one gaming vector this input has.
+acceptance_find_assertion_sources() {
+    local repo_root="${1:-}" spec_id="${2:-}"; shift 2
+    local tf abs i n a b line first=1
+    for tf in "$@"; do
+        [[ -z "$tf" ]] && continue
+        abs="$repo_root/$tf"
+        [[ -f "$abs" ]] || continue
+        local -a lines=()
+        while IFS= read -r line || [[ -n "$line" ]]; do lines+=("$line"); done < "$abs"
+        n=${#lines[@]}
+        local -a starts=()
+        for (( i = 0; i < n; i++ )); do
+            [[ "${lines[i]}" == *"[$spec_id]"* ]] || continue
+            [[ "${lines[i]}" =~ ^[[:space:]]*assert[a-z_]*[[:space:]] ]] || continue
+            a=$i; while (( a > 0 )) && [[ -n "${lines[a-1]// }" ]]; do (( a-- )); done
+            b=$i; while (( b < n - 1 )) && [[ -n "${lines[b+1]// }" ]]; do (( b++ )); done
+            # One stanza is emitted once however many tagged lines it holds.
+            local seen=0 s
+            for s in ${starts[@]+"${starts[@]}"}; do [[ "$s" == "$a:$b" ]] && seen=1; done
+            (( seen )) && continue
+            starts+=("$a:$b")
+            (( first )) || printf '\n'
+            first=0
+            for (( ; a <= b; a++ )); do
+                line="$(_acceptance_strip_comment "${lines[a]}")"
+                [[ -n "${line// }" ]] && printf '%s\n' "$line"
+            done
+        done
+    done
+    return 0
+}
+
 acceptance_find_assertion_label() {
     local repo_root="${1:-}" spec_id="${2:-}"; shift 2
     local pass tf abs match

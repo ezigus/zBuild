@@ -152,86 +152,34 @@ EOF
     fi
 fi
 
-# ─── SPEC-3: test_cleanup scope=release kills PGID but does not delete staging dir ─
-# CHANGE: at baseline test_cleanup ignores scope and doesn't handle release/purge.
-print_test_section "SPEC-3: scope=release kills PGID, staging dir remains intact"
+# ─── SPEC-3: the last per-stage cleanup hook is retired ─────────────────────
+# This used to drive `test_cleanup` directly: scope=release kills the suite's
+# PGID, staging dir untouched. That function is gone (#2024, ADR-062 §3) and
+# both halves are engine-owned now — the suite's process group is registered at
+# spawn and freed by teardown(release), and the staging tree sits under
+# `<run>/scratch/` so teardown(purge) removes it as a path.
+#
+# The behaviour that replaced it is covered where it now lives, and is NOT
+# duplicated here: tests/unit/teardown-purge-scratch-test.sh (release deletes
+# nothing, purge deletes scratch and spares the evidence) and
+# tests/integration/hard-kill-sweep-e2e-test.sh (a SIGKILLed runner's suite is
+# actually freed). What remains worth asserting at this seam is that the
+# retirement is real, since a hook left declared would mean a stage still owns
+# its own cleanup.
+print_test_section "SPEC-3: no plugin declares a cleanup hook"
 
-(
-    source "$TEST_PLUGIN_DIR/plugin.sh"
-
-    _spec3_state_dir="$TEST_TEMP_DIR/spec3-state"
-    mkdir -p "$_spec3_state_dir/artifacts" "$_spec3_state_dir/runtime"
-    _spec3_state_file="$_spec3_state_dir/pipeline-state.json"
-    printf '{}' > "$_spec3_state_file"
-    # Live-resource bookkeeping lives under runtime/, not artifacts/ (#1829).
-    _spec3_runtime_dir="$_spec3_state_dir/runtime"
-
-    # Create a staging directory simulating what _test_run_inner would create,
-    # populated so "deletes nothing" can be asserted as a tree diff, not just
-    # a directory-exists check.
-    _spec3_staging="$TEST_TEMP_DIR/spec3-staging"
-    mkdir -p "$_spec3_staging/nested"
-    printf 'sentinel' > "$_spec3_staging/sentinel.txt"
-    printf 'evidence' > "$_spec3_staging/nested/failure.log"
-    _spec3_before="$(cd "$_spec3_staging" && find . -type f | sort | while read -r _f; do
-        printf '%s %s\n' "$_f" "$(wc -c < "$_f" | tr -d ' ')"
-    done)"
-
-    # Write a long-running background process and record its PID.
-    sleep 60 &
-    _spec3_bgpid=$!
-    printf '%s' "$_spec3_bgpid" > "$_spec3_runtime_dir/test-stage.pid"
-    printf '%s' "$_spec3_staging" > "$_spec3_runtime_dir/test-staging-path"
-
-    # Call release cleanup.
-    test_cleanup "test" "$_spec3_state_file" "release" >/dev/null 2>&1 || true
-
-    _spec3_after="$(cd "$_spec3_staging" 2>/dev/null && find . -type f | sort | while read -r _f; do
-        printf '%s %s\n' "$_f" "$(wc -c < "$_f" | tr -d ' ')"
-    done)"
-    if [[ "$_spec3_before" == "$_spec3_after" ]]; then
-        printf 'SPEC3_TREE_IDENTICAL\n'
-    else
-        printf 'SPEC3_TREE_CHANGED\n'
-    fi
-
-    # The background sleep should be dead.
-    sleep 0.2 2>/dev/null || true
-    if kill -0 "$_spec3_bgpid" 2>/dev/null; then
-        printf 'SPEC3_PROC_STILL_ALIVE\n'
-        kill "$_spec3_bgpid" 2>/dev/null || true
-    else
-        printf 'SPEC3_PROC_DEAD\n'
-    fi
-
-    # The staging dir must still exist (release does NOT delete it).
-    if [[ -d "$_spec3_staging" ]]; then
-        printf 'SPEC3_DIR_ALIVE\n'
-    else
-        printf 'SPEC3_DIR_GONE\n'
-    fi
-) > "$TEST_TEMP_DIR/spec3-out.txt" 2>/dev/null || true
-
-_spec3_out="$(cat "$TEST_TEMP_DIR/spec3-out.txt" 2>/dev/null || echo '')"
-if grep -q 'SPEC3_PROC_DEAD' <<< "$_spec3_out"; then
-    assert_pass "[SPEC-3] scope=release kills the recorded PGID"
+_spec3_hooks="$(grep -rlE '^[[:space:]]*cleanup:' "$REPO_ROOT"/plugins/*/*/manifest.yaml 2>/dev/null || true)"
+if [[ -z "$_spec3_hooks" ]]; then
+    assert_pass "[SPEC-3] zero per-stage cleanup hooks remain (ADR-062 §3)"
 else
-    assert_fail "[SPEC-3] scope=release kills the recorded PGID" \
-        "process was still alive after release"
+    assert_fail "[SPEC-3] zero per-stage cleanup hooks remain (ADR-062 §3)" \
+        "still declared by: $_spec3_hooks"
 fi
-if grep -q 'SPEC3_DIR_ALIVE' <<< "$_spec3_out"; then
-    assert_pass "[SPEC-3] scope=release does not delete the staging directory"
+if grep -qE '^test_cleanup\(\)' "$REPO_ROOT/plugins/tool/test/plugin.sh"; then
+    assert_fail "[SPEC-3] the retired hook function is gone, not merely undeclared" \
+        "test_cleanup still defined — dead contract surface that reads as live"
 else
-    assert_fail "[SPEC-3] scope=release does not delete the staging directory" \
-        "staging dir was deleted by release"
-fi
-# The acceptance asks for this positively: diff the populated tree, so a
-# release that deleted a nested file (but left the dir) cannot pass.
-if grep -q 'SPEC3_TREE_IDENTICAL' <<< "$_spec3_out"; then
-    assert_pass "[SPEC-3] scope=release leaves the populated staging tree byte-identical"
-else
-    assert_fail "[SPEC-3] scope=release leaves the populated staging tree byte-identical" \
-        "file list/sizes changed across release"
+    assert_pass "[SPEC-3] the retired hook function is gone, not merely undeclared"
 fi
 
 # ─── SPEC-4: absent cleanup hook → rc=0 + event → teardown no-op (no error) ──

@@ -59,10 +59,27 @@ export MOCK_DESIGN_WRITE_PATH="$AD1/design.md"
 _design_stage_run_inner "$(dirname "$AD1")/scope-manifest.md" "$AD1/plan.json" "$AD1/design.md" "$AD1" >/dev/null 2>&1 || true
 PROMPT1="$AD1/design-prompt.txt"
 assert_file_exists "T1: design prompt written" "$PROMPT1"
-assert_contains "T1: prompt carries the design-rooted gate feedback body" \
-    "$(cat "$PROMPT1")" "SPEC-7 is tautological"
-assert_contains_regex "T1: prompt instructs re-authoring the tautological SPEC" \
-    "$(cat "$PROMPT1")" "[Rr]e-author"
+# #1988: design no longer splices design-feedback.md — the aggregator stopped
+# writing it, and the acceptance gate's own summary carries the detail now. What
+# design still owns is the INSTRUCTION, which it emits when the gate's recorded
+# verdict is a failure. The body assertion moves to where that summary is
+# produced; the instruction is asserted here, because design owns it.
+if grep -qF 'SPEC-7 is tautological' "$PROMPT1"; then
+    assert_fail "T1: design does not re-splice the gate's detail" \
+        "the retired section is still emitted"
+else
+    assert_pass "T1: design does not re-splice the gate's detail"
+fi
+# Driven as its own fixture: the instruction is keyed on the gate's recorded
+# verdict, so the state must exist before the stage runs.
+AD1B="$(_setup_fixture)"
+printf '{"schema_version":1,"stage_verdicts":{"acceptance-gate":"fail"}}\n' \
+    > "$(dirname "$AD1B")/pipeline-state.json"
+export MOCK_DESIGN_WRITE_PATH="$AD1B/design.md"
+_design_stage_run_inner "$(dirname "$AD1B")/scope-manifest.md" "$AD1B/plan.json" \
+    "$AD1B/design.md" "$AD1B" >/dev/null 2>&1 || true
+assert_contains_regex "T1: a failing acceptance gate yields the re-author instruction" \
+    "$(cat "$AD1B/design-prompt.txt" 2>/dev/null)" "RE-AUTHOR"
 
 # ── T2: design-feedback.md absent → prompt has NO gate-feedback section (no-op) ─
 AD2="$(_setup_fixture)"
@@ -90,10 +107,19 @@ export MOCK_DESIGN_WRITE_PATH="$AD3/design.md"
 _design_stage_run_inner "$(dirname "$AD3")/scope-manifest.md" "$AD3/plan.json" "$AD3/design.md" "$AD3" >/dev/null 2>&1 || true
 PROMPT3="$AD3/design-prompt.txt"
 assert_file_exists "T3: design prompt written (design-gate-feedback)" "$PROMPT3"
-assert_contains "[SPEC-3] T3: prompt carries design-gate-feedback.md body" \
-    "$(cat "$PROMPT3")" "missing tests/unit/foo-test.sh"
-assert_contains_regex "[SPEC-3] T3: prompt has PRIOR DESIGN-GATE FEEDBACK heading" \
-    "$(cat "$PROMPT3")" "PRIOR DESIGN-GATE FEEDBACK"
+# #1979: design no longer splices this itself — the content reaches the prompt
+# as an engine-collected summary (#1976), spliced exactly once, which is what
+# #1825's dedup fix requires. What design still owns is the WORDING of the
+# refinement instruction, and that now keys on the gate's recorded verdict.
+if grep -qF 'PRIOR DESIGN-GATE FEEDBACK' "$PROMPT3"; then
+    assert_fail "[SPEC-3] T3: design does not splice the summary a second time" \
+        "the retired section is still emitted — the #1825 duplication"
+else
+    assert_pass "[SPEC-3] T3: design does not splice the summary a second time"
+fi
+# The refinement-instruction branch itself is covered behaviourally in
+# tests/unit/design-summary-switch-test.sh; this fixture has no prior design, so
+# that section is legitimately absent here.
 
 # ── T4: design-gate-feedback.md absent → no section in prompt (no-op) ─
 AD4="$(_setup_fixture)"
@@ -101,11 +127,14 @@ export MOCK_DESIGN_WRITE_PATH="$AD4/design.md"
 _design_stage_run_inner "$(dirname "$AD4")/scope-manifest.md" "$AD4/plan.json" "$AD4/design.md" "$AD4" >/dev/null 2>&1 || true
 PROMPT4="$AD4/design-prompt.txt"
 assert_file_exists "T4: design prompt written (no design-gate-feedback)" "$PROMPT4"
+# Unchanged in meaning by #1979: design emits no gate-feedback section of its
+# own on a first pass — and now emits none on any pass, the engine having taken
+# over the splice. The no-op guard still holds.
 if grep -q 'PRIOR DESIGN-GATE FEEDBACK' "$PROMPT4"; then
-    assert_fail "T4: first pass (no design-gate-feedback.md) must NOT add the design-gate-feedback section" \
+    assert_fail "T4: first pass must NOT add a design-gate-feedback section" \
         "$(grep 'PRIOR DESIGN-GATE FEEDBACK' "$PROMPT4")"
 else
-    assert_pass "T4: first pass omits design-gate-feedback section (no-op when file absent)"
+    assert_pass "T4: first pass omits the design-gate-feedback section"
 fi
 
 cleanup_test_env

@@ -190,7 +190,7 @@ set -e
 
 assert_exit_code "memory_search --limit exits 0" "0" "$limit_rc"
 
-limit_count="$(printf '%s\n' "$limit_out" | grep -c 'item' 2>/dev/null || echo 0)"
+limit_count="$(printf '%s\n' "$limit_out" | grep -c 'item' 2>/dev/null || true)"
 if [[ "$limit_count" -le 2 ]]; then
     assert_pass "memory_search --limit 2: at most 2 results returned (got $limit_count)"
 else
@@ -228,7 +228,7 @@ assert_exit_code "memory_list_namespaces exits 0" "0" "$ns_list_rc"
 assert_contains "memory_list_namespaces: ns-alpha is listed" "$ns_list_out" "ns-alpha"
 assert_contains "memory_list_namespaces: ns-beta is listed" "$ns_list_out" "ns-beta"
 
-ns_alpha_lines="$(printf '%s\n' "$ns_list_out" | grep -c '^ns-alpha$' 2>/dev/null || echo 0)"
+ns_alpha_lines="$(printf '%s\n' "$ns_list_out" | grep -c '^ns-alpha$' 2>/dev/null || true)"
 assert_eq "memory_list_namespaces: ns-alpha appears on its own line" "1" "$ns_alpha_lines"
 
 if grep -q 'zbuild-repo-' <<< "$ns_list_out"; then

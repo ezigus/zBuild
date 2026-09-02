@@ -28,6 +28,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "full pipeline cardinal seq labels (#682)"
 setup_test_env "full-pipeline-seq-cardinal"
+
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
 export ZBUILD_CONTRACT_VALIDATOR=warn
 
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
@@ -96,7 +102,7 @@ set +e
     ZBUILD_SEQ_LABEL_LOG="$LABEL_LOG" \
     ZBUILD_CONTRACT_VALIDATOR=warn \
     PATH="$PATH" HOME="$HOME" \
-    bash "$RUNNER" --template runner-state-dir-minimal --issue 83 ) >/dev/null 2>&1
+    bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" ) >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "pipeline exits 0" "0" "$rc"

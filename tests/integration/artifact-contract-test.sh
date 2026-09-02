@@ -18,6 +18,12 @@ print_test_header "artifact contract — A3: missing artifact triggers plugin.co
 
 setup_test_env "artifact-contract"
 
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
+
 EVENTS_DIR="$TEST_TEMP_DIR/events"
 # #511 F2: this test pins the standard template explicitly (#978 flipped the
 # default to simple); the F2 cycle wiring is irrelevant to artifact-contract
@@ -58,10 +64,22 @@ outputs:
   - name: findings
     path: artifacts/intake-findings.json
     type: findings.json
+  # ADR-055 §9 (#2000): required of every stage-bound plugin. The
+  # findings output below stays deliberately unwritten — that is what
+  # this fixture is testing.
+  - id: intake_summary
+    path: ${artifact_dir}/intake-summary.md
+    type: intake-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 cat > "$A3_PLUGINS/agent/noartifact/plugin.sh" <<'EOF'
 noartifact_run() {
     # Intentionally does NOT write artifacts/intake-findings.json
+    _d="${ZBUILD_ARTIFACT_DIR:-$(dirname "${2:-/tmp/x}")/artifacts}"
+    mkdir -p "$_d" 2>/dev/null || true
+    printf '## %s — pass\n\n- stub\n' "intake" > "$_d/intake-summary.md" 2>/dev/null || true
     return 0
 }
 EOF
@@ -77,9 +95,24 @@ hooks:
 requires:
   core:
     - redaction
+outputs:
+  # ADR-055 §9 (#2000): required of every stage-bound plugin. The
+  # findings output below stays deliberately unwritten — that is what
+  # this fixture is testing.
+  - id: security-lens_summary
+    path: ${artifact_dir}/security-lens-summary.md
+    type: security-lens-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 cat > "$A3_PLUGINS/agent/security-lens/plugin.sh" <<'EOF'
-sl_run() { return 0; }
+sl_run() {
+    _d="${ZBUILD_ARTIFACT_DIR:-$(dirname "${2:-/tmp/x}")/artifacts}"
+    mkdir -p "$_d" 2>/dev/null || true
+    printf '## %s — pass\n\n- stub\n' "security-lens" > "$_d/security-lens-summary.md" 2>/dev/null || true
+    return 0
+}
 EOF
 cat > "$A3_PLUGINS/tool/output/manifest.yaml" <<'EOF'
 id: output
@@ -88,9 +121,24 @@ kind: tool
 version: 0.0.1
 hooks:
   run: out_run
+outputs:
+  # ADR-055 §9 (#2000): required of every stage-bound plugin. The
+  # findings output below stays deliberately unwritten — that is what
+  # this fixture is testing.
+  - id: output_summary
+    path: ${artifact_dir}/output-summary.md
+    type: output-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 cat > "$A3_PLUGINS/tool/output/plugin.sh" <<'EOF'
-out_run() { return 0; }
+out_run() {
+    _d="${ZBUILD_ARTIFACT_DIR:-$(dirname "${2:-/tmp/x}")/artifacts}"
+    mkdir -p "$_d" 2>/dev/null || true
+    printf '## %s — pass\n\n- stub\n' "output" > "$_d/output-summary.md" 2>/dev/null || true
+    return 0
+}
 EOF
 
 # ─── Run the runner with the no-artifact plugin ───────────────────────────────
@@ -114,7 +162,7 @@ install_template_overlay "$OVERLAY_REPO" artifact-contract-minimal
     ZBUILD_EVENTS_DIR="$A3_EVENTS_DIR" \
     ZBUILD_EVENTS_JSONL="$A3_EVENTS_JSONL" \
     ZBUILD_EVENTS_DB="$A3_DIR/events.db" \
-    bash "$RUNNER" --template artifact-contract-minimal --issue 83 2>/dev/null ) || true
+    bash "$RUNNER" --template artifact-contract-minimal --issue "$_ZB_ID" 2>/dev/null ) || true
 
 # ─── Assert plugin.contract.violated event emitted ───────────────────────────
 if [[ -f "$A3_EVENTS_JSONL" ]]; then
@@ -186,9 +234,24 @@ requires:
     - redaction
 provides:
   role: intake
+outputs:
+  # ADR-055 §9 (#2000): required of every stage-bound plugin. The
+  # findings output below stays deliberately unwritten — that is what
+  # this fixture is testing.
+  - id: intake_summary
+    path: ${artifact_dir}/intake-summary.md
+    type: intake-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 EOF
 cat > "$B_PLUGINS/agent/noartifact-nopaths/plugin.sh" <<'EOF'
-noartifact_nopaths_run() { return 0; }
+noartifact_nopaths_run() {
+    _d="${ZBUILD_ARTIFACT_DIR:-$(dirname "${2:-/tmp/x}")/artifacts}"
+    mkdir -p "$_d" 2>/dev/null || true
+    printf '## %s — pass\n\n- stub\n' "intake" > "$_d/intake-summary.md" 2>/dev/null || true
+    return 0
+}
 EOF
 cp "$A3_PLUGINS/agent/security-lens/manifest.yaml" "$B_PLUGINS/agent/security-lens/"
 cp "$A3_PLUGINS/agent/security-lens/plugin.sh"    "$B_PLUGINS/agent/security-lens/"
@@ -201,7 +264,7 @@ cp "$A3_PLUGINS/tool/output/plugin.sh"            "$B_PLUGINS/tool/output/"
     ZBUILD_EVENTS_DIR="$B_EVENTS_DIR" \
     ZBUILD_EVENTS_JSONL="$B_EVENTS_JSONL" \
     ZBUILD_EVENTS_DB="$B_DIR/events.db" \
-    bash "$RUNNER" --template artifact-contract-minimal --issue 83 2>/dev/null ) || true
+    bash "$RUNNER" --template artifact-contract-minimal --issue "$_ZB_ID" 2>/dev/null ) || true
 
 if [[ -f "$B_EVENTS_JSONL" ]]; then
     b_violated="$(grep -c '"plugin.contract.violated"' "$B_EVENTS_JSONL" 2>/dev/null || true)"

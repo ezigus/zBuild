@@ -14,6 +14,10 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "core/output/stage-io — capture_stage_io chokepoint (ADR-015 v1)"
 setup_test_env "stage-io"
 
+# #1921 follow-up: reserved test identity — the QUOTED assignment form.
+# These were real issue numbers used as run identity.
+_ZB_ID="$(zb_test_issue)"
+
 # Sandbox event-bus and state dir into TEST_TEMP_DIR
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
@@ -479,7 +483,7 @@ else
 fi
 
 # ─── T43: gh_comment no-op when ZBUILD_OUTPUT_GH_COMMENT=0 ───────────────────
-export ZBUILD_ISSUE="123"
+export ZBUILD_ISSUE="$_ZB_ID"
 export ZBUILD_OUTPUT_GH_COMMENT="0"
 ghdir="$TEST_TEMP_DIR/gh-t43"; mkdir -p "$ghdir"
 cat > "$ghdir/gh" <<EOF
@@ -499,7 +503,7 @@ fi
 unset ZBUILD_OUTPUT_GH_COMMENT
 
 # ─── T44: gh_comment builds <details>/<summary>/fenced shape ─────────────────
-export ZBUILD_ISSUE="123"
+export ZBUILD_ISSUE="$_ZB_ID"
 rec44="$(_t440_make_record plan llm "prompt body" "response body" "" "2400")"
 ghdir="$TEST_TEMP_DIR/gh-t44"; mkdir -p "$ghdir"
 cat > "$ghdir/gh" <<EOF

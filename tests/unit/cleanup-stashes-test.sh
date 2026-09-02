@@ -148,13 +148,13 @@ fi
 # ── TC-10: tmpdir scanner picks up matching old dirs ────────────────────────
 FAKE_TMP="$TEST_TEMP_DIR/faketmp"
 mkdir -p "$FAKE_TMP"
-mkdir -p "$FAKE_TMP/zb-applycheck-fwd-12345" "$FAKE_TMP/zbuild-test-stage.ABCDE" "$FAKE_TMP/zb-loop-iters.XYZABC" "$FAKE_TMP/unrelated-dir"
+mkdir -p "$FAKE_TMP/zb-test-auto.QQQQQ" "$FAKE_TMP/zbuild-test-stage.ABCDE" "$FAKE_TMP/zb-loop-iters.XYZABC" "$FAKE_TMP/unrelated-dir"
 # Age ALL fixture dirs by 2 hours (Codex P1 on #599: original applied
 # `touch -d` only to one dir in the GNU branch, leaving the other two with
 # current mtimes → scanner correctly skipped them under age_hours=1 → false
 # negative on Linux CI).
 _age_target=$(( $(date +%s) - 7200 ))
-if touch -d "@${_age_target}" "$FAKE_TMP/zb-applycheck-fwd-12345" 2>/dev/null; then
+if touch -d "@${_age_target}" "$FAKE_TMP/zb-test-auto.QQQQQ" 2>/dev/null; then
     # GNU touch (Linux): apply to all fixture dirs.
     touch -d "@${_age_target}" \
         "$FAKE_TMP/zbuild-test-stage.ABCDE" \
@@ -163,13 +163,13 @@ if touch -d "@${_age_target}" "$FAKE_TMP/zb-applycheck-fwd-12345" 2>/dev/null; t
 else
     # BSD touch (macOS): -t YYYYMMDDhhmm.SS
     ts="$(date -r ${_age_target} "+%Y%m%d%H%M.%S")"
-    touch -t "$ts" "$FAKE_TMP/zb-applycheck-fwd-12345" "$FAKE_TMP/zbuild-test-stage.ABCDE" "$FAKE_TMP/zb-loop-iters.XYZABC" "$FAKE_TMP/unrelated-dir"
+    touch -t "$ts" "$FAKE_TMP/zb-test-auto.QQQQQ" "$FAKE_TMP/zbuild-test-stage.ABCDE" "$FAKE_TMP/zb-loop-iters.XYZABC" "$FAKE_TMP/unrelated-dir"
 fi
 TMPDIR="$FAKE_TMP" plan_tmp="$(TMPDIR="$FAKE_TMP" _cleanup_scan_zbuild_tmpdirs 1 || true)"
-if grep -q "zb-applycheck-fwd-12345" <<<"$plan_tmp"; then
-    assert_pass "tmpdir scanner finds zb-applycheck-* dir"
+if grep -q "zb-test-auto.QQQQQ" <<<"$plan_tmp"; then
+    assert_pass "tmpdir scanner finds zb-test-auto.* dir"
 else
-    assert_fail "tmpdir scanner finds zb-applycheck-* dir" "got: $plan_tmp"
+    assert_fail "tmpdir scanner finds zb-test-auto.* dir" "got: $plan_tmp"
 fi
 if grep -q "zbuild-test-stage.ABCDE" <<<"$plan_tmp"; then
     assert_pass "tmpdir scanner finds zbuild-test-stage.* dir"
@@ -185,6 +185,61 @@ if grep -q "unrelated-dir" <<<"$plan_tmp"; then
     assert_fail "tmpdir scanner ignores unrelated dirs" "got: $plan_tmp"
 else
     assert_pass "tmpdir scanner ignores unrelated dirs"
+fi
+
+# ── TC-11: every scanner pattern has a producer in the tree ─────────────────
+# #2017. The scanner is a backstop for engine writes that escaped the five
+# ADR-058 areas, so each entry is a standing admission of one unreclaimable
+# write. An entry whose producer is gone can only ever match leftovers from an
+# older install — it makes the list look like it is doing work, and it hides
+# which entries are live debt. `zb-applycheck-*` and `zbuild-ephemeral-events.*`
+# sat here with no producer after #2004 and #2010 moved their writes in-tree,
+# and nothing noticed, because TC-10 seeded the directory it then asserted on.
+#
+# "Producer" means a line that actually CREATES the directory, not a line that
+# merely names it — cleanup.sh declares every stem, and `scripts/zbuild --help`
+# names two of them in prose. Requiring mktemp/mkdir is what separates the two.
+# The file list comes from `find`, not `grep --include`: the grep on a dev box
+# may be ugrep, which takes --include/--exclude as file operands and warns
+# instead of filtering, so a --include-based scan silently searches everything.
+_prod_files="$(find "$REPO_ROOT/core" "$REPO_ROOT/scripts" "$REPO_ROOT/plugins" \
+    -name '*.sh' -not -name 'cleanup.sh' -not -path '*/legacy/*' 2>/dev/null)"
+# Stems whose producer builds the name from a variable, so no literal appears
+# on the mktemp line. Each entry names the producer, and the pointer is checked
+# below — so an exemption cannot outlive the thing it exempts.
+declare -A _INDIRECT_PRODUCERS=(
+    ["zb-test."]="scripts/lib/test-helpers.sh:local test_name=\"\${1:-zb-test}\""
+)
+_orphans=""
+_stale_exempt=""
+for _pat in "${ZBUILD_TMPDIR_PATTERNS[@]}"; do
+    _stem="${_pat%%[*]*}"          # "zb-loop-iters.*" -> "zb-loop-iters."
+    [[ -n "$_stem" ]] || continue
+    if [[ -n "${_INDIRECT_PRODUCERS[$_stem]:-}" ]]; then
+        _ef="${_INDIRECT_PRODUCERS[$_stem]%%:*}"
+        _ex="${_INDIRECT_PRODUCERS[$_stem]#*:}"
+        grep -qF -- "$_ex" "$REPO_ROOT/$_ef" 2>/dev/null || _stale_exempt+="$_pat "
+        continue
+    fi
+    _rx="(mktemp|mkdir).*${_stem//./\\.}"
+    _hit=0
+    while IFS= read -r _f; do
+        [[ -n "$_f" ]] || continue
+        if grep -qE "$_rx" "$_f" 2>/dev/null; then _hit=1; break; fi
+    done <<< "$_prod_files"
+    (( _hit )) || _orphans+="$_pat "
+done
+if [[ -z "$_stale_exempt" ]]; then
+    assert_pass "every indirect-producer exemption still resolves"
+else
+    assert_fail "every indirect-producer exemption still resolves" \
+        "producer gone for: $_stale_exempt— drop the pattern and its exemption"
+fi
+if [[ -z "$_orphans" ]]; then
+    assert_pass "every ZBUILD_TMPDIR_PATTERNS entry has a producer"
+else
+    assert_fail "every ZBUILD_TMPDIR_PATTERNS entry has a producer" \
+        "nothing mktemp/mkdirs: $_orphans— delete the entry, or restore the producer"
 fi
 
 print_test_results

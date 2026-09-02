@@ -22,6 +22,11 @@ _ZBUILD_COVERAGE_GATE_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+# NOT `|| true`: this helper is how the gate's findings reach a prompt at
+# all. Swallowing a failed load would leave stage_summary_write undefined and
+# every finding silently unpublished — the exact shape #1991 guards.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _CG_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -106,15 +111,14 @@ coverage_gate_run() {
 
     jq -n --arg v "$verdict" --arg s "$status" --arg p "$pct" --arg f "$floor" --arg d "$detail" \
         '{"verdict":$v,"status":$s,"pct":$p,"floor":$f,"detail":$d}' | atomic_write "$result_path"
+    # #1988: publish what only this gate knows. Its detail used to reach a
+    # prompt only through the aggregator's rendering; it is now a declared
+    # summary output (#1976), and cleared on a non-fail so a stale file from a
+    # previous iteration never renders as a current finding.
+    stage_summary_write "$artifacts_dir/coverage-detail.md" "coverage" "$verdict" "$detail"
 
     _cg_emit "plugin.result" "plugin=coverage-gate" "verdict=$verdict"
     return 0
 }
 
 # ─── coverage_gate_cleanup ────────────────────────────────────────────────────
-coverage_gate_cleanup() {
-    # No self-emit (#1705): plugin_hook_call already brackets this hook with
-    # plugin.cleanup.start/complete. A second pair from here is the same
-    # two-emitters-one-name collision the run pair was filed for.
-    return 0
-}

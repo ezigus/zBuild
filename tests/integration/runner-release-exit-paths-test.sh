@@ -121,14 +121,37 @@ _prep() {
     unset BUILD_RC BUILD_SLEEP 2>/dev/null || true
 }
 
-# _assert_released <case> — release recorded, purge never.
+# _assert_released <case> <stage>... — EVERY named stage released, purge never.
+#
+# #1989: this used to grep the shared marker for any ':release' and pass. Three
+# stages append to that one file, so one stage releasing masked two that never
+# did — measured: neutering build_cleanup alone left the suite green, and it
+# took neutering all three to turn it red. The assertion could only ever detect
+# a TOTAL failure of the mechanism, never a partial one, which is the shape a
+# real regression takes (#1748: suites observed alive 15+ min after exit).
+#
+# Each case now names the stages whose cleanup must have run. The sets differ
+# by exit path because a stage only reaches release once it has been dispatched.
+#
+# ADR-062 §2: reclamation reads the process group recorded at DISPATCH, not the
+# completion status map, so a stage killed mid-flight IS reclaimable. SPEC-4 and
+# SPEC-5 therefore expect `build` as well as `intake` — build had demonstrably
+# started (it wrote BUILD_STARTED) before the signal landed. Before #2001 both
+# freed `intake` only, because teardown iterated `.stage_statuses`, which
+# `_update_stage_status` writes only on complete/failed — i.e. after a stage
+# returns, which a killed stage never does.
 _assert_released() {
-    local _case="$1" _marker; _marker="$(cat "$RELEASE_MARKER" 2>/dev/null || true)"
-    if grep -q ':release' <<< "$_marker"; then
-        assert_pass "[$_case] cleanup dispatched with scope=release"
+    local _case="$1"; shift
+    local _marker; _marker="$(cat "$RELEASE_MARKER" 2>/dev/null || true)"
+    local _stage _missing=""
+    for _stage in "$@"; do
+        grep -q "^${_stage}:release$" <<< "$_marker" || _missing="${_missing}${_stage} "
+    done
+    if [[ -z "$_missing" ]]; then
+        assert_pass "[$_case] cleanup dispatched with scope=release for: $*"
     else
-        assert_fail "[$_case] cleanup dispatched with scope=release" \
-            "marker=$(tr '\n' ' ' <<< "$_marker")"
+        assert_fail "[$_case] cleanup dispatched with scope=release for: $*" \
+            "no release from: ${_missing}| marker=$(tr '\n' ' ' <<< "$_marker")"
     fi
     if grep -q ':purge' <<< "$_marker"; then
         assert_fail "[$_case] purge is never reachable from a run" "marker contained purge"
@@ -147,7 +170,7 @@ set +e
 _rc=$?
 set -e
 assert_eq "[SPEC-1] runner exits 0 on the success path" "0" "$_rc"
-_assert_released "SPEC-1"
+_assert_released "SPEC-1" intake build test
 
 # ── SPEC-2: non-zero stage rc ────────────────────────────────────────────────
 print_test_section "SPEC-2: exit path = non-zero stage rc"
@@ -163,7 +186,7 @@ if [[ "$_rc" -ne 0 ]]; then
 else
     assert_fail "[SPEC-2] runner exits non-zero when a stage fails" "rc=0"
 fi
-_assert_released "SPEC-2"
+_assert_released "SPEC-2" intake build
 
 # ── SPEC-3: SIGINT propagation chain (child rc=130) ──────────────────────────
 print_test_section "SPEC-3: exit path = SIGINT chain (stage rc 130)"
@@ -173,7 +196,7 @@ set +e
 ( cd "$OVERLAY_REPO" && bash "$RUNNER" --template resume-minimal --goal "release-sigint" ) \
     >"$CASE_DIR/out" 2>&1
 set -e
-_assert_released "SPEC-3"
+_assert_released "SPEC-3" intake build
 
 # ── SPEC-4: external SIGTERM ─────────────────────────────────────────────────
 print_test_section "SPEC-4: exit path = external SIGTERM"
@@ -196,10 +219,25 @@ wait "$RUNNER_PID" 2>/dev/null || true
 # The EXIT trap dispatches release asynchronously w.r.t. this shell's `wait`
 # on some platforms; give the marker a bounded moment to appear.
 for _ in $(seq 1 50); do grep -q ':release' "$RELEASE_MARKER" 2>/dev/null && break; sleep 0.1; done
-_assert_released "SPEC-4"
+_assert_released "SPEC-4" intake build
 
-# ── SPEC-5: external timeout ─────────────────────────────────────────────────
-print_test_section "SPEC-5: exit path = external timeout"
+# ── SPEC-5: external hard kill (what an overrunning `timeout` produces) ──────
+# ADR-053 §2: assert on an observable event, never a wall-clock budget.
+#
+# This case used to run the whole runner under `timeout 6`. Those 6 seconds had
+# to cover process startup, template resolution AND reaching the build stage —
+# so the budget was really a bet on host speed. Under the parallel pool (#991,
+# the tier is parallel by default and the serial-pin list is empty) startup
+# alone outran it: the runner was killed before any stage dispatched, the marker
+# came back empty, and the failure read as a cleanup regression that standalone
+# runs could never reproduce.
+#
+# The supervising timeout stays, but only as a runaway guard with a ceiling no
+# healthy run approaches. The kill that this case actually asserts on is driven
+# from BUILD_STARTED — the runner is provably inside the build stage — and
+# escalates TERM→KILL the way `timeout` itself does, which is what separates
+# this case from SPEC-4's plain SIGTERM.
+print_test_section "SPEC-5: exit path = external hard kill (timeout-style)"
 _prep timeout
 export BUILD_RC=0 BUILD_SLEEP=1
 _tbin=""
@@ -208,14 +246,22 @@ elif command -v timeout  >/dev/null 2>&1; then _tbin=timeout
 fi
 if [[ -z "$_tbin" ]]; then
     SKIP=$((SKIP + 1))
-    echo -e "  ${YELLOW}SKIP${RESET}: [SPEC-5] external timeout (no timeout binary available)" >&2
+    echo -e "  ${YELLOW}SKIP${RESET}: [SPEC-5] external hard kill (no timeout binary available)" >&2
 else
-    set +e
-    ( cd "$OVERLAY_REPO" && "$_tbin" 6 bash "$RUNNER" --template resume-minimal \
-        --goal "release-timeout" ) >"$CASE_DIR/out" 2>&1
-    set -e
+    set -m
+    bash -c 'cd "$1" && exec "$4" 120 bash "$2" --template resume-minimal --goal "$3"' \
+        _ "$OVERLAY_REPO" "$RUNNER" "release-timeout" "$_tbin" >"$CASE_DIR/out" 2>&1 &
+    RUNNER_PID=$!
+    set +m
+    for _ in $(seq 1 300); do [[ -f "$BUILD_STARTED" ]] && break; sleep 0.1; done
+    kill -TERM -"$RUNNER_PID" 2>/dev/null || kill -TERM "$RUNNER_PID" 2>/dev/null || true
+    ( sleep 3; kill -KILL -"$RUNNER_PID" 2>/dev/null || kill -KILL "$RUNNER_PID" 2>/dev/null || true ) &
+    _spec5_killer=$!
+    wait "$RUNNER_PID" 2>/dev/null || true
+    kill "$_spec5_killer" 2>/dev/null || true
+    wait "$_spec5_killer" 2>/dev/null || true
     for _ in $(seq 1 50); do grep -q ':release' "$RELEASE_MARKER" 2>/dev/null && break; sleep 0.1; done
-    _assert_released "SPEC-5"
+    _assert_released "SPEC-5" intake build
 fi
 
 # ── SPEC-6: a blocking cleanup hook cannot hold the exit open ────────────────

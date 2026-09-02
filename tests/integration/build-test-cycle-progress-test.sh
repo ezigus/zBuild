@@ -16,13 +16,17 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "build #602: multi-iter cycle makes progress (numstat > 0)"
 setup_test_env "build-602-cycle-progress"
 
+# #1921 follow-up: reserved test identity — the QUOTED assignment form.
+# These were real issue numbers used as run identity.
+_ZB_ID="$(zb_test_issue)"
+
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 export ZBUILD_RUN_ID="build-602cyc-$$"
-export ZBUILD_ISSUE="602"
+export ZBUILD_ISSUE="$_ZB_ID"
 mkdir -p "$ZBUILD_EVENTS_DIR" "$ZBUILD_STATE_DIR/artifacts/stage-io"
 
 export HOME="$TEST_TEMP_DIR/home"
@@ -109,7 +113,7 @@ cat > "$STATE_DIR/scope-manifest.md" <<'EOF'
 + core/
 EOF
 STATE_FILE="$STATE_DIR/state.json"
-printf '{"issue":602,"branch":"feat/602"}' > "$STATE_FILE"
+printf '{"issue":$_ZB_ID,"branch":"feat/602"}' > "$STATE_FILE"
 
 DRIVER="$TEST_TEMP_DIR/driver.sh"
 cat > "$DRIVER" <<EOF

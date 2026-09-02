@@ -187,6 +187,25 @@ for id in "${!_LC_STAGE_MANIFEST[@]}"; do
         _complain "$rel: $primary_count outputs[] entries declare 'primary: true' (must be exactly one) [#507]"
     fi
 
+    # ── ADR-055 §9 (#2000): EXACTLY ONE outputs[].summary: true ───────────
+    # A stage that publishes nothing is indistinguishable from one that had
+    # nothing to say, so zero is no longer legal. This is the tree-wide echo of
+    # the pre-flight SUMMARY_MISSING check — the validator is the AUTHORITY,
+    # because it walks the resolved flow and can see a stage authored outside
+    # this repository, which this scan structurally cannot.
+    summary_count=$(awk '
+        BEGIN { in_out=0; n=0 }
+        /^outputs:/ { in_out=1; next }
+        in_out && /^[a-zA-Z_]/ { in_out=0 }
+        in_out && /^[[:space:]]+summary:[[:space:]]*true([[:space:]]|$|#)/ { n++ }
+        END { print n }
+    ' "$m" 2>/dev/null)
+    if [[ "$summary_count" -eq 0 ]]; then
+        _complain "$rel: declares no outputs[] entry with 'summary: true' — every stage-bound plugin must state what it did [ADR-055 §9 SUMMARY_MISSING]"
+    elif [[ "$summary_count" -gt 1 ]]; then
+        _complain "$rel: $summary_count outputs[] entries declare 'summary: true' (exactly one) [ADR-055 §9 SUMMARY_DUP]"
+    fi
+
     while IFS= read -r rec; do
         [[ -z "$rec" ]] && continue
         # ADR-055 §8 (#1827): the type position is read past, not captured — the
@@ -239,43 +258,12 @@ for id in "${!_LC_STAGE_MANIFEST[@]}"; do
     done < <(manifest_graph_get_inputs "$m")
 done
 
-# ─── OUTPUT_UNCONSUMED tree-wide check (ADR-020 bidirectional contract) ─────
-# Every output declared by an in-scope manifest must be named by at least one
-# consumer's input anywhere in the plugins tree. Outputs marked terminal: true
-# (pipeline terminus; no stage ever consumes it) or advisory: true (rendered
-# for humans outside the stage graph) are exempt. The flow-scoped check in the
-# runtime validator is stricter; the lint's weaker tree-wide version catches
-# typos and outright orphans at CI time.
-#
-# Guard: when running against a NARROW FIXTURE (custom ZBUILD_PLUGINS_ROOT that
-# is not the real plugins tree), the check is skipped unless the caller
-# explicitly sets ZBUILD_LINT_UNCONSUMED=1.  Narrow fixtures are deliberately
-# minimal; their last-stage outputs have no in-fixture consumer, which would
-# produce false positives against unrelated test runs.  The real-repo lint
-# (no custom ZBUILD_PLUGINS_ROOT, or ZBUILD_PLUGINS_ROOT == real plugins dir)
-# always runs the check.
-_lc_run_unconsumed=1
-if [[ -n "${ZBUILD_PLUGINS_ROOT:-}" \
-      && "$_PLUGINS_ROOT" != "$_LINT_CONTRACT_REPO/plugins" \
-      && "${ZBUILD_LINT_UNCONSUMED:-0}" != "1" ]]; then
-    _lc_run_unconsumed=0
-fi
-for _key_out in "${!_LC_STAGE_OUTPUTS[@]}"; do
-    [[ "$_lc_run_unconsumed" == "1" ]] || break
-    [[ "$_key_out" == role:* ]] && continue
-    _out_stage="${_key_out%%:*}"
-    _out_id="${_key_out#*:}"
-    _lc_id_in_scope "$_out_stage" || continue
-    [[ -n "${_LC_INPUT_NAMES[$_out_id]:-}" ]] && continue
-    _out_manifest="${_LC_STAGE_MANIFEST[$_out_stage]:-}"
-    [[ -z "$_out_manifest" ]] && continue
-    _out_rel="${_out_manifest#"$_LINT_CONTRACT_REPO"/}"
-    _unc_term="$(manifest_graph_output_terminal "$_out_manifest" "$_out_id" 2>/dev/null || true)"
-    _unc_adv="$(manifest_graph_output_advisory "$_out_manifest" "$_out_id" 2>/dev/null || true)"
-    if [[ "$_unc_term" != "true" && "$_unc_adv" != "true" ]]; then
-        _complain "$_out_rel: output '$_out_id' is named by no consumer — mark terminal: true or advisory: true, or wire a downstream consumer [ADR-020 OUTPUT_UNCONSUMED]"
-    fi
-done
+# #1980: the OUTPUT_UNCONSUMED check is retired. It asked a PRODUCER to declare
+# whether anyone consumes its output — a property of the TEMPLATE, not of the
+# plugin, so the same plugin in a different flow needed a different answer. The
+# 24 `terminal:`/`advisory:` annotations it forced were written to pass a gate,
+# not to describe an artifact. The mirror check (a required input naming no
+# producer) is a real error and stays.
 
 # ─── Wave 18-C (#708): cycle-feedback wiring lint ───────────────────────────
 # Every cycle definition's `feedback:` wire is statically verified against

@@ -12,8 +12,6 @@ description: |
 
 hooks:
   run: design_stage_run
-  cleanup: design_stage_cleanup
-
 requires:
   core:
     - redaction
@@ -46,16 +44,6 @@ inputs:
   # iter N+1 refines rather than re-creates.
   - id: design
     required: false
-  # #1219 (ADR-045/ADR-046): design-rooted gate feedback carried BACK from the
-  # build_test_cycle by the route_back rewind. Written by the gate-aggregator to
-  # the shared artifacts dir on a route_design verdict (a tautological [change]
-  # SPEC that build cannot fix). source: artifacts (NOT cycle_feedback — that
-  # channel is intra-design_verify_cycle; this arrives from the OTHER cycle across
-  # the rewind). required:false — absent on the FIRST design pass (no-op).
-  - id: design_feedback
-    required: false
-  - id: design_gate_feedback
-    required: false
 
 outputs:
   - id: design
@@ -64,6 +52,14 @@ outputs:
     format: markdown
     required: true
     primary: true
+  # ADR-055 §9: this stage's statement of what it DID. required:true —
+  # written on every terminal verdict, so absence means something went wrong.
+  - id: design_summary
+    path: "${artifact_dir}/design-summary.md"
+    type: design-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 
 state:
   persisted: []

@@ -19,6 +19,8 @@ _ZBUILD_PR_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _PR_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/redaction/scope-redaction.sh
 source "$_PR_ROOT/core/redaction/scope-redaction.sh"
@@ -30,6 +32,9 @@ pr_stage_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
         error "pr_stage_run: state_file argument required"
+        stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/pr-delivery-summary.md}" "pr-delivery" "error" \
+            "the engine dispatched this stage with no state file, so it could not run" \
+            "No work was attempted. This is an engine contract violation, not a fault in the change."
         return 2
     fi
     # Thread the real state_file through — pr-open reads .issue from it, and the
@@ -55,6 +60,9 @@ _pr_stage_run_inner() {
             warn "pr: review verdict=block — refusing PR open"
             printf '{"status":"blocked","verdict":"block","branch":"%s"}\n' \
                 "${ZBUILD_BRANCH:-unknown}" > "$pr_result_out"
+            stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
+                "refused to open a PR: the review verdict is block" \
+                "No PR was delivered. The review stage judged the change not ready."
             return 1
         fi
     fi
@@ -67,6 +75,9 @@ _pr_stage_run_inner() {
         jq -nc --arg branch "${ZBUILD_BRANCH:-unknown}" --argjson draft "$_dry_draft" \
             '{status:"dry_run",branch:$branch,pr_number:0,draft:$draft}' \
             | atomic_write "$pr_result_out"
+        stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "skip" \
+            "dry run — no PR was opened and gh was not called" \
+            "Nothing was delivered. This verdict asserts nothing about a real PR."
         return 0
     fi
 
@@ -78,7 +89,17 @@ _pr_stage_run_inner() {
             # shellcheck source=../../tool/merge/plugin.sh
             source "$merge_plugin"
             if type merge_run >/dev/null 2>&1; then
-                merge_run "pr" "$state_file" || return $?
+                local _rc=0
+                merge_run "pr" "$state_file" || _rc=$?
+                if [[ $_rc -ne 0 ]]; then
+                    stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
+                        "delegated to the merge stage, which did not complete (rc=$_rc)" \
+                        "No PR was delivered. See the merge stage-summary.md for why."
+                    return "$_rc"
+                fi
+                stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "pass" \
+                    "delivered the change by delegating to the merge stage (policy: auto)" \
+                    "See the merge stage-summary.md for the result."
                 return 0
             fi
         fi
@@ -109,7 +130,17 @@ _pr_stage_run_inner() {
                 # shellcheck source=../../tool/merge/plugin.sh
                 source "$merge_plugin"
                 if type merge_run >/dev/null 2>&1; then
-                    merge_run "pr" "$state_file" || return $?
+                    local _rc=0
+                    merge_run "pr" "$state_file" || _rc=$?
+                    if [[ $_rc -ne 0 ]]; then
+                        stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
+                            "delegated to the merge stage, which did not complete (rc=$_rc)" \
+                            "No PR was delivered. See the merge stage-summary.md for why."
+                        return "$_rc"
+                    fi
+                    stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "pass" \
+                        "delivered the change by delegating to the merge stage (policy: auto_unless_flagged)" \
+                        "See the merge stage-summary.md for the result."
                     return 0
                 fi
             fi
@@ -123,7 +154,17 @@ _pr_stage_run_inner() {
         # shellcheck source=../../tool/pr-open/plugin.sh
         source "$pr_open_plugin"
         if type pr_open_run >/dev/null 2>&1; then
-            pr_open_run "pr" "$state_file" || return $?
+            local _rc=0
+            pr_open_run "pr" "$state_file" || _rc=$?
+            if [[ $_rc -ne 0 ]]; then
+                stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
+                    "delegated to the pr-open stage, which did not complete (rc=$_rc)" \
+                    "No PR was delivered. See the pr-open stage-summary.md for why."
+                return "$_rc"
+            fi
+            stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "pass" \
+                "delivered the change by delegating to the pr-open stage" \
+                "See the pr-open stage-summary.md for the result."
             return 0
         fi
     fi
@@ -144,13 +185,16 @@ _pr_stage_run_inner() {
         jq -nc --arg branch "$branch" --arg pr_url "$pr_url" --argjson draft "$_fb_draft" \
             '{status:"opened",branch:$branch,pr_url:$pr_url,draft:$draft}' \
             | atomic_write "$pr_result_out"
+        stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "pass" \
+            "opened a PR directly via gh (fallback path)" \
+            "$(printf -- '- pr: %s\n- branch: %s' "$pr_url" "$branch")"
     else
         jq -nc --arg branch "$branch" '{status:"error",branch:$branch}' | atomic_write "$pr_result_out"
+        stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
+            "could not open a PR for branch $branch" \
+            "No PR was delivered. The direct gh fallback failed."
         return 1
     fi
 }
 
 # ─── cleanup ────────────────────────────────────────────────────────────────
-pr_stage_cleanup() {
-    return 0
-}

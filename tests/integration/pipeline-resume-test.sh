@@ -21,6 +21,12 @@ source "$REPO_ROOT/core/state/resume.sh"
 print_test_header "pipeline resume — CLI + auto-resume policy (#225)"
 
 setup_test_env "pipeline-resume"
+
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
 # Wave 12-E (#664): default is enforce. Stub plugins used here lack honest
 # inputs/outputs blocks; opt out — this suite tests resume policy.
 export ZBUILD_CONTRACT_VALIDATOR=warn
@@ -37,10 +43,11 @@ _write_state() {
     jq -n \
         --arg status "$status" \
         --arg updated_at "$updated_at" \
+        --argjson _ZB_ID "$_ZB_ID" \
         '{
             schema_version: 1,
             run_id: "test-run-225",
-            issue: 225,
+            issue: $_ZB_ID,
             stage_statuses: {},
             current_iteration: 0,
             self_heal_count: {},
@@ -205,10 +212,11 @@ INT_STATE_FILE="$INT_STATE_DIR/pipeline-state.json"
 jq -n \
     --arg run_id "integ-test-resume-225" \
     --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --argjson _ZB_ID "$_ZB_ID" \
     '{
         schema_version: 1,
         run_id: $run_id,
-        issue: 225,
+        issue: $_ZB_ID,
         stage_statuses: {intake: "complete", build: "pending"},
         current_iteration: 0,
         self_heal_count: {},
@@ -232,7 +240,7 @@ set +e
     ZBUILD_EVENTS_DB="$INT_EVENTS_DIR/events.db" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     PATH="$PATH" HOME="$HOME" \
-    bash "$RUNNER" --template runner-state-dir-minimal --resume --issue 225 ) 2>/dev/null
+    bash "$RUNNER" --template runner-state-dir-minimal --resume --issue "$_ZB_ID" ) 2>/dev/null
 _int_rc=$?
 set -e
 
@@ -265,7 +273,7 @@ set +e
     ZBUILD_EVENTS_DB="$INT_EVENTS_DIR/events.db" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     PATH="$PATH" HOME="$HOME" \
-    bash "$RUNNER" --template runner-state-dir-minimal --resume --issue 225 --from-stage "nonexistent-stage" ) 2>/dev/null
+    bash "$RUNNER" --template runner-state-dir-minimal --resume --issue "$_ZB_ID" --from-stage "nonexistent-stage" ) 2>/dev/null
 _fs_rc=$?
 set -e
 
@@ -292,7 +300,7 @@ set +e
     ZBUILD_EVENTS_DB="$INT_EVENTS_DIR/events.db" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     PATH="$PATH" HOME="$HOME" \
-    bash "$RUNNER" --template runner-state-dir-minimal --issue 225 --from-stage "intake" ) 2>/dev/null
+    bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" --from-stage "intake" ) 2>/dev/null
 _noresume_rc=$?
 set -e
 

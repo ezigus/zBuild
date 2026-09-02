@@ -46,14 +46,21 @@ source "$REPO_ROOT/core/pipeline/template.sh"
 load_template "$REPO_ROOT/config/templates/simple.yaml"
 
 fb="${_TPL_CYCLE_FEEDBACK_design_verify_cycle:-}"
-assert_contains "[SPEC-6] T1: feedback contains design-gate→design edge" \
-    "$fb" "design-gate:design_gate_feedback|design:design_gate_feedback"
+# #1979: the design-gate→design edge is retired — design-gate's feedback reaches
+# design as an engine-collected summary (#1976) instead of a wire plus a bespoke
+# reader. The SELF-edge is a different mechanism (design's own prior output,
+# #842/#773) that nothing here replaces, so it must survive.
 assert_contains "[SPEC-6] T1: feedback contains design→design self-edge (#842)" \
     "$fb" "design:design|design:design"
+if grep -qF "design-gate:design_gate_feedback" <<< "$fb"; then
+    assert_fail "[SPEC-6] T1: the design-gate→design edge is retired" "wire still parsed"
+else
+    assert_pass "[SPEC-6] T1: the design-gate→design edge is retired"
+fi
 
-# Both edges present means two records separated by newline.
-edge_count="$(printf '%s\n' "$fb" | grep -c '|' || true)"
-assert_eq "[SPEC-6] T1: exactly 2 feedback edges in design_verify_cycle" "2" "$edge_count"
+# The self-edge is now the ONLY edge in this cycle.
+edge_count="$(grep -c '|' <<< "$fb" || true)"
+assert_eq "[SPEC-6] T1: exactly 1 feedback edge in design_verify_cycle" "1" "$edge_count"
 
 # ─── T2 + T3: _cycle_apply_feedback round-trips both edges ──────────────────
 # shellcheck disable=SC1090

@@ -15,6 +15,11 @@ source "$REPO_ROOT/scripts/lib/identity.sh"
 print_test_header "--goal run identity (#1931)"
 setup_test_env "zb-goal-identity"
 
+# #1921 follow-up: reserved test identity (see zb_test_issue). The literals
+# here were real issue numbers; a run keyed to one writes fabricated prior
+# work onto that issue's state branch.
+_ZB_ID="$(zb_test_issue)"
+
 # ─── [SPEC-1][change] two different goals get two different keys ────────────
 # The defect this removes: every --goal run shared `issue-0`. Under ADR-059's
 # issue-keyed layout that is ONE worktree and ONE artifacts dir for unrelated
@@ -39,7 +44,7 @@ assert_eq "[SPEC-1] the same goal re-run resolves to the same key" \
 
 # And an issue still wins outright.
 assert_eq "[SPEC-1] an issue number takes precedence over goal text" \
-    "issue-1931" "$(zbuild_run_key 1931 'some goal text')"
+    "issue-$_ZB_ID" "$(zbuild_run_key $_ZB_ID 'some goal text')"
 
 # ─── [SPEC-2][guard] reflowing a goal does not orphan its prior work ───────
 print_test_section "[SPEC-2][guard] the key is whitespace-insensitive"
@@ -66,9 +71,9 @@ print_test_section "[SPEC-4][change] a goal run's branch is not zbuild/issue-0-*
 # shellcheck source=../../plugins/agent/intake/lib/branch-names.sh
 source "$REPO_ROOT/plugins/agent/intake/lib/branch-names.sh"
 
-_b_issue="$(_intake_derive_branch_name 1931 'Add a retry')"
+_b_issue="$(_intake_derive_branch_name $_ZB_ID 'Add a retry')"
 assert_eq "[SPEC-4] an issue branch is unchanged" \
-    "zbuild/issue-1931-add-a-retry" "$_b_issue"
+    "zbuild/issue-$_ZB_ID-add-a-retry" "$_b_issue"
 
 _b_goal="$(ZBUILD_GOAL='add a retry to the uploader' _intake_derive_branch_name 0 'Add a retry')"
 assert_contains "[SPEC-4] a goal branch carries the goal key" "$_b_goal" "zbuild/goal-"
@@ -120,7 +125,7 @@ print_test_section "[SPEC-5][change] a goal run gets its own state branch"
 source "$REPO_ROOT/core/state/artifact-persist.sh"
 
 assert_eq "[SPEC-5] an issue state branch is unchanged" \
-    "zbuild/state/issue-1931" "$(_artifact_persist_branch 1931)"
+    "zbuild/state/issue-$_ZB_ID" "$(_artifact_persist_branch $_ZB_ID)"
 _sb="$(ZBUILD_GOAL='add a retry to the uploader' _artifact_persist_branch 0)"
 assert_contains "[SPEC-5] a goal state branch carries the goal key" "$_sb" "zbuild/state/goal-"
 assert_eq "[SPEC-5] neither issue nor goal keeps the old shape" \

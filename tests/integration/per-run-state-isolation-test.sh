@@ -25,6 +25,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "per-run state isolation (#887)"
 setup_test_env "per-run-state-isolation-887"
+
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
 export ZBUILD_CONTRACT_VALIDATOR=warn
 
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
@@ -61,7 +67,7 @@ _sd_for() {
     HOME="$HOME_DIR" env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_DATA_ROOT \
         bash -c 'source "$1/scripts/lib/test-helpers.sh" >/dev/null 2>&1
                  zb_expected_run_state_dir "$2" "$3" "" "$4"' _ \
-        "$REPO_ROOT" "$OVERLAY_REPO" "887" "$1"
+        "$REPO_ROOT" "$OVERLAY_REPO" "$_ZB_ID" "$1"
 }
 
 
@@ -79,7 +85,7 @@ run_pipeline() {
         ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
         ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
         ZBUILD_RUN_ID="$run_id" HOME="$HOME_DIR" PATH="$PATH" "$@" \
-        bash "$RUNNER" --issue 887 --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
+        bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
     local rc=$?; set -e; return $rc
 }
 
@@ -113,7 +119,7 @@ set +e
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_RUN_ID="run-ccc" HOME="$HOME_DIR" PATH="$PATH" \
-    bash "$RUNNER" --issue 887 --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
+    bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
 rc=$?; set -e
 assert_eq "T4: explicit-state run exits 0" "0" "$rc"
 assert_file_exists "T4: explicit ZBUILD_STATE_DIR used verbatim (no runs/)" "$EXPLICIT/pipeline-state.json"
@@ -152,7 +158,7 @@ set +e
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_RUN_ID="run-eee" HOME="$HOME_DIR" PATH="$PATH" \
-    bash "$RUNNER" --issue 887 --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
+    bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
 t6_rc=$?; set -e
 # macOS $TMPDIR is /var/folders (/var -> /private/var symlink), so a literal
 # substring match on the captured ZBUILD_EVENTS_DIR can disagree with the
@@ -209,17 +215,32 @@ EPHEMERAL_TMP="$TEST_TEMP_DIR/ephemeral-tmp"; mkdir -p "$EPHEMERAL_TMP"
 rm -f "$GLOBAL_STATE/events.jsonl" 2>/dev/null || true
 set +e
 # #1240: scrub ZBUILD_STATE_ROOT too — event-bus.sh derives its default events dir
-# from ${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}, so a leaked fence (from the #1127
-# nested sandbox) would divert this unpinned emit away from the ephemeral $TMPDIR.
+# from the data-root precedence, so a leaked fence (from the #1127 nested
+# sandbox) would divert this unpinned emit away from the expected location.
+#
+# #2004: that location is now under the DATA ROOT, not ${TMPDIR}. ADR-059 §1
+# makes the path the keying — a reclaimer deletes a `runs/<id>/` or an
+# `issues/<N>/` and the scope follows from where it sits — so a ${TMPDIR}
+# default sat outside every reclaimable path by construction. HOME is pinned to
+# $HOME_DIR here and no data/state root is set, so the default resolves to
+# $HOME_DIR/.zbuild/ephemeral-events/<pid>. TMPDIR stays pinned to prove the
+# emit does NOT land there.
 env -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_EVENTS_DB -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
     HOME="$HOME_DIR" TMPDIR="$EPHEMERAL_TMP" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" PATH="$PATH" \
     bash -c 'source "'"$REPO_ROOT"'/core/event-bus/event-bus.sh"; eb_emit_event "pipeline.start" k=v' >/dev/null 2>&1
 set -e
-if compgen -G "$EPHEMERAL_TMP/zbuild-ephemeral-events.*/events.jsonl" >/dev/null; then
-    assert_pass "T9: unpinned ad-hoc emit → ephemeral \$TMPDIR events dir"
+if compgen -G "$HOME_DIR/.zbuild/ephemeral-events/*/events.jsonl" >/dev/null; then
+    assert_pass "T9: unpinned ad-hoc emit → ephemeral dir under the data root"
+    # And explicitly NOT in $TMPDIR — the regression #2004 fixed.
+    if compgen -G "$EPHEMERAL_TMP/zbuild-ephemeral-events.*" >/dev/null; then
+        assert_fail "T9: unpinned ad-hoc emit must NOT write under \$TMPDIR (#2004)" \
+            "found a \${TMPDIR}-rooted events dir — unreclaimable by construction"
+    else
+        assert_pass "T9: unpinned ad-hoc emit wrote nothing under \$TMPDIR (#2004)"
+    fi
 else
-    assert_fail "T9: unpinned ad-hoc emit should write to an ephemeral \$TMPDIR dir" \
+    assert_fail "T9: unpinned ad-hoc emit should write under the data root (#2004)" \
         "no zbuild-ephemeral-events.* under $EPHEMERAL_TMP"
 fi
 if [[ -e "$GLOBAL_STATE/events.jsonl" ]]; then

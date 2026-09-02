@@ -14,6 +14,10 @@ print_test_header "plugin: output-github-comment (issue #87)"
 
 setup_test_env "plugin-output"
 
+# #1921 follow-up: reserved test identity — the QUOTED assignment form.
+# These were real issue numbers used as run identity.
+_ZB_ID="$(zb_test_issue)"
+
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
@@ -141,7 +145,7 @@ exit 0
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/gh"
 
-export ZBUILD_ISSUE="42"
+export ZBUILD_ISSUE="$_ZB_ID"
 
 set +e
 output_run "output" "$STATE_FILE" >/dev/null 2>&1
@@ -153,7 +157,7 @@ assert_file_exists "gh was called (last_gh_args written)" "$TEST_TEMP_DIR/last_g
 gh_args="$(cat "$TEST_TEMP_DIR/last_gh_args")"
 assert_contains "gh called with 'issue'" "$gh_args" "issue"
 assert_contains "gh called with 'comment'" "$gh_args" "comment"
-assert_contains "gh called with issue number" "$gh_args" "42"
+assert_contains "gh called with issue number" "$gh_args" "$_ZB_ID"
 assert_contains "gh called with --body" "$gh_args" "--body"
 rm -f "$TEST_TEMP_DIR/last_gh_args"
 
@@ -164,7 +168,7 @@ exit 1
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/gh"
 
-export ZBUILD_ISSUE="42"
+export ZBUILD_ISSUE="$_ZB_ID"
 
 set +e
 output_run "output" "$STATE_FILE" >/dev/null 2>&1

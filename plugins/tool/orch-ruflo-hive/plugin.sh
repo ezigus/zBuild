@@ -10,7 +10,7 @@
 # pool-dir naming, pool_id validation, ruflo hive-mind hooks (best-effort
 # — their failures do not abort local execution), and capabilities.
 #
-# Pool layout: ${TMPDIR:-/tmp}/zbuild-hive-<pool_id>/{results,slots}/
+# Pool layout: ${ZBUILD_POOL_ROOT:-<issue-or-goal-area>/runs/<run_id>/pool}/zbuild-hive-<pool_id>/{results,slots}/ (ADR-059 §1)
 #
 # Sourced library: inherits caller's pipefail; no set -euo pipefail.
 
@@ -28,7 +28,29 @@ source "$_ZBUILD_ORCH_HIVE_ROOT/core/orch/local_engine.sh"
 
 # ─── _orch_hive_pool_dir ─────────────────────────────────────────────────────
 _orch_hive_pool_dir() {
-    printf '%s' "${TMPDIR:-/tmp}/zbuild-hive-${1}"
+    # ADR-059 §1: pool dirs live at runs/<run_id>/pool/ under the issue's (or
+    # goal's) area, so they sit inside something a reclaimer can name.
+    # ZBUILD_STATE_DIR already resolves to runs/<run_id>/.
+    #
+    # #2004: this backend was missed when orch-bash-parallel and orch-sequential
+    # were fixed, and it was worse than either — a bare ${TMPDIR} path with no
+    # per-run namespace, so two concurrent runs shared a pool id space, and
+    # `zbuild-hive-*` was absent from ZBUILD_TMPDIR_PATTERNS, so nothing swept
+    # it. It also ignored ZBUILD_POOL_ROOT, which both other backends honour.
+    local _root="${ZBUILD_POOL_ROOT:-}"
+    if [[ -z "$_root" ]]; then
+        if [[ -n "${ZBUILD_STATE_DIR:-}" ]]; then
+            _root="${ZBUILD_STATE_DIR%/}/pool"
+        else
+            # No state dir means no run — an ad-hoc or test caller. It still
+            # goes under the DATA ROOT, not ${TMPDIR}: ADR-059 §1 makes the path
+            # the keying, so a ${TMPDIR} fallback would be unreclaimable by
+            # construction and would reintroduce the very leak #2004 fixed.
+            # Same precedence the event bus uses for its unpinned default.
+            _root="${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}/runs/${ZBUILD_RUN_ID:-default}/pool"
+        fi
+    fi
+    printf '%s' "${_root}/zbuild-hive-${1}"
 }
 
 # ─── _orch_hive_validate_pool_id ─────────────────────────────────────────────

@@ -15,8 +15,9 @@
 #
 # v1 scope (per multi-agent design synthesis):
 #   - Pattern 1 ONLY (build's loop-with-sentinel stays separate)
-#   - No escape-repair in parser (deferred to v2; ADR-022 column-3208 case is
-#     the regression target). v1 fails-soft with diagnostic-rich error.
+#   - No escape-repair in parser. ADR-060 §B settled this: a malformed reply is
+#     RE-ASKED, never repaired — the engine rewriting a model's answer fabricates
+#     data and guesses at intent. Fails soft with a diagnostic-rich error.
 #   - Per-stage OUTPUT CONTRACT goldens pin the rendered block.
 
 if [[ "${_ZBUILD_LLM_AGENT_LOADED:-}" == "1" ]]; then
@@ -42,19 +43,16 @@ source "$_LLM_AGENT_LIB_DIR/router-rc-classify.sh"
 #                               entirely (use for plan which has no .verdict
 #                               field; the schema MUST NOT assert .verdict)
 #   --schema-json <inline>    — required JSON schema shape (multi-line)
-#   --markdown-fields <csv>   — fields that may contain markdown; framework
-#                               appends the ADR-022 escape requirement when set
 #   [--extras <path>]         — per-stage extras file (FORBIDDEN extensions,
 #                               CORRECT examples, etc.); appended verbatim
 #                               between the schema block and the closing rule.
 _llm_output_contract() {
-    local stage="" verdicts="" schema_json="" markdown_fields="" extras_file=""
+    local stage="" verdicts="" schema_json="" extras_file=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --stage) stage="$2"; shift 2 ;;
             --verdicts) verdicts="$2"; shift 2 ;;
             --schema-json) schema_json="$2"; shift 2 ;;
-            --markdown-fields) markdown_fields="$2"; shift 2 ;;
             --extras) extras_file="$2"; shift 2 ;;
             *) shift ;;
         esac
@@ -62,6 +60,37 @@ _llm_output_contract() {
 
     [[ -z "$stage" ]] && { printf '_llm_output_contract: --stage required\n' >&2; return 2; }
     [[ -z "$schema_json" ]] && { printf '_llm_output_contract: --schema-json required\n' >&2; return 2; }
+
+    # ADR-060 §1: a parsed envelope carries structured data only. A field
+    # holding a markdown DOCUMENT is refused here, at prompt-build time, before
+    # a model call is made — the stage cannot ask for the shape at all.
+    #
+    # Why the check exists rather than a note in the ADR: #767, #774, #783 and
+    # #908 were four symptomatic fixes to the same seam, and #1972 was the
+    # fifth. A single markdown-escaped underscore inside impact_feedback_md
+    # (`done\_sentinel` — not a legal JSON escape) killed a 24-minute run.
+    # The rule was written down after that; nothing enforced it, so the next
+    # stage added would have reintroduced the shape and its author would not
+    # have been wrong.
+    #
+    # Two signals, both taken from the field that actually caused it: a name
+    # ending in `_md`, or a placeholder that says "markdown". Short plain-text
+    # fields (reason, message, summary, description, evidence) are data and
+    # stay — see ADR-060 §5 for the line this must not be read past.
+    local _md_field=""
+    _md_field="$(grep -oE '"[A-Za-z0-9_]*_md"[[:space:]]*:' <<< "$schema_json" \
+        | sed -nE '1s/"([^"]*)".*/\1/p' || true)"
+    if [[ -z "$_md_field" ]]; then
+        _md_field="$(grep -oiE '"[A-Za-z0-9_]+"[[:space:]]*:[[:space:]]*"<[^"]*markdown[^"]*>"' <<< "$schema_json" \
+            | sed -nE '1s/"([^"]*)".*/\1/p' || true)"
+    fi
+    if [[ -n "$_md_field" ]]; then
+        printf '_llm_output_contract: stage %s declares a markdown-document field: %s\n' \
+            "$stage" "$_md_field" >&2
+        printf '  ADR-060 §1: an envelope carries structured data only. Put the detail in\n' >&2
+        printf '  short plain-text fields, and render any narrative from them (§3).\n' >&2
+        return 1
+    fi
 
     # Canonical opening — never varies across stages.
     cat <<'CONTRACT_HEAD'
@@ -93,17 +122,6 @@ not before the JSON, not after it, not inside any field:
   - "I have all the information"
 _FORBIDDEN_BLOCK
 
-    # Markdown-field escape requirement (ADR-022 v2).
-    if [[ -n "$markdown_fields" ]]; then
-        cat <<MD_ESCAPE
-
-JSON-STRING ESCAPING (ADR-022 v2 — applies to: $markdown_fields):
-- Every \` " \` inside a string field MUST be escaped as \` \\" \`.
-- Newlines inside a string field MUST be \` \\n \`, not raw newlines.
-- A markdown body containing a table cell like \` "3" \` MUST be encoded as
-  \` \\"3\\" \` in the JSON. Unescaped quotes break the JSON parse.
-MD_ESCAPE
-    fi
 
     cat <<'FINAL_RULE'
 
@@ -215,6 +233,44 @@ _llm_recover_envelope_json() {
     return 0
 }
 
+# ─── _llm_envelope_classify <json> [<schema_gate_func>] ────────────────
+# ADR-060 / #1833: says WHY an envelope was rejected. Prints exactly one of:
+#   unparseable — jq cannot parse it at all (bad escape, truncation, stray text)
+#   schema      — parses fine, but the schema gate says no
+#   ok          — parses and passes the gate
+#
+# Run 32886190954 died on `done\_sentinel` inside a markdown field. `\_` is not
+# a legal JSON escape, so jq refused the whole object -- but the error printed a
+# fixed list of five requirements and named none of them, so a two-character
+# typo read as a contract-version mismatch. Callers use this to say which.
+_llm_envelope_classify() {
+    local _json="${1:-}" _gate="${2:-}"
+    if ! printf '%s' "$_json" | jq empty >/dev/null 2>&1; then
+        printf 'unparseable'
+        return 0
+    fi
+    if [[ -n "$_gate" ]] && ! "$_gate" "$_json"; then
+        printf 'schema'
+        return 0
+    fi
+    printf 'ok'
+}
+
+# ─── _llm_envelope_parse_error <json> ───────────────────────────────
+# jq's ACTUAL complaint (e.g. "Invalid escape at line 1, column 2410"), for the
+# diagnostic. Previously discarded via 2>/dev/null, which is what turned #1833
+# into a multi-hour investigation.
+_llm_envelope_parse_error() {
+    local _err
+    # No `| head` here: #1886 bans it as a SIGPIPE hazard. Capture in full,
+    # then flatten and clamp in bash.
+    _err="$(printf '%s' "${1:-}" | jq empty 2>&1 >/dev/null || true)"
+    _err="${_err//$'\n'/ }"
+    _err="${_err//$'\r'/ }"
+    if [[ ${#_err} -gt 300 ]]; then _err="${_err:0:300}..."; fi
+    printf '%s' "$_err"
+}
+
 # ─── _llm_envelope_parse ────────────────────────────────────────────────────
 # Thin wrapper over extract_json_and_surrounding_prose (helpers.sh).
 # Preserves __PROSE__/__JSON__ sentinel semantics for renderer interop
@@ -286,7 +342,7 @@ _llm_envelope_parse() {
 
 # ─── _llm_envelope_validate ─────────────────────────────────────────────────
 # Two-pass validation: parse-class error (with col+ctx) vs structure-class.
-# Per ADR-020 amendment + ADR-022 v2: distinguishing the two failure modes
+# Per ADR-020 amendment + ADR-060 §B: distinguishing the two failure modes
 # tells the operator (and the LLM on next iter) the real root cause.
 #
 # Args:

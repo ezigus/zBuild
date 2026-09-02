@@ -18,6 +18,8 @@ _ZBUILD_REVIEW_REPORT_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _RR_DIR="$_ZBUILD_PLUGIN_DIR"
 _RR_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -42,6 +44,9 @@ review_report_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
         error "review_report_run: state_file argument required"
+        stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/review-report-summary.md}" "review-report" "error" \
+            "the engine dispatched this stage with no state file, so it could not run" \
+            "No work was attempted. This is an engine contract violation, not a fault in the change."
         return 2
     fi
     local state_dir; state_dir="$(dirname "$state_file")"
@@ -65,6 +70,9 @@ _rr_run_inner() {
     local scope_manifest="$1" evidence="$2" out_json="$3" out_md="$4"
     if [[ -z "$out_json" ]]; then
         error "_rr_run_inner: output path required"
+        stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/review-report-summary.md}" "review-report" "error" \
+            "no output path was supplied, so no review report could be written" \
+            "No work was attempted. This is an engine contract violation, not a fault in the change."
         return 2
     fi
     local artifact_dir; artifact_dir="$(dirname "$out_json")"
@@ -119,6 +127,9 @@ _rr_run_inner() {
         [[ $gh_rc -ne 0 ]] && warn "review_report: gh pr comment failed (rc=$gh_rc); continuing"
     fi
 
+    stage_summary_write "$artifact_dir/review-report-summary.md" "review-report" "pass" \
+        "aggregated $lens_count review lens(es) — merge readiness: $merge_readiness" \
+        "$(printf -- '- artifact: review-report.md')"
     emit_event "plugin.result" \
         "plugin=review-report" \
         "merge_readiness=$merge_readiness" \

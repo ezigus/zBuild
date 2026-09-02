@@ -23,6 +23,14 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "cycle on_max=continue → runner continues to next cycle (#766)"
 setup_test_env "cycle-on-max-pipeline-continues"
 
+# #1921 follow-up: the runner resolves repo_root from CWD, so a --goal run
+# started from the working checkout snapshots zbuild/state/goal-<hash> into it.
+# Measured in an isolated clone: a full suite went from 0 state refs to 2, both
+# goal refs, and this file produced one of them. The issue-keyed sweep missed
+# these because it looked for issue identity.
+_ZB_REPO="$(zb_test_repo cycle-on-max)"
+_ZB_GOAL="$(zb_test_goal on-max-continue)"
+
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 STATE_DIR="$TEST_TEMP_DIR/state"
 EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
@@ -240,13 +248,20 @@ export ZBUILD_SCOPE_OVERRIDE=1
 # We bypass intake by skipping the issue fetch — drive with --goal so it
 # doesn't try to gh-CLI an issue.
 RUNNER_STDERR="$TEST_TEMP_DIR/runner.stderr"
+# Assert the throwaway repo before the subshell: without this a failed cd would
+# be captured in runner_rc and read as a runner exit code rather than a setup
+# failure.
+[[ -d "$_ZB_REPO" ]] || { echo "zb_test_repo did not produce a repo" >&2; exit 1; }
 set +e
-bash "$REPO_ROOT/core/pipeline/runner.sh" \
-    --goal "test on_max=continue" \
+( cd "$_ZB_REPO" && bash "$REPO_ROOT/core/pipeline/runner.sh" \
+    --goal "$_ZB_GOAL" \
     --template simple \
     --no-resume \
     >"$TEST_TEMP_DIR/runner.stdout" \
-    2>"$RUNNER_STDERR"
+    2>"$RUNNER_STDERR" )
+# shellcheck disable=SC2034  # captured so `set -e` below cannot swallow a
+# non-zero runner exit before the assertions run; the test asserts on the event
+# stream rather than the rc. Pre-existing, kept deliberately.
 runner_rc=$?
 set -e
 

@@ -8,6 +8,10 @@ kind: tool
 # put the aggregator into its own roster — _ga_build_roster excludes the
 # aggregator by id (never aggregates self).
 convergence: gate
+# #1988: this stage no longer aggregates a roster for prompt purposes. It
+# stopped rendering gate detail — every gate publishes its own summary now
+# — so covering the roster would suppress the members and ship an aggregate
+# containing nothing. It remains the convergence gate and the fault roll-up.
 version: 0.1.0
 description: |
   Deterministic, LLM-free T0 convergence aggregator (ADR-040 §2, EPIC #1129 B5,
@@ -37,8 +41,6 @@ description: |
 
 hooks:
   run: gate_aggregator_run
-  cleanup: gate_aggregator_cleanup
-
 requires:
   core:
     - event-bus
@@ -53,16 +55,22 @@ provides:
   events:
     - gate_aggregator.fail
     - gate_aggregator.pass
-    # #1757: more than one distinct route_target among the failed gates. Roster
-    # order picks the winner; this names every target seen so the loser is not
-    # discarded silently.
-    - gate_aggregator.route_conflict
+    # #1757/#1987: more than one distinct fault class among the failed gates.
+    # The vocabulary's table order picks the winner; this names every class seen
+    # so the loser is not discarded silently.
+    - gate_aggregator.fault_conflict
+    # #1987: a failed gate declared a word outside the closed vocabulary. Never
+    # selected, and never dropped in silence — gate and engine disagreeing about
+    # the contract is itself the finding.
+    - gate_aggregator.fault_unrecognised
 
 config:
+  # #1987: the aggregate verdict no longer mutates into route_<target>.
+  # exit_when still binds to verdict==pass; the template's route_back keys on
+  # the declared fault class.
   valid_verdicts:
     - pass
     - fail
-    - route_design
   tier_default: T0
 
 # The gate results are read by filename from the shared artifacts dir (the same
@@ -93,25 +101,14 @@ outputs:
     format: json
     required: true
     primary: true
-  # B2 (ADR-040): consolidated gate→build feedback. Written ONLY on verdict=fail
-  # (merges every failing gate's actionable detail). required:false — absent on a
-  # passing aggregate. Wired by simple.yaml's build_test_cycle as the
-  # gate-aggregator → build (prior_gate_feedback) cycle-feedback edge.
-  - id: gate_feedback
-    path: "${artifact_dir}/gate-feedback.md"
-    type: gate-feedback.md@1
+  # ADR-055 §9: this stage's statement of what it DID. required:true —
+  # written on every terminal verdict, so absence means something went wrong.
+  - id: gate_aggregator_summary
+    path: "${artifact_dir}/gate-aggregator-summary.md"
+    type: gate-aggregator-summary.md@1
     format: markdown
-    required: false
-  # #1219 (ADR-045/ADR-046): FOCUSED design-rooted feedback. Written ONLY on a
-  # route_<target> verdict (a design-rooted acceptance failure, e.g. tautology).
-  # required:false — absent on pass / plain-fail. Read by the design stage's
-  # prior_gate_feedback input after the build_test_cycle route_back rewinds to
-  # design_verify_cycle; persists across the rewind (shared per-run artifacts dir).
-  - id: design_feedback
-    path: "${artifact_dir}/design-feedback.md"
-    type: design-feedback.md@1
-    format: markdown
-    required: false
+    required: true
+    summary: true
 
 state:
   persisted: [last_verdict]

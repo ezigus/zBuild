@@ -111,7 +111,7 @@ orch_dispatch "$pool" "$unit_long" >/dev/null
 # Give dispatch time to write PID files and start the inner process
 sleep 0.3
 
-pool_dir="${TMPDIR}/zbuild-hive-${pool}"
+pool_dir="$(_orch_hive_pool_dir "$pool")"   # #2004: derive, never hardcode
 
 # Collect worker PIDs before shutdown removes the files
 _t4_pids=()
@@ -138,7 +138,7 @@ print_test_section "5. No leftover .tmp files after interrupt and shutdown"
 
 # Check that no zbuild-hive temp files remain in TMPDIR for this pool
 leftover_count=0
-_hive_prefix="${TMPDIR}/zbuild-hive-${pool}"
+_hive_prefix="$(_orch_hive_pool_dir "$pool")"   # #2004: derive, never hardcode
 for _f in "${_hive_prefix}"*.tmp; do
     [[ -f "$_f" ]] && leftover_count=$((leftover_count + 1)) || true
 done
@@ -169,7 +169,7 @@ set -e
 assert_exit_code "orch_collect returns 1 (all-fail) for non-zero work unit exit" "1" "$collect_rc"
 
 # On failure, pool dir should remain (not auto-cleaned)
-pool_dir="${TMPDIR}/zbuild-hive-${pool}"
+pool_dir="$(_orch_hive_pool_dir "$pool")"   # #2004: derive, never hardcode
 if [[ -d "$pool_dir" ]]; then
     assert_pass "pool dir remains when orch_collect returns non-zero"
 else
@@ -240,7 +240,7 @@ orch_dispatch "$pool" "$unit_inf" >/dev/null
 # Give dispatch time to write PID files and launch inner process
 sleep 0.3
 
-pool_dir="${TMPDIR}/zbuild-hive-${pool}"
+pool_dir="$(_orch_hive_pool_dir "$pool")"   # #2004: derive, never hardcode
 
 # Collect all tracked PIDs before shutdown removes the files
 _t9_pids=()

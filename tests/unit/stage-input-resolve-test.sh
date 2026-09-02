@@ -373,10 +373,10 @@ EOF
     assert_contains "[SPEC-8] every map member path is listed" "$(cat "$IN")" "$ART/irlens-beta.json"
     assert_contains "[SPEC-8] the original prompt body survives" "$(cat "$IN")" "ORIGINAL SPEC8 BODY"
 
-    _n1="$(grep -c 'STAGE INPUTS' "$IN" 2>/dev/null || echo 0)"
+    _n1="$(grep -c 'STAGE INPUTS' "$IN" 2>/dev/null)" || _n1=0
     ZBUILD_INPUTS_RESOLVE=1 ZBUILD_STAGE_INPUTS="$IDX" ZBUILD_SCOPE_MANIFEST="" \
         _route_redact_prompt "$IN" "$OUT" 1 "" >/dev/null 2>&1 || true
-    _n2="$(grep -c 'STAGE INPUTS' "$IN" 2>/dev/null || echo 0)"
+    _n2="$(grep -c 'STAGE INPUTS' "$IN" 2>/dev/null)" || _n2=0
     # Pinned to EXACTLY 1, not merely n1 == n2: with the injection ablated both
     # counts are 0 and an equality assertion passes vacuously.
     assert_eq "[SPEC-8] exactly one block after the first pass" "1" "$_n1"

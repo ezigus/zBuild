@@ -25,6 +25,16 @@ source "$_ACCEPTANCE_REACHABILITY_DIR/acceptance-block.sh"
 # shellcheck source=./merge-base.sh
 source "$_ACCEPTANCE_REACHABILITY_DIR/merge-base.sh"
 
+# #2010: zbuild_engine_tmpdir names where engine code writes temp files.
+# Lazy-sourced, same pattern lifecycle.sh uses for stage-scratch.sh: this
+# file is sourced from several entry points and cannot assume helpers.sh
+# arrived first. helpers.sh sources only compat.sh, so there is no cycle.
+if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
+    # shellcheck source=./helpers.sh
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/helpers.sh" 2>/dev/null || true
+fi
+
+
 # A timeout leaves the run's true pass/fail unknown → INFRASTRUCTURE, never a
 # flip (ADR-036 #1188): `timeout` exits 124 (TERM sent), 143 (child died of it),
 # 137 when a -k kill-after SIGKILL lands or an external OOM kill (128+9).
@@ -163,7 +173,7 @@ acceptance_reachability_check() {
         fi
 
         # Create detached worktree at baseline.
-        local wt_dir; wt_dir="$(mktemp -d "${TMPDIR:-/tmp}/zb-reach.XXXXXX")"
+        local wt_dir; wt_dir="$(mktemp -d "$(zbuild_engine_tmpdir)/zb-reach.XXXXXX")"
         # shellcheck disable=SC2064
         trap "git -C '$repo_root' worktree remove --force '$wt_dir' >/dev/null 2>&1 || true; rm -rf '$wt_dir' 2>/dev/null || true" RETURN
         if ! git -C "$repo_root" worktree add --detach "$wt_dir" "$base_sha" >/dev/null 2>&1; then

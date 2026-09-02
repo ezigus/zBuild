@@ -23,6 +23,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "build prompt e2e: BRANCH STATE block appears (#618)"
 setup_test_env "build-618-branch-state-e2e"
+
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
 # Wave 12-E (#664): default is enforce. Stub plugins used here lack honest
 # inputs/outputs blocks; opt out — this suite tests branch-state injection.
 export ZBUILD_CONTRACT_VALIDATOR=warn
@@ -44,8 +50,8 @@ OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
 STATE_DIR="$( HOME="$HOME_DIR" \
     env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_DATA_ROOT \
     bash -c 'source "$1/scripts/lib/test-helpers.sh" >/dev/null 2>&1
-             zb_expected_run_state_dir "$2" 618 "" "$3"' _ \
-    "$REPO_ROOT" "$OVERLAY_REPO" "$RUN_ID" )"
+             zb_expected_run_state_dir "$2" "$3" "" "$4"' _ \
+    "$REPO_ROOT" "$OVERLAY_REPO" "$_ZB_ID" "$RUN_ID" )"
 EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
 PROMPT_CAPTURE="$TEST_TEMP_DIR/build-prompt-capture.txt"
 
@@ -147,7 +153,7 @@ _sd_for() {
     HOME="$HOME_DIR" env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT -u ZBUILD_DATA_ROOT \
         bash -c 'source "$1/scripts/lib/test-helpers.sh" >/dev/null 2>&1
                  zb_expected_run_state_dir "$2" "$3" "" "$4"' _ \
-        "$REPO_ROOT" "$OVERLAY_REPO" "618" "$1"
+        "$REPO_ROOT" "$OVERLAY_REPO" "$_ZB_ID" "$1"
 }
 
 install_template_overlay "$OVERLAY_REPO" runner-state-dir-minimal
@@ -181,7 +187,7 @@ set +e
 # inside the pipeline test stage.
 # #1270: CWD = overlay repo so the resolver finds the minimal fixture.
 ( cd "$OVERLAY_REPO" && env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
-    ZBUILD_RUN_ID="$RUN_ID" HOME="$HOME_DIR" bash "$RUNNER" --template runner-state-dir-minimal --issue 618 ) >/dev/null 2>&1
+    ZBUILD_RUN_ID="$RUN_ID" HOME="$HOME_DIR" bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" ) >/dev/null 2>&1
 rc=$?
 set -e
 

@@ -14,6 +14,8 @@ _ZBUILD_MERGE_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _MERGE_DIR="$_ZBUILD_PLUGIN_DIR"
 _MERGE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -30,6 +32,9 @@ merge_run() {
 
     if [[ -z "$state_file" ]]; then
         error "merge_run: state_file argument required"
+        stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/merge-summary.md}" "merge" "error" \
+            "the engine dispatched this stage with no state file, so it could not run" \
+            "No work was attempted. This is an engine contract violation, not a fault in the change."
         return 2
     fi
 
@@ -97,6 +102,9 @@ _merge_run_inner() {
     current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
     if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
         error "merge_run: refusing to merge from branch '${current_branch}' — use a feature branch"
+        stage_summary_write "$artifacts_dir/merge-summary.md" "merge" "error" \
+            "refused to merge: already on ${current_branch}" \
+            "No merge was attempted; merging from the trunk into itself is never correct."
         emit_event "plugin.result" "verdict=error" "plugin=merge" \
             "reason=branch_is_main" "branch=${current_branch}"
         jq -n --arg branch "$current_branch" \
@@ -213,15 +221,12 @@ _merge_run_inner() {
           pr_number: $pr_number, draft: $draft, branch: $branch, issue: $issue}' \
         > "$pr_result_out"
 
+    stage_summary_write "$artifacts_dir/merge-summary.md" "merge" "pass" \
+        "merged PR ${pr_number}" \
+        "$(printf -- '- pr: %s' "${pr_url}")"
     emit_event "plugin.result" "plugin=merge" \
         "stage=pr" "pr_url=${pr_url}" "pr_number=${pr_number}"
     return 0
 }
 
 # ─── merge_cleanup ───────────────────────────────────────────────────────────
-merge_cleanup() {
-    # No self-emit (#1705): plugin_hook_call already brackets this hook with
-    # plugin.cleanup.start/complete. A second `complete` from here is the same
-    # two-emitters-one-name collision the run pair was filed for.
-    return 0
-}

@@ -43,11 +43,55 @@ case "$out_plan" in
     *) assert_pass "C4: verdicts=none omits verdict enum line" ;;
 esac
 
-# C5: markdown-fields adds escape requirement
-out_md="$(_llm_output_contract --stage test_assessment --verdicts pass,fail --schema-json '{}' --markdown-fields failure_summary_md)"
-assert_contains "C5: markdown-fields triggers escape requirement" "$out_md" "JSON-STRING ESCAPING"
-assert_contains "C5: cites ADR-022" "$out_md" "ADR-022"
-assert_contains "C5: names the field" "$out_md" "failure_summary_md"
+# C5 (#1993, ADR-060): --markdown-fields is RETIRED, and a markdown-document
+# schema is REFUSED at prompt-build time.
+#
+# The old block told a model how to hand-escape a markdown document into a JSON
+# string, citing ADR-022 — Retired since #979 — as its authority. Getting that
+# escaping right is exactly what no model reliably does: a single `\_` killed a
+# 24-minute run (#1972). The contract no longer offers the shape at all.
+set +e
+out_md="$(_llm_output_contract --stage impact --verdicts complete,incomplete \
+    --schema-json '{"schema_version":1,"feedback_md":"<markdown report>"}' 2>&1)"
+_c5_rc=$?
+set -e
+assert_eq "C5: a schema declaring a markdown-document field is refused (rc!=0)" "1" "$_c5_rc"
+assert_contains "C5: the refusal names the offending field" "$out_md" "feedback_md"
+assert_contains "C5: the refusal cites ADR-060" "$out_md" "ADR-060"
+
+# C5b: the retired escaping block is gone, and so is the flag that produced it.
+out_clean="$(_llm_output_contract --stage plan --verdicts none --schema-json '{}')"
+case "$out_clean" in
+    *"JSON-STRING ESCAPING"*) assert_fail "C5b: the retired ADR-022 escaping block is gone" ;;
+    *) assert_pass "C5b: the retired ADR-022 escaping block is gone" ;;
+esac
+if grep -q -- '--markdown-fields' "$REPO_ROOT/scripts/lib/llm-agent.sh"; then
+    assert_fail "C5b: --markdown-fields is removed from the framework" "the flag survives"
+else
+    assert_pass "C5b: --markdown-fields is removed from the framework"
+fi
+
+# C5c: a schema whose PLACEHOLDER says markdown is refused even when the field
+# name is innocent — impact_feedback_md was caught by its name, but the next one
+# may not be.
+set +e
+out_md2="$(_llm_output_contract --stage impact --verdicts complete,incomplete \
+    --schema-json '{"schema_version":1,"report":"<a markdown summary for the operator>"}' 2>&1)"
+_c5c_rc=$?
+set -e
+assert_eq "C5c: a markdown PLACEHOLDER is refused even with an innocent name" "1" "$_c5c_rc"
+
+# C5d: every schema in the tree today passes — the check starts at zero
+# false positives, which is what makes a refusal actionable rather than noise.
+for _sj in '{"schema_version":1,"missing":[{"step_id":"<id>","files_to_add":["<path>"],"reason":"<why>","evidence":"<what links them>"}]}' \
+           '{"schema_version":1,"title":"<short title>","notes":"<optional caveats; empty string if none>"}' \
+           '{"schema_version":1,"verdict":"pass|degraded","summary":"<one-line assessment>","checks":[]}'; do
+    set +e
+    _llm_output_contract --stage probe --verdicts none --schema-json "$_sj" >/dev/null 2>&1
+    _rc=$?
+    set -e
+    assert_eq "C5d: a real in-tree schema is accepted" "0" "$_rc"
+done
 
 # C6: FORBIDDEN list pins all 9 observed phrases
 for phrase in 'Based on my analysis' 'Based on my comprehensive analysis' 'Here is' "Here's" 'After reviewing' "I've identified" 'Now I have' 'Let me' 'I have all the information'; do

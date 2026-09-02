@@ -102,6 +102,25 @@ source "$REPO_ROOT/scripts/lib/artifact-render.sh"
 # would have clobbered it because they don't share the id).
 assert_eq "R11 second source preserves runtime bindings" "my_render_x_v2" "$(artifact_renderer_for test-x)"
 
+# ─── R8 (#1990): the test_assessment renderer is retired ────────────────────
+# The stage was deleted in #979 with the compound-quality lattice; ADR-022 is
+# Retired. A registered renderer for a stage that cannot exist is unreachable
+# code that reads as live — and it was the last place in the tree modelling a
+# markdown-document field (`failure_summary_md`), the shape ADR-060 bans, so it
+# was also the worst file to copy as a template.
+set +e
+_r8_fn="$(artifact_renderer_for test_assessment 2>/dev/null)"; _r8_rc=$?
+set -e
+assert_eq "R8 test_assessment has no registered renderer (rc=1)" "1" "$_r8_rc"
+assert_eq "R8 test_assessment renderer lookup prints nothing" "" "$_r8_fn"
+
+if grep -q 'render_test_assessment_md' "$REPO_ROOT/scripts/lib/artifact-render.sh" 2>/dev/null; then
+    assert_fail "R8 render_test_assessment_md is gone from artifact-render.sh" \
+        "the dead renderer survives"
+else
+    assert_pass "R8 render_test_assessment_md is gone from artifact-render.sh"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

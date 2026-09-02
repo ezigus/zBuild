@@ -21,6 +21,8 @@ _ZBUILD_BUILD_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _BUILD_DIR="$_ZBUILD_PLUGIN_DIR"
 _BUILD_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -69,6 +71,9 @@ build_stage_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
         error "build_stage_run: state_file argument required"
+        stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/build-summary.md}" "build" "error" \
+            "the engine dispatched this stage with no state file, so it could not run" \
+            "No work was attempted. This is an engine contract violation, not a fault in the change."
         return 2
     fi
     local state_dir; state_dir="$(dirname "$state_file")"
@@ -109,6 +114,9 @@ _build_stage_run_inner() {
 
     if [[ ! -f "$plan_json_path" ]]; then
         error "_build_stage_run_inner: plan.json not found at $plan_json_path"
+        stage_summary_write "$artifact_dir/build-summary.md" "build" "error" \
+            "no plan.json to build from" \
+            "The plan stage produced nothing to implement; no code was written."
         emit_event "plugin.result" "verdict=error" "plugin=build" "reason=missing_plan_json"
         return 2
     fi
@@ -186,26 +194,15 @@ _build_stage_run_inner() {
     local _acceptance_gap_ids
     _acceptance_gap_ids="$(_build_read_prior_acceptance 2>/dev/null || true)"
 
-    # #1583: tautological [change] SPECs (assertion passes at baseline) the gate
-    # flagged — build OWNS these assertion bodies (#1477) and must re-author them
-    # to fail-at-baseline. Explicitly re-authorable (the negative control polices it).
-    local _acceptance_tautology_ids
-    _acceptance_tautology_ids="$(_build_read_tautology_ids 2>/dev/null || true)"
-
-    # B2 (ADR-040): consolidated gate-aggregator feedback from the prior cycle
-    # iter (simple.yaml's build_test_cycle wires gate-aggregator → build via
-    # prior_gate_feedback). Empty when not in a cycle / dir unset / file
-    # missing-or-empty. Sanitized — it is captured pipeline output (banner noise).
-    local _gate_feedback_body
-    _gate_feedback_body="$(_build_read_prior_gate 2>/dev/null || true)"
-    [[ -n "$_gate_feedback_body" ]] && \
-        _gate_feedback_body="$(printf '%s' "$_gate_feedback_body" | _zbuild_sanitize_for_llm)"
+    # #2022: the tautology feed is gone. It handed build the SPECs whose
+    # control the gate had just condemned, for build to re-author — the agent
+    # whose control was found inert rewriting the control. It now reaches
+    # test-author, which owns assertion bodies.
 
     _build_compose_prompt_body "$prompt_input_file" "$_task_header" "$plan_payload" \
         "$_build_instructions" "$_design_decisions" "$_acceptance_testfiles" \
         "$_acceptance_spec_ids" "$_review_feedback_body" "$_acceptance_gap_ids" \
-        "$_feedback_body" "$_iter_n" "$_gate_feedback_body" \
-        "$_acceptance_tautology_ids"
+        "$_feedback_body" "$_iter_n"
 
     # ADR-050 (#1581): cross-run seed — when a prior RUN of this issue produced a
     # build-summary (restored onto this runner), append a short advisory note so
@@ -414,6 +411,9 @@ _build_stage_run_inner() {
     _build_rewrite_cumulative_diff "$scope_violation" "$artifact_dir" "$repo_root" \
         "$output_diff_patch" "$_diff_failure" || true
 
+    stage_summary_write "$artifact_dir/build-summary.md" "build" "pass" \
+        "changed $files_changed_count file(s) over $iterations iteration(s)" \
+        "$(printf -- '- lines: +%s / -%s\n- terminated: %s\n- scope violation: %s' "$lines_added" "$lines_removed" "$terminated_reason" "$scope_violation")"
     emit_event "plugin.result" "stage=build" \
         "plugin=build" \
         "files_changed_count=$files_changed_count" \
@@ -436,9 +436,3 @@ _build_stage_run_inner() {
 }
 
 # ─── cleanup ────────────────────────────────────────────────────────────────
-build_stage_cleanup() {
-    # No self-emit (#1705): plugin_hook_call already brackets this hook with
-    # plugin.cleanup.start/complete. A second `complete` from here is the same
-    # two-emitters-one-name collision the run pair was filed for.
-    return 0
-}

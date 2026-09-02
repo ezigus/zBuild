@@ -18,6 +18,15 @@ description: |
   Extracts to a staging directory and promotes it atomically, so the area a
   stage reads is either complete or absent — never half a tree.
 
+  Then adopts the fetched tip as the LOCAL `refs/heads/<branch>`, but only when
+  no local ref exists. A fetch alone writes just the remote-tracking ref, so on
+  a CI runner the snapshot stage finds no parent and roots a new history, and
+  the force-push orphans everything already on origin — the state branch could
+  never accumulate in CI (#1921). Absent-only keeps the invariant above intact.
+
+  Records `data.source` (`local` | `remote`) so a warm start is provable from
+  the result rather than inferred from the absence of a local ref.
+
 hooks:
   run: hydrate_run
 
@@ -35,6 +44,7 @@ provides:
     - hydrate.complete
     - hydrate.fetch.failed
     - hydrate.restore.failed
+    - hydrate.adopt.failed
     - hydrate.result.write_failed
 
 config:
@@ -61,4 +71,11 @@ outputs:
     # prior-output seam (ZBUILD_RESTORED_ARTIFACTS_DIR), not through this file.
     # Marking it advisory says that, rather than inventing a consumer to
     # satisfy the validator.
-    advisory: true
+  # ADR-055 §9: this stage's statement of what it DID. required:true —
+  # written on every terminal verdict, so absence means something went wrong.
+  - id: hydrate_summary
+    path: "${artifact_dir}/hydrate-summary.md"
+    type: hydrate-summary.md@1
+    format: markdown
+    required: true
+    summary: true

@@ -21,6 +21,8 @@ _ZBUILD_REVIEW_LENS_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _RL_DIR="$_ZBUILD_PLUGIN_DIR"
 _RL_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -92,6 +94,9 @@ review_lens_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
         error "review_lens_run: state_file argument required"
+        stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/lens-${ZBUILD_REVIEW_LENS_ID}-summary.md}" "review-lens" "error" \
+            "the engine dispatched this stage with no state file, so it could not run" \
+            "No work was attempted. This is an engine contract violation, not a fault in the change."
         return 2
     fi
     local state_dir; state_dir="$(dirname "$state_file")"
@@ -208,6 +213,9 @@ _review_lens_run_inner() {
     if [[ $router_rc -ne 0 || -z "$raw_response" ]]; then
         emit_event "review_lens.failed" "lens=$lens" "router_rc=$router_rc"
         _review_lens_empty "$lens" "$out"
+        stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "skip" \
+            "the model call failed, so this lens reviewed nothing" \
+            "Advisory lens: no findings were produced. Absence here is not evidence of a clean change."
         emit_event "plugin.result" "plugin=review-lens" "lens=$lens" "score=0"
         return 0
     fi
@@ -217,6 +225,9 @@ _review_lens_run_inner() {
     if [[ -z "$json" ]] || ! printf '%s' "$json" | jq empty >/dev/null 2>&1; then
         emit_event "review_lens.unparseable" "lens=$lens"
         _review_lens_empty "$lens" "$out"
+        stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "skip" \
+            "the model returned unparseable JSON, so this lens reviewed nothing" \
+            "Advisory lens: no findings were produced. Absence here is not evidence of a clean change."
         emit_event "plugin.result" "plugin=review-lens" "lens=$lens" "score=0"
         return 0
     fi
@@ -245,6 +256,9 @@ _review_lens_run_inner() {
     if [[ -z "$normalized" ]]; then
         emit_event "review_lens.unparseable" "lens=$lens"
         _review_lens_empty "$lens" "$out"
+        stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "skip" \
+            "the lens response could not be normalised, so this lens reviewed nothing" \
+            "Advisory lens: no findings were produced. Absence here is not evidence of a clean change."
         emit_event "plugin.result" "plugin=review-lens" "lens=$lens" "score=0"
         return 0
     fi
@@ -257,6 +271,9 @@ _review_lens_run_inner() {
     local score findings_count
     score="$(printf '%s' "$normalized" | jq -r '.score // 0' 2>/dev/null || echo 0)"
     findings_count="$(printf '%s' "$normalized" | jq '.findings | length' 2>/dev/null || echo 0)"
+    stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "pass" \
+        "reviewed the change through the ${lens} lens — $findings_count finding(s), score $score" \
+        "$(printf -- '- artifact: lens-%s.json' "${lens}")"
     emit_event "plugin.result" "plugin=review-lens" \
         "lens=$lens" "score=$score" "findings_count=$findings_count" \
         "router_rc=$router_rc"
@@ -264,9 +281,3 @@ _review_lens_run_inner() {
 }
 
 # ─── review_lens_cleanup ───────────────────────────────────────────────────────
-review_lens_cleanup() {
-    # No self-emit (#1705): plugin_hook_call already brackets this hook with
-    # plugin.cleanup.start/complete. A second `complete` from here is the same
-    # two-emitters-one-name collision the run pair was filed for.
-    return 0
-}

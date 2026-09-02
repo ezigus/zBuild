@@ -21,6 +21,8 @@ _ZBUILD_DESIGN_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _DESIGN_DIR="$_ZBUILD_PLUGIN_DIR"
 _DESIGN_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
@@ -52,6 +54,9 @@ design_stage_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
         error "design_stage_run: state_file argument required"
+        stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/design-summary.md}" "design" "error" \
+            "the engine dispatched this stage with no state file, so it could not run" \
+            "No work was attempted. This is an engine contract violation, not a fault in the change."
         return 2
     fi
     local state_dir; state_dir="$(dirname "$state_file")"
@@ -69,45 +74,23 @@ design_stage_run() {
 }
 
 
-# #1219 (ADR-045/ADR-046): design-rooted gate feedback carried back by the
-# build_test_cycle route_back rewind. Unlike prior_impact_feedback (intra-cycle,
-# gated on ZBUILD_CYCLE_ITER≥2), this arrives from the OTHER cycle via the shared
-# artifacts dir (design-feedback.md), so it is keyed on FILE PRESENCE, not the
-# design_verify_cycle iteration counter: on the FIRST design pass the file is
-# absent (no-op); after a route_back it is present and design re-authors the SPEC.
-_design_read_prior_gate_feedback() {
+# _design_gate_failed <artifact_dir>  (#1979)
+# True when the design-gate's recorded verdict for this run is a failure.
+#
+# This replaces reading design-gate-feedback.md to decide how to word the PRIOR
+# DESIGN instruction. The content itself now reaches the prompt as an
+# engine-collected summary (#1976, ADR-055 §9), so the old reader would have
+# spliced it a second time — recreating exactly the duplication #1825 removed.
+# Keying on the recorded verdict keeps ONE source for the content and makes the
+# switch a fact read from state rather than a side effect of a file read.
+_design_gate_failed() {
     local artifact_dir="${1:-}"
-    [[ -z "$artifact_dir" ]] && return 0
-    local f="$artifact_dir/design-feedback.md"
-    [[ ! -s "$f" ]] && return 0
-    local body
-    body="$(cat "$f" 2>/dev/null)" || return 0
-    [[ -z "${body//[[:space:]]/}" ]] && return 0
-    printf '%s' "$body"
-}
-
-# #1479 design-gate structural violations, and #1825's merge: this ALSO absorbs
-# what `prior_impact_feedback` used to read. Both inputs named the same producer
-# output (design-gate.design_gate_feedback) — one via the cycle-feedback copy,
-# one via the live artifact — so design's prompt received the same content twice
-# under two headings at iter>=2. One input now, with the same precedence the
-# engine applies: the prior-iteration copy wins, else the live file.
-_design_read_design_gate_feedback() {
-    local artifact_dir="${1:-}"
-    local iter="${ZBUILD_CYCLE_ITER:-}" fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
-    local f=""
-    # The prior-iteration copy is checked FIRST and does not depend on
-    # artifact_dir — returning early on an empty one would block the very path
-    # that needs no artifact dir, which is how the cycle case reaches this.
-    if [[ -n "$iter" && -n "$fb_dir" && "$iter" =~ ^[0-9]+$ ]] && (( iter >= 2 )); then
-        [[ -s "$fb_dir/design_gate_feedback.txt" ]] && f="$fb_dir/design_gate_feedback.txt"
-    fi
-    [[ -z "$f" && -n "$artifact_dir" ]] && f="$artifact_dir/design-gate-feedback.md"
-    [[ -z "$f" || ! -s "$f" ]] && return 0
-    local body
-    body="$(cat "$f" 2>/dev/null)" || return 0
-    [[ -z "${body//[[:space:]]/}" ]] && return 0
-    printf '%s' "$body"
+    [[ -n "$artifact_dir" ]] || return 1
+    local state_file; state_file="$(dirname "$artifact_dir")/pipeline-state.json"
+    [[ -s "$state_file" ]] || return 1
+    local v
+    v="$(jq -r '.stage_verdicts["design-gate"] // empty' "$state_file" 2>/dev/null || true)"
+    [[ "$v" == "fail" || "$v" == "failed" ]]
 }
 
 # design_impact_cycle self-feedback (mirrors #773 lesson): design's own prior
@@ -182,6 +165,9 @@ _design_stage_run_inner() {
 
     if [[ ! -f "$plan_json_path" ]]; then
         error "_design_stage_run_inner: plan.json not found at $plan_json_path"
+        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+            "no plan.json to design against" \
+            "The plan stage produced nothing this stage could read; no design was authored."
         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_plan_json"
         return 2
     fi
@@ -342,15 +328,10 @@ DESIGN_PROMPT
     # design_impact_cycle feedback: on iter ≥ 2, splice prior impact gap-report
     # and prior design.md into the prompt so design EXPANDS its scope block
     # (impact feedback) and REFINES rather than re-creates (self-feedback).
-    # #1825: prior_impact_feedback is gone. It named design-gate's
-    # design_gate_feedback output — the same artifact the DESIGN-GATE FEEDBACK
-    # section below already splices — so this section duplicated it at iter>=2.
-    # _design_gate_fb_body (below) is now the single source, and the refinement
-    # instruction under PRIOR DESIGN keys on it.
-    # Read BEFORE the PRIOR DESIGN block, which keys its refinement instruction on
-    # it. The splice itself still happens further down, in section order.
-    local _design_gate_fb_body
-    _design_gate_fb_body="$(_design_read_design_gate_feedback "$artifact_dir" 2>/dev/null || true)"
+    # #1825 established that this content is spliced exactly ONCE. #1979 keeps
+    # that invariant with the splice moved: the engine's STAGE SUMMARIES block
+    # carries design-gate's feedback now, so design only decides how to WORD the
+    # refinement instruction — from the recorded verdict, not from a file read.
     local _prior_design_body
     _prior_design_body="$(_design_read_prior_design 2>/dev/null || true)"
     if [[ -n "$_prior_design_body" ]]; then
@@ -365,8 +346,8 @@ DESIGN_PROMPT
             [[ -n "$_prior_design_blob" ]] && printf '\n(Durable copy: %s — reference it, but VERIFY against the CURRENT inputs above; the code may have moved on since.)\n' \
                 "$_prior_design_blob" >> "$prompt_input_file"
         fi
-        if [[ -n "$_design_gate_fb_body" ]]; then
-            printf '\nExpand the PRIOR DESIGN scope block to cover the gaps named in PRIOR DESIGN-GATE FEEDBACK. Preserve all existing scope entries; only ADD the missing ones.\n' \
+        if _design_gate_failed "$artifact_dir"; then
+            printf '\nExpand the PRIOR DESIGN scope block to cover the gaps the design-gate reported in the STAGE SUMMARIES section. Preserve all existing scope entries; only ADD the missing ones.\n' \
                 >> "$prompt_input_file"
         else
             printf '\nRefine the PRIOR DESIGN. Preserve all existing scope entries unless one is clearly wrong.\n' \
@@ -378,19 +359,15 @@ DESIGN_PROMPT
     # gate feedback so design RE-AUTHORS the named tautological [change] SPEC(s)
     # (build is forbidden to touch acceptance assertions, ADR-036). Keyed on file
     # presence (see reader) — absent on the first pass → no-op, byte-identical prompt.
-    local _gate_fb_body
-    _gate_fb_body="$(_design_read_prior_gate_feedback "$artifact_dir" 2>/dev/null || true)"
-    if [[ -n "$_gate_fb_body" ]]; then
-        printf '\n## PRIOR GATE FEEDBACK (design-rooted — from the acceptance gate, via route_back)\n%s\n' \
-            "$_gate_fb_body" >> "$prompt_input_file"
-        printf '\nThe acceptance gate found the named SPEC(s) tautological (they pass at the merge-base baseline, so they assert nothing). RE-AUTHOR each named [change] SPEC and its tagged assertion so it FAILS at baseline and PASSES at HEAD. Preserve all other scope and acceptance entries.\n' \
+    # #1988: the acceptance gate's detail now reaches this prompt as an
+    # engine-collected summary (#1976) — the aggregator no longer renders a
+    # design-facing payload, and no longer suppresses the gates that do. What
+    # design still needs stated is what to DO about a specification fault, which
+    # is not something a gate should be authoring prose about.
+    if [[ "$(jq -r '.stage_verdicts["acceptance-gate"] // empty' \
+            "$(dirname "$artifact_dir")/pipeline-state.json" 2>/dev/null || true)" == "fail" ]]; then
+        printf '\nIf the STAGE SUMMARIES name a tautological [change] SPEC — one that passes at the merge-base baseline, so it asserts nothing — RE-AUTHOR that SPEC and its tagged assertion so it FAILS at baseline and PASSES at HEAD. Build is forbidden to touch acceptance assertions (ADR-036), so only this stage can. Preserve all other scope and acceptance entries.\n' \
             >> "$prompt_input_file"
-    fi
-
-    # #1479: design-gate structural violations.
-    if [[ -n "$_design_gate_fb_body" ]]; then
-        printf '\n## PRIOR DESIGN-GATE FEEDBACK (structural violations from the design-gate)\n%s\n' \
-            "$_design_gate_fb_body" >> "$prompt_input_file"
     fi
 
     # ADR-032: append the per-repo prompt override AFTER the core contract (so
@@ -452,6 +429,9 @@ DESIGN_PROMPT
     # masking it with rc=0 and leaving the cycle with no artifact.
     if [[ "${_ROUTE_LOOP_TERMINATED_REASON:-}" == "router_timeout" ]]; then
         error "_design_stage_run_inner: router loop timed out (reason=router_timeout) — writing gate-failing marker to re-iterate"
+        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+            "the model call timed out before a design was returned" \
+            "No design.md was authored. This is an infrastructure fault, not a design one."
         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=router_timeout" "rc=$router_rc"
         mkdir -p "$artifact_dir"
         if printf '# Design incomplete — router timeout, re-iterating\n\nDesign did not complete (reason=router_timeout). No acceptance block is emitted, so the design-gate rejects this artifact and the design cycle re-iterates.\n' \
@@ -473,6 +453,9 @@ DESIGN_PROMPT
             return 0
         fi
         error "_design_stage_run_inner: failed to write timeout marker to $output_design_md"
+        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+            "could not record the design marker" \
+            "A design may have been authored but could not be committed to the artifact dir."
         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=marker_write_failed" "rc=$router_rc"
         return 1
     fi
@@ -485,6 +468,9 @@ DESIGN_PROMPT
         local _rc_verdict _rc_reason
         _router_rc_classify "$router_rc" _rc_verdict _rc_reason
         error "_design_stage_run_inner: router rc=$router_rc → verdict=$_rc_verdict reason=$_rc_reason"
+        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+            "the model call failed ($_rc_reason)" \
+            "No usable design.md was returned."
         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=$_rc_reason" "rc=$router_rc"
         return 1
     fi
@@ -516,6 +502,9 @@ DESIGN_PROMPT
     # Assert the scope block is present in design.md.
     if [[ ! -f "$output_design_md" ]]; then
         error "_design_stage_run_inner: design.md not produced at $output_design_md"
+        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+            "no design.md was produced" \
+            "The model returned without writing the artifact this stage exists to produce."
         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_design_md"
         return 1
     fi
@@ -527,6 +516,9 @@ DESIGN_PROMPT
     # below already uses the unescaped form, so this aligns the two.
     if ! grep -q '^```scope' "$output_design_md" 2>/dev/null; then
         warn "_design_stage_run_inner: design.md missing scope block — design output incomplete"
+        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+            "design.md has no fenced scope block" \
+            "Without a scope block the build stage has no declared boundary to work inside."
         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_scope_block"
         # Failure path: don't override the banner output; let the deferred
         # close (if any) flush claude's stdout summary so the operator sees
@@ -540,6 +532,9 @@ DESIGN_PROMPT
     # Assert the acceptance block is present in design.md.
     if ! extract_acceptance_block "$output_design_md" >/dev/null 2>&1; then
         warn "_design_stage_run_inner: design.md missing acceptance block — design output incomplete"
+        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+            "design.md has no fenced acceptance block" \
+            "Without acceptance SPECs there is nothing for the acceptance gate to verify."
         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_acceptance_block"
         if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
             _route_loop_close_final_banner || true
@@ -562,6 +557,16 @@ DESIGN_PROMPT
     # Atomically finalize design.md (#507 contract).
     cat "$output_design_md" | atomic_write "$output_design_md"
 
+    # ADR-055 §9: state the SHAPE of the design a later stage is held to —
+    # the boundary it may touch and the SPECs it must satisfy.
+    local _scope_csv="" _scope_n=0 _acc="" _spec_n=0
+    _scope_csv="$(_extract_scope_from_design "$output_design_md" 2>/dev/null || true)"
+    [[ -n "$_scope_csv" ]] && _scope_n="$(awk -F, '{print NF}' <<< "$_scope_csv")"
+    _acc="$(extract_acceptance_block "$output_design_md" 2>/dev/null || true)"
+    _spec_n="$(grep -c '^SPEC-[0-9]' <<< "$_acc" || true)"
+    stage_summary_write "$artifact_dir/design-summary.md" "design" "pass" \
+        "authored design.md — $_scope_n file(s) in scope, $_spec_n acceptance SPEC(s)" \
+        "$(printf -- '- scope: %s\n- artifact: design.md' "${_scope_csv:-<none>}")"
     emit_event "plugin.result" "stage=design" \
         "plugin=design" \
         "artifact=design.md"
@@ -605,9 +610,3 @@ _extract_scope_from_design() {
 }
 
 # ─── cleanup ────────────────────────────────────────────────────────────────
-design_stage_cleanup() {
-    # No self-emit (#1705): plugin_hook_call already brackets this hook with
-    # plugin.cleanup.start/complete. A second `complete` from here is the same
-    # two-emitters-one-name collision the run pair was filed for.
-    return 0
-}

@@ -708,3 +708,52 @@ unchanged.
 
 **Unchanged.** Level-2 at the acceptance gate is untouched — C6 is an earlier net, not a
 replacement. `tautology` still carries no `route_target` and still reaches build (#1583).
+
+## Amendment (#2022, 2026-09-01) — assertion authorship leaves build
+
+**Problem.** This ADR's own premise (:318, :347) is that build must not touch
+acceptance assertions, *"else it games the gate"*, because design authored them.
+That premise stopped holding at **#1477** — and not by decision. #1477 removed a
+design-stage **bash stub-writer** as a target-agnosticism leak (a bash stub is
+nonsense in a pytest or Rust repo); build inherited assertion ownership as a side
+effect, and later amendments built on it (#1583 routes tautologies to build to
+re-author; #1670 does the same for guard inversions).
+
+The consequence is **correlated authorship**: build writes the code and the
+assertion from one reading of the SPEC, so the two agree by construction and no
+check comparing them can catch a misreading. Two runs shipped exactly that —
+run `20260801085257-41853` (recorded in the #1670 amendment above) and #1836's
+SPEC-7, where the assertion checked the literal opposite of its SPEC and passed
+all three levels honestly.
+
+Build's prompt was **followed** in both cases: it said *"correct the assertion so
+that it does"* test its SPEC. Build was the one judging whether it did.
+
+**Decision.** Assertion authorship moves to a `test_author` role, upstream of
+build:
+
+| Link | Owner | How |
+|---|---|---|
+| spec → assertion | `test-author` (authors), QA (judges — future) | — |
+| assertion → implementation | `test` stage | execution |
+| assertion is not tautological | Level 2 | experiment |
+| wiring is load-bearing | Level 3 | experiment |
+| assertions unmodified by build | `assertion-integrity` | digest comparison |
+
+`test-author` leads `build_test_cycle` and sees the SPEC text and the target
+testfile paths — never the diff. It is an **agent authoring in the target's own
+language**, never a mechanical stub-writer: #1477's constraint is respected, and
+that is why authorship returns to a model stage rather than to design.
+
+**The boundary is enforced, not requested.** #1919 P5 measured that
+`permissions.deny` is honoured in `Edit(...)` form; the spawn now denies build
+Edit on the declared TESTFILES, derived by ROLE rather than by stage id. P5 also
+measured that a `Write(...)` rule matches nothing, so prevention is incomplete by
+construction — `assertion-integrity` compares the files against the digests the
+author recorded and fails the cycle on a difference. It reads what changed on
+disk, never what a prompt asked for.
+
+**What this retires.** #1583's tautology feed to build and its re-author mandate
+(`build/lib/prompt.sh:191`, `_build_read_tautology_ids`). The same
+`prior_acceptance_feedback.txt` path now carries the finding to `test-author`.
+Levels 1–3 are unchanged: they are experiments, and no reading replaces them.

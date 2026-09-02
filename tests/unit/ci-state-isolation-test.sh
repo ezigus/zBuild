@@ -15,6 +15,17 @@
 # SPEC-5[change]: an empty upload is reported (if-no-files-found == warn)
 # SPEC-6[change]: the resolve step still runs after an earlier step fails
 # SPEC-7[change]: the upload EXCLUDES the scratch directory (#1918 / ADR-058 §5)
+# SPEC-8[change]: the persist outcome is surfaced in the job log, always (#1921)
+# SPEC-9[change]: the hydrate outcome is surfaced the same way, always (#1921)
+# SPEC-10[change]: both surface steps read the LIVE artifacts/ path, never a
+#                  restored copy of a previous run's result (ADR-059)
+# SPEC-11[change]: and the find fallback prunes scratch/ too — the engine
+#                  redirects TMPDIR there, so it holds throwaway copies
+#
+# SPEC-8 is #1921's requirement that a CI run's persist outcome be readable from
+# the job log, renumbered to 8 on the same rule as SPEC-7 below: this file's SPEC
+# ids are its own. It belongs here because it is an assertion about the same
+# workflow's step list that SPEC-3 and SPEC-5 already make.
 #
 # SPEC-7 is #1918's SPEC-4, renumbered to 7 because this file's SPEC ids are its
 # own and 1-6 were already taken by #1638. It lives here rather than in a new
@@ -193,6 +204,92 @@ if [[ -z "$_OFFENDERS" ]]; then
     assert_pass "[SPEC-4] no workflow pins ZBUILD_STATE_DIR inside github.workspace"
 else
     assert_fail "[SPEC-4] state must never be pinned inside the workspace" "$_OFFENDERS"
+fi
+
+# ── SPEC-8 [change]: Surface persist result step is always-run ──────────────
+# This step (#1921) surfaces persist-result.json fields as ::notice:: annotations
+# so an operator can see why a snapshot was skipped or why a push failed without
+# downloading the artifact zip. It must run on every outcome — if it were
+# conditional it would be absent on the failure cases where it matters most.
+# Checking the `if:` key extracted from the YAML also proves the step EXISTS:
+# a missing step produces an empty string, which fails the assert_eq below.
+_SURFACE_IF="$(awk '
+    /^      - name: Surface persist result/ { instep = 1; next }
+    instep && /^      - name: /            { exit }
+    instep && /^        if: /              { sub(/^        if: /, ""); print; exit }
+' "$WF")"
+assert_eq "[SPEC-8] Surface persist result step exists and runs on always()" \
+    "always()" "$_SURFACE_IF"
+
+# ── SPEC-9 [change]: Surface hydrate result step is always-run ───────────────
+# The persist half says what was SAVED; this says what was RESTORED and from
+# where. Without it a warm start is inferred rather than read — and #1836 is the
+# standing example of an inference credited to the wrong mechanism.
+_HYDRATE_IF="$(awk '
+    /^      - name: Surface hydrate result/ { instep = 1; next }
+    instep && /^      - name: /             { exit }
+    instep && /^        if: /               { sub(/^        if: /, ""); print; exit }
+' "$WF")"
+assert_eq "[SPEC-9] Surface hydrate result step exists and runs on always()" \
+    "always()" "$_HYDRATE_IF"
+
+# ── SPEC-10 [change]: the surface steps must not read restored-artifacts/ ────
+# ADR-059: restore extracts into a SEPARATE restored-artifacts/ area and
+# "input-resolve.sh reads the live path first". An unanchored
+# `find "$ZBUILD_STATE_DIR" -name '<stage>-result.json' -print -quit` does not:
+# it returns whatever readdir yields first, which on run 33359409653 was the
+# RESTORED copy — the job log reported a previous run's hydrate (restored=76)
+# while the run itself had restored 95. A diagnostic that reports another run's
+# outcome is worse than none.
+print_test_section "[SPEC-10][change] surface steps read the live artifacts path"
+
+# grep -q, not `grep -c || printf 0`: grep -c prints 0 AND exits 1, so the
+# fallback would append a second 0 and the comparison would read "00".
+# lint-grep-c bans that idiom repo-wide, and #1969 extended it to tests/.
+if grep -q "find \"\$ZBUILD_STATE_DIR\" -name '[a-z]*-result.json' -print -quit" "$WF"; then
+    assert_fail "[SPEC-10] no surface step may search the whole state dir for a result file" \
+        "an unanchored find remains — it can return restored-artifacts/"
+else
+    assert_pass "[SPEC-10] no surface step searches the whole state dir for a result file"
+fi
+
+# The prune is the actual protection: without it the fallback can still walk
+# into restored-artifacts/. Dropping it would otherwise stay green.
+if grep -qE "restored-artifacts.*-prune" "$WF"; then
+    assert_pass "[SPEC-10] the find fallback prunes restored-artifacts/"
+else
+    assert_fail "[SPEC-10] the find fallback must prune restored-artifacts/" \
+        "no -prune guard found in the workflow"
+fi
+
+# And each step must name the live path explicitly.
+for _stage in persist hydrate; do
+    if grep -q "ZBUILD_STATE_DIR}\?/artifacts/${_stage}-result.json" "$WF"; then
+        assert_pass "[SPEC-10] the ${_stage} step names \$ZBUILD_STATE_DIR/artifacts/${_stage}-result.json"
+    else
+        assert_fail "[SPEC-10] the ${_stage} step must read the live artifacts path" "not found in workflow"
+    fi
+done
+
+# ── SPEC-11 [change]: the fallback must prune scratch/ as well ───────────────
+# Run 33474879520 proved restored-artifacts/ was only half the hazard. The
+# backstop step and the Surface step ran the same lookup ONE SECOND apart and
+# disagreed — the backstop parsed a result file ("backstop is a no-op") while
+# Surface printed verdict=? snapshot=? pushed=? reason=?. The uploaded artifact
+# had no persist-result.json under artifacts/ at all, because the upload
+# excludes scratch/ (ADR-058 §3) — which is exactly where the copies they each
+# found were living. The engine redirects TMPDIR into <state_dir>/scratch, so
+# every stage's throwaway writes land there.
+print_test_section "[SPEC-11][change] the find fallback prunes scratch/"
+
+_FALLBACKS="$(grep -cE "find \"\\\$ZBUILD_STATE_DIR\"" "$WF" || true)"
+_PRUNES_SCRATCH="$(grep -cE "\-name 'scratch' .*-prune|-prune.*'scratch'" "$WF" || true)"
+assert_eq "[SPEC-11] every result-file fallback prunes scratch/" \
+    "$_FALLBACKS" "$_PRUNES_SCRATCH"
+if [[ "${_FALLBACKS:-0}" -gt 0 ]]; then
+    assert_pass "[SPEC-11] and there is at least one fallback to guard"
+else
+    assert_fail "[SPEC-11] expected at least one result-file fallback" "found none"
 fi
 
 cleanup_test_env

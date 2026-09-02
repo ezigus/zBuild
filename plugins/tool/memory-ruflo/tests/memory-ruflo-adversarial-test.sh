@@ -305,7 +305,7 @@ set -e
 assert_exit_code "newline value: memory_search exits 0" "0" "$nl_search_rc"
 
 # The output must contain exactly one line for this key (literal \n, not a real newline).
-nl_line_count="$(printf '%s\n' "$nl_search_out" | grep -c "$NL_KEY" 2>/dev/null || echo 0)"
+nl_line_count="$(printf '%s\n' "$nl_search_out" | grep -c "$NL_KEY" 2>/dev/null || true)"
 assert_eq "newline value: memory_search output contains exactly 1 line for the key" \
     "1" "$nl_line_count"
 

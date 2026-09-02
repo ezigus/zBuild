@@ -15,6 +15,12 @@ print_test_header "plugin: build (agent-loop + git-derived diff — issue #467)"
 
 setup_test_env "plugin-build"
 
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
+
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
 export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
@@ -23,7 +29,7 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 
 export ZBUILD_RUN_ID="build-test-$$"
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
-export ZBUILD_ISSUE="341"
+export ZBUILD_ISSUE="$_ZB_ID"
 
 PLUGIN_DIR="$REPO_ROOT/plugins/agent/build"
 
@@ -309,7 +315,7 @@ assert_json_key "verdict field present (#507)" "$summary_json_t3" ".verdict" "pa
 files_changed_type="$(printf '%s' "$summary_json_t3" | jq -r '.files_changed | type' 2>/dev/null || echo "missing")"
 assert_eq "files_changed is an array" "array" "$files_changed_type"
 
-assert_json_key "issue matches ZBUILD_ISSUE=341" "$summary_json_t3" ".issue" "341"
+assert_json_key "issue matches ZBUILD_ISSUE" "$summary_json_t3" ".issue" "$_ZB_ID"
 assert_json_key "iterations == 3"               "$summary_json_t3" ".iterations" "3"
 assert_json_key "terminated_reason == done_sentinel" "$summary_json_t3" ".terminated_reason" "done_sentinel"
 assert_json_key "scope_violation == false"      "$summary_json_t3" ".scope_violation" "false"

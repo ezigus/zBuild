@@ -28,6 +28,12 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "artifact persist/restore from a linked worktree (#888)"
 setup_test_env "artifact-persist-worktree"
 
+# #1921 follow-up: reserved test identity (see zb_test_issue). The literals
+# here were real issue numbers; a run keyed to one writes fabricated prior
+# work onto that issue's state branch.
+_ZB_ID1="$(zb_test_issue)"
+_ZB_ID2="$(zb_test_issue)"
+
 # shellcheck disable=SC1091
 source "$REPO_ROOT/core/state/artifact-persist.sh"
 
@@ -67,10 +73,10 @@ fi
 SD1="$TEST_TEMP_DIR/state1"
 mkdir -p "$SD1/artifacts"
 printf 'from-worktree\n' > "$SD1/artifacts/plan.json"
-_artifact_persist_snapshot "$SD1" 4242 "$WT" >/dev/null 2>&1; _snap_rc=$?
+_artifact_persist_snapshot "$SD1" $_ZB_ID1 "$WT" >/dev/null 2>&1; _snap_rc=$?
 # Read the ref through the MAIN tree: if it only existed in the worktree's ref
 # view, this lookup would fail — which is exactly the bug being guarded.
-_ref="$(GIT_DIR="$MAIN/.git" git rev-parse -q --verify refs/heads/zbuild/state/issue-4242 2>/dev/null || true)"
+_ref="$(GIT_DIR="$MAIN/.git" git rev-parse -q --verify refs/heads/zbuild/state/issue-$_ZB_ID1 2>/dev/null || true)"
 if [[ "$_snap_rc" -eq 0 && -n "$_ref" ]]; then
     assert_pass "[SPEC-1] snapshot from a worktree creates the state branch in the shared ref store"
 else
@@ -81,7 +87,7 @@ fi
 # ── SPEC-2: restore FROM the worktree recovers it (must not silently no-op) ───
 RD1="$TEST_TEMP_DIR/restored1"
 mkdir -p "$RD1"
-_artifact_persist_restore 4242 "$RD1" "$WT" >/dev/null 2>&1; _res_rc=$?
+_artifact_persist_restore $_ZB_ID1 "$RD1" "$WT" >/dev/null 2>&1; _res_rc=$?
 if [[ "$_res_rc" -eq 0 ]] && grep -q "from-worktree" "$RD1/artifacts/plan.json" 2>/dev/null; then
     assert_pass "[SPEC-2] restore from a worktree recovers the artifact contents"
 else
@@ -93,13 +99,13 @@ fi
 # main -> worktree
 SD2="$TEST_TEMP_DIR/state2"; mkdir -p "$SD2/artifacts"
 printf 'from-main\n' > "$SD2/artifacts/plan.json"
-_artifact_persist_snapshot "$SD2" 5252 "$MAIN" >/dev/null 2>&1
+_artifact_persist_snapshot "$SD2" $_ZB_ID2 "$MAIN" >/dev/null 2>&1
 RD2="$TEST_TEMP_DIR/restored2"; mkdir -p "$RD2"
-_artifact_persist_restore 5252 "$RD2" "$WT" >/dev/null 2>&1
+_artifact_persist_restore $_ZB_ID2 "$RD2" "$WT" >/dev/null 2>&1
 _m2w=0; grep -q "from-main" "$RD2/artifacts/plan.json" 2>/dev/null && _m2w=1
 # worktree -> main  (issue 4242 was snapshotted from the worktree above)
 RD3="$TEST_TEMP_DIR/restored3"; mkdir -p "$RD3"
-_artifact_persist_restore 4242 "$RD3" "$MAIN" >/dev/null 2>&1
+_artifact_persist_restore $_ZB_ID1 "$RD3" "$MAIN" >/dev/null 2>&1
 _w2m=0; grep -q "from-worktree" "$RD3/artifacts/plan.json" 2>/dev/null && _w2m=1
 if [[ "$_m2w" -eq 1 && "$_w2m" -eq 1 ]]; then
     assert_pass "[SPEC-3] snapshots round-trip in both directions (main<->worktree)"

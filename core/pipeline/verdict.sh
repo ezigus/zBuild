@@ -118,6 +118,25 @@ verdict_classify() {
         # this classification governs the INDICATOR only.
         request_changes|incomplete|degraded)
             echo "warn" ;;
+        # #2034 spec-correspondence: does the assertion test what its SPEC SAYS?
+        # `corresponds` is the clean answer. `partial` and `uncheckable` are
+        # findings, not failures — `partial` names a coverage gap (the assertion
+        # tests the right property, narrower than the sentence promises) and
+        # `uncheckable` is a finding against the REQUIREMENT. Both warn.
+        #
+        # `mismatch` is the one genuine disagreement, and it is `fail`. That
+        # split is measured, not chosen: with a three-word vocabulary the judge
+        # had nowhere to put narrow-but-correct coverage and called it mismatch,
+        # putting false mismatches at 6/15 on merged pairs. With `partial` split
+        # out it is 0/15, with no true positive lost. The stage is advisory
+        # (ADR-040 §5) so none of these gate today; the classification is what a
+        # promotion would bind to.
+        corresponds)
+            echo "pass" ;;
+        partial|uncheckable)
+            echo "warn" ;;
+        mismatch)
+            echo "fail" ;;
         fail|error|block|scope_violation|corrupt_diff)
             echo "fail" ;;
         # #1219 (ADR-045): a gate-aggregator route verdict (route_design, or any
@@ -583,6 +602,27 @@ runner_read_stage_contract() {
     local _c_state _c_contract _c_verdict _c_disp _c_reason _c_viol _c_path _c_present
     _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _c
     printf '%s' "${_c_contract:-1}"
+}
+
+# ─── runner_read_stage_fault <state_dir> <manifest> <stage> <rc> ─────────────
+# The fault class a stage declared, or empty (#1987).
+#
+# Deliberately much thinner than runner_read_stage_disposition below: there is
+# no legacy-rc translation and no fallback. `fault` is a v2-only declared field
+# — a stage that did not declare one has not made a claim, and inventing one
+# from an exit code is exactly the re-interpretation ADR-054 §6 exists to stop.
+#
+# An unrecognised word is returned as-is rather than silently dropped; the
+# caller validates against the closed set and reports the disagreement.
+runner_read_stage_fault() {
+    local state_dir="$1" manifest="$2" stage="$3" rc="$4"
+    local _f_state _f_contract _f_verdict _f_disp _f_reason _f_viol _f_path _f_present
+    _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _f
+    [[ -n "$_f_path" && -s "$_f_path" ]] || return 0
+    local _f_fault
+    _f_fault="$(jq -r '.fault // empty' "$_f_path" 2>/dev/null || true)"
+    [[ "$_f_fault" == "null" ]] && _f_fault=""
+    printf '%s' "$_f_fault"
 }
 
 # ─── runner_read_stage_disposition <state_dir> <manifest> <stage> <rc> ───────

@@ -13,6 +13,10 @@ print_test_header "artifact chain — intake → security-lens → output (3-plu
 
 setup_test_env "artifact-chain"
 
+# #1921 follow-up: reserved test identity — the QUOTED assignment form.
+# These were real issue numbers used as run identity.
+_ZB_ID="$(zb_test_issue)"
+
 ZBUILD_TEST_TMP="$TEST_TEMP_DIR"
 STATE_DIR="$TEST_TEMP_DIR/state"
 ARTIFACTS_DIR="$STATE_DIR/artifacts"
@@ -26,7 +30,7 @@ export ZBUILD_EVENTS_DB="$EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_RUN_ID="chain-test-run-$$"
-export ZBUILD_ISSUE="1"
+export ZBUILD_ISSUE="$_ZB_ID"
 export ZBUILD_GOAL="Test artifact chain"
 export ZBUILD_OUTPUT_GH_COMMENT=0
 export ZBUILD_OUTPUT_GH_CHECK_RUN=0

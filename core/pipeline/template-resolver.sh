@@ -2,6 +2,16 @@
 # core/pipeline/template-resolver.sh — Per-repo template override loader (issue #653)
 # ADR-016 (full-replace overlay). Sourced library; no set -euo pipefail.
 
+
+# #2010: zbuild_engine_tmpdir names where engine code writes temp files.
+# Lazy-sourced, same pattern lifecycle.sh uses for stage-scratch.sh: this
+# file is sourced from several entry points and cannot assume helpers.sh
+# arrived first. helpers.sh sources only compat.sh, so there is no cycle.
+if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
+    # shellcheck source=../../scripts/lib/helpers.sh
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts/lib" && pwd)/helpers.sh" 2>/dev/null || true
+fi
+
 [[ -n "${_ZBUILD_TEMPLATE_RESOLVER_LOADED:-}" ]] && return 0
 _ZBUILD_TEMPLATE_RESOLVER_LOADED=1
 
@@ -49,7 +59,7 @@ resolve_template_file() {
     else
         # macOS/BSD mktemp requires XXXXXX at end (no trailing extension).
         # Mirrors the ${TMPDIR:-/tmp}/name.XXXXXX pattern used elsewhere.
-        merged_file="$(mktemp "${ZBUILD_STAGE_SCRATCH:-${TMPDIR:-/tmp}}/zbuild-tpl.XXXXXX")"
+        merged_file="$(mktemp "$(zbuild_engine_tmpdir)/zbuild-tpl.XXXXXX")"
     fi
 
     # ADR-016 lock 1 is "full replace: there is no field-level merge with the

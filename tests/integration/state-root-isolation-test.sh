@@ -44,6 +44,12 @@ set +e
 
 print_test_header "state-root isolation (#1127)"
 setup_test_env "state-root-isolation-1127"
+
+# #1921 follow-up: reserved test identity (zb_test_issue). These were real
+# issue numbers; a run keyed to one writes fabricated prior work onto that
+# issue's state branch. Only identity positions and the strings DERIVED from
+# them are swept — a bare number elsewhere is not an identity.
+_ZB_ID="$(zb_test_issue)"
 export ZBUILD_CONTRACT_VALIDATOR=warn
 
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
@@ -94,7 +100,7 @@ run_nested() {
         ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
         ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
         ZBUILD_RUN_ID="$run_id" HOME="$HOME_DIR" PATH="$PATH" "$@" \
-        bash "$RUNNER" --issue 1127 --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
+        bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
     local rc=$?; return $rc
 }
 
@@ -122,8 +128,8 @@ fi
 _nested_sd() {   # <state_root> <home> <run_id>
     HOME="$2" ZBUILD_STATE_ROOT="$1" env -u ZBUILD_STATE_DIR -u ZBUILD_DATA_ROOT \
         bash -c 'source "$1/scripts/lib/test-helpers.sh" >/dev/null 2>&1
-                 zb_expected_run_state_dir "$2" 1127 "" "$3"' _ \
-        "$REPO_ROOT" "$OVERLAY_REPO" "$3"
+                 zb_expected_run_state_dir "$2" "$3" "" "$4"' _ \
+        "$REPO_ROOT" "$OVERLAY_REPO" "$_ZB_ID" "$3"
 }
 # ─── SPEC-B: parent state byte-identical; nested state under the fence ───────
 if cmp -s "$PARENT_STATE" "$PARENT_STATE_GOLD"; then
@@ -180,7 +186,7 @@ set +e
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_RUN_ID="def-1" HOME="$HOME_DIR2" PATH="$PATH" \
-    bash "$RUNNER" --issue 1127 --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
+    bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
 e_rc=$?
 assert_eq "E: default-root run exits 0" "0" "$e_rc"
 # #141: with the root unset the run still roots at $HOME/.zbuild — under the
@@ -267,7 +273,7 @@ F_OUT="$STAGE_ARTIFACTS/test-results.json"
 # parent-untouched assertions pass hollowly, #913).
 NESTED_LOG="$TEST_TEMP_DIR/f-nested-runner.log"
 NESTED_STATE_COPY="$TEST_TEMP_DIR/f-nested-state.json"
-F_CMD="ZBUILD_PLUGINS_ROOT='$PLUGINS_ROOT' ZBUILD_EVENT_SCHEMA='$REPO_ROOT/config/event-schema.json' ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn ZBUILD_VISION_GATE=off ZBUILD_RUN_ID='nested-suite' bash '$RUNNER' --issue 1127 --no-resume --template runner-state-dir-minimal > '$NESTED_LOG' 2>&1 || true; _nsroot=\"\$(dirname \"\$ZBUILD_STATE_ROOT\")\"; _ns=\"\$(find \"\$_nsroot\" -path '*/issues/*/runs/nested-suite/pipeline-state.json' -print 2>/dev/null | sort | head -1)\"; [ -n \"\$_ns\" ] || _ns=\"\$(find \"\$_nsroot\" -path '*/runs/nested-suite/pipeline-state.json' -print 2>/dev/null | sort | head -1)\"; cp \"\$_ns\" '$NESTED_STATE_COPY' 2>/dev/null || true; echo suite-ok"
+F_CMD="ZBUILD_PLUGINS_ROOT='$PLUGINS_ROOT' ZBUILD_EVENT_SCHEMA='$REPO_ROOT/config/event-schema.json' ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn ZBUILD_VISION_GATE=off ZBUILD_RUN_ID='nested-suite' bash '$RUNNER' --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal > '$NESTED_LOG' 2>&1 || true; _nsroot=\"\$(dirname \"\$ZBUILD_STATE_ROOT\")\"; _ns=\"\$(find \"\$_nsroot\" -path '*/issues/*/runs/nested-suite/pipeline-state.json' -print 2>/dev/null | sort | head -1)\"; [ -n \"\$_ns\" ] || _ns=\"\$(find \"\$_nsroot\" -path '*/runs/nested-suite/pipeline-state.json' -print 2>/dev/null | sort | head -1)\"; cp \"\$_ns\" '$NESTED_STATE_COPY' 2>/dev/null || true; echo suite-ok"
 
 set +e
 # #1268: _test_run_inner is a shell FUNCTION — invoke it in a subshell with

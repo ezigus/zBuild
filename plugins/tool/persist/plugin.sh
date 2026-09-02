@@ -24,6 +24,8 @@ _ZBUILD_PERSIST_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _ZBUILD_PERSIST_DIR="$_ZBUILD_PLUGIN_DIR"
 _ZBUILD_PERSIST_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
@@ -84,12 +86,17 @@ persist_run() {
     emit_event "persist.start" "stage=$_stage_id" "issue=$_issue" 2>/dev/null || true
 
     local _verdict="complete" _reason="" _pushed="false" _snapshot="skipped"
+    # #1966: the CI backstop must tell "nothing to push" (no issue, no goal) from
+    # "did not push" (identity existed, the push did not happen). Without the
+    # distinction it either fires on every identity-less run or cannot fire at all.
+    local _identity_present="false"
+    _artifact_persist_has_identity "$_issue" && _identity_present="true"
 
     if ! _artifact_persist_has_identity "$_issue"; then
         # Neither an issue nor a goal: no identity, so nothing to persist under.
         # A --goal run DOES have one (#1931) and no longer lands here.
         _reason="no identity — neither an issue nor a goal"
-        _persist_write_result "$_artifacts_dir" "complete" "$_reason" "$_snapshot" "$_pushed"
+        _persist_write_result "$_artifacts_dir" "complete" "$_reason" "$_snapshot" "$_pushed" "$_identity_present"
         emit_event "persist.complete" "stage=$_stage_id" "issue=$_issue" \
             "pushed=false" "reason=no_issue" 2>/dev/null || true
         return 0
@@ -111,7 +118,41 @@ persist_run() {
             "reason=${_ARTIFACT_PERSIST_LAST_REASON:-unknown}" 2>/dev/null || true
     fi
 
-    # ── 2. Secret gate, before anything leaves the machine ───────────────────
+    # ── 2. Record the outcome, then snapshot AGAIN so it reaches the branch ──
+    # Every other stage's result file is on the state branch; persist's was on
+    # neither branch, because it was written after the only snapshot. The stage
+    # whose job is durability had no durable record of itself (ADR-050 §3
+    # amendment). The first snapshot cannot contain the file that describes it,
+    # so a second one carries it.
+    #
+    # pushed = null, not false: the push has not been attempted yet, and a push
+    # can never record its own outcome. The authoritative value is written to
+    # the LOCAL copy at step 5 and reported in the CI log. A reader of the
+    # BRANCH copy sees null and must not read it as "the push failed".
+    _persist_write_result "$_artifacts_dir" "$_verdict" \
+        "${_reason:-snapshotted zbuild/state/issue-$_issue}" \
+        "$_snapshot" "null" "$_identity_present"
+    # AMEND only when the snapshot above created the tip ("saved"). On
+    # unchanged/empty/failed it created nothing, so the tip belongs to an earlier
+    # stage boundary and amending would discard that legitimate commit — this
+    # second snapshot must then extend normally. Either way the branch gains at
+    # most ONE commit per persist run.
+    local _snap_mode=""
+    [[ "$_snapshot" == "saved" ]] && _snap_mode="amend"
+    # Loud, for the same reason step 1 is. A silent failure here means
+    # persist-result.json never reaches the branch — which is the exact defect
+    # this ordering was written to fix, just relocated. The verdict is NOT
+    # demoted: the push can still succeed and the local copy still carries the
+    # truth, so this degrades the record, not the run.
+    if ! _artifact_persist_snapshot "$_state_dir" "$_issue" "" "$_snap_mode" >/dev/null 2>&1; then
+        emit_event "persist.snapshot.failed" "stage=$_stage_id" "issue=$_issue" \
+            "reason=${_ARTIFACT_PERSIST_LAST_REASON:-second snapshot failed}" 2>/dev/null || true
+        warn "persist: result snapshot failed — persist-result.json will not reach the state branch"
+    fi
+
+    # ── 3. Secret gate, before anything leaves the machine ───────────────────
+    # After the write above, so the gate scans persist-result.json too: nothing
+    # reaches origin unscanned.
     local _finding
     if _finding="$(_persist_scan_artifacts "$_artifacts_dir")"; then
         # REFUSED, not degraded-and-pushed. Publishing a credential is not
@@ -120,13 +161,13 @@ persist_run() {
             "finding=${_finding}" 2>/dev/null || true
         warn "persist: refusing to push — artifact looks like it carries a credential (${_finding})"
         _persist_write_result "$_artifacts_dir" "degraded" \
-            "push refused: possible credential in ${_finding}" "$_snapshot" "false"
+            "push refused: possible credential in ${_finding}" "$_snapshot" "false" "$_identity_present"
         emit_event "persist.complete" "stage=$_stage_id" "issue=$_issue" \
             "pushed=false" "reason=secret_refused" 2>/dev/null || true
         return 0
     fi
 
-    # ── 3. Push ──────────────────────────────────────────────────────────────
+    # ── 4. Push (once, ADR-050 §4) ───────────────────────────────────────────
     if _artifact_persist_push "$_issue"; then
         case "${_ARTIFACT_PERSIST_LAST_STATUS:-}" in
             saved) _pushed="true" ;;
@@ -147,8 +188,12 @@ persist_run() {
         warn "persist: push failed (state is local only): ${_ARTIFACT_PERSIST_LAST_REASON:-unknown}"
     fi
 
+    # ── 5. The local copy gets the authoritative push outcome ────────────────
+    # Deliberately NOT re-snapshotted: that would need a third snapshot and a
+    # second push, and the push outcome would still be one step behind itself.
+    # The branch keeps pushed=null; local and the CI log carry the truth.
     [[ -n "$_reason" ]] || _reason="snapshotted and pushed zbuild/state/issue-$_issue"
-    _persist_write_result "$_artifacts_dir" "$_verdict" "$_reason" "$_snapshot" "$_pushed"
+    _persist_write_result "$_artifacts_dir" "$_verdict" "$_reason" "$_snapshot" "$_pushed" "$_identity_present"
     emit_event "persist.complete" "stage=$_stage_id" "issue=$_issue" \
         "pushed=$_pushed" "snapshot=$_snapshot" 2>/dev/null || true
     # Always 0: persistence is advisory. It must never change a run's verdict —
@@ -157,19 +202,25 @@ persist_run() {
     return 0
 }
 
-# ─── _persist_write_result <artifacts_dir> <verdict> <reason> <snap> <pushed> ─
+# ─── _persist_write_result <dir> <verdict> <reason> <snap> <pushed> [id_present] ─
 # Guarded like teardown's: an unguarded pipe would abort persist_run on a failed
 # write, before persist.complete and before the `return 0` ADR-054 §4 requires.
 _persist_write_result() {
-    local _dir="$1" _verdict="$2" _reason="$3" _snap="$4" _pushed="$5"
+    local _dir="$1" _verdict="$2" _reason="$3" _snap="$4" _pushed="$5" _ip="${6:-false}"
     mkdir -p "$_dir" 2>/dev/null || true
     local _file="$_dir/persist-result.json"
     if ! jq -n \
             --arg v "$_verdict" --arg r "$_reason" \
-            --arg s "$_snap" --argjson p "$_pushed" \
+            --arg s "$_snap" --argjson p "$_pushed" --argjson ip "$_ip" \
             '{result_contract: 2, verdict: $v, disposition: "complete",
-              reason: $r, data: {snapshot: $s, pushed: $p}}' \
+              reason: $r, data: {snapshot: $s, pushed: $p, identity_present: $ip}}' \
             | atomic_write "$_file"; then
         emit_event "persist.result.write_failed" "file=$_file" 2>/dev/null || true
     fi
+    # ADR-055 §9: pushed=false is the fact #1921 hid for the life of the
+    # feature, so the summary states it rather than implying success.
+    local _p_did="did NOT push"; [[ "$_pushed" == "true" ]] && _p_did="pushed"
+    stage_summary_write "$_dir/persist-summary.md" "persist" "$_verdict" \
+        "snapshot ${_snap:-unknown}; $_p_did to origin" \
+        "$(printf -- '- detail: %s\n- identity present: %s' "${_reason:-none}" "${_ip}")"
 }

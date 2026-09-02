@@ -24,6 +24,8 @@ _ZBUILD_MONITOR_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _MONITOR_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../scripts/lib/llm-agent.sh
 source "$_MONITOR_ROOT/scripts/lib/llm-agent.sh"   # ADR-028 shared framework (also loads helpers.sh)
@@ -80,6 +82,9 @@ _monitor_stage_run_inner() {
     # Dry-run: sentinel primary artifact, no model call.
     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
         _monitor_write_report "$report_out" "pass" "dry-run monitor" || return 1
+        stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "skip" \
+            "dry run — no health assessment was performed" \
+            "Nothing was monitored. This verdict asserts nothing about the deployment."
         return 0
     fi
 
@@ -120,6 +125,9 @@ _monitor_stage_run_inner() {
         # Primary artifact is required on every exit path — surface a write failure.
         _monitor_write_report "$report_out" "degraded" "model call failed (rc=$rc)" \
             || emit_event "monitor.alert" "plugin=monitor" "reason=report_write_failed"
+        stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
+            "the model call failed (rc=$rc, ${reason:-model_error}), so no assessment was made" \
+            "The deployment was not assessed. Absence of an alert here is not evidence of health."
         return 1
     fi
 
@@ -135,6 +143,9 @@ _monitor_stage_run_inner() {
         emit_event "monitor.alert" "plugin=monitor" "reason=unparseable_response" "detail=${verr:-empty}"
         _monitor_write_report "$report_out" "degraded" "no structured response from model" \
             || emit_event "monitor.alert" "plugin=monitor" "reason=report_write_failed"
+        stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
+            "the model returned no usable report (${verr:-empty}), so no assessment was made" \
+            "The deployment was not assessed. Absence of an alert here is not evidence of health."
         return 1
     fi
 
@@ -143,14 +154,19 @@ _monitor_stage_run_inner() {
     [[ "$verdict" == "pass" || "$verdict" == "degraded" ]] || verdict="degraded"
     printf '%s' "$report_json" | jq -c --arg v "$verdict" '.verdict=$v' | atomic_write "$report_out"
 
+    local _mon_summary; _mon_summary="$(jq -r '.summary // "no summary"' <<< "$report_json" 2>/dev/null || printf 'no summary')"
+    local _mon_checks; _mon_checks="$(jq -r '.checks | length' <<< "$report_json" 2>/dev/null || printf '0')"
     if [[ "$verdict" != "pass" ]]; then
         emit_event "monitor.alert" "plugin=monitor" "verdict=$verdict"
+        stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
+            "assessed the deployment as $verdict — $_mon_summary" \
+            "$(printf -- '- checks run: %s\n- artifact: monitor-report.json' "$_mon_checks")"
         return 1
     fi
+    stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "pass" \
+        "assessed the deployment as healthy — $_mon_summary" \
+        "$(printf -- '- checks run: %s\n- artifact: monitor-report.json' "$_mon_checks")"
     return 0
 }
 
 # ─── cleanup ────────────────────────────────────────────────────────────────
-monitor_stage_cleanup() {
-    return 0
-}
