@@ -4,6 +4,13 @@
 **Supersedes:** N/A (formalizes pattern across ADR-018, ADR-020, ADR-022)
 **Amended:** 2026-08-28 (ADR-060) — the `--markdown-fields` escaping block is retired along with the markdown-document fields it existed to protect. It cited ADR-022, which has been Retired since #979. Envelopes carry structured data; the engine renders prose.
 
+> **`test_assessment` no longer exists.** It was deleted in #979 with the
+> compound-quality lattice, along with ADR-022 which specified it. This document
+> names it throughout because it existed when the ADR was written; every such
+> mention describes history, never work to do or behaviour to expect. Do not
+> plan against it, and do not read its presence in a list as evidence that the
+> list is current.
+
 ## Context
 
 Each LLM-driven agent plugin (`plan`, `impact`, `review`, `test_assessment`) was implemented independently. Each reimplements:
@@ -95,7 +102,7 @@ One plugin at a time, lowest-risk first. Each PR is a single-plugin migration wi
 
 1. `plan` → framework migration (lowest contract complexity)
 2. `review` → framework migration
-3. `test_assessment` → framework migration (folds in the unescaped-quote fix from ADR-022 v2)
+3. ~~`test_assessment` → framework migration~~ — moot: the stage was deleted in #979.
 4. `impact` → framework migration (last; folds in the consolidation of accreted bloat)
 
 Each migration adds the verdict vocab, schema fields, and markdown-fields metadata to the per-stage manifest so future linters can validate "every plugin's prompt matches the canonical contract."
@@ -136,7 +143,7 @@ Migration is staged across 4 PRs, one plugin per PR:
 1. **Framework foundation** — `scripts/lib/llm-agent-stage.sh` with the 5 helpers (`_llm_output_contract`, `_llm_envelope_parse`, `_llm_envelope_validate`, `_llm_emit_violation`, `_llm_router_classify`). Comprehensive unit tests; no plugin migration in this PR.
 2. **Migrate `plan`** — thinnest stage, lowest risk. Validates the framework contract end-to-end via existing plan-plugin tests.
 3. **Migrate `review`** — similar shape to plan. Adds review-specific verdict vocab (`approve|request_changes|block`).
-4. **Migrate `test_assessment`** — folds in ADR-022 v2's parse-vs-structure distinction and JSON-string escape requirement.
+4. ~~**Migrate `test_assessment`**~~ — moot: the stage was deleted in #979. The parse-vs-structure distinction it would have carried lives in `_llm_envelope_validate` and is now specified by ADR-060 §B.
 5. **Migrate `impact`** — last because it has the most accumulated complexity (FORBIDDEN list, FINAL RULE, prefilter integration, contract violation events). Consolidates impact's ~100-line prompt into the framework's ~50-line canonical form.
 
 Each migration PR cites this ADR + the relevant per-stage ADR. Re-dogfood after each migration to measure `*.contract.violation` rate reduction.
@@ -177,9 +184,13 @@ Add `--schema-gate <func>` to `_llm_envelope_parse`. When provided and the LAST-
 - `_security_lens_envelope_schema_ok` — type==object, findings array (no schema_version in LLM response for this stage)
 - `_plan_envelope_schema_ok` — type==object, schema_version==1, non-empty steps[] array (pre-existing gate from #1052, now the framework schema-gate for the plan stage)
 
-**Migration.** All four Pattern-1 stages — `plan`, `review`, `test_assessment`, and `security-lens` — are migrated to call `_llm_envelope_parse --schema-gate` in place of their prior `extract_first_json_object` calls.
+**Migration.** `plan`, `security-lens` and `monitor` call `_llm_envelope_parse --schema-gate`. `impact` uses its own two-phase parser deliberately — see ADR-060 §"the divergence is deliberate", which records why collapsing it onto the shared helper would *loosen* it.
 
-- `review`, `test_assessment`, `security-lens`: their rc=0 parse now routes through `_llm_envelope_parse --schema-gate <stage>_envelope_schema_ok`.
+`review-lens` and `review-report` are **not** migrated: both still call bare `extract_first_json_object` with no schema gate and no recovery, so a reply carrying a prose preamble is discarded rather than recovered. They fail visibly rather than silently — `review-lens` emits `review_lens.unparseable` and writes a summary saying the lens reviewed nothing, with "Absence here is not evidence of a clean change" — so this is a gap, not a live hazard. Tracked separately.
+
+*Corrected 2026-09-02.* This paragraph previously asserted that the migration was complete across four stages, one of which had been deleted months earlier and one of which was never migrated. The wrong sentence is not reproduced here: a reader — person or agent — who meets it takes it as settled and builds on it, and that is exactly how a claim nobody can check comes to read like a claim that is true. `tests/unit/adr-migration-claims-test.sh` now checks this paragraph against the code, so it cannot drift back into fiction unnoticed.
+
+- `security-lens`: its rc=0 parse routes through `_llm_envelope_parse --schema-gate <stage>_envelope_schema_ok`. `test_assessment` was deleted (#979). `review-lens` was **not** migrated — see the Migration note below.
 - `plan`: its rc=0 parse routes through `_llm_envelope_parse --schema-gate _plan_envelope_schema_ok`, and its stage-local `_plan_recover_envelope_json` (scripts/lib/plan-context.sh) now delegates to `_llm_recover_envelope_json` — the duplicated awk brace-grammar is retired. plan's STRICT happy-path validator (which additionally requires `files[]` be strings) stays authoritative for rc=0 acceptance, so a recovered-but-invalid envelope remains a `schema_violation`. plan's `router_rc != 0` sidecar-recovery path (max_turns budget exhaustion) is unchanged and continues to call `_plan_recover_envelope_json` (now framework-backed).
 
 `impact` retains its stage-local `_impact_recover_envelope_json` helper by design — it is not part of this migration.

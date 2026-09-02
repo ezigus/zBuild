@@ -15,8 +15,9 @@
 #
 # v1 scope (per multi-agent design synthesis):
 #   - Pattern 1 ONLY (build's loop-with-sentinel stays separate)
-#   - No escape-repair in parser (deferred to v2; ADR-022 column-3208 case is
-#     the regression target). v1 fails-soft with diagnostic-rich error.
+#   - No escape-repair in parser. ADR-060 §B settled this: a malformed reply is
+#     RE-ASKED, never repaired — the engine rewriting a model's answer fabricates
+#     data and guesses at intent. Fails soft with a diagnostic-rich error.
 #   - Per-stage OUTPUT CONTRACT goldens pin the rendered block.
 
 if [[ "${_ZBUILD_LLM_AGENT_LOADED:-}" == "1" ]]; then
@@ -341,7 +342,7 @@ _llm_envelope_parse() {
 
 # ─── _llm_envelope_validate ─────────────────────────────────────────────────
 # Two-pass validation: parse-class error (with col+ctx) vs structure-class.
-# Per ADR-020 amendment + ADR-022 v2: distinguishing the two failure modes
+# Per ADR-020 amendment + ADR-060 §B: distinguishing the two failure modes
 # tells the operator (and the LLM on next iter) the real root cause.
 #
 # Args:
