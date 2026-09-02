@@ -39,6 +39,23 @@ _write_test_results "targeted"
 _mode="$(_cycle_read_test_run_mode "$STATE_DIR")"
 assert_eq "T1: run_mode=targeted read correctly" "targeted" "$_mode"
 
+# ─── T1b: a v1 artifact still reads (#1836 migration window) ─────────────────
+# The gate plugins in this series all read v2-first/v1-fallback — `(.data.X //
+# .X)`. This reader was v2-only, so a test-results.json written before the
+# migration (top-level run_mode, no data block) silently degraded to "full" and
+# a targeted re-run was re-broadened to the whole suite with nothing logged.
+_write_test_results_v1() {
+    local run_mode="${1:-full}"
+    mkdir -p "$STATE_DIR/artifacts"
+    jq -n --arg rm "$run_mode" \
+        '{schema_version:1, verdict:"pass", run_mode:$rm, exit_code:0, passed:1, failed:0}' \
+        > "$STATE_DIR/artifacts/test-results.json"
+}
+print_test_section "T1b. v1 artifact: run_mode read from the top level"
+_write_test_results_v1 "targeted"
+_mode="$(_cycle_read_test_run_mode "$STATE_DIR")"
+assert_eq "T1b: v1 top-level run_mode=targeted still read" "targeted" "$_mode"
+
 # ─── T2: _cycle_read_test_run_mode returns "full" ─────────────────────────────
 print_test_section "T2. _cycle_read_test_run_mode returns full from JSON"
 _write_test_results "full"

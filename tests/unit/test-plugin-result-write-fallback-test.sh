@@ -191,6 +191,17 @@ assert_eq "forced-fail: .reason=result_write_failed" "result_write_failed" \
 assert_eq "forced-fail: .verdict=error" "error" \
     "$(jq -r '.verdict' "$OUT8" 2>/dev/null)"
 
+# [SPEC-13] The fail-closed fallback is a v2 result too, in the SAME shape the
+# normal path emits — not a v2-flavoured subset. A consumer cannot know which
+# writer produced the artifact, so one that reads `.exit_code` at the top level
+# must not silently get null just because the primary write failed.
+assert_eq "[SPEC-13] fallback: .result_contract=2" "2" \
+    "$(jq -r '.result_contract' "$OUT8" 2>/dev/null)"
+assert_eq "[SPEC-13] fallback: .disposition=broken" "broken" \
+    "$(jq -r '.disposition' "$OUT8" 2>/dev/null)"
+assert_eq "[SPEC-13] fallback carries the same top-level mirrors as the normal path" "true" \
+    "$(jq '(.test_output == .data.test_output) and (.run_mode == .data.run_mode) and (.exit_code == .data.exit_code)' "$OUT8" 2>/dev/null || echo false)"
+
 if grep -q '"type":"test.result_write.fallback"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
     assert_pass "forced-fail: test.result_write.fallback event emitted"
 else

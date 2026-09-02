@@ -899,8 +899,16 @@ _test_write_result() {
         # Fail-closed: overwrite with a degenerate-but-valid JSON object so
         # the primary output always parses. Sanitizers already constrained
         # exit_code_json to {integer, "null"} so %s interpolation is safe.
-        printf '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"result_write_failed","data":{"exit_code":%s,"passed":null,"failed":null,"test_output":"","diff_applied":false,"test_cmd":""}}\n' \
-            "$exit_code_json" | atomic_write "$path"
+        # The top-level mirrors are emitted here too: a consumer cannot tell
+        # which writer produced the artifact, so a fallback that dropped them
+        # would hand `.exit_code` back as null purely because the primary write
+        # failed. Same shape, degenerate values — not a v2-flavoured subset.
+        # run_mode is interpolated raw (no jq --arg here), so constrain it to
+        # the two declared tokens rather than trusting the caller's string.
+        local _fb_run_mode="full"
+        [[ "$run_mode" == "targeted" ]] && _fb_run_mode="targeted"
+        printf '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"result_write_failed","test_output":"","run_mode":"%s","exit_code":%s,"data":{"exit_code":%s,"passed":null,"failed":null,"test_output":"","diff_applied":false,"test_cmd":"","run_mode":"%s"}}\n' \
+            "$_fb_run_mode" "$exit_code_json" "$exit_code_json" "$_fb_run_mode" | atomic_write "$path"
         emit_event "test.result_write.fallback" "path=$path" 2>/dev/null || true
     fi
 }
