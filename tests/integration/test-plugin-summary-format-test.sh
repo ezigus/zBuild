@@ -103,9 +103,11 @@ assert_eq "failsafe: verdict=error"             "error"                "$(jq -r 
 assert_eq "failsafe: reason=summary_unavailable" "summary_unavailable" "$(jq -r '.reason'        "$JSON")"
 assert_eq "failsafe: passed is null"            "null"                 "$(jq -r '.data.passed'   "$JSON")"
 assert_eq "failsafe: failed is null"            "null"                 "$(jq -r '.data.failed'   "$JSON")"
-# [SPEC-11] test_output at top level in v2 result contract (result_contract:2 absent in v1 baseline)
-assert_eq "[SPEC-11] test_output at top level in v2 result (summary-format)" "true" \
-    "$(jq '(.result_contract == 2) and has("test_output")' "$JSON" 2>/dev/null)"
+# [SPEC-11] test_output mirrored at top level with the SAME value as data.test_output.
+# Value equality (not has()) so the guard also reddens on a partial regression
+# that keeps result_contract:2 but moves the field back to data-only.
+assert_eq "[SPEC-11] test_output mirrored at top level in v2 result (summary-format)" "true" \
+    "$(jq '(.result_contract == 2) and (.data.test_output != null) and (.test_output == .data.test_output)' "$JSON" 2>/dev/null || echo false)"
 
 # ───────────────────────────────────────────────────────────────────────────
 # Empty output (e.g. `true`) — fail-safe SUPERSEDES the old #485 no-op

@@ -698,18 +698,6 @@ _test_framework_enabled() {
     return 1
 }
 
-# ─── _test_write_result ───────────────────────────────────────────────────────
-# Writes test-results.json atomically via a temp file.
-# Usage: _test_write_result <path> <verdict> <exit_code> <passed> <failed>
-#                            <test_output> <diff_applied> <test_cmd> [reason]
-#                            [run_mode] [timing_json] [tree_sha]
-#                            [lint_json] [coverage_json] [mutation_json]
-# #584: passed/failed may be the literal token "null" to record that the
-# parser did not recognize this runner's output (honest fail-safe — never
-# fabricate counts). The `reason` field is optional and emitted only when
-# non-empty; values include `summary_unavailable` (#584 fail-safe),
-# `silent_failure` (#485 no-op guard). Wave 12-C (#662) removed the
-# `diff_apply_failed` reason — no caller writes it anymore.
 # #626: sanitize a numeric slot — accept "null", integers, or fall back to "null".
 # Anything else (whitespace, "abc", embedded quotes) becomes JSON null so jq
 # --argjson never barfs and the writer stays fail-CLOSED.
@@ -735,9 +723,13 @@ _test_sanitize_bool() {
 
 # ─── _test_disposition_from_rc (#1836, ADR-054 §5) ───────────────────────────
 # Maps (rc, verdict) → ADR-054 disposition token:
-#   pass|fail (test ran to completion)  → complete
-#   rc=130/137/143 (signal death)       → interrupted  (recoverable retry)
-#   everything else                     → broken
+#   pass|fail (test ran to completion)   → complete
+#   rc=130/137/143 (signal death)        → interrupted  (recoverable retry)
+#   rc=124 (timeout, ADR-054 §6 table)   → interrupted  (recoverable retry)
+#   everything else                      → broken
+# #1747: only a signalled death or a true timeout is recoverable. An rc=0 exit
+# with unrecognised output is a real config bug and stays `broken` — it falls
+# through to the default precisely because it is NOT in this set.
 # Called once per run, AFTER verdict is finalized.
 # Usage: _test_disposition_from_rc <rc> <verdict>
 _test_disposition_from_rc() {
@@ -745,9 +737,11 @@ _test_disposition_from_rc() {
     case "$verdict" in
         pass|fail) printf 'complete'; return 0 ;;
     esac
-    # verdict=error — distinguish signal deaths (interrupted) from config bugs (broken)
+    # verdict=error — distinguish signal deaths and timeouts (interrupted) from
+    # config bugs (broken). ADR-054 §6: 124 is the timeout row; the router
+    # absorbs it today, so this arm is contract conformance, not a live path.
     case "$rc" in
-        130|137|143) printf 'interrupted'; return 0 ;;
+        124|130|137|143) printf 'interrupted'; return 0 ;;
     esac
     printf 'broken'
 }
@@ -762,10 +756,12 @@ _test_disposition_from_rc() {
 #                            [lint_json] [coverage_json] [mutation_json]
 # #584: passed/failed may be the literal token "null" to record that the
 # parser did not recognize this runner's output (honest fail-safe — never
-# fabricate counts). The `reason` field is emitted only when non-empty;
-# disposition is always emitted (mandatory v2 top-level field).
-# #626: sanitize a numeric slot — accept "null", integers, or fall back to "null".
-# Anything else (whitespace, "abc", embedded quotes) becomes JSON null so jq
+# fabricate counts). The `reason` field is emitted only when non-empty; values
+# include `summary_unavailable` (#584 fail-safe), `silent_failure` (#485 no-op
+# guard) and `missing_diff_patch`. Wave 12-C (#662) removed `diff_apply_failed`
+# — no caller writes it anymore. disposition is always emitted (mandatory v2
+# top-level field).
+# #626: numeric and boolean slots pass through the sanitizers above, so jq
 # --argjson never barfs and the writer stays fail-CLOSED.
 _test_write_result() {
     local path="$1"

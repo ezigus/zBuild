@@ -610,18 +610,23 @@ assert_file_not_exists "T18: stale red-set removed after a no-failure run" "$STA
 # SPEC-1 through SPEC-10: v2 result contract acceptance assertions (#1836)
 # Reuse artifacts already written by earlier tests — no extra plugin runs needed.
 # CHANGE assertions (SPEC-1..8) check new top-level fields (test_output, run_mode,
-# exit_code) that were absent in the ca3fbc5 intake baseline.
+# exit_code) that were absent in the ca3fbc5 intake baseline. Each pairs the
+# `result_contract == 2` version check with a top-level/`data` VALUE-EQUALITY
+# check, so the assertion reddens two ways: at the v1 baseline (no
+# result_contract) and on a partial regression that keeps result_contract:2 but
+# drops the field back to data-only placement.
 # GUARD assertions (SPEC-9..10) stay tagged but must not be contorted to fail at baseline.
 # ═══════════════════════════════════════════════════════════════════════════════
 print_test_section "SPEC. v2 result contract (#1836)"
 
-# [SPEC-1] test_output at top level in v2 result contract (result_contract:2 was absent at v1 baseline)
-_spec1_has_to="$(jq '(.result_contract == 2) and has("test_output")' "$OUT_JSON_3" 2>/dev/null)"
-assert_eq "[SPEC-1] test_output exposed at top level in v2 result contract" "true" "$_spec1_has_to"
+# [SPEC-1] test_output mirrored at top level with the SAME value as data.test_output.
+# `!= null` defeats the both-absent case, where null == null would pass vacuously.
+_spec1_has_to="$(jq '(.result_contract == 2) and (.data.test_output != null) and (.test_output == .data.test_output)' "$OUT_JSON_3" 2>/dev/null || echo false)"
+assert_eq "[SPEC-1] test_output mirrored at top level, value-equal to data.test_output" "true" "$_spec1_has_to"
 
-# [SPEC-2] run_mode at top level in v2 result contract (result_contract:2 was absent at v1 baseline)
-_spec2_has_rm="$(jq '(.result_contract == 2) and has("run_mode")' "$OUT_JSON_3" 2>/dev/null)"
-assert_eq "[SPEC-2] run_mode exposed at top level in v2 result contract" "true" "$_spec2_has_rm"
+# [SPEC-2] run_mode mirrored at top level with the SAME value as data.run_mode.
+_spec2_has_rm="$(jq '(.result_contract == 2) and (.data.run_mode != null) and (.run_mode == .data.run_mode)' "$OUT_JSON_3" 2>/dev/null || echo false)"
+assert_eq "[SPEC-2] run_mode mirrored at top level, value-equal to data.run_mode" "true" "$_spec2_has_rm"
 
 # [SPEC-3] exit_code=0 at top level on pass path AND disposition=complete (CHANGE: exit_code absent at top level in baseline)
 _spec3_ec="$(_json_key "$OUT_JSON_3" '.exit_code')"
@@ -636,40 +641,64 @@ assert_eq "[SPEC-4] exit_code=1 at top level on fail path" "1" "$_spec4_ec"
 assert_eq "[SPEC-4] disposition=complete when verdict=fail" "complete" "$_spec4_disp"
 
 # [SPEC-5] test_output at top level in v2 result on error path AND disposition=broken
-_spec5_has_to="$(jq '(.result_contract == 2) and has("test_output")' "$OUT_JSON_2" 2>/dev/null)"
+_spec5_has_to="$(jq '(.result_contract == 2) and (.data.test_output != null) and (.test_output == .data.test_output)' "$OUT_JSON_2" 2>/dev/null || echo false)"
 _spec5_disp="$(_json_key "$OUT_JSON_2" '.disposition')"
-assert_eq "[SPEC-5] test_output at top level in v2 result on error (missing diff)" "true" "$_spec5_has_to"
+assert_eq "[SPEC-5] test_output mirrored at top level on error (missing diff)" "true" "$_spec5_has_to"
 assert_eq "[SPEC-5] disposition=broken on error (missing diff)" "broken" "$_spec5_disp"
 
 # [SPEC-6] run_mode at top level in v2 result on missing-diff error AND reason=missing_diff_patch
-_spec6_has_rm="$(jq '(.result_contract == 2) and has("run_mode")' "$OUT_JSON_2" 2>/dev/null)"
+_spec6_has_rm="$(jq '(.result_contract == 2) and (.data.run_mode != null) and (.run_mode == .data.run_mode)' "$OUT_JSON_2" 2>/dev/null || echo false)"
 _spec6_reason="$(_json_key "$OUT_JSON_2" '.reason')"
-assert_eq "[SPEC-6] run_mode at top level in v2 result on missing-diff error path" "true" "$_spec6_has_rm"
+assert_eq "[SPEC-6] run_mode mirrored at top level on missing-diff error path" "true" "$_spec6_has_rm"
 assert_eq "[SPEC-6] reason=missing_diff_patch emitted on missing diff" "missing_diff_patch" "$_spec6_reason"
 
-# [SPEC-7] exit_code at top level for backward compat (CHANGE: absent at top level in intake baseline)
-_spec7_top_ec="$(jq 'has("exit_code")' "$OUT_JSON_3" 2>/dev/null)"
-_spec7_data_ec="$(jq '.data | has("exit_code")' "$OUT_JSON_3" 2>/dev/null)"
-assert_eq "[SPEC-7] exit_code at top level for direct consumers" "true" "$_spec7_top_ec"
+# [SPEC-7] exit_code is carried in BOTH places and the two never diverge. SPEC-3
+# already pins the top-level value, so a bare has() here would add no signal;
+# the non-redundant property is that the two paths agree, since a code path that
+# updates one and not the other splits downstream consumers silently.
+_spec7_data_ec="$(jq '.data | has("exit_code")' "$OUT_JSON_3" 2>/dev/null || echo false)"
+_spec7_agree="$(jq '(.exit_code != null) and (.exit_code == .data.exit_code)' "$OUT_JSON_3" 2>/dev/null || echo false)"
 assert_eq "[SPEC-7] exit_code also under data block" "true" "$_spec7_data_ec"
+assert_eq "[SPEC-7] top-level exit_code agrees with data.exit_code" "true" "$_spec7_agree"
 
-# [SPEC-8] _test_disposition_from_rc signal mapping AND result_contract=2 (v2 shape)
-# Combined assertion fails at baseline: result_contract was absent in v1 (schema_version:1)
+# [SPEC-8] _test_disposition_from_rc signal mapping, and the v2 shape it belongs to.
+# Kept as two assertions rather than one pipe-joined composite: the two check
+# unrelated things (a pure function vs. an artifact), and a joined form reports
+# `interrupted|` on a missing artifact without saying which half went wrong.
 _spec8_term="$(_test_disposition_from_rc 143 "error")"
-_spec8_rc2="$(jq '.result_contract == 2' "$OUT_JSON_3" 2>/dev/null)"
-assert_eq "[SPEC-8] rc=143→interrupted AND result_contract=2 (v2 shape)" "interrupted|true" "${_spec8_term}|${_spec8_rc2}"
+assert_eq "[SPEC-8] rc=143 (SIGTERM) → disposition=interrupted" "interrupted" "$_spec8_term"
+_spec8_rc2="$(jq '.result_contract == 2' "$OUT_JSON_3" 2>/dev/null || echo false)"
+assert_eq "[SPEC-8] result_contract=2 (v2 shape)" "true" "$_spec8_rc2"
 _spec8_kill="$(_test_disposition_from_rc 137 "error")"
 assert_eq "[SPEC-8] rc=137 (SIGKILL) → disposition=interrupted" "interrupted" "$_spec8_kill"
 _spec8_int="$(_test_disposition_from_rc 130 "error")"
 assert_eq "[SPEC-8] rc=130 (SIGINT) → disposition=interrupted" "interrupted" "$_spec8_int"
 _spec8_broken="$(_test_disposition_from_rc 1 "error")"
 assert_eq "[SPEC-8] rc=1 (non-signal error) → disposition=broken (not interrupted)" "broken" "$_spec8_broken"
+# ADR-054 §6 table row `124 timeout` → interrupted. The router absorbs a timeout
+# today, so this rc does not reach the plugin through the normal path — but the
+# mapping is part of the declared contract and must not silently classify a
+# timeout as a defect if the router ever hands one down.
+_spec8_timeout="$(_test_disposition_from_rc 124 "error")"
+assert_eq "[SPEC-8] rc=124 (timeout) → disposition=interrupted (ADR-054 §6)" "interrupted" "$_spec8_timeout"
 
-# [SPEC-9] _test_write_result receives path as arg — does not construct artifact paths internally (GUARD)
-# Drop trailing '$' anchor so pattern matches '_test_write_result() {' (line has ' {' suffix).
+# [SPEC-9] The plugin never invents an artifact location (GUARD).
+# The acceptance criterion is "constructs no artifact paths in code". #1826
+# landed engine-side resolution for declared INPUTS only, and this plugin
+# declares `inputs: []`; there is no engine mechanism for OUTPUT paths yet, and
+# every migrated plugin (persist, hydrate, teardown) still derives its own from
+# ZBUILD_ARTIFACT_DIR. So the enforceable invariant today is narrower than the
+# criterion's wording, and this guard states it exactly rather than passing
+# vacuously: the writer is path-agnostic, and the one path root the plugin does
+# build comes from the engine's env var — never a literal baked into the code.
 _spec9_fn="$(awk '/^_test_write_result\(\)/,/^\}/' "$PLUGIN_DIR/plugin.sh" 2>/dev/null)"
-_spec9_artdir="$(printf '%s\n' "$_spec9_fn" | grep -c 'artifact_dir' || true)"
-assert_eq "[SPEC-9] _test_write_result does not construct artifact paths from artifact_dir" "0" "$_spec9_artdir"
+_spec9_artdir="$(grep -c 'artifact_dir' <<< "$_spec9_fn" || true)"
+assert_eq "[SPEC-9] _test_write_result takes its path as an argument (no artifact_dir inside)" "0" "$_spec9_artdir"
+# Exactly one artifact_dir derivation, and it reads ZBUILD_ARTIFACT_DIR.
+_spec9_assigns="$(grep -cE '(^|[^_[:alnum:]])artifact_dir=' "$PLUGIN_DIR/plugin.sh" || true)"
+assert_eq "[SPEC-9] artifact_dir is derived in exactly one place" "1" "$_spec9_assigns"
+_spec9_unrooted="$(grep -E '(^|[^_[:alnum:]])artifact_dir=' "$PLUGIN_DIR/plugin.sh" 2>/dev/null | grep -vc 'ZBUILD_ARTIFACT_DIR' || true)"
+assert_eq "[SPEC-9] every artifact_dir derivation is rooted in engine-provided ZBUILD_ARTIFACT_DIR" "0" "$_spec9_unrooted"
 
 # [SPEC-10] manifest valid_verdicts covers every verdict the plugin emits (GUARD)
 _spec10_vv="$(grep -A10 'valid_verdicts:' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null)"
