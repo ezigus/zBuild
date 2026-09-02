@@ -120,8 +120,11 @@ assert_eq "[SPEC-4] a run with no identity records identity_present=false" "fals
 # the no-identity half left the distinction unproven — a field hardcoded to
 # `false` would have satisfied it exactly as well as one that discriminates.
 # The contrasting case is the whole point of the field.
+# Reserved test identity (zb_test_issue, 90000001+): a stray zbuild/state ref
+# is then unmistakably test residue and can never collide with real work.
+_ZB_ID_S4B="$(zb_test_issue)"
 _S4b="$TEST_TEMP_DIR/s4b"; _seed "$_S4b"
-( cd "$REPO" && ZBUILD_ISSUE_NUMBER=4242 ZBUILD_GOAL="" ZBUILD_STATE_DIR="$_S4b" \
+( cd "$REPO" && ZBUILD_ISSUE_NUMBER="$_ZB_ID_S4B" ZBUILD_GOAL="" ZBUILD_STATE_DIR="$_S4b" \
     ZBUILD_ARTIFACT_DIR="$_S4b/artifacts" bash "$REPO_ROOT/scripts/zbuild" persist --push ) >/dev/null 2>&1 || true
 _ip_b="$(jq -r 'if .data|has("identity_present") then (.data.identity_present|tostring) else "MISSING" end' \
     "$_S4b/artifacts/persist-result.json" 2>/dev/null || echo MISSING)"
