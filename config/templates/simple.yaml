@@ -125,6 +125,15 @@ test-author:
   router:
     timeout_s: 600
 
+# ─── spec-correspondence (leaf, advisory) ────────────────────────────────────
+# ADR-040 §5: it makes a model call, so it may not gate. Its finding reaches
+# test-author on the next iteration through the summary channel.
+spec-correspondence:
+  gate: auto
+  roles: [spec_correspondence]
+  router:
+    timeout_s: 600
+
 # ─── assertion-integrity (leaf, gate) ────────────────────────────────────────
 # Mechanical, no model.route — so it MAY gate (ADR-040 §5).
 assertion-integrity:
@@ -159,6 +168,13 @@ build_test_cycle:
     # code and the assertion are two independent readings rather than two
     # artifacts of one. It never sees the diff.
     - test-author
+    # #2034: judges whether each assertion tests what its SPEC SAYS — the one
+    # link execution cannot reach (a passing test proves the implementation
+    # satisfies the ASSERTION, never that the assertion satisfies the SENTENCE).
+    # Before build, because its question needs the requirement and the assertion
+    # and not the implementation — which at this point does not exist yet, so
+    # its isolation is a fact of placement rather than a rule to enforce.
+    - spec-correspondence
     - build
     - test
     - shape-floor

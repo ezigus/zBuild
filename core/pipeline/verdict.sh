@@ -118,6 +118,25 @@ verdict_classify() {
         # this classification governs the INDICATOR only.
         request_changes|incomplete|degraded)
             echo "warn" ;;
+        # #2034 spec-correspondence: does the assertion test what its SPEC SAYS?
+        # `corresponds` is the clean answer. `partial` and `uncheckable` are
+        # findings, not failures — `partial` names a coverage gap (the assertion
+        # tests the right property, narrower than the sentence promises) and
+        # `uncheckable` is a finding against the REQUIREMENT. Both warn.
+        #
+        # `mismatch` is the one genuine disagreement, and it is `fail`. That
+        # split is measured, not chosen: with a three-word vocabulary the judge
+        # had nowhere to put narrow-but-correct coverage and called it mismatch,
+        # putting false mismatches at 6/15 on merged pairs. With `partial` split
+        # out it is 0/15, with no true positive lost. The stage is advisory
+        # (ADR-040 §5) so none of these gate today; the classification is what a
+        # promotion would bind to.
+        corresponds)
+            echo "pass" ;;
+        partial|uncheckable)
+            echo "warn" ;;
+        mismatch)
+            echo "fail" ;;
         fail|error|block|scope_violation|corrupt_diff)
             echo "fail" ;;
         # #1219 (ADR-045): a gate-aggregator route verdict (route_design, or any
