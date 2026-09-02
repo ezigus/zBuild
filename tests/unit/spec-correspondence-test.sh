@@ -24,6 +24,12 @@
 #                    (ADR-040 §5: only a mechanical stage may block)
 #   SPEC-5 [guard] : v2 contract — result_contract:2, rc binary, and a stage
 #                    that merely FINDS a problem is disposition:complete
+#   SPEC-6 [change]: the QA persona's perspective REACHES the prompt, and the
+#                    template BINDS it. #1627 recorded that personas are
+#                    consumed only by review lenses and that no template carries
+#                    a persona: key — so a persona manifest that nothing
+#                    resolves is decoration, the "green-but-inert" shape #1628
+#                    names. Asserted so it cannot silently go inert again
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,6 +51,11 @@ export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENT
 
 # shellcheck source=../../core/event-bus/event-bus.sh
 source "$REPO_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
+# shellcheck source=../../scripts/lib/persona-resolve.sh
+source "$REPO_ROOT/scripts/lib/persona-resolve.sh" 2>/dev/null || true
+# shellcheck source=../../core/plugin-registry/persona.sh
+source "$REPO_ROOT/core/plugin-registry/persona.sh" 2>/dev/null || true
+export ZBUILD_SPEC_CORRESPONDENCE_PERSONA="quality-assurance"
 
 _SC_PROMPT="$TEST_TEMP_DIR/prompt.txt"
 _SC_REPLY='VERDICT: corresponds
@@ -111,6 +122,15 @@ assert_eq "[SPEC-4][guard] no exit_when in any template names it" \
     "0" "$(grep -rl 'spec-correspondence' "$REPO_ROOT/config/templates/" 2>/dev/null \
            | xargs -I{} grep -A4 'exit_when:' {} 2>/dev/null \
            | grep -c 'spec-correspondence' || true)"
+
+# ── SPEC-6: the persona is resolved and reaches the prompt ─────────────────
+assert_contains "[SPEC-6][change] the QA persona's perspective reaches the prompt" \
+    "$_P" "You assure traceability, you do not test"
+
+# ── SPEC-6: and the TEMPLATE binds it, so it is not inert in a real run ────
+assert_contains "[SPEC-6][change] simple.yaml binds the persona to the stage" \
+    "$(sed -n '/^spec-correspondence:/,/^$/p' "$REPO_ROOT/config/templates/simple.yaml")" \
+    "persona: quality-assurance"
 
 print_test_results
 exit $((FAIL > 0))

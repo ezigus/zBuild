@@ -626,6 +626,90 @@ _contract_validate_pipeline() {
         done
     fi
 
+    # (A2) #2040, ADR-040 §5 amendment: a model-judged stage MAY gate, but only
+    #      when the STANDARD it judges against is immutable by the judged party.
+    #
+    #      §5 stated the invariant as mechanical-vs-model, but its own
+    #      justification names a different property — it "does not read what a
+    #      stage DOES, it reads where a stage SITS … un-gameable by prompt
+    #      wording". Mechanical-ness was a PROXY for un-gameability, and the only
+    #      one available while every model-judged stage read the artifact it was
+    #      grading and judged its QUALITY, with no fixed reference at all.
+    #
+    #      The property is NOT "the gate cannot see what it grades". A comparison
+    #      requires reading both sides: spec-correspondence must read the
+    #      assertion it is judging. What makes it un-gameable is that its
+    #      STANDARD — the SPEC sentence — is authored upstream and cannot be
+    #      edited by the stage being judged. The only way to earn a pass is to
+    #      actually satisfy it, which is compliance, not gaming.
+    #
+    #      So the structural test is: a model-judged gate must declare at least
+    #      one REFERENCE input produced OUTSIDE its own cycle. Inputs produced by
+    #      same-cycle members are re-authored by the loop and cannot serve as a
+    #      fixed standard. A review lens fails this by construction — its
+    #      standard is "is this good code?", which is not an artifact at all.
+    #
+    #      Declaring no inputs fails closed: absence of a declaration is not
+    #      proof of anything, and ADR-054 §10 is explicit that an unenforced
+    #      declaration is how the contract became fiction.
+    local _icyc_n=0
+    [[ -n "${_TPL_CYCLES+x}" ]] && _icyc_n=${#_TPL_CYCLES[@]}
+    if [[ $_icyc_n -gt 0 ]]; then
+        local _ic _icsafe _im _imf _iconv _in_rec _in_id _prod_rec _prod_id
+        for _ic in "${_TPL_CYCLES[@]}"; do
+            _icsafe="${_ic//-/_}"
+            local _imems_var="_TPL_CYCLE_STAGES_${_icsafe}"
+            local _imem_csv="${!_imems_var:-}"
+            [[ -z "$_imem_csv" ]] && continue
+            local _IFS_i="$IFS"; IFS=','
+            # shellcheck disable=SC2206
+            local -a _imems=($_imem_csv)
+            IFS="$_IFS_i"
+
+            # Outputs produced INSIDE this cycle — re-authored by the loop, so
+            # they cannot be anyone's fixed standard.
+            local -A _cycle_outputs=()
+            for _im in "${_imems[@]}"; do
+                _imf="${_CV_STAGE_MANIFEST[$_im]:-}"
+                [[ -z "$_imf" ]] && continue
+                while IFS= read -r _prod_rec; do
+                    [[ -z "$_prod_rec" ]] && continue
+                    _prod_id="${_prod_rec%%|*}"
+                    [[ -n "$_prod_id" ]] && _cycle_outputs["$_prod_id"]="$_im"
+                done < <(manifest_graph_get_outputs "$_imf")
+            done
+
+            for _im in "${_imems[@]}"; do
+                _imf="${_CV_STAGE_MANIFEST[$_im]:-}"
+                [[ -z "$_imf" ]] && continue
+                _iconv="$(_cv_stage_convergence "$plugins_root" "$_im")"
+                [[ "$_iconv" == "gate" ]] || continue
+                # Model-judged is a DECLARED property: the manifest says it needs
+                # the router. Not inferred from `kind:` — spec-acceptance is
+                # kind:agent and wholly mechanical, which is why §5 keys on the
+                # convergence marker rather than the kind in the first place.
+                grep -qE '^[[:space:]]*-[[:space:]]*router[[:space:]]*$' "$_imf" 2>/dev/null || continue
+
+                local _n_in=0 _n_ref=0
+                while IFS= read -r _in_rec; do
+                    [[ -z "$_in_rec" ]] && continue
+                    _in_id="${_in_rec%%|*}"
+                    [[ -z "$_in_id" ]] && continue
+                    _n_in=$(( _n_in + 1 ))
+                    [[ -z "${_cycle_outputs[$_in_id]:-}" ]] && _n_ref=$(( _n_ref + 1 ))
+                done < <(manifest_graph_get_inputs "$_imf")
+
+                if [[ $_n_in -eq 0 ]]; then
+                    violations+=("$_im|GATE_REFERENCE_UNPROVEN|-|stage '$_im' is a model-judged convergence:gate declaring no inputs — it cannot show that the standard it judges against is authored outside the cycle, so it fails closed [ADR-040 §5]")
+                    fail_count=$((fail_count + 1))
+                elif [[ $_n_ref -eq 0 ]]; then
+                    violations+=("$_im|GATE_REFERENCE_MUTABLE|-|stage '$_im' is a model-judged convergence:gate whose every declared input is produced inside its own cycle — the standard it judges against is re-authored by the party it judges, so a pass can be earned by changing the standard [ADR-040 §5]")
+                    fail_count=$((fail_count + 1))
+                fi
+            done
+        done
+    fi
+
     # (B) Every parallel group declaring `aggregate: advisory` must have an
     #     EXPLICIT advisory aggregator present — a stage declaring
     #     `convergence: advisory` that is NOT a member of the group (e.g.
@@ -692,7 +776,7 @@ _contract_validate_pipeline() {
                 MISORDERED)
                     printf '  %s: expects %s\n    %s\n\n' "$sstage" "'$sid'" "$smsg"
                     ;;
-                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|SELF_REF|MALFORMED|BAD_VAR|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|TYPE_UNVERSIONED|CYCLE_FB_UNDECLARED|OUTPUT_DUP|SUMMARY_MISSING|SUMMARY_DUP|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
+                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|SELF_REF|MALFORMED|BAD_VAR|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|TYPE_UNVERSIONED|CYCLE_FB_UNDECLARED|OUTPUT_DUP|SUMMARY_MISSING|SUMMARY_DUP|GATE_REFERENCE_MUTABLE|GATE_REFERENCE_UNPROVEN|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
                     printf '  %s: %s (id=%s)\n    %s\n\n' "$sstage" "$scode" "$sid" "$smsg"
                     ;;
                 *)

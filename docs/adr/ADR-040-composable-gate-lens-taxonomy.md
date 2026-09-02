@@ -320,3 +320,64 @@ This is additive: a roster with no `route_target` on any failed gate behaves exa
 (`pass`/`fail`), so `standard.yaml` and every existing gate-aggregator test are unchanged. See
 ADR-045 (the route_back edge that consumes `route_design`) and ADR-036 (the acceptance-gate that
 produces `route_target: design` on a tautology).
+
+## Amendment (#2040, 2026-09-02) — what makes a stage admissible on a convergence path
+
+**Problem.** §5 above states the invariant as *mechanical vs. model*: every
+merge-blocking stage is `convergence: gate` — "mechanical, no model.route". But
+§5's own justification names a different property:
+
+> it does not read what a stage *does*, it reads where a stage *sits* in the
+> convergence graph … un-gameable by prompt wording
+
+**Un-gameability is the property. Mechanical-ness was a proxy for it** — a good
+one, and the only one available when §5 was written, because every model-judged
+stage then in existence read the artifact it was grading *and judged its
+quality*, against no fixed reference at all. A review lens asks "is this good
+code?"; the thing graded is authored by the thing being judged, and there is
+nothing external to hold it to. That is what §5 closed, and it stays closed.
+
+**The property is not "the gate cannot see what it grades."** A comparison
+requires reading both sides: `spec-correspondence` (#2034) must read the
+assertion it judges. What makes that comparison un-gameable is that its
+**standard** — the SPEC sentence — is authored upstream and cannot be edited by
+the stage being judged. The only way to earn a pass is to actually satisfy it,
+which is compliance rather than gaming.
+
+**Decision.** A stage may sit on a merge-blocking convergence path when it is
+either:
+
+- **(a) mechanical** — no `model.route` call, as before; or
+- **(b) model-judged against a standard the judged party cannot re-author** — at
+  least one declared **reference input produced outside its own cycle**.
+
+Both forms are admissible. §5's property survives intact under (b): the validator
+still reads where a stage sits and what it declares, never what it does, and a
+stage cannot talk its way into having different inputs.
+
+**What (b) requires, structurally:**
+
+- The stage declares `inputs:`, and at least one is produced **outside the
+  cycle** it belongs to. Inputs produced by same-cycle members are re-authored by
+  the loop and cannot serve as a fixed standard.
+- Checked at load, in the same walk that enforces §5 today. `GATE_REFERENCE_MUTABLE`
+  names a gate whose every declared input is same-cycle;
+  `GATE_REFERENCE_UNPROVEN` names one declaring no inputs — absence of a
+  declaration is not proof of anything, so it fails closed (ADR-054 §10: *"an
+  unenforced declaration is how the contract became fiction"*).
+- "Model-judged" is itself a **declared** property: the manifest says it requires
+  the router. It is not inferred from `kind:` — `spec-acceptance` is `kind: agent`
+  and wholly mechanical, which is why §5 keys on the convergence marker rather
+  than the kind in the first place.
+
+**Explicitly rejected: a blanket "LLM stages may gate."** It would reopen exactly
+what §5 closed, and the next author who wants a review lens to block would cite
+it. The clause is narrow by construction: the immutable standard is the whole of
+it, and a review lens has no standard to be immutable.
+
+**On promotion.** Whether a particular (b)-form stage *should* gate is an
+operational decision about that stage, made in its own issue. The recommended
+safeguard is the second-measurement pattern ADR-036 already uses for
+`inert_wiring` (#1711): advisory on iteration 1, authoritative on iteration 2+,
+bounding a wrong verdict to one wasted iteration. The architecture decides what is
+*admissible*; a stage's own evidence decides whether it is *ready*.
