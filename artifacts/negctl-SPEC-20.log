@@ -130,8 +130,7 @@
   [38;2;74;222;128m✓[0m [SPEC-19] scratch suffix '~' pruned from working tree
 
   [38;2;0;212;255mSPEC-8: build manifest declares result_contract:2 under provides[0m
-  [38;2;248;113;113m✗[0m [SPEC-8] manifest provides.result_contract == 2
-    [2mexpected: 2, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-8] manifest provides.result_contract == 2
 
   [38;2;0;212;255mSPEC-13: build_stage_run returns rc=1 when state_file argument is absent[0m
   [38;2;74;222;128m✓[0m [SPEC-13] build_stage_run returns rc=1 (not rc=2) when state_file absent (exit 1)
@@ -155,18 +154,12 @@
   [38;2;74;222;128m✓[0m [SPEC-16] custom design.md text from ZBUILD_STAGE_INPUTS appears in build prompt
 
   [38;2;0;212;255mSPEC-20: plugin.sh has no hardcoded fallback constructions for input artifact paths[0m
-  [38;2;248;113;113m✗[0m [SPEC-20] plugin.sh has no hardcoded state_dir/scope-manifest.md construction
-    [2mexpected: 0, got: 1[0m
-  [38;2;248;113;113m✗[0m [SPEC-20] plugin.sh has no hardcoded artifacts_dir/plan.json construction
-    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [SPEC-20] plugin.sh has no hardcoded state_dir/scope-manifest.md construction
+  [38;2;74;222;128m✓[0m [SPEC-20] plugin.sh has no hardcoded artifacts_dir/plan.json construction
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m3 of 103 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [SPEC-8] manifest provides.result_contract == 2
-  [38;2;248;113;113m✗[0m [SPEC-20] plugin.sh has no hardcoded state_dir/scope-manifest.md construction
-  [38;2;248;113;113m✗[0m [SPEC-20] plugin.sh has no hardcoded artifacts_dir/plan.json construction
+  [38;2;74;222;128m[1mAll 103 tests passed[0m
 
 ### SPEC-20 head plugins/agent/build/tests/build-test.sh
 
@@ -300,8 +293,7 @@
   [38;2;74;222;128m✓[0m [SPEC-19] scratch suffix '~' pruned from working tree
 
   [38;2;0;212;255mSPEC-8: build manifest declares result_contract:2 under provides[0m
-  [38;2;248;113;113m✗[0m [SPEC-8] manifest provides.result_contract == 2
-    [2mexpected: 2, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-8] manifest provides.result_contract == 2
 
   [38;2;0;212;255mSPEC-13: build_stage_run returns rc=1 when state_file argument is absent[0m
   [38;2;74;222;128m✓[0m [SPEC-13] build_stage_run returns rc=1 (not rc=2) when state_file absent (exit 1)
@@ -330,7 +322,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 103 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [SPEC-8] manifest provides.result_contract == 2
+  [38;2;74;222;128m[1mAll 103 tests passed[0m
 

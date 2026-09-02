@@ -1,1 +1,1 @@
-{"verdict":"pass","disposition":"none","failures":[]}
+{"verdict":"fail","disposition":"recoverable","reason":"acceptance SPEC violations — SPEC-20 tautological (pass at baseline) — re-author the assertions","failures":["tautology:SPEC-20"]}

@@ -1,4 +1,5 @@
-NEGCTL PASS SPEC-20
+acceptance SPEC violations — SPEC-20 tautological (pass at baseline) — re-author the assertions
+NEGCTL FAIL SPEC-20 tautology
       design : plugin.sh contains no hardcoded fallback constructions for input artifact paths (scope_manifest or p…
       asserts: assert_eq "[SPEC-20] plugin.sh has no hardcoded state_dir/scope-manifest.md construction" "0" "$_spe…
 REACHABILITY EXEMPT none
