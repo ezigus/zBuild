@@ -1060,10 +1060,22 @@ MOCK_LOOP_RC=0
 print_test_section "SPEC-20: plugin.sh has no hardcoded fallback constructions for input artifact paths"
 
 _plugin_sh="$PLUGIN_DIR/plugin.sh"
-_spec20_sm_count="$(grep -v '^[[:space:]]*#' "$_plugin_sh" | grep -c 'state_dir/scope-manifest\.md' || true)"
-_spec20_pl_count="$(grep -v '^[[:space:]]*#' "$_plugin_sh" | grep -c 'artifacts_dir/plan\.json' || true)"
-assert_eq "[SPEC-20] plugin.sh has no hardcoded state_dir/scope-manifest.md construction" "0" "$_spec20_sm_count"
-assert_eq "[SPEC-20] plugin.sh has no hardcoded artifacts_dir/plan.json construction" "0" "$_spec20_pl_count"
+# CHANGE assertion: at baseline, grep finds the literal construction → assert_fail.
+# After removal, grep finds nothing → assert_pass.
+_spec20_sm_lines="$(grep -v '^[[:space:]]*#' "$_plugin_sh" | grep 'state_dir/scope-manifest\.md' || true)"
+if [[ -n "$_spec20_sm_lines" ]]; then
+    assert_fail "[SPEC-20] plugin.sh has no hardcoded state_dir/scope-manifest.md construction" \
+        "found: $_spec20_sm_lines"
+else
+    assert_pass "[SPEC-20] plugin.sh has no hardcoded state_dir/scope-manifest.md construction"
+fi
+_spec20_pl_lines="$(grep -v '^[[:space:]]*#' "$_plugin_sh" | grep 'artifacts_dir/plan\.json' || true)"
+if [[ -n "$_spec20_pl_lines" ]]; then
+    assert_fail "[SPEC-20] plugin.sh has no hardcoded artifacts_dir/plan.json construction" \
+        "found: $_spec20_pl_lines"
+else
+    assert_pass "[SPEC-20] plugin.sh has no hardcoded artifacts_dir/plan.json construction"
+fi
 
 # ─── Teardown ────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }
