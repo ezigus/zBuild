@@ -24,6 +24,14 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "#1044: acceptance terminal failure halts pipeline"
 setup_test_env "cycle-acceptance-terminal-failure"
 
+# #1921 follow-up: the runner resolves repo_root from CWD, so a --goal run
+# started from the working checkout snapshots zbuild/state/goal-<hash> into it.
+# Measured in an isolated clone: a full suite went from 0 state refs to 2, both
+# goal refs, and this file produced one of them. The issue-keyed sweep missed
+# these because it looked for issue identity.
+_ZB_REPO="$(zb_test_repo cycle-acc-term)"
+_ZB_GOAL="$(zb_test_goal acceptance-terminal)"
+
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 STATE_DIR="$TEST_TEMP_DIR/state"
 EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
@@ -324,12 +332,12 @@ export ZBUILD_SCOPE_OVERRIDE=1
 _run_pipeline() {
     : > "$EVENTS_JSONL"
     set +e
-    bash "$REPO_ROOT/core/pipeline/runner.sh" \
-        --goal "test acceptance-terminal" \
+    ( cd "$_ZB_REPO" && bash "$REPO_ROOT/core/pipeline/runner.sh" \
+        --goal "$_ZB_GOAL" \
         --template simple \
         --no-resume \
         >"$TEST_TEMP_DIR/runner.stdout" \
-        2>"$TEST_TEMP_DIR/runner.stderr"
+        2>"$TEST_TEMP_DIR/runner.stderr" )
     set -e
 }
 

@@ -17,6 +17,11 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+# Goal identity resolves through zbuild_run_key; without identity.sh a --goal
+# snapshot silently falls back to the issue-0 branch and the SPEC-6 premise
+# cannot be built.
+# shellcheck source=../../scripts/lib/identity.sh
+source "$REPO_ROOT/scripts/lib/identity.sh"
 
 print_test_header "test identity hygiene (#1921 follow-up)"
 setup_test_env "zb-test-identity"
@@ -114,6 +119,40 @@ else
     assert_fail "[SPEC-4] premise: could not create the sentinel ref" "$_real_ref absent"
     cleanup_test_env
     setup_test_env "zb-test-identity-3"
+fi
+
+# ─── [SPEC-6][change] a leaked GOAL ref is reaped too ───────────────────────
+# Goal refs had teardown and no guard, which is how the --goal leak survived a
+# full identity sweep: zb_test_reserved_refs only ever scanned issue-9*, so a
+# zbuild/state/goal-<hash> ref in the checkout was invisible to every check.
+print_test_section "[SPEC-6][change] cleanup reaps a leaked goal ref"
+
+_g_text="$(zb_test_goal hygiene-goal-probe)"
+_g_hash="$(printf '%s' "$_g_text" | tr -d '[:space:]' | shasum -a 256 | cut -c1-12)"
+_g_state="$TEST_TEMP_DIR/goal-leak-state"
+mkdir -p "$_g_state/artifacts"
+printf 'goal-leak\n' > "$_g_state/artifacts/plan.json"
+# export, not `_zb_git_id ZBUILD_GOAL=... cmd`: bash expands "$@" and treats a
+# leading word containing '=' as a COMMAND NAME, not an assignment, so the goal
+# never reached the snapshot and it fell back to the issue-0 branch.
+( cd "$REPO_ROOT" && export ZBUILD_GOAL="$_g_text" \
+    && _zb_git_id _artifact_persist_snapshot "$_g_state" 0 ) >/dev/null 2>&1 || true
+
+if git -C "$REPO_ROOT" rev-parse -q --verify "refs/heads/zbuild/state/goal-$_g_hash" >/dev/null 2>&1; then
+    assert_pass "[SPEC-6] premise: the goal snapshot landed in the real checkout"
+    cleanup_test_env
+    if git -C "$REPO_ROOT" rev-parse -q --verify "refs/heads/zbuild/state/goal-$_g_hash" >/dev/null 2>&1; then
+        assert_fail "[SPEC-6] cleanup_test_env must reap a leaked goal ref" "goal-$_g_hash survived"
+        git -C "$REPO_ROOT" update-ref -d "refs/heads/zbuild/state/goal-$_g_hash" 2>/dev/null || true
+    else
+        assert_pass "[SPEC-6] cleanup_test_env reaped the leaked goal ref"
+    fi
+    setup_test_env "zb-test-identity-4"
+else
+    # Not a silent skip: if the premise cannot be built the guard is unverified.
+    assert_fail "[SPEC-6] premise: could not create a goal ref to reap" "goal-$_g_hash absent"
+    cleanup_test_env
+    setup_test_env "zb-test-identity-4"
 fi
 
 # ─── [SPEC-5][guard] the suite leaves no state refs in the real checkout ────
