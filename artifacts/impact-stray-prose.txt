@@ -1,0 +1,1 @@
+The evidence is clear. The golden file at line 1 has no `result_contract` or `disposition` fields, but `summary.sh:227` now emits them unconditionally. The exact golden match at `plugin-artifact-goldens-test.sh:126` will fail.
