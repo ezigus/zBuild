@@ -222,6 +222,10 @@ _make_plugin "intake"          "intake"
 _make_plan_plugin
 _make_design_plugin
 _make_design_gate_plugin   # forces design_verify_cycle to exhaust
+# #1683: spec-coverage joined design_verify_cycle. Unresolved, the cycle
+# reports reason='blocked' at iter 1 instead of exhausting, and every
+# assertion below fails for a reason unrelated to on_max=continue.
+_make_plugin "spec-coverage"   "spec_coverage"
 _make_plugin "impact"          "impact_analyzer"
 _make_plugin "build"           "builder"
 _make_plugin "test"            "tester"
