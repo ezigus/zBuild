@@ -14,10 +14,20 @@ index c79e579..7e7d82e 100644
      # ADR-055 §1: read input paths from engine-resolved index when available.
      if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS}" ]]; then
 diff --git a/plugins/agent/build/tests/build-test.sh b/plugins/agent/build/tests/build-test.sh
-index 0dd2713..934eea7 100644
+index 0dd2713..d7d7672 100644
 --- a/plugins/agent/build/tests/build-test.sh
 +++ b/plugins/agent/build/tests/build-test.sh
-@@ -1057,6 +1057,15 @@ MOCK_LOOP_ITERATIONS=1
+@@ -857,8 +857,7 @@ MOCK_LOOP_ITERATIONS=1
+ # ─── SPEC-8: manifest declares result_contract:2 ──────────────────────────────
+ print_test_section "SPEC-8: build manifest declares result_contract:2 under provides"
+ 
+-_manifest_rc="$(awk '/^provides:/,/^[a-zA-Z]/' "$PLUGIN_DIR/manifest.yaml" \
+-    | grep 'result_contract' | grep -o '[0-9]*' | head -1 || echo "")"
++_manifest_rc="$(grep -oE 'result_contract:[[:space:]]*[0-9]+' "$PLUGIN_DIR/manifest.yaml" | grep -oE '[0-9]+')"
+ assert_eq "[SPEC-8] manifest provides.result_contract == 2" "2" "$_manifest_rc"
+ 
+ # ─── SPEC-13: build_stage_run returns rc=1 when state_file absent ─────────────
+@@ -1057,6 +1056,15 @@ MOCK_LOOP_ITERATIONS=1
  MOCK_LOOP_REASON="done_sentinel"
  MOCK_LOOP_RC=0
  
