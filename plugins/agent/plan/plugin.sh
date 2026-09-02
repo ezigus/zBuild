@@ -166,6 +166,16 @@ _plan_validate_dod_discipline() {
     fi
 
     # Flatten plan steps + notes into a single searchable blob.
+    #
+    # `notes` is long by design, not by drift. The prompt tells the model three
+    # separate times to put gaps and assumptions there, because a usable partial
+    # plan beats burning the whole budget and emitting nothing. Do not cap it and
+    # do not restructure it into an array without moving this consumer in the
+    # same commit — it reads notes as a flat string.
+    #
+    # ADR-060 does not apply: its line is a multi-paragraph MARKDOWN DOCUMENT in
+    # an envelope field. Long plain text in a declared data field is data, which
+    # the ADR states explicitly, and lint-llm-envelope.sh agrees.
     local plan_blob=""
     plan_blob="$(printf '%s' "$plan_json" | jq -r '
         [(.title // ""),
@@ -382,7 +392,7 @@ _plan_run_inner() {
       }
     ],
     "estimated_total_lines": <integer>,
-    "notes": "<optional caveats; empty string if none>"
+    "notes": "<gaps, assumptions and caveats behind this plan — the prompt above directs partial understanding here; not length-capped>"
   }
 PLAN_SCHEMA
 )"
