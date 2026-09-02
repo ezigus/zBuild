@@ -238,12 +238,28 @@ and maps the verdict to one of `pass | warn | fail | unknown`:
 | Verdict (raw)                                | Class | Glyph | Color  |
 | -------------------------------------------- | ----- | ----- | ------ |
 | `pass`, `approve`, `complete`, `skip`        | pass  | `✓`   | GREEN  |
+| `corresponds` (#2034)                        | pass  | `✓`   | GREEN  |
 | `skipped`, `healthy`, `deployed`             | pass  | `✓`   | GREEN  |
 | `request_changes`, `incomplete`, `did_not_finish`, `degraded` | warn | `⚠` | YELLOW |
+| `partial`, `uncheckable` (#2034)             | warn  | `⚠`   | YELLOW |
 | `fail`, `error`, `block`, `scope_violation`, `corrupt_diff` | fail | `✗` | RED |
+| `mismatch` (#2034)                           | fail  | `✗`   | RED    |
 | `empty_diff`, `scope_too_large`, `inert_build` | fail | `✗`  | RED    |
 | missing/malformed primary artifact           | warn  | `⚠`   | YELLOW |
 | `rc != 0` (any cause)                        | fail  | `✗`   | RED — rc always wins |
+
+**On the #2034 row split.** `spec-correspondence` judges whether an assertion
+tests what its SPEC says. `partial` and `uncheckable` are findings rather than
+failures — `partial` names a coverage gap (the assertion tests the right
+property, narrower than the sentence promises) and `uncheckable` is a finding
+against the REQUIREMENT, not the assertion. Only `mismatch` is a genuine
+disagreement, and only it classifies `fail`.
+
+That split is measured, not chosen. With a three-word vocabulary the judge had
+nowhere to put narrow-but-correct coverage and called it `mismatch`, putting
+false mismatches at 6/15 on merged pairs; with `partial` split out it is 0/15,
+with no true positive lost. The stage is `convergence: advisory` (ADR-040 §5) so
+none of these gate today — the classification is what a promotion would bind to.
 
 **This table is no longer hand-maintained (#1708).** It drifted five times
 (#775, #1208, #1219, #1532, #1687), and every drift was discovered the same way:
