@@ -1727,15 +1727,32 @@ ${_diff_pointer}"
         # loop cleanly). Otherwise emit router.timeout.retry, escalate the LOCAL
         # timeout, and re-spawn within THIS iteration (timeout_recur unchanged).
         if [[ $rc -eq 124 && $_iter_attempt -lt $_iter_retries ]]; then
-            local _rr_done="false"
+            local _rr_done="false" _rr_limited="false"
             if [[ -s "$json_file" ]]; then
                 local _rr_res; _rr_res="$(jq -r '.result // empty' "$json_file" 2>/dev/null || true)"
                 if printf '%s\n' "$_rr_res" | \
                    grep -qE "^[[:space:]]*${done_sentinel}[[:space:]]*\$" 2>/dev/null; then
                     _rr_done="true"
                 fi
+                # #1237 covered the sync path; this is the loop path, which build
+                # and design use. A rate/session limit is reported in well under a
+                # second and then the CLI hangs, so gtimeout returns 124 with the
+                # 429 envelope ALREADY on disk. Retrying re-asks a question whose
+                # answer is known and cannot change until the limit resets — run
+                # 33474879520 spent 10 x 900s doing exactly that and hit GitHub's
+                # 6h ceiling with nothing to show. Read the envelope we already
+                # have and stop.
+                if _router_is_rate_limit "$(cat "$json_file" 2>/dev/null || true)"; then
+                    _rr_limited="true"
+                fi
             fi
-            if [[ "$_rr_done" != "true" ]]; then
+            if [[ "$_rr_limited" == "true" ]]; then
+                warn "router: ${_iter_stage_id:-stage} rate-limited — not retrying (the limit will not clear inside this run)"
+                eb_emit_event "router.timeout.rate_limited" \
+                    "tier=$tier" "model_id=$_ROUTE_MODEL_ID" \
+                    "stage=${_iter_stage_id:-unknown}" "path=loop" \
+                    "iteration=$iter" "attempt=$_iter_attempt" 2>/dev/null || true
+            elif [[ "$_rr_done" != "true" ]]; then
                 _iter_attempt=$(( _iter_attempt + 1 ))
                 local _rr_next; _rr_next="$(_route_escalate_timeout "$secs" "$_iter_attempt")"
                 # #1241: surface the loop-path retry on the operator terminal too
