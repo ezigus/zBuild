@@ -2,5 +2,5 @@
 
 - rolled up 5 gate(s) into verdict fail
 
-- failed: test
+- failed: test, acceptance-gate
 - fault: none declared
