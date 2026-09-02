@@ -627,27 +627,31 @@ _contract_validate_pipeline() {
     fi
 
     # (A2) #2040, ADR-040 §5 amendment: a model-judged stage MAY gate, but only
-    #      when it cannot see what it grades.
+    #      when the STANDARD it judges against is immutable by the judged party.
     #
     #      §5 stated the invariant as mechanical-vs-model, but its own
     #      justification names a different property — it "does not read what a
     #      stage DOES, it reads where a stage SITS … un-gameable by prompt
     #      wording". Mechanical-ness was a PROXY for un-gameability, and the only
     #      one available while every model-judged stage read the artifact it was
-    #      grading. A review lens reads the change and judges its quality: the
-    #      thing graded is authored by the thing being judged, so it can be
-    #      talked into a verdict. That stays refused.
+    #      grading and judged its QUALITY, with no fixed reference at all.
     #
-    #      The structural test is CYCLE-RELATIVE. An output produced by a member
-    #      of the same cycle is the artifact under review, because the cycle is
-    #      what re-runs to change it. Inputs from outside the cycle are fixed for
-    #      the cycle's duration and authored upstream, so the judged party cannot
-    #      influence them. That is checkable from where a stage sits and what it
-    #      declares — never from what its prompt says.
+    #      The property is NOT "the gate cannot see what it grades". A comparison
+    #      requires reading both sides: spec-correspondence must read the
+    #      assertion it is judging. What makes it un-gameable is that its
+    #      STANDARD — the SPEC sentence — is authored upstream and cannot be
+    #      edited by the stage being judged. The only way to earn a pass is to
+    #      actually satisfy it, which is compliance, not gaming.
     #
-    #      A model-judged gate declaring NO inputs fails closed: absence of a
-    #      declaration is not proof of isolation, and ADR-054 §10 is explicit
-    #      that an unenforced declaration is how the contract became fiction.
+    #      So the structural test is: a model-judged gate must declare at least
+    #      one REFERENCE input produced OUTSIDE its own cycle. Inputs produced by
+    #      same-cycle members are re-authored by the loop and cannot serve as a
+    #      fixed standard. A review lens fails this by construction — its
+    #      standard is "is this good code?", which is not an artifact at all.
+    #
+    #      Declaring no inputs fails closed: absence of a declaration is not
+    #      proof of anything, and ADR-054 §10 is explicit that an unenforced
+    #      declaration is how the contract became fiction.
     local _icyc_n=0
     [[ -n "${_TPL_CYCLES+x}" ]] && _icyc_n=${#_TPL_CYCLES[@]}
     if [[ $_icyc_n -gt 0 ]]; then
@@ -662,7 +666,8 @@ _contract_validate_pipeline() {
             local -a _imems=($_imem_csv)
             IFS="$_IFS_i"
 
-            # Outputs produced INSIDE this cycle — the artifacts under review.
+            # Outputs produced INSIDE this cycle — re-authored by the loop, so
+            # they cannot be anyone's fixed standard.
             local -A _cycle_outputs=()
             for _im in "${_imems[@]}"; do
                 _imf="${_CV_STAGE_MANIFEST[$_im]:-}"
@@ -685,20 +690,20 @@ _contract_validate_pipeline() {
                 # convergence marker rather than the kind in the first place.
                 grep -qE '^[[:space:]]*-[[:space:]]*router[[:space:]]*$' "$_imf" 2>/dev/null || continue
 
-                local _n_in=0
+                local _n_in=0 _n_ref=0
                 while IFS= read -r _in_rec; do
                     [[ -z "$_in_rec" ]] && continue
                     _in_id="${_in_rec%%|*}"
                     [[ -z "$_in_id" ]] && continue
                     _n_in=$(( _n_in + 1 ))
-                    if [[ -n "${_cycle_outputs[$_in_id]:-}" ]]; then
-                        violations+=("$_im|GATE_SEES_REVIEWED|$_in_id|stage '$_im' is a model-judged convergence:gate but consumes '$_in_id', produced by same-cycle member '${_cycle_outputs[$_in_id]}' — a gate may not read the artifact it grades [ADR-040 §5]")
-                        fail_count=$((fail_count + 1))
-                    fi
+                    [[ -z "${_cycle_outputs[$_in_id]:-}" ]] && _n_ref=$(( _n_ref + 1 ))
                 done < <(manifest_graph_get_inputs "$_imf")
 
                 if [[ $_n_in -eq 0 ]]; then
-                    violations+=("$_im|GATE_ISOLATION_UNPROVEN|-|stage '$_im' is a model-judged convergence:gate declaring no inputs — isolation from the artifact under review cannot be established, so it fails closed [ADR-040 §5]")
+                    violations+=("$_im|GATE_REFERENCE_UNPROVEN|-|stage '$_im' is a model-judged convergence:gate declaring no inputs — it cannot show that the standard it judges against is authored outside the cycle, so it fails closed [ADR-040 §5]")
+                    fail_count=$((fail_count + 1))
+                elif [[ $_n_ref -eq 0 ]]; then
+                    violations+=("$_im|GATE_REFERENCE_MUTABLE|-|stage '$_im' is a model-judged convergence:gate whose every declared input is produced inside its own cycle — the standard it judges against is re-authored by the party it judges, so a pass can be earned by changing the standard [ADR-040 §5]")
                     fail_count=$((fail_count + 1))
                 fi
             done
@@ -771,7 +776,7 @@ _contract_validate_pipeline() {
                 MISORDERED)
                     printf '  %s: expects %s\n    %s\n\n' "$sstage" "'$sid'" "$smsg"
                     ;;
-                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|SELF_REF|MALFORMED|BAD_VAR|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|TYPE_UNVERSIONED|CYCLE_FB_UNDECLARED|OUTPUT_DUP|SUMMARY_MISSING|SUMMARY_DUP|GATE_SEES_REVIEWED|GATE_ISOLATION_UNPROVEN|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
+                MISSING_OUTPUT|BAD_EXTERNAL|BAD_SOURCE|SELF_REF|MALFORMED|BAD_VAR|INPUT_UNRESOLVED|INPUT_AMBIGUOUS|FORMAT_MISSING|FORMAT_UNKNOWN|INPUT_FORMAT|TYPE_UNVERSIONED|CYCLE_FB_UNDECLARED|OUTPUT_DUP|SUMMARY_MISSING|SUMMARY_DUP|GATE_REFERENCE_MUTABLE|GATE_REFERENCE_UNPROVEN|CYCLE_AGG_NOT_MEMBER|CYCLE_AGG_TYPE|PARALLEL_NO_AGG)
                     printf '  %s: %s (id=%s)\n    %s\n\n' "$sstage" "$scode" "$sid" "$smsg"
                     ;;
                 *)

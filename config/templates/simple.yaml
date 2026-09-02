@@ -131,6 +131,12 @@ test-author:
 spec-correspondence:
   gate: auto
   roles: [spec_correspondence]
+  # #1627: personas were consumed only by review lenses and NO template carried
+  # a persona: key, so a persona manifest resolved to nothing. This is the first
+  # stage-level binding. QA assures traceability; it does not test — which is
+  # what separates it from test-strategist, whose instinct shown a mismatched
+  # assertion is to repair it and answer yes.
+  persona: quality-assurance
   router:
     timeout_s: 600
 

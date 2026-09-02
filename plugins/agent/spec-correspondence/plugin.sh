@@ -15,6 +15,11 @@ zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _SC_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
+# shellcheck source=../../../scripts/lib/persona-resolve.sh
+source "$_SC_ROOT/scripts/lib/persona-resolve.sh" 2>/dev/null || true
+# shellcheck source=../../../core/plugin-registry/persona.sh
+source "$_SC_ROOT/core/plugin-registry/persona.sh" 2>/dev/null || true
+
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_SC_ROOT/scripts/lib/acceptance-block.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/acceptance-coverage.sh
@@ -128,11 +133,36 @@ spec_correspondence_run() {
         n=$(( n + 1 ))
 
         _raw=""
+        # #1627/#1628: a persona manifest nothing resolves is decoration. Frame
+        # the task through the registry rather than inlining the words, so
+        # editing plugins/persona/quality-assurance/ actually changes behaviour.
+        # persona_stage_framing emits "{perspective}\n\n{task}" and returns 1
+        # when the persona is absent, in which case the task stands alone rather
+        # than carrying an identity-less preamble.
+        local _task _framed
+        _task="$(_sc_prompt "$_txt" "$_src")"
+        _framed="$_task"
+        if declare -f persona_stage_framing >/dev/null 2>&1; then
+            # resolve_persona returns the persona DIRECTORY, not the id;
+            # persona_stage_framing wants the id. Passing the path through
+            # silently yields no framing at all — the inert shape again.
+            local _pid="quality-assurance" _pdir=""
+            if declare -f resolve_persona >/dev/null 2>&1; then
+                _pdir="$(resolve_persona spec-correspondence 2>/dev/null || true)"
+                [[ -n "$_pdir" ]] && _pid="$(basename "$_pdir")"
+            fi
+            local _f
+            if _f="$(persona_stage_framing "$_pid" "$_task" 2>/dev/null)" && [[ -n "$_f" ]]; then
+                _framed="$_f"
+                # ADR-015: stage-io stamps the persona on the banner.
+                export ZBUILD_STAGE_IO_PERSONA="$_pid"
+            fi
+        fi
         # No 2>/dev/null here: the stage-io input banner writes to fd 2, and
         # suppressing it drops the banner and breaks ADR-015 §v4's
         # input-before-action ordering — the #491 defect.
         if declare -f route_to_model >/dev/null 2>&1; then
-            _raw="$(route_to_model "$tier" "$(_sc_prompt "$_txt" "$_src")" || true)"
+            _raw="$(route_to_model "$tier" "$_framed" || true)"
         fi
         # No `| head`: the reader exits early, the writer takes SIGPIPE, and
         # under errexit the surrounding function dies for a reason nothing logs

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # tests/integration/adr040-isolated-gate-test.sh — a model-judged stage may gate
-# only when it cannot see what it grades (#2040, ADR-040 §5).
+# only when the STANDARD it judges against is immutable by the judged party
+# (#2040, ADR-040 §5).
 #
 # §5 stated the invariant as mechanical-vs-model, but its own justification names
 # a different property: it "does not read what a stage DOES, it reads where a
@@ -8,21 +9,24 @@
 # un-gameability — the only one available when every model-judged stage read the
 # artifact it was grading.
 #
-# The proxy and the property come apart for a stage whose inputs are fixed and
-# upstream-authored. The structural test is cycle-relative: a model-judged gate
-# must not consume an output produced by a member of the SAME cycle, because
-# that output is the artifact under review. review-lens consuming diff_patch is
-# the shape that must stay refused; a stage consuming only an upstream artifact
-# is admitted.
+# The property is NOT "the gate cannot see what it grades" — a comparison
+# requires reading both sides. What makes a comparison un-gameable is that its
+# STANDARD is authored outside the cycle and cannot be re-authored by the party
+# being judged: the only way to earn a pass is to actually satisfy it.
 #
-#   SPEC-1 [change]: a convergence:gate model stage consuming a SAME-CYCLE
-#                    member's output is REFUSED at load, naming stage and input
-#   SPEC-2 [change]: the same stage consuming only UPSTREAM inputs is ADMITTED
+# So the structural test is that a model-judged gate declares at least one
+# REFERENCE input produced OUTSIDE its own cycle. A stage whose every input is
+# re-authored by its own loop is judging against a moving standard.
+#
+#   SPEC-1 [change]: a convergence:gate model stage whose EVERY declared input
+#                    is produced inside its own cycle is REFUSED at load
+#   SPEC-2 [change]: the same stage with an UPSTREAM reference is ADMITTED —
+#                    including when it ALSO reads the artifact under review,
+#                    which a comparison necessarily does
 #   SPEC-3 [guard] : a mechanical gate is untouched — form (a) as before
 #   SPEC-4 [change]: fail-closed — a model-judged gate declaring NO inputs is
-#                    refused, because it cannot prove isolation
-#   SPEC-5 [guard] : an ADVISORY model stage consuming the diff is fine; it is
-#                    not on a convergence path, which is today's review-lens
+#                    refused, because it shows no standard at all
+#   SPEC-5 [guard] : an ADVISORY model stage is unaffected; that is review-lens
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -78,7 +82,7 @@ write_fx tool/iso-producer  iso-producer  gate     no  ""             diff_patch
 write_fx agent/iso-upstream iso-upstream  advisory no  ""             design_doc
 write_fx tool/iso-mech      iso-mech      gate     no  "diff_patch"   mech_result
 write_fx agent/iso-sees     iso-sees      gate     yes "diff_patch"   sees_result
-write_fx agent/iso-blind    iso-blind     gate     yes "design_doc"   blind_result
+write_fx agent/iso-blind    iso-blind     gate     yes "design_doc,diff_patch" blind_result
 write_fx agent/iso-noinput  iso-noinput   gate     yes ""             noinput_result
 write_fx agent/iso-advisory iso-advisory  advisory yes "diff_patch"   adv_result
 
@@ -101,16 +105,17 @@ _reset
 export _TPL_CYCLE_STAGES_c1="iso-producer,iso-sees"
 export _TPL_CYCLE_UNTIL_STAGE_c1="iso-sees"
 _run "$(printf 'iso-producer\niso-sees\n')"
-assert_eq "[SPEC-1][change] a model-judged gate seeing a same-cycle output is refused" "2" "$RC"
+assert_eq "[SPEC-1][change] a model-judged gate with only same-cycle inputs is refused" "2" "$RC"
 assert_contains "[SPEC-1][change] and the message names the stage" "$OUT" "iso-sees"
-assert_contains "[SPEC-1][change] and names the offending input" "$OUT" "diff_patch"
+assert_contains "[SPEC-1][change] and says the standard is re-authored by the judged party" \
+    "$OUT" "re-authored by the party it judges"
 
 # ── SPEC-2: same stage, upstream-only inputs → admitted ─────────────────────
 _reset
 export _TPL_CYCLE_STAGES_c1="iso-producer,iso-blind"
 export _TPL_CYCLE_UNTIL_STAGE_c1="iso-blind"
 _run "$(printf 'iso-upstream\niso-producer\niso-blind\n')"
-assert_eq "[SPEC-2][change] upstream-only inputs are admitted on the convergence path" "0" "$RC"
+assert_eq "[SPEC-2][change] an upstream REFERENCE admits the gate, even while it also reads the reviewed artifact" "0" "$RC"
 
 # ── SPEC-3: a mechanical gate is untouched ─────────────────────────────────
 _reset
@@ -125,6 +130,7 @@ export _TPL_CYCLE_STAGES_c1="iso-producer,iso-noinput"
 export _TPL_CYCLE_UNTIL_STAGE_c1="iso-noinput"
 _run "$(printf 'iso-producer\niso-noinput\n')"
 assert_eq "[SPEC-4][change] a model-judged gate declaring NO inputs is refused" "2" "$RC"
+assert_contains "[SPEC-4][change] and says it showed no standard at all" "$OUT" "cannot show that the standard"
 
 # ── SPEC-5: advisory model stages are untouched (today's review-lens) ──────
 _reset
