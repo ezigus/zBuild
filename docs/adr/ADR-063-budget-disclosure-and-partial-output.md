@@ -79,6 +79,39 @@ never engaged.
 
 ## Decision
 
+### 0. Which parts depend on the contract-v2 migration
+
+The four sections below do **not** share a dependency, and the difference decides
+when each can land. This has been re-derived from the code twice; recording it so
+it is not a third time.
+
+| | | needs v2? |
+|---|---|---|
+| §1 | budget reaches the prompt from the value that enforces it | **no** — prompt text |
+| §2 | each stage declares a partial form of its deliverable | **no** for a stage whose deliverable is a file |
+| §3 | partial is signalled as `disposition: exhausted` | **yes** |
+| §4 | gates fail closed on `exhausted` | **yes** |
+
+§3 and §4 are blocked because `disposition` is a v2-only field:
+`runner_read_stage_disposition` (`core/pipeline/verdict.sh:674`) reads it from the
+result file, and `_verdict_read_result` resolves `result_contract // 1`. ADR-054 §6
+consults the vocabulary only at `result_contract >= 2`, and **none of the eight
+model-driven stages is on v2** (tracked as [Phase 0/F], #1833–#1850). A stage
+emitting `exhausted` before its migration writes a field nothing reads.
+
+**§1 and §2 nonetheless wait for §3 and §4, by choice.** They are technically
+unblocked, and the temptation to land them early is real — they are where the cost
+is. But today a stage that runs out of time fails *loudly*: the run stops and
+nothing ships. Letting a stage hand back partial work before §4 can refuse it
+swaps that for a quiet failure — a half-finished deliverable that looks complete,
+accepted, with everything downstream built on it. A loud failure is the better of
+the two, so all four land together, per stage, during that stage's v2 migration.
+
+The per-stage work is recorded on the migration issues themselves — #1834
+(`design`), #1840/#1843 (`review-lens`, `review-report`), #1847 (`monitor`) — so
+it is found at the moment those files are opened rather than depending on someone
+remembering this ADR.
+
 ### 1. The budget reaches the prompt from the value that enforces it
 
 One helper renders the budget block — turns, wall-clock seconds, and the stop
