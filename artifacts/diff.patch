@@ -1,0 +1,269 @@
+diff --git a/plugins/agent/build/plugin.sh b/plugins/agent/build/plugin.sh
+index c79e579..7e7d82e 100644
+--- a/plugins/agent/build/plugin.sh
++++ b/plugins/agent/build/plugin.sh
+@@ -75,8 +75,8 @@ build_stage_run() {
+     local artifacts_dir="$state_dir/artifacts"
+     mkdir -p "$artifacts_dir"
+ 
+-    local scope_manifest="$state_dir/scope-manifest.md"
+-    local plan_json_path="$artifacts_dir/plan.json"
++    local scope_manifest=""
++    local plan_json_path=""
+ 
+     # ADR-055 §1: read input paths from engine-resolved index when available.
+     if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS}" ]]; then
+diff --git a/plugins/agent/build/tests/build-test.sh b/plugins/agent/build/tests/build-test.sh
+index 0dd2713..934eea7 100644
+--- a/plugins/agent/build/tests/build-test.sh
++++ b/plugins/agent/build/tests/build-test.sh
+@@ -1057,6 +1057,15 @@ MOCK_LOOP_ITERATIONS=1
+ MOCK_LOOP_REASON="done_sentinel"
+ MOCK_LOOP_RC=0
+ 
++# ─── SPEC-20: plugin.sh contains no hardcoded input-path fallbacks ────────────
++print_test_section "SPEC-20: plugin.sh has no hardcoded fallback constructions for input artifact paths"
++
++_plugin_sh="$PLUGIN_DIR/plugin.sh"
++_spec20_sm_count="$(grep -v '^[[:space:]]*#' "$_plugin_sh" | grep -c 'state_dir/scope-manifest\.md' || true)"
++_spec20_pl_count="$(grep -v '^[[:space:]]*#' "$_plugin_sh" | grep -c 'artifacts_dir/plan\.json' || true)"
++assert_eq "[SPEC-20] plugin.sh has no hardcoded state_dir/scope-manifest.md construction" "0" "$_spec20_sm_count"
++assert_eq "[SPEC-20] plugin.sh has no hardcoded artifacts_dir/plan.json construction" "0" "$_spec20_pl_count"
++
+ # ─── Teardown ────────────────────────────────────────────────────────────────
+ _test_cleanup_hook() { cleanup_test_env; }
+ cleanup_test_env
+diff --git a/tests/integration/build-changed-files-summary-test.sh b/tests/integration/build-changed-files-summary-test.sh
+index d9b622c..1cdff2a 100755
+--- a/tests/integration/build-changed-files-summary-test.sh
++++ b/tests/integration/build-changed-files-summary-test.sh
+@@ -119,6 +119,13 @@ EOF
+ STATE_FILE="$STATE_DIR/state.json"
+ printf '{"issue":498,"branch":"feat/498"}' > "$STATE_FILE"
+ 
++STAGE_INPUTS_DRIVER="$TEST_TEMP_DIR/stage-inputs-driver.json"
++jq -n \
++    --arg sm "$STATE_DIR/scope-manifest.md" \
++    --arg pl "$STATE_DIR/artifacts/plan.json" \
++    '{"schema_version":1,"stage":"build","inputs":{"scope_manifest":$sm,"plan":$pl}}' \
++    > "$STAGE_INPUTS_DRIVER"
++
+ # ── Subprocess driver: real build_stage_run with fd 3 capture ─────────────
+ DRIVER="$TEST_TEMP_DIR/driver.sh"
+ BANNER="$TEST_TEMP_DIR/banner-fd3.txt"
+@@ -143,6 +150,7 @@ export HOME="$HOME"
+ export ZBUILD_SCOPE_OVERRIDE=1
+ export PATH="$PATH"
+ export MARK_FILE="$MARK_FILE"
++export ZBUILD_STAGE_INPUTS="$STAGE_INPUTS_DRIVER"
+ 
+ load_template "$TEST_TEMP_DIR/template.yaml"
+ export ZBUILD_CURRENT_STAGE=build
+diff --git a/tests/integration/build-created-oos-still-violation-test.sh b/tests/integration/build-created-oos-still-violation-test.sh
+index ab7d7db..c91aba6 100644
+--- a/tests/integration/build-created-oos-still-violation-test.sh
++++ b/tests/integration/build-created-oos-still-violation-test.sh
+@@ -89,6 +89,13 @@ printf 'config/templates/unrelated-stray.yaml\0' \
+ STATE_FILE="$STATE_DIR/state.json"
+ printf '{"issue":1265,"branch":"feat/1265"}' > "$STATE_FILE"
+ 
++STAGE_INPUTS_DRIVER="$TEST_TEMP_DIR/stage-inputs-driver.json"
++jq -n \
++    --arg sm "$STATE_DIR/scope-manifest.md" \
++    --arg pl "$STATE_DIR/artifacts/plan.json" \
++    '{"schema_version":1,"stage":"build","inputs":{"scope_manifest":$sm,"plan":$pl}}' \
++    > "$STAGE_INPUTS_DRIVER"
++
+ DRIVER="$TEST_TEMP_DIR/driver.sh"
+ cat > "$DRIVER" <<EOF
+ set -euo pipefail
+@@ -109,6 +116,7 @@ export ZBUILD_REPO_ROOT="$REPO"
+ export HOME="$HOME"
+ export ZBUILD_SCOPE_OVERRIDE=1
+ export PATH="$PATH"
++export ZBUILD_STAGE_INPUTS="$STAGE_INPUTS_DRIVER"
+ 
+ load_template "$TEST_TEMP_DIR/template.yaml"
+ export ZBUILD_CURRENT_STAGE=build
+diff --git a/tests/integration/build-no-stash-flow-test.sh b/tests/integration/build-no-stash-flow-test.sh
+index 9b16aa1..ac295e5 100755
+--- a/tests/integration/build-no-stash-flow-test.sh
++++ b/tests/integration/build-no-stash-flow-test.sh
+@@ -115,6 +115,13 @@ printf '{"issue":602,"branch":"feat/602"}' > "$STATE_FILE"
+ # Mirror intake's `printf '%s'` write — raw 40-char SHA, no trailing newline.
+ printf '%s' "$(git -C "$REPO" rev-parse HEAD)" > "$STATE_DIR/intake-baseline-ref.txt"
+ 
++STAGE_INPUTS_DRIVER="$TEST_TEMP_DIR/stage-inputs-driver.json"
++jq -n \
++    --arg sm "$STATE_DIR/scope-manifest.md" \
++    --arg pl "$STATE_DIR/artifacts/plan.json" \
++    '{"schema_version":1,"stage":"build","inputs":{"scope_manifest":$sm,"plan":$pl}}' \
++    > "$STAGE_INPUTS_DRIVER"
++
+ DRIVER="$TEST_TEMP_DIR/driver.sh"
+ cat > "$DRIVER" <<EOF
+ set -euo pipefail
+@@ -136,6 +143,7 @@ export HOME="$HOME"
+ export ZBUILD_SCOPE_OVERRIDE=1
+ export PATH="$PATH"
+ export MARK_FILE="$MARK_FILE"
++export ZBUILD_STAGE_INPUTS="$STAGE_INPUTS_DRIVER"
+ 
+ load_template "$TEST_TEMP_DIR/template.yaml"
+ export ZBUILD_CURRENT_STAGE=build
+diff --git a/tests/integration/build-preexisting-untracked-not-violation-test.sh b/tests/integration/build-preexisting-untracked-not-violation-test.sh
+index 125945d..02559f7 100644
+--- a/tests/integration/build-preexisting-untracked-not-violation-test.sh
++++ b/tests/integration/build-preexisting-untracked-not-violation-test.sh
+@@ -91,6 +91,13 @@ printf 'config/templates/runner-state-dir-minimal.yaml\0' \
+ STATE_FILE="$STATE_DIR/state.json"
+ printf '{"issue":1265,"branch":"feat/1265"}' > "$STATE_FILE"
+ 
++STAGE_INPUTS_DRIVER="$TEST_TEMP_DIR/stage-inputs-driver.json"
++jq -n \
++    --arg sm "$STATE_DIR/scope-manifest.md" \
++    --arg pl "$STATE_DIR/artifacts/plan.json" \
++    '{"schema_version":1,"stage":"build","inputs":{"scope_manifest":$sm,"plan":$pl}}' \
++    > "$STAGE_INPUTS_DRIVER"
++
+ DRIVER="$TEST_TEMP_DIR/driver.sh"
+ cat > "$DRIVER" <<EOF
+ set -euo pipefail
+@@ -111,6 +118,7 @@ export ZBUILD_REPO_ROOT="$REPO"
+ export HOME="$HOME"
+ export ZBUILD_SCOPE_OVERRIDE=1
+ export PATH="$PATH"
++export ZBUILD_STAGE_INPUTS="$STAGE_INPUTS_DRIVER"
+ 
+ load_template "$TEST_TEMP_DIR/template.yaml"
+ export ZBUILD_CURRENT_STAGE=build
+diff --git a/tests/integration/build-test-cycle-progress-test.sh b/tests/integration/build-test-cycle-progress-test.sh
+index b2b600f..0316ddd 100755
+--- a/tests/integration/build-test-cycle-progress-test.sh
++++ b/tests/integration/build-test-cycle-progress-test.sh
+@@ -111,6 +111,13 @@ EOF
+ STATE_FILE="$STATE_DIR/state.json"
+ printf '{"issue":602,"branch":"feat/602"}' > "$STATE_FILE"
+ 
++STAGE_INPUTS_DRIVER="$TEST_TEMP_DIR/stage-inputs-driver.json"
++jq -n \
++    --arg sm "$STATE_DIR/scope-manifest.md" \
++    --arg pl "$STATE_DIR/artifacts/plan.json" \
++    '{"schema_version":1,"stage":"build","inputs":{"scope_manifest":$sm,"plan":$pl}}' \
++    > "$STAGE_INPUTS_DRIVER"
++
+ DRIVER="$TEST_TEMP_DIR/driver.sh"
+ cat > "$DRIVER" <<EOF
+ set -euo pipefail
+@@ -132,6 +139,7 @@ export HOME="$HOME"
+ export ZBUILD_SCOPE_OVERRIDE=1
+ export PATH="$PATH"
+ export MARK_FILE="$MARK_FILE"
++export ZBUILD_STAGE_INPUTS="$STAGE_INPUTS_DRIVER"
+ 
+ load_template "$TEST_TEMP_DIR/template.yaml"
+ export ZBUILD_CURRENT_STAGE=build
+diff --git a/tests/integration/cycle-commit-summary-fallback-test.sh b/tests/integration/cycle-commit-summary-fallback-test.sh
+index 7a5690f..3026ebb 100755
+--- a/tests/integration/cycle-commit-summary-fallback-test.sh
++++ b/tests/integration/cycle-commit-summary-fallback-test.sh
+@@ -81,6 +81,13 @@ EOF
+ STATE_FILE="$STATE_DIR/state.json"
+ printf '{"issue":608,"branch":"feat/608"}' > "$STATE_FILE"
+ 
++STAGE_INPUTS_DRIVER="$TEST_TEMP_DIR/stage-inputs-driver.json"
++jq -n \
++    --arg sm "$STATE_DIR/scope-manifest.md" \
++    --arg pl "$STATE_DIR/artifacts/plan.json" \
++    '{"schema_version":1,"stage":"build","inputs":{"scope_manifest":$sm,"plan":$pl}}' \
++    > "$STAGE_INPUTS_DRIVER"
++
+ DRIVER="$TEST_TEMP_DIR/driver.sh"
+ cat > "$DRIVER" <<EOF
+ set -euo pipefail
+@@ -101,6 +108,7 @@ export ZBUILD_REPO_ROOT="$REPO"
+ export HOME="$HOME"
+ export ZBUILD_SCOPE_OVERRIDE=1
+ export PATH="$PATH"
++export ZBUILD_STAGE_INPUTS="$STAGE_INPUTS_DRIVER"
+ 
+ load_template "$TEST_TEMP_DIR/template.yaml"
+ export ZBUILD_CURRENT_STAGE=build
+diff --git a/tests/integration/cycle-commits-per-iter-test.sh b/tests/integration/cycle-commits-per-iter-test.sh
+index 1e2c3a7..9b0afde 100755
+--- a/tests/integration/cycle-commits-per-iter-test.sh
++++ b/tests/integration/cycle-commits-per-iter-test.sh
+@@ -105,6 +105,13 @@ EOF
+ STATE_FILE="$STATE_DIR/state.json"
+ printf '{"issue":608,"branch":"feat/608"}' > "$STATE_FILE"
+ 
++STAGE_INPUTS_DRIVER="$TEST_TEMP_DIR/stage-inputs-driver.json"
++jq -n \
++    --arg sm "$STATE_DIR/scope-manifest.md" \
++    --arg pl "$STATE_DIR/artifacts/plan.json" \
++    '{"schema_version":1,"stage":"build","inputs":{"scope_manifest":$sm,"plan":$pl}}' \
++    > "$STAGE_INPUTS_DRIVER"
++
+ DRIVER="$TEST_TEMP_DIR/driver.sh"
+ cat > "$DRIVER" <<EOF
+ set -euo pipefail
+@@ -125,6 +132,7 @@ export ZBUILD_REPO_ROOT="$REPO"
+ export HOME="$HOME"
+ export ZBUILD_SCOPE_OVERRIDE=1
+ export PATH="$PATH"
++export ZBUILD_STAGE_INPUTS="$STAGE_INPUTS_DRIVER"
+ 
+ load_template "$TEST_TEMP_DIR/template.yaml"
+ export ZBUILD_CURRENT_STAGE=build
+diff --git a/tests/integration/cycle-multi-iter-cumulative-test.sh b/tests/integration/cycle-multi-iter-cumulative-test.sh
+index 86ba2f6..b2fcccb 100755
+--- a/tests/integration/cycle-multi-iter-cumulative-test.sh
++++ b/tests/integration/cycle-multi-iter-cumulative-test.sh
+@@ -88,6 +88,13 @@ EOF
+ STATE_FILE="$STATE_DIR/state.json"
+ printf '{"issue":608,"branch":"feat/608"}' > "$STATE_FILE"
+ 
++STAGE_INPUTS_DRIVER="$TEST_TEMP_DIR/stage-inputs-driver.json"
++jq -n \
++    --arg sm "$STATE_DIR/scope-manifest.md" \
++    --arg pl "$STATE_DIR/artifacts/plan.json" \
++    '{"schema_version":1,"stage":"build","inputs":{"scope_manifest":$sm,"plan":$pl}}' \
++    > "$STAGE_INPUTS_DRIVER"
++
+ # Run build twice — once per simulated cycle iteration. Each invocation
+ # should produce one pipeline commit.
+ DRIVER="$TEST_TEMP_DIR/driver.sh"
+@@ -110,6 +117,7 @@ export ZBUILD_REPO_ROOT="$REPO"
+ export HOME="$HOME"
+ export ZBUILD_SCOPE_OVERRIDE=1
+ export PATH="$PATH"
++export ZBUILD_STAGE_INPUTS="$STAGE_INPUTS_DRIVER"
+ 
+ load_template "$TEST_TEMP_DIR/template.yaml"
+ export ZBUILD_CURRENT_STAGE=build
+diff --git a/tests/integration/cycle-scope-violation-no-commit-test.sh b/tests/integration/cycle-scope-violation-no-commit-test.sh
+index 901754a..e414131 100755
+--- a/tests/integration/cycle-scope-violation-no-commit-test.sh
++++ b/tests/integration/cycle-scope-violation-no-commit-test.sh
+@@ -82,6 +82,13 @@ EOF
+ STATE_FILE="$STATE_DIR/state.json"
+ printf '{"issue":608,"branch":"feat/608"}' > "$STATE_FILE"
+ 
++STAGE_INPUTS_DRIVER="$TEST_TEMP_DIR/stage-inputs-driver.json"
++jq -n \
++    --arg sm "$STATE_DIR/scope-manifest.md" \
++    --arg pl "$STATE_DIR/artifacts/plan.json" \
++    '{"schema_version":1,"stage":"build","inputs":{"scope_manifest":$sm,"plan":$pl}}' \
++    > "$STAGE_INPUTS_DRIVER"
++
+ DRIVER="$TEST_TEMP_DIR/driver.sh"
+ cat > "$DRIVER" <<EOF
+ set -euo pipefail
+@@ -102,6 +109,7 @@ export ZBUILD_REPO_ROOT="$REPO"
+ export HOME="$HOME"
+ export ZBUILD_SCOPE_OVERRIDE=1
+ export PATH="$PATH"
++export ZBUILD_STAGE_INPUTS="$STAGE_INPUTS_DRIVER"
+ 
+ load_template "$TEST_TEMP_DIR/template.yaml"
+ export ZBUILD_CURRENT_STAGE=build
