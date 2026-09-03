@@ -773,6 +773,32 @@ _test_disposition_from_rc() {
     printf 'broken'
 }
 
+# ─── _test_default_reason <verdict> <passed> <failed> <exit_code> ────────────
+# #2050: `reason` is MANDATORY in a v2 result, and the reader enforces presence
+# AND non-emptiness (core/pipeline/verdict.sh:382-388). Most runs have no
+# special-case reason to report, so without a derived default the ordinary
+# pass/fail paths ship a result the reader rejects as structurally broken.
+# The counts go in the string rather than a fixed token: ADR-054 §5 asks a
+# result to explain itself to an operator, and "fail" alone does not.
+# Args are the SANITIZED values, so each is an integer or the "null" token.
+_test_default_reason() {
+    local verdict="$1" passed="$2" failed="$3" exit_code="$4"
+    if [[ "$passed" =~ ^[0-9]+$ && "$failed" =~ ^[0-9]+$ ]]; then
+        local total=$(( passed + failed ))
+        case "$verdict" in
+            pass) printf '%d of %d tests passed' "$passed" "$total"; return 0 ;;
+            fail) printf '%d of %d tests failed' "$failed" "$total"; return 0 ;;
+        esac
+    fi
+    # No usable counts (parser fail-safe passes the "null" token) or a verdict
+    # outside pass/fail. The exit code is the only fact left that is certainly true.
+    if [[ "$exit_code" =~ ^[0-9]+$ ]]; then
+        printf 'test command exited %d' "$exit_code"
+    else
+        printf 'test command exited with no recorded status'
+    fi
+}
+
 # ─── _test_write_result ───────────────────────────────────────────────────────
 # Writes test-results.json atomically via a temp file (v2 result contract,
 # ADR-054 §5, #1836). Top-level: result_contract, verdict, disposition, reason.
@@ -783,11 +809,11 @@ _test_disposition_from_rc() {
 #                            [lint_json] [coverage_json] [mutation_json]
 # #584: passed/failed may be the literal token "null" to record that the
 # parser did not recognize this runner's output (honest fail-safe — never
-# fabricate counts). The `reason` field is emitted only when non-empty; values
-# include `summary_unavailable` (#584 fail-safe), `silent_failure` (#485 no-op
-# guard) and `missing_diff_patch`. Wave 12-C (#662) removed `diff_apply_failed`
-# — no caller writes it anymore. disposition is always emitted (mandatory v2
-# top-level field).
+# fabricate counts). `reason` and `disposition` are always emitted (mandatory v2
+# top-level fields). A caller may name the reason — `summary_unavailable` (#584
+# fail-safe), `silent_failure` (#485 no-op guard), `missing_diff_patch` — and
+# otherwise _test_default_reason derives one from the counts (#2050). Wave 12-C
+# (#662) removed `diff_apply_failed` — no caller writes it anymore.
 # #626: numeric and boolean slots pass through the sanitizers above, so jq
 # --argjson never barfs and the writer stays fail-CLOSED.
 _test_write_result() {
@@ -806,7 +832,8 @@ _test_write_result() {
     # the safe default that does not suppress cycle convergence.
     local run_mode="${11:-full}"
     # #1058 Phase A: optional pre-rendered `timing` JSON object. Empty string →
-    # field omitted (mirrors the `reason` field's omit-when-empty contract). A
+    # field omitted. That contract is this field's alone since #2050 — `reason`
+    # used to share it and is now always written, being mandatory in v2. A
     # malformed value is dropped by the jq fromjson guard below — never crashes.
     local timing_json="${12:-}"
     # #1058 Phase B: optional committed work-tree SHA. Written ONLY for an
@@ -838,6 +865,13 @@ _test_write_result() {
     failed_json="$(_test_sanitize_numeric "$failed")"
     diff_applied_json="$(_test_sanitize_bool "$diff_applied")"
 
+    # #2050: derive only when the caller supplied nothing — silent_failure,
+    # summary_unavailable and missing_diff_patch stay verbatim.
+    if [[ -z "$reason" ]]; then
+        reason="$(_test_default_reason "$verdict" "$passed_json" "$failed_json" \
+                                       "$exit_code_json")"
+    fi
+
     # #507: write via atomic_write (helpers.sh) so the manifest-declared
     # primary output `test-results.json` passes the atomicity guard test.
     # #626 + Copilot P2 on #640: stream jq → atomic_write directly with a
@@ -865,9 +899,9 @@ _test_write_result() {
         '{
             result_contract: 2,
             verdict: $verdict,
-            disposition: $disposition
+            disposition: $disposition,
+            reason: $reason
         }
-        + (if $reason != "" then {reason: $reason} else {} end)
         + {
             test_output: $test_output,
             run_mode: $run_mode,
