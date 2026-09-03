@@ -20,3 +20,18 @@
   [38;2;248;113;113m✗[0m [SPEC-7] prompt missing TURN BUDGET block with max_turns=99
   [38;2;248;113;113m✗[0m [SPEC-8] scope charter missing from prompt
 
+### SPEC-8 head tests/unit/design-budget-prompt-injection-test.sh
+
+[38;2;0;212;255m[1m  design: ADR-063 §1/§2 — budget guidance injected into prompt (#1834)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-6] prompt contains WALL CLOCK BUDGET block with timeout_s=777
+  [38;2;74;222;128m✓[0m [SPEC-7] prompt contains TURN BUDGET block with max_turns=99
+  [38;2;74;222;128m✓[0m [SPEC-8] scope charter instruction present and unaltered (guard)
+  [38;2;74;222;128m✓[0m [SPEC-8] acceptance contract instruction present and unaltered (guard)
+  [38;2;74;222;128m✓[0m [SPEC-8] tools section present and unaltered (guard)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 5 tests passed[0m
+

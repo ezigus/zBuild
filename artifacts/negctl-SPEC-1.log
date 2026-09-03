@@ -3,9 +3,9 @@
 [38;2;0;212;255m[1m  design: v2 result contract — design-verdict.json on all exit paths (#1834)[0m
 [2m  ══════════════════════════════════════════[0m
 
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.tBDCoX/core/event-bus/event-bus.sh: line 71: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.pq5l5k/home/.zbuild/ephemeral-events/2794630/events.db.lock: No such file or directory
-[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.pq5l5k/home/.zbuild/ephemeral-events/2794630/events.db": unable to open database file
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.tBDCoX/core/event-bus/event-bus.sh: line 243: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.pq5l5k/home/.zbuild/ephemeral-events/2794630/events.db.lock: No such file or directory
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.VZN9wf/core/event-bus/event-bus.sh: line 71: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.cExlNu/home/.zbuild/ephemeral-events/1449875/events.db.lock: No such file or directory
+[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.cExlNu/home/.zbuild/ephemeral-events/1449875/events.db": unable to open database file
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.VZN9wf/core/event-bus/event-bus.sh: line 243: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.cExlNu/home/.zbuild/ephemeral-events/1449875/events.db.lock: No such file or directory
   [38;2;74;222;128m✓[0m [SPEC-1] success → rc=0
   [38;2;248;113;113m✗[0m [SPEC-1] success → design-verdict.json result_contract=2
     [2mexpected: 2, got: MISSING[0m
@@ -15,10 +15,10 @@
     [2mexpected: complete, got: MISSING[0m
   [38;2;248;113;113m✗[0m [SPEC-1] sidecar written before atomic_write of design.md
     [2mexpected: PRESENT, got: UNSET[0m
-[38;2;248;113;113m[1m✗[0m _design_stage_run_inner: plan.json not found at /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.pq5l5k/t2/state/artifacts/plan.json
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.tBDCoX/core/event-bus/event-bus.sh: line 71: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.pq5l5k/home/.zbuild/ephemeral-events/2794630/events.db.lock: No such file or directory
-[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.pq5l5k/home/.zbuild/ephemeral-events/2794630/events.db": unable to open database file
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.tBDCoX/core/event-bus/event-bus.sh: line 243: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.pq5l5k/home/.zbuild/ephemeral-events/2794630/events.db.lock: No such file or directory
+[38;2;248;113;113m[1m✗[0m _design_stage_run_inner: plan.json not found at /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.cExlNu/t2/state/artifacts/plan.json
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.VZN9wf/core/event-bus/event-bus.sh: line 71: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.cExlNu/home/.zbuild/ephemeral-events/1449875/events.db.lock: No such file or directory
+[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.cExlNu/home/.zbuild/ephemeral-events/1449875/events.db": unable to open database file
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.VZN9wf/core/event-bus/event-bus.sh: line 243: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.cExlNu/home/.zbuild/ephemeral-events/1449875/events.db.lock: No such file or directory
   [38;2;248;113;113m✗[0m [SPEC-2] missing plan → rc=1
     [2mexpected: 1, got: 2[0m
   [38;2;248;113;113m✗[0m [SPEC-2] missing plan → design-verdict.json result_contract=2
@@ -28,12 +28,12 @@
   [38;2;248;113;113m✗[0m [SPEC-2] missing plan → design-verdict.json disposition=broken
     [2mexpected: broken, got: MISSING[0m
 [38;2;248;113;113m[1m✗[0m _design_stage_run_inner: router loop timed out (reason=router_timeout) — writing gate-failing marker to re-iterate
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.tBDCoX/core/event-bus/event-bus.sh: line 71: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.pq5l5k/home/.zbuild/ephemeral-events/2794630/events.db.lock: No such file or directory
-[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.pq5l5k/home/.zbuild/ephemeral-events/2794630/events.db": unable to open database file
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.tBDCoX/core/event-bus/event-bus.sh: line 243: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.pq5l5k/home/.zbuild/ephemeral-events/2794630/events.db.lock: No such file or directory
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.tBDCoX/core/event-bus/event-bus.sh: line 71: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.pq5l5k/home/.zbuild/ephemeral-events/2794630/events.db.lock: No such file or directory
-[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.pq5l5k/home/.zbuild/ephemeral-events/2794630/events.db": unable to open database file
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.tBDCoX/core/event-bus/event-bus.sh: line 243: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.pq5l5k/home/.zbuild/ephemeral-events/2794630/events.db.lock: No such file or directory
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.VZN9wf/core/event-bus/event-bus.sh: line 71: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.cExlNu/home/.zbuild/ephemeral-events/1449875/events.db.lock: No such file or directory
+[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.cExlNu/home/.zbuild/ephemeral-events/1449875/events.db": unable to open database file
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.VZN9wf/core/event-bus/event-bus.sh: line 243: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.cExlNu/home/.zbuild/ephemeral-events/1449875/events.db.lock: No such file or directory
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.VZN9wf/core/event-bus/event-bus.sh: line 71: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.cExlNu/home/.zbuild/ephemeral-events/1449875/events.db.lock: No such file or directory
+[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.cExlNu/home/.zbuild/ephemeral-events/1449875/events.db": unable to open database file
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.VZN9wf/core/event-bus/event-bus.sh: line 243: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.cExlNu/home/.zbuild/ephemeral-events/1449875/events.db.lock: No such file or directory
   [38;2;74;222;128m✓[0m [SPEC-3] timeout → verdict=incomplete (guard)
   [38;2;74;222;128m✓[0m [SPEC-3] timeout → disposition=interrupted (guard)
   [38;2;74;222;128m✓[0m [SPEC-3] timeout → result_contract=2 (guard)
@@ -45,30 +45,29 @@
 [38;2;0;212;255m[1m  design: v2 result contract — design-verdict.json on all exit paths (#1834)[0m
 [2m  ══════════════════════════════════════════[0m
 
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 71: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.4iTCiS/home/.zbuild/ephemeral-events/2799000/events.db.lock: No such file or directory
-[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.4iTCiS/home/.zbuild/ephemeral-events/2799000/events.db": unable to open database file
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 243: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.4iTCiS/home/.zbuild/ephemeral-events/2799000/events.db.lock: No such file or directory
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 71: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.aVLyt6/home/.zbuild/ephemeral-events/1454243/events.db.lock: No such file or directory
+[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.aVLyt6/home/.zbuild/ephemeral-events/1454243/events.db": unable to open database file
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 243: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.aVLyt6/home/.zbuild/ephemeral-events/1454243/events.db.lock: No such file or directory
   [38;2;74;222;128m✓[0m [SPEC-1] success → rc=0
   [38;2;74;222;128m✓[0m [SPEC-1] success → design-verdict.json result_contract=2
   [38;2;74;222;128m✓[0m [SPEC-1] success → design-verdict.json verdict=pass
   [38;2;74;222;128m✓[0m [SPEC-1] success → design-verdict.json disposition=complete
-  [38;2;248;113;113m✗[0m [SPEC-1] sidecar written before atomic_write of design.md
-    [2mexpected: PRESENT, got: UNSET[0m
-[38;2;248;113;113m[1m✗[0m _design_stage_run_inner: plan.json not found at /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.4iTCiS/t2/state/artifacts/plan.json
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 71: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.4iTCiS/home/.zbuild/ephemeral-events/2799000/events.db.lock: No such file or directory
-[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.4iTCiS/home/.zbuild/ephemeral-events/2799000/events.db": unable to open database file
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 243: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.4iTCiS/home/.zbuild/ephemeral-events/2799000/events.db.lock: No such file or directory
+  [38;2;74;222;128m✓[0m [SPEC-1] sidecar written before atomic_write of design.md
+[38;2;248;113;113m[1m✗[0m _design_stage_run_inner: plan.json not found at /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.aVLyt6/t2/state/artifacts/plan.json
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 71: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.aVLyt6/home/.zbuild/ephemeral-events/1454243/events.db.lock: No such file or directory
+[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.aVLyt6/home/.zbuild/ephemeral-events/1454243/events.db": unable to open database file
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 243: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.aVLyt6/home/.zbuild/ephemeral-events/1454243/events.db.lock: No such file or directory
   [38;2;74;222;128m✓[0m [SPEC-2] missing plan → rc=1
   [38;2;74;222;128m✓[0m [SPEC-2] missing plan → design-verdict.json result_contract=2
   [38;2;74;222;128m✓[0m [SPEC-2] missing plan → design-verdict.json verdict=error
   [38;2;74;222;128m✓[0m [SPEC-2] missing plan → design-verdict.json disposition=broken
 [38;2;248;113;113m[1m✗[0m _design_stage_run_inner: router loop timed out (reason=router_timeout) — writing gate-failing marker to re-iterate
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 71: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.4iTCiS/home/.zbuild/ephemeral-events/2799000/events.db.lock: No such file or directory
-[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.4iTCiS/home/.zbuild/ephemeral-events/2799000/events.db": unable to open database file
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 243: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.4iTCiS/home/.zbuild/ephemeral-events/2799000/events.db.lock: No such file or directory
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 71: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.4iTCiS/home/.zbuild/ephemeral-events/2799000/events.db.lock: No such file or directory
-[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.4iTCiS/home/.zbuild/ephemeral-events/2799000/events.db": unable to open database file
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 243: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.4iTCiS/home/.zbuild/ephemeral-events/2799000/events.db.lock: No such file or directory
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 71: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.aVLyt6/home/.zbuild/ephemeral-events/1454243/events.db.lock: No such file or directory
+[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.aVLyt6/home/.zbuild/ephemeral-events/1454243/events.db": unable to open database file
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 243: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.aVLyt6/home/.zbuild/ephemeral-events/1454243/events.db.lock: No such file or directory
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 71: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.aVLyt6/home/.zbuild/ephemeral-events/1454243/events.db.lock: No such file or directory
+[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.aVLyt6/home/.zbuild/ephemeral-events/1454243/events.db": unable to open database file
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 243: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.aVLyt6/home/.zbuild/ephemeral-events/1454243/events.db.lock: No such file or directory
   [38;2;74;222;128m✓[0m [SPEC-3] timeout → verdict=incomplete (guard)
   [38;2;74;222;128m✓[0m [SPEC-3] timeout → disposition=interrupted (guard)
   [38;2;74;222;128m✓[0m [SPEC-3] timeout → result_contract=2 (guard)
@@ -76,15 +75,13 @@
   [38;2;74;222;128m✓[0m [SPEC-4] manifest config.valid_verdicts contains 'pass'
   [38;2;74;222;128m✓[0m [SPEC-4] manifest config.valid_verdicts contains 'error'
   [38;2;74;222;128m✓[0m [SPEC-4] manifest config.valid_verdicts contains 'incomplete'
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 71: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.4iTCiS/home/.zbuild/ephemeral-events/2799000/events.db.lock: No such file or directory
-[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.4iTCiS/home/.zbuild/ephemeral-events/2799000/events.db": unable to open database file
-/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 243: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.4iTCiS/home/.zbuild/ephemeral-events/2799000/events.db.lock: No such file or directory
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 71: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.aVLyt6/home/.zbuild/ephemeral-events/1454243/events.db.lock: No such file or directory
+[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.aVLyt6/home/.zbuild/ephemeral-events/1454243/events.db": unable to open database file
+/home/runner/.zbuild/repos/ezigus/zBuild/issues/1834/worktree/core/event-bus/event-bus.sh: line 243: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/design-v2-result-contract.aVLyt6/home/.zbuild/ephemeral-events/1454243/events.db.lock: No such file or directory
   [38;2;74;222;128m✓[0m [SPEC-5] design_stage_run uses plan from ZBUILD_STAGE_INPUTS (rc=0)
   [38;2;74;222;128m✓[0m [SPEC-5] design.md produced via ZBUILD_STAGE_INPUTS index paths
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 18 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [SPEC-1] sidecar written before atomic_write of design.md
+  [38;2;74;222;128m[1mAll 18 tests passed[0m
 
