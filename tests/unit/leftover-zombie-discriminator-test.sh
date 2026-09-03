@@ -148,12 +148,22 @@ fi
 # The bound is asserted here rather than left to a comment because this is the
 # third time this window has been tuned (#1943, #1975, now) and each previous
 # value looked equally reasonable when it was written.
-_win="$(/usr/bin/grep -oE 'deadline_ns=\$\(\( \$\(date \+%s%N\) \+ [0-9]+ \)\)' "$_RFA" | /usr/bin/grep -oE '[0-9]{8,}' | head -1)"
+# Read the window in SECONDS from its single named definition, rather than
+# scraping nanoseconds out of the deadline expression.
+#
+# The first version of this check grepped the deadline for a numeric literal. It
+# broke the moment the window was given a name (#2029) — a guard that recognises
+# only the shape it was written against, which is the failure this whole family of
+# tests keeps producing. `|| true` because a no-match must reach the assertion
+# below and be reported, not kill the file under `set -e`.
+_win_s="$(/usr/bin/grep -oE '^reap_window_s=[0-9]+' "$_RFA" | head -1 | cut -d= -f2 || true)"
+_win=""
+[[ -n "$_win_s" ]] && _win=$(( _win_s * 1000000000 ))
 if [[ -n "$_win" && "$_win" -ge 10000000000 ]]; then
     assert_pass "[SPEC-4] the reap window is at least 10s (got ${_win}ns)"
 else
     assert_fail "[SPEC-4] the reap window is at least 10s" \
-        "got '${_win:-<not found>}'ns — a shutting-down stub will be counted as a leak under load"
+        "reap_window_s='${_win_s:-<not found>}' — a shutting-down stub will be counted as a leak under load"
 fi
 
 # ─── [SPEC-5][guard] a non-zero count is always explained ──────────────────

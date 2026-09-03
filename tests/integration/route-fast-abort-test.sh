@@ -228,7 +228,8 @@ fi
 #     abort SYNCHRONOUS — _route_loop_on_signal does not return until the child
 #     tree has been SIGKILLed and reaped, so by the time the driver exited (the
 #     `wait "$DRV_PID"` above returned) the stub is already dead. We allow only
-#     a 2s reap window for the kernel to clear the reparented zombie's PID slot.
+#     a bounded reap window (see `reap_window_s` below) for the kernel to clear
+#     the reparented zombie's PID slot.
 #     #1975: this window used to be 500ms because it was ALSO the check that a
 #     detached backstop had not fired. It no longer carries that job — assertion
 #     (1b) does, via a load-monotone elapsed_ms floor — so it can be generous
@@ -291,7 +292,8 @@ leftover=0
 # reach this code. The synchronous-abort discrimination does not ride on this
 # number any more (#1975 moved it to an elapsed_ms floor, which load can only
 # push in the safe direction), so the window is free to be generous.
-deadline_ns=$(( $(date +%s%N) + 15000000000 ))
+reap_window_s=15
+deadline_ns=$(( $(date +%s%N) + reap_window_s * 1000000000 ))
 while [[ $(date +%s%N) -lt $deadline_ns ]]; do
     leftover=0
     if [[ -f "$PID_FILE" ]]; then
@@ -366,7 +368,7 @@ fi
 # Explain a non-zero count before asserting on it, so the next occurrence
 # arrives with its own diagnosis attached.
 if [[ $leftover -ne 0 && -f "$PID_FILE" ]]; then
-    echo "  DIAGNOSTIC: ${leftover} leftover stub(s) after the 2s reap window:" >&2
+    echo "  DIAGNOSTIC: ${leftover} leftover stub(s) after the ${reap_window_s}s reap window:" >&2
     # #2029: describe EVERY pid, not only ones still classified as ours. The
     # guard used to be `_rfa_is_my_stub "$p" && _rfa_describe "$p"`, so a stub
     # that was counted during the poll and then exited produced a header and no
