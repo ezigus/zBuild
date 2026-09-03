@@ -1,0 +1,11 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "no prior work for issue 1834 (first run)",
+  "data": {
+    "status": "empty",
+    "restored": 0,
+    "source": null
+  }
+}
