@@ -1,0 +1,564 @@
+diff --git a/plugins/agent/design/manifest.yaml b/plugins/agent/design/manifest.yaml
+index 0d1695d..7faa286 100644
+--- a/plugins/agent/design/manifest.yaml
++++ b/plugins/agent/design/manifest.yaml
+@@ -22,6 +22,7 @@ requires:
+ 
+ provides:
+   role: designer
++  result_contract: 2
+   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+   # the engine's known set at load. Adding one here needs no engine-config edit.
+   events:
+@@ -31,8 +32,13 @@ provides:
+ 
+ config:
+   valid_verdicts:
++    - pass
++    - error
+     - incomplete
+   tier_default: T2
++  router:
++    timeout_s: 600
++    max_turns: 45
+ 
+ inputs:
+   - id: scope_manifest
+diff --git a/plugins/agent/design/plugin.sh b/plugins/agent/design/plugin.sh
+index a8ddefd..982ca72 100755
+--- a/plugins/agent/design/plugin.sh
++++ b/plugins/agent/design/plugin.sh
+@@ -49,6 +49,48 @@ source "$_DESIGN_ROOT/scripts/lib/identity.sh"
+ # shellcheck source=../../../scripts/lib/acceptance-block.sh
+ source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh"
+ 
++# _design_write_result <artifact_dir> <verdict> <disposition> <reason>
++# Writes design-verdict.json with the v2 result contract (result_contract:2).
++# Called on every terminal exit path so the sidecar is always on disk.
++_design_write_result() {
++    local dir="$1" verdict="$2" disposition="$3" reason="$4"
++    mkdir -p "$dir" 2>/dev/null || true
++    jq -n --arg v "$verdict" --arg d "$disposition" --arg r "$reason" \
++        '{result_contract: 2, verdict: $v, disposition: $d, reason: $r, data: {}}' \
++        | atomic_write "$dir/design-verdict.json" 2>/dev/null \
++        || warn "_design_write_result: failed to write design-verdict.json (verdict=$verdict)"
++}
++
++# _design_budget_guidance <max_turns> — TURN BUDGET block for the prompt (ADR-063 §1).
++# Mirrors _plan_budget_guidance from plugins/agent/plan/plugin.sh.
++_design_budget_guidance() {
++    local budget="${1:-}"
++    [[ "$budget" =~ ^[0-9]+$ && "$budget" -gt 0 ]] || { printf ''; return 0; }
++    cat <<EOF
++TURN BUDGET (read this — you have a BOUNDED tool-call budget):
++- You have about ${budget} tool-call turns for BOTH exploration AND writing the design.
++- A design from partial exploration with gaps named in prose BEATS exhausting the budget and producing no design at all.
++- Explore with TARGETED reads/greps of specific files; avoid whole-repo sweeps that flood your context.
++- STOP exploring and WRITE the design well before you run out. If you are running low, emit your best-effort design NOW and name any unfinished sections.
++EOF
++}
++
++# _design_wallclock_guidance <timeout_s> <elapsed_s> — WALL CLOCK BUDGET block (ADR-063 §1).
++# Mirrors _plan_wallclock_guidance from plugins/agent/plan/plugin.sh.
++_design_wallclock_guidance() {
++    local budget_s="${1:-}" elapsed_s="${2:-}"
++    [[ "$budget_s" =~ ^[0-9]+$ && "$budget_s" -gt 0 ]] || { printf ''; return 0; }
++    [[ "$elapsed_s" =~ ^[0-9]+$ ]] || elapsed_s=0
++    [[ "$elapsed_s" -lt "$budget_s" ]] || { printf ''; return 0; }
++    local _stop_at=$(( budget_s * 70 / 100 ))
++    cat <<EOF
++WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
++- This stage has a wall-clock budget of ${budget_s} seconds total; ~${elapsed_s}s have elapsed.
++- You cannot read a real-time clock, but estimate elapsed time from your tool-call history.
++- Target emitting your best-effort design before ~${_stop_at}s of wall-clock time has elapsed (70% of the ${budget_s}s budget). A partial design with named gaps BEATS a hard SIGTERM that produces no output.
++EOF
++}
++
+ # ─── run ────────────────────────────────────────────────────────────────────
+ design_stage_run() {
+     local state_file="${2:-}"
+@@ -57,7 +99,7 @@ design_stage_run() {
+         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/design-summary.md}" "design" "error" \
+             "the engine dispatched this stage with no state file, so it could not run" \
+             "No work was attempted. This is an engine contract violation, not a fault in the change."
+-        return 2
++        return 1
+     fi
+     local state_dir; state_dir="$(dirname "$state_file")"
+     local artifacts_dir="$state_dir/artifacts"
+@@ -66,6 +108,18 @@ design_stage_run() {
+     local scope_manifest="$state_dir/scope-manifest.md"
+     local plan_json_path="$artifacts_dir/plan.json"
+ 
++    # ADR-017 §11 / #1826: when the engine resolved inputs via input-resolve.sh it
++    # exports ZBUILD_STAGE_INPUTS pointing to a JSON index of name→path pairs.
++    # Read scope_manifest and plan from it when present, falling back to the
++    # hardcoded path construction so existing test fixtures keep working.
++    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
++        local _si_scope _si_plan
++        _si_scope="$(jq -r '.inputs.scope_manifest // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
++        _si_plan="$(jq -r '.inputs.plan // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
++        [[ -n "$_si_scope" ]] && scope_manifest="$_si_scope"
++        [[ -n "$_si_plan" ]] && plan_json_path="$_si_plan"
++    fi
++
+     _design_stage_run_inner \
+         "$scope_manifest" \
+         "$plan_json_path" \
+@@ -149,10 +203,11 @@ _design_stage_run_inner() {
+ 
+     if [[ -z "$scope_manifest" || -z "$plan_json_path" || -z "$output_design_md" ]]; then
+         error "_design_stage_run_inner: requires <scope_manifest> <plan_json_path> <output_design_md> [artifact_dir]"
+-        return 2
++        return 1
+     fi
+ 
+     mkdir -p "$artifact_dir"
++    local _design_start_s=$SECONDS
+ 
+     # #1261: the did_not_finish verdict sidecar (mirrors build's #1208 mid-flight
+     # verdict). Cleared at the START of every run so a stale timeout verdict from
+@@ -165,11 +220,12 @@ _design_stage_run_inner() {
+ 
+     if [[ ! -f "$plan_json_path" ]]; then
+         error "_design_stage_run_inner: plan.json not found at $plan_json_path"
++        _design_write_result "$artifact_dir" "error" "broken" "missing_plan_json"
+         stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+             "no plan.json to design against" \
+             "The plan stage produced nothing this stage could read; no design was authored."
+         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_plan_json"
+-        return 2
++        return 1
+     fi
+ 
+     local plan_json
+@@ -333,7 +389,20 @@ DESIGN_PROMPT
+     # carries design-gate's feedback now, so design only decides how to WORD the
+     # refinement instruction — from the recorded verdict, not from a file read.
+     local _prior_design_body
+-    _prior_design_body="$(_design_read_prior_design 2>/dev/null || true)"
++    # ADR-050 (#1826): check ZBUILD_STAGE_INPUTS for the 'design' input first —
++    # input-resolve.sh already consolidates Tier-1 and Tier-2 when writing the
++    # index, so we don't need to run the tier-1/tier-2 logic separately. Fall
++    # back to _design_read_prior_design when the index is absent or has no entry
++    # so existing test fixtures that set ZBUILD_CYCLE_FEEDBACK_DIR directly work.
++    local _si_design_path=""
++    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
++        _si_design_path="$(jq -r '.inputs.design // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
++    fi
++    if [[ -n "$_si_design_path" && -s "$_si_design_path" ]]; then
++        _prior_design_body="$(cat "$_si_design_path" 2>/dev/null || true)"
++    else
++        _prior_design_body="$(_design_read_prior_design 2>/dev/null || true)"
++    fi
+     if [[ -n "$_prior_design_body" ]]; then
+         printf '\n## PRIOR DESIGN (a previous attempt on this issue — refine, do not recreate)\n%s\n' \
+             "$_prior_design_body" >> "$prompt_input_file"
+@@ -370,6 +439,21 @@ DESIGN_PROMPT
+             >> "$prompt_input_file"
+     fi
+ 
++    # ADR-063 §1/§2: inject budget guidance BEFORE operator overlay so the
++    # operator cannot accidentally precede the shipped charter (ADR-032).
++    local _budget_max_turns _budget_timeout_s _budget_elapsed_s
++    _budget_max_turns="$(_route_resolve_max_turns 2>/dev/null || printf '0')"
++    _budget_timeout_s="$(_route_resolve_timeout 2>/dev/null || printf '0')"
++    [[ "$_budget_max_turns" =~ ^[0-9]+$ ]] || _budget_max_turns=0
++    [[ "$_budget_timeout_s" =~ ^[0-9]+$ ]] || _budget_timeout_s=0
++    _budget_elapsed_s=$(( SECONDS - _design_start_s ))
++    local _wc_guidance _tb_guidance
++    _wc_guidance="$(_design_wallclock_guidance "$_budget_timeout_s" "$_budget_elapsed_s")"
++    _tb_guidance="$(_design_budget_guidance "$_budget_max_turns")"
++    [[ -n "$_wc_guidance" ]] && printf '\n%s\n' "$_wc_guidance" >> "$prompt_input_file"
++    [[ -n "$_tb_guidance" ]] && printf '\n%s\n' "$_tb_guidance" >> "$prompt_input_file"
++    printf '\nIf you have not finished all sections when the budget nears, name the unfinished sections rather than silently omitting them — a partial design with named gaps is safer than silence.\n' >> "$prompt_input_file"
++
+     # ADR-032: append the per-repo prompt override AFTER the core contract (so
+     # the operator overlay can never precede or weaken the shipped charter).
+     # Fail-open: a repo with no .zbuild/prompts/design-overrides.md appends
+@@ -468,6 +552,7 @@ DESIGN_PROMPT
+         local _rc_verdict _rc_reason
+         _router_rc_classify "$router_rc" _rc_verdict _rc_reason
+         error "_design_stage_run_inner: router rc=$router_rc → verdict=$_rc_verdict reason=$_rc_reason"
++        _design_write_result "$artifact_dir" "error" "broken" "$_rc_reason"
+         stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+             "the model call failed ($_rc_reason)" \
+             "No usable design.md was returned."
+@@ -488,6 +573,7 @@ DESIGN_PROMPT
+         if [[ -f "$_stray" ]]; then
+             if git -C "$repo_root" ls-files --error-unmatch "design.md" >/dev/null 2>&1; then
+                 error "_design_stage_run_inner: tracked design.md at repo root; refusing to relocate (operator-owned)"
++                _design_write_result "$artifact_dir" "error" "broken" "stray_conflict"
+                 emit_event "design.stray.conflict" "plugin=design" "path=$_stray" "reason=tracked"
+                 return 1
+             fi
+@@ -502,6 +588,7 @@ DESIGN_PROMPT
+     # Assert the scope block is present in design.md.
+     if [[ ! -f "$output_design_md" ]]; then
+         error "_design_stage_run_inner: design.md not produced at $output_design_md"
++        _design_write_result "$artifact_dir" "error" "broken" "missing_design_md"
+         stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+             "no design.md was produced" \
+             "The model returned without writing the artifact this stage exists to produce."
+@@ -519,6 +606,7 @@ DESIGN_PROMPT
+         stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+             "design.md has no fenced scope block" \
+             "Without a scope block the build stage has no declared boundary to work inside."
++        _design_write_result "$artifact_dir" "error" "broken" "missing_scope_block"
+         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_scope_block"
+         # Failure path: don't override the banner output; let the deferred
+         # close (if any) flush claude's stdout summary so the operator sees
+@@ -535,6 +623,7 @@ DESIGN_PROMPT
+         stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+             "design.md has no fenced acceptance block" \
+             "Without acceptance SPECs there is nothing for the acceptance gate to verify."
++        _design_write_result "$artifact_dir" "error" "broken" "missing_acceptance_block"
+         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_acceptance_block"
+         if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
+             _route_loop_close_final_banner || true
+@@ -554,6 +643,10 @@ DESIGN_PROMPT
+         _route_loop_close_final_banner || true
+     fi
+ 
++    # v2 result contract (#1834): write sidecar BEFORE atomic_write of design.md
++    # so the sidecar is always on disk when rc=0 (SPEC-1).
++    _design_write_result "$artifact_dir" "pass" "complete" "design_produced"
++
+     # Atomically finalize design.md (#507 contract).
+     cat "$output_design_md" | atomic_write "$output_design_md"
+ 
+diff --git a/tests/unit/design-budget-prompt-injection-test.sh b/tests/unit/design-budget-prompt-injection-test.sh
+new file mode 100644
+index 0000000..4f7c1c3
+--- /dev/null
++++ b/tests/unit/design-budget-prompt-injection-test.sh
+@@ -0,0 +1,119 @@
++#!/usr/bin/env bash
++# Tests: design plugin ADR-063 §1/§2 — budget guidance injected into the prompt.
++# SPEC-6 [change]: prompt file contains a WALL CLOCK BUDGET block with timeout_s
++#                  value sourced from _route_resolve_timeout
++# SPEC-7 [change]: prompt file contains a TURN BUDGET block with max_turns value
++#                  sourced from _route_resolve_max_turns
++# SPEC-8 [guard]:  existing prompt body instructions (scope charter, acceptance
++#                  contract, tools section) are present and unaltered when budget
++#                  blocks are injected
++set -uo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++print_test_header "design: ADR-063 §1/§2 — budget guidance injected into prompt (#1834)"
++setup_test_env "design-budget-prompt-injection"
++
++# Source the design plugin so real route.sh / redaction get loaded, then override.
++# shellcheck source=../../plugins/agent/design/plugin.sh
++source "$REPO_ROOT/plugins/agent/design/plugin.sh"
++
++# Override budget resolvers with known sentinel values so the assertions can be
++# precise: any appearance of "777" for timeout or "99" for max_turns proves the
++# live resolver output reached the prompt.
++_route_resolve_max_turns() { printf '99'; }
++_route_resolve_timeout()   { printf '777'; }
++
++_MOCK_DESIGN_WRITE_PATH=""
++route_to_model_loop() {
++    local _bt='```'
++    if [[ -n "${_MOCK_DESIGN_WRITE_PATH:-}" ]]; then
++        mkdir -p "$(dirname "$_MOCK_DESIGN_WRITE_PATH")"
++        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[guard]: works\nWIRING: none\nTESTFILES:\n%s\n' \
++            "$_bt" "$_bt" "$_bt" "$_bt" > "$_MOCK_DESIGN_WRITE_PATH"
++    fi
++    _ROUTE_LOOP_ITERATIONS=1
++    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
++    _ROUTE_LOOP_INPUT_TOKENS=0
++    _ROUTE_LOOP_OUTPUT_TOKENS=0
++    return 0
++}
++
++apply_scope_redaction() { cp "$1" "$2"; return 0; }
++atomic_write() { local dest="$1"; cat - > "$dest"; }
++
++FIX="$TEST_TEMP_DIR/fixture"
++mkdir -p "$FIX"
++git -C "$FIX" init --quiet >/dev/null 2>&1
++git -C "$FIX" config user.email 'test@example.com' >/dev/null 2>&1
++git -C "$FIX" config user.name  'test' >/dev/null 2>&1
++ARTIFACT_DIR="$FIX/state/artifacts"; mkdir -p "$ARTIFACT_DIR"
++SCOPE_MANIFEST="$FIX/state/scope-manifest.md"; printf 'scope: all\n' > "$SCOPE_MANIFEST"
++PLAN_JSON="$ARTIFACT_DIR/plan.json"
++cat > "$PLAN_JSON" <<'EOF'
++{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}
++EOF
++OUTPUT_MD="$ARTIFACT_DIR/design.md"
++export ZBUILD_REPO_ROOT="$FIX"
++export ZBUILD_EVENTS_JSONL="$FIX/state/events.jsonl"
++export ZBUILD_EVENTS_DIR="$FIX/state"
++: > "$ZBUILD_EVENTS_JSONL"
++_MOCK_DESIGN_WRITE_PATH="$OUTPUT_MD"
++
++_design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1 || true
++
++PROMPT="$ARTIFACT_DIR/design-prompt.txt"
++
++# ─── SPEC-6 [change]: WALL CLOCK BUDGET block with timeout_s from _route_resolve_timeout
++if [[ -f "$PROMPT" ]] && grep -q "WALL CLOCK BUDGET" "$PROMPT" && grep -q "777" "$PROMPT"; then
++    assert_pass "[SPEC-6] prompt contains WALL CLOCK BUDGET block with timeout_s=777"
++else
++    _dbg_wc=""
++    [[ -f "$PROMPT" ]] || _dbg_wc="prompt file absent"
++    grep -q "WALL CLOCK BUDGET" "$PROMPT" 2>/dev/null \
++        || _dbg_wc="${_dbg_wc:+$_dbg_wc; }WALL CLOCK BUDGET header missing"
++    grep -q "777" "$PROMPT" 2>/dev/null \
++        || _dbg_wc="${_dbg_wc:+$_dbg_wc; }timeout value 777 missing"
++    assert_fail "[SPEC-6] prompt missing WALL CLOCK BUDGET block with timeout_s=777" "$_dbg_wc"
++fi
++
++# ─── SPEC-7 [change]: TURN BUDGET block with max_turns from _route_resolve_max_turns
++if [[ -f "$PROMPT" ]] && grep -q "TURN BUDGET" "$PROMPT" && grep -q "99" "$PROMPT"; then
++    assert_pass "[SPEC-7] prompt contains TURN BUDGET block with max_turns=99"
++else
++    _dbg_tb=""
++    [[ -f "$PROMPT" ]] || _dbg_tb="prompt file absent"
++    grep -q "TURN BUDGET" "$PROMPT" 2>/dev/null \
++        || _dbg_tb="${_dbg_tb:+$_dbg_tb; }TURN BUDGET header missing"
++    grep -q "99" "$PROMPT" 2>/dev/null \
++        || _dbg_tb="${_dbg_tb:+$_dbg_tb; }max_turns value 99 missing"
++    assert_fail "[SPEC-7] prompt missing TURN BUDGET block with max_turns=99" "$_dbg_tb"
++fi
++
++# ─── SPEC-8 [guard]: existing prompt instructions are present and unaltered ─────
++# The scope charter instructs exhaustive scope discovery (design's core contract).
++grep -q 'MUST actively search the repo' "$PROMPT" 2>/dev/null \
++    && assert_pass "[SPEC-8] scope charter instruction present and unaltered (guard)" \
++    || assert_fail "[SPEC-8] scope charter missing from prompt" \
++        "expected 'MUST actively search the repo'"
++
++# The acceptance contract instructs the fenced ```acceptance block format.
++grep -q '```acceptance' "$PROMPT" 2>/dev/null \
++    && assert_pass "[SPEC-8] acceptance contract instruction present and unaltered (guard)" \
++    || assert_fail "[SPEC-8] acceptance contract instruction missing from prompt" \
++        "expected backtick-triple acceptance in prompt"
++
++# The tools section names which tools are allowed.
++grep -q '## Tools (read-only' "$PROMPT" 2>/dev/null \
++    && assert_pass "[SPEC-8] tools section present and unaltered (guard)" \
++    || assert_fail "[SPEC-8] tools section missing from prompt" \
++        "expected '## Tools (read-only' in prompt"
++
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/design-v2-result-contract-test.sh b/tests/unit/design-v2-result-contract-test.sh
+new file mode 100644
+index 0000000..7643ccf
+--- /dev/null
++++ b/tests/unit/design-v2-result-contract-test.sh
+@@ -0,0 +1,204 @@
++#!/usr/bin/env bash
++# Tests: design plugin v2 result contract (issue #1834).
++# SPEC-1 [change]: success path writes design-verdict.json with result_contract:2,
++#                  verdict=pass, disposition=complete BEFORE atomic_write of design.md
++# SPEC-2 [change]: error path (missing plan.json) writes design-verdict.json with
++#                  result_contract:2, verdict=error, disposition=broken
++# SPEC-3 [guard]:  timeout path writes verdict=incomplete, disposition=interrupted
++# SPEC-4 [change]: manifest declares provides.result_contract:2 and
++#                  config.valid_verdicts includes pass, error, and incomplete
++# SPEC-5 [change]: design_stage_run reads scope_manifest and plan paths from
++#                  ZBUILD_STAGE_INPUTS index when the env var is set
++set -uo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++print_test_header "design: v2 result contract — design-verdict.json on all exit paths (#1834)"
++setup_test_env "design-v2-result-contract"
++
++# Source the design plugin so real dependencies load, then override mocks.
++# shellcheck source=../../plugins/agent/design/plugin.sh
++source "$REPO_ROOT/plugins/agent/design/plugin.sh"
++
++_MOCK_ROUTER_RC=0
++_MOCK_TERMINATED_REASON="done_sentinel"
++_MOCK_DESIGN_WRITE_PATH=""
++
++route_to_model_loop() {
++    local _bt='```'
++    if [[ -n "${_MOCK_DESIGN_WRITE_PATH:-}" ]]; then
++        mkdir -p "$(dirname "$_MOCK_DESIGN_WRITE_PATH")"
++        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[guard]: works\nWIRING: none\nTESTFILES:\n%s\n' \
++            "$_bt" "$_bt" "$_bt" "$_bt" > "$_MOCK_DESIGN_WRITE_PATH"
++    fi
++    _ROUTE_LOOP_ITERATIONS=1
++    _ROUTE_LOOP_TERMINATED_REASON="$_MOCK_TERMINATED_REASON"
++    _ROUTE_LOOP_INPUT_TOKENS=0
++    _ROUTE_LOOP_OUTPUT_TOKENS=0
++    return "$_MOCK_ROUTER_RC"
++}
++
++apply_scope_redaction() { cp "$1" "$2"; return 0; }
++
++# Track whether sidecar was present when atomic_write was called for design.md.
++# SPEC-1 requires the sidecar is written BEFORE atomic_write of design.md.
++_SIDECAR_AT_ATOMIC_WRITE="UNSET"
++atomic_write() {
++    local dest="$1"
++    if [[ "$dest" == *"/design.md" ]]; then
++        local _sc="${dest%/*}/design-verdict.json"
++        [[ -f "$_sc" ]] && _SIDECAR_AT_ATOMIC_WRITE="PRESENT" || _SIDECAR_AT_ATOMIC_WRITE="ABSENT"
++    fi
++    cat - > "$dest"
++}
++
++_setup_fixture() {
++    local test_id="$1"
++    local dir="$TEST_TEMP_DIR/$test_id"
++    rm -rf "$dir"
++    mkdir -p "$dir"
++    git -C "$dir" init --quiet >/dev/null 2>&1
++    git -C "$dir" config user.email 'test@example.com' >/dev/null 2>&1
++    git -C "$dir" config user.name  'test' >/dev/null 2>&1
++    local state_dir="$dir/state"
++    local artifact_dir="$state_dir/artifacts"
++    mkdir -p "$artifact_dir"
++    printf 'scope: all\n' > "$state_dir/scope-manifest.md"
++    cat > "$artifact_dir/plan.json" <<'EOF'
++{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}
++EOF
++    export ZBUILD_REPO_ROOT="$dir"
++    export ZBUILD_EVENTS_JSONL="$state_dir/events.jsonl"
++    export ZBUILD_EVENTS_DIR="$state_dir"
++    : > "$ZBUILD_EVENTS_JSONL"
++    _F_DIR="$dir"
++    _F_STATE="$state_dir"
++    _F_ARTIFACTS="$artifact_dir"
++    _F_SCOPE="$state_dir/scope-manifest.md"
++    _F_PLAN="$artifact_dir/plan.json"
++    _F_DESIGN="$artifact_dir/design.md"
++    _F_SIDECAR="$artifact_dir/design-verdict.json"
++    _SIDECAR_AT_ATOMIC_WRITE="UNSET"
++}
++
++# ─── SPEC-1: success path writes sidecar with result_contract:2 before atomic_write
++_setup_fixture t1
++_MOCK_ROUTER_RC=0
++_MOCK_TERMINATED_REASON="done_sentinel"
++_MOCK_DESIGN_WRITE_PATH="$_F_DESIGN"
++set +e
++_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
++_rc=$?
++set -e
++
++_sc1_rc2="$(jq -r '.result_contract // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
++_sc1_verdict="$(jq -r '.verdict // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
++_sc1_disp="$(jq -r '.disposition // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
++
++assert_eq "[SPEC-1] success → rc=0" "0" "$_rc"
++assert_eq "[SPEC-1] success → design-verdict.json result_contract=2" "2" "$_sc1_rc2"
++assert_eq "[SPEC-1] success → design-verdict.json verdict=pass" "pass" "$_sc1_verdict"
++assert_eq "[SPEC-1] success → design-verdict.json disposition=complete" "complete" "$_sc1_disp"
++assert_eq "[SPEC-1] sidecar written before atomic_write of design.md" "PRESENT" "$_SIDECAR_AT_ATOMIC_WRITE"
++
++# ─── SPEC-2: missing plan.json → sidecar verdict=error, disposition=broken ────
++_setup_fixture t2
++rm -f "$_F_PLAN"
++_MOCK_ROUTER_RC=0
++_MOCK_TERMINATED_REASON="done_sentinel"
++_MOCK_DESIGN_WRITE_PATH=""
++set +e
++_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
++_rc=$?
++set -e
++
++_sc2_rc2="$(jq -r '.result_contract // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
++_sc2_verdict="$(jq -r '.verdict // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
++_sc2_disp="$(jq -r '.disposition // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
++
++assert_eq "[SPEC-2] missing plan → rc=1" "1" "$_rc"
++assert_eq "[SPEC-2] missing plan → design-verdict.json result_contract=2" "2" "$_sc2_rc2"
++assert_eq "[SPEC-2] missing plan → design-verdict.json verdict=error" "error" "$_sc2_verdict"
++assert_eq "[SPEC-2] missing plan → design-verdict.json disposition=broken" "broken" "$_sc2_disp"
++
++# ─── SPEC-3 [guard]: timeout path writes verdict=incomplete, disposition=interrupted
++_setup_fixture t3
++_MOCK_ROUTER_RC=0
++_MOCK_TERMINATED_REASON="router_timeout"
++_MOCK_DESIGN_WRITE_PATH=""
++set +e
++_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
++_rc=$?
++set -e
++
++_sc3_verdict="$(jq -r '.verdict // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
++_sc3_disp="$(jq -r '.disposition // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
++_sc3_rc2="$(jq -r '.result_contract // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
++
++assert_eq "[SPEC-3] timeout → verdict=incomplete (guard)" "incomplete" "$_sc3_verdict"
++assert_eq "[SPEC-3] timeout → disposition=interrupted (guard)" "interrupted" "$_sc3_disp"
++assert_eq "[SPEC-3] timeout → result_contract=2 (guard)" "2" "$_sc3_rc2"
++
++# ─── SPEC-4 [change]: manifest declares result_contract:2 and valid_verdicts ──
++_DM="$REPO_ROOT/plugins/agent/design/manifest.yaml"
++
++_dm_rc2="$(grep -m1 'result_contract:' "$_DM" | awk '{print $2}' || true)"
++assert_eq "[SPEC-4] manifest provides.result_contract=2" "2" "$_dm_rc2"
++
++grep -q '^\s*-\s*pass\s*$' "$_DM" 2>/dev/null \
++    && assert_pass "[SPEC-4] manifest config.valid_verdicts contains 'pass'" \
++    || assert_fail "[SPEC-4] manifest config.valid_verdicts missing 'pass'"
++grep -q '^\s*-\s*error\s*$' "$_DM" 2>/dev/null \
++    && assert_pass "[SPEC-4] manifest config.valid_verdicts contains 'error'" \
++    || assert_fail "[SPEC-4] manifest config.valid_verdicts missing 'error'"
++grep -q '^\s*-\s*incomplete\s*$' "$_DM" 2>/dev/null \
++    && assert_pass "[SPEC-4] manifest config.valid_verdicts contains 'incomplete'" \
++    || assert_fail "[SPEC-4] manifest config.valid_verdicts missing 'incomplete'"
++
++# ─── SPEC-5 [change]: design_stage_run reads paths from ZBUILD_STAGE_INPUTS ──
++_setup_fixture t5
++
++# Create inputs at NON-DEFAULT paths — if the fallback is used (default paths),
++# the run fails because $_F_SCOPE and $_F_PLAN are deleted.
++_CUSTOM_SCOPE="$TEST_TEMP_DIR/t5-custom-scope.md"
++_CUSTOM_PLAN="$TEST_TEMP_DIR/t5-custom-plan.json"
++printf 'scope: custom\n' > "$_CUSTOM_SCOPE"
++cat > "$_CUSTOM_PLAN" <<'EOF'
++{"schema_version":1,"title":"custom","goal":"g","steps":[{"id":"step-1","description":"d","files":["bar.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}
++EOF
++
++_INPUTS_INDEX="$TEST_TEMP_DIR/t5-inputs.json"
++printf '{"inputs":{"scope_manifest":"%s","plan":"%s"}}\n' "$_CUSTOM_SCOPE" "$_CUSTOM_PLAN" \
++    > "$_INPUTS_INDEX"
++export ZBUILD_STAGE_INPUTS="$_INPUTS_INDEX"
++
++# Delete the default-path files so only the ZBUILD_STAGE_INPUTS paths can succeed.
++rm -f "$_F_SCOPE" "$_F_PLAN"
++
++_MOCK_ROUTER_RC=0
++_MOCK_TERMINATED_REASON="done_sentinel"
++_MOCK_DESIGN_WRITE_PATH="$_F_DESIGN"
++
++_F_STATE_FILE="$_F_STATE/pipeline-state.json"
++printf '{}' > "$_F_STATE_FILE"
++
++set +e
++design_stage_run "design" "$_F_STATE_FILE"
++_rc5=$?
++set -e
++
++unset ZBUILD_STAGE_INPUTS
++
++assert_eq "[SPEC-5] design_stage_run uses plan from ZBUILD_STAGE_INPUTS (rc=0)" "0" "$_rc5"
++[[ -f "$_F_DESIGN" ]] \
++    && assert_pass "[SPEC-5] design.md produced via ZBUILD_STAGE_INPUTS index paths" \
++    || assert_fail "[SPEC-5] design.md missing — ZBUILD_STAGE_INPUTS paths not used"
++
++_test_cleanup_hook() { cleanup_test_env; }
++print_test_results
++exit $((FAIL > 0))

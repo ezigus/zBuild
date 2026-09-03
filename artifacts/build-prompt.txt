@@ -1,0 +1,220 @@
+============== ZBUILD BUILD — iter 1/10 ==============
+## ORIGINAL TASK (immutable across iterations)
+# Plan: design plugin → contract v2 + ADR-063 §1/§2
+
+**Goal:** Migrate plugins/agent/design to the v2 result contract (result_contract:2, disposition, rc∈{0,1}, valid_verdicts, name-matched inputs) and land ADR-063 §1/§2 (inject live timeout/max_turns into the prompt so the model can emit a best-effort design before being cut off).
+
+## Steps
+1. Write new failing tests (TDD gate). design-v2-result-contract-test.sh asserts: (SPEC-1[change]) v2 sidecar design-verdict.json written on success path with verdict=pass disposition=complete; (SPEC-2[change]) v2 sidecar written on error path with verdict=error disposition=broken; (SPEC-3[guard]) timeout path still writes verdict=incomplete disposition=interrupted; (SPEC-4[change]) manifest result_contract==2 and valid_verdicts contains all three values; (SPEC-5[change]) plugin.sh has no hardcoded artifact paths for scope_manifest or plan. design-budget-prompt-injection-test.sh asserts: (SPEC-1[change]) prompt file contains a WALL CLOCK BUDGET and TURN BUDGET block with values sourced from _route_resolve_timeout/_route_resolve_max_turns; (SPEC-2[guard]) existing prompt instructions are unchanged for a passing run. Run both — confirm FAIL at baseline before touching implementation.
+   - Files: `tests/unit/design-v2-result-contract-test.sh`, `tests/unit/design-budget-prompt-injection-test.sh`
+   - Estimated lines: 180
+2. Update plugins/agent/design/manifest.yaml to declare the v2 contract. Add result_contract: 2 under provides:. Expand valid_verdicts from [incomplete] to [pass, error, incomplete]. Add config.router with timeout_s: 600 and max_turns: 45 as manifest-level defaults (the template override still wins at runtime per ADR-017; these make the budgets readable without a template). No cleanup hook added — the engine emits plugin.cleanup.absent for an absent hook (lifecycle.sh:413), which IS the recorded-not-implied contract from #1829. primary: true is already present on the design output — record that DoD item as satisfied.
+   - Files: `plugins/agent/design/manifest.yaml`
+   - Estimated lines: 12
+3. Add _design_write_result helper to plugin.sh and call it on every exit path. The helper writes ${artifact_dir}/design-verdict.json with {result_contract:2, verdict, disposition, reason, data:{}} using jq -n + atomic_write (mirrors _ta_write_result from test-author). Exit paths to cover: (a) missing state_file → verdict=error disposition=broken; (b) missing plan.json → error/broken; (c) router rc=130 (SIGINT) → return 130 without writing result (abort, not a stage outcome); (d) router_timeout → verdict=incomplete disposition=interrupted (replaces bespoke #1261 sidecar write with _design_write_result call); (e) router rc>=2 → use _router_rc_classify then map to disposition (broken for most, throttled for rate-limit, unavailable for auth); (f) stray conflict → error/broken; (g) missing scope block → error/broken; (h) missing acceptance block → error/broken; (i) success → verdict=pass disposition=complete. Normalize all return 2 → return 1. Delete the bespoke design-verdict.json write block in the timeout path (now handled by _design_write_result). The success path writes result BEFORE atomic_write of design.md so the sidecar is always on disk if rc=0.
+   - Files: `plugins/agent/design/plugin.sh`
+   - Estimated lines: 65
+4. Replace hardcoded artifact path construction with ZBUILD_STAGE_INPUTS lookups. In design_stage_run: delete 'local scope_manifest="$state_dir/scope-manifest.md"' and 'local plan_json_path="$artifacts_dir/plan.json"'; instead read them as jq .inputs.scope_manifest and .inputs.plan from "$ZBUILD_STAGE_INPUTS" (when ZBUILD_STAGE_INPUTS is set and the file exists), falling back to the old path construction when the index is absent (defensive: the flag may not be on in all test harnesses). For the optional 'design' input (prior design body): read .inputs.design from the index when present and non-empty, and use it as the prior-design content instead of calling _design_read_prior_design — this replaces both Tier 1 (intra-cycle feedback) and Tier 2 (restored artifact) lookup because the engine's input-resolve.sh already consolidates those tiers when writing the index. Keep _design_read_prior_design as a private fallback callable when the index key is absent, so existing test fixtures that set ZBUILD_CYCLE_FEEDBACK_DIR directly keep working.
+   - Files: `plugins/agent/design/plugin.sh`
+   - Estimated lines: 35
+5. Add ADR-063 §1/§2 budget guidance injection (mirrors plan plugin's _plan_budget_guidance/_plan_wallclock_guidance). Add two private helpers: _design_budget_guidance <max_turns> (emits a TURN BUDGET block when max_turns>0) and _design_wallclock_guidance <timeout_s> <elapsed_s> (emits a WALL CLOCK BUDGET block with 70% target stop time). In _design_stage_run_inner, after route.sh is sourced, call _route_resolve_max_turns (with ZBUILD_CURRENT_STAGE=design) and _route_resolve_timeout to get the live values, then append the budget blocks to the prompt file BEFORE the prompt-override append (so operator overlay appears last, per ADR-032). Also append a 'best-effort' instruction: if the model has not finished all sections when the budget nears, it must name the unfinished sections rather than silently omitting them — this is the §2 requirement that a partial design is safer than a silent one, gated by the §3/§4 check in design-gate.
+   - Files: `plugins/agent/design/plugin.sh`
+   - Estimated lines: 45
+6. Run npm test (full suite). Verify the two new tests from step-1 pass. Verify the existing design unit tests (design-router-timeout-reiter-test.sh, design-timeout-exhaustion-halt-1261-test.sh, design-acceptance-block-test.sh, design-persona-framing-test.sh) still pass — they are guards. If any existing test fails because it inspects the sidecar JSON shape, update the fixture to the v2 shape (result_contract:2, disposition field present). Check coverage floor is still met (bash scripts/check-coverage.sh). Record the red-step assertion and how it failed at baseline in the PR body.
+   - Estimated lines: 0
+
+## Notes
+GAPS AND ASSUMPTIONS:
+
+1. Input resolution fallback: Step-4 keeps _design_read_prior_design as a fallback when ZBUILD_STAGE_INPUTS is absent. If the prior-output-reader ADR-050 Tier-1/Tier-2 seam is fully superseded by input-resolve.sh in a live dispatch, the fallback is dead code. But existing unit tests that inject ZBUILD_CYCLE_FEEDBACK_DIR without going through lifecycle.sh will break if the fallback is removed entirely. Safest approach: read from index first, fall back to the tier-1/tier-2 reader. If product expectation is clean deletion, the implementation agent should also update the test fixtures.
+
+2. Router budgets key name: The manifest uses config.router.timeout_s and config.router.max_turns per _route_resolve_knob. The issue references #1816 'router budgets'. The plan plugin uses config.router.{retries, retry_on_exhaustion} — these are additive. The defaults I propose (timeout_s:600, max_turns:45) are conservative; the template override (600s, max_turns:0) still wins at runtime. The implementation agent should confirm the exact knob names by checking _route_resolve_knob's 4th arg (the manifest key).
+
+3. design_result declared output: The v2 sidecar design-verdict.json is read by _verdict_read_stage_sidecar generically — it is NOT a declared output in the manifest and should not be. Do not add it as an output entry. The existing mechanism already reads it.
+
+4. rc=130 SIGINT: The issue says rc ∈ {0,1}; SIGINT (rc=130) is a hard abort, not a stage outcome. Propagating rc=130 without writing a result is correct — the engine treats an aborted dispatch differently from a failed one. No change needed for the SIGINT arm except removing return 2 on other paths.
+
+5. ADR-063 §3/§4: The issue says §3/§4 (the design-gate check that refuses a partial design) is out of scope for plugin.sh — it belongs in design-gate. This plan deliberately scopes only §1/§2 (prompt injection) to the design plugin.
+
+6. 'did_not_finish' vocabulary: The cycle-orchestrator already reads disposition=interrupted from the blob (cycle-orchestrator.sh:2335). The test fixture (design-timeout-exhaustion-halt-1261-test.sh) already uses this vocabulary. No orchestrator changes needed.
+
+7. Cleanup hook: The issue says 'if it has nothing to free, the hook is absent and that is recorded, not implied.' The manifest has no cleanup hook today; lifecycle.sh already emits plugin.cleanup.absent (rc=0). No manifest change needed for cleanup.
+
+8. Step-6 has estimated_lines:0 because it is a verification step, not a code-writing step. The CLAUDE.md 'state the red step' requirement means the PR body (not a file in scope) records the failing assertion.
+
+9. WIRING: The wiring for this migration is the manifest itself (plugins/agent/design/manifest.yaml) — its result_contract:2 declaration gates the engine's strict v2 reading. The implementation files (plugin.sh + tests) are the implementation.
+
+## INSTRUCTIONS
+Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
+
+You have Read, Edit, Write, and
+Bash tools available. Your job is to edit the working tree to implement the
+ORIGINAL TASK above.
+
+### Scope (plan.files[])
+You may ONLY touch files listed here. Refuse any out-of-scope edit.
+  - plugins/agent/design/manifest.yaml
+  - plugins/agent/design/plugin.sh
+  - tests/unit/design-v2-result-contract-test.sh
+  - tests/unit/design-budget-prompt-injection-test.sh
+  - tests/unit/design-router-timeout-reiter-test.sh
+  - tests/unit/design-timeout-exhaustion-halt-1261-test.sh
+  - tests/unit/design-acceptance-block-test.sh
+  - tests/unit/design-persona-framing-test.sh
+  - tests/unit/design-summary-switch-test.sh
+  - tests/unit/design-stage-banner-content-test.sh
+  - tests/unit/design-stray-file-recovery-test.sh
+  - tests/unit/design-prompt-override-section-test.sh
+  - tests/unit/design-prompt-scope-charter-test.sh
+  - tests/unit/design-prior-gate-feedback-test.sh
+  - tests/unit/lint-verdict-classify-test.sh
+  - tests/unit/verdict-no-forbidden-strings-guard-test.sh
+  - tests/unit/stage-input-resolve-test.sh
+  - tests/integration/design-build-decisions-flow-test.sh
+  - tests/integration/design-impact-cycle-integration-test.sh
+  - tests/integration/design-impact-cycle-self-feedback-test.sh
+  - tests/integration/design-pipeline-test.sh
+  - tests/integration/design-prompt-override-pipeline-test.sh
+  - core/pipeline/verdict.sh
+  - core/router/route.sh
+  - docs/adr/ADR-063-budget-disclosure-and-partial-output.md
+  - docs/wiki/plugins/design.md
+  - plugins/agent/plan/plugin.sh
+  - scripts/lib/router-rc-classify.sh
+
+### How the loop works
+- Each iteration you may make code changes via Edit/Write/Bash.
+- After each iteration the pipeline captures `git diff HEAD` and feeds it
+  back to you so you can verify progress.
+- Do NOT emit a unified diff in your response — the pipeline derives the
+  canonical `diff.patch` artifact from `git diff HEAD` automatically.
+
+### Completion sentinel
+Emit `LOOP_COMPLETE` on its own line as the FINAL line of your response
+WHEN the implementation is complete — whether you just finished it OR
+it was already done before you started. If the branch already contains
+the required changes (check `git log` for commits + `git diff` for any
+remaining gap), emit `LOOP_COMPLETE` immediately. Do NOT keep iterating
+when there is nothing left to do.
+
+### Rules
+- Touch only files in the scope list above.
+- Do not run `git commit` — the pipeline owns commit semantics.
+- NEVER run a command that mutates git branch state or the working tree —
+  no `git checkout -b`/`switch`/`commit`/`push`/`tag`/`reset`. You are running
+  INSIDE the pipeline's own checkout; switching or creating a branch hijacks the
+  run. The pipeline owns the branch.
+- If you must exercise a command you are building (or any command that could
+  publish, tag, push, or otherwise mutate state), run it in `--dry-run` mode.
+  Do everything you can to verify behavior without side effects.
+- Keep changes minimal and aligned with the plan.
+- Clean up scratch siblings of the files you edit (`*.bak`, `*.orig`,
+  `*.rej`, `*.head`, `*.tmp`, `*~`). `sed -i.bak` and
+  `git show HEAD:f > f.head` both leave one behind — prefer `sed -i` with no
+  suffix, and delete any comparison scratch before you finish. Out-of-scope
+  scratch is removed for you; any OTHER out-of-scope path voids the whole
+  iteration, so do not rely on the cleanup.
+- If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.
+
+### Commit message (#608)
+Before the final `LOOP_COMPLETE` line, emit a single line of the form:
+
+    COMMIT_SUMMARY: <one-line description of this iteration's change>
+
+Keep it under 72 characters, present tense, imperative mood (e.g.
+"add foo parser" not "added"). The pipeline uses this as the git commit
+message for the per-iteration commit it creates on your behalf. If you
+omit this line the pipeline falls back to the plan title.
+
+## DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
+# Design: design plugin → contract v2 + ADR-063 §1/§2
+
+## Architectural Decision Summary
+
+**Goal.** Migrate `plugins/agent/design` to the v2 result contract so every exit
+path writes a machine-readable `design-verdict.json` sidecar (`result_contract:2`,
+`disposition`, `rc∈{0,1}`, `valid_verdicts` expanded to `[pass,error,incomplete]`,
+name-matched inputs via `ZBUILD_STAGE_INPUTS`). Land ADR-063 §1/§2 by injecting
+live timeout/max_turns budget blocks into the prompt so the model can emit a
+best-effort design before it is cut off.
+
+**Context.** The design plugin is the only model-driven stage that writes its sidecar
+only on one path (router timeout). All other exit paths leave `design-verdict.json`
+absent, so `verdict.sh` falls through to reading the primary (design.md) as presence==pass
+— which means a failed run with no design.md reads as "missing", not "error". This
+is the v1 gap. ADR-063 §3/§4 require v2 to be on disk before `disposition: exhausted`
+becomes load-bearing; §1/§2 (budget in the prompt) unblock only after v2 lands
+because a loud failure is safer than a quiet partial (ADR-063 §0).
+
+**Decision.** Four targeted changes to two files, gated by two new test files:
+
+1. **manifest.yaml** — add `provides.result_contract: 2`; expand `valid_verdicts`
+   from `[incomplete]` to `[pass, error, incomplete]`; add `config.router.timeout_s: 600`
+   and `config.router.max_turns: 45` as manifest-level defaults (template override
+   still wins at runtime per ADR-017).
+
+2. **plugin.sh — `_design_write_result` helper** — writes `design-verdict.json`
+   on every terminal exit path (success→pass/complete; error paths→error/broken or
+   error/throttled per `_router_rc_classify`; timeout→incomplete/interrupted). Timeout
+   path replaces its bespoke inline write with the helper. SIGINT (rc=130) propagates
+   without a sidecar — that is not a stage outcome. `return 2` normalised to `return 1`
+   on non-SIGINT error paths.
+
+3. **plugin.sh — `ZBUILD_STAGE_INPUTS` lookups** — `design_stage_run` reads
+   `scope_manifest` and `plan` paths from the index when `ZBUILD_STAGE_INPUTS` is
+   set; falls back to path construction when absent (existing unit test fixtures that
+   set paths directly keep working). The optional `design` input (prior design body)
+   similarly read from index first, `_design_read_prior_design` kept as fallback.
+
+4. **plugin.sh — budget guidance (ADR-063 §1/§2)** — two private helpers
+   `_design_budget_guidance <max_turns>` and `_design_wallclock_guidance <timeout_s>
+   <elapsed_s>` (mirrors plan plugin's pattern). Appended to prompt BEFORE
+   `append_prompt_override` so operator overlay appears last (ADR-032). Also appends
+   a best-effort instruction: if sections are unfinished as budget nears, name them
+   rather than silently omitting.
+
+
+
+LOOP_COMPLETE
+Where a design decision above conflicts with the plan, follow the design decision.
+
+## ACCEPTANCE TESTS (you MUST make these pass)
+You do NOT author or modify acceptance assertions. They were written from the design contract by a separate stage, before your implementation existed, and they are the contract you implement against. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion, and you must not edit the testfiles listed below; the spawn denies it and a mechanical guard checks it. If you believe an assertion genuinely does not test its SPEC, say so in your output and leave it alone: correcting it is the author stage's job, not yours (#2022, ADR-036).
+Each test MUST contain an assert call whose label includes the [SPEC-n] tag for the SPEC it verifies (e.g. assert_eq "[SPEC-1] ..." exp act). The acceptance-gate (ADR-036) requires every SPEC-n to have a [SPEC-n]-tagged assertion. A CHANGE-behavior SPEC-n MUST have a tagged assertion that FAILS at the merge-base baseline and passes here (a tautological change-SPEC that passes without your implementation is rejected); a GUARD/invariant SPEC-n is tagged but NOT contorted to fail at baseline. See the per-id list below.
+- SPEC-1: tests/unit/design-v2-result-contract-test.sh
+- SPEC-2: tests/unit/design-v2-result-contract-test.sh
+- SPEC-3: tests/unit/design-v2-result-contract-test.sh
+- SPEC-4: tests/unit/design-v2-result-contract-test.sh
+- SPEC-5: tests/unit/design-v2-result-contract-test.sh
+- SPEC-6: tests/unit/design-budget-prompt-injection-test.sh
+- SPEC-7: tests/unit/design-budget-prompt-injection-test.sh
+- SPEC-8: tests/unit/design-budget-prompt-injection-test.sh
+
+What each SPEC requires:
+- [SPEC-1] success path writes design-verdict.json with result_contract:2, verdict=pass, disposition=complete before atomic_write of design.md
+- [SPEC-2] error path (e.g. missing plan.json) writes design-verdict.json with result_contract:2, verdict=error, disposition=broken
+- [SPEC-3] timeout path still writes design-verdict.json with verdict=incomplete, disposition=interrupted (existing behaviour unchanged)
+- [SPEC-4] manifest declares provides.result_contract:2 and config.valid_verdicts includes pass, error, and incomplete
+- [SPEC-5] design_stage_run reads scope_manifest and plan paths from ZBUILD_STAGE_INPUTS index when the env var is set, not from hardcoded path construction
+- [SPEC-6] prompt file contains a WALL CLOCK BUDGET block with timeout_s value sourced from _route_resolve_timeout
+- [SPEC-7] prompt file contains a TURN BUDGET block with max_turns value sourced from _route_resolve_max_turns
+- [SPEC-8] existing prompt body instructions (scope charter, acceptance contract, tools section) are present and unaltered when budget blocks are injected
+
+### SPEC IDS YOU MUST COVER (acceptance gate, ADR-036)
+Every SPEC id below needs at least one assertion whose label carries its [SPEC-n] tag; self-verify the FULL set is tagged before emitting LOOP_COMPLETE. A CHANGE-behavior SPEC (new behavior this change introduces) MUST have a [SPEC-n] assertion that FAILS at the merge-base baseline. A GUARD/invariant SPEC (behavior that must stay unchanged) is tagged but MUST NOT be contorted to fail at baseline.
+- [SPEC-1] success path writes design-verdict.json with result_contract:2, verdict=pass, disposition=complete before atomic_write of design.md
+  → needs a `[SPEC-1]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-2] error path (e.g. missing plan.json) writes design-verdict.json with result_contract:2, verdict=error, disposition=broken
+  → needs a `[SPEC-2]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-3] timeout path still writes design-verdict.json with verdict=incomplete, disposition=interrupted (existing behaviour unchanged)
+  → needs a `[SPEC-3]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-4] manifest declares provides.result_contract:2 and config.valid_verdicts includes pass, error, and incomplete
+  → needs a `[SPEC-4]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-5] design_stage_run reads scope_manifest and plan paths from ZBUILD_STAGE_INPUTS index when the env var is set, not from hardcoded path construction
+  → needs a `[SPEC-5]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-6] prompt file contains a WALL CLOCK BUDGET block with timeout_s value sourced from _route_resolve_timeout
+  → needs a `[SPEC-6]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-7] prompt file contains a TURN BUDGET block with max_turns value sourced from _route_resolve_max_turns
+  → needs a `[SPEC-7]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-8] existing prompt body instructions (scope charter, acceptance contract, tools section) are present and unaltered when budget blocks are injected
+  → needs a `[SPEC-8]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
