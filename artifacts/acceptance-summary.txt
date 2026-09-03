@@ -1,0 +1,26 @@
+acceptance SPEC violations — SPEC-1 not passing at HEAD — fix the implementation or the assertion; WIRING plugins/agent/design/manifest.yaml inert — reverting it breaks no TESTFILE; SPEC-8 tagged as [guard] but the assertion FAILS at the merge-base — a guard must hold there by definition, so either the assertion contradicts its SPEC text or the SPEC is a mislabelled [change]
+NEGCTL FAIL SPEC-1 not_passing_at_head
+      design : success path writes design-verdict.json with result_contract:2, verdict=pass, disposition=complete b…
+      asserts: assert_eq "[SPEC-1] success → rc=0" "0" "$_rc"
+NEGCTL PASS SPEC-2
+      design : error path (e.g. missing plan.json) writes design-verdict.json with result_contract:2, verdict=error…
+      asserts: assert_eq "[SPEC-2] missing plan → rc=1" "1" "$_rc"
+NEGCTL PASS SPEC-3 guard_spec
+      design : timeout path still writes design-verdict.json with verdict=incomplete, disposition=interrupted (exis…
+      asserts: assert_eq "[SPEC-3] timeout → verdict=incomplete (guard)" "incomplete" "$_sc3_verdict"
+NEGCTL PASS SPEC-4
+      design : manifest declares provides.result_contract:2 and config.valid_verdicts includes pass, error, and inc…
+      asserts: assert_eq "[SPEC-4] manifest provides.result_contract=2" "2" "$_dm_rc2"
+NEGCTL PASS SPEC-5
+      design : design_stage_run reads scope_manifest and plan paths from ZBUILD_STAGE_INPUTS index when the env var…
+      asserts: assert_eq "[SPEC-5] design_stage_run uses plan from ZBUILD_STAGE_INPUTS (rc=0)" "0" "$_rc5"
+NEGCTL PASS SPEC-6
+      design : prompt file contains a WALL CLOCK BUDGET block with timeout_s value sourced from _route_resolve_time…
+      asserts: assert_pass "[SPEC-6] prompt contains WALL CLOCK BUDGET block with timeout_s=777"
+NEGCTL PASS SPEC-7
+      design : prompt file contains a TURN BUDGET block with max_turns value sourced from _route_resolve_max_turns
+      asserts: assert_pass "[SPEC-7] prompt contains TURN BUDGET block with max_turns=99"
+NEGCTL FAIL SPEC-8 guard_regressed
+      design : existing prompt body instructions (scope charter, acceptance contract, tools section) are present an…
+      asserts: && assert_pass "[SPEC-8] scope charter instruction present and unaltered (guard)" \
+REACHABILITY FAIL inert_wiring plugins/agent/design/manifest.yaml

@@ -1,0 +1,40 @@
+### SPEC-7 baseline tests/unit/design-budget-prompt-injection-test.sh
+
+[38;2;0;212;255m[1m  design: ADR-063 §1/§2 — budget guidance injected into prompt (#1834)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-6] prompt missing WALL CLOCK BUDGET block with timeout_s=777
+    [2mWALL CLOCK BUDGET header missing; timeout value 777 missing[0m
+  [38;2;248;113;113m✗[0m [SPEC-7] prompt missing TURN BUDGET block with max_turns=99
+    [2mTURN BUDGET header missing; max_turns value 99 missing[0m
+  [38;2;248;113;113m✗[0m [SPEC-8] scope charter missing from prompt
+    [2mexpected 'MUST actively search the repo'[0m
+  [38;2;74;222;128m✓[0m [SPEC-8] acceptance contract instruction present and unaltered (guard)
+  [38;2;74;222;128m✓[0m [SPEC-8] tools section present and unaltered (guard)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m3 of 5 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-6] prompt missing WALL CLOCK BUDGET block with timeout_s=777
+  [38;2;248;113;113m✗[0m [SPEC-7] prompt missing TURN BUDGET block with max_turns=99
+  [38;2;248;113;113m✗[0m [SPEC-8] scope charter missing from prompt
+
+### SPEC-7 head tests/unit/design-budget-prompt-injection-test.sh
+
+[38;2;0;212;255m[1m  design: ADR-063 §1/§2 — budget guidance injected into prompt (#1834)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-6] prompt contains WALL CLOCK BUDGET block with timeout_s=777
+  [38;2;74;222;128m✓[0m [SPEC-7] prompt contains TURN BUDGET block with max_turns=99
+  [38;2;248;113;113m✗[0m [SPEC-8] scope charter missing from prompt
+    [2mexpected 'MUST actively search the repo'[0m
+  [38;2;74;222;128m✓[0m [SPEC-8] acceptance contract instruction present and unaltered (guard)
+  [38;2;74;222;128m✓[0m [SPEC-8] tools section present and unaltered (guard)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 5 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-8] scope charter missing from prompt
+
