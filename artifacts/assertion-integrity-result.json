@@ -1,9 +1,0 @@
-{
-  "result_contract": 2,
-  "verdict": "skip",
-  "disposition": "complete",
-  "reason": "no recorded assertion digests — the author stage has not run yet",
-  "data": {
-    "violated": []
-  }
-}
