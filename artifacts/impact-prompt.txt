@@ -116,10 +116,13 @@ DESIGN SCOPE BLOCK:
 - tests/integration/design-prompt-override-pipeline-test.sh
 - core/pipeline/verdict.sh
 - core/router/route.sh
+- scripts/lib/router-rc-classify.sh
 - docs/adr/ADR-063-budget-disclosure-and-partial-output.md
 - docs/wiki/plugins/design.md
 - plugins/agent/plan/plugin.sh
-- scripts/lib/router-rc-classify.sh
+
+## PRIOR IMPACT (a previous attempt on this issue — reference & refine; re-validate against the CURRENT design)
+{"schema_version": 1, "verdict": "complete", "missing": []}
 
 
 
