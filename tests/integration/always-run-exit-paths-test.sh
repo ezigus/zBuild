@@ -63,9 +63,24 @@ teardown_run() {
 PLUG
 }
 
+# The stage announces that it is RUNNING (#2029). `pipeline-state.json` appears
+# during startup, long before any stage is dispatched, so waiting on it and then
+# sleeping a second is not "the stage has started" — it is a guess that happens to
+# hold on an idle machine.
+#
+# On a loaded one it does not, and SPEC-4 then SIGTERMs a runner still setting up
+# its worktree: no stage has run, no release hook is armed, no marker is written,
+# and the assertion reports a missing file with no hint that the run never got
+# that far. Observed directly — `wait` returned in 0s, the hook-entered marker was
+# absent, and the runner's last line was "Working in the run's worktree".
+#
+# `runner-release-exit-paths-test.sh` already does this correctly with
+# BUILD_STARTED; this is the same idea. The marker can only appear once the stage
+# is genuinely executing, so load can only delay it, never fake it.
 _arm_outcome() {
     cat > "$PLUGINS_ROOT/agent/outcome/plugin.sh" <<PLUG
 outcome_run() {
+    : > "\${STAGE_STARTED:-/dev/null}"
     ${1:-:}
     return ${2:-0}
 }
@@ -115,24 +130,65 @@ print_test_section "[SPEC-4][change] release runs when the runner is SIGTERMed m
 _arm_release; _arm_outcome "sleep 30" 0
 rm -f "$RELEASE_MARKER" "$RELEASE_ENTERED"
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state-sigterm"
+export STAGE_STARTED="$TEST_TEMP_DIR/stage-started-sigterm"
+rm -f "$STAGE_STARTED"
 mkdir -p "$ZBUILD_STATE_DIR"
 ( cd "$OVERLAY_REPO" && bash "$RUNNER" --template always-run-minimal \
     --goal "always-run sigterm" ) >"$TEST_TEMP_DIR/sigterm.out" 2>&1 &
 _runner_pid=$!
 # Wait for the run to actually reach the stage before signalling — signalling a
 # runner still in startup would prove nothing about the exit path.
+#
+# #2029: this used to wait for `pipeline-state.json` and then sleep 1. That file
+# is written during STARTUP, so the wait proved nothing and the sleep was the only
+# real margin. Under load it was not enough and the signal landed mid-startup.
+# STAGE_STARTED is written by the stage itself, so it cannot be reached early.
 _waited=0
-while [[ ! -f "$ZBUILD_STATE_DIR/pipeline-state.json" && $_waited -lt 100 ]]; do
+while [[ ! -f "$STAGE_STARTED" && $_waited -lt 300 ]]; do
     sleep 0.2; _waited=$(( _waited + 1 ))
 done
-sleep 1
+if [[ ! -f "$STAGE_STARTED" ]]; then
+    assert_fail "[SPEC-4] the stage started before the signal was sent" \
+        "STAGE_STARTED never appeared in 60s — the run never reached a stage, so the exit path was never exercised"
+fi
+_spec4_t0=$(date +%s)
 kill -TERM "$_runner_pid" 2>/dev/null || true
 wait "$_runner_pid" 2>/dev/null || true
+_spec4_wait_s=$(( $(date +%s) - _spec4_t0 ))
 # The trap runs in the dying process; give it a moment to land the marker.
 _waited=0
 while [[ ! -f "$RELEASE_MARKER" && $_waited -lt 50 ]]; do
     sleep 0.2; _waited=$(( _waited + 1 ))
 done
+
+# #2029: say WHAT WAS SEEN, not merely that the file is absent.
+#
+# This assertion has failed intermittently on CI for as long as it has existed,
+# and it could never be diagnosed because "file not found" is the same output
+# whether the runner ignored the signal, died before its trap, ran teardown into
+# a different path, or simply had not finished yet. Three separate mechanisms
+# were proposed for it and all three were disproven.
+#
+# The sibling assertion in runner-release-exit-paths prints the marker it read,
+# and that one line is what let #2046 identify its cause in minutes after days of
+# guessing. This is that lesson applied here: the next occurrence explains itself
+# instead of starting another hunt.
+if [[ ! -f "$RELEASE_MARKER" ]]; then
+    {
+        printf '  DIAGNOSTIC [SPEC-4]: release marker absent after %ss of polling\n' "$(( _waited * 2 / 10 ))"
+        printf '    wait on the runner returned after: %ss\n' "$_spec4_wait_s"
+        printf '    runner pid %s still alive: %s\n' "$_runner_pid" \
+            "$(kill -0 "$_runner_pid" 2>/dev/null && echo YES || echo no)"
+        printf '    release hook ENTERED marker: %s\n' \
+            "$([[ -f "$RELEASE_ENTERED" ]] && echo present || echo absent)"
+        printf '    state dir: %s\n' \
+            "$([[ -d "$ZBUILD_STATE_DIR" ]] && (cd "$ZBUILD_STATE_DIR" && printf '%s ' * 2>/dev/null) || echo '<missing>')"
+        printf '    runner output (last 5 lines):\n'
+        tail -5 "$TEST_TEMP_DIR/sigterm.out" 2>/dev/null | sed 's/^/      /' || printf '      <no output>\n'
+    } >&2
+fi
+# RELEASE_ENTERED separates "the hook never started" from "it started and did not
+# finish" — the single most useful split, and the one the bare check cannot make.
 assert_file_exists "[SPEC-4] release ran after SIGTERM to the runner" "$RELEASE_MARKER"
 
 # ─── [SPEC-5][guard] a hanging release cannot hang the exit ────────────────

@@ -280,11 +280,16 @@ _rfa_describe() {
     # leaks a raw "No such file or directory" line from this very function —
     # which is exactly what the last failure printed. proc-identity.sh already
     # gets this right and documents it as #1631's class; this copy did not.
-    printf '    classification=%s\n' "${PROC_IDENTITY_REASON:-<none>}" >&2
+    printf '    classification NOW=%s\n' "${PROC_IDENTITY_REASON:-<none>}" >&2
+    # The decisive line: what the poll saw when it decided to count this pid, as
+    # opposed to what is true now, after the kill sweep has run.
+    printf '    WHEN COUNTED: %s\n' "${_rfa_counted[$_p]:-<never counted during the poll>}" >&2
 }
 
 _st=""
 leftover=0
+# pid -> what was true when the poll last counted it (#2029).
+declare -A _rfa_counted=()
 # #2029: 15s, not 2s. The leak this hunts is a 60s stub that ignored its
 # signal; no plausible load makes that finish inside 15s, so widening cannot
 # hide one. What 2s DID catch was a stub still shutting down when a fixed
@@ -349,7 +354,15 @@ while [[ $(date +%s%N) -lt $deadline_ns ]]; do
                 _st="$(ps -o state= -p "$p" 2>/dev/null | tr -d ' ')" || _st="Z"
                 case "$_st" in
                     Z*) : ;;                                  # already dead
-                    *)  leftover=$(( leftover + 1 )) ;;
+                    *)  leftover=$(( leftover + 1 ))
+                        # #2029: record WHY this pid was counted, AT THE MOMENT it
+                        # was counted. The post-loop diagnostic runs after the
+                        # test's own kill -KILL sweep, so by then every pid reads
+                        # `classification=gone` — true, useless, and exactly what
+                        # the last three CI failures reported. This is the
+                        # interesting instant, and nothing was recording it.
+                        _rfa_counted["$p"]="state=${_st} why=${PROC_IDENTITY_REASON:-?}"
+                        ;;
                 esac
             fi
         done < "$PID_FILE"
