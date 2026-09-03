@@ -248,14 +248,32 @@ if [[ -z "$_tbin" ]]; then
     SKIP=$((SKIP + 1))
     echo -e "  ${YELLOW}SKIP${RESET}: [SPEC-5] external hard kill (no timeout binary available)" >&2
 else
+    # #2029: the force-kill grace is DERIVED from the engine's own teardown
+    # budget, not guessed.
+    #
+    # The engine bounds each release hook at ZBUILD_RELEASE_TIMEOUT
+    # (core/pipeline/runner.sh:2025), PER STAGE — default 30s. Three stages
+    # release on this path, so an unpinned run is entitled to spend far longer
+    # tidying up than the 3s literal that used to sit here. When it did, this
+    # test SIGKILLed the runner mid-teardown and then asserted on the markers
+    # teardown had not yet written: the marker came back EMPTY, with BOTH stages
+    # missing rather than one. Under a loaded machine that is exactly what
+    # happened, intermittently, for as long as this test has existed.
+    #
+    # Pin the budget so the worst case is knowable, then clear it with margin.
+    # The backstop exists so a runner that ignores TERM cannot hang the suite —
+    # it must never be the thing that stops teardown finishing.
+    _SPEC5_RELEASE_TIMEOUT=3
+    _SPEC5_KILL_GRACE=$(( _SPEC5_RELEASE_TIMEOUT * 3 + 6 ))   # 3 stages + margin
     set -m
+    ZBUILD_RELEASE_TIMEOUT="$_SPEC5_RELEASE_TIMEOUT" \
     bash -c 'cd "$1" && exec "$4" 120 bash "$2" --template resume-minimal --goal "$3"' \
         _ "$OVERLAY_REPO" "$RUNNER" "release-timeout" "$_tbin" >"$CASE_DIR/out" 2>&1 &
     RUNNER_PID=$!
     set +m
     for _ in $(seq 1 300); do [[ -f "$BUILD_STARTED" ]] && break; sleep 0.1; done
     kill -TERM -"$RUNNER_PID" 2>/dev/null || kill -TERM "$RUNNER_PID" 2>/dev/null || true
-    ( sleep 3; kill -KILL -"$RUNNER_PID" 2>/dev/null || kill -KILL "$RUNNER_PID" 2>/dev/null || true ) &
+    ( sleep "$_SPEC5_KILL_GRACE"; kill -KILL -"$RUNNER_PID" 2>/dev/null || kill -KILL "$RUNNER_PID" 2>/dev/null || true ) &
     _spec5_killer=$!
     wait "$RUNNER_PID" 2>/dev/null || true
     kill "$_spec5_killer" 2>/dev/null || true
