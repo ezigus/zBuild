@@ -80,9 +80,21 @@ intake_run() {
             [[ $_had_errexit -eq 1 ]] && set -e
             if [[ $gh_rc -eq 0 && -n "$fetched" ]]; then
                 goal="$fetched"
-            else
-                warn "intake_run: gh issue view #${issue} failed (rc=${gh_rc}); using placeholder"
+            elif [[ "${ZBUILD_INTAKE_ALLOW_PLACEHOLDER:-0}" == "1" ]]; then
+                # #1804: still reachable, but only when asked for. An offline
+                # smoke run is legitimate — it just has to say so.
+                warn "intake_run: gh issue view #${issue} failed (rc=${gh_rc}); using placeholder (ZBUILD_INTAKE_ALLOW_PLACEHOLDER=1)"
                 goal="GitHub issue #${issue}"
+            else
+                # #1804: FAIL CLOSED. This used to warn and set the goal to the
+                # literal "GitHub issue #<N>", and the run proceeded — plan,
+                # design (up to three cycles), impact, build, test and six review
+                # lenses all executing against a goal that says nothing about
+                # what to build. Every other intake failure mode is rc=2; this
+                # one was the exception, and it produced the most expensive
+                # possible way to discover the fetch had failed.
+                error "intake_run: could not read issue #${issue} (gh rc=${gh_rc}) and no --goal was supplied — refusing to run against a goal that says nothing about what to build. Supply --goal, or set ZBUILD_INTAKE_ALLOW_PLACEHOLDER=1 for an offline smoke run."
+                return 2
             fi
         else
             error "intake_run: ZBUILD_GOAL is required (or pass --issue <N>)"

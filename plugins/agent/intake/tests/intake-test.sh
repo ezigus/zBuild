@@ -289,19 +289,47 @@ assert_contains "--issue mode writes fetched title to intake.md" \
 assert_contains "--issue mode writes fetched body to intake.md" \
     "$(cat "$STATE_DIR/intake.md")" "Steps to reproduce"
 
-# ─── Test 10b: gh failure falls back to placeholder + warns ─────────────────
+# ─── Test 10b (#1804): a failed fetch FAILS CLOSED ──────────────────────────
+# It used to warn and set the goal to the literal "GitHub issue #<N>", then let
+# plan, design (up to three cycles), impact, build, test and six review lenses
+# all run against a goal carrying NO information about what to build. Every
+# other intake failure mode is rc=2; this one was not.
 _set_gh_mock "" "" 1
+rm -f "$STATE_DIR/intake.md"
 
 set +e
 intake_stderr="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
 rc=$?
 set -e
 
-assert_eq "gh failure still returns rc=0 (placeholder fallback)" "0" "$rc"
-assert_contains "fallback intake.md contains placeholder issue ref" \
-    "$(cat "$STATE_DIR/intake.md")" "GitHub issue #$_ZB_ID"
-assert_contains "gh failure emits visible warn" \
-    "$intake_stderr" "gh issue view #$_ZB_ID failed"
+assert_eq "[#1804] a failed fetch with no supplied goal fails the run" "2" "$rc"
+assert_contains "[#1804] and says why, naming the issue" \
+    "$intake_stderr" "#$_ZB_ID"
+assert_file_not_exists "[#1804] no fabricated goal is left on disk for the pipeline to use" \
+    "$STATE_DIR/intake.md"
+
+# ─── Test 10b2 (#1804): the offline placeholder survives, behind an opt-in ──
+# A smoke run without network is legitimate — it just has to say so.
+_set_gh_mock "" "" 1
+rm -f "$STATE_DIR/intake.md"
+set +e
+ZBUILD_INTAKE_ALLOW_PLACEHOLDER=1 intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "[#1804] the opt-in still returns rc=0" "0" "$rc"
+assert_contains "[#1804] and writes the placeholder it asked for" \
+    "$(cat "$STATE_DIR/intake.md" 2>/dev/null || true)" "GitHub issue #$_ZB_ID"
+
+# ─── Test 10b3 (#1804): an explicit goal works with no network ──────────────
+_set_gh_mock "" "" 1
+rm -f "$STATE_DIR/intake.md"
+set +e
+ZBUILD_GOAL="Explicitly supplied goal text" intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "[#1804] an explicit goal needs no fetch at all" "0" "$rc"
+assert_contains "[#1804] and is what lands in intake.md" \
+    "$(cat "$STATE_DIR/intake.md" 2>/dev/null || true)" "Explicitly supplied goal text"
 
 # ─── Test 10c: null body — title-only fetch is acceptable ───────────────────
 _set_gh_mock "Refactor cache layer" "" 0
@@ -461,19 +489,39 @@ set -e
 unset ZBUILD_ALLOW_CLOSED_ISSUE
 assert_eq "T_456_h: ZBUILD_ALLOW_CLOSED_ISSUE=true STILL refuses (strict =1)" "2" "$rc"
 
-# ─── T_456_i: gh issue view rc=1 → state check falls through, placeholder ───
+# ─── T_456_i: gh issue view rc=1 → the STATE check falls through ────────────
+# What this case is about is the state check: an unreadable issue must not be
+# refused as if it were CLOSED. #1804 changed what happens next — the run now
+# fails closed on the missing goal rather than fabricating one — so the
+# assertion moves to the message, which is what distinguishes "could not read
+# the issue" from "refused a closed issue". Asserting rc alone would no longer
+# tell those two apart.
 _set_gh_mock "" "" 1
 _reset_events
 rm -f "$STATE_DIR/intake.md"
 
 set +e
-intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+t456i_err="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
 rc=$?
 set -e
 
-assert_eq "T_456_i: gh fail → state check passes through, rc=0" "0" "$rc"
-assert_contains "T_456_i: intake.md has placeholder" \
-    "$(cat "$STATE_DIR/intake.md")" "GitHub issue #$_ZB_ID"
+assert_eq "T_456_i: gh fail → intake fails closed on the goal (#1804)" "2" "$rc"
+assert_contains "T_456_i: and it is the FETCH failure, not a closed-issue refusal" \
+    "$t456i_err" "could not read issue"
+grep -qiE 'closed|not in an actionable state' <<< "$t456i_err" \
+    && assert_fail "T_456_i: the state check did NOT refuse it" "$t456i_err" \
+    || assert_pass "T_456_i: the state check passed it through"
+
+# And with the opt-in, the fall-through still yields the placeholder it used to.
+_set_gh_mock "" "" 1
+rm -f "$STATE_DIR/intake.md"
+set +e
+ZBUILD_INTAKE_ALLOW_PLACEHOLDER=1 intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "T_456_i: opt-in restores the pass-through path, rc=0" "0" "$rc"
+assert_contains "T_456_i: intake.md has placeholder under the opt-in" \
+    "$(cat "$STATE_DIR/intake.md" 2>/dev/null || true)" "GitHub issue #$_ZB_ID"
 
 # ─── T_456_j: MOCK_GH_REPO_RC=1 + CLOSED still refuses cleanly ──────────────
 _set_gh_mock "x" "y" 0 CLOSED COMPLETED

@@ -211,6 +211,11 @@ export ZBUILD_PLATFORM_OVERRIDE=generic       # prevent platform-detection diver
 
 # Wave B inputs
 export ZBUILD_GOAL="parity fixture goal"
+# #1804: this fixture runs OFFLINE with no gh, and the runner clears
+# ZBUILD_GOAL in --issue mode, so intake reaches the fetch and fails closed.
+# That is the change working: a real run must not proceed on a fabricated goal.
+# A smoke fixture is the legitimate exception, and now it says so explicitly.
+export ZBUILD_INTAKE_ALLOW_PLACEHOLDER=1
 export ZBUILD_REPO_ROOT="$MOCK_REPO"
 export ZBUILD_TEST_CMD="true"                 # test stage runs this in tmp dir
 # Issue #484: intake's new branch path needs a real git repo; this fixture
