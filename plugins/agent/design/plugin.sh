@@ -289,8 +289,7 @@ The design document MUST include:
 2. A \`\`\`scope fenced block that is an EXHAUSTIVE enumeration of every file
    in the repository that this change touches, invalidates, references,
    validates, documents, or assumes anything about — NOT merely the seed
-   scope. The seed above is a starting point, never the answer. You MUST
-   actively search the repo (Read/Grep/Glob) and include:
+   scope. The seed above is a starting point, never the answer. You MUST actively search the repo (Read/Grep/Glob) and include:
      - every TEST that asserts behavior you are changing — INCLUDING tests
        that hardcode a value you are changing (a stage count, an event
        count, a name list, an ordering). For every constant, count, list,
@@ -648,7 +647,7 @@ DESIGN_PROMPT
     _design_write_result "$artifact_dir" "pass" "complete" "design_produced"
 
     # Atomically finalize design.md (#507 contract).
-    cat "$output_design_md" | atomic_write "$output_design_md"
+    atomic_write "$output_design_md" < "$output_design_md"
 
     # ADR-055 §9: state the SHAPE of the design a later stage is held to —
     # the boundary it may touch and the SPECs it must satisfy.
