@@ -1,6 +1,3 @@
 [
-  "tests/e2e/parity-local-vs-ci-test.sh",
-  "tests/unit/design-budget-prompt-injection-test.sh",
-  "tests/unit/design-router-timeout-reiter-test.sh",
-  "tests/unit/design-v2-result-contract-test.sh"
+  "tests/e2e/parity-local-vs-ci-test.sh"
 ]
