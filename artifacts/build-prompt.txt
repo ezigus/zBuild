@@ -77,10 +77,10 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
   - tests/integration/design-prompt-override-pipeline-test.sh
   - core/pipeline/verdict.sh
   - core/router/route.sh
+  - scripts/lib/router-rc-classify.sh
   - docs/adr/ADR-063-budget-disclosure-and-partial-output.md
   - docs/wiki/plugins/design.md
   - plugins/agent/plan/plugin.sh
-  - scripts/lib/router-rc-classify.sh
 
 ### How the loop works
 - Each iteration you may make code changes via Edit/Write/Bash.
@@ -127,51 +127,63 @@ message for the per-iteration commit it creates on your behalf. If you
 omit this line the pipeline falls back to the plan title.
 
 ## DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
-# Design: design plugin → contract v2 + ADR-063 §1/§2
+# Design: design plugin → contract v2 + ADR-063 §1/§2 (iteration 3)
 
-## Architectural Decision Summary
+## Architectural decision summary
 
-**Goal.** Migrate `plugins/agent/design` to the v2 result contract so every exit
-path writes a machine-readable `design-verdict.json` sidecar (`result_contract:2`,
-`disposition`, `rc∈{0,1}`, `valid_verdicts` expanded to `[pass,error,incomplete]`,
-name-matched inputs via `ZBUILD_STAGE_INPUTS`). Land ADR-063 §1/§2 by injecting
-live timeout/max_turns budget blocks into the prompt so the model can emit a
-best-effort design before it is cut off.
+**Goal**: Migrate `plugins/agent/design` to the v2 result contract (always-written
+`design-verdict.json` sidecar with `result_contract:2`, `verdict`, `disposition`) and
+inject live `timeout_s`/`max_turns` into the prompt so the model can emit a best-effort
+design before being cut off (ADR-063 §1/§2).
 
-**Context.** The design plugin is the only model-driven stage that writes its sidecar
-only on one path (router timeout). All other exit paths leave `design-verdict.json`
-absent, so `verdict.sh` falls through to reading the primary (design.md) as presence==pass
-— which means a failed run with no design.md reads as "missing", not "error". This
-is the v1 gap. ADR-063 §3/§4 require v2 to be on disk before `disposition: exhausted`
-becomes load-bearing; §1/§2 (budget in the prompt) unblock only after v2 lands
-because a loud failure is safer than a quiet partial (ADR-063 §0).
+**Context**: The build stage added `_design_write_result` on all exit paths and injected
+budget guidance. Three concrete bugs remain unfixed; they cause four test failures:
 
-**Decision.** Four targeted changes to two files, gated by two new test files:
+1. **`plugin.sh:651` pipe subshell** — `cat "$output_design_md" | atomic_write "$output_design_md"`
+   runs `atomic_write` in a pipe subshell. The test mock sets `_SIDECAR_AT_ATOMIC_WRITE="PRESENT"`
+   inside the mock, but the update is invisible to the main shell → SPEC-1 assertion
+   `expected: PRESENT, got: UNSET` fails. Fix: stdin redirect (no pipe) so `atomic_write`
+   runs in the current shell.
 
-1. **manifest.yaml** — add `provides.result_contract: 2`; expand `valid_verdicts`
-   from `[incomplete]` to `[pass, error, incomplete]`; add `config.router.timeout_s: 600`
-   and `config.router.max_turns: 45` as manifest-level defaults (template override
-   still wins at runtime per ADR-017).
+2. **`plugin.sh:292-293` heredoc split phrase** — The heredoc emits:
+   ```
+      ...never the answer. You MUST
+      actively search the repo (Read/Grep/Glob)...
+   ```
+   `grep -q 'MUST actively search the repo'` never matches a multi-line file by default
+   → SPEC-8 fails. Fix: join to a single line.
 
-2. **plugin.sh — `_design_write_result` helper** — writes `design-verdict.json`
-   on every terminal exit path (success→pass/complete; error paths→error/broken or
-   error/throttled per `_router_rc_classify`; timeout→incomplete/interrupted). Timeout
-   path replaces its bespoke inline write with the helper. SIGINT (rc=130) propagates
-   without a sidecar — that is not a stage outcome. `return 2` normalised to `return 1`
-   on non-SIGINT error paths.
+3. **`design-router-timeout-reiter-test.sh:252-255` stale guard** — The guard asserts
+   `design-verdict.json` is ABSENT on the happy path. The v2 contract now writes
+   `verdict=pass, disposition=complete` there → assertion fails. Fix: accept a
+   pass-disposition sidecar as valid.
 
-3. **plugin.sh — `ZBUILD_STAGE_INPUTS` lookups** — `design_stage_run` reads
-   `scope_manifest` and `plan` paths from the index when `ZBUILD_STAGE_INPUTS` is
-   set; falls back to path construction when absent (existing unit test fixtures that
-   set paths directly keep working). The optional `design` input (prior design body)
-   similarly read from index first, `_design_read_prior_design` kept as fallback.
+**Decision**: Three surgical edits — two in `plugin.sh`, one in the router-timeout test.
+WIRING remains `manifest.yaml`; its SPEC-4 pass→fail flip becomes detectable once SPEC-1
+passes at HEAD (the current test-file failure masked the flip).
 
-4. **plugin.sh — budget guidance (ADR-063 §1/§2)** — two private helpers
-   `_design_budget_guidance <max_turns>` and `_design_wallclock_guidance <timeout_s>
-   <elapsed_s>` (mirrors plan plugin's pattern). Appended to prompt BEFORE
-   `append_prompt_override` so operator overlay appears last (ADR-032). Also appends
-   a best-effort instruction: if sections are unfinished as budget nears, name them
-   rather than silently omitting.
+## Implementation notes
+
+### Fix 1 — `plugin.sh:651` stdin redirect (eliminates pipe subshell)
+
+Replace:
+With:
+`atomic_write` is now called in the current shell via stdin redirect; the test mock's
+`_SIDECAR_AT_ATOMIC_WRITE` variable update propagates to the caller.
+
+### Fix 2 — `plugin.sh:292-293` join heredoc lines
+
+In the `<<DESIGN_PROMPT` heredoc, the line ending in `You MUST` and the line starting with
+`   actively search the repo` must be joined into one line so `grep -q 'MUST actively
+search the repo'` matches:
+
+Current (two lines — WRONG):
+After (one line — CORRECT):
+
+### Fix 3 — `design-router-timeout-reiter-test.sh:252-255` update SPEC-10-guard
+
+Replace the binary absent/fail check:
+With a three-way check that accepts the v2 pass-sidecar:
 
 
 
@@ -191,30 +203,30 @@ Each test MUST contain an assert call whose label includes the [SPEC-n] tag for 
 - SPEC-8: tests/unit/design-budget-prompt-injection-test.sh
 
 What each SPEC requires:
-- [SPEC-1] success path writes design-verdict.json with result_contract:2, verdict=pass, disposition=complete before atomic_write of design.md
-- [SPEC-2] error path (e.g. missing plan.json) writes design-verdict.json with result_contract:2, verdict=error, disposition=broken
-- [SPEC-3] timeout path still writes design-verdict.json with verdict=incomplete, disposition=interrupted (existing behaviour unchanged)
-- [SPEC-4] manifest declares provides.result_contract:2 and config.valid_verdicts includes pass, error, and incomplete
-- [SPEC-5] design_stage_run reads scope_manifest and plan paths from ZBUILD_STAGE_INPUTS index when the env var is set, not from hardcoded path construction
-- [SPEC-6] prompt file contains a WALL CLOCK BUDGET block with timeout_s value sourced from _route_resolve_timeout
-- [SPEC-7] prompt file contains a TURN BUDGET block with max_turns value sourced from _route_resolve_max_turns
-- [SPEC-8] existing prompt body instructions (scope charter, acceptance contract, tools section) are present and unaltered when budget blocks are injected
+- [SPEC-1] success path calls atomic_write for design.md without a pipe (stdin redirect); when atomic_write is called, design-verdict.json already exists on disk with result_contract=2, verdict=pass, disposition=complete
+- [SPEC-2] error path (missing plan.json) writes design-verdict.json with result_contract=2, verdict=error, disposition=broken before returning rc=1
+- [SPEC-3] timeout path (router_timeout) writes design-verdict.json with verdict=incomplete, disposition=interrupted (existing contract — must not regress)
+- [SPEC-4] manifest.yaml declares provides.result_contract=2 and config.valid_verdicts contains pass, error, and incomplete
+- [SPEC-5] design_stage_run reads scope_manifest and plan file paths from ZBUILD_STAGE_INPUTS index when the env var is set and the file exists, ignoring the hardcoded default paths
+- [SPEC-6] prompt file contains a WALL CLOCK BUDGET block whose timeout_s value matches the live output of _route_resolve_timeout
+- [SPEC-7] prompt file contains a TURN BUDGET block whose max_turns value matches the live output of _route_resolve_max_turns
+- [SPEC-8] prompt file contains the scope charter instruction 'MUST actively search the repo' as a single grep-matchable phrase after budget guidance is injected
 
 ### SPEC IDS YOU MUST COVER (acceptance gate, ADR-036)
 Every SPEC id below needs at least one assertion whose label carries its [SPEC-n] tag; self-verify the FULL set is tagged before emitting LOOP_COMPLETE. A CHANGE-behavior SPEC (new behavior this change introduces) MUST have a [SPEC-n] assertion that FAILS at the merge-base baseline. A GUARD/invariant SPEC (behavior that must stay unchanged) is tagged but MUST NOT be contorted to fail at baseline.
-- [SPEC-1] success path writes design-verdict.json with result_contract:2, verdict=pass, disposition=complete before atomic_write of design.md
+- [SPEC-1] success path calls atomic_write for design.md without a pipe (stdin redirect); when atomic_write is called, design-verdict.json already exists on disk with result_contract=2, verdict=pass, disposition=complete
   → needs a `[SPEC-1]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
-- [SPEC-2] error path (e.g. missing plan.json) writes design-verdict.json with result_contract:2, verdict=error, disposition=broken
+- [SPEC-2] error path (missing plan.json) writes design-verdict.json with result_contract=2, verdict=error, disposition=broken before returning rc=1
   → needs a `[SPEC-2]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
-- [SPEC-3] timeout path still writes design-verdict.json with verdict=incomplete, disposition=interrupted (existing behaviour unchanged)
+- [SPEC-3] timeout path (router_timeout) writes design-verdict.json with verdict=incomplete, disposition=interrupted (existing contract — must not regress)
   → needs a `[SPEC-3]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
-- [SPEC-4] manifest declares provides.result_contract:2 and config.valid_verdicts includes pass, error, and incomplete
+- [SPEC-4] manifest.yaml declares provides.result_contract=2 and config.valid_verdicts contains pass, error, and incomplete
   → needs a `[SPEC-4]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
-- [SPEC-5] design_stage_run reads scope_manifest and plan paths from ZBUILD_STAGE_INPUTS index when the env var is set, not from hardcoded path construction
+- [SPEC-5] design_stage_run reads scope_manifest and plan file paths from ZBUILD_STAGE_INPUTS index when the env var is set and the file exists, ignoring the hardcoded default paths
   → needs a `[SPEC-5]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
-- [SPEC-6] prompt file contains a WALL CLOCK BUDGET block with timeout_s value sourced from _route_resolve_timeout
+- [SPEC-6] prompt file contains a WALL CLOCK BUDGET block whose timeout_s value matches the live output of _route_resolve_timeout
   → needs a `[SPEC-6]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
-- [SPEC-7] prompt file contains a TURN BUDGET block with max_turns value sourced from _route_resolve_max_turns
+- [SPEC-7] prompt file contains a TURN BUDGET block whose max_turns value matches the live output of _route_resolve_max_turns
   → needs a `[SPEC-7]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
-- [SPEC-8] existing prompt body instructions (scope charter, acceptance contract, tools section) are present and unaltered when budget blocks are injected
+- [SPEC-8] prompt file contains the scope charter instruction 'MUST actively search the repo' as a single grep-matchable phrase after budget guidance is injected
   → needs a `[SPEC-8]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)

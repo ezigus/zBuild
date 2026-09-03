@@ -25,7 +25,7 @@ index 0d1695d..7faa286 100644
  inputs:
    - id: scope_manifest
 diff --git a/plugins/agent/design/plugin.sh b/plugins/agent/design/plugin.sh
-index a8ddefd..982ca72 100755
+index a8ddefd..3a64775 100755
 --- a/plugins/agent/design/plugin.sh
 +++ b/plugins/agent/design/plugin.sh
 @@ -49,6 +49,48 @@ source "$_DESIGN_ROOT/scripts/lib/identity.sh"
@@ -132,7 +132,17 @@ index a8ddefd..982ca72 100755
      fi
  
      local plan_json
-@@ -333,7 +389,20 @@ DESIGN_PROMPT
+@@ -233,8 +289,7 @@ The design document MUST include:
+ 2. A \`\`\`scope fenced block that is an EXHAUSTIVE enumeration of every file
+    in the repository that this change touches, invalidates, references,
+    validates, documents, or assumes anything about — NOT merely the seed
+-   scope. The seed above is a starting point, never the answer. You MUST
+-   actively search the repo (Read/Grep/Glob) and include:
++   scope. The seed above is a starting point, never the answer. You MUST actively search the repo (Read/Grep/Glob) and include:
+      - every TEST that asserts behavior you are changing — INCLUDING tests
+        that hardcode a value you are changing (a stage count, an event
+        count, a name list, an ordering). For every constant, count, list,
+@@ -333,7 +388,20 @@ DESIGN_PROMPT
      # carries design-gate's feedback now, so design only decides how to WORD the
      # refinement instruction — from the recorded verdict, not from a file read.
      local _prior_design_body
@@ -154,7 +164,7 @@ index a8ddefd..982ca72 100755
      if [[ -n "$_prior_design_body" ]]; then
          printf '\n## PRIOR DESIGN (a previous attempt on this issue — refine, do not recreate)\n%s\n' \
              "$_prior_design_body" >> "$prompt_input_file"
-@@ -370,6 +439,21 @@ DESIGN_PROMPT
+@@ -370,6 +438,21 @@ DESIGN_PROMPT
              >> "$prompt_input_file"
      fi
  
@@ -176,7 +186,7 @@ index a8ddefd..982ca72 100755
      # ADR-032: append the per-repo prompt override AFTER the core contract (so
      # the operator overlay can never precede or weaken the shipped charter).
      # Fail-open: a repo with no .zbuild/prompts/design-overrides.md appends
-@@ -468,6 +552,7 @@ DESIGN_PROMPT
+@@ -468,6 +551,7 @@ DESIGN_PROMPT
          local _rc_verdict _rc_reason
          _router_rc_classify "$router_rc" _rc_verdict _rc_reason
          error "_design_stage_run_inner: router rc=$router_rc → verdict=$_rc_verdict reason=$_rc_reason"
@@ -184,7 +194,7 @@ index a8ddefd..982ca72 100755
          stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
              "the model call failed ($_rc_reason)" \
              "No usable design.md was returned."
-@@ -488,6 +573,7 @@ DESIGN_PROMPT
+@@ -488,6 +572,7 @@ DESIGN_PROMPT
          if [[ -f "$_stray" ]]; then
              if git -C "$repo_root" ls-files --error-unmatch "design.md" >/dev/null 2>&1; then
                  error "_design_stage_run_inner: tracked design.md at repo root; refusing to relocate (operator-owned)"
@@ -192,7 +202,7 @@ index a8ddefd..982ca72 100755
                  emit_event "design.stray.conflict" "plugin=design" "path=$_stray" "reason=tracked"
                  return 1
              fi
-@@ -502,6 +588,7 @@ DESIGN_PROMPT
+@@ -502,6 +587,7 @@ DESIGN_PROMPT
      # Assert the scope block is present in design.md.
      if [[ ! -f "$output_design_md" ]]; then
          error "_design_stage_run_inner: design.md not produced at $output_design_md"
@@ -200,7 +210,7 @@ index a8ddefd..982ca72 100755
          stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
              "no design.md was produced" \
              "The model returned without writing the artifact this stage exists to produce."
-@@ -519,6 +606,7 @@ DESIGN_PROMPT
+@@ -519,6 +605,7 @@ DESIGN_PROMPT
          stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
              "design.md has no fenced scope block" \
              "Without a scope block the build stage has no declared boundary to work inside."
@@ -208,7 +218,7 @@ index a8ddefd..982ca72 100755
          emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_scope_block"
          # Failure path: don't override the banner output; let the deferred
          # close (if any) flush claude's stdout summary so the operator sees
-@@ -535,6 +623,7 @@ DESIGN_PROMPT
+@@ -535,6 +622,7 @@ DESIGN_PROMPT
          stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
              "design.md has no fenced acceptance block" \
              "Without acceptance SPECs there is nothing for the acceptance gate to verify."
@@ -216,7 +226,7 @@ index a8ddefd..982ca72 100755
          emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_acceptance_block"
          if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
              _route_loop_close_final_banner || true
-@@ -554,6 +643,10 @@ DESIGN_PROMPT
+@@ -554,8 +642,12 @@ DESIGN_PROMPT
          _route_loop_close_final_banner || true
      fi
  
@@ -225,8 +235,11 @@ index a8ddefd..982ca72 100755
 +    _design_write_result "$artifact_dir" "pass" "complete" "design_produced"
 +
      # Atomically finalize design.md (#507 contract).
-     cat "$output_design_md" | atomic_write "$output_design_md"
+-    cat "$output_design_md" | atomic_write "$output_design_md"
++    atomic_write "$output_design_md" < "$output_design_md"
  
+     # ADR-055 §9: state the SHAPE of the design a later stage is held to —
+     # the boundary it may touch and the SPECs it must satisfy.
 diff --git a/tests/unit/design-budget-prompt-injection-test.sh b/tests/unit/design-budget-prompt-injection-test.sh
 new file mode 100644
 index 0000000..4f7c1c3
@@ -352,6 +365,35 @@ index 0000000..4f7c1c3
 +cleanup_test_env
 +print_test_results
 +exit $((FAIL > 0))
+diff --git a/tests/unit/design-router-timeout-reiter-test.sh b/tests/unit/design-router-timeout-reiter-test.sh
+index dc84e80..75b56f4 100755
+--- a/tests/unit/design-router-timeout-reiter-test.sh
++++ b/tests/unit/design-router-timeout-reiter-test.sh
+@@ -246,13 +246,17 @@ else
+     assert_fail "[SPEC-8-guard] spurious design.timeout.stub_written on happy path"
+ fi
+ 
+-# SPEC-10-guard (#1261): a converging design writes NO did_not_finish sidecar
+-# (run-start clear + no timeout write) → the cycle reads design=pass, never trips
+-# the exhaustion halt on a healthy run.
+-[[ ! -e "$_F_ARTIFACTS/design-verdict.json" ]] \
+-    && assert_pass "[SPEC-10-guard] no design-verdict.json sidecar on happy path" \
+-    || assert_fail "[SPEC-10-guard] spurious did_not_finish sidecar on happy path" \
+-        "sidecar=$(cat "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null)"
++# SPEC-10-guard (#1261): a converging design must NOT write an incomplete/interrupted
++# sidecar (v2 contract writes verdict=pass,disposition=complete on happy path — that is
++# fine; only did_not_finish / interrupted sidecars would trip the exhaustion halt).
++_sc10_verdict="$(jq -r '.verdict // "MISSING"' "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null || echo ABSENT)"
++_sc10_disp="$(jq -r '.disposition // "MISSING"' "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null || echo ABSENT)"
++if [[ "$_sc10_verdict" == "incomplete" || "$_sc10_disp" == "interrupted" ]]; then
++    assert_fail "[SPEC-10-guard] spurious did_not_finish sidecar on happy path" \
++        "verdict=$_sc10_verdict disposition=$_sc10_disp"
++else
++    assert_pass "[SPEC-10-guard] no spurious did_not_finish sidecar on happy path"
++fi
+ 
+ _MOCK_DESIGN_WRITE_PATH=""
+ 
 diff --git a/tests/unit/design-v2-result-contract-test.sh b/tests/unit/design-v2-result-contract-test.sh
 new file mode 100644
 index 0000000..7643ccf

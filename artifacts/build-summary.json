@@ -1,0 +1,19 @@
+{
+  "schema_version": 4,
+  "issue": 1834,
+  "files_changed": [
+    "plugins/agent/design/plugin.sh",
+    "tests/unit/design-router-timeout-reiter-test.sh"
+  ],
+  "lines_added": 13,
+  "lines_removed": 10,
+  "diff_patch_path": "/home/runner/work/_temp/zbuild-state/artifacts/diff.patch",
+  "iterations": 1,
+  "terminated_reason": "done_sentinel",
+  "verdict": "pass",
+  "scope_violation": false,
+  "scope_violations": [],
+  "loop_input_tokens": 16,
+  "loop_output_tokens": 8825,
+  "notes": "Build stage completed. Diff written to artifact; not applied."
+}
