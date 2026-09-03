@@ -832,7 +832,8 @@ _test_write_result() {
     # the safe default that does not suppress cycle convergence.
     local run_mode="${11:-full}"
     # #1058 Phase A: optional pre-rendered `timing` JSON object. Empty string →
-    # field omitted (mirrors the `reason` field's omit-when-empty contract). A
+    # field omitted. That contract is this field's alone since #2050 — `reason`
+    # used to share it and is now always written, being mandatory in v2. A
     # malformed value is dropped by the jq fromjson guard below — never crashes.
     local timing_json="${12:-}"
     # #1058 Phase B: optional committed work-tree SHA. Written ONLY for an

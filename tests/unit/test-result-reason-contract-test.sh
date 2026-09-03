@@ -130,9 +130,12 @@ assert_eq "[SPEC-2] no contract violation is emitted for a green suite" \
 # operator nothing, so the counts must survive into the reason.
 print_test_section "SPEC-3 — the derived reason carries the counts"
 
-assert_contains "[SPEC-3] a red suite's reason names the failure count" "$_r1" "1"
-assert_contains "[SPEC-3] a red suite's reason names the total" "$_r1" "671"
-assert_contains "[SPEC-3] a green suite's reason names the pass count" "$_r2" "671"
+# Matched whole, not by substring: "1" alone occurs inside "671", so a
+# substring check would still pass if the writer reported the wrong count.
+assert_eq "[SPEC-3] a red suite's reason names failed-of-total" \
+    "1 of 671 tests failed" "$_r1"
+assert_eq "[SPEC-3] a green suite's reason names passed-of-total" \
+    "671 of 671 tests passed" "$_r2"
 
 # ─── [SPEC-7] positive control — the detector this rests on actually fires ───
 # SPEC-1/SPEC-2 assert an ABSENCE, which passes for free if the reader never
