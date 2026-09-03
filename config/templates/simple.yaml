@@ -98,12 +98,25 @@ design_verify_cycle:
   description: Verify the design contract is build-ready until design-gate passes
   flow:
     - design
+    # #1683: does the design cover what the ISSUE asked for? Design is the only
+    # reader of the issue, so nothing else confirms the SPECs are a faithful
+    # statement of the ask. Inside the cycle, so a finding reaches design itself
+    # on the next iteration.
+    - spec-coverage
     - design-gate
+  # #1284/ADR-047 multi-condition: BOTH must hold. spec-coverage may gate under
+  # ADR-040 §5 as amended by #2040 — the standard it judges against is the
+  # ISSUE, which design cannot re-author, so the only way to converge is to
+  # actually cover it.
+  #
+  # `ne uncovered` rather than `eq covered`: `unreadable` must not stall the
+  # cycle. intake writes a placeholder when the issue fetch fails (#1804), and
+  # failing closed there would break every offline run for a condition that is
+  # not design's fault. The finding still ships in the summary.
   exit_when:
-    stage: design-gate
-    field: verdict
-    op: eq
-    value: pass
+    all:
+      - { stage: design-gate, field: verdict, op: eq, value: pass }
+      - { stage: spec-coverage, field: verdict, op: ne, value: uncovered }
   max_iterations: 3
   on_max: continue
   feedback:
@@ -114,6 +127,20 @@ design_verify_cycle:
         stage: design
         input: design
         required: false
+
+# ─── spec-coverage (leaf, gate) ──────────────────────────────────────────────
+# Model-judged but admissible on the convergence path (ADR-040 §5 / #2040): its
+# standard is the issue, produced by intake OUTSIDE this cycle, so the judged
+# party cannot re-author it.
+spec-coverage:
+  gate: auto
+  roles: [spec_coverage]
+  # A product owner asks "was what was asked for delivered?" — intent-seeking,
+  # which is wrong for judging an assertion against a SPEC (the bug there
+  # survives charity) and exactly right here, where the question IS about intent.
+  persona: product-owner
+  router:
+    timeout_s: 600
 
 # ─── test-author (leaf, advisory) ────────────────────────────────────────────
 # ADR-040 §5: it makes a model call, so it may not sit on the convergence path.

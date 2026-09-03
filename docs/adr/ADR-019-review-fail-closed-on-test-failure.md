@@ -239,11 +239,14 @@ and maps the verdict to one of `pass | warn | fail | unknown`:
 | -------------------------------------------- | ----- | ----- | ------ |
 | `pass`, `approve`, `complete`, `skip`        | pass  | `✓`   | GREEN  |
 | `corresponds` (#2034)                        | pass  | `✓`   | GREEN  |
+| `covered` (#1683)                            | pass  | `✓`   | GREEN  |
 | `skipped`, `healthy`, `deployed`             | pass  | `✓`   | GREEN  |
 | `request_changes`, `incomplete`, `did_not_finish`, `degraded` | warn | `⚠` | YELLOW |
 | `partial`, `uncheckable` (#2034)             | warn  | `⚠`   | YELLOW |
+| `unreadable` (#1683)                         | warn  | `⚠`   | YELLOW |
 | `fail`, `error`, `block`, `scope_violation`, `corrupt_diff` | fail | `✗` | RED |
 | `mismatch` (#2034)                           | fail  | `✗`   | RED    |
+| `uncovered` (#1683)                          | fail  | `✗`   | RED    |
 | `empty_diff`, `scope_too_large`, `inert_build` | fail | `✗`  | RED    |
 | missing/malformed primary artifact           | warn  | `⚠`   | YELLOW |
 | `rc != 0` (any cause)                        | fail  | `✗`   | RED — rc always wins |

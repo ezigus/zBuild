@@ -71,12 +71,14 @@ assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 # 17 -> 18: #2034 adds spec-correspondence, which judges whether each
 # assertion tests what its SPEC says — before build, since its question needs
 # the requirement and the assertion, not the implementation.
+# 18 -> 19: #1683 adds spec-coverage inside design_verify_cycle — does the
+# design cover what the ISSUE asked for, the one link above the SPEC.
 # 15 -> 17: #2022 splits assertion authorship out of build — `test-author`
 # leads build_test_cycle (assertions written from the SPEC before any code
 # exists) and `assertion-integrity` guards them just before the aggregate.
-assert_eq "[SPEC-2] _TPL_STAGES count is 18" "18" "${#_TPL_STAGES[@]}"
+assert_eq "[SPEC-2] _TPL_STAGES count is 19" "19" "${#_TPL_STAGES[@]}"
 
-_expected_stages=(hydrate intake plan design design-gate impact test-author spec-correspondence build test shape-floor acceptance-gate secret-scan assertion-integrity gate-aggregator review_lenses review-aggregator pr)
+_expected_stages=(hydrate intake plan design spec-coverage design-gate impact test-author spec-correspondence build test shape-floor acceptance-gate secret-scan assertion-integrity gate-aggregator review_lenses review-aggregator pr)
 _i=0
 for _s in "${_expected_stages[@]}"; do
     assert_eq "[SPEC-2] _TPL_STAGES[$_i] == $_s" "$_s" "${_TPL_STAGES[$_i]}"
@@ -219,15 +221,24 @@ _dvc_in_cycles=0
 for _cyc in "${_TPL_CYCLES[@]}"; do [[ "$_cyc" == "design_verify_cycle" ]] && _dvc_in_cycles=1; done
 assert_eq "[SPEC-16] _TPL_CYCLES contains design_verify_cycle" "1" "$_dvc_in_cycles"
 assert_eq "[SPEC-16] _TPL_CYCLE_STAGES_design_verify_cycle" \
-    "design,design-gate" "$_TPL_CYCLE_STAGES_design_verify_cycle"
+    "design,spec-coverage,design-gate" "$_TPL_CYCLE_STAGES_design_verify_cycle"
 assert_eq "[SPEC-16] _TPL_CYCLE_MAX_design_verify_cycle is 3" \
     "3" "$_TPL_CYCLE_MAX_design_verify_cycle"
-assert_eq "[SPEC-16] _TPL_CYCLE_UNTIL_STAGE_design_verify_cycle" \
-    "design-gate" "$_TPL_CYCLE_UNTIL_STAGE_design_verify_cycle"
-assert_eq "[SPEC-16] _TPL_CYCLE_UNTIL_FIELD_design_verify_cycle" \
-    "verdict" "$_TPL_CYCLE_UNTIL_FIELD_design_verify_cycle"
-assert_eq "[SPEC-16] _TPL_CYCLE_UNTIL_VALUE_design_verify_cycle" \
-    "pass" "$_TPL_CYCLE_UNTIL_VALUE_design_verify_cycle"
+# #1683: design_verify_cycle converges on TWO conditions now (#1284/ADR-047
+# multi-condition), so the single-condition UNTIL_* vars are deliberately empty
+# and the combinator vars carry the contract instead.
+assert_eq "[SPEC-16] design_verify_cycle converges on ALL conditions" \
+    "all" "$_TPL_CYCLE_EXIT_COMBINATOR_design_verify_cycle"
+assert_eq "[SPEC-16] there are two of them" \
+    "2" "$_TPL_CYCLE_EXIT_COUNT_design_verify_cycle"
+assert_eq "[SPEC-16] the first is design-gate == pass" \
+    "design-gate|verdict|eq|pass" \
+    "$_TPL_CYCLE_EXIT_1_STAGE_design_verify_cycle|$_TPL_CYCLE_EXIT_1_FIELD_design_verify_cycle|$_TPL_CYCLE_EXIT_1_OP_design_verify_cycle|$_TPL_CYCLE_EXIT_1_VALUE_design_verify_cycle"
+# `ne uncovered`, not `eq covered`: `unreadable` (a placeholder issue, #1804)
+# must not stall the cycle for something that is not design's fault.
+assert_eq "[SPEC-16] the second is spec-coverage != uncovered" \
+    "spec-coverage|verdict|ne|uncovered" \
+    "$_TPL_CYCLE_EXIT_2_STAGE_design_verify_cycle|$_TPL_CYCLE_EXIT_2_FIELD_design_verify_cycle|$_TPL_CYCLE_EXIT_2_OP_design_verify_cycle|$_TPL_CYCLE_EXIT_2_VALUE_design_verify_cycle"
 
 # ─── SPEC-14 / SPEC-5: build_test_cycle registered with correct stages and max ─
 # CHANGE (B6 #1138, ADR-040): _TPL_CYCLES must contain build_test_cycle with its
@@ -289,9 +300,9 @@ assert_eq "[SPEC-17] route_back.max == 1 (one re-author pass)" \
 # gate-aggregator from 8 to 10 (design=2,design-gate=3,impact=4,build=5,test=6,
 # shape-floor=7,acceptance-gate=8,secret-scan=9,gate-aggregator=10).
 
-assert_eq "[SPEC-12] _TPL_STAGES[10] == shape-floor" "shape-floor" "${_TPL_STAGES[10]}"
-assert_eq "[SPEC-12] _TPL_STAGES[14] == gate-aggregator (cycle exit_when source)" \
-    "gate-aggregator" "${_TPL_STAGES[14]}"
+assert_eq "[SPEC-12] _TPL_STAGES[11] == shape-floor" "shape-floor" "${_TPL_STAGES[11]}"
+assert_eq "[SPEC-12] _TPL_STAGES[15] == gate-aggregator (cycle exit_when source)" \
+    "gate-aggregator" "${_TPL_STAGES[15]}"
 
 # ─── SPEC-13: design is at index 3; design-gate at 4, impact at 5 ─────────────
 # CHANGE: design sits at index 3 (after hydrate, intake, plan); its verifier
@@ -300,8 +311,8 @@ assert_eq "[SPEC-12] _TPL_STAGES[14] == gate-aggregator (cycle exit_when source)
 # ORDER, which is what ADR-046 actually constrains, is unchanged.
 
 assert_eq "[SPEC-13] _TPL_STAGES[3] == design" "design" "${_TPL_STAGES[3]}"
-assert_eq "[SPEC-13] _TPL_STAGES[4] == design-gate" "design-gate" "${_TPL_STAGES[4]}"
-assert_eq "[SPEC-13] _TPL_STAGES[5] == impact" "impact" "${_TPL_STAGES[5]}"
+assert_eq "[SPEC-13] _TPL_STAGES[5] == design-gate" "design-gate" "${_TPL_STAGES[5]}"
+assert_eq "[SPEC-13] _TPL_STAGES[6] == impact" "impact" "${_TPL_STAGES[6]}"
 
 # ─── SPEC-6 (guard, A3-pr #756): simple.yaml pr role unchanged by standard migration ──
 # GUARD: simple.yaml's pr stage declares roles: [pr]. Since #1704 that role is

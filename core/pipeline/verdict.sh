@@ -131,6 +131,17 @@ verdict_classify() {
         # out it is 0/15, with no true positive lost. The stage is advisory
         # (ADR-040 §5) so none of these gate today; the classification is what a
         # promotion would bind to.
+        # #1683 spec-coverage: does the design cover what the ISSUE asked for?
+        # `uncovered` is the one blocking word — a requirement with no SPEC.
+        # `unreadable` warns rather than fails: intake writes a placeholder when
+        # the issue fetch fails (#1804), and failing closed there would break
+        # every offline run for something that is not design's fault.
+        covered)
+            echo "pass" ;;
+        uncovered)
+            echo "fail" ;;
+        unreadable)
+            echo "warn" ;;
         corresponds)
             echo "pass" ;;
         partial|uncheckable)

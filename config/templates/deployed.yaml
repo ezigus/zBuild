@@ -61,12 +61,16 @@ design_verify_cycle:
   description: Verify the design contract is build-ready until design-gate passes
   flow:
     - design
+    # #1683: mirrors simple.yaml. deployed.yaml carries its OWN copy of this
+    # cycle rather than inheriting it, so the member and its exit condition must
+    # be added here too — a stage added only to simple.yaml would leave every
+    # deployed run without the check.
+    - spec-coverage
     - design-gate
   exit_when:
-    stage: design-gate
-    field: verdict
-    op: eq
-    value: pass
+    all:
+      - { stage: design-gate, field: verdict, op: eq, value: pass }
+      - { stage: spec-coverage, field: verdict, op: ne, value: uncovered }
   max_iterations: 3
   on_max: continue
   feedback:
@@ -140,6 +144,17 @@ design:
   router:
     timeout_s: 600
     max_turns: 0
+
+# ─── spec-coverage (leaf, design_verify_cycle member, gate) ──────────────────
+# #1683: admissible on the convergence path under ADR-040 §5 / #2040 — the
+# standard it judges against is the ISSUE, produced by intake outside this
+# cycle, so design cannot re-author it.
+spec-coverage:
+  gate: auto
+  roles: [spec_coverage]
+  persona: product-owner
+  router:
+    timeout_s: 600
 
 # ─── design-gate (leaf, design_verify_cycle member) ──────────────────────────
 design-gate:
