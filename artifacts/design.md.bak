@@ -1,48 +1,94 @@
-# Design: design plugin → contract v2 + ADR-063 §1/§2
+# Design: design plugin → contract v2 + ADR-063 §1/§2 (iteration 3)
 
-## Architectural Decision Summary
+## Architectural decision summary
 
-**Goal.** Migrate `plugins/agent/design` to the v2 result contract so every exit
-path writes a machine-readable `design-verdict.json` sidecar (`result_contract:2`,
-`disposition`, `rc∈{0,1}`, `valid_verdicts` expanded to `[pass,error,incomplete]`,
-name-matched inputs via `ZBUILD_STAGE_INPUTS`). Land ADR-063 §1/§2 by injecting
-live timeout/max_turns budget blocks into the prompt so the model can emit a
-best-effort design before it is cut off.
+**Goal**: Migrate `plugins/agent/design` to the v2 result contract (always-written
+`design-verdict.json` sidecar with `result_contract:2`, `verdict`, `disposition`) and
+inject live `timeout_s`/`max_turns` into the prompt so the model can emit a best-effort
+design before being cut off (ADR-063 §1/§2).
 
-**Context.** The design plugin is the only model-driven stage that writes its sidecar
-only on one path (router timeout). All other exit paths leave `design-verdict.json`
-absent, so `verdict.sh` falls through to reading the primary (design.md) as presence==pass
-— which means a failed run with no design.md reads as "missing", not "error". This
-is the v1 gap. ADR-063 §3/§4 require v2 to be on disk before `disposition: exhausted`
-becomes load-bearing; §1/§2 (budget in the prompt) unblock only after v2 lands
-because a loud failure is safer than a quiet partial (ADR-063 §0).
+**Context**: The build stage added `_design_write_result` on all exit paths and injected
+budget guidance. Three concrete bugs remain unfixed; they cause four test failures:
 
-**Decision.** Four targeted changes to two files, gated by two new test files:
+1. **`plugin.sh:651` pipe subshell** — `cat "$output_design_md" | atomic_write "$output_design_md"`
+   runs `atomic_write` in a pipe subshell. The test mock sets `_SIDECAR_AT_ATOMIC_WRITE="PRESENT"`
+   inside the mock, but the update is invisible to the main shell → SPEC-1 assertion
+   `expected: PRESENT, got: UNSET` fails. Fix: stdin redirect (no pipe) so `atomic_write`
+   runs in the current shell.
 
-1. **manifest.yaml** — add `provides.result_contract: 2`; expand `valid_verdicts`
-   from `[incomplete]` to `[pass, error, incomplete]`; add `config.router.timeout_s: 600`
-   and `config.router.max_turns: 45` as manifest-level defaults (template override
-   still wins at runtime per ADR-017).
+2. **`plugin.sh:292-293` heredoc split phrase** — The heredoc emits:
+   ```
+      ...never the answer. You MUST
+      actively search the repo (Read/Grep/Glob)...
+   ```
+   `grep -q 'MUST actively search the repo'` never matches a multi-line file by default
+   → SPEC-8 fails. Fix: join to a single line.
 
-2. **plugin.sh — `_design_write_result` helper** — writes `design-verdict.json`
-   on every terminal exit path (success→pass/complete; error paths→error/broken or
-   error/throttled per `_router_rc_classify`; timeout→incomplete/interrupted). Timeout
-   path replaces its bespoke inline write with the helper. SIGINT (rc=130) propagates
-   without a sidecar — that is not a stage outcome. `return 2` normalised to `return 1`
-   on non-SIGINT error paths.
+3. **`design-router-timeout-reiter-test.sh:252-255` stale guard** — The guard asserts
+   `design-verdict.json` is ABSENT on the happy path. The v2 contract now writes
+   `verdict=pass, disposition=complete` there → assertion fails. Fix: accept a
+   pass-disposition sidecar as valid.
 
-3. **plugin.sh — `ZBUILD_STAGE_INPUTS` lookups** — `design_stage_run` reads
-   `scope_manifest` and `plan` paths from the index when `ZBUILD_STAGE_INPUTS` is
-   set; falls back to path construction when absent (existing unit test fixtures that
-   set paths directly keep working). The optional `design` input (prior design body)
-   similarly read from index first, `_design_read_prior_design` kept as fallback.
+**Decision**: Three surgical edits — two in `plugin.sh`, one in the router-timeout test.
+WIRING remains `manifest.yaml`; its SPEC-4 pass→fail flip becomes detectable once SPEC-1
+passes at HEAD (the current test-file failure masked the flip).
 
-4. **plugin.sh — budget guidance (ADR-063 §1/§2)** — two private helpers
-   `_design_budget_guidance <max_turns>` and `_design_wallclock_guidance <timeout_s>
-   <elapsed_s>` (mirrors plan plugin's pattern). Appended to prompt BEFORE
-   `append_prompt_override` so operator overlay appears last (ADR-032). Also appends
-   a best-effort instruction: if sections are unfinished as budget nears, name them
-   rather than silently omitting.
+## Implementation notes
+
+### Fix 1 — `plugin.sh:651` stdin redirect (eliminates pipe subshell)
+
+Replace:
+```bash
+    cat "$output_design_md" | atomic_write "$output_design_md"
+```
+With:
+```bash
+    local _dmd_tmp; _dmd_tmp="$(mktemp)"
+    cp "$output_design_md" "$_dmd_tmp"
+    atomic_write "$output_design_md" < "$_dmd_tmp"
+    rm -f "$_dmd_tmp" 2>/dev/null || true
+```
+`atomic_write` is now called in the current shell via stdin redirect; the test mock's
+`_SIDECAR_AT_ATOMIC_WRITE` variable update propagates to the caller.
+
+### Fix 2 — `plugin.sh:292-293` join heredoc lines
+
+In the `<<DESIGN_PROMPT` heredoc, the line ending in `You MUST` and the line starting with
+`   actively search the repo` must be joined into one line so `grep -q 'MUST actively
+search the repo'` matches:
+
+Current (two lines — WRONG):
+```
+   scope. The seed above is a starting point, never the answer. You MUST
+   actively search the repo (Read/Grep/Glob) and include:
+```
+After (one line — CORRECT):
+```
+   scope. The seed above is a starting point, never the answer. You MUST actively search the repo (Read/Grep/Glob) and include:
+```
+
+### Fix 3 — `design-router-timeout-reiter-test.sh:252-255` update SPEC-10-guard
+
+Replace the binary absent/fail check:
+```bash
+[[ ! -e "$_F_ARTIFACTS/design-verdict.json" ]] \
+    && assert_pass "[SPEC-10-guard] no design-verdict.json sidecar on happy path" \
+    || assert_fail "[SPEC-10-guard] spurious did_not_finish sidecar on happy path" \
+        "sidecar=$(cat "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null)"
+```
+With a three-way check that accepts the v2 pass-sidecar:
+```bash
+_sc_hpv="$(jq -r '.verdict // "ABSENT"' "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null || echo ABSENT)"
+_sc_hpd="$(jq -r '.disposition // "ABSENT"' "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null || echo ABSENT)"
+if [[ ! -e "$_F_ARTIFACTS/design-verdict.json" ]]; then
+    assert_pass "[SPEC-10-guard] no design-verdict.json sidecar on happy path (pre-v2)"
+elif [[ "$_sc_hpv" == "pass" && "$_sc_hpd" == "complete" ]]; then
+    assert_pass "[SPEC-10-guard] happy path sidecar has verdict=pass disposition=complete (v2 contract)"
+else
+    assert_fail "[SPEC-10-guard] spurious non-pass sidecar on happy path" \
+        "sidecar=$(cat "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null)"
+fi
+```
 
 ```scope
 plugins/agent/design/manifest.yaml
@@ -69,21 +115,21 @@ tests/integration/design-pipeline-test.sh
 tests/integration/design-prompt-override-pipeline-test.sh
 core/pipeline/verdict.sh
 core/router/route.sh
+scripts/lib/router-rc-classify.sh
 docs/adr/ADR-063-budget-disclosure-and-partial-output.md
 docs/wiki/plugins/design.md
 plugins/agent/plan/plugin.sh
-scripts/lib/router-rc-classify.sh
 ```
 
 ```acceptance
-SPEC-1[change]: success path writes design-verdict.json with result_contract:2, verdict=pass, disposition=complete before atomic_write of design.md
-SPEC-2[change]: error path (e.g. missing plan.json) writes design-verdict.json with result_contract:2, verdict=error, disposition=broken
-SPEC-3[guard]: timeout path still writes design-verdict.json with verdict=incomplete, disposition=interrupted (existing behaviour unchanged)
-SPEC-4[change]: manifest declares provides.result_contract:2 and config.valid_verdicts includes pass, error, and incomplete
-SPEC-5[change]: design_stage_run reads scope_manifest and plan paths from ZBUILD_STAGE_INPUTS index when the env var is set, not from hardcoded path construction
-SPEC-6[change]: prompt file contains a WALL CLOCK BUDGET block with timeout_s value sourced from _route_resolve_timeout
-SPEC-7[change]: prompt file contains a TURN BUDGET block with max_turns value sourced from _route_resolve_max_turns
-SPEC-8[guard]: existing prompt body instructions (scope charter, acceptance contract, tools section) are present and unaltered when budget blocks are injected
+SPEC-1[change]: success path calls atomic_write for design.md without a pipe (stdin redirect); when atomic_write is called, design-verdict.json already exists on disk with result_contract=2, verdict=pass, disposition=complete
+SPEC-2[change]: error path (missing plan.json) writes design-verdict.json with result_contract=2, verdict=error, disposition=broken before returning rc=1
+SPEC-3[guard]: timeout path (router_timeout) writes design-verdict.json with verdict=incomplete, disposition=interrupted (existing contract — must not regress)
+SPEC-4[change]: manifest.yaml declares provides.result_contract=2 and config.valid_verdicts contains pass, error, and incomplete
+SPEC-5[change]: design_stage_run reads scope_manifest and plan file paths from ZBUILD_STAGE_INPUTS index when the env var is set and the file exists, ignoring the hardcoded default paths
+SPEC-6[change]: prompt file contains a WALL CLOCK BUDGET block whose timeout_s value matches the live output of _route_resolve_timeout
+SPEC-7[change]: prompt file contains a TURN BUDGET block whose max_turns value matches the live output of _route_resolve_max_turns
+SPEC-8[change]: prompt file contains the scope charter instruction 'MUST actively search the repo' as a single grep-matchable phrase after budget guidance is injected
 WIRING: plugins/agent/design/manifest.yaml
 TESTFILES:
 SPEC-1: tests/unit/design-v2-result-contract-test.sh

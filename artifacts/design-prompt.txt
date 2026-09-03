@@ -126,6 +126,8 @@ WIRING field (ADR-036 Level-3, mandatory for behavioral-change issues):
 Keep the prose focused and under 200 lines (the scope block and acceptance
 block may be as long as completeness requires). Emit LOOP_COMPLETE when done.
 
+If the STAGE SUMMARIES name a tautological [change] SPEC — one that passes at the merge-base baseline, so it asserts nothing — RE-AUTHOR that SPEC and its tagged assertion so it FAILS at baseline and PASSES at HEAD. Build is forbidden to touch acceptance assertions (ADR-036), so only this stage can. Preserve all other scope and acceptance entries.
+
 
 ## Project-specific guidance (operator override)
 
