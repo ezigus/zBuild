@@ -32,6 +32,45 @@ source "$_INTAKE_DIR/lib/branch-ops.sh"
 # Reads: ZBUILD_GOAL (env), ZBUILD_ISSUE (env, optional)
 # Writes: $(dirname $state_file)/scope-manifest.md
 #         $(dirname $state_file)/intake.md
+# _intake_compose_goal <issue_json> <comment_max_bytes>
+# title + body, then qualifying comments under a labelled heading. Keeps
+# OWNER/MEMBER/COLLABORATOR; drops github-actions, any [bot] login, and
+# minimized comments. The cap is STATED in the text rather than applied
+# silently: a shortened goal that still reads as complete is worse than an
+# obviously truncated one (#1729).
+_intake_compose_goal() {
+    local json="${1-}" cap="${2:-4000}"
+    [[ -n "$json" ]] || return 1
+    local head cmts
+    head="$(jq -r '
+        (.title // "") as $t | (.body // "") as $b
+        | if ($t | length) == 0 then ""
+          elif ($b | length) == 0 then $t
+          else $t + "\n\n" + $b end' <<< "$json" 2>/dev/null)" || return 1
+    [[ -n "$head" ]] || return 1
+    cmts="$(jq -r '
+        [ (.comments // [])[]
+          | select((.isMinimized // false) | not)
+          # Bind first: after the pipe `.` is the ARRAY, so referencing
+          # .authorAssociation on the right-hand side reads a field of the array
+          # (null) and silently drops every comment.
+          | select((.authorAssociation // "") as $a
+                   | ["OWNER","MEMBER","COLLABORATOR"] | index($a))
+          | select((.author.login // "") | endswith("[bot]") | not)
+          | select((.author.login // "") != "github-actions")
+          | (.body // "") | select(length > 0) ]
+        | join("\n\n---\n\n")' <<< "$json" 2>/dev/null)" || cmts=""
+    if [[ -n "$cmts" ]]; then
+        if [[ "${#cmts}" -gt "$cap" ]]; then
+            cmts="${cmts:0:$cap}"
+            cmts="${cmts}"$'\n\n'"[… issue comments truncated at ${cap}B — read the issue for the full thread]"
+        fi
+        printf '%s\n\n## Additional context from issue comments\n\n%s' "$head" "$cmts"
+    else
+        printf '%s' "$head"
+    fi
+}
+
 intake_run() {
     # ADR-055 §9: resolved up-front, because the closed-issue refusal below
     # returns long before state_dir is derived and must still say why.
@@ -68,17 +107,42 @@ intake_run() {
             # command-kind stage-io input banner writes to fd 2 (default
             # ZBUILD_STAGE_IO_FD) and 2>/dev/null would swallow it, breaking
             # the ADR-015 §v4 input-before-action ordering contract.
-            fetched="$(run_captured_command intake gh issue view "$issue" \
-                --json title,body \
-                --jq '(.title // "") as $t
-                      | (.body  // "") as $b
-                      | if ($t | length) == 0 then ""
-                        elif ($b | length) == 0 then $t
-                        else $t + "\n\n" + $b
-                        end')"
+            # #1729: comments are where an issue is CORRECTED and EXTENDED
+            # after filing, and the pipeline was structurally blind to them —
+            # shipping half an issue while every gate agreed, because the SPECs
+            # the acceptance-gate checks derive from this same goal text.
+            #
+            # Fetched RAW and filtered locally: the filter is long enough that
+            # inlining it as --jq turns into a quoting maze, and a filter that
+            # cannot be read is a filter nobody can check.
+            local _cmt_max="${ZBUILD_INTAKE_COMMENT_MAX_BYTES:-4000}"
+            local _raw_json=""
+            _raw_json="$(run_captured_command intake gh issue view "$issue" \
+                --json title,body,comments)"
             gh_rc=$?
             [[ $_had_errexit -eq 1 ]] && set -e
+
+            if [[ $gh_rc -eq 0 && -n "$_raw_json" ]]; then
+                # Author filtering is load-bearing, not tidiness: zbuild posts
+                # its own run-completion comments, so an unfiltered append would
+                # feed the pipeline its own failure log back as a requirement.
+                # Minimized comments are dropped — minimizing is an explicit
+                # retraction.
+                fetched="$(_intake_compose_goal "$_raw_json" "$_cmt_max" 2>/dev/null || true)"
+            fi
             if [[ $gh_rc -eq 0 && -n "$fetched" ]]; then
+                # #1729: bound the growth. The goal feeds the redaction
+                # chokepoint and every downstream prompt, so an unbounded comment
+                # thread inflates every stage.
+                local _head="${fetched%%## Additional context from issue comments*}"
+                if [[ "$fetched" != "$_head" ]]; then
+                    local _cmts="${fetched#*## Additional context from issue comments}"
+                    if [[ "${#_cmts}" -gt "$_cmt_max" ]]; then
+                        _cmts="${_cmts:0:$_cmt_max}"
+                        _cmts="${_cmts}"$'\n\n'"[… issue comments truncated at ${_cmt_max}B — read the issue for the full thread]"
+                    fi
+                    fetched="${_head}## Additional context from issue comments${_cmts}"
+                fi
                 goal="$fetched"
             elif [[ "${ZBUILD_INTAKE_ALLOW_PLACEHOLDER:-0}" == "1" ]]; then
                 # #1804: still reachable, but only when asked for. An offline

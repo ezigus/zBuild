@@ -218,14 +218,17 @@ case "${1:-} ${2:-}" in
                 printf "%s" "$payload"
             fi
             exit 0
-        elif [[ "${4:-}" == "--json" && "${5:-}" == "title,body" ]]; then
+        elif [[ "${4:-}" == "--json" && ( "${5:-}" == "title,body" || "${5:-}" == "title,body,comments" ) ]]; then
             if [[ "${MOCK_GH_RC:-0}" -ne 0 ]]; then
                 exit "${MOCK_GH_RC}"
             fi
+            # #1729: comments ride the same call. MOCK_GH_COMMENTS is a JSON
+            # array supplied by the test; absent, it is empty.
             payload="$(jq -nc \
                 --arg t "${MOCK_GH_ISSUE_TITLE:-}" \
                 --arg b "${MOCK_GH_ISSUE_BODY:-}" \
-                "{title:\$t, body:\$b}")"
+                --argjson c "${MOCK_GH_COMMENTS:-[]}" \
+                "{title:\$t, body:\$b, comments:\$c}")"
             if [[ "${6:-}" == "--jq" ]]; then
                 printf "%s" "$payload" | jq -r "$7"
             else
@@ -541,6 +544,77 @@ if grep -q '//issues/' <<< "$t456j_err"; then
 else
     assert_pass "T_456_j: stderr has no malformed //issues/ token"
 fi
+
+# ─── #1729: issue COMMENTS reach the goal, filtered by author ───────────────
+# Comments are where an issue is corrected and extended after filing. #1685 is
+# the worked example: its body describes one problem, and a later owner comment
+# added a second, independent half. The pipeline was structurally blind to it —
+# and the acceptance-gate would have agreed the work was complete, because the
+# SPECs it checks derive from the same truncated goal text. Silent scope loss
+# with every gate green.
+#
+# Author filtering is the load-bearing part: zbuild posts its own
+# run-completion comments, so an unfiltered append would feed the pipeline's own
+# failure log straight back to the planner.
+print_test_section "#1729: comments reach the goal, bots and retractions do not"
+
+MOCK_GH_COMMENTS="$(cat <<'CMTS'
+[
+  {"author":{"login":"ezigus"},"authorAssociation":"OWNER","isMinimized":false,
+   "body":"CORRECTION_FROM_OWNER also handle the timeout case"},
+  {"author":{"login":"github-actions"},"authorAssociation":"NONE","isMinimized":false,
+   "body":"BOTNOISE zbuild pipeline finished with result failed"},
+  {"author":{"login":"some-bot[bot]"},"authorAssociation":"CONTRIBUTOR","isMinimized":false,
+   "body":"BRACKETBOTNOISE automated message"},
+  {"author":{"login":"ezigus"},"authorAssociation":"OWNER","isMinimized":true,
+   "body":"RETRACTEDCOMMENT this was wrong"},
+  {"author":{"login":"a-collaborator"},"authorAssociation":"COLLABORATOR","isMinimized":false,
+   "body":"COLLABORATOR_ADDITION and refuse an empty config"}
+]
+CMTS
+)"
+export MOCK_GH_COMMENTS
+_set_gh_mock "Fix login crash on launch" "Steps to reproduce click login" 0
+rm -f "$STATE_DIR/intake.md"
+set +e
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+rc=$?
+set -e
+_c_goal="$(cat "$STATE_DIR/intake.md" 2>/dev/null || true)"
+
+assert_eq "[#1729] the fetch still succeeds" "0" "$rc"
+assert_contains "[#1729] an OWNER comment reaches the goal" \
+    "$_c_goal" "CORRECTION_FROM_OWNER"
+assert_contains "[#1729] a COLLABORATOR comment reaches it too" \
+    "$_c_goal" "COLLABORATOR_ADDITION"
+assert_contains "[#1729] under a labelled heading, not silently concatenated" \
+    "$_c_goal" "Additional context from issue comments"
+assert_eq "[#1729] a github-actions comment does NOT — it is the pipeline's own log" \
+    "0" "$(grep -c 'BOTNOISE' <<< "$_c_goal" || true)"
+assert_eq "[#1729] nor any [bot] login" \
+    "0" "$(grep -c 'BRACKETBOTNOISE' <<< "$_c_goal" || true)"
+assert_eq "[#1729] nor a minimized comment — minimizing is an explicit retraction" \
+    "0" "$(grep -c 'RETRACTEDCOMMENT' <<< "$_c_goal" || true)"
+assert_contains "[#1729] and the body itself survives" "$_c_goal" "Steps to reproduce"
+
+# ─── #1729: growth is bounded, and truncation SAYS so ──────────────────────
+# The goal feeds the redaction chokepoint and every downstream prompt, so an
+# unbounded comment thread inflates every stage. Silent truncation would be the
+# worse failure: a shortened goal that still reads as complete.
+_big_body="$(python3 -c 'print("X"*9000)')"
+MOCK_GH_COMMENTS="$(jq -nc --arg b "$_big_body" \
+    '[{author:{login:"ezigus"},authorAssociation:"OWNER",isMinimized:false,body:$b}]')"
+export MOCK_GH_COMMENTS
+rm -f "$STATE_DIR/intake.md"
+set +e
+ZBUILD_INTAKE_COMMENT_MAX_BYTES=500 intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+set -e
+_t_goal="$(cat "$STATE_DIR/intake.md" 2>/dev/null || true)"
+assert_eq "[#1729] the comment section is capped" \
+    "1" "$([[ "${#_t_goal}" -lt 9000 ]] && echo 1 || echo 0)"
+assert_contains "[#1729] and the truncation is STATED, not silent" \
+    "$_t_goal" "truncated"
+unset MOCK_GH_COMMENTS
 
 _clear_gh_mock
 
