@@ -91,7 +91,14 @@ build_stage_run() {
     local scope_manifest=""
     local plan_json_path=""
 
-    # ADR-055 §1: read input paths from engine-resolved index when available.
+    # ADR-055 §1: the engine resolves input paths and hands them over in this
+    # index. There is no fallback construction any more (#1825), so its absence
+    # is an engine contract violation, not a condition this plugin can recover
+    # from — say so here rather than letting the inner arg guard report it as a
+    # calling-convention error two frames down.
+    if [[ -z "${ZBUILD_STAGE_INPUTS:-}" || ! -s "${ZBUILD_STAGE_INPUTS}" ]]; then
+        error "build_stage_run: ZBUILD_STAGE_INPUTS is unset or empty — the engine must resolve and export the input index (ADR-055 §1)"
+    fi
     if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS}" ]]; then
         local _sm_path _pl_path
         _sm_path="$(jq -r '.inputs.scope_manifest // empty' "${ZBUILD_STAGE_INPUTS}" 2>/dev/null || true)"
@@ -124,6 +131,17 @@ _build_stage_run_inner() {
 
     if [[ -z "$scope_manifest" || -z "$plan_json_path" || -z "$output_diff_patch" || -z "$output_summary_json" ]]; then
         error "_build_stage_run_inner: requires <scope_manifest> <plan_json_path> <output_diff_patch> <output_summary_json> [artifact_dir]"
+        # ADR-054 §4b: an exit path like any other. Reachable in production when
+        # ZBUILD_STAGE_INPUTS named no scope_manifest/plan (guarded above), where
+        # the summary path IS known — so the engine gets a result rather than a
+        # bare rc. Direct unit callers passing nothing get no result: there is
+        # nowhere to write it, and inventing a path would be worse.
+        if [[ -n "$output_summary_json" ]]; then
+            mkdir -p "$(dirname "$output_summary_json")" 2>/dev/null || true
+            jq -n '{"schema_version":4,"result_contract":2,"verdict":"incomplete",
+                    "disposition":"broken","reason":"missing_stage_inputs"}' \
+                | atomic_write "$output_summary_json" 2>/dev/null || true
+        fi
         return 1
     fi
 

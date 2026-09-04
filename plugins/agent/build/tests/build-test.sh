@@ -309,13 +309,12 @@ fi
 
 # ─── Test 4: build-summary.json schema_version=4 + new fields ────────────────
 # #602 bumped schema_version to 4 (apply_check field dropped with the stash dance).
-print_test_section "T4: build-summary.json has schema_version=4 + loop fields + v2 contract (SPEC-1/2/11)"
+print_test_section "T4: build-summary.json has schema_version=4 + loop fields + v2 contract (SPEC-23/24/22)"
 
-assert_json_key "[SPEC-11] schema_version remains 4 (independent of result_contract)" "$summary_json_t3" ".schema_version" "4"
-assert_json_key "schema_version == 4" "$summary_json_t3" ".schema_version" "4"
+assert_json_key "[SPEC-22] schema_version remains 4 (independent of result_contract)" "$summary_json_t3" ".schema_version" "4"
 assert_json_key "verdict field present (#507)" "$summary_json_t3" ".verdict" "pass"
-assert_json_key "[SPEC-1] result_contract:2 on normal-pass branch (done_sentinel + files changed)" "$summary_json_t3" ".result_contract" "2"
-assert_json_key "[SPEC-2] disposition:complete on normal-pass branch (done_sentinel + files changed)" "$summary_json_t3" ".disposition" "complete"
+assert_json_key "[SPEC-23] result_contract:2 on normal-pass branch (done_sentinel + files changed)" "$summary_json_t3" ".result_contract" "2"
+assert_json_key "[SPEC-24] disposition:complete on normal-pass branch (done_sentinel + files changed)" "$summary_json_t3" ".disposition" "complete"
 
 files_changed_type="$(printf '%s' "$summary_json_t3" | jq -r '.files_changed | type' 2>/dev/null || echo "missing")"
 assert_eq "files_changed is an array" "array" "$files_changed_type"
@@ -867,7 +866,7 @@ _manifest_rc="$(grep -oE 'result_contract:[[:space:]]*[0-9]+' "$PLUGIN_DIR/manif
 assert_eq "[SPEC-8] manifest provides.result_contract == 2" "2" "$_manifest_rc"
 
 # ─── SPEC-13: build_stage_run returns rc=1 when state_file absent ─────────────
-print_test_section "SPEC-13: build_stage_run returns rc=1 when state_file argument is absent"
+print_test_section "SPEC-27: build_stage_run returns rc=1 when state_file argument is absent"
 
 _S13_ARTIFACT_DIR="$TEST_TEMP_DIR/spec13-artifacts"
 mkdir -p "$_S13_ARTIFACT_DIR"
@@ -875,20 +874,20 @@ set +e
 ZBUILD_ARTIFACT_DIR="$_S13_ARTIFACT_DIR" build_stage_run "build" "" >/dev/null 2>&1
 rc_s13=$?
 set -e
-assert_exit_code "[SPEC-13] build_stage_run returns rc=1 (not rc=2) when state_file absent" "1" "$rc_s13"
+assert_exit_code "[SPEC-27] build_stage_run returns rc=1 (not rc=2) when state_file absent" "1" "$rc_s13"
 # ADR-054 §4b: the result is owed on this path too, not only on the paths that
 # reached a state dir. #2053/#2057 were both this defect class in another plugin.
 _s13_summary="$_S13_ARTIFACT_DIR/build-summary.json"
-assert_file_exists "[SPEC-13] build-summary.json written when state_file absent" "$_s13_summary"
-assert_eq "[SPEC-13] state_file-absent summary has result_contract:2" \
+assert_file_exists "[SPEC-27] build-summary.json written when state_file absent" "$_s13_summary"
+assert_eq "[SPEC-27] state_file-absent summary has result_contract:2" \
     "2" "$(jq -r '.result_contract // ""' "$_s13_summary" 2>/dev/null || echo "")"
-assert_eq "[SPEC-13] state_file-absent summary has disposition:broken" \
+assert_eq "[SPEC-27] state_file-absent summary has disposition:broken" \
     "broken" "$(jq -r '.disposition // ""' "$_s13_summary" 2>/dev/null || echo "")"
-assert_eq "[SPEC-13] state_file-absent summary has reason:missing_state_file" \
+assert_eq "[SPEC-27] state_file-absent summary has reason:missing_state_file" \
     "missing_state_file" "$(jq -r '.reason // ""' "$_s13_summary" 2>/dev/null || echo "")"
 
 # ─── SPEC-6/7: build_stage_run reads paths from ZBUILD_STAGE_INPUTS ───────────
-print_test_section "SPEC-6/7: build_stage_run reads scope_manifest and plan from ZBUILD_STAGE_INPUTS"
+print_test_section "SPEC-25/26: build_stage_run reads scope_manifest and plan from ZBUILD_STAGE_INPUTS"
 
 STATE_DIR_SI="$TEST_TEMP_DIR/state_si"
 mkdir -p "$STATE_DIR_SI"
@@ -940,16 +939,16 @@ set -e
 unset ZBUILD_STAGE_INPUTS
 
 if [[ $rc_si -eq 0 ]]; then
-    assert_pass "[SPEC-6] build_stage_run reads scope_manifest from ZBUILD_STAGE_INPUTS"
-    assert_pass "[SPEC-7] build_stage_run reads plan path from ZBUILD_STAGE_INPUTS"
+    assert_pass "[SPEC-25] build_stage_run reads scope_manifest from ZBUILD_STAGE_INPUTS"
+    assert_pass "[SPEC-26] build_stage_run reads plan path from ZBUILD_STAGE_INPUTS"
 else
-    assert_fail "[SPEC-6] build_stage_run reads scope_manifest from ZBUILD_STAGE_INPUTS (rc=$rc_si)"
-    assert_fail "[SPEC-7] build_stage_run reads plan path from ZBUILD_STAGE_INPUTS (rc=$rc_si)"
+    assert_fail "[SPEC-25] build_stage_run reads scope_manifest from ZBUILD_STAGE_INPUTS (rc=$rc_si)"
+    assert_fail "[SPEC-26] build_stage_run reads plan path from ZBUILD_STAGE_INPUTS (rc=$rc_si)"
 fi
 
 # SPEC-7 grep assertion: diff.patch references the file declared in the custom plan.
 _si_diff="$STATE_DIR_SI/artifacts/diff.patch"
-assert_contains "[SPEC-7] diff.patch from ZBUILD_STAGE_INPUTS run references si-test.txt" \
+assert_contains "[SPEC-26] diff.patch from ZBUILD_STAGE_INPUTS run references si-test.txt" \
     "$(cat "$_si_diff" 2>/dev/null || true)" "si-test.txt"
 
 MOCK_LOOP_EDIT_FILE=""
@@ -959,7 +958,7 @@ MOCK_LOOP_REASON="done_sentinel"
 MOCK_LOOP_RC=0
 
 # ─── SPEC-14: SIGINT (router_rc=130) → rc=1 + disposition:interrupted in summary ─
-print_test_section "SPEC-14: SIGINT (router_rc=130) → rc=1 + v2 disposition:interrupted in build-summary.json"
+print_test_section "SPEC-28: SIGINT (router_rc=130) → rc=1 + v2 disposition:interrupted in build-summary.json"
 
 ARTIFACT_DIR_S14="$TEST_TEMP_DIR/artifacts_s14"
 mkdir -p "$ARTIFACT_DIR_S14"
@@ -984,30 +983,30 @@ _build_stage_run_inner \
 rc_s14=$?
 set -e
 
-assert_exit_code "[SPEC-14] SIGINT returns rc=1 (not rc=130)" "1" "$rc_s14"
-assert_file_exists "[SPEC-14] build-summary.json written on SIGINT path" "$OUT_SUMMARY_S14"
+assert_exit_code "[SPEC-28] SIGINT returns rc=1 (not rc=130)" "1" "$rc_s14"
+assert_file_exists "[SPEC-28] build-summary.json written on SIGINT path" "$OUT_SUMMARY_S14"
 _s14_rc="$(jq -r '.result_contract // ""' "$OUT_SUMMARY_S14" 2>/dev/null || echo "")"
 _s14_disp="$(jq -r '.disposition // ""' "$OUT_SUMMARY_S14" 2>/dev/null || echo "")"
 _s14_rsn="$(jq -r '.reason // ""' "$OUT_SUMMARY_S14" 2>/dev/null || echo "")"
-assert_eq "[SPEC-14] SIGINT summary has result_contract:2" "2" "$_s14_rc"
-assert_eq "[SPEC-14] SIGINT summary has disposition:interrupted" "interrupted" "$_s14_disp"
-assert_eq "[SPEC-14] SIGINT summary has reason:sigint" "sigint" "$_s14_rsn"
+assert_eq "[SPEC-28] SIGINT summary has result_contract:2" "2" "$_s14_rc"
+assert_eq "[SPEC-28] SIGINT summary has disposition:interrupted" "interrupted" "$_s14_disp"
+assert_eq "[SPEC-28] SIGINT summary has reason:sigint" "sigint" "$_s14_rsn"
 
 MOCK_LOOP_RC=0
 MOCK_LOOP_REASON="done_sentinel"
 MOCK_LOOP_ITERATIONS=1
 
 # ─── SPEC-15: empty args to _build_stage_run_inner returns rc=1 (not rc=2) ───
-print_test_section "SPEC-15: _build_stage_run_inner empty required args returns rc=1"
+print_test_section "SPEC-29: _build_stage_run_inner empty required args returns rc=1"
 
 set +e
 _build_stage_run_inner "" "" "" "" >/dev/null 2>&1
 rc_s15=$?
 set -e
-assert_exit_code "[SPEC-15] _build_stage_run_inner empty args returns rc=1 (not rc=2)" "1" "$rc_s15"
+assert_exit_code "[SPEC-29] _build_stage_run_inner empty args returns rc=1 (not rc=2)" "1" "$rc_s15"
 
 # ─── SPEC-16: _build_load_context reads design.md from ZBUILD_STAGE_INPUTS ───
-print_test_section "SPEC-16: _build_load_context reads design.md path from ZBUILD_STAGE_INPUTS"
+print_test_section "SPEC-30: _build_load_context reads design.md path from ZBUILD_STAGE_INPUTS"
 
 ARTIFACT_DIR_S16="$TEST_TEMP_DIR/artifacts_s16"
 mkdir -p "$ARTIFACT_DIR_S16"
@@ -1065,7 +1064,7 @@ unset ZBUILD_STAGE_INPUTS
 
 _s16_prompt="$(cat "$_CAPTURED_PROMPT_FILE")"
 assert_contains \
-    "[SPEC-16] custom design.md text from ZBUILD_STAGE_INPUTS appears in build prompt" \
+    "[SPEC-30] custom design.md text from ZBUILD_STAGE_INPUTS appears in build prompt" \
     "$_s16_prompt" "SPEC-16-UNIQUE-DESIGN-ACCEPTANCE-TEXT-MARKER"
 
 MOCK_LOOP_EDIT_FILE=""
@@ -1077,6 +1076,12 @@ MOCK_LOOP_RC=0
 # ─── SPEC-20: plugin.sh contains no hardcoded input-path fallbacks ────────────
 print_test_section "SPEC-20: plugin.sh has no hardcoded fallback constructions for input artifact paths"
 
+# [guard] STRUCTURAL, not behavioural: this greps for the two constructions the
+# migration deletes, so a plugin that hardcoded a DIFFERENT wrong path would still
+# pass it. The behaviour — that the paths actually come from the engine's index —
+# is proved by SPEC-25/26 (non-default paths are honoured) and SPEC-31 (no index is
+# an error, not a silent fallback). SPEC-20 exists to keep the deleted lines from
+# creeping back, and is only meaningful alongside those two.
 _plugin_sh="$PLUGIN_DIR/plugin.sh"
 # CHANGE assertion: at baseline, grep finds the literal construction → assert_fail.
 # After removal, grep finds nothing → assert_pass.
@@ -1094,6 +1099,36 @@ if [[ -n "$_spec20_pl_lines" ]]; then
 else
     assert_pass "[SPEC-20] plugin.sh has no hardcoded artifacts_dir/plan.json construction"
 fi
+
+# ─── SPEC-31: no ZBUILD_STAGE_INPUTS is an engine contract violation, reported as one ─
+# The negative counterpart of SPEC-25/26. Once the fallback path constructions are
+# gone (SPEC-20) this is a REACHABLE production path, not a calling-convention slip,
+# so it owes the same v2 result every other exit path owes (ADR-054 §4b).
+print_test_section "SPEC-31: build_stage_run with no ZBUILD_STAGE_INPUTS reports missing_stage_inputs"
+
+STATE_DIR_NI="$TEST_TEMP_DIR/state_ni"
+mkdir -p "$STATE_DIR_NI"
+STATEFILE_NI="$STATE_DIR_NI/state.json"
+printf '{}' > "$STATEFILE_NI"
+REPO_NI="$(setup_build_repo "repo_ni")"
+export ZBUILD_REPO_ROOT="$REPO_NI"
+export ZBUILD_STATE_DIR="$STATE_DIR_NI"
+
+unset ZBUILD_STAGE_INPUTS 2>/dev/null || true
+set +e
+build_stage_run "build" "$STATEFILE_NI" >/dev/null 2>&1
+rc_ni=$?
+set -e
+
+assert_exit_code "[SPEC-31] build_stage_run returns rc=1 when ZBUILD_STAGE_INPUTS is absent" "1" "$rc_ni"
+_ni_summary="$STATE_DIR_NI/artifacts/build-summary.json"
+assert_file_exists "[SPEC-31] build-summary.json written when ZBUILD_STAGE_INPUTS is absent" "$_ni_summary"
+assert_eq "[SPEC-31] stage-inputs-absent summary has result_contract:2" \
+    "2" "$(jq -r '.result_contract // ""' "$_ni_summary" 2>/dev/null || echo "")"
+assert_eq "[SPEC-31] stage-inputs-absent summary has disposition:broken" \
+    "broken" "$(jq -r '.disposition // ""' "$_ni_summary" 2>/dev/null || echo "")"
+assert_eq "[SPEC-31] stage-inputs-absent summary has reason:missing_stage_inputs" \
+    "missing_stage_inputs" "$(jq -r '.reason // ""' "$_ni_summary" 2>/dev/null || echo "")"
 
 # ─── SPEC-21: the router budget is declared in the manifest, not only the template ─
 # ADR-017 §11 (#1816). At the merge-base the manifest declares no `config.router`
