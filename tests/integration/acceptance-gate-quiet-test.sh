@@ -150,6 +150,9 @@ _run_gate_capture() {  # _run_gate_capture <repo> <fd3_capture_file>
     export ZBUILD_EVENTS_DIR="$state_dir/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
     export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
     cp "$repo/design.md" "$state_dir/artifacts/design.md" 2>/dev/null || true
+    local _si_json="$state_dir/stage-inputs.json"
+    printf '{"inputs":{"design":"%s"}}\n' "$state_dir/artifacts/design.md" > "$_si_json"
+    export ZBUILD_STAGE_INPUTS="$_si_json"
     unset _ZBUILD_ACCEPTANCE_GATE_LOADED _ACCEPTANCE_REACHABILITY_LOADED \
           _ACCEPTANCE_NEGCTL_LOADED _ACCEPTANCE_BLOCK_LOADED _ZBUILD_MERGE_BASE_LOADED \
           _ACCEPTANCE_COVERAGE_LOADED
@@ -208,6 +211,8 @@ assert_contains "[SPEC-2] summary: SPEC-2 tautology → NEGCTL FAIL on terminal"
     "$(cat "$CAP_C")" "NEGCTL FAIL SPEC-2 tautology"
 assert_eq "[SPEC-1] summary run: no raw nested banner leaked to the terminal" \
     "0" "$(grep -c 'NESTED-STAGE-IO-MARKER' "$CAP_C")"
+assert_eq "[SPEC-4] C1: operator summary behavioral contract preserved — one line per SPEC" \
+    "2" "$(grep -c 'NEGCTL' "$CAP_C")"
 # #1241: the summary must render inside its own stage-io frame (not orphaned
 # after the preceding stage's ── end stage-io ──).
 assert_contains "[#1241] summary is opened by a stage-io span for acceptance-gate" \

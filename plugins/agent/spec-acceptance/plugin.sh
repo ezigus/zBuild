@@ -178,8 +178,11 @@ _ag_build_reason() {
 # compose into repos that do not use SPEC.
 _ag_noop_precondition_unmet() {
     local result_file="$1" pc="$2"
-    printf '{"verdict":"pass","reason":"precondition_unmet","precondition":"%s","disposition":"none","failures":[]}\n' \
+    printf '{"result_contract":2,"verdict":"pass","reason":"precondition_unmet","precondition":"%s","disposition":"none","failures":[]}\n' \
         "$pc" | atomic_write "$result_file"
+    local _summary_dir; _summary_dir="$(dirname "$result_file")"
+    printf 'verdict=pass\nreason=precondition_unmet\nprecondition=%s\n' "$pc" \
+        | atomic_write "${_summary_dir}/acceptance-summary.txt"
     eb_emit_event "acceptance.gate.skipped" "stage=acceptance-gate" "reason=precondition_unmet" "precondition=$pc"
     eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=pass"
 }
@@ -236,7 +239,10 @@ acceptance_gate_run() {
     local state_dir; state_dir="$(dirname "$state_file")"
     local artifact_dir="$state_dir/artifacts"
     local result_file="$artifact_dir/acceptance-gate-result.json"
-    local design_md="$artifact_dir/design.md"
+    local design_md=""
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+        design_md="$(jq -r '.inputs.design // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+    fi
 
     # ADR-036 #1188: plumb the per-test timeout knob and a diagnostic-log dir to
     # the negctl/reachability libs (they read these two env vars).
@@ -261,8 +267,10 @@ acceptance_gate_run() {
     # Fence present but unparseable → fail closed (a malformed contract must NOT
     # bypass the gate; this is a genuine violation, NOT an applicability no-op).
     if ! extract_acceptance_block "$design_md" >/dev/null 2>&1; then
-        printf '{"verdict":"fail","reason":"malformed_acceptance_block","disposition":"terminal","failures":["malformed_acceptance_block"]}\n' \
+        printf '{"result_contract":2,"verdict":"fail","reason":"malformed_acceptance_block","disposition":"terminal","failures":["malformed_acceptance_block"]}\n' \
             | atomic_write "$result_file"
+        printf 'verdict=fail\nreason=malformed_acceptance_block\n' \
+            | atomic_write "$artifact_dir/acceptance-summary.txt"
         eb_emit_event "acceptance.gate.untagged_spec" "stage=acceptance-gate" "reason=malformed_acceptance_block"
         eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=fail"
         return 1
@@ -535,7 +543,7 @@ acceptance_gate_run() {
         # the design-vs-assertion pairing is visible to nobody after the run ends.
         mkdir -p "$state_dir/artifacts" 2>/dev/null || true
         printf '%s\n' "${summary_lines[@]}" \
-            | atomic_write "$state_dir/artifacts/acceptance-summary.txt" 2>/dev/null || true
+            | atomic_write "$state_dir/artifacts/acceptance-summary.txt"
         _ag_emit_operator_summary "${_stage_id:-acceptance-gate}" "${summary_lines[@]}"
     fi
 
@@ -548,12 +556,12 @@ acceptance_gate_run() {
     if [[ -n "$reason_msg" ]]; then
         jq -cn --arg v "$verdict" --arg d "$disposition" --arg r "$reason_msg" \
             --arg ft "$fault" --argjson f "$failures_json" \
-            '{verdict:$v,disposition:$d,reason:$r,failures:$f}
+            '{result_contract:2,verdict:$v,disposition:$d,reason:$r,failures:$f}
              + (if $ft=="" then {} else {fault:$ft} end)' | atomic_write "$result_file"
     else
         jq -cn --arg v "$verdict" --arg d "$disposition" \
             --arg ft "$fault" --argjson f "$failures_json" \
-            '{verdict:$v,disposition:$d,failures:$f}
+            '{result_contract:2,verdict:$v,disposition:$d,failures:$f}
              + (if $ft=="" then {} else {fault:$ft} end)' | atomic_write "$result_file"
     fi
 

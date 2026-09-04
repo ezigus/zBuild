@@ -65,6 +65,7 @@ requires:
 
 provides:
   role: acceptance_gate
+  result_contract: 2
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -113,15 +114,14 @@ outputs:
     primary: true
   # #1977: the design↔assertion pairing this gate has always written
   # (plugin.sh: acceptance-summary.txt) and never declared — the only undeclared
-  # output in the tree. Its own comment framed it as post-hoc audit, so nothing
-  # consumed it and the build agent saw only SPEC ids and the word
-  # "tautological". `summary: true` (#1976) hands it to downstream prompts as
-  # ambient context; required:false because a no-op run writes no summary.
+  # output in the tree. `summary: true` (#1976) hands it to downstream prompts as
+  # ambient context; required:true because every terminal path writes a summary
+  # (ADR-055 §9 — precondition_unmet and malformed paths both write one).
   - id: acceptance_detail
     path: ${artifact_dir}/acceptance-summary.txt
     type: acceptance-summary.txt@1
     format: text
-    required: false
+    required: true
     summary: true
 
 state:

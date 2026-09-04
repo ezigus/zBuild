@@ -82,6 +82,9 @@ mkdir -p "$ART"
 export ZBUILD_EVENTS_DIR="$STATE_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
 cp "$REPO/design.md" "$ART/design.md"
+_si_file="$(mktemp)"
+printf '{"inputs":{"design":"%s"}}\n' "$ART/design.md" > "$_si_file"
+export ZBUILD_STAGE_INPUTS="$_si_file"
 
 unset _ZBUILD_ACCEPTANCE_GATE_LOADED _ACCEPTANCE_REACHABILITY_LOADED \
       _ACCEPTANCE_NEGCTL_LOADED _ACCEPTANCE_BLOCK_LOADED _ZBUILD_MERGE_BASE_LOADED \
@@ -98,6 +101,8 @@ assert_eq "[SPEC-2] guard_regressed sets fault=specification — build cannot fi
     "specification" "$(jq -r '.fault // "ABSENT"' <<< "$AG_RESULT")"
 assert_eq "[SPEC-3] the disposition stays recoverable, so the aggregator still reads fault" \
     "recoverable" "$(jq -r '.disposition // "MISSING"' <<< "$AG_RESULT")"
+assert_eq "[SPEC-4] guard_regressed verdict=fail behavioral contract preserved" \
+    "fail" "$(jq -r '.verdict // empty' <<< "$AG_RESULT")"
 
 # ── Half 2: the aggregator carries it into design-feedback.md ───────────────
 # _ga_build_roster falls back to the legacy must-pass set with no cycle in
