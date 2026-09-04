@@ -157,6 +157,12 @@ _build_gather_acceptance_specs() {
 _build_load_context() {
     # shellcheck disable=SC2154  # artifact_dir and plan_json injected via dynamic scope from caller
     local _ctx_design_md_path="$artifact_dir/design.md"
+    # ADR-055 §1: read design.md path from engine-resolved index when available.
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS}" ]]; then
+        local _ctx_design_input
+        _ctx_design_input="$(jq -r '.inputs.design // empty' "${ZBUILD_STAGE_INPUTS}" 2>/dev/null || true)"
+        [[ -n "$_ctx_design_input" ]] && _ctx_design_md_path="$_ctx_design_input"
+    fi
     local _ctx_scope_source="plan"
     local _ctx_design_csv="" _ctx_scope_file_count=0 _ctx_granted="" _ctx_candidate=""
     local _ctx_state_dir_for_design

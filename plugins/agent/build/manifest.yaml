@@ -20,6 +20,7 @@ requires:
 
 provides:
   role: builder
+  result_contract: 2
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -51,6 +52,13 @@ config:
     - incomplete
     - fail
   tier_default: T2
+  # ADR-017 §11 (#1816): build's own budget, previously written only in the
+  # template. `max_turns: 0` omits --max-turns — the build loop bounds itself by
+  # iteration, not by turn. No `retries`: build is a cycle member, so a timeout is
+  # re-driven by the cycle rather than by the router.
+  router:
+    timeout_s: 900
+    max_turns: 0
 
 inputs:
   - id: scope_manifest
