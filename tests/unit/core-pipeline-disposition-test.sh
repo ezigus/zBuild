@@ -328,6 +328,18 @@ assert_eq "...with no response invented for it" "" \
 # duplicated here as a source grep: a test that asserts a line of code exists
 # passes for a line that does nothing.
 
+# ─── SPEC-12: build plugin disposition values are in the engine's vocabulary ──
+# GUARD: the vocabulary is the engine's closed set; the build plugin's dispositions
+# (complete, interrupted, broken) must be members. Tagged here per ADR-036 for the
+# acceptance gate. The vocabulary pre-dates this migration; the test guards against
+# future drift (e.g. a new disposition added to the plugin without updating the set).
+print_test_section "SPEC-12: build plugin dispositions are members of the engine's closed vocabulary"
+
+for _build_d in complete interrupted broken; do
+    assert_exit_code "[SPEC-12] build plugin disposition '$_build_d' is a valid engine vocabulary member" \
+        0 "$(_rc_of disposition_is_valid "$_build_d")"
+done
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

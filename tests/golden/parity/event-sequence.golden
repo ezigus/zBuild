@@ -30,6 +30,7 @@ plugin.run.start
 redaction.counter_skipped
 redaction.applied
 loop.iteration
+router.max_turns.flag_omitted
 loop.complete
 loop.git_diff_failed
 build.empty_diff

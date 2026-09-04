@@ -222,8 +222,8 @@ MOCK_LOOP_RC=0
 MOCK_LOOP_REASON="done_sentinel"
 MOCK_LOOP_ITERATIONS=1
 
-# ─── Test 2: missing plan.json returns rc=2 ───────────────────────────────────
-print_test_section "T2: missing plan.json returns rc=2"
+# ─── Test 2: missing plan.json returns rc=1 (SPEC-5) ─────────────────────────
+print_test_section "T2: missing plan.json returns rc=1 (SPEC-5)"
 
 ARTIFACT_DIR_T2="$TEST_TEMP_DIR/artifacts_t2"
 mkdir -p "$ARTIFACT_DIR_T2"
@@ -241,9 +241,11 @@ _build_stage_run_inner \
 rc_t2=$?
 set -e
 
-assert_exit_code "missing plan.json yields rc=2" "2" "$rc_t2"
+assert_exit_code "[SPEC-5] missing plan.json yields rc=1 (not rc=2)" "1" "$rc_t2"
 assert_file_not_exists "no diff.patch written when plan.json missing" "$OUT_DIFF_T2"
-assert_file_not_exists "no build-summary.json written when plan.json missing" "$OUT_SUMMARY_T2"
+assert_file_exists "[SPEC-5] build-summary.json written with v2 result when plan.json missing" "$OUT_SUMMARY_T2"
+_t2_disp="$(jq -r '.disposition // ""' "$OUT_SUMMARY_T2" 2>/dev/null || echo "")"
+assert_eq "[SPEC-5] plan-missing summary has disposition:broken" "broken" "$_t2_disp"
 
 # ─── Test 3: produces diff.patch + build-summary.json via mocked loop ────────
 print_test_section "T3: produces diff.patch and build-summary.json with mocked loop"
@@ -307,10 +309,13 @@ fi
 
 # ─── Test 4: build-summary.json schema_version=4 + new fields ────────────────
 # #602 bumped schema_version to 4 (apply_check field dropped with the stash dance).
-print_test_section "T4: build-summary.json has schema_version=4 + loop fields"
+print_test_section "T4: build-summary.json has schema_version=4 + loop fields + v2 contract (SPEC-1/2/11)"
 
+assert_json_key "[SPEC-11] schema_version remains 4 (independent of result_contract)" "$summary_json_t3" ".schema_version" "4"
 assert_json_key "schema_version == 4" "$summary_json_t3" ".schema_version" "4"
 assert_json_key "verdict field present (#507)" "$summary_json_t3" ".verdict" "pass"
+assert_json_key "[SPEC-1] result_contract:2 on normal-pass branch (done_sentinel + files changed)" "$summary_json_t3" ".result_contract" "2"
+assert_json_key "[SPEC-2] disposition:complete on normal-pass branch (done_sentinel + files changed)" "$summary_json_t3" ".disposition" "complete"
 
 files_changed_type="$(printf '%s' "$summary_json_t3" | jq -r '.files_changed | type' 2>/dev/null || echo "missing")"
 assert_eq "files_changed is an array" "array" "$files_changed_type"
@@ -374,6 +379,8 @@ assert_eq "diff.patch is empty on scope violation (0 bytes)" "0" "$t6_size"
 
 summary_t6="$(cat "$OUT_SUMMARY_T6")"
 assert_json_key "scope_violation == true" "$summary_t6" ".scope_violation" "true"
+assert_json_key "[SPEC-3] result_contract:2 on scope_violation branch" "$summary_t6" ".result_contract" "2"
+assert_json_key "[SPEC-4] disposition:broken on scope_violation branch" "$summary_t6" ".disposition" "broken"
 
 t6_violation_count="$(printf '%s' "$summary_t6" | jq '.scope_violations | length' 2>/dev/null || echo 0)"
 if [[ "$t6_violation_count" -ge 1 ]]; then
@@ -852,6 +859,261 @@ MOCK_LOOP_EXTRA_FILES=""
 MOCK_LOOP_RC=0
 MOCK_LOOP_REASON="done_sentinel"
 MOCK_LOOP_ITERATIONS=1
+
+# ─── SPEC-8: manifest declares result_contract:2 ──────────────────────────────
+print_test_section "SPEC-8: build manifest declares result_contract:2 under provides"
+
+_manifest_rc="$(grep -oE 'result_contract:[[:space:]]*[0-9]+' "$PLUGIN_DIR/manifest.yaml" | grep -oE '[0-9]+')"
+assert_eq "[SPEC-8] manifest provides.result_contract == 2" "2" "$_manifest_rc"
+
+# ─── SPEC-13: build_stage_run returns rc=1 when state_file absent ─────────────
+print_test_section "SPEC-13: build_stage_run returns rc=1 when state_file argument is absent"
+
+_S13_ARTIFACT_DIR="$TEST_TEMP_DIR/spec13-artifacts"
+mkdir -p "$_S13_ARTIFACT_DIR"
+set +e
+ZBUILD_ARTIFACT_DIR="$_S13_ARTIFACT_DIR" build_stage_run "build" "" >/dev/null 2>&1
+rc_s13=$?
+set -e
+assert_exit_code "[SPEC-13] build_stage_run returns rc=1 (not rc=2) when state_file absent" "1" "$rc_s13"
+# ADR-054 §4b: the result is owed on this path too, not only on the paths that
+# reached a state dir. #2053/#2057 were both this defect class in another plugin.
+_s13_summary="$_S13_ARTIFACT_DIR/build-summary.json"
+assert_file_exists "[SPEC-13] build-summary.json written when state_file absent" "$_s13_summary"
+assert_eq "[SPEC-13] state_file-absent summary has result_contract:2" \
+    "2" "$(jq -r '.result_contract // ""' "$_s13_summary" 2>/dev/null || echo "")"
+assert_eq "[SPEC-13] state_file-absent summary has disposition:broken" \
+    "broken" "$(jq -r '.disposition // ""' "$_s13_summary" 2>/dev/null || echo "")"
+assert_eq "[SPEC-13] state_file-absent summary has reason:missing_state_file" \
+    "missing_state_file" "$(jq -r '.reason // ""' "$_s13_summary" 2>/dev/null || echo "")"
+
+# ─── SPEC-6/7: build_stage_run reads paths from ZBUILD_STAGE_INPUTS ───────────
+print_test_section "SPEC-6/7: build_stage_run reads scope_manifest and plan from ZBUILD_STAGE_INPUTS"
+
+STATE_DIR_SI="$TEST_TEMP_DIR/state_si"
+mkdir -p "$STATE_DIR_SI"
+# Custom paths — NOT the default locations build_stage_run would derive from state_dir.
+mkdir -p "$TEST_TEMP_DIR/custom"
+CUSTOM_SCOPE_SI="$TEST_TEMP_DIR/custom/scope-manifest.md"
+CUSTOM_PLAN_SI="$TEST_TEMP_DIR/custom/plan.json"
+cat > "$CUSTOM_SCOPE_SI" <<'EOF'
++ tests/fixtures/
+EOF
+cat > "$CUSTOM_PLAN_SI" <<'EOF'
+{
+  "schema_version": 1,
+  "goal": "ZBUILD_STAGE_INPUTS test",
+  "files": ["tests/fixtures/si-test.txt"],
+  "steps": []
+}
+EOF
+
+# ZBUILD_STAGE_INPUTS index pointing to the custom (non-default) paths.
+STAGE_INPUTS_SI="$TEST_TEMP_DIR/stage-inputs.json"
+jq -n \
+    --arg sm "$CUSTOM_SCOPE_SI" \
+    --arg pl "$CUSTOM_PLAN_SI" \
+    '{"schema_version":1,"stage":"build","inputs":{"scope_manifest":$sm,"plan":$pl}}' \
+    > "$STAGE_INPUTS_SI"
+
+STATEFILE_SI="$STATE_DIR_SI/state.json"
+printf '{}' > "$STATEFILE_SI"
+# NOTE: default paths ($STATE_DIR_SI/scope-manifest.md and $STATE_DIR_SI/artifacts/plan.json)
+# do NOT exist — if ZBUILD_STAGE_INPUTS is NOT read, build_stage_run fails with rc=1.
+
+REPO_SI="$(setup_build_repo "repo_si")"
+export ZBUILD_REPO_ROOT="$REPO_SI"
+export ZBUILD_STATE_DIR="$STATE_DIR_SI"
+printf '%s' "$(git -C "$REPO_SI" rev-parse HEAD)" \
+    > "$STATE_DIR_SI/intake-baseline-ref.txt"
+MOCK_LOOP_EDIT_FILE="tests/fixtures/si-test.txt"
+MOCK_LOOP_EDIT_CONTENT="si-content"
+MOCK_LOOP_ITERATIONS=1
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_RC=0
+
+export ZBUILD_STAGE_INPUTS="$STAGE_INPUTS_SI"
+set +e
+build_stage_run "build" "$STATEFILE_SI" >/dev/null 2>&1
+rc_si=$?
+set -e
+unset ZBUILD_STAGE_INPUTS
+
+if [[ $rc_si -eq 0 ]]; then
+    assert_pass "[SPEC-6] build_stage_run reads scope_manifest from ZBUILD_STAGE_INPUTS"
+    assert_pass "[SPEC-7] build_stage_run reads plan path from ZBUILD_STAGE_INPUTS"
+else
+    assert_fail "[SPEC-6] build_stage_run reads scope_manifest from ZBUILD_STAGE_INPUTS (rc=$rc_si)"
+    assert_fail "[SPEC-7] build_stage_run reads plan path from ZBUILD_STAGE_INPUTS (rc=$rc_si)"
+fi
+
+# SPEC-7 grep assertion: diff.patch references the file declared in the custom plan.
+_si_diff="$STATE_DIR_SI/artifacts/diff.patch"
+assert_contains "[SPEC-7] diff.patch from ZBUILD_STAGE_INPUTS run references si-test.txt" \
+    "$(cat "$_si_diff" 2>/dev/null || true)" "si-test.txt"
+
+MOCK_LOOP_EDIT_FILE=""
+MOCK_LOOP_EDIT_CONTENT=""
+MOCK_LOOP_ITERATIONS=1
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_RC=0
+
+# ─── SPEC-14: SIGINT (router_rc=130) → rc=1 + disposition:interrupted in summary ─
+print_test_section "SPEC-14: SIGINT (router_rc=130) → rc=1 + v2 disposition:interrupted in build-summary.json"
+
+ARTIFACT_DIR_S14="$TEST_TEMP_DIR/artifacts_s14"
+mkdir -p "$ARTIFACT_DIR_S14"
+PLAN_JSON_S14="$ARTIFACT_DIR_S14/plan.json"
+cp "$PLAN_JSON_T3" "$PLAN_JSON_S14"
+OUT_DIFF_S14="$ARTIFACT_DIR_S14/diff.patch"
+OUT_SUMMARY_S14="$ARTIFACT_DIR_S14/build-summary.json"
+
+REPO_S14="$(setup_build_repo "repo_s14")"
+export ZBUILD_REPO_ROOT="$REPO_S14"
+MOCK_LOOP_RC=130
+MOCK_LOOP_REASON="sigint"
+MOCK_LOOP_ITERATIONS=1
+
+set +e
+_build_stage_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$PLAN_JSON_S14" \
+    "$OUT_DIFF_S14" \
+    "$OUT_SUMMARY_S14" \
+    "$ARTIFACT_DIR_S14" >/dev/null 2>&1
+rc_s14=$?
+set -e
+
+assert_exit_code "[SPEC-14] SIGINT returns rc=1 (not rc=130)" "1" "$rc_s14"
+assert_file_exists "[SPEC-14] build-summary.json written on SIGINT path" "$OUT_SUMMARY_S14"
+_s14_rc="$(jq -r '.result_contract // ""' "$OUT_SUMMARY_S14" 2>/dev/null || echo "")"
+_s14_disp="$(jq -r '.disposition // ""' "$OUT_SUMMARY_S14" 2>/dev/null || echo "")"
+_s14_rsn="$(jq -r '.reason // ""' "$OUT_SUMMARY_S14" 2>/dev/null || echo "")"
+assert_eq "[SPEC-14] SIGINT summary has result_contract:2" "2" "$_s14_rc"
+assert_eq "[SPEC-14] SIGINT summary has disposition:interrupted" "interrupted" "$_s14_disp"
+assert_eq "[SPEC-14] SIGINT summary has reason:sigint" "sigint" "$_s14_rsn"
+
+MOCK_LOOP_RC=0
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_ITERATIONS=1
+
+# ─── SPEC-15: empty args to _build_stage_run_inner returns rc=1 (not rc=2) ───
+print_test_section "SPEC-15: _build_stage_run_inner empty required args returns rc=1"
+
+set +e
+_build_stage_run_inner "" "" "" "" >/dev/null 2>&1
+rc_s15=$?
+set -e
+assert_exit_code "[SPEC-15] _build_stage_run_inner empty args returns rc=1 (not rc=2)" "1" "$rc_s15"
+
+# ─── SPEC-16: _build_load_context reads design.md from ZBUILD_STAGE_INPUTS ───
+print_test_section "SPEC-16: _build_load_context reads design.md path from ZBUILD_STAGE_INPUTS"
+
+ARTIFACT_DIR_S16="$TEST_TEMP_DIR/artifacts_s16"
+mkdir -p "$ARTIFACT_DIR_S16"
+PLAN_JSON_S16="$ARTIFACT_DIR_S16/plan.json"
+cat > "$PLAN_JSON_S16" <<'EOF'
+{
+  "schema_version": 1,
+  "goal": "SPEC-16 design path test",
+  "files": ["tests/fixtures/s16-test.txt"],
+  "steps": []
+}
+EOF
+
+# Custom design.md with a unique marker — not at the default artifact_dir location.
+CUSTOM_DESIGN_S16="$TEST_TEMP_DIR/custom-design-s16.md"
+cat > "$CUSTOM_DESIGN_S16" <<'EOF'
+# Design: SPEC-16 test
+
+SPEC-16-UNIQUE-DESIGN-ACCEPTANCE-TEXT-MARKER
+
+## Decision
+This is a custom design.md injected via ZBUILD_STAGE_INPUTS.
+EOF
+
+# ZBUILD_STAGE_INPUTS index with .inputs.design pointing to the custom path.
+STAGE_INPUTS_S16="$TEST_TEMP_DIR/stage-inputs-s16.json"
+jq -n \
+    --arg design "$CUSTOM_DESIGN_S16" \
+    '{"schema_version":1,"stage":"build","inputs":{"design":$design}}' \
+    > "$STAGE_INPUTS_S16"
+
+REPO_S16="$(setup_build_repo "repo_s16")"
+export ZBUILD_REPO_ROOT="$REPO_S16"
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state_s16"
+mkdir -p "$ZBUILD_STATE_DIR"
+printf '%s' "$(git -C "$REPO_S16" rev-parse HEAD)" \
+    > "$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+MOCK_LOOP_EDIT_FILE=""
+MOCK_LOOP_EDIT_CONTENT=""
+MOCK_LOOP_ITERATIONS=1
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_RC=0
+
+: > "$_CAPTURED_PROMPT_FILE"
+export ZBUILD_STAGE_INPUTS="$STAGE_INPUTS_S16"
+set +e
+_build_stage_run_inner \
+    "$SCOPE_MANIFEST" \
+    "$PLAN_JSON_S16" \
+    "$ARTIFACT_DIR_S16/diff.patch" \
+    "$ARTIFACT_DIR_S16/build-summary.json" \
+    "$ARTIFACT_DIR_S16" >/dev/null 2>&1
+set -e
+unset ZBUILD_STAGE_INPUTS
+
+_s16_prompt="$(cat "$_CAPTURED_PROMPT_FILE")"
+assert_contains \
+    "[SPEC-16] custom design.md text from ZBUILD_STAGE_INPUTS appears in build prompt" \
+    "$_s16_prompt" "SPEC-16-UNIQUE-DESIGN-ACCEPTANCE-TEXT-MARKER"
+
+MOCK_LOOP_EDIT_FILE=""
+MOCK_LOOP_EDIT_CONTENT=""
+MOCK_LOOP_ITERATIONS=1
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_RC=0
+
+# ─── SPEC-20: plugin.sh contains no hardcoded input-path fallbacks ────────────
+print_test_section "SPEC-20: plugin.sh has no hardcoded fallback constructions for input artifact paths"
+
+_plugin_sh="$PLUGIN_DIR/plugin.sh"
+# CHANGE assertion: at baseline, grep finds the literal construction → assert_fail.
+# After removal, grep finds nothing → assert_pass.
+_spec20_sm_lines="$(grep -v '^[[:space:]]*#' "$_plugin_sh" | grep 'state_dir/scope-manifest\.md' || true)"
+if [[ -n "$_spec20_sm_lines" ]]; then
+    assert_fail "[SPEC-20] plugin.sh has no hardcoded state_dir/scope-manifest.md construction" \
+        "found: $_spec20_sm_lines"
+else
+    assert_pass "[SPEC-20] plugin.sh has no hardcoded state_dir/scope-manifest.md construction"
+fi
+_spec20_pl_lines="$(grep -v '^[[:space:]]*#' "$_plugin_sh" | grep 'artifacts_dir/plan\.json' || true)"
+if [[ -n "$_spec20_pl_lines" ]]; then
+    assert_fail "[SPEC-20] plugin.sh has no hardcoded artifacts_dir/plan.json construction" \
+        "found: $_spec20_pl_lines"
+else
+    assert_pass "[SPEC-20] plugin.sh has no hardcoded artifacts_dir/plan.json construction"
+fi
+
+# ─── SPEC-21: the router budget is declared in the manifest, not only the template ─
+# ADR-017 §11 (#1816). At the merge-base the manifest declares no `config.router`
+# block at all, so manifest_router_knob returns empty for both knobs and these
+# assertions fail; they pass only once the budget is written in the manifest.
+print_test_section "SPEC-21: build declares its own router budget in the manifest"
+
+# shellcheck source=../../../../core/plugin-registry/manifest-router-budget.sh
+source "$REPO_ROOT/core/plugin-registry/manifest-router-budget.sh"
+assert_eq "[SPEC-21] manifest declares config.router.timeout_s" \
+    "900" "$(manifest_router_knob "$PLUGIN_DIR/manifest.yaml" timeout_s)"
+assert_eq "[SPEC-21] manifest declares config.router.max_turns" \
+    "0" "$(manifest_router_knob "$PLUGIN_DIR/manifest.yaml" max_turns)"
+# [guard] build is a cycle member: the CYCLE re-drives a timeout, so the router
+# must not also retry it, and only `plan` may opt into exhaustion retries
+# (tests/unit/stage-checkpoint-test.sh SPEC-10).
+assert_eq "[SPEC-21] manifest declares no router.retries" \
+    "" "$(manifest_router_knob "$PLUGIN_DIR/manifest.yaml" retries)"
+assert_eq "[SPEC-21] manifest declares no router.retry_on_exhaustion" \
+    "" "$(manifest_router_knob "$PLUGIN_DIR/manifest.yaml" retry_on_exhaustion)"
 
 # ─── Teardown ────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }

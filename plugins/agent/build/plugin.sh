@@ -74,14 +74,31 @@ build_stage_run() {
         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/build-summary.md}" "build" "error" \
             "the engine dispatched this stage with no state file, so it could not run" \
             "No work was attempted. This is an engine contract violation, not a fault in the change."
-        return 2
+        # ADR-054 §4b: a v2 result on EVERY exit path, this one included. There is
+        # no state dir to derive the artifact dir from, so this is the one path
+        # that depends on the engine having exported ZBUILD_ARTIFACT_DIR.
+        if [[ -n "${ZBUILD_ARTIFACT_DIR:-}" ]]; then
+            jq -n '{"schema_version":4,"result_contract":2,"verdict":"incomplete",
+                    "disposition":"broken","reason":"missing_state_file"}' \
+                | atomic_write "$ZBUILD_ARTIFACT_DIR/build-summary.json" 2>/dev/null || true
+        fi
+        return 1
     fi
     local state_dir; state_dir="$(dirname "$state_file")"
     local artifacts_dir="$state_dir/artifacts"
     mkdir -p "$artifacts_dir"
 
-    local scope_manifest="$state_dir/scope-manifest.md"
-    local plan_json_path="$artifacts_dir/plan.json"
+    local scope_manifest=""
+    local plan_json_path=""
+
+    # ADR-055 §1: read input paths from engine-resolved index when available.
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS}" ]]; then
+        local _sm_path _pl_path
+        _sm_path="$(jq -r '.inputs.scope_manifest // empty' "${ZBUILD_STAGE_INPUTS}" 2>/dev/null || true)"
+        _pl_path="$(jq -r '.inputs.plan // empty' "${ZBUILD_STAGE_INPUTS}" 2>/dev/null || true)"
+        [[ -n "$_sm_path" ]] && scope_manifest="$_sm_path"
+        [[ -n "$_pl_path" ]] && plan_json_path="$_pl_path"
+    fi
 
     _build_stage_run_inner \
         "$scope_manifest" \
@@ -107,7 +124,7 @@ _build_stage_run_inner() {
 
     if [[ -z "$scope_manifest" || -z "$plan_json_path" || -z "$output_diff_patch" || -z "$output_summary_json" ]]; then
         error "_build_stage_run_inner: requires <scope_manifest> <plan_json_path> <output_diff_patch> <output_summary_json> [artifact_dir]"
-        return 2
+        return 1
     fi
 
     mkdir -p "$artifact_dir"
@@ -118,7 +135,11 @@ _build_stage_run_inner() {
             "no plan.json to build from" \
             "The plan stage produced nothing to implement; no code was written."
         emit_event "plugin.result" "verdict=error" "plugin=build" "reason=missing_plan_json"
-        return 2
+        # ADR-054 §4b: rc∈{0,1}; write a v2 result so the engine can classify disposition.
+        jq -n '{"schema_version":4,"result_contract":2,"verdict":"incomplete",
+                "disposition":"broken","reason":"missing_plan_json"}' \
+            | atomic_write "$output_summary_json" 2>/dev/null || true
+        return 1
     fi
 
     local plan_json
@@ -280,15 +301,19 @@ _build_stage_run_inner() {
     fi
 
     # #612: rc=130 from the router is a SIGINT propagation, not a build failure.
-    # Skip the post-loop bookkeeping (diff capture, scope validation, summary
-    # write, per-iter commit) and bubble 130 up so the cycle/runner sees it as
-    # a terminal abort rather than continuing into the next stage/iter.
-    # The router has already emitted loop.terminated.signal and cleared its
-    # traps; we just need to short-circuit and propagate.
+    # ADR-054 §4b: rc∈{0,1}; write disposition:interrupted so the engine retries
+    # rather than treating the abort as broken. The ADR-025 abort sentinel was
+    # already written by the router before returning 130.
     if [[ $router_rc -eq 130 ]]; then
-        warn "_build_stage_run_inner: route_to_model_loop rc=130 (SIGINT) — propagating abort"
+        warn "_build_stage_run_inner: route_to_model_loop rc=130 (SIGINT) — writing interrupted summary"
         emit_event "build.aborted" "plugin=build" \
             "reason=sigint" "iterations=$iterations" >/dev/null 2>&1 || true
+        jq -n \
+            --argjson schema_version 4 \
+            --argjson iterations "${iterations:-0}" \
+            '{"schema_version":$schema_version,"result_contract":2,"verdict":"incomplete",
+              "disposition":"interrupted","reason":"sigint","iterations":$iterations}' \
+            | atomic_write "$output_summary_json" 2>/dev/null || true
         # Best-effort: clear `git add -N` intent-to-add entries so a downstream
         # `git diff HEAD` after the abort sees a clean index.
         git -C "$repo_root" reset -q 2>/dev/null || true
@@ -297,7 +322,7 @@ _build_stage_run_inner() {
         if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
             _route_loop_close_final_banner || true
         fi
-        return 130
+        return 1
     fi
 
     # ─── Derive diff.patch from git working tree ─────────────────────────────────

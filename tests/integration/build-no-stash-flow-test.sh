@@ -119,6 +119,13 @@ printf '{"issue":$_ZB_ID,"branch":"feat/602"}' > "$STATE_FILE"
 # Mirror intake's `printf '%s'` write — raw 40-char SHA, no trailing newline.
 printf '%s' "$(git -C "$REPO" rev-parse HEAD)" > "$STATE_DIR/intake-baseline-ref.txt"
 
+STAGE_INPUTS_DRIVER="$TEST_TEMP_DIR/stage-inputs-driver.json"
+jq -n \
+    --arg sm "$STATE_DIR/scope-manifest.md" \
+    --arg pl "$STATE_DIR/artifacts/plan.json" \
+    '{"schema_version":1,"stage":"build","inputs":{"scope_manifest":$sm,"plan":$pl}}' \
+    > "$STAGE_INPUTS_DRIVER"
+
 DRIVER="$TEST_TEMP_DIR/driver.sh"
 cat > "$DRIVER" <<EOF
 set -euo pipefail
@@ -140,6 +147,7 @@ export HOME="$HOME"
 export ZBUILD_SCOPE_OVERRIDE=1
 export PATH="$PATH"
 export MARK_FILE="$MARK_FILE"
+export ZBUILD_STAGE_INPUTS="$STAGE_INPUTS_DRIVER"
 
 load_template "$TEST_TEMP_DIR/template.yaml"
 export ZBUILD_CURRENT_STAGE=build
