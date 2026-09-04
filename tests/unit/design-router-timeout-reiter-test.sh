@@ -246,13 +246,17 @@ else
     assert_fail "[SPEC-8-guard] spurious design.timeout.stub_written on happy path"
 fi
 
-# SPEC-10-guard (#1261): a converging design writes NO did_not_finish sidecar
-# (run-start clear + no timeout write) → the cycle reads design=pass, never trips
-# the exhaustion halt on a healthy run.
-[[ ! -e "$_F_ARTIFACTS/design-verdict.json" ]] \
-    && assert_pass "[SPEC-10-guard] no design-verdict.json sidecar on happy path" \
-    || assert_fail "[SPEC-10-guard] spurious did_not_finish sidecar on happy path" \
-        "sidecar=$(cat "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null)"
+# SPEC-10-guard (#1261): a converging design must NOT write an incomplete/interrupted
+# sidecar (v2 contract writes verdict=pass,disposition=complete on happy path — that is
+# fine; only did_not_finish / interrupted sidecars would trip the exhaustion halt).
+_sc10_verdict="$(jq -r '.verdict // "MISSING"' "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null || echo ABSENT)"
+_sc10_disp="$(jq -r '.disposition // "MISSING"' "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null || echo ABSENT)"
+if [[ "$_sc10_verdict" == "incomplete" || "$_sc10_disp" == "interrupted" ]]; then
+    assert_fail "[SPEC-10-guard] spurious did_not_finish sidecar on happy path" \
+        "verdict=$_sc10_verdict disposition=$_sc10_disp"
+else
+    assert_pass "[SPEC-10-guard] no spurious did_not_finish sidecar on happy path"
+fi
 
 _MOCK_DESIGN_WRITE_PATH=""
 
