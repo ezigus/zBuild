@@ -43,6 +43,9 @@ _run_gate_with_summary() {
     export ZBUILD_EVENTS_DIR="$state_dir/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
     export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
     cp "$repo/design.md" "$state_dir/artifacts/design.md" 2>/dev/null || true
+    local _si_json="$state_dir/stage-inputs.json"
+    printf '{"inputs":{"design":"%s"}}\n' "$state_dir/artifacts/design.md" > "$_si_json"
+    export ZBUILD_STAGE_INPUTS="$_si_json"
     unset _ZBUILD_ACCEPTANCE_GATE_LOADED
     local _sf; _sf="$(mktemp)"
     # Define stub AFTER source so it overrides the template.sh lookup-based version
@@ -64,6 +67,9 @@ _run_gate() {  # _run_gate <repo> → sets RC, RESULT, EVENTS
     export ZBUILD_EVENTS_DIR="$state_dir/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
     export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
     cp "$repo/design.md" "$state_dir/artifacts/design.md" 2>/dev/null || true
+    local _si_json="$state_dir/stage-inputs.json"
+    printf '{"inputs":{"design":"%s"}}\n' "$state_dir/artifacts/design.md" > "$_si_json"
+    export ZBUILD_STAGE_INPUTS="$_si_json"
     # fresh plugin load per call (guard var would block re-source)
     unset _ZBUILD_ACCEPTANCE_GATE_LOADED
     # shellcheck disable=SC1090
@@ -91,6 +97,8 @@ set +e; _run_gate "$REPO1"; set -e
 assert_eq "S1: load-bearing → rc=0" "0" "$RC"
 assert_eq "S1: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
 assert_event_emitted "S1: complete event" "$EVENTS" "acceptance.gate.complete"
+assert_eq "[SPEC-4] S1: load-bearing test verdict=pass behavioral contract preserved" \
+    "pass" "$(jq -r .verdict <<<"$RESULT")"
 
 # ── S2: tautological tagged test → verdict=fail ───────────────────────────────
 REPO2="$(_build_repo gate-taut '#!/usr/bin/env bash

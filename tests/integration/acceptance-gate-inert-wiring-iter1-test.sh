@@ -44,6 +44,9 @@ _run_gate() {
     export ZBUILD_EVENTS_DIR="$state_dir/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
     export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
     cp "$repo/design.md" "$state_dir/artifacts/design.md" 2>/dev/null || true
+    local _si_json="$state_dir/stage-inputs.json"
+    printf '{"inputs":{"design":"%s"}}\n' "$state_dir/artifacts/design.md" > "$_si_json"
+    export ZBUILD_STAGE_INPUTS="$_si_json"
     unset _ZBUILD_ACCEPTANCE_GATE_LOADED _ACCEPTANCE_REACHABILITY_LOADED \
           _ACCEPTANCE_NEGCTL_LOADED _ACCEPTANCE_BLOCK_LOADED _ZBUILD_MERGE_BASE_LOADED \
           _ACCEPTANCE_COVERAGE_LOADED
@@ -123,6 +126,8 @@ fi
 # than halting (ADR-036 Amendment #1585).
 assert_eq "iter=1: disposition stays recoverable" "recoverable" \
     "$(jq -r '.disposition // empty' <<<"$RESULT")"
+assert_eq "[SPEC-4] iter=1: inert_wiring disposition behavioral contract preserved" \
+    "recoverable" "$(jq -r '.disposition // empty' <<<"$RESULT")"
 
 cleanup_test_env
 print_test_results

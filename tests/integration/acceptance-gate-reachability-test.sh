@@ -30,6 +30,9 @@ _run_gate() {
     export ZBUILD_EVENTS_DIR="$state_dir/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
     export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
     cp "$repo/design.md" "$state_dir/artifacts/design.md" 2>/dev/null || true
+    local _si_json="$state_dir/stage-inputs.json"
+    printf '{"inputs":{"design":"%s"}}\n' "$state_dir/artifacts/design.md" > "$_si_json"
+    export ZBUILD_STAGE_INPUTS="$_si_json"
     unset _ZBUILD_ACCEPTANCE_GATE_LOADED _ACCEPTANCE_REACHABILITY_LOADED \
           _ACCEPTANCE_NEGCTL_LOADED _ACCEPTANCE_BLOCK_LOADED _ZBUILD_MERGE_BASE_LOADED \
           _ACCEPTANCE_COVERAGE_LOADED
@@ -81,6 +84,7 @@ EOF
 set +e; _run_gate "$REPO_R1"; set -e
 assert_eq "[SPEC-5] R1: load-bearing wiring → gate rc=0" "0" "$RC"
 assert_eq "[SPEC-5] R1: load-bearing wiring → verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "[SPEC-4] R1: wiring verdict behavioral contract preserved" "pass" "$(jq -r .verdict <<<"$RESULT")"
 
 # ── R2: wiring is inert (revert doesn't flip any test) → gate fails ──────────
 # Setup: impl.sh is the real implementation (test depends on it).
