@@ -1,5 +1,0 @@
-[
-  "tests/e2e/parity-local-vs-ci-test.sh",
-  "tests/e2e/plugin-event-balance-full-run-test.sh",
-  "tests/integration/self-host-contract-lib-redirect-test.sh"
-]
