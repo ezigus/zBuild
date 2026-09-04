@@ -1286,8 +1286,15 @@ _route_loop_on_signal() {
         fi
     fi
     _ROUTE_LOOP_TERMINATED_REASON="signal"
+    # #2029: record whether the abort could target a process GROUP or had to fall
+    # back to the single PID. The two paths reach different processes — a group
+    # kill sweeps the child's descendants, a PID kill does not — so which one ran
+    # is the first thing anyone investigating a surviving child needs to know, and
+    # nothing recorded it. Operationally useful in its own right: an abort that
+    # could not isolate a group is weaker than the contract assumes.
     eb_emit_event "loop.terminated.signal" \
         "signal=$sig" \
+        "pg_kill=$([[ -n "$_pgid" ]] && printf 'group' || printf 'pid_only')" \
         "iterations=${_ROUTE_LOOP_ITERATIONS}" 2>/dev/null || true
     return 130
 }
