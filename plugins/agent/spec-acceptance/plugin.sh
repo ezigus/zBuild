@@ -243,6 +243,9 @@ acceptance_gate_run() {
     if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
         design_md="$(jq -r '.inputs.design // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
     fi
+    if [[ -z "$design_md" ]]; then
+        design_md="${artifact_dir}/design.md"
+    fi
 
     # ADR-036 #1188: plumb the per-test timeout knob and a diagnostic-log dir to
     # the negctl/reachability libs (they read these two env vars).
