@@ -31,7 +31,7 @@ index 2b4a1c7..2613703 100644
  
  state:
 diff --git a/plugins/agent/spec-acceptance/plugin.sh b/plugins/agent/spec-acceptance/plugin.sh
-index 2251176..27c9c1a 100644
+index 2251176..d242577 100644
 --- a/plugins/agent/spec-acceptance/plugin.sh
 +++ b/plugins/agent/spec-acceptance/plugin.sh
 @@ -178,8 +178,11 @@ _ag_build_reason() {
@@ -47,7 +47,7 @@ index 2251176..27c9c1a 100644
      eb_emit_event "acceptance.gate.skipped" "stage=acceptance-gate" "reason=precondition_unmet" "precondition=$pc"
      eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=pass"
  }
-@@ -236,7 +239,10 @@ acceptance_gate_run() {
+@@ -236,7 +239,13 @@ acceptance_gate_run() {
      local state_dir; state_dir="$(dirname "$state_file")"
      local artifact_dir="$state_dir/artifacts"
      local result_file="$artifact_dir/acceptance-gate-result.json"
@@ -56,10 +56,13 @@ index 2251176..27c9c1a 100644
 +    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
 +        design_md="$(jq -r '.inputs.design // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
 +    fi
++    if [[ -z "$design_md" ]]; then
++        design_md="${artifact_dir}/design.md"
++    fi
  
      # ADR-036 #1188: plumb the per-test timeout knob and a diagnostic-log dir to
      # the negctl/reachability libs (they read these two env vars).
-@@ -261,8 +267,10 @@ acceptance_gate_run() {
+@@ -261,8 +270,10 @@ acceptance_gate_run() {
      # Fence present but unparseable → fail closed (a malformed contract must NOT
      # bypass the gate; this is a genuine violation, NOT an applicability no-op).
      if ! extract_acceptance_block "$design_md" >/dev/null 2>&1; then
@@ -71,7 +74,7 @@ index 2251176..27c9c1a 100644
          eb_emit_event "acceptance.gate.untagged_spec" "stage=acceptance-gate" "reason=malformed_acceptance_block"
          eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=fail"
          return 1
-@@ -535,7 +543,7 @@ acceptance_gate_run() {
+@@ -535,7 +546,7 @@ acceptance_gate_run() {
          # the design-vs-assertion pairing is visible to nobody after the run ends.
          mkdir -p "$state_dir/artifacts" 2>/dev/null || true
          printf '%s\n' "${summary_lines[@]}" \
@@ -80,7 +83,7 @@ index 2251176..27c9c1a 100644
          _ag_emit_operator_summary "${_stage_id:-acceptance-gate}" "${summary_lines[@]}"
      fi
  
-@@ -548,12 +556,12 @@ acceptance_gate_run() {
+@@ -548,12 +559,12 @@ acceptance_gate_run() {
      if [[ -n "$reason_msg" ]]; then
          jq -cn --arg v "$verdict" --arg d "$disposition" --arg r "$reason_msg" \
              --arg ft "$fault" --argjson f "$failures_json" \
