@@ -94,7 +94,7 @@ source "$_ZBUILD_ROOT/scripts/lib/stage-checkpoint.sh"
 _zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/vision.sh"
 source "$_ZBUILD_ROOT/scripts/lib/vision.sh"
 # Shared setsid capability probe + process-group kill helper.
-# Defines _ZBUILD_PG_PREFIX and zbuild_pg_kill (extracted from the inline
+# Defines zbuild_pg_resolve and zbuild_pg_kill (extracted from the inline
 # probe that used to live here, so the test plugin can share one impl).
 _zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/proc-group.sh"
 source "$_ZBUILD_ROOT/scripts/lib/proc-group.sh"
@@ -260,14 +260,11 @@ _ROUTE_CACHE_READ=0 _ROUTE_CACHE_CREATION=0
 # spawns) — not just the top-level PID. The narrow per-PID kill from Wave
 # 8 (#612) leaves trap-ignoring or fork-spawning children alive, so SIGINT
 # can take many seconds to unwind. With a PG kill we can guarantee a
-# bounded grace window. `_ZBUILD_PG_PREFIX` is an array — empty when setsid
-# is unavailable (e.g. plain macOS without util-linux), in which case the
-# loop spawn falls back to the per-PID kill from Wave 8 (the signal handler
-# also adds a 1s-delayed SIGKILL backstop in that mode, so a wedged child
-# is still bounded — the PG-kill upgrade is what guarantees the <2.5s
-# budget). The `-w` flag waits for the child and forwards its exit code,
-# so callers see the same rc as before.
-# _ZBUILD_PG_PREFIX is now populated by scripts/lib/proc-group.sh (sourced above).
+# bounded grace window. The group comes from `set -m` at the spawn (#2056):
+# bash job control makes a backgrounded job a process-group leader, which is
+# POSIX and behaves the same on macOS and Linux. It replaced `setsid -w`, which
+# does not exist on macOS — there the guarantee silently degraded to a per-PID
+# kill and every descendant survived an abort.
 # ADR-018 (#469): captured tool_uses[] envelope when JSON output mode is active.
 # Empty when JSON mode off or envelope lacked the field. Consumers (review
 # audit) read this AFTER route_to_model returns. Not exported to subshells —
@@ -1643,37 +1640,54 @@ ${_diff_pointer}"
         # cd here would otherwise silently spawn claude from the
         # runner's cwd instead of $cwd.
         #
-        # Wave 15-G (#687): wrap the spawn in `setsid -w` (when available) so
-        # the claude tree lives in its own process group. _route_loop_on_signal
-        # then TERM/KILLs the whole group rather than the top-level PID, which
-        # is what lets the loop pre-abort in <2.5s even when claude (or any
-        # child it spawned) ignores or delays SIGTERM. When setsid is not
-        # installed (plain macOS without util-linux), _ZBUILD_PG_PREFIX is
-        # empty and the signal handler falls back to the per-PID kill from
-        # Wave 8 (#612) — same behavior as before this wave.
+        # Wave 15-G (#687): the claude tree lives in its own process group, so
+        # _route_loop_on_signal TERM/KILLs the whole group rather than the
+        # top-level PID. That is what lets the loop pre-abort in <2.5s even when
+        # claude, or any child it spawned, ignores or delays SIGTERM.
         #
-        # `exec` so the subshell PROCESS is replaced by setsid (when
-        # available) or by gtimeout/claude (when not). This makes $! point
-        # at the actual session leader — `kill -- -$!` then targets the
-        # whole claude tree in setsid mode. Without exec, $! would point at
-        # the bash subshell that wraps setsid; the new session/PGID would
-        # belong to the setsid child (one fork below), and bash's PGID
-        # would still be the parent runner's — so `kill -- -$!` would TERM
-        # the runner, not claude.
+        # #2056: `set -m` — bash job control — puts the backgrounded job in its
+        # OWN PROCESS GROUP, so PGID == $!. `kill -- -$!` then reaches the whole
+        # claude tree, and `exec` keeps $! pointing at the real process rather
+        # than a wrapping subshell.
+        #
+        # This replaced `setsid -w`, which was wrong here in two ways.
+        #
+        # It does not exist on macOS. The prefix went empty, no group was made,
+        # and the abort degraded to killing one PID while every descendant
+        # survived — so Wave 15-G's "an abort leaves nothing running" held on
+        # Linux only. Nothing reported that, because the test covering it is
+        # `skip_unless_platform linux`.
+        #
+        # And `-w` defeated the `exec` above. setsid only execs in place when it
+        # need not survive; with `-w` it MUST fork, because it waits for the
+        # child and returns its exit status. So $! was the setsid wrapper, still
+        # in the runner's group, while the new session belonged to a process one
+        # fork below — precisely the failure the old comment here described and
+        # believed `exec` had prevented.
+        #
+        # Job control is POSIX and behaves identically on macOS and Linux, needs
+        # no external binary, and gives PGID == PID deterministically. It is
+        # already used for exactly this in core/pipeline/runner.sh,
+        # plugins/tool/test/plugin.sh and three integration tests.
+        #
+        # Opened and closed tightly: `set -m` also turns on job-control messages
+        # on stderr, which is noise anywhere but the spawn itself.
+        set -m
         if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
             (
                 cd "$cwd" || exit 99
                 _zbuild_make_fresh_shell
-                exec "${_ZBUILD_PG_PREFIX[@]}" "${_tout_cmd[@]}" claude "${_claude_args[@]}"
+                exec "${_tout_cmd[@]}" claude "${_claude_args[@]}"
             ) >"$json_file" 2>"$stderr_file" &
         else
             (
                 cd "$cwd" || exit 99
                 _zbuild_make_fresh_shell
-                exec "${_ZBUILD_PG_PREFIX[@]}" claude "${_claude_args[@]}"
+                exec claude "${_claude_args[@]}"
             ) >"$json_file" 2>"$stderr_file" &
         fi
         _ROUTE_LOOP_CHILD_PID=$!
+        set +m
         # Wave 15-G (#687), extracted in #1748. Empty means the group is not
         # provably distinct from the runner's own, so the handler falls back to
         # the per-PID kill (Wave 8 #612) rather than `kill -- -PGID`-ing itself.

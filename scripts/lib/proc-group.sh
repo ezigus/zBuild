@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/lib/proc-group.sh — shared setsid capability probe + process-group kill
+# scripts/lib/proc-group.sh — process-group resolution and kill helpers.
 # Extracted from core/router/route.sh (Wave 15-G, #687) so the test stage and
 # any other long-running spawn share one implementation (#1748).
 # Sourced library: no set -euo pipefail.
@@ -7,19 +7,20 @@
 [[ -n "${_ZBUILD_PROC_GROUP_LOADED:-}" ]] && return 0
 _ZBUILD_PROC_GROUP_LOADED=1
 
-# _ZBUILD_PG_PREFIX — command prefix array, empty when `setsid -w` is absent
-# (plain macOS: util-linux is keg-only, so setsid is not on PATH). Callers must
-# tolerate the empty case; it degrades to a single-PID kill, not to no kill.
+# #2056: there is no setsid prefix any more. Process groups come from `set -m`
+# at the spawn site — bash job control makes a backgrounded job a group leader,
+# which is POSIX and identical on macOS and Linux.
 #
-# The leading underscore is load-bearing: every consumer reads this AFTER
-# _zbuild_make_fresh_shell, whose scrub matches ^(ZBUILD_|_TPL_). `_ZBUILD_`
-# does not match, so the prefix survives into the spawn — renaming it to
-# ZBUILD_PG_PREFIX would silently disable process groups everywhere.
-if command -v setsid >/dev/null 2>&1 && setsid -w true >/dev/null 2>&1; then
-    _ZBUILD_PG_PREFIX=(setsid -w)
-else
-    _ZBUILD_PG_PREFIX=()
-fi
+# `setsid -w` was wrong here twice over. It is absent on macOS (util-linux is
+# keg-only), so the prefix went empty, no group was created, and an abort
+# degraded to a single-PID kill while every descendant survived — the Wave 15-G
+# guarantee held on Linux only, and the test covering it is Linux-only too, so
+# nothing said so. And `-w` forces setsid to fork, because it waits for the
+# child and returns its exit status, so the pid the caller captured was the
+# wrapper rather than the new session leader.
+#
+# Do not reintroduce a prefix here. A spawn that needs an external binary to get
+# a process group is a spawn whose guarantee is platform-conditional.
 
 # Prints the PGID safe to signal for <pid>, or nothing. Empty is not "no group":
 # it means the group could not be proven distinct from ours, and signalling it
@@ -34,11 +35,16 @@ zbuild_pg_resolve() {
         printf '%s' "$_child"
         return 0
     fi
-    # setsid execs in place here (the caller backgrounds it, so it is not
-    # already a group leader and needs no fork), making the child its own
-    # leader: PGID == PID. That still holds once ps has stopped reporting it,
-    # which is the window a short-lived child lands in.
-    if [[ -z "$_child" && ${#_ZBUILD_PG_PREFIX[@]} -gt 0 ]]; then
+    # A short-lived child can exit before `ps` reports it. Under `set -m` the
+    # spawn IS the group leader, so PGID == PID by construction and that stays
+    # true after it is gone — reporting the pid is correct, not a guess.
+    #
+    # This branch previously justified itself with "setsid execs in place, so it
+    # needs no fork". That was false under `-w` (#2056): setsid forks in order to
+    # wait, so the captured pid was the wrapper and the group belonged to a
+    # process one fork below. Under job control there is no wrapper to be wrong
+    # about.
+    if [[ -z "$_child" ]]; then
         printf '%s' "$_pid"
     fi
 }
