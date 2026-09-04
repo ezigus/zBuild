@@ -110,15 +110,21 @@ shape_floor_run() {
     if [[ -n "$fault" ]]; then
         jq -n --arg v "$verdict" --arg r "$detail" --arg f "$fault" \
             '{"verdict":$v,"reason":$r,"fault":$f}' | atomic_write "$result_path"
-    # #1988: publish what only this gate knows. Its detail used to reach a
-    # prompt only through the aggregator's rendering; it is now a declared
-    # summary output (#1976), and cleared on a non-fail so a stale file from a
-    # previous iteration never renders as a current finding.
-    stage_summary_write "$artifacts_dir/shape-floor-detail.md" "shape-floor" "$verdict" "$detail"
     else
         jq -n --arg v "$verdict" --arg r "$detail" \
             '{"verdict":$v,"reason":$r}' | atomic_write "$result_path"
     fi
+
+    # #1988: publish what only this gate knows. Its detail used to reach a
+    # prompt only through the aggregator's rendering; it is now a declared
+    # summary output (#1976), and cleared on a non-fail so a stale file from a
+    # previous iteration never renders as a current finding.
+    # #2053: outside the fault branch. `fault` is set only for an out-of-scope
+    # failure, so nesting this under it left the output — declared required —
+    # missing on pass, skip and an ordinary in-scope fail, and could not clear
+    # anything on a non-fail because it never ran there. ADR-055 §9: written on
+    # EVERY terminal verdict, because absence is not a legitimate state.
+    stage_summary_write "$artifacts_dir/shape-floor-detail.md" "shape-floor" "$verdict" "$detail"
 
     _sf_emit "plugin.result" "plugin=shape-floor" "verdict=$verdict"
     return 0
