@@ -212,9 +212,11 @@ assert_eq "[SPEC-8] design_gate_run returns rc=0 on a FAIL verdict" "0" "$GATE_R
 _run_gate_with_md "$_clean_md"
 assert_eq "[SPEC-8] design_gate_run returns rc=0 on a PASS verdict" "0" "$GATE_RC"
 
-# ─── SPEC-9 (feedback): feedback markdown written ONLY on fail ───────────────
+# ─── SPEC-9 / SPEC-4 (feedback): feedback markdown written on every verdict ───
+# ADR-055 §9: written on every terminal verdict (pass and fail); absence is never
+# legitimate. Required:true in the manifest enforces this at the engine level.
 _run_gate_with_md "$_clean_md"
-assert_eq "[SPEC-9] no feedback file on a passing verdict" "absent" \
+assert_eq "[SPEC-4][SPEC-9] feedback file written on a passing verdict" "present" \
     "$([[ -f "$FEEDBACK_PATH" ]] && echo present || echo absent)"
 _run_gate_with_md '# Design
 
@@ -363,5 +365,22 @@ SPEC-1: /etc/passwd-test.sh
 assert_eq "[SPEC-15] an absolute testfile path → verdict=fail" "fail" "$VERDICT"
 assert_contains "[SPEC-15] a dropped absolute path also surfaces as MISSING_TESTFILE_FOR_SPEC" \
     "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "MISSING_TESTFILE_FOR_SPEC"
+
+# ─── SPEC-6 (ZBUILD_STAGE_INPUTS): design-gate reads design.md from env var ───
+_dg_si_dir="$TEST_TEMP_DIR/si-dir"
+mkdir -p "$_dg_si_dir"
+printf '%s' "$_clean_md" > "$_dg_si_dir/custom-design.md"
+_dg_si_file="$TEST_TEMP_DIR/dg-si.json"
+jq -n --arg p "$_dg_si_dir/custom-design.md" '{inputs:{design:$p}}' > "$_dg_si_file"
+_state_seq=$((_state_seq + 1))
+_dg_si_state="$TEST_TEMP_DIR/state-$_state_seq"
+mkdir -p "$_dg_si_state/artifacts"
+printf '{"schema_version":1}' > "$_dg_si_state/pipeline-state.json"
+# No design.md in artifacts/ — path must come from ZBUILD_STAGE_INPUTS.
+ZBUILD_STAGE_INPUTS="$_dg_si_file" design_gate_run "design-gate" \
+    "$_dg_si_state/pipeline-state.json" >/dev/null 2>&1
+assert_eq "[SPEC-6] design-gate reads design.md via ZBUILD_STAGE_INPUTS → verdict=pass" \
+    "pass" "$(jq -r '.verdict' "$_dg_si_state/artifacts/design-gate-result.json" 2>/dev/null || echo MISSING)"
+unset ZBUILD_STAGE_INPUTS
 
 print_test_results

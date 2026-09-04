@@ -268,9 +268,14 @@ gate_aggregator_run() {
     # is — the same split ADR-054 §6 draws between verdict and disposition. The
     # aggregate verdict no longer mutates into route_<target>: exit_when still
     # binds to verdict==pass, and the template's route_back keys on the fault.
+    local _ga_reason="all ${#gate_pairs[@]} gate(s) passed"
+    if [[ "$verdict" != "pass" && ${#failed[@]} -gt 0 ]]; then
+        _ga_reason="gates failed: $(printf '%s ' "${failed[@]}")"
+        _ga_reason="${_ga_reason% }"
+    fi
     jq -n --arg v "$verdict" --argjson g "$gates_json" --argjson f "$failed_json" \
-        --arg ft "$_ga_fault" \
-        '{"verdict":$v,"gates":$g,"failed":$f}
+        --arg ft "$_ga_fault" --arg r "$_ga_reason" \
+        '{"result_contract":2,"verdict":$v,"disposition":"complete","reason":$r,"gates":$g,"failed":$f}
          + (if $ft=="" then {} else {"fault":$ft} end)' | atomic_write "$result_path"
 
     # ─── #1988: the aggregator no longer renders prose ───────────────────────

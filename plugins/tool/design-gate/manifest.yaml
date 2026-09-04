@@ -46,6 +46,7 @@ requires:
 provides:
   role: design_gate
   primary: true
+  result_contract: 2
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -69,14 +70,14 @@ outputs:
     format: json
     required: true
     primary: true
-  # Written ONLY on verdict=fail (all violations, actionable). required:false —
-  # absent on a passing gate (missing == empty). Wired by simple.yaml's
-  # design_verify_cycle as the design-gate → design (prior_impact_feedback) edge.
+  # Written on every terminal verdict (ADR-055 §9). required:true — absence means
+  # something went wrong. Wired by simple.yaml's design_verify_cycle as the
+  # design-gate → design (prior_impact_feedback) edge.
   - id: design_gate_feedback
     path: "${artifact_dir}/design-gate-feedback.md"
     type: design-gate-feedback.md@1
     format: markdown
-    required: false
+    required: true
     # #1979: reaches design as an engine-collected summary (#1976) instead of a
     # template wire plus a bespoke reader. design keys its refinement wording on
     # this gate's recorded VERDICT, so the content is spliced exactly once —

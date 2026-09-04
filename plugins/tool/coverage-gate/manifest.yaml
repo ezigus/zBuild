@@ -31,6 +31,7 @@ requires:
 
 provides:
   role: coverage_gate
+  result_contract: 2
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:

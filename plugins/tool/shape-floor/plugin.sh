@@ -53,10 +53,18 @@ shape_floor_run() {
     local result_path="$artifacts_dir/shape-floor-result.json"
     local repo_root="${ZBUILD_REPO_ROOT:-$_SF_ROOT}"
 
-    local _shape_out=""
-    if declare -f _sf_shape_floor >/dev/null 2>&1; then
-        _shape_out="$(_sf_shape_floor "$repo_root")"
+    if ! declare -f _sf_shape_floor >/dev/null 2>&1; then
+        # Library failed to load — halts instead of silently skipping (#1758).
+        jq -n '{"result_contract":2,"verdict":"fail","disposition":"broken","reason":"library_load_failure"}' \
+            | atomic_write "$result_path"
+        stage_summary_write "$artifacts_dir/shape-floor-detail.md" "shape-floor" "fail" \
+            "library load failure — shape-floor.sh did not load; floor check disabled"
+        _sf_emit "plugin.result" "plugin=shape-floor" "verdict=fail"
+        return 0
     fi
+
+    local _shape_out=""
+    _shape_out="$(_sf_shape_floor "$repo_root")"
 
     local verdict detail=""
     case "$_shape_out" in
@@ -109,10 +117,12 @@ shape_floor_run() {
 
     if [[ -n "$fault" ]]; then
         jq -n --arg v "$verdict" --arg r "$detail" --arg f "$fault" \
-            '{"verdict":$v,"reason":$r,"fault":$f}' | atomic_write "$result_path"
+            '{"result_contract":2,"verdict":$v,"disposition":"complete","reason":$r,"fault":$f}' \
+            | atomic_write "$result_path"
     else
         jq -n --arg v "$verdict" --arg r "$detail" \
-            '{"verdict":$v,"reason":$r}' | atomic_write "$result_path"
+            '{"result_contract":2,"verdict":$v,"disposition":"complete","reason":$r}' \
+            | atomic_write "$result_path"
     fi
 
     # #1988: publish what only this gate knows. Its detail used to reach a
