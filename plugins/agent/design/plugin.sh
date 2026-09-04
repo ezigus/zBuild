@@ -573,6 +573,9 @@ DESIGN_PROMPT
             if git -C "$repo_root" ls-files --error-unmatch "design.md" >/dev/null 2>&1; then
                 error "_design_stage_run_inner: tracked design.md at repo root; refusing to relocate (operator-owned)"
                 _design_write_result "$artifact_dir" "error" "broken" "stray_conflict"
+                stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+                    "design.md was written to the repo root, where a tracked file already lives" \
+                    "The model ignored the destination path in the prompt. The root design.md is git-tracked and operator-owned, so it is left untouched and no design artifact was produced."
                 emit_event "design.stray.conflict" "plugin=design" "path=$_stray" "reason=tracked"
                 return 1
             fi

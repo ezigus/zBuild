@@ -199,6 +199,109 @@ assert_eq "[SPEC-5] design_stage_run uses plan from ZBUILD_STAGE_INPUTS (rc=0)" 
     && assert_pass "[SPEC-5] design.md produced via ZBUILD_STAGE_INPUTS index paths" \
     || assert_fail "[SPEC-5] design.md missing — ZBUILD_STAGE_INPUTS paths not used"
 
+# ─── SPEC-6..9: the remaining four error paths ───────────────────────────────
+# SPEC-2 covered missing_plan_json as the representative error path. The issue's
+# acceptance says "a conformant v2 result on EVERY exit path", and four paths
+# that call _design_write_result had no assertion, so the claim was not
+# machine-verifiable. One SPEC each, driving the real _design_stage_run_inner.
+#
+# Each also asserts design-summary.md, which the manifest declares
+# required:true / summary:true — "written on every terminal verdict, so absence
+# means something went wrong". stray_conflict was missing that call entirely
+# (found in review of this PR); the others already had it and are held still.
+
+# _assert_error_path <spec> <label> <expected_reason>
+# Reads the sidecar and summary left by the run the caller just drove.
+_assert_error_path() {
+    local spec="$1" label="$2" want_reason="$3"
+    assert_eq "[$spec] $label → rc=1" "1" "$_rc"
+    assert_eq "[$spec] $label → result_contract=2" \
+        "2" "$(jq -r '.result_contract // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
+    assert_eq "[$spec] $label → verdict=error" \
+        "error" "$(jq -r '.verdict // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
+    assert_eq "[$spec] $label → disposition=broken" \
+        "broken" "$(jq -r '.disposition // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
+    assert_eq "[$spec] $label → reason=$want_reason" \
+        "$want_reason" "$(jq -r '.reason // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
+    if [[ -s "$_F_ARTIFACTS/design-summary.md" ]]; then
+        assert_pass "[$spec] $label → design-summary.md written (required:true)"
+    else
+        assert_fail "[$spec] $label → design-summary.md written (required:true)" \
+            "missing or empty: $_F_ARTIFACTS/design-summary.md"
+    fi
+}
+
+# SPEC-6 — router returns cleanly but writes no design.md, and no stray at root.
+_setup_fixture t6
+_MOCK_ROUTER_RC=0
+_MOCK_TERMINATED_REASON="done_sentinel"
+_MOCK_DESIGN_WRITE_PATH=""
+set +e
+_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
+_rc=$?
+set -e
+_assert_error_path "SPEC-6" "no design.md produced" "missing_design_md"
+
+# SPEC-7 — a design.md with no ```scope block.
+_setup_fixture t7
+_MOCK_ROUTER_RC=0
+_MOCK_TERMINATED_REASON="done_sentinel"
+_MOCK_DESIGN_WRITE_PATH=""
+route_to_model_loop() {
+    mkdir -p "$(dirname "$_F_DESIGN")"
+    printf '# Design\n\n## Decision\nNo scope block here.\n' > "$_F_DESIGN"
+    _ROUTE_LOOP_ITERATIONS=1
+    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
+    _ROUTE_LOOP_INPUT_TOKENS=0; _ROUTE_LOOP_OUTPUT_TOKENS=0
+    return 0
+}
+set +e
+_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
+_rc=$?
+set -e
+_assert_error_path "SPEC-7" "design.md without a scope block" "missing_scope_block"
+
+# SPEC-8 — a design.md with a scope block but no ```acceptance block.
+_setup_fixture t8
+route_to_model_loop() {
+    local _bt='```'
+    mkdir -p "$(dirname "$_F_DESIGN")"
+    printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n' "$_bt" "$_bt" > "$_F_DESIGN"
+    _ROUTE_LOOP_ITERATIONS=1
+    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
+    _ROUTE_LOOP_INPUT_TOKENS=0; _ROUTE_LOOP_OUTPUT_TOKENS=0
+    return 0
+}
+set +e
+_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
+_rc=$?
+set -e
+_assert_error_path "SPEC-8" "design.md without an acceptance block" "missing_acceptance_block"
+
+# SPEC-9 — the model wrote design.md to the repo root, where a TRACKED file
+# already lives. The plugin must refuse to relocate it (operator-owned) rather
+# than overwrite, and still report. This is the path whose summary write was
+# missing before this PR.
+_setup_fixture t9
+printf '# operator-owned design\n' > "$_F_DIR/design.md"
+git -C "$_F_DIR" add design.md >/dev/null 2>&1
+git -C "$_F_DIR" commit -m "operator design" --quiet >/dev/null 2>&1
+route_to_model_loop() {
+    _ROUTE_LOOP_ITERATIONS=1
+    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
+    _ROUTE_LOOP_INPUT_TOKENS=0; _ROUTE_LOOP_OUTPUT_TOKENS=0
+    return 0
+}
+set +e
+_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
+_rc=$?
+set -e
+_assert_error_path "SPEC-9" "tracked design.md at repo root" "stray_conflict"
+
+# The operator's file is the whole reason this path refuses — it must survive.
+assert_eq "[SPEC-9] the tracked repo-root design.md is left untouched" \
+    "# operator-owned design" "$(cat "$_F_DIR/design.md" 2>/dev/null || true)"
+
 _test_cleanup_hook() { cleanup_test_env; }
 print_test_results
 exit $((FAIL > 0))
