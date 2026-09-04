@@ -59,6 +59,7 @@ stage.complete
 pipeline.end
 plugin.run.start
 teardown.start
+teardown.pgroups.killed
 plugin.cleanup.absent
 plugin.cleanup.absent
 plugin.cleanup.absent

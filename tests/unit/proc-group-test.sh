@@ -32,26 +32,35 @@ else
     assert_fail "U1: helpers survive a second source" "a helper went missing"
 fi
 
-# ─── U2: the prefix survives the fresh-shell scrub ──────────────────────────
-# The `_ZBUILD_` spelling is load-bearing — every consumer reads the prefix
-# AFTER _zbuild_make_fresh_shell, whose pattern is ^(ZBUILD_|_TPL_). A rename
-# to ZBUILD_PG_PREFIX would silently disable process groups everywhere, and
-# #1873's scrub now clears empty arrays that previously slipped through.
-print_test_section "U2. _ZBUILD_PG_PREFIX is not swept by _zbuild_make_fresh_shell"
+# ─── U2: process groups do not depend on an inherited variable ──────────────
+# This used to assert that `_ZBUILD_PG_PREFIX` survived the ZBUILD_* scrub in
+# _zbuild_make_fresh_shell — a real hazard, because renaming it would have
+# silently disabled process groups everywhere.
+#
+# #2056 removed the variable. Groups now come from `set -m` at the spawn, which
+# is shell state in the spawning shell, not an environment variable crossing a
+# scrub. The hazard is gone rather than guarded, so the assertion becomes: no
+# process-group behaviour depends on something the scrub could take away.
+print_test_section "U2. process groups survive _zbuild_make_fresh_shell"
 
 _u2_out="$(bash -c '
     source "'"$REPO_ROOT/scripts/lib/env-scrub.sh"'"
     source "'"$REPO_ROOT/scripts/lib/proc-group.sh"'"
     ( _zbuild_make_fresh_shell
-      declare -p _ZBUILD_PG_PREFIX >/dev/null 2>&1 && printf "SURVIVED\n" || printf "SCRUBBED\n" )
+      set -m
+      ( exec sleep 5 ) >/dev/null 2>&1 &
+      _p=$!
+      set +m
+      _pg="$(ps -o pgid= -p "$_p" 2>/dev/null | tr -d " ")"
+      kill -9 -- "-$_pg" 2>/dev/null || kill -9 "$_p" 2>/dev/null || true
+      [[ "$_pg" == "$_p" ]] && printf "ISOLATED\n" || printf "NOT_ISOLATED:%s/%s\n" "$_pg" "$_p" )
 ' 2>/dev/null || true)"
-if [[ "$_u2_out" == "SURVIVED" ]]; then
-    assert_pass "U2: the prefix survives the ZBUILD_* scrub"
+if [[ "$_u2_out" == "ISOLATED" ]]; then
+    assert_pass "U2: a spawn after the scrub is still its own group leader"
 else
-    assert_fail "U2: the prefix survives the ZBUILD_* scrub" "got: '$_u2_out'"
+    assert_fail "U2: a spawn after the scrub is still its own group leader" "got: '$_u2_out'"
 fi
 
-# ─── U3: zbuild_pg_resolve rejects non-numeric and empty input ──────────────
 print_test_section "U3. zbuild_pg_resolve validates its argument"
 
 for _bad in "" "abc" "12x" "-5" "1 2"; do
@@ -193,25 +202,33 @@ for _g in "" "fast" "0" "-3" "2"; do
     fi
 done
 
-# ─── U8: the probe is populated iff setsid -w works ─────────────────────────
-print_test_section "U8. _ZBUILD_PG_PREFIX agrees with the platform"
+# ─── U8: the mechanism is platform-independent ─────────────────────────────
+# This used to assert the setsid probe agreed with the platform: prefix set when
+# `setsid -w` worked, empty otherwise. The empty case was the bug — on macOS it
+# meant NO process group at all, so an abort killed one pid and left every
+# descendant running, and the only test that would have caught it is Linux-only.
+#
+# #2056: there is no probe and no platform branch. `set -m` is POSIX job control
+# and behaves the same on both, so the assertion is that nothing in the
+# process-group path is conditional on the host any more.
+print_test_section "U8. no platform branch remains in the process-group path"
 
-if command -v setsid >/dev/null 2>&1 && setsid -w true >/dev/null 2>&1; then
-    if [[ ${#_ZBUILD_PG_PREFIX[@]} -gt 0 && "${_ZBUILD_PG_PREFIX[0]}" == "setsid" ]]; then
-        assert_pass "U8: setsid usable → prefix is (setsid -w)"
-    else
-        assert_fail "U8: setsid usable → prefix is (setsid -w)" \
-            "prefix: '${_ZBUILD_PG_PREFIX[*]:-}'"
-    fi
+if grep -q '_ZBUILD_PG_PREFIX' "$REPO_ROOT/scripts/lib/proc-group.sh"; then
+    assert_fail "U8: the setsid prefix is gone" \
+        "proc-group.sh still defines it — the guarantee would again be platform-conditional"
 else
-    if [[ ${#_ZBUILD_PG_PREFIX[@]} -eq 0 ]]; then
-        assert_pass "U8: setsid unusable → prefix empty (PID-kill fallback)"
-    else
-        assert_fail "U8: setsid unusable → prefix empty (PID-kill fallback)" \
-            "prefix: '${_ZBUILD_PG_PREFIX[*]}'"
-    fi
+    assert_pass "U8: the setsid prefix is gone"
+fi
+# Comments are stripped first. The change that removed setsid explains itself by
+# NAMING setsid, so a guard that greps raw source reports the defect forever —
+# the same trap this repo has now hit three times (T8 in the impact-prompt guard,
+# SPEC-5 in the reap-window guard, and this one).
+_u8_live="$(grep -hvE '^[[:space:]]*#' "$REPO_ROOT/scripts/lib/proc-group.sh" "$REPO_ROOT/core/router/route.sh" 2>/dev/null || true)"
+if grep -qE 'command -v setsid|setsid -w' <<< "$_u8_live"; then
+    assert_fail "U8: no setsid probe remains in the spawn path" "still probing for setsid in live code"
+else
+    assert_pass "U8: no setsid probe remains in the spawn path"
 fi
 
-cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -41,11 +41,14 @@ fi
 
 # ─── SPEC-3: the shared helper exists and exports every symbol ───────────────
 # CHANGE: proc-group.sh is a new file; at baseline it does not exist.
-print_test_section "SPEC-3: proc-group.sh defines _ZBUILD_PG_PREFIX, zbuild_pg_resolve, zbuild_pg_kill"
+# #2056: _ZBUILD_PG_PREFIX is no longer among them. It held the `setsid -w`
+# prefix, which did not exist on macOS — so the group was never created there and
+# an abort left every descendant running. Groups come from `set -m` at the spawn
+# now, which is shell state rather than an exported symbol, so there is nothing
+# to assert the existence of.
+print_test_section "SPEC-3: proc-group.sh defines zbuild_pg_resolve, zbuild_pg_kill, zbuild_pid_kill"
 
-if ! declare -p _ZBUILD_PG_PREFIX >/dev/null 2>&1; then
-    assert_fail "[SPEC-3] proc-group.sh defines _ZBUILD_PG_PREFIX" "missing"
-elif ! declare -F zbuild_pg_kill >/dev/null 2>&1; then
+if ! declare -F zbuild_pg_kill >/dev/null 2>&1; then
     assert_fail "[SPEC-3] proc-group.sh defines zbuild_pg_kill" "missing"
 elif ! declare -F zbuild_pg_resolve >/dev/null 2>&1; then
     assert_fail "[SPEC-3] proc-group.sh defines zbuild_pg_resolve" "missing"
