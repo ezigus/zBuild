@@ -158,7 +158,7 @@ secret_scan_run() {
 
     # No baseline → nothing to compare; skip rather than block.
     if [[ -z "$repo_root" || -z "$base" ]]; then
-        printf '{"verdict":"skip","reason":"no_baseline","baseline":"","finding_count":0,"findings":[]}\n' \
+        printf '{"result_contract":2,"verdict":"skip","disposition":"complete","reason":"no_baseline","baseline":"","finding_count":0,"findings":[]}\n' \
             | atomic_write "$result_path"
         _ss_emit "secret_scan.skip" "reason=no_baseline"
         _ss_emit "plugin.result" "plugin=secret-scan" "verdict=skip"
@@ -170,7 +170,7 @@ secret_scan_run() {
 
     # Empty diff → skip.
     if [[ -z "$diff_text" ]]; then
-        printf '{"verdict":"skip","reason":"empty_diff","baseline":"%s","finding_count":0,"findings":[]}\n' "$base" \
+        printf '{"result_contract":2,"verdict":"skip","disposition":"complete","reason":"empty_diff","baseline":"%s","finding_count":0,"findings":[]}\n' "$base" \
             | atomic_write "$result_path"
         _ss_emit "secret_scan.skip" "reason=empty_diff"
         _ss_emit "plugin.result" "plugin=secret-scan" "verdict=skip"
@@ -189,7 +189,7 @@ secret_scan_run() {
         local count
         count="$(printf '%s\n' "$findings_json" | jq 'length')"
         jq -n --arg base "$base" --argjson n "$count" --argjson f "$findings_json" \
-            '{verdict:"fail", reason:"secret_found", baseline:$base, finding_count:$n, findings:$f}' \
+            '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"secret_found","baseline":$base,"finding_count":$n,"findings":$f}' \
             | atomic_write "$result_path"
         # #1988: publish what only this gate knows. The finding LOCATIONS are
         # the actionable part and never reached a prompt — the aggregator
@@ -203,7 +203,7 @@ secret_scan_run() {
         return 0
     fi
 
-    printf '{"verdict":"pass","reason":"clean","baseline":"%s","finding_count":0,"findings":[]}\n' "$base" \
+    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"clean","baseline":"%s","finding_count":0,"findings":[]}\n' "$base" \
         | atomic_write "$result_path"
     stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "pass" ""
     _ss_emit "secret_scan.pass"

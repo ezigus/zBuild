@@ -47,7 +47,11 @@ lint_gate_run() {
     mkdir -p "$artifacts_dir"
 
     local result_path="$artifacts_dir/lint-result.json"
-    local results_json="$artifacts_dir/test-results.json"
+    local results_json=""
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+        results_json="$(jq -r '.inputs.test_results // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+    fi
+    [[ -n "$results_json" ]] || results_json="$artifacts_dir/test-results.json"
 
     # Read the lint.status field. Absent file / missing block → "" → skip.
     # Try v2 path (.data.lint) first; fall back to v1 top-level (.lint) for
@@ -81,7 +85,8 @@ lint_gate_run() {
     esac
 
     jq -n --arg v "$verdict" --arg s "$status" --arg d "$detail" \
-        '{"verdict":$v,"status":$s,"detail":$d}' | atomic_write "$result_path"
+        '{"result_contract":2,"verdict":$v,"disposition":"complete","reason":$d,"status":$s,"detail":$d}' \
+        | atomic_write "$result_path"
     # #1988: publish what only this gate knows. Its detail used to reach a
     # prompt only through the aggregator's rendering; it is now a declared
     # summary output (#1976), and cleared on a non-fail so a stale file from a

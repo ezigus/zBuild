@@ -165,6 +165,60 @@ W="$(_mkwork mut-absent)"
 mutation_gate_run "mutation-gate" "$W/state.json" >/dev/null 2>&1
 assert_json_key "[M6] absent test-results → verdict=skip" "$(cat "$W/artifacts/mutation-result.json")" '.verdict' "skip"
 
+# ─── SPEC-2: result JSON carries result_contract:2 and disposition:complete ───
+W="$(_mkwork rg-spec2-lint)"
+_seed_results "$W" '{lint:{status:"pass"}}'
+lint_gate_run "lint-gate" "$W/state.json" >/dev/null 2>&1
+_J="$(cat "$W/artifacts/lint-result.json")"
+assert_json_key "[SPEC-2] lint-gate → result_contract:2" "$_J" '.result_contract' "2"
+assert_json_key "[SPEC-2] lint-gate → disposition:complete" "$_J" '.disposition' "complete"
+
+W="$(_mkwork rg-spec2-cov)"
+_seed_results "$W" '{coverage:{status:"measured",pct:50,floor:29}}'
+coverage_gate_run "coverage-gate" "$W/state.json" >/dev/null 2>&1
+_J="$(cat "$W/artifacts/coverage-result.json")"
+assert_json_key "[SPEC-2] coverage-gate → result_contract:2" "$_J" '.result_contract' "2"
+assert_json_key "[SPEC-2] coverage-gate → disposition:complete" "$_J" '.disposition' "complete"
+
+W="$(_mkwork rg-spec2-mut)"
+_seed_results "$W" '{mutation:{status:"measured",score:"10/10",floor:0}}'
+mutation_gate_run "mutation-gate" "$W/state.json" >/dev/null 2>&1
+_J="$(cat "$W/artifacts/mutation-result.json")"
+assert_json_key "[SPEC-2] mutation-gate → result_contract:2" "$_J" '.result_contract' "2"
+assert_json_key "[SPEC-2] mutation-gate → disposition:complete" "$_J" '.disposition' "complete"
+
+# ─── SPEC-5: coverage/lint/mutation resolve test_results via ZBUILD_STAGE_INPUTS
+_si_dir="$TEST_TEMP_DIR/si"
+mkdir -p "$_si_dir"
+
+jq -n '{lint:{status:"pass"}}' > "$_si_dir/lt.json"
+_lt_si="$TEST_TEMP_DIR/lt-si.json"
+jq -n --arg p "$_si_dir/lt.json" '{inputs:{test_results:$p}}' > "$_lt_si"
+W="$(_mkwork rg-spec5-lint)"
+# No test-results.json in artifacts dir — path must come from ZBUILD_STAGE_INPUTS.
+ZBUILD_STAGE_INPUTS="$_lt_si" lint_gate_run "lint-gate" "$W/state.json" >/dev/null 2>&1
+unset ZBUILD_STAGE_INPUTS
+assert_json_key "[SPEC-5] lint-gate reads test_results from ZBUILD_STAGE_INPUTS → verdict=pass" \
+    "$(cat "$W/artifacts/lint-result.json")" '.verdict' "pass"
+
+jq -n '{coverage:{status:"measured",pct:80,floor:29}}' > "$_si_dir/cv.json"
+_cv_si="$TEST_TEMP_DIR/cv-si.json"
+jq -n --arg p "$_si_dir/cv.json" '{inputs:{test_results:$p}}' > "$_cv_si"
+W="$(_mkwork rg-spec5-cov)"
+ZBUILD_STAGE_INPUTS="$_cv_si" coverage_gate_run "coverage-gate" "$W/state.json" >/dev/null 2>&1
+unset ZBUILD_STAGE_INPUTS
+assert_json_key "[SPEC-5] coverage-gate reads test_results from ZBUILD_STAGE_INPUTS → verdict=pass" \
+    "$(cat "$W/artifacts/coverage-result.json")" '.verdict' "pass"
+
+jq -n '{mutation:{status:"measured",score:"10/10",floor:0}}' > "$_si_dir/mg.json"
+_mg_si="$TEST_TEMP_DIR/mg-si.json"
+jq -n --arg p "$_si_dir/mg.json" '{inputs:{test_results:$p}}' > "$_mg_si"
+W="$(_mkwork rg-spec5-mut)"
+ZBUILD_STAGE_INPUTS="$_mg_si" mutation_gate_run "mutation-gate" "$W/state.json" >/dev/null 2>&1
+unset ZBUILD_STAGE_INPUTS
+assert_json_key "[SPEC-5] mutation-gate reads test_results from ZBUILD_STAGE_INPUTS → verdict=pass" \
+    "$(cat "$W/artifacts/mutation-result.json")" '.verdict' "pass"
+
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 print_test_results
