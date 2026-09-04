@@ -165,6 +165,9 @@ while [[ $(date +%s%N) -lt $spawn_deadline_ns ]]; do
 done
 
 start_ts=$(date +%s%N)
+# Recorded BEFORE the signal: once the driver exits its group is unknowable, and
+# it is the reference the counted pids are compared against (#2029).
+_RFA_DRV_PG="$(ps -o pgid= -p "$DRV_PID" 2>/dev/null | tr -d ' ' || echo '?')"
 kill -TERM "$DRV_PID" 2>/dev/null || true
 
 # Wait for driver to exit (or watchdog to kill it).
@@ -361,7 +364,20 @@ while [[ $(date +%s%N) -lt $deadline_ns ]]; do
                         # `classification=gone` — true, useless, and exactly what
                         # the last three CI failures reported. This is the
                         # interesting instant, and nothing was recording it.
-                        _rfa_counted["$p"]="state=${_st} why=${PROC_IDENTITY_REASON:-?}"
+                        # #2029: state and classification answer "was this a
+                        # real leak or a classification artifact". They do NOT
+                        # answer "why did the kill miss it", and at this flake's
+                        # rate a second failure to learn that is weeks away. So
+                        # capture the process GROUP too, and the driver's.
+                        #
+                        # The abort kills the child's group (`kill -- -PGID`) and
+                        # refuses any group equal to its own. So:
+                        #   stub_pg == drv_pg  -> the abort would have declined to
+                        #                         signal it; not a product leak
+                        #   stub_pg != drv_pg  -> the abort should have reached it
+                        #                         and did not; a real defect
+                        # One line, and the next failure is conclusive either way.
+                        _rfa_counted["$p"]="state=${_st} why=${PROC_IDENTITY_REASON:-?} stub_pg=$(ps -o pgid= -p "$p" 2>/dev/null | tr -d ' ' || echo '?') drv_pg=${_RFA_DRV_PG:-?}"
                         ;;
                 esac
             fi
@@ -382,6 +398,14 @@ fi
 # arrives with its own diagnosis attached.
 if [[ $leftover -ne 0 && -f "$PID_FILE" ]]; then
     echo "  DIAGNOSTIC: ${leftover} leftover stub(s) after the ${reap_window_s}s reap window:" >&2
+    # What the ABORT did, not just what the test saw (#2029). `pg_kill=group` means
+    # the whole child group was swept; `pg_kill=pid_only` means only the leader was
+    # signalled and any descendant would survive — which is the difference between
+    # a product defect and a test artifact.
+    if [[ -s "${ZBUILD_EVENTS_JSONL:-}" ]]; then
+        printf '    abort event: %s\n' \
+            "$(grep -o '\"event\":\"loop.terminated.signal\"[^}]*' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1 || echo '<none recorded>')" >&2
+    fi
     # #2029: describe EVERY pid, not only ones still classified as ours. The
     # guard used to be `_rfa_is_my_stub "$p" && _rfa_describe "$p"`, so a stub
     # that was counted during the poll and then exited produced a header and no
