@@ -1,0 +1,65 @@
+### SPEC-1 baseline tests/integration/acceptance-gate-v2-contract-test.sh
+
+[38;2;0;212;255m[1m  acceptance-gate v2 result contract (#1839)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-1] design_acceptance_block: result_contract:2 present
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-2] design_acceptance_block: acceptance-summary.txt written
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] merge_base_resolvable: result_contract:2 present
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-2] merge_base_resolvable: acceptance-summary.txt written
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] tagged_testfiles: result_contract:2 present
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-2] tagged_testfiles: acceptance-summary.txt written
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] malformed_acceptance_block: result_contract:2 present
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-2] malformed_acceptance_block: acceptance-summary.txt written
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] pass path: result_contract:2 present
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-1] fail path: result_contract:2 present
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-3] plugin.sh: zero grep hits for literal '$artifact_dir/design.md'
+    [2mexpected: 0, got: 1[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m11 of 11 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-1] design_acceptance_block: result_contract:2 present
+  [38;2;248;113;113m✗[0m [SPEC-2] design_acceptance_block: acceptance-summary.txt written
+  [38;2;248;113;113m✗[0m [SPEC-1] merge_base_resolvable: result_contract:2 present
+  [38;2;248;113;113m✗[0m [SPEC-2] merge_base_resolvable: acceptance-summary.txt written
+  [38;2;248;113;113m✗[0m [SPEC-1] tagged_testfiles: result_contract:2 present
+  [38;2;248;113;113m✗[0m [SPEC-2] tagged_testfiles: acceptance-summary.txt written
+  [38;2;248;113;113m✗[0m [SPEC-1] malformed_acceptance_block: result_contract:2 present
+  [38;2;248;113;113m✗[0m [SPEC-2] malformed_acceptance_block: acceptance-summary.txt written
+  [38;2;248;113;113m✗[0m [SPEC-1] pass path: result_contract:2 present
+  [38;2;248;113;113m✗[0m [SPEC-1] fail path: result_contract:2 present
+  [38;2;248;113;113m✗[0m [SPEC-3] plugin.sh: zero grep hits for literal '$artifact_dir/design.md'
+
+### SPEC-1 head tests/integration/acceptance-gate-v2-contract-test.sh
+
+[38;2;0;212;255m[1m  acceptance-gate v2 result contract (#1839)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] design_acceptance_block: result_contract:2 present
+  [38;2;74;222;128m✓[0m [SPEC-2] design_acceptance_block: acceptance-summary.txt written
+  [38;2;74;222;128m✓[0m [SPEC-1] merge_base_resolvable: result_contract:2 present
+  [38;2;74;222;128m✓[0m [SPEC-2] merge_base_resolvable: acceptance-summary.txt written
+  [38;2;74;222;128m✓[0m [SPEC-1] tagged_testfiles: result_contract:2 present
+  [38;2;74;222;128m✓[0m [SPEC-2] tagged_testfiles: acceptance-summary.txt written
+  [38;2;74;222;128m✓[0m [SPEC-1] malformed_acceptance_block: result_contract:2 present
+  [38;2;74;222;128m✓[0m [SPEC-2] malformed_acceptance_block: acceptance-summary.txt written
+  [38;2;74;222;128m✓[0m [SPEC-1] pass path: result_contract:2 present
+  [38;2;74;222;128m✓[0m [SPEC-1] fail path: result_contract:2 present
+  [38;2;74;222;128m✓[0m [SPEC-3] plugin.sh: zero grep hits for literal '$artifact_dir/design.md'
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 11 tests passed[0m
+
