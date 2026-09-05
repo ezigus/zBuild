@@ -19,25 +19,25 @@
     [2mexpected: 2, got: [0m
   [38;2;248;113;113m✗[0m [SPEC-2] malformed_acceptance_block: acceptance-summary.txt written
     [2mexpected: 1, got: 0[0m
-══ acceptance-gate [computed] seq=6.1.6 input ══════════════════ 05:20:49 UTC ══
+══ acceptance-gate [computed] seq=6.2.6 input ══════════════════ 05:31:04 UTC ══
 in: contract summary (1 checks)
 acceptance-gate — contract summary:
   NEGCTL PASS SPEC-1
       design : feature is implemented
       asserts: # [SPEC-1] feature is implemented
-══ acceptance-gate [computed] seq=6.1.6 output OK 0.0s ═════════ 05:20:49 UTC ══
+══ acceptance-gate [computed] seq=6.2.6 output OK 0.0s ═════════ 05:31:04 UTC ══
 out: contract summary: 1 checks
 ── end stage-io: acceptance-gate ✓ ──
   [38;2;248;113;113m✗[0m [SPEC-1] pass path: result_contract:2 present
     [2mexpected: 2, got: [0m
-══ acceptance-gate [computed] seq=6.1.6 input ══════════════════ 05:20:49 UTC ══
+══ acceptance-gate [computed] seq=6.2.6 input ══════════════════ 05:31:05 UTC ══
 in: contract summary (2 checks)
 acceptance-gate — contract summary:
   acceptance SPEC violations — SPEC-1 tautological (pass at baseline) — re-author the assertions
   NEGCTL FAIL SPEC-1 tautology
       design : always true
       asserts: # [SPEC-1] always true
-══ acceptance-gate [computed] seq=6.1.6 output OK 0.0s ═════════ 05:20:49 UTC ══
+══ acceptance-gate [computed] seq=6.2.6 output OK 0.0s ═════════ 05:31:05 UTC ══
 out: contract summary: 2 checks
 ── end stage-io: acceptance-gate ✓ ──
   [38;2;248;113;113m✗[0m [SPEC-1] fail path: result_contract:2 present
@@ -74,24 +74,24 @@ out: contract summary: 2 checks
   [38;2;74;222;128m✓[0m [SPEC-2] tagged_testfiles: acceptance-summary.txt written
   [38;2;74;222;128m✓[0m [SPEC-1] malformed_acceptance_block: result_contract:2 present
   [38;2;74;222;128m✓[0m [SPEC-2] malformed_acceptance_block: acceptance-summary.txt written
-══ acceptance-gate [computed] seq=6.1.6 input ══════════════════ 05:20:51 UTC ══
+══ acceptance-gate [computed] seq=6.2.6 input ══════════════════ 05:31:07 UTC ══
 in: contract summary (1 checks)
 acceptance-gate — contract summary:
   NEGCTL PASS SPEC-1
       design : feature is implemented
       asserts: # [SPEC-1] feature is implemented
-══ acceptance-gate [computed] seq=6.1.6 output OK 0.0s ═════════ 05:20:51 UTC ══
+══ acceptance-gate [computed] seq=6.2.6 output OK 0.0s ═════════ 05:31:07 UTC ══
 out: contract summary: 1 checks
 ── end stage-io: acceptance-gate ✓ ──
   [38;2;74;222;128m✓[0m [SPEC-1] pass path: result_contract:2 present
-══ acceptance-gate [computed] seq=6.1.6 input ══════════════════ 05:20:52 UTC ══
+══ acceptance-gate [computed] seq=6.2.6 input ══════════════════ 05:31:08 UTC ══
 in: contract summary (2 checks)
 acceptance-gate — contract summary:
   acceptance SPEC violations — SPEC-1 tautological (pass at baseline) — re-author the assertions
   NEGCTL FAIL SPEC-1 tautology
       design : always true
       asserts: # [SPEC-1] always true
-══ acceptance-gate [computed] seq=6.1.6 output OK 0.0s ═════════ 05:20:52 UTC ══
+══ acceptance-gate [computed] seq=6.2.6 output OK 0.0s ═════════ 05:31:08 UTC ══
 out: contract summary: 2 checks
 ── end stage-io: acceptance-gate ✓ ──
   [38;2;74;222;128m✓[0m [SPEC-1] fail path: result_contract:2 present
