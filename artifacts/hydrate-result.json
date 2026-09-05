@@ -2,10 +2,10 @@
   "result_contract": 2,
   "verdict": "complete",
   "disposition": "complete",
-  "reason": "restored 13 artifact(s) from zbuild/state/issue-1839",
+  "reason": "restored 73 artifact(s) from zbuild/state/issue-1839",
   "data": {
     "status": "restored",
-    "restored": 13,
+    "restored": 73,
     "source": "remote"
   }
 }
