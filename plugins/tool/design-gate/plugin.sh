@@ -61,7 +61,7 @@ _dg_scope_nonempty() {
 }
 
 # ─── design_gate_run ──────────────────────────────────────────────────────────
-# Runs C1..C5, collects ALL violations, writes verdict-in-artifact, emits
+# Runs C1..C6, collects ALL violations, writes verdict-in-artifact, emits
 # design_gate.{pass,fail}. Always rc=0.
 # Args: $1 = stage_id, $2 = state_file
 design_gate_run() {

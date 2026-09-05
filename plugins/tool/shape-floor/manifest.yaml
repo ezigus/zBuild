@@ -25,7 +25,8 @@ description: |
   open and invents no verdict, but it says it could not check rather than
   claiming it checked and found nothing.
 
-  Always returns rc=0; the verdict lives in the artifact (ADR-040 verdict-in-artifact).
+  Always returns rc=0; the verdict lives in shape-floor-result.json and the
+  floor detail in shape-floor-detail.md (ADR-040 verdict-in-artifact, ADR-055 §9).
   ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
 
 hooks:

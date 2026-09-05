@@ -70,6 +70,7 @@ shape_floor_run() {
     case "$_shape_out" in
         *"SHAPE_FLOOR PASS"*)
             verdict="pass"
+            detail="all shape-change floor files present"
             _sf_emit "shape_floor.pass"
             ;;
         *"SHAPE_FLOOR FAIL"*)

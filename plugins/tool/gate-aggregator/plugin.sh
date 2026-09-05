@@ -301,6 +301,9 @@ gate_aggregator_run() {
     stage_summary_write "$artifacts_dir/gate-aggregator-summary.md" "gate-aggregator" "$verdict" \
         "rolled up ${#gate_pairs[@]} gate(s) into verdict $verdict" \
         "$(printf -- '- failed: %s\n- fault: %s' "$_ga_failed_list" "${_ga_fault:-none declared}")"
+
+    _ga_emit "plugin.result" "plugin=gate-aggregator" "verdict=$verdict"
+    return 0
 }
 
 # ─── gate_aggregator_cleanup ──────────────────────────────────────────────────
