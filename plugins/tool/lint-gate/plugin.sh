@@ -70,6 +70,7 @@ lint_gate_run() {
             ;;
         pass)
             verdict="pass"
+            detail="lint passed"
             _lg_emit "lint_gate.pass"
             ;;
         skipped)

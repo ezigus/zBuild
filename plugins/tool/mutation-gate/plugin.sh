@@ -35,8 +35,9 @@ source "$_MG_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 _mg_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
 # ─── mutation_gate_run ────────────────────────────────────────────────────────
-# Reads $artifacts_dir/test-results.json, parses the .mutation block ("N/M"
-# score + floor) → verdict, emits mutation_gate.{pass,fail,skip}, writes
+# Resolves test_results from ZBUILD_STAGE_INPUTS when set, otherwise reads
+# $artifacts_dir/test-results.json. Parses the .mutation block ("N/M" score +
+# floor) → verdict, emits mutation_gate.{pass,fail,skip}, writes
 # mutation-result.json. Always rc=0.
 # Args: $1 = stage_id, $2 = state_file
 mutation_gate_run() {

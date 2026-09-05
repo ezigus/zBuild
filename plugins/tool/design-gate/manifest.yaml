@@ -28,7 +28,7 @@ description: |
   verdict = pass IFF zero violations, else fail (verdict-in-artifact, ADR-040).
   Always returns rc=0; the verdict lives in design-gate-result.json and the
   design_verify_cycle's exit_when reads it. design-gate-feedback.md is written
-  ONLY on fail and is wired back into design.prior_impact_feedback.
+  on every terminal verdict (ADR-055 §9) and wired back into design.prior_impact_feedback.
 
   Level-2 (negative-control / tautology) and Level-3 (reachability) CANNOT shift
   left — they need a built assertion + baseline-vs-HEAD run — and remain at the

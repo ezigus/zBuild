@@ -17,8 +17,8 @@ description: |
   Floor preference: the `floor` recorded in test-results.json wins; otherwise
   ZBUILD_COVERAGE_FLOOR (default 29). When test-results.json is absent or carries
   no `coverage` block → verdict=skip.
-  Always returns rc=0; the verdict lives in coverage-result.json (ADR-040
-  verdict-in-artifact convention, mirrors shape-floor).
+  Always returns rc=0; the verdict lives in coverage-result.json and the finding
+  detail in coverage-detail.md (ADR-040 verdict-in-artifact, ADR-055 §9).
   ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
 
 hooks:

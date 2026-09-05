@@ -136,8 +136,9 @@ _ss_scan_diff() {
 }
 
 # ─── secret_scan_run ──────────────────────────────────────────────────────────
-# Scans the merge-base..HEAD diff. Writes verdict (fail|pass|skip) to
-# secret-scan-result.json and ALWAYS returns 0.
+# Scans the merge-base..HEAD diff. Writes result_contract:2 verdict to
+# secret-scan-result.json and the finding summary to secret-scan-detail.md.
+# ALWAYS returns 0.
 # Args: $1 = stage_id, $2 = state_file
 secret_scan_run() {
     local stage_id="${1:-secret-scan}"; : "$stage_id"

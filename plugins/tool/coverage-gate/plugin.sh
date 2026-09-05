@@ -46,8 +46,9 @@ _cg_lt() {
 }
 
 # ─── coverage_gate_run ────────────────────────────────────────────────────────
-# Reads $artifacts_dir/test-results.json, maps the .coverage block → verdict,
-# emits coverage_gate.{pass,fail,skip}, writes coverage-result.json. Always rc=0.
+# Resolves test_results from ZBUILD_STAGE_INPUTS when set, otherwise reads
+# $artifacts_dir/test-results.json. Maps the .coverage block → verdict, emits
+# coverage_gate.{pass,fail,skip}, writes coverage-result.json. Always rc=0.
 # Args: $1 = stage_id, $2 = state_file
 coverage_gate_run() {
     local stage_id="${1:-coverage-gate}"; : "$stage_id"

@@ -35,8 +35,8 @@ description: |
     - any gate verdict == fail (or test's "error") → verdict=fail
     - any REQUIRED gate artifact missing or malformed → verdict=fail (NOT skip);
       a gate that did not run cannot be trusted to have passed.
-  Always returns rc=0; the verdict lives in gate-aggregator-result.json
-  (ADR-040 verdict-in-artifact convention, mirrors shape-floor).
+  Always returns rc=0; the verdict lives in gate-aggregator-result.json and the
+  fault roll-up in gate-aggregator-summary.md (ADR-040 verdict-in-artifact, ADR-055 §9).
   ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
 
 hooks:
