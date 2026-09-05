@@ -1,0 +1,197 @@
+### SPEC-4 baseline tests/integration/acceptance-gate-test.sh
+
+[38;2;0;212;255m[1m  acceptance-gate plugin — end-to-end (#922)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m S1: load-bearing → rc=0
+  [38;2;74;222;128m✓[0m S1: verdict=pass
+  [38;2;74;222;128m✓[0m S1: complete event
+  [38;2;74;222;128m✓[0m [SPEC-4] S1: load-bearing test verdict=pass behavioral contract preserved
+  [38;2;74;222;128m✓[0m S2: tautological → rc=1
+  [38;2;74;222;128m✓[0m S2: verdict=fail
+  [38;2;74;222;128m✓[0m S2: tautology event
+  [38;2;74;222;128m✓[0m S3: untagged → rc=1
+  [38;2;74;222;128m✓[0m S3: untagged_spec event
+  [38;2;74;222;128m✓[0m S4: no block → rc=0
+  [38;2;74;222;128m✓[0m S4: verdict=pass
+  [38;2;74;222;128m✓[0m S4: reason=precondition_unmet
+  [38;2;74;222;128m✓[0m S4: precondition=design_acceptance_block
+  [38;2;74;222;128m✓[0m S4: skipped event
+  [38;2;74;222;128m✓[0m S5: malformed block → rc=1 (fail closed, not skipped)
+  [38;2;74;222;128m✓[0m S5: verdict=fail
+  [38;2;74;222;128m✓[0m S6: guard SPEC with always-passing test → rc=0
+  [38;2;74;222;128m✓[0m S6: verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-1] S6b: guard SPEC with invariant regression → rc=1
+  [38;2;74;222;128m✓[0m [SPEC-1] S6b: guard regression yields verdict=fail
+  [38;2;74;222;128m✓[0m [SPEC-2] S6b: guard_regressed in failures[]
+  [38;2;74;222;128m✓[0m [SPEC-2] S6b: guard_regressed disposition=recoverable (build re-authors the assertion)
+  [38;2;74;222;128m✓[0m [SPEC-2] S6b: the reason names the contradiction, not a generic failure
+  [38;2;74;222;128m✓[0m [SPEC-3] S6c: an unrunnable guard baseline is an infra class, not a violation
+  [38;2;74;222;128m✓[0m [SPEC-3] S6c: guard harness error does NOT become guard_regressed
+  [38;2;74;222;128m✓[0m [SPEC-3] S6c: disposition=advisory (warns, does not block the cycle)
+  [38;2;74;222;128m✓[0m [SPEC-3] S6c: gate-level rc=1; the aggregator is what demotes it
+  [38;2;74;222;128m✓[0m S7: [change] SPEC with tautological test → rc=1
+  [38;2;74;222;128m✓[0m S7: verdict=fail
+  [38;2;74;222;128m✓[0m S8: timeout → rc=1 (gate records infra failure)
+  [38;2;74;222;128m✓[0m S8: verdict=fail
+  [38;2;74;222;128m✓[0m S8: failure class is negctl_error:timeout:SPEC-1 (not a violation)
+  [38;2;74;222;128m✓[0m S8: negctl_timeout event
+  [38;2;74;222;128m✓[0m S8: negctl-SPEC-1.log diagnostic artifact captured
+  [38;2;74;222;128m✓[0m S9: placeholder block → rc=0
+  [38;2;74;222;128m✓[0m S9: verdict=pass
+  [38;2;74;222;128m✓[0m S9: reason=precondition_unmet
+  [38;2;74;222;128m✓[0m S9: precondition=tagged_testfiles
+  [38;2;74;222;128m✓[0m S10: both violations → rc=1
+  [38;2;74;222;128m✓[0m S10: verdict=fail
+  [38;2;74;222;128m✓[0m S10: disposition=recoverable (#1585 — tautology+untagged both build-fixable → cycle re-iterates)
+  [38;2;74;222;128m✓[0m S10: untagged_spec:SPEC-2 present in one pass
+  [38;2;74;222;128m✓[0m S10: tautology:SPEC-1 present in the SAME pass
+  [38;2;74;222;128m✓[0m S10: untagged_spec event
+  [38;2;74;222;128m✓[0m S10: tautology event
+  [38;2;74;222;128m✓[0m S10: untagged SPEC-2 reported once (not also no_testfile)
+  [38;2;74;222;128m✓[0m S11: reason names SPEC-1
+  [38;2;74;222;128m✓[0m S11: reason names SPEC-2
+  [38;2;74;222;128m✓[0m S11: reason names the tautology class
+  [38;2;74;222;128m✓[0m S12: tautology → fault absent (build-fixable, #1583)
+  [38;2;74;222;128m✓[0m S12: tautology verdict unchanged (still fail)
+  [38;2;74;222;128m✓[0m S12: tautology disposition=recoverable (#1585 — cycle re-iterates, not terminal)
+  [38;2;74;222;128m✓[0m S13: untagged-only (build-fixable) → fault absent
+  [38;2;74;222;128m✓[0m S14: not_passing_at_head → fault absent (build-fixable)
+  [38;2;74;222;128m✓[0m S10b: an unfulfilled testfile promise → verdict=fail
+  [38;2;74;222;128m✓[0m S10b: names the offending SPEC
+  [38;2;74;222;128m✓[0m S10b: unfulfilled promise is recoverable (cycle re-iterates)
+  [38;2;74;222;128m✓[0m [SPEC-3] S15: wiring_not_on_path → rc=1
+  [38;2;74;222;128m✓[0m [SPEC-3] S15: verdict=fail
+  [38;2;74;222;128m✓[0m [SPEC-3] S15: disposition=recoverable (design-rewind, not terminal halt)
+  [38;2;74;222;128m✓[0m [SPEC-3] S15: fault=specification (first live activation of dormant carrier)
+  [38;2;74;222;128m✓[0m [SPEC-3] S15: failures[] contains wiring_not_on_path
+  [38;2;74;222;128m✓[0m [SPEC-3] S15: wiring_not_on_path event emitted
+  [38;2;74;222;128m✓[0m [SPEC-3] S16: load-bearing enriched → rc=0
+  [38;2;74;222;128m✓[0m [SPEC-3] S16: verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-3] S16: summary contains SPEC desc enrichment
+  [38;2;74;222;128m✓[0m [SPEC-3] S16: summary contains assertion label enrichment
+  [38;2;74;222;128m✓[0m [SPEC-3] S16: verdict token still leads its line
+  [38;2;74;222;128m✓[0m [SPEC-3] S16: summary persisted to an artifact
+  [38;2;74;222;128m✓[0m [SPEC-3] S16: persisted artifact carries the design/asserts pair
+  [38;2;74;222;128m✓[0m [SPEC-3] S16c: empty SPEC text renders <no description>
+  [38;2;74;222;128m✓[0m [SPEC-3] S16b: guard SPEC with no tag → rc=0 (skip)
+  [38;2;74;222;128m✓[0m [SPEC-3] S16b: summary shows <none found> when no assertion tag
+  [38;2;74;222;128m✓[0m [SPEC-3] S16d: tautological SPEC → rc=1
+  [38;2;74;222;128m✓[0m [SPEC-3] S16d: verdict=fail (enrichment did not break classification)
+  [38;2;74;222;128m✓[0m [SPEC-3] S16d: tautology still recorded
+  [38;2;74;222;128m✓[0m [SPEC-3] S16d: FAIL verdict token still leads its own line
+  [38;2;74;222;128m✓[0m [SPEC-3] S16d: FAIL line carries the design text
+  [38;2;74;222;128m✓[0m [SPEC-3] S16d: FAIL line carries the asserted label
+  [38;2;74;222;128m✓[0m [SPEC-1] S17: timeout → rc=1
+  [38;2;74;222;128m✓[0m [SPEC-1] S17: summary contains ERROR timeout line
+  [38;2;74;222;128m✓[0m [SPEC-1] S17: timeout line carries design enrichment
+  [38;2;74;222;128m✓[0m [SPEC-1] S17: timeout line carries assertion label
+  [38;2;74;222;128m✓[0m [SPEC-2] S18: no_impl_delta gate → rc=0
+  [38;2;74;222;128m✓[0m [SPEC-2] S18: summary contains per-SPEC SKIP line
+  [38;2;74;222;128m✓[0m [SPEC-2] S18: SKIP line carries design enrichment
+  [38;2;74;222;128m✓[0m [SPEC-3] S19: no_prod_delta gate → rc=0
+  [38;2;74;222;128m✓[0m [SPEC-3] S19: summary contains per-SPEC SKIP line
+  [38;2;74;222;128m✓[0m [SPEC-3] S19: SKIP line carries design enrichment
+  [38;2;74;222;128m✓[0m [SPEC-3] S19: SKIP line carries assertion label
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 90 tests passed[0m
+
+### SPEC-4 baseline tests/integration/acceptance-gate-reachability-test.sh
+
+[38;2;0;212;255m[1m  acceptance-gate Level-3 reachability (#956)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-5] R1: load-bearing wiring → gate rc=0
+  [38;2;74;222;128m✓[0m [SPEC-5] R1: load-bearing wiring → verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-4] R1: wiring verdict behavioral contract preserved
+  [38;2;74;222;128m✓[0m [SPEC-6] R2: inert wiring → gate rc=1
+  [38;2;74;222;128m✓[0m [SPEC-6] R2: inert wiring → verdict=fail
+  [38;2;74;222;128m✓[0m [SPEC-6] R2: failures contains inert_wiring
+  [38;2;74;222;128m✓[0m [SPEC-6] R2: inert_wiring event emitted
+  [38;2;74;222;128m✓[0m R3: WIRING: none → gate rc=0
+  [38;2;74;222;128m✓[0m R3: WIRING: none → verdict=pass
+  [38;2;74;222;128m✓[0m R3: wiring_exempt event emitted
+  [38;2;74;222;128m✓[0m [SPEC-6] R4: only-unsafe WIRING → gate fails closed (rc=1)
+  [38;2;74;222;128m✓[0m [SPEC-6] R4: only-unsafe WIRING → verdict=fail
+  [38;2;74;222;128m✓[0m [SPEC-6] R4: failures records empty_wiring_targets
+  [38;2;74;222;128m✓[0m [SPEC-7] R5: python3 {files} seam → gate rc=0
+  [38;2;74;222;128m✓[0m [SPEC-7] R5: python3 {files} seam → verdict=pass
+  [38;2;74;222;128m✓[0m R6a: iter=1 inert_wiring → rc=1
+  [38;2;74;222;128m✓[0m R6a: iter=1 failures contain inert_wiring YAML target
+  [38;2;74;222;128m✓[0m R6a: iter=1 → no fault (build gets first attempt)
+  [38;2;74;222;128m✓[0m [SPEC-1] R6b: iter=2 inert_wiring escalated → rc=1
+  [38;2;74;222;128m✓[0m [SPEC-1] R6b: iter=2 → verdict=fail
+  [38;2;74;222;128m✓[0m [SPEC-1] R6b: iter=2 failures contain inert_wiring YAML target
+  [38;2;74;222;128m✓[0m [SPEC-1] R6b: iter=2 → disposition=recoverable
+  [38;2;74;222;128m✓[0m [SPEC-1] R6b: iter=2 → fault=specification (iter=1 had none)
+  [38;2;74;222;128m✓[0m [SPEC-1] R6b: inert_wiring_escalated event emitted
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 24 tests passed[0m
+
+### SPEC-4 baseline tests/integration/acceptance-gate-quiet-test.sh
+
+[38;2;0;212;255m[1m  acceptance-gate operator-terminal quiet (#1211)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] negctl: stage-io banner does NOT reach fd 3 / terminal
+  [38;2;74;222;128m✓[0m [SPEC-1] negctl: direct fd-3 write does NOT reach the terminal
+  [38;2;74;222;128m✓[0m [SPEC-3] negctl: nested banner captured to the per-SPEC logfile
+  [38;2;74;222;128m✓[0m [SPEC-1] reachability: stage-io banner does NOT reach fd 3 / terminal
+  [38;2;74;222;128m✓[0m [SPEC-1] reachability: direct fd-3 write does NOT reach the terminal
+  [38;2;74;222;128m✓[0m [SPEC-3] reachability: nested banner captured to the logfile
+  [38;2;74;222;128m✓[0m [SPEC-2] summary: exactly one NEGCTL line per SPEC (2 SPECs → 2 lines)
+  [38;2;74;222;128m✓[0m [SPEC-2] summary: SPEC-1 load-bearing → NEGCTL PASS on terminal
+  [38;2;74;222;128m✓[0m [SPEC-2] summary: SPEC-2 tautology → NEGCTL FAIL on terminal
+  [38;2;74;222;128m✓[0m [SPEC-1] summary run: no raw nested banner leaked to the terminal
+  [38;2;74;222;128m✓[0m [SPEC-4] C1: operator summary behavioral contract preserved — one line per SPEC
+  [38;2;74;222;128m✓[0m [#1241] summary is opened by a stage-io span for acceptance-gate
+  [38;2;74;222;128m✓[0m [#1241] summary frame is closed (── end stage-io: acceptance-gate ──)
+  [38;2;74;222;128m✓[0m [SPEC-2] summary: exactly one REACHABILITY line per WIRING target
+  [38;2;74;222;128m✓[0m [SPEC-2] summary: WIRING target → REACHABILITY PASS on terminal
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 15 tests passed[0m
+
+### SPEC-4 baseline tests/integration/acceptance-gate-inert-wiring-iter1-test.sh
+
+[38;2;0;212;255m[1m  acceptance-gate inert_wiring iter=1 first attempt (#1686)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m iter=1: gate fails on the inert WIRING target (rc=1)
+  [38;2;74;222;128m✓[0m iter=1: failures record the inert_wiring YAML target
+  [38;2;74;222;128m✓[0m [SPEC-2] iter=1 inert_wiring sets no fault — build keeps its first attempt
+  [38;2;74;222;128m✓[0m [SPEC-2] iter=1 emits no inert_wiring_escalated event
+  [38;2;74;222;128m✓[0m iter=1: disposition stays recoverable
+  [38;2;74;222;128m✓[0m [SPEC-4] iter=1: inert_wiring disposition behavioral contract preserved
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 6 tests passed[0m
+
+### SPEC-4 baseline tests/integration/acceptance-guard-regressed-routes-design-test.sh
+
+[38;2;0;212;255m[1m  guard_regressed routes to design, and design-feedback says why (#1777)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] the gate reports guard_regressed for the mislabelled SPEC
+  [38;2;74;222;128m✓[0m [SPEC-2] guard_regressed sets fault=specification — build cannot fix a mislabelled tag
+  [38;2;74;222;128m✓[0m [SPEC-3] the disposition stays recoverable, so the aggregator still reads fault
+  [38;2;74;222;128m✓[0m [SPEC-4] guard_regressed verdict=fail behavioral contract preserved
+  [38;2;74;222;128m✓[0m [SPEC-4] the aggregate verdict stays fail
+  [38;2;74;222;128m✓[0m [SPEC-4] and the rolled-up fault is specification
+  [38;2;74;222;128m✓[0m [SPEC-5] the aggregator renders no design payload
+  [38;2;74;222;128m✓[0m [SPEC-5] nor a build-facing one
+  [38;2;74;222;128m✓[0m [SPEC-6] a shape-floor-rooted fault is unchanged by this issue
+  [38;2;74;222;128m✓[0m [SPEC-6] and its scope fault rolls up
+  [38;2;74;222;128m✓[0m [SPEC-7] a tautology failure still yields a plain fail, not specification
+  [38;2;74;222;128m✓[0m [SPEC-7] and declares NO fault, so nothing rewinds
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 12 tests passed[0m
+
