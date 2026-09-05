@@ -78,10 +78,12 @@ requires:
 
 provides:
   role: acceptance_gate
-  artifact_type: acceptance-gate-result.json
-  schema_version: 1
+  result_contract: 2
 
 config:
+  valid_verdicts:
+    - pass
+    - fail
   tier_default: T1
 
 inputs:
@@ -89,9 +91,6 @@ inputs:
   # optional-input convention, #511) so the gate composes into templates that
   # do not run design — absent block → no-op pass.
   - id: design
-    type: file
-    path: "${artifact_dir}/design.md"
-    source: stage:design
     required: false
 
 outputs:
@@ -101,9 +100,18 @@ outputs:
   # engine halts only on disposition==terminal and knows NO SPEC vocabulary.
   - id: gate_result
     path: ${artifact_dir}/acceptance-gate-result.json
-    type: json
+    type: acceptance-gate-result.json@1
+    format: json
     required: true
     primary: true
+  # ADR-055 §9: every terminal path writes a summary; required:true after this
+  # migration because precondition_unmet and malformed paths both write one.
+  - id: acceptance_detail
+    path: ${artifact_dir}/acceptance-summary.txt
+    type: acceptance-summary.txt@1
+    format: text
+    required: true
+    summary: true
 
 state:
   persisted: []
