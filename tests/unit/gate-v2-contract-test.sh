@@ -185,6 +185,7 @@ _J="$(cat "$W/artifacts/lint-result.json")"
 assert_json_key "[SPEC-2] lint-gate pass → result_contract:2" "$_J" '.result_contract' "2"
 assert_json_key "[SPEC-2] lint-gate pass → disposition:complete" "$_J" '.disposition' "complete"
 assert_contains "[SPEC-2] lint-gate pass → reason present" "$_J" '"reason"'
+assert_json_key "[SPEC-2] lint-gate pass → reason value non-empty" "$_J" '.reason' "lint passed"
 
 W="$(_mkwork lt-v2-fail)"
 _seed_results "$W" '{lint:{status:"fail"}}'
@@ -244,6 +245,16 @@ _J="$(cat "$W/artifacts/shape-floor-result.json")"
 assert_json_key "[SPEC-2] shape-floor skip → result_contract:2" "$_J" '.result_contract' "2"
 assert_json_key "[SPEC-2] shape-floor skip → disposition:complete" "$_J" '.disposition' "complete"
 assert_contains "[SPEC-2] shape-floor skip → reason present" "$_J" '"reason"'
+
+# shape-floor: pass path — verify specific non-empty reason string is written (#1848)
+_sf_shape_floor() { echo "SHAPE_FLOOR PASS all floor files present"; }
+W="$(_mkwork sf-v2-pass)"
+set +e; shape_floor_run "shape-floor" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
+assert_eq "[SPEC-8] shape-floor pass → rc=0" "0" "$_rc"
+_J="$(cat "$W/artifacts/shape-floor-result.json")"
+assert_json_key "[SPEC-2] shape-floor pass → result_contract:2" "$_J" '.result_contract' "2"
+assert_json_key "[SPEC-2] shape-floor pass → reason non-empty" \
+    "$_J" '.reason' "all shape-change floor files present"
 
 # design-gate: v2 fields on pass path
 export ZBUILD_REPO_ROOT="$_DG_REPO"
