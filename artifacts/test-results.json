@@ -1,0 +1,31 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "2 of 2 tests passed",
+  "test_output": "unit: 2/2 passed",
+  "run_mode": "targeted",
+  "exit_code": 0,
+  "data": {
+    "exit_code": 0,
+    "passed": 2,
+    "failed": 0,
+    "test_output": "unit: 2/2 passed",
+    "diff_applied": false,
+    "test_cmd": "bash scripts/run-tests.sh --files 'tests/e2e/parity-local-vs-ci-test.sh' 'tests/e2e/plugin-event-balance-full-run-test.sh'",
+    "run_mode": "targeted",
+    "timing": {
+      "tiers": {},
+      "slowest_files": [
+        {
+          "file": "tests/e2e/parity-local-vs-ci-test.sh",
+          "ms": 154766
+        },
+        {
+          "file": "tests/e2e/plugin-event-balance-full-run-test.sh",
+          "ms": 76650
+        }
+      ]
+    }
+  }
+}
