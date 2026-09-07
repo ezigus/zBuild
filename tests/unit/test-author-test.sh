@@ -49,6 +49,10 @@ resolve_tier() { printf 'T2'; }
 # shellcheck source=../../plugins/agent/test-author/plugin.sh
 source "$REPO_ROOT/plugins/agent/test-author/plugin.sh"
 
+assert_contains "[SPEC-6][wiring] test-author sources the shared model router" \
+    "$(cat "$REPO_ROOT/plugins/agent/test-author/plugin.sh")" \
+    'source "$_TA_ROOT/core/router/route.sh"'
+
 _setup() {
     _S="$TEST_TEMP_DIR/$1"; _A="$_S/artifacts"; _R="$_S/repo"
     mkdir -p "$_A" "$_R/tests"
