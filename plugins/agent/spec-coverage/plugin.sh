@@ -12,9 +12,13 @@ _ZBUILD_SPEC_COVERAGE_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+_SCV_ROOT="$_ZBUILD_PLUGIN_ROOT"
+# shellcheck source=../../../core/router/route.sh
+if ! declare -F route_to_model >/dev/null 2>&1; then
+    source "$_SCV_ROOT/core/router/route.sh"
+fi
 # shellcheck source=../../../scripts/lib/stage-summary.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
-_SCV_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_SCV_ROOT/scripts/lib/acceptance-block.sh" 2>/dev/null || true
