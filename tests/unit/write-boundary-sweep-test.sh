@@ -302,8 +302,16 @@ _bad_callers=""
 while IFS= read -r _f; do
     [[ -z "$_f" ]] && continue
     [[ "$_f" == *"scripts/lib/helpers.sh" ]] && continue   # the definition itself
-    grep -q "helpers.sh" "$_f" || _bad_callers="${_bad_callers}${_f} "
-done < <(grep -rl "zbuild_engine_tmpdir" "$REPO_ROOT/core" "$REPO_ROOT/scripts" 2>/dev/null || true)
+    # plugins/ reach the helper through zbuild_plugin_bootstrap, which sources
+    # helpers.sh on their behalf (scripts/lib/plugin-bootstrap.sh) — so either
+    # seam counts. plugins/ was outside this scan until the ad-hoc artifact
+    # roots started calling the helper (SPEC-4j below); an unsourced caller
+    # there fails the same way, and worse: `${ZBUILD_ARTIFACT_DIR:-$(undefined)/x}`
+    # expands to `/x`, an ARTIFACT root at the filesystem root.
+    grep -qE "helpers\.sh|zbuild_plugin_bootstrap" "$_f" \
+        || _bad_callers="${_bad_callers}${_f} "
+done < <(grep -rl "zbuild_engine_tmpdir" \
+    "$REPO_ROOT/core" "$REPO_ROOT/scripts" "$REPO_ROOT/plugins" 2>/dev/null || true)
 
 if [[ -z "$_bad_callers" ]]; then
     assert_pass "[SPEC-4e] every zbuild_engine_tmpdir caller sources helpers.sh"
@@ -564,6 +572,27 @@ assert_eq "[SPEC-4i] GUARD: a genuine violation with no concurrent writer still 
     "1" "$_genuine_rc"
 assert_file_exists "[SPEC-4i] GUARD: the violated marker is still written" \
     "$JOB_DIR/runtime/write-boundary-violated"
+
+# ─── SPEC-4j: no plugin invents an artifact root at the system temp ─────────
+# ADR-058 §1 names five areas a stage may write into; the system temp is not
+# one of them. Eight plugins carried an ad-hoc fallback of the shape
+#   artifacts_dir="${ZBUILD_ARTIFACT_DIR:-${TMPDIR:-/tmp}/zbuild-<name>-artifacts}"
+# which mints an ARTIFACT root — the stage's declared outputs — outside every
+# allowed area whenever the plugin is invoked without a live state file.
+#
+# zbuild_engine_tmpdir is the single answer to "where may engine code put a
+# working file" (#2017), and it already resolves scratch → runtime/ → data
+# root, so the ad-hoc branch keeps working while landing in bounds.
+_ART_TMP_HITS="$(
+    { grep -rn 'ZBUILD_ARTIFACT_DIR:-${TMPDIR' "$REPO_ROOT/plugins" 2>/dev/null || true; } \
+        | { grep -v '/tests/' || true; }
+)"
+if [[ -z "$_ART_TMP_HITS" ]]; then
+    assert_pass "[SPEC-4j] no plugin roots an artifact dir at the system temp"
+else
+    assert_fail "[SPEC-4j] no plugin roots an artifact dir at the system temp" \
+        "$(printf '%s' "$_ART_TMP_HITS" | tr '\n' '|')"
+fi
 
 cleanup_test_env
 print_test_results

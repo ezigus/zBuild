@@ -147,7 +147,7 @@ secret_scan_run() {
     if [[ -n "$state_file" && -d "$(dirname "$state_file")" ]]; then
         artifacts_dir="$(dirname "$state_file")/artifacts"
     else
-        artifacts_dir="${ZBUILD_ARTIFACT_DIR:-${TMPDIR:-/tmp}/zbuild-ss-artifacts}"
+        artifacts_dir="${ZBUILD_ARTIFACT_DIR:-$(zbuild_engine_tmpdir)/zbuild-ss-artifacts}"
     fi
     mkdir -p "$artifacts_dir"
     local result_path="$artifacts_dir/secret-scan-result.json"
