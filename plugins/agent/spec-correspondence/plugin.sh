@@ -11,9 +11,13 @@ _ZBUILD_SPEC_CORRESPONDENCE_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
+_SC_ROOT="$_ZBUILD_PLUGIN_ROOT"
+# shellcheck source=../../../core/router/route.sh
+if ! declare -F route_to_model >/dev/null 2>&1; then
+    source "$_SC_ROOT/core/router/route.sh"
+fi
 # shellcheck source=../../../scripts/lib/stage-summary.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
-_SC_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../scripts/lib/persona-resolve.sh
 source "$_SC_ROOT/scripts/lib/persona-resolve.sh" 2>/dev/null || true
@@ -179,7 +183,8 @@ spec_correspondence_run() {
                          findings="${findings}- ${sid} MISMATCH: ${_r}"$'\n' ;;
             uncheckable) n_unch=$(( n_unch + 1 ))
                          findings="${findings}- ${sid} uncheckable: ${_r}"$'\n' ;;
-            *)           # An unparseable reply is not a finding about the SPEC.
+            *)           # An unparseable reply is an uncheckable judgment.
+                         n_unch=$(( n_unch + 1 ))
                          findings="${findings}- ${sid} not judged (no parseable verdict)"$'\n' ;;
         esac
     done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
