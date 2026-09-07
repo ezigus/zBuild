@@ -42,6 +42,31 @@ _e2e_block="$(awk '/^  e2e-mocked:/{f=1} f{print} f&&/^  [a-z]/&&!/^  e2e-mocked
 _e2e_hits=$(printf '%s\n' "$_e2e_block" | grep -c 'ZBUILD_WRITE_BOUNDARY_LOG' || true)
 assert_gt "[SPEC-2] the e2e job sets ZBUILD_WRITE_BOUNDARY_LOG" "$_e2e_hits" "0"
 
+# ─── SPEC-4: EVERY suite job that runs a tier names a sink ──────────────────
+# Now that the shipped watch list covers the system temp again (SPEC-4g), any
+# tier can trip the fence — the unit tier dispatches stages through
+# plugin_hook_call just as integration does. A job without a sink reports rc=1
+# and no path, which is the state that made #1839 undiagnosable.
+_tier_jobs_missing=""
+while IFS= read -r _job; do
+    [[ -z "$_job" ]] && continue
+    _block="$(awk -v j="  ${_job}:" '
+        $0==j {f=1; next}
+        f && /^  [a-z][a-z0-9_-]*:/ {exit}
+        f {print}
+    ' "$_TEST_YML" 2>/dev/null || true)"
+    grep -q 'run-tests.sh' <<< "$_block" || continue
+    grep -q 'ZBUILD_WRITE_BOUNDARY_LOG' <<< "$_block" \
+        || _tier_jobs_missing="${_tier_jobs_missing}${_job} "
+done < <(grep -oE '^  [a-z][a-z0-9_-]*:' "$_TEST_YML" | tr -d ' :' || true)
+
+if [[ -z "$_tier_jobs_missing" ]]; then
+    assert_pass "[SPEC-4] every test.yml job that runs a tier sets the sink"
+else
+    assert_fail "[SPEC-4] every test.yml job that runs a tier sets the sink" \
+        "missing: $_tier_jobs_missing"
+fi
+
 # ─── SPEC-3: GUARD — the integration job keeps its sink ─────────────────────
 # It is the one that already had it; a refactor must not trade one for another.
 _int_hits=$(grep -c 'ZBUILD_WRITE_BOUNDARY_LOG' "$_TEST_YML" 2>/dev/null || true)

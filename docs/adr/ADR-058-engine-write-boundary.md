@@ -250,6 +250,14 @@ Both `write_boundary_mark` and `write_boundary_check` are guarded `[[ -z "$state
 
 ### What the sweep does not cover: the system temp
 
+> **SUPERSEDED 2026-09-07 — C10 shipped and the roots are back.** This section
+> described a standing gap and warned against "fixing" it by adding the roots
+> back. Both preconditions it named are now met, so `config/write-boundary-watch.txt`
+> carries `${TMPDIR:-/tmp}` and `/tmp` again. See **C10** below for what changed
+> and what it costs. The reasoning below is kept because it states the two
+> conditions any future revert must re-check — it is the argument, not a
+> description of current behaviour.
+
 **The shipped watch list deliberately omits `/tmp` and `${TMPDIR:-/tmp}`, and that is a real reduction in coverage — the originally measured defect was a stage writing to `/tmp`.** Recording why, so it is not "fixed" by adding the roots back.
 
 `scripts/lib/env-scrub.sh` wildcard-unsets every `ZBUILD_*` before a model spawn (§Context, and #1873's unset-until-gone loop). Engine code running in a spawned child therefore cannot see `ZBUILD_STAGE_SCRATCH` or `ZBUILD_STATE_DIR`, and its temp files land in the system temp. Those are the **engine's** writes, not the swept stage's, and §3's `TMPDIR` redirect is per-dispatch — it does not reach a child the runner spawns outside `plugin_hook_call`, nor a nested run using the *installed* engine. Ubuntu CI showed exactly that: `stage=intake path=/tmp/zb-route-redact-out.*`, `stage=build path=/tmp/zbuild-tpl.*`, and `stage=test path=/tmp/zb-numstat.*` — the last from a binary this branch does not even contain.
@@ -302,6 +310,120 @@ bash tests/integration/stage-scratch-dispatch-test.sh
 bash tests/integration/artifact-contract-test.sh
 bash tests/unit/shape-floor-test.sh              # SPEC-5b end-of-array append, SPEC-6b deletion still gated
 bash tests/unit/test-stage-banner-golden-test.sh # passes with TMPDIR inside and outside a run
+```
+
+## C10: A run-scoped `TMPDIR`, and attribution (2026-09-07)
+
+C9 named a run-scoped `TMPDIR` as the cure for its own coverage gap and cited
+**#1919**. That issue shipped *"restrict the model's write permissions"*
+(an ADR-018 amendment) and closed, so this work had no tracking issue and was
+never built. Recording it here rather than re-pointing at a closed issue.
+
+### 1. The floor: one temp root per run
+
+`zbuild_run_tmpdir` (`scripts/lib/helpers.sh`) resolves
+`<state_dir>/scratch/run-tmp`, 0700, once per run. `core/pipeline/runner.sh`
+exports it as `TMPDIR` immediately after it absolutizes and exports
+`ZBUILD_STATE_DIR` — the first point the job folder is known, and the same
+"expose to every stage, one place" seam as the exports beside it.
+
+Under `scratch/` and **not** `runtime/`: §2b defines `runtime/` as live
+bookkeeping that is deliberately not throwaway, while §2 defines scratch as
+exactly this. `scratch/` is also already excluded from the CI upload (§5) and
+from the parity walk, so a stray temp can neither leave the machine nor drift a
+golden.
+
+§3's per-dispatch `local -x TMPDIR` is finer-grained and still wins inside a
+dispatch. What C10 changes is the **fallback**: every path where that guard does
+not fire — a relative or empty `state_file`, an unsourceable `stage-scratch.sh`,
+or engine code running between dispatches entirely — now lands inside the job
+folder instead of `/tmp`.
+
+`run-tmp` is refused as a stage scratch key, so a stage cannot mint the run's
+ambient temp root and have its files reclaimed by another owner.
+
+### 2. The scrub pins `TMPDIR` before it wipes
+
+`scripts/lib/env-scrub.sh` wildcard-unsets every `ZBUILD_*` before a model spawn
+while explicitly preserving `TMPDIR`. That makes `TMPDIR` the only channel by
+which an in-bounds temp can reach a spawned child — after the wipe the child
+cannot derive `ZBUILD_STAGE_SCRATCH` for itself. It is now pinned from the
+still-visible values *before* the unset loop; after the loop there is nothing
+left to read. This is the half that closes C9's measured evidence
+(`stage=intake path=/tmp/zb-route-redact-out.*`).
+
+Resolved inline rather than by sourcing `helpers.sh`: `env-scrub.sh` is inside
+the transitive closure of `_RUNNER_CONTRACT_LIB_ENTRYPOINTS`, and a new `source`
+there grows the snapshot set `runner-contract-lib-seam-test.sh` pins.
+
+### 3. `find` records when, never who
+
+C9 conceded this for **directories** — "mtime carries no authorship, so a
+directory hit is unattributable by construction ... any concurrent process can
+kill a run" — and fixed that half with `-type f`. The file half was the same
+argument and stayed open. It is what killed **#1839**: the run halted on
+`stage.write_boundary.violated` naming a file the blamed stage had not written.
+
+Reproduced against the parity fixture: a bare `touch` loop in an unrelated
+process got `hydrate`, `release` and `persist` each reported, and the run ended
+`status=interrupted`.
+
+By the time `write_boundary_check` runs, the dispatch subshell has returned —
+the stage's own writer is gone. A file newer than a marker taken *then* cannot
+be the swept stage's, so continued activity is positive evidence of a different
+process. Such a candidate classifies **`unattributable`**: recorded on all three
+channels (stderr, `ZBUILD_WRITE_BOUNDARY_LOG`, `stage.write_boundary.unattributable`),
+but it does not write `runtime/write-boundary-violated` and does not resolve the
+stage to `broken`.
+
+Settle window: `ZBUILD_WRITE_BOUNDARY_SETTLE_MS` (default 250; `0` disables the
+probe and restores the unconditional halt). Paid only on the failure path, once
+per dispatch.
+
+**Accepted limitation.** A stage that leaves a background writer running past
+its own dispatch can mask its own genuine violation. Nothing is silently lost —
+the path is still recorded on all three channels — and a stage leaving live
+writers is itself an ADR-054 §7 cleanup defect.
+
+### 4. A dispatch that starts must also end
+
+`plugin_hook_call`'s rc=0 arm had two early returns — the `scan_plugin_outputs`
+failure and the `write_boundary_check` failure. Both `return 1` before the
+`complete` emit and neither took the `else` arm's `error` emit, so a dispatch
+tripping either check emitted `start` and nothing else. Run 33899683569: 54
+`plugin.run.start` against 48 `complete` + 5 `error`. Both arms now emit
+`plugin.run.error` with a `reason=` data field — an already-declared event name,
+so the sequence goldens are untouched.
+
+### 5. The allow list derives `~/.zbuild` the way the writer does
+
+`write_boundary_allow_list` named a hardcoded `$HOME/.zbuild` while the event
+bus follows `${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}`. Those
+agree until something redirects the root — and `plugins/tool/test` redirects it
+on purpose to fence a nested run. The list now emits all three, additively.
+
+### 6. The roots are back, and the diagnostic is wired
+
+With §1–§3 in place, `${TMPDIR:-/tmp}` and `/tmp` return to
+`config/write-boundary-watch.txt`. **Restoring them without both would be
+strictly worse than omitting them**, so a revert of the run-scoped `TMPDIR` or
+of the attribution rule must revert this too. `write-boundary-sweep-test.sh`
+SPEC-4g pins the roots; SPEC-4h/4i pin the attribution rule and its guard.
+
+`ZBUILD_WRITE_BOUNDARY_LOG` was set in exactly one CI job. It is now set in
+every `test.yml` job that runs a tier and in the dogfood pipeline workflow. #1839
+halted on a boundary violation and could record *that* it happened but not
+*which file* — and the disposition is `broken`, terminal, so there is no second
+chance to observe it.
+
+### Verification
+
+```bash
+bash tests/unit/write-boundary-sweep-test.sh          # SPEC-4g/4h/4i/4j/4k
+bash tests/unit/run-tmpdir-test.sh
+bash tests/unit/env-scrub-test.sh                     # SPEC-C10 + fail-open guard
+bash tests/unit/write-boundary-diagnostic-wired-test.sh
+bash tests/integration/runner-exports-state-dir-test.sh
 ```
 
 ## References

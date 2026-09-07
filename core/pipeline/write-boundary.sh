@@ -412,7 +412,14 @@ _wb_external_writer_witness() {
     _wb_clock_advance_past "$_probe"
     sleep "$(awk "BEGIN{printf \"%.3f\", ${_settle}/1000}")" 2>/dev/null || sleep 1
     local _witness
-    _witness="$(write_boundary_sweep "$_probe" 2>/dev/null | head -n 1 || true)"  # sigpipe-ok: sweep is bounded by find
+    # Captured whole, then trimmed in bash. `| head -n 1` would close the pipe
+    # after one line and hand write_boundary_sweep's `find` a SIGPIPE mid-scan —
+    # the writer dies for a reason nothing logs, and under the caller's errexit
+    # it takes the dispatch with it. Any witness proves the point equally, so
+    # there is nothing to gain by stopping the scan early.
+    local _sweep_all
+    _sweep_all="$(write_boundary_sweep "$_probe" 2>/dev/null || true)"
+    _witness="${_sweep_all%%$'\n'*}"
     rm -f "$_probe" 2>/dev/null || true
     [[ -n "$_witness" ]] && printf '%s' "$_witness"
     return 0

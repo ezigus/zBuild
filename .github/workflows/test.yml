@@ -100,6 +100,11 @@ jobs:
         env:
           ZBUILD_TEST_TMP: ""
           ZBUILD_TEST_TIMING_FILE: ${{ runner.temp }}/zbuild-unit-timing.txt
+          # The shipped watch list covers the system temp again (ADR-058 C9,
+          # restored once C10 landed), so any tier can now trip the fence — the
+          # unit tier dispatches stages through plugin_hook_call just as
+          # integration does. Without a sink a halt reports rc=1 and no path.
+          ZBUILD_WRITE_BOUNDARY_LOG: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
       - name: Upload unit results
         uses: actions/upload-artifact@v7
         if: always()
@@ -208,6 +213,8 @@ jobs:
       - uses: actions/checkout@v7
       - name: Run golden tier
         run: bash scripts/run-tests.sh --tier golden
+        env:
+          ZBUILD_WRITE_BOUNDARY_LOG: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
 
   mutation-lint:
     name: Mutation docs lint
@@ -225,6 +232,10 @@ jobs:
             echo "\`$score_line\`" >> "$GITHUB_STEP_SUMMARY"
           fi
           exit $rc
+        env:
+          # The mutation tier builds a worktree per mutant and runs the suite in
+          # it, so it dispatches stages and can trip the fence like any tier.
+          ZBUILD_WRITE_BOUNDARY_LOG: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
 
   coverage:
     name: Coverage

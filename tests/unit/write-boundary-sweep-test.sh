@@ -354,16 +354,27 @@ else
         "unexpected: $_wb_log2"
 fi
 
-# ─── SPEC-4g: the shipped default does not sweep the system temp ────────────
-# scripts/lib/env-scrub.sh wipes every ZBUILD_* before a model spawn, so engine
-# code in a spawned child cannot see ZBUILD_STAGE_SCRATCH and its temps land in
-# the system temp. Those are the ENGINE's writes, not the swept stage's, and
-# halting on them kills runs on the engine doing its job — ubuntu CI showed
-# stage=intake path=/tmp/zb-route-redact-out.*, stage=test path=/tmp/zb-numstat.*
-# (the latter from the INSTALLED engine, in a nested run). Coverage returns with
-# a run-scoped TMPDIR, which is C10 (#1919). An operator can opt back in via the
-# override file.
-# CHANGE: fails at baseline (the shipped list carried both roots).
+# ─── SPEC-4g: the shipped default DOES sweep the system temp ────────────────
+# This assertion is deliberately INVERTED from the one it replaces, which read
+# "the shipped watch list does not carry a system-temp root". That was never a
+# preference — C9 called dropping the roots "a real reduction in coverage, the
+# originally measured defect was a stage writing to /tmp" and named the two
+# preconditions for restoring them. Both now hold:
+#
+#   * env-scrub wipes every ZBUILD_* before a model spawn, so engine code in a
+#     spawned child could not see ZBUILD_STAGE_SCRATCH and its temps landed in
+#     the system temp — the engine's own writes, attributed to whichever stage
+#     was dispatching (ubuntu CI: stage=intake path=/tmp/zb-route-redact-out.*).
+#     C10's run-scoped TMPDIR, pinned through the scrub, puts them back in
+#     bounds.
+#   * A concurrent unrelated process writing to /tmp — the busiest shared
+#     directory on any machine — could kill a run outright. The settle probe
+#     (SPEC-4h) classifies those `unattributable` instead of halting.
+#
+# Without BOTH, restoring these roots would be strictly worse than omitting
+# them. The SPEC-4h/4i pair and the C10 tests are what make this safe, so a
+# revert of either must revert this too.
+# CHANGE: fails at baseline (the shipped list carried neither root).
 
 _wl_default="$(unset ZBUILD_WRITE_BOUNDARY_WATCH; write_boundary_watch_list)"
 # Exact roots only. $HOME is redirected under the system temp in this harness,
@@ -371,10 +382,10 @@ _wl_default="$(unset ZBUILD_WRITE_BOUNDARY_WATCH; write_boundary_watch_list)"
 _sys_tmp_root="${TMPDIR:-/tmp}"; _sys_tmp_root="${_sys_tmp_root%/}"
 if awk -v a="/tmp" -v b="$_sys_tmp_root" \
      '{p=$1} p==a||p==b{found=1} END{exit !found}' <<< "$_wl_default"; then
-    assert_fail "[SPEC-4g] the shipped watch list does not carry a system-temp root" \
-        "watch list: $_wl_default"
+    assert_pass "[SPEC-4g] the shipped watch list covers the system temp"
 else
-    assert_pass "[SPEC-4g] the shipped watch list does not carry a system-temp root"
+    assert_fail "[SPEC-4g] the shipped watch list covers the system temp" \
+        "watch list: $_wl_default"
 fi
 
 # GUARD: the roots an operator CAN attribute are still swept.
