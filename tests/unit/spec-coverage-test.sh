@@ -123,8 +123,11 @@ _setup placeholder "GitHub issue #4242"
 set +e; spec_coverage_run "spec-coverage" "$_S/pipeline-state.json"; _rc3=$?; set -e
 assert_eq "[SPEC-3][change] placeholder issue text yields unreadable" \
     "unreadable" "$(_res '.verdict')"
-assert_eq "[SPEC-3][change] and NEVER covered, even when the model says so" \
-    "1" "$([[ "$(_res '.verdict')" != "covered" ]] && echo 1 || echo 0)"
+# Three paths write `unreadable` (plugin.sh:126, :134, :179), so the verdict
+# alone cannot tell placeholder-detection from a router that never answered —
+# the #2061 defect would satisfy it. Pin the reason, which separates them.
+assert_contains "[SPEC-3][change] refused on the PLACEHOLDER path, not a silent router failure" \
+    "$(_res '.reason')" "placeholder"
 assert_eq "[SPEC-5][guard] rc binary on the unreadable path too" "0" "$_rc3"
 
 print_test_results
