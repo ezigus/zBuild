@@ -50,14 +50,22 @@ export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENT
 # shellcheck source=../../core/event-bus/event-bus.sh
 source "$REPO_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 
+# shellcheck source=../../plugins/agent/spec-coverage/plugin.sh
+source "$REPO_ROOT/plugins/agent/spec-coverage/plugin.sh"
+
+# Mocks go AFTER the source, the convention every other agent-plugin unit test
+# follows (design-persona-framing-test.sh et al). The plugin sources
+# core/router/route.sh at file scope (#2061), so a stub defined BEFORE the load
+# is overwritten by the real function — and a stub defined before the load is
+# also what let this file pass while production's router was unreachable: the
+# guard here always saw a route_to_model that only ever existed in this shell.
+# tests/integration/spec-coverage-router-reachable-test.sh covers that seam;
+# these remain unit tests of the parse/verdict logic with the model mocked out.
 _SCV_PROMPT="$TEST_TEMP_DIR/prompt.txt"
 _SCV_REPLY='VERDICT: covered
 REASON: every requirement the issue states maps to a declared SPEC'
 route_to_model() { printf '%s' "$2" > "$_SCV_PROMPT"; printf '%s' "$_SCV_REPLY"; return 0; }
 resolve_tier() { printf 'T2'; }
-
-# shellcheck source=../../plugins/agent/spec-coverage/plugin.sh
-source "$REPO_ROOT/plugins/agent/spec-coverage/plugin.sh"
 
 _setup() {
     _S="$TEST_TEMP_DIR/$1"; _A="$_S/artifacts"
