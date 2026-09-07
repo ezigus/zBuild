@@ -594,6 +594,28 @@ else
         "$(printf '%s' "$_ART_TMP_HITS" | tr '\n' '|')"
 fi
 
+# ─── SPEC-4k: no engine temp under core/ is unrooted ────────────────────────
+# `mktemp` with no template, and `mktemp -t <name>`, both resolve to $TMPDIR —
+# and on macOS the templateless forms ignore $TMPDIR entirely and use
+# /var/folders, so not even C10's run-scoped TMPDIR relocates them. An unrooted
+# engine temp is therefore outside all five ADR-058 §1 areas on at least one
+# supported platform, always.
+#
+# core/ is scanned rather than the whole tree because it is the engine's own
+# code, where the rule is unconditional: scripts/ carries CLI and CI tooling
+# that legitimately runs with no job folder to write into.
+_UNROOTED="$(
+    { grep -rnE 'mktemp( +-d)? *(\)|\||;|$)|mktemp +(-d +)?-t +' "$REPO_ROOT/core" 2>/dev/null || true; } \
+        | { grep -v '/tests/' || true; } \
+        | { grep -vE '^[^:]+:[0-9]+: *#' || true; }
+)"
+if [[ -z "$_UNROOTED" ]]; then
+    assert_pass "[SPEC-4k] every mktemp under core/ names a rooted template"
+else
+    assert_fail "[SPEC-4k] every mktemp under core/ names a rooted template" \
+        "$(printf '%s' "$_UNROOTED" | tr '\n' '|')"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
