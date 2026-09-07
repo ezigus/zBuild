@@ -185,6 +185,21 @@ jobs:
           chmod +x "$ZBUILD_TEST_TMP/bin/claude" "$ZBUILD_TEST_TMP/bin/gh"
           export PATH="$ZBUILD_TEST_TMP/bin:$PATH"
           bash scripts/run-tests.sh --tier e2e
+        env:
+          # The e2e tier runs NESTED pipelines (parity-local-vs-ci,
+          # plugin-event-balance-full-run), so it can trip the write boundary
+          # exactly as the integration tier can — and a nested run's stderr and
+          # event stream both die with its throwaway state dir, leaving this
+          # append-only sink as the only channel that survives. #1839 halted
+          # here and could not say which path caused it (ADR-058 C9, #1809).
+          ZBUILD_WRITE_BOUNDARY_LOG: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
+      - name: Upload e2e write-boundary violations
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: e2e-write-boundary-violations
+          path: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
+          if-no-files-found: ignore
 
   golden:
     name: Golden contracts

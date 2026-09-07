@@ -49,6 +49,16 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       ZBUILD_WORKSPACE_BRANCH: zbuild/issue-${{ inputs.issue_number }}-ci
       # Model selection is governed by config/models.json + core/router — never hardcoded here.
+      # ADR-058 C9 (#1809): the append-only sink for write-boundary violations.
+      # write_boundary_violation_recorded names the offending path on three
+      # channels, and in this workflow two of them are unreliable — the pipeline
+      # step's stderr is interleaved with hours of stage output, and a violation
+      # inside a NESTED run (the test stage's suite) dies with that run's
+      # throwaway state dir. #1839 halted on a boundary violation here and the
+      # run could not say which file caused it; the disposition is `broken`,
+      # terminal, so there is no second chance to observe it. Job-level so every
+      # step that can dispatch a stage inherits it.
+      ZBUILD_WRITE_BOUNDARY_LOG: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
 
     steps:
       - name: Checkout
@@ -432,3 +442,20 @@ jobs:
           # as an annotation without failing runs that legitimately produce no
           # state (dry runs, aborts before the first stage).
           if-no-files-found: warn
+
+      # Its own artifact, deliberately NOT folded into the state-dir upload
+      # above: that upload's include list is pinned to the bare state dir by
+      # tests/unit/ci-state-isolation-test.sh SPEC-2, because an exclusion-only
+      # or narrowed include would silently upload nothing. The violation log
+      # lives in RUNNER_TEMP, outside the state dir, so it needs its own step
+      # rather than a second include line.
+      - name: Upload write-boundary violations
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: "write-boundary-violations-issue-${{ inputs.issue_number }}-${{ github.run_id }}"
+          path: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
+          # `ignore`, not `warn`: no violations is the HEALTHY outcome and the
+          # common one. An annotation on every green run would train the reader
+          # to skip exactly the annotations that matter.
+          if-no-files-found: ignore
