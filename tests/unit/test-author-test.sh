@@ -43,11 +43,21 @@ source "$REPO_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 
 _TA_PROMPT="$TEST_TEMP_DIR/prompt.txt"
 _TA_RC=0
-route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return $_TA_RC; }
-resolve_tier() { printf 'T2'; }
 
 # shellcheck source=../../plugins/agent/test-author/plugin.sh
 source "$REPO_ROOT/plugins/agent/test-author/plugin.sh"
+
+# The stubs come AFTER the source, the convention every other agent-plugin unit
+# test follows (build-acceptance-charter-test.sh:33-37). The plugin sources
+# core/router/route.sh (#2060), which defines the real route_to_model and
+# resolve_tier — a stub declared first would simply be overwritten.
+#
+# This file remains blind by construction to whether the plugin has a router at
+# all: it prepares one either way. tests/integration/test-author-router-dispatch-test.sh
+# is the test that can see that, and it dispatches in a fresh process for exactly
+# this reason.
+route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return $_TA_RC; }
+resolve_tier() { printf 'T2'; }
 
 _setup() {
     _S="$TEST_TEMP_DIR/$1"; _A="$_S/artifacts"; _R="$_S/repo"
