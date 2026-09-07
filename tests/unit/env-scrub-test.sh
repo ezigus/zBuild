@@ -201,5 +201,45 @@ else
         "$(cat "$TEST_TEMP_DIR/ro-probe.out" 2>/dev/null || true)" "also=<unset>"
 fi
 
+# ─── the scrubbed child inherits an IN-BOUNDS TMPDIR (ADR-058 C10) ──────────
+# The scrub is what makes TMPDIR load-bearing: it wildcard-unsets every ZBUILD_*
+# before a model spawn, while TMPDIR is explicitly PRESERVED. So a spawned child
+# cannot derive ZBUILD_STAGE_SCRATCH for itself — TMPDIR is the only channel
+# that reaches it, and whatever TMPDIR held at scrub time is where every
+# ${TMPDIR:-/tmp} consumer in that child will write.
+#
+# On a Linux runner TMPDIR is unset, so the child resolved /tmp — a watched
+# root. ADR-058 C9's measured evidence is exactly this shape:
+#   stage=intake path=/tmp/zb-route-redact-out.*
+# Pinning TMPDIR from the still-visible ZBUILD_* values BEFORE the wipe is what
+# closes it, and it must happen before the loop or there is nothing left to read.
+_ES_JOB="$TEST_TEMP_DIR/state/runs/20260907-scrub"
+mkdir -p "$_ES_JOB"
+_es_child_tmp="$(
+    unset TMPDIR
+    export ZBUILD_STATE_DIR="$_ES_JOB"
+    _zbuild_make_fresh_shell
+    printf '%s' "${TMPDIR:-<unset>}"
+)"
+case "$_es_child_tmp" in
+    "$_ES_JOB"/*) assert_pass "[SPEC-C10] a scrubbed child inherits a TMPDIR inside the job folder" ;;
+    *)            assert_fail "[SPEC-C10] a scrubbed child inherits a TMPDIR inside the job folder" \
+                      "got: $_es_child_tmp" ;;
+esac
+
+# GUARD: fail-open. With nothing to derive a job folder from, the scrub must
+# leave TMPDIR exactly as it found it — a run must never die, and an ad-hoc
+# invocation must not be handed a path that does not exist.
+_es_orig="$TEST_TEMP_DIR/preexisting-tmp"
+mkdir -p "$_es_orig"
+_es_untouched="$(
+    export TMPDIR="$_es_orig"
+    unset ZBUILD_STATE_DIR
+    _zbuild_make_fresh_shell
+    printf '%s' "${TMPDIR:-<unset>}"
+)"
+assert_eq "[SPEC-C10] GUARD: with no job folder the scrub leaves TMPDIR untouched" \
+    "$_es_orig" "$_es_untouched"
+
 print_test_results
 exit $((FAIL > 0))
