@@ -288,6 +288,13 @@ _pr_open_run_inner() {
     # terminally here instead. Belt-and-suspenders for non-cycle paths + a clear
     # reason. Consistent with #1208: a legit empty_diff converge with 0 real
     # commits genuinely has nothing to ship, so halting is correct (not a regress).
+    #
+    # #1655: an EMPTY merge-base skips this preflight entirely — a deliberate
+    # degrade, not an oversight. Without a baseline there is no honest ahead-count,
+    # and refusing to open a PR on an unknown is worse than letting `gh pr create`
+    # answer it. Since #1655 removed the HEAD~1 guess, empty is reachable (shallow
+    # clone / unresolvable trunk) where it previously never was, so the guard
+    # genuinely does not fire there.
     local _merge_base _ahead_count
     _merge_base="$(zbuild_resolve_merge_base 2>/dev/null || true)"
     if [[ -n "$_merge_base" ]]; then
