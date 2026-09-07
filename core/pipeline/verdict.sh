@@ -148,6 +148,15 @@ verdict_classify() {
             echo "warn" ;;
         mismatch)
             echo "fail" ;;
+        # #2062: `unjudged` — the judge returned no parseable verdict, or the
+        # call never reached it. Warn, not fail, on the precedent recorded for
+        # `degraded` a few arms up (#1702): classifying an unparseable model
+        # response as fail makes an infrastructure hiccup indistinguishable from
+        # a genuine finding and would halt a cycle on the former. What matters
+        # for #2062 is only that it is NOT pass — before this, the stage had no
+        # word at all for "judged nothing" and wrote `corresponds`.
+        unjudged)
+            echo "warn" ;;
         fail|error|block|scope_violation|corrupt_diff)
             echo "fail" ;;
         # #1219 (ADR-045): a gate-aggregator route verdict (route_design, or any

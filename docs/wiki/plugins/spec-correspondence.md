@@ -57,11 +57,20 @@ config:
   # false mismatches at 6/15 on merged pairs. With `partial` it is 0/15, and no
   # true positive was lost. `mismatch` is the word that would ever block;
   # `partial` names a coverage gap and informs.
+  #
+  # `unjudged` is a fifth word on the STAGE's channel only — the judge is still
+  # offered exactly four. It names the outcome the judge did not produce: a
+  # reply with no parseable verdict, or no reply at all. #2062: that arm used to
+  # increment nothing, so eight junk replies left all four counters at zero and
+  # the stage wrote a complete pass. It is deliberately not folded into
+  # `uncheckable`, which is a finding about the REQUIREMENT; this is a fact
+  # about the judge, and an operator must be able to tell them apart.
   valid_verdicts:
     - corresponds
     - partial
     - mismatch
     - uncheckable
+    - unjudged
   tier_default: T2
 
 inputs:

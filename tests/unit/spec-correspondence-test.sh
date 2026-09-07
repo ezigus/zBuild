@@ -24,6 +24,14 @@
 #                    (ADR-040 §5: only a mechanical stage may block)
 #   SPEC-5 [guard] : v2 contract — result_contract:2, rc binary, and a stage
 #                    that merely FINDS a problem is disposition:complete
+#   SPEC-7 [change]: a reply with no parseable verdict is COUNTED, not silently
+#                    dropped — the counters ACCOUNT FOR every SPEC judged, so
+#                    `judged N` and the four (now five) numbers agree
+#   SPEC-8 [change]: and zero successful judgments over a non-zero SPEC set is
+#                    NOT a pass. `worst` began at the passing word and was only
+#                    ever escalated by a non-zero counter, so eight junk replies
+#                    incremented nothing and the stage wrote a complete pass
+#                    (#2062; run 33944161764 shipped exactly that artifact)
 #   SPEC-6 [change]: the QA persona's perspective REACHES the prompt, and the
 #                    template BINDS it. #1627 recorded that personas are
 #                    consumed only by review lenses and that no template carries
@@ -60,11 +68,15 @@ export ZBUILD_SPEC_CORRESPONDENCE_PERSONA="quality-assurance"
 _SC_PROMPT="$TEST_TEMP_DIR/prompt.txt"
 _SC_REPLY='VERDICT: corresponds
 REASON: the assertion checks exactly the property the requirement names'
-route_to_model() { printf '%s' "$2" >> "$_SC_PROMPT"; printf '%s' "$_SC_REPLY"; return 0; }
-resolve_tier() { printf 'T2'; }
-
 # shellcheck source=../../plugins/agent/spec-correspondence/plugin.sh
 source "$REPO_ROOT/plugins/agent/spec-correspondence/plugin.sh"
+
+# Stubbed AFTER the plugin loads, not before: as of #2062 the plugin sources
+# core/router/route.sh itself, which would overwrite a stub defined ahead of it
+# and send this unit test at a real model. Same ordering every build/design unit
+# test uses (e.g. tests/unit/build-acceptance-charter-test.sh:33-37).
+route_to_model() { printf '%s' "$2" >> "$_SC_PROMPT"; printf '%s' "$_SC_REPLY"; return 0; }
+resolve_tier() { printf 'T2'; }
 
 _S="$TEST_TEMP_DIR/run"; _A="$_S/artifacts"; _R="$_S/repo"
 mkdir -p "$_A" "$_R/tests"
@@ -131,6 +143,57 @@ assert_contains "[SPEC-6][change] the QA persona's perspective reaches the promp
 assert_contains "[SPEC-6][change] simple.yaml binds the persona to the stage" \
     "$(sed -n '/^spec-correspondence:/,/^$/p' "$REPO_ROOT/config/templates/simple.yaml")" \
     "persona: quality-assurance"
+
+# ── SPEC-7/8: a router that answers, but never intelligibly ────────────────
+# Independent of the missing-router defect (#2062 A): these are junk replies
+# from a live model, not an absent call. Three SPECs so "the counters sum to n"
+# is a real arithmetic check rather than a 1-vs-0 coincidence.
+route_to_model() { printf 'I am afraid I cannot help with that.'; return 0; }
+
+_S2="$TEST_TEMP_DIR/run-unparseable"; _A2="$_S2/artifacts"; _R2="$_S2/repo"
+mkdir -p "$_A2" "$_R2/tests"
+export ZBUILD_REPO_ROOT="$_R2" ZBUILD_ARTIFACT_DIR="$_A2"
+cat > "$_R2/tests/junk-test.sh" <<'FIX2'
+assert_eq "[SPEC-1] the header names the run" "$(hdr)" "run"
+assert_eq "[SPEC-2] the footer names the tally" "$(ftr)" "tally"
+assert_eq "[SPEC-3] the body names the verdict" "$(body)" "verdict"
+FIX2
+cat > "$_A2/design.md" <<'EOF'
+# Design
+```acceptance
+SPEC-1[change]: the rendered header names the run
+SPEC-2[change]: the rendered footer names the tally
+SPEC-3[change]: the rendered body names the verdict
+TESTFILES:
+SPEC-1: tests/junk-test.sh
+SPEC-2: tests/junk-test.sh
+SPEC-3: tests/junk-test.sh
+WIRING: scripts/render.sh
+```
+EOF
+printf '{}' > "$_S2/pipeline-state.json"
+
+set +e; spec_correspondence_run "spec-correspondence" "$_S2/pipeline-state.json"; set -e
+_res2() { jq -r "$1" "$_A2/spec-correspondence-result.json" 2>/dev/null || echo MISSING; }
+
+# The stage's own claim about how many it judged, read back from its reason line.
+_judged="$(_res2 '.reason' | sed -n 's/^judged \([0-9][0-9]*\) SPEC(s).*/\1/p')"
+assert_eq "[SPEC-7][change] all three SPECs were judged" "3" "${_judged:-NONE}"
+assert_eq "[SPEC-7][change] the counters account for every SPEC judged" \
+    "$_judged" "$(_res2 '[.data | to_entries[] | .value] | add')"
+
+# Asserted through the engine's own reader, not against a literal word: what
+# must not happen is a GREEN indicator, and verdict_classify is what decides
+# that. It also pins the word into the classify table, which #1708's lint
+# (scripts/lib/lint-verdict-classify.sh) requires of every declared verdict.
+# shellcheck source=../../core/pipeline/verdict.sh
+source "$REPO_ROOT/core/pipeline/verdict.sh" 2>/dev/null || true
+_cls2="$(verdict_classify "$(_res2 '.verdict')" 2>/dev/null || echo NO-CLASSIFIER)"
+assert_eq "[SPEC-8][change] zero successful judgments does not classify as a pass" \
+    "not-pass" "$([[ "$_cls2" == "pass" ]] && printf 'pass' || printf 'not-pass')"
+assert_eq "[SPEC-8][change] and the word it writes is one the engine classifies" \
+    "classified" "$([[ "$_cls2" == "unknown" || "$_cls2" == "NO-CLASSIFIER" ]] \
+        && printf '%s' "$_cls2" || printf 'classified')"
 
 print_test_results
 exit $((FAIL > 0))

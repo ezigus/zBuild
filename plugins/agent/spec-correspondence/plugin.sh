@@ -15,6 +15,25 @@ zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _SC_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
+# #2062: the stage calls route_to_model, and nothing else was ever going to
+# define it. plugin-bootstrap.sh supplies helpers.sh and artifact-render.sh only
+# (its line-22 comment says a plugin needing the router sources it itself), and
+# cycle-orchestrator.sh:50 records that the runner's main process does not
+# source route.sh either — "only plugin subshells do, via route.sh". So every
+# reply was empty and the stage judged nothing while reporting a pass.
+# Ordering follows build/plugin.sh:29 and design/plugin.sh:30: event-bus, then
+# the router, then stage-io.
+# shellcheck source=../../../core/event-bus/event-bus.sh
+source "$_SC_ROOT/core/event-bus/event-bus.sh"
+# shellcheck source=../../../core/router/route.sh
+source "$_SC_ROOT/core/router/route.sh"
+# route.sh already sources stage-io, but the dependency is stated explicitly
+# for the same reason build/plugin.sh:34 states it: this stage writes its
+# prompt through the ADR-015 input banner, and a test that loads only the
+# plugin must not silently lose it.
+# shellcheck source=../../../core/output/stage-io.sh
+source "$_SC_ROOT/core/output/stage-io.sh"
+
 # shellcheck source=../../../scripts/lib/persona-resolve.sh
 source "$_SC_ROOT/scripts/lib/persona-resolve.sh" 2>/dev/null || true
 # shellcheck source=../../../core/plugin-registry/persona.sh
@@ -115,7 +134,12 @@ spec_correspondence_run() {
     declare -f resolve_tier >/dev/null 2>&1 \
         && tier="$(resolve_tier spec-correspondence "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null || printf 'T2')"
 
-    local sid n=0 n_corr=0 n_part=0 n_mis=0 n_unch=0 findings="" worst="corresponds"
+    # #2062: `worst` no longer starts at the passing word. It starts empty and
+    # is DERIVED from the counters below, because an initial value that only a
+    # non-zero counter can escalate is a pass by default — and every arm that
+    # incremented nothing (the `*)` arm) left it there. Eight junk replies wrote
+    # a clean pass in run 33944161764.
+    local sid n=0 n_corr=0 n_part=0 n_mis=0 n_unch=0 n_unj=0 findings="" worst=""
     while IFS= read -r sid; do
         [[ -n "$sid" ]] || continue
         local _txt _src _tfs _raw _v _r
@@ -179,22 +203,39 @@ spec_correspondence_run() {
                          findings="${findings}- ${sid} MISMATCH: ${_r}"$'\n' ;;
             uncheckable) n_unch=$(( n_unch + 1 ))
                          findings="${findings}- ${sid} uncheckable: ${_r}"$'\n' ;;
-            *)           # An unparseable reply is not a finding about the SPEC.
-                         findings="${findings}- ${sid} not judged (no parseable verdict)"$'\n' ;;
+            *)           # #2062: an unparseable or absent reply is COUNTED.
+                         # Its own word, not `uncheckable`: `uncheckable` is a
+                         # finding about the REQUIREMENT ("too vague to say what
+                         # would establish it" — the prompt's own definition,
+                         # echoed in verdict.sh's classify comment). This is a
+                         # fact about the JUDGE. Folding the two together would
+                         # file a router outage as a design-document defect and
+                         # leave an operator unable to tell them apart.
+                         n_unj=$(( n_unj + 1 ))
+                         findings="${findings}- ${sid} UNJUDGED (no parseable verdict in the reply)"$'\n' ;;
         esac
     done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
 
-    # Worst-wins, in the vocabulary's own order of seriousness.
+    # Worst-wins over the counters, which now account for every SPEC — so there
+    # is no arm left that can reach this with nothing incremented.
+    #
+    # `mismatch` stays on top: it is the only genuine defect in the work under
+    # review, and an infrastructure problem must never mask it. `unjudged`
+    # outranks `uncheckable`/`partial` because a gate with no opinion is worse
+    # than one with a weak opinion.
     if   [[ "$n_mis"  -gt 0 ]]; then worst="mismatch"
+    elif [[ "$n_unj"  -gt 0 ]]; then worst="unjudged"
     elif [[ "$n_unch" -gt 0 ]]; then worst="uncheckable"
     elif [[ "$n_part" -gt 0 ]]; then worst="partial"
+    else                             worst="corresponds"
     fi
 
-    local reason="judged $n SPEC(s): $n_corr correspond, $n_part partial, $n_mis mismatch, $n_unch uncheckable"
-    _sc_emit "spec_correspondence.judged" "specs=$n" "mismatch=$n_mis" "partial=$n_part"
+    local reason="judged $n SPEC(s): $n_corr correspond, $n_part partial, $n_mis mismatch, $n_unch uncheckable, $n_unj unjudged"
+    _sc_emit "spec_correspondence.judged" "specs=$n" "mismatch=$n_mis" "partial=$n_part" "unjudged=$n_unj"
     _sc_write_result "$art" "$worst" "$reason" \
-        "$(jq -nc --argjson c "$n_corr" --argjson p "$n_part" --argjson m "$n_mis" --argjson u "$n_unch" \
-            '{corresponds:$c, partial:$p, mismatch:$m, uncheckable:$u}')"
+        "$(jq -nc --argjson c "$n_corr" --argjson p "$n_part" --argjson m "$n_mis" \
+                  --argjson u "$n_unch" --argjson j "$n_unj" \
+            '{corresponds:$c, partial:$p, mismatch:$m, uncheckable:$u, unjudged:$j}')"
     stage_summary_write "$art/spec-correspondence-summary.md" "spec-correspondence" "$worst" \
         "$reason" \
         "${findings:-- every judged assertion tests the SPEC it claims to cover}"
