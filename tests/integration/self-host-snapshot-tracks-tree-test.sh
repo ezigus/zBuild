@@ -36,7 +36,7 @@ source "$REPO_ROOT/core/pipeline/runner.sh"
 WT_LIB="$TEST_TEMP_DIR/wt/scripts/lib"
 mkdir -p "$WT_LIB"
 for f in acceptance-block.sh acceptance-coverage.sh acceptance-negctl.sh \
-         acceptance-reachability.sh merge-base.sh; do
+         acceptance-reachability.sh merge-base.sh default-branch.sh; do
     printf '# ORIGINAL %s\n' "$f" > "$WT_LIB/$f"
 done
 

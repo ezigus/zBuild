@@ -19,6 +19,10 @@
 [[ -n "${_ZBUILD_GIT_REMOTE_LOADED:-}" ]] && return 0
 _ZBUILD_GIT_REMOTE_LOADED=1
 
+_ZBUILD_GIT_REMOTE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./default-branch.sh
+source "$_ZBUILD_GIT_REMOTE_DIR/default-branch.sh"
+
 # Captured stderr / failure reason (empty on success). Callers read this.
 ZBUILD_PUSH_RECONCILE_ERR=""
 
@@ -33,13 +37,24 @@ _grm_push() {
 }
 
 # zbuild_default_branch — best-effort remote default branch name (no origin/
-# prefix). Falls back to init.defaultBranch, then "main". The reconcile guard
-# also hardcodes main/master regardless of what this resolves.
+# prefix). NEVER empty: falls back to init.defaultBranch, then "main". The
+# reconcile guard also hardcodes main/master regardless of what this resolves.
+#
+# #1655: the trunk lookup is now the shared zbuild_resolve_default_branch, so a
+# repo whose trunk is `develop` or `trunk` is recognized and protected from a
+# force-push — the old body only consulted origin/HEAD, then guessed "main", so
+# on such a repo the guard below compared against the wrong name entirely.
+#
+# The never-empty tail is kept ON PURPOSE and is not the defect #1655 removes.
+# This name feeds ONE decision — "is the branch about to be force-pushed the
+# trunk?" — where an unknown answer must fail CLOSED. The merge-base resolver's
+# unknown answer must fail LOUD (empty), because there guessing produces a
+# confident wrong baseline. Same lookup, deliberately different tails.
 zbuild_default_branch() {
     local ref
-    ref="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)"
+    ref="$(zbuild_resolve_default_branch)"
     if [[ -n "$ref" ]]; then
-        printf '%s\n' "${ref#origin/}"
+        printf '%s\n' "$ref"
         return 0
     fi
     ref="$(git config init.defaultBranch 2>/dev/null)"

@@ -44,8 +44,10 @@ preconditions:
     description: design.md exists and contains a ```acceptance fenced block.
   - id: merge_base_resolvable
     description: >-
-      a git merge-base (origin/main | main | HEAD~1) resolves, so the negative
-      control and reachability revert have a baseline to run against.
+      a git merge-base against the resolved trunk (origin/HEAD → known names
+      → local, #1655 — never assumed to be main, no HEAD~1 guess) resolves, so
+      the negative control and reachability revert have a baseline to run
+      against. A shallow clone resolves nothing and no-ops here.
   - id: tagged_testfiles
     description: >-
       the acceptance block declares a contract to check (≥1 SPEC id or ≥1

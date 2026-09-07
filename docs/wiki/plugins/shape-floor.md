@@ -30,8 +30,11 @@ description: |
     - Shape change present, all floor files in diff → verdict=pass.
     - Shape change present, a floor file missing → verdict=fail (blocks).
 
-  Merge-base is resolved via zbuild_resolve_merge_base (origin/main → main →
-  HEAD~1), NOT HEAD~1, so the floor sees the full branch change set.
+  Merge-base is resolved via zbuild_resolve_merge_base — the trunk is resolved
+  (origin/HEAD → known names → local, #1655), never assumed to be main, and
+  there is no HEAD~1 candidate, so the floor sees the full branch change set.
+  An unresolvable baseline yields NO diff files, which reads as skip
+  no_shape_change: the floor degrades open, it does not invent a verdict.
 
   Always returns rc=0; the verdict lives in the artifact (ADR-040 verdict-in-artifact).
   ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.

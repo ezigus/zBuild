@@ -34,6 +34,12 @@ _mockbin="$TEST_TEMP_DIR/bin"; mkdir -p "$_mockbin"
 cat > "$_mockbin/git" <<'GITMOCK'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$GIT_MOCK_LOG"
+# Real git accepts `-C <dir>` BEFORE the subcommand, and the shared default-branch
+# resolver (#1655) anchors every call that way. Without this strip the subcommand
+# dispatch below saw "-C", fell to the `*)` catch-all, and symbolic-ref silently
+# returned nothing — which made zbuild_default_branch resolve "main" for a repo
+# whose origin/HEAD says develop, i.e. exactly the case T6b exists to pin.
+if [[ "${1:-}" == "-C" ]]; then shift 2; fi
 case "${1:-}" in
     ls-remote)    printf '%s\n' "${MOCK_LS_REMOTE:-}"; exit "${MOCK_LS_REMOTE_RC:-0}" ;;
     rev-parse)    [[ "${2:-}" == "HEAD" ]] && printf '%s\n' "${MOCK_HEAD_SHA:-localsha}"; exit 0 ;;

@@ -269,9 +269,11 @@ acceptance_gate_run() {
     fi
 
     # ── Precondition 2: git merge-base resolvable ────────────────────────────
-    # The negative control and reachability revert need a baseline (origin/main |
-    # main | HEAD~1). A shallow/non-git checkout cannot support them; no-op rather
-    # than hard-fail (a baseline-resolve miss is already an advisory disposition).
+    # The negative control and reachability revert need a baseline: a merge-base
+    # against the RESOLVED trunk (origin/HEAD → known names → local, #1655). A
+    # shallow/non-git checkout resolves none, and since #1655 that is reported as
+    # empty rather than papered over with a HEAD~1 guess; no-op rather than
+    # hard-fail (a baseline-resolve miss is already an advisory disposition).
     if [[ -z "$(zbuild_resolve_merge_base "$repo_root" 2>/dev/null)" ]]; then
         _ag_noop_precondition_unmet "$result_file" "merge_base_resolvable"
         return 0

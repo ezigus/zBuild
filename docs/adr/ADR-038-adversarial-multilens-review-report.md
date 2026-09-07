@@ -47,8 +47,10 @@ A lens whose evidence is unavailable says so in the report rather than guessing.
 
 **Change-bundle basis (#896/#952).** When a lens has no distinct per-lens artifact it falls back to the
 shared "change bundle". That bundle is the **full-branch merge-base diff** — `git diff <merge-base> HEAD`
-resolved via the shared `zbuild_resolve_merge_base` (`scripts/lib/merge-base.sh`, candidates
-`origin/main → main → HEAD~1`) — NOT the per-run incremental build `diff.patch`. The incremental diff is
+resolved via the shared `zbuild_resolve_merge_base` (`scripts/lib/merge-base.sh`) — NOT the per-run
+incremental build `diff.patch`. *(Amended by #1655: the candidates were `origin/main → main → HEAD~1`;
+the trunk is now resolved rather than assumed, and the `HEAD~1` guess is gone — an unresolvable baseline
+returns empty and falls through to the `diff.patch` step of the chain below.)* The incremental diff is
 EMPTY on a resumed/green run or when the work was committed before intake, which silently starved every
 lens of evidence (the observed #952 failure where all lenses hit the C6 redaction precondition on empty
 input). `review`, `review-lens` and `review-report` all resolve this ONE basis through

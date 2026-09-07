@@ -53,6 +53,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          # #1655 (also in #1073's DoD): the gates resolve their baseline with
+          # `git merge-base <trunk> HEAD`. actions/checkout defaults to
+          # fetch-depth: 1, so origin/main exists as a ref but shares no visible
+          # ancestor with HEAD and merge-base returns EMPTY. That used to fall
+          # through to a HEAD~1 guess — every gate judged one commit, which cost
+          # #1848 twelve hours. The guess is gone, so a shallow checkout now
+          # fails loudly (baseline_resolve_failed) instead of lying; full history
+          # is what makes the baseline actually resolve.
+          fetch-depth: 0
 
       - name: Configure git identity
         # CI-7 (#999): the build stage commits work with `git commit --author`,
