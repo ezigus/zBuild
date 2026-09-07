@@ -15,6 +15,15 @@ zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 # shellcheck source=../../../scripts/lib/stage-summary.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _SCV_ROOT="$_ZBUILD_PLUGIN_ROOT"
+# shellcheck source=../../../core/event-bus/event-bus.sh
+source "$_SCV_ROOT/core/event-bus/event-bus.sh"
+# plugin-bootstrap.sh supplies helpers.sh and artifact-render.sh only, and says
+# so: a plugin that needs the router sources it itself. Unguarded and at file
+# scope, exactly as build/ and design/ do — the `declare -f route_to_model`
+# guard below is defensive, not a substitute for this. #2061: without it the
+# guard was never taken in production and the design was never judged.
+# shellcheck source=../../../core/router/route.sh
+source "$_SCV_ROOT/core/router/route.sh"
 
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_SCV_ROOT/scripts/lib/acceptance-block.sh" 2>/dev/null || true
