@@ -30,6 +30,19 @@ source "$_SF_LIB_DIR/merge-base.sh"
 # shellcheck source=./impact-prefilter.sh
 source "$_SF_LIB_DIR/impact-prefilter.sh"
 
+# ─── _sf_merge_base_sha <repo_root> ──────────────────────────────────────────
+# Returns the merge-base SHA, or empty when none resolves.
+# ZBUILD_MERGE_BASE_CMD overrides the resolver for testability.
+_sf_merge_base_sha() {
+    local repo_root="$1"
+    local merge_base_cmd="${ZBUILD_MERGE_BASE_CMD:-}"
+    if [[ -n "$merge_base_cmd" ]]; then
+        bash -c "$merge_base_cmd" 2>/dev/null || true
+        return
+    fi
+    zbuild_resolve_merge_base "$repo_root"
+}
+
 # ─── _sf_diff_files <repo_root> ──────────────────────────────────────────────
 # Prints changed file paths (one per line) between merge-base and HEAD.
 # ZBUILD_DIFF_CMD overrides for testability.
@@ -41,7 +54,7 @@ _sf_diff_files() {
         return
     fi
     local base_sha
-    base_sha="$(zbuild_resolve_merge_base "$repo_root")"
+    base_sha="$(_sf_merge_base_sha "$repo_root")"
     [[ -z "$base_sha" ]] && return
     git -C "$repo_root" diff --name-only "$base_sha" HEAD 2>/dev/null || true
 }
@@ -173,6 +186,8 @@ _sf_collect_missing_floor_files() {
 
 # ─── _sf_shape_floor <repo_root> ─────────────────────────────────────────────
 # If any diff file matches config/shape-change-paths.txt → shape change detected.
+# If the merge-base cannot be resolved, emit no_baseline; no_shape_change is
+# reserved for a successfully resolved diff with no matching shape files.
 # Exception: when config/event-schema.json is the SOLE matched file and its diff
 # is append-only (no removals), the change is treated as no shape change (SKIP).
 # Exception (#1924): when every matched file is a config/templates/*.yaml whose
@@ -184,6 +199,14 @@ _sf_collect_missing_floor_files() {
 _sf_shape_floor() {
     local repo_root="$1"
     local paths_file="$repo_root/config/shape-change-paths.txt"
+    if [[ -z "${ZBUILD_DIFF_CMD:-}" ]]; then
+        local base_sha
+        base_sha="$(_sf_merge_base_sha "$repo_root")"
+        if [[ -z "$base_sha" ]]; then
+            printf 'SHAPE_FLOOR SKIP no_baseline\n'
+            return 0
+        fi
+    fi
 
     local diff_files
     diff_files="$(_sf_diff_files "$repo_root")"

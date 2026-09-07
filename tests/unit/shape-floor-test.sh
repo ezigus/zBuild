@@ -48,6 +48,18 @@ set -e
 assert_contains "[SPEC-2] non-shape file in diff → SHAPE_FLOOR SKIP" \
     "$_spec2_out" "SHAPE_FLOOR SKIP no_shape_change"
 
+# ─── SPEC-2b: unresolved baseline is distinct from no_shape_change ────────────
+# A missing merge-base is not evidence that the diff contains no shape change;
+# it is evidence that the gate could not resolve the comparison at all.
+
+set +e
+_spec2b_out="$(ZBUILD_MERGE_BASE_CMD="printf ''" \
+    _sf_shape_floor "$_sr")"
+set -e
+
+assert_contains "[SPEC-2b] unresolved baseline → SHAPE_FLOOR SKIP no_baseline" \
+    "$_spec2b_out" "SHAPE_FLOOR SKIP no_baseline"
+
 # ─── SPEC-3: shape floor FAIL — shape-change file in diff, golden absent ──────
 # Shape-change file detected but event-sequence.golden NOT in diff → FAIL.
 
