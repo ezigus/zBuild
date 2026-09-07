@@ -23,6 +23,8 @@
 #   [MB-7] one shared resolver in scripts/lib/ that MAY return empty
 #   [MB-8] intake has no duplicate default-branch implementation
 #   [MB-9] the CI pipeline workflow checks out full history (fetch-depth: 0)
+#   [MB-10] zbuild_change_bundle degrades to diff.patch when no baseline resolves,
+#           and still spans the whole branch when one does
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -148,12 +150,23 @@ _git_id "$R_SHALLOW"
 git -C "$R_SHALLOW" fetch -q --depth 2 origin 'refs/heads/feat/work:refs/remotes/origin/feat/work'
 git -C "$R_SHALLOW" checkout -q -b feat/work origin/feat/work
 
-# Preconditions for the trap: origin/main VERIFIES, HEAD~1 VERIFIES, and
-# git merge-base between them is EMPTY. Without all three the test is vacuous.
+# Preconditions for the trap. The resolver tries BOTH `origin/<trunk>` and the
+# local `<trunk>`, so proving only the first is a dead end would leave the reader
+# to work out from git internals whether the second could still have answered.
+# Assert both, plus that HEAD~1 exists — the wrong answer has to be AVAILABLE for
+# its absence from the result to mean anything. Without all of these the test is
+# vacuous: it would pass on a fixture that simply had nothing to resolve.
 if git -C "$R_SHALLOW" rev-parse --verify origin/main >/dev/null 2>&1; then
     assert_pass "[MB-4] precondition: origin/main verifies in the shallow clone"
 else
     assert_fail "[MB-4] precondition: origin/main must verify" "did not verify"
+fi
+# `git clone --depth 1` creates a local `main` at the same shallow tip, so the
+# second candidate genuinely exists and is genuinely unrelatable to HEAD.
+if git -C "$R_SHALLOW" rev-parse --verify main >/dev/null 2>&1; then
+    assert_pass "[MB-4] precondition: local main verifies (2nd candidate exists)"
+else
+    assert_fail "[MB-4] precondition: local main must verify" "did not verify"
 fi
 if git -C "$R_SHALLOW" rev-parse --verify 'HEAD~1' >/dev/null 2>&1; then
     assert_pass "[MB-4] precondition: HEAD~1 verifies (the wrong answer is available)"
@@ -166,6 +179,13 @@ if [[ -z "$_SHALLOW_MB" ]]; then
 else
     assert_fail "[MB-4] precondition: merge-base must be empty in the shallow clone" \
         "got '$_SHALLOW_MB'"
+fi
+_SHALLOW_MB_LOCAL="$(git -C "$R_SHALLOW" merge-base main HEAD 2>/dev/null || true)"
+if [[ -z "$_SHALLOW_MB_LOCAL" ]]; then
+    assert_pass "[MB-4] precondition: git merge-base main HEAD is ALSO empty"
+else
+    assert_fail "[MB-4] precondition: the local-main candidate must be a dead end too" \
+        "got '$_SHALLOW_MB_LOCAL'"
 fi
 
 GOT_SHALLOW="$(zbuild_resolve_merge_base "$R_SHALLOW")"
@@ -307,5 +327,41 @@ else
 fi
 assert_contains "[MB-9] actions/checkout in zbuild-pipeline.yml sets fetch-depth: 0" \
     "$_CHECKOUT_BLOCK" "fetch-depth: 0"
+
+# ─── [MB-10] zbuild_change_bundle degrades to diff.patch, and only then ──────
+print_test_section "[MB-10] the change bundle falls back to diff.patch with no baseline"
+
+# zbuild_change_bundle is the OTHER caller of the resolver, and #1655 changed
+# what it sees: where an unresolvable baseline used to yield a HEAD~1 diff that
+# it happily wrote as branch-diff.patch, it now yields empty and the documented
+# fallback to the per-run diff.patch takes over. That fallback was reachable but
+# unexercised — the #2062 shape, a path that is only correct because nothing
+# ever ran it. Both directions are asserted so neither can pass for free.
+
+# Negative: no baseline → the diff.patch path, and NO branch-diff.patch written.
+ART_NB="$TEST_TEMP_DIR/artifacts-no-baseline"; mkdir -p "$ART_NB"
+printf 'INCREMENTAL_PATCH_SENTINEL\n' > "$ART_NB/diff.patch"
+BUNDLE_NB="$(zbuild_change_bundle "$ART_NB" "$R_SHALLOW")"
+assert_eq "[MB-10] unresolvable baseline → bundle is the incremental diff.patch" \
+    "$ART_NB/diff.patch" "$BUNDLE_NB"
+assert_file_not_exists "[MB-10] no branch-diff.patch is written without a baseline" \
+    "$ART_NB/branch-diff.patch"
+assert_contains "[MB-10] the fallback bundle still carries the per-run patch content" \
+    "$(cat "$BUNDLE_NB" 2>/dev/null)" "INCREMENTAL_PATCH_SENTINEL"
+
+# Positive control: a resolvable baseline must still produce the FULL-BRANCH
+# diff. Pinning the content (not just the path) is what makes this control real
+# — a HEAD~1 baseline also writes branch-diff.patch, but its diff omits the
+# branch's earlier commits, so "one" is present only for a true merge-base.
+ART_OK="$TEST_TEMP_DIR/artifacts-with-baseline"; mkdir -p "$ART_OK"
+: > "$ART_OK/diff.patch"
+BUNDLE_OK="$(zbuild_change_bundle "$ART_OK" "$R_MASTER")"
+assert_eq "[MB-10] resolvable baseline → bundle is branch-diff.patch" \
+    "$ART_OK/branch-diff.patch" "$BUNDLE_OK"
+_BUNDLE_OK_TEXT="$(cat "$BUNDLE_OK" 2>/dev/null)"
+assert_contains "[MB-10] bundle spans the WHOLE branch (first work commit present)" \
+    "$_BUNDLE_OK_TEXT" "+one"
+assert_contains "[MB-10] bundle spans the whole branch (last work commit present)" \
+    "$_BUNDLE_OK_TEXT" "+two"
 
 print_test_results

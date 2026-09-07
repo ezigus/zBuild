@@ -39,7 +39,7 @@ zbuild_resolve_merge_base() {
     [[ -n "$repo_root" ]] && git=(git -C "$repo_root")
     local trunk
     trunk="$(zbuild_resolve_default_branch "${repo_root:-$PWD}")"
-    [[ -z "$trunk" ]] && { printf ''; return 0; }
+    [[ -z "$trunk" ]] && return 0
     local base="" candidate
     for candidate in "origin/$trunk" "$trunk"; do
         # No `rev-parse --verify` pre-check: existence was never the question.
