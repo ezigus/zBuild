@@ -243,6 +243,7 @@ and maps the verdict to one of `pass | warn | fail | unknown`:
 | `skipped`, `healthy`, `deployed`             | pass  | `✓`   | GREEN  |
 | `request_changes`, `incomplete`, `did_not_finish`, `degraded` | warn | `⚠` | YELLOW |
 | `partial`, `uncheckable` (#2034)             | warn  | `⚠`   | YELLOW |
+| `unjudged` (#2062)                           | warn  | `⚠`   | YELLOW |
 | `unreadable` (#1683)                         | warn  | `⚠`   | YELLOW |
 | `fail`, `error`, `block`, `scope_violation`, `corrupt_diff` | fail | `✗` | RED |
 | `mismatch` (#2034)                           | fail  | `✗`   | RED    |
@@ -257,6 +258,18 @@ failures — `partial` names a coverage gap (the assertion tests the right
 property, narrower than the sentence promises) and `uncheckable` is a finding
 against the REQUIREMENT, not the assertion. Only `mismatch` is a genuine
 disagreement, and only it classifies `fail`.
+
+**On the #2062 row.** `unjudged` is a fifth word on the STAGE's channel; the
+judge is still offered exactly four. It names the outcome the judge did not
+produce — a reply with no parseable verdict, or no reply at all — and it exists
+because that arm used to increment no counter: `worst` began at `corresponds`
+and only a non-zero counter could escalate it, so eight junk replies wrote a
+complete pass (run 33944161764). It is deliberately not folded into
+`uncheckable`, which is a finding about the REQUIREMENT; this is a fact about
+the judge, and an operator must be able to tell a vague sentence from a router
+that never answered. `warn` rather than `fail` follows the `degraded` precedent
+(#1702): an unparseable model response must not be indistinguishable from a
+genuine finding. What #2062 requires is only that it is not `pass`.
 
 That split is measured, not chosen. With a three-word vocabulary the judge had
 nowhere to put narrow-but-correct coverage and called it `mismatch`, putting
