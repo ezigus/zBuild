@@ -122,11 +122,14 @@ unset CI CI_MODE
 # All state-changing tests run in the parent shell so HEAD changes persist.
 cd "$REPO" || exit 1
 
-# ── Test: _intake_resolve_default_branch resolves 'main' in this repo ──
+# ── Test: the shared default-branch resolver resolves 'main' in this repo ──
 # This repo has refs/heads/main (local fallback) and no remote.
-# [SPEC-3] verifies the new helper is present and returns the correct name.
-resolved_branch="$(_intake_resolve_default_branch 2>/dev/null)"
-assert_eq "[SPEC-3] _intake_resolve_default_branch resolves 'main' in main-default repo" \
+# [SPEC-3] verifies intake reaches the resolver and gets the correct name.
+# #1655: intake's private _intake_resolve_default_branch was promoted to
+# scripts/lib/default-branch.sh so merge-base.sh could stop assuming "main";
+# branch-ops.sh sources it, so it is in scope here through the plugin.
+resolved_branch="$(zbuild_resolve_default_branch 2>/dev/null)"
+assert_eq "[SPEC-3] zbuild_resolve_default_branch resolves 'main' in main-default repo" \
     "main" "$resolved_branch"
 
 # ── Test: first run creates branch ──

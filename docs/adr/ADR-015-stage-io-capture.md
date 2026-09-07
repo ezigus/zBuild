@@ -668,8 +668,9 @@ full original input verbatim — only the on-screen banner body is swapped.
 
 **Review numstat shape.** The review plugin sources `scripts/lib/numstat-format.sh`
 (extracted from `plugins/agent/build/plugin.sh` in the same PR), computes
-`git diff <merge-base> HEAD --numstat` against the closest of
-`origin/main` → `main` → `HEAD~1`, formats via the shared
+`git diff <merge-base> HEAD --numstat` against the resolved trunk
+(`origin/main` → `main` → `HEAD~1` until #1655 removed the guess and made
+the trunk name resolved rather than assumed), formats via the shared
 `format_numstat` helper with `--event-prefix review` and `--full-at
 <diff.patch path>`, then wraps the body in a `── changed files ──`
 heading. The override is exported around the `route_to_model` call and

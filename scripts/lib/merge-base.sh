@@ -11,20 +11,42 @@
 [[ -n "${_ZBUILD_MERGE_BASE_LOADED:-}" ]] && return 0
 _ZBUILD_MERGE_BASE_LOADED=1
 
+_ZBUILD_MERGE_BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./default-branch.sh
+source "$_ZBUILD_MERGE_BASE_DIR/default-branch.sh"
+
 # zbuild_resolve_merge_base [<repo_root>]
-# Echoes the merge-base SHA of HEAD against the default branch, or empty string
-# when none resolves. Candidates: origin/main → main → HEAD~1. Fail-soft: never
-# propagates git errors. With <repo_root>, runs git -C there (worktree support).
+# Echoes the merge-base SHA of HEAD against the default branch, or EMPTY when
+# none resolves. The trunk name is resolved (zbuild_resolve_default_branch:
+# origin/HEAD → known remote names → local), never assumed to be "main", and
+# candidates are only its remote and local refs. Fail-soft: never propagates git
+# errors. With <repo_root>, runs git -C there (worktree support).
+#
+# #1655: there is deliberately NO HEAD~1 candidate. HEAD~1 is not "where the
+# branch started", it is one commit back — on a dogfood branch that commits per
+# iteration, the robot's own save from minutes earlier. It was reachable far
+# more often than it looked: `rev-parse --verify` succeeds for origin/main while
+# `git merge-base` returns EMPTY under a shallow clone (no visible common
+# ancestor), and the old loop read that as "try the next candidate". Every gate
+# then judged one commit. That cost 12h on #1848 (runs 33899707071 /
+# 33944161764), where a migration committed in an earlier cycle iteration was
+# invisible and reported as "not in this commit's diff". Empty is the honest
+# answer, and every consumer already handles it — fail-loud
+# (baseline_resolve_failed), explicit skip (no_baseline), or documented degrade.
 zbuild_resolve_merge_base() {
     local repo_root="${1:-}"
     local -a git=(git)
     [[ -n "$repo_root" ]] && git=(git -C "$repo_root")
+    local trunk
+    trunk="$(zbuild_resolve_default_branch "${repo_root:-$PWD}")"
+    [[ -z "$trunk" ]] && { printf ''; return 0; }
     local base="" candidate
-    for candidate in "origin/main" "main" "HEAD~1"; do
-        if "${git[@]}" rev-parse --verify "$candidate" >/dev/null 2>&1; then
-            base="$("${git[@]}" merge-base "$candidate" HEAD 2>/dev/null || true)"
-            [[ -n "$base" ]] && break
-        fi
+    for candidate in "origin/$trunk" "$trunk"; do
+        # No `rev-parse --verify` pre-check: existence was never the question.
+        # merge-base itself is the computation that can fail, and an empty
+        # result from a ref that DOES exist is exactly the shallow-clone case.
+        base="$("${git[@]}" merge-base "$candidate" HEAD 2>/dev/null || true)"
+        [[ -n "$base" ]] && break
     done
     printf '%s' "$base"
 }

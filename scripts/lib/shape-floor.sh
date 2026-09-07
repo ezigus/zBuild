@@ -15,9 +15,16 @@
 # Public function:
 #   _sf_shape_floor <repo_root> → echoes SHAPE_FLOOR PASS|FAIL|SKIP
 #
-# Merge-base resolution: zbuild_resolve_merge_base (merge-base.sh) — proper
-# merge-base against the default branch (origin/main → main → HEAD~1), NOT
-# HEAD~1, so the floor sees the full branch change set.
+# Merge-base resolution: zbuild_resolve_merge_base (merge-base.sh) — a proper
+# merge-base against the RESOLVED trunk (origin/HEAD → known names → local,
+# #1655), never assumed to be main, and with no HEAD~1 candidate, so the floor
+# sees the full branch change set. Until #1655 this comment claimed "NOT HEAD~1"
+# while HEAD~1 was literally the last candidate in the chain.
+#
+# An unresolvable baseline makes _sf_diff_files print nothing, so no path can
+# match and the floor reports SKIP no_shape_change. That is a degrade, not a
+# verdict about the branch — read it together with the gates that DO fail loud
+# (reachability/negctl report baseline_resolve_failed on the same input).
 #
 # Source-only; no `set -e` at top level (would mutate caller options).
 

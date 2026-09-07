@@ -681,8 +681,9 @@ implemented → request_changes" while the operator banner (already merge-base
 based) showed the real change — driving a review/build livelock
 (dogfood `run_id 20260615100734-32729`).
 
-**Contract.** The review LLM's diff basis is the merge-base diff (`origin/main` →
-`main` → `HEAD~1`, fail-soft fallback to `diff.patch` then a sentinel) — the SAME
+**Contract.** The review LLM's diff basis is the merge-base diff (against the
+resolved trunk, fail-soft fallback to `diff.patch` then a sentinel; the chain was
+`origin/main` → `main` → `HEAD~1` until #1655 removed the guess) — the SAME
 basis as the operator banner, via the shared `_review_resolve_merge_base` helper.
 `diff.patch` is UNCHANGED: it remains the per-run, intake-baseline audit artifact
 consumed by the test stage's apply-check and `build-diff-cumulative-test.sh`.

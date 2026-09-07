@@ -22,11 +22,14 @@ GIT="$(command -v git)"
 # block.sh to recognize a NEW testfiles sentinel token `TESTS:` that the installed
 # reader does not. Models a #956-style grammar extension living only in the
 # working tree. merge-base.sh is copied because negctl/reachability source it from
-# their own dir.
+# their own dir, and default-branch.sh because merge-base.sh sources IT (#1655) —
+# unguarded, so an override dir missing it fails hard. Production derives this
+# set transitively (_runner_contract_lib_closure); this list is the hand-written
+# stand-in for the same closure.
 OVERRIDE_LIB="$TEST_TEMP_DIR/wt-lib"
 mkdir -p "$OVERRIDE_LIB"
 for f in acceptance-block.sh acceptance-coverage.sh acceptance-negctl.sh \
-         acceptance-reachability.sh merge-base.sh; do
+         acceptance-reachability.sh merge-base.sh default-branch.sh; do
     cp "$REPO_ROOT/scripts/lib/$f" "$OVERRIDE_LIB/$f"
 done
 # Grammar extension: accept `TESTS:` as an alias of the `TESTFILES:` section start
