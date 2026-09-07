@@ -181,8 +181,25 @@ write_boundary_allow_list() {
     fi
     local _sb="${ZBUILD_SCRATCH_ROOT:-$_sd}"
     [[ -n "$_sb" ]] && printf '%s\n' "${_sb%/}/scratch"
-    # ADR-011 stores live under ~/.zbuild.
+    # ADR-011 stores live under ~/.zbuild — but that path is a DEFAULT, not the
+    # location. zbuild_layout_data_root's precedence (inlined in
+    # core/event-bus/event-bus.sh, which deliberately sources almost nothing) is
+    # ${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}, so the writer
+    # FOLLOWS those two vars while this list used to name only the fallback.
+    # They agree until something redirects the root — and
+    # plugins/tool/test/plugin.sh redirects it on purpose
+    # (ZBUILD_STATE_ROOT="$tmp/.zbuild-nested-state") to fence a nested run's
+    # state. At that moment the engine's own event log became a stage violation,
+    # which is the defect the event-bus exemption below already exists to
+    # prevent for the unredirected case. Emit all three: additive, so an
+    # override can never remove them.
     printf '%s\n' "$HOME/.zbuild"
+    if [[ -n "${ZBUILD_STATE_ROOT:-}" ]]; then
+        printf '%s\n' "$ZBUILD_STATE_ROOT"
+    fi
+    if [[ -n "${ZBUILD_DATA_ROOT:-}" ]]; then
+        printf '%s\n' "$ZBUILD_DATA_ROOT"
+    fi
     # The event bus's own files. With nothing pinned it falls back to an
     # ephemeral per-process dir under $TMPDIR (core/event-bus/event-bus.sh:37),
     # which resolves to /tmp on Linux where TMPDIR is unset — i.e. inside a

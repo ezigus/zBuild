@@ -261,6 +261,35 @@ _cls_ev2="$(ZBUILD_EVENTS_JSONL="$_EV_DIR/events.jsonl" \
 assert_eq "[SPEC-4d] a pinned events JSONL allows its own directory" \
     "allowed" "$_cls_ev2"
 
+# The allow list must derive ~/.zbuild the SAME WAY the writer does. The bus's
+# unpinned default is
+#   ${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}/ephemeral-events/$$
+# (core/event-bus/event-bus.sh), i.e. it FOLLOWS ZBUILD_STATE_ROOT — while
+# write_boundary_allow_list emitted a hardcoded "$HOME/.zbuild". Those agree
+# only while nobody redirects the root, and plugins/tool/test/plugin.sh
+# redirects it on purpose (ZBUILD_STATE_ROOT="$tmp/.zbuild-nested-state") to
+# fence a nested run. The moment they diverge, the engine's own event log
+# becomes a stage violation again — the exact defect SPEC-4d above closed for
+# the unredirected case.
+# CHANGE: fails at baseline (allow list names only $HOME/.zbuild).
+_ALT_ROOT="$TEST_TEMP_DIR/alt-state-root"
+_ALT_EV="$_ALT_ROOT/ephemeral-events/$$"
+mkdir -p "$_ALT_EV"
+printf '{}\n' > "$_ALT_EV/events.jsonl"
+_cls_alt="$(ZBUILD_STATE_ROOT="$_ALT_ROOT" \
+    write_boundary_classify "$_ALT_EV/events.jsonl" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-4d] a redirected ZBUILD_STATE_ROOT still allows the engine's own event log" \
+    "allowed" "$_cls_alt"
+
+_DATA_ROOT="$TEST_TEMP_DIR/alt-data-root"
+_DATA_EV="$_DATA_ROOT/ephemeral-events/$$"
+mkdir -p "$_DATA_EV"
+printf '{}\n' > "$_DATA_EV/events.jsonl"
+_cls_data="$(ZBUILD_DATA_ROOT="$_DATA_ROOT" \
+    write_boundary_classify "$_DATA_EV/events.jsonl" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-4d] a redirected ZBUILD_DATA_ROOT still allows the engine's own event log" \
+    "allowed" "$_cls_data"
+
 # ─── SPEC-4e: every zbuild_engine_tmpdir caller can actually see it ─────────
 # The helper lives in scripts/lib/helpers.sh. A file that calls it without
 # sourcing helpers gets an UNDEFINED function, and `$(undefined)` in a path
