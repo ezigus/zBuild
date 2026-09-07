@@ -15,6 +15,18 @@ zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _TA_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
+# plugin-bootstrap.sh supplies helpers + artifact-render ONLY; a plugin that
+# needs the event bus or the router sources them itself, as its header states. Without
+# this the guard below could never pass in production — every dispatch wrote
+# disposition=unavailable and no assertion was ever authored (#2060).
+# shellcheck source=../../../core/event-bus/event-bus.sh
+source "$_TA_ROOT/core/event-bus/event-bus.sh"
+# route.sh also brings resolve_tier (tier-resolve.sh); route_to_model is the
+# dependency this source exists for. (_llm_router_classify, consulted below,
+# comes from llm-agent.sh, not from here.)
+# shellcheck source=../../../core/router/route.sh
+source "$_TA_ROOT/core/router/route.sh"
+
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_TA_ROOT/scripts/lib/acceptance-block.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/llm-agent.sh
