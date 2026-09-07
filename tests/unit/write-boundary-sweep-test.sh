@@ -506,6 +506,65 @@ else
     assert_pass "[SPEC-3] no hardcoded TMPDIR substitution remains in the lib"
 fi
 
+# ─── SPEC-4h: a candidate written by a DEMONSTRABLY live external process ────
+# does not halt the dispatch.
+#
+# The sweep is `find <roots> -newer <marker> -type f`. mtime carries no
+# authorship, so any file appearing in a watched root during the window is
+# attributed to whichever stage happens to be dispatching. Reproduced against
+# the real parity fixture: a bare `touch` loop in an unrelated process got
+# hydrate, release and persist each reported for files they never wrote, and
+# the run ended status=interrupted.
+#
+# ADR-058 C9 already conceded this for DIRECTORIES ("any concurrent process can
+# kill a run") and fixed that half with -type f. This is the same argument for
+# the file half.
+#
+# The fix is NOT to stop watching: a stage's own writer is dead by the time
+# write_boundary_check runs (the dispatch subshell has returned), so continued
+# activity in the root after the dispatch is positive evidence of somebody
+# else. That makes the candidate unattributable rather than innocent — it is
+# still recorded on all three channels, it just cannot resolve the stage to
+# `broken` on evidence that does not identify it.
+_WB_EVENTS=()
+rm -f "$JOB_DIR/runtime/write-boundary.marker" "$JOB_DIR/runtime/write-boundary-violated"
+write_boundary_mark "$STATE_FILE"
+touch "$WATCH_DIR/concurrent-victim.txt"
+
+# An external writer that keeps going THROUGH the settle window.
+( for _i in $(seq 1 200); do touch "$WATCH_DIR/.ext-$_i" 2>/dev/null; sleep 0.02; done ) &
+_ext_pid=$!
+_unattr_rc=0
+write_boundary_check "$FIXTURE_DIR" "$STATE_FILE" "victim-stage" "" 2>/dev/null || _unattr_rc=$?
+kill "$_ext_pid" 2>/dev/null || true
+wait "$_ext_pid" 2>/dev/null || true
+
+assert_eq "[SPEC-4h] a candidate racing a live external writer does not fail the dispatch" \
+    "0" "$_unattr_rc"
+assert_eq "[SPEC-4h] no write-boundary-violated marker is written for an unattributable candidate" \
+    "0" "$([[ -f "$JOB_DIR/runtime/write-boundary-violated" ]] && echo 1 || echo 0)"
+_unattr_ev=0
+for _e in "${_WB_EVENTS[@]:-}"; do
+    case "$_e" in *unattributable*) _unattr_ev=1 ;; esac
+done
+assert_eq "[SPEC-4h] the unattributable candidate is still recorded as an event" \
+    "1" "$_unattr_ev"
+
+# ─── SPEC-4i: GUARD — with no external writer the same write still halts ─────
+# This is what stops SPEC-4h degenerating into "make violations pass". If this
+# assertion ever goes red the fence has been disarmed, not repaired.
+rm -f "$WATCH_DIR"/.ext-* 2>/dev/null || true
+_WB_EVENTS=()
+rm -f "$JOB_DIR/runtime/write-boundary.marker" "$JOB_DIR/runtime/write-boundary-violated"
+write_boundary_mark "$STATE_FILE"
+touch "$WATCH_DIR/genuine-violation.txt"
+_genuine_rc=0
+write_boundary_check "$FIXTURE_DIR" "$STATE_FILE" "guilty-stage" "" 2>/dev/null || _genuine_rc=$?
+assert_eq "[SPEC-4i] GUARD: a genuine violation with no concurrent writer still fails the dispatch" \
+    "1" "$_genuine_rc"
+assert_file_exists "[SPEC-4i] GUARD: the violated marker is still written" \
+    "$JOB_DIR/runtime/write-boundary-violated"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

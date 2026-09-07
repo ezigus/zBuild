@@ -389,6 +389,54 @@ write_boundary_violation_recorded() {
     fi
 }
 
+# ─── _wb_external_writer_witness <state_dir> ────────────────────────────────
+# Print the path of a file that appeared AFTER the dispatch returned, if one
+# does. Empty output means no external writer could be demonstrated.
+#
+# By the time write_boundary_check runs, the dispatch subshell has already
+# returned — the stage's own writer is gone. So a file that is newer than a
+# marker taken NOW cannot be the swept stage's. Continued activity in a watched
+# root is therefore positive evidence of a different process, which is the only
+# thing `find -newer` can honestly say: mtime records when, never who.
+_wb_external_writer_witness() {
+    local _sd="${1:-}"
+    local _settle="${ZBUILD_WRITE_BOUNDARY_SETTLE_MS:-250}"
+    # An operator can disable the probe outright; 0 keeps the pre-#1809 behaviour
+    # of halting on any candidate.
+    [[ "$_settle" =~ ^[0-9]+$ ]] || _settle=250
+    [[ "$_settle" -eq 0 ]] && return 0
+
+    local _probe="${_sd}/runtime/write-boundary.settle.$$"
+    mkdir -p "${_sd}/runtime" 2>/dev/null || return 0
+    : > "$_probe" 2>/dev/null || return 0
+    _wb_clock_advance_past "$_probe"
+    sleep "$(awk "BEGIN{printf \"%.3f\", ${_settle}/1000}")" 2>/dev/null || sleep 1
+    local _witness
+    _witness="$(write_boundary_sweep "$_probe" 2>/dev/null | head -n 1 || true)"  # sigpipe-ok: sweep is bounded by find
+    rm -f "$_probe" 2>/dev/null || true
+    [[ -n "$_witness" ]] && printf '%s' "$_witness"
+    return 0
+}
+
+# ─── _wb_unattributable_recorded <state_dir> <stage> <path> <witness> ───────
+# Record a candidate the sweep cannot attribute. Deliberately NOT silent and
+# deliberately NOT a violation: nothing is lost (all three channels carry it),
+# but a candidate that cannot be tied to the stage must not resolve it to
+# `broken` — that is the disposition an operator cannot retry.
+_wb_unattributable_recorded() {
+    local _sd="$1" _stage="${2:-}" _path="${3:-}" _witness="${4:-}"
+    printf 'write-boundary: stage=%s candidate not attributable (external writer active: %s): %s\n' \
+        "$_stage" "$_witness" "$_path" >&2
+    if [[ -n "${ZBUILD_WRITE_BOUNDARY_LOG:-}" ]]; then
+        printf 'unattributable stage=%s path=%s witness=%s\n' "$_stage" "$_path" "$_witness" \
+            >> "$ZBUILD_WRITE_BOUNDARY_LOG" 2>/dev/null || true
+    fi
+    if declare -F emit_event >/dev/null 2>&1; then
+        emit_event "stage.write_boundary.unattributable" "stage=${_stage}" \
+            "path=${_path}" "witness=${_witness}" || true
+    fi
+}
+
 # ─── write_boundary_check <plugin_dir> <state_file> <stage> [<map_element>] ──
 # Orchestrate sweep + classify. Returns 1 on first violation, 0 otherwise.
 # First line guards on empty state_file.
@@ -405,10 +453,20 @@ write_boundary_check() {
     # Resolve the allow list ONCE per dispatch, not once per swept candidate.
     local _allow; _allow="$(write_boundary_allow_list "$_sd")"
     local _cand _cls
+    local _witness
     while IFS= read -r _cand; do
         [[ -z "$_cand" ]] && continue
         _cls="$(write_boundary_classify "$_cand" "$_sd" "$_pd" "$_allow")"
         if [[ "$_cls" == "violation" ]]; then
+            # Only pay the settle cost on the failure path, and only once per
+            # dispatch — a clean dispatch never reaches here.
+            if [[ -z "${_witness+x}" ]]; then
+                _witness="$(_wb_external_writer_witness "$_sd")"
+            fi
+            if [[ -n "$_witness" ]]; then
+                _wb_unattributable_recorded "$_sd" "$_stage" "$_cand" "$_witness"
+                continue
+            fi
             write_boundary_violation_recorded "$_sd" "$_stage" "$_cand"
             return 1
         fi
