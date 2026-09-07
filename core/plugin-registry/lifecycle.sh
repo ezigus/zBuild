@@ -459,6 +459,16 @@ plugin_hook_call() {
             if ! scan_plugin_outputs "$plugin_dir" "$state_file_arg" "$stage_arg"; then
                 emit_event "plugin.$hook_name.artifact_check_failed" \
                     "plugin=$plugin_id" "kind=$kind"
+                # A dispatch that STARTED must also END. This arm and the
+                # write-boundary arm below both `return 1` from inside the rc=0
+                # branch, so neither reaches the `complete` emit nor the `else`
+                # arm's `error` emit — the start was left without a partner and
+                # the run's own log could not say which stage died (run
+                # 33899683569: 54 start, 48 complete, 5 error). `reason=` is a
+                # data field on an already-declared event name, so the event-NAME
+                # set is unchanged and the sequence goldens are untouched.
+                emit_event "plugin.$hook_name.error" "plugin=$plugin_id" \
+                    "kind=$kind" "rc=1" "reason=artifact-check-failed"
                 return 1
             fi
             # #1809 (ADR-058 C9): sweep for writes outside declared outputs and
@@ -467,6 +477,12 @@ plugin_hook_call() {
             if declare -F write_boundary_check >/dev/null 2>&1; then
                 if ! write_boundary_check "$plugin_dir" "$state_file_arg" "$stage_arg" \
                         "${ZBUILD_MAP_ELEMENT:-}"; then
+                    # See the artifact-check arm above: same missing-terminal
+                    # defect. write_boundary_violation_recorded has already named
+                    # the offending path on its own three channels; this event
+                    # is what closes the start/end pair.
+                    emit_event "plugin.$hook_name.error" "plugin=$plugin_id" \
+                        "kind=$kind" "rc=1" "reason=write-boundary-violation"
                     return 1
                 fi
             fi
