@@ -220,6 +220,38 @@ else
         "absent from ADR-019: $missing_from_adr"
 fi
 
+# ─── SPEC-13: every raw verdict in ADR-019 has an explicit classification ────
+# SPEC-10 checks the manifest → ADR direction. This reverse list catches a word
+# documented in the table that falls through verdict_classify's unknown arm.
+print_test_section "13. ADR-019's raw verdicts are all classified"
+adr_table="$(sed -n '/^| Verdict (raw)/,/^$/p' "$ADR019")"
+while IFS= read -r raw; do
+    case "$raw" in
+        ""|"rc != 0"|⚠|✓|✗) continue ;;
+    esac
+    cls="$(verdict_classify "$raw")"
+    if [[ "$cls" == "unknown" ]]; then
+        assert_fail "[SPEC-13] ADR-019 verdict $raw is classified" \
+            "verdict_classify($raw) returned unknown"
+    else
+        assert_pass "[SPEC-13] ADR-019 verdict $raw is classified"
+    fi
+done < <(grep -oE '`[^`]+`' <<<"$adr_table" | tr -d '`' | sort -u)
+
+# ─── SPEC-14: migrated historical words are absent from the verdict table ────
+# #1832 moved these out of `verdict` into disposition/structured fields. Keeping
+# them in ADR-019 would document a classifier arm that must intentionally remain
+# absent and would recreate the exact table drift this issue guards.
+print_test_section "14. migrated words are not listed as verdicts"
+for raw in did_not_finish empty_diff scope_too_large inert_build; do
+    if grep -qF -- "\`$raw\`" <<<"$adr_table"; then
+        assert_fail "[SPEC-14] migrated $raw is absent from ADR-019's verdict table" \
+            "ADR-019 still lists $raw as a raw verdict"
+    else
+        assert_pass "[SPEC-14] migrated $raw is absent from ADR-019's verdict table"
+    fi
+done
+
 # ─── Wiring: the lint is reachable from both entrypoints (#1682) ────────────
 print_test_section "9. wiring — npm run lint and the CI Lint job"
 assert_contains "[wiring] package.json lint chain invokes the checker" \

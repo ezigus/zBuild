@@ -241,16 +241,22 @@ and maps the verdict to one of `pass | warn | fail | unknown`:
 | `corresponds` (#2034)                        | pass  | `✓`   | GREEN  |
 | `covered` (#1683)                            | pass  | `✓`   | GREEN  |
 | `skipped`, `healthy`, `deployed`             | pass  | `✓`   | GREEN  |
-| `request_changes`, `incomplete`, `did_not_finish`, `degraded` | warn | `⚠` | YELLOW |
+| `request_changes`, `incomplete`, `degraded` | warn | `⚠` | YELLOW |
 | `partial`, `uncheckable` (#2034)             | warn  | `⚠`   | YELLOW |
 | `unjudged` (#2062)                           | warn  | `⚠`   | YELLOW |
 | `unreadable` (#1683)                         | warn  | `⚠`   | YELLOW |
 | `fail`, `error`, `block`, `scope_violation`, `corrupt_diff` | fail | `✗` | RED |
 | `mismatch` (#2034)                           | fail  | `✗`   | RED    |
 | `uncovered` (#1683)                          | fail  | `✗`   | RED    |
-| `empty_diff`, `scope_too_large`, `inert_build` | fail | `✗`  | RED    |
 | missing/malformed primary artifact           | warn  | `⚠`   | YELLOW |
 | `rc != 0` (any cause)                        | fail  | `✗`   | RED — rc always wins |
+
+The historical words `did_not_finish`, `empty_diff`, `scope_too_large`, and
+`inert_build` are intentionally absent from this verdict table. #1832 migrated
+them out of the stage-owned `verdict` channel: recoverability now belongs to
+the engine-owned `disposition`, while `empty_diff` and `inert_build` are
+structured stage data. They must therefore remain unknown to `verdict_classify`
+and must not be presented as classifier arms here.
 
 **On the #2034 row split.** `spec-correspondence` judges whether an assertion
 tests what its SPEC says. `partial` and `uncheckable` are findings rather than
