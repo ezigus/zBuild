@@ -159,7 +159,16 @@ while IFS= read -r _p; do _PLUGINS+=("$_p"); done < <(
 # the same search this guard exists to spare them.
 cd "$REPO_ROOT" || exit 2
 _OFFENDERS="$(_scan "${_PLUGINS[@]}")"
-if [[ -z "$_OFFENDERS" ]]; then
+# Vacuity: SPEC-4 guards the DETECTOR (a typo in _calls_router) by calling it on
+# hardcoded paths; it never touches _PLUGINS, so it cannot see an empty
+# POPULATION. Two different failure modes. Without this, a find that returns
+# nothing — directory rename, path drift, a failed cd in the process
+# substitution — passes SPEC-1 with "all 0 plugins", which is the free pass this
+# whole guard exists to prevent.
+if [[ "${#_PLUGINS[@]}" -eq 0 ]]; then
+    assert_fail "[SPEC-1][vacuity] find returned no plugin.sh files" \
+        "the population is empty; SPEC-1 asserted nothing"
+elif [[ -z "$_OFFENDERS" ]]; then
     assert_pass "[SPEC-1] all ${#_PLUGINS[@]} plugins that call route_to_model source $_ROUTER_LIB"
 else
     assert_fail "[SPEC-1] a plugin calls route_to_model without sourcing $_ROUTER_LIB" \
