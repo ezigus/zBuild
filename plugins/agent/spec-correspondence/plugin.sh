@@ -231,7 +231,8 @@ spec_correspondence_run() {
     fi
 
     local reason="judged $n SPEC(s): $n_corr correspond, $n_part partial, $n_mis mismatch, $n_unch uncheckable, $n_unj unjudged"
-    _sc_emit "spec_correspondence.judged" "specs=$n" "mismatch=$n_mis" "partial=$n_part" "unjudged=$n_unj"
+    _sc_emit "spec_correspondence.judged" "specs=$n" "corresponds=$n_corr" \
+        "partial=$n_part" "mismatch=$n_mis" "uncheckable=$n_unch" "unjudged=$n_unj"
     _sc_write_result "$art" "$worst" "$reason" \
         "$(jq -nc --argjson c "$n_corr" --argjson p "$n_part" --argjson m "$n_mis" \
                   --argjson u "$n_unch" --argjson j "$n_unj" \

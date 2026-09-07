@@ -104,6 +104,17 @@ printf '{}' > "$_S/pipeline-state.json"
 
 set +e; spec_correspondence_run "spec-correspondence" "$_S/pipeline-state.json"; _rc=$?; set -e
 _P="$(cat "$_SC_PROMPT" 2>/dev/null || true)"
+_judged_event="$(jq -c 'select(.type == "spec_correspondence.judged")' "$ZBUILD_EVENTS_JSONL" | tail -n 1)"
+assert_eq "[SPEC-7][change] judged event carries the total SPEC count" \
+    "1" "$(jq -r '.data.specs // "MISSING"' <<< "$_judged_event")"
+for _pair in corresponds:1 partial:0 mismatch:0 uncheckable:0 unjudged:0; do
+    _counter="${_pair%%:*}"
+    _expected="${_pair##*:}"
+    assert_eq "[SPEC-7][change] judged event carries $_counter counter" \
+        "$_expected" "$(jq -r --arg k "$_counter" '.data[$k] // "MISSING"' <<< "$_judged_event")"
+done
+assert_eq "[SPEC-7][change] judged event counters sum to specs" \
+    "1" "$(jq -r '[.data.corresponds, .data.partial, .data.mismatch, .data.uncheckable, .data.unjudged] | map(tonumber) | add' <<< "$_judged_event")"
 _res() { jq -r "$1" "$_A/spec-correspondence-result.json" 2>/dev/null || echo MISSING; }
 
 assert_contains "[SPEC-1][change] the prompt carries the requirement TEXT" \
