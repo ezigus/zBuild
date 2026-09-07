@@ -44,6 +44,8 @@ validate_manifest "$PLUGIN_DIR/manifest.yaml" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "security-lens manifest validates (kind: agent + requires.core: [redaction, ...])" "0" "$rc"
+assert_contains "security-lens declares its route_to_model dependency" \
+    "$(cat "$PLUGIN_DIR/manifest.yaml")" $'    - router'
 
 discovered="$(discover_plugins "$REPO_ROOT/plugins")"
 assert_contains "security-lens is discovered" "$discovered" "agent/security-lens"
