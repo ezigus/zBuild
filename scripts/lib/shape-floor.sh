@@ -22,9 +22,13 @@
 # while HEAD~1 was literally the last candidate in the chain.
 #
 # An unresolvable baseline makes _sf_diff_files print nothing, so no path can
-# match and the floor reports SKIP no_shape_change. That is a degrade, not a
-# verdict about the branch — read it together with the gates that DO fail loud
-# (reachability/negctl report baseline_resolve_failed on the same input).
+# match. Until #2064 the floor reported SKIP no_shape_change there — a claim
+# about a diff it had never seen, indistinguishable downstream from a branch
+# that genuinely touches no shape. It now reports SKIP no_baseline: same verdict
+# (the floor still degrades open, it does not invent a fail), honest reason. The
+# verdict vocabulary is unchanged — `no_baseline` is a REASON, already the word
+# secret-scan and the negctl guards use for this input, and the gates that fail
+# loud on it say baseline_resolve_failed (reachability/negctl).
 #
 # Source-only; no `set -e` at top level (would mutate caller options).
 
@@ -51,6 +55,17 @@ _sf_diff_files() {
     base_sha="$(zbuild_resolve_merge_base "$repo_root")"
     [[ -z "$base_sha" ]] && return
     git -C "$repo_root" diff --name-only "$base_sha" HEAD 2>/dev/null || true
+}
+
+# ─── _sf_baseline_available <repo_root> ──────────────────────────────────────
+# rc=0 when the floor has a basis to diff against; rc=1 when it does not (#2064).
+# Keyed on the RESOLVER, never on "the diff came back empty" — those two are the
+# same observation with opposite meanings, and conflating them is the bug.
+# ZBUILD_DIFF_CMD supplies the change set directly, standing in for the baseline.
+_sf_baseline_available() {
+    local repo_root="$1"
+    [[ -n "${ZBUILD_DIFF_CMD:-}" ]] && return 0
+    [[ -n "$(zbuild_resolve_merge_base "$repo_root")" ]]
 }
 
 # ─── _sf_schema_diff <repo_root> ─────────────────────────────────────────────
@@ -191,6 +206,14 @@ _sf_collect_missing_floor_files() {
 _sf_shape_floor() {
     local repo_root="$1"
     local paths_file="$repo_root/config/shape-change-paths.txt"
+
+    # #2064: before any claim ABOUT the diff, establish that there is one to
+    # claim anything about. Reported first because every check below reads an
+    # empty change set as "clean".
+    if ! _sf_baseline_available "$repo_root"; then
+        printf 'SHAPE_FLOOR SKIP no_baseline\n'
+        return 0
+    fi
 
     local diff_files
     diff_files="$(_sf_diff_files "$repo_root")"

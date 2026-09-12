@@ -20,8 +20,10 @@ description: |
   Merge-base is resolved via zbuild_resolve_merge_base — the trunk is resolved
   (origin/HEAD → known names → local, #1655), never assumed to be main, and
   there is no HEAD~1 candidate, so the floor sees the full branch change set.
-  An unresolvable baseline yields NO diff files, which reads as skip
-  no_shape_change: the floor degrades open, it does not invent a verdict.
+  An unresolvable baseline yields NO diff files. That is reported as
+  skip `no_baseline` (#2064), NOT `no_shape_change` — the floor still degrades
+  open and invents no verdict, but it says it could not check rather than
+  claiming it checked and found nothing.
 
   Always returns rc=0; the verdict lives in the artifact (ADR-040 verdict-in-artifact).
   ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
