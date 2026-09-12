@@ -103,11 +103,14 @@ verdict_classify() {
         # (analogous to review's `request_changes`) — iterating, not done.
         # Maps to warn, not fail. Without this, every impact-incomplete fired
         # a `pipeline.indicator.unknown_verdict` event 1× per iter.
-        # #1208: `did_not_finish` is build's mid-flight verdict (router_timeout /
-        # error). Non-terminal (iterating, not done, not a structural fail) → warn.
-        # It is deliberately NOT in the structural-failure pass-through set
-        # (error/corrupt_diff/block) so _cycle_detect_blocked never halts on it —
-        # a timeout iterates, it does not block the cycle.
+        # #2076: there is deliberately NO `did_not_finish` arm. It was build's
+        # mid-flight verdict (#1208), but ADR-054 §6 split verdict from
+        # disposition and #1832 migrated it — with empty_diff, scope_too_large
+        # and inert_build — out of the verdict channel entirely. Mid-flight is
+        # now `disposition=interrupted`, which cycle-orchestrator.sh reads
+        # directly; verdict_classify is never consulted on that path. The word
+        # falling through to *) → unknown is correct: it is an undeclared verdict.
+        # Pinned by tests/unit/core-pipeline-verdict-test.sh SPEC-4.
         # #1708: `degraded` is monitor's "service is up but below threshold"
         # verdict — deliberately warn, not fail. monitor normalises anything that
         # is not `pass` to `degraded` (plugins/agent/monitor/plugin.sh:143), so

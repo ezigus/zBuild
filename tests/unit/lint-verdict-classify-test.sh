@@ -21,6 +21,11 @@
 #                    than reporting a pass over zero files
 #   SPEC-8 [change]: healthy / deployed / skipped classify pass, degraded warns
 #   SPEC-9 [guard] : `*)` → unknown survives for UNDECLARED runtime values
+#   SPEC-13 [change]: the CONVERSE of SPEC-10 (#2076) — every verdict listed in
+#                    ADR-019's table has a verdict_classify arm. SPEC-10 walks
+#                    manifests→ADR, so a word in the table with no arm passed
+#                    silently; that is how `did_not_finish` and the #1832
+#                    disposition migrants sat in the table classifying `unknown`.
 #
 # Plus wiring: a linter nothing invokes is inert (#1682 one-definition rule).
 set -euo pipefail
@@ -218,6 +223,57 @@ if [[ -z "$missing_from_adr" ]]; then
 else
     assert_fail "[SPEC-10] every manifest-declared verdict appears in ADR-019's table" \
         "absent from ADR-019: $missing_from_adr"
+fi
+
+# ─── SPEC-13: the CONVERSE direction — ADR table → verdict_classify (#2076) ──
+# SPEC-10 above walks manifests→ADR, so a word present in the ADR table but with
+# no `verdict_classify` arm passes it silently. That is the drift #2076 found:
+# `did_not_finish` sat in the warn row while classifying through `*)` → unknown,
+# so every occurrence emitted a spurious pipeline.indicator.unknown_verdict for a
+# word the table calls known. Net class was right by accident (the fallback also
+# warns), which is exactly why nothing noticed. Walk the table's own rows.
+print_test_section "13. every verdict in ADR-019's table has a verdict_classify arm"
+# Column 1 of the verdict table, backticked tokens only. `rc != 0` and the
+# prose rows carry no bare-word token, so the [a-z0-9_*] filter drops them.
+_adr_table_verdicts() {
+    awk '
+        /^\| Verdict \(raw\)/ { t=1; next }
+        t && /^\|[[:space:]]*-/ { next }
+        t && !/^\|/ { exit }
+        t {
+            split($0, cols, "|")
+            col1 = cols[2]
+            while (match(col1, /`[^`]+`/)) {
+                tok = substr(col1, RSTART + 1, RLENGTH - 2)
+                col1 = substr(col1, RSTART + RLENGTH)
+                if (tok ~ /^[a-z0-9_*]+$/) print tok
+            }
+        }
+    ' "$ADR019" | sort -u
+}
+adr_table_verdicts="$(_adr_table_verdicts)"
+adr_table_count="$(grep -c . <<<"$adr_table_verdicts" || true)"
+# A parser that silently matched nothing would report a vacuous pass over zero
+# rows — the #1708 failure mode this whole file exists to end.
+if [[ "$adr_table_count" -ge 10 ]]; then
+    assert_pass "[SPEC-13] ADR-019's verdict table parsed ($adr_table_count tokens, non-vacuous)"
+else
+    assert_fail "[SPEC-13] ADR-019's verdict table parsed (non-vacuous)" \
+        "parsed only $adr_table_count token(s) from $ADR019 — check the table markers"
+fi
+unclassified_from_adr=""
+while IFS= read -r v; do
+    [[ -n "$v" ]] || continue
+    # route_* is a wildcard family in verdict_classify; the table documents no
+    # row for it, but tolerate one if a future edit adds it.
+    case "$v" in route_*) continue ;; esac
+    [[ "$(verdict_classify "$v")" == "unknown" ]] && unclassified_from_adr+="$v "
+done <<<"$adr_table_verdicts"
+if [[ -z "$unclassified_from_adr" ]]; then
+    assert_pass "[SPEC-13] every verdict in ADR-019's table has a verdict_classify arm"
+else
+    assert_fail "[SPEC-13] every verdict in ADR-019's table has a verdict_classify arm" \
+        "listed in ADR-019 but classify to unknown: $unclassified_from_adr"
 fi
 
 # ─── Wiring: the lint is reachable from both entrypoints (#1682) ────────────
