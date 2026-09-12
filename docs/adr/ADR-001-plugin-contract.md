@@ -293,6 +293,16 @@ assertion inside `plugin_hook_call` was considered and rejected: the dispatch su
 engine shell, where `event-bus` and `state` are already loaded, so the assertion would pass for free
 for half the vocabulary and would additionally bless plugins depending on ambient engine functions.
 
+**The parser was fixed first (#2083).** `_yaml_get_requires_core_list` accepted only
+`^[[:space:]]+-[[:space:]]+` lines inside the `core:` block; a comment or a blank line fell through to
+the terminating branch, so the list silently ended there and every later entry was dropped. All three
+shapes are valid YAML. It survived because the only enforced consumer was the literal-`redaction`
+check, and that entry sits at position 1 — the one position truncation cannot reach: a comment
+*before* it empties the list and fails loudly, while a comment *after* it drops only the remainder and
+passes. Resolution makes the whole list load-bearing, so a resolver reading through that parser would
+report "no violation" for a declaration it never saw — a fix containing the bug it fixes. A sweep
+confirms no real manifest's parsed set changed.
+
 **Relationship to neighbouring work.** #2063 (`tests/unit/plugin-route-source-guard-test.sh`) guards
 the CALL-SITE direction — a `plugin.sh` naming `route_to_model` must source `route.sh` — which no
 declaration resolver can see (`security-lens` calls the router and declares nothing). Its SPEC-7 is

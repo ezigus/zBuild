@@ -226,11 +226,18 @@ yaml_get_list() {
 # Emits one core item per line. Structurally parses ONLY the `requires:` →
 # `core:` sub-block — so a stray `- redaction` outside that block does NOT
 # satisfy the membership check (closes the #294 bypass surface).
-# Handles both inline `core: [a, b]` and multi-line:
+# Handles both inline `core: [a, b]` and multi-line, and (since #2083) blank
+# lines and comments interleaved anywhere in the list — leading, trailing or
+# between items — without truncating it:
 #   requires:
 #     core:
 #       - a
+#       # why b is needed
+#
 #       - b
+# The block still ends at the first line that is neither an item nor a
+# comment/blank, so a sibling key (`plugins:`) or the next top-level section
+# terminates it and a later `- ` list is never swept in.
 _yaml_get_requires_core_list() {
     local file="$1"
     awk '
@@ -276,6 +283,20 @@ _yaml_get_requires_core_list() {
                 }
                 next
             }
+            # #2083: a blank line or a comment-only line is NOT the end of the
+            # list. Both are valid YAML between sequence items, and both used to
+            # fall through to the terminator below — so
+            #     core:
+            #       - redaction
+            #       # a rationale comment
+            #       - router
+            # parsed to `redaction` alone and every later entry silently did not
+            # exist. The asymmetry is what hid it for so long: the only enforced
+            # consumer was the kind: agent literal-`redaction` check, and a
+            # comment BEFORE the first item empties the list (loud failure) while
+            # one AFTER it drops only the remainder (silent). #2065 makes the
+            # whole list load-bearing, so the truncation had to go first.
+            if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/) next
             # Any other content at the same or shallower indent ends the block.
             in_core = 0
         }

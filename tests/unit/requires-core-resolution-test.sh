@@ -34,6 +34,11 @@
 #     belt-and-braces at two layers, not a duplicate to be reconciled.
 #   #1321 is `requires.plugins`, a different field with a different resolver.
 #     Out of scope here; this file asserts nothing about it.
+#   #2083 is the PARSER under this resolver — `_yaml_get_requires_core_list`
+#     silently truncated the list at the first comment or blank line. Fixed
+#     here rather than deferred, because a resolver reading through a
+#     truncating parser reports "no violation" for a declaration it never saw:
+#     the fix would contain the bug it fixes. SPEC-13 owns it.
 #
 # ─── SPECs ──────────────────────────────────────────────────────────────────
 # SPEC-1: the vocabulary is CLOSED — an entry nobody can resolve is refused,
@@ -65,6 +70,10 @@
 #          non-empty and the parse is live)
 # SPEC-12[negative control]: each rule is pointed at the wrong thing and
 #          required to go red, so no assertion above can pass for free
+# SPEC-13: the parser under all of the above reads the WHOLE list (#2083) — a
+#          comment or blank line between entries no longer ends it, the block
+#          still terminates, the real tree's parsed sets are unchanged, and a
+#          `router` declared after a comment is still enforced (SPEC-13h)
 set -uo pipefail
 # Deliberately NOT `set -e`: assert_fail returns non-zero when called without a
 # detail argument, which under -e would abort before print_test_results.
@@ -140,6 +149,19 @@ _validate_err() {
     printf '%s\nrc=%s\n' "$out" "$rc"
 }
 
+# _unresolved_entries <plugin_dir> — ONLY the entry names, comma-joined.
+#
+# Never assert against the raw resolver output with a bare entry name: the
+# REASON text names provider paths, so `core/router/route.sh` contains the
+# substring "router" and `core/redaction/scope-redaction.sh` contains
+# "redaction". A `grep router` on the whole line therefore passes when some
+# OTHER entry is the one unresolved. That false green really happened here —
+# SPEC-13h went green against the unfixed parser, "finding" a router violation
+# that was actually redaction's reason string. Assert on the field, not the prose.
+_unresolved_entries() {
+    requires_core_unresolved "$1" | cut -f1 | tr '\n' ',' | sed 's/,$//'
+}
+
 _REQ_ROUTER='requires:
   core:
     - redaction
@@ -182,7 +204,7 @@ if [[ "$_out" == *"rc=0"* ]]; then
         "validate_manifest accepted 'banana'; output: ${_out//$'\n'/ }"
 else
     assert_contains "[SPEC-1] an unknown requires.core entry is refused, named" \
-        "$_out" "banana"
+        "$_out" "requires.core 'banana'"
     assert_contains "[SPEC-1] the refusal names the plugin" \
         "$_out" "banana-dep"
 fi
@@ -195,7 +217,7 @@ if [[ "$_out" == *"rc=0"* ]]; then
     assert_fail "[SPEC-2] 'router' declared but never sourced must be refused" \
         "validate_manifest accepted it; output: ${_out//$'\n'/ }"
 else
-    assert_contains "[SPEC-2] the refusal names the unresolved entry" "$_out" "router"
+    assert_contains "[SPEC-2] the refusal names the unresolved entry" "$_out" "requires.core 'router'"
     assert_contains "[SPEC-2] the refusal names the plugin" "$_out" "router-unloaded"
 fi
 
@@ -215,7 +237,7 @@ _P_ROOT=/nonexistent
 response="$(route_to_model "T2" "$prompt")"'
 _fx_sc_only="$(_fixture shellcheck-only agent "$_REQ_ROUTER" "$_BODY_SHELLCHECK_ONLY")"
 assert_contains "[SPEC-2] a bare '# shellcheck source=' directive does not resolve 'router'" \
-    "$(requires_core_unresolved "$_fx_sc_only")" "router"
+    ",$(_unresolved_entries "$_fx_sc_only")," ",router,"
 
 _BODY_TRAILING_COMMENT='#!/usr/bin/env bash
 _P_ROOT=/nonexistent
@@ -223,7 +245,7 @@ source "$_P_ROOT/scripts/lib/helpers.sh"   # not core/router/route.sh — see AD
 response="$(route_to_model "T2" "$prompt")"'
 _fx_trailing="$(_fixture trailing-comment agent "$_REQ_ROUTER" "$_BODY_TRAILING_COMMENT")"
 assert_contains "[SPEC-2] route.sh named only in a trailing comment does not resolve 'router'" \
-    "$(requires_core_unresolved "$_fx_trailing")" "router"
+    ",$(_unresolved_entries "$_fx_trailing")," ",router,"
 
 _BODY_PATH_VAR='#!/usr/bin/env bash
 _P_ROOT=/nonexistent
@@ -231,7 +253,7 @@ _ROUTER_LIB="$_P_ROOT/core/router/route.sh"
 response="$(route_to_model "T2" "$prompt")"'
 _fx_pathvar="$(_fixture path-var-only agent "$_REQ_ROUTER" "$_BODY_PATH_VAR")"
 assert_contains "[SPEC-2] route.sh assigned to a variable but never sourced does not resolve 'router'" \
-    "$(requires_core_unresolved "$_fx_pathvar")" "router"
+    ",$(_unresolved_entries "$_fx_pathvar")," ",router,"
 
 # ─── SPEC-3: router declared and loaded ─────────────────────────────────────
 _fx_r_loaded="$(_fixture router-loaded agent "$_REQ_ROUTER" "$_BODY_CALLS_AND_SOURCES")"
@@ -253,7 +275,7 @@ if [[ "$_out" == *"rc=0"* ]]; then
         "validate_manifest accepted it; output: ${_out//$'\n'/ }"
 else
     assert_contains "[SPEC-4] the refusal names redaction as the unresolved entry" \
-        "$_out" "redaction"
+        "$_out" "requires.core 'redaction'"
 fi
 
 # ─── SPEC-5: redaction satisfied transitively through route.sh (ADR-043) ────
@@ -359,7 +381,8 @@ if [[ "$_out" == *"rc=0"* ]]; then
     assert_fail "[SPEC-10] a kind:agent omitting 'redaction' must still be refused (ADR-004)" \
         "validate_manifest accepted it; output: ${_out//$'\n'/ }"
 else
-    assert_contains "[SPEC-10] the ADR-004 refusal still names redaction" "$_out" "redaction"
+    assert_contains "[SPEC-10] the ADR-004 refusal still names redaction" \
+        "$_out" "requires.core 'redaction'"
 fi
 # kind:tool is exempt, as it always was.
 _fx_tool="$(_fixture tool-no-redaction tool 'requires:
@@ -411,7 +434,7 @@ fi
 # — transitive redaction and ambient event-bus/state — are lenient for a REASON
 # rather than because the resolver returns empty for everything.
 assert_contains "[SPEC-12] the resolver names 'router' for a declared-not-loaded router" \
-    "$(requires_core_unresolved "$_fx_r_unloaded")" "router"
+    ",$(_unresolved_entries "$_fx_r_unloaded")," ",router,"
 if [[ "$_API_OK" -eq 1 ]]; then
     assert_eq "[SPEC-12] the resolver returns nothing for a plugin that loads what it declares" \
         "" "$(requires_core_unresolved "$_fx_r_loaded")"
@@ -428,7 +451,7 @@ if [[ "$_API_OK" -eq 1 ]]; then
         "" "$(requires_core_unresolved "$_fx_ambient")"
 fi
 assert_contains "[SPEC-12] but a fabricated entry in the same manifest shape does not" \
-    "$(requires_core_unresolved "$_fx_banana")" "banana"
+    ",$(_unresolved_entries "$_fx_banana")," ",banana,"
 # And the classes are distinct — if every entry were classed ambient, SPEC-2
 # would pass for free.
 assert_eq "[SPEC-12] 'router' is not classed engine-ambient" \
@@ -437,6 +460,166 @@ assert_eq "[SPEC-12] 'state' is classed engine-ambient (the recorded decision)" 
     "engine-ambient" "$(requires_core_class state)"
 assert_eq "[SPEC-12] 'redaction' is classed conditional (required only on a model-reaching path)" \
     "conditional" "$(requires_core_class redaction)"
+
+# ─── SPEC-13: the parser under the resolver reads the WHOLE list (#2083) ────
+# _yaml_get_requires_core_list accepted only `^[[:space:]]+-[[:space:]]+` lines
+# inside the `core:` block; anything else fell through to the terminating
+# branch, so a comment or a blank line SILENTLY ENDED THE LIST and every later
+# entry was dropped. All three shapes below are valid YAML.
+#
+# This is asserted here, in the resolver's own file, because the resolver
+# INHERITS the truncation: a plugin declares `router`, the parser never yields
+# it, and requires_core_unresolved reports nothing to fix. A #2065 built on this
+# parser would be a fix containing the bug it fixes — green, and blind to
+# exactly the declaration it exists to check. SPEC-13h is that end-to-end case.
+#
+# Note the asymmetry that made it survive: the only enforced consumer was the
+# `kind: agent` literal-`redaction` check. A comment BEFORE `- redaction`
+# empties the list and that check fails loudly. A comment AFTER it leaves
+# `redaction` intact and drops the rest, so validation passed and the remainder
+# of the declaration quietly did not exist.
+print_test_section "[SPEC-13] requires.core list parsing (#2083)"
+
+_PARSE_DIR="$TEST_TEMP_DIR/parse"
+mkdir -p "$_PARSE_DIR"
+# _parsed <name> <yaml> — the parser's output for a manifest fragment, comma-joined.
+_parsed() {
+    printf '%s\n' "$2" > "$_PARSE_DIR/$1.yaml"
+    _yaml_get_requires_core_list "$_PARSE_DIR/$1.yaml" | tr '\n' ',' | sed 's/,$//'
+}
+
+assert_eq "[SPEC-13] a comment BETWEEN entries does not end the list" \
+    "redaction,event-bus,router" \
+    "$(_parsed mid-comment 'requires:
+  core:
+    - redaction
+    # a rationale comment
+    - event-bus
+    - router')"
+
+assert_eq "[SPEC-13] a blank line between entries does not end the list" \
+    "redaction,event-bus,router" \
+    "$(_parsed mid-blank 'requires:
+  core:
+    - redaction
+
+    - event-bus
+    - router')"
+
+assert_eq "[SPEC-13] a comment BEFORE the first entry does not empty the list" \
+    "redaction,event-bus" \
+    "$(_parsed lead-comment 'requires:
+  core:
+    # why we need these
+    - redaction
+    - event-bus')"
+
+assert_eq "[SPEC-13] the inline form still parses" \
+    "redaction,event-bus,router" \
+    "$(_parsed inline 'requires:
+  core: [redaction, event-bus, router]')"
+
+assert_eq "[SPEC-13] a trailing comment on an entry is still stripped" \
+    "redaction,router" \
+    "$(_parsed trailing 'requires:
+  core:
+    - redaction   # ADR-004
+    - router      # ADR-043')"
+
+# Termination must survive the fix. Skipping comments must not let the block run
+# on and sweep up `- ` items from a LATER list — `provides.events` is two lines
+# of `- <name>` in almost every real manifest, and swallowing them would make
+# every plugin declare a vocabulary of event names.
+assert_eq "[SPEC-13] a sibling key still ends the block" \
+    "redaction,event-bus" \
+    "$(_parsed sibling-key 'requires:
+  core:
+    - redaction
+    - event-bus
+  plugins: []')"
+assert_eq "[SPEC-13] a later top-level list is not swept into requires.core" \
+    "redaction" \
+    "$(_parsed later-list 'requires:
+  core:
+    - redaction
+# a column-0 comment between the blocks
+provides:
+  events:
+    - some.event
+    - other.event')"
+
+# The DoD sweep: every real manifest parses to the same set an INDEPENDENT
+# reader finds. The reader below is deliberately a different mechanism — sed
+# range addressing rather than an awk state machine — so it cannot share the
+# bug under test. If the fix ever over-reaches, this is what says so.
+_raw_core_entries() {
+    sed -n '/^[[:space:]]*core:[[:space:]]*$/,/^[[:space:]]\{0,2\}[a-zA-Z_][a-zA-Z_]*:/p' "$1" \
+        | sed -n 's/^[[:space:]]\{4,\}-[[:space:]]*//p' \
+        | sed -e 's/[[:space:]]*#.*//' -e 's/[[:space:]]*$//' \
+        | grep -v '^$'
+}
+_sweep_diff=""
+_sweep_n=0
+for _m in "${_REAL[@]}"; do
+    # Inline-form manifests have no `- ` lines for the independent reader to
+    # find; they are covered by the inline assertion above.
+    grep -qE '^[[:space:]]*core:[[:space:]]*$' "$_m" || continue
+    _sweep_n=$((_sweep_n + 1))
+    _got="$(_yaml_get_requires_core_list "$_m" | tr '\n' ',')"
+    _want="$(_raw_core_entries "$_m" | tr '\n' ',')"
+    [[ "$_got" == "$_want" ]] || \
+        _sweep_diff="${_sweep_diff:+$_sweep_diff; }${_m#"$REPO_ROOT"/}: parsed[$_got] raw[$_want]"
+done
+if [[ "$_sweep_n" -eq 0 ]]; then
+    assert_fail "[SPEC-13][vacuity] no manifest used the multi-line core: form" \
+        "the sweep compared nothing"
+elif [[ -z "$_sweep_diff" ]]; then
+    assert_pass "[SPEC-13] all $_sweep_n multi-line manifests parse to the independently-read entry set"
+else
+    assert_fail "[SPEC-13] the parser and an independent reader disagree about a real manifest" \
+        "$_sweep_diff"
+fi
+
+# ─── SPEC-13h: the bite — a truncated declaration must still be enforced ────
+# THE assertion for #2065's soundness. `router` sits after a comment, and
+# plugin.sh sources nothing. With the truncating parser the resolver never sees
+# `router` and reports a clean plugin; the declaration is unenforceable exactly
+# because it is declared.
+_REQ_COMMENTED='requires:
+  core:
+    - redaction
+    # the router is needed for the T2 judgement call below
+    - router'
+_fx_truncated="$(_fixture comment-truncated agent "$_REQ_COMMENTED" "$_BODY_CALLS_NO_SOURCE")"
+assert_contains "[SPEC-13h] 'router' declared after a comment is still resolved, and refused" \
+    ",$(_unresolved_entries "$_fx_truncated")," ",router,"
+_out="$(_validate_err "$_fx_truncated")"
+if [[ "$_out" == *"rc=0"* ]]; then
+    assert_fail "[SPEC-13h] validate_manifest must refuse a commented-list plugin that loads no router" \
+        "a comment in the list made the declaration invisible; output: ${_out//$'\n'/ }"
+else
+    assert_contains "[SPEC-13h] the refusal names router" "$_out" "requires.core 'router'"
+fi
+
+# ─── SPEC-13i: the asymmetry that hid the bug ───────────────────────────────
+# A comment AFTER `- redaction` leaves the ADR-004 literal check satisfied, so
+# the manifest validated while the rest of the declaration silently vanished.
+# Both halves are asserted: the ADR-004 check still passes (it always did), AND
+# the entries after the comment are now present.
+assert_contains "[SPEC-13i] redaction survives a following comment (the half that always worked)" \
+    "$(_parsed asymmetry 'requires:
+  core:
+    - redaction
+    # comment
+    - event-bus
+    - router')" "redaction"
+assert_contains "[SPEC-13i] and so does everything after it (the half that did not)" \
+    "$(_parsed asymmetry 'requires:
+  core:
+    - redaction
+    # comment
+    - event-bus
+    - router')" "router"
 
 cleanup_test_env
 print_test_results
