@@ -12,10 +12,17 @@ description: |
 hooks:
   run: security_lens_run
 requires:
+  # #2066: `router` — plugin.sh:29 sources core/router/route.sh and :124 calls
+  # route_to_model. The dependency was always real; only the declaration was
+  # missing, so nothing changes at runtime. The comment sits ABOVE `core:` and
+  # not among its items on purpose: _yaml_get_requires_core_list ends the list
+  # at the first line that is not a `- item`, so a comment between two entries
+  # silently drops everything after it.
   core:
     - redaction
     - event-bus
     - state
+    - router
   plugins: []
 
 provides:

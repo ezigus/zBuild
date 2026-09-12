@@ -30,22 +30,28 @@
 #         directive, which a comment-blind grep would accept as the real thing
 # SPEC-7: every manifest DECLARING `router` in requires.core has a sibling
 #         plugin.sh that sources route.sh — the declaration side of SPEC-1
+# SPEC-8: every plugin that CALLS route_to_model DECLARES `router` in
+#         requires.core — the converse of SPEC-7 (#2066)
 #
-# Why both a call-site guard (SPEC-1) and a declaration guard (SPEC-7): they
-# fail differently and neither subsumes the other.
+# Why three guards and not one: SPEC-1, SPEC-7 and SPEC-8 close three different
+# gaps between "calls it", "loads it" and "declares it", and no two of them
+# subsume the third.
 #   - test-author's manifest declared `requires.core: [..., router]` all along
 #     (#2060). The contract was right; only the source line was missing. SPEC-7
 #     catches "declared but not loaded" however the call is written — through a
 #     wrapper, through indirection, or from a lib the plugin sources later.
-#   - security-lens is the converse: it calls route_to_model and sources
-#     route.sh, but its manifest does NOT declare `router`. A declaration-only
-#     guard is blind to that shape, so SPEC-1 stays.
-# SPEC-7 is deliberately scoped to `router` and NOT generalised to the rest of
-# requires.core. `redaction` is supplied TRANSITIVELY by route.sh (ADR-043,
-# redaction-by-construction), and `state` names a DIRECTORY of five files with
-# no single marker, so a naive path match reports most of the tree broken.
-# `router` has exactly one file and no transitive provider, which is what makes
-# it checkable statically without a resolver.
+#   - security-lens was the converse (#2066): it calls route_to_model and
+#     sources route.sh — so SPEC-1 passes — while its manifest declared only
+#     redaction/event-bus/state, so SPEC-7 never examined it. Nothing was broken
+#     at runtime; the CONTRACT was wrong, and the manifest is the only
+#     machine-readable statement of what a plugin needs. SPEC-8 is that
+#     direction, and it is why SPEC-1 and SPEC-7 both stay.
+# SPEC-7 and SPEC-8 are deliberately scoped to `router` and NOT generalised to
+# the rest of requires.core. `redaction` is supplied TRANSITIVELY by route.sh
+# (ADR-043, redaction-by-construction), and `state` names a DIRECTORY of five
+# files with no single marker, so a naive path match reports most of the tree
+# broken. `router` has exactly one file and no transitive provider, which is
+# what makes it checkable statically without a resolver.
 #
 # BOUNDARY: this file is a STATIC guard only. `requires.core` is validated
 # today only syntactically — core/plugin-registry/manifest-validation.sh:329-335
@@ -53,7 +59,10 @@
 # checks the block is a list. Nothing at dispatch resolves an entry to a module;
 # it is the sole consumer, and neither the runner nor plugin-bootstrap.sh reads
 # it. Resolving requires.core properly, and the runtime post-source marker
-# check, are #2065 — not this file.
+# check, are #2065 — not this file. SPEC-8 does not anticipate that work: it
+# asserts the manifest is ACCURATE, which is the precondition #2065's resolver
+# depends on and cannot itself establish — a declaration that omits a real
+# dependency satisfies any resolver while still describing the plugin wrongly.
 set -uo pipefail
 # Deliberately NOT `set -e`: assert_fail returns non-zero when called without a
 # detail argument, which under -e would abort before print_test_results — a
@@ -395,6 +404,100 @@ else
         assert_fail "[SPEC-7] no manifest declares requires.core router" \
             "the parse is inert; SPEC-7 asserted nothing"
     fi
+fi
+
+# ─── SPEC-8: a router CALL must be declared in requires.core (#2066) ─────────
+# SPEC-7 walks from the declaration to the code. SPEC-8 walks the other way, and
+# only this direction can see security-lens's shape: a legitimate caller that
+# sources what it needs (so SPEC-1 is satisfied) and declares no `router` (so
+# SPEC-7 never reaches its manifest). It ran red naming exactly that plugin.
+#
+# _undeclared_router <plugin.sh...> — print every file that calls the router
+# whose sibling manifest omits `router` from requires.core. It takes paths
+# rather than reading _PLUGINS itself, which is what lets the negative control
+# below point it at synthetic fixtures.
+_undeclared_router() {
+    local f m
+    for f in "$@"; do
+        _calls_router "$f" || continue
+        m="$(dirname "$f")/manifest.yaml"
+        if [[ ! -f "$m" ]]; then
+            # Every plugin.sh in the tree has a sibling manifest; one that does
+            # not is unregisterable, so name it rather than skip it.
+            printf '%s(no manifest.yaml)\n' "$f"
+        elif ! grep -Fxq "router" <<<"$(_yaml_get_requires_core_list "$m")"; then
+            printf '%s\n' "$f"
+        fi
+    done
+}
+
+if ! declare -f _yaml_get_requires_core_list >/dev/null 2>&1; then
+    assert_fail "[SPEC-8] _yaml_get_requires_core_list is unavailable" \
+        "the manifest parser moved; SPEC-8 cannot run and must not pass silently"
+else
+    _CALLERS=()
+    for _f in "${_PLUGINS[@]}"; do
+        _calls_router "$_f" && _CALLERS+=("$_f")
+    done
+    _UNDECLARED="$(_undeclared_router "${_PLUGINS[@]}")"
+    # Vacuity: distinct from SPEC-1's. That one guards an empty _PLUGINS; this
+    # guards an empty CALLER set — _calls_router breaking (as it did once, on
+    # SIGPIPE) leaves the population full and the filter empty, and SPEC-8 would
+    # report "all 0 router callers declare router" on a tree full of offenders.
+    if [[ "${#_CALLERS[@]}" -eq 0 ]]; then
+        assert_fail "[SPEC-8][vacuity] no plugin was read as a router caller" \
+            "the caller filter is inert; SPEC-8 asserted nothing"
+    elif [[ -z "$_UNDECLARED" ]]; then
+        assert_pass "[SPEC-8] all ${#_CALLERS[@]} router callers declare router in requires.core"
+    else
+        assert_fail "[SPEC-8] a plugin calls route_to_model but its manifest omits router from requires.core" \
+            "undeclared: $(tr '\n' ' ' <<<"$_UNDECLARED")"
+    fi
+
+    # [negative control] SPEC-8 is an invariant, so once security-lens is fixed
+    # the live assertion passes without proving it can fail. `missing` is
+    # security-lens's exact shape — a caller declaring redaction/event-bus/state
+    # and nothing else — so if it ever comes back clean, the assertion above is
+    # decorative. `declared` and `inline` are the other half: a guard that
+    # flagged every caller would also "catch" #2066, and be useless.
+    _fx8() {
+        local name="$1" manifest="$2"
+        local d="$TEST_TEMP_DIR/fx8/$name"
+        mkdir -p "$d"
+        printf '%s\n' '#!/usr/bin/env bash' 'r="$(route_to_model "T2" "$p")"' > "$d/plugin.sh"
+        printf '%s\n' "$manifest" > "$d/manifest.yaml"
+        printf '%s' "$d/plugin.sh"
+    }
+    _fx8_missing="$(_fx8 missing 'id: fx
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+  plugins: []')"
+    _fx8_declared="$(_fx8 declared 'id: fx
+requires:
+  core:
+    - redaction
+    - event-bus
+    - state
+    - router
+  plugins: []')"
+    _fx8_inline="$(_fx8 inline 'id: fx
+requires:
+  core: [redaction, router]
+  plugins: []')"
+
+    assert_contains "[SPEC-8][negative control] a caller whose manifest omits router is flagged, by name" \
+        "$(_undeclared_router "$_fx8_missing")" "$_fx8_missing"
+    assert_eq "[SPEC-8][negative control] a caller whose manifest declares router is not flagged" \
+        "" "$(_undeclared_router "$_fx8_declared")"
+    assert_eq "[SPEC-8][negative control] an inline-list declaration satisfies the guard too" \
+        "" "$(_undeclared_router "$_fx8_inline")"
+    # A NON-caller owes no declaration — without this, SPEC-8 would demand
+    # `router` of the four tool plugins whose headers say never to use it.
+    assert_eq "[SPEC-8][negative control] a plugin that only documents making no LLM calls is not flagged" \
+        "" "$(_undeclared_router "$_fx_documenting")"
 fi
 
 cleanup_test_env
