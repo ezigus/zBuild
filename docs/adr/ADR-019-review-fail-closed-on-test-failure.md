@@ -241,16 +241,43 @@ and maps the verdict to one of `pass | warn | fail | unknown`:
 | `corresponds` (#2034)                        | pass  | `✓`   | GREEN  |
 | `covered` (#1683)                            | pass  | `✓`   | GREEN  |
 | `skipped`, `healthy`, `deployed`             | pass  | `✓`   | GREEN  |
-| `request_changes`, `incomplete`, `did_not_finish`, `degraded` | warn | `⚠` | YELLOW |
+| `request_changes`, `incomplete`, `degraded`  | warn  | `⚠`   | YELLOW |
 | `partial`, `uncheckable` (#2034)             | warn  | `⚠`   | YELLOW |
 | `unjudged` (#2062)                           | warn  | `⚠`   | YELLOW |
 | `unreadable` (#1683)                         | warn  | `⚠`   | YELLOW |
 | `fail`, `error`, `block`, `scope_violation`, `corrupt_diff` | fail | `✗` | RED |
 | `mismatch` (#2034)                           | fail  | `✗`   | RED    |
 | `uncovered` (#1683)                          | fail  | `✗`   | RED    |
-| `empty_diff`, `scope_too_large`, `inert_build` | fail | `✗`  | RED    |
 | missing/malformed primary artifact           | warn  | `⚠`   | YELLOW |
 | `rc != 0` (any cause)                        | fail  | `✗`   | RED — rc always wins |
+
+**Removed from the table (#2076): `did_not_finish`, `empty_diff`,
+`scope_too_large`, `inert_build`.** These four are no longer verdicts at all.
+ADR-054 §6 separates the two axes a single string used to carry, and #1832
+migrated exactly this set out of `verdict` and into `disposition` — recoverability
+is a declared field, not something re-derived from a verdict word. `verdict_classify`
+has had no arm for any of them since; they were listed here only because the table
+was not updated with the migration. Adding arms would resurrect the retired
+vocabulary and contradict `tests/unit/core-pipeline-verdict-test.sh` SPEC-4, which
+pins `verdict_classify(did_not_finish) → unknown`.
+
+The classification was **wrong, not accidentally right**. `verdict_classify`
+returns `unknown` for all four — the `*)` backstop, since none of them has an arm.
+`runner_read_stage_verdict` then emits `pipeline.indicator.unknown_verdict` and
+converts that `unknown` to `warn` for the indicator (`core/pipeline/verdict.sh`,
+the `cls == unknown` branch). So the rendered glyph did match the warn row this
+table used to promise — but only by travelling the undeclared-verdict path, which
+is precisely what produced the spurious event: noise in the one signal #1708 built
+to find drift.
+
+That nothing broke is owed to the halt path, not to the classification.
+`design_timeout_exhausted` (the amendment below) keys on
+`.disposition == "interrupted"` and never calls `verdict_classify` at all.
+
+The drift direction itself is now checked. SPEC-10 of
+`tests/unit/lint-verdict-classify-test.sh` walks manifests→this table; SPEC-13
+(#2076) walks this table→`verdict_classify`, so a word cannot sit in a row here
+with no arm behind it.
 
 **On the #2034 row split.** `spec-correspondence` judges whether an assertion
 tests what its SPEC says. `partial` and `uncheckable` are findings rather than
