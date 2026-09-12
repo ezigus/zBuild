@@ -43,7 +43,7 @@ hooks:
   cleanup: <function-name>        # called on abnormal exit (kill, abort) — OPTIONAL
 
 requires:
-  core: [redaction, event-bus, state, locks, github, ...]
+  core: [redaction, event-bus, state, router]   # CLOSED vocabulary — see §requires.core resolution
   plugins: [<plugin-id>, ...]
   # NOTE (ADR-043): a `kind: agent` plugin still declares `requires.core:
   # [redaction]` — redaction is still REQUIRED — but it no longer needs to CALL
@@ -242,6 +242,63 @@ plugins root, replaced atomically), so the steady-state check forks nothing at a
 **Seams.** `ZBUILD_EVENT_SCHEMA` still substitutes the engine leg (~240 tests set it); `ZBUILD_PLUGINS_ROOT`
 substitutes the manifest leg. Severity is unchanged — schema-as-warn: an unknown type is logged and
 never blocks.
+
+### `requires.core` resolution (amended 2026-09-11 — #2065)
+
+`requires.core` used to be validated as TEXT and never resolved: the validator checked that a
+`kind: agent` list contained the literal string `redaction` and that the block was a YAML list.
+Nothing mapped an entry to a module. Three plugins (`test-author`, `spec-coverage`,
+`spec-correspondence`) therefore declared `[redaction, event-bus, router]`, sourced none of them, and
+were dispatched anyway for months — reporting the absence as a degraded verdict rather than as the
+contract violation it was (#2060/#2061/#2062).
+
+**The vocabulary is CLOSED.** Exactly four entries are accepted; anything else is a load-time error.
+The pre-amendment schema example listed `locks` and `github` illustratively — neither is a core
+module and neither was ever declared by a plugin; they are retired rather than carried forward as
+words the validator would now have to accept.
+
+| entry | class | marker | satisfied by sourcing |
+|---|---|---|---|
+| `router` | plugin-loaded | `route_to_model` | `core/router/route.sh` |
+| `redaction` | conditional | `apply_scope_redaction` | `core/router/route.sh` (transitively, ADR-043) or `core/redaction/scope-redaction.sh` |
+| `event-bus` | engine-ambient | `eb_emit_event` | `core/event-bus/event-bus.sh` |
+| `state` | engine-ambient | — | any of `core/state/{atomic,layout,resume,artifact-persist,issue-lock}.sh` |
+
+The three classes are not cosmetic:
+
+- **plugin-loaded** — the engine does not pre-load it, so the plugin must source it. Directly
+  falsifiable.
+- **conditional** — binds only on a model-reaching path. ADR-004 makes the `redaction` DECLARATION
+  mandatory for every `kind: agent` as a policy statement, while ADR-043 §Consequences says a new LLM
+  stage sources `route.sh` and needs "no `scope-redaction.sh` source, no `apply_scope_redaction`
+  call". Demanding a literal load would force `deploy`, `validate` and `review-aggregator` — three
+  plugins documented as making no LLM calls — to source a redactor they must never invoke.
+- **engine-ambient** — `core/pipeline/runner.sh` sources `event-bus.sh` and all five `core/state/*.sh`
+  into the engine shell before any stage runs, so the declaration is satisfied by construction.
+
+**Decision on `state`.** It KEEPS its place in the vocabulary, classed engine-ambient, with no marker
+function. Giving it one is not possible honestly — it is five files exporting five unrelated function
+families, and 24 of the 26 plugins declaring it source none of them, so any single pick reports
+almost the whole tree broken while nothing is wrong. Dropping it from the vocabulary would edit 24
+manifests to delete a true statement: those plugins do run against engine state. Classing it ambient
+moves the falsifiable part to where it actually lives — the ENGINE side, asserted by
+`tests/unit/requires-core-resolution-test.sh` SPEC-8. Known limit, recorded rather than papered over:
+the `map:` work unit (`core/pipeline/strategies/common.sh`) sources `event-bus` but not `core/state`,
+so `state` ambience does not hold on that arm. No map-dispatched plugin calls a state function today.
+
+**Where it is enforced.** Statically, in `validate_manifest` (via
+`core/plugin-registry/requires-core.sh`) — the same gate `discovery.sh` already runs on every plugin,
+so an unsatisfiable declaration stops the plugin registering. A runtime post-source `declare -F`
+assertion inside `plugin_hook_call` was considered and rejected: the dispatch subshell inherits the
+engine shell, where `event-bus` and `state` are already loaded, so the assertion would pass for free
+for half the vocabulary and would additionally bless plugins depending on ambient engine functions.
+
+**Relationship to neighbouring work.** #2063 (`tests/unit/plugin-route-source-guard-test.sh`) guards
+the CALL-SITE direction — a `plugin.sh` naming `route_to_model` must source `route.sh` — which no
+declaration resolver can see (`security-lens` calls the router and declares nothing). Its SPEC-7 is
+the declaration direction for `router` alone; this amendment generalises that to the whole vocabulary
+and moves it into the engine. `requires.plugins` resolution is a different field with a different
+resolver and remains unlanded under #1321.
 
 ## Consequences
 

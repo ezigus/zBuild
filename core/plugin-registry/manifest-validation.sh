@@ -27,6 +27,12 @@ source "$_ZBUILD_MANIFEST_VALIDATION_DIR/manifest-router-budget.sh"
 # being validated by one parser and read by another.
 # shellcheck source=../event-bus/known-types.sh
 source "$_ZBUILD_MANIFEST_VALIDATION_DIR/../event-bus/known-types.sh"
+# #2065: the requires.core vocabulary and its resolution rules. Sourced here
+# rather than inlined so validate_manifest, the guard test and any future linter
+# read ONE table — the field having two readers that disagreed is what let three
+# plugins declare the router and load nothing.
+# shellcheck source=./requires-core.sh
+source "$_ZBUILD_MANIFEST_VALIDATION_DIR/requires-core.sh"
 
 # ─── Valid plugin kinds ─────────────────────────────────────────────────────
 # `persona` (#1304) is a DATA-only kind: identity metadata (role + perspective),
@@ -323,16 +329,24 @@ validate_manifest() {
         fi
     fi
 
-    # kind: agent plugins MUST declare requires.core includes redaction (ADR-004 enforcement)
-    # Structural check via _yaml_get_requires_core_list — a `- redaction` line
-    # outside `requires.core` no longer satisfies this (closes #294 bypass).
-    if [[ "$kind" == "agent" ]]; then
-        local core_items; core_items="$(_yaml_get_requires_core_list "$manifest")"
-        if ! grep -Fxq "redaction" <<< "$core_items"; then
-            error "validate_manifest($manifest): kind: agent plugins MUST declare 'redaction' inside requires.core (got: $(echo "$core_items" | tr '\n' ',' | sed 's/,$//'))"
-            errors=$((errors + 1))
-        fi
-    fi
+    # ─── #2065: requires.core is RESOLVED, not just read ────────────────────
+    # This one call replaces the hardcoded "the list contains the string
+    # redaction" check that used to live here (ADR-004, hardened in #294). That
+    # rule is not weakened — requires_core_check still refuses a kind: agent
+    # that omits `redaction`, still reads the list with
+    # _yaml_get_requires_core_list so a `- redaction` outside the requires.core
+    # block does not satisfy it (the #294 bypass stays closed), and CLAUDE.md's
+    # "all LLM-bound text passes through apply_scope_redaction, no exceptions"
+    # stands. It is SUBSUMED by a stronger rule: naming an entry is no longer
+    # enough, the entry has to resolve to a module the plugin can actually
+    # reach. Keeping both here would have been two sites disagreeing about what
+    # one field means, which is the shape #2060/#2061/#2062 shipped through.
+    local _rc_entry _rc_reason
+    while IFS=$'\t' read -r _rc_entry _rc_reason; do
+        [[ -n "$_rc_entry" ]] || continue
+        error "validate_manifest($manifest): requires.core '$_rc_entry' $_rc_reason"
+        errors=$((errors + 1))
+    done < <(requires_core_check "$manifest")
 
     # kind: persona plugins (#1304) are DATA — a professional identity, no
     # plugin.sh and no hooks. They MUST declare a non-empty persona.role: the
