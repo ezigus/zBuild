@@ -627,6 +627,35 @@ else
         "$(printf '%s' "$_UNROOTED" | tr '\n' '|')"
 fi
 
+# ─── SPEC-4l: no test writes to a hardcoded system-temp path ────────────────
+# The suite runs tiers concurrently (scripts/run-tests.sh), and the shipped
+# watch list covers the system temp again (SPEC-4g). A test writing to a fixed
+# /tmp path therefore lands in a watched root while some OTHER test's stage is
+# mid-dispatch, and that stage is blamed for it.
+#
+# Not hypothetical: restoring the roots turned the ubuntu integration tier red,
+# and the violation log named the writer —
+#   stage=build path=/tmp/intake-branch-test-out.1335049
+# from plugins/agent/intake/tests/intake-branch-test.sh, 15 sites of
+# `> /tmp/intake-branch-test-out.$$`. The `build` stage had never touched it.
+# That is the #1839 failure mode reproduced inside the suite, and the same class
+# the settle probe cannot always absorb: a writer that finishes BEFORE the
+# dispatch returns leaves no live witness.
+#
+# $TEST_TEMP_DIR is per-test and reaped, so it cannot collide.
+_TMP_WRITERS="$(
+    { grep -rnE '> */tmp/|>> */tmp/|mkdir -p +/tmp/' \
+        "$REPO_ROOT/tests" "$REPO_ROOT/plugins" 2>/dev/null || true; } \
+        | { grep -vE 'TMPDIR|TEST_TEMP_DIR' || true; } \
+        | { grep -vE '^[^:]+:[0-9]+: *#' || true; }
+)"
+if [[ -z "$_TMP_WRITERS" ]]; then
+    assert_pass "[SPEC-4l] no test writes to a hardcoded system-temp path"
+else
+    assert_fail "[SPEC-4l] no test writes to a hardcoded system-temp path" \
+        "$(printf '%s' "$_TMP_WRITERS" | tr '\n' '|')"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

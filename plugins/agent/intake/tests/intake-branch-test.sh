@@ -135,7 +135,7 @@ assert_eq "[SPEC-3] zbuild_resolve_default_branch resolves 'main' in main-defaul
 # ── Test: first run creates branch ──
 _reset_events
 _intake_create_workspace_branch "$STATE_DIR" 484 "fix the branch creation" \
-    > /tmp/intake-branch-test-out.$$ 2>&1
+    > "$TEST_TEMP_DIR/intake-branch-test-out.$$" 2>&1
 rc=$?
 assert_eq "first run rc=0" "0" "$rc"
 
@@ -155,7 +155,7 @@ assert_eq "pipeline-state.json .branch updated" \
 # ── Test: re-run on same branch → noop ──
 _reset_events
 _intake_create_workspace_branch "$STATE_DIR" 484 "fix the branch creation" \
-    > /tmp/intake-branch-test-out.$$ 2>&1
+    > "$TEST_TEMP_DIR/intake-branch-test-out.$$" 2>&1
 rc=$?
 assert_eq "noop run rc=0" "0" "$rc"
 noop_count="$(_event_count "intake.branch.noop")"
@@ -165,7 +165,7 @@ assert_gt "intake.branch.noop emitted when already on target" "$noop_count" "0"
 git checkout -q main
 _reset_events
 _intake_create_workspace_branch "$STATE_DIR" 484 "fix the branch creation" \
-    > /tmp/intake-branch-test-out.$$ 2>&1
+    > "$TEST_TEMP_DIR/intake-branch-test-out.$$" 2>&1
 rc=$?
 assert_eq "reuse run rc=0" "0" "$rc"
 reused_count="$(_event_count "intake.branch.reused")"
@@ -176,7 +176,7 @@ git checkout -q main
 _reset_events
 ZBUILD_WORKSPACE_BRANCH="custom/override-branch" \
     _intake_create_workspace_branch "$STATE_DIR" 484 "ignored title" \
-    > /tmp/intake-branch-test-out.$$ 2>&1
+    > "$TEST_TEMP_DIR/intake-branch-test-out.$$" 2>&1
 rc=$?
 unset ZBUILD_WORKSPACE_BRANCH
 assert_eq "env override rc=0" "0" "$rc"
@@ -188,7 +188,7 @@ git checkout -q main
 _reset_events
 ZBUILD_WORKSPACE_BRANCH="../evil" \
     _intake_create_workspace_branch "$STATE_DIR" 484 "x" \
-    > /tmp/intake-branch-test-out.$$ 2>&1
+    > "$TEST_TEMP_DIR/intake-branch-test-out.$$" 2>&1
 rc=$?
 unset ZBUILD_WORKSPACE_BRANCH
 assert_eq "invalid env override rc=2" "2" "$rc"
@@ -199,7 +199,7 @@ assert_gt "invalid_branch_name refusal emitted" "$inv_count" "0"
 _reset_events
 unset ZBUILD_WORKSPACE_BRANCH WORKSPACE_BRANCH 2>/dev/null || true
 CI=true _intake_create_workspace_branch "$STATE_DIR" 484 "x" \
-    > /tmp/intake-branch-test-out.$$ 2>&1
+    > "$TEST_TEMP_DIR/intake-branch-test-out.$$" 2>&1
 rc=$?
 assert_eq "CI mode + no env → rc=2" "2" "$rc"
 ci_err_count="$(_event_count "ci_workspace_branch_unset")"
@@ -210,7 +210,7 @@ git checkout -q main
 echo "dirty" > "$REPO/dirty.txt"
 _reset_events
 _intake_create_workspace_branch "$STATE_DIR" 484 "x" \
-    > /tmp/intake-branch-test-out.$$ 2>&1
+    > "$TEST_TEMP_DIR/intake-branch-test-out.$$" 2>&1
 rc=$?
 assert_eq "dirty tree → rc=2" "2" "$rc"
 dirty_count="$(_event_count "intake.refused.dirty_tree")"
@@ -220,7 +220,7 @@ assert_gt "intake.refused.dirty_tree emitted" "$dirty_count" "0"
 _reset_events
 ZBUILD_INTAKE_ALLOW_DIRTY=1 \
     _intake_create_workspace_branch "$STATE_DIR" 484 "fix dirty override" \
-    > /tmp/intake-branch-test-out.$$ 2>&1
+    > "$TEST_TEMP_DIR/intake-branch-test-out.$$" 2>&1
 rc=$?
 assert_eq "ZBUILD_INTAKE_ALLOW_DIRTY=1 bypasses dirty refusal" "0" "$rc"
 rm -f "$REPO/dirty.txt"
@@ -232,7 +232,7 @@ git_dir="$REPO/.git"
 echo "deadbeef" > "$git_dir/MERGE_HEAD"
 _reset_events
 _intake_create_workspace_branch "$STATE_DIR" 484 "x" \
-    > /tmp/intake-branch-test-out.$$ 2>&1
+    > "$TEST_TEMP_DIR/intake-branch-test-out.$$" 2>&1
 rc=$?
 rm -f "$git_dir/MERGE_HEAD"
 assert_eq "mid-merge → rc=2" "2" "$rc"
@@ -243,7 +243,7 @@ assert_gt "intake.refused.repo_state with reason=repo_state_merge" "$merge_count
 mkdir -p "$git_dir/rebase-merge"
 _reset_events
 _intake_create_workspace_branch "$STATE_DIR" 484 "x" \
-    > /tmp/intake-branch-test-out.$$ 2>&1
+    > "$TEST_TEMP_DIR/intake-branch-test-out.$$" 2>&1
 rc=$?
 rm -rf "$git_dir/rebase-merge"
 assert_eq "mid-rebase → rc=2" "2" "$rc"
@@ -255,7 +255,7 @@ NON_REPO="$TEST_TEMP_DIR/not-a-repo"
 mkdir -p "$NON_REPO/state"
 _reset_events
 (cd "$NON_REPO" && _intake_create_workspace_branch "$NON_REPO/state" 484 "x") \
-    > /tmp/intake-branch-test-out.$$ 2>&1
+    > "$TEST_TEMP_DIR/intake-branch-test-out.$$" 2>&1
 rc=$?
 assert_eq "not-a-git-repo → rc=2" "2" "$rc"
 gnf_count="$(_event_count "intake.refused.git_unavailable")"
@@ -270,7 +270,7 @@ head_sha="$(git rev-parse HEAD)"
 git checkout -q --detach "$head_sha"
 _reset_events
 _intake_create_workspace_branch "$STATE_DIR" 484 "from detached" \
-    > /tmp/intake-branch-test-out.$$ 2>&1
+    > "$TEST_TEMP_DIR/intake-branch-test-out.$$" 2>&1
 rc=$?
 assert_eq "detached HEAD branch creation rc=0" "0" "$rc"
 det_count="$(_event_count "intake.branch.from_detached")"
@@ -297,7 +297,7 @@ git branch -D zbuild/issue-484-remote-only
 _reset_events
 ZBUILD_WORKSPACE_BRANCH="zbuild/issue-484-remote-only" \
     _intake_create_workspace_branch "$STATE_DIR" 484 "x" \
-    > /tmp/intake-branch-test-out.$$ 2>&1
+    > "$TEST_TEMP_DIR/intake-branch-test-out.$$" 2>&1
 rc=$?
 unset ZBUILD_WORKSPACE_BRANCH
 assert_eq "remote-only branch adoption → rc=0" "0" "$rc"
@@ -317,7 +317,7 @@ git remote set-url origin "file:///nonexistent/repo.git"
 _reset_events
 ZBUILD_WORKSPACE_BRANCH="$fetch_fail_branch" \
     _intake_create_workspace_branch "$STATE_DIR" 484 "x" \
-    > /tmp/intake-branch-test-out.$$ 2>&1
+    > "$TEST_TEMP_DIR/intake-branch-test-out.$$" 2>&1
 rc=$?
 unset ZBUILD_WORKSPACE_BRANCH
 assert_eq "fetch failure → rc=2" "2" "$rc"
@@ -328,7 +328,7 @@ git remote set-url origin "$ORIGIN_REPO"
 
 # ─── Cleanup ────────────────────────────────────────────────────────────────
 cd "$REPO_ROOT" || true
-rm -f /tmp/intake-branch-test-out.$$
+rm -f "$TEST_TEMP_DIR/intake-branch-test-out.$$"
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
