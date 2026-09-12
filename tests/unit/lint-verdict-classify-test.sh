@@ -230,8 +230,11 @@ fi
 # no `verdict_classify` arm passes it silently. That is the drift #2076 found:
 # `did_not_finish` sat in the warn row while classifying through `*)` → unknown,
 # so every occurrence emitted a spurious pipeline.indicator.unknown_verdict for a
-# word the table calls known. Net class was right by accident (the fallback also
-# warns), which is exactly why nothing noticed. Walk the table's own rows.
+# word the table calls known. The class was WRONG, not accidentally right:
+# verdict_classify returns `unknown`; runner_read_stage_verdict's `cls == unknown`
+# branch is what promoted it to warn for the indicator — the same branch that
+# emits the event. So the glyph matched the table only by travelling the
+# undeclared-verdict path, which is what made the noise. Walk the table's own rows.
 print_test_section "13. every verdict in ADR-019's table has a verdict_classify arm"
 # Column 1 of the verdict table, backticked tokens only. `rc != 0` and the
 # prose rows carry no bare-word token, so the [a-z0-9_*] filter drops them.
