@@ -98,6 +98,18 @@ _EBAL_ORIG_TMPDIR="${TMPDIR:-<unset>}"
 # ── Exercise: invoke plugin_hook_call twice ───────────────────────────────────
 # Use || true so that at baseline (fixture fails → set -e in plugin_hook_call)
 # the test script continues instead of aborting before assertions are reached.
+#
+# ZBUILD_EVENTS_JSONL is pinned to $EVENTS_LOG rather than relying on the
+# emit_event stub above. The stub does not survive a dispatch: plugin_hook_call
+# lazily sources write-boundary.sh / input-resolve.sh mid-call and the real
+# event bus arrives with them and takes the name back, so every event landed in
+# the bus's own ephemeral dir instead. SPEC-1/4/6 were reading an EVENTS_LOG
+# that stayed EMPTY — SPEC-4 counted 0 against an expected 2 (a standing red
+# nobody saw, because this file had no `exit $((FAIL > 0))` trailer), and the
+# SPEC-1 "no empty .plugin field" assertions passed VACUOUSLY on zero rows.
+export ZBUILD_EVENTS_JSONL="$EVENTS_LOG"
+export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR"
+export ZBUILD_EVENTS_DB="/dev/null"   # JSONL only — no SQLite mirror to diff
 plugin_hook_call "$FIXTURE_DIR" "run" "stage-a" "" || true
 plugin_hook_call "$FIXTURE_DIR" "run" "stage-b" "" || true
 
@@ -193,3 +205,83 @@ assert_eq "[SPEC-6] a dispatch with an empty state_file resolves no CWD-relative
 # the count is 0; after the addition it is 1.
 schema_has_result=$(grep -c '"plugin\.result"' "$REPO_ROOT/config/event-schema.json" 2>/dev/null || true)
 assert_eq "[SPEC-3] plugin.result is registered in event-schema.json" "1" "$schema_has_result"
+
+# ── SPEC-7: every dispatch that STARTS also ENDS ─────────────────────────────
+# CHANGE (#1809 follow-up): the rc=0 arm of plugin_hook_call has two early
+# returns — the scan_plugin_outputs failure and the write_boundary_check
+# failure. Both `return 1` BEFORE `plugin.$hook.complete`, and neither takes
+# the `else` arm that emits `plugin.$hook.error`. A dispatch that trips either
+# check therefore emits `start` and nothing else. Run 33899683569 shows the
+# consequence in production: 54 plugin.run.start against 48 complete + 5 error
+# — `teardown` started and never ended, and no record says why.
+#
+# The invariant is NOT "start == complete" (that only holds when nothing fails)
+# but "every start has SOME terminal partner".
+#
+# These probes pin ZBUILD_EVENTS_JSONL rather than reusing the emit_event stub
+# above. The stub does not survive a dispatch: plugin_hook_call lazily sources
+# write-boundary.sh / input-resolve.sh mid-call, and the real event bus arrives
+# with them and takes the name back. A probe built on the stub reads zero events
+# in EVERY case and would go "red" identically whether or not the defect exists
+# — a false red that proves nothing. Reading the bus's own JSONL is what makes
+# the assertion measure the engine instead of the harness.
+_ebal_terminal_probe() {
+    # $1 = events JSONL to capture into, $2 = which check to fail (scan|boundary)
+    local _log="$1" _mode="$2"
+    : > "$_log"
+    (
+        export ZBUILD_EVENTS_JSONL="$_log"
+        export ZBUILD_EVENTS_DIR; ZBUILD_EVENTS_DIR="$(dirname "$_log")"
+        export ZBUILD_EVENTS_DB="/dev/null"   # JSONL only — no SQLite mirror
+        if [[ "$_mode" == "scan" ]]; then
+            scan_plugin_outputs() { return 1; }
+        else
+            scan_plugin_outputs() { return 0; }
+            # Both halves are needed. plugin_hook_call guards the ARM on
+            # `declare -F write_boundary_check`, so leaving that undefined makes
+            # the arm unreachable rather than green — but it also lazily sources
+            # write-boundary.sh when `write_boundary_mark` is undefined, and that
+            # source takes `write_boundary_check` back. Defining the mark as a
+            # no-op suppresses the lazy load so this stub survives the dispatch.
+            write_boundary_mark() { return 0; }
+            write_boundary_check() { return 1; }
+        fi
+        # An ABSOLUTE state_file is required — ADR-058 §3 guards the whole
+        # write-boundary block on `[[ "${2:-}" == /* ]]`, so a relative or empty
+        # one skips the very arm under test.
+        plugin_hook_call "$FIXTURE_DIR" "run" "stage-term" "$TEST_TEMP_DIR/state.json" || true
+    )
+}
+
+for _mode in scan boundary; do
+    _term_log="$TEST_TEMP_DIR/events-term-$_mode.jsonl"
+    _ebal_terminal_probe "$_term_log" "$_mode"
+    _t_start=$(grep -c '"type":"plugin\.run\.start"' "$_term_log" 2>/dev/null || true)
+    _t_end=$(grep -cE '"type":"plugin\.run\.(complete|error|refused)"' "$_term_log" 2>/dev/null || true)
+    # Guard: a probe that never dispatched proves nothing about terminal events.
+    assert_eq "[SPEC-7] the $_mode probe actually dispatched (one plugin.run.start)" \
+        "1" "$_t_start"
+    assert_eq "[SPEC-7] a dispatch failing the $_mode check still emits a terminal plugin.run.* event" \
+        "1" "$_t_end"
+done
+
+# ── SPEC-8: the terminal event says WHY the dispatch ended ───────────────────
+# A bare plugin.run.error restores the count but not the diagnosis. `reason=` is
+# a data field on an ALREADY-DECLARED event name, so the event-NAME set is
+# unchanged and the sequence goldens are untouched — the same shape
+# write_boundary_violation_recorded used when it added `path=`.
+_reason_log="$TEST_TEMP_DIR/events-reason.jsonl"
+
+_ebal_terminal_probe "$_reason_log" "scan"
+_has_scan_reason=$(grep -c 'artifact-check-failed' "$_reason_log" 2>/dev/null || true)
+assert_eq "[SPEC-8] the artifact-check failure names its reason on the terminal event" \
+    "1" "$_has_scan_reason"
+
+_ebal_terminal_probe "$_reason_log" "boundary"
+_has_wb_reason=$(grep -c 'write-boundary-violation' "$_reason_log" 2>/dev/null || true)
+assert_eq "[SPEC-8] the write-boundary failure names its reason on the terminal event" \
+    "1" "$_has_wb_reason"
+
+cleanup_test_env
+print_test_results
+exit $((FAIL > 0))

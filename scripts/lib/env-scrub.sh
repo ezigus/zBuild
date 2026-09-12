@@ -57,6 +57,30 @@ _zbuild_make_fresh_shell() {
     # this, any unbound non-ZBUILD_* var or any nonzero-rc command in a
     # spawned wrapper script kills the subshell before the real spawn.
     set +e +u +o pipefail 2>/dev/null || true
+    # ADR-058 C10: pin TMPDIR from the ZBUILD_* values that are still visible,
+    # BEFORE the loop below wipes them. After the wipe the child cannot derive
+    # its own scratch, and TMPDIR is the one variable this scrub preserves — so
+    # it is the only channel by which an in-bounds temp can reach a spawned
+    # model. Left alone, the child resolves ${TMPDIR:-/tmp} to /tmp on every
+    # Linux runner, which is a watched root; C9's measured evidence
+    # (stage=intake path=/tmp/zb-route-redact-out.*) is that exact shape.
+    #
+    # Resolved inline rather than by sourcing helpers.sh: this file is inside
+    # the transitive closure of _RUNNER_CONTRACT_LIB_ENTRYPOINTS
+    # (core/pipeline/runner.sh), and a new `source` here grows the snapshot set
+    # that runner-contract-lib-seam-test.sh pins.
+    #
+    # Fail-open in both directions: no job folder, or an uncreatable dir, leaves
+    # TMPDIR exactly as found. A run must never die over a temp path, and an
+    # ad-hoc invocation must not be handed one that does not exist.
+    local _fs_tmp="${ZBUILD_STAGE_SCRATCH:-}"
+    if [[ -z "$_fs_tmp" && -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR}" ]]; then
+        _fs_tmp="${ZBUILD_SCRATCH_ROOT:-$ZBUILD_STATE_DIR}/scratch/run-tmp"
+    fi
+    if [[ -n "$_fs_tmp" ]] && mkdir -p "$_fs_tmp" 2>/dev/null; then
+        chmod 700 "$_fs_tmp" 2>/dev/null || true
+        export TMPDIR="$_fs_tmp"
+    fi
     local _v
     while IFS= read -r _v; do
         [[ -z "$_v" ]] && continue

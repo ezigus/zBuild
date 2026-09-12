@@ -57,10 +57,10 @@ printf 'stray perf fixture\n' > "$REPO/config/templates/runner-state-dir-minimal
     unset CI GITHUB_ACTIONS
     export ZBUILD_INTAKE_ALLOW_DIRTY=1
     _intake_create_workspace_branch "$STATE_DIR" 1265 "scope census baseline"
-) > /tmp/intake-1265-out.$$ 2>&1
+) > "$TEST_TEMP_DIR/intake-1265-out.$$" 2>&1
 rc=$?
 if [[ "$rc" -ne 0 ]]; then
-    cat /tmp/intake-1265-out.$$ >&2
+    cat "$TEST_TEMP_DIR/intake-1265-out.$$" >&2
 fi
 assert_eq "branch creation rc=0" "0" "$rc"
 
@@ -84,7 +84,7 @@ evt_n="$(jq -r 'select(.type=="intake.untracked_baseline.captured") | .data.coun
 assert_gt "captured count >= 1 (the stray)" "${evt_n:-0}" "0"
 
 cd "$REPO_ROOT" || true
-rm -f /tmp/intake-1265-out.$$
+rm -f "$TEST_TEMP_DIR/intake-1265-out.$$"
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -179,7 +179,7 @@ teardown_run() {
     if [[ -n "$_state_file" ]]; then
         _artifacts_dir="${ZBUILD_ARTIFACT_DIR:-$(dirname "$_state_file")/artifacts}"
     else
-        _artifacts_dir="${ZBUILD_ARTIFACT_DIR:-${TMPDIR:-/tmp}/zbuild-teardown-artifacts}"
+        _artifacts_dir="${ZBUILD_ARTIFACT_DIR:-$(zbuild_engine_tmpdir)/zbuild-teardown-artifacts}"
     fi
     mkdir -p "$_artifacts_dir"
     local _result_file="$_artifacts_dir/teardown-result.json"

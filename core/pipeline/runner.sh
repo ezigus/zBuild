@@ -1811,6 +1811,25 @@ main() {
     # the resolved state_dir. Without this export the var is unset in plugin
     # subshells and the #617 BRANCH STATE block is silently skipped.
     export ZBUILD_STATE_DIR="$state_dir"
+    # ADR-058 C10: one run-scoped temp root, resolved here because this is the
+    # first point where state_dir is absolutized (ADR-052, just above) and the
+    # same "expose to EVERY stage, one place" seam as the exports around it.
+    #
+    # §3's TMPDIR redirect at the dispatch seam is finer-grained and still wins
+    # inside a dispatch. What this changes is the FALLBACK: every path where
+    # that guard does not fire — a relative or empty state_file, an unsourceable
+    # stage-scratch.sh, or engine code running between dispatches entirely — now
+    # lands inside the job folder instead of /tmp. C9's measured evidence
+    # (stage=intake path=/tmp/zb-route-redact-out.*) is exactly that class.
+    #
+    # Guarded on the directory EXISTING, which is load-bearing: a TMPDIR naming
+    # a missing dir makes every mktemp in the run fail hard. zbuild_run_tmpdir
+    # does the mkdir and returns nothing when there is no job folder, so the
+    # unset case leaves TMPDIR exactly as the caller had it.
+    _runner_run_tmp="$(zbuild_run_tmpdir 2>/dev/null || true)"
+    if [[ -n "$_runner_run_tmp" && -d "$_runner_run_tmp" ]]; then
+        export TMPDIR="$_runner_run_tmp"
+    fi
     # ADR-043 (redaction by construction): the router self-redacts when a stage
     # did not redact itself. Expose the fixed scope-manifest path to EVERY stage
     # (one place) so route_to_model can resolve the manifest without any plugin

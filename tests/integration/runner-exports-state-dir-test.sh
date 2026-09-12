@@ -161,6 +161,20 @@ for var in ZBUILD_RUN_ID ZBUILD_ISSUE ZBUILD_GOAL; do
     fi
 done
 
+# ─── ADR-058 C10: the runner establishes a RUN-scoped temp root ─────────────
+# §3's TMPDIR redirect is per DISPATCH and fail-open, so engine code running
+# BETWEEN dispatches — and any child spawned outside plugin_hook_call — falls
+# back to ${TMPDIR:-/tmp}, which is /tmp on every Linux runner and a watched
+# root. C9's measured evidence is that shape (stage=build path=/tmp/zbuild-tpl.*).
+#
+# The observable is the root's EXISTENCE after a run: the runner resolves it
+# once, beside its other one-place exports, and zbuild_run_tmpdir creates it.
+# Asserting on the child env instead would be a false green — the dispatch seam
+# already points TMPDIR at the per-stage scratch, so the child looks correct
+# whether or not the runner ever set anything.
+assert_eq "[SPEC-C10] the runner establishes the run-scoped temp root" \
+    "1" "$([[ -d "$EXPECTED_STATE_DIR/scratch/run-tmp" ]] && echo 1 || echo 0)"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

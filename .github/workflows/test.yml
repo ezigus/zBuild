@@ -100,6 +100,11 @@ jobs:
         env:
           ZBUILD_TEST_TMP: ""
           ZBUILD_TEST_TIMING_FILE: ${{ runner.temp }}/zbuild-unit-timing.txt
+          # The shipped watch list covers the system temp again (ADR-058 C9,
+          # restored once C10 landed), so any tier can now trip the fence — the
+          # unit tier dispatches stages through plugin_hook_call just as
+          # integration does. Without a sink a halt reports rc=1 and no path.
+          ZBUILD_WRITE_BOUNDARY_LOG: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
       - name: Upload unit results
         uses: actions/upload-artifact@v7
         if: always()
@@ -185,6 +190,21 @@ jobs:
           chmod +x "$ZBUILD_TEST_TMP/bin/claude" "$ZBUILD_TEST_TMP/bin/gh"
           export PATH="$ZBUILD_TEST_TMP/bin:$PATH"
           bash scripts/run-tests.sh --tier e2e
+        env:
+          # The e2e tier runs NESTED pipelines (parity-local-vs-ci,
+          # plugin-event-balance-full-run), so it can trip the write boundary
+          # exactly as the integration tier can — and a nested run's stderr and
+          # event stream both die with its throwaway state dir, leaving this
+          # append-only sink as the only channel that survives. #1839 halted
+          # here and could not say which path caused it (ADR-058 C9, #1809).
+          ZBUILD_WRITE_BOUNDARY_LOG: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
+      - name: Upload e2e write-boundary violations
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: e2e-write-boundary-violations
+          path: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
+          if-no-files-found: ignore
 
   golden:
     name: Golden contracts
@@ -193,6 +213,8 @@ jobs:
       - uses: actions/checkout@v7
       - name: Run golden tier
         run: bash scripts/run-tests.sh --tier golden
+        env:
+          ZBUILD_WRITE_BOUNDARY_LOG: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
 
   mutation-lint:
     name: Mutation docs lint
@@ -210,6 +232,10 @@ jobs:
             echo "\`$score_line\`" >> "$GITHUB_STEP_SUMMARY"
           fi
           exit $rc
+        env:
+          # The mutation tier builds a worktree per mutant and runs the suite in
+          # it, so it dispatches stages and can trip the fence like any tier.
+          ZBUILD_WRITE_BOUNDARY_LOG: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
 
   coverage:
     name: Coverage
