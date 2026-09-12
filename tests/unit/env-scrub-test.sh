@@ -221,11 +221,12 @@ _es_child_tmp="$(
     _zbuild_make_fresh_shell
     printf '%s' "${TMPDIR:-<unset>}"
 )"
-case "$_es_child_tmp" in
-    "$_ES_JOB"/*) assert_pass "[SPEC-C10] a scrubbed child inherits a TMPDIR inside the job folder" ;;
-    *)            assert_fail "[SPEC-C10] a scrubbed child inherits a TMPDIR inside the job folder" \
-                      "got: $_es_child_tmp" ;;
-esac
+# Pinned to the EXACT root, not "somewhere under the job folder". The looser
+# form passed for any path below ZBUILD_STATE_DIR — including the per-dispatch
+# ZBUILD_STAGE_SCRATCH, which is a different directory with a different
+# lifetime — so it asserted the implementation rather than C10's requirement.
+assert_eq "[SPEC-C10] a scrubbed child inherits the RUN-scoped temp root" \
+    "$_ES_JOB/scratch/run-tmp" "$_es_child_tmp"
 
 # GUARD: fail-open. With nothing to derive a job folder from, the scrub must
 # leave TMPDIR exactly as it found it — a run must never die, and an ad-hoc

@@ -553,6 +553,18 @@ touch "$WATCH_DIR/concurrent-victim.txt"
 # An external writer that keeps going THROUGH the settle window.
 ( for _i in $(seq 1 200); do touch "$WATCH_DIR/.ext-$_i" 2>/dev/null; sleep 0.02; done ) &
 _ext_pid=$!
+# Synchronise before checking. Starting the subprocess does not mean it has been
+# scheduled: if its first touch lands after the settle window closes, the probe
+# finds no witness, reports the candidate as a genuine violation, and this test
+# fails for a reason that has nothing to do with the code under test. That is
+# precisely the flaky-on-a-loaded-runner class this PR exists to stop blaming on
+# the wrong thing.
+_sync_n=0
+while [[ ! -e "$WATCH_DIR/.ext-1" && $_sync_n -lt 500 ]]; do
+    sleep 0.01; _sync_n=$((_sync_n + 1))
+done
+assert_eq "[SPEC-4h] the external writer is demonstrably running before the check" \
+    "1" "$([[ -e "$WATCH_DIR/.ext-1" ]] && echo 1 || echo 0)"
 _unattr_rc=0
 write_boundary_check "$FIXTURE_DIR" "$STATE_FILE" "victim-stage" "" 2>/dev/null || _unattr_rc=$?
 kill "$_ext_pid" 2>/dev/null || true

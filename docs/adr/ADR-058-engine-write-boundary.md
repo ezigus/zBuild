@@ -380,10 +380,30 @@ Settle window: `ZBUILD_WRITE_BOUNDARY_SETTLE_MS` (default 250; `0` disables the
 probe and restores the unconditional halt). Paid only on the failure path, once
 per dispatch.
 
-**Accepted limitation.** A stage that leaves a background writer running past
-its own dispatch can mask its own genuine violation. Nothing is silently lost —
-the path is still recorded on all three channels — and a stage leaving live
-writers is itself an ADR-054 §7 cleanup defect.
+**Two accepted limitations**, both consequences of the same fact — `find -newer`
+knows when, never who — and both recorded so a later reader does not mistake
+them for oversights:
+
+- A stage that leaves a background writer running past its own dispatch can mask
+  its own genuine violation. Nothing is silently lost (the path is still on all
+  three channels), and a stage leaving live writers is itself an ADR-054 §7
+  cleanup defect.
+- **The witness is not per-root.** It proves some process was writing to some
+  watched root during the window, not that it wrote the specific candidate. A
+  genuine violation in `/tmp` concurrent with unrelated activity under
+  `~/.zbuild` classifies as unattributable. Narrowing the witness to the
+  candidate's own root was considered and rejected: it buys precision only when
+  the two writers happen to choose different roots, while costing a second
+  sweep per candidate on the failure path. SPEC-4i guards the case that matters
+  — a violation with no concurrent writer at all still halts.
+
+A third case is out of the engine's reach entirely: a writer that finishes
+BEFORE the dispatch returns leaves no live activity to witness. That is why
+tests must not write to hardcoded system-temp paths (SPEC-4l) — the suite runs
+tiers concurrently, and such a write lands in a watched root while another
+test's stage is mid-dispatch. Restoring the temp roots surfaced exactly that:
+`stage=build path=/tmp/intake-branch-test-out.<pid>`, from a test the build
+stage had never touched.
 
 ### 4. A dispatch that starts must also end
 

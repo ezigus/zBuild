@@ -400,10 +400,19 @@ write_boundary_violation_recorded() {
 # thing `find -newer` can honestly say: mtime records when, never who.
 _wb_external_writer_witness() {
     local _sd="${1:-}"
+    # Today's only caller passes an absolute state dir, so this cannot fire —
+    # but an empty one would resolve the probe to /runtime/... , and the mkdir
+    # failure would read as "no witness" and let a genuine violation through.
+    # Stating the invariant beats relying on a safe accident.
+    [[ -n "$_sd" ]] || return 0
     local _settle="${ZBUILD_WRITE_BOUNDARY_SETTLE_MS:-250}"
     # An operator can disable the probe outright; 0 keeps the pre-#1809 behaviour
     # of halting on any candidate.
     [[ "$_settle" =~ ^[0-9]+$ ]] || _settle=250
+    # Capped: the value is operator-supplied and this sleep blocks the dispatch.
+    # An unbounded one turns a misconfigured env var into a silent hang on every
+    # violation hit, which is a worse failure than the one it diagnoses.
+    [[ "$_settle" -gt 30000 ]] && _settle=30000
     [[ "$_settle" -eq 0 ]] && return 0
 
     local _probe="${_sd}/runtime/write-boundary.settle.$$"
@@ -445,7 +454,10 @@ _wb_unattributable_recorded() {
 }
 
 # ─── write_boundary_check <plugin_dir> <state_file> <stage> [<map_element>] ──
-# Orchestrate sweep + classify. Returns 1 on first violation, 0 otherwise.
+# Orchestrate sweep + classify. Returns 1 on the first ATTRIBUTABLE violation;
+# 0 otherwise — which covers both a clean dispatch and one whose candidates all
+# classified `unattributable`. The two zero cases are not the same event and are
+# not recorded the same way: SPEC-4i depends on the distinction staying visible.
 # First line guards on empty state_file.
 write_boundary_check() {
     local _pd="$1" _sf="${2:-}" _stage="${3:-}" _el="${4:-}"
