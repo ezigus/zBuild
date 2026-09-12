@@ -354,27 +354,30 @@ else
         "unexpected: $_wb_log2"
 fi
 
-# ─── SPEC-4g: the shipped default DOES sweep the system temp ────────────────
-# This assertion is deliberately INVERTED from the one it replaces, which read
-# "the shipped watch list does not carry a system-temp root". That was never a
-# preference — C9 called dropping the roots "a real reduction in coverage, the
-# originally measured defect was a stage writing to /tmp" and named the two
-# preconditions for restoring them. Both now hold:
+# ─── SPEC-4g: the shipped default does not sweep the system temp ────────────
+# C9 dropped /tmp and ${TMPDIR:-/tmp} and called it "a real reduction in
+# coverage — the originally measured defect was a stage writing to /tmp". C10
+# restored them once the engine's own temps were in bounds, and that restoration
+# was MEASURED on ubuntu CI and reverted. The evidence, so this is not re-tried
+# a third time:
 #
-#   * env-scrub wipes every ZBUILD_* before a model spawn, so engine code in a
-#     spawned child could not see ZBUILD_STAGE_SCRATCH and its temps landed in
-#     the system temp — the engine's own writes, attributed to whichever stage
-#     was dispatching (ubuntu CI: stage=intake path=/tmp/zb-route-redact-out.*).
-#     C10's run-scoped TMPDIR, pinned through the scrub, puts them back in
-#     bounds.
-#   * A concurrent unrelated process writing to /tmp — the busiest shared
-#     directory on any machine — could kill a run outright. The settle probe
-#     (SPEC-4h) classifies those `unattributable` instead of halting.
+#   stage=intake path=/tmp/tmp.XXXXXXXXXX
 #
-# Without BOTH, restoring these roots would be strictly worse than omitting
-# them. The SPEC-4h/4i pair and the C10 tests are what make this safe, so a
-# revert of either must revert this too.
-# CHANGE: fails at baseline (the shipped list carried neither root).
+# twice, in two runs. That is the default BARE-mktemp name, and `intake`
+# contains no mktemp at all — the files belonged to another process on the
+# runner (git, gh, node, npm, the Actions agent), which shares /tmp whenever
+# TMPDIR is unset. `intake` was merely what happened to be dispatching.
+#
+# The settle probe caught one and missed its twin: a writer that finishes BEFORE
+# the dispatch returns leaves nothing live to witness. That is not a gap in the
+# probe. mtime records when, never who, and no attribution logic recovers
+# authorship that was never written down.
+#
+# So the coverage C9 gave up stays given up, and for a sharper reason than C9
+# stated: not only that the engine wrote there, but that the directory belongs
+# to the whole machine. Closing it needs authorship, not a longer watch list.
+# config/write-boundary-watch.txt carries the roots commented, for an operator
+# on a dedicated box.
 
 _wl_default="$(unset ZBUILD_WRITE_BOUNDARY_WATCH; write_boundary_watch_list)"
 # Exact roots only. $HOME is redirected under the system temp in this harness,
@@ -382,10 +385,10 @@ _wl_default="$(unset ZBUILD_WRITE_BOUNDARY_WATCH; write_boundary_watch_list)"
 _sys_tmp_root="${TMPDIR:-/tmp}"; _sys_tmp_root="${_sys_tmp_root%/}"
 if awk -v a="/tmp" -v b="$_sys_tmp_root" \
      '{p=$1} p==a||p==b{found=1} END{exit !found}' <<< "$_wl_default"; then
-    assert_pass "[SPEC-4g] the shipped watch list covers the system temp"
-else
-    assert_fail "[SPEC-4g] the shipped watch list covers the system temp" \
+    assert_fail "[SPEC-4g] the shipped watch list does not carry a system-temp root" \
         "watch list: $_wl_default"
+else
+    assert_pass "[SPEC-4g] the shipped watch list does not carry a system-temp root"
 fi
 
 # GUARD: the roots an operator CAN attribute are still swept.

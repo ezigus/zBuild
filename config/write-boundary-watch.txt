@@ -13,26 +13,35 @@
 #
 ${HOME} maxdepth:1
 ${HOME}/.zbuild
-# The system temp, restored once C10 landed. C9 originally dropped these two
-# roots and said so plainly — "a real reduction in coverage; the originally
-# measured defect was a stage writing to /tmp" — because two things made them
-# unusable at the time. Both are now closed:
+# NOT the system temp. C9 dropped these two roots and C10 (#1809 follow-up)
+# tried to restore them once the engine's own temps were in bounds. That attempt
+# was MEASURED on ubuntu CI and reverted; recording the evidence so the next
+# person does not spend the same two runs on it.
 #
-#   * env-scrub wipes every ZBUILD_* before a model spawn, so engine code in a
-#     spawned child could not see ZBUILD_STAGE_SCRATCH and its temps landed
-#     here. Those are the ENGINE's writes, and halting on them killed runs on
-#     the engine doing its job. C10's run-scoped TMPDIR, pinned through the
-#     scrub, puts them back inside the job folder.
-#   * A concurrent unrelated process writing to /tmp — the busiest shared
-#     directory on any machine — could kill a run outright, because `find
-#     -newer` records when a file appeared and never who wrote it. The settle
-#     probe now classifies those `unattributable` rather than halting.
+# C10 fixed the half C9 named: engine code in a scrubbed child now gets a
+# run-scoped TMPDIR and no longer writes here. That was necessary and is not
+# what failed.
 #
-# Restoring these WITHOUT both would be strictly worse than leaving them out.
-# tests/unit/write-boundary-sweep-test.sh SPEC-4g pins the roots, SPEC-4h/4i pin
-# the attribution rule and its guard; a revert of either must revert this too.
-${TMPDIR:-/tmp} maxdepth:1
-/tmp maxdepth:1
+# What failed is that `/tmp` is not ours. With TMPDIR unset — every ubuntu
+# runner — it is the shared temp for every process on the box: git, gh, node,
+# npm, the Actions agent itself. Two integration runs halted on
+#   stage=intake path=/tmp/tmp.XXXXXXXXXX
+# the default BARE-mktemp name. `intake` contains no mktemp at all; the files
+# were another process's, and the stage was merely what happened to be
+# dispatching. The settle probe caught one of them (logged `unattributable`,
+# with a witness) and missed its twin, because a writer that finishes before the
+# dispatch returns leaves nothing live to witness. No amount of attribution
+# logic recovers authorship that mtime never recorded.
+#
+# So the coverage gap C9 named is real and stays open: a stage that hardcodes
+# /tmp is still undetected here. Closing it needs authorship, not a better
+# watch list — and until then, watching a directory the whole machine writes to
+# hands any passing process the ability to kill a run.
+#
+# An operator on a dedicated machine can opt in via the override file, which
+# REPLACES this list:
+#   ${TMPDIR:-/tmp} maxdepth:1
+#   /tmp maxdepth:1
 ${PWD} maxdepth:1
 # The engine root at 2, per the issue's sweep spec. _ZBUILD_WB_ROOT is set by
 # core/pipeline/write-boundary.sh; the built-in fallback list already carried

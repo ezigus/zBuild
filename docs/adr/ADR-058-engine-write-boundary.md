@@ -422,19 +422,52 @@ bus follows `${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}`. Those
 agree until something redirects the root — and `plugins/tool/test` redirects it
 on purpose to fence a nested run. The list now emits all three, additively.
 
-### 6. The roots are back, and the diagnostic is wired
+### 6. The roots stay out — measured, not assumed
 
-With §1–§3 in place, `${TMPDIR:-/tmp}` and `/tmp` return to
-`config/write-boundary-watch.txt`. **Restoring them without both would be
-strictly worse than omitting them**, so a revert of the run-scoped `TMPDIR` or
-of the attribution rule must revert this too. `write-boundary-sweep-test.sh`
-SPEC-4g pins the roots; SPEC-4h/4i pin the attribution rule and its guard.
+C10 §1–§3 close the half C9 named: engine code in a scrubbed child no longer
+writes to the system temp. Restoring `/tmp` and `${TMPDIR:-/tmp}` to
+`config/write-boundary-watch.txt` on that basis was **tried and reverted**, and
+the evidence belongs here so it is not tried a third time.
 
-`ZBUILD_WRITE_BOUNDARY_LOG` was set in exactly one CI job. It is now set in
-every `test.yml` job that runs a tier and in the dogfood pipeline workflow. #1839
-halted on a boundary violation and could record *that* it happened but not
-*which file* — and the disposition is `broken`, terminal, so there is no second
-chance to observe it.
+Two ubuntu integration runs halted on:
+
+```
+stage=intake path=/tmp/tmp.XXXXXXXXXX
+```
+
+That is the default **bare-`mktemp`** name, and `plugins/agent/intake` contains
+no `mktemp` at all. The files belonged to another process on the runner — `git`,
+`gh`, `node`, `npm`, the Actions agent — all of which share `/tmp` whenever
+`TMPDIR` is unset, which is every ubuntu runner. `intake` was simply what
+happened to be dispatching.
+
+The settle probe (§3) caught one of the two and logged it `unattributable` with
+a witness; it missed the twin, because a writer that finishes **before** the
+dispatch returns leaves nothing live to witness. That is not a defect in the
+probe. mtime records *when*, never *who*, and no attribution logic recovers
+authorship that was never recorded.
+
+So C9's conclusion stands, for a sharper reason than C9 gave: the problem is not
+only that the engine wrote there, but that `/tmp` belongs to the whole machine.
+Watching it hands any passing process the ability to halt a run. **Closing this
+gap needs authorship, not a longer watch list** — and until something supplies
+it, a stage that hardcodes `/tmp` remains undetected. The roots ship commented,
+for an operator on a dedicated machine.
+
+What this did deliver is the diagnostic. `ZBUILD_WRITE_BOUNDARY_LOG` was set in
+exactly one CI job; it is now set in every `test.yml` job that runs a tier and in
+the dogfood pipeline workflow. #1839 halted on a boundary violation and could
+record *that* it happened but not *which file* — and the disposition is `broken`,
+terminal, so there is no second chance to observe it. Both halted runs above
+named their file immediately. That is what made this conclusion measurable at
+all, rather than a third round of speculation.
+
+Tests must also not write to hardcoded system-temp paths
+(`write-boundary-sweep-test.sh` SPEC-4l): the suite runs tiers concurrently, so
+such a write lands in a watched root while another test's stage is dispatching.
+Restoring the roots surfaced 18 such sites — `stage=build
+path=/tmp/intake-branch-test-out.<pid>`, from a test the build stage had never
+touched — and they are fixed regardless of the roots being back out.
 
 ### Verification
 
