@@ -27,6 +27,12 @@ source "$_ZBUILD_MANIFEST_VALIDATION_DIR/manifest-router-budget.sh"
 # being validated by one parser and read by another.
 # shellcheck source=../event-bus/known-types.sh
 source "$_ZBUILD_MANIFEST_VALIDATION_DIR/../event-bus/known-types.sh"
+# #2065: the requires.core vocabulary and its resolution rules. Sourced here
+# rather than inlined so validate_manifest, the guard test and any future linter
+# read ONE table — the field having two readers that disagreed is what let three
+# plugins declare the router and load nothing.
+# shellcheck source=./requires-core.sh
+source "$_ZBUILD_MANIFEST_VALIDATION_DIR/requires-core.sh"
 
 # ─── Valid plugin kinds ─────────────────────────────────────────────────────
 # `persona` (#1304) is a DATA-only kind: identity metadata (role + perspective),
@@ -220,11 +226,18 @@ yaml_get_list() {
 # Emits one core item per line. Structurally parses ONLY the `requires:` →
 # `core:` sub-block — so a stray `- redaction` outside that block does NOT
 # satisfy the membership check (closes the #294 bypass surface).
-# Handles both inline `core: [a, b]` and multi-line:
+# Handles both inline `core: [a, b]` and multi-line, and (since #2083) blank
+# lines and comments interleaved anywhere in the list — leading, trailing or
+# between items — without truncating it:
 #   requires:
 #     core:
 #       - a
+#       # why b is needed
+#
 #       - b
+# The block still ends at the first line that is neither an item nor a
+# comment/blank, so a sibling key (`plugins:`) or the next top-level section
+# terminates it and a later `- ` list is never swept in.
 _yaml_get_requires_core_list() {
     local file="$1"
     awk '
@@ -270,6 +283,20 @@ _yaml_get_requires_core_list() {
                 }
                 next
             }
+            # #2083: a blank line or a comment-only line is NOT the end of the
+            # list. Both are valid YAML between sequence items, and both used to
+            # fall through to the terminator below — so
+            #     core:
+            #       - redaction
+            #       # a rationale comment
+            #       - router
+            # parsed to `redaction` alone and every later entry silently did not
+            # exist. The asymmetry is what hid it for so long: the only enforced
+            # consumer was the kind: agent literal-`redaction` check, and a
+            # comment BEFORE the first item empties the list (loud failure) while
+            # one AFTER it drops only the remainder (silent). #2065 makes the
+            # whole list load-bearing, so the truncation had to go first.
+            if ($0 ~ /^[[:space:]]*$/ || $0 ~ /^[[:space:]]*#/) next
             # Any other content at the same or shallower indent ends the block.
             in_core = 0
         }
@@ -323,16 +350,24 @@ validate_manifest() {
         fi
     fi
 
-    # kind: agent plugins MUST declare requires.core includes redaction (ADR-004 enforcement)
-    # Structural check via _yaml_get_requires_core_list — a `- redaction` line
-    # outside `requires.core` no longer satisfies this (closes #294 bypass).
-    if [[ "$kind" == "agent" ]]; then
-        local core_items; core_items="$(_yaml_get_requires_core_list "$manifest")"
-        if ! grep -Fxq "redaction" <<< "$core_items"; then
-            error "validate_manifest($manifest): kind: agent plugins MUST declare 'redaction' inside requires.core (got: $(echo "$core_items" | tr '\n' ',' | sed 's/,$//'))"
-            errors=$((errors + 1))
-        fi
-    fi
+    # ─── #2065: requires.core is RESOLVED, not just read ────────────────────
+    # This one call replaces the hardcoded "the list contains the string
+    # redaction" check that used to live here (ADR-004, hardened in #294). That
+    # rule is not weakened — requires_core_check still refuses a kind: agent
+    # that omits `redaction`, still reads the list with
+    # _yaml_get_requires_core_list so a `- redaction` outside the requires.core
+    # block does not satisfy it (the #294 bypass stays closed), and CLAUDE.md's
+    # "all LLM-bound text passes through apply_scope_redaction, no exceptions"
+    # stands. It is SUBSUMED by a stronger rule: naming an entry is no longer
+    # enough, the entry has to resolve to a module the plugin can actually
+    # reach. Keeping both here would have been two sites disagreeing about what
+    # one field means, which is the shape #2060/#2061/#2062 shipped through.
+    local _rc_entry _rc_reason
+    while IFS=$'\t' read -r _rc_entry _rc_reason; do
+        [[ -n "$_rc_entry" ]] || continue
+        error "validate_manifest($manifest): requires.core '$_rc_entry' $_rc_reason"
+        errors=$((errors + 1))
+    done < <(requires_core_check "$manifest")
 
     # kind: persona plugins (#1304) are DATA — a professional identity, no
     # plugin.sh and no hooks. They MUST declare a non-empty persona.role: the
