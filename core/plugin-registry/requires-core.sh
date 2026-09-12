@@ -137,6 +137,20 @@ _requires_core_code() {
 # line naming <provider>. Comment-stripped first, so a bare `# shellcheck
 # source=` directive never counts as the real thing (the exact false accept the
 # #2063 guard's SPEC-6 fixture exists to rule out).
+#
+# The provider is interpolated into an ERE with only `.` escaped. Every other
+# metacharacter would be interpreted — harmless for the four plain
+# `core/<dir>/<file>.sh` paths in the table, and wrong the moment one contains
+# `+ ? * [ ] ( ) { } | ^ $ \`. The input is GUARDED rather than the pattern
+# escaped, and that is a choice, not an oversight: a correct escape needs a
+# `sed` subshell per provider per plugin on the discovery hot path (the path
+# yaml_get is memoised to keep cheap — 6,338 spawns cost 12.97s of a 27s run),
+# or a pipe, which is the SIGPIPE-under-pipefail shape that already bit this
+# repo (#1015), or a dozen lines of parameter-expansion chaining. The table is
+# engine-internal and only we edit it, so requires-core-resolution-test.sh
+# SPEC-9 asserts every provider path matches ^[A-Za-z0-9_/.-]+$ instead. If a
+# future provider needs a metacharacter, that assertion fails loudly and the
+# escaping gets written then.
 _requires_core_sources() {
     local code; code="$(_requires_core_code "$1")"
     grep -qE "^[[:space:]]*(source|\.)[[:space:]]+.*${2//./\\.}([\"'[:space:]]|$)" <<<"$code"

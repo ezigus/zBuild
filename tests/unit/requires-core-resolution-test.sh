@@ -2,78 +2,30 @@
 # tests/unit/requires-core-resolution-test.sh
 # `requires.core` entries resolve to something real, or the plugin is refused (#2065).
 #
-# Until now the field was validated as TEXT and never resolved:
-# manifest-validation.sh checked that a `kind: agent` list contained the literal
-# string `redaction` and that the block was a list. Nothing mapped an entry to a
-# core module. That is how test-author, spec-coverage and spec-correspondence
-# each declared `[redaction, event-bus, router]`, sourced none of them, and were
-# dispatched anyway for months (#2060/#2061/#2062).
+# `requires.core` was validated as TEXT and never resolved: the validator checked
+# a kind:agent list contained the literal string `redaction` and that the block
+# was a list. Nothing mapped an entry to a core module — which is how
+# test-author, spec-coverage and spec-correspondence each declared
+# `[redaction, event-bus, router]`, sourced none of them, and were dispatched
+# anyway for months (#2060/#2061/#2062).
 #
-# ─── Why the enforcement is STATIC and at LOAD, not at dispatch ──────────────
-# The issue proposed a post-source `declare -F` assertion inside plugin_hook_call.
-# Measured on this tree, that assertion is a TAUTOLOGY for half the vocabulary:
-# core/pipeline/runner.sh sources core/event-bus/event-bus.sh and all five
-# core/state/*.sh into the ENGINE shell before any stage runs, and
-# plugin_hook_call sources plugin.sh in a SUBSHELL of that shell. `declare -F
-# eb_emit_event` is therefore true at that seam whether or not the plugin loaded
-# anything — the check would pass for free, and would additionally bless plugins
-# that depend on ambient engine functions. SPEC-8 pins that measurement so this
-# reasoning cannot rot silently.
+# Resolution is STATIC and at LOAD. A post-source `declare -F` inside
+# plugin_hook_call would be a TAUTOLOGY for half the vocabulary: the engine shell
+# already holds event-bus and all five core/state files and dispatch is a
+# subshell of it, so it passes for free and blesses plugins depending on ambient
+# engine functions. SPEC-8 pins that measurement. Full rationale — the three
+# classes, the `state` decision, and the relationship to #2063 (call-site
+# direction), #1321 (requires.plugins) and #2083 (the parser, fixed in this PR)
+# — is in ADR-001 §"requires.core resolution" and requires-core.sh's header.
+# Do not re-derive it here.
 #
-# So the resolution lives in core/plugin-registry/requires-core.sh and is called
-# from validate_manifest — the same gate discovery.sh:48 already runs on every
-# plugin, where a declaration that cannot be satisfied stops the plugin from
-# registering instead of being discovered mid-run as a degraded verdict.
+# The thirteen SPECs are banner-marked below in order; each banner carries its
+# own reasoning, so there is no index here to drift out of step with them.
 #
-# ─── Relationship to the neighbouring issues ────────────────────────────────
-#   #2063 (merged) is the CALL-SITE direction: a plugin.sh that names
-#     route_to_model must source route.sh. No declaration resolver can see that
-#     shape — security-lens calls the router and declares nothing — so that file
-#     stays. Its SPEC-7 (the declaration direction, router only) is what this
-#     file generalises and moves into the engine; the overlap is deliberate
-#     belt-and-braces at two layers, not a duplicate to be reconciled.
-#   #1321 is `requires.plugins`, a different field with a different resolver.
-#     Out of scope here; this file asserts nothing about it.
-#   #2083 is the PARSER under this resolver — `_yaml_get_requires_core_list`
-#     silently truncated the list at the first comment or blank line. Fixed
-#     here rather than deferred, because a resolver reading through a
-#     truncating parser reports "no violation" for a declaration it never saw:
-#     the fix would contain the bug it fixes. SPEC-13 owns it.
-#
-# ─── SPECs ──────────────────────────────────────────────────────────────────
-# SPEC-1: the vocabulary is CLOSED — an entry nobody can resolve is refused,
-#         naming plugin and entry (today `requires.core: [banana]` is accepted)
-# SPEC-2: `router` declared but route.sh never sourced → refused, named
-# SPEC-3: `router` declared and sourced → accepted
-# SPEC-4: `redaction` declared by a plugin that REACHES A MODEL with no redactor
-#         on its source path → refused
-# SPEC-5: `redaction` is satisfied TRANSITIVELY by sourcing route.sh (ADR-043
-#         redaction-by-construction). This is the false-positive trap: a naive
-#         "must source core/redaction/" rule reports most of the tree broken.
-# SPEC-6: `redaction` is VACUOUS for a plugin that reaches no model — deploy,
-#         validate and review-aggregator declare it because ADR-004 requires
-#         every kind:agent to, and correctly load nothing (ADR-004 §Intake note
-#         records the same for intake). Refusing them would force three no-LLM
-#         plugins to source a library they must never call.
-# SPEC-7: the transitive edge is REAL — route.sh sources scope-redaction.sh.
-#         SPEC-5's leniency is only sound while this holds; if ADR-043's
-#         by-construction wiring is removed, this says so instead of SPEC-5
-#         silently starting to wave through unredacted plugins.
-# SPEC-8: the engine-ambient claim is falsifiable — runner.sh sources event-bus
-#         and all five core/state files; the map work unit sources event-bus.
-#         This is the measurement the "static, not runtime" decision rests on.
-# SPEC-9: every marker function is actually DEFINED by the provider it is
-#         mapped to, so the table cannot drift from the code it describes
-# SPEC-10: ADR-004 is not weakened — a kind:agent manifest that omits
-#         `redaction` from requires.core is still refused
-# SPEC-11: the whole real tree resolves clean (+ vacuity: the population is
-#          non-empty and the parse is live)
-# SPEC-12[negative control]: each rule is pointed at the wrong thing and
-#          required to go red, so no assertion above can pass for free
-# SPEC-13: the parser under all of the above reads the WHOLE list (#2083) — a
-#          comment or blank line between entries no longer ends it, the block
-#          still terminates, the real tree's parsed sets are unchanged, and a
-#          `router` declared after a comment is still enforced (SPEC-13h)
+# The PARSER underneath all of this (`_yaml_get_requires_core_list`, #2083) is
+# asserted in tests/unit/requires-core-parser-test.sh — split from this file
+# when it passed CLAUDE.md's 500-line rule, and deliberately neither sourcing it
+# nor sourced by it.
 set -uo pipefail
 # Deliberately NOT `set -e`: assert_fail returns non-zero when called without a
 # detail argument, which under -e would abort before print_test_results.
@@ -99,12 +51,11 @@ print_test_header "requires.core resolution (#2065)"
 setup_test_env "requires-core-resolution"
 
 # ─── Precondition: the resolver API exists ──────────────────────────────────
-# Without this, SPEC-9, SPEC-11 and half of SPEC-12 PASS on a tree where
-# requires-core.sh does not exist at all: `command not found` makes their loops
-# read nothing, `_bad_marker`/`_unresolved` stay empty, and "no violations
-# found" is indistinguishable from "nothing was looked at". That is not a
-# hypothetical — it is what this file did on its own first (pre-implementation)
-# run, and it is the green-but-inert class the whole issue is about.
+# Without this, SPEC-9/11 and half of SPEC-12 PASS on a tree with no
+# requires-core.sh at all: `command not found` makes their loops read nothing,
+# so "no violations found" is indistinguishable from "nothing was looked at".
+# Not hypothetical — this file did exactly that on its first, pre-implementation
+# run, which is the green-but-inert class the whole issue is about.
 _API_OK=1
 for _fn in requires_core_vocabulary requires_core_marker requires_core_providers \
            requires_core_class requires_core_unresolved; do
@@ -150,14 +101,10 @@ _validate_err() {
 }
 
 # _unresolved_entries <plugin_dir> — ONLY the entry names, comma-joined.
-#
-# Never assert against the raw resolver output with a bare entry name: the
-# REASON text names provider paths, so `core/router/route.sh` contains the
-# substring "router" and `core/redaction/scope-redaction.sh` contains
-# "redaction". A `grep router` on the whole line therefore passes when some
-# OTHER entry is the one unresolved. That false green really happened here —
-# SPEC-13h went green against the unfixed parser, "finding" a router violation
-# that was actually redaction's reason string. Assert on the field, not the prose.
+# Never assert on the raw output with a bare entry name: the REASON text names
+# provider paths, so `core/router/route.sh` contains "router". A `grep router`
+# on the whole line passes when some OTHER entry is the unresolved one — a false
+# green this suite actually hit. Assert on the field, not the prose.
 _unresolved_entries() {
     requires_core_unresolved "$1" | cut -f1 | tr '\n' ',' | sed 's/,$//'
 }
@@ -174,13 +121,10 @@ _REQ_BANANA='requires:
     - redaction
     - banana'
 
-# Bodies. `$_P_ROOT` stands in for the repo root the real plugins resolve via
-# plugin-bootstrap; the resolver reads SOURCE LINES, not a live shell, so the
-# variable never has to be expandable here.
-# Single quotes are the point: these are plugin.sh SOURCE TEXT, and expanding
-# $_P_ROOT here would rewrite the very line under test. (shellcheck flags that
-# as SC2016 at `info`; the project lints at `--severity=warning` and does not
-# scan tests/, so there is nothing to suppress.)
+# Bodies. Single-quoted on purpose: these are plugin.sh SOURCE TEXT, and the
+# resolver reads source LINES, not a live shell — expanding $_P_ROOT here would
+# rewrite the line under test. (SC2016 at `info`; the project lints at
+# `--severity=warning` and does not scan tests/.)
 _BODY_CALLS_NO_SOURCE='#!/usr/bin/env bash
 _P_ROOT=/nonexistent
 response="$(route_to_model "T2" "$prompt")"'
@@ -372,6 +316,26 @@ else
         "drifted: $_bad_marker"
 fi
 
+# The matcher escapes only `.` when it interpolates a provider path into an ERE.
+# Guarding the INPUT instead of escaping at the call site is a deliberate
+# decision recorded in _requires_core_sources' header; this is the one line that
+# makes it loud rather than latent.
+_unsafe_prov=""
+while IFS= read -r _entry; do
+    [[ -n "$_entry" ]] || continue
+    while IFS= read -r _prov; do
+        [[ -n "$_prov" ]] || continue
+        [[ "$_prov" =~ ^[A-Za-z0-9_/.-]+$ ]] || \
+            _unsafe_prov="${_unsafe_prov:+$_unsafe_prov }${_entry}:${_prov}"
+    done < <(requires_core_providers "$_entry")
+done < <(requires_core_vocabulary)
+if [[ -z "$_unsafe_prov" ]]; then
+    assert_pass "[SPEC-9] every provider path is regex-safe for the matcher that consumes it"
+else
+    assert_fail "[SPEC-9] a provider path contains an ERE metacharacter the matcher does not escape" \
+        "unsafe: $_unsafe_prov — escape it in _requires_core_sources, or rename the file"
+fi
+
 # ─── SPEC-10: ADR-004 is subsumed, not weakened ─────────────────────────────
 _fx_no_redaction="$(_fixture no-redaction agent 'requires:
   core:
@@ -461,165 +425,73 @@ assert_eq "[SPEC-12] 'state' is classed engine-ambient (the recorded decision)" 
 assert_eq "[SPEC-12] 'redaction' is classed conditional (required only on a model-reaching path)" \
     "conditional" "$(requires_core_class redaction)"
 
-# ─── SPEC-13: the parser under the resolver reads the WHOLE list (#2083) ────
-# _yaml_get_requires_core_list accepted only `^[[:space:]]+-[[:space:]]+` lines
-# inside the `core:` block; anything else fell through to the terminating
-# branch, so a comment or a blank line SILENTLY ENDED THE LIST and every later
-# entry was dropped. All three shapes below are valid YAML.
+# ─── SPEC-13: a declaration with no plugin.sh to load it from ───────────────
+# The resolver deliberately does NOT skip a manifest with no plugin.sh.
+# kind:persona (#1304) is DATA — no entrypoint, no hooks — so it can never
+# source anything, and a persona declaring `router` is a manifest bug that can
+# only ever be false. SPEC-11 sweeps the real tree but no real manifest reaches
+# this branch, so without these it is unexecuted code in a validator that now
+# refuses registration.
 #
-# This is asserted here, in the resolver's own file, because the resolver
-# INHERITS the truncation: a plugin declares `router`, the parser never yields
-# it, and requires_core_unresolved reports nothing to fix. A #2065 built on this
-# parser would be a fix containing the bug it fixes — green, and blind to
-# exactly the declaration it exists to check. SPEC-13h is that end-to-end case.
-#
-# Note the asymmetry that made it survive: the only enforced consumer was the
-# `kind: agent` literal-`redaction` check. A comment BEFORE `- redaction`
-# empties the list and that check fails loudly. A comment AFTER it leaves
-# `redaction` intact and drops the rest, so validation passed and the remainder
-# of the declaration quietly did not exist.
-print_test_section "[SPEC-13] requires.core list parsing (#2083)"
+# Ordering, honestly: the branch is pre-existing code from this PR's first
+# commit, so there is no red-before-green here — this closes a coverage gap.
+# The assertions come from the contract above, not from reading the branch, and
+# their bite comes from the negative controls that disable it. The two
+# ACCEPTANCE halves matter as much as the refusal: a branch that rejected any
+# unsatisfied entry on a plugin.sh-less manifest would stop every persona that
+# ever grows a `requires:` block from registering.
+print_test_section "[SPEC-13] a plugin-loaded entry where nothing can load it"
 
-_PARSE_DIR="$TEST_TEMP_DIR/parse"
-mkdir -p "$_PARSE_DIR"
-# _parsed <name> <yaml> — the parser's output for a manifest fragment, comma-joined.
-_parsed() {
-    printf '%s\n' "$2" > "$_PARSE_DIR/$1.yaml"
-    _yaml_get_requires_core_list "$_PARSE_DIR/$1.yaml" | tr '\n' ',' | sed 's/,$//'
+# _fixture_nosh <name> <requires-core-block> — a kind:persona plugin dir: a
+# manifest and NO plugin.sh, which is what a persona actually is on disk.
+_fixture_nosh() {
+    local name="$1" req="$2"
+    local d="$_FX_ROOT/$name"
+    mkdir -p "$d"
+    {
+        printf 'id: %s\n' "$name"
+        printf 'name: %s\n' "$name"
+        printf 'kind: persona\n'
+        printf 'version: 0.1.0\n'
+        printf 'persona:\n  role: a reviewer\n  perspective: looks for defects\n'
+        printf '%s\n' "$req"
+    } > "$d/manifest.yaml"
+    rm -f "$d/plugin.sh"
+    printf '%s' "$d"
 }
 
-assert_eq "[SPEC-13] a comment BETWEEN entries does not end the list" \
-    "redaction,event-bus,router" \
-    "$(_parsed mid-comment 'requires:
+_fx_persona_router="$(_fixture_nosh persona-router 'requires:
   core:
-    - redaction
-    # a rationale comment
-    - event-bus
     - router')"
-
-assert_eq "[SPEC-13] a blank line between entries does not end the list" \
-    "redaction,event-bus,router" \
-    "$(_parsed mid-blank 'requires:
-  core:
-    - redaction
-
-    - event-bus
-    - router')"
-
-assert_eq "[SPEC-13] a comment BEFORE the first entry does not empty the list" \
-    "redaction,event-bus" \
-    "$(_parsed lead-comment 'requires:
-  core:
-    # why we need these
-    - redaction
-    - event-bus')"
-
-assert_eq "[SPEC-13] the inline form still parses" \
-    "redaction,event-bus,router" \
-    "$(_parsed inline 'requires:
-  core: [redaction, event-bus, router]')"
-
-assert_eq "[SPEC-13] a trailing comment on an entry is still stripped" \
-    "redaction,router" \
-    "$(_parsed trailing 'requires:
-  core:
-    - redaction   # ADR-004
-    - router      # ADR-043')"
-
-# Termination must survive the fix. Skipping comments must not let the block run
-# on and sweep up `- ` items from a LATER list — `provides.events` is two lines
-# of `- <name>` in almost every real manifest, and swallowing them would make
-# every plugin declare a vocabulary of event names.
-assert_eq "[SPEC-13] a sibling key still ends the block" \
-    "redaction,event-bus" \
-    "$(_parsed sibling-key 'requires:
-  core:
-    - redaction
-    - event-bus
-  plugins: []')"
-assert_eq "[SPEC-13] a later top-level list is not swept into requires.core" \
-    "redaction" \
-    "$(_parsed later-list 'requires:
-  core:
-    - redaction
-# a column-0 comment between the blocks
-provides:
-  events:
-    - some.event
-    - other.event')"
-
-# The DoD sweep: every real manifest parses to the same set an INDEPENDENT
-# reader finds. The reader below is deliberately a different mechanism — sed
-# range addressing rather than an awk state machine — so it cannot share the
-# bug under test. If the fix ever over-reaches, this is what says so.
-_raw_core_entries() {
-    sed -n '/^[[:space:]]*core:[[:space:]]*$/,/^[[:space:]]\{0,2\}[a-zA-Z_][a-zA-Z_]*:/p' "$1" \
-        | sed -n 's/^[[:space:]]\{4,\}-[[:space:]]*//p' \
-        | sed -e 's/[[:space:]]*#.*//' -e 's/[[:space:]]*$//' \
-        | grep -v '^$'
-}
-_sweep_diff=""
-_sweep_n=0
-for _m in "${_REAL[@]}"; do
-    # Inline-form manifests have no `- ` lines for the independent reader to
-    # find; they are covered by the inline assertion above.
-    grep -qE '^[[:space:]]*core:[[:space:]]*$' "$_m" || continue
-    _sweep_n=$((_sweep_n + 1))
-    _got="$(_yaml_get_requires_core_list "$_m" | tr '\n' ',')"
-    _want="$(_raw_core_entries "$_m" | tr '\n' ',')"
-    [[ "$_got" == "$_want" ]] || \
-        _sweep_diff="${_sweep_diff:+$_sweep_diff; }${_m#"$REPO_ROOT"/}: parsed[$_got] raw[$_want]"
-done
-if [[ "$_sweep_n" -eq 0 ]]; then
-    assert_fail "[SPEC-13][vacuity] no manifest used the multi-line core: form" \
-        "the sweep compared nothing"
-elif [[ -z "$_sweep_diff" ]]; then
-    assert_pass "[SPEC-13] all $_sweep_n multi-line manifests parse to the independently-read entry set"
-else
-    assert_fail "[SPEC-13] the parser and an independent reader disagree about a real manifest" \
-        "$_sweep_diff"
-fi
-
-# ─── SPEC-13h: the bite — a truncated declaration must still be enforced ────
-# THE assertion for #2065's soundness. `router` sits after a comment, and
-# plugin.sh sources nothing. With the truncating parser the resolver never sees
-# `router` and reports a clean plugin; the declaration is unenforceable exactly
-# because it is declared.
-_REQ_COMMENTED='requires:
-  core:
-    - redaction
-    # the router is needed for the T2 judgement call below
-    - router'
-_fx_truncated="$(_fixture comment-truncated agent "$_REQ_COMMENTED" "$_BODY_CALLS_NO_SOURCE")"
-assert_contains "[SPEC-13h] 'router' declared after a comment is still resolved, and refused" \
-    ",$(_unresolved_entries "$_fx_truncated")," ",router,"
-_out="$(_validate_err "$_fx_truncated")"
+assert_contains "[SPEC-13] a plugin-loaded entry with no plugin.sh is unresolved, named" \
+    ",$(_unresolved_entries "$_fx_persona_router")," ",router,"
+assert_contains "[SPEC-13] the reason says there is no plugin.sh to load it from" \
+    "$(requires_core_unresolved "$_fx_persona_router")" "no plugin.sh"
+_out="$(_validate_err "$_fx_persona_router")"
 if [[ "$_out" == *"rc=0"* ]]; then
-    assert_fail "[SPEC-13h] validate_manifest must refuse a commented-list plugin that loads no router" \
-        "a comment in the list made the declaration invisible; output: ${_out//$'\n'/ }"
+    assert_fail "[SPEC-13] validate_manifest must refuse it end-to-end" \
+        "accepted a persona declaring a module it can never load; output: ${_out//$'\n'/ }"
 else
-    assert_contains "[SPEC-13h] the refusal names router" "$_out" "requires.core 'router'"
+    assert_contains "[SPEC-13] the refusal names the entry" "$_out" "requires.core 'router'"
 fi
 
-# ─── SPEC-13i: the asymmetry that hid the bug ───────────────────────────────
-# A comment AFTER `- redaction` leaves the ADR-004 literal check satisfied, so
-# the manifest validated while the rest of the declaration silently vanished.
-# Both halves are asserted: the ADR-004 check still passes (it always did), AND
-# the entries after the comment are now present.
-assert_contains "[SPEC-13i] redaction survives a following comment (the half that always worked)" \
-    "$(_parsed asymmetry 'requires:
+# Acceptance half 1: ambient entries need no plugin.sh — the engine supplies them.
+_fx_persona_ambient="$(_fixture_nosh persona-ambient 'requires:
   core:
-    - redaction
-    # comment
     - event-bus
-    - router')" "redaction"
-assert_contains "[SPEC-13i] and so does everything after it (the half that did not)" \
-    "$(_parsed asymmetry 'requires:
+    - state')"
+assert_eq "[SPEC-13] engine-ambient entries are fine with no plugin.sh" \
+    "" "$(_unresolved_entries "$_fx_persona_ambient")"
+assert_contains "[SPEC-13] and the manifest still validates" \
+    "$(_validate_err "$_fx_persona_ambient")" "rc=0"
+
+# Acceptance half 2: `redaction` is conditional, and a manifest with no
+# plugin.sh reaches no model, so it is vacuously satisfied — not a violation.
+_fx_persona_redaction="$(_fixture_nosh persona-redaction 'requires:
   core:
-    - redaction
-    # comment
-    - event-bus
-    - router')" "router"
+    - redaction')"
+assert_eq "[SPEC-13] a conditional entry is vacuous with no plugin.sh to reach a model" \
+    "" "$(_unresolved_entries "$_fx_persona_redaction")"
 
 cleanup_test_env
 print_test_results
