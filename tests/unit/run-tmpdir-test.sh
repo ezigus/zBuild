@@ -41,13 +41,29 @@ assert_eq "[SPEC-1] the run temp root exists (callers mktemp into it)" \
 _rt2="$(ZBUILD_STATE_DIR="$JOB_DIR" zbuild_run_tmpdir 2>/dev/null || true)"
 assert_eq "[SPEC-1] the run temp root is stable across calls" "$_rt" "$_rt2"
 
-# ─── SPEC-2: it is never the system temp ────────────────────────────────────
-# The whole point is to stop resolving to /tmp. Assert behaviourally AND
-# statically, mirroring stage-scratch-test.sh SPEC-3: a resolver that READ
-# $TMPDIR would nest the run temp inside whatever the last dispatch left.
-case "$_rt" in
-    /tmp/*|/var/tmp/*) assert_fail "[SPEC-2] the run temp root is not the system temp" "got $_rt" ;;
-    *)                 assert_pass "[SPEC-2] the run temp root is not the system temp" ;;
+# ─── SPEC-2: the resolver does not DERIVE from $TMPDIR ──────────────────────
+# Assert behaviourally AND statically, mirroring stage-scratch-test.sh SPEC-3:
+# a resolver that READ $TMPDIR would nest the run temp inside whatever the last
+# dispatch left, because the dispatch seam sets TMPDIR *to* a scratch dir.
+#
+# The invariant is derivation, NOT the absolute path. An earlier version of this
+# assertion pattern-matched the answer against /tmp/* and went red on ubuntu
+# while passing on macOS — because the harness roots TEST_TEMP_DIR under
+# ${TMPDIR:-/tmp}, which IS /tmp on a Linux runner. It was flagging the test's
+# own sandbox, not the resolver. That is the exact platform asymmetry ADR-058 C9
+# records ("all three ubuntu CI jobs were red while every macOS job was green"),
+# and the reason to assert on where the value comes FROM rather than what it
+# starts with.
+_tmp_sentinel="$TEST_TEMP_DIR/sentinel-tmpdir"
+mkdir -p "$_tmp_sentinel"
+_rt_under_sentinel="$(TMPDIR="$_tmp_sentinel" ZBUILD_STATE_DIR="$JOB_DIR" \
+    zbuild_run_tmpdir 2>/dev/null || true)"
+assert_eq "[SPEC-2] a distinctive TMPDIR does not move the run temp root" \
+    "$_rt" "$_rt_under_sentinel"
+case "$_rt_under_sentinel" in
+    "$_tmp_sentinel"*) assert_fail "[SPEC-2] the run temp root is not derived from \$TMPDIR" \
+                           "got $_rt_under_sentinel" ;;
+    *)                 assert_pass "[SPEC-2] the run temp root is not derived from \$TMPDIR" ;;
 esac
 
 _reads_tmpdir=$(sed -n '/^zbuild_run_tmpdir()/,/^}/p' "$REPO_ROOT/scripts/lib/helpers.sh" \
