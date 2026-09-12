@@ -261,13 +261,18 @@ was not updated with the migration. Adding arms would resurrect the retired
 vocabulary and contradict `tests/unit/core-pipeline-verdict-test.sh` SPEC-4, which
 pins `verdict_classify(did_not_finish) → unknown`.
 
-Nothing behavioural turned on the listing. The `*)` backstop also returns `warn`,
-so `did_not_finish`'s net class was right by accident — the only symptom was a
-spurious `pipeline.indicator.unknown_verdict` event for a word this table called
-known, which is noise in exactly the signal #1708 built to find drift. The
-`design_timeout_exhausted` halt (the amendment below) is unaffected: it keys on
-`.disposition == "interrupted"`, never on the verdict string, and never consults
-`verdict_classify`.
+The classification was **wrong, not accidentally right**. `verdict_classify`
+returns `unknown` for all four — the `*)` backstop, since none of them has an arm.
+`runner_read_stage_verdict` then emits `pipeline.indicator.unknown_verdict` and
+converts that `unknown` to `warn` for the indicator (`core/pipeline/verdict.sh`,
+the `cls == unknown` branch). So the rendered glyph did match the warn row this
+table used to promise — but only by travelling the undeclared-verdict path, which
+is precisely what produced the spurious event: noise in the one signal #1708 built
+to find drift.
+
+That nothing broke is owed to the halt path, not to the classification.
+`design_timeout_exhausted` (the amendment below) keys on
+`.disposition == "interrupted"` and never calls `verdict_classify` at all.
 
 The drift direction itself is now checked. SPEC-10 of
 `tests/unit/lint-verdict-classify-test.sh` walks manifests→this table; SPEC-13
