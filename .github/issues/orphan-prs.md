@@ -6,7 +6,7 @@ merged without referencing an issue via `Closes #N` / `Fixes #N` / `Resolves #N`
 The point of this log is institutional memory: changes that didn't have a
 tracking issue should still show up somewhere when reviewing repo history.
 
-_Last updated: 2026-06-05T12:07:31Z_
+_Last updated: 2026-09-12T18:33:03Z_
 
 | PR | Title | First seen |
 |---|---|---|
@@ -97,3 +97,11 @@ _Last updated: 2026-06-05T12:07:31Z_
 | #659 | [manifest-sync] Drift reconciliation | 2026-06-04 |
 | #680 | chore(tests): add total rollup + quiet mutation table on full pass | 2026-06-05 |
 | #678 | [manifest-sync] Drift reconciliation | 2026-06-05 |
+| #2054 | [#2029] record what the abort DID, not just what the test saw | 2026-09-12 |
+| #2051 | [#2029] SPEC-4 signalled a runner that had not started a stage yet | 2026-09-12 |
+| #2049 | [#2029] the reap window is named once, so the diagnostic cannot lie about it | 2026-09-12 |
+| #2046 | [#2029] the test force-killed the runner before teardown could write | 2026-09-12 |
+| #2041 | ADR-063: record which parts depend on the contract-v2 migration | 2026-09-12 |
+| #2039 | ADR-063: stages are told their limits, and say when they hit them | 2026-09-12 |
+| #2036 | [#1921 follow-up] a rate-limited timeout must not be retried in the loop path | 2026-09-12 |
+| #2033 | plan.notes is long by design — fix the declaration, not the field | 2026-09-12 |
