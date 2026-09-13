@@ -1,5 +1,5 @@
-## spec-coverage — covered
+## spec-coverage — unreadable
 
-- SPEC-17 is the blanket grep assertion the issue requires — it explicitly covers all four declared input ids (scope_manifest, plan, diff_patch, intake_goal) by asserting no occurrence of `state_dir` concatenated with any declared input filename in plugin.sh; the spec-coverage stage's finding incorrectly treated SPEC-15 as the only relevant spec and did not account for SPEC-17.
+- no acceptance block in design.md — there is no contract to compare against
 
 - every requirement the issue states maps to a declared SPEC
