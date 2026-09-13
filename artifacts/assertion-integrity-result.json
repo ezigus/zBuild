@@ -1,0 +1,16 @@
+{
+  "result_contract": 2,
+  "verdict": "fail",
+  "disposition": "complete",
+  "reason": "acceptance assertions modified after authoring: tests/integration/acceptance-gate-v2-contract-test.sh tests/integration/acceptance-gate-v2-contract-test.sh tests/integration/acceptance-gate-v2-contract-test.sh tests/integration/acceptance-gate-v2-contract-test.sh tests/integration/acceptance-gate-v2-contract-test.sh tests/integration/acceptance-gate-v2-contract-test.sh",
+  "data": {
+    "violated": [
+      "tests/integration/acceptance-gate-v2-contract-test.sh",
+      "tests/integration/acceptance-gate-v2-contract-test.sh",
+      "tests/integration/acceptance-gate-v2-contract-test.sh",
+      "tests/integration/acceptance-gate-v2-contract-test.sh",
+      "tests/integration/acceptance-gate-v2-contract-test.sh",
+      "tests/integration/acceptance-gate-v2-contract-test.sh"
+    ]
+  }
+}
