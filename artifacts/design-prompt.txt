@@ -178,6 +178,7 @@ tests/integration/acceptance-gate-inert-wiring-iter1-test.sh
 tests/integration/acceptance-gate-reachability-test.sh
 tests/integration/acceptance-guard-regressed-routes-design-test.sh
 tests/unit/summary-producers-test.sh
+tests/unit/summary-mandatory-test.sh
 docs/adr/ADR-036-acceptance-contract-teeth.md
 docs/adr/ADR-054-stage-contract.md
 docs/adr/ADR-055-inter-stage-data-contract-v2.md
@@ -186,20 +187,20 @@ docs/wiki/plugins/spec-acceptance.md
 
 ### Scope rationale
 
-**`tests/unit/summary-producers-test.sh`** — lines 53–54 assert the `required` field of the
-`acceptance_detail` output:
-```bash
-assert_eq "[SPEC-1] declared required — every terminal path writes a summary" "true" \
-    "$(manifest_graph_get_outputs "$ACC_M" | grep '^acceptance_detail|' | cut -d'|' -f4)"
-```
-This file must reflect the new `required: true` declaration. (The assertion's expected value
-is `"true"`, consistent with the updated manifest.) In scope because it pins the manifest shape.
+**`tests/unit/summary-producers-test.sh`** — lines 51–54 assert that `acceptance_detail` is
+declared as the stage's summary and that its `required` field is `"true"`. Both assertions pin
+the manifest shape this change introduces. In scope because removing the change causes these
+assertions to fail.
 
-**`docs/wiki/plugins/spec-acceptance.md`** — embeds a verbatim manifest YAML block that shows
-the old shape: `schema_version: 1`, no `result_contract:`, no `valid_verdicts`, no
-`acceptance_detail` output, and the stale `type`/`path`/`source` fields on the `design` input.
-`lint-doc-freshness` validates prose structure, not manifest content, so CI will not catch the
-stale block automatically — it must be updated for correctness.
+**`tests/unit/summary-mandatory-test.sh`** — SPEC-1 sweeps `plugins/*/*/manifest.yaml` and
+fails if any stage-bound plugin has zero `summary: true` outputs. Before this migration,
+spec-acceptance had no such output, so spec-acceptance would appear in the `_missing` set.
+After this change, `acceptance_detail` carries `summary: true` and the assertion passes for
+spec-acceptance. In scope because the test gates on the manifest change.
+
+**`docs/wiki/plugins/spec-acceptance.md`** — embeds a verbatim manifest YAML block. The block
+must reflect the new shape: `result_contract: 2`, `valid_verdicts`, `acceptance_detail` with
+`required: true` and `summary: true`, and the input declaration with no stale `source:` form.
 
 **`docs/adr/ADR-036-acceptance-contract-teeth.md`** — references the summary write path and the
 `acceptance_detail` declaration; no edit required but cited by this PR.
@@ -243,7 +244,7 @@ LOOP_COMPLETE
 Refine the PRIOR DESIGN. Preserve all existing scope entries unless one is clearly wrong.
 
 WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
-- This stage has a wall-clock budget of 600 seconds total; ~1s have elapsed.
+- This stage has a wall-clock budget of 600 seconds total; ~0s have elapsed.
 - You cannot read a real-time clock, but estimate elapsed time from your tool-call history.
 - Target emitting your best-effort design before ~420s of wall-clock time has elapsed (70% of the 600s budget). A partial design with named gaps BEATS a hard SIGTERM that produces no output.
 
