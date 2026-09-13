@@ -145,6 +145,23 @@ _rt_run() {
   awk -v t0="$_t0" -v t1="$_t1" -v p="$1" \
     'BEGIN { d = (t1 - t0) * 1000; if (d < 0) d = 0; printf "file %d %s\n", d, p }' \
     >> "$ZBUILD_TEST_TIMING_FILE" 2>/dev/null || true
+  # Trace VOLUME, recorded only when tracing is on. Coverage broke on main at a
+  # single commit (563aab3b, #2065) that added +89.5MB of trace — +40% — to this
+  # tier, which is what pushed one file past the per-file bound on CI. Measured
+  # on the boundary: 224,730,454 bytes before, 314,276,976 after, for the same
+  # file. None of it was visible: the job reported only "TIMEOUT … exceeded
+  # 480s" with every assertion in that file passing, so the natural readings
+  # were "it hangs" or "the bound is too tight". Both wrong, both expensive.
+  # Volume is the quantity that actually moved, so record it next to duration
+  # and a regression becomes a number rather than a mystery kill.
+  #
+  # Gated on a trace file existing, so the untraced path is byte-identical —
+  # the parallel tier's output guarantee depends on that (#1058).
+  if [[ -n "${3:-}" && -f "${3:-}" ]]; then
+    awk -v b="$(wc -c < "$3" 2>/dev/null | tr -d ' ')" -v p="$1" \
+      'BEGIN { printf "trace %d %s\n", b, p }' \
+      >> "$ZBUILD_TEST_TIMING_FILE" 2>/dev/null || true
+  fi
   return "$_rc"
 }
 
