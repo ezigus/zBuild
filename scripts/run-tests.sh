@@ -133,6 +133,30 @@ _rt_run() {
     return
   fi
   local _t0 _t1 _rc=0
+  # CPU time as well as wall-clock. The two answer different questions and the
+  # difference is the whole diagnosis: when the unit tier's total work doubled
+  # (1,631s -> 3,242s of file time at a constant 4.0x parallelism), wall-clock
+  # alone could not say whether more work was being done or more time spent
+  # waiting — and those have opposite fixes. Six explanations of the Coverage
+  # timeout (#2090) were guesses for want of this number.
+  #
+  # user vs sys stay SEPARATE deliberately: user is computation, sys is
+  # fork/exec and syscalls. A local run of the slowest file measures
+  # real 150.12 / user 52.32 / sys 81.24 — kernel time 1.55x user, i.e. the cost
+  # is spawning processes, not computing. Collapsing them to one figure would
+  # hide exactly that.
+  #
+  # `times` is a bash BUILTIN reporting cumulative CHILD cpu, so this costs no
+  # fork — which matters in a function whose own overhead is under measurement.
+  # Redirected to a file, NOT captured with $( ) or piped: both run `times` in
+  # a subshell, which has reaped no children and therefore reports 0.000s. That
+  # is the third time a subshell boundary has silently voided a measurement in
+  # this file's history; the SPEC-2 "non-zero for a fork-heavy file" assertion
+  # exists to catch exactly it.
+  local _cpuf="${ZBUILD_TEST_TIMING_FILE}.cpu.$$"
+  local _c0 _c1
+  times > "$_cpuf" 2>/dev/null || true
+  _c0="$(tail -1 "$_cpuf" 2>/dev/null || true)"
   _t0="$EPOCHREALTIME"
   if [[ -n "${3:-}" ]]; then
     "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null 8>"$3" >"$2" 2>&1 || _rc=$?
@@ -140,6 +164,18 @@ _rt_run() {
     "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null >"$2" 2>&1 || _rc=$?
   fi
   _t1="$EPOCHREALTIME"
+  times > "$_cpuf" 2>/dev/null || true
+  _c1="$(tail -1 "$_cpuf" 2>/dev/null || true)"
+  rm -f "$_cpuf" 2>/dev/null || true
+  # `times` prints "<user> <sys>" as 0m0.000s pairs; convert to ms and delta.
+  awk -v a="$_c0" -v b="$_c1" -v p="$1" '
+    function ms(x,   m,s) { split(x, t, "m"); m=t[1]; s=t[2]; sub(/s$/,"",s); return (m*60+s)*1000 }
+    BEGIN {
+      split(a, A, /[ \t]+/); split(b, B, /[ \t]+/)
+      u = ms(B[1]) - ms(A[1]); y = ms(B[2]) - ms(A[2])
+      if (u < 0) u = 0; if (y < 0) y = 0
+      printf "cpu %d %d %s\n", u, y, p
+    }' >> "$ZBUILD_TEST_TIMING_FILE" 2>/dev/null || true
   # One small line per file → atomic under POSIX (< PIPE_BUF) so concurrent
   # pool workers `>>`-appending the shared file never interleave a line.
   awk -v t0="$_t0" -v t1="$_t1" -v p="$1" \

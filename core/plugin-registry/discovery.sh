@@ -19,7 +19,56 @@ ZBUILD_DISABLED_FILE="${ZBUILD_DISABLED_FILE:-${_ZBUILD_ROOT}/config/plugins.dis
 
 # ─── discover_plugins ───────────────────────────────────────────────────────
 # Returns (stdout, one per line): <plugin_path>
+# Memoised per plugins_root. The walk validates EVERY manifest on every call —
+# 39ms x ~56 plugins = ~1.47s even with the yaml cache warm — and one call
+# happens per stage resolution. template-resolvability-preflight-test.sh makes
+# 38 of them across 2 templates against an unchanged tree: ~56s, which was its
+# entire remaining cost after the read-cache fix (#2090).
+#
+# Filled in whichever shell calls it first, and inherited by every subshell that
+# descends from there. That is why _runner_validate_leaf_resolvability warms it
+# alongside the yaml cache: callers consume discovery through `< <(…)` and
+# resolve_stage_plugin wraps that in `$( )`, so a memo filled lazily inside
+# those would die with them — the same defect that made the yaml cache inert.
+#
+# Keyed on the root AND the disabled-list path, both of which change the answer,
+# so a fixture tree can never be handed the real tree's result.
+# ZBUILD_PLUGIN_DISCOVERY_CACHE=0 disables it, mirroring ZBUILD_YAML_CACHE, for
+# a caller that mutates a tree in place between calls.
+declare -gA _ZBUILD_DISCOVERY_CACHE=()
 discover_plugins() {
+    local plugins_root="${1:-$_ZBUILD_ROOT/plugins}"
+    if [[ "${ZBUILD_PLUGIN_DISCOVERY_CACHE:-1}" != "1" ]]; then
+        _discover_plugins_walk "$plugins_root"
+        return $?
+    fi
+    local _dck="${plugins_root}"$'\034'"${ZBUILD_DISABLED_FILE:-}"
+    local _out
+    if [[ -n "${_ZBUILD_DISCOVERY_CACHE[$_dck]+set}" ]]; then
+        _out="${_ZBUILD_DISCOVERY_CACHE[$_dck]}"
+    else
+        _out="$(_discover_plugins_walk "$plugins_root")"
+        _ZBUILD_DISCOVERY_CACHE["$_dck"]="$_out"
+    fi
+    # Only when non-empty: a cached empty result must print nothing, not a bare
+    # newline, or the caller's `while read` sees one phantom plugin dir.
+    [[ -n "$_out" ]] && printf '%s\n' "$_out"
+    return 0
+}
+
+# discovery_cache_flush [root] — drop the memo, mirroring yaml_cache_flush.
+discovery_cache_flush() {
+    if [[ -n "${1:-}" ]]; then
+        local k
+        for k in "${!_ZBUILD_DISCOVERY_CACHE[@]}"; do
+            [[ "$k" == "$1"$'\034'* ]] && unset "_ZBUILD_DISCOVERY_CACHE[$k]"
+        done
+    else
+        _ZBUILD_DISCOVERY_CACHE=()
+    fi
+}
+
+_discover_plugins_walk() {
     local plugins_root="${1:-$_ZBUILD_ROOT/plugins}"
     if [[ ! -d "$plugins_root" ]]; then
         emit_event "registry.discovery" "plugins_root=$plugins_root" "count=0"

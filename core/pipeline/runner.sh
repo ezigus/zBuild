@@ -347,6 +347,35 @@ _runner_validate_leaf_resolvability() {
         error "_runner_validate_leaf_resolvability: array name '_stages' collides with the nameref"
         return 2
     fi
+    # Warm the manifest cache in THIS shell before resolving anything. Every
+    # resolution below reads manifests through `$( )`, and an associative-array
+    # write inside a command substitution dies with that subshell — so a lazily
+    # filled cache is never inherited (#1614, the reason yaml_cache_prewarm
+    # exists and main() calls it at line ~1370).
+    #
+    # main() is not the only entry point. Tests source this file and call helpers
+    # directly, never reaching that prewarm, and then every lookup forks awk:
+    # template-resolvability-preflight-test.sh made 28,068 yaml_get calls with
+    # ZERO cache hits, at real 150s / user 52s / sys 81s — kernel time 1.55x
+    # user, which is process creation, not computation. Prewarming here took it
+    # to 82.75s with sys 81s -> 45s.
+    #
+    # Here and not in setup_test_env: the prewarm costs 1.32s, and 570 test
+    # files would pay ~747s for it to benefit the few that resolve plugins.
+    # Measured before choosing the seam.
+    #
+    # Idempotent: a second call re-reads the same keys, which are now cache
+    # hits. Cheap no-op in production, where main() has already warmed it.
+    if declare -F yaml_cache_prewarm >/dev/null 2>&1; then
+        yaml_cache_prewarm "$plugins_root"
+    fi
+    # Discovery too, for the same reason and in the same shell: it validates
+    # every manifest on every call (~1.47s even with the yaml cache warm) and
+    # runs once per leaf. 19 leaves x 2 templates was 38 full re-validations of
+    # an unchanged tree.
+    if declare -F discover_plugins >/dev/null 2>&1; then
+        discover_plugins "$plugins_root" >/dev/null 2>&1 || true
+    fi
     local -n _stages="${_arr_name}"
     local _leaf _ok=1
     for _leaf in "${_stages[@]+"${_stages[@]}"}"; do
