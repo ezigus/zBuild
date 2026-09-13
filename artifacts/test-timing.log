@@ -1,3 +1,1 @@
-file 168791 tests/e2e/parity-local-vs-ci-test.sh
-file 83280 tests/e2e/plugin-event-balance-full-run-test.sh
-file 2734 tests/integration/acceptance-gate-v2-contract-test.sh
+file 2735 tests/integration/acceptance-gate-v2-contract-test.sh

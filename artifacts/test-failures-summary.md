@@ -1,7 +1,7 @@
 # Test stage summary
 
 - verdict: pass
-- passed: 3
+- passed: 1
 - failed: 0
 - exit_code: 0
 
