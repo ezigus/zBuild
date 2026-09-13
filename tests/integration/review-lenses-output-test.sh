@@ -143,6 +143,35 @@ agg="$(cat "$AGG_OUT")"
 assert_contains "T11 prose report header on terminal" "$agg" "## Review Report"
 assert_contains "T11 merge-readiness line on terminal" "$agg" "**Merge Readiness:**"
 
+# ─── SPEC-9 [guard/#1840]: v2-format lens files don't break rendering ─────────
+# After the v2 migration, the review-lens plugin writes result_contract:2 +
+# verdict/disposition/reason into the primary lens file. The aggregator reads
+# .findings/.score/.name via jq and silently ignores unknown fields (by design).
+# This guard verifies the rendering pipeline is not broken by v2 extras.
+_seed_lens security \
+    '{"schema_version":1,"name":"security","score":6,"findings":[{"file":"a.sh","severity":"high","line":4,"message":"unquoted var"}],"result_contract":2,"verdict":"complete","disposition":"complete","reason":"reviewed"}'
+
+: > "$ZBUILD_EVENTS_JSONL"
+jq -n '{schema_version:1, stage_statuses:{}, stage_verdicts:{}, updated_at:"seed"}' > "$STATE_FILE"
+OUT_FILE_V2="$TEST_TEMP_DIR/terminal-v2.out"
+set +e
+parallel_group_run "review_lenses" "$ZBUILD_STATE_DIR" "$STATE_FILE" >/dev/null 2>"$OUT_FILE_V2"
+rc_v2=$?
+set -e
+term_v2="$(cat "$OUT_FILE_V2")"
+term_v2_plain="$(printf '%s' "$term_v2" | _strip_ansi)"
+
+# T10-guard: v2 fields (result_contract, verdict, disposition) must not appear
+# as raw JSON on the terminal — the render pipeline must still suppress them.
+if grep -qE '\{"score"|"findings":\[' <<< "$term_v2"; then
+    assert_fail "[SPEC-9] v2-format lens: no raw JSON on terminal" "raw JSON detected"
+else
+    assert_pass "[SPEC-9] v2-format lens: raw JSON absent from terminal"
+fi
+# T8-guard: one-liners still rendered for all 6 lenses with v2 lens in the set
+one_liners_v2="$(printf '%s\n' "$term_v2_plain" | grep -cE '^[✓✗⚠] (security|performance|red-team|correctness|scope|sre) ' || true)"
+assert_eq "[SPEC-9] v2-format lens: still 6 human-readable one-liner lines" "6" "$one_liners_v2"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
