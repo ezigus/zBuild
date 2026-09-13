@@ -38,6 +38,7 @@ requires:
 # writes lens-<name>.json, so it stays green.
 provides:
   role: review_lens
+  result_contract: 2
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -46,14 +47,19 @@ provides:
     - review_lens.unparseable
 
 config:
-  # Writes no .verdict on either verdict channel; the engine falls back to
-  # pass for a well-formed primary (core/pipeline/verdict.sh). An ABSENT key
-  # is a lint failure; the explicit [] is the claim (#1708).
-  valid_verdicts: []
+  # complete = lens ran and produced a normalised result; degraded = router
+  # failed, reply was unparseable, normalization failed, or interrupted.
+  # The plugin is convergence:advisory so these verdicts never gate the pipeline.
+  valid_verdicts:
+    - complete
+    - degraded
   tier_default: T2
   # Default lens identity when neither ZBUILD_REVIEW_LENS_ID nor
   # ZBUILD_CURRENT_STAGE is set (e.g. a bare manual invocation).
   lens: correctness
+  router:
+    timeout_s: 300 # single-shot advisory; no exploration loop needed
+    max_turns: 10  # pattern 1 single-turn; headroom for retry on schema failure
 
 inputs:
   - id: scope_manifest
@@ -82,3 +88,7 @@ state:
     - last_lens
     - last_score
   reconstructed: []
+
+# hooks.cleanup is intentionally absent: this plugin holds no live resources
+# that require teardown — ADR-054 §7 (#1829). The stub review_lens_cleanup in
+# plugin.sh is a reference marker only.
