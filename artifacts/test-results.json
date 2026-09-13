@@ -1,0 +1,35 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "3 of 3 tests passed",
+  "test_output": "unit: 3/3 passed",
+  "run_mode": "targeted",
+  "exit_code": 0,
+  "data": {
+    "exit_code": 0,
+    "passed": 3,
+    "failed": 0,
+    "test_output": "unit: 3/3 passed",
+    "diff_applied": false,
+    "test_cmd": "bash scripts/run-tests.sh --files 'tests/e2e/parity-local-vs-ci-test.sh' 'tests/e2e/plugin-event-balance-full-run-test.sh' 'tests/integration/acceptance-gate-v2-contract-test.sh'",
+    "run_mode": "targeted",
+    "timing": {
+      "tiers": {},
+      "slowest_files": [
+        {
+          "file": "tests/e2e/parity-local-vs-ci-test.sh",
+          "ms": 168791
+        },
+        {
+          "file": "tests/e2e/plugin-event-balance-full-run-test.sh",
+          "ms": 83280
+        },
+        {
+          "file": "tests/integration/acceptance-gate-v2-contract-test.sh",
+          "ms": 2734
+        }
+      ]
+    }
+  }
+}
