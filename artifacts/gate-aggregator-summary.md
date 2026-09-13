@@ -1,6 +1,6 @@
-## gate-aggregator — pass
+## gate-aggregator — fail
 
-- rolled up 5 gate(s) into verdict pass
+- rolled up 5 gate(s) into verdict fail
 
-- failed: none
+- failed: test
 - fault: none declared
