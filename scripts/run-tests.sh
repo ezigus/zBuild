@@ -97,10 +97,25 @@ _rt_report_failure() {
 #                             honest outcome for a hang), never an infinite wait
 #                             — reported as TIMEOUT, not FAIL (#1613)
 # Returns the child's exit code.
-# Optional 3rd arg: a per-invocation trace file. When set, fd 9 is opened to it
-# so a child bash with BASH_XTRACEFD=9 (coverage mode — see --coverage-trace
+# Optional 3rd arg: a per-invocation trace file. When set, fd 8 is opened to it
+# so a child bash with BASH_XTRACEFD=8 (coverage mode — see --coverage-trace
 # below) writes its xtrace there. One file per test means parallel workers never
-# share one fd-9 handle, which is what corrupted coverage before (#993).
+# share one trace handle, which is what corrupted coverage before (#993).
+#
+# 8, not 9. Fd 9 is this repo's flock descriptor — core/state/atomic.sh,
+# core/event-bus/event-bus.sh (twice per emit), core/router/route.sh and three
+# plugins all do `) 9>"$lock_file"`. With BASH_XTRACEFD=9 those subshells
+# re-point the tracer at their own LOCK FILE, so bash writes the whole trace of
+# each critical section into it — measured at 33 bytes for a two-line probe, and
+# the event bus locks on every event. The I/O lands inside the held lock, so
+# every waiter queues behind it. That is what timed out the Coverage job on a
+# test whose own assertions all passed: not a slow tracer, a tracer
+# writing the trace into files that are not trace files. Fd 3 (stage-io) is
+# also taken, and bash REJECTS any BASH_XTRACEFD outside 3-9 outright
+# ("invalid value for trace file descriptor"), silently falling back to stderr —
+# so 10+ is not an option however free it looks. That leaves 4-8; 8 is the one
+# furthest from stage-io. tests/unit/coverage-trace-fd-collision-test.sh pins
+# both constraints: in range, and not redirected by engine code.
 _rt_run() {
   # #1058 Phase A: per-test-file wall-clock instrumentation. Entirely gated on
   # ZBUILD_TEST_TIMING_FILE being set+non-empty — when unset this function's
@@ -111,7 +126,7 @@ _rt_run() {
   # never turn a green run red.
   if [[ -z "${ZBUILD_TEST_TIMING_FILE:-}" ]]; then
     if [[ -n "${3:-}" ]]; then
-      "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null 9>"$3" >"$2" 2>&1
+      "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null 8>"$3" >"$2" 2>&1
     else
       "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null >"$2" 2>&1
     fi
@@ -120,7 +135,7 @@ _rt_run() {
   local _t0 _t1 _rc=0
   _t0="$EPOCHREALTIME"
   if [[ -n "${3:-}" ]]; then
-    "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null 9>"$3" >"$2" 2>&1 || _rc=$?
+    "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null 8>"$3" >"$2" 2>&1 || _rc=$?
   else
     "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null >"$2" 2>&1 || _rc=$?
   fi
@@ -225,7 +240,7 @@ fi
 # runner via `--coverage-trace <path>` instead of wiring PS4/BASH_XTRACEFD/
 # BASH_ENV itself. When set, the runner turns on xtrace line-tracing for each
 # child test bash (PS4 emits `TRACE:<src>:<lineno>:`; BASH_ENV injects `set -x`
-# into every child; BASH_XTRACEFD=9 routes it to fd 9), gives EACH test its own
+# into every child; BASH_XTRACEFD=8 routes it to fd 8), gives EACH test its own
 # trace file (so parallel workers never share one fd-9 handle), and merges them
 # into <path> at the end. The coverage script stays a dumb consumer.
 _RT_COVERAGE_TRACE=""
@@ -252,7 +267,7 @@ if [[ -n "$_RT_COVERAGE_TRACE" ]]; then
   # shellcheck disable=SC2064
   trap "rm -f '$_RT_BASH_ENV_FILE'" EXIT
   export PS4='TRACE:${BASH_SOURCE[0]-}:${LINENO}:'
-  export BASH_XTRACEFD=9
+  export BASH_XTRACEFD=8
   export BASH_ENV="$_RT_BASH_ENV_FILE"
 fi
 
