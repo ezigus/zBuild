@@ -49,16 +49,6 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       ZBUILD_WORKSPACE_BRANCH: zbuild/issue-${{ inputs.issue_number }}-ci
       # Model selection is governed by config/models.json + core/router — never hardcoded here.
-      # ADR-058 C9 (#1809): the append-only sink for write-boundary violations.
-      # write_boundary_violation_recorded names the offending path on three
-      # channels, and in this workflow two of them are unreliable — the pipeline
-      # step's stderr is interleaved with hours of stage output, and a violation
-      # inside a NESTED run (the test stage's suite) dies with that run's
-      # throwaway state dir. #1839 halted on a boundary violation here and the
-      # run could not say which file caused it; the disposition is `broken`,
-      # terminal, so there is no second chance to observe it. Job-level so every
-      # step that can dispatch a stage inherits it.
-      ZBUILD_WRITE_BOUNDARY_LOG: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
 
     steps:
       - name: Checkout
@@ -163,7 +153,23 @@ jobs:
           printf 'ZBUILD_STATE_DIR=%s\n' "$RUNNER_TEMP/zbuild-state" >> "$GITHUB_ENV"
           echo "::notice::state dir: $RUNNER_TEMP/zbuild-state (outside $GITHUB_WORKSPACE)"
 
+      # ADR-058 C9 (#1809): the append-only sink for write-boundary violations.
+      # write_boundary_violation_recorded names the offending path on three
+      # channels, and two are unreliable here — this step's stderr is interleaved
+      # with hours of stage output, and a violation inside a NESTED run (the test
+      # stage's suite) dies with that run's throwaway state dir. #1839 halted on
+      # a boundary violation and could not say which file caused it; the
+      # disposition is `broken`, terminal, so there is no second chance.
+      #
+      # STEP level, not job level: `runner.*` does not exist at job level, and a
+      # job-level `${{ runner.temp }}` makes GitHub reject the whole workflow at
+      # STARTUP — every run reports failure with ZERO jobs and no annotation
+      # saying why. That shipped once and broke four zbuild-daemon runs, which
+      # call this workflow. tests/unit/write-boundary-diagnostic-wired-test.sh
+      # SPEC-6 pins it.
       - name: Run pipeline
+        env:
+          ZBUILD_WRITE_BOUNDARY_LOG: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
         # CI-2 (#1001): scope the API key to this step only (not all steps) + fail
         # fast with a clear error when the secret is missing.
         env:

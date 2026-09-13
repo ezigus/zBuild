@@ -90,6 +90,35 @@ for _need in ZBUILD_TEST_TIMING_FILE upload-artifact; do
     fi
 done
 
+# ─── SPEC-6: no job-level env uses the `runner` context ────────────────────
+# `runner.*` does not exist at JOB level — only inside steps. GitHub rejects the
+# whole workflow at STARTUP, so every run reports `failure` with ZERO jobs and
+# no annotation naming the cause. From the outside the file looks corrupted.
+#
+# This shipped: a job-level `ZBUILD_WRITE_BOUNDARY_LOG: ${{ runner.temp }}/…`
+# in zbuild-pipeline.yml broke four zbuild-daemon runs, which fail with it
+# because the daemon CALLS that workflow (`uses: ./.github/workflows/…`).
+#
+# SPEC-1..SPEC-5 above did not catch it: they assert the variable is PRESENT and
+# that the YAML parses. Both were true. Valid YAML is not a valid workflow, and
+# the only thing that distinguishes them here is where the expression sits.
+_BAD_CTX=""
+for _wf in "$REPO_ROOT"/.github/workflows/*.yml; do
+    _hits="$(awk '
+        /^    steps:/                 { instep = 1 }
+        /^    env:/                   { inenv = (instep ? 0 : 1); next }
+        inenv && /\$\{\{ *runner\./   { printf "%s:%d\n", FILENAME, NR }
+        /^    [a-z]/ && !/^    env:/  { inenv = 0 }
+    ' "$_wf" 2>/dev/null || true)"
+    [[ -n "$_hits" ]] && _BAD_CTX="${_BAD_CTX}${_hits} "
+done
+if [[ -z "$_BAD_CTX" ]]; then
+    assert_pass "[SPEC-6] no workflow uses the runner context in job-level env"
+else
+    assert_fail "[SPEC-6] no workflow uses the runner context in job-level env" \
+        "job-level runner.* (rejected at startup): $_BAD_CTX"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
