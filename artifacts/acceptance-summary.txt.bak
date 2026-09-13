@@ -1,4 +1,3 @@
-acceptance SPEC violations — SPEC-5/SPEC-6/SPEC-7 tautological (pass at baseline) — re-author the assertions
 NEGCTL PASS SPEC-1
       design : result_contract:2 is present on every terminal exit path of acceptance_gate_run — precondition_unmet…
       asserts: assert_eq "[SPEC-1] design_acceptance_block: result_contract:2 present" "2" \
@@ -11,13 +10,13 @@ NEGCTL PASS SPEC-3
 NEGCTL PASS SPEC-4 guard_spec
       design : all existing acceptance-gate behavioral contracts are unchanged — verdict semantics, disposition cla…
       asserts: assert_eq "[SPEC-4] S1: load-bearing test verdict=pass behavioral contract preserved" \
-NEGCTL FAIL SPEC-5 tautology
+NEGCTL PASS SPEC-5
       design : the manifest declares valid_verdicts: [pass, fail] — the only two values acceptance_gate_run emits —…
-      asserts: assert_eq "[SPEC-5] pass path: verdict=pass (dedicated pass test case)" \
-NEGCTL FAIL SPEC-6 tautology
+      asserts: assert_eq "[SPEC-5] pass path: result_contract:2 in result (dedicated pass test case, v2 context)" \
+NEGCTL PASS SPEC-6
       design : the manifest declares tier_default: T1 as a schema-conformance field for this non-routing agent; plu…
       asserts: assert_contains "[SPEC-6] manifest declares tier_default: T1" "$_manifest_text" "tier_default: T1"
-NEGCTL FAIL SPEC-7 tautology
+NEGCTL PASS SPEC-7
       design : the manifest declares exactly one primary: true output (gate_result) — a convergence gate must name …
       asserts: assert_eq "[SPEC-7] manifest has exactly one primary: true output" "1" "$_primary_count"
 REACHABILITY PASS plugins/agent/spec-acceptance/plugin.sh
