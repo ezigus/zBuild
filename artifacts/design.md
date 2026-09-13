@@ -20,21 +20,22 @@ and summary-completeness move.
     previously hardcoded `local design_md="$artifact_dir/design.md"`.
 
 Additionally, the manifest must declare `valid_verdicts: [pass, fail]` (the only two verdicts
-acceptance_gate_run emits) and `gate_result` must carry `primary: true`. Both are now in the
-manifest; `valid_verdicts` is new to v2, `primary: true` was already present. The `|| true` on
-the main summary write was removed — under `set -euo pipefail`, a bare `atomic_write` failure
-is a genuine error, not a silent skip.
+acceptance_gate_run emits), `tier_default: T1` (schema-conformance for a non-routing agent), and
+`gate_result` must carry `primary: true`. All are new to this migration; the manifest previously
+had none of these v2-required fields. The `|| true` on the main summary write was removed —
+under `set -euo pipefail`, a bare `atomic_write` failure is a genuine error, not a silent skip.
 
 Backwards compatibility: `failures` and `fault` stay at the top level of the result JSON (not
 moved under `data:`), because `plugins/agent/build/lib/context.sh` and `core/pipeline/verdict.sh`
 read them there and neither is in this migration's scope.
 
-**Decision.** Manifest edits to add `result_contract: 2`, `valid_verdicts: [pass, fail]`, and
-declare `acceptance_detail` as `required: true` with `summary: true`; ~40 lines of plugin.sh
-edits across four change sites; test-helper updates to set `ZBUILD_STAGE_INPUTS`. A new
-integration test (`acceptance-gate-v2-contract-test.sh`) is the TDD red step and bears all
-four [change] SPEC assertions plus the three new [guard] assertions for DoD checkboxes. The
-`docs/wiki/plugins/spec-acceptance.md` page embeds the old manifest shape and must be updated.
+**Decision.** Manifest edits to add `result_contract: 2`, `valid_verdicts: [pass, fail]`,
+`tier_default: T1`, and declare `acceptance_detail` as `required: true` with `summary: true`;
+~40 lines of plugin.sh edits across four change sites; test-helper updates to set
+`ZBUILD_STAGE_INPUTS`. A new integration test (`acceptance-gate-v2-contract-test.sh`) is the TDD
+red step and bears all four [change] SPEC assertions plus dedicated tests for the new manifest
+fields. The `docs/wiki/plugins/spec-acceptance.md` page embeds the old manifest shape and must
+be updated.
 
 ---
 
@@ -50,6 +51,8 @@ tests/integration/acceptance-guard-regressed-routes-design-test.sh
 tests/unit/summary-producers-test.sh
 tests/unit/summary-mandatory-test.sh
 tests/unit/lint-verdict-classify-test.sh
+tests/unit/impact-tier-test.sh
+tests/unit/plugin-primary-output-atomic-test.sh
 docs/adr/ADR-036-acceptance-contract-teeth.md
 docs/adr/ADR-054-stage-contract.md
 docs/adr/ADR-055-inter-stage-data-contract-v2.md
@@ -66,15 +69,26 @@ this change introduces.
 any stage-bound plugin has zero `summary: true` outputs. Before this migration,
 spec-acceptance had no such output; after, `acceptance_detail` carries `summary: true`.
 
-**`tests/unit/lint-verdict-classify-test.sh`** — SPEC-10 sweeps all plugin manifests for
-declared `valid_verdicts` entries and checks each against ADR-019's verdict table. Adding
+**`tests/unit/lint-verdict-classify-test.sh`** — sweeps all plugin manifests for declared
+`valid_verdicts` entries and checks each against ADR-019's verdict table. Adding
 `valid_verdicts: [pass, fail]` to spec-acceptance's manifest means spec-acceptance now
-contributes entries to that sweep (`pass` and `fail` are both in ADR-019, so the assertion
-passes, but the sweep is structurally affected by the new declaration).
+contributes entries to that sweep.
+
+**`tests/unit/impact-tier-test.sh`** — sweeps all `plugins/agent/*/manifest.yaml` for
+`tier_default` and verifies `resolve_tier` agrees. Before this migration, spec-acceptance had
+no `tier_default` (non-routing) so was skipped. After, it declares `tier_default: T1` and
+enters the sweep — absence-by-omission gap: the set of tier-declaring plugins GREW.
+
+**`tests/unit/plugin-primary-output-atomic-test.sh`** — sweeps all manifests for
+`primary: true` outputs and verifies each is written via `atomic_write` in the plugin's
+plugin.sh. spec-acceptance's `gate_result` now carries `primary: true`, adding it to this
+sweep. The guard passes (gate_result is already written via atomic_write) but the file is in
+scope because it enumerates a set this migration grows.
 
 **`docs/wiki/plugins/spec-acceptance.md`** — embeds a verbatim manifest YAML block. The block
-must reflect the new shape: `result_contract: 2`, `valid_verdicts`, `acceptance_detail` with
-`required: true` and `summary: true`, and the input declaration without a stale `source:` form.
+must reflect the new shape: `result_contract: 2`, `valid_verdicts`, `tier_default: T1`,
+`acceptance_detail` with `required: true` and `summary: true`, and the input declaration
+without a stale `source:` form.
 
 **`docs/adr/ADR-036-acceptance-contract-teeth.md`** — references the summary write path and
 the `acceptance_detail` declaration; no edit required but cited by this PR.
@@ -87,13 +101,15 @@ the worked example of an undeclared output and names this migration's obligation
 No edit; governs the migration.
 
 **Files NOT in scope:** `plugins/agent/build/lib/context.sh` and `core/pipeline/verdict.sh`
-read `failures`/`fault` at the top level — those fields are unchanged. `config/templates/simple.yaml`
-and `config/templates/deployed.yaml` reference the `acceptance_gate` role (not the plugin id)
-— unchanged. `tests/integration/self-host-contract-lib-redirect-test.sh` sources `plugin.sh`
-but does not call `acceptance_gate_run` or inspect result JSON.
-`tests/integration/cycle-acceptance-terminal-failure-test.sh` mocks the gate with fake JSON and
-does not exercise `acceptance_gate_run`. `tests/unit/acceptance-disposition-classify-test.sh` and
-`acceptance-negctl-test.sh` source internal helpers only — no result-shape assertions.
+read `failures`/`fault` at the top level — those fields are unchanged.
+`config/templates/simple.yaml` and `config/templates/deployed.yaml` reference the
+`acceptance_gate` role (not the plugin id) — unchanged.
+`tests/integration/self-host-contract-lib-redirect-test.sh` sources `plugin.sh` but does not
+call `acceptance_gate_run` or inspect result JSON.
+`tests/integration/cycle-acceptance-terminal-failure-test.sh` mocks the gate with fake JSON
+and does not exercise `acceptance_gate_run`.
+`tests/unit/acceptance-disposition-classify-test.sh` and `acceptance-negctl-test.sh` source
+internal helpers only — no result-shape assertions.
 
 ---
 
@@ -103,8 +119,8 @@ SPEC-2[change]: acceptance-summary.txt is written on the precondition_unmet path
 SPEC-3[change]: design_md is resolved from ZBUILD_STAGE_INPUTS JSON index (jq -r .inputs.design) rather than the hardcoded $artifact_dir/design.md path — plugin.sh has zero grep hits for the literal string '$artifact_dir/design.md' after this change
 SPEC-4[guard]: all existing acceptance-gate behavioral contracts are unchanged — verdict semantics, disposition classification, event emission, negctl/reachability levels, fault routing
 SPEC-5[change]: the manifest declares valid_verdicts: [pass, fail] — the only two values acceptance_gate_run emits — and each verdict is exercised by a dedicated test case (pass path and fail path)
-SPEC-6[guard]: plugin.sh makes no model.route call; tier_default: T1 in the manifest config is a schema-conformance declaration; the router budget checkpoint is structurally inapplicable to this mechanical gate
-SPEC-7[guard]: the manifest declares exactly one primary: true output (gate_result) — a convergence gate must name its primary result artifact
+SPEC-6[change]: the manifest declares tier_default: T1 as a schema-conformance field for this non-routing agent; plugin.sh makes no model.route call and the router budget checkpoint is structurally inapplicable to this mechanical gate
+SPEC-7[change]: the manifest declares exactly one primary: true output (gate_result) — a convergence gate must name its primary result artifact
 WIRING:
 plugins/agent/spec-acceptance/plugin.sh
 TESTFILES:
