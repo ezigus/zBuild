@@ -41,8 +41,8 @@ nction exists in plugin.sh
 [38;2;0;212;255m[1m  review-report plugin — multi-lens advisory report (#972)[0m
 [2m  ══════════════════════════════════════════[0m
 
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
   [38;2;74;222;128m✓[0m [SPEC-1] run returns 0 (advisory never aborts)
   [38;2;74;222;128m✓[0m [SPEC-1] one LLM call per lens (11 separate calls, not 1 prompt)
   [38;2;248;113;113m✗[0m [SPEC-1] report has 11 lenses
@@ -87,8 +87,8 @@ nction exists in plugin.sh
     [2moutput missing: off-by-one in loop[0m
   [38;2;248;113;113m✗[0m [SPEC-4] de-duped section renders contributing lenses
     [2moutput missing: lenses: correctness, security[0m
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
   [38;2;74;222;128m✓[0m [SPEC-6] report run returns 0 (advisory)
   [38;2;74;222;128m✓[0m [SPEC-6] a report is written
   [38;2;74;222;128m✓[0m [SPEC-6] lenses route through route_to_model (redaction chokepoint)
@@ -110,8 +110,8 @@ nction exists in plugin.sh
     [2moutput missing: Advisory:[0m
   [38;2;74;222;128m✓[0m [SPEC-14] registered lens returns its artifact path
   [38;2;74;222;128m✓[0m [SPEC-14] unregistered lens returns empty stdout
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
 ### plugins/agent/review-report/plugin.sh head tests/unit/review-report-plugin-test.sh
 
 [38;2;0;212;255m[1m  review-report plugin — multi-lens advisory report (#972)[0m
@@ -161,7 +161,7 @@ nction exists in plugin.sh
   [38;2;74;222;128m✓[0m [SPEC-13] rendered markdown contains the routing advisory blockquote
   [38;2;74;222;128m✓[0m [SPEC-14] registered lens returns its artifact path
   [38;2;74;222;128m✓[0m [SPEC-14] unregistered lens returns empty stdout
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-report-plugin.KpEqOq/spec15/review-report-lenses.json  [38;2;74;222;128m✓[0m [SPEC-15] correctness prompt embeds per-lens artifact content
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-report-plugin.r2HQo4/spec15/review-report-lenses.json  [38;2;74;222;128m✓[0m [SPEC-15] correctness prompt embeds per-lens artifact content
   [38;2;74;222;128m✓[0m [SPEC-15] security prompt uses shared bundle (no per-lens artifact)
   [38;2;74;222;128m✓[0m [SPEC-3] _rr_populate_artifact_registry function exists
   [38;2;74;222;128m✓[0m [SPEC-3] design-conformance registered to reachability-ablation.json
@@ -239,8 +239,8 @@ nction exists in plugin.sh
 [38;2;0;212;255m[1m  review-report plugin — multi-lens advisory report (#972)[0m
 [2m  ══════════════════════════════════════════[0m
 
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
   [38;2;74;222;128m✓[0m [SPEC-1] run returns 0 (advisory never aborts)
   [38;2;74;222;128m✓[0m [SPEC-1] one LLM call per lens (11 separate calls, not 1 prompt)
   [38;2;248;113;113m✗[0m [SPEC-1] report has 11 lenses
@@ -285,8 +285,8 @@ nction exists in plugin.sh
     [2moutput missing: off-by-one in loop[0m
   [38;2;248;113;113m✗[0m [SPEC-4] de-duped section renders contributing lenses
     [2moutput missing: lenses: correctness, security[0m
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
   [38;2;74;222;128m✓[0m [SPEC-6] report run returns 0 (advisory)
   [38;2;74;222;128m✓[0m [SPEC-6] a report is written
   [38;2;74;222;128m✓[0m [SPEC-6] lenses route through route_to_model (redaction chokepoint)
@@ -308,8 +308,8 @@ nction exists in plugin.sh
     [2moutput missing: Advisory:[0m
   [38;2;74;222;128m✓[0m [SPEC-14] registered lens returns its artifact path
   [38;2;74;222;128m✓[0m [SPEC-14] unregistered lens returns empty stdout
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
 ### plugins/agent/review-report/plugin.sh head tests/unit/review-report-plugin-test.sh
 
 [38;2;0;212;255m[1m  review-report plugin — multi-lens advisory report (#972)[0m
@@ -359,7 +359,7 @@ nction exists in plugin.sh
   [38;2;74;222;128m✓[0m [SPEC-13] rendered markdown contains the routing advisory blockquote
   [38;2;74;222;128m✓[0m [SPEC-14] registered lens returns its artifact path
   [38;2;74;222;128m✓[0m [SPEC-14] unregistered lens returns empty stdout
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-report-plugin.HxaflD/spec15/review-report-lenses.json  [38;2;74;222;128m✓[0m [SPEC-15] correctness prompt embeds per-lens artifact content
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-report-plugin.eMwKku/spec15/review-report-lenses.json  [38;2;74;222;128m✓[0m [SPEC-15] correctness prompt embeds per-lens artifact content
   [38;2;74;222;128m✓[0m [SPEC-15] security prompt uses shared bundle (no per-lens artifact)
   [38;2;74;222;128m✓[0m [SPEC-3] _rr_populate_artifact_registry function exists
   [38;2;74;222;128m✓[0m [SPEC-3] design-conformance registered to reachability-ablation.json
@@ -437,8 +437,8 @@ nction exists in plugin.sh
 [38;2;0;212;255m[1m  review-report plugin — multi-lens advisory report (#972)[0m
 [2m  ══════════════════════════════════════════[0m
 
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
   [38;2;74;222;128m✓[0m [SPEC-1] run returns 0 (advisory never aborts)
   [38;2;74;222;128m✓[0m [SPEC-1] one LLM call per lens (11 separate calls, not 1 prompt)
   [38;2;248;113;113m✗[0m [SPEC-1] report has 11 lenses
@@ -483,8 +483,8 @@ nction exists in plugin.sh
     [2moutput missing: off-by-one in loop[0m
   [38;2;248;113;113m✗[0m [SPEC-4] de-duped section renders contributing lenses
     [2moutput missing: lenses: correctness, security[0m
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
   [38;2;74;222;128m✓[0m [SPEC-6] report run returns 0 (advisory)
   [38;2;74;222;128m✓[0m [SPEC-6] a report is written
   [38;2;74;222;128m✓[0m [SPEC-6] lenses route through route_to_model (redaction chokepoint)
@@ -506,8 +506,8 @@ nction exists in plugin.sh
     [2moutput missing: Advisory:[0m
   [38;2;74;222;128m✓[0m [SPEC-14] registered lens returns its artifact path
   [38;2;74;222;128m✓[0m [SPEC-14] unregistered lens returns empty stdout
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
 ### plugins/agent/review-report/plugin.sh head tests/unit/review-report-plugin-test.sh
 
 [38;2;0;212;255m[1m  review-report plugin — multi-lens advisory report (#972)[0m
@@ -557,7 +557,7 @@ nction exists in plugin.sh
   [38;2;74;222;128m✓[0m [SPEC-13] rendered markdown contains the routing advisory blockquote
   [38;2;74;222;128m✓[0m [SPEC-14] registered lens returns its artifact path
   [38;2;74;222;128m✓[0m [SPEC-14] unregistered lens returns empty stdout
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-report-plugin.YxKxUu/spec15/review-report-lenses.json  [38;2;74;222;128m✓[0m [SPEC-15] correctness prompt embeds per-lens artifact content
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-report-plugin.5ZLuOM/spec15/review-report-lenses.json  [38;2;74;222;128m✓[0m [SPEC-15] correctness prompt embeds per-lens artifact content
   [38;2;74;222;128m✓[0m [SPEC-15] security prompt uses shared bundle (no per-lens artifact)
   [38;2;74;222;128m✓[0m [SPEC-3] _rr_populate_artifact_registry function exists
   [38;2;74;222;128m✓[0m [SPEC-3] design-conformance registered to reachability-ablation.json
@@ -635,8 +635,8 @@ nction exists in plugin.sh
 [38;2;0;212;255m[1m  review-report plugin — multi-lens advisory report (#972)[0m
 [2m  ══════════════════════════════════════════[0m
 
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
   [38;2;74;222;128m✓[0m [SPEC-1] run returns 0 (advisory never aborts)
   [38;2;74;222;128m✓[0m [SPEC-1] one LLM call per lens (11 separate calls, not 1 prompt)
   [38;2;248;113;113m✗[0m [SPEC-1] report has 11 lenses
@@ -681,8 +681,8 @@ nction exists in plugin.sh
     [2moutput missing: off-by-one in loop[0m
   [38;2;248;113;113m✗[0m [SPEC-4] de-duped section renders contributing lenses
     [2moutput missing: lenses: correctness, security[0m
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
   [38;2;74;222;128m✓[0m [SPEC-6] report run returns 0 (advisory)
   [38;2;74;222;128m✓[0m [SPEC-6] a report is written
   [38;2;74;222;128m✓[0m [SPEC-6] lenses route through route_to_model (redaction chokepoint)
@@ -704,8 +704,8 @@ nction exists in plugin.sh
     [2moutput missing: Advisory:[0m
   [38;2;74;222;128m✓[0m [SPEC-14] registered lens returns its artifact path
   [38;2;74;222;128m✓[0m [SPEC-14] unregistered lens returns empty stdout
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.rdsoA3/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.Rx23ZA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
 ### plugins/agent/review-report/plugin.sh head tests/unit/review-report-plugin-test.sh
 
 [38;2;0;212;255m[1m  review-report plugin — multi-lens advisory report (#972)[0m
@@ -755,7 +755,7 @@ nction exists in plugin.sh
   [38;2;74;222;128m✓[0m [SPEC-13] rendered markdown contains the routing advisory blockquote
   [38;2;74;222;128m✓[0m [SPEC-14] registered lens returns its artifact path
   [38;2;74;222;128m✓[0m [SPEC-14] unregistered lens returns empty stdout
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-report-plugin.fly47E/spec15/review-report-lenses.json  [38;2;74;222;128m✓[0m [SPEC-15] correctness prompt embeds per-lens artifact content
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-report-plugin.grLwxq/spec15/review-report-lenses.json  [38;2;74;222;128m✓[0m [SPEC-15] correctness prompt embeds per-lens artifact content
   [38;2;74;222;128m✓[0m [SPEC-15] security prompt uses shared bundle (no per-lens artifact)
   [38;2;74;222;128m✓[0m [SPEC-3] _rr_populate_artifact_registry function exists
   [38;2;74;222;128m✓[0m [SPEC-3] design-conformance registered to reachability-ablation.json
