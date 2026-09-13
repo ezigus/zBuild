@@ -1,0 +1,830 @@
+nction exists in plugin.sh
+  [38;2;74;222;128m✓[0m [SPEC-6] _rr_budget_guidance produces TURN BUDGET block
+  [38;2;74;222;128m✓[0m [SPEC-6] _rr_budget_guidance embeds max_turns value
+  [38;2;74;222;128m✓[0m [SPEC-6] correctness lens prompt contains TURN BUDGET guidance from _rr_budget_guidance
+  [38;2;74;222;128m✓[0m [SPEC-7] _rr_lens_envelope_schema_ok predicate exists
+  [38;2;74;222;128m✓[0m [SPEC-7] schema gate accepts valid {score:number, findings:array}
+  [38;2;74;222;128m✓[0m [SPEC-7] schema gate rejects object missing score and findings
+  [38;2;74;222;128m✓[0m [SPEC-7] schema gate rejects non-object input
+  [38;2;74;222;128m✓[0m [SPEC-8] extract_first_json_object absent from lenses.sh
+  [38;2;74;222;128m✓[0m [SPEC-8] lenses.sh uses _llm_envelope_parse for lens output parsing
+  [38;2;74;222;128m✓[0m [SPEC-8] _rr_parse_lens_out calls _llm_envelope_parse with --schema-gate
+  [38;2;74;222;128m✓[0m [SPEC-9] _rr_run_inner returns 0 (advisory contract: never blocks)
+  [38;2;74;222;128m✓[0m [SPEC-9] advisory review-report.json written on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-9] advisory report contains merge_readiness field
+  [38;2;74;222;128m✓[0m [SPEC-10] 11 independent LLM calls made (one per lens)
+  [38;2;74;222;128m✓[0m [SPEC-10] advisory report has 11 lens result sections
+  [38;2;74;222;128m✓[0m [SPEC-11] manifest declares valid_verdicts: [] (writes no verdict to pipeline channel)
+  [38;2;74;222;128m✓[0m [SPEC-12] manifest first output retains primary: true after migration
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest provides.role: review_report present
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.evidence.redaction_failed
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.lens.evidence.redaction_failed
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.lens.failed
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.lens.unparseable
+  [38;2;74;222;128m✓[0m [SPEC-14] manifest has no active cleanup hook (absent or null sentinel cleanup: ~)
+  [38;2;74;222;128m✓[0m [SPEC-14] no review_report_cleanup function in plugin.sh
+  [38;2;74;222;128m✓[0m [SPEC-15] plugin.sh references ZBUILD_STAGE_INPUTS for declared inputs
+  [38;2;74;222;128m✓[0m [SPEC-15] plugin.sh calls jq -r with .inputs.scope_manifest from ZBUILD_STAGE_INPUTS
+  [38;2;74;222;128m✓[0m [SPEC-16] result sidecar written when at least one lens fails
+  [38;2;74;222;128m✓[0m [SPEC-16] verdict=pass when lens fails (advisory contract preserved)
+  [38;2;74;222;128m✓[0m [SPEC-16] disposition=exhausted when at least one lens subshell returns non-zero rc
+  [38;2;74;222;128m✓[0m [SPEC-17] plugin.sh constructs no hardcoded state_dir path for declared input filenames
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 109 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-3] no coercion vocabulary in plugin source
+
+### plugins/agent/review-report/plugin.sh reverted tests/unit/review-report-plugin-test.sh
+
+[38;2;0;212;255m[1m  review-report plugin — multi-lens advisory report (#972)[0m
+[2m  ══════════════════════════════════════════[0m
+
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+  [38;2;74;222;128m✓[0m [SPEC-1] run returns 0 (advisory never aborts)
+  [38;2;74;222;128m✓[0m [SPEC-1] one LLM call per lens (11 separate calls, not 1 prompt)
+  [38;2;248;113;113m✗[0m [SPEC-1] report has 11 lenses
+    [2mexpected: 11, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: correctness
+    [2moutput missing: #### correctness[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: security
+    [2moutput missing: #### security[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: test-coverage
+    [2moutput missing: #### test-coverage[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: design-conformance
+    [2moutput missing: #### design-conformance[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: integration
+    [2moutput missing: #### integration[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: error-handling
+    [2moutput missing: #### error-handling[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: performance
+    [2moutput missing: #### performance[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: edge-case
+    [2moutput missing: #### edge-case[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: architecture
+    [2moutput missing: #### architecture[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: red-team
+    [2moutput missing: #### red-team[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: maintainability
+    [2moutput missing: #### maintainability[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] flat findings de-duped to 2
+    [2mexpected: 2, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] merged finding carries both lenses
+    [2moutput missing: correctness[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] merged finding carries both lenses
+    [2moutput missing: security[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] merged finding takes MAX severity (high)
+    [2mexpected: high, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-3] critical finding → merge_readiness=needs_attention
+    [2mexpected: needs_attention, got: advisory[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] report carries no verdict field
+  [38;2;74;222;128m✓[0m [SPEC-3] no coercion vocabulary in plugin source
+  [38;2;248;113;113m✗[0m [SPEC-4] correctness section names its score
+    [2moutput missing: #### correctness (score: 6/10)[0m
+  [38;2;248;113;113m✗[0m [SPEC-4] lens bullet renders the finding message (not blank)
+    [2moutput missing: off-by-one in loop[0m
+  [38;2;248;113;113m✗[0m [SPEC-4] de-duped section renders contributing lenses
+    [2moutput missing: lenses: correctness, security[0m
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+  [38;2;74;222;128m✓[0m [SPEC-6] report run returns 0 (advisory)
+  [38;2;74;222;128m✓[0m [SPEC-6] a report is written
+  [38;2;74;222;128m✓[0m [SPEC-6] lenses route through route_to_model (redaction chokepoint)
+  [38;2;74;222;128m✓[0m [SPEC-7] backtick in LLM message is escaped
+  [38;2;74;222;128m✓[0m [SPEC-7] newline in LLM message collapsed (bullet stays one line)
+  [38;2;74;222;128m✓[0m [SPEC-7] bad proximity window clamps (no aggregation crash)
+  [38;2;74;222;128m✓[0m [SPEC-8] integration charter names mismatched interfaces
+  [38;2;74;222;128m✓[0m [SPEC-8] error-handling charter names silent error swallowing
+  [38;2;74;222;128m✓[0m [SPEC-8] performance charter names O(n^2) pattern
+  [38;2;74;222;128m✓[0m [SPEC-8] edge-case charter names zero-length inputs
+  [38;2;74;222;128m✓[0m [SPEC-9] architecture charter names layer-boundary violations
+  [38;2;74;222;128m✓[0m [SPEC-10] red-team charter names race conditions
+  [38;2;74;222;128m✓[0m [SPEC-11] maintainability charter names code smells
+  [38;2;74;222;128m✓[0m [SPEC-12] _rr_load_lenses function exists (roster is manifest-driven)
+  [38;2;74;222;128m✓[0m [SPEC-12] _RR_LENSES content matches manifest config.lenses
+  [38;2;248;113;113m✗[0m [SPEC-13] needs_attention report must carry escalation_note in JSON
+    [2mfield absent or null[0m
+  [38;2;248;113;113m✗[0m [SPEC-13] rendered markdown contains the routing advisory blockquote
+    [2moutput missing: Advisory:[0m
+  [38;2;74;222;128m✓[0m [SPEC-14] registered lens returns its artifact path
+  [38;2;74;222;128m✓[0m [SPEC-14] unregistered lens returns empty stdout
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+### plugins/agent/review-report/plugin.sh head tests/unit/review-report-plugin-test.sh
+
+[38;2;0;212;255m[1m  review-report plugin — multi-lens advisory report (#972)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] run returns 0 (advisory never aborts)
+  [38;2;74;222;128m✓[0m [SPEC-1] one LLM call per lens (11 separate calls, not 1 prompt)
+  [38;2;74;222;128m✓[0m [SPEC-1] report has 11 lenses
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: correctness
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: security
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: test-coverage
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: design-conformance
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: integration
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: error-handling
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: performance
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: edge-case
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: architecture
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: red-team
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: maintainability
+  [38;2;74;222;128m✓[0m [SPEC-2] flat findings de-duped to 2
+  [38;2;74;222;128m✓[0m [SPEC-2] merged finding carries both lenses
+  [38;2;74;222;128m✓[0m [SPEC-2] merged finding carries both lenses
+  [38;2;74;222;128m✓[0m [SPEC-2] merged finding takes MAX severity (high)
+  [38;2;74;222;128m✓[0m [SPEC-3] critical finding → merge_readiness=needs_attention
+  [38;2;74;222;128m✓[0m [SPEC-3] report carries no verdict field
+  [38;2;248;113;113m✗[0m [SPEC-3] no coercion vocabulary in plugin source
+    [2mfound coercion token[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] correctness section names its score
+  [38;2;74;222;128m✓[0m [SPEC-4] lens bullet renders the finding message (not blank)
+  [38;2;74;222;128m✓[0m [SPEC-4] de-duped section renders contributing lenses
+  [38;2;74;222;128m✓[0m [SPEC-6] report run returns 0 (advisory)
+  [38;2;74;222;128m✓[0m [SPEC-6] a report is written
+  [38;2;74;222;128m✓[0m [SPEC-6] lenses route through route_to_model (redaction chokepoint)
+  [38;2;74;222;128m✓[0m [SPEC-7] backtick in LLM message is escaped
+  [38;2;74;222;128m✓[0m [SPEC-7] newline in LLM message collapsed (bullet stays one line)
+  [38;2;74;222;128m✓[0m [SPEC-7] bad proximity window clamps (no aggregation crash)
+  [38;2;74;222;128m✓[0m [SPEC-8] integration charter names mismatched interfaces
+  [38;2;74;222;128m✓[0m [SPEC-8] error-handling charter names silent error swallowing
+  [38;2;74;222;128m✓[0m [SPEC-8] performance charter names O(n^2) pattern
+  [38;2;74;222;128m✓[0m [SPEC-8] edge-case charter names zero-length inputs
+  [38;2;74;222;128m✓[0m [SPEC-9] architecture charter names layer-boundary violations
+  [38;2;74;222;128m✓[0m [SPEC-10] red-team charter names race conditions
+  [38;2;74;222;128m✓[0m [SPEC-11] maintainability charter names code smells
+  [38;2;74;222;128m✓[0m [SPEC-12] _rr_load_lenses function exists (roster is manifest-driven)
+  [38;2;74;222;128m✓[0m [SPEC-12] _RR_LENSES content matches manifest config.lenses
+  [38;2;74;222;128m✓[0m [SPEC-13] needs_attention JSON carries non-empty escalation_note
+  [38;2;74;222;128m✓[0m [SPEC-13] rendered markdown contains the routing advisory blockquote
+  [38;2;74;222;128m✓[0m [SPEC-14] registered lens returns its artifact path
+  [38;2;74;222;128m✓[0m [SPEC-14] unregistered lens returns empty stdout
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-report-plugin.gmVIDj/spec15/review-report-lenses.json  [38;2;74;222;128m✓[0m [SPEC-15] correctness prompt embeds per-lens artifact content
+  [38;2;74;222;128m✓[0m [SPEC-15] security prompt uses shared bundle (no per-lens artifact)
+  [38;2;74;222;128m✓[0m [SPEC-3] _rr_populate_artifact_registry function exists
+  [38;2;74;222;128m✓[0m [SPEC-3] design-conformance registered to reachability-ablation.json
+  [38;2;74;222;128m✓[0m [SPEC-3] _rr_populate_artifact_registry is no-op when ablation absent
+  [38;2;74;222;128m✓[0m [SPEC-4] design-conformance prompt contains ablation artifact content
+  [38;2;74;222;128m✓[0m [SPEC-4] security prompt still uses shared bundle (not ablation)
+  [38;2;74;222;128m✓[0m [SPEC-3] _rr_register_lens_artifact sets registry entry
+  [38;2;74;222;128m✓[0m [SPEC-4] _rr_run_inner returns 0 when coverage-map present
+  [38;2;74;222;128m✓[0m [SPEC-5] test-coverage prompt embeds coverage-map file entry
+  [38;2;74;222;128m✓[0m [SPEC-5] security prompt uses shared bundle (no per-lens override)
+  [38;2;74;222;128m✓[0m [SPEC-6] _rr_run_inner returns 0 when coverage-map absent (fail-soft)
+  [38;2;74;222;128m✓[0m [SPEC-6] test-coverage falls back to shared bundle when map absent
+  [38;2;74;222;128m✓[0m [SPEC-1] manifest declares result_contract: 2 under provides:
+  [38;2;74;222;128m✓[0m [SPEC-1] manifest config.router declares timeout_s
+  [38;2;74;222;128m✓[0m [SPEC-1] manifest config.router declares max_turns
+  [38;2;74;222;128m✓[0m [SPEC-2] _rr_write_result helper declared in plugin.sh
+  [38;2;74;222;128m✓[0m [SPEC-2] _rr_write_result writes review-report-result.json
+  [38;2;74;222;128m✓[0m [SPEC-2] written file has result_contract:2
+  [38;2;74;222;128m✓[0m [SPEC-2] written file has verdict field
+  [38;2;74;222;128m✓[0m [SPEC-2] written file has disposition field
+  [38;2;74;222;128m✓[0m [SPEC-2] written file has reason field
+  [38;2;74;222;128m✓[0m [SPEC-3] result sidecar written on missing state_file
+  [38;2;74;222;128m✓[0m [SPEC-3] verdict=error on missing state_file
+  [38;2;74;222;128m✓[0m [SPEC-3] disposition=broken on missing state_file
+  [38;2;74;222;128m✓[0m [SPEC-3] result_contract:2 on missing state_file
+  [38;2;74;222;128m✓[0m [SPEC-4] result sidecar written on missing out_json
+  [38;2;74;222;128m✓[0m [SPEC-4] verdict=error on missing out_json
+  [38;2;74;222;128m✓[0m [SPEC-4] disposition=broken on missing out_json
+  [38;2;74;222;128m✓[0m [SPEC-4] result_contract:2 on missing out_json
+  [38;2;74;222;128m✓[0m [SPEC-5] _rr_run_inner returns 0 on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-5] v2 result sidecar written on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-5] verdict=pass on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-5] disposition=complete on normal completion (all lens rc=0)
+  [38;2;74;222;128m✓[0m [SPEC-5] result_contract:2 on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-6] _rr_budget_guidance function exists in plugin.sh
+  [38;2;74;222;128m✓[0m [SPEC-6] _rr_budget_guidance produces TURN BUDGET block
+  [38;2;74;222;128m✓[0m [SPEC-6] _rr_budget_guidance embeds max_turns value
+  [38;2;74;222;128m✓[0m [SPEC-6] correctness lens prompt contains TURN BUDGET guidance from _rr_budget_guidance
+  [38;2;74;222;128m✓[0m [SPEC-7] _rr_lens_envelope_schema_ok predicate exists
+  [38;2;74;222;128m✓[0m [SPEC-7] schema gate accepts valid {score:number, findings:array}
+  [38;2;74;222;128m✓[0m [SPEC-7] schema gate rejects object missing score and findings
+  [38;2;74;222;128m✓[0m [SPEC-7] schema gate rejects non-object input
+  [38;2;74;222;128m✓[0m [SPEC-8] extract_first_json_object absent from lenses.sh
+  [38;2;74;222;128m✓[0m [SPEC-8] lenses.sh uses _llm_envelope_parse for lens output parsing
+  [38;2;74;222;128m✓[0m [SPEC-8] _rr_parse_lens_out calls _llm_envelope_parse with --schema-gate
+  [38;2;74;222;128m✓[0m [SPEC-9] _rr_run_inner returns 0 (advisory contract: never blocks)
+  [38;2;74;222;128m✓[0m [SPEC-9] advisory review-report.json written on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-9] advisory report contains merge_readiness field
+  [38;2;74;222;128m✓[0m [SPEC-10] 11 independent LLM calls made (one per lens)
+  [38;2;74;222;128m✓[0m [SPEC-10] advisory report has 11 lens result sections
+  [38;2;74;222;128m✓[0m [SPEC-11] manifest declares valid_verdicts: [] (writes no verdict to pipeline channel)
+  [38;2;74;222;128m✓[0m [SPEC-12] manifest first output retains primary: true after migration
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest provides.role: review_report present
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.evidence.redaction_failed
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.lens.evidence.redaction_failed
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.lens.failed
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.lens.unparseable
+  [38;2;74;222;128m✓[0m [SPEC-14] manifest has no active cleanup hook (absent or null sentinel cleanup: ~)
+  [38;2;74;222;128m✓[0m [SPEC-14] no review_report_cleanup function in plugin.sh
+  [38;2;74;222;128m✓[0m [SPEC-15] plugin.sh references ZBUILD_STAGE_INPUTS for declared inputs
+  [38;2;74;222;128m✓[0m [SPEC-15] plugin.sh calls jq -r with .inputs.scope_manifest from ZBUILD_STAGE_INPUTS
+  [38;2;74;222;128m✓[0m [SPEC-16] result sidecar written when at least one lens fails
+  [38;2;74;222;128m✓[0m [SPEC-16] verdict=pass when lens fails (advisory contract preserved)
+  [38;2;74;222;128m✓[0m [SPEC-16] disposition=exhausted when at least one lens subshell returns non-zero rc
+  [38;2;74;222;128m✓[0m [SPEC-17] plugin.sh constructs no hardcoded state_dir path for declared input filenames
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 109 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-3] no coercion vocabulary in plugin source
+
+### plugins/agent/review-report/plugin.sh reverted tests/unit/review-report-plugin-test.sh
+
+[38;2;0;212;255m[1m  review-report plugin — multi-lens advisory report (#972)[0m
+[2m  ══════════════════════════════════════════[0m
+
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+  [38;2;74;222;128m✓[0m [SPEC-1] run returns 0 (advisory never aborts)
+  [38;2;74;222;128m✓[0m [SPEC-1] one LLM call per lens (11 separate calls, not 1 prompt)
+  [38;2;248;113;113m✗[0m [SPEC-1] report has 11 lenses
+    [2mexpected: 11, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: correctness
+    [2moutput missing: #### correctness[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: security
+    [2moutput missing: #### security[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: test-coverage
+    [2moutput missing: #### test-coverage[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: design-conformance
+    [2moutput missing: #### design-conformance[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: integration
+    [2moutput missing: #### integration[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: error-handling
+    [2moutput missing: #### error-handling[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: performance
+    [2moutput missing: #### performance[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: edge-case
+    [2moutput missing: #### edge-case[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: architecture
+    [2moutput missing: #### architecture[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: red-team
+    [2moutput missing: #### red-team[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: maintainability
+    [2moutput missing: #### maintainability[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] flat findings de-duped to 2
+    [2mexpected: 2, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] merged finding carries both lenses
+    [2moutput missing: correctness[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] merged finding carries both lenses
+    [2moutput missing: security[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] merged finding takes MAX severity (high)
+    [2mexpected: high, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-3] critical finding → merge_readiness=needs_attention
+    [2mexpected: needs_attention, got: advisory[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] report carries no verdict field
+  [38;2;74;222;128m✓[0m [SPEC-3] no coercion vocabulary in plugin source
+  [38;2;248;113;113m✗[0m [SPEC-4] correctness section names its score
+    [2moutput missing: #### correctness (score: 6/10)[0m
+  [38;2;248;113;113m✗[0m [SPEC-4] lens bullet renders the finding message (not blank)
+    [2moutput missing: off-by-one in loop[0m
+  [38;2;248;113;113m✗[0m [SPEC-4] de-duped section renders contributing lenses
+    [2moutput missing: lenses: correctness, security[0m
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+  [38;2;74;222;128m✓[0m [SPEC-6] report run returns 0 (advisory)
+  [38;2;74;222;128m✓[0m [SPEC-6] a report is written
+  [38;2;74;222;128m✓[0m [SPEC-6] lenses route through route_to_model (redaction chokepoint)
+  [38;2;74;222;128m✓[0m [SPEC-7] backtick in LLM message is escaped
+  [38;2;74;222;128m✓[0m [SPEC-7] newline in LLM message collapsed (bullet stays one line)
+  [38;2;74;222;128m✓[0m [SPEC-7] bad proximity window clamps (no aggregation crash)
+  [38;2;74;222;128m✓[0m [SPEC-8] integration charter names mismatched interfaces
+  [38;2;74;222;128m✓[0m [SPEC-8] error-handling charter names silent error swallowing
+  [38;2;74;222;128m✓[0m [SPEC-8] performance charter names O(n^2) pattern
+  [38;2;74;222;128m✓[0m [SPEC-8] edge-case charter names zero-length inputs
+  [38;2;74;222;128m✓[0m [SPEC-9] architecture charter names layer-boundary violations
+  [38;2;74;222;128m✓[0m [SPEC-10] red-team charter names race conditions
+  [38;2;74;222;128m✓[0m [SPEC-11] maintainability charter names code smells
+  [38;2;74;222;128m✓[0m [SPEC-12] _rr_load_lenses function exists (roster is manifest-driven)
+  [38;2;74;222;128m✓[0m [SPEC-12] _RR_LENSES content matches manifest config.lenses
+  [38;2;248;113;113m✗[0m [SPEC-13] needs_attention report must carry escalation_note in JSON
+    [2mfield absent or null[0m
+  [38;2;248;113;113m✗[0m [SPEC-13] rendered markdown contains the routing advisory blockquote
+    [2moutput missing: Advisory:[0m
+  [38;2;74;222;128m✓[0m [SPEC-14] registered lens returns its artifact path
+  [38;2;74;222;128m✓[0m [SPEC-14] unregistered lens returns empty stdout
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+### plugins/agent/review-report/plugin.sh head tests/unit/review-report-plugin-test.sh
+
+[38;2;0;212;255m[1m  review-report plugin — multi-lens advisory report (#972)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] run returns 0 (advisory never aborts)
+  [38;2;74;222;128m✓[0m [SPEC-1] one LLM call per lens (11 separate calls, not 1 prompt)
+  [38;2;74;222;128m✓[0m [SPEC-1] report has 11 lenses
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: correctness
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: security
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: test-coverage
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: design-conformance
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: integration
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: error-handling
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: performance
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: edge-case
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: architecture
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: red-team
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: maintainability
+  [38;2;74;222;128m✓[0m [SPEC-2] flat findings de-duped to 2
+  [38;2;74;222;128m✓[0m [SPEC-2] merged finding carries both lenses
+  [38;2;74;222;128m✓[0m [SPEC-2] merged finding carries both lenses
+  [38;2;74;222;128m✓[0m [SPEC-2] merged finding takes MAX severity (high)
+  [38;2;74;222;128m✓[0m [SPEC-3] critical finding → merge_readiness=needs_attention
+  [38;2;74;222;128m✓[0m [SPEC-3] report carries no verdict field
+  [38;2;248;113;113m✗[0m [SPEC-3] no coercion vocabulary in plugin source
+    [2mfound coercion token[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] correctness section names its score
+  [38;2;74;222;128m✓[0m [SPEC-4] lens bullet renders the finding message (not blank)
+  [38;2;74;222;128m✓[0m [SPEC-4] de-duped section renders contributing lenses
+  [38;2;74;222;128m✓[0m [SPEC-6] report run returns 0 (advisory)
+  [38;2;74;222;128m✓[0m [SPEC-6] a report is written
+  [38;2;74;222;128m✓[0m [SPEC-6] lenses route through route_to_model (redaction chokepoint)
+  [38;2;74;222;128m✓[0m [SPEC-7] backtick in LLM message is escaped
+  [38;2;74;222;128m✓[0m [SPEC-7] newline in LLM message collapsed (bullet stays one line)
+  [38;2;74;222;128m✓[0m [SPEC-7] bad proximity window clamps (no aggregation crash)
+  [38;2;74;222;128m✓[0m [SPEC-8] integration charter names mismatched interfaces
+  [38;2;74;222;128m✓[0m [SPEC-8] error-handling charter names silent error swallowing
+  [38;2;74;222;128m✓[0m [SPEC-8] performance charter names O(n^2) pattern
+  [38;2;74;222;128m✓[0m [SPEC-8] edge-case charter names zero-length inputs
+  [38;2;74;222;128m✓[0m [SPEC-9] architecture charter names layer-boundary violations
+  [38;2;74;222;128m✓[0m [SPEC-10] red-team charter names race conditions
+  [38;2;74;222;128m✓[0m [SPEC-11] maintainability charter names code smells
+  [38;2;74;222;128m✓[0m [SPEC-12] _rr_load_lenses function exists (roster is manifest-driven)
+  [38;2;74;222;128m✓[0m [SPEC-12] _RR_LENSES content matches manifest config.lenses
+  [38;2;74;222;128m✓[0m [SPEC-13] needs_attention JSON carries non-empty escalation_note
+  [38;2;74;222;128m✓[0m [SPEC-13] rendered markdown contains the routing advisory blockquote
+  [38;2;74;222;128m✓[0m [SPEC-14] registered lens returns its artifact path
+  [38;2;74;222;128m✓[0m [SPEC-14] unregistered lens returns empty stdout
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-report-plugin.HkFBkT/spec15/review-report-lenses.json  [38;2;74;222;128m✓[0m [SPEC-15] correctness prompt embeds per-lens artifact content
+  [38;2;74;222;128m✓[0m [SPEC-15] security prompt uses shared bundle (no per-lens artifact)
+  [38;2;74;222;128m✓[0m [SPEC-3] _rr_populate_artifact_registry function exists
+  [38;2;74;222;128m✓[0m [SPEC-3] design-conformance registered to reachability-ablation.json
+  [38;2;74;222;128m✓[0m [SPEC-3] _rr_populate_artifact_registry is no-op when ablation absent
+  [38;2;74;222;128m✓[0m [SPEC-4] design-conformance prompt contains ablation artifact content
+  [38;2;74;222;128m✓[0m [SPEC-4] security prompt still uses shared bundle (not ablation)
+  [38;2;74;222;128m✓[0m [SPEC-3] _rr_register_lens_artifact sets registry entry
+  [38;2;74;222;128m✓[0m [SPEC-4] _rr_run_inner returns 0 when coverage-map present
+  [38;2;74;222;128m✓[0m [SPEC-5] test-coverage prompt embeds coverage-map file entry
+  [38;2;74;222;128m✓[0m [SPEC-5] security prompt uses shared bundle (no per-lens override)
+  [38;2;74;222;128m✓[0m [SPEC-6] _rr_run_inner returns 0 when coverage-map absent (fail-soft)
+  [38;2;74;222;128m✓[0m [SPEC-6] test-coverage falls back to shared bundle when map absent
+  [38;2;74;222;128m✓[0m [SPEC-1] manifest declares result_contract: 2 under provides:
+  [38;2;74;222;128m✓[0m [SPEC-1] manifest config.router declares timeout_s
+  [38;2;74;222;128m✓[0m [SPEC-1] manifest config.router declares max_turns
+  [38;2;74;222;128m✓[0m [SPEC-2] _rr_write_result helper declared in plugin.sh
+  [38;2;74;222;128m✓[0m [SPEC-2] _rr_write_result writes review-report-result.json
+  [38;2;74;222;128m✓[0m [SPEC-2] written file has result_contract:2
+  [38;2;74;222;128m✓[0m [SPEC-2] written file has verdict field
+  [38;2;74;222;128m✓[0m [SPEC-2] written file has disposition field
+  [38;2;74;222;128m✓[0m [SPEC-2] written file has reason field
+  [38;2;74;222;128m✓[0m [SPEC-3] result sidecar written on missing state_file
+  [38;2;74;222;128m✓[0m [SPEC-3] verdict=error on missing state_file
+  [38;2;74;222;128m✓[0m [SPEC-3] disposition=broken on missing state_file
+  [38;2;74;222;128m✓[0m [SPEC-3] result_contract:2 on missing state_file
+  [38;2;74;222;128m✓[0m [SPEC-4] result sidecar written on missing out_json
+  [38;2;74;222;128m✓[0m [SPEC-4] verdict=error on missing out_json
+  [38;2;74;222;128m✓[0m [SPEC-4] disposition=broken on missing out_json
+  [38;2;74;222;128m✓[0m [SPEC-4] result_contract:2 on missing out_json
+  [38;2;74;222;128m✓[0m [SPEC-5] _rr_run_inner returns 0 on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-5] v2 result sidecar written on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-5] verdict=pass on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-5] disposition=complete on normal completion (all lens rc=0)
+  [38;2;74;222;128m✓[0m [SPEC-5] result_contract:2 on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-6] _rr_budget_guidance function exists in plugin.sh
+  [38;2;74;222;128m✓[0m [SPEC-6] _rr_budget_guidance produces TURN BUDGET block
+  [38;2;74;222;128m✓[0m [SPEC-6] _rr_budget_guidance embeds max_turns value
+  [38;2;74;222;128m✓[0m [SPEC-6] correctness lens prompt contains TURN BUDGET guidance from _rr_budget_guidance
+  [38;2;74;222;128m✓[0m [SPEC-7] _rr_lens_envelope_schema_ok predicate exists
+  [38;2;74;222;128m✓[0m [SPEC-7] schema gate accepts valid {score:number, findings:array}
+  [38;2;74;222;128m✓[0m [SPEC-7] schema gate rejects object missing score and findings
+  [38;2;74;222;128m✓[0m [SPEC-7] schema gate rejects non-object input
+  [38;2;74;222;128m✓[0m [SPEC-8] extract_first_json_object absent from lenses.sh
+  [38;2;74;222;128m✓[0m [SPEC-8] lenses.sh uses _llm_envelope_parse for lens output parsing
+  [38;2;74;222;128m✓[0m [SPEC-8] _rr_parse_lens_out calls _llm_envelope_parse with --schema-gate
+  [38;2;74;222;128m✓[0m [SPEC-9] _rr_run_inner returns 0 (advisory contract: never blocks)
+  [38;2;74;222;128m✓[0m [SPEC-9] advisory review-report.json written on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-9] advisory report contains merge_readiness field
+  [38;2;74;222;128m✓[0m [SPEC-10] 11 independent LLM calls made (one per lens)
+  [38;2;74;222;128m✓[0m [SPEC-10] advisory report has 11 lens result sections
+  [38;2;74;222;128m✓[0m [SPEC-11] manifest declares valid_verdicts: [] (writes no verdict to pipeline channel)
+  [38;2;74;222;128m✓[0m [SPEC-12] manifest first output retains primary: true after migration
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest provides.role: review_report present
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.evidence.redaction_failed
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.lens.evidence.redaction_failed
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.lens.failed
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.lens.unparseable
+  [38;2;74;222;128m✓[0m [SPEC-14] manifest has no active cleanup hook (absent or null sentinel cleanup: ~)
+  [38;2;74;222;128m✓[0m [SPEC-14] no review_report_cleanup function in plugin.sh
+  [38;2;74;222;128m✓[0m [SPEC-15] plugin.sh references ZBUILD_STAGE_INPUTS for declared inputs
+  [38;2;74;222;128m✓[0m [SPEC-15] plugin.sh calls jq -r with .inputs.scope_manifest from ZBUILD_STAGE_INPUTS
+  [38;2;74;222;128m✓[0m [SPEC-16] result sidecar written when at least one lens fails
+  [38;2;74;222;128m✓[0m [SPEC-16] verdict=pass when lens fails (advisory contract preserved)
+  [38;2;74;222;128m✓[0m [SPEC-16] disposition=exhausted when at least one lens subshell returns non-zero rc
+  [38;2;74;222;128m✓[0m [SPEC-17] plugin.sh constructs no hardcoded state_dir path for declared input filenames
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 109 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-3] no coercion vocabulary in plugin source
+
+### plugins/agent/review-report/plugin.sh reverted tests/unit/review-report-plugin-test.sh
+
+[38;2;0;212;255m[1m  review-report plugin — multi-lens advisory report (#972)[0m
+[2m  ══════════════════════════════════════════[0m
+
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+  [38;2;74;222;128m✓[0m [SPEC-1] run returns 0 (advisory never aborts)
+  [38;2;74;222;128m✓[0m [SPEC-1] one LLM call per lens (11 separate calls, not 1 prompt)
+  [38;2;248;113;113m✗[0m [SPEC-1] report has 11 lenses
+    [2mexpected: 11, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: correctness
+    [2moutput missing: #### correctness[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: security
+    [2moutput missing: #### security[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: test-coverage
+    [2moutput missing: #### test-coverage[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: design-conformance
+    [2moutput missing: #### design-conformance[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: integration
+    [2moutput missing: #### integration[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: error-handling
+    [2moutput missing: #### error-handling[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: performance
+    [2moutput missing: #### performance[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: edge-case
+    [2moutput missing: #### edge-case[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: architecture
+    [2moutput missing: #### architecture[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: red-team
+    [2moutput missing: #### red-team[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: maintainability
+    [2moutput missing: #### maintainability[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] flat findings de-duped to 2
+    [2mexpected: 2, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] merged finding carries both lenses
+    [2moutput missing: correctness[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] merged finding carries both lenses
+    [2moutput missing: security[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] merged finding takes MAX severity (high)
+    [2mexpected: high, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-3] critical finding → merge_readiness=needs_attention
+    [2mexpected: needs_attention, got: advisory[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] report carries no verdict field
+  [38;2;74;222;128m✓[0m [SPEC-3] no coercion vocabulary in plugin source
+  [38;2;248;113;113m✗[0m [SPEC-4] correctness section names its score
+    [2moutput missing: #### correctness (score: 6/10)[0m
+  [38;2;248;113;113m✗[0m [SPEC-4] lens bullet renders the finding message (not blank)
+    [2moutput missing: off-by-one in loop[0m
+  [38;2;248;113;113m✗[0m [SPEC-4] de-duped section renders contributing lenses
+    [2moutput missing: lenses: correctness, security[0m
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+  [38;2;74;222;128m✓[0m [SPEC-6] report run returns 0 (advisory)
+  [38;2;74;222;128m✓[0m [SPEC-6] a report is written
+  [38;2;74;222;128m✓[0m [SPEC-6] lenses route through route_to_model (redaction chokepoint)
+  [38;2;74;222;128m✓[0m [SPEC-7] backtick in LLM message is escaped
+  [38;2;74;222;128m✓[0m [SPEC-7] newline in LLM message collapsed (bullet stays one line)
+  [38;2;74;222;128m✓[0m [SPEC-7] bad proximity window clamps (no aggregation crash)
+  [38;2;74;222;128m✓[0m [SPEC-8] integration charter names mismatched interfaces
+  [38;2;74;222;128m✓[0m [SPEC-8] error-handling charter names silent error swallowing
+  [38;2;74;222;128m✓[0m [SPEC-8] performance charter names O(n^2) pattern
+  [38;2;74;222;128m✓[0m [SPEC-8] edge-case charter names zero-length inputs
+  [38;2;74;222;128m✓[0m [SPEC-9] architecture charter names layer-boundary violations
+  [38;2;74;222;128m✓[0m [SPEC-10] red-team charter names race conditions
+  [38;2;74;222;128m✓[0m [SPEC-11] maintainability charter names code smells
+  [38;2;74;222;128m✓[0m [SPEC-12] _rr_load_lenses function exists (roster is manifest-driven)
+  [38;2;74;222;128m✓[0m [SPEC-12] _RR_LENSES content matches manifest config.lenses
+  [38;2;248;113;113m✗[0m [SPEC-13] needs_attention report must carry escalation_note in JSON
+    [2mfield absent or null[0m
+  [38;2;248;113;113m✗[0m [SPEC-13] rendered markdown contains the routing advisory blockquote
+    [2moutput missing: Advisory:[0m
+  [38;2;74;222;128m✓[0m [SPEC-14] registered lens returns its artifact path
+  [38;2;74;222;128m✓[0m [SPEC-14] unregistered lens returns empty stdout
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+### plugins/agent/review-report/plugin.sh head tests/unit/review-report-plugin-test.sh
+
+[38;2;0;212;255m[1m  review-report plugin — multi-lens advisory report (#972)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] run returns 0 (advisory never aborts)
+  [38;2;74;222;128m✓[0m [SPEC-1] one LLM call per lens (11 separate calls, not 1 prompt)
+  [38;2;74;222;128m✓[0m [SPEC-1] report has 11 lenses
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: correctness
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: security
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: test-coverage
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: design-conformance
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: integration
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: error-handling
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: performance
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: edge-case
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: architecture
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: red-team
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: maintainability
+  [38;2;74;222;128m✓[0m [SPEC-2] flat findings de-duped to 2
+  [38;2;74;222;128m✓[0m [SPEC-2] merged finding carries both lenses
+  [38;2;74;222;128m✓[0m [SPEC-2] merged finding carries both lenses
+  [38;2;74;222;128m✓[0m [SPEC-2] merged finding takes MAX severity (high)
+  [38;2;74;222;128m✓[0m [SPEC-3] critical finding → merge_readiness=needs_attention
+  [38;2;74;222;128m✓[0m [SPEC-3] report carries no verdict field
+  [38;2;248;113;113m✗[0m [SPEC-3] no coercion vocabulary in plugin source
+    [2mfound coercion token[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] correctness section names its score
+  [38;2;74;222;128m✓[0m [SPEC-4] lens bullet renders the finding message (not blank)
+  [38;2;74;222;128m✓[0m [SPEC-4] de-duped section renders contributing lenses
+  [38;2;74;222;128m✓[0m [SPEC-6] report run returns 0 (advisory)
+  [38;2;74;222;128m✓[0m [SPEC-6] a report is written
+  [38;2;74;222;128m✓[0m [SPEC-6] lenses route through route_to_model (redaction chokepoint)
+  [38;2;74;222;128m✓[0m [SPEC-7] backtick in LLM message is escaped
+  [38;2;74;222;128m✓[0m [SPEC-7] newline in LLM message collapsed (bullet stays one line)
+  [38;2;74;222;128m✓[0m [SPEC-7] bad proximity window clamps (no aggregation crash)
+  [38;2;74;222;128m✓[0m [SPEC-8] integration charter names mismatched interfaces
+  [38;2;74;222;128m✓[0m [SPEC-8] error-handling charter names silent error swallowing
+  [38;2;74;222;128m✓[0m [SPEC-8] performance charter names O(n^2) pattern
+  [38;2;74;222;128m✓[0m [SPEC-8] edge-case charter names zero-length inputs
+  [38;2;74;222;128m✓[0m [SPEC-9] architecture charter names layer-boundary violations
+  [38;2;74;222;128m✓[0m [SPEC-10] red-team charter names race conditions
+  [38;2;74;222;128m✓[0m [SPEC-11] maintainability charter names code smells
+  [38;2;74;222;128m✓[0m [SPEC-12] _rr_load_lenses function exists (roster is manifest-driven)
+  [38;2;74;222;128m✓[0m [SPEC-12] _RR_LENSES content matches manifest config.lenses
+  [38;2;74;222;128m✓[0m [SPEC-13] needs_attention JSON carries non-empty escalation_note
+  [38;2;74;222;128m✓[0m [SPEC-13] rendered markdown contains the routing advisory blockquote
+  [38;2;74;222;128m✓[0m [SPEC-14] registered lens returns its artifact path
+  [38;2;74;222;128m✓[0m [SPEC-14] unregistered lens returns empty stdout
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-report-plugin.LhdWQc/spec15/review-report-lenses.json  [38;2;74;222;128m✓[0m [SPEC-15] correctness prompt embeds per-lens artifact content
+  [38;2;74;222;128m✓[0m [SPEC-15] security prompt uses shared bundle (no per-lens artifact)
+  [38;2;74;222;128m✓[0m [SPEC-3] _rr_populate_artifact_registry function exists
+  [38;2;74;222;128m✓[0m [SPEC-3] design-conformance registered to reachability-ablation.json
+  [38;2;74;222;128m✓[0m [SPEC-3] _rr_populate_artifact_registry is no-op when ablation absent
+  [38;2;74;222;128m✓[0m [SPEC-4] design-conformance prompt contains ablation artifact content
+  [38;2;74;222;128m✓[0m [SPEC-4] security prompt still uses shared bundle (not ablation)
+  [38;2;74;222;128m✓[0m [SPEC-3] _rr_register_lens_artifact sets registry entry
+  [38;2;74;222;128m✓[0m [SPEC-4] _rr_run_inner returns 0 when coverage-map present
+  [38;2;74;222;128m✓[0m [SPEC-5] test-coverage prompt embeds coverage-map file entry
+  [38;2;74;222;128m✓[0m [SPEC-5] security prompt uses shared bundle (no per-lens override)
+  [38;2;74;222;128m✓[0m [SPEC-6] _rr_run_inner returns 0 when coverage-map absent (fail-soft)
+  [38;2;74;222;128m✓[0m [SPEC-6] test-coverage falls back to shared bundle when map absent
+  [38;2;74;222;128m✓[0m [SPEC-1] manifest declares result_contract: 2 under provides:
+  [38;2;74;222;128m✓[0m [SPEC-1] manifest config.router declares timeout_s
+  [38;2;74;222;128m✓[0m [SPEC-1] manifest config.router declares max_turns
+  [38;2;74;222;128m✓[0m [SPEC-2] _rr_write_result helper declared in plugin.sh
+  [38;2;74;222;128m✓[0m [SPEC-2] _rr_write_result writes review-report-result.json
+  [38;2;74;222;128m✓[0m [SPEC-2] written file has result_contract:2
+  [38;2;74;222;128m✓[0m [SPEC-2] written file has verdict field
+  [38;2;74;222;128m✓[0m [SPEC-2] written file has disposition field
+  [38;2;74;222;128m✓[0m [SPEC-2] written file has reason field
+  [38;2;74;222;128m✓[0m [SPEC-3] result sidecar written on missing state_file
+  [38;2;74;222;128m✓[0m [SPEC-3] verdict=error on missing state_file
+  [38;2;74;222;128m✓[0m [SPEC-3] disposition=broken on missing state_file
+  [38;2;74;222;128m✓[0m [SPEC-3] result_contract:2 on missing state_file
+  [38;2;74;222;128m✓[0m [SPEC-4] result sidecar written on missing out_json
+  [38;2;74;222;128m✓[0m [SPEC-4] verdict=error on missing out_json
+  [38;2;74;222;128m✓[0m [SPEC-4] disposition=broken on missing out_json
+  [38;2;74;222;128m✓[0m [SPEC-4] result_contract:2 on missing out_json
+  [38;2;74;222;128m✓[0m [SPEC-5] _rr_run_inner returns 0 on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-5] v2 result sidecar written on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-5] verdict=pass on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-5] disposition=complete on normal completion (all lens rc=0)
+  [38;2;74;222;128m✓[0m [SPEC-5] result_contract:2 on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-6] _rr_budget_guidance function exists in plugin.sh
+  [38;2;74;222;128m✓[0m [SPEC-6] _rr_budget_guidance produces TURN BUDGET block
+  [38;2;74;222;128m✓[0m [SPEC-6] _rr_budget_guidance embeds max_turns value
+  [38;2;74;222;128m✓[0m [SPEC-6] correctness lens prompt contains TURN BUDGET guidance from _rr_budget_guidance
+  [38;2;74;222;128m✓[0m [SPEC-7] _rr_lens_envelope_schema_ok predicate exists
+  [38;2;74;222;128m✓[0m [SPEC-7] schema gate accepts valid {score:number, findings:array}
+  [38;2;74;222;128m✓[0m [SPEC-7] schema gate rejects object missing score and findings
+  [38;2;74;222;128m✓[0m [SPEC-7] schema gate rejects non-object input
+  [38;2;74;222;128m✓[0m [SPEC-8] extract_first_json_object absent from lenses.sh
+  [38;2;74;222;128m✓[0m [SPEC-8] lenses.sh uses _llm_envelope_parse for lens output parsing
+  [38;2;74;222;128m✓[0m [SPEC-8] _rr_parse_lens_out calls _llm_envelope_parse with --schema-gate
+  [38;2;74;222;128m✓[0m [SPEC-9] _rr_run_inner returns 0 (advisory contract: never blocks)
+  [38;2;74;222;128m✓[0m [SPEC-9] advisory review-report.json written on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-9] advisory report contains merge_readiness field
+  [38;2;74;222;128m✓[0m [SPEC-10] 11 independent LLM calls made (one per lens)
+  [38;2;74;222;128m✓[0m [SPEC-10] advisory report has 11 lens result sections
+  [38;2;74;222;128m✓[0m [SPEC-11] manifest declares valid_verdicts: [] (writes no verdict to pipeline channel)
+  [38;2;74;222;128m✓[0m [SPEC-12] manifest first output retains primary: true after migration
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest provides.role: review_report present
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.evidence.redaction_failed
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.lens.evidence.redaction_failed
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.lens.failed
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.lens.unparseable
+  [38;2;74;222;128m✓[0m [SPEC-14] manifest has no active cleanup hook (absent or null sentinel cleanup: ~)
+  [38;2;74;222;128m✓[0m [SPEC-14] no review_report_cleanup function in plugin.sh
+  [38;2;74;222;128m✓[0m [SPEC-15] plugin.sh references ZBUILD_STAGE_INPUTS for declared inputs
+  [38;2;74;222;128m✓[0m [SPEC-15] plugin.sh calls jq -r with .inputs.scope_manifest from ZBUILD_STAGE_INPUTS
+  [38;2;74;222;128m✓[0m [SPEC-16] result sidecar written when at least one lens fails
+  [38;2;74;222;128m✓[0m [SPEC-16] verdict=pass when lens fails (advisory contract preserved)
+  [38;2;74;222;128m✓[0m [SPEC-16] disposition=exhausted when at least one lens subshell returns non-zero rc
+  [38;2;74;222;128m✓[0m [SPEC-17] plugin.sh constructs no hardcoded state_dir path for declared input filenames
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 109 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-3] no coercion vocabulary in plugin source
+
+### plugins/agent/review-report/plugin.sh reverted tests/unit/review-report-plugin-test.sh
+
+[38;2;0;212;255m[1m  review-report plugin — multi-lens advisory report (#972)[0m
+[2m  ══════════════════════════════════════════[0m
+
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+  [38;2;74;222;128m✓[0m [SPEC-1] run returns 0 (advisory never aborts)
+  [38;2;74;222;128m✓[0m [SPEC-1] one LLM call per lens (11 separate calls, not 1 prompt)
+  [38;2;248;113;113m✗[0m [SPEC-1] report has 11 lenses
+    [2mexpected: 11, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: correctness
+    [2moutput missing: #### correctness[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: security
+    [2moutput missing: #### security[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: test-coverage
+    [2moutput missing: #### test-coverage[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: design-conformance
+    [2moutput missing: #### design-conformance[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: integration
+    [2moutput missing: #### integration[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: error-handling
+    [2moutput missing: #### error-handling[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: performance
+    [2moutput missing: #### performance[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: edge-case
+    [2moutput missing: #### edge-case[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: architecture
+    [2moutput missing: #### architecture[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: red-team
+    [2moutput missing: #### red-team[0m
+  [38;2;248;113;113m✗[0m [SPEC-1] md has lens section: maintainability
+    [2moutput missing: #### maintainability[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] flat findings de-duped to 2
+    [2mexpected: 2, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] merged finding carries both lenses
+    [2moutput missing: correctness[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] merged finding carries both lenses
+    [2moutput missing: security[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] merged finding takes MAX severity (high)
+    [2mexpected: high, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-3] critical finding → merge_readiness=needs_attention
+    [2mexpected: needs_attention, got: advisory[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] report carries no verdict field
+  [38;2;74;222;128m✓[0m [SPEC-3] no coercion vocabulary in plugin source
+  [38;2;248;113;113m✗[0m [SPEC-4] correctness section names its score
+    [2moutput missing: #### correctness (score: 6/10)[0m
+  [38;2;248;113;113m✗[0m [SPEC-4] lens bullet renders the finding message (not blank)
+    [2moutput missing: off-by-one in loop[0m
+  [38;2;248;113;113m✗[0m [SPEC-4] de-duped section renders contributing lenses
+    [2moutput missing: lenses: correctness, security[0m
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+  [38;2;74;222;128m✓[0m [SPEC-6] report run returns 0 (advisory)
+  [38;2;74;222;128m✓[0m [SPEC-6] a report is written
+  [38;2;74;222;128m✓[0m [SPEC-6] lenses route through route_to_model (redaction chokepoint)
+  [38;2;74;222;128m✓[0m [SPEC-7] backtick in LLM message is escaped
+  [38;2;74;222;128m✓[0m [SPEC-7] newline in LLM message collapsed (bullet stays one line)
+  [38;2;74;222;128m✓[0m [SPEC-7] bad proximity window clamps (no aggregation crash)
+  [38;2;74;222;128m✓[0m [SPEC-8] integration charter names mismatched interfaces
+  [38;2;74;222;128m✓[0m [SPEC-8] error-handling charter names silent error swallowing
+  [38;2;74;222;128m✓[0m [SPEC-8] performance charter names O(n^2) pattern
+  [38;2;74;222;128m✓[0m [SPEC-8] edge-case charter names zero-length inputs
+  [38;2;74;222;128m✓[0m [SPEC-9] architecture charter names layer-boundary violations
+  [38;2;74;222;128m✓[0m [SPEC-10] red-team charter names race conditions
+  [38;2;74;222;128m✓[0m [SPEC-11] maintainability charter names code smells
+  [38;2;74;222;128m✓[0m [SPEC-12] _rr_load_lenses function exists (roster is manifest-driven)
+  [38;2;74;222;128m✓[0m [SPEC-12] _RR_LENSES content matches manifest config.lenses
+  [38;2;248;113;113m✗[0m [SPEC-13] needs_attention report must carry escalation_note in JSON
+    [2mfield absent or null[0m
+  [38;2;248;113;113m✗[0m [SPEC-13] rendered markdown contains the routing advisory blockquote
+    [2moutput missing: Advisory:[0m
+  [38;2;74;222;128m✓[0m [SPEC-14] registered lens returns its artifact path
+  [38;2;74;222;128m✓[0m [SPEC-14] unregistered lens returns empty stdout
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 163: _llm_envelope_parse: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.uNAaGA/plugins/agent/review-report/lib/lenses.sh: line 165: json: unbound variable
+### plugins/agent/review-report/plugin.sh head tests/unit/review-report-plugin-test.sh
+
+[38;2;0;212;255m[1m  review-report plugin — multi-lens advisory report (#972)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] run returns 0 (advisory never aborts)
+  [38;2;74;222;128m✓[0m [SPEC-1] one LLM call per lens (11 separate calls, not 1 prompt)
+  [38;2;74;222;128m✓[0m [SPEC-1] report has 11 lenses
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: correctness
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: security
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: test-coverage
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: design-conformance
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: integration
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: error-handling
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: performance
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: edge-case
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: architecture
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: red-team
+  [38;2;74;222;128m✓[0m [SPEC-1] md has lens section: maintainability
+  [38;2;74;222;128m✓[0m [SPEC-2] flat findings de-duped to 2
+  [38;2;74;222;128m✓[0m [SPEC-2] merged finding carries both lenses
+  [38;2;74;222;128m✓[0m [SPEC-2] merged finding carries both lenses
+  [38;2;74;222;128m✓[0m [SPEC-2] merged finding takes MAX severity (high)
+  [38;2;74;222;128m✓[0m [SPEC-3] critical finding → merge_readiness=needs_attention
+  [38;2;74;222;128m✓[0m [SPEC-3] report carries no verdict field
+  [38;2;248;113;113m✗[0m [SPEC-3] no coercion vocabulary in plugin source
+    [2mfound coercion token[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] correctness section names its score
+  [38;2;74;222;128m✓[0m [SPEC-4] lens bullet renders the finding message (not blank)
+  [38;2;74;222;128m✓[0m [SPEC-4] de-duped section renders contributing lenses
+  [38;2;74;222;128m✓[0m [SPEC-6] report run returns 0 (advisory)
+  [38;2;74;222;128m✓[0m [SPEC-6] a report is written
+  [38;2;74;222;128m✓[0m [SPEC-6] lenses route through route_to_model (redaction chokepoint)
+  [38;2;74;222;128m✓[0m [SPEC-7] backtick in LLM message is escaped
+  [38;2;74;222;128m✓[0m [SPEC-7] newline in LLM message collapsed (bullet stays one line)
+  [38;2;74;222;128m✓[0m [SPEC-7] bad proximity window clamps (no aggregation crash)
+  [38;2;74;222;128m✓[0m [SPEC-8] integration charter names mismatched interfaces
+  [38;2;74;222;128m✓[0m [SPEC-8] error-handling charter names silent error swallowing
+  [38;2;74;222;128m✓[0m [SPEC-8] performance charter names O(n^2) pattern
+  [38;2;74;222;128m✓[0m [SPEC-8] edge-case charter names zero-length inputs
+  [38;2;74;222;128m✓[0m [SPEC-9] architecture charter names layer-boundary violations
+  [38;2;74;222;128m✓[0m [SPEC-10] red-team charter names race conditions
+  [38;2;74;222;128m✓[0m [SPEC-11] maintainability charter names code smells
+  [38;2;74;222;128m✓[0m [SPEC-12] _rr_load_lenses function exists (roster is manifest-driven)
+  [38;2;74;222;128m✓[0m [SPEC-12] _RR_LENSES content matches manifest config.lenses
+  [38;2;74;222;128m✓[0m [SPEC-13] needs_attention JSON carries non-empty escalation_note
+  [38;2;74;222;128m✓[0m [SPEC-13] rendered markdown contains the routing advisory blockquote
+  [38;2;74;222;128m✓[0m [SPEC-14] registered lens returns its artifact path
+  [38;2;74;222;128m✓[0m [SPEC-14] unregistered lens returns empty stdout
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-report-plugin.pPeiay/spec15/review-report-lenses.json  [38;2;74;222;128m✓[0m [SPEC-15] correctness prompt embeds per-lens artifact content
+  [38;2;74;222;128m✓[0m [SPEC-15] security prompt uses shared bundle (no per-lens artifact)
+  [38;2;74;222;128m✓[0m [SPEC-3] _rr_populate_artifact_registry function exists
+  [38;2;74;222;128m✓[0m [SPEC-3] design-conformance registered to reachability-ablation.json
+  [38;2;74;222;128m✓[0m [SPEC-3] _rr_populate_artifact_registry is no-op when ablation absent
+  [38;2;74;222;128m✓[0m [SPEC-4] design-conformance prompt contains ablation artifact content
+  [38;2;74;222;128m✓[0m [SPEC-4] security prompt still uses shared bundle (not ablation)
+  [38;2;74;222;128m✓[0m [SPEC-3] _rr_register_lens_artifact sets registry entry
+  [38;2;74;222;128m✓[0m [SPEC-4] _rr_run_inner returns 0 when coverage-map present
+  [38;2;74;222;128m✓[0m [SPEC-5] test-coverage prompt embeds coverage-map file entry
+  [38;2;74;222;128m✓[0m [SPEC-5] security prompt uses shared bundle (no per-lens override)
+  [38;2;74;222;128m✓[0m [SPEC-6] _rr_run_inner returns 0 when coverage-map absent (fail-soft)
+  [38;2;74;222;128m✓[0m [SPEC-6] test-coverage falls back to shared bundle when map absent
+  [38;2;74;222;128m✓[0m [SPEC-1] manifest declares result_contract: 2 under provides:
+  [38;2;74;222;128m✓[0m [SPEC-1] manifest config.router declares timeout_s
+  [38;2;74;222;128m✓[0m [SPEC-1] manifest config.router declares max_turns
+  [38;2;74;222;128m✓[0m [SPEC-2] _rr_write_result helper declared in plugin.sh
+  [38;2;74;222;128m✓[0m [SPEC-2] _rr_write_result writes review-report-result.json
+  [38;2;74;222;128m✓[0m [SPEC-2] written file has result_contract:2
+  [38;2;74;222;128m✓[0m [SPEC-2] written file has verdict field
+  [38;2;74;222;128m✓[0m [SPEC-2] written file has disposition field
+  [38;2;74;222;128m✓[0m [SPEC-2] written file has reason field
+  [38;2;74;222;128m✓[0m [SPEC-3] result sidecar written on missing state_file
+  [38;2;74;222;128m✓[0m [SPEC-3] verdict=error on missing state_file
+  [38;2;74;222;128m✓[0m [SPEC-3] disposition=broken on missing state_file
+  [38;2;74;222;128m✓[0m [SPEC-3] result_contract:2 on missing state_file
+  [38;2;74;222;128m✓[0m [SPEC-4] result sidecar written on missing out_json
+  [38;2;74;222;128m✓[0m [SPEC-4] verdict=error on missing out_json
+  [38;2;74;222;128m✓[0m [SPEC-4] disposition=broken on missing out_json
+  [38;2;74;222;128m✓[0m [SPEC-4] result_contract:2 on missing out_json
+  [38;2;74;222;128m✓[0m [SPEC-5] _rr_run_inner returns 0 on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-5] v2 result sidecar written on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-5] verdict=pass on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-5] disposition=complete on normal completion (all lens rc=0)
+  [38;2;74;222;128m✓[0m [SPEC-5] result_contract:2 on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-6] _rr_budget_guidance function exists in plugin.sh
+  [38;2;74;222;128m✓[0m [SPEC-6] _rr_budget_guidance produces TURN BUDGET block
+  [38;2;74;222;128m✓[0m [SPEC-6] _rr_budget_guidance embeds max_turns value
+  [38;2;74;222;128m✓[0m [SPEC-6] correctness lens prompt contains TURN BUDGET guidance from _rr_budget_guidance
+  [38;2;74;222;128m✓[0m [SPEC-7] _rr_lens_envelope_schema_ok predicate exists
+  [38;2;74;222;128m✓[0m [SPEC-7] schema gate accepts valid {score:number, findings:array}
+  [38;2;74;222;128m✓[0m [SPEC-7] schema gate rejects object missing score and findings
+  [38;2;74;222;128m✓[0m [SPEC-7] schema gate rejects non-object input
+  [38;2;74;222;128m✓[0m [SPEC-8] extract_first_json_object absent from lenses.sh
+  [38;2;74;222;128m✓[0m [SPEC-8] lenses.sh uses _llm_envelope_parse for lens output parsing
+  [38;2;74;222;128m✓[0m [SPEC-8] _rr_parse_lens_out calls _llm_envelope_parse with --schema-gate
+  [38;2;74;222;128m✓[0m [SPEC-9] _rr_run_inner returns 0 (advisory contract: never blocks)
+  [38;2;74;222;128m✓[0m [SPEC-9] advisory review-report.json written on normal completion
+  [38;2;74;222;128m✓[0m [SPEC-9] advisory report contains merge_readiness field
+  [38;2;74;222;128m✓[0m [SPEC-10] 11 independent LLM calls made (one per lens)
+  [38;2;74;222;128m✓[0m [SPEC-10] advisory report has 11 lens result sections
+  [38;2;74;222;128m✓[0m [SPEC-11] manifest declares valid_verdicts: [] (writes no verdict to pipeline channel)
+  [38;2;74;222;128m✓[0m [SPEC-12] manifest first output retains primary: true after migration
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest provides.role: review_report present
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.evidence.redaction_failed
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.lens.evidence.redaction_failed
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.lens.failed
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares event: review_report.lens.unparseable
+  [38;2;74;222;128m✓[0m [SPEC-14] manifest has no active cleanup hook (absent or null sentinel cleanup: ~)
+  [38;2;74;222;128m✓[0m [SPEC-14] no review_report_cleanup function in plugin.sh
+  [38;2;74;222;128m✓[0m [SPEC-15] plugin.sh references ZBUILD_STAGE_INPUTS for declared inputs
+  [38;2;74;222;128m✓[0m [SPEC-15] plugin.sh calls jq -r with .inputs.scope_manifest from ZBUILD_STAGE_INPUTS
+  [38;2;74;222;128m✓[0m [SPEC-16] result sidecar written when at least one lens fails
+  [38;2;74;222;128m✓[0m [SPEC-16] verdict=pass when lens fails (advisory contract preserved)
+  [38;2;74;222;128m✓[0m [SPEC-16] disposition=exhausted when at least one lens subshell returns non-zero rc
+  [38;2;74;222;128m✓[0m [SPEC-17] plugin.sh constructs no hardcoded state_dir path for declared input filenames
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 109 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-3] no coercion vocabulary in plugin source
+
