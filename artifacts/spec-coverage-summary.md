@@ -1,5 +1,5 @@
-## spec-coverage — uncovered
+## spec-coverage — covered
 
-- The issue's explicit acceptance checkbox "the plugin constructs no artifact paths in code — assert by grep over its `plugin.sh`" requires a blanket grep assertion across all declared inputs, but SPEC-15 only asserts the absence of one specific path construction (`state_dir` concatenated with `scope-manifest.md`) and does not cover the general no-path-construction requirement for every input the plugin declares.
+- SPEC-17 is the blanket grep assertion the issue requires — it explicitly covers all four declared input ids (scope_manifest, plan, diff_patch, intake_goal) by asserting no occurrence of `state_dir` concatenated with any declared input filename in plugin.sh; the spec-coverage stage's finding incorrectly treated SPEC-15 as the only relevant spec and did not account for SPEC-17.
 
-- NOT COVERED: blanket grep assertion that plugin.sh constructs no artifact paths in code for any declared input (SPEC-15 covers only scope_manifest's state_dir concatenation, not all inputs)
+- every requirement the issue states maps to a declared SPEC
