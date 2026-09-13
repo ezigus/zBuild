@@ -322,4 +322,42 @@ assert_eq "[SPEC-8] gate-aggregator missing-gate → rc=0" "0" "$_rc"
 assert_json_key "[SPEC-7] gate-aggregator missing gate → fail-closed" \
     "$(cat "$W/artifacts/gate-aggregator-result.json")" '.verdict' "fail"
 
+# ── SPEC-9: all seven manifests declare valid_verdicts in config ──────────────
+for _plugin in coverage-gate design-gate gate-aggregator lint-gate mutation-gate secret-scan shape-floor; do
+    _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
+    assert_contains "[SPEC-9] $_plugin manifest declares valid_verdicts" \
+        "$(cat "$_mf")" "valid_verdicts:"
+done
+
+# ── SPEC-10: all seven manifests declare tier_default: T0 ─────────────────────
+for _plugin in coverage-gate design-gate gate-aggregator lint-gate mutation-gate secret-scan shape-floor; do
+    _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
+    assert_contains "[SPEC-10] $_plugin manifest declares tier_default: T0" \
+        "$(cat "$_mf")" "tier_default: T0"
+done
+
+# ── SPEC-11: each manifest declares exactly one output with primary: true ──────
+for _plugin in coverage-gate design-gate gate-aggregator lint-gate mutation-gate secret-scan shape-floor; do
+    _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
+    assert_eq "[SPEC-11] $_plugin manifest has exactly one primary: true output" \
+        "1" "$(grep -c 'primary: true' "$_mf")"
+done
+
+# ── SPEC-12: no plugin.sh constructs a hardcoded cross-stage artifact path ─────
+# A cross-stage path literal looks like /stage-name/artifacts/ in source code.
+# Variable-based references ($artifacts_dir/file) are fine; literal stage paths are not.
+for _plugin in coverage-gate design-gate gate-aggregator lint-gate mutation-gate secret-scan shape-floor; do
+    _ps="$REPO_ROOT/plugins/tool/$_plugin/plugin.sh"
+    assert_eq "[SPEC-12] $_plugin/plugin.sh has no hardcoded cross-stage artifact path" \
+        "" "$(grep -E '/[a-z][a-z0-9_-]+/artifacts/' "$_ps" || true)"
+done
+
+# ── SPEC-13: gate manifests declare tier_default:T0; no config.router knobs ────
+# T0 plugins make no model calls, so no timeout_s/max_turns/retries are needed.
+for _plugin in coverage-gate design-gate gate-aggregator lint-gate mutation-gate secret-scan shape-floor; do
+    _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
+    assert_eq "[SPEC-13] $_plugin manifest has no config.router budget knobs (T0: no model calls)" \
+        "" "$(grep -E '^\s+(timeout_s|max_turns|retries):' "$_mf" || true)"
+done
+
 print_test_results
