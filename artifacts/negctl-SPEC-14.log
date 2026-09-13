@@ -46,7 +46,7 @@
   [38;2;74;222;128m✓[0m [SPEC-13] rendered markdown contains the routing advisory blockquote
   [38;2;74;222;128m✓[0m [SPEC-14] registered lens returns its artifact path
   [38;2;74;222;128m✓[0m [SPEC-14] unregistered lens returns empty stdout
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-report-plugin.B6n7Qm/spec15/review-report-lenses.json  [38;2;74;222;128m✓[0m [SPEC-15] correctness prompt embeds per-lens artifact content
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-report-plugin.QepYa9/spec15/review-report-lenses.json  [38;2;74;222;128m✓[0m [SPEC-15] correctness prompt embeds per-lens artifact content
   [38;2;74;222;128m✓[0m [SPEC-15] security prompt uses shared bundle (no per-lens artifact)
   [38;2;74;222;128m✓[0m [SPEC-3] _rr_populate_artifact_registry function exists
   [38;2;74;222;128m✓[0m [SPEC-3] design-conformance registered to reachability-ablation.json
@@ -67,4 +67,4 @@
     [2mnot found[0m
   [38;2;248;113;113m✗[0m [SPEC-2] _rr_write_result must be declared in plugin.sh
     [2mabsent[0m
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.prfyoA/tests/unit/review-report-plugin-test.sh: line 424: _rr_write_result: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.Aagfbu/tests/unit/review-report-plugin-test.sh: line 424: _rr_write_result: command not found
