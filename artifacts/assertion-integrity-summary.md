@@ -1,6 +1,6 @@
-## assertion-integrity — fail
+## assertion-integrity — pass
 
-- acceptance assertions modified after authoring: tests/integration/acceptance-gate-v2-contract-test.sh tests/integration/acceptance-gate-v2-contract-test.sh tests/integration/acceptance-gate-v2-contract-test.sh tests/integration/acceptance-gate-v2-contract-test.sh tests/integration/acceptance-gate-v2-contract-test.sh tests/integration/acceptance-gate-v2-contract-test.sh
+- declared acceptance testfiles are unchanged since authoring
 
 - files checked against the authored digests
-- violations: tests/integration/acceptance-gate-v2-contract-test.sh tests/integration/acceptance-gate-v2-contract-test.sh tests/integration/acceptance-gate-v2-contract-test.sh tests/integration/acceptance-gate-v2-contract-test.sh tests/integration/acceptance-gate-v2-contract-test.sh tests/integration/acceptance-gate-v2-contract-test.sh 
+- violations: none
