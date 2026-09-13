@@ -47,7 +47,16 @@ discover_plugins() {
     if [[ -n "${_ZBUILD_DISCOVERY_CACHE[$_dck]+set}" ]]; then
         _out="${_ZBUILD_DISCOVERY_CACHE[$_dck]}"
     else
-        _out="$(_discover_plugins_walk "$plugins_root")"
+        local _wrc=0
+        _out="$(_discover_plugins_walk "$plugins_root")" || _wrc=$?
+        # Only a SUCCESSFUL walk is cached. Caching a failure would store "" and
+        # hand every later call an empty list with rc=0 for the life of the
+        # shell — a discovery outage that reads as "no plugins installed". The
+        # uncached path above propagates the walk's rc; this one must too.
+        if [[ $_wrc -ne 0 ]]; then
+            [[ -n "$_out" ]] && printf '%s\n' "$_out"
+            return "$_wrc"
+        fi
         _ZBUILD_DISCOVERY_CACHE["$_dck"]="$_out"
     fi
     # Only when non-empty: a cached empty result must print nothing, not a bare
