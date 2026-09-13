@@ -1,0 +1,562 @@
+diff --git a/plugins/agent/review-report/lib/lenses.sh b/plugins/agent/review-report/lib/lenses.sh
+index 598d1e72..8a67114f 100644
+--- a/plugins/agent/review-report/lib/lenses.sh
++++ b/plugins/agent/review-report/lib/lenses.sh
+@@ -49,6 +49,17 @@ _RR_SEV_RANK='{"low":1,"medium":2,"high":3,"critical":4}'
+ # producer issues populate entries before calling _rr_fanout_lenses.
+ declare -A _RR_LENS_ARTIFACT_REGISTRY=()
+ 
++# ─── _rr_lens_envelope_schema_ok <json> ──────────────────────────────────────
++# Schema gate for _llm_envelope_parse --schema-gate. A valid lens response must
++# be an object with score:number and findings:array (ADR-028 v1.2, #1843).
++_rr_lens_envelope_schema_ok() {
++    printf '%s' "${1:-}" | jq -e '
++        type == "object"
++        and (.score | type == "number")
++        and (.findings | type == "array")
++    ' >/dev/null 2>&1
++}
++
+ # Proximity window (lines): two findings on the same file+category within this
+ # many lines de-dupe to one. Override with ZBUILD_RR_PROXIMITY_WINDOW. Clamped
+ # to a positive integer — a 0 or non-integer would be a jq division-by-zero /
+@@ -91,13 +102,19 @@ _rr_lens_charter() {
+     esac
+ }
+ 
+-# ─── _rr_build_lens_prompt <lens> <evidence_content> ────────────────────────
++# ─── _rr_build_lens_prompt <lens> <evidence_content> [<budget_guidance>] ─────
+ # One prompt for ONE lens. Advisory contract: emit findings + a 0-10 score only.
+ _rr_build_lens_prompt() {
+-    local lens="$1" evidence="$2" charter
++    local lens="$1" evidence="$2" budget_guidance="${3:-}" charter
+     charter="$(_rr_lens_charter "$lens")"
++    local budget_block=""
++    if [[ -n "$budget_guidance" ]]; then
++        budget_block="${budget_guidance}
++
++"
++    fi
+     cat <<PROMPT
+-You are the "${lens}" review lens. ${charter}
++${budget_block}You are the "${lens}" review lens. ${charter}
+ 
+ This is an advisory report. Describe what you find; do NOT recommend a merge
+ action and do NOT gate anything. Report only issues you can point to in the
+@@ -141,8 +158,10 @@ _rr_parse_lens_out() {
+         printf '%s' "$empty"; return 0
+     fi
+ 
+-    local json
+-    json="$(extract_first_json_object < "$out_file" 2>/dev/null || true)"
++    local raw_out; raw_out="$(cat "$out_file" 2>/dev/null || true)"
++    local json _rr_lp_prose
++    _llm_envelope_parse --schema-gate _rr_lens_envelope_schema_ok \
++        "$raw_out" json _rr_lp_prose
+     if [[ -z "$json" ]] || ! printf '%s' "$json" | jq empty >/dev/null 2>&1; then
+         emit_event "review_report.lens.unparseable" "lens=$lens" 2>/dev/null || true
+         printf '%s' "$empty"; return 0
+@@ -201,14 +220,14 @@ _rr_lens_evidence() {
+     return 0
+ }
+ 
+-# ─── _rr_fanout_lenses <scope_manifest> <evidence_file> <artifact_dir> <tier> ─
++# ─── _rr_fanout_lenses <scope_manifest> <evidence_file> <artifact_dir> <tier> [<budget_guidance>] ─
+ # Bounded-parallel: run each lens as an isolated subshell LLM call, batched by
+ # ZBUILD_RR_MAX_PARALLEL. ADR-043: redaction is owned by the router — each lens
+ # prompt is redacted by route_to_model by construction, so this builds prompts
+ # from RAW evidence. $1 (scope_manifest) is accepted for call-compat, unused.
+ # Writes per-lens result JSON and echoes the path to the combined lenses array.
+ _rr_fanout_lenses() {
+-    local evidence_file="$2" artifact_dir="$3" tier="${4:-T2}"
++    local evidence_file="$2" artifact_dir="$3" tier="${4:-T2}" budget_guidance="${5:-}"
+     local max="${ZBUILD_RR_MAX_PARALLEL:-4}"
+     [[ "$max" -ge 1 ]] 2>/dev/null || max=1
+     mkdir -p "$artifact_dir"
+@@ -230,7 +249,7 @@ _rr_fanout_lenses() {
+         else
+             _lens_ev_content="$evidence_content"
+         fi
+-        _rr_build_lens_prompt "$lens" "$_lens_ev_content" \
++        _rr_build_lens_prompt "$lens" "$_lens_ev_content" "$budget_guidance" \
+             > "$artifact_dir/lens-$lens-prompt.txt"
+     done
+ 
+diff --git a/plugins/agent/review-report/manifest.yaml b/plugins/agent/review-report/manifest.yaml
+index 23bbe34a..02f97f1b 100644
+--- a/plugins/agent/review-report/manifest.yaml
++++ b/plugins/agent/review-report/manifest.yaml
+@@ -17,6 +17,7 @@ description: |
+ 
+ hooks:
+   run: review_report_run
++  cleanup: ~  # absent — engine emits plugin.cleanup.absent per ADR-001 §2
+ 
+ requires:
+   core:
+@@ -32,6 +33,7 @@ requires:
+ # that check; artifact enforcement is now outputs[].required alone. The plugin
+ # still always writes review-report.json first, so it stays green.
+ provides:
++  result_contract: 2
+   role: review_report
+   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+   # the engine's known set at load. Adding one here needs no engine-config edit.
+@@ -47,6 +49,9 @@ config:
+   # is a lint failure; the explicit [] is the claim (#1708).
+   valid_verdicts: []
+   tier_default: T2
++  router:
++    timeout_s: 300
++    max_turns: 25
+   # I6 fixed lens roster (the full cq+persona roster is #974). Each lens is a
+   # SEPARATE LLM call (not one prompt with N sections — the cq-cycle trap
+   # ADR-038 §2 rejects). For I6 every lens shares the change bundle as
+@@ -96,6 +101,12 @@ outputs:
+     format: markdown
+     required: true
+     summary: true
++  # ADR-054 v2 result contract sidecar — written on every terminal exit path.
++  - id: review_report_result
++    path: "${artifact_dir}/review-report-result.json"
++    type: review-report-result.json@2
++    format: json
++    required: true
+ 
+ state:
+   persisted:
+diff --git a/plugins/agent/review-report/plugin.sh b/plugins/agent/review-report/plugin.sh
+index b43daddc..41a0cc1d 100644
+--- a/plugins/agent/review-report/plugin.sh
++++ b/plugins/agent/review-report/plugin.sh
+@@ -28,6 +28,8 @@ source "$_RR_ROOT/core/event-bus/event-bus.sh"
+ source "$_RR_ROOT/core/router/route.sh"
+ # shellcheck source=../../../scripts/lib/artifact-render.sh
+ source "$_RR_ROOT/scripts/lib/artifact-render.sh"
++# shellcheck source=../../../scripts/lib/llm-agent.sh
++source "$_RR_ROOT/scripts/lib/llm-agent.sh"
+ # shellcheck source=lib/lenses.sh
+ source "$_RR_DIR/lib/lenses.sh"
+ # shellcheck source=../../../scripts/lib/call-graph.sh
+@@ -37,6 +39,31 @@ source "$_RR_ROOT/scripts/lib/call-graph.sh"
+ # shellcheck source=../../../scripts/lib/merge-base.sh
+ source "$_RR_ROOT/scripts/lib/merge-base.sh"
+ 
++# ─── _rr_write_result <artifact_dir> <verdict> <disposition> <reason> ────────
++# Writes review-report-result.json with the v2 result contract (result_contract:2).
++# Called on every terminal exit path (ADR-054).
++_rr_write_result() {
++    local dir="$1" verdict="$2" disposition="$3" reason="$4"
++    mkdir -p "$dir" 2>/dev/null || true
++    jq -n --arg v "$verdict" --arg d "$disposition" --arg r "$reason" \
++        '{result_contract: 2, verdict: $v, disposition: $d, reason: $r, data: {}}' \
++        | atomic_write "$dir/review-report-result.json" 2>/dev/null \
++        || warn "_rr_write_result: failed to write review-report-result.json (verdict=$verdict)"
++}
++
++# ─── _rr_budget_guidance <max_turns> <timeout_s> ─────────────────────────────
++# TURN BUDGET block for lens prompts (ADR-063 §1). Empty when budget is unknown.
++_rr_budget_guidance() {
++    local budget="${1:-}" timeout_s="${2:-}"
++    [[ "$budget" =~ ^[0-9]+$ && "$budget" -gt 0 ]] || { printf ''; return 0; }
++    cat <<EOF
++TURN BUDGET (read this — you have a BOUNDED tool-call budget):
++- You have about ${budget} tool-call turns for this review lens.
++- Review only what you can examine within your budget; flag unexamined areas explicitly.
++- STOP examining and emit your JSON findings object before you run out of turns. A partial review with named gaps BEATS exhausting the budget and producing no output at all.
++EOF
++}
++
+ # ─── review_report_run ──────────────────────────────────────────────────────
+ # Hook: review_report_run(stage, state_file). Derives artifact paths and
+ # delegates to the unit-testable inner function.
+@@ -47,18 +74,25 @@ review_report_run() {
+         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/review-report-summary.md}" "review-report" "error" \
+             "the engine dispatched this stage with no state file, so it could not run" \
+             "No work was attempted. This is an engine contract violation, not a fault in the change."
++        _rr_write_result "${ZBUILD_ARTIFACT_DIR:-.}" "error" "broken" "missing_state_file"
+         return 2
+     fi
+     local state_dir; state_dir="$(dirname "$state_file")"
+     local artifact_dir="$state_dir/artifacts"
+     mkdir -p "$artifact_dir"
+ 
++    # Read declared inputs from ZBUILD_STAGE_INPUTS when the engine provides the index.
++    local scope_manifest=""
++    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
++        scope_manifest="$(jq -r '.inputs.scope_manifest // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
++    fi
++
+     # #896/#952: judge the full-branch merge-base change bundle (falls back to the
+     # incremental diff.patch when no base resolves) so review-report and `review`
+     # share ONE change basis. The empty per-run diff.patch was the #952 lens miss.
+     local bundle; bundle="$(zbuild_change_bundle "$artifact_dir")"
+     _rr_run_inner \
+-        "$state_dir/scope-manifest.md" \
++        "$scope_manifest" \
+         "$bundle" \
+         "$artifact_dir/review-report.json" \
+         "$artifact_dir/review-report.md"
+@@ -73,6 +107,7 @@ _rr_run_inner() {
+         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/review-report-summary.md}" "review-report" "error" \
+             "no output path was supplied, so no review report could be written" \
+             "No work was attempted. This is an engine contract violation, not a fault in the change."
++        _rr_write_result "${ZBUILD_ARTIFACT_DIR:-.}" "error" "broken" "missing_out_json"
+         return 2
+     fi
+     local artifact_dir; artifact_dir="$(dirname "$out_json")"
+@@ -100,9 +135,27 @@ _rr_run_inner() {
+         _rr_register_lens_artifact "test-coverage" "$_cmap"
+     fi
+ 
++    # Resolve router budget and build guidance block to inject into each lens prompt.
++    local _budget_max_turns _budget_timeout_s _budget_guidance
++    _budget_max_turns="$(_route_resolve_max_turns 2>/dev/null || printf '0')"
++    _budget_timeout_s="$(_route_resolve_timeout 2>/dev/null || printf '0')"
++    _budget_guidance="$(_rr_budget_guidance "$_budget_max_turns" "$_budget_timeout_s")"
++
+     # Fan out the lenses (bounded-parallel) → combined per-lens results.
+     local lenses_file
+-    lenses_file="$(_rr_fanout_lenses "$scope_manifest" "$evidence" "$artifact_dir" "$tier")"
++    lenses_file="$(_rr_fanout_lenses "$scope_manifest" "$evidence" "$artifact_dir" "$tier" "$_budget_guidance")"
++
++    # Determine disposition: exhausted if any lens subshell returned non-zero rc.
++    local _rr_any_lens_failed=0
++    local _rr_lens_name
++    for _rr_lens_name in "${_RR_LENSES[@]}"; do
++        local _rr_lens_rc
++        _rr_lens_rc="$(cat "$artifact_dir/lens-${_rr_lens_name}.rc" 2>/dev/null || echo 1)"
++        if [[ "$_rr_lens_rc" -ne 0 ]]; then
++            _rr_any_lens_failed=1
++            break
++        fi
++    done
+ 
+     # Aggregate + de-dupe into the advisory report (always written first).
+     _rr_aggregate "$lenses_file" | atomic_write "$out_json"
+@@ -127,6 +180,11 @@ _rr_run_inner() {
+         [[ $gh_rc -ne 0 ]] && warn "review_report: gh pr comment failed (rc=$gh_rc); continuing"
+     fi
+ 
++    # Write v2 result sidecar (ADR-054). disposition=exhausted when any lens failed.
++    local _disposition="complete"
++    [[ "$_rr_any_lens_failed" -eq 1 ]] && _disposition="exhausted"
++    _rr_write_result "$artifact_dir" "pass" "$_disposition" "review_produced"
++
+     stage_summary_write "$artifact_dir/review-report-summary.md" "review-report" "pass" \
+         "aggregated $lens_count review lens(es) — merge readiness: $merge_readiness" \
+         "$(printf -- '- artifact: review-report.md')"
+diff --git a/tests/unit/review-report-plugin-test.sh b/tests/unit/review-report-plugin-test.sh
+index 23e04828..27cd4a1a 100755
+--- a/tests/unit/review-report-plugin-test.sh
++++ b/tests/unit/review-report-plugin-test.sh
+@@ -385,4 +385,309 @@ _spec6_tc_prompt="$(cat "$_spec6_dir/lens-test-coverage-prompt.txt" 2>/dev/null
+ assert_contains "[SPEC-6] test-coverage falls back to shared bundle when map absent" \
+     "$_spec6_tc_prompt" "SPEC6 SHARED BUNDLE"
+ 
++# ════════════════════════════════════════════════════════════════════════════
++# Contract v2 migration SPECs (#1843): result_contract:2, _rr_write_result,
++# _rr_budget_guidance, schema-gated parse, ZBUILD_STAGE_INPUTS reading, and
++# disposition=exhausted for partial lens failures.
++# (test-author stage failed with router_timeout; assertions authored here)
++# ════════════════════════════════════════════════════════════════════════════
++
++_V2_MANIFEST="$REPO_ROOT/plugins/agent/review-report/manifest.yaml"
++_V2_PLUGIN="$REPO_ROOT/plugins/agent/review-report/plugin.sh"
++_V2_LENSES="$REPO_ROOT/plugins/agent/review-report/lib/lenses.sh"
++
++# ─── SPEC-1: manifest declares result_contract:2 and config.router: block ────
++if grep -q 'result_contract: 2' "$_V2_MANIFEST"; then
++    assert_pass "[SPEC-1] manifest declares result_contract: 2 under provides:"
++else
++    assert_fail "[SPEC-1] manifest must declare result_contract: 2 under provides:" "not found"
++fi
++if grep -q 'timeout_s:' "$_V2_MANIFEST"; then
++    assert_pass "[SPEC-1] manifest config.router declares timeout_s"
++else
++    assert_fail "[SPEC-1] manifest config.router must declare timeout_s" "not found"
++fi
++if grep -q 'max_turns:' "$_V2_MANIFEST"; then
++    assert_pass "[SPEC-1] manifest config.router declares max_turns"
++else
++    assert_fail "[SPEC-1] manifest config.router must declare max_turns" "not found"
++fi
++
++# ─── SPEC-2: _rr_write_result helper exists and writes conformant v2 result ──
++if grep -q '_rr_write_result' "$_V2_PLUGIN"; then
++    assert_pass "[SPEC-2] _rr_write_result helper declared in plugin.sh"
++else
++    assert_fail "[SPEC-2] _rr_write_result must be declared in plugin.sh" "absent"
++fi
++_s2v2_dir="$TEST_TEMP_DIR/spec2v2"
++mkdir -p "$_s2v2_dir"
++_rr_write_result "$_s2v2_dir" "pass" "complete" "test_reason"
++assert_file_exists "[SPEC-2] _rr_write_result writes review-report-result.json" \
++    "$_s2v2_dir/review-report-result.json"
++assert_eq "[SPEC-2] written file has result_contract:2" "2" \
++    "$(jq -r '.result_contract' "$_s2v2_dir/review-report-result.json" 2>/dev/null || echo missing)"
++assert_eq "[SPEC-2] written file has verdict field" "pass" \
++    "$(jq -r '.verdict' "$_s2v2_dir/review-report-result.json" 2>/dev/null || echo missing)"
++assert_eq "[SPEC-2] written file has disposition field" "complete" \
++    "$(jq -r '.disposition' "$_s2v2_dir/review-report-result.json" 2>/dev/null || echo missing)"
++assert_eq "[SPEC-2] written file has reason field" "test_reason" \
++    "$(jq -r '.reason' "$_s2v2_dir/review-report-result.json" 2>/dev/null || echo missing)"
++
++# ─── SPEC-3: v2 result written verdict=error, disposition=broken on missing state_file ─
++_s3v2_dir="$TEST_TEMP_DIR/spec3v2"
++mkdir -p "$_s3v2_dir"
++export ZBUILD_ARTIFACT_DIR="$_s3v2_dir"
++set +e
++review_report_run "" "" 2>/dev/null
++set -e
++unset ZBUILD_ARTIFACT_DIR
++assert_file_exists "[SPEC-3] result sidecar written on missing state_file" \
++    "$_s3v2_dir/review-report-result.json"
++assert_eq "[SPEC-3] verdict=error on missing state_file" "error" \
++    "$(jq -r '.verdict' "$_s3v2_dir/review-report-result.json" 2>/dev/null || echo missing)"
++assert_eq "[SPEC-3] disposition=broken on missing state_file" "broken" \
++    "$(jq -r '.disposition' "$_s3v2_dir/review-report-result.json" 2>/dev/null || echo missing)"
++assert_eq "[SPEC-3] result_contract:2 on missing state_file" "2" \
++    "$(jq -r '.result_contract' "$_s3v2_dir/review-report-result.json" 2>/dev/null || echo missing)"
++
++# ─── SPEC-4: v2 result written verdict=error, disposition=broken on missing out_json ─
++_s4v2_dir="$TEST_TEMP_DIR/spec4v2"
++mkdir -p "$_s4v2_dir"
++export ZBUILD_ARTIFACT_DIR="$_s4v2_dir"
++set +e
++_rr_run_inner "$scope_manifest" "$evidence" "" "" 2>/dev/null
++set -e
++unset ZBUILD_ARTIFACT_DIR
++assert_file_exists "[SPEC-4] result sidecar written on missing out_json" \
++    "$_s4v2_dir/review-report-result.json"
++assert_eq "[SPEC-4] verdict=error on missing out_json" "error" \
++    "$(jq -r '.verdict' "$_s4v2_dir/review-report-result.json" 2>/dev/null || echo missing)"
++assert_eq "[SPEC-4] disposition=broken on missing out_json" "broken" \
++    "$(jq -r '.disposition' "$_s4v2_dir/review-report-result.json" 2>/dev/null || echo missing)"
++assert_eq "[SPEC-4] result_contract:2 on missing out_json" "2" \
++    "$(jq -r '.result_contract' "$_s4v2_dir/review-report-result.json" 2>/dev/null || echo missing)"
++
++# ─── SPEC-5: v2 result sidecar written verdict=pass, disposition=complete on normal completion ─
++_s5v2_dir="$TEST_TEMP_DIR/spec5v2"
++mkdir -p "$_s5v2_dir"
++cp "$evidence" "$_s5v2_dir/diff.patch"
++: > "$_RR_CALLS"
++set +e
++_rr_run_inner "$scope_manifest" "$_s5v2_dir/diff.patch" \
++    "$_s5v2_dir/review-report.json" "$_s5v2_dir/review-report.md"
++_s5v2_rc=$?
++set -e
++assert_eq "[SPEC-5] _rr_run_inner returns 0 on normal completion" "0" "$_s5v2_rc"
++assert_file_exists "[SPEC-5] v2 result sidecar written on normal completion" \
++    "$_s5v2_dir/review-report-result.json"
++assert_eq "[SPEC-5] verdict=pass on normal completion" "pass" \
++    "$(jq -r '.verdict' "$_s5v2_dir/review-report-result.json" 2>/dev/null || echo missing)"
++assert_eq "[SPEC-5] disposition=complete on normal completion (all lens rc=0)" "complete" \
++    "$(jq -r '.disposition' "$_s5v2_dir/review-report-result.json" 2>/dev/null || echo missing)"
++assert_eq "[SPEC-5] result_contract:2 on normal completion" "2" \
++    "$(jq -r '.result_contract' "$_s5v2_dir/review-report-result.json" 2>/dev/null || echo missing)"
++
++# ─── SPEC-6: _rr_budget_guidance helper exists and injects TURN BUDGET into lens prompts ─
++if declare -f _rr_budget_guidance >/dev/null 2>&1; then
++    assert_pass "[SPEC-6] _rr_budget_guidance function exists in plugin.sh"
++else
++    assert_fail "[SPEC-6] _rr_budget_guidance function must exist in plugin.sh" "function absent"
++fi
++_s6v2_guidance="$(_rr_budget_guidance 25 300)"
++assert_contains "[SPEC-6] _rr_budget_guidance produces TURN BUDGET block" \
++    "$_s6v2_guidance" "TURN BUDGET"
++assert_contains "[SPEC-6] _rr_budget_guidance embeds max_turns value" \
++    "$_s6v2_guidance" "25"
++_s6v2_dir="$TEST_TEMP_DIR/spec6v2"
++mkdir -p "$_s6v2_dir"
++cp "$evidence" "$_s6v2_dir/diff.patch"
++_rr_fanout_lenses "$scope_manifest" "$_s6v2_dir/diff.patch" "$_s6v2_dir" "T2" "$_s6v2_guidance" >/dev/null 2>&1 || true
++_s6v2_prompt="$(cat "$_s6v2_dir/lens-correctness-prompt.txt" 2>/dev/null || echo MISSING)"
++assert_contains "[SPEC-6] correctness lens prompt contains TURN BUDGET guidance from _rr_budget_guidance" \
++    "$_s6v2_prompt" "TURN BUDGET"
++
++# ─── SPEC-7: _rr_lens_envelope_schema_ok predicate exists and validates {score,findings} ─
++if declare -f _rr_lens_envelope_schema_ok >/dev/null 2>&1; then
++    assert_pass "[SPEC-7] _rr_lens_envelope_schema_ok predicate exists"
++else
++    assert_fail "[SPEC-7] _rr_lens_envelope_schema_ok predicate must exist" "function absent"
++fi
++if _rr_lens_envelope_schema_ok '{"score":8,"findings":[]}' 2>/dev/null; then
++    assert_pass "[SPEC-7] schema gate accepts valid {score:number, findings:array}"
++else
++    assert_fail "[SPEC-7] schema gate must accept {score:number, findings:array}" "rejected valid input"
++fi
++if ! _rr_lens_envelope_schema_ok '{"verdict":"pass"}' 2>/dev/null; then
++    assert_pass "[SPEC-7] schema gate rejects object missing score and findings"
++else
++    assert_fail "[SPEC-7] schema gate must reject object without score/findings" "accepted invalid"
++fi
++if ! _rr_lens_envelope_schema_ok '"just a string"' 2>/dev/null; then
++    assert_pass "[SPEC-7] schema gate rejects non-object input"
++else
++    assert_fail "[SPEC-7] schema gate must reject non-object" "accepted non-object"
++fi
++
++# ─── SPEC-8: _rr_parse_lens_out routes through _llm_envelope_parse --schema-gate ─
++if grep -q 'extract_first_json_object' "$_V2_LENSES"; then
++    assert_fail "[SPEC-8] lenses.sh must not contain extract_first_json_object (bare extract)" "found"
++else
++    assert_pass "[SPEC-8] extract_first_json_object absent from lenses.sh"
++fi
++if grep -q '_llm_envelope_parse' "$_V2_LENSES"; then
++    assert_pass "[SPEC-8] lenses.sh uses _llm_envelope_parse for lens output parsing"
++else
++    assert_fail "[SPEC-8] _rr_parse_lens_out must use _llm_envelope_parse" "call absent"
++fi
++if grep -q -- '--schema-gate' "$_V2_LENSES"; then
++    assert_pass "[SPEC-8] _rr_parse_lens_out calls _llm_envelope_parse with --schema-gate"
++else
++    assert_fail "[SPEC-8] _rr_parse_lens_out must use --schema-gate option" "flag absent"
++fi
++
++# ─── SPEC-9: _rr_run_inner returns 0 and advisory review-report.json written (GUARD) ─
++assert_eq "[SPEC-9] _rr_run_inner returns 0 (advisory contract: never blocks)" "0" "$_run_rc"
++assert_file_exists "[SPEC-9] advisory review-report.json written on normal completion" "$out_json"
++_s9v2_mr="$(jq -r '.merge_readiness // empty' "$out_json" 2>/dev/null || true)"
++if [[ -n "$_s9v2_mr" ]]; then
++    assert_pass "[SPEC-9] advisory report contains merge_readiness field"
++else
++    assert_fail "[SPEC-9] advisory report must contain merge_readiness" "field absent"
++fi
++
++# ─── SPEC-10: 11 independent LLM calls still made, one per lens (GUARD) ─────
++assert_eq "[SPEC-10] 11 independent LLM calls made (one per lens)" "11" "$_call_count"
++assert_eq "[SPEC-10] advisory report has 11 lens result sections" "11" \
++    "$(jq '.lenses | length' "$out_json")"
++
++# ─── SPEC-11: manifest declares valid_verdicts: [] (GUARD) ──────────────────
++if grep -q 'valid_verdicts: \[\]' "$_V2_MANIFEST"; then
++    assert_pass "[SPEC-11] manifest declares valid_verdicts: [] (writes no verdict to pipeline channel)"
++else
++    assert_fail "[SPEC-11] manifest must declare valid_verdicts: []" "not found"
++fi
++
++# ─── SPEC-12: manifest first output (review_report) retains primary: true (GUARD) ─
++if grep -q 'primary: true' "$_V2_MANIFEST"; then
++    assert_pass "[SPEC-12] manifest first output retains primary: true after migration"
++else
++    assert_fail "[SPEC-12] manifest must have primary: true on first output" "not found"
++fi
++
++# ─── SPEC-13: manifest provides.role: review_report and 4 declared events (GUARD) ─
++if grep -q 'role: review_report' "$_V2_MANIFEST"; then
++    assert_pass "[SPEC-13] manifest provides.role: review_report present"
++else
++    assert_fail "[SPEC-13] manifest must declare provides.role: review_report" "not found"
++fi
++for _s13v2_ev in \
++    "review_report.evidence.redaction_failed" \
++    "review_report.lens.evidence.redaction_failed" \
++    "review_report.lens.failed" \
++    "review_report.lens.unparseable"; do
++    if grep -q "$_s13v2_ev" "$_V2_MANIFEST"; then
++        assert_pass "[SPEC-13] manifest declares event: $_s13v2_ev"
++    else
++        assert_fail "[SPEC-13] manifest must declare event: $_s13v2_ev" "event absent"
++    fi
++done
++
++# ─── SPEC-14: no active cleanup hook in manifest; no review_report_cleanup function (GUARD) ─
++# cleanup: ~ is the null sentinel (absent-and-recorded per ADR-001 §2); acceptable.
++_s14v2_active=""
++while IFS= read -r _s14v2_line; do
++    [[ "$_s14v2_line" =~ ^[[:space:]]*# ]] && continue
++    [[ "$_s14v2_line" =~ cleanup:[[:space:]]*~ ]] && continue
++    [[ "$_s14v2_line" =~ cleanup: ]] && { _s14v2_active="$_s14v2_line"; break; }
++done < "$_V2_MANIFEST"
++if [[ -z "$_s14v2_active" ]]; then
++    assert_pass "[SPEC-14] manifest has no active cleanup hook (absent or null sentinel cleanup: ~)"
++else
++    assert_fail "[SPEC-14] manifest must not have an active cleanup hook" "active entry: $_s14v2_active"
++fi
++if ! grep -q 'review_report_cleanup' "$_V2_PLUGIN"; then
++    assert_pass "[SPEC-14] no review_report_cleanup function in plugin.sh"
++else
++    assert_fail "[SPEC-14] plugin.sh must not define review_report_cleanup" "found"
++fi
++
++# ─── SPEC-15: review_report_run reads scope_manifest from ZBUILD_STAGE_INPUTS ─
++if grep -q 'ZBUILD_STAGE_INPUTS' "$_V2_PLUGIN"; then
++    assert_pass "[SPEC-15] plugin.sh references ZBUILD_STAGE_INPUTS for declared inputs"
++else
++    assert_fail "[SPEC-15] plugin.sh must reference ZBUILD_STAGE_INPUTS" "reference absent"
++fi
++if grep -qE "jq -r.*inputs.scope_manifest" "$_V2_PLUGIN"; then
++    assert_pass "[SPEC-15] plugin.sh calls jq -r with .inputs.scope_manifest from ZBUILD_STAGE_INPUTS"
++else
++    assert_fail "[SPEC-15] plugin.sh must call jq -r .inputs.scope_manifest from ZBUILD_STAGE_INPUTS" "pattern absent"
++fi
++
++# ─── SPEC-16: disposition=exhausted when at least one lens subshell returns non-zero rc ─
++_s16v2_dir="$TEST_TEMP_DIR/spec16v2"
++mkdir -p "$_s16v2_dir"
++cp "$evidence" "$_s16v2_dir/diff.patch"
++# Override route_to_model so the correctness lens returns rc=1 (signals budget exhaustion).
++route_to_model() {
++    printf 'call\n' >> "$_RR_CALLS"
++    local prompt="${2:-}"
++    if [[ "$prompt" == *'"correctness" review lens'* ]]; then
++        return 1
++    fi
++    printf '%s' '{"score":10,"findings":[]}'
++    return 0
++}
++: > "$_RR_CALLS"
++set +e
++_rr_run_inner "$scope_manifest" "$_s16v2_dir/diff.patch" \
++    "$_s16v2_dir/review-report.json" "$_s16v2_dir/review-report.md" 2>/dev/null
++set -e
++assert_file_exists "[SPEC-16] result sidecar written when at least one lens fails" \
++    "$_s16v2_dir/review-report-result.json"
++assert_eq "[SPEC-16] verdict=pass when lens fails (advisory contract preserved)" "pass" \
++    "$(jq -r '.verdict' "$_s16v2_dir/review-report-result.json" 2>/dev/null || echo missing)"
++assert_eq "[SPEC-16] disposition=exhausted when at least one lens subshell returns non-zero rc" "exhausted" \
++    "$(jq -r '.disposition' "$_s16v2_dir/review-report-result.json" 2>/dev/null || echo missing)"
++# Restore original route_to_model stub for any subsequent tests.
++route_to_model() {
++    printf 'call\n' >> "$_RR_CALLS"
++    local prompt="$2"
++    if [[ "$prompt" == *'"correctness" review lens'* ]]; then
++        printf '%s' '{"score":6,"findings":[{"file":"core/x.sh","category":"logic","severity":"medium","line":42,"message":"off-by-one in loop"}]}'
++    elif [[ "$prompt" == *'"security" review lens'* ]]; then
++        printf '%s' '{"score":3,"findings":[{"file":"core/x.sh","category":"logic","severity":"high","line":47,"message":"same region higher severity"},{"file":"core/y.sh","category":"injection","severity":"critical","line":10,"message":"shell injection risk"}]}'
++    elif [[ "$prompt" == *'"integration" review lens'* ]]; then
++        printf '%s' '{"score":10,"findings":[]}'
++    elif [[ "$prompt" == *'"error-handling" review lens'* ]]; then
++        printf '%s' '{"score":10,"findings":[]}'
++    elif [[ "$prompt" == *'"performance" review lens'* ]]; then
++        printf '%s' '{"score":10,"findings":[]}'
++    elif [[ "$prompt" == *'"edge-case" review lens'* ]]; then
++        printf '%s' '{"score":10,"findings":[]}'
++    elif [[ "$prompt" == *'"architecture" review lens'* ]]; then
++        printf '%s' '{"score":10,"findings":[]}'
++    elif [[ "$prompt" == *'"red-team" review lens'* ]]; then
++        printf '%s' '{"score":10,"findings":[]}'
++    elif [[ "$prompt" == *'"maintainability" review lens'* ]]; then
++        printf '%s' '{"score":10,"findings":[]}'
++    else
++        printf '%s' '{"score":10,"findings":[]}'
++    fi
++    return 0
++}
++
++# ─── SPEC-17: plugin.sh has no hardcoded state_dir path for any declared input id ─
++_s17v2_found=0
++for _s17v2_name in "scope-manifest.md" "plan.json" "diff.patch" "intake.md" "intake-goal.md"; do
++    if grep -qE "state_dir.*${_s17v2_name}|${_s17v2_name}.*state_dir" "$_V2_PLUGIN"; then
++        _s17v2_found=1
++        break
++    fi
++done
++if [[ "$_s17v2_found" -eq 0 ]]; then
++    assert_pass "[SPEC-17] plugin.sh constructs no hardcoded state_dir path for declared input filenames"
++else
++    assert_fail "[SPEC-17] plugin.sh must not concat state_dir with declared input filename" "hardcoded path found"
++fi
++
+ print_test_results
