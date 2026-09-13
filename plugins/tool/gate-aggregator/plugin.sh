@@ -167,7 +167,7 @@ gate_aggregator_run() {
     if [[ -n "$state_file" && -d "$(dirname "$state_file")" ]]; then
         artifacts_dir="$(dirname "$state_file")/artifacts"
     else
-        artifacts_dir="${ZBUILD_ARTIFACT_DIR:-${TMPDIR:-/tmp}/zbuild-gate-aggregator-artifacts}"
+        artifacts_dir="${ZBUILD_ARTIFACT_DIR:-$(zbuild_engine_tmpdir)/zbuild-gate-aggregator-artifacts}"
     fi
     mkdir -p "$artifacts_dir"
 

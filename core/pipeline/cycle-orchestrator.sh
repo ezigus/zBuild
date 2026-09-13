@@ -1251,7 +1251,15 @@ _cycle_apply_feedback() {
         _g1_size="$(wc -c < "$dst" 2>/dev/null | tr -d ' ' || echo 0)"
         if [[ "$_g1_size" =~ ^[0-9]+$ ]] && [[ "$_g1_size" -gt "$_g1_max_field_chars" ]]; then
             local _g1_marker="… [ADR-029 G1 tail_truncate: dropped $((_g1_size - _g1_max_field_chars)) leading chars; kept tail of $_g1_max_field_chars / $_g1_size] …"
-            local _g1_tmp; _g1_tmp="$(mktemp -t zbuild-g1-truncate.XXXXXX 2>/dev/null || true)"
+            # Next to $dst, which is already state-rooted (ADR-058 §1 area 1).
+            # `mktemp -t` resolves to $TMPDIR — /tmp on every Linux runner, and
+            # on macOS the -t form ignores $TMPDIR entirely for /var/folders, so
+            # not even C10's run-scoped TMPDIR relocates it. This file holds RAW
+            # model-authored feedback, the disclosure class §5 keeps inside the
+            # job folder, and it runs BETWEEN cycle iterations where the dispatch
+            # sweep can never see it. Siting it beside $dst also makes the `mv`
+            # below a same-filesystem rename instead of a cross-device copy.
+            local _g1_tmp; _g1_tmp="$(mktemp "${dst}.g1-truncate.XXXXXX" 2>/dev/null || true)"
             if [[ -n "$_g1_tmp" ]]; then
                 printf '%s\n' "$_g1_marker" > "$_g1_tmp"
                 tail -c "$_g1_max_field_chars" "$dst" >> "$_g1_tmp" 2>/dev/null || true

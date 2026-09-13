@@ -261,6 +261,35 @@ _cls_ev2="$(ZBUILD_EVENTS_JSONL="$_EV_DIR/events.jsonl" \
 assert_eq "[SPEC-4d] a pinned events JSONL allows its own directory" \
     "allowed" "$_cls_ev2"
 
+# The allow list must derive ~/.zbuild the SAME WAY the writer does. The bus's
+# unpinned default is
+#   ${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}/ephemeral-events/$$
+# (core/event-bus/event-bus.sh), i.e. it FOLLOWS ZBUILD_STATE_ROOT — while
+# write_boundary_allow_list emitted a hardcoded "$HOME/.zbuild". Those agree
+# only while nobody redirects the root, and plugins/tool/test/plugin.sh
+# redirects it on purpose (ZBUILD_STATE_ROOT="$tmp/.zbuild-nested-state") to
+# fence a nested run. The moment they diverge, the engine's own event log
+# becomes a stage violation again — the exact defect SPEC-4d above closed for
+# the unredirected case.
+# CHANGE: fails at baseline (allow list names only $HOME/.zbuild).
+_ALT_ROOT="$TEST_TEMP_DIR/alt-state-root"
+_ALT_EV="$_ALT_ROOT/ephemeral-events/$$"
+mkdir -p "$_ALT_EV"
+printf '{}\n' > "$_ALT_EV/events.jsonl"
+_cls_alt="$(ZBUILD_STATE_ROOT="$_ALT_ROOT" \
+    write_boundary_classify "$_ALT_EV/events.jsonl" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-4d] a redirected ZBUILD_STATE_ROOT still allows the engine's own event log" \
+    "allowed" "$_cls_alt"
+
+_DATA_ROOT="$TEST_TEMP_DIR/alt-data-root"
+_DATA_EV="$_DATA_ROOT/ephemeral-events/$$"
+mkdir -p "$_DATA_EV"
+printf '{}\n' > "$_DATA_EV/events.jsonl"
+_cls_data="$(ZBUILD_DATA_ROOT="$_DATA_ROOT" \
+    write_boundary_classify "$_DATA_EV/events.jsonl" "$JOB_DIR" "" 2>/dev/null)"
+assert_eq "[SPEC-4d] a redirected ZBUILD_DATA_ROOT still allows the engine's own event log" \
+    "allowed" "$_cls_data"
+
 # ─── SPEC-4e: every zbuild_engine_tmpdir caller can actually see it ─────────
 # The helper lives in scripts/lib/helpers.sh. A file that calls it without
 # sourcing helpers gets an UNDEFINED function, and `$(undefined)` in a path
@@ -273,8 +302,16 @@ _bad_callers=""
 while IFS= read -r _f; do
     [[ -z "$_f" ]] && continue
     [[ "$_f" == *"scripts/lib/helpers.sh" ]] && continue   # the definition itself
-    grep -q "helpers.sh" "$_f" || _bad_callers="${_bad_callers}${_f} "
-done < <(grep -rl "zbuild_engine_tmpdir" "$REPO_ROOT/core" "$REPO_ROOT/scripts" 2>/dev/null || true)
+    # plugins/ reach the helper through zbuild_plugin_bootstrap, which sources
+    # helpers.sh on their behalf (scripts/lib/plugin-bootstrap.sh) — so either
+    # seam counts. plugins/ was outside this scan until the ad-hoc artifact
+    # roots started calling the helper (SPEC-4j below); an unsourced caller
+    # there fails the same way, and worse: `${ZBUILD_ARTIFACT_DIR:-$(undefined)/x}`
+    # expands to `/x`, an ARTIFACT root at the filesystem root.
+    grep -qE "helpers\.sh|zbuild_plugin_bootstrap" "$_f" \
+        || _bad_callers="${_bad_callers}${_f} "
+done < <(grep -rl "zbuild_engine_tmpdir" \
+    "$REPO_ROOT/core" "$REPO_ROOT/scripts" "$REPO_ROOT/plugins" 2>/dev/null || true)
 
 if [[ -z "$_bad_callers" ]]; then
     assert_pass "[SPEC-4e] every zbuild_engine_tmpdir caller sources helpers.sh"
@@ -318,15 +355,29 @@ else
 fi
 
 # ─── SPEC-4g: the shipped default does not sweep the system temp ────────────
-# scripts/lib/env-scrub.sh wipes every ZBUILD_* before a model spawn, so engine
-# code in a spawned child cannot see ZBUILD_STAGE_SCRATCH and its temps land in
-# the system temp. Those are the ENGINE's writes, not the swept stage's, and
-# halting on them kills runs on the engine doing its job — ubuntu CI showed
-# stage=intake path=/tmp/zb-route-redact-out.*, stage=test path=/tmp/zb-numstat.*
-# (the latter from the INSTALLED engine, in a nested run). Coverage returns with
-# a run-scoped TMPDIR, which is C10 (#1919). An operator can opt back in via the
-# override file.
-# CHANGE: fails at baseline (the shipped list carried both roots).
+# C9 dropped /tmp and ${TMPDIR:-/tmp} and called it "a real reduction in
+# coverage — the originally measured defect was a stage writing to /tmp". C10
+# restored them once the engine's own temps were in bounds, and that restoration
+# was MEASURED on ubuntu CI and reverted. The evidence, so this is not re-tried
+# a third time:
+#
+#   stage=intake path=/tmp/tmp.XXXXXXXXXX
+#
+# twice, in two runs. That is the default BARE-mktemp name, and `intake`
+# contains no mktemp at all — the files belonged to another process on the
+# runner (git, gh, node, npm, the Actions agent), which shares /tmp whenever
+# TMPDIR is unset. `intake` was merely what happened to be dispatching.
+#
+# The settle probe caught one and missed its twin: a writer that finishes BEFORE
+# the dispatch returns leaves nothing live to witness. That is not a gap in the
+# probe. mtime records when, never who, and no attribution logic recovers
+# authorship that was never written down.
+#
+# So the coverage C9 gave up stays given up, and for a sharper reason than C9
+# stated: not only that the engine wrote there, but that the directory belongs
+# to the whole machine. Closing it needs authorship, not a longer watch list.
+# config/write-boundary-watch.txt carries the roots commented, for an operator
+# on a dedicated box.
 
 _wl_default="$(unset ZBUILD_WRITE_BOUNDARY_WATCH; write_boundary_watch_list)"
 # Exact roots only. $HOME is redirected under the system temp in this harness,
@@ -475,6 +526,149 @@ if grep -qF 'TMPDIR:-\/tmp' "$WB_LIB"; then
         "$(grep -nF 'TMPDIR:-\/tmp' "$WB_LIB")"
 else
     assert_pass "[SPEC-3] no hardcoded TMPDIR substitution remains in the lib"
+fi
+
+# ─── SPEC-4h: a candidate written by a DEMONSTRABLY live external process ────
+# does not halt the dispatch.
+#
+# The sweep is `find <roots> -newer <marker> -type f`. mtime carries no
+# authorship, so any file appearing in a watched root during the window is
+# attributed to whichever stage happens to be dispatching. Reproduced against
+# the real parity fixture: a bare `touch` loop in an unrelated process got
+# hydrate, release and persist each reported for files they never wrote, and
+# the run ended status=interrupted.
+#
+# ADR-058 C9 already conceded this for DIRECTORIES ("any concurrent process can
+# kill a run") and fixed that half with -type f. This is the same argument for
+# the file half.
+#
+# The fix is NOT to stop watching: a stage's own writer is dead by the time
+# write_boundary_check runs (the dispatch subshell has returned), so continued
+# activity in the root after the dispatch is positive evidence of somebody
+# else. That makes the candidate unattributable rather than innocent — it is
+# still recorded on all three channels, it just cannot resolve the stage to
+# `broken` on evidence that does not identify it.
+_WB_EVENTS=()
+rm -f "$JOB_DIR/runtime/write-boundary.marker" "$JOB_DIR/runtime/write-boundary-violated"
+write_boundary_mark "$STATE_FILE"
+touch "$WATCH_DIR/concurrent-victim.txt"
+
+# An external writer that keeps going THROUGH the settle window.
+( for _i in $(seq 1 200); do touch "$WATCH_DIR/.ext-$_i" 2>/dev/null; sleep 0.02; done ) &
+_ext_pid=$!
+# Synchronise before checking. Starting the subprocess does not mean it has been
+# scheduled: if its first touch lands after the settle window closes, the probe
+# finds no witness, reports the candidate as a genuine violation, and this test
+# fails for a reason that has nothing to do with the code under test. That is
+# precisely the flaky-on-a-loaded-runner class this PR exists to stop blaming on
+# the wrong thing.
+_sync_n=0
+while [[ ! -e "$WATCH_DIR/.ext-1" && $_sync_n -lt 500 ]]; do
+    sleep 0.01; _sync_n=$((_sync_n + 1))
+done
+assert_eq "[SPEC-4h] the external writer is demonstrably running before the check" \
+    "1" "$([[ -e "$WATCH_DIR/.ext-1" ]] && echo 1 || echo 0)"
+_unattr_rc=0
+write_boundary_check "$FIXTURE_DIR" "$STATE_FILE" "victim-stage" "" 2>/dev/null || _unattr_rc=$?
+kill "$_ext_pid" 2>/dev/null || true
+wait "$_ext_pid" 2>/dev/null || true
+
+assert_eq "[SPEC-4h] a candidate racing a live external writer does not fail the dispatch" \
+    "0" "$_unattr_rc"
+assert_eq "[SPEC-4h] no write-boundary-violated marker is written for an unattributable candidate" \
+    "0" "$([[ -f "$JOB_DIR/runtime/write-boundary-violated" ]] && echo 1 || echo 0)"
+_unattr_ev=0
+for _e in "${_WB_EVENTS[@]:-}"; do
+    case "$_e" in *unattributable*) _unattr_ev=1 ;; esac
+done
+assert_eq "[SPEC-4h] the unattributable candidate is still recorded as an event" \
+    "1" "$_unattr_ev"
+
+# ─── SPEC-4i: GUARD — with no external writer the same write still halts ─────
+# This is what stops SPEC-4h degenerating into "make violations pass". If this
+# assertion ever goes red the fence has been disarmed, not repaired.
+rm -f "$WATCH_DIR"/.ext-* 2>/dev/null || true
+_WB_EVENTS=()
+rm -f "$JOB_DIR/runtime/write-boundary.marker" "$JOB_DIR/runtime/write-boundary-violated"
+write_boundary_mark "$STATE_FILE"
+touch "$WATCH_DIR/genuine-violation.txt"
+_genuine_rc=0
+write_boundary_check "$FIXTURE_DIR" "$STATE_FILE" "guilty-stage" "" 2>/dev/null || _genuine_rc=$?
+assert_eq "[SPEC-4i] GUARD: a genuine violation with no concurrent writer still fails the dispatch" \
+    "1" "$_genuine_rc"
+assert_file_exists "[SPEC-4i] GUARD: the violated marker is still written" \
+    "$JOB_DIR/runtime/write-boundary-violated"
+
+# ─── SPEC-4j: no plugin invents an artifact root at the system temp ─────────
+# ADR-058 §1 names five areas a stage may write into; the system temp is not
+# one of them. Eight plugins carried an ad-hoc fallback of the shape
+#   artifacts_dir="${ZBUILD_ARTIFACT_DIR:-${TMPDIR:-/tmp}/zbuild-<name>-artifacts}"
+# which mints an ARTIFACT root — the stage's declared outputs — outside every
+# allowed area whenever the plugin is invoked without a live state file.
+#
+# zbuild_engine_tmpdir is the single answer to "where may engine code put a
+# working file" (#2017), and it already resolves scratch → runtime/ → data
+# root, so the ad-hoc branch keeps working while landing in bounds.
+_ART_TMP_HITS="$(
+    { grep -rn 'ZBUILD_ARTIFACT_DIR:-${TMPDIR' "$REPO_ROOT/plugins" 2>/dev/null || true; } \
+        | { grep -v '/tests/' || true; }
+)"
+if [[ -z "$_ART_TMP_HITS" ]]; then
+    assert_pass "[SPEC-4j] no plugin roots an artifact dir at the system temp"
+else
+    assert_fail "[SPEC-4j] no plugin roots an artifact dir at the system temp" \
+        "$(printf '%s' "$_ART_TMP_HITS" | tr '\n' '|')"
+fi
+
+# ─── SPEC-4k: no engine temp under core/ is unrooted ────────────────────────
+# `mktemp` with no template, and `mktemp -t <name>`, both resolve to $TMPDIR —
+# and on macOS the templateless forms ignore $TMPDIR entirely and use
+# /var/folders, so not even C10's run-scoped TMPDIR relocates them. An unrooted
+# engine temp is therefore outside all five ADR-058 §1 areas on at least one
+# supported platform, always.
+#
+# core/ is scanned rather than the whole tree because it is the engine's own
+# code, where the rule is unconditional: scripts/ carries CLI and CI tooling
+# that legitimately runs with no job folder to write into.
+_UNROOTED="$(
+    { grep -rnE 'mktemp( +-d)? *(\)|\||;|$)|mktemp +(-d +)?-t +' "$REPO_ROOT/core" 2>/dev/null || true; } \
+        | { grep -v '/tests/' || true; } \
+        | { grep -vE '^[^:]+:[0-9]+: *#' || true; }
+)"
+if [[ -z "$_UNROOTED" ]]; then
+    assert_pass "[SPEC-4k] every mktemp under core/ names a rooted template"
+else
+    assert_fail "[SPEC-4k] every mktemp under core/ names a rooted template" \
+        "$(printf '%s' "$_UNROOTED" | tr '\n' '|')"
+fi
+
+# ─── SPEC-4l: no test writes to a hardcoded system-temp path ────────────────
+# The suite runs tiers concurrently (scripts/run-tests.sh), and the shipped
+# watch list covers the system temp again (SPEC-4g). A test writing to a fixed
+# /tmp path therefore lands in a watched root while some OTHER test's stage is
+# mid-dispatch, and that stage is blamed for it.
+#
+# Not hypothetical: restoring the roots turned the ubuntu integration tier red,
+# and the violation log named the writer —
+#   stage=build path=/tmp/intake-branch-test-out.1335049
+# from plugins/agent/intake/tests/intake-branch-test.sh, 15 sites of
+# `> /tmp/intake-branch-test-out.$$`. The `build` stage had never touched it.
+# That is the #1839 failure mode reproduced inside the suite, and the same class
+# the settle probe cannot always absorb: a writer that finishes BEFORE the
+# dispatch returns leaves no live witness.
+#
+# $TEST_TEMP_DIR is per-test and reaped, so it cannot collide.
+_TMP_WRITERS="$(
+    { grep -rnE '> */tmp/|>> */tmp/|mkdir -p +/tmp/' \
+        "$REPO_ROOT/tests" "$REPO_ROOT/plugins" 2>/dev/null || true; } \
+        | { grep -vE 'TMPDIR|TEST_TEMP_DIR' || true; } \
+        | { grep -vE '^[^:]+:[0-9]+: *#' || true; }
+)"
+if [[ -z "$_TMP_WRITERS" ]]; then
+    assert_pass "[SPEC-4l] no test writes to a hardcoded system-temp path"
+else
+    assert_fail "[SPEC-4l] no test writes to a hardcoded system-temp path" \
+        "$(printf '%s' "$_TMP_WRITERS" | tr '\n' '|')"
 fi
 
 cleanup_test_env

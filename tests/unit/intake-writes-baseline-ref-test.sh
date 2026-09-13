@@ -51,11 +51,11 @@ cd "$REPO" || exit 1
     unset CI GITHUB_ACTIONS
     export ZBUILD_INTAKE_ALLOW_DIRTY=1
     _intake_create_workspace_branch "$STATE_DIR" 614 "branch cumulative context"
-) > /tmp/intake-614-out.$$ 2>&1
+) > "$TEST_TEMP_DIR/intake-614-out.$$" 2>&1
 rc=$?
 if [[ "$rc" -ne 0 ]]; then
     # Print captured output for diagnosability if rc != 0 (CI debugging)
-    cat /tmp/intake-614-out.$$ >&2
+    cat "$TEST_TEMP_DIR/intake-614-out.$$" >&2
 fi
 assert_eq "branch creation rc=0" "0" "$rc"
 
@@ -79,7 +79,7 @@ baseline_count="${baseline_count:-0}"
 assert_gt "intake.baseline.captured emitted" "$baseline_count" "0"
 
 cd "$REPO_ROOT" || true
-rm -f /tmp/intake-614-out.$$
+rm -f "$TEST_TEMP_DIR/intake-614-out.$$"
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

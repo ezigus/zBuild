@@ -97,10 +97,25 @@ _rt_report_failure() {
 #                             honest outcome for a hang), never an infinite wait
 #                             — reported as TIMEOUT, not FAIL (#1613)
 # Returns the child's exit code.
-# Optional 3rd arg: a per-invocation trace file. When set, fd 9 is opened to it
-# so a child bash with BASH_XTRACEFD=9 (coverage mode — see --coverage-trace
+# Optional 3rd arg: a per-invocation trace file. When set, fd 8 is opened to it
+# so a child bash with BASH_XTRACEFD=8 (coverage mode — see --coverage-trace
 # below) writes its xtrace there. One file per test means parallel workers never
-# share one fd-9 handle, which is what corrupted coverage before (#993).
+# share one trace handle, which is what corrupted coverage before (#993).
+#
+# 8, not 9. Fd 9 is this repo's flock descriptor — core/state/atomic.sh,
+# core/event-bus/event-bus.sh (twice per emit), core/router/route.sh and three
+# plugins all do `) 9>"$lock_file"`. With BASH_XTRACEFD=9 those subshells
+# re-point the tracer at their own LOCK FILE, so bash writes the whole trace of
+# each critical section into it — measured at 33 bytes for a two-line probe, and
+# the event bus locks on every event. The I/O lands inside the held lock, so
+# every waiter queues behind it. That is what timed out the Coverage job on a
+# test whose own assertions all passed: not a slow tracer, a tracer
+# writing the trace into files that are not trace files. Fd 3 (stage-io) is
+# also taken, and bash REJECTS any BASH_XTRACEFD outside 3-9 outright
+# ("invalid value for trace file descriptor"), silently falling back to stderr —
+# so 10+ is not an option however free it looks. That leaves 4-8; 8 is the one
+# furthest from stage-io. tests/unit/coverage-trace-fd-collision-test.sh pins
+# both constraints: in range, and not redirected by engine code.
 _rt_run() {
   # #1058 Phase A: per-test-file wall-clock instrumentation. Entirely gated on
   # ZBUILD_TEST_TIMING_FILE being set+non-empty — when unset this function's
@@ -111,25 +126,78 @@ _rt_run() {
   # never turn a green run red.
   if [[ -z "${ZBUILD_TEST_TIMING_FILE:-}" ]]; then
     if [[ -n "${3:-}" ]]; then
-      "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null 9>"$3" >"$2" 2>&1
+      "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null 8>"$3" >"$2" 2>&1
     else
       "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null >"$2" 2>&1
     fi
     return
   fi
   local _t0 _t1 _rc=0
+  # CPU time as well as wall-clock. The two answer different questions and the
+  # difference is the whole diagnosis: when the unit tier's total work doubled
+  # (1,631s -> 3,242s of file time at a constant 4.0x parallelism), wall-clock
+  # alone could not say whether more work was being done or more time spent
+  # waiting — and those have opposite fixes. Six explanations of the Coverage
+  # timeout (#2090) were guesses for want of this number.
+  #
+  # user vs sys stay SEPARATE deliberately: user is computation, sys is
+  # fork/exec and syscalls. A local run of the slowest file measures
+  # real 150.12 / user 52.32 / sys 81.24 — kernel time 1.55x user, i.e. the cost
+  # is spawning processes, not computing. Collapsing them to one figure would
+  # hide exactly that.
+  #
+  # `times` is a bash BUILTIN reporting cumulative CHILD cpu, so this costs no
+  # fork — which matters in a function whose own overhead is under measurement.
+  # Redirected to a file, NOT captured with $( ) or piped: both run `times` in
+  # a subshell, which has reaped no children and therefore reports 0.000s. That
+  # is the third time a subshell boundary has silently voided a measurement in
+  # this file's history; the SPEC-2 "non-zero for a fork-heavy file" assertion
+  # exists to catch exactly it.
+  local _cpuf="${ZBUILD_TEST_TIMING_FILE}.cpu.$$"
+  local _c0 _c1
+  times > "$_cpuf" 2>/dev/null || true
+  _c0="$(tail -1 "$_cpuf" 2>/dev/null || true)"
   _t0="$EPOCHREALTIME"
   if [[ -n "${3:-}" ]]; then
-    "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null 9>"$3" >"$2" 2>&1 || _rc=$?
+    "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null 8>"$3" >"$2" 2>&1 || _rc=$?
   else
     "${_rt_tout[@]}" bash "$1" </dev/null 3>/dev/null >"$2" 2>&1 || _rc=$?
   fi
   _t1="$EPOCHREALTIME"
+  times > "$_cpuf" 2>/dev/null || true
+  _c1="$(tail -1 "$_cpuf" 2>/dev/null || true)"
+  rm -f "$_cpuf" 2>/dev/null || true
+  # `times` prints "<user> <sys>" as 0m0.000s pairs; convert to ms and delta.
+  awk -v a="$_c0" -v b="$_c1" -v p="$1" '
+    function ms(x,   m,s) { split(x, t, "m"); m=t[1]; s=t[2]; sub(/s$/,"",s); return (m*60+s)*1000 }
+    BEGIN {
+      split(a, A, /[ \t]+/); split(b, B, /[ \t]+/)
+      u = ms(B[1]) - ms(A[1]); y = ms(B[2]) - ms(A[2])
+      if (u < 0) u = 0; if (y < 0) y = 0
+      printf "cpu %d %d %s\n", u, y, p
+    }' >> "$ZBUILD_TEST_TIMING_FILE" 2>/dev/null || true
   # One small line per file → atomic under POSIX (< PIPE_BUF) so concurrent
   # pool workers `>>`-appending the shared file never interleave a line.
   awk -v t0="$_t0" -v t1="$_t1" -v p="$1" \
     'BEGIN { d = (t1 - t0) * 1000; if (d < 0) d = 0; printf "file %d %s\n", d, p }' \
     >> "$ZBUILD_TEST_TIMING_FILE" 2>/dev/null || true
+  # Trace VOLUME, recorded only when tracing is on. Coverage broke on main at a
+  # single commit (563aab3b, #2065) that added +89.5MB of trace — +40% — to this
+  # tier, which is what pushed one file past the per-file bound on CI. Measured
+  # on the boundary: 224,730,454 bytes before, 314,276,976 after, for the same
+  # file. None of it was visible: the job reported only "TIMEOUT … exceeded
+  # 480s" with every assertion in that file passing, so the natural readings
+  # were "it hangs" or "the bound is too tight". Both wrong, both expensive.
+  # Volume is the quantity that actually moved, so record it next to duration
+  # and a regression becomes a number rather than a mystery kill.
+  #
+  # Gated on a trace file existing, so the untraced path is byte-identical —
+  # the parallel tier's output guarantee depends on that (#1058).
+  if [[ -n "${3:-}" && -f "${3:-}" ]]; then
+    awk -v b="$(wc -c < "$3" 2>/dev/null | tr -d ' ')" -v p="$1" \
+      'BEGIN { printf "trace %d %s\n", b, p }' \
+      >> "$ZBUILD_TEST_TIMING_FILE" 2>/dev/null || true
+  fi
   return "$_rc"
 }
 
@@ -225,7 +293,7 @@ fi
 # runner via `--coverage-trace <path>` instead of wiring PS4/BASH_XTRACEFD/
 # BASH_ENV itself. When set, the runner turns on xtrace line-tracing for each
 # child test bash (PS4 emits `TRACE:<src>:<lineno>:`; BASH_ENV injects `set -x`
-# into every child; BASH_XTRACEFD=9 routes it to fd 9), gives EACH test its own
+# into every child; BASH_XTRACEFD=8 routes it to fd 8), gives EACH test its own
 # trace file (so parallel workers never share one fd-9 handle), and merges them
 # into <path> at the end. The coverage script stays a dumb consumer.
 _RT_COVERAGE_TRACE=""
@@ -252,7 +320,7 @@ if [[ -n "$_RT_COVERAGE_TRACE" ]]; then
   # shellcheck disable=SC2064
   trap "rm -f '$_RT_BASH_ENV_FILE'" EXIT
   export PS4='TRACE:${BASH_SOURCE[0]-}:${LINENO}:'
-  export BASH_XTRACEFD=9
+  export BASH_XTRACEFD=8
   export BASH_ENV="$_RT_BASH_ENV_FILE"
 fi
 

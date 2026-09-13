@@ -48,6 +48,10 @@ _stage_scratch_key() {
     # rc=2 refusal, and six lens members with no stage between them would share
     # it. The element qualifies an owner; it cannot be one.
     [[ -n "$stage" ]] || return 2
+    # `run-tmp` belongs to zbuild_run_tmpdir (ADR-058 C10), which sits in this
+    # same scratch/ namespace. A stage allowed to mint it would share the run's
+    # ambient temp root and have its working files reclaimed by another owner.
+    [[ "$stage" == "run-tmp" ]] && return 2
     local key="$stage"
     [[ -n "$element" ]] && key="${key}-${element}"
     key="${key//[^A-Za-z0-9_-]/_}"

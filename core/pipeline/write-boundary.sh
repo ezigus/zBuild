@@ -181,8 +181,25 @@ write_boundary_allow_list() {
     fi
     local _sb="${ZBUILD_SCRATCH_ROOT:-$_sd}"
     [[ -n "$_sb" ]] && printf '%s\n' "${_sb%/}/scratch"
-    # ADR-011 stores live under ~/.zbuild.
+    # ADR-011 stores live under ~/.zbuild — but that path is a DEFAULT, not the
+    # location. zbuild_layout_data_root's precedence (inlined in
+    # core/event-bus/event-bus.sh, which deliberately sources almost nothing) is
+    # ${ZBUILD_DATA_ROOT:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild}}, so the writer
+    # FOLLOWS those two vars while this list used to name only the fallback.
+    # They agree until something redirects the root — and
+    # plugins/tool/test/plugin.sh redirects it on purpose
+    # (ZBUILD_STATE_ROOT="$tmp/.zbuild-nested-state") to fence a nested run's
+    # state. At that moment the engine's own event log became a stage violation,
+    # which is the defect the event-bus exemption below already exists to
+    # prevent for the unredirected case. Emit all three: additive, so an
+    # override can never remove them.
     printf '%s\n' "$HOME/.zbuild"
+    if [[ -n "${ZBUILD_STATE_ROOT:-}" ]]; then
+        printf '%s\n' "$ZBUILD_STATE_ROOT"
+    fi
+    if [[ -n "${ZBUILD_DATA_ROOT:-}" ]]; then
+        printf '%s\n' "$ZBUILD_DATA_ROOT"
+    fi
     # The event bus's own files. With nothing pinned it falls back to an
     # ephemeral per-process dir under $TMPDIR (core/event-bus/event-bus.sh:37),
     # which resolves to /tmp on Linux where TMPDIR is unset — i.e. inside a
@@ -372,8 +389,75 @@ write_boundary_violation_recorded() {
     fi
 }
 
+# ─── _wb_external_writer_witness <state_dir> ────────────────────────────────
+# Print the path of a file that appeared AFTER the dispatch returned, if one
+# does. Empty output means no external writer could be demonstrated.
+#
+# By the time write_boundary_check runs, the dispatch subshell has already
+# returned — the stage's own writer is gone. So a file that is newer than a
+# marker taken NOW cannot be the swept stage's. Continued activity in a watched
+# root is therefore positive evidence of a different process, which is the only
+# thing `find -newer` can honestly say: mtime records when, never who.
+_wb_external_writer_witness() {
+    local _sd="${1:-}"
+    # Today's only caller passes an absolute state dir, so this cannot fire —
+    # but an empty one would resolve the probe to /runtime/... , and the mkdir
+    # failure would read as "no witness" and let a genuine violation through.
+    # Stating the invariant beats relying on a safe accident.
+    [[ -n "$_sd" ]] || return 0
+    local _settle="${ZBUILD_WRITE_BOUNDARY_SETTLE_MS:-250}"
+    # An operator can disable the probe outright; 0 keeps the pre-#1809 behaviour
+    # of halting on any candidate.
+    [[ "$_settle" =~ ^[0-9]+$ ]] || _settle=250
+    # Capped: the value is operator-supplied and this sleep blocks the dispatch.
+    # An unbounded one turns a misconfigured env var into a silent hang on every
+    # violation hit, which is a worse failure than the one it diagnoses.
+    [[ "$_settle" -gt 30000 ]] && _settle=30000
+    [[ "$_settle" -eq 0 ]] && return 0
+
+    local _probe="${_sd}/runtime/write-boundary.settle.$$"
+    mkdir -p "${_sd}/runtime" 2>/dev/null || return 0
+    : > "$_probe" 2>/dev/null || return 0
+    _wb_clock_advance_past "$_probe"
+    sleep "$(awk "BEGIN{printf \"%.3f\", ${_settle}/1000}")" 2>/dev/null || sleep 1
+    local _witness
+    # Captured whole, then trimmed in bash. `| head -n 1` would close the pipe
+    # after one line and hand write_boundary_sweep's `find` a SIGPIPE mid-scan —
+    # the writer dies for a reason nothing logs, and under the caller's errexit
+    # it takes the dispatch with it. Any witness proves the point equally, so
+    # there is nothing to gain by stopping the scan early.
+    local _sweep_all
+    _sweep_all="$(write_boundary_sweep "$_probe" 2>/dev/null || true)"
+    _witness="${_sweep_all%%$'\n'*}"
+    rm -f "$_probe" 2>/dev/null || true
+    [[ -n "$_witness" ]] && printf '%s' "$_witness"
+    return 0
+}
+
+# ─── _wb_unattributable_recorded <state_dir> <stage> <path> <witness> ───────
+# Record a candidate the sweep cannot attribute. Deliberately NOT silent and
+# deliberately NOT a violation: nothing is lost (all three channels carry it),
+# but a candidate that cannot be tied to the stage must not resolve it to
+# `broken` — that is the disposition an operator cannot retry.
+_wb_unattributable_recorded() {
+    local _sd="$1" _stage="${2:-}" _path="${3:-}" _witness="${4:-}"
+    printf 'write-boundary: stage=%s candidate not attributable (external writer active: %s): %s\n' \
+        "$_stage" "$_witness" "$_path" >&2
+    if [[ -n "${ZBUILD_WRITE_BOUNDARY_LOG:-}" ]]; then
+        printf 'unattributable stage=%s path=%s witness=%s\n' "$_stage" "$_path" "$_witness" \
+            >> "$ZBUILD_WRITE_BOUNDARY_LOG" 2>/dev/null || true
+    fi
+    if declare -F emit_event >/dev/null 2>&1; then
+        emit_event "stage.write_boundary.unattributable" "stage=${_stage}" \
+            "path=${_path}" "witness=${_witness}" || true
+    fi
+}
+
 # ─── write_boundary_check <plugin_dir> <state_file> <stage> [<map_element>] ──
-# Orchestrate sweep + classify. Returns 1 on first violation, 0 otherwise.
+# Orchestrate sweep + classify. Returns 1 on the first ATTRIBUTABLE violation;
+# 0 otherwise — which covers both a clean dispatch and one whose candidates all
+# classified `unattributable`. The two zero cases are not the same event and are
+# not recorded the same way: SPEC-4i depends on the distinction staying visible.
 # First line guards on empty state_file.
 write_boundary_check() {
     local _pd="$1" _sf="${2:-}" _stage="${3:-}" _el="${4:-}"
@@ -388,10 +472,20 @@ write_boundary_check() {
     # Resolve the allow list ONCE per dispatch, not once per swept candidate.
     local _allow; _allow="$(write_boundary_allow_list "$_sd")"
     local _cand _cls
+    local _witness
     while IFS= read -r _cand; do
         [[ -z "$_cand" ]] && continue
         _cls="$(write_boundary_classify "$_cand" "$_sd" "$_pd" "$_allow")"
         if [[ "$_cls" == "violation" ]]; then
+            # Only pay the settle cost on the failure path, and only once per
+            # dispatch — a clean dispatch never reaches here.
+            if [[ -z "${_witness+x}" ]]; then
+                _witness="$(_wb_external_writer_witness "$_sd")"
+            fi
+            if [[ -n "$_witness" ]]; then
+                _wb_unattributable_recorded "$_sd" "$_stage" "$_cand" "$_witness"
+                continue
+            fi
             write_boundary_violation_recorded "$_sd" "$_stage" "$_cand"
             return 1
         fi

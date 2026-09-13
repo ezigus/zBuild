@@ -46,7 +46,7 @@ shape_floor_run() {
     if [[ -n "$state_file" && -d "$(dirname "$state_file")" ]]; then
         artifacts_dir="$(dirname "$state_file")/artifacts"
     else
-        artifacts_dir="${ZBUILD_ARTIFACT_DIR:-${TMPDIR:-/tmp}/zbuild-shape-floor-artifacts}"
+        artifacts_dir="${ZBUILD_ARTIFACT_DIR:-$(zbuild_engine_tmpdir)/zbuild-shape-floor-artifacts}"
     fi
     mkdir -p "$artifacts_dir"
 

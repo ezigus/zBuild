@@ -67,7 +67,7 @@ design_gate_run() {
     if [[ -n "$state_file" && -d "$(dirname "$state_file")" ]]; then
         artifacts_dir="$(dirname "$state_file")/artifacts"
     else
-        artifacts_dir="${ZBUILD_ARTIFACT_DIR:-${TMPDIR:-/tmp}/zbuild-design-gate-artifacts}"
+        artifacts_dir="${ZBUILD_ARTIFACT_DIR:-$(zbuild_engine_tmpdir)/zbuild-design-gate-artifacts}"
     fi
     mkdir -p "$artifacts_dir"
 

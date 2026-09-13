@@ -92,6 +92,40 @@ atomic_replace() {
 # (#2017). A second one existed for a week and the two disagreed about both the
 # writability check and the last resort, which is how a write reached ${TMPDIR}
 # at all.
+# ─── zbuild_run_tmpdir — the RUN-scoped temp root (ADR-058 C10) ─────────────
+# Print a run-owned directory for throwaway files, or nothing when there is no
+# job folder to put one in.
+#
+# ADR-058 §3's TMPDIR redirect is per DISPATCH and fail-open, so engine code
+# running BETWEEN dispatches, and any child spawned outside plugin_hook_call,
+# falls back to ${TMPDIR:-/tmp} — literally /tmp on every Linux CI runner,
+# which is a watched root. C9 records the measured result: intake, build and
+# test each reported for a /tmp path none of them should have written. C9 also
+# names the cure, and this is it: one root, resolved once per run, that
+# survives the env scrub because TMPDIR is the one variable the scrub preserves.
+#
+# Under scratch/ and NOT runtime/: §2b defines runtime/ as live bookkeeping that
+# is deliberately NOT throwaway (PIDs, process groups, violation flags), while
+# §2 defines scratch as exactly this. scratch/ is also already excluded from the
+# CI upload (.github/workflows/zbuild-pipeline.yml) and from the parity walk
+# (tests/e2e/parity-local-vs-ci-test.sh), so a stray temp can neither leave the
+# machine nor drift a golden.
+#
+# Reads no TMPDIR, for the reason stage-scratch.sh gives about itself: the
+# dispatch seam sets TMPDIR *to* a scratch dir, so a resolver that read it back
+# would nest the run temp inside the last dispatch's scratch every time.
+#
+# Keyed `run-tmp`, which _stage_scratch_key refuses to mint for a stage.
+zbuild_run_tmpdir() {
+    [[ -n "${ZBUILD_STATE_DIR:-}" && -d "${ZBUILD_STATE_DIR}" ]] || return 0
+    local _rt="${ZBUILD_SCRATCH_ROOT:-$ZBUILD_STATE_DIR}/scratch/run-tmp"
+    # 0700 for the same reason scratch is: it holds raw prompts and raw model
+    # output on a shared CI runner.
+    mkdir -p "$_rt" 2>/dev/null || return 0
+    chmod 700 "$_rt" 2>/dev/null || true
+    printf '%s' "$_rt"
+}
+
 zbuild_engine_tmpdir() {
     if [[ -n "${ZBUILD_STAGE_SCRATCH:-}" && -d "${ZBUILD_STAGE_SCRATCH}" && -w "${ZBUILD_STAGE_SCRATCH}" ]]; then
         printf '%s' "$ZBUILD_STAGE_SCRATCH"; return 0

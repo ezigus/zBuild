@@ -158,6 +158,7 @@
     "stage.write_boundary.violated",
     "stage.write_boundary.sweep_failed",
     "stage.write_boundary.mark_failed",
-    "stage.write_boundary.window_unbounded"
+    "stage.write_boundary.window_unbounded",
+    "stage.write_boundary.unattributable"
   ]
 }

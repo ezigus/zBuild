@@ -13,14 +13,33 @@
 #
 ${HOME} maxdepth:1
 ${HOME}/.zbuild
-# NOT the system temp, deliberately — see ADR-058 C9 "What the sweep does not
-# cover". scripts/lib/env-scrub.sh wipes every ZBUILD_* before a model spawn, so
-# engine code running in a spawned child cannot see ZBUILD_STAGE_SCRATCH and its
-# temps land in the system temp. Those writes are the engine's own and are not
-# attributable to the stage being swept, so watching /tmp here halts runs on the
-# engine doing its job. Closing it needs a RUN-scoped TMPDIR that survives the
-# scrub, which is C10 (#1919). An operator who wants the coverage today can add
-# the roots back via the override file — the watch list replaces, so uncomment:
+# NOT the system temp. C9 dropped these two roots and C10 (#1809 follow-up)
+# tried to restore them once the engine's own temps were in bounds. That attempt
+# was MEASURED on ubuntu CI and reverted; recording the evidence so the next
+# person does not spend the same two runs on it.
+#
+# C10 fixed the half C9 named: engine code in a scrubbed child now gets a
+# run-scoped TMPDIR and no longer writes here. That was necessary and is not
+# what failed.
+#
+# What failed is that `/tmp` is not ours. With TMPDIR unset — every ubuntu
+# runner — it is the shared temp for every process on the box: git, gh, node,
+# npm, the Actions agent itself. Two integration runs halted on
+#   stage=intake path=/tmp/tmp.XXXXXXXXXX
+# the default BARE-mktemp name. `intake` contains no mktemp at all; the files
+# were another process's, and the stage was merely what happened to be
+# dispatching. The settle probe caught one of them (logged `unattributable`,
+# with a witness) and missed its twin, because a writer that finishes before the
+# dispatch returns leaves nothing live to witness. No amount of attribution
+# logic recovers authorship that mtime never recorded.
+#
+# So the coverage gap C9 named is real and stays open: a stage that hardcodes
+# /tmp is still undetected here. Closing it needs authorship, not a better
+# watch list — and until then, watching a directory the whole machine writes to
+# hands any passing process the ability to kill a run.
+#
+# An operator on a dedicated machine can opt in via the override file, which
+# REPLACES this list:
 #   ${TMPDIR:-/tmp} maxdepth:1
 #   /tmp maxdepth:1
 ${PWD} maxdepth:1
