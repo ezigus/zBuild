@@ -49,6 +49,17 @@ _RR_SEV_RANK='{"low":1,"medium":2,"high":3,"critical":4}'
 # producer issues populate entries before calling _rr_fanout_lenses.
 declare -A _RR_LENS_ARTIFACT_REGISTRY=()
 
+# ─── _rr_lens_envelope_schema_ok <json> ──────────────────────────────────────
+# Schema gate for _llm_envelope_parse --schema-gate. A valid lens response must
+# be an object with score:number and findings:array (ADR-028 v1.2, #1843).
+_rr_lens_envelope_schema_ok() {
+    printf '%s' "${1:-}" | jq -e '
+        type == "object"
+        and (.score | type == "number")
+        and (.findings | type == "array")
+    ' >/dev/null 2>&1
+}
+
 # Proximity window (lines): two findings on the same file+category within this
 # many lines de-dupe to one. Override with ZBUILD_RR_PROXIMITY_WINDOW. Clamped
 # to a positive integer — a 0 or non-integer would be a jq division-by-zero /
@@ -91,13 +102,19 @@ _rr_lens_charter() {
     esac
 }
 
-# ─── _rr_build_lens_prompt <lens> <evidence_content> ────────────────────────
+# ─── _rr_build_lens_prompt <lens> <evidence_content> [<budget_guidance>] ─────
 # One prompt for ONE lens. Advisory contract: emit findings + a 0-10 score only.
 _rr_build_lens_prompt() {
-    local lens="$1" evidence="$2" charter
+    local lens="$1" evidence="$2" budget_guidance="${3:-}" charter
     charter="$(_rr_lens_charter "$lens")"
+    local budget_block=""
+    if [[ -n "$budget_guidance" ]]; then
+        budget_block="${budget_guidance}
+
+"
+    fi
     cat <<PROMPT
-You are the "${lens}" review lens. ${charter}
+${budget_block}You are the "${lens}" review lens. ${charter}
 
 This is an advisory report. Describe what you find; do NOT recommend a merge
 action and do NOT gate anything. Report only issues you can point to in the
@@ -141,8 +158,10 @@ _rr_parse_lens_out() {
         printf '%s' "$empty"; return 0
     fi
 
-    local json
-    json="$(extract_first_json_object < "$out_file" 2>/dev/null || true)"
+    local raw_out; raw_out="$(cat "$out_file" 2>/dev/null || true)"
+    local json _rr_lp_prose
+    _llm_envelope_parse --schema-gate _rr_lens_envelope_schema_ok \
+        "$raw_out" json _rr_lp_prose
     if [[ -z "$json" ]] || ! printf '%s' "$json" | jq empty >/dev/null 2>&1; then
         emit_event "review_report.lens.unparseable" "lens=$lens" 2>/dev/null || true
         printf '%s' "$empty"; return 0
@@ -201,14 +220,14 @@ _rr_lens_evidence() {
     return 0
 }
 
-# ─── _rr_fanout_lenses <scope_manifest> <evidence_file> <artifact_dir> <tier> ─
+# ─── _rr_fanout_lenses <scope_manifest> <evidence_file> <artifact_dir> <tier> [<budget_guidance>] ─
 # Bounded-parallel: run each lens as an isolated subshell LLM call, batched by
 # ZBUILD_RR_MAX_PARALLEL. ADR-043: redaction is owned by the router — each lens
 # prompt is redacted by route_to_model by construction, so this builds prompts
 # from RAW evidence. $1 (scope_manifest) is accepted for call-compat, unused.
 # Writes per-lens result JSON and echoes the path to the combined lenses array.
 _rr_fanout_lenses() {
-    local evidence_file="$2" artifact_dir="$3" tier="${4:-T2}"
+    local evidence_file="$2" artifact_dir="$3" tier="${4:-T2}" budget_guidance="${5:-}"
     local max="${ZBUILD_RR_MAX_PARALLEL:-4}"
     [[ "$max" -ge 1 ]] 2>/dev/null || max=1
     mkdir -p "$artifact_dir"
@@ -230,7 +249,7 @@ _rr_fanout_lenses() {
         else
             _lens_ev_content="$evidence_content"
         fi
-        _rr_build_lens_prompt "$lens" "$_lens_ev_content" \
+        _rr_build_lens_prompt "$lens" "$_lens_ev_content" "$budget_guidance" \
             > "$artifact_dir/lens-$lens-prompt.txt"
     done
 
