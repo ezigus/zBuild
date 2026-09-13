@@ -21,7 +21,9 @@
     [2mexpected: 1, got: 0[0m
   [38;2;248;113;113m✗[0m [SPEC-1] pass path: result_contract:2 present
     [2mexpected: 2, got: [0m
-  [38;2;74;222;128m✓[0m [SPEC-5] pass path: verdict=pass (dedicated pass test case)
+  [38;2;248;113;113m✗[0m [SPEC-5] pass path: result_contract:2 in result (dedicated pass test case, v2 context)
+    [2mexpected: 2, got: [0m
+  [38;2;74;222;128m✓[0m pass path: verdict=pass
   [38;2;248;113;113m✗[0m [SPEC-1] fail path: result_contract:2 present
     [2mexpected: 2, got: [0m
   [38;2;74;222;128m✓[0m [SPEC-5] fail path: verdict=fail (dedicated fail test case)
@@ -35,12 +37,16 @@
   [38;2;74;222;128m✓[0m [SPEC-5] manifest valid_verdicts includes 'fail'
   [38;2;74;222;128m✓[0m [SPEC-6] manifest declares tier_default: T1
   [38;2;74;222;128m✓[0m [SPEC-6] plugin.sh: zero model.route calls (non-routing mechanical gate)
+  [38;2;248;113;113m✗[0m [SPEC-6] manifest provides section declares result_contract: 2 (v2 migration)
+    [2moutput missing: result_contract: 2[0m
   [38;2;74;222;128m✓[0m [SPEC-7] manifest has exactly one primary: true output
   [38;2;74;222;128m✓[0m [SPEC-7] primary output id is gate_result
+  [38;2;248;113;113m✗[0m [SPEC-7] acceptance_detail output required: true (summary on every terminal path)
+    [2mexpected: true, got: false[0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m12 of 22 tests failed[0m
+  [38;2;248;113;113m[1m15 of 25 tests failed[0m
 
   [38;2;248;113;113m✗[0m [SPEC-1] design_acceptance_block: result_contract:2 present
   [38;2;248;113;113m✗[0m [SPEC-2] design_acceptance_block: acceptance-summary.txt written
@@ -51,9 +57,12 @@
   [38;2;248;113;113m✗[0m [SPEC-1] malformed_acceptance_block: result_contract:2 present
   [38;2;248;113;113m✗[0m [SPEC-2] malformed_acceptance_block: acceptance-summary.txt written
   [38;2;248;113;113m✗[0m [SPEC-1] pass path: result_contract:2 present
+  [38;2;248;113;113m✗[0m [SPEC-5] pass path: result_contract:2 in result (dedicated pass test case, v2 context)
   [38;2;248;113;113m✗[0m [SPEC-1] fail path: result_contract:2 present
   [38;2;248;113;113m✗[0m [SPEC-3] plugin.sh: zero grep hits for literal '$artifact_dir/design.md'
   [38;2;248;113;113m✗[0m [SPEC-3] ZBUILD_STAGE_INPUTS non-standard path: no precondition_unmet (block was found)
+  [38;2;248;113;113m✗[0m [SPEC-6] manifest provides section declares result_contract: 2 (v2 migration)
+  [38;2;248;113;113m✗[0m [SPEC-7] acceptance_detail output required: true (summary on every terminal path)
 
 ### SPEC-5 head tests/integration/acceptance-gate-v2-contract-test.sh
 
@@ -69,7 +78,8 @@
   [38;2;74;222;128m✓[0m [SPEC-1] malformed_acceptance_block: result_contract:2 present
   [38;2;74;222;128m✓[0m [SPEC-2] malformed_acceptance_block: acceptance-summary.txt written
   [38;2;74;222;128m✓[0m [SPEC-1] pass path: result_contract:2 present
-  [38;2;74;222;128m✓[0m [SPEC-5] pass path: verdict=pass (dedicated pass test case)
+  [38;2;74;222;128m✓[0m [SPEC-5] pass path: result_contract:2 in result (dedicated pass test case, v2 context)
+  [38;2;74;222;128m✓[0m pass path: verdict=pass
   [38;2;74;222;128m✓[0m [SPEC-1] fail path: result_contract:2 present
   [38;2;74;222;128m✓[0m [SPEC-5] fail path: verdict=fail (dedicated fail test case)
   [38;2;74;222;128m✓[0m [SPEC-3] plugin.sh: zero grep hits for literal '$artifact_dir/design.md'
@@ -80,10 +90,12 @@
   [38;2;74;222;128m✓[0m [SPEC-5] manifest valid_verdicts includes 'fail'
   [38;2;74;222;128m✓[0m [SPEC-6] manifest declares tier_default: T1
   [38;2;74;222;128m✓[0m [SPEC-6] plugin.sh: zero model.route calls (non-routing mechanical gate)
+  [38;2;74;222;128m✓[0m [SPEC-6] manifest provides section declares result_contract: 2 (v2 migration)
   [38;2;74;222;128m✓[0m [SPEC-7] manifest has exactly one primary: true output
   [38;2;74;222;128m✓[0m [SPEC-7] primary output id is gate_result
+  [38;2;74;222;128m✓[0m [SPEC-7] acceptance_detail output required: true (summary on every terminal path)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 22 tests passed[0m
+  [38;2;74;222;128m[1mAll 25 tests passed[0m
 
