@@ -11,6 +11,15 @@ run-name: "zbuild · issue #${{ github.event.issue.number }} — ${{ github.even
 # The trigger label is configurable via the ZBUILD_TRIGGER_LABEL env var.
 # Model selection is governed by config/models.json + core/router — no model
 # names are hardcoded here (ADR-003).
+#
+# Debugging note: this file is usually NOT the problem. It calls
+# zbuild-pipeline.yml, and an error THERE (a duplicate key, a `runner.*`
+# expression at job level) makes GitHub reject the composition at STARTUP — the
+# run reports `failure` with ZERO jobs, no step logs, and no annotation naming a
+# cause. The Actions list then shows this workflow by PATH instead of by name,
+# because the name could not be read. Both symptoms point here while the fault
+# is in the called workflow; check that one first, and `actionlint` both
+# (tests/unit/write-boundary-diagnostic-wired-test.sh SPEC-7 gates it).
 
 on:
   issues:
