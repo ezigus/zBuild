@@ -168,8 +168,6 @@ jobs:
       # call this workflow. tests/unit/write-boundary-diagnostic-wired-test.sh
       # SPEC-6 pins it.
       - name: Run pipeline
-        env:
-          ZBUILD_WRITE_BOUNDARY_LOG: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
         # CI-2 (#1001): scope the API key to this step only (not all steps) + fail
         # fast with a clear error when the secret is missing.
         env:
@@ -178,6 +176,7 @@ jobs:
           # that's configured. `claude setup-token` mints CLAUDE_CODE_OAUTH_TOKEN.
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ZBUILD_WRITE_BOUNDARY_LOG: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
         run: |
           if [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then
             # OAuth token present → unset the API key so claude uses the

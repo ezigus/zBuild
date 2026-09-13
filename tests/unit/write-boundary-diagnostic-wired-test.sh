@@ -90,6 +90,35 @@ for _need in ZBUILD_TEST_TIMING_FILE upload-artifact; do
     fi
 done
 
+# ─── SPEC-7: every workflow passes actionlint's syntax check ───────────────
+# SPEC-6 below hand-checks ONE mistake. This checks the whole grammar, and it
+# catches strictly more — including the one that actually broke the daemon:
+#
+#   zbuild-pipeline.yml:175:9: key "env" is duplicated in element of "steps"
+#   section. previously defined at line:171 [syntax-check]
+#
+# A duplicate `env:` is silently tolerated by yq and by every "does the YAML
+# parse" assertion — last key wins — while GitHub rejects the workflow at
+# STARTUP, producing a run with zero jobs and no annotation. Two separate
+# breakages today passed "valid YAML" and failed as invalid WORKFLOWS.
+#
+# Filtered to syntax-check: shellcheck/expression findings are style noise on
+# pre-existing scripts and would make this a flaky gate rather than a grammar
+# one. Skips cleanly when actionlint is absent, like every other optional tool
+# in this suite.
+if command -v actionlint >/dev/null 2>&1; then
+    _al="$( { actionlint "$REPO_ROOT"/.github/workflows/*.yml 2>&1 || true; } \
+        | { grep -F '[syntax-check]' || true; } )"
+    if [[ -z "$_al" ]]; then
+        assert_pass "[SPEC-7] every workflow passes actionlint syntax-check"
+    else
+        assert_fail "[SPEC-7] every workflow passes actionlint syntax-check" \
+            "$(printf '%s' "$_al" | tr '\n' '|')"
+    fi
+else
+    assert_pass "[SPEC-7] actionlint not installed — syntax-check skipped"
+fi
+
 # ─── SPEC-6: no job-level env uses the `runner` context ────────────────────
 # `runner.*` does not exist at JOB level — only inside steps. GitHub rejects the
 # whole workflow at STARTUP, so every run reports `failure` with ZERO jobs and
