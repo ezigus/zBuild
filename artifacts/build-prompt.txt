@@ -1,4 +1,4 @@
-============== ZBUILD BUILD — iter 1/10 ==============
+============== ZBUILD BUILD — iter 2/10 ==============
 ## ORIGINAL TASK (immutable across iterations)
 # Plan: Migrate review-report plugin to contract v2
 
@@ -200,4 +200,4 @@ Every SPEC id below needs at least one assertion whose label carries its [SPEC-n
   → needs a `[SPEC-17]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
 
 ## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
-A previous attempt on this issue ended build with verdict=incomplete and touched 3 file(s): plugins/agent/review-report/lib/lenses.sh, plugins/agent/review-report/manifest.yaml, plugins/agent/review-report/plugin.sh. That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present.
+A previous attempt on this issue ended build with verdict=incomplete and touched 0 file(s). That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present.
