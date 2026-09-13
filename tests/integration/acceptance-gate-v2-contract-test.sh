@@ -148,8 +148,9 @@ EOF
 set +e; _run_gate "$REPO_C5"; set -e
 assert_eq "[SPEC-1] pass path: result_contract:2 present" "2" \
     "$(jq -r '.result_contract // empty' <<<"$RESULT")"
-assert_eq "[SPEC-5] pass path: verdict=pass (dedicated pass test case)" \
-    "pass" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "[SPEC-5] pass path: result_contract:2 in result (dedicated pass test case, v2 context)" \
+    "2" "$(jq -r '.result_contract // empty' <<<"$RESULT")"
+assert_eq "pass path: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
 
 # ── C6: fail path → result_contract:2 ──────────────────────────────────────────
 REPO_C6="$(_build_repo "v2c-c6" '#!/usr/bin/env bash
@@ -228,6 +229,8 @@ assert_contains "[SPEC-6] manifest declares tier_default: T1" "$_manifest_text" 
 _route_hits="$(grep -c 'model\.route' \
     "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" 2>/dev/null || true)"
 assert_eq "[SPEC-6] plugin.sh: zero model.route calls (non-routing mechanical gate)" "0" "$_route_hits"
+assert_contains "[SPEC-6] manifest provides section declares result_contract: 2 (v2 migration)" \
+    "$_manifest_text" "result_contract: 2"
 
 # ── C11: SPEC-7 — manifest declares exactly one primary: true output (gate_result) ──
 _primary_count="$(grep -c '^\s*primary: true' "$MANIFEST_PATH" 2>/dev/null || true)"
@@ -235,6 +238,10 @@ assert_eq "[SPEC-7] manifest has exactly one primary: true output" "1" "$_primar
 _primary_id="$(awk '/^  - id: /{current_id=$NF} /^    primary: true/{print current_id}' \
     "$MANIFEST_PATH")"
 assert_eq "[SPEC-7] primary output id is gate_result" "gate_result" "$_primary_id"
+_detail_req="$(awk '/^  - id: acceptance_detail/{f=1} f && /^    required:/{print $2; exit}' \
+    "$MANIFEST_PATH")"
+assert_eq "[SPEC-7] acceptance_detail output required: true (summary on every terminal path)" \
+    "true" "$_detail_req"
 
 cleanup_test_env
 print_test_results
