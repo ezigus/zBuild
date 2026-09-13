@@ -2,11 +2,11 @@
 
 ## Architectural decision summary
 
-**Goal.** Bring `plugins/agent/review-report` up to the ADR-054 v2 result contract: write a `review-report-result.json` sidecar on every terminal exit path, declare `result_contract: 2` and a `config.router:` block in the manifest, replace the bare `extract_first_json_object` lens-parse path with the schema-gated `_llm_envelope_parse` recovery path, and inject router budget guidance into each lens prompt.
+**Goal.** Bring `plugins/agent/review-report` up to the ADR-054 v2 result contract: write a `review-report-result.json` sidecar on every terminal exit path, declare `result_contract: 2` and a `config.router:` block in the manifest, replace the bare `extract_first_json_object` lens-parse path with the schema-gated `_llm_envelope_parse` recovery path, inject router budget guidance into each lens prompt, add `ZBUILD_STAGE_INPUTS` reading for name-matched inputs, and emit `disposition: exhausted` when lens subshells signal budget exhaustion.
 
-**Context.** Twenty-five plugins are migrating one at a time (#1833–#1849). The engine already reads both v1 and v2 results (`_ZBUILD_CONTRACT_MIN=1`, `_ZBUILD_CONTRACT_MAX=2` in `core/contract/version.sh`). The review-report plugin currently: (1) never writes a sidecar result file, (2) uses `extract_first_json_object` bare in `_rr_parse_lens_out` (LAST-wins, no schema recovery), (3) never injects budget guidance, and (4) does not source `scripts/lib/llm-agent.sh`.
+**Context.** Twenty-five plugins are migrating one at a time (#1833–#1849). The engine already reads both v1 and v2 results (`_ZBUILD_CONTRACT_MIN=1`, `_ZBUILD_CONTRACT_MAX=2` in `core/contract/version.sh`). The review-report plugin currently: (1) never writes a sidecar result file; (2) uses bare `extract_first_json_object` in `_rr_parse_lens_out` (LAST-wins, no schema recovery); (3) never injects budget guidance; (4) does not source `scripts/lib/llm-agent.sh`; (5) does not read `ZBUILD_STAGE_INPUTS` for input paths. The manifest already has `valid_verdicts: []`, `primary: true`, `provides.role`, `provides.events`, and no `cleanup` hook correct — those become guard SPECs only.
 
-**Decision.** Implement all four sub-changes within the plugin boundary; no engine or template changes are required. Pattern source: `_design_write_result` from `plugins/agent/design/plugin.sh`, `_design_budget_guidance` likewise, and the `_llm_envelope_parse --schema-gate` pattern from `plugins/agent/security-lens/plugin.sh:140–148`. The result sidecar is `$artifact_dir/review-report-result.json` — distinct from the advisory `review-report.json`.
+**Decision.** Implement all sub-changes within the plugin boundary; no engine or template changes required. Pattern sources: `_design_write_result` and `_design_budget_guidance` from `plugins/agent/design/plugin.sh`; `_llm_envelope_parse --schema-gate` from `plugins/agent/security-lens/plugin.sh:140–148`. Result sidecar is `$artifact_dir/review-report-result.json` — distinct from the advisory `review-report.json`. Input paths read from `ZBUILD_STAGE_INPUTS` when available, falling back to construction from `state_dir`. For `disposition: exhausted` (ADR-063 §3): track a `_rr_any_lens_failed` flag across the fan-out; if any lens subshell returns non-zero rc, write `verdict=pass, disposition=exhausted` instead of `disposition=complete` (advisory verdict stays pass). No `cleanup` hook is declared or implemented — the engine emits `plugin.cleanup.absent` by ADR-001 §2 contract.
 
 ---
 
@@ -22,11 +22,14 @@ tests/unit/review-lens-report-merge-base-bundle-test.sh
 tests/unit/review-aggregator-test.sh
 tests/unit/tier-resolve-test.sh
 tests/unit/pr-open-advisory-review-test.sh
+tests/unit/event-schema-emitted-coverage-test.sh
+tests/unit/plugin-route-source-guard-test.sh
 docs/wiki/plugins/review-report.md
 docs/adr/ADR-038-adversarial-multilens-review-report.md
 docs/adr/ADR-054-stage-contract.md
 docs/adr/ADR-063-budget-disclosure-and-partial-output.md
 docs/adr/ADR-028-shared-llm-agent-framework.md
+docs/adr/ADR-055-inter-stage-data-contract-v2.md
 scripts/lib/llm-agent.sh
 core/contract/version.sh
 ```
@@ -38,12 +41,18 @@ SPEC-1[change]: manifest declares result_contract:2 under provides: and a config
 SPEC-2[change]: _rr_write_result helper exists in plugin.sh and writes a conformant v2 result file (result_contract:2, verdict, disposition, reason) at $artifact_dir/review-report-result.json
 SPEC-3[change]: v2 result file written with verdict=error and disposition=broken on the missing state_file exit path
 SPEC-4[change]: v2 result file written with verdict=error and disposition=broken on the missing out_json exit path
-SPEC-5[change]: v2 result file written with verdict=pass and disposition=complete on the normal completion path
+SPEC-5[change]: v2 result file written with verdict=pass and disposition=complete on normal completion (all lens subshells return rc=0)
 SPEC-6[change]: _rr_budget_guidance helper exists in plugin.sh and injects a TURN BUDGET block sourced from _route_resolve_max_turns and _route_resolve_timeout into each lens prompt
 SPEC-7[change]: _rr_lens_envelope_schema_ok predicate exists and validates {score:number, findings:array} shape
 SPEC-8[change]: _rr_parse_lens_out routes through _llm_envelope_parse --schema-gate _rr_lens_envelope_schema_ok instead of bare extract_first_json_object; extract_first_json_object no longer appears in lenses.sh
 SPEC-9[guard]: _rr_run_inner returns 0 and advisory review-report.json is still written on normal completion (advisory contract preserved)
 SPEC-10[guard]: 11 independent LLM calls are still made (one per lens) and findings are still aggregated and de-duped
+SPEC-11[guard]: manifest declares valid_verdicts: [] (advisory — writes no verdict to the engine's pipeline verdict channel)
+SPEC-12[guard]: manifest outputs first entry (review_report) retains primary: true after migration
+SPEC-13[guard]: manifest provides.role: review_report and all four declared provides.events are present after migration
+SPEC-14[guard]: no cleanup hook key in manifest.hooks and no review_report_cleanup function in plugin.sh (cleanup absent-and-recorded: engine emits plugin.cleanup.absent by ADR-001 §2)
+SPEC-15[change]: review_report_run reads scope_manifest input path from ZBUILD_STAGE_INPUTS index when available, falling back to $state_dir/scope-manifest.md; no hardcoded concatenation of state_dir with a declared input id path segment in plugin.sh (grep-asserted)
+SPEC-16[change]: v2 result sidecar written with verdict=pass and disposition=exhausted when at least one lens subshell returns non-zero rc (partial advisory results signalled per ADR-063 §3); verdict stays pass to preserve advisory contract
 
 WIRING: plugins/agent/review-report/plugin.sh
 
@@ -58,4 +67,12 @@ SPEC-7: tests/unit/review-report-plugin-test.sh
 SPEC-8: tests/unit/review-report-plugin-test.sh
 SPEC-9: tests/unit/review-report-plugin-test.sh
 SPEC-10: tests/unit/review-report-plugin-test.sh
+SPEC-11: tests/unit/review-report-plugin-test.sh
+SPEC-12: tests/unit/review-report-plugin-test.sh
+SPEC-13: tests/unit/review-report-plugin-test.sh
+SPEC-14: tests/unit/review-report-plugin-test.sh
+SPEC-15: tests/unit/review-report-plugin-test.sh
+SPEC-16: tests/unit/review-report-plugin-test.sh
 ```
+
+LOOP_COMPLETE
