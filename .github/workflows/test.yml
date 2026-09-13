@@ -253,7 +253,27 @@ jobs:
           # 29: the corrected number clears it, and lowering it would weaken the
           # gate this issue exists to sharpen.
           COVERAGE_FLOOR: "29"
+          # This job failed on main for a day with nothing to diagnose from:
+          # only "TIMEOUT … exceeded 480s", with every assertion in the killed
+          # file passing. Every other tier job records per-file timings; the one
+          # job whose failure mode IS "a file got slower" recorded nothing, so
+          # it could not say which file or by how much. run-tests.sh also writes
+          # a `trace <bytes> <file>` line per file when tracing, which is the
+          # quantity that actually moves under coverage (#2090).
+          ZBUILD_TEST_TIMING_FILE: ${{ runner.temp }}/zbuild-coverage-timing.txt
+          ZBUILD_WRITE_BOUNDARY_LOG: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
         run: bash scripts/check-coverage.sh
+      - name: Upload coverage diagnostics
+        uses: actions/upload-artifact@v7
+        # always(): a TIMEOUT kill is exactly when these are needed, and that
+        # path fails the step.
+        if: always()
+        with:
+          name: coverage-diagnostics
+          path: |
+            ${{ runner.temp }}/zbuild-coverage-timing.txt
+            ${{ runner.temp }}/zbuild-write-boundary-violations.txt
+          if-no-files-found: ignore
 
   summary:
     name: Summary

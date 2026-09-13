@@ -73,6 +73,23 @@ _int_hits=$(grep -c 'ZBUILD_WRITE_BOUNDARY_LOG' "$_TEST_YML" 2>/dev/null || true
 assert_gt "[SPEC-3] GUARD: test.yml still sets the sink in more than one job" \
     "$_int_hits" "1"
 
+# ─── SPEC-5: the Coverage job is not a black box ───────────────────────────
+# It failed on main for a full day with nothing to diagnose from: no timing
+# file, no uploaded artifact, no per-file record — only
+# "TIMEOUT … exceeded 480s" with every assertion in the killed file passing.
+# Every other tier job writes ZBUILD_TEST_TIMING_FILE and uploads it; this one
+# records nothing, so the one job whose failure mode is "a file got slower"
+# is the only job that cannot say which file, or by how much.
+_cov_block="$(awk '/^  coverage:/{f=1} f{print} f&&/^  summary:/{exit}' "$_TEST_YML" 2>/dev/null || true)"
+for _need in ZBUILD_TEST_TIMING_FILE upload-artifact; do
+    if grep -q "$_need" <<< "$_cov_block"; then
+        assert_pass "[SPEC-5] the Coverage job carries $_need"
+    else
+        assert_fail "[SPEC-5] the Coverage job carries $_need" \
+            "coverage job records nothing to diagnose a timeout from"
+    fi
+done
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
