@@ -17,6 +17,7 @@ description: |
 
 hooks:
   run: review_report_run
+  cleanup: ~  # absent — engine emits plugin.cleanup.absent per ADR-001 §2
 
 requires:
   core:
@@ -32,6 +33,7 @@ requires:
 # that check; artifact enforcement is now outputs[].required alone. The plugin
 # still always writes review-report.json first, so it stays green.
 provides:
+  result_contract: 2
   role: review_report
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
@@ -47,6 +49,9 @@ config:
   # is a lint failure; the explicit [] is the claim (#1708).
   valid_verdicts: []
   tier_default: T2
+  router:
+    timeout_s: 300
+    max_turns: 25
   # I6 fixed lens roster (the full cq+persona roster is #974). Each lens is a
   # SEPARATE LLM call (not one prompt with N sections — the cq-cycle trap
   # ADR-038 §2 rejects). For I6 every lens shares the change bundle as
@@ -96,6 +101,12 @@ outputs:
     format: markdown
     required: true
     summary: true
+  # ADR-054 v2 result contract sidecar — written on every terminal exit path.
+  - id: review_report_result
+    path: "${artifact_dir}/review-report-result.json"
+    type: review-report-result.json@2
+    format: json
+    required: true
 
 state:
   persisted:

@@ -28,6 +28,8 @@ source "$_RR_ROOT/core/event-bus/event-bus.sh"
 source "$_RR_ROOT/core/router/route.sh"
 # shellcheck source=../../../scripts/lib/artifact-render.sh
 source "$_RR_ROOT/scripts/lib/artifact-render.sh"
+# shellcheck source=../../../scripts/lib/llm-agent.sh
+source "$_RR_ROOT/scripts/lib/llm-agent.sh"
 # shellcheck source=lib/lenses.sh
 source "$_RR_DIR/lib/lenses.sh"
 # shellcheck source=../../../scripts/lib/call-graph.sh
@@ -36,6 +38,31 @@ source "$_RR_ROOT/scripts/lib/call-graph.sh"
 # full-branch diff as `review`, not the (often empty) incremental build diff.patch.
 # shellcheck source=../../../scripts/lib/merge-base.sh
 source "$_RR_ROOT/scripts/lib/merge-base.sh"
+
+# ─── _rr_write_result <artifact_dir> <verdict> <disposition> <reason> ────────
+# Writes review-report-result.json with the v2 result contract (result_contract:2).
+# Called on every terminal exit path (ADR-054).
+_rr_write_result() {
+    local dir="$1" verdict="$2" disposition="$3" reason="$4"
+    mkdir -p "$dir" 2>/dev/null || true
+    jq -n --arg v "$verdict" --arg d "$disposition" --arg r "$reason" \
+        '{result_contract: 2, verdict: $v, disposition: $d, reason: $r, data: {}}' \
+        | atomic_write "$dir/review-report-result.json" 2>/dev/null \
+        || warn "_rr_write_result: failed to write review-report-result.json (verdict=$verdict)"
+}
+
+# ─── _rr_budget_guidance <max_turns> <timeout_s> ─────────────────────────────
+# TURN BUDGET block for lens prompts (ADR-063 §1). Empty when budget is unknown.
+_rr_budget_guidance() {
+    local budget="${1:-}" timeout_s="${2:-}"
+    [[ "$budget" =~ ^[0-9]+$ && "$budget" -gt 0 ]] || { printf ''; return 0; }
+    cat <<EOF
+TURN BUDGET (read this — you have a BOUNDED tool-call budget):
+- You have about ${budget} tool-call turns for this review lens.
+- Review only what you can examine within your budget; flag unexamined areas explicitly.
+- STOP examining and emit your JSON findings object before you run out of turns. A partial review with named gaps BEATS exhausting the budget and producing no output at all.
+EOF
+}
 
 # ─── review_report_run ──────────────────────────────────────────────────────
 # Hook: review_report_run(stage, state_file). Derives artifact paths and
@@ -47,18 +74,25 @@ review_report_run() {
         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/review-report-summary.md}" "review-report" "error" \
             "the engine dispatched this stage with no state file, so it could not run" \
             "No work was attempted. This is an engine contract violation, not a fault in the change."
+        _rr_write_result "${ZBUILD_ARTIFACT_DIR:-.}" "error" "broken" "missing_state_file"
         return 2
     fi
     local state_dir; state_dir="$(dirname "$state_file")"
     local artifact_dir="$state_dir/artifacts"
     mkdir -p "$artifact_dir"
 
+    # Read declared inputs from ZBUILD_STAGE_INPUTS when the engine provides the index.
+    local scope_manifest=""
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+        scope_manifest="$(jq -r '.inputs.scope_manifest // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+    fi
+
     # #896/#952: judge the full-branch merge-base change bundle (falls back to the
     # incremental diff.patch when no base resolves) so review-report and `review`
     # share ONE change basis. The empty per-run diff.patch was the #952 lens miss.
     local bundle; bundle="$(zbuild_change_bundle "$artifact_dir")"
     _rr_run_inner \
-        "$state_dir/scope-manifest.md" \
+        "$scope_manifest" \
         "$bundle" \
         "$artifact_dir/review-report.json" \
         "$artifact_dir/review-report.md"
@@ -73,6 +107,7 @@ _rr_run_inner() {
         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/review-report-summary.md}" "review-report" "error" \
             "no output path was supplied, so no review report could be written" \
             "No work was attempted. This is an engine contract violation, not a fault in the change."
+        _rr_write_result "${ZBUILD_ARTIFACT_DIR:-.}" "error" "broken" "missing_out_json"
         return 2
     fi
     local artifact_dir; artifact_dir="$(dirname "$out_json")"
@@ -100,9 +135,27 @@ _rr_run_inner() {
         _rr_register_lens_artifact "test-coverage" "$_cmap"
     fi
 
+    # Resolve router budget and build guidance block to inject into each lens prompt.
+    local _budget_max_turns _budget_timeout_s _budget_guidance
+    _budget_max_turns="$(_route_resolve_max_turns 2>/dev/null || printf '0')"
+    _budget_timeout_s="$(_route_resolve_timeout 2>/dev/null || printf '0')"
+    _budget_guidance="$(_rr_budget_guidance "$_budget_max_turns" "$_budget_timeout_s")"
+
     # Fan out the lenses (bounded-parallel) → combined per-lens results.
     local lenses_file
-    lenses_file="$(_rr_fanout_lenses "$scope_manifest" "$evidence" "$artifact_dir" "$tier")"
+    lenses_file="$(_rr_fanout_lenses "$scope_manifest" "$evidence" "$artifact_dir" "$tier" "$_budget_guidance")"
+
+    # Determine disposition: exhausted if any lens subshell returned non-zero rc.
+    local _rr_any_lens_failed=0
+    local _rr_lens_name
+    for _rr_lens_name in "${_RR_LENSES[@]}"; do
+        local _rr_lens_rc
+        _rr_lens_rc="$(cat "$artifact_dir/lens-${_rr_lens_name}.rc" 2>/dev/null || echo 1)"
+        if [[ "$_rr_lens_rc" -ne 0 ]]; then
+            _rr_any_lens_failed=1
+            break
+        fi
+    done
 
     # Aggregate + de-dupe into the advisory report (always written first).
     _rr_aggregate "$lenses_file" | atomic_write "$out_json"
@@ -126,6 +179,11 @@ _rr_run_inner() {
         set -e
         [[ $gh_rc -ne 0 ]] && warn "review_report: gh pr comment failed (rc=$gh_rc); continuing"
     fi
+
+    # Write v2 result sidecar (ADR-054). disposition=exhausted when any lens failed.
+    local _disposition="complete"
+    [[ "$_rr_any_lens_failed" -eq 1 ]] && _disposition="exhausted"
+    _rr_write_result "$artifact_dir" "pass" "$_disposition" "review_produced"
 
     stage_summary_write "$artifact_dir/review-report-summary.md" "review-report" "pass" \
         "aggregated $lens_count review lens(es) — merge readiness: $merge_readiness" \
