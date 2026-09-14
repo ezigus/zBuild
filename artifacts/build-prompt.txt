@@ -1,0 +1,256 @@
+============== ZBUILD BUILD — iter 1/10 ==============
+## ORIGINAL TASK (immutable across iterations)
+# Plan: Migrate spec-acceptance to contract v2
+
+**Goal:** Adopt the v2 result contract (result_contract:2, disposition, valid_verdicts, name-matched inputs, required summary on every terminal path) in plugins/agent/spec-acceptance, leaving all other behaviour unchanged.
+
+## Steps
+1. All implementation is already on the branch. Verify the tree is consistent: manifest.yaml has result_contract:2, role, events, valid_verdicts [pass,fail], tier_default:T1, primary:true on gate_result, acceptance_detail required:true+summary:true, and no hooks.cleanup entry. plugin.sh has result_contract:2 at all four write sites, ZBUILD_STAGE_INPUTS resolution with artifact_dir fallback, and acceptance-summary.txt written on every terminal path (precondition_unmet, malformed, and final pass/fail). All five existing test helpers export ZBUILD_STAGE_INPUTS. The v2 contract test (280 lines) covers SPEC-1 through SPEC-10 (C1–C14). No code changes required.
+   - Files: `plugins/agent/spec-acceptance/manifest.yaml`, `plugins/agent/spec-acceptance/plugin.sh`, `tests/integration/acceptance-gate-v2-contract-test.sh`, `tests/integration/acceptance-gate-test.sh`, `tests/integration/acceptance-gate-quiet-test.sh`, `tests/integration/acceptance-gate-inert-wiring-iter1-test.sh`, `tests/integration/acceptance-gate-reachability-test.sh`, `tests/integration/acceptance-guard-regressed-routes-design-test.sh`
+   - Estimated lines: 0
+2. Run npm test with the full tree committed (so the mutation tier engages per the DoD). All acceptance-gate tests and the new v2-contract test (SPEC-1 through SPEC-10, C1–C14) must be green. If any existing test fails due to the result_contract field being unexpected, update only its assertion to accept the new field — do not weaken structural assertions. Record the green run in the PR body. Also confirm the branch reddens at merge-base (the v2-contract test was authored before the implementation, so it fails at e09c9e0).
+   - Estimated lines: 0
+
+## Notes
+IMPLEMENTATION STATUS: All substantive implementation is already on branch zbuild/issue-1839-ci via commits ef3f76e and d8323a3, subsequently extended by f162fcbb and 5274c328 which added SPEC-5/6/7/8/9/10 and C8–C14 to the v2-contract test. Direct file inspection confirms:
+
+- manifest.yaml: result_contract:2 (line 68), role:acceptance_gate (67), events declared (71–86), valid_verdicts [pass,fail] (92–94), tier_default:T1 (95), gate_result primary:true (114), acceptance_detail required:true+summary:true (120–125), no cleanup hook (only run hook at line 57).
+- plugin.sh: result_contract:2 at 4 write sites (lines 181, 273, 562, 567). ZBUILD_STAGE_INPUTS resolution at lines 243–248 with fallback to ${artifact_dir}/design.md. The fallback (line 247) is the legitimate absent-inputs case; the C7 grep in the test uses -cF '$artifact_dir/design.md' (no braces), which will not match the shell ${artifact_dir}/design.md form — test passes. acceptance-summary.txt written on precondition_unmet (185), malformed (276), final path (549). The || true on the malformed summary write (line 276) was left — the prior plan noted removing it but the current code still has it; if tests are green this is acceptable.
+- v2-contract test: 280 lines. SPEC-1 (result_contract:2 on all terminal paths), SPEC-2 (acceptance-summary.txt on every terminal path), SPEC-3 (no hardcoded design.md path + behavioral ZBUILD_STAGE_INPUTS resolution), SPEC-5 (valid_verdicts), SPEC-6 (tier_default:T1, no model.route call), SPEC-7 (primary:true on gate_result, acceptance_detail required:true), SPEC-8 (role:acceptance_gate), SPEC-9 (provides.events lists every emitted event), SPEC-10 (no hooks.cleanup).
+- All 5 existing test helpers export ZBUILD_STAGE_INPUTS.
+
+Router budgets: tier_default:T1 in manifest satisfies DoD item; this plugin is mechanical (non-LLM), so model.route is never called.
+cleanup hook: intentionally absent; plugin holds no live resources. Manifest has only run hook — correct per ADR-055.
+Golden diff (DoD): satisfied by the C5/C6 pass-path assertions in the v2 contract test verifying result_contract:2 is present. A formal before/after snapshot file is not required by DoD wording.
+Acceptance criterion 'Behaviour unchanged for passing run': covered by C8 (behavioral ZBUILD_STAGE_INPUTS test on a passing acceptance block) and existing acceptance-gate-test.sh green run.
+Only remaining work: npm test green run with the staged tree, and confirmation in the PR body that the test reddens at merge-base e09c9e0.
+
+## INSTRUCTIONS
+Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
+
+You have Read, Edit, Write, and
+Bash tools available. Your job is to edit the working tree to implement the
+ORIGINAL TASK above.
+
+### Scope (plan.files[])
+You may ONLY touch files listed here. Refuse any out-of-scope edit.
+  - plugins/agent/spec-acceptance/manifest.yaml
+  - plugins/agent/spec-acceptance/plugin.sh
+  - tests/integration/acceptance-gate-v2-contract-test.sh
+  - tests/integration/acceptance-gate-test.sh
+  - tests/integration/acceptance-gate-quiet-test.sh
+  - tests/integration/acceptance-gate-inert-wiring-iter1-test.sh
+  - tests/integration/acceptance-gate-reachability-test.sh
+  - tests/integration/acceptance-guard-regressed-routes-design-test.sh
+  - tests/unit/summary-producers-test.sh
+  - tests/unit/summary-mandatory-test.sh
+  - tests/unit/lint-verdict-classify-test.sh
+  - tests/unit/impact-tier-test.sh
+  - tests/unit/plugin-primary-output-atomic-test.sh
+  - docs/adr/ADR-036-acceptance-contract-teeth.md
+  - docs/adr/ADR-054-stage-contract.md
+  - docs/adr/ADR-055-inter-stage-data-contract-v2.md
+  - docs/wiki/plugins/spec-acceptance.md
+
+### How the loop works
+- Each iteration you may make code changes via Edit/Write/Bash.
+- After each iteration the pipeline captures `git diff HEAD` and feeds it
+  back to you so you can verify progress.
+- Do NOT emit a unified diff in your response — the pipeline derives the
+  canonical `diff.patch` artifact from `git diff HEAD` automatically.
+
+### Completion sentinel
+Emit `LOOP_COMPLETE` on its own line as the FINAL line of your response
+WHEN the implementation is complete — whether you just finished it OR
+it was already done before you started. If the branch already contains
+the required changes (check `git log` for commits + `git diff` for any
+remaining gap), emit `LOOP_COMPLETE` immediately. Do NOT keep iterating
+when there is nothing left to do.
+
+### Rules
+- Touch only files in the scope list above.
+- Do not run `git commit` — the pipeline owns commit semantics.
+- NEVER run a command that mutates git branch state or the working tree —
+  no `git checkout -b`/`switch`/`commit`/`push`/`tag`/`reset`. You are running
+  INSIDE the pipeline's own checkout; switching or creating a branch hijacks the
+  run. The pipeline owns the branch.
+- If you must exercise a command you are building (or any command that could
+  publish, tag, push, or otherwise mutate state), run it in `--dry-run` mode.
+  Do everything you can to verify behavior without side effects.
+- Keep changes minimal and aligned with the plan.
+- Clean up scratch siblings of the files you edit (`*.bak`, `*.orig`,
+  `*.rej`, `*.head`, `*.tmp`, `*~`). `sed -i.bak` and
+  `git show HEAD:f > f.head` both leave one behind — prefer `sed -i` with no
+  suffix, and delete any comparison scratch before you finish. Out-of-scope
+  scratch is removed for you; any OTHER out-of-scope path voids the whole
+  iteration, so do not rely on the cleanup.
+- If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.
+
+### Commit message (#608)
+Before the final `LOOP_COMPLETE` line, emit a single line of the form:
+
+    COMMIT_SUMMARY: <one-line description of this iteration's change>
+
+Keep it under 72 characters, present tense, imperative mood (e.g.
+"add foo parser" not "added"). The pipeline uses this as the git commit
+message for the per-iteration commit it creates on your behalf. If you
+omit this line the pipeline falls back to the plan title.
+
+## DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
+# Design — Migrate spec-acceptance to contract v2
+
+## Architectural Decision Summary
+
+**Goal.** Adopt the ADR-055 v2 inter-stage data contract in `plugins/agent/spec-acceptance`,
+bringing it into parity with the other F-wave plugin migrations (#1833–#1849). The gate's
+observable behavior — verdict semantics, disposition classification, event emission, negctl/
+reachability levels — is unchanged; only the result file envelope, input-resolution pattern,
+and summary-completeness move.
+
+**Context.** The v2 contract requires four things spec-acceptance previously lacked:
+(1) `result_contract:2` in the emitted JSON on every exit path;
+(2) a `disposition` field on the precondition_unmet and malformed paths (already present on the
+    main pass/fail path);
+(3) a summary artifact (`acceptance-summary.txt`) on every terminal path — ADR-055 §9 mandates
+    this unconditionally; the plugin previously skipped the write on precondition_unmet and
+    malformed exits, so `acceptance_detail` was legitimately `required: false`; with both paths
+    writing a summary, `required: false` becomes `required: true`;
+(4) name-matched input resolution via `ZBUILD_STAGE_INPUTS` (ADR-055 §1) instead of the
+    previously hardcoded `local design_md="$artifact_dir/design.md"`.
+
+Additionally, the manifest must declare `valid_verdicts: [pass, fail]` (the only two verdicts
+acceptance_gate_run emits), `tier_default: T1` (schema-conformance for a non-routing agent), and
+`gate_result` must carry `primary: true`. All are new to this migration; the manifest previously
+had none of these v2-required fields. The `|| true` on the main summary write was removed —
+under `set -euo pipefail`, a bare `atomic_write` failure is a genuine error, not a silent skip.
+
+Three additional guards were added to the v2 contract test after the core change SPECs (1–7):
+SPEC-8 asserts `provides.role: acceptance_gate` is declared (templates resolve by role);
+SPEC-9 asserts every `acceptance.gate.*` event emitted by plugin.sh is listed in
+`provides.events` (ADR-001 §Declared events, #1717); SPEC-10 asserts `hooks.cleanup` is absent
+(spec-acceptance holds no live resources; an accidental addition would break teardown — ADR-056,
+#1829).
+
+Backwards compatibility: `failures` and `fault` stay at the top level of the result JSON (not
+moved under `data:`), because `plugins/agent/build/lib/context.sh` and `core/pipeline/verdict.sh`
+read them there and neither is in this migration's scope.
+
+**Decision.** Manifest edits to add `result_contract: 2`, `valid_verdicts: [pass, fail]`,
+`tier_default: T1`, and declare `acceptance_detail` as `required: true` with `summary: true`;
+~40 lines of plugin.sh edits across four change sites; test-helper updates to set
+`ZBUILD_STAGE_INPUTS`. A new integration test (`acceptance-gate-v2-contract-test.sh`) is the TDD
+red step and bears all SPEC-1–7 [change] assertions plus SPEC-8–10 [guard] assertions.
+The `docs/wiki/plugins/spec-acceptance.md` page embeds the old manifest shape and must be updated.
+
+---
+
+
+### Scope rationale
+
+**`tests/unit/summary-producers-test.sh`** — SPEC-1 asserts that `acceptance_detail` is
+declared as the stage's summary with `required: true`. Both assertions pin the manifest shape
+this change introduces.
+
+**`tests/unit/summary-mandatory-test.sh`** — sweeps `plugins/*/*/manifest.yaml` and fails if
+any stage-bound plugin has zero `summary: true` outputs. Before this migration,
+spec-acceptance had no such output; after, `acceptance_detail` carries `summary: true`.
+
+**`tests/unit/lint-verdict-classify-test.sh`** — sweeps all plugin manifests for declared
+`valid_verdicts` entries and checks each against ADR-019's verdict table. Adding
+`valid_verdicts: [pass, fail]` to spec-acceptance's manifest means spec-acceptance now
+contributes entries to that sweep.
+
+**`tests/unit/impact-tier-test.sh`** — sweeps all `plugins/agent/*/manifest.yaml` for
+`tier_default` and verifies `resolve_tier` agrees. Before this migration, spec-acceptance had
+no `tier_default` (non-routing) so was skipped. After, it declares `tier_default: T1` and
+enters the sweep — absence-by-omission gap: the set of tier-declaring plugins GREW.
+
+**`tests/unit/plugin-primary-output-atomic-test.sh`** — sweeps all manifests for
+`primary: true` outputs and verifies each is written via `atomic_write` in the plugin's
+plugin.sh. spec-acceptance's `gate_result` now carries `primary: true`, adding it to this
+sweep. The guard passes (gate_result is already written via atomic_write) but the file is in
+scope because it enumerates a set this migration grows.
+
+**`docs/wiki/plugins/spec-acceptance.md`** — embeds a verbatim manifest YAML block. The block
+must reflect the new shape: `result_contract: 2`, `valid_verdicts`, `tier_default: T1`,
+`acceptance_detail` with `required: true` and `summary: true`, and the input declaration
+without a stale `source:` form.
+
+**`docs/adr/ADR-036-acceptance-contract-teeth.md`** — references the summary write path and
+the `acceptance_detail` declaration; no edit required but cited by this PR.
+
+**`docs/adr/ADR-054-stage-contract.md`** — defines the v2 result file contract; authoritative
+reference; no edit.
+
+**`docs/adr/ADR-055-inter-stage-data-contract-v2.md`** — §9 uses `acceptance-summary.txt` as
+the worked example of an undeclared output and names this migration's obligations explicitly.
+No edit; governs the migration.
+
+**Files NOT in scope:** `plugins/agent/build/lib/context.sh` and `core/pipeline/verdict.sh`
+read `failures`/`fault` at the top level — those fields are unchanged.
+`config/templates/simple.yaml` and `config/templates/deployed.yaml` reference the
+`acceptance_gate` role (not the plugin id) — unchanged.
+`tests/integration/self-host-contract-lib-redirect-test.sh` sources `plugin.sh` but does not
+call `acceptance_gate_run` or inspect result JSON.
+`tests/integration/cycle-acceptance-terminal-failure-test.sh` mocks the gate with fake JSON
+and does not exercise `acceptance_gate_run`.
+`tests/unit/acceptance-disposition-classify-test.sh` and `acceptance-negctl-test.sh` source
+internal helpers only — no result-shape assertions.
+
+---
+
+
+LOOP_COMPLETE
+Where a design decision above conflicts with the plan, follow the design decision.
+
+## ACCEPTANCE TESTS (you MUST make these pass)
+You do NOT author or modify acceptance assertions. They were written from the design contract by a separate stage, before your implementation existed, and they are the contract you implement against. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion, and you must not edit the testfiles listed below; the spawn denies it and a mechanical guard checks it. If you believe an assertion genuinely does not test its SPEC, say so in your output and leave it alone: correcting it is the author stage's job, not yours (#2022, ADR-036).
+Each test MUST contain an assert call whose label includes the [SPEC-n] tag for the SPEC it verifies (e.g. assert_eq "[SPEC-1] ..." exp act). The acceptance-gate (ADR-036) requires every SPEC-n to have a [SPEC-n]-tagged assertion. A CHANGE-behavior SPEC-n MUST have a tagged assertion that FAILS at the merge-base baseline and passes here (a tautological change-SPEC that passes without your implementation is rejected); a GUARD/invariant SPEC-n is tagged but NOT contorted to fail at baseline. See the per-id list below.
+- SPEC-1: tests/integration/acceptance-gate-v2-contract-test.sh
+- SPEC-2: tests/integration/acceptance-gate-v2-contract-test.sh
+- SPEC-3: tests/integration/acceptance-gate-v2-contract-test.sh
+- SPEC-4: tests/integration/acceptance-gate-test.sh tests/integration/acceptance-gate-reachability-test.sh tests/integration/acceptance-gate-quiet-test.sh tests/integration/acceptance-gate-inert-wiring-iter1-test.sh tests/integration/acceptance-guard-regressed-routes-design-test.sh
+- SPEC-5: tests/integration/acceptance-gate-v2-contract-test.sh
+- SPEC-6: tests/integration/acceptance-gate-v2-contract-test.sh
+- SPEC-7: tests/integration/acceptance-gate-v2-contract-test.sh
+- SPEC-8: tests/integration/acceptance-gate-v2-contract-test.sh
+- SPEC-9: tests/integration/acceptance-gate-v2-contract-test.sh
+- SPEC-10: tests/integration/acceptance-gate-v2-contract-test.sh
+
+What each SPEC requires:
+- [SPEC-1] result_contract:2 is present on every terminal exit path of acceptance_gate_run — precondition_unmet (all three preconditions), malformed_acceptance_block, pass, and fail
+- [SPEC-2] acceptance-summary.txt is written on the precondition_unmet path and on the malformed_acceptance_block path, so acceptance_detail exists on every terminal verdict (making required:true correct in the manifest)
+- [SPEC-3] design_md is resolved from ZBUILD_STAGE_INPUTS JSON index (jq -r .inputs.design) rather than the hardcoded $artifact_dir/design.md path — plugin.sh has zero grep hits for the literal string '$artifact_dir/design.md' after this change
+- [SPEC-4] all existing acceptance-gate behavioral contracts are unchanged — verdict semantics, disposition classification, event emission, negctl/reachability levels, fault routing
+- [SPEC-5] the manifest declares valid_verdicts: [pass, fail] — the only two values acceptance_gate_run emits — and each verdict is exercised by a dedicated test case (pass path and fail path)
+- [SPEC-6] the manifest declares tier_default: T1 as a schema-conformance field for this non-routing agent; plugin.sh makes no model.route call and the router budget checkpoint is structurally inapplicable to this mechanical gate
+- [SPEC-7] the manifest declares exactly one primary: true output (gate_result) — a convergence gate must name its primary result artifact
+- [SPEC-8] the manifest declares provides.role: acceptance_gate — templates resolve this plugin by role (ADR-042/047); the field must remain present or the resolver cannot bind the plugin to the acceptance_gate slot
+- [SPEC-9] every acceptance.gate.* event emitted via eb_emit_event in plugin.sh is listed in the manifest provides.events section (ADR-001 §Declared events, #1717 — no event is emitted without a corresponding declaration)
+- [SPEC-10] the manifest has no hooks.cleanup entry — spec-acceptance holds no live resources; when teardown dispatches the cleanup hook, plugin_hook_call emits plugin.cleanup.absent and returns 0 (ADR-056, #1829); accidental addition must be rejected
+
+### SPEC IDS YOU MUST COVER (acceptance gate, ADR-036)
+Every SPEC id below needs at least one assertion whose label carries its [SPEC-n] tag; self-verify the FULL set is tagged before emitting LOOP_COMPLETE. A CHANGE-behavior SPEC (new behavior this change introduces) MUST have a [SPEC-n] assertion that FAILS at the merge-base baseline. A GUARD/invariant SPEC (behavior that must stay unchanged) is tagged but MUST NOT be contorted to fail at baseline.
+- [SPEC-1] result_contract:2 is present on every terminal exit path of acceptance_gate_run — precondition_unmet (all three preconditions), malformed_acceptance_block, pass, and fail
+  → needs a `[SPEC-1]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-2] acceptance-summary.txt is written on the precondition_unmet path and on the malformed_acceptance_block path, so acceptance_detail exists on every terminal verdict (making required:true correct in the manifest)
+  → needs a `[SPEC-2]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-3] design_md is resolved from ZBUILD_STAGE_INPUTS JSON index (jq -r .inputs.design) rather than the hardcoded $artifact_dir/design.md path — plugin.sh has zero grep hits for the literal string '$artifact_dir/design.md' after this change
+  → needs a `[SPEC-3]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-4] all existing acceptance-gate behavioral contracts are unchanged — verdict semantics, disposition classification, event emission, negctl/reachability levels, fault routing
+  → needs a `[SPEC-4]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-5] the manifest declares valid_verdicts: [pass, fail] — the only two values acceptance_gate_run emits — and each verdict is exercised by a dedicated test case (pass path and fail path)
+  → needs a `[SPEC-5]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-6] the manifest declares tier_default: T1 as a schema-conformance field for this non-routing agent; plugin.sh makes no model.route call and the router budget checkpoint is structurally inapplicable to this mechanical gate
+  → needs a `[SPEC-6]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-7] the manifest declares exactly one primary: true output (gate_result) — a convergence gate must name its primary result artifact
+  → needs a `[SPEC-7]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-8] the manifest declares provides.role: acceptance_gate — templates resolve this plugin by role (ADR-042/047); the field must remain present or the resolver cannot bind the plugin to the acceptance_gate slot
+  → needs a `[SPEC-8]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-9] every acceptance.gate.* event emitted via eb_emit_event in plugin.sh is listed in the manifest provides.events section (ADR-001 §Declared events, #1717 — no event is emitted without a corresponding declaration)
+  → needs a `[SPEC-9]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-10] the manifest has no hooks.cleanup entry — spec-acceptance holds no live resources; when teardown dispatches the cleanup hook, plugin_hook_call emits plugin.cleanup.absent and returns 0 (ADR-056, #1829); accidental addition must be rejected
+  → needs a `[SPEC-10]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+
+## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
+A previous attempt on this issue ended build with verdict=incomplete and touched 0 file(s). That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present.
