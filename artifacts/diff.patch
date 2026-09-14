@@ -1,0 +1,113 @@
+diff --git a/plugins/tool/secret-scan/plugin.sh b/plugins/tool/secret-scan/plugin.sh
+index 4d77c011..2ec36da3 100755
+--- a/plugins/tool/secret-scan/plugin.sh
++++ b/plugins/tool/secret-scan/plugin.sh
+@@ -161,6 +161,8 @@ secret_scan_run() {
+     if [[ -z "$repo_root" || -z "$base" ]]; then
+         printf '{"result_contract":2,"verdict":"skip","disposition":"complete","reason":"no_baseline","baseline":"","finding_count":0,"findings":[]}\n' \
+             | atomic_write "$result_path"
++        stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "skip" \
++            "no baseline — nothing to scan"
+         _ss_emit "secret_scan.skip" "reason=no_baseline"
+         _ss_emit "plugin.result" "plugin=secret-scan" "verdict=skip"
+         return 0
+@@ -173,6 +175,8 @@ secret_scan_run() {
+     if [[ -z "$diff_text" ]]; then
+         printf '{"result_contract":2,"verdict":"skip","disposition":"complete","reason":"empty_diff","baseline":"%s","finding_count":0,"findings":[]}\n' "$base" \
+             | atomic_write "$result_path"
++        stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "skip" \
++            "empty diff — nothing to scan"
+         _ss_emit "secret_scan.skip" "reason=empty_diff"
+         _ss_emit "plugin.result" "plugin=secret-scan" "verdict=skip"
+         return 0
+@@ -206,7 +210,8 @@ secret_scan_run() {
+ 
+     printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"clean","baseline":"%s","finding_count":0,"findings":[]}\n' "$base" \
+         | atomic_write "$result_path"
+-    stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "pass" ""
++    stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "pass" \
++        "clean diff — no secrets found"
+     _ss_emit "secret_scan.pass"
+     _ss_emit "plugin.result" "plugin=secret-scan" "verdict=pass"
+     return 0
+diff --git a/tests/unit/gate-v2-contract-test.sh b/tests/unit/gate-v2-contract-test.sh
+index 6b06eecd..eb267ea2 100644
+--- a/tests/unit/gate-v2-contract-test.sh
++++ b/tests/unit/gate-v2-contract-test.sh
+@@ -360,4 +360,76 @@ for _plugin in coverage-gate design-gate gate-aggregator lint-gate mutation-gate
+         "" "$(grep -E '^\s+(timeout_s|max_turns|retries):' "$_mf" || true)"
+ done
+ 
++# ── SPEC-14(a): each manifest has exactly one output with required:true AND summary:true ─
++# SPEC-9..13 check required/primary/summary fields in isolation; SPEC-14 asserts
++# the ADR-055 §9 mandatory pairing: both must coexist on the SAME output block.
++for _plugin in coverage-gate design-gate gate-aggregator lint-gate mutation-gate secret-scan shape-floor; do
++    _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
++    _paired="$(awk '
++        /^outputs:/ { in_outputs=1; next }
++        in_outputs && /^[^[:space:]]/ { if (req && sum) count++; req=0; sum=0; in_outputs=0 }
++        in_outputs && /^  - id:/ { if (req && sum) count++; req=0; sum=0 }
++        in_outputs && /required: true/ { req=1 }
++        in_outputs && /summary: true/ { sum=1 }
++        END { if (in_outputs && req && sum) count++; print count+0 }
++    ' "$_mf" 2>/dev/null || echo 0)"
++    assert_eq "[SPEC-14] $_plugin manifest has exactly one output with required:true AND summary:true (ADR-055 §9 mandatory pairing)" \
++        "1" "$_paired"
++done
++
++# ── SPEC-14(b): summary/detail file written and non-empty on every SPEC-2 terminal verdict ─
++# Every workdir left on disk by the SPEC-2 runs above must have its gate's
++# declared summary output written and non-empty. The ss-v2 assertion (no_baseline
++# skip path) is the one that fails at baseline: secret_scan_run returned without
++# calling stage_summary_write on that path.
++for _wd in cv-v2-pass cv-v2-fail cv-v2-skip; do
++    assert_eq "[SPEC-14] coverage-gate $_wd → coverage-detail.md written and non-empty" "present" \
++        "$([[ -s "$TEST_TEMP_DIR/$_wd/artifacts/coverage-detail.md" ]] && echo present || echo absent)"
++done
++for _wd in lt-v2-pass lt-v2-fail lt-v2-skip; do
++    assert_eq "[SPEC-14] lint-gate $_wd → lint-detail.md written and non-empty" "present" \
++        "$([[ -s "$TEST_TEMP_DIR/$_wd/artifacts/lint-detail.md" ]] && echo present || echo absent)"
++done
++for _wd in mg-v2-pass mg-v2-fail mg-v2-skip; do
++    assert_eq "[SPEC-14] mutation-gate $_wd → mutation-detail.md written and non-empty" "present" \
++        "$([[ -s "$TEST_TEMP_DIR/$_wd/artifacts/mutation-detail.md" ]] && echo present || echo absent)"
++done
++assert_eq "[SPEC-14] secret-scan skip (no_baseline) → secret-scan-detail.md written and non-empty" "present" \
++    "$([[ -s "$TEST_TEMP_DIR/ss-v2/artifacts/secret-scan-detail.md" ]] && echo present || echo absent)"
++for _wd in sf-v2-skip sf-v2-pass; do
++    assert_eq "[SPEC-14] shape-floor $_wd → shape-floor-detail.md written and non-empty" "present" \
++        "$([[ -s "$TEST_TEMP_DIR/$_wd/artifacts/shape-floor-detail.md" ]] && echo present || echo absent)"
++done
++assert_eq "[SPEC-14] design-gate dg-v2 (pass) → design-gate-feedback.md written and non-empty" "present" \
++    "$([[ -s "$TEST_TEMP_DIR/dg-v2/artifacts/design-gate-feedback.md" ]] && echo present || echo absent)"
++assert_eq "[SPEC-14] gate-aggregator ga-v2-pass → gate-aggregator-summary.md written and non-empty" "present" \
++    "$([[ -s "$TEST_TEMP_DIR/ga-v2-pass/artifacts/gate-aggregator-summary.md" ]] && echo present || echo absent)"
++
++# ── SPEC-14(c): secret-scan pass-path summary names its conclusion ─────────────
++# ADR-055 §9: "a summary states what the stage DID". A bare-absence phrase
++# ("no findings") does not name a conclusion; "clean diff — no secrets found" does.
++# Requires a real git repo so secret_scan_run reaches the pass verdict path.
++_SS_PASS_REPO="$TEST_TEMP_DIR/ss-pass-repo"
++git init -q "$_SS_PASS_REPO"
++git -C "$_SS_PASS_REPO" config user.email "test@zbuild"
++git -C "$_SS_PASS_REPO" config user.name "zbuild-test"
++printf 'initial\n' > "$_SS_PASS_REPO/file.txt"
++git -C "$_SS_PASS_REPO" add file.txt
++git -C "$_SS_PASS_REPO" commit -q -m "initial"
++git -C "$_SS_PASS_REPO" checkout -q -b feature
++printf 'clean change\n' >> "$_SS_PASS_REPO/file.txt"
++git -C "$_SS_PASS_REPO" add file.txt
++git -C "$_SS_PASS_REPO" commit -q -m "clean"
++W="$(_mkwork ss-v2-pass14)"
++export ZBUILD_REPO_ROOT="$_SS_PASS_REPO"
++set +e; secret_scan_run "secret-scan" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
++unset ZBUILD_REPO_ROOT
++assert_eq "[SPEC-14] secret-scan pass (clean diff) → rc=0" "0" "$_rc"
++assert_json_key "[SPEC-14] secret-scan pass → verdict=pass" \
++    "$(cat "$W/artifacts/secret-scan-result.json")" '.verdict' "pass"
++assert_eq "[SPEC-14] secret-scan pass → secret-scan-detail.md written and non-empty" "present" \
++    "$([[ -s "$W/artifacts/secret-scan-detail.md" ]] && echo present || echo absent)"
++assert_contains "[SPEC-14] secret-scan pass-path summary names its conclusion (not bare absence)" \
++    "$(cat "$W/artifacts/secret-scan-detail.md")" "clean diff — no secrets found"
++
+ print_test_results

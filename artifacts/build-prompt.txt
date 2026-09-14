@@ -1,0 +1,170 @@
+============== ZBUILD BUILD — iter 1/10 ==============
+## ORIGINAL TASK (immutable across iterations)
+# Plan: gate v2 migration — SPEC-14 + npm test green
+
+**Goal:** Add SPEC-14 test assertions and verify npm test passes, completing the seven-gate ADR-054/ADR-055 v2 contract migration
+
+## Steps
+1. Write SPEC-14 red-first (before implementation is visible to test): in tests/unit/gate-v2-contract-test.sh, add a SPEC-14 block that (a) asserts all 7 manifests carry exactly one output with both required: true and summary: true — the ADR-055 §9 'required: true' requirement not yet covered by SPEC-9..13; and (b) after the existing SPEC-2 pass and skip verdict runs, asserts the summary/detail file was actually written and is non-empty for every gate. Coverage-gate, lint-gate, and mutation-gate can reuse the work dirs from SPEC-2/5 (cv-v2-pass, lt-v2-pass, mg-v2-pass, and the skip dirs) to avoid duplicate runs. Design-gate reuses dg-v2. Gate-aggregator reuses ga-v2-pass. Secret-scan and shape-floor each need one additional assertion against their existing work dirs. State the red step in the PR body: 'at merge-base, SPEC-14 fails because the manifests had required: false on the summary output and no summary file assertions existed.'
+   - Files: `tests/unit/gate-v2-contract-test.sh`
+   - Estimated lines: 55
+2. Fix secret-scan pass summary content: in plugins/tool/secret-scan/plugin.sh the pass-path call to stage_summary_write passes an empty reason string, causing the library to write '- no findings'. ADR-055 §9 requires 'a summary states what the stage DID'. Replace the empty reason with 'clean diff — no secrets found' so the summary names the stage's conclusion, not just the absence of output. This is a one-line change that makes the SPEC-14 non-empty-content assertion pass.
+   - Files: `plugins/tool/secret-scan/plugin.sh`
+   - Estimated lines: 3
+3. Run npm test with the committed tree so the mutation tier engages. Assert the full suite is green, including gate-v2-contract-test.sh SPEC-1 through SPEC-14. Verify that checking out the merge-base (before commit 6447e3f0) and running the same test file produces a red result on SPEC-14 (and on SPEC-2/4 for the fields that were absent before the migration), satisfying the 'Reddens at the merge-base' DoD item. Document the red-step assertion and how it failed in the PR body.
+   - Estimated lines: 0
+
+## Notes
+Five commits on branch zbuild/issue-1848-ci have already completed the bulk of the migration: all seven manifests carry result_contract:2, valid_verdicts, primary:true, provides.role, provides.events, and required:true on their summary outputs; all seven plugin.sh files write result_contract:2 + disposition:complete + reason on every exit path and call stage_summary_write on every terminal verdict including early bail-outs (shape-floor's disposition:broken path included). The test file gate-v2-contract-test.sh covers SPEC-1..13. The single remaining code gap is SPEC-14 — the ADR-055 §9 supplementary acceptance addition from the issue body ('assert the summary output is required:true and written on every terminal verdict including the earliest bail-out path'). SPEC-4 already covers design-gate's feedback file, but the other six gates have no file-existence assertion. The secret-scan pass summary uses an empty reason which stage_summary_write renders as '- no findings' — technically the file is present and names the verdict, but ADR-055 §9 prefers 'what the stage DID' over bare absence language; fixing the reason string closes the gap cleanly. Router budget knobs are correctly absent from all seven manifests (T0 tools make no model calls, so timeout_s/max_turns/retries would be dead config). No hardcoded cross-stage artifact paths exist in any plugin.sh (verified by SPEC-12 grep). Gate-aggregator clears stale gate-feedback.md and design-feedback.md per #1757 fix. Design-gate defects #1714 and #1777 are intentionally carried forward per the issue scope. Step-3 has no file changes — it is a pure execution-and-documentation step (the 'npm test green + reddens at merge-base' DoD items).
+
+## INSTRUCTIONS
+Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
+
+You have Read, Edit, Write, and
+Bash tools available. Your job is to edit the working tree to implement the
+ORIGINAL TASK above.
+
+### Scope (plan.files[])
+You may ONLY touch files listed here. Refuse any out-of-scope edit.
+  - tests/unit/gate-v2-contract-test.sh
+  - plugins/tool/secret-scan/plugin.sh
+  - plugins/tool/coverage-gate/manifest.yaml
+  - plugins/tool/design-gate/manifest.yaml
+  - plugins/tool/gate-aggregator/manifest.yaml
+  - plugins/tool/lint-gate/manifest.yaml
+  - plugins/tool/mutation-gate/manifest.yaml
+  - plugins/tool/secret-scan/manifest.yaml
+  - plugins/tool/shape-floor/manifest.yaml
+  - plugins/tool/coverage-gate/plugin.sh
+  - plugins/tool/design-gate/plugin.sh
+  - plugins/tool/gate-aggregator/plugin.sh
+  - plugins/tool/lint-gate/plugin.sh
+  - plugins/tool/mutation-gate/plugin.sh
+  - plugins/tool/shape-floor/plugin.sh
+  - scripts/lib/stage-summary.sh
+  - scripts/lib/helpers.sh
+  - scripts/lib/test-helpers.sh
+  - scripts/lib/plugin-bootstrap.sh
+  - tests/unit/gate-detail-outputs-test.sh
+  - tests/unit/summary-mandatory-test.sh
+  - docs/adr/ADR-054-stage-contract.md
+  - docs/adr/ADR-055-inter-stage-data-contract-v2.md
+
+### How the loop works
+- Each iteration you may make code changes via Edit/Write/Bash.
+- After each iteration the pipeline captures `git diff HEAD` and feeds it
+  back to you so you can verify progress.
+- Do NOT emit a unified diff in your response — the pipeline derives the
+  canonical `diff.patch` artifact from `git diff HEAD` automatically.
+
+### Completion sentinel
+Emit `LOOP_COMPLETE` on its own line as the FINAL line of your response
+WHEN the implementation is complete — whether you just finished it OR
+it was already done before you started. If the branch already contains
+the required changes (check `git log` for commits + `git diff` for any
+remaining gap), emit `LOOP_COMPLETE` immediately. Do NOT keep iterating
+when there is nothing left to do.
+
+### Rules
+- Touch only files in the scope list above.
+- Do not run `git commit` — the pipeline owns commit semantics.
+- NEVER run a command that mutates git branch state or the working tree —
+  no `git checkout -b`/`switch`/`commit`/`push`/`tag`/`reset`. You are running
+  INSIDE the pipeline's own checkout; switching or creating a branch hijacks the
+  run. The pipeline owns the branch.
+- If you must exercise a command you are building (or any command that could
+  publish, tag, push, or otherwise mutate state), run it in `--dry-run` mode.
+  Do everything you can to verify behavior without side effects.
+- Keep changes minimal and aligned with the plan.
+- Clean up scratch siblings of the files you edit (`*.bak`, `*.orig`,
+  `*.rej`, `*.head`, `*.tmp`, `*~`). `sed -i.bak` and
+  `git show HEAD:f > f.head` both leave one behind — prefer `sed -i` with no
+  suffix, and delete any comparison scratch before you finish. Out-of-scope
+  scratch is removed for you; any OTHER out-of-scope path voids the whole
+  iteration, so do not rely on the cleanup.
+- If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.
+
+### Commit message (#608)
+Before the final `LOOP_COMPLETE` line, emit a single line of the form:
+
+    COMMIT_SUMMARY: <one-line description of this iteration's change>
+
+Keep it under 72 characters, present tense, imperative mood (e.g.
+"add foo parser" not "added"). The pipeline uses this as the git commit
+message for the per-iteration commit it creates on your behalf. If you
+omit this line the pipeline falls back to the plan title.
+
+## DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
+# Design: gate v2 migration — SPEC-14 + npm test green
+
+## Architectural decision summary
+
+**Goal.** Complete the seven-gate ADR-054/ADR-055 v2 result-contract migration by
+adding SPEC-14 assertions to `tests/unit/gate-v2-contract-test.sh` and fixing the
+remaining code gaps in `plugins/tool/secret-scan/plugin.sh`.
+
+**Context.** Five prior commits migrated all seven gate plugins: every manifest now
+carries `result_contract: 2`, `valid_verdicts`, `primary: true`, `provides.role /
+events`, and `required: true` + `summary: true` on a secondary summary output.
+SPEC-1 through SPEC-13 cover those manifest fields and the JSON result contract.
+Two gaps remain uncovered by tests:
+
+1. **No test asserts the manifest pairing**: SPEC-9..13 check fields individually but
+   none asserts that `required: true` AND `summary: true` coexist on the same output
+   block (ADR-055 §9 requires both to be present together).
+
+2. **`secret_scan_run` skip paths are silent**: The `no_baseline` and `empty_diff`
+   early-return paths in `plugins/tool/secret-scan/plugin.sh` call `atomic_write`
+   for the result JSON and then `return 0` without calling `stage_summary_write`.
+   ADR-055 §9 mandates the summary output is written on every terminal verdict
+   including the earliest bail-out. Because the SPEC-14 file-existence assertion
+   uses the `ss-v2` workdir (no_baseline skip path), this is the assertion that
+   fails at the merge-base baseline.
+
+3. **`secret_scan_run` pass path has an empty reason**: The pass path calls
+   `stage_summary_write ... ""` which renders as `- no findings`. ADR-055 §9
+   requires "a summary states what the stage DID" — `"clean diff — no secrets
+   found"` names the conclusion; bare absence language does not.
+
+**Decision.** Two files change:
+
+1. `tests/unit/gate-v2-contract-test.sh`: Append SPEC-14 block that
+   (a) greps each manifest for the coexistence of `required: true` and
+   `summary: true` in any single output block, and (b) asserts the detail/summary
+   file exists and is non-empty for every gate using the work directories already
+   established by SPEC-2 and SPEC-5.
+
+2. `plugins/tool/secret-scan/plugin.sh`:
+   - Add `stage_summary_write` calls to the `no_baseline` and `empty_diff`
+     skip paths (so the declared `required: true` summary output is always
+     written — making SPEC-14(b) pass for the `ss-v2` workdir).
+   - Replace the empty reason string on the pass path with
+     `"clean diff — no secrets found"` (ADR-055 §9 non-empty content requirement).
+
+**The red step.** At the merge-base (before commit 6447e3f0), the SPEC-14 assertions
+fail because: `[SPEC-14] secret-scan skip → summary file written` fails because
+`secret_scan_run` returns from the `no_baseline` path without calling
+`stage_summary_write`, so `secret-scan-detail.md` is absent in the `ss-v2` workdir.
+
+No manifest files change; the `required: true` + `summary: true` fields were already
+added by the migration commits. SPEC-14(a) (manifest check) would be a [guard] in
+isolation, but SPEC-14(b) (file existence for the secret-scan skip path) is the
+[change] behavior that fails at baseline, making the overall SPEC-14 tag [change].
+
+
+
+LOOP_COMPLETE
+Where a design decision above conflicts with the plan, follow the design decision.
+
+## ACCEPTANCE TESTS (you MUST make these pass)
+You do NOT author or modify acceptance assertions. They were written from the design contract by a separate stage, before your implementation existed, and they are the contract you implement against. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion, and you must not edit the testfiles listed below; the spawn denies it and a mechanical guard checks it. If you believe an assertion genuinely does not test its SPEC, say so in your output and leave it alone: correcting it is the author stage's job, not yours (#2022, ADR-036).
+Each test MUST contain an assert call whose label includes the [SPEC-n] tag for the SPEC it verifies (e.g. assert_eq "[SPEC-1] ..." exp act). The acceptance-gate (ADR-036) requires every SPEC-n to have a [SPEC-n]-tagged assertion. A CHANGE-behavior SPEC-n MUST have a tagged assertion that FAILS at the merge-base baseline and passes here (a tautological change-SPEC that passes without your implementation is rejected); a GUARD/invariant SPEC-n is tagged but NOT contorted to fail at baseline. See the per-id list below.
+- SPEC-14: tests/unit/gate-v2-contract-test.sh
+
+What each SPEC requires:
+- [SPEC-14] all seven gate manifests declare exactly one output with both required:true and summary:true (ADR-055 §9 mandatory pairing); every gate's summary/detail file is written and non-empty on every terminal verdict exercised in SPEC-2 workdirs, including secret-scan's no_baseline skip path; secret-scan's pass-path summary names its conclusion rather than stating bare absence
+
+### SPEC IDS YOU MUST COVER (acceptance gate, ADR-036)
+Every SPEC id below needs at least one assertion whose label carries its [SPEC-n] tag; self-verify the FULL set is tagged before emitting LOOP_COMPLETE. A CHANGE-behavior SPEC (new behavior this change introduces) MUST have a [SPEC-n] assertion that FAILS at the merge-base baseline. A GUARD/invariant SPEC (behavior that must stay unchanged) is tagged but MUST NOT be contorted to fail at baseline.
+- [SPEC-14] all seven gate manifests declare exactly one output with both required:true and summary:true (ADR-055 §9 mandatory pairing); every gate's summary/detail file is written and non-empty on every terminal verdict exercised in SPEC-2 workdirs, including secret-scan's no_baseline skip path; secret-scan's pass-path summary names its conclusion rather than stating bare absence
+  → needs a `[SPEC-14]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
