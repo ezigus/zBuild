@@ -162,7 +162,8 @@ _rr_parse_lens_out() {
     local json _rr_lp_prose
     _llm_envelope_parse --schema-gate _rr_lens_envelope_schema_ok \
         "$raw_out" json _rr_lp_prose
-    if [[ -z "$json" ]] || ! printf '%s' "$json" | jq empty >/dev/null 2>&1; then
+    if [[ -z "$json" ]] || ! printf '%s' "$json" | jq empty >/dev/null 2>&1 \
+        || ! _rr_lens_envelope_schema_ok "$json" 2>/dev/null; then
         emit_event "review_report.lens.unparseable" "lens=$lens" 2>/dev/null || true
         printf '%s' "$empty"; return 0
     fi

@@ -700,4 +700,106 @@ else
     assert_fail "[SPEC-17] plugin.sh must not concat state_dir with declared input filename" "hardcoded path found"
 fi
 
+# ─── SPEC-18: _rr_write_result writes data field (type==object) per ADR-054 §5 ─
+# ADR-054 §5 mandates an open-namespaced data object in the v2 result sidecar.
+# SPEC-2 verified result_contract/verdict/disposition/reason but never asserted
+# the data key's presence or type. Call _rr_write_result in a fresh dir and check
+# that .data exists and is an object (not null, not absent).
+_s18v2_dir="$TEST_TEMP_DIR/spec18v2"
+mkdir -p "$_s18v2_dir"
+_rr_write_result "$_s18v2_dir" "pass" "complete" "spec18_reason"
+assert_eq "[SPEC-18] v2 result sidecar has data field (ADR-054 §5 open-namespaced-data)" "object" \
+    "$(jq -r '.data | type' "$_s18v2_dir/review-report-result.json" 2>/dev/null || echo missing)"
+
+# ─── SPEC-19: ZBUILD_ROUTER_MAX_TURNS env override propagates into TURN BUDGET ─
+# Precedence chain: template > env > manifest config.router > compile-time default.
+# Set ZBUILD_ROUTER_MAX_TURNS=77 (distinct from the manifest default of 25 and from
+# all line numbers in the evidence fixture). Then run _rr_run_inner and verify the
+# lens prompt contains "77" inside the TURN BUDGET block, not the manifest default.
+_s19v2_dir="$TEST_TEMP_DIR/spec19v2"
+mkdir -p "$_s19v2_dir"
+cp "$evidence" "$_s19v2_dir/diff.patch"
+: > "$_RR_CALLS"
+export ZBUILD_ROUTER_MAX_TURNS=77
+set +e
+_rr_run_inner "$scope_manifest" \
+    "$_s19v2_dir/diff.patch" \
+    "$_s19v2_dir/review-report.json" \
+    "$_s19v2_dir/review-report.md" 2>/dev/null
+set -e
+unset ZBUILD_ROUTER_MAX_TURNS
+_s19v2_prompt="$(cat "$_s19v2_dir/lens-correctness-prompt.txt" 2>/dev/null || echo MISSING)"
+assert_contains "[SPEC-19] correctness lens prompt contains TURN BUDGET block (env override path)" \
+    "$_s19v2_prompt" "TURN BUDGET"
+assert_contains "[SPEC-19] TURN BUDGET block reflects ZBUILD_ROUTER_MAX_TURNS=77 override (not manifest default 25)" \
+    "$_s19v2_prompt" "77"
+
+# ─── SPEC-20: _rr_parse_lens_out emits unparseable event + recovery on schema failure ─
+# When route_to_model returns rc=0 and a non-empty reply that fails
+# _rr_lens_envelope_schema_ok, _rr_parse_lens_out must:
+#   1. emit review_report.lens.unparseable to ZBUILD_EVENTS_JSONL
+#   2. degrade to recovery empty-result (score:0, findings:[]) for that lens
+# This proves the visible-failure path is preserved after the parser switch from
+# extract_first_json_object to _llm_envelope_parse --schema-gate.
+_s20v2_dir="$TEST_TEMP_DIR/spec20v2"
+mkdir -p "$_s20v2_dir"
+cp "$evidence" "$_s20v2_dir/diff.patch"
+_s20v2_events="$_s20v2_dir/events.jsonl"
+: > "$_s20v2_events"
+export ZBUILD_EVENTS_JSONL="$_s20v2_events"
+# correctness returns rc=0, non-empty, but no score or findings — fails schema gate.
+route_to_model() {
+    printf 'call\n' >> "$_RR_CALLS"
+    local prompt="${2:-}"
+    if [[ "$prompt" == *'"correctness" review lens'* ]]; then
+        printf '%s' '{"verdict":"pass","status":"ok"}'
+        return 0
+    fi
+    printf '%s' '{"score":10,"findings":[]}'
+    return 0
+}
+: > "$_RR_CALLS"
+set +e
+_rr_run_inner "$scope_manifest" "$_s20v2_dir/diff.patch" \
+    "$_s20v2_dir/review-report.json" "$_s20v2_dir/review-report.md" 2>/dev/null
+set -e
+assert_event_emitted \
+    "[SPEC-20] review_report.lens.unparseable emitted on schema-invalid rc=0 reply" \
+    "$_s20v2_events" "review_report.lens.unparseable"
+_s20v2_lens_score="$(jq -r '.lenses[] | select(.name=="correctness") | .score' \
+    "$_s20v2_dir/review-report.json" 2>/dev/null || echo missing)"
+assert_eq "[SPEC-20] correctness lens recovery score is 0 on unparseable reply" "0" "$_s20v2_lens_score"
+_s20v2_lens_findings="$(jq -r '.lenses[] | select(.name=="correctness") | .findings | length' \
+    "$_s20v2_dir/review-report.json" 2>/dev/null || echo missing)"
+assert_eq "[SPEC-20] correctness lens recovery findings is empty array on unparseable reply" "0" \
+    "$_s20v2_lens_findings"
+# Restore original route_to_model stub and events file.
+export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
+route_to_model() {
+    printf 'call\n' >> "$_RR_CALLS"
+    local prompt="$2"
+    if [[ "$prompt" == *'"correctness" review lens'* ]]; then
+        printf '%s' '{"score":6,"findings":[{"file":"core/x.sh","category":"logic","severity":"medium","line":42,"message":"off-by-one in loop"}]}'
+    elif [[ "$prompt" == *'"security" review lens'* ]]; then
+        printf '%s' '{"score":3,"findings":[{"file":"core/x.sh","category":"logic","severity":"high","line":47,"message":"same region higher severity"},{"file":"core/y.sh","category":"injection","severity":"critical","line":10,"message":"shell injection risk"}]}'
+    elif [[ "$prompt" == *'"integration" review lens'* ]]; then
+        printf '%s' '{"score":10,"findings":[]}'
+    elif [[ "$prompt" == *'"error-handling" review lens'* ]]; then
+        printf '%s' '{"score":10,"findings":[]}'
+    elif [[ "$prompt" == *'"performance" review lens'* ]]; then
+        printf '%s' '{"score":10,"findings":[]}'
+    elif [[ "$prompt" == *'"edge-case" review lens'* ]]; then
+        printf '%s' '{"score":10,"findings":[]}'
+    elif [[ "$prompt" == *'"architecture" review lens'* ]]; then
+        printf '%s' '{"score":10,"findings":[]}'
+    elif [[ "$prompt" == *'"red-team" review lens'* ]]; then
+        printf '%s' '{"score":10,"findings":[]}'
+    elif [[ "$prompt" == *'"maintainability" review lens'* ]]; then
+        printf '%s' '{"score":10,"findings":[]}'
+    else
+        printf '%s' '{"score":10,"findings":[]}'
+    fi
+    return 0
+}
+
 print_test_results
