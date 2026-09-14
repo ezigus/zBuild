@@ -304,6 +304,14 @@ _review_lens_run_inner() {
     fi
     trap - TERM INT
 
+    # rc=10 (budget/turn exhaustion — ADR-063 §3): distinct from advisory rc=0
+    # degrade paths. Write disposition:exhausted and propagate rc=10 so the engine
+    # can apply the §3 escalation (disposition.sh:97 → route.sh:749 +50% retry).
+    if [[ "$router_rc" -eq 10 ]]; then
+        _review_lens_write_result "$out" "degraded" "exhausted" "budget_exhausted"
+        return 10
+    fi
+
     # ─── Parse + normalize into {result_contract, schema_version, name, score, findings[]} ───
     # A failed or unparseable lens degrades to empty (advisory — never fatal).
     if [[ $router_rc -ne 0 || -z "$raw_response" ]]; then
