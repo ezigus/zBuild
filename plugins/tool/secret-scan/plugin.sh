@@ -161,6 +161,8 @@ secret_scan_run() {
     if [[ -z "$repo_root" || -z "$base" ]]; then
         printf '{"result_contract":2,"verdict":"skip","disposition":"complete","reason":"no_baseline","baseline":"","finding_count":0,"findings":[]}\n' \
             | atomic_write "$result_path"
+        stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "skip" \
+            "no baseline — nothing to scan"
         _ss_emit "secret_scan.skip" "reason=no_baseline"
         _ss_emit "plugin.result" "plugin=secret-scan" "verdict=skip"
         return 0
@@ -173,6 +175,8 @@ secret_scan_run() {
     if [[ -z "$diff_text" ]]; then
         printf '{"result_contract":2,"verdict":"skip","disposition":"complete","reason":"empty_diff","baseline":"%s","finding_count":0,"findings":[]}\n' "$base" \
             | atomic_write "$result_path"
+        stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "skip" \
+            "empty diff — nothing to scan"
         _ss_emit "secret_scan.skip" "reason=empty_diff"
         _ss_emit "plugin.result" "plugin=secret-scan" "verdict=skip"
         return 0
@@ -206,7 +210,8 @@ secret_scan_run() {
 
     printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"clean","baseline":"%s","finding_count":0,"findings":[]}\n' "$base" \
         | atomic_write "$result_path"
-    stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "pass" ""
+    stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "pass" \
+        "clean diff — no secrets found"
     _ss_emit "secret_scan.pass"
     _ss_emit "plugin.result" "plugin=secret-scan" "verdict=pass"
     return 0
