@@ -512,6 +512,11 @@ if declare -f _rr_lens_envelope_schema_ok >/dev/null 2>&1; then
 else
     assert_fail "[SPEC-7] _rr_lens_envelope_schema_ok predicate must exist" "function absent"
 fi
+if grep -qE '_rr_lens_envelope_schema_ok[[:space:]]*\(\)|function[[:space:]]+_rr_lens_envelope_schema_ok' "$_V2_LENSES"; then
+    assert_pass "[SPEC-7] _rr_lens_envelope_schema_ok is defined in lenses.sh"
+else
+    assert_fail "[SPEC-7] _rr_lens_envelope_schema_ok must be defined in lenses.sh" "definition absent from lenses.sh"
+fi
 if _rr_lens_envelope_schema_ok '{"score":8,"findings":[]}' 2>/dev/null; then
     assert_pass "[SPEC-7] schema gate accepts valid {score:number, findings:array}"
 else
@@ -543,6 +548,11 @@ if grep -q -- '--schema-gate' "$_V2_LENSES"; then
     assert_pass "[SPEC-8] _rr_parse_lens_out calls _llm_envelope_parse with --schema-gate"
 else
     assert_fail "[SPEC-8] _rr_parse_lens_out must use --schema-gate option" "flag absent"
+fi
+if grep -qE -- '--schema-gate[[:space:]]+_rr_lens_envelope_schema_ok' "$_V2_LENSES"; then
+    assert_pass "[SPEC-8] --schema-gate argument is _rr_lens_envelope_schema_ok in lenses.sh"
+else
+    assert_fail "[SPEC-8] _rr_parse_lens_out must pass _rr_lens_envelope_schema_ok to --schema-gate" "exact argument absent"
 fi
 
 # ─── SPEC-9: _rr_run_inner returns 0 and advisory review-report.json written (GUARD) ─
