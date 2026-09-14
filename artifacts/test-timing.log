@@ -1,6 +1,6 @@
-cpu 632 1177 tests/integration/cleanup-release-test.sh
-file 1636 tests/integration/cleanup-release-test.sh
-cpu 2152 4466 tests/unit/review-report-plugin-test.sh
-file 5463 tests/unit/review-report-plugin-test.sh
-cpu 3138 7222 tests/unit/teardown-purge-scratch-test.sh
-file 9820 tests/unit/teardown-purge-scratch-test.sh
+cpu 605 1190 tests/integration/cleanup-release-test.sh
+file 1623 tests/integration/cleanup-release-test.sh
+cpu 2213 4369 tests/unit/review-report-plugin-test.sh
+file 5434 tests/unit/review-report-plugin-test.sh
+cpu 2942 7319 tests/unit/teardown-purge-scratch-test.sh
+file 9725 tests/unit/teardown-purge-scratch-test.sh
