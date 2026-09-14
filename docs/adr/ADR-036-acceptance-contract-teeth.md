@@ -266,7 +266,7 @@ precedence highest-first):
 | disposition   | failure classes                                                            | engine effect                                             |
 | ------------- | -------------------------------------------------------------------------- | --------------------------------------------------------- |
 | `terminal`    | no_testfile, malformed_acceptance_block                                    | HALT — cycle does not converge (rc=8), pipeline.end=failed |
-| `recoverable` | untagged_spec:*, tautology:*, inert_wiring:*, not_passing_at_head:*, wiring_not_on_path:* | NON-terminal; build feedback loop (cycle re-iterates); wiring_not_on_path always sets route_target=design; inert_wiring and not_passing_at_head also set fault=specification on ZBUILD_CYCLE_ITER≥2 (Amendments #1711, #2097) |
+| `recoverable` | untagged_spec:*, tautology:*, inert_wiring:*, guard_regressed:*, not_passing_at_head:*, wiring_not_on_path:* | NON-terminal; build feedback loop (cycle re-iterates); wiring_not_on_path always sets route_target=design; inert_wiring and not_passing_at_head also set fault=specification on ZBUILD_CYCLE_ITER≥2 (Amendments #1711, #2097) |
 | `advisory`    | negctl_error:* / reachability_error:* (only — resolve/worktree/timeout)    | NON-terminal AND non-blocking for convergence (infra flake)|
 | `none`        | (verdict=pass)                                                             | n/a                                                        |
 
