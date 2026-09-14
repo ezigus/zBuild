@@ -1,0 +1,9 @@
+{
+  "result_contract": 2,
+  "verdict": "covered",
+  "disposition": "complete",
+  "reason": "The design explicitly states that five prior commits covered all seven-gate acceptance criteria (v2 result, valid_verdicts, primary, no-path-construction, router budgets, golden diff) via SPEC-1..13, and SPEC-14 addresses the sole remaining gap — the ADR-055 §9 mandatory summary pairing and write-on-every-path requirement — which is exactly what the issue's late-added acceptance checkbox calls for.",
+  "data": {
+    "uncovered": []
+  }
+}
