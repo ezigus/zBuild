@@ -365,7 +365,10 @@ done
 # the ADR-055 §9 mandatory pairing: both must coexist on the SAME output block.
 for _plugin in coverage-gate design-gate gate-aggregator lint-gate mutation-gate secret-scan shape-floor; do
     _mf="$REPO_ROOT/plugins/tool/$_plugin/manifest.yaml"
+    # A comment may quote `summary: true` (coverage-gate does, citing #1976) —
+    # skip comment lines or the count reads prose as config (#1848 dogfood).
     _paired="$(awk '
+        /^[[:space:]]*#/ { next }
         /^outputs:/ { in_outputs=1; next }
         in_outputs && /^[^[:space:]]/ { if (req && sum) count++; req=0; sum=0; in_outputs=0 }
         in_outputs && /^  - id:/ { if (req && sum) count++; req=0; sum=0 }
