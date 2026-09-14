@@ -1,6 +1,5 @@
-## design — pass
+## design — error
 
-- authored design.md — 29 file(s) in scope, 34 acceptance SPEC(s)
+- no design.md was produced
 
-- scope: plugins/agent/review-report/manifest.yaml,plugins/agent/review-report/plugin.sh,plugins/agent/review-report/lib/lenses.sh,tests/unit/review-report-plugin-test.sh,tests/golden/review-report-pass.json,docs/wiki/plugins/review-report.md,docs/adr/ADR-001-plugin-contract.md,docs/adr/ADR-028-shared-llm-agent-framework.md,docs/adr/ADR-038-adversarial-multilens-review-report.md,docs/adr/ADR-054-stage-contract.md,docs/adr/ADR-063-budget-disclosure-and-partial-output.md,tests/integration/review-report-advisory-flow-test.sh,tests/integration/merge-policy-auto-test.sh,tests/integration/merge-policy-auto-unless-flagged-test.sh,tests/unit/call-graph-evidence-test.sh,tests/unit/review-lens-report-merge-base-bundle-test.sh,tests/unit/review-aggregator-test.sh,tests/unit/review-aggregator-roster-test.sh,tests/unit/event-schema-emitted-coverage-test.sh,tests/unit/adr-migration-claims-test.sh,tests/unit/pr-open-advisory-review-test.sh,tests/unit/template-simple-yaml-test.sh,tests/unit/tier-resolve-test.sh,scripts/lib/llm-agent.sh,scripts/lib/artifact-render.sh,core/contract/version.sh,core/plugin-registry/manifest-validation.sh,config/event-schema.json,config/templates/simple.yaml
-- artifact: design.md
+The model returned without writing the artifact this stage exists to produce.
