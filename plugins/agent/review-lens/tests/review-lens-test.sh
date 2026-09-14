@@ -719,6 +719,113 @@ unset -f template_stage_router_max_turns 2>/dev/null || true
 [[ "$_1840_prev_s14_stage" == "__UNSET__" ]] && unset ZBUILD_CURRENT_STAGE \
     || export ZBUILD_CURRENT_STAGE="$_1840_prev_s14_stage"
 
+# ─── SPEC-15 [change]: rc=10 writes disposition:exhausted, propagates rc=10 ───
+# rc=10 (budget exhaustion) must produce a dedicated exhausted branch — distinct
+# from advisory rc=0 degrade paths (broken/router_error or broken/unparseable_reply)
+# and from rc=130 interrupted. The plugin must NOT fall through to the generic
+# router_rc!=0 handler that writes disposition:broken/reason:router_error.
+# shellcheck disable=SC2329
+route_to_model() { printf 'call\n' >> "$_RL_CALLS"; return 10; }
+out_1840_s15="$artifact_dir/lens-1840spec15.json"
+rm -f "$out_1840_s15" 2>/dev/null || true
+set +e
+_review_lens_run_inner "1840spec15" "$scope_manifest" "$evidence" "$out_1840_s15" "$artifact_dir"
+_1840_s15_rc=$?
+set -e
+assert_eq "[SPEC-15] rc=10 path propagates rc=10 (distinct from advisory rc=0)" \
+    "10" "$_1840_s15_rc"
+assert_file_exists "[SPEC-15] rc=10 path writes lens file before returning" "$out_1840_s15"
+assert_eq "[SPEC-15] rc=10 result_contract == 2" \
+    "2" "$(jq -r '.result_contract // empty' "$out_1840_s15")"
+assert_eq "[SPEC-15] rc=10 verdict == degraded" \
+    "degraded" "$(jq -r '.verdict // empty' "$out_1840_s15")"
+assert_eq "[SPEC-15] rc=10 disposition == exhausted" \
+    "exhausted" "$(jq -r '.disposition // empty' "$out_1840_s15")"
+assert_eq "[SPEC-15] rc=10 reason == budget_exhausted" \
+    "budget_exhausted" "$(jq -r '.reason // empty' "$out_1840_s15")"
+# Confirm rc=10 is strictly between advisory (rc=0) and interrupted (rc=130)
+if [[ "$_1840_s15_rc" -eq 0 ]]; then
+    assert_fail "[SPEC-15] rc=10 must NOT collapse to advisory rc=0" "rc was 0"
+fi
+if [[ "$_1840_s15_rc" -eq 130 ]]; then
+    assert_fail "[SPEC-15] rc=10 must NOT be rc=130 (interrupted path)" "rc was 130"
+fi
+
+# ─── SPEC-16 [change]: manifest provides.events — exactly three declared events ─
+# The manifest must declare exactly review_lens.failed, review_lens.redaction_failed,
+# and review_lens.unparseable under provides.events — no more, no less. (ADR-001
+# §"Declared events", #1717). validate_manifest must accept those declarations.
+_1840_events_section="$(awk '/^provides:/{found=1} found && /^[^ ]/{if(!/^provides:/)exit} found{print}' \
+    "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
+for _1840_ev in "review_lens.failed" "review_lens.redaction_failed" "review_lens.unparseable"; do
+    if grep -qF "$_1840_ev" <<< "$_1840_events_section"; then
+        assert_pass "[SPEC-16] manifest provides.events declares $_1840_ev"
+    else
+        assert_fail "[SPEC-16] manifest provides.events must declare $_1840_ev" "absent"
+    fi
+done
+# Count total event entries in provides.events — must be exactly 3
+_1840_event_count="$(grep -c 'review_lens\.' <<< "$_1840_events_section" 2>/dev/null || echo 0)"
+assert_eq "[SPEC-16] manifest provides.events declares exactly 3 events (no more, no less)" \
+    "3" "$_1840_event_count"
+# validate_manifest must pass with those event declarations
+set +e
+validate_manifest "$PLUGIN_DIR/manifest.yaml" >/dev/null 2>&1
+_1840_s16_vm_rc=$?
+set -e
+assert_eq "[SPEC-16] validate_manifest passes with provides.events declarations" \
+    "0" "$_1840_s16_vm_rc"
+
+# ─── SPEC-17 [change]: manifest provides.role == review_lens ─────────────────
+# The resolver (core/pipeline/resolver.sh) binds dispatch by provides.role (#1704).
+# The manifest must declare provides.role: review_lens.
+_1840_role="$(yaml_get "$PLUGIN_DIR/manifest.yaml" "provides.role" 2>/dev/null || true)"
+assert_eq "[SPEC-17] manifest provides.role == review_lens" \
+    "review_lens" "$_1840_role"
+
+# ─── SPEC-18 [change]: manifest inputs declare only id and required ───────────
+# Name-matched inputs contract (ADR-055 §1, #1825/#1826): each inputs[] entry
+# must carry ONLY id and required — no producer_stage, path, or type fields.
+_1840_inputs_section="$(awk '/^inputs:/{found=1;next} found && /^[^ ]/{exit} found{print}' \
+    "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
+for _1840_forbidden in "producer_stage" "path" "type"; do
+    if grep -q "^\s*${_1840_forbidden}:" <<< "$_1840_inputs_section"; then
+        assert_fail "[SPEC-18] manifest inputs must NOT declare ${_1840_forbidden} (name-matched contract)" \
+            "found ${_1840_forbidden}"
+    else
+        assert_pass "[SPEC-18] manifest inputs do not declare ${_1840_forbidden}"
+    fi
+done
+# Each entry must have id
+if grep -q "id:" <<< "$_1840_inputs_section"; then
+    assert_pass "[SPEC-18] manifest inputs entries declare id"
+else
+    assert_fail "[SPEC-18] manifest inputs entries must declare id" "absent"
+fi
+# Each entry must have required
+if grep -q "required:" <<< "$_1840_inputs_section"; then
+    assert_pass "[SPEC-18] manifest inputs entries declare required"
+else
+    assert_fail "[SPEC-18] manifest inputs entries must declare required" "absent"
+fi
+
+# ─── SPEC-19 [guard]: hooks.cleanup absent; ADR-054 §7 comment present ───────
+# ADR-054 §7 (#1829): plugins that hold no live resources must NOT declare
+# hooks.cleanup. The absence is intentional and the manifest must carry a comment
+# explaining why (so future readers do not add it by mistake).
+if grep -qE '^\s*cleanup\s*:' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null; then
+    assert_fail "[SPEC-19] hooks.cleanup must be absent from manifest.yaml" "found cleanup key"
+else
+    assert_pass "[SPEC-19] hooks.cleanup is absent from manifest.yaml"
+fi
+# The manifest must carry an explanatory comment referencing ADR-054 §7
+if grep -q 'ADR-054.*§7\|ADR-054.*§ *7' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null; then
+    assert_pass "[SPEC-19] manifest contains explanatory comment citing ADR-054 §7"
+else
+    assert_fail "[SPEC-19] manifest must carry a comment citing ADR-054 §7 for absent hooks.cleanup" \
+        "comment absent"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
