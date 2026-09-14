@@ -228,15 +228,25 @@ _inputs_build_producer_index() {
 }
 
 # ─── _inputs_effective_path <live_path> [input_id] ───────────────────────────
-# Per-input existence precedence, unchanged from prior-output-reader.sh:12-16 —
-# the cycle-feedback copy (iteration >= 2) wins, then the restored cross-run
-# copy, then the live artifact. Returns a PATH rather than the content, which is
-# the only difference from _read_prior_output.
+# Per-input existence precedence: the cycle-feedback copy (iteration >= 2)
+# wins, then the LIVE artifact, then the restored cross-run copy. Returns a
+# PATH rather than the content.
 #
-# The ORDER is reused; _read_prior_output itself is deliberately not called and
-# not changed. Its `prior_<field>.txt` naming belongs to ADR-050 prior-run reuse,
-# which ADR-055 §1.2 keeps OUTSIDE the input model ("the producer is the consuming
-# stage itself in an earlier run"). Its four live call sites (plan.json,
+# This is NOT the order of prior-output-reader.sh:12-16, and #2095 is why. That
+# reader serves ADR-050 self-seeding — a stage reading its OWN earlier output as
+# advisory context — so "prior first" is its point. A declared input is the
+# opposite relationship: the consumer wants what its producer wrote THIS run.
+# Copying the reader's order here handed impact the prior run's design.md while
+# the fresh, gate-passed one sat next to it (run 34837524723), and every warm
+# start silently discarded each stage's work at the next stage. ADR-059 records
+# the corrected rule ("input-resolve.sh reads the live path first"); the
+# restored copy remains a fallback for the absent-live case only, the same rule
+# stage-checkpoint.sh applies.
+#
+# _read_prior_output itself is deliberately not called and not changed. Its
+# `prior_<field>.txt` naming belongs to ADR-050 prior-run reuse, which ADR-055
+# §1.2 keeps OUTSIDE the input model ("the producer is the consuming stage
+# itself in an earlier run"). Its four live call sites (plan.json,
 # build-summary.json, impact.json, lens-<x>.json) match no template `to.input`
 # today, so the two namespaces do not collide — but a template that ever wired
 # `to.input: plan` would make them, and that is the seam to watch.
@@ -256,6 +266,7 @@ _inputs_effective_path() {
         local f="$fb/${in_id}.txt"
         [[ -s "$f" ]] && { printf '%s' "$f"; return 0; }
     fi
+    [[ -s "$live" ]] && { printf '%s' "$live"; return 0; }
     local restored="${ZBUILD_RESTORED_ARTIFACTS_DIR:-}"
     [[ -n "$restored" && -s "$restored/$base" ]] && { printf '%s' "$restored/$base"; return 0; }
     printf '%s' "$live"
