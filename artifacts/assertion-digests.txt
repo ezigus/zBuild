@@ -1,0 +1,1 @@
+b3a4c43f551816f45a552d4e82221a061f341536e7b1185a63af218b4ad77568  tests/unit/gate-v2-contract-test.sh
