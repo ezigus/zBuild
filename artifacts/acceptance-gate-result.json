@@ -1,0 +1,1 @@
+{"verdict":"fail","disposition":"terminal","reason":"acceptance SPEC violations — SPEC-14 not passing at HEAD — fix the implementation or the assertion; WIRING plugins/tool/secret-scan/plugin.sh inert — reverting it breaks no TESTFILE","failures":["not_passing_at_head:SPEC-14","inert_wiring:plugins/tool/secret-scan/plugin.sh"]}
