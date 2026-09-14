@@ -1,6 +1,6 @@
-## spec-correspondence — partial
+## spec-correspondence — unjudged
 
-- judged 1 SPEC(s): 0 correspond, 1 partial, 0 mismatch, 0 uncheckable, 0 unjudged
+- judged 1 SPEC(s): 0 correspond, 0 partial, 0 mismatch, 0 uncheckable, 1 unjudged
 
-- SPEC-1 partial: The three `grep -q` checks confirm the required strings appear somewhere in the manifest file, but the requirement demands structural placement — `result_contract:2` specifically under `provides:` and `timeout_s`/`max_turns` specifically inside a `config.router:` block — neither of which a flat string search establishes.
+- SPEC-1 UNJUDGED (no parseable verdict in the reply)
 
