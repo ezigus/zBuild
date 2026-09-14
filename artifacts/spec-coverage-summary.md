@@ -1,0 +1,5 @@
+## spec-coverage — covered
+
+- Every explicit acceptance checkbox maps to a SPEC — v2 result on all paths (SPEC-1), summary required:true on all verdicts (SPEC-2), no constructed input paths (SPEC-3), behavior unchanged (SPEC-4), valid_verdicts declared and tested (SPEC-5), router budgets/structurally inapplicable (SPEC-6), primary output (SPEC-7), provides.role (SPEC-8), provides.events (SPEC-9), no cleanup hook (SPEC-10).
+
+- every requirement the issue states maps to a declared SPEC
