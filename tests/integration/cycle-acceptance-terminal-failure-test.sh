@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Integration: #1044 / #1188 — acceptance-gate verdict=fail behavior at cycle end.
 # When the acceptance-gate writes verdict=fail with a TERMINAL (genuine-violation)
-# class (inert_wiring / tautology / not_passing_at_head), the build_test_cycle
+# class (no_testfile / malformed_acceptance_block; #1585/#2097 moved the rest), the build_test_cycle
 # must NOT converge — the pipeline halts with pipeline.end status=failed (rc=8
 # propagated outward).
 # Complementary NON-terminal classes let the cycle converge → status=success:
