@@ -243,5 +243,38 @@ _detail_req="$(awk '/^  - id: acceptance_detail/{f=1} f && /^    required:/{prin
 assert_eq "[SPEC-7] acceptance_detail output required: true (summary on every terminal path)" \
     "true" "$_detail_req"
 
+# ── C12: SPEC-8 — manifest declares provides.role: acceptance_gate ────────────
+# Templates resolve this gate by role, not by id (ADR-042/047); the field must
+# be present or the resolver cannot bind the plugin to the acceptance_gate slot.
+assert_contains "[SPEC-8] manifest declares provides.role: acceptance_gate" \
+    "$_manifest_text" "role: acceptance_gate"
+
+# ── C13: SPEC-9 — manifest provides.events lists every acceptance.gate.* event ─
+# For each acceptance.gate.* event emitted via eb_emit_event in plugin.sh, assert
+# it appears in the manifest's provides.events list (ADR-001 §Declared events,
+# #1717 — no event is emitted without a corresponding declaration).
+_declared_events_list="$(awk \
+    '/^  events:/{f=1; next} f && /^    - /{print $2; next} f{exit}' \
+    "$MANIFEST_PATH")"
+_declared_evt_count="$(grep -c 'acceptance\.gate\.' <<< "$_declared_events_list" || true)"
+assert_gt "[SPEC-9] manifest provides.events is non-empty (at least one event declared)" \
+    "$_declared_evt_count" "0"
+while IFS= read -r _evt; do
+    [[ -z "$_evt" ]] && continue
+    assert_contains "[SPEC-9] emitted event '$_evt' is declared in manifest provides.events" \
+        "$_declared_events_list" "$_evt"
+done < <(grep -oE '"acceptance\.gate\.[^"]*"' \
+    "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" 2>/dev/null \
+    | tr -d '"' | sort -u)
+
+# ── C14: SPEC-10 — manifest has no hooks.cleanup entry ───────────────────────
+# spec-acceptance holds no live resources; when teardown dispatches the cleanup
+# hook, plugin_hook_call emits plugin.cleanup.absent and returns 0 (ADR-056,
+# #1829). The absence of hooks.cleanup is intentional — asserting it prevents
+# an accidental addition from silently breaking the teardown contract.
+_hooks_section="$(awk '/^hooks:/{f=1; next} f && /^[^ ]/{f=0} f{print}' "$MANIFEST_PATH")"
+_cleanup_in_hooks="$(grep 'cleanup' <<< "$_hooks_section" 2>/dev/null || true)"
+assert_eq "[SPEC-10] manifest has no hooks.cleanup entry" "" "$_cleanup_in_hooks"
+
 cleanup_test_env
 print_test_results
