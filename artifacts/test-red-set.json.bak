@@ -1,5 +1,6 @@
 [
   "tests/integration/cleanup-release-test.sh",
+  "tests/integration/engine-isolation-test.sh",
   "tests/unit/review-report-plugin-test.sh",
   "tests/unit/teardown-purge-scratch-test.sh"
 ]
