@@ -12,7 +12,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.ISXP96/home/.zbuild/state/artifacts/stage-io/router-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.vM1Rpe/home/.zbuild/state/artifacts/stage-io/router-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;248;113;113m✗[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -83,7 +83,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.EKH4hH/home/.zbuild/state/artifacts/stage-io/router-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.6oaJdR/home/.zbuild/state/artifacts/stage-io/router-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
