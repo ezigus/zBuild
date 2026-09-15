@@ -181,7 +181,9 @@ _rr_fanout_lenses() {
 ZBUILD_STAGE_INPUTS="$_d9/stage-inputs.json" review_report_run "review" "$_d9/pipeline-state.json" >/dev/null 2>&1
 assert_eq "[SPEC-9] scope_manifest resolved from the ZBUILD_STAGE_INPUTS index" "$_d9/from-index.md" "$(cat "$_d9/seen-scope.txt" 2>/dev/null)"
 assert_eq "[SPEC-9] hook path writes a complete v2 primary" "complete" "$(_v2 disposition "$_d9/artifacts/review-report.json")"
-unset -f _rr_fanout_lenses; source "$PLUGIN_DIR/lib/lenses.sh"
+unset -f _rr_fanout_lenses; unset _ZBUILD_RR_LENSES_LOADED; source "$PLUGIN_DIR/lib/lenses.sh"  # the load guard would otherwise make this a no-op
+assert_eq "[SPEC-9] real fan-out restored after the mock (11 lens calls again)" "11" \
+    "$(_d9c="$TEST_TEMP_DIR/s9c"; _fixture "$_d9c"; rm -f "$_RR_PROMPTS"/*.txt; _rr_run_inner "$_d9c/scope.md" "$_d9c/diff.patch" "$_d9c/review-report.json" "$_d9c/review-report.md" >/dev/null 2>&1; ls "$_RR_PROMPTS" | wc -l | tr -d ' ')"
 assert_eq "[SPEC-9] plugin.sh constructs no scope-manifest.md path" "0" \
     "$(grep -c 'scope-manifest.md' "$PLUGIN_DIR/plugin.sh" || true)"
 
