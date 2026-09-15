@@ -1,0 +1,322 @@
+diff --git a/plugins/agent/security-lens/manifest.yaml b/plugins/agent/security-lens/manifest.yaml
+index e4e16ac9..21754c34 100644
+--- a/plugins/agent/security-lens/manifest.yaml
++++ b/plugins/agent/security-lens/manifest.yaml
+@@ -27,16 +27,24 @@ requires:
+ 
+ provides:
+   role: security-auditor
++  result_contract: 2
++  # ADR-001 §"Declared events" (#1717) — this plugin's own events.
++  events:
++    - plugin.result
++    - security_lens.failed
+ 
+ config:
+-  # Writes no .verdict on either verdict channel; the engine falls back to
+-  # pass for a well-formed primary (core/pipeline/verdict.sh). An ABSENT key
+-  # is a lint failure; the explicit [] is the claim (#1708).
+-  valid_verdicts: []
++  valid_verdicts:
++    - pass
++    - error
+   tier_default: T3
+   max_findings: 50
+   # Trigger keywords for escalation (legacy: _COMPOUND_TRIGGERS_security at :367)
+   triggers: "injection|auth|secret|credential|permission|bypass|xss|csrf|traversal|sanitiz"
++  # ADR-017 §11 (#1816): router budget defaults. Template override wins when set.
++  router:
++    timeout_s: 600
++    max_turns: 45
+ 
+ inputs:
+   # security-lens runs inside compound_quality (orchestrator). It does NOT
+diff --git a/plugins/agent/security-lens/plugin.sh b/plugins/agent/security-lens/plugin.sh
+index 9a5e7189..a997fb51 100644
+--- a/plugins/agent/security-lens/plugin.sh
++++ b/plugins/agent/security-lens/plugin.sh
+@@ -46,6 +46,37 @@ _security_lens_envelope_schema_ok() {
+     ' >/dev/null 2>&1
+ }
+ 
++# ADR-054 §6 / ADR-060 §1: write v2 result artifact atomically.
++# Keeps top-level findings/stub for backward compat with pre-v2 consumers.
++# Args: <output-path> <verdict> <disposition> <reason> [<findings-json>]
++_security_lens_write_result() {
++    local output="$1" verdict="$2" disposition="$3" reason="$4"
++    local findings_json="${5:-[]}"
++    local now; now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
++    jq -n \
++        --arg ts "$now" \
++        --arg verdict "$verdict" \
++        --arg disposition "$disposition" \
++        --arg reason "$reason" \
++        --argjson findings "$findings_json" \
++        '{
++            result_contract: 2,
++            verdict: $verdict,
++            disposition: $disposition,
++            reason: $reason,
++            plugin_id: "security-lens",
++            generated_at: $ts,
++            findings: $findings,
++            stub: false,
++            data: {
++                plugin_id: "security-lens",
++                generated_at: $ts,
++                findings: $findings,
++                stub: false
++            }
++        }' | atomic_write "$output"
++}
++
+ # ─── run ────────────────────────────────────────────────────────────────────
+ # Hook called by the pipeline runner: security_lens_run(stage, state_file)
+ # Derives artifact paths from state_dir and delegates to the inner function.
+@@ -53,10 +84,16 @@ security_lens_run() {
+     local state_file="${2:-}"
+     if [[ -z "$state_file" ]]; then
+         error "security_lens_run: state_file argument required"
++        if [[ -n "${ZBUILD_ARTIFACT_DIR:-}" ]]; then
++            mkdir -p "$ZBUILD_ARTIFACT_DIR" 2>/dev/null || true
++            _security_lens_write_result "$ZBUILD_ARTIFACT_DIR/security-findings.json" \
++                "error" "broken" \
++                "the engine dispatched this stage with no state file"
++        fi
+         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/security-lens-summary.md}" "security-lens" "error" \
+             "the engine dispatched this stage with no state file, so it could not run" \
+             "No work was attempted. This is an engine contract violation, not a fault in the change."
+-        return 2
++        return 1
+     fi
+     local state_dir; state_dir="$(dirname "$state_file")"
+     local artifacts_dir="$state_dir/artifacts"
+@@ -87,7 +124,7 @@ _security_lens_run_inner() {
+ 
+     if [[ -z "$input" || -z "$output" ]]; then
+         error "security_lens_run: requires <input> <scope_manifest> <output>"
+-        return 2
++        return 1
+     fi
+ 
+     mkdir -p "$artifact_dir"
+@@ -156,6 +193,8 @@ _security_lens_run_inner() {
+         warn "security_lens_run: router rc=1 (recoverable); using empty findings"
+     elif [[ $router_rc -ne 0 ]]; then
+         error "security_lens_run: router rc=$router_rc (fatal); refusing to emit"
++        _security_lens_write_result "$output" "error" "broken" \
++            "the model call failed, so no security review happened"
+         stage_summary_write "$artifact_dir/security-lens-summary.md" "security-lens" "error" \
+             "the model call failed, so no security review happened" \
+             "This lens contributed no findings; absence here is not evidence of safety."
+@@ -164,24 +203,14 @@ _security_lens_run_inner() {
+         return 1
+     fi
+ 
+-    # ─── Write findings.json (schema unchanged + stub:false marker) ───────
+-    local now findings_count
+-    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
++    # ─── Write findings.json (v2 contract + backward-compat top-level fields) ─
++    local findings_count
+     findings_count="$(printf '%s' "$findings_json" | jq 'length' 2>/dev/null || echo 0)"
+-
+-    jq -n \
+-        --arg ts "$now" \
+-        --argjson findings "$findings_json" \
+-        '{
+-            schema_version: 1,
+-            plugin_id: "security-lens",
+-            generated_at: $ts,
+-            findings: $findings,
+-            stub: false
+-        }' | atomic_write "$output"
++    local _reason="reviewed the change for security issues — $findings_count finding(s)"
++    _security_lens_write_result "$output" "pass" "complete" "$_reason" "$findings_json"
+ 
+     stage_summary_write "$artifact_dir/security-lens-summary.md" "security-lens" "pass" \
+-        "reviewed the change for security issues — $findings_count finding(s)" \
++        "$_reason" \
+         "$(printf -- '- artifact: findings.json')"
+     emit_event "plugin.result" "plugin=security-lens" \
+         "findings_count=$findings_count" \
+@@ -190,3 +219,5 @@ _security_lens_run_inner() {
+ }
+ 
+ # ─── cleanup ────────────────────────────────────────────────────────────────
++# ADR-056 §4: no resources to release; presence recorded per contract.
++security_lens_cleanup() { return 0; }
+diff --git a/plugins/agent/security-lens/tests/security-lens-test.sh b/plugins/agent/security-lens/tests/security-lens-test.sh
+index 606aef03..d61910eb 100755
+--- a/plugins/agent/security-lens/tests/security-lens-test.sh
++++ b/plugins/agent/security-lens/tests/security-lens-test.sh
+@@ -96,7 +96,7 @@ set +e
+ _security_lens_run_inner "$INPUT" "" "$OUTPUT" 2>/dev/null
+ rc=$?
+ set -e
+-assert_eq "security_lens_run refuses when scope manifest missing (router fail-closed)" "1" "$rc"
++assert_eq "[SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)" "1" "$rc"
+ 
+ # ─── Run: with scope manifest, emits typed findings.json ────────────────────
+ MANIFEST="$TEST_TEMP_DIR/scope.md"
+@@ -109,11 +109,14 @@ export ZBUILD_SCOPE_MANIFEST="$MANIFEST"
+ _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT" "$TEST_TEMP_DIR" >/dev/null
+ assert_file_exists "findings.json created" "$OUTPUT"
+ 
+-schema_v=$(jq -r .schema_version "$OUTPUT")
+-assert_eq "findings.json schema_version=1" "1" "$schema_v"
++rc_contract=$(jq -r '.result_contract // "absent"' "$OUTPUT")
++assert_eq "[SPEC-1] findings.json carries result_contract:2 on the pass exit path" "2" "$rc_contract"
+ 
+-plugin_id=$(jq -r .plugin_id "$OUTPUT")
+-assert_eq "findings.json plugin_id=security-lens" "security-lens" "$plugin_id"
++verdict_v=$(jq -r '.verdict // "absent"' "$OUTPUT")
++assert_eq "[SPEC-2] normal exit path verdict=pass" "pass" "$verdict_v"
++
++disposition_v=$(jq -r '.disposition // "absent"' "$OUTPUT")
++assert_eq "[SPEC-2] normal exit path disposition=complete" "complete" "$disposition_v"
+ 
+ # ─── Events emitted during the run ──────────────────────────────────────────
+ if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
+@@ -124,10 +127,13 @@ if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
+     else
+         assert_fail "expected redaction.applied event in event log"
+     fi
+-    if [[ "$run_complete" -ge 1 ]]; then
+-        assert_pass "[SPEC-2] plugin.result event emitted"
++    _spec8_ev=$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
++        jq -r 'select(.type=="plugin.result" and .plugin=="security-lens") | .type // empty' \
++        2>/dev/null | head -1 || true)
++    if [[ -n "$_spec8_ev" ]]; then
++        assert_pass "[SPEC-8] plugin.result event emitted on normal path with plugin=security-lens"
+     else
+-        assert_fail "expected plugin.result event in event log"
++        assert_fail "[SPEC-8] plugin.result event emitted on normal path with plugin=security-lens"
+     fi
+ else
+     assert_fail "events.jsonl was not created"
+@@ -150,12 +156,18 @@ OUTPUT_R="$TEST_TEMP_DIR/findings_r.json"
+ _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R" "$TEST_TEMP_DIR" >/dev/null 2>&1
+ 
+ assert_file_exists "R1: router run creates findings.json" "$OUTPUT_R"
+-stub_val=$(jq -r .stub "$OUTPUT_R")
++r1_contract=$(jq -r '.result_contract // "absent"' "$OUTPUT_R")
++assert_eq "[SPEC-1] R1: result_contract:2 on normal pass path" "2" "$r1_contract"
++r1_verdict=$(jq -r '.verdict // "absent"' "$OUTPUT_R")
++assert_eq "[SPEC-2] R1: verdict=pass on normal pass path" "pass" "$r1_verdict"
++r1_disp=$(jq -r '.disposition // "absent"' "$OUTPUT_R")
++assert_eq "[SPEC-2] R1: disposition=complete on normal pass path" "complete" "$r1_disp"
++stub_val=$(jq -r '.data.stub // "absent"' "$OUTPUT_R")
+ assert_eq "R1: stub is false after real LLM path" "false" "$stub_val"
+-title_val=$(jq -r '.findings[0].title' "$OUTPUT_R")
+-assert_eq "R1: findings[0].title parsed" "SQL Injection" "$title_val"
+-sev_val=$(jq -r '.findings[0].severity' "$OUTPUT_R")
+-assert_eq "R1: findings[0].severity parsed" "high" "$sev_val"
++title_val=$(jq -r '.data.findings[0].title // "absent"' "$OUTPUT_R")
++assert_eq "[SPEC-9] R1: findings[0].title accessible under .data.findings" "SQL Injection" "$title_val"
++sev_val=$(jq -r '.data.findings[0].severity // "absent"' "$OUTPUT_R")
++assert_eq "R1: data.findings[0].severity parsed" "high" "$sev_val"
+ 
+ assert_file_exists "R2: last_prompt sentinel file written (route_to_model was invoked)" "$TEST_TEMP_DIR/last_prompt"
+ if grep -qF "You are a Security Auditor" "$TEST_TEMP_DIR/last_prompt" 2>/dev/null; then
+@@ -168,7 +180,7 @@ fi
+ install_envelope_mock_claude $'```json\n{"schema_version":1,"plugin_id":"security-lens","findings":[{"title":"XSS","severity":"medium","category":"owasp-a3","file":"src/out.sh:1","evidence":"echo $var","suggestion":"escape output"}]}\n```'
+ OUTPUT_R3="$TEST_TEMP_DIR/findings_r3.json"
+ _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R3" "$TEST_TEMP_DIR" >/dev/null 2>&1
+-fence_title=$(jq -r '.findings[0].title' "$OUTPUT_R3")
++fence_title=$(jq -r '.data.findings[0].title // "absent"' "$OUTPUT_R3")
+ assert_eq "R3: fenced JSON response parsed correctly" "XSS" "$fence_title"
+ 
+ # ─── R4: malformed (non-JSON) response (envelope-wrapped per #476) ───────────
+@@ -405,6 +417,92 @@ _spec10_count="$(jq '.findings | length' "$OUTPUT_R12" 2>/dev/null || echo 0)"
+ assert_eq "[SPEC-10] postamble recovery → recovered findings (1 finding, not empty)" \
+     "1" "$_spec10_count"
+ 
++# ─── [SPEC-3]: router-fatal path writes v2 result with verdict=error/broken ───
++if [[ -f "$OUTPUT_R7" ]]; then
++    spec3_contract=$(jq -r '.result_contract // "absent"' "$OUTPUT_R7" 2>/dev/null || echo absent)
++    assert_eq "[SPEC-3] router-fatal path writes result_contract:2" "2" "$spec3_contract"
++    spec3_verdict=$(jq -r '.verdict // "absent"' "$OUTPUT_R7" 2>/dev/null || echo absent)
++    assert_eq "[SPEC-3] router-fatal path writes verdict=error" "error" "$spec3_verdict"
++    spec3_disp=$(jq -r '.disposition // "absent"' "$OUTPUT_R7" 2>/dev/null || echo absent)
++    assert_eq "[SPEC-3] router-fatal path writes disposition=broken" "broken" "$spec3_disp"
++else
++    assert_fail "[SPEC-3] router-fatal path writes v2 result (OUTPUT_R7 missing)"
++fi
++
++# ─── [SPEC-4]: no-state-file path writes v2 result and returns rc=1 ──────────
++SPEC4_DIR="$TEST_TEMP_DIR/spec4-artifacts"
++mkdir -p "$SPEC4_DIR"
++export ZBUILD_ARTIFACT_DIR="$SPEC4_DIR"
++set +e
++security_lens_run "security-lens" "" >/dev/null 2>&1
++spec4_rc=$?
++set -e
++assert_eq "[SPEC-4] no-state-file path returns rc=1 (not rc=2)" "1" "$spec4_rc"
++if [[ -f "$SPEC4_DIR/security-findings.json" ]]; then
++    spec4_contract=$(jq -r '.result_contract // "absent"' "$SPEC4_DIR/security-findings.json")
++    assert_eq "[SPEC-4] no-state-file path writes result_contract:2" "2" "$spec4_contract"
++else
++    assert_fail "[SPEC-4] no-state-file path writes v2 result artifact"
++fi
++unset ZBUILD_ARTIFACT_DIR
++
++# ─── [SPEC-5 new]: security_lens_cleanup is declared and returns 0 ────────────
++set +e
++security_lens_cleanup
++spec5_cleanup_rc=$?
++set -e
++assert_eq "[SPEC-5] security_lens_cleanup is declared and returns 0" "0" "$spec5_cleanup_rc"
++
++# ─── Manifest assertions (SPEC-6, SPEC-7, SPEC-11, SPEC-13) ─────────────────
++_MANIFEST_FILE="$PLUGIN_DIR/manifest.yaml"
++
++if grep -q 'result_contract: 2' "$_MANIFEST_FILE" 2>/dev/null; then
++    assert_pass "[SPEC-6] manifest declares provides.result_contract: 2"
++else
++    assert_fail "[SPEC-6] manifest declares provides.result_contract: 2"
++fi
++
++if grep -q '^\s*- pass' "$_MANIFEST_FILE" 2>/dev/null && \
++   grep -q '^\s*- error' "$_MANIFEST_FILE" 2>/dev/null; then
++    assert_pass "[SPEC-7] manifest declares valid_verdicts: [pass, error]"
++else
++    assert_fail "[SPEC-7] manifest declares valid_verdicts: [pass, error]"
++fi
++
++if grep -q 'timeout_s:' "$_MANIFEST_FILE" 2>/dev/null && \
++   grep -q 'max_turns:' "$_MANIFEST_FILE" 2>/dev/null; then
++    assert_pass "[SPEC-11] manifest declares config.router with timeout_s and max_turns"
++else
++    assert_fail "[SPEC-11] manifest declares config.router with timeout_s and max_turns"
++fi
++
++if grep -q 'primary: true' "$_MANIFEST_FILE" 2>/dev/null; then
++    assert_pass "[SPEC-13] manifest declares primary: true on findings output"
++else
++    assert_fail "[SPEC-13] manifest declares primary: true on findings output"
++fi
++
++# ─── [SPEC-12]: ZBUILD_ROUTER_MAX_TURNS_OVERRIDE takes precedence ────────────
++_spec12_env_file="$TEST_TEMP_DIR/spec12-env.txt"
++: > "$_spec12_env_file"
++route_to_model() {
++    printf '%s' "${ZBUILD_ROUTER_MAX_TURNS_OVERRIDE:-unset}" > "$_spec12_env_file"
++    printf '%s\n' '{"schema_version":1,"plugin_id":"security-lens","findings":[]}'
++    return 0
++}
++ZBUILD_ROUTER_MAX_TURNS_OVERRIDE=7 \
++    _security_lens_run_inner "$INPUT" "$MANIFEST" \
++    "$TEST_TEMP_DIR/findings_spec12.json" "$TEST_TEMP_DIR" >/dev/null 2>&1
++_spec12_val="$(cat "$_spec12_env_file" 2>/dev/null || echo unset)"
++assert_eq "[SPEC-12] ZBUILD_ROUTER_MAX_TURNS_OVERRIDE takes precedence over manifest config.router.max_turns" \
++    "7" "$_spec12_val"
++
++# ─── [SPEC-14]: no hardcoded artifact paths beyond manifest-declared basenames ─
++_spec14_plugin="$PLUGIN_DIR/plugin.sh"
++_spec14_bad=$(grep -cE '"[^"$]*\.(json|md)"' "$_spec14_plugin" 2>/dev/null || echo 0)
++assert_eq "[SPEC-14] plugin.sh has no hardcoded artifact paths beyond manifest-declared basenames" \
++    "0" "$_spec14_bad"
++
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))

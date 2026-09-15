@@ -1,0 +1,185 @@
+============== ZBUILD BUILD — iter 1/10 ==============
+## ORIGINAL TASK (immutable across iterations)
+# Plan: Migrate security-lens to contract v2
+
+**Goal:** Update plugins/agent/security-lens to emit a conformant v2 result (result_contract:2, verdict, disposition, reason) on every exit path, declare router budgets and events in the manifest, fix rc∈{0,1}, add cleanup hook, and cover all paths with tests written first.
+
+## Steps
+1. Write failing tests first (TDD). Extend the existing test file to assert: (a) findings.json carries result_contract:2, verdict, disposition, reason at top level with plugin data under .data; (b) every verdict the plugin can emit (pass, error) is exercised by a dedicated test case; (c) the no-state_file path returns rc=1 and writes a v2 result; (d) the router-fatal path writes a v2 result with verdict=error and disposition=broken; (e) the cleanup hook exists and returns 0; (f) a golden diff assertion pins the passing-run output shape. Run the suite and confirm each new assertion fails before proceeding.
+   - Files: `plugins/agent/security-lens/tests/security-lens-test.sh`
+   - Estimated lines: 60
+2. Update manifest.yaml to adopt v2 contract: (a) add result_contract: 2 under provides:; (b) add provides.events: listing security_lens.failed and any other events the plugin emits; (c) add config.router: block with timeout_s and max_turns (router budgets in manifest, template override still wins per #1816); (d) change valid_verdicts from [] to [pass, error] — the two verdicts the plugin can emit. The existing primary: true on the findings output and the name-matched scope_manifest input (no path/from/type) are already correct.
+   - Files: `plugins/agent/security-lens/manifest.yaml`
+   - Estimated lines: 20
+3. Update plugin.sh to fully implement v2 contract: (a) add a _security_lens_write_result helper (mirrors _scv_write in spec-coverage) that writes {result_contract:2, verdict, disposition, reason, data:{}} to findings.json atomically; (b) rewrite the jq -n findings.json output to use this helper — result_contract/verdict/disposition/reason at top level, all current fields (plugin_id, generated_at, findings, stub) move under .data; (c) change both return 2 calls to write a v2 result and return 1 (ADR-054 §4: rc∈{0,1}); (d) the router-fatal path already writes a summary — add a v2 result write before the return 1; (e) add security_lens_cleanup() { return 0; } with an ADR-056 comment (no resources to release; absence is recorded, not implied). The existing stage_summary_write and emit_event calls on every path are preserved.
+   - Files: `plugins/agent/security-lens/plugin.sh`
+   - Estimated lines: 45
+4. Run npm test (full bash suite) and confirm green. The spec-acceptance test for manifest valid_verdicts, the security-lens unit tests, and the parity/golden tests must all pass. If any test outside security-lens breaks, investigate before declaring done.
+   - Estimated lines: 0
+
+## Notes
+primary:true output: already declared on findings output — no change needed, confirmed in manifest.yaml:61. valid_verdicts: currently [], must change to [pass, error]; review-lens also uses [] because it is advisory and never emits a v2 verdict, but security-lens IS migrating to v2 and will emit verdict=pass on normal paths and verdict=error on router-fatal. cleanup hook: the manifest comment at line 192 ('# ─── cleanup') is a section header, not a function — the function body must be added. rc=2 at plugin.sh:59 (no state_file, security_lens_run) and :90 (missing args, _security_lens_run_inner) — both become rc=1 after writing v2 result. Hard artifact paths: the acceptance criterion says 'no artifact paths in code — assert by grep'; security_lens_run constructs '$artifacts_dir/security${platform_infix}-findings.json' — the platform_infix fanout is a special compound-quality case that may need a note in the test rather than removal, since the manifest output path is fixed as '${artifact_dir}/security-findings.json'. The test's 'platform partitioning' case at line 299 exercises this path; if the grep assertion catches it, the fanout path needs re-examination. Assumption: router budget defaults (timeout_s, max_turns) should match the design plugin (600s, 45 turns) since security-lens is a similar LLM-agent stage. The template override (simple.yaml configures the compound_quality group containing security-lens) still wins per #1816. Golden diff: the spec says 'before/after golden diff on the stage's own output'; no security-lens golden file exists today, so the test must seed it with UPDATE_GOLDEN=1 in the green state and then assert it on subsequent runs — standard assert_golden pattern from scripts/lib/golden.sh:8.
+
+## INSTRUCTIONS
+Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
+
+You have Read, Edit, Write, and
+Bash tools available. Your job is to edit the working tree to implement the
+ORIGINAL TASK above.
+
+### Scope (plan.files[])
+You may ONLY touch files listed here. Refuse any out-of-scope edit.
+  - plugins/agent/security-lens/manifest.yaml
+  - plugins/agent/security-lens/plugin.sh
+  - plugins/agent/security-lens/tests/security-lens-test.sh
+  - scripts/lib/artifact-render.sh
+  - tests/unit/artifact-render-lens-test.sh
+  - tests/integration/artifact-chain-test.sh
+  - docs/wiki/plugins/security-lens.md
+
+### How the loop works
+- Each iteration you may make code changes via Edit/Write/Bash.
+- After each iteration the pipeline captures `git diff HEAD` and feeds it
+  back to you so you can verify progress.
+- Do NOT emit a unified diff in your response — the pipeline derives the
+  canonical `diff.patch` artifact from `git diff HEAD` automatically.
+
+### Completion sentinel
+Emit `LOOP_COMPLETE` on its own line as the FINAL line of your response
+WHEN the implementation is complete — whether you just finished it OR
+it was already done before you started. If the branch already contains
+the required changes (check `git log` for commits + `git diff` for any
+remaining gap), emit `LOOP_COMPLETE` immediately. Do NOT keep iterating
+when there is nothing left to do.
+
+### Rules
+- Touch only files in the scope list above.
+- Do not run `git commit` — the pipeline owns commit semantics.
+- NEVER run a command that mutates git branch state or the working tree —
+  no `git checkout -b`/`switch`/`commit`/`push`/`tag`/`reset`. You are running
+  INSIDE the pipeline's own checkout; switching or creating a branch hijacks the
+  run. The pipeline owns the branch.
+- If you must exercise a command you are building (or any command that could
+  publish, tag, push, or otherwise mutate state), run it in `--dry-run` mode.
+  Do everything you can to verify behavior without side effects.
+- Keep changes minimal and aligned with the plan.
+- Clean up scratch siblings of the files you edit (`*.bak`, `*.orig`,
+  `*.rej`, `*.head`, `*.tmp`, `*~`). `sed -i.bak` and
+  `git show HEAD:f > f.head` both leave one behind — prefer `sed -i` with no
+  suffix, and delete any comparison scratch before you finish. Out-of-scope
+  scratch is removed for you; any OTHER out-of-scope path voids the whole
+  iteration, so do not rely on the cleanup.
+- If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.
+
+### Commit message (#608)
+Before the final `LOOP_COMPLETE` line, emit a single line of the form:
+
+    COMMIT_SUMMARY: <one-line description of this iteration's change>
+
+Keep it under 72 characters, present tense, imperative mood (e.g.
+"add foo parser" not "added"). The pipeline uses this as the git commit
+message for the per-iteration commit it creates on your behalf. If you
+omit this line the pipeline falls back to the plan title.
+
+## DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
+# Design: Migrate security-lens to contract v2
+
+## Architectural decision summary
+
+**Goal.** Bring `plugins/agent/security-lens` into full ADR-054/ADR-056/ADR-060
+compliance: emit a `result_contract:2` artifact (with `verdict`, `disposition`,
+`reason`, and domain data nested under `.data`) on every terminal exit path,
+declare router budgets and events in the manifest, fix `rc∈{0,1}`, add the
+cleanup hook, assert no new hardcoded artifact paths, and cover all paths with
+tests written first.
+
+**Context.** security-lens was the Phase 0 migration POC. Its findings.json
+uses a v1 shape (`schema_version:1`, all fields at top level). The engine now
+reads `result_contract` to dispatch v2 logic; plugins that don't declare it fall
+through to legacy paths. The `valid_verdicts: []` claim tells the engine "this
+plugin never emits a verdict", which is wrong once the plugin writes
+`verdict=pass` / `verdict=error`. Two return paths still use `rc=2`, which
+ADR-054 §4 prohibits. The manifest is also missing `config.router:` budget
+declarations and `provides.events:`, both required by ADR-017 §11.
+
+**Decision.** Add `_security_lens_write_result` (mirrors `_scv_write` in
+spec-coverage) to write `{result_contract:2, verdict, disposition, reason,
+data:{plugin_id, generated_at, findings, stub}}` atomically. Rewrite all
+terminal paths through this helper. Fix `rc=2 → rc=1`. Add
+`security_lens_cleanup`. Update the manifest with `result_contract:2`,
+`provides.events:`, `config.router:` (timeout_s + max_turns), and
+`valid_verdicts:[pass,error]`. Update the renderer (`render_lens_md`) to read
+`(.data.findings // .findings // [])` for v1/v2 compatibility. Update
+`artifact-chain-test.sh` to read findings via the v2-compatible path.
+Tests are written first (TDD); every SPEC is tagged in assertions.
+
+---
+
+
+---
+Where a design decision above conflicts with the plan, follow the design decision.
+
+## ACCEPTANCE TESTS (you MUST make these pass)
+You do NOT author or modify acceptance assertions. They were written from the design contract by a separate stage, before your implementation existed, and they are the contract you implement against. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion, and you must not edit the testfiles listed below; the spawn denies it and a mechanical guard checks it. If you believe an assertion genuinely does not test its SPEC, say so in your output and leave it alone: correcting it is the author stage's job, not yours (#2022, ADR-036).
+Each test MUST contain an assert call whose label includes the [SPEC-n] tag for the SPEC it verifies (e.g. assert_eq "[SPEC-1] ..." exp act). The acceptance-gate (ADR-036) requires every SPEC-n to have a [SPEC-n]-tagged assertion. A CHANGE-behavior SPEC-n MUST have a tagged assertion that FAILS at the merge-base baseline and passes here (a tautological change-SPEC that passes without your implementation is rejected); a GUARD/invariant SPEC-n is tagged but NOT contorted to fail at baseline. See the per-id list below.
+- SPEC-1: plugins/agent/security-lens/tests/security-lens-test.sh
+- SPEC-2: plugins/agent/security-lens/tests/security-lens-test.sh
+- SPEC-3: plugins/agent/security-lens/tests/security-lens-test.sh
+- SPEC-4: plugins/agent/security-lens/tests/security-lens-test.sh
+- SPEC-5: plugins/agent/security-lens/tests/security-lens-test.sh
+- SPEC-6: plugins/agent/security-lens/tests/security-lens-test.sh
+- SPEC-7: plugins/agent/security-lens/tests/security-lens-test.sh
+- SPEC-8: plugins/agent/security-lens/tests/security-lens-test.sh
+- SPEC-9: plugins/agent/security-lens/tests/security-lens-test.sh
+- SPEC-10: plugins/agent/security-lens/tests/security-lens-test.sh
+- SPEC-11: plugins/agent/security-lens/tests/security-lens-test.sh
+- SPEC-12: plugins/agent/security-lens/tests/security-lens-test.sh
+- SPEC-13: plugins/agent/security-lens/tests/security-lens-test.sh
+- SPEC-14: plugins/agent/security-lens/tests/security-lens-test.sh
+
+What each SPEC requires:
+- [SPEC-1] findings.json carries result_contract:2 at top level on the normal (pass) exit path
+- [SPEC-2] normal exit path sets verdict=pass and disposition=complete
+- [SPEC-3] router-fatal path writes result_contract:2 with verdict=error and disposition=broken and returns rc=1
+- [SPEC-4] no-state-file path (security_lens_run) writes a v2 result and returns rc=1, not rc=2
+- [SPEC-5] security_lens_cleanup function is declared and returns 0
+- [SPEC-6] manifest declares provides.result_contract: 2
+- [SPEC-7] manifest declares valid_verdicts: [pass, error]
+- [SPEC-8] plugin.result event continues to be emitted on the normal path with plugin=security-lens
+- [SPEC-9] parsed findings remain accessible under .data.findings in the v2 artifact
+- [SPEC-10] router fail-closed is preserved — missing scope manifest returns rc=1
+- [SPEC-11] manifest declares config.router block with timeout_s and max_turns
+- [SPEC-12] ZBUILD_ROUTER_MAX_TURNS_OVERRIDE takes precedence over manifest config.router.max_turns when set (template override wins per #1816)
+- [SPEC-13] manifest declares primary: true on the findings output entry
+- [SPEC-14] plugin.sh constructs no hardcoded artifact path literals beyond the manifest-declared output basenames (security-findings.json and security-lens-summary.md) — confirmed by grep
+
+### SPEC IDS YOU MUST COVER (acceptance gate, ADR-036)
+Every SPEC id below needs at least one assertion whose label carries its [SPEC-n] tag; self-verify the FULL set is tagged before emitting LOOP_COMPLETE. A CHANGE-behavior SPEC (new behavior this change introduces) MUST have a [SPEC-n] assertion that FAILS at the merge-base baseline. A GUARD/invariant SPEC (behavior that must stay unchanged) is tagged but MUST NOT be contorted to fail at baseline.
+- [SPEC-1] findings.json carries result_contract:2 at top level on the normal (pass) exit path
+  → needs a `[SPEC-1]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-2] normal exit path sets verdict=pass and disposition=complete
+  → needs a `[SPEC-2]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-3] router-fatal path writes result_contract:2 with verdict=error and disposition=broken and returns rc=1
+  → needs a `[SPEC-3]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-4] no-state-file path (security_lens_run) writes a v2 result and returns rc=1, not rc=2
+  → needs a `[SPEC-4]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-5] security_lens_cleanup function is declared and returns 0
+  → needs a `[SPEC-5]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-6] manifest declares provides.result_contract: 2
+  → needs a `[SPEC-6]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-7] manifest declares valid_verdicts: [pass, error]
+  → needs a `[SPEC-7]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-8] plugin.result event continues to be emitted on the normal path with plugin=security-lens
+  → needs a `[SPEC-8]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-9] parsed findings remain accessible under .data.findings in the v2 artifact
+  → needs a `[SPEC-9]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-10] router fail-closed is preserved — missing scope manifest returns rc=1
+  → needs a `[SPEC-10]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-11] manifest declares config.router block with timeout_s and max_turns
+  → needs a `[SPEC-11]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-12] ZBUILD_ROUTER_MAX_TURNS_OVERRIDE takes precedence over manifest config.router.max_turns when set (template override wins per #1816)
+  → needs a `[SPEC-12]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-13] manifest declares primary: true on the findings output entry
+  → needs a `[SPEC-13]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-14] plugin.sh constructs no hardcoded artifact path literals beyond the manifest-declared output basenames (security-findings.json and security-lens-summary.md) — confirmed by grep
+  → needs a `[SPEC-14]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
