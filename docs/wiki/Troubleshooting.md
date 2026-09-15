@@ -130,20 +130,35 @@ directory:
 Each line is a JSON object. Look for `turn_count`, elapsed-time fields, and
 whether the final assistant turn was cut off mid-emission.
 
-**CI runs (failed pipeline):** download the `pipeline-artifacts-issue-N-<run-id>`
-zip from the GitHub Actions run summary. The transcripts are copied into
-`claude-transcripts/` inside the artifact on failure:
+**CI runs (any outcome):** download the `pipeline-artifacts-issue-N-<run-id>`
+zip from the GitHub Actions run summary. Every session the CLI wrote during the
+job is bundled, encrypted, at the top of the artifact:
 ```
 pipeline-artifacts-issue-N-<run-id>/
-  claude-transcripts/
-    <encoded-cwd>/
-      <session-id>.jsonl
-      ...
+  claude-transcripts.tar.gz.enc
 ```
-The collect step only runs on failure, and only when the repository is private
-(JSONL is not redacted before upload — the private-repo boundary is the access
-control that stands in for redaction). A green run collects nothing, so artifact
-size is unaffected.
+Decrypt with the repo secret `ZBUILD_TRANSCRIPT_KEY` (the value lives only in
+the GitHub secret and in the operator's local copy — never in the repo):
+```
+ZBUILD_TRANSCRIPT_KEY=... openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+  -pass env:ZBUILD_TRANSCRIPT_KEY -in claude-transcripts.tar.gz.enc | tar -xz
+```
+which yields `<encoded-cwd>/<session-id>.jsonl`, one file per model call. To
+find the call for a stage, match the session's first record (it holds the
+prompt, which opens with the stage banner, e.g. `ZBUILD BUILD — iter 3/10`)
+against the `model.route` / `loop.iteration` timestamps in `events.jsonl`.
+
+The collect step runs on success, failure, AND cancellation (a 6-hour GitHub
+kill is `cancelled`, so a `failure()`-only step misses exactly the runs that
+need it). The job log lists every transcript found with its size; "collected 0"
+means the CLI wrote no session, which is itself a finding. If the secret is not
+set on a public repository the step collects nothing and says so in a warning:
+```
+openssl rand -hex 32 | tee ~/.zbuild/transcript.key | gh secret set ZBUILD_TRANSCRIPT_KEY
+```
+JSONL is not redacted before upload — the encryption is the access control that
+stands in for redaction (the claude process carries the OAuth token in its
+environment, so a transcript can contain it).
 
 **Key distinction:** the 300 s wall-clock budget and the per-stage turn cap
 are separate limits. A timeout that hits the turn cap looks different from one
