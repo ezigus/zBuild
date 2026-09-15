@@ -140,7 +140,8 @@ pipeline-artifacts-issue-N-<run-id>/
 Decrypt with the repo secret `ZBUILD_TRANSCRIPT_KEY` (the value lives only in
 the GitHub secret and in the operator's local copy — never in the repo):
 ```
-ZBUILD_TRANSCRIPT_KEY=... openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+export ZBUILD_TRANSCRIPT_KEY="$(cat ~/.zbuild/transcript.key)"   # not a literal — it would land in shell history
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
   -pass env:ZBUILD_TRANSCRIPT_KEY -in claude-transcripts.tar.gz.enc | tar -xz
 ```
 which yields `<encoded-cwd>/<session-id>.jsonl`, one file per model call. To

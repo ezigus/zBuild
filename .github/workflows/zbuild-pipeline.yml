@@ -405,6 +405,9 @@ jobs:
             exit 0
           fi
           stage="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/zb-transcripts.XXXXXX")"
+          # The staging copy is plaintext; `bash -e` would skip a trailing rm on
+          # an openssl failure, so the trap owns its removal on every exit.
+          trap 'rm -rf "$stage"' EXIT
           # -type f excludes symlinks, so a planted link can't pull an arbitrary
           # file into the upload. Session dirs are mirrored (not flattened) so
           # two projects' identically-named sessions can't clobber each other.
@@ -432,11 +435,10 @@ jobs:
             out="${ZBUILD_STATE_DIR}/claude-transcripts.tar.gz.enc"
             tar -C "$stage" -czf - . | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt \
               -pass env:ZBUILD_TRANSCRIPT_KEY -out "$out"
-            rm -rf "$stage"
             echo "::notice::encrypted bundle: claude-transcripts.tar.gz.enc ($(wc -c < "$out" | tr -d ' ') bytes) — decrypt: ZBUILD_TRANSCRIPT_KEY=... openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -pass env:ZBUILD_TRANSCRIPT_KEY -in claude-transcripts.tar.gz.enc | tar -xz"
           else
             rm -rf "${ZBUILD_STATE_DIR}/claude-transcripts"
-            mv "$stage" "${ZBUILD_STATE_DIR}/claude-transcripts"
+            cp -R "$stage" "${ZBUILD_STATE_DIR}/claude-transcripts"
             echo "::notice::plaintext copy in claude-transcripts/ (private repository, no ZBUILD_TRANSCRIPT_KEY)"
           fi
 

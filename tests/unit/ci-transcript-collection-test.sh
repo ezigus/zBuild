@@ -105,28 +105,35 @@ _seed_home() {
     # precedent). `touch -d '8 hours ago'` is GNU-only and fails silently on BSD.
     local ts
     ts="$(date -d '8 hours ago' +%Y%m%d%H%M 2>/dev/null || date -v-8H +%Y%m%d%H%M 2>/dev/null)"
-    [[ -n "$ts" ]] && touch -t "$ts" "$proj/stale.jsonl"
+    if [[ -z "$ts" ]] || ! touch -t "$ts" "$proj/stale.jsonl"; then
+        assert_fail "[SPEC-2] test fixture must be able to backdate a file" \
+            "neither 'date -d' nor 'date -v' produced a usable timestamp"
+    fi
     printf 'SECRET\n' > "$home/outside-secret.jsonl"
     ln -sf "$home/outside-secret.jsonl" "$proj/linked.jsonl"
     mkdir -p "$home/.claude/projects/otherrepo"
     printf '{"type":"assistant","message":"other"}\n' > "$home/.claude/projects/otherrepo/recent.jsonl"
 }
 
-# _run_block <home> <state> <private:true|false> <key-or-empty> → stdout+stderr, rc in _RC
-_RC=0
+# _run_block <home> <state> <private:true|false> <key-or-empty>
+# Sets _OUT (stdout+stderr) and _RC. Deliberately NOT `_OUT="$(...)"`: a command
+# substitution is a subshell, and an _RC assigned inside it never reaches this
+# scope — every "exits 0" assertion would then test the initial value forever.
+_RC=0; _OUT=""
 _run_block() {
     _RC=0
     (
         export HOME="$1" ZBUILD_STATE_DIR="$2" REPO_PRIVATE="$3" ZBUILD_TRANSCRIPT_KEY="$4"
         export RUNNER_TEMP="$TEST_TEMP_DIR"
-        bash -eo pipefail -c "$_BLOCK" 2>&1
-    ) || _RC=$?
+        bash -eo pipefail -c "$_BLOCK"
+    ) > "$TEST_TEMP_DIR/run-block.out" 2>&1 || _RC=$?
+    _OUT="$(cat "$TEST_TEMP_DIR/run-block.out")"
 }
 
 # ── SPEC-2: key set → encrypted bundle, no plaintext, decrypts to the right set
 _H2="$TEST_TEMP_DIR/home-enc"; _S2="$TEST_TEMP_DIR/state-enc"
 mkdir -p "$_H2" "$_S2"; _seed_home "$_H2"
-_OUT="$(_run_block "$_H2" "$_S2" false "$_KEY")"
+_run_block "$_H2" "$_S2" false "$_KEY"
 assert_eq "[SPEC-2] run block exits 0 with the key set" "0" "$_RC"
 _ENC="$_S2/claude-transcripts.tar.gz.enc"
 assert_file_exists "[SPEC-2] encrypted bundle claude-transcripts.tar.gz.enc is written" "$_ENC"
@@ -164,7 +171,7 @@ assert_contains_regex "[SPEC-6] log gives a transcript count" "$_OUT" "collected
 # ── SPEC-3: key unset + public repo → fail closed, loudly, without failing the job
 _H3="$TEST_TEMP_DIR/home-pub"; _S3="$TEST_TEMP_DIR/state-pub"
 mkdir -p "$_H3" "$_S3"; _seed_home "$_H3"
-_OUT="$(_run_block "$_H3" "$_S3" false "")"
+_run_block "$_H3" "$_S3" false ""
 assert_eq "[SPEC-3] key unset on a public repo exits 0 (does not fail the job)" "0" "$_RC"
 assert_file_not_exists "[SPEC-3] key unset on a public repo writes no bundle" "$_S3/claude-transcripts.tar.gz.enc"
 if [[ ! -e "$_S3/claude-transcripts" ]]; then
@@ -178,7 +185,7 @@ assert_contains "[SPEC-3] key unset on a public repo says transcripts were NOT c
 # ── SPEC-8[guard]: key unset + private repo → the #1728 plaintext path still works
 _H8="$TEST_TEMP_DIR/home-priv"; _S8="$TEST_TEMP_DIR/state-priv"
 mkdir -p "$_H8" "$_S8"; _seed_home "$_H8"
-_OUT="$(_run_block "$_H8" "$_S8" true "")"
+_run_block "$_H8" "$_S8" true ""
 assert_eq "[SPEC-8] private repo without a key exits 0" "0" "$_RC"
 assert_file_exists     "[SPEC-8] private repo without a key keeps the plaintext copy" "$_S8/claude-transcripts/myrepo/recent.jsonl"
 assert_file_not_exists "[SPEC-8] private repo without a key writes no bundle" "$_S8/claude-transcripts.tar.gz.enc"
@@ -186,7 +193,7 @@ assert_file_not_exists "[SPEC-8] private repo without a key writes no bundle" "$
 # ── absent source: the common case for an early abort — must not fail the job ─
 _HB="$TEST_TEMP_DIR/home-bare"; _SB="$TEST_TEMP_DIR/state-bare"
 mkdir -p "$_HB" "$_SB"
-_OUT="$(_run_block "$_HB" "$_SB" false "$_KEY")"
+_run_block "$_HB" "$_SB" false "$_KEY"
 assert_eq "[SPEC-2] a missing ~/.claude/projects exits 0" "0" "$_RC"
 assert_contains "[SPEC-2] a missing ~/.claude/projects says so rather than passing silently" "$_OUT" "nothing to collect"
 
