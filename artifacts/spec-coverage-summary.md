@@ -1,7 +1,5 @@
-## spec-coverage — uncovered
+## spec-coverage — covered
 
-- Three explicit checklist items from the issue have no matching SPEC — no-path-construction in code, router budgets in the manifest, and `primary: true` output declaration.
+- Every explicit checkbox maps to a SPEC — v2 result on all exit paths (SPEC-1–4), valid_verdicts (SPEC-7), no path construction (SPEC-14), router budgets + template override (SPEC-11–12), behavioral preservation on the passing path (SPEC-1, SPEC-8, SPEC-9), and primary: true (SPEC-13); the two remaining items (npm test green, reddens at merge-base) are process gates, not design requirements.
 
-- NOT COVERED: The plugin constructs no artifact paths in code — assert by grep over plugin.sh
-- NOT COVERED: router budgets resolve from the manifest and the template override still wins where one is set
-- NOT COVERED: the manifest declares a `primary: true` output (or the issue records why this plugin is not dispatched as a stage).
+- every requirement the issue states maps to a declared SPEC
