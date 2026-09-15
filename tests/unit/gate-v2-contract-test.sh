@@ -287,6 +287,10 @@ assert_eq "[SPEC-3][SPEC-8] shape-floor library not loaded → rc=0" "0" "$_rc"
 _J="$(cat "$W/artifacts/shape-floor-result.json")"
 assert_json_key "[SPEC-3] shape-floor library not loaded → disposition:broken" "$_J" '.disposition' "broken"
 assert_json_key "[SPEC-3] shape-floor library not loaded → reason:library_load_failure" "$_J" '.reason' "library_load_failure"
+# ADR-055 §9: the broken path is a terminal verdict too — the summary must exist
+# so a reader learns the floor was DISABLED rather than seeing nothing (#1758).
+assert_eq "[SPEC-14] shape-floor broken path → shape-floor-detail.md written and non-empty" "present" \
+    "$([[ -s "$W/artifacts/shape-floor-detail.md" ]] && echo present || echo absent)"
 
 # ── SPEC-7: gate-aggregator aggregation cases (all-pass/fail/advisory/missing) ─
 
@@ -432,7 +436,14 @@ assert_json_key "[SPEC-14] secret-scan pass → verdict=pass" \
     "$(cat "$W/artifacts/secret-scan-result.json")" '.verdict' "pass"
 assert_eq "[SPEC-14] secret-scan pass → secret-scan-detail.md written and non-empty" "present" \
     "$([[ -s "$W/artifacts/secret-scan-detail.md" ]] && echo present || echo absent)"
-assert_contains "[SPEC-14] secret-scan pass-path summary names its conclusion (not bare absence)" \
-    "$(cat "$W/artifacts/secret-scan-detail.md")" "clean diff — no secrets found"
+# ADR-055 §9: "a summary states what the stage DID". The requirement is that the
+# pass path does not degrade to the library's bare "- no findings" placeholder;
+# the exact wording is the plugin's to choose.
+if grep -qE '^- no findings$' "$W/artifacts/secret-scan-detail.md" 2>/dev/null; then
+    assert_fail "[SPEC-14] secret-scan pass-path summary names its conclusion (not bare absence)" \
+        "summary is the bare '- no findings' placeholder"
+else
+    assert_pass "[SPEC-14] secret-scan pass-path summary names its conclusion (not bare absence)"
+fi
 
 print_test_results
