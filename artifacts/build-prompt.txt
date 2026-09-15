@@ -1,4 +1,4 @@
-============== ZBUILD BUILD — iter 1/10 ==============
+============== ZBUILD BUILD — iter 2/10 ==============
 ## ORIGINAL TASK (immutable across iterations)
 # Plan: Migrate security-lens to contract v2
 
@@ -183,3 +183,6 @@ Every SPEC id below needs at least one assertion whose label carries its [SPEC-n
   → needs a `[SPEC-13]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
 - [SPEC-14] plugin.sh constructs no hardcoded artifact path literals beyond the manifest-declared output basenames (security-findings.json and security-lens-summary.md) — confirmed by grep
   → needs a `[SPEC-14]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+
+## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
+A previous attempt on this issue ended build with verdict=incomplete and touched 0 file(s). That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present.
