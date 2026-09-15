@@ -50,7 +50,7 @@ assert_contains "[SPEC-1] an output id now covers acceptance-summary.txt" \
     "$_acc_ids" "acceptance_detail"
 assert_eq "[SPEC-1] and it is the stage's summary" "true" \
     "$(manifest_graph_output_summary "$ACC_M" acceptance_detail)"
-assert_eq "[SPEC-1] declared optional — a no-op run writes no summary" "false" \
+assert_eq "[SPEC-1] declared required — every terminal path writes a summary" "true" \
     "$(manifest_graph_get_outputs "$ACC_M" | grep '^acceptance_detail|' | cut -d'|' -f4)"
 
 # ─── SPEC-2 / SPEC-3: the two already-declared summaries are marked ──────────
