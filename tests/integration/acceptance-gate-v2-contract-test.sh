@@ -146,10 +146,8 @@ tests/feature-test.sh
 ```
 EOF
 set +e; _run_gate "$REPO_C5"; set -e
-assert_eq "[SPEC-1] pass path: result_contract:2 present" "2" \
+assert_eq "[SPEC-1][SPEC-5] pass path: result_contract:2 present" "2" \
     "$(jq -r '.result_contract // empty' <<<"$RESULT")"
-assert_eq "[SPEC-5] pass path: result_contract:2 in result (dedicated pass test case, v2 context)" \
-    "2" "$(jq -r '.result_contract // empty' <<<"$RESULT")"
 assert_eq "pass path: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
 
 # ── C6: fail path → result_contract:2 ──────────────────────────────────────────

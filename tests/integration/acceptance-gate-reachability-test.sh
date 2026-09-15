@@ -83,8 +83,7 @@ EOF
 
 set +e; _run_gate "$REPO_R1"; set -e
 assert_eq "[SPEC-5] R1: load-bearing wiring → gate rc=0" "0" "$RC"
-assert_eq "[SPEC-5] R1: load-bearing wiring → verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
-assert_eq "[SPEC-4] R1: wiring verdict behavioral contract preserved" "pass" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "[SPEC-5][SPEC-4] R1: load-bearing wiring → verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
 
 # ── R2: wiring is inert (revert doesn't flip any test) → gate fails ──────────
 # Setup: impl.sh is the real implementation (test depends on it).

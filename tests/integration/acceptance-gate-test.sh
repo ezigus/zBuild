@@ -95,10 +95,8 @@ tests/feature-test.sh
 EOF
 set +e; _run_gate "$REPO1"; set -e
 assert_eq "S1: load-bearing → rc=0" "0" "$RC"
-assert_eq "S1: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
+assert_eq "[SPEC-4] S1: verdict=pass (v2 migration preserves the behavioral contract)" "pass" "$(jq -r .verdict <<<"$RESULT")"
 assert_event_emitted "S1: complete event" "$EVENTS" "acceptance.gate.complete"
-assert_eq "[SPEC-4] S1: load-bearing test verdict=pass behavioral contract preserved" \
-    "pass" "$(jq -r .verdict <<<"$RESULT")"
 
 # ── S2: tautological tagged test → verdict=fail ───────────────────────────────
 REPO2="$(_build_repo gate-taut '#!/usr/bin/env bash

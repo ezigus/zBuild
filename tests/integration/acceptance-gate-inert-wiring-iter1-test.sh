@@ -124,10 +124,8 @@ fi
 
 # Disposition must stay recoverable so the cycle re-iterates into build rather
 # than halting (ADR-036 Amendment #1585).
-assert_eq "iter=1: disposition stays recoverable" "recoverable" \
+assert_eq "[SPEC-4] iter=1: disposition stays recoverable" "recoverable" \
     "$(jq -r '.disposition // empty' <<<"$RESULT")"
-assert_eq "[SPEC-4] iter=1: inert_wiring disposition behavioral contract preserved" \
-    "recoverable" "$(jq -r '.disposition // empty' <<<"$RESULT")"
 
 cleanup_test_env
 print_test_results
