@@ -1,0 +1,672 @@
+### plugins/agent/security-lens/manifest.yaml reverted plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 9.5s ══════════════ 12:29:47 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml head plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 15.7s ═════════════ 12:30:08 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml reverted plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 19.3s ═════════════ 12:30:33 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml head plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 10.9s ═════════════ 12:30:50 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml reverted plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 15.2s ═════════════ 12:31:10 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml head plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 7.6s ══════════════ 12:31:23 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml reverted plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 21.1s ═════════════ 12:31:50 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml head plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 7.4s ══════════════ 12:32:03 UTC ══
+#### security-lens
+- [low] /home/runner/work/_temp/zbuild-state/artifacts/design.md — null
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml reverted plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 11.8s ═════════════ 12:32:20 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml head plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 18.8s ═════════════ 12:32:44 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml reverted plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 11.8s ═════════════ 12:33:01 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml head plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 6.0s ══════════════ 12:33:13 UTC ══
+#### security-lens
+- [medium] /home/runner/work/_temp/zbuild-state/artifacts/design.md — null
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml reverted plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 14.9s ═════════════ 12:33:33 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml head plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 13.6s ═════════════ 12:33:52 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml reverted plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 12.1s ═════════════ 12:34:10 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml head plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 7.8s ══════════════ 12:34:23 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml reverted plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 12.6s ═════════════ 12:34:41 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml head plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 6.9s ══════════════ 12:34:54 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml reverted plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 15.0s ═════════════ 12:35:14 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml head plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 6.3s ══════════════ 12:35:26 UTC ══
+#### security-lens
+- [medium] /home/runner/work/_temp/zbuild-state/artifacts/design.md — null
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml reverted plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 19.4s ═════════════ 12:35:51 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml head plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 13.9s ═════════════ 12:36:10 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml reverted plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 17.2s ═════════════ 12:36:33 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml head plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 15.4s ═════════════ 12:36:54 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml reverted plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 13.9s ═════════════ 12:37:13 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml head plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 9.5s ══════════════ 12:37:28 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml reverted plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 3.4s ══════════════ 12:37:37 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
+### plugins/agent/security-lens/manifest.yaml head plugins/agent/security-lens/tests/security-lens-test.sh
+
+[38;2;0;212;255m[1m  plugin: security-lens (first POC)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m security-lens manifest validates (kind: agent + requires.core: [redaction, ...])
+  [38;2;74;222;128m✓[0m security-lens is discovered
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'You are a Security Auditor'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Command injection, path traversal, input validation gaps'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Credential/secret exposure in code or logs'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Authentication/authorization bypass paths'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
+  [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
+  [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
+══ acceptance-gate [llm] seq=6.1.6 output OK 9.7s ══════════════ 12:37:52 UTC ══
+#### security-lens
+No findings.
+── end stage-io: acceptance-gate ✓ ──
+  [38;2;74;222;128m✓[0m findings.json created
+  [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] normal exit path disposition=complete
+  [38;2;74;222;128m✓[0m redaction.applied event emitted (chokepoint observable)
+  [38;2;248;113;113m✗[0m [SPEC-8] plugin.result event emitted on normal path with plugin=security-lens
