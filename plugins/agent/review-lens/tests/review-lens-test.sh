@@ -397,7 +397,7 @@ _1840_helper_body="$(awk '
     found && /^\}$/ { exit }
 ' "$PLUGIN_DIR/plugin.sh" 2>/dev/null || true)"
 # Helper must contain no quoted literal artifact filenames (lens-*.json, scope-manifest.md)
-if printf '%s' "$_1840_helper_body" | grep -qE '"lens-[^$"]*"|'"'"'lens-[^$'"'"']*'"'"'|"scope-manifest\.md"'; then
+if grep -qE '"lens-[^$"]*"|'"'"'lens-[^$'"'"']*'"'"'|"scope-manifest\.md"' <<< "$_1840_helper_body"; then
     assert_fail "[SPEC-11] _review_lens_write_result body must have no hardcoded artifact path literals" "found"
 else
     assert_pass "[SPEC-11] _review_lens_write_result body derives paths solely from \$out parameter"
@@ -765,7 +765,7 @@ for _1840_ev in "review_lens.failed" "review_lens.redaction_failed" "review_lens
     fi
 done
 # Count total event entries in provides.events — must be exactly 3
-_1840_event_count="$(grep -c 'review_lens\.' <<< "$_1840_events_section" 2>/dev/null || echo 0)"
+_1840_event_count="$(grep -c 'review_lens\.' <<< "$_1840_events_section" 2>/dev/null || true)"
 assert_eq "[SPEC-16] manifest provides.events declares exactly 3 events (no more, no less)" \
     "3" "$_1840_event_count"
 # validate_manifest must pass with those event declarations
