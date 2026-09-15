@@ -96,15 +96,16 @@ assert_eq "[SPEC-1] echoes the failing member id" "acceptance-gate" "$out"
 # exposes it via _CYCLE_TERMINAL_MEMBER_REASON so the operator sees SPEC ids +
 # class instead of the opaque "member_terminal_failure". Called WITHOUT command
 # substitution so the global set inside the function is visible in this shell.
-# NB (#1585): tautology is now a RECOVERABLE disposition (build re-iterates), so a
-# genuinely-terminal class is used here — not_passing_at_head stays terminal and
-# still carries SPEC ids, exercising the same reason-surfacing path.
-_reset; _write_acc '{"verdict":"fail","disposition":"terminal","reason":"acceptance-gate: SPEC-1/SPEC-8 not passing at HEAD — fix the implementation or the assertion","failures":["not_passing_at_head:SPEC-1","not_passing_at_head:SPEC-8"]}'
+# NB (#1585, #2097): tautology and not_passing_at_head are now RECOVERABLE (the
+# cycle re-iterates), so a genuinely-terminal class is used here —
+# malformed_acceptance_block carries SPEC ids in its reason too, exercising the
+# same reason-surfacing path.
+_reset; _write_acc '{"verdict":"fail","disposition":"terminal","reason":"acceptance-gate: SPEC-1/SPEC-8 malformed acceptance block — design must re-author","failures":["malformed_acceptance_block:SPEC-1","malformed_acceptance_block:SPEC-8"]}'
 _CYCLE_TERMINAL_MEMBER_REASON="__stale__"
 set +e; _cycle_member_terminal_failure "$STATE_DIR"; rc=$?; set -e
 assert_eq "[#1220] terminal with reason → terminal (rc=0)" "0" "$rc"
 assert_contains "[#1220] surfaces member reason (names SPEC ids)" "$_CYCLE_TERMINAL_MEMBER_REASON" "SPEC-1"
-assert_contains "[#1220] surfaces member reason (names the class)" "$_CYCLE_TERMINAL_MEMBER_REASON" "not passing at HEAD"
+assert_contains "[#1220] surfaces member reason (names the class)" "$_CYCLE_TERMINAL_MEMBER_REASON" "malformed acceptance block"
 
 # ── [#1220] no reason field on a terminal member → global cleared ──────────────
 # Fail-safe: absent reason must not leak a stale value; downstream falls back to

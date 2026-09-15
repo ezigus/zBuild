@@ -265,8 +265,8 @@ precedence highest-first):
 
 | disposition   | failure classes                                                            | engine effect                                             |
 | ------------- | -------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `terminal`    | not_passing_at_head, no_testfile, malformed_acceptance_block               | HALT — cycle does not converge (rc=8), pipeline.end=failed |
-| `recoverable` | untagged_spec:*, tautology:*, inert_wiring:*, wiring_not_on_path:*         | NON-terminal; build feedback loop (cycle re-iterates); wiring_not_on_path always sets route_target=design; inert_wiring also sets route_target=design on ZBUILD_CYCLE_ITER≥2 (Amendment #1711) |
+| `terminal`    | no_testfile, malformed_acceptance_block                                    | HALT — cycle does not converge (rc=8), pipeline.end=failed |
+| `recoverable` | untagged_spec:*, tautology:*, inert_wiring:*, guard_regressed:*, not_passing_at_head:*, wiring_not_on_path:* | NON-terminal; build feedback loop (cycle re-iterates); wiring_not_on_path always sets route_target=design; inert_wiring and not_passing_at_head also set fault=specification on ZBUILD_CYCLE_ITER≥2 (Amendments #1711, #2097) |
 | `advisory`    | negctl_error:* / reachability_error:* (only — resolve/worktree/timeout)    | NON-terminal AND non-blocking for convergence (infra flake)|
 | `none`        | (verdict=pass)                                                             | n/a                                                        |
 
@@ -325,12 +325,13 @@ gate-aggregator rolls a failed gate's `route_target` up into `verdict == route_d
 `simple.yaml`'s `build_test_cycle` route_back (ADR-045) rewinds to `design_verify_cycle` (ADR-046)
 so design re-authors the assertion, reading the focused `design-feedback.md` the aggregator wrote.
 
-**Design-rooted vs build-fixable.** ONLY `tautology` is design-rooted. The other terminal classes
-stay build-fixable / terminal and set NO `route_target`: `not_passing_at_head` (fix the impl or the
-assertion), `no_testfile` / `untagged_spec` (add the tagged assertion — recoverable, fed to build via
-the #951 edge), `inert_wiring` (make the WIRING load-bearing), `malformed_acceptance_block`. The
-plugin-vocabulary → generic-field (`route_target`) mapping lives ENTIRELY in the acceptance-gate
-plugin (ADR-021: the engine and the aggregator know no acceptance-gate failure vocabulary).
+**Design-rooted vs build-fixable.** ONLY `tautology` is design-rooted. The other classes set NO
+`route_target` on the first attempt: `not_passing_at_head` (fix the impl or the assertion —
+recoverable since Amendment #2097), `no_testfile` / `untagged_spec` (add the tagged assertion —
+recoverable, fed to build via the #951 edge), `inert_wiring` (make the WIRING load-bearing),
+`malformed_acceptance_block` (terminal). The plugin-vocabulary → generic-field (`route_target`)
+mapping lives ENTIRELY in the acceptance-gate plugin (ADR-021: the engine and the aggregator know
+no acceptance-gate failure vocabulary).
 
 ## Amendment (#1265, 2026-07-06) — `no_impl_delta` SKIP is legit ONLY as a clean `empty_diff` resting point
 
@@ -757,3 +758,42 @@ disk, never what a prompt asked for.
 (`build/lib/prompt.sh:191`, `_build_read_tautology_ids`). The same
 `prior_acceptance_feedback.txt` path now carries the finding to `test-author`.
 Levels 1–3 are unchanged: they are experiments, and no reading replaces them.
+
+## Amendment (#2097, 2026-09-14) — `not_passing_at_head` is recoverable; iter≥2 escalates to design
+
+**Problem.** Run 34869844093 (#1848) halted at build_test_cycle iter 1/5, rc=8, on
+`NEGCTL FAIL SPEC-14 not_passing_at_head`. The assertion was a comment-blind awk that
+one more authoring pass fixes. The gate's `terminal` label cancelled that pass.
+
+**Why the label was wrong.** `not_passing_at_head` means "the TESTFILE fails at HEAD". The
+test stage runs the same file at the same HEAD one member earlier, so whenever the gate reports
+this class the cycle is *already* going to re-iterate — the terminal verdict adds no diagnosis;
+its only effect is to cancel the retry. The label dates from this ADR's first text (*"a **stub**
+that never passes is rejected"*), when design wrote red-first stubs and a stub build could not
+turn green meant the design had asked the impossible. #1477 removed those stubs; the assertion
+has had a model author since (test-author, Amendment #2022). The three sibling classes with the
+same "weak assertion" symptom were each moved to recoverable as they bit a dogfood — `tautology`
+(#1583), `inert_wiring` (#1585), `guard_regressed` (#1670) — and this one was carried forward
+unexamined: the §Disposition table said terminal while the prose two paragraphs later said
+"build-fixable". Per-TESTFILE granularity (§3) made it disproportionate besides: one wrong
+`assert_eq` in a shared test file ended the run with zero retries.
+
+**Decision.**
+
+1. `not_passing_at_head:*` → `recoverable`. The cycle re-iterates; the assertion's author sees
+   the gate's finding (SPEC id, the `design:`/`asserts:` pairing from Amendment #1684) in the
+   engine-injected STAGE SUMMARIES. Bounded by `max_iterations`.
+2. Iter ≥ 2 still not passing → `fault=specification` + `acceptance.gate.not_passing_at_head_escalated`,
+   the Amendment #1711 shape: after one honest authoring pass, impl and assertion still cannot be
+   made to agree with the SPEC, so the premise is what is suspect and design is the stage that
+   can fix a premise. Disposition stays `recoverable` so the aggregator reads the fault and
+   routes (the #1686 rationale).
+
+**Still terminal:** `no_testfile`, `malformed_acceptance_block` — design-authored structure no
+downstream author can repair.
+
+**Verification.** `acceptance-disposition-classify-test.sh` (classify → recoverable; terminal
+still outranks), `acceptance-gate-test.sh` S14 (iter 1: no fault, recoverable),
+`acceptance-gate-npah-escalation-test.sh` (iter 2: fault=specification, event, recoverable).
+Reverting `plugin.sh` alone turns all five new assertions red.
+

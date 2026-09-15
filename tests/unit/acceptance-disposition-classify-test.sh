@@ -63,8 +63,17 @@ assert_eq "[SPEC-3] inert_wiring disposition stays recoverable at any iter (esca
 # ── a genuine terminal class OUTRANKS recoverable ────────────────────────────
 assert_eq "tautology + malformed → terminal (terminal outranks)" "terminal" \
     "$(_ag_classify_disposition "tautology:SPEC-1" "malformed_acceptance_block")"
-assert_eq "not_passing_at_head stays terminal" "terminal" \
+# #2097: not_passing_at_head is the same "weak assertion" symptom as tautology /
+# inert_wiring / guard_regressed — build owns the assertion (#1477) and the test
+# stage has ALREADY failed on the same file at the same HEAD, so terminal only
+# cancels the retry the cycle would otherwise run. Run 34869844093 halted at
+# iter 1 on a comment-blind awk that build could have fixed in one iteration.
+assert_eq "not_passing_at_head only → recoverable (#2097)" "recoverable" \
     "$(_ag_classify_disposition "not_passing_at_head:SPEC-1")"
+assert_eq "not_passing_at_head + inert_wiring (the #1848 shape) → recoverable" "recoverable" \
+    "$(_ag_classify_disposition "not_passing_at_head:SPEC-14" "inert_wiring:plugins/tool/secret-scan/plugin.sh")"
+assert_eq "not_passing_at_head + malformed → terminal (terminal still outranks)" "terminal" \
+    "$(_ag_classify_disposition "not_passing_at_head:SPEC-1" "malformed_acceptance_block")"
 
 # ── advisory / none unchanged ────────────────────────────────────────────────
 assert_eq "negctl_error → advisory" "advisory" \

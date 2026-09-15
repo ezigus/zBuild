@@ -76,13 +76,14 @@ _ag_resolve_negctl_timeout() {
 # GENERIC member-disposition contract (ADR-021 / ADR-036 §-Disposition) the cycle
 # engine reads. The engine knows NO acceptance-gate failure vocabulary; it only
 # reads the disposition field this function computes. Precedence (highest wins):
-#   terminal    — ≥1 GENUINE, non-build-fixable violation: not_passing_at_head,
-#                 no_testfile, malformed_acceptance_block (design-authored / build
+#   terminal    — ≥1 GENUINE, non-build-fixable violation: no_testfile,
+#                 malformed_acceptance_block (design-authored structure / build
 #                 cannot fix). OUTRANKS recoverable.
 #   recoverable — build-fixable classes: untagged_spec:*, tautology:*,
-#                 inert_wiring:* (#1585 — build owns the assertions since #1477;
-#                 the cycle re-iterates and feeds these back to build via the
-#                 #951 edge, the negative control re-verifies each iteration).
+#                 inert_wiring:*, not_passing_at_head:* (#1585/#2097 — the
+#                 assertion has a model author (test-author, #2022); the cycle
+#                 re-iterates with the finding in the stage summaries, the
+#                 negative control re-verifies each iteration).
 #   advisory    — only infra classes: negctl_error:* / reachability_error:*
 #                 (baseline/worktree resolve failures + negctl/reachability
 #                 TIMEOUTS — a flaky sandbox must never hard-fail the pipeline).
@@ -100,6 +101,17 @@ _ag_classify_disposition() {
             # re-verifies each iteration, and max_iterations bounds it — an
             # un-fixable case exhausts the budget and terminates cleanly.
             untagged_spec:* | tautology:* | inert_wiring:*)  had_recoverable=1 ;;
+            # #2097: not_passing_at_head was the last "weak assertion" class left
+            # terminal — a label from when DESIGN wrote red-first stubs (ADR-036
+            # as first written: "a stub that never passes"). The assertion has
+            # had a model author since #1477 (test-author since #2022), and the
+            # test stage has ALREADY failed on the same file at the same HEAD, so
+            # terminal added no diagnosis; its only effect was to cancel the
+            # retry the cycle would otherwise run — the one where the author sees
+            # this gate's finding in the injected STAGE SUMMARIES. Run
+            # 34869844093 halted at iter 1 on a comment-blind awk that one more
+            # pass fixes. Iter>=2 escalates to design below.
+            not_passing_at_head:*)                           had_recoverable=1 ;;
             # #1686: design-rooted, but NOT terminal — the cycle must reach the
             # gate-aggregator for the declared fault to drive the rewind
             # and fire the route_back edge. Terminal would halt before the rewind.
@@ -512,6 +524,21 @@ acceptance_gate_run() {
                 eb_emit_event "acceptance.gate.inert_wiring_escalated" \
                     "stage=acceptance-gate" \
                     "target=${f#inert_wiring:}" "iter=${ZBUILD_CYCLE_ITER:-1}"
+                break
+            fi
+        done
+    fi
+    # #2097: same shape for not_passing_at_head. Iter 1 is build's honest try
+    # (S14: no fault). Still failing at HEAD on iter>=2 means impl and assertion
+    # cannot be made to agree with the SPEC, so the premise is what is suspect
+    # and design is the stage that can fix a premise.
+    if [[ -z "$fault" && "${ZBUILD_CYCLE_ITER:-1}" -ge 2 ]]; then
+        for f in "${failures[@]:-}"; do
+            if [[ "$f" == not_passing_at_head:* ]]; then
+                fault="specification"
+                eb_emit_event "acceptance.gate.not_passing_at_head_escalated" \
+                    "stage=acceptance-gate" \
+                    "spec=${f#not_passing_at_head:}" "iter=${ZBUILD_CYCLE_ITER:-1}"
                 break
             fi
         done

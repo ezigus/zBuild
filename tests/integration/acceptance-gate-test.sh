@@ -350,10 +350,12 @@ assert_eq "S12: tautology disposition=recoverable (#1585 — cycle re-iterates, 
 set +e; _run_gate "$REPO3"; set -e
 assert_eq "S13: untagged-only (build-fixable) → fault absent" "" "$(jq -r '.fault // ""' <<<"$RESULT")"
 
-# ── S14 (#1219): a not_passing_at_head failure does NOT set fault ───────
-# not_passing_at_head is build-fixable/terminal (fix the impl) — out of #1219
-# scope; it must NOT route to design. REPO with a [change] SPEC whose tagged test
-# fails at BOTH baseline and HEAD (a real not_passing_at_head, not a tautology).
+# ── S14 (#1219/#2097): a not_passing_at_head failure at iter 1 does NOT set fault ──
+# not_passing_at_head is recoverable (#2097): iter 1 is the author's honest try
+# and must NOT route to design — the iter>=2 escalation lives in
+# acceptance-gate-npah-escalation-test.sh (its own file, per #1737). REPO with a
+# [change] SPEC whose tagged test fails at BOTH baseline and HEAD (a real
+# not_passing_at_head, not a tautology).
 REPO14="$(_build_repo gate-nohead '#!/usr/bin/env bash
 # [SPEC-1] change: never passes anywhere
 exit 1')"
@@ -366,6 +368,8 @@ tests/feature-test.sh
 EOF
 set +e; _run_gate "$REPO14"; set -e
 assert_eq "S14: not_passing_at_head → fault absent (build-fixable)" "" "$(jq -r '.fault // ""' <<<"$RESULT")"
+assert_eq "S14 (#2097): iter 1 disposition is recoverable, not terminal" "recoverable" \
+    "$(jq -r '.disposition // ""' <<<"$RESULT")"
 
   # exits with $FAIL
 
