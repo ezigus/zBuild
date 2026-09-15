@@ -114,11 +114,10 @@ _hook_rc=$?
 set -e
 assert_eq "[SPEC-3] advisory run hook returns 0 even with a critical finding" "0" "$_hook_rc"
 assert_eq "[SPEC-3] report written" "needs_attention" "$(jq -r '.merge_readiness' "$state_dir/artifacts/review-report.json" 2>/dev/null)"
-if jq -e '.verdict' "$state_dir/artifacts/review-report.json" >/dev/null 2>&1; then
-    assert_fail "[SPEC-3] report carries no verdict (no coercion)" "found .verdict"
-else
-    assert_pass "[SPEC-3] report carries no verdict (no coercion)"
-fi
+# ADR-054 §5 (#1843): the primary carries the contract verdict; no coercion
+# now means findings never move it off `pass`.
+assert_eq "[SPEC-3] report verdict stays pass at needs_attention (no coercion)" "pass" \
+    "$(jq -r '.verdict' "$state_dir/artifacts/review-report.json" 2>/dev/null)"
 
 # ─── SPEC-12: manifest-driven roster present in integration context ────────────
 if declare -f _rr_load_lenses >/dev/null 2>&1; then

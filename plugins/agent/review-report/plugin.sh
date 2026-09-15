@@ -39,28 +39,31 @@ source "$_RR_ROOT/scripts/lib/call-graph.sh"
 # shellcheck source=../../../scripts/lib/merge-base.sh
 source "$_RR_ROOT/scripts/lib/merge-base.sh"
 
-# ─── _rr_write_result <artifact_dir> <v> <disp> <reason> ─────────────────────
-# Writes review-report-result.json with the v2 result contract (result_contract:2).
-# Called on every terminal exit path (ADR-054).
-_rr_write_result() {
-    local dir="$1" _vrd="$2" disposition="$3" reason="$4"
-    mkdir -p "$dir" 2>/dev/null || true
-    # Key constructed via concatenation so the no-coercion-vocabulary grep stays clean.
-    local _vk; _vk="ver""dict"
-    jq -n --arg k "$_vk" --arg v "$_vrd" --arg d "$disposition" --arg r "$reason" \
-        '{result_contract: 2} + {($k): $v} + {disposition: $d, reason: $r, data: {}}' \
-        | atomic_write "$dir/review-report-result.json" 2>/dev/null \
-        || warn "_rr_write_result: failed to write review-report-result.json"
+# ─── _rr_write_v2 <out_json> <verdict> <disposition> <reason> [<report_json>] ─
+# The v2 result IS the primary (ADR-054 §5: one file, outputs[primary: true]),
+# so the report's own keys (merge_readiness/findings/lenses — pr-open and
+# pr-delivery read them top-level) and the contract keys share review-report.json.
+_rr_write_v2() {
+    local out_json="$1" verdict="$2" disposition="$3" reason="$4" report="${5:-{\}}"
+    mkdir -p "$(dirname "$out_json")" 2>/dev/null || true
+    jq -n --argjson r "$report" --arg v "$verdict" --arg d "$disposition" --arg why "$reason" \
+        '$r + {result_contract: 2, verdict: $v, disposition: $d, reason: $why, data: ($r.data // {})}' \
+        | atomic_write "$out_json" 2>/dev/null \
+        || warn "review_report: failed to write $out_json"
 }
 
 # ─── _rr_budget_guidance <max_turns> <timeout_s> ─────────────────────────────
-# TURN BUDGET block for lens prompts (ADR-063 §1). Empty when budget is unknown.
+# TURN BUDGET block for lens prompts (ADR-063 §1). Both numbers come from the
+# resolvers that enforce them; a hand-copied literal drifts from what kills
+# the call. Empty when the budget is unknown.
 _rr_budget_guidance() {
-    local budget="${1:-}"
+    local budget="${1:-}" timeout_s="${2:-}"
     [[ "$budget" =~ ^[0-9]+$ && "$budget" -gt 0 ]] || { printf ''; return 0; }
+    local wall=""
+    [[ "$timeout_s" =~ ^[0-9]+$ && "$timeout_s" -gt 0 ]] && wall=" and about ${timeout_s} seconds of wall clock"
     cat <<EOF
 TURN BUDGET (read this — you have a BOUNDED tool-call budget):
-- You have about ${budget} tool-call turns for this review lens.
+- You have about ${budget} tool-call turns for this review lens${wall}.
 - Review only what you can examine within your budget; flag unexamined areas explicitly.
 - STOP examining and emit your JSON findings object before you run out of turns. A partial review with named gaps BEATS exhausting the budget and producing no output at all.
 EOF
@@ -76,8 +79,9 @@ review_report_run() {
         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/review-report-summary.md}" "review-report" "error" \
             "the engine dispatched this stage with no state file, so it could not run" \
             "No work was attempted. This is an engine contract violation, not a fault in the change."
-        _rr_write_result "${ZBUILD_ARTIFACT_DIR:-.}" "error" "broken" "missing_state_file"
-        return 2
+        _rr_write_v2 "${ZBUILD_ARTIFACT_DIR:-.}/review-report.json" "error" "broken" \
+            "the engine dispatched this stage with no state file"
+        return 1
     fi
     local state_dir; state_dir="$(dirname "$state_file")"
     local artifact_dir="$state_dir/artifacts"
@@ -109,8 +113,9 @@ _rr_run_inner() {
         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/review-report-summary.md}" "review-report" "error" \
             "no output path was supplied, so no review report could be written" \
             "No work was attempted. This is an engine contract violation, not a fault in the change."
-        _rr_write_result "${ZBUILD_ARTIFACT_DIR:-.}" "error" "broken" "missing_out_json"
-        return 2
+        _rr_write_v2 "${ZBUILD_ARTIFACT_DIR:-.}/review-report.json" "error" "broken" \
+            "no output path was supplied"
+        return 1
     fi
     local artifact_dir; artifact_dir="$(dirname "$out_json")"
     mkdir -p "$artifact_dir"
@@ -127,7 +132,14 @@ _rr_run_inner() {
         fi
     fi
 
-    local tier; tier="$(resolve_tier review-report "$_RR_DIR")" || return 1
+    local tier
+    if ! tier="$(resolve_tier review-report "$_RR_DIR")"; then
+        stage_summary_write "$artifact_dir/review-report-summary.md" "review-report" "error" \
+            "no model tier resolved for review-report, so no lens could be dispatched" \
+            "No work was attempted. This is a configuration fault, not a fault in the change."
+        _rr_write_v2 "$out_json" "error" "broken" "no model tier resolved for review-report"
+        return 1
+    fi
 
     # Register per-lens artifacts before fan-out so each lens gets distinct evidence.
     _rr_populate_artifact_registry "$artifact_dir"
@@ -147,20 +159,25 @@ _rr_run_inner() {
     local lenses_file
     lenses_file="$(_rr_fanout_lenses "$scope_manifest" "$evidence" "$artifact_dir" "$tier" "$_budget_guidance")"
 
-    # Determine disposition: exhausted if any lens subshell returned non-zero rc.
-    local _rr_any_lens_failed=0
-    local _rr_lens_name
+    # ADR-063 §3: a lens whose call returned non-zero ran out of something —
+    # the report is still written (advisory), but the disposition says
+    # `exhausted` so the engine's response table can act on it.
+    local _rr_failed_lenses="" _rr_lens_name _rr_lens_rc
     for _rr_lens_name in "${_RR_LENSES[@]}"; do
-        local _rr_lens_rc
         _rr_lens_rc="$(cat "$artifact_dir/lens-${_rr_lens_name}.rc" 2>/dev/null || echo 1)"
-        if [[ "$_rr_lens_rc" -ne 0 ]]; then
-            _rr_any_lens_failed=1
-            break
-        fi
+        [[ "$_rr_lens_rc" -ne 0 ]] && _rr_failed_lenses="${_rr_failed_lenses:+$_rr_failed_lenses, }$_rr_lens_name"
     done
+    local _disposition="complete" _reason
+    if [[ -n "$_rr_failed_lenses" ]]; then
+        _disposition="exhausted"
+        _reason="lens call(s) returned non-zero: ${_rr_failed_lenses}; the report covers the lenses that completed"
+    else
+        _reason="all ${#_RR_LENSES[@]} lenses completed; advisory report written"
+    fi
 
-    # Aggregate + de-dupe into the advisory report (always written first).
-    _rr_aggregate "$lenses_file" | atomic_write "$out_json"
+    # Aggregate + de-dupe into the advisory report, which IS the v2 result
+    # (always written first, before any fail-soft step below).
+    _rr_write_v2 "$out_json" "pass" "$_disposition" "$_reason" "$(_rr_aggregate "$lenses_file")"
 
     local merge_readiness lens_count
     merge_readiness="$(jq -r '.merge_readiness // "advisory"' "$out_json" 2>/dev/null || echo advisory)"
@@ -181,11 +198,6 @@ _rr_run_inner() {
         set -e
         [[ $gh_rc -ne 0 ]] && warn "review_report: gh pr comment failed (rc=$gh_rc); continuing"
     fi
-
-    # Write v2 result sidecar (ADR-054). disposition=exhausted when any lens failed.
-    local _disposition="complete"
-    [[ "$_rr_any_lens_failed" -eq 1 ]] && _disposition="exhausted"
-    _rr_write_result "$artifact_dir" "pass" "$_disposition" "review_produced"
 
     stage_summary_write "$artifact_dir/review-report-summary.md" "review-report" "pass" \
         "aggregated $lens_count review lens(es) — merge readiness: $merge_readiness" \
