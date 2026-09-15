@@ -53,11 +53,11 @@ declare -A _RR_LENS_ARTIFACT_REGISTRY=()
 # Schema gate for _llm_envelope_parse --schema-gate. A valid lens response must
 # be an object with score:number and findings:array (ADR-028 v1.2, #1843).
 _rr_lens_envelope_schema_ok() {
-    printf '%s' "${1:-}" | jq -e '
+    jq -e '
         type == "object"
         and (.score | type == "number")
         and (.findings | type == "array")
-    ' >/dev/null 2>&1
+    ' <<< "${1:-}" >/dev/null 2>&1
 }
 
 # Proximity window (lines): two findings on the same file+category within this
@@ -108,11 +108,8 @@ _rr_build_lens_prompt() {
     local lens="$1" evidence="$2" budget_guidance="${3:-}" charter
     charter="$(_rr_lens_charter "$lens")"
     local budget_block=""
-    if [[ -n "$budget_guidance" ]]; then
-        budget_block="${budget_guidance}
-
+    [[ -n "$budget_guidance" ]] && budget_block="${budget_guidance}
 "
-    fi
     cat <<PROMPT
 ${budget_block}You are the "${lens}" review lens. ${charter}
 
@@ -160,10 +157,11 @@ _rr_parse_lens_out() {
 
     local raw_out; raw_out="$(cat "$out_file" 2>/dev/null || true)"
     local json _rr_lp_prose
+    # --schema-gate leaves $json either empty or already past
+    # _rr_lens_envelope_schema_ok; emptiness is the whole verdict.
     _llm_envelope_parse --schema-gate _rr_lens_envelope_schema_ok \
         "$raw_out" json _rr_lp_prose
-    if [[ -z "$json" ]] || ! printf '%s' "$json" | jq empty >/dev/null 2>&1 \
-        || ! _rr_lens_envelope_schema_ok "$json" 2>/dev/null; then
+    if [[ -z "$json" ]]; then
         emit_event "review_report.lens.unparseable" "lens=$lens" 2>/dev/null || true
         printf '%s' "$empty"; return 0
     fi

@@ -171,9 +171,16 @@ printf 'x' > "$_d9/pipeline-state.json"
 printf '# declared scope\n' > "$_d9/from-index.md"
 printf '{"inputs":{"scope_manifest":"%s"}}\n' "$_d9/from-index.md" > "$_d9/stage-inputs.json"
 _rr_seen_scope=""
-_rr_fanout_lenses() { printf '%s' "$1" > "$_d9/seen-scope.txt"; printf '[]' > "$_d9/lenses.json"; printf '%s' "$_d9/lenses.json"; }
+# Full-fidelity post-conditions (rc files) so the run's disposition is `complete`,
+# not an accidental `exhausted` from every rc read falling back to 1.
+_rr_fanout_lenses() {
+    printf '%s' "$1" > "$_d9/seen-scope.txt"
+    local l; for l in "${_RR_LENSES[@]}"; do printf '0' > "$3/lens-$l.rc"; done
+    printf '[]' > "$_d9/lenses.json"; printf '%s' "$_d9/lenses.json"
+}
 ZBUILD_STAGE_INPUTS="$_d9/stage-inputs.json" review_report_run "review" "$_d9/pipeline-state.json" >/dev/null 2>&1
 assert_eq "[SPEC-9] scope_manifest resolved from the ZBUILD_STAGE_INPUTS index" "$_d9/from-index.md" "$(cat "$_d9/seen-scope.txt" 2>/dev/null)"
+assert_eq "[SPEC-9] hook path writes a complete v2 primary" "complete" "$(_v2 disposition "$_d9/artifacts/review-report.json")"
 unset -f _rr_fanout_lenses; source "$PLUGIN_DIR/lib/lenses.sh"
 assert_eq "[SPEC-9] plugin.sh constructs no scope-manifest.md path" "0" \
     "$(grep -c 'scope-manifest.md' "$PLUGIN_DIR/plugin.sh" || true)"

@@ -44,6 +44,8 @@ source "$_RR_ROOT/scripts/lib/merge-base.sh"
 # so the report's own keys (merge_readiness/findings/lenses — pr-open and
 # pr-delivery read them top-level) and the contract keys share review-report.json.
 _rr_write_v2() {
+    # `{\}` is the literal two-character default `{}` — the backslash keeps the
+    # brace from closing the expansion.
     local out_json="$1" verdict="$2" disposition="$3" reason="$4" report="${5:-{\}}"
     mkdir -p "$(dirname "$out_json")" 2>/dev/null || true
     jq -n --argjson r "$report" --arg v "$verdict" --arg d "$disposition" --arg why "$reason" \
