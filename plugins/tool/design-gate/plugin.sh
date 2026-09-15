@@ -19,11 +19,6 @@ _ZBUILD_DESIGN_GATE_PLUGIN_LOADED=1
 # shellcheck source=../../../scripts/lib/plugin-bootstrap.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
-# shellcheck source=../../../scripts/lib/stage-summary.sh
-# NOT `|| true`: this helper is how the gate's findings reach a prompt at
-# all. Swallowing a failed load would leave stage_summary_write undefined and
-# every finding silently unpublished — the exact shape #1991 guards.
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/stage-summary.sh"
 _DG_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
