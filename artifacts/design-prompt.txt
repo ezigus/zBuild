@@ -197,7 +197,9 @@ SPEC-10: plugins/agent/security-lens/tests/security-lens-test.sh
 
 (Durable copy: https://github.com/ezigus/zBuild/blob/zbuild/state/issue-1841/artifacts/design.md — reference it, but VERIFY against the CURRENT inputs above; the code may have moved on since.)
 
-Refine the PRIOR DESIGN. Preserve all existing scope entries unless one is clearly wrong.
+Expand the PRIOR DESIGN scope block to cover the gaps the design-gate reported in the STAGE SUMMARIES section. Preserve all existing scope entries; only ADD the missing ones.
+
+If the STAGE SUMMARIES name a tautological [change] SPEC — one that passes at the merge-base baseline, so it asserts nothing — RE-AUTHOR that SPEC and its tagged assertion so it FAILS at baseline and PASSES at HEAD. Build is forbidden to touch acceptance assertions (ADR-036), so only this stage can. Preserve all other scope and acceptance entries.
 
 WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
 - This stage has a wall-clock budget of 600 seconds total; ~0s have elapsed.
