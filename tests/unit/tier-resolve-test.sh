@@ -118,6 +118,13 @@ assert_exit_code "invalid template router.tier T9 → non-zero (fail loud)" 1 "$
 assert_eq "empty template tier + stage set → manifest default unchanged (#1231 invariant)" \
     "T3" "$(ZBUILD_CURRENT_STAGE=simple __STUB_STAGE=other __STUB_TIER=T1 resolve_tier simple "$TMP/simple")"
 
+# SPEC-14 (guard, issue #1848): the seven gate plugins newly declare tier_default:T0;
+# a template-level router.tier must still override that T0 — precedence unchanged.
+mkdir -p "$TMP/t0-gate"
+printf 'config:\n  tier_default: T0\n' > "$TMP/t0-gate/manifest.yaml"
+assert_eq "[SPEC-14] template router.tier beats manifest tier_default:T0 (gate migration #1848 guard)" \
+    "T2" "$(ZBUILD_CURRENT_STAGE=t0-gate __STUB_STAGE=t0-gate __STUB_TIER=T2 resolve_tier t0-gate "$TMP/t0-gate")"
+
 unset -f template_stage_router_tier
 
 # ─── behavior-identical: the shipped agent plugins resolve their manifest tier ──

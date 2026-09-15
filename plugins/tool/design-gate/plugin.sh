@@ -56,7 +56,7 @@ _dg_scope_nonempty() {
 }
 
 # ─── design_gate_run ──────────────────────────────────────────────────────────
-# Runs C1..C5, collects ALL violations, writes verdict-in-artifact, emits
+# Runs C1..C6, collects ALL violations, writes verdict-in-artifact, emits
 # design_gate.{pass,fail}. Always rc=0.
 # Args: $1 = stage_id, $2 = state_file
 design_gate_run() {
@@ -71,7 +71,11 @@ design_gate_run() {
     fi
     mkdir -p "$artifacts_dir"
 
-    local design_md="$artifacts_dir/design.md"
+    local design_md=""
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+        design_md="$(jq -r '.inputs.design // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+    fi
+    [[ -n "$design_md" ]] || design_md="$artifacts_dir/design.md"
     local result_path="$artifacts_dir/design-gate-result.json"
     local feedback_path="$artifacts_dir/design-gate-feedback.md"
     # repo_root = the working tree where declared TESTFILES / WIRING paths live.
@@ -193,13 +197,15 @@ design_gate_run() {
     fi
 
     # ── Verdict + artifact ───────────────────────────────────────────────────
-    local verdict violations_json
+    local verdict violations_json reason
     if [[ ${#violations[@]} -eq 0 ]]; then
         verdict="pass"
         violations_json="[]"
+        reason="all structural checks cleared"
     else
         verdict="fail"
         violations_json="$(printf '%s\n' "${violations[@]}" | jq -R . | jq -s .)"
+        reason="design structural violations: ${#violations[@]} found"
     fi
 
     # Coverage block, present ONLY when the design declares a [guard] SPEC — a
@@ -218,8 +224,8 @@ design_gate_run() {
             '{declared:$d,verified:$v,failed:$f,skipped:$s}')"
     fi
 
-    jq -n --arg v "$verdict" --argjson viol "$violations_json" --argjson gp "$_gp_json" \
-        '{"schema_version":1,"verdict":$v,"violations":$viol}
+    jq -n --arg v "$verdict" --argjson viol "$violations_json" --argjson gp "$_gp_json" --arg r "$reason" \
+        '{"result_contract":2,"schema_version":1,"verdict":$v,"disposition":"complete","reason":$r,"violations":$viol}
          + (if $gp==null then {} else {"guard_precheck":$gp} end)' | atomic_write "$result_path"
 
     if [[ "$verdict" == "fail" ]]; then
@@ -238,8 +244,9 @@ design_gate_run() {
         } | atomic_write "$feedback_path"
         _dg_emit "design_gate.fail" "plugin=design-gate" "violations=${#violations[@]}"
     else
-        # Never leave a stale feedback file from a prior failing iteration.
-        rm -f "$feedback_path" 2>/dev/null || true
+        # ADR-055 §9: written on every terminal verdict; absence is never legitimate.
+        printf '# Design-gate: all structural checks cleared\n\nThe design is build-ready.\n' \
+            | atomic_write "$feedback_path"
         _dg_emit "design_gate.pass" "plugin=design-gate"
     fi
 

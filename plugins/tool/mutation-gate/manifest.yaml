@@ -16,8 +16,8 @@ description: |
   Floor preference: the `floor` recorded in test-results.json wins; otherwise
   ZBUILD_MUTATION_FLOOR (default 0). When test-results.json is absent or carries
   no `mutation` block → verdict=skip.
-  Always returns rc=0; the verdict lives in mutation-result.json (ADR-040
-  verdict-in-artifact convention, mirrors shape-floor).
+  Always returns rc=0; the verdict lives in mutation-result.json and the finding
+  detail in mutation-detail.md (ADR-040 verdict-in-artifact, ADR-055 §9).
   ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
 
 hooks:
@@ -30,6 +30,7 @@ requires:
 
 provides:
   role: mutation_gate
+  result_contract: 2
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
