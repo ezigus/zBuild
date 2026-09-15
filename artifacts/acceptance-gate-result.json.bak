@@ -1,1 +1,1 @@
-{"result_contract":2,"verdict":"fail","disposition":"recoverable","reason":"acceptance SPEC violations — WIRING plugins/agent/security-lens/manifest.yaml inert — reverting it breaks no TESTFILE","failures":["inert_wiring:plugins/agent/security-lens/manifest.yaml"]}
+{"result_contract":2,"verdict":"fail","disposition":"recoverable","reason":"acceptance SPEC violations — WIRING plugins/agent/security-lens/manifest.yaml inert — reverting it breaks no TESTFILE","failures":["inert_wiring:plugins/agent/security-lens/manifest.yaml"],"fault":"specification"}
