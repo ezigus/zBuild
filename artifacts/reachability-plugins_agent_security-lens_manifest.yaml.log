@@ -12,7 +12,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.CgsNrC/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.8dhAfm/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -34,7 +34,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.E9a6TQ/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.BAsyKU/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -56,7 +56,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.9D4Gdu/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.uhCBoZ/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -78,7 +78,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.J17PRt/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.zdJc4j/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -100,7 +100,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.KYzmx2/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.T1J2We/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -122,7 +122,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.zVSm9m/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.ltpWFl/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -144,7 +144,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.f2G9Mo/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.abbofQ/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -166,7 +166,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.k7d1e5/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.LRQN19/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -188,7 +188,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.jOYzjd/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.ypf8HG/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -210,7 +210,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.E90ECY/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.FbPme1/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -232,7 +232,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.UPZyhH/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.iNdQyO/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -254,7 +254,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.TbocC9/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.MwFemn/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -276,7 +276,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.qtdEjK/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.R1xgPz/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -298,7 +298,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.5EwwP2/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.eMFQpa/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -320,7 +320,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.TFRPt6/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.ZB8qUi/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -342,7 +342,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.L5J404/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.zjWU1K/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -364,7 +364,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.rYBuPD/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.GKvsh1/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -386,7 +386,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.JzMKX9/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.spxrsW/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -408,7 +408,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.1gcVdj/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.VKS4w3/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -430,7 +430,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.5Nmy0y/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.uQ6mVd/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -452,7 +452,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.Qs6005/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.XdAYdL/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -474,7 +474,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.zSkV0L/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.LHQ7LF/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -496,7 +496,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.QnO3zQ/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.YN4NKk/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -518,7 +518,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.3vWVQs/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.efcYyp/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -540,7 +540,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.Unzs74/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.0FuP8U/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -562,7 +562,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.OHmBri/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.EvRRIo/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -584,7 +584,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.gBevWe/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.Awv6K1/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
@@ -606,7 +606,7 @@
   [38;2;74;222;128m✓[0m verbatim line preserved: 'OWASP top 10 vulnerability patterns'
   [38;2;74;222;128m✓[0m verbatim line preserved: 'Do NOT report non-security issues.'
   [38;2;74;222;128m✓[0m [SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)
-[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.ZNo8qS/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
+[38;2;248;113;113m[1m✗[0m LLM rate-limited — resets 3pm (UTC) (model=claude-opus-4-7 tier=T3) — diagnostic: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-security-lens.gsShdC/home/.zbuild/state/artifacts/stage-io/acceptance-gate-sync-error.raw-claude-output.json
 [38;2;250;204;21m[1m⚠[0m security_lens_run: router rc=1 (recoverable); using empty findings
   [38;2;74;222;128m✓[0m findings.json created
   [38;2;74;222;128m✓[0m [SPEC-1] findings.json carries result_contract:2 on the pass exit path
