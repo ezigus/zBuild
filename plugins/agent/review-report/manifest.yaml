@@ -17,7 +17,6 @@ description: |
 
 hooks:
   run: review_report_run
-  cleanup: ~  # absent — engine emits plugin.cleanup.absent per ADR-001 §2
 
 requires:
   core:
