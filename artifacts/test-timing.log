@@ -1,2 +1,2 @@
-cpu 5988 11504 plugins/agent/security-lens/tests/security-lens-test.sh
-file 16237 plugins/agent/security-lens/tests/security-lens-test.sh
+cpu 5934 9516 plugins/agent/security-lens/tests/security-lens-test.sh
+file 14456 plugins/agent/security-lens/tests/security-lens-test.sh
