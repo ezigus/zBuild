@@ -46,6 +46,37 @@ _security_lens_envelope_schema_ok() {
     ' >/dev/null 2>&1
 }
 
+# ADR-054 §6 / ADR-060 §1: write v2 result artifact atomically.
+# Keeps top-level findings/stub for backward compat with pre-v2 consumers.
+# Args: <output-path> <verdict> <disposition> <reason> [<findings-json>]
+_security_lens_write_result() {
+    local output="$1" verdict="$2" disposition="$3" reason="$4"
+    local findings_json="${5:-[]}"
+    local now; now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    jq -n \
+        --arg ts "$now" \
+        --arg verdict "$verdict" \
+        --arg disposition "$disposition" \
+        --arg reason "$reason" \
+        --argjson findings "$findings_json" \
+        '{
+            result_contract: 2,
+            verdict: $verdict,
+            disposition: $disposition,
+            reason: $reason,
+            plugin_id: "security-lens",
+            generated_at: $ts,
+            findings: $findings,
+            stub: false,
+            data: {
+                plugin_id: "security-lens",
+                generated_at: $ts,
+                findings: $findings,
+                stub: false
+            }
+        }' | atomic_write "$output"
+}
+
 # ─── run ────────────────────────────────────────────────────────────────────
 # Hook called by the pipeline runner: security_lens_run(stage, state_file)
 # Derives artifact paths from state_dir and delegates to the inner function.
@@ -53,10 +84,16 @@ security_lens_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
         error "security_lens_run: state_file argument required"
+        if [[ -n "${ZBUILD_ARTIFACT_DIR:-}" ]]; then
+            mkdir -p "$ZBUILD_ARTIFACT_DIR" 2>/dev/null || true
+            _security_lens_write_result "$ZBUILD_ARTIFACT_DIR/security-findings.json" \
+                "error" "broken" \
+                "the engine dispatched this stage with no state file"
+        fi
         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/security-lens-summary.md}" "security-lens" "error" \
             "the engine dispatched this stage with no state file, so it could not run" \
             "No work was attempted. This is an engine contract violation, not a fault in the change."
-        return 2
+        return 1
     fi
     local state_dir; state_dir="$(dirname "$state_file")"
     local artifacts_dir="$state_dir/artifacts"
@@ -87,7 +124,7 @@ _security_lens_run_inner() {
 
     if [[ -z "$input" || -z "$output" ]]; then
         error "security_lens_run: requires <input> <scope_manifest> <output>"
-        return 2
+        return 1
     fi
 
     mkdir -p "$artifact_dir"
@@ -156,6 +193,8 @@ _security_lens_run_inner() {
         warn "security_lens_run: router rc=1 (recoverable); using empty findings"
     elif [[ $router_rc -ne 0 ]]; then
         error "security_lens_run: router rc=$router_rc (fatal); refusing to emit"
+        _security_lens_write_result "$output" "error" "broken" \
+            "the model call failed, so no security review happened"
         stage_summary_write "$artifact_dir/security-lens-summary.md" "security-lens" "error" \
             "the model call failed, so no security review happened" \
             "This lens contributed no findings; absence here is not evidence of safety."
@@ -164,24 +203,14 @@ _security_lens_run_inner() {
         return 1
     fi
 
-    # ─── Write findings.json (schema unchanged + stub:false marker) ───────
-    local now findings_count
-    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    # ─── Write findings.json (v2 contract + backward-compat top-level fields) ─
+    local findings_count
     findings_count="$(printf '%s' "$findings_json" | jq 'length' 2>/dev/null || echo 0)"
-
-    jq -n \
-        --arg ts "$now" \
-        --argjson findings "$findings_json" \
-        '{
-            schema_version: 1,
-            plugin_id: "security-lens",
-            generated_at: $ts,
-            findings: $findings,
-            stub: false
-        }' | atomic_write "$output"
+    local _reason="reviewed the change for security issues — $findings_count finding(s)"
+    _security_lens_write_result "$output" "pass" "complete" "$_reason" "$findings_json"
 
     stage_summary_write "$artifact_dir/security-lens-summary.md" "security-lens" "pass" \
-        "reviewed the change for security issues — $findings_count finding(s)" \
+        "$_reason" \
         "$(printf -- '- artifact: findings.json')"
     emit_event "plugin.result" "plugin=security-lens" \
         "findings_count=$findings_count" \
@@ -190,3 +219,5 @@ _security_lens_run_inner() {
 }
 
 # ─── cleanup ────────────────────────────────────────────────────────────────
+# ADR-056 §4: no resources to release; presence recorded per contract.
+security_lens_cleanup() { return 0; }
