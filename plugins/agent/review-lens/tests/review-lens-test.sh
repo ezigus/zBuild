@@ -75,20 +75,20 @@ set +e
 _review_lens_run_inner "security" "$scope_manifest" "$evidence" "$out" "$artifact_dir"
 _rc=$?
 set -e
-assert_eq "[SPEC-1] run returns 0 (advisory never aborts)" "0" "$_rc"
-assert_eq "[SPEC-1] exactly ONE LLM call for the lens" "1" "$(wc -l < "$_RL_CALLS" | tr -d ' ')"
-assert_file_exists "[SPEC-1] writes lens-security.json" "$out"
-assert_eq "[SPEC-1] normalized name == lens id" "security" "$(jq -r '.name' "$out")"
-assert_eq "[SPEC-1] schema_version present" "1" "$(jq -r '.schema_version' "$out")"
-assert_eq "[SPEC-1] score floored to integer" "3" "$(jq -r '.score' "$out")"
-assert_eq "[SPEC-1] findings normalized (1 finding)" "1" "$(jq '.findings | length' "$out")"
-assert_eq "[SPEC-1] severity lowercased to enum" "critical" "$(jq -r '.findings[0].severity' "$out")"
+assert_eq "[#1140-1] run returns 0 (advisory never aborts)" "0" "$_rc"
+assert_eq "[#1140-1] exactly ONE LLM call for the lens" "1" "$(wc -l < "$_RL_CALLS" | tr -d ' ')"
+assert_file_exists "[#1140-1] writes lens-security.json" "$out"
+assert_eq "[#1140-1] normalized name == lens id" "security" "$(jq -r '.name' "$out")"
+assert_eq "[#1140-1] schema_version present" "1" "$(jq -r '.schema_version' "$out")"
+assert_eq "[#1140-1] score floored to integer" "3" "$(jq -r '.score' "$out")"
+assert_eq "[#1140-1] findings normalized (1 finding)" "1" "$(jq '.findings | length' "$out")"
+assert_eq "[#1140-1] severity lowercased to enum" "critical" "$(jq -r '.findings[0].severity' "$out")"
 
 # ─── SPEC-2: redaction reaches the model; raw text never sent without it ─────
 _p="$(cat "$_RL_PROMPT")"
-assert_contains "[SPEC-2] redacted evidence reached the prompt" "$_p" "exec user input at line 10"
-assert_contains "[SPEC-2] prompt carries the security charter (not wildcard)" "$_p" "injection risks"
-assert_contains "[SPEC-2] prompt is the single-lens advisory contract" "$_p" '"security" review lens'
+assert_contains "[#1140-2] redacted evidence reached the prompt" "$_p" "exec user input at line 10"
+assert_contains "[#1140-2] prompt carries the security charter (not wildcard)" "$_p" "injection risks"
+assert_contains "[#1140-2] prompt is the single-lens advisory contract" "$_p" '"security" review lens'
 
 # ─── SPEC-3: parametrized — SAME plugin serves a different lens (charter swap) ─
 out_perf="$artifact_dir/lens-performance.json"
@@ -96,10 +96,10 @@ out_perf="$artifact_dir/lens-performance.json"
 set +e
 _review_lens_run_inner "performance" "$scope_manifest" "$evidence" "$out_perf" "$artifact_dir"
 set -e
-assert_eq "[SPEC-3] performance lens name" "performance" "$(jq -r '.name' "$out_perf")"
-assert_eq "[SPEC-3] performance score" "8" "$(jq -r '.score' "$out_perf")"
+assert_eq "[#1140-3] performance lens name" "performance" "$(jq -r '.name' "$out_perf")"
+assert_eq "[#1140-3] performance score" "8" "$(jq -r '.score' "$out_perf")"
 _pp="$(cat "$_RL_PROMPT")"
-assert_contains "[SPEC-3] performance charter swapped in" "$_pp" "O(n^2)"
+assert_contains "[#1140-3] performance charter swapped in" "$_pp" "O(n^2)"
 
 # ─── SPEC-4: empty evidence STILL routes (ADR-043 / #952) ────────────────────
 # The former empty-evidence guard skipped redaction on an empty change bundle,
@@ -115,9 +115,9 @@ set +e
 _review_lens_run_inner "correctness" "$scope_manifest" "$empty_evidence" "$out_empty" "$artifact_dir"
 _rc_empty=$?
 set -e
-assert_eq "[SPEC-4] empty evidence still returns 0" "0" "$_rc_empty"
-assert_eq "[SPEC-4] empty evidence STILL routes — one LLM call (#952)" "1" "$(wc -l < "$_RL_CALLS" | tr -d ' ')"
-assert_file_exists "[SPEC-4] lens result written for empty evidence" "$out_empty"
+assert_eq "[#1140-4] empty evidence still returns 0" "0" "$_rc_empty"
+assert_eq "[#1140-4] empty evidence STILL routes — one LLM call (#952)" "1" "$(wc -l < "$_RL_CALLS" | tr -d ' ')"
+assert_file_exists "[#1140-4] lens result written for empty evidence" "$out_empty"
 
 # ─── SPEC-5: unparseable model output degrades to empty + event + rc 0 ───────
 # shellcheck disable=SC2329  # re-defined mock invoked indirectly by the plugin
@@ -128,12 +128,12 @@ set +e
 _review_lens_run_inner "edge-case" "$scope_manifest" "$evidence" "$out_bad" "$artifact_dir"
 _rc_bad=$?
 set -e
-assert_eq "[SPEC-5] unparseable output returns 0 (fail-open)" "0" "$_rc_bad"
-assert_eq "[SPEC-5] unparseable yields empty findings" "0" "$(jq '.findings | length' "$out_bad")"
+assert_eq "[#1140-5] unparseable output returns 0 (fail-open)" "0" "$_rc_bad"
+assert_eq "[#1140-5] unparseable yields empty findings" "0" "$(jq '.findings | length' "$out_bad")"
 if grep -q '"review_lens.unparseable"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
-    assert_pass "[SPEC-5] review_lens.unparseable event emitted"
+    assert_pass "[#1140-5] review_lens.unparseable event emitted"
 else
-    assert_fail "[SPEC-5] review_lens.unparseable event should be emitted" "absent"
+    assert_fail "[#1140-5] review_lens.unparseable event should be emitted" "absent"
 fi
 
 # ─── SPEC-6: router failure (rc!=0) degrades to empty + review_lens.failed ───
@@ -144,12 +144,12 @@ set +e
 _review_lens_run_inner "integration" "$scope_manifest" "$evidence" "$out_fail" "$artifact_dir"
 _rc_fail=$?
 set -e
-assert_eq "[SPEC-6] router failure returns 0 (advisory never blocks)" "0" "$_rc_fail"
-assert_eq "[SPEC-6] router failure yields empty findings" "0" "$(jq '.findings | length' "$out_fail")"
+assert_eq "[#1140-6] router failure returns 0 (advisory never blocks)" "0" "$_rc_fail"
+assert_eq "[#1140-6] router failure yields empty findings" "0" "$(jq '.findings | length' "$out_fail")"
 if grep -q '"review_lens.failed"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
-    assert_pass "[SPEC-6] review_lens.failed event emitted"
+    assert_pass "[#1140-6] review_lens.failed event emitted"
 else
-    assert_fail "[SPEC-6] review_lens.failed event should be emitted" "absent"
+    assert_fail "[#1140-6] review_lens.failed event should be emitted" "absent"
 fi
 # restore happy mock
 # shellcheck disable=SC2329  # re-defined mock invoked indirectly by the plugin
@@ -169,23 +169,23 @@ set +e
 ZBUILD_REVIEW_LENS_ID="red-team" review_lens_run "review-lens" "$STATE_FILE" >/dev/null 2>&1
 _rc_hook=$?
 set -e
-assert_eq "[SPEC-7] review_lens_run(stage, state_file) returns 0" "0" "$_rc_hook"
-assert_file_exists "[SPEC-7] hook derives lens-<id>.json from ZBUILD_REVIEW_LENS_ID" \
+assert_eq "[#1140-7] review_lens_run(stage, state_file) returns 0" "0" "$_rc_hook"
+assert_file_exists "[#1140-7] hook derives lens-<id>.json from ZBUILD_REVIEW_LENS_ID" \
     "$STATE_DIR/artifacts/lens-red-team.json"
 # stage-id prefix stripping: stage `lens_maintainability` → maintainability charter
 set +e
 ZBUILD_CURRENT_STAGE="lens_maintainability" review_lens_run "lens_maintainability" "$STATE_FILE" >/dev/null 2>&1
 set -e
-assert_file_exists "[SPEC-7] stage-id prefix stripped (lens_maintainability → maintainability)" \
+assert_file_exists "[#1140-7] stage-id prefix stripped (lens_maintainability → maintainability)" \
     "$STATE_DIR/artifacts/lens-maintainability.json"
 
 # ─── SPEC-8: per-lens evidence selection — test-coverage prefers coverage-map ─
 _ev_default="$(_review_lens_evidence_path "security" "$artifact_dir")"
-assert_eq "[SPEC-8] default lens evidence falls back to diff.patch" \
+assert_eq "[#1140-8] default lens evidence falls back to diff.patch" \
     "$artifact_dir/diff.patch" "$_ev_default"
 printf '{"files":[{"file":"core/x.sh"}]}\n' > "$artifact_dir/coverage-map.json"
 _ev_cov="$(_review_lens_evidence_path "test-coverage" "$artifact_dir")"
-assert_eq "[SPEC-8] test-coverage lens prefers coverage-map.json when present" \
+assert_eq "[#1140-8] test-coverage lens prefers coverage-map.json when present" \
     "$artifact_dir/coverage-map.json" "$_ev_cov"
 
 # ─── SPEC-9: no merge-decision vocabulary in plugin source (advisory, ADR-040) ─
@@ -194,9 +194,9 @@ assert_eq "[SPEC-8] test-coverage lens prefers coverage-map.json when present" \
 # SPEC-10 below independently verifies the full story.
 if grep -qiE '\b(approve|request_changes)\b|"block"' \
     "$PLUGIN_DIR/plugin.sh" "$PLUGIN_DIR/lib/charters.sh"; then
-    assert_fail "[SPEC-9] no coercion vocabulary in review-lens source" "found coercion token"
+    assert_fail "[#1140-9] no coercion vocabulary in review-lens source" "found coercion token"
 else
-    assert_pass "[SPEC-9] no coercion vocabulary in review-lens source"
+    assert_pass "[#1140-9] no coercion vocabulary in review-lens source"
 fi
 
 # ─── SPEC-10: persona manifest charter takes precedence over case statement ───
@@ -222,14 +222,14 @@ _review_lens_run_inner "test-lens" "$scope_manifest" "$evidence" "$out_spec10" "
 _rc_spec10=$?
 set -e
 _pp_spec10="$(cat "$_RL_PROMPT")"
-assert_eq "[SPEC-10] persona manifest lens returns 0 (advisory)" "0" "$_rc_spec10"
-assert_contains "[SPEC-10] persona charter text reaches the prompt" \
+assert_eq "[#1140-10] persona manifest lens returns 0 (advisory)" "0" "$_rc_spec10"
+assert_contains "[#1140-10] persona charter text reaches the prompt" \
     "$_pp_spec10" "SENTINEL_PERSONA_CHARTER_XYZ987"
 # Ensure the wildcard fallback text is NOT used when persona manifest exists
 if grep -q "Examine the change for issues relevant to the test-lens concern" <<< "$_pp_spec10"; then
-    assert_fail "[SPEC-10] wildcard fallback must NOT fire when persona manifest exists" "wildcard text found"
+    assert_fail "[#1140-10] wildcard fallback must NOT fire when persona manifest exists" "wildcard text found"
 else
-    assert_pass "[SPEC-10] wildcard fallback is suppressed by persona manifest"
+    assert_pass "[#1140-10] wildcard fallback is suppressed by persona manifest"
 fi
 export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root"
 
@@ -244,11 +244,11 @@ case "$_corr_charter" in
     *"logic errors"*) corr_charter_ok=1 ;;
     *) corr_charter_ok=0 ;;
 esac
-assert_eq "[SPEC-11] correctness charter from live manifest contains 'logic errors'" "1" "$corr_charter_ok"
+assert_eq "[#1140-11] correctness charter from live manifest contains 'logic errors'" "1" "$corr_charter_ok"
 if grep -q "Examine the change for issues relevant to the correctness concern" <<< "$_corr_charter"; then
-    assert_fail "[SPEC-11] wildcard fallback must NOT fire when correctness manifest exists" "wildcard text found"
+    assert_fail "[#1140-11] wildcard fallback must NOT fire when correctness manifest exists" "wildcard text found"
 else
-    assert_pass "[SPEC-11] wildcard fallback is suppressed by correctness persona manifest"
+    assert_pass "[#1140-11] wildcard fallback is suppressed by correctness persona manifest"
 fi
 export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec11"
 
@@ -263,11 +263,11 @@ case "$_scope_charter" in
     *"WARN ONLY"*) scope_charter_ok=1 ;;
     *) scope_charter_ok=0 ;;
 esac
-assert_eq "[SPEC-6] scope charter from live manifest contains 'WARN ONLY'" "1" "$scope_charter_ok"
+assert_eq "[#1140-12] scope charter from live manifest contains 'WARN ONLY'" "1" "$scope_charter_ok"
 if grep -q "Examine the change for issues relevant to the scope concern" <<< "$_scope_charter"; then
-    assert_fail "[SPEC-6] wildcard fallback must NOT fire when scope manifest exists" "wildcard text found"
+    assert_fail "[#1140-12] wildcard fallback must NOT fire when scope manifest exists" "wildcard text found"
 else
-    assert_pass "[SPEC-6] wildcard fallback is suppressed by scope persona manifest"
+    assert_pass "[#1140-12] wildcard fallback is suppressed by scope persona manifest"
 fi
 export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec12"
 
@@ -296,9 +296,9 @@ set +e
 _review_lens_run_inner "security" "$scope_manifest" "$evidence" "$out_spec1" "$artifact_dir"
 _rc_spec1=$?
 set -e
-assert_eq "[SPEC-1] persona-present lens returns 0" "0" "$_rc_spec1"
+assert_eq "[#1577-1] persona-present lens returns 0" "0" "$_rc_spec1"
 _persona_spec1="$(cat "$_RL_PERSONA_AT_CALL" 2>/dev/null || true)"
-assert_eq "[SPEC-1] ZBUILD_STAGE_IO_PERSONA='security' when persona manifest present" \
+assert_eq "[#1577-1] ZBUILD_STAGE_IO_PERSONA='security' when persona manifest present" \
     "security" "$_persona_spec1"
 export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec1"
 
@@ -311,9 +311,9 @@ set +e
 _review_lens_run_inner "edge-case" "$scope_manifest" "$evidence" "$out_spec2" "$artifact_dir"
 _rc_spec2=$?
 set -e
-assert_eq "[SPEC-2] fallback lens returns 0" "0" "$_rc_spec2"
+assert_eq "[#1577-2] fallback lens returns 0" "0" "$_rc_spec2"
 _persona_spec2="$(cat "$_RL_PERSONA_AT_CALL" 2>/dev/null || true)"
-assert_eq "[SPEC-2] ZBUILD_STAGE_IO_PERSONA='edge-case:fallback' when no persona manifest" \
+assert_eq "[#1577-2] ZBUILD_STAGE_IO_PERSONA='edge-case:fallback' when no persona manifest" \
     "edge-case:fallback" "$_persona_spec2"
 export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec2"
 
@@ -326,7 +326,7 @@ out_spec3="$artifact_dir/lens-spec3-security.json"
 set +e
 _review_lens_run_inner "security" "$scope_manifest" "$evidence" "$out_spec3" "$artifact_dir"
 set -e
-assert_eq "[SPEC-3] ZBUILD_STAGE_IO_PERSONA unset after _review_lens_run_inner (no leak)" \
+assert_eq "[#1577-3] ZBUILD_STAGE_IO_PERSONA unset after _review_lens_run_inner (no leak)" \
     "" "${ZBUILD_STAGE_IO_PERSONA:-}"
 export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec3"
 
@@ -340,7 +340,7 @@ out_spec3b="$artifact_dir/lens-spec3b-security.json"
 set +e
 _review_lens_run_inner "security" "$scope_manifest" "$evidence" "$out_spec3b" "$artifact_dir"
 set -e
-assert_eq "[SPEC-3b] ZBUILD_STAGE_IO_PERSONA restored to prior value after _review_lens_run_inner" \
+assert_eq "[#1577-3b] ZBUILD_STAGE_IO_PERSONA restored to prior value after _review_lens_run_inner" \
     "outer-sentinel-1577" "${ZBUILD_STAGE_IO_PERSONA:-}"
 unset ZBUILD_STAGE_IO_PERSONA
 export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec3b"
