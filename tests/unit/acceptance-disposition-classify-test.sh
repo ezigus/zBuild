@@ -82,4 +82,10 @@ assert_eq "no failures → none" "none" \
     "$(_ag_classify_disposition)"
 
 cleanup_test_env
+# ── #2109: reachability's honest classes ─────────────────────────────────────
+assert_eq "[#2109] no_testfiles only → recoverable (test-author/build can create the file)" "recoverable" \
+    "$(_ag_classify_disposition "no_testfiles:impl.sh")"
+assert_eq "[#2109] reachability harness error → advisory (infra, never a violation)" "advisory" \
+    "$(_ag_classify_disposition "reachability_error:harness:impl.sh tests/t-test.sh")"
+
 print_test_results

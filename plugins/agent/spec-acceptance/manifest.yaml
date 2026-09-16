@@ -76,9 +76,12 @@ provides:
     - acceptance.gate.guard_regressed
     - acceptance.gate.inert_wiring
     - acceptance.gate.inert_wiring_escalated
+    - acceptance.gate.no_testfiles
+    - acceptance.gate.not_passing_at_head
     - acceptance.gate.not_passing_at_head_escalated
     - acceptance.gate.negctl_harness_error
     - acceptance.gate.negctl_timeout
+    - acceptance.gate.reachability_harness_error
     - acceptance.gate.reachability_timeout
     - acceptance.gate.skipped
     - acceptance.gate.start

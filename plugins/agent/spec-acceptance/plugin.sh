@@ -101,6 +101,9 @@ _ag_classify_disposition() {
             # re-verifies each iteration, and max_iterations bounds it — an
             # un-fixable case exhausts the budget and terminates cleanly.
             untagged_spec:* | tautology:* | inert_wiring:*)  had_recoverable=1 ;;
+            # #2109: every declared TESTFILE absent on disk — the next iteration
+            # (test-author / build) can still create it; a rewind cannot.
+            no_testfiles:*)                                  had_recoverable=1 ;;
             # #2097: not_passing_at_head was the last "weak assertion" class left
             # terminal — a label from when DESIGN wrote red-first stubs (ADR-036
             # as first written: "a stub that never passes"). The assertion has
@@ -151,13 +154,14 @@ _ag_join_ids() {
 # member_terminal_failure. Repo-agnostic: ids come verbatim from the design's
 # acceptance block. Genuine violations lead; infra classes trail.
 _ag_build_reason() {
-    local f untagged="" taut="" nohead="" notf="" inert="" notpath="" infra="" malformed=0 grd=""
+    local f untagged="" taut="" nohead="" notf="" inert="" notpath="" infra="" malformed=0 grd="" nofiles=""
     for f in "$@"; do
         case "$f" in
             tautology:*)            taut="$taut ${f#tautology:}" ;;
             not_passing_at_head:*)  nohead="$nohead ${f#not_passing_at_head:}" ;;
             untagged_spec:*)        untagged="$untagged ${f#untagged_spec:}" ;;
             no_testfile:*)          notf="$notf ${f#no_testfile:}" ;;
+            no_testfiles:*)         nofiles="$nofiles ${f#no_testfiles:}" ;;
             inert_wiring:*)         inert="$inert ${f#inert_wiring:}" ;;
             wiring_not_on_path:*)   notpath="$notpath ${f#wiring_not_on_path:}" ;;
             guard_regressed:*)      grd="$grd ${f#guard_regressed:}" ;;
@@ -171,6 +175,7 @@ _ag_build_reason() {
     [[ -n "$untagged" ]] && clauses+=("$(_ag_join_ids "$untagged") untagged — add a matching [SPEC-n] assertion in TESTFILES")
     [[ -n "$notf"     ]] && clauses+=("$(_ag_join_ids "$notf") missing a tagged TESTFILE")
     [[ -n "$inert"    ]] && clauses+=("WIRING $(_ag_join_ids "$inert") inert — reverting it breaks no TESTFILE")
+    [[ -n "$nofiles"  ]] && clauses+=("WIRING $(_ag_join_ids "$nofiles") has no declared TESTFILE on disk — nothing could flip")
     [[ -n "$notpath"  ]] && clauses+=("WIRING $(_ag_join_ids "$notpath") not in this commit's diff — declare WIRING: none or name a file this change actually touches")
     [[ -n "$grd"      ]] && clauses+=("$(_ag_join_ids "$grd") tagged as [guard] but the assertion FAILS at the merge-base — a guard must hold there by definition, so either the assertion contradicts its SPEC text or the SPEC is a mislabelled [change]")
     [[ "$malformed" -eq 1 ]] && clauses+=("acceptance block malformed")
@@ -441,6 +446,24 @@ acceptance_gate_run() {
                         eb_emit_event "acceptance.gate.inert_wiring" "stage=acceptance-gate" \
                             "target=$target"
                         ;;
+                    "REACHABILITY FAIL not_passing_at_head "*)
+                        # #2109: "<target> <tf>" — the file is red at HEAD, so
+                        # no revert can flip it. Same class negctl reports per
+                        # SPEC (#2097: recoverable, escalates on iter≥2).
+                        local _rest="${line#REACHABILITY FAIL not_passing_at_head }"
+                        local _tgt="${_rest%% *}" _tf="${_rest#* }"
+                        failures+=("not_passing_at_head:$_tf")
+                        verdict="fail"
+                        eb_emit_event "acceptance.gate.not_passing_at_head" "stage=acceptance-gate" \
+                            "target=$_tgt" "testfile=$_tf" "source=reachability"
+                        ;;
+                    "REACHABILITY FAIL no_testfiles "*)
+                        local _tgt="${line#REACHABILITY FAIL no_testfiles }"
+                        failures+=("no_testfiles:$_tgt")
+                        verdict="fail"
+                        eb_emit_event "acceptance.gate.no_testfiles" "stage=acceptance-gate" \
+                            "target=$_tgt"
+                        ;;
                     "REACHABILITY FAIL wiring_not_on_path "*)
                         local target="${line#REACHABILITY FAIL wiring_not_on_path }"
                         failures+=("wiring_not_on_path:$target")
@@ -457,6 +480,12 @@ acceptance_gate_run() {
                                 # INFRA (ADR-036 #1188): non-terminal.
                                 eb_emit_event "acceptance.gate.reachability_timeout" "stage=acceptance-gate" \
                                     "target=${detail#timeout:}" "timeout_s=${ZBUILD_NEGCTL_TIMEOUT:-60}" ;;
+                            harness:*)
+                                # #2109: the runner could not execute the file
+                                # (126/127) — evidence of nothing; advisory.
+                                local _h="${detail#harness:}"
+                                eb_emit_event "acceptance.gate.reachability_harness_error" "stage=acceptance-gate" \
+                                    "target=${_h%% *}" "testfile=${_h#* }" ;;
                         esac
                         ;;
                 esac
@@ -547,9 +576,13 @@ acceptance_gate_run() {
         for f in "${failures[@]:-}"; do
             if [[ "$f" == not_passing_at_head:* ]]; then
                 fault="specification"
+                # #2109: negctl keys this class by SPEC id, reachability by the
+                # TESTFILE that is red — name the attribute for what it holds.
+                local _npah="${f#not_passing_at_head:}" _npah_attr="testfile"
+                [[ "$_npah" == SPEC-* ]] && _npah_attr="spec"
                 eb_emit_event "acceptance.gate.not_passing_at_head_escalated" \
                     "stage=acceptance-gate" \
-                    "spec=${f#not_passing_at_head:}" "iter=${ZBUILD_CYCLE_ITER:-1}"
+                    "${_npah_attr}=${_npah}" "iter=${ZBUILD_CYCLE_ITER:-1}"
                 break
             fi
         done

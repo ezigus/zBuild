@@ -200,6 +200,16 @@ that reverts the *wiring* instead of the implementation:
   every changed file from HEAD EXCEPT the WIRING target (leaving the wiring at baseline),
   re-runs the declared TESTFILES, and requires ≥1 to flip pass→fail. No flip →
   `REACHABILITY FAIL inert_wiring <target>`.
+  **Amended 2026-09-16 (#2109):** the flip is judged per `[SPEC-n]` line (the #1969 rule
+  negctl applies), file rc only where the captures carry no verdict — and "no flip" is
+  no longer one word. A TESTFILE red at HEAD is
+  `REACHABILITY FAIL not_passing_at_head <target> <tf>` (build's defect, the same class
+  negctl reports per SPEC; recoverable, escalates on iter≥2 per #2097); a run the harness
+  could not execute (rc 126/127) is `REACHABILITY ERROR harness:<target> <tf>` (advisory,
+  never a flip or a violation); a roster with no declared TESTFILE on disk is
+  `REACHABILITY FAIL no_testfiles <target>` (recoverable). `inert_wiring` is reserved for
+  the case it names: every TESTFILE green at HEAD and none flips. On #1841 the old label
+  sent a plain build defect (an unimplemented SPEC) to design as `fault: specification`.
 - The gate runs Level 3 only after Levels 1+2 pass (composability); a `WIRING`-less block
   is a no-op. An `inert_wiring:<target>` failure is a **hard** gate failure (verdict=fail,
   `acceptance.gate.inert_wiring` emitted), coercing review like every other gate failure.

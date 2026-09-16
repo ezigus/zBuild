@@ -24,6 +24,11 @@ _ACCEPTANCE_REACHABILITY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$_ACCEPTANCE_REACHABILITY_DIR/acceptance-block.sh"
 # shellcheck source=env-scrub.sh
 source "$_ACCEPTANCE_REACHABILITY_DIR/env-scrub.sh"
+# #2109: the per-[SPEC-n] log scan is negctl's (#1969); one rule, two callers.
+if ! declare -F _negctl_guard_log_check >/dev/null 2>&1; then
+    # shellcheck source=acceptance-negctl.sh
+    source "$_ACCEPTANCE_REACHABILITY_DIR/acceptance-negctl.sh"
+fi
 # shellcheck source=./merge-base.sh
 source "$_ACCEPTANCE_REACHABILITY_DIR/merge-base.sh"
 
@@ -41,6 +46,9 @@ fi
 # flip (ADR-036 #1188): `timeout` exits 124 (TERM sent), 143 (child died of it),
 # 137 when a -k kill-after SIGKILL lands or an external OOM kill (128+9).
 _reachability_is_timeout_rc() { [[ "$1" -eq 124 || "$1" -eq 137 || "$1" -eq 143 ]]; }
+# #2109: 126/127 = the runner could not execute the file at all — pass/fail
+# unknown (negctl has classified this as infrastructure since #1670).
+_reachability_is_harness_rc() { [[ "$1" -eq 126 || "$1" -eq 127 ]]; }
 
 # _reachability_run <testfile_abs> <cwd> [logfile]  → returns the test's rc.
 # When <logfile> is given the combined output is appended for diagnosability.
@@ -209,7 +217,12 @@ acceptance_reachability_check() {
         done
 
         # Check if any testfile flips pass→fail when WIRING is at merge-base.
-        local found_flip=0 saw_timeout=0
+        # #2109: judged per [SPEC-n] line (the #1969 rule negctl already has),
+        # file rc only where the captures carry no verdict; a file that is red
+        # at HEAD, a run the harness could not execute, and a roster with no
+        # file on disk are each named for what they are — "inert_wiring" used
+        # to swallow all three, and at iter≥2 it routes to DESIGN.
+        local found_flip=0 saw_timeout=0 saw_harness="" red_at_head="" ran_any=0
         local logfile=""
         if [[ -n "${ZBUILD_NEGCTL_ARTIFACT_DIR:-}" ]]; then
             mkdir -p "$ZBUILD_NEGCTL_ARTIFACT_DIR" 2>/dev/null || true
@@ -218,22 +231,50 @@ acceptance_reachability_check() {
             logfile="$ZBUILD_NEGCTL_ARTIFACT_DIR/reachability-${_safe_target}.log"
             : > "$logfile" 2>/dev/null || logfile=""
         fi
+        local -a _spec_ids=()
+        local _sid
+        while IFS= read -r _sid; do
+            [[ -n "$_sid" ]] && _spec_ids+=("$_sid")
+        done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
         for tf in "${testfiles[@]:-}"; do
             [[ -z "$tf" ]] && continue
             [[ ! -f "$wt_dir/$tf" ]] && continue
-            local rc_reverted=0 rc_head=0
-            [[ -n "$logfile" ]] && printf '### %s reverted %s\n' "$target" "$tf" >> "$logfile"
-            _reachability_run "$wt_dir/$tf" "$wt_dir" "$logfile" || rc_reverted=$?
-            [[ -n "$logfile" ]] && printf '### %s head %s\n' "$target" "$tf" >> "$logfile"
-            _reachability_run "$repo_root/$tf" "$repo_root" "$logfile" || rc_head=$?
+            ran_any=1
+            local rc_reverted=0 rc_head=0 _cap_rev _cap_head
+            _cap_rev="$(mktemp "$(zbuild_engine_tmpdir)/zb-reach-rev.XXXXXX")" || _cap_rev=""
+            _cap_head="$(mktemp "$(zbuild_engine_tmpdir)/zb-reach-head.XXXXXX")" || _cap_head=""
+            _reachability_run "$wt_dir/$tf" "$wt_dir" "$_cap_rev" || rc_reverted=$?
+            _reachability_run "$repo_root/$tf" "$repo_root" "$_cap_head" || rc_head=$?
+            if [[ -n "$logfile" ]]; then
+                printf '### %s reverted %s\n' "$target" "$tf" >> "$logfile"
+                [[ -n "$_cap_rev" ]] && cat "$_cap_rev" >> "$logfile" 2>/dev/null
+                printf '### %s head %s\n' "$target" "$tf" >> "$logfile"
+                [[ -n "$_cap_head" ]] && cat "$_cap_head" >> "$logfile" 2>/dev/null
+            fi
             # A timeout on EITHER run leaves the flip verdict unknown → INFRA;
             # do not treat it as a flip or as inert wiring.
             if _reachability_is_timeout_rc "$rc_reverted" || _reachability_is_timeout_rc "$rc_head"; then
-                saw_timeout=1; continue
+                rm -f "$_cap_rev" "$_cap_head" 2>/dev/null; saw_timeout=1; continue
             fi
-            if [[ "$rc_reverted" -ne 0 && "$rc_head" -eq 0 ]]; then
-                found_flip=1
-                break
+            if _reachability_is_harness_rc "$rc_reverted" || _reachability_is_harness_rc "$rc_head"; then
+                rm -f "$_cap_rev" "$_cap_head" 2>/dev/null
+                [[ -z "$saw_harness" ]] && saw_harness="$tf"; continue
+            fi
+            # Per-SPEC evidence: 0 = a ✗ line for the id, 1 = ✓ and no ✗, 2 = none.
+            local _any_verdict=0 _lv_h _lv_r
+            for _sid in ${_spec_ids[@]+"${_spec_ids[@]}"}; do
+                _negctl_guard_log_check "$_cap_head" "$_sid" && _lv_h=0 || _lv_h=$?
+                _negctl_guard_log_check "$_cap_rev" "$_sid" && _lv_r=0 || _lv_r=$?
+                [[ "$_lv_h" -ne 2 || "$_lv_r" -ne 2 ]] && _any_verdict=1
+                if [[ "$_lv_h" -eq 1 && "$_lv_r" -eq 0 ]]; then found_flip=1; break; fi
+                [[ "$_lv_h" -eq 0 && -z "$red_at_head" ]] && red_at_head="$tf"
+            done
+            rm -f "$_cap_rev" "$_cap_head" 2>/dev/null
+            [[ "$found_flip" -eq 1 ]] && break
+            # No tagged evidence at all (custom runner, untagged file): file rc.
+            if [[ "$_any_verdict" -eq 0 ]]; then
+                if [[ "$rc_reverted" -ne 0 && "$rc_head" -eq 0 ]]; then found_flip=1; break; fi
+                [[ "$rc_head" -ne 0 && -z "$red_at_head" ]] && red_at_head="$tf"
             fi
         done
         _reachability_bound_log "$logfile"
@@ -244,9 +285,22 @@ acceptance_reachability_check() {
 
         if [[ "$found_flip" -eq 1 ]]; then
             printf 'REACHABILITY PASS %s\n' "$target"
+        elif [[ "$ran_any" -eq 0 ]]; then
+            # No declared TESTFILE exists on disk: nothing could flip. Not a
+            # wiring verdict — a roster the next iteration can still create.
+            printf 'REACHABILITY FAIL no_testfiles %s\n' "$target"
+            rc=1
         elif [[ "$saw_timeout" -eq 1 ]]; then
             # No flip observed, but a run timed out → cannot conclude inert; infra.
             printf 'REACHABILITY ERROR timeout:%s\n' "$target"
+            rc=1
+        elif [[ -n "$saw_harness" ]]; then
+            printf 'REACHABILITY ERROR harness:%s %s\n' "$target" "$saw_harness"
+            rc=1
+        elif [[ -n "$red_at_head" ]]; then
+            # The file is red at HEAD: no revert can flip a failing test. That is
+            # the build's defect (or the assertion's), never the wiring's.
+            printf 'REACHABILITY FAIL not_passing_at_head %s %s\n' "$target" "$red_at_head"
             rc=1
         else
             printf 'REACHABILITY FAIL inert_wiring %s\n' "$target"
