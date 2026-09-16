@@ -44,8 +44,8 @@ _persona_is_disabled() {
 # persona anywhere else in the tree.
 _find_persona_in_root() {
     local want_id="$1" plugins_root="$2"
-    local -n _fpr_result="$3"
-    _fpr_result=""
+    local -n _fpir_out="$3"
+    _fpir_out=""
     [[ -d "$plugins_root" ]] || return 1
     local plugin_dir manifest kind pid
     manifest="$plugins_root/persona/$want_id/manifest.yaml"
@@ -54,20 +54,20 @@ _find_persona_in_root() {
         pid="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
         if [[ "$kind" == "persona" && "$pid" == "$want_id" ]] \
             && validate_manifest "$manifest" >/dev/null 2>&1; then
-            _fpr_result="$manifest"
+            _fpir_out="$manifest"
             return 0
         fi
     fi
-    local -a _fpr_dirs=()
-    discover_plugins_into _fpr_dirs "$plugins_root"
-    for plugin_dir in ${_fpr_dirs[@]+"${_fpr_dirs[@]}"}; do
+    local -a _fpir_dirs=()
+    discover_plugins_into _fpir_dirs "$plugins_root"
+    for plugin_dir in ${_fpir_dirs[@]+"${_fpir_dirs[@]}"}; do
         manifest="$plugin_dir/manifest.yaml"
         [[ -f "$manifest" ]] || continue
         kind="$(yaml_get "$manifest" "kind" 2>/dev/null || true)"
         [[ "$kind" == "persona" ]] || continue
         pid="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
         if [[ "$pid" == "$want_id" ]]; then
-            _fpr_result="$manifest"
+            _fpir_out="$manifest"
             return 0
         fi
     done

@@ -84,6 +84,19 @@ assert_eq "[#2105-5] the memo is populated in the calling shell afterwards" "1" 
 find_plugin_for_role "orchestrator-backend" "local" >/dev/null 2>&1 || true
 assert_eq "[#2105-5] the second call is a memo hit (still 1 walk)" "1" "$(_walks)"
 
+# ─── [#2105-7] a failed walk propagates its rc and never serves a stale memo ─
+discovery_cache_flush
+declare -a _pre=(); discover_plugins_into _pre "$PROOT"
+assert_eq "[#2105-7] a successful fill returns the plugin list" "1" "$(( ${#_pre[@]} > 10 ))"
+mkdir -p "$TEST_TEMP_DIR/shape-change/persona/zz-2105"; printf 'id: zz-2105\nkind: persona\n' > "$TEST_TEMP_DIR/shape-change/persona/zz-2105/manifest.yaml"
+_discover_plugins_walk() { printf 'walk\n' >> "$WALKS"; return 3; }
+: > "$WALKS"
+declare -a _post=(); set +e; discover_plugins_into _post "$TEST_TEMP_DIR/shape-change"; rc=$?; set -e
+assert_eq "[#2105-7] the walk's failure rc is propagated" "3" "$rc"
+assert_eq "[#2105-7] a failed walk fills an EMPTY array, never a stale list" "0" "${#_post[@]}"
+_discover_plugins_walk() { printf 'walk\n' >> "$WALKS"; _orig_discover_plugins_walk "$@"; }
+discovery_cache_flush
+
 # ─── [#2105-6] sourcing runner.sh warms the memo in the sourcing shell ───────
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"; mkdir -p "$ZBUILD_STATE_DIR"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"

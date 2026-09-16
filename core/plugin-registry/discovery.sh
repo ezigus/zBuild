@@ -90,14 +90,20 @@ discover_plugins_into() {
     local plugins_root="${2:-$_ZBUILD_ROOT/plugins}"
     _dpi_out=()
     local _line _list=""
+    local _wrc=0
     if [[ "${ZBUILD_PLUGIN_DISCOVERY_CACHE:-1}" == "1" ]]; then
         # Fill the memo in THIS shell (the call is not wrapped), then read it
         # back — a `$( )` around discover_plugins would fill a copy and lose it.
-        discover_plugins "$plugins_root" >/dev/null 2>&1 || true
+        # A failed walk propagates its rc with an EMPTY array: the memo keeps
+        # only successful walks, so reading it here would hand back the
+        # pre-failure list as if it were current.
+        discover_plugins "$plugins_root" >/dev/null 2>&1 || _wrc=$?
+        [[ $_wrc -eq 0 ]] || return "$_wrc"
         local _dck="${plugins_root}"$'\034'"${ZBUILD_DISABLED_FILE:-}"
         _list="${_ZBUILD_DISCOVERY_CACHE[$_dck]:-}"
     else
-        _list="$(_discover_plugins_walk "$plugins_root" 2>/dev/null || true)"
+        _list="$(_discover_plugins_walk "$plugins_root" 2>/dev/null)" || _wrc=$?
+        [[ $_wrc -eq 0 ]] || return "$_wrc"
     fi
     [[ -n "$_list" ]] || return 0
     while IFS= read -r _line; do
@@ -157,7 +163,9 @@ _discover_plugins_walk() {
 # Human-readable listing for `zbuild plugin list`.
 list_plugins_table() {
     local plugins_root="${1:-$_ZBUILD_ROOT/plugins}"
-    discover_plugins "$plugins_root" | while IFS= read -r plugin_dir; do
+    local -a _lpt_dirs=()
+    discover_plugins_into _lpt_dirs "$plugins_root"
+    for plugin_dir in ${_lpt_dirs[@]+"${_lpt_dirs[@]}"}; do
         local manifest="$plugin_dir/manifest.yaml"
         local id name kind version
         id="$(yaml_get "$manifest" "id")"
