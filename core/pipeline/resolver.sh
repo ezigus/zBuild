@@ -65,7 +65,9 @@ resolve_plugin_for_role() {
     local candidates_platform=()
     local candidates_generic=()
 
-    while IFS= read -r plugin_dir; do
+    local -a _rsv_dirs=()
+    discover_plugins_into _rsv_dirs "$plugins_root"
+    for plugin_dir in ${_rsv_dirs[@]+"${_rsv_dirs[@]}"}; do
         local manifest="$plugin_dir/manifest.yaml"
         local plugin_role plugin_platform plugin_version plugin_id
         plugin_role="$(yaml_get "$manifest" "provides.role")"
@@ -80,7 +82,7 @@ resolve_plugin_for_role() {
         elif [[ -z "$plugin_platform" || "$plugin_platform" == "null" ]]; then
             candidates_generic+=("$plugin_version|$plugin_id|$plugin_dir")
         fi
-    done < <(discover_plugins "$plugins_root" 2>/dev/null)
+    done
 
     local result=""
     if [[ ${#candidates_platform[@]} -gt 0 ]]; then

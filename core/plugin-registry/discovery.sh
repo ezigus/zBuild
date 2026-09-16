@@ -65,6 +65,33 @@ discover_plugins() {
     return 0
 }
 
+# discover_plugins_into <array_name> [root] — the same list, delivered into a
+# caller-owned array instead of stdout. Consumers read discovery through
+# `< <(discover_plugins …)`; that process substitution is a subshell, so the
+# memo it fills dies with it and the NEXT lookup walks again (#2105). Filling an
+# array in the caller's shell makes the first direct call the last walk.
+# The uncached path (ZBUILD_PLUGIN_DISCOVERY_CACHE=0) still walks every time.
+discover_plugins_into() {
+    local -n _dpi_out="$1"
+    local plugins_root="${2:-$_ZBUILD_ROOT/plugins}"
+    _dpi_out=()
+    local _line _list=""
+    if [[ "${ZBUILD_PLUGIN_DISCOVERY_CACHE:-1}" == "1" ]]; then
+        # Fill the memo in THIS shell (the call is not wrapped), then read it
+        # back — a `$( )` around discover_plugins would fill a copy and lose it.
+        discover_plugins "$plugins_root" >/dev/null 2>&1 || true
+        local _dck="${plugins_root}"$'\034'"${ZBUILD_DISABLED_FILE:-}"
+        _list="${_ZBUILD_DISCOVERY_CACHE[$_dck]:-}"
+    else
+        _list="$(_discover_plugins_walk "$plugins_root" 2>/dev/null || true)"
+    fi
+    [[ -n "$_list" ]] || return 0
+    while IFS= read -r _line; do
+        [[ -n "$_line" ]] && _dpi_out+=("$_line")
+    done <<< "$_list"
+    return 0
+}
+
 # discovery_cache_flush [root] — drop the memo, mirroring yaml_cache_flush.
 discovery_cache_flush() {
     if [[ -n "${1:-}" ]]; then
@@ -277,8 +304,10 @@ find_plugin_for_role() {
     local alias="$2"
     local plugins_root="${3:-${ZBUILD_PLUGINS_ROOT:-${_ZBUILD_ROOT}/plugins}}"
     local plugin_dir manifest declared_role plugin_id declared_alias
+    local -a _fpr_dirs=()
+    discover_plugins_into _fpr_dirs "$plugins_root"
 
-    while IFS= read -r plugin_dir; do
+    for plugin_dir in ${_fpr_dirs[@]+"${_fpr_dirs[@]}"}; do
         manifest="$plugin_dir/manifest.yaml"
         [[ ! -f "$manifest" ]] && continue
         declared_role="$(yaml_get "$manifest" "provides.role" 2>/dev/null || true)"
@@ -289,6 +318,6 @@ find_plugin_for_role() {
             echo "$plugin_dir"
             return 0
         fi
-    done < <(discover_plugins "$plugins_root" 2>/dev/null || true)
+    done
     return 1
 }

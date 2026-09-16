@@ -22,7 +22,7 @@ WALKS="$TEST_TEMP_DIR/walks.count"
 # discover_plugins, so a shell variable would not survive; a file does.
 eval "$(declare -f _discover_plugins_walk | sed '1s/^_discover_plugins_walk/_orig_discover_plugins_walk/')"
 _discover_plugins_walk() { printf 'walk\n' >> "$WALKS"; _orig_discover_plugins_walk "$@"; }
-_walks() { grep -c '' "$WALKS" 2>/dev/null || echo 0; }
+_walks() { wc -l < "$WALKS" | tr -d ' '; }
 
 PROOT="$REPO_ROOT/plugins"
 
@@ -64,6 +64,7 @@ assert_eq "[#2105-3] non-canonical persona resolves via the walk" "0" "$rc"
 assert_contains "[#2105-3] path points at the odd-place manifest" "$mf" "agent/odd-place/manifest.yaml"
 
 # ─── [#2105-4] a disabled persona at the canonical path is NOT resolved ──────
+_prev_disabled="${ZBUILD_DISABLED_FILE:-}"
 export ZBUILD_DISABLED_FILE="$TEST_TEMP_DIR/disabled"
 printf 'security\n' > "$ZBUILD_DISABLED_FILE"
 discovery_cache_flush
@@ -71,7 +72,7 @@ set +e
 find_persona security "$PROOT" >/dev/null 2>&1; rc=$?
 set -e
 assert_eq "[#2105-4] a disabled persona is absent even at the canonical path" "1" "$rc"
-rm -f "$ZBUILD_DISABLED_FILE"; unset ZBUILD_DISABLED_FILE
+rm -f "$ZBUILD_DISABLED_FILE"; export ZBUILD_DISABLED_FILE="$_prev_disabled"
 discovery_cache_flush
 
 # ─── [#2105-5] a direct consumer fills the memo in the caller's shell ────────

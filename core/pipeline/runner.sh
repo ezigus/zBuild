@@ -45,6 +45,17 @@ source "$_ZBUILD_ROOT/core/detect/platforms.sh"
 source "$_ZBUILD_ROOT/core/pipeline/template.sh"
 source "$_ZBUILD_ROOT/core/pipeline/template-resolver.sh"
 source "$_ZBUILD_ROOT/core/pipeline/resolver.sh"
+# #2105: warm the manifest and discovery caches HERE, in the runner's own file
+# scope, before contract.sh's source-time _orch_load_backend walks the tree
+# through `< <(discover_plugins)` — a walk whose memo dies in that process
+# substitution, 2.5s before main() gets to its own prewarm (#1614 / #2090).
+# Filled once at this scope, every subshell below inherits it.
+if declare -F yaml_cache_prewarm >/dev/null 2>&1; then
+    yaml_cache_prewarm "${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}"
+fi
+if declare -F discover_plugins >/dev/null 2>&1; then
+    discover_plugins "${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}" >/dev/null 2>&1 || true
+fi
 # shellcheck source=../orch/contract.sh
 source "$_ZBUILD_ROOT/core/orch/contract.sh"
 # Strategy modules (ADR-009 §fanout/sequential/composite, issue #222; map ADR-047)
