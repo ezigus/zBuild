@@ -13,6 +13,15 @@
 [[ -n "${_ACCEPTANCE_BLOCK_LOADED:-}" ]] && return 0
 _ACCEPTANCE_BLOCK_LOADED=1
 
+# #2010: zbuild_engine_tmpdir names where engine code writes temp files (the
+# run memo, #2110). Lazy-sourced, same pattern acceptance-reachability.sh uses:
+# this file is sourced from several entry points and cannot assume helpers.sh
+# arrived first. helpers.sh sources only compat.sh, so there is no cycle.
+if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
+    # shellcheck source=./helpers.sh
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/helpers.sh" 2>/dev/null || true
+fi
+
 # extract_acceptance_block <design_md>
 # Parses the ```acceptance fenced block from the given file and prints:
 #   - One "SPEC: <text>" line per behavioral claim (in order)
