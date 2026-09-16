@@ -1378,13 +1378,18 @@ _cycle_state_write_member_atomic() {
 # Before EACH cycle iter dispatch, delete per-cycle-stage primary outputs so a
 # stale prior-iter artifact cannot silently satisfy `until: verdict==pass`
 # (silent-failure finding #2). Reads each stage's manifest primary-output path.
+# #2117: with a third argument, clears ONLY that member — the cycle clears each
+# member right before dispatching it, so a member whose verdict is being REUSED
+# from the previous iteration keeps the artifact that verdict lives in (a later
+# member reads it: gate-aggregator reads test-results.json).
 _cycle_pre_iter_cleanup() {
-    local iter="$1" state_dir="$2"
+    local iter="$1" state_dir="$2" only="${3:-}"
     local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_CYCLE_ORCH_ROOT/plugins}"
     declare -F manifest_graph_collect >/dev/null 2>&1 || return 0
     declare -F manifest_graph_primary_output >/dev/null 2>&1 || return 0
     local s
     for s in "${_CYCLE_STAGES[@]}"; do
+        [[ -n "$only" && "$s" != "$only" ]] && continue
         local manifest
         manifest="$(manifest_graph_collect "$plugins_root" "$s" 2>/dev/null || true)"
         [[ -z "$manifest" || ! -f "$manifest" ]] && continue
@@ -1406,6 +1411,90 @@ _cycle_pre_iter_cleanup() {
     return 0
 }
 
+# ─── #2117: an unchanged tree is not re-verified ────────────────────────────
+# _cycle_tree_fingerprint — HEAD plus a digest of `git status --porcelain`
+# (tracked edits AND untracked files); empty when not in a git tree, which
+# means "never reuse". Overridable by tests.
+_cycle_tree_fingerprint() {
+    local h st
+    h="$(git rev-parse HEAD 2>/dev/null || true)"
+    [[ -n "$h" ]] || return 0
+    st="$(git status --porcelain 2>/dev/null | LC_ALL=C sort | cksum)"
+    printf '%s-%s' "$h" "${st%% *}"
+}
+# _cycle_member_reusable <member> — the previous verified iteration's entry
+# for <member> was a completed pass. A member that FAILED re-runs: its
+# iter-aware escalation (#1711 inert_wiring, #2097 not_passing_at_head) runs
+# inside the plugin at dispatch and must see ZBUILD_CYCLE_ITER advance.
+_cycle_member_reusable() {
+    local s="$1" e st v
+    e="$(jq -c --arg s "$s" '.[$s] // empty' <<< "${_CYCLE_VERIFIED_BLOB:-{}}" 2>/dev/null || true)"
+    [[ -n "$e" ]] || return 1
+    st="$(jq -r '.status // ""' <<< "$e" 2>/dev/null || true)"
+    v="$(jq -r '.verdict // ""' <<< "$e" 2>/dev/null || true)"
+    [[ "$st" == "complete" ]] || return 1
+    case "$v" in pass|complete|skip|approve) return 0 ;; *) return 1 ;; esac
+}
+_CYCLE_VERIFIED_FP=""
+_CYCLE_VERIFIED_ITER=""
+_CYCLE_VERIFIED_BLOB=""
+
+# ─── #2117: an unchanged tree is not re-verified ────────────────────────────
+# _cycle_tree_fingerprint — HEAD plus a digest of `git status --porcelain`
+# (tracked edits AND untracked files); empty when not in a git tree, which
+# means "never reuse". Overridable by tests.
+_cycle_tree_fingerprint() {
+    local h st
+    h="$(git rev-parse HEAD 2>/dev/null || true)"
+    [[ -n "$h" ]] || return 0
+    st="$(git status --porcelain 2>/dev/null | LC_ALL=C sort | cksum)"
+    printf '%s-%s' "$h" "${st%% *}"
+}
+# _cycle_member_reusable <member> — the previous verified iteration's entry
+# for <member> was a completed pass. A member that FAILED re-runs: its
+# iter-aware escalation (#1711 inert_wiring, #2097 not_passing_at_head) runs
+# inside the plugin at dispatch and must see ZBUILD_CYCLE_ITER advance.
+_cycle_member_reusable() {
+    local s="$1" e st v
+    e="$(jq -c --arg s "$s" '.[$s] // empty' <<< "${_CYCLE_VERIFIED_BLOB:-{}}" 2>/dev/null || true)"
+    [[ -n "$e" ]] || return 1
+    st="$(jq -r '.status // ""' <<< "$e" 2>/dev/null || true)"
+    v="$(jq -r '.verdict // ""' <<< "$e" 2>/dev/null || true)"
+    [[ "$st" == "complete" ]] || return 1
+    case "$v" in pass|complete|skip|approve) return 0 ;; *) return 1 ;; esac
+}
+_CYCLE_VERIFIED_FP=""
+_CYCLE_VERIFIED_ITER=""
+_CYCLE_VERIFIED_BLOB=""
+
+# ─── #2117: an unchanged tree is not re-verified ────────────────────────────
+# _cycle_tree_fingerprint — HEAD plus a digest of `git status --porcelain`
+# (tracked edits AND untracked files); empty when not in a git tree, which
+# means "never reuse". Overridable by tests.
+_cycle_tree_fingerprint() {
+    local h st
+    h="$(git rev-parse HEAD 2>/dev/null || true)"
+    [[ -n "$h" ]] || return 0
+    st="$(git status --porcelain 2>/dev/null | LC_ALL=C sort | cksum)"
+    printf '%s-%s' "$h" "${st%% *}"
+}
+# _cycle_member_reusable <member> — the previous verified iteration's entry
+# for <member> was a completed pass. A member that FAILED re-runs: its
+# iter-aware escalation (#1711 inert_wiring, #2097 not_passing_at_head) runs
+# inside the plugin at dispatch and must see ZBUILD_CYCLE_ITER advance.
+_cycle_member_reusable() {
+    local s="$1" e st v
+    e="$(jq -c --arg s "$s" '.[$s] // empty' <<< "${_CYCLE_VERIFIED_BLOB:-{}}" 2>/dev/null || true)"
+    [[ -n "$e" ]] || return 1
+    st="$(jq -r '.status // ""' <<< "$e" 2>/dev/null || true)"
+    v="$(jq -r '.verdict // ""' <<< "$e" 2>/dev/null || true)"
+    [[ "$st" == "complete" ]] || return 1
+    case "$v" in pass|complete|skip|approve) return 0 ;; *) return 1 ;; esac
+}
+_CYCLE_VERIFIED_FP=""
+_CYCLE_VERIFIED_ITER=""
+_CYCLE_VERIFIED_BLOB=""
+
 _cycle_iter_dispatch() {
     local iter="$1" state_file="$2"
     _CYCLE_LAST_VERDICTS_BLOB="{}"
@@ -1418,9 +1507,10 @@ _cycle_iter_dispatch() {
         return 1
     fi
 
-    # #511 Pin 8: per-iter cleanup BEFORE dispatch.
+    # #511 Pin 8: per-iter cleanup BEFORE dispatch — per member since #2117
+    # (see _cycle_pre_iter_cleanup), so a reused member keeps its artifact.
     local _state_dir; _state_dir="$(dirname "$state_file")"
-    _cycle_pre_iter_cleanup "$iter" "$_state_dir"
+    local _reuse_rest=0
 
     local s rc verdict status
     local blob="{}"
@@ -1484,6 +1574,21 @@ _cycle_iter_dispatch() {
         # the start event records it. Same `_TPL_STAGE_TYPE_<safe>` indirection.
         local _member_type_var_pre="_TPL_STAGE_TYPE_${s//-/_}"
         local _member_kind_pre="${!_member_type_var_pre:-leaf}"
+        # #2117: build reported empty_diff on a tree the previous iteration
+        # already verified — every member that PASSED then is reused from that
+        # iteration (blob entry copied, artifact kept, no dispatch). #1840 ran
+        # 45 min of tests and a 68-min gate on each of three identical trees.
+        if [[ $_reuse_rest -eq 1 && "$_member_kind_pre" != "cycle" ]] && _cycle_member_reusable "$s"; then
+            local _ru_entry
+            _ru_entry="$(jq -c --arg s "$s" '.[$s]' <<< "$_CYCLE_VERIFIED_BLOB" 2>/dev/null || echo '{}')"
+            blob="$(jq -c --arg s "$s" --argjson e "$_ru_entry" '. + {($s): $e}' <<< "$blob" 2>/dev/null)" || blob="{}"
+            _cycle_emit "cycle.iteration.reused" "iter=$iter" "member=$s" \
+                "from_iter=${_CYCLE_VERIFIED_ITER:-}" "reason=empty_diff"
+            _cycle_state_write_member_atomic "$state_file" "$s" \
+                "$(jq -r '.status // "complete"' <<< "$_ru_entry")" "$(jq -r '.verdict // "pass"' <<< "$_ru_entry")" || true
+            continue
+        fi
+        _cycle_pre_iter_cleanup "$iter" "$_state_dir" "$s"
         _cycle_emit_member_dispatch_start "$_cyc_pos" "$s" "$_member_kind_pre"
         export ZBUILD_CYCLE_ITER="$iter"
         export ZBUILD_CYCLE_ID="${_CYCLE_TRAP_CYCLE_ID}"
@@ -1823,6 +1928,16 @@ _cycle_iter_dispatch() {
             --arg d "${_CYCLE_DISPATCH_DISPOSITION:-}" --arg k "${_CYCLE_DISPATCH_DATA_KIND:-}" \
             --arg ft "${_CYCLE_DISPATCH_FAULT:-}" \
             '. + {($s): {verdict:$v, status:$st, disposition:$d, kind:$k, fault:$ft}}' <<< "$blob" 2>/dev/null)" || blob="{}"
+        # #2117: nothing changed and the previous iteration verified this exact
+        # tree → reuse what passed. A targeted test pass is never reused: the
+        # ADR-034 full-suite gate must get its full run.
+        if [[ "${_CYCLE_DISPATCH_DATA_KIND:-}" == "empty_diff" && "$iter" -ge 2 && -n "${_CYCLE_VERIFIED_FP:-}" ]]; then
+            local _fp_now; _fp_now="$(_cycle_tree_fingerprint 2>/dev/null || true)"
+            if [[ -n "$_fp_now" && "$_fp_now" == "$_CYCLE_VERIFIED_FP" ]] \
+               && [[ "$(_cycle_read_test_run_mode "$_state_dir" 2>/dev/null || echo full)" != "targeted" ]]; then
+                _reuse_rest=1
+            fi
+        fi
         if [[ $rc -ne 0 ]]; then
             fail=$(( fail + 1 ))
         fi
@@ -1914,6 +2029,11 @@ _cycle_iter_dispatch() {
             unset "_CYCLE_TURNS_BASE_PERSIST[${_CYCLE_TRAP_CYCLE_ID}:$s]"
         fi
     done
+    # #2117: this tree, as it stands after every member ran, is what the next
+    # iteration may reuse against.
+    _CYCLE_VERIFIED_FP="$(_cycle_tree_fingerprint 2>/dev/null || true)"
+    _CYCLE_VERIFIED_ITER="$iter"
+    _CYCLE_VERIFIED_BLOB="$blob"
     unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_ID ZBUILD_STAGE_IO_SEQ_LABEL
     # #566: restore caller's ZBUILD_CURRENT_STAGE — preserves prior value if
     # set, or unsets (we own the var only within this loop).
@@ -2137,6 +2257,8 @@ cycle_orchestrator_run() {
     # the runner honors the INNER edge's declared `max`, not the outer unit's.
     _CYCLE_ROUTE_BACK_EDGE_ID=""
     _CYCLE_LAST_ITERATIONS=0
+    # #2117: a reusable verification belongs to THIS cycle run only.
+    _CYCLE_VERIFIED_FP=""; _CYCLE_VERIFIED_ITER=""; _CYCLE_VERIFIED_BLOB=""
     # #524: reset exit-banner idempotency flag for this cycle run.
     _CYCLE_EXIT_BANNER_EMITTED=0
     _CYCLE_ITER_START_MS=()

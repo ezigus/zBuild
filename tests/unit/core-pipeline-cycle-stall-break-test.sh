@@ -207,11 +207,13 @@ assert_eq "[SPEC-3d] the FAILING gate-aggregator is re-dispatched every iteratio
 
 print_test_section "SPEC-3f: a tree that CHANGED between iterations is fully re-verified"
 _GA_VERDICT="fail"
-_fp_n=0
+# The orchestrator reads the fingerprint inside a $( ), so the stub cannot
+# keep a counter in shell state — a file does.
+_FP_COUNTER="$TEST_TEMP_DIR/fp.count"; : > "$_FP_COUNTER"
 if declare -F _cycle_tree_fingerprint >/dev/null 2>&1; then
     eval "$(declare -f _cycle_tree_fingerprint | sed '1s/^_cycle_tree_fingerprint/_orig_cycle_tree_fingerprint/')"
 fi
-_cycle_tree_fingerprint() { _fp_n=$(( _fp_n + 1 )); printf 'fp-%s' "$_fp_n"; }
+_cycle_tree_fingerprint() { printf 'x\n' >> "$_FP_COUNTER"; printf 'fp-%s' "$(wc -l < "$_FP_COUNTER" | tr -d ' ')"; }
 _run_cycle "changed"
 assert_eq "[SPEC-3f] with a different fingerprint each iteration nothing is reused" \
     "0" "$(grep -c '"cycle.iteration.reused"' "$ZBUILD_EVENTS_JSONL" || true)"
