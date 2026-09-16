@@ -20,6 +20,10 @@ if ! declare -F _zbuild_make_fresh_shell >/dev/null 2>&1; then
     # shellcheck source=../../../../scripts/lib/env-scrub.sh
     source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../scripts/lib" && pwd)/env-scrub.sh" 2>/dev/null || true
 fi
+if ! declare -F _acceptance_timeout_prefix >/dev/null 2>&1; then
+    # shellcheck source=../../../../scripts/lib/acceptance-block.sh
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../scripts/lib" && pwd)/acceptance-block.sh" 2>/dev/null || true
+fi
 
 # _build_format_numstat — thin wrapper around format_numstat (#506).
 _BUILD_NUMSTAT_MAX_LINES=50
@@ -274,14 +278,15 @@ _build_guard_false_completion() {
     local testfiles="$1" repo_root="$2"
     local timeout_s="${ZBUILD_NEGCTL_TIMEOUT:-60}"
     local failing=""
+    # #2108: bounded through the same resolver the gate uses (bare `timeout`
+    # is absent on a stock macOS); resolved once, the prefix is per-bound.
+    _acceptance_timeout_prefix "$timeout_s"
     while IFS= read -r tf; do
         [[ -z "$tf" ]] && continue
         local abs="$repo_root/$tf"
         [[ -f "$abs" ]] || continue
         # #2108: stdin is this loop's TESTFILE list — a file that reads it
-        # would eat the rest of the roster. Bounded through the same resolver
-        # the gate uses (bare `timeout` is absent on a stock macOS).
-        _acceptance_timeout_prefix "$timeout_s"
+        # would eat the rest of the roster; the fresh shell hands it /dev/null.
         if ! ( _zbuild_make_fresh_shell; ${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"} bash "$abs" ) >/dev/null 2>&1; then
             failing="$tf"
             break
