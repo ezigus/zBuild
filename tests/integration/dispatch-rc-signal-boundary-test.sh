@@ -210,7 +210,7 @@ assert_eq "[SPEC-5] it really was killed (raw rc 143)" "143" "$_LAST_RAW_RC"
 assert_eq "[SPEC-5] the declared word survives the signal" "exhausted" "$_LAST_DISPOSITION"
 
 # ─────────────────────────────────────────────────────────────────────────────
-print_test_section "6. A rate-limited dispatch is throttled"
+print_test_section "6. A rate-limited dispatch is unavailable — the run ends (#2111)"
 
 # The router arms the marker from inside the plugin's subshell — which is the
 # whole reason it is a file. A global set there would not survive to here, and
@@ -222,10 +222,13 @@ _d="$(_mkstage throttled_stage '
     return 1;')"
 _dispatch "$_d" throttled_stage
 assert_eq "[SPEC-6] the marker crossed the subshell boundary" "1" "$_LAST_RATE_LIMITED"
-assert_eq "[SPEC-6] a rate-limited stage is throttled, not broken" "throttled" "$_LAST_DISPOSITION"
-assert_eq "[SPEC-6] and the engine waits before retrying" \
-    "retry_after_wait" "$(disposition_response "$_LAST_DISPOSITION")"
-assert_gt "[SPEC-6] the wait is non-zero" "$(disposition_wait_s "$_LAST_DISPOSITION")" "0"
+# #2111: not `throttled` (wait, retry into the same limit, re-verify an
+# unchanged tree until max_iterations — #1840/#1841) and not `broken` (our own
+# defect): `unavailable`, which halts the run as aborted/llm_rate_limited and
+# leaves it resumable when the limit resets (ADR-050).
+assert_eq "[SPEC-6] a rate-limited stage is unavailable, not broken and not throttled" "unavailable" "$_LAST_DISPOSITION"
+assert_eq "[SPEC-6] and the engine's response is to halt" \
+    "halt_unavailable" "$(disposition_response "$_LAST_DISPOSITION")"
 
 # The marker must not leak into the NEXT dispatch. A stale marker would classify
 # an unrelated later failure as throttled — and throttled retries, so one rate

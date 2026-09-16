@@ -2302,6 +2302,16 @@ cycle_orchestrator_run() {
             _CYCLE_TRAP_CYCLE_ID=''
             return 11
         fi
+        # #2111: rc=9 is the LLM-abort the runner owns (#1024: unavailable;
+        # #2111: rate-limited). It must reach the runner as 9 so the run ends
+        # aborted — the generic arm below read it as config_invalid (rc=4),
+        # which is how "the API is down" became "your template is broken".
+        if [[ $_iter_rc -eq 9 ]]; then
+            _CYCLE_LAST_TERMINATED_REASON="llm_unavailable"
+            _cycle_clear_traps
+            _CYCLE_TRAP_CYCLE_ID=''
+            return 9
+        fi
         if [[ $_iter_rc -ne 0 ]]; then
             # #1208: the ADR-029 G2 abandon (rc=4 reason=timeout_abandoned) was
             # removed, so this generic non-zero-dispatch path is the only writer

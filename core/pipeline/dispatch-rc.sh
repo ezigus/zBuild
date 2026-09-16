@@ -113,7 +113,11 @@ dispatch_rc_observation() {
 # "probably transient" is how a real defect retries forever.
 dispatch_rc_failure_disposition() {
     local observation="${1-}" rate_limited="${2:-0}"
-    if [[ "$rate_limited" == "1" ]]; then printf 'throttled'; return 0; fi
+    # #2111: a rate limit ENDS the run. `throttled` waited 30s and retried into
+    # the same limit, then the cycle re-verified an unchanged tree for five
+    # iterations (#1840/#1841, 2h+ of runner time each). `unavailable` halts
+    # as aborted/llm_rate_limited; ADR-050 resume is the retry.
+    if [[ "$rate_limited" == "1" ]]; then printf 'unavailable'; return 0; fi
     case "$observation" in
         signal|timeout) printf 'interrupted' ;;
         *)              printf 'broken' ;;

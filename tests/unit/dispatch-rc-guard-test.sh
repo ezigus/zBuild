@@ -57,9 +57,16 @@ SYSGREP=/usr/bin/grep
 #
 # THE PIN. Each number is "legacy rc returns in this file today". Lower it when
 # you remove one; you may never raise it.
+#
+# #2111 raised runner.sh 35→36 and cycle-orchestrator.sh 29→30: NOT a new word —
+# rc=9 is the llm-abort channel #1024 declared and _zbuild_propagate_abort has
+# carried since then. These two are the enforcing callers it never had (the
+# disposition table's `halt_unavailable` was announced, not acted on), and the
+# orchestrator arm that stops the generic catch-all collapsing 9 into 4.
+# #1850 deletes them with the rest of the vocabulary.
 _PINNED="
-core/pipeline/runner.sh|35
-core/pipeline/cycle-orchestrator.sh|29
+core/pipeline/runner.sh|36
+core/pipeline/cycle-orchestrator.sh|30
 core/pipeline/parallel-orchestrator.sh|4
 core/pipeline/strategies/map.sh|6
 core/pipeline/strategies/fanout.sh|2

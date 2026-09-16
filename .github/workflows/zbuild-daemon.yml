@@ -80,6 +80,8 @@ jobs:
       ISSUE_NUMBER: ${{ github.event.issue.number }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
       PIPELINE_RESULT: ${{ needs.pipeline.result }}
+      ABORT_REASON: ${{ needs.pipeline.outputs.abort_reason }}
+      ABORT_DETAIL: ${{ needs.pipeline.outputs.abort_detail }}
     steps:
       - name: Remove zbuild-run label
         run: |
@@ -93,6 +95,13 @@ jobs:
         run: |
           if [[ "$PIPELINE_RESULT" == "success" ]]; then
             body="**zbuild pipeline completed successfully.**  Run: ${RUN_URL}"
+          elif [[ "$ABORT_REASON" == "llm_rate_limited" ]]; then
+            # #2111: the run ended on the account's rate limit — nothing to fix;
+            # re-add the label after the reset and ADR-050 resumes from the
+            # state branch.
+            body="**zbuild pipeline aborted: LLM rate-limited** (${ABORT_DETAIL:-reset time not reported}). State was persisted — re-add \`zbuild-run\` after the reset to resume.  Run: ${RUN_URL}"
+          elif [[ -n "$ABORT_REASON" ]]; then
+            body="**zbuild pipeline aborted: \`${ABORT_REASON}\`.**  Run: ${RUN_URL}"
           else
             body="**zbuild pipeline finished with result: \`${PIPELINE_RESULT}\`.**  Run: ${RUN_URL}"
           fi

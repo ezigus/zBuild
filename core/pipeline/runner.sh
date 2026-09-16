@@ -2403,6 +2403,36 @@ main() {
         _run_dispatch_units=1
     fi
 
+    # ─── _runner_note_llm_abort <state_dir> <manifest> <stage> <rc> (#2111) ──
+    # Records WHY the run is about to abort on rc=9 so the abort arms can name
+    # it: llm_rate_limited when the router saw a 429 (marker) or the stage said
+    # so, else llm_unavailable; the detail is the reset text the router surfaced.
+    _RUNNER_LLM_ABORT_REASON=""
+    _RUNNER_LLM_ABORT_DETAIL=""
+    _runner_note_llm_abort() {
+        local _na_state="$1" _na_manifest="$2" _na_stage="$3" _na_rc="$4"
+        local _na_reason _na_detail="" _na_primary _na_path
+        _na_reason="$(runner_read_stage_reason "$_na_state" "$_na_manifest" "$_na_stage" "$_na_rc" 2>/dev/null || true)"
+        if _router_throttle_observed 2>/dev/null; then
+            local _na_m; _na_m="$(_router_throttle_marker_path 2>/dev/null || true)"
+            [[ -n "$_na_m" && -f "$_na_m" ]] && _na_detail="$(head -c 400 "$_na_m" 2>/dev/null | tr '\n' ' ')"
+            _na_reason="router_rate_limited"
+        fi
+        _na_primary="$(_verdict_primary_output_path "$_na_manifest" 2>/dev/null || true)"
+        if [[ -z "$_na_detail" && -n "$_na_primary" ]]; then
+            _na_path="$(_verdict_resolve_path "$_na_primary" "$_na_state" 2>/dev/null || true)"
+            [[ "$_na_path" == *.json && -s "$_na_path" ]] \
+                && _na_detail="$(jq -r '.data.rate_limit.message // empty' "$_na_path" 2>/dev/null || true)"
+        fi
+        case "$_na_reason" in
+            *rate*limit*|*throttl*) _RUNNER_LLM_ABORT_REASON="llm_rate_limited" ;;
+            *)                      _RUNNER_LLM_ABORT_REASON="llm_unavailable" ;;
+        esac
+        _RUNNER_LLM_ABORT_DETAIL="${_na_detail}"
+    }
+    # _runner_llm_abort_reason — the word the abort arms record and emit.
+    _runner_llm_abort_reason() { printf '%s' "${_RUNNER_LLM_ABORT_REASON:-llm_unavailable}"; }
+
     # ─── _runner_disposition_redispatch_budget (#1887) ──────────────────────
     # How many times the dispatch boundary may re-dispatch a member whose
     # disposition says it is retryable. Default 1: one automatic second attempt
@@ -2592,6 +2622,18 @@ main() {
             _CYCLE_DISPATCH_STATUS="complete"
         else
             _CYCLE_DISPATCH_STATUS="failed"
+        fi
+        # #2111: `unavailable` HALTS — the table's halt_unavailable response
+        # was announced but never enforced (#1887 closed that gap for the
+        # retry words only). Something outside us is down: return the runner's
+        # LLM-abort rc so the run ends aborted, resumable (ADR-050), instead of
+        # re-verifying an unchanged tree until max_iterations. The reason and
+        # the reset text ride globals the rc=9 arms read.
+        if [[ -n "$_CYCLE_DISPATCH_DISPOSITION" ]] \
+           && [[ "$(disposition_response "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null || true)" == "halt_unavailable" ]]; then
+            _runner_note_llm_abort "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc"
+            _CYCLE_DISPATCH_STATUS="failed"
+            return 9
         fi
         # #1823 (ADR-054 §4b): narrow ONLY a v2 stage, and only here. A v1
         # plugin's rc is still its sole channel — `plan` says `scope_too_large`
@@ -2921,15 +2963,16 @@ main() {
                         # #1024: rc=9 = llm_unavailable; status=aborted (distinct from interrupted).
                         if [[ $_rc -eq 9 ]]; then
                             _set_pipeline_status "$state_file" "aborted"
-                            _zbuild_runner_write_llm_abort "$state_file"
+                            _zbuild_runner_write_llm_abort "$state_file" "$(_runner_llm_abort_reason)" "${_RUNNER_LLM_ABORT_DETAIL:-}"
                             eb_emit_event "pipeline.aborted" "cycle=$_cyc_id" \
                                 "run_id=$_runner_run_id" "issue=$_runner_issue" \
-                                "reason=llm_unavailable" "status=aborted" 2>/dev/null || true
+                                "reason=$(_runner_llm_abort_reason)" "detail=${_RUNNER_LLM_ABORT_DETAIL:-}" \
+                                "status=aborted" 2>/dev/null || true
                             eb_emit_event "pipeline.end" "status=aborted" "cycle=$_cyc_id" \
                                 "run_id=$_runner_run_id" "issue=$_runner_issue"
                             _render_pipeline_end "aborted"
                             _runner_ended=true
-                            error "Cycle $_cyc_id aborted rc=$_rc: LLM CLI unavailable"
+                            error "Cycle $_cyc_id aborted rc=$_rc: $(_runner_llm_abort_reason)${_RUNNER_LLM_ABORT_DETAIL:+ — $_RUNNER_LLM_ABORT_DETAIL}"
                             return 9
                         fi
                         # #1052: rc=10 = scope_too_large; status=aborted (mirrors rc=9).
@@ -3208,12 +3251,13 @@ main() {
                         if [[ $_rc -eq 9 ]]; then
                             # #1024: llm_unavailable abort — status=aborted.
                             _set_pipeline_status "$state_file" "aborted"
-                            _zbuild_runner_write_llm_abort "$state_file"
+                            _zbuild_runner_write_llm_abort "$state_file" "$(_runner_llm_abort_reason)" "${_RUNNER_LLM_ABORT_DETAIL:-}"
                             eb_emit_event "stage.fail" "stage=$_ust" "rc=$_rc" \
                                 || { _r=$?; warn "eb_emit_event stage.fail failed (rc=$_r)"; true; }
                             eb_emit_event "pipeline.aborted" "stage=$_ust" \
                                 "run_id=$_runner_run_id" "issue=$_runner_issue" \
-                                "reason=llm_unavailable" "status=aborted" 2>/dev/null || true
+                                "reason=$(_runner_llm_abort_reason)" "detail=${_RUNNER_LLM_ABORT_DETAIL:-}" \
+                                "status=aborted" 2>/dev/null || true
                             eb_emit_event "pipeline.end" "status=aborted" "stage=$_ust" "rc=$_rc" \
                                 "run_id=$_runner_run_id" "issue=$_runner_issue" \
                                 || { _r=$?; warn "eb_emit_event pipeline.end status=aborted failed (rc=$_r)"; true; }
@@ -3606,11 +3650,12 @@ main() {
             # not "interrupted". Handle before the general failure path.
             if [[ $rc -eq 9 ]]; then
                 _set_pipeline_status "$state_file" "aborted"
-                _zbuild_runner_write_llm_abort "$state_file"
+                _zbuild_runner_write_llm_abort "$state_file" "$(_runner_llm_abort_reason)" "${_RUNNER_LLM_ABORT_DETAIL:-}"
                 eb_emit_event "stage.fail" "stage=$stage" "rc=$rc"
                 eb_emit_event "pipeline.aborted" "stage=$stage" \
                     "run_id=$_runner_run_id" "issue=$_runner_issue" \
-                    "reason=llm_unavailable" "status=aborted" 2>/dev/null || true
+                    "reason=$(_runner_llm_abort_reason)" "detail=${_RUNNER_LLM_ABORT_DETAIL:-}" \
+                    "status=aborted" 2>/dev/null || true
                 eb_emit_event "pipeline.end" "status=aborted" "stage=$stage" "rc=$rc" \
                     "run_id=$_runner_run_id" "issue=$_runner_issue"
                 _render_pipeline_end "aborted" "$stage" "$rc"

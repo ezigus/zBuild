@@ -1190,6 +1190,9 @@ _route_update_ledger() {
 # Returns: 0 on DONE-sentinel, 1 on max-iter no-DONE, 2 on fatal.
 _ROUTE_LOOP_ITERATIONS=0
 _ROUTE_LOOP_TERMINATED_REASON=""
+# #2111: the operator line the rate limit produced ("resets 3pm (UTC)"), for
+# the stage to carry in its result — the engine ends the run on it.
+_ROUTE_LOOP_RATE_LIMIT_MESSAGE=""
 _ROUTE_LOOP_INPUT_TOKENS=0
 _ROUTE_LOOP_OUTPUT_TOKENS=0
 _ROUTE_LOOP_LAST_RESPONSE=""
@@ -1402,6 +1405,7 @@ route_to_model_loop() {
 
     _ROUTE_LOOP_ITERATIONS=0
     _ROUTE_LOOP_TERMINATED_REASON=""
+    _ROUTE_LOOP_RATE_LIMIT_MESSAGE=""
     _ROUTE_LOOP_INPUT_TOKENS=0
     _ROUTE_LOOP_OUTPUT_TOKENS=0
     _ROUTE_LOOP_LAST_RESPONSE=""
@@ -1941,6 +1945,7 @@ ${_diff_pointer}"
             # resumes when the limit resets and one that is dead.
             if [[ "$_loop_rate_limited" == "1" ]]; then
                 _ROUTE_LOOP_TERMINATED_REASON="router_rate_limited"
+                _ROUTE_LOOP_RATE_LIMIT_MESSAGE="$_loop_rl_msg"
                 _router_arm_throttle_marker "$_loop_rl_msg"
                 rm -f "$stderr_file" "$json_file"
                 _route_loop_clear_traps

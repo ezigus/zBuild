@@ -299,7 +299,10 @@ set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; r
 # every abort rc except 8/11/130 to rc=4 — the same collapse #1225 called out for
 # rc=11 and fixed only for rc=11. Pinned as-is: out of scope for #1800, and it is
 # exactly why the state record below has to carry the outcome on its own.
-assert_eq "T14: leaf abort rc collapses to 4 (pre-existing, see #1225)" "4" "$rc_t14"
+# #2111: rc=9 (llm_unavailable) is an ABORT the runner owns — it must reach the
+# runner as 9, not collapse to 4 (config_invalid) as the generic arm did.
+assert_eq "T14 [#2111]: a leaf abort rc=9 propagates as 9 to the runner" "9" "$rc_t14"
+assert_eq "T14 [#2111]: the terminating reason names it" "llm_unavailable" "${_CYCLE_LAST_TERMINATED_REASON:-}"
 t14_ss="$(jq -r '.stage_statuses.test // "missing"' "$STATE_FILE")"
 assert_eq "[SPEC-4] leaf member in stage_statuses on abort propagation" "aborted" "$t14_ss"
 t14_sv="$(jq -r '.stage_verdicts.test // "missing"' "$STATE_FILE")"

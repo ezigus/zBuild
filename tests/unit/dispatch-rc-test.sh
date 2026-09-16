@@ -104,18 +104,20 @@ assert_eq "[SPEC-3] signal death → interrupted" \
     "interrupted" "$(dispatch_rc_failure_disposition signal)"
 assert_eq "[SPEC-3] timeout → interrupted" \
     "interrupted" "$(dispatch_rc_failure_disposition timeout)"
-assert_eq "[SPEC-3] rate limit → throttled" \
-    "throttled" "$(dispatch_rc_failure_disposition "" 1)"
+# #2111 (Eric's call): a rate limit ENDS the run. `throttled` waited 30s and
+# retried into the same limit, then the cycle re-verified an unchanged tree
+# five times (#1840/#1841). `unavailable` halts; ADR-050 resume is the retry.
+assert_eq "[SPEC-3] rate limit → unavailable (#2111)" \
+    "unavailable" "$(dispatch_rc_failure_disposition "" 1)"
 assert_eq "[SPEC-3] no observation → broken" \
     "broken" "$(dispatch_rc_failure_disposition "")"
 
-# Rate limit beats signal when both are present. The two responses are NOT
-# equally safe under ambiguity: `interrupted` retries immediately, which for a
-# throttled stage is simply throttled again — the zero-output loop of #1723.
-# `throttled` waits first, costing a genuine interruption one bounded wait.
-# Where it must guess, the engine guesses toward the response that cannot spin.
-assert_eq "[SPEC-3] rate limit wins over a signal (cannot spin)" \
-    "throttled" "$(dispatch_rc_failure_disposition signal 1)"
+# Rate limit beats signal when both are present: a 429 on the wire is direct
+# evidence about this dispatch, and (#2111) the response to it is to END the
+# run — retrying (immediately or after a wait) re-enters the same limit and
+# re-verifies an unchanged tree until max_iterations (#1840/#1841).
+assert_eq "[SPEC-3] rate limit wins over a signal (ends the run)" \
+    "unavailable" "$(dispatch_rc_failure_disposition signal 1)"
 
 # Every word this table can produce must be a member of the closed set, or the
 # reader would hand a caller a word disposition_response refuses to answer for.
@@ -141,16 +143,18 @@ print_test_section "4. The classification drives a DIFFERENT engine response"
 # that all halted, which is exactly the pre-#1823 behaviour.
 assert_eq "[SPEC-4] interrupted → retry" \
     "retry" "$(disposition_response "$(dispatch_rc_failure_disposition signal)")"
-assert_eq "[SPEC-4] throttled → retry_after_wait" \
-    "retry_after_wait" "$(disposition_response "$(dispatch_rc_failure_disposition "" 1)")"
+assert_eq "[SPEC-4] throttled → retry_after_wait (the word keeps its response)" \
+    "retry_after_wait" "$(disposition_response throttled)"
+assert_eq "[SPEC-4] a rate limit → halt_unavailable (#2111)" \
+    "halt_unavailable" "$(disposition_response "$(dispatch_rc_failure_disposition "" 1)")"
 assert_eq "[SPEC-4] broken → halt_broken" \
     "halt_broken" "$(disposition_response "$(dispatch_rc_failure_disposition "")")"
 
 # The regression this file exists to catch: before #1823 a killed stage halted.
 assert_eq "[SPEC-4] a killed stage does NOT halt" \
     "1" "$(_rc_of disposition_halts "$(dispatch_rc_failure_disposition signal)")"
-assert_eq "[SPEC-4] a rate-limited stage does NOT halt" \
-    "1" "$(_rc_of disposition_halts "$(dispatch_rc_failure_disposition "" 1)")"
+assert_eq "[SPEC-4] a rate-limited stage DOES halt (#2111 — the run ends, resumable)" \
+    "0" "$(_rc_of disposition_halts "$(dispatch_rc_failure_disposition "" 1)")"
 assert_eq "[SPEC-4] an unexplained stage DOES halt" \
     "0" "$(_rc_of disposition_halts "$(dispatch_rc_failure_disposition "")")"
 
@@ -159,7 +163,7 @@ assert_eq "[SPEC-4] an unexplained stage DOES halt" \
 assert_eq "[SPEC-4] interrupted waits 0s" \
     "0" "$(disposition_wait_s "$(dispatch_rc_failure_disposition signal)")"
 assert_gt "[SPEC-4] throttled waits > 0s before retrying" \
-    "$(disposition_wait_s "$(dispatch_rc_failure_disposition "" 1)")" "0"
+    "$(disposition_wait_s throttled)" "0"
 
 # ─────────────────────────────────────────────────────────────────────────────
 print_test_section "5. Legacy rc mapping (the v1 boundary — #1850 deletes it)"
@@ -248,7 +252,7 @@ assert_eq "[SPEC-6] no result + killed by signal → interrupted" "interrupted" 
     "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 1 signal 0)"
 assert_eq "[SPEC-6] no result + timeout → interrupted" "interrupted" \
     "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 1 timeout 0)"
-assert_eq "[SPEC-6] no result + rate limit → throttled" "throttled" \
+assert_eq "[SPEC-6] no result + rate limit → unavailable (#2111)" "unavailable" \
     "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 1 "" 1)"
 assert_eq "[SPEC-6] no result + nothing observed → broken" "broken" \
     "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 1 "" 0)"
@@ -346,8 +350,8 @@ assert_eq "[SPEC-8] rc=8 likewise stays broken" "broken" \
     "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 8 "" 0)"
 
 # A rate limit still wins: it is evidence about THIS dispatch, where a legacy rc
-# is a coexistence-era translation.
-assert_eq "[SPEC-8] an observed rate limit outranks a legacy rc" "throttled" \
+# is a coexistence-era translation — and (#2111) it ends the run.
+assert_eq "[SPEC-8] an observed rate limit outranks a legacy rc" "unavailable" \
     "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 9 "" 1)"
 
 cleanup_test_env
