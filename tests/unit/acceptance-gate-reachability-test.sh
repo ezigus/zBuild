@@ -137,5 +137,86 @@ assert_eq "[SPEC-5] target IS in diff but no flip → REACHABILITY FAIL inert_wi
 assert_eq "[SPEC-5] wiring_not_on_path must NOT fire when target is in diff" \
     "" "$(grep 'wiring_not_on_path' <<<"$OUT_INERT")"
 
+# ═══ #2109 — reachability says what actually happened ═══════════════════════
+_mk_reach_repo() {  # <name> <testfile-body> [head-impl-body] → prints repo path
+    local r; r="$(setup_git_temp_repo "$1")"
+    (
+        cd "$r"
+        "$GIT" checkout -q -b feature
+        mkdir -p tests
+        printf '%s\n' "${3:-#!/usr/bin/env bash
+my_feature() { return 0; }}" > impl.sh
+        printf '%s\n' "$2" > tests/t-test.sh
+        chmod +x impl.sh tests/t-test.sh
+        "$GIT" add -A; "$GIT" commit -q -m "feat"
+    ) >/dev/null 2>&1
+    printf '%s' "$r"
+}
+_design1() { cat > "$1/design.md" <<'EOF'
+```acceptance
+SPEC-1[change]: my_feature exists
+WIRING:
+impl.sh
+TESTFILES:
+SPEC-1: tests/t-test.sh
+```
+EOF
+}
+
+# ── [#2109-B1] red at HEAD is not_passing_at_head, never inert_wiring ─────────
+# The assertion needs my_feature_v2, which HEAD does not define: the file is red
+# at HEAD, so no revert can flip it. That is a build defect, not inert wiring.
+REPO_B1="$(_mk_reach_repo reach-b1 '#!/usr/bin/env bash
+impl="$(cd "$(dirname "$0")/.." && pwd)/impl.sh"; [[ -f "$impl" ]] && source "$impl"
+if declare -F my_feature_v2 >/dev/null; then echo "  ✓ [SPEC-1] my_feature exists"; exit 0; fi
+echo "  ✗ [SPEC-1] my_feature exists"; exit 1')"
+_design1 "$REPO_B1"
+set +e; OUT_B1="$(acceptance_reachability_check "$REPO_B1/design.md" "$REPO_B1" 2>/dev/null)"; set -e
+assert_eq "[#2109-B1] a TESTFILE red at HEAD → not_passing_at_head, naming the file" \
+    "REACHABILITY FAIL not_passing_at_head impl.sh tests/t-test.sh" "$OUT_B1"
+assert_eq "[#2109-B1] and never inert_wiring" "" "$(grep 'inert_wiring' <<<"$OUT_B1" || true)"
+
+# ── [#2109-B2] reverted rc=127 with head rc=0 is harness, never PASS ──────────
+# Under set -e the baseline dies calling a function only HEAD defines: the run
+# never reached an assertion, so it is evidence of nothing.
+REPO_B2="$(_mk_reach_repo reach-b2 '#!/usr/bin/env bash
+set -e
+impl="$(cd "$(dirname "$0")/.." && pwd)/impl.sh"; [[ -f "$impl" ]] && source "$impl"
+my_feature
+echo "  ✓ [SPEC-1] my_feature exists"')"
+_design1 "$REPO_B2"
+set +e; OUT_B2="$(acceptance_reachability_check "$REPO_B2/design.md" "$REPO_B2" 2>/dev/null)"; set -e
+assert_eq "[#2109-B2] a reverted run that could not execute (127) is harness, not a flip" \
+    "REACHABILITY ERROR harness:impl.sh tests/t-test.sh" "$OUT_B2"
+
+# ── [#2109-B4] every declared TESTFILE absent on disk → no_testfiles ──────────
+REPO_B4="$(_mk_reach_repo reach-b4 '#!/usr/bin/env bash
+exit 0')"
+cat > "$REPO_B4/design.md" <<'EOF'
+```acceptance
+SPEC-1[change]: my_feature exists
+WIRING:
+impl.sh
+TESTFILES:
+SPEC-1: tests/does-not-exist-test.sh
+```
+EOF
+set +e; OUT_B4="$(acceptance_reachability_check "$REPO_B4/design.md" "$REPO_B4" 2>/dev/null)"; set -e
+assert_eq "[#2109-B4] no declared TESTFILE on disk → no_testfiles, not inert_wiring" \
+    "REACHABILITY FAIL no_testfiles impl.sh" "$OUT_B4"
+
+# ── [#2109-B5] one unrelated untagged ✗ does not hide a tagged flip ───────────
+# [SPEC-1] is ✓ at HEAD and ✗ reverted (a real flip); an untagged assertion is ✗
+# in both. Per-file rc says "red at HEAD"; per-SPEC evidence says load-bearing.
+REPO_B5="$(_mk_reach_repo reach-b5 '#!/usr/bin/env bash
+impl="$(cd "$(dirname "$0")/.." && pwd)/impl.sh"; [[ -f "$impl" ]] && source "$impl"
+if declare -F my_feature >/dev/null; then echo "  ✓ [SPEC-1] my_feature exists"; else echo "  ✗ [SPEC-1] my_feature exists"; fi
+echo "  ✗ unrelated legacy assertion"
+exit 1')"
+_design1 "$REPO_B5"
+set +e; OUT_B5="$(acceptance_reachability_check "$REPO_B5/design.md" "$REPO_B5" 2>/dev/null)"; set -e
+assert_eq "[#2109-B5] a tagged ✓→✗ flip is PASS even when an untagged line is ✗ in both runs" \
+    "REACHABILITY PASS impl.sh" "$OUT_B5"
+
 cleanup_test_env
 print_test_results
