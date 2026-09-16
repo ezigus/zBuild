@@ -91,6 +91,13 @@ export ZBUILD_CYCLE_ITER=2
 set +e; _run_gate "$REPO" >/dev/null 2>&1; set -e
 assert_eq "[#2109] iter=2: still not passing at HEAD → fault=specification (same as #2097)" \
     "specification" "$(jq -r '.fault // empty' <<<"$RESULT")"
+# negctl reports the same file per SPEC and its finding leads (first match
+# escalates), so the attribute is spec=; a reachability-only finding would
+# carry testfile= — the attribute is named for what it holds, never a path
+# under `spec=`.
+_esc="$(grep '"acceptance.gate.not_passing_at_head_escalated"' "$EVENTS" || true)"
+assert_eq "[#2109] iter=2: the escalation names a SPEC id under spec= or a path under testfile=, never a path under spec=" \
+    "ok" "$( { grep -q '"spec":"SPEC-1"' <<<"$_esc" || grep -q '"testfile":"tests/feature-test.sh"' <<<"$_esc"; } && ! grep -q '"spec":"tests/' <<<"$_esc" && echo ok || echo bad)"
 unset ZBUILD_CYCLE_ITER
 
 cleanup_test_env

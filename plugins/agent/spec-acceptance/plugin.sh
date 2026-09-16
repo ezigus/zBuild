@@ -483,8 +483,9 @@ acceptance_gate_run() {
                             harness:*)
                                 # #2109: the runner could not execute the file
                                 # (126/127) — evidence of nothing; advisory.
+                                local _h="${detail#harness:}"
                                 eb_emit_event "acceptance.gate.reachability_harness_error" "stage=acceptance-gate" \
-                                    "detail=${detail#harness:}" ;;
+                                    "target=${_h%% *}" "testfile=${_h#* }" ;;
                         esac
                         ;;
                 esac
@@ -575,9 +576,13 @@ acceptance_gate_run() {
         for f in "${failures[@]:-}"; do
             if [[ "$f" == not_passing_at_head:* ]]; then
                 fault="specification"
+                # #2109: negctl keys this class by SPEC id, reachability by the
+                # TESTFILE that is red — name the attribute for what it holds.
+                local _npah="${f#not_passing_at_head:}" _npah_attr="testfile"
+                [[ "$_npah" == SPEC-* ]] && _npah_attr="spec"
                 eb_emit_event "acceptance.gate.not_passing_at_head_escalated" \
                     "stage=acceptance-gate" \
-                    "spec=${f#not_passing_at_head:}" "iter=${ZBUILD_CYCLE_ITER:-1}"
+                    "${_npah_attr}=${_npah}" "iter=${ZBUILD_CYCLE_ITER:-1}"
                 break
             fi
         done
