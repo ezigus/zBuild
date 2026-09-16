@@ -135,7 +135,12 @@ _run() {
     )
 }
 
-# ── N1: one route_back fires, plan replays once, pipeline converges ──────────
+# ── N1: the nested route_back reaches the runner, plan replays, the run converges ──
+# #2119: the edge fires at the iteration its predicate matches, not at the inner
+# cycle's exhaustion. `test` says `retry` on its first two calls: each is a
+# match, each rewinds (budget 3, edge max 3), and the third call passes — so
+# TWO route_backs and THREE plan dispatches, where the exhaustion-only timing
+# produced one of each after the inner cycle had burned both its iterations.
 _tpl1="$TEST_TEMP_DIR/n1.yaml"; _write_nested_tpl "$_tpl1" 3
 _out1="$TEST_TEMP_DIR/n1"; mkdir -p "$_out1"
 _run "$_tpl1" 3 converge "$_out1"
@@ -144,10 +149,12 @@ _ev1="$_out1/events/events.jsonl"
 _state1="$_out1/state/pipeline-state.json"
 
 _rb1="$(grep -c '"type":"cycle.route_back"' "$_ev1" 2>/dev/null || true)"; [[ -z "$_rb1" ]] && _rb1=0
-assert_eq "N1: cycle.route_back emitted exactly once (nested rc=11 reached the runner)" "1" "$_rb1"
+assert_eq "N1: cycle.route_back emitted once per matching iteration (nested rc=11 reached the runner)" "2" "$_rb1"
+_rbe1="$(grep -c '"type":"cycle.route_back.early"' "$_ev1" 2>/dev/null || true)"; [[ -z "$_rbe1" ]] && _rbe1=0
+assert_eq "N1 [#2119]: each rewind fired early, before the inner cycle exhausted" "2" "$_rbe1"
 
 _plan1="$(grep '"type":"stage.start"' "$_ev1" 2>/dev/null | grep -c '"stage":"plan"')"; [[ -z "$_plan1" ]] && _plan1=0
-assert_eq "N1: plan leaf dispatched TWICE (initial + one nested-triggered replay)" "2" "$_plan1"
+assert_eq "N1: plan leaf dispatched THREE times (initial + one replay per rewind)" "3" "$_plan1"
 
 # NO rc=4 collapse — a config_invalid halt would surface as an aborted/failed end
 # with reason config_invalid and NO route_back event. The route_back above proves
