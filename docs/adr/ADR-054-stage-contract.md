@@ -3,6 +3,7 @@
 **Status:** Accepted (2026-08-09)
 **Date:** 2026-08-09
 **Issue:** #1820
+**Amended:** 2026-09-16 (#2111) — §6: a rate limit observed by the router resolves to `unavailable`, not `throttled`. The engine now enforces `halt_unavailable` on the cycle dispatch path (it was announced only): the run ends `aborted` with `reason=llm_rate_limited` and the reset text under `.rate_limit.message`, state persisted for ADR-050 resume. `throttled` stays in the closed set with no rate-limit emitter. Waiting and retrying re-entered the same limit for five iterations on #1840/#1841, re-verifying an unchanged tree each time.
 **Amended:** 2026-08-23 (#141) — §7: the three-actor table is run-keyed in every row; the **issue** is a second scope, and `release` gains the `always-run` attribute plus a `persist` sibling (ADR-059).
 **Amended:** 2026-08-23 (#1920) — §7: the `release` "deletes nothing" promise scoped to the run's own lifecycle; operator-invoked reclamation (`zbuild cleanup --state-dirs`) named as a third actor with its own clock and guards.
 **Amended:** 2026-08-12 (#1862) — §3.1 added: the engine exports dispatch identity (`ZBUILD_CURRENT_STAGE`, `ZBUILD_PLUGIN`, `ZBUILD_PLUGIN_KIND`, `ZBUILD_PLUGIN_DIR`) at `plugin_hook_call`, scoped to one dispatch. A plugin is self-defining about what it is and can never be self-defining about which stage it serves. `ZBUILD_PLUGINS_ROOT` is explicitly excluded; identity is scrubbed by `env-scrub` per ADR-024, not exempted from it.
@@ -148,7 +149,7 @@ The destination is never new. Every one of these already had a declared channel 
 |----|---------------|-------|
 | `130`/`143` signal | `interrupted` (§6) — and the ADR-025 `.abort.signal` sentinel, which already carries abort across subshells | #1823 |
 | `124` timeout | `interrupted` (§6). Never reaches the runner today: the router absorbs it and publishes `_ROUTE_LOOP_TERMINATED_REASON=router_timeout` | #1823 |
-| rate limit | `throttled` (§6), via the detector's second caller on the loop path (#1723) | #1823 |
+| rate limit | `unavailable` (§6) since #2111 (was `throttled`, #1823): the run ends, resumable when the limit resets | #1823 / #2111 |
 | `9` llm_unavailable | `unavailable` (§6) — "halt; operator action required" is what rc=9 already meant | #1823 |
 | `10` scope_too_large | `exhausted` (§6) — "more budget, or the work must shrink". The matching *verdict* string migrates in #1832 | #1823 / #1832 |
 | `11` route_back | ADR-045 routing state (`_CYCLE_ROUTE_BACK_*`, `cycle.route_back`). The `route_target` vocabulary is #1767 | ADR-045 / #1767 |
@@ -209,9 +210,9 @@ Conflating these is the defect this section exists to prevent — `pass|warn|fai
 |-------------|-----------------|
 | `complete` | Nothing went wrong |
 | `interrupted` | Retry as-is |
-| `throttled` | Wait, then retry |
+| `throttled` | Wait, then retry (retained; no rate-limit emitter since #2111) |
 | `exhausted` | More budget, or the work must shrink |
-| `unavailable` | Halt; operator action required |
+| `unavailable` | Halt; operator action required — a rate limit lands here (#2111): the run ends `aborted/llm_rate_limited`, resumable |
 | `broken` | Halt; it is a defect |
 
 Recoverability is therefore a **declared field**, not a guess re-derived from a verdict string. `did_not_finish`, `empty_diff`, `scope_too_large` and `inert_build` migrate out of `verdict` into `disposition` (#1832).

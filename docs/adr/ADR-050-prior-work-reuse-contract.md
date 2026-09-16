@@ -1,6 +1,7 @@
 # ADR-050 — Prior-Work Reuse Contract (durable artifact store + per-stage self-seeding)
 
 **Status:** Accepted (2026-07-23)
+**Amended:** 2026-09-16 (#2111) — a run that ends `aborted` with `reason=llm_rate_limited` (ADR-054 §6) persists like any other outcome; re-adding the trigger label after the reset resumes from the state branch. The daemon's completion comment names the reset text so the operator knows when.
 **Amended:** 2026-08-23 (#141) — §7: git is the store, the folder is the working copy, and the push moves from CI into an always-run `persist` stage (ADR-059)
 
 **Confirmed unchanged:** 2026-08-12 (#1768, ADR-055 §1.2) — ADR-055's data contract was reviewed against this one and prior-work reuse is deliberately **outside the input model**. It is not a declared input, not a third source kind, and not `external`. §1 below is the reason: a stage detects *its own* prior artifact in its own working area, so there is no producer to resolve and no wire to declare. Modelling it as an input would require the engine to know that `build`'s prior `build_summary` belongs to `build` — exactly what §1 forbids. No change to this ADR.

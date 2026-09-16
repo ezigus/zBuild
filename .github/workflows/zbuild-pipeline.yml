@@ -33,6 +33,16 @@ on:
     # reserved name auto-provided to every workflow. Declaring it makes the
     # workflow file invalid, which causes GitHub to emit a phantom "workflow
     # file issue" failure on every push to the default branch.
+    outputs:
+      # #2111: why a run ended `aborted` (llm_rate_limited | llm_unavailable |
+      # empty) and the reset text the router surfaced, so the caller's
+      # completion comment can say when to re-add the label.
+      abort_reason:
+        description: "pipeline-state.json .reason when the run aborted; empty otherwise"
+        value: ${{ jobs.pipeline.outputs.abort_reason }}
+      abort_detail:
+        description: "pipeline-state.json .rate_limit.message when the run aborted on a rate limit; empty otherwise"
+        value: ${{ jobs.pipeline.outputs.abort_detail }}
 
 
 permissions:
@@ -44,6 +54,9 @@ jobs:
   pipeline:
     name: "Pipeline — issue #${{ inputs.issue_number }}"
     runs-on: ubuntu-latest
+    outputs:
+      abort_reason: ${{ steps.abort.outputs.reason }}
+      abort_detail: ${{ steps.abort.outputs.detail }}
 
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -292,6 +305,29 @@ jobs:
                 && echo "::notice::pushed '$branch' ($new_commits commit(s)) to origin" \
                 || { echo "::error::failed to push '$branch'"; exit 1; }
             fi
+          fi
+
+      - name: Surface abort reason
+        # #2111: a run that ended `aborted` says why on the job outputs. A rate
+        # limit is the case that matters — the daemon's completion comment names
+        # the reset so the operator re-adds the label after it, not before.
+        # Fail-open: no state file, or a run that did not abort, yields empties.
+        id: abort
+        if: always()
+        run: |
+          reason=""; detail=""
+          sf="${ZBUILD_STATE_DIR:-}/pipeline-state.json"
+          if [[ -n "${ZBUILD_STATE_DIR:-}" && -f "$sf" ]]; then
+            status="$(jq -r '.status // empty' "$sf" 2>/dev/null || true)"
+            if [[ "$status" == "aborted" ]]; then
+              reason="$(jq -r '.reason // empty' "$sf" 2>/dev/null || true)"
+              detail="$(jq -r '.rate_limit.message // empty' "$sf" 2>/dev/null || true)"
+            fi
+          fi
+          printf 'reason=%s\n' "$reason" >> "$GITHUB_OUTPUT"
+          printf 'detail=%s\n' "${detail//$'\n'/ }" >> "$GITHUB_OUTPUT"
+          if [[ -n "$reason" ]]; then
+            echo "::notice title=zbuild aborted::${reason}${detail:+ — $detail}"
           fi
 
       - name: Surface persist result

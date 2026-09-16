@@ -103,13 +103,22 @@ _zbuild_state_set_stage_verdict() {
     unset _ZB_STAGE_ID _ZB_STAGE_VERDICT
 }
 
-# _zbuild_runner_write_llm_abort <state_file>
-# Writes reason=llm_unavailable to the pipeline state JSON (#1024).
+# _zbuild_runner_write_llm_abort <state_file> [reason] [detail]
+# Writes the LLM-abort reason to the pipeline state JSON (#1024): default
+# llm_unavailable; #2111 adds llm_rate_limited with the reset text the router
+# surfaced under .rate_limit.message, so ADR-050 resume and the CI comment can
+# say when to come back. Values ride exported env into the jq filter (the
+# locked_state_update contract), same shape as _zbuild_state_set_stage_verdict.
 _zbuild_runner_set_llm_abort_reason() {
     jq --arg now "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-       '.reason = "llm_unavailable" | .updated_at = $now'
+       --arg reason "${_ZB_LLM_ABORT_REASON:-llm_unavailable}" \
+       --arg detail "${_ZB_LLM_ABORT_DETAIL:-}" \
+       '.reason = $reason | .updated_at = $now
+        | (if $detail != "" then .rate_limit = {message: $detail} else . end)'
 }
 
 _zbuild_runner_write_llm_abort() {
+    export _ZB_LLM_ABORT_REASON="${2:-llm_unavailable}" _ZB_LLM_ABORT_DETAIL="${3:-}"
     locked_state_update "$1" "_zbuild_runner_set_llm_abort_reason"
+    unset _ZB_LLM_ABORT_REASON _ZB_LLM_ABORT_DETAIL
 }

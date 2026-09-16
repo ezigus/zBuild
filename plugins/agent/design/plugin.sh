@@ -543,6 +543,19 @@ DESIGN_PROMPT
         return 1
     fi
 
+    # #2111: the router hit the account's rate limit. Say so in the result —
+    # `unavailable` ends the run as aborted/llm_rate_limited (resumable) —
+    # instead of falling through to "no design" and a gate-driven re-iteration.
+    if [[ "${_ROUTE_LOOP_TERMINATED_REASON:-}" == "router_rate_limited" ]]; then
+        error "_design_stage_run_inner: router loop rate-limited (${_ROUTE_LOOP_RATE_LIMIT_MESSAGE:-LLM rate-limited})"
+        _design_write_result "$artifact_dir" "incomplete" "unavailable" "router_rate_limited"
+        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+            "the model call was rate-limited (${_ROUTE_LOOP_RATE_LIMIT_MESSAGE:-LLM rate-limited})" \
+            "No design.md was authored. The run ends here and resumes when the limit resets."
+        emit_event "plugin.result" "verdict=error" "plugin=design" "reason=router_rate_limited" "rc=$router_rc"
+        return 1
+    fi
+
     if [[ $router_rc -ge 2 ]]; then
         # Genuine loop error (rc=2) or an OOM/other non-zero rc — TERMINAL. (The
         # rc=124 sub-case of _router_rc_classify is defensive only: the loop

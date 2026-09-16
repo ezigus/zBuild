@@ -318,6 +318,14 @@ _build_stage_run_inner() {
         terminated_reason="error"
     fi
 
+    # #2111: the router hit the account's rate limit. Not a build failure and
+    # not something to retry: the stage says `unavailable` and the engine ends
+    # the run as aborted/llm_rate_limited, resumable when the limit resets.
+    if [[ "${_ROUTE_LOOP_TERMINATED_REASON:-}" == "router_rate_limited" ]]; then
+        _build_write_rate_limited_summary "$output_summary_json" "$repo_root" "${iterations:-0}"
+        return 1
+    fi
+
     # #612: rc=130 from the router is a SIGINT propagation, not a build failure.
     # ADR-054 §4b: rc∈{0,1}; write disposition:interrupted so the engine retries
     # rather than treating the abort as broken. The ADR-025 abort sentinel was

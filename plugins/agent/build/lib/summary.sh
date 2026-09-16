@@ -115,6 +115,30 @@ _build_emit_changed_files_summary() {
 # files_changed_count, output_diff_patch, output_summary_json, iterations,
 # terminated_reason, loop_input_tokens, loop_output_tokens, _feedback_body,
 # plan_files_csv, router_rc from caller's locals.
+# _build_write_rate_limited_summary <summary_json> <repo_root> <iterations>
+# #2111: the router hit the account's rate limit — the stage says
+# `unavailable` (the engine ends the run, resumable) with the reset text the
+# router surfaced under data.rate_limit.message. Same shape as the SIGINT
+# branch in plugin.sh; lives here to keep plugin.sh under its line cap.
+_build_write_rate_limited_summary() {
+    local out="$1" root="$2" iters="${3:-0}"
+    warn "_build_stage_run_inner: route_to_model_loop rate-limited — writing unavailable summary"
+    emit_event "build.aborted" "plugin=build" \
+        "reason=router_rate_limited" "iterations=$iters" >/dev/null 2>&1 || true
+    jq -n \
+        --argjson schema_version 4 \
+        --argjson iterations "$iters" \
+        --arg msg "${_ROUTE_LOOP_RATE_LIMIT_MESSAGE:-LLM rate-limited}" \
+        '{"schema_version":$schema_version,"result_contract":2,"verdict":"incomplete",
+          "disposition":"unavailable","reason":"router_rate_limited","iterations":$iterations,
+          "data":{"rate_limit":{"message":$msg}}}' \
+        | atomic_write "$out" 2>/dev/null || true
+    git -C "$root" reset -q 2>/dev/null || true
+    if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
+        _route_loop_close_final_banner || true
+    fi
+}
+
 # Writes build_verdict back to caller's scope (no `local` on it here).
 _build_write_build_summary() {
     local _sum_violations_json="[]"

@@ -136,7 +136,7 @@ Write or amend only the testfile(s) named above. Do not write, modify or stub an
         fi
         case "${_reason:-}" in
             router_timeout|*interrupt*) _disp="interrupted" ;;
-            *throttl*|*rate*)           _disp="throttled" ;;
+            *throttl*|*rate*)           _disp="unavailable" ;;  # #2111: a rate limit ends the run
             *unavailable*)              _disp="unavailable" ;;
             *budget*|*exhaust*)         _disp="exhausted" ;;
         esac

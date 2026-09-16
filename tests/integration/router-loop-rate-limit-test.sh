@@ -144,11 +144,13 @@ assert_eq "[SPEC-3] the loop armed the throttle marker" \
     "0" "$( _rc=0; _router_throttle_observed || _rc=$?; printf '%s' "$_rc" )"
 
 _disp="$(dispatch_rc_failure_disposition "" 1)"
-assert_eq "[SPEC-3] the dispatch resolves to throttled" "throttled" "$_disp"
-assert_eq "[SPEC-3] whose response is to wait and retry" \
-    "retry_after_wait" "$(disposition_response "$_disp")"
-assert_eq "[SPEC-3] and which does NOT halt the run" \
-    "1" "$( _rc=0; disposition_halts "$_disp" || _rc=$?; printf '%s' "$_rc" )"
+# #2111: a rate limit ends the run (aborted/llm_rate_limited, resumable) —
+# waiting and retrying re-entered the same limit for five iterations.
+assert_eq "[SPEC-3] the dispatch resolves to unavailable" "unavailable" "$_disp"
+assert_eq "[SPEC-3] whose response is to halt" \
+    "halt_unavailable" "$(disposition_response "$_disp")"
+assert_eq "[SPEC-3] and which DOES halt the run" \
+    "0" "$( _rc=0; disposition_halts "$_disp" || _rc=$?; printf '%s' "$_rc" )"
 
 # ─────────────────────────────────────────────────────────────────────────────
 print_test_section "4. Negative control — a genuine failure is untouched"
