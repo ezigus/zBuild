@@ -1439,62 +1439,6 @@ _CYCLE_VERIFIED_FP=""
 _CYCLE_VERIFIED_ITER=""
 _CYCLE_VERIFIED_BLOB=""
 
-# ─── #2117: an unchanged tree is not re-verified ────────────────────────────
-# _cycle_tree_fingerprint — HEAD plus a digest of `git status --porcelain`
-# (tracked edits AND untracked files); empty when not in a git tree, which
-# means "never reuse". Overridable by tests.
-_cycle_tree_fingerprint() {
-    local h st
-    h="$(git rev-parse HEAD 2>/dev/null || true)"
-    [[ -n "$h" ]] || return 0
-    st="$(git status --porcelain 2>/dev/null | LC_ALL=C sort | cksum)"
-    printf '%s-%s' "$h" "${st%% *}"
-}
-# _cycle_member_reusable <member> — the previous verified iteration's entry
-# for <member> was a completed pass. A member that FAILED re-runs: its
-# iter-aware escalation (#1711 inert_wiring, #2097 not_passing_at_head) runs
-# inside the plugin at dispatch and must see ZBUILD_CYCLE_ITER advance.
-_cycle_member_reusable() {
-    local s="$1" e st v
-    e="$(jq -c --arg s "$s" '.[$s] // empty' <<< "${_CYCLE_VERIFIED_BLOB:-{}}" 2>/dev/null || true)"
-    [[ -n "$e" ]] || return 1
-    st="$(jq -r '.status // ""' <<< "$e" 2>/dev/null || true)"
-    v="$(jq -r '.verdict // ""' <<< "$e" 2>/dev/null || true)"
-    [[ "$st" == "complete" ]] || return 1
-    case "$v" in pass|complete|skip|approve) return 0 ;; *) return 1 ;; esac
-}
-_CYCLE_VERIFIED_FP=""
-_CYCLE_VERIFIED_ITER=""
-_CYCLE_VERIFIED_BLOB=""
-
-# ─── #2117: an unchanged tree is not re-verified ────────────────────────────
-# _cycle_tree_fingerprint — HEAD plus a digest of `git status --porcelain`
-# (tracked edits AND untracked files); empty when not in a git tree, which
-# means "never reuse". Overridable by tests.
-_cycle_tree_fingerprint() {
-    local h st
-    h="$(git rev-parse HEAD 2>/dev/null || true)"
-    [[ -n "$h" ]] || return 0
-    st="$(git status --porcelain 2>/dev/null | LC_ALL=C sort | cksum)"
-    printf '%s-%s' "$h" "${st%% *}"
-}
-# _cycle_member_reusable <member> — the previous verified iteration's entry
-# for <member> was a completed pass. A member that FAILED re-runs: its
-# iter-aware escalation (#1711 inert_wiring, #2097 not_passing_at_head) runs
-# inside the plugin at dispatch and must see ZBUILD_CYCLE_ITER advance.
-_cycle_member_reusable() {
-    local s="$1" e st v
-    e="$(jq -c --arg s "$s" '.[$s] // empty' <<< "${_CYCLE_VERIFIED_BLOB:-{}}" 2>/dev/null || true)"
-    [[ -n "$e" ]] || return 1
-    st="$(jq -r '.status // ""' <<< "$e" 2>/dev/null || true)"
-    v="$(jq -r '.verdict // ""' <<< "$e" 2>/dev/null || true)"
-    [[ "$st" == "complete" ]] || return 1
-    case "$v" in pass|complete|skip|approve) return 0 ;; *) return 1 ;; esac
-}
-_CYCLE_VERIFIED_FP=""
-_CYCLE_VERIFIED_ITER=""
-_CYCLE_VERIFIED_BLOB=""
-
 _cycle_iter_dispatch() {
     local iter="$1" state_file="$2"
     _CYCLE_LAST_VERDICTS_BLOB="{}"
@@ -1581,7 +1525,8 @@ _cycle_iter_dispatch() {
         if [[ $_reuse_rest -eq 1 && "$_member_kind_pre" != "cycle" ]] && _cycle_member_reusable "$s"; then
             local _ru_entry
             _ru_entry="$(jq -c --arg s "$s" '.[$s]' <<< "$_CYCLE_VERIFIED_BLOB" 2>/dev/null || echo '{}')"
-            blob="$(jq -c --arg s "$s" --argjson e "$_ru_entry" '. + {($s): $e}' <<< "$blob" 2>/dev/null)" || blob="{}"
+            local _ru_blob
+            _ru_blob="$(jq -c --arg s "$s" --argjson e "$_ru_entry" '. + {($s): $e}' <<< "$blob" 2>/dev/null)" && blob="$_ru_blob"
             _cycle_emit "cycle.iteration.reused" "iter=$iter" "member=$s" \
                 "from_iter=${_CYCLE_VERIFIED_ITER:-}" "reason=empty_diff"
             _cycle_state_write_member_atomic "$state_file" "$s" \

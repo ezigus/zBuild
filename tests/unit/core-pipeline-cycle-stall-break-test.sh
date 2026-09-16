@@ -197,7 +197,6 @@ fi
 # 68 min of gate on each of three identical trees.
 _n_test="$(grep -c '"cycle.member.dispatch.complete".*"member":"test"' "$ZBUILD_EVENTS_JSONL" || true)"
 assert_eq "[SPEC-3b] the passing test member is dispatched exactly ONCE across 5 iterations" "1" "$_n_test"
-_n_reused="$(grep -c '"cycle.iteration.reused"' "$ZBUILD_EVENTS_JSONL" || true)"
 assert_eq "[SPEC-3c] iterations 2–5 reuse the test member's verdict (4 reuse events)" \
     "4" "$(grep '"cycle.iteration.reused"' "$ZBUILD_EVENTS_JSONL" | grep -c '"member":"test"' || true)"
 assert_contains "[SPEC-3c] a reuse event names the iteration it reuses" \
