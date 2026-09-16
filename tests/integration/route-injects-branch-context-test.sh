@@ -36,7 +36,7 @@ unset ZBUILD_RUN_ID 2>/dev/null || true
 REPO="$TEST_TEMP_DIR/repo"
 mkdir -p "$REPO"
 (
-    cd "$REPO"
+    cd "$REPO" || exit 1  # #2103: a failed cd must not run git in the caller checkout
     git init -q -b main 2>/dev/null || git init -q
     git config user.email t@t
     git config user.name t
@@ -49,7 +49,7 @@ BASELINE_SHA="$(git -C "$REPO" rev-parse HEAD)"
 
 # Now add 3 follow-on commits — these should appear in BRANCH STATE.
 (
-    cd "$REPO"
+    cd "$REPO" || exit 1  # #2103: a failed cd must not run git in the caller checkout
     echo a > a.txt; git add a.txt; git commit -q -m "add a"
     echo b > b.txt; git add b.txt; git commit -q -m "add b"
     echo c >> a.txt;    git add a.txt; git commit -q -m "tweak a"

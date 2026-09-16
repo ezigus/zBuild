@@ -31,7 +31,7 @@ unset ZBUILD_RUN_ID 2>/dev/null || true
 REPO="$TEST_TEMP_DIR/repo"
 mkdir -p "$REPO"
 (
-    cd "$REPO"
+    cd "$REPO" || exit 1  # #2103: a failed cd must not run git in the caller checkout
     git init -q -b main 2>/dev/null || git init -q
     git config user.email t@t
     git config user.name t

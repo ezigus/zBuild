@@ -71,7 +71,7 @@ mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 REPO="$TEST_TEMP_DIR/repo"
 mkdir -p "$REPO"
 (
-    cd "$REPO"
+    cd "$REPO" || exit 1  # #2103: a failed cd must not run git in the caller checkout
     git init -q -b main 2>/dev/null || git init -q
     git config user.email t@t
     git config user.name t
@@ -82,7 +82,7 @@ mkdir -p "$REPO"
 BASELINE_SHA="$(git -C "$REPO" rev-parse HEAD)"
 
 (
-    cd "$REPO"
+    cd "$REPO" || exit 1  # #2103: a failed cd must not run git in the caller checkout
     echo a > a.txt; git add a.txt; git commit -q -m "add a"
     echo b > b.txt; git add b.txt; git commit -q -m "add b"
     echo c >> a.txt;    git add a.txt; git commit -q -m "tweak a"

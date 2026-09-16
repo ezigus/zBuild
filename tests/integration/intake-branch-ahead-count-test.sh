@@ -41,61 +41,16 @@ _last_event_field() {
         || true
 }
 
-# _make_master_repo <label>
-# Creates a bare origin repo with 'master' as default branch, then clones it.
-# Prints the path to the working clone. The clone has origin/HEAD → origin/master.
-_make_master_repo() {
-    local label="$1"
-    local bare="$TEST_TEMP_DIR/bare-${label}.git"
-    local work="$TEST_TEMP_DIR/work-${label}"
-    local tmp_init="$TEST_TEMP_DIR/init-${label}"
-
-    # Create bare repo; set HEAD → master regardless of git's default.
-    git init --bare "$bare" >/dev/null 2>&1
-    git -C "$bare" symbolic-ref HEAD "refs/heads/master" 2>/dev/null
-
-    # Seed bare via a throwaway clone: add an initial commit and push.
-    # The subshell's rc is checked — a silently-failed seed would otherwise leave
-    # an empty bare repo, and the failure would surface much later as a baffling
-    # assertion mismatch instead of "setup failed".
-    git clone "$bare" "$tmp_init" >/dev/null 2>&1
-    (
-        set -e
-        cd "$tmp_init"
-        git config user.email "test@zbuild.local"
-        git config user.name "zbuild-test"
-        git config commit.gpgsign false
-        # Unborn HEAD: -b names the branch regardless of init.defaultBranch.
-        git checkout -q -b master 2>/dev/null || git symbolic-ref HEAD refs/heads/master
-        echo "seed" > seed.txt
-        git add seed.txt
-        git commit -q -m "seed"
-        git push -q origin HEAD:"refs/heads/master"
-    ) >/dev/null 2>&1 || { printf '' ; return 1; }
-    rm -rf "$tmp_init"
-
-    # The bare repo MUST now carry master; a bare `.git` check downstream cannot
-    # tell "seeded" from "empty", and an unborn HEAD makes `checkout master` a no-op.
-    git -C "$bare" show-ref --verify --quiet refs/heads/master || { printf ''; return 1; }
-
-    # Clone for the test; git sets origin/HEAD → origin/master automatically.
-    git clone "$bare" "$work" >/dev/null 2>&1 || { printf ''; return 1; }
-    (
-        cd "$work"
-        git config user.email "test@zbuild.local"
-        git config user.name "zbuild-test"
-        git config commit.gpgsign false
-    ) >/dev/null 2>&1
-
-    printf '%s\n' "$work"
-}
-
+# The master-default origin fixture lives in test-helpers.sh as
+# setup_git_master_origin (#2103): its original here ran its seeding subshell —
+# including `git push origin HEAD:master` — in the caller's checkout when the
+# seed clone failed.
 # ═══════════════════════════════════════════════════════════════════════════════
 # SPEC-1: reused path — ahead_count uses resolved default ('master'), not 'main'
 # ═══════════════════════════════════════════════════════════════════════════════
 print_test_section "SPEC-1: reused path ahead_count with master default branch"
 
-REPO_A="$(_make_master_repo "a")"
+REPO_A="$(setup_git_master_origin "a")"
 if [[ -z "$REPO_A" || ! -d "$REPO_A/.git" ]]; then
     assert_fail "repo-a setup" "no .git at ${REPO_A:-<empty>}"
     cleanup_test_env
@@ -103,7 +58,7 @@ if [[ -z "$REPO_A" || ! -d "$REPO_A/.git" ]]; then
     exit 1
 fi
 
-cd "$REPO_A"
+cd "$REPO_A" || { assert_fail "cd $REPO_A" "unreachable: $REPO_A"; cleanup_test_env; print_test_results; exit 1; }  # #2103
 # Two commits ahead of master on a feature branch.
 git checkout -q master 2>/dev/null || true
 git checkout -q -b zbuild/issue-1648-reused
@@ -128,7 +83,7 @@ assert_eq "[SPEC-1] ahead_count=2 when default branch is 'master' (not hardcoded
 # ═══════════════════════════════════════════════════════════════════════════════
 print_test_section "SPEC-2: adopted path ahead_count with master default branch"
 
-REPO_B="$(_make_master_repo "b")"
+REPO_B="$(setup_git_master_origin "b")"
 if [[ -z "$REPO_B" || ! -d "$REPO_B/.git" ]]; then
     assert_fail "repo-b setup" "no .git at ${REPO_B:-<empty>}"
     cleanup_test_env
@@ -136,7 +91,7 @@ if [[ -z "$REPO_B" || ! -d "$REPO_B/.git" ]]; then
     exit 1
 fi
 
-cd "$REPO_B"
+cd "$REPO_B" || { assert_fail "cd $REPO_B" "unreachable: $REPO_B"; cleanup_test_env; print_test_results; exit 1; }  # #2103
 git checkout -q master 2>/dev/null || true
 # Create remote-only branch: 2 commits ahead of master, pushed then deleted locally.
 git checkout -q -b zbuild/issue-1648-adopted
@@ -165,7 +120,7 @@ print_test_section "unresolvable default branch → ahead_count=unknown"
 REPO_C="$TEST_TEMP_DIR/work-c"
 mkdir -p "$REPO_C"
 (
-    cd "$REPO_C"
+    cd "$REPO_C" || exit 1  # #2103: a failed cd must not run git in the caller checkout
     git init -q
     git config user.email "test@zbuild.local"
     git config user.name "zbuild-test"
@@ -182,7 +137,7 @@ mkdir -p "$REPO_C"
     git checkout -q customdev
 ) >/dev/null 2>&1
 
-cd "$REPO_C"
+cd "$REPO_C" || { assert_fail "cd $REPO_C" "unreachable: $REPO_C"; cleanup_test_env; print_test_results; exit 1; }  # #2103
 _reset_events
 _intake_checkout_branch "zbuild/issue-1648-unresolvable" >/dev/null 2>&1
 

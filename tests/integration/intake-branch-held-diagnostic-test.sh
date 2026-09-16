@@ -43,7 +43,7 @@ WT_HOLDER="$TEST_TEMP_DIR/wt-holder"
 
 git init -q -b main "$REPO" 2>/dev/null
 (
-    cd "$REPO"
+    cd "$REPO" || exit 1  # #2103: a failed cd must not run git in the caller checkout
     git config user.email "t@t"
     git config user.name "t"
     git config commit.gpgsign false
