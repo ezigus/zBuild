@@ -97,6 +97,23 @@ assert_eq "[#2105-7] a failed walk fills an EMPTY array, never a stale list" "0"
 _discover_plugins_walk() { printf 'walk\n' >> "$WALKS"; _orig_discover_plugins_walk "$@"; }
 discovery_cache_flush
 
+# ─── [#2105-8] a plugin added or removed after a walk is seen on the next call ─
+SHP="$TEST_TEMP_DIR/shape"; mkdir -p "$SHP/persona/one"
+printf 'id: one\nname: One\nkind: persona\nversion: 0.1.0\npersona:\n  role: r\n  perspective: p\n' > "$SHP/persona/one/manifest.yaml"
+discovery_cache_flush; : > "$WALKS"
+declare -a _s1=(); discover_plugins_into _s1 "$SHP"
+declare -a _s1b=(); discover_plugins_into _s1b "$SHP"
+assert_eq "[#2105-8] an unchanged tree is a memo hit (1 walk for 2 calls)" "1" "$(_walks)"
+mkdir -p "$SHP/persona/two"; cp "$SHP/persona/one/manifest.yaml" "$SHP/persona/two/manifest.yaml"; sed -i '' 's/^id: one/id: two/' "$SHP/persona/two/manifest.yaml"
+declare -a _s2=(); discover_plugins_into _s2 "$SHP"
+assert_eq "[#2105-8] adding a plugin re-walks (2 walks)" "2" "$(_walks)"
+assert_eq "[#2105-8] the new plugin is in the list" "2" "${#_s2[@]}"
+rm -rf "$SHP/persona/one"
+declare -a _s3=(); discover_plugins_into _s3 "$SHP"
+assert_eq "[#2105-8] removing a plugin re-walks (3 walks)" "3" "$(_walks)"
+assert_eq "[#2105-8] the removed plugin is gone from the list" "1" "${#_s3[@]}"
+discovery_cache_flush
+
 # ─── [#2105-6] sourcing runner.sh warms the memo in the sourcing shell ───────
 export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"; mkdir -p "$ZBUILD_STATE_DIR"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"

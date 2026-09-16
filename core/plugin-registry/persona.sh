@@ -58,9 +58,9 @@ _find_persona_in_root() {
             return 0
         fi
     fi
-    local -a _fpir_dirs=()
-    discover_plugins_into _fpir_dirs "$plugins_root"
-    for plugin_dir in ${_fpir_dirs[@]+"${_fpir_dirs[@]}"}; do
+    local -a _persona_scan_dirs=()
+    discover_plugins_into _persona_scan_dirs "$plugins_root"
+    for plugin_dir in ${_persona_scan_dirs[@]+"${_persona_scan_dirs[@]}"}; do
         manifest="$plugin_dir/manifest.yaml"
         [[ -f "$manifest" ]] || continue
         kind="$(yaml_get "$manifest" "kind" 2>/dev/null || true)"
