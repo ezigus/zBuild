@@ -22,6 +22,8 @@ _ACCEPTANCE_REACHABILITY_LOADED=1
 _ACCEPTANCE_REACHABILITY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./acceptance-block.sh
 source "$_ACCEPTANCE_REACHABILITY_DIR/acceptance-block.sh"
+# shellcheck source=env-scrub.sh
+source "$_ACCEPTANCE_REACHABILITY_DIR/env-scrub.sh"
 # shellcheck source=./merge-base.sh
 source "$_ACCEPTANCE_REACHABILITY_DIR/merge-base.sh"
 
@@ -56,13 +58,12 @@ _reachability_run() {
     fi
     (
         cd "$cwd" || exit 2
-        unset ZBUILD_TEST_QUIET
-        # #1211: same fd-3 escape as negctl (see _negctl_run) — the runner's
-        # ZBUILD_STAGE_IO_FD=3 + duped-terminal fd 3 are inherited untouched, so
-        # nested plugin banners leak to the operator terminal, repeated per WIRING
-        # target × baseline/HEAD. Neutralize the channel and capture nested output
-        # to the already-2>&1 diagnostic log instead. Sibling #1127 = general fix.
-        unset ZBUILD_STAGE_IO_FD
+        # #2108 (closes #1782): the same scrub negctl has taken since #1644 —
+        # every ZBUILD_*/_TPL_* name, fd 3, and stdin. A TESTFILE that fails
+        # only because ZBUILD_RUN_ID leaked into it read as rc_head≠0 →
+        # `inert_wiring`; the two gate runners must execute a file in ONE
+        # environment or their verdicts cannot be compared (and, later, shared).
+        _zbuild_make_fresh_shell
         if [[ -n "$logfile" ]]; then
             "${runner[@]}" >>"$logfile" 2>&1 3>>"$logfile"
         else

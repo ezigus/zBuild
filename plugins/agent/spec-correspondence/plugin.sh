@@ -186,7 +186,9 @@ spec_correspondence_run() {
         # suppressing it drops the banner and breaks ADR-015 §v4's
         # input-before-action ordering — the #491 defect.
         if declare -f route_to_model >/dev/null 2>&1; then
-            _raw="$(route_to_model "$tier" "$_framed" || true)"
+            # #2108: stdin here is the SPEC-id stream this loop reads; a model
+            # that drains it (claude -p does) would judge SPEC-1 and eat the rest.
+            _raw="$(route_to_model "$tier" "$_framed" </dev/null || true)"
         fi
         # No `| head`: the reader exits early, the writer takes SIGPIPE, and
         # under errexit the surrounding function dies for a reason nothing logs

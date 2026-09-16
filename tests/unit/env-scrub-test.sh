@@ -242,5 +242,12 @@ _es_untouched="$(
 assert_eq "[SPEC-C10] GUARD: with no job folder the scrub leaves TMPDIR untouched" \
     "$_es_orig" "$_es_untouched"
 
+# ─── [#2108] a fresh shell reads nothing from the caller's stdin ─────────────
+# A spawned test file or `claude -p` drains a non-TTY stdin — inside a
+# `while read … < <(…)` loop that is the loop's own stream (the #1841 gate
+# judged 1 of 14 SPECs). The fresh shell hands the child /dev/null.
+_scrub_seen="$(printf 'SPEC-2\nSPEC-3\n' | ( _zbuild_make_fresh_shell; cat ))"
+assert_eq "[#2108] _zbuild_make_fresh_shell leaves stdin at EOF (/dev/null)" "" "$_scrub_seen"
+
 print_test_results
 exit $((FAIL > 0))

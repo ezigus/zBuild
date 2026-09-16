@@ -79,7 +79,8 @@ _orch_local_dispatch_workunit() {
     # propagate signals, then waits for inner and writes .exit file.
     (
         local rc=0 inner=0
-        bash "$work_unit" > "${result_base}.stdout" 2> "${result_base}.stderr" &
+        # #2108: dispatched from a `<<< "$roles_out"` loop — never its stdin.
+        bash "$work_unit" </dev/null > "${result_base}.stdout" 2> "${result_base}.stderr" &
         inner=$!
         echo "$inner" > "${result_base}.inner_pid"
         trap 'kill -KILL "$inner" 2>/dev/null || true' EXIT INT TERM

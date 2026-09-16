@@ -385,7 +385,8 @@ _test_run_inner() {
         # reach the `wait`. fds are inherited, so output still streams into the
         # enclosing $( ) exactly as the plain eval did.
         set -m
-        eval "$actual_test_cmd" 2>&1 &
+        # #2108: `set -m` removed the implicit </dev/null bash gives `&` jobs.
+        eval "$actual_test_cmd" </dev/null 2>&1 &
         _zbt_pg_child=$!
         # Re-point .pid at the suite itself. `set -m` put it in its own group,
         # so a TERM to this subshell — its parent — does NOT cascade; the PID
