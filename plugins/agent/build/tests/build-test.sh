@@ -997,6 +997,33 @@ MOCK_LOOP_REASON="done_sentinel"
 MOCK_LOOP_ITERATIONS=1
 
 # ─── SPEC-15: empty args to _build_stage_run_inner returns rc=1 (not rc=2) ───
+# ─── #2111: a rate-limited loop → disposition:unavailable (the run ends) ────
+print_test_section "#2111: router_rate_limited → v2 disposition:unavailable + the reset text"
+ARTIFACT_DIR_RL="$TEST_TEMP_DIR/artifacts_rl"; mkdir -p "$ARTIFACT_DIR_RL"
+cp "$PLAN_JSON_T3" "$ARTIFACT_DIR_RL/plan.json"
+REPO_RL="$(setup_build_repo "repo_rl")"
+export ZBUILD_REPO_ROOT="$REPO_RL"
+MOCK_LOOP_RC=1
+MOCK_LOOP_REASON="router_rate_limited"
+MOCK_LOOP_ITERATIONS=1
+_ROUTE_LOOP_RATE_LIMIT_MESSAGE="LLM rate-limited — resets 3pm (UTC)"
+set +e
+_build_stage_run_inner "$SCOPE_MANIFEST" "$ARTIFACT_DIR_RL/plan.json" \
+    "$ARTIFACT_DIR_RL/diff.patch" "$ARTIFACT_DIR_RL/build-summary.json" "$ARTIFACT_DIR_RL" >/dev/null 2>&1
+rc_rl=$?
+set -e
+assert_eq "[#2111] a rate-limited build declares disposition:unavailable (not interrupted)" \
+    "unavailable" "$(jq -r '.disposition // ""' "$ARTIFACT_DIR_RL/build-summary.json" 2>/dev/null || echo "")"
+assert_eq "[#2111] reason names the rate limit" \
+    "router_rate_limited" "$(jq -r '.reason // ""' "$ARTIFACT_DIR_RL/build-summary.json" 2>/dev/null || echo "")"
+assert_contains "[#2111] the reset text rides under data.rate_limit.message" \
+    "$(jq -r '.data.rate_limit.message // ""' "$ARTIFACT_DIR_RL/build-summary.json" 2>/dev/null || echo "")" "resets 3pm"
+assert_eq "[#2111] rc stays in {0,1}" "1" "$rc_rl"
+unset _ROUTE_LOOP_RATE_LIMIT_MESSAGE
+MOCK_LOOP_RC=0
+MOCK_LOOP_REASON="done_sentinel"
+MOCK_LOOP_ITERATIONS=1
+
 print_test_section "SPEC-29: _build_stage_run_inner empty required args returns rc=1"
 
 set +e

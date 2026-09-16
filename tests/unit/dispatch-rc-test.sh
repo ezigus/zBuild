@@ -104,8 +104,11 @@ assert_eq "[SPEC-3] signal death → interrupted" \
     "interrupted" "$(dispatch_rc_failure_disposition signal)"
 assert_eq "[SPEC-3] timeout → interrupted" \
     "interrupted" "$(dispatch_rc_failure_disposition timeout)"
-assert_eq "[SPEC-3] rate limit → throttled" \
-    "throttled" "$(dispatch_rc_failure_disposition "" 1)"
+# #2111 (Eric's call): a rate limit ENDS the run. `throttled` waited 30s and
+# retried into the same limit, then the cycle re-verified an unchanged tree
+# five times (#1840/#1841). `unavailable` halts; ADR-050 resume is the retry.
+assert_eq "[SPEC-3] rate limit → unavailable (#2111)" \
+    "unavailable" "$(dispatch_rc_failure_disposition "" 1)"
 assert_eq "[SPEC-3] no observation → broken" \
     "broken" "$(dispatch_rc_failure_disposition "")"
 
