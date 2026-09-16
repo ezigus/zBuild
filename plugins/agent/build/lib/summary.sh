@@ -14,6 +14,12 @@ fi
 
 [[ -n "${_ZBUILD_BUILD_SUMMARY_LOADED:-}" ]] && return 0
 _ZBUILD_BUILD_SUMMARY_LOADED=1
+# #2108: the false-completion guard spawns TESTFILEs under the same scrub the
+# acceptance gate uses (env-scrub.sh sources nothing, so no cycle).
+if ! declare -F _zbuild_make_fresh_shell >/dev/null 2>&1; then
+    # shellcheck source=../../../../scripts/lib/env-scrub.sh
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../scripts/lib" && pwd)/env-scrub.sh" 2>/dev/null || true
+fi
 
 # _build_format_numstat — thin wrapper around format_numstat (#506).
 _BUILD_NUMSTAT_MAX_LINES=50
@@ -272,7 +278,11 @@ _build_guard_false_completion() {
         [[ -z "$tf" ]] && continue
         local abs="$repo_root/$tf"
         [[ -f "$abs" ]] || continue
-        if ! timeout "$timeout_s" bash "$abs" >/dev/null 2>&1; then
+        # #2108: stdin is this loop's TESTFILE list — a file that reads it
+        # would eat the rest of the roster. Bounded through the same resolver
+        # the gate uses (bare `timeout` is absent on a stock macOS).
+        _acceptance_timeout_prefix "$timeout_s"
+        if ! ( _zbuild_make_fresh_shell; ${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"} bash "$abs" ) >/dev/null 2>&1; then
             failing="$tf"
             break
         fi

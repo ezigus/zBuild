@@ -83,10 +83,11 @@ orch_dispatch() {
     local task_rc=0
     if [[ -f "$work_unit" && -x "$work_unit" ]]; then
         # work_unit is a script file path
-        bash "$work_unit" > "${result_base}.stdout" 2> "${result_base}.stderr" || task_rc=$?
+        # #2108: dispatched from a `<<< "$roles_out"` loop — never its stdin.
+        bash "$work_unit" </dev/null > "${result_base}.stdout" 2> "${result_base}.stderr" || task_rc=$?
     else
         # work_unit is a bash body string (mock-compatible mode)
-        bash -c "$work_unit" > "${result_base}.stdout" 2> "${result_base}.stderr" || task_rc=$?
+        bash -c "$work_unit" </dev/null > "${result_base}.stdout" 2> "${result_base}.stderr" || task_rc=$?
     fi
     echo "$task_rc" > "${result_base}.exit"
     echo "$slot_id"

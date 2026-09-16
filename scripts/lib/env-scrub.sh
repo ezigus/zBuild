@@ -97,4 +97,10 @@ _zbuild_make_fresh_shell() {
         while declare -p "$_v" >/dev/null 2>&1; do unset "$_v" || break; done
     done < <(compgen -v 2>/dev/null | grep -E '^(ZBUILD_|_TPL_)' || true)
     exec 3>&-
+    # #2108: the spawned test file or model never reads the caller's stdin. A
+    # fresh user shell would have a terminal there; the engine has a
+    # `while read … < <(…)` stream — the gate's SPEC-id roster — which a test
+    # that reads stdin (or `claude -p`, which drains a non-TTY stdin into its
+    # prompt) consumed whole, so the gate judged 1 SPEC of 14 (#1841).
+    exec </dev/null
 }
