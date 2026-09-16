@@ -210,6 +210,16 @@ that reverts the *wiring* instead of the implementation:
   `REACHABILITY FAIL no_testfiles <target>` (recoverable). `inert_wiring` is reserved for
   the case it names: every TESTFILE green at HEAD and none flips. On #1841 the old label
   sent a plain build defect (an unimplemented SPEC) to design as `fault: specification`.
+- **Amended 2026-09-16 (#2110):** each TESTFILE is executed at most **once per side per
+  gate pass** — once at the merge-base and once at HEAD (and once per reverted WIRING target)
+  — and every SPEC bound to it is judged from those captures; the per-SPEC
+  `negctl-<spec>.log` sections are replayed from the memo. It used to run the whole file
+  twice PER SPEC: 18 SPECs on one 129s file = 38 executions, 68 minutes per pass (#1840).
+  The per-run bound is `max(negctl_timeout_s, 3× the file's time as MEASURED by the test
+  stage)` clamped to the test stage's own per-file ceiling (`ZBUILD_TEST_FILE_TIMEOUT`, 480s);
+  the measurement reaches the gate as the declared optional input `test_timing`
+  (`test-timing.log`), never a rebuilt path. `acceptance.gate.file_timeout` records the
+  bound and its source per TESTFILE.
 - The gate runs Level 3 only after Levels 1+2 pass (composability); a `WIRING`-less block
   is a no-op. An `inert_wiring:<target>` failure is a **hard** gate failure (verdict=fail,
   `acceptance.gate.inert_wiring` emitted), coercing review like every other gate failure.

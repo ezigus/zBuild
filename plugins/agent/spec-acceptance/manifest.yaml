@@ -73,6 +73,7 @@ provides:
   events:
     - acceptance.gate.baseline_resolve_failed
     - acceptance.gate.complete
+    - acceptance.gate.file_timeout
     - acceptance.gate.guard_regressed
     - acceptance.gate.inert_wiring
     - acceptance.gate.inert_wiring_escalated
@@ -105,6 +106,11 @@ inputs:
   # optional-input convention, #511) so the gate composes into templates that
   # do not run design — absent block → no-op pass.
   - id: design
+    required: false
+  # #2110: the test stage's per-file timings, so a negctl/reachability run is
+  # bounded by the file's measured time (never below negctl_timeout_s, never
+  # above the test stage's own ceiling). Optional: absent → the stage value.
+  - id: test_timing
     required: false
 
 outputs:

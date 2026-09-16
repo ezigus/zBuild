@@ -88,6 +88,14 @@ outputs:
     # `summary` says it is offered as prompt context (#1976). Both hold — the
     # extracted failing assertions are exactly what a re-running build needs.
     summary: true
+  # #2110: per-file wall time (`file <ms> <path>`), consumed by the acceptance
+  # gate to bound each negctl/reachability run by what this stage MEASURED
+  # rather than a flat 60s. Optional: a targeted rerun logs only its subset.
+  - id: test_timing
+    path: "${artifact_dir}/test-timing.log"
+    type: test-timing.log@1
+    format: text
+    required: false
 
 state:
   persisted: [last_verdict, last_exit_code]

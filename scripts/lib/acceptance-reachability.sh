@@ -55,6 +55,9 @@ _reachability_is_harness_rc() { [[ "$1" -eq 126 || "$1" -eq 127 ]]; }
 _reachability_run() {
     local testfile="$1" cwd="$2" logfile="${3:-}"
     local timeout_s="${ZBUILD_NEGCTL_TIMEOUT:-60}"
+    # #2110: raise to the file's measured time; the HEAD run is memoised across
+    # WIRING targets (the reverted runs differ per target and are not).
+    timeout_s="$(_acceptance_file_timeout "${testfile#"$cwd"/}" "$timeout_s")"
     local template="${ZBUILD_ACCEPTANCE_RUN_CMD:-}"
     [[ -z "$template" || "$template" != *'{files}'* ]] && template="bash {files}"
     local -a runner=()
@@ -64,6 +67,13 @@ _reachability_run() {
     if [[ ${#_ACCEPTANCE_TOUT[@]} -gt 0 ]]; then
         runner=("${_ACCEPTANCE_TOUT[@]}" "${runner[@]}")
     fi
+    _acceptance_run_cached "$testfile" "$logfile" _reachability_run_once "$cwd" "${runner[@]}"
+}
+
+# _reachability_run_once <cwd> <runner...> — the un-memoised execution (#2110).
+_reachability_run_once() {
+    local cwd="$1"; shift
+    local -a runner=("$@")
     (
         cd "$cwd" || exit 2
         # #2108 (closes #1782): the same scrub negctl has taken since #1644 —
@@ -72,11 +82,7 @@ _reachability_run() {
         # `inert_wiring`; the two gate runners must execute a file in ONE
         # environment or their verdicts cannot be compared (and, later, shared).
         _zbuild_make_fresh_shell
-        if [[ -n "$logfile" ]]; then
-            "${runner[@]}" >>"$logfile" 2>&1 3>>"$logfile"
-        else
-            "${runner[@]}" >/dev/null 2>&1 3>&-
-        fi
+        "${runner[@]}"
     )
 }
 
@@ -163,6 +169,9 @@ acceptance_reachability_check() {
     fi
 
     local rc=0
+    # #2110: memoise the HEAD run across targets (see _acceptance_run_cached).
+    _acceptance_run_cache_begin
+    local _rc_owner="${_ACCEPTANCE_RUN_CACHE_OWNED:-0}"
 
     for target in "${wiring_targets[@]}"; do
         # #1686: a target absent from this commit's diff was not changed here, so
@@ -308,5 +317,9 @@ acceptance_reachability_check() {
         fi
     done
 
+    if [[ "$_rc_owner" -eq 1 ]]; then
+        rm -rf "${_ACCEPTANCE_RUN_CACHE_DIR:-}" 2>/dev/null || true
+        unset _ACCEPTANCE_RUN_CACHE_DIR
+    fi
     return "$rc"
 }

@@ -140,7 +140,7 @@ assert_eq "[#2110-3] a 129s file gets a 387s bound when the stage bound is 60" \
 assert_eq "[#2110-3] an unmeasured file keeps the stage bound" \
     "60" "$(_acceptance_file_timeout tests/other-test.sh 60)"
 assert_eq "[#2110-3] with no declared timing input the stage bound stands" \
-    "60" "$(ZBUILD_NEGCTL_TIMING_LOG= _acceptance_file_timeout tests/one-test.sh 60)"
+    "60" "$(ZBUILD_NEGCTL_TIMING_LOG='' _acceptance_file_timeout tests/one-test.sh 60)"
 assert_eq "[#2110-3] a tiny measured time never lowers the stage bound" \
     "60" "$(printf 'file 800 /x/tests/fast-test.sh\n' > "$ZBUILD_NEGCTL_TIMING_LOG"; _acceptance_file_timeout tests/fast-test.sh 60)"
 assert_eq "[#2110-3] the bound is clamped at the test stage's own per-file ceiling (480)" \

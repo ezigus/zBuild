@@ -126,6 +126,8 @@ _negctl_guard_log_check() {
 _negctl_run() {
     local testfile="$1" cwd="$2" logfile="${3:-}"
     local timeout_s="${ZBUILD_NEGCTL_TIMEOUT:-60}"
+    # #2110: raise to the file's measured time; one execution per file per pass.
+    timeout_s="$(_acceptance_file_timeout "${testfile#"$cwd"/}" "$timeout_s")"
     local template="${ZBUILD_ACCEPTANCE_RUN_CMD:-}"
     [[ -z "$template" || "$template" != *'{files}'* ]] && template="bash {files}"
     local -a runner=()
@@ -135,6 +137,13 @@ _negctl_run() {
     if [[ ${#_ACCEPTANCE_TOUT[@]} -gt 0 ]]; then
         runner=("${_ACCEPTANCE_TOUT[@]}" "${runner[@]}")
     fi
+    _acceptance_run_cached "$testfile" "$logfile" _negctl_run_once "$cwd" "${runner[@]}"
+}
+
+# _negctl_run_once <cwd> <runner...> — the un-memoised execution (#2110).
+_negctl_run_once() {
+    local cwd="$1"; shift
+    local -a runner=("$@")
     (
         cd "$cwd" || exit 2
         # #1644: scrub ALL runner state, not a hand-picked subset. This list grew
@@ -150,11 +159,7 @@ _negctl_run() {
         # same reason). Using the same contract here means a new runner variable
         # cannot leak into a TESTFILE without someone deliberately exempting it.
         _zbuild_make_fresh_shell
-        if [[ -n "$logfile" ]]; then
-            "${runner[@]}" >>"$logfile" 2>&1 3>>"$logfile"
-        else
-            "${runner[@]}" >/dev/null 2>&1 3>&-
-        fi
+        "${runner[@]}"
     )
 }
 
@@ -338,8 +343,12 @@ acceptance_negctl_check() {
 
     # Detached worktree at baseline; overlay each TESTFILE from HEAD.
     local wt_dir; wt_dir="$(mktemp -d "$(zbuild_engine_tmpdir)/zb-negctl.XXXXXX")"
+    # #2110: one execution per file per pass — the memo lives for this check
+    # (or for the plugin's whole gate pass when it created the directory).
+    _acceptance_run_cache_begin
+    local _rc_rm=""; [[ "${_ACCEPTANCE_RUN_CACHE_OWNED:-0}" -eq 1 ]] && _rc_rm="rm -rf '${_ACCEPTANCE_RUN_CACHE_DIR:-}' 2>/dev/null; unset _ACCEPTANCE_RUN_CACHE_DIR;"
     # shellcheck disable=SC2064
-    trap "git -C '$repo_root' worktree remove --force '$wt_dir' >/dev/null 2>&1 || true; rm -rf '$wt_dir' 2>/dev/null || true" RETURN
+    trap "git -C '$repo_root' worktree remove --force '$wt_dir' >/dev/null 2>&1 || true; rm -rf '$wt_dir' 2>/dev/null || true; $_rc_rm" RETURN
     if ! git -C "$repo_root" worktree add --detach "$wt_dir" "$base_sha" >/dev/null 2>&1; then
         printf 'NEGCTL ERROR worktree_failed\n'
         return 1
