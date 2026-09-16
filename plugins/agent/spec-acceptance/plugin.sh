@@ -268,6 +268,22 @@ acceptance_gate_run() {
     # the negctl/reachability libs (they read these two env vars).
     export ZBUILD_NEGCTL_TIMEOUT; ZBUILD_NEGCTL_TIMEOUT="$(_ag_resolve_negctl_timeout "${_stage_id:-acceptance-gate}")"
     export ZBUILD_NEGCTL_ARTIFACT_DIR="$artifact_dir"
+    # #2110: the measured per-file bound reads the declared `test_timing` input
+    # (name-matched, ADR-055 §1); the libs never construct the path.
+    local _timing_log=""
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+        _timing_log="$(jq -r '.inputs.test_timing // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+    fi
+    export ZBUILD_NEGCTL_TIMING_LOG="$_timing_log"
+    # One event per declared TESTFILE naming the bound each of its runs gets
+    # and where it came from — how a run proves the measured path fired.
+    local _ft_tf _ft_s
+    while IFS= read -r _ft_tf; do
+        [[ -n "$_ft_tf" ]] || continue
+        _ft_s="$(_acceptance_file_timeout "$_ft_tf" "$ZBUILD_NEGCTL_TIMEOUT")"
+        eb_emit_event "acceptance.gate.file_timeout" "stage=acceptance-gate" "testfile=$_ft_tf" \
+            "timeout_s=$_ft_s" "source=$([[ "$_ft_s" != "$ZBUILD_NEGCTL_TIMEOUT" ]] && echo measured || echo stage)"
+    done < <(acceptance_list_testfiles "$design_md" 2>/dev/null || true)
     export ZBUILD_ACCEPTANCE_RUN_CMD
 
     # repo_root = git toplevel of the working tree (where build's commits live);
