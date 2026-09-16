@@ -35,7 +35,18 @@ ZBUILD_DISABLED_FILE="${ZBUILD_DISABLED_FILE:-${_ZBUILD_ROOT}/config/plugins.dis
 # so a fixture tree can never be handed the real tree's result.
 # ZBUILD_PLUGIN_DISCOVERY_CACHE=0 disables it, mirroring ZBUILD_YAML_CACHE, for
 # a caller that mutates a tree in place between calls.
+#
+# #2105: the memo is checked against the tree's SHAPE on every hit — the sorted
+# list of manifest paths, one `find` (~20ms) instead of the ~2.5s walk. A plugin
+# added or removed since the walk (test fixtures do this between direct calls;
+# before #2105 the memo never survived long enough to notice) re-walks. An
+# in-place EDIT of a manifest is not in the shape; that case keeps the flush /
+# off-switch contract, the same one the yaml cache has (#1614).
 declare -gA _ZBUILD_DISCOVERY_CACHE=()
+declare -gA _ZBUILD_DISCOVERY_SHAPE=()
+_discovery_tree_shape() {
+    find "$1" -maxdepth 3 -name 'manifest.yaml' -type f 2>/dev/null | LC_ALL=C sort | tr '\n' ' '
+}
 discover_plugins() {
     local plugins_root="${1:-$_ZBUILD_ROOT/plugins}"
     if [[ "${ZBUILD_PLUGIN_DISCOVERY_CACHE:-1}" != "1" ]]; then
@@ -43,8 +54,10 @@ discover_plugins() {
         return $?
     fi
     local _dck="${plugins_root}"$'\034'"${ZBUILD_DISABLED_FILE:-}"
-    local _out
-    if [[ -n "${_ZBUILD_DISCOVERY_CACHE[$_dck]+set}" ]]; then
+    local _out _shape
+    _shape="$(_discovery_tree_shape "$plugins_root")"
+    if [[ -n "${_ZBUILD_DISCOVERY_CACHE[$_dck]+set}" \
+        && "${_ZBUILD_DISCOVERY_SHAPE[$_dck]:-}" == "$_shape" ]]; then
         _out="${_ZBUILD_DISCOVERY_CACHE[$_dck]}"
     else
         local _wrc=0
@@ -58,6 +71,7 @@ discover_plugins() {
             return "$_wrc"
         fi
         _ZBUILD_DISCOVERY_CACHE["$_dck"]="$_out"
+        _ZBUILD_DISCOVERY_SHAPE["$_dck"]="$_shape"
     fi
     # Only when non-empty: a cached empty result must print nothing, not a bare
     # newline, or the caller's `while read` sees one phantom plugin dir.
@@ -97,10 +111,11 @@ discovery_cache_flush() {
     if [[ -n "${1:-}" ]]; then
         local k
         for k in "${!_ZBUILD_DISCOVERY_CACHE[@]}"; do
-            [[ "$k" == "$1"$'\034'* ]] && unset "_ZBUILD_DISCOVERY_CACHE[$k]"
+            [[ "$k" == "$1"$'\034'* ]] && unset "_ZBUILD_DISCOVERY_CACHE[$k]" "_ZBUILD_DISCOVERY_SHAPE[$k]"
         done
     else
         _ZBUILD_DISCOVERY_CACHE=()
+        _ZBUILD_DISCOVERY_SHAPE=()
     fi
 }
 
