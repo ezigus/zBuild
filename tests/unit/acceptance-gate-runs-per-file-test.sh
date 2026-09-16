@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/unit/acceptance-negctl-runs-per-file-test.sh — #2110
+# tests/unit/acceptance-gate-runs-per-file-test.sh — #2110
 # The acceptance gate judges every SPEC from ONE baseline run and ONE HEAD run
 # of each test file. It used to run the whole file twice PER SPEC: 19 SPECs
 # bound to one 129s file = 38 executions = 68 minutes per gate pass (#1840).
@@ -109,6 +109,22 @@ for n in 1 5; do
 done
 assert_contains "[#2110-1] guard log has only a baseline section" \
     "$(cat "$ZBUILD_NEGCTL_ARTIFACT_DIR/negctl-SPEC-6.log")" "### SPEC-6 baseline tests/guard-test.sh"
+
+# ─── [#2110-4] two files whose paths differ only by '/' vs '_' never share a memo ─
+(
+    cd "$REPO"
+    mkdir -p tests/a
+    printf '#!/usr/bin/env bash\nexit 0\n' > tests/a/b-test.sh
+    printf '#!/usr/bin/env bash\nexit 7\n' > tests/a_b-test.sh
+    chmod +x tests/a/b-test.sh tests/a_b-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "collision fixtures"
+)
+_acceptance_run_cache_begin
+rc1=0; _acceptance_run_cached "$REPO/tests/a/b-test.sh" "" bash "$REPO/tests/a/b-test.sh" || rc1=$?
+rc2=0; _acceptance_run_cached "$REPO/tests/a_b-test.sh" "" bash "$REPO/tests/a_b-test.sh" || rc2=$?
+assert_eq "[#2110-4] tests/a/b-test.sh runs and returns its own rc" "0" "$rc1"
+assert_eq "[#2110-4] tests/a_b-test.sh runs and returns ITS rc, not a replay of the other file's" "7" "$rc2"
+rm -rf "${_ACCEPTANCE_RUN_CACHE_DIR:-}"; unset _ACCEPTANCE_RUN_CACHE_DIR
 
 # ─── [#2110-2] reachability: the HEAD run happens once per file, not per target ──
 cat > "$DM" <<'EOF2'

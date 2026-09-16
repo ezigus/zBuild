@@ -358,15 +358,23 @@ _acceptance_run_cached() {
         if [[ -n "$logfile" ]]; then "$@" >>"$logfile" 2>&1 3>>"$logfile"; else "$@" >/dev/null 2>&1 3>&-; fi
         return $?
     fi
-    local id="${key//\//_}"; id="${id//[^A-Za-z0-9._-]/_}"
+    # The key is a digest of the path, not a sanitised path: `tests/a/b.sh`
+    # and `tests/a_b.sh` would otherwise share one entry, and the second file
+    # would replay the first's verdict without ever running (review, #2110).
+    local id; id="$(printf '%s' "$key" | cksum)"; id="${id%% *}-${#key}"
     local rcf="$dir/$id.rc" capf="$dir/$id.cap"
+    local cached=""
     if [[ -f "$rcf" ]]; then
+        read -r cached < "$rcf" || cached=""
+    fi
+    if [[ "$cached" =~ ^[0-9]+$ ]]; then
         [[ -n "$logfile" && -f "$capf" ]] && cat "$capf" >> "$logfile" 2>/dev/null
-        return "$(cat "$rcf")"
+        return "$cached"
     fi
     local rc=0
+    : > "$capf"
     "$@" >>"$capf" 2>&1 3>>"$capf" || rc=$?
-    printf '%s' "$rc" > "$rcf"
+    printf '%s\n' "$rc" > "$rcf"
     [[ -n "$logfile" ]] && cat "$capf" >> "$logfile" 2>/dev/null
     return "$rc"
 }
