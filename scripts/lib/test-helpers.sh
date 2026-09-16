@@ -922,9 +922,14 @@ assert_event_emitted() {
 setup_git_temp_repo() {
     local name="${1:-gitrepo}"
     local repo="$TEST_TEMP_DIR/$name"
-    mkdir -p "$repo"
+    mkdir -p "$repo" 2>/dev/null || return 1
     (
-        cd "$repo"
+        # #2103 / ADR-024: the cd MUST be fatal. `set -e` is inert inside this
+        # subshell because its status is tested by `|| return 1` below, so a
+        # failed cd would otherwise run every git command in the CALLER'S
+        # checkout — which is exactly what committed seed.txt into a real
+        # worktree and pushed a branch to the real origin on 2026-09-15.
+        cd "$repo" || exit 1
         # Use the real git binary (not whatever PATH shim may be present).
         local real_git
         real_git="$(command -v git 2>/dev/null || true)"
@@ -951,6 +956,58 @@ setup_git_temp_repo() {
         fi
     ) >/dev/null 2>&1 || return 1
     printf '%s\n' "$repo"
+}
+
+# ── setup_git_master_origin (#2103) ──────────────────────────────────────────
+# A bare origin whose default branch is `master` (not `main`), seeded with one
+# commit, plus a working clone of it whose origin/HEAD → origin/master. Prints
+# the clone's path; prints nothing and returns 1 on any setup failure. Extracted
+# from tests/integration/intake-branch-ahead-count-test.sh, where a failed seed
+# clone let the seeding subshell run — and `git push origin HEAD:master` — in
+# the caller's checkout against the caller's origin. Every cd here is fatal
+# because each subshell's status is tested (see setup_git_temp_repo).
+#
+# Usage:
+#   clone="$(setup_git_master_origin a)" || fail "setup"
+setup_git_master_origin() {
+    local label="${1:-m}"
+    local bare="$TEST_TEMP_DIR/bare-${label}.git"
+    local work="$TEST_TEMP_DIR/work-${label}"
+    local tmp_init="$TEST_TEMP_DIR/init-${label}"
+
+    git init --bare "$bare" >/dev/null 2>&1 || { printf ''; return 1; }
+    git -C "$bare" symbolic-ref HEAD "refs/heads/master" 2>/dev/null || { printf ''; return 1; }
+
+    # Seed via a throwaway clone. The clone's OWN rc is checked before the
+    # subshell so a clone failure never reaches the cd; the cd is fatal anyway.
+    git clone "$bare" "$tmp_init" >/dev/null 2>&1 || { printf ''; return 1; }
+    (
+        cd "$tmp_init" || exit 1
+        git config user.email "test@zbuild.local" || exit 1
+        git config user.name "zbuild-test" || exit 1
+        git config commit.gpgsign false || exit 1
+        # Unborn HEAD: -b names the branch regardless of init.defaultBranch.
+        git checkout -q -b master 2>/dev/null || git symbolic-ref HEAD refs/heads/master || exit 1
+        echo "seed" > seed.txt || exit 1
+        git add seed.txt || exit 1
+        git commit -q -m "seed" || exit 1
+        git push -q origin HEAD:"refs/heads/master" || exit 1
+    ) >/dev/null 2>&1 || { printf ''; return 1; }
+    rm -rf "$tmp_init"
+
+    # The bare repo MUST now carry master; a bare `.git` check downstream cannot
+    # tell "seeded" from "empty", and an unborn HEAD makes `checkout master` a no-op.
+    git -C "$bare" show-ref --verify --quiet refs/heads/master || { printf ''; return 1; }
+
+    git clone "$bare" "$work" >/dev/null 2>&1 || { printf ''; return 1; }
+    (
+        cd "$work" || exit 1
+        git config user.email "test@zbuild.local" || exit 1
+        git config user.name "zbuild-test" || exit 1
+        git config commit.gpgsign false || exit 1
+    ) >/dev/null 2>&1 || { printf ''; return 1; }
+
+    printf '%s\n' "$work"
 }
 
 # ── install_template_overlay (#1270) ─────────────────────────────────────────

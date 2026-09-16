@@ -116,7 +116,51 @@ _rt_report_failure() {
 # so 10+ is not an option however free it looks. That leaves 4-8; 8 is the one
 # furthest from stage-io. tests/unit/coverage-trace-fd-collision-test.sh pins
 # both constraints: in range, and not redirected by engine code.
+# _rt_checkout_state → "<HEAD> <branch> <tracked-tree-hash>" of REPO_ROOT, or
+# "nogit" when REPO_ROOT is not a repository (the pipeline's rsync'd staging
+# tree). Read before and after every test file: the pair disagreeing is the one
+# fact that catches a fixture running in the real checkout, whatever the route
+# in — a cd that failed, an unset TEST_TEMP_DIR, a wrong variable (#2103).
+_rt_checkout_state() {
+  local _h _b _t
+  _h="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null)" || { printf 'nogit'; return 0; }
+  _b="$(git -C "$REPO_ROOT" symbolic-ref --short -q HEAD 2>/dev/null || printf 'detached')"
+  _t="$(git -C "$REPO_ROOT" diff HEAD --name-only 2>/dev/null | cksum | cut -d' ' -f1)"
+  printf '%s %s %s' "$_h" "$_b" "$_t"
+}
+
+# _rt_checkout_guard <before> <after> <test_file> <out_file> → 0 if unchanged;
+# otherwise appends the diagnosis to <out_file> and returns 1.
+_rt_checkout_guard() {
+  [[ "$1" == "$2" ]] && return 0
+  local _b0 _b1 _h0 _h1 _t0 _t1
+  read -r _h0 _b0 _t0 <<< "$1"; read -r _h1 _b1 _t1 <<< "$2"
+  {
+    echo "run-tests: $3 mutated the checkout at $REPO_ROOT (#2103, ADR-024) —"
+    [[ "$_h0" != "$_h1" ]] && echo "  HEAD ${_h0:0:8} -> ${_h1:0:8}"
+    [[ "$_b0" != "$_b1" ]] && echo "  branch $_b0 -> $_b1"
+    [[ "$_t0" != "$_t1" ]] && echo "  tracked working tree changed"
+    echo "  a test fixture ran its git commands in the real checkout instead of its temp repo."
+    echo "  In the parallel tier the culprit may be another file that ran concurrently with"
+    echo "  this one. The checkout is NOT restored — inspect it before running anything else."
+  } >> "$4" 2>/dev/null
+  return 1
+}
+
 _rt_run() {
+  local _st0 _st1 _guard_rc=0
+  _st0="$(_rt_checkout_state)"
+  _rt_run_inner "$@" || _guard_rc=$?
+  _st1="$(_rt_checkout_state)"
+  # A changed checkout is a failure even when the file's own rc was 0 — but a
+  # timeout rc is kept, since that outcome is reported differently (#1613).
+  if ! _rt_checkout_guard "$_st0" "$_st1" "$1" "$2"; then
+    [[ "$_guard_rc" -eq 0 ]] && _guard_rc=1
+  fi
+  return "$_guard_rc"
+}
+
+_rt_run_inner() {
   # #1058 Phase A: per-test-file wall-clock instrumentation. Entirely gated on
   # ZBUILD_TEST_TIMING_FILE being set+non-empty — when unset this function's
   # behavior + output is byte-identical to the pre-#1058 version (the parallel
@@ -229,6 +273,23 @@ _rt_tier_budget() {
 # same `unit: N/M passed` + `unit: FAIL <f>` format run_tier uses. This keeps the
 # build_test_cycle targeted re-run's output format identical to the full run, so
 # the test plugin's verdict parser and red-set extractor recognise it.
+# #2103 / ADR-024: no test may push to the checkout's real origin. A fixture
+# whose temp clone failed once ran `git push origin HEAD:master` from the real
+# worktree and created a branch on GitHub. git's url.<base>.pushInsteadOf
+# rewrites any push whose URL starts with the real origin URL onto a dead path,
+# and GIT_CONFIG_{COUNT,KEY_n,VALUE_n} carries that rule into every git the
+# tests spawn without touching any config file. Only the real origin URL is
+# matched, so a test pushing to its own temp origin is unaffected.
+# Set BEFORE the --files early exit so a targeted rerun of one file is fenced
+# too. tests/unit/fixture-cd-escape-guard-test.sh SPEC-6 pins all three.
+_rt_origin_url="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || true)"
+if [[ -n "$_rt_origin_url" ]]; then
+  _rt_gc_n="${GIT_CONFIG_COUNT:-0}"
+  export "GIT_CONFIG_KEY_${_rt_gc_n}=url./nonexistent/zbuild-tests-must-not-push-to-origin/.pushInsteadOf"
+  export "GIT_CONFIG_VALUE_${_rt_gc_n}=$_rt_origin_url"
+  export GIT_CONFIG_COUNT=$((_rt_gc_n + 1))
+fi
+
 if [[ "${1:-}" == "--files" ]]; then
   shift
   _tf_passed=0; _tf_failed=0; _tf_total=0; _tf_timedout=0

@@ -522,3 +522,68 @@ fence is never set) and only surfaces INSIDE the pipeline test-stage — the #12
 #1272 regression class. `router-budget-test.sh` was the last such hardcoder
 (#1272); `suite-under-teststage-env-test.sh` now runs it under the simulated
 fence to keep the class from recurring.
+
+## Test contract — a fixture never reaches the checkout it runs from, or its origin (#2103)
+
+**What happened.** On 2026-09-15 `npm test` in a worktree left it on a new
+branch `master` carrying a `seed` commit, and created `origin/master` on the
+real GitHub repository. `tests/integration/intake-branch-ahead-count-test.sh`
+had cloned a temp repo to seed it; the clone failed (the machine's git
+exec-path was broken); and its seeding subshell —
+
+```bash
+( set -e; cd "$tmp_init"; git checkout -q -b master; …; git push -q origin HEAD:master ) >/dev/null 2>&1 || return 1
+```
+
+— ran every line in the caller's directory, which was the real worktree. Two
+facts made that possible, and both are general, not specific to that test:
+
+1. **`set -e` is inert inside any compound command whose status is tested** —
+   `( … ) || …`, `… && …`, `if ( …`, `! ( …`. The failed `cd` did not stop the
+   subshell. Six fixture files never set `-e` at all, so for them the same
+   held at top level.
+2. **shellcheck's SC2164 does not look inside a subshell in a function body.**
+   The engine (`core/`, `scripts/`, `plugins/`) is shellchecked at warning level
+   and has zero unguarded `cd`s; `tests/` is not shellchecked, and the shape
+   that escaped is the one SC2164 misses anyway.
+
+The same helper in `scripts/lib/test-helpers.sh` (`setup_git_temp_repo`) had
+the identical shape minus the push: with an unreachable `TEST_TEMP_DIR` it
+committed `seed.txt` into the caller's checkout and renamed the caller's branch
+to `main`, returning 0.
+
+**Contract.** Three layers, each pinned by
+`tests/unit/fixture-cd-escape-guard-test.sh`:
+
+- **Static (SPEC-1).** In every test file and in `test-helpers.sh`, a `cd` into a
+  fixture directory MUST be fatal on failure: `cd "$dir" || exit 1` inside a
+  subshell, `cd "$dir" || { …; exit 1; }` at top level. A bare `cd "$var"`
+  followed by a git command, in a status-tested subshell or in a file without
+  `set -e`, fails the unit tier. The shared fixtures `setup_git_temp_repo` and
+  `setup_git_master_origin` (extracted from the offending test) are the
+  reference shape; prefer them to hand-rolled `git init` blocks.
+- **Runtime tripwire (SPEC-5).** `scripts/run-tests.sh` records the checkout's
+  `HEAD`, current branch and tracked-tree hash before and after every test file
+  (`_rt_checkout_state`). Any difference fails the file with a diagnosis naming
+  what moved. This catches every route in — a failed `cd`, an unset
+  `TEST_TEMP_DIR`, a wrong variable — not only the one that was seen. In the
+  parallel pool the culprit may be a file that ran concurrently with the one
+  blamed; the message says so. The checkout is deliberately not restored.
+- **Push fence (SPEC-6).** `run-tests.sh` exports a `url.<dead>.pushInsteadOf`
+  rule for the checkout's real origin URL via `GIT_CONFIG_{COUNT,KEY_n,VALUE_n}`,
+  so a push to that URL from any git the tests spawn is rewritten to
+  `/nonexistent/zbuild-tests-must-not-push-to-origin/` and fails. Only that URL
+  is matched; a test pushing to its own temp origin is unaffected. No config
+  file is touched.
+
+**Why not restore the checkout automatically.** A runner that quietly resets a
+branch it did not create would hide the escape and could discard an operator's
+uncommitted work; a loud failure with the diagnosis is the honest outcome.
+
+**Why not shellcheck `tests/`.** It would not have caught this shape, and the
+tier has years of accumulated warnings; the guard above is narrower and
+load-bearing. Extending lint to `tests/` remains a separate decision.
+
+References: #2103 (the incident and fix), ADR-053 §2.1 (hermeticity is the
+first remediation), ADR-024 §"Amendment 2026-06-15 (#897)" (the TMPDIR fence,
+the same class one layer down).
