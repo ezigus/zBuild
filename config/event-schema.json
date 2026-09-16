@@ -68,6 +68,7 @@
     "cycle.stalled",
     "cycle.divergence",
     "cycle.iteration.complete",
+    "cycle.iteration.reused",
     "cycle.aborted",
     "cycle.config.invalid",
     "cycle.feedback.missing",

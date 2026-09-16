@@ -189,6 +189,40 @@ if grep -q 'cycle.stalled' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
 else
     assert_pass "[SPEC-3] no cycle.stalled event (stall-break removed)"
 fi
+# #2117: the iterations still all RUN, but an unchanged tree is not
+# re-VERIFIED. After build reports empty_diff on a fingerprint the previous
+# iteration already verified, every member that PASSED then is reused from
+# that iteration; a member that FAILED re-runs (its iter-aware escalation
+# needs to see ZBUILD_CYCLE_ITER advance). #1840 spent 45 min of tests and
+# 68 min of gate on each of three identical trees.
+_n_test="$(grep -c '"cycle.member.dispatch.complete".*"member":"test"' "$ZBUILD_EVENTS_JSONL" || true)"
+assert_eq "[SPEC-3b] the passing test member is dispatched exactly ONCE across 5 iterations" "1" "$_n_test"
+assert_eq "[SPEC-3c] iterations 2–5 reuse the test member's verdict (4 reuse events)" \
+    "4" "$(grep '"cycle.iteration.reused"' "$ZBUILD_EVENTS_JSONL" | grep -c '"member":"test"' || true)"
+assert_contains "[SPEC-3c] a reuse event names the iteration it reuses" \
+    "$(grep '"cycle.iteration.reused"' "$ZBUILD_EVENTS_JSONL" | head -1)" '"from_iter":"1"'
+_n_ga="$(grep -c '"cycle.member.dispatch.complete".*"member":"gate-aggregator"' "$ZBUILD_EVENTS_JSONL" || true)"
+assert_eq "[SPEC-3d] the FAILING gate-aggregator is re-dispatched every iteration (5)" "5" "$_n_ga"
+
+print_test_section "SPEC-3f: a tree that CHANGED between iterations is fully re-verified"
+_GA_VERDICT="fail"
+# The orchestrator reads the fingerprint inside a $( ), so the stub cannot
+# keep a counter in shell state — a file does.
+_FP_COUNTER="$TEST_TEMP_DIR/fp.count"; : > "$_FP_COUNTER"
+if declare -F _cycle_tree_fingerprint >/dev/null 2>&1; then
+    eval "$(declare -f _cycle_tree_fingerprint | sed '1s/^_cycle_tree_fingerprint/_orig_cycle_tree_fingerprint/')"
+fi
+_cycle_tree_fingerprint() { printf 'x\n' >> "$_FP_COUNTER"; printf 'fp-%s' "$(wc -l < "$_FP_COUNTER" | tr -d ' ')"; }
+_run_cycle "changed"
+assert_eq "[SPEC-3f] with a different fingerprint each iteration nothing is reused" \
+    "0" "$(grep -c '"cycle.iteration.reused"' "$ZBUILD_EVENTS_JSONL" || true)"
+assert_eq "[SPEC-3f] the test member ran every iteration (5)" \
+    "5" "$(grep -c '"cycle.member.dispatch.complete".*"member":"test"' "$ZBUILD_EVENTS_JSONL" || true)"
+if declare -F _orig_cycle_tree_fingerprint >/dev/null 2>&1; then
+    eval "$(declare -f _orig_cycle_tree_fingerprint | sed '1s/^_orig_cycle_tree_fingerprint/_cycle_tree_fingerprint/')"
+else
+    unset -f _cycle_tree_fingerprint
+fi
 
 print_test_section "SPEC-4/SPEC-10: empty_diff + gate=pass ⇒ converged (no false stall)"
 _GA_VERDICT="pass"
