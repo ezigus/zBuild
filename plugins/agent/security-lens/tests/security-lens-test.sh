@@ -106,6 +106,12 @@ cat > "$MANIFEST" <<EOF
 EOF
 # Point the router at the real manifest so it redacts (not refuses) from here on.
 export ZBUILD_SCOPE_MANIFEST="$MANIFEST"
+# #2107: this run reaches whatever `claude` is on PATH. It must be this test's
+# mock — the real CLI spends a model call locally and, on the CI runner, hit the
+# shared rate limit and turned into a false ✗ (daemon run 34956206632).
+_first_claude="$(command -v claude 2>/dev/null || true)"
+assert_eq "[#2107] claude on PATH before the first run is this test's mock" \
+    "$TEST_TEMP_DIR/bin/claude" "$_first_claude"
 _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT" "$TEST_TEMP_DIR" >/dev/null
 assert_file_exists "findings.json created" "$OUTPUT"
 
