@@ -35,7 +35,18 @@ ZBUILD_DISABLED_FILE="${ZBUILD_DISABLED_FILE:-${_ZBUILD_ROOT}/config/plugins.dis
 # so a fixture tree can never be handed the real tree's result.
 # ZBUILD_PLUGIN_DISCOVERY_CACHE=0 disables it, mirroring ZBUILD_YAML_CACHE, for
 # a caller that mutates a tree in place between calls.
+#
+# #2105: the memo is checked against the tree's SHAPE on every hit — the sorted
+# list of manifest paths, one `find` (~20ms) instead of the ~2.5s walk. A plugin
+# added or removed since the walk (test fixtures do this between direct calls;
+# before #2105 the memo never survived long enough to notice) re-walks. An
+# in-place EDIT of a manifest is not in the shape; that case keeps the flush /
+# off-switch contract, the same one the yaml cache has (#1614).
 declare -gA _ZBUILD_DISCOVERY_CACHE=()
+declare -gA _ZBUILD_DISCOVERY_SHAPE=()
+_discovery_tree_shape() {
+    find "$1" -maxdepth 3 -name 'manifest.yaml' -type f 2>/dev/null | LC_ALL=C sort | tr '\n' ' '
+}
 discover_plugins() {
     local plugins_root="${1:-$_ZBUILD_ROOT/plugins}"
     if [[ "${ZBUILD_PLUGIN_DISCOVERY_CACHE:-1}" != "1" ]]; then
@@ -43,8 +54,10 @@ discover_plugins() {
         return $?
     fi
     local _dck="${plugins_root}"$'\034'"${ZBUILD_DISABLED_FILE:-}"
-    local _out
-    if [[ -n "${_ZBUILD_DISCOVERY_CACHE[$_dck]+set}" ]]; then
+    local _out _shape
+    _shape="$(_discovery_tree_shape "$plugins_root")"
+    if [[ -n "${_ZBUILD_DISCOVERY_CACHE[$_dck]+set}" \
+        && "${_ZBUILD_DISCOVERY_SHAPE[$_dck]:-}" == "$_shape" ]]; then
         _out="${_ZBUILD_DISCOVERY_CACHE[$_dck]}"
     else
         local _wrc=0
@@ -58,10 +71,44 @@ discover_plugins() {
             return "$_wrc"
         fi
         _ZBUILD_DISCOVERY_CACHE["$_dck"]="$_out"
+        _ZBUILD_DISCOVERY_SHAPE["$_dck"]="$_shape"
     fi
     # Only when non-empty: a cached empty result must print nothing, not a bare
     # newline, or the caller's `while read` sees one phantom plugin dir.
     [[ -n "$_out" ]] && printf '%s\n' "$_out"
+    return 0
+}
+
+# discover_plugins_into <array_name> [root] — the same list, delivered into a
+# caller-owned array instead of stdout. Consumers read discovery through
+# `< <(discover_plugins …)`; that process substitution is a subshell, so the
+# memo it fills dies with it and the NEXT lookup walks again (#2105). Filling an
+# array in the caller's shell makes the first direct call the last walk.
+# The uncached path (ZBUILD_PLUGIN_DISCOVERY_CACHE=0) still walks every time.
+discover_plugins_into() {
+    local -n _dpi_out="$1"
+    local plugins_root="${2:-$_ZBUILD_ROOT/plugins}"
+    _dpi_out=()
+    local _line _list=""
+    local _wrc=0
+    if [[ "${ZBUILD_PLUGIN_DISCOVERY_CACHE:-1}" == "1" ]]; then
+        # Fill the memo in THIS shell (the call is not wrapped), then read it
+        # back — a `$( )` around discover_plugins would fill a copy and lose it.
+        # A failed walk propagates its rc with an EMPTY array: the memo keeps
+        # only successful walks, so reading it here would hand back the
+        # pre-failure list as if it were current.
+        discover_plugins "$plugins_root" >/dev/null 2>&1 || _wrc=$?
+        [[ $_wrc -eq 0 ]] || return "$_wrc"
+        local _dck="${plugins_root}"$'\034'"${ZBUILD_DISABLED_FILE:-}"
+        _list="${_ZBUILD_DISCOVERY_CACHE[$_dck]:-}"
+    else
+        _list="$(_discover_plugins_walk "$plugins_root" 2>/dev/null)" || _wrc=$?
+        [[ $_wrc -eq 0 ]] || return "$_wrc"
+    fi
+    [[ -n "$_list" ]] || return 0
+    while IFS= read -r _line; do
+        [[ -n "$_line" ]] && _dpi_out+=("$_line")
+    done <<< "$_list"
     return 0
 }
 
@@ -70,10 +117,11 @@ discovery_cache_flush() {
     if [[ -n "${1:-}" ]]; then
         local k
         for k in "${!_ZBUILD_DISCOVERY_CACHE[@]}"; do
-            [[ "$k" == "$1"$'\034'* ]] && unset "_ZBUILD_DISCOVERY_CACHE[$k]"
+            [[ "$k" == "$1"$'\034'* ]] && unset "_ZBUILD_DISCOVERY_CACHE[$k]" "_ZBUILD_DISCOVERY_SHAPE[$k]"
         done
     else
         _ZBUILD_DISCOVERY_CACHE=()
+        _ZBUILD_DISCOVERY_SHAPE=()
     fi
 }
 
@@ -115,7 +163,9 @@ _discover_plugins_walk() {
 # Human-readable listing for `zbuild plugin list`.
 list_plugins_table() {
     local plugins_root="${1:-$_ZBUILD_ROOT/plugins}"
-    discover_plugins "$plugins_root" | while IFS= read -r plugin_dir; do
+    local -a _lpt_dirs=()
+    discover_plugins_into _lpt_dirs "$plugins_root"
+    for plugin_dir in ${_lpt_dirs[@]+"${_lpt_dirs[@]}"}; do
         local manifest="$plugin_dir/manifest.yaml"
         local id name kind version
         id="$(yaml_get "$manifest" "id")"
@@ -277,8 +327,10 @@ find_plugin_for_role() {
     local alias="$2"
     local plugins_root="${3:-${ZBUILD_PLUGINS_ROOT:-${_ZBUILD_ROOT}/plugins}}"
     local plugin_dir manifest declared_role plugin_id declared_alias
+    local -a _fpr_dirs=()
+    discover_plugins_into _fpr_dirs "$plugins_root"
 
-    while IFS= read -r plugin_dir; do
+    for plugin_dir in ${_fpr_dirs[@]+"${_fpr_dirs[@]}"}; do
         manifest="$plugin_dir/manifest.yaml"
         [[ ! -f "$manifest" ]] && continue
         declared_role="$(yaml_get "$manifest" "provides.role" 2>/dev/null || true)"
@@ -289,6 +341,6 @@ find_plugin_for_role() {
             echo "$plugin_dir"
             return 0
         fi
-    done < <(discover_plugins "$plugins_root" 2>/dev/null || true)
+    done
     return 1
 }

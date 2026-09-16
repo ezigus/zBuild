@@ -18,23 +18,59 @@
 [[ -n "${_ZBUILD_REGISTRY_PERSONA_LOADED:-}" ]] && return 0
 _ZBUILD_REGISTRY_PERSONA_LOADED=1
 
-# ─── _find_persona_in_root <id> <plugins_root> ──────────────────────────────
-# Single-root scan: prints the manifest path; returns 1 when absent or unreadable.
+# ─── _persona_is_disabled <id> ──────────────────────────────────────────────
+# Mirrors the walk's disabled-list check so the direct probe below can never
+# resolve a persona the walk would have skipped.
+_persona_is_disabled() {
+    local want_id="$1" line
+    [[ -f "${ZBUILD_DISABLED_FILE:-}" ]] || return 1
+    while IFS= read -r line; do
+        line="${line%%#*}"; line="${line//[[:space:]]/}"
+        [[ "$line" == "$want_id" ]] && return 0
+    done < "$ZBUILD_DISABLED_FILE"
+    return 1
+}
+
+# ─── _find_persona_in_root <id> <plugins_root> <out_var> ────────────────────
+# Single-root scan: sets <out_var> to the manifest path; returns 1 when absent
+# or unreadable. Result goes through a nameref, not stdout: wrapping this in
+# `$( )` would discard the discovery memo the walk fills (#2105).
+#
+# Probe the canonical location first. Every shipped persona lives at
+# <root>/persona/<id>/manifest.yaml, and the probe is one manifest read
+# instead of a validation of all ~55 (#2090's memo cannot help a caller
+# that runs inside a command substitution — 2.6s per cold lookup, ~20 of
+# them in one plugin test file). The walk remains the authority for a
+# persona anywhere else in the tree.
 _find_persona_in_root() {
     local want_id="$1" plugins_root="$2"
+    local -n _fpir_out="$3"
+    _fpir_out=""
     [[ -d "$plugins_root" ]] || return 1
     local plugin_dir manifest kind pid
-    while IFS= read -r plugin_dir; do
+    manifest="$plugins_root/persona/$want_id/manifest.yaml"
+    if [[ -f "$manifest" ]] && ! _persona_is_disabled "$want_id"; then
+        kind="$(yaml_get "$manifest" "kind" 2>/dev/null || true)"
+        pid="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
+        if [[ "$kind" == "persona" && "$pid" == "$want_id" ]] \
+            && validate_manifest "$manifest" >/dev/null 2>&1; then
+            _fpir_out="$manifest"
+            return 0
+        fi
+    fi
+    local -a _persona_scan_dirs=()
+    discover_plugins_into _persona_scan_dirs "$plugins_root"
+    for plugin_dir in ${_persona_scan_dirs[@]+"${_persona_scan_dirs[@]}"}; do
         manifest="$plugin_dir/manifest.yaml"
         [[ -f "$manifest" ]] || continue
         kind="$(yaml_get "$manifest" "kind" 2>/dev/null || true)"
         [[ "$kind" == "persona" ]] || continue
         pid="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
         if [[ "$pid" == "$want_id" ]]; then
-            printf '%s\n' "$manifest"
+            _fpir_out="$manifest"
             return 0
         fi
-    done < <(discover_plugins "$plugins_root" 2>/dev/null || true)
+    done
     return 1
 }
 
@@ -49,9 +85,9 @@ find_persona() {
     local overlay_root="${3:-}"
     [[ -z "$want_id" ]] && return 1
     local _inst_mf="" _ovr_mf=""
-    _inst_mf="$(_find_persona_in_root "$want_id" "$plugins_root" 2>/dev/null || true)"
+    _find_persona_in_root "$want_id" "$plugins_root" _inst_mf 2>/dev/null || _inst_mf=""
     if [[ -n "$overlay_root" ]]; then
-        _ovr_mf="$(_find_persona_in_root "$want_id" "$overlay_root" 2>/dev/null || true)"
+        _find_persona_in_root "$want_id" "$overlay_root" _ovr_mf 2>/dev/null || _ovr_mf=""
     fi
     if [[ -n "$_ovr_mf" ]]; then printf '%s\n' "$_ovr_mf"; return 0; fi
     if [[ -n "$_inst_mf" ]]; then printf '%s\n' "$_inst_mf"; return 0; fi

@@ -106,7 +106,9 @@ _score_platform_signals() {
         IFS="$_ifs_save"
     fi
 
-    while IFS= read -r plugin_dir; do
+    local -a _plt_dirs=()
+    discover_plugins_into _plt_dirs "$plugins_root"
+    for plugin_dir in ${_plt_dirs[@]+"${_plt_dirs[@]}"}; do
         local manifest="$plugin_dir/manifest.yaml"
         [[ -f "$manifest" ]] || continue
         local mp
@@ -155,7 +157,7 @@ _score_platform_signals() {
                 total=$((total + weight))
             fi
         done < <(_parse_detect_signals "$manifest" "directories")
-    done < <(discover_plugins "$plugins_root" 2>/dev/null)
+    done
 
     if ! $has_signals; then
         # No detect.signals declared — fall back to legacy hardcoded indicators
@@ -305,7 +307,9 @@ detect_platforms() {
     # Collect unique platform names declared by plugin manifests
     local unique_platforms=()
     local plugin_dir
-    while IFS= read -r plugin_dir; do
+    local -a _plt_dirs=()
+    discover_plugins_into _plt_dirs "$plugins_root"
+    for plugin_dir in ${_plt_dirs[@]+"${_plt_dirs[@]}"}; do
         local manifest="$plugin_dir/manifest.yaml"
         local plugin_platform
         plugin_platform="$(yaml_get "$manifest" "platform" 2>/dev/null || true)"
@@ -318,7 +322,7 @@ detect_platforms() {
             done
         fi
         $already || unique_platforms+=("$plugin_platform")
-    done < <(discover_plugins "$plugins_root" 2>/dev/null)
+    done
 
     # Score each platform using detect.signals (or legacy hardcoded fallback)
     local detected_platforms=()

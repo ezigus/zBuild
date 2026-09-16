@@ -21,10 +21,12 @@ fi
 # Returns plugin directory path on stdout, exit 1 if no matching plugin found.
 _find_plugin_for_stage() {
     local stage="$1" plugins_root="${2:-${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_DISPATCH_ROOT/plugins}}" plugin_dir id
-    while IFS= read -r plugin_dir; do
+    local -a _fps_dirs=()
+    discover_plugins_into _fps_dirs "$plugins_root"
+    for plugin_dir in ${_fps_dirs[@]+"${_fps_dirs[@]}"}; do
         id="$(yaml_get "$plugin_dir/manifest.yaml" "id")"
         [[ "$id" == "$stage" ]] && { echo "$plugin_dir"; return 0; }
-    done < <(discover_plugins "$plugins_root" 2>/dev/null)
+    done
     return 1
 }
 
