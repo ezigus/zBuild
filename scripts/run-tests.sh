@@ -273,6 +273,23 @@ _rt_tier_budget() {
 # same `unit: N/M passed` + `unit: FAIL <f>` format run_tier uses. This keeps the
 # build_test_cycle targeted re-run's output format identical to the full run, so
 # the test plugin's verdict parser and red-set extractor recognise it.
+# #2103 / ADR-024: no test may push to the checkout's real origin. A fixture
+# whose temp clone failed once ran `git push origin HEAD:master` from the real
+# worktree and created a branch on GitHub. git's url.<base>.pushInsteadOf
+# rewrites any push whose URL starts with the real origin URL onto a dead path,
+# and GIT_CONFIG_{COUNT,KEY_n,VALUE_n} carries that rule into every git the
+# tests spawn without touching any config file. Only the real origin URL is
+# matched, so a test pushing to its own temp origin is unaffected.
+# Set BEFORE the --files early exit so a targeted rerun of one file is fenced
+# too. tests/unit/fixture-cd-escape-guard-test.sh SPEC-6 pins all three.
+_rt_origin_url="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || true)"
+if [[ -n "$_rt_origin_url" ]]; then
+  _rt_gc_n="${GIT_CONFIG_COUNT:-0}"
+  export "GIT_CONFIG_KEY_${_rt_gc_n}=url./nonexistent/zbuild-tests-must-not-push-to-origin/.pushInsteadOf"
+  export "GIT_CONFIG_VALUE_${_rt_gc_n}=$_rt_origin_url"
+  export GIT_CONFIG_COUNT=$((_rt_gc_n + 1))
+fi
+
 if [[ "${1:-}" == "--files" ]]; then
   shift
   _tf_passed=0; _tf_failed=0; _tf_total=0; _tf_timedout=0
@@ -327,22 +344,6 @@ if [[ -n "${ZBUILD_RUN_TESTS_ACTIVE:-}" && -z "${ZBUILD_TESTS_DIR:-}" ]]; then
   exit 2
 fi
 export ZBUILD_RUN_TESTS_ACTIVE=1
-
-# #2103 / ADR-024: no test may push to the checkout's real origin. A fixture
-# whose temp clone failed once ran `git push origin HEAD:master` from the real
-# worktree and created a branch on GitHub. git's url.<base>.pushInsteadOf
-# rewrites any push whose URL starts with the real origin URL onto a dead path,
-# and GIT_CONFIG_{COUNT,KEY_n,VALUE_n} carries that rule into every git the
-# tests spawn without touching any config file. Only the real origin URL is
-# matched, so a test pushing to its own temp origin is unaffected.
-# tests/unit/fixture-cd-escape-guard-test.sh SPEC-6 pins both halves.
-_rt_origin_url="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || true)"
-if [[ -n "$_rt_origin_url" ]]; then
-  _rt_gc_n="${GIT_CONFIG_COUNT:-0}"
-  export "GIT_CONFIG_KEY_${_rt_gc_n}=url./nonexistent/zbuild-tests-must-not-push-to-origin/.pushInsteadOf"
-  export "GIT_CONFIG_VALUE_${_rt_gc_n}=$_rt_origin_url"
-  export GIT_CONFIG_COUNT=$((_rt_gc_n + 1))
-fi
 
 tier="${1:-}"
 if [[ "$tier" == "--tier" ]]; then

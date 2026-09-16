@@ -1002,9 +1002,9 @@ setup_git_master_origin() {
     git clone "$bare" "$work" >/dev/null 2>&1 || { printf ''; return 1; }
     (
         cd "$work" || exit 1
-        git config user.email "test@zbuild.local"
-        git config user.name "zbuild-test"
-        git config commit.gpgsign false
+        git config user.email "test@zbuild.local" || exit 1
+        git config user.name "zbuild-test" || exit 1
+        git config commit.gpgsign false || exit 1
     ) >/dev/null 2>&1 || { printf ''; return 1; }
 
     printf '%s\n' "$work"

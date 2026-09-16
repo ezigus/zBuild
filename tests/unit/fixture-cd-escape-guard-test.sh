@@ -46,11 +46,14 @@ _scan_cd_escapes() {
     for f in "$@"; do
         awk -v F="$f" '
           /^set -[a-z]*e/ {sete=1}
+          # depth-aware: a nested ( … ) inside the fixture block must not close it early
           /^[[:space:]]*(if|!|while|until)?[[:space:]]*\([[:space:]]*(set -e)?[[:space:]]*$/ {
-              inblk=1; cdline=0; git=0; open=$0; next }
+              if (!inblk) { inblk=1; cdline=0; git=0; open=$0; depth=0 } else depth++
+              next }
           inblk && /^[[:space:]]*cd "\$[A-Za-z_0-9]+"[[:space:]]*$/ && !cdline {cdline=NR}
           inblk && cdline && (/(^|[^A-Za-z_])git (push|commit|checkout|add|init|branch|tag|rm|clone)/ || /real_git/) {git=1}
           inblk && /^[[:space:]]*\)/ {
+              if (depth > 0) { depth--; next }
               tested = ($0 ~ /\)[^|]*(\|\||&&)/) || (open ~ /^[[:space:]]*(if|!|while|until)/)
               if (cdline && git && (tested || !sete))
                   printf "%s:%d  %s\n", F, cdline, (tested ? "subshell status is tested (set -e inert)" : "file never sets -e")
@@ -93,6 +96,16 @@ cd "$REPO_A"
 git log --oneline -1
 git commit -q -m seed
 X
+cat > "$_fx/offender-nested.sh" <<'X'
+set -uo pipefail
+(
+    cd "$REPO"
+    (
+        echo inner
+    )
+    git commit -q -m seed
+) >/dev/null || return 1
+X
 cat > "$_fx/safe-set-e-plain.sh" <<'X'
 set -euo pipefail
 (
@@ -106,6 +119,8 @@ assert_contains "[SPEC-2] bare cd + git in a file without set -e is flagged" \
     "$(_scan_cd_escapes "$_fx/offender-no-set-e.sh")" "offender-no-set-e.sh:3"
 assert_contains "[SPEC-2] top-level bare cd + git in a file without set -e is flagged" \
     "$(_scan_cd_escapes "$_fx/offender-top-level.sh")" "offender-top-level.sh:2"
+assert_contains "[SPEC-2] a nested subshell inside the fixture block does not hide the cd" \
+    "$(_scan_cd_escapes "$_fx/offender-nested.sh")" "offender-nested.sh:3"
 assert_eq "[SPEC-2] cd guarded with '|| exit 1' is not flagged" "" "$(_scan_cd_escapes "$_fx/safe-guarded.sh")"
 assert_eq "[SPEC-2] plain subshell under file-level set -e is not flagged" "" "$(_scan_cd_escapes "$_fx/safe-set-e-plain.sh")"
 
@@ -206,6 +221,13 @@ if grep -q 'zbuild-real-origin-stand-in' <<< "$_trace"; then
 else
     assert_pass "[SPEC-6] the real origin URL is not the push target"
 fi
+# The --files targeted-rerun path exits the runner before the tier machinery;
+# the fence must be up there too, or a rerun of the offending file is unfenced.
+: > "$_R/push-trace.txt"
+( cd "$_R" && git checkout -q work 2>/dev/null; git -C "$_R" branch -q -D master 2>/dev/null; rm -f "$_R/seed.txt" ) || true
+( cd "$_R" && ZBUILD_TESTS_DIR="$_R/tests" bash "$_R/scripts/run-tests.sh" --files "$_R/tests/unit/escaper-test.sh" >/dev/null 2>&1 ) || true
+assert_contains "[SPEC-6] the fence also covers the --files targeted-rerun path" \
+    "$(grep 'git-receive-pack' "$_R/push-trace.txt" 2>/dev/null | head -1)" "zbuild-tests-must-not-push"
 # GUARD: a test's own temp origin (any other URL) is left alone by the fence.
 _own="$TEST_TEMP_DIR/own-origin.git"; mkdir -p "$_own"
 cat > "$_R/tests/unit/own-origin-test.sh" <<X
