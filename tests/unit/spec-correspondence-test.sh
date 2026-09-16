@@ -195,5 +195,38 @@ assert_eq "[SPEC-8][change] and the word it writes is one the engine classifies"
     "classified" "$([[ "$_cls2" == "unknown" || "$_cls2" == "NO-CLASSIFIER" ]] \
         && printf '%s' "$_cls2" || printf 'classified')"
 
+# ─── [#2108] a model that drains stdin does not eat the SPEC roster ──────────
+# `claude -p` reads a non-TTY stdin into its prompt (verified). The plugin
+# calls route_to_model from inside `while read sid … < <(acceptance_list_spec_ids)`,
+# so without `</dev/null` at the call the FIRST call swallows SPEC-2..N: one
+# judgment, N-1 ids in the model's prompt, and a verdict written over 1 SPEC.
+_SC3="$TEST_TEMP_DIR/run3"; _A3="$_SC3/artifacts"; _R3="$_SC3/repo"
+mkdir -p "$_A3" "$_R3/tests"
+export ZBUILD_REPO_ROOT="$_R3" ZBUILD_ARTIFACT_DIR="$_A3"
+for n in 1 2 3; do
+    printf 'assert_pass "[SPEC-%s] thing %s holds"\n' "$n" "$n" >> "$_R3/tests/acc-test.sh"
+done
+cat > "$_A3/design.md" <<'EOF'
+# Design
+```acceptance
+SPEC-1[change]: thing 1 holds
+SPEC-2[change]: thing 2 holds
+SPEC-3[change]: thing 3 holds
+TESTFILES:
+SPEC-1: tests/acc-test.sh
+SPEC-2: tests/acc-test.sh
+SPEC-3: tests/acc-test.sh
+WIRING: scripts/thing.sh
+```
+EOF
+printf '{}' > "$_SC3/pipeline-state.json"
+_SC_CALLS="$TEST_TEMP_DIR/calls3"; : > "$_SC_CALLS"
+route_to_model() { cat >/dev/null; printf 'x\n' >> "$_SC_CALLS"; printf '%s' "$_SC_REPLY"; return 0; }
+set +e; spec_correspondence_run "spec-correspondence" "$_SC3/pipeline-state.json" >/dev/null 2>&1; set -e
+assert_eq "[#2108] the model is invoked once per SPEC when it drains stdin" \
+    "3" "$(wc -l < "$_SC_CALLS" | tr -d ' ')"
+assert_contains "[#2108] the stage judged all 3 SPECs" \
+    "$(cat "$_A3/spec-correspondence-summary.md" 2>/dev/null || true)" "judged 3 SPEC(s)"
+
 print_test_results
 exit $((FAIL > 0))

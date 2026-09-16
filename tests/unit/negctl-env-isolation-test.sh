@@ -111,6 +111,23 @@ else
     assert_fail "[SPEC-3] HOME must survive the scrub" "no HOME in captured env"
 fi
 
+# ─── [#2108] the reachability runner takes the same scrub (closes #1782) ─────
+source "$REPO_ROOT/scripts/lib/acceptance-reachability.sh" 2>/dev/null
+set +e
+_SEEN_R="$TEST_TEMP_DIR/seen-reach.env"
+cat > "$_PROBE" <<PROBE
+env > "$_SEEN_R"
+exit 0
+PROBE
+export ZBUILD_RUN_ID="leak-probe-run-id"
+_reachability_run "$_PROBE" "$TEST_TEMP_DIR" >/dev/null 2>&1
+_leaked_r="$(grep -E '^(ZBUILD_|_TPL_)' "$_SEEN_R" 2>/dev/null | cut -d= -f1 | tr '\n' ' ')"
+if [[ -s "$_SEEN_R" && -z "$_leaked_r" ]]; then
+    assert_pass "[#2108] no ZBUILD_*/_TPL_* runner state reaches a reachability TESTFILE"
+else
+    assert_fail "[#2108] reachability must scrub like negctl (#1782)" "leaked: ${_leaked_r:-<probe did not run>}"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
