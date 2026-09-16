@@ -96,13 +96,12 @@ assert_eq "[SPEC-2] merged finding takes MAX severity (high)" "high" "$(jq -r '.
 # A critical finding (+ a lens score <=3) yields needs_attention but the stage
 # STILL returns 0 and the report carries NO verdict field.
 assert_eq "[SPEC-3] critical finding → merge_readiness=needs_attention" "needs_attention" "$(jq -r '.merge_readiness' "$out_json")"
-if jq -e '.verdict' "$out_json" >/dev/null 2>&1; then
-    assert_fail "[SPEC-3] report must carry NO verdict field" "found .verdict"
-else
-    assert_pass "[SPEC-3] report carries no verdict field"
-fi
+# ADR-054 §5 (#1843): the primary now carries the stage-contract `verdict`, so
+# "no verdict field" is no longer the invariant. The invariant is that findings
+# never MOVE it: a needs_attention report is still verdict=pass.
+assert_eq "[SPEC-3] report verdict is pass even at needs_attention (never coerced)" "pass" "$(jq -r '.verdict' "$out_json")"
 # Source-level no-coercion proof: the plugin never emits a merge decision.
-if grep -qiE '\b(approve|request_changes)\b|"block"|verdict' \
+if grep -qiE '\b(approve|request_changes)\b|"block"' \
     "$REPO_ROOT"/plugins/agent/review-report/plugin.sh \
     "$REPO_ROOT"/plugins/agent/review-report/lib/lenses.sh; then
     assert_fail "[SPEC-3] no coercion vocabulary in plugin source" "found coercion token"

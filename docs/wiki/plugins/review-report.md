@@ -39,16 +39,32 @@ requires:
     - router
   plugins: []
 
-# Bound by ROLE (resolver.sh reads provides.role). Deliberately NO
-# provides.artifact_type: declaring it makes contracts.sh synthesize a BLOCKING
-# contract-violated findings.json on a miss — this stage is advisory, so we opt
-# out of that machinery. The plugin still always writes review-report.json first.
+# Bound by ROLE (resolver.sh reads provides.role). This stage is advisory: it
+# used to opt out of contracts.sh's blocking contract-violated machinery by
+# declining to declare provides.artifact_type. #1906 retired both the field and
+# that check; artifact enforcement is now outputs[].required alone. The plugin
+# still always writes review-report.json first, so it stays green.
 provides:
+  result_contract: 2
   role: review_report
-  schema_version: 1
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+  # the engine's known set at load. Adding one here needs no engine-config edit.
+  events:
+    - review_report.evidence.redaction_failed
+    - review_report.lens.evidence.redaction_failed
+    - review_report.lens.failed
+    - review_report.lens.unparseable
 
 config:
+  # ADR-054 §6: the contract verdict on the primary. Advisory — `pass` on every
+  # run that produced a report, whatever merge_readiness says; `error` only on
+  # the broken paths (no state file, no output path, no tier). Never coerced by
+  # findings: merge_readiness is the advisory word, verdict is the stage's.
+  valid_verdicts: [pass, error]
   tier_default: T2
+  router:
+    timeout_s: 300
+    max_turns: 25
   # I6 fixed lens roster (the full cq+persona roster is #974). Each lens is a
   # SEPARATE LLM call (not one prompt with N sections — the cq-cycle trap
   # ADR-038 §2 rejects). For I6 every lens shares the change bundle as
@@ -68,37 +84,37 @@ config:
 
 inputs:
   - id: scope_manifest
-    type: file
-    source: stage:intake
     required: true
   - id: plan
-    type: file
-    path: "${artifact_dir}/plan.json"
-    source: stage:plan
     required: false
   - id: diff_patch
-    type: file
-    path: "${artifact_dir}/diff.patch"
-    source: stage:build
     required: true
   - id: intake_goal
-    type: file
-    path: "${state_dir}/intake.md"
-    source: stage:intake
     required: false
 
 outputs:
-  # FIRST entry — always written; keeps the stage green without opting into the
-  # blocking artifact-contract (no provides.artifact_type above).
+  # FIRST entry — always written, on every terminal path. ADR-054 §5: the
+  # primary IS the v2 result (result_contract/verdict/disposition/reason ride
+  # beside merge_readiness/findings/lenses — one file, no sidecar).
   - id: review_report
     path: "${artifact_dir}/review-report.json"
-    type: review-report.json
+    type: review-report.json@1
+    format: json
     required: true
     primary: true
   - id: review_report_md
     path: "${artifact_dir}/review-report.md"
-    type: markdown
+    type: review-report.md@1
+    format: markdown
     required: false
+  # ADR-055 §9: this stage's statement of what it DID. required:true —
+  # written on every terminal verdict, so absence means something went wrong.
+  - id: review_report_summary
+    path: "${artifact_dir}/review-report-summary.md"
+    type: review-report-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 
 state:
   persisted:
@@ -108,3 +124,23 @@ state:
 ```
 
 _See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Plugins]] for the contract._
+
+## Stage contract v2 (#1843)
+
+- `review-report.json` is the primary and the v2 result in one file (ADR-054 §5):
+  `result_contract: 2`, `verdict`, `disposition`, `reason`, `data` ride beside
+  `merge_readiness`, `findings`, `lenses`, which `pr-open` and `pr-delivery`
+  keep reading top-level.
+- `verdict` is `pass` on every run that produced a report — findings move
+  `merge_readiness`, never the verdict — and `error` only on the broken paths
+  (no state file, no output path, no model tier). `valid_verdicts: [pass, error]`.
+- `disposition` is `complete`, or `exhausted` when a lens call returned non-zero
+  (ADR-063 §3); `broken` on the error paths. rc is 0 or 1 (ADR-054 §4).
+- Every lens prompt opens with a TURN BUDGET block whose numbers come from
+  `_route_resolve_max_turns` / `_route_resolve_timeout` (ADR-063 §1).
+- Lens replies go through `_llm_envelope_parse --schema-gate` (#2035): an
+  envelope followed by a brace-bearing sign-off is recovered; a genuinely
+  unparseable reply still emits `review_report.lens.unparseable`.
+- `scope_manifest` is resolved from the `ZBUILD_STAGE_INPUTS` index (ADR-055 §1).
+- No `cleanup` hook: the plugin holds no live resources (ADR-054 §7, #1829).
+

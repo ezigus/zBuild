@@ -32,6 +32,7 @@ requires:
 # that check; artifact enforcement is now outputs[].required alone. The plugin
 # still always writes review-report.json first, so it stays green.
 provides:
+  result_contract: 2
   role: review_report
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
@@ -42,11 +43,15 @@ provides:
     - review_report.lens.unparseable
 
 config:
-  # Writes no .verdict on either verdict channel; the engine falls back to
-  # pass for a well-formed primary (core/pipeline/verdict.sh). An ABSENT key
-  # is a lint failure; the explicit [] is the claim (#1708).
-  valid_verdicts: []
+  # ADR-054 §6: the contract verdict on the primary. Advisory — `pass` on every
+  # run that produced a report, whatever merge_readiness says; `error` only on
+  # the broken paths (no state file, no output path, no tier). Never coerced by
+  # findings: merge_readiness is the advisory word, verdict is the stage's.
+  valid_verdicts: [pass, error]
   tier_default: T2
+  router:
+    timeout_s: 300
+    max_turns: 25
   # I6 fixed lens roster (the full cq+persona roster is #974). Each lens is a
   # SEPARATE LLM call (not one prompt with N sections — the cq-cycle trap
   # ADR-038 §2 rejects). For I6 every lens shares the change bundle as
@@ -75,8 +80,9 @@ inputs:
     required: false
 
 outputs:
-  # FIRST entry — always written; keeps the stage green without opting into the
-  # blocking artifact-contract (no provides.artifact_type above).
+  # FIRST entry — always written, on every terminal path. ADR-054 §5: the
+  # primary IS the v2 result (result_contract/verdict/disposition/reason ride
+  # beside merge_readiness/findings/lenses — one file, no sidecar).
   - id: review_report
     path: "${artifact_dir}/review-report.json"
     type: review-report.json@1
