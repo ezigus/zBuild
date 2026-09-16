@@ -1,16 +1,14 @@
 #!/usr/bin/env bash
-# Integration: #1044 / #1188 — acceptance-gate verdict=fail behavior at cycle end.
-# When the acceptance-gate writes verdict=fail with a TERMINAL (genuine-violation)
-# class (no_testfile / malformed_acceptance_block; #1585/#2097 moved the rest), the build_test_cycle
-# must NOT converge — the pipeline halts with pipeline.end status=failed (rc=8
-# propagated outward).
-# Complementary NON-terminal classes let the cycle converge → status=success:
-# untagged_spec (RECOVERABLE, #951 feedback) and the ADR-036 #1188 INFRA classes
-# negctl_error:* / reachability_error:* (resolve/worktree/timeout).
-# This locks SPEC-2 and the #1188 infra-non-terminal contract end-to-end.
-# (#979: re-pointed from the retired standard.yaml to the shipped default
-# simple.yaml — the acceptance-gate is a build_test_cycle member in both; the
-# disposition→terminal/non-terminal mechanic is engine code, template-agnostic.)
+# Integration: #2111 — a rate-limited stage ENDS the run.
+# The build stub declares the v2 result the real build writes after #2111
+# (disposition:unavailable, reason:router_rate_limited, the reset text under
+# data.rate_limit.message) and returns 1. The engine must then halt on
+# halt_unavailable: no re-dispatch, no later member (the recording test stub
+# never runs), no second iteration; the run ends pipeline.end status=aborted
+# with pipeline.aborted reason=llm_rate_limited carrying the reset text, the
+# runner exits 9, and pipeline-state.json records status=aborted +
+# reason=llm_rate_limited so an ADR-050 resume can pick it up after the reset.
+# Real runner (core/pipeline/runner.sh --template simple) over stub plugins.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -398,12 +396,12 @@ _run_pipeline() {
         --no-resume \
         >"$TEST_TEMP_DIR/runner.stdout" \
         2>"$TEST_TEMP_DIR/runner.stderr" )
+    _RUNNER_RC=$?
     set -e
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# [SPEC-4] review approves but acceptance-gate writes a TERMINAL failure
-#          (inert_wiring) → pipeline.end status=failed, NOT complete/success.
+# The run ends on the rate-limited build: aborted, resumable, nothing after it.
 # ─────────────────────────────────────────────────────────────────────────────
 
 export ZBUILD_TEST_DISPATCH_LOG="$TEST_TEMP_DIR/dispatch.log"; : > "$ZBUILD_TEST_DISPATCH_LOG"
@@ -422,6 +420,7 @@ assert_eq "[#2111] no second cycle iteration" "0" "$(jq -c 'select(.type=="cycle
 state_reason="$(jq -r '.reason // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null || true)"
 assert_eq "[#2111] pipeline-state.json records reason=llm_rate_limited (ADR-050 resume reads status=aborted)" "llm_rate_limited" "$state_reason"
 assert_eq "[#2111] pipeline-state.json status=aborted" "aborted" "$(jq -r '.status // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null || true)"
+assert_eq "[#2111] the runner exits 9 (the llm-abort rc, #1024) — not 0, not 4" "9" "${_RUNNER_RC:-}"
 
 cleanup_test_env
 print_test_results
