@@ -148,6 +148,7 @@ cycle_dispatch_stage() {
                 > "$_art/gate-aggregator-result.json"
             _CYCLE_DISPATCH_VERDICT="$_GA_VERDICT"
             _CYCLE_DISPATCH_VERDICT_RAW="$_GA_VERDICT"
+            _CYCLE_DISPATCH_FAULT="${_GA_FAULT:-}"
             ;;
         *)
             # shape-floor, acceptance-gate, secret-scan: all pass (verdict
@@ -223,6 +224,20 @@ if declare -F _orig_cycle_tree_fingerprint >/dev/null 2>&1; then
 else
     unset -f _cycle_tree_fingerprint
 fi
+
+# #2119: a gate that declares `fault: specification` has said whose problem
+# this is. The route_back edge used to be evaluated only at exhaustion (term_rc
+# 2/8), so the cycle burned every remaining iteration re-failing the same
+# gate before design got the rewind. It now fires at the iteration the fault
+# appears, while the edge's budget lasts.
+print_test_section "SPEC-11 [#2119]: a specification fault routes back at the iteration it appears"
+_GA_VERDICT="fail"; _GA_FAULT="specification"
+_run_cycle "early-rb"
+assert_eq "[SPEC-11] the cycle returns route_back (rc=11)" "11" "$_RUN_RC"
+assert_eq "[SPEC-11] after ONE iteration, not at exhaustion" "1" "${_CYCLE_LAST_ITERATIONS:-}"
+assert_eq "[SPEC-11] cycle.route_back.early emitted" "1" "$(grep -c '"cycle.route_back.early"' "$ZBUILD_EVENTS_JSONL" || true)"
+assert_eq "[SPEC-11] the rewind target is the design cycle" "design_verify_cycle" "${_CYCLE_ROUTE_BACK_TO:-}"
+_GA_FAULT=""
 
 print_test_section "SPEC-4/SPEC-10: empty_diff + gate=pass ⇒ converged (no false stall)"
 _GA_VERDICT="pass"
