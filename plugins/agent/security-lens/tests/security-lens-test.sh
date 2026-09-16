@@ -109,6 +109,8 @@ export ZBUILD_SCOPE_MANIFEST="$MANIFEST"
 # #2107: this run reaches whatever `claude` is on PATH. It must be this test's
 # mock — the real CLI spends a model call locally and, on the CI runner, hit the
 # shared rate limit and turned into a false ✗ (daemon run 34956206632).
+install_envelope_mock_claude \
+    '{"schema_version":1,"plugin_id":"security-lens","findings":[]}'
 _first_claude="$(command -v claude 2>/dev/null || true)"
 assert_eq "[#2107] claude on PATH before the first run is this test's mock" \
     "$TEST_TEMP_DIR/bin/claude" "$_first_claude"
