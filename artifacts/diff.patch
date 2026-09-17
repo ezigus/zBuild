@@ -1,0 +1,62 @@
+diff --git a/plugins/agent/review-lens/tests/review-lens-test.sh b/plugins/agent/review-lens/tests/review-lens-test.sh
+index c6dc2979..0744b121 100755
+--- a/plugins/agent/review-lens/tests/review-lens-test.sh
++++ b/plugins/agent/review-lens/tests/review-lens-test.sh
+@@ -617,6 +617,57 @@ else
+         "${_1840_s8u_summary:-absent}"
+ fi
+ 
++# ─── SPEC-9 [guard]: success path is purely additive — v1 fields present + intact ─
++# Every pre-existing v1 field (schema_version, name, score, findings[]) must survive
++# the v2 migration unchanged; the v2 additions (result_contract, verdict, disposition,
++# reason) must coexist with them. If any v1 field were dropped this block fails on the
++# empty/null result from jq.
++# shellcheck disable=SC2329
++route_to_model() {
++    printf 'call\n' >> "$_RL_CALLS"
++    printf '%s' "$2" > "$_RL_PROMPT"
++    printf '%s' '{"score":6,"findings":[{"file":"core/b.sh","category":"correctness","severity":"medium","line":3,"message":"null deref"}]}'
++    return 0
++}
++out_1840_s9="$artifact_dir/lens-1840spec9.json"
++: > "$_RL_CALLS"
++set +e
++_review_lens_run_inner "1840spec9" "$scope_manifest" "$evidence" "$out_1840_s9" "$artifact_dir"
++_1840_s9_rc=$?
++set -e
++assert_eq "[SPEC-9] success path returns 0" "0" "$_1840_s9_rc"
++assert_file_exists "[SPEC-9] success path writes lens file" "$out_1840_s9"
++# v1 fields must be present with correct values — absence produces empty string, which fails
++assert_eq "[SPEC-9] v1 field schema_version present and == 1" \
++    "1" "$(jq -r '.schema_version // empty' "$out_1840_s9")"
++assert_eq "[SPEC-9] v1 field name present and unmodified (== 1840spec9)" \
++    "1840spec9" "$(jq -r '.name // empty' "$out_1840_s9")"
++assert_eq "[SPEC-9] v1 field score present and unmodified (== 6)" \
++    "6" "$(jq -r '.score // empty' "$out_1840_s9")"
++assert_eq "[SPEC-9] v1 field findings[] present with 1 entry (unmodified)" \
++    "1" "$(jq '.findings | length' "$out_1840_s9")"
++# v2 additions must also be present — coexistence with v1 fields proves additive-only change
++assert_eq "[SPEC-9] v2 field result_contract present and == 2 (additive)" \
++    "2" "$(jq -r '.result_contract // empty' "$out_1840_s9")"
++_1840_s9_verdict="$(jq -r '.verdict // empty' "$out_1840_s9" 2>/dev/null || true)"
++if [[ -n "$_1840_s9_verdict" ]]; then
++    assert_pass "[SPEC-9] v2 field verdict present (additive)"
++else
++    assert_fail "[SPEC-9] v2 field verdict must be present alongside v1 fields (additive)" "absent"
++fi
++_1840_s9_disposition="$(jq -r '.disposition // empty' "$out_1840_s9" 2>/dev/null || true)"
++if [[ -n "$_1840_s9_disposition" ]]; then
++    assert_pass "[SPEC-9] v2 field disposition present (additive)"
++else
++    assert_fail "[SPEC-9] v2 field disposition must be present alongside v1 fields (additive)" "absent"
++fi
++_1840_s9_reason="$(jq -r '.reason // empty' "$out_1840_s9" 2>/dev/null || true)"
++if [[ -n "$_1840_s9_reason" ]]; then
++    assert_pass "[SPEC-9] v2 field reason present (additive)"
++else
++    assert_fail "[SPEC-9] v2 field reason must be present alongside v1 fields (additive)" "absent"
++fi
++
+ # ─── SPEC-10 [guard]: amended coercion-vocab grep not defeated by verdict field ─
+ # Part 1: approve, request_changes, "block" tokens remain absent from plugin source.
+ if grep -qiE '\b(approve|request_changes)\b|"block"' \
