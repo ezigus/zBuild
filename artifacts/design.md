@@ -6,7 +6,7 @@
 
 **Context.** The plugin was the first agent plugin POC (Phase 0) and pre-dated the v2 result contract. Its findings artifact lacked top-level `verdict`/`disposition`/`reason` fields; the manifest carried `valid_verdicts: []` and no `result_contract`, `provides.events`, or `config.router` declarations; the cleanup hook was absent; and both error exits returned rc=2, violating the `rc∈{0,1}` gate enforced by ADR-056.
 
-**Decision.** Add `_security_lens_write_result` — a single helper that atomically writes the v2 envelope via `jq -n | atomic_write` — and route every terminal exit path through it. Normalize all error exits to rc=1. Add `security_lens_cleanup() { return 0; }` per ADR-056 §4. Update the manifest with `provides.result_contract: 2`, `valid_verdicts: [pass, error]`, `provides.events: [plugin.result, security_lens.failed]`, and `config.router: {timeout_s: 600, max_turns: 45}`. Cover all paths with SPEC-tagged TDD assertions written before the implementation. Implementation committed at HEAD (`8bdd7441`).
+**Decision.** Add `_security_lens_write_result` — a single helper that atomically writes the v2 envelope via `jq -n | atomic_write` — and route every terminal exit path through it. Normalize all error exits to rc=1. Add `security_lens_cleanup() { return 0; }` per ADR-056 §4. Update the manifest with `provides.result_contract: 2`, `valid_verdicts: [pass, error]`, `provides.events: [plugin.result, security_lens.failed]`, and `config.router: {timeout_s: 600, max_turns: 45}`. Cover all paths with SPEC-tagged TDD assertions written before the implementation.
 
 ```scope
 plugins/agent/security-lens/manifest.yaml
@@ -65,12 +65,12 @@ SPEC-5[change]: security_lens_cleanup is a declared function (not a comment stub
 SPEC-6[change]: manifest provides.result_contract is declared as 2
 SPEC-7[change]: manifest config.valid_verdicts lists pass and error
 SPEC-8[guard]: plugin.result event is emitted on the normal pass exit path with plugin=security-lens
-SPEC-9[guard]: LLM findings are accessible under .data.findings in the result artifact for backward-compat consumers
+SPEC-9[change]: LLM findings are accessible under .data.findings in the result artifact for backward-compat consumers
 SPEC-10[guard]: postamble-junk recovery via _security_lens_envelope_schema_ok returns rc=0 with the real findings count (not empty)
 SPEC-11[change]: manifest config.router declares both timeout_s and max_turns budget defaults
-SPEC-12[guard]: ZBUILD_ROUTER_MAX_TURNS_OVERRIDE env var takes precedence over manifest config.router.max_turns at call time
-SPEC-13[guard]: manifest findings output declares primary: true
-SPEC-14[guard]: plugin.sh contains no hardcoded artifact path literals (no bare quoted .json/.md paths without a shell variable)
+SPEC-12[change]: ZBUILD_ROUTER_MAX_TURNS_OVERRIDE env var takes precedence over manifest config.router.max_turns at call time
+SPEC-13[change]: manifest findings output declares primary: true
+SPEC-14[change]: plugin.sh contains no hardcoded artifact path literals (no bare quoted .json/.md paths without a shell variable)
 
 WIRING:
 plugins/agent/security-lens/manifest.yaml
