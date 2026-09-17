@@ -1,5 +1,0 @@
-acceptance SPEC violations — WIRING plugins/agent/security-lens/manifest.yaml inert — reverting it breaks no TESTFILE
-NEGCTL PASS SPEC-1
-      design : findings.json carries result_contract:2 at top level on the normal (pass) exit path
-      asserts: assert_eq "[SPEC-1] findings.json carries result_contract:2 on the pass exit path" "2" "$rc_contract…
-REACHABILITY FAIL inert_wiring plugins/agent/security-lens/manifest.yaml
