@@ -1,0 +1,5 @@
+## spec-coverage — covered
+
+- All 8 acceptance checkboxes map to at least one SPEC — v2 result on every exit path (SPEC-1/2/3/4), `valid_verdicts` declared and tested (SPEC-7), no path literals in code (SPEC-14), router budgets from manifest with override precedence (SPEC-11/12), passing behavior preserved with backward compat (SPEC-1/2/9), `primary: true` declared (SPEC-13); the remaining two checkboxes ("npm test green with tree committed first" and "Reddens at the merge-base") are universal DoD requirements that apply project-wide and require no per-issue SPEC.
+
+- every requirement the issue states maps to a declared SPEC
