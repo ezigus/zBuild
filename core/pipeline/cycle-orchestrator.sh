@@ -607,12 +607,19 @@ _cycle_stash_predicate() {
 #                    capabilities.feedback_count_field also appends ", N changes")
 #   required+miss → "<to_field>(MISSING)"
 #   optional+miss → skipped
-# iter==1 (or no edges) → "(no feedback — first iteration)".
+# iter==1 → "(no feedback — first iteration)". iter≥2 with no edge consumed →
+# the STAGE SUMMARIES count (#2124): since #1979 the findings travel as
+# engine-collected summaries, not edges, and a banner that reported edges alone
+# read "(no feedback — first iteration)" on every iteration of #1841's run.
 # Pure/read-only, 2>/dev/null-guarded, never trips errexit.
 _cycle_render_feedback_digest() {
     local iter="$1" state_dir="$2"
-    if [[ "$iter" == "1" ]] || [[ ${#_CYCLE_FEEDBACK[@]} -eq 0 ]]; then
+    if [[ "$iter" == "1" ]]; then
         printf '(no feedback — first iteration)'
+        return 0
+    fi
+    if [[ ${#_CYCLE_FEEDBACK[@]} -eq 0 ]]; then
+        _cycle_render_summaries_digest "$state_dir"
         return 0
     fi
     local fb_dir="$state_dir/cycle-${_CYCLE_TRAP_CYCLE_ID}/iter-${iter}/feedback"
@@ -657,12 +664,35 @@ _cycle_render_feedback_digest() {
         fi
     done
     if [[ ${#parts[@]} -eq 0 ]]; then
-        printf '(no feedback — first iteration)'
+        _cycle_render_summaries_digest "$state_dir"
         return 0
     fi
     local IFS_save="$IFS"; IFS=','
     printf '%s' "${parts[*]}"
     IFS="$IFS_save"
+    return 0
+}
+
+# _cycle_render_summaries_digest <state_dir> (#2124) — what the next prompt's
+# STAGE SUMMARIES block will carry, from the same collector the renderer uses.
+# This is the PRE-cap count; the router's prompt.summaries.injected event
+# counts the rendered block after the ADR-029 total cap. When the two differ,
+# the cap dropped the oldest summaries — that difference is the signal.
+_cycle_render_summaries_digest() {
+    local state_dir="$1" counts n r
+    if ! declare -F stage_summaries_count >/dev/null 2>&1; then
+        # shellcheck source=./input-resolve.sh
+        source "$_CYCLE_ORCH_ROOT/core/pipeline/input-resolve.sh" 2>/dev/null || true
+    fi
+    counts="$(stage_summaries_count "$state_dir/pipeline-state.json" 2>/dev/null || true)"
+    n="${counts% *}"; r="${counts##* }"
+    [[ "$n" =~ ^[0-9]+$ ]] || n=0
+    [[ "$r" =~ ^[0-9]+$ ]] || r=0
+    if [[ "$n" -eq 0 ]]; then
+        printf '(no feedback edges, no stage summaries)'
+    else
+        printf 'summaries(%s stage summaries, %s RESOLVE)' "$n" "$r"
+    fi
     return 0
 }
 

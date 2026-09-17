@@ -98,9 +98,12 @@ BUILD_PROMPT
 
 # _build_compose_prompt_body <output_file> <task_header> <plan_payload>
 #   <instructions> <design_decisions> <acceptance_testfiles>
-#   <acceptance_spec_ids> <review_feedback_body> <acceptance_gap_ids>
-#   <feedback_body> <iter_n>
-# Assembles the full framed prompt and writes it to <output_file>.
+#   <acceptance_spec_ids> <iter_n>
+# Assembles the full framed prompt and writes it to <output_file>. Prior-stage
+# findings are NOT composed here: the router appends the engine-collected
+# STAGE SUMMARIES block (ADR-055 §9). The review/acceptance-gap/test-feedback
+# sections this once rendered were fed by readers no template wired (#2124);
+# the gap section told build to tag testfiles #2022 forbids it to edit.
 _build_compose_prompt_body() {
     local _prompt_input_file="$1"
     local _task_header="$2"
@@ -109,12 +112,9 @@ _build_compose_prompt_body() {
     local _design_decisions="$5"
     local _acceptance_testfiles="$6"
     local _acceptance_spec_ids="$7"
-    local _review_feedback_body="$8"
-    local _acceptance_gap_ids="$9"
-    local _feedback_body="${10}"
-    local _iter_n="${11}"
-    # ${12} was _acceptance_tautology_ids — retired in #2022 with the
-    # re-author mandate it fed. Build no longer authors assertions.
+    local _iter_n="$8"
+    # shellcheck disable=SC2034  # kept for the header's iter N/MAX only
+    : "$_iter_n"
 
     {
         printf '%s\n' "$_task_header"
@@ -166,27 +166,6 @@ _build_compose_prompt_body() {
                     printf -- '- [%s] needs a `[%s]`-tagged assertion (change → fails at baseline; guard → tagged, not contorted)\n' "$_sid" "$_sid"
                 fi
             done <<< "$_acceptance_spec_ids"
-        fi
-        if [[ -n "$_review_feedback_body" ]]; then
-            printf '\n## PRIOR REVIEW FEEDBACK (from a prior review iteration)\n'
-            printf '%s\n' "$_review_feedback_body"
-            printf 'Address the reviewer findings above before emitting LOOP_COMPLETE.\n'
-        fi
-        if [[ -n "$_acceptance_gap_ids" ]]; then
-            printf '\n## ACCEPTANCE COVERAGE GAPS (add [SPEC-n] tags for these)\n'
-            printf 'The acceptance gate (ADR-036) found these SPEC ids have NO [SPEC-n]-tagged assertion in the diff. This is AUTHORITATIVE over any review prose on acceptance coverage. Adding a missing [SPEC-n] label to an existing acceptance assertion is REQUIRED and is NOT "weakening" — only changing the asserted values is forbidden:\n'
-            local _gap
-            while IFS= read -r _gap; do
-                [[ -n "$_gap" ]] && printf -- '- [%s] add a `[%s]`-tagged assertion (re-verify it still reflects the real behavior)\n' "$_gap" "$_gap"
-            done <<< "$_acceptance_gap_ids"
-        fi
-        if [[ -n "$_feedback_body" ]]; then
-            local _prev_iter=$(( _iter_n - 1 ))
-            [[ "$_prev_iter" -lt 1 ]] && _prev_iter=1
-            printf '\n## CURRENT ITERATION FEEDBACK (from test_assessment iter %d)\n' \
-                "$_prev_iter"
-            printf '%s\n' "$_feedback_body"
-            printf 'Fix the issues above before emitting LOOP_COMPLETE.\n'
         fi
     } > "$_prompt_input_file"
 }

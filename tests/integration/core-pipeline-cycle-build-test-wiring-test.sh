@@ -12,9 +12,9 @@
 #      contract violation, not the old #511 F2 "missing == empty" signal.
 #   3) _cycle_apply_feedback resolves the from-path through the test plugin's
 #      manifest (Pin 2 — manifest-driven, not legacy stage/output path).
-#   4) The build plugin reads $ZBUILD_CYCLE_FEEDBACK_DIR/prior_test_failures.txt
-#      and prepends a preamble at BYTE 0 of build-prompt.txt when present.
-#   5) Empty/missing feedback file → NO preamble emitted (silent-failure guard).
+#   4) (retired, #2124) the build plugin's bespoke feedback reader — findings
+#      reach build as the router's STAGE SUMMARIES block (ADR-055 §9).
+#   5) (retired with 4)
 #   6) `--from-stage build` is refused when simple.yaml declares a cycle
 #      that contains `build` (Pin 14).
 set -euo pipefail
@@ -131,46 +131,11 @@ fi
 assert_contains "T2c: error summary records the verdict" "$(cat "$SUM")" "verdict: error"
 assert_contains "T2c: error summary names the no-output condition" "$(cat "$SUM")" "no readable test output"
 
-# ─── T3: build feedback section — present when prior_test_assessment non-empty
-# (#571 renamed _build_read_prior_failures → _build_read_prior_assessment;
-# file: prior_test_failures.txt → prior_test_assessment.txt to match #568.)
+# ─── T3 (#2124): retired — _build_read_prior_assessment is gone; findings reach
+# build as the router's STAGE SUMMARIES block (ADR-055 §9). build/plugin.sh is
+# still sourced here for T5+.
 # shellcheck disable=SC1090
 source "$REPO_ROOT/plugins/agent/build/plugin.sh"
-FB_DIR="$TEST_TEMP_DIR/fb-iter-2"
-mkdir -p "$FB_DIR"
-printf '## Test assessment\n\n- verdict: fail\n- failed: 2\n' \
-    > "$FB_DIR/prior_test_assessment.txt"
-export ZBUILD_CYCLE_ITER=2
-export ZBUILD_CYCLE_FEEDBACK_DIR="$FB_DIR"
-assessment_body="$(_build_read_prior_assessment)"
-if [[ -n "$assessment_body" ]]; then
-    assert_pass "T3a: prior assessment present → body returned"
-else
-    assert_fail "T3a: prior assessment present → body should be returned" "got empty"
-fi
-# Body is returned RAW (the framing wraps it with the CURRENT ITERATION
-# FEEDBACK header in _build_stage_run_inner — see #571 prompt v2 framing).
-assert_contains "T3b: returned body contains the assessment content" \
-    "$assessment_body" "verdict: fail"
-
-# T3d: empty file → body ABSENT (silent-failure guard, `-s` not `-f`)
-: > "$FB_DIR/prior_test_assessment.txt"
-empty_body="$(_build_read_prior_assessment)"
-if [[ -z "$empty_body" ]]; then
-    assert_pass "T3d: empty feedback file → body OMITTED (silent-failure guard)"
-else
-    assert_fail "T3d: empty feedback → body should be empty" "got non-empty"
-fi
-
-# T3e: no cycle context (ZBUILD_CYCLE_ITER unset) → body ABSENT
-unset ZBUILD_CYCLE_ITER
-no_cyc_body="$(_build_read_prior_assessment)"
-if [[ -z "$no_cyc_body" ]]; then
-    assert_pass "T3e: outside cycle → body OMITTED"
-else
-    assert_fail "T3e: outside cycle → body should be empty" "got non-empty"
-fi
-unset ZBUILD_CYCLE_FEEDBACK_DIR
 
 # ─── T4: _cycle_apply_feedback resolves via manifest (Pin 2) ─────────────────
 # shellcheck disable=SC1090

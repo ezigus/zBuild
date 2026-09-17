@@ -6,9 +6,9 @@
 # L1a: design acceptance block with SPEC-n ids → prompt enumerates each [SPEC-n].
 # L1b: prompt carries the change-vs-guard hedge (guards not contorted).
 # L1c: NO acceptance block / bare SPEC: lines → no enumeration block (self-omit).
-# L2a: _build_read_prior_acceptance returns ONLY untagged_spec ids (filters out
+# L2a: (#2124) _build_read_prior_acceptance is retired (it returned untagged ids
 #      tautology:/negctl_error:/infra — those are #913/infra, not build's fault).
-# L2b: with a gap result present, the prompt injects the ACCEPTANCE COVERAGE GAPS
+# L2b: retired with L2a — no ACCEPTANCE COVERAGE GAPS section (#2124)
 #      block listing the untagged ids; absent/pass → omitted.
 set -uo pipefail
 
@@ -112,45 +112,16 @@ grep -qF "SPEC IDS YOU MUST COVER" <<< "$p" \
     && assert_fail "L1c: must NOT enumerate when there are no SPEC-n ids" "(present)" \
     || assert_pass "L1c: enumeration block self-omits on id-less acceptance block"
 
-# ─── L2a: _build_read_prior_acceptance filters to untagged_spec ONLY ─────────
+# ─── L2a/L2b (#2124): the acceptance-gap reader is retired ─────────────────────
+# It told build to add [SPEC-n] tags to testfiles — the edit #2022 forbids —
+# and no template wired its input. Untagged SPECs reach the next prompts as
+# the gate's `summary: true` output (ADR-055 §9).
 FB="$TEST_TEMP_DIR/fb"; mkdir -p "$FB"
-printf '%s' '{"verdict":"fail","failures":["untagged_spec:SPEC-2","tautology:SPEC-3","negctl_error:worktree_failed"]}' \
-    > "$FB/prior_acceptance_feedback.txt"
-got="$(ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$FB" _build_read_prior_acceptance | tr '\n' ',' | sed 's/,$//')"
-assert_eq "L2a: reader returns ONLY untagged_spec ids (tautology/infra filtered)" "SPEC-2" "$got"
-# verdict=pass → empty
-printf '%s' '{"verdict":"pass","failures":[]}' > "$FB/prior_acceptance_feedback.txt"
-got2="$(ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$FB" _build_read_prior_acceptance)"
-assert_eq "L2a: verdict=pass → no gaps" "" "$got2"
-
-# ─── L2b: gap result present → prompt injects ACCEPTANCE COVERAGE GAPS block ─
-cat > "$DESIGN_MD" <<'DESIGN'
-# Design
-
-```acceptance
-SPEC-1: change behavior A
-TESTFILES:
-tests/unit/build-acceptance-spec-feedback-test.sh
-```
-DESIGN
-printf '%s' '{"verdict":"fail","failures":["untagged_spec:SPEC-2"]}' \
-    > "$FB/prior_acceptance_feedback.txt"
-export ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$FB"
-p="$(_drive_build)"
-grep -qF "ACCEPTANCE COVERAGE GAPS" <<< "$p" \
-    && assert_pass "L2b: prompt injects ACCEPTANCE COVERAGE GAPS block" \
-    || assert_fail "L2b: gap block must inject when gaps present" "(missing)"
-# the gap block names the untagged id
-grep -qF "[SPEC-2]" <<< "$(grep -A6 'ACCEPTANCE COVERAGE GAPS' <<< "$p")" \
-    && assert_pass "L2b: gap block names the untagged [SPEC-2]" \
-    || assert_fail "L2b: gap block must name [SPEC-2]" "(missing)"
-# absent gap file → block omitted
-rm -f "$FB/prior_acceptance_feedback.txt"
-p="$(_drive_build)"
-grep -qF "ACCEPTANCE COVERAGE GAPS" <<< "$p" \
-    && assert_fail "L2b: gap block must omit when no gap file" "(present)" \
-    || assert_pass "L2b: gap block omits when no gap file present"
-unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
+if declare -f _build_read_prior_acceptance >/dev/null 2>&1; then
+    assert_fail "L2a: the acceptance-gap reader is retired from build" "still defined"
+else
+    assert_pass "L2a: the acceptance-gap reader is retired from build"
+fi
 
 # ─── L2c/L2d (#2022): the tautology feed no longer reaches build ─────────────
 # #1583 fed the gate's tautology finding to build so build could re-author the

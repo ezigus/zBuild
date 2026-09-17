@@ -57,7 +57,10 @@ _ZB_STAGE_SUMMARIES_MARKER='## STAGE SUMMARIES (engine-collected)'
 # Bounds (ADR-029). Per-iteration prompt growth caused three consecutive 900s
 # max_turns timeouts; the block is capped and LATEST-WINS per stage so it stays
 # flat in the number of stages, never in the number of iterations.
-_ZB_SUMMARY_MAX_BYTES="${ZBUILD_SUMMARY_MAX_BYTES:-4096}"
+# #2124: 8192, matching the largest producer (the test stage caps its own summary
+# there and puts the extracted ✗ lines LAST) — at 4096 the cut landed on the
+# one part the builder needed.
+_ZB_SUMMARY_MAX_BYTES="${ZBUILD_SUMMARY_MAX_BYTES:-8192}"
 _ZB_SUMMARY_TOTAL_MAX_BYTES="${ZBUILD_SUMMARY_TOTAL_MAX_BYTES:-24576}"
 
 # ─── _inputs_flow_stages ─────────────────────────────────────────────────────
@@ -555,20 +558,16 @@ _summaries_stage_marker() {
     ' "$manifest" 2>/dev/null || true
 }
 
-# ─── stage_summaries_prompt_block <state_file> [plugins_root] ────────────────
-# Renders every completed stage's declared summary, in COMPLETION order, each
-# annotated with that stage's verdict.
-#
-# Completion order is the key order of .stage_statuses — jq preserves insertion
-# order, so the engine needs no separate bookkeeping. A stage that re-ran keeps
-# its first-run position and its LATEST body, which is what makes the block flat
-# in stage count rather than iteration count (ADR-029).
-#
-# Empty output when no completed stage declares a summary, so a repo that has
-# not adopted the marker keeps byte-identical prompts.
-stage_summaries_prompt_block() {
-    local state_file="${1:-}" plugins_root="${2:-${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}}"
-    [[ -n "$state_file" && -s "$state_file" ]] || return 0
+# ─── _summaries_collect <state_file> <plugins_root> ──────────────────────────
+# One `stage|verdict|path` line per completed stage whose declared summary is
+# present and non-empty, in COMPLETION order — the key order of
+# .stage_statuses, which jq preserves, so the engine needs no separate
+# bookkeeping. A stage that re-ran keeps its first-run position and its LATEST
+# body, which is what makes the block flat in stage count rather than
+# iteration count (ADR-029). Shared by the renderer and the banner's count
+# (#2124) so the two can never disagree about what ships.
+_summaries_collect() {
+    local state_file="$1" plugins_root="$2"
     local state_dir; state_dir="$(dirname "$state_file")"
 
     # #1986: an aggregator declares the roster it COVERS (`aggregates: <marker>`).
@@ -577,15 +576,14 @@ stage_summaries_prompt_block() {
     # the aggregator's rendering of that same detail, which is the contradiction
     # #1979 removed, arriving from the other side. Removing it by construction
     # rather than by convention is the point.
-    local _covered=" " _agg_of
+    local _covered=" " _agg_of stage
     while IFS= read -r stage; do
         [[ -z "$stage" ]] && continue
         _agg_of="$(_summaries_stage_marker "$stage" "$plugins_root" aggregates)"
         [[ -n "$_agg_of" ]] && _covered="${_covered}${_agg_of} "
     done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
 
-    local stage path body verdict chunk _conv _aggregates
-    local -a _chunks=()
+    local path verdict _conv _aggregates
     while IFS= read -r stage; do
         [[ -z "$stage" ]] && continue
         # An aggregator is never suppressed by the roster it covers — it is the
@@ -598,7 +596,58 @@ stage_summaries_prompt_block() {
         path="$(_summaries_stage_summary_path "$stage" "$plugins_root" "$state_dir")"
         [[ -n "$path" && -s "$path" ]] || continue
         verdict="$(jq -r --arg s "$stage" '.stage_verdicts[$s] // "unknown"' "$state_file" 2>/dev/null || echo unknown)"
+        printf '%s|%s|%s\n' "$stage" "$verdict" "$path"
+    done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
+}
+
+# ─── stage_summaries_count <state_file> [plugins_root] ───────────────────────
+# "<stages> <resolve>": how many summaries the next prompt will carry and how
+# many of them are framed RESOLVE (a failing verdict). The cycle banner prints
+# this (#2124) — it used to report feedback EDGES, which a summaries-only cycle
+# has none of, and read "(no feedback — first iteration)" on every iteration.
+stage_summaries_count() {
+    local state_file="${1:-}" plugins_root="${2:-${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}}"
+    local n=0 r=0 rec verdict
+    if [[ -n "$state_file" && -s "$state_file" ]]; then
+        while IFS= read -r rec; do
+            [[ -n "$rec" ]] || continue
+            n=$((n + 1))
+            verdict="${rec#*|}"; verdict="${verdict%|*}"
+            case "$verdict" in fail|failed) r=$((r + 1)) ;; esac
+        done < <(_summaries_collect "$state_file" "$plugins_root")
+    fi
+    printf '%s %s' "$n" "$r"
+}
+
+# ─── stage_summaries_prompt_block <state_file> [plugins_root] ────────────────
+# Renders every completed stage's declared summary, in COMPLETION order (see
+# _summaries_collect), each annotated with that stage's verdict.
+#
+# Empty output when no completed stage declares a summary, so a repo that has
+# not adopted the marker keeps byte-identical prompts.
+stage_summaries_prompt_block() {
+    local state_file="${1:-}" plugins_root="${2:-${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}}"
+    [[ -n "$state_file" && -s "$state_file" ]] || return 0
+
+    # #2124: the sanitizer that stripped ANSI and stage-io banners from the
+    # retired per-plugin readers (#721) now runs here — the one chokepoint
+    # every producer's body crosses. #1841's test summary shipped its ✗ lines
+    # wrapped in colour codes.
+    if ! declare -F _zbuild_sanitize_for_llm >/dev/null 2>&1; then
+        # shellcheck source=../../scripts/lib/test-output-sanitize.sh
+        source "$_ZBUILD_IR_ROOT/scripts/lib/test-output-sanitize.sh" 2>/dev/null || true
+    fi
+
+    local stage path body verdict chunk rec
+    local -a _chunks=()
+    while IFS= read -r rec; do
+        [[ -n "$rec" ]] || continue
+        stage="${rec%|*}"; path="${rec##*|}"
+        verdict="${rec#*|}"; verdict="${verdict%|*}"
         body="$(head -c "$_ZB_SUMMARY_MAX_BYTES" "$path" 2>/dev/null || true)"
+        if declare -F _zbuild_sanitize_for_llm >/dev/null 2>&1; then
+            body="$(printf '%s' "$body" | _zbuild_sanitize_for_llm 2>/dev/null || printf '%s' "$body")"
+        fi
         if [[ "$(wc -c < "$path" 2>/dev/null || echo 0)" -gt "$_ZB_SUMMARY_MAX_BYTES" ]]; then
             body="${body}"$'\n'"[… truncated at ${_ZB_SUMMARY_MAX_BYTES}B —"
             body="${body} read the artifact directly for the full text]"
@@ -613,7 +662,7 @@ stage_summaries_prompt_block() {
             *)           chunk="$(printf '### %s (verdict: %s)\n%s\n' "$stage" "$verdict" "$body")" ;;
         esac
         _chunks+=("$chunk")
-    done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
+    done < <(_summaries_collect "$state_file" "$plugins_root")
 
     # #2011: keep the NEWEST. This used to accumulate in completion order and
     # break on the cap, which retained the summaries FURTHEST from the stage

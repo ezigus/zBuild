@@ -739,6 +739,23 @@ assert_contains "[SPEC-10] valid_verdicts covers pass" "$_spec10_vv" "- pass"
 assert_contains "[SPEC-10] valid_verdicts covers fail" "$_spec10_vv" "- fail"
 assert_contains "[SPEC-10] valid_verdicts covers error" "$_spec10_vv" "- error"
 
+# ─── #2124: the ✗ line is never the part that is cut ─────────────────────────
+# The extractor took the first 60 lines matching a broad pattern; a replayed
+# nested run puts dozens of FAIL/Error lines ahead of the one assertion that
+# matters, and the builder read a summary with no ✗ in it. Assertion failures
+# (✗/✘ with their detail line) and the tier's FAIL/TIMEOUT markers come first.
+_spec13_dir="$TEST_TEMP_DIR/spec13-artifacts"; mkdir -p "$_spec13_dir"
+_spec13_sum="$_spec13_dir/test-failures-summary.md"
+_spec13_raw="$(for i in $(seq 1 70); do printf 'Error: nested replay noise line %s\n' "$i"; done
+printf 'integration: FAIL plugins/agent/security-lens/tests/security-lens-test.sh\n'
+printf '  ✗ [SPEC-3] router-fatal path writes OUTPUT_R7\n    expected: present, got: OUTPUT_R7 missing\n')"
+_test_emit_failures_summary "$_spec13_sum" "fail" "1" "1" "$_spec13_raw" "40"
+assert_contains "[#2124] the ✗ line is in the summary" "$(cat "$_spec13_sum" 2>/dev/null)" "[SPEC-3] router-fatal path writes OUTPUT_R7"
+assert_contains "[#2124] its detail line follows it" "$(cat "$_spec13_sum" 2>/dev/null)" "got: OUTPUT_R7 missing"
+assert_contains "[#2124] the tier's FAIL marker names the file" "$(cat "$_spec13_sum" 2>/dev/null)" "integration: FAIL plugins/agent/security-lens/tests/security-lens-test.sh"
+_spec13_first="$(grep -n 'router-fatal\|nested replay noise' "$_spec13_sum" 2>/dev/null | head -1)"
+assert_contains "[#2124] the ✗ line precedes the noise" "$_spec13_first" "router-fatal"
+
 # ─── Teardown ────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }
 

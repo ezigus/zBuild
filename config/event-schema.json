@@ -42,6 +42,7 @@
     "plugin.run.refused",
     "plugin.error",
     "redaction.applied",
+    "prompt.summaries.injected",
     "redaction.refused",
     "redaction.refused.overridden",
     "redaction.counter_skipped",

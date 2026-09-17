@@ -32,6 +32,18 @@
 #                    consumed — by the engine, into prompts — but by design no
 #                    stage declares it, which is exactly the shape that check
 #                    was written to reject
+#  SPEC-11 [change]: (#2124) the cycle INPUT banner counts the summaries the
+#                    next prompt will carry instead of printing "(no feedback —
+#                    first iteration)" on every iteration of a cycle that has
+#                    no feedback edges (the #1841 misdiagnosis)
+#  SPEC-12 [change]: (#2124) injection is evented — prompt.summaries.injected
+#                    stages= resolve= bytes= — so a run's events.jsonl proves
+#                    what the builder was told
+#  SPEC-13 [change]: (#2124) the per-summary cap matches the test stage's own
+#                    8192B summary, so the ✗ line at the end of a long
+#                    test-failures-summary.md is not the part that is cut
+#  SPEC-14 [change]: (#2124) bodies are sanitized (ANSI, stage-io banners) at
+#                    the renderer — the one chokepoint every producer crosses
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -414,6 +426,124 @@ if grep -qF "ss_unc_detail" <<< "$_unc_out"; then
 else
     assert_pass "[SPEC-10] a summary output is exempt from OUTPUT_UNCONSUMED"
 fi
+
+# ─── SPEC-11: the banner counts summaries (#2124) ────────────────────────────
+# #1841: the job log printed "(no feedback — first iteration)" on every
+# iteration and the run was misread as "the builder never got the findings".
+# The banner reports feedback EDGES; simple.yaml's cycle has none since #1979,
+# and the findings travel as summaries. Count what actually ships.
+print_test_section "11. the cycle banner counts summaries, not edges (#2124)"
+
+printf 'GATE-DETAIL-BODY\n' > "$ART/ss-gate-detail.txt"
+if declare -F stage_summaries_count >/dev/null 2>&1; then
+    assert_eq "[SPEC-11] stage_summaries_count → '<stages> <resolve>'" "3 1" \
+        "$(stage_summaries_count "$STATE/pipeline-state.json" "$PROOT" 2>/dev/null || true)"
+    assert_eq "[SPEC-11] no declaring stage → '0 0'" "0 0" \
+        "$(stage_summaries_count "$TEST_TEMP_DIR/empty-state.json" "$PROOT" 2>/dev/null || true)"
+else
+    assert_fail "[SPEC-11] stage_summaries_count exists" "function not defined"
+fi
+
+# shellcheck source=../../core/pipeline/cycle-orchestrator.sh
+source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh" 2>/dev/null || true
+if declare -F _cycle_render_feedback_digest >/dev/null 2>&1; then
+    _CYCLE_TRAP_CYCLE_ID="build_test_cycle"
+    _CYCLE_FEEDBACK=()
+    _dig="$(ZBUILD_PLUGINS_ROOT="$PROOT" _cycle_render_feedback_digest 2 "$STATE" 2>/dev/null || true)"
+    assert_contains "[SPEC-11] iter 2, no edges: banner names the summary count" "$_dig" "3 stage summaries"
+    assert_contains "[SPEC-11] …and how many are framed RESOLVE" "$_dig" "1 RESOLVE"
+    if [[ "$_dig" == *"first iteration"* ]]; then
+        assert_fail "[SPEC-11] iter 2 must not claim 'first iteration'" "$_dig"
+    else
+        assert_pass "[SPEC-11] iter 2 does not claim 'first iteration'"
+    fi
+    mkdir -p "$TEST_TEMP_DIR/empty-state"; cp "$TEST_TEMP_DIR/empty-state.json" "$TEST_TEMP_DIR/empty-state/pipeline-state.json"
+    _dig0="$(ZBUILD_PLUGINS_ROOT="$PROOT" _cycle_render_feedback_digest 2 "$TEST_TEMP_DIR/empty-state" 2>/dev/null || true)"
+    assert_contains "[SPEC-11] iter 2 with nothing to ship says so" "$_dig0" "no stage summaries"
+    _dig1="$(ZBUILD_PLUGINS_ROOT="$PROOT" _cycle_render_feedback_digest 1 "$STATE" 2>/dev/null || true)"
+    assert_contains "[SPEC-11] iter 1 keeps the first-iteration wording" "$_dig1" "first iteration"
+else
+    assert_fail "[SPEC-11] _cycle_render_feedback_digest is available" "function not defined"
+fi
+
+# ─── SPEC-12: injection is evented (#2124) ───────────────────────────────────
+print_test_section "12. prompt.summaries.injected names what shipped (#2124)"
+
+if declare -F _route_redact_prompt >/dev/null 2>&1; then
+    apply_scope_redaction() { cp "$1" "$2" 2>/dev/null; return 0; }
+    export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events-12"; mkdir -p "$ZBUILD_EVENTS_DIR"
+    export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
+    IN12="$TEST_TEMP_DIR/prompt12.txt"; OUT12="$TEST_TEMP_DIR/prompt12.out"
+    printf 'PROMPT\n' > "$IN12"
+    ZBUILD_STATE_DIR="$STATE" ZBUILD_PLUGINS_ROOT="$PROOT" ZBUILD_CURRENT_STAGE="build" \
+        ZBUILD_SCOPE_MANIFEST="$PROOT/tool/ss-gate/manifest.yaml" \
+        _route_redact_prompt "$IN12" "$OUT12" 0 "" >/dev/null 2>&1 || true
+    assert_event_emitted "[SPEC-12] prompt.summaries.injected is emitted" "$ZBUILD_EVENTS_JSONL" "prompt.summaries.injected"
+    _ev12="$(jq -c 'select(.type=="prompt.summaries.injected")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+    assert_contains "[SPEC-12] it counts the stages shipped" "$_ev12" '"stages":"3"'
+    assert_contains "[SPEC-12] it counts the RESOLVE framings" "$_ev12" '"resolve":"1"'
+    assert_contains "[SPEC-12] it names the consuming stage" "$_ev12" '"stage":"build"'
+    assert_contains_regex "[SPEC-12] it carries the block size" "$_ev12" '"bytes":"[1-9][0-9]*"'
+    # A body that carries its own markdown headings — the test stage's summary
+    # has `## Failing lines (extracted)`, a lens may write `### Findings` —
+    # must not inflate the count: only the renderer's own headings count.
+    printf '### Findings\n- one\n### More\nsee — RESOLVE these findings before completing\n' > "$ART/ss-second-detail.txt"
+    : > "$ZBUILD_EVENTS_JSONL"; printf 'PROMPT\n' > "$IN12"
+    ZBUILD_STATE_DIR="$STATE" ZBUILD_PLUGINS_ROOT="$PROOT" ZBUILD_CURRENT_STAGE="build" \
+        ZBUILD_SCOPE_MANIFEST="$PROOT/tool/ss-gate/manifest.yaml" \
+        _route_redact_prompt "$IN12" "$OUT12" 0 "" >/dev/null 2>&1 || true
+    _ev12b="$(jq -c 'select(.type=="prompt.summaries.injected")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+    assert_contains "[SPEC-12] a body's own ### headings do not inflate stages=" "$_ev12b" '"stages":"3"'
+    assert_contains "[SPEC-12] …nor its text inflate resolve=" "$_ev12b" '"resolve":"1"'
+    printf 'SECOND-DETAIL-BODY\n' > "$ART/ss-second-detail.txt"
+    : > "$ZBUILD_EVENTS_JSONL"; printf 'PROMPT\n' > "$IN12"
+    ZBUILD_STATE_DIR="$STATE" ZBUILD_PLUGINS_ROOT="$PROOT" ZBUILD_CURRENT_STAGE="build" \
+        ZBUILD_SCOPE_MANIFEST="$PROOT/tool/ss-gate/manifest.yaml" \
+        _route_redact_prompt "$IN12" "$OUT12" 0 "" >/dev/null 2>&1 || true
+    # A second pass on the same file injects nothing and must not re-event.
+    ZBUILD_STATE_DIR="$STATE" ZBUILD_PLUGINS_ROOT="$PROOT" ZBUILD_CURRENT_STAGE="build" \
+        ZBUILD_SCOPE_MANIFEST="$PROOT/tool/ss-gate/manifest.yaml" \
+        _route_redact_prompt "$IN12" "$OUT12" 0 "" >/dev/null 2>&1 || true
+    assert_eq "[SPEC-12] exactly one event across two passes (idempotent with the block)" "1" \
+        "$(grep -c 'prompt.summaries.injected' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+    assert_contains "[SPEC-12] the event is registered in config/event-schema.json" \
+        "$(cat "$REPO_ROOT/config/event-schema.json")" '"prompt.summaries.injected"'
+    unset -f apply_scope_redaction 2>/dev/null || true
+else
+    assert_fail "[SPEC-12] _route_redact_prompt is available" "function not defined"
+fi
+
+# ─── SPEC-13: per-summary cap = 8192 (#2124) ─────────────────────────────────
+# The test stage writes up to 8192B and puts the extracted ✗ lines LAST; a
+# 4096B per-summary cap cuts exactly the part the builder needs.
+print_test_section "13. a 6000B summary ships whole (#2124)"
+
+awk 'BEGIN{for(i=0;i<100;i++) print "PADDING-LINE-BODY-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"; print "TAIL-LINE-SURVIVES"}' > "$ART/ss-gate-detail.txt"
+_sz13="$(wc -c < "$ART/ss-gate-detail.txt" | tr -d ' ')"
+assert_gt "[SPEC-13] fixture is over 4096B" "$_sz13" "4096"
+OUT13="$(env -u ZBUILD_SUMMARY_MAX_BYTES bash -c 'source "$0/core/pipeline/input-resolve.sh"; stage_summaries_prompt_block "$1" "$2"' "$REPO_ROOT" "$STATE/pipeline-state.json" "$PROOT" 2>/dev/null || true)"
+assert_contains "[SPEC-13] the last line of a 6000B summary reaches the prompt" "$OUT13" "TAIL-LINE-SURVIVES"
+printf 'GATE-DETAIL-BODY\n' > "$ART/ss-gate-detail.txt"
+
+# ─── SPEC-14: bodies are sanitized at the chokepoint (#2124) ─────────────────
+# #1841's test-failures-summary.md carried the ✗ lines with their ANSI colour
+# codes; #721's sanitizer lived in the readers this item retires. The renderer
+# is the one place every producer passes through, so it strips there.
+print_test_section "14. summary bodies reach the prompt without ANSI or banners (#2124)"
+
+_ESC14=$''
+printf '%s
+' "${_ESC14}[31mRED-BODY-LINE${_ESC14}[0m" "══ NESTED-BANNER-LINE ══" "PLAIN-BODY-LINE" > "$ART/ss-gate-detail.txt"
+OUT14="$(_block)"
+assert_eq "[SPEC-14] no ESC bytes in the block" "0" "$(printf '%s' "$OUT14" | LC_ALL=C tr -cd "$_ESC14" | wc -c | tr -d ' ')"
+assert_contains "[SPEC-14] the coloured line's text survives" "$OUT14" "RED-BODY-LINE"
+assert_contains "[SPEC-14] plain text survives" "$OUT14" "PLAIN-BODY-LINE"
+if [[ "$OUT14" == *"NESTED-BANNER-LINE"* ]]; then
+    assert_fail "[SPEC-14] a stage-io banner line is dropped" "banner present"
+else
+    assert_pass "[SPEC-14] a stage-io banner line is dropped"
+fi
+printf 'GATE-DETAIL-BODY\n' > "$ART/ss-gate-detail.txt"
 
 cleanup_test_env
 print_test_results

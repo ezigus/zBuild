@@ -72,56 +72,28 @@ _build_read_prior_build_summary() {
         "$verdict" "$n_files" "${files:+: $files}"
 }
 
-# _build_read_prior_assessment (#571)
-# Read the prior cycle iter's test_assessment markdown from
-# $ZBUILD_CYCLE_FEEDBACK_DIR/prior_test_assessment.txt. Empty stdout when
-# not in a cycle, dir unset, or file missing/empty.
+# _build_read_prior_assessment — the test stage's summary, read through the
+# DECLARED optional input `test_failures_summary` (ADR-055 §1; a backwards edge
+# inside build_test_cycle is legal per §1.3). Empty on iteration 1, when the
+# producer has not run. It is NOT rendered into the prompt — the router's
+# STAGE SUMMARIES block already carries it (§9) — it feeds the mechanical
+# out-of-scope detection (_build_detect_out_of_scope_files → scope expansion).
+# #2124: until now this read $ZBUILD_CYCLE_FEEDBACK_DIR/prior_test_assessment.txt,
+# a file no shipped template has written since #1979, so that detection had
+# been starved in production while its tests fed it through a stub.
 _build_read_prior_assessment() {
-    local iter="${ZBUILD_CYCLE_ITER:-}"
-    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
-    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
-    local f="$fb_dir/prior_test_assessment.txt"
-    [[ ! -s "$f" ]] && return 0
-    local body
-    body="$(cat "$f" 2>/dev/null)" || return 0
-    [[ -z "$body" ]] && return 0
-    printf '%s' "$body"
+    [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS}" ]] || return 0
+    local f
+    f="$(jq -r '.inputs.test_failures_summary // empty' "${ZBUILD_STAGE_INPUTS}" 2>/dev/null || true)"
+    [[ -n "$f" && -s "$f" ]] || return 0
+    cat "$f" 2>/dev/null || true
 }
 
-# _build_read_prior_review (ADR-026 / Wave 18-B / #707)
-# Read the prior outer-cycle iter's review markdown from
-# $ZBUILD_CYCLE_FEEDBACK_DIR/prior_review_feedback.txt. Empty stdout when
-# not in a cycle, dir unset, or file missing/empty.
-_build_read_prior_review() {
-    local iter="${ZBUILD_CYCLE_ITER:-}"
-    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
-    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
-    local f="$fb_dir/prior_review_feedback.txt"
-    [[ ! -s "$f" ]] && return 0
-    local body
-    body="$(cat "$f" 2>/dev/null)" || return 0
-    [[ -z "$body" ]] && return 0
-    printf '%s' "$body"
-}
-
-# _build_read_prior_acceptance (#951 Layer 2 / ADR-036)
-# Read the prior outer-cycle iter's acceptance-gate-result.json from
-# $ZBUILD_CYCLE_FEEDBACK_DIR/prior_acceptance_feedback.txt. Prints ONLY
-# untagged_spec:<id> failure ids, one per line. Empty when not in a cycle,
-# dir unset, file missing/empty, verdict=pass, or no untagged_spec failures.
-_build_read_prior_acceptance() {
-    local iter="${ZBUILD_CYCLE_ITER:-}"
-    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
-    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
-    local f="$fb_dir/prior_acceptance_feedback.txt"
-    [[ ! -s "$f" ]] && return 0
-    jq -r '
-        if (.verdict? // "pass") == "pass" then empty
-        else (.failures // [])[]
-             | select(type == "string" and startswith("untagged_spec:"))
-             | sub("^untagged_spec:"; "")
-        end' "$f" 2>/dev/null || return 0
-}
+# _build_read_prior_review / _build_read_prior_acceptance — RETIRED (#2124).
+# No shipped template wired the feedback edges they read since #1979; what a
+# reviewer or the acceptance gate found reaches build as the engine-collected
+# STAGE SUMMARIES block (ADR-055 §9). The acceptance reader also told build to
+# tag testfiles #2022 forbids it to edit.
 
 # _build_read_tautology_ids — RETIRED (#2022).
 # Since #1477 build owned the assertion bodies, so the gate's tautology finding
