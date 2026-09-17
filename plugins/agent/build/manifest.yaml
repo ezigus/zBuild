@@ -77,6 +77,12 @@ inputs:
   # wired in the template.
   - id: design
     required: false
+  # #2124: the test stage's summary from the PREVIOUS iteration — a backwards
+  # edge inside build_test_cycle (ADR-055 §1.3). Absent on iteration 1. Feeds
+  # the out-of-scope detection that raises a scope-expansion request; the
+  # prompt gets the same text through the STAGE SUMMARIES block (§9).
+  - id: test_failures_summary
+    required: false
 
 outputs:
   - id: diff_patch

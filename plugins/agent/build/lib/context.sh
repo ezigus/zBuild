@@ -72,12 +72,28 @@ _build_read_prior_build_summary() {
         "$verdict" "$n_files" "${files:+: $files}"
 }
 
-# _build_read_prior_assessment / _build_read_prior_review /
-# _build_read_prior_acceptance — RETIRED (#2124). No shipped template wired the
-# feedback edges they read since #1979; prior-stage findings reach build as the
-# engine-collected STAGE SUMMARIES block (ADR-055 §9). Removed rather than left
-# unused: their presence is what turned the #1841 diagnosis into "the builder
-# never got the findings".
+# _build_read_prior_assessment — the test stage's summary, read through the
+# DECLARED optional input `test_failures_summary` (ADR-055 §1; a backwards edge
+# inside build_test_cycle is legal per §1.3). Empty on iteration 1, when the
+# producer has not run. It is NOT rendered into the prompt — the router's
+# STAGE SUMMARIES block already carries it (§9) — it feeds the mechanical
+# out-of-scope detection (_build_detect_out_of_scope_files → scope expansion).
+# #2124: until now this read $ZBUILD_CYCLE_FEEDBACK_DIR/prior_test_assessment.txt,
+# a file no shipped template has written since #1979, so that detection had
+# been starved in production while its tests fed it through a stub.
+_build_read_prior_assessment() {
+    [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS}" ]] || return 0
+    local f
+    f="$(jq -r '.inputs.test_failures_summary // empty' "${ZBUILD_STAGE_INPUTS}" 2>/dev/null || true)"
+    [[ -n "$f" && -s "$f" ]] || return 0
+    cat "$f" 2>/dev/null || true
+}
+
+# _build_read_prior_review / _build_read_prior_acceptance — RETIRED (#2124).
+# No shipped template wired the feedback edges they read since #1979; what a
+# reviewer or the acceptance gate found reaches build as the engine-collected
+# STAGE SUMMARIES block (ADR-055 §9). The acceptance reader also told build to
+# tag testfiles #2022 forbids it to edit.
 
 # _build_read_tautology_ids — RETIRED (#2022).
 # Since #1477 build owned the assertion bodies, so the gate's tautology finding

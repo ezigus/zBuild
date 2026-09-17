@@ -204,9 +204,14 @@ _build_stage_run_inner() {
         _build_persona_applied=1
     fi
 
-    # #2124: no per-plugin feedback readers. What earlier stages found reaches
-    # this prompt as the engine-collected STAGE SUMMARIES block (ADR-055 §9),
-    # injected at the router; no template wired the retired readers.
+    # #2124: nothing here is composed INTO the prompt — what earlier stages
+    # found reaches it as the engine-collected STAGE SUMMARIES block (ADR-055
+    # §9), injected at the router. The test summary is still read, sanitized
+    # (#721), for the mechanical out-of-scope detection in the summary writer.
+    local _feedback_body
+    _feedback_body="$(_build_read_prior_assessment 2>/dev/null || true)"
+    [[ -n "$_feedback_body" ]] && \
+        _feedback_body="$(printf '%s' "$_feedback_body" | _zbuild_sanitize_for_llm)"
 
     _build_compose_prompt_body "$prompt_input_file" "$_task_header" "$plan_payload" \
         "$_build_instructions" "$_design_decisions" "$_acceptance_testfiles" \

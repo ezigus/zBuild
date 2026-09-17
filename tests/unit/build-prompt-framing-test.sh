@@ -160,13 +160,25 @@ fi
 # builder to edit the testfiles #2022 forbids it to touch. Their presence is
 # what misled the #1841 diagnosis into "feedback was never delivered".
 print_test_section "#2124: retired feedback readers"
-for _fn in _build_read_prior_assessment _build_read_prior_review _build_read_prior_acceptance; do
+for _fn in _build_read_prior_review _build_read_prior_acceptance; do
     if declare -F "$_fn" >/dev/null 2>&1; then
         assert_fail "[#2124] $_fn is retired" "still defined"
     else
         assert_pass "[#2124] $_fn is retired"
     fi
 done
+# The test-summary reader stays — it feeds the mechanical out-of-scope
+# detection (scope expansion) — but reads the DECLARED input, not a feedback
+# dir no template writes.
+_si="$TEST_TEMP_DIR/si-2124.json"; _tfs="$TEST_TEMP_DIR/tfs-2124.md"
+printf 'test failed: plugins/tool/x/plugin.sh pins 8 stages\n' > "$_tfs"
+printf '{"inputs":{"test_failures_summary":"%s"}}\n' "$_tfs" > "$_si"
+assert_contains "[#2124] _build_read_prior_assessment reads the declared test_failures_summary input" \
+    "$(ZBUILD_STAGE_INPUTS="$_si" _build_read_prior_assessment 2>/dev/null)" "pins 8 stages"
+assert_eq "[#2124] …and nothing from the feedback dir" "" \
+    "$(ZBUILD_STAGE_INPUTS="" ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$TEST_TEMP_DIR" _build_read_prior_assessment 2>/dev/null)"
+assert_contains "[#2124] build declares test_failures_summary as an optional input" \
+    "$(awk '/^inputs:/,/^outputs:/' "$REPO_ROOT/plugins/agent/build/manifest.yaml")" "id: test_failures_summary"
 for _sec in "CURRENT ITERATION FEEDBACK" "PRIOR REVIEW FEEDBACK" "ACCEPTANCE COVERAGE GAPS"; do
     if grep -qF "$_sec" "$REPO_ROOT/plugins/agent/build/lib/prompt.sh"; then
         assert_fail "[#2124] prompt.sh no longer renders '$_sec'" "section still present"
