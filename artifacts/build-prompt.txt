@@ -1,4 +1,4 @@
-============== ZBUILD BUILD — iter 1/10 ==============
+============== ZBUILD BUILD — iter 2/10 ==============
 ## ORIGINAL TASK (immutable across iterations)
 # Plan: Verify review-lens v2 migration (already committed)
 
@@ -224,3 +224,6 @@ Every SPEC id below needs at least one assertion whose label carries its [SPEC-n
   → needs a `[SPEC-18]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
 - [SPEC-19] hooks.cleanup is absent from manifest.yaml; manifest carries an ADR-054 §7 explanatory comment
   → needs a `[SPEC-19]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+
+## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
+A previous attempt on this issue ended build with verdict=incomplete and touched 0 file(s). That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present.
