@@ -266,6 +266,11 @@ _negctl_guard_verdict() {
             _negctl_guard_log_check "$_g_capfile" "$spec_id" && _g_lv=0 || _g_lv=$?
         fi
         [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
+        # rc≠0 with no tagged verdict (lv=2) KEEPS the file-rc verdict. #2129
+        # tried to read it as "died before its assertion ran" and skip; that
+        # erased the #1658 shape — a bare guard test (`grep -q …`, no ✓/✗
+        # output) that legitimately fails at the merge-base is a mislabelled
+        # [change], and nothing in the rc separates it from an early abort.
         if [[ "$_g_rc" -ne 0 && "$_g_lv" -ne 1 ]]; then printf 'regressed'; return 0; fi
     done
     printf 'held'
@@ -393,11 +398,14 @@ acceptance_negctl_check() {
             # SPEC id leads every token, as on the [change] lines: the #1684
             # summary enrichment and the plugin's generic FAIL parser both key
             # off that position, so guard verdicts need no special-casing.
+            # #2129: `held` is the ONLY word that passes; anything the helper did
+            # not mean to say is infrastructure, never a cleared guard.
             case "$_g_out" in
-                timeout)   printf 'NEGCTL ERROR timeout:%s\n' "$spec_id"; rc=1 ;;
-                harness)   printf 'NEGCTL ERROR harness:%s\n' "$spec_id"; rc=1 ;;
-                regressed) printf 'NEGCTL FAIL %s guard_regressed\n' "$spec_id"; rc=1 ;;
-                *)         printf 'NEGCTL PASS %s guard_spec\n' "$spec_id" ;;
+                timeout)    printf 'NEGCTL ERROR timeout:%s\n' "$spec_id"; rc=1 ;;
+                harness)    printf 'NEGCTL ERROR harness:%s\n' "$spec_id"; rc=1 ;;
+                regressed)  printf 'NEGCTL FAIL %s guard_regressed\n' "$spec_id"; rc=1 ;;
+                held)       printf 'NEGCTL PASS %s guard_spec\n' "$spec_id" ;;
+                *)          printf 'NEGCTL ERROR harness:%s\n' "$spec_id"; rc=1 ;;
             esac
             continue
         fi
@@ -617,7 +625,8 @@ acceptance_negctl_guard_precheck() {
         case "$out" in
             regressed)       printf 'GUARD FAIL %s guard_regressed\n' "$spec_id"; rc=1 ;;
             timeout|harness) printf 'GUARD SKIP %s %s\n' "$spec_id" "$out" ;;
-            *)               printf 'GUARD PASS %s\n' "$spec_id" ;;
+            held)            printf 'GUARD PASS %s\n' "$spec_id" ;;
+            *)               printf 'GUARD SKIP %s harness\n' "$spec_id" ;;  # #2129: never a pass
         esac
     done
     return "$rc"

@@ -225,7 +225,9 @@ spec_correspondence_run() {
     # review, and an infrastructure problem must never mask it. `unjudged`
     # outranks `uncheckable`/`partial` because a gate with no opinion is worse
     # than one with a weak opinion.
-    if   [[ "$n_mis"  -gt 0 ]]; then worst="mismatch"
+    # #2129: a gate that judged nothing has no basis for "corresponds".
+    if   [[ "$n"      -eq 0 ]]; then worst="uncheckable"
+    elif [[ "$n_mis"  -gt 0 ]]; then worst="mismatch"
     elif [[ "$n_unj"  -gt 0 ]]; then worst="unjudged"
     elif [[ "$n_unch" -gt 0 ]]; then worst="uncheckable"
     elif [[ "$n_part" -gt 0 ]]; then worst="partial"
@@ -233,6 +235,7 @@ spec_correspondence_run() {
     fi
 
     local reason="judged $n SPEC(s): $n_corr correspond, $n_part partial, $n_mis mismatch, $n_unch uncheckable, $n_unj unjudged"
+    [[ "$n" -eq 0 ]] && reason="no SPEC ids declared — nothing to judge"
     _sc_emit "spec_correspondence.judged" "specs=$n" "mismatch=$n_mis" "partial=$n_part" "unjudged=$n_unj"
     _sc_write_result "$art" "$worst" "$reason" \
         "$(jq -nc --argjson c "$n_corr" --argjson p "$n_part" --argjson m "$n_mis" \

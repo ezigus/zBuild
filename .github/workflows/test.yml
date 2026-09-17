@@ -50,6 +50,12 @@ jobs:
         # manifest-declared verdict is classified by verdict_classify, so the
         # table can no longer drift out from under the plugins.
         run: bash scripts/lib/lint-verdict-classify.sh
+      - name: Manifest failure classes are classified (#1959)
+        if: always()
+        # ONE definition, shared with `npm run lint`. Asserts every class a
+        # plugin declares it can put on failures[] maps to a disposition, so
+        # the acceptance gate's table can no longer drift out from under it.
+        run: bash scripts/lib/lint-disposition-classify.sh
       - name: Shellcheck (.sh files)
         if: always()
         run: |

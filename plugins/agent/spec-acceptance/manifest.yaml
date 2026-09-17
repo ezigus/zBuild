@@ -87,6 +87,7 @@ provides:
     - acceptance.gate.skipped
     - acceptance.gate.start
     - acceptance.gate.tautology
+    - acceptance.gate.unknown_failure_class
     - acceptance.gate.untagged_spec
     - acceptance.gate.wiring_exempt
     - acceptance.gate.wiring_not_on_path
@@ -99,6 +100,22 @@ config:
   valid_verdicts:
     - pass
     - fail
+  # #1959: every class this stage can put on failures[] ("<class>:<detail>").
+  # scripts/lib/lint-disposition-classify.sh refuses a class the table in
+  # scripts/lib/acceptance-disposition.sh does not map; at runtime an unmapped
+  # class is recoverable and evented, never terminal.
+  valid_failure_classes:
+    - untagged_spec
+    - tautology
+    - inert_wiring
+    - no_testfile
+    - no_testfiles
+    - not_passing_at_head
+    - wiring_not_on_path
+    - guard_regressed
+    - negctl_error
+    - reachability_error
+    - malformed_acceptance_block
   tier_default: T1
 
 inputs:

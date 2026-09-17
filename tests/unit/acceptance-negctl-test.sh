@@ -165,8 +165,7 @@ REPO3b="$(setup_git_temp_repo negctl-repo3b)"
     mkdir -p tests
     printf '# guard fixture\n' > guard_impl.sh
     # This guard test ASSERTS and fails — a ✗-marked [SPEC-1] line at the
-    # baseline is the evidence guard_regressed requires (#2129: a bare exit 1
-    # with no tagged verdict is guard_unobserved, see NC-F2b).
+    # baseline (a bare exit 1 is the same verdict, see NC-F2b).
     printf '#!/usr/bin/env bash\necho "✗ [SPEC-1] guard: invariant broken"\nexit 1\n' > tests/guard-fail-test.sh
     chmod +x tests/guard-fail-test.sh
     "$GIT" add -A; "$GIT" commit -q -m "feat: guard spec with broken invariant"
@@ -187,49 +186,35 @@ assert_eq "[SPEC-2] NC-F2: guard SPEC fails at baseline → NEGCTL FAIL guard_re
     "NEGCTL FAIL SPEC-1 guard_regressed" "$(grep 'SPEC-1' <<<"$OUT3b")"
 assert_eq "[SPEC-2] NC-F2: guard FAIL guard_regressed yields rc=1" "1" "$RC3b"
 
-# ── NC-F2b (#2129): guard baseline exits non-zero with NO tagged verdict ────────
-# _negctl_guard_verdict's own header says a baseline run that never reached an
-# assertion "proves nothing either way — warn, never block". The parse and
-# 126/127 arms honoured that; a plain rc=1 with no ✓/✗ for the SPEC fell
-# through to `regressed` → fault=specification → a design rewind on nothing.
-REPO3g="$(setup_git_temp_repo negctl-repo3g)"
+# ── NC-F2b (#2129): a bare failing guard test at the baseline is still regressed ─
+# A guard test with no ✓/✗ output (plain `grep -q`/`false`, exit 1) that fails
+# at the merge-base is the #1658 shape — a mislabelled [change] — and nothing
+# in its rc separates it from a file that died early. #2129 considered reading
+# lv=2 as "unobserved → skip" and rejected it: NC-F7 would have gone inert.
+REPO3u="$(setup_git_temp_repo negctl-repo3u)"
 (
-    cd "$REPO3g"
+    cd "$REPO3u"
     "$GIT" checkout -q -b feature
     mkdir -p tests
     printf '# guard fixture\n' > guard_impl.sh
-    # Dies before any [SPEC-1] assertion runs: no verdict line, rc=1.
-    printf '#!/usr/bin/env bash\nset -e\n# [SPEC-1] guard: never reached\nfalse\necho "✓ [SPEC-1] unreachable"\n' > tests/guard-unobserved-test.sh
-    chmod +x tests/guard-unobserved-test.sh
-    "$GIT" add -A; "$GIT" commit -q -m "feat: guard whose baseline run dies early"
+    printf '#!/usr/bin/env bash\nset -e\n# [SPEC-1] guard: bare\nfalse\n' > tests/guard-bare-test.sh
+    chmod +x tests/guard-bare-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: bare guard failing at baseline"
 )
-DM3g="$REPO3g/design.md"
-cat > "$DM3g" <<'EOF'
+DM3u="$REPO3u/design.md"
+cat > "$DM3u" <<'EOF'
 ```acceptance
 SPEC-1[guard]: invariant that must not regress
 TESTFILES:
-tests/guard-unobserved-test.sh
+tests/guard-bare-test.sh
 ```
 EOF
 set +e
-OUT3g="$(acceptance_negctl_check "$DM3g" "$REPO3g")"; RC3g=$?
+OUT3u="$(acceptance_negctl_check "$DM3u" "$REPO3u")"; RC3u=$?
 set -e
-assert_eq "[#2129] NC-F2b: rc≠0 with no tagged verdict → NEGCTL SKIP guard_unobserved" \
-    "NEGCTL SKIP SPEC-1 guard_unobserved" "$(grep 'SPEC-1' <<<"$OUT3g")"
-assert_eq "[#2129] NC-F2b: an unobserved guard is not a violation (rc=0)" "0" "$RC3g"
-# The design-gate's precheck shares the helper and must agree.
-set +e
-OUT3g_pre="$(acceptance_negctl_guard_precheck "$DM3g" "$REPO3g")"; RC3g_pre=$?
-set -e
-assert_eq "[#2129] NC-F2b: guard_precheck → GUARD SKIP guard_unobserved" \
-    "GUARD SKIP SPEC-1 guard_unobserved" "$(grep 'SPEC-1' <<<"$OUT3g_pre")"
-assert_eq "[#2129] NC-F2b: guard_precheck rc=0" "0" "$RC3g_pre"
-# A custom runner emits no ✓/✗ at all, so the file rc still governs there.
-set +e
-OUT3g_cmd="$(ZBUILD_ACCEPTANCE_RUN_CMD='bash' acceptance_negctl_check "$DM3g" "$REPO3g")"
-set -e
-assert_eq "[#2129] NC-F2b: under ZBUILD_ACCEPTANCE_RUN_CMD the file rc governs (regressed)" \
-    "NEGCTL FAIL SPEC-1 guard_regressed" "$(grep 'SPEC-1' <<<"$OUT3g_cmd")"
+assert_eq "[#2129] NC-F2b: a bare guard test failing at baseline stays guard_regressed" \
+    "NEGCTL FAIL SPEC-1 guard_regressed" "$(grep 'SPEC-1' <<<"$OUT3u")"
+assert_eq "[#2129] NC-F2b: …and fails the check (rc=1)" "1" "$RC3u"
 
 # ── NC-F2c (#2129): an unrecognised guard-verdict word is infra, never a pass ──
 # The consumer arms spelt `held` as `*)`, so any word the helper did not mean

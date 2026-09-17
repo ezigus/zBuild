@@ -6,6 +6,8 @@
 # iteration. A hit is validated against the manifest on disk (still present,
 # still that id) so a fixture rewritten mid-test cannot serve a stale path;
 # a miss is never memoised because fixtures are created after first lookup.
+# The memo is a file under $ZBUILD_STATE_DIR because nearly every caller runs
+# the lookup in a `$( )` capture, where a shell variable would die.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,6 +22,9 @@ source "$REPO_ROOT/scripts/lib/manifest-graph.sh"
 print_test_header "manifest_graph_collect — memoised per (root, stage) (#2129)"
 setup_test_env "manifest-graph-collect-memo"
 
+# The callers that matter run the lookup inside `$( )`, so the memo has to
+# survive a subshell: it lives under the run's state dir.
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"; mkdir -p "$ZBUILD_STATE_DIR"
 PROOT="$TEST_TEMP_DIR/plugins"
 mkdir -p "$PROOT/tool/mg-a" "$PROOT/tool/mg-b"
 printf 'id: mg-a\nname: A\nkind: tool\nversion: 0.0.1\n' > "$PROOT/tool/mg-a/manifest.yaml"
@@ -37,8 +42,13 @@ assert_eq "[SPEC-1] …with one walk" "1" "$(_walks)"
 p2="$(manifest_graph_collect "$PROOT" mg-a)"
 assert_eq "[SPEC-2] the second lookup returns the same path" "$p1" "$p2"
 assert_eq "[SPEC-2] …without walking again" "1" "$(_walks)"
-manifest_graph_collect "$PROOT" mg-b >/dev/null
+_pb="$(manifest_graph_collect "$PROOT" mg-b)"
 assert_eq "[SPEC-2] a different stage walks once more" "2" "$(_walks)"
+: > "$WALKS"
+unset ZBUILD_STATE_DIR
+_pn="$(manifest_graph_collect "$PROOT" mg-a)"; _pn="$(manifest_graph_collect "$PROOT" mg-a)"
+assert_eq "[SPEC-2b] with no state dir a \$( ) caller cannot be served from memory (2 walks)" "2" "$(_walks)"
+export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
 
 # A miss is not memoised: the fixture may appear later.
 manifest_graph_collect "$PROOT" mg-c >/dev/null 2>&1

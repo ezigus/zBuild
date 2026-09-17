@@ -113,7 +113,7 @@ fi
 assert_contains "[#1959] the manifest declares config.valid_failure_classes" \
     "$(cat "$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml")" "valid_failure_classes:"
 assert_contains "[#1959] …covering not_passing_at_head" \
-    "$(awk '/valid_failure_classes:/,/^[[:space:]]*[a-z_]+:/' "$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml")" "not_passing_at_head"
+    "$(grep -A20 'valid_failure_classes:' "$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml")" "not_passing_at_head"
 assert_contains "[#1959] the event is registered in the manifest's provides.events" \
     "$(cat "$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml")" "acceptance.gate.unknown_failure_class"
 
