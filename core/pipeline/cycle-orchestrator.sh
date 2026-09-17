@@ -807,8 +807,10 @@ _cycle_check_abort_when() {
 # ─── _cycle_route_back_early_matches <cycle_id> <blob> <iter> (#2119) ───────
 # The early-rewind condition: an edge is declared, budget remains, this is not
 # already the last iteration (exhaustion handles that), and the predicate
-# matches this iteration's blob. Quiet: the predicate event is emitted once,
-# by the conversion block that follows.
+# matches this iteration's blob. The probe here emits the predicate event
+# (eb_emit_event writes to the events file, not stdout); the conversion block
+# that follows sees _CYCLE_RB_EARLY and skips re-running the predicate, so
+# the event is emitted once per iteration.
 _cycle_route_back_early_matches() {
     local cid="$1" blob="$2" it="$3"
     local to_var="_TPL_CYCLE_ROUTE_BACK_TO_${cid//-/_}"
@@ -827,6 +829,9 @@ _cycle_route_back_early_matches() {
 _cycle_route_back_budget_left() {
     local cid="$1" safe passes budget cnt max
     safe="${cid//-/_}"
+    # The runner counts total forward PASSES starting at 1 (runner.sh:
+    # `_RUNNER_ROUTE_BACK_PASSES=1`; a rewind is allowed while passes < budget),
+    # so the absent-runner default mirrors that, not a count of rewinds.
     passes="${_RUNNER_ROUTE_BACK_PASSES:-1}"; budget="${_RUNNER_ROUTE_BACK_BUDGET:-2}"
     local cnt_var="_RUNNER_ROUTE_BACK_EDGE_${safe}" max_var="_TPL_CYCLE_ROUTE_BACK_MAX_${safe}"
     cnt="${!cnt_var:-0}"; max="${!max_var:-2}"
@@ -2231,6 +2236,7 @@ cycle_orchestrator_run() {
     # cycle. A NESTED cycle sets this to its own id in the by-severity reroute so
     # the runner honors the INNER edge's declared `max`, not the outer unit's.
     _CYCLE_ROUTE_BACK_EDGE_ID=""
+    _CYCLE_RB_EARLY=0   # #2119: the early-match hand-off never outlives a run
     _CYCLE_LAST_ITERATIONS=0
     # #2117: a reusable verification belongs to THIS cycle run only.
     _CYCLE_VERIFIED_FP=""; _CYCLE_VERIFIED_ITER=""; _CYCLE_VERIFIED_BLOB=""
