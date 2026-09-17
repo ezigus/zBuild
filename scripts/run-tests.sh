@@ -282,6 +282,55 @@ _rt_tier_budget() {
   fi
 }
 
+# Defined here, above the --files early exit, because #2123 runs the targeted
+# subset through the same pin-aware pool as a tier.
+# #991 serial-pin escape hatch: basename globs of integration tests that MUST
+# stay serial even though the tier is parallel-safe by default. EMPTY by default
+# — the #989/#990 hermeticity work made all 150 integration tests parallel-safe.
+# Populate ONLY when the 10× stability run proves a specific file flakes under
+# concurrency, each entry with a one-line reason comment. ZBUILD_SERIAL_TESTS
+# (space/newline-separated basename globs) merges with this array at runtime so
+# an operator can pin a file without editing source.
+# #991: these integration tests assert a TIGHT wall-clock budget (signal-abort
+# latency / kill-mid-run timing, 4–8s) that is only reliable on an un-saturated
+# host. They pass serially (the 170/170 baseline) but fail when the parallel pool
+# runs 8 heavy tests at once and CPU saturation stretches signal delivery + runner
+# startup past the budget. Pinned to the serial bucket so they run un-loaded after
+# the pool. (Follow-up: make the budgets load-tolerant so they can parallelize.)
+_ZBUILD_SERIAL_PIN=(
+  'core-pipeline-runner-test.sh'        # sleep-stub + kill-mid-run timing (~193s)
+  'compound-quality-pipeline-test.sh'   # heavy full-pipeline timing under load
+  'full-pipeline-sigint-test.sh'        # asserts pipeline halts within 6–8s
+  'sigint-aborts-pipeline-test.sh'      # asserts total wall-clock < 4s
+  'sigterm-aborts-pipeline-test.sh'     # asserts wall-clock <= 5s
+  'manifest-sync-similarity-test.sh'    # MS5 asserts manifest mtime preserved — wall-clock/mtime sensitive under load (CI #1047)
+  'gh-automation-idempotency-log-test.sh' # #1425: unconditional sleep 1 in G8 mtime assertion — load-sensitive under a saturated unit pool
+)
+
+# _rt_is_serial_pinned <basename> — true if the basename matches any pin glob
+# from _ZBUILD_SERIAL_PIN or the ZBUILD_SERIAL_TESTS env override.
+_rt_is_serial_pinned() {
+    local base="$1" glob
+    # `set -f` for the loop word-split: ZBUILD_SERIAL_TESTS is intentionally
+    # split on whitespace into globs, but must NOT undergo pathname expansion —
+    # an unquoted pin like `*-test.sh` would otherwise expand to matching files
+    # in the CWD before being used as a pattern. noglob disables that expansion
+    # only; it does NOT affect the `[[ "$base" == $glob ]]` pattern match below.
+    local _had_noglob=0
+    [[ $- == *f* ]] && _had_noglob=1
+    set -f
+    for glob in "${_ZBUILD_SERIAL_PIN[@]+"${_ZBUILD_SERIAL_PIN[@]}"}" ${ZBUILD_SERIAL_TESTS:-}; do
+        [[ -n "$glob" ]] || continue
+        # shellcheck disable=SC2053
+        if [[ "$base" == $glob ]]; then
+            [[ "$_had_noglob" -eq 0 ]] && set +f
+            return 0
+        fi
+    done
+    [[ "$_had_noglob" -eq 0 ]] && set +f
+    return 1
+}
+
 # #846: targeted subset mode — run ONLY the given files (each in its own process,
 # so a failing file never blocks the rest — no `&&` short-circuit), emitting the
 # same `unit: N/M passed` + `unit: FAIL <f>` format run_tier uses. This keeps the
@@ -307,6 +356,21 @@ fi
 if [[ "${1:-}" == "--files" ]]; then
   shift
   _tf_passed=0; _tf_failed=0; _tf_total=0; _tf_timedout=0
+  # #2123: the subset runs through the same bounded pool a tier uses — a
+  # 286-file targeted rerun ran one after another for 39 minutes on #1841.
+  # Serial-pinned files run first, alone; the rest fan out to JOBS slots.
+  # Results are reported in ARGUMENT order after every job returns, so the
+  # `unit: FAIL <f>` / `unit: P/T passed` grammar plugins/tool/test/lib/parse.sh
+  # reads is byte-identical to the serial run. ZBUILD_TEST_PARALLEL_JOBS=0 is
+  # the serial escape hatch, as in run_tier.
+  if [[ -z "${ZBUILD_TEST_PARALLEL_JOBS+x}" ]]; then
+    _tf_jobs="$(_zb_default_jobs)"
+  else
+    _tf_jobs="$ZBUILD_TEST_PARALLEL_JOBS"
+  fi
+  [[ "$_tf_jobs" =~ ^[0-9]+$ ]] || _tf_jobs=0
+  _tf_job_dir="$(mktemp -d -t zbuild-files-par.XXXXXX)"
+  _tf_slot=0; _tf_inflight=0
   for _tf in "$@"; do
     [[ -n "$_tf" ]] || continue
     # #929: only execute *-test.sh files. The targeted-rerun list can include
@@ -328,18 +392,45 @@ if [[ "${1:-}" == "--files" ]]; then
       continue
     fi
     _tf_total=$((_tf_total + 1))
-    _tf_out="$(mktemp -t zbuild-test-targeted.XXXXXX)"
-    _tf_rc=0
-    _rt_run "$_tf" "$_tf_out" || _tf_rc=$?
+    _tf_slot=$((_tf_slot + 1))
+    _tf_base="$_tf_job_dir/$_tf_slot"
+    printf '%s' "$_tf" > "${_tf_base}.file"
+    if [[ "$_tf_jobs" -gt 0 ]] && ! _rt_is_serial_pinned "$(basename "$_tf")"; then
+      (
+        if _rt_run "$_tf" "${_tf_base}.out"; then
+          printf '0' > "${_tf_base}.rc"; rm -f "${_tf_base}.out"
+        else
+          printf '%s' "$?" > "${_tf_base}.rc"
+        fi
+      ) &
+      _tf_inflight=$((_tf_inflight + 1))
+      if [[ "$_tf_inflight" -ge "$_tf_jobs" ]]; then
+        wait -n 2>/dev/null || true
+        _tf_inflight=$((_tf_inflight - 1))
+      fi
+    else
+      # Pinned (or JOBS=0): run in the foreground, in submission order, before
+      # anything else is started — same slot files, so aggregation is one loop.
+      if _rt_run "$_tf" "${_tf_base}.out"; then
+        printf '0' > "${_tf_base}.rc"; rm -f "${_tf_base}.out"
+      else
+        printf '%s' "$?" > "${_tf_base}.rc"
+      fi
+    fi
+  done
+  wait 2>/dev/null || true
+  for _tf_i in $(seq 1 "$_tf_slot"); do
+    _tf_rc="$(cat "$_tf_job_dir/$_tf_i.rc" 2>/dev/null || printf '1')"
+    _tf="$(cat "$_tf_job_dir/$_tf_i.file" 2>/dev/null || printf 'unknown')"
     if [[ "$_tf_rc" -eq 0 ]]; then
-      _tf_passed=$((_tf_passed + 1)); rm -f "$_tf_out"
+      _tf_passed=$((_tf_passed + 1))
     else
       _tf_failed=$((_tf_failed + 1))
       _rt_is_timeout_rc "$_tf_rc" && _tf_timedout=$((_tf_timedout + 1))
-      _rt_report_failure "unit" "$_tf" "$_tf_rc" "$_tf_out"
-      rm -f "$_tf_out"
+      _rt_report_failure "unit" "$_tf" "$_tf_rc" "$_tf_job_dir/$_tf_i.out"
     fi
   done
+  rm -rf "$_tf_job_dir"
   # Skips are 0 here, not counted: this path never arms ZBUILD_TEST_SKIP_LOG, so a
   # skipped file is invisible to it. Rendering still goes through the one helper.
   echo "unit: $_tf_passed/$_tf_total passed$(_rt_build_note 0 "$_tf_timedout")"
@@ -398,53 +489,6 @@ if [[ -n "$_RT_COVERAGE_TRACE" ]]; then
   export BASH_XTRACEFD=8
   export BASH_ENV="$_RT_BASH_ENV_FILE"
 fi
-
-# #991 serial-pin escape hatch: basename globs of integration tests that MUST
-# stay serial even though the tier is parallel-safe by default. EMPTY by default
-# — the #989/#990 hermeticity work made all 150 integration tests parallel-safe.
-# Populate ONLY when the 10× stability run proves a specific file flakes under
-# concurrency, each entry with a one-line reason comment. ZBUILD_SERIAL_TESTS
-# (space/newline-separated basename globs) merges with this array at runtime so
-# an operator can pin a file without editing source.
-# #991: these integration tests assert a TIGHT wall-clock budget (signal-abort
-# latency / kill-mid-run timing, 4–8s) that is only reliable on an un-saturated
-# host. They pass serially (the 170/170 baseline) but fail when the parallel pool
-# runs 8 heavy tests at once and CPU saturation stretches signal delivery + runner
-# startup past the budget. Pinned to the serial bucket so they run un-loaded after
-# the pool. (Follow-up: make the budgets load-tolerant so they can parallelize.)
-_ZBUILD_SERIAL_PIN=(
-  'core-pipeline-runner-test.sh'        # sleep-stub + kill-mid-run timing (~193s)
-  'compound-quality-pipeline-test.sh'   # heavy full-pipeline timing under load
-  'full-pipeline-sigint-test.sh'        # asserts pipeline halts within 6–8s
-  'sigint-aborts-pipeline-test.sh'      # asserts total wall-clock < 4s
-  'sigterm-aborts-pipeline-test.sh'     # asserts wall-clock <= 5s
-  'manifest-sync-similarity-test.sh'    # MS5 asserts manifest mtime preserved — wall-clock/mtime sensitive under load (CI #1047)
-  'gh-automation-idempotency-log-test.sh' # #1425: unconditional sleep 1 in G8 mtime assertion — load-sensitive under a saturated unit pool
-)
-
-# _rt_is_serial_pinned <basename> — true if the basename matches any pin glob
-# from _ZBUILD_SERIAL_PIN or the ZBUILD_SERIAL_TESTS env override.
-_rt_is_serial_pinned() {
-    local base="$1" glob
-    # `set -f` for the loop word-split: ZBUILD_SERIAL_TESTS is intentionally
-    # split on whitespace into globs, but must NOT undergo pathname expansion —
-    # an unquoted pin like `*-test.sh` would otherwise expand to matching files
-    # in the CWD before being used as a pattern. noglob disables that expansion
-    # only; it does NOT affect the `[[ "$base" == $glob ]]` pattern match below.
-    local _had_noglob=0
-    [[ $- == *f* ]] && _had_noglob=1
-    set -f
-    for glob in "${_ZBUILD_SERIAL_PIN[@]+"${_ZBUILD_SERIAL_PIN[@]}"}" ${ZBUILD_SERIAL_TESTS:-}; do
-        [[ -n "$glob" ]] || continue
-        # shellcheck disable=SC2053
-        if [[ "$base" == $glob ]]; then
-            [[ "$_had_noglob" -eq 0 ]] && set +f
-            return 0
-        fi
-    done
-    [[ "$_had_noglob" -eq 0 ]] && set +f
-    return 1
-}
 
 # _rt_run_serial_file <tier> <file> <cov_dir> — run one test file serially,
 # updating the caller's passed/failed/total. Factored so both the serial path
@@ -814,12 +858,17 @@ case "$tier" in
     }
     trap '_rt_signal_abort' INT TERM
     if [[ $_tier_conc -eq 1 ]]; then
-      # Split the job budget: unit gets floor(B/2), mutation gets the rest. The
-      # other three file-tiers run serial within themselves (JOBS=0) — they are
-      # short and overlap each other at the tier level, so spending the budget on
-      # the two genuinely parallelizable tiers maximizes throughput.
+      # Split the job budget: unit and integration each get ceil(B/2), mutation
+      # gets the rest. e2e and golden run serial within themselves (JOBS=0) —
+      # they are short and overlap the others at the tier level.
+      # #2123: integration is in _par_safe_tiers (#991) and is the long pole —
+      # 243 files / 4,039s serial was the pipeline's 45–54-minute test stage —
+      # so it no longer runs at JOBS=0. The mild oversubscription (2+2+2 on
+      # 4 vCPU) is deliberate: the tiers are fork-bound, not CPU-bound
+      # (sys > user on every file in CI, see _rt_run_inner).
       _B="$(_rt_tier_budget)"
-      _ujobs=$(( _B / 2 )); (( _ujobs < 1 )) && _ujobs=1
+      _ujobs=$(( (_B + 1) / 2 )); (( _ujobs < 1 )) && _ujobs=1
+      _ijobs=$_ujobs
       _mjobs=$(( _B - _ujobs )); (( _mjobs < 1 )) && _mjobs=1
       buf_dir="$(mktemp -d -t zbuild-tier-buf.XXXXXX)"
       # Launch each tier in its own background subshell. Each writes stdout and
@@ -835,11 +884,11 @@ case "$tier" in
           # Test hook: simulate a tier subshell killed before rc_file write (#1662).
           [[ "${_ZBUILD_TEST_ABORT_TIER:-}" == "$t" ]] && exit 137
           export TMPDIR="$buf_dir/tmp-$t"; mkdir -p "$TMPDIR"
-          if [[ "$t" == unit ]]; then
-            export ZBUILD_TEST_PARALLEL_JOBS=$_ujobs
-          else
-            export ZBUILD_TEST_PARALLEL_JOBS=0
-          fi
+          case "$t" in
+            unit)        export ZBUILD_TEST_PARALLEL_JOBS=$_ujobs ;;
+            integration) export ZBUILD_TEST_PARALLEL_JOBS=$_ijobs ;;
+            *)           export ZBUILD_TEST_PARALLEL_JOBS=0 ;;
+          esac
           # #993: give each tier its OWN private trace file so concurrent tiers
           # never share the merged-trace fd. run_tier merges its per-test traces
           # into this path; the parent concatenates them in canonical order below.
