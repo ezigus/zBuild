@@ -804,6 +804,41 @@ _cycle_check_abort_when() {
     return $_rc
 }
 
+# ─── _cycle_route_back_early_matches <cycle_id> <blob> <iter> (#2119) ───────
+# The early-rewind condition: an edge is declared, budget remains, this is not
+# already the last iteration (exhaustion handles that), and the predicate
+# matches this iteration's blob. The probe here emits the predicate event
+# (eb_emit_event writes to the events file, not stdout); the conversion block
+# that follows sees _CYCLE_RB_EARLY and skips re-running the predicate, so
+# the event is emitted once per iteration.
+_cycle_route_back_early_matches() {
+    local cid="$1" blob="$2" it="$3"
+    local to_var="_TPL_CYCLE_ROUTE_BACK_TO_${cid//-/_}"
+    [[ -n "${!to_var:-}" ]] || return 1
+    _cycle_route_back_budget_left "$cid" || return 1
+    _cycle_check_max_iterations "$it" "$_CYCLE_MAX_ITER" && return 1
+    local _e=0; case $- in *e*) _e=1 ;; esac
+    set +e; _cycle_check_route_back "$blob" >/dev/null 2>&1; local m=$?; [[ $_e -eq 1 ]] && set -e
+    [[ $m -eq 0 ]]
+}
+
+# ─── _cycle_route_back_budget_left <cycle_id> (#2119) ───────────────────────
+# True while the runner would still honour a rewind for this edge: global
+# passes below ZBUILD_ROUTE_BACK_BUDGET and this edge below its `max`. Reads
+# the runner's dynamically-scoped locals; absent (unit harness) → available.
+_cycle_route_back_budget_left() {
+    local cid="$1" safe passes budget cnt max
+    safe="${cid//-/_}"
+    # The runner counts total forward PASSES starting at 1 (runner.sh:
+    # `_RUNNER_ROUTE_BACK_PASSES=1`; a rewind is allowed while passes < budget),
+    # so the absent-runner default mirrors that, not a count of rewinds.
+    passes="${_RUNNER_ROUTE_BACK_PASSES:-1}"; budget="${_RUNNER_ROUTE_BACK_BUDGET:-2}"
+    local cnt_var="_RUNNER_ROUTE_BACK_EDGE_${safe}" max_var="_TPL_CYCLE_ROUTE_BACK_MAX_${safe}"
+    cnt="${!cnt_var:-0}"; max="${!max_var:-2}"
+    [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=2
+    (( passes < budget && cnt < max ))
+}
+
 # ─── _cycle_check_route_back <verdicts_blob> ─────────────────────────────────
 # #1217 (ADR-045). Mirrors _cycle_check_abort_when against the per-cycle
 # _TPL_CYCLE_ROUTE_BACK_{STAGE,FIELD,OP,VALUE}_<cid> predicate. Returns 0 if the
@@ -2201,6 +2236,7 @@ cycle_orchestrator_run() {
     # cycle. A NESTED cycle sets this to its own id in the by-severity reroute so
     # the runner honors the INNER edge's declared `max`, not the outer unit's.
     _CYCLE_ROUTE_BACK_EDGE_ID=""
+    _CYCLE_RB_EARLY=0   # #2119: the early-match hand-off never outlives a run
     _CYCLE_LAST_ITERATIONS=0
     # #2117: a reusable verification belongs to THIS cycle run only.
     _CYCLE_VERIFIED_FP=""; _CYCLE_VERIFIED_ITER=""; _CYCLE_VERIFIED_BLOB=""
@@ -2591,6 +2627,16 @@ cycle_orchestrator_run() {
             # the cycle is not expandable). Abandon cleanly — never loop.
             _CYCLE_LAST_TERMINATED_REASON="blocked_on_scope"
             overall_status="blocked_on_scope"; term_rc=7
+        elif _cycle_route_back_early_matches "$cycle_id" "$verdicts_blob" "$iter"; then
+            # #2119: a gate declared a fault the template routes upstream. Rewind
+            # NOW (the block below converts this correctable terminal to rc=11)
+            # instead of re-failing the same gate until max_iterations — #1841
+            # burned four iterations that way. Only while the budget lasts; at
+            # exhaustion the fallback below still applies.
+            _cycle_emit "cycle.route_back.early" "iter=$iter" "max=$_CYCLE_MAX_ITER"
+            _CYCLE_LAST_TERMINATED_REASON="specification_fault"
+            overall_status="max_iterations"; term_rc=2
+            _CYCLE_RB_EARLY=1
         elif _cycle_check_max_iterations "$iter" "$_CYCLE_MAX_ITER"; then
             # #1208 — THE single fatal condition: the cycle exhausted its
             # iteration budget WITHOUT a clean, passing convergence. Split
@@ -2706,7 +2752,11 @@ cycle_orchestrator_run() {
             if [[ -n "${!_rb_to_var:-}" ]]; then
                 local _rce=0; case $- in *e*) _rce=1 ;; esac
                 local _rb_matched=1
-                set +e; _cycle_check_route_back "$verdicts_blob"; _rb_matched=$?; [[ $_rce -eq 1 ]] && set -e
+                if [[ "${_CYCLE_RB_EARLY:-0}" -eq 1 ]]; then
+                    _rb_matched=0; _CYCLE_RB_EARLY=0   # #2119: already matched this iteration
+                else
+                    set +e; _cycle_check_route_back "$verdicts_blob"; _rb_matched=$?; [[ $_rce -eq 1 ]] && set -e
+                fi
                 if [[ $_rb_matched -eq 0 ]]; then
                     _CYCLE_ROUTE_BACK_FALLBACK_RC=$term_rc
                     # #1227: stash the ORIGINAL terminal reason alongside the

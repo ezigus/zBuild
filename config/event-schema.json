@@ -69,6 +69,7 @@
     "cycle.divergence",
     "cycle.iteration.complete",
     "cycle.iteration.reused",
+    "cycle.route_back.early",
     "cycle.aborted",
     "cycle.config.invalid",
     "cycle.feedback.missing",
