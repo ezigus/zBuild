@@ -1,0 +1,19 @@
+{
+  "result_contract": 2,
+  "schema_version": 1,
+  "verdict": "fail",
+  "disposition": "complete",
+  "reason": "design structural violations: 4 found",
+  "violations": [
+    "GUARD_REGRESSED_AT_BASELINE SPEC-9 (tagged [guard] but its assertion FAILS at the merge-base — a guard holds there by definition; if this SPEC describes a change, tag it [change])",
+    "GUARD_REGRESSED_AT_BASELINE SPEC-12 (tagged [guard] but its assertion FAILS at the merge-base — a guard holds there by definition; if this SPEC describes a change, tag it [change])",
+    "GUARD_REGRESSED_AT_BASELINE SPEC-13 (tagged [guard] but its assertion FAILS at the merge-base — a guard holds there by definition; if this SPEC describes a change, tag it [change])",
+    "GUARD_REGRESSED_AT_BASELINE SPEC-14 (tagged [guard] but its assertion FAILS at the merge-base — a guard holds there by definition; if this SPEC describes a change, tag it [change])"
+  ],
+  "guard_precheck": {
+    "declared": 6,
+    "verified": 2,
+    "failed": 4,
+    "skipped": []
+  }
+}
