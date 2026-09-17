@@ -160,4 +160,18 @@ fi
 assert_contains "[SPEC-6] and the cleared summary still states the current verdict" \
     "$_after" "pass"
 
+# ─── [SPEC-7] (#2129) unparseable library output is a failure, not a skip ───
+# `*)` read anything that was not PASS/FAIL — a crashed helper, an empty
+# string — as "no shape change" and let the diff through.
+print_test_section "SPEC-7 — output that is neither PASS, FAIL nor SKIP fails closed"
+_run_with "bash: line 3: syntax error near unexpected token"
+assert_eq "[SPEC-7] unparseable output → verdict=fail" "fail" "$(_verdict_of)"
+assert_eq "[SPEC-7] …with reason=unparseable_output" "unparseable_output" \
+    "$(jq -r '.reason // ""' "$RESULT" 2>/dev/null || true)"
+assert_contains "[SPEC-7] the summary says so" "$(cat "$DETAIL" 2>/dev/null)" "unparseable_output"
+_run_with ""
+assert_eq "[SPEC-7] empty output → verdict=fail" "fail" "$(_verdict_of)"
+_run_with "SHAPE_FLOOR SKIP no_shape_change"
+assert_eq "[SPEC-7 guard] an explicit SKIP still skips" "skip" "$(_verdict_of)"
+
 print_test_results

@@ -164,8 +164,10 @@ REPO3b="$(setup_git_temp_repo negctl-repo3b)"
     "$GIT" checkout -q -b feature
     mkdir -p tests
     printf '# guard fixture\n' > guard_impl.sh
-    # This guard test exits 1 — simulates an invariant already broken at baseline.
-    printf '#!/usr/bin/env bash\n# [SPEC-1] guard: invariant broken\nexit 1\n' > tests/guard-fail-test.sh
+    # This guard test ASSERTS and fails — a ✗-marked [SPEC-1] line at the
+    # baseline is the evidence guard_regressed requires (#2129: a bare exit 1
+    # with no tagged verdict is guard_unobserved, see NC-F2b).
+    printf '#!/usr/bin/env bash\necho "✗ [SPEC-1] guard: invariant broken"\nexit 1\n' > tests/guard-fail-test.sh
     chmod +x tests/guard-fail-test.sh
     "$GIT" add -A; "$GIT" commit -q -m "feat: guard spec with broken invariant"
 )
@@ -184,6 +186,65 @@ set -e
 assert_eq "[SPEC-2] NC-F2: guard SPEC fails at baseline → NEGCTL FAIL guard_regressed" \
     "NEGCTL FAIL SPEC-1 guard_regressed" "$(grep 'SPEC-1' <<<"$OUT3b")"
 assert_eq "[SPEC-2] NC-F2: guard FAIL guard_regressed yields rc=1" "1" "$RC3b"
+
+# ── NC-F2b (#2129): guard baseline exits non-zero with NO tagged verdict ────────
+# _negctl_guard_verdict's own header says a baseline run that never reached an
+# assertion "proves nothing either way — warn, never block". The parse and
+# 126/127 arms honoured that; a plain rc=1 with no ✓/✗ for the SPEC fell
+# through to `regressed` → fault=specification → a design rewind on nothing.
+REPO3g="$(setup_git_temp_repo negctl-repo3g)"
+(
+    cd "$REPO3g"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    printf '# guard fixture\n' > guard_impl.sh
+    # Dies before any [SPEC-1] assertion runs: no verdict line, rc=1.
+    printf '#!/usr/bin/env bash\nset -e\n# [SPEC-1] guard: never reached\nfalse\necho "✓ [SPEC-1] unreachable"\n' > tests/guard-unobserved-test.sh
+    chmod +x tests/guard-unobserved-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: guard whose baseline run dies early"
+)
+DM3g="$REPO3g/design.md"
+cat > "$DM3g" <<'EOF'
+```acceptance
+SPEC-1[guard]: invariant that must not regress
+TESTFILES:
+tests/guard-unobserved-test.sh
+```
+EOF
+set +e
+OUT3g="$(acceptance_negctl_check "$DM3g" "$REPO3g")"; RC3g=$?
+set -e
+assert_eq "[#2129] NC-F2b: rc≠0 with no tagged verdict → NEGCTL SKIP guard_unobserved" \
+    "NEGCTL SKIP SPEC-1 guard_unobserved" "$(grep 'SPEC-1' <<<"$OUT3g")"
+assert_eq "[#2129] NC-F2b: an unobserved guard is not a violation (rc=0)" "0" "$RC3g"
+# The design-gate's precheck shares the helper and must agree.
+set +e
+OUT3g_pre="$(acceptance_negctl_guard_precheck "$DM3g" "$REPO3g")"; RC3g_pre=$?
+set -e
+assert_eq "[#2129] NC-F2b: guard_precheck → GUARD SKIP guard_unobserved" \
+    "GUARD SKIP SPEC-1 guard_unobserved" "$(grep 'SPEC-1' <<<"$OUT3g_pre")"
+assert_eq "[#2129] NC-F2b: guard_precheck rc=0" "0" "$RC3g_pre"
+# A custom runner emits no ✓/✗ at all, so the file rc still governs there.
+set +e
+OUT3g_cmd="$(ZBUILD_ACCEPTANCE_RUN_CMD='bash' acceptance_negctl_check "$DM3g" "$REPO3g")"
+set -e
+assert_eq "[#2129] NC-F2b: under ZBUILD_ACCEPTANCE_RUN_CMD the file rc governs (regressed)" \
+    "NEGCTL FAIL SPEC-1 guard_regressed" "$(grep 'SPEC-1' <<<"$OUT3g_cmd")"
+
+# ── NC-F2c (#2129): an unrecognised guard-verdict word is infra, never a pass ──
+# The consumer arms spelt `held` as `*)`, so any word the helper did not mean
+# to emit read as "the guard held".
+_saved_gv="$(declare -f _negctl_guard_verdict)"
+_negctl_guard_verdict() { printf 'wobble'; }
+set +e
+OUT3h="$(acceptance_negctl_check "$DM3" "$REPO3")"
+OUT3h_pre="$(acceptance_negctl_guard_precheck "$DM3" "$REPO3")"
+set -e
+eval "$_saved_gv"
+assert_eq "[#2129] NC-F2c: an unknown guard verdict word → NEGCTL ERROR harness:SPEC-1" \
+    "NEGCTL ERROR harness:SPEC-1" "$(grep 'SPEC-1' <<<"$OUT3h")"
+assert_eq "[#2129] NC-F2c: …and GUARD SKIP harness in the precheck" \
+    "GUARD SKIP SPEC-1 harness" "$(grep 'SPEC-1' <<<"$OUT3h_pre")"
 
 # ── NC-F3: [SPEC-3] guard SPEC timeout → NEGCTL ERROR timeout (advisory) ─────────
 # A timeout on the guard baseline run must be advisory (same as change-SPEC path),

@@ -88,4 +88,33 @@ assert_eq "[#2109] no_testfiles only → recoverable (test-author/build can crea
 assert_eq "[#2109] reachability harness error → advisory (infra, never a violation)" "advisory" \
     "$(_ag_classify_disposition "reachability_error:harness:impl.sh tests/t-test.sh")"
 
+# ── #1959 / #2129: the fallback inverts and is audible ───────────────────────
+# Every entry in the allowlist was added after a run died on the class it was
+# missing (#1583, #1585, #1686, #1670, #2097). A class nobody remembered to
+# name must re-iterate — the cycle budget is the backstop — not halt.
+export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events-1959"; mkdir -p "$ZBUILD_EVENTS_DIR"
+export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
+assert_eq "[#1959] an unrecognised class → recoverable, not terminal" "recoverable" \
+    "$(_ag_classify_disposition "brand_new_class:SPEC-9")"
+assert_event_emitted "[#1959] …and it is evented" "$ZBUILD_EVENTS_JSONL" "acceptance.gate.unknown_failure_class"
+assert_contains "[#1959] the event names the class" \
+    "$(grep 'unknown_failure_class' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)" '"class":"brand_new_class"'
+assert_eq "[#1959] malformed_acceptance_block is still terminal by name" "terminal" \
+    "$(_ag_classify_disposition "malformed_acceptance_block")"
+assert_eq "[#1959] no_testfile → recoverable, like untagged_spec" "recoverable" \
+    "$(_ag_classify_disposition "no_testfile:SPEC-1")"
+if declare -F _ag_failure_class_disposition >/dev/null 2>&1; then
+    assert_eq "[#1959] the table is a function the lint can read: tautology" "recoverable" "$(_ag_failure_class_disposition tautology)"
+    assert_eq "[#1959] the table is a function the lint can read: negctl_error" "advisory" "$(_ag_failure_class_disposition negctl_error)"
+    assert_eq "[#1959] the table is a function the lint can read: unknown → empty" "" "$(_ag_failure_class_disposition wobble)"
+else
+    assert_fail "[#1959] _ag_failure_class_disposition exists" "function not defined"
+fi
+assert_contains "[#1959] the manifest declares config.valid_failure_classes" \
+    "$(cat "$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml")" "valid_failure_classes:"
+assert_contains "[#1959] …covering not_passing_at_head" \
+    "$(awk '/valid_failure_classes:/,/^[[:space:]]*[a-z_]+:/' "$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml")" "not_passing_at_head"
+assert_contains "[#1959] the event is registered in the manifest's provides.events" \
+    "$(cat "$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml")" "acceptance.gate.unknown_failure_class"
+
 print_test_results

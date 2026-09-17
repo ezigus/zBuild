@@ -228,5 +228,27 @@ assert_eq "[#2108] the model is invoked once per SPEC when it drains stdin" \
 assert_contains "[#2108] the stage judged all 3 SPECs" \
     "$(cat "$_A3/spec-correspondence-summary.md" 2>/dev/null || true)" "judged 3 SPEC(s)"
 
+# ─── #2129: no SPEC ids → uncheckable, never "corresponds" ───────────────────
+# n=0 fell through the worst-wins ladder to `corresponds` — a gate that judged
+# nothing reporting that everything corresponds.
+_SC4="$TEST_TEMP_DIR/run4"; _A4="$_SC4/artifacts"; _R4="$_SC4/repo"
+mkdir -p "$_A4" "$_R4/tests"
+export ZBUILD_REPO_ROOT="$_R4" ZBUILD_ARTIFACT_DIR="$_A4"
+cat > "$_A4/design.md" <<'EOF'
+# Design
+```acceptance
+TESTFILES:
+tests/acc-test.sh
+```
+EOF
+printf 'diff --git a/x b/x\n+y\n' > "$_A4/diff.patch"
+printf '{"verdict":"pass","files_changed_count":1}' > "$_A4/build-summary.json"
+printf '{}' > "$_SC4/pipeline-state.json"
+set +e; spec_correspondence_run "spec-correspondence" "$_SC4/pipeline-state.json" >/dev/null 2>&1; set -e
+assert_eq "[#2129] zero SPEC ids → verdict=uncheckable" "uncheckable" \
+    "$(jq -r '.verdict // ""' "$_A4/spec-correspondence-result.json" 2>/dev/null || true)"
+assert_contains "[#2129] the reason says nothing was judged" \
+    "$(jq -r '.reason // ""' "$_A4/spec-correspondence-result.json" 2>/dev/null || true)" "no SPEC ids"
+
 print_test_results
 exit $((FAIL > 0))
