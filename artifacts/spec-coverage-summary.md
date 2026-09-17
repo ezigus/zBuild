@@ -1,5 +1,0 @@
-## spec-coverage — covered
-
-- Every explicit acceptance checkbox maps to at least one declared SPEC (exit-path coverage → SPEC-1/2/3/4, valid_verdicts → SPEC-7, no path literals → SPEC-14, router budgets/override → SPEC-11/12, passing-run compat → SPEC-1/2/9, primary output → SPEC-13); the design-gate failures are tagging errors ([guard] vs [change]) on SPEC-9/12/13/14, not missing coverage.
-
-- every requirement the issue states maps to a declared SPEC

@@ -1,1 +1,0 @@
-No files outside the design scope block pin the changed symbols. The prior verdict of `complete` holds.
