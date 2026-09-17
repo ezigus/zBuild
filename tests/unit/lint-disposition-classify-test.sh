@@ -32,8 +32,10 @@ _mk_plugin() {
     {
         printf 'id: %s\nname: Fixture\nkind: tool\nversion: 0.1.0\n\nconfig:\n' "$(basename "$dir")"
         case "${1:-}" in
-            NONE) : ;;
-            *)    printf '  valid_failure_classes:\n'; for c in "$@"; do printf '    - %s\n' "$c"; done ;;
+            NONE)  : ;;
+            EMPTY) printf '  valid_failure_classes: []\n' ;;
+            BARE)  printf '  valid_failure_classes:\n' ;;
+            *)     printf '  valid_failure_classes:\n'; for c in "$@"; do printf '    - %s\n' "$c"; done ;;
         esac
         printf '  tier_default: T0\n'
     } > "$dir/manifest.yaml"
@@ -66,6 +68,18 @@ _mk_plugin "$R2/undeclared" yes NONE
 _run_lint "$R2"
 assert_eq "[SPEC-2] lint exits 1 when a failures[] writer declares nothing" "1" "$LINT_RC"
 assert_contains "[SPEC-2] the failure names the manifest" "$LINT_OUT" "undeclared/manifest.yaml"
+
+print_test_section "2b. an explicit empty declaration is valid (review: no phantom 'list' class)"
+R2b="$TEST_TEMP_DIR/r2b"
+_mk_plugin "$R2b/none-inline" yes EMPTY
+_mk_plugin "$R2b/none-bare"   yes BARE
+_run_lint "$R2b"
+assert_eq "[SPEC-2b] valid_failure_classes: [] and a bare key both pass" "0" "$LINT_RC"
+if grep -q "class 'list'" <<< "$LINT_OUT"; then
+    assert_fail "[SPEC-2b] the word 'list' is never reported as a class" "$LINT_OUT"
+else
+    assert_pass "[SPEC-2b] the word 'list' is never reported as a class"
+fi
 
 print_test_section "3. a plugin that never writes failures[] is exempt"
 R3="$TEST_TEMP_DIR/r3"

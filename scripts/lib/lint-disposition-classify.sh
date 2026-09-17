@@ -28,7 +28,7 @@ fi
 # shellcheck source=./acceptance-disposition.sh
 source "$_LDC_DIR/acceptance-disposition.sh"
 
-# _ldc_classes <manifest> → "absent" | "list <c1> <c2> …" (block list under config:)
+# _ldc_classes <manifest> → "absent" | "empty" | "list <c1> <c2> …" (block list under config:)
 _ldc_classes() {
     awk '
         /^config:[[:space:]]*$/ { in_cfg=1; next }
@@ -42,6 +42,9 @@ _ldc_classes() {
         in_cfg && in_list && /^[[:space:]]+[^-[:space:]]/ { in_list=0 }
         END {
             if (!found) { print "absent"; exit }
+            # An explicit `[]` or a bare key is "writes none" — say so, rather
+            # than emitting a bare "list" the caller would read as a class.
+            if (n == 0) { print "empty"; exit }
             printf "list"; for (i = 0; i < n; i++) printf " %s", vals[i]; printf "\n"
         }
     ' "$1"
@@ -60,6 +63,9 @@ while IFS= read -r manifest; do
         absent)
             echo "✗ $plugin_rel: plugin.sh writes failures[] but the manifest declares no config.valid_failure_classes" >&2
             violations=$((violations + 1))
+            ;;
+        empty)
+            : # explicit "writes no class" — nothing to classify
             ;;
         list*)
             _ldc_list=()
