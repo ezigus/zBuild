@@ -453,8 +453,14 @@ spec5_cleanup_rc=$?
 set -e
 assert_eq "[SPEC-5] security_lens_cleanup is declared and returns 0" "0" "$spec5_cleanup_rc"
 
-# ─── Manifest assertions (SPEC-6, SPEC-7, SPEC-11, SPEC-13) ─────────────────
+# ─── Manifest assertions (SPEC-5, SPEC-6, SPEC-7, SPEC-11, SPEC-13) ─────────
 _MANIFEST_FILE="$PLUGIN_DIR/manifest.yaml"
+
+if grep -q 'security_lens_cleanup' "$_MANIFEST_FILE" 2>/dev/null; then
+    assert_pass "[SPEC-5] security_lens_cleanup hook is declared in the manifest"
+else
+    assert_fail "[SPEC-5] security_lens_cleanup hook is declared in the manifest"
+fi
 
 if grep -q 'result_contract: 2' "$_MANIFEST_FILE" 2>/dev/null; then
     assert_pass "[SPEC-6] manifest declares provides.result_contract: 2"
