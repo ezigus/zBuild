@@ -116,6 +116,29 @@ case "$out" in
     *) assert_pass "G4: missing path produced no phantom FAIL line" ;;
 esac
 
+# ─── #2123: --files runs through the same bounded pool as a tier ─────────────
+# A targeted rerun of 286 files ran them one after another (39 minutes on
+# #1841's iteration 2). Three 1-second files at JOBS=3 must finish in ~1s, and
+# the output grammar the verdict parser reads must be byte-identical to serial.
+print_test_section "#2123: --files is parallel"
+PFX="$TEST_TEMP_DIR/pfx"; mkdir -p "$PFX"
+for n in 1 2 3; do
+    printf '#!/usr/bin/env bash\nsleep 1\nexit 0\n' > "$PFX/p$n-test.sh"; chmod +x "$PFX/p$n-test.sh"
+done
+printf '#!/usr/bin/env bash\nexit 1\n' > "$PFX/p4-fail-test.sh"; chmod +x "$PFX/p4-fail-test.sh"
+_t0=$(date +%s)
+_par_out="$(cd "$REPO_ROOT" && ZBUILD_TEST_PARALLEL_JOBS=4 "${_OUTER[@]}" bash "$RUN_TESTS" --files "$PFX/p1-test.sh" "$PFX/p2-test.sh" "$PFX/p3-test.sh" "$PFX/p4-fail-test.sh" 2>"$TEST_TEMP_DIR/par.err")"; _par_rc=$?
+_par_secs=$(( $(date +%s) - _t0 ))
+_ser_out="$(cd "$REPO_ROOT" && ZBUILD_TEST_PARALLEL_JOBS=0 "${_OUTER[@]}" bash "$RUN_TESTS" --files "$PFX/p1-test.sh" "$PFX/p2-test.sh" "$PFX/p3-test.sh" "$PFX/p4-fail-test.sh" 2>"$TEST_TEMP_DIR/ser.err")"; _ser_rc=$?
+if [[ "$_par_secs" -le 2 ]]; then
+    assert_pass "[#2123] three 1s files at JOBS=4 finish in ~1s (${_par_secs}s)"
+else
+    assert_fail "[#2123] --files must run files concurrently" "took ${_par_secs}s"
+fi
+assert_eq "[#2123] parallel stdout is byte-identical to serial" "$_ser_out" "$_par_out"
+assert_eq "[#2123] parallel rc equals serial rc (a failing file still fails the run)" "$_ser_rc" "$_par_rc"
+assert_contains "[#2123] the FAIL line still names the file on stderr" "$(cat "$TEST_TEMP_DIR/par.err")" "unit: FAIL $PFX/p4-fail-test.sh"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

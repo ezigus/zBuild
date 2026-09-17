@@ -20,7 +20,7 @@
 # SPEC-1  CHANGE  tiers OVERLAP: concurrent wall-clock < 0.7x the serial sum
 # SPEC-2  CHANGE  byte-identical stdout (serial vs concurrent), stderr FAIL order
 # SPEC-3  GUARD   a failing tier → exit 1 (both paths); all-clean → exit 0
-# SPEC-4  CHANGE  budget split: unit JOBS=floor(B/2), mutation JOBS=ceil(B/2), sum<=B
+# SPEC-4  CHANGE  budget split: unit JOBS=ceil(B/2), integration JOBS=ceil(B/2) (#2123), mutation JOBS=B-ceil(B/2)
 # SPEC-5  CHANGE  per-tier distinct TMPDIR; coverage traces concat in canonical order
 # SPEC-6  GUARD   UPDATE_GOLDEN=1 → serial path (no buf_dir), still byte-identical
 # SPEC-7  GUARD   ZBUILD_TIER_CONCURRENCY=0 → serial path
@@ -153,7 +153,7 @@ assert_eq "[SPEC-3b] failing tier → exit 1 (serial)" "1" "$_RC"
 _all "$FAST"
 assert_eq "[SPEC-3c] all-clean → exit 0 (concurrent)" "0" "$_RC"
 
-# ─── [SPEC-4] CHANGE: budget split unit=floor(B/2), mutation=ceil(B/2) ───────
+# ─── [SPEC-4] CHANGE: budget split unit=ceil(B/2), integration=ceil(B/2), mutation=rest ─
 # Hook: unit's fake test records the JOBS it received; a wrapper mutation script
 # is NOT reachable (we run the real run-mutation.sh against an empty dir), so we
 # assert the unit half via a parallel-active probe + a JOBS-echo fixture.
@@ -170,8 +170,13 @@ rm -f "$HOOK".*
 _all "$JOBS_FIX" ZBUILD_TIER_BUDGET=6
 _u_jobs="$(cat "$HOOK.unit" 2>/dev/null || echo MISSING)"
 _e_jobs="$(cat "$HOOK.e2e" 2>/dev/null || echo MISSING)"
-assert_eq "[SPEC-4] unit tier sees JOBS=floor(6/2)=3" "3" "$_u_jobs"
-assert_eq "[SPEC-4b] non-unit file-tier (e2e) sees JOBS=0 (serial within tier)" "0" "$_e_jobs"
+assert_eq "[SPEC-4] unit tier sees JOBS=ceil(6/2)=3" "3" "$_u_jobs"
+assert_eq "[SPEC-4b] a non-parallel-safe file-tier (e2e) sees JOBS=0 (serial within tier)" "0" "$_e_jobs"
+# #2123: integration is in _par_safe_tiers (#991) and is the suite's long pole
+# (243 files / 4,039s serial = the pipeline's 45–54-minute test stage). Under
+# --tier all it now gets the same share as unit instead of JOBS=0.
+_i_jobs="$(cat "$HOOK.integration" 2>/dev/null || echo MISSING)"
+assert_eq "[SPEC-4c] integration tier sees JOBS=ceil(6/2)=3 under --tier all (#2123)" "3" "$_i_jobs"
 
 # ─── [SPEC-5] CHANGE: per-tier distinct TMPDIR + coverage concat ─────────────
 TMP_HOOK="$TEST_TEMP_DIR/tmp-hook"
