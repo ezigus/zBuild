@@ -101,7 +101,7 @@
     [2mabsent[0m
   [38;2;248;113;113m✗[0m [SPEC-6] manifest must declare config.router.max_turns
     [2mabsent[0m
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.dqWLn1/plugins/agent/review-lens/tests/review-lens-test.sh: line 557: _route_resolve_max_turns: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.188y2u/plugins/agent/review-lens/tests/review-lens-test.sh: line 557: _route_resolve_max_turns: command not found
 ### SPEC-6 head plugins/agent/review-lens/tests/review-lens-test.sh
 
 [38;2;0;212;255m[1m  plugin: review-lens — single isolated advisory lens (#1140)[0m
