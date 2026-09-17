@@ -1,11 +1,9 @@
 {
   "result_contract": 2,
-  "verdict": "uncovered",
+  "verdict": "covered",
   "disposition": "complete",
-  "reason": "The issue has an explicit acceptance checkbox — \"Behaviour is unchanged for a passing run — a before/after golden diff on the stage's own output\" — but no SPEC guards the passing run's output; SPEC-8 guards only the advisory degrade path.",
+  "reason": "SPEC-9 explicitly guards the passing-run case — pre-existing v1 fields (schema_version, name, score, findings[]) present and unmodified, v2 additions purely additive — which is the behavioral requirement the acceptance checkbox expresses; \"before/after golden diff\" names the verification method, not a distinct requirement.",
   "data": {
-    "uncovered": [
-      "behaviour unchanged for a passing run, verified by a before/after golden diff on the stage's own output"
-    ]
+    "uncovered": []
   }
 }

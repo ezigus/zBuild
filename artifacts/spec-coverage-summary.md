@@ -1,5 +1,5 @@
-## spec-coverage — uncovered
+## spec-coverage — covered
 
-- The issue has an explicit acceptance checkbox — "Behaviour is unchanged for a passing run — a before/after golden diff on the stage's own output" — but no SPEC guards the passing run's output; SPEC-8 guards only the advisory degrade path.
+- SPEC-9 explicitly guards the passing-run case — pre-existing v1 fields (schema_version, name, score, findings[]) present and unmodified, v2 additions purely additive — which is the behavioral requirement the acceptance checkbox expresses; "before/after golden diff" names the verification method, not a distinct requirement.
 
-- NOT COVERED: behaviour unchanged for a passing run, verified by a before/after golden diff on the stage's own output
+- every requirement the issue states maps to a declared SPEC
