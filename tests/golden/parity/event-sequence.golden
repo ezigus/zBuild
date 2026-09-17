@@ -18,6 +18,7 @@ plugin.run.complete
 stage.complete
 stage.start
 plugin.run.start
+prompt.summaries.injected
 redaction.applied
 model.route
 model.outcome
@@ -27,6 +28,7 @@ plugin.run.complete
 stage.complete
 stage.start
 plugin.run.start
+prompt.summaries.injected
 redaction.counter_skipped
 redaction.applied
 loop.iteration
