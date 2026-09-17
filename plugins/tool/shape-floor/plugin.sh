@@ -80,10 +80,18 @@ shape_floor_run() {
             # describing the same failure must not name it two different things.
             _sf_emit "shape_floor.fail" "reason=$detail"
             ;;
-        *)
+        *"SHAPE_FLOOR SKIP"*)
             verdict="skip"
             detail="${_shape_out##*SHAPE_FLOOR SKIP }"
             _sf_emit "shape_floor.skip"
+            ;;
+        *)
+            # #2129: output that is none of PASS/FAIL/SKIP — a crashed helper, an
+            # empty string — used to read as "no shape change" and wave the
+            # diff through. Fail closed and say why.
+            verdict="fail"
+            detail="unparseable_output"
+            _sf_emit "shape_floor.fail" "reason=$detail"
             ;;
     esac
 

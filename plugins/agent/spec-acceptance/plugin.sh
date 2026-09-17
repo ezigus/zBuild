@@ -33,6 +33,8 @@ _ZBUILD_ACCEPTANCE_GATE_LOADED=1
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../../../scripts/lib/plugin-bootstrap.sh"
 zbuild_plugin_bootstrap "${BASH_SOURCE[0]}"
 _AG_ROOT="$_ZBUILD_PLUGIN_ROOT"
+# shellcheck source=../../../scripts/lib/acceptance-disposition.sh
+source "$_AG_ROOT/scripts/lib/acceptance-disposition.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_AG_ROOT/core/event-bus/event-bus.sh"
 # #1241: mechanical gates open no router/command span, so this plugin sources the
@@ -76,9 +78,10 @@ _ag_resolve_negctl_timeout() {
 # GENERIC member-disposition contract (ADR-021 / ADR-036 §-Disposition) the cycle
 # engine reads. The engine knows NO acceptance-gate failure vocabulary; it only
 # reads the disposition field this function computes. Precedence (highest wins):
-#   terminal    — ≥1 GENUINE, non-build-fixable violation: no_testfile,
+#   terminal    — ≥1 GENUINE, non-build-fixable violation:
 #                 malformed_acceptance_block (design-authored structure / build
-#                 cannot fix). OUTRANKS recoverable.
+#                 cannot fix). OUTRANKS recoverable. An UNKNOWN class is
+#                 recoverable + evented, never terminal (#1959).
 #   recoverable — build-fixable classes: untagged_spec:*, tautology:*,
 #                 inert_wiring:*, not_passing_at_head:* (#1585/#2097 — the
 #                 assertion has a model author (test-author, #2022); the cycle
@@ -89,47 +92,28 @@ _ag_resolve_negctl_timeout() {
 #                 TIMEOUTS — a flaky sandbox must never hard-fail the pipeline).
 # Empty failure set → "none". Echoes exactly one token.
 _ag_classify_disposition() {
-    local f had_recoverable=0 had_advisory=0
+    local f cls had_recoverable=0 had_advisory=0
     for f in "$@"; do
-        case "$f" in
-            # BUILD-FIXABLE classes → recoverable: the build_test_cycle re-iterates
-            # and feeds the failure to build (which owns the assertion bodies since
-            # #1477). #1585: tautology + inert_wiring join untagged_spec here — they
-            # are the same "weak test" symptom (a [change] assertion that passes at
-            # baseline / a WIRING file whose revert breaks no test) that BUILD fixes
-            # by re-authoring the assertion (#1583). The mechanical negative control
-            # re-verifies each iteration, and max_iterations bounds it — an
-            # un-fixable case exhausts the budget and terminates cleanly.
-            untagged_spec:* | tautology:* | inert_wiring:*)  had_recoverable=1 ;;
-            # #2109: every declared TESTFILE absent on disk — the next iteration
-            # (test-author / build) can still create it; a rewind cannot.
-            no_testfiles:*)                                  had_recoverable=1 ;;
-            # #2097: not_passing_at_head was the last "weak assertion" class left
-            # terminal — a label from when DESIGN wrote red-first stubs (ADR-036
-            # as first written: "a stub that never passes"). The assertion has
-            # had a model author since #1477 (test-author since #2022), and the
-            # test stage has ALREADY failed on the same file at the same HEAD, so
-            # terminal added no diagnosis; its only effect was to cancel the
-            # retry the cycle would otherwise run — the one where the author sees
-            # this gate's finding in the injected STAGE SUMMARIES. Run
-            # 34869844093 halted at iter 1 on a comment-blind awk that one more
-            # pass fixes. Iter>=2 escalates to design below.
-            not_passing_at_head:*)                           had_recoverable=1 ;;
-            # #1686: design-rooted, but NOT terminal — the cycle must reach the
-            # gate-aggregator for the declared fault to drive the rewind
-            # and fire the route_back edge. Terminal would halt before the rewind.
-            wiring_not_on_path:*)                           had_recoverable=1 ;;
-            # #1670: a guard assertion that fails at the merge-base is the same
-            # "weak test" symptom as tautology (#1583) — the assertion, not the
-            # design, is what is wrong — so it routes to build for re-authoring
-            # rather than halting the cycle. Terminal would strand it: no rewind
-            # edge exists for the class, so the run could only die at max_iterations.
-            guard_regressed:*)                               had_recoverable=1 ;;
-            negctl_error:* | reachability_error:*)           had_advisory=1 ;;
-            "")                                              : ;;
-            # Genuinely terminal (e.g. malformed_acceptance_block — design-authored,
-            # build cannot fix): halt the cycle. A terminal class OUTRANKS recoverable.
-            *)                                               printf 'terminal'; return 0 ;;
+        [[ -n "$f" ]] || continue
+        # The table lives in scripts/lib/acceptance-disposition.sh so the lint
+        # reads the same rows (#1959). Recoverable: untagged_spec, tautology,
+        # inert_wiring (#1585), no_testfile(s) (#2109), not_passing_at_head
+        # (#2097), wiring_not_on_path (#1686 — design-rooted but NOT terminal:
+        # the aggregator must see the fault to drive the rewind), guard_regressed
+        # (#1670). Advisory: negctl_error / reachability_error. Terminal:
+        # malformed_acceptance_block. A terminal class OUTRANKS recoverable.
+        cls="$(_ag_failure_class_disposition "${f%%:*}")"
+        case "$cls" in
+            terminal)    printf 'terminal'; return 0 ;;
+            recoverable) had_recoverable=1 ;;
+            advisory)    had_advisory=1 ;;
+            *)
+                # #1959: a class nobody named RE-ITERATES — max_iterations is
+                # the backstop — and says so. The old `*) terminal` halted the
+                # whole run on the fifth such class in a row.
+                eb_emit_event "acceptance.gate.unknown_failure_class" \
+                    "stage=acceptance-gate" "class=${f%%:*}" "failure=$f" 2>/dev/null || true
+                had_recoverable=1 ;;
         esac
     done
     if [[ $had_recoverable -eq 1 ]]; then printf 'recoverable'; return 0; fi

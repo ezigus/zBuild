@@ -164,8 +164,9 @@ REPO3b="$(setup_git_temp_repo negctl-repo3b)"
     "$GIT" checkout -q -b feature
     mkdir -p tests
     printf '# guard fixture\n' > guard_impl.sh
-    # This guard test exits 1 — simulates an invariant already broken at baseline.
-    printf '#!/usr/bin/env bash\n# [SPEC-1] guard: invariant broken\nexit 1\n' > tests/guard-fail-test.sh
+    # This guard test ASSERTS and fails — a ✗-marked [SPEC-1] line at the
+    # baseline (a bare exit 1 is the same verdict, see NC-F2b).
+    printf '#!/usr/bin/env bash\necho "✗ [SPEC-1] guard: invariant broken"\nexit 1\n' > tests/guard-fail-test.sh
     chmod +x tests/guard-fail-test.sh
     "$GIT" add -A; "$GIT" commit -q -m "feat: guard spec with broken invariant"
 )
@@ -184,6 +185,51 @@ set -e
 assert_eq "[SPEC-2] NC-F2: guard SPEC fails at baseline → NEGCTL FAIL guard_regressed" \
     "NEGCTL FAIL SPEC-1 guard_regressed" "$(grep 'SPEC-1' <<<"$OUT3b")"
 assert_eq "[SPEC-2] NC-F2: guard FAIL guard_regressed yields rc=1" "1" "$RC3b"
+
+# ── NC-F2b (#2129): a bare failing guard test at the baseline is still regressed ─
+# A guard test with no ✓/✗ output (plain `grep -q`/`false`, exit 1) that fails
+# at the merge-base is the #1658 shape — a mislabelled [change] — and nothing
+# in its rc separates it from a file that died early. #2129 considered reading
+# lv=2 as "unobserved → skip" and rejected it: NC-F7 would have gone inert.
+REPO3u="$(setup_git_temp_repo negctl-repo3u)"
+(
+    cd "$REPO3u"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    printf '# guard fixture\n' > guard_impl.sh
+    printf '#!/usr/bin/env bash\nset -e\n# [SPEC-1] guard: bare\nfalse\n' > tests/guard-bare-test.sh
+    chmod +x tests/guard-bare-test.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: bare guard failing at baseline"
+)
+DM3u="$REPO3u/design.md"
+cat > "$DM3u" <<'EOF'
+```acceptance
+SPEC-1[guard]: invariant that must not regress
+TESTFILES:
+tests/guard-bare-test.sh
+```
+EOF
+set +e
+OUT3u="$(acceptance_negctl_check "$DM3u" "$REPO3u")"; RC3u=$?
+set -e
+assert_eq "[#2129] NC-F2b: a bare guard test failing at baseline stays guard_regressed" \
+    "NEGCTL FAIL SPEC-1 guard_regressed" "$(grep 'SPEC-1' <<<"$OUT3u")"
+assert_eq "[#2129] NC-F2b: …and fails the check (rc=1)" "1" "$RC3u"
+
+# ── NC-F2c (#2129): an unrecognised guard-verdict word is infra, never a pass ──
+# The consumer arms spelt `held` as `*)`, so any word the helper did not mean
+# to emit read as "the guard held".
+_saved_gv="$(declare -f _negctl_guard_verdict)"
+_negctl_guard_verdict() { printf 'wobble'; }
+set +e
+OUT3h="$(acceptance_negctl_check "$DM3" "$REPO3")"
+OUT3h_pre="$(acceptance_negctl_guard_precheck "$DM3" "$REPO3")"
+set -e
+eval "$_saved_gv"
+assert_eq "[#2129] NC-F2c: an unknown guard verdict word → NEGCTL ERROR harness:SPEC-1" \
+    "NEGCTL ERROR harness:SPEC-1" "$(grep 'SPEC-1' <<<"$OUT3h")"
+assert_eq "[#2129] NC-F2c: …and GUARD SKIP harness in the precheck" \
+    "GUARD SKIP SPEC-1 harness" "$(grep 'SPEC-1' <<<"$OUT3h_pre")"
 
 # ── NC-F3: [SPEC-3] guard SPEC timeout → NEGCTL ERROR timeout (advisory) ─────────
 # A timeout on the guard baseline run must be advisory (same as change-SPEC path),

@@ -337,13 +337,44 @@ manifest_graph_primary_output() {
 # ─── manifest_graph_collect <plugins_root> <stage_id> ──────────────────────────
 # Find the first manifest in plugins_root whose top-level id == stage_id.
 # Echoes the absolute path; rc 1 if not found.
+# #2129: memoised per (root, stage). Every consumer of a stage's manifest — the
+# pre-iter cleanup, the summaries collector, the aggregator roster, feedback
+# resolution — walked plugins/ again: ~36 sweeps ≈ 1.3s per cycle iteration.
+# Nearly every caller runs this in a `$( )` capture, where a shell variable
+# dies with the subshell, so the memo is a FILE under the run's state dir
+# (`$ZBUILD_STATE_DIR/runtime/mgraph-memo/`) when one is set, and an in-shell
+# array otherwise. A hit is re-validated against the manifest on disk (still
+# present, still that id: one read, no walk); a miss is never memoised, because
+# test fixtures are created after the first lookup.
+declare -gA _MGRAPH_COLLECT_MEMO 2>/dev/null || true
+_mgraph_memo_file() {
+    [[ -n "${ZBUILD_STATE_DIR:-}" ]] || return 1
+    local k; k="$(printf '%s|%s' "$1" "$2" | cksum)"; k="${k%% *}"
+    printf '%s/runtime/mgraph-memo/%s-%s' "$ZBUILD_STATE_DIR" "$k" "$2"
+}
 manifest_graph_collect() {
     local plugins_root="$1" stage_id="$2"
-    local m
+    local m key="${plugins_root}|${stage_id}" mf=""
+    mf="$(_mgraph_memo_file "$plugins_root" "$stage_id" 2>/dev/null)" || mf=""
+    m="${_MGRAPH_COLLECT_MEMO[$key]:-}"
+    [[ -z "$m" && -n "$mf" && -f "$mf" ]] && m="$(cat "$mf" 2>/dev/null || true)"
+    if [[ -n "$m" ]]; then
+        if [[ -f "$m" && "$(manifest_graph_get_stage_id "$m")" == "$stage_id" ]]; then
+            _MGRAPH_COLLECT_MEMO[$key]="$m"
+            printf '%s\n' "$m"
+            return 0
+        fi
+        unset '_MGRAPH_COLLECT_MEMO[$key]'
+        [[ -n "$mf" ]] && rm -f "$mf" 2>/dev/null
+    fi
     while IFS= read -r -d '' m; do
         local id
         id="$(manifest_graph_get_stage_id "$m")"
         if [[ "$id" == "$stage_id" ]]; then
+            _MGRAPH_COLLECT_MEMO[$key]="$m"
+            if [[ -n "$mf" ]]; then
+                mkdir -p "${mf%/*}" 2>/dev/null && printf '%s' "$m" > "$mf" 2>/dev/null || true
+            fi
             printf '%s\n' "$m"
             return 0
         fi
