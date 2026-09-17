@@ -1,0 +1,44 @@
+acceptance SPEC violations — SPEC-5/SPEC-6 tautological (pass at baseline) — re-author the assertions; SPEC-3/SPEC-4/SPEC-7/SPEC-11/SPEC-12/SPEC-13/SPEC-14/plugins/agent/security-lens/tests/security-lens-test.sh not passing at HEAD — fix the implementation or the assertion; SPEC-10 tagged as [guard] but the assertion FAILS at the merge-base — a guard must hold there by definition, so either the assertion contradicts its SPEC text or the SPEC is a mislabelled [change]
+NEGCTL PASS SPEC-1
+      design : findings.json carries result_contract:2 at the top level on the normal pass exit path
+      asserts: assert_eq "[SPEC-1] findings.json carries result_contract:2 on the pass exit path" "2" "$rc_contract…
+NEGCTL PASS SPEC-2
+      design : normal exit path emits verdict=pass and disposition=complete at the top level of findings.json
+      asserts: assert_eq "[SPEC-2] normal exit path verdict=pass" "pass" "$verdict_v"
+NEGCTL FAIL SPEC-3 not_passing_at_head
+      design : router-fatal exit path (rc≥2) writes result_contract:2 with verdict=error and disposition=broken bef…
+      asserts: assert_eq "[SPEC-3] router-fatal path writes result_contract:2" "2" "$spec3_contract"
+NEGCTL FAIL SPEC-4 not_passing_at_head
+      design : no-state-file path (security_lens_run called with empty state_file) writes result_contract:2 with ve…
+      asserts: assert_eq "[SPEC-4] no-state-file path returns rc=1 (not rc=2)" "1" "$spec4_rc"
+NEGCTL FAIL SPEC-5 tautology
+      design : security_lens_cleanup is a declared function (not a comment stub) and returns 0
+      asserts: assert_eq "[SPEC-5] security-lens redacted_content ANSI bytes stripped before LLM prompt" \
+NEGCTL FAIL SPEC-6 tautology
+      design : manifest provides.result_contract is declared as 2
+      asserts: assert_contains "[SPEC-6] security-lens redacted_content genuine content survives sanitize" \
+NEGCTL FAIL SPEC-7 not_passing_at_head
+      design : manifest config.valid_verdicts lists pass and error
+      asserts: assert_pass "[SPEC-7] manifest declares valid_verdicts: [pass, error]"
+NEGCTL PASS SPEC-8 guard_spec
+      design : plugin.result event is emitted on the normal pass exit path with plugin=security-lens
+      asserts: assert_pass "[SPEC-8] plugin.result event emitted on normal path with plugin=security-lens"
+NEGCTL PASS SPEC-9
+      design : LLM findings are accessible under .data.findings in the result artifact for backward-compat consumer…
+      asserts: assert_eq "[SPEC-9] R1: findings[0].title accessible under .data.findings" "SQL Injection" "$title_v…
+NEGCTL FAIL SPEC-10 guard_regressed
+      design : postamble-junk recovery via _security_lens_envelope_schema_ok returns rc=0 with the real findings co…
+      asserts: assert_eq "[SPEC-10] security_lens_run refuses when scope manifest missing (router fail-closed)" "1"…
+NEGCTL FAIL SPEC-11 not_passing_at_head
+      design : manifest config.router declares both timeout_s and max_turns budget defaults
+      asserts: assert_pass "[SPEC-11] manifest declares config.router with timeout_s and max_turns"
+NEGCTL FAIL SPEC-12 not_passing_at_head
+      design : ZBUILD_ROUTER_MAX_TURNS_OVERRIDE env var takes precedence over manifest config.router.max_turns at c…
+      asserts: assert_eq "[SPEC-12] ZBUILD_ROUTER_MAX_TURNS_OVERRIDE takes precedence over manifest config.router.m…
+NEGCTL FAIL SPEC-13 not_passing_at_head
+      design : manifest findings output declares primary: true
+      asserts: assert_pass "[SPEC-13] manifest declares primary: true on findings output"
+NEGCTL FAIL SPEC-14 not_passing_at_head
+      design : plugin.sh contains no hardcoded artifact path literals (no bare quoted .json/.md paths without a she…
+      asserts: assert_eq "[SPEC-14] plugin.sh has no hardcoded artifact paths beyond manifest-declared basenames" \
+REACHABILITY FAIL not_passing_at_head plugins/agent/security-lens/manifest.yaml plugins/agent/security-lens/tests/security-lens-test.sh
