@@ -1,13 +1,13 @@
 {
   "result_contract": 2,
-  "verdict": "partial",
+  "verdict": "unjudged",
   "disposition": "complete",
-  "reason": "judged 14 SPEC(s): 9 correspond, 5 partial, 0 mismatch, 0 uncheckable, 0 unjudged",
+  "reason": "judged 14 SPEC(s): 7 correspond, 6 partial, 0 mismatch, 0 uncheckable, 1 unjudged",
   "data": {
-    "corresponds": 9,
-    "partial": 5,
+    "corresponds": 7,
+    "partial": 6,
     "mismatch": 0,
     "uncheckable": 0,
-    "unjudged": 0
+    "unjudged": 1
   }
 }

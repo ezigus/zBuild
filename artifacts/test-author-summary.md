@@ -1,6 +1,6 @@
-## test-author — complete
+## test-author — degraded
 
-- authored acceptance assertions for 14 SPEC(s) from the design contract
+- the model call failed (router_timeout) — no assertions were authored
 
 - SPECs in the contract: 14
 - assertions are authored from the SPEC text, never from the implementation
