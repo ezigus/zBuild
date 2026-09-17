@@ -487,42 +487,57 @@ _extracted_t13b="$(_test_extract_failing_files "$PASS_OUTPUT_T13B")"
 assert_eq "T13b: empty output when no FAIL lines" "" "$_extracted_t13b"
 
 # ─── T14: _test_compute_target_files — unions red-set + affected ──────────────
-print_test_section "T14. _test_compute_target_files unions red-set and grep-affected"
-
+print_test_section "T14. _test_compute_target_files: red-set ∪ path-matched ∪ plugin-local ∪ design TESTFILES (#2121)"
+# #2121: selection is by PATH, not basename. Changed `plugins/agent/x/plugin.sh`
+# and `manifest.yaml` used to select every test that mentioned the bare words
+# `plugin.sh`/`manifest.yaml` — 286 files, 39 minutes, on #1841 — and never the
+# plugin's own tests/ directory (only tests/ was scanned).
 REPO_T14="$TEST_TEMP_DIR/repo-t14"
-mkdir -p "$REPO_T14/tests/unit" "$REPO_T14/tests/integration"
+mkdir -p "$REPO_T14/tests/unit" "$REPO_T14/tests/integration" \
+         "$REPO_T14/plugins/agent/x/tests" "$REPO_T14/plugins/agent/y/tests" "$REPO_T14/core"
 printf '#!/bin/bash\n# references: source_module.sh\necho hello\n' \
     > "$REPO_T14/tests/unit/references-source-test.sh"
 printf '#!/bin/bash\necho world\n' \
     > "$REPO_T14/tests/integration/unrelated-test.sh"
-
-# #1239: the red-set is an advisory hint resolved against the CURRENT tree, so
-# a hint path is only unioned in when the file actually exists — create it.
 printf '#!/bin/bash\nexit 1\n' > "$REPO_T14/tests/unit/prev-fail-test.sh"
-
+printf '#!/bin/bash\n# sources plugins/agent/x/plugin.sh by path\n' > "$REPO_T14/tests/unit/path-ref-test.sh"
+printf '#!/bin/bash\n# every plugin has a plugin.sh and a manifest.yaml\n' > "$REPO_T14/tests/unit/references-plugin-word-test.sh"
+printf '#!/bin/bash\necho x\n' > "$REPO_T14/plugins/agent/x/tests/x-test.sh"
+printf '#!/bin/bash\necho y\n' > "$REPO_T14/plugins/agent/y/tests/y-test.sh"
+printf '#!/bin/bash\necho design-bound\n' > "$REPO_T14/tests/unit/design-bound-test.sh"
+: > "$REPO_T14/plugins/agent/x/plugin.sh"; : > "$REPO_T14/plugins/agent/y/plugin.sh"
+: > "$REPO_T14/core/source_module.sh"
 RED_SET_T14="$TEST_TEMP_DIR/red-set-t14.json"
 printf '["tests/unit/prev-fail-test.sh"]\n' > "$RED_SET_T14"
-
+# a design declaring one TESTFILE, delivered the #2098 way (ZBUILD_STAGE_INPUTS)
+DESIGN_T14="$TEST_TEMP_DIR/design-t14.md"
+printf '```acceptance\nSPEC-1[change]: x\nTESTFILES:\nSPEC-1: tests/unit/design-bound-test.sh\n```\n' > "$DESIGN_T14"
+SI_T14="$TEST_TEMP_DIR/stage-inputs-t14.json"
+printf '{"inputs":{"design":"%s"}}\n' "$DESIGN_T14" > "$SI_T14"
 _target_t14="$(ZBUILD_TEST_RED_SET="$RED_SET_T14" \
-               ZBUILD_TEST_CHANGED_FILES="core/source_module.sh" \
+               ZBUILD_TEST_CHANGED_FILES="core/source_module.sh,plugins/agent/x/plugin.sh" \
+               ZBUILD_STAGE_INPUTS="$SI_T14" \
                _test_compute_target_files "$REPO_T14")"
 assert_contains "T14: red-set path included" "$_target_t14" "prev-fail-test.sh"
-assert_contains "T14: grep-matched path included" "$_target_t14" "references-source-test.sh"
-# Deduplication: grep match + red-set overlap would still appear once
+assert_contains "T14: a test that names a UNIQUE basename is included (source_module.sh)" "$_target_t14" "references-source-test.sh"
+assert_contains "T14 [#2121]: a test that names the changed PATH is included" "$_target_t14" "path-ref-test.sh"
+assert_contains "T14 [#2121]: the changed plugin's own tests/ are included" "$_target_t14" "plugins/agent/x/tests/x-test.sh"
+assert_contains "T14 [#2121]: the design's TESTFILES are included" "$_target_t14" "design-bound-test.sh"
+_t14_word="$(printf '%s\n' "$_target_t14" | grep -c "references-plugin-word" || true)"
+assert_eq "T14 [#2121]: a test that merely says the word plugin.sh is NOT included" "0" "$_t14_word"
+_t14_other="$(printf '%s\n' "$_target_t14" | grep -c "plugins/agent/y/" || true)"
+assert_eq "T14 [#2121]: another plugin's tests are NOT included" "0" "$_t14_other"
 _t14_unrelated="$(printf '%s\n' "$_target_t14" | grep -c "unrelated" || true)"
 assert_eq "T14: unrelated test not included" "0" "$_t14_unrelated"
-
-# #1239: a red-set path that does NOT resolve against the current tree is
-# dropped (advisory hint) — never turned into a target that would phantom-fail.
 RED_SET_T14B="$TEST_TEMP_DIR/red-set-t14b.json"
 printf '["tests/unit/gone-fail-test.sh"]\n' > "$RED_SET_T14B"
 _target_t14b="$(ZBUILD_TEST_RED_SET="$RED_SET_T14B" \
                 ZBUILD_TEST_CHANGED_FILES="" \
+                ZBUILD_STAGE_INPUTS="" \
                 _test_compute_target_files "$REPO_T14")"
 assert_eq "T14b: unresolvable red-set hint dropped (advisory, not a target)" \
     "" "$_target_t14b"
 
-# ─── T15: _test_build_targeted_cmd — renders the configurable {files} template ─
 print_test_section "T15. _test_build_targeted_cmd renders the {files} template"
 
 _files_t15="$(printf '%s\n' "tests/unit/foo-test.sh" "tests/unit/bar-test.sh")"

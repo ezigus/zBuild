@@ -62,7 +62,11 @@ config:
 # already contains the committed iter work) and runs the test suite directly.
 # diff.patch is consumed by the review stage (LLM context) and operators
 # (audit) — not by test. See ADR-020 amendment §A.
-inputs: []
+inputs:
+  # #2121: the design's declared TESTFILES join the targeted rerun set.
+  # Optional: a template without design runs the suite as before.
+  - id: design
+    required: false
 
 outputs:
   - id: test_results

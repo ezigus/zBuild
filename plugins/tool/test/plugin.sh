@@ -43,13 +43,21 @@ source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/framework-result.sh"
 # shellcheck source=../../../scripts/lib/proc-group.sh
 # Shared setsid capability probe + process-group kill (extracted from route.sh).
 source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/proc-group.sh"
+# #2121: the design's TESTFILES are part of the targeted set.
+if ! declare -F acceptance_list_testfiles >/dev/null 2>&1; then
+    # shellcheck source=../../../scripts/lib/acceptance-block.sh
+    source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/acceptance-block.sh" 2>/dev/null || true
+fi
 
-# ─── _test_compute_target_files (ADR-034 / #846) ─────────────────────────────
-# Unions the prior-iter red-set (ZBUILD_TEST_RED_SET JSON array of relative
-# paths) with any test files inside $repo_root/tests that grep-reference at
-# least one basename from ZBUILD_TEST_CHANGED_FILES (comma-separated list).
-# Deduplicates the result. Outputs one relative path per line (relative to
-# repo_root). Empty when both inputs are absent/empty.
+# ─── _test_compute_target_files (ADR-034 / #846, #2121) ──────────────────────
+# Unions: the prior-iter red-set (ZBUILD_TEST_RED_SET JSON array of relative
+# paths, advisory — dead entries dropped); for each ZBUILD_TEST_CHANGED_FILES
+# entry (comma-separated, repo-relative) every test under tests/ or
+# plugins/*/*/tests/ that names its PATH, the same for its bare basename only
+# when that basename is unique in the repo, and — for a file inside a plugin —
+# that plugin's own tests/*-test.sh; and the design's declared TESTFILES
+# (optional input `design` via ZBUILD_STAGE_INPUTS). Deduplicated, one
+# repo-relative path per line. Empty when every input is absent/empty.
 # Usage: _test_compute_target_files <repo_root>
 _test_compute_target_files() {
     local repo_root="$1"
@@ -72,27 +80,72 @@ _test_compute_target_files() {
         done < <(jq -r '.[]? // empty' "$red_set_json" 2>/dev/null || true)
     fi
 
-    # Add test files that grep-reference any changed source file by basename
+    # #2121: selection is by PATH. A changed file selects (a) every test under
+    # tests/ or plugins/*/*/tests/ that names its repo-relative path, (b) the
+    # same for its bare basename ONLY when that basename is unique in the repo
+    # (`source_module.sh` yes; `plugin.sh`/`manifest.yaml` no — those matched
+    # 286 files, 39 minutes, on #1841), and (c) for a file inside a plugin,
+    # that plugin's own tests/ directory, which the old tests/-only scan never
+    # saw.
     if [[ -n "$changed_files_csv" ]]; then
-        local _tests_dir="$repo_root/tests"
+        local -a _scan_dirs=()
+        [[ -d "$repo_root/tests" ]] && _scan_dirs+=("$repo_root/tests")
+        local _pt
+        for _pt in "$repo_root"/plugins/*/*/tests; do
+            [[ -d "$_pt" ]] && _scan_dirs+=("$_pt")
+        done
+        # One walk for the uniqueness test, not one per changed file: the set
+        # of basenames that occur more than once in the repo.
+        local -A _dup_bn=()
+        local _dn
+        while IFS= read -r _dn; do
+            [[ -n "$_dn" ]] && _dup_bn["$_dn"]=1
+        done < <(find "$repo_root" -type f -not -path '*/.git/*' 2>/dev/null \
+                    | sed 's|.*/||' | LC_ALL=C sort | uniq -d)
         local _IFS_save="$IFS"; IFS=','
         local -a _changed_arr=()
         read -ra _changed_arr <<< "$changed_files_csv"
         IFS="$_IFS_save"
-        local _cf _bn _match
+        local _cf _bn _match _plug_tests
         for _cf in "${_changed_arr[@]}"; do
-            # Trim whitespace
-            _cf="${_cf## }"; _cf="${_cf%% }"
+            _cf="${_cf## }"; _cf="${_cf% }"; _cf="${_cf#./}"
             [[ -z "$_cf" ]] && continue
-            _bn="$(basename "$_cf")"
-            [[ -z "$_bn" ]] && continue
-            while IFS= read -r _match; do
-                [[ -z "$_match" ]] && continue
-                # Make relative to repo_root
-                _match="${_match#$repo_root/}"
-                all_files+=("$_match")
-            done < <(grep -rlF -- "$_bn" "$_tests_dir" 2>/dev/null || true)
+            if [[ ${#_scan_dirs[@]} -gt 0 ]]; then
+                while IFS= read -r _match; do
+                    [[ -z "$_match" ]] && continue
+                    all_files+=("${_match#"$repo_root"/}")
+                done < <(grep -rlF -- "$_cf" "${_scan_dirs[@]}" 2>/dev/null || true)
+                _bn="$(basename "$_cf")"
+                if [[ -n "$_bn" && -z "${_dup_bn[$_bn]+set}" ]]; then
+                    while IFS= read -r _match; do
+                        [[ -z "$_match" ]] && continue
+                        all_files+=("${_match#"$repo_root"/}")
+                    done < <(grep -rlF -- "$_bn" "${_scan_dirs[@]}" 2>/dev/null || true)
+                fi
+            fi
+            if [[ "$_cf" == plugins/*/*/* ]]; then
+                _plug_tests="$repo_root/$(printf '%s' "$_cf" | cut -d/ -f1-3)/tests"
+                if [[ -d "$_plug_tests" ]]; then
+                    while IFS= read -r _match; do
+                        [[ -z "$_match" ]] && continue
+                        all_files+=("${_match#"$repo_root"/}")
+                    done < <(find "$_plug_tests" -maxdepth 1 -name '*-test.sh' -type f 2>/dev/null || true)
+                fi
+            fi
         done
+    fi
+
+    # #2121: the design's declared TESTFILES are always in the set — they are
+    # the assertions the acceptance gate will judge, delivered the #2098 way.
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+        local _design_md
+        _design_md="$(jq -r '.inputs.design // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+        if [[ -n "$_design_md" && -f "$_design_md" ]] && declare -F acceptance_list_testfiles >/dev/null 2>&1; then
+            local _dtf
+            while IFS= read -r _dtf; do
+                [[ -n "$_dtf" && -f "$repo_root/$_dtf" ]] && all_files+=("$_dtf")
+            done < <(acceptance_list_testfiles "$_design_md" 2>/dev/null || true)
+        fi
     fi
 
     # Deduplicate and emit sorted list (skip blanks)
