@@ -1,22 +1,13 @@
 {
   "schema_version": 4,
   "result_contract": 2,
-  "issue": 1841,
-  "files_changed": [
-    "plugins/agent/security-lens/manifest.yaml",
-    "plugins/agent/security-lens/tests/security-lens-test.sh"
-  ],
-  "lines_added": 8,
-  "lines_removed": 1,
-  "diff_patch_path": "/home/runner/work/_temp/zbuild-state/artifacts/diff.patch",
-  "iterations": 1,
-  "terminated_reason": "done_sentinel",
-  "verdict": "pass",
-  "disposition": "complete",
-  "reason": "build_complete",
-  "scope_violation": false,
-  "scope_violations": [],
-  "loop_input_tokens": 11,
-  "loop_output_tokens": 5667,
-  "notes": "Build stage completed. Diff written to artifact; not applied."
+  "verdict": "incomplete",
+  "disposition": "unavailable",
+  "reason": "router_rate_limited",
+  "iterations": 2,
+  "data": {
+    "rate_limit": {
+      "message": "LLM rate-limited — resets 11pm (UTC)"
+    }
+  }
 }
