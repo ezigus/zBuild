@@ -484,6 +484,22 @@ if declare -F _route_redact_prompt >/dev/null 2>&1; then
     assert_contains "[SPEC-12] it counts the RESOLVE framings" "$_ev12" '"resolve":"1"'
     assert_contains "[SPEC-12] it names the consuming stage" "$_ev12" '"stage":"build"'
     assert_contains_regex "[SPEC-12] it carries the block size" "$_ev12" '"bytes":"[1-9][0-9]*"'
+    # A body that carries its own markdown headings — the test stage's summary
+    # has `## Failing lines (extracted)`, a lens may write `### Findings` —
+    # must not inflate the count: only the renderer's own headings count.
+    printf '### Findings\n- one\n### More\nsee — RESOLVE these findings before completing\n' > "$ART/ss-second-detail.txt"
+    : > "$ZBUILD_EVENTS_JSONL"; printf 'PROMPT\n' > "$IN12"
+    ZBUILD_STATE_DIR="$STATE" ZBUILD_PLUGINS_ROOT="$PROOT" ZBUILD_CURRENT_STAGE="build" \
+        ZBUILD_SCOPE_MANIFEST="$PROOT/tool/ss-gate/manifest.yaml" \
+        _route_redact_prompt "$IN12" "$OUT12" 0 "" >/dev/null 2>&1 || true
+    _ev12b="$(jq -c 'select(.type=="prompt.summaries.injected")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+    assert_contains "[SPEC-12] a body's own ### headings do not inflate stages=" "$_ev12b" '"stages":"3"'
+    assert_contains "[SPEC-12] …nor its text inflate resolve=" "$_ev12b" '"resolve":"1"'
+    printf 'SECOND-DETAIL-BODY\n' > "$ART/ss-second-detail.txt"
+    : > "$ZBUILD_EVENTS_JSONL"; printf 'PROMPT\n' > "$IN12"
+    ZBUILD_STATE_DIR="$STATE" ZBUILD_PLUGINS_ROOT="$PROOT" ZBUILD_CURRENT_STAGE="build" \
+        ZBUILD_SCOPE_MANIFEST="$PROOT/tool/ss-gate/manifest.yaml" \
+        _route_redact_prompt "$IN12" "$OUT12" 0 "" >/dev/null 2>&1 || true
     # A second pass on the same file injects nothing and must not re-event.
     ZBUILD_STATE_DIR="$STATE" ZBUILD_PLUGINS_ROOT="$PROOT" ZBUILD_CURRENT_STAGE="build" \
         ZBUILD_SCOPE_MANIFEST="$PROOT/tool/ss-gate/manifest.yaml" \

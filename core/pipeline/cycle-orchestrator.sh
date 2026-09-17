@@ -675,6 +675,9 @@ _cycle_render_feedback_digest() {
 
 # _cycle_render_summaries_digest <state_dir> (#2124) — what the next prompt's
 # STAGE SUMMARIES block will carry, from the same collector the renderer uses.
+# This is the PRE-cap count; the router's prompt.summaries.injected event
+# counts the rendered block after the ADR-029 total cap. When the two differ,
+# the cap dropped the oldest summaries — that difference is the signal.
 _cycle_render_summaries_digest() {
     local state_dir="$1" counts n r
     if ! declare -F stage_summaries_count >/dev/null 2>&1; then
