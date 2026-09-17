@@ -116,6 +116,43 @@ case "$out" in
     *) assert_pass "G4: missing path produced no phantom FAIL line" ;;
 esac
 
+# ─── #2123: --files runs through the same bounded pool as a tier ─────────────
+# A targeted rerun of 286 files ran them one after another (39 minutes on
+# #1841's iteration 2). Three 1-second files at JOBS=3 must finish in ~1s, and
+# the output grammar the verdict parser reads must be byte-identical to serial.
+print_test_section "#2123: --files is parallel"
+PFX="$TEST_TEMP_DIR/pfx"; mkdir -p "$PFX"
+for n in 1 2 3; do
+    printf '#!/usr/bin/env bash\nsleep 1\nexit 0\n' > "$PFX/p$n-test.sh"; chmod +x "$PFX/p$n-test.sh"
+done
+printf '#!/usr/bin/env bash\nexit 1\n' > "$PFX/p4-fail-test.sh"; chmod +x "$PFX/p4-fail-test.sh"
+_t0=$(date +%s)
+_par_out="$(cd "$REPO_ROOT" && ZBUILD_TEST_PARALLEL_JOBS=4 "${_OUTER[@]}" bash "$RUN_TESTS" --files "$PFX/p1-test.sh" "$PFX/p2-test.sh" "$PFX/p3-test.sh" "$PFX/p4-fail-test.sh" 2>"$TEST_TEMP_DIR/par.err")"; _par_rc=$?
+_par_secs=$(( $(date +%s) - _t0 ))
+_t1=$(date +%s)
+_ser_out="$(cd "$REPO_ROOT" && ZBUILD_TEST_PARALLEL_JOBS=0 "${_OUTER[@]}" bash "$RUN_TESTS" --files "$PFX/p1-test.sh" "$PFX/p2-test.sh" "$PFX/p3-test.sh" "$PFX/p4-fail-test.sh" 2>"$TEST_TEMP_DIR/ser.err")"; _ser_rc=$?
+_ser_secs=$(( $(date +%s) - _t1 ))
+# Relative, not absolute: `date +%s` truncates and a loaded runner adds
+# startup overhead, so "parallel is faster than serial" is the claim.
+if [[ "$_par_secs" -lt "$_ser_secs" ]]; then
+    assert_pass "[#2123] three 1s files at JOBS=4 finish faster than serial (${_par_secs}s < ${_ser_secs}s)"
+else
+    assert_fail "[#2123] --files must run files concurrently" "parallel ${_par_secs}s, serial ${_ser_secs}s"
+fi
+# Serial-pinned files run first, alone, whatever their argument position.
+printf '#!/usr/bin/env bash\ndate +%%s > "%s/pin-start"\nsleep 1\nexit 0\n' "$PFX" > "$PFX/pin-test.sh"; chmod +x "$PFX/pin-test.sh"
+printf '#!/usr/bin/env bash\ndate +%%s > "%s/p1-start"\nsleep 1\nexit 0\n' "$PFX" > "$PFX/p1-test.sh"
+_pin_out="$(cd "$REPO_ROOT" && ZBUILD_TEST_PARALLEL_JOBS=4 ZBUILD_SERIAL_TESTS='pin-test.sh' "${_OUTER[@]}" bash "$RUN_TESTS" --files "$PFX/p1-test.sh" "$PFX/pin-test.sh" 2>/dev/null)"
+if [[ "$(cat "$PFX/pin-start")" -lt "$(cat "$PFX/p1-start")" ]]; then
+    assert_pass "[#2123] a serial-pinned file listed second still runs before the pool starts"
+else
+    assert_fail "[#2123] a serial-pinned file must run first, alone" "pin=$(cat "$PFX/pin-start") p1=$(cat "$PFX/p1-start")"
+fi
+assert_contains "[#2123] …and the summary still counts both" "$_pin_out" "unit: 2/2 passed"
+assert_eq "[#2123] parallel stdout is byte-identical to serial" "$_ser_out" "$_par_out"
+assert_eq "[#2123] parallel rc equals serial rc (a failing file still fails the run)" "$_ser_rc" "$_par_rc"
+assert_contains "[#2123] the FAIL line still names the file on stderr" "$(cat "$TEST_TEMP_DIR/par.err")" "unit: FAIL $PFX/p4-fail-test.sh"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
