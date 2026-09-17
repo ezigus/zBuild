@@ -6,6 +6,8 @@
 
 **Context.** The `review-lens` plugin (`kind: agent`, `convergence: advisory`) was migrated on the current branch from contract v1 to v2. Contract v2 requires: `result_contract:2` in every terminal output; the `verdict`/`disposition`/`reason` fields embedded in the primary output JSON; dedicated exit codes for rc=10 (budget exhausted) and rc=130 (SIGINT interrupted), each distinct from the advisory rc=0 degrade paths; ADR-063 budget-guidance blocks in the prompt; ADR-028 schema-gated envelope parsing; and ADR-055 name-matched `inputs` (id+required only). The test file (`review-lens-test.sh`) already contains SPEC-1–SPEC-19 assertions that enumerate all these behaviors. The branch commits title confirms the migration was applied; this stage verifies it is correct and complete.
 
+**SPEC-9 gap.** The prior design omitted a guard for the passing-run output shape. SPEC-8 guards only the advisory degrade paths. The spec-coverage stage requires an explicit `[guard]` SPEC for the acceptance checkbox "Behaviour is unchanged for a passing run — a before/after golden diff on the stage's own output." SPEC-9[guard] is added to close this gap: it asserts that the v2 success path preserves every pre-existing v1 output field (`schema_version`, `name`, `score`, `findings[]`) so adding the v2 fields (`result_contract`, `verdict`, `disposition`, `reason`) is additive-only and introduces no field removals or regressions.
+
 **Decision.** Scope verification to: (a) the four seed files; (b) every test that pins review-lens behavior or references its output shape, including integration tests that seed lens-*.json files or enumerate `review_lens` roles; (c) the wiki page (Rule ABS-W requires it to exist); (d) the ADRs whose contracts the migration implements; (e) the engine files that consume `result_contract` and `disposition` values — because the v2 fields must be consistent with what the engine already reads.
 
 ---
@@ -58,6 +60,7 @@ SPEC-5[change]: ADR-063 TURN BUDGET block is injected in the prompt when _route_
 SPEC-6[change]: manifest declares config.router.timeout_s and config.router.max_turns; _route_resolve_timeout/_route_resolve_max_turns return manifest values when no template or env override is set
 SPEC-7[change]: manifest provides.result_contract == 2 and config.valid_verdicts declares both complete and degraded; validate_manifest passes
 SPEC-8[guard]: existing advisory degrade behavior (rc=0, review_lens.failed/unparseable events, advisory-absence stage summary) is unchanged
+SPEC-9[guard]: passing run output is backward-compatible — pre-existing v1 fields (schema_version, name, score, findings[]) are present and unmodified in a successful lens result; the v2 additions (result_contract, verdict, disposition, reason) are purely additive with no field removed
 SPEC-10[guard]: merge-action coercion tokens (approve, request_changes, "block") are absent from plugin.sh and charters.sh; verdict appears in _review_lens_write_result body only as a jq field, and the amended coercion grep does not false-positive on it
 SPEC-11[change]: _review_lens_write_result function exists in plugin.sh and its body contains no hardcoded artifact path literals
 SPEC-12[guard]: manifest outputs[].lens_result declares primary: true
@@ -78,6 +81,7 @@ SPEC-5: plugins/agent/review-lens/tests/review-lens-test.sh
 SPEC-6: plugins/agent/review-lens/tests/review-lens-test.sh
 SPEC-7: plugins/agent/review-lens/tests/review-lens-test.sh
 SPEC-8: plugins/agent/review-lens/tests/review-lens-test.sh
+SPEC-9: plugins/agent/review-lens/tests/review-lens-test.sh
 SPEC-10: plugins/agent/review-lens/tests/review-lens-test.sh
 SPEC-11: plugins/agent/review-lens/tests/review-lens-test.sh
 SPEC-12: plugins/agent/review-lens/tests/review-lens-test.sh
