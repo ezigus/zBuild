@@ -72,56 +72,12 @@ _build_read_prior_build_summary() {
         "$verdict" "$n_files" "${files:+: $files}"
 }
 
-# _build_read_prior_assessment (#571)
-# Read the prior cycle iter's test_assessment markdown from
-# $ZBUILD_CYCLE_FEEDBACK_DIR/prior_test_assessment.txt. Empty stdout when
-# not in a cycle, dir unset, or file missing/empty.
-_build_read_prior_assessment() {
-    local iter="${ZBUILD_CYCLE_ITER:-}"
-    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
-    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
-    local f="$fb_dir/prior_test_assessment.txt"
-    [[ ! -s "$f" ]] && return 0
-    local body
-    body="$(cat "$f" 2>/dev/null)" || return 0
-    [[ -z "$body" ]] && return 0
-    printf '%s' "$body"
-}
-
-# _build_read_prior_review (ADR-026 / Wave 18-B / #707)
-# Read the prior outer-cycle iter's review markdown from
-# $ZBUILD_CYCLE_FEEDBACK_DIR/prior_review_feedback.txt. Empty stdout when
-# not in a cycle, dir unset, or file missing/empty.
-_build_read_prior_review() {
-    local iter="${ZBUILD_CYCLE_ITER:-}"
-    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
-    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
-    local f="$fb_dir/prior_review_feedback.txt"
-    [[ ! -s "$f" ]] && return 0
-    local body
-    body="$(cat "$f" 2>/dev/null)" || return 0
-    [[ -z "$body" ]] && return 0
-    printf '%s' "$body"
-}
-
-# _build_read_prior_acceptance (#951 Layer 2 / ADR-036)
-# Read the prior outer-cycle iter's acceptance-gate-result.json from
-# $ZBUILD_CYCLE_FEEDBACK_DIR/prior_acceptance_feedback.txt. Prints ONLY
-# untagged_spec:<id> failure ids, one per line. Empty when not in a cycle,
-# dir unset, file missing/empty, verdict=pass, or no untagged_spec failures.
-_build_read_prior_acceptance() {
-    local iter="${ZBUILD_CYCLE_ITER:-}"
-    local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
-    [[ -z "$iter" || -z "$fb_dir" ]] && return 0
-    local f="$fb_dir/prior_acceptance_feedback.txt"
-    [[ ! -s "$f" ]] && return 0
-    jq -r '
-        if (.verdict? // "pass") == "pass" then empty
-        else (.failures // [])[]
-             | select(type == "string" and startswith("untagged_spec:"))
-             | sub("^untagged_spec:"; "")
-        end' "$f" 2>/dev/null || return 0
-}
+# _build_read_prior_assessment / _build_read_prior_review /
+# _build_read_prior_acceptance — RETIRED (#2124). No shipped template wired the
+# feedback edges they read since #1979; prior-stage findings reach build as the
+# engine-collected STAGE SUMMARIES block (ADR-055 §9). Removed rather than left
+# unused: their presence is what turned the #1841 diagnosis into "the builder
+# never got the findings".
 
 # _build_read_tautology_ids — RETIRED (#2022).
 # Since #1477 build owned the assertion bodies, so the gate's tautology finding

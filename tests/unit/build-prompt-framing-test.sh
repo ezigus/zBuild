@@ -4,11 +4,10 @@
 #
 # Verifies the three-section structure the LLM sees:
 #   - Iter 1: banner + ORIGINAL TASK + INSTRUCTIONS, NO FEEDBACK section.
-#   - Iter 2+: same plus CURRENT ITERATION FEEDBACK containing the contents
-#     of $ZBUILD_CYCLE_FEEDBACK_DIR/prior_test_assessment.txt (wired by #568).
+#   - Iter 2+: same; prior-stage findings arrive as the router's STAGE
+#     SUMMARIES block, not a composed section (#2124 retired the readers).
 #   - Banner shows "iter N/MAX" accurately.
-#   - _build_read_prior_assessment is the new name; reads
-#     prior_test_assessment.txt (not legacy prior_test_failures.txt).
+#   - the bespoke feedback readers are retired (#2124).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -105,25 +104,17 @@ assert_contains "F3: iter 1 has ORIGINAL TASK section" "$iter1_prompt" \
 assert_contains "F4: iter 1 has INSTRUCTIONS section" "$iter1_prompt" \
     "## INSTRUCTIONS"
 
-# F5: CURRENT ITERATION FEEDBACK section ABSENT on iter 1
+# F5 (#2124): no per-iteration feedback section — findings arrive as the router's
+# STAGE SUMMARIES block, never composed here.
 if grep -qF "## CURRENT ITERATION FEEDBACK" <<< "$iter1_prompt"; then
-    assert_fail "F5: iter 1 must NOT include CURRENT ITERATION FEEDBACK" \
-        "found unexpected section"
+    assert_fail "F5: the prompt composes no CURRENT ITERATION FEEDBACK section" \
+        "found retired section"
 else
-    assert_pass "F5: iter 1 omits CURRENT ITERATION FEEDBACK section"
+    assert_pass "F5: the prompt composes no CURRENT ITERATION FEEDBACK section"
 fi
 
-# ─── Iter 2 — cycle context with prior_test_assessment.txt ──────────────────
-FB_DIR="$TEST_TEMP_DIR/fb-iter-2"
-mkdir -p "$FB_DIR"
-ASSESSMENT_BODY='## Test assessment (iter 1)
-
-verdict: fail
-- test/x_test.sh: FAIL line 42'
-printf '%s\n' "$ASSESSMENT_BODY" > "$FB_DIR/prior_test_assessment.txt"
-
+# ─── Iter 2 — cycle context ─────────────────────────────────────────────────
 export ZBUILD_CYCLE_ITER=2
-export ZBUILD_CYCLE_FEEDBACK_DIR="$FB_DIR"
 
 : > "$_MOCK_ROUTE_CAPTURE"
 
@@ -150,40 +141,7 @@ assert_contains "F8: iter 2 has ORIGINAL TASK section" "$iter2_prompt" \
 assert_contains "F8: iter 2 has INSTRUCTIONS section" "$iter2_prompt" \
     "## INSTRUCTIONS"
 
-# F9: CURRENT ITERATION FEEDBACK present + contains the assessment body
-assert_contains "F9: iter 2 has CURRENT ITERATION FEEDBACK section" \
-    "$iter2_prompt" "## CURRENT ITERATION FEEDBACK"
-assert_contains "F9: iter 2 FEEDBACK contains prior assessment body" \
-    "$iter2_prompt" "test/x_test.sh: FAIL line 42"
-
-# ─── Iter 2 with EMPTY feedback file — FEEDBACK section omitted (silent guard)
-: > "$FB_DIR/prior_test_assessment.txt"
-: > "$_MOCK_ROUTE_CAPTURE"
-
-set +e
-_build_stage_run_inner \
-    "$scope_manifest" \
-    "$plan_path" \
-    "$artifact_dir/diff.patch" \
-    "$artifact_dir/build-summary.json" \
-    "$artifact_dir" >/dev/null 2>&1
-set -e
-
-iter2_empty_prompt="$(cat "$_MOCK_ROUTE_CAPTURE" 2>/dev/null || echo '')"
-if grep -qF "## CURRENT ITERATION FEEDBACK" <<< "$iter2_empty_prompt"; then
-    assert_fail "F10: empty feedback file must NOT emit FEEDBACK section" \
-        "silent-failure guard violated"
-else
-    assert_pass "F10: empty feedback file → FEEDBACK section omitted"
-fi
-
-# ─── F11: _build_read_prior_assessment is the canonical name (rename) ───────
-if declare -F _build_read_prior_assessment >/dev/null 2>&1; then
-    assert_pass "F11: _build_read_prior_assessment helper exists (rename complete)"
-else
-    assert_fail "F11: _build_read_prior_assessment must exist" \
-        "rename from _build_read_prior_failures missing"
-fi
+# F9–F11 (#2124): retired with the readers they exercised — see the guard below.
 
 # ─── F12: _build_render_task_header emits banner with iter N/MAX ────────────
 if declare -F _build_render_task_header >/dev/null 2>&1; then

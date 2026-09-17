@@ -170,8 +170,8 @@ _build_stage_run_inner() {
     # Three-section framed structure the LLM sees on every iteration:
     #   1. ORIGINAL TASK (immutable across iterations) — issue goal + plan md
     #   2. INSTRUCTIONS — scope/loop/sentinel rules (stable across iters)
-    #   3. CURRENT ITERATION FEEDBACK — empty on iter 1; iter 2+: prior
-    #      test_assessment markdown (wired by #568 via cycle feedback dir).
+    #   3. STAGE SUMMARIES — appended by the router from every completed
+    #      stage's declared summary (ADR-055 §9); nothing is read here.
     local prompt_input_file="$artifact_dir/build-prompt.txt"
 
     # ADR-018 (#470): render plan.json as markdown for LLM consumption when
@@ -204,44 +204,13 @@ _build_stage_run_inner() {
         _build_persona_applied=1
     fi
 
-    # Iter 2+: pull prior test_assessment markdown. Empty when no cycle or
-    # file missing/empty (silent-failure guard — see _build_read_prior_assessment).
-    local _feedback_body
-    _feedback_body="$(_build_read_prior_assessment 2>/dev/null || true)"
-    # #721: strip stage-io banners, ANSI codes, and OOS-marker tags before
-    # splicing into the prompt — prior_test_assessment.txt is captured
-    # pipeline output and is the primary noise vector for this stage.
-    [[ -n "$_feedback_body" ]] && \
-        _feedback_body="$(printf '%s' "$_feedback_body" | _zbuild_sanitize_for_llm)"
-
-    # ADR-026 / Wave 18-B (#707): outer-cycle review-remediation feedback.
-    # Empty when not running inside build_review_cycle, when the feedback dir is
-    # not exported, or when the file is missing/empty (silent-failure guard,
-    # see _build_read_prior_review). Independent of prior_test_assessment —
-    # both can co-exist when build runs as a member of build_test_cycle
-    # nested inside build_review_cycle (review feedback drove the outer iter,
-    # test_assessment feedback drove the inner iter).
-    local _review_feedback_body
-    _review_feedback_body="$(_build_read_prior_review 2>/dev/null || true)"
-    # #721: sanitize review feedback — prior_review_feedback.txt originates
-    # from the review stage's stage-io machinery and may carry banner lines.
-    [[ -n "$_review_feedback_body" ]] && \
-        _review_feedback_body="$(printf '%s' "$_review_feedback_body" | _zbuild_sanitize_for_llm)"
-    # #951 Layer 2: structured acceptance-coverage gaps (untagged SPEC ids) from
-    # the prior outer iter's acceptance-gate. Advisory + re-verify against the
-    # current tree; authoritative over review prose on acceptance matters.
-    local _acceptance_gap_ids
-    _acceptance_gap_ids="$(_build_read_prior_acceptance 2>/dev/null || true)"
-
-    # #2022: the tautology feed is gone. It handed build the SPECs whose
-    # control the gate had just condemned, for build to re-author — the agent
-    # whose control was found inert rewriting the control. It now reaches
-    # test-author, which owns assertion bodies.
+    # #2124: no per-plugin feedback readers. What earlier stages found reaches
+    # this prompt as the engine-collected STAGE SUMMARIES block (ADR-055 §9),
+    # injected at the router; no template wired the retired readers.
 
     _build_compose_prompt_body "$prompt_input_file" "$_task_header" "$plan_payload" \
         "$_build_instructions" "$_design_decisions" "$_acceptance_testfiles" \
-        "$_acceptance_spec_ids" "$_review_feedback_body" "$_acceptance_gap_ids" \
-        "$_feedback_body" "$_iter_n"
+        "$_acceptance_spec_ids" "$_iter_n"
 
     # ADR-050 (#1581): cross-run seed — when a prior RUN of this issue produced a
     # build-summary (restored onto this runner), append a short advisory note so
@@ -462,7 +431,9 @@ _build_stage_run_inner() {
     _build_rewrite_cumulative_diff "$scope_violation" "$artifact_dir" "$repo_root" \
         "$output_diff_patch" "$_diff_failure" || true
 
-    stage_summary_write "$artifact_dir/build-summary.md" "build" "pass" \
+    # #2124: headed by the verdict actually reached — `pass` here on an
+    # `incomplete` run told the next prompt the opposite of build-summary.json.
+    stage_summary_write "$artifact_dir/build-summary.md" "build" "$build_verdict" \
         "changed $files_changed_count file(s) over $iterations iteration(s)" \
         "$(printf -- '- lines: +%s / -%s\n- terminated: %s\n- scope violation: %s' "$lines_added" "$lines_removed" "$terminated_reason" "$scope_violation")"
     emit_event "plugin.result" "stage=build" \

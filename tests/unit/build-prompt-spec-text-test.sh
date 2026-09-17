@@ -106,7 +106,7 @@ _compose() {
         "" \
         "plugins/tool/test/tests/test-test.sh" \
         "$_SPEC_LINES" \
-        "" "" "" 1 "" "" >/dev/null 2>&1 || true
+        1 >/dev/null 2>&1 || true
     cat "$out" 2>/dev/null
 }
 
@@ -139,7 +139,7 @@ _out2="$TEST_TEMP_DIR/prompt2.txt"
 _build_compose_prompt_body \
     "$_out2" "== H ==" "PLAN" "INSTR" "" \
     "plugins/tool/test/tests/test-test.sh" \
-    "$(printf 'SPEC-1\nSPEC-7\n')" "" "" "" 1 "" "" >/dev/null 2>&1 || true
+    "$(printf 'SPEC-1\nSPEC-7\n')" 1 >/dev/null 2>&1 || true
 PROMPT2="$(cat "$_out2" 2>/dev/null)"
 
 assert_contains "[SPEC-4] the id still appears when its text cannot be resolved" \

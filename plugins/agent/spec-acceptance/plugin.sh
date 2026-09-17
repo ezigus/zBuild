@@ -516,17 +516,16 @@ acceptance_gate_run() {
     # message that NAMES the offending SPEC ids + class, replacing the opaque
     # member_terminal_failure the cycle otherwise surfaces.
     local failures_json="[]" disposition reason_msg=""
-    # #1583 (supersedes #1219): tautology is now BUILD-FIXABLE, NOT design-rooted.
-    # Since #1477 removed design's stub-writer, BUILD authors every test assertion
-    # body — so a tautological [change] SPEC (assertion passes at the merge-base
-    # baseline) can only be fixed by build re-authoring its own assertion. The gate
-    # therefore declares NO specification fault for tautology: it flows through the existing
-    # gate_feedback → build edge and stays in build_test_cycle, with the gate-
-    # aggregator surfacing the per-SPEC negctl diagnosis so build knows precisely
-    # what to fix. Re-authoring is safe by construction — the mechanical negative
-    # control re-runs next iteration and rejects a still-tautological result. NO
-    # terminal class currently declares a fault; the carrier is
-    # retained (absent-when-empty) for any future genuinely design-rooted class.
+    # #1583 (supersedes #1219): tautology is NOT design-rooted. Since #2022 the
+    # test-author stage owns every assertion body, so a tautological [change]
+    # SPEC (assertion passes at the merge-base baseline) is fixed by re-authoring
+    # there; the gate declares NO specification fault for it and the cycle stays
+    # in build_test_cycle. The diagnosis reaches the next prompts as this stage's
+    # `summary: true` output (ADR-055 §9, #1979 — there is no feedback edge).
+    # Re-authoring is safe by construction — the mechanical negative control
+    # re-runs next iteration and rejects a still-tautological result. The fault
+    # carrier is retained (absent-when-empty) for the design-rooted classes
+    # below (#1711 inert_wiring, #2097 not_passing_at_head).
     # SPEC-vocabulary → generic-field mapping stays HERE (ADR-021). verdict /
     # disposition / rc UNCHANGED.
     local fault=""
@@ -614,6 +613,13 @@ acceptance_gate_run() {
         else
             summary_lines=("$reason_msg")
         fi
+    fi
+    # #2124: ADR-055 §9 — written on EVERY path. A block with TESTFILES and no
+    # SPEC ids yields no per-check line, and a `summary: true` output is not
+    # cleared per iteration, so the previous iteration's file shipped as
+    # this one's.
+    if [[ ${#summary_lines[@]} -eq 0 ]]; then
+        summary_lines=("verdict=$verdict reason=${reason_msg:-no_spec_lines}")
     fi
     if [[ ${#summary_lines[@]} -gt 0 ]]; then
         # #1684: persist BEFORE emitting. The emit above is a write to a terminal

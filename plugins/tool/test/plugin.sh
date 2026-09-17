@@ -661,10 +661,23 @@ _test_emit_failures_summary() {
     # We keep matched lines verbatim — the build agent reads them as-is.
     local extracted=""
     if [[ "$verdict" != "pass" ]]; then
+        # #2124: what the builder needs comes FIRST — the assertion failures
+        # (✗/✘, each with its detail line) and the tier's FAIL/TIMEOUT markers —
+        # then the broad matches. A replayed nested run puts dozens of
+        # Error:/FAIL lines ahead of the one ✗ that matters, and a first-60
+        # window of the broad pattern shipped a summary with no ✗ in it.
+        local _ex_first _ex_rest
         # sigpipe-ok: || true, and an explicit empty-check follows
-        extracted="$(printf '%s' "$raw_output" \
+        _ex_first="$(printf '%s' "$raw_output" \
+            | grep -E -A1 '(✗|✘)' | grep -v '^--$' | head -n 40 || true)"
+        # sigpipe-ok: || true
+        _ex_first="${_ex_first}${_ex_first:+$'\n'}$(printf '%s' "$raw_output" \
+            | grep -E '^[a-z]+: (FAIL|TIMEOUT) ' | head -n 10 || true)"
+        # sigpipe-ok: || true, and an explicit empty-check follows
+        _ex_rest="$(printf '%s' "$raw_output" \
             | grep -E '(FAIL|✗|✘|Error:|Failure:|AssertionError|expected|Expected)' \
             | head -n 60 || true)"
+        extracted="$(printf '%s\n%s' "$_ex_first" "$_ex_rest" | awk 'NF && !seen[$0]++' | head -n 60 || true)"  # sigpipe-ok: || true
 
         # If nothing matched but verdict says fail/error, fall back to first ~40
         # lines of raw output so the build agent at least sees something.

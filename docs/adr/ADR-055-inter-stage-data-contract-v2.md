@@ -251,6 +251,16 @@ assertion pairing that explains every acceptance failure — was written by
 `spec-acceptance` and declared by nobody for months, so no prompt ever carried
 it and no reader knew it existed. `MAY` is what allowed that.
 
+**Visible and bounded (amended 2026-09-16, #2124).** The router emits
+`prompt.summaries.injected stage= stages= resolve= bytes=` once per injection,
+counted from the rendered block so it states what the stage was told; the
+cycle INPUT banner prints the same count (`summaries(N stage summaries, R
+RESOLVE)`) on every iteration after the first — a cycle with no feedback edges
+used to read "(no feedback — first iteration)" forever. The per-summary cap is
+8192B, the size of the largest producer, and every body passes through the
+LLM-output sanitizer at the renderer — the one chokepoint every producer
+crosses — rather than in per-consumer readers, which are retired.
+
 **Scope.** Stage-bound plugins only. Backend services — cache, memory,
 orchestrator, claim-coordinator — are exempt for the same reason they are exempt
 from the rest of this contract: they are not nodes in the stage graph

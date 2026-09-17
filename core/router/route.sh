@@ -409,6 +409,16 @@ _route_redact_prompt() {
                 "${ZBUILD_STATE_DIR}/pipeline-state.json" 2>/dev/null || true)"
             if [[ -n "$_ss_block" ]]; then
                 printf '\n\n%s\n' "$_ss_block" >> "$input" 2>/dev/null || true
+                # #2124: say what shipped. Counted from the rendered block —
+                # after the ADR-029 cap — so the event is what the stage was
+                # told, not what existed. The #1841 diagnosis had nothing to
+                # read here and concluded the builder never got the findings.
+                local _ss_n _ss_r
+                _ss_n="$(grep -c '^### ' <<< "$_ss_block" 2>/dev/null || true)"
+                _ss_r="$(grep -c '^### .* — RESOLVE these findings' <<< "$_ss_block" 2>/dev/null || true)"
+                eb_emit_event "prompt.summaries.injected" \
+                    "stage=${ZBUILD_CURRENT_STAGE:-}" "stages=${_ss_n:-0}" \
+                    "resolve=${_ss_r:-0}" "bytes=${#_ss_block}" 2>/dev/null || true
             fi
         fi
     fi
