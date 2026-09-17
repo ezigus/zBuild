@@ -205,11 +205,11 @@ SPEC-5[change]: security_lens_cleanup hook is declared in the manifest and the f
 SPEC-6[change]: manifest declares provides.result_contract: 2
 SPEC-7[change]: manifest declares valid_verdicts: [pass, error]
 SPEC-8[guard]: plugin.result event is emitted on the normal exit path with plugin=security-lens
-SPEC-9[guard]: LLM findings are accessible under .data.findings on the normal pass path
-SPEC-10[guard]: missing scope manifest causes rc=1 (router fail-closed); brace-bearing postamble is recovered by _security_lens_envelope_schema_ok
+SPEC-9[change]: LLM findings are accessible under .data.findings on the normal pass path
+SPEC-10[change]: missing scope manifest causes rc=1 (router fail-closed); brace-bearing postamble is recovered by _security_lens_envelope_schema_ok
 SPEC-11[change]: manifest declares config.router with timeout_s and max_turns
 SPEC-12[change]: ZBUILD_ROUTER_MAX_TURNS_OVERRIDE env var takes precedence over manifest config.router.max_turns when set
-SPEC-13[guard]: manifest declares primary: true on the findings output
+SPEC-13[change]: manifest declares primary: true on the findings output
 SPEC-14[change]: plugin.sh contains no hardcoded artifact path literals (grep for quoted .json/.md with no variable interpolation returns 0)
 WIRING:
 plugins/agent/security-lens/manifest.yaml

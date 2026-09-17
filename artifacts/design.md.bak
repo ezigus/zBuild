@@ -55,6 +55,7 @@ tests/unit/scope-redaction-no-tempfile-test.sh
 tests/unit/artifact-type-retirement-test.sh
 tests/unit/event-schema-emitted-coverage-test.sh
 tests/unit/lint-verdict-classify-test.sh
+tests/unit/plugin-manifest-contract-audit-test.sh
 tests/integration/artifact-contract-test.sh
 tests/integration/artifact-chain-test.sh
 tests/integration/route-fd-isolation-test.sh
