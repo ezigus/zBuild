@@ -1,0 +1,4 @@
+[
+  "plugins/agent/review-lens/tests/review-lens-test.sh",
+  "tests/integration/engine-isolation-test.sh"
+]
