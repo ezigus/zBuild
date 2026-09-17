@@ -199,9 +199,9 @@ _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R4" "$TEST_TEMP_DIR" >/de
 rc=$?
 set -e
 assert_eq "R4: malformed response returns rc=0 (fail-open)" "0" "$rc"
-r4_count=$(jq '.findings | length' "$OUTPUT_R4")
+r4_count=$(jq '.data.findings | length' "$OUTPUT_R4")
 assert_eq "R4: malformed response yields empty findings" "0" "$r4_count"
-r4_stub=$(jq -r '.stub' "$OUTPUT_R4")
+r4_stub=$(jq -r '.data.stub' "$OUTPUT_R4")
 assert_eq "R4: stub is false even on parse failure" "false" "$r4_stub"
 
 # ─── R5: empty stdout (rc=0) ─────────────────────────────────────────────────
@@ -216,7 +216,7 @@ _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R5" "$TEST_TEMP_DIR" >/de
 rc=$?
 set -e
 assert_eq "R5: empty response returns rc=0" "0" "$rc"
-r5_count=$(jq '.findings | length' "$OUTPUT_R5")
+r5_count=$(jq '.data.findings | length' "$OUTPUT_R5")
 assert_eq "R5: empty response yields empty findings" "0" "$r5_count"
 
 # ─── R6: router rc=1 (recoverable) ───────────────────────────────────────────
@@ -231,7 +231,7 @@ _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R6" "$TEST_TEMP_DIR" >/de
 rc=$?
 set -e
 assert_eq "R6: router rc=1 returns plugin rc=0 (fail-open)" "0" "$rc"
-r6_count=$(jq '.findings | length' "$OUTPUT_R6")
+r6_count=$(jq '.data.findings | length' "$OUTPUT_R6")
 assert_eq "R6: router failure yields empty findings" "0" "$r6_count"
 
 # ─── R7: router rc=2 (fatal) — invalid tier triggers router-internal fatal ────
@@ -255,9 +255,9 @@ _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R8" "$TEST_TEMP_DIR" >/de
 rc=$?
 set -e
 assert_eq "R8: missing .findings returns rc=0" "0" "$rc"
-r8_count=$(jq '.findings | length' "$OUTPUT_R8")
+r8_count=$(jq '.data.findings | length' "$OUTPUT_R8")
 assert_eq "R8: missing .findings yields empty array (not null)" "0" "$r8_count"
-r8_findings_type=$(jq -r '.findings | type' "$OUTPUT_R8")
+r8_findings_type=$(jq -r '.data.findings | type' "$OUTPUT_R8")
 assert_eq "R8: .findings is array not null" "array" "$r8_findings_type"
 
 # ─── R8b (#478): prose-prefixed JSON survives via parser-side helper ────────
@@ -275,7 +275,7 @@ rc=$?
 set -e
 assert_eq "R8b (#478): prose-prefixed response returns rc=0" "0" "$rc"
 assert_file_exists "R8b (#478): findings.json written despite prose preface" "$OUTPUT_R8b"
-r8b_title=$(jq -r '.findings[0].title // "missing"' "$OUTPUT_R8b" 2>/dev/null || echo missing)
+r8b_title=$(jq -r '.data.findings[0].title // "missing"' "$OUTPUT_R8b" 2>/dev/null || echo missing)
 assert_eq "R8b (#478): finding parsed from prose-prefixed payload" "Secret leak" "$r8b_title"
 
 # ─── R8c (#478): prompt hardening — system prompt carries explicit "{" rule ──
@@ -421,7 +421,7 @@ rc=$?
 set -e
 assert_eq "[SPEC-10] postamble recovery → rc=0" "0" "$rc"
 assert_file_exists "[SPEC-10] postamble recovery → findings.json written" "$OUTPUT_R12"
-_spec10_count="$(jq '.findings | length' "$OUTPUT_R12" 2>/dev/null || echo 0)"
+_spec10_count="$(jq '.data.findings | length' "$OUTPUT_R12" 2>/dev/null || echo 0)"
 assert_eq "[SPEC-10] postamble recovery → recovered findings (1 finding, not empty)" \
     "1" "$_spec10_count"
 
