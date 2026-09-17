@@ -49,12 +49,15 @@ if ! declare -F acceptance_list_testfiles >/dev/null 2>&1; then
     source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/acceptance-block.sh" 2>/dev/null || true
 fi
 
-# ─── _test_compute_target_files (ADR-034 / #846) ─────────────────────────────
-# Unions the prior-iter red-set (ZBUILD_TEST_RED_SET JSON array of relative
-# paths) with any test files inside $repo_root/tests that grep-reference at
-# least one basename from ZBUILD_TEST_CHANGED_FILES (comma-separated list).
-# Deduplicates the result. Outputs one relative path per line (relative to
-# repo_root). Empty when both inputs are absent/empty.
+# ─── _test_compute_target_files (ADR-034 / #846, #2121) ──────────────────────
+# Unions: the prior-iter red-set (ZBUILD_TEST_RED_SET JSON array of relative
+# paths, advisory — dead entries dropped); for each ZBUILD_TEST_CHANGED_FILES
+# entry (comma-separated, repo-relative) every test under tests/ or
+# plugins/*/*/tests/ that names its PATH, the same for its bare basename only
+# when that basename is unique in the repo, and — for a file inside a plugin —
+# that plugin's own tests/*-test.sh; and the design's declared TESTFILES
+# (optional input `design` via ZBUILD_STAGE_INPUTS). Deduplicated, one
+# repo-relative path per line. Empty when every input is absent/empty.
 # Usage: _test_compute_target_files <repo_root>
 _test_compute_target_files() {
     local repo_root="$1"
@@ -91,11 +94,19 @@ _test_compute_target_files() {
         for _pt in "$repo_root"/plugins/*/*/tests; do
             [[ -d "$_pt" ]] && _scan_dirs+=("$_pt")
         done
+        # One walk for the uniqueness test, not one per changed file: the set
+        # of basenames that occur more than once in the repo.
+        local -A _dup_bn=()
+        local _dn
+        while IFS= read -r _dn; do
+            [[ -n "$_dn" ]] && _dup_bn["$_dn"]=1
+        done < <(find "$repo_root" -type f -not -path '*/.git/*' 2>/dev/null \
+                    | sed 's|.*/||' | LC_ALL=C sort | uniq -d)
         local _IFS_save="$IFS"; IFS=','
         local -a _changed_arr=()
         read -ra _changed_arr <<< "$changed_files_csv"
         IFS="$_IFS_save"
-        local _cf _bn _match _n_bn _plug_tests
+        local _cf _bn _match _plug_tests
         for _cf in "${_changed_arr[@]}"; do
             _cf="${_cf## }"; _cf="${_cf% }"; _cf="${_cf#./}"
             [[ -z "$_cf" ]] && continue
@@ -105,8 +116,7 @@ _test_compute_target_files() {
                     all_files+=("${_match#"$repo_root"/}")
                 done < <(grep -rlF -- "$_cf" "${_scan_dirs[@]}" 2>/dev/null || true)
                 _bn="$(basename "$_cf")"
-                _n_bn="$(find "$repo_root" -name "$_bn" -type f -not -path '*/.git/*' 2>/dev/null | wc -l | tr -d ' ')"
-                if [[ -n "$_bn" && "$_n_bn" == "1" ]]; then
+                if [[ -n "$_bn" && -z "${_dup_bn[$_bn]+set}" ]]; then
                     while IFS= read -r _match; do
                         [[ -z "$_match" ]] && continue
                         all_files+=("${_match#"$repo_root"/}")
