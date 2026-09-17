@@ -370,7 +370,12 @@ if [[ "${1:-}" == "--files" ]]; then
   fi
   [[ "$_tf_jobs" =~ ^[0-9]+$ ]] || _tf_jobs=0
   _tf_job_dir="$(mktemp -d -t zbuild-files-par.XXXXXX)"
+  # shellcheck disable=SC2064  # expand now: the dir is fixed for this run
+  trap "rm -rf '$_tf_job_dir'" EXIT
+  # Slots are assigned in ARGUMENT order up front, so the aggregation loop
+  # below reports in that order whatever order the files actually ran in.
   _tf_slot=0; _tf_inflight=0
+  _tf_serial=(); _tf_parallel=()
   for _tf in "$@"; do
     [[ -n "$_tf" ]] || continue
     # #929: only execute *-test.sh files. The targeted-rerun list can include
@@ -393,29 +398,37 @@ if [[ "${1:-}" == "--files" ]]; then
     fi
     _tf_total=$((_tf_total + 1))
     _tf_slot=$((_tf_slot + 1))
-    _tf_base="$_tf_job_dir/$_tf_slot"
-    printf '%s' "$_tf" > "${_tf_base}.file"
+    printf '%s' "$_tf" > "$_tf_job_dir/$_tf_slot.file"
     if [[ "$_tf_jobs" -gt 0 ]] && ! _rt_is_serial_pinned "$(basename "$_tf")"; then
-      (
-        if _rt_run "$_tf" "${_tf_base}.out"; then
-          printf '0' > "${_tf_base}.rc"; rm -f "${_tf_base}.out"
-        else
-          printf '%s' "$?" > "${_tf_base}.rc"
-        fi
-      ) &
-      _tf_inflight=$((_tf_inflight + 1))
-      if [[ "$_tf_inflight" -ge "$_tf_jobs" ]]; then
-        wait -n 2>/dev/null || true
-        _tf_inflight=$((_tf_inflight - 1))
-      fi
+      _tf_parallel+=("$_tf_slot")
     else
-      # Pinned (or JOBS=0): run in the foreground, in submission order, before
-      # anything else is started — same slot files, so aggregation is one loop.
-      if _rt_run "$_tf" "${_tf_base}.out"; then
-        printf '0' > "${_tf_base}.rc"; rm -f "${_tf_base}.out"
+      _tf_serial+=("$_tf_slot")
+    fi
+  done
+  # Serial-pinned files (and everything, at JOBS=0) run FIRST and ALONE, in
+  # the foreground, on an unloaded host — the same partition run_tier makes
+  # (#991): they are pinned for being wall-clock sensitive.
+  for _tf_i in "${_tf_serial[@]+"${_tf_serial[@]}"}"; do
+    _tf="$(cat "$_tf_job_dir/$_tf_i.file")"
+    if _rt_run "$_tf" "$_tf_job_dir/$_tf_i.out"; then
+      printf '0' > "$_tf_job_dir/$_tf_i.rc"; rm -f "$_tf_job_dir/$_tf_i.out"
+    else
+      printf '%s' "$?" > "$_tf_job_dir/$_tf_i.rc"
+    fi
+  done
+  for _tf_i in "${_tf_parallel[@]+"${_tf_parallel[@]}"}"; do
+    _tf="$(cat "$_tf_job_dir/$_tf_i.file")"
+    (
+      if _rt_run "$_tf" "$_tf_job_dir/$_tf_i.out"; then
+        printf '0' > "$_tf_job_dir/$_tf_i.rc"; rm -f "$_tf_job_dir/$_tf_i.out"
       else
-        printf '%s' "$?" > "${_tf_base}.rc"
+        printf '%s' "$?" > "$_tf_job_dir/$_tf_i.rc"
       fi
+    ) &
+    _tf_inflight=$((_tf_inflight + 1))
+    if [[ "$_tf_inflight" -ge "$_tf_jobs" ]]; then
+      wait -n 2>/dev/null || true
+      _tf_inflight=$((_tf_inflight - 1))
     fi
   done
   wait 2>/dev/null || true
@@ -430,7 +443,6 @@ if [[ "${1:-}" == "--files" ]]; then
       _rt_report_failure "unit" "$_tf" "$_tf_rc" "$_tf_job_dir/$_tf_i.out"
     fi
   done
-  rm -rf "$_tf_job_dir"
   # Skips are 0 here, not counted: this path never arms ZBUILD_TEST_SKIP_LOG, so a
   # skipped file is invisible to it. Rendering still goes through the one helper.
   echo "unit: $_tf_passed/$_tf_total passed$(_rt_build_note 0 "$_tf_timedout")"
