@@ -216,6 +216,11 @@ else
     assert_fail "diff.patch unexpectedly non-empty for prose-only run ($prose_size bytes)"
 fi
 assert_event_emitted "build.empty_diff event fired" "$ZBUILD_EVENTS_JSONL" "build.empty_diff"
+# #2124: the summary the engine ships downstream is headed by the verdict the
+# stage actually reached — max_iterations here is `incomplete`, and a heading
+# that says `pass` tells the next prompt the opposite of build-summary.json.
+assert_eq "[#2124] build-summary.md heading carries the real verdict" \
+    "## build — incomplete" "$(head -1 "$ARTIFACT_DIR_PROSE/build-summary.md" 2>/dev/null)"
 
 # Reset mock to default success
 MOCK_LOOP_RC=0

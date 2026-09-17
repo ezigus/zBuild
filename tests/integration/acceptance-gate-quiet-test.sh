@@ -258,5 +258,37 @@ assert_eq "[SPEC-2] summary: exactly one REACHABILITY line per WIRING target" \
 assert_contains "[SPEC-2] summary: WIRING target → REACHABILITY PASS on terminal" \
     "$(cat "$CAP_D")" "REACHABILITY PASS wiring.sh"
 
+# ─── #2124: the summary is rewritten on every run ────────────────────────────
+# ADR-055 §9 says every terminal path writes acceptance-summary.txt; the main
+# path wrote it only when it had per-check lines. A block with TESTFILES and no
+# SPEC ids (with a real prod delta, so negctl emits no run-wide SKIP) produced none, and the previous iteration's file — a `summary: true`
+# output the per-iter cleanup does not clear — shipped as this iteration's.
+REPO_S="$(setup_git_temp_repo "quiet-summary-always")"
+(
+    cd "$REPO_S"
+    "$GIT" checkout -q -b feature
+    mkdir -p tests
+    printf '#!/usr/bin/env bash\nexit 0\n' > tests/feature-test.sh
+    printf '#!/usr/bin/env bash\nmy_feature() { return 0; }\n' > impl.sh
+    chmod +x tests/feature-test.sh impl.sh
+    "$GIT" add -A; "$GIT" commit -q -m "feat: impl + testfile, no SPEC ids"
+) >/dev/null 2>&1
+cat > "$REPO_S/design.md" <<'EOF'
+```acceptance
+TESTFILES:
+tests/feature-test.sh
+```
+EOF
+mkdir -p "$REPO_S/.zbuild-state/artifacts"
+printf 'STALE-PRIOR-ITERATION\n' > "$REPO_S/.zbuild-state/artifacts/acceptance-summary.txt"
+_run_gate_capture "$REPO_S" "$TEST_TEMP_DIR/terminal-always.txt"
+_s_sum="$(cat "$REPO_S/.zbuild-state/artifacts/acceptance-summary.txt" 2>/dev/null)"
+if [[ "$_s_sum" == *STALE-PRIOR-ITERATION* ]]; then
+    assert_fail "[#2124] the prior iteration's summary is replaced" "still: $_s_sum"
+else
+    assert_pass "[#2124] the prior iteration's summary is replaced"
+fi
+assert_contains "[#2124] the rewritten summary states the verdict" "$_s_sum" "verdict=pass"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL

@@ -194,6 +194,29 @@ else
     assert_fail "F12: _build_render_task_header helper must exist" "missing"
 fi
 
+# ─── #2124: the bespoke feedback readers are retired ─────────────────────────
+# No shipped template wires test_assessment/review/acceptance feedback into
+# build since #1979 — findings arrive as engine-collected STAGE SUMMARIES. The
+# readers stayed, and so did three prompt sections nothing could ever fill;
+# one of them ("ACCEPTANCE COVERAGE GAPS … add [SPEC-n] tags") instructed the
+# builder to edit the testfiles #2022 forbids it to touch. Their presence is
+# what misled the #1841 diagnosis into "feedback was never delivered".
+print_test_section "#2124: retired feedback readers"
+for _fn in _build_read_prior_assessment _build_read_prior_review _build_read_prior_acceptance; do
+    if declare -F "$_fn" >/dev/null 2>&1; then
+        assert_fail "[#2124] $_fn is retired" "still defined"
+    else
+        assert_pass "[#2124] $_fn is retired"
+    fi
+done
+for _sec in "CURRENT ITERATION FEEDBACK" "PRIOR REVIEW FEEDBACK" "ACCEPTANCE COVERAGE GAPS"; do
+    if grep -qF "$_sec" "$REPO_ROOT/plugins/agent/build/lib/prompt.sh"; then
+        assert_fail "[#2124] prompt.sh no longer renders '$_sec'" "section still present"
+    else
+        assert_pass "[#2124] prompt.sh no longer renders '$_sec'"
+    fi
+done
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
