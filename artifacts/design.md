@@ -39,14 +39,22 @@ tests/unit/tier-resolve-test.sh
 tests/unit/plugin-route-source-guard-test.sh
 tests/unit/core-output-stage-colors-test.sh
 tests/unit/docs-adr-054-references-test.sh
+tests/unit/artifact-type-retirement-test.sh
+tests/unit/core-event-bus-test.sh
+tests/unit/review-aggregator-test.sh
+tests/unit/review-report-plugin-test.sh
+tests/unit/runner-post-stage-capability-test.sh
 tests/integration/artifact-chain-test.sh
 tests/integration/artifact-contract-test.sh
 tests/integration/core-pipeline-runner-test.sh
 tests/integration/route-fd-isolation-test.sh
 tests/integration/router-sync-preserves-error-artifacts-test.sh
+tests/integration/stage-io-ordering-invariant-test.sh
+tests/integration/template-constructs-test.sh
 tests/e2e/crash-resume-test.sh
 tests/e2e/injection-guard-test.sh
 tests/e2e/redaction-edge-cases-test.sh
+tests/e2e/zbuild-cli-verbs-test.sh
 tests/fixtures/templates/crash-resume-minimal.yaml
 tests/golden/parity/run-fixture.sh
 scripts/lib/artifact-render.sh
@@ -91,5 +99,3 @@ SPEC-12: plugins/agent/security-lens/tests/security-lens-test.sh
 SPEC-13: plugins/agent/security-lens/tests/security-lens-test.sh
 SPEC-14: plugins/agent/security-lens/tests/security-lens-test.sh
 ```
-
-LOOP_COMPLETE
