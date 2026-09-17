@@ -255,6 +255,33 @@ assert_contains "[SPEC-5] a clean run with a read-only file and an own-origin pu
 assert_contains "[SPEC-6] GUARD: a push to a test's own temp origin is not rewritten" \
     "$(grep 'git-receive-pack' "$_R/own-trace.txt" 2>/dev/null | head -1)" "$_own"
 
+# ── SPEC-7 (#2126): the tripwire reads the checkout, it does not write it ────
+# `git diff HEAD` refreshes a stat-stale index, which takes .git/index.lock in
+# the REAL checkout before and after every test file. Under the parallel pool
+# that lock is a write-boundary violation for whichever integration test is
+# sweeping at that moment (runs 35170867620, 35173187510).
+( cd "$_R" || exit 1; git checkout -q work 2>/dev/null; git branch -q -D master 2>/dev/null; rm -f seed.txt ) >/dev/null 2>&1
+# Only the quiet file: reader-test.sh above runs `git status`, which refreshes
+# the index itself — that is the fixture writing, not the runner.
+rm -f "$_R/tests/unit/"*-test.sh
+cat > "$_R/tests/unit/quiet-test.sh" <<'X'
+#!/usr/bin/env bash
+exit 0
+X
+# Stale stat: same content, newer mtime — exactly what makes git refresh the index.
+sleep 1; touch "$_R/real.txt"
+_idx0="$(cksum < "$_R/.git/index")"
+_r7_out="$( cd "$_R" && ZBUILD_TESTS_DIR="$_R/tests" bash "$_R/scripts/run-tests.sh" --tier unit 2>&1 )"
+assert_contains "[SPEC-7] the tier passes (nothing mutated the checkout)" "$_r7_out" 'unit: 1/1 passed'
+if grep -q 'mutated the checkout' <<< "$_r7_out"; then
+    assert_fail "[SPEC-7] no file tripped the tripwire" "$_r7_out"
+else
+    assert_pass "[SPEC-7] no file tripped the tripwire"
+fi
+assert_eq "[SPEC-7] the tripwire leaves .git/index byte-identical" "$_idx0" "$(cksum < "$_R/.git/index")"
+assert_file_not_exists "[SPEC-7] no index.lock is left behind" "$_R/.git/index.lock"
+
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

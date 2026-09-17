@@ -121,11 +121,25 @@ _rt_report_failure() {
 # tree). Read before and after every test file: the pair disagreeing is the one
 # fact that catches a fixture running in the real checkout, whatever the route
 # in — a cd that failed, an unset TEST_TEMP_DIR, a wrong variable (#2103).
+# #2126: reads only. `git diff HEAD` refreshes a stat-stale index, which takes
+# .git/index.lock in the REAL checkout before and after every test file — under
+# the parallel pool that lock was a write-boundary violation for whichever
+# integration test was sweeping at that moment. The refresh runs against a
+# private copy of the index (GIT_INDEX_FILE), so the checkout's own index is
+# never locked or rewritten by the runner.
 _rt_checkout_state() {
-  local _h _b _t
+  local _h _b _t _idx _tmp
   _h="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null)" || { printf 'nogit'; return 0; }
   _b="$(git -C "$REPO_ROOT" symbolic-ref --short -q HEAD 2>/dev/null || printf 'detached')"
-  _t="$(git -C "$REPO_ROOT" diff HEAD --name-only 2>/dev/null | cksum | cut -d' ' -f1)"
+  _idx="$(git -C "$REPO_ROOT" rev-parse --git-path index 2>/dev/null)"
+  [[ "$_idx" != /* ]] && _idx="$REPO_ROOT/$_idx"
+  _tmp="$(mktemp -t zbuild-rt-index.XXXXXX 2>/dev/null)" || _tmp=""
+  if [[ -n "$_tmp" && -f "$_idx" ]] && cp "$_idx" "$_tmp" 2>/dev/null; then
+    _t="$(GIT_INDEX_FILE="$_tmp" git -C "$REPO_ROOT" diff HEAD --name-only 2>/dev/null | cksum | cut -d' ' -f1)"
+  else
+    _t="$(git -C "$REPO_ROOT" diff HEAD --name-only 2>/dev/null | cksum | cut -d' ' -f1)"
+  fi
+  [[ -n "$_tmp" ]] && rm -f "$_tmp"
   printf '%s %s %s' "$_h" "$_b" "$_t"
 }
 
