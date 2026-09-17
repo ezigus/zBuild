@@ -1,6 +1,7 @@
 # ADR-034 — Targeted test re-run in build_test_cycle (with full-suite gate)
 
 **Status:** Accepted (2026-06-15)
+**Amended:** 2026-09-16 (#2121) — the targeted set is selected by PATH: a changed file selects every test under `tests/` or `plugins/*/*/tests/` that names its repo-relative path, the same for its bare basename only when that basename is unique in the repo (`plugin.sh`/`manifest.yaml` matched 286 files — 39 minutes — on #1841), and, for a file inside a plugin, that plugin's own `tests/`; the design's declared TESTFILES (optional input `design`) are always in the set. The red-set hint is unchanged.
 **Amended:** 2026-09-16 (#2117) — the full-suite gate is exempt from ADR-021's unchanged-tree reuse: a `run_mode=targeted` test pass is never reused across an `empty_diff` iteration, so the gate iteration always gets its full run.
 **Related:** ADR-021 (cycle semantics), ADR-022 (test assessment), ADR-011 (pluggable backends)
 **Issue:** #846. Surfaced by dogfood `20260612173055-58001` (full suite re-run ~15min × 6 iters).
