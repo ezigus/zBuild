@@ -60,7 +60,10 @@ assert_contains "[#2138] lint fail: detail carries the location" \
     "$(echo "$LINT_DET" | jq -r '.detail // empty')" "In plugins/x.sh line 12:"
 # …and the suite's lint tier prints it under the FAIL marker, where the test
 # stage's extractor reads it.
-_lt_out="$(cd "$REPO_ROOT" && ZBUILD_LINT_CMD="bash -c 'printf \"In plugins/x.sh line 12:\\n  ^-- SC2034 (warning): foo appears unused.\\n\"; exit 1'" bash scripts/run-tests.sh --tier lint 2>&1)"
+# ZBUILD_TESTS_DIR: a fixture dir exempts this nested run from the #983
+# re-entrancy guard when the suite itself is running this file.
+mkdir -p "$TEST_TEMP_DIR/lint-fx/unit"
+_lt_out="$(cd "$REPO_ROOT" && ZBUILD_TESTS_DIR="$TEST_TEMP_DIR/lint-fx" ZBUILD_LINT_CMD="bash -c 'printf \"In plugins/x.sh line 12:\\n  ^-- SC2034 (warning): foo appears unused.\\n\"; exit 1'" bash scripts/run-tests.sh --tier lint 2>&1)"
 assert_contains "[#2138] --tier lint prints the finding under the FAIL marker" "$_lt_out" "SC2034 (warning): foo appears unused"
 
 # ─── 3. framework_run_lint: skipped (explicitly empty cmd) ────────────────────

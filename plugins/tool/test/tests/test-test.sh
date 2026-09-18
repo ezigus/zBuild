@@ -764,7 +764,7 @@ assert_contains "[#2124] the ✗ line precedes the noise" "$_spec13_first" "rout
 _s38_dir="$TEST_TEMP_DIR/spec38-artifacts"; mkdir -p "$_s38_dir"
 _s38_sum="$_s38_dir/test-failures-summary.md"
 _s38_raw="$(printf 'unit: FAIL plugins/agent/review-lens/tests/review-lens-test.sh\n'
-for i in $(seq 1 60); do printf '  ✓ [#1140-%%s] something fine\n' "$i"; done
+for i in $(seq 1 60); do printf '  ✓ [#1140-%s] something fine\n' "$i"; done
 printf 'plugins/agent/review-lens/tests/review-lens-test.sh: line 557: _route_resolve_max_turns: command not found\n'
 printf 'lint: FAIL (npm run lint)\n'
 printf 'In plugins/agent/review-lens/plugin.sh line 331:\n    local json prose\n          ^--^ SC2034 (warning): prose appears unused.\n'
