@@ -82,6 +82,13 @@ _build_read_prior_build_summary() {
 # a file no shipped template has written since #1979, so that detection had
 # been starved in production while its tests fed it through a stub.
 _build_read_prior_assessment() {
+    # #2132: a PRIOR ITERATION of this run only. On iteration 1 the declared
+    # input resolves to whatever hydrate restored from a previous run — run
+    # 35337145412 read a stale TIMEOUT line, named an out-of-scope file and
+    # halted the cycle blocked_on_scope before iteration 2 could run. The
+    # previous run's findings reach the builder through STAGE SUMMARIES once
+    # this run's test stage has produced them (ADR-050 §1).
+    [[ "${ZBUILD_CYCLE_ITER:-1}" -ge 2 ]] || return 0
     [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS}" ]] || return 0
     local f
     f="$(jq -r '.inputs.test_failures_summary // empty' "${ZBUILD_STAGE_INPUTS}" 2>/dev/null || true)"

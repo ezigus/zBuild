@@ -20,6 +20,8 @@
 #   T3: returns empty when feedback empty
 #   T4: heuristic excludes path:NNN line citations (not change-requests)
 #   T5: works under set -euo pipefail
+#   T6: mixed in-scope + out-of-scope
+#   T7: (#2132) a `<tier>: TIMEOUT <file>` line names no out-of-scope file
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -101,6 +103,17 @@ case "$out" in
     *"tests/in.sh"*) assert_fail "T6: in-scope must NOT be returned: $out" ;;
     *) assert_pass "T6: in-scope path filtered out" ;;
 esac
+
+# T7 (#2132): a TIMEOUT marker is infrastructure, not a file build is blocked on.
+fb='integration: TIMEOUT tests/integration/engine-isolation-test.sh (exceeded 480s, rc=124)
+integration: FAIL tests/integration/real-test.sh'
+plan_csv="plugins/agent/foo.sh"
+out="$(_build_detect_out_of_scope_files "$fb" "$plan_csv" | sort | tr '\n' ',')"
+case "$out" in
+    *"engine-isolation-test.sh"*) assert_fail "T7: a TIMEOUT line must not name an out-of-scope file" "$out" ;;
+    *) assert_pass "T7: a TIMEOUT line names no out-of-scope file" ;;
+esac
+assert_contains "T7: a FAIL line on the same feedback still does" "$out" "tests/integration/real-test.sh"
 
 print_test_results
 exit $((FAIL > 0))
