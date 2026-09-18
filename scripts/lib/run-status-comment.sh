@@ -336,3 +336,137 @@ rsc_outbound_body() {
     rm -f "$tin" "$tout"
     return 1
 }
+
+# ═══ GitHub I/O — advisory: every function here returns 0 ═══════════════════
+
+# ─── rsc_gh <state_dir> <stdout_file> <args...> — gh under a watchdog ───────
+# `timeout(1)` is not on macOS; the runner's bg+sleep+kill pattern is. The
+# body travels as `-f body=@<file>` — a background job's stdin is /dev/null,
+# and a 60 KB comment must never be an argv word. Returns gh's rc (124 on
+# timeout) for the caller's LOG, never its exit; stderr is kept in
+# _RSC_GH_ERR so a caller can tell a 404 from the rest.
+_RSC_GH_ERR=""
+rsc_gh() {
+    local state_dir="$1" out="$2"; shift 2
+    local err rc=0 pid wd
+    _RSC_GH_ERR=""
+    err="$(mktemp "${TMPDIR:-$state_dir}/rsc-gh-err.XXXXXX")" || return 1
+    gh "$@" > "$out" 2> "$err" </dev/null &
+    pid=$!
+    ( sleep "$ZBUILD_STATUS_COMMENT_GH_TIMEOUT"; kill -TERM "$pid" 2>/dev/null || true ) &
+    wd=$!
+    wait "$pid" 2>/dev/null; rc=$?
+    if kill -0 "$wd" 2>/dev/null; then
+        kill -TERM "$wd" 2>/dev/null || true
+        wait "$wd" 2>/dev/null || true
+    else
+        # Watchdog already fired → the call was cut.
+        rc=124
+    fi
+    _RSC_GH_ERR="$(head -c 400 "$err" 2>/dev/null | tr '\n' ' ')"
+    if [[ $rc -ne 0 ]]; then
+        local detail="${_RSC_GH_ERR:0:200}"
+        [[ $rc -eq 124 ]] && detail="timeout after ${ZBUILD_STATUS_COMMENT_GH_TIMEOUT}s ${detail}"
+        rsc_log "$state_dir" "gh $1 $2 rc=$rc ${detail}"
+    fi
+    rm -f "$err"
+    return $rc
+}
+
+# ─── rsc_id_save / rsc_id_load — <state_dir>/status-comment.json ────────────
+# tmp+mv (legacy e-1): a concurrent reader never sees a truncated id.
+rsc_id_save() {
+    local state_dir="$1" slug="$2" issue="$3" run_id="$4" id="$5" tmp
+    tmp="$(mktemp "$state_dir/status-comment.json.XXXXXX")" || return 0
+    jq -n --arg slug "$slug" --arg issue "$issue" --arg run_id "$run_id" --arg id "$id" \
+        --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+        '{schema_version:1, repo:$slug, issue:($issue|tonumber), run_id:$run_id, comment_id:($id|tonumber), created_at:$at}' \
+        > "$tmp" 2>/dev/null && mv -f "$tmp" "$state_dir/status-comment.json" || rm -f "$tmp"
+    return 0
+}
+rsc_id_load() {
+    local f="$1/status-comment.json"
+    [[ -s "$f" ]] || return 0
+    jq -r '.comment_id // empty' "$f" 2>/dev/null || true
+}
+
+# ─── rsc_comment_find <state_dir> <slug> <issue> <run_id> — by marker ───────
+# Only when the id file is gone (resume, lost create response): this is what
+# makes "exactly one comment per run" hold across a restart.
+rsc_comment_find() {
+    local state_dir="$1" slug="$2" issue="$3" run_id="$4" out id=""
+    out="$(mktemp "${TMPDIR:-$state_dir}/rsc-find.XXXXXX")" || return 0
+    if rsc_gh "$state_dir" "$out" api --paginate "repos/${slug}/issues/${issue}/comments" \
+            --jq "[.[] | select(.body | contains(\"${_RSC_MARKER_PREFIX}${run_id} -->\")) | .id] | first // empty" 2>/dev/null; then
+        # --paginate may print one id per page; the first non-empty line wins.
+        id="$(awk 'NF { print; exit }' "$out" 2>/dev/null || true)"
+        # A fake or an older gh may hand back the raw page; select in-process.
+        if [[ -n "$id" && ! "$id" =~ ^[0-9]+$ ]]; then
+            id="$(jq -r --arg m "${_RSC_MARKER_PREFIX}${run_id} -->" \
+                '[.[]? | select((.body // "") | contains($m)) | .id] | first // empty' "$out" 2>/dev/null || true)"
+        fi
+    fi
+    rm -f "$out"
+    [[ "$id" =~ ^[0-9]+$ ]] && printf '%s' "$id"
+    return 0
+}
+
+# ─── rsc_comment_create / rsc_comment_patch ─────────────────────────────────
+rsc_comment_create() {
+    local state_dir="$1" slug="$2" issue="$3" body_file="$4" out id=""
+    out="$(mktemp "${TMPDIR:-$state_dir}/rsc-create.XXXXXX")" || return 0
+    if rsc_gh "$state_dir" "$out" api "repos/${slug}/issues/${issue}/comments" -f "body=@${body_file}" --jq .id; then
+        id="$(tr -d '[:space:]' < "$out")"
+    fi
+    rm -f "$out"
+    [[ "$id" =~ ^[0-9]+$ ]] && printf '%s' "$id"
+    return 0
+}
+rsc_comment_patch() {
+    local state_dir="$1" slug="$2" id="$3" body_file="$4" out rc=0
+    out="$(mktemp "${TMPDIR:-$state_dir}/rsc-patch.XXXXXX")" || return 0
+    rsc_gh "$state_dir" "$out" api "repos/${slug}/issues/comments/${id}" -X PATCH -f "body=@${body_file}" || rc=$?
+    # A 404 means the comment is gone (deleted by a human); report it so the
+    # caller can re-create ONCE.
+    if [[ $rc -ne 0 && "$_RSC_GH_ERR" == *"404"* ]]; then rc=44; fi
+    rm -f "$out"
+    return $rc
+}
+
+# ─── rsc_upsert <state_dir> <slug> <issue> <run_id> <body_file> ─────────────
+# id known → PATCH; else marker search → PATCH; else POST. A PATCH 404 clears
+# the id and allows one re-create per process, so a vandalised comment cannot
+# fan out. Always returns 0.
+_RSC_RECREATED=0
+_RSC_GIVEN_UP=0
+rsc_upsert() {
+    local state_dir="$1" slug="$2" issue="$3" run_id="$4" body_file="$5"
+    local id rc=0
+    [[ "$_RSC_GIVEN_UP" -eq 1 ]] && return 0
+    id="$(rsc_id_load "$state_dir")"
+    if [[ -z "$id" ]]; then
+        id="$(rsc_comment_find "$state_dir" "$slug" "$issue" "$run_id")"
+        [[ -n "$id" ]] && rsc_id_save "$state_dir" "$slug" "$issue" "$run_id" "$id"
+    fi
+    if [[ -n "$id" ]]; then
+        rsc_comment_patch "$state_dir" "$slug" "$id" "$body_file"; rc=$?
+        if [[ $rc -eq 0 ]]; then return 0; fi
+        if [[ $rc -ne 44 ]]; then return 0; fi
+        # Gone. Forget it; re-create at most once.
+        rm -f "$state_dir/status-comment.json"
+        if [[ "$_RSC_RECREATED" -ge 1 ]]; then
+            _RSC_GIVEN_UP=1
+            rsc_log "$state_dir" "comment ${id} gone again; giving up for this run"
+            return 0
+        fi
+        _RSC_RECREATED=1
+        rsc_log "$state_dir" "comment ${id} gone (404); re-creating once"
+    fi
+    id="$(rsc_comment_create "$state_dir" "$slug" "$issue" "$body_file")"
+    if [[ -n "$id" ]]; then
+        rsc_id_save "$state_dir" "$slug" "$issue" "$run_id" "$id"
+        [[ "${GITHUB_ACTIONS:-}" == "true" ]] && \
+            echo "::notice title=zbuild status comment::https://github.com/${slug}/issues/${issue}#issuecomment-${id}"
+    fi
+    return 0
+}
