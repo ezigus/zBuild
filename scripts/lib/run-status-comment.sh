@@ -353,7 +353,10 @@ rsc_gh() {
     err="$(mktemp "${TMPDIR:-$state_dir}/rsc-gh-err.XXXXXX")" || return 1
     gh "$@" > "$out" 2> "$err" </dev/null &
     pid=$!
-    ( sleep "$ZBUILD_STATUS_COMMENT_GH_TIMEOUT"; kill -TERM "$pid" 2>/dev/null || true ) &
+    # The watchdog must not inherit a caller's `$(...)` capture pipe: the
+    # substitution would then block until the sleep ended, turning every
+    # call into a GH_TIMEOUT-long wait.
+    ( sleep "$ZBUILD_STATUS_COMMENT_GH_TIMEOUT"; kill -TERM "$pid" 2>/dev/null || true ) >/dev/null 2>&1 </dev/null &
     wd=$!
     wait "$pid" 2>/dev/null; rc=$?
     if kill -0 "$wd" 2>/dev/null; then
@@ -470,3 +473,129 @@ rsc_upsert() {
     fi
     return 0
 }
+
+# ═══ Loop / lifecycle ═══════════════════════════════════════════════════════
+
+_RSC_STOP=0
+_rsc_on_stop() { _RSC_STOP=1; }
+
+# ─── rsc_flush <events> <state_dir> <slug> <issue> <run_id> [override] ──────
+# Render → redact → upsert. A redactor failure posts nothing (logged).
+rsc_flush() {
+    local events="$1" state_dir="$2" slug="$3" issue="$4" run_id="$5" override="${6:-}"
+    local body_file
+    body_file="$(mktemp "${TMPDIR:-$state_dir}/rsc-body.XXXXXX")" || return 0
+    if ! rsc_outbound_body "$events" "$state_dir" "$override" > "$body_file"; then
+        rsc_log "$state_dir" "redaction_failed: body not posted"
+        rm -f "$body_file"; return 0
+    fi
+    rsc_upsert "$state_dir" "$slug" "$issue" "$run_id" "$body_file"
+    rm -f "$body_file"
+    return 0
+}
+
+_rsc_has_type() {   # _rsc_has_type <events> <regex-of-types>
+    [[ -s "$1" ]] && grep -qE "\"type\":\"($2)\"" "$1" 2>/dev/null
+}
+
+# ─── rsc_tail_loop <events> <state_dir> <parent_pid> <slug> <issue> <run_id> ─
+# Poll (not tail -F: the file may not exist yet, and a size check is enough at
+# this cadence). No GitHub call before pipeline.start|resume — a refused lock
+# or a preflight return between spawn and start must never create a comment.
+# A terminal event flushes at once but does NOT end the loop: always-run
+# stages emit after pipeline.end, and the runner's EXIT trap reaps us after
+# them. TERM/INT → final render; parent death → final render marked as such.
+rsc_tail_loop() {
+    local events="$1" state_dir="$2" parent="$3" slug="$4" issue="$5" run_id="$6"
+    local last_size=-1 size dirty=0 seen_start=0 terminal_seen=0 last_flush=0 now flushed_once=0
+    trap '_rsc_on_stop' TERM INT
+    trap '' HUP
+    while :; do
+        if [[ "$_RSC_STOP" -eq 1 ]]; then
+            local ov=""
+            _rsc_has_type "$events" 'pipeline\.end|pipeline\.aborted|pipeline\.abort' || ov="interrupted"
+            [[ "$seen_start" -eq 1 ]] && rsc_flush "$events" "$state_dir" "$slug" "$issue" "$run_id" "$ov"
+            rsc_log "$state_dir" "stopped on signal"
+            return 0
+        fi
+        if [[ -n "$parent" ]] && ! kill -0 "$parent" 2>/dev/null; then
+            local ov=""
+            _rsc_has_type "$events" 'pipeline\.end|pipeline\.aborted|pipeline\.abort' \
+                || ov="interrupted (runner exited without a terminal event)"
+            [[ "$seen_start" -eq 1 ]] && rsc_flush "$events" "$state_dir" "$slug" "$issue" "$run_id" "$ov"
+            rsc_log "$state_dir" "parent ${parent} gone; final render done"
+            return 0
+        fi
+        size=0; [[ -f "$events" ]] && size="$(wc -c < "$events" 2>/dev/null | tr -d ' ')"
+        if [[ "$size" != "$last_size" ]]; then dirty=1; last_size="$size"; fi
+        if [[ $dirty -eq 1 && $seen_start -eq 0 ]]; then
+            _rsc_has_type "$events" 'pipeline\.start|pipeline\.resume' && seen_start=1
+        fi
+        local terminal_now=0
+        if [[ $dirty -eq 1 && $terminal_seen -eq 0 ]]; then
+            if _rsc_has_type "$events" 'pipeline\.end|pipeline\.aborted|pipeline\.abort'; then
+                terminal_seen=1; terminal_now=1
+            fi
+        fi
+        now="$(date +%s)"
+        if [[ $dirty -eq 1 && $seen_start -eq 1 ]] && \
+           [[ $flushed_once -eq 0 || $terminal_now -eq 1 || $(( now - last_flush )) -ge "${ZBUILD_STATUS_COMMENT_MIN_INTERVAL%.*}" ]]; then
+            rsc_flush "$events" "$state_dir" "$slug" "$issue" "$run_id"
+            dirty=0; flushed_once=1; last_flush="$now"
+        fi
+        # Interruptible sleep: a TERM lands on `wait`, not inside `sleep`.
+        sleep "$ZBUILD_STATUS_COMMENT_POLL" & wait $! 2>/dev/null
+    done
+}
+
+# ─── main ───────────────────────────────────────────────────────────────────
+#   --events <jsonl> --state-dir <dir> [--parent-pid <pid>] [--slug o/r]
+#   [--issue N] [--run-id id] [--repo-root <dir>] [--once]
+# Identity falls back to status-comment.json, then the environment.
+rsc_main() {
+    local events="" state_dir="" parent="" slug="" issue="" run_id="" repo_root="" once=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --events) events="${2:-}"; shift 2 ;;
+            --state-dir) state_dir="${2:-}"; shift 2 ;;
+            --parent-pid) parent="${2:-}"; shift 2 ;;
+            --slug) slug="${2:-}"; shift 2 ;;
+            --issue) issue="${2:-}"; shift 2 ;;
+            --run-id) run_id="${2:-}"; shift 2 ;;
+            --repo-root) repo_root="${2:-}"; shift 2 ;;
+            --once) once=1; shift ;;
+            *) echo "run-status-comment: unknown argument: $1" >&2; return 2 ;;
+        esac
+    done
+    [[ -n "$state_dir" ]] || { echo "run-status-comment: --state-dir required" >&2; return 2; }
+    [[ -n "$events" ]] || events="$state_dir/events.jsonl"
+    if [[ -s "$state_dir/status-comment.json" ]]; then
+        [[ -n "$slug" ]] || slug="$(jq -r '.repo // empty' "$state_dir/status-comment.json" 2>/dev/null || true)"
+        [[ -n "$issue" ]] || issue="$(jq -r '.issue // empty' "$state_dir/status-comment.json" 2>/dev/null || true)"
+        [[ -n "$run_id" ]] || run_id="$(jq -r '.run_id // empty' "$state_dir/status-comment.json" 2>/dev/null || true)"
+    fi
+    [[ -n "$issue" ]] || issue="${ZBUILD_ISSUE:-}"
+    [[ -n "$run_id" ]] || run_id="${ZBUILD_RUN_ID:-}"
+    [[ -n "$slug" ]] || slug="$(zbuild_repo_slug "${repo_root:-$PWD}" 2>/dev/null || true)"
+    if [[ -z "$slug" || ! "$issue" =~ ^[1-9][0-9]*$ ]]; then
+        rsc_log "$state_dir" "cannot post: slug='${slug}' issue='${issue}'"
+        return 0
+    fi
+    # The summary path resolver lives in the engine; optional (fixtures use
+    # the artifacts/<stage>-summary.md fallback).
+    if ! declare -F _summaries_stage_summary_path >/dev/null 2>&1; then
+        # shellcheck source=../../core/pipeline/input-resolve.sh
+        source "$_RSC_ROOT/core/pipeline/input-resolve.sh" 2>/dev/null || true
+    fi
+    rsc_log "$state_dir" "start: repo=${slug} issue=${issue} run_id=${run_id} parent=${parent:-none} events=${events}"
+    if [[ $once -eq 1 ]]; then
+        rsc_flush "$events" "$state_dir" "$slug" "$issue" "$run_id"
+        return 0
+    fi
+    rsc_tail_loop "$events" "$state_dir" "$parent" "$slug" "$issue" "$run_id"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    rsc_main "$@"
+    exit $?
+fi
