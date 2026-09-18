@@ -1,21 +1,13 @@
 {
   "schema_version": 4,
   "result_contract": 2,
-  "issue": 1840,
-  "files_changed": [
-    "plugins/agent/review-lens/plugin.sh"
-  ],
-  "lines_added": 2,
-  "lines_removed": 0,
-  "diff_patch_path": "/home/runner/work/_temp/zbuild-state/artifacts/diff.patch",
-  "iterations": 3,
-  "terminated_reason": "router_timeout",
   "verdict": "incomplete",
-  "disposition": "interrupted",
-  "reason": "router_timeout",
-  "scope_violation": false,
-  "scope_violations": [],
-  "loop_input_tokens": 0,
-  "loop_output_tokens": 0,
-  "notes": "Build stage completed. Diff written to artifact; not applied."
+  "disposition": "unavailable",
+  "reason": "router_rate_limited",
+  "iterations": 1,
+  "data": {
+    "rate_limit": {
+      "message": "LLM rate-limited — resets 8:50pm (UTC)"
+    }
+  }
 }
