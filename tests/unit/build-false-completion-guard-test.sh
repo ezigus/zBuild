@@ -156,7 +156,6 @@ assert_eq "[SPEC-7] inert_build summary: disposition=broken (#1832)" "broken" "$
 _s7_rc="$(jq -r '.result_contract // ""' "$_spec7_summary" 2>/dev/null)"
 assert_eq "[SPEC-10] inert_build summary: result_contract:2 present" "2" "$_s7_rc"
 
-cleanup_test_env
 # ─── #2138: the guard reads the design's TESTFILES as the design writes them ──
 # The block binds testfiles per SPEC ("SPEC-1: tests/unit/failing-test.sh");
 # passed through verbatim, `-f "$repo/SPEC-1: tests/…"` is false and the guard
@@ -179,6 +178,8 @@ printf 'file 2100 %s/tests/unit/slow-green-test.sh\n' "$REPO" > "$TEST_TEMP_DIR/
 set +e; e_out="$(ZBUILD_NEGCTL_TIMEOUT=1 ZBUILD_NEGCTL_TIMING_LOG="$TEST_TEMP_DIR/timing.log" _build_guard_false_completion "tests/unit/slow-green-test.sh" "$REPO" 2>/dev/null)"; e_rc=$?; set -e
 assert_eq "[#2138] a slow green testfile is not reported red" "" "$e_out"
 assert_eq "[#2138] …and the guard exits 0" "0" "$e_rc"
+
+cleanup_test_env
 
 print_test_results
 exit $((FAIL > 0))

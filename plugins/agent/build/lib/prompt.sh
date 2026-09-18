@@ -20,6 +20,11 @@ _build_render_task_header() {
 _build_compose_instructions() {
     local plan_files_csv="${1:-}"
     local scope_section=""
+    # #2138: the loop's wall clock, stated to the model. Resolved the way the
+    # router will resolve it for this stage; falls back to the stage default.
+    local _budget_wall
+    _budget_wall="$(_route_resolve_timeout 2>/dev/null || true)"
+    [[ "$_budget_wall" =~ ^[0-9]+$ ]] || _budget_wall=900
     if [[ -n "$plan_files_csv" ]]; then
         scope_section="$(printf '%s\n' "$plan_files_csv" | tr ',' '\n' | sed 's/^/  - /')"
     else
@@ -62,8 +67,19 @@ Emit \`LOOP_COMPLETE\` on its own line as the FINAL line of your response
 WHEN the implementation is complete — whether you just finished it OR
 it was already done before you started. If the branch already contains
 the required changes (check \`git log\` for commits + \`git diff\` for any
-remaining gap), emit \`LOOP_COMPLETE\` immediately. Do NOT keep iterating
-when there is nothing left to do.
+remaining gap) AND no STAGE SUMMARY below is marked RESOLVE, emit
+\`LOOP_COMPLETE\` immediately. Do NOT keep iterating when there is nothing
+left to do. While any STAGE SUMMARY is marked RESOLVE, "nothing to do" is
+not an available answer.
+
+### Budget
+- Each iteration is ONE model call bounded by a ${_budget_wall}-second wall clock; a
+  command that runs longer than ~2 minutes will cost you the whole call.
+- Do NOT run \`npm test\`, the full suite, or \`npm run lint\` — the pipeline has
+  already run them and their findings are in the STAGE SUMMARIES below. Run
+  only the one failing test file a summary names, and only after changing code.
+- A STAGE SUMMARY marked RESOLVE is red RIGHT NOW on this tree. Do not
+  re-verify it; start from the failing line it quotes.
 
 ### Rules
 - Touch only files in the scope list above.

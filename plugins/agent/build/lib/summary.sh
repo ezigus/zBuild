@@ -302,20 +302,42 @@ _build_guard_false_completion() {
     local testfiles="$1" repo_root="$2"
     local timeout_s="${ZBUILD_NEGCTL_TIMEOUT:-60}"
     local failing=""
-    # #2108: bounded through the same resolver the gate uses (bare `timeout`
-    # is absent on a stock macOS); resolved once, the prefix is per-bound.
-    _acceptance_timeout_prefix "$timeout_s"
-    while IFS= read -r tf; do
-        [[ -z "$tf" ]] && continue
+    # #2138: the design binds testfiles per SPEC ("SPEC-1: tests/x-test.sh")
+    # and the same file is bound many times; passed through verbatim the
+    # `-f` below was false for every line and the guard probed nothing —
+    # run 35355623656's build kept verdict=pass with its only acceptance
+    # testfile red. Strip the binding prefix and probe each file once.
+    local -a _probe=() _seen=()
+    local _raw _tfp _dup
+    while IFS= read -r _raw; do
+        _tfp="${_raw%$'\r'}"
+        [[ "$_tfp" =~ ^SPEC-[0-9]+:[[:space:]]+(.*)$ ]] && _tfp="${BASH_REMATCH[1]}"
+        _tfp="${_tfp#"${_tfp%%[![:space:]]*}"}"
+        [[ -z "$_tfp" || "$_tfp" == WIRING:* || "$_tfp" == TESTFILES:* ]] && continue
+        _dup=0; for tf in "${_seen[@]+"${_seen[@]}"}"; do [[ "$tf" == "$_tfp" ]] && { _dup=1; break; }; done
+        [[ $_dup -eq 1 ]] && continue
+        _seen+=("$_tfp"); _probe+=("$_tfp")
+    done <<< "$testfiles"
+    local tf rc
+    for tf in "${_probe[@]+"${_probe[@]}"}"; do
         local abs="$repo_root/$tf"
         [[ -f "$abs" ]] || continue
+        # #2138: bounded by what the test stage MEASURED for this file (#2110),
+        # not the raw stage default — review-lens-test.sh takes 139s on the
+        # runner. A run killed at its bound is UNKNOWN, never "red": the gate
+        # classifies that as harness, and a false inert_build blocks a good
+        # build. Resolved per file, as the gate does.
+        _acceptance_timeout_prefix "$(_acceptance_file_timeout "$tf" "$timeout_s")"
+        rc=0
         # #2108: stdin is this loop's TESTFILE list — a file that reads it
         # would eat the rest of the roster; the fresh shell hands it /dev/null.
-        if ! ( _zbuild_make_fresh_shell; ${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"} bash "$abs" ) >/dev/null 2>&1; then
-            failing="$tf"
-            break
-        fi
-    done <<< "$testfiles"
+        ( _zbuild_make_fresh_shell; ${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"} bash "$abs" ) >/dev/null 2>&1 || rc=$?
+        case "$rc" in
+            0) ;;
+            124|137|143) warn "build: false-completion probe of $tf hit its bound (rc=$rc) — inconclusive, not red" ;;
+            *) failing="$tf"; break ;;
+        esac
+    done
     if [[ -n "$failing" ]]; then
         printf '%s' "$failing"
         return 1
