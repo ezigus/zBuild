@@ -64,6 +64,17 @@ plan_csv="tests/foo.sh"
 out="$(_build_detect_out_of_scope_files "$fb" "$plan_csv")"
 assert_eq "T2: in-scope path → empty result" "" "$out"
 
+# T4 (#2132): a TIMEOUT marker is infrastructure, not a file build is blocked on.
+fb='integration: TIMEOUT tests/integration/engine-isolation-test.sh (exceeded 480s, rc=124)
+integration: FAIL tests/integration/real-test.sh'
+plan_csv="plugins/agent/foo.sh"
+out="$(_build_detect_out_of_scope_files "$fb" "$plan_csv" | sort | tr '\n' ',')"
+case "$out" in
+    *"engine-isolation-test.sh"*) assert_fail "T4: a TIMEOUT line must not name an out-of-scope file" "$out" ;;
+    *) assert_pass "T4: a TIMEOUT line names no out-of-scope file" ;;
+esac
+assert_contains "T4: a FAIL line on the same feedback still does" "$out" "tests/integration/real-test.sh"
+
 # T3: empty feedback → empty result.
 out="$(_build_detect_out_of_scope_files "" "tests/foo.sh")"
 assert_eq "T3: empty feedback → empty result" "" "$out"
