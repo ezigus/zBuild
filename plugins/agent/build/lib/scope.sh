@@ -34,8 +34,11 @@ _build_detect_out_of_scope_files() {
     [[ -z "$feedback_body" ]] && return 0
     [[ -z "$plan_files_csv" ]] && return 0
 
+    # #2132: a file killed at its wall-clock bound is infrastructure, not a
+    # file the build is blocked on — drop TIMEOUT marker lines before scanning.
     local cleaned
     cleaned="$(printf '%s' "$feedback_body" \
+        | grep -vE '^[a-z]+: TIMEOUT ' \
         | sed -E 's#(tests|plugins|config|core|scripts|docs)/[A-Za-z0-9_./-]+\.(sh|json|yaml|md|golden|txt):[0-9]+##g' \
         2>/dev/null || true)"
 

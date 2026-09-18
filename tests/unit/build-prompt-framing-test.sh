@@ -182,7 +182,7 @@ assert_contains "[#2124] _build_read_prior_assessment reads the declared test_fa
 assert_eq "[#2132] …but not on iteration 1 (a restored previous-run artifact)" "" \
     "$(ZBUILD_STAGE_INPUTS="$_si" ZBUILD_CYCLE_ITER=1 _build_read_prior_assessment 2>/dev/null)"
 assert_eq "[#2132] …nor outside a cycle" "" \
-    "$(ZBUILD_STAGE_INPUTS="$_si" _build_read_prior_assessment 2>/dev/null)"
+    "$(ZBUILD_STAGE_INPUTS="$_si" ZBUILD_CYCLE_ITER="" _build_read_prior_assessment 2>/dev/null)"
 assert_eq "[#2124] …and nothing from the feedback dir" "" \
     "$(ZBUILD_STAGE_INPUTS="" ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$TEST_TEMP_DIR" _build_read_prior_assessment 2>/dev/null)"
 assert_contains "[#2124] build declares test_failures_summary as an optional input" \
