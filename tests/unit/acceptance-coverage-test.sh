@@ -207,7 +207,7 @@ printf 'echo "✓ [SPEC-1] ok"\n' > "$_bp_repo/tests/x-test.sh"
 _bp_err="$TEST_TEMP_DIR/bp.err"
 ( trap '' PIPE; acceptance_coverage_spec_tagged "$_bp_repo/design.md" "$_bp_repo" SPEC-1 2>"$_bp_err" ); _bp_rc=$?
 assert_eq "[#2134] the tagged SPEC is still found" "0" "$_bp_rc"
-assert_eq "[#2134] nothing is written to stderr (no Broken pipe)" "0" "$(grep -c 'Broken pipe' "$_bp_err" 2>/dev/null || echo 0)"
+assert_eq "[#2134] nothing is written to stderr (no Broken pipe)" "0" "$(grep -c 'Broken pipe' "$_bp_err" 2>/dev/null; true)"
 
 cleanup_test_env
 print_test_results  # exits with $FAIL
