@@ -1,13 +1,12 @@
 # Test stage summary
 
 - verdict: fail
-- passed: 687
-- failed: 2
+- passed: 0
+- failed: 1
 - exit_code: 1
 
 ## Failing lines (extracted)
 
 ```
-integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.LbKYqh/plugins/agent/review-lens/tests/review-lens-test.sh
-lint: FAIL (npm run lint)
+unit: FAIL plugins/agent/review-lens/tests/review-lens-test.sh
 ```
