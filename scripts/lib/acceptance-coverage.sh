@@ -23,8 +23,14 @@ source "$_ACCEPTANCE_COVERAGE_DIR/acceptance-block.sh"
 acceptance_coverage_spec_tagged() {
     local design_md="${1:-}" repo_root="${2:-}" spec_id="${3:-}"
     [[ -z "$design_md" || -z "$spec_id" ]] && return 1
+    # #2134: drain the producer BEFORE scanning. Returning from inside a
+    # `< <(…)` loop closes the pipe under a writer that is still printing the
+    # remaining bindings — under the daemon SIGPIPE is ignored, so each one
+    # became "printf: write error: Broken pipe" on the run's stderr.
+    local -a _tfs=()
+    mapfile -t _tfs < <(acceptance_list_testfiles "$design_md")
     local tf abs
-    while IFS= read -r tf; do
+    for tf in "${_tfs[@]+"${_tfs[@]}"}"; do
         [[ -z "$tf" ]] && continue
         abs="$repo_root/$tf"
         [[ -f "$abs" ]] || continue
@@ -32,7 +38,7 @@ acceptance_coverage_spec_tagged() {
         if grep -qF "[$spec_id]" "$abs" 2>/dev/null; then
             return 0
         fi
-    done < <(acceptance_list_testfiles "$design_md")
+    done
     return 1
 }
 

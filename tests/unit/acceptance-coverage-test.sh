@@ -194,5 +194,20 @@ set -e
 assert_eq "[SPEC-2] C16: falls back to the tagged line when no assertion exists" \
     "# [SPEC-1] fixture only, no assertion here" "$c16_label"
 
+# ── #2134: an early return must not leave the TESTFILES producer writing into a
+# closed pipe. Under the daemon SIGPIPE is ignored, so every remaining line
+# became "printf: write error: Broken pipe" on the run's stderr (16× on run
+# 35355623656). Larger than the pipe buffer so the producer is guaranteed to
+# be mid-write when the reader used to return.
+print_test_section "#2134: the producer is drained before the early return"
+_bp_repo="$TEST_TEMP_DIR/bp"; mkdir -p "$_bp_repo/tests"
+printf 'echo "✓ [SPEC-1] ok"\n' > "$_bp_repo/tests/x-test.sh"
+{ printf '```acceptance\n'; for i in $(seq 1 4000); do printf 'SPEC-%s[change]: thing %s\n' "$i" "$i"; done
+  printf 'TESTFILES:\n'; for i in $(seq 1 4000); do printf 'SPEC-%s: tests/x-test.sh\n' "$i"; done; printf '```\n'; } > "$_bp_repo/design.md"
+_bp_err="$TEST_TEMP_DIR/bp.err"
+( trap '' PIPE; acceptance_coverage_spec_tagged "$_bp_repo/design.md" "$_bp_repo" SPEC-1 2>"$_bp_err" ); _bp_rc=$?
+assert_eq "[#2134] the tagged SPEC is still found" "0" "$_bp_rc"
+assert_eq "[#2134] nothing is written to stderr (no Broken pipe)" "0" "$(grep -c 'Broken pipe' "$_bp_err" 2>/dev/null; true)"
+
 cleanup_test_env
 print_test_results  # exits with $FAIL
