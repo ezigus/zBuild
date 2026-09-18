@@ -23,9 +23,10 @@ LIB="$REPO_ROOT/scripts/lib/run-status-comment.sh"
 GH_LOG="$TEST_TEMP_DIR/gh.log"; GH_BODIES="$TEST_TEMP_DIR/bodies"; mkdir -p "$GH_BODIES"
 cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
 #!/usr/bin/env bash
-printf '%s\n' "\$*" >> "$GH_LOG"
 args="\$*"
+# Body first, log line second: a test that waits on the log must find the body already there.
 case "\$args" in *body=@*) f="\${args##*body=@}"; f="\${f%% *}"; n="\$(ls "$GH_BODIES" | wc -l | tr -d ' ')"; cp "\$f" "$GH_BODIES/body-\$((n+1)).txt" ;; esac
+printf '%s\n' "\$*" >> "$GH_LOG"
 case "\$args" in
   "auth status"*) exit 0 ;;
   *--paginate*) echo '[]'; exit 0 ;;
@@ -68,7 +69,7 @@ start_sidecar "$S1" "$PARENT"
 sleep 1
 assert_eq "[SPEC-1] no gh call while events.jsonl is empty" "0" "$(posts)"
 ev "$S1/events.jsonl" 12:00:00 pipeline.start "" "" run_id=r-loop issue=90000042 engine_sha=abc1234 engine_branch=main
-if wait_for_event "$GH_LOG" 'issues/90000042/comments' 30 0.1; then
+if wait_for_event "$GH_LOG" '^api repos/testuser/testrepo/issues/90000042/comments' 30 0.1; then
     assert_pass "[SPEC-1] pipeline.start → POST within 3s (the run is visible before any stage)"
 else
     assert_fail "[SPEC-1] pipeline.start → POST within 3s" "log: $(cat "$GH_LOG" 2>/dev/null)"
@@ -101,7 +102,7 @@ assert_contains "[SPEC-3] the body on GitHub already had the running row (start 
 S2="$TEST_TEMP_DIR/s2"; mkdir -p "$S2"; : > "$S2/events.jsonl"; : > "$GH_LOG"; rm -f "$GH_BODIES"/*
 ev "$S2/events.jsonl" 13:00:00 pipeline.start "" "" run_id=r-loop issue=90000042 engine_sha=abc1234 engine_branch=main
 start_sidecar "$S2" "$PARENT"
-wait_for_event "$GH_LOG" 'issues/90000042/comments' 30 0.1
+wait_for_event "$GH_LOG" '^api repos/testuser/testrepo/issues/90000042/comments' 30 0.1
 ev "$S2/events.jsonl" 13:00:05 plugin.run.start 1 intake plugin=intake kind=agent
 ev "$S2/events.jsonl" 13:00:06 stage.complete 1 intake stage=intake verdict=pass
 sleep 2.5                                             # let the interval elapse
@@ -143,7 +144,7 @@ S3="$TEST_TEMP_DIR/s3"; mkdir -p "$S3"; : > "$S3/events.jsonl"; : > "$GH_LOG"; r
 ev "$S3/events.jsonl" 14:00:00 pipeline.start "" "" run_id=r-loop issue=90000042 engine_sha=abc1234 engine_branch=main
 ev "$S3/events.jsonl" 14:00:01 plugin.run.start 1 build plugin=build kind=agent
 start_sidecar "$S3" "$PARENT"
-wait_for_event "$GH_LOG" 'issues/90000042/comments' 30 0.1
+wait_for_event "$GH_LOG" '^api repos/testuser/testrepo/issues/90000042/comments' 30 0.1
 kill -TERM "$pid"; wait_gone "$pid"; wait "$pid" 2>/dev/null
 assert_contains "[SPEC-6] no terminal event + TERM → interrupted" "$(last_body)" '**interrupted**'
 assert_contains "[SPEC-6] the running row keeps its start" "$(last_body)" '**1 build** · 14:00:01Z → running'
@@ -153,7 +154,7 @@ S4="$TEST_TEMP_DIR/s4"; mkdir -p "$S4"; : > "$S4/events.jsonl"; : > "$GH_LOG"; r
 ev "$S4/events.jsonl" 15:00:00 pipeline.start "" "" run_id=r-loop issue=90000042 engine_sha=abc1234 engine_branch=main
 sleep 2 & SHORT=$!
 start_sidecar "$S4" "$SHORT"
-wait_for_event "$GH_LOG" 'issues/90000042/comments' 30 0.1
+wait_for_event "$GH_LOG" '^api repos/testuser/testrepo/issues/90000042/comments' 30 0.1
 wait "$SHORT" 2>/dev/null
 if wait_gone "$pid"; then
     wait "$pid" 2>/dev/null; rc=$?

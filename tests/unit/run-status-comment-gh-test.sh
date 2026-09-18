@@ -35,10 +35,11 @@ export ZBUILD_STATUS_COMMENT_GH_TIMEOUT=5
 # behaviour switched by a mode file so failure paths need no second stub.
 cat > "$TEST_TEMP_DIR/bin/gh" <<MOCK
 #!/usr/bin/env bash
+args="\$*"
+# Body first, log line second: a test that waits on the log must find the body already there.
+case "\$args" in *body=@*) f="\${args##*body=@}"; f="\${f%% *}"; n="\$(ls "$GH_BODIES" | wc -l | tr -d ' ')"; cp "\$f" "$GH_BODIES/body-\$((n+1)).txt" ;; esac
 printf '%s\n' "\$*" >> "$GH_LOG"
 mode="\$(cat "$GH_MODE")"
-args="\$*"
-case "\$args" in *body=@*) f="\${args##*body=@}"; f="\${f%% *}"; n="\$(ls "$GH_BODIES" | wc -l | tr -d ' ')"; cp "\$f" "$GH_BODIES/body-\$((n+1)).txt" ;; esac
 case "\$args" in
   "auth status"*) exit 0 ;;
   *--paginate*) cat "$GH_LIST"; exit 0 ;;
