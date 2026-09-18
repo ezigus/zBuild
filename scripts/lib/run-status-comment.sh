@@ -78,16 +78,17 @@ rsc_gh() {
     # The watchdog must not inherit a caller's `$(...)` capture pipe: the
     # substitution would then block until the sleep ended, turning every
     # call into a GH_TIMEOUT-long wait.
-    ( sleep "$ZBUILD_STATUS_COMMENT_GH_TIMEOUT"; kill -TERM "$pid" 2>/dev/null || true ) >/dev/null 2>&1 </dev/null &
+    # The watchdog leaves a marker when it FIRES; that, plus a non-zero rc,
+    # is what a timeout means. Testing "is the watchdog gone" instead raced a
+    # gh that finished in the same instant the sleep ended and reported a
+    # successful call as a timeout, dropping the comment id it had returned.
+    ( sleep "$ZBUILD_STATUS_COMMENT_GH_TIMEOUT"; : > "$err.fired"; kill -TERM "$pid" 2>/dev/null || true ) >/dev/null 2>&1 </dev/null &
     wd=$!
     wait "$pid" 2>/dev/null; rc=$?
-    if kill -0 "$wd" 2>/dev/null; then
-        kill -TERM "$wd" 2>/dev/null || true
-        wait "$wd" 2>/dev/null || true
-    else
-        # Watchdog already fired → the call was cut.
-        rc=124
-    fi
+    kill -TERM "$wd" 2>/dev/null || true
+    wait "$wd" 2>/dev/null || true
+    if [[ $rc -ne 0 && -e "$err.fired" ]]; then rc=124; fi
+    rm -f "$err.fired"
     _RSC_GH_ERR="$(head -c 400 "$err" 2>/dev/null | tr '\n' ' ')"
     if [[ $rc -ne 0 ]]; then
         local detail="${_RSC_GH_ERR:0:200}"
@@ -121,15 +122,13 @@ rsc_id_load() {
 rsc_comment_find() {
     local state_dir="$1" slug="$2" issue="$3" run_id="$4" out id=""
     out="$(mktemp "${TMPDIR:-$state_dir}/rsc-find.XXXXXX")" || return 0
-    if rsc_gh "$state_dir" "$out" api --paginate "repos/${slug}/issues/${issue}/comments" \
-            --jq "[.[] | select(.body | contains(\"${_RSC_MARKER_PREFIX}${run_id} -->\")) | .id] | first // empty" 2>/dev/null; then
-        # --paginate may print one id per page; the first non-empty line wins.
-        id="$(awk 'NF { print; exit }' "$out" 2>/dev/null || true)"
-        # A fake or an older gh may hand back the raw page; select in-process.
-        if [[ -n "$id" && ! "$id" =~ ^[0-9]+$ ]]; then
-            id="$(jq -r --arg m "${_RSC_MARKER_PREFIX}${run_id} -->" \
-                '[.[]? | select((.body // "") | contains($m)) | .id] | first // empty' "$out" 2>/dev/null || true)"
-        fi
+    # The marker is matched HERE with --arg, never interpolated into a --jq
+    # filter: a run id carrying a quote would break the filter, the search
+    # would come back empty, and the next upsert would POST a second comment.
+    # --paginate prints one array per page; take the first id on any page.
+    if rsc_gh "$state_dir" "$out" api --paginate "repos/${slug}/issues/${issue}/comments" 2>/dev/null; then
+        id="$(jq -r --arg m "${_RSC_MARKER_PREFIX}${run_id} -->" \
+            '.[]? | select((.body // "") | contains($m)) | .id' "$out" 2>/dev/null | awk 'NF { print; exit }' || true)"
     fi
     rm -f "$out"
     [[ "$id" =~ ^[0-9]+$ ]] && printf '%s' "$id"
@@ -322,8 +321,8 @@ rsc_main() {
     [[ -n "$issue" ]] || issue="${ZBUILD_ISSUE:-}"
     [[ -n "$run_id" ]] || run_id="${ZBUILD_RUN_ID:-}"
     [[ -n "$slug" ]] || slug="$(zbuild_repo_slug "${repo_root:-$PWD}" 2>/dev/null || true)"
-    if [[ -z "$slug" || ! "$issue" =~ ^[1-9][0-9]*$ ]]; then
-        rsc_log "$state_dir" "cannot post: slug='${slug}' issue='${issue}'"
+    if [[ -z "$slug" || ! "$issue" =~ ^[1-9][0-9]*$ || ! "$run_id" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+        rsc_log "$state_dir" "cannot post: slug='${slug}' issue='${issue}' run_id='${run_id}'"
         return 0
     fi
     # The summary path resolver lives in the engine; optional (fixtures use

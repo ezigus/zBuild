@@ -97,6 +97,14 @@ assert_eq "[SPEC-3] one PATCH to the rediscovered id" "1" "$(patches)"
 assert_eq "[SPEC-3] id file re-persisted" "4242" "$(rsc_id_load "$STATE")"
 assert_eq "[SPEC-3] one paginated list call" "1" "$(grep -c -- '--paginate' "$GH_LOG")"
 
+# A run id with jq-hostile characters still rediscovers (matched with --arg, never interpolated).
+rm -f "$STATE/status-comment.json"
+jq -n '[{id:4242, body:("<!-- zbuild-run-status run_id=" + "r\"q" + " -->")}]' > "$GH_LIST"
+: > "$GH_LOG"
+rsc_upsert "$STATE" "testuser/testrepo" 90000042 'r"q' "$BODY"
+assert_eq "[SPEC-3] a quote in run_id does not break rediscovery (no POST)" "0" "$(posts)"
+assert_eq "[SPEC-3] …the marked comment is PATCHed" "1" "$(patches)"
+
 # A marker for a DIFFERENT run must not be adopted.
 rm -f "$STATE/status-comment.json"
 printf '[{"id":99,"body":"<!-- zbuild-run-status run_id=r-other -->"}]' > "$GH_LIST"

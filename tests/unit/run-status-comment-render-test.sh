@@ -172,6 +172,9 @@ rendered="$(grep -c -E '^\*\*[0-9]+ s[0-9]+\*\*' <<< "$body")"
 omitted="$(sed -E 's/.*… ([0-9]+) earlier rows omitted.*/\1/' <<< "$omit_line")"
 assert_eq "[SPEC-6] omitted count + rendered rows == 400" "400" "$(( rendered + omitted ))"
 
+# rsc_byte_len counts BYTES under any locale (the GitHub limit is bytes).
+assert_eq "[SPEC-6] rsc_byte_len counts bytes, not characters" "14" "$(rsc_byte_len 'héllo — ✓')"
+
 # ─── SPEC-7: outbound redaction through the scope manifest ──────────────────
 apply_scope_redaction() { printf 'REDACTED-BODY' > "$2"; return 0; }
 printf 'scope\n' > "$STATE/scope-manifest.md"
