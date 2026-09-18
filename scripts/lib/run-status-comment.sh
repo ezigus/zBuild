@@ -61,10 +61,12 @@ rsc_enabled() {
 
 # ─── rsc_gh <state_dir> <stdout_file> <args...> — gh under a watchdog ───────
 # `timeout(1)` is not on macOS; the runner's bg+sleep+kill pattern is. The
-# body travels as `-f body=@<file>` — a background job's stdin is /dev/null,
+# body travels as `-F body=@<file>` — a background job's stdin is /dev/null,
 # and a 60 KB comment must never be an argv word. Returns gh's rc (124 on
 # timeout) for the caller's LOG, never its exit; stderr is kept in
-# _RSC_GH_ERR so a caller can tell a 404 from the rest.
+# _RSC_GH_ERR so a caller can tell a 404 from the rest. `-F`, not `-f`:
+# only --field reads `@file`; --raw-field sends the literal string, and the
+# first real run posted its own temp path as the comment (#2137).
 _RSC_GH_ERR=""
 rsc_gh() {
     local state_dir="$1" out="$2"; shift 2
@@ -138,7 +140,7 @@ rsc_comment_find() {
 rsc_comment_create() {
     local state_dir="$1" slug="$2" issue="$3" body_file="$4" out id=""
     out="$(mktemp "${TMPDIR:-$state_dir}/rsc-create.XXXXXX")" || return 0
-    if rsc_gh "$state_dir" "$out" api "repos/${slug}/issues/${issue}/comments" -f "body=@${body_file}" --jq .id; then
+    if rsc_gh "$state_dir" "$out" api "repos/${slug}/issues/${issue}/comments" -F "body=@${body_file}" --jq .id; then
         id="$(tr -d '[:space:]' < "$out")"
     fi
     rm -f "$out"
@@ -148,7 +150,7 @@ rsc_comment_create() {
 rsc_comment_patch() {
     local state_dir="$1" slug="$2" id="$3" body_file="$4" out rc=0
     out="$(mktemp "${TMPDIR:-$state_dir}/rsc-patch.XXXXXX")" || return 0
-    rsc_gh "$state_dir" "$out" api "repos/${slug}/issues/comments/${id}" -X PATCH -f "body=@${body_file}" || rc=$?
+    rsc_gh "$state_dir" "$out" api "repos/${slug}/issues/comments/${id}" -X PATCH -F "body=@${body_file}" || rc=$?
     # A 404 means the comment is gone (deleted by a human); report it so the
     # caller can re-create ONCE.
     if [[ $rc -ne 0 && "$_RSC_GH_ERR" == *"404"* ]]; then rc=44; fi

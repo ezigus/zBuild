@@ -12,7 +12,7 @@ Three independent mutations, each a plausible regression:
 python3 - <<'PY'
 import pathlib
 p = pathlib.Path("scripts/lib/run-status-comment.sh"); s = p.read_text()
-new = s.replace('-X PATCH -f "body=@${body_file}"', '-f "body=@${body_file}"', 1)
+new = s.replace('-X PATCH -F "body=@${body_file}"', '-F "body=@${body_file}"', 1)
 assert new != s, "PATCH site not found"; p.write_text(new)
 p = pathlib.Path("scripts/lib/run-status-render.sh"); s = p.read_text()
 new = s.replace(': "${ZBUILD_STATUS_COMMENT_MAX_BYTES:=60000}"', ': "${ZBUILD_STATUS_COMMENT_MAX_BYTES:=600000}"', 1)

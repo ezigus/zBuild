@@ -130,6 +130,13 @@ rsc_upsert "$STATE" "testuser/testrepo" 90000042 "r-2131" "$BODY"
 rsc_upsert "$STATE" "testuser/testrepo" 90000042 "r-2131" "$BODY"
 assert_eq "[SPEC-5] a second 404 never fans out into more POSTs" "1" "$(posts)"
 
+# ─── SPEC-5b: the body field is `-F` (reads @file), never `-f` (literal) ───
+# The fake above resolves `@file` for either flag; the real `gh api` does so
+# only for --field. The first real run (#2137) posted its own temp path as the
+# comment body — a defect no fake can show, so the flag is pinned as text.
+assert_eq "[SPEC-5b] both gh writes use -F body=@file" "2" "$(grep -c -- '-F "body=@' "$LIB")"
+assert_eq "[SPEC-5b] no gh write uses -f body=@file (a literal, not a file)" "0" "$(grep -c -- '-f "body=@' "$LIB")"
+
 # ─── SPEC-6: gh call is bounded by the watchdog ─────────────────────────────
 cat > "$TEST_TEMP_DIR/bin/gh" <<'MOCK'
 #!/usr/bin/env bash
