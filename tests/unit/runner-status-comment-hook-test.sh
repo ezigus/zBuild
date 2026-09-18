@@ -60,6 +60,7 @@ chmod +x "$TEST_TEMP_DIR/bin/gh"
 REPO="$TEST_TEMP_DIR/repo"; mkdir -p "$REPO"; git -C "$REPO" init -q; git -C "$REPO" remote add origin https://github.com/testuser/testrepo.git
 export ZBUILD_ISSUE=90000042 ZBUILD_RUN_ID=r-hook
 unset NO_GITHUB
+export ZBUILD_STATUS_COMMENT=1     # the harness pins 0 (SPEC-3); this section wants the gates themselves
 
 _RUNNER_STATUS_COMMENT_PID=""
 ZBUILD_STATUS_COMMENT=0 _runner_status_comment_spawn "$STATE" "$STATE/events.jsonl" "$REPO"
