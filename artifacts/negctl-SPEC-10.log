@@ -101,4 +101,4 @@
     [2mabsent[0m
   [38;2;248;113;113m✗[0m [SPEC-6] manifest must declare config.router.max_turns
     [2mabsent[0m
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.hgMOFg/plugins/agent/review-lens/tests/review-lens-test.sh: line 557: _route_resolve_max_turns: command not found
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.DCSWKO/plugins/agent/review-lens/tests/review-lens-test.sh: line 557: _route_resolve_max_turns: command not found
