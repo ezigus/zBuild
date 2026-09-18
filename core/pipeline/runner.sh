@@ -228,6 +228,59 @@ _runner_now_ms() {
     printf '%s' "$(( ${EPOCHSECONDS:-$(date -u +%s)} * 1000 ))"
 }
 
+# ─── _runner_status_comment_spawn <state_dir> <events_jsonl> <repo_root> ─────
+# #2131 (ADR-064): the live run-status comment is a SIDECAR that tails
+# events.jsonl — the engine never renders GitHub markdown itself, it only
+# starts an observer and stops it. Spawned here, in the runner, so a local
+# `zbuild pipeline start --issue N` and the CI workflow share one code path
+# (CI needs no extra step: GITHUB_TOKEN is already job-level env). Every
+# gate that keeps a test's temp repo off GitHub lives in rsc_enabled; the
+# harness also pins ZBUILD_STATUS_COMMENT=0. The sidecar's fd 3 is closed so
+# it never holds the stage-io channel open.
+_RUNNER_STATUS_COMMENT_PID=""
+_runner_status_comment_spawn() {
+    local state_dir="$1" events_jsonl="$2" repo_root="${3:-$PWD}"
+    _RUNNER_STATUS_COMMENT_PID=""
+    [[ "${ZBUILD_STATUS_COMMENT:-1}" == "0" ]] && {
+        printf '%s disabled: ZBUILD_STATUS_COMMENT=0\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$state_dir/status-comment.log" 2>/dev/null || true
+        return 0
+    }
+    local lib="$_ZBUILD_ROOT/scripts/lib/run-status-comment.sh"
+    [[ -f "$lib" ]] || return 0
+    # shellcheck source=../../scripts/lib/run-status-comment.sh
+    source "$lib" 2>/dev/null || return 0
+    rsc_enabled "$state_dir" "$repo_root" || return 0
+    local slug; slug="$(zbuild_repo_slug "$repo_root" 2>/dev/null || true)"
+    ( exec 3>&- 2>/dev/null
+      exec bash "$lib" --events "$events_jsonl" --state-dir "$state_dir" \
+           --parent-pid $$ --slug "$slug" --issue "${ZBUILD_ISSUE:-0}" \
+           --run-id "${ZBUILD_RUN_ID:-}" --repo-root "$repo_root" ) \
+        </dev/null >>"$state_dir/status-comment.log" 2>&1 &
+    _RUNNER_STATUS_COMMENT_PID=$!
+    return 0
+}
+
+# ─── _runner_status_comment_reap ─────────────────────────────────────────────
+# Idempotent (clears the pid first) and rc-neutral (`return 0`, every line
+# tolerant): it runs inside the EXIT trap under `set -e`, and the process exit
+# status must never depend on GitHub. TERM, bounded wait, KILL backstop.
+_runner_status_comment_reap() {
+    local pid="${_RUNNER_STATUS_COMMENT_PID:-}"
+    [[ -n "$pid" ]] || return 0
+    _RUNNER_STATUS_COMMENT_PID=""
+    if kill -0 "$pid" 2>/dev/null; then
+        kill -TERM "$pid" 2>/dev/null || true
+        local i
+        for (( i = 0; i < ${ZBUILD_STATUS_COMMENT_REAP_TIMEOUT:-45} * 10; i++ )); do
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 0.1
+        done
+        kill -0 "$pid" 2>/dev/null && kill -KILL "$pid" 2>/dev/null || true
+    fi
+    wait "$pid" 2>/dev/null || true
+    return 0
+}
+
 # ─── _runner_resolve_unit_index <to> (#1217, ADR-045) ────────────────────────
 # Echo the index of <to> in _TPL_DISPATCH_UNITS[]: by direct unit id (stripping
 # the stage:/cycle:/parallel: prefix) first, then by cycle/parallel MEMBERSHIP.
@@ -1894,6 +1947,12 @@ main() {
         # Operator pinned an events location → respect + export as-is.
         export ZBUILD_EVENTS_DIR ZBUILD_EVENTS_JSONL ZBUILD_EVENTS_DB
     fi
+    # #2131: the run-status comment sidecar — after the events path is fixed,
+    # before the issue lock (so it never inherits the lock fd), from the target
+    # repo (the runner has not entered the worktree yet). Never on a dry run.
+    if [[ "$dry_run" != "true" ]]; then
+        _runner_status_comment_spawn "$state_dir" "$ZBUILD_EVENTS_JSONL" "$PWD"
+    fi
     # #887: latest-run pointer so `zbuild resume --latest` / `--attach` resolve
     # the most recent per-run dir without a scan. Only for the per-run default
     # (never pollute an explicit/test state dir). Atomic swap via ln -sfn.
@@ -2137,7 +2196,9 @@ main() {
             rm -f "$_runner_state_file.lock" "$_rd/events.jsonl.lock" \
                   "$_rd/events.db.lock" 2>/dev/null || true
         fi
-        [[ "$_runner_ended" == "true" ]] && return 0
+        # #2131: the normal path — pipeline.end and the always-run stages are
+        # on disk; the sidecar renders them in its final PATCH, then goes.
+        if [[ "$_runner_ended" == "true" ]]; then _runner_status_comment_reap; return 0; fi
         # Clean teardown (signal/OOM) → interrupted; operator cancel → aborted handled elsewhere.
         # Fail-closed: if we cannot mark the pipeline interrupted, emit an error event so the
         # operator can detect the unrecorded abort (was: || true, which silently dropped failures).
@@ -2172,6 +2233,9 @@ main() {
         # NB: do NOT redirect stderr away here — the banner writes to fd 2.
         # Wrap in a subshell so a non-zero rc inside doesn't abort the trap.
         ( _render_pipeline_end "aborted" ) || true
+        # #2131: abnormal path — pipeline.aborted/pipeline.abort are on disk
+        # now, so the sidecar's final render says why. Last, deliberately.
+        _runner_status_comment_reap
     }
     # #612 / Wave 15-F (#686): INT/TERM trap — flag the signal cause then
     # exit. Setting the marker + reason before exit lets the EXIT trap emit
@@ -2225,6 +2289,10 @@ main() {
                 # exited) — kill is best-effort 2>/dev/null anyway.
                 local _pid="$1" _resolved=""
                 [[ -z "$_pid" ]] && return 0
+                # #2131: the status-comment sidecar is reaped by the EXIT
+                # trap AFTER pipeline.aborted is on disk — not swept here,
+                # where the 1s KILL backstop would cut its final render.
+                [[ "$_pid" == "${_RUNNER_STATUS_COMMENT_PID:-}" ]] && return 0
                 if command -v ps >/dev/null 2>&1; then
                     _resolved="$(ps -o pgid= -p "$_pid" 2>/dev/null | tr -d ' ' || true)"
                 fi

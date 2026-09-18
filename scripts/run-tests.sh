@@ -461,6 +461,11 @@ if [[ -n "${ZBUILD_RUN_TESTS_ACTIVE:-}" && -z "${ZBUILD_TESTS_DIR:-}" ]]; then
   exit 2
 fi
 export ZBUILD_RUN_TESTS_ACTIVE=1
+# #2131: no test may reach GitHub through the run-status comment sidecar. Set
+# HERE (not inherited): the dogfood's test stage re-enters through a scrubbed
+# fresh shell (ADR-024), so an outer value would be gone by the time a nested
+# runner read it. The #2107 lesson — a test once reached the real claude CLI.
+export ZBUILD_STATUS_COMMENT=0
 
 tier="${1:-}"
 if [[ "$tier" == "--tier" ]]; then
