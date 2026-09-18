@@ -178,6 +178,15 @@ eb_emit_event() {
     # emits (pipeline.start, template load, bootstrap) keep the canonical 8-key
     # envelope, so C6 falls back to the run-level last-event check for them.
     local stage; stage="$(_eb_strip_ansi "${ZBUILD_CURRENT_STAGE:-}")"
+    # #2131 (ADR-064): the stage-io seq label (`6.1.3` = runner cardinal ·
+    # cycle iteration · member position) rides the envelope by the same rule
+    # as `stage` — present only while a label is exported. It was rendered
+    # into the banner and persisted nowhere, so the run-status comment had no
+    # key to pair a stage's start with its end. Validated, not ANSI-stripped:
+    # the label is engine-generated digits and dots, and anything else is an
+    # upstream fault that must not become a row key downstream.
+    local seq="${ZBUILD_STAGE_IO_SEQ_LABEL:-}"
+    [[ "$seq" =~ ^[0-9]+(\.[0-9]+)*$ ]] || seq=""
 
     # Validate-or-cast $issue to a non-negative integer. Coming from env, an
     # unsanitized string here would break the SQL INSERT below ($issue is
@@ -195,9 +204,11 @@ eb_emit_event() {
         --arg plugin "$plugin" \
         --arg kind "$kind" \
         --arg stage "$stage" \
+        --arg seq "$seq" \
         --argjson data "$payload" \
         '{ts: $ts, run_id: $run_id, issue: $issue, type: $type, plugin: $plugin, kind: $kind, data: $data, schema_version: 1}
-         + (if $stage != "" then {stage: $stage} else {} end)')"
+         + (if $stage != "" then {stage: $stage} else {} end)
+         + (if $seq != "" then {seq: $seq} else {} end)')"
 
     # Single-writer JSONL via flock
     if zbuild_has_flock; then
