@@ -52,6 +52,8 @@ Commands:
                          BEFORE applying, then install (refuses on tamper)
   --help, help, -h       Show this help
   status                 Show pipeline status (Phase 0 stub — JSON only)
+  status-comment         Re-attach the live run-status issue comment to a run (#2131):
+                         --run <run_id> | --state-dir <dir>  [--once]
   plugin list            List discovered plugins
   doctor                 Validate install and configuration (bash>=5, claude, gh, sqlite3, etc.)
   pipeline start         Start a pipeline (--issue <N>|--goal "<text>") [--dry-run]
@@ -240,13 +242,22 @@ if [[ "${1:-}" == "--attach" ]]; then
         _events_file="$ZBUILD_EVENTS_JSONL"
     else
         _events_file="$_state_dir/events.jsonl"
-        _attach_f=""
-        for _attach_f in "$_state_dir"/runs/*/pipeline-state*.json "$_state_dir"/pipeline-state*.json; do
-            [[ -f "$_attach_f" ]] || continue
-            if jq -e --arg id "$_attach_run_id" '.run_id == $id' "$_attach_f" >/dev/null 2>&1; then
-                _events_file="$(dirname "$_attach_f")/events.jsonl"; break
-            fi
-        done
+        # #2131: the same layout globs cleanup and status-comment use, so the
+        # ADR-059 issues/<N>/runs/<id> shape resolves — the old two-glob loop
+        # only knew runs/<id> and flat.
+        # shellcheck source=../core/state/layout.sh
+        source "$SCRIPT_DIR/../core/state/layout.sh"
+        _attach_f="" _attach_glob=""
+        while IFS= read -r _attach_glob; do
+            [[ -n "$_attach_glob" ]] || continue
+            # shellcheck disable=SC2086  # the glob is meant to expand
+            for _attach_f in $_attach_glob; do
+                [[ -f "$_attach_f" ]] || continue
+                if jq -e --arg id "$_attach_run_id" '.run_id == $id' "$_attach_f" >/dev/null 2>&1; then
+                    _events_file="$(dirname "$_attach_f")/events.jsonl"; break 2
+                fi
+            done
+        done < <(zbuild_layout_state_file_globs "$_state_dir")
     fi
     if [[ ! -f "$_events_file" ]]; then
         error "--attach: event log not found at $_events_file"
@@ -392,6 +403,36 @@ UPHELP
     status)
         info "zbuild status — Phase 0 stub"
         echo '{"status": "phase-0-stub", "version": "'"$VERSION"'"}'
+        ;;
+    status-comment)
+        # #2131 (ADR-064): the runner starts the sidecar itself; this is the
+        # by-hand path — re-attach to a run whose sidecar is gone, or render
+        # once. Identity (repo, issue, comment id) comes from the run's own
+        # status-comment.json when present, else from pipeline-state.json.
+        shift
+        # shellcheck source=lib/run-status-comment.sh
+        source "$SCRIPT_DIR/lib/run-status-comment.sh"
+        _sc_run="" _sc_dir="" _sc_once=()
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --run)       [[ -z "${2:-}" ]] && { error "--run requires a run_id"; exit 2; }; _sc_run="$2"; shift 2 ;;
+                --state-dir) [[ -z "${2:-}" ]] && { error "--state-dir requires a path"; exit 2; }; _sc_dir="$2"; shift 2 ;;
+                --once)      _sc_once=(--once); shift ;;
+                *) error "status-comment: unknown argument: $1"; exit 2 ;;
+            esac
+        done
+        if [[ -z "$_sc_dir" ]]; then
+            [[ -n "$_sc_run" ]] || { error "status-comment: --run <run_id> or --state-dir <dir> required"; exit 2; }
+            _sc_dir="$(rsc_find_state_dir "$_sc_run" 2>/dev/null || true)"
+            [[ -n "$_sc_dir" ]] || { error "status-comment: no run state found for run_id '$_sc_run'"; exit 1; }
+        fi
+        [[ -f "$_sc_dir/pipeline-state.json" ]] || { error "status-comment: $_sc_dir has no pipeline-state.json"; exit 1; }
+        _sc_issue="$(jq -r '.issue // empty' "$_sc_dir/pipeline-state.json" 2>/dev/null || true)"
+        _sc_rid="$(jq -r '.run_id // empty' "$_sc_dir/pipeline-state.json" 2>/dev/null || true)"
+        export ZBUILD_STATE_DIR="$_sc_dir"
+        exec bash "$SCRIPT_DIR/lib/run-status-comment.sh" --state-dir "$_sc_dir" \
+            --events "$_sc_dir/events.jsonl" --issue "$_sc_issue" --run-id "$_sc_rid" \
+            --repo-root "$PWD" "${_sc_once[@]}"
         ;;
     doctor)
         # shellcheck source=lib/doctor.sh

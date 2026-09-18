@@ -268,6 +268,29 @@ rsc_tail_loop() {
     done
 }
 
+# ─── rsc_find_state_dir <run_id> — the run's state dir, by its run id ───────
+# Same globs `--attach` and cleanup use (core/state/layout.sh), so the ADR-059
+# issues/<N>/runs/<id> shape resolves as well as the flat runs/<id> one.
+rsc_find_state_dir() {
+    local run_id="$1" glob f
+    [[ -n "$run_id" ]] || return 1
+    if ! declare -F zbuild_layout_state_file_globs >/dev/null 2>&1; then
+        # shellcheck source=../../core/state/layout.sh
+        source "$_RSC_ROOT/core/state/layout.sh" 2>/dev/null || return 1
+    fi
+    while IFS= read -r glob; do
+        [[ -n "$glob" ]] || continue
+        # shellcheck disable=SC2086  # the glob is meant to expand
+        for f in $glob; do
+            [[ -f "$f" ]] || continue
+            if jq -e --arg id "$run_id" '.run_id == $id' "$f" >/dev/null 2>&1; then
+                dirname "$f"; return 0
+            fi
+        done
+    done < <(zbuild_layout_state_file_globs)
+    return 1
+}
+
 # ─── main ───────────────────────────────────────────────────────────────────
 #   --events <jsonl> --state-dir <dir> [--parent-pid <pid>] [--slug o/r]
 #   [--issue N] [--run-id id] [--repo-root <dir>] [--once]
