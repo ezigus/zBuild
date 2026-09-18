@@ -71,7 +71,7 @@ Output goes through a `kind: tool` plugin (`output-destinations/`) that adapts t
 |---|---|---|
 | `stdout` | always (terminal + CI logs both see it) | none — direct echo |
 | `state/report-<run_id>.md` | always | local file write |
-| `gh-pr-comment` | when `ZBUILD_ISSUE` is a PR number AND running in CI | uses `pipeline-github.sh:97-135` marker |
+| `gh-pr-comment` | when `ZBUILD_ISSUE` is set and `gh` is authenticated (local or CI) | `scripts/lib/run-status-comment.sh` — one comment per run, edited in place (ADR-064, #2131) |
 | `gh-check-run` | when in Actions and `ZBUILD_EMIT_CHECK_RUN=true` | `gh api` checks endpoint |
 | `step-summary` | when `$GITHUB_STEP_SUMMARY` set | appends markdown |
 
