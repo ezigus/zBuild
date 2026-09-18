@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/integration/run-status-comment-mock-roster.sh — the mock plugin roster
+# tests/lib/run-status-comment-mock-roster.sh — the mock plugin roster
 # for a `simple` run, sourced by run-status-comment-runner-test.sh. Not a test
 # (no -test.sh suffix, so the tier discovery skips it). Lifted from
 # cycle-rate-limit-aborts-run-test.sh with a passing build, a passing test and

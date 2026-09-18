@@ -35,8 +35,8 @@ export ZBUILD_CYCLES_ENABLED=1
 export ZBUILD_CONTRACT_VALIDATOR=warn
 mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
-# shellcheck source=./run-status-comment-mock-roster.sh
-source "$SCRIPT_DIR/run-status-comment-mock-roster.sh"
+# shellcheck source=../lib/run-status-comment-mock-roster.sh
+source "$REPO_ROOT/tests/lib/run-status-comment-mock-roster.sh"
 
 export HOME="$TEST_TEMP_DIR/home"
 mkdir -p "$HOME/.zbuild"
