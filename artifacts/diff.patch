@@ -1,0 +1,13 @@
+diff --git a/plugins/agent/review-lens/plugin.sh b/plugins/agent/review-lens/plugin.sh
+index 2612502d..81eb31e9 100644
+--- a/plugins/agent/review-lens/plugin.sh
++++ b/plugins/agent/review-lens/plugin.sh
+@@ -326,6 +326,8 @@ _review_lens_run_inner() {
+ 
+     # ADR-028 §Migration (#2035): schema-gated envelope parser replaces bare
+     # extract_first_json_object so postamble sign-offs don't discard the real answer.
++    # shellcheck disable=SC2034  # prose is a required output-param of _llm_envelope_parse;
++    # review-lens emits no prose sidecar (only impact does).
+     local json prose
+     _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok "$raw_response" json prose
+     if [[ -z "$json" ]] || ! printf '%s' "$json" | jq empty >/dev/null 2>&1; then

@@ -2,10 +2,8 @@
   "schema_version": 4,
   "result_contract": 2,
   "issue": 1840,
-  "files_changed": [
-    "plugins/agent/review-lens/plugin.sh"
-  ],
-  "lines_added": 2,
+  "files_changed": [],
+  "lines_added": 0,
   "lines_removed": 0,
   "diff_patch_path": "/home/runner/work/_temp/zbuild-state/artifacts/diff.patch",
   "iterations": 3,
