@@ -65,7 +65,7 @@ export ZBUILD_STATUS_COMMENT=1     # the harness pins 0 (SPEC-3); this section w
 _RUNNER_STATUS_COMMENT_PID=""
 ZBUILD_STATUS_COMMENT=0 _runner_status_comment_spawn "$STATE" "$STATE/events.jsonl" "$REPO"
 assert_eq "[SPEC-4] ZBUILD_STATUS_COMMENT=0 → nothing spawned" "" "$_RUNNER_STATUS_COMMENT_PID"
-assert_contains "[SPEC-4] …and the reason is logged" "$(cat "$STATE/status-comment.log" 2>/dev/null)" 'ZBUILD_STATUS_COMMENT=0'
+assert_file_not_exists "[SPEC-4] …and no trace on disk (the parity golden lists every state-dir file)" "$STATE/status-comment.log"
 
 _RUNNER_STATUS_COMMENT_PID=""
 GH_AUTH_RC=1 _runner_status_comment_spawn "$STATE" "$STATE/events.jsonl" "$REPO"

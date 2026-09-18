@@ -241,10 +241,11 @@ _RUNNER_STATUS_COMMENT_PID=""
 _runner_status_comment_spawn() {
     local state_dir="$1" events_jsonl="$2" repo_root="${3:-$PWD}"
     _RUNNER_STATUS_COMMENT_PID=""
-    [[ "${ZBUILD_STATUS_COMMENT:-1}" == "0" ]] && {
-        printf '%s disabled: ZBUILD_STATUS_COMMENT=0\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$state_dir/status-comment.log" 2>/dev/null || true
-        return 0
-    }
+    # The explicit kill switch leaves NO trace — not even a log line. The
+    # parity golden lists every file in the state dir, and every test runs
+    # with the switch on (run-tests.sh); a "disabled" file there would be
+    # noise in every fixture for a fact the operator already knows.
+    [[ "${ZBUILD_STATUS_COMMENT:-1}" == "0" ]] && return 0
     local lib="$_ZBUILD_ROOT/scripts/lib/run-status-comment.sh"
     [[ -f "$lib" ]] || return 0
     # shellcheck source=../../scripts/lib/run-status-comment.sh
