@@ -157,5 +157,28 @@ _s7_rc="$(jq -r '.result_contract // ""' "$_spec7_summary" 2>/dev/null)"
 assert_eq "[SPEC-10] inert_build summary: result_contract:2 present" "2" "$_s7_rc"
 
 cleanup_test_env
+# ─── #2138: the guard reads the design's TESTFILES as the design writes them ──
+# The block binds testfiles per SPEC ("SPEC-1: tests/unit/failing-test.sh");
+# passed through verbatim, `-f "$repo/SPEC-1: tests/…"` is false and the guard
+# silently probes nothing — run 35355623656's build kept verdict=pass with its
+# only acceptance testfile red.
+print_test_section "#2138: SPEC-n: bound testfiles are probed; a slow green file is not red"
+TESTFILES_D="$(printf 'SPEC-1: tests/unit/failing-test.sh\nSPEC-2: tests/unit/failing-test.sh\n')"
+set +e; d_out="$(_build_guard_false_completion "$TESTFILES_D" "$REPO" 2>/dev/null)"; d_rc=$?; set -e
+assert_eq "[#2138] a SPEC-bound red testfile is reported" "tests/unit/failing-test.sh" "$d_out"
+assert_eq "[#2138] …and the guard exits 1" "1" "$d_rc"
+# A green file slower than the stage bound is bounded by what the test stage
+# MEASURED (#2110), not killed at 60s and mistaken for red.
+cat > "$REPO/tests/unit/slow-green-test.sh" <<'EOF'
+#!/usr/bin/env bash
+sleep 2
+exit 0
+EOF
+chmod +x "$REPO/tests/unit/slow-green-test.sh"
+printf 'file 2100 %s/tests/unit/slow-green-test.sh\n' "$REPO" > "$TEST_TEMP_DIR/timing.log"
+set +e; e_out="$(ZBUILD_NEGCTL_TIMEOUT=1 ZBUILD_NEGCTL_TIMING_LOG="$TEST_TEMP_DIR/timing.log" _build_guard_false_completion "tests/unit/slow-green-test.sh" "$REPO" 2>/dev/null)"; e_rc=$?; set -e
+assert_eq "[#2138] a slow green testfile is not reported red" "" "$e_out"
+assert_eq "[#2138] …and the guard exits 0" "0" "$e_rc"
+
 print_test_results
 exit $((FAIL > 0))

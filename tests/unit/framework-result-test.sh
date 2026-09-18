@@ -51,6 +51,18 @@ assert_json_key "lint fail: exit_code" "$LINT_FAIL" ".exit_code" "3"
 assert_contains "lint fail: summary carries output" \
     "$(echo "$LINT_FAIL" | jq -r '.summary')" "lint-broke"
 
+# ─── 2b. #2138: a failing lint keeps its findings, not just a 200-byte tail ──
+print_test_section "2b. lint fail carries the findings (#2138)"
+LINT_DET="$(ZBUILD_LINT_CMD="bash -c 'printf \"In plugins/x.sh line 12:\\n  ^-- SC2034 (warning): foo appears unused.\\nFor more information: https://www.shellcheck.net/wiki/SC2034\\n\"; exit 1'" framework_run_lint)"
+assert_contains "[#2138] lint fail: detail carries the finding" \
+    "$(echo "$LINT_DET" | jq -r '.detail // empty')" "SC2034 (warning): foo appears unused"
+assert_contains "[#2138] lint fail: detail carries the location" \
+    "$(echo "$LINT_DET" | jq -r '.detail // empty')" "In plugins/x.sh line 12:"
+# …and the suite's lint tier prints it under the FAIL marker, where the test
+# stage's extractor reads it.
+_lt_out="$(cd "$REPO_ROOT" && ZBUILD_LINT_CMD="bash -c 'printf \"In plugins/x.sh line 12:\\n  ^-- SC2034 (warning): foo appears unused.\\n\"; exit 1'" bash scripts/run-tests.sh --tier lint 2>&1)"
+assert_contains "[#2138] --tier lint prints the finding under the FAIL marker" "$_lt_out" "SC2034 (warning): foo appears unused"
+
 # ─── 3. framework_run_lint: skipped (explicitly empty cmd) ────────────────────
 print_test_section "3. lint skipped (ZBUILD_LINT_CMD empty)"
 
