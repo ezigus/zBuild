@@ -308,7 +308,7 @@ _build_guard_false_completion() {
     # run 35355623656's build kept verdict=pass with its only acceptance
     # testfile red. Strip the binding prefix and probe each file once.
     local -a _probe=() _seen=()
-    local _raw _tfp _dup
+    local _raw _tfp _dup tf rc
     while IFS= read -r _raw; do
         _tfp="${_raw%$'\r'}"
         [[ "$_tfp" =~ ^SPEC-[0-9]+:[[:space:]]+(.*)$ ]] && _tfp="${BASH_REMATCH[1]}"
@@ -318,7 +318,6 @@ _build_guard_false_completion() {
         [[ $_dup -eq 1 ]] && continue
         _seen+=("$_tfp"); _probe+=("$_tfp")
     done <<< "$testfiles"
-    local tf rc
     for tf in "${_probe[@]+"${_probe[@]}"}"; do
         local abs="$repo_root/$tf"
         [[ -f "$abs" ]] || continue
