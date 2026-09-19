@@ -185,22 +185,37 @@ ZBUILD_YAML_CACHE=1
 assert_eq "[SPEC-8] control: with the cache off, 3 lookups cost 3 parses" \
     "3" "$_uncached_parses"
 
-# ── SPEC-9: prewarm fills the calling shell and a subshell inherits it ─────
+# ── SPEC-9: prewarm fills the calling shell in ONE pass; a subshell inherits it ─
+# #2152 (ADR-065 §4): the prewarm used to fork one awk per manifest per key —
+# 55 × 12 = 660 at every `source runner.sh`. It is one awk over every manifest
+# now. The tally is a FILE because the pass may run in a subshell.
 yaml_cache_flush
-: > "$_PARSE_LOG"
+_write_fixture "$TEST_TEMP_DIR/plugins/agent/second/manifest.yaml" "second"
+_write_fixture "$TEST_TEMP_DIR/plugins/tool/third/manifest.yaml" "third"
+_AWK_LOG="$TEST_TEMP_DIR/awks.log"; : > "$_AWK_LOG"
+awk() { printf 'x\n' >> "$_AWK_LOG"; command awk "$@"; }
 yaml_cache_prewarm "$TEST_TEMP_DIR/plugins"
-_prewarm_parses="$(_parses)"
+unset -f awk
+_prewarm_awks="$(wc -l < "$_AWK_LOG" | tr -d ' ')"
+assert_eq "[SPEC-9] prewarm over the root forks exactly ONE awk (was one per manifest per key)" \
+    "1" "$_prewarm_awks"
+_n_manifests="$(find "$TEST_TEMP_DIR/plugins" -maxdepth 3 -name manifest.yaml | wc -l | tr -d ' ')"
+assert_eq "[SPEC-9] …and the cache holds every prewarm key for every manifest (${_n_manifests} × ${#_ZBUILD_YAML_PREWARM_KEYS[@]})" \
+    "$(( _n_manifests * ${#_ZBUILD_YAML_PREWARM_KEYS[@]} ))" "${#_ZBUILD_YAML_RC[@]}"
+assert_eq "[SPEC-9] a prewarmed value reads back exactly (name, comment stripped)" \
+    "Demo Plugin" "$(yaml_get "$TEST_TEMP_DIR/plugins/tool/third/manifest.yaml" name)"
 # A command substitution IS a subshell: it must read the inherited cache and add
 # no parse. This is the property the whole design rests on — without it the cache
 # would never be hit by the 56-of-82 call sites that read yaml_get inside $( ).
+: > "$_PARSE_LOG"
 _before_sub="$(_parses)"
-_ignore="$(yaml_get "$FIX" id)"
+_ignore="$(yaml_get "$FIX" id)"; _ignore="$(yaml_get "$FIX" hooks.run)"; _ignore="$(yaml_get "$FIX" summary)"
 _after_sub="$(_parses)"
-if [[ "$_prewarm_parses" -gt 0 && "$_after_sub" -eq "$_before_sub" ]]; then
-    assert_pass "[SPEC-9] prewarm populates the calling shell; a subshell lookup adds no parse"
+if [[ "$_after_sub" -eq "$_before_sub" ]]; then
+    assert_pass "[SPEC-9] a subshell lookup of a prewarmed key (present or absent) adds no parse"
 else
     assert_fail "[SPEC-9] prewarm must be inherited by subshells" \
-        "prewarm parses=$_prewarm_parses before=$_before_sub after=$_after_sub"
+        "before=$_before_sub after=$_after_sub"
 fi
 
 # ── SPEC-10: arrays survive being sourced from INSIDE a function ────────────
