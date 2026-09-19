@@ -80,6 +80,16 @@ per manifest per walk. Each is a later ratchet; this ADR does not schedule them.
   the budget carries a small headroom and CI's e2e job is Linux-only, so the ratchet is set from
   the Linux number.
 
+## Implementation Notes (#2151, #2152)
+
+- `tests/e2e/fork-budget-test.sh` — `_fb_traced` (the harness), `_fb_count` (the classifier and
+  tally), `FORK_BUDGET` with its ratchet history in the comment above it.
+- `core/plugin-registry/manifest-index.sh` (#2152) — the first §4 application: one find + one awk
+  fill `yaml_cache_prewarm` and `_inputs_scan_manifests`; `core/pipeline/runner.sh` fills the
+  input-resolve maps at file scope right after sourcing `input-resolve.sh` (§3).
+- Tests: `manifest-index-test.sh` (equivalence corpus, fork counts, the parent fill),
+  `yaml-get-cache-test.sh` SPEC-9 (one awk per prewarm).
+
 ## Verification
 
 `bash tests/e2e/fork-budget-test.sh` — SPEC-1 a canary script with one external exec counts
