@@ -134,6 +134,19 @@ else
     assert_pass "[SPEC-5] the producerless route_back reader is retired"
 fi
 
+# ─── #2154: the design summary counts SPEC declarations, not TESTFILES rows ──
+# #1840 run 5's design row said "38 acceptance SPEC(s)" for a 19-SPEC design:
+# the count took every `^SPEC-n` line of the acceptance block, and the
+# TESTFILES section binds each SPEC on a line that starts the same way.
+print_test_section "#2154: SPEC count excludes TESTFILES bindings"
+D2154="$TEST_TEMP_DIR/design-2154.md"
+printf '# Design\n\n```acceptance\nSPEC-1[change]: one\nSPEC-2[guard]: two\nSPEC-3: three\nTESTFILES:\nSPEC-1: tests/unit/a-test.sh\nSPEC-2: tests/unit/b-test.sh\nSPEC-3: tests/unit/c-test.sh\n```\n' > "$D2154"
+if declare -F _design_spec_count >/dev/null 2>&1; then
+    assert_eq "[#2154] three SPECs with three bindings count as 3" "3" "$(_design_spec_count "$D2154")"
+else
+    assert_fail "[#2154] _design_spec_count is defined" "missing"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

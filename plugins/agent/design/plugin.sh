@@ -92,6 +92,15 @@ EOF
 }
 
 # ─── run ────────────────────────────────────────────────────────────────────
+# #2154: SPEC declarations only. The acceptance block's TESTFILES section binds
+# each SPEC on a line that also starts `SPEC-n:`; counting those doubled the
+# number in the run-status comment (38 for a 19-SPEC design on #1840 run 5).
+_design_spec_count() {
+    local n
+    n="$(acceptance_list_spec_ids "$1" 2>/dev/null | grep -c . || true)"
+    printf '%s' "${n:-0}"
+}
+
 design_stage_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
@@ -667,11 +676,10 @@ DESIGN_PROMPT
 
     # ADR-055 §9: state the SHAPE of the design a later stage is held to —
     # the boundary it may touch and the SPECs it must satisfy.
-    local _scope_csv="" _scope_n=0 _acc="" _spec_n=0
+    local _scope_csv="" _scope_n=0 _spec_n=0
     _scope_csv="$(_extract_scope_from_design "$output_design_md" 2>/dev/null || true)"
     [[ -n "$_scope_csv" ]] && _scope_n="$(awk -F, '{print NF}' <<< "$_scope_csv")"
-    _acc="$(extract_acceptance_block "$output_design_md" 2>/dev/null || true)"
-    _spec_n="$(grep -c '^SPEC-[0-9]' <<< "$_acc" || true)"
+    _spec_n="$(_design_spec_count "$output_design_md")"
     stage_summary_write "$artifact_dir/design-summary.md" "design" "pass" \
         "authored design.md — $_scope_n file(s) in scope, $_spec_n acceptance SPEC(s)" \
         "$(printf -- '- scope: %s\n- artifact: design.md' "${_scope_csv:-<none>}")"

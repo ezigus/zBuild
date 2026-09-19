@@ -148,3 +148,16 @@ Run 35412141973 was cancelled at GitHub's 360-minute ceiling and the comment sai
 - **Every row leads with WHEN**: `**9:39 PM ET → 10:38 PM ET (58m16s)** · **6.1.4 test** · iter 1 · **fail** — …`. The seq and stage stay bold and second; a running row reads `**9:39 PM ET → running**`.
 - **The reader's zone, Eastern by default.** Events and logs stay UTC; the comment renders `ZBUILD_STATUS_TZ` (default `America/New_York`, labelled `ET` in either season). Any zoneinfo name works; the label is the zone's abbreviation for zones without a fixed label.
 - **The ceiling is in the header**: `started 9:16 PM ET · ceiling 3:16 AM ET (1h 20m left)` (`ZBUILD_STATUS_CEILING_MIN`, default 360), and after it `(past ceiling)`. The daemon's post-run step finalizes the comment — `rsc_finalize_issue` finds the newest marker comment on the issue, rewrites **running** to the result, drops `current:`, and on `cancelled` appends `**cancelled at the 360-minute ceiling** — state persisted — re-add `zbuild-run` to resume`.
+
+## Amendment 2026-09-19 (#2154) — a closed row is a record
+
+A stage writes one summary file and a later iteration overwrites it; re-reading it on
+every render made iteration-1 rows change after the fact (#1840 run 5: the
+spec-correspondence and build rows for iteration 1 came to show iteration 2's numbers).
+The first render after a row closes freezes its summary line into
+`<state_dir>/status-comment-rows.json` (`{run_id, rows: {seq: line}}`); every later render —
+the sidecar loop, the post-run finalize, a fresh process — serves the snapshot. Only a
+non-empty line is frozen, so a row whose summary lands later still reads live until it has
+one. Keyed by run id: a resumed run has its own comment and its own record. The file
+persists with the state. The design row's "N acceptance SPEC(s)" now counts SPEC
+declarations only, not the TESTFILES bindings that start the same way.
