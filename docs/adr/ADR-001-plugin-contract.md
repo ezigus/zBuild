@@ -179,9 +179,9 @@ have inherited this vocabulary anyway.
 
 If a plugin declares `provides.artifact_type` but no artifact exists at `outputs[].path` after `run` completes with exit 0, the engine emits a synthetic blocking finding. Absent evidence IS blocking evidence. (Keepers §C.4.)
 
-### Discovery + lockfile
+### Discovery + lockfile (amended 2026-09-19 — ADR-065)
 
-- `plugins/<kind>/<name>/manifest.yaml` is discovered via filesystem glob at engine startup.
+- `plugins/<kind>/<name>/manifest.yaml` is discovered via filesystem glob at engine startup. What the walk and its readers may cost is bounded by ADR-065: one pass over all manifests, never one process per manifest per key, and every memo filled in the parent shell before a subshell reads it.
 - A discovered set is captured in `~/.zbuild/state/plugins.lock` (manifest hashes + paths) on first successful run.
 - Subsequent runs validate against the lockfile; checksum mismatch → warn by default; `strict_plugin_lock: true` config setting → fail.
 - `config/plugins.disabled` (line-delimited plugin IDs) excludes plugins per-run.
