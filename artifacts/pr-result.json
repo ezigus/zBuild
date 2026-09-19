@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "status": "error",
+  "reason": "no committed changes on branch or origin",
+  "draft": false
+}
