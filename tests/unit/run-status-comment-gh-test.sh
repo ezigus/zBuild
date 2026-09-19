@@ -145,6 +145,37 @@ assert_eq "[SPEC-5] a second 404 never fans out into more POSTs" "1" "$(posts)"
 assert_eq "[SPEC-5b] both gh writes use -F body=@file" "2" "$(grep -c -- '-F "body=@' "$LIB")"
 assert_eq "[SPEC-5b] no gh write uses -f body=@file (a literal, not a file)" "0" "$(grep -c -- '-f "body=@' "$LIB")"
 
+# ─── SPEC-7 (#2145): the post-run step finalizes a cancelled run's comment ──
+# The runner's tail loop dies with the job at the 360-minute ceiling, so the
+# comment stays "running" forever unless the post-run step finishes it.
+print_test_section "7. rsc_finalize_issue finds the run's comment and finalizes it (#2145)"
+printf 'ok' > "$GH_MODE"
+: > "$GH_LOG"; rm -f "$GH_BODIES"/*
+_fb="$(printf '%s\n### zbuild run `r-cancel` · issue #90000042 · **running**\nengine `abc1234` (`main`) · started 9:16 PM ET\ncurrent: **9.2.2 spec-correspondence**\n**1:07 AM ET → running** · **9.2.2 spec-correspondence** · iter 2\n' "${_RSC_MARKER_PREFIX}r-cancel -->")"
+jq -n --arg b "$_fb" '[{"id": 7777, "user": {"login": "github-actions[bot]"}, "body": "unrelated"}, {"id": 8888, "user": {"login": "github-actions[bot]"}, "body": $b}]' > "$GH_LIST"
+if declare -F rsc_finalize_issue >/dev/null 2>&1; then
+    rc=0; rsc_finalize_issue "$STATE" "testuser/testrepo" 90000042 cancelled || rc=$?
+    assert_eq "[SPEC-7] finalize returns 0" "0" "$rc"
+    assert_contains "[SPEC-7] the run's comment (8888) is PATCHed, not 7777" "$(grep -c 'comments/8888 -X PATCH' "$GH_LOG")" "1"
+    _last="$(ls "$GH_BODIES" | sort | tail -1)"
+    assert_contains "[SPEC-7] the PATCHed body says cancelled at the ceiling" "$(cat "$GH_BODIES/$_last" 2>/dev/null)" "cancelled at the 360-minute ceiling"
+    assert_contains "[SPEC-7] …and how to resume" "$(cat "$GH_BODIES/$_last" 2>/dev/null)" "re-add \`zbuild-run\` to resume"
+    assert_eq "[SPEC-7] no POST (never a second comment)" "0" "$(grep -c 'issues/90000042/comments -F' "$GH_LOG" || true)"
+    # review on #2146: `gh api --paginate` emits one JSON array PER PAGE. When
+    # run-status comments sit on two pages, a per-document `last | .id` yields
+    # "7777\n8888", the id check fails and finalize silently gives up.
+    : > "$GH_LOG"; rm -f "$GH_BODIES"/*
+    _fb_old="$(printf '%s\n### zbuild run `r-old` · issue #90000042 · **success**\n' "${_RSC_MARKER_PREFIX}r-old -->")"
+    { jq -n --arg b "$_fb_old" '[{"id": 7777, "body": $b}, {"id": 7778, "body": "unrelated"}]'
+      jq -n --arg b "$_fb" '[{"id": 8887, "body": "unrelated"}, {"id": 8888, "body": $b}]'; } > "$GH_LIST"
+    rc=0; rsc_finalize_issue "$STATE" "testuser/testrepo" 90000042 cancelled || rc=$?
+    assert_eq "[SPEC-7b] markers on two pages: the LAST one (8888) is PATCHed" "1" "$(grep -c 'comments/8888 -X PATCH' "$GH_LOG" || true)"
+    assert_eq "[SPEC-7b] …and the older run's comment (7777) is left alone" "0" "$(grep -c 'comments/7777 -X PATCH' "$GH_LOG" || true)"
+else
+    assert_fail "[SPEC-7] rsc_finalize_issue exists" "function not defined"
+fi
+
+
 # ─── SPEC-6: gh call is bounded by the watchdog ─────────────────────────────
 cat > "$TEST_TEMP_DIR/bin/gh" <<'MOCK'
 #!/usr/bin/env bash

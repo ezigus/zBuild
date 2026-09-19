@@ -157,6 +157,32 @@ rsc_comment_patch() {
     return $rc
 }
 
+# ─── rsc_finalize_issue <state_dir> <slug> <issue> <result> (#2145) ─────────
+# The post-run step's half: the runner's tail loop dies with the job at the
+# ceiling, so the newest run-status comment on the issue is still "running".
+# Find it by marker (any run id — post-run does not know the pipeline's), run
+# the body through rsc_finalize_body, PATCH it. Advisory: always returns 0.
+rsc_finalize_issue() {
+    local state_dir="$1" slug="$2" issue="$3" result="${4:-}" out id="" body=""
+    mkdir -p "$state_dir" 2>/dev/null || true
+    out="$(mktemp "${TMPDIR:-$state_dir}/rsc-fin.XXXXXX")" || return 0
+    if rsc_gh "$state_dir" "$out" api --paginate "repos/${slug}/issues/${issue}/comments" 2>/dev/null; then
+        # --paginate writes one array per page; -s folds them so `last` is
+        # the newest across ALL pages, not one id per page (review on #2146).
+        id="$(jq -rs --arg m "$_RSC_MARKER_PREFIX" \
+            '[.[][]? | select((.body // "") | startswith($m))] | last | .id // empty' "$out" 2>/dev/null || true)"
+        body="$(jq -rs --arg m "$_RSC_MARKER_PREFIX" \
+            '[.[][]? | select((.body // "") | startswith($m))] | last | .body // empty' "$out" 2>/dev/null || true)"
+    fi
+    rm -f "$out"
+    [[ "$id" =~ ^[0-9]+$ && -n "$body" ]] || { rsc_log "$state_dir" "finalize: no run-status comment on #${issue}"; return 0; }
+    local bf; bf="$(mktemp "${TMPDIR:-$state_dir}/rsc-finbody.XXXXXX")" || return 0
+    rsc_finalize_body "$body" "$result" > "$bf"
+    rsc_comment_patch "$state_dir" "$slug" "$id" "$bf" || rsc_log "$state_dir" "finalize: PATCH failed (rc=$?)"
+    rm -f "$bf"
+    return 0
+}
+
 # ─── rsc_upsert <state_dir> <slug> <issue> <run_id> <body_file> ─────────────
 # id known → PATCH; else marker search → PATCH; else POST. A PATCH 404 clears
 # the id and allows one re-create per process, so a vandalised comment cannot

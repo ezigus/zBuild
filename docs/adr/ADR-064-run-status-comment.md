@@ -140,3 +140,11 @@ Two constraints shaped where it lives:
   GitHub that fails every call leaves the exit status alone). Mutation notes
   in `tests/mutation/run-status-comment.md`.
 - Tunables: `ZBUILD_STATUS_COMMENT_{MIN_INTERVAL,POLL,GH_TIMEOUT,MAX_BYTES,SUMMARY_CHARS,REAP_TIMEOUT}`.
+
+## Amendment 2026-09-19 (#2145) — time first, Eastern, the ceiling
+
+Run 35412141973 was cancelled at GitHub's 360-minute ceiling and the comment said only "running". Three changes:
+
+- **Every row leads with WHEN**: `**9:39 PM ET → 10:38 PM ET (58m16s)** · **6.1.4 test** · iter 1 · **fail** — …`. The seq and stage stay bold and second; a running row reads `**9:39 PM ET → running**`.
+- **The reader's zone, Eastern by default.** Events and logs stay UTC; the comment renders `ZBUILD_STATUS_TZ` (default `America/New_York`, labelled `ET` in either season). Any zoneinfo name works; the label is the zone's abbreviation for zones without a fixed label.
+- **The ceiling is in the header**: `started 9:16 PM ET · ceiling 3:16 AM ET (1h 20m left)` (`ZBUILD_STATUS_CEILING_MIN`, default 360), and after it `(past ceiling)`. The daemon's post-run step finalizes the comment — `rsc_finalize_issue` finds the newest marker comment on the issue, rewrites **running** to the result, drops `current:`, and on `cancelled` appends `**cancelled at the 360-minute ceiling** — state persisted — re-add `zbuild-run` to resume`.

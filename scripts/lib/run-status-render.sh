@@ -101,8 +101,34 @@ rsc_duration() {
     fi
 }
 
-# HH:MM:SSZ from an ISO timestamp.
-_rsc_clock() { local t="${1#*T}"; printf '%sZ' "${t%%.*}" | sed 's/ZZ$/Z/'; }
+# ─── #2145: times in the reader's zone, Eastern by default ──────────────────
+# Events and logs stay UTC; the comment is for a person. ZBUILD_STATUS_TZ
+# names any zoneinfo zone; America/New_York is labelled "ET" whatever the
+# season (EDT/EST is what `%Z` would print, and nobody reads it that way).
+_RSC_DEFAULT_TZ="America/New_York"
+_rsc_tz() { printf '%s' "${ZBUILD_STATUS_TZ:-$_RSC_DEFAULT_TZ}"; }
+_rsc_ceiling_min() { local m="${ZBUILD_STATUS_CEILING_MIN:-360}"; [[ "$m" =~ ^[0-9]+$ ]] || m=360; printf '%s' "$m"; }   # GitHub's job ceiling
+_rsc_epoch() {   # ISO-8601 (with or without fractional seconds) → epoch seconds
+    jq -rn --arg t "${1:-}" '($t | sub("\\.[0-9]+Z$"; "Z") | try fromdateiso8601 catch 0)' 2>/dev/null || echo 0
+}
+_rsc_fmt_local() {   # <epoch> → "9:39 PM ET"
+    local epoch="$1" out label tz; tz="$(_rsc_tz)"
+    if out="$(TZ="$tz" date -r "$epoch" '+%l:%M %p %Z' 2>/dev/null)"; then :
+    else out="$(TZ="$tz" date -d "@$epoch" '+%l:%M %p %Z' 2>/dev/null || true)"; fi
+    out="${out# }"
+    case "$tz" in
+        America/New_York) label="ET" ;;
+        America/Chicago)  label="CT" ;;
+        America/Denver)   label="MT" ;;
+        America/Los_Angeles) label="PT" ;;
+        *) label="${out##* }" ;;
+    esac
+    printf '%s %s' "${out% *}" "$label"
+}
+# "9:39 PM ET" from an ISO timestamp.
+_rsc_clock() { local e; e="$(_rsc_epoch "$1")"; [[ "$e" -gt 0 ]] && _rsc_fmt_local "$e" || printf '%s' "${1:-}"; }
+# "1h 20m" from seconds.
+_rsc_hm() { local s="$1"; if (( s >= 3600 )); then printf '%dh %02dm' $(( s / 3600 )) $(( (s % 3600) / 60 )); else printf '%dm' $(( s / 60 )); fi; }
 
 # ─── rsc_row_inputs_line <state_dir> <stage> — what the stage was given ─────
 rsc_row_inputs_line() {
@@ -144,8 +170,8 @@ rsc_render_row() {
         members="$(jq -r '.members | join(", ")' <<< "$row")"
         from="$(jq -r '.from_iter // ""' <<< "$row")"; reason="$(jq -r '.reason // ""' <<< "$row")"
         it="$(jq -r '.iter // ""' <<< "$row")"
-        printf '**%s reused** · iter %s · %s · %s from iter %s (%s)' \
-            "$seq" "$it" "$(_rsc_clock "$started")" "$members" "$from" "$reason"
+        printf '**%s** · **%s reused** · iter %s · %s from iter %s (%s)' \
+            "$(_rsc_clock "$started")" "$seq" "$it" "$members" "$from" "$reason"
         return 0
     fi
     stage="$(jq -r '.stage // ""' <<< "$row")"
@@ -159,17 +185,18 @@ rsc_render_row() {
     if [[ "$seq" == *.* ]]; then
         local _s="${seq%.*}"; iter="${_s##*.}"
     fi
-    line="**${seq} ${stage}**"
-    [[ -n "$iter" ]] && line+=" · iter ${iter}"
-    line+=" · $(_rsc_clock "$started")"
+    # #2145: WHEN first — a reader scanning the feed wants the clock before
+    # the name. seq + stage stay bold and second.
     if [[ -z "$verdict" ]]; then
-        line+=" → running"
+        line="**$(_rsc_clock "$started") → running** · **${seq} ${stage}**"
+        [[ -n "$iter" ]] && line+=" · iter ${iter}"
         local inputs; inputs="$(rsc_row_inputs_line "$state_dir" "$stage")"
         [[ -n "$inputs" ]] && line+=" · inputs: ${inputs}"
         [[ -n "$summaries" ]] && line+=" · ${summaries} stage summaries (${resolve} RESOLVE)"
     else
         [[ -z "$ended" ]] && ended="$started"
-        line+=" → $(_rsc_clock "$ended") ($(rsc_duration "$started" "$ended"))"
+        line="**$(_rsc_clock "$started") → $(_rsc_clock "$ended") ($(rsc_duration "$started" "$ended"))** · **${seq} ${stage}**"
+        [[ -n "$iter" ]] && line+=" · iter ${iter}"
         local v="$verdict"
         [[ "$v" != "pass" && -n "$rc" && "$rc" != "0" ]] && v+=" rc=${rc}"
         line+=" · **${v}**"
@@ -209,13 +236,30 @@ rsc_render_header() {
     [[ -n "$override" ]] && status="$override"
     [[ -z "$status" ]] && status="running"
     pr="$(jq -r '.pr.url // ""' <<< "$model")"
-    updated="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    # ZBUILD_STATUS_NOW: tests pin "now"; production reads the clock.
+    updated="${ZBUILD_STATUS_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}"
+    # #2145: the ceiling — GitHub kills the job at ZBUILD_STATUS_CEILING_MIN
+    # after start; the reader should not have to add six hours in their head.
+    local _st_e _now_e _ceil_e ceiling=""
+    _st_e="$(_rsc_epoch "$started")"; _now_e="$(_rsc_epoch "$updated")"
+    if [[ "$_st_e" -gt 0 ]]; then
+        _ceil_e=$(( _st_e + $(_rsc_ceiling_min) * 60 ))
+        if (( _now_e > 0 && _now_e >= _ceil_e )); then
+            ceiling="ceiling $(_rsc_fmt_local "$_ceil_e") (past ceiling)"
+        elif (( _now_e > 0 )); then
+            ceiling="ceiling $(_rsc_fmt_local "$_ceil_e") ($(_rsc_hm $(( _ceil_e - _now_e ))) left)"
+        else
+            ceiling="ceiling $(_rsc_fmt_local "$_ceil_e")"
+        fi
+    fi
 
     printf '%s%s -->\n' "$_RSC_MARKER_PREFIX" "$run_id"
     printf '### zbuild run `%s` · issue #%s · **%s**\n' "$run_id" "$issue" "$status"
     local meta="engine \`${sha}\`"
     [[ -n "$branch" ]] && meta+=" (\`${branch}\`)"
-    meta+=" · started ${started} · updated ${updated}"
+    meta+=" · started $(_rsc_clock "$started")"
+    [[ -n "$ceiling" ]] && meta+=" · ${ceiling}"
+    meta+=" · updated $(_rsc_clock "$updated")"
     [[ -n "${GITHUB_SERVER_URL:-}" && -n "${GITHUB_REPOSITORY:-}" && -n "${GITHUB_RUN_ID:-}" ]] \
         && meta+=" · [run log](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
     [[ -n "$pr" ]] && meta+=" · PR ${pr}"
@@ -293,3 +337,25 @@ rsc_outbound_body() {
     return 1
 }
 
+# ─── rsc_finalize_body <body> <result> (#2145) ──────────────────────────────
+# The runner's tail loop dies with the job on a 360-minute cancel, so the
+# post-run step finishes the comment itself: the header's **running** becomes
+# the result, the `current:` line goes, and a closing line says what to do.
+rsc_finalize_body() {
+    local body="$1" result="${2:-}" status closing=""
+    case "$result" in
+        cancelled)
+            status="cancelled at the $(_rsc_ceiling_min)-minute ceiling"
+            closing="**cancelled at the $(_rsc_ceiling_min)-minute ceiling** — state persisted — re-add \`zbuild-run\` to resume" ;;
+        "") status="finished" ;;
+        *)  status="$result" ;;
+    esac
+    # The closing line is appended only when this call flipped **running**:
+    # a body the runner already finished (or post-run already finalized) is
+    # returned unchanged, so two finalizers cannot stack two closing lines.
+    printf '%s\n' "$body" | awk -v st="$status" -v closing="$closing" '
+        NR <= 3 && /· \*\*running\*\*/ { sub(/\*\*running\*\*/, "**" st "**"); hit = 1 }
+        /^current: / { next }
+        { print }
+        END { if (hit && closing != "") print closing }'
+}

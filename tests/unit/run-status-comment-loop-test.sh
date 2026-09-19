@@ -96,7 +96,7 @@ assert_contains "[SPEC-2] the latest PATCH has the newest row on top" "$(last_bo
 ev "$S1/events.jsonl" 12:10:00 plugin.run.start 4 build plugin=build kind=agent
 sleep 3
 kill -KILL "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
-assert_contains "[SPEC-3] the body on GitHub already had the running row (start before end)" "$(last_body)" '**4 build** · 12:10:00Z → running'
+assert_contains "[SPEC-3] the body on GitHub already had the running row (start before end)" "$(last_body)" '**8:10 AM ET → running** · **4 build**'
 
 # ─── SPEC-4: terminal flushes immediately and the process stays alive ──────
 S2="$TEST_TEMP_DIR/s2"; mkdir -p "$S2"; : > "$S2/events.jsonl"; : > "$GH_LOG"; rm -f "$GH_BODIES"/*
@@ -147,7 +147,7 @@ start_sidecar "$S3" "$PARENT"
 wait_for_event "$GH_LOG" '^api repos/testuser/testrepo/issues/90000042/comments' 30 0.1
 kill -TERM "$pid"; wait_gone "$pid"; wait "$pid" 2>/dev/null
 assert_contains "[SPEC-6] no terminal event + TERM → interrupted" "$(last_body)" '**interrupted**'
-assert_contains "[SPEC-6] the running row keeps its start" "$(last_body)" '**1 build** · 14:00:01Z → running'
+assert_contains "[SPEC-6] the running row keeps its start" "$(last_body)" '**10:00 AM ET → running** · **1 build**'
 
 # ─── SPEC-7: parent death → final render, exit 0 ────────────────────────────
 S4="$TEST_TEMP_DIR/s4"; mkdir -p "$S4"; : > "$S4/events.jsonl"; : > "$GH_LOG"; rm -f "$GH_BODIES"/*
