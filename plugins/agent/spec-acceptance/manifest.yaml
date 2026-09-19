@@ -80,6 +80,7 @@ provides:
     - acceptance.gate.no_testfiles
     - acceptance.gate.not_passing_at_head
     - acceptance.gate.not_passing_at_head_escalated
+    - acceptance.gate.tautology_escalated
     - acceptance.gate.negctl_harness_error
     - acceptance.gate.negctl_timeout
     - acceptance.gate.reachability_harness_error

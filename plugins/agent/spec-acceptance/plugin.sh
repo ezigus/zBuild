@@ -567,6 +567,24 @@ acceptance_gate_run() {
             fi
         done
     fi
+    # #2157: a tautology that SURVIVES to iter>=2 is design-rooted. #1583 gives
+    # test-author one honest try (iter 1: no fault) — but no assertion for a
+    # behaviour that already exists at the baseline can fail at the baseline,
+    # so a second tautology on the same run means the [change] tag is the
+    # defect, and design is the stage that owns the tag (ADR-036 §tautology).
+    # #1840 run 5 looped two full iterations (2h10m each) on exactly this.
+    if [[ -z "$fault" && "${ZBUILD_CYCLE_ITER:-1}" -ge 2 ]]; then
+        for f in "${failures[@]:-}"; do
+            if [[ "$f" == tautology:* ]]; then
+                fault="specification"
+                eb_emit_event "acceptance.gate.tautology_escalated" \
+                    "stage=acceptance-gate" \
+                    "spec=${f#tautology:}" "iter=${ZBUILD_CYCLE_ITER:-1}"
+                break
+            fi
+        done
+    fi
+
     # #2097: same shape for not_passing_at_head. Iter 1 is build's honest try
     # (S14: no fault). Still failing at HEAD on iter>=2 means impl and assertion
     # cannot be made to agree with the SPEC, so the premise is what is suspect

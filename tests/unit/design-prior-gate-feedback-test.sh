@@ -80,6 +80,13 @@ _design_stage_run_inner "$(dirname "$AD1B")/scope-manifest.md" "$AD1B/plan.json"
     "$AD1B/design.md" "$AD1B" >/dev/null 2>&1 || true
 assert_contains_regex "T1: a failing acceptance gate yields the re-author instruction" \
     "$(cat "$AD1B/design-prompt.txt" 2>/dev/null)" "RE-AUTHOR"
+# #2157: re-authoring cannot fix a SPEC that describes behaviour already on the
+# baseline (#1840 run 5, SPEC-16/17 — true since #2000, looped two iterations).
+# The replay must offer the honest way out: re-tag it [guard].
+assert_contains "T1 [#2157]: the replay says an already-true behaviour is re-tagged [guard]" \
+    "$(cat "$AD1B/design-prompt.txt" 2>/dev/null)" "re-tag it [guard]"
+assert_contains "T1 [#2157]: the classification rule tells design to check the tree before tagging [change]" \
+    "$(cat "$AD1B/design-prompt.txt" 2>/dev/null)" "already exists at the merge-base"
 
 # ── T2: design-feedback.md absent → prompt has NO gate-feedback section (no-op) ─
 AD2="$(_setup_fixture)"
