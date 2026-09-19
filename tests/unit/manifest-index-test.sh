@@ -118,6 +118,14 @@ ZBUILD_YAML_CACHE=0
 : > "$AWKS"
 manifest_index_load "$CORPUS"
 assert_eq "[SPEC-4] with the kill switch the index is not built" "0|0" "${#_ZBUILD_MIDX[@]}|$(_n "$AWKS")"
+# review on #2155: with the kill switch the rows come straight from the build,
+# whose row ORDER differs from the memo's — the maps must not depend on it.
+_IR_BY_ID=(); _IR_BY_ROLE=(); _IR_SCAN_KEY=""
+_inputs_scan_manifests "$CORPUS"
+assert_eq "[SPEC-4] kill switch: id lookup still resolves" "$CORPUS/agent/a5/manifest.yaml" "${_IR_BY_ID[a5]:-}"
+assert_eq "[SPEC-4] kill switch: role lookup still resolves" "$CORPUS/agent/a1/manifest.yaml" "${_IR_BY_ROLE[builder]:-}"
+assert_eq "[SPEC-4] kill switch: every non-tests manifest with an id is mapped" \
+    "$(command find "$CORPUS" -name manifest.yaml -not -path '*/tests/*' -exec grep -l '^id:' {} + | wc -l | tr -d ' ')" "${#_IR_BY_ID[@]}"
 ZBUILD_YAML_CACHE=1
 
 # ─── SPEC-5: root normalisation ──────────────────────────────────────────────

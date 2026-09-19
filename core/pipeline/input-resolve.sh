@@ -107,29 +107,30 @@ _inputs_scan_manifests() {
     # file by file; a file's `__file__` marker precedes its keys, so the
     # previous file is complete when the next marker (or the end) arrives.
     manifest_index_load "$plugins_root"
-    local m="" id="" role="" platform="" p k v
-    _ir_commit() {
-        [[ -n "$m" && "$m" != */tests/* ]] || return 0
-        [[ -n "$id" && -z "${_IR_BY_ID[$id]:-}" ]] && _IR_BY_ID["$id"]="$m"
-        # Platform-specific plugins never win the generic slot; the engine's own
-        # resolver prefers a platform match and this module has no platform.
-        if [[ -n "$role" && ( -z "$platform" || "$platform" == "null" ) && -z "${_IR_BY_ROLE[$role]:-}" ]]; then
-            _IR_BY_ROLE["$role"]="$m"
-        fi
-        return 0
-    }
+    # Collect per file, commit in marker order at the end: the rows' order is
+    # not a contract (the memo streams them per file, a fresh build emits every
+    # `__file__` marker first — review on #2155), and first-occurrence-wins
+    # needs the files in the order they were enumerated.
+    local -a _files=()
+    local -A _id=() _role=() _plat=()
+    local m p k v
     while IFS=$'\034' read -r p k v; do
-        if [[ "$k" == "__file__" ]]; then
-            _ir_commit; m="$p"; id=""; role=""; platform=""; continue
-        fi
+        if [[ "$k" == "__file__" ]]; then _files+=("$p"); continue; fi
         # the old per-file awk also trimmed trailing whitespace
         v="${v%"${v##*[![:space:]]}"}"
         case "$k" in
-            id) id="$v" ;; platform) platform="$v" ;; provides.role) role="$v" ;;
+            id) _id["$p"]="$v" ;; platform) _plat["$p"]="$v" ;; provides.role) _role["$p"]="$v" ;;
         esac
     done < <(manifest_index_rows "$plugins_root")
-    _ir_commit
-    unset -f _ir_commit
+    for m in "${_files[@]+"${_files[@]}"}"; do
+        [[ "$m" != */tests/* ]] || continue
+        [[ -n "${_id[$m]:-}" && -z "${_IR_BY_ID[${_id[$m]}]:-}" ]] && _IR_BY_ID["${_id[$m]}"]="$m"
+        # Platform-specific plugins never win the generic slot; the engine's own
+        # resolver prefers a platform match and this module has no platform.
+        if [[ -n "${_role[$m]:-}" && ( -z "${_plat[$m]:-}" || "${_plat[$m]:-}" == "null" ) && -z "${_IR_BY_ROLE[${_role[$m]}]:-}" ]]; then
+            _IR_BY_ROLE["${_role[$m]}"]="$m"
+        fi
+    done
 }
 
 # ─── _inputs_stage_manifest <stage> <plugins_root> ───────────────────────────
