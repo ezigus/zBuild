@@ -336,6 +336,10 @@ path/to/file2
    CLASSIFICATION (required on every SPEC-n line):
    - \`SPEC-n[change]:\` — a NEW behavior that did not exist before; the tagged
      test MUST FAIL at the merge-base baseline and PASS after this change.
+     CHECK THE TREE before tagging: if the behavior already exists at the merge-base
+     (the code, manifest or output is already there), it is NOT a change — tag it
+     [guard]. A [change] that is already true cannot be tested honestly and stalls
+     the whole build cycle.
    - \`SPEC-n[guard]:\` — an INVARIANT that must not regress; do NOT contort it
      to fail at baseline. The acceptance-gate skips the negative control for
      guards.
@@ -443,7 +447,7 @@ DESIGN_PROMPT
     # is not something a gate should be authoring prose about.
     if [[ "$(jq -r '.stage_verdicts["acceptance-gate"] // empty' \
             "$(dirname "$artifact_dir")/pipeline-state.json" 2>/dev/null || true)" == "fail" ]]; then
-        printf '\nIf the STAGE SUMMARIES name a tautological [change] SPEC — one that passes at the merge-base baseline, so it asserts nothing — RE-AUTHOR that SPEC and its tagged assertion so it FAILS at baseline and PASSES at HEAD. Build is forbidden to touch acceptance assertions (ADR-036), so only this stage can. Preserve all other scope and acceptance entries.\n' \
+        printf '\nIf the STAGE SUMMARIES name a tautological [change] SPEC — one that passes at the merge-base baseline, so it asserts nothing — either RE-AUTHOR that SPEC so it describes behavior that is genuinely NEW (fails at baseline, passes at HEAD), or, when the behavior already exists at the merge-base, re-tag it [guard]: there is nothing to change and no assertion can be made to fail there. Build is forbidden to touch acceptance assertions (ADR-036), so only this stage can. Preserve all other scope and acceptance entries.\n' \
             >> "$prompt_input_file"
     fi
 

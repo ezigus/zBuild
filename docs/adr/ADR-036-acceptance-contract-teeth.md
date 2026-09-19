@@ -817,3 +817,23 @@ still outranks), `acceptance-gate-test.sh` S14 (iter 1: no fault, recoverable),
 `acceptance-gate-npah-escalation-test.sh` (iter 2: fault=specification, event, recoverable).
 Reverting `plugin.sh` alone turns all five new assertions red.
 
+
+## Amendment (#2157, 2026-09-19) — a tautology that survives to iteration 2 is design's
+
+#1583 made a tautology test-author's finding: the assertion body is test-author's, so a
+`tautology:<id>` declares no fault and the cycle stays in `build_test_cycle` for one more
+try. That holds for iteration 1. It cannot hold for iteration 2: #1840 run 5 tagged two
+behaviours `[change]` that had been on `main` since #2000, the gate named them every
+iteration, and no assertion for behaviour that exists at the baseline can be made to fail
+at the baseline — test-author was asked for the impossible, twice, at ~2h10m a lap, while
+`route_back` (fault ∈ {specification, scope}) never fired because nothing declared a fault.
+
+The gate now does for `tautology:*` what #2097 did for `not_passing_at_head`: on
+`ZBUILD_CYCLE_ITER ≥ 2` it sets `fault=specification` and emits
+`acceptance.gate.tautology_escalated spec=<id> iter=<n>`; the disposition stays
+`recoverable`. The design prompt's classification rule now says to check the tree before
+tagging `[change]` — behaviour that already exists at the merge-base is a `[guard]` — and
+the route-back replay offers re-tagging as the honest resolution, not only re-authoring.
+This is the sentence above ("the change-vs-guard classification … is design-side") made
+operational. Verification: `acceptance-gate-tautology-escalation-test.sh` (iter 1 no fault;
+iter 2 fault + event), `design-prior-gate-feedback-test.sh` T1 (#2157 assertions).
