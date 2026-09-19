@@ -31,8 +31,9 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "fork budget: external execs of a mocked full run (#2151, ADR-065)"
 setup_test_env "fork-budget"
 
-# ADR-065 §2. Ratchets down only. History: 8000 (#2151, measured 7,128 macOS).
-FORK_BUDGET=8000
+# ADR-065 §2. Ratchets down only. History: 8000 (#2151, measured 7,128 macOS);
+# 4800 (#2152 manifest index, measured 4,335 macOS).
+FORK_BUDGET=4800
 
 # ─── the trace harness (the --coverage-trace precedent, scripts/run-tests.sh) ──
 # BASH_ENV injects `set -x` into every child bash (the runner, the mocks, work
