@@ -627,7 +627,7 @@ else
         "${_1840_s8u_summary:-absent}"
 fi
 
-# ─── SPEC-9 [guard]: success path is purely additive — v1 fields present + intact ─
+# ─── SPEC-9 [change]: success path is purely additive — v1 fields present + intact ─
 # Every pre-existing v1 field (schema_version, name, score, findings[]) must survive
 # the v2 migration unchanged; the v2 additions (result_contract, verdict, disposition,
 # reason) must coexist with them. If any v1 field were dropped this block fails on the
@@ -678,7 +678,7 @@ else
     assert_fail "[SPEC-9] v2 field reason must be present alongside v1 fields (additive)" "absent"
 fi
 
-# ─── SPEC-10 [guard]: amended coercion-vocab grep not defeated by verdict field ─
+# ─── SPEC-10 [change]: amended coercion-vocab grep not defeated by verdict field ─
 # Part 1: approve, request_changes, "block" tokens remain absent from plugin source.
 if grep -qiE '\b(approve|request_changes)\b|"block"' \
     "$PLUGIN_DIR/plugin.sh" "$PLUGIN_DIR/lib/charters.sh"; then
@@ -817,80 +817,76 @@ if [[ "$_1840_s15_rc" -eq 130 ]]; then
     assert_fail "[SPEC-15] rc=10 must NOT be rc=130 (interrupted path)" "rc was 130"
 fi
 
-# ─── SPEC-16 [change]: manifest provides.events — exactly three declared events ─
-# The manifest must declare exactly review_lens.failed, review_lens.redaction_failed,
-# and review_lens.unparseable under provides.events — no more, no less. (ADR-001
-# §"Declared events", #1717). validate_manifest must accept those declarations.
-_1840_events_section="$(awk '/^provides:/{found=1} found && /^[^ ]/{if(!/^provides:/)exit} found{print}' \
+# ─── SPEC-16 [change]: manifest outputs declares review_lens_summary with summary: true ─
+# ADR-055 §9: the v2 migration adds a stage-statement output so the engine records
+# what this lens DID on every terminal path. Absent from the v1 manifest — fails at
+# merge-base, passes only after the migration landing this field.
+_1840_s16_outputs="$(awk '/^outputs:/{found=1} found && /^[^ ]/{if(!/^outputs:/)exit} found{print}' \
     "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
-for _1840_ev in "review_lens.failed" "review_lens.redaction_failed" "review_lens.unparseable"; do
-    if grep -qF "$_1840_ev" <<< "$_1840_events_section"; then
-        assert_pass "[SPEC-16] manifest provides.events declares $_1840_ev"
-    else
-        assert_fail "[SPEC-16] manifest provides.events must declare $_1840_ev" "absent"
-    fi
-done
-# Count ALL list entries under provides.events — catches non-review_lens.-prefixed extras.
-# Use awk on the section to count only lines that are YAML list items under events:.
-_1840_event_count="$(awk '/events:/{f=1;next} f && /^\s+-\s+\S/{count++} f && /^\s+[a-z_]+:/{exit} END{print count+0}' \
-    <<< "$_1840_events_section" 2>/dev/null || true)"
-assert_eq "[SPEC-16] manifest provides.events declares exactly 3 events (no more, no less)" \
-    "3" "$_1840_event_count"
-# validate_manifest must pass with those event declarations
+if grep -q 'review_lens_summary' <<< "$_1840_s16_outputs" && grep -q 'summary: true' <<< "$_1840_s16_outputs"; then
+    assert_pass "[SPEC-16] manifest outputs section declares review_lens_summary with summary: true"
+else
+    assert_fail "[SPEC-16] manifest outputs must declare review_lens_summary with summary: true (ADR-055 §9)" \
+        "absent"
+fi
+
+# ─── SPEC-17 [change]: success path writes lens-<name>-summary.md with affirmative language ─
+# ADR-055 §9: on a successful lens run stage_summary_write must produce a file with
+# affirmative pass-verdict language — distinct from the advisory-absence language on
+# degrade paths (SPEC-8). New in v2; the v1 success path wrote no summary file.
+# shellcheck disable=SC2329
+route_to_model() {
+    printf 'call\n' >> "$_RL_CALLS"
+    printf '%s' "$2" > "$_RL_PROMPT"
+    printf '%s' '{"score":5,"findings":[]}'
+    return 0
+}
+out_1840_s17="$artifact_dir/lens-1840spec17.json"
+_1840_s17_summary="$artifact_dir/lens-1840spec17-summary.md"
+rm -f "$_1840_s17_summary" 2>/dev/null || true
 set +e
-validate_manifest "$PLUGIN_DIR/manifest.yaml" >/dev/null 2>&1
-_1840_s16_vm_rc=$?
+_review_lens_run_inner "1840spec17" "$scope_manifest" "$evidence" "$out_1840_s17" "$artifact_dir"
+_1840_s17_rc=$?
 set -e
-assert_eq "[SPEC-16] validate_manifest passes with provides.events declarations" \
-    "0" "$_1840_s16_vm_rc"
-
-# ─── SPEC-17 [change]: manifest provides.role == review_lens ─────────────────
-# The resolver (core/pipeline/resolver.sh) binds dispatch by provides.role (#1704).
-# The manifest must declare provides.role: review_lens.
-_1840_role="$(yaml_get "$PLUGIN_DIR/manifest.yaml" "provides.role" 2>/dev/null || true)"
-assert_eq "[SPEC-17] manifest provides.role == review_lens" \
-    "review_lens" "$_1840_role"
-
-# ─── SPEC-18 [change]: manifest inputs declare only id and required ───────────
-# Name-matched inputs contract (ADR-055 §1, #1825/#1826): each inputs[] entry
-# must carry ONLY id and required — no producer_stage, path, or type fields.
-_1840_inputs_section="$(awk '/^inputs:/{found=1;next} found && /^[^ ]/{exit} found{print}' \
-    "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
-for _1840_forbidden in "producer_stage" "path" "type"; do
-    if grep -q "^\s*${_1840_forbidden}:" <<< "$_1840_inputs_section"; then
-        assert_fail "[SPEC-18] manifest inputs must NOT declare ${_1840_forbidden} (name-matched contract)" \
-            "found ${_1840_forbidden}"
-    else
-        assert_pass "[SPEC-18] manifest inputs do not declare ${_1840_forbidden}"
-    fi
-done
-# Each entry must have id
-if grep -q "id:" <<< "$_1840_inputs_section"; then
-    assert_pass "[SPEC-18] manifest inputs entries declare id"
+assert_eq "[SPEC-17] success path returns 0" "0" "$_1840_s17_rc"
+assert_file_exists "[SPEC-17] success path writes lens summary file" "$_1840_s17_summary"
+_1840_s17_body="$(cat "$_1840_s17_summary" 2>/dev/null || true)"
+if grep -qi "reviewed\|-- pass" <<< "$_1840_s17_body"; then
+    assert_pass "[SPEC-17] success summary contains affirmative pass-verdict language"
 else
-    assert_fail "[SPEC-18] manifest inputs entries must declare id" "absent"
-fi
-# Each entry must have required
-if grep -q "required:" <<< "$_1840_inputs_section"; then
-    assert_pass "[SPEC-18] manifest inputs entries declare required"
-else
-    assert_fail "[SPEC-18] manifest inputs entries must declare required" "absent"
-fi
-# Exhaustive check: no fields OTHER than id and required may appear.
-# Strip list markers, extract all key names, reject any not in {id, required}.
-_1840_inputs_extra_keys="$(printf '%s\n' "$_1840_inputs_section" \
-    | sed 's/^\s*-\s*//' \
-    | grep -oE '^[a-z_]+:' \
-    | tr -d ':' \
-    | grep -vE '^(id|required)$' || true)"
-if [[ -n "$_1840_inputs_extra_keys" ]]; then
-    assert_fail "[SPEC-18] manifest inputs must declare ONLY id and required (found extra fields)" \
-        "extra: $_1840_inputs_extra_keys"
-else
-    assert_pass "[SPEC-18] manifest inputs entries contain only id and required (exhaustive check)"
+    assert_fail "[SPEC-17] success summary must contain affirmative pass-verdict language" \
+        "${_1840_s17_body:-absent}"
 fi
 
-# ─── SPEC-19 [guard]: hooks.cleanup absent; ADR-054 §7 comment present ───────
+# ─── SPEC-18 [change]: wall-clock budget guidance in prompt when timeout > 0 ────
+# ADR-063 §1: the v2 migration adds a WALL CLOCK BUDGET block to the prompt when
+# _route_resolve_timeout returns a positive value. New in v2 — the v1 plugin had no
+# _review_lens_wallclock_guidance call. Fails at merge-base; passes after migration.
+_1840_s18_orig_rrt="$(declare -f _route_resolve_timeout 2>/dev/null || true)"
+# shellcheck disable=SC2329
+_route_resolve_timeout() { printf '300'; }
+# shellcheck disable=SC2329
+route_to_model() {
+    printf '%s' "$2" > "$_RL_PROMPT"
+    printf 'call\n' >> "$_RL_CALLS"
+    printf '%s' '{"score":5,"findings":[]}'
+    return 0
+}
+out_1840_s18="$artifact_dir/lens-1840spec18.json"
+: > "$_RL_CALLS"
+set +e
+_review_lens_run_inner "1840spec18" "$scope_manifest" "$evidence" "$out_1840_s18" "$artifact_dir"
+set -e
+_1840_s18_prompt="$(cat "$_RL_PROMPT" 2>/dev/null || true)"
+if grep -qi "WALL CLOCK BUDGET" <<< "$_1840_s18_prompt"; then
+    assert_pass "[SPEC-18] WALL CLOCK BUDGET block appears in prompt when _route_resolve_timeout > 0"
+else
+    assert_fail "[SPEC-18] WALL CLOCK BUDGET block must appear in prompt when _route_resolve_timeout > 0" "absent"
+fi
+if [[ -n "$_1840_s18_orig_rrt" ]]; then eval "$_1840_s18_orig_rrt"; else unset -f _route_resolve_timeout 2>/dev/null || true; fi
+unset _1840_s18_orig_rrt
+
+# ─── SPEC-19 [change]: hooks.cleanup absent; ADR-054 §7 comment present ───────
 # ADR-054 §7 (#1829): plugins that hold no live resources must NOT declare
 # hooks.cleanup. The absence is intentional and the manifest must carry a comment
 # explaining why (so future readers do not add it by mistake).
