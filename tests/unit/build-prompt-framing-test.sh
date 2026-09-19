@@ -195,6 +195,24 @@ for _sec in "CURRENT ITERATION FEEDBACK" "PRIOR REVIEW FEEDBACK" "ACCEPTANCE COV
     fi
 done
 
+# ─── #2138: a prior build that changed nothing is not "done" ──────────────────
+# "verdict=pass and touched 0 file(s) … emit LOOP_COMPLETE immediately" was
+# obeyed verbatim by iteration 1 of run 35355623656 on a red suite.
+print_test_section "#2138: PRIOR BUILD note"
+_read_prior_output() { [[ "$1" == build-summary.json ]] && printf '{"verdict":"pass","files_changed":[]}'; return 0; }
+_pb0="$(_build_read_prior_build_summary 2>/dev/null)"
+assert_contains "[#2138] a 0-file prior build is described as having changed nothing" "$_pb0" "changed nothing"
+if grep -qi 'emit LOOP_COMPLETE immediately' <<< "$_pb0"; then
+    assert_fail "[#2138] a 0-file prior build must not invite an immediate LOOP_COMPLETE" "$_pb0"
+else
+    assert_pass "[#2138] a 0-file prior build does not invite an immediate LOOP_COMPLETE"
+fi
+assert_contains "[#2138] …and points at the STAGE SUMMARIES for the suite's state" "$_pb0" "STAGE SUMMARIES"
+_read_prior_output() { [[ "$1" == build-summary.json ]] && printf '{"verdict":"pass","files_changed":["core/a.sh","core/b.sh"]}'; return 0; }
+_pb2="$(_build_read_prior_build_summary 2>/dev/null)"
+assert_contains "[#2138] a prior build with real changes keeps the continue-do-not-restart guidance" "$_pb2" "do NOT restart"
+unset -f _read_prior_output
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

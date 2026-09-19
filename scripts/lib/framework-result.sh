@@ -22,11 +22,11 @@ _ZBUILD_FRAMEWORK_RESULT_LOADED=1
 # unless a bare integer was passed (fail-closed, never crashes jq).
 # Usage: _fr_emit_lint <status> <exit_code> <summary>
 _fr_emit_lint() {
-    local status="$1" ec="$2" summary="$3"
+    local status="$1" ec="$2" summary="$3" detail="${4:-}"
     local ec_json="null"
     [[ "$ec" =~ ^-?[0-9]+$ ]] && ec_json="$ec"
-    jq -n --arg s "$status" --argjson ec "$ec_json" --arg sum "$summary" \
-        '{status: $s, exit_code: $ec, summary: $sum}' 2>/dev/null
+    jq -n --arg s "$status" --argjson ec "$ec_json" --arg sum "$summary" --arg det "$detail" \
+        '{status: $s, exit_code: $ec, summary: $sum} + (if $det == "" then {} else {detail: $det} end)' 2>/dev/null
 }
 
 # ─── _fr_emit_coverage ────────────────────────────────────────────────────────
@@ -74,10 +74,15 @@ framework_run_lint() {
         _fr_emit_lint "pass" 0 "lint clean"
     else
         # Keep the tail (where most linters print the error count) within 200 bytes.
-        local summary
+        local summary detail
         summary="$(printf '%s\n' "$out" | tail -n 3 | tr '\n' ' ')"
         summary="${summary:0:200}"
-        _fr_emit_lint "fail" "$rc" "$summary"
+        # #2138: the FINDINGS too — the first 40 lines, 4 KB — so the test
+        # stage's summary can tell the builder what lint objected to, not
+        # just that it did.
+        detail="$(printf '%s\n' "$out" | head -n 40)"  # sigpipe-ok: writer is a variable
+        detail="${detail:0:4096}"
+        _fr_emit_lint "fail" "$rc" "$summary" "$detail"
     fi
 }
 

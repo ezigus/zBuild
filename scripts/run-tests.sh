@@ -791,7 +791,9 @@ run_lint_tier() {
     return 0
   fi
   echo "lint: FAIL (npm run lint)" >&2
-  printf '%s\n' "$block" | jq -r '.summary // empty' >&2 2>/dev/null || true
+  # #2138: the findings under the marker, where the test stage's extractor
+  # reads a failing block; the 200-byte summary stays for the one-line readers.
+  printf '%s\n' "$block" | jq -r '.detail // .summary // empty' >&2 2>/dev/null || true
   echo "lint: 0/1 passed"
   _rt_emit_tier_time "lint" "$_t0"
   return 1

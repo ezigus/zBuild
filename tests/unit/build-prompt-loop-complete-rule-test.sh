@@ -56,5 +56,15 @@ assert_contains "R6: literal LOOP_COMPLETE sentinel name present" \
     "$out" "LOOP_COMPLETE"
 
 cleanup_test_env
+# ─── #2138: the prompt states its budget and what a RESOLVE summary means ────
+# Run 35355623656's builder, told only "this file is red", re-ran the suite
+# and lint inside a 900s call three times in a row. It was never told the
+# clock existed.
+_b_out="$(ZBUILD_ROUTER_TIMEOUT=900 _build_compose_instructions "src/foo.sh")"
+assert_contains "[#2138] the instructions carry a Budget section" "$_b_out" "### Budget"
+assert_contains "[#2138] …naming the wall clock per call" "$_b_out" "900"
+assert_contains "[#2138] …forbidding the full suite" "$_b_out" "npm test"
+assert_contains "[#2138] …and making RESOLVE summaries authoritative" "$_b_out" "RESOLVE"
+
 print_test_results
 exit $((FAIL > 0))

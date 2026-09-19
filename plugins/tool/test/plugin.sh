@@ -666,18 +666,37 @@ _test_emit_failures_summary() {
         # then the broad matches. A replayed nested run puts dozens of
         # Error:/FAIL lines ahead of the one ✗ that matters, and a first-60
         # window of the broad pattern shipped a summary with no ✗ in it.
-        local _ex_first _ex_rest
+        # #2138: and the REASON a file died. Run 35355623656's builder was
+        # told "review-lens-test.sh FAIL" and nothing else — the raw output
+        # ended "line 557: …: command not found" after 60 ✓ lines, which no
+        # pattern matched. Per tier FAIL/TIMEOUT block: bash's own error
+        # shapes, lint findings (SCnnnn / "In <file> line N:"), and the last
+        # 6 non-blank lines of the block — the tail is where bash puts why.
+        local _ex_first _ex_rest _ex_tail
         # sigpipe-ok: || true, and an explicit empty-check follows
         _ex_first="$(printf '%s' "$raw_output" \
             | grep -E -A1 '(✗|✘)' | grep -v '^--$' | head -n 40 || true)"
         # sigpipe-ok: || true
         _ex_first="${_ex_first}${_ex_first:+$'\n'}$(printf '%s' "$raw_output" \
             | grep -E '^[a-z]+: (FAIL|TIMEOUT) ' | head -n 10 || true)"
+        _ex_tail="$(printf '%s\n' "$raw_output" | awk '
+            function flush(   i, n) {
+                n = cnt < 6 ? cnt : 6
+                for (i = cnt - n + 1; i <= cnt; i++) print tail[i]
+                cnt = 0
+            }
+            /^[a-z]+: (FAIL|TIMEOUT) / { if (inblk) flush(); inblk = 1; cnt = 0; next }
+            /^[a-z]+: [0-9]+\/[0-9]+ passed/ { if (inblk) flush(); inblk = 0; next }
+            inblk && NF {
+                if ($0 ~ /line [0-9]+: |command not found|syntax error|No such file|unbound variable|SC[0-9][0-9][0-9][0-9]|^In .* line [0-9]+:/) print
+                tail[++cnt] = $0
+            }
+            END { if (inblk) flush() }' 2>/dev/null || true)"
         # sigpipe-ok: || true, and an explicit empty-check follows
         _ex_rest="$(printf '%s' "$raw_output" \
             | grep -E '(FAIL|✗|✘|Error:|Failure:|AssertionError|expected|Expected)' \
             | head -n 60 || true)"
-        extracted="$(printf '%s\n%s' "$_ex_first" "$_ex_rest" | awk 'NF && !seen[$0]++' | head -n 60 || true)"  # sigpipe-ok: || true
+        extracted="$(printf '%s\n%s\n%s' "$_ex_first" "$_ex_tail" "$_ex_rest" | awk 'NF && !seen[$0]++' | head -n 80 || true)"  # sigpipe-ok: || true
 
         # If nothing matched but verdict says fail/error, fall back to first ~40
         # lines of raw output so the build agent at least sees something.

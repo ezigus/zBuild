@@ -68,8 +68,16 @@ _build_read_prior_build_summary() {
     n_files="$(printf '%s' "$raw" | jq -r '(.files_changed // []) | length' 2>/dev/null || echo 0)"
     files="$(printf '%s' "$raw" | jq -r '(.files_changed // []) | join(", ")' 2>/dev/null || echo "")"
     [[ "$n_files" =~ ^[0-9]+$ ]] || n_files=0
-    printf 'A previous attempt on this issue ended build with verdict=%s and touched %s file(s)%s. That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present.' \
-        "$verdict" "$n_files" "${files:+: $files}"
+    # #2138: a pass with 0 files is "did nothing", not "done" — iteration 1 of
+    # run 35355623656 read the old wording as licence to emit LOOP_COMPLETE
+    # on a red suite. Whether there is work is what the STAGE SUMMARIES say.
+    if [[ "$n_files" -eq 0 ]]; then
+        printf 'A previous attempt on this issue ended build with verdict=%s having changed nothing (0 files). That is not evidence the work is done: read the STAGE SUMMARIES below — a RESOLVE summary means the suite is red on this tree and there is work to do. Do not restart from scratch; continue from what is on this branch (check `git log` / `git diff`).' \
+            "$verdict"
+    else
+        printf 'A previous attempt on this issue ended build with verdict=%s and touched %s file(s): %s. That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present and no STAGE SUMMARY is marked RESOLVE.' \
+            "$verdict" "$n_files" "$files"
+    fi
 }
 
 # _build_read_prior_assessment — the test stage's summary, read through the

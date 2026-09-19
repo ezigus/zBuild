@@ -756,6 +756,24 @@ assert_contains "[#2124] the tier's FAIL marker names the file" "$(cat "$_spec13
 _spec13_first="$(grep -n 'router-fatal\|nested replay noise' "$_spec13_sum" 2>/dev/null | head -1)"
 assert_contains "[#2124] the ✗ line precedes the noise" "$_spec13_first" "router-fatal"
 
+# ─── #2138: the REASON a file died reaches the summary ────────────────────────
+# Run 35355623656's builder was told "review-lens-test.sh FAIL" and nothing
+# else; the raw output ended "line 557: _route_resolve_max_turns: command not
+# found" after 60 ✓ lines. Bash's reason for a death is the tail of the
+# file's output, not a ✗ line, and the old pattern never matched it.
+_s38_dir="$TEST_TEMP_DIR/spec38-artifacts"; mkdir -p "$_s38_dir"
+_s38_sum="$_s38_dir/test-failures-summary.md"
+_s38_raw="$(printf 'unit: FAIL plugins/agent/review-lens/tests/review-lens-test.sh\n'
+for i in $(seq 1 60); do printf '  ✓ [#1140-%s] something fine\n' "$i"; done
+printf 'plugins/agent/review-lens/tests/review-lens-test.sh: line 557: _route_resolve_max_turns: command not found\n'
+printf 'lint: FAIL (npm run lint)\n'
+printf 'In plugins/agent/review-lens/plugin.sh line 331:\n    local json prose\n          ^--^ SC2034 (warning): prose appears unused.\n'
+printf 'unit: 0/1 passed\n')"
+_test_emit_failures_summary "$_s38_sum" "fail" "2" "1" "$_s38_raw" "60"
+assert_contains "[#2138] the bash runtime error at the file's tail is in the summary" "$(cat "$_s38_sum" 2>/dev/null)" "_route_resolve_max_turns: command not found"
+assert_contains "[#2138] the lint finding is in the summary" "$(cat "$_s38_sum" 2>/dev/null)" "SC2034 (warning): prose appears unused"
+assert_contains "[#2138] the lint finding's location is in the summary" "$(cat "$_s38_sum" 2>/dev/null)" "plugin.sh line 331"
+
 # ─── Teardown ────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }
 
