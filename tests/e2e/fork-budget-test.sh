@@ -151,14 +151,19 @@ awk -F'\t' '{ split($2, p, ":"); f[p[1]] += $1 } END { for (k in f) printf "%d\t
     | sort -rn | awk 'NR <= 10 { printf "    %5d  %s\n", $1, $2 }'
 
 # The tier runner buffers a passing test's output, so the Linux number — the
-# one the ratchet is set from — would be invisible in CI. Put it in the job
-# summary when there is one.
+# one the ratchet is set from — would be invisible in CI. Write the census where
+# CI can carry it: the job summary, and a file the e2e job uploads as an
+# artifact (test.yml: fork-budget-census.txt under RUNNER_TEMP).
+_fb_census() {
+    printf '### fork budget: %s external execs (budget %s) across %s source files\n\n```\n' "$_total" "$FORK_BUDGET" "$_files"
+    awk -F'\t' 'NR <= 15 { printf "%5d  %-34s %s\n", $1, $2, $3 }' "$SITES"
+    printf '```\n'
+}
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]] && { [[ -w "$GITHUB_STEP_SUMMARY" ]] || [[ ! -e "$GITHUB_STEP_SUMMARY" && -w "$(dirname "$GITHUB_STEP_SUMMARY")" ]]; }; then
-    {
-        printf '### fork budget: %s external execs (budget %s) across %s source files\n\n```\n' "$_total" "$FORK_BUDGET" "$_files"
-        awk -F'\t' 'NR <= 15 { printf "%5d  %-34s %s\n", $1, $2, $3 }' "$SITES"
-        printf '```\n'
-    } >> "$GITHUB_STEP_SUMMARY"
+    _fb_census >> "$GITHUB_STEP_SUMMARY"
+fi
+if [[ -n "${RUNNER_TEMP:-}" && -d "${RUNNER_TEMP:-/nonexistent}" ]]; then
+    _fb_census > "$RUNNER_TEMP/fork-budget-census.txt" 2>/dev/null || true
 fi
 
 if (( _files >= 20 && _total >= 1000 )); then
