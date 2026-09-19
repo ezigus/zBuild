@@ -1,0 +1,31 @@
+diff --git a/plugins/agent/review-lens/tests/review-lens-test.sh b/plugins/agent/review-lens/tests/review-lens-test.sh
+index 996a1f0e..bcc158e4 100755
+--- a/plugins/agent/review-lens/tests/review-lens-test.sh
++++ b/plugins/agent/review-lens/tests/review-lens-test.sh
+@@ -627,7 +627,7 @@ else
+         "${_1840_s8u_summary:-absent}"
+ fi
+ 
+-# ─── SPEC-9 [change]: success path is purely additive — v1 fields present + intact ─
++# ─── SPEC-9 [guard]: passing run output is backward-compatible — v1 fields present and unmodified ─
+ # Every pre-existing v1 field (schema_version, name, score, findings[]) must survive
+ # the v2 migration unchanged; the v2 additions (result_contract, verdict, disposition,
+ # reason) must coexist with them. If any v1 field were dropped this block fails on the
+@@ -678,7 +678,7 @@ else
+     assert_fail "[SPEC-9] v2 field reason must be present alongside v1 fields (additive)" "absent"
+ fi
+ 
+-# ─── SPEC-10 [change]: amended coercion-vocab grep not defeated by verdict field ─
++# ─── SPEC-10 [guard]: merge-action coercion tokens absent; verdict appears only as jq field in _review_lens_write_result ─
+ # Part 1: approve, request_changes, "block" tokens remain absent from plugin source.
+ if grep -qiE '\b(approve|request_changes)\b|"block"' \
+     "$PLUGIN_DIR/plugin.sh" "$PLUGIN_DIR/lib/charters.sh"; then
+@@ -890,7 +890,7 @@ fi
+ if [[ -n "$_1840_s18_orig_rrt" ]]; then eval "$_1840_s18_orig_rrt"; else unset -f _route_resolve_timeout 2>/dev/null || true; fi
+ unset _1840_s18_orig_rrt
+ 
+-# ─── SPEC-19 [change]: hooks.cleanup absent; ADR-054 §7 comment present ───────
++# ─── SPEC-19 [guard]: hooks.cleanup absent from manifest; ADR-054 §7 explanatory comment present ─
+ # ADR-054 §7 (#1829): plugins that hold no live resources must NOT declare
+ # hooks.cleanup. The absence is intentional and the manifest must carry a comment
+ # explaining why (so future readers do not add it by mistake).
