@@ -223,8 +223,11 @@ printf '{}' > "$_SC3/pipeline-state.json"
 _SC_CALLS="$TEST_TEMP_DIR/calls3"; : > "$_SC_CALLS"
 route_to_model() { cat >/dev/null; printf 'x\n' >> "$_SC_CALLS"; printf '%s' "$_SC_REPLY"; return 0; }
 set +e; spec_correspondence_run "spec-correspondence" "$_SC3/pipeline-state.json" >/dev/null 2>&1; set -e
-assert_eq "[#2108] the model is invoked once per SPEC when it drains stdin" \
-    "3" "$(wc -l < "$_SC_CALLS" | tr -d ' ')"
+# #2143: one batched call first; a reply without SPEC-n prefixes judges
+# nothing, so the per-SPEC fallback runs for each — 1 + 3 calls, every one
+# with </dev/null (the #2108 property this section pins).
+assert_eq "[#2108] a stdin-draining model still leaves every SPEC judged (1 batch + 3 fallback calls)" \
+    "4" "$(wc -l < "$_SC_CALLS" | tr -d ' ')"
 assert_contains "[#2108] the stage judged all 3 SPECs" \
     "$(cat "$_A3/spec-correspondence-summary.md" 2>/dev/null || true)" "judged 3 SPEC(s)"
 
@@ -249,6 +252,35 @@ assert_eq "[#2129] zero SPEC ids → verdict=uncheckable" "uncheckable" \
     "$(jq -r '.verdict // ""' "$_A4/spec-correspondence-result.json" 2>/dev/null || true)"
 assert_contains "[#2129] the reason says nothing was judged" \
     "$(jq -r '.reason // ""' "$_A4/spec-correspondence-result.json" 2>/dev/null || true)" "no SPEC ids"
+
+# ─── #2143: one batched call, then a stage clock ─────────────────────────────
+# Run 35412141973: 19 SPECs = 19 serial model calls, each with its own 600 s
+# budget; 13 took ~35 s, 6 took 4–10 min, one was killed — 53 minutes on the
+# critical path of one iteration, for an advisory stage.
+print_test_section "#2143: batched judging + stage clock"
+export ZBUILD_REPO_ROOT="$_R3" ZBUILD_ARTIFACT_DIR="$_A3"
+: > "$_SC_CALLS"; _SC_PROMPT_B="$TEST_TEMP_DIR/prompt-batch.txt"; : > "$_SC_PROMPT_B"
+_SC_BATCH_REPLY='SPEC-1: VERDICT: corresponds | REASON: exactly the property
+SPEC-2: VERDICT: partial | REASON: one case of several
+SPEC-3: VERDICT: corresponds | REASON: exactly the property'
+route_to_model() { cat >/dev/null; printf 'x\n' >> "$_SC_CALLS"; printf '%s' "$2" >> "$_SC_PROMPT_B"; printf '%s' "$_SC_BATCH_REPLY"; return 0; }
+set +e; spec_correspondence_run "spec-correspondence" "$_SC3/pipeline-state.json" >/dev/null 2>&1; set -e
+assert_eq "[#2143] all 3 SPECs are judged in ONE model call" "1" "$(wc -l < "$_SC_CALLS" | tr -d ' ')"
+assert_contains "[#2143] the batch prompt carries every SPEC id" "$(cat "$_SC_PROMPT_B")" "SPEC-3"
+assert_contains "[#2143] …and every requirement text" "$(cat "$_SC_PROMPT_B")" "thing 2 holds"
+assert_contains "[#2143] the tally reflects the batched verdicts" \
+    "$(cat "$_A3/spec-correspondence-summary.md" 2>/dev/null || true)" "2 correspond, 1 partial"
+# Stage clock: a slow model (2 s/call) and a junk batch reply → the per-SPEC
+# fallback would take 6 s more; a 3 s stage clock stops it with the rest unjudged.
+: > "$_SC_CALLS"
+route_to_model() { cat >/dev/null; printf 'x\n' >> "$_SC_CALLS"; sleep 2; printf 'no verdict here'; return 0; }
+_t0=$(date +%s)
+set +e; ZBUILD_SPEC_CORRESPONDENCE_STAGE_TIMEOUT_S=3 spec_correspondence_run "spec-correspondence" "$_SC3/pipeline-state.json" >/dev/null 2>&1; set -e
+_el=$(( $(date +%s) - _t0 ))
+if [[ "$_el" -le 6 ]]; then assert_pass "[#2143] the stage clock bounds the stage (${_el}s)"; else assert_fail "[#2143] the stage clock bounds the stage" "took ${_el}s"; fi
+assert_contains "[#2143] SPECs the clock cut off are unjudged, not invented" \
+    "$(cat "$_A3/spec-correspondence-summary.md" 2>/dev/null || true)" "unjudged"
+if [[ "$(wc -l < "$_SC_CALLS" | tr -d ' ')" -le 2 ]]; then assert_pass "[#2143] at most the batch + one fallback call before the clock"; else assert_fail "[#2143] too many calls under the clock" "$(wc -l < "$_SC_CALLS")"; fi
 
 print_test_results
 exit $((FAIL > 0))
