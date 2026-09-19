@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # Integration test (#846 / ADR-034): the REAL build_test_cycle + REAL test plugin
 # engage targeted re-run end to end. The unit tests cover the pieces
-# (_test_run_inner run_mode=targeted; the orchestrator gate); this proves they
-# CONNECT — i.e. _cycle_apply_feedback actually exports the red-set to the real
-# test stage, the test stage runs only the affected file (run_mode=targeted), and
-# the orchestrator then fires the full-suite gate before converging.
+# (_test_run_inner run_mode=targeted+full); this proves they CONNECT — i.e.
+# _cycle_apply_feedback actually exports the red-set to the real test stage, the
+# test stage runs the affected file first and then, on a pass, the full suite in
+# the SAME invocation (#2144), and the cycle converges on that iteration.
 #
 #   iter 1: full run, b.sh fails  -> red-set={b.sh}, run_mode=full, verdict=fail
-#   iter 2: build fixes b.sh; red-set exported -> test runs ONLY b.sh
-#           (run_mode=targeted), passes -> orchestrator suppresses convergence and
-#           arms ZBUILD_TEST_FULL_SUITE_GATE (emits cycle.test.full_suite_gate)
-#   iter 3: gate forces a full run -> all pass (run_mode=full) -> converged
+#   iter 2: build fixes b.sh; red-set exported -> test runs ONLY b.sh, passes,
+#           then runs the full suite itself -> run_mode=targeted+full, pass
+#           -> converged. No third iteration, no orchestrator gate.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,7 +19,7 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "build_test_cycle: real targeted re-run + full-suite gate (#846)"
+print_test_header "build_test_cycle: real targeted re-run confirmed by the stage (#846, #2144)"
 setup_test_env "build-test-cycle-targeted-846"
 
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
@@ -106,8 +105,6 @@ cycle_dispatch_stage() {
     _CYCLE_DISPATCH_VERDICT="$v"; _CYCLE_DISPATCH_STATUS="complete"; return 0
 }
 
-# #1253: capture the operator-facing cycle banners (fd 2) so we can assert the
-# targeted-pass-held-for-full-suite line is surfaced (pure observability).
 BANNER_LOG="$TEST_TEMP_DIR/banner.log"
 set +e
 cycle_orchestrator_run "build_test_cycle" "$ZBUILD_STATE_DIR" "$ZBUILD_STATE_FILE" \
@@ -118,19 +115,18 @@ set -e
 echo "--- banner ---"; cat "$BANNER_LOG"
 echo "--- run_modes ---"; cat "$RUN_MODES"
 iter2_mode="$(awk -F'run_mode=' '/iter=2 /{print $2}' "$RUN_MODES" | head -1)"
-iter3_mode="$(awk -F'run_mode=' '/iter=3 /{print $2}' "$RUN_MODES" | head -1)"
+iter3_line="$(grep -c 'iter=3 ' "$RUN_MODES" || true)"
 
-assert_eq "T1: iter-2 test stage runs run_mode=targeted (red-set engaged)" "targeted" "$iter2_mode"
-assert_event_emitted "T2: cycle.test.full_suite_gate emitted on targeted convergence" \
-    "$ZBUILD_EVENTS_JSONL" "cycle.test.full_suite_gate"
-assert_eq "T3: iter-3 (gate) runs full suite" "full" "$iter3_mode"
+assert_eq "T1 [#2144]: iter-2 test stage runs targeted, then confirms with the full suite (run_mode=targeted+full)" \
+    "targeted+full" "$iter2_mode"
+assert_eq "T2 [#2144]: no cycle.test.full_suite_gate event — the orchestrator holds nothing" \
+    "0" "$(grep -c 'cycle.test.full_suite_gate' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+assert_eq "T3 [#2144]: no third iteration" "0" "$iter3_line"
 assert_eq "T4: cycle converged (rc=0)" "0" "$RC"
 assert_eq "T5: reason=converged" "converged" "${_CYCLE_LAST_TERMINATED_REASON:-}"
-# #1253: pure-observability — when the full-suite gate holds a targeted pass, the
-# banner shows `MATCHED (got=pass)` yet the cycle continues; an operator line MUST
-# explain why (no silent continue). Behavior (T1-T5) is unchanged.
-assert_contains "T6: operator line explains the held targeted pass (full-suite confirm)" \
-    "$(cat "$BANNER_LOG")" "running full suite to confirm before converging"
+assert_eq "T6 [#2144]: converged on iteration 2" "2" "${_CYCLE_LAST_ITERATIONS:-}"
+_t7="$(grep -c 'running full suite to confirm before converging' "$BANNER_LOG" || true)"
+assert_eq "T7 [#2144]: no held-targeted-pass operator line" "0" "$_t7"
 
 cleanup_test_env
 print_test_results

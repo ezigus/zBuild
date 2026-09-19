@@ -1939,12 +1939,11 @@ _cycle_iter_dispatch() {
             --arg ft "${_CYCLE_DISPATCH_FAULT:-}" \
             '. + {($s): {verdict:$v, status:$st, disposition:$d, kind:$k, fault:$ft}}' <<< "$blob" 2>/dev/null)" || blob="{}"
         # #2117: nothing changed and the previous iteration verified this exact
-        # tree → reuse what passed. A targeted test pass is never reused: the
-        # ADR-034 full-suite gate must get its full run.
+        # tree → reuse what passed. (A test pass is always full-suite confirmed
+        # by the stage itself since #2144, so nothing here reads a run mode.)
         if [[ "${_CYCLE_DISPATCH_DATA_KIND:-}" == "empty_diff" && "$iter" -ge 2 && -n "${_CYCLE_VERIFIED_FP:-}" ]]; then
             local _fp_now; _fp_now="$(_cycle_tree_fingerprint 2>/dev/null || true)"
-            if [[ -n "$_fp_now" && "$_fp_now" == "$_CYCLE_VERIFIED_FP" ]] \
-               && [[ "$(_cycle_read_test_run_mode "$_state_dir" 2>/dev/null || echo full)" != "targeted" ]]; then
+            if [[ -n "$_fp_now" && "$_fp_now" == "$_CYCLE_VERIFIED_FP" ]]; then
                 _reuse_rest=1
             fi
         fi
@@ -2139,28 +2138,6 @@ _cycle_member_terminal_failure() {
     return 1
 }
 
-# ─── _cycle_read_test_run_mode (ADR-034 / #846) ─────────────────────────────
-# Reads the run_mode field from artifacts/test-results.json in the given
-# state_dir. Echoes "targeted" or "full". Defaults to "full" on any read
-# failure (missing file, missing field, jq error) — fail-closed: unknown mode
-# never suppresses convergence.
-# Usage: _cycle_read_test_run_mode <state_dir>
-_cycle_read_test_run_mode() {
-    local state_dir="$1"
-    local trj="$state_dir/artifacts/test-results.json"
-    if [[ -s "$trj" ]]; then
-        local _mode
-        # v2-first, v1 top-level fallback — same shape the gate plugins read
-        # with (#1836). A pre-migration artifact must not silently re-broaden a
-        # targeted re-run to the full suite.
-        _mode="$(jq -r '(.data.run_mode // .run_mode) // "full"' "$trj" 2>/dev/null || echo "full")"
-        case "$_mode" in
-            targeted|full) printf '%s' "$_mode"; return 0 ;;
-        esac
-    fi
-    printf 'full'
-}
-
 # ─── _cycle_handle_terminal_rc — runner-facing helper ────────────────────────
 # Maps orchestrator rc → reason → (a) cycle.complete event (durable, fd-event)
 # and (b) operator-fd-2 exit banner via registered `cycle_exit_hook`.
@@ -2302,12 +2279,6 @@ cycle_orchestrator_run() {
             [[ "$_pk" == "${_pfx}"* ]] && unset "_CYCLE_TURNS_BASE_PERSIST[$_pk]"
         done
     fi
-    # ADR-034 / #846: clear any stale full-suite-gate flag at cycle entry so
-    # it does not bleed from a previous cycle invocation in the same process.
-    # Must happen here (before any early return) so even config-invalid paths
-    # leave the env clean for subsequent callers.
-    unset ZBUILD_TEST_FULL_SUITE_GATE 2>/dev/null || true
-
     if ! _cycle_load_template "$cycle_id"; then
         _CYCLE_LAST_TERMINATED_REASON="config_invalid"
         { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 4; }
@@ -2329,10 +2300,6 @@ cycle_orchestrator_run() {
         "cycle_id=$cycle_id" "iter=1" \
         "max=$_CYCLE_MAX_ITER" \
         "stages=${_CYCLE_STAGES[*]}" 2>/dev/null || true
-
-    # ADR-034 / #846: tracks whether targeted convergence fired in the previous
-    # iter (1) → set ZBUILD_TEST_FULL_SUITE_GATE before dispatching this iter.
-    local _full_suite_gate_pending=0
 
     local iter
     for (( iter=1; iter <= _CYCLE_MAX_ITER; iter++ )); do
@@ -2386,17 +2353,6 @@ cycle_orchestrator_run() {
             _CYCLE_LAST_TERMINATED_REASON="aborted"
             _cycle_clear_traps
             { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 130; }
-        fi
-
-        # ADR-034 / #846: manage ZBUILD_TEST_FULL_SUITE_GATE lifecycle.
-        # If targeted convergence fired last iter, arm the gate env var NOW
-        # (before dispatch) so the test stage sees it. Otherwise, ensure any
-        # stale value from a prior gate iter is cleared so it cannot bleed.
-        if [[ "$_full_suite_gate_pending" -eq 1 ]]; then
-            export ZBUILD_TEST_FULL_SUITE_GATE=1
-            _full_suite_gate_pending=0
-        else
-            unset ZBUILD_TEST_FULL_SUITE_GATE 2>/dev/null || true
         fi
 
         # Dispatch the cycle's stages in order.
@@ -2561,24 +2517,11 @@ cycle_orchestrator_run() {
                 "reason=would_converge_with_zero_commits_ahead_of_baseline"
         fi
 
-        # ADR-034 / #846: full-suite gate intercept. If convergence predicate
-        # fired (converged=0) but the test stage ran in targeted mode, the
-        # targeted result is insufficient: we need a full-suite confirmation.
-        # Suppress convergence exactly once by setting converged=1 and arming
-        # ZBUILD_TEST_FULL_SUITE_GATE for the next iter (via the pending flag).
-        # Fail-safe: if we're already at max_iterations, we cannot add an extra
-        # iter — let max_iterations fire naturally below instead of looping.
-        if [[ "$converged" -eq 0 ]]; then
-            local _gate_run_mode; _gate_run_mode="$(_cycle_read_test_run_mode "$state_dir")"
-            if [[ "$_gate_run_mode" == "targeted" ]] \
-               && ! _cycle_check_max_iterations "$iter" "$_CYCLE_MAX_ITER"; then
-                converged=1  # suppress: full-suite confirmation still needed
-                _full_suite_gate_pending=1
-                _cycle_emit "cycle.test.full_suite_gate" \
-                    "iter=$iter" "run_mode=targeted" \
-                    "reason=targeted_pass_requires_full_suite_confirmation"
-            fi
-        fi
+        # #2144: ADR-034's full-suite gate no longer lives here. A targeted test
+        # pass is confirmed by the test stage in the same invocation
+        # (run_mode=targeted+full), so the verdict above is already the full
+        # suite's — and this cycle never reads another stage's artifact to
+        # decide whether its own predicate counts.
 
         # Record the history row FIRST — termination checks need durable data.
         _cycle_record_iter_outcome "$history_file" "$iter" \
@@ -2848,17 +2791,6 @@ cycle_orchestrator_run() {
             # multi-axis health score (artifacts/build-summary.json) and name
             # the failing gate(s) (artifacts/gate-aggregator-result.json).
             _cycle_out_body="$(_cycle_render_predicate_result "$iter" "$state_dir")"
-            # #1253: when the full-suite gate suppressed convergence THIS iter
-            # (a targeted pass held for full-suite confirmation, :2061-2071), the
-            # banner above renders `MATCHED (got=pass)` from the RAW predicate yet
-            # the cycle deliberately continues. Append a plain operator line so
-            # the continue is explained, not a silent/confusing no-op. Pure
-            # observability — control flow / convergence is unchanged; the pending
-            # flag (set at :2066, consumed at the next iter's loop top) is 1 here
-            # iff the gate fired this iter.
-            if [[ "$_full_suite_gate_pending" -eq 1 ]]; then
-                _cycle_out_body+=$'\ntargeted pass — running full suite to confirm before converging'
-            fi
             # Suppress stdout only (stage_io_end prints nothing useful on fd 1);
             # do NOT redirect fd 2 — a `2>&1` here would swallow the OUTPUT
             # banner into /dev/null in production (#833 / PR #1039).

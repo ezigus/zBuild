@@ -1,8 +1,9 @@
-# ADR-034 — Targeted test re-run in build_test_cycle (with full-suite gate)
+# ADR-034 — Targeted test re-run in build_test_cycle (confirmed by the stage)
 
 **Status:** Accepted (2026-06-15)
 **Amended:** 2026-09-16 (#2121) — the targeted set is selected by PATH: a changed file selects every test under `tests/` or `plugins/*/*/tests/` that names its repo-relative path, the same for its bare basename only when that basename is unique in the repo (`plugin.sh`/`manifest.yaml` matched 286 files — 39 minutes — on #1841), and, for a file inside a plugin, that plugin's own `tests/`; the design's declared TESTFILES (optional input `design`) are always in the set. The red-set hint is unchanged.
-**Amended:** 2026-09-16 (#2117) — the full-suite gate is exempt from ADR-021's unchanged-tree reuse: a `run_mode=targeted` test pass is never reused across an `empty_diff` iteration, so the gate iteration always gets its full run.
+**Amended:** 2026-09-16 (#2117) — the full-suite gate is exempt from ADR-021's unchanged-tree reuse: a `run_mode=targeted` test pass is never reused across an `empty_diff` iteration, so the gate iteration always gets its full run. (Superseded by #2144: a test pass is now always full-suite confirmed, so the reuse rule reads no run mode.)
+**Amended:** 2026-09-19 (#2144) — the confirmation is the test stage's own job. When the targeted subset passes, the stage runs the full command in the same invocation and reports that result (`run_mode: targeted+full`, the subset's result under `data.targeted`); a red subset is reported as-is. The orchestrator's full-suite gate — `_cycle_read_test_run_mode`, the one-shot convergence suppression, the `ZBUILD_TEST_FULL_SUITE_GATE` lifecycle and the `cycle.test.full_suite_gate` event — is deleted. Its decision read a test artifact from the state dir, and on run 35412141973 (#1840) that artifact, left by `build_test_cycle` iteration 2, held `design_verify_cycle` — a cycle with no test member — at its maximum for 52 minutes while both of its exit conditions matched. The cycle's iteration rules no longer mention run modes; each iteration ends with one verdict that is what it says.
 **Related:** ADR-021 (cycle semantics), ADR-022 (test assessment), ADR-011 (pluggable backends)
 **Issue:** #846. Surfaced by dogfood `20260612173055-58001` (full suite re-run ~15min × 6 iters).
 
@@ -41,17 +42,20 @@ targeting never actually worked.
    `unit: N/M passed` tier-summary, **identical to the full run** (so verdict + red-set
    parsing are unchanged between modes).
 
-3. **Full-suite gate.** A targeted pass is insufficient to converge: it may miss a
-   side-effect regression in an unaffected file. When the convergence predicate fires
-   while `run_mode == "targeted"` (and iter < max), the orchestrator suppresses
-   convergence once, emits `cycle.test.full_suite_gate`, and arms
-   `ZBUILD_TEST_FULL_SUITE_GATE` for the next iter — forcing a full run that must pass
-   before the cycle truly converges.
+3. **Full-suite confirmation (as amended by #2144).** A targeted pass is insufficient
+   to converge: it may miss a side-effect regression in an unaffected file. When the
+   targeted subset passes, the test stage runs the full command itself, in the same
+   invocation, and the full run's verdict, counts, red set and `tree_sha` are what it
+   reports (`run_mode: "targeted+full"`; the subset's command and counts are kept under
+   `data.targeted`). A red subset is reported as `run_mode: "targeted"` with no full run —
+   the builder gets its fast feedback. The orchestrator knows nothing of run modes.
+   (Until #2144 the orchestrator suppressed convergence once and armed
+   `ZBUILD_TEST_FULL_SUITE_GATE` for an extra iteration; see the amendment above.)
 
 ## Consequences
 
-- Convergence iterations run a fast subset; correctness is preserved by the mandatory
-  full-suite gate before green.
+- Convergence iterations run a fast subset; correctness is preserved because a green
+  subset is always followed by the full suite before the stage reports a pass.
 - The targeted mechanism generalises across frameworks via `ZBUILD_TEST_CMD_TARGETED`;
   unconfigured repos degrade safely to full runs.
 - `run-tests.sh` gains a `--files` subset mode (single source of truth for the full and
@@ -68,17 +72,19 @@ targeting never actually worked.
 - `scripts/run-tests.sh` — new `--files <f...>` mode: per-file loop emitting
   `unit: N/M passed` + `unit: FAIL <f>`.
 - `core/pipeline/cycle-orchestrator.sh` — `_cycle_apply_feedback` exports the red set +
-  changed files; `_cycle_read_test_run_mode` + the gate intercept emit
-  `cycle.test.full_suite_gate`.
+  changed files. (The run-mode reader and gate intercept were deleted by #2144.)
 
 ## Verification
 
 - Unit: `plugins/tool/test/tests/test-test.sh` T13–T17 (extract/compute/build-cmd/
-  run_mode=targeted/gate-forces-full); `tests/unit/core-pipeline-cycle-final-gate-test.sh`.
+  targeted pass → `run_mode=targeted+full` / red subset stays targeted);
+  `tests/unit/core-pipeline-cycle-final-gate-test.sh` (feedback export; no run-mode
+  reader; a stale `run_mode=targeted` artifact does not hold `design_verify_cycle`).
 - Integration (end-to-end): `tests/integration/build-test-cycle-targeted-rerun-test.sh`
-  drives the REAL cycle + REAL test stage: iter-1 full (seeds red set) → iter-2
-  `run_mode=targeted` → `cycle.test.full_suite_gate` → iter-3 full → converged. (Red
-  before this fix: targeted run → `verdict=error` → blocked.)
+  drives the REAL cycle + REAL test stage: iter-1 full (seeds red set) → iter-2 targeted
+  pass confirmed by the full suite in the same stage → converged on iteration 2. (Red
+  before #846: targeted run → `verdict=error` → blocked. Red before #2144: a third
+  iteration and a `cycle.test.full_suite_gate` event.)
 
 ## Amendment (2026-06-17, #929) — `--files` invocation hardening
 
@@ -112,8 +118,8 @@ per-file timeout, not the outer bound) + the updated `tests/unit/scripts-run-tes
 
 This ADR introduced the FIRST one-shot convergence-suppression in the cycle orchestrator
 (the targeted-pass full-suite gate: `converged=0` + `run_mode=targeted` → suppress once,
-arm the full-suite re-run). Issue #1208 adds a SECOND, sibling suppression using the same
-pattern and placement (right after `_cycle_check_until`): a **mid-flight build** (verdict
+arm the full-suite re-run — deleted by #2144). Issue #1208 adds a SECOND, sibling
+suppression using the same pattern and placement (right after `_cycle_check_until`): a **mid-flight build** (verdict
 `did_not_finish` from a router timeout / dispatch error) also flips `converged=0`→`1` and
 emits `cycle.build_unfinished.suppressed_convergence`, so a timed-out build can never
 ratify a false `complete` on a stale/partial tree. Unlike the full-suite gate, the

@@ -39,6 +39,7 @@ provides:
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
     - test.result_write.fallback
+    - test.targeted.confirming
     - test_assessment.acceptance_fail
     - test_assessment.advisory_mode
     - test_assessment.downgrade

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Tests: cycle-orchestrator full-suite gate logic (ADR-034 / #846)
-# Covers the two-phase targeted-then-full strategy wired into the orchestrator.
+# Tests: cycle-orchestrator ADR-034 wiring — the red-set/changed-files feedback
+# export (#846) and, since #2144, the ABSENCE of the full-suite gate: the test
+# stage confirms its own targeted pass, so the orchestrator reads no run mode
+# and suppresses no convergence.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -32,41 +34,6 @@ _write_test_results() {
         '{result_contract:2, verdict:$v, disposition:"complete", reason:"mock", data:{run_mode:$rm, exit_code:0, passed:1, failed:0}}' \
         > "$STATE_DIR/artifacts/test-results.json"
 }
-
-# ─── T1: _cycle_read_test_run_mode returns "targeted" ────────────────────────
-print_test_section "T1. _cycle_read_test_run_mode returns targeted from JSON"
-_write_test_results "targeted"
-_mode="$(_cycle_read_test_run_mode "$STATE_DIR")"
-assert_eq "T1: run_mode=targeted read correctly" "targeted" "$_mode"
-
-# ─── T1b: a v1 artifact still reads (#1836 migration window) ─────────────────
-# The gate plugins in this series all read v2-first/v1-fallback — `(.data.X //
-# .X)`. This reader was v2-only, so a test-results.json written before the
-# migration (top-level run_mode, no data block) silently degraded to "full" and
-# a targeted re-run was re-broadened to the whole suite with nothing logged.
-_write_test_results_v1() {
-    local run_mode="${1:-full}"
-    mkdir -p "$STATE_DIR/artifacts"
-    jq -n --arg rm "$run_mode" \
-        '{schema_version:1, verdict:"pass", run_mode:$rm, exit_code:0, passed:1, failed:0}' \
-        > "$STATE_DIR/artifacts/test-results.json"
-}
-print_test_section "T1b. v1 artifact: run_mode read from the top level"
-_write_test_results_v1 "targeted"
-_mode="$(_cycle_read_test_run_mode "$STATE_DIR")"
-assert_eq "T1b: v1 top-level run_mode=targeted still read" "targeted" "$_mode"
-
-# ─── T2: _cycle_read_test_run_mode returns "full" ─────────────────────────────
-print_test_section "T2. _cycle_read_test_run_mode returns full from JSON"
-_write_test_results "full"
-_mode="$(_cycle_read_test_run_mode "$STATE_DIR")"
-assert_eq "T2: run_mode=full read correctly" "full" "$_mode"
-
-# ─── T3: _cycle_read_test_run_mode defaults to "full" on missing file ─────────
-print_test_section "T3. _cycle_read_test_run_mode defaults to full on missing file"
-rm -f "$STATE_DIR/artifacts/test-results.json"
-_mode="$(_cycle_read_test_run_mode "$STATE_DIR")"
-assert_eq "T3: missing file → full (fail-closed)" "full" "$_mode"
 
 # ─── T4: _cycle_apply_feedback exports ZBUILD_TEST_RED_SET when file present ──
 print_test_section "T4. _cycle_apply_feedback exports ZBUILD_TEST_RED_SET"
@@ -110,72 +77,52 @@ assert_eq "T7: rc=0" "0" "$rc"
 assert_eq "T7: ZBUILD_TEST_CHANGED_FILES unset when no build-summary" \
     "" "${ZBUILD_TEST_CHANGED_FILES:-}"
 
-# ─── T8: gate intercept suppresses convergence when run_mode=targeted ─────────
-print_test_section "T8. gate intercept: targeted convergence → ZBUILD_TEST_FULL_SUITE_GATE set"
-# Simulate the in-loop condition directly: set up the predicate globals, write
-# a targeted test-results.json, and invoke the gate intercept logic via
-# _cycle_read_test_run_mode + _cycle_check_max_iterations.
-_write_test_results "targeted" "pass"
-_CYCLE_UNTIL_STAGE="test"
-_CYCLE_UNTIL_FIELD="verdict"
-_CYCLE_UNTIL_OP="eq"
-_CYCLE_UNTIL_VALUE="pass"
-_CYCLE_TRAP_CYCLE_ID="build-test"
-_CYCLE_TRAP_ITER=1
-_CYCLE_MAX_ITER=5
-
-# Verify: if run_mode=targeted AND iter < max, the predicate should NOT fire
-# final convergence — gate suppresses it. We test the component functions
-# directly since they're the smallest testable unit here.
-_gate_rm="$(_cycle_read_test_run_mode "$STATE_DIR")"
-assert_eq "T8: run_mode=targeted read for gate decision" "targeted" "$_gate_rm"
-
-# _cycle_check_max_iterations at iter=1 with max=5 → not at max → gate CAN fire
-set +e; _cycle_check_max_iterations 1 5; _at_max=$?; set -e
-assert_eq "T8: iter=1 < max=5 → not at max (rc=1)" "1" "$_at_max"
-
-# Document the gate decision: targeted AND not-at-max → suppress convergence
-if [[ "$_gate_rm" == "targeted" ]] && [[ "$_at_max" -ne 0 ]]; then
-    assert_pass "T8: gate conditions met → would suppress convergence"
+# ─── #2144: no run-mode reader, no gate, no suppression ──────────────────────
+print_test_section "T8 [#2144]. the orchestrator has no run-mode reader and no full-suite gate"
+if declare -F _cycle_read_test_run_mode >/dev/null 2>&1; then
+    assert_fail "T8: _cycle_read_test_run_mode is gone" "still defined"
 else
-    assert_fail "T8: gate conditions should have been met" "targeted=$_gate_rm at_max=$_at_max"
+    assert_pass "T8: _cycle_read_test_run_mode is gone"
 fi
+_gate_refs="$(grep -c 'ZBUILD_TEST_FULL_SUITE_GATE\|full_suite_gate' \
+    "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh" "$REPO_ROOT/plugins/tool/test/plugin.sh" \
+    "$REPO_ROOT/config/event-schema.json" 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')"
+assert_eq "T8: no ZBUILD_TEST_FULL_SUITE_GATE / full_suite_gate reference remains in engine, plugin or schema" \
+    "0" "$_gate_refs"
 
-# ─── T9: gate does NOT fire when run_mode=full ────────────────────────────────
-print_test_section "T9. gate does NOT suppress convergence when run_mode=full"
-_write_test_results "full" "pass"
-_gate_rm9="$(_cycle_read_test_run_mode "$STATE_DIR")"
-assert_eq "T9: run_mode=full → no gate" "full" "$_gate_rm9"
-
-if [[ "$_gate_rm9" == "targeted" ]]; then
-    assert_fail "T9: full mode should not trigger gate" "got targeted"
-else
-    assert_pass "T9: full mode → convergence proceeds normally"
-fi
-
-# ─── T10: ZBUILD_TEST_FULL_SUITE_GATE cleared between non-gate iters ──────────
-print_test_section "T10. ZBUILD_TEST_FULL_SUITE_GATE unset at cycle_orchestrator_run entry"
-# The orchestrator unsets ZBUILD_TEST_FULL_SUITE_GATE at cycle entry so it
-# cannot bleed from a prior run. We test this by setting a stale value and
-# verifying it's cleared by the first non-gate iter's lifecycle code.
-# Since we can't run the full orchestrator here (no cycle_dispatch_stage hook),
-# we verify the clearing logic indirectly by checking what cycle_orchestrator_run
-# does with the env var when it returns 4 (config_invalid — no stages declared).
-export ZBUILD_TEST_FULL_SUITE_GATE=1
-STATE_FILE_T10="$TEST_TEMP_DIR/state-t10/state.json"
-mkdir -p "$(dirname "$STATE_FILE_T10")"
-printf '{}' > "$STATE_FILE_T10"
-# Invoke with no template parsed → immediate config_invalid (rc=4)
-# but the unset runs first.
-unset _TPL_CYCLE_STAGES_build_test 2>/dev/null || true
+# Run 35412141973 (#1840): design_verify_cycle — no test member — spun to its
+# max because build_test_cycle's iteration 2 had left `run_mode: targeted` in
+# artifacts/test-results.json and the gate read it. A cycle whose members all
+# pass converges on iteration 1 whatever a test artifact from elsewhere says.
+print_test_section "T9 [#2144]. a stale run_mode=targeted artifact does not hold a cycle open"
+# simple.yaml's design_verify_cycle is the cycle that spun: it has no test
+# member, so nothing ever cleans a test artifact left by another cycle. The
+# stub answers pass for every member (spec-coverage: covered).
+# shellcheck source=../../core/pipeline/template.sh
+source "$REPO_ROOT/core/pipeline/template.sh"
+load_template "$REPO_ROOT/config/templates/simple.yaml"
+STATE_T9="$TEST_TEMP_DIR/state-t9"
+mkdir -p "$STATE_T9/artifacts"
+printf '{"schema_version":1,"status":"in_progress"}' > "$STATE_T9/pipeline-state.json"
+jq -n '{result_contract:2, verdict:"pass", disposition:"complete", reason:"mock",
+        data:{run_mode:"targeted", exit_code:0, passed:1, failed:0}}' \
+    > "$STATE_T9/artifacts/test-results.json"
+cycle_dispatch_stage() {
+    local stage="$1"
+    _CYCLE_DISPATCH_VERDICT="pass"
+    [[ "$stage" == "spec-coverage" ]] && _CYCLE_DISPATCH_VERDICT="covered"
+    _CYCLE_DISPATCH_STATUS="complete"; return 0
+}
+: > "$ZBUILD_EVENTS_JSONL"
 set +e
-cycle_orchestrator_run "build-test" "$TEST_TEMP_DIR/state-t10" "$STATE_FILE_T10"
-_co_rc=$?
+cycle_orchestrator_run "design_verify_cycle" "$STATE_T9" "$STATE_T9/pipeline-state.json" >/dev/null 2>&1
+_rc_t9=$?
 set -e
-# rc=4 (config_invalid expected — no stages declared in test env)
-# The important check: ZBUILD_TEST_FULL_SUITE_GATE was unset by the orchestrator.
-assert_eq "T10: ZBUILD_TEST_FULL_SUITE_GATE unset at cycle entry" \
-    "" "${ZBUILD_TEST_FULL_SUITE_GATE:-}"
+assert_eq "T9: the cycle converged (rc=0)" "0" "$_rc_t9"
+assert_eq "T9: on iteration 1 — every member passed" "1" "${_CYCLE_LAST_ITERATIONS:-}"
+assert_eq "T9: reason=converged" "converged" "${_CYCLE_LAST_TERMINATED_REASON:-}"
+assert_eq "T9: no cycle.test.full_suite_gate event" \
+    "0" "$(grep -c 'cycle.test.full_suite_gate' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
 
 # ─── Teardown ─────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }

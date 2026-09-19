@@ -154,7 +154,6 @@
     "router.precondition.violated",
     "strategy.composite.unimplemented",
     "template.deprecated_shape",
-    "cycle.test.full_suite_gate",
     "llm.cli_fail",
     "pipeline.llm_unavailable",
     "stage.cleanup.failed",
