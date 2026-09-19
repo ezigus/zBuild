@@ -225,7 +225,6 @@ _test_run_inner() {
     # so they're captured in the parent shell (not scrubbed by _zbuild_make_fresh_shell).
     local _zbtr_red_set="${ZBUILD_TEST_RED_SET:-}"
     local _zbtr_changed="${ZBUILD_TEST_CHANGED_FILES:-}"
-    local _zbtr_full_gate="${ZBUILD_TEST_FULL_SUITE_GATE:-}"
 
     # #1058 Phase A: in-pipeline test-timing instrumentation. The artifact dir
     # is the dir of output_json. run-tests.sh appends `file <ms> <path>` and
@@ -335,8 +334,9 @@ _test_run_inner() {
     diff_applied=false
 
     # ── ADR-034 / #846: choose targeted or full-suite command ─────────────────
-    # On iter 2+, if ZBUILD_TEST_RED_SET or ZBUILD_TEST_CHANGED_FILES is set AND
-    # ZBUILD_TEST_FULL_SUITE_GATE is NOT set, attempt a targeted run.
+    # On iter 2+, if ZBUILD_TEST_RED_SET or ZBUILD_TEST_CHANGED_FILES is set,
+    # attempt a targeted run first. A targeted PASS is confirmed by the full
+    # suite below, in this same invocation (#2144).
     # _test_compute_target_files uses $tmp (the rsync'd copy) as repo_root so
     # relative paths are stable between iters. The targeted-run COMMAND is
     # repo-configurable (ZBUILD_TEST_CMD_TARGETED, a `{files}` template); it
@@ -346,7 +346,7 @@ _test_run_inner() {
     # command and run_mode stays "full" (never a broken targeted run).
     local run_mode="full"
     local actual_test_cmd="$test_cmd"
-    if [[ -z "$_zbtr_full_gate" ]] && [[ -n "$_zbtr_red_set" || -n "$_zbtr_changed" ]]; then
+    if [[ -n "$_zbtr_red_set" || -n "$_zbtr_changed" ]]; then
         local _target_files
         _target_files="$(ZBUILD_TEST_RED_SET="$_zbtr_red_set" \
                          ZBUILD_TEST_CHANGED_FILES="$_zbtr_changed" \
@@ -375,94 +375,37 @@ _test_run_inner() {
     # (set per-stage in the template).
     local test_rc=0
     local raw_output
-    # ADR-024 / #671 (Wave 13-B): the test subprocess is a fresh-user-shell
-    # class spawn — it must look exactly like the user running `npm test`
-    # from their own login shell with no zBuild runner in the process tree.
-    # _zbuild_make_fresh_shell scrubs the entire ZBUILD_* namespace and
-    # closes fd 3 (the ADR-015 stage-io channel). This supersedes Wave 11A
-    # (#645)'s narrow `unset ZBUILD_STAGE_IO_FD && exec 3>&-` — the wider
-    # scrub also covers ZBUILD_RUN_ID + ZBUILD_EVENTS_JSONL, which Wave 13
-    # dogfood discovered were triggering router C6 precondition refusals
-    # when the test subprocess recursed back into the router.
-    raw_output="$(
-        # Copilot P1 on #673: guard cd BEFORE the helper, because the
-        # helper disables errexit (fresh-user-shell posture). A failed
-        # cd here would otherwise silently run the test command against
-        # the runner's cwd instead of the rsync'd staging dir.
-        cd "$tmp" || exit 99
-        _zbuild_make_fresh_shell
-        # #1058 Phase A: re-supply the timing-file path AFTER the fresh-shell
-        # scrub cleared the ZBUILD_* namespace, so run-tests.sh (which honors
-        # ZBUILD_TEST_TIMING_FILE) writes its instrumentation. Export (not a
-        # command prefix) so it reaches the suite regardless of how
-        # actual_test_cmd is shaped (npm test → run-tests.sh, or a direct call).
-        export ZBUILD_TEST_TIMING_FILE="$_zbt_timing_log"
-        # #1127: fence the whole zBuild state tree for the suite. The suite is a
-        # fresh-user shell (scrub above clears ZBUILD_* / preserves HOME per
-        # ADR-024), so any nested `runner.sh` it spawns would otherwise re-root
-        # to the REAL $HOME/.zbuild/state and clobber the parent run's shared
-        # artifacts (latest symlink + --no-resume global event clear). Rooting
-        # the nested tree under the RETURN-trap-cleaned $tmp fences state,
-        # events, runs/<id>/, latest and the global-clear inside a throwaway
-        # dir. A recursively-nested test stage re-scrubs + re-exports its own.
-        export ZBUILD_STATE_ROOT="$tmp/.zbuild-nested-state"
-        export ZBUILD_COST_LEDGER="$tmp/.zbuild-nested-state/cost-ledger.jsonl"
-        export ZBUILD_CACHE_DIR="$tmp/.zbuild-nested-state/cache"
-        # #1208: re-supply the repo-declarable count-contract vars AFTER the
-        # fresh-shell scrub so a repo's test wrapper (e.g. an xcodebuild/
-        # xcresulttool shim) can honor them — write its {passed,failed,total}
-        # JSON to $ZBUILD_TEST_RESULTS_JSON (use an absolute path so it resolves
-        # both inside the rsync'd staging dir and at parse time). _COUNT_CMD is
-        # evaluated later at parse time (outside this fresh shell) and needs no
-        # re-export here. Absent when the repo declares no contract.
-        [[ -n "$_zbt_results_json" ]] && export ZBUILD_TEST_RESULTS_JSON="$_zbt_results_json"
-        # #1829 (ADR-054 §7): record a PID the RETURN trap can kill on an
-        # interrupted return path. This is the setup window only — once the
-        # suite is spawned the record moves to the child, below.
-        printf '%s' "$BASHPID" > "$_pid_file" 2>/dev/null || true
-        # #1748: `set -m` makes a backgrounded job a process-group leader, so
-        # the suite and every worker it forks share one group teardown can
-        # signal — instead of a single PID whose children outlive it.
-        #
-        # Job control rather than the router's `setsid` prefix, for two reasons.
-        # setsid is absent on stock macOS (util-linux is keg-only), which is the
-        # platform the orphaned trees in #1748 were observed on; and setsid must
-        # exec, so the command would have to become `bash -c "$cmd"` and lose
-        # the eval's access to functions the caller defined — which is exactly
-        # what test-plugin-stage-io-banner-visible-test.sh (#645) asserts. The
-        # router keeps the prefix because it execs a binary and has no eval to
-        # preserve; both callers still share one resolve and one kill.
-        #
-        # Backgrounded rather than foreground because the PGID must be recorded
-        # while the child is alive — the RETURN trap fires on paths that never
-        # reach the `wait`. fds are inherited, so output still streams into the
-        # enclosing $( ) exactly as the plain eval did.
-        set -m
-        # #2108: `set -m` removed the implicit </dev/null bash gives `&` jobs.
-        eval "$actual_test_cmd" </dev/null 2>&1 &
-        _zbt_pg_child=$!
-        # Re-point .pid at the suite itself. `set -m` put it in its own group,
-        # so a TERM to this subshell — its parent — does NOT cascade; the PID
-        # fallback would kill the shell layer and leave the workers running,
-        # which is the exact bug this issue exists to end. The subshell needs no
-        # external kill: it is parked at `wait` and returns when the child dies.
-        printf '%s' "$_zbt_pg_child" > "$_pid_file" 2>/dev/null || true
-        # Only record a PGID we could prove distinct from the runner's own. An
-        # absent file is the honest signal for "PID kill only"; an empty one
-        # would read as evidence the group was captured.
-        _zbt_pg_id="$(zbuild_pg_resolve "$_zbt_pg_child")"
-        [[ -n "$_zbt_pg_id" ]] && \
-            printf '%s' "$_zbt_pg_id" > "$_pgid_file" 2>/dev/null || true
-        # #2024: ALSO register it with the engine. `set -m` above made this
-        # suite a group leader, and until now that group was known only to this
-        # plugin — which is why its private cleanup hook was the one mechanism
-        # in the tree that ever killed a stage's children. Registering it is
-        # what lets teardown free the suite, and what makes retiring that hook
-        # a removal of duplication rather than of the only thing that works.
-        zbuild_pg_register "$_zbt_pg_id" "test" 2>/dev/null || true
-        wait "$_zbt_pg_child"
-        exit $?
-    )" || test_rc=$?
+    raw_output="$(_test_spawn_suite "$tmp" "$actual_test_cmd" "$_zbt_timing_log" \
+        "$_zbt_results_json" "$_pid_file" "$_pgid_file")" || test_rc=$?
+
+    # ── #2144: a targeted PASS is confirmed here, not by the orchestrator ────
+    # ADR-034's full-suite gate used to live in the cycle: it read run_mode out
+    # of this artifact, held convergence for a whole extra iteration (test-author
+    # + spec-correspondence + build ≈ 30–40 min of model calls) and, on run
+    # 35412141973, held a cycle that has no test member at all. The stage now
+    # runs the full suite itself when the subset passed; the full result is the
+    # verdict and `run_mode: targeted+full` says both ran. A red subset is
+    # reported as-is — fast feedback, nothing to confirm.
+    local _targeted_json=""
+    if [[ "$run_mode" == "targeted" ]]; then
+        local _tv _tp _tf _ts _trec
+        IFS='|' read -r _tv _tp _tf _ts _trec <<< "$(_test_parse_summary "$raw_output" "$test_rc")"
+        if [[ "$_trec" == "1" && "$_tv" == "pass" && "$_tp" =~ ^[0-9]+$ && "$_tp" -gt 0 ]]; then
+            _targeted_json="$(jq -cn --arg c "$actual_test_cmd" --arg v "$_tv" \
+                --argjson p "$_tp" --argjson f "$(_test_sanitize_numeric "$_tf")" \
+                '{test_cmd:$c, verdict:$v, passed:$p, failed:$f}' 2>/dev/null || true)"
+            emit_event "test.targeted.confirming" "passed=${_tp}" 2>/dev/null || true
+            # The timing log now measures the authoritative run only.
+            rm -f "$_zbt_timing_log" 2>/dev/null || true
+            # The parser's pass is authoritative (#584), so the subset's rc no
+            # longer matters; the full run's rc replaces it below.
+            test_rc=0
+            raw_output="$(_test_spawn_suite "$tmp" "$test_cmd" "$_zbt_timing_log" \
+                "$_zbt_results_json" "$_pid_file" "$_pgid_file")" || test_rc=$?
+            actual_test_cmd="$test_cmd"
+            run_mode="targeted+full"
+        fi
+    fi
 
     # Truncate output to 10 KB to keep artifact manageable. Wave 15-C (#681)
     # sanitizes first so the head-c budget carries signal, not framework
@@ -579,7 +522,7 @@ _test_run_inner() {
     # tree_sha empty so the gate fails closed (re-runs) for those. Empty on any
     # git failure → same fail-closed fallback.
     local _tree_sha=""
-    if [[ "$run_mode" == "full" ]]; then
+    if [[ "$run_mode" == "full" || "$run_mode" == "targeted+full" ]]; then
         _tree_sha="$(git -C "$repo_root" rev-parse 'HEAD^{tree}' 2>/dev/null || echo)"
     fi
 
@@ -602,12 +545,113 @@ _test_run_inner() {
     _test_write_result "$output_json" \
         "$verdict" "$_disposition" "$exit_code" "$passed" "$failed" \
         "$test_output" "$diff_applied" "$actual_test_cmd" "$reason" "$run_mode" \
-        "$_timing_json" "$_tree_sha" "$_fr_lint" "$_fr_cov" "$_fr_mut"
+        "$_timing_json" "$_tree_sha" "$_fr_lint" "$_fr_cov" "$_fr_mut" "$_targeted_json"
 
     # #628: $tmp cleanup handled by RETURN trap installed at top of function.
     emit_event "plugin.result" "plugin=test" "verdict=${verdict}" "exit_code=${exit_code}" \
         "run_mode=${run_mode}"
     return 0
+}
+
+# ─── _test_spawn_suite ───────────────────────────────────────────────────────
+# Runs one suite command in the staging dir and prints its combined output;
+# returns the command's rc. Called inside a $( ) by _test_run_inner — once for
+# the (targeted or full) command, and once more for the full suite when a
+# targeted subset passed (#2144). The body is the fresh-user-shell spawn
+# unchanged from before the split.
+# Usage: _test_spawn_suite <tmp> <cmd> <timing_log> <results_json> <pid_file> <pgid_file>
+_test_spawn_suite() {
+    local tmp="$1" cmd="$2" _zbt_timing_log="$3" _zbt_results_json="$4"
+    local _pid_file="$5" _pgid_file="$6"
+    # ADR-024 / #671 (Wave 13-B): the test subprocess is a fresh-user-shell
+    # class spawn — it must look exactly like the user running `npm test`
+    # from their own login shell with no zBuild runner in the process tree.
+    # _zbuild_make_fresh_shell scrubs the entire ZBUILD_* namespace and
+    # closes fd 3 (the ADR-015 stage-io channel). This supersedes Wave 11A
+    # (#645)'s narrow `unset ZBUILD_STAGE_IO_FD && exec 3>&-` — the wider
+    # scrub also covers ZBUILD_RUN_ID + ZBUILD_EVENTS_JSONL, which Wave 13
+    # dogfood discovered were triggering router C6 precondition refusals
+    # when the test subprocess recursed back into the router.
+    (
+        # Copilot P1 on #673: guard cd BEFORE the helper, because the
+        # helper disables errexit (fresh-user-shell posture). A failed
+        # cd here would otherwise silently run the test command against
+        # the runner's cwd instead of the rsync'd staging dir.
+        cd "$tmp" || exit 99
+        _zbuild_make_fresh_shell
+        # #1058 Phase A: re-supply the timing-file path AFTER the fresh-shell
+        # scrub cleared the ZBUILD_* namespace, so run-tests.sh (which honors
+        # ZBUILD_TEST_TIMING_FILE) writes its instrumentation. Export (not a
+        # command prefix) so it reaches the suite regardless of how
+        # actual_test_cmd is shaped (npm test → run-tests.sh, or a direct call).
+        export ZBUILD_TEST_TIMING_FILE="$_zbt_timing_log"
+        # #1127: fence the whole zBuild state tree for the suite. The suite is a
+        # fresh-user shell (scrub above clears ZBUILD_* / preserves HOME per
+        # ADR-024), so any nested `runner.sh` it spawns would otherwise re-root
+        # to the REAL $HOME/.zbuild/state and clobber the parent run's shared
+        # artifacts (latest symlink + --no-resume global event clear). Rooting
+        # the nested tree under the RETURN-trap-cleaned $tmp fences state,
+        # events, runs/<id>/, latest and the global-clear inside a throwaway
+        # dir. A recursively-nested test stage re-scrubs + re-exports its own.
+        export ZBUILD_STATE_ROOT="$tmp/.zbuild-nested-state"
+        export ZBUILD_COST_LEDGER="$tmp/.zbuild-nested-state/cost-ledger.jsonl"
+        export ZBUILD_CACHE_DIR="$tmp/.zbuild-nested-state/cache"
+        # #1208: re-supply the repo-declarable count-contract vars AFTER the
+        # fresh-shell scrub so a repo's test wrapper (e.g. an xcodebuild/
+        # xcresulttool shim) can honor them — write its {passed,failed,total}
+        # JSON to $ZBUILD_TEST_RESULTS_JSON (use an absolute path so it resolves
+        # both inside the rsync'd staging dir and at parse time). _COUNT_CMD is
+        # evaluated later at parse time (outside this fresh shell) and needs no
+        # re-export here. Absent when the repo declares no contract.
+        [[ -n "$_zbt_results_json" ]] && export ZBUILD_TEST_RESULTS_JSON="$_zbt_results_json"
+        # #1829 (ADR-054 §7): record a PID the RETURN trap can kill on an
+        # interrupted return path. This is the setup window only — once the
+        # suite is spawned the record moves to the child, below.
+        printf '%s' "$BASHPID" > "$_pid_file" 2>/dev/null || true
+        # #1748: `set -m` makes a backgrounded job a process-group leader, so
+        # the suite and every worker it forks share one group teardown can
+        # signal — instead of a single PID whose children outlive it.
+        #
+        # Job control rather than the router's `setsid` prefix, for two reasons.
+        # setsid is absent on stock macOS (util-linux is keg-only), which is the
+        # platform the orphaned trees in #1748 were observed on; and setsid must
+        # exec, so the command would have to become `bash -c "$cmd"` and lose
+        # the eval's access to functions the caller defined — which is exactly
+        # what test-plugin-stage-io-banner-visible-test.sh (#645) asserts. The
+        # router keeps the prefix because it execs a binary and has no eval to
+        # preserve; both callers still share one resolve and one kill.
+        #
+        # Backgrounded rather than foreground because the PGID must be recorded
+        # while the child is alive — the RETURN trap fires on paths that never
+        # reach the `wait`. fds are inherited, so output still streams into the
+        # enclosing $( ) exactly as the plain eval did.
+        set -m
+        # #2108: `set -m` removed the implicit </dev/null bash gives `&` jobs.
+        eval "$cmd" </dev/null 2>&1 &
+        _zbt_pg_child=$!
+        # Re-point .pid at the suite itself. `set -m` put it in its own group,
+        # so a TERM to this subshell — its parent — does NOT cascade; the PID
+        # fallback would kill the shell layer and leave the workers running,
+        # which is the exact bug this issue exists to end. The subshell needs no
+        # external kill: it is parked at `wait` and returns when the child dies.
+        printf '%s' "$_zbt_pg_child" > "$_pid_file" 2>/dev/null || true
+        # Only record a PGID we could prove distinct from the runner's own. An
+        # absent file is the honest signal for "PID kill only"; an empty one
+        # would read as evidence the group was captured.
+        _zbt_pg_id="$(zbuild_pg_resolve "$_zbt_pg_child")"
+        [[ -n "$_zbt_pg_id" ]] && \
+            printf '%s' "$_zbt_pg_id" > "$_pgid_file" 2>/dev/null || true
+        # #2024: ALSO register it with the engine. `set -m` above made this
+        # suite a group leader, and until now that group was known only to this
+        # plugin — which is why its private cleanup hook was the one mechanism
+        # in the tree that ever killed a stage's children. Registering it is
+        # what lets teardown free the suite, and what makes retiring that hook
+        # a removal of duplication rather than of the only thing that works.
+        zbuild_pg_register "$_zbt_pg_id" "test" 2>/dev/null || true
+        wait "$_zbt_pg_child"
+        exit $?
+    )
+
 }
 
 # ─── _test_emit_io_end ───────────────────────────────────────────────────────
@@ -893,6 +937,7 @@ _test_default_reason() {
 #                            <test_output> <diff_applied> <test_cmd> [reason]
 #                            [run_mode] [timing_json] [tree_sha]
 #                            [lint_json] [coverage_json] [mutation_json]
+#                            [targeted_json]
 # #584: passed/failed may be the literal token "null" to record that the
 # parser did not recognize this runner's output (honest fail-safe — never
 # fabricate counts). `reason` and `disposition` are always emitted (mandatory v2
@@ -913,7 +958,7 @@ _test_write_result() {
     local diff_applied="$8"
     local test_cmd="$9"
     local reason="${10:-}"
-    # ADR-034 / #846: run_mode field (full|targeted). Defaults to "full" so
+    # ADR-034 / #846: run_mode field (full|targeted|targeted+full). Defaults to "full" so
     # callers that do not pass the arg (e.g. the missing-diff guard path) get
     # the safe default that does not suppress cycle convergence.
     local run_mode="${11:-full}"
@@ -934,6 +979,9 @@ _test_write_result() {
     local lint_json="${14:-}"
     local coverage_json="${15:-}"
     local mutation_json="${16:-}"
+    # #2144: optional pre-rendered result of the targeted subset that this run
+    # confirmed (run_mode=targeted+full). Empty → field omitted.
+    local targeted_json="${17:-}"
 
     local dir
     dir="$(dirname "$path")"
@@ -982,6 +1030,7 @@ _test_write_result() {
         --arg lint "$lint_json" \
         --arg coverage "$coverage_json" \
         --arg mutation "$mutation_json" \
+        --arg targeted "$targeted_json" \
         '{
             result_contract: 2,
             verdict: $verdict,
@@ -1009,6 +1058,7 @@ _test_write_result() {
                 + (if $lint != "" then (try {lint: ($lint | fromjson)} catch {}) else {} end)
                 + (if $coverage != "" then (try {coverage: ($coverage | fromjson)} catch {}) else {} end)
                 + (if $mutation != "" then (try {mutation: ($mutation | fromjson)} catch {}) else {} end)
+                + (if $targeted != "" then (try {targeted: ($targeted | fromjson)} catch {}) else {} end)
             )
         }' \
         2>/dev/null \
@@ -1024,9 +1074,9 @@ _test_write_result() {
         # would hand `.exit_code` back as null purely because the primary write
         # failed. Same shape, degenerate values — not a v2-flavoured subset.
         # run_mode is interpolated raw (no jq --arg here), so constrain it to
-        # the two declared tokens rather than trusting the caller's string.
+        # the declared tokens rather than trusting the caller's string.
         local _fb_run_mode="full"
-        [[ "$run_mode" == "targeted" ]] && _fb_run_mode="targeted"
+        case "$run_mode" in targeted|targeted+full) _fb_run_mode="$run_mode" ;; esac
         printf '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"result_write_failed","test_output":"","run_mode":"%s","exit_code":%s,"data":{"exit_code":%s,"passed":null,"failed":null,"test_output":"","diff_applied":false,"test_cmd":"","run_mode":"%s"}}\n' \
             "$_fb_run_mode" "$exit_code_json" "$exit_code_json" "$_fb_run_mode" | atomic_write "$path"
         emit_event "test.result_write.fallback" "path=$path" 2>/dev/null || true

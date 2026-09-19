@@ -112,7 +112,7 @@ RUN
 
 (
     export TMPDIR="$TEST_TEMP_DIR/linktmp"
-    unset ZBUILD_TEST_RED_SET ZBUILD_TEST_CHANGED_FILES ZBUILD_TEST_FULL_SUITE_GATE
+    unset ZBUILD_TEST_RED_SET ZBUILD_TEST_CHANGED_FILES
     _test_run_inner "$DIFF2" "$REPO2" "$OUT2" "bash $RUNNER2" >/dev/null 2>&1 || true
 )
 
@@ -148,7 +148,7 @@ exit 0
 RUN
 
 (
-    unset ZBUILD_TEST_CHANGED_FILES ZBUILD_TEST_FULL_SUITE_GATE
+    unset ZBUILD_TEST_CHANGED_FILES
     export ZBUILD_TEST_RED_SET="$RS3"
     export ZBUILD_TEST_CMD_TARGETED="bash $RUNNER3 {files}"
     _test_run_inner "$DIFF3" "$REPO3" "$OUT3" "bash $RUNNER3" >/dev/null 2>&1 || true

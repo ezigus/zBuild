@@ -550,8 +550,8 @@ assert_contains "T15: cmd references bar-test.sh" "$_cmd_t15" "bar-test.sh"
 assert_eq "T15: empty template returns empty" "" "$(_test_build_targeted_cmd "" "$_files_t15")"
 assert_eq "T15: empty file list returns empty" "" "$(_test_build_targeted_cmd 'x {files}' "")"
 
-# ─── T16: _test_run_inner with ZBUILD_TEST_RED_SET → run_mode=targeted ────────
-print_test_section "T16. _test_run_inner with ZBUILD_TEST_RED_SET writes run_mode=targeted"
+# ─── T16: a targeted PASS is confirmed by the full suite in the same invocation ─
+print_test_section "T16 [#2144]. targeted pass → full command runs → run_mode=targeted+full"
 
 OUT_JSON_T16="$ARTIFACT_DIR/test-results-t16.json"
 REPO_T16="$TEST_TEMP_DIR/repo-t16"
@@ -578,38 +578,88 @@ printf '["tests/unit/targeted-test.sh"]\n' > "$RED_SET_T16"
 PATCH_T16="$ARTIFACT_DIR/diff-t16.patch"
 printf '' > "$PATCH_T16"
 
+# #2144: a targeted PASS is confirmed by the stage itself — the full command
+# runs in the same invocation and its result is the verdict. The orchestrator
+# used to hold a targeted pass for a whole extra iteration (test-author +
+# spec-correspondence + build) and read the run mode out of this artifact,
+# which leaked into a cycle that has no test member (run 35412141973).
+FULL_MARK_T16="$TEST_TEMP_DIR/full-ran-t16"
+FULL_CMD_T16="printf 'unit: FAIL tests/unit/other-test.sh\\nunit: 1/2 passed\\n'; touch '$FULL_MARK_T16'; exit 1"
+
 set +e
 ZBUILD_TEST_RED_SET="$RED_SET_T16" \
     ZBUILD_TEST_CMD_TARGETED='bash {files}' \
-    _test_run_inner "$PATCH_T16" "$REPO_T16" "$OUT_JSON_T16" "npm test"
+    _test_run_inner "$PATCH_T16" "$REPO_T16" "$OUT_JSON_T16" "$FULL_CMD_T16"
 rc_t16=$?
 set -e
 
 assert_exit_code "T16: plugin exits 0" "0" "$rc_t16"
 assert_file_exists "T16: test-results.json written" "$OUT_JSON_T16"
 _run_mode_t16="$(_json_key "$OUT_JSON_T16" '.data.run_mode')"
-assert_eq "T16: run_mode=targeted written to JSON" "targeted" "$_run_mode_t16"
+assert_eq "T16 [#2144]: run_mode=targeted+full — the targeted pass was confirmed in the same invocation" \
+    "targeted+full" "$_run_mode_t16"
+assert_file_exists "T16 [#2144]: the full command ran after the targeted pass" "$FULL_MARK_T16"
+assert_eq "T16 [#2144]: the verdict is the FULL run's (it failed)" \
+    "fail" "$(_json_key "$OUT_JSON_T16" '.verdict')"
+assert_eq "T16 [#2144]: test_cmd records the full command" \
+    "$FULL_CMD_T16" "$(_json_key "$OUT_JSON_T16" '.data.test_cmd')"
+assert_eq "T16 [#2144]: the targeted result is kept in data.targeted" \
+    "pass" "$(_json_key "$OUT_JSON_T16" '.data.targeted.verdict')"
+assert_eq "T16 [#2144]: data.targeted names the targeted command" \
+    "bash 'tests/unit/targeted-test.sh'" "$(_json_key "$OUT_JSON_T16" '.data.targeted.test_cmd')"
+assert_eq "T16 [#2144]: the red-set comes from the FULL run" \
+    "tests/unit/other-test.sh" "$(jq -r '.[0]' "$(dirname "$OUT_JSON_T16")/test-red-set.json" 2>/dev/null)"
+assert_eq "T16 [#2144]: test.targeted.confirming emitted once" \
+    "1" "$(grep -c 'test.targeted.confirming' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+_tree_sha_t16="$(_json_key "$OUT_JSON_T16" '.data.tree_sha')"
+assert_eq "T16 [#2144]: a confirmed run is authoritative for the tree (tree_sha written)" \
+    "$(git -C "$REPO_T16" rev-parse 'HEAD^{tree}')" "$_tree_sha_t16"
 
-# ─── T17: _test_run_inner with ZBUILD_TEST_FULL_SUITE_GATE=1 → run_mode=full ──
-print_test_section "T17. ZBUILD_TEST_FULL_SUITE_GATE=1 forces full suite, run_mode=full"
+# ─── T17: a RED targeted subset does not run the full command ────────────────
+print_test_section "T17 [#2144]. a red targeted subset stays run_mode=targeted; the full command does not run"
 
 OUT_JSON_T17="$ARTIFACT_DIR/test-results-t17.json"
+FULL_MARK_T17="$TEST_TEMP_DIR/full-ran-t17"
+cat > "$REPO_T16/tests/unit/targeted-test.sh" <<'TARGETED_EOF'
+#!/usr/bin/env bash
+printf 'unit: FAIL tests/unit/targeted-test.sh\nunit: 0/1 passed\n'
+exit 1
+TARGETED_EOF
+git -C "$REPO_T16" -c user.name="zbuild-test" -c user.email="test@zbuild" \
+    commit -qam "make targeted red"
 
 set +e
 ZBUILD_TEST_RED_SET="$RED_SET_T16" \
-    ZBUILD_TEST_FULL_SUITE_GATE=1 \
+    ZBUILD_TEST_CMD_TARGETED='bash {files}' \
     _test_run_inner "$PATCH_T16" "$REPO_T16" "$OUT_JSON_T17" \
-        $'printf \'unit: 1/1 passed\n\''
+        "printf 'unit: 1/1 passed\\n'; touch '$FULL_MARK_T17'"
 rc_t17=$?
 set -e
 
 assert_exit_code "T17: plugin exits 0" "0" "$rc_t17"
-assert_file_exists "T17: test-results.json written" "$OUT_JSON_T17"
-_run_mode_t17="$(_json_key "$OUT_JSON_T17" '.data.run_mode')"
-assert_eq "T17: run_mode=full (gate forces full suite)" "full" "$_run_mode_t17"
+assert_eq "T17 [#2144]: run_mode=targeted (fast feedback, no confirmation of a failure)" \
+    "targeted" "$(_json_key "$OUT_JSON_T17" '.data.run_mode')"
+assert_eq "T17 [#2144]: verdict=fail from the targeted run" "fail" "$(_json_key "$OUT_JSON_T17" '.verdict')"
+if [[ -e "$FULL_MARK_T17" ]]; then
+    assert_fail "T17 [#2144]: the full command did NOT run" "marker exists"
+else
+    assert_pass "T17 [#2144]: the full command did NOT run"
+fi
+assert_eq "T17 [#2144]: no tree_sha for an unconfirmed run" "" "$(_json_key "$OUT_JSON_T17" '.data.tree_sha // ""')"
+assert_eq "T17 [#2144]: no test.targeted.confirming event for a red subset (still the one from T16)" \
+    "1" "$(grep -c 'test.targeted.confirming' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+
+# restore the green fixture for the tests below
+cat > "$REPO_T16/tests/unit/targeted-test.sh" <<'TARGETED_EOF'
+#!/usr/bin/env bash
+printf 'unit: 1/1 passed\n'
+exit 0
+TARGETED_EOF
+git -C "$REPO_T16" -c user.name="zbuild-test" -c user.email="test@zbuild" \
+    commit -qam "targeted green again"
 
 # Unset to avoid bleeding into other tests in this session
-unset ZBUILD_TEST_RED_SET ZBUILD_TEST_FULL_SUITE_GATE ZBUILD_TEST_CHANGED_FILES 2>/dev/null || true
+unset ZBUILD_TEST_RED_SET ZBUILD_TEST_CHANGED_FILES 2>/dev/null || true
 
 # ─── T18: a clean run clears a STALE red-set (#846 Copilot review) ────────────
 print_test_section "T18. clean run removes a stale test-red-set.json"
