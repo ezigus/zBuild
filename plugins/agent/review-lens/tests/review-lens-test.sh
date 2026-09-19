@@ -347,6 +347,7 @@ export ZBUILD_PLUGINS_ROOT="$_prev_plugins_root_spec3b"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # #1840: v2 contract migration — acceptance assertions
+# WIRING: plugins/agent/review-lens/manifest.yaml
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # Restore a stable happy-path mock for the v2 tests below (captures prompt).
@@ -378,7 +379,10 @@ assert_eq "[SPEC-7] validate_manifest passes with result_contract:2 and valid_ve
     "0" "$_1840_vm_rc"
 
 # ─── SPEC-12 [guard]: outputs[].lens_result declares primary: true ────────────
-if grep -q 'primary: true' "$PLUGIN_DIR/manifest.yaml"; then
+# Anchored to the outputs: section so a stray primary:true elsewhere doesn't satisfy it.
+_1840_s12_outputs="$(awk '/^outputs:/{found=1} found && /^[^ ]/{if(!/^outputs:/)exit} found{print}' \
+    "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
+if grep -q 'lens_result' <<< "$_1840_s12_outputs" && grep -q 'primary: true' <<< "$_1840_s12_outputs"; then
     assert_pass "[SPEC-12] manifest.yaml outputs[].lens_result declares primary: true"
 else
     assert_fail "[SPEC-12] manifest.yaml must declare primary: true on lens_result output" "absent"
@@ -505,6 +509,9 @@ fi
 
 # ─── SPEC-5 [change]: ADR-063 budget guidance in prompt when max_turns > 0 ────
 # Shadow _route_resolve_max_turns so the budget block fires regardless of manifest.
+# Save original so it can be restored after this test — unset-f would destroy the
+# plugin.sh definition, causing SPEC-6 Part 2 to fail with "command not found".
+_1840_s5_orig_rrtm="$(declare -f _route_resolve_max_turns 2>/dev/null || true)"
 # shellcheck disable=SC2329
 _route_resolve_max_turns() { printf '12'; }
 # shellcheck disable=SC2329
@@ -526,6 +533,9 @@ else
     assert_fail "[SPEC-5] ADR-063 turn budget block must appear in prompt when max_turns > 0" "absent"
 fi
 unset -f _route_resolve_max_turns 2>/dev/null || true
+# Restore the original plugin.sh definition so SPEC-6 Part 2 can call the real fn
+if [[ -n "$_1840_s5_orig_rrtm" ]]; then eval "$_1840_s5_orig_rrtm"; fi
+unset _1840_s5_orig_rrtm
 
 # ─── SPEC-6 [change]: manifest declares router knobs; resolve fns return them ─
 # Part 1: confirm the manifest declares both knobs
@@ -682,7 +692,9 @@ fi
 if grep -q '^_review_lens_write_result()' "$PLUGIN_DIR/plugin.sh" 2>/dev/null; then
     _1840_s10_helper="$(awk '/^_review_lens_write_result\(\)/{f=1} f{print} f && /^\}$/{exit}' \
         "$PLUGIN_DIR/plugin.sh" 2>/dev/null || true)"
-    if grep -q 'verdict' <<< "$_1840_s10_helper"; then
+    # "verdict" must appear as a jq field (.verdict, "verdict":, verdict:<val>, or --arg verdict),
+    # not merely as a comment word — bare string match does not establish jq field.
+    if grep -qE '\.verdict[^a-z_]|"verdict"|--arg[[:space:]]+verdict|verdict:[^a-zA-Z_]' <<< "$_1840_s10_helper"; then
         assert_pass "[SPEC-10] verdict appears in _review_lens_write_result body as jq field"
     else
         assert_fail "[SPEC-10] verdict must appear in _review_lens_write_result body (jq field)" "absent"
@@ -759,8 +771,11 @@ set +e
 _review_lens_run_inner "1840spec14" "$scope_manifest" "$evidence" "$out_1840_s14" "$artifact_dir"
 set -e
 _1840_s14_prompt="$(cat "$_RL_PROMPT" 2>/dev/null || true)"
-# Budget block must reflect the template sentinel (99), not the manifest default
-if grep -q '99' <<< "$_1840_s14_prompt" && grep -qi "TURN BUDGET" <<< "$_1840_s14_prompt"; then
+# Budget block must reflect the template sentinel (99), not the manifest default.
+# '99' must appear within the TURN BUDGET block itself — checking both independently
+# would pass if 99 appears elsewhere in the prompt for an unrelated reason.
+_1840_s14_budget_block="$(grep -i -A10 "TURN BUDGET" <<< "$_1840_s14_prompt" 2>/dev/null || true)"
+if [[ -n "$_1840_s14_budget_block" ]] && grep -q '99' <<< "$_1840_s14_budget_block"; then
     assert_pass "[SPEC-14] prompt budget block reflects template sentinel 99 (template wins over manifest)"
 else
     assert_fail "[SPEC-14] prompt must contain TURN BUDGET with sentinel 99 — template accessor wins" \
@@ -815,8 +830,10 @@ for _1840_ev in "review_lens.failed" "review_lens.redaction_failed" "review_lens
         assert_fail "[SPEC-16] manifest provides.events must declare $_1840_ev" "absent"
     fi
 done
-# Count total event entries in provides.events — must be exactly 3
-_1840_event_count="$(grep -c 'review_lens\.' <<< "$_1840_events_section" 2>/dev/null || true)"
+# Count ALL list entries under provides.events — catches non-review_lens.-prefixed extras.
+# Use awk on the section to count only lines that are YAML list items under events:.
+_1840_event_count="$(awk '/events:/{f=1;next} f && /^\s+-\s+\S/{count++} f && /^\s+[a-z_]+:/{exit} END{print count+0}' \
+    <<< "$_1840_events_section" 2>/dev/null || true)"
 assert_eq "[SPEC-16] manifest provides.events declares exactly 3 events (no more, no less)" \
     "3" "$_1840_event_count"
 # validate_manifest must pass with those event declarations
@@ -858,6 +875,19 @@ if grep -q "required:" <<< "$_1840_inputs_section"; then
     assert_pass "[SPEC-18] manifest inputs entries declare required"
 else
     assert_fail "[SPEC-18] manifest inputs entries must declare required" "absent"
+fi
+# Exhaustive check: no fields OTHER than id and required may appear.
+# Strip list markers, extract all key names, reject any not in {id, required}.
+_1840_inputs_extra_keys="$(printf '%s\n' "$_1840_inputs_section" \
+    | sed 's/^\s*-\s*//' \
+    | grep -oE '^[a-z_]+:' \
+    | tr -d ':' \
+    | grep -vE '^(id|required)$' || true)"
+if [[ -n "$_1840_inputs_extra_keys" ]]; then
+    assert_fail "[SPEC-18] manifest inputs must declare ONLY id and required (found extra fields)" \
+        "extra: $_1840_inputs_extra_keys"
+else
+    assert_pass "[SPEC-18] manifest inputs entries contain only id and required (exhaustive check)"
 fi
 
 # ─── SPEC-19 [guard]: hooks.cleanup absent; ADR-054 §7 comment present ───────
