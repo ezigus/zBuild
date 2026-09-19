@@ -1,0 +1,171 @@
+============== ZBUILD BUILD — iter 1/10 ==============
+## ORIGINAL TASK (immutable across iterations)
+# Plan: [zbuild-test] Throwaway verification run for #2131 live status comment
+
+**Goal:** Produce a minimal valid pipeline run against issue #2137 to verify that PR #2136's live run-status comment mechanism fires correctly on both a local run and a CI daemon run.
+
+## Steps
+1. Verify the pipeline run completes end-to-end and a run-status comment is posted to issue #2137 on GitHub. No source files need to be created or modified — the run itself is the deliverable. Confirm the comment appears on the issue after the run.
+   - Estimated lines: 0
+
+## Notes
+This is explicitly a throwaway issue (per issue body: 'Safe to close after'). It has no Definition of Done, no Acceptance Criteria, no 5-test trial, and no keeper migration — it exists solely to exercise the live run-status comment path introduced in PR #2136. The plan is intentionally a single no-op step: the value is the pipeline execution itself, not any code change. The scope manifest read was blocked by permissions but the issue body and prior plan checkpoint both confirm no repository changes are intended or required. The prior plan on this issue reached the same conclusion and was accepted through design-gate as build-ready.
+
+## INSTRUCTIONS
+Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
+
+You have Read, Edit, Write, and
+Bash tools available. Your job is to edit the working tree to implement the
+ORIGINAL TASK above.
+
+### Scope (plan.files[])
+You may ONLY touch files listed here. Refuse any out-of-scope edit.
+  - scripts/lib/run-status-comment.sh
+  - scripts/lib/run-status-render.sh
+  - core/pipeline/runner.sh
+  - core/output/destinations.sh
+  - core/output/stage-io.sh
+  - plugins/tool/output-github-comment/plugin.sh
+  - .github/workflows/zbuild-daemon.yml
+  - .github/workflows/zbuild-pipeline.yml
+  - tests/integration/run-status-comment-runner-test.sh
+  - tests/lib/run-status-comment-mock-roster.sh
+  - tests/unit/run-status-comment-gh-test.sh
+  - tests/unit/run-status-comment-render-test.sh
+  - tests/unit/runner-status-comment-hook-test.sh
+  - tests/unit/core-output-destinations-test.sh
+  - tests/integration/daemon-workflow-test.sh
+  - tests/integration/stage-io-gh-comment-ansi-strip-test.sh
+  - tests/mutation/run-status-comment.md
+
+### How the loop works
+- Each iteration you may make code changes via Edit/Write/Bash.
+- After each iteration the pipeline captures `git diff HEAD` and feeds it
+  back to you so you can verify progress.
+- Do NOT emit a unified diff in your response — the pipeline derives the
+  canonical `diff.patch` artifact from `git diff HEAD` automatically.
+
+### Completion sentinel
+Emit `LOOP_COMPLETE` on its own line as the FINAL line of your response
+WHEN the implementation is complete — whether you just finished it OR
+it was already done before you started. If the branch already contains
+the required changes (check `git log` for commits + `git diff` for any
+remaining gap), emit `LOOP_COMPLETE` immediately. Do NOT keep iterating
+when there is nothing left to do.
+
+### Rules
+- Touch only files in the scope list above.
+- Do not run `git commit` — the pipeline owns commit semantics.
+- NEVER run a command that mutates git branch state or the working tree —
+  no `git checkout -b`/`switch`/`commit`/`push`/`tag`/`reset`. You are running
+  INSIDE the pipeline's own checkout; switching or creating a branch hijacks the
+  run. The pipeline owns the branch.
+- If you must exercise a command you are building (or any command that could
+  publish, tag, push, or otherwise mutate state), run it in `--dry-run` mode.
+  Do everything you can to verify behavior without side effects.
+- Keep changes minimal and aligned with the plan.
+- Clean up scratch siblings of the files you edit (`*.bak`, `*.orig`,
+  `*.rej`, `*.head`, `*.tmp`, `*~`). `sed -i.bak` and
+  `git show HEAD:f > f.head` both leave one behind — prefer `sed -i` with no
+  suffix, and delete any comparison scratch before you finish. Out-of-scope
+  scratch is removed for you; any OTHER out-of-scope path voids the whole
+  iteration, so do not rely on the cleanup.
+- If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.
+
+### Commit message (#608)
+Before the final `LOOP_COMPLETE` line, emit a single line of the form:
+
+    COMMIT_SUMMARY: <one-line description of this iteration's change>
+
+Keep it under 72 characters, present tense, imperative mood (e.g.
+"add foo parser" not "added"). The pipeline uses this as the git commit
+message for the per-iteration commit it creates on your behalf. If you
+omit this line the pipeline falls back to the plan title.
+
+## DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
+# Design: Throwaway verification run for #2131 live run-status comment
+
+**Issue:** #2137 — no code changes; the pipeline execution itself is the deliverable.
+
+## Architectural decision summary
+
+**Goal.** Produce one real pipeline run against issue #2137 to verify that the live
+run-status comment mechanism (merged in PR #2136, tracing back to issue #2131) fires
+correctly in both local CLI and CI daemon contexts.
+
+**Context.** PR #2136 introduced a sidecar architecture for live run-status comments
+(ADR-064). The mechanism is distinct from the older `_dest_gh_comment` destination:
+
+1. **Live sidecar comment** — `core/pipeline/runner.sh` spawns
+   `scripts/lib/run-status-comment.sh` as a background process that tails
+   `events.jsonl`, renders via `scripts/lib/run-status-render.sh`, and maintains a
+   SINGLE GitHub comment (one POST then repeated PATCHes) for the duration of the run.
+   Stages appear newest-first; the body is bounded at 60 KB. The sidecar is reaped by
+   `_runner_status_comment_reap` on both normal exit and abort.
+
+2. **Post-run daemon comment** — `.github/workflows/zbuild-daemon.yml`'s `post-run`
+   job calls `gh issue comment` after the reusable `zbuild-pipeline.yml` finishes.
+
+Both paths were tested in PR #2136 unit/integration tests that already carry
+`[SPEC-n]` assertion labels. Running the pipeline against the live issue #2137 proves
+both paths reachable end-to-end in the real GitHub environment.
+
+**Decision.** No source files are created or modified. The acceptance-gate's guard
+checks use the `[SPEC-1]` and `[SPEC-2]` assertions already present in
+`tests/integration/run-status-comment-runner-test.sh`. WIRING is declared `none`
+because there is no new wiring to prove load-bearing.
+
+---
+
+## Scope
+
+
+**Rationale for each entry:**
+
+| File | Why in scope |
+|---|---|
+| `scripts/lib/run-status-comment.sh` | Primary sidecar implementation under live test; `rsc_upsert`, `rsc_comment_patch`, `rsc_enabled` |
+| `scripts/lib/run-status-render.sh` | Renderer called by the sidecar; `rsc_render_body`, `rsc_bound_body`, `rsc_byte_len` |
+| `core/pipeline/runner.sh` | Spawns/reaps the sidecar; `_runner_status_comment_spawn`, `_runner_status_comment_reap`, abort trap |
+| `core/output/destinations.sh` | Implements `_dest_gh_comment`; the older per-stage comment path (guard) |
+| `core/output/stage-io.sh` | Invokes `gh_comment` destination when a stage declares it (guard) |
+| `plugins/tool/output-github-comment/plugin.sh` | Calls `emit_output` → `_dest_gh_comment` (guard) |
+| `.github/workflows/zbuild-daemon.yml` | Owns the post-run `gh issue comment` step and triggers the pipeline |
+| `.github/workflows/zbuild-pipeline.yml` | The reusable pipeline called by the daemon; sets `ZBUILD_ISSUE` env |
+| `tests/integration/run-status-comment-runner-test.sh` | SPEC-1/SPEC-2 test file: integration assertions through the real runner |
+| `tests/lib/run-status-comment-mock-roster.sh` | Mock plugin roster used by the runner integration test |
+| `tests/unit/run-status-comment-gh-test.sh` | GitHub I/O unit tests for the sidecar (SPEC-0 through SPEC-6) |
+| `tests/unit/run-status-comment-render-test.sh` | Render unit tests (SPEC-0 through SPEC-7, 60 KB bound, newest-first) |
+| `tests/unit/runner-status-comment-hook-test.sh` | Trap placement and gate tests (SPEC-1 through SPEC-4) |
+| `tests/unit/core-output-destinations-test.sh` | Guards the older `_dest_gh_comment` path (Test 3) |
+| `tests/integration/daemon-workflow-test.sh` | Guards the daemon post-run comment step (Test 13) |
+| `tests/integration/stage-io-gh-comment-ansi-strip-test.sh` | Integration test exercising the gh_comment destination ANSI-strip path |
+| `tests/mutation/run-status-comment.md` | Mutation coverage record for the sidecar; references the files under live test |
+
+---
+
+## Acceptance
+
+
+**No build-stage tagging work required.** The `[SPEC-1]` and `[SPEC-2]` assertion
+labels already exist in `tests/integration/run-status-comment-runner-test.sh`
+(added in PR #2136). The acceptance-gate will find them as-is; no test file
+modifications are needed before the pipeline run.
+Where a design decision above conflicts with the plan, follow the design decision.
+
+## ACCEPTANCE TESTS (you MUST make these pass)
+You do NOT author or modify acceptance assertions. They were written from the design contract by a separate stage, before your implementation existed, and they are the contract you implement against. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion, and you must not edit the testfiles listed below; the spawn denies it and a mechanical guard checks it. If you believe an assertion genuinely does not test its SPEC, say so in your output and leave it alone: correcting it is the author stage's job, not yours (#2022, ADR-036).
+Each test MUST contain an assert call whose label includes the [SPEC-n] tag for the SPEC it verifies (e.g. assert_eq "[SPEC-1] ..." exp act). The acceptance-gate (ADR-036) requires every SPEC-n to have a [SPEC-n]-tagged assertion. A CHANGE-behavior SPEC-n MUST have a tagged assertion that FAILS at the merge-base baseline and passes here (a tautological change-SPEC that passes without your implementation is rejected); a GUARD/invariant SPEC-n is tagged but NOT contorted to fail at baseline. See the per-id list below.
+- SPEC-1: tests/integration/run-status-comment-runner-test.sh
+- SPEC-2: tests/integration/run-status-comment-runner-test.sh
+
+What each SPEC requires:
+- [SPEC-1] the sidecar issues exactly one POST and at least one PATCH, the final body is marked with the run id, and no sidecar process is left behind after a healthy run
+- [SPEC-2] GitHub API failures during sidecar operation leave the runner exit status unchanged and are recorded in the status-comment log
+
+### SPEC IDS YOU MUST COVER (acceptance gate, ADR-036)
+Every SPEC id below needs at least one assertion whose label carries its [SPEC-n] tag; self-verify the FULL set is tagged before emitting LOOP_COMPLETE. A CHANGE-behavior SPEC (new behavior this change introduces) MUST have a [SPEC-n] assertion that FAILS at the merge-base baseline. A GUARD/invariant SPEC (behavior that must stay unchanged) is tagged but MUST NOT be contorted to fail at baseline.
+- [SPEC-1] the sidecar issues exactly one POST and at least one PATCH, the final body is marked with the run id, and no sidecar process is left behind after a healthy run
+  → needs a `[SPEC-1]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [SPEC-2] GitHub API failures during sidecar operation leave the runner exit status unchanged and are recorded in the status-comment log
+  → needs a `[SPEC-2]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
