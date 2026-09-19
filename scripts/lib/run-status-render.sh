@@ -179,7 +179,9 @@ _rsc_snapshot_load() {   # <state_dir> <run_id>
     local k v
     while IFS=$'\t' read -r k v; do
         [[ -n "$k" ]] && _RSC_SNAP["$k"]="$v"
-    done < <(jq -r '(.rows // {}) | to_entries[] | [.key, .value] | @tsv' "$f" 2>/dev/null)
+    # Not @tsv: it escapes a tab inside the value as the two characters `\t`,
+    # and the save side stores the raw line (review on #2156).
+    done < <(jq -r '(.rows // {}) | to_entries[] | "\(.key)\t\(.value)"' "$f" 2>/dev/null)
 }
 _rsc_snapshot_save() {   # <state_dir> — atomic; only when something new was frozen
     [[ "$_RSC_SNAP_DIRTY" -eq 1 && -n "$_RSC_SNAP_RUN" ]] || return 0

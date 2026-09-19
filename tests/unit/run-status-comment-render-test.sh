@@ -206,9 +206,13 @@ assert_eq "[SPEC-9] …keyed by the run id" "r-2131" "$(jq -r '.run_id // ""' "$
 _probe_row="$(row_of '**7 review**')"
 assert_eq "[SPEC-9] a row that closed without a summary is not frozen empty" \
     '**10:00 AM ET → 10:00 AM ET (45s)** · **7 review** · **fail rc=1**' "$_probe_row"
-printf '## review — fail\n\n- late summary\n' > "$STATE/artifacts/review-summary.md"
+printf '## review — fail\n\n- late\tsummary\n' > "$STATE/artifacts/review-summary.md"
 body="$(rsc_render_body "$EV" "$STATE")"
-assert_contains "[SPEC-9] …and picks the summary up once it exists" "$(row_of '**7 review**')" "late summary"
+assert_contains "[SPEC-9] …and picks the summary up once it exists" "$(row_of '**7 review**')" $'late\tsummary'
+# review on #2156: a tab inside a frozen line must survive the save + load
+# round trip byte for byte (a fresh process reads the file).
+_fresh_tab="$(bash -c 'source "$1"; rsc_render_body "$2" "$3"' _ "$LIB" "$EV" "$STATE" 2>/dev/null | grep -F -- '**7 review**' | sed -n 1p)"
+assert_contains "[SPEC-9] a tab in a frozen summary round-trips through the snapshot file intact" "$_fresh_tab" $'late\tsummary'
 # A snapshot from another run is ignored (a resumed run has its own comment).
 jq -c '.run_id = "r-other" | .rows["6.1.1"] = "stale from another run"' "$STATE/status-comment-rows.json" > "$STATE/status-comment-rows.json.tmp" && mv "$STATE/status-comment-rows.json.tmp" "$STATE/status-comment-rows.json"
 body="$(rsc_render_body "$EV" "$STATE")"
