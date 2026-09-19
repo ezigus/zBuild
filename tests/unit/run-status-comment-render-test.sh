@@ -187,6 +187,38 @@ assert_eq "[SPEC-7] redactor failure → empty output" "" "$red"
 rm -f "$STATE/scope-manifest.md"
 unset -f apply_scope_redaction
 
+# ─── SPEC-9 (#2154): a closed row's summary is a snapshot, not a live re-read ─
+# On #1840 run 5 iteration 2 overwrote spec-correspondence-summary.md and
+# build-summary.md, and the iteration-1 rows silently changed. The comment is
+# the run's record: what a stage reported when it closed stays.
+print_test_section "SPEC-9: a closed row keeps the summary it closed with"
+EV="$STATE/events.jsonl"   # SPEC-6 pointed EV at the bound fixture
+printf '## build — pass\n\n- OVERWRITTEN by iteration 2\n' > "$STATE/artifacts/build-summary.md"
+body="$(rsc_render_body "$EV" "$STATE")"
+assert_eq "[SPEC-9] the build row still says what it said when it closed" \
+    '**8:20 AM ET → 9:21 AM ET (61m33s)** · **6.1.1 build** · iter 1 · **pass** — 3 files changed, tests added' \
+    "$(row_of '**6.1.1 build**')"
+_fresh="$(bash -c 'source "$1"; rsc_render_body "$2" "$3"' _ "$LIB" "$EV" "$STATE" 2>/dev/null | grep -F -- '**6.1.1 build**' | sed -n 1p)"
+assert_contains "[SPEC-9] …and a fresh process (the post-run finalize) renders the same snapshot" "$_fresh" "3 files changed, tests added"
+assert_file_exists "[SPEC-9] the snapshot lives with the run's state" "$STATE/status-comment-rows.json"
+assert_eq "[SPEC-9] …keyed by the run id" "r-2131" "$(jq -r '.run_id // ""' "$STATE/status-comment-rows.json" 2>/dev/null)"
+# A row that closed with NO summary on disk (the file came later) still reads live.
+_probe_row="$(row_of '**7 review**')"
+assert_eq "[SPEC-9] a row that closed without a summary is not frozen empty" \
+    '**10:00 AM ET → 10:00 AM ET (45s)** · **7 review** · **fail rc=1**' "$_probe_row"
+printf '## review — fail\n\n- late\tsummary\n' > "$STATE/artifacts/review-summary.md"
+body="$(rsc_render_body "$EV" "$STATE")"
+assert_contains "[SPEC-9] …and picks the summary up once it exists" "$(row_of '**7 review**')" $'late\tsummary'
+# review on #2156: a tab inside a frozen line must survive the save + load
+# round trip byte for byte (a fresh process reads the file).
+_fresh_tab="$(bash -c 'source "$1"; rsc_render_body "$2" "$3"' _ "$LIB" "$EV" "$STATE" 2>/dev/null | grep -F -- '**7 review**' | sed -n 1p)"
+assert_contains "[SPEC-9] a tab in a frozen summary round-trips through the snapshot file intact" "$_fresh_tab" $'late\tsummary'
+# A snapshot from another run is ignored (a resumed run has its own comment).
+jq -c '.run_id = "r-other" | .rows["6.1.1"] = "stale from another run"' "$STATE/status-comment-rows.json" > "$STATE/status-comment-rows.json.tmp" && mv "$STATE/status-comment-rows.json.tmp" "$STATE/status-comment-rows.json"
+body="$(rsc_render_body "$EV" "$STATE")"
+assert_contains "[SPEC-9] a snapshot for a different run id is not served" "$(row_of '**6.1.1 build**')" "OVERWRITTEN by iteration 2"
+printf '## build — pass\n\n- 3 files changed, tests added\n' > "$STATE/artifacts/build-summary.md"
+
 # ─── SPEC-8: the sidecar is a reader of events.jsonl, never a writer ────────
 assert_eq "[SPEC-8] no eb_emit_event in the sidecar" "0" "$(grep -c 'eb_emit_event' "$LIB")"
 assert_eq "[SPEC-8] the sidecar never sources the event bus" "0" "$(grep -c 'event-bus' "$LIB")"

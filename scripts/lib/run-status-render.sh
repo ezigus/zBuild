@@ -158,6 +158,44 @@ rsc_row_summary_line() {
     printf '%s' "$line"
 }
 
+# ─── #2154: a closed row's summary is a snapshot ─────────────────────────────
+# A stage writes ONE summary file and a later iteration overwrites it, so a
+# live re-read made iteration-1 rows change after the fact (#1840 run 5). The
+# first render after a row closes captures its summary line into
+# <state_dir>/status-comment-rows.json ({run_id, rows:{seq: line}}); every
+# later render — the sidecar loop, the post-run finalize, a fresh process —
+# serves the snapshot. Keyed by run id: a resumed run has its own comment.
+# Only a non-empty line is frozen; a row whose summary arrives later still
+# reads live until it has one.
+declare -gA _RSC_SNAP=()
+_RSC_SNAP_RUN=""
+_RSC_SNAP_DIRTY=0
+_rsc_snapshot_path() { printf '%s/status-comment-rows.json' "$1"; }
+_rsc_snapshot_load() {   # <state_dir> <run_id>
+    local f; f="$(_rsc_snapshot_path "$1")"
+    _RSC_SNAP=(); _RSC_SNAP_RUN="$2"; _RSC_SNAP_DIRTY=0
+    [[ -s "$f" ]] || return 0
+    [[ "$(jq -r '.run_id // ""' "$f" 2>/dev/null)" == "$2" ]] || return 0
+    local k v
+    while IFS=$'\t' read -r k v; do
+        [[ -n "$k" ]] && _RSC_SNAP["$k"]="$v"
+    # Not @tsv: it escapes a tab inside the value as the two characters `\t`,
+    # and the save side stores the raw line (review on #2156).
+    done < <(jq -r '(.rows // {}) | to_entries[] | "\(.key)\t\(.value)"' "$f" 2>/dev/null)
+}
+_rsc_snapshot_save() {   # <state_dir> — atomic; only when something new was frozen
+    [[ "$_RSC_SNAP_DIRTY" -eq 1 && -n "$_RSC_SNAP_RUN" ]] || return 0
+    local f tmp k; f="$(_rsc_snapshot_path "$1")"
+    tmp="$(mktemp "${f}.XXXXXX" 2>/dev/null)" || return 0
+    {
+        for k in "${!_RSC_SNAP[@]}"; do printf '%s\t%s\n' "$k" "${_RSC_SNAP[$k]}"; done
+    } | jq -Rs --arg run "$_RSC_SNAP_RUN" '
+        {run_id: $run,
+         rows: ([split("\n")[] | select(length > 0) | split("\t") | {key: .[0], value: (.[1:] | join("\t"))}] | from_entries)}' \
+        > "$tmp" 2>/dev/null && mv -f "$tmp" "$f" || rm -f "$tmp"
+    _RSC_SNAP_DIRTY=0
+}
+
 # ─── rsc_render_row <state_dir> <row_json> — one markdown line ──────────────
 rsc_render_row() {
     local state_dir="$1" row="$2"
@@ -200,7 +238,15 @@ rsc_render_row() {
         local v="$verdict"
         [[ "$v" != "pass" && -n "$rc" && "$rc" != "0" ]] && v+=" rc=${rc}"
         line+=" · **${v}**"
-        local summary; summary="$(rsc_row_summary_line "$state_dir" "$stage")"
+        local summary
+        if [[ -n "${_RSC_SNAP[$seq]+x}" ]]; then
+            summary="${_RSC_SNAP[$seq]}"
+        else
+            summary="$(rsc_row_summary_line "$state_dir" "$stage")"
+            if [[ -n "$summary" && -n "$_RSC_SNAP_RUN" ]]; then
+                _RSC_SNAP["$seq"]="$summary"; _RSC_SNAP_DIRTY=1
+            fi
+        fi
         if [[ -n "$summary" ]]; then
             line+=" — ${summary}"
         else
@@ -304,12 +350,16 @@ rsc_render_body() {
     local model header rows_file key
     model="$(rsc_rows_json "$events")"
     header="$(rsc_render_header "$model" "$state_dir" "$override")"
+    # #2154: rows are rendered in THIS shell (`< <( )`, not a pipe) so the
+    # snapshot they freeze survives the loop and is saved once at the end.
+    _rsc_snapshot_load "$state_dir" "$(jq -r '.header.run_id // ""' <<< "$model")"
     rows_file="$(mktemp "${TMPDIR:-$state_dir}/rsc-rows.XXXXXX")" || return 1
     while IFS= read -r key; do
         [[ -n "$key" ]] || continue
         rsc_render_row "$state_dir" "$(jq -c --arg k "$key" '.rows[$k]' <<< "$model")"
         printf '\n'
     done < <(jq -r '.order | reverse | .[]' <<< "$model") > "$rows_file"
+    _rsc_snapshot_save "$state_dir"
     rsc_bound_body "$header" "$rows_file"
     rm -f "$rows_file"
 }
