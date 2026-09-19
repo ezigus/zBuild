@@ -1,0 +1,70 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "712 of 712 tests passed",
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 432/432 passed (4 skipped)\nintegration: 246/246 passed\ne2e: 8/8 passed\ngolden: 1/1 passed\n\n─── Mutation test results ──────────────────────────────\n  PASS  atomic-state-mutations.md  (caught: rc=3)\n  PASS  cache.md  (caught: rc=1)\n  PASS  cleanup-worktree-age-guard.md  (caught: rc=2)\n  PASS  cleanup-worktree-dirty-guard.md  (caught: rc=2)\n  PASS  detect-platforms.md  (caught: rc=11)\n  PASS  event-bus-ansi-strip.md  (caught: rc=4)\n  PASS  event-bus.md  (caught: rc=3)\n  INFRA memory.md  (patch failed after retries)\n  PASS  orch.md  (caught: rc=1)\n  PASS  output-destinations.md  (caught: rc=1)\n  PASS  pipeline-contracts.md  (caught: rc=3)\n  PASS  pipeline-dispatch-arg-mutations.md  (caught: rc=4)\n  PASS  pipeline-dispatch-failopen-mutations.md  (caught: rc=7)\n  PASS  pipeline-dispatch-mutations.md  (caught: rc=9)\n  PASS  pipeline-dispatch-prefix-mutations.md  (caught: rc=1)\n  PASS  pipeline-dispatch-selfsource-mutations.md  (caught: rc=1)\n  PASS  pipeline-resolver.md  (caught: rc=1)\n  PASS  rc-semantics.md  (caught: rc=1)\n  PASS  registry-role-resolution.md  (caught: rc=1)\n  PASS  registry-validate-manifest-mutations.md  (caught: rc=1)\n  PASS  resume-recommendation-mutations.md  (caught: rc=1)\n  PASS  router-route-mutations.md  (caught: rc=30)\n  PASS  run-status-comment.md  (caught: rc=127)\n  PASS  runner-fail-closed-mutations.md  (caught: rc=1)\n  PASS  scope-redaction-mutations.md  (caught: rc=3)\nmutation-infra: 1 non-fatal (worktree/patch contention; excluded from score — #1184)\nmutation: 24/24 passed\nlint: 1/1 passed\n\ntotal: 712/712 passed (4 skipped)",
+  "run_mode": "full",
+  "exit_code": 0,
+  "data": {
+    "exit_code": 0,
+    "passed": 712,
+    "failed": 0,
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 432/432 passed (4 skipped)\nintegration: 246/246 passed\ne2e: 8/8 passed\ngolden: 1/1 passed\n\n─── Mutation test results ──────────────────────────────\n  PASS  atomic-state-mutations.md  (caught: rc=3)\n  PASS  cache.md  (caught: rc=1)\n  PASS  cleanup-worktree-age-guard.md  (caught: rc=2)\n  PASS  cleanup-worktree-dirty-guard.md  (caught: rc=2)\n  PASS  detect-platforms.md  (caught: rc=11)\n  PASS  event-bus-ansi-strip.md  (caught: rc=4)\n  PASS  event-bus.md  (caught: rc=3)\n  INFRA memory.md  (patch failed after retries)\n  PASS  orch.md  (caught: rc=1)\n  PASS  output-destinations.md  (caught: rc=1)\n  PASS  pipeline-contracts.md  (caught: rc=3)\n  PASS  pipeline-dispatch-arg-mutations.md  (caught: rc=4)\n  PASS  pipeline-dispatch-failopen-mutations.md  (caught: rc=7)\n  PASS  pipeline-dispatch-mutations.md  (caught: rc=9)\n  PASS  pipeline-dispatch-prefix-mutations.md  (caught: rc=1)\n  PASS  pipeline-dispatch-selfsource-mutations.md  (caught: rc=1)\n  PASS  pipeline-resolver.md  (caught: rc=1)\n  PASS  rc-semantics.md  (caught: rc=1)\n  PASS  registry-role-resolution.md  (caught: rc=1)\n  PASS  registry-validate-manifest-mutations.md  (caught: rc=1)\n  PASS  resume-recommendation-mutations.md  (caught: rc=1)\n  PASS  router-route-mutations.md  (caught: rc=30)\n  PASS  run-status-comment.md  (caught: rc=127)\n  PASS  runner-fail-closed-mutations.md  (caught: rc=1)\n  PASS  scope-redaction-mutations.md  (caught: rc=3)\nmutation-infra: 1 non-fatal (worktree/patch contention; excluded from score — #1184)\nmutation: 24/24 passed\nlint: 1/1 passed\n\ntotal: 712/712 passed (4 skipped)",
+    "diff_applied": false,
+    "test_cmd": "npm test",
+    "run_mode": "full",
+    "timing": {
+      "tiers": {
+        "lint": 264222,
+        "e2e": 284610,
+        "golden": 6908,
+        "unit": 1568490,
+        "integration": 1596033
+      },
+      "slowest_files": [
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.UOd8vG/tests/unit/runner-render-cycle-divider-test.sh",
+          "ms": 310656
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.UOd8vG/tests/integration/run-status-comment-runner-test.sh",
+          "ms": 289065
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.UOd8vG/tests/unit/core-pipeline-cycle-stall-break-test.sh",
+          "ms": 260803
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.UOd8vG/tests/unit/runner-pipeline-end-test.sh",
+          "ms": 190726
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.UOd8vG/tests/unit/convergence-timeouts-never-fatal-1208-test.sh",
+          "ms": 185610
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.UOd8vG/tests/e2e/parity-local-vs-ci-test.sh",
+          "ms": 172508
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.UOd8vG/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 151179
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.UOd8vG/tests/integration/engine-isolation-test.sh",
+          "ms": 149654
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.UOd8vG/tests/unit/runner-cycle-rc-action-mapping-test.sh",
+          "ms": 147594
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.UOd8vG/tests/integration/cycle-multi-exit-when-e2e-test.sh",
+          "ms": 124423
+        }
+      ]
+    },
+    "tree_sha": "93656e16edc0bd463e328e7e0e3e1b5a0afbea93"
+  }
+}
