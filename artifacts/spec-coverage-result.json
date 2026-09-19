@@ -1,9 +1,0 @@
-{
-  "result_contract": 2,
-  "verdict": "covered",
-  "disposition": "complete",
-  "reason": "The issue is a throwaway with no enumerated requirements — its sole purpose is to exercise the live run-status comment path, which SPEC-1 and SPEC-2 directly cover.",
-  "data": {
-    "uncovered": []
-  }
-}
