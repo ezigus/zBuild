@@ -211,6 +211,16 @@ jobs:
           name: e2e-write-boundary-violations
           path: ${{ runner.temp }}/zbuild-write-boundary-violations.txt
           if-no-files-found: ignore
+      # ADR-065 §2: the Linux fork count sets the budget's ratchet; the tier
+      # runner buffers a passing test's output, so the test writes its census
+      # here (tests/e2e/fork-budget-test.sh).
+      - name: Upload fork-budget census
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: fork-budget-census
+          path: ${{ runner.temp }}/fork-budget-census.txt
+          if-no-files-found: ignore
 
   golden:
     name: Golden contracts
