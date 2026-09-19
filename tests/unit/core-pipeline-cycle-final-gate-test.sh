@@ -84,9 +84,10 @@ if declare -F _cycle_read_test_run_mode >/dev/null 2>&1; then
 else
     assert_pass "T8: _cycle_read_test_run_mode is gone"
 fi
-_gate_refs="$(grep -c 'ZBUILD_TEST_FULL_SUITE_GATE\|full_suite_gate' \
+# grep -c exits 1 on zero matches — the green case — so it must not trip errexit.
+_gate_refs="$({ grep -c 'ZBUILD_TEST_FULL_SUITE_GATE\|full_suite_gate' \
     "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh" "$REPO_ROOT/plugins/tool/test/plugin.sh" \
-    "$REPO_ROOT/config/event-schema.json" 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')"
+    "$REPO_ROOT/config/event-schema.json" 2>/dev/null || true; } | awk -F: '{s+=$2} END {print s+0}')"
 assert_eq "T8: no ZBUILD_TEST_FULL_SUITE_GATE / full_suite_gate reference remains in engine, plugin or schema" \
     "0" "$_gate_refs"
 
