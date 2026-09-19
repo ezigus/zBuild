@@ -134,9 +134,9 @@ _sc_batch_prompt() {
 
 For EACH pair below, judge only this: if the ASSERTION passes, does that establish the REQUIREMENT? You cannot see the implementation. Do not guess what it does. The failure you are looking for is an assertion that tests something real and specific, but not what the requirement says — including its opposite.
 
-Answer with exactly one line per SPEC, in this form and nothing else:
+Answer with exactly one line per SPEC, in this form and nothing else — begin each line with that SPEC's identifier from its \`###\` heading, exactly as written there:
 
-SPEC-n: VERDICT: corresponds | REASON: <one sentence>
+<identifier>: VERDICT: corresponds | REASON: <one sentence>
 
   corresponds — passing this assertion would establish the requirement.
   partial     — it tests the right thing, but establishes only part of it.
@@ -238,9 +238,12 @@ spec_correspondence_run() {
         local _batch_raw
         _batch_raw="$(_sc_call "$tier" "$(_sc_batch_prompt _ids _txts _srcs)")"
         for (( _i=0; _i<n; _i++ )); do
-            local _line
-            _line="$(grep -E "^${_ids[_i]}:[[:space:]]*VERDICT:" <<< "$_batch_raw" || true)"
-            _line="${_line%%$'\n'*}"
+            # A glob match, not a regex built from the id (review on #2148):
+            # nothing in the id can change the pattern, and no grep per SPEC.
+            local _line="" _l
+            while IFS= read -r _l; do
+                [[ "$_l" == "${_ids[_i]}:"*"VERDICT:"* ]] && { _line="$_l"; break; }
+            done <<< "$_batch_raw"
             [[ -n "$_line" ]] || continue
             _verdicts[_i]="$(_sc_parse_verdict "$_line")"
             _reasons[_i]="$(_sc_parse_reason "$_line")"

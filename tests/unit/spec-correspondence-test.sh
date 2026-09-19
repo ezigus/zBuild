@@ -266,7 +266,10 @@ SPEC-3: VERDICT: corresponds | REASON: exactly the property'
 route_to_model() { cat >/dev/null; printf 'x\n' >> "$_SC_CALLS"; printf '%s' "$2" >> "$_SC_PROMPT_B"; printf '%s' "$_SC_BATCH_REPLY"; return 0; }
 set +e; spec_correspondence_run "spec-correspondence" "$_SC3/pipeline-state.json" >/dev/null 2>&1; set -e
 assert_eq "[#2143] all 3 SPECs are judged in ONE model call" "1" "$(wc -l < "$_SC_CALLS" | tr -d ' ')"
-assert_contains "[#2143] the batch prompt carries every SPEC id" "$(cat "$_SC_PROMPT_B")" "SPEC-3"
+for _id in SPEC-1 SPEC-2 SPEC-3; do
+    assert_contains "[#2143] the batch prompt carries every SPEC id ($_id as a section heading)" "$(cat "$_SC_PROMPT_B")" "### $_id"
+done
+assert_contains "[#2143] the prompt asks for the heading's identifier on each answer line" "$(cat "$_SC_PROMPT_B")" "identifier from its \`###\` heading"
 assert_contains "[#2143] …and every requirement text" "$(cat "$_SC_PROMPT_B")" "thing 2 holds"
 assert_contains "[#2143] the tally reflects the batched verdicts" \
     "$(cat "$_A3/spec-correspondence-summary.md" 2>/dev/null || true)" "2 correspond, 1 partial"
