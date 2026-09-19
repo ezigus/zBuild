@@ -201,6 +201,24 @@ printf 'file 3100 %s/tests/unit/slow-red-test.sh\n' "$REPO" > "$TEST_TEMP_DIR/ti
 printf '{"inputs":{"test_timing":"%s"}}\n' "$TEST_TEMP_DIR/timing2.log" > "$TEST_TEMP_DIR/si-2142.json"
 set +e; g_out="$(ZBUILD_NEGCTL_TIMEOUT=1 ZBUILD_TEST_FILE_TIMEOUT=10 ZBUILD_NEGCTL_TIMING_LOG="" ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/si-2142.json" _build_guard_false_completion "tests/unit/slow-red-test.sh" "$REPO" 2>/dev/null)"; g_rc=$?; set -e
 assert_eq "[#2142] a measured slow red file (via test_timing input) is reported red" "tests/unit/slow-red-test.sh" "$g_out"
+# review on PR #2147: the case above passes on the floor alone. What the
+# measurement buys is a TIGHTER bound: a file measured at 1 s that now hangs
+# is killed at 3× its measurement, not held to the 10 s ceiling. Elapsed
+# time is the observable — only the declared-input path can make it short.
+cat > "$REPO/tests/unit/hang-test.sh" <<'EOF'
+#!/usr/bin/env bash
+sleep 30
+exit 1
+EOF
+chmod +x "$REPO/tests/unit/hang-test.sh"
+printf 'file 1000 %s/tests/unit/hang-test.sh\n' "$REPO" > "$TEST_TEMP_DIR/timing3.log"
+printf '{"inputs":{"test_timing":"%s"}}\n' "$TEST_TEMP_DIR/timing3.log" > "$TEST_TEMP_DIR/si-2142b.json"
+_t0=$SECONDS
+set +e; h_out="$(ZBUILD_NEGCTL_TIMEOUT=1 ZBUILD_TEST_FILE_TIMEOUT=10 ZBUILD_NEGCTL_TIMING_LOG="" ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/si-2142b.json" _build_guard_false_completion "tests/unit/hang-test.sh" "$REPO" 2>/dev/null)"; h_rc=$?; set -e
+_el=$(( SECONDS - _t0 ))
+if (( _el <= 6 )); then assert_pass "[#2142] a measured file that hangs is bounded by 3× its measurement, not the ceiling (${_el}s)"; else assert_fail "[#2142] a measured file that hangs is bounded by 3× its measurement, not the ceiling" "took ${_el}s (ceiling 10 s — the declared input was not read)"; fi
+assert_eq "[#2142] …and a kill at the bound is UNKNOWN, not red (rc 0, nothing reported)" "0|" "${h_rc}|${h_out}"
+assert_eq "[#2142] the probe leaves no ZBUILD_NEGCTL_TIMING_LOG behind in the caller's environment" "" "${ZBUILD_NEGCTL_TIMING_LOG:-}"
 assert_contains "[#2142] build declares test_timing as an optional input" \
     "$(awk '/^inputs:/,/^outputs:/' "$REPO_ROOT/plugins/agent/build/manifest.yaml")" "id: test_timing"
 
