@@ -167,10 +167,12 @@ rsc_finalize_issue() {
     mkdir -p "$state_dir" 2>/dev/null || true
     out="$(mktemp "${TMPDIR:-$state_dir}/rsc-fin.XXXXXX")" || return 0
     if rsc_gh "$state_dir" "$out" api --paginate "repos/${slug}/issues/${issue}/comments" 2>/dev/null; then
-        id="$(jq -r --arg m "$_RSC_MARKER_PREFIX" \
-            '[.[]? | select((.body // "") | startswith($m))] | last | .id // empty' "$out" 2>/dev/null || true)"
-        body="$(jq -r --arg m "$_RSC_MARKER_PREFIX" \
-            '[.[]? | select((.body // "") | startswith($m))] | last | .body // empty' "$out" 2>/dev/null || true)"
+        # --paginate writes one array per page; -s folds them so `last` is
+        # the newest across ALL pages, not one id per page (review on #2146).
+        id="$(jq -rs --arg m "$_RSC_MARKER_PREFIX" \
+            '[.[][]? | select((.body // "") | startswith($m))] | last | .id // empty' "$out" 2>/dev/null || true)"
+        body="$(jq -rs --arg m "$_RSC_MARKER_PREFIX" \
+            '[.[][]? | select((.body // "") | startswith($m))] | last | .body // empty' "$out" 2>/dev/null || true)"
     fi
     rm -f "$out"
     [[ "$id" =~ ^[0-9]+$ && -n "$body" ]] || { rsc_log "$state_dir" "finalize: no run-status comment on #${issue}"; return 0; }

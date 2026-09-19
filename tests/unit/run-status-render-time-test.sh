@@ -68,6 +68,13 @@ if declare -F rsc_finalize_body >/dev/null 2>&1; then
     if grep -q '^current:' <<< "$_fin"; then assert_fail "[SPEC-4] no 'current:' line once finished" "$_fin"; else assert_pass "[SPEC-4] no 'current:' line once finished"; fi
     _fin_ok="$(rsc_finalize_body "$_body" success)"
     assert_contains "[SPEC-4] success finalizes as success" "$_fin_ok" "**success**"
+    # review on #2146: finalizing twice (the runner already finished the
+    # header, then post-run runs) must not append a second closing line.
+    _fin2="$(rsc_finalize_body "$_fin" cancelled)"
+    assert_eq "[SPEC-4b] finalizing an already-finalized body is a no-op" "$_fin" "$_fin2"
+    _fin3="$(rsc_finalize_body "$_fin_ok" cancelled)"
+    assert_eq "[SPEC-4b] a body already marked success gains no cancelled closing line" \
+        "0" "$(grep -c 're-add' <<< "$_fin3" || true)"
 else
     assert_fail "[SPEC-4] rsc_finalize_body exists" "function not defined"
 fi

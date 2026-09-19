@@ -161,6 +161,16 @@ if declare -F rsc_finalize_issue >/dev/null 2>&1; then
     assert_contains "[SPEC-7] the PATCHed body says cancelled at the ceiling" "$(cat "$GH_BODIES/$_last" 2>/dev/null)" "cancelled at the 360-minute ceiling"
     assert_contains "[SPEC-7] …and how to resume" "$(cat "$GH_BODIES/$_last" 2>/dev/null)" "re-add \`zbuild-run\` to resume"
     assert_eq "[SPEC-7] no POST (never a second comment)" "0" "$(grep -c 'issues/90000042/comments -F' "$GH_LOG" || true)"
+    # review on #2146: `gh api --paginate` emits one JSON array PER PAGE. When
+    # run-status comments sit on two pages, a per-document `last | .id` yields
+    # "7777\n8888", the id check fails and finalize silently gives up.
+    : > "$GH_LOG"; rm -f "$GH_BODIES"/*
+    _fb_old="$(printf '%s\n### zbuild run `r-old` · issue #90000042 · **success**\n' "${_RSC_MARKER_PREFIX}r-old -->")"
+    { jq -n --arg b "$_fb_old" '[{"id": 7777, "body": $b}, {"id": 7778, "body": "unrelated"}]'
+      jq -n --arg b "$_fb" '[{"id": 8887, "body": "unrelated"}, {"id": 8888, "body": $b}]'; } > "$GH_LIST"
+    rc=0; rsc_finalize_issue "$STATE" "testuser/testrepo" 90000042 cancelled || rc=$?
+    assert_eq "[SPEC-7b] markers on two pages: the LAST one (8888) is PATCHed" "1" "$(grep -c 'comments/8888 -X PATCH' "$GH_LOG" || true)"
+    assert_eq "[SPEC-7b] …and the older run's comment (7777) is left alone" "0" "$(grep -c 'comments/7777 -X PATCH' "$GH_LOG" || true)"
 else
     assert_fail "[SPEC-7] rsc_finalize_issue exists" "function not defined"
 fi

@@ -350,9 +350,12 @@ rsc_finalize_body() {
         "") status="finished" ;;
         *)  status="$result" ;;
     esac
+    # The closing line is appended only when this call flipped **running**:
+    # a body the runner already finished (or post-run already finalized) is
+    # returned unchanged, so two finalizers cannot stack two closing lines.
     printf '%s\n' "$body" | awk -v st="$status" -v closing="$closing" '
-        NR <= 3 && /· \*\*running\*\*/ { sub(/\*\*running\*\*/, "**" st "**") }
+        NR <= 3 && /· \*\*running\*\*/ { sub(/\*\*running\*\*/, "**" st "**"); hit = 1 }
         /^current: / { next }
         { print }
-        END { if (closing != "") print closing }'
+        END { if (hit && closing != "") print closing }'
 }
