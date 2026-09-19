@@ -92,6 +92,65 @@ ASSERTION:
 $2"
 }
 
+# _sc_call <tier> <task> — frame the task through the persona registry and
+# route it. persona_stage_framing emits "{perspective}\n\n{task}" and returns 1
+# when the persona is absent, in which case the task stands alone (#1627/#1628).
+_sc_call() {
+    local tier="$1" _task="$2" _framed="$2" _raw=""
+    if declare -f persona_stage_framing >/dev/null 2>&1; then
+        local _pid="quality-assurance" _pdir=""
+        if declare -f resolve_persona >/dev/null 2>&1; then
+            _pdir="$(resolve_persona spec-correspondence 2>/dev/null || true)"
+            [[ -n "$_pdir" ]] && _pid="$(basename "$_pdir")"
+        fi
+        local _f
+        if _f="$(persona_stage_framing "$_pid" "$_task" 2>/dev/null)" && [[ -n "$_f" ]]; then
+            _framed="$_f"
+            export ZBUILD_STAGE_IO_PERSONA="$_pid"   # ADR-015: the banner names the persona
+        fi
+    fi
+    # No 2>/dev/null: the stage-io input banner writes to fd 2 (#491). stdin
+    # is /dev/null: a model that drains stdin must not eat a caller's stream (#2108).
+    if declare -f route_to_model >/dev/null 2>&1; then
+        _raw="$(route_to_model "$tier" "$_framed" </dev/null || true)"
+    fi
+    printf '%s' "$_raw"
+}
+# _sc_parse_verdict / _sc_parse_reason <reply-or-line> — the first VERDICT word
+# and the REASON text. No `| head` (#1886): capture in full, trim in bash.
+_sc_parse_verdict() {
+    local v; v="$(grep -oE 'VERDICT:[[:space:]]*(corresponds|partial|mismatch|uncheckable)' <<< "$1" || true)"
+    v="${v%%$'\n'*}"; printf '%s' "${v##*[[:space:]]}"
+}
+_sc_parse_reason() {
+    local r; r="$(grep -oE 'REASON:[^|]*' <<< "$1" || true)"
+    r="${r%%$'\n'*}"; r="${r#REASON:}"; r="${r#"${r%%[![:space:]]*}"}"; printf '%s' "${r%"${r##*[![:space:]]}"}"
+}
+# _sc_batch_prompt <ids_arr> <txts_arr> <srcs_arr> (namerefs) — every pair in
+# one prompt, one answer line per SPEC (#2143).
+_sc_batch_prompt() {
+    local -n _bp_ids="$1" _bp_txts="$2" _bp_srcs="$3"
+    printf '%s' "You are checking acceptance requirements against the test assertions tagged as covering them, one pair at a time.
+
+For EACH pair below, judge only this: if the ASSERTION passes, does that establish the REQUIREMENT? You cannot see the implementation. Do not guess what it does. The failure you are looking for is an assertion that tests something real and specific, but not what the requirement says — including its opposite.
+
+Answer with exactly one line per SPEC, in this form and nothing else:
+
+SPEC-n: VERDICT: corresponds | REASON: <one sentence>
+
+  corresponds — passing this assertion would establish the requirement.
+  partial     — it tests the right thing, but establishes only part of it.
+  mismatch    — it tests something else, or the reverse of what is required.
+  uncheckable — the requirement is too vague to say what would establish it.
+
+Reserve mismatch for a genuine disagreement. Do not suggest a fix. Do not rewrite anything.
+"
+    local _i
+    for (( _i=0; _i<${#_bp_ids[@]}; _i++ )); do
+        printf '\n### %s\nREQUIREMENT:\n%s\n\nASSERTION:\n%s\n' "${_bp_ids[_i]}" "${_bp_txts[_i]}" "${_bp_srcs[_i]}"
+    done
+}
+
 # _sc_write_result <dir> <verdict> <reason> <counts_json>
 _sc_write_result() {
     local dir="$1" v="$2" r="$3" d="${4:-{\}}"
@@ -140,9 +199,15 @@ spec_correspondence_run() {
     # incremented nothing (the `*)` arm) left it there. Eight junk replies wrote
     # a clean pass in run 33944161764.
     local sid n=0 n_corr=0 n_part=0 n_mis=0 n_unch=0 n_unj=0 findings="" worst=""
+    # #2143: collect every judgeable (requirement, assertion) pair FIRST, judge
+    # them in ONE model call, and fall back to a per-SPEC call only for what
+    # the batch left unjudged — and only while the stage clock has time. Run
+    # 35412141973 spent 53 minutes on 19 serial calls, each with its own
+    # 600 s budget, for an advisory verdict.
+    local -a _ids=() _txts=() _srcs=()
     while IFS= read -r sid; do
         [[ -n "$sid" ]] || continue
-        local _txt _src _tfs _raw _v _r
+        local _txt _tfs _src
         _txt="$(acceptance_spec_text "$design" "$sid" 2>/dev/null || true)"
         [[ -n "$_txt" ]] || continue
         _tfs="$(acceptance_list_testfiles_for_spec "$design" "$sid" 2>/dev/null || true)"
@@ -154,49 +219,47 @@ spec_correspondence_run() {
             # shellcheck disable=SC2086
             acceptance_find_assertion_sources "$repo" "$sid" $_tfs 2>/dev/null || true)"
         [[ -n "$_src" ]] || continue
-        n=$(( n + 1 ))
+        _ids+=("$sid"); _txts+=("$_txt"); _srcs+=("$_src")
+    done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
+    n=${#_ids[@]}
 
-        _raw=""
-        # #1627/#1628: a persona manifest nothing resolves is decoration. Frame
-        # the task through the registry rather than inlining the words, so
-        # editing plugins/persona/quality-assurance/ actually changes behaviour.
-        # persona_stage_framing emits "{perspective}\n\n{task}" and returns 1
-        # when the persona is absent, in which case the task stands alone rather
-        # than carrying an identity-less preamble.
-        local _task _framed
-        _task="$(_sc_prompt "$_txt" "$_src")"
-        _framed="$_task"
-        if declare -f persona_stage_framing >/dev/null 2>&1; then
-            # resolve_persona returns the persona DIRECTORY, not the id;
-            # persona_stage_framing wants the id. Passing the path through
-            # silently yields no framing at all — the inert shape again.
-            local _pid="quality-assurance" _pdir=""
-            if declare -f resolve_persona >/dev/null 2>&1; then
-                _pdir="$(resolve_persona spec-correspondence 2>/dev/null || true)"
-                [[ -n "$_pdir" ]] && _pid="$(basename "$_pdir")"
-            fi
-            local _f
-            if _f="$(persona_stage_framing "$_pid" "$_task" 2>/dev/null)" && [[ -n "$_f" ]]; then
-                _framed="$_f"
-                # ADR-015: stage-io stamps the persona on the banner.
-                export ZBUILD_STAGE_IO_PERSONA="$_pid"
-            fi
+    # The stage clock: the router bounds each CALL; this bounds the STAGE.
+    local _clock_s="${ZBUILD_SPEC_CORRESPONDENCE_STAGE_TIMEOUT_S:-}"
+    if [[ ! "$_clock_s" =~ ^[0-9]+$ ]]; then
+        _clock_s="$(declare -f _route_resolve_timeout >/dev/null 2>&1 && _route_resolve_timeout 2>/dev/null || true)"
+        [[ "$_clock_s" =~ ^[0-9]+$ ]] || _clock_s=600
+    fi
+    local _t_start=$SECONDS
+    local -a _verdicts=() _reasons=()
+    local _i
+    for (( _i=0; _i<n; _i++ )); do _verdicts+=(""); _reasons+=(""); done
+
+    if [[ "$n" -gt 0 ]]; then
+        local _batch_raw
+        _batch_raw="$(_sc_call "$tier" "$(_sc_batch_prompt _ids _txts _srcs)")"
+        for (( _i=0; _i<n; _i++ )); do
+            local _line
+            _line="$(grep -E "^${_ids[_i]}:[[:space:]]*VERDICT:" <<< "$_batch_raw" || true)"
+            _line="${_line%%$'\n'*}"
+            [[ -n "$_line" ]] || continue
+            _verdicts[_i]="$(_sc_parse_verdict "$_line")"
+            _reasons[_i]="$(_sc_parse_reason "$_line")"
+        done
+    fi
+    for (( _i=0; _i<n; _i++ )); do
+        [[ -z "${_verdicts[_i]}" ]] || continue
+        if (( SECONDS - _t_start >= _clock_s )); then
+            _sc_emit "spec_correspondence.stage_clock" "spec_id=${_ids[_i]}" "budget_s=$_clock_s"
+            continue
         fi
-        # No 2>/dev/null here: the stage-io input banner writes to fd 2, and
-        # suppressing it drops the banner and breaks ADR-015 §v4's
-        # input-before-action ordering — the #491 defect.
-        if declare -f route_to_model >/dev/null 2>&1; then
-            # #2108: stdin here is the SPEC-id stream this loop reads; a model
-            # that drains it (claude -p does) would judge SPEC-1 and eat the rest.
-            _raw="$(route_to_model "$tier" "$_framed" </dev/null || true)"
-        fi
-        # No `| head`: the reader exits early, the writer takes SIGPIPE, and
-        # under errexit the surrounding function dies for a reason nothing logs
-        # (#1886). Capture in full, trim in bash.
-        _v="$(grep -oE 'VERDICT:[[:space:]]*(corresponds|partial|mismatch|uncheckable)' <<< "$_raw" || true)"
-        _v="${_v%%$'\n'*}"; _v="${_v##*[[:space:]]}"
-        _r="$(grep -E '^REASON:' <<< "$_raw" || true)"
-        _r="${_r%%$'\n'*}"; _r="${_r#REASON:}"; _r="${_r#"${_r%%[![:space:]]*}"}"
+        local _one_raw
+        _one_raw="$(_sc_call "$tier" "$(_sc_prompt "${_txts[_i]}" "${_srcs[_i]}")")"
+        _verdicts[_i]="$(_sc_parse_verdict "$_one_raw")"
+        _reasons[_i]="$(_sc_parse_reason "$_one_raw")"
+    done
+    for (( _i=0; _i<n; _i++ )); do
+        sid="${_ids[_i]}"
+        local _v="${_verdicts[_i]}" _r="${_reasons[_i]}"
         case "${_v:-}" in
             corresponds) n_corr=$(( n_corr + 1 )) ;;
             partial)     n_part=$(( n_part + 1 ))
@@ -207,16 +270,12 @@ spec_correspondence_run() {
                          findings="${findings}- ${sid} uncheckable: ${_r}"$'\n' ;;
             *)           # #2062: an unparseable or absent reply is COUNTED.
                          # Its own word, not `uncheckable`: `uncheckable` is a
-                         # finding about the REQUIREMENT ("too vague to say what
-                         # would establish it" — the prompt's own definition,
-                         # echoed in verdict.sh's classify comment). This is a
-                         # fact about the JUDGE. Folding the two together would
-                         # file a router outage as a design-document defect and
-                         # leave an operator unable to tell them apart.
+                         # finding about the REQUIREMENT; this is a fact about
+                         # the JUDGE (or the clock).
                          n_unj=$(( n_unj + 1 ))
                          findings="${findings}- ${sid} UNJUDGED (no parseable verdict in the reply)"$'\n' ;;
         esac
-    done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
+    done
 
     # Worst-wins over the counters, which now account for every SPEC — so there
     # is no arm left that can reach this with nothing incremented.
