@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-# Integration (#2097): the iter>=2 half of the not_passing_at_head escalation.
+# Integration (#2157): a tautological [change] SPEC that survives to iteration 2
+# is design's, not test-author's.
 #
-# [SPEC-1] (CHANGE): on iteration >= 2 a not_passing_at_head failure sets
+# [guard]: on iteration 1 a tautology:<id> failure declares NO fault (#1583 —
+#   test-author gets one honest re-authoring try).
+# [SPEC-1] (CHANGE): on iteration >= 2 the same tautology sets
 #   fault=specification in the result artifact and emits
-#   acceptance.gate.not_passing_at_head_escalated — build had one honest try
-#   (iter 1, see S14 in acceptance-gate-test.sh: no fault) and the assertion
-#   STILL does not pass at HEAD, so the design's premise is what is suspect.
-# [SPEC-2] (CHANGE): disposition is recoverable at iter>=2 — terminal would halt
-#   the cycle before the aggregator reads the fault and routes to design
-#   (the #1686/#1711 rationale, verbatim).
+#   acceptance.gate.tautology_escalated — no assertion for behaviour that
+#   already exists at the baseline can be made to fail at the baseline, so the
+#   [change] tag is the defect and design owns the tag (#1840 run 5 looped two
+#   iterations on SPEC-16/17, true on main since #2000).
+# [SPEC-2] (CHANGE): disposition stays recoverable at iter>=2 — terminal would
+#   halt the cycle before the aggregator reads the fault and routes to design.
 #
-# Its own file, for the #1737 reason the inert_wiring iter1 test records: the
-# iter=1 [guard] half lives in acceptance-gate-test.sh (S14) and must not share
-# a TESTFILE with a [change] that fails at the merge-base.
+# Mirrors acceptance-gate-npah-escalation-test.sh (#2097); the fixture differs:
+# the assertion passes at BOTH the merge-base and HEAD.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
