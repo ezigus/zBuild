@@ -118,7 +118,7 @@ Everything else (GitHub label contract as control plane, patient-kill wall-clock
 
 ## Section E — CLI + UX (carry forward unchanged)
 
-All 13 original items verified. Lift verbatim, including the live-updating GitHub comment marker + atomic ID persistence (`legacy/scripts/lib/pipeline-github.sh:97-135`, `legacy/scripts/sw-pipeline.sh:1150-1154`).
+All 13 original items verified. Lift verbatim, including the live-updating GitHub comment marker + atomic ID persistence (migrated 2026-09-18 by #2131 → `scripts/lib/run-status-comment.sh`; see tombstone `legacy/migrated/e-1.md`).
 
 ---
 
@@ -367,7 +367,7 @@ Phase 0 ships when steps 0 through 7 land and Phase 1 issues are unblocked.
 - `legacy/scripts/sw-db.sh:312-325` — `memory_failures` schema; `:1147-1167` — record/query failures
 
 ### UX
-- `legacy/scripts/lib/pipeline-github.sh:97-135` — live-updating comment with marker
+- ~~`legacy/scripts/lib/pipeline-github.sh:97-135`~~ — live-updating comment with marker → migrated (#2131), see `legacy/migrated/e-1.md`
 - `legacy/scripts/sw-status.sh:75-260` — JSON contract
 - `legacy/scripts/sw-doctor.sh:36-243` — check registry
 - `legacy/.claude/helpers/statusline.cjs:225-256` — honest-failure pattern

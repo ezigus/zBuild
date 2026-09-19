@@ -1145,3 +1145,10 @@ Two additions keep the terminal free of raw artifact JSON:
    `render_parallel_member_line` / `render_lens_one_line`. This extends the
    presence rule: a lens that streams its raw JSON denies the operator a readable
    record just as surely as a discarded command does.
+
+## Cross-reference — ADR-064 (2026-09-18, #2131)
+
+The per-stage `gh_comment` destination described here posts one comment per
+stage capture and stays off in every shipped template. The run-level, live,
+edited-in-place status comment is a different surface with its own process
+model; see ADR-064. Neither replaces the other.

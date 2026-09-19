@@ -229,6 +229,10 @@ export ZBUILD_INTAKE_SKIP_BRANCH=1
 # engine is environmentally agnostic, not that worktrees work, so opt out the way
 # an operator would. Worktree behavior is covered by worktree-run-isolation-test.sh.
 export ZBUILD_NO_WORKTREE=1
+# #2131: the mock gh answers `auth status` 0 — without this pin a direct
+# `bash tests/e2e/parity-local-vs-ci-test.sh` would spawn the sidecar and
+# status-comment.* would land in the golden's file listing.
+export ZBUILD_STATUS_COMMENT=0
 
 mkdir -p "$ZBUILD_EVENTS_DIR"
 
