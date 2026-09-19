@@ -1,0 +1,7 @@
+NEGCTL SKIP SPEC-1 no_impl_delta
+      design : the sidecar issues exactly one POST and at least one PATCH, the final body is marked with the run id…
+      asserts: assert_eq "[SPEC-1] exactly one POST for the run" "1" "$(posts)"
+NEGCTL SKIP SPEC-2 no_impl_delta
+      design : GitHub API failures during sidecar operation leave the runner exit status unchanged and are recorded…
+      asserts: assert_eq "[SPEC-2] runner rc unchanged with gh failing every api call" "$baseline_rc" "$_RUNNER_RC"
+REACHABILITY SKIP no_impl_delta
