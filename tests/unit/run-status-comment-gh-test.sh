@@ -145,26 +145,6 @@ assert_eq "[SPEC-5] a second 404 never fans out into more POSTs" "1" "$(posts)"
 assert_eq "[SPEC-5b] both gh writes use -F body=@file" "2" "$(grep -c -- '-F "body=@' "$LIB")"
 assert_eq "[SPEC-5b] no gh write uses -f body=@file (a literal, not a file)" "0" "$(grep -c -- '-f "body=@' "$LIB")"
 
-# ─── SPEC-6: gh call is bounded by the watchdog ─────────────────────────────
-cat > "$TEST_TEMP_DIR/bin/gh" <<'MOCK'
-#!/usr/bin/env bash
-sleep 30
-MOCK
-chmod +x "$TEST_TEMP_DIR/bin/gh"
-rm -f "$STATE/status-comment.json"
-_RSC_GIVEN_UP=0; _RSC_RECREATED=0     # SPEC-5 gave up for that "run"; fresh process semantics here
-export ZBUILD_STATUS_COMMENT_GH_TIMEOUT=1
-t0=$(date +%s)
-rsc_upsert "$STATE" "testuser/testrepo" 90000042 "r-2131" "$BODY"; rc=$?
-t1=$(date +%s)
-assert_eq "[SPEC-6] hung gh → rc 0" "0" "$rc"
-if [[ $(( t1 - t0 )) -le 8 ]]; then
-    assert_pass "[SPEC-6] hung gh is killed by the watchdog ($(( t1 - t0 ))s)"
-else
-    assert_fail "[SPEC-6] hung gh is killed by the watchdog" "took $(( t1 - t0 ))s"
-fi
-assert_contains "[SPEC-6] timeout logged" "$(cat "$STATE/status-comment.log")" 'timeout'
-
 # ─── SPEC-7 (#2145): the post-run step finalizes a cancelled run's comment ──
 # The runner's tail loop dies with the job at the 360-minute ceiling, so the
 # comment stays "running" forever unless the post-run step finishes it.
@@ -184,6 +164,27 @@ if declare -F rsc_finalize_issue >/dev/null 2>&1; then
 else
     assert_fail "[SPEC-7] rsc_finalize_issue exists" "function not defined"
 fi
+
+
+# ─── SPEC-6: gh call is bounded by the watchdog ─────────────────────────────
+cat > "$TEST_TEMP_DIR/bin/gh" <<'MOCK'
+#!/usr/bin/env bash
+sleep 30
+MOCK
+chmod +x "$TEST_TEMP_DIR/bin/gh"
+rm -f "$STATE/status-comment.json"
+_RSC_GIVEN_UP=0; _RSC_RECREATED=0     # SPEC-5 gave up for that "run"; fresh process semantics here
+export ZBUILD_STATUS_COMMENT_GH_TIMEOUT=1
+t0=$(date +%s)
+rsc_upsert "$STATE" "testuser/testrepo" 90000042 "r-2131" "$BODY"; rc=$?
+t1=$(date +%s)
+assert_eq "[SPEC-6] hung gh → rc 0" "0" "$rc"
+if [[ $(( t1 - t0 )) -le 8 ]]; then
+    assert_pass "[SPEC-6] hung gh is killed by the watchdog ($(( t1 - t0 ))s)"
+else
+    assert_fail "[SPEC-6] hung gh is killed by the watchdog" "took $(( t1 - t0 ))s"
+fi
+assert_contains "[SPEC-6] timeout logged" "$(cat "$STATE/status-comment.log")" 'timeout'
 
 cleanup_test_env
 print_test_results

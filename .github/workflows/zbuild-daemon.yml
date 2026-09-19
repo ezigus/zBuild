@@ -83,6 +83,21 @@ jobs:
       ABORT_REASON: ${{ needs.pipeline.outputs.abort_reason }}
       ABORT_DETAIL: ${{ needs.pipeline.outputs.abort_detail }}
     steps:
+      # #2145: the run-status comment's tail loop dies with the pipeline job at
+      # the 360-minute ceiling and leaves the header saying "running". This
+      # step needs the renderer from the engine checkout to finish it.
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: |
+            scripts/lib
+          sparse-checkout-cone-mode: false
+
+      - name: Finalize the run-status comment
+        # Advisory: a comment that cannot be finalized never fails the job.
+        run: |
+          source scripts/lib/run-status-comment.sh
+          rsc_finalize_issue "$RUNNER_TEMP" "${{ github.repository }}" "${ISSUE_NUMBER}" "${PIPELINE_RESULT}" || true
+
       - name: Remove zbuild-run label
         run: |
           gh api \
@@ -102,6 +117,10 @@ jobs:
             body="**zbuild pipeline aborted: LLM rate-limited** (${ABORT_DETAIL:-reset time not reported}). State was persisted — re-add \`zbuild-run\` after the reset to resume.  Run: ${RUN_URL}"
           elif [[ -n "$ABORT_REASON" ]]; then
             body="**zbuild pipeline aborted: \`${ABORT_REASON}\`.**  Run: ${RUN_URL}"
+          elif [[ "$PIPELINE_RESULT" == "cancelled" ]]; then
+            # #2145: a 6-hour GitHub kill is `cancelled`, not a failure — say
+            # what it was and that ADR-050 resumes from the state branch.
+            body="**zbuild pipeline cancelled at the 360-minute ceiling.** State was persisted — re-add \`zbuild-run\` to resume.  Run: ${RUN_URL}"
           else
             body="**zbuild pipeline finished with result: \`${PIPELINE_RESULT}\`.**  Run: ${RUN_URL}"
           fi
