@@ -393,10 +393,12 @@ _test_run_inner() {
         if [[ "$_trec" == "1" && "$_tv" == "pass" && "$_tp" =~ ^[0-9]+$ && "$_tp" -gt 0 ]]; then
             _targeted_json="$(jq -cn --arg c "$actual_test_cmd" --arg v "$_tv" \
                 --argjson p "$_tp" --argjson f "$(_test_sanitize_numeric "$_tf")" \
-                '{test_cmd:$c, verdict:$v, passed:$p, failed:$f}' 2>/dev/null || echo)"
+                '{test_cmd:$c, verdict:$v, passed:$p, failed:$f}' 2>/dev/null || true)"
             emit_event "test.targeted.confirming" "passed=${_tp}" 2>/dev/null || true
             # The timing log now measures the authoritative run only.
             rm -f "$_zbt_timing_log" 2>/dev/null || true
+            # The parser's pass is authoritative (#584), so the subset's rc no
+            # longer matters; the full run's rc replaces it below.
             test_rc=0
             raw_output="$(_test_spawn_suite "$tmp" "$test_cmd" "$_zbt_timing_log" \
                 "$_zbt_results_json" "$_pid_file" "$_pgid_file")" || test_rc=$?

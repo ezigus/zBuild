@@ -609,6 +609,8 @@ assert_eq "T16 [#2144]: data.targeted names the targeted command" \
     "bash 'tests/unit/targeted-test.sh'" "$(_json_key "$OUT_JSON_T16" '.data.targeted.test_cmd')"
 assert_eq "T16 [#2144]: the red-set comes from the FULL run" \
     "tests/unit/other-test.sh" "$(jq -r '.[0]' "$(dirname "$OUT_JSON_T16")/test-red-set.json" 2>/dev/null)"
+assert_eq "T16 [#2144]: test.targeted.confirming emitted once" \
+    "1" "$(grep -c 'test.targeted.confirming' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
 _tree_sha_t16="$(_json_key "$OUT_JSON_T16" '.data.tree_sha')"
 assert_eq "T16 [#2144]: a confirmed run is authoritative for the tree (tree_sha written)" \
     "$(git -C "$REPO_T16" rev-parse 'HEAD^{tree}')" "$_tree_sha_t16"
@@ -644,6 +646,8 @@ else
     assert_pass "T17 [#2144]: the full command did NOT run"
 fi
 assert_eq "T17 [#2144]: no tree_sha for an unconfirmed run" "" "$(_json_key "$OUT_JSON_T17" '.data.tree_sha // ""')"
+assert_eq "T17 [#2144]: no test.targeted.confirming event for a red subset (still the one from T16)" \
+    "1" "$(grep -c 'test.targeted.confirming' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
 
 # restore the green fixture for the tests below
 cat > "$REPO_T16/tests/unit/targeted-test.sh" <<'TARGETED_EOF'
