@@ -80,7 +80,7 @@ assert_eq "[SPEC-1] first line is the hidden run marker" \
 assert_contains "[SPEC-1] header names the run id" "$body" 'run `r-2131`'
 assert_contains "[SPEC-1] header names the issue" "$body" 'issue #90000042'
 assert_contains "[SPEC-1] header names the engine sha (short)" "$body" 'engine `abcdef1`'
-assert_contains "[SPEC-1] header shows started UTC" "$body" 'started 2026-09-17T12:00:00Z'
+assert_contains "[SPEC-1] header shows started (Eastern, #2145)" "$body" 'started 8:00 AM ET'
 assert_contains "[SPEC-1] header status is running without a terminal event" "$body" '**running**'
 assert_contains "[SPEC-1] header carries the PR link" "$body" 'https://github.com/testuser/testrepo/pull/7'
 assert_contains "[SPEC-1] header names the current stage" "$body" 'current: **9 deploy**'
@@ -103,28 +103,28 @@ assert_eq "[SPEC-2] a nested plugin.run.start for the same seq opens no second r
 
 # ─── SPEC-3: row cells ──────────────────────────────────────────────────────
 build_row="$(row_of '**6.1.1 build**')"
-assert_eq "[SPEC-3] closed cycle-member row: seq, iter, UTC start → end (duration), verdict, summary first line" \
-    '**6.1.1 build** · iter 1 · 12:20:14Z → 13:21:47Z (61m33s) · **pass** — 3 files changed, tests added' \
+assert_eq "[SPEC-3] closed cycle-member row: start → end (duration) first, then seq, iter, verdict, summary first line (#2145)" \
+    '**8:20 AM ET → 9:21 AM ET (61m33s)** · **6.1.1 build** · iter 1 · **pass** — 3 files changed, tests added' \
     "$build_row"
 intake_row="$(row_of '**1 intake**')"
 assert_eq "[SPEC-3] linear row: no iter, <1s for equal timestamps" \
-    '**1 intake** · 12:00:01Z → 12:00:01Z (<1s) · **pass** — adopted branch zbuild/issue-42' \
+    '**8:00 AM ET → 8:00 AM ET (<1s)** · **1 intake** · **pass** — adopted branch zbuild/issue-42' \
     "$intake_row"
 test_row="$(row_of '**6.1.2 test**')"
 assert_eq "[SPEC-3] open row: start, running, inputs, injected summaries count" \
-    '**6.1.2 test** · iter 1 · 13:22:00Z → running · inputs: diff, plan · 3 stage summaries (0 RESOLVE)' \
+    '**9:22 AM ET → running** · **6.1.2 test** · iter 1 · inputs: diff, plan · 3 stage summaries (0 RESOLVE)' \
     "$test_row"
 deploy_row="$(row_of '**9 deploy**')"
 assert_eq "[SPEC-3] open row without an injection: inputs only" \
-    '**9 deploy** · 14:11:00Z → running · inputs: plan, design' \
+    '**10:11 AM ET → running** · **9 deploy** · inputs: plan, design' \
     "$deploy_row"
 review_row="$(row_of '**7 review**')"
 assert_eq "[SPEC-3] a seq-less stage.fail closes the open row for that stage" \
-    '**7 review** · 14:00:00Z → 14:00:45Z (45s) · **fail rc=1**' \
+    '**10:00 AM ET → 10:00 AM ET (45s)** · **7 review** · **fail rc=1**' \
     "$review_row"
 reused_row="$(row_of '**6.2 reused**')"
 assert_eq "[SPEC-3] reused members collapse to one row per iteration" \
-    '**6.2 reused** · iter 2 · 13:40:00Z · build, test from iter 1 (empty_diff)' \
+    '**9:40 AM ET** · **6.2 reused** · iter 2 · build, test from iter 1 (empty_diff)' \
     "$reused_row"
 
 # ─── SPEC-4: summary line is cut at 200 chars and `|` is escaped ────────────
@@ -144,7 +144,7 @@ assert_contains "[SPEC-5] header status from pipeline.end" "$body" '**aborted**'
 assert_contains "[SPEC-5] header carries the abort reason and detail" "$body" 'llm_rate_limited — LLM rate-limited — resets 12pm (UTC)'
 assert_eq "[SPEC-5] no current stage once terminal" "0" "$(grep -c -F 'current: **' <<< "$body")"
 assert_contains "[SPEC-5] the row killed mid-way keeps its start and inputs" "$body" \
-    '**9 deploy** · 14:11:00Z → running · inputs: plan, design'
+    '**10:11 AM ET → running** · **9 deploy** · inputs: plan, design'
 
 # ─── SPEC-6: the 60 KB bound ────────────────────────────────────────────────
 BSTATE="$TEST_TEMP_DIR/bound"; BEV="$BSTATE/events.jsonl"
@@ -168,7 +168,7 @@ assert_contains "[SPEC-6] newest row present" "$body" '**400 s400**'
 assert_eq "[SPEC-6] oldest row omitted" "0" "$(grep -c -F -- '**1 s1**' <<< "$body")"
 omit_line="$(grep -F 'earlier rows omitted' <<< "$body")"
 assert_contains "[SPEC-6] omission line is the last line" "$(tail -1 <<< "$body")" 'earlier rows omitted — see run log'
-rendered="$(grep -c -E '^\*\*[0-9]+ s[0-9]+\*\*' <<< "$body")"
+rendered="$(grep -c -E '· \*\*[0-9]+ s[0-9]+\*\*' <<< "$body")"
 omitted="$(sed -E 's/.*… ([0-9]+) earlier rows omitted.*/\1/' <<< "$omit_line")"
 assert_eq "[SPEC-6] omitted count + rendered rows == 400" "400" "$(( rendered + omitted ))"
 
