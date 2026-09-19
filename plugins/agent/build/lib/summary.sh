@@ -318,14 +318,25 @@ _build_guard_false_completion() {
         [[ $_dup -eq 1 ]] && continue
         _seen+=("$_tfp"); _probe+=("$_tfp")
     done <<< "$testfiles"
+    # #2142: the measurement reaches this probe the way it reaches the gate —
+    # through the DECLARED test_timing input (ADR-055 §1), not an ambient var.
+    if [[ -z "${ZBUILD_NEGCTL_TIMING_LOG:-}" && -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS}" ]]; then
+        local _tl; _tl="$(jq -r '.inputs.test_timing // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+        [[ -n "$_tl" && -s "$_tl" ]] && export ZBUILD_NEGCTL_TIMING_LOG="$_tl"
+    fi
+    # #2142: with no measurement (iteration 1 of a fresh run) the bound is the
+    # file-timeout ceiling, not the 60 s stage default — this probe runs only
+    # on a "done with no diff" claim, and being right is worth minutes: at
+    # 60 s it was killed on a 139 s file and a red testfile went unreported.
+    local _probe_floor="${ZBUILD_TEST_FILE_TIMEOUT:-480}"
+    [[ "$_probe_floor" =~ ^[0-9]+$ ]] || _probe_floor=480
+    (( timeout_s < _probe_floor )) && timeout_s=$_probe_floor
     for tf in "${_probe[@]+"${_probe[@]}"}"; do
         local abs="$repo_root/$tf"
         [[ -f "$abs" ]] || continue
-        # #2138: bounded by what the test stage MEASURED for this file (#2110),
-        # not the raw stage default — review-lens-test.sh takes 139s on the
-        # runner. A run killed at its bound is UNKNOWN, never "red": the gate
-        # classifies that as harness, and a false inert_build blocks a good
-        # build. Resolved per file, as the gate does.
+        # #2138: bounded by what the test stage MEASURED for this file (#2110)
+        # where a measurement exists; a run killed at its bound is UNKNOWN,
+        # never "red" — a false inert_build blocks a good build.
         _acceptance_timeout_prefix "$(_acceptance_file_timeout "$tf" "$timeout_s")"
         rc=0
         # #2108: stdin is this loop's TESTFILE list — a file that reads it
