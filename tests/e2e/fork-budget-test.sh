@@ -73,7 +73,9 @@ _fb_count() {
                 t = w[i]
                 if (t ~ /^[A-Za-z_][A-Za-z0-9_]*=/) continue          # VAR=val prefix
                 if (t == "exec" || t == "command" || t == "env" || t == "nice") continue
-                if ((t == "timeout" || t == "gtimeout") && i < m) { print site "\t" t; i++; continue }  # wrapper + skip its N
+                # `timeout N cmd` is two processes — timeout forks cmd so it can
+                # kill it — so both are counted (one row each), and N is skipped.
+                if ((t == "timeout" || t == "gtimeout") && i < m) { print site "\t" t; i++; continue }
                 gsub(/^[\x27"]|[\x27"]$/, "", t)
                 print site "\t" t
                 break
@@ -87,17 +89,22 @@ _fb_count() {
         kind="$(type -t -- "$w" 2>/dev/null || true)"
         [[ "$kind" == "file" ]] && ext["$w"]=1
     done < <(cut -f2 "$pairs" | sort -u)
-    # pass 2: keep external rows, tally by site
+    # pass 2: keep external rows, tally by site. The site table goes through a
+    # temp file and a synchronous sort — a `2> >(sort …)` process substitution
+    # would return before sort finished writing (review on #2153).
     local extlist=""; for w in "${!ext[@]}"; do extlist+="$w "; done
-    awk -v extlist="$extlist" '
+    local unsorted="$TEST_TEMP_DIR/sites-unsorted.$$"
+    awk -v extlist="$extlist" -v out="$unsorted" '
         BEGIN { n = split(extlist, a, " "); for (i = 1; i <= n; i++) ext[a[i]] = 1 }
         BEGIN { FS = "\t" }
         ($2 in ext) { total++; site[$1 "\t" $2]++ }
         END {
-            for (k in site) printf "%d\t%s\n", site[k], k > "/dev/stderr"
+            for (k in site) printf "%d\t%s\n", site[k], k > out
+            close(out)
             print total + 0
-        }' "$pairs" 2> >(sort -rn > "$sites")
-    rm -f "$pairs"
+        }' "$pairs"
+    sort -rn "$unsorted" > "$sites" 2>/dev/null || : > "$sites"
+    rm -f "$pairs" "$unsorted"
 }
 
 # ─── SPEC-1: the canary ──────────────────────────────────────────────────────
@@ -142,6 +149,17 @@ awk -F'\t' 'NR <= 12 { printf "    %5d  %-34s %s\n", $1, $2, $3 }' "$SITES"
 echo "  by file:"
 awk -F'\t' '{ split($2, p, ":"); f[p[1]] += $1 } END { for (k in f) printf "%d\t%s\n", f[k], k }' "$SITES" \
     | sort -rn | awk 'NR <= 10 { printf "    %5d  %s\n", $1, $2 }'
+
+# The tier runner buffers a passing test's output, so the Linux number — the
+# one the ratchet is set from — would be invisible in CI. Put it in the job
+# summary when there is one.
+if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]] && { [[ -w "$GITHUB_STEP_SUMMARY" ]] || [[ ! -e "$GITHUB_STEP_SUMMARY" && -w "$(dirname "$GITHUB_STEP_SUMMARY")" ]]; }; then
+    {
+        printf '### fork budget: %s external execs (budget %s) across %s source files\n\n```\n' "$_total" "$FORK_BUDGET" "$_files"
+        awk -F'\t' 'NR <= 15 { printf "%5d  %-34s %s\n", $1, $2, $3 }' "$SITES"
+        printf '```\n'
+    } >> "$GITHUB_STEP_SUMMARY"
+fi
 
 if (( _files >= 20 && _total >= 1000 )); then
     assert_pass "[SPEC-3] the trace is live (${_files} files, ${_total} execs)"
