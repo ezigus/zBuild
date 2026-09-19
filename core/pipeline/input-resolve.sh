@@ -42,6 +42,10 @@ declare -F atomic_write >/dev/null 2>&1 || \
 # shellcheck source=./verdict.sh
 declare -F _verdict_resolve_path >/dev/null 2>&1 || \
     source "$_ZBUILD_IR_ROOT/core/pipeline/verdict.sh"
+# #2152: the manifest index _inputs_scan_manifests reads from.
+# shellcheck source=../plugin-registry/manifest-index.sh
+declare -F manifest_index_rows >/dev/null 2>&1 || \
+    source "$_ZBUILD_IR_ROOT/core/plugin-registry/manifest-index.sh"
 
 # The marker the injected prompt block opens with. Idempotence guard, exactly as
 # _ZB_CHECKPOINT_MARKER is — the agentic loop redacts once per iteration against
@@ -86,39 +90,47 @@ _inputs_flow_stages() {
 # Why not just call resolve_stage_plugin per stage: it goes through
 # discover_plugins, which costs ~8s per call on this tree. The index needs a
 # manifest for EVERY stage in the flow, so a per-stage call would add ~2 minutes
-# to every dispatch. One find + one awk per manifest is ~40ms for the same data.
-declare -gA _IR_BY_ID=()
-declare -gA _IR_BY_ROLE=()
-_IR_SCAN_KEY=""
+# to every dispatch. One find + one awk for the whole tree (#2152) is ~40ms.
+# #2152 (ADR-065 §3): every reader of these maps is a `$( )` — the fill has to
+# happen in the PARENT shell, at the runner's prewarm seam, or it happens on
+# every call. Bare `declare -gA` (no `=()`): route.sh re-sources this file
+# lazily inside a function, and an initialiser there would wipe the fill.
+declare -gA _IR_BY_ID
+declare -gA _IR_BY_ROLE
+[[ -n "${_IR_SCAN_KEY+x}" ]] || _IR_SCAN_KEY=""
 _inputs_scan_manifests() {
-    local plugins_root="$1"
+    local plugins_root; plugins_root="$(_manifest_index_root "$1")"
     [[ "$plugins_root" == "$_IR_SCAN_KEY" ]] && return 0
     _IR_SCAN_KEY="$plugins_root"
     _IR_BY_ID=(); _IR_BY_ROLE=()
-    local m id role platform rec
-    while IFS= read -r -d '' m; do
-        rec="$(awk '
-            /^id:[[:space:]]*/            && !gi { l=$0; sub(/^id:[[:space:]]*/,"",l);       gi=1; i=l }
-            /^platform:[[:space:]]*/      && !gp { l=$0; sub(/^platform:[[:space:]]*/,"",l); gp=1; p=l }
-            /^provides:[[:space:]]*$/            { inp=1; next }
-            inp && /^[a-zA-Z_]/                  { inp=0 }
-            inp && /^[[:space:]]+role:[[:space:]]*/ && !gr {
-                l=$0; sub(/^[[:space:]]+role:[[:space:]]*/,"",l); gr=1; r=l }
-            END {
-                sub(/[[:space:]]*#.*/,"",i); sub(/[[:space:]]*#.*/,"",r); sub(/[[:space:]]*#.*/,"",p)
-                gsub(/^["'"'"']|["'"'"']$|[[:space:]]*$/,"",i)
-                gsub(/^["'"'"']|["'"'"']$|[[:space:]]*$/,"",r)
-                gsub(/^["'"'"']|["'"'"']$|[[:space:]]*$/,"",p)
-                print i "|" r "|" p
-            }' "$m" 2>/dev/null)"
-        IFS='|' read -r id role platform <<< "$rec"
-        [[ -n "$id" && -z "${_IR_BY_ID[$id]:-}" ]] && _IR_BY_ID["$id"]="$m"
+    # #2152: read from the manifest index — no awk per manifest. Rows arrive
+    # file by file; a file's `__file__` marker precedes its keys, so the
+    # previous file is complete when the next marker (or the end) arrives.
+    manifest_index_load "$plugins_root"
+    # Collect per file, commit in marker order at the end: the rows' order is
+    # not a contract (the memo streams them per file, a fresh build emits every
+    # `__file__` marker first — review on #2155), and first-occurrence-wins
+    # needs the files in the order they were enumerated.
+    local -a _files=()
+    local -A _id=() _role=() _plat=()
+    local m p k v
+    while IFS=$'\034' read -r p k v; do
+        if [[ "$k" == "__file__" ]]; then _files+=("$p"); continue; fi
+        # the old per-file awk also trimmed trailing whitespace
+        v="${v%"${v##*[![:space:]]}"}"
+        case "$k" in
+            id) _id["$p"]="$v" ;; platform) _plat["$p"]="$v" ;; provides.role) _role["$p"]="$v" ;;
+        esac
+    done < <(manifest_index_rows "$plugins_root")
+    for m in "${_files[@]+"${_files[@]}"}"; do
+        [[ "$m" != */tests/* ]] || continue
+        [[ -n "${_id[$m]:-}" && -z "${_IR_BY_ID[${_id[$m]}]:-}" ]] && _IR_BY_ID["${_id[$m]}"]="$m"
         # Platform-specific plugins never win the generic slot; the engine's own
         # resolver prefers a platform match and this module has no platform.
-        if [[ -n "$role" && ( -z "$platform" || "$platform" == "null" ) && -z "${_IR_BY_ROLE[$role]:-}" ]]; then
-            _IR_BY_ROLE["$role"]="$m"
+        if [[ -n "${_role[$m]:-}" && ( -z "${_plat[$m]:-}" || "${_plat[$m]:-}" == "null" ) && -z "${_IR_BY_ROLE[${_role[$m]}]:-}" ]]; then
+            _IR_BY_ROLE["${_role[$m]}"]="$m"
         fi
-    done < <(find "$plugins_root" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
+    done
 }
 
 # ─── _inputs_stage_manifest <stage> <plugins_root> ───────────────────────────

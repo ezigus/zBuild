@@ -76,6 +76,12 @@ source "$_ZBUILD_ROOT/core/pipeline/verdict.sh"
 # it adds is unconditional as of #1825; sourced unconditionally
 # because _runner_validate_startup_preflight delegates its renderer here.
 source "$_ZBUILD_ROOT/core/pipeline/input-resolve.sh"
+# #2152 (ADR-065 §3): fill the input-resolve maps HERE, in this shell. Every
+# reader runs `_inputs_stage_manifest` inside a `$( )`; without this fill each
+# of the ~40 reads per run rescanned every manifest (2,255 awks on a mocked run).
+if declare -F _inputs_scan_manifests >/dev/null 2>&1; then
+    _inputs_scan_manifests "${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}" 2>/dev/null || true
+fi
 # #1823 (ADR-054 §4): rc ∈ {0,1} — the narrowing, the observation captured before
 # it, and the one place a legacy engine rc becomes a word.
 source "$_ZBUILD_ROOT/core/pipeline/dispatch-rc.sh"

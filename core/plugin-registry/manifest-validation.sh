@@ -27,6 +27,9 @@ source "$_ZBUILD_MANIFEST_VALIDATION_DIR/manifest-router-budget.sh"
 # being validated by one parser and read by another.
 # shellcheck source=../event-bus/known-types.sh
 source "$_ZBUILD_MANIFEST_VALIDATION_DIR/../event-bus/known-types.sh"
+# #2152 (ADR-065 §4): the one-pass reader the prewarm fills from.
+# shellcheck source=./manifest-index.sh
+source "$_ZBUILD_MANIFEST_VALIDATION_DIR/manifest-index.sh"
 # #2065: the requires.core vocabulary and its resolution rules. Sourced here
 # rather than inlined so validate_manifest, the guard test and any future linter
 # read ONE table — the field having two readers that disagreed is what let three
@@ -83,6 +86,11 @@ yaml_cache_flush() {
         _ZBUILD_YAML_OUT=()
         _ZBUILD_YAML_RC=()
     fi
+    # #2152: the index and the input-resolve maps are filled from the same
+    # files; a caller that rewrote a manifest wants all of them gone. Whole-index
+    # (a rebuild is one fork), whatever the scope of the yaml flush.
+    manifest_index_flush
+    if declare -p _IR_BY_ID >/dev/null 2>&1; then _IR_BY_ID=(); _IR_BY_ROLE=(); _IR_SCAN_KEY=""; fi
 }
 
 # The key vocabulary the engine actually asks for — what prewarm populates.
@@ -108,12 +116,25 @@ yaml_cache_prewarm() {
     [[ "${ZBUILD_YAML_CACHE:-1}" == "1" ]] || return 0
     local root="${1:-${ZBUILD_PLUGINS_ROOT:-${_ZBUILD_ROOT:-.}/plugins}}"
     [[ -d "$root" ]] || return 0
-    local manifest key
+    # #2152 (ADR-065 §4): one find + one awk for the whole tree, then the memo
+    # is written from the index — present → value + newline, absent → 0 bytes,
+    # both rc 0, exactly the bytes the lazy path would have cached. The same
+    # -maxdepth 3 set as before: a path deeper than root/kind/name/manifest.yaml
+    # (a plugin's tests/ fixture) is left to the lazy path.
+    manifest_index_load "$root"
+    local nroot; nroot="$(_manifest_index_root "$root")"
+    [[ -n "${_ZBUILD_MIDX_FILES[$nroot]+x}" ]] || return 0
+    local manifest key rel ck
     while IFS= read -r manifest; do
+        [[ -n "$manifest" ]] || continue
+        rel="${manifest#"$nroot"/}"; rel="${rel//[^\/]/}"
+        (( ${#rel} <= 2 )) || continue
         for key in "${_ZBUILD_YAML_PREWARM_KEYS[@]}"; do
-            yaml_get "$manifest" "$key" >/dev/null 2>&1
+            ck="${manifest}"$'\034'"${key}"
+            _ZBUILD_YAML_OUT["$ck"]="${_ZBUILD_MIDX["$ck"]-}"
+            _ZBUILD_YAML_RC["$ck"]=0
         done
-    done < <(find "$root" -maxdepth 3 -name 'manifest.yaml' -type f 2>/dev/null)
+    done <<< "${_ZBUILD_MIDX_FILES[$nroot]}"
 }
 
 # ─── yaml_get — minimal YAML reader (we control the schema; no full parser) ─
