@@ -89,23 +89,8 @@ jobs:
 
             Post specific issues as inline comments. Use a top-level comment only for a summary.
             If no significant issues are found, say so clearly — do not invent findings.
-
-            End your review comment with `<!-- verdict: findings -->` if you found significant
-            issues, or `<!-- verdict: clean -->` if you found none.
           claude_args: |
             --model claude-sonnet-4-6
             --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api:*),Bash(git diff:*),Bash(git log:*),Bash(git show:*),Read,Grep,Glob"
             --max-turns 40
 
-      - name: Post review outcome comment
-        if: always()
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ steps.pr.outputs.number }}
-          REVIEW_OUTCOME: ${{ steps.claude-review.outcome }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          # shellcheck source=scripts/lib/ci-review-outcome.sh
-          source "${GITHUB_WORKSPACE}/scripts/lib/ci-review-outcome.sh"
-          post_review_outcome
