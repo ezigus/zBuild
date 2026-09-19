@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "run_id": "20260919003054-2358",
+  "stage": "intake",
+  "kind": "command",
+  "seq": 1,
+  "input": "gh issue view 2137 --json title\\,body\\,comments",
+  "output": "{\"body\":\"Throwaway. Used to verify PR #2136's live run-status comment (local run + CI daemon run). Safe to close after.\",\"comments\":[{\"id\":\"IC_kwDOSmjmcc8AAAABVfWyLQ\",\"author\":{\"login\":\"ezigus\"},\"authorAssociation\":\"OWNER\",\"body\":\"<!-- zbuild-run-status run_id=20260918185249-19075 -->\\n### zbuild run `20260918185249-19075` · issue #2137 · **interrupted**\\nengine `1e8800f` (`zbuild/issue-2131-run-status-comment`) · started 2026-09-18T22:52:49Z · updated 2026-09-18T22:58:14Z · sigterm\\n**5 impact** · 22:57:34Z → running · inputs: scope_manifest, design, plan · 6 stage summaries (0 RESOLVE)\\n**4.1.3 design-gate** · iter 1 · 22:57:32Z → 22:57:33Z (1s) · **pass** — The design is build-ready.\\n**4.1.2 spec-coverage** · iter 1 · 22:57:14Z → 22:57:31Z (17s) · **covered** — The issue is a throwaway with no enumerated requirements — its sole purpose is to exercise the live run-status comment path, which SPEC-1 and SPEC-2 directly cover.\\n**4.1.1 design** · iter 1 · 22:53:07Z → 22:57:14Z (4m07s) · **pass** — authored design.md — 9 file(s) in scope, 4 acceptance SPEC(s)\\n**3 plan** · 22:52:56Z → 22:53:06Z (10s) · **pass** — decomposed the goal into 1 step(s)\\n**2 intake** · 22:52:54Z → 22:52:56Z (2s) · **pass** — took in the goal for issue #2137: [zbuild-test] throwaway issue for #2131 live status comment \\n**1 hydrate** · 22:52:52Z → 22:52:54Z (2s) · **pass** — restored 10 artifact(s) from prior runs (restored)\\n\",\"createdAt\":\"2026-09-18T22:52:51Z\",\"includesCreatedEdit\":true,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/ezigus/zBuild/issues/2137#issuecomment-5737132589\",\"viewerDidAuthor\":false},{\"id\":\"IC_kwDOSmjmcc8AAAABVgDIwg\",\"author\":{\"login\":\"github-actions\"},\"authorAssociation\":\"CONTRIBUTOR\",\"body\":\"<!-- zbuild-run-status run_id=20260919003054-2358 -->\\n### zbuild run `20260919003054-2358` · issue #2137 · **running**\\nengine `cbbed73` (`main`) · started 2026-09-19T00:30:55Z · updated 2026-09-19T00:31:00Z · [run log](https://github.com/ezigus/zBuild/actions/runs/35409585846)\\ncurrent: **1 hydrate**\\n**1 hydrate** · 00:31:00Z → running\",\"createdAt\":\"2026-09-19T00:30:56Z\",\"includesCreatedEdit\":true,\"isMinimized\":false,\"minimizedReason\":\"\",\"reactionGroups\":[],\"url\":\"https://github.com/ezigus/zBuild/issues/2137#issuecomment-5737859266\",\"viewerDidAuthor\":true}],\"title\":\"[zbuild-test] throwaway issue for #2131 live status comment verification\"}",
+  "exit_code": 0,
+  "duration_ms": 324,
+  "metadata": {
+    "pwd": "/home/runner/.zbuild/repos/ezigus/zBuild/issues/2137/worktree"
+  },
+  "ts": "2026-09-19T00:31:02Z"
+}
