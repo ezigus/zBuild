@@ -179,6 +179,49 @@ set +e; e_out="$(ZBUILD_NEGCTL_TIMEOUT=1 ZBUILD_NEGCTL_TIMING_LOG="$TEST_TEMP_DI
 assert_eq "[#2138] a slow green testfile is not reported red" "" "$e_out"
 assert_eq "[#2138] …and the guard exits 0" "0" "$e_rc"
 
+# ─── #2142: a slow RED file is caught even with no measurement ───────────────
+# #2138 made a probe killed at its bound "inconclusive" (a false inert_build
+# blocks a good build). Build declares no test_timing input, so on run
+# 35412141973 the probe ran at the 60 s default, was killed at 60 s on a
+# 139 s file, and a red acceptance testfile went unreported. With no
+# measurement the bound is ZBUILD_TEST_FILE_TIMEOUT (480 s), not 60.
+print_test_section "#2142: unmeasured → the file-timeout ceiling; measured via the declared input"
+cat > "$REPO/tests/unit/slow-red-test.sh" <<'EOF'
+#!/usr/bin/env bash
+sleep 3
+exit 1
+EOF
+chmod +x "$REPO/tests/unit/slow-red-test.sh"
+set +e; f_out="$(ZBUILD_NEGCTL_TIMEOUT=1 ZBUILD_TEST_FILE_TIMEOUT=10 ZBUILD_NEGCTL_TIMING_LOG="" _build_guard_false_completion "tests/unit/slow-red-test.sh" "$REPO" 2>/dev/null)"; f_rc=$?; set -e
+assert_eq "[#2142] an unmeasured slow red file is reported red" "tests/unit/slow-red-test.sh" "$f_out"
+assert_eq "[#2142] …and the guard exits 1" "1" "$f_rc"
+# The measurement reaches the probe through the DECLARED test_timing input
+# (ZBUILD_STAGE_INPUTS), as it reaches the gate — not an ambient env var.
+printf 'file 3100 %s/tests/unit/slow-red-test.sh\n' "$REPO" > "$TEST_TEMP_DIR/timing2.log"
+printf '{"inputs":{"test_timing":"%s"}}\n' "$TEST_TEMP_DIR/timing2.log" > "$TEST_TEMP_DIR/si-2142.json"
+set +e; g_out="$(ZBUILD_NEGCTL_TIMEOUT=1 ZBUILD_TEST_FILE_TIMEOUT=10 ZBUILD_NEGCTL_TIMING_LOG="" ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/si-2142.json" _build_guard_false_completion "tests/unit/slow-red-test.sh" "$REPO" 2>/dev/null)"; g_rc=$?; set -e
+assert_eq "[#2142] a measured slow red file (via test_timing input) is reported red" "tests/unit/slow-red-test.sh" "$g_out"
+# review on PR #2147: the case above passes on the floor alone. What the
+# measurement buys is a TIGHTER bound: a file measured at 1 s that now hangs
+# is killed at 3× its measurement, not held to the 10 s ceiling. Elapsed
+# time is the observable — only the declared-input path can make it short.
+cat > "$REPO/tests/unit/hang-test.sh" <<'EOF'
+#!/usr/bin/env bash
+sleep 30
+exit 1
+EOF
+chmod +x "$REPO/tests/unit/hang-test.sh"
+printf 'file 1000 %s/tests/unit/hang-test.sh\n' "$REPO" > "$TEST_TEMP_DIR/timing3.log"
+printf '{"inputs":{"test_timing":"%s"}}\n' "$TEST_TEMP_DIR/timing3.log" > "$TEST_TEMP_DIR/si-2142b.json"
+_t0=$SECONDS
+set +e; h_out="$(ZBUILD_NEGCTL_TIMEOUT=1 ZBUILD_TEST_FILE_TIMEOUT=10 ZBUILD_NEGCTL_TIMING_LOG="" ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/si-2142b.json" _build_guard_false_completion "tests/unit/hang-test.sh" "$REPO" 2>/dev/null)"; h_rc=$?; set -e
+_el=$(( SECONDS - _t0 ))
+if (( _el <= 6 )); then assert_pass "[#2142] a measured file that hangs is bounded by 3× its measurement, not the ceiling (${_el}s)"; else assert_fail "[#2142] a measured file that hangs is bounded by 3× its measurement, not the ceiling" "took ${_el}s (ceiling 10 s — the declared input was not read)"; fi
+assert_eq "[#2142] …and a kill at the bound is UNKNOWN, not red (rc 0, nothing reported)" "0|" "${h_rc}|${h_out}"
+assert_eq "[#2142] the probe leaves no ZBUILD_NEGCTL_TIMING_LOG behind in the caller's environment" "" "${ZBUILD_NEGCTL_TIMING_LOG:-}"
+assert_contains "[#2142] build declares test_timing as an optional input" \
+    "$(awk '/^inputs:/,/^outputs:/' "$REPO_ROOT/plugins/agent/build/manifest.yaml")" "id: test_timing"
+
 cleanup_test_env
 
 print_test_results

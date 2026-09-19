@@ -83,6 +83,11 @@ inputs:
   # prompt gets the same text through the STAGE SUMMARIES block (§9).
   - id: test_failures_summary
     required: false
+  # #2142: the test stage's per-file wall times (`file <ms> <path>`), so the
+  # false-completion probe bounds a testfile by what was MEASURED, as the
+  # acceptance gate does (#2110). Absent on iteration 1 of a fresh run.
+  - id: test_timing
+    required: false
 
 outputs:
   - id: diff_patch
