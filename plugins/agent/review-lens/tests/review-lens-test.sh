@@ -817,23 +817,27 @@ if [[ "$_1840_s15_rc" -eq 130 ]]; then
     assert_fail "[SPEC-15] rc=10 must NOT be rc=130 (interrupted path)" "rc was 130"
 fi
 
-# ─── SPEC-16 [change]: manifest outputs declares review_lens_summary with summary: true ─
-# ADR-055 §9: the v2 migration adds a stage-statement output so the engine records
-# what this lens DID on every terminal path. Absent from the v1 manifest — fails at
-# merge-base, passes only after the migration landing this field.
-_1840_s16_outputs="$(awk '/^outputs:/{found=1} found && /^[^ ]/{if(!/^outputs:/)exit} found{print}' \
-    "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
-if grep -q 'review_lens_summary' <<< "$_1840_s16_outputs" && grep -q 'summary: true' <<< "$_1840_s16_outputs"; then
+# ─── SPEC-16 [guard]: manifest outputs declares review_lens_summary with summary: true ─
+# ADR-055 §9: the stage-statement output was present in v1 and must persist through
+# the v2 migration. This guard verifies it has not been accidentally removed.
+# Scoped to the review_lens_summary stanza (between its id: line and the next list
+# item) so a stray summary: true on a different output entry cannot satisfy this check.
+_1840_s16_stanza="$(awk '
+    /^  - id: review_lens_summary/ { found=1 }
+    found && /^  - id:/ && !/review_lens_summary/ { exit }
+    found { print }
+' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
+if grep -q 'summary: true' <<< "$_1840_s16_stanza"; then
     assert_pass "[SPEC-16] manifest outputs section declares review_lens_summary with summary: true"
 else
     assert_fail "[SPEC-16] manifest outputs must declare review_lens_summary with summary: true (ADR-055 §9)" \
         "absent"
 fi
 
-# ─── SPEC-17 [change]: success path writes lens-<name>-summary.md with affirmative language ─
-# ADR-055 §9: on a successful lens run stage_summary_write must produce a file with
-# affirmative pass-verdict language — distinct from the advisory-absence language on
-# degrade paths (SPEC-8). New in v2; the v1 success path wrote no summary file.
+# ─── SPEC-17 [guard]: success path writes lens-<name>-summary.md with affirmative language ─
+# ADR-055 §9: the success summary (pass status, "reviewed" language) was present in v1
+# and must persist through the v2 migration — distinct from the advisory-absence language
+# on degrade paths (SPEC-8). Guard: this behavior existed in v1 and must be preserved.
 # shellcheck disable=SC2329
 route_to_model() {
     printf 'call\n' >> "$_RL_CALLS"
