@@ -35,6 +35,7 @@ provides:
   result_contract: 2
   events:
     - spec_correspondence.judged
+    - spec_correspondence.stage_clock
     - spec_correspondence.no_contract
     - spec_correspondence.result.write_failed
 
