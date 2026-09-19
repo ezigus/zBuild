@@ -15,12 +15,13 @@
 # ZBUILD_TESTS_DIR and an EMPTY mutation dir via ZBUILD_MUTATION_DIR, so no real
 # tier or mutation spec ever runs. ZBUILD_TIER_CONCURRENCY=0 selects the verbatim
 # serial path (the parity baseline + escape hatch). ZBUILD_TIER_BUDGET pins the
-# job budget so the floor(B/2) split is deterministic regardless of host CPUs.
+# per-tier worker count (#2158: every tier gets min(ZBUILD_TEST_MAX_JOBS, B)) so
+# the test is deterministic regardless of host CPUs.
 #
 # SPEC-1  CHANGE  tiers OVERLAP: concurrent wall-clock < 0.7x the serial sum
 # SPEC-2  CHANGE  byte-identical stdout (serial vs concurrent), stderr FAIL order
 # SPEC-3  GUARD   a failing tier → exit 1 (both paths); all-clean → exit 0
-# SPEC-4  CHANGE  budget split: unit JOBS=ceil(B/2), integration JOBS=ceil(B/2) (#2123), mutation JOBS=B-ceil(B/2)
+# SPEC-4  CHANGE  every tier gets the FULL worker count min(ZBUILD_TEST_MAX_JOBS, CPUs) (#2158) — the budget is no longer split
 # SPEC-5  CHANGE  per-tier distinct TMPDIR; coverage traces concat in canonical order
 # SPEC-6  GUARD   UPDATE_GOLDEN=1 → serial path (no buf_dir), still byte-identical
 # SPEC-7  GUARD   ZBUILD_TIER_CONCURRENCY=0 → serial path
@@ -87,7 +88,7 @@ _all() {
   # skips the clean-tree gate even when the live worktree is dirty — the gate is
   # now gated on spec count, so the concurrency test's hermeticity is preserved.
   env -u ZBUILD_TEST_PARALLEL_JOBS -u ZBUILD_PARALLEL_SAFE_TIERS \
-      -u ZBUILD_TIER_CONCURRENCY -u ZBUILD_TIER_BUDGET -u UPDATE_GOLDEN \
+      -u ZBUILD_TIER_CONCURRENCY -u ZBUILD_TIER_BUDGET -u ZBUILD_TEST_MAX_JOBS -u UPDATE_GOLDEN \
       ZBUILD_TESTS_DIR="$td" \
       ZBUILD_PLUGINS_DIR="$EMPTY_DIR" \
       ZBUILD_CORE_DIR="$EMPTY_DIR" \
@@ -153,7 +154,12 @@ assert_eq "[SPEC-3b] failing tier → exit 1 (serial)" "1" "$_RC"
 _all "$FAST"
 assert_eq "[SPEC-3c] all-clean → exit 0 (concurrent)" "0" "$_RC"
 
-# ─── [SPEC-4] CHANGE: budget split unit=ceil(B/2), integration=ceil(B/2), mutation=rest ─
+# ─── [SPEC-4] CHANGE (#2158): every tier gets min(ZBUILD_TEST_MAX_JOBS, CPUs) ──
+# #1840 run 5: on a 4-vCPU runner the split gave unit 2 workers and integration
+# 2; the run's timing log shows 111 CPU-min of work on 240 available (the box
+# idle 54%), and unit's 54.8 min of files ÷ 2 = the 27.5-min tier wall seen.
+# CI runs each tier alone at the full count (8 + 9 min). ZBUILD_TIER_BUDGET
+# stands in for the detected CPU count here; ZBUILD_TEST_MAX_JOBS is the cap.
 # Hook: unit's fake test records the JOBS it received; a wrapper mutation script
 # is NOT reachable (we run the real run-mutation.sh against an empty dir), so we
 # assert the unit half via a parallel-active probe + a JOBS-echo fixture.
@@ -170,13 +176,24 @@ rm -f "$HOOK".*
 _all "$JOBS_FIX" ZBUILD_TIER_BUDGET=6
 _u_jobs="$(cat "$HOOK.unit" 2>/dev/null || echo MISSING)"
 _e_jobs="$(cat "$HOOK.e2e" 2>/dev/null || echo MISSING)"
-assert_eq "[SPEC-4] unit tier sees JOBS=ceil(6/2)=3" "3" "$_u_jobs"
+assert_eq "[SPEC-4] unit tier sees the FULL count: JOBS=6 for 6 CPUs (was ceil(6/2)=3)" "6" "$_u_jobs"
 assert_eq "[SPEC-4b] a non-parallel-safe file-tier (e2e) sees JOBS=0 (serial within tier)" "0" "$_e_jobs"
 # #2123: integration is in _par_safe_tiers (#991) and is the suite's long pole
 # (243 files / 4,039s serial = the pipeline's 45–54-minute test stage). Under
-# --tier all it now gets the same share as unit instead of JOBS=0.
+# --tier all it gets the same count as unit.
 _i_jobs="$(cat "$HOOK.integration" 2>/dev/null || echo MISSING)"
-assert_eq "[SPEC-4c] integration tier sees JOBS=ceil(6/2)=3 under --tier all (#2123)" "3" "$_i_jobs"
+assert_eq "[SPEC-4c] integration tier sees the FULL count too: JOBS=6 (#2158)" "6" "$_i_jobs"
+# The cap: a 16-CPU box with ZBUILD_TEST_MAX_JOBS=2 runs 2 per tier.
+rm -f "$HOOK".*
+_all "$JOBS_FIX" ZBUILD_TIER_BUDGET=16 ZBUILD_TEST_MAX_JOBS=2
+assert_eq "[SPEC-4d] ZBUILD_TEST_MAX_JOBS caps the per-tier count (unit)" "2" "$(cat "$HOOK.unit" 2>/dev/null || echo MISSING)"
+assert_eq "[SPEC-4d] …and integration" "2" "$(cat "$HOOK.integration" 2>/dev/null || echo MISSING)"
+# The default cap is 8: 16 CPUs → 8 per tier.
+rm -f "$HOOK".*
+# 10, not 16: the old split gave ceil(16/2)=8 too, so 16 could not tell the cap
+# from the split (review on #2160); 10 → old 5, new min(10, 8) = 8.
+_all "$JOBS_FIX" ZBUILD_TIER_BUDGET=10
+assert_eq "[SPEC-4e] the default cap is 8 (10-CPU box capped; was ceil(10/2)=5)" "8" "$(cat "$HOOK.unit" 2>/dev/null || echo MISSING)"
 
 # ─── [SPEC-5] CHANGE: per-tier distinct TMPDIR + coverage concat ─────────────
 TMP_HOOK="$TEST_TEMP_DIR/tmp-hook"

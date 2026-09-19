@@ -259,20 +259,29 @@ _rt_run_inner() {
   return "$_rc"
 }
 
+# _zb_max_jobs — the cap on any tier's worker count (#2158): ZBUILD_TEST_MAX_JOBS,
+# default 8, so a many-core host doesn't oversubscribe the bounded pool.
+_zb_max_jobs() {
+  local m="${ZBUILD_TEST_MAX_JOBS:-8}"
+  [[ "$m" =~ ^[1-9][0-9]*$ ]] || m=8
+  printf '%s' "$m"
+}
+
 # _zb_default_jobs — portable CPU-count for the #984 parallel-by-default path.
 # Linux has `nproc`; macOS does not (uses `sysctl -n hw.ncpu`). Falls back to 4
-# and caps at 8 so a many-core host doesn't oversubscribe the bounded pool.
+# and caps at _zb_max_jobs.
 _zb_default_jobs() {
-  local n
+  local n m
   n="$( { nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null; } | head -1 )"  # sigpipe-ok: writer emits exactly one line
   [[ "$n" =~ ^[1-9][0-9]*$ ]] || n=4
-  (( n > 8 )) && n=8
+  m="$(_zb_max_jobs)"
+  (( n > m )) && n=$m
   printf '%s' "$n"
 }
 
-# _rt_tier_budget — total job budget the cross-tier-concurrency path (#997) splits
-# between the parallel unit tier and the parallel mutation tier. Defaults to the
-# CPU-count budget; ZBUILD_TIER_BUDGET overrides it so the floor/ceil split is
+# _rt_tier_budget — the per-tier worker count the cross-tier-concurrency path
+# (#997) hands EVERY parallel tier (#2158: no longer split between them).
+# Defaults to the CPU count; ZBUILD_TIER_BUDGET overrides it so the rule is
 # deterministic in tests regardless of host CPU count.
 _rt_tier_budget() {
   if [[ "${ZBUILD_TIER_BUDGET:-}" =~ ^[1-9][0-9]*$ ]]; then
@@ -877,18 +886,23 @@ case "$tier" in
     }
     trap '_rt_signal_abort' INT TERM
     if [[ $_tier_conc -eq 1 ]]; then
-      # Split the job budget: unit and integration each get ceil(B/2), mutation
-      # gets the rest. e2e and golden run serial within themselves (JOBS=0) —
-      # they are short and overlap the others at the tier level.
-      # #2123: integration is in _par_safe_tiers (#991) and is the long pole —
-      # 243 files / 4,039s serial was the pipeline's 45–54-minute test stage —
-      # so it no longer runs at JOBS=0. The mild oversubscription (2+2+2 on
-      # 4 vCPU) is deliberate: the tiers are fork-bound, not CPU-bound
-      # (sys > user on every file in CI, see _rt_run_inner).
+      # #2158: every parallel tier gets the FULL count, min(ZBUILD_TEST_MAX_JOBS,
+      # CPUs). The old split — unit ceil(B/2), integration ceil(B/2), mutation
+      # the rest — gave each tier 2 workers on a 4-vCPU runner: #1840 run 5's
+      # test stage took 60 min with the box idle 54% of the time (111 CPU-min
+      # of work, 240 available; unit's 54.8 min of files ÷ 2 = the 27.5-min
+      # tier wall observed), while CI runs each tier alone at the full count
+      # in 8–9 min. The tiers are fork-bound, not CPU-bound (sys > user on
+      # every file), so the overlap at 4+4+4 on 4 vCPU is the point. e2e and
+      # golden run serial within themselves (JOBS=0) — short, they overlap
+      # the others at the tier level.
       _B="$(_rt_tier_budget)"
-      _ujobs=$(( (_B + 1) / 2 )); (( _ujobs < 1 )) && _ujobs=1
-      _ijobs=$_ujobs
-      _mjobs=$(( _B - _ujobs )); (( _mjobs < 1 )) && _mjobs=1
+      _M="$(_zb_max_jobs)"
+      (( _B > _M )) && _B=$_M
+      (( _B < 1 )) && _B=1
+      _ujobs=$_B
+      _ijobs=$_B
+      _mjobs=$_B
       buf_dir="$(mktemp -d -t zbuild-tier-buf.XXXXXX)"
       # Launch each tier in its own background subshell. Each writes stdout and
       # stderr to SEPARATE files so they can be replayed to their ORIGINAL fds —
