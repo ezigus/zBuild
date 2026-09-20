@@ -1,5 +1,5 @@
-## spec-coverage — covered
+## spec-coverage — unreadable
 
-- Every acceptance checkbox maps to a SPEC (v2 result paths → SPEC-1/2/3/13/15; valid_verdicts → SPEC-7; no path literals → SPEC-11; router budgets + template override → SPEC-6/SPEC-14; passing-run compat → SPEC-9; primary:true → SPEC-12), and the "Also Land Here" requirements (schema-gate parser → SPEC-4; visible-failure guard → SPEC-8; budget blocks → SPEC-5/SPEC-18; disposition:exhausted → SPEC-15) are all covered.
+- no parseable verdict from the model — the design was not judged
 
 - every requirement the issue states maps to a declared SPEC
