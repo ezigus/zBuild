@@ -5,8 +5,8 @@
   "files_changed": [
     "plugins/agent/review-lens/tests/review-lens-test.sh"
   ],
-  "lines_added": 3,
-  "lines_removed": 3,
+  "lines_added": 11,
+  "lines_removed": 7,
   "diff_patch_path": "/home/runner/work/_temp/zbuild-state/artifacts/diff.patch",
   "iterations": 1,
   "terminated_reason": "done_sentinel",
@@ -15,7 +15,7 @@
   "reason": "build_complete",
   "scope_violation": false,
   "scope_violations": [],
-  "loop_input_tokens": 21,
-  "loop_output_tokens": 23384,
+  "loop_input_tokens": 14,
+  "loop_output_tokens": 22399,
   "notes": "Build stage completed. Diff written to artifact; not applied."
 }
