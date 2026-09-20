@@ -5,17 +5,30 @@
   "files_changed": [
     "plugins/agent/review-lens/tests/review-lens-test.sh"
   ],
-  "lines_added": 35,
-  "lines_removed": 0,
+  "lines_added": 9,
+  "lines_removed": 7,
   "diff_patch_path": "/home/runner/work/_temp/zbuild-state/artifacts/diff.patch",
   "iterations": 1,
   "terminated_reason": "done_sentinel",
   "verdict": "pass",
   "disposition": "complete",
-  "reason": "build_complete",
+  "reason": "scope_request_pending",
   "scope_violation": false,
   "scope_violations": [],
-  "loop_input_tokens": 21,
-  "loop_output_tokens": 12902,
-  "notes": "Build stage completed. Diff written to artifact; not applied."
+  "loop_input_tokens": 19,
+  "loop_output_tokens": 34418,
+  "notes": "Build stage completed. Diff written to artifact; not applied.",
+  "out_of_scope_files": [
+    "tests/unit/lint-grep-c-test.sh"
+  ],
+  "scope_expansion_request": {
+    "files": [
+      {
+        "path": "tests/unit/lint-grep-c-test.sh",
+        "category": "collateral_tests",
+        "evidence": " 2>/dev/null || echo 0)",
+        "reason": "build blocked on out-of-scope file named in test feedback"
+      }
+    ]
+  }
 }
