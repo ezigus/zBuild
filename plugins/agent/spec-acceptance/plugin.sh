@@ -179,7 +179,7 @@ _ag_build_reason() {
 # compose into repos that do not use SPEC.
 _ag_noop_precondition_unmet() {
     local result_file="$1" pc="$2"
-    printf '{"result_contract":2,"verdict":"pass","reason":"precondition_unmet","precondition":"%s","disposition":"none","failures":[]}\n' \
+    printf '{"result_contract":2,"verdict":"pass","reason":"precondition_unmet","precondition":"%s","disposition":"complete","severity":"none","failures":[]}\n' \
         "$pc" | atomic_write "$result_file"
     local _summary_dir; _summary_dir="$(dirname "$result_file")"
     printf 'verdict=pass\nreason=precondition_unmet\nprecondition=%s\n' "$pc" \
@@ -287,7 +287,7 @@ acceptance_gate_run() {
     # Fence present but unparseable → fail closed (a malformed contract must NOT
     # bypass the gate; this is a genuine violation, NOT an applicability no-op).
     if ! extract_acceptance_block "$design_md" >/dev/null 2>&1; then
-        printf '{"result_contract":2,"verdict":"fail","reason":"malformed_acceptance_block","disposition":"terminal","failures":["malformed_acceptance_block"]}\n' \
+        printf '{"result_contract":2,"verdict":"fail","reason":"malformed_acceptance_block","disposition":"complete","severity":"terminal","failures":["malformed_acceptance_block"]}\n' \
             | atomic_write "$result_file"
         printf 'verdict=fail\nreason=malformed_acceptance_block\n' \
             | atomic_write "$artifact_dir/acceptance-summary.txt"
@@ -512,13 +512,25 @@ acceptance_gate_run() {
     # below (#1711 inert_wiring, #2097 not_passing_at_head).
     # SPEC-vocabulary → generic-field mapping stays HERE (ADR-021). verdict /
     # disposition / rc UNCHANGED.
-    local fault=""
+    # #2161: two words, two fields. `disposition` is ADR-054's closed set —
+    # how THIS stage stopped — and the gate reached a conclusion on every one
+    # of these paths, so it is `complete` whatever the verdict. The cycle-policy
+    # word (`none`/`recoverable`/`advisory`/`terminal`, ADR-021) is `severity`:
+    # the orchestrator halts on terminal and the aggregator demotes advisory
+    # from there. #1840 run 6 passed all 19 SPECs and the run ended blocked —
+    # the pass path wrote `disposition: none` and no `reason`, and the v2
+    # reader (verdict.sh) refused it. The fail paths carried the same wrong
+    # words and were only ever tolerated because rc≠0 skips the reader.
+    local fault="" severity="none"
+    disposition="complete"
     if [[ ${#failures[@]} -gt 0 ]]; then
         failures_json="$(printf '%s\n' "${failures[@]}" | jq -R . | jq -s .)"
-        disposition="$(_ag_classify_disposition "${failures[@]}")"
+        severity="$(_ag_classify_disposition "${failures[@]}")"
         reason_msg="$(_ag_build_reason "${failures[@]}")"
     else
-        disposition="none"
+        # ADR-054: reason is mandatory; a pass says what it verified.
+        local _n_specs; _n_specs="$(acceptance_list_spec_ids "$design_md" 2>/dev/null | grep -c . || true)"
+        reason_msg="all ${_n_specs:-0} SPEC(s) verified"
     fi
     # #1987: these three classes are all "the SPECIFICATION is wrong" — the
     # declaration, the classification, or the wiring the design asserted. The
@@ -642,17 +654,10 @@ acceptance_gate_run() {
     # the lint refuses that, so absence here is never silently a routing answer.
     # `--arg rt ""` + a `(if $rt=="" ...)` conditional keeps it absent otherwise,
     # so a build-fixable failure's artifact is byte-shape-identical to today.
-    if [[ -n "$reason_msg" ]]; then
-        jq -cn --arg v "$verdict" --arg d "$disposition" --arg r "$reason_msg" \
-            --arg ft "$fault" --argjson f "$failures_json" \
-            '{result_contract:2,verdict:$v,disposition:$d,reason:$r,failures:$f}
-             + (if $ft=="" then {} else {fault:$ft} end)' | atomic_write "$result_file"
-    else
-        jq -cn --arg v "$verdict" --arg d "$disposition" \
-            --arg ft "$fault" --argjson f "$failures_json" \
-            '{result_contract:2,verdict:$v,disposition:$d,failures:$f}
-             + (if $ft=="" then {} else {fault:$ft} end)' | atomic_write "$result_file"
-    fi
+    jq -cn --arg v "$verdict" --arg d "$disposition" --arg sv "$severity" --arg r "$reason_msg" \
+        --arg ft "$fault" --argjson f "$failures_json" \
+        '{result_contract:2,verdict:$v,disposition:$d,severity:$sv,reason:$r,failures:$f}
+         + (if $ft=="" then {} else {fault:$ft} end)' | atomic_write "$result_file"
 
     eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=$verdict"
 

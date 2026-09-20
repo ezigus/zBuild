@@ -6,7 +6,7 @@
 #   acceptance.gate.not_passing_at_head_escalated — build had one honest try
 #   (iter 1, see S14 in acceptance-gate-test.sh: no fault) and the assertion
 #   STILL does not pass at HEAD, so the design's premise is what is suspect.
-# [SPEC-2] (CHANGE): disposition is recoverable at iter>=2 — terminal would halt
+# [SPEC-2] (CHANGE): severity is recoverable at iter>=2 — terminal would halt
 #   the cycle before the aggregator reads the fault and routes to design
 #   (the #1686/#1711 rationale, verbatim).
 #
@@ -90,8 +90,8 @@ fi
 assert_contains "[SPEC-1] the event names the SPEC" \
     "$(grep 'not_passing_at_head_escalated' "$EVENTS" 2>/dev/null || echo '')" "SPEC-1"
 
-assert_eq "[SPEC-2] iter=2 disposition is recoverable, not terminal" "recoverable" \
-    "$(jq -r '.disposition // empty' <<<"$RESULT")"
+assert_eq "[SPEC-2] iter=2 severity is recoverable, not terminal" "recoverable" \
+    "$(jq -r '.severity // empty' <<<"$RESULT")"
 
 # [guard] a class that IS design-authored structure still outranks: the
 # escalation must not turn a malformed block into a recoverable one.

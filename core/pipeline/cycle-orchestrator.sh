@@ -2127,7 +2127,10 @@ _cycle_member_terminal_failure() {
         result="$artifacts_dir/$file"
         [[ -s "$result" ]] || continue
         jq -e '.verdict == "fail"' "$result" >/dev/null 2>&1 || continue
-        disp="$(jq -r '.disposition // ""' "$result" 2>/dev/null || echo "")"
+        # #2161: the cycle-policy word is `severity`; `disposition` is ADR-054's
+        # "how did the stage stop". A v1-shaped result (no severity) still
+        # carries the word in disposition — read that as the fallback.
+        disp="$(jq -r '.severity // .disposition // ""' "$result" 2>/dev/null || echo "")"
         if [[ "$disp" == "terminal" ]]; then
             _CYCLE_TERMINAL_MEMBER_ID="$member"
             _CYCLE_TERMINAL_MEMBER_REASON="$(jq -r '.reason // ""' "$result" 2>/dev/null || echo "")"

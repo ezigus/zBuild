@@ -328,8 +328,8 @@ assert_eq "[SPEC-1] R6b: iter=2 → verdict=fail" "fail" "$(jq -r .verdict <<<"$
 r6b_failures="$(jq -r '.failures[]' <<<"$RESULT" 2>/dev/null || echo '')"
 assert_contains "[SPEC-1] R6b: iter=2 failures contain inert_wiring YAML target" \
     "$r6b_failures" "inert_wiring:.github/workflows/test.yml"
-assert_eq "[SPEC-1] R6b: iter=2 → disposition=recoverable" "recoverable" \
-    "$(jq -r '.disposition' <<<"$RESULT")"
+assert_eq "[SPEC-1] R6b: iter=2 → severity=recoverable" "recoverable" \
+    "$(jq -r '.severity' <<<"$RESULT")"
 assert_eq "[SPEC-1] R6b: iter=2 → fault=specification (iter=1 had none)" "specification" \
     "$(jq -r '.fault // empty' <<<"$RESULT")"
 assert_event_emitted "[SPEC-1] R6b: inert_wiring_escalated event emitted" \

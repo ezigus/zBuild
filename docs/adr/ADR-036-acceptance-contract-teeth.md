@@ -837,3 +837,23 @@ the route-back replay offers re-tagging as the honest resolution, not only re-au
 This is the sentence above ("the change-vs-guard classification … is design-side") made
 operational. Verification: `acceptance-gate-tautology-escalation-test.sh` (iter 1 no fault;
 iter 2 fault + event), `design-prior-gate-feedback-test.sh` T1 (#2157 assertions).
+
+## Amendment (#2161, 2026-09-20) — `severity` carries the cycle-policy word; `disposition` is ADR-054's
+
+The gate wrote `result_contract: 2` while filling `disposition` with ADR-021's member
+vocabulary — `none` on a pass, `recoverable`/`advisory`/`terminal` on a failure — and the
+no-failures branch wrote no `reason`. ADR-054's reader requires `verdict`/`disposition`/`reason`
+and a `disposition` from its closed set; on a pass (rc 0) it refused the result, and #1840 run 6
+ended `failed/blocked` fifteen seconds after the gate had verified all 19 SPECs. The failure
+paths carried the same wrong words and were only ever tolerated because rc≠0 skips the reader.
+
+Now: `disposition` is `complete` on every path where the gate reached a conclusion (the
+verdict says what it concluded); `reason` is always written (a pass says "all N SPEC(s)
+verified"); and the cycle-policy word from `_ag_classify_disposition` is `severity`
+(`none|recoverable|advisory|terminal`, the #1959/#2129 vocabulary and its lint unchanged).
+`_cycle_member_terminal_failure` halts on `severity == terminal` and the gate-aggregator
+demotes `severity == advisory`, both reading `disposition` as the fallback for v1-shaped
+results. Verification: `tests/integration/acceptance-gate-v2-reader-test.sh` (the real gate's
+pass, fail, precondition-unmet and malformed results through `runner_read_stage_verdict` with
+rc 0 — red before: `missing_field:reason`, `unknown_disposition:recoverable`), and
+`gate-v2-contract-test.sh` SPEC-15 (every mechanical gate's pass result through the reader).

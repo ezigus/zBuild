@@ -10,7 +10,7 @@
 #   already exists at the baseline can be made to fail at the baseline, so the
 #   [change] tag is the defect and design owns the tag (#1840 run 5 looped two
 #   iterations on SPEC-16/17, true on main since #2000).
-# [SPEC-2] (CHANGE): disposition stays recoverable at iter>=2 — terminal would
+# [SPEC-2] (CHANGE): severity stays recoverable at iter>=2 — terminal would
 #   halt the cycle before the aggregator reads the fault and routes to design.
 #
 # Mirrors acceptance-gate-npah-escalation-test.sh (#2097); the fixture differs:
@@ -94,8 +94,8 @@ else
 fi
 assert_contains "[SPEC-1] the event names the SPEC" \
     "$(grep 'tautology_escalated' "$EVENTS" 2>/dev/null || echo '')" "SPEC-1"
-assert_eq "[SPEC-2] iter=2 disposition stays recoverable" "recoverable" \
-    "$(jq -r '.disposition // empty' <<<"$RESULT")"
+assert_eq "[SPEC-2] iter=2 severity stays recoverable" "recoverable" \
+    "$(jq -r '.severity // empty' <<<"$RESULT")"
 
 unset ZBUILD_CYCLE_ITER
 cleanup_test_env

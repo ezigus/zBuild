@@ -147,8 +147,10 @@ _ga_read_gate_verdict() {
             # disposition=advisory demotes a fail to a non-blocking status so an
             # infra-flake never blocks convergence (recoverable/terminal/absent
             # stay blocking — recoverable drives another build iteration).
+            # #2161: the word lives in `severity`; a v1-shaped result still
+            # carries it in `disposition` (fallback).
             local disp
-            disp="$(jq -r '.disposition // ""' "$result_path" 2>/dev/null || echo "")"
+            disp="$(jq -r '.severity // .disposition // ""' "$result_path" 2>/dev/null || echo "")"
             if [[ "$disp" == "advisory" ]]; then echo "advisory"; else echo "fail"; fi
             ;;
         *)           echo "malformed" ;;

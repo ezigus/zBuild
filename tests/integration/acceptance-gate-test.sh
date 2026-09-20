@@ -176,7 +176,7 @@ assert_eq "S6: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
 
 # ── S6b: [SPEC-1][SPEC-2] guard SPEC with invariant regression → verdict=fail ────
 # A [guard]-classified SPEC whose assertion FAILS at baseline must yield
-# verdict=fail with guard_regressed in failures[] and disposition=recoverable —
+# verdict=fail with guard_regressed in failures[] and severity=recoverable —
 # the assertion contradicts its own SPEC, and #1583 routes that to build.
 REPO6b="$(_build_repo gate-guard-regressed '#!/usr/bin/env bash
 # [SPEC-1] guard: invariant broken (exits 1 to simulate regression at baseline)
@@ -196,8 +196,8 @@ assert_contains "[SPEC-2] S6b: guard_regressed in failures[]" \
 # #1583 precedent: a wrong assertion is build-fixable, so the cycle re-iterates
 # and feeds the diagnosis to build. Terminal would strand it — no rewind edge
 # exists for this class, so the run could only die at max_iterations.
-assert_eq "[SPEC-2] S6b: guard_regressed disposition=recoverable (build re-authors the assertion)" \
-    "recoverable" "$(jq -r .disposition <<<"$RESULT")"
+assert_eq "[SPEC-2] S6b: guard_regressed severity=recoverable (build re-authors the assertion)" \
+    "recoverable" "$(jq -r .severity <<<"$RESULT")"
 assert_contains "[SPEC-2] S6b: the reason names the contradiction, not a generic failure" \
     "$(jq -r .reason <<<"$RESULT")" "mislabelled"
 
@@ -205,7 +205,7 @@ assert_contains "[SPEC-2] S6b: the reason names the contradiction, not a generic
 # #1670's third criterion: a guard test that cannot RUN at the merge-base proves
 # nothing about the invariant, so it must warn rather than block. The unit tests
 # pin the emitted token; this pins the consequence that actually matters — the
-# gate declares disposition=advisory, which gate-aggregator demotes from a
+# gate declares severity=advisory, which gate-aggregator demotes from a
 # blocking fail to a satisfied member (plugin.sh:195,243).
 REPO6c="$(_build_repo gate-guard-harness '#!/usr/bin/env bash
 set -euo pipefail
@@ -223,10 +223,10 @@ assert_contains "[SPEC-3] S6c: an unrunnable guard baseline is an infra class, n
     "$(jq -rc .failures <<<"$RESULT")" "negctl_error:harness"
 assert_eq "[SPEC-3] S6c: guard harness error does NOT become guard_regressed" \
     "false" "$(jq -r '[.failures[]|test("guard_regressed")]|any' <<<"$RESULT")"
-assert_eq "[SPEC-3] S6c: disposition=advisory (warns, does not block the cycle)" \
-    "advisory" "$(jq -r .disposition <<<"$RESULT")"
+assert_eq "[SPEC-3] S6c: severity=advisory (warns, does not block the cycle)" \
+    "advisory" "$(jq -r .severity <<<"$RESULT")"
 # Pin BOTH halves of the two-layer contract: the gate still reports rc=1 ("I
-# could not form an opinion"), and only disposition=advisory demotes that to
+# could not form an opinion"), and only severity=advisory demotes that to
 # non-blocking. Asserting the disposition alone would stay green if the gate
 # silently started returning rc=0, which would break the contract from the
 # other side. Same gap the review caught in NC-F4a/b.
@@ -317,7 +317,7 @@ set +e; _run_gate "$REPO10"; set -e
 FAILURES="$(jq -rc .failures <<<"$RESULT")"
 assert_eq "S10: both violations → rc=1" "1" "$RC"
 assert_eq "S10: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
-assert_eq "S10: disposition=recoverable (#1585 — tautology+untagged both build-fixable → cycle re-iterates)" "recoverable" "$(jq -r .disposition <<<"$RESULT")"
+assert_eq "S10: severity=recoverable (#1585 — tautology+untagged both build-fixable → cycle re-iterates)" "recoverable" "$(jq -r .severity <<<"$RESULT")"
 assert_contains "S10: untagged_spec:SPEC-2 present in one pass" "$FAILURES" "untagged_spec:SPEC-2"
 assert_contains "S10: tautology:SPEC-1 present in the SAME pass" "$FAILURES" "tautology:SPEC-1"
 assert_event_emitted "S10: untagged_spec event" "$EVENTS" "acceptance.gate.untagged_spec"
@@ -340,13 +340,13 @@ assert_contains_regex "S11: reason names the tautology class" "$REASON" "[Tt]aut
 # Since #1477 removed design's stub-writer, BUILD authors assertion bodies, so a
 # tautological [change] SPEC is fixed by build re-authoring it (the mechanical
 # negative-control re-verifies). The gate sets NO fault (#1583) AND classifies
-# it as disposition=recoverable (#1585) so the build_test_cycle RE-ITERATES and feeds
+# it as severity=recoverable (#1585) so the build_test_cycle RE-ITERATES and feeds
 # the tautology to build — instead of halting terminally at iter 1. verdict / rc
 # unchanged (still a fail until build fixes it).
 # RESULT here still holds REPO10's run (tautology SPEC-1 + untagged SPEC-2).
 assert_eq "S12: tautology → fault absent (build-fixable, #1583)" "" "$(jq -r '.fault // ""' <<<"$RESULT")"
 assert_eq "S12: tautology verdict unchanged (still fail)" "fail" "$(jq -r .verdict <<<"$RESULT")"
-assert_eq "S12: tautology disposition=recoverable (#1585 — cycle re-iterates, not terminal)" "recoverable" "$(jq -r .disposition <<<"$RESULT")"
+assert_eq "S12: tautology severity=recoverable (#1585 — cycle re-iterates, not terminal)" "recoverable" "$(jq -r .severity <<<"$RESULT")"
 
 # ── S13 (#1219): a build-fixable failure does NOT set fault ─────────────
 # As of #1583 NO failure class is design-rooted (tautology became build-fixable
@@ -374,8 +374,8 @@ tests/feature-test.sh
 EOF
 set +e; _run_gate "$REPO14"; set -e
 assert_eq "S14: not_passing_at_head → fault absent (build-fixable)" "" "$(jq -r '.fault // ""' <<<"$RESULT")"
-assert_eq "S14 (#2097): iter 1 disposition is recoverable, not terminal" "recoverable" \
-    "$(jq -r '.disposition // ""' <<<"$RESULT")"
+assert_eq "S14 (#2097): iter 1 severity is recoverable, not terminal" "recoverable" \
+    "$(jq -r '.severity // ""' <<<"$RESULT")"
 
   # exits with $FAIL
 
@@ -407,11 +407,11 @@ assert_contains "S10b: names the offending SPEC" "$FAILURES_10B" "SPEC-1"
 # recoverable, not terminal — the build cycle gets to go and write the file,
 # which is the right disposition for "promised it, did not create it".
 assert_eq "S10b: unfulfilled promise is recoverable (cycle re-iterates)" \
-    "recoverable" "$(jq -r .disposition <<<"$RESULT")"
+    "recoverable" "$(jq -r .severity <<<"$RESULT")"
 
 # ── S15 (#1686): WIRING target not in this commit's diff → wiring_not_on_path ───
 # A WIRING file declared in design.md that this commit never touched cannot flip
-# when reverted. The gate must emit verdict=fail, disposition=recoverable and
+# when reverted. The gate must emit verdict=fail, severity=recoverable and
 # fault=specification, so the aggregator fires specification and route_back rewinds
 # to design_verify_cycle — the first live activation of the dormant carrier.
 #
@@ -442,8 +442,8 @@ RC15="$RC"; RESULT15="$RESULT"; EVENTS15="$EVENTS"
 
 assert_eq "[SPEC-3] S15: wiring_not_on_path → rc=1" "1" "$RC15"
 assert_eq "[SPEC-3] S15: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT15")"
-assert_eq "[SPEC-3] S15: disposition=recoverable (design-rewind, not terminal halt)" \
-    "recoverable" "$(jq -r .disposition <<<"$RESULT15")"
+assert_eq "[SPEC-3] S15: severity=recoverable (design-rewind, not terminal halt)" \
+    "recoverable" "$(jq -r .severity <<<"$RESULT15")"
 assert_eq "[SPEC-3] S15: fault=specification (first live activation of dormant carrier)" \
     "specification" "$(jq -r '.fault // ""' <<<"$RESULT15")"
 assert_contains "[SPEC-3] S15: failures[] contains wiring_not_on_path" \
