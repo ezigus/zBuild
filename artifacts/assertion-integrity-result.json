@@ -1,9 +1,31 @@
 {
   "result_contract": 2,
-  "verdict": "pass",
+  "verdict": "fail",
   "disposition": "complete",
-  "reason": "declared acceptance testfiles are unchanged since authoring",
+  "reason": "acceptance assertions modified after authoring: plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh plugins/agent/review-lens/tests/review-lens-test.sh",
   "data": {
-    "violated": []
+    "violated": [
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh",
+      "plugins/agent/review-lens/tests/review-lens-test.sh"
+    ]
   }
 }
