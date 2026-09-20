@@ -162,11 +162,11 @@ fi
 print_test_section "5. build does not author or modify assertions"
 
 assert_contains "[SPEC-5] build is told it does not author assertions" \
-    "$PROMPT" "do NOT author or modify acceptance assertions"
+    "$PROMPT" "MUST NOT weaken, delete, retag or re-author any assertion"
 assert_contains "[SPEC-5] a failing assertion means the code is wrong" \
     "$PROMPT" "fix the code"
 assert_contains "[SPEC-5] and the testfiles are off limits" \
-    "$PROMPT" "must not edit the testfiles"
+    "$PROMPT" "read-only for this stage"
 
 if grep -qF 'correct the assertion' <<< "$PROMPT"; then
     assert_fail "[SPEC-5] the licence to correct an assertion is gone" \
