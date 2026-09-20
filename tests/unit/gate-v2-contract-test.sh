@@ -446,4 +446,41 @@ else
     assert_pass "[SPEC-14] secret-scan pass-path summary names its conclusion (not bare absence)"
 fi
 
+# ── SPEC-15 (#2161): the ENGINE's reader accepts every gate's pass result ─────
+# #1840 run 6: the acceptance gate passed all 19 SPECs and the run ended
+# blocked — its result had no `reason` and `disposition: none`. Field-level
+# assertions above never asked the reader; this does, with rc 0 so nothing
+# short-circuits, for every mechanical gate's pass path.
+# shellcheck source=../../core/pipeline/verdict.sh
+source "$REPO_ROOT/core/pipeline/verdict.sh"
+export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/ev15"; mkdir -p "$ZBUILD_EVENTS_DIR"
+export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
+_reader_ok() {   # <label> <work> <plugin-dir-name> <stage>
+    local label="$1" work="$2" pdir="$3" stage="$4" cls
+    cls="$(runner_read_stage_verdict "$work" "$REPO_ROOT/plugins/tool/$pdir/manifest.yaml" "$stage" 0 2>/dev/null)"
+    local n; n="$(grep -c 'stage.verdict.contract_violation' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+    if [[ "$cls" != "error" && "${n:-0}" -eq 0 ]]; then
+        assert_pass "[SPEC-15] $label: the engine's reader accepts the pass result ($cls)"
+    else
+        assert_fail "[SPEC-15] $label: the engine's reader accepts the pass result" "classified=$cls violations=$n $(tail -1 "$ZBUILD_EVENTS_JSONL" 2>/dev/null | cut -c1-200)"
+    fi
+    : > "$ZBUILD_EVENTS_JSONL"
+}
+W="$(_mkwork r15-cov)"; _seed_results "$W" '{coverage:{status:"measured",pct:80,floor:29}}'
+coverage_gate_run "coverage-gate" "$W/state.json" >/dev/null 2>&1 || true
+_reader_ok "coverage-gate" "$W" coverage-gate coverage-gate
+W="$(_mkwork r15-lint)"; _seed_results "$W" '{lint:{status:"pass"}}'
+lint_gate_run "lint-gate" "$W/state.json" >/dev/null 2>&1 || true
+_reader_ok "lint-gate" "$W" lint-gate lint-gate
+W="$(_mkwork r15-mut)"; _seed_results "$W" '{mutation:{status:"measured",score:90,floor:50}}'
+mutation_gate_run "mutation-gate" "$W/state.json" >/dev/null 2>&1 || true
+_reader_ok "mutation-gate" "$W" mutation-gate mutation-gate
+W="$(_mkwork r15-sf)"
+shape_floor_run "shape-floor" "$W/state.json" >/dev/null 2>&1 || true
+_reader_ok "shape-floor (skip path)" "$W" shape-floor shape-floor
+W="$(_mkwork r15-ga)"
+for f in "${_GA_FILES[@]}"; do printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}\n' > "$W/artifacts/$f"; done
+gate_aggregator_run "gate-aggregator" "$W/state.json" >/dev/null 2>&1 || true
+_reader_ok "gate-aggregator" "$W" gate-aggregator gate-aggregator
+
 print_test_results

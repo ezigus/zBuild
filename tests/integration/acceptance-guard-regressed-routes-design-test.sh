@@ -99,8 +99,8 @@ assert_contains "[SPEC-1] the gate reports guard_regressed for the mislabelled S
     "$(jq -rc '.failures // []' <<< "$AG_RESULT")" "guard_regressed:SPEC-1"
 assert_eq "[SPEC-2] guard_regressed sets fault=specification — build cannot fix a mislabelled tag" \
     "specification" "$(jq -r '.fault // "ABSENT"' <<< "$AG_RESULT")"
-assert_eq "[SPEC-3] the disposition stays recoverable, so the aggregator still reads fault" \
-    "recoverable" "$(jq -r '.disposition // "MISSING"' <<< "$AG_RESULT")"
+assert_eq "[SPEC-3] the severity stays recoverable, so the aggregator still reads fault" \
+    "recoverable" "$(jq -r '.severity // "MISSING"' <<< "$AG_RESULT")"
 assert_eq "[SPEC-4] guard_regressed verdict=fail behavioral contract preserved" \
     "fail" "$(jq -r '.verdict // empty' <<< "$AG_RESULT")"
 

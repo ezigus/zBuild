@@ -209,8 +209,13 @@ set -e
 _result_c8="$(cat "$_state_c8/artifacts/acceptance-gate-result.json" 2>/dev/null || echo '{}')"
 assert_eq "[SPEC-3] ZBUILD_STAGE_INPUTS non-standard path: gate processes acceptance block (verdict=pass)" \
     "pass" "$(jq -r .verdict <<<"$_result_c8")"
-assert_eq "[SPEC-3] ZBUILD_STAGE_INPUTS non-standard path: no precondition_unmet (block was found)" \
-    "" "$(jq -r '.reason // ""' <<<"$_result_c8")"
+# #2161: a pass carries a reason too (ADR-054 mandatory) — assert it is not the no-op's.
+_reason_c8="$(jq -r '.reason // ""' <<<"$_result_c8")"
+if [[ -n "$_reason_c8" && "$_reason_c8" != "precondition_unmet" ]]; then
+    assert_pass "[SPEC-3] ZBUILD_STAGE_INPUTS non-standard path: no precondition_unmet (block was found; reason: $_reason_c8)"
+else
+    assert_fail "[SPEC-3] ZBUILD_STAGE_INPUTS non-standard path: no precondition_unmet (block was found)" "reason=$_reason_c8"
+fi
 
 # ── C9: SPEC-5 — manifest declares valid_verdicts: [pass, fail] ─────────────────
 MANIFEST_PATH="$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml"

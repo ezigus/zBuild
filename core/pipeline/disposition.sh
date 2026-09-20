@@ -42,9 +42,11 @@
 # cycle-orchestrator.sh). The two axes are genuinely different: ADR-021 asks
 # "this stage's verdict was fail — does that stop the cycle?", ADR-054 asks "did
 # the stage get far enough to produce a verdict worth reading?". They chain; they
-# do not overlap. Those artifacts are v1, and the reader only consults this
-# vocabulary at `result_contract >= 2`, so the collision is inert today. Freeing
-# the field name belongs with the plugin migration (#1832), not here.
+# do not overlap. #2161: the collision stopped being inert when the acceptance
+# gate declared `result_contract: 2` — its first fully green run was refused by
+# this reader. The ADR-021 word now lives in `severity`; `disposition` is this
+# set only. Readers of the policy word fall back to `disposition` for v1-shaped
+# results.
 
 [[ -n "${_ZBUILD_DISPOSITION_SH_LOADED:-}" ]] && return 0
 _ZBUILD_DISPOSITION_SH_LOADED=1
