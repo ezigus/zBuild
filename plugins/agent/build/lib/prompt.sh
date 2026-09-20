@@ -144,7 +144,9 @@ _build_compose_prompt_body() {
         fi
         if [[ -n "$_acceptance_testfiles" ]]; then
             printf '\n## ACCEPTANCE TESTS (you MUST make these pass)\n'
-            printf 'You do NOT author or modify acceptance assertions. They were written from the design contract by a separate stage, before your implementation existed, and they are the contract you implement against. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion, and you must not edit the testfiles listed below; the spawn denies it and a mechanical guard checks it. If you believe an assertion genuinely does not test its SPEC, say so in your output and leave it alone: correcting it is the author stage\047s job, not yours (#2022, ADR-036).\n'
+            # #2163: a fact about THIS stage's permissions — never a claim about
+            # who else does what (ADR-061: stages do not name stages).
+            printf 'The acceptance testfiles listed below are read-only for this stage: the engine denies edits to them, and a mechanical check restores any change. They are the contract you implement against, written before your implementation existed. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion. If you believe an assertion genuinely does not test its SPEC, say so in your output and leave it alone.\n'
             printf 'Each test MUST contain an assert call whose label includes the [SPEC-n] tag for the SPEC it verifies (e.g. assert_eq "[SPEC-1] ..." exp act). The acceptance-gate (ADR-036) requires every SPEC-n to have a [SPEC-n]-tagged assertion. A CHANGE-behavior SPEC-n MUST have a tagged assertion that FAILS at the merge-base baseline and passes here (a tautological change-SPEC that passes without your implementation is rejected); a GUARD/invariant SPEC-n is tagged but NOT contorted to fail at baseline. See the per-id list below.\n'
             local _at_tf
             while IFS= read -r _at_tf; do

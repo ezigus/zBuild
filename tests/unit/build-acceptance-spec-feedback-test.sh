@@ -154,7 +154,7 @@ grep -qF "## TAUTOLOGICAL ASSERTIONS" <<< "$p" \
 grep -qF "which you MUST re-author" <<< "$p" \
     && assert_fail "L2d: the re-author licence is gone from build's prompt" "(present)" \
     || assert_pass "L2d: the re-author licence is gone from build's prompt"
-grep -qF "do NOT author or modify acceptance assertions" <<< "$p" \
+grep -qF "MUST NOT weaken, delete, retag or re-author any assertion" <<< "$p" \
     && assert_pass "L2d: build is told the assertions are not its to touch" \
     || assert_fail "L2d: build must be told the assertions are not its to touch" "(missing)"
 

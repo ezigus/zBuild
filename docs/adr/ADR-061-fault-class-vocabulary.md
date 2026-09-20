@@ -122,3 +122,31 @@ ADR-055 already ruled on for data.
   arbitrary asymmetry.
 - No template parser change was needed — the `when:` predicate was already
   generic over field and value.
+
+## Amendment (#2163, 2026-09-20) — the rule reaches prompts, permissions and obligations
+
+"Stages stop naming stages" was applied to routing. Three places still knew about other
+plugins, and #1840 runs 5–7 each lost an iteration (run 7 the run) to them: the build prompt
+said assertions were "the author stage's job"; the acceptance gate's finding told someone to
+"re-author the assertions"; and the engine stamped every failing summary "RESOLVE these
+findings" for every reader — so the builder, told to resolve a finding that was design's,
+edited the read-only testfile each iteration, chased a lint finding into an out-of-scope file,
+and the scope denial ended the run one step before the rewind the gate's specification fault
+had armed. Now:
+
+- **Obligations follow the fault class.** The STAGE SUMMARIES heading stamps RESOLVE only on a
+  failure with no declared fault; a failure with `fault: specification` or `scope` is "context
+  only — the engine routes this". Every stage still sees every summary; the engine decides who
+  must act, from the same field `route_back` keys on.
+- **Permissions are facts about the stage.** The build prompt says its acceptance testfiles are
+  read-only for this stage and that the engine denies edits — nothing about who wrote them. The
+  deny rule is rendered `Edit(//abs)` (a single leading `/` is project-relative in Claude Code's
+  permission syntax; the old rule matched nothing).
+- **Findings state facts.** "SPEC-n tautological — passes at the baseline, so it asserts no
+  change." No remedy addressed to another stage.
+- **A violation is restored, not just reported.** The assertion record keeps the authored bytes
+  under `artifacts/authored-testfiles/`; the build stage — the one stage that owns repo writes —
+  restores any modified testfile from them before it runs and says so; assertion-integrity's
+  finding tells the reader that is what happens.
+
+Verification: `tests/unit/stage-boundaries-test.sh` SPEC-1..5 (each red before the change).

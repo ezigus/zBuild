@@ -608,8 +608,26 @@ _summaries_collect() {
         path="$(_summaries_stage_summary_path "$stage" "$plugins_root" "$state_dir")"
         [[ -n "$path" && -s "$path" ]] || continue
         verdict="$(jq -r --arg s "$stage" '.stage_verdicts[$s] // "unknown"' "$state_file" 2>/dev/null || echo unknown)"
-        printf '%s|%s|%s\n' "$stage" "$verdict" "$path"
+        # #2163: the producer's declared fault class rides along — the field
+        # route_back already keys on. It decides whether the reader is OBLIGED
+        # (no fault: the reader's to fix) or merely informed (specification /
+        # scope: the engine routes it). Read from the stage's primary result.
+        printf '%s|%s|%s|%s\n' "$stage" "$verdict" "$path" "$(_summaries_stage_fault "$stage" "$plugins_root" "$state_dir")"
     done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
+}
+
+# ─── _summaries_stage_fault <stage> <plugins_root> <state_dir> ───────────────
+# The `fault` the stage's primary result declares (ADR-061 vocabulary), or "".
+_summaries_stage_fault() {
+    local stage="$1" plugins_root="$2" state_dir="$3" manifest raw resolved
+    manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
+    [[ -n "$manifest" ]] || return 0
+    raw="$(_verdict_primary_output_path "$manifest" 2>/dev/null || true)"
+    [[ -n "$raw" ]] || return 0
+    resolved="$(_verdict_resolve_path "$raw" "$state_dir" 2>/dev/null || true)"
+    [[ -s "$resolved" ]] || return 0
+    case "$resolved" in *.json) ;; *) return 0 ;; esac
+    jq -r '.fault // empty' "$resolved" 2>/dev/null || true
 }
 
 # ─── stage_summaries_count <state_file> [plugins_root] ───────────────────────
@@ -619,13 +637,17 @@ _summaries_collect() {
 # has none of, and read "(no feedback — first iteration)" on every iteration.
 stage_summaries_count() {
     local state_file="${1:-}" plugins_root="${2:-${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}}"
-    local n=0 r=0 rec verdict
+    local n=0 r=0 rec verdict fault
     if [[ -n "$state_file" && -s "$state_file" ]]; then
         while IFS= read -r rec; do
             [[ -n "$rec" ]] || continue
             n=$((n + 1))
-            verdict="${rec#*|}"; verdict="${verdict%|*}"
-            case "$verdict" in fail|failed) r=$((r + 1)) ;; esac
+            IFS='|' read -r _ verdict _ fault <<< "$rec"
+            # #2163: RESOLVE counts what the reader must resolve — a failure the
+            # engine routes elsewhere (fault=specification/scope) is context.
+            case "$verdict" in fail|failed)
+                case "$fault" in specification|scope) ;; *) r=$((r + 1)) ;; esac ;;
+            esac
         done < <(_summaries_collect "$state_file" "$plugins_root")
     fi
     printf '%s %s' "$n" "$r"
@@ -650,12 +672,11 @@ stage_summaries_prompt_block() {
         source "$_ZBUILD_IR_ROOT/scripts/lib/test-output-sanitize.sh" 2>/dev/null || true
     fi
 
-    local stage path body verdict chunk rec
+    local stage path body verdict fault chunk rec
     local -a _chunks=()
     while IFS= read -r rec; do
         [[ -n "$rec" ]] || continue
-        stage="${rec%|*}"; path="${rec##*|}"
-        verdict="${rec#*|}"; verdict="${verdict%|*}"
+        IFS='|' read -r stage verdict path fault <<< "$rec"
         body="$(head -c "$_ZB_SUMMARY_MAX_BYTES" "$path" 2>/dev/null || true)"
         if declare -F _zbuild_sanitize_for_llm >/dev/null 2>&1; then
             body="$(printf '%s' "$body" | _zbuild_sanitize_for_llm 2>/dev/null || printf '%s' "$body")"
@@ -669,8 +690,19 @@ stage_summaries_prompt_block() {
         # imperative with the wire would have downgraded a directive into
         # passive context. Applied by verdict rather than by naming two stages,
         # so a third gate needs no new prose.
+        # #2163: the obligation follows the FAULT CLASS, not the verdict alone.
+        # A failure the producer blamed on the specification or the scope is
+        # the engine's to route (route_back keys on the same field); the reader
+        # sees it — every stage sees every summary — but is not told to fix it.
+        # #1840 runs 5–7: "re-author the assertions" stamped RESOLVE for the
+        # builder, which then edited the read-only testfile every iteration.
         case "$verdict" in
-            fail|failed) chunk="$(printf '### %s (verdict: %s) — RESOLVE these findings before completing\n%s\n' "$stage" "$verdict" "$body")" ;;
+            fail|failed)
+                case "$fault" in
+                    specification|scope)
+                        chunk="$(printf '### %s (verdict: %s) — context only: a %s fault; the engine routes this, it is not yours to fix\n%s\n' "$stage" "$verdict" "$fault" "$body")" ;;
+                    *)  chunk="$(printf '### %s (verdict: %s) — RESOLVE these findings before completing\n%s\n' "$stage" "$verdict" "$body")" ;;
+                esac ;;
             *)           chunk="$(printf '### %s (verdict: %s)\n%s\n' "$stage" "$verdict" "$body")" ;;
         esac
         _chunks+=("$chunk")
