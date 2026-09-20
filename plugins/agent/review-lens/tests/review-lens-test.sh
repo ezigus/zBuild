@@ -911,6 +911,41 @@ else
         "comment absent"
 fi
 
+# ─── SPEC-20 [guard]: manifest provides.role == review_lens ──────────────────
+# ADR-040 role-binding contract (#1704): provides.role was declared in v1 and
+# must survive the v2 migration unchanged. The resolver reads this field at runtime.
+_1840_s20_role="$(yaml_get "$PLUGIN_DIR/manifest.yaml" "provides.role" 2>/dev/null || true)"
+assert_eq "[SPEC-20] manifest provides.role == review_lens" \
+    "review_lens" "$_1840_s20_role"
+
+# ─── SPEC-21 [change]: manifest provides.events declares exactly three events ─
+# ADR-001 §"Declared events" (#1717): provides.events inline declaration is new
+# in v2; absent at v1 merge-base. Must declare exactly three events — no more,
+# no fewer — so the engine's known-event set stays consistent.
+_1840_s21_events="$(awk '
+    /events:/ { in_events=1; next }
+    in_events && /^[[:space:]]*-[[:space:]]/ { print; next }
+    in_events { exit }
+' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
+_1840_s21_count="$(grep -c '^[[:space:]]*-[[:space:]]' <<< "$_1840_s21_events" 2>/dev/null || echo 0)"
+assert_eq "[SPEC-21] manifest provides.events declares exactly three events" \
+    "3" "$_1840_s21_count"
+if grep -q 'review_lens.failed' <<< "$_1840_s21_events"; then
+    assert_pass "[SPEC-21] provides.events includes review_lens.failed"
+else
+    assert_fail "[SPEC-21] provides.events must include review_lens.failed" "absent"
+fi
+if grep -q 'review_lens.redaction_failed' <<< "$_1840_s21_events"; then
+    assert_pass "[SPEC-21] provides.events includes review_lens.redaction_failed"
+else
+    assert_fail "[SPEC-21] provides.events must include review_lens.redaction_failed" "absent"
+fi
+if grep -q 'review_lens.unparseable' <<< "$_1840_s21_events"; then
+    assert_pass "[SPEC-21] provides.events includes review_lens.unparseable"
+else
+    assert_fail "[SPEC-21] provides.events must include review_lens.unparseable" "absent"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
