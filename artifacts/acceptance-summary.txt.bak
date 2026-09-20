@@ -1,3 +1,4 @@
+acceptance SPEC violations — SPEC-9/SPEC-10/SPEC-19 tagged as [guard] but the assertion FAILS at the merge-base — a guard must hold there by definition, so either the assertion contradicts its SPEC text or the SPEC is a mislabelled [change]
 NEGCTL PASS SPEC-1
       design : success path writes result_contract:2, verdict:complete, disposition:complete, and non-empty reason …
       asserts: assert_eq "[SPEC-1] success path returns 0" "0" "$_1840_s1_rc"
@@ -22,10 +23,10 @@ NEGCTL PASS SPEC-7
 NEGCTL PASS SPEC-8 guard_spec
       design : existing advisory degrade behavior (rc=0, review_lens.failed/unparseable events, advisory-absence st…
       asserts: assert_eq "[SPEC-8] router failure rc=0 (advisory never blocks)" "0" "$_1840_s8f_rc"
-NEGCTL PASS SPEC-9
+NEGCTL FAIL SPEC-9 guard_regressed
       design : passing run output is backward-compatible — pre-existing v1 fields (schema_version, name, score, fin…
       asserts: assert_eq "[SPEC-9] success path returns 0" "0" "$_1840_s9_rc"
-NEGCTL PASS SPEC-10
+NEGCTL FAIL SPEC-10 guard_regressed
       design : merge-action coercion tokens (approve, request_changes, "block") are absent from plugin.sh and chart…
       asserts: assert_fail "[SPEC-10] merge-action coercion tokens absent from review-lens source" "found"
 NEGCTL PASS SPEC-11
@@ -52,7 +53,7 @@ NEGCTL PASS SPEC-17 guard_spec
 NEGCTL PASS SPEC-18
       design : WALL CLOCK BUDGET block is injected in the prompt when _route_resolve_timeout returns a positive val…
       asserts: assert_pass "[SPEC-18] WALL CLOCK BUDGET block appears in prompt when _route_resolve_timeout > 0"
-NEGCTL PASS SPEC-19
+NEGCTL FAIL SPEC-19 guard_regressed
       design : hooks.cleanup is absent from manifest.yaml; manifest carries an ADR-054 §7 explanatory comment
       asserts: assert_fail "[SPEC-19] hooks.cleanup must be absent from manifest.yaml" "found cleanup key"
 REACHABILITY PASS plugins/agent/review-lens/manifest.yaml

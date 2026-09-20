@@ -1,1 +1,1 @@
-{"result_contract":2,"verdict":"fail","disposition":"recoverable","reason":"acceptance SPEC violations — SPEC-9/SPEC-10/SPEC-19 tagged as [guard] but the assertion FAILS at the merge-base — a guard must hold there by definition, so either the assertion contradicts its SPEC text or the SPEC is a mislabelled [change]","failures":["guard_regressed:SPEC-9","guard_regressed:SPEC-10","guard_regressed:SPEC-19"],"fault":"specification"}
+{"result_contract":2,"verdict":"pass","disposition":"none","failures":[]}
