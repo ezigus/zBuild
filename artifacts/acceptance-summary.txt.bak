@@ -1,0 +1,65 @@
+acceptance SPEC violations — SPEC-21 tautological (pass at baseline) — re-author the assertions
+NEGCTL PASS SPEC-1
+      design : success path writes result_contract:2, verdict:complete, disposition:complete, and non-empty reason …
+      asserts: assert_eq "[SPEC-1] success path returns 0" "0" "$_1840_s1_rc"
+NEGCTL PASS SPEC-2
+      design : router-failure degrade path writes result_contract:2, verdict:degraded, disposition:broken in lens f…
+      asserts: assert_file_exists "[SPEC-2] router-failure degrade writes lens file" "$out_1840_s2"
+NEGCTL PASS SPEC-3
+      design : unparseable-reply degrade path writes result_contract:2, verdict:degraded, disposition:broken in len…
+      asserts: assert_file_exists "[SPEC-3] unparseable degrade writes lens file" "$out_1840_s3"
+NEGCTL PASS SPEC-4
+      design : schema-gate recovery (_llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok) finds valid…
+      asserts: assert_eq "[SPEC-4] schema-gate recovery returns 0" "0" "$_1840_s4_rc"
+NEGCTL PASS SPEC-5
+      design : ADR-063 TURN BUDGET block is injected in the prompt when _route_resolve_max_turns > 0
+      asserts: assert_pass "[SPEC-5] ADR-063 turn budget block appears in prompt when max_turns > 0"
+NEGCTL PASS SPEC-6
+      design : manifest declares config.router.timeout_s and config.router.max_turns; _route_resolve_timeout/_route…
+      asserts: assert_pass "[SPEC-6] manifest declares config.router.timeout_s"
+NEGCTL PASS SPEC-7
+      design : manifest provides.result_contract == 2 and config.valid_verdicts declares both complete and degraded…
+      asserts: assert_eq "[SPEC-7] manifest provides.result_contract == 2" "2" "$_1840_contract"
+NEGCTL PASS SPEC-8 guard_spec
+      design : existing advisory degrade behavior (rc=0, review_lens.failed/unparseable events, advisory-absence st…
+      asserts: assert_eq "[SPEC-8] router failure rc=0 (advisory never blocks)" "0" "$_1840_s8f_rc"
+NEGCTL PASS SPEC-9
+      design : passing run output is backward-compatible — pre-existing v1 fields (schema_version, name, score, fin…
+      asserts: assert_eq "[SPEC-9] success path returns 0" "0" "$_1840_s9_rc"
+NEGCTL PASS SPEC-10
+      design : merge-action coercion tokens (approve, request_changes, "block") are absent from plugin.sh and chart…
+      asserts: assert_fail "[SPEC-10] merge-action coercion tokens absent from review-lens source" "found"
+NEGCTL PASS SPEC-11
+      design : _review_lens_write_result function exists in plugin.sh and its body contains no hardcoded artifact p…
+      asserts: assert_pass "[SPEC-11] _review_lens_write_result function exists in plugin.sh"
+NEGCTL PASS SPEC-12 guard_spec
+      design : manifest outputs[].lens_result declares primary: true
+      asserts: assert_pass "[SPEC-12] manifest.yaml outputs[].lens_result declares primary: true"
+NEGCTL PASS SPEC-13
+      design : rc=130 path propagates rc=130 and writes disposition:interrupted; _review_lens_interrupt_handler dir…
+      asserts: assert_eq "[SPEC-13] rc=130 path propagates rc=130 (distinct from advisory rc=0)" \
+NEGCTL PASS SPEC-14
+      design : template accessor wins over manifest value in ADR-063 budget block (sentinel 99 overrides manifest d…
+      asserts: assert_fail "[SPEC-14] manifest max_turns must NOT be 99 — test requires them to differ" "both 99"
+NEGCTL PASS SPEC-15
+      design : rc=10 path propagates rc=10 and writes disposition:exhausted, reason:budget_exhausted (distinct from…
+      asserts: assert_eq "[SPEC-15] rc=10 path propagates rc=10 (distinct from advisory rc=0)" \
+NEGCTL PASS SPEC-16 guard_spec
+      design : manifest outputs section declares review_lens_summary output with summary: true (ADR-055 §9 — presen…
+      asserts: assert_pass "[SPEC-16] manifest outputs section declares review_lens_summary with summary: true"
+NEGCTL PASS SPEC-17 guard_spec
+      design : success path writes lens-<name>-summary.md containing affirmative pass-verdict language (reviewed/--…
+      asserts: assert_eq "[SPEC-17] success path returns 0" "0" "$_1840_s17_rc"
+NEGCTL PASS SPEC-18
+      design : WALL CLOCK BUDGET block is injected in the prompt when _route_resolve_timeout returns a positive val…
+      asserts: assert_pass "[SPEC-18] WALL CLOCK BUDGET block appears in prompt when _route_resolve_timeout > 0"
+NEGCTL PASS SPEC-19
+      design : hooks.cleanup is absent from manifest.yaml; manifest carries an ADR-054 §7 explanatory comment
+      asserts: assert_fail "[SPEC-19] hooks.cleanup must be absent from manifest.yaml" "found cleanup key"
+NEGCTL PASS SPEC-20 guard_spec
+      design : manifest provides.role == review_lens (ADR-040 role-binding contract, #1704 — present in v1, must su…
+      asserts: assert_eq "[SPEC-20] manifest provides.role == review_lens" \
+NEGCTL FAIL SPEC-21 tautology
+      design : manifest provides.events declares exactly three events (review_lens.failed, review_lens.redaction_fa…
+      asserts: assert_eq "[SPEC-21] manifest provides.events declares exactly three events" \
+REACHABILITY PASS plugins/agent/review-lens/manifest.yaml
