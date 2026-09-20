@@ -1,6 +1,5 @@
-## spec-coverage — uncovered
+## spec-coverage — covered
 
-- The issue's "What this plugin adopts" section explicitly requires `provides.events` (#1717) and `provides.role` (#1704) to be declared in the manifest, but no SPEC validates either field's presence.
+- The spec-coverage stage's finding is wrong — `provides.role` is covered by SPEC-20 and `provides.events` is covered by SPEC-21; every other explicit requirement (v2 result contract, disposition, rc reduction, valid_verdicts, router budgets, primary output, name-matched inputs, cleanup absence, schema-gate parser, ADR-063 budget blocks, rc=130/rc=10 paths, advisory-degrade preservation) maps to at least one SPEC.
 
-- NOT COVERED: `provides.events` declared in manifest (#1717)
-- NOT COVERED: `provides.role` declared in manifest (#1704)
+- every requirement the issue states maps to a declared SPEC
