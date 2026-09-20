@@ -137,8 +137,14 @@ assert_contains "[SPEC-5] the finding says the file will be restored and is read
 # the build stage's pre-step restores from the copy
 # shellcheck disable=SC1091
 source "$REPO_ROOT/plugins/agent/build/lib/summary.sh" >/dev/null 2>&1 || true
+# shellcheck disable=SC1091
+source "$REPO_ROOT/core/event-bus/event-bus.sh" >/dev/null 2>&1 || true
 if declare -F _build_restore_authored_testfiles >/dev/null 2>&1; then
+    : > "$ZBUILD_EVENTS_JSONL"
     _n="$(_build_restore_authored_testfiles "$ART5" "$REPO5" 2>/dev/null)"
+    grep -q '"build.authored_testfiles.restored"' "$ZBUILD_EVENTS_JSONL" \
+        && assert_pass "[SPEC-5] the restoration is an event (build.authored_testfiles.restored)" \
+        || assert_fail "[SPEC-5] the restoration is an event (build.authored_testfiles.restored)" "(missing from events.jsonl)"
     assert_eq "[SPEC-5] the build restores the modified testfile to the authored bytes" "# authored" "$(sed -n 2p "$REPO5/tests/a-test.sh")"
     assert_eq "[SPEC-5] …and reports how many it restored" "1" "$_n"
     assert_eq "[SPEC-5] …an unmodified tree restores nothing" "0" "$(_build_restore_authored_testfiles "$ART5" "$REPO5" 2>/dev/null)"

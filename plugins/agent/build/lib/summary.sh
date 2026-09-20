@@ -292,12 +292,6 @@ _build_write_build_summary() {
         ' | atomic_write "$output_summary_json"
 }
 
-# _build_guard_false_completion <acceptance_testfiles_nl> <repo_root> (#1532)
-# Probes each declared acceptance TESTFILE at HEAD. Returns the first failing
-# path on stdout (repo-relative) and exits 1 if any testfile fails; exits 0
-# when all pass or the testfile list is empty. Called only when build_verdict
-# is empty_diff — never on pass or other paths. The timeout bound mirrors the
-# negctl gate so a slow testfile cannot stall the stage loop indefinitely.
 # ─── _build_restore_authored_testfiles <artifact_dir> <repo_root> ────────────
 # #2163: the acceptance testfiles are read-only for this stage. If a previous
 # iteration changed one anyway (the deny is a spawn setting; Bash/Write can
@@ -315,11 +309,18 @@ _build_restore_authored_testfiles() {
         cmp -s "$f" "$repo_root/$rel" && continue
         cp -p "$f" "$repo_root/$rel" 2>/dev/null || continue
         n=$((n + 1))
-        eb_emit_event "build.authored_testfiles.restored" "plugin=build" "file=$rel" 2>/dev/null || true
+        declare -F eb_emit_event >/dev/null 2>&1 \
+            && eb_emit_event "build.authored_testfiles.restored" "plugin=build" "file=$rel" 2>/dev/null || true
     done < <(find "$copies" -type f 2>/dev/null)
     printf '%s' "$n"
 }
 
+# _build_guard_false_completion <acceptance_testfiles_nl> <repo_root> (#1532)
+# Probes each declared acceptance TESTFILE at HEAD. Returns the first failing
+# path on stdout (repo-relative) and exits 1 if any testfile fails; exits 0
+# when all pass or the testfile list is empty. Called only when build_verdict
+# is empty_diff — never on pass or other paths. The timeout bound mirrors the
+# negctl gate so a slow testfile cannot stall the stage loop indefinitely.
 _build_guard_false_completion() {
     local testfiles="$1" repo_root="$2"
     local timeout_s="${ZBUILD_NEGCTL_TIMEOUT:-60}"
