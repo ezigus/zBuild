@@ -6,20 +6,12 @@
   "reason": "all structural checks cleared",
   "violations": [],
   "guard_precheck": {
-    "declared": 7,
+    "declared": 4,
     "verified": 0,
     "failed": 0,
     "skipped": [
       {
         "spec": "SPEC-8",
-        "reason": "timeout"
-      },
-      {
-        "spec": "SPEC-9",
-        "reason": "timeout"
-      },
-      {
-        "spec": "SPEC-10",
         "reason": "timeout"
       },
       {
@@ -32,10 +24,6 @@
       },
       {
         "spec": "SPEC-17",
-        "reason": "timeout"
-      },
-      {
-        "spec": "SPEC-19",
         "reason": "timeout"
       }
     ]
