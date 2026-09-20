@@ -136,7 +136,7 @@ block may be as long as completeness requires). Emit LOOP_COMPLETE when done.
 
 **Goal.** Confirm the review-lens plugin's migration to contract v2 (ADR-055) is complete, and that all SPEC-1–SPEC-19 assertions in the acceptance test pass. Fix any remaining gaps discovered during verification.
 
-**Context.** The `review-lens` plugin (`kind: agent`, `convergence: advisory`) was migrated on the current branch from contract v1 to v2. Contract v2 requires: `result_contract:2` in every terminal output; the `verdict`/`disposition`/`reason` fields embedded in the primary output JSON; dedicated exit codes for rc=10 (budget exhausted) and rc=130 (SIGINT interrupted), each distinct from the advisory rc=0 degrade paths; ADR-063 budget-guidance blocks in the prompt (both TURN BUDGET and WALL CLOCK BUDGET); ADR-028 schema-gated envelope parsing; and ADR-055 name-matched `inputs` (id+required only). The test file (`review-lens-test.sh`) contains SPEC-1–SPEC-19 assertions that enumerate all these behaviors.
+**Context.** The `review-lens` plugin (`kind: agent`, `convergence: advisory`) was migrated on the current branch from contract v1 to v2. Contract v2 requires: `result_contract:2` in every terminal output; the `verdict`/`disposition`/`reason` fields embedded in the primary output JSON; dedicated exit codes for rc=10 (budget exhausted) and rc=130 (SIGINT interrupted), each distinct from the advisory rc=0 degrade paths; ADR-063 budget-guidance blocks in the prompt (both TURN BUDGET and WALL CLOCK BUDGET); ADR-028 schema-gated envelope parsing; and ADR-055 name-matched `inputs` (id+required only). The test file (`review-lens-test.sh`) contains SPEC-1–SPEC-19 assertions in a dedicated `#1840: v2 contract migration — acceptance assertions` section.
 
 The manifest has been verified to declare:
 - `provides.result_contract: 2` ✓
@@ -158,19 +158,19 @@ The plugin source has been verified to implement:
 - ADR-063 TURN BUDGET and WALL CLOCK BUDGET guidance block injection ✓
 - No merge-action coercion tokens (approve/request_changes/"block") ✓
 
-**SPEC classification corrections (iteration 2).** Three SPECs were tagged [guard] in the prior design but their assertions FAIL at the merge-base (guard_regressed), meaning the behaviors they test are genuinely new v2 additions:
+**SPEC classification.** Three SPECs are `[guard]` because the behavior existed in v1 and must be preserved through the migration (SPEC-8, SPEC-12, SPEC-16, SPEC-17). The remaining sixteen are `[change]` because they test behaviors first introduced by the v2 migration:
 
-- **SPEC-9 → [change]**: the test calls v2 `_review_lens_run_inner` with the v2 output contract; at the v1 merge-base the function either does not exist or does not write v2 fields, so the assert fails. The behavior (v2 additive fields coexisting with v1 fields) is new.
-- **SPEC-10 → [change]**: coercion tokens (approve/request_changes/"block") were PRESENT in v1; the v2 migration removes them. `assert_fail` correctly fails at baseline when tokens are found.
-- **SPEC-19 → [change]**: `hooks.cleanup` was PRESENT in v1 manifest; the v2 migration removes it per ADR-054 §7. `assert_fail` correctly fails at baseline when the key is found.
+- **SPEC-9 [change]**: the test calls v2 `_review_lens_run_inner`; at v1 merge-base the function does not write v2 fields (result_contract, verdict, disposition, reason), so the assert on those fields fails.
+- **SPEC-10 [change]**: Part 2 checks that `_review_lens_write_result` (a v2 addition) contains `verdict` as a jq field; at v1 baseline the function doesn't exist — assertion fails with "absent".
+- **SPEC-19 [change]**: if v1 manifest had `hooks.cleanup`, the assertion fails at baseline.
 
-Three SPECs were tagged [change] in the prior design but their behavior existed at the v1 merge-base (tautological), so they are reclassified [guard] with updated descriptions matching the current test assertions:
+Three SPECs are `[guard]` with descriptions matching the test assertions:
+- **SPEC-8 [guard]**: advisory rc=0 degrade behavior (emitting review_lens.failed/unparseable events, writing advisory-absence summary) existed in v1.
+- **SPEC-12 [guard]**: `primary: true` on lens_result output was in v1 manifest.
+- **SPEC-16 [guard]**: `review_lens_summary` output with `summary: true` was in v1 manifest.
+- **SPEC-17 [guard]**: success-path summary file with affirmative language was written in v1.
 
-- **SPEC-16 → [guard]**: the `review_lens_summary` output with `summary: true` was in v1; the guard verifies it was not accidentally removed during v2 migration.
-- **SPEC-17 → [guard]**: the success-path summary file with affirmative language was written in v1; the guard verifies it is preserved through v2 migration.
-- **SPEC-18 description corrected**: the test asserts WALL CLOCK BUDGET block injection (ADR-063 §1), not "manifest inputs entries". The v2 migration is the first to call `_review_lens_wallclock_guidance`; this fails at baseline (correctly [change]).
-
-**Decision.** Scope verification to: (a) the four seed files; (b) every test that asserts behavior changed or references the output shape, including integration tests that seed lens-*.json files or enumerate `review_lens` roles; (c) the wiki page (Rule ABS-W); (d) the ADRs whose contracts the migration implements; (e) the engine files that consume `result_contract` and `disposition` values; (f) `core/contract/version.sh` (names the `result_contract:2` version constant), `core/plugin-registry/manifest-validation.sh` (validates `provides.result_contract` at manifest load), and `core/pipeline/resolver.sh` (maps `review_lenses` stage → `review-lens` plugin via `provides.role`). Also in scope: `tests/unit/stage-resolution-parity-test.sh` (asserts the role-to-plugin resolution chain SPEC-17 depends on), `tests/unit/event-schema-emitted-coverage-test.sh` (enumerates `review_lens` in its plugin-namespace regex), and `tests/unit/review-lens-report-merge-base-bundle-test.sh` (calls `_review_lens_run_inner` which now writes v2 fields).
+**Decision.** Scope verification to the four seed files plus every test that references review_lens role, result_contract shape, or v2 output fields; the ADRs whose contracts the migration implements; and the engine files that consume `result_contract` and `disposition`.
 
 ---
 

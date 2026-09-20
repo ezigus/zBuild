@@ -2,16 +2,16 @@
 
 ## Architectural Decision Summary
 
-**Goal.** Confirm the review-lens plugin's migration to contract v2 (ADR-055) is complete, and that all SPEC-1–SPEC-19 assertions in the acceptance test pass. Fix any remaining gaps discovered during verification.
+**Goal.** Confirm the review-lens plugin's migration to contract v2 (ADR-055) is complete, and that all SPEC-1–SPEC-21 assertions in the acceptance test pass. Fix any remaining gaps discovered during verification.
 
 **Context.** The `review-lens` plugin (`kind: agent`, `convergence: advisory`) was migrated on the current branch from contract v1 to v2. Contract v2 requires: `result_contract:2` in every terminal output; the `verdict`/`disposition`/`reason` fields embedded in the primary output JSON; dedicated exit codes for rc=10 (budget exhausted) and rc=130 (SIGINT interrupted), each distinct from the advisory rc=0 degrade paths; ADR-063 budget-guidance blocks in the prompt (both TURN BUDGET and WALL CLOCK BUDGET); ADR-028 schema-gated envelope parsing; and ADR-055 name-matched `inputs` (id+required only). The test file (`review-lens-test.sh`) contains SPEC-1–SPEC-19 assertions in a dedicated `#1840: v2 contract migration — acceptance assertions` section.
 
 The manifest has been verified to declare:
 - `provides.result_contract: 2` ✓
 - `provides.role: review_lens` ✓
+- `provides.events` with exactly three entries (review_lens.failed, review_lens.redaction_failed, review_lens.unparseable) ✓
 - `config.valid_verdicts: [complete, degraded]` ✓
 - `config.router.timeout_s: 300` and `config.router.max_turns: 10` ✓
-- `provides.events` with exactly three entries (review_lens.failed, review_lens.redaction_failed, review_lens.unparseable) ✓
 - `inputs` entries with only `id` and `required` fields ✓
 - `outputs[].lens_result` with `primary: true` ✓
 - `outputs[].review_lens_summary` with `summary: true` ✓ (ADR-055 §9; SPEC-16 guards preservation)
@@ -26,19 +26,15 @@ The plugin source has been verified to implement:
 - ADR-063 TURN BUDGET and WALL CLOCK BUDGET guidance block injection ✓
 - No merge-action coercion tokens (approve/request_changes/"block") ✓
 
-**SPEC classification.** Three SPECs are `[guard]` because the behavior existed in v1 and must be preserved through the migration (SPEC-8, SPEC-12, SPEC-16, SPEC-17). The remaining sixteen are `[change]` because they test behaviors first introduced by the v2 migration:
+**SPEC classification.** Four SPECs are `[guard]` because the behavior existed in v1 and must be preserved through the migration (SPEC-8, SPEC-12, SPEC-16, SPEC-17). SPEC-20 is `[guard]` because `provides.role` binding predates this migration (the resolver used it in v1). The remaining sixteen are `[change]` because they test behaviors first introduced by the v2 migration.
 
 - **SPEC-9 [change]**: the test calls v2 `_review_lens_run_inner`; at v1 merge-base the function does not write v2 fields (result_contract, verdict, disposition, reason), so the assert on those fields fails.
 - **SPEC-10 [change]**: Part 2 checks that `_review_lens_write_result` (a v2 addition) contains `verdict` as a jq field; at v1 baseline the function doesn't exist — assertion fails with "absent".
 - **SPEC-19 [change]**: if v1 manifest had `hooks.cleanup`, the assertion fails at baseline.
+- **SPEC-20 [guard]**: `provides.role: review_lens` binding was present in v1 (resolver.sh reads this field); the guard ensures the v2 migration does not accidentally remove it.
+- **SPEC-21 [change]**: `provides.events` inline declaration in the manifest per ADR-001 §"Declared events" (#1717) is a new v2 adoption; at v1 merge-base this block was absent.
 
-Three SPECs are `[guard]` with descriptions matching the test assertions:
-- **SPEC-8 [guard]**: advisory rc=0 degrade behavior (emitting review_lens.failed/unparseable events, writing advisory-absence summary) existed in v1.
-- **SPEC-12 [guard]**: `primary: true` on lens_result output was in v1 manifest.
-- **SPEC-16 [guard]**: `review_lens_summary` output with `summary: true` was in v1 manifest.
-- **SPEC-17 [guard]**: success-path summary file with affirmative language was written in v1.
-
-**Decision.** Scope verification to the four seed files plus every test that references review_lens role, result_contract shape, or v2 output fields; the ADRs whose contracts the migration implements; and the engine files that consume `result_contract` and `disposition`.
+**Decision.** Scope verification to the four seed files plus every test that references review_lens role, result_contract shape, or v2 output fields; the ADRs whose contracts the migration implements; and the engine files that consume `result_contract` and `disposition`. SPEC-20 and SPEC-21 are added to close the spec-coverage gap flagged by the spec-coverage stage (provides.role #1704 and provides.events #1717 were required by the issue but had no SPEC validating them).
 
 ---
 
@@ -107,6 +103,8 @@ SPEC-16[guard]: manifest outputs section declares review_lens_summary output wit
 SPEC-17[guard]: success path writes lens-<name>-summary.md containing affirmative pass-verdict language (reviewed/-- pass); behavior preserved through v2 migration
 SPEC-18[change]: WALL CLOCK BUDGET block is injected in the prompt when _route_resolve_timeout returns a positive value (ADR-063 §1 — new in v2; v1 plugin had no _review_lens_wallclock_guidance call)
 SPEC-19[change]: hooks.cleanup is absent from manifest.yaml; manifest carries an ADR-054 §7 explanatory comment
+SPEC-20[guard]: manifest provides.role == review_lens (ADR-040 role-binding contract, #1704 — present in v1, must survive v2 migration)
+SPEC-21[change]: manifest provides.events declares exactly three events (review_lens.failed, review_lens.redaction_failed, review_lens.unparseable) per ADR-001 §"Declared events" (#1717 — new inline declaration in v2; absent at v1 merge-base)
 WIRING: plugins/agent/review-lens/manifest.yaml
 TESTFILES:
 SPEC-1: plugins/agent/review-lens/tests/review-lens-test.sh
@@ -128,4 +126,6 @@ SPEC-16: plugins/agent/review-lens/tests/review-lens-test.sh
 SPEC-17: plugins/agent/review-lens/tests/review-lens-test.sh
 SPEC-18: plugins/agent/review-lens/tests/review-lens-test.sh
 SPEC-19: plugins/agent/review-lens/tests/review-lens-test.sh
+SPEC-20: plugins/agent/review-lens/tests/review-lens-test.sh
+SPEC-21: plugins/agent/review-lens/tests/review-lens-test.sh
 ```
