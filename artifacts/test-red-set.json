@@ -1,4 +1,3 @@
 [
-  "tests/integration/engine-isolation-test.sh",
-  "tests/unit/lint-grep-c-test.sh"
+  "tests/integration/engine-isolation-test.sh"
 ]
