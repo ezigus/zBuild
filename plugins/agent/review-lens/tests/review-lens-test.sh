@@ -918,16 +918,18 @@ _1840_s20_role="$(yaml_get "$PLUGIN_DIR/manifest.yaml" "provides.role" 2>/dev/nu
 assert_eq "[SPEC-20] manifest provides.role == review_lens" \
     "review_lens" "$_1840_s20_role"
 
-# ─── SPEC-21 [change]: manifest provides.events declares exactly three events ─
-# ADR-001 §"Declared events" (#1717): provides.events inline declaration is new
-# in v2; absent at v1 merge-base. Must declare exactly three events — no more,
-# no fewer — so the engine's known-event set stays consistent.
+# ─── SPEC-21 [guard]: manifest provides.events declares exactly three events ─
+# ADR-001 §"Declared events" (#1717): provides.events was introduced in #1717
+# (before this migration) and must be preserved through v2. Must declare
+# exactly three events — no more, no fewer — so the known-event set stays consistent.
 _1840_s21_events="$(awk '
-    /events:/ { in_events=1; next }
+    /^provides:/ { in_provides=1; next }
+    in_provides && /^[^[:space:]]/ { exit }
+    in_provides && /events:/ { in_events=1; next }
     in_events && /^[[:space:]]*-[[:space:]]/ { print; next }
-    in_events { exit }
+    in_events { in_events=0 }
 ' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
-_1840_s21_count="$(grep -c '^[[:space:]]*-[[:space:]]' <<< "$_1840_s21_events" 2>/dev/null || echo 0)"
+_1840_s21_count="$(grep -c '^[[:space:]]*-[[:space:]]' <<< "$_1840_s21_events" 2>/dev/null || true)"
 assert_eq "[SPEC-21] manifest provides.events declares exactly three events" \
     "3" "$_1840_s21_count"
 if grep -q 'review_lens.failed' <<< "$_1840_s21_events"; then
