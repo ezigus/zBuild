@@ -81,7 +81,7 @@ assert_eq "[#2109] iter=1: acceptance.gate.not_passing_at_head emitted with sour
 assert_contains "[#2109] iter=1: the event names the WIRING target" \
     "$(grep '"acceptance.gate.not_passing_at_head"' "$EVENTS" || true)" '"source":"reachability"'
 assert_eq "[#2109] iter=1: recoverable — build gets its honest retry" "recoverable" \
-    "$(jq -r '.disposition // empty' <<<"$RESULT")"
+    "$(jq -r '.severity // empty' <<<"$RESULT")"
 assert_eq "[#2109] iter=1: no fault" "" "$(jq -r '.fault // empty' <<<"$RESULT")"
 assert_contains "[#2109] iter=1: the reason says not passing at HEAD, not inert" \
     "$(jq -r '.reason // empty' <<<"$RESULT")" "not passing at HEAD"

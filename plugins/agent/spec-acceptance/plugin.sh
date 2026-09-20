@@ -527,11 +527,11 @@ acceptance_gate_run() {
         failures_json="$(printf '%s\n' "${failures[@]}" | jq -R . | jq -s .)"
         severity="$(_ag_classify_disposition "${failures[@]}")"
         reason_msg="$(_ag_build_reason "${failures[@]}")"
-    else
-        # ADR-054: reason is mandatory; a pass says what it verified.
-        local _n_specs; _n_specs="$(acceptance_list_spec_ids "$design_md" 2>/dev/null | grep -c . || true)"
-        reason_msg="all ${_n_specs:-0} SPEC(s) verified"
     fi
+    # ADR-054: reason is mandatory; a pass says what it verified. Kept apart
+    # from reason_msg, which is the VIOLATION prose the operator summary leads
+    # with (#1220) — a pass must not read as a finding there.
+    local _pass_reason; _pass_reason="all $(acceptance_list_spec_ids "$design_md" 2>/dev/null | grep -c . || true) SPEC(s) verified"
     # #1987: these three classes are all "the SPECIFICATION is wrong" — the
     # declaration, the classification, or the wiring the design asserted. The
     # gate knows THAT much about its own failure; it does not name the stage
@@ -654,7 +654,7 @@ acceptance_gate_run() {
     # the lint refuses that, so absence here is never silently a routing answer.
     # `--arg rt ""` + a `(if $rt=="" ...)` conditional keeps it absent otherwise,
     # so a build-fixable failure's artifact is byte-shape-identical to today.
-    jq -cn --arg v "$verdict" --arg d "$disposition" --arg sv "$severity" --arg r "$reason_msg" \
+    jq -cn --arg v "$verdict" --arg d "$disposition" --arg sv "$severity" --arg r "${reason_msg:-$_pass_reason}" \
         --arg ft "$fault" --argjson f "$failures_json" \
         '{result_contract:2,verdict:$v,disposition:$d,severity:$sv,reason:$r,failures:$f}
          + (if $ft=="" then {} else {fault:$ft} end)' | atomic_write "$result_file"
