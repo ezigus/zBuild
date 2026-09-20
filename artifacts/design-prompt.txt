@@ -254,6 +254,8 @@ SPEC-19: plugins/agent/review-lens/tests/review-lens-test.sh
 
 Refine the PRIOR DESIGN. Preserve all existing scope entries unless one is clearly wrong.
 
+If the STAGE SUMMARIES name a tautological [change] SPEC — one that passes at the merge-base baseline, so it asserts nothing — either RE-AUTHOR that SPEC so it describes behavior that is genuinely NEW (fails at baseline, passes at HEAD), or, when the behavior already exists at the merge-base, re-tag it [guard]: there is nothing to change and no assertion can be made to fail there. Build is forbidden to touch acceptance assertions (ADR-036), so only this stage can. Preserve all other scope and acceptance entries.
+
 WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
 - This stage has a wall-clock budget of 600 seconds total; ~0s have elapsed.
 - You cannot read a real-time clock, but estimate elapsed time from your tool-call history.

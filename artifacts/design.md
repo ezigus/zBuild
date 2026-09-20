@@ -4,18 +4,41 @@
 
 **Goal.** Confirm the review-lens plugin's migration to contract v2 (ADR-055) is complete, and that all SPEC-1–SPEC-19 assertions in the acceptance test pass. Fix any remaining gaps discovered during verification.
 
-**Context.** The `review-lens` plugin (`kind: agent`, `convergence: advisory`) was migrated on the current branch from contract v1 to v2. Contract v2 requires: `result_contract:2` in every terminal output; the `verdict`/`disposition`/`reason` fields embedded in the primary output JSON; dedicated exit codes for rc=10 (budget exhausted) and rc=130 (SIGINT interrupted), each distinct from the advisory rc=0 degrade paths; ADR-063 budget-guidance blocks (TURN BUDGET and WALL CLOCK BUDGET) in the prompt; ADR-028 schema-gated envelope parsing; and ADR-055 name-matched `inputs` (id+required only). The test file (`review-lens-test.sh`) already contains SPEC-1–SPEC-19 assertions that enumerate all these behaviors.
+**Context.** The `review-lens` plugin (`kind: agent`, `convergence: advisory`) was migrated on the current branch from contract v1 to v2. Contract v2 requires: `result_contract:2` in every terminal output; the `verdict`/`disposition`/`reason` fields embedded in the primary output JSON; dedicated exit codes for rc=10 (budget exhausted) and rc=130 (SIGINT interrupted), each distinct from the advisory rc=0 degrade paths; ADR-063 budget-guidance blocks in the prompt (both TURN BUDGET and WALL CLOCK BUDGET); ADR-028 schema-gated envelope parsing; and ADR-055 name-matched `inputs` (id+required only). The test file (`review-lens-test.sh`) contains SPEC-1–SPEC-19 assertions that enumerate all these behaviors.
 
-**SPEC numbering alignment.** The prior design had SPEC-16 through SPEC-18 mis-labeled relative to what the test actually asserts. The current HEAD test file (`eb35679f`) maps them as:
-- SPEC-16 [guard]: manifest outputs section declares `review_lens_summary` with `summary: true` (ADR-055 §9 guard — present in v1, must survive v2)
-- SPEC-17 [guard]: success path writes `lens-<name>-summary.md` with affirmative pass-verdict language (present in v1, must survive v2)
-- SPEC-18 [change]: WALL CLOCK BUDGET block injected in prompt when `_route_resolve_timeout > 0` (new in v2, from `_review_lens_wallclock_guidance`)
+The manifest has been verified to declare:
+- `provides.result_contract: 2` ✓
+- `provides.role: review_lens` ✓
+- `config.valid_verdicts: [complete, degraded]` ✓
+- `config.router.timeout_s: 300` and `config.router.max_turns: 10` ✓
+- `provides.events` with exactly three entries (review_lens.failed, review_lens.redaction_failed, review_lens.unparseable) ✓
+- `inputs` entries with only `id` and `required` fields ✓
+- `outputs[].lens_result` with `primary: true` ✓
+- `outputs[].review_lens_summary` with `summary: true` ✓ (ADR-055 §9; SPEC-16 guards preservation)
+- `hooks.cleanup` absent with ADR-054 §7 comment ✓
 
-The behaviors formerly labeled SPEC-16 (events), SPEC-17 (role), and SPEC-18 (inputs-only-id-required) are verified indirectly by SPEC-7's `validate_manifest` gate.
+The plugin source has been verified to implement:
+- `_review_lens_write_result` function (no hardcoded path literals) ✓
+- `_review_lens_interrupt_handler` for SIGTERM simulation ✓
+- rc=130 path → disposition:interrupted ✓
+- rc=10 path → disposition:exhausted, reason:budget_exhausted ✓
+- `_llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok` ✓
+- ADR-063 TURN BUDGET and WALL CLOCK BUDGET guidance block injection ✓
+- No merge-action coercion tokens (approve/request_changes/"block") ✓
 
-The manifest has been verified to declare all required v2 fields. The plugin source has been verified to implement all required v2 paths including `_review_lens_write_result`, `_review_lens_interrupt_handler`, `_review_lens_budget_guidance`, `_review_lens_wallclock_guidance`, and `_llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok`.
+**SPEC classification corrections (iteration 2).** Three SPECs were tagged [guard] in the prior design but their assertions FAIL at the merge-base (guard_regressed), meaning the behaviors they test are genuinely new v2 additions:
 
-**Decision.** Scope verification to: (a) the four seed files; (b) every test that asserts behavior changed or references the output shape, including integration tests that seed lens-*.json files or enumerate `review_lens` roles; (c) the wiki page (Rule ABS-W); (d) the ADRs whose contracts the migration implements; (e) the engine files that consume `result_contract` and `disposition` values; (f) `core/contract/version.sh`, `core/plugin-registry/manifest-validation.sh`, and `core/pipeline/resolver.sh`; (g) stage-resolution, event-schema-coverage, and merge-base-bundle tests that reference `review_lens` behavior.
+- **SPEC-9 → [change]**: the test calls v2 `_review_lens_run_inner` with the v2 output contract; at the v1 merge-base the function either does not exist or does not write v2 fields, so the assert fails. The behavior (v2 additive fields coexisting with v1 fields) is new.
+- **SPEC-10 → [change]**: coercion tokens (approve/request_changes/"block") were PRESENT in v1; the v2 migration removes them. `assert_fail` correctly fails at baseline when tokens are found.
+- **SPEC-19 → [change]**: `hooks.cleanup` was PRESENT in v1 manifest; the v2 migration removes it per ADR-054 §7. `assert_fail` correctly fails at baseline when the key is found.
+
+Three SPECs were tagged [change] in the prior design but their behavior existed at the v1 merge-base (tautological), so they are reclassified [guard] with updated descriptions matching the current test assertions:
+
+- **SPEC-16 → [guard]**: the `review_lens_summary` output with `summary: true` was in v1; the guard verifies it was not accidentally removed during v2 migration.
+- **SPEC-17 → [guard]**: the success-path summary file with affirmative language was written in v1; the guard verifies it is preserved through v2 migration.
+- **SPEC-18 description corrected**: the test asserts WALL CLOCK BUDGET block injection (ADR-063 §1), not "manifest inputs entries". The v2 migration is the first to call `_review_lens_wallclock_guidance`; this fails at baseline (correctly [change]).
+
+**Decision.** Scope verification to: (a) the four seed files; (b) every test that asserts behavior changed or references the output shape, including integration tests that seed lens-*.json files or enumerate `review_lens` roles; (c) the wiki page (Rule ABS-W); (d) the ADRs whose contracts the migration implements; (e) the engine files that consume `result_contract` and `disposition` values; (f) `core/contract/version.sh` (names the `result_contract:2` version constant), `core/plugin-registry/manifest-validation.sh` (validates `provides.result_contract` at manifest load), and `core/pipeline/resolver.sh` (maps `review_lenses` stage → `review-lens` plugin via `provides.role`). Also in scope: `tests/unit/stage-resolution-parity-test.sh` (asserts the role-to-plugin resolution chain SPEC-17 depends on), `tests/unit/event-schema-emitted-coverage-test.sh` (enumerates `review_lens` in its plugin-namespace regex), and `tests/unit/review-lens-report-merge-base-bundle-test.sh` (calls `_review_lens_run_inner` which now writes v2 fields).
 
 ---
 
@@ -65,25 +88,25 @@ plugins/agent/review-aggregator/manifest.yaml
 ```
 
 ```acceptance
-SPEC-1[change]: success path writes result_contract:2, verdict:complete, disposition:complete, and non-empty reason in lens-<name>.json; pre-existing v1 fields (schema_version, name, score, findings[]) are present and intact (additive-only change)
+SPEC-1[change]: success path writes result_contract:2, verdict:complete, disposition:complete, and non-empty reason in lens-<name>.json
 SPEC-2[change]: router-failure degrade path writes result_contract:2, verdict:degraded, disposition:broken in lens file
 SPEC-3[change]: unparseable-reply degrade path writes result_contract:2, verdict:degraded, disposition:broken in lens file
-SPEC-4[change]: schema-gate recovery (_llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok) finds valid first-object over a postamble-bearing response without emitting review_lens.unparseable
+SPEC-4[change]: schema-gate recovery (_llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok) finds valid first-object over a postamble-bearing response
 SPEC-5[change]: ADR-063 TURN BUDGET block is injected in the prompt when _route_resolve_max_turns > 0
 SPEC-6[change]: manifest declares config.router.timeout_s and config.router.max_turns; _route_resolve_timeout/_route_resolve_max_turns return manifest values when no template or env override is set
 SPEC-7[change]: manifest provides.result_contract == 2 and config.valid_verdicts declares both complete and degraded; validate_manifest passes
 SPEC-8[guard]: existing advisory degrade behavior (rc=0, review_lens.failed/unparseable events, advisory-absence stage summary) is unchanged
-SPEC-9[guard]: passing run output is backward-compatible — pre-existing v1 fields (schema_version, name, score, findings[]) are present and unmodified in a successful lens result; the v2 additions (result_contract, verdict, disposition, reason) are purely additive with no field removed
-SPEC-10[guard]: merge-action coercion tokens (approve, request_changes, "block") are absent from plugin.sh and charters.sh; verdict appears in _review_lens_write_result body only as a jq field, and the amended coercion grep does not false-positive on it
+SPEC-9[change]: passing run output is backward-compatible — pre-existing v1 fields (schema_version, name, score, findings[]) are present and unmodified in a successful lens result; the v2 additions (result_contract, verdict, disposition, reason) are purely additive with no field removed
+SPEC-10[change]: merge-action coercion tokens (approve, request_changes, "block") are absent from plugin.sh and charters.sh; verdict appears in _review_lens_write_result body only as a jq field, and the amended coercion grep does not false-positive on it
 SPEC-11[change]: _review_lens_write_result function exists in plugin.sh and its body contains no hardcoded artifact path literals
 SPEC-12[guard]: manifest outputs[].lens_result declares primary: true
 SPEC-13[change]: rc=130 path propagates rc=130 and writes disposition:interrupted; _review_lens_interrupt_handler directly callable for SIGTERM simulation
 SPEC-14[change]: template accessor wins over manifest value in ADR-063 budget block (sentinel 99 overrides manifest default)
 SPEC-15[change]: rc=10 path propagates rc=10 and writes disposition:exhausted, reason:budget_exhausted (distinct from advisory rc=0 and rc=130)
-SPEC-16[guard]: manifest outputs section declares review_lens_summary output with summary: true (ADR-055 §9 — present in v1, must survive v2 migration)
-SPEC-17[guard]: success path writes lens-<name>-summary.md containing affirmative pass-verdict language (reviewed/-- pass); behavior present in v1 and must persist through migration
-SPEC-18[change]: WALL CLOCK BUDGET block is injected in the prompt when _route_resolve_timeout returns a positive value (_review_lens_wallclock_guidance); new in v2, absent from merge-base
-SPEC-19[guard]: hooks.cleanup is absent from manifest.yaml; manifest carries an ADR-054 §7 explanatory comment
+SPEC-16[guard]: manifest outputs section declares review_lens_summary output with summary: true (ADR-055 §9 — presence preserved through v2 migration)
+SPEC-17[guard]: success path writes lens-<name>-summary.md containing affirmative pass-verdict language (reviewed/-- pass); behavior preserved through v2 migration
+SPEC-18[change]: WALL CLOCK BUDGET block is injected in the prompt when _route_resolve_timeout returns a positive value (ADR-063 §1 — new in v2; v1 plugin had no _review_lens_wallclock_guidance call)
+SPEC-19[change]: hooks.cleanup is absent from manifest.yaml; manifest carries an ADR-054 §7 explanatory comment
 WIRING: plugins/agent/review-lens/manifest.yaml
 TESTFILES:
 SPEC-1: plugins/agent/review-lens/tests/review-lens-test.sh
