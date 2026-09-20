@@ -1,0 +1,3 @@
+The engine-isolation-test has no review-lens references — the timeout is purely infrastructure. The only uncommitted change is the 3-line comment update in the test file, and the design.md already has SPEC-9/10/19 classified as `[change]`.
+
+The acceptance-gate `guard_regressed` result is stale from iteration 1, before the design corrected those classifications. The current design scope covers all files that need to change.
