@@ -8,7 +8,7 @@
 ## Failing lines (extracted)
 
 ```
-integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.AzHOTY/tests/integration/engine-isolation-test.sh (exceeded 480s, rc=124)
+integration: TIMEOUT /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Z5WKyl/tests/integration/engine-isolation-test.sh (exceeded 480s, rc=124)
   [38;2;74;222;128m✓[0m [SPEC-2] refusal names both roots, the install remedy, and the override
   [38;2;74;222;128m✓[0m [SPEC-3] --dev-engine permits the run and warns about mid-run edits
   [38;2;74;222;128m✓[0m [SPEC-4] ZBUILD_DEV_ENGINE=1 is an equivalent escape hatch
