@@ -61,10 +61,12 @@ set +e; _zbuild_build_permissions_settings; _rc=$?; set -e
 assert_eq "[SPEC-1] the builder still returns rc=0 with rules present" "0" "$_rc"
 
 _DENY="$(jq -r '.permissions.deny[]?' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE" 2>/dev/null || true)"
-assert_contains "[SPEC-1][change] the first testfile becomes an Edit() deny rule" \
-    "$_DENY" "Edit($_TF1)"
+# #2163: `//` — Claude Code reads a single leading `/` as project-relative;
+# the rule rendered `Edit(/abs)` matched nothing.
+assert_contains "[SPEC-1][change] the first testfile becomes an Edit(//abs) deny rule" \
+    "$_DENY" "Edit(/$_TF1)"
 assert_contains "[SPEC-2][change] the second is rendered too, not just the first" \
-    "$_DENY" "Edit($_TF2)"
+    "$_DENY" "Edit(/$_TF2)"
 
 assert_eq "[SPEC-4][guard] the settings file still passes jq validation" \
     "0" "$(jq empty "$_ZBUILD_PERMISSIONS_SETTINGS_FILE" >/dev/null 2>&1; echo $?)"

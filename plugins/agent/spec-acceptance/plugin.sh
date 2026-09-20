@@ -154,7 +154,9 @@ _ag_build_reason() {
         esac
     done
     local -a clauses=()
-    [[ -n "$taut"     ]] && clauses+=("$(_ag_join_ids "$taut") tautological (pass at baseline) — re-author the assertions")
+    # #2163: state the finding; who acts on it is the engine's routing (the
+    # fault class), not a remedy this stage addresses to another.
+    [[ -n "$taut"     ]] && clauses+=("$(_ag_join_ids "$taut") tautological — passes at the baseline, so it asserts no change")
     [[ -n "$nohead"   ]] && clauses+=("$(_ag_join_ids "$nohead") not passing at HEAD — fix the implementation or the assertion")
     [[ -n "$untagged" ]] && clauses+=("$(_ag_join_ids "$untagged") untagged — add a matching [SPEC-n] assertion in TESTFILES")
     [[ -n "$notf"     ]] && clauses+=("$(_ag_join_ids "$notf") missing a tagged TESTFILE")

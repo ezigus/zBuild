@@ -298,6 +298,28 @@ _build_write_build_summary() {
 # when all pass or the testfile list is empty. Called only when build_verdict
 # is empty_diff — never on pass or other paths. The timeout bound mirrors the
 # negctl gate so a slow testfile cannot stall the stage loop indefinitely.
+# ─── _build_restore_authored_testfiles <artifact_dir> <repo_root> ────────────
+# #2163: the acceptance testfiles are read-only for this stage. If a previous
+# iteration changed one anyway (the deny is a spawn setting; Bash/Write can
+# reach past it), restore the authored bytes from the record's copies BEFORE
+# this iteration starts — the build owns writes to the repo, so the restore
+# happens here, mechanically, not by asking a model to undo its own edit.
+# Prints the number of files restored. Emits build.authored_testfiles.restored.
+_build_restore_authored_testfiles() {
+    local repo_root="$2" copies="$1/authored-testfiles" n=0 f rel
+    [[ -d "$copies" ]] || { printf '0'; return 0; }
+    while IFS= read -r f; do
+        [[ -n "$f" ]] || continue
+        rel="${f#"$copies"/}"
+        [[ -f "$repo_root/$rel" ]] || continue
+        cmp -s "$f" "$repo_root/$rel" && continue
+        cp -p "$f" "$repo_root/$rel" 2>/dev/null || continue
+        n=$((n + 1))
+        eb_emit_event "build.authored_testfiles.restored" "plugin=build" "file=$rel" 2>/dev/null || true
+    done < <(find "$copies" -type f 2>/dev/null)
+    printf '%s' "$n"
+}
+
 _build_guard_false_completion() {
     local testfiles="$1" repo_root="$2"
     local timeout_s="${ZBUILD_NEGCTL_TIMEOUT:-60}"

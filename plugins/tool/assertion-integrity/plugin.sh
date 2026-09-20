@@ -26,6 +26,7 @@ source "$_AI_ROOT/scripts/lib/acceptance-block.sh" 2>/dev/null || true
 _ai_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
 _AI_DIGESTS="assertion-digests.txt"
+_AI_COPIES="authored-testfiles"
 
 _ai_digest_of() {
     [[ -f "$1" ]] || { printf 'ABSENT'; return 0; }
@@ -43,9 +44,17 @@ assertion_integrity_record() {
     [[ -f "$design" ]] || return 0
     declare -f acceptance_list_testfiles >/dev/null 2>&1 || return 0
     local tf out=""
+    # #2163: keep the authored BYTES too, under authored-testfiles/<path>, so a
+    # modified file can be restored (by the stage that owns repo writes) instead
+    # of only being reported. A digest can prove a change; only a copy can undo it.
+    rm -rf "${art:?}/${_AI_COPIES:?}" 2>/dev/null || true
     while IFS= read -r tf; do
         [[ -n "$tf" ]] || continue
         out="${out}$(_ai_digest_of "$repo/$tf")  $tf"$'\n'
+        if [[ -f "$repo/$tf" ]]; then
+            mkdir -p "$art/$_AI_COPIES/$(dirname "$tf")" 2>/dev/null || true
+            cp -p "$repo/$tf" "$art/$_AI_COPIES/$tf" 2>/dev/null || true
+        fi
     done < <(acceptance_list_testfiles "$design" 2>/dev/null || true)
     [[ -n "$out" ]] || return 0
     printf '%s' "$out" > "$art/$_AI_DIGESTS" 2>/dev/null || true
@@ -89,7 +98,9 @@ assertion_integrity_run() {
         done < "$rec"
         if [[ -n "$violated" ]]; then
             verdict="fail"
-            reason="acceptance assertions modified after authoring: ${violated% }"
+            # #2163: a finding the next build CAN honour — the authored copy is
+            # restored before it starts; the files are read-only for it.
+            reason="acceptance assertions modified after authoring: ${violated% } — the authored version is restored before the next build; these files are read-only for the build stage"
             _ai_emit "assertion_integrity.violation" "files=${violated% }"
         else
             verdict="pass"

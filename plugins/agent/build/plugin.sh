@@ -256,6 +256,10 @@ _build_stage_run_inner() {
             >/dev/null 2>&1 || true
     fi
 
+    # #2163: read-only testfiles are restored before the model runs.
+    local _restored; _restored="$(_build_restore_authored_testfiles "$artifact_dir" "$repo_root" 2>/dev/null || printf '0')"
+    [[ "${_restored:-0}" -gt 0 ]] && warn "build: restored ${_restored} authored acceptance testfile(s) modified by a previous iteration"
+
     local router_rc=0
     local _prev_persona_env="${ZBUILD_STAGE_IO_PERSONA-__UNSET__}"
     if [[ "$_build_persona_applied" -eq 1 ]]; then

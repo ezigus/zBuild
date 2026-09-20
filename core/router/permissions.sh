@@ -88,7 +88,11 @@ _zbuild_build_permissions_settings() {
     # permission decision spelled out in two places drifts in one of them.
     local _deny_json='[]'
     if [[ -n "${ZBUILD_PERMISSION_DENY_EDIT:-}" ]]; then
-        _deny_json="$(jq -R 'select(length > 0) | "Edit(" + . + ")"' \
+        # #2163: Claude Code's permission syntax reads a single leading `/` as
+        # PROJECT-relative and `//` as absolute. Rendered as `Edit(/abs/…)` the
+        # rule matched nothing — the builder edited the testfile on every #1840
+        # run while the prompt said "the spawn denies it". Render `//`.
+        _deny_json="$(jq -R 'select(length > 0) | "Edit(" + (if startswith("/") then "/" + . else . end) + ")"' \
                         <<< "${ZBUILD_PERMISSION_DENY_EDIT}" | jq -sc .)" \
             || { error "router: permissions: jq failed to build deny rules"; return 1; }
     fi
