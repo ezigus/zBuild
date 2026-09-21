@@ -95,6 +95,9 @@ if declare -F rsc_finalize_body >/dev/null 2>&1; then
     assert_contains "[SPEC-5] …and still says how to resume" "$_early" "re-add \`zbuild-run\` to resume"
     _late="$(ZBUILD_STATUS_NOW=2026-09-21T03:41:30Z rsc_finalize_body "$_body5" cancelled 2026-09-20T21:41:00Z)"
     assert_contains "[SPEC-5] a cancel at the ceiling is still the ceiling" "$_late" "**cancelled at the 360-minute ceiling**"
+    # review on #2168: a "now" before the start (clock skew) must not print "-Xm in".
+    _skew="$(ZBUILD_STATUS_NOW=2026-09-20T21:40:00Z rsc_cancel_status 2026-09-20T21:41:00Z)"
+    assert_eq "[SPEC-5] a now before the start reads as a plain cancel" "cancelled" "$_skew"
     _unk="$(rsc_finalize_body "$_body5" cancelled)"
     assert_contains "[SPEC-5] with no start time the wording stays neutral" "$_unk" "**cancelled**"
     assert_eq "[SPEC-5] …not the ceiling" "0" "$(grep -c 'minute ceiling' <<< "$_unk" || true)"

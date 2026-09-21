@@ -413,8 +413,9 @@ rsc_cancel_status() {
     st_e="$(_rsc_epoch "$started")"
     if [[ "$st_e" -le 0 ]]; then printf 'cancelled'; return 0; fi
     now_e="$(_rsc_epoch "${ZBUILD_STATUS_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}")"
+    # No usable "now", or a now before the start (clock skew): say only what is known.
+    if (( now_e <= 0 || now_e < st_e )); then printf 'cancelled'; return 0; fi
     ceil_e=$(( st_e + $(_rsc_ceiling_min) * 60 ))
-    if (( now_e <= 0 )); then printf 'cancelled'; return 0; fi
     if (( now_e >= ceil_e - 300 )); then
         printf 'cancelled at the %s-minute ceiling' "$(_rsc_ceiling_min)"
     else
