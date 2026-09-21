@@ -1,0 +1,5 @@
+[
+  "plugins/agent/security-lens/tests/security-lens-test.sh",
+  "tests/integration/cleanup-release-test.sh",
+  "tests/unit/teardown-purge-scratch-test.sh"
+]
