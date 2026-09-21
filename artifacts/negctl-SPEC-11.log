@@ -97,8 +97,7 @@
   [38;2;74;222;128m✓[0m [SPEC-1] R1: result_contract:2 on normal pass path
   [38;2;74;222;128m✓[0m [SPEC-2] R1: verdict=pass on normal pass path
   [38;2;74;222;128m✓[0m [SPEC-2] R1: disposition=complete on normal pass path
-  [38;2;248;113;113m✗[0m R1: stub is false after real LLM path
-    [2mexpected: false, got: absent[0m
+  [38;2;74;222;128m✓[0m R1: stub is false after real LLM path
   [38;2;74;222;128m✓[0m [SPEC-9] R1: findings[0].title accessible under .data.findings
   [38;2;74;222;128m✓[0m R1: data.findings[0].severity parsed
   [38;2;74;222;128m✓[0m R2: last_prompt sentinel file written (route_to_model was invoked)
@@ -132,4 +131,25 @@
   [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery → rc=0
   [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery → findings.json written
   [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery → recovered findings (1 finding, not empty)
-  [38;2;248;113;113m✗[0m [SPEC-3] router-fatal path writes v2 result (OUTPUT_R7 missing)
+  [38;2;74;222;128m✓[0m [SPEC-3] router-fatal path writes result_contract:2
+  [38;2;74;222;128m✓[0m [SPEC-3] router-fatal path writes verdict=error
+  [38;2;74;222;128m✓[0m [SPEC-3] router-fatal path writes disposition=broken
+  [38;2;74;222;128m✓[0m [SPEC-4] no-state-file path returns rc=1 (not rc=2)
+  [38;2;74;222;128m✓[0m [SPEC-4] no-state-file path writes result_contract:2
+  [38;2;74;222;128m✓[0m [SPEC-5] security_lens_cleanup is declared and returns 0
+  [38;2;74;222;128m✓[0m [SPEC-5] security_lens_cleanup hook is declared in the manifest
+  [38;2;74;222;128m✓[0m [SPEC-6] manifest declares provides.result_contract: 2
+  [38;2;74;222;128m✓[0m [SPEC-7] manifest declares valid_verdicts: [pass, error]
+  [38;2;74;222;128m✓[0m [SPEC-11] manifest declares config.router with timeout_s and max_turns
+  [38;2;74;222;128m✓[0m [SPEC-13] manifest declares primary: true on findings output
+  [38;2;74;222;128m✓[0m [SPEC-12] ZBUILD_ROUTER_MAX_TURNS_OVERRIDE takes precedence over manifest config.router.max_turns
+  [38;2;248;113;113m✗[0m [SPEC-14] plugin.sh has no hardcoded artifact paths beyond manifest-declared basenames
+    [2mexpected: 0, got: 0
+0[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 67 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-14] plugin.sh has no hardcoded artifact paths beyond manifest-declared basenames
+
