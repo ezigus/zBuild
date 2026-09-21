@@ -1,5 +1,6 @@
-## spec-coverage — covered
+## spec-coverage — uncovered
 
-- All eight acceptance checkboxes map to declared SPECs — exit-path v2 results (SPEC-1–4), valid_verdicts (SPEC-7), no artifact paths in code (SPEC-14), router budgets with override precedence (SPEC-11/12), primary output (SPEC-13), and golden diff (SPEC-15); checkboxes 7–8 are process discipline, not design specs.
+- The issue's "What this plugin adopts" list explicitly requires `provides.events` declared in the manifest (#1717) and `provides.role` declared in the manifest (#1704), but no SPEC asserts either field's presence.
 
-- every requirement the issue states maps to a declared SPEC
+- NOT COVERED: `provides.events` declared in the manifest
+- NOT COVERED: `provides.role` declared in the manifest
