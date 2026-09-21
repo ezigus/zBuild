@@ -1,6 +1,5 @@
-## spec-coverage — uncovered
+## spec-coverage — covered
 
-- The issue's "What this plugin adopts" list explicitly requires `provides.events` declared in the manifest (#1717) and `provides.role` declared in the manifest (#1704), but no SPEC asserts either field's presence.
+- Every explicit acceptance checkbox maps to a SPEC — v2 result on all exit paths (SPEC-1–4), `valid_verdicts` (SPEC-7), no artifact paths in code (SPEC-14), router budgets with override precedence (SPEC-11, SPEC-12), golden diff (SPEC-15), `primary: true` (SPEC-13), `cleanup` hook (SPEC-5), `provides.events` (SPEC-16), and `provides.role` (SPEC-17); process requirements ("npm test green", "reddens at merge-base") are not SPECs by convention and their absence is not a gap.
 
-- NOT COVERED: `provides.events` declared in the manifest
-- NOT COVERED: `provides.role` declared in the manifest
+- every requirement the issue states maps to a declared SPEC
