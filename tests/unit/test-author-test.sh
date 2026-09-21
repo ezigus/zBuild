@@ -129,5 +129,26 @@ print_test_section "SPEC-7: simple.yaml gives test-author a turn budget that fit
 _mt="$(awk '/^test-author:/{f=1;next} /^[a-z]/{f=0} f && /max_turns:/{print $2}' "$REPO_ROOT/config/templates/simple.yaml")"
 assert_eq "[SPEC-7][change] simple.yaml test-author.router.max_turns is 45 (plan/impact parity), not the 25 default" "45" "$_mt"
 
+# ─── SPEC-8/9 (#2174): the author owns every [SPEC-n] tag in the files it writes ─
+# #1841: security-lens-test.sh carried [SPEC-5]/[SPEC-6] labels from an older
+# contract; the gate greps by tag, matched those, and called the new SPEC-5/6
+# tautologies. A tag whose number is not in THIS contract is stale by
+# definition: the assertion stays, the tag goes.
+print_test_section "SPEC-8: the prompt tells the author stale tags are dropped"
+_setup s8
+_TA_RC=0
+test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
+assert_contains "[SPEC-8][change] the prompt says a [SPEC-n] tag not in this contract is dropped (assertion kept)" \
+    "$(cat "$_TA_PROMPT")" "not in this contract"
+print_test_section "SPEC-9: stale tags are stripped mechanically after authoring"
+_setup s9
+printf '%s\n' 'assert_eq "[SPEC-1] placeholder" "1" "$got"' 'assert_eq "[SPEC-5] old contract: ANSI bytes stripped" "x" "$y"' 'assert_eq "[SPEC-12] old contract too" "a" "$b"' > "$_R/tests/acc-test.sh"
+_TA_RC=0
+test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
+assert_eq "[SPEC-9][change] a tag whose number is not in the contract is removed" "0" "$(grep -c '\[SPEC-5\]\|\[SPEC-12\]' "$_R/tests/acc-test.sh" || true)"
+assert_contains "[SPEC-9][change] …the assertion itself stays" "$(cat "$_R/tests/acc-test.sh")" 'old contract: ANSI bytes stripped'
+assert_contains "[SPEC-9][guard] a tag in the contract is kept" "$(cat "$_R/tests/acc-test.sh")" '[SPEC-1] placeholder'
+assert_eq "[SPEC-9][change] the strip is recorded as an event" "1" "$(grep -c '"test_author.stale_tags_dropped"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+
 print_test_results
 exit $((FAIL > 0))

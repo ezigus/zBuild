@@ -1517,8 +1517,12 @@ _cycle_member_iteration_aware() {
     # id match first, then the template's role binding (acceptance-gate → spec-acceptance).
     manifest="$(manifest_graph_resolve_member "$plugins_root" "$s" 2>/dev/null || true)"
     [[ -n "$manifest" && -f "$manifest" ]] || return 1
-    v="$(yaml_get "$manifest" "capabilities.iteration_aware" 2>/dev/null || true)"
-    [[ "$v" == "true" ]]
+    # Served from the manifest index (0 forks); yaml_get only under the cache
+    # kill switch (ADR-065 §4).
+    declare -F manifest_index_load >/dev/null 2>&1 && manifest_index_load "$plugins_root" 2>/dev/null || true
+    v="$(manifest_index_get "$manifest" capabilities.iteration_aware 2>/dev/null)" \
+        || v="$(yaml_get "$manifest" "capabilities.iteration_aware" 2>/dev/null || true)"
+    [[ "${v%$'\n'}" == "true" ]]
 }
 _CYCLE_VERIFIED_FP=""
 _CYCLE_VERIFIED_ITER=""

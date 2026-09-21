@@ -160,6 +160,35 @@ else
 fi
 
 unset -f awk find
+# ─── SPEC-8 (#2174): outputs.path is a LIST key filled by the same single awk ─
+# Write ownership needs every plugin's declared output paths; parsing them
+# with one awk per manifest per run cost +204 execs (ADR-065 says the count
+# only goes down). The index already walks every manifest once.
+print_test_section "SPEC-8: outputs.path lists every declared output, from the one pass"
+_O="$TEST_TEMP_DIR/corpus-out/plugins"; mkdir -p "$_O/a" "$_O/b" "$_O/c"
+printf 'id: a\noutputs:\n  - id: one\n    path: ${artifact_dir}/one.md\n    required: true\n  - id: two\n    path: "${artifact_dir}/two.json"\n    required: false\n    primary: true\nhooks:\n  run: x\n' > "$_O/a/manifest.yaml"
+printf 'id: b\nhooks:\n  run: x\n' > "$_O/b/manifest.yaml"
+printf 'id: c\ninputs:\n  - id: q\n    path: ${artifact_dir}/not-an-output.md\noutputs:\n  - id: only\n    path: ${artifact_dir}/only.md\nconfig:\n  path: ${artifact_dir}/nor-this.md\n' > "$_O/c/manifest.yaml"
+# SPEC-7 unset the counters; re-arm them for this section.
+awk()  { printf 'x\n' >> "$AWKS";  command awk  "$@"; }
+find() { printf 'x\n' >> "$FINDS"; command find "$@"; }
+export ZBUILD_YAML_CACHE=1; yaml_cache_flush; : > "$AWKS"; : > "$FINDS"
+manifest_index_load "$_O"
+assert_eq "[SPEC-8] the list key is filled by the same one find + one awk" "1|1" "$(_n "$AWKS")|$(_n "$FINDS")"
+assert_eq "[SPEC-8] every output path, required or not, quoted or not, in order" \
+    $'${artifact_dir}/one.md\n${artifact_dir}/two.json' "$(manifest_index_get "$_O/a/manifest.yaml" outputs.path | sed '/^$/d')"
+assert_eq "[SPEC-8] a manifest with no outputs block → nothing" "" "$(manifest_index_get "$_O/b/manifest.yaml" outputs.path)"
+assert_eq "[SPEC-8] path: lines outside the outputs block are not outputs" \
+    '${artifact_dir}/only.md' "$(manifest_index_get "$_O/c/manifest.yaml" outputs.path | sed '/^$/d')"
+# review on #2175: the warm path (manifest_index_rows) emits the list key too,
+# one row per value, exactly as the cold build does.
+: > "$AWKS"; : > "$FINDS"
+# (find's file order is not guaranteed across platforms — compare sorted.)
+_warm="$(manifest_index_rows "$_O" | grep $'\034outputs.path\034' | sed 's/.*\x1c//' | LC_ALL=C sort | tr '\n' ' ')"
+assert_eq "[SPEC-8] the warm rows path emits one row per output value (no fork)" \
+    '${artifact_dir}/one.md ${artifact_dir}/only.md ${artifact_dir}/two.json ' "$_warm"
+assert_eq "[SPEC-8] …and forks nothing" "0|0" "$(_n "$AWKS")|$(_n "$FINDS")"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

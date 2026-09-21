@@ -19,6 +19,8 @@ _ZBUILD_REGISTRY_LIFECYCLE_LOADED=1
 # classifier can never disagree about where a declared output lives.
 # shellcheck source=output-paths.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/output-paths.sh"
+# shellcheck source=write-ownership.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/write-ownership.sh"
 
 # ─── scan_plugin_outputs — fail-closed artifact-presence scanner (#288) ─────
 # ADR-001 §Fail-closed scanner contract:
@@ -302,6 +304,17 @@ plugin_hook_call() {
                 done < <( ( source "$_lc_lib/acceptance-block.sh" >/dev/null 2>&1 \
                             && acceptance_list_testfiles "$_lc_design" ) 2>/dev/null || true )
             fi
+        fi
+
+        # #2174: write ownership from the manifests (write-ownership.sh) —
+        # other plugins' declared outputs, and the repo unless declared.
+        _lc_other_outputs_deny "$plugin_dir" "$_ws_state_dir"   # parent shell: fills the memo
+        ZBUILD_PERMISSION_DENY_EDIT+="$_LC_DENY_OUT"
+        local _lc_wr; _lc_wr="$(manifest_index_get "$manifest" capabilities.writes_repository 2>/dev/null)" \
+            || _lc_wr="$(yaml_get "$manifest" "capabilities.writes_repository" 2>/dev/null || true)"
+        if [[ "${_lc_wr%$'\n'}" != "true" ]]; then
+            _lc_repo_entries_deny "${ZBUILD_REPO_ROOT:-.}"
+            ZBUILD_PERMISSION_DENY_EDIT+="$_LC_DENY_OUT"
         fi
 
         if ! declare -F stage_scratch_ensure >/dev/null 2>&1; then

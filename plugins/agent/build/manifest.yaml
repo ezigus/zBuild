@@ -120,5 +120,7 @@ state:
 # ADR-047 §4: capability flags — the orchestrator reads these to replace the
 # hardcoded `[[ "$_cm" == "build" ]]` guard with a manifest-driven check.
 capabilities:
+  # #2174: only a plugin declaring this may edit the target repository.
+  writes_repository: true
   produces_commits: true
   empty_diff_legitimate: true

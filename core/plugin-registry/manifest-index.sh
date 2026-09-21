@@ -28,6 +28,7 @@ _ZBUILD_MIDX_KEYS=(
     hooks.run hooks.cleanup
     provides.role provides.result_contract provides.alias
     convergence capabilities.empty_diff_legitimate config.tier_default
+    capabilities.writes_repository capabilities.iteration_aware
 )
 # -g: this file can be sourced from inside a function (see manifest-validation.sh).
 declare -gA _ZBUILD_MIDX=()        # "<path>\034<key>" → value + "\n" (present keys only)
@@ -60,8 +61,14 @@ _ZBUILD_MIDX_AWK='
     # then a trailing comment, then ONE leading and ONE trailing quote.
     function clean(v) { sub(/^[^:]+:[[:space:]]*/, "", v); sub(/[[:space:]]*#.*/, "", v); gsub(/^["\047]|["\047]$/, "", v); return v }
     function nclean(v) { sub(/^[[:space:]]+[^:]+:[[:space:]]*/, "", v); sub(/[[:space:]]*#.*/, "", v); gsub(/^["\047]|["\047]$/, "", v); return v }
-    FNR == 1 { for (i = 1; i <= n; i++) { found[i] = 0; inb[i] = 0 } }
+    FNR == 1 { for (i = 1; i <= n; i++) { found[i] = 0; inb[i] = 0 }; inout = 0 }
     {
+        # #2174: outputs.path is a LIST key — one row per `path:` line inside
+        # the column-0 `outputs:` block (any indentation, quoted or not). Same
+        # open/close rule as the nested scalars; emitted from this same pass.
+        if ($0 ~ /^outputs:/) { inout = 1; next }
+        if (inout && $0 ~ /^[a-zA-Z_]/) inout = 0
+        if (inout && $0 ~ /^[[:space:]]+(-[[:space:]]+)?path:/) { v = $0; sub(/^[[:space:]]+(-[[:space:]]+)?/, "", v); printf "%s\034outputs.path\034%s\n", FILENAME, nclean(" " v) }
         for (i = 1; i <= n; i++) {
             if (found[i]) continue
             if (parent[i] == "") {
@@ -106,7 +113,11 @@ manifest_index_load() {
     # the writes in a subshell and keep nothing).
     while IFS=$'\034' read -r p k v; do
         [[ "$k" == "__file__" ]] && { files+=("$p"); continue; }
-        _ZBUILD_MIDX["$p"$'\034'"$k"]="$v"$'\n'
+        if [[ "$k" == "outputs.path" ]]; then
+            _ZBUILD_MIDX["$p"$'\034'"$k"]+="$v"$'\n'   # list key: accumulate (#2174)
+        else
+            _ZBUILD_MIDX["$p"$'\034'"$k"]="$v"$'\n'
+        fi
     done < <(manifest_index_build "$root")
     _ZBUILD_MIDX_FILES["$root"]="$(printf '%s\n' "${files[@]+"${files[@]}"}")"
 }
@@ -127,6 +138,12 @@ manifest_index_rows() {
                 v="${_ZBUILD_MIDX["$f"$'\034'"$k"]}"
                 printf '%s\034%s\034%s\n' "$f" "$k" "${v%$'\n'}"
             done
+            # The list key: one row per value, as the cold build emits it (#2174).
+            if [[ -n "${_ZBUILD_MIDX["$f"$'\034'outputs.path]+x}" ]]; then
+                while IFS= read -r v; do
+                    [[ -n "$v" ]] && printf '%s\034outputs.path\034%s\n' "$f" "$v"
+                done <<< "${_ZBUILD_MIDX["$f"$'\034'outputs.path]}"
+            fi
         done <<< "${_ZBUILD_MIDX_FILES[$root]}"
         return 0
     fi
