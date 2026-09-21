@@ -11,7 +11,7 @@ description: |
 
 hooks:
   run: security_lens_run
-  # security_lens_cleanup is defined in plugin.sh (ADR-056 §4; no resources to release)
+  cleanup: security_lens_cleanup
 requires:
   # #2066: `router` — plugin.sh:29 sources core/router/route.sh and :124 calls
   # route_to_model. The dependency was always real; only the declaration was
