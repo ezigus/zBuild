@@ -241,6 +241,18 @@ body="$(rsc_render_body "$EV" "$STATE")"
 assert_contains "[SPEC-10] the re-frozen line is a snapshot too (a later overwrite does not leak in)" \
     "$(row_of '**6.1.1 build**')" "retried after the first attempt timed out"
 
+# review on #2168: a save that cannot encode `ends` must not write a file
+# that would later serve every row as legacy-frozen (the stale first close).
+_before="$(cat "$STATE/status-comment-rows.json")"
+_rsc_snapshot_load "$STATE" r-2131   # rsc_render_body ran in a $( ) — fill this shell's maps
+_RSC_SNAP_DIRTY=1
+# Only the `ends` encoding fails; the row encoding still works (the case that
+# would silently write `"ends": {}`).
+jq() { [[ "$*" == *--argjson* ]] && { command jq "$@"; return; }; return 1; }
+_rsc_snapshot_save "$STATE"
+unset -f jq
+assert_eq "[SPEC-10] a save that cannot encode the ends map leaves the snapshot file untouched" "$_before" "$(cat "$STATE/status-comment-rows.json")"
+
 # ─── SPEC-8: the sidecar is a reader of events.jsonl, never a writer ────────
 assert_eq "[SPEC-8] no eb_emit_event in the sidecar" "0" "$(grep -c 'eb_emit_event' "$LIB")"
 assert_eq "[SPEC-8] the sidecar never sources the event bus" "0" "$(grep -c 'event-bus' "$LIB")"

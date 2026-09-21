@@ -197,6 +197,9 @@ _rsc_snapshot_save() {   # <state_dir> — atomic; only when something new was f
     tmp="$(mktemp "${f}.XXXXXX" 2>/dev/null)" || return 0
     local ends; ends="$(for k in "${!_RSC_SNAP_END[@]}"; do printf '%s\t%s\n' "$k" "${_RSC_SNAP_END[$k]}"; done \
         | jq -Rs '[split("\n")[] | select(length > 0) | split("\t") | {key: .[0], value: .[1]}] | from_entries' 2>/dev/null)"
+    # review on #2168: an `ends` that failed to encode must not be saved as
+    # `{}` — every row would then read as legacy-frozen (the stale first close).
+    if [[ -z "$ends" && "${#_RSC_SNAP_END[@]}" -gt 0 ]]; then rm -f "$tmp"; return 0; fi
     {
         for k in "${!_RSC_SNAP[@]}"; do printf '%s\t%s\n' "$k" "${_RSC_SNAP[$k]}"; done
     } | jq -Rs --arg run "$_RSC_SNAP_RUN" --argjson ends "${ends:-{\}}" '
