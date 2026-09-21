@@ -10,12 +10,14 @@
 # gate's declared `test_timing` input (it sizes its probes from the measured
 # per-file time, #2142) saw a subset.
 #
-# SPEC-1[change]: a run appends to test-timing.log under a `run <n> <mode> <epoch>` marker;
+# SPEC-1[change]: a run appends to test-timing.log under a `run <n> <mode>` marker;
 #   rows from the previous run are still there afterwards
 # SPEC-2[change]: the timing summary folded into test-results.json describes the LAST run only
 #   (tier totals are not summed across runs; slowest_files is not a union)
 # SPEC-3[guard]:  the acceptance gate's measured bound still sees the earlier full run's
 #   slow row after a targeted re-run (it takes the max across rows)
+# SPEC-4[change]: a run whose suite writes no timing rows adds no artifact (the parity golden
+#   lists no test-timing.log for the mocked run)
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -61,7 +63,9 @@ assert_contains "[SPEC-1] run 1's slow row is recorded" "$(cat "$LOG")" "file 48
 _test_run_inner "$ARTIFACT_DIR/diff.patch" "$REPO_FIXTURE" "$OUT" "$TARGETED_CMD" >/dev/null 2>&1 || true
 assert_contains "[SPEC-1] after run 2 the slow row from run 1 is STILL there" "$(cat "$LOG")" "file 480000"
 assert_contains "[SPEC-1] …and run 2's row is there too" "$(cat "$LOG")" "file 120 "
-assert_eq "[SPEC-1] each run opens with a run marker" "2" "$(grep -c '^run [0-9]' "$LOG" || true)"
+assert_eq "[SPEC-1] each run's rows sit under a run marker" "2" "$(grep -c '^run [0-9]' "$LOG" || true)"
+assert_eq "[SPEC-1] …the marker names the run and its mode, and precedes its rows" "run 1 full" "$(sed -n 1p "$LOG")"
+assert_eq "[SPEC-1] …the second block is the targeted run" "run 2 full" "$(grep '^run 2' "$LOG")"
 
 print_test_section "SPEC-2: the folded summary describes the last run only"
 _tiers="$(jq -c '.data.timing.tiers // .timing.tiers // {}' "$OUT" 2>/dev/null)"
@@ -84,6 +88,11 @@ if declare -F _acceptance_file_timeout >/dev/null 2>&1; then
 else
     assert_fail "[SPEC-3] _acceptance_file_timeout is sourced" "missing"
 fi
+
+# A run whose suite writes no timing adds nothing — not even the file.
+rm -f "$LOG"
+_test_run_inner "$ARTIFACT_DIR/diff.patch" "$REPO_FIXTURE" "$OUT" 'echo "unit: 1/1 passed"; exit 0' >/dev/null 2>&1 || true
+assert_file_not_exists "[SPEC-4] a run with no measurements adds no timing artifact" "$LOG"
 
 cleanup_test_env
 print_test_results
