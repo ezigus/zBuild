@@ -1,16 +1,3 @@
-diff --git a/plugins/agent/security-lens/manifest.yaml b/plugins/agent/security-lens/manifest.yaml
-index 13aa33fe..ff9943c7 100644
---- a/plugins/agent/security-lens/manifest.yaml
-+++ b/plugins/agent/security-lens/manifest.yaml
-@@ -11,7 +11,7 @@ description: |
- 
- hooks:
-   run: security_lens_run
--  cleanup: security_lens_cleanup
-+  # security_lens_cleanup is defined in plugin.sh (ADR-056 §4; no resources to release)
- requires:
-   # #2066: `router` — plugin.sh:29 sources core/router/route.sh and :124 calls
-   # route_to_model. The dependency was always real; only the declaration was
 diff --git a/plugins/agent/security-lens/plugin.sh b/plugins/agent/security-lens/plugin.sh
 index a997fb51..b10e2214 100644
 --- a/plugins/agent/security-lens/plugin.sh

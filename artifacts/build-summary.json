@@ -3,20 +3,19 @@
   "result_contract": 2,
   "issue": 1841,
   "files_changed": [
-    "plugins/agent/security-lens/manifest.yaml",
-    "plugins/agent/security-lens/plugin.sh"
+    "plugins/agent/security-lens/manifest.yaml"
   ],
-  "lines_added": 15,
-  "lines_removed": 4,
+  "lines_added": 1,
+  "lines_removed": 1,
   "diff_patch_path": "/home/runner/work/_temp/zbuild-state/artifacts/diff.patch",
-  "iterations": 3,
-  "terminated_reason": "router_timeout",
-  "verdict": "incomplete",
-  "disposition": "interrupted",
-  "reason": "router_timeout",
+  "iterations": 1,
+  "terminated_reason": "done_sentinel",
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "build_complete",
   "scope_violation": false,
   "scope_violations": [],
-  "loop_input_tokens": 0,
-  "loop_output_tokens": 0,
+  "loop_input_tokens": 15,
+  "loop_output_tokens": 29399,
   "notes": "Build stage completed. Diff written to artifact; not applied."
 }
