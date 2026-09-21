@@ -1611,10 +1611,11 @@ _cycle_iter_dispatch() {
         # a 68-min gate on each of three identical trees. Once a member is
         # NOT reusable it is dispatched, and so is everything after it: its
         # verdict or fault may differ from the reused iteration's.
-        if [[ $_reuse_rest -eq 1 && "$_member_kind_pre" != "cycle" ]] && ! _cycle_member_reusable "$s"; then
-            _reuse_rest=0
+        local _ru_ok=0
+        if [[ $_reuse_rest -eq 1 && "$_member_kind_pre" != "cycle" ]]; then
+            if _cycle_member_reusable "$s"; then _ru_ok=1; else _reuse_rest=0; fi
         fi
-        if [[ $_reuse_rest -eq 1 && "$_member_kind_pre" != "cycle" ]] && _cycle_member_reusable "$s"; then
+        if [[ $_ru_ok -eq 1 ]]; then
             local _ru_entry
             _ru_entry="$(jq -c --arg s "$s" '.[$s]' <<< "$_CYCLE_VERIFIED_BLOB" 2>/dev/null || echo '{}')"
             local _ru_blob
