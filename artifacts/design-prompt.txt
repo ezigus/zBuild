@@ -153,13 +153,7 @@ manifest's `hooks:` block (ADR-056 §4). Declare `provides.result_contract: 2`,
 `provides.events: [plugin.result, security_lens.failed]`, `config.router:
 {timeout_s:600, max_turns:45}`, and `valid_verdicts: [pass, error]` in the manifest.
 Enforce rc ∈ {0, 1}. Cover all paths with tests written first; each SPEC asserts one
-observable behavior and carries its `[SPEC-n]` tag in the assertion label. Add a
-golden snapshot test (SPEC-15) locking the v2 envelope shape of a passing run.
-
-**SPEC classification rationale.** The design-gate confirmed 3 behaviors already
-held at the merge-base (SPEC-5, SPEC-6, SPEC-8 → [guard]) and 11 did not
-(SPEC-1–4, 7, 9–14 → [change]). SPEC-15 is a new golden test that does not exist
-at merge-base and therefore also [change].
+observable behavior and carries its `[SPEC-n]` tag in the assertion label.
 
 ---
 
@@ -198,14 +192,11 @@ tests/integration/artifact-chain-test.sh
 tests/integration/route-fd-isolation-test.sh
 tests/integration/router-sync-preserves-error-artifacts-test.sh
 tests/golden/parity/run-fixture.sh
-tests/golden/golden-contracts-test.sh
-tests/golden/security-lens-pass-artifact.golden
 tests/fixtures/templates/crash-resume-minimal.yaml
 plugins/tool/output-github-comment/tests/output-test.sh
 plugins/tool/output-github-comment/tests/output-stdout-test.sh
 .github/issues/keepers-manifest.yaml
 scripts/lib/artifact-render.sh
-scripts/lib/golden.sh
 core/pipeline/runner.sh
 scripts/lib/lint-verdict-classify.sh
 ```
@@ -215,8 +206,8 @@ SPEC-1[change]: findings.json carries result_contract:2 at top level on the norm
 SPEC-2[change]: normal pass exit path emits verdict=pass and disposition=complete
 SPEC-3[change]: router-fatal exit path writes a v2 result with verdict=error and disposition=broken
 SPEC-4[change]: no-state-file exit path returns rc=1 and writes a v2 result artifact when ZBUILD_ARTIFACT_DIR is set
-SPEC-5[guard]: security_lens_cleanup hook is declared in the manifest and the function returns 0
-SPEC-6[guard]: manifest declares provides.result_contract: 2
+SPEC-5[change]: security_lens_cleanup hook is declared in the manifest and the function returns 0
+SPEC-6[change]: manifest declares provides.result_contract: 2
 SPEC-7[change]: manifest declares valid_verdicts: [pass, error]
 SPEC-8[guard]: plugin.result event is emitted on the normal exit path with plugin=security-lens
 SPEC-9[change]: LLM findings are accessible under .data.findings on the normal pass path
@@ -225,7 +216,6 @@ SPEC-11[change]: manifest declares config.router with timeout_s and max_turns
 SPEC-12[change]: ZBUILD_ROUTER_MAX_TURNS_OVERRIDE env var takes precedence over manifest config.router.max_turns when set
 SPEC-13[change]: manifest declares primary: true on the findings output
 SPEC-14[change]: plugin.sh contains no hardcoded artifact path literals (grep for quoted .json/.md with no variable interpolation returns 0)
-SPEC-15[change]: a golden snapshot of the security-lens passing-run v2 envelope shape is captured; the snapshot matches on re-run (before/after golden diff proves passing-run behaviour is unchanged after migration)
 WIRING:
 plugins/agent/security-lens/manifest.yaml
 TESTFILES:
@@ -243,12 +233,15 @@ SPEC-11: plugins/agent/security-lens/tests/security-lens-test.sh
 SPEC-12: plugins/agent/security-lens/tests/security-lens-test.sh
 SPEC-13: plugins/agent/security-lens/tests/security-lens-test.sh
 SPEC-14: plugins/agent/security-lens/tests/security-lens-test.sh
-SPEC-15: plugins/agent/security-lens/tests/security-lens-test.sh
 ```
+
+LOOP_COMPLETE
 
 (Durable copy: https://github.com/ezigus/zBuild/blob/zbuild/state/issue-1841/artifacts/design.md — reference it, but VERIFY against the CURRENT inputs above; the code may have moved on since.)
 
-Expand the PRIOR DESIGN scope block to cover the gaps the design-gate reported in the STAGE SUMMARIES section. Preserve all existing scope entries; only ADD the missing ones.
+Refine the PRIOR DESIGN. Preserve all existing scope entries unless one is clearly wrong.
+
+If the STAGE SUMMARIES name a tautological [change] SPEC — one that passes at the merge-base baseline, so it asserts nothing — either RE-AUTHOR that SPEC so it describes behavior that is genuinely NEW (fails at baseline, passes at HEAD), or, when the behavior already exists at the merge-base, re-tag it [guard]: there is nothing to change and no assertion can be made to fail there. Build is forbidden to touch acceptance assertions (ADR-036), so only this stage can. Preserve all other scope and acceptance entries.
 
 WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
 - This stage has a wall-clock budget of 600 seconds total; ~0s have elapsed.
