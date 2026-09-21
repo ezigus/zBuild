@@ -113,12 +113,15 @@ fi
 
 # ─── review (#2165): Ctrl-C reaches the whole process group — the trap fires in
 # this shell AND the router subshell returns 130. The result is written ONCE.
+# SIGTERM stands in for SIGINT: the runner spawns test files as background jobs,
+# and bash cannot trap a signal it ignored on entry (SIGINT). Same trap, same
+# handler, same flag.
 _aw_log="$TEST_TEMP_DIR/atomic-writes.log"; : > "$_aw_log"
 eval "_orig_$(declare -f atomic_write)"
 # shellcheck disable=SC2329
 atomic_write() { printf '%s\n' "$1" >> "$_aw_log"; _orig_atomic_write "$@"; }
 # shellcheck disable=SC2329
-route_to_model() { kill -INT "$$"; return 130; }
+route_to_model() { kill -TERM "$$"; return 130; }
 out_1840_s13c="$artifact_dir/lens-1840spec13c.json"
 rm -f "$out_1840_s13c" 2>/dev/null || true
 set +e
@@ -126,10 +129,10 @@ _review_lens_run_inner "1840spec13c" "$scope_manifest" "$evidence" "$out_1840_s1
 _1840_s13c_rc=$?
 set -e
 eval "$(declare -f _orig_atomic_write | sed '1s/_orig_atomic_write/atomic_write/')"
-assert_eq "[SPEC-13] process-group SIGINT still propagates rc=130" "130" "$_1840_s13c_rc"
-assert_eq "[SPEC-13] process-group SIGINT: disposition == interrupted" \
+assert_eq "[SPEC-13] signal + rc=130 still propagates rc=130" "130" "$_1840_s13c_rc"
+assert_eq "[SPEC-13] signal + rc=130: disposition == interrupted" \
     "interrupted" "$(jq -r '.disposition // empty' "$out_1840_s13c" 2>/dev/null)"
-assert_eq "[SPEC-13] process-group SIGINT writes the result exactly once (trap + rc=130 branch)" \
+assert_eq "[SPEC-13] signal + rc=130 writes the result exactly once (trap + rc=130 branch)" \
     "1" "$(grep -c "lens-1840spec13c.json" "$_aw_log")"
 
 # ─── SPEC-14 [change]: template accessor wins over manifest in budget block ───
