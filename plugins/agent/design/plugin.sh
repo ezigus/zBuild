@@ -55,8 +55,16 @@ source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh"
 _design_write_result() {
     local dir="$1" verdict="$2" disposition="$3" reason="$4"
     mkdir -p "$dir" 2>/dev/null || true
-    jq -n --arg v "$verdict" --arg d "$disposition" --arg r "$reason" \
-        '{result_contract: 2, verdict: $v, disposition: $d, reason: $r, data: {}}' \
+    # #2172: the design is stamped with WHEN and against WHICH commit it was
+    # written, so a later run that inherits it can say what moved since. The
+    # date is what the next run keys on — the work branch is rebased between
+    # runs and old commits stop being reachable; a date survives that.
+    local _at _sha
+    _at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _sha="$(git -C "${ZBUILD_REPO_ROOT:-.}" rev-parse HEAD 2>/dev/null || true)"
+    jq -n --arg v "$verdict" --arg d "$disposition" --arg r "$reason" --arg at "$_at" --arg sha "$_sha" \
+        '{result_contract: 2, verdict: $v, disposition: $d, reason: $r,
+          data: {authored_at: $at, authored_at_commit: $sha}}' \
         | atomic_write "$dir/design-verdict.json" 2>/dev/null \
         || warn "_design_write_result: failed to write design-verdict.json (verdict=$verdict)"
 }
@@ -179,6 +187,61 @@ _design_read_prior_design() {
     fi
 
     return 0
+}
+
+# _design_prior_drift_block — "SINCE THE PRIOR DESIGN": engine-collected facts
+# about what moved in the repository since the prior design was authored
+# (#2172). Reads the prior design's stamp from the restored design-verdict.json;
+# keyed on the DATE (a rebase makes the old commit unreachable). Lists the ADRs
+# added or changed since, each with its Supersedes line, and the prior design's
+# scope files that changed. Undated → says so; every claim is then unverified.
+_design_prior_drift_block() {
+    local restored="${ZBUILD_RESTORED_ARTIFACTS_DIR:-}" repo="${ZBUILD_REPO_ROOT:-.}"
+    local at="" sha="" n_commits="" adrs="" changed=""
+    if [[ -n "$restored" && -s "$restored/design-verdict.json" ]]; then
+        at="$(jq -r '.data.authored_at // empty' "$restored/design-verdict.json" 2>/dev/null || true)"
+        sha="$(jq -r '.data.authored_at_commit // empty' "$restored/design-verdict.json" 2>/dev/null || true)"
+    fi
+    printf '\n### SINCE THE PRIOR DESIGN (engine-collected)\n'
+    if [[ -z "$at" ]]; then
+        printf -- '- The prior design'"'"'s date is unknown: treat every claim it makes as unverified until you have checked it.\n'
+        return 0
+    fi
+    if [[ -n "$sha" ]]; then
+        printf -- '- The prior design was authored %s (commit %s).\n' "$at" "${sha:0:8}"
+    else
+        printf -- '- The prior design was authored %s.\n' "$at"
+    fi
+    n_commits="$(git -C "$repo" rev-list --count --since="$at" HEAD 2>/dev/null || true)"
+    [[ -n "$n_commits" ]] && printf -- '- Commits on this branch since then: %s.\n' "$n_commits"
+    # ADRs added or changed since, with the line that says what each replaces.
+    local f line
+    while IFS= read -r f; do
+        [[ -n "$f" && -f "$repo/$f" ]] || continue
+        line="$(grep -m1 -E '^\*\*Supersedes:\*\*' "$repo/$f" 2>/dev/null | sed 's/\*\*//g' || true)"
+        adrs+="  - ${f}${line:+ — ${line}}"$'\n'
+    done < <(git -C "$repo" log --since="$at" --name-only --pretty=format: -- docs/adr 2>/dev/null | grep -E '\.md$' | LC_ALL=C sort -u)
+    if [[ -n "$adrs" ]]; then
+        printf -- '- ADRs added or changed since (re-check every decision that cites one of these, or one they supersede):\n%s' "$adrs"
+    else
+        printf -- '- No ADR was added or changed since.\n'
+    fi
+    # Files in the prior design's scope that changed since.
+    local scope_files
+    scope_files="$(sed -n '/^```scope$/,/^```$/p' "$restored/design.md" 2>/dev/null | grep -vE '^```' || true)"
+    if [[ -n "$scope_files" ]]; then
+        while IFS= read -r f; do
+            [[ -n "$f" ]] || continue
+            if [[ -n "$(git -C "$repo" log --since="$at" --oneline -1 -- "$f" 2>/dev/null)" ]]; then
+                changed+="  - ${f}"$'\n'
+            fi
+        done <<< "$scope_files"
+    fi
+    if [[ -n "$changed" ]]; then
+        printf -- '- Files in the prior design'"'"'s scope changed since (its claims about them may be stale):\n%s' "$changed"
+    else
+        printf -- '- No file in the prior design'"'"'s scope changed since.\n'
+    fi
 }
 
 # ADR-050 (#1581): best-effort GitHub blob URL for the durable prior design on the
@@ -416,8 +479,22 @@ DESIGN_PROMPT
         _prior_design_body="$(_design_read_prior_design 2>/dev/null || true)"
     fi
     if [[ -n "$_prior_design_body" ]]; then
-        printf '\n## PRIOR DESIGN (a previous attempt on this issue — refine, do not recreate)\n%s\n' \
-            "$_prior_design_body" >> "$prompt_input_file"
+        # #2172: a design carried over from a PRIOR RUN is a HYPOTHESIS about
+        # a repository that has moved since it was written. The engine says
+        # what moved (the block below); the model re-checks every claim
+        # against the tree as it is now. "Refine, do not recreate" told it to
+        # trust the prior — on #1841 that carried a retired ADR's hook through
+        # weeks of runs. A design written EARLIER IN THIS RUN (an intra-cycle
+        # refinement, iter >= 2) is not that: the tree has not moved, and it
+        # is refined as before (review on #2173).
+        if [[ "${ZBUILD_CYCLE_ITER:-1}" =~ ^[0-9]+$ && "${ZBUILD_CYCLE_ITER:-1}" -ge 2 && -s "${ZBUILD_CYCLE_FEEDBACK_DIR:-/nonexistent}/design.txt" ]]; then
+            printf '\n## PRIOR DESIGN (written earlier in this run — refine it against the feedback below; the tree has not moved)\n' >> "$prompt_input_file"
+        else
+            printf '\n## PRIOR DESIGN (a previous attempt on this issue — a hypothesis, not a fact)\n' >> "$prompt_input_file"
+            printf 'The repository has moved since this design was written. Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW; anything that no longer holds is dropped or re-derived, and the design says what changed and why. Keep what still holds; do not start over.\n' >> "$prompt_input_file"
+            _design_prior_drift_block >> "$prompt_input_file"
+        fi
+        printf '\n%s\n' "$_prior_design_body" >> "$prompt_input_file"
         # ADR-050 (#1581): when the prior design came from a restored PRIOR RUN,
         # add a browsable pointer to its durable copy on the state branch. Guarded
         # on ZBUILD_RESTORED_ARTIFACTS_DIR so intra-cycle-only refinements (and
