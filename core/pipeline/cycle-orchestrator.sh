@@ -2761,6 +2761,19 @@ cycle_orchestrator_run() {
                 else
                     set +e; _cycle_check_route_back "$verdicts_blob"; _rb_matched=$?; [[ $_rce -eq 1 ]] && set -e
                 fi
+                # #2172: exhausted with the suite failing and a build that
+                # changed NOTHING — the builder had nothing it was allowed to
+                # fix (#1841: a design contradicting a newer ADR, enforced by
+                # guard tests outside its scope). That is the contract's
+                # problem; the loop widens to the template's route_back target
+                # under the same budget as a declared fault.
+                if [[ $_rb_matched -ne 0 && "$_CYCLE_LAST_TERMINATED_REASON" == "max_iterations_tests_failing" \
+                      && "$_build_kind" == "empty_diff" ]] \
+                   && _cycle_route_back_budget_left "$cycle_id"; then
+                    _cycle_emit "cycle.route_back.exhausted_unchanged" "iter=$iter" \
+                        "build_kind=$_build_kind" "reason=max_iterations_tests_failing"
+                    _rb_matched=0
+                fi
                 if [[ $_rb_matched -eq 0 ]]; then
                     _CYCLE_ROUTE_BACK_FALLBACK_RC=$term_rc
                     # #1227: stash the ORIGINAL terminal reason alongside the

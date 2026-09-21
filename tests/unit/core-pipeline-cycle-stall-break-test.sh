@@ -289,8 +289,13 @@ assert_eq "[SPEC-5b] the FAILING acceptance-gate (iteration-aware) is re-dispatc
 _n_ga_f="$(grep -c '"cycle.member.dispatch.complete".*"member":"gate-aggregator"' "$ZBUILD_EVENTS_JSONL" || true)"
 assert_eq "[SPEC-5c] the gate-aggregator after a re-dispatched gate is re-dispatched too" "5" "$_n_ga_f"
 _AG_VERDICT="pass"
-assert_eq "[SPEC-5] the cycle still ends as it does today — max iterations with tests failing (rc=8)" "8" "$_RUN_RC"
-assert_contains "[SPEC-5] …with that reason" "$(tail -3 "$ZBUILD_EVENTS_JSONL")" "max_iterations_tests_failing"
+# #2172: exhausted with the suite failing and a build that changed NOTHING is
+# the contract's problem, not the builder's — the loop widens to design.
+assert_eq "[SPEC-5] exhausted with tests failing and an unchanged tree routes back to design (rc=11)" "11" "$_RUN_RC"
+assert_eq "[SPEC-5] …with reason route_back" "route_back" "${_CYCLE_LAST_TERMINATED_REASON:-}"
+assert_eq "[SPEC-5] …to the template's route_back target" "design_verify_cycle" "${_CYCLE_ROUTE_BACK_TO:-}"
+_n_rb="$(grep -c '"cycle.route_back.exhausted_unchanged"' "$ZBUILD_EVENTS_JSONL" || true)"
+assert_eq "[SPEC-5] …and says why (cycle.route_back.exhausted_unchanged)" "1" "$_n_rb"
 _TEST_VERDICT="pass"
 
 cleanup_test_env
