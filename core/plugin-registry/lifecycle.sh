@@ -283,7 +283,11 @@ plugin_hook_call() {
         # be a stage naming a stage, the shape #1767 removed from routing.
         # core/router/permissions.sh renders the rules; the decision is here.
         local -x ZBUILD_PERMISSION_DENY_EDIT=""
-        if [[ "$(_lc_manifest_role "$1")" != "test_author" ]]; then
+        # #2170: `$1` here is the STAGE ID — the function `shift 2`s its
+        # plugin_dir/hook_name arguments away above. Looked up on the stage id
+        # the role was always empty, so the author was denied its own testfiles
+        # (invisible while the rule rendered as `Edit(/abs)`, #2163).
+        if [[ "$(_lc_manifest_role "$plugin_dir")" != "test_author" ]]; then
             local _lc_design="${ZBUILD_ARTIFACT_DIR}/design.md" _lc_tf
             local _lc_lib; _lc_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts/lib" 2>/dev/null && pwd)"
             if [[ -f "$_lc_design" && -f "$_lc_lib/acceptance-block.sh" ]]; then

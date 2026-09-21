@@ -65,6 +65,13 @@ requires:
     - state
   plugins: []
 
+# #2170: the verdict depends on the iteration, not only on the tree — a
+# tautology or an inert wiring escalates to a specification fault at
+# iter >= 2 (#2097/#2157). The cycle re-dispatches this gate on an unchanged
+# tree instead of reusing its failure.
+capabilities:
+  iteration_aware: true
+
 provides:
   role: acceptance_gate
   result_contract: 2

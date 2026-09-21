@@ -594,6 +594,12 @@ _test_spawn_suite() {
         # command prefix) so it reaches the suite regardless of how
         # actual_test_cmd is shaped (npm test → run-tests.sh, or a direct call).
         export ZBUILD_TEST_TIMING_FILE="$_zbt_timing_log"
+        # #2170: `--tier all` runs its tiers concurrently (#997), each at the
+        # full worker count (#2158) — on the 4-CPU runner that is ~12 heavy
+        # processes for 4 cores next to the engine itself: 25-minute suites,
+        # seconds-long unit files taking 200–470 s, timing tests failing.
+        # Ordinary CI runs one tier per machine; ask run-tests.sh for the same.
+        export ZBUILD_TIER_CONCURRENCY=0
         # #1127: fence the whole zBuild state tree for the suite. The suite is a
         # fresh-user shell (scrub above clears ZBUILD_* / preserves HOME per
         # ADR-024), so any nested `runner.sh` it spawns would otherwise re-root
