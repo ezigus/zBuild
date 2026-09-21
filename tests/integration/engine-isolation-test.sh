@@ -50,7 +50,7 @@ git -C "$TARGET" config user.email t@t; git -C "$TARGET" config user.name t
 # `launch <label> real=<s> user=<s> sys=<s>` so a slow run says WHICH launch
 # was slow and whether it was more work (user+sys up) or a slower box (real
 # up, CPU flat). Sets _OUT/_RC.
-_LAUNCHES=0
+_LAUNCHES=0; _LAUNCH_LINES=""
 _launch() {
     local label="$1" dir="$2" cli="$3"; shift 3
     local tf; tf="$(mktemp "$TEST_TEMP_DIR/launch.XXXXXX")"
@@ -59,7 +59,8 @@ _launch() {
     { TIMEFORMAT='%R %U %S'; time { _OUT="$(cd "$dir" && bash "$cli" pipeline start --issue "$_ZB_ID" --dry-run "$@" 2>&1)"; _RC=$?; }; } 2> "$tf"
     _LAUNCHES=$((_LAUNCHES + 1))
     local r u y; read -r r u y < "$tf"; rm -f "$tf"
-    printf 'launch %s real=%s user=%s sys=%s\n' "$label" "${r:-?}" "${u:-?}" "${y:-?}"
+    local line; line="$(printf 'launch %s real=%s user=%s sys=%s' "$label" "${r:-?}" "${u:-?}" "${y:-?}")"
+    printf '%s\n' "$line"; _LAUNCH_LINES+="$line"$'\n'
 }
 # _run_in <label> <dir> [extra args...] — the repo's own CLI from <dir>.
 _run_in() {
@@ -154,9 +155,11 @@ else
 fi
 
 # ── SPEC-9 (#2167): every launch reported its own time ─────────────────────
-# The lines above are the diagnostic; this pins that they are there and are
-# numbers, so a future edit cannot silently drop them.
-assert_eq "[SPEC-9] every pipeline-start launch printed a timing line (inside-repo, dev-engine, env-override, outside-repo, symlink, symlink-dev)" "6" "$_LAUNCHES"
+# The lines above are the diagnostic; this pins that they were printed, one
+# per launch, with numeric real/user/sys — so a future edit cannot silently
+# drop them or leave a "?" where a number should be.
+_timed="$(grep -cE '^launch [a-z-]+ real=[0-9]+\.[0-9]+ user=[0-9]+\.[0-9]+ sys=[0-9]+\.[0-9]+$' <<< "$_LAUNCH_LINES" || true)"
+assert_eq "[SPEC-9] every pipeline-start launch printed a numeric timing line (inside-repo, dev-engine, env-override, outside-repo, symlink, symlink-dev)" "6" "$_timed"
 
 cleanup_test_env
 print_test_results

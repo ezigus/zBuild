@@ -65,7 +65,7 @@ assert_contains "[SPEC-1] after run 2 the slow row from run 1 is STILL there" "$
 assert_contains "[SPEC-1] …and run 2's row is there too" "$(cat "$LOG")" "file 120 "
 assert_eq "[SPEC-1] each run's rows sit under a run marker" "2" "$(grep -c '^run [0-9]' "$LOG" || true)"
 assert_eq "[SPEC-1] …the marker names the run and its mode, and precedes its rows" "run 1 full" "$(sed -n 1p "$LOG")"
-assert_eq "[SPEC-1] …the second block is the targeted run" "run 2 full" "$(grep '^run 2' "$LOG")"
+assert_eq "[SPEC-1] …the second run gets its own block, labelled run 2 (both runs are full mode here: no red set is supplied)" "run 2 full" "$(grep '^run 2' "$LOG")"
 
 print_test_section "SPEC-2: the folded summary describes the last run only"
 _tiers="$(jq -c '.data.timing.tiers // .timing.tiers // {}' "$OUT" 2>/dev/null)"
