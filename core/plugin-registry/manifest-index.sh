@@ -138,6 +138,12 @@ manifest_index_rows() {
                 v="${_ZBUILD_MIDX["$f"$'\034'"$k"]}"
                 printf '%s\034%s\034%s\n' "$f" "$k" "${v%$'\n'}"
             done
+            # The list key: one row per value, as the cold build emits it (#2174).
+            if [[ -n "${_ZBUILD_MIDX["$f"$'\034'outputs.path]+x}" ]]; then
+                while IFS= read -r v; do
+                    [[ -n "$v" ]] && printf '%s\034outputs.path\034%s\n' "$f" "$v"
+                done <<< "${_ZBUILD_MIDX["$f"$'\034'outputs.path]}"
+            fi
         done <<< "${_ZBUILD_MIDX_FILES[$root]}"
         return 0
     fi

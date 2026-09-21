@@ -9,8 +9,9 @@
 # up with `$1` AFTER `shift 2`, i.e. the stage id, found no manifest, and
 # denied everyone. Invisible until #2163 made the rendered rule real.
 #
-# SPEC-1[change]: a plugin whose manifest declares provides.role: test_author is dispatched
-#   with an EMPTY deny list — it may edit the acceptance testfiles
+# SPEC-1[change]: a plugin whose manifest declares provides.role: test_author is NOT denied
+#   the acceptance testfiles — it may edit them (its deny list still carries the other
+#   plugins' declared outputs, SPEC-3)
 # SPEC-2[guard]:  a plugin with any other role is dispatched with the design's TESTFILES in
 #   ZBUILD_PERMISSION_DENY_EDIT (build cannot rewrite an assertion to fit its code)
 # SPEC-3[change]: (#2174) every OTHER plugin's declared outputs (resolved into this run's artifact
@@ -85,7 +86,7 @@ mkdir -p "$ZBUILD_REPO_ROOT/core"; : > "$ZBUILD_REPO_ROOT/core/x.sh"; : > "$ZBUI
 git -C "$ZBUILD_REPO_ROOT" init -q; git -C "$ZBUILD_REPO_ROOT" config user.email t@t; git -C "$ZBUILD_REPO_ROOT" config user.name t
 git -C "$ZBUILD_REPO_ROOT" add -A; git -C "$ZBUILD_REPO_ROOT" commit -qm init
 
-print_test_section "SPEC-1: the author role gets no deny list"
+print_test_section "SPEC-1: the author role is not denied the acceptance testfiles"
 : > "$DENY_LOG"
 plugin_hook_call "$TEST_TEMP_DIR/plugins/agent/author-fixture" run author-fixture "$STATE/pipeline-state.json" >/dev/null 2>&1 || true
 _a="$(grep '^author-fixture|' "$DENY_LOG" | head -1 | cut -d'|' -f2-)"
@@ -107,6 +108,14 @@ if grep -q 'artifacts/builder-fixture.md' <<< "$_b"; then
     assert_fail "[SPEC-3] the builder is NOT denied its own declared output" "denied its own: $_b"
 else
     assert_pass "[SPEC-3] the builder is NOT denied its own declared output"
+fi
+# The same invariant for every role that touches the artifact dir: the author
+# too is denied the others' outputs and not its own.
+assert_contains "[SPEC-3] the author is denied the builder's declared output" "$_a" "$STATE/artifacts/builder-fixture.md"
+if grep -q 'artifacts/author-fixture.md' <<< "$_a"; then
+    assert_fail "[SPEC-3] the author is NOT denied its own declared output" "denied its own: $_a"
+else
+    assert_pass "[SPEC-3] the author is NOT denied its own declared output"
 fi
 
 print_test_section "SPEC-4: only a plugin declaring writes_repository may edit the repo"

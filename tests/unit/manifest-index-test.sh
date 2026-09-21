@@ -180,6 +180,13 @@ assert_eq "[SPEC-8] every output path, required or not, quoted or not, in order"
 assert_eq "[SPEC-8] a manifest with no outputs block → nothing" "" "$(manifest_index_get "$_O/b/manifest.yaml" outputs.path)"
 assert_eq "[SPEC-8] path: lines outside the outputs block are not outputs" \
     '${artifact_dir}/only.md' "$(manifest_index_get "$_O/c/manifest.yaml" outputs.path | sed '/^$/d')"
+# review on #2175: the warm path (manifest_index_rows) emits the list key too,
+# one row per value, exactly as the cold build does.
+: > "$AWKS"; : > "$FINDS"
+_warm="$(manifest_index_rows "$_O" | grep $'\034outputs.path\034' | sed 's/.*\x1c//' | tr '\n' ' ')"
+assert_eq "[SPEC-8] the warm rows path emits one row per output value (no fork)" \
+    '${artifact_dir}/one.md ${artifact_dir}/two.json ${artifact_dir}/only.md ' "$_warm"
+assert_eq "[SPEC-8] …and forks nothing" "0|0" "$(_n "$AWKS")|$(_n "$FINDS")"
 
 cleanup_test_env
 print_test_results
