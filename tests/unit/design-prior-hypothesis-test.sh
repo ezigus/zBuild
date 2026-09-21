@@ -16,6 +16,8 @@
 # SPEC-3[change]: the prior design is presented as a hypothesis to re-verify — the prompt
 #   no longer says "refine, do not recreate"
 # SPEC-4[change]: a prior design with no stamp is presented as undated — every claim unverified
+# SPEC-5[change]: a prior design from THIS run (intra-cycle refinement, iter >= 2) gets no drift
+#   block and no hypothesis framing — the tree has not moved since it was written
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -101,6 +103,27 @@ AD3="$FIX/state3/artifacts"; mkdir -p "$AD3"; cp "$AD/plan.json" "$AD3/"; printf
 export MOCK_DESIGN_WRITE_PATH="$AD3/design.md"
 ( cd "$FIX" && _design_stage_run_inner "$FIX/state3/scope-manifest.md" "$AD3/plan.json" "$AD3/design.md" "$AD3" >/dev/null 2>&1 ) || true
 assert_contains "[SPEC-4] an undated prior design is said to be undated" "$(cat "$AD3/design-prompt.txt")" "date is unknown"
+
+print_test_section "SPEC-5: an intra-cycle refinement is not told the repository moved"
+unset ZBUILD_RESTORED_ARTIFACTS_DIR
+FB="$TEST_TEMP_DIR/fb"; mkdir -p "$FB"
+printf '# Design\n\nfrom this run\n\n```scope\nfoo.sh\n```\n' > "$FB/design.txt"
+AD4="$FIX/state4/artifacts"; mkdir -p "$AD4"; cp "$AD/plan.json" "$AD4/"; printf 'scope: all\n' > "$FIX/state4/scope-manifest.md"
+export MOCK_DESIGN_WRITE_PATH="$AD4/design.md"
+( cd "$FIX" && ZBUILD_CYCLE_ITER=2 ZBUILD_CYCLE_FEEDBACK_DIR="$FB" _design_stage_run_inner "$FIX/state4/scope-manifest.md" "$AD4/plan.json" "$AD4/design.md" "$AD4" >/dev/null 2>&1 ) || true
+P4="$AD4/design-prompt.txt"
+assert_contains "[SPEC-5] the in-run prior design is carried into the prompt" "$(cat "$P4")" "from this run"
+if grep -qF 'SINCE THE PRIOR DESIGN' "$P4"; then
+    assert_fail "[SPEC-5] no drift block for a design written in this run" "block present"
+else
+    assert_pass "[SPEC-5] no drift block for a design written in this run"
+fi
+if grep -qF 'date is unknown' "$P4"; then
+    assert_fail "[SPEC-5] an in-run prior design is not called undated" "present"
+else
+    assert_pass "[SPEC-5] an in-run prior design is not called undated"
+fi
+assert_contains "[SPEC-5] it is framed as this run's own earlier pass to refine" "$(cat "$P4")" "earlier in this run"
 
 cleanup_test_env
 print_test_results

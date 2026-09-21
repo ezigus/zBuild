@@ -207,7 +207,11 @@ _design_prior_drift_block() {
         printf -- '- The prior design'"'"'s date is unknown: treat every claim it makes as unverified until you have checked it.\n'
         return 0
     fi
-    printf -- '- The prior design was authored %s (commit %s).\n' "$at" "${sha:0:8}"
+    if [[ -n "$sha" ]]; then
+        printf -- '- The prior design was authored %s (commit %s).\n' "$at" "${sha:0:8}"
+    else
+        printf -- '- The prior design was authored %s.\n' "$at"
+    fi
     n_commits="$(git -C "$repo" rev-list --count --since="$at" HEAD 2>/dev/null || true)"
     [[ -n "$n_commits" ]] && printf -- '- Commits on this branch since then: %s.\n' "$n_commits"
     # ADRs added or changed since, with the line that says what each replaces.
@@ -475,14 +479,21 @@ DESIGN_PROMPT
         _prior_design_body="$(_design_read_prior_design 2>/dev/null || true)"
     fi
     if [[ -n "$_prior_design_body" ]]; then
-        # #2172: a carried-forward design is a HYPOTHESIS about a repository
-        # that has moved since it was written. The engine says what moved (the
-        # block below); the model re-checks every claim against the tree as it
-        # is now. "Refine, do not recreate" told it to trust the prior — on
-        # #1841 that carried a retired ADR's hook through weeks of runs.
-        printf '\n## PRIOR DESIGN (a previous attempt on this issue — a hypothesis, not a fact)\n' >> "$prompt_input_file"
-        printf 'The repository has moved since this design was written. Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW; anything that no longer holds is dropped or re-derived, and the design says what changed and why. Keep what still holds; do not start over.\n' >> "$prompt_input_file"
-        _design_prior_drift_block >> "$prompt_input_file"
+        # #2172: a design carried over from a PRIOR RUN is a HYPOTHESIS about
+        # a repository that has moved since it was written. The engine says
+        # what moved (the block below); the model re-checks every claim
+        # against the tree as it is now. "Refine, do not recreate" told it to
+        # trust the prior — on #1841 that carried a retired ADR's hook through
+        # weeks of runs. A design written EARLIER IN THIS RUN (an intra-cycle
+        # refinement, iter >= 2) is not that: the tree has not moved, and it
+        # is refined as before (review on #2173).
+        if [[ "${ZBUILD_CYCLE_ITER:-1}" =~ ^[0-9]+$ && "${ZBUILD_CYCLE_ITER:-1}" -ge 2 && -s "${ZBUILD_CYCLE_FEEDBACK_DIR:-/nonexistent}/design.txt" ]]; then
+            printf '\n## PRIOR DESIGN (written earlier in this run — refine it against the feedback below; the tree has not moved)\n' >> "$prompt_input_file"
+        else
+            printf '\n## PRIOR DESIGN (a previous attempt on this issue — a hypothesis, not a fact)\n' >> "$prompt_input_file"
+            printf 'The repository has moved since this design was written. Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW; anything that no longer holds is dropped or re-derived, and the design says what changed and why. Keep what still holds; do not start over.\n' >> "$prompt_input_file"
+            _design_prior_drift_block >> "$prompt_input_file"
+        fi
         printf '\n%s\n' "$_prior_design_body" >> "$prompt_input_file"
         # ADR-050 (#1581): when the prior design came from a restored PRIOR RUN,
         # add a browsable pointer to its durable copy on the state branch. Guarded
