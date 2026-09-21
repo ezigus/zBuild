@@ -163,7 +163,7 @@ term_v2_plain="$(printf '%s' "$term_v2" | _strip_ansi)"
 
 # T10-guard: v2 fields (result_contract, verdict, disposition) must not appear
 # as raw JSON on the terminal — the render pipeline must still suppress them.
-if grep -qE '\{"score"|"findings":\[' <<< "$term_v2"; then
+if grep -qE '\{"score"|"findings":\[|"result_contract":|"verdict":' <<< "$term_v2"; then
     assert_fail "[SPEC-9] v2-format lens: no raw JSON on terminal" "raw JSON detected"
 else
     assert_pass "[SPEC-9] v2-format lens: raw JSON absent from terminal"

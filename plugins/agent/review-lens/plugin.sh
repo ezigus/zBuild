@@ -83,6 +83,9 @@ _review_lens_write_result() {
 # so it can be invoked directly in tests for SIGTERM simulation (SPEC-13).
 _review_lens_interrupt_handler() {
     _review_lens_write_result "${_rl_out_ref:-}" "degraded" "interrupted" "signal_interrupt"
+    # Ctrl-C reaches the whole process group: this trap fires AND the router
+    # subshell returns 130. Record the write so the rc=130 branch skips its own.
+    _rl_interrupted=1
 }
 
 # ─── _review_lens_budget_guidance <max_turns> ────────────────────────────────
@@ -145,15 +148,6 @@ _review_lens_evidence_path() {
     else
         printf '%s' "$bundle_fallback"
     fi
-}
-
-# ─── _review_lens_empty <lens> <out> [<reason>] ─────────────────────────────
-# Write the normalized empty result with v2 fields. Advisory degrade path — never fatal.
-_review_lens_empty() {
-    local _reason="${3:-degraded}"
-    jq -nc --arg n "$1" --arg r "$_reason" \
-        '{result_contract:2, schema_version:1, name:$n, score:0, findings:[], verdict:"degraded", disposition:"broken", reason:$r}' \
-        | atomic_write "$2"
 }
 
 # ─── review_lens_run ──────────────────────────────────────────────────────────
@@ -277,6 +271,7 @@ _review_lens_run_inner() {
     # ADR-063 §3: register interrupt handler so disposition:interrupted is written
     # if the model call is cut short by SIGTERM or SIGINT (SPEC-13).
     _rl_out_ref="$out"
+    _rl_interrupted=0
     trap '_review_lens_interrupt_handler' TERM INT
     raw_response="$(route_to_model "$tier" "$prompt")" || router_rc=$?
     if [[ "$_prev_json_env" == "__UNSET__" ]]; then
@@ -299,7 +294,8 @@ _review_lens_run_inner() {
     # degrade paths; write interrupted disposition and propagate the signal code.
     if [[ "$router_rc" -eq 130 ]]; then
         trap - TERM INT
-        _review_lens_write_result "$out" "degraded" "interrupted" "signal_interrupt"
+        [[ "${_rl_interrupted:-0}" == "1" ]] \
+            || _review_lens_write_result "$out" "degraded" "interrupted" "signal_interrupt"
         return 130
     fi
     trap - TERM INT
