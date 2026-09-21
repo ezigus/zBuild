@@ -605,6 +605,14 @@ else
     assert_fail "[SPEC-18c] kill -TERM artifact: disposition=interrupted (file absent)"
 fi
 
+# ─── [SPEC-20]: manifest input entries declare only id and required: fields ──
+# Extract the inputs block (from 'inputs:' until next top-level YAML key) and
+# assert that none of the disallowed keys (from:, path:, type:) appear in it.
+_spec20_inputs=$(sed -n '/^inputs:/,/^[a-zA-Z]/{/^inputs:/d; /^[a-zA-Z]/d; p}' "$_MANIFEST_FILE" 2>/dev/null || true)
+_spec20_bad=$(grep -cE '^\s+(from|path|type):' <<< "$_spec20_inputs" 2>/dev/null || true)
+assert_eq "[SPEC-20] manifest input entries declare only id and required: (no from:/path:/type: keys)" \
+    "0" "$_spec20_bad"
+
 # ─── [SPEC-19]: canary — no failures accumulated up to this point ────────────
 assert_eq "[SPEC-19] canary: all preceding assertions passed (FAIL==0)" "0" "$FAIL"
 

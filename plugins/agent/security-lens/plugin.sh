@@ -243,6 +243,7 @@ _security_lens_run_inner() {
         "$_reason" \
         "$(printf -- '- artifact: findings.json')"
     emit_event "plugin.result" "plugin=security-lens" \
+        "result_contract=2" \
         "findings_count=$findings_count" \
         "router_rc=$router_rc"
     return 0
