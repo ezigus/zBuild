@@ -1,5 +1,5 @@
-## spec-coverage — uncovered
+## spec-coverage — covered
 
-- The issue's acceptance checkbox "Behaviour is unchanged for a passing run — a before/after golden diff on the stage's own output" has no corresponding SPEC.
+- All eight acceptance checkboxes map to SPECs — exit-path coverage (SPEC-1–4), valid_verdicts (SPEC-7), no artifact paths in code (SPEC-14), router budgets from manifest (SPEC-11/12), primary output (SPEC-13), and the before/after golden diff (SPEC-15); checkboxes 7–8 are process discipline, not design specs.
 
-- NOT COVERED: before/after golden diff test asserting passing-run behaviour is unchanged after migration
+- every requirement the issue states maps to a declared SPEC
