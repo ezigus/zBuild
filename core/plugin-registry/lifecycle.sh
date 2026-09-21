@@ -170,39 +170,30 @@ _lc_manifest_role() {
 
 # _lc_other_outputs_deny <plugin_dir> <state_dir> — every OTHER plugin's
 # declared outputs, resolved into this run's artifact dir, into _LC_DENY_OUT
-# (newline-separated) (#2174). The whole roster is parsed ONCE per run and
-# memoised per (plugins root, artifact dir); a caller must invoke this in the
-# parent shell, never in `$( )` — a memo filled in a subshell is lost (ADR-065 §3).
-declare -gA _LC_OUTPUTS_MEMO=()   # "<root>|<artifact_dir>" → "manifest\tresolved\n…"
+# (newline-separated) (#2174). Served from the manifest index's outputs.path
+# list key — the one find + one awk the run already pays (ADR-065 §4) — so
+# this forks nothing. Call it in the PARENT shell (ADR-065 §3).
 _LC_DENY_OUT=""
 _lc_other_outputs_deny() {
-    local own="$1" state_dir="$2" root="${ZBUILD_PLUGINS_ROOT:-}" m rows raw resolved
+    local own="$1" state_dir="$2" root="${ZBUILD_PLUGINS_ROOT:-}" f raw resolved
     _LC_DENY_OUT=""
     [[ -n "$root" ]] || root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../plugins" 2>/dev/null && pwd)"
     [[ -d "$root" ]] || return 0
-    declare -F _registry_output_path_rows >/dev/null 2>&1 || return 0
-    local artifact_dir="${state_dir}/artifacts"; local key="${root}|${artifact_dir}"
-    if [[ -z "${_LC_OUTPUTS_MEMO[$key]+x}" ]]; then
-        local acc=""
-        while IFS= read -r m; do
-            [[ -n "$m" ]] || continue
-            case "$m" in */tests/*) continue ;; esac
-            rows="$(_registry_output_path_rows "$m" all 2>/dev/null || true)"
-            while IFS=$'\t' read -r raw _primary; do
-                [[ -n "$raw" ]] || continue
-                resolved="$(_registry_resolve_output_path "$raw" "$state_dir" "$artifact_dir" 2>/dev/null || true)"
-                [[ -n "$resolved" ]] && acc+="${m%/manifest.yaml}"$'\t'"$resolved"$'\n'
-            done <<< "$rows"
-        done < <(find "$root" -name manifest.yaml -type f 2>/dev/null | LC_ALL=C sort)
-        _LC_OUTPUTS_MEMO[$key]="$acc"
-    fi
-    # Everything in the memo whose owner is not this plugin.
-    local own_n="${own%/}" owner path
-    while IFS=$'\t' read -r owner path; do
-        [[ -n "$owner" ]] || continue
-        [[ "${owner%/}" == "$own_n" ]] && continue
-        _LC_DENY_OUT+="$path"$'\n'
-    done <<< "${_LC_OUTPUTS_MEMO[$key]}"
+    declare -F manifest_index_load >/dev/null 2>&1 || return 0
+    declare -F _registry_resolve_output_path >/dev/null 2>&1 || return 0
+    manifest_index_load "$root"
+    local artifact_dir="${state_dir}/artifacts" own_n="${own%/}" idx_root
+    idx_root="$(_manifest_index_root "$root")"
+    while IFS= read -r f; do
+        [[ -n "$f" ]] || continue
+        case "$f" in */tests/*) continue ;; esac
+        [[ "${f%/manifest.yaml}" == "$own_n" ]] && continue
+        while IFS= read -r raw; do
+            [[ -n "$raw" ]] || continue
+            resolved="$(_registry_resolve_output_path "$raw" "$state_dir" "$artifact_dir" 2>/dev/null || true)"
+            [[ -n "$resolved" ]] && _LC_DENY_OUT+="$resolved"$'\n'
+        done <<< "$(manifest_index_get "$f" outputs.path 2>/dev/null || true)"
+    done <<< "${_ZBUILD_MIDX_FILES[$idx_root]:-}"
 }
 
 # _lc_repo_entries_deny <repo_root> — the repo's tracked top-level entries as
@@ -369,7 +360,9 @@ plugin_hook_call() {
         # denied otherwise (an untracked state dir inside the repo is not).
         _lc_other_outputs_deny "$plugin_dir" "$_ws_state_dir"   # parent shell: fills the memo
         ZBUILD_PERMISSION_DENY_EDIT+="$_LC_DENY_OUT"
-        if [[ "$(yaml_get "$manifest" "capabilities.writes_repository" 2>/dev/null || true)" != "true" ]]; then
+        local _lc_wr; _lc_wr="$(manifest_index_get "$manifest" capabilities.writes_repository 2>/dev/null)" \
+            || _lc_wr="$(yaml_get "$manifest" "capabilities.writes_repository" 2>/dev/null || true)"
+        if [[ "${_lc_wr%$'\n'}" != "true" ]]; then
             _lc_repo_entries_deny "${ZBUILD_REPO_ROOT:-.}"
             ZBUILD_PERMISSION_DENY_EDIT+="$_LC_DENY_OUT"
         fi

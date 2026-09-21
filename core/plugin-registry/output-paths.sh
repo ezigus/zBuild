@@ -23,14 +23,12 @@ _ZBUILD_REGISTRY_OUTPUT_PATHS_LOADED=1
 # artifact is not flagged as a fail-closed contract violation when absent.
 # (The test plugin's test_failures_summary was the original example; ADR-055 §9
 # since made it `required: true`, so it is now enforced like any other output.)
-# <manifest> [all] — with `all`, rows with required: false are included too
-# (#2174: write ownership needs every declared output, not only the required ones).
 _registry_output_path_rows() {
-    local manifest="$1" mode="${2:-}"
-    awk -v all="$mode" '
+    local manifest="$1"
+    awk '
         BEGIN { in_block = 0; cur_path = ""; cur_required = ""; cur_primary = "" }
         function flush() {
-            if (cur_path != "" && (all == "all" || cur_required != "false")) {
+            if (cur_path != "" && cur_required != "false") {
                 print cur_path "\t" cur_primary
             }
             cur_path = ""; cur_required = ""; cur_primary = ""
