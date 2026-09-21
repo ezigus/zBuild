@@ -383,3 +383,13 @@ absence of a test signal — never on a stage id. `build_test_cycle` ALWAYS runs
 `test` (so it has a signal) and is therefore unaffected (scope: design-only for
 now); a future verifier-less cycle inherits the same fail-fast. See ADR-021
 Amendment (#1261) for the terminal-reason registration.
+
+### Amendment (#2176, 2026-09-21): design_verify_cycle no longer falls through
+
+`design_verify_cycle` is `max_iterations: 3, on_max: halt`. The fall-through above
+stays for `build_test_cycle` (an imperfect implementation flows to review, which can
+judge it). A design is different: it is the contract the build cycle implements
+against, and the build cycle cannot change it. On #1841 the gate rejected the design
+on its last pass, the run proceeded, and every later iteration inherited findings
+the builder was not allowed to act on. A design its own gate rejects three times
+ends the run as `failed` (reason `design_not_converged`) for a person to look at.
