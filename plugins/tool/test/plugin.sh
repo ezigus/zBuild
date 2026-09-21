@@ -237,7 +237,12 @@ _test_run_inner() {
     # artifact; a `timing` summary is folded into test-results.json after the run.
     local _zbt_timing_log
     _zbt_timing_log="$(dirname "$output_json")/test-timing.log"
-    rm -f "$_zbt_timing_log" 2>/dev/null || true
+    # #2167: the log ACCUMULATES across runs — never rm'd. Each run opens a
+    # `run <n> <mode> <epoch>` block; a later targeted re-run adds its rows
+    # under the full run's, so the suite's numbers survive (the gate's
+    # measured bound reads the max per file; the folded summary reads the
+    # last block only). The block opens just before the spawn, once the
+    # run mode is known.
 
     # #1208: capture the repo-declared count-contract results path (if any) into
     # a non-ZBUILD_ local BEFORE the fresh-shell scrub clears the ZBUILD_*
@@ -375,6 +380,7 @@ _test_run_inner() {
     # (set per-stage in the template).
     local test_rc=0
     local raw_output
+    _test_timing_open_run "$_zbt_timing_log" "$run_mode"
     raw_output="$(_test_spawn_suite "$tmp" "$actual_test_cmd" "$_zbt_timing_log" \
         "$_zbt_results_json" "$_pid_file" "$_pgid_file")" || test_rc=$?
 
@@ -395,8 +401,9 @@ _test_run_inner() {
                 --argjson p "$_tp" --argjson f "$(_test_sanitize_numeric "$_tf")" \
                 '{test_cmd:$c, verdict:$v, passed:$p, failed:$f}' 2>/dev/null || true)"
             emit_event "test.targeted.confirming" "passed=${_tp}" 2>/dev/null || true
-            # The timing log now measures the authoritative run only.
-            rm -f "$_zbt_timing_log" 2>/dev/null || true
+            # The full run is the authoritative one: it opens its own block
+            # (#2167) — the subset's rows stay above it, nothing is rm'd.
+            _test_timing_open_run "$_zbt_timing_log" "full"
             # The parser's pass is authoritative (#584), so the subset's rc no
             # longer matters; the full run's rc replaces it below.
             test_rc=0
@@ -798,7 +805,17 @@ _test_emit_failures_summary() {
 }
 
 # ─── _test_summarize_timing (#1058 Phase A) ──────────────────────────────────
+# _test_timing_open_run <log> <mode> (#2167) — start a run block in the
+# accumulating timing log: `run <n> <mode> <epoch>`, n = blocks so far + 1.
+_test_timing_open_run() {
+    local log="$1" mode="${2:-full}" n=0
+    [[ -f "$log" ]] && n="$(grep -c '^run ' "$log" 2>/dev/null || true)"
+    [[ "$n" =~ ^[0-9]+$ ]] || n=0
+    printf 'run %d %s %s\n' "$((n + 1))" "$mode" "$(date +%s)" >> "$log" 2>/dev/null || true
+}
+
 # Parse a run-tests.sh timing log into a compact JSON object for test-results.json.
+# #2167: the log holds every run's block; the summary describes the LAST one.
 # The log holds two line kinds (whitespace-separated):
 #   tier <ms> <name>
 #   file <ms> <path>
@@ -815,6 +832,7 @@ _test_summarize_timing() {
     [[ -n "$log" && -s "$log" ]] || return 1
     local _out
     _out="$(awk '
+        $1 == "run" { delete tier; n = 0; have = 0; next }
         $1 == "tier" && $2 ~ /^[0-9]+$/ { tier[$3] += $2; have = 1 }
         $1 == "file" && $2 ~ /^[0-9]+$/ {
             # path may contain spaces: rejoin fields 3..NF

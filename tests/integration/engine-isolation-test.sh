@@ -15,6 +15,9 @@
 # SPEC-6: other subcommands are unaffected — the guard is scoped to pipeline start
 # SPEC-7: a symlinked path to the engine must not silently disable the guard (#1641)
 # SPEC-8: --dev-engine still works in that spelling (the hole is closed, not the door)
+# SPEC-9: every CLI launch reports its own wall/user/sys time on stdout (#2167) — inside
+#   the pipeline's test stage this file hit the 480 s bound twice with ~7x the CPU of
+#   ordinary CI, and the file total could not say whether one launch or all seven was slow
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,16 +46,31 @@ git -C "$TARGET" config user.email t@t; git -C "$TARGET" config user.name t
 
 # _run_in <dir> [extra args...] — invoke the repo's CLI from <dir>, capture rc+output.
 # --dry-run keeps this cheap: the guard fires before any stage dispatch.
+# _launch <label> <dir> <cli> [args...] — one CLI launch, timed. Prints
+# `launch <label> real=<s> user=<s> sys=<s>` so a slow run says WHICH launch
+# was slow and whether it was more work (user+sys up) or a slower box (real
+# up, CPU flat). Sets _OUT/_RC.
+_LAUNCHES=0
+_launch() {
+    local label="$1" dir="$2" cli="$3"; shift 3
+    local tf; tf="$(mktemp "$TEST_TEMP_DIR/launch.XXXXXX")"
+    # `time` on a { } group runs in THIS shell, so _OUT/_RC survive; its one
+    # report line is the group's stderr (the launch's own stderr is in _OUT).
+    { TIMEFORMAT='%R %U %S'; time { _OUT="$(cd "$dir" && bash "$cli" pipeline start --issue "$_ZB_ID" --dry-run "$@" 2>&1)"; _RC=$?; }; } 2> "$tf"
+    _LAUNCHES=$((_LAUNCHES + 1))
+    local r u y; read -r r u y < "$tf"; rm -f "$tf"
+    printf 'launch %s real=%s user=%s sys=%s\n' "$label" "${r:-?}" "${u:-?}" "${y:-?}"
+}
+# _run_in <label> <dir> [extra args...] — the repo's own CLI from <dir>.
 _run_in() {
-    local dir="$1"; shift
-    _OUT="$(cd "$dir" && bash "$REPO_ROOT/scripts/zbuild" pipeline start --issue "$_ZB_ID" --dry-run "$@" 2>&1)"
-    _RC=$?
+    local label="$1" dir="$2"; shift 2
+    _launch "$label" "$dir" "$REPO_ROOT/scripts/zbuild" "$@"
 }
 
 # ── SPEC-1/2: refused from inside the engine's own repo, with an actionable message ──
 # The engine here is $REPO_ROOT/scripts/zbuild, so running from $REPO_ROOT makes
 # engine root == target root — exactly the CI shape this issue fixes.
-_run_in "$REPO_ROOT"
+_run_in inside-repo "$REPO_ROOT"
 assert_eq "[SPEC-1] pipeline start from inside the target repo is refused (rc=2)" "2" "$_RC"
 _msg_ok=0
 grep -q "engine isolation" <<< "$_OUT" && \
@@ -67,7 +85,7 @@ else
 fi
 
 # ── SPEC-3: --dev-engine permits it, and says what the risk is ──────────────
-_run_in "$REPO_ROOT" --dev-engine
+_run_in dev-engine "$REPO_ROOT" --dev-engine
 if [[ "$_RC" -ne 2 ]] && grep -q "dev-engine" <<< "$_OUT"; then
     assert_pass "[SPEC-3] --dev-engine permits the run and warns about mid-run edits"
 else
@@ -75,8 +93,7 @@ else
 fi
 
 # ── SPEC-4: env-var escape hatch is equivalent ──────────────────────────────
-_OUT="$(cd "$REPO_ROOT" && ZBUILD_DEV_ENGINE=1 bash "$REPO_ROOT/scripts/zbuild" pipeline start --issue "$_ZB_ID" --dry-run 2>&1)"
-_RC=$?
+ZBUILD_DEV_ENGINE=1 _launch env-override "$REPO_ROOT" "$REPO_ROOT/scripts/zbuild"
 if [[ "$_RC" -ne 2 ]] && grep -q "dev-engine" <<< "$_OUT"; then
     assert_pass "[SPEC-4] ZBUILD_DEV_ENGINE=1 is an equivalent escape hatch"
 else
@@ -86,7 +103,7 @@ fi
 # ── SPEC-5: an engine outside the target repo is permitted ──────────────────
 # This is the installed shape: engine at $ZBUILD_HOME, target elsewhere. The
 # guard must NOT fire, so the run proceeds past it (whatever it does next).
-_run_in "$TARGET"
+_run_in outside-repo "$TARGET"
 if [[ "$_RC" -ne 2 ]] || ! grep -q "engine isolation" <<< "$_OUT"; then
     assert_pass "[SPEC-5] engine outside the target repo is permitted (installed shape)"
 else
@@ -117,8 +134,7 @@ fi
 # every dogfood run. Symlinking the repo reproduces it without copying the tree.
 LINK="$TEST_TEMP_DIR/engine-via-symlink"
 ln -s "$REPO_ROOT" "$LINK"
-_sl_out="$(cd "$LINK" && bash "$LINK/scripts/zbuild" pipeline start --issue "$_ZB_ID" --dry-run 2>&1)"
-_sl_rc=$?
+_launch symlink "$LINK" "$LINK/scripts/zbuild"; _sl_out="$_OUT"; _sl_rc=$_RC
 if [[ "$_sl_rc" -eq 2 ]] && grep -q "engine isolation" <<< "$_sl_out"; then
     assert_pass "[SPEC-7] the guard still refuses when the engine is reached via a symlink"
 else
@@ -129,14 +145,18 @@ fi
 # ── SPEC-8: the escape hatch still works through a symlink ─────────────────
 # Canonicalising must not make --dev-engine unreachable in the spelling where the
 # guard newly fires — otherwise SPEC-7 would trade a silent hole for a hard block.
-_sl_dev_out="$(cd "$LINK" && bash "$LINK/scripts/zbuild" pipeline start --issue "$_ZB_ID" --dry-run --dev-engine 2>&1)"
-_sl_dev_rc=$?
+_launch symlink-dev "$LINK" "$LINK/scripts/zbuild" --dev-engine; _sl_dev_out="$_OUT"; _sl_dev_rc=$_RC
 if [[ "$_sl_dev_rc" -ne 2 ]] && grep -q "dev-engine" <<< "$_sl_dev_out"; then
     assert_pass "[SPEC-8] --dev-engine still permits the run via a symlinked path"
 else
     assert_fail "[SPEC-8] the override must work in the spelling where the guard fires" \
         "rc=$_sl_dev_rc output: ${_sl_dev_out:0:400}"
 fi
+
+# ── SPEC-9 (#2167): every launch reported its own time ─────────────────────
+# The lines above are the diagnostic; this pins that they are there and are
+# numbers, so a future edit cannot silently drop them.
+assert_eq "[SPEC-9] every pipeline-start launch printed a timing line (inside-repo, dev-engine, env-override, outside-repo, symlink, symlink-dev)" "6" "$_LAUNCHES"
 
 cleanup_test_env
 print_test_results
