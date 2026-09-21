@@ -151,5 +151,29 @@ if [[ -n "$OLDSCHEMA" ]]; then export ZBUILD_EVENT_SCHEMA="$OLDSCHEMA"; else uns
 # config/event-schema.json and tests/golden/cq-event-types.golden was deleted
 # together with the compound-quality lattice.
 
+# ─── SPEC-15: security-lens passing-run v2 envelope golden snapshot ──────────
+# CHANGE: fails at merge-base (golden file absent before v2 migration).
+# assert_golden returns 1 when the file is missing, so the assertion fails
+# at the merge-base and passes once the golden is committed.
+_spec15_expected_keys="data
+disposition
+findings
+generated_at
+plugin_id
+reason
+result_contract
+stub
+verdict"
+set +e
+assert_golden "security-lens-pass-artifact" "$_spec15_expected_keys"
+_spec15_rc=$?
+set -e
+if [[ $_spec15_rc -eq 0 ]]; then
+    assert_pass "[SPEC-15] security-lens passing-run v2 envelope shape matches golden snapshot"
+else
+    assert_fail "[SPEC-15] security-lens passing-run v2 envelope shape matches golden snapshot" \
+        "assert_golden returned $_spec15_rc (golden file missing or key-set mismatch)"
+fi
+
 print_test_results
 exit $((FAIL > 0))
