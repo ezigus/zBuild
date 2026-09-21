@@ -39,6 +39,8 @@ plugins/agent/security-lens/tests/security-lens-test.sh
 plugins/agent/security-lens/prompts/security.md
 plugins/agent/security-lens/README.md
 docs/wiki/plugins/security-lens.md
+docs/wiki/Writing-Plugins.md
+docs/wiki/Plugins.md
 docs/ARCHITECTURE.md
 docs/KEEPERS.md
 docs/adr/ADR-054-stage-contract.md
@@ -62,10 +64,12 @@ tests/unit/artifact-type-retirement-test.sh
 tests/unit/event-schema-emitted-coverage-test.sh
 tests/unit/lint-verdict-classify-test.sh
 tests/unit/plugin-manifest-contract-audit-test.sh
+tests/unit/test-author-test.sh
 tests/integration/artifact-contract-test.sh
 tests/integration/artifact-chain-test.sh
 tests/integration/route-fd-isolation-test.sh
 tests/integration/router-sync-preserves-error-artifacts-test.sh
+tests/integration/stage-io-ordering-invariant-test.sh
 tests/golden/parity/run-fixture.sh
 tests/golden/golden-contracts-test.sh
 tests/golden/security-lens-pass-artifact.golden
