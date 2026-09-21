@@ -39,6 +39,7 @@ provides:
     - test_author.authored
     - test_author.no_contract
     - test_author.result.write_failed
+    - test_author.stale_tags_dropped
 
 config:
   # The v2 exemplars' vocabulary (hydrate/persist/teardown). `authored` and
@@ -49,6 +50,10 @@ config:
     - complete
     - degraded
   tier_default: T2
+
+# #2174: the author writes the acceptance testfiles INTO the repository.
+capabilities:
+  writes_repository: true
 
 inputs:
   - id: design

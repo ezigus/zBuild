@@ -168,6 +168,62 @@ _lc_manifest_role() {
     fi
 }
 
+# _lc_other_outputs_deny <plugin_dir> <state_dir> — every OTHER plugin's
+# declared outputs, resolved into this run's artifact dir, into _LC_DENY_OUT
+# (newline-separated) (#2174). The whole roster is parsed ONCE per run and
+# memoised per (plugins root, artifact dir); a caller must invoke this in the
+# parent shell, never in `$( )` — a memo filled in a subshell is lost (ADR-065 §3).
+declare -gA _LC_OUTPUTS_MEMO=()   # "<root>|<artifact_dir>" → "manifest\tresolved\n…"
+_LC_DENY_OUT=""
+_lc_other_outputs_deny() {
+    local own="$1" state_dir="$2" root="${ZBUILD_PLUGINS_ROOT:-}" m rows raw resolved
+    _LC_DENY_OUT=""
+    [[ -n "$root" ]] || root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../plugins" 2>/dev/null && pwd)"
+    [[ -d "$root" ]] || return 0
+    declare -F _registry_output_path_rows >/dev/null 2>&1 || return 0
+    local artifact_dir="${state_dir}/artifacts"; local key="${root}|${artifact_dir}"
+    if [[ -z "${_LC_OUTPUTS_MEMO[$key]+x}" ]]; then
+        local acc=""
+        while IFS= read -r m; do
+            [[ -n "$m" ]] || continue
+            case "$m" in */tests/*) continue ;; esac
+            rows="$(_registry_output_path_rows "$m" all 2>/dev/null || true)"
+            while IFS=$'\t' read -r raw _primary; do
+                [[ -n "$raw" ]] || continue
+                resolved="$(_registry_resolve_output_path "$raw" "$state_dir" "$artifact_dir" 2>/dev/null || true)"
+                [[ -n "$resolved" ]] && acc+="${m%/manifest.yaml}"$'\t'"$resolved"$'\n'
+            done <<< "$rows"
+        done < <(find "$root" -name manifest.yaml -type f 2>/dev/null | LC_ALL=C sort)
+        _LC_OUTPUTS_MEMO[$key]="$acc"
+    fi
+    # Everything in the memo whose owner is not this plugin.
+    local own_n="${own%/}" owner path
+    while IFS=$'\t' read -r owner path; do
+        [[ -n "$owner" ]] || continue
+        [[ "${owner%/}" == "$own_n" ]] && continue
+        _LC_DENY_OUT+="$path"$'\n'
+    done <<< "${_LC_OUTPUTS_MEMO[$key]}"
+}
+
+# _lc_repo_entries_deny <repo_root> — the repo's tracked top-level entries as
+# deny paths (dirs as <dir>/**) into _LC_DENY_OUT (#2174). Memoised per root;
+# same parent-shell rule as above.
+declare -gA _LC_REPO_ENTRIES_MEMO=()
+_lc_repo_entries_deny() {
+    local root="$1" abs e acc=""
+    _LC_DENY_OUT=""
+    # Logical path (not -P): the rule must match the path the model sees.
+    abs="$(cd "$root" 2>/dev/null && pwd)" || return 0
+    if [[ -z "${_LC_REPO_ENTRIES_MEMO[$abs]+x}" ]]; then
+        while IFS= read -r e; do
+            [[ -n "$e" ]] || continue
+            if [[ -d "$abs/$e" ]]; then acc+="$abs/$e/**"$'\n'; else acc+="$abs/$e"$'\n'; fi
+        done < <(git -C "$abs" ls-tree --name-only HEAD 2>/dev/null)
+        _LC_REPO_ENTRIES_MEMO[$abs]="$acc"
+    fi
+    _LC_DENY_OUT="${_LC_REPO_ENTRIES_MEMO[$abs]}"
+}
+
 plugin_hook_call() {
     local plugin_dir="$1"
     local hook_name="$2"   # run | cleanup (or kind-specific)
@@ -302,6 +358,20 @@ plugin_hook_call() {
                 done < <( ( source "$_lc_lib/acceptance-block.sh" >/dev/null 2>&1 \
                             && acceptance_list_testfiles "$_lc_design" ) 2>/dev/null || true )
             fi
+        fi
+
+        # #2174: write ownership, decided by the engine from the manifests —
+        # no stage names another. (1) In the artifact dir a stage may write
+        # only the outputs its OWN manifest declares; every other plugin's
+        # declared output is read-only (#1841's builder retagged two SPECs in
+        # design.md). (2) Only a plugin declaring capabilities.writes_repository
+        # may edit the target repository: every tracked top-level entry is
+        # denied otherwise (an untracked state dir inside the repo is not).
+        _lc_other_outputs_deny "$plugin_dir" "$_ws_state_dir"   # parent shell: fills the memo
+        ZBUILD_PERMISSION_DENY_EDIT+="$_LC_DENY_OUT"
+        if [[ "$(yaml_get "$manifest" "capabilities.writes_repository" 2>/dev/null || true)" != "true" ]]; then
+            _lc_repo_entries_deny "${ZBUILD_REPO_ROOT:-.}"
+            ZBUILD_PERMISSION_DENY_EDIT+="$_LC_DENY_OUT"
         fi
 
         if ! declare -F stage_scratch_ensure >/dev/null 2>&1; then

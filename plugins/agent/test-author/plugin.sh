@@ -57,6 +57,33 @@ EOF
     fi
 }
 
+# _ta_drop_stale_tags <design.md> <repo_root> — strip `[SPEC-n] ` from the
+# contract's testfiles where n is not a SPEC id of this contract (#2174).
+_ta_drop_stale_tags() {
+    local design="$1" repo="$2" ids tf n=0 before after
+    declare -F acceptance_list_spec_ids >/dev/null 2>&1 || return 0
+    ids="$(acceptance_list_spec_ids "$design" 2>/dev/null | sed 's/^SPEC-//' | tr '\n' ' ')"
+    [[ -n "$ids" ]] || return 0
+    while IFS= read -r tf; do
+        [[ -n "$tf" && -f "$repo/$tf" ]] || continue
+        before="$(grep -cE '\[SPEC-[0-9]+\]' "$repo/$tf" 2>/dev/null || true)"
+        awk -v ids=" $ids " '
+            { line=$0; out="";
+              while (match(line, /\[SPEC-[0-9]+\] ?/)) {
+                  tag=substr(line, RSTART, RLENGTH); num=tag; gsub(/[^0-9]/, "", num)
+                  keep = index(ids, " " num " ") > 0
+                  out = out substr(line, 1, RSTART-1) (keep ? tag : "")
+                  line = substr(line, RSTART+RLENGTH)
+              }
+              print out line }' "$repo/$tf" > "$repo/$tf.zb-tags" 2>/dev/null \
+            && mv -f "$repo/$tf.zb-tags" "$repo/$tf" || rm -f "$repo/$tf.zb-tags"
+        after="$(grep -cE '\[SPEC-[0-9]+\]' "$repo/$tf" 2>/dev/null || true)"
+        [[ "$before" =~ ^[0-9]+$ && "$after" =~ ^[0-9]+$ ]] && n=$(( n + before - after ))
+    done < <(acceptance_list_testfiles "$design" 2>/dev/null || true)
+    (( n > 0 )) && _ta_emit "test_author.stale_tags_dropped" "count=$n"
+    return 0
+}
+
 # _ta_write_result <dir> <verdict> <disposition> <reason> <n_specs>
 # ADR-054 §5: one result file, every mandatory key. §6: `disposition` says how
 # the STAGE stopped; `verdict` says what it produced. A router timeout is not a
@@ -131,7 +158,7 @@ test_author_run() {
 
 You cannot see the implementation, and you must not guess at it. Write what the requirement DEMANDS, not what some implementation might do. Each assertion must be able to FAIL: if the requirement were not met, your assertion must not pass.
 
-Tag each assertion with its SPEC id in square brackets, exactly as shown.
+Tag each assertion with its SPEC id in square brackets, exactly as shown. You own every [SPEC-n] tag in the testfile(s) you write: a tag already there whose number is not in this contract is stale from an earlier contract — remove the tag and keep the assertion.
 
 REQUIREMENTS:
 ${spec_block}
@@ -180,6 +207,11 @@ Write or amend only the testfile(s) named above. Do not write, modify or stub an
     # The digests are recorded HERE, by the author, immediately after authoring.
     # Recording anywhere else would baseline someone else's edit as if it were
     # the author's — which is precisely what the guard exists to catch.
+    # #2174: the stage enforces its own invariant — a [SPEC-n] tag whose
+    # number is not in THIS contract is stale (an earlier contract's), and the
+    # gate would match it instead of the authored assertion. Drop the tag,
+    # keep the assertion. Runs before the digests are recorded.
+    _ta_drop_stale_tags "$design" "$repo"
     declare -f assertion_integrity_record >/dev/null 2>&1 \
         && assertion_integrity_record "$art" "$repo"
 
