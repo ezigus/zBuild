@@ -1,6 +1,16 @@
-cpu 758 1022 tests/integration/cleanup-release-test.sh
-file 1659 tests/integration/cleanup-release-test.sh
-cpu 3884 5568 tests/unit/teardown-purge-scratch-test.sh
-file 9020 tests/unit/teardown-purge-scratch-test.sh
-cpu 5711 7760 plugins/agent/security-lens/tests/security-lens-test.sh
-file 12186 plugins/agent/security-lens/tests/security-lens-test.sh
+cpu 19 31 tests/unit/agent-stages-artifact-metadata-symmetry-test.sh
+file 51 tests/unit/agent-stages-artifact-metadata-symmetry-test.sh
+cpu 133 172 tests/unit/artifact-type-retirement-test.sh
+file 367 tests/unit/artifact-type-retirement-test.sh
+cpu 41 65 tests/unit/plugin-manifest-contract-audit-test.sh
+file 153 tests/unit/plugin-manifest-contract-audit-test.sh
+cpu 292 346 tests/golden/golden-contracts-test.sh
+file 998 tests/golden/golden-contracts-test.sh
+cpu 78 84 tests/unit/scope-redaction-no-tempfile-test.sh
+file 167 tests/unit/scope-redaction-no-tempfile-test.sh
+cpu 497 655 tests/integration/artifact-chain-test.sh
+file 1551 tests/integration/artifact-chain-test.sh
+cpu 941 855 tests/unit/plugin-route-source-guard-test.sh
+file 1824 tests/unit/plugin-route-source-guard-test.sh
+cpu 5524 7320 plugins/agent/security-lens/tests/security-lens-test.sh
+file 11752 plugins/agent/security-lens/tests/security-lens-test.sh
