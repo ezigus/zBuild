@@ -204,6 +204,19 @@ _resolved_fallback="$(_review_lens_id)"
 assert_eq "[SPEC-6] fallback to ZBUILD_CURRENT_STAGE when ZBUILD_REVIEW_LENS_ID unset" \
     "review_lenses" "$_resolved_fallback"
 
+# ─── SPEC-9 [guard/#1840]: map dispatch contract is independent of plugin contract ─
+# The map dispatch mechanism reads only the template (lenses dimension, as: target,
+# roles) and the plugin directory — not the lens artifact format. A v2 migration of
+# review-lens (adding result_contract/verdict/disposition to lens-<id>.json) must
+# not change any of the SPEC-1 through SPEC-6 dispatch assertions above.
+# Guard: confirm _review_lens_id() still resolves element names after any migration.
+for _el in "security" "performance" "red-team" "correctness" "scope" "sre"; do
+    export ZBUILD_REVIEW_LENS_ID="$_el"
+    _id_v2="$(_review_lens_id)"
+    assert_eq "[SPEC-9] _review_lens_id() resolves '$_el' after v2 migration" "$_el" "$_id_v2"
+done
+unset ZBUILD_REVIEW_LENS_ID 2>/dev/null || true
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
