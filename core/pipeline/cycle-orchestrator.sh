@@ -1488,9 +1488,14 @@ _cycle_tree_fingerprint() {
     printf '%s-%s' "$h" "${st%% *}"
 }
 # _cycle_member_reusable <member> — the previous verified iteration's entry
-# for <member> was a completed pass. A member that FAILED re-runs: its
-# iter-aware escalation (#1711 inert_wiring, #2097 not_passing_at_head) runs
-# inside the plugin at dispatch and must see ZBUILD_CYCLE_ITER advance.
+# for <member> was a completed verdict the same tree would give again. A
+# PASS is always reusable (#2117). A FAILURE is reusable too (#2170) — the
+# members after build are deterministic given the tree, and re-running a
+# 25-minute suite to fail identically bought nothing on #1841 — EXCEPT for a
+# member whose manifest declares `capabilities.iteration_aware: true`: its
+# answer depends on ZBUILD_CYCLE_ITER (spec-acceptance escalates a tautology
+# or an inert wiring at iter >= 2, #2097/#2157) and must see the iteration
+# advance. Broken/error/missing (infrastructure) outcomes always re-run.
 _cycle_member_reusable() {
     local s="$1" e st v
     e="$(jq -c --arg s "$s" '.[$s] // empty' <<< "${_CYCLE_VERIFIED_BLOB:-{}}" 2>/dev/null || true)"
@@ -1498,12 +1503,22 @@ _cycle_member_reusable() {
     st="$(jq -r '.status // ""' <<< "$e" 2>/dev/null || true)"
     v="$(jq -r '.verdict // ""' <<< "$e" 2>/dev/null || true)"
     [[ "$st" == "complete" ]] || return 1
-    # #2170: a FAILING verdict on the same tree is just as reusable as a
-    # passing one — the members after build are deterministic given the tree,
-    # and #1841 re-ran a 25-minute suite five times to fail identically while
-    # build was blocked on testfiles it may not edit. Broken/error/missing
-    # (infrastructure) outcomes are still re-run.
-    case "$v" in pass|complete|skip|approve|fail|failed|request_changes) return 0 ;; *) return 1 ;; esac
+    case "$v" in
+        pass|complete|skip|approve) return 0 ;;
+        fail|failed|request_changes) _cycle_member_iteration_aware "$s" && return 1; return 0 ;;
+        *) return 1 ;;
+    esac
+}
+# _cycle_member_iteration_aware <member> — the member's manifest declares
+# capabilities.iteration_aware: true (its verdict depends on the iteration).
+_cycle_member_iteration_aware() {
+    local s="$1" plugins_root="${ZBUILD_PLUGINS_ROOT:-$_CYCLE_ORCH_ROOT/plugins}" manifest v
+    declare -F manifest_graph_resolve_member >/dev/null 2>&1 || return 1
+    # id match first, then the template's role binding (acceptance-gate → spec-acceptance).
+    manifest="$(manifest_graph_resolve_member "$plugins_root" "$s" 2>/dev/null || true)"
+    [[ -n "$manifest" && -f "$manifest" ]] || return 1
+    v="$(yaml_get "$manifest" "capabilities.iteration_aware" 2>/dev/null || true)"
+    [[ "$v" == "true" ]]
 }
 _CYCLE_VERIFIED_FP=""
 _CYCLE_VERIFIED_ITER=""
@@ -1589,9 +1604,16 @@ _cycle_iter_dispatch() {
         local _member_type_var_pre="_TPL_STAGE_TYPE_${s//-/_}"
         local _member_kind_pre="${!_member_type_var_pre:-leaf}"
         # #2117: build reported empty_diff on a tree the previous iteration
-        # already verified — every member that PASSED then is reused from that
-        # iteration (blob entry copied, artifact kept, no dispatch). #1840 ran
-        # 45 min of tests and a 68-min gate on each of three identical trees.
+        # already verified — every member whose verdict the same tree would
+        # give again (a pass, or a failure from a member that is not
+        # iteration-aware, #2170) is reused from that iteration (blob entry
+        # copied, artifact kept, no dispatch). #1840 ran 45 min of tests and
+        # a 68-min gate on each of three identical trees. Once a member is
+        # NOT reusable it is dispatched, and so is everything after it: its
+        # verdict or fault may differ from the reused iteration's.
+        if [[ $_reuse_rest -eq 1 && "$_member_kind_pre" != "cycle" ]] && ! _cycle_member_reusable "$s"; then
+            _reuse_rest=0
+        fi
         if [[ $_reuse_rest -eq 1 && "$_member_kind_pre" != "cycle" ]] && _cycle_member_reusable "$s"; then
             local _ru_entry
             _ru_entry="$(jq -c --arg s "$s" '.[$s]' <<< "$_CYCLE_VERIFIED_BLOB" 2>/dev/null || echo '{}')"
