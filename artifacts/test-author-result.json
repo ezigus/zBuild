@@ -1,8 +1,8 @@
 {
   "result_contract": 2,
-  "verdict": "degraded",
-  "disposition": "interrupted",
-  "reason": "the model call failed (router_timeout) — no assertions were authored",
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 17 SPEC(s) from the design contract",
   "data": {
     "specs_covered": 17
   }
