@@ -96,7 +96,11 @@ jobs:
         # Advisory: a comment that cannot be finalized never fails the job.
         run: |
           source scripts/lib/run-status-comment.sh
-          rsc_finalize_issue "$RUNNER_TEMP" "${{ github.repository }}" "${ISSUE_NUMBER}" "${PIPELINE_RESULT}" || true
+          # #2166: `cancelled` is GitHub's word for the ceiling AND for a hand
+          # cancel; the run's start time lets the renderer tell them apart.
+          STARTED="$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" --jq '.run_started_at // empty' 2>/dev/null || true)"
+          echo "STARTED=${STARTED}" >> "$GITHUB_ENV"
+          rsc_finalize_issue "$RUNNER_TEMP" "${{ github.repository }}" "${ISSUE_NUMBER}" "${PIPELINE_RESULT}" "${STARTED}" || true
 
       - name: Remove zbuild-run label
         run: |
@@ -120,7 +124,9 @@ jobs:
           elif [[ "$PIPELINE_RESULT" == "cancelled" ]]; then
             # #2145: a 6-hour GitHub kill is `cancelled`, not a failure — say
             # what it was and that ADR-050 resumes from the state branch.
-            body="**zbuild pipeline cancelled at the 360-minute ceiling.** State was persisted — re-add \`zbuild-run\` to resume.  Run: ${RUN_URL}"
+            # #2166: a hand cancel is `cancelled` too; the clock decides the words.
+            source scripts/lib/run-status-comment.sh
+            body="$(rsc_cancel_closing "${STARTED:-}")  Run: ${RUN_URL}"
           else
             body="**zbuild pipeline finished with result: \`${PIPELINE_RESULT}\`.**  Run: ${RUN_URL}"
           fi

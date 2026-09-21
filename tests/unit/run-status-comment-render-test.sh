@@ -219,6 +219,40 @@ body="$(rsc_render_body "$EV" "$STATE")"
 assert_contains "[SPEC-9] a snapshot for a different run id is not served" "$(row_of '**6.1.1 build**')" "OVERWRITTEN by iteration 2"
 printf '## build — pass\n\n- 3 files changed, tests added\n' > "$STATE/artifacts/build-summary.md"
 
+# ─── SPEC-10 (#2166): a row that closes AGAIN (a retry) re-freezes ──────────
+# #1841: test-author timed out (error, 10m), the router retried, the retry
+# succeeded — and the row read "complete — the model call failed": the first
+# close froze the failure text and the second close could not replace it. A
+# retry is a new close (new ended_ts); the snapshot follows the LAST close.
+print_test_section "SPEC-10: a retried row keeps the summary of its LAST close"
+jq -c '.run_id = "r-2131"' "$STATE/status-comment-rows.json" > "$STATE/status-comment-rows.json.tmp" && mv "$STATE/status-comment-rows.json.tmp" "$STATE/status-comment-rows.json"
+body="$(rsc_render_body "$EV" "$STATE")"   # freeze the first close: "3 files changed, tests added"
+ev 13:22:05 plugin.run.start 6.1.1 build plugin=build kind=agent          # the retry re-enters the same seq
+printf '## build — pass\n\n- retried after the first attempt timed out\n' > "$STATE/artifacts/build-summary.md"
+ev 13:40:00 stage.complete 6.1.1 build stage=build verdict=pass          # …and closes again, later
+body="$(rsc_render_body "$EV" "$STATE")"
+assert_contains "[SPEC-10] the row shows the summary of the retry, not the frozen first attempt" \
+    "$(row_of '**6.1.1 build**')" "retried after the first attempt timed out"
+assert_contains "[SPEC-10] …and the retry's end time" "$(row_of '**6.1.1 build**')" "→ 9:40 AM ET"
+_fresh_retry="$(bash -c 'source "$1"; rsc_render_body "$2" "$3"' _ "$LIB" "$EV" "$STATE" 2>/dev/null | grep -F -- '**6.1.1 build**' | sed -n 1p)"
+assert_contains "[SPEC-10] a fresh process serves the re-frozen line" "$_fresh_retry" "retried after the first attempt timed out"
+printf '## build — pass\n\n- OVERWRITTEN again\n' > "$STATE/artifacts/build-summary.md"
+body="$(rsc_render_body "$EV" "$STATE")"
+assert_contains "[SPEC-10] the re-frozen line is a snapshot too (a later overwrite does not leak in)" \
+    "$(row_of '**6.1.1 build**')" "retried after the first attempt timed out"
+
+# review on #2168: a save that cannot encode `ends` must not write a file
+# that would later serve every row as legacy-frozen (the stale first close).
+_before="$(cat "$STATE/status-comment-rows.json")"
+_rsc_snapshot_load "$STATE" r-2131   # rsc_render_body ran in a $( ) — fill this shell's maps
+_RSC_SNAP_DIRTY=1
+# Only the `ends` encoding fails; the row encoding still works (the case that
+# would silently write `"ends": {}`).
+jq() { [[ "$*" == *--argjson* ]] && { command jq "$@"; return; }; return 1; }
+_rsc_snapshot_save "$STATE"
+unset -f jq
+assert_eq "[SPEC-10] a save that cannot encode the ends map leaves the snapshot file untouched" "$_before" "$(cat "$STATE/status-comment-rows.json")"
+
 # ─── SPEC-8: the sidecar is a reader of events.jsonl, never a writer ────────
 assert_eq "[SPEC-8] no eb_emit_event in the sidecar" "0" "$(grep -c 'eb_emit_event' "$LIB")"
 assert_eq "[SPEC-8] the sidecar never sources the event bus" "0" "$(grep -c 'event-bus' "$LIB")"
