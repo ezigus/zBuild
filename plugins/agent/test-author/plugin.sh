@@ -36,6 +36,27 @@ source "$_TA_ROOT/plugins/tool/assertion-integrity/plugin.sh" 2>/dev/null || tru
 
 _ta_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
 
+# _test_author_budget_guidance <max_turns> <timeout_s> — TURN BUDGET + WALL
+# CLOCK BUDGET blocks (ADR-063 §1). Each is skipped when its value is 0.
+_test_author_budget_guidance() {
+    local turns="${1:-0}" secs="${2:-0}"
+    if [[ "$turns" =~ ^[0-9]+$ && "$turns" -gt 0 ]]; then
+        cat <<EOF
+TURN BUDGET (read this — you have a BOUNDED tool-call budget):
+- You have about ${turns} tool-call turns for reading the contract and the testfile(s) AND writing every assertion.
+- Read the design and each testfile ONCE, then write. Do not explore the repository; the requirements above are complete.
+- If an edit is refused, do not retry it another way — write what you can and say which SPECs are unwritten.
+- STOP reading and WRITE well before you run out. Assertions for most SPECs beat a full budget spent and none written.
+EOF
+    fi
+    if [[ "$secs" =~ ^[0-9]+$ && "$secs" -gt 0 ]]; then
+        cat <<EOF
+WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
+- This stage has a wall-clock budget of ${secs} seconds total. Estimate elapsed time from your tool-call history and finish writing before ~$(( secs * 70 / 100 ))s.
+EOF
+    fi
+}
+
 # _ta_write_result <dir> <verdict> <disposition> <reason> <n_specs>
 # ADR-054 §5: one result file, every mandatory key. §6: `disposition` says how
 # the STAGE stopped; `verdict` says what it produced. A router timeout is not a
@@ -115,6 +136,17 @@ Tag each assertion with its SPEC id in square brackets, exactly as shown.
 REQUIREMENTS:
 ${spec_block}
 Write or amend only the testfile(s) named above. Do not write, modify or stub any implementation file."
+
+    # ADR-063 §1 (#2170): the budget reaches the prompt from the values that
+    # enforce it — never a literal. Same shape as design/plan/review-lens.
+    local _ta_max_turns=0 _ta_timeout_s=0
+    declare -F _route_resolve_max_turns >/dev/null 2>&1 && _ta_max_turns="$(_route_resolve_max_turns 2>/dev/null || printf '0')"
+    declare -F _route_resolve_timeout >/dev/null 2>&1 && _ta_timeout_s="$(_route_resolve_timeout 2>/dev/null || printf '0')"
+    [[ "$_ta_max_turns" =~ ^[0-9]+$ ]] || _ta_max_turns=0
+    [[ "$_ta_timeout_s" =~ ^[0-9]+$ ]] || _ta_timeout_s=0
+    local _ta_guidance
+    _ta_guidance="$(_test_author_budget_guidance "$_ta_max_turns" "$_ta_timeout_s")"
+    [[ -n "$_ta_guidance" ]] && prompt+=$'\n\n'"$_ta_guidance"
 
     local tier="T2" rc=0
     declare -f resolve_tier >/dev/null 2>&1 && tier="$(resolve_tier test-author "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null || printf 'T2')"

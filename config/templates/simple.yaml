@@ -151,6 +151,10 @@ test-author:
   roles: [test_author]
   router:
     timeout_s: 600
+    # #2170: authoring a 15–20 SPEC contract into a 500-line testfile is more
+    # than the 25-turn engine default (plan and impact get 45). #1841 hit
+    # "Reached max turns (25)" on every call.
+    max_turns: 45
 
 # ─── spec-correspondence (leaf, advisory) ────────────────────────────────────
 # ADR-040 §5: it makes a model call, so it may not gate. Its finding reaches

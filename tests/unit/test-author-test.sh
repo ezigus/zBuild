@@ -111,5 +111,23 @@ assert_eq "[SPEC-5][change] and it maps to a non-complete disposition" \
 assert_eq "[SPEC-4][guard] rc stays binary on failure" \
     "1" "$([[ "$_rc2" == "0" || "$_rc2" == "1" ]] && echo 1 || echo 0)"
 
+# ─── SPEC-6/7 (#2170): the author knows its budget, and the budget fits the job ─
+# #1841: test-author ran under the engine default of 25 tool-call turns (plan and
+# impact get 45; design and build are unbounded) with no budget block in its
+# prompt, and hit "Reached max turns (25)" on every call.
+print_test_section "SPEC-6: the prompt carries the ADR-063 TURN BUDGET block from the enforcing value"
+_setup s6
+_TA_RC=0
+_route_resolve_max_turns() { printf '45'; }
+_route_resolve_timeout() { printf '600'; }
+test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
+assert_contains "[SPEC-6][change] the prompt carries the TURN BUDGET block" "$(cat "$_TA_PROMPT")" "TURN BUDGET"
+assert_contains "[SPEC-6][change] …with the number the router enforces" "$(cat "$_TA_PROMPT")" "45 tool-call turns"
+assert_contains "[SPEC-6][change] …and the WALL CLOCK BUDGET block" "$(cat "$_TA_PROMPT")" "WALL CLOCK BUDGET"
+unset -f _route_resolve_max_turns _route_resolve_timeout
+print_test_section "SPEC-7: simple.yaml gives test-author a turn budget that fits authoring a contract"
+_mt="$(awk '/^test-author:/{f=1;next} /^[a-z]/{f=0} f && /max_turns:/{print $2}' "$REPO_ROOT/config/templates/simple.yaml")"
+assert_eq "[SPEC-7][change] simple.yaml test-author.router.max_turns is 45 (plan/impact parity), not the 25 default" "45" "$_mt"
+
 print_test_results
 exit $((FAIL > 0))

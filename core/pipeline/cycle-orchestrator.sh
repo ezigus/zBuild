@@ -1498,7 +1498,12 @@ _cycle_member_reusable() {
     st="$(jq -r '.status // ""' <<< "$e" 2>/dev/null || true)"
     v="$(jq -r '.verdict // ""' <<< "$e" 2>/dev/null || true)"
     [[ "$st" == "complete" ]] || return 1
-    case "$v" in pass|complete|skip|approve) return 0 ;; *) return 1 ;; esac
+    # #2170: a FAILING verdict on the same tree is just as reusable as a
+    # passing one — the members after build are deterministic given the tree,
+    # and #1841 re-ran a 25-minute suite five times to fail identically while
+    # build was blocked on testfiles it may not edit. Broken/error/missing
+    # (infrastructure) outcomes are still re-run.
+    case "$v" in pass|complete|skip|approve|fail|failed|request_changes) return 0 ;; *) return 1 ;; esac
 }
 _CYCLE_VERIFIED_FP=""
 _CYCLE_VERIFIED_ITER=""

@@ -140,8 +140,11 @@ cycle_dispatch_stage() {
             _CYCLE_DISPATCH_DATA_KIND="empty_diff"
             ;;
         test)
-            printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"mock","data":{"exit_code":0,"passed":1,"failed":0}}' \
+            printf '{"result_contract":2,"verdict":"%s","disposition":"complete","reason":"mock","data":{"exit_code":0,"passed":1,"failed":0}}' "${_TEST_VERDICT:-pass}" \
                 > "$_art/test-results.json"
+            _CYCLE_DISPATCH_VERDICT="${_TEST_VERDICT:-pass}"
+            _CYCLE_DISPATCH_VERDICT_RAW="${_TEST_VERDICT:-pass}"
+            # v2: a failing suite is verdict=fail with rc 0 (rc 1 = broken).
             ;;
         gate-aggregator)
             printf '{"schema_version":1,"verdict":"%s","summary":"x"}' "$_GA_VERDICT" \
@@ -203,7 +206,10 @@ assert_eq "[SPEC-3c] iterations 2–5 reuse the test member's verdict (4 reuse e
 assert_contains "[SPEC-3c] a reuse event names the iteration it reuses" \
     "$(grep '"cycle.iteration.reused"' "$ZBUILD_EVENTS_JSONL" | head -1)" '"from_iter":"1"'
 _n_ga="$(grep -c '"cycle.member.dispatch.complete".*"member":"gate-aggregator"' "$ZBUILD_EVENTS_JSONL" || true)"
-assert_eq "[SPEC-3d] the FAILING gate-aggregator is re-dispatched every iteration (5)" "5" "$_n_ga"
+# #2170: a failing member on an unchanged tree is reused like a passing one
+# (was: re-dispatched every iteration — the 25-minute suite ran five times to
+# fail identically on #1841).
+assert_eq "[SPEC-3d] the FAILING gate-aggregator is dispatched once and reused on an unchanged tree" "1" "$_n_ga"
 
 print_test_section "SPEC-3f: a tree that CHANGED between iterations is fully re-verified"
 _GA_VERDICT="fail"
@@ -258,6 +264,22 @@ if grep -q 'cycle.stalled' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
 else
     assert_pass "[SPEC-4] no cycle.stalled event on a clean converge"
 fi
+
+# ─── SPEC-5 (#2170): an unchanged tree re-yields the SAME verdicts, failing ones too ─
+# #1841: build changed nothing (blocked on testfiles it may not edit), so the
+# tree was identical to the previous iteration's — and the 25-minute suite ran
+# again to fail the same way, five times. #2117 reused only PASSING members;
+# a deterministic member's failure on the same tree is just as reusable.
+print_test_section "SPEC-5: empty_diff on the tree a previous iteration FAILED ⇒ that failure is reused, not re-run"
+_GA_VERDICT="fail"; _TEST_VERDICT="fail"
+_run_cycle "refail"
+_n_test_f="$(grep -c '"cycle.member.dispatch.complete".*"member":"test"' "$ZBUILD_EVENTS_JSONL" || true)"
+assert_eq "[SPEC-5] the FAILING test member is dispatched exactly ONCE across 5 iterations" "1" "$_n_test_f"
+_n_reused="$(grep -c '"cycle.iteration.reused".*"member":"test"' "$ZBUILD_EVENTS_JSONL" || true)"
+assert_eq "[SPEC-5] …and reused on each of the other four" "4" "$_n_reused"
+assert_eq "[SPEC-5] the cycle still ends as it does today — max iterations with tests failing (rc=8)" "8" "$_RUN_RC"
+assert_contains "[SPEC-5] …with that reason" "$(tail -3 "$ZBUILD_EVENTS_JSONL")" "max_iterations_tests_failing"
+_TEST_VERDICT="pass"
 
 cleanup_test_env
 print_test_results
