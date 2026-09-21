@@ -129,20 +129,16 @@ assert_eq "[SPEC-2] normal exit path disposition=complete" "complete" "$disposit
 # ─── Events emitted during the run ──────────────────────────────────────────
 if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
     redaction_count=$(grep -c '"redaction.applied"' "$ZBUILD_EVENTS_JSONL" || true)
-    run_complete=$(grep -c '"plugin.result"' "$ZBUILD_EVENTS_JSONL" || true)
     if [[ "$redaction_count" -ge 1 ]]; then
         assert_pass "redaction.applied event emitted (chokepoint observable)"
     else
         assert_fail "expected redaction.applied event in event log"
     fi
     _spec8_ev=$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
-        jq -r 'select(.type=="plugin.result" and .plugin=="security-lens") | .type // empty' \
+        jq -r 'select(.type=="plugin.result" and .plugin=="security-lens" and (.data.result_contract // 0) == 2) | .type // empty' \
         2>/dev/null | head -1 || true)
-    if [[ -n "$_spec8_ev" ]]; then
-        assert_pass "[SPEC-8] plugin.result event emitted on normal path with plugin=security-lens"
-    else
-        assert_fail "[SPEC-8] plugin.result event emitted on normal path with plugin=security-lens"
-    fi
+    assert_eq "[SPEC-8] plugin.result event carries result_contract:2 on normal exit path with plugin=security-lens" \
+        "plugin.result" "$_spec8_ev"
 else
     assert_fail "events.jsonl was not created"
 fi
@@ -391,14 +387,14 @@ _security_lens_run_inner "$NOISY_SEC_INPUT" "$MANIFEST" "$OUTPUT_R11" "$TEST_TEM
     >/dev/null 2>&1
 set -e
 
-# SPEC-5 (CHANGE): ANSI escape bytes from redacted_content stripped before LLM
+# R11: ANSI escape bytes from redacted_content stripped before LLM
 _r11_esc_count="$(LC_ALL=C tr -cd $'\x1b' < "$_CAPTURED_SECLENS_PROMPT_R11" | wc -c | tr -d ' ')"
-assert_eq "[SPEC-5] security-lens redacted_content ANSI bytes stripped before LLM prompt" \
+assert_eq "R11: security-lens redacted_content ANSI bytes stripped before LLM prompt" \
     "0" "$_r11_esc_count"
 
-# SPEC-6 (GUARD): genuine security content survives sanitize
+# R11: genuine security content survives sanitize
 _r11_prompt="$(cat "$_CAPTURED_SECLENS_PROMPT_R11")"
-assert_contains "[SPEC-6] security-lens redacted_content genuine content survives sanitize" \
+assert_contains "R11: security-lens redacted_content genuine content survives sanitize" \
     "$_r11_prompt" "Genuine security content: check for SQL injection"
 
 # ─── R12: [SPEC-10] postamble recovery via _security_lens_envelope_schema_ok ──
@@ -573,7 +569,6 @@ OUTPUT_SPEC18B="$TEST_TEMP_DIR/findings_spec18b.json"
 _sl_out_ref="$OUTPUT_SPEC18B"
 set +e
 _security_lens_interrupt_handler
-spec18b_fn_rc=$?
 set -e
 if [[ -f "$OUTPUT_SPEC18B" ]]; then
     spec18b_verdict=$(jq -r '.verdict // "absent"' "$OUTPUT_SPEC18B" 2>/dev/null || echo absent)
