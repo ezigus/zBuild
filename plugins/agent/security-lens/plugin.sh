@@ -77,6 +77,14 @@ _security_lens_write_result() {
         }' | atomic_write "$output"
 }
 
+# ADR-063 §3: interrupt handler — writes v2 result with verdict=error/interrupted.
+# Registered as TERM/INT trap in _security_lens_run_inner around the model call.
+_security_lens_interrupt_handler() {
+    _sl_interrupted=1
+    _security_lens_write_result "${_sl_out_ref:-/dev/null}" "error" "interrupted" \
+        "signal_interrupt"
+}
+
 # ─── run ────────────────────────────────────────────────────────────────────
 # Hook called by the pipeline runner: security_lens_run(stage, state_file)
 # Derives artifact paths from state_dir and delegates to the inner function.
@@ -168,8 +176,12 @@ _security_lens_run_inner() {
     # opt-in surface symmetric across all Pattern 1 stages.
     local _prev_artifact_env="${ZBUILD_ROUTER_ARTIFACT_ID-__UNSET__}"
     export ZBUILD_ROUTER_ARTIFACT_ID=security-lens
+    _sl_out_ref="$output"
+    _sl_interrupted=0
+    trap '_security_lens_interrupt_handler' TERM INT
     # #491: do NOT redirect route_to_model's stderr — see ADR-015 §v4.
     raw_response="$(route_to_model "$tier" "$prompt")" || router_rc=$?
+    trap - TERM INT
     if [[ "$_prev_json_env" == "__UNSET__" ]]; then
         unset ZBUILD_ROUTER_JSON_OUTPUT
     else
@@ -179,6 +191,13 @@ _security_lens_run_inner() {
         unset ZBUILD_ROUTER_ARTIFACT_ID
     else
         export ZBUILD_ROUTER_ARTIFACT_ID="$_prev_artifact_env"
+    fi
+
+    # ─── ADR-063 §3: interrupt (rc=130) ────────────────────────────────────
+    if [[ "$router_rc" -eq 130 ]]; then
+        [[ "${_sl_interrupted:-0}" == "1" ]] \
+            || _security_lens_write_result "$output" "error" "interrupted" "signal_interrupt"
+        return 130
     fi
 
     # ─── Parse: strip fences, extract .findings, validate array ───────────

@@ -168,12 +168,7 @@ set +e
 assert_golden "security-lens-pass-artifact" "$_spec15_expected_keys"
 _spec15_rc=$?
 set -e
-if [[ $_spec15_rc -eq 0 ]]; then
-    assert_pass "[SPEC-15] security-lens passing-run v2 envelope shape matches golden snapshot"
-else
-    assert_fail "[SPEC-15] security-lens passing-run v2 envelope shape matches golden snapshot" \
-        "assert_golden returned $_spec15_rc (golden file missing or key-set mismatch)"
-fi
+assert_eq "[SPEC-15] security-lens v2 envelope golden matches expected key set" "0" "$_spec15_rc"
 
 print_test_results
 exit $((FAIL > 0))

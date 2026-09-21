@@ -464,10 +464,10 @@ assert_eq "[SPEC-5] security_lens_cleanup is declared and returns 0" "0" "$spec5
 # ─── Manifest assertions (SPEC-5, SPEC-6, SPEC-7, SPEC-11, SPEC-13) ─────────
 _MANIFEST_FILE="$PLUGIN_DIR/manifest.yaml"
 
-if grep -q 'security_lens_cleanup' "$_MANIFEST_FILE" 2>/dev/null; then
-    assert_pass "[SPEC-5] security_lens_cleanup hook is declared in the manifest"
+if grep -qE '^\s+cleanup:\s+security_lens_cleanup' "$_MANIFEST_FILE" 2>/dev/null; then
+    assert_pass "[SPEC-5] security_lens_cleanup is declared as YAML key under hooks: in manifest"
 else
-    assert_fail "[SPEC-5] security_lens_cleanup hook is declared in the manifest"
+    assert_fail "[SPEC-5] security_lens_cleanup is declared as YAML key under hooks: in manifest"
 fi
 
 if grep -q 'result_contract: 2' "$_MANIFEST_FILE" 2>/dev/null; then
@@ -496,6 +496,25 @@ else
     assert_fail "[SPEC-13] manifest declares primary: true on findings output"
 fi
 
+# ─── [SPEC-16]: manifest declares provides.events with both required event names ─
+if grep -q 'plugin\.result' "$_MANIFEST_FILE" 2>/dev/null; then
+    assert_pass "[SPEC-16] manifest provides.events contains plugin.result"
+else
+    assert_fail "[SPEC-16] manifest provides.events contains plugin.result"
+fi
+if grep -q 'security_lens\.failed' "$_MANIFEST_FILE" 2>/dev/null; then
+    assert_pass "[SPEC-16] manifest provides.events contains security_lens.failed"
+else
+    assert_fail "[SPEC-16] manifest provides.events contains security_lens.failed"
+fi
+
+# ─── [SPEC-17]: manifest declares provides.role: security-auditor ────────────
+if grep -qE 'role:\s+security-auditor' "$_MANIFEST_FILE" 2>/dev/null; then
+    assert_pass "[SPEC-17] manifest declares provides.role: security-auditor"
+else
+    assert_fail "[SPEC-17] manifest declares provides.role: security-auditor"
+fi
+
 # ─── [SPEC-12]: ZBUILD_ROUTER_MAX_TURNS_OVERRIDE takes precedence ────────────
 _spec12_env_file="$TEST_TEMP_DIR/spec12-env.txt"
 : > "$_spec12_env_file"
@@ -513,9 +532,86 @@ assert_eq "[SPEC-12] ZBUILD_ROUTER_MAX_TURNS_OVERRIDE takes precedence over mani
 
 # ─── [SPEC-14]: no hardcoded artifact paths beyond manifest-declared basenames ─
 _spec14_plugin="$PLUGIN_DIR/plugin.sh"
-_spec14_bad=$(grep -cE '"[^"$]*\.(json|md)"' "$_spec14_plugin" 2>/dev/null || echo 0)
+_spec14_bad=$(grep -cE '"[^"$]*\.(json|md)"' "$_spec14_plugin" 2>/dev/null || true)
 assert_eq "[SPEC-14] plugin.sh has no hardcoded artifact paths beyond manifest-declared basenames" \
     "0" "$_spec14_bad"
+
+# ─── [SPEC-18]: interrupt handler — rc=130 path writes verdict=error/interrupted ─
+# PRIMARY negative-control proof: _security_lens_interrupt_handler does not
+# exist at the merge-base; these assertions fail there and pass only after
+# the handler is added. Follows the review-lens SPEC-13 pattern (ADR-063 §3).
+
+# (a) mock route_to_model returning rc=130 — plugin must return 130 and write
+#     a v2 result with verdict=error, disposition=interrupted.
+route_to_model() {
+    return 130
+}
+OUTPUT_SPEC18A="$TEST_TEMP_DIR/findings_spec18a.json"
+set +e
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_SPEC18A" "$TEST_TEMP_DIR" \
+    >/dev/null 2>&1
+spec18a_rc=$?
+set -e
+assert_eq "[SPEC-18a] interrupt: router rc=130 returns plugin rc=130" "130" "$spec18a_rc"
+if [[ -f "$OUTPUT_SPEC18A" ]]; then
+    spec18a_verdict=$(jq -r '.verdict // "absent"' "$OUTPUT_SPEC18A" 2>/dev/null || echo absent)
+    assert_eq "[SPEC-18a] interrupt artifact: verdict=error" "error" "$spec18a_verdict"
+    spec18a_disp=$(jq -r '.disposition // "absent"' "$OUTPUT_SPEC18A" 2>/dev/null || echo absent)
+    assert_eq "[SPEC-18a] interrupt artifact: disposition=interrupted" "interrupted" "$spec18a_disp"
+    spec18a_contract=$(jq -r '.result_contract // "absent"' "$OUTPUT_SPEC18A" 2>/dev/null || echo absent)
+    assert_eq "[SPEC-18a] interrupt artifact: result_contract=2" "2" "$spec18a_contract"
+else
+    assert_fail "[SPEC-18a] interrupt path writes v2 result artifact (file absent)"
+    assert_fail "[SPEC-18a] interrupt artifact: verdict=error (file absent)"
+    assert_fail "[SPEC-18a] interrupt artifact: disposition=interrupted (file absent)"
+    assert_fail "[SPEC-18a] interrupt artifact: result_contract=2 (file absent)"
+fi
+
+# (b) direct invocation of _security_lens_interrupt_handler — function must
+#     exist, write v2 result to $_sl_out_ref with verdict=error/interrupted.
+OUTPUT_SPEC18B="$TEST_TEMP_DIR/findings_spec18b.json"
+_sl_out_ref="$OUTPUT_SPEC18B"
+set +e
+_security_lens_interrupt_handler
+spec18b_fn_rc=$?
+set -e
+if [[ -f "$OUTPUT_SPEC18B" ]]; then
+    spec18b_verdict=$(jq -r '.verdict // "absent"' "$OUTPUT_SPEC18B" 2>/dev/null || echo absent)
+    assert_eq "[SPEC-18b] direct handler: verdict=error" "error" "$spec18b_verdict"
+    spec18b_disp=$(jq -r '.disposition // "absent"' "$OUTPUT_SPEC18B" 2>/dev/null || echo absent)
+    assert_eq "[SPEC-18b] direct handler: disposition=interrupted" "interrupted" "$spec18b_disp"
+else
+    assert_fail "[SPEC-18b] _security_lens_interrupt_handler writes v2 result artifact"
+    assert_fail "[SPEC-18b] direct handler: verdict=error (file absent)"
+    assert_fail "[SPEC-18b] direct handler: disposition=interrupted (file absent)"
+fi
+
+# (c) kill -TERM "$$" in a mock route_to_model — SIGTERM fires the registered
+#     trap; plugin returns rc=130 with verdict=error/interrupted artifact.
+OUTPUT_SPEC18C="$TEST_TEMP_DIR/findings_spec18c.json"
+route_to_model() {
+    kill -TERM "$$"
+    return 130
+}
+set +e
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_SPEC18C" "$TEST_TEMP_DIR" \
+    >/dev/null 2>&1
+spec18c_rc=$?
+set -e
+assert_eq "[SPEC-18c] kill -TERM: plugin rc=130" "130" "$spec18c_rc"
+if [[ -f "$OUTPUT_SPEC18C" ]]; then
+    spec18c_verdict=$(jq -r '.verdict // "absent"' "$OUTPUT_SPEC18C" 2>/dev/null || echo absent)
+    assert_eq "[SPEC-18c] kill -TERM artifact: verdict=error" "error" "$spec18c_verdict"
+    spec18c_disp=$(jq -r '.disposition // "absent"' "$OUTPUT_SPEC18C" 2>/dev/null || echo absent)
+    assert_eq "[SPEC-18c] kill -TERM artifact: disposition=interrupted" "interrupted" "$spec18c_disp"
+else
+    assert_fail "[SPEC-18c] kill -TERM path writes v2 result artifact"
+    assert_fail "[SPEC-18c] kill -TERM artifact: verdict=error (file absent)"
+    assert_fail "[SPEC-18c] kill -TERM artifact: disposition=interrupted (file absent)"
+fi
+
+# ─── [SPEC-19]: canary — no failures accumulated up to this point ────────────
+assert_eq "[SPEC-19] canary: all preceding assertions passed (FAIL==0)" "0" "$FAIL"
 
 cleanup_test_env
 print_test_results
