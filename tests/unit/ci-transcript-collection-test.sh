@@ -22,6 +22,8 @@
 #                 transcripts is distinguishable from a collect step that never looked
 # SPEC-7[change]: docs/wiki/Troubleshooting.md names the .enc bundle, the secret, and the decrypt cmd
 # SPEC-8[guard]:  with the key unset on a PRIVATE repo the plaintext copy still works (old path)
+# SPEC-9[change]: a project dir named like Claude Code names them (`-home-runner-…`, a leading
+#   dash) is collected — #1841 found 36 transcripts and copied 0 (dirname read the name as an option)
 #
 # SPEC-5 (the upload step keeps if: always() + path: ZBUILD_STATE_DIR) stays in
 # tests/unit/ci-state-isolation-test.sh, which already asserts it.
@@ -196,6 +198,18 @@ mkdir -p "$_HB" "$_SB"
 _run_block "$_HB" "$_SB" false "$_KEY"
 assert_eq "[SPEC-2] a missing ~/.claude/projects exits 0" "0" "$_RC"
 assert_contains "[SPEC-2] a missing ~/.claude/projects says so rather than passing silently" "$_OUT" "nothing to collect"
+
+# ── SPEC-9 (#2166): the real project-dir shape has a leading dash ───────────
+# Claude Code names a project dir after its path with `/` → `-`, so every dir
+# starts with `-`. #1841's log: "collected 0", "36 transcript(s) could not be
+# copied", cp: cannot create regular file …/-home-runner-…/<id>.jsonl.
+_H9="$TEST_TEMP_DIR/home-dash"; _S9="$TEST_TEMP_DIR/state-dash"
+mkdir -p "$_H9/.claude/projects/-home-runner--zbuild-repos-o-r-issues-1841-worktree" "$_S9"
+printf '{"type":"assistant","message":"dash"}\n' > "$_H9/.claude/projects/-home-runner--zbuild-repos-o-r-issues-1841-worktree/sess.jsonl"
+_run_block "$_H9" "$_S9" true ""
+assert_eq "[SPEC-9] a leading-dash project dir exits 0" "0" "$_RC"
+assert_file_exists "[SPEC-9] …and its transcript is collected" "$_S9/claude-transcripts/-home-runner--zbuild-repos-o-r-issues-1841-worktree/sess.jsonl"
+assert_contains "[SPEC-9] …and counted" "$_OUT" "collected 1 claude session transcript"
 
 cleanup_test_env
 print_test_results

@@ -458,7 +458,10 @@ jobs:
           n=0; bad=0
           while IFS= read -r f; do
             rel="${f#"$src"/}"
-            if mkdir -p "$stage/$(dirname "$rel")" && cp "$f" "$stage/$rel"; then
+            # #2166: Claude Code names a project dir after its path with `/` → `-`,
+            # so every one starts with `-`; without `--`, dirname reads it as an
+            # option, mkdir makes nothing, and every cp fails ("collected 0").
+            if mkdir -p "$stage/$(dirname -- "$rel")" && cp "$f" "$stage/$rel"; then
               n=$((n + 1))
               printf '  %s  (%s bytes)\n' "$rel" "$(wc -c < "$f" | tr -d ' ')"
             else

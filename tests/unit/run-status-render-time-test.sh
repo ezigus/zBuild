@@ -62,7 +62,8 @@ assert_contains "[SPEC-3] the ceiling minutes are configurable" "$_h3" "ceiling 
 print_test_section "4. a cancelled result finalizes the header with the ceiling line"
 if declare -F rsc_finalize_body >/dev/null 2>&1; then
     _body="$(printf '%s\n### zbuild run `r-2145` · issue #1840 · **running**\nengine `b203477` (`main`) · started 9:16 PM ET\ncurrent: **9.2.2 spec-correspondence**\n**1:07 AM ET → running** · **9.2.2 spec-correspondence** · iter 2\n' "${_RSC_MARKER_PREFIX}r-2145 -->")"
-    _fin="$(rsc_finalize_body "$_body" cancelled)"
+    # #2166: the ceiling wording needs the clock to say so — started 6h before "now".
+    _fin="$(ZBUILD_STATUS_NOW=2026-09-19T07:17:00Z rsc_finalize_body "$_body" cancelled 2026-09-19T01:16:58Z)"
     assert_contains "[SPEC-4] the status becomes cancelled at the ceiling" "$_fin" "**cancelled at the 360-minute ceiling**"
     assert_contains "[SPEC-4] …and says how to resume" "$_fin" "state persisted — re-add \`zbuild-run\` to resume"
     if grep -q '^current:' <<< "$_fin"; then assert_fail "[SPEC-4] no 'current:' line once finished" "$_fin"; else assert_pass "[SPEC-4] no 'current:' line once finished"; fi
@@ -70,13 +71,39 @@ if declare -F rsc_finalize_body >/dev/null 2>&1; then
     assert_contains "[SPEC-4] success finalizes as success" "$_fin_ok" "**success**"
     # review on #2146: finalizing twice (the runner already finished the
     # header, then post-run runs) must not append a second closing line.
-    _fin2="$(rsc_finalize_body "$_fin" cancelled)"
+    _fin2="$(ZBUILD_STATUS_NOW=2026-09-19T07:17:00Z rsc_finalize_body "$_fin" cancelled 2026-09-19T01:16:58Z)"
     assert_eq "[SPEC-4b] finalizing an already-finalized body is a no-op" "$_fin" "$_fin2"
     _fin3="$(rsc_finalize_body "$_fin_ok" cancelled)"
     assert_eq "[SPEC-4b] a body already marked success gains no cancelled closing line" \
         "0" "$(grep -c 're-add' <<< "$_fin3" || true)"
 else
     assert_fail "[SPEC-4] rsc_finalize_body exists" "function not defined"
+fi
+
+# ─── SPEC-5 (#2166): an operator cancel is not "the ceiling" ────────────────
+# #1840 run 8 was cancelled by hand at 8:34 PM with 3h 07m left, and the
+# comment said "cancelled at the 360-minute ceiling". `cancelled` is what
+# GitHub reports for both; the clock tells them apart.
+print_test_section "5. a cancel well before the ceiling is an operator cancel"
+if declare -F rsc_finalize_body >/dev/null 2>&1; then
+    _body5="$(printf '%s\n### zbuild run `r-2166` · issue #1840 · **running**\nengine `b203477` (`main`) · started 5:41 PM ET\ncurrent: **6.2.4 test**\n' "${_RSC_MARKER_PREFIX}r-2166 -->")"
+    # started 21:41Z, cancelled 00:34Z = 2h 53m in, ceiling 360m
+    _early="$(ZBUILD_STATUS_NOW=2026-09-21T00:34:00Z rsc_finalize_body "$_body5" cancelled 2026-09-20T21:41:00Z)"
+    assert_contains "[SPEC-5] a cancel 2h53m into a 6h ceiling is reported as an operator cancel" "$_early" "**cancelled by the operator ("
+    assert_contains "[SPEC-5] …saying how far in" "$_early" "2h 53m in"
+    assert_eq "[SPEC-5] …and never as the ceiling" "0" "$(grep -c 'minute ceiling' <<< "$_early" || true)"
+    assert_contains "[SPEC-5] …and still says how to resume" "$_early" "re-add \`zbuild-run\` to resume"
+    _late="$(ZBUILD_STATUS_NOW=2026-09-21T03:41:30Z rsc_finalize_body "$_body5" cancelled 2026-09-20T21:41:00Z)"
+    assert_contains "[SPEC-5] a cancel at the ceiling is still the ceiling" "$_late" "**cancelled at the 360-minute ceiling**"
+    _unk="$(rsc_finalize_body "$_body5" cancelled)"
+    assert_contains "[SPEC-5] with no start time the wording stays neutral" "$_unk" "**cancelled**"
+    assert_eq "[SPEC-5] …not the ceiling" "0" "$(grep -c 'minute ceiling' <<< "$_unk" || true)"
+    if declare -F rsc_cancel_closing >/dev/null 2>&1; then
+        _cl="$(ZBUILD_STATUS_NOW=2026-09-21T00:34:00Z rsc_cancel_closing 2026-09-20T21:41:00Z)"
+        assert_contains "[SPEC-5] the post-run closing comment uses the same words" "$_cl" "cancelled by the operator"
+    else
+        assert_fail "[SPEC-5] rsc_cancel_closing <started_iso> exists for the workflow's closing comment" "function not defined"
+    fi
 fi
 
 cleanup_test_env

@@ -154,7 +154,8 @@ printf 'ok' > "$GH_MODE"
 _fb="$(printf '%s\n### zbuild run `r-cancel` · issue #90000042 · **running**\nengine `abc1234` (`main`) · started 9:16 PM ET\ncurrent: **9.2.2 spec-correspondence**\n**1:07 AM ET → running** · **9.2.2 spec-correspondence** · iter 2\n' "${_RSC_MARKER_PREFIX}r-cancel -->")"
 jq -n --arg b "$_fb" '[{"id": 7777, "user": {"login": "github-actions[bot]"}, "body": "unrelated"}, {"id": 8888, "user": {"login": "github-actions[bot]"}, "body": $b}]' > "$GH_LIST"
 if declare -F rsc_finalize_issue >/dev/null 2>&1; then
-    rc=0; rsc_finalize_issue "$STATE" "testuser/testrepo" 90000042 cancelled || rc=$?
+    # #2166: the ceiling wording needs the run's start time (6h before "now").
+    rc=0; ZBUILD_STATUS_NOW=2026-09-19T07:17:00Z rsc_finalize_issue "$STATE" "testuser/testrepo" 90000042 cancelled 2026-09-19T01:16:58Z || rc=$?
     assert_eq "[SPEC-7] finalize returns 0" "0" "$rc"
     assert_contains "[SPEC-7] the run's comment (8888) is PATCHed, not 7777" "$(grep -c 'comments/8888 -X PATCH' "$GH_LOG")" "1"
     _last="$(ls "$GH_BODIES" | sort | tail -1)"
@@ -168,7 +169,8 @@ if declare -F rsc_finalize_issue >/dev/null 2>&1; then
     _fb_old="$(printf '%s\n### zbuild run `r-old` · issue #90000042 · **success**\n' "${_RSC_MARKER_PREFIX}r-old -->")"
     { jq -n --arg b "$_fb_old" '[{"id": 7777, "body": $b}, {"id": 7778, "body": "unrelated"}]'
       jq -n --arg b "$_fb" '[{"id": 8887, "body": "unrelated"}, {"id": 8888, "body": $b}]'; } > "$GH_LIST"
-    rc=0; rsc_finalize_issue "$STATE" "testuser/testrepo" 90000042 cancelled || rc=$?
+    # #2166: the ceiling wording needs the run's start time (6h before "now").
+    rc=0; ZBUILD_STATUS_NOW=2026-09-19T07:17:00Z rsc_finalize_issue "$STATE" "testuser/testrepo" 90000042 cancelled 2026-09-19T01:16:58Z || rc=$?
     assert_eq "[SPEC-7b] markers on two pages: the LAST one (8888) is PATCHed" "1" "$(grep -c 'comments/8888 -X PATCH' "$GH_LOG" || true)"
     assert_eq "[SPEC-7b] …and the older run's comment (7777) is left alone" "0" "$(grep -c 'comments/7777 -X PATCH' "$GH_LOG" || true)"
 else
