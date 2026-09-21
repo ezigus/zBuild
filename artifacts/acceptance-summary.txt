@@ -1,4 +1,4 @@
-acceptance SPEC violations — SPEC-14/SPEC-15 not passing at HEAD — fix the implementation or the assertion; SPEC-15 untagged — add a matching [SPEC-n] assertion in TESTFILES
+acceptance SPEC violations — SPEC-14/SPEC-16/SPEC-17 not passing at HEAD — fix the implementation or the assertion; SPEC-16/SPEC-17 untagged — add a matching [SPEC-n] assertion in TESTFILES
 NEGCTL PASS SPEC-1
       design : findings.json carries result_contract:2 at top level on the normal pass exit path
       asserts: assert_eq "[SPEC-1] findings.json carries result_contract:2 on the pass exit path" "2" "$rc_contract…
@@ -12,13 +12,13 @@ NEGCTL PASS SPEC-4
       design : no-state-file exit path returns rc=1 and writes a v2 result artifact when ZBUILD_ARTIFACT_DIR is set
       asserts: assert_eq "[SPEC-4] no-state-file path returns rc=1 (not rc=2)" "1" "$spec4_rc"
 NEGCTL PASS SPEC-5 guard_spec
-      design : security_lens_cleanup hook is declared in the manifest and the function returns 0
+      design : security_lens_cleanup hook is declared as a YAML key under hooks: in the manifest (not merely a comm…
       asserts: assert_eq "[SPEC-5] security-lens redacted_content ANSI bytes stripped before LLM prompt" \
 NEGCTL PASS SPEC-6 guard_spec
-      design : manifest declares provides.result_contract: 2
+      design : manifest declares provides.result_contract: 2 under the provides: section
       asserts: assert_contains "[SPEC-6] security-lens redacted_content genuine content survives sanitize" \
 NEGCTL PASS SPEC-7
-      design : manifest declares valid_verdicts: [pass, error]
+      design : manifest declares valid_verdicts: [pass, error] under the config: section
       asserts: assert_pass "[SPEC-7] manifest declares valid_verdicts: [pass, error]"
 NEGCTL PASS SPEC-8 guard_spec
       design : plugin.result event is emitted on the normal exit path with plugin=security-lens
@@ -39,9 +39,15 @@ NEGCTL PASS SPEC-13
       design : manifest declares primary: true on the findings output
       asserts: assert_pass "[SPEC-13] manifest declares primary: true on findings output"
 NEGCTL FAIL SPEC-14 not_passing_at_head
-      design : plugin.sh contains no hardcoded artifact path literals (grep for quoted .json/.md with no variable i…
+      design : plugin.sh contains no hardcoded artifact path literals; assertion uses `_spec14_bad=$(grep -cE '"[^"…
       asserts: assert_eq "[SPEC-14] plugin.sh has no hardcoded artifact paths beyond manifest-declared basenames" \
-NEGCTL FAIL SPEC-15 not_passing_at_head
-      design : a golden snapshot of the security-lens passing-run v2 envelope shape is captured; the snapshot match…
+NEGCTL PASS SPEC-15
+      design : a golden snapshot of the security-lens passing-run v2 envelope shape is captured; assertion MUST use…
+      asserts: assert_pass "[SPEC-15] security-lens passing-run v2 envelope shape matches golden snapshot"
+NEGCTL FAIL SPEC-16 not_passing_at_head
+      design : manifest declares provides.events containing plugin.result and security_lens.failed; test confirms b…
+      asserts: <none found>
+NEGCTL FAIL SPEC-17 not_passing_at_head
+      design : manifest declares provides.role: security-auditor; test confirms the value appears under the provide…
       asserts: <none found>
 REACHABILITY PASS plugins/agent/security-lens/manifest.yaml
