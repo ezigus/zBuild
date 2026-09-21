@@ -386,7 +386,7 @@ Amendment (#1261) for the terminal-reason registration.
 
 ### Amendment (#2176, 2026-09-21): design_verify_cycle no longer falls through
 
-`design_verify_cycle` is `max_iterations: 3, on_max: abort`. The fall-through above
+`design_verify_cycle` is `max_iterations: 3, on_max: halt`. The fall-through above
 stays for `build_test_cycle` (an imperfect implementation flows to review, which can
 judge it). A design is different: it is the contract the build cycle implements
 against, and the build cycle cannot change it. On #1841 the gate rejected the design
