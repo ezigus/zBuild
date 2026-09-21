@@ -9,7 +9,7 @@
 # The template now says `on_max: halt` — the runner already ends the run as
 # failed for that value (cycle-on-max-continue-pipeline-status-test T2).
 #
-# SPEC-1[change]: simple.yaml's design_verify_cycle declares on_max: abort
+# SPEC-1[change]: simple.yaml's design_verify_cycle declares on_max: halt
 # SPEC-2[guard]:  build_test_cycle keeps on_max: continue (its fall-through goes to review)
 # SPEC-3[change]: ADR-019 records the reversal for design_verify_cycle
 set -uo pipefail

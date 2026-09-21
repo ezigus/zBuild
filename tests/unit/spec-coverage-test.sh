@@ -137,7 +137,7 @@ assert_eq "[SPEC-5][guard] rc binary on the unreadable path too" "0" "$_rc3"
 print_test_section "SPEC-7: the prompt says verification-process requirements are not gaps"
 assert_contains "[SPEC-7][change] the prompt distinguishes behaviour from how the change is verified" \
     "$_P" "proven by the pipeline itself"
-assert_contains "[SPEC-7][change] …naming the merge-base redden as the example" "$_P" "merge base"
+assert_contains "[SPEC-7][change] …and says such a requirement is never a gap" "$_P" "never a gap"
 
 print_test_results
 exit $((FAIL > 0))
