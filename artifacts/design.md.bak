@@ -20,23 +20,24 @@ generated_at, findings, stub, data:{...}}` and call it on every terminal exit pa
 (no-state-file, router-fatal, normal pass). Add `cleanup: security_lens_cleanup` to
 the manifest's `hooks:` block as a proper YAML key (not a comment). Declare
 `provides.result_contract: 2`, `provides.events: [plugin.result, security_lens.failed]`,
-`config.router: {timeout_s:600, max_turns:45}`, and `valid_verdicts: [pass, error]`
-in the manifest. Enforce rc ∈ {0, 1}. Cover all paths with tests written first; each
-SPEC asserts one observable behavior and carries its `[SPEC-n]` tag in the assertion
-label.
+`provides.role: security-auditor`, `config.router: {timeout_s:600, max_turns:45}`,
+and `valid_verdicts: [pass, error]` in the manifest. Enforce rc ∈ {0, 1}. Cover all
+paths with tests written first; each SPEC asserts one observable behavior and carries
+its `[SPEC-n]` tag in the assertion label.
+
+---
 
 **SPEC-14 assertion idiom (CRITICAL):** The assertion MUST use
-`grep -E '"[^"$]*\.(json|md)"' "$_spec14_plugin" | wc -l` and store the result in
-`_spec14_bad`. Do NOT use `grep -cE '"[^"$]*\.(json|md)"' ... || echo 0` — when grep
-finds no matches it exits rc=1 AND outputs "0"; the `|| echo 0` then appends a second
-"0", producing the two-line string `"0\n0"` in the variable; `assert_eq "0" "0\n0"`
-then fails even though there are no matches. The `| wc -l` form returns "0" (one line,
-no trailing content) when there are no matches and never invokes a fallback.
+`_spec14_bad=$(grep -cE '"[^"$]*\.(json|md)"' "$_spec14_plugin" 2>/dev/null || true)`.
+Do NOT use `|| echo 0` — when grep finds no matches it exits rc=1 AND outputs "0";
+the `|| echo 0` appends a second "0", producing the two-line string `"0\n0"` in the
+variable; `assert_eq "0" "0\n0"` then fails even though there are no matches. The
+`|| true` form normalizes the rc without appending any output.
 
 **SPEC-15 assertion idiom (CRITICAL):** The `[SPEC-15]` assertion tag MUST appear on
-a directly-executed `assert_eq` line, not inside an `if/else/fi` block. The acceptance-
-gate does a static grep for the tag; a tag that only appears inside a conditional
-branch is unreachable by static scan and the gate reports "asserts: <none found>". Use:
+a directly-executed `assert_eq` line in `tests/golden/golden-contracts-test.sh`, NOT
+inside `assert_pass`/`assert_fail` inside an `if/else/fi` block. The acceptance-gate
+does a static grep for the tag and only recognizes the `assert_eq` form. Use:
 ```bash
 set +e
 assert_golden "security-lens-pass-artifact" "$_spec15_expected_keys"
@@ -103,19 +104,19 @@ SPEC-1[change]: findings.json carries result_contract:2 at top level on the norm
 SPEC-2[change]: normal pass exit path emits verdict=pass and disposition=complete
 SPEC-3[change]: router-fatal exit path writes a v2 result with verdict=error and disposition=broken
 SPEC-4[change]: no-state-file exit path returns rc=1 and writes a v2 result artifact when ZBUILD_ARTIFACT_DIR is set
-SPEC-5[guard]: ANSI escape bytes are stripped from the input text before the assembled string reaches route_to_model
-SPEC-6[guard]: genuine security content in the input text survives the sanitize step and reaches route_to_model intact
-SPEC-7[change]: manifest declares valid_verdicts: [pass, error]
+SPEC-5[guard]: security_lens_cleanup hook is declared as a YAML key under hooks: in the manifest (not merely a comment) and the function returns 0; test verifies with grep -E for the YAML key and by calling security_lens_cleanup directly
+SPEC-6[guard]: manifest declares provides.result_contract: 2 under the provides: section
+SPEC-7[change]: manifest declares valid_verdicts: [pass, error] under the config: section
 SPEC-8[guard]: plugin.result event is emitted on the normal exit path with plugin=security-lens
 SPEC-9[change]: LLM findings are accessible under .data.findings on the normal pass path
 SPEC-10[change]: missing scope manifest causes rc=1 (router fail-closed); brace-bearing postamble is recovered by _security_lens_envelope_schema_ok
 SPEC-11[change]: manifest declares config.router with timeout_s and max_turns
 SPEC-12[change]: ZBUILD_ROUTER_MAX_TURNS_OVERRIDE env var takes precedence over manifest config.router.max_turns when set
 SPEC-13[change]: manifest declares primary: true on the findings output
-SPEC-14[change]: plugin.sh contains no hardcoded artifact path literals; assertion uses `_spec14_bad=$(grep -E '"[^"$]*\.(json|md)"' "$_spec14_plugin" | wc -l)` followed by `assert_eq "[SPEC-14] ..." "0" "$_spec14_bad"` — NOT `grep -cE ... || echo 0` which produces "0\n0" on no-match
-SPEC-15[change]: a golden snapshot of the security-lens passing-run v2 envelope shape is captured; assertion uses `assert_eq "[SPEC-15] ..." "0" "$_spec15_rc"` where `_spec15_rc` is the return code from `assert_golden "security-lens-pass-artifact" "$_spec15_expected_keys"` — NOT inside an if/else block, so the gate can find the [SPEC-15] tag via static grep
-SPEC-16[change]: the manifest hooks block declares cleanup: security_lens_cleanup as a YAML key (not merely a comment); test verifies the key is present under hooks: by parsing the YAML structure
-SPEC-17[change]: manifest declares provides.result_contract: 2; test verifies the value is present under the provides: section by checking the YAML path provides.result_contract
+SPEC-14[change]: plugin.sh contains no hardcoded artifact path literals; assertion uses `_spec14_bad=$(grep -cE '"[^"$]*\.(json|md)"' "$_spec14_plugin" 2>/dev/null || true)` followed by `assert_eq "[SPEC-14] ..." "0" "$_spec14_bad"` — NOT `|| echo 0` which produces "0\n0" on no-match (grep -c outputs "0", exits rc=1, then echo 0 appends a second "0")
+SPEC-15[change]: a golden snapshot of the security-lens passing-run v2 envelope shape is captured; assertion MUST use `assert_eq "[SPEC-15] ..." "0" "$_spec15_rc"` on a directly-executed line where `_spec15_rc` is the return code from `assert_golden "security-lens-pass-artifact" "$_spec15_expected_keys"` — NOT inside an if/else block with assert_pass/assert_fail (the acceptance-gate static grep requires the assert_eq form to locate the [SPEC-15] tag)
+SPEC-16[change]: manifest declares provides.events containing plugin.result and security_lens.failed; test confirms both event names appear under the provides.events key in the manifest
+SPEC-17[change]: manifest declares provides.role: security-auditor; test confirms the value appears under the provides.role key in the manifest
 WIRING:
 plugins/agent/security-lens/manifest.yaml
 TESTFILES:
