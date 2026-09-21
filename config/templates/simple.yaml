@@ -78,8 +78,9 @@ always_run:
 # rule (A) is satisfied by binding exit_when directly to it — a single gate, no
 # separate aggregator needed (contrast build_test_cycle's gate-aggregator, which
 # rolls up MANY gates). exit_when fires on design-gate.verdict == pass.
-# max_iterations: 3, on_max: continue (ADR-019 fall-through — an unconverged
-# design still proceeds to build; the operator sees the recorded verdict).
+# max_iterations: 3, on_max: abort (#2176, reversing ADR-019's fall-through for
+# THIS cycle: a contract the gate rejected three times is not built — the build
+# cycle cannot change it, so it only inherits findings it cannot act on).
 #
 # Feedback (block-form `to:` per the Wave 18-B translator):
 #  (a) design-gate.design_gate_feedback → design.prior_impact_feedback — REUSE
@@ -118,7 +119,7 @@ design_verify_cycle:
       - { stage: design-gate, field: verdict, op: eq, value: pass }
       - { stage: spec-coverage, field: verdict, op: ne, value: uncovered }
   max_iterations: 3
-  on_max: continue
+  on_max: abort
   feedback:
     - from:
         stage: design

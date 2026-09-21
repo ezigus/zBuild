@@ -66,6 +66,11 @@ what the issue REQUIRES, not everything it mentions.
 If the issue enumerates expectations explicitly (checkboxes, a numbered list),
 each one is a requirement and must map to a SPEC.
 
+A requirement about HOW the change is verified — that the tests fail at the
+merge base, that the full suite is green, that the mutation tier runs, that the
+tree is committed first — is proven by the pipeline itself, not by a SPEC. It is
+never a gap. Judge the BEHAVIOUR the issue requires of the software.
+
 Answer in at most three lines:
 
 VERDICT: covered | uncovered
