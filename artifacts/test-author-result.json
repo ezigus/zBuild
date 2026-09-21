@@ -4,6 +4,6 @@
   "disposition": "interrupted",
   "reason": "the model call failed (router_timeout) — no assertions were authored",
   "data": {
-    "specs_covered": 15
+    "specs_covered": 17
   }
 }
