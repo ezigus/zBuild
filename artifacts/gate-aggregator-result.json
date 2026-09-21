@@ -13,5 +13,6 @@
   "failed": [
     "test",
     "acceptance-gate"
-  ]
+  ],
+  "fault": "specification"
 }
