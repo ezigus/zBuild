@@ -1,3 +1,55 @@
+diff --git a/plugins/agent/security-lens/manifest.yaml b/plugins/agent/security-lens/manifest.yaml
+index 13aa33fe..ff9943c7 100644
+--- a/plugins/agent/security-lens/manifest.yaml
++++ b/plugins/agent/security-lens/manifest.yaml
+@@ -11,7 +11,7 @@ description: |
+ 
+ hooks:
+   run: security_lens_run
+-  cleanup: security_lens_cleanup
++  # security_lens_cleanup is defined in plugin.sh (ADR-056 §4; no resources to release)
+ requires:
+   # #2066: `router` — plugin.sh:29 sources core/router/route.sh and :124 calls
+   # route_to_model. The dependency was always real; only the declaration was
+diff --git a/plugins/agent/security-lens/plugin.sh b/plugins/agent/security-lens/plugin.sh
+index a997fb51..b10e2214 100644
+--- a/plugins/agent/security-lens/plugin.sh
++++ b/plugins/agent/security-lens/plugin.sh
+@@ -67,12 +67,12 @@ _security_lens_write_result() {
+             plugin_id: "security-lens",
+             generated_at: $ts,
+             findings: $findings,
+-            stub: false,
++            stub: "false",
+             data: {
+                 plugin_id: "security-lens",
+                 generated_at: $ts,
+                 findings: $findings,
+-                stub: false
++                stub: "false"
+             }
+         }' | atomic_write "$output"
+ }
+@@ -146,7 +146,18 @@ _security_lens_run_inner() {
+     # Without the JSON envelope + .result extraction, reasoning turns leak
+     # as a prose preamble that breaks the strict-JSON parser below.
+     # Save/restore so an outer caller's env intent is preserved.
+-    local tier; tier="$(resolve_tier security-lens "$_SEC_LENS_DIR")" || return 1
++    local tier
++    if ! tier="$(resolve_tier security-lens "$_SEC_LENS_DIR")"; then
++        error "security_lens_run: resolve_tier failed; refusing to emit"
++        _security_lens_write_result "$output" "error" "broken" \
++            "the model call failed, so no security review happened"
++        stage_summary_write "$artifact_dir/security-lens-summary.md" "security-lens" "error" \
++            "tier resolution failed — no security review happened" \
++            "This lens contributed no findings; absence here is not evidence of safety."
++        emit_event "plugin.result" "verdict=error" "plugin=security-lens" \
++            "reason=router_fatal" "router_rc=2"
++        return 1
++    fi
+     local raw_response="" router_rc=0
+     local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
+     export ZBUILD_ROUTER_JSON_OUTPUT=1
 diff --git a/tests/golden/golden-contracts-test.sh b/tests/golden/golden-contracts-test.sh
 index 97e6e8ab..fbf5660d 100755
 --- a/tests/golden/golden-contracts-test.sh
