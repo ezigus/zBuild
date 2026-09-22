@@ -401,6 +401,15 @@ assert_contains "R11: security-lens redacted_content genuine content survives sa
 # CHANGE: before #944 a brace-bearing postamble caused LAST-wins to select junk
 # → .findings defaulted to []. After #944 recovery fires and the real findings
 # envelope is used.
+
+# SPEC-10: _security_lens_envelope_schema_ok must exist — it is the function
+# that selects the findings envelope over a brace-bearing postamble.
+if declare -F _security_lens_envelope_schema_ok >/dev/null 2>&1; then
+    assert_pass "[SPEC-10] _security_lens_envelope_schema_ok exists and is callable"
+else
+    assert_fail "[SPEC-10] _security_lens_envelope_schema_ok exists and is callable"
+fi
+
 route_to_model() {
     # Real findings envelope first, brace-bearing postamble appended.
     printf '%s\n' '{"findings":[{"severity":"high","title":"SQL injection","file":"auth.sh","line":10,"description":"Unsanitized input"}]} Based on this: {"note":"postamble-junk"}'
@@ -457,10 +466,15 @@ spec5_cleanup_rc=$?
 set -e
 assert_eq "[SPEC-5] security_lens_cleanup is declared and returns 0" "0" "$spec5_cleanup_rc"
 
-# ─── Manifest assertions (SPEC-6, SPEC-7, SPEC-11, SPEC-13) ─────────────────
+# ─── Manifest assertions (SPEC-5 manifest, SPEC-6, SPEC-7, SPEC-11, SPEC-13) ──
 # SPEC-5 function-callable check is above; ADR-062 §3 retired manifest cleanup
-# hook declarations tree-wide so no manifest YAML key check is made here.
+# hook declarations tree-wide — also assert NO cleanup: YAML key under hooks:.
 _MANIFEST_FILE="$PLUGIN_DIR/manifest.yaml"
+
+# SPEC-5 (manifest): confirm NO cleanup: YAML key appears under hooks: (ADR-062 §3)
+_spec5_hooks_block=$(awk '/^hooks:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
+_spec5_cleanup_count=$(grep -cE '^\s+cleanup:' <<< "$_spec5_hooks_block" 2>/dev/null || true)
+assert_eq "[SPEC-5] manifest has NO cleanup: YAML key under hooks: (ADR-062 §3 retired)" "0" "$_spec5_cleanup_count"
 
 _spec6_provides=$(sed -n '/^provides:/,/^[a-zA-Z]/{/^provides:/d; /^[a-zA-Z]/d; p}' "$_MANIFEST_FILE" 2>/dev/null || true)
 if grep -q 'result_contract: 2' <<< "$_spec6_provides" 2>/dev/null; then
