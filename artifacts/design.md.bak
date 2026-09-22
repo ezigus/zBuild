@@ -107,10 +107,10 @@ SPEC-1[change]: findings.json carries result_contract:2 at top level on the norm
 SPEC-2[change]: normal pass exit path emits verdict=pass and disposition=complete
 SPEC-3[change]: router-fatal exit path writes a v2 result with verdict=error and disposition=broken
 SPEC-4[change]: no-state-file exit path returns rc=1 and writes a v2 result artifact when ZBUILD_ARTIFACT_DIR is set
-SPEC-5[guard]: security_lens_cleanup hook is declared as a YAML key under hooks: in the manifest (not merely a comment) and the function returns 0
-SPEC-6[guard]: manifest declares provides.result_contract: 2 under the provides: section
+SPEC-5[change]: security_lens_cleanup hook is declared as a YAML key under hooks: in the manifest (not merely a comment) and the function returns 0
+SPEC-6[change]: manifest declares provides.result_contract: 2 under the provides: section
 SPEC-7[change]: manifest declares valid_verdicts: [pass, error] under the config: section
-SPEC-8[guard]: plugin.result event is emitted on the normal exit path with plugin=security-lens
+SPEC-8[change]: plugin.result event is emitted on the normal exit path with plugin=security-lens
 SPEC-9[change]: LLM findings are accessible under .data.findings on the normal pass path
 SPEC-10[change]: missing scope manifest causes rc=1 (router fail-closed); brace-bearing postamble is recovered by _security_lens_envelope_schema_ok
 SPEC-11[change]: manifest declares config.router with timeout_s and max_turns
@@ -121,7 +121,7 @@ SPEC-15[change]: a golden snapshot of the security-lens passing-run v2 envelope 
 SPEC-16[change]: manifest declares provides.events containing plugin.result and security_lens.failed; test confirms both event names appear under the provides.events key in the manifest
 SPEC-17[change]: manifest declares provides.role: security-auditor; test confirms the value appears under the provides.role key in the manifest
 SPEC-18[change]: interrupt handler _security_lens_interrupt_handler exists; rc=130 from route_to_model returns plugin rc=130 and writes a v2 result with verdict=error and disposition=interrupted; direct handler invocation and kill -TERM both produce the same artifact shape
-SPEC-19[guard]: canary — all preceding assertions in the test file have FAIL==0 at the point of this check
+SPEC-19[change]: canary — all preceding assertions in the test file have FAIL==0 at the point of this check
 SPEC-20[change]: manifest input entries declare only id and required: fields — no from:, path:, or type: keys in the inputs block
 WIRING:
 plugins/agent/security-lens/manifest.yaml
