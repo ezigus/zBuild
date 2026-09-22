@@ -143,7 +143,23 @@ shape_floor_run() {
     # missing on pass, skip and an ordinary in-scope fail, and could not clear
     # anything on a non-fail because it never ran there. ADR-055 §9: written on
     # EVERY terminal verdict, because absence is not a legitimate state.
-    stage_summary_write "$artifacts_dir/shape-floor-detail.md" "shape-floor" "$verdict" "$detail"
+    # #2180: say WHICH files would satisfy the floor. The list is already
+    # computed above (the escalation needs it); writing only the reason token
+    # told #1841's builder that a rule was broken and not what to do about it.
+    local _body=""
+    if [[ "$verdict" == "fail" ]] && declare -f _sf_collect_missing_floor_files >/dev/null 2>&1 \
+        && declare -f _sf_diff_files >/dev/null 2>&1; then
+        local _mf_list _mf
+        _mf_list="$(_sf_collect_missing_floor_files "$repo_root" "$(_sf_diff_files "$repo_root")" 2>/dev/null || true)"
+        if [[ -n "$_mf_list" ]]; then
+            _body="A shape change is in flight, so these files must change with it and did not:"$'\n'
+            while IFS= read -r _mf; do
+                [[ -n "$_mf" ]] || continue
+                _body="${_body}- ${_mf}"$'\n'
+            done <<< "$_mf_list"
+        fi
+    fi
+    stage_summary_write "$artifacts_dir/shape-floor-detail.md" "shape-floor" "$verdict" "$detail" "$_body"
 
     _sf_emit "plugin.result" "plugin=shape-floor" "verdict=$verdict"
     return 0

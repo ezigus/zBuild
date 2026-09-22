@@ -87,16 +87,20 @@ if grep -qx -- "EnterPlanMode,ExitPlanMode" <<< "$argv"; then
 else
     assert_fail "T1: disallowed-tools value is single token with comma intact" "argv: $argv"
 fi
-# [SPEC-1] C10: --dangerously-skip-permissions replaced by acceptEdits mode + settings file.
+# [SPEC-1] C10 (#2180): --dangerously-skip-permissions replaced by a never-ask
+# mode + settings file. The mode is bypassPermissions, not acceptEdits: an
+# unattended spawn has nobody to approve a Bash command, so acceptEdits refused
+# every one of them (measured, CLI 2.1.278). The deny rules in the settings file
+# are what bound the spawn, and they are honoured under this mode (P8/P9).
 if grep -qx -- "--permission-mode" <<< "$argv"; then
     assert_pass "[SPEC-1] T1: argv contains --permission-mode"
 else
     assert_fail "[SPEC-1] T1: argv contains --permission-mode" "argv: $argv"
 fi
-if grep -qx -- "acceptEdits" <<< "$argv"; then
-    assert_pass "[SPEC-1] T1: argv contains acceptEdits"
+if grep -qx -- "bypassPermissions" <<< "$argv"; then
+    assert_pass "[SPEC-1] T1: argv contains bypassPermissions (the never-ask mode)"
 else
-    assert_fail "[SPEC-1] T1: argv contains acceptEdits" "argv: $argv"
+    assert_fail "[SPEC-1] T1: argv contains bypassPermissions (the never-ask mode)" "argv: $argv"
 fi
 if grep -qx -- "--settings" <<< "$argv"; then
     assert_pass "[SPEC-1] T1: argv contains --settings"
@@ -120,16 +124,16 @@ argv="$(_read_argv)"
 assert_contains "T2: --output-format coexists with new flags" "$argv" "--output-format"
 assert_contains "T2: json token present" "$argv" "json"
 assert_contains "T2: --max-turns still present in JSON mode" "$argv" "--max-turns"
-# [SPEC-1] C10: acceptEdits replaces --dangerously-skip-permissions in JSON mode too.
+# [SPEC-1] C10 (#2180): the never-ask mode applies in JSON mode too.
 if grep -qx -- "--permission-mode" <<< "$argv"; then
     assert_pass "[SPEC-1] T2: --permission-mode still present in JSON mode"
 else
     assert_fail "[SPEC-1] T2: --permission-mode still present in JSON mode" "argv: $argv"
 fi
-if grep -qx -- "acceptEdits" <<< "$argv"; then
-    assert_pass "[SPEC-1] T2: acceptEdits still present in JSON mode"
+if grep -qx -- "bypassPermissions" <<< "$argv"; then
+    assert_pass "[SPEC-1] T2: the never-ask mode is present in JSON mode too"
 else
-    assert_fail "[SPEC-1] T2: acceptEdits still present in JSON mode" "argv: $argv"
+    assert_fail "[SPEC-1] T2: the never-ask mode is present in JSON mode too" "argv: $argv"
 fi
 
 unset ZBUILD_ROUTER_JSON_OUTPUT

@@ -17,6 +17,21 @@
 #       must not be made conditional on its existence: a stage whose artifact dir
 #       is created lazily would silently lose its grant.
 #
+# MEASURED on CLI 2.1.278 (#2180), the reason the mode changed:
+#   P7  acceptEdits refuses to RUN anything. `bash <script>` comes back
+#       "required approval and was denied, so it never executed". Unattended
+#       there is nobody to approve, so the ask IS the refusal. On #1841 run
+#       35720879137 the builder asked to run one test 22 times and was refused
+#       17; design was refused a `cat` of its own restored artifact; the build
+#       burned 84 minutes reading files because reading was all it could do.
+#   P8  bypassPermissions RUNS the command AND still honours `Edit(//abs)`:
+#       the Edit tool is refused ("File is in a directory that is denied by
+#       your permission settings") and the file is unchanged.
+#   P9  …and so is a BASH write to the same path (`sed -i` refused, file
+#       unchanged). The deny list is enforced below the tool boundary, so the
+#       write ownership of #2174 is unaffected by the mode.
+# The name is unfortunate — it bypasses the PROMPT, not the deny rules.
+#
 # So: the SPAWN grants (--add-dir), and the settings file is the jq-validated
 # policy seam the spawn refuses on (SPEC-3) and where the evidence-based deny
 # list from the #1809 sweep will land.
@@ -138,7 +153,11 @@ _zbuild_permission_args() {
         error "router: permissions: _zbuild_build_permissions_settings not called"
         return 1
     fi
-    printf '%s\n' "--permission-mode" "acceptEdits"
+    # #2180: the mode must be one that CANNOT ask. acceptEdits pre-approves the
+    # Edit tool and nothing else, so every Bash command fell through to "ask a
+    # human" — and unattended, an ask is a silent refusal. The deny rules are
+    # what bound the spawn, and they hold under this mode (P8/P9 below).
+    printf '%s\n' "--permission-mode" "bypassPermissions"
     # P4: --add-dir is the grant. One flag per root; the CLI accepts repeats.
     local _d
     for _d in "${_ZBUILD_PERMISSIONS_DIRS[@]+"${_ZBUILD_PERMISSIONS_DIRS[@]}"}"; do

@@ -152,6 +152,128 @@ else
     assert_fail "[SPEC-5] _build_restore_authored_testfiles is defined" "missing"
 fi
 
+# ─── SPEC-6 (#2180): a finding goes to whoever OWNS the thing it is about ───
+# Fault class alone cannot say WHO fixes a finding, and the same wording used
+# to reach every reader: a criticism of a test assertion read as an instruction
+# to the builder and as background to the stage that wrote it. #1841 run
+# 35720879137 judged the same two assertions weak on four consecutive passes
+# and nobody was ever told they were theirs.
+#
+# The producer states one fact of its own — WHICH artifact its finding is about
+# (`about`) — and the engine resolves the owner from the manifests. No stage
+# names another; the owner is looked up, never declared by the finder.
+print_test_section "SPEC-6: the engine routes a finding to the owner of the artifact it names"
+
+PROOT6="$TEST_TEMP_DIR/plugins6"; STATE6="$TEST_TEMP_DIR/state6"; ART6="$STATE6/artifacts"
+mkdir -p "$PROOT6/tool/sb-judge" "$PROOT6/agent/sb-author" "$ART6"
+# The judge: fails, and says which artifact its finding concerns.
+cat > "$PROOT6/tool/sb-judge/manifest.yaml" <<'EOF'
+id: sb-judge
+name: sb-judge
+kind: tool
+version: 0.0.1
+convergence: advisory
+hooks:
+  run: sb_judge_run
+inputs: []
+outputs:
+  - id: sb_judge_result
+    path: ${artifact_dir}/sb-judge-result.json
+    type: json
+    required: true
+    primary: true
+  - id: sb_judge_detail
+    path: ${artifact_dir}/sb-judge-detail.txt
+    type: text
+    required: false
+    summary: true
+EOF
+# The owner: its manifest DECLARES the artifact the finding is about.
+cat > "$PROOT6/agent/sb-author/manifest.yaml" <<'EOF'
+id: sb-author
+name: sb-author
+kind: agent
+version: 0.0.1
+hooks:
+  run: sb_author_run
+inputs: []
+outputs:
+  - id: sb_author_work
+    path: ${artifact_dir}/authored-thing.txt
+    type: text
+    required: true
+    primary: true
+EOF
+_TPL_STAGES=(sb-author sb-judge)
+printf '{"schema_version":1,"run_id":"sb6","stage_statuses":{"sb-author":"complete","sb-judge":"failed"},"stage_verdicts":{"sb-author":"pass","sb-judge":"fail"}}
+' > "$STATE6/pipeline-state.json"
+printf 'THE-JUDGE-FINDING: the second assertion proves less than its requirement
+' > "$ART6/sb-judge-detail.txt"
+printf 'authored
+' > "$ART6/authored-thing.txt"
+printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"2 weak","about":"authored-thing.txt"}
+' > "$ART6/sb-judge-result.json"
+
+_head_of() { grep -E "^### $1" <<< "$2" || true; }
+
+# Reader = the owner.
+_blk6_owner="$(ZBUILD_CURRENT_STAGE=sb-author stage_summaries_prompt_block "$STATE6/pipeline-state.json" "$PROOT6" 2>/dev/null || true)"
+_h6_owner="$(_head_of sb-judge "$_blk6_owner")"
+assert_contains "[SPEC-6] the owner of the named artifact is told it is theirs" \
+    "$_h6_owner" "are yours to fix"
+assert_contains "[SPEC-6] …and the finding itself is there" \
+    "$_blk6_owner" "THE-JUDGE-FINDING"
+
+# Reader = anyone else.
+_blk6_other="$(ZBUILD_CURRENT_STAGE=sb-builder stage_summaries_prompt_block "$STATE6/pipeline-state.json" "$PROOT6" 2>/dev/null || true)"
+_h6_other="$(_head_of sb-judge "$_blk6_other")"
+if [[ -n "$_h6_other" && "$_h6_other" == *"not yours to fix"* && "$_h6_other" != *"are yours to fix"* ]]; then
+    assert_pass "[SPEC-6] a non-owner is NOT told to fix it"
+else
+    assert_fail "[SPEC-6] a non-owner is NOT told to fix it" "${_h6_other:-<no heading rendered>}"
+fi
+assert_contains "[SPEC-6] …the non-owner is told who owns it" "$_h6_other" "sb-author"
+assert_contains "[SPEC-6] …and still sees the finding (every stage sees everything)" \
+    "$_blk6_other" "THE-JUDGE-FINDING"
+
+# No `about` → unchanged behaviour: a failure with no fault is the reader's.
+printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"2 weak"}
+' > "$ART6/sb-judge-result.json"
+_blk6_none="$(ZBUILD_CURRENT_STAGE=sb-builder stage_summaries_prompt_block "$STATE6/pipeline-state.json" "$PROOT6" 2>/dev/null || true)"
+assert_contains "[SPEC-6] a finding about nothing in particular keeps the old framing" \
+    "$(_head_of sb-judge "$_blk6_none")" "RESOLVE these findings"
+
+# An `about` nobody declares resolves to no owner — never to a guess.
+printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x","about":"nobody-declares-this.txt"}
+' > "$ART6/sb-judge-result.json"
+_blk6_unk="$(ZBUILD_CURRENT_STAGE=sb-builder stage_summaries_prompt_block "$STATE6/pipeline-state.json" "$PROOT6" 2>/dev/null || true)"
+assert_contains "[SPEC-6] an unowned artifact keeps the old framing rather than inventing an owner" \
+    "$(_head_of sb-judge "$_blk6_unk")" "RESOLVE these findings"
+
+# A REPO path (an authored testfile) is owned by the stage that recorded it.
+printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x","about":"tests/unit/authored-by-me-test.sh"}
+' > "$ART6/sb-judge-result.json"
+printf '# authored_by: sb-author\n' > "$ART6/assertion-digests.txt"
+printf 'deadbeef  tests/unit/authored-by-me-test.sh\n' >> "$ART6/assertion-digests.txt"
+_blk6_tf="$(ZBUILD_CURRENT_STAGE=sb-author stage_summaries_prompt_block "$STATE6/pipeline-state.json" "$PROOT6" 2>/dev/null || true)"
+assert_contains "[SPEC-6] an authored testfile is owned by the stage that recorded authoring it" \
+    "$(_head_of sb-judge "$_blk6_tf")" "are yours to fix"
+
+# ─── SPEC-7 (#2180): the judge states which artifact it judged ──────────────
+# Its own fact — the contract told it which testfiles to read. Without it the
+# engine has nothing to resolve an owner from.
+print_test_section "SPEC-7: spec-correspondence records the artifact its findings are about"
+# shellcheck disable=SC1091
+source "$REPO_ROOT/plugins/agent/spec-correspondence/plugin.sh" 2>/dev/null || true
+if declare -F _sc_write_result >/dev/null 2>&1; then
+    ART7="$TEST_TEMP_DIR/art7"; mkdir -p "$ART7"
+    _sc_write_result "$ART7" "partial" "judged 2" '{}' "tests/unit/x-test.sh" >/dev/null 2>&1 || true
+    assert_eq "[SPEC-7] the result names the testfile it judged" "tests/unit/x-test.sh" \
+        "$(jq -r '.about // ""' "$ART7/spec-correspondence-result.json" 2>/dev/null)"
+else
+    assert_fail "[SPEC-7] _sc_write_result is defined" "missing"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -475,6 +475,15 @@ _test_run_inner() {
     _test_emit_failures_summary "$_tfs_path" "$verdict" "$_failed_for_summary" \
         "$exit_code" "$raw_output" "$passed"
 
+    # #2180: keep the suite's OWN output. The summary above is an ~80-line
+    # extraction; everything else was dropped. When a file fails only inside
+    # this nested stage — per-run-state-isolation T4 on every suite of #1841 run
+    # 35720879137, including the first, before the builder changed anything —
+    # the extraction names the file and nothing explains it, and the run is
+    # over before anyone can look. This is diagnostic, not prompt context: it is
+    # uploaded with the run, never injected (no `summary:` on the declaration).
+    _test_write_output_log "$(dirname "$output_json")/test-output.log" "$raw_output"
+
     # ── ADR-034 / #846: write test-red-set.json from this run's failures ──────
     # Stores the repo-relative paths of files that failed so the next iter can
     # target them without re-running the full suite. Paths are made relative to
@@ -667,6 +676,37 @@ _test_spawn_suite() {
         exit $?
     )
 
+}
+
+# ─── _test_write_output_log <path> <raw_output> ─────────────────────────────
+# The suite's raw output, sanitized, replaced each run (#2180). Bounded by
+# ZBUILD_TEST_OUTPUT_MAX_BYTES (default 4 MiB): the TAIL is kept, because a
+# suite that dies mid-way says why at the end, and the truncation is stated —
+# a silently clipped log reads as a complete one. Best-effort throughout: a
+# diagnostic artifact must never change the stage's verdict.
+_test_write_output_log() {
+    local path="${1:-}" raw="${2:-}"
+    [[ -n "$path" ]] || return 0
+    local cap="${ZBUILD_TEST_OUTPUT_MAX_BYTES:-4194304}"
+    [[ "$cap" =~ ^[0-9]+$ ]] || cap=4194304
+    mkdir -p "$(dirname "$path")" 2>/dev/null || true
+    local clean
+    if declare -F _zbuild_sanitize_test_output >/dev/null 2>&1; then
+        clean="$(_zbuild_sanitize_test_output <<< "$raw" 2>/dev/null || printf '%s' "$raw")"
+    else
+        clean="$raw"
+    fi
+    local n=${#clean}
+    {
+        if (( n > cap )); then
+            printf '[… %s of %s bytes truncated — the tail is kept, it is where a dying suite says why]\n' \
+                "$(( n - cap ))" "$n"
+            printf '%s\n' "${clean: -$cap}"
+        else
+            printf '%s\n' "$clean"
+        fi
+    } > "$path" 2>/dev/null || true
+    return 0
 }
 
 # ─── _test_emit_io_end ───────────────────────────────────────────────────────

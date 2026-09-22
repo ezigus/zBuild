@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Tests: #1919 (C10) — permissions.sh builds acceptEdits settings file.
+# Tests: #1919 (C10) — permissions.sh builds the spawn settings file.
+# #2180: the mode is bypassPermissions (never-ask); see P7-P9 in permissions.sh.
 # SPEC-2: the spawn grants the repo root + stage scratch + run artifact dir, via
 #         --add-dir. The artifact dir joined in #1961: this file's original claim
 #         was "exactly the repo root + stage scratch", which described the code
@@ -19,7 +20,7 @@ source "$REPO_ROOT/scripts/lib/helpers.sh"
 # shellcheck source=../../scripts/lib/test-helpers.sh
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "router-permissions — #1919 C10 acceptEdits settings (#1919)"
+print_test_header "router-permissions — spawn settings + never-ask posture (#1919, #2180)"
 setup_test_env "router-permissions"
 _test_cleanup_hook() { cleanup_test_env; }
 
@@ -189,16 +190,47 @@ if grep -qx -- "--permission-mode" <<< "$_perm_args"; then
 else
     assert_fail "[SPEC-2] P5: _zbuild_permission_args emits --permission-mode" "args: $_perm_args"
 fi
-if grep -qx -- "acceptEdits" <<< "$_perm_args"; then
-    assert_pass "[SPEC-2] P5: _zbuild_permission_args emits acceptEdits"
+if grep -qx -- "bypassPermissions" <<< "$_perm_args"; then
+    assert_pass "[SPEC-2] P5: _zbuild_permission_args emits the never-ask mode"
 else
-    assert_fail "[SPEC-2] P5: _zbuild_permission_args emits acceptEdits" "args: $_perm_args"
+    assert_fail "[SPEC-2] P5: _zbuild_permission_args emits the never-ask mode" "args: $_perm_args"
 fi
 if grep -qx -- "--settings" <<< "$_perm_args"; then
     assert_pass "[SPEC-2] P5: _zbuild_permission_args emits --settings"
 else
     assert_fail "[SPEC-2] P5: _zbuild_permission_args emits --settings" "args: $_perm_args"
 fi
+
+# ─── P7 [SPEC-5][change] the spawn is never able to ASK (#2180) ─────────────
+# An unattended spawn has no human to approve anything, so any mode that can
+# ask is a mode that silently refuses. acceptEdits pre-approves the Edit tool
+# and nothing else: MEASURED on CLI 2.1.278, `bash <script>` under acceptEdits
+# comes back "required approval and was denied, so it never executed". On
+# #1841 run 35720879137 the builder asked to run one test 22 times and was
+# refused 17; design was refused a `cat` of its own restored artifact.
+print_test_section "[SPEC-5][change] the spawn posture cannot ask a question"
+
+export ZBUILD_STAGE_SCRATCH="$TEST_TEMP_DIR/p7-scratch"; mkdir -p "$ZBUILD_STAGE_SCRATCH"
+export ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/p7-repo"; mkdir -p "$ZBUILD_REPO_ROOT"
+_zbuild_build_permissions_settings >/dev/null 2>&1
+_p7_args="$(_zbuild_permission_args)"
+_p7_mode="$(printf '%s\n' "$_p7_args" | grep -A1 -x -- '--permission-mode' | tail -1)"
+assert_eq "[SPEC-5] P7: the permission mode never prompts" "bypassPermissions" "$_p7_mode"
+if grep -qx -- "acceptEdits" <<< "$_p7_args"; then
+    assert_fail "[SPEC-5] P7: acceptEdits is gone — it can only pre-approve Edit, so Bash still asks" \
+        "args: $_p7_args"
+else
+    assert_pass "[SPEC-5] P7: acceptEdits is gone — it can only pre-approve Edit, so Bash still asks"
+fi
+# P8/P9 measured: under the never-ask mode the Edit(//abs) deny rule is STILL
+# honoured, for the Edit tool AND for a Bash write to the same path. The write
+# boundary is therefore unchanged — assert the rules still ship.
+export ZBUILD_PERMISSION_DENY_EDIT="$ZBUILD_REPO_ROOT/owned-by-another-stage.sh"
+_zbuild_build_permissions_settings >/dev/null 2>&1
+assert_eq "[SPEC-5] P8: write ownership still ships with the never-ask posture" \
+    "Edit(/$ZBUILD_REPO_ROOT/owned-by-another-stage.sh)" \
+    "$(jq -r '.permissions.deny[0]' "$_ZBUILD_PERMISSIONS_SETTINGS_FILE" 2>/dev/null)"
+unset ZBUILD_PERMISSION_DENY_EDIT
 
 unset ZBUILD_STAGE_SCRATCH ZBUILD_REPO_ROOT
 
