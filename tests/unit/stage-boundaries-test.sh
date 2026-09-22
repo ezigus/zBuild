@@ -259,6 +259,51 @@ _blk6_tf="$(ZBUILD_CURRENT_STAGE=sb-author stage_summaries_prompt_block "$STATE6
 assert_contains "[SPEC-6] an authored testfile is owned by the stage that recorded authoring it" \
     "$(_head_of sb-judge "$_blk6_tf")" "are yours to fix"
 
+# Review #2181: two stages can declare outputs with the SAME basename. Matching
+# on the filename alone hands the finding to whichever manifest is read first —
+# silently, and possibly to the wrong stage. An ambiguous name has no owner.
+mkdir -p "$PROOT6/tool/sb-twin"
+cat > "$PROOT6/tool/sb-twin/manifest.yaml" <<'EOF'
+id: sb-twin
+name: sb-twin
+kind: tool
+version: 0.0.1
+hooks:
+  run: sb_twin_run
+inputs: []
+outputs:
+  - id: sb_twin_work
+    path: ${artifact_dir}/authored-thing.txt
+    type: text
+    required: true
+    primary: true
+EOF
+yaml_cache_flush 2>/dev/null || true
+printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x","about":"authored-thing.txt"}\n' > "$ART6/sb-judge-result.json"
+_blk6_amb="$(ZBUILD_CURRENT_STAGE=sb-author stage_summaries_prompt_block "$STATE6/pipeline-state.json" "$PROOT6" 2>/dev/null || true)"
+_h6_amb="$(_head_of sb-judge "$_blk6_amb")"
+if [[ "$_h6_amb" == *"are yours to fix"* ]]; then
+    assert_fail "[SPEC-6] a name TWO stages declare has no owner — it is never given to the first one found" "$_h6_amb"
+else
+    assert_pass "[SPEC-6] a name TWO stages declare has no owner — it is never given to the first one found"
+fi
+rm -rf "$PROOT6/tool/sb-twin"; yaml_cache_flush 2>/dev/null || true
+
+# Review #2181: `about` may name SEVERAL artifacts (a contract with several
+# testfiles). One owner for all of them is still one owner; a split set is not.
+jq -n '{result_contract:2, verdict:"fail", disposition:"complete", reason:"x",
+        about:"authored-thing.txt\nauthored-thing.txt"}' > "$ART6/sb-judge-result.json"
+_blk6_multi="$(ZBUILD_CURRENT_STAGE=sb-author stage_summaries_prompt_block "$STATE6/pipeline-state.json" "$PROOT6" 2>/dev/null || true)"
+assert_contains "[SPEC-6] several artifacts with ONE owner still route to that owner" \
+    "$(_head_of sb-judge "$_blk6_multi")" "are yours to fix"
+
+# Review #2181: the banner counts with no reader in scope. An owned finding is
+# somebody's obligation — dropping it there under-reports the cycle.
+printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x","about":"authored-thing.txt"}\n' > "$ART6/sb-judge-result.json"
+_cnt6="$(unset ZBUILD_CURRENT_STAGE; stage_summaries_count "$STATE6/pipeline-state.json" "$PROOT6" 2>/dev/null || true)"
+assert_eq "[SPEC-6] with no reader in scope an owned finding still counts as an obligation" \
+    "1 1" "$_cnt6"
+
 # ─── SPEC-7 (#2180): the judge states which artifact it judged ──────────────
 # Its own fact — the contract told it which testfiles to read. Without it the
 # engine has nothing to resolve an owner from.

@@ -640,33 +640,66 @@ _summaries_result_about() {
 }
 
 # ─── _summaries_owner_of <about> <plugins_root> <state_dir> ─────────────────
-# Which stage OWNS the named artifact, or "" when nothing declares it (#2180).
-# Two sources, both already in the tree, neither a list of stage names:
+# Which stage OWNS the named artifact(s), or "" when nothing declares them, or
+# when the answer is not unambiguous (#2180). Two sources, both already in the
+# tree, neither a list of stage names:
 #   1. a manifest that declares the path as one of its `outputs`;
 #   2. the authoring record for repo testfiles, whose header says which stage
 #      wrote it (assertion-digests.txt).
-# An unresolvable name yields nothing — the framing then falls back to the
-# fault-class rule rather than guessing an owner.
+# `about` may name several artifacts, one per line — a contract with several
+# testfiles is one finding about all of them. They route together only when
+# they share ONE owner.
+#
+# NEVER a guess (review #2181): two plugins may declare outputs with the same
+# BASENAME, and handing the finding to whichever manifest was read first is
+# wrong silently. An ambiguous name resolves to no owner, and the framing then
+# falls back to the fault-class rule.
 _summaries_owner_of() {
     local about="${1:-}" plugins_root="${2:-}" state_dir="${3:-}"
     [[ -n "$about" ]] || return 0
-    local base="${about##*/}" m idx_root
-
+    local idx_root
     idx_root="$(_manifest_index_root "$plugins_root" 2>/dev/null || printf '%s' "$plugins_root")"
     manifest_index_load "$idx_root" 2>/dev/null || true
     local _midx_files
     _midx_files="${_ZBUILD_MIDX_FILES[$idx_root]:-}"
-    local _p
+
+    local one amalgam="" owner
+    while IFS= read -r one; do
+        [[ -n "${one//[[:space:]]/}" ]] || continue
+        owner="$(_summaries_owner_of_one "$one" "$_midx_files" "$state_dir")"
+        # One unowned or ambiguous member makes the whole finding unowned: a
+        # partial attribution would tell one stage it owns work it does not.
+        [[ -n "$owner" ]] || return 0
+        if [[ -z "$amalgam" ]]; then
+            amalgam="$owner"
+        elif [[ "$amalgam" != "$owner" ]]; then
+            return 0
+        fi
+    done <<< "$about"
+    printf '%s' "$amalgam"
+}
+
+# ─── _summaries_owner_of_one <path> <manifest_list> <state_dir> ─────────────
+# The single stage that declares this one path, or "" when none or several do.
+_summaries_owner_of_one() {
+    local about="$1" manifests="$2" state_dir="$3"
+    local base="${about##*/}" m _p found="" n=0
     while IFS= read -r m; do
         [[ -n "$m" ]] || continue
         case "$m" in */tests/*) continue ;; esac
         while IFS= read -r _p; do
             [[ -n "$_p" ]] || continue
             [[ "${_p##*/}" == "$base" ]] || continue
-            printf '%s' "$(manifest_index_get "$m" id 2>/dev/null || true)"
-            return 0
+            local _id; _id="$(manifest_index_get "$m" id 2>/dev/null || true)"
+            [[ -n "$_id" ]] || continue
+            # The same id twice (one manifest, two outputs of that name) is one
+            # owner; two DIFFERENT ids is ambiguity.
+            if [[ -z "$found" ]]; then found="$_id"; n=1
+            elif [[ "$found" != "$_id" ]]; then n=2; fi
         done <<< "$(manifest_index_get "$m" outputs.path 2>/dev/null || true)"
-    done <<< "$_midx_files"
+    done <<< "$manifests"
+    if [[ "$n" -eq 1 ]]; then printf '%s' "$found"; return 0; fi
+    [[ "$n" -gt 1 ]] && return 0
 
     # A repo path: the authoring record names the stage that wrote it.
     local dig="$state_dir/artifacts/assertion-digests.txt"
@@ -711,8 +744,13 @@ stage_summaries_count() {
             case "$verdict" in fail|failed)
                 # #2180: a finding routed to an owner is that owner's obligation,
                 # not the generic RESOLVE count for whoever is reading.
-                if [[ -n "$owner" ]]; then
-                    [[ "$owner" == "${ZBUILD_CURRENT_STAGE:-}" ]] && r=$((r + 1))
+                if [[ -n "$owner" && -n "${ZBUILD_CURRENT_STAGE:-}" ]]; then
+                    [[ "$owner" == "$ZBUILD_CURRENT_STAGE" ]] && r=$((r + 1))
+                elif [[ -n "$owner" ]]; then
+                    # Review #2181: the cycle banner counts with no reader in
+                    # scope. An owned finding is SOMEBODY's obligation; dropping
+                    # it here under-reported every cycle that had one.
+                    r=$((r + 1))
                 else
                     case "$fault" in specification|scope) ;; *) r=$((r + 1)) ;; esac
                 fi ;;

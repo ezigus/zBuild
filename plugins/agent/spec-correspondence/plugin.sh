@@ -304,11 +304,12 @@ spec_correspondence_run() {
     [[ "$n" -eq 0 ]] && reason="no SPEC ids declared — nothing to judge"
     _sc_emit "spec_correspondence.judged" "specs=$n" "mismatch=$n_mis" "partial=$n_part" "unjudged=$n_unj"
     # #2180: the testfile(s) these findings are about — the contract's, read
-    # back the same way the judging loop read them.
+    # back the same way the judging loop read them. ALL of them, one per line
+    # (review #2181): keeping only the first silently lost the attribution for
+    # every other file in a multi-testfile contract.
     local _sc_about=""
     declare -f acceptance_list_testfiles >/dev/null 2>&1 \
         && _sc_about="$(acceptance_list_testfiles "$design" 2>/dev/null || true)"
-    _sc_about="${_sc_about%%$'\n'*}"
     _sc_write_result "$art" "$worst" "$reason" \
         "$(jq -nc --argjson c "$n_corr" --argjson p "$n_part" --argjson m "$n_mis" \
                   --argjson u "$n_unch" --argjson j "$n_unj" \
