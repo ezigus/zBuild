@@ -133,7 +133,7 @@ The repository has moved since this design was written. Every claim it makes abo
 
 ### SINCE THE PRIOR DESIGN (engine-collected)
 - The prior design was authored 2026-09-22T01:12:06Z (commit 6ddbbac6).
-- Commits on this branch since then: 12.
+- Commits on this branch since then: 13.
 - No ADR was added or changed since.
 - Files in the prior design's scope changed since (its claims about them may be stale):
   - plugins/agent/security-lens/manifest.yaml
@@ -302,7 +302,7 @@ SPEC-20: plugins/agent/security-lens/tests/security-lens-test.sh
 Refine the PRIOR DESIGN. Preserve all existing scope entries unless one is clearly wrong.
 
 WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
-- This stage has a wall-clock budget of 600 seconds total; ~0s have elapsed.
+- This stage has a wall-clock budget of 600 seconds total; ~1s have elapsed.
 - You cannot read a real-time clock, but estimate elapsed time from your tool-call history.
 - Target emitting your best-effort design before ~420s of wall-clock time has elapsed (70% of the 600s budget). A partial design with named gaps BEATS a hard SIGTERM that produces no output.
 
