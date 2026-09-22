@@ -2742,9 +2742,10 @@ cycle_orchestrator_run() {
         fi
 
         # #1217 (ADR-045): bounded typed backward-route. ONLY a CORRECTABLE
-        # non-clean terminal (rc=2 unconverged / rc=8 member_terminal_failure)
-        # may reroute — a clean converge (0), abort (6), blocked (5), scope-deny
-        # (7), config (4) and signals (130/143) NEVER reroute. When the
+        # non-clean terminal (rc=2 unconverged / rc=8 member_terminal_failure /
+        # rc=7 scope-deny, #2178: a build that cannot complete under the
+        # contract) may reroute — a clean converge (0), abort (6), blocked (5),
+        # config (4) and signals (130/143) NEVER reroute. When the
         # route_back predicate matches, convert the terminal into rc=11
         # (route_back) and STASH the by-severity fallback rc + target as GLOBALS
         # (no `local`) so the runner can (a) rewind the dispatch index to the
