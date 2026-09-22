@@ -307,7 +307,8 @@ spec_correspondence_run() {
     # back the same way the judging loop read them.
     local _sc_about=""
     declare -f acceptance_list_testfiles >/dev/null 2>&1 \
-        && _sc_about="$(acceptance_list_testfiles "$design" 2>/dev/null | head -1 || true)"
+        && _sc_about="$(acceptance_list_testfiles "$design" 2>/dev/null || true)"
+    _sc_about="${_sc_about%%$'\n'*}"
     _sc_write_result "$art" "$worst" "$reason" \
         "$(jq -nc --argjson c "$n_corr" --argjson p "$n_part" --argjson m "$n_mis" \
                   --argjson u "$n_unch" --argjson j "$n_unj" \

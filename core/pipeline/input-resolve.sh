@@ -654,7 +654,9 @@ _summaries_owner_of() {
 
     idx_root="$(_manifest_index_root "$plugins_root" 2>/dev/null || printf '%s' "$plugins_root")"
     manifest_index_load "$idx_root" 2>/dev/null || true
-    local _files="${_ZBUILD_MIDX_FILES[$idx_root]:-}" _p
+    local _midx_files
+    _midx_files="${_ZBUILD_MIDX_FILES[$idx_root]:-}"
+    local _p
     while IFS= read -r m; do
         [[ -n "$m" ]] || continue
         case "$m" in */tests/*) continue ;; esac
@@ -664,13 +666,14 @@ _summaries_owner_of() {
             printf '%s' "$(manifest_index_get "$m" id 2>/dev/null || true)"
             return 0
         done <<< "$(manifest_index_get "$m" outputs.path 2>/dev/null || true)"
-    done <<< "$_files"
+    done <<< "$_midx_files"
 
     # A repo path: the authoring record names the stage that wrote it.
     local dig="$state_dir/artifacts/assertion-digests.txt"
     if [[ -s "$dig" ]] && grep -qF -- "$about" "$dig" 2>/dev/null; then
         local by
-        by="$(sed -n 's/^#[[:space:]]*authored_by:[[:space:]]*//p' "$dig" 2>/dev/null | head -1)"
+        by="$(sed -n 's/^#[[:space:]]*authored_by:[[:space:]]*//p' "$dig" 2>/dev/null || true)"
+        by="${by%%$'\n'*}"
         [[ -n "$by" ]] && printf '%s' "$by"
     fi
     return 0
