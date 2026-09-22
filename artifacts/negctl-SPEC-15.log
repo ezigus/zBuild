@@ -1,0 +1,44 @@
+### SPEC-15 baseline tests/golden/golden-contracts-test.sh
+
+[38;2;0;212;255m[1m  golden contracts — assert_golden harness (E.1 seed set)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m G1: redaction.applied event shape matches golden
+  [38;2;74;222;128m✓[0m G2: init_state JSON shape matches golden
+  [38;2;74;222;128m✓[0m G3: CLI dry-run output matches golden
+  [38;2;74;222;128m✓[0m G4: canonical plugin lifecycle event types match golden
+  [38;2;74;222;128m✓[0m plugin.init/finalize complete events absent from event schema
+  [38;2;74;222;128m✓[0m plugin lifecycle golden has exactly 2 event types (run + cleanup)
+mock-response
+  [38;2;74;222;128m✓[0m G5: router success event sequence matches golden
+  [38;2;74;222;128m✓[0m G5b: model.route event data keys match golden
+  [golden] MISSING: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.50nkHl/tests/golden/security-lens-pass-artifact.golden (run with UPDATE_GOLDEN=1 to create)
+  [38;2;248;113;113m✗[0m [SPEC-15] security-lens v2 envelope golden matches expected key set
+    [2mexpected: 0, got: 1[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 9 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-15] security-lens v2 envelope golden matches expected key set
+
+### SPEC-15 head tests/golden/golden-contracts-test.sh
+
+[38;2;0;212;255m[1m  golden contracts — assert_golden harness (E.1 seed set)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m G1: redaction.applied event shape matches golden
+  [38;2;74;222;128m✓[0m G2: init_state JSON shape matches golden
+  [38;2;74;222;128m✓[0m G3: CLI dry-run output matches golden
+  [38;2;74;222;128m✓[0m G4: canonical plugin lifecycle event types match golden
+  [38;2;74;222;128m✓[0m plugin.init/finalize complete events absent from event schema
+  [38;2;74;222;128m✓[0m plugin lifecycle golden has exactly 2 event types (run + cleanup)
+mock-response
+  [38;2;74;222;128m✓[0m G5: router success event sequence matches golden
+  [38;2;74;222;128m✓[0m G5b: model.route event data keys match golden
+  [38;2;74;222;128m✓[0m [SPEC-15] security-lens v2 envelope golden matches expected key set
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 9 tests passed[0m
+
