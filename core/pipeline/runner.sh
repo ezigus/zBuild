@@ -1489,7 +1489,11 @@ main() {
     # Placed before --dry-run so dry-run also surfaces mismatches.
     # Fail-closed on corrupt state files (rather than letting get_state_field
     # silently return its default and skip the check).
-    if [[ -n "${ZBUILD_STATE_FILE:-}" && -n "$issue" && "$issue" != "0" \
+    # Skip when ZBUILD_STATE_DIR is explicitly set: the caller is directing the
+    # runner to a fresh directory and any ambient ZBUILD_STATE_FILE is an
+    # inherited outer-context value that the explicit dir overrides (#887).
+    if [[ -n "${ZBUILD_STATE_FILE:-}" && -z "${ZBUILD_STATE_DIR:-}" \
+          && -n "$issue" && "$issue" != "0" \
           && -f "${ZBUILD_STATE_FILE}" ]]; then
         if ! jq empty "${ZBUILD_STATE_FILE}" >/dev/null 2>&1; then
             error "ZBUILD_STATE_FILE='${ZBUILD_STATE_FILE}' is not valid JSON; refusing to honor it alongside --issue $issue (fail-closed)"
@@ -1685,10 +1689,14 @@ main() {
     fi
 
     mkdir -p "$state_dir"
-    # Honor ZBUILD_STATE_FILE when set (e.g. by `pipeline resume --run-id`)
+    # Honor ZBUILD_STATE_FILE when set (e.g. by `pipeline resume --run-id`),
+    # but only when ZBUILD_STATE_DIR is NOT also explicitly set. An explicit
+    # ZBUILD_STATE_DIR is the caller's authoritative directory; any ambient
+    # ZBUILD_STATE_FILE (e.g. inherited from an outer pipeline context) must not
+    # silently override it (#887).
     # Cross-check vs --issue happened earlier (before --dry-run); see #296 Δ-4.
     local state_file
-    if [[ -n "${ZBUILD_STATE_FILE:-}" ]]; then
+    if [[ -n "${ZBUILD_STATE_FILE:-}" && -z "${ZBUILD_STATE_DIR:-}" ]]; then
         state_file="$ZBUILD_STATE_FILE"
         state_dir="$(dirname "$state_file")"
     else
