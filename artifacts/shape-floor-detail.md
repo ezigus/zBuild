@@ -1,3 +1,3 @@
-## shape-floor — skip
+## shape-floor — fail
 
-- no_shape_change
+- missing_floor_files

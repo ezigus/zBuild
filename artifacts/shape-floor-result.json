@@ -1,6 +1,7 @@
 {
   "result_contract": 2,
-  "verdict": "skip",
+  "verdict": "fail",
   "disposition": "complete",
-  "reason": "no_shape_change"
+  "reason": "missing_floor_files",
+  "fault": "scope"
 }
