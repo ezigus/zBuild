@@ -3,73 +3,73 @@
   "verdict": "fail",
   "disposition": "complete",
   "reason": "1 of 725 tests failed",
-  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 440/440 passed (4 skipped)\nintegration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.vUqrf6/tests/integration/per-run-state-isolation-test.sh\n\n  per-run state isolation (#887)\n\n  ✓ T1: run-aaa exits 0\n  ✓ T2: run-bbb exits 0\n  ✓ T1: run-aaa state under runs/run-aaa/\n  ✓ T2: run-bbb state under runs/run-bbb/\n  ✓ T2: run-aaa state has its own run_id (no clobber)\n  ✓ T2: run-bbb state has its own run_id (no clobber)\n  ✓ T3: latest → run-bbb (most recent)\n  ✗ T4: explicit-state run exits 0\n    expected: 0, got: 1\n  ✓ T4: explicit ZBUILD_STATE_DIR used verbatim (no runs/)\n  ✓ T4: explicit state dir not re-rooted\n  ✓ T5: ZBUILD_EVENTS_DIR is per-run (runs/run-ddd)\n  ✓ T6: explicit STATE_FILE → events follow its dir (not flat)\n  ✓ T7: run-hyg exits 0\n  ✓ T7: --no-resume cleared stale global-default event log + locks\n  ✓ T8: run-hyg events under its per-run dir\n  ✓ T8: engine run kept events out of the shared global default\n  ✓ T9: unpinned ad-hoc emit → ephemeral dir under the data root\n  ✓ T9: unpinned ad-hoc emit wrote nothing under $TMPDIR (#2004)\n  ✓ T9: unpinned ad-hoc emit left the shared global default untouched\n\n\n  1 of 19 tests failed\n\n  ✗ T4: explicit-state run exits 0\n\nintegration: 249/250 passed\ne2e: 9/9 passed\ngolden: 1/1 passed\n\n─── Mutation test results ──────────────────────────────\n  PASS  atomic-state-mutations.md  (caught: rc=3)\n  PASS  cache.md  (caught: rc=1)\n  PASS  cleanup-worktree-age-guard.md  (caught: rc=2)\n  PASS  cleanup-worktree-dirty-guard.md  (caught: rc=2)\n  PASS  detect-platforms.md  (caught: rc=11)\n  PASS  event-bus-ansi-strip.md  (caught: rc=4)\n  PASS  event-bus.md  (caught: rc=3)\n  INFRA memory.md  (patch failed after retries)\n  PASS  orch.md  (caught: rc=1)\n  PASS  output-destinations.md  (caught: rc=1)\n  PASS  pipeline-contracts.md  (caught: rc=3)\n  PASS  pipeline-dispatch-arg-mutations.md  (caught: rc=4)\n  PASS  pipeline-dispatch-failopen-mutations.md  (caught: rc=7)\n  PASS  pipeline-dispatch-mutations.md  (caught: rc=9)\n  PASS  pipeline-dispatch-prefix-mutations.md  (caught: rc=1)\n  PASS  pipeline-dispatch-selfsource-mutations.md  (caught: rc=1)\n  PASS  pipeline-resolver.md  (caught: rc=1)\n  PASS  rc-semantics.md  (caught: rc=1)\n  PASS  registry-role-resolution.md  (caught: rc=1)\n  PASS  registry-validate-manifest-mutations.md  (caught: rc=1)\n  PASS  resume-recommendation-mutations.md  (caught: rc=1)\n  PASS  router-route-mutations.md  (caught: rc=30)\n  PASS  run-status-comment.md  (caught: rc=1)\n  PASS  runner-fail-closed-mutations.md  (caught: rc=1)\n  PASS  scope-redaction-mutations.md  (caught: rc=3)\nmutation-infra: 1 non-fatal (worktree/patch contention; excluded from score — #1184)\nmutation: 24/24 passed\nlint: 1/1 passed\n\ntotal: 724/725 passed (4 skipped)",
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 440/440 passed (4 skipped)\nintegration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0ini5y/tests/integration/runner-state-file-issue-cross-check-test.sh\n\n  runner — ZBUILD_STATE_FILE vs --issue cross-check (#296 Δ-4)\n\n▸ merge_policy: auto_unless_flagged\n  ✗ mismatch (state=95840002, --issue=95840001) exits non-zero\n    expected: 2, got: 1\n  ✗ mismatch error message is clear\n    stderr:   WARNING: manifest for stage intake has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)\n  WARNING: manifest for stage build has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)\n✗ No state file found at /home/runner/work/_temp/zbuild-state/scratch/test/runner-state-file-issue-cross-check.Vnq3aL/state/pipeline-state.json; cannot resume\n  ✓ matching (state=95840002, --issue=95840002) exits 0 via dry-run\n  ✓ matching values produce no 'mismatch' error\n  ✓ goal-mode + state file exits 0 via dry-run\n  ✓ no --issue (goal-mode) does not trigger cross-check error\n  ✓ no env var, --issue only, exits 0 via dry-run\n  ✓ ZBUILD_STATE_FILE unset → no cross-check applied\n  ✓ missing state file exits 0 via dry-run\n  ✓ missing state file → no cross-check applied (resume logic handles)\n  ✗ corrupt state file + --issue → exits 2 (fail-closed)\n    expected: 2, got: 0\n  ✗ corrupt-JSON error message is clear\n    stderr:   WARNING: manifest for stage intake has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)\n  WARNING: manifest for stage build has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)\n\n\n  4 of 12 tests failed\n\n  ✗ mismatch (state=95840002, --issue=95840001) exits non-zero\n  ✗ mismatch error message is clear\n  ✗ corrupt state file + --issue → exits 2 (fail-closed)\n  ✗ corrupt-JSON error message is clear\n\nintegration: 249/250 passed\ne2e: 9/9 passed\ngolden: 1/1 passed\n\n─── Mutation test results ──────────────────────────────\n  PASS  atomic-state-mutations.md  (caught: rc=3)\n  PASS  cache.md  (caught: rc=1)\n  PASS  cleanup-worktree-age-guard.md  (caught: rc=2)\n  PASS  cleanup-worktree-dirty-guard.md  (caught: rc=2)\n  PASS  detect-platforms.md  (caught: rc=11)\n  PASS  event-bus-ansi-strip.md  (caught: rc=4)\n  PASS  event-bus.md  (caught: rc=3)\n  INFRA memory.md  (patch failed after retries)\n  PASS  orch.md  (caught: rc=1)\n  PASS  output-destinations.md  (caught: rc=1)\n  PASS  pipeline-contracts.md  (caught: rc=3)\n  PASS  pipeline-dispatch-arg-mutations.md  (caught: rc=4)\n  PASS  pipeline-dispatch-failopen-mutations.md  (caught: rc=7)\n  PASS  pipeline-dispatch-mutations.md  (caught: rc=9)\n  PASS  pipeline-dispatch-prefix-mutations.md  (caught: rc=1)\n  PASS  pipeline-dispatch-selfsource-mutations.md  (caught: rc=1)\n  PASS  pipeline-resolver.md  (caught: rc=1)\n  PASS  rc-semantics.md  (caught: rc=1)\n  PASS  registry-role-resolution.md  (caught: rc=1)\n  PASS  registry-validate-manifest-mutations.md  (caught: rc=1)\n  PASS  resume-recommendation-mutations.md  (caught: rc=1)\n  PASS  router-route-mutations.md  (caught: rc=30)\n  PASS  run-status-comment.md  (caught: rc=1)\n  PASS  runner-fail-closed-mutations.md  (caught: rc=1)\n  PASS  scope-redaction-mutations.md  (caught: rc=3)\nmutation-infra: 1 non-fatal (worktree/patch contention; excluded from score — #1184)\nmutation: 24/24 passed\nlint: 1/1 passed\n\ntotal: 724/725 passed (4 skipped)",
   "run_mode": "targeted+full",
   "exit_code": 1,
   "data": {
     "exit_code": 1,
     "passed": 724,
     "failed": 1,
-    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 440/440 passed (4 skipped)\nintegration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.vUqrf6/tests/integration/per-run-state-isolation-test.sh\n\n  per-run state isolation (#887)\n\n  ✓ T1: run-aaa exits 0\n  ✓ T2: run-bbb exits 0\n  ✓ T1: run-aaa state under runs/run-aaa/\n  ✓ T2: run-bbb state under runs/run-bbb/\n  ✓ T2: run-aaa state has its own run_id (no clobber)\n  ✓ T2: run-bbb state has its own run_id (no clobber)\n  ✓ T3: latest → run-bbb (most recent)\n  ✗ T4: explicit-state run exits 0\n    expected: 0, got: 1\n  ✓ T4: explicit ZBUILD_STATE_DIR used verbatim (no runs/)\n  ✓ T4: explicit state dir not re-rooted\n  ✓ T5: ZBUILD_EVENTS_DIR is per-run (runs/run-ddd)\n  ✓ T6: explicit STATE_FILE → events follow its dir (not flat)\n  ✓ T7: run-hyg exits 0\n  ✓ T7: --no-resume cleared stale global-default event log + locks\n  ✓ T8: run-hyg events under its per-run dir\n  ✓ T8: engine run kept events out of the shared global default\n  ✓ T9: unpinned ad-hoc emit → ephemeral dir under the data root\n  ✓ T9: unpinned ad-hoc emit wrote nothing under $TMPDIR (#2004)\n  ✓ T9: unpinned ad-hoc emit left the shared global default untouched\n\n\n  1 of 19 tests failed\n\n  ✗ T4: explicit-state run exits 0\n\nintegration: 249/250 passed\ne2e: 9/9 passed\ngolden: 1/1 passed\n\n─── Mutation test results ──────────────────────────────\n  PASS  atomic-state-mutations.md  (caught: rc=3)\n  PASS  cache.md  (caught: rc=1)\n  PASS  cleanup-worktree-age-guard.md  (caught: rc=2)\n  PASS  cleanup-worktree-dirty-guard.md  (caught: rc=2)\n  PASS  detect-platforms.md  (caught: rc=11)\n  PASS  event-bus-ansi-strip.md  (caught: rc=4)\n  PASS  event-bus.md  (caught: rc=3)\n  INFRA memory.md  (patch failed after retries)\n  PASS  orch.md  (caught: rc=1)\n  PASS  output-destinations.md  (caught: rc=1)\n  PASS  pipeline-contracts.md  (caught: rc=3)\n  PASS  pipeline-dispatch-arg-mutations.md  (caught: rc=4)\n  PASS  pipeline-dispatch-failopen-mutations.md  (caught: rc=7)\n  PASS  pipeline-dispatch-mutations.md  (caught: rc=9)\n  PASS  pipeline-dispatch-prefix-mutations.md  (caught: rc=1)\n  PASS  pipeline-dispatch-selfsource-mutations.md  (caught: rc=1)\n  PASS  pipeline-resolver.md  (caught: rc=1)\n  PASS  rc-semantics.md  (caught: rc=1)\n  PASS  registry-role-resolution.md  (caught: rc=1)\n  PASS  registry-validate-manifest-mutations.md  (caught: rc=1)\n  PASS  resume-recommendation-mutations.md  (caught: rc=1)\n  PASS  router-route-mutations.md  (caught: rc=30)\n  PASS  run-status-comment.md  (caught: rc=1)\n  PASS  runner-fail-closed-mutations.md  (caught: rc=1)\n  PASS  scope-redaction-mutations.md  (caught: rc=3)\nmutation-infra: 1 non-fatal (worktree/patch contention; excluded from score — #1184)\nmutation: 24/24 passed\nlint: 1/1 passed\n\ntotal: 724/725 passed (4 skipped)",
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 440/440 passed (4 skipped)\nintegration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0ini5y/tests/integration/runner-state-file-issue-cross-check-test.sh\n\n  runner — ZBUILD_STATE_FILE vs --issue cross-check (#296 Δ-4)\n\n▸ merge_policy: auto_unless_flagged\n  ✗ mismatch (state=95840002, --issue=95840001) exits non-zero\n    expected: 2, got: 1\n  ✗ mismatch error message is clear\n    stderr:   WARNING: manifest for stage intake has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)\n  WARNING: manifest for stage build has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)\n✗ No state file found at /home/runner/work/_temp/zbuild-state/scratch/test/runner-state-file-issue-cross-check.Vnq3aL/state/pipeline-state.json; cannot resume\n  ✓ matching (state=95840002, --issue=95840002) exits 0 via dry-run\n  ✓ matching values produce no 'mismatch' error\n  ✓ goal-mode + state file exits 0 via dry-run\n  ✓ no --issue (goal-mode) does not trigger cross-check error\n  ✓ no env var, --issue only, exits 0 via dry-run\n  ✓ ZBUILD_STATE_FILE unset → no cross-check applied\n  ✓ missing state file exits 0 via dry-run\n  ✓ missing state file → no cross-check applied (resume logic handles)\n  ✗ corrupt state file + --issue → exits 2 (fail-closed)\n    expected: 2, got: 0\n  ✗ corrupt-JSON error message is clear\n    stderr:   WARNING: manifest for stage intake has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)\n  WARNING: manifest for stage build has no inputs: block — declare `inputs: []` for zero-input plugins (ADR-020)\n\n\n  4 of 12 tests failed\n\n  ✗ mismatch (state=95840002, --issue=95840001) exits non-zero\n  ✗ mismatch error message is clear\n  ✗ corrupt state file + --issue → exits 2 (fail-closed)\n  ✗ corrupt-JSON error message is clear\n\nintegration: 249/250 passed\ne2e: 9/9 passed\ngolden: 1/1 passed\n\n─── Mutation test results ──────────────────────────────\n  PASS  atomic-state-mutations.md  (caught: rc=3)\n  PASS  cache.md  (caught: rc=1)\n  PASS  cleanup-worktree-age-guard.md  (caught: rc=2)\n  PASS  cleanup-worktree-dirty-guard.md  (caught: rc=2)\n  PASS  detect-platforms.md  (caught: rc=11)\n  PASS  event-bus-ansi-strip.md  (caught: rc=4)\n  PASS  event-bus.md  (caught: rc=3)\n  INFRA memory.md  (patch failed after retries)\n  PASS  orch.md  (caught: rc=1)\n  PASS  output-destinations.md  (caught: rc=1)\n  PASS  pipeline-contracts.md  (caught: rc=3)\n  PASS  pipeline-dispatch-arg-mutations.md  (caught: rc=4)\n  PASS  pipeline-dispatch-failopen-mutations.md  (caught: rc=7)\n  PASS  pipeline-dispatch-mutations.md  (caught: rc=9)\n  PASS  pipeline-dispatch-prefix-mutations.md  (caught: rc=1)\n  PASS  pipeline-dispatch-selfsource-mutations.md  (caught: rc=1)\n  PASS  pipeline-resolver.md  (caught: rc=1)\n  PASS  rc-semantics.md  (caught: rc=1)\n  PASS  registry-role-resolution.md  (caught: rc=1)\n  PASS  registry-validate-manifest-mutations.md  (caught: rc=1)\n  PASS  resume-recommendation-mutations.md  (caught: rc=1)\n  PASS  router-route-mutations.md  (caught: rc=30)\n  PASS  run-status-comment.md  (caught: rc=1)\n  PASS  runner-fail-closed-mutations.md  (caught: rc=1)\n  PASS  scope-redaction-mutations.md  (caught: rc=3)\nmutation-infra: 1 non-fatal (worktree/patch contention; excluded from score — #1184)\nmutation: 24/24 passed\nlint: 1/1 passed\n\ntotal: 724/725 passed (4 skipped)",
     "diff_applied": false,
     "test_cmd": "npm test",
     "run_mode": "targeted+full",
     "timing": {
       "tiers": {
-        "lint": 137795,
-        "e2e": 111148,
-        "golden": 6165,
-        "unit": 735327,
-        "integration": 773929
+        "lint": 138326,
+        "e2e": 111732,
+        "golden": 6320,
+        "unit": 754753,
+        "integration": 791203
       },
       "slowest_files": [
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.vUqrf6/tests/integration/run-status-comment-runner-test.sh",
-          "ms": 239664
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0ini5y/tests/integration/run-status-comment-runner-test.sh",
+          "ms": 244314
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.vUqrf6/tests/unit/runner-render-cycle-divider-test.sh",
-          "ms": 193423
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0ini5y/tests/unit/runner-render-cycle-divider-test.sh",
+          "ms": 199189
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.vUqrf6/tests/unit/core-pipeline-cycle-stall-break-test.sh",
-          "ms": 193114
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0ini5y/tests/unit/core-pipeline-cycle-stall-break-test.sh",
+          "ms": 195813
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.vUqrf6/tests/unit/run-status-comment-render-test.sh",
-          "ms": 140443
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0ini5y/tests/unit/run-status-comment-render-test.sh",
+          "ms": 143166
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.vUqrf6/tests/integration/cycle-multi-exit-when-e2e-test.sh",
-          "ms": 135363
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0ini5y/tests/integration/cycle-multi-exit-when-e2e-test.sh",
+          "ms": 136813
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.vUqrf6/tests/integration/cycle-acceptance-terminal-failure-test.sh",
-          "ms": 127636
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0ini5y/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 131920
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.vUqrf6/tests/unit/stage-resolution-parity-test.sh",
-          "ms": 123826
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0ini5y/tests/unit/stage-resolution-parity-test.sh",
+          "ms": 126833
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.vUqrf6/tests/unit/runner-pipeline-end-test.sh",
-          "ms": 115592
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0ini5y/tests/unit/runner-pipeline-end-test.sh",
+          "ms": 121199
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.vUqrf6/tests/unit/convergence-timeouts-never-fatal-1208-test.sh",
-          "ms": 113069
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0ini5y/tests/unit/convergence-timeouts-never-fatal-1208-test.sh",
+          "ms": 116483
         },
         {
-          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.vUqrf6/plugins/agent/review-lens/tests/review-lens-v2-result-test.sh",
-          "ms": 102405
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.0ini5y/plugins/agent/review-lens/tests/review-lens-v2-result-test.sh",
+          "ms": 103856
         }
       ]
     },
-    "tree_sha": "2292c42e604a534fa6ffbd02b2f1495a4cae9b26",
+    "tree_sha": "93f148ac77f02bfd904b389313c409a1019c6001",
     "targeted": {
-      "test_cmd": "bash scripts/run-tests.sh --files 'plugins/agent/security-lens/tests/security-lens-test.sh' 'tests/golden/golden-contracts-test.sh' 'tests/integration/cleanup-release-test.sh' 'tests/unit/teardown-purge-scratch-test.sh'",
+      "test_cmd": "bash scripts/run-tests.sh --files 'plugins/agent/security-lens/tests/security-lens-test.sh' 'tests/golden/golden-contracts-test.sh' 'tests/integration/per-run-state-isolation-test.sh'",
       "verdict": "pass",
-      "passed": 4,
+      "passed": 3,
       "failed": 0
     }
   }
