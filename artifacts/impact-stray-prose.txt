@@ -1,3 +1,0 @@
-The scope looks comprehensive for the security-lens v2 migration. The files I found referencing security-lens outside the scope block are either: comment-only references, files already in scope, or files that reference the plugin by name but don't assert specific contract details that this migration changes (like `cleanup` function name or `result_contract: 2`).
-
-The `tests/unit/artifact-type-retirement-test.sh` is already in scope. The `tests/unit/adr-migration-claims-test.sh` is already in scope and its `security-lens` reference checks for `_llm_envelope_parse` usage which is an existing assertion. All critical files touching the v2 contract, cleanup hook, manifest shape, and golden outputs are already in the design scope block.

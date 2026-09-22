@@ -1,9 +1,0 @@
-{
-  "result_contract": 2,
-  "verdict": "complete",
-  "disposition": "complete",
-  "reason": "authored acceptance assertions for 17 SPEC(s) from the design contract",
-  "data": {
-    "specs_covered": 17
-  }
-}
