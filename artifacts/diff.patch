@@ -1,0 +1,96 @@
+diff --git a/plugins/agent/security-lens/tests/security-lens-test.sh b/plugins/agent/security-lens/tests/security-lens-test.sh
+index f5a05ee0..d2d42324 100644
+--- a/plugins/agent/security-lens/tests/security-lens-test.sh
++++ b/plugins/agent/security-lens/tests/security-lens-test.sh
+@@ -460,7 +460,8 @@ assert_eq "[SPEC-5] security_lens_cleanup is declared and returns 0" "0" "$spec5
+ # ─── Manifest assertions (SPEC-5, SPEC-6, SPEC-7, SPEC-11, SPEC-13) ─────────
+ _MANIFEST_FILE="$PLUGIN_DIR/manifest.yaml"
+ 
+-if grep -qE '^\s+cleanup:\s+security_lens_cleanup' "$_MANIFEST_FILE" 2>/dev/null; then
++_spec5_hooks_block=$(awk '/^hooks:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
++if grep -qE '^\s+cleanup:\s+security_lens_cleanup' <<< "$_spec5_hooks_block" 2>/dev/null; then
+     assert_pass "[SPEC-5] security_lens_cleanup is declared as YAML key under hooks: in manifest"
+ else
+     assert_fail "[SPEC-5] security_lens_cleanup is declared as YAML key under hooks: in manifest"
+@@ -473,7 +474,8 @@ else
+     assert_fail "[SPEC-6] manifest declares provides.result_contract: 2"
+ fi
+ 
+-_spec7_vv=$(awk '/valid_verdicts:/{found=1;next} found && /^\s+-/{print;next} found{exit}' "$_MANIFEST_FILE" 2>/dev/null || true)
++_spec7_config=$(awk '/^config:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
++_spec7_vv=$(awk '/valid_verdicts:/{found=1;next} found && /^\s+-/{print;next} found{exit}' <<< "$_spec7_config" 2>/dev/null || true)
+ if grep -q '\bpass\b' <<< "$_spec7_vv" 2>/dev/null && \
+    grep -q '\berror\b' <<< "$_spec7_vv" 2>/dev/null; then
+     assert_pass "[SPEC-7] manifest declares valid_verdicts: [pass, error]"
+@@ -481,7 +483,8 @@ else
+     assert_fail "[SPEC-7] manifest declares valid_verdicts: [pass, error]"
+ fi
+ 
+-_spec11_router=$(awk '/^  router:/{found=1;next} found && /^    [a-z]/{print;next} found{exit}' "$_MANIFEST_FILE" 2>/dev/null || true)
++_spec11_config=$(awk '/^config:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
++_spec11_router=$(awk '/^\s+router:/{found=1;next} found && /^\s{4}[a-z]/{print;next} found{exit}' <<< "$_spec11_config" 2>/dev/null || true)
+ if grep -q 'timeout_s:' <<< "$_spec11_router" 2>/dev/null && \
+    grep -q 'max_turns:' <<< "$_spec11_router" 2>/dev/null; then
+     assert_pass "[SPEC-11] manifest declares config.router with timeout_s and max_turns"
+@@ -519,24 +522,35 @@ else
+ fi
+ 
+ # ─── [SPEC-12]: ZBUILD_ROUTER_MAX_TURNS_OVERRIDE takes precedence ────────────
+-# Read manifest max_turns so we can prove the override beats a different value
+-_spec12_manifest_turns=$(awk '/^  router:/{r=1;next} r && /max_turns:/{match($0,/[0-9]+/); print substr($0,RSTART,RLENGTH); exit}' "$_MANIFEST_FILE" 2>/dev/null || echo 45)
+-_spec12_env_file="$TEST_TEMP_DIR/spec12-env.txt"
+-: > "$_spec12_env_file"
+-route_to_model() {
+-    printf '%s' "${ZBUILD_ROUTER_MAX_TURNS_OVERRIDE:-unset}" > "$_spec12_env_file"
+-    printf '%s\n' '{"schema_version":1,"plugin_id":"security-lens","findings":[]}'
+-    return 0
+-}
++# Restore real route_to_model so _route_resolve_max_turns runs and passes
++# --max-turns to claude. Mock claude with argv recording to capture what value
++# the router resolves — proving the override reaches claude, not the manifest.
++unset _ZBUILD_ROUTER_LOADED
++# shellcheck source=../../../../core/router/route.sh
++source "$REPO_ROOT/core/router/route.sh"
++
++_spec12_manifest_turns=$(awk '/^config:/{c=1;next} c && /^[a-zA-Z]/{exit} c && /^\s+router:/{r=1;next} c && r && /max_turns:/{match($0,/[0-9]+/); print substr($0,RSTART,RLENGTH); exit}' "$_MANIFEST_FILE" 2>/dev/null || echo 45)
++assert_eq "[SPEC-12] manifest max_turns differs from override value (precedence testable)" \
++    "1" "$(( _spec12_manifest_turns != 7 ? 1 : 0 ))"
++
++_spec12_argv="$TEST_TEMP_DIR/spec12-argv"
++install_envelope_mock_claude --record-argv "$_spec12_argv" \
++    '{"schema_version":1,"plugin_id":"security-lens","findings":[]}'
+ ZBUILD_ROUTER_MAX_TURNS_OVERRIDE=7 \
+     _security_lens_run_inner "$INPUT" "$MANIFEST" \
+     "$TEST_TEMP_DIR/findings_spec12.json" "$TEST_TEMP_DIR" >/dev/null 2>&1
+-_spec12_val="$(cat "$_spec12_env_file" 2>/dev/null || echo unset)"
+-# Confirm manifest value differs from override — so we're proving precedence, not coincidence
+-assert_eq "[SPEC-12] manifest max_turns differs from override value (precedence testable)" \
+-    "1" "$(( _spec12_manifest_turns != 7 ? 1 : 0 ))"
++
++# Prove the override reached claude as --max-turns 7, not the manifest value (45)
++_spec12_max_turns=""
++if [[ -f "$_spec12_argv" ]]; then
++    _prev_arg=""
++    while IFS= read -r _line; do
++        [[ "$_prev_arg" == "--max-turns" ]] && { _spec12_max_turns="$_line"; break; }
++        _prev_arg="$_line"
++    done < "$_spec12_argv"
++fi
+ assert_eq "[SPEC-12] ZBUILD_ROUTER_MAX_TURNS_OVERRIDE takes precedence over manifest config.router.max_turns" \
+-    "7" "$_spec12_val"
++    "7" "$_spec12_max_turns"
+ 
+ # ─── [SPEC-14]: no hardcoded artifact paths beyond manifest-declared basenames ─
+ _spec14_plugin="$PLUGIN_DIR/plugin.sh"
+@@ -579,6 +593,11 @@ fi
+ #     exist, write v2 result to $_sl_out_ref with verdict=error/interrupted.
+ OUTPUT_SPEC18B="$TEST_TEMP_DIR/findings_spec18b.json"
+ _sl_out_ref="$OUTPUT_SPEC18B"
++if declare -F _security_lens_interrupt_handler >/dev/null 2>&1; then
++    assert_pass "[SPEC-18b] _security_lens_interrupt_handler exists as callable function"
++else
++    assert_fail "[SPEC-18b] _security_lens_interrupt_handler exists as callable function"
++fi
+ set +e
+ _security_lens_interrupt_handler
+ set -e
