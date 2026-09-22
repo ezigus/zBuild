@@ -68,6 +68,7 @@
   [38;2;74;222;128m✓[0m R10 (#483): security-lens exports ZBUILD_ROUTER_ARTIFACT_ID=security-lens around route_to_model
   [38;2;74;222;128m✓[0m R11: security-lens redacted_content ANSI bytes stripped before LLM prompt
   [38;2;74;222;128m✓[0m R11: security-lens redacted_content genuine content survives sanitize
+  [38;2;74;222;128m✓[0m [SPEC-10] _security_lens_envelope_schema_ok exists and is callable
   [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery → rc=0
   [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery → findings.json written
   [38;2;248;113;113m✗[0m [SPEC-10] postamble recovery → recovered findings (1 finding, not empty)
@@ -129,6 +130,7 @@
   [38;2;74;222;128m✓[0m R10 (#483): security-lens exports ZBUILD_ROUTER_ARTIFACT_ID=security-lens around route_to_model
   [38;2;74;222;128m✓[0m R11: security-lens redacted_content ANSI bytes stripped before LLM prompt
   [38;2;74;222;128m✓[0m R11: security-lens redacted_content genuine content survives sanitize
+  [38;2;74;222;128m✓[0m [SPEC-10] _security_lens_envelope_schema_ok exists and is callable
   [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery → rc=0
   [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery → findings.json written
   [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery → recovered findings (1 finding, not empty)
@@ -138,6 +140,7 @@
   [38;2;74;222;128m✓[0m [SPEC-4] no-state-file path returns rc=1 (not rc=2)
   [38;2;74;222;128m✓[0m [SPEC-4] no-state-file path writes result_contract:2
   [38;2;74;222;128m✓[0m [SPEC-5] security_lens_cleanup is declared and returns 0
+  [38;2;74;222;128m✓[0m [SPEC-5] manifest has NO cleanup: YAML key under hooks: (ADR-062 §3 retired)
   [38;2;74;222;128m✓[0m [SPEC-6] manifest declares provides.result_contract: 2
   [38;2;74;222;128m✓[0m [SPEC-7] manifest declares valid_verdicts: [pass, error]
   [38;2;74;222;128m✓[0m [SPEC-11] manifest declares config.router with timeout_s and max_turns
@@ -163,5 +166,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 82 tests passed[0m
+  [38;2;74;222;128m[1mAll 84 tests passed[0m
 
