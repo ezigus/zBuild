@@ -2,7 +2,7 @@
   "result_contract": 2,
   "verdict": "covered",
   "disposition": "complete",
-  "reason": "Every checkbox requirement in the issue maps to a SPEC — v2 result on all exit paths (SPEC-1–4, 18), valid_verdicts (SPEC-7), no hardcoded artifact paths (SPEC-14), router budgets (SPEC-11–12), golden diff (SPEC-15), primary output (SPEC-13), provides.events and provides.role (SPEC-16–17), cleanup hook (SPEC-5), and name-matched inputs (SPEC-20).",
+  "reason": "Every checkbox requirement in the issue maps to at least one SPEC — v2 result on all exit paths (SPEC-1–4, 18), valid_verdicts (SPEC-7), no hardcoded paths (SPEC-14), router budgets (SPEC-11–12), golden diff (SPEC-15), primary output (SPEC-13), provides.events/role (SPEC-16–17), cleanup hook (SPEC-5), and name-matched inputs (SPEC-20); the design-gate failures are tagging errors ([guard] vs [change]), not coverage gaps.",
   "data": {
     "uncovered": []
   }
