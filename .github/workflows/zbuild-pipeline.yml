@@ -216,7 +216,11 @@ jobs:
           # checkout. `bash scripts/zbuild` would resolve _ZBUILD_ROOT to the
           # working tree this run is editing; the CLI now refuses that outright.
           # The target repo remains this workspace checkout, which is correct.
-          "$HOME/.local/bin/zbuild" pipeline start "${args[@]}"
+          # #2178: exec, so the runner IS the step process. A cancel signals the
+          # step process; a shell waiting on a child does not forward it — it
+          # died, the runner was SIGKILLed with the tree, and its EXIT trap
+          # (the always-run persist) never fired on any cancelled run.
+          exec "$HOME/.local/bin/zbuild" pipeline start "${args[@]}"
 
       - name: Push work branch (preserve work on pass OR fail)
         # CI-7 (#999): push the pipeline's work branch to origin no matter the

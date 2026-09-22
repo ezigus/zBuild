@@ -72,6 +72,7 @@
     "cycle.iteration.reused",
     "cycle.route_back.early",
     "cycle.route_back.exhausted_unchanged",
+    "cycle.route_back.blocked_on_scope",
     "cycle.aborted",
     "cycle.config.invalid",
     "cycle.feedback.missing",

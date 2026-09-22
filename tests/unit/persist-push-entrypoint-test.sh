@@ -240,6 +240,65 @@ else
     assert_pass "[SPEC-9] the state dir is checked before find is called"
 fi
 
+# ─── [SPEC-10][change] identity comes from the run's state on disk (#2178) ─
+# The CI backstop runs in a fresh step: the runner's ZBUILD_ISSUE export died
+# with the runner. Every cancelled #1841 run wrote "no identity" for exactly
+# this reason. The state file the runner leaves behind already says whose run
+# it is — persist reads THAT, and env is only the fallback.
+print_test_section "[SPEC-10][change] zbuild persist --push with NO identity env, a state file on disk"
+
+_S10="$TEST_TEMP_DIR/s10"; _seed "$_S10"
+jq -n --argjson i "$_ZB_ID5" '{schema_version:1, issue:$i, goal:null, run_id:"r10", status:"in_progress"}' \
+    > "$_S10/pipeline-state.json"
+_rc=0
+( cd "$REPO" && env -u ZBUILD_ISSUE_NUMBER -u ZBUILD_ISSUE -u ZBUILD_GOAL \
+    ZBUILD_STATE_DIR="$_S10" ZBUILD_ARTIFACT_DIR="$_S10/artifacts" \
+    bash "$REPO_ROOT/scripts/zbuild" persist --push ) >/dev/null 2>&1 || _rc=$?
+assert_exit_code "[SPEC-10] the backstop still exits 0" "0" "$_rc"
+assert_eq "[SPEC-10] the state file's issue IS the identity" "true" \
+    "$(jq -r '.data.identity_present | tostring' "$_S10/artifacts/persist-result.json" 2>/dev/null)"
+if git -C "$ORIGIN" rev-parse --verify --quiet "refs/heads/zbuild/state/issue-$_ZB_ID5" >/dev/null 2>&1; then
+    assert_pass "[SPEC-10] and that issue's state branch reached origin"
+else
+    assert_fail "[SPEC-10] a killed run's artifacts never reach origin" \
+        "no refs/heads/zbuild/state/issue-$_ZB_ID5 on origin"
+fi
+# A goal run's identity comes from the same file.
+_S10g="$TEST_TEMP_DIR/s10g"; _seed "$_S10g"
+jq -n '{schema_version:1, issue:0, goal:"spin the widget the other way", run_id:"r10g"}' \
+    > "$_S10g/pipeline-state.json"
+_before_goal="$(git -C "$ORIGIN" for-each-ref --format='%(refname)' 'refs/heads/zbuild/state/goal-*' 2>/dev/null | wc -l | tr -d ' ')"
+( cd "$REPO" && env -u ZBUILD_ISSUE_NUMBER -u ZBUILD_ISSUE -u ZBUILD_GOAL \
+    ZBUILD_STATE_DIR="$_S10g" ZBUILD_ARTIFACT_DIR="$_S10g/artifacts" \
+    bash "$REPO_ROOT/scripts/zbuild" persist --push ) >/dev/null 2>&1 || true
+_after_goal="$(git -C "$ORIGIN" for-each-ref --format='%(refname)' 'refs/heads/zbuild/state/goal-*' 2>/dev/null | wc -l | tr -d ' ')"
+assert_eq "[SPEC-10] a goal in the state file is an identity too (one more goal branch on origin)" \
+    "$(( _before_goal + 1 ))" "$_after_goal"
+# The env still wins when there is no state file (SPEC-1/2 above), and a
+# state file with neither is still no identity.
+_S10n="$TEST_TEMP_DIR/s10n"; _seed "$_S10n"
+jq -n '{schema_version:1, issue:0, goal:null}' > "$_S10n/pipeline-state.json"
+( cd "$REPO" && env -u ZBUILD_ISSUE_NUMBER -u ZBUILD_ISSUE -u ZBUILD_GOAL \
+    ZBUILD_STATE_DIR="$_S10n" ZBUILD_ARTIFACT_DIR="$_S10n/artifacts" \
+    bash "$REPO_ROOT/scripts/zbuild" persist --push ) >/dev/null 2>&1 || true
+assert_eq "[SPEC-10] a state file with neither issue nor goal is still no identity" "false" \
+    "$(jq -r '.data.identity_present | tostring' "$_S10n/artifacts/persist-result.json" 2>/dev/null)"
+
+# ─── [SPEC-11][change] the run step execs the runner (#2178) ────────────────
+# GitHub cancels the STEP SHELL. A shell waiting on a child does not forward
+# the signal; it dies, the runner is SIGKILLed with the tree, and the EXIT trap
+# that runs persist never fires. `exec` makes the runner the step process, so
+# the signal lands on its own trap and the run records pipeline.aborted.
+print_test_section "[SPEC-11][change] the workflow's run step execs the runner"
+_run_line="$(grep -vE '^\s*#' "$REPO_ROOT/.github/workflows/zbuild-pipeline.yml" 2>/dev/null \
+             | grep -E 'zbuild" pipeline start' || true)"
+assert_eq "[SPEC-11] exactly one pipeline-start line" "1" "$(printf '%s\n' "$_run_line" | grep -c . || true)"
+case "$_run_line" in
+    *'exec "$HOME/.local/bin/zbuild" pipeline start'*)
+        assert_pass "[SPEC-11] the runner replaces the step shell (exec)" ;;
+    *)  assert_fail "[SPEC-11] the runner replaces the step shell (exec)" "got: ${_run_line:-<none>}" ;;
+esac
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
