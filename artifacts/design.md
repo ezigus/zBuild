@@ -88,6 +88,7 @@ tests/e2e/crash-resume-test.sh
 tests/e2e/injection-guard-test.sh
 plugins/tool/output-github-comment/tests/output-test.sh
 plugins/tool/output-github-comment/tests/output-stdout-test.sh
+plugins/tool/test/tests/test-test.sh
 .github/issues/keepers-manifest.yaml
 scripts/lib/artifact-render.sh
 scripts/lib/golden.sh
@@ -96,10 +97,13 @@ scripts/lib/llm-agent.sh
 scripts/lib/lint-llm-envelope.sh
 scripts/lib/test-output-sanitize.sh
 scripts/lib/manifest-graph.sh
+scripts/lib/lint-contract.sh
 core/pipeline/runner.sh
 core/router/route.sh
 core/state/resume.sh
 core/output/stage-io.sh
+core/output/stage-colors.sh
+legacy/migrated/security-lens.md
 ```
 
 ```acceptance
@@ -147,5 +151,3 @@ SPEC-18: plugins/agent/security-lens/tests/security-lens-test.sh
 SPEC-19: plugins/agent/security-lens/tests/security-lens-test.sh
 SPEC-20: plugins/agent/security-lens/tests/security-lens-test.sh
 ```
-
-LOOP_COMPLETE
