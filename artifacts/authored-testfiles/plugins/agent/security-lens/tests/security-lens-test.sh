@@ -460,6 +460,13 @@ fi
 unset ZBUILD_ARTIFACT_DIR
 
 # ─── [SPEC-5 new]: security_lens_cleanup is declared and returns 0 ────────────
+# Verify the function is declared in plugin.sh itself (spec: "exists in plugin.sh")
+if grep -qE '^(security_lens_cleanup[[:space:]]*\(\)|function[[:space:]]+security_lens_cleanup)' \
+        "$PLUGIN_DIR/plugin.sh" 2>/dev/null; then
+    assert_pass "[SPEC-5] security_lens_cleanup is declared in plugin.sh"
+else
+    assert_fail "[SPEC-5] security_lens_cleanup is declared in plugin.sh"
+fi
 set +e
 security_lens_cleanup
 spec5_cleanup_rc=$?
