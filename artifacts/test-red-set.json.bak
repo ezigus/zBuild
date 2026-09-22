@@ -1,0 +1,4 @@
+[
+  "tests/integration/cleanup-release-test.sh",
+  "tests/unit/teardown-purge-scratch-test.sh"
+]
