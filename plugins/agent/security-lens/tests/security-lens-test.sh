@@ -135,7 +135,7 @@ if [[ -f "$ZBUILD_EVENTS_JSONL" ]]; then
         assert_fail "expected redaction.applied event in event log"
     fi
     _spec8_ev=$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
-        jq -r 'select(.type=="plugin.result" and .plugin=="security-lens" and (.data.result_contract // 0) == 2) | .type // empty' \
+        jq -r 'select(.type=="plugin.result" and .plugin=="security-lens" and (.data.result_contract // "0") == "2") | .type // empty' \
         2>/dev/null | head -1 || true)
     assert_eq "[SPEC-8] plugin.result event carries result_contract:2 on normal exit path with plugin=security-lens" \
         "plugin.result" "$_spec8_ev"
@@ -466,52 +466,61 @@ else
     assert_fail "[SPEC-5] security_lens_cleanup is declared as YAML key under hooks: in manifest"
 fi
 
-if grep -q 'result_contract: 2' "$_MANIFEST_FILE" 2>/dev/null; then
+_spec6_provides=$(sed -n '/^provides:/,/^[a-zA-Z]/{/^provides:/d; /^[a-zA-Z]/d; p}' "$_MANIFEST_FILE" 2>/dev/null || true)
+if grep -q 'result_contract: 2' <<< "$_spec6_provides" 2>/dev/null; then
     assert_pass "[SPEC-6] manifest declares provides.result_contract: 2"
 else
     assert_fail "[SPEC-6] manifest declares provides.result_contract: 2"
 fi
 
-if grep -q '^\s*- pass' "$_MANIFEST_FILE" 2>/dev/null && \
-   grep -q '^\s*- error' "$_MANIFEST_FILE" 2>/dev/null; then
+_spec7_vv=$(awk '/valid_verdicts:/{found=1;next} found && /^\s+-/{print;next} found{exit}' "$_MANIFEST_FILE" 2>/dev/null || true)
+if grep -q '\bpass\b' <<< "$_spec7_vv" 2>/dev/null && \
+   grep -q '\berror\b' <<< "$_spec7_vv" 2>/dev/null; then
     assert_pass "[SPEC-7] manifest declares valid_verdicts: [pass, error]"
 else
     assert_fail "[SPEC-7] manifest declares valid_verdicts: [pass, error]"
 fi
 
-if grep -q 'timeout_s:' "$_MANIFEST_FILE" 2>/dev/null && \
-   grep -q 'max_turns:' "$_MANIFEST_FILE" 2>/dev/null; then
+_spec11_router=$(awk '/^  router:/{found=1;next} found && /^    [a-z]/{print;next} found{exit}' "$_MANIFEST_FILE" 2>/dev/null || true)
+if grep -q 'timeout_s:' <<< "$_spec11_router" 2>/dev/null && \
+   grep -q 'max_turns:' <<< "$_spec11_router" 2>/dev/null; then
     assert_pass "[SPEC-11] manifest declares config.router with timeout_s and max_turns"
 else
     assert_fail "[SPEC-11] manifest declares config.router with timeout_s and max_turns"
 fi
 
-if grep -q 'primary: true' "$_MANIFEST_FILE" 2>/dev/null; then
+_spec13_findings=$(awk '/^\s+- id: findings/{found=1; print; next} found && /^\s+- id:/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
+if grep -q 'primary: true' <<< "$_spec13_findings" 2>/dev/null; then
     assert_pass "[SPEC-13] manifest declares primary: true on findings output"
 else
     assert_fail "[SPEC-13] manifest declares primary: true on findings output"
 fi
 
 # ─── [SPEC-16]: manifest declares provides.events with both required event names ─
-if grep -q 'plugin\.result' "$_MANIFEST_FILE" 2>/dev/null; then
+_spec16_provides=$(sed -n '/^provides:/,/^[a-zA-Z]/{/^provides:/d; /^[a-zA-Z]/d; p}' "$_MANIFEST_FILE" 2>/dev/null || true)
+_spec16_events=$(awk '/^\s+events:/{found=1;next} found && /^\s+-/{print;next} found{exit}' <<< "$_spec16_provides" 2>/dev/null || true)
+if grep -q 'plugin\.result' <<< "$_spec16_events" 2>/dev/null; then
     assert_pass "[SPEC-16] manifest provides.events contains plugin.result"
 else
     assert_fail "[SPEC-16] manifest provides.events contains plugin.result"
 fi
-if grep -q 'security_lens\.failed' "$_MANIFEST_FILE" 2>/dev/null; then
+if grep -q 'security_lens\.failed' <<< "$_spec16_events" 2>/dev/null; then
     assert_pass "[SPEC-16] manifest provides.events contains security_lens.failed"
 else
     assert_fail "[SPEC-16] manifest provides.events contains security_lens.failed"
 fi
 
 # ─── [SPEC-17]: manifest declares provides.role: security-auditor ────────────
-if grep -qE 'role:\s+security-auditor' "$_MANIFEST_FILE" 2>/dev/null; then
+_spec17_provides=$(sed -n '/^provides:/,/^[a-zA-Z]/{/^provides:/d; /^[a-zA-Z]/d; p}' "$_MANIFEST_FILE" 2>/dev/null || true)
+if grep -qE 'role:\s+security-auditor' <<< "$_spec17_provides" 2>/dev/null; then
     assert_pass "[SPEC-17] manifest declares provides.role: security-auditor"
 else
     assert_fail "[SPEC-17] manifest declares provides.role: security-auditor"
 fi
 
 # ─── [SPEC-12]: ZBUILD_ROUTER_MAX_TURNS_OVERRIDE takes precedence ────────────
+# Read manifest max_turns so we can prove the override beats a different value
+_spec12_manifest_turns=$(awk '/^  router:/{r=1;next} r && /max_turns:/{match($0,/[0-9]+/); print substr($0,RSTART,RLENGTH); exit}' "$_MANIFEST_FILE" 2>/dev/null || echo 45)
 _spec12_env_file="$TEST_TEMP_DIR/spec12-env.txt"
 : > "$_spec12_env_file"
 route_to_model() {
@@ -523,6 +532,9 @@ ZBUILD_ROUTER_MAX_TURNS_OVERRIDE=7 \
     _security_lens_run_inner "$INPUT" "$MANIFEST" \
     "$TEST_TEMP_DIR/findings_spec12.json" "$TEST_TEMP_DIR" >/dev/null 2>&1
 _spec12_val="$(cat "$_spec12_env_file" 2>/dev/null || echo unset)"
+# Confirm manifest value differs from override — so we're proving precedence, not coincidence
+assert_eq "[SPEC-12] manifest max_turns differs from override value (precedence testable)" \
+    "1" "$(( _spec12_manifest_turns != 7 ? 1 : 0 ))"
 assert_eq "[SPEC-12] ZBUILD_ROUTER_MAX_TURNS_OVERRIDE takes precedence over manifest config.router.max_turns" \
     "7" "$_spec12_val"
 
@@ -548,7 +560,7 @@ _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_SPEC18A" "$TEST_TEMP_DIR"
     >/dev/null 2>&1
 spec18a_rc=$?
 set -e
-assert_eq "[SPEC-18a] interrupt: router rc=130 returns plugin rc=130" "130" "$spec18a_rc"
+assert_eq "[SPEC-18] interrupt: router rc=130 returns plugin rc=130" "130" "$spec18a_rc"
 if [[ -f "$OUTPUT_SPEC18A" ]]; then
     spec18a_verdict=$(jq -r '.verdict // "absent"' "$OUTPUT_SPEC18A" 2>/dev/null || echo absent)
     assert_eq "[SPEC-18a] interrupt artifact: verdict=error" "error" "$spec18a_verdict"
