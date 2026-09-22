@@ -74,6 +74,20 @@ assert_eq "T5: collateral request resolves to grant" "grant" "$(jq -r '.action' 
 DEC4="$(scope_resolve_request "$REQ4" "true" "collateral_tests,collateral_config" "none")"
 assert_eq "T5b: source-only request does NOT grant" "deny" "$(jq -r '.action' <<<"$DEC4")"
 
+# ─── T6 (#2178): build's summary says which files it needed outside scope ───
+# The route_back target reads build's summary in STAGE SUMMARIES. Build states
+# its OWN fact — which files it asked for — so the next stage can widen the
+# contract or drop the requirement. Nothing here names another stage.
+_S6="$TEST_TEMP_DIR/s6"; mkdir -p "$_S6"
+jq -n '{verdict:"pass", reason:"scope_request_pending",
+        out_of_scope_files:["tests/unit/a-test.sh","tests/unit/b-test.sh"]}' > "$_S6/build-summary.json"
+_L6="$(_build_scope_needs_line "$_S6/build-summary.json")"
+assert_contains "T6: the line names the files" "$_L6" "tests/unit/a-test.sh, tests/unit/b-test.sh"
+assert_contains "T6: and says they are outside the contract's scope" "$_L6" "outside the contract"
+jq -n '{verdict:"pass"}' > "$_S6/none.json"
+assert_eq "T6b: no request → no line" "" "$(_build_scope_needs_line "$_S6/none.json")"
+assert_eq "T6c: no file → no line" "" "$(_build_scope_needs_line "$_S6/missing.json")"
+
 cd "$REPO_ROOT" || exit 1
 cleanup_test_env
 print_test_results

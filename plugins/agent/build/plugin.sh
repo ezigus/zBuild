@@ -442,9 +442,11 @@ _build_stage_run_inner() {
 
     # #2124: headed by the verdict actually reached — `pass` here on an
     # `incomplete` run told the next prompt the opposite of build-summary.json.
+    # #2178: the files it needed outside scope are part of what build reports.
+    local _needs_line; _needs_line="$(_build_scope_needs_line "$artifact_dir/build-summary.json")"
     stage_summary_write "$artifact_dir/build-summary.md" "build" "$build_verdict" \
         "changed $files_changed_count file(s) over $iterations iteration(s)" \
-        "$(printf -- '- lines: +%s / -%s\n- terminated: %s\n- scope violation: %s' "$lines_added" "$lines_removed" "$terminated_reason" "$scope_violation")"
+        "$(printf -- '- lines: +%s / -%s\n- terminated: %s\n- scope violation: %s%s' "$lines_added" "$lines_removed" "$terminated_reason" "$scope_violation" "${_needs_line:+$'\n'$_needs_line}")"
     emit_event "plugin.result" "stage=build" \
         "plugin=build" \
         "files_changed_count=$files_changed_count" \

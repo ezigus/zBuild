@@ -2754,7 +2754,9 @@ cycle_orchestrator_run() {
         # #1261: a timeout-exhaustion (design_timeout_exhausted) is an INFRA
         # failure, never a correctable content terminal — it must NEVER reroute
         # (route_back exists to let build re-drive design on a CONTENT tautology).
-        if [[ ( $term_rc -eq 2 || $term_rc -eq 8 ) \
+        # #2178: scope-deny (7) is correctable too — see the cannot-complete
+        # rule below; without budget it stays the terminal it was.
+        if [[ ( $term_rc -eq 2 || $term_rc -eq 8 || $term_rc -eq 7 ) \
               && "$_CYCLE_LAST_TERMINATED_REASON" != "design_timeout_exhausted" ]]; then
             local _rb_to_var="_TPL_CYCLE_ROUTE_BACK_TO_${cycle_id//-/_}"
             if [[ -n "${!_rb_to_var:-}" ]]; then
@@ -2765,17 +2767,27 @@ cycle_orchestrator_run() {
                 else
                     set +e; _cycle_check_route_back "$verdicts_blob"; _rb_matched=$?; [[ $_rce -eq 1 ]] && set -e
                 fi
-                # #2172: exhausted with the suite failing and a build that
-                # changed NOTHING — the builder had nothing it was allowed to
-                # fix (#1841: a design contradicting a newer ADR, enforced by
-                # guard tests outside its scope). That is the contract's
-                # problem; the loop widens to the template's route_back target
-                # under the same budget as a declared fault.
-                if [[ $_rb_matched -ne 0 && "$_CYCLE_LAST_TERMINATED_REASON" == "max_iterations_tests_failing" \
-                      && "$_build_kind" == "empty_diff" ]] \
+                # #2172/#2178: a build that CANNOT COMPLETE under the current
+                # contract is the contract's problem, not the builder's — the
+                # loop widens to the template's route_back target under the
+                # same budget as a declared fault. The engine reads no reason
+                # from build; two facts it already holds say so:
+                #   - exhausted with the suite failing and a build that changed
+                #     NOTHING (#1841: a design contradicting a newer ADR,
+                #     enforced by guard tests outside its scope);
+                #   - a scope request the policy denied (35674168348: the
+                #     builder needed files the contract forbids — the run ended
+                #     instead of the design being asked).
+                local _rb_cannot=""
+                case "$_CYCLE_LAST_TERMINATED_REASON" in
+                    blocked_on_scope) _rb_cannot="cycle.route_back.blocked_on_scope" ;;
+                    max_iterations_tests_failing)
+                        [[ "$_build_kind" == "empty_diff" ]] && _rb_cannot="cycle.route_back.exhausted_unchanged" ;;
+                esac
+                if [[ $_rb_matched -ne 0 && -n "$_rb_cannot" ]] \
                    && _cycle_route_back_budget_left "$cycle_id"; then
-                    _cycle_emit "cycle.route_back.exhausted_unchanged" "iter=$iter" \
-                        "build_kind=$_build_kind" "reason=max_iterations_tests_failing"
+                    _cycle_emit "$_rb_cannot" "iter=$iter" \
+                        "build_kind=$_build_kind" "reason=$_CYCLE_LAST_TERMINATED_REASON"
                     _rb_matched=0
                 fi
                 if [[ $_rb_matched -eq 0 ]]; then

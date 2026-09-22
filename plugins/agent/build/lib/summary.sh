@@ -140,6 +140,17 @@ _build_write_rate_limited_summary() {
 }
 
 # Writes build_verdict back to caller's scope (no `local` on it here).
+# _build_scope_needs_line <build-summary.json> — one summary line naming the
+# files this build needed outside the contract's scope, or nothing (#2178).
+# Build's own fact; the stage that owns the contract reads it in STAGE SUMMARIES.
+_build_scope_needs_line() {
+    local json="${1:-}" files=""
+    [[ -s "$json" ]] || return 0
+    files="$(jq -r '(.out_of_scope_files // []) | join(", ")' "$json" 2>/dev/null || true)"
+    [[ -n "$files" ]] || return 0
+    printf -- '- needs files outside the contract'"'"'s scope: %s' "$files"
+}
+
 _build_write_build_summary() {
     local _sum_violations_json="[]"
     local _sum_build_reason=""

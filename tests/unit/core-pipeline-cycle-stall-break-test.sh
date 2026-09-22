@@ -134,6 +134,12 @@ cycle_dispatch_stage() {
             # ADR-054: new format — verdict=pass + disposition=complete + data.build_kind=empty_diff
             printf '{"schema_version":1,"result_contract":2,"verdict":"pass","disposition":"complete","data":{"build_kind":"empty_diff"},"iterations":1,"terminated_reason":"done_sentinel","files_changed":[]}' \
                 > "$_art/build-summary.json"
+            # #2178: a build that asked for files outside the contract.
+            if [[ -n "${_BUILD_SCOPE_REQUEST:-}" ]]; then
+                jq --argjson r "$_BUILD_SCOPE_REQUEST" '. + {scope_expansion_request: $r}' \
+                    "$_art/build-summary.json" > "$_art/build-summary.json.tmp" \
+                    && mv "$_art/build-summary.json.tmp" "$_art/build-summary.json"
+            fi
             _CYCLE_DISPATCH_VERDICT="pass"
             _CYCLE_DISPATCH_VERDICT_RAW="pass"
             _CYCLE_DISPATCH_DISPOSITION="complete"
@@ -297,6 +303,34 @@ assert_eq "[SPEC-5] …to the template's route_back target" "design_verify_cycle
 _n_rb="$(grep -c '"cycle.route_back.exhausted_unchanged"' "$ZBUILD_EVENTS_JSONL" || true)"
 assert_eq "[SPEC-5] …and says why (cycle.route_back.exhausted_unchanged)" "1" "$_n_rb"
 _TEST_VERDICT="pass"
+
+# ─── SPEC-6 (#2178): a build blocked on scope is the contract's problem too ─
+# Run 35674168348 ended `blocked_on_scope`: the builder needed files the
+# contract denies. Same class as SPEC-5 — the build cannot complete under the
+# current contract — so it takes the same edge, under the same budget. The
+# engine reads no reason from build; the denied request IS the signal.
+print_test_section "SPEC-6: a denied scope request routes back to design instead of ending the run"
+_BUILD_SCOPE_REQUEST='{"files":[{"path":"tests/unit/other-test.sh","category":"collateral_tests","evidence":"","reason":"named in test feedback"}]}'
+_GA_VERDICT="fail"
+_run_cycle "scope-rb"
+assert_eq "[SPEC-6] the cycle returns route_back (rc=11)" "11" "$_RUN_RC"
+assert_eq "[SPEC-6] after ONE iteration — no grinding" "1" "${_CYCLE_LAST_ITERATIONS:-}"
+assert_eq "[SPEC-6] to the template's route_back target" "design_verify_cycle" "${_CYCLE_ROUTE_BACK_TO:-}"
+assert_eq "[SPEC-6] the stashed fallback is the scope terminal (rc=7)" "7" "${_CYCLE_ROUTE_BACK_FALLBACK_RC:-}"
+assert_eq "[SPEC-6] …with its reason" "blocked_on_scope" "${_CYCLE_ROUTE_BACK_FALLBACK_REASON:-}"
+assert_eq "[SPEC-6] and says why (cycle.route_back.blocked_on_scope)" "1" \
+    "$(grep -c '"cycle.route_back.blocked_on_scope"' "$ZBUILD_EVENTS_JSONL" || true)"
+assert_eq "[SPEC-6] the denial itself is still recorded" "1" \
+    "$(grep -c '"cycle.scope.denied"' "$ZBUILD_EVENTS_JSONL" || true)"
+# With the edge's budget spent the old terminal stands: the run ends blocked.
+_RUNNER_ROUTE_BACK_PASSES=2
+_run_cycle "scope-nobudget"
+unset _RUNNER_ROUTE_BACK_PASSES
+assert_eq "[SPEC-6b] budget spent ⇒ blocked_on_scope terminal (rc=7)" "7" "$_RUN_RC"
+assert_eq "[SPEC-6b] …with reason blocked_on_scope" "blocked_on_scope" "${_CYCLE_LAST_TERMINATED_REASON:-}"
+assert_eq "[SPEC-6b] and no route_back event" "0" \
+    "$(grep -c '"cycle.route_back.blocked_on_scope"' "$ZBUILD_EVENTS_JSONL" || true)"
+_BUILD_SCOPE_REQUEST=""
 
 cleanup_test_env
 print_test_results

@@ -74,7 +74,6 @@ persist_run() {
     local _stage_id="${1:-persist}"
     local _state_file="${2:-}"
 
-    local _issue="${ZBUILD_ISSUE_NUMBER:-${ZBUILD_ISSUE:-0}}"
     local _state_dir
     if [[ -n "$_state_file" ]]; then
         _state_dir="$(dirname "$_state_file")"
@@ -82,6 +81,23 @@ persist_run() {
         _state_dir="${ZBUILD_STATE_DIR:-}"
     fi
     local _artifacts_dir="${ZBUILD_ARTIFACT_DIR:-$_state_dir/artifacts}"
+
+    # #2178: WHOSE run this is comes from the run's state on disk, and only
+    # then from the environment. The runner's ZBUILD_ISSUE export lives in the
+    # runner; the CI backstop (a fresh step after a cancel, a timeout, a KILL)
+    # never had it, so every run that did not end itself persisted as "no
+    # identity". pipeline-state.json carries issue and goal — one source of
+    # truth, whoever calls persist.
+    local _issue="${ZBUILD_ISSUE_NUMBER:-${ZBUILD_ISSUE:-0}}"
+    local _sf="${_state_file:-$_state_dir/pipeline-state.json}" _sf_issue="" _sf_goal=""
+    if [[ -s "$_sf" ]]; then
+        _sf_issue="$(jq -r '.issue // empty' "$_sf" 2>/dev/null || true)"
+        _sf_goal="$(jq -r '.goal // empty' "$_sf" 2>/dev/null || true)"
+        [[ "$_sf_issue" =~ ^[0-9]+$ && "$_sf_issue" -gt 0 ]] && _issue="$_sf_issue"
+    fi
+    if [[ -n "${_sf_goal//[[:space:]]/}" ]]; then
+        local -x ZBUILD_GOAL="$_sf_goal"
+    fi
 
     emit_event "persist.start" "stage=$_stage_id" "issue=$_issue" 2>/dev/null || true
 
