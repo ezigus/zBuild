@@ -457,15 +457,10 @@ spec5_cleanup_rc=$?
 set -e
 assert_eq "[SPEC-5] security_lens_cleanup is declared and returns 0" "0" "$spec5_cleanup_rc"
 
-# ─── Manifest assertions (SPEC-5, SPEC-6, SPEC-7, SPEC-11, SPEC-13) ─────────
+# ─── Manifest assertions (SPEC-6, SPEC-7, SPEC-11, SPEC-13) ─────────────────
+# SPEC-5 function-callable check is above; ADR-062 §3 retired manifest cleanup
+# hook declarations tree-wide so no manifest YAML key check is made here.
 _MANIFEST_FILE="$PLUGIN_DIR/manifest.yaml"
-
-_spec5_hooks_block=$(awk '/^hooks:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
-if grep -qE '^\s+cleanup:\s+security_lens_cleanup' <<< "$_spec5_hooks_block" 2>/dev/null; then
-    assert_pass "[SPEC-5] security_lens_cleanup is declared as YAML key under hooks: in manifest"
-else
-    assert_fail "[SPEC-5] security_lens_cleanup is declared as YAML key under hooks: in manifest"
-fi
 
 _spec6_provides=$(sed -n '/^provides:/,/^[a-zA-Z]/{/^provides:/d; /^[a-zA-Z]/d; p}' "$_MANIFEST_FILE" 2>/dev/null || true)
 if grep -q 'result_contract: 2' <<< "$_spec6_provides" 2>/dev/null; then
