@@ -12,7 +12,7 @@
 mock-response
   [38;2;74;222;128m✓[0m G5: router success event sequence matches golden
   [38;2;74;222;128m✓[0m G5b: model.route event data keys match golden
-  [golden] MISSING: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.50nkHl/tests/golden/security-lens-pass-artifact.golden (run with UPDATE_GOLDEN=1 to create)
+  [golden] MISSING: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.gheA2t/tests/golden/security-lens-pass-artifact.golden (run with UPDATE_GOLDEN=1 to create)
   [38;2;248;113;113m✗[0m [SPEC-15] security-lens v2 envelope golden matches expected key set
     [2mexpected: 0, got: 1[0m
 

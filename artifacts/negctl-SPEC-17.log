@@ -153,6 +153,7 @@
   [38;2;74;222;128m✓[0m [SPEC-18a] interrupt artifact: verdict=error
   [38;2;74;222;128m✓[0m [SPEC-18a] interrupt artifact: disposition=interrupted
   [38;2;74;222;128m✓[0m [SPEC-18a] interrupt artifact: result_contract=2
+  [38;2;74;222;128m✓[0m [SPEC-18b] _security_lens_interrupt_handler exists as callable function
   [38;2;74;222;128m✓[0m [SPEC-18b] direct handler: verdict=error
   [38;2;74;222;128m✓[0m [SPEC-18b] direct handler: disposition=interrupted
   [38;2;74;222;128m✓[0m [SPEC-18c] kill -TERM: plugin rc=130
@@ -163,5 +164,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 82 tests passed[0m
+  [38;2;74;222;128m[1mAll 83 tests passed[0m
 
