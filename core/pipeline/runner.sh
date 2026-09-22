@@ -1489,10 +1489,10 @@ main() {
     # Placed before --dry-run so dry-run also surfaces mismatches.
     # Fail-closed on corrupt state files (rather than letting get_state_field
     # silently return its default and skip the check).
-    # Skip when ZBUILD_STATE_DIR is explicitly set: the caller is directing the
-    # runner to a fresh directory and any ambient ZBUILD_STATE_FILE is an
-    # inherited outer-context value that the explicit dir overrides (#887).
-    if [[ -n "${ZBUILD_STATE_FILE:-}" && -z "${ZBUILD_STATE_DIR:-}" \
+    # Note: this check fires regardless of ZBUILD_STATE_DIR — if a caller sets
+    # both, the cross-check is still a safety gate. The state_file assignment
+    # below (not here) is where ZBUILD_STATE_DIR wins over ZBUILD_STATE_FILE (#887).
+    if [[ -n "${ZBUILD_STATE_FILE:-}" \
           && -n "$issue" && "$issue" != "0" \
           && -f "${ZBUILD_STATE_FILE}" ]]; then
         if ! jq empty "${ZBUILD_STATE_FILE}" >/dev/null 2>&1; then
