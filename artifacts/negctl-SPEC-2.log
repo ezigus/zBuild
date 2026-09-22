@@ -139,6 +139,7 @@
   [38;2;74;222;128m✓[0m [SPEC-3] router-fatal path writes disposition=broken
   [38;2;74;222;128m✓[0m [SPEC-4] no-state-file path returns rc=1 (not rc=2)
   [38;2;74;222;128m✓[0m [SPEC-4] no-state-file path writes result_contract:2
+  [38;2;74;222;128m✓[0m [SPEC-5] security_lens_cleanup is declared in plugin.sh
   [38;2;74;222;128m✓[0m [SPEC-5] security_lens_cleanup is declared and returns 0
   [38;2;74;222;128m✓[0m [SPEC-5] manifest has NO cleanup: YAML key under hooks: (ADR-062 §3 retired)
   [38;2;74;222;128m✓[0m [SPEC-6] manifest declares provides.result_contract: 2
@@ -166,5 +167,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 84 tests passed[0m
+  [38;2;74;222;128m[1mAll 85 tests passed[0m
 

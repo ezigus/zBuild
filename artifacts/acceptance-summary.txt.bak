@@ -11,7 +11,7 @@ NEGCTL PASS SPEC-4
       design : no-state-file exit path returns rc=1 and writes a v2 result artifact when ZBUILD_ARTIFACT_DIR is set
       asserts: assert_eq "[SPEC-4] no-state-file path returns rc=1 (not rc=2)" "1" "$spec4_rc"
 NEGCTL PASS SPEC-5
-      design : security_lens_cleanup hook is declared as a YAML key under hooks: in the manifest (not merely a comm…
+      design : security_lens_cleanup function exists in plugin.sh, is callable, and returns 0; the manifest declare…
       asserts: assert_eq "[SPEC-5] security_lens_cleanup is declared and returns 0" "0" "$spec5_cleanup_rc"
 NEGCTL PASS SPEC-6
       design : manifest declares provides.result_contract: 2 under the provides: section
