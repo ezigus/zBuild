@@ -1,5 +1,5 @@
 diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
-index c69a7a1d..515e7b52 100755
+index c69a7a1d..49b5f487 100755
 --- a/core/pipeline/runner.sh
 +++ b/core/pipeline/runner.sh
 @@ -1489,7 +1489,11 @@ main() {
@@ -7,10 +7,10 @@ index c69a7a1d..515e7b52 100755
      # Fail-closed on corrupt state files (rather than letting get_state_field
      # silently return its default and skip the check).
 -    if [[ -n "${ZBUILD_STATE_FILE:-}" && -n "$issue" && "$issue" != "0" \
-+    # Skip when ZBUILD_STATE_DIR is explicitly set: the caller is directing the
-+    # runner to a fresh directory and any ambient ZBUILD_STATE_FILE is an
-+    # inherited outer-context value that the explicit dir overrides (#887).
-+    if [[ -n "${ZBUILD_STATE_FILE:-}" && -z "${ZBUILD_STATE_DIR:-}" \
++    # Note: this check fires regardless of ZBUILD_STATE_DIR — if a caller sets
++    # both, the cross-check is still a safety gate. The state_file assignment
++    # below (not here) is where ZBUILD_STATE_DIR wins over ZBUILD_STATE_FILE (#887).
++    if [[ -n "${ZBUILD_STATE_FILE:-}" \
 +          && -n "$issue" && "$issue" != "0" \
            && -f "${ZBUILD_STATE_FILE}" ]]; then
          if ! jq empty "${ZBUILD_STATE_FILE}" >/dev/null 2>&1; then
@@ -45,7 +45,7 @@ index 13aa33fe..21754c34 100644
    # #2066: `router` — plugin.sh:29 sources core/router/route.sh and :124 calls
    # route_to_model. The dependency was always real; only the declaration was
 diff --git a/plugins/agent/security-lens/tests/security-lens-test.sh b/plugins/agent/security-lens/tests/security-lens-test.sh
-index d2d42324..a1b7fa46 100644
+index d2d42324..b2595e9f 100644
 --- a/plugins/agent/security-lens/tests/security-lens-test.sh
 +++ b/plugins/agent/security-lens/tests/security-lens-test.sh
 @@ -401,6 +401,15 @@ assert_contains "R11: security-lens redacted_content genuine content survives sa
@@ -64,7 +64,20 @@ index d2d42324..a1b7fa46 100644
  route_to_model() {
      # Real findings envelope first, brace-bearing postamble appended.
      printf '%s\n' '{"findings":[{"severity":"high","title":"SQL injection","file":"auth.sh","line":10,"description":"Unsanitized input"}]} Based on this: {"note":"postamble-junk"}'
-@@ -457,15 +466,15 @@ spec5_cleanup_rc=$?
+@@ -451,21 +460,28 @@ fi
+ unset ZBUILD_ARTIFACT_DIR
+ 
+ # ─── [SPEC-5 new]: security_lens_cleanup is declared and returns 0 ────────────
++# Verify the function is declared in plugin.sh itself (spec: "exists in plugin.sh")
++if grep -qE '^(security_lens_cleanup[[:space:]]*\(\)|function[[:space:]]+security_lens_cleanup)' \
++        "$PLUGIN_DIR/plugin.sh" 2>/dev/null; then
++    assert_pass "[SPEC-5] security_lens_cleanup is declared in plugin.sh"
++else
++    assert_fail "[SPEC-5] security_lens_cleanup is declared in plugin.sh"
++fi
+ set +e
+ security_lens_cleanup
+ spec5_cleanup_rc=$?
  set -e
  assert_eq "[SPEC-5] security_lens_cleanup is declared and returns 0" "0" "$spec5_cleanup_rc"
  
