@@ -1,3 +1,37 @@
+diff --git a/core/pipeline/runner.sh b/core/pipeline/runner.sh
+index c69a7a1d..515e7b52 100755
+--- a/core/pipeline/runner.sh
++++ b/core/pipeline/runner.sh
+@@ -1489,7 +1489,11 @@ main() {
+     # Placed before --dry-run so dry-run also surfaces mismatches.
+     # Fail-closed on corrupt state files (rather than letting get_state_field
+     # silently return its default and skip the check).
+-    if [[ -n "${ZBUILD_STATE_FILE:-}" && -n "$issue" && "$issue" != "0" \
++    # Skip when ZBUILD_STATE_DIR is explicitly set: the caller is directing the
++    # runner to a fresh directory and any ambient ZBUILD_STATE_FILE is an
++    # inherited outer-context value that the explicit dir overrides (#887).
++    if [[ -n "${ZBUILD_STATE_FILE:-}" && -z "${ZBUILD_STATE_DIR:-}" \
++          && -n "$issue" && "$issue" != "0" \
+           && -f "${ZBUILD_STATE_FILE}" ]]; then
+         if ! jq empty "${ZBUILD_STATE_FILE}" >/dev/null 2>&1; then
+             error "ZBUILD_STATE_FILE='${ZBUILD_STATE_FILE}' is not valid JSON; refusing to honor it alongside --issue $issue (fail-closed)"
+@@ -1685,10 +1689,14 @@ main() {
+     fi
+ 
+     mkdir -p "$state_dir"
+-    # Honor ZBUILD_STATE_FILE when set (e.g. by `pipeline resume --run-id`)
++    # Honor ZBUILD_STATE_FILE when set (e.g. by `pipeline resume --run-id`),
++    # but only when ZBUILD_STATE_DIR is NOT also explicitly set. An explicit
++    # ZBUILD_STATE_DIR is the caller's authoritative directory; any ambient
++    # ZBUILD_STATE_FILE (e.g. inherited from an outer pipeline context) must not
++    # silently override it (#887).
+     # Cross-check vs --issue happened earlier (before --dry-run); see #296 Δ-4.
+     local state_file
+-    if [[ -n "${ZBUILD_STATE_FILE:-}" ]]; then
++    if [[ -n "${ZBUILD_STATE_FILE:-}" && -z "${ZBUILD_STATE_DIR:-}" ]]; then
+         state_file="$ZBUILD_STATE_FILE"
+         state_dir="$(dirname "$state_file")"
+     else
 diff --git a/plugins/agent/security-lens/manifest.yaml b/plugins/agent/security-lens/manifest.yaml
 index 13aa33fe..21754c34 100644
 --- a/plugins/agent/security-lens/manifest.yaml
@@ -11,26 +45,44 @@ index 13aa33fe..21754c34 100644
    # #2066: `router` — plugin.sh:29 sources core/router/route.sh and :124 calls
    # route_to_model. The dependency was always real; only the declaration was
 diff --git a/plugins/agent/security-lens/tests/security-lens-test.sh b/plugins/agent/security-lens/tests/security-lens-test.sh
-index d2d42324..e0d3221c 100644
+index d2d42324..a1b7fa46 100644
 --- a/plugins/agent/security-lens/tests/security-lens-test.sh
 +++ b/plugins/agent/security-lens/tests/security-lens-test.sh
-@@ -457,16 +457,11 @@ spec5_cleanup_rc=$?
+@@ -401,6 +401,15 @@ assert_contains "R11: security-lens redacted_content genuine content survives sa
+ # CHANGE: before #944 a brace-bearing postamble caused LAST-wins to select junk
+ # → .findings defaulted to []. After #944 recovery fires and the real findings
+ # envelope is used.
++
++# SPEC-10: _security_lens_envelope_schema_ok must exist — it is the function
++# that selects the findings envelope over a brace-bearing postamble.
++if declare -F _security_lens_envelope_schema_ok >/dev/null 2>&1; then
++    assert_pass "[SPEC-10] _security_lens_envelope_schema_ok exists and is callable"
++else
++    assert_fail "[SPEC-10] _security_lens_envelope_schema_ok exists and is callable"
++fi
++
+ route_to_model() {
+     # Real findings envelope first, brace-bearing postamble appended.
+     printf '%s\n' '{"findings":[{"severity":"high","title":"SQL injection","file":"auth.sh","line":10,"description":"Unsanitized input"}]} Based on this: {"note":"postamble-junk"}'
+@@ -457,15 +466,15 @@ spec5_cleanup_rc=$?
  set -e
  assert_eq "[SPEC-5] security_lens_cleanup is declared and returns 0" "0" "$spec5_cleanup_rc"
  
 -# ─── Manifest assertions (SPEC-5, SPEC-6, SPEC-7, SPEC-11, SPEC-13) ─────────
-+# ─── Manifest assertions (SPEC-6, SPEC-7, SPEC-11, SPEC-13) ─────────────────
++# ─── Manifest assertions (SPEC-5 manifest, SPEC-6, SPEC-7, SPEC-11, SPEC-13) ──
 +# SPEC-5 function-callable check is above; ADR-062 §3 retired manifest cleanup
-+# hook declarations tree-wide so no manifest YAML key check is made here.
++# hook declarations tree-wide — also assert NO cleanup: YAML key under hooks:.
  _MANIFEST_FILE="$PLUGIN_DIR/manifest.yaml"
  
--_spec5_hooks_block=$(awk '/^hooks:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
++# SPEC-5 (manifest): confirm NO cleanup: YAML key appears under hooks: (ADR-062 §3)
+ _spec5_hooks_block=$(awk '/^hooks:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
 -if grep -qE '^\s+cleanup:\s+security_lens_cleanup' <<< "$_spec5_hooks_block" 2>/dev/null; then
 -    assert_pass "[SPEC-5] security_lens_cleanup is declared as YAML key under hooks: in manifest"
 -else
 -    assert_fail "[SPEC-5] security_lens_cleanup is declared as YAML key under hooks: in manifest"
 -fi
--
++_spec5_cleanup_count=$(grep -cE '^\s+cleanup:' <<< "$_spec5_hooks_block" 2>/dev/null || true)
++assert_eq "[SPEC-5] manifest has NO cleanup: YAML key under hooks: (ADR-062 §3 retired)" "0" "$_spec5_cleanup_count"
+ 
  _spec6_provides=$(sed -n '/^provides:/,/^[a-zA-Z]/{/^provides:/d; /^[a-zA-Z]/d; p}' "$_MANIFEST_FILE" 2>/dev/null || true)
  if grep -q 'result_contract: 2' <<< "$_spec6_provides" 2>/dev/null; then
-     assert_pass "[SPEC-6] manifest declares provides.result_contract: 2"

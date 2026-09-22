@@ -1,8 +1,7 @@
 ## build — pass
 
-- changed 2 file(s) over 1 iteration(s)
+- changed 1 file(s) over 3 iteration(s)
 
-- lines: +3 / -9
+- lines: +11 / -3
 - terminated: done_sentinel
 - scope violation: false
-- needs files outside the contract's scope: tests/integration/cleanup-release-test.sh, tests/unit/teardown-purge-scratch-test.sh
