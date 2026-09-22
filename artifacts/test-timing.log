@@ -1938,3 +1938,14 @@ cpu 214 350 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.
 file 506 /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.ZrTBij/tests/golden/golden-contracts-test.sh
 tier 566 golden
 tier 145097 lint
+run 2 targeted
+cpu 306 486 tests/golden/golden-contracts-test.sh
+file 1097 tests/golden/golden-contracts-test.sh
+cpu 2402 2626 tests/integration/cleanup-release-test.sh
+file 5898 tests/integration/cleanup-release-test.sh
+cpu 4055 9247 tests/unit/teardown-purge-scratch-test.sh
+file 14322 tests/unit/teardown-purge-scratch-test.sh
+cpu 6689 13467 plugins/agent/security-lens/tests/security-lens-test.sh
+file 20319 plugins/agent/security-lens/tests/security-lens-test.sh
+cpu 7294 19119 tests/integration/per-run-state-isolation-test.sh
+file 26220 tests/integration/per-run-state-isolation-test.sh
