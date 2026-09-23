@@ -1,0 +1,10 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "design_produced",
+  "data": {
+    "authored_at": "2026-09-23T00:41:30Z",
+    "authored_at_commit": "c8ec88369fec9a9b8bd3c6c6aedc12a0b1934b30"
+  }
+}
