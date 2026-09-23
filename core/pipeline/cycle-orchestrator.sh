@@ -1505,9 +1505,33 @@ _cycle_member_reusable() {
     [[ "$st" == "complete" ]] || return 1
     case "$v" in
         pass|complete|skip|approve) return 0 ;;
-        fail|failed|request_changes) _cycle_member_iteration_aware "$s" && return 1; return 0 ;;
+        fail|failed|request_changes)
+            _cycle_member_iteration_aware "$s" && return 1
+            # #2183: …and a FAILING member whose finding a later member reported
+            # as NOT REPRODUCING is re-run, on the same tree, deliberately. That
+            # is the only way to tell a real intermittent failure from a stale
+            # one — #1841 run 35802918016 had the suite fail, then pass, on a
+            # tree nothing had touched. Reusing the stale failure there would
+            # have hidden the only evidence that it was not the branch.
+            _cycle_member_not_reproduced "$s" && return 1
+            return 0 ;;
         *) return 1 ;;
     esac
+}
+
+# _cycle_member_not_reproduced <member> — a member of THIS cycle reported that
+# it re-checked this member's finding and it did not reproduce (#2183). The
+# report names paths; the engine does not read them, it only re-verifies the
+# member that raised the finding. Emits once per decision so the log says why a
+# member ran again on an unchanged tree.
+_cycle_member_not_reproduced() {
+    local s="$1"
+    [[ "${_CYCLE_NOT_REPRODUCED:-0}" == "1" ]] || return 1
+    # Consumed once. The member that raised the finding re-runs; a second
+    # iteration of forcing it would be the engine disbelieving its own re-run.
+    _CYCLE_NOT_REPRODUCED=0
+    _cycle_emit "cycle.member.not_reproduced" "member=$s"
+    return 0
 }
 # _cycle_member_iteration_aware <member> — the member's manifest declares
 # capabilities.iteration_aware: true (its verdict depends on the iteration).
@@ -1524,6 +1548,9 @@ _cycle_member_iteration_aware() {
         || v="$(yaml_get "$manifest" "capabilities.iteration_aware" 2>/dev/null || true)"
     [[ "${v%$'\n'}" == "true" ]]
 }
+# #2183: set when a member reported a finding that did not reproduce; consumed
+# by the next iteration's reuse decision, which re-runs the member that raised it.
+_CYCLE_NOT_REPRODUCED=0
 _CYCLE_VERIFIED_FP=""
 _CYCLE_VERIFIED_ITER=""
 _CYCLE_VERIFIED_BLOB=""
@@ -1970,6 +1997,16 @@ _cycle_iter_dispatch() {
             --arg d "${_CYCLE_DISPATCH_DISPOSITION:-}" --arg k "${_CYCLE_DISPATCH_DATA_KIND:-}" \
             --arg ft "${_CYCLE_DISPATCH_FAULT:-}" \
             '. + {($s): {verdict:$v, status:$st, disposition:$d, kind:$k, fault:$ft}}' <<< "$blob" 2>/dev/null)" || blob="{}"
+        # #2183: a member reported that it re-checked a finding and it did not
+        # reproduce. Captured HERE, right after the dispatch that wrote it: the
+        # reuse decision this feeds is at the NEXT iteration, by which time the
+        # per-iteration cleanup has removed the file.
+        if [[ -s "${_state_dir:-}/artifacts/build-summary.json" ]]; then
+            local _nr_n
+            _nr_n="$(jq -r '((.data.not_reproduced // []) | length)' \
+                "${_state_dir}/artifacts/build-summary.json" 2>/dev/null || echo 0)"
+            [[ "$_nr_n" =~ ^[0-9]+$ && "$_nr_n" -gt 0 ]] && _CYCLE_NOT_REPRODUCED=1
+        fi
         # #2117: nothing changed and the previous iteration verified this exact
         # tree → reuse what passed. (A test pass is always full-suite confirmed
         # by the stage itself since #2144, so nothing here reads a run mode.)
@@ -2282,6 +2319,7 @@ cycle_orchestrator_run() {
     _CYCLE_LAST_ITERATIONS=0
     # #2117: a reusable verification belongs to THIS cycle run only.
     _CYCLE_VERIFIED_FP=""; _CYCLE_VERIFIED_ITER=""; _CYCLE_VERIFIED_BLOB=""
+    _CYCLE_NOT_REPRODUCED=0   # #2183: per-cycle, never inherited from the last one
     # #524: reset exit-banner idempotency flag for this cycle run.
     _CYCLE_EXIT_BANNER_EMITTED=0
     _CYCLE_ITER_START_MS=()

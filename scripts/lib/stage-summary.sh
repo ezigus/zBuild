@@ -44,3 +44,34 @@ stage_summary_write() {
         [[ -n "$body" ]] && printf '\n%s\n' "$body"
     } > "$path" 2>/dev/null || true
 }
+
+# ─── stage_errors_append <stage> <text...> ──────────────────────────────────
+# Append to THIS stage's declared error channel (#2183). One place, so a stage
+# adds a line without knowing where the file lives or how it is published: the
+# engine reads the manifest's `errors: true` output and carries a bounded tail
+# into the summaries the other stages read when this stage fails.
+#
+# Path convention: ${artifact_dir}/<stage>-errors.log. Appends, so a stage with
+# several failing subprocesses keeps all of them. Cleared by the engine at the
+# start of each dispatch (the previous attempt's copy is already archived).
+# Fail-open: a diagnostic write never changes a stage's fate.
+stage_errors_append() {
+    local stage="${1:-${ZBUILD_CURRENT_STAGE:-}}"; shift || true
+    [[ -n "$stage" ]] || return 0
+    local art="${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:+$ZBUILD_STATE_DIR/artifacts}}"
+    [[ -n "$art" ]] || return 0
+    mkdir -p "$art" 2>/dev/null || true
+    local safe="${stage//[^A-Za-z0-9_-]/_}"
+    printf '%s\n' "$*" >> "$art/${safe}-errors.log" 2>/dev/null || true
+    return 0
+}
+
+# ─── stage_errors_append_file <stage> <file> [label] ────────────────────────
+# The same, for a file a subprocess wrote (its stderr, a tool's log).
+stage_errors_append_file() {
+    local stage="${1:-${ZBUILD_CURRENT_STAGE:-}}" file="${2:-}" label="${3:-}"
+    [[ -n "$file" && -s "$file" ]] || return 0
+    [[ -n "$label" ]] && stage_errors_append "$stage" "--- $label ---"
+    stage_errors_append "$stage" "$(cat "$file" 2>/dev/null || true)"
+    return 0
+}

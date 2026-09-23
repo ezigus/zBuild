@@ -101,6 +101,7 @@
     "parallel.member.dispatch.start",
     "parallel.member.dispatch.complete",
     "cycle.context.compressed",
+    "cycle.member.not_reproduced",
     "cycle.member.terminal_failure",
     "cycle.member.blocking_failure",
     "cycle.build_unfinished.suppressed_convergence",

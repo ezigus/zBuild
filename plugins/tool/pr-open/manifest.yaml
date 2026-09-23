@@ -52,6 +52,15 @@ inputs:
     required: false
 
 outputs:
+  # #2183: this stage's error channel — whatever its subprocesses said when
+  # they failed. Published to the other stages' prompts (bounded) when this
+  # stage's verdict is a failure; what gh said when the PR could not be opened.
+  - id: pr_open_errors
+    path: "${artifact_dir}/pr-open-errors.log"
+    type: text
+    format: text
+    required: false
+    errors: true
   - id: pr_url
     path: ${artifact_dir}/pr-url.txt
     type: pr-url.txt@1

@@ -139,6 +139,15 @@ inputs:
     required: false
 
 outputs:
+  # #2183: this stage's error channel — whatever its subprocesses said when
+  # they failed. Published to the other stages' prompts (bounded) when this
+  # stage's verdict is a failure; a negative-control run that could not be executed.
+  - id: acceptance_errors
+    path: "${artifact_dir}/acceptance-gate-errors.log"
+    type: text
+    format: text
+    required: false
+    errors: true
   # gate_result JSON carries {result_contract:2, verdict, disposition, severity,
   # reason, failures[]} (+ fault when declared). `disposition` is ADR-054's
   # closed set — how the stage stopped (`complete` on every path that reached a

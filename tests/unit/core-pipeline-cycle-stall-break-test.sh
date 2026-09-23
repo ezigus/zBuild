@@ -134,6 +134,12 @@ cycle_dispatch_stage() {
             # ADR-054: new format — verdict=pass + disposition=complete + data.build_kind=empty_diff
             printf '{"schema_version":1,"result_contract":2,"verdict":"pass","disposition":"complete","data":{"build_kind":"empty_diff"},"iterations":1,"terminated_reason":"done_sentinel","files_changed":[]}' \
                 > "$_art/build-summary.json"
+            # #2183: a build that re-checked a finding and could not reproduce it.
+            if [[ -n "${_BUILD_NOT_REPRODUCED:-}" ]]; then
+                jq --arg p "$_BUILD_NOT_REPRODUCED" '.data.not_reproduced = [$p]' \
+                    "$_art/build-summary.json" > "$_art/build-summary.json.tmp" \
+                    && mv "$_art/build-summary.json.tmp" "$_art/build-summary.json"
+            fi
             # #2178: a build that asked for files outside the contract.
             if [[ -n "${_BUILD_SCOPE_REQUEST:-}" ]]; then
                 jq --argjson r "$_BUILD_SCOPE_REQUEST" '. + {scope_expansion_request: $r}' \
@@ -303,6 +309,36 @@ assert_eq "[SPEC-5] …to the template's route_back target" "design_verify_cycle
 _n_rb="$(grep -c '"cycle.route_back.exhausted_unchanged"' "$ZBUILD_EVENTS_JSONL" || true)"
 assert_eq "[SPEC-5] …and says why (cycle.route_back.exhausted_unchanged)" "1" "$_n_rb"
 _TEST_VERDICT="pass"
+
+# ─── SPEC-7 (#2183): a finding that did not reproduce is re-verified ───────
+# #1841 run 35802918016: the builder ran the named test 15 times, it passed
+# every time, and its prompt forbade saying so — six model calls and 92 minutes
+# went into proving a failure that does not exist on this tree. A stage may now
+# REPORT non-reproduction; it is not a verdict of done. The engine re-runs the
+# member that raised the finding, on the same tree, instead of reusing its
+# previous verdict — which is the only way to tell a real intermittent failure
+# from a stale one.
+print_test_section "SPEC-7: a reported non-reproduction re-runs the member that raised it"
+_GA_VERDICT="fail"; _TEST_VERDICT="fail"; _AG_VERDICT="fail"
+# Baseline: an unchanged tree reuses the failing member exactly once (#2170).
+_BUILD_NOT_REPRODUCED=""
+_run_cycle "no-report"
+_n_base="$(grep -c '"cycle.member.dispatch.complete".*"member":"test"' "$ZBUILD_EVENTS_JSONL" || true)"
+assert_eq "[SPEC-7 guard] with no report the failing member is dispatched once and reused after" "1" "$_n_base"
+# With the report, the member that raised the finding is dispatched again on
+# that same unchanged tree — the only way to tell a real intermittent failure
+# from a stale one.
+_BUILD_NOT_REPRODUCED="tests/integration/per-run-state-isolation-test.sh"
+_run_cycle "not-repro"
+_n_repro="$(grep -c '"cycle.member.dispatch.complete".*"member":"test"' "$ZBUILD_EVENTS_JSONL" || true)"
+if [[ "${_n_repro:-0}" -gt "${_n_base:-0}" ]]; then
+    assert_pass "[SPEC-7] the reported member is re-run rather than reused (${_n_repro} vs ${_n_base} without the report)"
+else
+    assert_fail "[SPEC-7] the reported member is re-run rather than reused" \
+        "dispatched ${_n_repro}x with the report, ${_n_base}x without — the stale failure was reused"
+fi
+_BUILD_NOT_REPRODUCED=""
+_TEST_VERDICT="pass"; _AG_VERDICT="pass"
 
 # ─── SPEC-6 (#2178): a build blocked on scope is the contract's problem too ─
 # Run 35674168348 ended `blocked_on_scope`: the builder needed files the
