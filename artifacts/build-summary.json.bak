@@ -2,8 +2,10 @@
   "schema_version": 4,
   "result_contract": 2,
   "issue": 1841,
-  "files_changed": [],
-  "lines_added": 0,
+  "files_changed": [
+    "plugins/agent/security-lens/tests/security-lens-test.sh"
+  ],
+  "lines_added": 21,
   "lines_removed": 0,
   "diff_patch_path": "/home/runner/work/_temp/zbuild-state/artifacts/diff.patch",
   "iterations": 3,
