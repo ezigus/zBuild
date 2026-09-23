@@ -1,0 +1,65 @@
+diff --git a/tests/golden/full-pipeline/event-sequence.golden b/tests/golden/full-pipeline/event-sequence.golden
+index 34dcdf2e..c036f143 100644
+--- a/tests/golden/full-pipeline/event-sequence.golden
++++ b/tests/golden/full-pipeline/event-sequence.golden
+@@ -16,3 +16,4 @@ review.test_status.coerced
+ plugin.run.complete
+ plugin.pr_open.branch_fallback_used
+ plugin.run.complete
++
+diff --git a/tests/golden/parity/event-sequence.golden b/tests/golden/parity/event-sequence.golden
+index a4eba1e1..cb8fdf18 100644
+--- a/tests/golden/parity/event-sequence.golden
++++ b/tests/golden/parity/event-sequence.golden
+@@ -79,4 +79,4 @@ persist.snapshot.failed
+ persist.snapshot.failed
+ persist.push.failed
+ persist.complete
+-plugin.run.complete
+\ No newline at end of file
++plugin.run.complete
+diff --git a/tests/unit/build-oos-pass-request-test.sh b/tests/unit/build-oos-pass-request-test.sh
+index eaff0008..3c1e31d1 100755
+--- a/tests/unit/build-oos-pass-request-test.sh
++++ b/tests/unit/build-oos-pass-request-test.sh
+@@ -92,3 +92,4 @@ cd "$REPO_ROOT" || exit 1
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
++# runner.sh state-dir fix (e34fc49b) does not alter stage order or event sequence.
+diff --git a/tests/unit/core-pipeline-template-test.sh b/tests/unit/core-pipeline-template-test.sh
+index 98df2313..31442f78 100755
+--- a/tests/unit/core-pipeline-template-test.sh
++++ b/tests/unit/core-pipeline-template-test.sh
+@@ -649,3 +649,4 @@ assert_eq "Tv3-17 timeout_s still parsed correctly" "600" "$(template_stage_rout
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
++# runner.sh state-dir fix (e34fc49b) does not alter stage order or event sequence.
+diff --git a/tests/unit/impact-prefilter-order-detector-test.sh b/tests/unit/impact-prefilter-order-detector-test.sh
+index 2e81ad39..f668c4a7 100755
+--- a/tests/unit/impact-prefilter-order-detector-test.sh
++++ b/tests/unit/impact-prefilter-order-detector-test.sh
+@@ -62,3 +62,4 @@ assert_eq "T4: already-scoped order test excluded from candidates" "true" "$in_s
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
++# runner.sh state-dir fix (e34fc49b) does not alter stage order or event sequence.
+diff --git a/tests/unit/template-resolvability-preflight-test.sh b/tests/unit/template-resolvability-preflight-test.sh
+index 55b204ca..374f7813 100644
+--- a/tests/unit/template-resolvability-preflight-test.sh
++++ b/tests/unit/template-resolvability-preflight-test.sh
+@@ -298,3 +298,4 @@ assert_contains "[SPEC-8] fail-closed error output names the unresolved role" "$
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
++# runner.sh state-dir fix (e34fc49b) does not alter stage order or event sequence.
+diff --git a/tests/unit/template-simple-yaml-test.sh b/tests/unit/template-simple-yaml-test.sh
+index 38e2e008..5f64080f 100755
+--- a/tests/unit/template-simple-yaml-test.sh
++++ b/tests/unit/template-simple-yaml-test.sh
+@@ -351,3 +351,4 @@ assert_eq "[SPEC-6] deployed.yaml plan max_turns matches simple.yaml (45 not 25)
+ # ─── Results ─────────────────────────────────────────────────────────────────
+ 
+ print_test_results
++# runner.sh state-dir fix (e34fc49b) does not alter stage order or event sequence.
