@@ -1,0 +1,17 @@
+{
+  "result_contract": 2,
+  "verdict": "fail",
+  "disposition": "complete",
+  "reason": "gates failed: shape-floor",
+  "gates": {
+    "test": "pass",
+    "shape-floor": "fail",
+    "acceptance-gate": "pass",
+    "secret-scan": "pass",
+    "assertion-integrity": "pass"
+  },
+  "failed": [
+    "shape-floor"
+  ],
+  "fault": "scope"
+}
