@@ -21,9 +21,10 @@ findings, stub, data:{...}}` and call it on every terminal exit path (no-state-f
 router-fatal, interrupt rc=130, normal pass). Add `security_lens_cleanup()` function
 to plugin.sh — callable and returning 0 — but declare NO `cleanup:` YAML key in the
 manifest: ADR-062 §3 retired per-stage cleanup hook declarations tree-wide, and
-`tests/integration/cleanup-release-test.sh` SPEC-3 plus `tests/unit/teardown-purge-scratch-test.sh`
-SPEC-4 BOTH enforce `grep -rlE '^[[:space:]]*cleanup:' plugins/*/*/manifest.yaml = empty`.
-The irreconcilable constraint between the original SPEC-5 ("declare cleanup: YAML key")
+`tests/integration/cleanup-release-test.sh` SPEC-3 plus
+`tests/unit/teardown-purge-scratch-test.sh` SPEC-4 BOTH enforce
+`grep -rlE '^[[:space:]]*cleanup:' plugins/*/*/manifest.yaml = empty`. The
+irreconcilable constraint between the original SPEC-5 ("declare cleanup: YAML key")
 and ADR-062 §3 ("no plugin declares cleanup:") is resolved in favour of ADR-062:
 SPEC-5 verifies the function is callable and returns 0, without requiring a manifest
 declaration. Declare `provides.result_contract: 2`, `provides.events: [plugin.result,
@@ -34,17 +35,36 @@ call. Enforce rc ∈ {0, 1, 130}. Cover all paths with tests written first; each
 asserts one observable behavior.
 
 **Pre-existing test failure.** `tests/integration/per-run-state-isolation-test.sh`
-T4 ("explicit-state run exits 0") failed with rc=1 at the time of the prior design.
-Commits e34fc49b ("fix runner: explicit ZBUILD_STATE_DIR takes precedence over ambient")
-and c8ec8836 ("restore cross-check guard to fire regardless of ZBUILD_STATE_DIR")
-address the ZBUILD_STATE_DIR handling in `core/pipeline/runner.sh` and may have
-resolved T4. These runner.sh changes are unrelated to the security-lens v2 migration
-itself. `tests/integration/per-run-state-isolation-test.sh` is in scope as a
-neighbouring test that exercises state-directory logic also touched by the branch.
+T4 ("explicit-state run exits 0") fails with rc=1. The branch diff is confined to
+`plugins/agent/security-lens/manifest.yaml` (cleanup key removal) and
+`plugins/agent/security-lens/tests/security-lens-test.sh` (test update). Neither file
+can affect state-directory isolation logic. T4 is a pre-existing regression unrelated
+to this issue and is outside this change's scope.
 
-**Status.** Implementation fully committed at HEAD (current HEAD: c8ec8836).
-All SPECs 1–20 are exercised; acceptance-gate NEGCTL PASS for all; golden snapshot
-committed at `tests/golden/security-lens-pass-artifact.golden`.
+**Shape-floor scope expansion (iteration 2).** `core/pipeline/runner.sh` is in scope
+and matches a glob in `config/shape-change-paths.txt`. The shape-floor
+(`scripts/lib/shape-floor.sh`) mechanically requires that ALL
+`tests/golden/**/event-sequence.golden` files (enumerated by
+`_impact_list_event_goldens`) and ALL tests containing `_TPL_STAGES[N]`-indexed
+assertions (enumerated by `_impact_list_order_assertions`) also appear in the diff
+whenever a shape-change-path file changes. The prior design omitted these 7 files;
+the build stage never touched them; shape-floor reported `missing_floor_files` and
+the engine re-routed to this design stage. They are added to scope here:
+- `tests/golden/parity/event-sequence.golden` — event-sequence golden
+- `tests/golden/full-pipeline/event-sequence.golden` — event-sequence golden
+- `tests/unit/template-resolvability-preflight-test.sh` — `_TPL_STAGES[N]` indexed
+- `tests/unit/build-oos-pass-request-test.sh` — `_TPL_STAGES[N]` indexed
+- `tests/unit/template-simple-yaml-test.sh` — `_TPL_STAGES[N]` indexed
+- `tests/unit/core-pipeline-template-test.sh` — `_TPL_STAGES[N]` indexed
+- `tests/unit/impact-prefilter-order-detector-test.sh` — `_TPL_STAGES[N]` indexed
+
+None reference security-lens directly; they require review to confirm the runner.sh
+state-directory fixes (e34fc49b, c8ec8836) do not alter any emitted event sequence
+or stage order. If unaffected, the build stage certifies them with a benign touch.
+
+**Status.** Implementation fully committed. All SPECs 1–20 exercised with NEGCTL PASS
+at the acceptance-gate; golden snapshot committed. Shape-floor scope gap resolved in
+iteration 2 by adding 7 runner.sh-triggered shape-change files to scope.
 
 ---
 
@@ -90,6 +110,11 @@ tests/unit/review-aggregator-test.sh
 tests/unit/lifecycle-testfile-deny-role-test.sh
 tests/unit/core-detect-platforms-a-test.sh
 tests/unit/teardown-purge-scratch-test.sh
+tests/unit/template-resolvability-preflight-test.sh
+tests/unit/build-oos-pass-request-test.sh
+tests/unit/template-simple-yaml-test.sh
+tests/unit/core-pipeline-template-test.sh
+tests/unit/impact-prefilter-order-detector-test.sh
 tests/integration/artifact-contract-test.sh
 tests/integration/artifact-chain-test.sh
 tests/integration/route-fd-isolation-test.sh
@@ -100,6 +125,8 @@ tests/integration/template-constructs-test.sh
 tests/integration/cleanup-release-test.sh
 tests/integration/per-run-state-isolation-test.sh
 tests/golden/parity/run-fixture.sh
+tests/golden/parity/event-sequence.golden
+tests/golden/full-pipeline/event-sequence.golden
 tests/golden/golden-contracts-test.sh
 tests/golden/security-lens-pass-artifact.golden
 tests/fixtures/templates/crash-resume-minimal.yaml
@@ -172,3 +199,5 @@ SPEC-18: plugins/agent/security-lens/tests/security-lens-test.sh
 SPEC-19: plugins/agent/security-lens/tests/security-lens-test.sh
 SPEC-20: plugins/agent/security-lens/tests/security-lens-test.sh
 ```
+
+LOOP_COMPLETE
