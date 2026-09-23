@@ -430,6 +430,27 @@ _spec10_count="$(jq '.data.findings | length' "$OUTPUT_R12" 2>/dev/null || echo 
 assert_eq "[SPEC-10] postamble recovery → recovered findings (1 finding, not empty)" \
     "1" "$_spec10_count"
 
+# [SPEC-10] proves recovery is performed by _security_lens_envelope_schema_ok:
+# shadow the function to return 1 (reject all envelopes) — when the schema_ok
+# gate is disabled, LAST-wins selects the postamble junk and .data.findings is 0.
+# This is the only assertion that pinpoints WHICH code path performs recovery.
+_security_lens_envelope_schema_ok() { return 1; }
+OUTPUT_R12_NOOK="$TEST_TEMP_DIR/findings_r12_nook.json"
+set +e
+_security_lens_run_inner "$SEC_INPUT_R12" "$MANIFEST" "$OUTPUT_R12_NOOK" "$TEST_TEMP_DIR" \
+    >/dev/null 2>&1
+set -e
+_spec10_nook_count=0
+if [[ -f "$OUTPUT_R12_NOOK" ]]; then
+    _spec10_nook_count=$(jq '.data.findings | length' "$OUTPUT_R12_NOOK" 2>/dev/null || echo 0)
+fi
+assert_eq "[SPEC-10] postamble recovery is performed by _security_lens_envelope_schema_ok (disabling it yields 0 findings, not 1)" \
+    "0" "$_spec10_nook_count"
+unset -f _security_lens_envelope_schema_ok
+# Restore real _security_lens_envelope_schema_ok from plugin.sh
+# shellcheck source=../../../../plugins/agent/security-lens/plugin.sh
+source "$PLUGIN_DIR/plugin.sh"
+
 # ─── [SPEC-3]: router-fatal path writes v2 result with verdict=error/broken ───
 if [[ -f "$OUTPUT_R7" ]]; then
     spec3_contract=$(jq -r '.result_contract // "absent"' "$OUTPUT_R7" 2>/dev/null || echo absent)
