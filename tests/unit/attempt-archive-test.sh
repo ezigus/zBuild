@@ -123,7 +123,7 @@ print_test_section "SPEC-4: a failing stage's declared errors are published"
 source "$REPO_ROOT/core/pipeline/input-resolve.sh"
 _TPL_STAGES=(aa-stage)
 printf '## aa-stage — fail\n\n- 1 of 19 tests failed\n' > "$ART/aa-summary.md"
-printf 'runner.sh: line 1499: refusing --issue 42 alongside ZBUILD_STATE_FILE\nTHE-NESTED-STDERR\n' > "$ART/aa-errors.log"
+printf 'runner.sh: line 1499: refusing the run: state file names another issue\nTHE-NESTED-STDERR\n' > "$ART/aa-errors.log"
 printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"1 failed"}\n' > "$ART/aa-result.json"
 _blk="$(stage_summaries_prompt_block "$STATE/pipeline-state.json" "$PROOT" 2>/dev/null || true)"
 assert_contains "[SPEC-4] the summary still ships" "$_blk" "1 of 19 tests failed"

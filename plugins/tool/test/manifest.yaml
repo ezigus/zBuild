@@ -75,7 +75,7 @@ outputs:
   # stage's verdict is a failure; the per-file output of a suite run that failed.
   - id: test_errors
     path: "${artifact_dir}/test-errors.log"
-    type: text
+    type: test-errors.log@1
     format: text
     required: false
     errors: true

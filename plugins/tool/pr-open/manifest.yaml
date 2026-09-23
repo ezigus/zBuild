@@ -57,7 +57,7 @@ outputs:
   # stage's verdict is a failure; what gh said when the PR could not be opened.
   - id: pr_open_errors
     path: "${artifact_dir}/pr-open-errors.log"
-    type: text
+    type: pr-open-errors.log@1
     format: text
     required: false
     errors: true

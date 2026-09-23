@@ -58,7 +58,7 @@ outputs:
   # stage's verdict is a failure; git/network failures while saving the run.
   - id: persist_errors
     path: "${artifact_dir}/persist-errors.log"
-    type: text
+    type: persist-errors.log@1
     format: text
     required: false
     errors: true

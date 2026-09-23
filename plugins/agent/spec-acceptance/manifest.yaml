@@ -144,7 +144,7 @@ outputs:
   # stage's verdict is a failure; a negative-control run that could not be executed.
   - id: acceptance_errors
     path: "${artifact_dir}/acceptance-gate-errors.log"
-    type: text
+    type: acceptance-gate-errors.log@1
     format: text
     required: false
     errors: true

@@ -62,7 +62,7 @@ outputs:
   # stage's verdict is a failure; git/network failures while restoring prior artifacts.
   - id: hydrate_errors
     path: "${artifact_dir}/hydrate-errors.log"
-    type: text
+    type: hydrate-errors.log@1
     format: text
     required: false
     errors: true

@@ -93,7 +93,9 @@ attempt_archive_outputs() {
     fi
     # What the copy is OF — the archive is useless without the attempt's own
     # identity, and a reader must not have to infer it from the directory name.
-    printf '{"stage":"%s","cycle_iter":%s,"attempt":%s,"rc":"%s","archived_at":"%s","files":%s}\n' \
+    # `generated_at`, not a private name: the parity check normalises exactly
+    # this field, and a per-run timestamp under another name reads as divergence.
+    printf '{"stage":"%s","cycle_iter":%s,"attempt":%s,"rc":"%s","generated_at":"%s","files":%s}\n' \
         "$stage" "$_iter" "$(( _n + 1 ))" "${rc:-}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$copied" \
         > "$_dest/attempt.json" 2>/dev/null || true
     return 0
