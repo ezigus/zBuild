@@ -58,6 +58,7 @@
   [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery → rc=0
   [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery → findings.json written
   [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery → recovered findings (1 finding, not empty)
+  [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery is performed by _security_lens_envelope_schema_ok (disabling it yields 0 findings, not 1)
   [38;2;74;222;128m✓[0m [SPEC-3] router-fatal path writes result_contract:2
   [38;2;74;222;128m✓[0m [SPEC-3] router-fatal path writes verdict=error
   [38;2;74;222;128m✓[0m [SPEC-3] router-fatal path writes disposition=broken
@@ -127,6 +128,7 @@
   [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery → rc=0
   [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery → findings.json written
   [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery → recovered findings (1 finding, not empty)
+  [38;2;74;222;128m✓[0m [SPEC-10] postamble recovery is performed by _security_lens_envelope_schema_ok (disabling it yields 0 findings, not 1)
   [38;2;74;222;128m✓[0m [SPEC-3] router-fatal path writes result_contract:2
   [38;2;74;222;128m✓[0m [SPEC-3] router-fatal path writes verdict=error
   [38;2;74;222;128m✓[0m [SPEC-3] router-fatal path writes disposition=broken
@@ -160,5 +162,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 85 tests passed[0m
+  [38;2;74;222;128m[1mAll 86 tests passed[0m
 
