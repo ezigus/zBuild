@@ -62,3 +62,4 @@ assert_eq "T4: already-scoped order test excluded from candidates" "true" "$in_s
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
+# runner.sh state-dir fix (e34fc49b) does not alter stage order or event sequence.

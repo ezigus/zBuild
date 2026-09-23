@@ -351,3 +351,4 @@ assert_eq "[SPEC-6] deployed.yaml plan max_turns matches simple.yaml (45 not 25)
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 print_test_results
+# runner.sh state-dir fix (e34fc49b) does not alter stage order or event sequence.

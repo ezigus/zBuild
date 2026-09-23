@@ -649,3 +649,4 @@ assert_eq "Tv3-17 timeout_s still parsed correctly" "600" "$(template_stage_rout
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
+# runner.sh state-dir fix (e34fc49b) does not alter stage order or event sequence.
