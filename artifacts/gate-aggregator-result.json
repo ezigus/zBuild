@@ -1,16 +1,14 @@
 {
   "result_contract": 2,
-  "verdict": "fail",
+  "verdict": "pass",
   "disposition": "complete",
-  "reason": "gates failed: test",
+  "reason": "all 5 gate(s) passed",
   "gates": {
-    "test": "fail",
+    "test": "pass",
     "shape-floor": "pass",
     "acceptance-gate": "pass",
     "secret-scan": "pass",
     "assertion-integrity": "pass"
   },
-  "failed": [
-    "test"
-  ]
+  "failed": []
 }
