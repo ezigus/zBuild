@@ -2,5 +2,5 @@
 
 - rolled up 5 gate(s) into verdict fail
 
-- failed: shape-floor
-- fault: scope
+- failed: test
+- fault: none declared
