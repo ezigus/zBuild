@@ -126,16 +126,18 @@ if grep -qx -- "EnterPlanMode,ExitPlanMode" <<< "$argv_nl"; then
 else
     assert_fail "e2e: disallowed-tools comma preserved" "argv: $argv_nl"
 fi
-# [SPEC-1] C10: --dangerously-skip-permissions replaced by acceptEdits + settings file.
+# [SPEC-1] C10 (#2180): --dangerously-skip-permissions replaced by a never-ask
+# mode + settings file. bypassPermissions, not acceptEdits: unattended there is
+# nobody to approve a Bash command, so acceptEdits refused every one of them.
 if grep -qx -- "--permission-mode" <<< "$argv_nl"; then
     assert_pass "[SPEC-1] e2e: argv has --permission-mode"
 else
     assert_fail "[SPEC-1] e2e: argv has --permission-mode" "argv: $argv_nl"
 fi
-if grep -qx -- "acceptEdits" <<< "$argv_nl"; then
-    assert_pass "[SPEC-1] e2e: argv has acceptEdits"
+if grep -qx -- "bypassPermissions" <<< "$argv_nl"; then
+    assert_pass "[SPEC-1] e2e: argv has the never-ask mode"
 else
-    assert_fail "[SPEC-1] e2e: argv has acceptEdits" "argv: $argv_nl"
+    assert_fail "[SPEC-1] e2e: argv has the never-ask mode" "argv: $argv_nl"
 fi
 if grep -qx -- "--settings" <<< "$argv_nl"; then
     assert_pass "[SPEC-1] e2e: argv has --settings"

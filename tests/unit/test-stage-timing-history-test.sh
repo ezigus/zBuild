@@ -94,6 +94,62 @@ rm -f "$LOG"
 _test_run_inner "$ARTIFACT_DIR/diff.patch" "$REPO_FIXTURE" "$OUT" 'echo "unit: 1/1 passed"; exit 0' >/dev/null 2>&1 || true
 assert_file_not_exists "[SPEC-4] a run with no measurements adds no timing artifact" "$LOG"
 
+# ─── SPEC-5 (#2180): the suite's own output survives the stage ──────────────
+# The stage extracts ~80 lines into test-failures-summary.md and drops the rest.
+# When a test fails ONLY inside this nested stage — per-run-state-isolation T4
+# on every suite of #1841 run 35720879137, including the first, before the
+# builder had changed anything — there is nothing left to read and the failure
+# cannot be diagnosed at all. Keep the raw output as a diagnostic artifact.
+print_test_section "SPEC-5: the raw suite output is kept, not just the extract"
+
+RAWLOG="$ARTIFACT_DIR/test-output.log"
+rm -f "$RAWLOG"
+_FAIL_CMD='echo "a line the extractor does not match"; echo "  ✗ T4: explicit-state run exits 0"; echo "    expected: 0, got: 1"; echo "integration: FAIL tests/integration/per-run-state-isolation-test.sh"; echo "  1 of 19 tests failed"; exit 1'
+_test_run_inner "$ARTIFACT_DIR/diff.patch" "$REPO_FIXTURE" "$OUT" "$_FAIL_CMD" >/dev/null 2>&1 || true
+assert_file_exists "[SPEC-5] a failing suite leaves its raw output on disk" "$RAWLOG"
+_raw="$(cat "$RAWLOG" 2>/dev/null || true)"
+assert_contains "[SPEC-5] the failing assertion is in it" "$_raw" "T4: explicit-state run exits 0"
+assert_contains "[SPEC-5] and the line the extractor never matched" \
+    "$_raw" "a line the extractor does not match"
+
+# A passing run keeps its output too: "it passed here and fails there" is the
+# comparison that localises an environment-only failure.
+rm -f "$RAWLOG"
+_test_run_inner "$ARTIFACT_DIR/diff.patch" "$REPO_FIXTURE" "$OUT" 'echo "unit: 1/1 passed"; exit 0' >/dev/null 2>&1 || true
+assert_file_exists "[SPEC-5] a passing suite keeps its output as well" "$RAWLOG"
+
+# Each run replaces the last — a stale log read as the current failure would be
+# worse than none (the #2167 lesson, applied the other way: timing accumulates
+# because it is measurement, output replaces because it is one run's evidence).
+assert_contains "[SPEC-5] the newest run's output replaces the previous one" \
+    "$(cat "$RAWLOG" 2>/dev/null)" "unit: 1/1 passed"
+if [[ -s "$RAWLOG" ]] && ! grep -q 'T4: explicit-state' "$RAWLOG" 2>/dev/null; then
+    assert_pass "[SPEC-5] no line from the previous run survives"
+else
+    assert_fail "[SPEC-5] no line from the previous run survives" \
+        "$([[ -s "$RAWLOG" ]] && head -3 "$RAWLOG" || echo 'log absent — cannot be clean by being missing')"
+fi
+
+# Bounded: a runaway suite must not upload gigabytes. The cap keeps the TAIL —
+# a suite that dies mid-way puts the reason at the end — and says it truncated.
+rm -f "$RAWLOG"
+ZBUILD_TEST_OUTPUT_MAX_BYTES=2000 _test_run_inner "$ARTIFACT_DIR/diff.patch" "$REPO_FIXTURE" "$OUT" \
+    'for i in $(seq 1 400); do echo "filler line $i ................................"; done; echo "THE LAST LINE"; exit 1' \
+    >/dev/null 2>&1 || true
+_sz="$(wc -c < "$RAWLOG" 2>/dev/null | tr -d " ")"
+if [[ "${_sz:-0}" =~ ^[0-9]+$ && "$_sz" -gt 0 && "$_sz" -le 2400 ]]; then
+    assert_pass "[SPEC-5] the log is capped (got ${_sz}B for a ~20KB suite)"
+else
+    assert_fail "[SPEC-5] the log is capped" "got ${_sz}B"
+fi
+assert_contains "[SPEC-5] the cap keeps the END, where a dying suite says why" \
+    "$(cat "$RAWLOG" 2>/dev/null)" "THE LAST LINE"
+assert_contains "[SPEC-5] and marks that it truncated" "$(cat "$RAWLOG" 2>/dev/null)" "truncated"
+
+# Declared, so the engine uploads it and a consumer could resolve it.
+assert_contains "[SPEC-5] the manifest declares the log as an output" \
+    "$(cat "$PLUGIN_DIR/manifest.yaml" 2>/dev/null)" "test-output.log"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

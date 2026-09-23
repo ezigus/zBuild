@@ -174,4 +174,37 @@ assert_eq "[SPEC-7] empty output → verdict=fail" "fail" "$(_verdict_of)"
 _run_with "SHAPE_FLOOR SKIP no_shape_change"
 assert_eq "[SPEC-7 guard] an explicit SKIP still skips" "skip" "$(_verdict_of)"
 
+# ─── [SPEC-8] (#2180) the summary NAMES the files that would satisfy the floor ─
+# The gate already works the list out — it needs it, one line earlier, to decide
+# the out-of-scope escalation — and then wrote only the token
+# `missing_floor_files`. #1841 run 35720879137 failed this gate twice and the
+# builder was never told which files it wanted.
+print_test_section "SPEC-8 — the detail names the missing floor files"
+
+_sf_collect_missing_floor_files() {
+    printf 'tests/golden/event-sequence.golden\ntests/unit/pins-order-test.sh\n'
+}
+_sf_diff_files() { printf 'config/templates/simple.yaml\n'; }
+export ZBUILD_SHAPE_FLOOR_SCOPE="config/templates/simple.yaml"
+_run_with "SHAPE_FLOOR FAIL missing_floor_files"
+_d8="$(cat "$DETAIL" 2>/dev/null || true)"
+assert_contains "[SPEC-8] the detail names the golden file" \
+    "$_d8" "tests/golden/event-sequence.golden"
+assert_contains "[SPEC-8] …and the order test" "$_d8" "tests/unit/pins-order-test.sh"
+assert_contains "[SPEC-8] …and still carries the reason token" "$_d8" "missing_floor_files"
+# A fail with NO resolvable list must not invent one, and must still say why.
+unset -f _sf_collect_missing_floor_files
+_run_with "SHAPE_FLOOR FAIL missing_floor_files"
+assert_contains "[SPEC-8] an unresolvable list still states the reason" \
+    "$(cat "$DETAIL" 2>/dev/null)" "missing_floor_files"
+# A passing verdict names nothing.
+_sf_collect_missing_floor_files() { printf 'tests/golden/event-sequence.golden\n'; }
+_run_with "SHAPE_FLOOR PASS"
+if grep -q 'event-sequence.golden' "$DETAIL" 2>/dev/null; then
+    assert_fail "[SPEC-8] a passing floor names no files" "$(cat "$DETAIL")"
+else
+    assert_pass "[SPEC-8] a passing floor names no files"
+fi
+unset ZBUILD_SHAPE_FLOOR_SCOPE
+
 print_test_results

@@ -151,14 +151,18 @@ Reserve mismatch for a genuine disagreement. Do not suggest a fix. Do not rewrit
     done
 }
 
-# _sc_write_result <dir> <verdict> <reason> <counts_json>
+# _sc_write_result <dir> <verdict> <reason> <counts_json> [about]
+# #2180: `about` is the artifact these findings concern — the testfile(s) this
+# stage was pointed at by the contract. Its own fact; the engine resolves from
+# it who owns that artifact and therefore whose findings these are.
 _sc_write_result() {
-    local dir="$1" v="$2" r="$3" d="${4:-{\}}"
+    local dir="$1" v="$2" r="$3" d="${4:-{\}}" about="${5:-}"
     mkdir -p "$dir" 2>/dev/null || true
     # ADR-054 §6: `disposition` says how the STAGE stopped. This stage completed
     # whatever it concluded about the SPECs — the verdict carries that.
-    if ! jq -n --arg v "$v" --arg r "$r" --argjson d "$d" \
-        '{result_contract: 2, verdict: $v, disposition: "complete", reason: $r, data: $d}' \
+    if ! jq -n --arg v "$v" --arg r "$r" --argjson d "$d" --arg a "$about" \
+        '{result_contract: 2, verdict: $v, disposition: "complete", reason: $r, data: $d}
+         + (if $a != "" then {about: $a} else {} end)' \
         | atomic_write "$dir/spec-correspondence-result.json"; then
         _sc_emit "spec_correspondence.result.write_failed" "dir=$dir"
     fi
@@ -299,10 +303,18 @@ spec_correspondence_run() {
     local reason="judged $n SPEC(s): $n_corr correspond, $n_part partial, $n_mis mismatch, $n_unch uncheckable, $n_unj unjudged"
     [[ "$n" -eq 0 ]] && reason="no SPEC ids declared — nothing to judge"
     _sc_emit "spec_correspondence.judged" "specs=$n" "mismatch=$n_mis" "partial=$n_part" "unjudged=$n_unj"
+    # #2180: the testfile(s) these findings are about — the contract's, read
+    # back the same way the judging loop read them. ALL of them, one per line
+    # (review #2181): keeping only the first silently lost the attribution for
+    # every other file in a multi-testfile contract.
+    local _sc_about=""
+    declare -f acceptance_list_testfiles >/dev/null 2>&1 \
+        && _sc_about="$(acceptance_list_testfiles "$design" 2>/dev/null || true)"
     _sc_write_result "$art" "$worst" "$reason" \
         "$(jq -nc --argjson c "$n_corr" --argjson p "$n_part" --argjson m "$n_mis" \
                   --argjson u "$n_unch" --argjson j "$n_unj" \
-            '{corresponds:$c, partial:$p, mismatch:$m, uncheckable:$u, unjudged:$j}')"
+            '{corresponds:$c, partial:$p, mismatch:$m, uncheckable:$u, unjudged:$j}')" \
+        "$_sc_about"
     stage_summary_write "$art/spec-correspondence-summary.md" "spec-correspondence" "$worst" \
         "$reason" \
         "${findings:-- every judged assertion tests the SPEC it claims to cover}"

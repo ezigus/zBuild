@@ -21,6 +21,7 @@
 ./artifacts/teardown-result.json
 ./artifacts/teardown-summary.md
 ./artifacts/test-failures-summary.md
+./artifacts/test-output.log
 ./artifacts/test-results.json
 ./intake.md
 ./mock-repo/seed.txt

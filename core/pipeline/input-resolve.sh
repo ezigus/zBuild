@@ -612,8 +612,104 @@ _summaries_collect() {
         # route_back already keys on. It decides whether the reader is OBLIGED
         # (no fault: the reader's to fix) or merely informed (specification /
         # scope: the engine routes it). Read from the stage's primary result.
-        printf '%s|%s|%s|%s\n' "$stage" "$verdict" "$path" "$(_summaries_stage_fault "$stage" "$plugins_root" "$state_dir")"
+        # #2180: and WHO owns the artifact the finding is about, when the
+        # producer named one. The reader is told it is theirs only when it is.
+        local _about _owner
+        _about="$(_summaries_result_about "$stage" "$plugins_root" "$state_dir")"
+        _owner=""
+        [[ -n "$_about" ]] && _owner="$(_summaries_owner_of "$_about" "$plugins_root" "$state_dir")"
+        printf '%s|%s|%s|%s|%s\n' "$stage" "$verdict" "$path" \
+            "$(_summaries_stage_fault "$stage" "$plugins_root" "$state_dir")" "$_owner"
     done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
+}
+
+# ─── _summaries_result_about <stage> <plugins_root> <state_dir> ─────────────
+# The artifact a stage's finding is ABOUT, as its primary result declares it
+# (#2180). One fact, stated by the producer about its own work — never who
+# should act on it, which is the engine's to resolve.
+_summaries_result_about() {
+    local stage="$1" plugins_root="$2" state_dir="$3" manifest raw resolved
+    manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
+    [[ -n "$manifest" ]] || return 0
+    raw="$(_verdict_primary_output_path "$manifest" 2>/dev/null || true)"
+    [[ -n "$raw" ]] || return 0
+    resolved="$(_verdict_resolve_path "$raw" "$state_dir" 2>/dev/null || true)"
+    [[ -s "$resolved" ]] || return 0
+    case "$resolved" in *.json) ;; *) return 0 ;; esac
+    jq -r '.about // empty' "$resolved" 2>/dev/null || true
+}
+
+# ─── _summaries_owner_of <about> <plugins_root> <state_dir> ─────────────────
+# Which stage OWNS the named artifact(s), or "" when nothing declares them, or
+# when the answer is not unambiguous (#2180). Two sources, both already in the
+# tree, neither a list of stage names:
+#   1. a manifest that declares the path as one of its `outputs`;
+#   2. the authoring record for repo testfiles, whose header says which stage
+#      wrote it (assertion-digests.txt).
+# `about` may name several artifacts, one per line — a contract with several
+# testfiles is one finding about all of them. They route together only when
+# they share ONE owner.
+#
+# NEVER a guess (review #2181): two plugins may declare outputs with the same
+# BASENAME, and handing the finding to whichever manifest was read first is
+# wrong silently. An ambiguous name resolves to no owner, and the framing then
+# falls back to the fault-class rule.
+_summaries_owner_of() {
+    local about="${1:-}" plugins_root="${2:-}" state_dir="${3:-}"
+    [[ -n "$about" ]] || return 0
+    local idx_root
+    idx_root="$(_manifest_index_root "$plugins_root" 2>/dev/null || printf '%s' "$plugins_root")"
+    manifest_index_load "$idx_root" 2>/dev/null || true
+    local _midx_files
+    _midx_files="${_ZBUILD_MIDX_FILES[$idx_root]:-}"
+
+    local one amalgam="" owner
+    while IFS= read -r one; do
+        [[ -n "${one//[[:space:]]/}" ]] || continue
+        owner="$(_summaries_owner_of_one "$one" "$_midx_files" "$state_dir")"
+        # One unowned or ambiguous member makes the whole finding unowned: a
+        # partial attribution would tell one stage it owns work it does not.
+        [[ -n "$owner" ]] || return 0
+        if [[ -z "$amalgam" ]]; then
+            amalgam="$owner"
+        elif [[ "$amalgam" != "$owner" ]]; then
+            return 0
+        fi
+    done <<< "$about"
+    printf '%s' "$amalgam"
+}
+
+# ─── _summaries_owner_of_one <path> <manifest_list> <state_dir> ─────────────
+# The single stage that declares this one path, or "" when none or several do.
+_summaries_owner_of_one() {
+    local about="$1" manifests="$2" state_dir="$3"
+    local base="${about##*/}" m _p found="" n=0
+    while IFS= read -r m; do
+        [[ -n "$m" ]] || continue
+        case "$m" in */tests/*) continue ;; esac
+        while IFS= read -r _p; do
+            [[ -n "$_p" ]] || continue
+            [[ "${_p##*/}" == "$base" ]] || continue
+            local _id; _id="$(manifest_index_get "$m" id 2>/dev/null || true)"
+            [[ -n "$_id" ]] || continue
+            # The same id twice (one manifest, two outputs of that name) is one
+            # owner; two DIFFERENT ids is ambiguity.
+            if [[ -z "$found" ]]; then found="$_id"; n=1
+            elif [[ "$found" != "$_id" ]]; then n=2; fi
+        done <<< "$(manifest_index_get "$m" outputs.path 2>/dev/null || true)"
+    done <<< "$manifests"
+    if [[ "$n" -eq 1 ]]; then printf '%s' "$found"; return 0; fi
+    [[ "$n" -gt 1 ]] && return 0
+
+    # A repo path: the authoring record names the stage that wrote it.
+    local dig="$state_dir/artifacts/assertion-digests.txt"
+    if [[ -s "$dig" ]] && grep -qF -- "$about" "$dig" 2>/dev/null; then
+        local by
+        by="$(sed -n 's/^#[[:space:]]*authored_by:[[:space:]]*//p' "$dig" 2>/dev/null || true)"
+        by="${by%%$'\n'*}"
+        [[ -n "$by" ]] && printf '%s' "$by"
+    fi
+    return 0
 }
 
 # ─── _summaries_stage_fault <stage> <plugins_root> <state_dir> ───────────────
@@ -642,11 +738,22 @@ stage_summaries_count() {
         while IFS= read -r rec; do
             [[ -n "$rec" ]] || continue
             n=$((n + 1))
-            IFS='|' read -r _ verdict _ fault <<< "$rec"
+            IFS='|' read -r _ verdict _ fault owner <<< "$rec"
             # #2163: RESOLVE counts what the reader must resolve — a failure the
             # engine routes elsewhere (fault=specification/scope) is context.
             case "$verdict" in fail|failed)
-                case "$fault" in specification|scope) ;; *) r=$((r + 1)) ;; esac ;;
+                # #2180: a finding routed to an owner is that owner's obligation,
+                # not the generic RESOLVE count for whoever is reading.
+                if [[ -n "$owner" && -n "${ZBUILD_CURRENT_STAGE:-}" ]]; then
+                    [[ "$owner" == "$ZBUILD_CURRENT_STAGE" ]] && r=$((r + 1))
+                elif [[ -n "$owner" ]]; then
+                    # Review #2181: the cycle banner counts with no reader in
+                    # scope. An owned finding is SOMEBODY's obligation; dropping
+                    # it here under-reported every cycle that had one.
+                    r=$((r + 1))
+                else
+                    case "$fault" in specification|scope) ;; *) r=$((r + 1)) ;; esac
+                fi ;;
             esac
         done < <(_summaries_collect "$state_file" "$plugins_root")
     fi
@@ -676,7 +783,7 @@ stage_summaries_prompt_block() {
     local -a _chunks=()
     while IFS= read -r rec; do
         [[ -n "$rec" ]] || continue
-        IFS='|' read -r stage verdict path fault <<< "$rec"
+        IFS='|' read -r stage verdict path fault owner <<< "$rec"
         body="$(head -c "$_ZB_SUMMARY_MAX_BYTES" "$path" 2>/dev/null || true)"
         if declare -F _zbuild_sanitize_for_llm >/dev/null 2>&1; then
             body="$(printf '%s' "$body" | _zbuild_sanitize_for_llm 2>/dev/null || printf '%s' "$body")"
@@ -696,13 +803,25 @@ stage_summaries_prompt_block() {
         # sees it — every stage sees every summary — but is not told to fix it.
         # #1840 runs 5–7: "re-author the assertions" stamped RESOLVE for the
         # builder, which then edited the read-only testfile every iteration.
+        # #2180: when the producer named the artifact its finding is about and
+        # the engine could resolve an owner, the obligation follows OWNERSHIP —
+        # the stage that wrote the thing is the only one that can change it.
+        # Every stage still SEES every finding; only the framing differs. With
+        # no resolvable owner the fault-class rule below is unchanged.
+        local _reader="${ZBUILD_CURRENT_STAGE:-}"
         case "$verdict" in
-            fail|failed)
-                case "$fault" in
-                    specification|scope)
-                        chunk="$(printf '### %s (verdict: %s) — context only: a %s fault; the engine routes this, it is not yours to fix\n%s\n' "$stage" "$verdict" "$fault" "$body")" ;;
-                    *)  chunk="$(printf '### %s (verdict: %s) — RESOLVE these findings before completing\n%s\n' "$stage" "$verdict" "$body")" ;;
-                esac ;;
+            fail|failed|partial|mismatch)
+                if [[ -n "$owner" && -n "$_reader" && "$owner" == "$_reader" ]]; then
+                    chunk="$(printf '### %s (verdict: %s) — about work you authored: these findings are yours to fix\n%s\n' "$stage" "$verdict" "$body")"
+                elif [[ -n "$owner" ]]; then
+                    chunk="$(printf '### %s (verdict: %s) — context only: about work owned by %s, not yours to fix\n%s\n' "$stage" "$verdict" "$owner" "$body")"
+                else
+                    case "$fault" in
+                        specification|scope)
+                            chunk="$(printf '### %s (verdict: %s) — context only: a %s fault; the engine routes this, it is not yours to fix\n%s\n' "$stage" "$verdict" "$fault" "$body")" ;;
+                        *)  chunk="$(printf '### %s (verdict: %s) — RESOLVE these findings before completing\n%s\n' "$stage" "$verdict" "$body")" ;;
+                    esac
+                fi ;;
             *)           chunk="$(printf '### %s (verdict: %s)\n%s\n' "$stage" "$verdict" "$body")" ;;
         esac
         _chunks+=("$chunk")

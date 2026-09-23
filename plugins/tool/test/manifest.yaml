@@ -96,6 +96,15 @@ outputs:
   # #2110: per-file wall time (`file <ms> <path>`), consumed by the acceptance
   # gate to bound each negctl/reachability run by what this stage MEASURED
   # rather than a flat 60s. Optional: a targeted rerun logs only its subset.
+  # #2180: the suite's raw output, for diagnosing a failure that the extraction
+  # above cannot explain. Declared so the engine uploads it with the run; NOT
+  # `summary: true` — it is far too large for a prompt, and the extraction is
+  # what a stage reads. Optional: a stage that died before spawning has none.
+  - id: test_output_log
+    path: "${artifact_dir}/test-output.log"
+    type: test-output.log@1
+    format: text
+    required: false
   - id: test_timing
     path: "${artifact_dir}/test-timing.log"
     type: test-timing.log@1

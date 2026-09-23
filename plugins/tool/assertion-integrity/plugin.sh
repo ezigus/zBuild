@@ -57,7 +57,11 @@ assertion_integrity_record() {
         fi
     done < <(acceptance_list_testfiles "$design" 2>/dev/null || true)
     [[ -n "$out" ]] || return 0
-    printf '%s' "$out" > "$art/$_AI_DIGESTS" 2>/dev/null || true
+    # #2180: record WHICH stage authored these files. The engine resolves the
+    # owner of a finding about one of them from this line, so a criticism of an
+    # assertion reaches the stage that can change it. The caller is that stage.
+    printf '# authored_by: %s\n%s' "${ZBUILD_CURRENT_STAGE:-}" "$out" \
+        > "$art/$_AI_DIGESTS" 2>/dev/null || true
 }
 
 # ─── assertion_integrity_run <stage_id> <state_file> ─────────────────────────
@@ -91,6 +95,10 @@ assertion_integrity_run() {
         local line want got path
         while IFS= read -r line; do
             [[ -n "$line" ]] || continue
+            # #2180: the record carries a `# authored_by:` header. A comment is
+            # not a digest row — read as one it yields a path of "" whose digest
+            # never matches, and every unmodified tree reads as violated.
+            [[ "$line" == \#* ]] && continue
             want="${line%% *}"
             path="${line##*  }"
             got="$(_ai_digest_of "$repo/$path")"
