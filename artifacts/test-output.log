@@ -3,7 +3,37 @@
 > bash tests/run-all.sh
 
 unit: 440/440 passed (4 skipped)
-integration: 250/250 passed
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.w7U5mw/tests/integration/per-run-state-isolation-test.sh
+
+  per-run state isolation (#887)
+
+  ✓ T1: run-aaa exits 0
+  ✓ T2: run-bbb exits 0
+  ✓ T1: run-aaa state under runs/run-aaa/
+  ✓ T2: run-bbb state under runs/run-bbb/
+  ✓ T2: run-aaa state has its own run_id (no clobber)
+  ✓ T2: run-bbb state has its own run_id (no clobber)
+  ✓ T3: latest → run-bbb (most recent)
+  ✗ T4: explicit-state run exits 0
+    expected: 0, got: 1
+  ✓ T4: explicit ZBUILD_STATE_DIR used verbatim (no runs/)
+  ✓ T4: explicit state dir not re-rooted
+  ✓ T5: ZBUILD_EVENTS_DIR is per-run (runs/run-ddd)
+  ✓ T6: explicit STATE_FILE → events follow its dir (not flat)
+  ✓ T7: run-hyg exits 0
+  ✓ T7: --no-resume cleared stale global-default event log + locks
+  ✓ T8: run-hyg events under its per-run dir
+  ✓ T8: engine run kept events out of the shared global default
+  ✓ T9: unpinned ad-hoc emit → ephemeral dir under the data root
+  ✓ T9: unpinned ad-hoc emit wrote nothing under $TMPDIR (#2004)
+  ✓ T9: unpinned ad-hoc emit left the shared global default untouched
+
+
+  1 of 19 tests failed
+
+  ✗ T4: explicit-state run exits 0
+
+integration: 249/250 passed
 e2e: 9/9 passed
 golden: 1/1 passed
 
@@ -37,4 +67,4 @@ mutation-infra: 1 non-fatal (worktree/patch contention; excluded from score — 
 mutation: 24/24 passed
 lint: 1/1 passed
 
-total: 725/725 passed (4 skipped)
+total: 724/725 passed (4 skipped)
