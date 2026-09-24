@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "title": "Migrate merge, pr-open, deploy-release to contract v2",
+  "goal": "Migrate plugins/tool/{merge,pr-open,deploy-release} to contract v2: result_contract:2 in manifest provides, mandatory verdict/disposition/reason in every result write, rc ∈ {0,1}, valid_verdicts enumerated, no hardcoded input artifact paths in code.",
+  "steps": [
+    {
+      "id": "step-1",
+      "description": "Write v2 result tests for merge (TDD red step). Cover every exit path: pass (squash-merge success), pr_fallback (gate absent/fail → PR opened), error on branch-is-main, error on push failure, error on gh pr create failure, error on gh pr merge failure, interrupted disposition on signal-death rc from gh. Assert result_contract=2, verdict, disposition, reason are present and non-empty in merge-result.json on every path. Tests must FAIL before step-3 is implemented.",
+      "files": [
+        "tests/unit/merge-v2-result-test.sh"
+      ],
+      "estimated_lines": 120
+    },
+    {
+      "id": "step-2",
+      "description": "Update plugins/tool/merge/manifest.yaml to declare v2 contract. Add a `provides:` section containing: `result_contract: 2`, `role: merge_executor` (required per #1704 — merge is internally dispatched, not stage-bound, but must declare a role), and `events:` listing plugin.result (the event merge currently emits). Update `valid_verdicts` from `[]` to `[pass, error]` (pr_fallback outcome is a pass; detail goes in data block). No `router:` block — T0 tool, no LLM calls, router budgets requirement is satisfied by absence when tier=T0.",
+      "files": [
+        "plugins/tool/merge/manifest.yaml"
+      ],
+      "estimated_lines": 12
+    },
+    {
+      "id": "step-3",
+      "description": "Migrate plugins/tool/merge/plugin.sh to contract v2. (a) Every jq result write gains `result_contract:2`, `verdict`, `disposition`, `reason`; plugin-specific fields (pr_number, branch, status) move under a `data:` block. (b) All `return 2` → `return 1`. (c) Add interruption detection: wrap each `gh` call to capture rc; rc=130/143/124 → disposition=interrupted; unknown outcome after interruption (merge may have run) → disposition=unavailable; other non-zero → disposition=broken. (d) For declared input gate_aggregator_result: replace `\"$artifacts_dir/gate-aggregator-result.json\"` with ZBUILD_STAGE_INPUTS read (`jq -r '.inputs.gate_aggregator_result // empty'`) plus artifacts_dir fallback so library-call mode (pr-delivery sourcing merge.sh) still works. Keep `$artifacts_dir/review.json` as a BY PATH read (documented legacy, per manifest comment #979 — not a declared input, so outside the no-paths-in-code scope). (e) On the pr_fallback path: write merge-result.json with verdict=pass and data.mode=pr_fallback. Tests written in step-1 now turn green.",
+      "files": [
+        "plugins/tool/merge/plugin.sh"
+      ],
+      "estimated_lines": 60
+    },
+    {
+      "id": "step-4",
+      "description": "Write v2 result tests for pr-open (TDD red step). Cover every exit path: pass (PR opened), pass (PR updated — existing PR), blocked (review verdict=block), error on branch-is-main, error on no-review-signal, error on push failure, error on gh pr create failure, interrupted disposition on signal-death rc from gh pr create/edit. Assert result_contract=2, verdict, disposition, reason in pr-result.json on every path. Tests must FAIL before step-6 is implemented.",
+      "files": [
+        "tests/unit/pr-open-v2-result-test.sh"
+      ],
+      "estimated_lines": 140
+    },
+    {
+      "id": "step-5",
+      "description": "Update plugins/tool/pr-open/manifest.yaml to declare v2 contract. Add `result_contract: 2` to the existing `provides:` section (events are already declared; NO role per manifest's explicit 'Do not give it a role' constraint — pr-open is a library tool invoked internally, not stage-dispatched). Update `valid_verdicts` from `[]` to `[pass, blocked, error]`.",
+      "files": [
+        "plugins/tool/pr-open/manifest.yaml"
+      ],
+      "estimated_lines": 5
+    },
+    {
+      "id": "step-6",
+      "description": "Migrate plugins/tool/pr-open/plugin.sh to contract v2. (a) Every jq result write in _pr_open_run_inner gains `result_contract:2`, `verdict` (pass for opened/updated, blocked for review block, error for failures), `disposition` (complete for known outcomes, interrupted for signal-death rc from gh, unavailable if gh pr create was interrupted mid-flight), `reason`; status/draft/branch/issue move under `data:`. (b) All `return 2` → `return 1`. (c) Add interruption detection for gh pr create, gh pr edit, gh pr list calls. (d) For declared input review_report: replace `\"$artifacts_dir/review-report.json\"` with ZBUILD_STAGE_INPUTS read plus artifacts_dir fallback. Keep `$artifacts_dir/review.json` as BY PATH read (undeclared legacy per manifest comment). Tests from step-4 turn green.",
+      "files": [
+        "plugins/tool/pr-open/plugin.sh"
+      ],
+      "estimated_lines": 70
+    },
+    {
+      "id": "step-7",
+      "description": "Write v2 result tests for deploy-release (TDD red step). Cover every exit path: deployed (dry_run), deployed (real tag+push success), error on git tag failure, error on git push failure, interrupted disposition on signal-death rc from git tag/push, unavailable if push was interrupted (tag may be in unknown state on remote). Assert result_contract=2, verdict, disposition, reason in deploy-result.json on every path. Tests must FAIL before step-9 is implemented.",
+      "files": [
+        "tests/unit/deploy-release-v2-result-test.sh"
+      ],
+      "estimated_lines": 100
+    },
+    {
+      "id": "step-8",
+      "description": "Update plugins/tool/deploy-release/manifest.yaml to declare v2 contract. Add `result_contract: 2` to existing `provides:` section (role and events already present). `valid_verdicts` already correctly lists `[deployed, error]` — no change needed there.",
+      "files": [
+        "plugins/tool/deploy-release/manifest.yaml"
+      ],
+      "estimated_lines": 3
+    },
+    {
+      "id": "step-9",
+      "description": "Migrate plugins/tool/deploy-release/plugin.sh to contract v2. (a) All jq result writes gain `result_contract:2`, `disposition`, `reason`; plugin-specific fields (tag, pr_url, mode) move under `data:`. The `verdict` field already exists in deploy-result.json — verify and keep. (b) rc is already 0/1 — verify no rc=2 paths. (c) Add interruption detection: git tag failure at rc=130/143/124 → disposition=interrupted; git push interrupted → disposition=unavailable (tag may have reached remote); other → disposition=broken/complete. (d) For declared input pr_url: replace `\"$artifacts_dir/pr-url.txt\"` with ZBUILD_STAGE_INPUTS read plus artifacts_dir fallback. Tests from step-7 turn green.",
+      "files": [
+        "plugins/tool/deploy-release/plugin.sh"
+      ],
+      "estimated_lines": 30
+    },
+    {
+      "id": "step-10",
+      "description": "Run `npm test` (full bash test suite). Fix any regressions in existing tests (template-merge-policy-test.sh, pr-open-advisory-review-test.sh, pr-open-zero-commits-halts-test.sh) that now expect v1 result shapes. Update those tests to assert v2 fields OR assert that v2 fields are present in addition to the existing assertions. All new tests from steps 1, 4, 7 must be green.",
+      "files": [
+        "tests/unit/pr-open-advisory-review-test.sh",
+        "tests/unit/pr-open-zero-commits-halts-test.sh",
+        "tests/unit/template-merge-policy-test.sh"
+      ],
+      "estimated_lines": 30
+    }
+  ],
+  "estimated_total_lines": 570,
+  "notes": "ASSUMPTION — router budgets: The issue lists 'Router budgets in the manifest (#1816)' as a v2 requirement. All three plugins are T0 (no LLM calls). Existing v2 T0 manifests (mutation-gate, lint-gate, shape-floor, teardown) carry no `router:` block. This plan omits `router:` blocks for T0 tools; if the issue intends otherwise, add `router: {timeout_s: <N>}` derived from template overrides. ASSUMPTION — 'no artifact paths in code': mutation-gate is already at result_contract:2 yet still constructs `\"$artifacts_dir/test-results.json\"`. The acceptance criterion grep may be scoped to the declared input IDs (not legacy BY PATH reads like review.json). This plan replaces declared-input path constructions with ZBUILD_STAGE_INPUTS reads plus an artifacts_dir fallback for library-call compat (pr-delivery sources merge.sh and pr-open.sh directly, not via lifecycle.sh dispatch, so ZBUILD_STAGE_INPUTS is not set in that call path). If the acceptance test greps for the literal filename (e.g. `gate-aggregator-result.json`), the fallback must be removed and pr-delivery updated to set ZBUILD_STAGE_INPUTS before sourcing — that is out of scope of this issue and should be flagged. ASSUMPTION — merge valid_verdicts: The current merge-result.json uses `status: pr_fallback` on the fallback path. v2 maps this to `verdict: pass, data.mode: pr_fallback`. If the engine downstream depends on the `pr_fallback` string as a verdict, add it to valid_verdicts and update the test. CONSTRAINT — pr-open role: manifest comment explicitly prohibits adding a role to pr-open ('Do not delete; do not give it a role'); this plan honours that constraint. Per issue, the acceptance criterion for provides.role is satisfied for deploy-release (already has role) and merge (added in step-2); pr-open's constraint is the documented exception. RISK — interruption for outward-facing actions: determining whether a pushed tag or squash-merge is in an unknown state after signal-death requires checking the remote state, which is an additional gh/git call that itself can fail. This plan emits `disposition: unavailable` when the last git/gh command returned a signal-death rc, without attempting a remote state probe. If the issue requires a remote probe, that is additional scope."
+}
