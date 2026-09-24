@@ -277,60 +277,18 @@ _t4_line="$(grep -n 'bash "\$RUNNER" --issue' -B6 "$0" 2>/dev/null | grep 'env -
 assert_contains "T4b: T4 itself clears the ambient state-file setting" \
     "${_t4_line:-<not found>}" "-u ZBUILD_STATE_FILE"
 
-# ─── T4c/T4d: WHICH state file wins when both variables are set ────────────
-# Two callers set both, and they mean opposite things:
-#   resume --run-id  → ZBUILD_STATE_FILE names a run INSIDE the state dir
-#                      (<dir>/runs/<id>/pipeline-state.json). The file is the
-#                      more specific location and must win, or a resume in CI
-#                      (which exports ZBUILD_STATE_DIR for every job) silently
-#                      opens the wrong run.
-#   a nested runner  → an AMBIENT ZBUILD_STATE_FILE inherited from an outer
-#                      pipeline points OUTSIDE this dir. That is a leak, and
-#                      the explicit dir must win.
-# Location tells them apart; "is the dir also set" cannot.
-print_test_section "T4c/T4d: state-file precedence is decided by LOCATION, not by presence"
-
-# T4c — resume shape: the file lives under the dir, so the file wins.
-_T4C_DIR="$TEST_TEMP_DIR/t4c-state"; mkdir -p "$_T4C_DIR/runs/run-t4c"
-_T4C_FILE="$_T4C_DIR/runs/run-t4c/pipeline-state.json"
-printf '{"schema_version":1,"run_id":"run-t4c","issue":%s,"status":"in_progress","stage_statuses":{}}\n' "$_ZB_ID" > "$_T4C_FILE"
-set +e
-( cd "$OVERLAY_REPO" && env -u ZBUILD_STATE_ROOT \
-    ZBUILD_STATE_DIR="$_T4C_DIR" ZBUILD_STATE_FILE="$_T4C_FILE" \
-    ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
-    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
-    ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
-    ZBUILD_RUN_ID="run-t4c" HOME="$HOME_DIR" PATH="$PATH" \
-    bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
-rc_t4c=$?; set -e
-assert_eq "T4c: a run inside the state dir still exits 0" "0" "$rc_t4c"
-# Decisive: if the DIR had won, the runner would have created the flat file at
-# the top of the dir and left the named run's file untouched.
-assert_file_not_exists "T4c: the runner did NOT fall back to the flat path" "$_T4C_DIR/pipeline-state.json"
-if [[ -s "$_T4C_FILE" ]] && [[ "$(jq -r '(.stage_statuses // {}) | length' "$_T4C_FILE" 2>/dev/null)" != "0" ]]; then
-    assert_pass "T4c: the named run's own file is the one the runner wrote to"
-else
-    assert_fail "T4c: the named run's own file is the one the runner wrote to" \
-        "stage_statuses in $_T4C_FILE: $(jq -c '.stage_statuses // {}' "$_T4C_FILE" 2>/dev/null)"
-fi
-
-# T4d — leak shape: the file points OUTSIDE the dir, so the dir wins.
-_T4D_DIR="$TEST_TEMP_DIR/t4d-state"; mkdir -p "$_T4D_DIR"
-_T4D_FOREIGN="$TEST_TEMP_DIR/t4d-foreign/pipeline-state.json"; mkdir -p "$(dirname "$_T4D_FOREIGN")"
-printf '{"schema_version":1,"run_id":"outer-run","issue":424242,"status":"in_progress","stage_statuses":{}}\n' > "$_T4D_FOREIGN"
-set +e
-( cd "$OVERLAY_REPO" && env -u ZBUILD_STATE_ROOT \
-    ZBUILD_STATE_DIR="$_T4D_DIR" ZBUILD_STATE_FILE="$_T4D_FOREIGN" \
-    ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
-    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
-    ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
-    ZBUILD_RUN_ID="run-t4d" HOME="$HOME_DIR" PATH="$PATH" \
-    bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
-rc_t4d=$?; set -e
-assert_eq "T4d: an ambient file from another run does not fail the run" "0" "$rc_t4d"
-assert_file_exists "T4d: the explicit state dir is what was written" "$_T4D_DIR/pipeline-state.json"
-assert_eq "T4d: the other run's file was left alone" "outer-run" \
-    "$(jq -r '.run_id // ""' "$_T4D_FOREIGN" 2>/dev/null)"
+# Precedence when BOTH variables are set is deliberately NOT changed here.
+# The runner fails closed on a ZBUILD_STATE_FILE that contradicts --issue
+# (#296 Δ-4), and runner-state-file-issue-cross-check-test.sh pins that. The
+# leak this file cares about is fixed at its source — T4/T4b scrub the ambient
+# variable before starting the nested runner — so the engine keeps one rule:
+# an explicit state file is honoured, and a contradictory one stops the run
+# loudly instead of being silently ignored.
+#
+# The wider question (a resume names a file INSIDE the dir; an inherited one
+# points outside; the --issue cross-check validates a file the engine may then
+# not use — see the red-team lens on run 35802918016) belongs to #887, with its
+# own tests, not to a plugin migration.
 
 cleanup_test_env
 print_test_results
