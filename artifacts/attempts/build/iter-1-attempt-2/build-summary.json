@@ -1,0 +1,34 @@
+{
+  "schema_version": 4,
+  "result_contract": 2,
+  "issue": 1849,
+  "files_changed": [],
+  "lines_added": 0,
+  "lines_removed": 0,
+  "diff_patch_path": "/home/runner/work/_temp/zbuild-state/artifacts/diff.patch",
+  "iterations": 3,
+  "terminated_reason": "router_timeout",
+  "verdict": "scope_violation",
+  "disposition": "broken",
+  "reason": "scope_request_pending",
+  "scope_violation": true,
+  "scope_violations": [
+    "docs/adr/ADR-019-review-fail-closed-on-test-failure.md"
+  ],
+  "loop_input_tokens": 0,
+  "loop_output_tokens": 0,
+  "notes": "Build stage completed. Diff written to artifact; not applied.",
+  "out_of_scope_files": [
+    "docs/adr/ADR-019-review-fail-closed-on-test-failure.md"
+  ],
+  "scope_expansion_request": {
+    "files": [
+      {
+        "path": "docs/adr/ADR-019-review-fail-closed-on-test-failure.md",
+        "category": "collateral_docs",
+        "evidence": "",
+        "reason": "build blocked on out-of-scope file named in test feedback"
+      }
+    ]
+  }
+}
