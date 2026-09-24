@@ -213,6 +213,23 @@ _pb2="$(_build_read_prior_build_summary 2>/dev/null)"
 assert_contains "[#2138] a prior build with real changes keeps the continue-do-not-restart guidance" "$_pb2" "do NOT restart"
 unset -f _read_prior_output
 
+# ─── (#2183) the prompt permits reporting a finding that does not reproduce ─
+# It used to say "'nothing to do' is not an available answer" while a RESOLVE
+# summary stood, so a builder holding a passing test had no way to say so.
+print_test_section "#2183: a finding that does not reproduce can be reported"
+# Read the shipped text directly: this is the prompt the stage sends, and the
+# rule under test is a property of that text, not of how it is assembled.
+_t2183="$(sed -n '/### Completion sentinel/,/### Budget/p' \
+    "$REPO_ROOT/plugins/agent/build/lib/prompt.sh" 2>/dev/null || true)"
+assert_contains "[#2183] premise: the section under test was read" "$_t2183" "LOOP_COMPLETE"
+assert_contains "[#2183] the prompt tells it how to report a non-reproduction" \
+    "$_t2183" "does not reproduce"
+if grep -q "not an available answer" <<< "$_t2183"; then
+    assert_fail "[#2183] the blanket ban on 'nothing to do' is gone" "still present"
+else
+    assert_pass "[#2183] the blanket ban on 'nothing to do' is gone"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

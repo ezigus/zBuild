@@ -69,8 +69,18 @@ it was already done before you started. If the branch already contains
 the required changes (check \`git log\` for commits + \`git diff\` for any
 remaining gap) AND no STAGE SUMMARY below is marked RESOLVE, emit
 \`LOOP_COMPLETE\` immediately. Do NOT keep iterating when there is nothing
-left to do. While any STAGE SUMMARY is marked RESOLVE, "nothing to do" is
-not an available answer.
+left to do. While any STAGE SUMMARY is marked RESOLVE, finishing with no
+change needs a REASON — either you fixed it, or it does not reproduce.
+
+### When a finding does not reproduce
+If a RESOLVE summary names a test and that test PASSES when you run it on this
+tree, say so and stop. Emit, on its own line before the sentinel:
+
+    NOT_REPRODUCED: <the path you ran>
+
+one line per path. This is a REPORT, not a verdict: the pipeline re-runs the
+stage that raised the finding to check. Do not keep searching for the cause of
+a failure you cannot produce, and do not change code to chase one.
 
 ### Budget
 - Each iteration is ONE model call bounded by a ${_budget_wall}-second wall clock; a

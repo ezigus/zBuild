@@ -57,6 +57,15 @@ config:
 inputs: []
 
 outputs:
+  # #2183: this stage's error channel — whatever its subprocesses said when
+  # they failed. Published to the other stages' prompts (bounded) when this
+  # stage's verdict is a failure; git/network failures while restoring prior artifacts.
+  - id: hydrate_errors
+    path: "${artifact_dir}/hydrate-errors.log"
+    type: hydrate-errors.log@1
+    format: text
+    required: false
+    errors: true
   - id: hydrate_result
     path: "${artifact_dir}/hydrate-result.json"
     type: hydrate-result.json@1

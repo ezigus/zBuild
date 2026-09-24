@@ -70,6 +70,15 @@ inputs:
     required: false
 
 outputs:
+  # #2183: this stage's error channel — whatever its subprocesses said when
+  # they failed. Published to the other stages' prompts (bounded) when this
+  # stage's verdict is a failure; the per-file output of a suite run that failed.
+  - id: test_errors
+    path: "${artifact_dir}/test-errors.log"
+    type: test-errors.log@1
+    format: text
+    required: false
+    errors: true
   - id: test_results
     path: "${artifact_dir}/test-results.json"
     type: test-results.json@1

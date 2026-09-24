@@ -66,6 +66,9 @@ _ZB_STAGE_SUMMARIES_MARKER='## STAGE SUMMARIES (engine-collected)'
 # one part the builder needed.
 _ZB_SUMMARY_MAX_BYTES="${ZBUILD_SUMMARY_MAX_BYTES:-8192}"
 _ZB_SUMMARY_TOTAL_MAX_BYTES="${ZBUILD_SUMMARY_TOTAL_MAX_BYTES:-24576}"
+# #2183: the bound on a stage's declared error output. Smaller than a summary —
+# it rides ALONGSIDE one, and ADR-029 records what unbounded prompt growth costs.
+_ZB_ERRORS_MAX_BYTES="${ZBUILD_ERRORS_MAX_BYTES:-4096}"
 
 # ─── _inputs_flow_stages ─────────────────────────────────────────────────────
 # The resolved flow, one stage per line.
@@ -618,9 +621,55 @@ _summaries_collect() {
         _about="$(_summaries_result_about "$stage" "$plugins_root" "$state_dir")"
         _owner=""
         [[ -n "$_about" ]] && _owner="$(_summaries_owner_of "$_about" "$plugins_root" "$state_dir")"
-        printf '%s|%s|%s|%s|%s\n' "$stage" "$verdict" "$path" \
-            "$(_summaries_stage_fault "$stage" "$plugins_root" "$state_dir")" "$_owner"
+        printf '%s|%s|%s|%s|%s|%s\n' "$stage" "$verdict" "$path" \
+            "$(_summaries_stage_fault "$stage" "$plugins_root" "$state_dir")" "$_owner" \
+            "$(_summaries_stage_errors_path "$stage" "$plugins_root" "$state_dir")"
     done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
+}
+
+# ─── _summaries_stage_errors_path <stage> <plugins_root> <state_dir> ───────
+# The resolved path of the output this stage declares as its ERROR CHANNEL
+# (`errors: true`), or "" (#2183). A stage writes whatever error output it has
+# — a subprocess's stderr, a tool's diagnostic — and the engine carries it. The
+# engine classifies nothing: it does not parse, match or interpret the content,
+# because error shapes are unbounded and a parser would only ever cover the
+# ones we have already seen.
+#
+# #1841 run 35802918016: the test stage told every downstream stage
+# "expected: 0, got: 1" while the nested runner's own stderr — the thing that
+# said WHY — was written to a file and dropped. Six model calls went into
+# rediscovering it.
+_summaries_stage_errors_path() {
+    local stage="$1" plugins_root="$2" state_dir="$3" manifest raw resolved
+    manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
+    [[ -n "$manifest" && -f "$manifest" ]] || return 0
+    # Review #2184: the entry is flushed at its BOUNDARY, so `errors: true` may
+    # sit before or after `path:` — both are valid YAML, and an order-dependent
+    # reader would silently skip the channel for a manifest that wrote them the
+    # other way round.
+    raw="$(awk '
+        function flush() {
+            if (want && cur != "") { print cur; found = 1 }
+            cur = ""; want = 0
+        }
+        /^outputs:[[:space:]]*$/ { in_block = 1; next }
+        in_block && /^[a-zA-Z_]/  { flush(); in_block = 0 }
+        in_block && found        { next }
+        in_block && /^[[:space:]]*-[[:space:]]/ { flush() }
+        in_block && /^[[:space:]]+path:[[:space:]]*/ {
+            line = $0
+            sub(/^[[:space:]]+path:[[:space:]]*/, "", line)
+            sub(/[[:space:]]*#.*/, "", line)
+            gsub(/^["'"'"']|["'"'"']$/, "", line)
+            cur = line; next
+        }
+        in_block && /^[[:space:]]+errors:[[:space:]]*true[[:space:]]*$/ { want = 1; next }
+        END { flush() }
+    ' "$manifest" 2>/dev/null || true)"
+    [[ -n "$raw" ]] || return 0
+    resolved="$(_verdict_resolve_path "$raw" "$state_dir" 2>/dev/null || true)"
+    [[ -s "$resolved" ]] && printf '%s' "$resolved"
+    return 0
 }
 
 # ─── _summaries_result_about <stage> <plugins_root> <state_dir> ─────────────
@@ -738,7 +787,7 @@ stage_summaries_count() {
         while IFS= read -r rec; do
             [[ -n "$rec" ]] || continue
             n=$((n + 1))
-            IFS='|' read -r _ verdict _ fault owner <<< "$rec"
+            IFS='|' read -r _ verdict _ fault owner _ <<< "$rec"
             # #2163: RESOLVE counts what the reader must resolve — a failure the
             # engine routes elsewhere (fault=specification/scope) is context.
             case "$verdict" in fail|failed)
@@ -783,8 +832,20 @@ stage_summaries_prompt_block() {
     local -a _chunks=()
     while IFS= read -r rec; do
         [[ -n "$rec" ]] || continue
-        IFS='|' read -r stage verdict path fault owner <<< "$rec"
+        IFS='|' read -r stage verdict path fault owner errpath <<< "$rec"
         body="$(head -c "$_ZB_SUMMARY_MAX_BYTES" "$path" 2>/dev/null || true)"
+        # #2183: a FAILING stage ships the errors it hit, bounded, verbatim. A
+        # passing stage ships none — nobody needs the noise of a clean run.
+        if [[ -n "$errpath" && -s "$errpath" ]]; then
+            case "$verdict" in
+                fail|failed|error|broken|partial|mismatch)
+                    local _errtail
+                    _errtail="$(tail -c "$_ZB_ERRORS_MAX_BYTES" "$errpath" 2>/dev/null || true)"
+                    if [[ -n "$_errtail" ]]; then
+                        body="${body}"$'\n\n'"errors this stage hit (last ${_ZB_ERRORS_MAX_BYTES}B of its declared error output):"$'\n'"$_errtail"
+                    fi ;;
+            esac
+        fi
         if declare -F _zbuild_sanitize_for_llm >/dev/null 2>&1; then
             body="$(printf '%s' "$body" | _zbuild_sanitize_for_llm 2>/dev/null || printf '%s' "$body")"
         fi

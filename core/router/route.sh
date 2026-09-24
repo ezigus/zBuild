@@ -1924,6 +1924,15 @@ ${_diff_pointer}"
                     "iteration=$iter" \
                     "message=$_loop_rl_msg" 2>/dev/null || true
             fi
+            # #2183: the diagnostic reaches the OTHER stages, not only the
+            # event log. One seam covers every router-backed stage — build,
+            # design, plan, impact, test-author, the judges and the lenses.
+            if declare -F stage_errors_append >/dev/null 2>&1; then
+                stage_errors_append "${_iter_stage_id:-${ZBUILD_CURRENT_STAGE:-}}" \
+                    "model call iter=$iter rc=$rc${_diag_subtype:+ subtype=$_diag_subtype}${_diag_num_turns:+ turns=$_diag_num_turns}${_diag_err_text:+: $_diag_err_text}"
+                stage_errors_append_file "${_iter_stage_id:-${ZBUILD_CURRENT_STAGE:-}}" \
+                    "${_diag_stderr_path:-}" "model call iter=$iter stderr"
+            fi
             eb_emit_event "router.loop.iter.error.diagnostic" \
                 "iteration=$iter" "rc=$rc" \
                 "stage=${_iter_stage_id:-unknown}" \

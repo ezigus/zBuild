@@ -330,6 +330,32 @@ _s9_disp="$(jq -r '.disposition // ""' "$_spec9_summary" 2>/dev/null || echo "")
 assert_eq "[SPEC-9] router_timeout build-summary has result_contract:2" "2" "$_s9_rc"
 assert_eq "[SPEC-9] router_timeout build-summary has disposition:interrupted" "interrupted" "$_s9_disp"
 
+# ─── SPEC-10 (#2183 review): a non-reproduction report survives an empty diff ─
+# The two `.data` contributions are separate jq terms and `+` is SHALLOW, so the
+# build_kind term replaced the whole object and dropped not_reproduced. The case
+# it drops is the ONLY case the feature exists for: a builder that ran the named
+# test, found it passing and changed nothing IS an empty_diff build. SPEC-7's
+# cycle mock could not see it — the mock writes the field with a key-level jq
+# assignment, which merges; production takes the other path.
+print_test_section "SPEC-10: not_reproduced and build_kind coexist under .data"
+
+_spec10_summary="$TEST_TEMP_DIR/spec10-build-summary.json"
+output_summary_json="$_spec10_summary"
+output_diff_patch="$TEST_TEMP_DIR/spec10-diff.patch"
+terminated_reason="done_sentinel"
+router_rc=0
+files_changed_count=0          # an empty diff — the reported case
+_ROUTE_LOOP_LAST_RESPONSE=$'checked it\nNOT_REPRODUCED: tests/integration/per-run-state-isolation-test.sh\nLOOP_COMPLETE'
+
+_build_write_build_summary 2>/dev/null
+
+assert_eq "[SPEC-10] the empty diff is still classified" "empty_diff" \
+    "$(jq -r '.data.build_kind // ""' "$_spec10_summary" 2>/dev/null)"
+assert_eq "[SPEC-10] …and the non-reproduction report survives alongside it" \
+    "tests/integration/per-run-state-isolation-test.sh" \
+    "$(jq -r '.data.not_reproduced[0] // ""' "$_spec10_summary" 2>/dev/null)"
+_ROUTE_LOOP_LAST_RESPONSE=""
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -115,7 +115,13 @@ EXPLICIT="$TEST_TEMP_DIR/explicit-state"; mkdir -p "$EXPLICIT"
 set +e
 # #1240: scrub ambient ZBUILD_STATE_ROOT so the explicit-STATE_DIR-wins contract
 # is asserted without an interfering fence (the #1127 sandbox sets it when nested).
-( cd "$OVERLAY_REPO" && env -u ZBUILD_STATE_ROOT ZBUILD_STATE_DIR="$EXPLICIT" ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
+# #2183: and ZBUILD_STATE_FILE, for the same reason. An ambient one names a
+# state FILE, the nested runner honours it over the explicit DIR, the --issue
+# cross-check then refuses the mismatch and the run exits 1 — which is this
+# assertion failing for a reason that has nothing to do with what it tests.
+# Reproduced in #1841 run 35802918016: clean run passes, run with the variable
+# set fails on exactly this line.
+( cd "$OVERLAY_REPO" && env -u ZBUILD_STATE_ROOT -u ZBUILD_STATE_FILE ZBUILD_STATE_DIR="$EXPLICIT" ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_RUN_ID="run-ccc" HOME="$HOME_DIR" PATH="$PATH" \
@@ -248,6 +254,28 @@ if [[ -e "$GLOBAL_STATE/events.jsonl" ]]; then
 else
     assert_pass "T9: unpinned ad-hoc emit left the shared global default untouched"
 fi
+
+# ─── T4b (#2183): an ambient ZBUILD_STATE_FILE does not fail T4 ────────────
+# The negative control for the line above: with the variable deliberately set,
+# the explicit-state run must still exit 0. Before the `env -u` it exited 1.
+EXPLICIT_B="$TEST_TEMP_DIR/explicit-state-b"; mkdir -p "$EXPLICIT_B"
+AMBIENT_STATE_FILE="$TEST_TEMP_DIR/ambient-pipeline-state.json"
+printf '{"schema_version":1,"issue":999999,"run_id":"ambient"}\n' > "$AMBIENT_STATE_FILE"
+set +e
+( cd "$OVERLAY_REPO" && ZBUILD_STATE_FILE="$AMBIENT_STATE_FILE" \
+    env -u ZBUILD_STATE_ROOT -u ZBUILD_STATE_FILE ZBUILD_STATE_DIR="$EXPLICIT_B" ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" \
+    ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
+    ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
+    ZBUILD_RUN_ID="run-ddd" HOME="$HOME_DIR" PATH="$PATH" \
+    bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
+rc_b=$?; set -e
+assert_eq "T4b: an ambient ZBUILD_STATE_FILE does not break the explicit-state run" "0" "$rc_b"
+assert_file_exists "T4b: the explicit dir is still what was used" "$EXPLICIT_B/pipeline-state.json"
+# …and T4's own command clears it too — T4b proves the technique, this pins the
+# line that has to use it.
+_t4_line="$(grep -n 'bash "\$RUNNER" --issue' -B6 "$0" 2>/dev/null | grep 'env -u ZBUILD_STATE_ROOT' | head -1 || true)"
+assert_contains "T4b: T4 itself clears the ambient state-file setting" \
+    "${_t4_line:-<not found>}" "-u ZBUILD_STATE_FILE"
 
 cleanup_test_env
 print_test_results

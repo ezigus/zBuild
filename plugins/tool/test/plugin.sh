@@ -484,6 +484,17 @@ _test_run_inner() {
     # uploaded with the run, never injected (no `summary:` on the declaration).
     _test_write_output_log "$(dirname "$output_json")/test-output.log" "$raw_output"
 
+    # #2183: and the failing files' own output on the error channel, so the
+    # stages that read this stage's summary see WHY a file failed rather than
+    # only that it did. #1841 run 35802918016: every downstream stage was told
+    # "expected: 0, got: 1" while the nested runner's stderr — the thing that
+    # said why — was written and dropped.
+    if [[ "$verdict" != "pass" ]] && declare -F stage_errors_append >/dev/null 2>&1; then
+        local _te_block
+        _te_block="$(_test_extract_failing_blocks "$raw_output")"
+        [[ -n "$_te_block" ]] && stage_errors_append "${ZBUILD_CURRENT_STAGE:-test}" "$_te_block"
+    fi
+
     # ── ADR-034 / #846: write test-red-set.json from this run's failures ──────
     # Stores the repo-relative paths of files that failed so the next iter can
     # target them without re-running the full suite. Paths are made relative to
@@ -707,6 +718,20 @@ _test_write_output_log() {
         fi
     } > "$path" 2>/dev/null || true
     return 0
+}
+
+# ─── _test_extract_failing_blocks <raw_output> ──────────────────────────────
+# Everything the suite printed between a file's FAIL marker and the next tier
+# summary — the failing file's own output, verbatim (#2183). The extractor that
+# feeds the SUMMARY is deliberately lossy (80 lines, matched patterns); this is
+# not: a failure nobody has seen before does not match a pattern, which is
+# exactly when it is needed.
+_test_extract_failing_blocks() {
+    printf '%s\n' "${1:-}" | awk '
+        /^[a-z]+: (FAIL|TIMEOUT) / { inblk = 1; print; next }
+        /^[a-z]+: [0-9]+\/[0-9]+ passed/ { inblk = 0; next }
+        inblk { print }
+    ' 2>/dev/null || true
 }
 
 # ─── _test_emit_io_end ───────────────────────────────────────────────────────

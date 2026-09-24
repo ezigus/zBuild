@@ -21,6 +21,8 @@ _ZBUILD_REGISTRY_LIFECYCLE_LOADED=1
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/output-paths.sh"
 # shellcheck source=write-ownership.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/write-ownership.sh"
+# shellcheck source=attempt-archive.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/attempt-archive.sh"
 
 # ─── scan_plugin_outputs — fail-closed artifact-presence scanner (#288) ─────
 # ADR-001 §Fail-closed scanner contract:
@@ -507,6 +509,13 @@ plugin_hook_call() {
         emit_event "plugin.$hook_name.complete" "plugin=$plugin_id" "kind=$kind"
     else
         emit_event "plugin.$hook_name.error" "plugin=$plugin_id" "kind=$kind" "rc=$rc"
+    fi
+
+    # #2183: keep THIS attempt's declared outputs before the next dispatch can
+    # overwrite them. After the rc branches, so a FAILED attempt — the one whose
+    # record matters most — is archived too. Fail-open by construction.
+    if [[ "$hook_name" == "run" ]] && declare -F attempt_archive_outputs >/dev/null 2>&1; then
+        attempt_archive_outputs "$plugin_dir" "${2:-}" "${1:-}" "$rc" 2>/dev/null || true
     fi
 
     # #1823 (ADR-054 §4): the plugin's raw status passes through UNCHANGED, and

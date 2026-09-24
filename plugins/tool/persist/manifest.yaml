@@ -53,6 +53,15 @@ config:
 inputs: []
 
 outputs:
+  # #2183: this stage's error channel — whatever its subprocesses said when
+  # they failed. Published to the other stages' prompts (bounded) when this
+  # stage's verdict is a failure; git/network failures while saving the run.
+  - id: persist_errors
+    path: "${artifact_dir}/persist-errors.log"
+    type: persist-errors.log@1
+    format: text
+    required: false
+    errors: true
   - id: persist_result
     path: "${artifact_dir}/persist-result.json"
     type: persist-result.json@1
