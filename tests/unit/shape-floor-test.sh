@@ -360,6 +360,43 @@ set -e
 assert_contains "[SPEC-16] unreadable/empty template diff → SHAPE_FLOOR FAIL (fail-closed)" \
     "$_spec16_out" "SHAPE_FLOOR FAIL missing_floor_files"
 
+# ─── SPEC-17: a COMMENT-ONLY touch of a floor file does not satisfy the floor ─
+# The gate asked only "does the filename appear in the diff", so adding a
+# one-line comment to the golden satisfied it while updating nothing. #1841's
+# build did exactly that to five test files and two goldens ("certify
+# shape-floor files with benign touch"). The file must have a real change —
+# the same comments-and-blank-lines filter the template exemption already uses.
+print_test_section "SPEC-17: a floor file whose diff is only comments is not an update"
+
+_sr17="$TEST_TEMP_DIR/comment-only-repo"
+mkdir -p "$_sr17/config/templates" "$_sr17/tests/golden/mytest"
+printf 'config/templates/*.yaml\n' > "$_sr17/config/shape-change-paths.txt"
+printf 'golden-event-content\n' > "$_sr17/tests/golden/mytest/event-sequence.golden"
+# The template's own diff must be a REAL change, or the #1924 template
+# comment-only exemption short-circuits before the floor check runs.
+_SF17_TPL_DIFF="printf -- '--- a/t\n+++ b/t\n+  - a-new-stage\n'"
+
+# The golden IS in the diff, but its own diff is a comment and a blank line.
+set +e
+_spec17_out="$(ZBUILD_DIFF_CMD="printf 'config/templates/simple.yaml\ntests/golden/mytest/event-sequence.golden\n'" \
+    ZBUILD_TEMPLATE_DIFF_CMD="$_SF17_TPL_DIFF" \
+    ZBUILD_FLOOR_FILE_DIFF_CMD="printf -- '--- a/f\n+++ b/f\n+# a note that changes nothing\n+\n'" \
+    _sf_shape_floor "$_sr17")"
+set -e
+assert_contains "[SPEC-17] a comment-only touch of the golden still FAILS the floor" \
+    "$_spec17_out" "SHAPE_FLOOR FAIL missing_floor_files"
+
+# …and a real change to the same file satisfies it, so the rule is about
+# CONTENT, not about making the check unpassable.
+set +e
+_spec17b_out="$(ZBUILD_DIFF_CMD="printf 'config/templates/simple.yaml\ntests/golden/mytest/event-sequence.golden\n'" \
+    ZBUILD_TEMPLATE_DIFF_CMD="$_SF17_TPL_DIFF" \
+    ZBUILD_FLOOR_FILE_DIFF_CMD="printf -- '--- a/f\n+++ b/f\n+plugin.run.start\n'" \
+    _sf_shape_floor "$_sr17")"
+set -e
+assert_contains "[SPEC-17] a real line added to the golden PASSES the floor" \
+    "$_spec17b_out" "SHAPE_FLOOR PASS"
+
 # ─── Results ─────────────────────────────────────────────────────────────────
 
 print_test_results

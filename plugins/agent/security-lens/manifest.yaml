@@ -57,6 +57,12 @@ inputs:
   # to the diff, the input is re-introduced there as a consumed edge.
   - id: scope_manifest
     required: true
+  # ADR-055 §1 (#1825): this stage READS the intake goal, so it declares it and
+  # the engine resolves the path — it no longer builds `$state_dir/intake.md` by
+  # hand, which pinned a producer's filename. Optional: a template with no
+  # intake stage runs the lens over the scope manifest alone.
+  - id: intake_goal
+    required: false
 outputs:
   - id: findings
     path: ${artifact_dir}/security-findings.json

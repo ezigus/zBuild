@@ -1414,6 +1414,31 @@ _runner_rearm_traps() {
     trap '_runner_signal_trap TERM' TERM
 }
 
+# _runner_state_file_honoured — rc=0 when an explicit ZBUILD_STATE_FILE is the
+# file this run will actually use (#887, #1841).
+#
+# Decided by LOCATION, not by presence. `pipeline resume --run-id` names a file
+# INSIDE the state dir (<dir>/runs/<id>/pipeline-state.json) — the more specific
+# location, and the only way to reopen that run; CI exports ZBUILD_STATE_DIR for
+# every job, so "the dir always wins" would silently resume the wrong run. A
+# NESTED runner instead inherits an AMBIENT ZBUILD_STATE_FILE from the outer
+# pipeline, pointing outside this dir — a leak, where the explicit dir must win
+# or the nested run writes into its parent's state (per-run-state-isolation T4).
+#
+# Used by BOTH the --issue cross-check and the state_file assignment, so the
+# engine can never validate one file and then open another.
+_runner_state_file_honoured() {
+    [[ -n "${ZBUILD_STATE_FILE:-}" ]] || return 1
+    [[ -n "${ZBUILD_STATE_DIR:-}" ]] || return 0
+    local _sf_par _sd_res
+    # Resolve when the paths exist (a symlinked or relative spelling of the same
+    # tree must not read as a different one); fall back to the literal strings,
+    # since the dir may not have been created yet at cross-check time.
+    _sf_par="$(cd "$(dirname "${ZBUILD_STATE_FILE}")" 2>/dev/null && pwd -P || dirname "${ZBUILD_STATE_FILE}")"
+    _sd_res="$(cd "${ZBUILD_STATE_DIR}" 2>/dev/null && pwd -P || printf '%s' "${ZBUILD_STATE_DIR%/}")"
+    [[ "$_sf_par" == "$_sd_res" || "$_sf_par" == "$_sd_res"/* ]]
+}
+
 main() {
     local issue="" goal="" dry_run=false template="simple"
     local resume_mode=false from_stage="" no_resume=false force=false
@@ -1489,11 +1514,13 @@ main() {
     # Placed before --dry-run so dry-run also surfaces mismatches.
     # Fail-closed on corrupt state files (rather than letting get_state_field
     # silently return its default and skip the check).
-    # Note: this check fires regardless of ZBUILD_STATE_DIR — if a caller sets
-    # both, the cross-check is still a safety gate. The state_file assignment
-    # below (not here) is where ZBUILD_STATE_DIR wins over ZBUILD_STATE_FILE (#887).
-    if [[ -n "${ZBUILD_STATE_FILE:-}" \
-          && -n "$issue" && "$issue" != "0" \
+    # Only for the file this run will ACTUALLY use. Validating one the engine
+    # then ignores refuses a run over a file that has no effect on it — and
+    # leaves the file it does use unvalidated, which is the bypass shape: set a
+    # legitimate ZBUILD_STATE_FILE to satisfy the gate, point ZBUILD_STATE_DIR
+    # somewhere else, and the state actually read was never checked.
+    if _runner_state_file_honoured \
+          && [[ -n "$issue" && "$issue" != "0" \
           && -f "${ZBUILD_STATE_FILE}" ]]; then
         if ! jq empty "${ZBUILD_STATE_FILE}" >/dev/null 2>&1; then
             error "ZBUILD_STATE_FILE='${ZBUILD_STATE_FILE}' is not valid JSON; refusing to honor it alongside --issue $issue (fail-closed)"
@@ -1689,14 +1716,20 @@ main() {
     fi
 
     mkdir -p "$state_dir"
-    # Honor ZBUILD_STATE_FILE when set (e.g. by `pipeline resume --run-id`),
-    # but only when ZBUILD_STATE_DIR is NOT also explicitly set. An explicit
-    # ZBUILD_STATE_DIR is the caller's authoritative directory; any ambient
-    # ZBUILD_STATE_FILE (e.g. inherited from an outer pipeline context) must not
-    # silently override it (#887).
+    # Which wins when BOTH are set is decided by LOCATION, not by presence
+    # (#887, #1841). Two callers set both and mean opposite things:
+    #   `pipeline resume --run-id` names a file INSIDE the state dir
+    #       (<dir>/runs/<id>/pipeline-state.json) — the more specific location,
+    #       and the only way to reopen that run. CI exports ZBUILD_STATE_DIR for
+    #       every job, so "the dir always wins" silently resumes the wrong run.
+    #   a NESTED runner inherits an AMBIENT ZBUILD_STATE_FILE from the outer
+    #       pipeline, pointing outside this dir. That is a leak, and the
+    #       explicit dir must win — otherwise the nested run writes its state
+    #       into its parent's file (per-run-state-isolation T4).
+    # Under the dir → honour the file. Outside it → honour the dir.
     # Cross-check vs --issue happened earlier (before --dry-run); see #296 Δ-4.
     local state_file
-    if [[ -n "${ZBUILD_STATE_FILE:-}" && -z "${ZBUILD_STATE_DIR:-}" ]]; then
+    if _runner_state_file_honoured; then
         state_file="$ZBUILD_STATE_FILE"
         state_dir="$(dirname "$state_file")"
     else

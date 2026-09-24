@@ -67,12 +67,12 @@ _security_lens_write_result() {
             plugin_id: "security-lens",
             generated_at: $ts,
             findings: $findings,
-            stub: "false",
+            stub: false,
             data: {
                 plugin_id: "security-lens",
                 generated_at: $ts,
                 findings: $findings,
-                stub: "false"
+                stub: false
             }
         }' | atomic_write "$output"
 }
@@ -110,9 +110,24 @@ security_lens_run() {
     # don't overwrite each other. Filename still matches the *-findings.json
     # glob that the output plugin uses to collect results.
     local platform_infix="${ZBUILD_TARGET_PLATFORM:+-${ZBUILD_TARGET_PLATFORM}}"
+    # ADR-055 §1 (#1825/#1826): the ENGINE says where another stage's artifact
+    # is. Hardcoding a producer's filename pins it forever and bypasses the
+    # resolved-input index.
+    local _si_intake="" _si_scope=""
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+        _si_intake="$(jq -r '.inputs.intake_goal // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+        _si_scope="$(jq -r '.inputs.scope_manifest // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+    fi
+    # The fallbacks stand only for a DIRECT hook call (the contract tests drive
+    # security_lens_run with no index). In the pipeline the engine always
+    # provides one, so the resolved path is what production uses and a producer
+    # is free to move its artifact.
+    [[ -n "$_si_intake" ]] || _si_intake="$state_dir/intake.md"
+    [[ -n "$_si_scope"  ]] || _si_scope="$state_dir/scope-manifest.md"
+
     _security_lens_run_inner \
-        "$state_dir/intake.md" \
-        "$state_dir/scope-manifest.md" \
+        "$_si_intake" \
+        "$_si_scope" \
         "$artifacts_dir/security${platform_infix}-findings.json" \
         "$artifacts_dir"
 }
@@ -162,8 +177,15 @@ _security_lens_run_inner() {
         stage_summary_write "$artifact_dir/security-lens-summary.md" "security-lens" "error" \
             "tier resolution failed — no security review happened" \
             "This lens contributed no findings; absence here is not evidence of safety."
+        # No router_rc here: the tier never resolved, so no router call was made.
+        # The old literal `router_rc=2` claimed an exit code that never happened,
+        # conflating tier-resolution failure with a router failure.
         emit_event "plugin.result" "verdict=error" "plugin=security-lens" \
-            "reason=router_fatal" "router_rc=2"
+            "result_contract=2" "reason=tier_unresolved"
+        # The manifest DECLARES security_lens.failed; nothing emitted it, so a
+        # monitor wired to it could never fire. A failure is what it is for.
+        emit_event "security_lens.failed" "plugin=security-lens" \
+            "reason=tier_unresolved"
         return 1
     fi
     local raw_response="" router_rc=0
@@ -193,7 +215,18 @@ _security_lens_run_inner() {
         export ZBUILD_ROUTER_ARTIFACT_ID="$_prev_artifact_env"
     fi
 
-    # ─── ADR-063 §3: interrupt (rc=130) ────────────────────────────────────
+    # ─── ADR-063 §3: interrupt ─────────────────────────────────────────────
+    # The flag, not only rc=130: a signal can arrive between `trap` and the
+    # router returning, and the call then completes with rc=0. Keyed on rc
+    # alone, the normal-pass path below overwrote the handler's interrupted
+    # artifact and an interrupted SECURITY review was reported as a pass —
+    # absence of findings reads as evidence of safety, which is the one claim
+    # this lens must never make falsely.
+    if [[ "${_sl_interrupted:-0}" == "1" && "$router_rc" -ne 130 ]]; then
+        _security_lens_write_result "$output" "error" "interrupted" "signal_interrupt"
+        emit_event "security_lens.failed" "plugin=security-lens" "reason=signal_interrupt"
+        return 130
+    fi
     if [[ "$router_rc" -eq 130 ]]; then
         [[ "${_sl_interrupted:-0}" == "1" ]] \
             || _security_lens_write_result "$output" "error" "interrupted" "signal_interrupt"
@@ -229,6 +262,8 @@ _security_lens_run_inner() {
             "the model call failed, so no security review happened" \
             "This lens contributed no findings; absence here is not evidence of safety."
         emit_event "plugin.result" "verdict=error" "plugin=security-lens" \
+            "reason=router_fatal" "router_rc=$router_rc"
+        emit_event "security_lens.failed" "plugin=security-lens" \
             "reason=router_fatal" "router_rc=$router_rc"
         return 1
     fi

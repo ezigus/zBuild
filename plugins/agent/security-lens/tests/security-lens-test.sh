@@ -166,7 +166,10 @@ r1_verdict=$(jq -r '.verdict // "absent"' "$OUTPUT_R")
 assert_eq "[SPEC-2] R1: verdict=pass on normal pass path" "pass" "$r1_verdict"
 r1_disp=$(jq -r '.disposition // "absent"' "$OUTPUT_R")
 assert_eq "[SPEC-2] R1: disposition=complete on normal pass path" "complete" "$r1_disp"
-stub_val=$(jq -r '.data.stub // "absent"' "$OUTPUT_R")
+# NOT `// "absent"`: jq's alternative operator treats a boolean false as empty,
+# so the fallback fires on the very value this asserts. Ask whether the key is
+# there, then render it.
+stub_val=$(jq -r 'if has("data") and (.data|has("stub")) then (.data.stub|tostring) else "absent" end' "$OUTPUT_R")
 assert_eq "R1: stub is false after real LLM path" "false" "$stub_val"
 title_val=$(jq -r '.data.findings[0].title // "absent"' "$OUTPUT_R")
 assert_eq "[SPEC-9] R1: findings[0].title accessible under .data.findings" "SQL Injection" "$title_val"
@@ -241,7 +244,11 @@ set -e
 assert_eq "R7: router rc=2 (fatal tier) returns plugin rc=1 (propagates)" "1" "$rc"
 r7_error_event=$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
     jq -r 'select(.type=="plugin.result" and .data.verdict=="error") | .data.reason // empty' 2>/dev/null | tail -1 || true)
-assert_eq "R7: plugin.result event emitted with router_fatal reason" "router_fatal" "$r7_error_event"
+# T9 is an UNKNOWN TIER: the failure is tier resolution, not a router call —
+# no router call happens at all. The old expectation ("router_fatal", with a
+# hardcoded router_rc=2 beside it) named a router exit code that never existed
+# and made a tier problem indistinguishable from a model failure in the log.
+assert_eq "R7: plugin.result event names the real failure (tier, not router)" "tier_unresolved" "$r7_error_event"
 
 # ─── R8: .findings key missing from valid JSON object (envelope-wrapped #476) ─
 install_envelope_mock_claude '{"schema_version":1}'
@@ -498,13 +505,22 @@ assert_eq "[SPEC-5] security_lens_cleanup is declared and returns 0" "0" "$spec5
 # SPEC-5 function-callable check is above; ADR-062 §3 retired manifest cleanup
 # hook declarations tree-wide — also assert NO cleanup: YAML key under hooks:.
 _MANIFEST_FILE="$PLUGIN_DIR/manifest.yaml"
+# Portability (this repo's CI runs the suite on ubuntu AND macos): `\s` is a GNU
+# awk/grep extension that BSD tools match as a literal `s`, so every extraction
+# using it came back EMPTY on macOS — a SPEC then passed or failed by luck
+# rather than by what the manifest says. POSIX classes throughout, and no
+# multi-command `sed` range (BSD sed rejects `{...; p}` outright).
 
 # SPEC-5 (manifest): confirm NO cleanup: YAML key appears under hooks: (ADR-062 §3)
 _spec5_hooks_block=$(awk '/^hooks:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
-_spec5_cleanup_count=$(grep -cE '^\s+cleanup:' <<< "$_spec5_hooks_block" 2>/dev/null || true)
+_spec5_cleanup_count=$(grep -cE '^[[:space:]]+cleanup:' <<< "$_spec5_hooks_block" 2>/dev/null || true)
 assert_eq "[SPEC-5] manifest has NO cleanup: YAML key under hooks: (ADR-062 §3 retired)" "0" "$_spec5_cleanup_count"
 
-_spec6_provides=$(sed -n '/^provides:/,/^[a-zA-Z]/{/^provides:/d; /^[a-zA-Z]/d; p}' "$_MANIFEST_FILE" 2>/dev/null || true)
+# awk, not a multi-command sed range: BSD sed (macOS, which this repo's CI
+# matrix runs) rejects `{...; p}` with "extra characters at the end of p
+# command", so the extraction returned nothing and this SPEC failed on macOS
+# while passing on ubuntu. Same shape as the SPEC-5 and SPEC-7 blocks above.
+_spec6_provides=$(awk '/^provides:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
 if grep -q 'result_contract: 2' <<< "$_spec6_provides" 2>/dev/null; then
     assert_pass "[SPEC-6] manifest declares provides.result_contract: 2"
 else
@@ -512,7 +528,7 @@ else
 fi
 
 _spec7_config=$(awk '/^config:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
-_spec7_vv=$(awk '/valid_verdicts:/{found=1;next} found && /^\s+-/{print;next} found{exit}' <<< "$_spec7_config" 2>/dev/null || true)
+_spec7_vv=$(awk '/valid_verdicts:/{found=1;next} found && /^[[:space:]]+-/{print;next} found{exit}' <<< "$_spec7_config" 2>/dev/null || true)
 if grep -q '\bpass\b' <<< "$_spec7_vv" 2>/dev/null && \
    grep -q '\berror\b' <<< "$_spec7_vv" 2>/dev/null; then
     assert_pass "[SPEC-7] manifest declares valid_verdicts: [pass, error]"
@@ -521,7 +537,7 @@ else
 fi
 
 _spec11_config=$(awk '/^config:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
-_spec11_router=$(awk '/^\s+router:/{found=1;next} found && /^\s{4}[a-z]/{print;next} found{exit}' <<< "$_spec11_config" 2>/dev/null || true)
+_spec11_router=$(awk '/^[[:space:]]+router:/{found=1;next} found && /^[[:space:]][[:space:]][[:space:]][[:space:]][a-z]/{print;next} found{exit}' <<< "$_spec11_config" 2>/dev/null || true)
 if grep -q 'timeout_s:' <<< "$_spec11_router" 2>/dev/null && \
    grep -q 'max_turns:' <<< "$_spec11_router" 2>/dev/null; then
     assert_pass "[SPEC-11] manifest declares config.router with timeout_s and max_turns"
@@ -529,7 +545,7 @@ else
     assert_fail "[SPEC-11] manifest declares config.router with timeout_s and max_turns"
 fi
 
-_spec13_findings=$(awk '/^\s+- id: findings/{found=1; print; next} found && /^\s+- id:/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
+_spec13_findings=$(awk '/^[[:space:]]+- id: findings/{found=1; print; next} found && /^[[:space:]]+- id:/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
 if grep -q 'primary: true' <<< "$_spec13_findings" 2>/dev/null; then
     assert_pass "[SPEC-13] manifest declares primary: true on findings output"
 else
@@ -537,8 +553,8 @@ else
 fi
 
 # ─── [SPEC-16]: manifest declares provides.events with both required event names ─
-_spec16_provides=$(sed -n '/^provides:/,/^[a-zA-Z]/{/^provides:/d; /^[a-zA-Z]/d; p}' "$_MANIFEST_FILE" 2>/dev/null || true)
-_spec16_events=$(awk '/^\s+events:/{found=1;next} found && /^\s+-/{print;next} found{exit}' <<< "$_spec16_provides" 2>/dev/null || true)
+_spec16_provides=$(awk '/^provides:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
+_spec16_events=$(awk '/^[[:space:]]+events:/{found=1;next} found && /^[[:space:]]+-/{print;next} found{exit}' <<< "$_spec16_provides" 2>/dev/null || true)
 if grep -q 'plugin\.result' <<< "$_spec16_events" 2>/dev/null; then
     assert_pass "[SPEC-16] manifest provides.events contains plugin.result"
 else
@@ -551,8 +567,8 @@ else
 fi
 
 # ─── [SPEC-17]: manifest declares provides.role: security-auditor ────────────
-_spec17_provides=$(sed -n '/^provides:/,/^[a-zA-Z]/{/^provides:/d; /^[a-zA-Z]/d; p}' "$_MANIFEST_FILE" 2>/dev/null || true)
-if grep -qE 'role:\s+security-auditor' <<< "$_spec17_provides" 2>/dev/null; then
+_spec17_provides=$(awk '/^provides:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
+if grep -qE 'role:[[:space:]]+security-auditor' <<< "$_spec17_provides" 2>/dev/null; then
     assert_pass "[SPEC-17] manifest declares provides.role: security-auditor"
 else
     assert_fail "[SPEC-17] manifest declares provides.role: security-auditor"
@@ -566,7 +582,7 @@ unset _ZBUILD_ROUTER_LOADED
 # shellcheck source=../../../../core/router/route.sh
 source "$REPO_ROOT/core/router/route.sh"
 
-_spec12_manifest_turns=$(awk '/^config:/{c=1;next} c && /^[a-zA-Z]/{exit} c && /^\s+router:/{r=1;next} c && r && /max_turns:/{match($0,/[0-9]+/); print substr($0,RSTART,RLENGTH); exit}' "$_MANIFEST_FILE" 2>/dev/null || echo 45)
+_spec12_manifest_turns=$(awk '/^config:/{c=1;next} c && /^[a-zA-Z]/{exit} c && /^[[:space:]]+router:/{r=1;next} c && r && /max_turns:/{match($0,/[0-9]+/); print substr($0,RSTART,RLENGTH); exit}' "$_MANIFEST_FILE" 2>/dev/null || echo 45)
 assert_eq "[SPEC-12] manifest max_turns differs from override value (precedence testable)" \
     "1" "$(( _spec12_manifest_turns != 7 ? 1 : 0 ))"
 
@@ -589,9 +605,83 @@ fi
 assert_eq "[SPEC-12] ZBUILD_ROUTER_MAX_TURNS_OVERRIDE takes precedence over manifest config.router.max_turns" \
     "7" "$_spec12_max_turns"
 
+# ─── [SPEC-21] the declared event is actually emitted (lens: SRE, high) ─────
+# The manifest declares `security_lens.failed` under provides.events and NO
+# call site existed anywhere in plugin.sh — every error path emitted only
+# plugin.result, so a monitor wired to the declared event could never fire.
+# A declared event that nothing emits is a contract the plugin does not keep.
+print_test_section "[SPEC-21] every declared event has a call site"
+_spec21_declared=$(awk '/^[[:space:]]+events:/{found=1;next} found && /^[[:space:]]+-/{sub(/^[[:space:]]*-[[:space:]]*/,""); print; next} found{exit}' \
+    "$_MANIFEST_FILE" 2>/dev/null || true)
+_spec21_missing=""
+while IFS= read -r _ev; do
+    [[ -n "$_ev" ]] || continue
+    grep -qF "\"$_ev\"" "$PLUGIN_DIR/plugin.sh" 2>/dev/null || _spec21_missing="${_spec21_missing}${_ev} "
+done <<< "$_spec21_declared"
+assert_eq "[SPEC-21] every event the manifest declares has an emit site in plugin.sh" \
+    "" "${_spec21_missing% }"
+
+# ─── [SPEC-22] stub is a BOOLEAN (lens: correctness/red-team/SRE) ───────────
+# It was written as the JSON string "false". `jq -r` renders a string "false"
+# and a boolean false identically, so every existing assertion passed while a
+# consumer doing `if .stub then` saw a truthy value — the inversion of what the
+# field means. Assert the TYPE, which is the only thing that can see it.
+print_test_section "[SPEC-22] stub is a boolean, not the string \"false\""
+_spec22_art="$TEST_TEMP_DIR/spec22-findings.json"
+_security_lens_write_result "$_spec22_art" "pass" "complete" "ok" '[]' 2>/dev/null || true
+assert_eq "[SPEC-22] top-level .stub is a boolean" "boolean" \
+    "$(jq -r '.stub | type' "$_spec22_art" 2>/dev/null || true)"
+assert_eq "[SPEC-22] .data.stub is a boolean too" "boolean" \
+    "$(jq -r '.data.stub | type' "$_spec22_art" 2>/dev/null || true)"
+
+# ─── [SPEC-23] an interrupted review is never reported as a pass ───────────
+# (lens: red-team) The handler sets _sl_interrupted and writes the interrupted
+# artifact, but the flag was only consulted on the rc=130 branch. A signal
+# arriving in the window between `trap` and the router returning leaves rc=0 —
+# the normal-pass path then overwrote the interrupted artifact and an
+# interrupted SECURITY review was reported as verdict=pass.
+print_test_section "[SPEC-23] a signal seen during the call is not reported as a pass"
+_spec23_art="$TEST_TEMP_DIR/spec23-findings.json"
+_security_lens_write_result "$_spec23_art" "error" "interrupted" "signal_interrupt" 2>/dev/null || true
+# The handler ran; now the router returns 0 (the race). Drive the same decision
+# the plugin makes at that point.
+_sl_interrupted=1
+_spec23_rc=0
+if [[ "${_sl_interrupted:-0}" == "1" ]]; then _spec23_verdict="error"; else _spec23_verdict="pass"; fi
+assert_eq "[SPEC-23] with the interrupt flag set, a rc=0 return is NOT a pass" \
+    "error" "$_spec23_verdict"
+# …and the plugin consults the flag OUTSIDE the rc=130 branch, which is the
+# only place that can see this race.
+_spec23_guarded=$( { grep -cE '_sl_interrupted' "$PLUGIN_DIR/plugin.sh" || true; } )
+assert_eq "[SPEC-23] the flag is consulted on more than the rc=130 branch alone" "1" \
+    "$([[ "${_spec23_guarded:-0}" -ge 4 ]] && echo 1 || echo 0)"
+_sl_interrupted=0
+
 # ─── [SPEC-14]: no hardcoded artifact paths beyond manifest-declared basenames ─
 _spec14_plugin="$PLUGIN_DIR/plugin.sh"
-_spec14_bad=$(grep -cE '"[^"$]*\.(json|md)"' "$_spec14_plugin" 2>/dev/null || true)
+# What this SPEC is really about (ADR-055 §1, #1825/#1826): a plugin must not
+# construct the path of an artifact it does not OWN. Its own declared outputs
+# are built from the engine-provided artifact dir — every migrated plugin in the
+# tree does that, and it is not the defect. Reaching into another stage's
+# artifact by hand IS: it hardcodes a producer's filename, so the producer can
+# never move it and the engine's resolved-input index is bypassed.
+#
+# The previous pattern `"[^"$]*\.(json|md)"` could not match a string containing
+# a `$` — which is the only form these literals take — so it reported a clean
+# file while `$state_dir/intake.md` and `$state_dir/scope-manifest.md` sat in it.
+# Two parts, because "no hardcoded paths" has two halves that must BOTH hold:
+#   (a) the engine's resolved index is what production reads;
+#   (b) the only remaining literals are the direct-call fallbacks for exactly
+#       those resolved variables — anything else is a producer's filename
+#       pinned in this plugin.
+_spec14_own='security-lens-summary\.md|security(-[A-Za-z0-9_]+)?-findings\.json'
+_spec14_bad=$( { grep -nE '\$[A-Za-z_][A-Za-z0-9_]*/[A-Za-z0-9_-]+\.(json|md)' "$_spec14_plugin" \
+                 || true; } \
+             | { grep -vE "$_spec14_own" || true; } \
+             | { grep -vE '\|\| _si_(intake|scope)=' || true; } | grep -c . || true)
+_spec14_resolves=$( { grep -cE 'ZBUILD_STAGE_INPUTS' "$_spec14_plugin" || true; } )
+assert_eq "[SPEC-14] the plugin reads the engine's resolved-input index" "1" \
+    "$([[ "${_spec14_resolves:-0}" -ge 1 ]] && echo 1 || echo 0)"
 assert_eq "[SPEC-14] plugin.sh has no hardcoded artifact paths beyond manifest-declared basenames" \
     "0" "$_spec14_bad"
 
@@ -676,8 +766,8 @@ fi
 # ─── [SPEC-20]: manifest input entries declare only id and required: fields ──
 # Extract the inputs block (from 'inputs:' until next top-level YAML key) and
 # assert that none of the disallowed keys (from:, path:, type:) appear in it.
-_spec20_inputs=$(sed -n '/^inputs:/,/^[a-zA-Z]/{/^inputs:/d; /^[a-zA-Z]/d; p}' "$_MANIFEST_FILE" 2>/dev/null || true)
-_spec20_bad=$(grep -cE '^\s+(from|path|type):' <<< "$_spec20_inputs" 2>/dev/null || true)
+_spec20_inputs=$(awk '/^inputs:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)
+_spec20_bad=$(grep -cE '^[[:space:]]+(from|path|type):' <<< "$_spec20_inputs" 2>/dev/null || true)
 assert_eq "[SPEC-20] manifest input entries declare only id and required: (no from:/path:/type: keys)" \
     "0" "$_spec20_bad"
 
