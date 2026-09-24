@@ -228,8 +228,12 @@ _security_lens_run_inner() {
         return 130
     fi
     if [[ "$router_rc" -eq 130 ]]; then
+        # The handler already wrote the artifact when it ran; either way the
+        # DECLARED failure event fires, or a monitor misses every interrupted
+        # run — the gap #2182's review found on this branch.
         [[ "${_sl_interrupted:-0}" == "1" ]] \
             || _security_lens_write_result "$output" "error" "interrupted" "signal_interrupt"
+        emit_event "security_lens.failed" "plugin=security-lens" "reason=signal_interrupt"
         return 130
     fi
 

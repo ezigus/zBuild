@@ -641,20 +641,34 @@ assert_eq "[SPEC-22] .data.stub is a boolean too" "boolean" \
 # the normal-pass path then overwrote the interrupted artifact and an
 # interrupted SECURITY review was reported as verdict=pass.
 print_test_section "[SPEC-23] a signal seen during the call is not reported as a pass"
-_spec23_art="$TEST_TEMP_DIR/spec23-findings.json"
-_security_lens_write_result "$_spec23_art" "error" "interrupted" "signal_interrupt" 2>/dev/null || true
-# The handler ran; now the router returns 0 (the race). Drive the same decision
-# the plugin makes at that point.
-_sl_interrupted=1
-_spec23_rc=0
-if [[ "${_sl_interrupted:-0}" == "1" ]]; then _spec23_verdict="error"; else _spec23_verdict="pass"; fi
-assert_eq "[SPEC-23] with the interrupt flag set, a rc=0 return is NOT a pass" \
-    "error" "$_spec23_verdict"
-# …and the plugin consults the flag OUTSIDE the rc=130 branch, which is the
-# only place that can see this race.
-_spec23_guarded=$( { grep -cE '_sl_interrupted' "$PLUGIN_DIR/plugin.sh" || true; } )
-assert_eq "[SPEC-23] the flag is consulted on more than the rc=130 branch alone" "1" \
-    "$([[ "${_spec23_guarded:-0}" -ge 4 ]] && echo 1 || echo 0)"
+# Drives the REAL path: the router returns 0 (the race — the signal arrived
+# before it returned), with the interrupt flag already set by the handler. The
+# assertion reads the ARTIFACT the plugin wrote, so a wrong-direction change in
+# the plugin fails it. (An earlier draft copied the plugin's own conditional
+# into the test, which would have flipped with the implementation — caught in
+# review of #2182.)
+_spec23_out="$TEST_TEMP_DIR/spec23-findings.json"
+rm -f "$_spec23_out"
+# The race, reproduced honestly: a REAL signal arrives while the model call is
+# in flight, and the call then completes with rc=0. The plugin installs its own
+# TERM trap around the call, so the signal runs the handler in this process —
+# a stub cannot set the flag any other way, because the call is captured in
+# `$( )` and a subshell assignment never reaches the caller.
+# shellcheck disable=SC2317
+route_to_model() { kill -TERM $$ 2>/dev/null; sleep 0.2; printf '{"findings":[]}'; return 0; }
+set +e
+_security_lens_run_inner "$INPUT" "$MANIFEST" "$_spec23_out" "$TEST_TEMP_DIR" >/dev/null 2>&1
+_spec23_rc=$?
+set -e
+unset -f route_to_model
+assert_eq "[SPEC-23] a signal during the call returns the interrupt rc, not success" \
+    "130" "$_spec23_rc"
+assert_eq "[SPEC-23] …and the artifact says error, not pass" "error" \
+    "$(jq -r '.verdict // ""' "$_spec23_out" 2>/dev/null)"
+assert_eq "[SPEC-23] …with disposition=interrupted" "interrupted" \
+    "$(jq -r '.disposition // ""' "$_spec23_out" 2>/dev/null)"
+assert_eq "[SPEC-23] …and the declared failure event fired" "1" \
+    "$( { grep -c '"security_lens.failed"' "$ZBUILD_EVENTS_JSONL" || true; } | awk '{print ($1>=1)?1:0}')"
 _sl_interrupted=0
 
 # ─── [SPEC-14]: no hardcoded artifact paths beyond manifest-declared basenames ─
