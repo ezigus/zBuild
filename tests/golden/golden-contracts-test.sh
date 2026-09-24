@@ -70,13 +70,13 @@ fi
 # present in event-schema.json; this assertion fails at that baseline.
 _inf_count="$(jq -r '[.known_types[] | select(test("^plugin\\.(init|finalize)\\.complete$"))] | length' \
     "$REPO_ROOT/config/event-schema.json" 2>/dev/null)"
-assert_eq "[SPEC-6] plugin.init/finalize complete events absent from event schema" "0" "$_inf_count"
+assert_eq "plugin.init/finalize complete events absent from event schema" "0" "$_inf_count"
 
 # ─── SPEC-7: golden file has exactly two lifecycle entries (run and cleanup) ──
 # CHANGE: before ADR-056 the golden had 4 entries (init, run, finalize, cleanup);
 # after removal it must have exactly 2.
 _golden_count="$(grep -c . "$REPO_ROOT/tests/golden/plugin-lifecycle-event-types.golden" 2>/dev/null)" || _golden_count=0
-assert_eq "[SPEC-7] plugin lifecycle golden has exactly 2 event types (run + cleanup)" "2" "$_golden_count"
+assert_eq "plugin lifecycle golden has exactly 2 event types (run + cleanup)" "2" "$_golden_count"
 
 # ─── G5: router success event sequence golden ────────────────────────────────
 # Verifies that a successful route_to_model T2 call emits events in the
@@ -150,6 +150,25 @@ if [[ -n "$OLDSCHEMA" ]]; then export ZBUILD_EVENT_SCHEMA="$OLDSCHEMA"; else uns
 # (#979) G6 removed: the retired cq.* event types were struck from
 # config/event-schema.json and tests/golden/cq-event-types.golden was deleted
 # together with the compound-quality lattice.
+
+# ─── SPEC-15: security-lens passing-run v2 envelope golden snapshot ──────────
+# CHANGE: fails at merge-base (golden file absent before v2 migration).
+# assert_golden returns 1 when the file is missing, so the assertion fails
+# at the merge-base and passes once the golden is committed.
+_spec15_expected_keys="data
+disposition
+findings
+generated_at
+plugin_id
+reason
+result_contract
+stub
+verdict"
+set +e
+assert_golden "security-lens-pass-artifact" "$_spec15_expected_keys"
+_spec15_rc=$?
+set -e
+assert_eq "[SPEC-15] security-lens v2 envelope golden matches expected key set" "0" "$_spec15_rc"
 
 print_test_results
 exit $((FAIL > 0))

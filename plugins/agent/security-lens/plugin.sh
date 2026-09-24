@@ -46,6 +46,45 @@ _security_lens_envelope_schema_ok() {
     ' >/dev/null 2>&1
 }
 
+# ADR-054 §6 / ADR-060 §1: write v2 result artifact atomically.
+# Keeps top-level findings/stub for backward compat with pre-v2 consumers.
+# Args: <output-path> <verdict> <disposition> <reason> [<findings-json>]
+_security_lens_write_result() {
+    local output="$1" verdict="$2" disposition="$3" reason="$4"
+    local findings_json="${5:-[]}"
+    local now; now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    jq -n \
+        --arg ts "$now" \
+        --arg verdict "$verdict" \
+        --arg disposition "$disposition" \
+        --arg reason "$reason" \
+        --argjson findings "$findings_json" \
+        '{
+            result_contract: 2,
+            verdict: $verdict,
+            disposition: $disposition,
+            reason: $reason,
+            plugin_id: "security-lens",
+            generated_at: $ts,
+            findings: $findings,
+            stub: false,
+            data: {
+                plugin_id: "security-lens",
+                generated_at: $ts,
+                findings: $findings,
+                stub: false
+            }
+        }' | atomic_write "$output"
+}
+
+# ADR-063 §3: interrupt handler — writes v2 result with verdict=error/interrupted.
+# Registered as TERM/INT trap in _security_lens_run_inner around the model call.
+_security_lens_interrupt_handler() {
+    _sl_interrupted=1
+    _security_lens_write_result "${_sl_out_ref:-/dev/null}" "error" "interrupted" \
+        "signal_interrupt"
+}
+
 # ─── run ────────────────────────────────────────────────────────────────────
 # Hook called by the pipeline runner: security_lens_run(stage, state_file)
 # Derives artifact paths from state_dir and delegates to the inner function.
@@ -53,10 +92,16 @@ security_lens_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
         error "security_lens_run: state_file argument required"
+        if [[ -n "${ZBUILD_ARTIFACT_DIR:-}" ]]; then
+            mkdir -p "$ZBUILD_ARTIFACT_DIR" 2>/dev/null || true
+            _security_lens_write_result "$ZBUILD_ARTIFACT_DIR/security-findings.json" \
+                "error" "broken" \
+                "the engine dispatched this stage with no state file"
+        fi
         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/security-lens-summary.md}" "security-lens" "error" \
             "the engine dispatched this stage with no state file, so it could not run" \
             "No work was attempted. This is an engine contract violation, not a fault in the change."
-        return 2
+        return 1
     fi
     local state_dir; state_dir="$(dirname "$state_file")"
     local artifacts_dir="$state_dir/artifacts"
@@ -65,9 +110,24 @@ security_lens_run() {
     # don't overwrite each other. Filename still matches the *-findings.json
     # glob that the output plugin uses to collect results.
     local platform_infix="${ZBUILD_TARGET_PLATFORM:+-${ZBUILD_TARGET_PLATFORM}}"
+    # ADR-055 §1 (#1825/#1826): the ENGINE says where another stage's artifact
+    # is. Hardcoding a producer's filename pins it forever and bypasses the
+    # resolved-input index.
+    local _si_intake="" _si_scope=""
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+        _si_intake="$(jq -r '.inputs.intake_goal // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+        _si_scope="$(jq -r '.inputs.scope_manifest // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+    fi
+    # The fallbacks stand only for a DIRECT hook call (the contract tests drive
+    # security_lens_run with no index). In the pipeline the engine always
+    # provides one, so the resolved path is what production uses and a producer
+    # is free to move its artifact.
+    [[ -n "$_si_intake" ]] || _si_intake="$state_dir/intake.md"
+    [[ -n "$_si_scope"  ]] || _si_scope="$state_dir/scope-manifest.md"
+
     _security_lens_run_inner \
-        "$state_dir/intake.md" \
-        "$state_dir/scope-manifest.md" \
+        "$_si_intake" \
+        "$_si_scope" \
         "$artifacts_dir/security${platform_infix}-findings.json" \
         "$artifacts_dir"
 }
@@ -87,7 +147,7 @@ _security_lens_run_inner() {
 
     if [[ -z "$input" || -z "$output" ]]; then
         error "security_lens_run: requires <input> <scope_manifest> <output>"
-        return 2
+        return 1
     fi
 
     mkdir -p "$artifact_dir"
@@ -109,7 +169,25 @@ _security_lens_run_inner() {
     # Without the JSON envelope + .result extraction, reasoning turns leak
     # as a prose preamble that breaks the strict-JSON parser below.
     # Save/restore so an outer caller's env intent is preserved.
-    local tier; tier="$(resolve_tier security-lens "$_SEC_LENS_DIR")" || return 1
+    local tier
+    if ! tier="$(resolve_tier security-lens "$_SEC_LENS_DIR")"; then
+        error "security_lens_run: resolve_tier failed; refusing to emit"
+        _security_lens_write_result "$output" "error" "broken" \
+            "the model call failed, so no security review happened"
+        stage_summary_write "$artifact_dir/security-lens-summary.md" "security-lens" "error" \
+            "tier resolution failed — no security review happened" \
+            "This lens contributed no findings; absence here is not evidence of safety."
+        # No router_rc here: the tier never resolved, so no router call was made.
+        # The old literal `router_rc=2` claimed an exit code that never happened,
+        # conflating tier-resolution failure with a router failure.
+        emit_event "plugin.result" "verdict=error" "plugin=security-lens" \
+            "result_contract=2" "reason=tier_unresolved"
+        # The manifest DECLARES security_lens.failed; nothing emitted it, so a
+        # monitor wired to it could never fire. A failure is what it is for.
+        emit_event "security_lens.failed" "plugin=security-lens" \
+            "reason=tier_unresolved"
+        return 1
+    fi
     local raw_response="" router_rc=0
     local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
     export ZBUILD_ROUTER_JSON_OUTPUT=1
@@ -120,8 +198,12 @@ _security_lens_run_inner() {
     # opt-in surface symmetric across all Pattern 1 stages.
     local _prev_artifact_env="${ZBUILD_ROUTER_ARTIFACT_ID-__UNSET__}"
     export ZBUILD_ROUTER_ARTIFACT_ID=security-lens
+    _sl_out_ref="$output"
+    _sl_interrupted=0
+    trap '_security_lens_interrupt_handler' TERM INT
     # #491: do NOT redirect route_to_model's stderr — see ADR-015 §v4.
     raw_response="$(route_to_model "$tier" "$prompt")" || router_rc=$?
+    trap - TERM INT
     if [[ "$_prev_json_env" == "__UNSET__" ]]; then
         unset ZBUILD_ROUTER_JSON_OUTPUT
     else
@@ -131,6 +213,28 @@ _security_lens_run_inner() {
         unset ZBUILD_ROUTER_ARTIFACT_ID
     else
         export ZBUILD_ROUTER_ARTIFACT_ID="$_prev_artifact_env"
+    fi
+
+    # ─── ADR-063 §3: interrupt ─────────────────────────────────────────────
+    # The flag, not only rc=130: a signal can arrive between `trap` and the
+    # router returning, and the call then completes with rc=0. Keyed on rc
+    # alone, the normal-pass path below overwrote the handler's interrupted
+    # artifact and an interrupted SECURITY review was reported as a pass —
+    # absence of findings reads as evidence of safety, which is the one claim
+    # this lens must never make falsely.
+    if [[ "${_sl_interrupted:-0}" == "1" && "$router_rc" -ne 130 ]]; then
+        _security_lens_write_result "$output" "error" "interrupted" "signal_interrupt"
+        emit_event "security_lens.failed" "plugin=security-lens" "reason=signal_interrupt"
+        return 130
+    fi
+    if [[ "$router_rc" -eq 130 ]]; then
+        # The handler already wrote the artifact when it ran; either way the
+        # DECLARED failure event fires, or a monitor misses every interrupted
+        # run — the gap #2182's review found on this branch.
+        [[ "${_sl_interrupted:-0}" == "1" ]] \
+            || _security_lens_write_result "$output" "error" "interrupted" "signal_interrupt"
+        emit_event "security_lens.failed" "plugin=security-lens" "reason=signal_interrupt"
+        return 130
     fi
 
     # ─── Parse: strip fences, extract .findings, validate array ───────────
@@ -156,37 +260,34 @@ _security_lens_run_inner() {
         warn "security_lens_run: router rc=1 (recoverable); using empty findings"
     elif [[ $router_rc -ne 0 ]]; then
         error "security_lens_run: router rc=$router_rc (fatal); refusing to emit"
+        _security_lens_write_result "$output" "error" "broken" \
+            "the model call failed, so no security review happened"
         stage_summary_write "$artifact_dir/security-lens-summary.md" "security-lens" "error" \
             "the model call failed, so no security review happened" \
             "This lens contributed no findings; absence here is not evidence of safety."
         emit_event "plugin.result" "verdict=error" "plugin=security-lens" \
             "reason=router_fatal" "router_rc=$router_rc"
+        emit_event "security_lens.failed" "plugin=security-lens" \
+            "reason=router_fatal" "router_rc=$router_rc"
         return 1
     fi
 
-    # ─── Write findings.json (schema unchanged + stub:false marker) ───────
-    local now findings_count
-    now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    # ─── Write findings.json (v2 contract + backward-compat top-level fields) ─
+    local findings_count
     findings_count="$(printf '%s' "$findings_json" | jq 'length' 2>/dev/null || echo 0)"
-
-    jq -n \
-        --arg ts "$now" \
-        --argjson findings "$findings_json" \
-        '{
-            schema_version: 1,
-            plugin_id: "security-lens",
-            generated_at: $ts,
-            findings: $findings,
-            stub: false
-        }' | atomic_write "$output"
+    local _reason="reviewed the change for security issues — $findings_count finding(s)"
+    _security_lens_write_result "$output" "pass" "complete" "$_reason" "$findings_json"
 
     stage_summary_write "$artifact_dir/security-lens-summary.md" "security-lens" "pass" \
-        "reviewed the change for security issues — $findings_count finding(s)" \
+        "$_reason" \
         "$(printf -- '- artifact: findings.json')"
     emit_event "plugin.result" "plugin=security-lens" \
+        "result_contract=2" \
         "findings_count=$findings_count" \
         "router_rc=$router_rc"
     return 0
 }
 
 # ─── cleanup ────────────────────────────────────────────────────────────────
+# ADR-056 §4: no resources to release; presence recorded per contract.
+security_lens_cleanup() { return 0; }

@@ -171,6 +171,43 @@ _sf_is_template_comment_only() {
     [[ -z "$changed" ]]
 }
 
+# ─── _sf_floor_file_diff <repo_root> <path> ─────────────────────────────────
+# This one floor file's merge-base→HEAD diff. Mockable for tests, same shape as
+# _sf_template_diff.
+_sf_floor_file_diff() {
+    local repo_root="$1" path="$2"
+    local cmd="${ZBUILD_FLOOR_FILE_DIFF_CMD:-}"
+    if [[ -n "$cmd" ]]; then
+        bash -c "$cmd" _ "$path" 2>/dev/null || true
+        return
+    fi
+    local base_sha
+    base_sha="$(zbuild_resolve_merge_base "$repo_root")"
+    [[ -z "$base_sha" ]] && return
+    git -C "$repo_root" diff "$base_sha" HEAD -- "$path" 2>/dev/null || true
+}
+
+# ─── _sf_floor_file_updated <repo_root> <path> ──────────────────────────────
+# rc=0 when this floor file carries a REAL change (#2183 / #1841). Appearing in
+# the diff is not enough: #1841's build added a one-line comment to five test
+# files and two goldens ("certify shape-floor files with benign touch") and the
+# gate passed while nothing had been updated. The filter is the one
+# _sf_is_template_comment_only already uses — comments and blank lines are not
+# an update, anywhere.
+#
+# Fail-OPEN on an unreadable diff: a floor file the gate cannot inspect counts
+# as updated, because refusing a change over a diff we could not read would
+# block work for an infrastructure problem.
+_sf_floor_file_updated() {
+    local repo_root="$1" path="$2"
+    local diff_out changed
+    diff_out="$(_sf_floor_file_diff "$repo_root" "$path")"
+    [[ -z "$diff_out" ]] && return 0
+    changed="$( { grep -E '^[+-]([^+-]|$)' <<< "$diff_out" || true; } \
+        | { grep -vE '^[+-][[:space:]]*(#.*)?$' || true; } )"
+    [[ -n "$changed" ]]
+}
+
 # ─── _sf_collect_missing_floor_files <repo_root> <diff_files_text> ───────────
 # Prints repo-relative paths of event-sequence.golden and _TPL_STAGES[N]-indexed
 # test files that are absent from the supplied diff_files_text (one path per line).
@@ -179,15 +216,16 @@ _sf_collect_missing_floor_files() {
     local diff_files="$2"
     local tests_root="$repo_root/tests"
     local f
+    # Present in the diff AND actually changed — see _sf_floor_file_updated.
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
-        if ! grep -qxF "$f" <<< "$diff_files"; then
+        if ! grep -qxF "$f" <<< "$diff_files" || ! _sf_floor_file_updated "$repo_root" "$f"; then
             printf '%s\n' "$f"
         fi
     done < <(_impact_list_event_goldens "$tests_root")
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
-        if ! grep -qxF "$f" <<< "$diff_files"; then
+        if ! grep -qxF "$f" <<< "$diff_files" || ! _sf_floor_file_updated "$repo_root" "$f"; then
             printf '%s\n' "$f"
         fi
     done < <(_impact_list_order_assertions "$tests_root")
@@ -280,9 +318,12 @@ _sf_shape_floor() {
     # Verify golden files are in diff.
     local tests_root="$repo_root/tests"
     local missing=0 golden order_file
+    # Present in the diff AND actually changed: a comment-only touch is not an
+    # update (#2183). One shared predicate with the escalation collector, so
+    # the gate and its reason can never disagree about what counts.
     while IFS= read -r golden; do
         [[ -z "$golden" ]] && continue
-        if ! grep -qxF "$golden" <<< "$diff_files"; then
+        if ! grep -qxF "$golden" <<< "$diff_files" || ! _sf_floor_file_updated "$repo_root" "$golden"; then
             missing=1; break
         fi
     done < <(_impact_list_event_goldens "$tests_root")
@@ -291,7 +332,7 @@ _sf_shape_floor() {
     if [[ $missing -eq 0 ]]; then
         while IFS= read -r order_file; do
             [[ -z "$order_file" ]] && continue
-            if ! grep -qxF "$order_file" <<< "$diff_files"; then
+            if ! grep -qxF "$order_file" <<< "$diff_files" || ! _sf_floor_file_updated "$repo_root" "$order_file"; then
                 missing=1; break
             fi
         done < <(_impact_list_order_assertions "$tests_root")

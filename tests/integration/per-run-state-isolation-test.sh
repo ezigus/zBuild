@@ -277,6 +277,19 @@ _t4_line="$(grep -n 'bash "\$RUNNER" --issue' -B6 "$0" 2>/dev/null | grep 'env -
 assert_contains "T4b: T4 itself clears the ambient state-file setting" \
     "${_t4_line:-<not found>}" "-u ZBUILD_STATE_FILE"
 
+# Precedence when BOTH variables are set is deliberately NOT changed here.
+# The runner fails closed on a ZBUILD_STATE_FILE that contradicts --issue
+# (#296 Δ-4), and runner-state-file-issue-cross-check-test.sh pins that. The
+# leak this file cares about is fixed at its source — T4/T4b scrub the ambient
+# variable before starting the nested runner — so the engine keeps one rule:
+# an explicit state file is honoured, and a contradictory one stops the run
+# loudly instead of being silently ignored.
+#
+# The wider question (a resume names a file INSIDE the dir; an inherited one
+# points outside; the --issue cross-check validates a file the engine may then
+# not use — see the red-team lens on run 35802918016) belongs to #887, with its
+# own tests, not to a plugin migration.
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

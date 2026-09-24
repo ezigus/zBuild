@@ -27,16 +27,24 @@ requires:
 
 provides:
   role: security-auditor
+  result_contract: 2
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events.
+  events:
+    - plugin.result
+    - security_lens.failed
 
 config:
-  # Writes no .verdict on either verdict channel; the engine falls back to
-  # pass for a well-formed primary (core/pipeline/verdict.sh). An ABSENT key
-  # is a lint failure; the explicit [] is the claim (#1708).
-  valid_verdicts: []
+  valid_verdicts:
+    - pass
+    - error
   tier_default: T3
   max_findings: 50
   # Trigger keywords for escalation (legacy: _COMPOUND_TRIGGERS_security at :367)
   triggers: "injection|auth|secret|credential|permission|bypass|xss|csrf|traversal|sanitiz"
+  # ADR-017 §11 (#1816): router budget defaults. Template override wins when set.
+  router:
+    timeout_s: 600
+    max_turns: 45
 
 inputs:
   # security-lens runs inside compound_quality (orchestrator). It does NOT
@@ -49,6 +57,12 @@ inputs:
   # to the diff, the input is re-introduced there as a consumed edge.
   - id: scope_manifest
     required: true
+  # ADR-055 §1 (#1825): this stage READS the intake goal, so it declares it and
+  # the engine resolves the path — it no longer builds `$state_dir/intake.md` by
+  # hand, which pinned a producer's filename. Optional: a template with no
+  # intake stage runs the lens over the scope manifest alone.
+  - id: intake_goal
+    required: false
 outputs:
   - id: findings
     path: ${artifact_dir}/security-findings.json
