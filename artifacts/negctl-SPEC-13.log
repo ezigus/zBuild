@@ -1,0 +1,14 @@
+### SPEC-13 baseline tests/unit/pr-open-zero-commits-halts-test.sh
+
+[38;2;0;212;255m[1m  pr-open: 0-commit branch halts before push (#1265)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-8] pr_open_run returns 2 on 0-commit branch
+  [38;2;74;222;128m✓[0m [SPEC-8] pr-result.json .reason cites no committed changes
+  [38;2;74;222;128m✓[0m plugin.result verdict=error reason=no_committed_changes emitted
+  [38;2;74;222;128m✓[0m gh pr create not reached (halt before push/gh)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 4 tests passed[0m
+

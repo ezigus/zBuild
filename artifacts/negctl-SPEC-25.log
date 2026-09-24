@@ -1,0 +1,161 @@
+### SPEC-25 baseline tests/unit/deploy-release-v2-result-test.sh
+
+[38;2;0;212;255m[1m  deploy-release: result contract v2 (#1849)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-8: manifest provides.result_contract==2 + valid_verdicts unchanged[0m
+  [38;2;248;113;113m✗[0m [SPEC-8] deploy-release manifest declares result_contract: 2
+    [2mexpected: 1, got: 0[0m
+  [38;2;74;222;128m✓[0m [SPEC-8] deploy-release manifest valid_verdicts contains deployed
+  [38;2;74;222;128m✓[0m [SPEC-8] deploy-release manifest valid_verdicts contains error
+
+  [38;2;0;212;255mSPEC-17: manifest retains role==deploy_release_executor and all events[0m
+  [38;2;74;222;128m✓[0m [SPEC-17] deploy-release manifest declares role: deploy_release_executor
+  [38;2;74;222;128m✓[0m [SPEC-17] deploy-release manifest retains event: deploy.release.complete
+  [38;2;74;222;128m✓[0m [SPEC-17] deploy-release manifest retains event: deploy.release.dry_run
+  [38;2;74;222;128m✓[0m [SPEC-17] deploy-release manifest retains event: release.published
+  [38;2;74;222;128m✓[0m [SPEC-17] deploy-release manifest retains event: release.tagged
+
+  [38;2;0;212;255mSPEC-19: tier_default:T0 present, no router block[0m
+  [38;2;74;222;128m✓[0m [SPEC-19] deploy-release manifest has tier_default: T0
+  [38;2;74;222;128m✓[0m [SPEC-19] deploy-release manifest has no router: block
+
+  [38;2;0;212;255mSPEC-20: deploy_result output has primary:true[0m
+  [38;2;74;222;128m✓[0m [SPEC-20] deploy-release manifest has at least one output with primary: true
+
+  [38;2;0;212;255mSPEC-21: hooks section has no cleanup key[0m
+  [38;2;74;222;128m✓[0m [SPEC-21] deploy-release manifest hooks section has no cleanup key
+
+  [38;2;0;212;255mSPEC-9/14: dry_run — verdict=deployed, result_contract:2, rc=0[0m
+  [38;2;74;222;128m✓[0m [SPEC-16] deploy_release_run dry_run returns rc=0
+  [38;2;74;222;128m✓[0m [SPEC-9] deploy-result.json written on dry_run
+  [38;2;248;113;113m✗[0m [SPEC-9] result_contract==2 on dry_run
+    [2mexpected: 2, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-14] verdict==deployed on dry_run
+  [38;2;248;113;113m✗[0m [SPEC-9] disposition==complete on dry_run
+    [2mexpected: complete, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-9] reason non-empty on dry_run
+    [2mempty[0m
+
+  [38;2;0;212;255mSPEC-9/16: tag_success — verdict=deployed, rc=0[0m
+  [38;2;74;222;128m✓[0m [SPEC-16] deploy_release_run tag_success returns rc=0
+  [38;2;248;113;113m✗[0m [SPEC-9] result_contract==2 on tag_success
+    [2mexpected: 2, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-9] verdict==deployed on tag_success
+  [38;2;248;113;113m✗[0m [SPEC-9] reason non-empty on tag_success
+    [2mempty[0m
+
+  [38;2;0;212;255mSPEC-9/16: tag_failed — verdict=error, rc=1 (not 2)[0m
+  [38;2;74;222;128m✓[0m [SPEC-16] deploy_release_run tag_failed returns rc=1 (not 2)
+  [38;2;248;113;113m✗[0m [SPEC-9] result_contract==2 on tag_failed
+    [2mexpected: 2, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-9] verdict==error on tag_failed
+  [38;2;74;222;128m✓[0m [SPEC-9] reason non-empty on tag_failed
+
+  [38;2;0;212;255mSPEC-9/16: push_failed — verdict=error, rc=1[0m
+  [38;2;74;222;128m✓[0m [SPEC-16] deploy_release_run push_failed returns rc=1
+  [38;2;248;113;113m✗[0m [SPEC-9] result_contract==2 on push_failed
+    [2mexpected: 2, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-9] verdict==error on push_failed
+  [38;2;74;222;128m✓[0m [SPEC-9] reason non-empty on push_failed
+
+  [38;2;0;212;255mSPEC-10: pr_url resolved from ZBUILD_STAGE_INPUTS[0m
+  [38;2;74;222;128m✓[0m [SPEC-10] deploy_release_run succeeds when ZBUILD_STAGE_INPUTS provides pr_url
+  [38;2;248;113;113m✗[0m [SPEC-10] pr_url from ZBUILD_STAGE_INPUTS appears in deploy-result.json
+    [2mexpected: https://github.com/mock/repo/pull/1849, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-10] deploy_release_run succeeds with artifacts_dir fallback (no ZBUILD_STAGE_INPUTS)
+
+  [38;2;0;212;255mSPEC-25: git push signal-death (rc=130) → disposition=unavailable, rc=1[0m
+  [38;2;74;222;128m✓[0m [SPEC-25] deploy_release_run returns rc=1 on signal-death from git push
+  [38;2;74;222;128m✓[0m [SPEC-25] deploy-result.json written on signal-death path
+  [38;2;248;113;113m✗[0m [SPEC-25] disposition==unavailable on signal-death
+    [2mexpected: unavailable, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-25] verdict==error on signal-death
+  [38;2;74;222;128m✓[0m [SPEC-25] reason non-empty on signal-death
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m10 of 38 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-8] deploy-release manifest declares result_contract: 2
+  [38;2;248;113;113m✗[0m [SPEC-9] result_contract==2 on dry_run
+  [38;2;248;113;113m✗[0m [SPEC-9] disposition==complete on dry_run
+  [38;2;248;113;113m✗[0m [SPEC-9] reason non-empty on dry_run
+  [38;2;248;113;113m✗[0m [SPEC-9] result_contract==2 on tag_success
+  [38;2;248;113;113m✗[0m [SPEC-9] reason non-empty on tag_success
+  [38;2;248;113;113m✗[0m [SPEC-9] result_contract==2 on tag_failed
+  [38;2;248;113;113m✗[0m [SPEC-9] result_contract==2 on push_failed
+  [38;2;248;113;113m✗[0m [SPEC-10] pr_url from ZBUILD_STAGE_INPUTS appears in deploy-result.json
+  [38;2;248;113;113m✗[0m [SPEC-25] disposition==unavailable on signal-death
+
+### SPEC-25 head tests/unit/deploy-release-v2-result-test.sh
+
+[38;2;0;212;255m[1m  deploy-release: result contract v2 (#1849)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-8: manifest provides.result_contract==2 + valid_verdicts unchanged[0m
+  [38;2;74;222;128m✓[0m [SPEC-8] deploy-release manifest declares result_contract: 2
+  [38;2;74;222;128m✓[0m [SPEC-8] deploy-release manifest valid_verdicts contains deployed
+  [38;2;74;222;128m✓[0m [SPEC-8] deploy-release manifest valid_verdicts contains error
+
+  [38;2;0;212;255mSPEC-17: manifest retains role==deploy_release_executor and all events[0m
+  [38;2;74;222;128m✓[0m [SPEC-17] deploy-release manifest declares role: deploy_release_executor
+  [38;2;74;222;128m✓[0m [SPEC-17] deploy-release manifest retains event: deploy.release.complete
+  [38;2;74;222;128m✓[0m [SPEC-17] deploy-release manifest retains event: deploy.release.dry_run
+  [38;2;74;222;128m✓[0m [SPEC-17] deploy-release manifest retains event: release.published
+  [38;2;74;222;128m✓[0m [SPEC-17] deploy-release manifest retains event: release.tagged
+
+  [38;2;0;212;255mSPEC-19: tier_default:T0 present, no router block[0m
+  [38;2;74;222;128m✓[0m [SPEC-19] deploy-release manifest has tier_default: T0
+  [38;2;74;222;128m✓[0m [SPEC-19] deploy-release manifest has no router: block
+
+  [38;2;0;212;255mSPEC-20: deploy_result output has primary:true[0m
+  [38;2;74;222;128m✓[0m [SPEC-20] deploy-release manifest has at least one output with primary: true
+
+  [38;2;0;212;255mSPEC-21: hooks section has no cleanup key[0m
+  [38;2;74;222;128m✓[0m [SPEC-21] deploy-release manifest hooks section has no cleanup key
+
+  [38;2;0;212;255mSPEC-9/14: dry_run — verdict=deployed, result_contract:2, rc=0[0m
+  [38;2;74;222;128m✓[0m [SPEC-16] deploy_release_run dry_run returns rc=0
+  [38;2;74;222;128m✓[0m [SPEC-9] deploy-result.json written on dry_run
+  [38;2;74;222;128m✓[0m [SPEC-9] result_contract==2 on dry_run
+  [38;2;74;222;128m✓[0m [SPEC-14] verdict==deployed on dry_run
+  [38;2;74;222;128m✓[0m [SPEC-9] disposition==complete on dry_run
+  [38;2;74;222;128m✓[0m [SPEC-9] reason non-empty on dry_run
+
+  [38;2;0;212;255mSPEC-9/16: tag_success — verdict=deployed, rc=0[0m
+  [38;2;74;222;128m✓[0m [SPEC-16] deploy_release_run tag_success returns rc=0
+  [38;2;74;222;128m✓[0m [SPEC-9] result_contract==2 on tag_success
+  [38;2;74;222;128m✓[0m [SPEC-9] verdict==deployed on tag_success
+  [38;2;74;222;128m✓[0m [SPEC-9] reason non-empty on tag_success
+
+  [38;2;0;212;255mSPEC-9/16: tag_failed — verdict=error, rc=1 (not 2)[0m
+  [38;2;74;222;128m✓[0m [SPEC-16] deploy_release_run tag_failed returns rc=1 (not 2)
+  [38;2;74;222;128m✓[0m [SPEC-9] result_contract==2 on tag_failed
+  [38;2;74;222;128m✓[0m [SPEC-9] verdict==error on tag_failed
+  [38;2;74;222;128m✓[0m [SPEC-9] reason non-empty on tag_failed
+
+  [38;2;0;212;255mSPEC-9/16: push_failed — verdict=error, rc=1[0m
+  [38;2;74;222;128m✓[0m [SPEC-16] deploy_release_run push_failed returns rc=1
+  [38;2;74;222;128m✓[0m [SPEC-9] result_contract==2 on push_failed
+  [38;2;74;222;128m✓[0m [SPEC-9] verdict==error on push_failed
+  [38;2;74;222;128m✓[0m [SPEC-9] reason non-empty on push_failed
+
+  [38;2;0;212;255mSPEC-10: pr_url resolved from ZBUILD_STAGE_INPUTS[0m
+  [38;2;74;222;128m✓[0m [SPEC-10] deploy_release_run succeeds when ZBUILD_STAGE_INPUTS provides pr_url
+  [38;2;74;222;128m✓[0m [SPEC-10] pr_url from ZBUILD_STAGE_INPUTS appears in deploy-result.json
+  [38;2;74;222;128m✓[0m [SPEC-10] deploy_release_run succeeds with artifacts_dir fallback (no ZBUILD_STAGE_INPUTS)
+
+  [38;2;0;212;255mSPEC-25: git push signal-death (rc=130) → disposition=unavailable, rc=1[0m
+  [38;2;74;222;128m✓[0m [SPEC-25] deploy_release_run returns rc=1 on signal-death from git push
+  [38;2;74;222;128m✓[0m [SPEC-25] deploy-result.json written on signal-death path
+  [38;2;74;222;128m✓[0m [SPEC-25] disposition==unavailable on signal-death
+  [38;2;74;222;128m✓[0m [SPEC-25] verdict==error on signal-death
+  [38;2;74;222;128m✓[0m [SPEC-25] reason non-empty on signal-death
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 38 tests passed[0m
+
