@@ -92,4 +92,3 @@ cd "$REPO_ROOT" || exit 1
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
-# runner.sh state-dir fix (e34fc49b) does not alter stage order or event sequence.

@@ -16,4 +16,3 @@ review.test_status.coerced
 plugin.run.complete
 plugin.pr_open.branch_fallback_used
 plugin.run.complete
-
