@@ -95,8 +95,11 @@ attempt_archive_outputs() {
     # identity, and a reader must not have to infer it from the directory name.
     # `generated_at`, not a private name: the parity check normalises exactly
     # this field, and a per-run timestamp under another name reads as divergence.
-    printf '{"stage":"%s","cycle_iter":%s,"attempt":%s,"rc":"%s","generated_at":"%s","files":%s}\n' \
-        "$stage" "$_iter" "$(( _n + 1 ))" "${rc:-}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$copied" \
+    # jq, not printf (review #2184): every other JSON write in the tree escapes
+    # its values, and a stage id is interpolated here.
+    jq -n --arg s "$stage" --argjson i "$_iter" --argjson a "$(( _n + 1 ))" \
+          --arg rc "${rc:-}" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson f "$copied" \
+          '{stage:$s, cycle_iter:$i, attempt:$a, rc:$rc, generated_at:$at, files:$f}' \
         > "$_dest/attempt.json" 2>/dev/null || true
     return 0
 }

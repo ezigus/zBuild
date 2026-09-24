@@ -643,10 +643,19 @@ _summaries_stage_errors_path() {
     local stage="$1" plugins_root="$2" state_dir="$3" manifest raw resolved
     manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
     [[ -n "$manifest" && -f "$manifest" ]] || return 0
+    # Review #2184: the entry is flushed at its BOUNDARY, so `errors: true` may
+    # sit before or after `path:` — both are valid YAML, and an order-dependent
+    # reader would silently skip the channel for a manifest that wrote them the
+    # other way round.
     raw="$(awk '
+        function flush() {
+            if (want && cur != "") { print cur; found = 1 }
+            cur = ""; want = 0
+        }
         /^outputs:[[:space:]]*$/ { in_block = 1; next }
-        in_block && /^[a-zA-Z_]/  { in_block = 0 }
-        in_block && /^[[:space:]]*-[[:space:]]/ { cur = "" }
+        in_block && /^[a-zA-Z_]/  { flush(); in_block = 0 }
+        in_block && found        { next }
+        in_block && /^[[:space:]]*-[[:space:]]/ { flush() }
         in_block && /^[[:space:]]+path:[[:space:]]*/ {
             line = $0
             sub(/^[[:space:]]+path:[[:space:]]*/, "", line)
@@ -654,9 +663,8 @@ _summaries_stage_errors_path() {
             gsub(/^["'"'"']|["'"'"']$/, "", line)
             cur = line; next
         }
-        in_block && /^[[:space:]]+errors:[[:space:]]*true[[:space:]]*$/ {
-            if (cur != "") { print cur; exit }
-        }
+        in_block && /^[[:space:]]+errors:[[:space:]]*true[[:space:]]*$/ { want = 1; next }
+        END { flush() }
     ' "$manifest" 2>/dev/null || true)"
     [[ -n "$raw" ]] || return 0
     resolved="$(_verdict_resolve_path "$raw" "$state_dir" 2>/dev/null || true)"

@@ -140,6 +140,46 @@ else
     assert_pass "[SPEC-5] a passing stage does not publish its error channel"
 fi
 
+# ─── SPEC-6 (review #2184): the channel is found whatever the field order ───
+# `errors: true` before `path:` is valid YAML. An order-dependent reader skips
+# the channel silently — the stage looks like it published nothing.
+print_test_section "SPEC-6: errors: true is found before OR after path:"
+mkdir -p "$PROOT/tool/aa-rev"
+cat > "$PROOT/tool/aa-rev/manifest.yaml" <<'EOF'
+id: aa-rev
+name: aa-rev
+kind: tool
+version: 0.0.1
+hooks:
+  run: aa_rev_run
+inputs: []
+outputs:
+  - id: aa_rev_result
+    path: ${artifact_dir}/aa-rev-result.json
+    type: json
+    required: true
+    primary: true
+  - id: aa_rev_summary
+    path: ${artifact_dir}/aa-rev-summary.md
+    type: markdown
+    required: false
+    summary: true
+  - id: aa_rev_errors
+    errors: true
+    required: false
+    type: text
+    path: ${artifact_dir}/aa-rev-errors.log
+EOF
+printf 'aa_rev_run() { return 0; }\n' > "$PROOT/tool/aa-rev/plugin.sh"
+_TPL_STAGES=(aa-rev)
+printf '{"schema_version":1,"stage_statuses":{"aa-rev":"failed"},"stage_verdicts":{"aa-rev":"fail"}}\n' > "$STATE/pipeline-state.json"
+printf '## aa-rev — fail\n\n- it failed\n' > "$ART/aa-rev-summary.md"
+printf 'REVERSED-ORDER-STDERR\n' > "$ART/aa-rev-errors.log"
+printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x"}\n' > "$ART/aa-rev-result.json"
+_blk_rev="$(stage_summaries_prompt_block "$STATE/pipeline-state.json" "$PROOT" 2>/dev/null || true)"
+assert_contains "[SPEC-6] the error channel is found with errors: before path:" \
+    "$_blk_rev" "REVERSED-ORDER-STDERR"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

@@ -307,10 +307,17 @@ _build_write_build_summary() {
             notes: $notes
         }
         + (if $reason != "" then {reason: $reason, out_of_scope_files: $out_of_scope_files} else {} end)
-        + (if ($not_reproduced | length) > 0 then {data: ((.data // {}) + {not_reproduced: $not_reproduced})} else {} end)
+
         + (if $scope_expansion_request != null then {scope_expansion_request: $scope_expansion_request} else {} end)
         + (if $failing_acceptance_testfile != "" then {failing_acceptance_testfile: $failing_acceptance_testfile} else {} end)
-        + (if $build_data_kind != "" then {data: {build_kind: $build_data_kind}} else {} end)
+        # `.data` is composed ONCE (review #2184). As two `+` terms each read
+        # `.data` from the expression INPUT — null under `jq -n` — not from the
+        # accumulating object, so the later term replaced the earlier one and
+        # dropped not_reproduced on exactly the empty-diff build the report is
+        # made from.
+        + ( ( (if $build_data_kind != "" then {build_kind: $build_data_kind} else {} end)
+            + (if ($not_reproduced | length) > 0 then {not_reproduced: $not_reproduced} else {} end)
+            ) as $d | if ($d | length) > 0 then {data: $d} else {} end )
         ' | atomic_write "$output_summary_json"
 }
 

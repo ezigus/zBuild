@@ -1524,6 +1524,12 @@ _cycle_member_reusable() {
 # report names paths; the engine does not read them, it only re-verifies the
 # member that raised the finding. Emits once per decision so the log says why a
 # member ran again on an unchanged tree.
+# The flag does NOT carry which member raised the finding, and deliberately: it
+# re-runs the FIRST failing member the next reuse scan reaches (review #2184).
+# A member that passed has no finding to re-check, and the failing member IS the
+# one that raised it — in a build→test flow that is `test`. Naming the member
+# would make the engine read a path out of a plugin's report to match it against
+# a member id, which is exactly the coupling the report avoids.
 _cycle_member_not_reproduced() {
     local s="$1"
     [[ "${_CYCLE_NOT_REPRODUCED:-0}" == "1" ]] || return 1
