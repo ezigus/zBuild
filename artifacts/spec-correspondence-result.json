@@ -1,0 +1,14 @@
+{
+  "result_contract": 2,
+  "verdict": "mismatch",
+  "disposition": "complete",
+  "reason": "judged 1 SPEC(s): 0 correspond, 0 partial, 1 mismatch, 0 uncheckable, 0 unjudged",
+  "data": {
+    "corresponds": 0,
+    "partial": 0,
+    "mismatch": 1,
+    "uncheckable": 0,
+    "unjudged": 0
+  },
+  "about": "tests/unit/merge-v2-result-test.sh\ntests/unit/merge-v2-result-test.sh\ntests/unit/merge-v2-result-test.sh\ntests/unit/pr-open-v2-result-test.sh\ntests/unit/lint-verdict-classify-test.sh\ntests/unit/pr-open-v2-result-test.sh\ntests/unit/pr-open-v2-result-test.sh\ntests/unit/pr-open-v2-result-test.sh\ntests/unit/deploy-release-v2-result-test.sh\ntests/unit/deploy-release-v2-result-test.sh\ntests/unit/deploy-release-v2-result-test.sh\ntests/unit/merge-v2-result-test.sh\ntests/unit/pr-open-advisory-review-test.sh\ntests/unit/pr-open-zero-commits-halts-test.sh\ntests/unit/deploy-release-v2-result-test.sh\ntests/unit/merge-v2-result-test.sh\ntests/unit/deploy-release-v2-result-test.sh\ntests/unit/deploy-release-v2-result-test.sh\ntests/unit/pr-open-v2-result-test.sh\ntests/unit/merge-v2-result-test.sh\ntests/unit/pr-open-v2-result-test.sh\ntests/unit/deploy-release-v2-result-test.sh\ntests/unit/merge-v2-result-test.sh\ntests/unit/pr-open-v2-result-test.sh\ntests/unit/deploy-release-v2-result-test.sh\ntests/unit/merge-v2-result-test.sh\ntests/unit/pr-open-v2-result-test.sh\ntests/unit/deploy-release-v2-result-test.sh\ntests/unit/pr-open-v2-result-test.sh\ntests/unit/merge-v2-result-test.sh\ntests/unit/pr-open-v2-result-test.sh\ntests/unit/deploy-release-v2-result-test.sh"
+}
