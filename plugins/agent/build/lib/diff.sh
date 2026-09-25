@@ -128,7 +128,7 @@ _BUILD_VSCP_DIFF_CONTENT=""
 #   _BUILD_VSCP_VIOLATION             — "true"/"false"
 #   _BUILD_VSCP_VIOLATIONS_NL         — newline-delimited OOS paths
 #   _BUILD_VSCP_VIOLATIONS_CREATED_NL — newline-delimited created OOS paths
-#   _BUILD_VSCP_PRE_ZERO_NUMSTAT      — numstat captured before zeroing
+#   _BUILD_VSCP_PRE_ZERO_NUMSTAT      — numstat captured before the out-of-scope revert
 #   _BUILD_VSCP_DIFF_CONTENT          — updated diff_content (out-of-scope paths removed)
 _build_validate_scope_violations() {
     local _diff_content="$1"
@@ -247,6 +247,7 @@ _build_validate_scope_violations() {
         # This once keyed on the router's rc (>=2 = timeout), but the router
         # returns 0 on a timeout since #1208, so a timeout took the empty-diff
         # branch and discarded the whole attempt (#1849).
+        _pre_zero_numstat="$(git -C "$_repo_root" diff HEAD --numstat 2>/dev/null || true)"
         warn "_build_validate_scope_violations: scope violation — reverting out-of-scope paths, keeping the in-scope diff"
         local _oos_path
         for _oos_path in "${_scope_violations[@]}"; do
@@ -270,7 +271,6 @@ _build_validate_scope_violations() {
         fi
         # The violation stays reported (verdict scope_violation); the in-scope
         # work is committed anyway (commit.sh stages only plan files).
-        _pre_zero_numstat="$(git -C "$_repo_root" diff HEAD --numstat 2>/dev/null || true)"
         emit_event "build.scope.inscope_preserved" "plugin=build" \
             "oos_paths_reverted=${#_scope_violations[@]}" \
             "in_scope_diff_bytes=${#_diff_content}"

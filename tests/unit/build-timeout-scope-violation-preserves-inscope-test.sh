@@ -156,6 +156,7 @@ assert_eq "T1: _build_stage_run_inner returns rc=0 (a timeout is not fatal)" "0"
 _assert_inscope_kept "T1" || true
 
 # ─── T2: clean finish (rc=0, done_sentinel) + OOS edit ─────────────────────
+# Same contract as T1 on purpose: the outcome must not depend on the reason word.
 _setup_fixture t2
 MOCK_ROUTER_RC=0
 MOCK_TERMINATED_REASON="done_sentinel"
