@@ -121,23 +121,22 @@ _BUILD_VSCP_PRE_ZERO_NUMSTAT=""
 _BUILD_VSCP_DIFF_CONTENT=""
 
 # _build_validate_scope_violations <diff_content> <plan_files_csv> <repo_root>
-#   <artifact_dir> <output_diff_patch> <router_rc> <preexist_untracked>
-# Parse git diff --name-status -z, check per-path scope, handle OOS revert
-# (timeout #827) vs full empty-diff (clean run). Cleans up the preexist
+#   <artifact_dir> <output_diff_patch> <preexist_untracked>
+# Parse git diff --name-status -z, check per-path scope, revert out-of-scope
+# paths and keep the in-scope diff (ADR-030 Layer 3). Cleans up the preexist
 # temp file after use. Sets globals:
 #   _BUILD_VSCP_VIOLATION             — "true"/"false"
 #   _BUILD_VSCP_VIOLATIONS_NL         — newline-delimited OOS paths
 #   _BUILD_VSCP_VIOLATIONS_CREATED_NL — newline-delimited created OOS paths
-#   _BUILD_VSCP_PRE_ZERO_NUMSTAT      — numstat captured before zeroing
-#   _BUILD_VSCP_DIFF_CONTENT          — updated diff_content (may be zeroed)
+#   _BUILD_VSCP_PRE_ZERO_NUMSTAT      — numstat captured before the out-of-scope revert
+#   _BUILD_VSCP_DIFF_CONTENT          — updated diff_content (out-of-scope paths removed)
 _build_validate_scope_violations() {
     local _diff_content="$1"
     local _plan_files_csv="$2"
     local _repo_root="$3"
     local _artifact_dir="$4"
     local _output_diff_patch="$5"
-    local _router_rc="${6:-0}"
-    local _preexist_untracked="${7:-}"
+    local _preexist_untracked="${6:-}"
 
     _BUILD_VSCP_VIOLATION="false"
     _BUILD_VSCP_VIOLATIONS_NL=""
@@ -242,43 +241,39 @@ _build_validate_scope_violations() {
 
     local _pre_zero_numstat=""
     if [[ "$_scope_violation" == "true" ]]; then
+        # ADR-030 Layer 3 (#827, #2185): revert ONLY the out-of-scope paths and
+        # keep the in-scope diff, whatever stopped the router. The needed files
+        # travel in the scope_expansion_request built from _scope_violations[].
+        # This once keyed on the router's rc (>=2 = timeout), but the router
+        # returns 0 on a timeout since #1208, so a timeout took the empty-diff
+        # branch and discarded the whole attempt (#1849).
         _pre_zero_numstat="$(git -C "$_repo_root" diff HEAD --numstat 2>/dev/null || true)"
-
-        if [[ $_router_rc -ge 2 ]]; then
-            # #827: timeout — revert OOS, preserve in-scope diff.
-            warn "_build_validate_scope_violations: scope violation under router rc=$_router_rc — reverting OOS paths, preserving in-scope diff (#827)"
-            local _oos_path
-            for _oos_path in "${_scope_violations[@]}"; do
-                [[ -z "$_oos_path" ]] && continue
-                if git -C "$_repo_root" ls-files --error-unmatch -- "$_oos_path" >/dev/null 2>&1; then
-                    git -C "$_repo_root" checkout HEAD -- "$_oos_path" 2>/dev/null || true
-                else
-                    rm -f "$_repo_root/$_oos_path" 2>/dev/null || true
-                fi
-            done
-            git -C "$_repo_root" diff HEAD > "$_output_diff_patch" 2>/dev/null || true
-            if [[ -s "$_output_diff_patch" ]]; then
-                _diff_content="$(cat "$_output_diff_patch"; printf x)"
-                _diff_content="${_diff_content%x}"
+        warn "_build_validate_scope_violations: scope violation — reverting out-of-scope paths, keeping the in-scope diff"
+        local _oos_path
+        for _oos_path in "${_scope_violations[@]}"; do
+            [[ -z "$_oos_path" ]] && continue
+            # In HEAD → restore it. Not in HEAD → build created it; drop the
+            # `git add -N` intent-to-add entry too, or ls-files still lists it
+            # and `git diff HEAD` keeps showing it.
+            if git -C "$_repo_root" cat-file -e "HEAD:$_oos_path" 2>/dev/null; then
+                git -C "$_repo_root" checkout HEAD -- "$_oos_path" 2>/dev/null || true
             else
-                _diff_content=""
+                git -C "$_repo_root" rm -q --cached --ignore-unmatch -- "$_oos_path" >/dev/null 2>&1 || true
+                rm -f "$_repo_root/$_oos_path" 2>/dev/null || true
             fi
-            _scope_violation="false"
-            emit_event "build.timeout.partial_work_preserved" "plugin=build" \
-                "router_rc=$_router_rc" \
-                "oos_paths_reverted=${#_scope_violations[@]}" \
-                "in_scope_diff_bytes=${#_diff_content}"
+        done
+        git -C "$_repo_root" diff HEAD > "$_output_diff_patch" 2>/dev/null || true
+        if [[ -s "$_output_diff_patch" ]]; then
+            _diff_content="$(cat "$_output_diff_patch"; printf x)"
+            _diff_content="${_diff_content%x}"
         else
-            # Clean run: revert edited OOS files, zero the diff.
-            warn "_build_validate_scope_violations: scope violation — writing empty diff.patch"
-            local _rev_path
-            for _rev_path in "${_scope_violations[@]}"; do
-                [[ -z "$_rev_path" ]] && continue
-                git -C "$_repo_root" checkout HEAD -- "$_rev_path" 2>/dev/null || true
-            done
             _diff_content=""
-            : > "$_output_diff_patch"
         fi
+        # The violation stays reported (verdict scope_violation); the in-scope
+        # work is committed anyway (commit.sh stages only plan files).
+        emit_event "build.scope.inscope_preserved" "plugin=build" \
+            "oos_paths_reverted=${#_scope_violations[@]}" \
+            "in_scope_diff_bytes=${#_diff_content}"
     fi
 
     _BUILD_VSCP_VIOLATION="$_scope_violation"
@@ -295,15 +290,14 @@ _build_validate_scope_violations() {
 # _build_rewrite_cumulative_diff <scope_violation> <artifact_dir> <repo_root>
 #   <output_diff_patch> <diff_failure>
 # Rewrite diff.patch as the cumulative baseline→HEAD delta (#661 / ADR-020).
-# No-op on scope_violation. Re-enforces trailing-newline invariant.
+# Runs on a scope violation too: the in-scope work is committed (#2185).
+# Re-enforces trailing-newline invariant.
 _build_rewrite_cumulative_diff() {
     local _scope_violation="$1"
     local _artifact_dir="$2"
     local _repo_root="$3"
     local _output_diff_patch="$4"
     local _diff_failure="${5:-false}"
-
-    [[ "$_scope_violation" == "true" ]] && return 0
 
     local _baseline_sha="" _state_dir_for_baseline=""
     _state_dir_for_baseline="$(dirname "$_artifact_dir")"

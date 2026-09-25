@@ -1,21 +1,17 @@
 #!/usr/bin/env bash
-# Unit test (#827): build distinguishes "LLM deliberately wrote out-of-scope"
-# (clean run, router_rc=0) from "timeout caught LLM mid-edit, partial work
-# touched OOS" (router_rc>=2).
+# Unit test (#827, #2185): a scope violation never costs build its in-scope work.
 #
-# Before #827: BOTH cases emptied diff.patch + set verdict=scope_violation,
-# dropping the pipeline's per-iter commit. The dogfood loop reproduces
-# (run_id 20260612090817-84683): build's triple-timeout zeroed real in-scope
-# work and the cycle couldn't progress.
+# ADR-030 Layer 3: build emits a scope_expansion_request "alongside its in-scope
+# diff, and does NOT touch the out-of-scope file". #827 kept the in-scope work
+# only when the router returned rc>=2; since #1208 the router returns 0 on a
+# timeout and says so in _ROUTE_LOOP_TERMINATED_REASON=router_timeout, so that
+# branch could never fire (#1849 run 35949629759 lost a whole build attempt).
+# The mocks below use the router's REAL shapes: rc=0 + a reason word.
 #
-# After #827:
-#   T1 timeout (rc>=2) + scope violation → revert OOS paths to HEAD, preserve
-#      in-scope diff, emit build.timeout.partial_work_preserved, clear the
-#      scope_violation flag so commit semantics work.
-#   T2 clean run (rc=0) + scope violation → empty diff.patch (existing
-#      fail-CLOSED behavior preserved).
-#   T3 the preserved diff.patch on the timeout path actually contains the
-#      in-scope change AND does NOT contain the OOS change.
+#   T1 timeout (rc=0, router_timeout) + OOS edit → OOS reverted, in-scope diff
+#      kept AND committed, scope request emitted.
+#   T2 clean finish (rc=0, done_sentinel) + OOS edit → the same.
+#   T3 clean finish, edited existing OOS collateral only → request + revert.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -45,9 +41,10 @@ source "$REPO_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../plugins/agent/build/plugin.sh
 source "$REPO_ROOT/plugins/agent/build/plugin.sh"
 
-# Mocks. MOCK_ROUTER_RC drives the simulated router exit code; the loop body
+# Mocks. MOCK_ROUTER_RC drives the simulated router exit code and
+# MOCK_TERMINATED_REASON its reason word; the loop body
 # always writes BOTH an in-scope file (in_scope.txt) AND an out-of-scope
-# file (oos.txt) to mimic the partial-work scenario.
+# file (docs/oos.md — collateral, so it can be asked for) to mimic the partial-work scenario.
 MOCK_ROUTER_RC=0
 # shellcheck disable=SC2317
 route_to_model_loop() {
@@ -57,7 +54,8 @@ route_to_model_loop() {
         printf 'NEW value (build edit)\n' > "$_repo/$MOCK_EDIT_TARGET"
     else
         echo "in-scope work from LLM" > "$_repo/in_scope.txt"
-        echo "OOS work from LLM"      > "$_repo/oos.txt"
+        mkdir -p "$_repo/docs"
+        echo "OOS work from LLM"      > "$_repo/docs/oos.md"
     fi
     _ROUTE_LOOP_ITERATIONS=1
     _ROUTE_LOOP_TERMINATED_REASON="${MOCK_TERMINATED_REASON:-done_sentinel}"
@@ -108,48 +106,57 @@ JSON
     : > "$ZBUILD_EVENTS_JSONL"
 }
 
-# ─── T1: rc>=2 (timeout) + OOS file written → in-scope preserved ──────────
+# Asserts shared by T1/T2: in-scope work kept + committed, OOS reverted, asked for.
+_assert_inscope_kept() {
+    local tag="$1"
+    if grep -q 'in_scope.txt' "$DIFF_PATCH" 2>/dev/null; then
+        assert_pass "$tag: diff.patch contains the in-scope change"
+    else
+        assert_fail "$tag: in-scope work dropped from diff.patch" \
+            "size=$(wc -c < "$DIFF_PATCH" 2>/dev/null || echo 0)"
+    fi
+    if grep -q 'docs/oos.md' "$DIFF_PATCH" 2>/dev/null; then
+        assert_fail "$tag: diff.patch leaked the out-of-scope file"
+    else
+        assert_pass "$tag: diff.patch does not contain the out-of-scope file"
+    fi
+    if [[ -e "$REPO/docs/oos.md" ]]; then
+        assert_fail "$tag: out-of-scope file left in the tree"
+    else
+        assert_pass "$tag: out-of-scope file reverted"
+    fi
+    local committed
+    committed="$(git -C "$REPO" diff --name-only "$BASELINE" HEAD 2>/dev/null || true)"
+    assert_eq "$tag: in-scope work is committed (and nothing else)" "in_scope.txt" "$committed"
+    local req
+    req="$(jq -r '.scope_expansion_request.files[]?.path // empty' "$SUMMARY_JSON" 2>/dev/null || true)"
+    assert_eq "$tag: scope request names the out-of-scope file" "docs/oos.md" "$req"
+    local fc
+    fc="$(jq -r '(.files_changed // []) | join(",")' "$SUMMARY_JSON" 2>/dev/null || true)"
+    assert_eq "$tag: build-summary reports the in-scope file it changed" "in_scope.txt" "$fc"
+    local v
+    v="$(jq -r '.verdict // empty' "$SUMMARY_JSON" 2>/dev/null || true)"
+    assert_eq "$tag: the violation is still reported (verdict)" "scope_violation" "$v"
+    if grep -q '"type":"build.scope.inscope_preserved"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
+        assert_pass "$tag: build.scope.inscope_preserved emitted"
+    else
+        assert_fail "$tag: build.scope.inscope_preserved not emitted"
+    fi
+}
+
+# ─── T1: timeout (router's real shape: rc=0, router_timeout) + OOS edit ─────
 _setup_fixture t1
-MOCK_ROUTER_RC=2
-MOCK_TERMINATED_REASON="error"
+MOCK_ROUTER_RC=0
+MOCK_TERMINATED_REASON="router_timeout"
 set +e
 _build_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$DIFF_PATCH" "$SUMMARY_JSON" "$ARTIFACT_DIR" >/dev/null 2>&1
 rc=$?
 set -e
-assert_eq "T1: _build_stage_run_inner returns rc=0 (does not propagate fatal)" "0" "$rc"
-if [[ -s "$DIFF_PATCH" ]]; then
-    assert_pass "T1: diff.patch is NON-empty (in-scope work preserved)"
-else
-    assert_fail "T1: diff.patch was zeroed — in-scope work dropped" \
-        "size=$(wc -c < "$DIFF_PATCH" 2>/dev/null || echo 0)"
-fi
-if grep -q 'in_scope.txt' "$DIFF_PATCH" 2>/dev/null; then
-    assert_pass "T1: diff.patch contains in-scope file change"
-else
-    assert_fail "T1: diff.patch missing in-scope file"
-fi
-if grep -q 'oos.txt' "$DIFF_PATCH" 2>/dev/null; then
-    assert_fail "T1: diff.patch leaked OOS file (revert failed)"
-else
-    assert_pass "T1: diff.patch does NOT contain OOS file (reverted)"
-fi
-if grep -q '"type":"build.timeout.partial_work_preserved"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
-    assert_pass "T1: build.timeout.partial_work_preserved event emitted"
-else
-    assert_fail "T1: timeout-preserved event NOT emitted" \
-        "events: $(head -c 200 "$ZBUILD_EVENTS_JSONL" 2>/dev/null)"
-fi
-# build-summary verdict on this path: per ADR-021 R2, timeout → verdict=error.
-# We don't enforce that here (the verdict-setting code path is unchanged in
-# this PR); just confirm scope_violation flag is cleared in the summary.
-if grep -q '"scope_violation": false' "$SUMMARY_JSON" 2>/dev/null; then
-    assert_pass "T1: build-summary.scope_violation=false (flag cleared for commit)"
-else
-    assert_fail "T1: build-summary.scope_violation should be false on timeout path" \
-        "summary: $(cat "$SUMMARY_JSON" 2>/dev/null)"
-fi
+assert_eq "T1: _build_stage_run_inner returns rc=0 (a timeout is not fatal)" "0" "$rc"
+_assert_inscope_kept "T1" || true
 
-# ─── T2: rc=0 (clean run) + OOS file written → empty diff (unchanged) ──
+# ─── T2: clean finish (rc=0, done_sentinel) + OOS edit ─────────────────────
+# Same contract as T1 on purpose: the outcome must not depend on the reason word.
 _setup_fixture t2
 MOCK_ROUTER_RC=0
 MOCK_TERMINATED_REASON="done_sentinel"
@@ -158,22 +165,7 @@ _build_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$DIFF_PATCH" "$SUMMARY_JS
 rc=$?
 set -e
 assert_eq "T2: clean run rc=0" "0" "$rc"
-if [[ ! -s "$DIFF_PATCH" ]]; then
-    assert_pass "T2: diff.patch IS empty (clean-run fail-CLOSED behavior preserved)"
-else
-    assert_fail "T2: clean-run scope violation should empty diff.patch" \
-        "size=$(wc -c < "$DIFF_PATCH"), content head: $(head -c 80 "$DIFF_PATCH")"
-fi
-if grep -q '"scope_violation": true' "$SUMMARY_JSON" 2>/dev/null; then
-    assert_pass "T2: build-summary.scope_violation=true (clean-run path unchanged)"
-else
-    assert_fail "T2: clean-run scope_violation should be true in summary"
-fi
-if grep -q '"type":"build.timeout.partial_work_preserved"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
-    assert_fail "T2: timeout-preserved event should NOT fire on clean run"
-else
-    assert_pass "T2: no spurious build.timeout.partial_work_preserved on clean run"
-fi
+_assert_inscope_kept "T2" || true
 
 # ─── T3 (REC-2 #880): clean run + EDITED existing OOS collateral → request + revert ─
 # build edits an existing out-of-scope test file (no in-scope work). Instead of

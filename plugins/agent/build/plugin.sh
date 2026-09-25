@@ -337,7 +337,7 @@ _build_stage_run_inner() {
 
     # ─── Scope post-validation via git diff --name-status -z ─────────────────────
     _build_validate_scope_violations "$diff_content" "$plan_files_csv" "$repo_root" \
-        "$artifact_dir" "$output_diff_patch" "$router_rc" "$_preexist_untracked"
+        "$artifact_dir" "$output_diff_patch" "$_preexist_untracked"
     local scope_violation="$_BUILD_VSCP_VIOLATION"
     diff_content="$_BUILD_VSCP_DIFF_CONTENT"
     local pre_zero_numstat="$_BUILD_VSCP_PRE_ZERO_NUMSTAT"

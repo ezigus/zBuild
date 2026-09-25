@@ -88,11 +88,10 @@ _build_commit_iteration() {
     local iter_summaries="${8:-}"
     local iter_count="${9:-1}"
 
-    if [[ "$scope_violation" == "true" || "$build_verdict" == "scope_violation" ]]; then
-        emit_event "build.commit.skipped" "plugin=build" \
-            "reason=scope_violation" "iter=$iter"
-        return 0
-    fi
+    # A scope violation does not skip the commit (ADR-030 Layer 3, #2185): the
+    # out-of-scope paths were already reverted and only plan files are staged
+    # below, so what lands is the in-scope work alone.
+    : "$scope_violation" "$build_verdict"
 
     git -C "$repo_root" reset -q 2>/dev/null || true
 
