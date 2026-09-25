@@ -223,8 +223,8 @@ assert_contains "[SPEC-4e] missing build-summary reads 'no progress'" "$pr_absen
 assert_contains "[SPEC-4e] missing build-summary score = 0 − defects" "$pr_absent" "score=-2"
 
 # ─── [SPEC-11 #1241] banner names the failing gate + reason from aggregator ──
-# When state_dir is plumbed and a gate-aggregator-result.json records failed
-# gates, a NOT MATCHED cycle OUTPUT banner appends "failed gates: <list>" so the
+# When the exit_when stage reported failed items this iteration (#2189), a NOT
+# MATCHED cycle OUTPUT banner appends "failed gates: <list>" so the
 # operator sees WHICH gate blocked, not just "NOT MATCHED (got=fail)".
 _CYCLE_LAST_PREDICATE_KIND="exit_when"
 _CYCLE_LAST_PREDICATE_STAGE="gate-aggregator"
@@ -236,8 +236,8 @@ _CYCLE_LAST_PREDICATE_MATCH="false"
 _CYCLE_LAST_FAILURE_COUNT=10
 _sd11="$ZBUILD_STATE_DIR/s11"
 mkdir -p "$_sd11/artifacts"
-printf '%s\n' '{"verdict":"fail","gates":{"test":"fail","acceptance-gate":"pass"},"failed":["test"]}' \
-    > "$_sd11/artifacts/gate-aggregator-result.json"
+# #2189: what the exit_when stage REPORTED this iteration, not its file by path.
+_CYCLE_LAST_VERDICTS_BLOB='{"gate-aggregator":{"verdict":"fail","report":{"failed_items":["test"]}}}'
 pr11="$(_cycle_render_predicate_result 2 "$_sd11" 2>/dev/null)"
 assert_contains "[SPEC-11] banner names the failing gate (failed gates: test)" "$pr11" "failed gates: test"
 assert_contains "[SPEC-11] banner still restates exit_when predicate" "$pr11" "exit_when stage=gate-aggregator"

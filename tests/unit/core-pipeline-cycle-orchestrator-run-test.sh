@@ -59,6 +59,10 @@ cycle_dispatch_stage() {
     _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_STATUS="complete"
     return 0
 }
+# #2189: the stub plays the test stage, which reports a test count.
+# shellcheck source=../lib/cycle-report-stub.sh
+source "$REPO_ROOT/tests/lib/cycle-report-stub.sh"
+zb_stub_reports_tests test
 
 # T1: bad args → rc=4
 set +e; cycle_orchestrator_run "" "" ""; rc=$?; set -e
@@ -294,6 +298,10 @@ cycle_dispatch_stage() {
     _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_STATUS="complete"
     return 0
 }
+# #2189: the stub plays the test stage, which reports a test count.
+# shellcheck source=../lib/cycle-report-stub.sh
+source "$REPO_ROOT/tests/lib/cycle-report-stub.sh"
+zb_stub_reports_tests test
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc_t14=$?; set -e
 # _cycle_iter_dispatch returns 9, but cycle_orchestrator_run's catch-all collapses
 # every abort rc except 8/11/130 to rc=4 — the same collapse #1225 called out for

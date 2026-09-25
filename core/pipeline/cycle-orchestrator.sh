@@ -722,6 +722,34 @@ _cycle_read_progress() {
     return 0
 }
 
+# ─── _cycle_commit_member (#2189) ────────────────────────────────────────────
+# The cycle member whose manifest declares capabilities.produces_commits — found
+# by declaration (ADR-047 §4), never by the stage name `build`. Empty if none.
+_cycle_commit_member() {
+    local _root="${ZBUILD_PLUGINS_ROOT:-$_CYCLE_ORCH_ROOT/plugins}" _m _mf
+    _manifest_graph_ensure_yaml_get 2>/dev/null || true
+    for _m in "${_CYCLE_STAGES[@]}"; do
+        _mf="$(manifest_graph_resolve_member "$_root" "$_m" 2>/dev/null)" || continue
+        if [[ "$(yaml_get "$_mf" "capabilities.produces_commits" 2>/dev/null || true)" == "true" ]]; then
+            printf '%s' "$_m"; return 0
+        fi
+    done
+    return 0
+}
+
+# ─── _cycle_tests_reported <blob> / _cycle_tests_failing <blob> (#2189) ──────
+# Whether any member of the iteration reported a test count, and whether any such
+# member reported failures (a count > 0, or its own verdict fail). Decided from
+# the reports — no member named `test`, no test-results.json read by path.
+_cycle_tests_reported() {
+    jq -e '[ .[]? | select(.report.tests? != null) ] | length > 0' <<< "${1:-\{\}}" >/dev/null 2>&1
+}
+_cycle_tests_failing() {
+    jq -e '[ .[]? | select(.report.tests? != null)
+             | select((.report.tests.failed // 0) > 0 or .verdict == "fail") ] | length > 0' \
+        <<< "${1:-\{\}}" >/dev/null 2>&1
+}
+
 # ─── _cycle_reported_changed_files <blob> (#2189) ────────────────────────────
 # Comma-separated union of the files the members of one iteration reported
 # changing. Empty when none did.
@@ -777,16 +805,16 @@ _cycle_render_predicate_result() {
     # #1241: on a NOT-MATCHED terminating iter, name the failing gate(s) + reason
     # from the gate-aggregator rollup so the operator sees the cause. A pass
     # (MATCHED) is never annotated with failures. Best-effort/read-only.
-    if [[ "$match" != "true" && -n "$state_dir" ]]; then
-        local _agg="$state_dir/artifacts/gate-aggregator-result.json"
-        if [[ -f "$_agg" ]]; then
-            local _failed _reason
-            _failed="$(jq -r '(.failed // []) | join(", ")' "$_agg" 2>/dev/null || true)"
-            _reason="$(jq -r '.reason // empty' "$_agg" 2>/dev/null || true)"
-            if [[ -n "$_failed" ]]; then
-                printf '\nfailed gates: %s' "$_failed"
-                [[ -n "$_reason" ]] && printf ' — %s' "$_reason"
-            fi
+    # #2189: what the cycle's own exit_when stage reported this iteration — not
+    # gate-aggregator-result.json by path.
+    local _u_stage="${_CYCLE_LAST_PREDICATE_STAGE:-${_CYCLE_UNTIL_STAGE:-}}"
+    if [[ "$match" != "true" && -n "$state_dir" && -n "$_u_stage" ]]; then
+        local _failed _reason
+        _failed="$(jq -r --arg u "$_u_stage" '(.[$u].report.failed_items // []) | join(", ")' <<< "${_CYCLE_LAST_VERDICTS_BLOB:-\{\}}" 2>/dev/null || true)"
+        _reason="$(jq -r --arg u "$_u_stage" '.[$u].report.reason // empty' <<< "${_CYCLE_LAST_VERDICTS_BLOB:-\{\}}" 2>/dev/null || true)"
+        if [[ -n "$_failed" ]]; then
+            printf '\nfailed gates: %s' "$_failed"
+            [[ -n "$_reason" ]] && printf ' — %s' "$_reason"
         fi
     fi
     return 0
@@ -2528,10 +2556,13 @@ cycle_orchestrator_run() {
         # #1117: the build member's raw verdict, for the no-progress stall-break
         # below. Empty for cycles without a `build` member (naturally disables
         # the stall-break there).
-        local _build_verdict _build_disposition _build_kind
-        _build_verdict="$(jq -r '.build.verdict // ""' <<< "$verdicts_blob" 2>/dev/null || true)"
-        _build_disposition="$(jq -r '.build.disposition // ""' <<< "$verdicts_blob" 2>/dev/null || true)"
-        _build_kind="$(jq -r '.build.kind // ""' <<< "$verdicts_blob" 2>/dev/null || true)"
+        # #2189: the committing member is found by its declared capability, not
+        # by the name `build`.
+        local _build_verdict _build_disposition _build_kind _commit_member
+        _commit_member="$(_cycle_commit_member)"
+        _build_verdict="$(jq -r --arg m "$_commit_member" '.[$m].verdict // ""' <<< "$verdicts_blob" 2>/dev/null || true)"
+        _build_disposition="$(jq -r --arg m "$_commit_member" '.[$m].disposition // ""' <<< "$verdicts_blob" 2>/dev/null || true)"
+        _build_kind="$(jq -r --arg m "$_commit_member" '.[$m].kind // ""' <<< "$verdicts_blob" 2>/dev/null || true)"
         # #1261: generic timeout-tail signal — did ANY member of THIS iteration
         # surface the repo-neutral `interrupted` disposition (a router-timeout /
         # dispatch-interrupt mid-flight resting point: build's #1208 verdict,
@@ -2749,14 +2780,11 @@ cycle_orchestrator_run() {
             # assert test failure via clause (b). GENERIC: test-results.json is the
             # roster's test artifact (ADR-044 count contract feeds it) — no plugin
             # id / language / path assumption beyond the canonical `test` member.
-            local _exh_test_verdict _exh_test_failed="" _exh_trj
-            _exh_test_verdict="$(jq -r '.test.verdict // ""' <<< "$verdicts_blob" 2>/dev/null || true)"
-            _exh_trj="$state_dir/artifacts/test-results.json"
-            if [[ -s "$_exh_trj" ]]; then
-                # v2-first, v1 top-level fallback (#1836): an empty count here
-                # would drop clause (b) of the exhaustion test entirely.
-                _exh_test_failed="$(jq -r '(.data.failed // .failed) // empty' "$_exh_trj" 2>/dev/null || true)"
-            fi
+            # #2189: from the members' reported test counts, not a member named
+            # `test` or test-results.json by path.
+            local _exh_tests_reported=0 _exh_tests_failing=0
+            _cycle_tests_reported "$verdicts_blob" && _exh_tests_reported=1
+            _cycle_tests_failing "$verdicts_blob" && _exh_tests_failing=1
             # #1261: reason-aware exhaustion (timeout-exhaustion exception to the
             # ADR-019 on_max=continue fall-through). When the TERMINATING iteration
             # was interrupted by a router timeout (a member surfaced the repo-neutral
@@ -2775,14 +2803,13 @@ cycle_orchestrator_run() {
             # id) — build_test_cycle ALWAYS runs `test`, so it has a signal and is
             # unaffected (scope: design-only for now, #1261); a future verifier-less
             # cycle inherits the same fail-fast.
-            if [[ "$_iter_did_not_finish" -eq 1 && -z "$_exh_test_verdict" && ! -s "$_exh_trj" ]]; then
+            if [[ "$_iter_did_not_finish" -eq 1 && "$_exh_tests_reported" -eq 0 ]]; then
                 eb_emit_event "cycle.timeout_exhausted" \
                     "cycle_id=$cycle_id" "iter=$iter" \
                     "reason=design_timeout_exhausted" 2>/dev/null || true
                 _CYCLE_LAST_TERMINATED_REASON="design_timeout_exhausted"
                 overall_status="max_iterations"; term_rc=8
-            elif [[ "$_exh_test_verdict" == "fail" ]] \
-               || { [[ "$_exh_test_failed" =~ ^[0-9]+$ ]] && [[ "$_exh_test_failed" -gt 0 ]]; }; then
+            elif [[ "$_exh_tests_failing" -eq 1 ]]; then
                 _CYCLE_LAST_TERMINATED_REASON="max_iterations_tests_failing"
                 overall_status="max_iterations"; term_rc=8
             else

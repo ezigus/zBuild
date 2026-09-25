@@ -83,6 +83,10 @@ cycle_dispatch_stage() {
             return 0 ;;
     esac
 }
+# #2189: the stub plays the test stage, which reports a test count.
+# shellcheck source=../lib/cycle-report-stub.sh
+source "$REPO_ROOT/tests/lib/cycle-report-stub.sh"
+zb_stub_reports_tests test
 
 # ─── T1: iter1 timeout sets base; iter2 dispatches with override = base + 50% ─
 _seed

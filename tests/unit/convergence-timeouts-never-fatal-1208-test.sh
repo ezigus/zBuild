@@ -122,6 +122,10 @@ cycle_dispatch_stage() {
     esac
     return 0
 }
+# #2189: the stub plays the test stage, which reports a test count.
+# shellcheck source=../lib/cycle-report-stub.sh
+source "$REPO_ROOT/tests/lib/cycle-report-stub.sh"
+zb_stub_reports_tests test
 
 _seed() {
     STATE_FILE="$ZBUILD_STATE_DIR/pipeline-state.json"
@@ -271,6 +275,10 @@ cycle_dispatch_stage() {
             return 0 ;;
     esac
 }
+# #2189: the stub plays the test stage, which reports a test count.
+# shellcheck source=../lib/cycle-report-stub.sh
+source "$REPO_ROOT/tests/lib/cycle-report-stub.sh"
+zb_stub_reports_tests test
 load_template "$_5C_TPL"
 set +e
 cycle_orchestrator_run "build-test" "$_5C_SD" "$_5C_SD/pipeline-state.json"
