@@ -50,7 +50,6 @@
 ./artifacts/review-aggregator-lenses.json
 ./artifacts/review-report.json
 ./artifacts/review-report.md
-./artifacts/stage-reports.json
 ./artifacts/teardown-result.json
 ./artifacts/teardown-summary.md
 ./artifacts/test-failures-summary.md

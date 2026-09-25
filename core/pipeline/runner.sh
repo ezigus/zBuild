@@ -490,6 +490,9 @@ _runner_export_scope_allowlist() {
 _runner_record_report() {
     local state_dir="$1" stage="$2" report="${3:-}"
     [[ -n "$state_dir" && -n "$stage" && -n "$report" && "$report" != "{}" ]] || return 0
+    # Most stages report none of the setup fields — skip the lock and the jq fork.
+    [[ "$report" == *'"scope_files"'* || "$report" == *'"owned_files"'* \
+        || "$report" == *'"wiring_files"'* ]] || return 0
     local rec="$state_dir/artifacts/stage-reports.json" tmp
     local lock="$state_dir/.stage-reports.lock" _tries=0
     [[ -d "$state_dir/artifacts" ]] || mkdir -p "$state_dir/artifacts" 2>/dev/null || return 0
@@ -3772,11 +3775,6 @@ main() {
             fi
             # rc=0: the strategies dispatch generated work units that call
             # plugin_hook_call, so scan_plugin_outputs has already run per member.
-        fi
-        # #2189: the linear leaf path keeps the same report record.
-        if [[ -n "${plugin_dir:-}" ]]; then
-            _runner_record_report "$state_dir" "$stage" \
-                "$(runner_read_stage_report "$state_dir" "$plugin_dir/manifest.yaml" "$stage" "$rc" 2>/dev/null || printf '{}')"
         fi
 
         if [[ $rc -eq 0 ]]; then

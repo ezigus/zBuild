@@ -164,9 +164,12 @@ scan_plugin_outputs() {
 _lc_owned_by_others_deny() {
     local rec="${1:-}/artifacts/stage-reports.json" me="${2:-}"
     [[ -s "$rec" ]] || return 0
+    # Read without a fork: nothing owned (most runs) needs no jq at all.
+    local _body; _body="$(<"$rec")"
+    [[ "$_body" == *'"owned_files"'* ]] || return 0
     jq -r --arg me "$me" --arg root "${ZBUILD_REPO_ROOT:-.}" '
-        (.owned_files // {}) | to_entries[] | select(.key != $me) | .value[] | "\($root)/\(.)"' \
-        "$rec" 2>/dev/null | sort -u
+        [(.owned_files // {}) | to_entries[] | select(.key != $me) | .value[] | "\($root)/\(.)"]
+        | unique[]' <<< "$_body" 2>/dev/null
 }
 
 # ─── plugin_hook_call ───────────────────────────────────────────────────────

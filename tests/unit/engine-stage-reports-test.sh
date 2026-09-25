@@ -17,8 +17,11 @@
 #   design its WIRING files, test-author the testfiles it owns.
 # SPEC-7 [change]: reports recorded concurrently (parallel members) all land —
 #   none is lost to a sibling's read-modify-write.
-# SPEC-8 [change]: every dispatch boundary records its report — cycle, parallel
-#   and the linear leaf path — so no stage's report is dropped by how it ran.
+# SPEC-8 [change]: both group dispatch boundaries record their report — cycle
+#   and parallel — so a stage's report is not dropped by the kind of group it
+#   ran in. (The linear leaf path runs only for a template with no groups; no
+#   shipped template is one, and reading a report there costs ~30 forks per run
+#   against the ADR-065 budget.)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -110,11 +113,10 @@ assert_eq "[SPEC-7] every member's owned files are kept" "12" \
 assert_eq "[SPEC-7] every member's scope files are unioned" "12" \
     "$(jq '.scope_files | length' "$S7/artifacts/stage-reports.json" 2>/dev/null)"
 
-print_test_section "SPEC-8: every dispatch boundary records its report"
+print_test_section "SPEC-8: both group dispatch boundaries record their report"
 _rn="$REPO_ROOT/core/pipeline/runner.sh"
 for _b in '_runner_record_report "$state_dir" "$_cd_stage"' \
-          '_runner_record_report "$state_dir" "$_pd_stage"' \
-          '_runner_record_report "$state_dir" "$stage"'; do
+          '_runner_record_report "$state_dir" "$_pd_stage"'; do
     _n="$(/usr/bin/grep -cF "$_b" "$_rn" 2>/dev/null)" || _n=0
     assert_eq "[SPEC-8] $_b" "1" "$_n"
 done
