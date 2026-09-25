@@ -176,11 +176,19 @@ assert_contains "[SPEC-10][change] …in a commit that says who wrote it" "$(git
 print_test_section "SPEC-11: a call that timed out mid-write still keeps what it wrote"
 _setup s11
 _TA_RC=124
+# Its own stub: the call writes part of the testfile, then times out.
+route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'assert_eq "[SPEC-1] partial" "1" "$n"\n' >> "$ZBUILD_REPO_ROOT/tests/acc-test.sh"; return 124; }
+if [[ -z "$(git -C "$_R" status --porcelain -- tests/acc-test.sh 2>/dev/null)" ]]; then assert_pass "[SPEC-11][guard] the fixture starts clean"; fi
 test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
 assert_eq "[SPEC-11][change] the partial testfile is committed for the next attempt" "" "$(git -C "$_R" status --porcelain -- tests/acc-test.sh 2>/dev/null)"
 assert_eq "[SPEC-11][guard] …and the result still says the call did not finish" "timed_out" "$(_res '.disposition')"
 
 print_test_section "SPEC-12: the prompt tells the author to continue earlier work"
+_setup s12
+_TA_RC=0
+route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return 0; }
+: > "$_TA_PROMPT"
+test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
 assert_contains "[SPEC-12][change] the prompt says an earlier attempt's assertions may be there" "$(cat "$_TA_PROMPT")" "earlier attempt"
 route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return $_TA_RC; }
 
