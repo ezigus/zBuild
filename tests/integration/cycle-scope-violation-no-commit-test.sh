@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Integration test (#608): when verdict=scope_violation, the build stage MUST
-# NOT commit. It emits build.commit.skipped reason=scope_violation instead.
+# Integration test (#608, #2185): a scope violation never commits the out-of-scope
+# file. With no in-scope work there is nothing to commit (reason=empty_diff).
+# In-scope work alongside a violation IS committed: see
+# tests/unit/build-timeout-scope-violation-preserves-inscope-test.sh.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -126,10 +128,10 @@ bash "$DRIVER" >/dev/null 2>/dev/null || true
 POST_HEAD="$(cd "$REPO" && git rev-parse HEAD)"
 assert_eq "HEAD unchanged on scope_violation" "$PRE_HEAD" "$POST_HEAD"
 
-# ── (2) build.commit.skipped event with reason=scope_violation ─────────────
+# ── (2) build.commit.skipped event with reason=empty_diff (nothing in scope) ─────────────
 if [[ -f "$ZBUILD_EVENTS_JSONL" ]] && grep -q '"type":"build.commit.skipped"' "$ZBUILD_EVENTS_JSONL"; then
     REASON="$(jq -r 'select(.type=="build.commit.skipped") | .data.reason' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)"
-    assert_eq "skipped reason=scope_violation" "scope_violation" "$REASON"
+    assert_eq "skipped reason=empty_diff (only out-of-scope work)" "empty_diff" "$REASON"
 else
     assert_fail "build.commit.skipped event emitted" "event missing"
 fi

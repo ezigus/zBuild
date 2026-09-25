@@ -40,11 +40,11 @@ provides:
     - build.numstat.precondition_failed
     - build.numstat.truncated
     - build.scope.violation
+    - build.scope.inscope_preserved
     - build.scope_grant_applied
     - build.scope_injected
     - build.authored_testfiles.restored
     - build.scratch.cleaned
-    - build.timeout.partial_work_preserved
 
 config:
   valid_verdicts:
