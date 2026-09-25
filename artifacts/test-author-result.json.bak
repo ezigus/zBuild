@@ -1,9 +1,0 @@
-{
-  "result_contract": 2,
-  "verdict": "degraded",
-  "disposition": "interrupted",
-  "reason": "the model call failed (router_timeout) — no assertions were authored",
-  "data": {
-    "specs_covered": 25
-  }
-}

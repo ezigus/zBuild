@@ -3,6 +3,11 @@
   "cycle_iter": 0,
   "attempt": 1,
   "rc": "0",
-  "generated_at": "2026-09-24T03:01:03Z",
-  "files": 2
+  "generated_at": "2026-09-25T23:55:14Z",
+  "files": 2,
+  "outputs": {
+    "hydrate-errors.log": "absent",
+    "hydrate-result.json": "changed",
+    "hydrate-summary.md": "changed"
+  }
 }
