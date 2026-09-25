@@ -207,10 +207,12 @@ _cycle_emit_member_dispatch_complete() {
     # only on the LEAF path in runner.sh, so `design`, `build` and `test` — most
     # of a real run's output under simple.yaml — were never persisted at all.
     #
-    # rc=0 only, matching the leaf contract (which snapshots inside its `rc -eq 0`
-    # branch): a failed member has nothing worth carrying to the next run, and the
-    # abort paths (6/130/143) route through here too.
-    if [[ "$rc" -eq 0 ]] && declare -F _runner_snapshot_artifacts >/dev/null 2>&1; then
+    # Every member, whatever its rc (#2187): a failed or timed-out member's
+    # outputs are what the next session needs most — #1849's test-author ran
+    # twice, failed, and was never snapshotted. The abort paths (6/130/143)
+    # route through here too, and saving their work on the way out is the point.
+    : "$rc"
+    if declare -F _runner_snapshot_artifacts >/dev/null 2>&1; then
         _runner_snapshot_artifacts "" "$member"
     fi
 }

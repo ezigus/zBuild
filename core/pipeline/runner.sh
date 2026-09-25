@@ -139,6 +139,46 @@ _runner_run_id="" _runner_issue="" _runner_ended=false _runner_state_file=""
 # reported once rather than once per stage boundary.
 _RUNNER_LAST_SNAPSHOT_FAIL_REASON=""
 
+# ─── _runner_note_push_failure <stage> (#2187) ───────────────────────────────
+# Report a failed stage-end push once per distinct reason, on the same channel
+# and dedupe as a failed snapshot.
+_runner_note_push_failure() {
+    [[ "${_ARTIFACT_PERSIST_LAST_STATUS:-}" == "failed" ]] || return 0
+    [[ "${_ARTIFACT_PERSIST_LAST_REASON:-}" != "${_RUNNER_LAST_SNAPSHOT_FAIL_REASON:-}" ]] || return 0
+    _RUNNER_LAST_SNAPSHOT_FAIL_REASON="${_ARTIFACT_PERSIST_LAST_REASON:-unknown}"
+    eb_emit_event "artifact.snapshot.failed" "stage=${1:-unknown}" "issue=$_runner_issue" \
+        "reason=${_ARTIFACT_PERSIST_LAST_REASON:-unknown}" 2>/dev/null || true
+    warn "stage-end push failed at stage '${1:-unknown}': ${_ARTIFACT_PERSIST_LAST_REASON:-unknown}"
+}
+
+# ─── _runner_push_work_branch <state_dir> <stage> (#2187) ────────────────────
+# When the run has a work branch on origin (ZBUILD_WORKSPACE_BRANCH — CI sets
+# zbuild/issue-N-ci), push the run's commits to it at every stage end, so a new
+# session can pick them up even if this runner dies. Only when HEAD carries
+# commits past the intake baseline. Advisory: a failure is reported, never fatal.
+_runner_push_work_branch() {
+    local _branch="${ZBUILD_WORKSPACE_BRANCH:-}"
+    [[ -n "$_branch" ]] || return 0
+    local _repo="${ZBUILD_REPO_ROOT:-}"
+    [[ -n "$_repo" ]] || _repo="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    [[ -n "$_repo" ]] || return 0
+    git -C "$_repo" remote get-url origin >/dev/null 2>&1 || return 0
+    local _base=""
+    [[ -f "${1:-}/intake-baseline-ref.txt" ]] && _base="$(cat "${1:-}/intake-baseline-ref.txt" 2>/dev/null || true)"
+    if [[ -n "$_base" ]]; then
+        local _ahead; _ahead="$(git -C "$_repo" rev-list --count "$_base..HEAD" 2>/dev/null || echo 0)"
+        [[ "$_ahead" =~ ^[0-9]+$ && "$_ahead" -gt 0 ]] || return 0
+    fi
+    local _err
+    if _err="$(git -C "$_repo" push --force -q origin "HEAD:refs/heads/$_branch" 2>&1)"; then
+        return 0
+    fi
+    _ARTIFACT_PERSIST_LAST_STATUS="failed"
+    _ARTIFACT_PERSIST_LAST_REASON="git push work branch $_branch failed: $(tr '\n' ' ' <<< "$_err" | cut -c1-300)"
+    _runner_note_push_failure "${2:-unknown}"
+    return 0
+}
+
 # ─── _runner_snapshot_artifacts <state_dir> <stage> (ADR-050, #1581/#1878) ───
 # Snapshot the artifact area onto the state branch at a stage boundary, so a
 # completed stage's work survives a mid-run crash/rate-limit and is available to
@@ -198,6 +238,25 @@ _runner_snapshot_artifacts() {
         # `saved` for them is precisely the lie this change removes.
         *) : ;;
     esac
+    # #2187: push at the stage end, not only when the run ends — a run killed
+    # mid-way (job ceiling, SIGKILL) otherwise loses everything since its start.
+    # Only for a run that declares where its work goes (ZBUILD_WORKSPACE_BRANCH;
+    # the CI pipeline sets it). A plain local run — and every test — pushes
+    # nothing here: tests have left state branches in real checkouts, and
+    # this would put them on origin. The persist stage still pushes at the end.
+    [[ -n "${ZBUILD_WORKSPACE_BRANCH:-}" ]] || return 0
+    local _leak=""
+    if _leak="$(_artifact_persist_find_secret "$_snap_state_dir/artifacts")"; then
+        _ARTIFACT_PERSIST_LAST_STATUS="failed"
+        _ARTIFACT_PERSIST_LAST_REASON="refusing to push — artifact looks like it carries a credential (${_leak})"
+        _runner_note_push_failure "$_snap_stage"
+        return 0
+    fi
+    if [[ "${_ARTIFACT_PERSIST_LAST_STATUS:-}" == "saved" ]]; then
+        _artifact_persist_push "$_runner_issue" "${ZBUILD_REPO_ROOT:-}" || true
+        _runner_note_push_failure "$_snap_stage"
+    fi
+    _runner_push_work_branch "$_snap_state_dir" "$_snap_stage"
     return 0
 }
 

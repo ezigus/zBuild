@@ -60,6 +60,31 @@ _ARTIFACT_PERSIST_LAST_SKIPPED=0
 
 # Reset the outcome channel. Called at the top of every public entry point so a
 # caller can never read a stale status from a previous invocation.
+# ─── _artifact_persist_find_secret <artifacts_dir> (#2187) ───────────────────
+# Echo "<relpath>:<kind>" for the first text artifact that looks like it carries
+# a credential, rc 0; rc 1 when none does. The ONE scan every push path runs —
+# it lived only in the persist stage, and #2187's stage-end push must not be a
+# way around it. Patterns: scripts/lib/secret-patterns.sh.
+_artifact_persist_find_secret() {
+    local art_dir="$1" f rel kind
+    [[ -d "$art_dir" ]] || return 1
+    if ! declare -F zbuild_scan_secret_content >/dev/null 2>&1; then
+        # shellcheck source=../../scripts/lib/secret-patterns.sh
+        source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts/lib" && pwd)/secret-patterns.sh" 2>/dev/null || return 1
+    fi
+    while IFS= read -r -d '' f; do
+        # Skip anything that is not text. `grep -Iq .` returns non-zero for a
+        # binary file, which is the cheapest portable test available.
+        grep -Iq . "$f" 2>/dev/null || continue
+        if kind="$(zbuild_scan_secret_content "$(cat "$f" 2>/dev/null)")"; then
+            rel="${f#"$art_dir"/}"
+            printf '%s:%s' "$rel" "$kind"
+            return 0
+        fi
+    done < <(find "$art_dir" -type f -print0 2>/dev/null)
+    return 1
+}
+
 _artifact_persist_reset_status() {
     _ARTIFACT_PERSIST_LAST_SOURCE=""
     _ARTIFACT_PERSIST_LAST_STATUS=""
