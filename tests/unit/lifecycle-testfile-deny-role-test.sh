@@ -9,10 +9,10 @@
 # up with `$1` AFTER `shift 2`, i.e. the stage id, found no manifest, and
 # denied everyone. Invisible until #2163 made the rendered rule real.
 #
-# SPEC-1[change]: a plugin whose manifest declares provides.role: test_author is NOT denied
-#   the acceptance testfiles — it may edit them (its deny list still carries the other
-#   plugins' declared outputs, SPEC-3)
-# SPEC-2[guard]:  a plugin with any other role is dispatched with the design's TESTFILES in
+# SPEC-1[change]: the stage that REPORTED owning the acceptance testfiles is NOT denied
+#   them — it may edit them (its deny list still carries the other plugins' declared
+#   outputs, SPEC-3). #2189: from the report, not a role name.
+# SPEC-2[guard]:  every other stage is dispatched with those testfiles in
 #   ZBUILD_PERMISSION_DENY_EDIT (build cannot rewrite an assertion to fit its code)
 # SPEC-3[change]: (#2174) every OTHER plugin's declared outputs (resolved into this run's artifact
 #   dir) are in the deny list; the plugin's own declared outputs are not — #1841's builder
@@ -50,6 +50,9 @@ TESTFILES:
 SPEC-1: tests/acc-test.sh
 ```
 D
+# #2189: the author REPORTED owning that testfile; the deny list comes from the
+# report (artifacts/stage-reports.json), not from design.md or a role name.
+jq -n '{owned_files: {"author-fixture": ["tests/acc-test.sh"]}}' > "$STATE/artifacts/stage-reports.json"
 DENY_LOG="$TEST_TEMP_DIR/deny.log"; export DENY_LOG
 
 # Two fixture plugins, identical but for provides.role.

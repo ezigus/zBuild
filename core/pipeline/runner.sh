@@ -463,21 +463,58 @@ _runner_duration_token() {
 }
 
 # ─── _runner_export_scope_allowlist <state_dir> (ADR-043) ────────────────────
-# Redaction by construction: derive the per-run scope allowlist from plan.files[]
-# and export it as ZBUILD_SCOPE_ALLOWLIST so route_to_model can redact without a
-# plugin passing it. Called per-stage because plan.json only exists after the
-# plan stage runs (empty before then — harmless, the scope manifest is the base
-# allowlist and this value is purely ADDITIVE). Matches the extraction used by
-# the design/build plugins.
+# Redaction by construction: the per-run scope allowlist, exported as
+# ZBUILD_SCOPE_ALLOWLIST so route_to_model can redact without a plugin passing
+# it. Called per-stage because nothing is reported before plan runs (empty then —
+# harmless, the scope manifest is the base allowlist and this is purely ADDITIVE).
 _runner_export_scope_allowlist() {
     local state_dir="$1"
-    local plan_json="$state_dir/artifacts/plan.json"
-    local csv=""
-    if [[ -f "$plan_json" ]]; then
-        csv="$(jq -r '[(.files // []), ([.steps[]?.files[]?] // [])] | flatten | unique | join(",")' \
-            "$plan_json" 2>/dev/null || echo "")"
+    local rec="$state_dir/artifacts/stage-reports.json" csv=""
+    # #2189: the scope files stages REPORTED (plan reports its files) — the
+    # engine no longer reads plan.json by path.
+    if [[ -s "$rec" ]]; then
+        csv="$(jq -r '(.scope_files // []) | unique | join(",")' "$rec" 2>/dev/null || echo "")"
     fi
     export ZBUILD_SCOPE_ALLOWLIST="$csv"
+}
+
+# ─── _runner_record_report <state_dir> <stage> <report-json> (#2189) ─────────
+# Merge one dispatch's report into the run's record, artifacts/stage-reports.json
+# (under artifacts/ so it is snapshotted and restored with the run): scope and
+# wiring files are unioned; owned files are kept per reporting stage, so the
+# deny list can exempt the owner. Engine setup reads THIS record — never a
+# stage's artifact by name. Best-effort: a failed merge leaves the prior record.
+# Parallel members record concurrently, so the read-merge-write holds a mkdir
+# lock (portable; flock is absent on stock macOS) — else a sibling's merge is lost.
+# A lock left by a killed holder is reclaimed after 10s.
+_runner_record_report() {
+    local state_dir="$1" stage="$2" report="${3:-}"
+    [[ -n "$state_dir" && -n "$stage" && -n "$report" && "$report" != "{}" ]] || return 0
+    # Most stages report none of the setup fields — skip the lock and the jq fork.
+    [[ "$report" == *'"scope_files"'* || "$report" == *'"owned_files"'* \
+        || "$report" == *'"wiring_files"'* ]] || return 0
+    local rec="$state_dir/artifacts/stage-reports.json" tmp
+    local lock="$state_dir/.stage-reports.lock" _tries=0
+    [[ -d "$state_dir/artifacts" ]] || mkdir -p "$state_dir/artifacts" 2>/dev/null || return 0
+    until mkdir "$lock" 2>/dev/null; do
+        # A merge takes milliseconds; a lock held 10s belongs to a dead holder.
+        if (( ++_tries > 200 )); then rmdir "$lock" 2>/dev/null; _tries=0; fi
+        sleep 0.05
+    done
+    [[ -s "$rec" ]] || printf '{}' > "$rec"
+    tmp="$rec.tmp.$BASHPID"
+    if jq --arg s "$stage" --argjson r "$report" '
+            .scope_files  = ((.scope_files  // []) + ($r.scope_files  // []) | unique)
+          | .wiring_files = ((.wiring_files // []) + ($r.wiring_files // []) | unique)
+          | if ($r.owned_files // null) != null
+              then .owned_files = ((.owned_files // {}) + {($s): ($r.owned_files | unique)})
+              else . end' "$rec" > "$tmp" 2>/dev/null; then
+        mv -f "$tmp" "$rec"
+    else
+        rm -f "$tmp"
+    fi
+    rmdir "$lock" 2>/dev/null
+    return 0
 }
 
 # ─── _runner_validate_leaf_resolvability <stages_arr_name> <plugins_root> ─────
@@ -1289,14 +1326,14 @@ _runner_snapshot_contract_libs() {
     return 0
 }
 
-# _runner_design_targets_contract_lib <design_md> <src_lib>
-# True when the design's declared WIRING targets intersect the contract-reader
-# set — i.e. this run modifies its own grader. Declarative detection: it reuses
-# data the design stage already publishes and the design-gate already verifies,
-# rather than inferring intent from the diff.
+# _runner_design_targets_contract_lib <state_dir> <src_lib>
+# True when the wiring files stages REPORTED (design reports its WIRING) intersect
+# the contract-reader set — i.e. this run modifies its own grader. #2189: read
+# from the run's stage-reports record, not design.md by path.
 _runner_design_targets_contract_lib() {
-    local design_md="${1:-}" src_lib="${2:-}"
-    [[ -f "$design_md" ]] || return 1
+    local state_dir="${1:-}" src_lib="${2:-}"
+    local rec="$state_dir/artifacts/stage-reports.json"
+    [[ -s "$rec" ]] || return 1
     local -A inset=()
     local _lib _t _base
     while IFS= read -r _lib; do
@@ -1310,13 +1347,7 @@ _runner_design_targets_contract_lib() {
         [[ "$_t" == *scripts/lib/* ]] || continue
         _base="${_t##*/}"
         [[ -n "${inset[$_base]:-}" ]] && { printf '%s\n' "$_t"; return 0; }
-    # The WIRING reader lives in acceptance-block.sh, which only PLUGINS source —
-    # and they run inside plugin_hook_call's subshell, so nothing it defines ever
-    # reaches the runner's shell. Source it in a subshell here: the detection then
-    # works regardless of load order, and the runner's shell stays unpolluted by
-    # grammar functions it has no other business owning.
-    done < <( ( source "$src_lib/acceptance-block.sh" >/dev/null 2>&1 \
-                  && acceptance_list_wiring "$design_md" 2>/dev/null ) || true )
+    done < <(jq -r '(.wiring_files // [])[]' "$rec" 2>/dev/null || true)
     return 1
 }
 
@@ -1352,7 +1383,7 @@ _runner_refresh_contract_snapshot() {
         else
             local _hit
             _hit="$(_runner_design_targets_contract_lib \
-                        "$state_dir/artifacts/design.md" "$_tree/scripts/lib" 2>/dev/null || true)"
+                        "$state_dir" "$_tree/scripts/lib" 2>/dev/null || true)"
             [[ -n "$_hit" ]] || return 0
             _reason="design_wiring:$_hit"
         fi
@@ -2724,6 +2755,7 @@ main() {
             # #2189: what this member reported for the cycle to act on — read
             # off the member itself, never a stage's artifact by name.
             _CYCLE_DISPATCH_REPORT="$(runner_read_stage_report "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || printf '{}')"
+            _runner_record_report "$state_dir" "$_cd_stage" "$_CYCLE_DISPATCH_REPORT"
             # ADR-054: read the data.build_kind field from the primary artifact so the
             # cycle orchestrator can distinguish the empty_diff resting point from a
             # true pass without reading the string "empty_diff" from the verdict channel.
@@ -2859,6 +2891,9 @@ main() {
         _PARALLEL_DISPATCH_VERDICT_RAW="$(runner_read_stage_verdict_raw "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" 2>/dev/null || echo "missing")"
         [[ -z "$_PARALLEL_DISPATCH_VERDICT_RAW" ]] && _PARALLEL_DISPATCH_VERDICT_RAW="missing"
         _PARALLEL_DISPATCH_REASON="$(runner_read_stage_reason "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" 2>/dev/null || echo "")"
+        # #2189: the same report record the cycle boundary keeps.
+        _runner_record_report "$state_dir" "$_pd_stage" \
+            "$(runner_read_stage_report "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" 2>/dev/null || printf '{}')"
         if [[ $_pd_rc -eq 0 ]]; then
             _PARALLEL_DISPATCH_STATUS="complete"
         else

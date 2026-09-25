@@ -6,7 +6,7 @@
 #   SPEC-2 [change]: the snapshot is a self-contained root — every lib it copies
 #                    can be sourced from it without reaching outside
 #   SPEC-3 [change]: no once-guard — a later call picks up a changed tree
-#   SPEC-4 [change]: a design whose WIRING targets a contract lib is detected
+#   SPEC-4 [change]: a design whose reported WIRING targets a contract lib is detected
 #   SPEC-5 [guard] : a design with no contract-lib target is NOT detected
 #
 # The engine grades a run with the contract readers from the INSTALLED engine.
@@ -104,34 +104,26 @@ print_test_section "4. detection keys on the design's declared WIRING targets"
 assert_eq "[SPEC-4] the WIRING reader is NOT pre-loaded (matches the live runner shell)" \
     "" "$(declare -F acceptance_list_wiring 2>/dev/null || true)"
 
-mk_design() {
-    local path="$1" target="$2"
-    cat > "$path" <<EOF
-# Design
-
-\`\`\`acceptance
-SPEC-1[change]: something changes.
-WIRING:
-${target}
-TESTFILES:
-SPEC-1: tests/unit/x-test.sh
-\`\`\`
-EOF
+# #2189: detection keys on the WIRING files the design REPORTED (the run's
+# artifacts/stage-reports.json), not on design.md read by path.
+mk_design() {   # <state_dir> <wiring target>
+    mkdir -p "$1/artifacts"
+    jq -n --arg t "$2" '{wiring_files: [$t]}' > "$1/artifacts/stage-reports.json"
 }
 
-D_HIT="$TEST_TEMP_DIR/design-hit.md"
+D_HIT="$TEST_TEMP_DIR/state-hit"
 mk_design "$D_HIT" "scripts/lib/acceptance-negctl.sh"
 _out="$(_runner_design_targets_contract_lib "$D_HIT" "$LIB" 2>/dev/null || true)"
 assert_contains "[SPEC-4] a WIRING target inside the contract-reader set is detected" \
     "$_out" "acceptance-negctl.sh"
 
-D_MISS="$TEST_TEMP_DIR/design-miss.md"
+D_MISS="$TEST_TEMP_DIR/state-miss"
 mk_design "$D_MISS" "plugins/tool/pr-open/plugin.sh"
 _out2="$(_runner_design_targets_contract_lib "$D_MISS" "$LIB" 2>/dev/null || true)"
 assert_eq "[SPEC-5] an ordinary WIRING target does not trigger self-grading" "" "$_out2"
 
 # A same-named file OUTSIDE scripts/lib is not this seam.
-D_DECOY="$TEST_TEMP_DIR/design-decoy.md"
+D_DECOY="$TEST_TEMP_DIR/state-decoy"
 mk_design "$D_DECOY" "vendor/other/merge-base.sh"
 _out3="$(_runner_design_targets_contract_lib "$D_DECOY" "$LIB" 2>/dev/null || true)"
 assert_eq "[SPEC-5] a same-named file outside scripts/lib does not trigger it" "" "$_out3"
