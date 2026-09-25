@@ -150,12 +150,15 @@ spec-coverage:
 test-author:
   gate: auto
   roles: [test_author]
+  # #2188: no authored assertions → the cycle stops before build. Otherwise build
+  # writes its own tests, the defect #2022 exists to prevent (#1849 run
+  # 35949629759). Its failure is retried first (the stage's `retry:` budget).
+  blocking: true
   router:
-    timeout_s: 600
-    # #2170: authoring a 15–20 SPEC contract into a 500-line testfile is more
-    # than the 25-turn engine default (plan and impact get 45). #1841 hit
-    # "Reached max turns (25)" on every call.
-    max_turns: 45
+    # #2188: the same budget as build — authoring a 15–25 SPEC contract is
+    # build-sized work (#1849: two 600s calls both timed out mid-write).
+    timeout_s: 900
+    max_turns: 0
 
 # ─── spec-correspondence (leaf, advisory) ────────────────────────────────────
 # ADR-040 §5: it makes a model call, so it may not gate. Its finding reaches
