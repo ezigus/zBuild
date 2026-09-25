@@ -310,6 +310,12 @@ _make_plan_plugin
 _make_design_plugin
 _make_design_gate_plugin       # passes so design_verify_cycle converges quickly
 _make_plugin "impact"          "impact_analyzer"
+# #2187: build_test_cycle's newer members. Unresolved, each was a silent
+# `broken` the cycle absorbed; `broken`/`misconfigured` now halt the run.
+_make_plugin "spec-coverage"       "spec_coverage"
+_make_plugin "test-author"         "test_author"
+_make_plugin "spec-correspondence" "spec_correspondence"
+_make_plugin "assertion-integrity" "assertion_integrity"
 _make_plugin "build"           "builder"
 _make_plugin "test"            "tester"
 _make_plugin "shape-floor"     "shape_floor"

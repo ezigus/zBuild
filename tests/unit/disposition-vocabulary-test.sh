@@ -101,6 +101,10 @@ assert_eq "[SPEC-3] above the cap clamps to 5" "5" \
     "$(ZBUILD_DISPOSITION_REDISPATCH=99 _runner_retry_budget design 2>/dev/null)"
 assert_eq "[SPEC-3] an explicit 0 opts out" "0" \
     "$(ZBUILD_DISPOSITION_REDISPATCH=0 _runner_retry_budget design 2>/dev/null)"
+assert_eq "[SPEC-3] a non-number falls back to the default" "3" \
+    "$(ZBUILD_DISPOSITION_REDISPATCH=lots _runner_retry_budget design 2>/dev/null)"
+assert_eq "[SPEC-3] a negative value is not a number here and falls back" "3" \
+    "$(ZBUILD_DISPOSITION_REDISPATCH=-2 _runner_retry_budget design 2>/dev/null)"
 
 # ─── SPEC-4 ──────────────────────────────────────────────────────────────────
 print_test_section "SPEC-4: an attempt that changed nothing made no progress"

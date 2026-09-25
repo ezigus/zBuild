@@ -227,6 +227,11 @@ _make_design_gate_plugin   # forces design_verify_cycle to exhaust
 # assertion below fails for a reason unrelated to on_max=continue.
 _make_plugin "spec-coverage"   "spec_coverage"
 _make_plugin "impact"          "impact_analyzer"
+# #2187: build_test_cycle's newer members. Unresolved, each was a silent
+# `broken` the cycle absorbed; `broken`/`misconfigured` now halt the run.
+_make_plugin "test-author"         "test_author"
+_make_plugin "spec-correspondence" "spec_correspondence"
+_make_plugin "assertion-integrity" "assertion_integrity"
 _make_plugin "build"           "builder"
 _make_plugin "test"            "tester"
 # Decomposed mechanical gates (ADR-040) — all pass so build_test_cycle converges.
