@@ -95,7 +95,9 @@ _ta_write_result() {
     # other stage edits to them from this report (never from design.md by path).
     local _owned="[]"
     if [[ -s "$dir/design.md" ]] && declare -F acceptance_list_testfiles >/dev/null 2>&1; then
-        _owned="$(acceptance_list_testfiles "$dir/design.md" 2>/dev/null | jq -R . | jq -sc 'map(select(length > 0)) | unique' 2>/dev/null || printf '[]')"
+        local _ol; _ol="$(acceptance_list_testfiles "$dir/design.md" 2>/dev/null || true)"
+        _owned="$(jq -Rnc '[inputs | select(length > 0)] | unique' <<< "$_ol" 2>/dev/null || true)"
+        [[ -n "$_owned" ]] || _owned="[]"
     fi
     if ! jq -n --arg v "$v" --arg d "$d" --arg r "$r" --argjson n "${n:-0}" --argjson o "${_owned:-[]}" \
         '{result_contract: 2, verdict: $v, disposition: $d, reason: $r,

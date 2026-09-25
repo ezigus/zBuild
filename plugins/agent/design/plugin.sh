@@ -66,7 +66,11 @@ _design_write_result() {
     # reads design.md by path to learn them.
     local _wiring="[]"
     if [[ -s "$dir/design.md" ]] && declare -F acceptance_list_wiring >/dev/null 2>&1; then
-        _wiring="$(acceptance_list_wiring "$dir/design.md" 2>/dev/null | jq -R . | jq -sc 'map(select(length > 0))' 2>/dev/null || printf '[]')"
+        # Captured first: under pipefail a failing lister would otherwise append
+        # a second '[]' to jq's and leave invalid JSON. `WIRING: none` is no file.
+        local _wl; _wl="$(acceptance_list_wiring "$dir/design.md" 2>/dev/null || true)"
+        _wiring="$(jq -Rnc '[inputs | select(length > 0 and . != "none")] | unique' <<< "$_wl" 2>/dev/null || true)"
+        [[ -n "$_wiring" ]] || _wiring="[]"
     fi
     jq -n --arg v "$verdict" --arg d "$disposition" --arg r "$reason" --arg at "$_at" --arg sha "$_sha" \
         --argjson w "${_wiring:-[]}" \

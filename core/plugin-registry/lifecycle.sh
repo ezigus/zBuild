@@ -158,20 +158,6 @@ scan_plugin_outputs() {
     return $((missing > 0))
 }
 
-# ─── plugin_hook_call ───────────────────────────────────────────────────────
-# Source the plugin's plugin.sh and call a lifecycle hook by name.
-# Plugin functions are isolated by sub-shell to prevent namespace pollution.
-# _lc_manifest_role <plugin_dir>
-# The role a plugin declares (provides.role), or empty. Used to decide the
-# assertion write-boundary by ROLE rather than by stage id (#2022).
-_lc_manifest_role() {
-    local _d="${1:-}"
-    [[ -n "$_d" && -f "$_d/manifest.yaml" ]] || return 0
-    if declare -F yaml_get >/dev/null 2>&1; then
-        yaml_get "$_d/manifest.yaml" "provides.role" 2>/dev/null || true
-    fi
-}
-
 # ─── _lc_owned_by_others_deny <state_dir> <stage> (#2189) ────────────────────
 # One absolute path per line: every file a stage OTHER than <stage> reported
 # owning (artifacts/stage-reports.json). Empty when nothing is owned.
@@ -183,6 +169,9 @@ _lc_owned_by_others_deny() {
         "$rec" 2>/dev/null | sort -u
 }
 
+# ─── plugin_hook_call ───────────────────────────────────────────────────────
+# Source the plugin's plugin.sh and call a lifecycle hook by name.
+# Plugin functions are isolated by sub-shell to prevent namespace pollution.
 plugin_hook_call() {
     local plugin_dir="$1"
     local hook_name="$2"   # run | cleanup (or kind-specific)
