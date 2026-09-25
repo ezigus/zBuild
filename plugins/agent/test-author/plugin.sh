@@ -179,7 +179,7 @@ Write or amend only the testfile(s) named above. Do not write, modify or stub an
     declare -f resolve_tier >/dev/null 2>&1 && tier="$(resolve_tier test-author "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null || printf 'T2')"
 
     if ! declare -f route_to_model >/dev/null 2>&1; then
-        _ta_write_result "$art" "degraded" "unavailable" \
+        _ta_write_result "$art" "degraded" "broken" \
             "no router available to author assertions" "$n"
         return 1
     fi
@@ -189,16 +189,12 @@ Write or amend only the testfile(s) named above. Do not write, modify or stub an
         # ADR-054 §6: the engine's closed set decides what happens next; this
         # stage only says HOW it stopped. _llm_router_classify owns the mapping
         # so a new rc does not need a new opinion here.
-        local _v="" _reason="" _disp="broken"
+        local _v="" _reason="" _disp=""
         if declare -f _llm_router_classify >/dev/null 2>&1; then
             _llm_router_classify "$rc" _v _reason 2>/dev/null || true
         fi
-        case "${_reason:-}" in
-            router_timeout|*interrupt*) _disp="interrupted" ;;
-            *throttl*|*rate*)           _disp="unavailable" ;;  # #2111: a rate limit ends the run
-            *unavailable*)              _disp="unavailable" ;;
-            *budget*|*exhaust*)         _disp="exhausted" ;;
-        esac
+        # #2187: the one mapping from a router failure to its cause word.
+        _disp="$(router_reason_disposition "${_reason:-router_rc_nonzero}")"
         _ta_write_result "$art" "degraded" "$_disp" \
             "the model call failed (${_reason:-rc=$rc}) — no assertions were authored" "$n"
         return 1

@@ -139,7 +139,7 @@ _rr_run_inner() {
         stage_summary_write "$artifact_dir/review-report-summary.md" "review-report" "error" \
             "no model tier resolved for review-report, so no lens could be dispatched" \
             "No work was attempted. This is a configuration fault, not a fault in the change."
-        _rr_write_v2 "$out_json" "error" "broken" "no model tier resolved for review-report"
+        _rr_write_v2 "$out_json" "error" "misconfigured" "no model tier resolved for review-report"
         return 1
     fi
 
@@ -171,7 +171,7 @@ _rr_run_inner() {
     done
     local _disposition="complete" _reason
     if [[ -n "$_rr_failed_lenses" ]]; then
-        _disposition="exhausted"
+        _disposition="complete"   # #2187: the report ran; each lens reports its own cause
         _reason="lens call(s) returned non-zero: ${_rr_failed_lenses}; the report covers the lenses that completed"
     else
         _reason="all ${#_RR_LENSES[@]} lenses completed; advisory report written"

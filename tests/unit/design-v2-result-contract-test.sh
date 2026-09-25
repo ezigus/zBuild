@@ -141,7 +141,7 @@ _sc3_disp="$(jq -r '.disposition // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo
 _sc3_rc2="$(jq -r '.result_contract // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
 
 assert_eq "[SPEC-3] timeout → verdict=incomplete (guard)" "incomplete" "$_sc3_verdict"
-assert_eq "[SPEC-3] timeout → disposition=interrupted (guard)" "interrupted" "$_sc3_disp"
+assert_eq "[SPEC-3] timeout → disposition=timed_out (#2187)" "timed_out" "$_sc3_disp"
 assert_eq "[SPEC-3] timeout → result_contract=2 (guard)" "2" "$_sc3_rc2"
 
 # ─── SPEC-4 [change]: manifest declares result_contract:2 and valid_verdicts ──
@@ -213,14 +213,14 @@ assert_eq "[SPEC-5] design_stage_run uses plan from ZBUILD_STAGE_INPUTS (rc=0)" 
 # _assert_error_path <spec> <label> <expected_reason>
 # Reads the sidecar and summary left by the run the caller just drove.
 _assert_error_path() {
-    local spec="$1" label="$2" want_reason="$3"
+    local spec="$1" label="$2" want_reason="$3" want_disp="${4:-unusable}"
     assert_eq "[$spec] $label → rc=1" "1" "$_rc"
     assert_eq "[$spec] $label → result_contract=2" \
         "2" "$(jq -r '.result_contract // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
     assert_eq "[$spec] $label → verdict=error" \
         "error" "$(jq -r '.verdict // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
-    assert_eq "[$spec] $label → disposition=broken" \
-        "broken" "$(jq -r '.disposition // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
+    assert_eq "[$spec] $label → disposition=$want_disp" \
+        "$want_disp" "$(jq -r '.disposition // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
     assert_eq "[$spec] $label → reason=$want_reason" \
         "$want_reason" "$(jq -r '.reason // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
     if [[ -s "$_F_ARTIFACTS/design-summary.md" ]]; then

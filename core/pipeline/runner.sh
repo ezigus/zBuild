@@ -157,6 +157,7 @@ _runner_retry_budget() {
 }
 
 # ─── _runner_attempt_made_progress <artifact_dir> <stage> <iter> (#2187) ─────
+# Attempts are numbered from 1 (attempt-archive.sh writes n+1).
 # rc 0 when the stage's LATEST attempt in this iteration changed any of its
 # declared outputs (the #2186 attempt record), or when there is no record to
 # judge by; rc 1 when every output it recorded came back unchanged or absent —
@@ -2633,12 +2634,11 @@ main() {
             _CYCLE_DISPATCH_VERDICT="error"
             _CYCLE_DISPATCH_VERDICT_RAW="error"
             _CYCLE_DISPATCH_STATUS="failed"
-            # #1822: a member whose plugin does not resolve is a dispatch that
-            # returned non-zero and left no result — ADR-054 §6's `broken`.
-            # Stated here because this path returns before the reader below;
-            # runner_read_stage_disposition would reach the same conclusion from
-            # the absent manifest, and the two must not disagree by omission.
-            _CYCLE_DISPATCH_DISPOSITION="broken"
+            # #2187 (ADR-054 §6a): the template names a stage no installed
+            # plugin provides — the setup is wrong, which is `misconfigured`
+            # (was `broken`, #1822). It halts the run either way.
+            _CYCLE_DISPATCH_DISPOSITION="misconfigured"
+            _CYCLE_DISPATCH_REASON="no installed plugin provides stage '$_cd_stage'"
             return 1
         fi
         # #1823 (ADR-054 §4): clear the throttle marker BEFORE dispatching, so a
@@ -2737,7 +2737,7 @@ main() {
             # The table decides. `interrupted` re-dispatches at once; `throttled`
             # waits first, because re-dispatching a throttled stage immediately is
             # simply throttled again — a retry loop that burns budget to learn
-            # nothing. `exhausted`, `unavailable` and `broken` are not retryable and
+            # nothing. `rate_limited`, `unavailable`, `misconfigured` and `broken` are not retryable and
             # fall straight through; `complete` never reaches the test.
             # A halting disposition is announced rather than inferred. The table
             # guarantees nothing both halts and retries, so this cannot change which

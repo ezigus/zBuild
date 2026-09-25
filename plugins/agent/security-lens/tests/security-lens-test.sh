@@ -465,7 +465,7 @@ if [[ -f "$OUTPUT_R7" ]]; then
     spec3_verdict=$(jq -r '.verdict // "absent"' "$OUTPUT_R7" 2>/dev/null || echo absent)
     assert_eq "[SPEC-3] router-fatal path writes verdict=error" "error" "$spec3_verdict"
     spec3_disp=$(jq -r '.disposition // "absent"' "$OUTPUT_R7" 2>/dev/null || echo absent)
-    assert_eq "[SPEC-3] router-fatal path writes disposition=broken" "broken" "$spec3_disp"
+    assert_eq "[SPEC-3] an unresolvable tier writes disposition=misconfigured (#2187)" "misconfigured" "$spec3_disp"
 else
     assert_fail "[SPEC-3] router-fatal path writes v2 result (OUTPUT_R7 missing)"
 fi

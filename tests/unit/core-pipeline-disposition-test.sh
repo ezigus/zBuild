@@ -10,7 +10,7 @@
 #   complete     nothing went wrong
 #   interrupted  retry as-is
 #   throttled    wait, then retry
-#   exhausted    temporary alias (#2187) — retries
+#   (exhausted was retired by #2187 — timed_out / out_of_turns name the cause)
 #   unavailable  halt; operator action required
 #   broken       halt; it is a defect
 #
@@ -81,12 +81,11 @@ EOF
 }
 
 # ═══ 1. The vocabulary is a closed set ═══════════════════════════════════════
-# #2187 (ADR-054 §6 amended): one word per CAUSE. `exhausted` stays a member
-# only as a temporary alias until the stages migrate (#2187 PR 2).
+# #2187 (ADR-054 §6a): one word per CAUSE.
 print_test_section "the vocabulary is a closed set"
 
 assert_eq "the closed set is exactly the ADR-054 §6 vocabulary" \
-    "complete unusable timed_out out_of_turns interrupted throttled rate_limited unavailable misconfigured broken exhausted" \
+    "complete unusable timed_out out_of_turns interrupted throttled rate_limited unavailable misconfigured broken" \
     "$(disposition_vocabulary)"
 
 for _d in $(disposition_vocabulary); do
@@ -97,7 +96,7 @@ done
 # Anything else is not a member — including the ADR-021 member-disposition
 # vocabulary, which claims the same field name on a v1 artifact (see the
 # result-reader section below for why that collision stays inert).
-for _d in terminal recoverable advisory none pass fail error "" "COMPLETE" "complete "; do
+for _d in terminal recoverable advisory none pass fail error exhausted "" "COMPLETE" "complete "; do
     assert_exit_code "\`$_d\` is NOT a member of the closed set" 1 \
         "$(_rc_of disposition_is_valid "$_d")"
 done
@@ -106,7 +105,7 @@ done
 print_test_section "each disposition maps to its engine action"
 
 assert_eq "complete      -> proceed"            "proceed"            "$(disposition_response complete)"
-for _d in unusable timed_out out_of_turns interrupted exhausted; do
+for _d in unusable timed_out out_of_turns interrupted; do
     assert_eq "$_d -> retry" "retry" "$(disposition_response "$_d")"
 done
 assert_eq "throttled     -> retry_after_wait"   "retry_after_wait"   "$(disposition_response throttled)"
@@ -126,13 +125,13 @@ print_test_section "halt / retry predicates follow the table, not the stage"
 for _d in rate_limited unavailable misconfigured broken; do
     assert_exit_code "\`$_d\` halts the run" 0 "$(_rc_of disposition_halts "$_d")"
 done
-for _d in complete unusable timed_out out_of_turns interrupted throttled exhausted; do
+for _d in complete unusable timed_out out_of_turns interrupted throttled; do
     assert_exit_code "\`$_d\` does not halt the run" 1 "$(_rc_of disposition_halts "$_d")"
 done
 
 # Retry is a property of the DISPOSITION, not of the stage — no plugin decides
 # its own retry policy.
-for _d in unusable timed_out out_of_turns interrupted throttled exhausted; do
+for _d in unusable timed_out out_of_turns interrupted throttled; do
     assert_exit_code "\`$_d\` is retryable" 0 "$(_rc_of disposition_retryable "$_d")"
 done
 for _d in complete rate_limited unavailable misconfigured broken; do

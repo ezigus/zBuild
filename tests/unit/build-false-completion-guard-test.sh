@@ -150,7 +150,7 @@ _s7_kind="$(jq -r '.data.build_kind // ""' "$_spec7_summary" 2>/dev/null)"
 _s7_disp="$(jq -r '.disposition // ""' "$_spec7_summary" 2>/dev/null)"
 assert_eq "[SPEC-7] inert_build summary: verdict=fail (#1832)" "fail" "$_s7_verdict"
 assert_eq "[SPEC-7] inert_build summary: data.build_kind=inert_build (#1832)" "inert_build" "$_s7_kind"
-assert_eq "[SPEC-7] inert_build summary: disposition=broken (#1832)" "broken" "$_s7_disp"
+assert_eq "[SPEC-7] inert_build summary: disposition=complete — the verdict carries it (#2187)" "complete" "$_s7_disp"
 
 # SPEC-10: result_contract:2 present on inert_build branch (guard — unchanged from prior work).
 _s7_rc="$(jq -r '.result_contract // ""' "$_spec7_summary" 2>/dev/null)"

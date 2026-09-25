@@ -178,12 +178,12 @@ else
     assert_fail "[SPEC-8] timeout yield → sidecar should have verdict=incomplete" \
         "sidecar=$(cat "$_sidecar" 2>/dev/null || echo ABSENT)"
 fi
-assert_eq "[SPEC-9] design sidecar disposition=interrupted for router-timeout (#1832)" \
-    "interrupted" "$_sidecar_disp"
+assert_eq "[SPEC-9] design sidecar disposition=timed_out for router-timeout (#2187)" \
+    "timed_out" "$_sidecar_disp"
 
 # SPEC-10 (#1261, updated #1832): the sidecar exists and carries the right shape.
 if [[ -s "$_sidecar" ]] && [[ "$_sidecar_verdict" == "incomplete" ]] \
-    && [[ "$_sidecar_disp" == "interrupted" ]]; then
+    && [[ "$_sidecar_disp" == "timed_out" ]]; then
     assert_pass "[SPEC-10] timeout yield → design-verdict.json sidecar verdict=incomplete + disposition=interrupted"
 else
     assert_fail "[SPEC-10] timeout yield → incomplete+interrupted sidecar missing/wrong" \

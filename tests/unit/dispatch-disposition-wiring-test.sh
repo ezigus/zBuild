@@ -100,7 +100,7 @@ done
 
 # #2187: running out of budget retries from the saved work — the loop stops it
 # when an attempt changes nothing. `exhausted` is the temporary alias.
-for _d in timed_out out_of_turns exhausted; do
+for _d in timed_out out_of_turns; do
     if disposition_retryable "$_d" 2>/dev/null; then
         assert_pass "[SPEC-3] $_d is re-dispatched (continuing from saved work)"
     else
