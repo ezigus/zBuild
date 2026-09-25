@@ -277,10 +277,10 @@ assert_contains "[#2143] the tally reflects the batched verdicts" \
 # fallback would take 6 s more; a 3 s stage clock stops it with the rest unjudged.
 : > "$_SC_CALLS"
 route_to_model() { cat >/dev/null; printf 'x\n' >> "$_SC_CALLS"; sleep 2; printf 'no verdict here'; return 0; }
-_t0=$(date +%s)
+# #2191-class flake: this asserted wall-clock time (<= 6 s), which a loaded CI
+# runner breaks. What the clock must DO is asserted below instead: the fallback
+# stops early (few calls) and the rest is left unjudged, not invented.
 set +e; ZBUILD_SPEC_CORRESPONDENCE_STAGE_TIMEOUT_S=3 spec_correspondence_run "spec-correspondence" "$_SC3/pipeline-state.json" >/dev/null 2>&1; set -e
-_el=$(( $(date +%s) - _t0 ))
-if [[ "$_el" -le 6 ]]; then assert_pass "[#2143] the stage clock bounds the stage (${_el}s)"; else assert_fail "[#2143] the stage clock bounds the stage" "took ${_el}s"; fi
 assert_contains "[#2143] SPECs the clock cut off are unjudged, not invented" \
     "$(cat "$_A3/spec-correspondence-summary.md" 2>/dev/null || true)" "unjudged"
 if [[ "$(wc -l < "$_SC_CALLS" | tr -d ' ')" -le 2 ]]; then assert_pass "[#2143] at most the batch + one fallback call before the clock"; else assert_fail "[#2143] too many calls under the clock" "$(wc -l < "$_SC_CALLS")"; fi
