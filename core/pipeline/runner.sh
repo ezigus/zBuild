@@ -2621,6 +2621,7 @@ main() {
         _CYCLE_DISPATCH_REASON=""
         _CYCLE_DISPATCH_DISPOSITION=""
         _CYCLE_DISPATCH_FAULT=""
+        _CYCLE_DISPATCH_REPORT="{}"
         _CYCLE_DISPATCH_DATA_KIND=""
         local _cd_plugin_dir _cd_rc=0
         # #1783: refresh the contract-reader snapshot before EVERY member, so a
@@ -2720,6 +2721,9 @@ main() {
             # problem the failure is — and the cycle's route_back predicate
             # reads this one.
             _CYCLE_DISPATCH_FAULT="$(runner_read_stage_fault "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "")"
+            # #2189: what this member reported for the cycle to act on — read
+            # off the member itself, never a stage's artifact by name.
+            _CYCLE_DISPATCH_REPORT="$(runner_read_stage_report "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || printf '{}')"
             # ADR-054: read the data.build_kind field from the primary artifact so the
             # cycle orchestrator can distinguish the empty_diff resting point from a
             # true pass without reading the string "empty_diff" from the verdict channel.

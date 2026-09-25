@@ -699,27 +699,35 @@ _cycle_render_summaries_digest() {
 }
 
 # ─── _cycle_read_progress <state_dir> (#1243) ────────────────────────────────
-# Code-change PROGRESS axis for the cycle health score. Reads this iteration's
-# build-summary.json (files_changed[]/lines_added/lines_removed — the diff the
-# build actually applied) and echoes three space-separated ints:
-#   "<files_changed> <lines_added> <lines_removed>"
-# Absent/malformed summary, no state_dir, or a cycle with no build member all
-# read as "0 0 0" (→ "no progress"). Repo-agnostic; pure/read-only; the jq
-# fallbacks keep it errexit-safe even on a truncated artifact.
+# Code-change PROGRESS axis for the cycle health score: the changes the members
+# of ONE iteration reported (#2189 — the verdicts blob, not a stage's file),
+# echoed as "<files_changed> <lines_added> <lines_removed>". No report, or a
+# cycle whose members change nothing, reads as "0 0 0" (→ "no progress").
 _cycle_read_progress() {
-    local state_dir="$1"
-    local files=0 add=0 del=0
-    local bsj="$state_dir/artifacts/build-summary.json"
-    if [[ -n "$state_dir" && -f "$bsj" ]]; then
-        files="$(jq -r '(.files_changed // []) | length' "$bsj" 2>/dev/null || echo 0)"
-        add="$(jq -r '.lines_added // 0' "$bsj" 2>/dev/null || echo 0)"
-        del="$(jq -r '.lines_removed // 0' "$bsj" 2>/dev/null || echo 0)"
-    fi
+    local blob="${1:-}"
+    [[ -n "$blob" ]] || blob='{}'
+    local out
+    out="$(jq -r '
+        [ .[]? | (.report.changes // empty) ] as $cs
+        | ([ $cs[] | (.files // [])[] ] | unique | length) as $f
+        | ([ $cs[] | (.added // 0) ] | add // 0) as $a
+        | ([ $cs[] | (.removed // 0) ] | add // 0) as $r
+        | "\($f) \($a) \($r)"' <<< "$blob" 2>/dev/null || true)"
+    local files add del
+    read -r files add del <<< "$out"
     [[ "$files" =~ ^[0-9]+$ ]] || files=0
     [[ "$add"   =~ ^[0-9]+$ ]] || add=0
     [[ "$del"   =~ ^[0-9]+$ ]] || del=0
     printf '%s %s %s' "$files" "$add" "$del"
     return 0
+}
+
+# ─── _cycle_reported_changed_files <blob> (#2189) ────────────────────────────
+# Comma-separated union of the files the members of one iteration reported
+# changing. Empty when none did.
+_cycle_reported_changed_files() {
+    jq -r '[ .[]? | (.report.changes.files // [])[] | tostring ] | unique | join(",")' \
+        <<< "${1:-\{\}}" 2>/dev/null || true
 }
 
 # ─── _cycle_render_predicate_result <iter> [state_dir] (#833, #1241, #1243) ───
@@ -752,7 +760,7 @@ _cycle_render_predicate_result() {
     [[ "$match" == "true" ]] && matched_str="MATCHED (got=${actual})"
 
     local files add del
-    read -r files add del <<< "$(_cycle_read_progress "$state_dir")"
+    read -r files add del <<< "$(_cycle_read_progress "${_CYCLE_LAST_VERDICTS_BLOB:-}")"
     local progress=$(( add + del ))
     local score=$(( progress - fc ))
     local health_line
@@ -1172,17 +1180,17 @@ _cycle_resolve_from_path() {
 #   none    → no request present; cycle proceeds normally.
 # The security floor lives in scope-governance.sh and is unbreachable here.
 _cycle_resolve_scope_expansion() {
-    local cycle_id="$1" state_dir="$2"
+    local cycle_id="$1" state_dir="$2" blob="${3:-}"
     local safe="${cycle_id//-/_}"
+    : "$state_dir"
 
-    local bsj="$state_dir/artifacts/build-summary.json"
-    [[ -f "$bsj" ]] || { echo "none"; return 0; }
-
+    # #2189: only a request a member of THIS iteration reported. #1849's run
+    # ended when design_verify_cycle (no build member) read build's leftover
+    # request from build-summary.json and denied it.
     local req
-    req="$(jq -c 'if (.scope_expansion_request? // null) == null then empty
-                  elif ((.scope_expansion_request.files? // []) | length) == 0 then empty
-                  else .scope_expansion_request end' "$bsj" 2>/dev/null)"
-    [[ -z "$req" ]] && { echo "none"; return 0; }
+    req="$(jq -c '[ .[]? | (.report.scope_request // empty)
+                  | select(((.files? // []) | length) > 0) ] | first // empty' <<< "${blob:-\{\}}" 2>/dev/null)"
+    [[ -z "$req" || "$req" == "null" ]] && { echo "none"; return 0; }
 
     # Load the resolver core (idempotent source guard inside the lib).
     local _gov="${_ZBUILD_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/scripts/lib/scope-governance.sh"
@@ -1206,13 +1214,9 @@ _cycle_resolve_scope_expansion() {
         local grant_file="$state_dir/scope-expansion-grant.txt"
         jq -r '.granted[]?' <<<"$decision" 2>/dev/null > "$grant_file"
         export ZBUILD_SCOPE_EXPANSION_GRANT="$grant_file"
-        # Clear the request so the same files are not re-granted next iter.
-        local _tmp="$bsj.tmp.$$"
-        if jq 'del(.scope_expansion_request)' "$bsj" > "$_tmp" 2>/dev/null; then
-            mv -f "$_tmp" "$bsj"
-        else
-            rm -f "$_tmp"
-        fi
+        # The request lives in this iteration's reports only; the next
+        # iteration starts from fresh ones, so nothing is cleared (#2189 — the
+        # engine used to rewrite build-summary.json here).
         eb_emit_event "cycle.scope.granted" "cycle_id=$cycle_id" \
             "files=$(jq -r '[.granted[]?] | join(",")' <<<"$decision" 2>/dev/null)" 2>/dev/null || true
         echo "grant"; return 0
@@ -1241,15 +1245,12 @@ _cycle_apply_feedback() {
     else
         unset ZBUILD_TEST_RED_SET 2>/dev/null || true
     fi
-    local _bsj="$state_dir/artifacts/build-summary.json"
-    if [[ -f "$_bsj" ]]; then
-        local _changed_csv
-        _changed_csv="$(jq -r '[.files_changed[]? | tostring] | join(",")' "$_bsj" 2>/dev/null || true)"
-        if [[ -n "$_changed_csv" ]]; then
-            export ZBUILD_TEST_CHANGED_FILES="$_changed_csv"
-        else
-            unset ZBUILD_TEST_CHANGED_FILES 2>/dev/null || true
-        fi
+    # #2189: the files the members of the iteration just finished reported
+    # changing — not a stage's file read by name.
+    local _changed_csv
+    _changed_csv="$(_cycle_reported_changed_files "${_CYCLE_LAST_VERDICTS_BLOB:-}")"
+    if [[ -n "$_changed_csv" ]]; then
+        export ZBUILD_TEST_CHANGED_FILES="$_changed_csv"
     else
         unset ZBUILD_TEST_CHANGED_FILES 2>/dev/null || true
     fi
@@ -1624,6 +1625,7 @@ _cycle_iter_dispatch() {
         # next member's dispatch event would misreport why THAT member stopped.
         _CYCLE_DISPATCH_DISPOSITION=""
         _CYCLE_DISPATCH_FAULT=""
+        _CYCLE_DISPATCH_REPORT="{}"
         _CYCLE_DISPATCH_DATA_KIND=""
         # ADR-025 (Wave 15-B #684) pre-flight: the sentinel may have been
         # armed by the runner's SIGINT trap between this stage and the last.
@@ -2004,17 +2006,16 @@ _cycle_iter_dispatch() {
         blob="$(jq -c --arg s "$s" --arg v "$verdict" --arg st "$status" \
             --arg d "${_CYCLE_DISPATCH_DISPOSITION:-}" --arg k "${_CYCLE_DISPATCH_DATA_KIND:-}" \
             --arg ft "${_CYCLE_DISPATCH_FAULT:-}" \
-            '. + {($s): {verdict:$v, status:$st, disposition:$d, kind:$k, fault:$ft}}' <<< "$blob" 2>/dev/null)" || blob="{}"
+            --argjson rp "$(jq -c 'if type == "object" then . else {} end' <<< "${_CYCLE_DISPATCH_REPORT:-{\}}" 2>/dev/null || printf '{}')" \
+            '. + {($s): {verdict:$v, status:$st, disposition:$d, kind:$k, fault:$ft, report:$rp}}' <<< "$blob" 2>/dev/null)" || blob="{}"
         # #2183: a member reported that it re-checked a finding and it did not
         # reproduce. Captured HERE, right after the dispatch that wrote it: the
         # reuse decision this feeds is at the NEXT iteration, by which time the
         # per-iteration cleanup has removed the file.
-        if [[ -s "${_state_dir:-}/artifacts/build-summary.json" ]]; then
-            local _nr_n
-            _nr_n="$(jq -r '((.data.not_reproduced // []) | length)' \
-                "${_state_dir}/artifacts/build-summary.json" 2>/dev/null || echo 0)"
-            [[ "$_nr_n" =~ ^[0-9]+$ && "$_nr_n" -gt 0 ]] && _CYCLE_NOT_REPRODUCED=1
-        fi
+        # #2189: read off the member just dispatched, not a stage's file.
+        local _nr_n
+        _nr_n="$(jq -r '((.not_reproduced // []) | length)' <<< "${_CYCLE_DISPATCH_REPORT:-{\}}" 2>/dev/null || echo 0)"
+        [[ "$_nr_n" =~ ^[0-9]+$ && "$_nr_n" -gt 0 ]] && _CYCLE_NOT_REPRODUCED=1
         # #2117: nothing changed and the previous iteration verified this exact
         # tree → reuse what passed. (A test pass is always full-suite confirmed
         # by the stage itself since #2144, so nothing here reads a run mode.)
@@ -2664,7 +2665,7 @@ cycle_orchestrator_run() {
         local _scope_action="none"
         if [[ "$converged" -ne 0 ]]; then
             local _se=0; case $- in *e*) _se=1 ;; esac
-            set +e; _scope_action="$(_cycle_resolve_scope_expansion "$cycle_id" "$state_dir")"; [[ $_se -eq 1 ]] && set -e
+            set +e; _scope_action="$(_cycle_resolve_scope_expansion "$cycle_id" "$state_dir" "$verdicts_blob")"; [[ $_se -eq 1 ]] && set -e
         fi
 
         # Decide overall status for the SINGLE atomic write (ADR-021: never
@@ -2894,7 +2895,7 @@ cycle_orchestrator_run() {
         # multi-axis fields and the human-readable OUTPUT banner below shows the
         # calculation.
         local _ci_files _ci_add _ci_del
-        read -r _ci_files _ci_add _ci_del <<< "$(_cycle_read_progress "$state_dir")"
+        read -r _ci_files _ci_add _ci_del <<< "$(_cycle_read_progress "$verdicts_blob")"
         local _ci_progress=$(( _ci_add + _ci_del ))
         local _ci_score=$(( _ci_progress - failure_count ))
         eb_emit_event "cycle.iteration.complete" \

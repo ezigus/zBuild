@@ -188,9 +188,8 @@ assert_contains "[SPEC-4b] zero code change reads 'no progress'" "$pr_out" "no p
 # (files + lines) combined with the defect count into one score, calculation shown.
 _1243_sd="$TEST_TEMP_DIR/state-1243-progress"
 mkdir -p "$_1243_sd/artifacts"
-cat > "$_1243_sd/artifacts/build-summary.json" <<'JSON'
-{"files_changed":["a.sh","b.sh","c.sh"],"lines_added":184,"lines_removed":2,"verdict":"pass"}
-JSON
+# #2189: progress is what the members of the iteration REPORTED.
+_CYCLE_LAST_VERDICTS_BLOB='{"build":{"report":{"changes":{"files":["a.sh","b.sh","c.sh"],"added":184,"removed":2}}}}'
 _CYCLE_LAST_FAILURE_COUNT=5
 pr_prog="$(_cycle_render_predicate_result 2 "$_1243_sd" 2>/dev/null)"
 assert_contains "[SPEC-4c] progress axis totals lines changed" "$pr_prog" "progress=186"
@@ -207,9 +206,7 @@ fi
 # ─── [SPEC-4d] #1243 zero-diff iteration reads as "no progress" ───────────────
 _1243_sd0="$TEST_TEMP_DIR/state-1243-zero"
 mkdir -p "$_1243_sd0/artifacts"
-cat > "$_1243_sd0/artifacts/build-summary.json" <<'JSON'
-{"files_changed":[],"lines_added":0,"lines_removed":0,"verdict":"scope_violation"}
-JSON
+_CYCLE_LAST_VERDICTS_BLOB='{"build":{"report":{"changes":{"files":[],"added":0,"removed":0}}}}'
 _CYCLE_LAST_FAILURE_COUNT=5
 pr_zero="$(_cycle_render_predicate_result 2 "$_1243_sd0" 2>/dev/null)"
 assert_contains "[SPEC-4d] zero-diff reads 'no progress'" "$pr_zero" "no progress"
@@ -219,6 +216,7 @@ assert_contains "[SPEC-4d] zero-diff score = 0 − defects" "$pr_zero" "score=-5
 # ─── [SPEC-4e] #1243 absent build-summary → progress axis reads zero ─────────
 _1243_sde="$TEST_TEMP_DIR/state-1243-absent"
 mkdir -p "$_1243_sde/artifacts"
+_CYCLE_LAST_VERDICTS_BLOB='{}'
 _CYCLE_LAST_FAILURE_COUNT=2
 pr_absent="$(_cycle_render_predicate_result 2 "$_1243_sde" 2>/dev/null)"
 assert_contains "[SPEC-4e] missing build-summary reads 'no progress'" "$pr_absent" "no progress"

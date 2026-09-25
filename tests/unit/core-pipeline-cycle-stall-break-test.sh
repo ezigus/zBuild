@@ -150,6 +150,8 @@ cycle_dispatch_stage() {
             _CYCLE_DISPATCH_VERDICT_RAW="pass"
             _CYCLE_DISPATCH_DISPOSITION="complete"
             _CYCLE_DISPATCH_DATA_KIND="empty_diff"
+            # #2189: a real dispatch hands the cycle the member's report.
+            _CYCLE_DISPATCH_REPORT="$(_verdict_report_from_file "$_art/build-summary.json")"
             ;;
         test)
             printf '{"result_contract":2,"verdict":"%s","disposition":"complete","reason":"mock","data":{"exit_code":0,"passed":1,"failed":0}}' "${_TEST_VERDICT:-pass}" \

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Integration: governed scope expansion in the cycle orchestrator (#840 / ADR-030).
 # Drives cycle_orchestrator_run with a mock dispatch that emits a
-# scope_expansion_request (via build-summary.json), and verifies:
+# scope_expansion_request (reported by the build member, #2189), and verifies:
 #   - non-expandable / floor / unenabled-class request → blocked_on_scope (rc=7)
 #     in ONE iter (the dogfood-loop fix: never grind to max_iterations).
 #   - grantable collateral request → grant (ZBUILD_SCOPE_EXPANSION_GRANT set),
@@ -27,6 +27,8 @@ FIXT="$REPO_ROOT/tests/fixtures/templates"
 
 # shellcheck source=../../core/pipeline/cycle-orchestrator.sh
 source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
+# shellcheck source=../../core/pipeline/verdict.sh
+source "$REPO_ROOT/core/pipeline/verdict.sh"
 # shellcheck source=../../core/pipeline/template.sh
 source "$REPO_ROOT/core/pipeline/template.sh"
 
@@ -40,7 +42,8 @@ _seed_state() {
 
 # Mock dispatch: test verdict from MOCK_TEST_VERDICTS (comma list per iter).
 # When MOCK_REQUEST_ITER == current iter, build writes a scope_expansion_request
-# into build-summary.json (the channel the orchestrator reads).
+# into build-summary.json, and hands it over as the member's report (#2189 —
+# the orchestrator reads the report, never the file).
 cycle_dispatch_stage() {
     local stage="$1" iter="$2"
     _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_STATUS="complete"
@@ -55,6 +58,8 @@ cycle_dispatch_stage() {
         else
             jq -n '{schema_version:4, verdict:"pass"}' > "$ZBUILD_STATE_DIR/artifacts/build-summary.json"
         fi
+        # #2189: a real dispatch hands the cycle the member's report.
+        _CYCLE_DISPATCH_REPORT="$(_verdict_report_from_file "$ZBUILD_STATE_DIR/artifacts/build-summary.json")"
         return 0
     fi
     if [[ "$stage" == "test" ]]; then
