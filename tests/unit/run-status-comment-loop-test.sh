@@ -53,6 +53,17 @@ ev() {   # ev <events> <time> <type> [seq] [stage] [k=v...]
 posts() { grep -c -E '^api repos/testuser/testrepo/issues/90000042/comments' "$GH_LOG" 2>/dev/null || true; }
 patches() { grep -c -- '-X PATCH' "$GH_LOG" 2>/dev/null || true; }
 last_body() { ls "$GH_BODIES"/body-*.txt 2>/dev/null | sort -t- -k2 -n | tail -1 | xargs cat 2>/dev/null; }
+# #2191-class flake: the gh stub logs the PATCH line and copies its body in two
+# steps, so "a PATCH was logged" does not mean "the body we want is there" — an
+# earlier interval PATCH can land first. Wait for the body that says <text>.
+wait_for_body() {   # <text> <tries> <interval>
+    local i
+    for (( i = 0; i < ${2:-50}; i++ )); do
+        grep -qF -- "$1" <<< "$(last_body)" && return 0
+        sleep "${3:-0.1}"
+    done
+    return 1
+}
 alive() { kill -0 "$1" 2>/dev/null; }
 wait_gone() { local i; for (( i=0; i<50; i++ )); do alive "$1" || return 0; sleep 0.1; done; return 1; }
 
@@ -113,6 +124,7 @@ if wait_for_event "$GH_LOG" 'X PATCH' 15 0.1; then
 else
     assert_fail "[SPEC-4] pipeline.end → PATCH within 1.5s" "no PATCH"
 fi
+wait_for_body '**success**' 100 0.1 || true
 assert_contains "[SPEC-4] final header says success" "$(last_body)" '**success**'
 if alive "$pid"; then
     assert_pass "[SPEC-4] the sidecar is still alive after the terminal event (always-run stages come later)"
@@ -124,6 +136,7 @@ fi
 ev "$S2/events.jsonl" 13:00:08 plugin.run.start 9 persist plugin=persist kind=tool
 ev "$S2/events.jsonl" 13:00:09 stage.complete 9 persist stage=persist verdict=pass
 wait_for_event "$GH_LOG" 'X PATCH' 40 0.1
+wait_for_body '**9 persist**' 100 0.1 || true
 assert_contains "[SPEC-4] a stage after pipeline.end still lands" "$(last_body)" '**9 persist**'
 
 # ─── SPEC-5: TERM → final render, exit 0 ────────────────────────────────────

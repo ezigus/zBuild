@@ -30,7 +30,6 @@ setup_test_env "cycle-acceptance-terminal-failure"
 # goal refs, and this file produced one of them. The issue-keyed sweep missed
 # these because it looked for issue identity.
 _ZB_REPO="$(zb_test_repo cycle-acc-term)"
-_ZB_GOAL="$(zb_test_goal acceptance-terminal)"
 
 PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 STATE_DIR="$TEST_TEMP_DIR/state"
@@ -335,16 +334,25 @@ printf '%s' "bootstrap" > "$HOME/.zbuild/scope-override-token"
 export ZBUILD_SCOPE_OVERRIDE=1
 
 # ─── Helper: run the pipeline, capture events ─────────────────────────────────
-_run_pipeline() {
+# #2191-class flake: the three scenarios used ONE goal back to back, so a run
+# could be refused (ADR-059 §4, one run per identity) while the previous run's
+# lingering child still held the lock on a loaded runner — no pipeline.end at
+# all. Independent scenarios get independent identities. A run that still ends
+# without pipeline.end prints why.
+_run_pipeline() {   # <scenario>
     : > "$EVENTS_JSONL"
     set +e
     ( cd "$_ZB_REPO" && bash "$REPO_ROOT/core/pipeline/runner.sh" \
-        --goal "$_ZB_GOAL" \
+        --goal "$(zb_test_goal "acceptance-terminal-${1:-run}")" \
         --template simple \
         --no-resume \
         >"$TEST_TEMP_DIR/runner.stdout" \
         2>"$TEST_TEMP_DIR/runner.stderr" )
     set -e
+    if ! jq -e 'select(.type=="pipeline.end")' "$EVENTS_JSONL" >/dev/null 2>&1; then
+        echo "--- ${1:-run}: no pipeline.end; events: $(jq -r .type "$EVENTS_JSONL" 2>/dev/null | tail -5 | tr '\n' ' ')" >&2
+        tail -20 "$TEST_TEMP_DIR/runner.stderr" >&2 2>/dev/null || true
+    fi
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -354,7 +362,7 @@ _run_pipeline() {
 print_test_section "T1 [SPEC-4]: terminal acceptance failure (inert_wiring) halts cycle (rc=8)"
 
 export ZBUILD_TEST_GATE_FAILURE="inert_wiring:config/x.yaml"
-_run_pipeline
+_run_pipeline t1
 
 end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
 # [SPEC-4]
@@ -389,7 +397,7 @@ assert_eq "T1 [SPEC-4]: build_test_cycle did NOT converge (no reason=converged)"
 print_test_section "T2 [SPEC-2]: untagged_spec-only acceptance failure does NOT halt (status=success)"
 
 export ZBUILD_TEST_GATE_FAILURE="untagged_spec:SPEC-1"
-_run_pipeline
+_run_pipeline t2
 
 end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
 # [SPEC-2]
@@ -408,7 +416,7 @@ assert_eq "T2 [SPEC-2]: cycle.member.terminal_failure NOT emitted for untagged_s
 print_test_section "T3 [SPEC-5]: infra negctl_error:timeout does NOT halt (status=success)"
 
 export ZBUILD_TEST_GATE_FAILURE="negctl_error:timeout:SPEC-1"
-_run_pipeline
+_run_pipeline t3
 
 end_status="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS_JSONL" 2>/dev/null | head -1)"
 assert_eq "T3 [SPEC-5]: pipeline.end status=success on negctl_error:timeout (infra non-terminal)" "success" "$end_status"

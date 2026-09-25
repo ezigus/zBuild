@@ -114,6 +114,14 @@ opts_on="$(cat "$PROBE_OPTS_FILE" 2>/dev/null || echo "")"
 # Both runs must exit 0.
 assert_eq "flag-off probe run rc=0" "0" "$rc_off"
 assert_eq "flag-on  probe run rc=0" "0" "$rc_on"
+# #2193: a probe that exits non-zero must say why — CI showed only "got: 1".
+for _pr in off on; do
+    _rcv="rc_$_pr"
+    if [[ "${!_rcv}" != "0" ]]; then
+        echo "--- runner-$_pr.stderr (tail) ---" >&2
+        tail -30 "$TEST_TEMP_DIR/runner-$_pr.stderr" >&2 2>/dev/null || true
+    fi
+done
 
 # Flag-off: $- must NOT contain 'm'; set -o monitor must be off.
 if grep -qE 'dash=[^m]*$|dash=[^m]*[^m]*$' <<< "$opts_off" && \
