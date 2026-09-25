@@ -30,6 +30,7 @@
     "stage.verdict.contract_violation",
     "stage.verdict.stale_artifact",
     "stage.input.degraded",
+    "stage.outputs.unchanged",
     "pipeline.indicator.unknown_verdict",
     "plugin.run.start",
     "plugin.run.complete",

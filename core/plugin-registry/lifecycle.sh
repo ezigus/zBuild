@@ -451,6 +451,13 @@ plugin_hook_call() {
         write_boundary_mark "${2:-}" "${1:-}" "${ZBUILD_MAP_ELEMENT:-}" || true
     fi
 
+    # #2186: what the declared outputs were before this run, so the attempt
+    # record can say which ones the run actually changed. Fail-open.
+    local _lc_outputs_before=""
+    if [[ "$hook_name" == "run" ]] && declare -F attempt_outputs_fingerprint >/dev/null 2>&1; then
+        _lc_outputs_before="$(attempt_outputs_fingerprint "$plugin_dir" "${2:-}" 2>/dev/null || true)"
+    fi
+
     emit_event "plugin.$hook_name.start" "plugin=$plugin_id" "kind=$kind"
 
     # Run in a subshell to isolate plugin's variables/functions
@@ -515,7 +522,7 @@ plugin_hook_call() {
     # overwrite them. After the rc branches, so a FAILED attempt — the one whose
     # record matters most — is archived too. Fail-open by construction.
     if [[ "$hook_name" == "run" ]] && declare -F attempt_archive_outputs >/dev/null 2>&1; then
-        attempt_archive_outputs "$plugin_dir" "${2:-}" "${1:-}" "$rc" 2>/dev/null || true
+        attempt_archive_outputs "$plugin_dir" "${2:-}" "${1:-}" "$rc" "$_lc_outputs_before" 2>/dev/null || true
     fi
 
     # #1823 (ADR-054 §4): the plugin's raw status passes through UNCHANGED, and

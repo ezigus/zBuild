@@ -2514,9 +2514,9 @@ cycle_orchestrator_run() {
         # dispatch-interrupt mid-flight resting point: build's #1208 verdict,
         # design's #1261 verdict)? Read from the blob disposition field — no plugin
         # id / language / path. Consumed ONLY by the reason-aware exhaustion halt
-        # below; keying on the TERMINATING iteration is correct because #945
-        # overwrites design.md with the empty timeout marker on each timeout, so a
-        # timeout TAIL means the final artifact is empty regardless of earlier content.
+        # below; keying on the TERMINATING iteration is correct because a timed-out
+        # design either publishes no design.md or keeps one its gate then judged
+        # (#2186) — at exhaustion, neither is a design the gate accepted.
         local _iter_did_not_finish=0
         if jq -e 'to_entries | any(.value.disposition == "interrupted")' \
                 <<< "$verdicts_blob" >/dev/null 2>&1; then
@@ -2736,8 +2736,9 @@ cycle_orchestrator_run() {
             # was interrupted by a router timeout (a member surfaced the repo-neutral
             # did_not_finish verdict) AND the cycle has NO authoritative verifier
             # signal (no `test` member verdict AND no test-results.json), the final
-            # artifact is the empty #945 timeout marker — there is nothing to
-            # certify and nothing for a downstream stage to consume. Continuing
+            # iteration published no design (or one its gate rejected, #2186) —
+            # there is nothing to certify and nothing for a downstream stage to
+            # consume. Continuing
             # under on_max=continue would carry that empty artifact forward (design
             # → build implements from nothing, the #1261 bug). HALT with a distinct
             # terminal reason instead (rc=8 → runner status=failed). This is NOT

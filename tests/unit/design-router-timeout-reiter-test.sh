@@ -10,18 +10,24 @@
 # ACCEPTANCE_MISSING) and design_verify_cycle RE-ITERATES rather than accepting
 # an incomplete design. Genuine infra failures (rc=137 OOM) stay terminal.
 #
+# #2186: a timeout is judged on what THIS call did to design.md, never by
+# fabricating a design. #1849 run 35949629759: the model wrote a complete design
+# 9s before the kill and the marker overwrote it.
+#
 # SPEC coverage:
-#   SPEC-1[change]: timeout yield → the produced design.md FAILS the real
-#                   design-gate (verdict=fail, ACCEPTANCE_MISSING) → re-iterate
-#   SPEC-2[change]: timeout yield → _design_stage_run_inner returns rc=0 (non-terminal)
-#   SPEC-3[change]: timeout yield → plugin.result emitted with reason=router_timeout
-#   SPEC-4[change]: timeout yield → design.timeout.stub_written event emitted
+#   SPEC-1[change]: timeout, design.md unchanged by this call → the stale design
+#                   is removed (no fabricated marker) and the gate fails → re-iterate
+#   SPEC-2[guard]:  timeout yield → _design_stage_run_inner returns rc=0 (non-terminal)
+#   SPEC-3[guard]:  timeout yield → plugin.result emitted with reason=router_timeout
+#   SPEC-4[change]: timeout, nothing written → design.timeout.no_design emitted
 #   SPEC-5[guard]:  rc=137 (OOM) → returns rc=1 (terminal, unchanged)
 #   SPEC-6[guard]:  rc=137 (OOM) → plugin.result emitted with reason=router_oom_kill
 #   SPEC-7[guard]:  rc=137 (OOM) → no design.md written (terminal, unchanged)
 #   SPEC-8[guard]:  rc=0 with valid design.md → returns rc=0 (happy path unchanged)
-#   SPEC-9[change]: timeout yield but the marker write FAILS → returns rc=1
-#                   (terminal), reason=marker_write_failed, no stub_written
+#   SPEC-9[change]: timeout, the stale design cannot be removed → returns rc=1
+#                   (terminal), reason=stale_design_not_removed
+#   SPEC-12[change]: timeout AFTER this call wrote a new design → that design is
+#                   kept as written, the gate judges it, design.timeout.design_kept
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -116,6 +122,9 @@ _run_design_gate() {
 # router_timeout (it does NOT return 124). The mock reproduces that exact signal
 # so this exercises the PRODUCTION detection branch, not a dead rc=124 path.
 _setup_fixture t1
+# A design from an EARLIER pass is on disk: it must not survive a call that
+# timed out without rewriting it (it would be judged as this pass's design).
+printf '# Design\n\nstale from an earlier pass\n' > "$_F_DESIGN"
 _MOCK_ROUTER_RC=0
 _MOCK_TERMINATED_REASON="router_timeout"
 _MOCK_DESIGN_WRITE_PATH=""    # LLM writes nothing (timed out)
@@ -124,19 +133,19 @@ _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
 set -e
 
-# SPEC-1: the marker must exist AND be REJECTED by the real design-gate, so the
-# design_verify_cycle re-iterates rather than converging on it. (Red at the
-# merge-base — where a timeout wrote no design.md — and red at the prior stub
-# baseline, where the stub PASSED the gate.)
+# SPEC-1: no design is published — the stale one is gone and nothing is
+# fabricated in its place — and the real gate fails, so the cycle re-iterates.
 _verdict="$(_run_design_gate)"
-_gate_fb="$_F_ARTIFACTS/design-gate-feedback.md"
-if [[ -f "$_F_DESIGN" ]] && [[ "$_verdict" == "fail" ]] \
-    && grep -q 'ACCEPTANCE_MISSING' "$_gate_fb" 2>/dev/null; then
-    assert_pass "[SPEC-1] timeout marker FAILS the design-gate (ACCEPTANCE_MISSING) → re-iterate"
+if [[ ! -e "$_F_DESIGN" ]]; then
+    assert_pass "[SPEC-1] timeout with design.md unchanged → no design published (stale removed, nothing fabricated)"
 else
-    _dbg="$(head -20 "$_F_DESIGN" 2>/dev/null || true)"
-    assert_fail "[SPEC-1] timeout marker did NOT fail the design-gate" \
-        "verdict=$_verdict design.md=$_dbg"
+    assert_fail "[SPEC-1] a design was published for a call that wrote none" \
+        "design.md=$(head -5 "$_F_DESIGN" 2>/dev/null)"
+fi
+if [[ "$_verdict" != "pass" ]]; then
+    assert_pass "[SPEC-1b] the design-gate does not pass without a design → re-iterate"
+else
+    assert_fail "[SPEC-1b] the design-gate passed with no design"
 fi
 
 assert_eq "[SPEC-2] timeout yield → _design_stage_run_inner returns rc=0 (non-terminal)" "0" "$_rc"
@@ -149,10 +158,10 @@ else
         "events: $(cat "$ZBUILD_EVENTS_JSONL")"
 fi
 
-if grep -q '"design.timeout.stub_written"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
-    assert_pass "[SPEC-4] timeout yield → design.timeout.stub_written event emitted"
+if grep -q '"design.timeout.no_design"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
+    assert_pass "[SPEC-4] timeout, nothing written → design.timeout.no_design emitted"
 else
-    assert_fail "[SPEC-4] timeout yield → design.timeout.stub_written event missing" \
+    assert_fail "[SPEC-4] timeout, nothing written → design.timeout.no_design missing" \
         "events: $(cat "$ZBUILD_EVENTS_JSONL")"
 fi
 
@@ -240,10 +249,10 @@ set -e
 assert_eq "[SPEC-8] rc=0 with valid design.md → _design_stage_run_inner returns rc=0" "0" "$_rc"
 
 # Confirm no spurious timeout event on happy path.
-if ! grep -q '"design.timeout.stub_written"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
-    assert_pass "[SPEC-8-guard] no design.timeout.stub_written on happy path"
+if ! grep -qE '"design\.timeout\.(no_design|design_kept)"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
+    assert_pass "[SPEC-8-guard] no design.timeout.* event on happy path"
 else
-    assert_fail "[SPEC-8-guard] spurious design.timeout.stub_written on happy path"
+    assert_fail "[SPEC-8-guard] spurious design.timeout.* event on happy path"
 fi
 
 # SPEC-10-guard (#1261): a converging design must NOT write an incomplete/interrupted
@@ -260,12 +269,11 @@ fi
 
 _MOCK_DESIGN_WRITE_PATH=""
 
-# ─── SPEC-9: timeout yield but the marker write FAILS → terminal (return 1) ───
-# A failed filesystem write on the recovery path is a genuine infra error, not a
-# recoverable timeout: it must NOT mask as rc=0 with no artifact. Force the
-# redirect to fail by making the output path a directory (`printf > dir` → rc=1).
+# ─── SPEC-9: timeout, the stale design cannot be removed → terminal ─────────
+# Leaving it would publish an earlier pass's design as this one's. Force the
+# removal to fail by making design.md a non-empty directory.
 _setup_fixture t4
-mkdir -p "$_F_DESIGN"        # design.md is a directory → the marker redirect fails
+mkdir -p "$_F_DESIGN/x"
 _MOCK_ROUTER_RC=0
 _MOCK_TERMINATED_REASON="router_timeout"
 _MOCK_DESIGN_WRITE_PATH=""
@@ -273,22 +281,41 @@ set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
 set -e
-
-assert_eq "[SPEC-9] timeout yield + failed marker write → returns rc=1 (terminal)" "1" "$_rc"
-
-if grep -q '"reason":"marker_write_failed"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
-    assert_pass "[SPEC-9b] failed marker write → plugin.result reason=marker_write_failed"
+assert_eq "[SPEC-9] timeout + stale design not removable → returns rc=1 (terminal)" "1" "$_rc"
+if grep -q '"reason":"stale_design_not_removed"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
+    assert_pass "[SPEC-9b] → plugin.result reason=stale_design_not_removed"
 else
-    assert_fail "[SPEC-9b] failed marker write → reason=marker_write_failed missing" \
+    assert_fail "[SPEC-9b] → reason=stale_design_not_removed missing" \
         "events: $(cat "$ZBUILD_EVENTS_JSONL")"
 fi
+assert_eq "[SPEC-9c] → the result says so: disposition broken" "broken" \
+    "$(jq -r '.disposition // "ABSENT"' "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null || echo ABSENT)"
+rm -rf "$_F_DESIGN"
 
-if ! grep -q '"design.timeout.stub_written"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
-    assert_pass "[SPEC-9c] failed marker write → no design.timeout.stub_written (write never landed)"
+# ─── SPEC-12: timeout AFTER this call wrote a new design → kept, gate judges ─
+_setup_fixture t5
+printf '# Design\n\nstale from an earlier pass\n' > "$_F_DESIGN"
+_MOCK_ROUTER_RC=0
+_MOCK_TERMINATED_REASON="router_timeout"
+_MOCK_DESIGN_WRITE_PATH="$_F_DESIGN"      # the model wrote its design, then was killed
+set +e
+_design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
+_rc=$?
+set -e
+assert_eq "[SPEC-12] timeout after a new design → returns rc=0" "0" "$_rc"
+if grep -q '^SPEC-1\[guard\]: works' "$_F_DESIGN" 2>/dev/null; then
+    assert_pass "[SPEC-12] the design this call wrote is kept as written"
 else
-    assert_fail "[SPEC-9c] failed marker write → spurious design.timeout.stub_written"
+    assert_fail "[SPEC-12] the design this call wrote was replaced" \
+        "design.md=$(head -5 "$_F_DESIGN" 2>/dev/null)"
 fi
-
+assert_eq "[SPEC-12] the gate judges the kept design (it is complete → pass)" "pass" "$(_run_design_gate)"
+if grep -q '"design.timeout.design_kept"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
+    assert_pass "[SPEC-12] design.timeout.design_kept emitted"
+else
+    assert_fail "[SPEC-12] design.timeout.design_kept missing" "events: $(cat "$ZBUILD_EVENTS_JSONL")"
+fi
+_MOCK_DESIGN_WRITE_PATH=""
 _MOCK_ROUTER_RC=0
 _MOCK_TERMINATED_REASON="done_sentinel"
 
@@ -298,13 +325,11 @@ _MOCK_TERMINATED_REASON="done_sentinel"
 # composition — not through the engine's config/event-schema.json.
 # shellcheck source=../../core/event-bus/known-types.sh
 source "$REPO_ROOT/core/event-bus/known-types.sh"
-grep -qxF "design.timeout.stub_written" \
-    <<< "$(eb_manifest_events "$REPO_ROOT/plugins/agent/design/manifest.yaml")" \
-    && assert_pass "schema: design.timeout.stub_written declared in the design manifest" \
-    || assert_fail "schema: design.timeout.stub_written missing from provides.events"
-grep -qxF "design.timeout.stub_written" <<< "$(eb_compose_known_types)" \
-    && assert_pass "schema: design.timeout.stub_written is in the composed known set" \
-    || assert_fail "schema: design.timeout.stub_written missing from the composed known set"
+for _ev in design.timeout.no_design design.timeout.design_kept; do
+    grep -qxF "$_ev" <<< "$(eb_manifest_events "$REPO_ROOT/plugins/agent/design/manifest.yaml")" \
+        && assert_pass "schema: $_ev declared in the design manifest" \
+        || assert_fail "schema: $_ev missing from provides.events"
+done
 
 _test_cleanup_hook() { cleanup_test_env; }
 

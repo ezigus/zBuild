@@ -28,7 +28,8 @@ provides:
   events:
     - design.stray.conflict
     - design.stray.recovered
-    - design.timeout.stub_written
+    - design.timeout.design_kept
+    - design.timeout.no_design
 
 config:
   valid_verdicts:
