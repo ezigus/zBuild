@@ -144,7 +144,7 @@ The engine is responsible for: discovery, manifest validation, lifecycle orderin
 ### Error semantics
 
 - Plugins return exit codes `0` or `1` only (ADR-054 §4). Everything a plugin used to
-  express with a third code — interrupted, throttled, exhausted, unavailable, broken —
+  express with a third code — timed out, interrupted, rate-limited, misconfigured, broken … (ADR-054 §6a) —
   is carried by `disposition` in the result file, and the engine's response table
   decides recoverability (ADR-054 §6).
 - Nothing routes a failure to a plugin for classification, and there are no `recovery.*`

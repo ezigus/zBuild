@@ -10,7 +10,7 @@
 #   complete     nothing went wrong
 #   interrupted  retry as-is
 #   throttled    wait, then retry
-#   exhausted    more budget, or the work must shrink
+#   exhausted    temporary alias (#2187) — retries
 #   unavailable  halt; operator action required
 #   broken       halt; it is a defect
 #
@@ -81,13 +81,15 @@ EOF
 }
 
 # ═══ 1. The vocabulary is a closed set ═══════════════════════════════════════
-print_test_section "the vocabulary is a closed set of exactly six words"
+# #2187 (ADR-054 §6 amended): one word per CAUSE. `exhausted` stays a member
+# only as a temporary alias until the stages migrate (#2187 PR 2).
+print_test_section "the vocabulary is a closed set"
 
 assert_eq "the closed set is exactly the ADR-054 §6 vocabulary" \
-    "complete interrupted throttled exhausted unavailable broken" \
+    "complete unusable timed_out out_of_turns interrupted throttled rate_limited unavailable misconfigured broken exhausted" \
     "$(disposition_vocabulary)"
 
-for _d in complete interrupted throttled exhausted unavailable broken; do
+for _d in $(disposition_vocabulary); do
     assert_exit_code "\`$_d\` is a member of the closed set" 0 \
         "$(_rc_of disposition_is_valid "$_d")"
 done
@@ -100,53 +102,53 @@ for _d in terminal recoverable advisory none pass fail error "" "COMPLETE" "comp
         "$(_rc_of disposition_is_valid "$_d")"
 done
 
-# ═══ 2. One DISTINCT engine response per disposition ═════════════════════════
-# The acceptance bar is "distinct engine response", not "the value parses".
-print_test_section "each disposition maps to its own engine response"
+# ═══ 2. Each word maps to an ACTION; many words may share one ═══════════════
+print_test_section "each disposition maps to its engine action"
 
-assert_eq "complete    -> proceed"          "proceed"          "$(disposition_response complete)"
-assert_eq "interrupted -> retry"            "retry"            "$(disposition_response interrupted)"
-assert_eq "throttled   -> retry_after_wait" "retry_after_wait" "$(disposition_response throttled)"
-assert_eq "exhausted   -> escalate"         "escalate"         "$(disposition_response exhausted)"
-assert_eq "unavailable -> halt_unavailable" "halt_unavailable" "$(disposition_response unavailable)"
-assert_eq "broken      -> halt_broken"      "halt_broken"      "$(disposition_response broken)"
+assert_eq "complete      -> proceed"            "proceed"            "$(disposition_response complete)"
+for _d in unusable timed_out out_of_turns interrupted exhausted; do
+    assert_eq "$_d -> retry" "retry" "$(disposition_response "$_d")"
+done
+assert_eq "throttled     -> retry_after_wait"   "retry_after_wait"   "$(disposition_response throttled)"
+assert_eq "rate_limited  -> halt_unavailable"   "halt_unavailable"   "$(disposition_response rate_limited)"
+assert_eq "unavailable   -> halt_unavailable"   "halt_unavailable"   "$(disposition_response unavailable)"
+assert_eq "misconfigured -> halt_misconfigured" "halt_misconfigured" "$(disposition_response misconfigured)"
+assert_eq "broken        -> halt_broken"        "halt_broken"        "$(disposition_response broken)"
 
-# Mechanically enforce distinctness so a future edit cannot collapse two words
-# onto one response without this failing. `unavailable` and `broken` both stop
-# the run, but an operator reading the log has to be able to tell "something
-# outside us is down" from "this is our bug" — they are not interchangeable.
-_resp_count="$(for _d in $(disposition_vocabulary); do disposition_response "$_d"; printf '\n'; done | sort -u | wc -l | tr -d ' ')"
-assert_eq "all six responses are distinct from one another" "6" "$_resp_count"
+# The set of ACTIONS is closed too: a new word must map onto one of these.
+assert_eq "the actions are exactly these six" \
+    "halt_broken halt_misconfigured halt_unavailable proceed retry retry_after_wait" \
+    "$(for _d in $(disposition_vocabulary); do disposition_response "$_d"; printf '\n'; done | sort -u | tr '\n' ' ' | sed 's/ $//')"
 
 # ═══ 3. The response table is the engine's, and it halts where it says ══════
 print_test_section "halt / retry predicates follow the table, not the stage"
 
-for _d in unavailable broken; do
+for _d in rate_limited unavailable misconfigured broken; do
     assert_exit_code "\`$_d\` halts the run" 0 "$(_rc_of disposition_halts "$_d")"
 done
-for _d in complete interrupted throttled exhausted; do
+for _d in complete unusable timed_out out_of_turns interrupted throttled exhausted; do
     assert_exit_code "\`$_d\` does not halt the run" 1 "$(_rc_of disposition_halts "$_d")"
 done
 
 # Retry is a property of the DISPOSITION, not of the stage — no plugin decides
 # its own retry policy.
-for _d in interrupted throttled; do
+for _d in unusable timed_out out_of_turns interrupted throttled exhausted; do
     assert_exit_code "\`$_d\` is retryable" 0 "$(_rc_of disposition_retryable "$_d")"
 done
-for _d in complete exhausted unavailable broken; do
+for _d in complete rate_limited unavailable misconfigured broken; do
     assert_exit_code "\`$_d\` is NOT retryable" 1 "$(_rc_of disposition_retryable "$_d")"
 done
 
-# What separates `interrupted` from `throttled` is not the word — it is the
-# wait. A throttled stage re-dispatched immediately just gets throttled again.
+# Only a throttled stage waits: re-dispatched immediately it is throttled again.
 assert_eq "interrupted retries immediately (no wait)" "0" "$(disposition_wait_s interrupted)"
+assert_eq "timed_out retries immediately (no wait)" "0" "$(disposition_wait_s timed_out)"
 assert_gt "throttled waits before retrying" "$(disposition_wait_s throttled)" "0"
 
 # A wait is meaningless for a disposition that will not be retried, and
 # answering "0" for one is a footgun: a caller that skipped the retryable check
 # would read "0 seconds until retry" for `broken` and immediately re-dispatch a
 # halted stage. Refusing is the only safe answer.
-for _d in complete exhausted unavailable broken; do
+for _d in complete rate_limited unavailable misconfigured broken; do
     assert_exit_code "\`$_d\` has no wait — the call is refused" 1 \
         "$(_rc_of disposition_wait_s "$_d")"
     assert_eq "\`$_d\` prints no wait value" "" "$(disposition_wait_s "$_d" 2>/dev/null || true)"

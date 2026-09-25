@@ -8,16 +8,25 @@
 # (#1261), plan's hand-rolled `return 1` that killed the whole run, and test's
 # nothing-at-all (#1747). Every new stage added a fifth answer.
 #
-# `disposition` is a CLOSED set owned by the engine. Each word exists only
-# because the engine acts differently on it — a word with no distinct response
-# does not belong in the set:
+# `disposition` is a CLOSED set owned by the engine. #2187 (ADR-054 §6 amended):
+# each word names a CAUSE a reader must be able to tell apart; many words share
+# one ACTION. The word never carries a retry count — the template's per-stage
+# `retry:` budget does:
 #
-#   complete     nothing went wrong
-#   interrupted  retry as-is
-#   throttled    wait, then retry
-#   exhausted    more budget, or the work must shrink
-#   unavailable  halt; operator action required
-#   broken       halt; it is a defect
+#   complete       the stage ran; its verdict says how it went      → proceed
+#   unusable       it ran, but its output cannot be used           → retry
+#   timed_out      it ran out of time                              → retry
+#   out_of_turns   it ran out of turn budget                       → retry
+#   interrupted    an outside signal stopped it                    → retry
+#   throttled      a short rate limit, recovering                  → wait, retry
+#   rate_limited   the account's usage limit                       → end run, resumable
+#   unavailable    the model provider is not responding            → end run, resumable
+#   misconfigured  the setup is wrong (operator fixes it)          → halt
+#   broken         a defect in zBuild (file a bug)                 → halt
+#
+#   exhausted      TEMPORARY alias → retry, until every stage sends timed_out /
+#                  out_of_turns (#2187 PR 2 removes it). It mapped to `escalate`,
+#                  which nothing implemented, so it silently proceeded.
 #
 # The response table lives HERE, not in any plugin: no stage decides its own
 # retry policy. A stage declares what happened; the engine decides what to do.
@@ -52,7 +61,7 @@
 _ZBUILD_DISPOSITION_SH_LOADED=1
 
 # The closed set, in ADR-054 §6 table order.
-_ZBUILD_DISPOSITION_SET="complete interrupted throttled exhausted unavailable broken"
+_ZBUILD_DISPOSITION_SET="complete unusable timed_out out_of_turns interrupted throttled rate_limited unavailable misconfigured broken exhausted"
 
 # How long a `throttled` stage waits before a retry. Overridable because the
 # right backoff is a deployment property, not a contract property; bounded and
@@ -93,13 +102,14 @@ disposition_is_valid() {
 # reported, not in the stopping.
 disposition_response() {
     case "${1-}" in
-        complete)    printf 'proceed' ;;
-        interrupted) printf 'retry' ;;
-        throttled)   printf 'retry_after_wait' ;;
-        exhausted)   printf 'escalate' ;;
-        unavailable) printf 'halt_unavailable' ;;
-        broken)      printf 'halt_broken' ;;
-        *)           return 1 ;;
+        complete)                         printf 'proceed' ;;
+        unusable|timed_out|out_of_turns)  printf 'retry' ;;
+        interrupted|exhausted)            printf 'retry' ;;
+        throttled)                        printf 'retry_after_wait' ;;
+        rate_limited|unavailable)         printf 'halt_unavailable' ;;
+        misconfigured)                    printf 'halt_misconfigured' ;;
+        broken)                           printf 'halt_broken' ;;
+        *)                                return 1 ;;
     esac
 }
 

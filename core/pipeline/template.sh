@@ -2720,6 +2720,30 @@ template_stage_negctl_timeout() {
     ' "${_TPL_SOURCE_FILE}" 2>/dev/null
 }
 
+# #2187: per-stage `retry:` — how many times the engine re-dispatches a stage
+# whose disposition says retry. Read LAZILY from the template source, like
+# template_stage_negctl_timeout; prints nothing when unset.
+template_stage_retry() {
+    local stage_id="$1"
+    [[ -n "${_TPL_SOURCE_FILE:-}" && -f "${_TPL_SOURCE_FILE}" ]] || return 0
+    awk -v stage="$stage_id" '
+        function indent(s,   i) { i = 0; while (substr(s, i+1, 1) == " ") i++; return i }
+        $0 ~ "^"stage":[[:space:]]*$" { in_block = 1; block_ind = 0; in_defs = 0; next }
+        /^stage_definitions:[[:space:]]*$/ { in_defs = 1; next }
+        in_defs && /^[a-zA-Z_]/ { in_defs = 0 }
+        in_defs && !in_block && $0 ~ "^  "stage":[[:space:]]*$" { in_block = 1; block_ind = 2; next }
+        in_block {
+            ind = indent($0)
+            if ($0 ~ /[^[:space:]]/ && ind <= block_ind) { in_block = 0 }
+        }
+        in_block && indent($0) == block_ind + 2 && $0 ~ "^[[:space:]]+retry:" {
+            sub(/^[[:space:]]+retry:[[:space:]]*/, "")
+            sub(/[[:space:]]*#.*/, ""); gsub(/[[:space:]]/, "")
+            print; exit
+        }
+    ' "${_TPL_SOURCE_FILE}" 2>/dev/null
+}
+
 # ADR-017 §8 (#1252): per-stage `router.tier` OVERRIDE — pins a tier ORDINAL
 # (T0-T4, ADR-003; never a model name) for one stage. Read LAZILY from the loaded
 # template source (like template_stage_negctl_timeout), so it needs NO row-shape /
