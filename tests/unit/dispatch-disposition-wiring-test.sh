@@ -55,46 +55,16 @@ for _fn in disposition_halts disposition_retryable disposition_wait_s; do
     fi
 done
 
-# ─── SPEC-2: the re-dispatch budget is bounded and validated ─────────────────
-print_test_section "SPEC-2: the re-dispatch budget refuses nonsense"
-
-# Extract the helper from runner.sh without executing the whole file: sourcing
-# runner.sh is guarded to not run main(), but the helper is nested inside it.
-_budget_body="$(sed -n '/_runner_disposition_redispatch_budget() {/,/^[[:space:]]*}$/p' "$RUNNER")"
-# Assert the extraction is COMPLETE, not merely non-empty. The first cut anchored
-# on `^    }` — a literal four-space indent — so if the helper were ever promoted
-# to top level or the file re-indented, sed would return a partial body or none,
-# the eval would define nothing, and every SPEC-2 assertion would be SKIPPED
-# while the file still reported green (#1887 review).
-if [[ -z "$_budget_body" ]]; then
-    assert_fail "[SPEC-2] the budget helper exists" "not found in runner.sh"
-elif ! grep -q '}' <<< "$_budget_body"; then
-    assert_fail "[SPEC-2] the budget helper body is complete" \
-        "sed captured an unterminated body — the closing-brace anchor no longer matches"
+# ─── SPEC-2: the re-dispatch budget ──────────────────────────────────────────
+# #2187 moved it to a top-level _runner_retry_budget whose source is the
+# template's per-stage `retry:`; its values are asserted in
+# disposition-vocabulary-test.sh. Here: the loop reads it, not a constant.
+print_test_section "SPEC-2: the loop's budget comes from _runner_retry_budget"
+if grep -qE '^[^#]*_cd_redispatch_max="\$\(_runner_retry_budget "\$_cd_stage"\)"' "$RUNNER"; then
+    assert_pass "[SPEC-2] the re-dispatch budget is the stage's retry budget"
 else
-    assert_pass "[SPEC-2] the budget helper exists"
-    eval "${_budget_body#"${_budget_body%%[![:space:]]*}"}" 2>/dev/null || true
-    if declare -F _runner_disposition_redispatch_budget >/dev/null 2>&1; then
-        assert_eq "[SPEC-2] default is 1 (one automatic second attempt)" \
-            "1" "$(_runner_disposition_redispatch_budget)"
-        assert_eq "[SPEC-2] an explicit 0 opts out" \
-            "0" "$(ZBUILD_DISPOSITION_REDISPATCH=0 _runner_disposition_redispatch_budget)"
-        assert_eq "[SPEC-2] an explicit 3 is honoured" \
-            "3" "$(ZBUILD_DISPOSITION_REDISPATCH=3 _runner_disposition_redispatch_budget)"
-        # Above the cap clamps to the CAP, not the default: an operator asking
-        # for more headroom must not silently get LESS than they asked for
-        # (#1887 review). The cycle already re-runs its members, so the cap
-        # exists to stop grinding, not to punish an over-ask.
-        assert_eq "[SPEC-2] a value above the cap clamps to the cap, not the default" \
-            "5" "$(ZBUILD_DISPOSITION_REDISPATCH=99 _runner_disposition_redispatch_budget)"
-        # A non-number is not a request at all, so it falls back to the default.
-        assert_eq "[SPEC-2] a non-numeric value falls back to the default" \
-            "1" "$(ZBUILD_DISPOSITION_REDISPATCH=lots _runner_disposition_redispatch_budget)"
-        assert_eq "[SPEC-2] a negative value is non-numeric here and falls back" \
-            "1" "$(ZBUILD_DISPOSITION_REDISPATCH=-2 _runner_disposition_redispatch_budget)"
-    else
-        assert_fail "[SPEC-2] the budget helper is callable" "eval did not define it"
-    fi
+    assert_fail "[SPEC-2] the re-dispatch budget is the stage's retry budget" \
+        "the loop does not take its budget from _runner_retry_budget"
 fi
 
 # ─── SPEC-3: retryable and halting are disjoint, and the wiring relies on it ─
@@ -128,13 +98,15 @@ for _d in broken unavailable; do
     fi
 done
 
-# `exhausted` is neither: retrying the same budget learns nothing, and the cycle
-# owns the escalation.
-if disposition_retryable exhausted 2>/dev/null; then
-    assert_fail "[SPEC-3] exhausted is not re-dispatched here" "would burn the same budget twice"
-else
-    assert_pass "[SPEC-3] exhausted is not re-dispatched here (the cycle escalates)"
-fi
+# #2187: running out of budget retries from the saved work — the loop stops it
+# when an attempt changes nothing. `exhausted` is the temporary alias.
+for _d in timed_out out_of_turns exhausted; do
+    if disposition_retryable "$_d" 2>/dev/null; then
+        assert_pass "[SPEC-3] $_d is re-dispatched (continuing from saved work)"
+    else
+        assert_fail "[SPEC-3] $_d is re-dispatched" "table says it is not retryable"
+    fi
+done
 
 # ─── SPEC-4: throttled waits, interrupted does not ───────────────────────────
 # The number is what separates the two words. A throttled stage re-dispatched

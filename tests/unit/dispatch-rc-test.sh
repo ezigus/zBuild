@@ -271,11 +271,19 @@ assert_eq "[SPEC-6] rc=0 yields no disposition even with an observation" \
 # silence; it never overwrites a stage that spoke for itself. Without this, a
 # stage that wrote `exhausted` and was then killed would be retried as
 # `interrupted` forever.
-printf '{"result_contract":2,"verdict":"fail","disposition":"exhausted","reason":"budget"}' \
+# #2187: a non-retryable word, because a RETRYABLE one seen alongside a rate
+# limit is read as the rate limit it was (#2111) — see SPEC-6b.
+printf '{"result_contract":2,"verdict":"fail","disposition":"misconfigured","reason":"no tier"}' \
     > "$_sd/artifacts/fx-result.json"
-assert_eq "[SPEC-6] a DECLARED disposition beats a signal observation" "exhausted" \
+assert_eq "[SPEC-6] a DECLARED disposition beats a signal observation" "misconfigured" \
     "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 1 signal 0)"
-assert_eq "[SPEC-6] a DECLARED disposition beats a rate-limit observation" "exhausted" \
+assert_eq "[SPEC-6] a DECLARED disposition beats a rate-limit observation" "misconfigured" \
+    "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 1 "" 1)"
+# SPEC-6b (#2111, #2187): a RETRYABLE declared word seen alongside a rate limit
+# was the rate limit — retrying would just be throttled again.
+printf '{"result_contract":2,"verdict":"fail","disposition":"timed_out","reason":"router_timeout"}' \
+    > "$_sd/artifacts/fx-result.json"
+assert_eq "[SPEC-6b] a retryable word with a rate limit observed reads as rate_limited" "rate_limited" \
     "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 1 "" 1)"
 
 # A contract violation stays `broken` regardless of what was observed. The
@@ -340,8 +348,8 @@ assert_eq "[SPEC-8] rc=143 with no result → interrupted" "interrupted" \
 # Each drives a genuinely different operator-facing response.
 assert_eq "[SPEC-8] unavailable halts for an OPERATOR, not as a defect" \
     "halt_unavailable" "$(disposition_response unavailable)"
-assert_eq "[SPEC-8] exhausted escalates rather than halting" \
-    "escalate" "$(disposition_response exhausted)"
+assert_eq "[SPEC-8] exhausted (temporary alias, #2187) retries rather than halting" \
+    "retry" "$(disposition_response exhausted)"
 
 # A legacy code with no §6 word still falls through to the observation table.
 assert_eq "[SPEC-8] rc=5 (blocked) has no word, so it stays broken" "broken" \

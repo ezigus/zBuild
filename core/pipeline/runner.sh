@@ -139,6 +139,43 @@ _runner_run_id="" _runner_issue="" _runner_ended=false _runner_state_file=""
 # reported once rather than once per stage boundary.
 _RUNNER_LAST_SNAPSHOT_FAIL_REASON=""
 
+# ─── _runner_retry_budget <stage> (#2187, was #1887's redispatch budget) ─────
+# How many times a stage whose disposition says `retry` is re-dispatched. The
+# word never carries a count: the template's per-stage `retry:` wins, then the
+# ZBUILD_DISPOSITION_REDISPATCH knob, then the engine default 3. Capped at 5 —
+# the cycle re-runs its members anyway, so this is not a budget for grinding.
+# A value above the cap clamps to the cap; a non-number is ignored.
+_runner_retry_budget() {
+    local v=""
+    if declare -F template_stage_retry >/dev/null 2>&1; then
+        v="$(template_stage_retry "${1:-}" 2>/dev/null || true)"
+    fi
+    [[ "$v" =~ ^[0-9]+$ ]] || v="${ZBUILD_DISPOSITION_REDISPATCH:-}"
+    [[ "$v" =~ ^[0-9]+$ ]] || v=3
+    (( v > 5 )) && v=5
+    printf '%s' "$v"
+}
+
+# ─── _runner_attempt_made_progress <artifact_dir> <stage> <iter> (#2187) ─────
+# rc 0 when the stage's LATEST attempt in this iteration changed any of its
+# declared outputs (the #2186 attempt record), or when there is no record to
+# judge by; rc 1 when every output it recorded came back unchanged or absent —
+# retrying the same work would hit the same wall.
+_runner_attempt_made_progress() {
+    local base="${1:-}/attempts/${2//[^A-Za-z0-9_-]/_}" iter="${3:-0}"
+    [[ -d "$base" ]] || return 0
+    local latest="" n=0 d k
+    for d in "$base"/iter-"$iter"-attempt-*; do
+        [[ -f "$d/attempt.json" ]] || continue
+        k="${d##*-attempt-}"
+        [[ "$k" =~ ^[0-9]+$ ]] || continue
+        (( k > n )) && { n="$k"; latest="$d/attempt.json"; }
+    done
+    [[ -n "$latest" ]] || return 0
+    jq -e 'has("outputs") | not' "$latest" >/dev/null 2>&1 && return 0
+    jq -e '[.outputs[]] | any(. == "changed")' "$latest" >/dev/null 2>&1
+}
+
 # ─── _runner_note_push_failure <stage> (#2187) ───────────────────────────────
 # Report a failed stage-end push once per distinct reason, on the same channel
 # and dedupe as a failed snapshot.
@@ -2570,29 +2607,6 @@ main() {
     # _runner_llm_abort_reason — the word the abort arms record and emit.
     _runner_llm_abort_reason() { printf '%s' "${_RUNNER_LLM_ABORT_REASON:-llm_unavailable}"; }
 
-    # ─── _runner_disposition_redispatch_budget (#1887) ──────────────────────
-    # How many times the dispatch boundary may re-dispatch a member whose
-    # disposition says it is retryable. Default 1: one automatic second attempt
-    # is what turns a SIGTERM or a rate limit from a dead run into a recovered
-    # one, and a second failure means the first was not transient after all.
-    #
-    # A cycle already re-runs its members, so this is deliberately NOT a budget
-    # for grinding — it is the difference between "the stage was interrupted"
-    # and "the stage failed", which the cycle cannot tell on its own.
-    # Out-of-range values clamp to the default rather than being trusted.
-    _runner_disposition_redispatch_budget() {
-        local v="${ZBUILD_DISPOSITION_REDISPATCH:-1}"
-        # A number ABOVE the cap clamps to the CAP, not to the default: an
-        # operator who asks for more headroom should not silently get less than
-        # they asked for (#1887 review). A non-number is not a request at all,
-        # so it falls back to the default.
-        if [[ "$v" =~ ^[0-9]+$ ]]; then
-            (( v > 5 )) && v=5
-            printf '%s' "$v"
-        else
-            printf '1'
-        fi
-    }
 
     # cycle_dispatch_stage hook — F1 uses the same per-stage path that the
     # legacy stage loop uses. Returns the stage's rc; the orchestrator owns the
@@ -2649,7 +2663,7 @@ main() {
         # them per iteration is harmless but reads as an intent to reset (#1887
         # review). Hoisting makes the scope unambiguous.
         local _cd_manifest _cd_observation _cd_rate_limited _cd_wait _cd_primary _cd_resolved
-        _cd_redispatch_max="$(_runner_disposition_redispatch_budget)"
+        _cd_redispatch_max="$(_runner_retry_budget "$_cd_stage")"
         while :; do
             _router_clear_throttle_marker
             set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?; set -e
@@ -2738,9 +2752,15 @@ main() {
                     "disposition=$_CYCLE_DISPATCH_DISPOSITION" "rc=$_cd_rc" \
                     2>/dev/null || true
             fi
+            # #2187: a retry continues from the saved work, so it is only worth
+            # taking while the last attempt changed something — except after an
+            # outside signal or a short rate limit, which say nothing about the
+            # work.
             if [[ -n "$_CYCLE_DISPATCH_DISPOSITION" ]] \
                && (( _cd_attempt < _cd_redispatch_max )) \
-               && disposition_retryable "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null; then
+               && disposition_retryable "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null \
+               && { [[ "$_CYCLE_DISPATCH_DISPOSITION" == interrupted || "$_CYCLE_DISPATCH_DISPOSITION" == throttled ]] \
+                    || _runner_attempt_made_progress "${ZBUILD_ARTIFACT_DIR:-$state_dir/artifacts}" "$_cd_stage" "${ZBUILD_CYCLE_ITER:-0}"; }; then
                 _cd_wait="$(disposition_wait_s "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null || printf '0')"
                 _cd_attempt=$(( _cd_attempt + 1 ))
                 eb_emit_event "cycle.member.disposition.redispatch" \

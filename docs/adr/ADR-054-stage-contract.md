@@ -225,6 +225,29 @@ This is the section Phase 1 (#1794) waits on. A stage that timed out and a stage
 
 This supersedes the informally-inherited `pass|warn|fail|unknown|error|corrupt_diff|block` vocabulary that accumulated across ADR-013, ADR-021 and ADR-045, in which one string had to carry both axes at once. Delivered by #1822.
 
+#### 6a. Amendment (2026-09-25, #2187) — one word per cause; the template owns the retry budget
+
+The rule above — "each word exists only because the engine acts differently on it" — is replaced: **a word exists when a reader needs to tell the cause apart**, and many words may share one action. On #1849 (run 35949629759) every timeout was reported `interrupted`, `broken` covered both zBuild defects and a model's unusable output, and `exhausted` mapped to `escalate`, which nothing implemented — so it silently proceeded.
+
+| Word | Cause | Action |
+|---|---|---|
+| `complete` | the stage ran; its verdict says how it went | proceed |
+| `unusable` | it ran, but its output cannot be used | retry |
+| `timed_out` | it ran out of time | retry |
+| `out_of_turns` | it ran out of turn budget | retry |
+| `interrupted` | an outside signal stopped it | retry |
+| `throttled` | a short rate limit, recovering | wait, then retry |
+| `rate_limited` | the account's usage limit | end the run, resumable |
+| `unavailable` | the model provider is not responding | end the run, resumable |
+| `misconfigured` | the setup is wrong — the operator fixes it | halt |
+| `broken` | a defect in zBuild — file a bug | halt |
+
+- **The word never carries a retry count.** The template's per-stage `retry:` sets it (then `ZBUILD_DISPOSITION_REDISPATCH`, then the engine default 3; capped at 5).
+- **A retry continues from the saved work** (each attempt's outputs are archived, #2183) and is taken only while the last attempt changed one of its declared outputs (#2186's per-attempt record). `interrupted` and `throttled` are exempt: an outside signal or a short rate limit says nothing about the work. When the budget is spent the stage is a failed member and the cycle handles it as before.
+- **A halting word stops the cycle through the existing member-terminal path**, naming the word and the stage's reason. No new exit code: rc stays ∈ {0,1} (§4).
+- A retryable word observed alongside a rate limit on the wire reads as `rate_limited` (#2111).
+- **Transition:** `exhausted` remains a member, as an alias that retries, until the stages migrate (#2187 PR 2). `broken` starts halting in the same PR, once the stages stop sending it for recoverable cases (a model's unusable output → `unusable`; a scope violation or a false completion → `complete` with that verdict).
+
 ### 7. Teardown and clean: one code path, two triggers
 
 `cleanup` is **not** an abnormal-exit notification. Scoping it to aborts is precisely what forces every plugin to invent a second teardown path — one for the normal end of work, one for the trap — and the two then drift.

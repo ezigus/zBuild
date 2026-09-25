@@ -2045,10 +2045,14 @@ _cycle_iter_dispatch() {
         # CQ-3 / ADR-013 (#863): blocking member enforcement. If the member
         # is in the ADR-013 blocking table and returned non-zero, halt the
         # cycle immediately (rc=8) so the pipeline can emit status=failed.
-        if [[ $rc -ne 0 ]] && _cycle_member_is_blocking "$s"; then
+        # #2187: a member whose disposition halts the run stops the cycle here,
+        # through the same terminal path, naming the word and the reason.
+        local _halt_why=""
+        _halt_why="$(_cycle_member_halt_reason 2>/dev/null)" || _halt_why=""
+        if [[ -n "$_halt_why" ]] || { [[ $rc -ne 0 ]] && _cycle_member_is_blocking "$s"; }; then
             _cycle_emit "cycle.member.blocking_failure" \
-                "iter=$iter" "stage=$s" "rc=$rc"
-            _CYCLE_LAST_TERMINATED_REASON="blocking_member_failure"
+                "iter=$iter" "stage=$s" "rc=$rc" "reason=${_halt_why:-blocking_member}"
+            _CYCLE_LAST_TERMINATED_REASON="${_halt_why:-blocking_member_failure}"
             _CYCLE_LAST_VERDICTS_BLOB="$blob"
             _CYCLE_LAST_FAILURE_COUNT="$fail"
             [[ $_had_e -eq 1 ]] && set -e
@@ -2161,6 +2165,20 @@ _cycle_iter_dispatch() {
         break
     done
     return 0
+}
+
+# ─── _cycle_member_halt_reason (#2187) ───────────────────────────────────────
+# The member just dispatched declared a disposition whose action is to halt the
+# run. Prints "<word>: <reason>" and returns 0; returns 1 otherwise. Decided from
+# the WORD, never from an exit code. `unavailable`/`rate_limited` are not here:
+# the dispatch boundary already ends those runs resumable. `broken` joins once
+# the stages stop sending it for recoverable cases (#2187 PR 2).
+_cycle_member_halt_reason() {
+    local d="${_CYCLE_DISPATCH_DISPOSITION:-}"
+    [[ -n "$d" ]] || return 1
+    disposition_halts "$d" 2>/dev/null || return 1
+    [[ "$(disposition_response "$d" 2>/dev/null)" == "halt_misconfigured" ]] || return 1
+    printf '%s: %s' "$d" "${_CYCLE_DISPATCH_REASON:-no reason given}"
 }
 
 # ─── _cycle_member_terminal_failure <state_dir> (#1044, #1188, Phase 2) ───────

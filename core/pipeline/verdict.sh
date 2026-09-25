@@ -715,9 +715,10 @@ runner_read_stage_disposition() {
     if [[ -n "$_d_disp" ]]; then
         # #2111: a rate limit observed on the wire ends the run whatever word
         # the stage chose — a plugin that still says `interrupted`/`throttled`
-        # would otherwise be retried into the same limit.
+        # would otherwise be retried into the same limit. #2187: say so with
+        # the cause's own word.
         if [[ "$rate_limited" == "1" ]] && disposition_retryable "$_d_disp" 2>/dev/null; then
-            printf '%s' "unavailable"; return 0
+            printf '%s' "rate_limited"; return 0
         fi
         printf '%s' "$_d_disp"; return 0
     fi
