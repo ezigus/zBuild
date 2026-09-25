@@ -41,6 +41,14 @@ _out="$(bash "$LINT" "$_root" 2>&1)"; _rc=$?
 assert_eq "[SPEC-2] lint exits 1" "1" "$_rc"
 assert_contains "[SPEC-2] it names the word" "$_out" "wedged"
 
+print_test_section "SPEC-2b: an assignment at the start of a line is read, a longer name is not"
+_root="$(_fx s2b '_disp="wedged"
+set_disposition_hint="whatever"')"
+_out="$(bash "$LINT" "$_root" 2>&1)"; _rc=$?
+assert_eq "[SPEC-2b] lint exits 1 on the line-start assignment" "1" "$_rc"
+assert_contains "[SPEC-2b] it names that word" "$_out" "wedged"
+assert_eq "[SPEC-2b] a variable that merely contains the name is not read" "0" "$(grep -c whatever <<< "$_out" || true)"
+
 print_test_section "SPEC-3: set words and computed values pass"
 _root="$(_fx s3 '_fx_write_result "$out" "error" "timed_out" "why"
 _disp="unusable"

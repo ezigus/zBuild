@@ -35,6 +35,7 @@ max_iterations out_of_turns
 router_rate_limited rate_limited
 router_oom_kill interrupted
 signal interrupted
+sigint interrupted
 router_rc_nonzero unavailable
 error unavailable
 router_config_error misconfigured

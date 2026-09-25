@@ -2737,7 +2737,7 @@ main() {
             # The table decides. `interrupted` re-dispatches at once; `throttled`
             # waits first, because re-dispatching a throttled stage immediately is
             # simply throttled again — a retry loop that burns budget to learn
-            # nothing. `exhausted`, `unavailable` and `broken` are not retryable and
+            # nothing. `rate_limited`, `unavailable`, `misconfigured` and `broken` are not retryable and
             # fall straight through; `complete` never reaches the test.
             # A halting disposition is announced rather than inferred. The table
             # guarantees nothing both halts and retries, so this cannot change which
