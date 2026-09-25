@@ -37,6 +37,7 @@ provides:
   result_contract: 2
   events:
     - test_author.authored
+    - test_author.committed
     - test_author.no_contract
     - test_author.result.write_failed
     - test_author.stale_tags_dropped

@@ -104,6 +104,27 @@ _ta_write_result() {
 # ─── test_author_run <stage_id> <state_file> [resolved_inputs] ───────────────
 # ADR-054 §4: rc is binary. rc=0 = "my result file is on disk"; rc=1 = "I
 # failed". Nothing else.
+# _ta_commit_testfiles <design.md> <repo_root> <message>
+# #2188: the author's testfiles are committed — after a pass AND after a call
+# that stopped mid-write — so the next attempt, or a new session restoring the
+# work branch, continues from them instead of from nothing. Only the testfiles
+# the contract names are staged. Best-effort: a commit failure never fails the
+# stage, it only leaves the work uncommitted as before.
+_ta_commit_testfiles() {
+    local design="$1" repo="$2" msg="$3" tf
+    local -a files=()
+    git -C "$repo" rev-parse --git-dir >/dev/null 2>&1 || return 0
+    while IFS= read -r tf; do
+        [[ -n "$tf" && -e "$repo/$tf" ]] && files+=("$tf")
+    done < <(acceptance_list_testfiles "$design" 2>/dev/null || true)
+    [[ ${#files[@]} -gt 0 ]] || return 0
+    git -C "$repo" add -- "${files[@]}" 2>/dev/null || return 0
+    git -C "$repo" diff --cached --quiet -- "${files[@]}" 2>/dev/null && return 0
+    git -C "$repo" commit -q --no-verify --author "zbuild-pipeline <pipeline@local>" \
+        -m "$msg" -- "${files[@]}" >/dev/null 2>&1 || return 0
+    _ta_emit "test_author.committed" "files=${#files[@]}"
+}
+
 test_author_run() {
     local stage_id="${1:-test-author}"; : "$stage_id"
     local state_file="${2:-}"
@@ -162,6 +183,8 @@ Tag each assertion with its SPEC id in square brackets, exactly as shown. You ow
 
 REQUIREMENTS:
 ${spec_block}
+Some of these testfile(s) may already hold assertions from an earlier attempt at this contract: keep what is right, finish what is missing, fix what is wrong.
+
 Write or amend only the testfile(s) named above. Do not write, modify or stub any implementation file."
 
     # ADR-063 §1 (#2170): the budget reaches the prompt from the values that
@@ -197,6 +220,7 @@ Write or amend only the testfile(s) named above. Do not write, modify or stub an
         _disp="$(router_reason_disposition "${_reason:-router_rc_nonzero}")"
         _ta_write_result "$art" "degraded" "$_disp" \
             "the model call failed (${_reason:-rc=$rc}) — no assertions were authored" "$n"
+        _ta_commit_testfiles "$design" "$repo" "test-author: partial assertions (${_reason:-rc=$rc}) — continued by the next attempt"
         return 1
     fi
 
@@ -211,6 +235,7 @@ Write or amend only the testfile(s) named above. Do not write, modify or stub an
     declare -f assertion_integrity_record >/dev/null 2>&1 \
         && assertion_integrity_record "$art" "$repo"
 
+    _ta_commit_testfiles "$design" "$repo" "test-author: acceptance assertions for $n SPEC(s)"
     _ta_emit "test_author.authored" "specs=$n"
     _ta_write_result "$art" "complete" "complete" \
         "authored acceptance assertions for $n SPEC(s) from the design contract" "$n"

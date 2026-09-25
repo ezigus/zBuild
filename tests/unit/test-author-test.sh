@@ -19,6 +19,9 @@
 #   SPEC-4 [guard] : v2 contract — result_contract:2 on the result, rc binary
 #   SPEC-5 [change]: a router failure maps to a DISPOSITION (ADR-054 §6), not to
 #                    a cheerful verdict — the stage did not do its job
+#   SPEC-7 [change]: same budget as build, and blocking (#2188)
+#   SPEC-10..12 [change]: the author commits its testfiles — also partial work
+#                    from a timed-out call — and continues earlier work (#2188)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,6 +67,8 @@ _setup() {
     mkdir -p "$_A" "$_R/tests"
     export ZBUILD_REPO_ROOT="$_R" ZBUILD_ARTIFACT_DIR="$_A"
     printf '%s\n' 'assert_eq "[SPEC-1] placeholder" "1" "$got"' > "$_R/tests/acc-test.sh"
+    ( cd "$_R" && git init -q -b main . && git config user.email t@e.st && git config user.name t \
+        && git add -A && git commit -q -m seed ) >/dev/null 2>&1
     cat > "$_A/design.md" <<'EOF'
 # Design
 ```acceptance
@@ -125,9 +130,15 @@ assert_contains "[SPEC-6][change] the prompt carries the TURN BUDGET block" "$(c
 assert_contains "[SPEC-6][change] …with the number the router enforces" "$(cat "$_TA_PROMPT")" "45 tool-call turns"
 assert_contains "[SPEC-6][change] …and the WALL CLOCK BUDGET block" "$(cat "$_TA_PROMPT")" "WALL CLOCK BUDGET"
 unset -f _route_resolve_max_turns _route_resolve_timeout
-print_test_section "SPEC-7: simple.yaml gives test-author a turn budget that fits authoring a contract"
-_mt="$(awk '/^test-author:/{f=1;next} /^[a-z]/{f=0} f && /max_turns:/{print $2}' "$REPO_ROOT/config/templates/simple.yaml")"
-assert_eq "[SPEC-7][change] simple.yaml test-author.router.max_turns is 45 (plan/impact parity), not the 25 default" "45" "$_mt"
+print_test_section "SPEC-7: simple.yaml gives test-author the same budget as build (#2188)"
+_tpl="$REPO_ROOT/config/templates/simple.yaml"
+_ta_field() { awk -v k="$1" '/^test-author:/{f=1;next} /^[a-z]/{f=0} f && $1==k":"{print $2}' "$_tpl"; }
+_b_field()  { awk -v k="$1" '/^build:/{f=1;next} /^[a-z]/{f=0} f && $1==k":"{print $2}' "$_tpl"; }
+assert_eq "[SPEC-7][change] test-author.router.timeout_s equals build's" "$(_b_field timeout_s)" "$(_ta_field timeout_s)"
+assert_eq "[SPEC-7][change] test-author.router.max_turns equals build's" "$(_b_field max_turns)" "$(_ta_field max_turns)"
+assert_eq "[SPEC-7][change] test-author is blocking: authoring nothing stops the cycle before build" "true" "$(_ta_field blocking)"
+assert_eq "[SPEC-7][change] …and the engine loads it as blocking" "true" \
+    "$(bash -c 'source "$1/scripts/lib/helpers.sh"; source "$1/core/pipeline/template.sh"; load_template "$2" >/dev/null 2>&1; printf "%s" "${_TPL_STAGE_BLOCKING_test_author:-}"' _ "$REPO_ROOT" "$_tpl")"
 
 # ─── SPEC-8/9 (#2174): the author owns every [SPEC-n] tag in the files it writes ─
 # #1841: security-lens-test.sh carried [SPEC-5]/[SPEC-6] labels from an older
@@ -149,6 +160,37 @@ assert_eq "[SPEC-9][change] a tag whose number is not in the contract is removed
 assert_contains "[SPEC-9][change] …the assertion itself stays" "$(cat "$_R/tests/acc-test.sh")" 'old contract: ANSI bytes stripped'
 assert_contains "[SPEC-9][guard] a tag in the contract is kept" "$(cat "$_R/tests/acc-test.sh")" '[SPEC-1] placeholder'
 assert_eq "[SPEC-9][change] the strip is recorded as an event" "1" "$(grep -c '"test_author.stale_tags_dropped"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+
+
+# ─── SPEC-10..12 (#2188): the author's work survives an attempt ──────────────
+# #1849 run 35949629759: test-author timed out twice mid-write, wrote nothing
+# durable, and each attempt started from nothing.
+print_test_section "SPEC-10: authored testfiles are committed"
+_setup s10
+_TA_RC=0
+route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'assert_eq "[SPEC-1] data lives under data" "1" "$n"\n' >> "$ZBUILD_REPO_ROOT/tests/acc-test.sh"; return $_TA_RC; }
+test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
+assert_eq "[SPEC-10][change] the authored testfile is committed" "" "$(git -C "$_R" status --porcelain -- tests/acc-test.sh 2>/dev/null)"
+assert_contains "[SPEC-10][change] …in a commit that says who wrote it" "$(git -C "$_R" log -1 --format=%s 2>/dev/null)" "test-author"
+
+print_test_section "SPEC-11: a call that timed out mid-write still keeps what it wrote"
+_setup s11
+_TA_RC=124
+# Its own stub: the call writes part of the testfile, then times out.
+route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'assert_eq "[SPEC-1] partial" "1" "$n"\n' >> "$ZBUILD_REPO_ROOT/tests/acc-test.sh"; return 124; }
+if [[ -z "$(git -C "$_R" status --porcelain -- tests/acc-test.sh 2>/dev/null)" ]]; then assert_pass "[SPEC-11][guard] the fixture starts clean"; fi
+test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
+assert_eq "[SPEC-11][change] the partial testfile is committed for the next attempt" "" "$(git -C "$_R" status --porcelain -- tests/acc-test.sh 2>/dev/null)"
+assert_eq "[SPEC-11][guard] …and the result still says the call did not finish" "timed_out" "$(_res '.disposition')"
+
+print_test_section "SPEC-12: the prompt tells the author to continue earlier work"
+_setup s12
+_TA_RC=0
+route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return 0; }
+: > "$_TA_PROMPT"
+test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
+assert_contains "[SPEC-12][change] the prompt says an earlier attempt's assertions may be there" "$(cat "$_TA_PROMPT")" "earlier attempt"
+route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return $_TA_RC; }
 
 print_test_results
 exit $((FAIL > 0))
