@@ -16,6 +16,7 @@
 # SPEC-4: empty_diff + gate-aggregator verdict=pass ⇒ converged (no false stall).
 # B6 (#1138, ADR-040): build_test_cycle converges on the gate-aggregator verdict
 # — the stub drives the decomposed gate roster.
+# #2191: SPEC-5/6/7 moved to core-pipeline-cycle-reuse-and-route-back-test.sh.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -29,17 +30,8 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "build_test_cycle feedback edge + no-progress stall-break (#1117)"
 setup_test_env "cycle-stall-break-1117"
 
-export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
-export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
-export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
-export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-: > "$ZBUILD_EVENTS_JSONL"
-
-# shellcheck source=../../core/pipeline/template.sh
-source "$REPO_ROOT/core/pipeline/template.sh"
-load_template "$REPO_ROOT/config/templates/simple.yaml"
-# shellcheck source=../../core/pipeline/cycle-orchestrator.sh
-source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
+# shellcheck source=../lib/cycle-stall-break-fixture.sh
+source "$REPO_ROOT/tests/lib/cycle-stall-break-fixture.sh"
 
 # ─── SPEC-2 (parse + producer resolution) ────────────────────────────────────
 # #1979: the edge is retired, so this now asserts its ABSENCE plus the surviving
@@ -115,90 +107,6 @@ assert_contains "[SPEC-1] the failure detail reaches the prompt" \
 assert_contains "[SPEC-1] and it is framed as blocking, not passive context" \
     "$_SUMMARY_BLOCK" "RESOLVE"
 
-# ─── SPEC-3 / SPEC-4 (stall-break vs converge) ───────────────────────────────
-# Drive the REAL cycle_orchestrator_run with a stubbed dispatch hook. build always
-# emits empty_diff; every mechanical gate passes; the gate-aggregator (the cycle's
-# exit_when stage after the B6 #1138 cutover) verdict is parameterized.
-_GA_VERDICT="fail"
-# shellcheck disable=SC2317
-cycle_dispatch_stage() {
-    local _st_stage="$1" _st_iter="$2" _st_state_file="$3"
-    local _st_dir; _st_dir="$(dirname "$_st_state_file")"
-    local _art="$_st_dir/artifacts"; mkdir -p "$_art"
-    _CYCLE_DISPATCH_VERDICT="pass"
-    _CYCLE_DISPATCH_VERDICT_RAW="pass"
-    _CYCLE_DISPATCH_STATUS="complete"
-    _CYCLE_DISPATCH_REASON=""
-    case "$_st_stage" in
-        build)
-            # ADR-054: new format — verdict=pass + disposition=complete + data.build_kind=empty_diff
-            printf '{"schema_version":1,"result_contract":2,"verdict":"pass","disposition":"complete","data":{"build_kind":"empty_diff"},"iterations":1,"terminated_reason":"done_sentinel","files_changed":[]}' \
-                > "$_art/build-summary.json"
-            # #2183: a build that re-checked a finding and could not reproduce it.
-            if [[ -n "${_BUILD_NOT_REPRODUCED:-}" ]]; then
-                jq --arg p "$_BUILD_NOT_REPRODUCED" '.data.not_reproduced = [$p]' \
-                    "$_art/build-summary.json" > "$_art/build-summary.json.tmp" \
-                    && mv "$_art/build-summary.json.tmp" "$_art/build-summary.json"
-            fi
-            # #2178: a build that asked for files outside the contract.
-            if [[ -n "${_BUILD_SCOPE_REQUEST:-}" ]]; then
-                jq --argjson r "$_BUILD_SCOPE_REQUEST" '. + {scope_expansion_request: $r}' \
-                    "$_art/build-summary.json" > "$_art/build-summary.json.tmp" \
-                    && mv "$_art/build-summary.json.tmp" "$_art/build-summary.json"
-            fi
-            _CYCLE_DISPATCH_VERDICT="pass"
-            _CYCLE_DISPATCH_VERDICT_RAW="pass"
-            _CYCLE_DISPATCH_DISPOSITION="complete"
-            _CYCLE_DISPATCH_DATA_KIND="empty_diff"
-            # #2189: a real dispatch hands the cycle the member's report.
-            _CYCLE_DISPATCH_REPORT="$(_verdict_report_from_file "$_art/build-summary.json")"
-            ;;
-        test)
-            printf '{"result_contract":2,"verdict":"%s","disposition":"complete","reason":"mock","data":{"exit_code":0,"passed":1,"failed":0}}' "${_TEST_VERDICT:-pass}" \
-                > "$_art/test-results.json"
-            _CYCLE_DISPATCH_VERDICT="${_TEST_VERDICT:-pass}"
-            _CYCLE_DISPATCH_VERDICT_RAW="${_TEST_VERDICT:-pass}"
-            # v2: a failing suite is verdict=fail with rc 0 (rc 1 = broken).
-            ;;
-        acceptance-gate)
-            _CYCLE_DISPATCH_VERDICT="${_AG_VERDICT:-pass}"
-            _CYCLE_DISPATCH_VERDICT_RAW="${_AG_VERDICT:-pass}"
-            ;;
-        gate-aggregator)
-            printf '{"schema_version":1,"verdict":"%s","summary":"x"}' "$_GA_VERDICT" \
-                > "$_art/gate-aggregator-result.json"
-            _CYCLE_DISPATCH_VERDICT="$_GA_VERDICT"
-            _CYCLE_DISPATCH_VERDICT_RAW="$_GA_VERDICT"
-            _CYCLE_DISPATCH_FAULT="${_GA_FAULT:-}"
-            ;;
-        *)
-            # shape-floor, acceptance-gate, secret-scan: all pass (verdict
-            # defaults set above) so only the aggregator gates. (#1129 Change C
-            # dropped lint/coverage/mutation as cycle members.)
-            :
-            ;;
-    esac
-    return 0
-}
-
-_run_cycle() {
-    local _label="$1"
-    local _sd="$TEST_TEMP_DIR/run-$_label/state"
-    mkdir -p "$_sd/artifacts"
-    printf '{"schema_version":1,"status":"in_progress"}' > "$_sd/pipeline-state.json"
-    : > "$ZBUILD_EVENTS_JSONL"
-    set +e
-    cycle_orchestrator_run "build_test_cycle" "$_sd" "$_sd/pipeline-state.json"
-    _RUN_RC=$?
-    set -e
-}
-
-# #1208: the #1117 empty-diff STALL-BREAK was REMOVED. "Run all tries": an
-# empty_diff that never converges no longer terminates early — the cycle uses ALL
-# its iterations (each cheap: build self-yields on an empty diff) and then
-# terminates by-severity. Here the mock's `test` stage passes (gate-aggregator
-# fails), so exhaustion routes to rc=2 (unconverged→review, reason
-# max_iterations), NOT the old reason=stalled / ≤2-iter early break.
 print_test_section "SPEC-3: empty_diff + gate!=pass ⇒ runs ALL iters → rc=2 (no early stall-break, #1208)"
 _GA_VERDICT="fail"
 _run_cycle "stall"
@@ -282,93 +190,6 @@ if grep -q 'cycle.stalled' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
 else
     assert_pass "[SPEC-4] no cycle.stalled event on a clean converge"
 fi
-
-# ─── SPEC-5 (#2170): an unchanged tree re-yields the SAME verdicts, failing ones too ─
-# #1841: build changed nothing (blocked on testfiles it may not edit), so the
-# tree was identical to the previous iteration's — and the 25-minute suite ran
-# again to fail the same way, five times. #2117 reused only PASSING members;
-# a deterministic member's failure on the same tree is just as reusable.
-print_test_section "SPEC-5: empty_diff on the tree a previous iteration FAILED ⇒ that failure is reused, not re-run"
-_GA_VERDICT="fail"; _TEST_VERDICT="fail"; _AG_VERDICT="fail"
-_run_cycle "refail"
-_n_test_f="$(grep -c '"cycle.member.dispatch.complete".*"member":"test"' "$ZBUILD_EVENTS_JSONL" || true)"
-assert_eq "[SPEC-5] the FAILING test member is dispatched exactly ONCE across 5 iterations" "1" "$_n_test_f"
-_n_reused="$(grep -c '"cycle.iteration.reused".*"member":"test"' "$ZBUILD_EVENTS_JSONL" || true)"
-assert_eq "[SPEC-5] …and reused on each of the other four" "4" "$_n_reused"
-# An iteration-aware member (spec-acceptance escalates at iter >= 2, #2157) is
-# NOT reused on failure — its answer depends on the iteration, not just the tree.
-_n_ag_f="$(grep -c '"cycle.member.dispatch.complete".*"member":"acceptance-gate"' "$ZBUILD_EVENTS_JSONL" || true)"
-assert_eq "[SPEC-5b] the FAILING acceptance-gate (iteration-aware) is re-dispatched every iteration" "5" "$_n_ag_f"
-# …and once a member re-ran, everything after it runs too (its fault may have changed).
-_n_ga_f="$(grep -c '"cycle.member.dispatch.complete".*"member":"gate-aggregator"' "$ZBUILD_EVENTS_JSONL" || true)"
-assert_eq "[SPEC-5c] the gate-aggregator after a re-dispatched gate is re-dispatched too" "5" "$_n_ga_f"
-_AG_VERDICT="pass"
-# #2172: exhausted with the suite failing and a build that changed NOTHING is
-# the contract's problem, not the builder's — the loop widens to design.
-assert_eq "[SPEC-5] exhausted with tests failing and an unchanged tree routes back to design (rc=11)" "11" "$_RUN_RC"
-assert_eq "[SPEC-5] …with reason route_back" "route_back" "${_CYCLE_LAST_TERMINATED_REASON:-}"
-assert_eq "[SPEC-5] …to the template's route_back target" "design_verify_cycle" "${_CYCLE_ROUTE_BACK_TO:-}"
-_n_rb="$(grep -c '"cycle.route_back.exhausted_unchanged"' "$ZBUILD_EVENTS_JSONL" || true)"
-assert_eq "[SPEC-5] …and says why (cycle.route_back.exhausted_unchanged)" "1" "$_n_rb"
-_TEST_VERDICT="pass"
-
-# ─── SPEC-7 (#2183): a finding that did not reproduce is re-verified ───────
-# #1841 run 35802918016: the builder ran the named test 15 times, it passed
-# every time, and its prompt forbade saying so — six model calls and 92 minutes
-# went into proving a failure that does not exist on this tree. A stage may now
-# REPORT non-reproduction; it is not a verdict of done. The engine re-runs the
-# member that raised the finding, on the same tree, instead of reusing its
-# previous verdict — which is the only way to tell a real intermittent failure
-# from a stale one.
-print_test_section "SPEC-7: a reported non-reproduction re-runs the member that raised it"
-_GA_VERDICT="fail"; _TEST_VERDICT="fail"; _AG_VERDICT="fail"
-# Baseline: an unchanged tree reuses the failing member exactly once (#2170).
-_BUILD_NOT_REPRODUCED=""
-_run_cycle "no-report"
-_n_base="$(grep -c '"cycle.member.dispatch.complete".*"member":"test"' "$ZBUILD_EVENTS_JSONL" || true)"
-assert_eq "[SPEC-7 guard] with no report the failing member is dispatched once and reused after" "1" "$_n_base"
-# With the report, the member that raised the finding is dispatched again on
-# that same unchanged tree — the only way to tell a real intermittent failure
-# from a stale one.
-_BUILD_NOT_REPRODUCED="tests/integration/per-run-state-isolation-test.sh"
-_run_cycle "not-repro"
-_n_repro="$(grep -c '"cycle.member.dispatch.complete".*"member":"test"' "$ZBUILD_EVENTS_JSONL" || true)"
-if [[ "${_n_repro:-0}" -gt "${_n_base:-0}" ]]; then
-    assert_pass "[SPEC-7] the reported member is re-run rather than reused (${_n_repro} vs ${_n_base} without the report)"
-else
-    assert_fail "[SPEC-7] the reported member is re-run rather than reused" \
-        "dispatched ${_n_repro}x with the report, ${_n_base}x without — the stale failure was reused"
-fi
-_BUILD_NOT_REPRODUCED=""
-_TEST_VERDICT="pass"; _AG_VERDICT="pass"
-
-# ─── SPEC-6 (#2178): a build blocked on scope is the contract's problem too ─
-# Run 35674168348 ended `blocked_on_scope`: the builder needed files the
-# contract denies. Same class as SPEC-5 — the build cannot complete under the
-# current contract — so it takes the same edge, under the same budget. The
-# engine reads no reason from build; the denied request IS the signal.
-print_test_section "SPEC-6: a denied scope request routes back to design instead of ending the run"
-_BUILD_SCOPE_REQUEST='{"files":[{"path":"tests/unit/other-test.sh","category":"collateral_tests","evidence":"","reason":"named in test feedback"}]}'
-_GA_VERDICT="fail"
-_run_cycle "scope-rb"
-assert_eq "[SPEC-6] the cycle returns route_back (rc=11)" "11" "$_RUN_RC"
-assert_eq "[SPEC-6] after ONE iteration — no grinding" "1" "${_CYCLE_LAST_ITERATIONS:-}"
-assert_eq "[SPEC-6] to the template's route_back target" "design_verify_cycle" "${_CYCLE_ROUTE_BACK_TO:-}"
-assert_eq "[SPEC-6] the stashed fallback is the scope terminal (rc=7)" "7" "${_CYCLE_ROUTE_BACK_FALLBACK_RC:-}"
-assert_eq "[SPEC-6] …with its reason" "blocked_on_scope" "${_CYCLE_ROUTE_BACK_FALLBACK_REASON:-}"
-assert_eq "[SPEC-6] and says why (cycle.route_back.blocked_on_scope)" "1" \
-    "$(grep -c '"cycle.route_back.blocked_on_scope"' "$ZBUILD_EVENTS_JSONL" || true)"
-assert_eq "[SPEC-6] the denial itself is still recorded" "1" \
-    "$(grep -c '"cycle.scope.denied"' "$ZBUILD_EVENTS_JSONL" || true)"
-# With the edge's budget spent the old terminal stands: the run ends blocked.
-_RUNNER_ROUTE_BACK_PASSES=2
-_run_cycle "scope-nobudget"
-unset _RUNNER_ROUTE_BACK_PASSES
-assert_eq "[SPEC-6b] budget spent ⇒ blocked_on_scope terminal (rc=7)" "7" "$_RUN_RC"
-assert_eq "[SPEC-6b] …with reason blocked_on_scope" "blocked_on_scope" "${_CYCLE_LAST_TERMINATED_REASON:-}"
-assert_eq "[SPEC-6b] and no route_back event" "0" \
-    "$(grep -c '"cycle.route_back.blocked_on_scope"' "$ZBUILD_EVENTS_JSONL" || true)"
-_BUILD_SCOPE_REQUEST=""
 
 cleanup_test_env
 print_test_results
