@@ -264,7 +264,11 @@ write_boundary_sweep() {
         # `broken` — terminal per verdict.sh:648-651. The defect is that the
         # failure is invisible, not that it is tolerated.
         local _ferr _frc
-        _ferr="$(find "$_path" -maxdepth "$_depth" -mindepth 1 -type f -newer "$_marker" 2>&1 >&3)"
+        # #2201: git's internals (.git/index.lock, packed refs, …) are written
+        # by whatever process runs git — a concurrent test, a persist push — and
+        # are never a stage's output. Blamed on the dispatching stage they made it
+        # `broken`, which halts the run since #2197.
+        _ferr="$(find "$_path" -maxdepth "$_depth" -mindepth 1 \( -name .git -prune \) -o \( -type f -newer "$_marker" -print \) 2>&1 >&3)"
         _frc=$?
         if [[ $_frc -ne 0 ]]; then
             _wb_report_degraded "sweep_failed" "path=$_path" "rc=$_frc" "${_ferr//$'\n'/ }"
