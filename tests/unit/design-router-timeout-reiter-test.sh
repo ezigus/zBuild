@@ -288,6 +288,8 @@ else
     assert_fail "[SPEC-9b] → reason=stale_design_not_removed missing" \
         "events: $(cat "$ZBUILD_EVENTS_JSONL")"
 fi
+assert_eq "[SPEC-9c] → the result says so: disposition broken" "broken" \
+    "$(jq -r '.disposition // "ABSENT"' "$_F_ARTIFACTS/design-verdict.json" 2>/dev/null || echo ABSENT)"
 rm -rf "$_F_DESIGN"
 
 # ─── SPEC-12: timeout AFTER this call wrote a new design → kept, gate judges ─

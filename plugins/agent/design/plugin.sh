@@ -609,6 +609,12 @@ DESIGN_PROMPT
                 "The design is kept as written; spec-coverage and design-gate judge whether it is complete."
             emit_event "plugin.result" "verdict=incomplete" "plugin=design" "reason=router_timeout" "rc=$router_rc"
             emit_event "design.timeout.design_kept" "plugin=design" "reason=router_timeout"
+            # The kept design is what the operator needs to see in the deferred
+            # output banner (same close as the happy path below).
+            if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
+                _ROUTE_LOOP_FINAL_OUTPUT="$(cat "$output_design_md" 2>/dev/null || true)"
+                _route_loop_close_final_banner || true
+            fi
         else
             error "_design_stage_run_inner: router loop timed out without writing a design — publishing none"
             if ! rm -f "$output_design_md" 2>/dev/null || [[ -e "$output_design_md" ]]; then
@@ -617,6 +623,7 @@ DESIGN_PROMPT
                     "a stale design could not be removed" \
                     "An earlier pass's design.md is still on disk and would be judged as this one's."
                 emit_event "plugin.result" "verdict=error" "plugin=design" "reason=stale_design_not_removed" "rc=$router_rc"
+                _design_write_result "$artifact_dir" "error" "broken" "stale_design_not_removed"
                 return 1
             fi
             stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
