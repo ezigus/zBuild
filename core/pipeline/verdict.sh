@@ -648,6 +648,42 @@ runner_read_stage_fault() {
     printf '%s' "$_f_fault"
 }
 
+# ─── runner_read_stage_report <state_dir> <manifest> <stage> <rc> (#2189) ────
+# The contract fields the CYCLE acts on, read from the dispatched member's own
+# primary result — whichever stage it is. The engine never opens a stage's
+# artifact by name (ADR-055 §1): it reads this report off the member it just
+# dispatched, so a cycle only ever sees what ITS members reported THIS iteration.
+# Prints compact JSON:
+#   {changes:{files:[…],added:N,removed:N}?, scope_request:{…}?, not_reproduced:[…]?}
+# Fields are read from `data.*` first, then the legacy top-level names
+# (files_changed / lines_added / lines_removed / scope_expansion_request).
+runner_read_stage_report() {
+    local state_dir="$1" manifest="$2" stage="$3" rc="$4"
+    local _p_state _p_contract _p_verdict _p_disp _p_reason _p_viol _p_path _p_present
+    _verdict_read_result "$state_dir" "$manifest" "$stage" "$rc" _p
+    if [[ -z "$_p_path" || ! -s "$_p_path" ]]; then printf '{}'; return 0; fi
+    _verdict_report_from_file "$_p_path"
+}
+
+# _verdict_report_from_file <result.json> — the extraction runner_read_stage_report
+# applies to a member's primary result (split out so cycle-test stubs hand the
+# engine exactly what a real dispatch would).
+_verdict_report_from_file() {
+    local _p_path="$1"
+    [[ -s "$_p_path" ]] || { printf '{}'; return 0; }
+    jq -c '
+        def num($x): if ($x|type) == "number" then $x else 0 end;
+        ( .data.changes // (if (.files_changed // null) != null
+              then {files: .files_changed, added: num(.lines_added), removed: num(.lines_removed)}
+              else null end) ) as $ch
+        | ( .data.scope_request // .scope_expansion_request // null ) as $sr
+        | ( .data.not_reproduced // null ) as $nr
+        | {} + (if $ch != null then {changes: $ch} else {} end)
+             + (if $sr != null then {scope_request: $sr} else {} end)
+             + (if $nr != null then {not_reproduced: $nr} else {} end)
+    ' "$_p_path" 2>/dev/null || printf '{}'
+}
+
 # ─── runner_read_stage_disposition <state_dir> <manifest> <stage> <rc> ───────
 # ADR-054 §6 (#1821 exposed the field; #1822 gave it a vocabulary). Resolves the
 # disposition for one dispatch. Four outcomes, in precedence order:

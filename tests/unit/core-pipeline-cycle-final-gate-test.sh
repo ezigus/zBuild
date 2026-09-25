@@ -56,9 +56,8 @@ assert_eq "T5: rc=0" "0" "$rc"
 assert_eq "T5: ZBUILD_TEST_RED_SET unset when no red-set file" "" "${ZBUILD_TEST_RED_SET:-}"
 
 # ─── T6: _cycle_apply_feedback exports ZBUILD_TEST_CHANGED_FILES ──────────────
-print_test_section "T6. _cycle_apply_feedback exports ZBUILD_TEST_CHANGED_FILES from build-summary"
-jq -n '{files_changed:["core/foo.sh","plugins/bar/plugin.sh"]}' \
-    > "$STATE_DIR/artifacts/build-summary.json"
+print_test_section "T6. _cycle_apply_feedback exports ZBUILD_TEST_CHANGED_FILES from the members' reports (#2189)"
+_CYCLE_LAST_VERDICTS_BLOB='{"build":{"report":{"changes":{"files":["core/foo.sh","plugins/bar/plugin.sh"],"added":2,"removed":0}}}}'
 unset ZBUILD_TEST_CHANGED_FILES 2>/dev/null || true
 _CYCLE_FEEDBACK=()
 set +e; _cycle_apply_feedback 4 "$STATE_DIR"; rc=$?; set -e
@@ -69,12 +68,12 @@ assert_contains "T6: ZBUILD_TEST_CHANGED_FILES contains bar" "$_changed" "bar"
 
 # ─── T7: _cycle_apply_feedback unsets ZBUILD_TEST_CHANGED_FILES when no bsj ───
 print_test_section "T7. _cycle_apply_feedback unsets ZBUILD_TEST_CHANGED_FILES when absent"
-rm -f "$STATE_DIR/artifacts/build-summary.json"
+_CYCLE_LAST_VERDICTS_BLOB='{}'
 export ZBUILD_TEST_CHANGED_FILES="stale,files"
 _CYCLE_FEEDBACK=()
 set +e; _cycle_apply_feedback 5 "$STATE_DIR"; rc=$?; set -e
 assert_eq "T7: rc=0" "0" "$rc"
-assert_eq "T7: ZBUILD_TEST_CHANGED_FILES unset when no build-summary" \
+assert_eq "T7: ZBUILD_TEST_CHANGED_FILES unset when no member reported changes" \
     "" "${ZBUILD_TEST_CHANGED_FILES:-}"
 
 # ─── #2144: no run-mode reader, no gate, no suppression ──────────────────────
