@@ -130,6 +130,14 @@ plan_run() {
         "$artifacts_dir"
 }
 
+# ─── _plan_with_scope_files <plan-json> (#2189) ───────────────────────────────
+# The plan with `scope_files` added: its files[] and every step's files[],
+# de-duplicated. On a jq failure the plan is returned unchanged.
+_plan_with_scope_files() {
+    jq -c '. + {scope_files: ([(.files // []), [.steps[]?.files[]?]] | flatten | map(select(type == "string")) | unique)}' \
+        <<< "$1" 2>/dev/null || printf '%s' "$1"
+}
+
 # ─── _plan_validate_dod_discipline ──────────────────────────────────────────
 # Wave 19-F (#738): validate the produced plan against the issue body's
 # Definition-of-done / Anti-patterns / 5-test trial discipline. Returns 0
@@ -855,6 +863,9 @@ $_plan_instructions"
     fi
 
     # ─── Write plan.json ─────────────────────────────────────────────────────
+    # #2189: plan.json carries its own scope list, which the engine reads off
+    # the plan's report instead of re-deriving it from plan.json by path.
+    plan_json="$(_plan_with_scope_files "$plan_json")"
     printf '%s\n' "$plan_json" | atomic_write "$output_plan_json"
 
     local step_count

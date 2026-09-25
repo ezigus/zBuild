@@ -91,9 +91,15 @@ _ta_drop_stale_tags() {
 _ta_write_result() {
     local dir="$1" v="$2" d="$3" r="$4" n="${5:-0}"
     mkdir -p "$dir" 2>/dev/null || true
-    if ! jq -n --arg v "$v" --arg d "$d" --arg r "$r" --argjson n "${n:-0}" \
+    # #2189: the author REPORTS the testfiles it owns; the engine denies every
+    # other stage edits to them from this report (never from design.md by path).
+    local _owned="[]"
+    if [[ -s "$dir/design.md" ]] && declare -F acceptance_list_testfiles >/dev/null 2>&1; then
+        _owned="$(acceptance_list_testfiles "$dir/design.md" 2>/dev/null | jq -R . | jq -sc 'map(select(length > 0)) | unique' 2>/dev/null || printf '[]')"
+    fi
+    if ! jq -n --arg v "$v" --arg d "$d" --arg r "$r" --argjson n "${n:-0}" --argjson o "${_owned:-[]}" \
         '{result_contract: 2, verdict: $v, disposition: $d, reason: $r,
-          data: {specs_covered: $n}}' \
+          data: {specs_covered: $n, owned_files: $o}}' \
         | atomic_write "$dir/test-author-result.json"; then
         _ta_emit "test_author.result.write_failed" "dir=$dir"
     fi

@@ -172,6 +172,17 @@ _lc_manifest_role() {
     fi
 }
 
+# ─── _lc_owned_by_others_deny <state_dir> <stage> (#2189) ────────────────────
+# One absolute path per line: every file a stage OTHER than <stage> reported
+# owning (artifacts/stage-reports.json). Empty when nothing is owned.
+_lc_owned_by_others_deny() {
+    local rec="${1:-}/artifacts/stage-reports.json" me="${2:-}"
+    [[ -s "$rec" ]] || return 0
+    jq -r --arg me "$me" --arg root "${ZBUILD_REPO_ROOT:-.}" '
+        (.owned_files // {}) | to_entries[] | select(.key != $me) | .value[] | "\($root)/\(.)"' \
+        "$rec" 2>/dev/null | sort -u
+}
+
 plugin_hook_call() {
     local plugin_dir="$1"
     local hook_name="$2"   # run | cleanup (or kind-specific)
@@ -291,22 +302,11 @@ plugin_hook_call() {
         # plugin_dir/hook_name arguments away above. Looked up on the stage id
         # the role was always empty, so the author was denied its own testfiles
         # (invisible while the rule rendered as `Edit(/abs)`, #2163).
-        if [[ "$(_lc_manifest_role "$plugin_dir")" != "test_author" ]]; then
-            local _lc_design="${ZBUILD_ARTIFACT_DIR}/design.md" _lc_tf
-            local _lc_lib; _lc_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts/lib" 2>/dev/null && pwd)"
-            if [[ -f "$_lc_design" && -f "$_lc_lib/acceptance-block.sh" ]]; then
-                # Read in a subshell that sources the lib, mirroring the WIRING
-                # reader at runner.sh:1118: acceptance-block.sh is a plugin-side
-                # library and must not leak into the dispatch shell. A `declare
-                # -F` guard here would have left the deny list silently empty,
-                # which is the failure mode this boundary exists to prevent.
-                while IFS= read -r _lc_tf; do
-                    [[ -n "$_lc_tf" ]] || continue
-                    ZBUILD_PERMISSION_DENY_EDIT+="${ZBUILD_REPO_ROOT:-.}/${_lc_tf}"$'\n'
-                done < <( ( source "$_lc_lib/acceptance-block.sh" >/dev/null 2>&1 \
-                            && acceptance_list_testfiles "$_lc_design" ) 2>/dev/null || true )
-            fi
-        fi
+        # #2189: files ANOTHER stage reported owning (test-author reports the
+        # testfiles it authored) — from the run's stage-reports record, never
+        # design.md by path and never a role name. The owner is not denied.
+        ZBUILD_PERMISSION_DENY_EDIT+="$(_lc_owned_by_others_deny "$_ws_state_dir" "${1:-}")"
+        [[ -n "$ZBUILD_PERMISSION_DENY_EDIT" ]] && ZBUILD_PERMISSION_DENY_EDIT+=$'\n'
 
         # #2174: write ownership from the manifests (write-ownership.sh) —
         # other plugins' declared outputs, and the repo unless declared.

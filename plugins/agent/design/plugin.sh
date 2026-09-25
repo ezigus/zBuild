@@ -62,9 +62,16 @@ _design_write_result() {
     local _at _sha
     _at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     _sha="$(git -C "${ZBUILD_REPO_ROOT:-.}" rev-parse HEAD 2>/dev/null || true)"
+    # #2189: the design REPORTS the files its contract wires, so the engine never
+    # reads design.md by path to learn them.
+    local _wiring="[]"
+    if [[ -s "$dir/design.md" ]] && declare -F acceptance_list_wiring >/dev/null 2>&1; then
+        _wiring="$(acceptance_list_wiring "$dir/design.md" 2>/dev/null | jq -R . | jq -sc 'map(select(length > 0))' 2>/dev/null || printf '[]')"
+    fi
     jq -n --arg v "$verdict" --arg d "$disposition" --arg r "$reason" --arg at "$_at" --arg sha "$_sha" \
+        --argjson w "${_wiring:-[]}" \
         '{result_contract: 2, verdict: $v, disposition: $d, reason: $r,
-          data: {authored_at: $at, authored_at_commit: $sha}}' \
+          data: {authored_at: $at, authored_at_commit: $sha, wiring_files: $w}}' \
         | atomic_write "$dir/design-verdict.json" 2>/dev/null \
         || warn "_design_write_result: failed to write design-verdict.json (verdict=$verdict)"
 }

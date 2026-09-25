@@ -656,7 +656,7 @@ runner_read_stage_fault() {
 # Prints compact JSON:
 #   {changes:{files:[…],added:N,removed:N}?, scope_request:{…}?, not_reproduced:[…]?,
 #    tests:{failed:N}? (a numeric failed count), failed_items:[…]? (a failed list),
-#    reason:"…"?}
+#    reason:"…"?, scope_files:[…]?, owned_files:[…]?, wiring_files:[…]?}
 # Fields are read from `data.*` first, then the legacy top-level names
 # (files_changed / lines_added / lines_removed / scope_expansion_request).
 runner_read_stage_report() {
@@ -685,6 +685,9 @@ _verdict_report_from_file() {
              + (if ($fl|type) == "array"  then {failed_items: $fl} else {} end)
              + (if ((.reason // null)|type) == "string" then {reason: .reason} else {} end)
              + (if $ch != null then {changes: $ch} else {} end)
+             + ((.data.scope_files  // .scope_files  // null) as $x | if ($x|type) == "array" then {scope_files: $x}  else {} end)
+             + ((.data.owned_files  // .owned_files  // null) as $x | if ($x|type) == "array" then {owned_files: $x}  else {} end)
+             + ((.data.wiring_files // .wiring_files // null) as $x | if ($x|type) == "array" then {wiring_files: $x} else {} end)
              + (if $sr != null then {scope_request: $sr} else {} end)
              + (if $nr != null then {not_reproduced: $nr} else {} end)
     ' "$_p_path" 2>/dev/null || printf '{}'
