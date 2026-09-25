@@ -570,6 +570,9 @@ DESIGN_PROMPT
     else
         export ZBUILD_STAGE_IO_PERSONA=architect:fallback
     fi
+    # #2186: what design.md was before THIS call — on a timeout, whether the call
+    # wrote a new design is the one fact that decides what gets published.
+    local _design_before; _design_before="$(cksum < "$output_design_md" 2>/dev/null || printf 'absent')"
     route_to_model_loop "$tier" "$prompt_input_file" "$repo_root" "$max_iter" \
         --scope-allowlist "$plan_files_csv" \
         --defer-final-banner-close || router_rc=$?
@@ -584,53 +587,48 @@ DESIGN_PROMPT
         return 130
     fi
 
-    # #945: a persistent router timeout is a RECOVERABLE YIELD, not an rc.
-    # route_to_model_loop absorbs repeated per-turn timeouts and RETURNS 0 with
-    # _ROUTE_LOOP_TERMINATED_REASON=router_timeout (core/router/route.sh, the
-    # #1208 non-fatal-timeout contract) — it does NOT return 124 to the plugin.
-    # So detect the timeout via the terminated-reason signal (the same signal
-    # build reads), regardless of router_rc. Do NOT converge on a stub:
-    # overwrite design.md with a MINIMAL gate-FAILING marker that carries NO
-    # ```acceptance block, so design-gate C2 (ACCEPTANCE_MISSING) fails and
-    # design_verify_cycle RE-ITERATES rather than accepting an incomplete design
-    # (ADR-021 Amendment #945). Overwriting also clears any stale design.md from
-    # a prior iteration. The marker is a fixed, safe string — no scope_list
-    # interpolation (avoids a ``` fence-injection) and no possibly-unset var
-    # under set -u. Guard the write: only emit design.timeout.stub_written when
-    # the marker actually lands; a FAILED write is a genuine filesystem/infra
-    # error (not a recoverable timeout) → return 1 (terminal) rather than
-    # masking it with rc=0 and leaving the cycle with no artifact.
+    # #945/#1208: a persistent router timeout is a RECOVERABLE YIELD — the loop
+    # returns 0 and says so in _ROUTE_LOOP_TERMINATED_REASON=router_timeout.
+    # #2186: what gets published depends only on what THIS call did to
+    # design.md. Never fabricate a design (the #945 marker overwrote a complete
+    # one on #1849, run 35949629759):
+    #   - changed by this call → keep it as written; spec-coverage and
+    #     design-gate judge whether it is complete.
+    #   - unchanged → publish nothing: remove the stale copy so an earlier
+    #     pass's design is not judged as this one's; the gate then fails and
+    #     the cycle re-iterates. A copy that cannot be removed is terminal.
+    # Either way the sidecar says incomplete/interrupted (#1261), which the
+    # cycle reads as "this iteration did not finish".
     if [[ "${_ROUTE_LOOP_TERMINATED_REASON:-}" == "router_timeout" ]]; then
-        error "_design_stage_run_inner: router loop timed out (reason=router_timeout) — writing gate-failing marker to re-iterate"
-        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
-            "the model call timed out before a design was returned" \
-            "No design.md was authored. This is an infrastructure fault, not a design one."
-        emit_event "plugin.result" "verdict=error" "plugin=design" "reason=router_timeout" "rc=$router_rc"
+        local _design_after; _design_after="$(cksum < "$output_design_md" 2>/dev/null || printf 'absent')"
         mkdir -p "$artifact_dir"
-        if printf '# Design incomplete — router timeout, re-iterating\n\nDesign did not complete (reason=router_timeout). No acceptance block is emitted, so the design-gate rejects this artifact and the design cycle re-iterates.\n' \
-                > "$output_design_md"; then
-            emit_event "design.timeout.stub_written" "plugin=design" "rc=$router_rc" "reason=router_timeout"
-            # #1261: surface a did_not_finish verdict (mirroring build/#1208) so
-            # the cycle sees the timeout uniformly. This is IN ADDITION to the
-            # gate-failing marker above (which still drives #945 re-iteration on
-            # non-final iters). At exhaustion, a did_not_finish TAIL lets the
-            # cycle HALT (design_timeout_exhausted) instead of falling through to
-            # build with an empty design. Non-fatal (the marker above still drives
-            # #945 re-iteration), but a FAILED write must be VISIBLE — this sidecar
-            # is the load-bearing exhaustion-halt signal; silently dropping it
-            # would degrade to the pre-#1261 empty-design fall-through with no
-            # trace. Mirror the #945 marker-write's fail-loud handling via warn.
-            printf '{"result_contract":2,"verdict":"incomplete","disposition":"interrupted","reason":"router_timeout"}\n' \
-                > "$design_verdict_sidecar" 2>/dev/null \
-                || warn "_design_stage_run_inner: failed to write incomplete sidecar $design_verdict_sidecar (timeout-exhaustion halt may not fire)"
-            return 0
+        if [[ -s "$output_design_md" && "$_design_after" != "$_design_before" ]]; then
+            warn "_design_stage_run_inner: router loop timed out after writing design.md — keeping it for the gates to judge"
+            stage_summary_write "$artifact_dir/design-summary.md" "design" "incomplete" \
+                "the model call timed out after writing a design" \
+                "The design is kept as written; spec-coverage and design-gate judge whether it is complete."
+            emit_event "plugin.result" "verdict=incomplete" "plugin=design" "reason=router_timeout" "rc=$router_rc"
+            emit_event "design.timeout.design_kept" "plugin=design" "reason=router_timeout"
+        else
+            error "_design_stage_run_inner: router loop timed out without writing a design — publishing none"
+            if ! rm -f "$output_design_md" 2>/dev/null || [[ -e "$output_design_md" ]]; then
+                error "_design_stage_run_inner: could not remove the stale design at $output_design_md"
+                stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+                    "a stale design could not be removed" \
+                    "An earlier pass's design.md is still on disk and would be judged as this one's."
+                emit_event "plugin.result" "verdict=error" "plugin=design" "reason=stale_design_not_removed" "rc=$router_rc"
+                return 1
+            fi
+            stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
+                "the model call timed out before a design was returned" \
+                "No design.md was authored. This is an infrastructure fault, not a design one."
+            emit_event "plugin.result" "verdict=error" "plugin=design" "reason=router_timeout" "rc=$router_rc"
+            emit_event "design.timeout.no_design" "plugin=design" "reason=router_timeout"
         fi
-        error "_design_stage_run_inner: failed to write timeout marker to $output_design_md"
-        stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
-            "could not record the design marker" \
-            "A design may have been authored but could not be committed to the artifact dir."
-        emit_event "plugin.result" "verdict=error" "plugin=design" "reason=marker_write_failed" "rc=$router_rc"
-        return 1
+        printf '{"result_contract":2,"verdict":"incomplete","disposition":"interrupted","reason":"router_timeout"}\n' \
+            > "$design_verdict_sidecar" 2>/dev/null \
+            || warn "_design_stage_run_inner: failed to write incomplete sidecar $design_verdict_sidecar (timeout-exhaustion halt may not fire)"
+        return 0
     fi
 
     # #2111: the router hit the account's rate limit. Say so in the result —
