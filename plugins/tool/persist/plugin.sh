@@ -54,19 +54,7 @@ source "$_ZBUILD_PERSIST_ROOT/scripts/lib/secret-patterns.sh"
 # unreliable, and a credential in a binary artifact is not a shape this
 # pipeline produces.
 _persist_scan_artifacts() {
-    local art_dir="$1" f rel kind
-    [[ -d "$art_dir" ]] || return 1
-    while IFS= read -r -d '' f; do
-        # Skip anything that is not text. `grep -Iq .` returns non-zero for a
-        # binary file, which is the cheapest portable test available.
-        grep -Iq . "$f" 2>/dev/null || continue
-        if kind="$(zbuild_scan_secret_content "$(cat "$f" 2>/dev/null)")"; then
-            rel="${f#"$art_dir"/}"
-            printf '%s:%s' "$rel" "$kind"
-            return 0
-        fi
-    done < <(find "$art_dir" -type f -print0 2>/dev/null)
-    return 1
+    _artifact_persist_find_secret "$1"
 }
 
 # ─── persist_run <stage_id> <state_file> ─────────────────────────────────────
