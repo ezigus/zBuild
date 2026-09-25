@@ -75,7 +75,6 @@ Each stage is defined by:
 | intake | agent | T1 | init, run, finalize | scope-manifest.md† | true |
 | plan | agent | T2 | init, run, finalize | plan.json | true |
 | design | agent | T3 | init, run, finalize | design.md | true |
-| test-author | agent | T2 | run | test-author-result.json | true‡ |
 | build | agent | T2 | init, run, finalize | build-summary.json | true |
 | test | tool | T0 | init, run, finalize | test-results.json | true |
 | test_assessment | agent | T2 | init, run, finalize, cleanup | test-assessment.json | true†† |
@@ -89,8 +88,6 @@ Each stage is defined by:
 | deploy | tool | T0 | init, run, finalize | deploy.log | true |
 | validate | tool | T0 | init, run, finalize | validate-result.json | true |
 | monitor | agent | T1 | init, run, finalize, cleanup | monitor-report.json | false |
-
-‡ `test-author` (#2022) is blocking since #2188: when it authors no assertions (after its `retry:` budget), the cycle stops before `build`, which would otherwise write its own acceptance tests — the correlated-error defect #2022 exists to remove. Blocking is not convergence: it is not an `exit_when` gate, so ADR-040 §5 is unaffected. Its testfiles are committed after every attempt, partial ones included, so a retry continues from them.
 
 † `intake`'s `scope-manifest.md` is written to `state/scope-manifest.md` directly, not under `state/artifacts/`, because every downstream redaction call must find it at this stable path.
 
@@ -570,3 +567,5 @@ absent (non-dry-run); `health-check` enforces an http(s) scheme allowlist (SSRF 
 `deploy-release` sanitizes the run id into the git tag, rolls back the local tag on push
 failure, and builds all result JSON via `jq -n` (injection-safe). The unused `router`
 `requires.core` entry was dropped from both agent manifests (no `route_to_model` call).
+
+**Amendment (2026-09-25, #2188) — `test-author` is blocking.** `test-author` (#2022, not a canonical stage id) is blocking since #2188: when it authors no assertions (after its `retry:` budget), the cycle stops before `build`, which would otherwise write its own acceptance tests — the correlated-error defect #2022 exists to remove. Blocking is not convergence: it is not an `exit_when` gate, so ADR-040 §5 is unaffected. Its testfiles are committed after every attempt, partial ones included, so a retry continues from them.
