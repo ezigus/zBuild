@@ -15,6 +15,9 @@
 #   run) pushes nothing at a stage end — the persist stage still does at the end.
 # SPEC-5 [change]: a snapshot whose artifacts look like they carry a credential is
 #   not pushed (the persist stage's refusal, now on every push path).
+# SPEC-6 [change]: …but the run's code commits still go to the work branch — the
+#   scan covers artifacts, not the working tree.
+# SPEC-7 [change]: a credential scan that cannot load refuses the push.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -101,7 +104,26 @@ _state_before="$(_on_origin "$STATE_BRANCH")"
 printf 'token=ghp_%s\n' "abcdefghijklmnopqrstuvwxyz0123456789" > "$STATE/artifacts/leak.txt"
 ( cd "$REPO" && ZBUILD_WORKSPACE_BRANCH="zbuild/issue-$_ID-ci" _runner_snapshot_artifacts "$STATE" "build" ) >/dev/null 2>&1
 assert_eq "[SPEC-5] the state branch on origin did not move" "$_state_before" "$(_on_origin "$STATE_BRANCH")"
+# SPEC-6: the scan covers artifacts only — the run's code commits still go out.
+( cd "$REPO" && echo more > w2.txt && git add w2.txt && git commit -q -m "more work" ) >/dev/null 2>&1
+( cd "$REPO" && ZBUILD_WORKSPACE_BRANCH="zbuild/issue-$_ID-ci" _runner_snapshot_artifacts "$STATE" "build" ) >/dev/null 2>&1
+assert_eq "[SPEC-6] a credential in artifacts does not hold back the run's commits" \
+    "$(git -C "$REPO" rev-parse HEAD)" "$(_on_origin "zbuild/issue-$_ID-ci")"
 rm -f "$STATE/artifacts/leak.txt"
+
+# ─── SPEC-7: a scanner that cannot load refuses, it does not pass ────────────
+print_test_section "SPEC-7: the credential scan fails closed"
+_iso="$TEST_TEMP_DIR/iso/core/state"; mkdir -p "$_iso"
+cp "$REPO_ROOT/core/state/artifact-persist.sh" "$_iso/"
+mkdir -p "$TEST_TEMP_DIR/clean-art"; printf 'nothing secret\n' > "$TEST_TEMP_DIR/clean-art/a.txt"
+_s7="$(
+    unset -f zbuild_scan_secret_content
+    unset _ZBUILD_ARTIFACT_PERSIST_LOADED
+    # shellcheck source=/dev/null
+    source "$_iso/artifact-persist.sh" 2>/dev/null
+    _artifact_persist_find_secret "$TEST_TEMP_DIR/clean-art" && echo "REFUSED" || echo "PASSED"
+)"
+assert_contains "[SPEC-7] with no scanner available the push is refused" "$_s7" "REFUSED"
 
 # ─── control: the harness snapshots a PASSING member (so SPEC-1 tests rc, not setup)
 ( cd "$REPO" && _CYCLE_TRAP_CYCLE_ID=c _CYCLE_TRAP_ITER=1 \

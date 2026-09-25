@@ -250,6 +250,9 @@ _runner_snapshot_artifacts() {
         _ARTIFACT_PERSIST_LAST_STATUS="failed"
         _ARTIFACT_PERSIST_LAST_REASON="refusing to push — artifact looks like it carries a credential (${_leak})"
         _runner_note_push_failure "$_snap_stage"
+        # The scan covers the artifact area, not the working tree: the run's
+        # code commits still go to the work branch.
+        _runner_push_work_branch "$_snap_state_dir" "$_snap_stage"
         return 0
     fi
     if [[ "${_ARTIFACT_PERSIST_LAST_STATUS:-}" == "saved" ]]; then

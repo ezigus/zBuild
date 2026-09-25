@@ -60,6 +60,13 @@ _ARTIFACT_PERSIST_LAST_SKIPPED=0
 
 # Reset the outcome channel. Called at the top of every public entry point so a
 # caller can never read a stale status from a previous invocation.
+_artifact_persist_reset_status() {
+    _ARTIFACT_PERSIST_LAST_SOURCE=""
+    _ARTIFACT_PERSIST_LAST_STATUS=""
+    _ARTIFACT_PERSIST_LAST_REASON=""
+    _ARTIFACT_PERSIST_LAST_SKIPPED=0
+}
+
 # ─── _artifact_persist_find_secret <artifacts_dir> (#2187) ───────────────────
 # Echo "<relpath>:<kind>" for the first text artifact that looks like it carries
 # a credential, rc 0; rc 1 when none does. The ONE scan every push path runs —
@@ -70,7 +77,11 @@ _artifact_persist_find_secret() {
     [[ -d "$art_dir" ]] || return 1
     if ! declare -F zbuild_scan_secret_content >/dev/null 2>&1; then
         # shellcheck source=../../scripts/lib/secret-patterns.sh
-        source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts/lib" && pwd)/secret-patterns.sh" 2>/dev/null || return 1
+        source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts/lib" 2>/dev/null && pwd)/secret-patterns.sh" 2>/dev/null || {
+            # No scanner, no proof the content is clean: refuse, never pass.
+            printf '%s:scan_unavailable' "${art_dir##*/}"
+            return 0
+        }
     fi
     while IFS= read -r -d '' f; do
         # Skip anything that is not text. `grep -Iq .` returns non-zero for a
@@ -83,13 +94,6 @@ _artifact_persist_find_secret() {
         fi
     done < <(find "$art_dir" -type f -print0 2>/dev/null)
     return 1
-}
-
-_artifact_persist_reset_status() {
-    _ARTIFACT_PERSIST_LAST_SOURCE=""
-    _ARTIFACT_PERSIST_LAST_STATUS=""
-    _ARTIFACT_PERSIST_LAST_REASON=""
-    _ARTIFACT_PERSIST_LAST_SKIPPED=0
 }
 
 # ─── _artifact_persist_has_identity <issue> [goal] ───────────────────────────
