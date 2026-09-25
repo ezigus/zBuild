@@ -65,6 +65,10 @@ cycle_dispatch_stage() {
     done
     return 0
 }
+# #2189: the stub plays the test stage, which reports a test count.
+# shellcheck source=../lib/cycle-report-stub.sh
+source "$REPO_ROOT/tests/lib/cycle-report-stub.sh"
+zb_stub_reports_tests test
 
 # shellcheck disable=SC1090
 source "$REPO_ROOT/core/pipeline/template.sh"

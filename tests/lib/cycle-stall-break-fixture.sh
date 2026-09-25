@@ -97,6 +97,10 @@ cycle_dispatch_stage() {
     esac
     return 0
 }
+# #2189: the stub plays the test stage, which reports a test count.
+# shellcheck source=cycle-report-stub.sh
+source "$REPO_ROOT/tests/lib/cycle-report-stub.sh"
+zb_stub_reports_tests test
 
 _run_cycle() {
     local _label="$1"
