@@ -78,6 +78,14 @@ assert_eq "[SPEC-1] changes.added" "7" "$(jq -r '.changes.added' <<< "$_rep" 2>/
 assert_eq "[SPEC-1] changes.removed" "2" "$(jq -r '.changes.removed' <<< "$_rep" 2>/dev/null)"
 assert_eq "[SPEC-1] scope_request" "docs/x.md" "$(jq -r '.scope_request.files[0].path' <<< "$_rep" 2>/dev/null)"
 assert_eq "[SPEC-1] not_reproduced" '["test"]' "$(jq -c '.not_reproduced' <<< "$_rep" 2>/dev/null)"
+# The v2 shape — fields under data.* — takes precedence over the legacy names.
+jq -n '{result_contract:2, verdict:"pass", disposition:"complete", reason:"r",
+        files_changed:["legacy.sh"],
+        data:{changes:{files:["new.sh"],added:4,removed:0},
+              scope_request:{files:[{path:"docs/y.md",category:"collateral_docs"}]}}}' > "$ART/rp-result.json"
+_rep="$(runner_read_stage_report "$STATE" "$PD/manifest.yaml" rp 0 2>/dev/null)"
+assert_eq "[SPEC-1] data.changes wins over the legacy fields" '["new.sh"]' "$(jq -c '.changes.files' <<< "$_rep" 2>/dev/null)"
+assert_eq "[SPEC-1] data.scope_request is read" "docs/y.md" "$(jq -r '.scope_request.files[0].path' <<< "$_rep" 2>/dev/null)"
 
 # ─── SPEC-2/3 ────────────────────────────────────────────────────────────────
 print_test_section "SPEC-2/3: only a request reported this iteration is resolved"
