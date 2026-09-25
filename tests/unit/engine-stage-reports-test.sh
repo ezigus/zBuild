@@ -15,6 +15,10 @@
 #   and never its own — no role name is consulted.
 # SPEC-6 [change]: the stages report them — plan its scope files (in plan.json),
 #   design its WIRING files, test-author the testfiles it owns.
+# SPEC-7 [change]: reports recorded concurrently (parallel members) all land —
+#   none is lost to a sibling's read-modify-write.
+# SPEC-8 [change]: every dispatch boundary records its report — cycle, parallel
+#   and the linear leaf path — so no stage's report is dropped by how it ran.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -81,16 +85,39 @@ print_test_section "SPEC-6: the stages report the fields"
 S6="$TEST_TEMP_DIR/s6"; mkdir -p "$S6"
 printf '%s\n' '# D' '```acceptance' 'SPEC-1[change]: x' 'TESTFILES:' 'SPEC-1: tests/acc-test.sh' 'WIRING: scripts/lib/wired.sh' '```' > "$S6/design.md"
 _d6="$( source "$REPO_ROOT/plugins/agent/design/plugin.sh" >/dev/null 2>&1
+        declare -F _design_write_result >/dev/null || { echo "design plugin.sh did not load"; exit; }
         _design_write_result "$S6" pass complete "ok" >/dev/null 2>&1
         jq -c '.data.wiring_files' "$S6/design-verdict.json" 2>/dev/null )"
 assert_eq "[SPEC-6] design reports its WIRING files" '["scripts/lib/wired.sh"]' "$_d6"
 _t6="$( source "$REPO_ROOT/plugins/agent/test-author/plugin.sh" >/dev/null 2>&1
+        declare -F _ta_write_result >/dev/null || { echo "test-author plugin.sh did not load"; exit; }
         _ta_write_result "$S6" complete complete "ok" 1 >/dev/null 2>&1
         jq -c '.data.owned_files' "$S6/test-author-result.json" 2>/dev/null )"
 assert_eq "[SPEC-6] test-author reports the testfiles it owns" '["tests/acc-test.sh"]' "$_t6"
 _p6="$( source "$REPO_ROOT/plugins/agent/plan/plugin.sh" >/dev/null 2>&1
+        declare -F _plan_with_scope_files >/dev/null || { echo "plan plugin.sh did not load"; exit; }
         _plan_with_scope_files '{"files":["a.sh"],"steps":[{"files":["b.sh","a.sh"]}]}' 2>/dev/null | jq -c '.scope_files' )"
 assert_eq "[SPEC-6] plan.json carries its scope files" '["a.sh","b.sh"]' "$_p6"
+
+print_test_section "SPEC-7: concurrent records all land"
+S7="$TEST_TEMP_DIR/s7"; mkdir -p "$S7/artifacts"
+for _i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    _runner_record_report "$S7" "m$_i" "{\"owned_files\":[\"t$_i.sh\"],\"scope_files\":[\"s$_i.sh\"]}" &
+done
+wait
+assert_eq "[SPEC-7] every member's owned files are kept" "12" \
+    "$(jq '.owned_files | length' "$S7/artifacts/stage-reports.json" 2>/dev/null)"
+assert_eq "[SPEC-7] every member's scope files are unioned" "12" \
+    "$(jq '.scope_files | length' "$S7/artifacts/stage-reports.json" 2>/dev/null)"
+
+print_test_section "SPEC-8: every dispatch boundary records its report"
+_rn="$REPO_ROOT/core/pipeline/runner.sh"
+for _b in '_runner_record_report "$state_dir" "$_cd_stage"' \
+          '_runner_record_report "$state_dir" "$_pd_stage"' \
+          '_runner_record_report "$state_dir" "$stage"'; do
+    _n="$(/usr/bin/grep -cF "$_b" "$_rn" 2>/dev/null)" || _n=0
+    assert_eq "[SPEC-8] $_b" "1" "$_n"
+done
 
 print_test_results
 exit $((FAIL > 0))

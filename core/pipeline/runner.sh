@@ -484,13 +484,22 @@ _runner_export_scope_allowlist() {
 # wiring files are unioned; owned files are kept per reporting stage, so the
 # deny list can exempt the owner. Engine setup reads THIS record — never a
 # stage's artifact by name. Best-effort: a failed merge leaves the prior record.
+# Parallel members record concurrently, so the read-merge-write holds a mkdir
+# lock (portable; flock is absent on stock macOS) — else a sibling's merge is lost.
+# A lock left by a killed holder is reclaimed after 10s.
 _runner_record_report() {
     local state_dir="$1" stage="$2" report="${3:-}"
     [[ -n "$state_dir" && -n "$stage" && -n "$report" && "$report" != "{}" ]] || return 0
     local rec="$state_dir/artifacts/stage-reports.json" tmp
-    mkdir -p "$state_dir/artifacts" 2>/dev/null || return 0
+    local lock="$state_dir/.stage-reports.lock" _tries=0
+    [[ -d "$state_dir/artifacts" ]] || mkdir -p "$state_dir/artifacts" 2>/dev/null || return 0
+    until mkdir "$lock" 2>/dev/null; do
+        # A merge takes milliseconds; a lock held 10s belongs to a dead holder.
+        if (( ++_tries > 200 )); then rmdir "$lock" 2>/dev/null; _tries=0; fi
+        sleep 0.05
+    done
     [[ -s "$rec" ]] || printf '{}' > "$rec"
-    tmp="$rec.tmp.$$"
+    tmp="$rec.tmp.$BASHPID"
     if jq --arg s "$stage" --argjson r "$report" '
             .scope_files  = ((.scope_files  // []) + ($r.scope_files  // []) | unique)
           | .wiring_files = ((.wiring_files // []) + ($r.wiring_files // []) | unique)
@@ -501,6 +510,7 @@ _runner_record_report() {
     else
         rm -f "$tmp"
     fi
+    rmdir "$lock" 2>/dev/null
     return 0
 }
 
@@ -2878,6 +2888,9 @@ main() {
         _PARALLEL_DISPATCH_VERDICT_RAW="$(runner_read_stage_verdict_raw "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" 2>/dev/null || echo "missing")"
         [[ -z "$_PARALLEL_DISPATCH_VERDICT_RAW" ]] && _PARALLEL_DISPATCH_VERDICT_RAW="missing"
         _PARALLEL_DISPATCH_REASON="$(runner_read_stage_reason "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" 2>/dev/null || echo "")"
+        # #2189: the same report record the cycle boundary keeps.
+        _runner_record_report "$state_dir" "$_pd_stage" \
+            "$(runner_read_stage_report "$state_dir" "$_pd_manifest" "$_pd_stage" "$_pd_rc" 2>/dev/null || printf '{}')"
         if [[ $_pd_rc -eq 0 ]]; then
             _PARALLEL_DISPATCH_STATUS="complete"
         else
@@ -3759,6 +3772,11 @@ main() {
             fi
             # rc=0: the strategies dispatch generated work units that call
             # plugin_hook_call, so scan_plugin_outputs has already run per member.
+        fi
+        # #2189: the linear leaf path keeps the same report record.
+        if [[ -n "${plugin_dir:-}" ]]; then
+            _runner_record_report "$state_dir" "$stage" \
+                "$(runner_read_stage_report "$state_dir" "$plugin_dir/manifest.yaml" "$stage" "$rc" 2>/dev/null || printf '{}')"
         fi
 
         if [[ $rc -eq 0 ]]; then
