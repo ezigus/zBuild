@@ -304,7 +304,7 @@ _review_lens_run_inner() {
     # degrade paths. Write disposition:exhausted and propagate rc=10 so the engine
     # can apply the §3 escalation (disposition.sh:97 → route.sh:749 +50% retry).
     if [[ "$router_rc" -eq 10 ]]; then
-        _review_lens_write_result "$out" "degraded" "exhausted" "budget_exhausted"
+        _review_lens_write_result "$out" "degraded" "out_of_turns" "budget_exhausted"
         return 10
     fi
 
@@ -312,7 +312,9 @@ _review_lens_run_inner() {
     # A failed or unparseable lens degrades to empty (advisory — never fatal).
     if [[ $router_rc -ne 0 || -z "$raw_response" ]]; then
         emit_event "review_lens.failed" "lens=$lens" "router_rc=$router_rc"
-        _review_lens_write_result "$out" "degraded" "broken" "router_error"
+        local _rl_v="" _rl_r=""
+        _router_rc_classify "$router_rc" _rl_v _rl_r 2>/dev/null || true
+        _review_lens_write_result "$out" "degraded" "$(router_reason_disposition "${_rl_r:-router_rc_nonzero}")" "router_error"
         stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "skip" \
             "the model call failed, so this lens reviewed nothing" \
             "Advisory lens: no findings were produced. Absence here is not evidence of a clean change."
@@ -328,7 +330,7 @@ _review_lens_run_inner() {
     _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok "$raw_response" json prose
     if [[ -z "$json" ]] || ! printf '%s' "$json" | jq empty >/dev/null 2>&1; then
         emit_event "review_lens.unparseable" "lens=$lens"
-        _review_lens_write_result "$out" "degraded" "broken" "unparseable_reply"
+        _review_lens_write_result "$out" "degraded" "unusable" "unparseable_reply"
         stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "skip" \
             "the model returned unparseable JSON, so this lens reviewed nothing" \
             "Advisory lens: no findings were produced. Absence here is not evidence of a clean change."
@@ -366,7 +368,7 @@ _review_lens_run_inner() {
         }' 2>/dev/null || true)"
     if [[ -z "$normalized" ]]; then
         emit_event "review_lens.unparseable" "lens=$lens"
-        _review_lens_write_result "$out" "degraded" "broken" "normalization_failed"
+        _review_lens_write_result "$out" "degraded" "unusable" "normalization_failed"
         stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "skip" \
             "the lens response could not be normalised, so this lens reviewed nothing" \
             "Advisory lens: no findings were produced. Absence here is not evidence of a clean change."

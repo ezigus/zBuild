@@ -138,7 +138,7 @@ print_test_section "4. inert_build false-completion guard — new format (#1832)
 
 # [SPEC-7 is in build-false-completion-guard-test.sh]
 # Here we verify the new build-summary format for the inert_build case:
-# verdict=fail + disposition=broken + data.build_kind=inert_build
+# verdict=fail + disposition=complete (#2187) + data.build_kind=inert_build
 INERT_FIXTURE="$ZBUILD_STATE_DIR/artifacts/build-summary.json"
 cat > "$INERT_FIXTURE" <<'EOF'
 {
@@ -152,7 +152,7 @@ cat > "$INERT_FIXTURE" <<'EOF'
   "iterations": 1,
   "terminated_reason": "done_sentinel",
   "verdict": "fail",
-  "disposition": "broken",
+  "disposition": "complete",
   "reason": "false_completion_detected",
   "data": {"build_kind": "inert_build"},
   "failing_acceptance_testfile": "tests/unit/some-test.sh",
@@ -185,7 +185,7 @@ assert_eq "data.build_kind=inert_build in new format" "inert_build" "$inert_kind
 
 # disposition=broken for the false-completion case
 inert_disp=$(jq -r '.disposition // ""' "$INERT_FIXTURE")
-assert_eq "disposition=broken for inert_build case" "broken" "$inert_disp"
+assert_eq "disposition=complete for inert_build case — the verdict carries it (#2187)" "complete" "$inert_disp"
 
 print_test_section "5. build plugin PRODUCES the inert_build signal from a red acceptance testfile"
 

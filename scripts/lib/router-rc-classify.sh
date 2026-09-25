@@ -122,6 +122,13 @@ _router_rc_classify() {
         printf -v "$reason_var"  '%s' "router_rate_limited"
         return 0
     fi
+    # #2187: the sync router records a turn-budget hit (subtype error_max_turns),
+    # which otherwise surfaces as a generic rc=1.
+    if [[ "$rc" != 0 && "${_ROUTE_LAST_BUDGET_EXHAUSTED:-0}" == "1" ]]; then
+        printf -v "$verdict_var" '%s' "error"
+        printf -v "$reason_var"  '%s' "router_out_of_turns"
+        return 0
+    fi
     case "$rc" in
         0)
             printf -v "$verdict_var" '%s' ""
@@ -134,6 +141,12 @@ _router_rc_classify() {
         137)
             printf -v "$verdict_var" '%s' "error"
             printf -v "$reason_var"  '%s' "router_oom_kill"
+            ;;
+        2)
+            # #2187: rc=2 is the router's own setup check failing (unknown
+            # tier, missing models.json) — the operator's to fix.
+            printf -v "$verdict_var" '%s' "fail"
+            printf -v "$reason_var"  '%s' "router_config_error"
             ;;
         *)
             printf -v "$verdict_var" '%s' "fail"
@@ -209,4 +222,21 @@ _router_clear_throttle_marker() {
     [[ -z "$_m" ]] && return 0
     rm -f "$_m" 2>/dev/null || true
     return 0
+}
+
+# ─── router_reason_disposition <reason> (#2187, ADR-054 §6a) ─────────────────
+# The ONE mapping from a router or router-loop reason to the disposition word
+# that names its cause. Stages call this instead of keeping their own copy.
+# Prints nothing for an empty reason (no failure).
+router_reason_disposition() {
+    case "${1-}" in
+        "")                                  return 0 ;;
+        router_timeout)                      printf 'timed_out' ;;
+        router_out_of_turns|max_iterations)  printf 'out_of_turns' ;;
+        router_rate_limited)                 printf 'rate_limited' ;;
+        router_oom_kill|signal|sigint)       printf 'interrupted' ;;
+        router_config_error)                 printf 'misconfigured' ;;
+        no_progress)                         printf 'unusable' ;;
+        *)                                   printf 'unavailable' ;;
+    esac
 }

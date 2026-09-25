@@ -202,12 +202,12 @@ print_test_section "5. A stage that wrote a result keeps its own word"
 # writing a v2 result is not re-classified — the engine's inference applies only
 # where the stage said nothing.
 _d="$(_mkstage spoke_then_died '
-    printf %s "{\"result_contract\":2,\"verdict\":\"fail\",\"disposition\":\"exhausted\",\"reason\":\"budget\"}" \
+    printf %s "{\"result_contract\":2,\"verdict\":\"fail\",\"disposition\":\"out_of_turns\",\"reason\":\"budget\"}" \
         > "$ZBUILD_STATE_DIR/artifacts/spoke_then_died-result.json"
     kill -TERM $BASHPID; sleep 5;')"
 _dispatch "$_d" spoke_then_died
 assert_eq "[SPEC-5] it really was killed (raw rc 143)" "143" "$_LAST_RAW_RC"
-assert_eq "[SPEC-5] the declared word survives the signal" "exhausted" "$_LAST_DISPOSITION"
+assert_eq "[SPEC-5] the declared word survives the signal" "out_of_turns" "$_LAST_DISPOSITION"
 
 # ─────────────────────────────────────────────────────────────────────────────
 print_test_section "6. A rate-limited dispatch is unavailable — the run ends (#2111)"
@@ -258,15 +258,15 @@ assert_eq "[SPEC-7] a v1 stage declares contract 1" "1" "$_LAST_CONTRACT"
 assert_eq "[SPEC-7] and its rc=10 passes through UNCHANGED" "10" "$_LAST_NARROW_RC"
 # The legacy meaning is still recoverable as a word, so a reader that wants the
 # declared vocabulary can have it without the number.
-assert_eq "[SPEC-7] while rc=10 still maps to the exhausted disposition" \
-    "exhausted" "$(dispatch_rc_legacy_disposition "$_LAST_RAW_RC")"
+assert_eq "[SPEC-7] while rc=10 still maps to out_of_turns (#2187; was exhausted)" \
+    "out_of_turns" "$(dispatch_rc_legacy_disposition "$_LAST_RAW_RC")"
 assert_eq "[SPEC-7] and to its declared reason word" \
     "scope_too_large" "$(dispatch_rc_legacy_reason "$_LAST_RAW_RC")"
 
 # A v2 stage returning the same rc IS narrowed — it declared a disposition, so
 # nothing is lost by dropping the number.
 _d="$(_mkstage v2_scope_stage '
-    printf %s "{\"result_contract\":2,\"verdict\":\"fail\",\"disposition\":\"exhausted\",\"reason\":\"scope too large\"}" \
+    printf %s "{\"result_contract\":2,\"verdict\":\"fail\",\"disposition\":\"out_of_turns\",\"reason\":\"scope too large\"}" \
         > "$ZBUILD_STATE_DIR/artifacts/v2_scope_stage-result.json"
     return 10;')"
 _dispatch "$_d" v2_scope_stage
@@ -274,7 +274,7 @@ assert_eq "[SPEC-7] a v2 stage declares contract 2" "2" "$_LAST_CONTRACT"
 assert_eq "[SPEC-7] its raw rc really was 10" "10" "$_LAST_RAW_RC"
 assert_eq "[SPEC-7] and it IS narrowed to 1" "1" "$_LAST_NARROW_RC"
 assert_eq "[SPEC-7] with the meaning carried by its declared word" \
-    "exhausted" "$_LAST_DISPOSITION"
+    "out_of_turns" "$_LAST_DISPOSITION"
 
 # And the dictionary is enforced for v2 only. An off-set word is a structural
 # failure (#1822); the engine never substitutes a plausible member.

@@ -62,8 +62,17 @@ assert_eq "[SPEC-1] an off-set word is still refused" "UNKNOWN" \
     "$(disposition_response wedged 2>/dev/null || echo UNKNOWN)"
 
 # ─── SPEC-2 ──────────────────────────────────────────────────────────────────
-print_test_section "SPEC-2: exhausted is a temporary alias that retries"
-assert_eq "[SPEC-2] exhausted → retry" "retry" "$(disposition_response exhausted 2>/dev/null || echo UNKNOWN)"
+print_test_section "SPEC-2: the temporary alias is gone; unfinished work is one predicate"
+assert_eq "[SPEC-2] exhausted is no longer a word (every stage sends the cause)" "UNKNOWN" \
+    "$(disposition_response exhausted 2>/dev/null || echo UNKNOWN)"
+for _w in timed_out out_of_turns interrupted; do
+    if disposition_unfinished "$_w" 2>/dev/null; then assert_pass "[SPEC-2] $_w is unfinished work"
+    else assert_fail "[SPEC-2] $_w is unfinished work"; fi
+done
+for _w in complete unusable throttled broken; do
+    if disposition_unfinished "$_w" 2>/dev/null; then assert_fail "[SPEC-2] $_w is not unfinished work"
+    else assert_pass "[SPEC-2] $_w is not unfinished work"; fi
+done
 
 # ─── SPEC-3 ──────────────────────────────────────────────────────────────────
 print_test_section "SPEC-3: the template owns the retry budget"
@@ -143,6 +152,8 @@ source "$ORCH" 2>/dev/null
 set +e
 _r="$(_CYCLE_DISPATCH_DISPOSITION=misconfigured _CYCLE_DISPATCH_REASON="no model tier resolved" _cycle_member_halt_reason)"
 assert_eq "[SPEC-5] misconfigured halts, naming the word and the reason" "misconfigured: no model tier resolved" "$_r"
+_r="$(_CYCLE_DISPATCH_DISPOSITION=broken _CYCLE_DISPATCH_REASON="result_write_failed" _cycle_member_halt_reason)"
+assert_eq "[SPEC-5] broken halts too, naming the word and the reason" "broken: result_write_failed" "$_r"
 for _w in complete timed_out unusable; do
     if ( _CYCLE_DISPATCH_DISPOSITION="$_w" _cycle_member_halt_reason >/dev/null 2>&1 ); then
         assert_fail "[SPEC-5] $_w does not halt" "it halted"

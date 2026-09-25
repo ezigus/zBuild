@@ -172,7 +172,7 @@ unset -f template_stage_router_max_turns 2>/dev/null || true
 [[ "$_1840_prev_s14_stage" == "__UNSET__" ]] && unset ZBUILD_CURRENT_STAGE \
     || export ZBUILD_CURRENT_STAGE="$_1840_prev_s14_stage"
 
-# ─── SPEC-15 [change]: rc=10 writes disposition:exhausted, propagates rc=10 ───
+# ─── SPEC-15 [change]: rc=10 writes disposition:out_of_turns, propagates rc=10 ───
 # rc=10 (budget exhaustion) must produce a dedicated exhausted branch — distinct
 # from advisory rc=0 degrade paths (broken/router_error or broken/unparseable_reply)
 # and from rc=130 interrupted. The plugin must NOT fall through to the generic
@@ -192,8 +192,8 @@ assert_eq "[SPEC-15] rc=10 result_contract == 2" \
     "2" "$(jq -r '.result_contract // empty' "$out_1840_s15")"
 assert_eq "[SPEC-15] rc=10 verdict == degraded" \
     "degraded" "$(jq -r '.verdict // empty' "$out_1840_s15")"
-assert_eq "[SPEC-15] rc=10 disposition == exhausted" \
-    "exhausted" "$(jq -r '.disposition // empty' "$out_1840_s15")"
+assert_eq "[SPEC-15] rc=10 disposition == out_of_turns (#2187)" \
+    "out_of_turns" "$(jq -r '.disposition // empty' "$out_1840_s15")"
 assert_eq "[SPEC-15] rc=10 reason == budget_exhausted" \
     "budget_exhausted" "$(jq -r '.reason // empty' "$out_1840_s15")"
 # Confirm rc=10 is strictly between advisory (rc=0) and interrupted (rc=130)

@@ -178,7 +178,7 @@ dispatch_rc_legacy_reason() {
 dispatch_rc_legacy_disposition() {
     case "${1-}" in
         9)        printf 'unavailable' ;;
-        10)       printf 'exhausted' ;;
+        10)       printf 'out_of_turns' ;;
         130|143)  printf 'interrupted' ;;
         *)        return 1 ;;
     esac

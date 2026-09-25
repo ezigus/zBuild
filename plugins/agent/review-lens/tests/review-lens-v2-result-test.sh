@@ -176,8 +176,8 @@ assert_eq "[SPEC-2] result_contract == 2 on router failure" \
     "2" "$(jq -r '.result_contract // empty' "$out_1840_s2")"
 assert_eq "[SPEC-2] verdict == degraded on router failure" \
     "degraded" "$(jq -r '.verdict // empty' "$out_1840_s2")"
-assert_eq "[SPEC-2] disposition == broken on router failure" \
-    "broken" "$(jq -r '.disposition // empty' "$out_1840_s2")"
+assert_eq "[SPEC-2] disposition == misconfigured on a router setup failure (rc=2, #2187)" \
+    "misconfigured" "$(jq -r '.disposition // empty' "$out_1840_s2")"
 
 # ─── SPEC-3 [change]: unparseable-reply degrade writes result_contract:2 ──────
 # shellcheck disable=SC2329
@@ -191,8 +191,8 @@ assert_eq "[SPEC-3] result_contract == 2 on unparseable reply" \
     "2" "$(jq -r '.result_contract // empty' "$out_1840_s3")"
 assert_eq "[SPEC-3] verdict == degraded on unparseable reply" \
     "degraded" "$(jq -r '.verdict // empty' "$out_1840_s3")"
-assert_eq "[SPEC-3] disposition == broken on unparseable reply" \
-    "broken" "$(jq -r '.disposition // empty' "$out_1840_s3")"
+assert_eq "[SPEC-3] disposition == unusable on unparseable reply (#2187)" \
+    "unusable" "$(jq -r '.disposition // empty' "$out_1840_s3")"
 
 # ─── SPEC-4 [change]: schema-gate recovery from postamble-bearing response ────
 # The response has a valid lens object FIRST followed by a postamble containing

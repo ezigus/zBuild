@@ -172,7 +172,7 @@ _security_lens_run_inner() {
     local tier
     if ! tier="$(resolve_tier security-lens "$_SEC_LENS_DIR")"; then
         error "security_lens_run: resolve_tier failed; refusing to emit"
-        _security_lens_write_result "$output" "error" "broken" \
+        _security_lens_write_result "$output" "error" "misconfigured" \
             "the model call failed, so no security review happened"
         stage_summary_write "$artifact_dir/security-lens-summary.md" "security-lens" "error" \
             "tier resolution failed — no security review happened" \
@@ -260,7 +260,9 @@ _security_lens_run_inner() {
         warn "security_lens_run: router rc=1 (recoverable); using empty findings"
     elif [[ $router_rc -ne 0 ]]; then
         error "security_lens_run: router rc=$router_rc (fatal); refusing to emit"
-        _security_lens_write_result "$output" "error" "broken" \
+        local _sl_v="" _sl_r=""
+        _router_rc_classify "$router_rc" _sl_v _sl_r 2>/dev/null || true
+        _security_lens_write_result "$output" "error" "$(router_reason_disposition "$_sl_r")" \
             "the model call failed, so no security review happened"
         stage_summary_write "$artifact_dir/security-lens-summary.md" "security-lens" "error" \
             "the model call failed, so no security review happened" \

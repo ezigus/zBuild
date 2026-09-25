@@ -632,7 +632,7 @@ DESIGN_PROMPT
             emit_event "plugin.result" "verdict=error" "plugin=design" "reason=router_timeout" "rc=$router_rc"
             emit_event "design.timeout.no_design" "plugin=design" "reason=router_timeout"
         fi
-        printf '{"result_contract":2,"verdict":"incomplete","disposition":"interrupted","reason":"router_timeout"}\n' \
+        printf '{"result_contract":2,"verdict":"incomplete","disposition":"timed_out","reason":"router_timeout"}\n' \
             > "$design_verdict_sidecar" 2>/dev/null \
             || warn "_design_stage_run_inner: failed to write incomplete sidecar $design_verdict_sidecar (timeout-exhaustion halt may not fire)"
         return 0
@@ -643,7 +643,7 @@ DESIGN_PROMPT
     # instead of falling through to "no design" and a gate-driven re-iteration.
     if [[ "${_ROUTE_LOOP_TERMINATED_REASON:-}" == "router_rate_limited" ]]; then
         error "_design_stage_run_inner: router loop rate-limited (${_ROUTE_LOOP_RATE_LIMIT_MESSAGE:-LLM rate-limited})"
-        _design_write_result "$artifact_dir" "incomplete" "unavailable" "router_rate_limited"
+        _design_write_result "$artifact_dir" "incomplete" "rate_limited" "router_rate_limited"
         stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
             "the model call was rate-limited (${_ROUTE_LOOP_RATE_LIMIT_MESSAGE:-LLM rate-limited})" \
             "No design.md was authored. The run ends here and resumes when the limit resets."
@@ -659,7 +659,7 @@ DESIGN_PROMPT
         local _rc_verdict _rc_reason
         _router_rc_classify "$router_rc" _rc_verdict _rc_reason
         error "_design_stage_run_inner: router rc=$router_rc → verdict=$_rc_verdict reason=$_rc_reason"
-        _design_write_result "$artifact_dir" "error" "broken" "$_rc_reason"
+        _design_write_result "$artifact_dir" "error" "$(router_reason_disposition "$_rc_reason")" "$_rc_reason"
         stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
             "the model call failed ($_rc_reason)" \
             "No usable design.md was returned."
@@ -680,7 +680,7 @@ DESIGN_PROMPT
         if [[ -f "$_stray" ]]; then
             if git -C "$repo_root" ls-files --error-unmatch "design.md" >/dev/null 2>&1; then
                 error "_design_stage_run_inner: tracked design.md at repo root; refusing to relocate (operator-owned)"
-                _design_write_result "$artifact_dir" "error" "broken" "stray_conflict"
+                _design_write_result "$artifact_dir" "error" "unusable" "stray_conflict"
                 stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
                     "design.md was written to the repo root, where a tracked file already lives" \
                     "The model ignored the destination path in the prompt. The root design.md is git-tracked and operator-owned, so it is left untouched and no design artifact was produced."
@@ -698,7 +698,7 @@ DESIGN_PROMPT
     # Assert the scope block is present in design.md.
     if [[ ! -f "$output_design_md" ]]; then
         error "_design_stage_run_inner: design.md not produced at $output_design_md"
-        _design_write_result "$artifact_dir" "error" "broken" "missing_design_md"
+        _design_write_result "$artifact_dir" "error" "unusable" "missing_design_md"
         stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
             "no design.md was produced" \
             "The model returned without writing the artifact this stage exists to produce."
@@ -716,7 +716,7 @@ DESIGN_PROMPT
         stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
             "design.md has no fenced scope block" \
             "Without a scope block the build stage has no declared boundary to work inside."
-        _design_write_result "$artifact_dir" "error" "broken" "missing_scope_block"
+        _design_write_result "$artifact_dir" "error" "unusable" "missing_scope_block"
         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_scope_block"
         # Failure path: don't override the banner output; let the deferred
         # close (if any) flush claude's stdout summary so the operator sees
@@ -733,7 +733,7 @@ DESIGN_PROMPT
         stage_summary_write "$artifact_dir/design-summary.md" "design" "error" \
             "design.md has no fenced acceptance block" \
             "Without acceptance SPECs there is nothing for the acceptance gate to verify."
-        _design_write_result "$artifact_dir" "error" "broken" "missing_acceptance_block"
+        _design_write_result "$artifact_dir" "error" "unusable" "missing_acceptance_block"
         emit_event "plugin.result" "verdict=error" "plugin=design" "reason=missing_acceptance_block"
         if declare -F _route_loop_close_final_banner >/dev/null 2>&1; then
             _route_loop_close_final_banner || true

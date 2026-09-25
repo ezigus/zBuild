@@ -114,6 +114,7 @@ fi
 # ADR-004. `--skip-precondition` requires operator override
 # (ZBUILD_SCOPE_OVERRIDE=1 + token file). ADR-001.
 route_to_model() {
+    _ROUTE_LAST_BUDGET_EXHAUSTED=0   # #2187: set by the call path on a turn-budget hit
     if [[ $# -lt 2 ]]; then
         error "route_to_model requires <tier> <prompt>"
         return 2
@@ -1042,6 +1043,8 @@ _route_call_claude() {
         if [[ "$_sync_rate_limited" == "1" ]]; then
             error "$_sync_rl_msg (model=$_ROUTE_MODEL_ID tier=$tier) — diagnostic: ${_sync_json_path:-absent}"
         elif [[ "$_sync_subtype" == "error_max_turns" ]]; then
+            # #2187: the stage's classifier names this `out_of_turns`.
+            _ROUTE_LAST_BUDGET_EXHAUSTED=1
             error "claude max_turns reached (turns=${_sync_num_turns:-?}, output_tokens=${_sync_out_tokens:-?}, cost=\$${_sync_cost:-?}) — diagnostic: ${_sync_json_path:-absent}"
         else
             error "claude CLI failed (rc=$rc) model=$_ROUTE_MODEL_ID tier=$tier${snip:+: $snip}"

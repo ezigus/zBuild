@@ -56,6 +56,11 @@ jobs:
         # plugin declares it can put on failures[] maps to a disposition, so
         # the acceptance gate's table can no longer drift out from under it.
         run: bash scripts/lib/lint-disposition-classify.sh
+      - name: Disposition words (stages write only words the engine knows)
+        if: always()
+        # #2187 (ADR-054 §6a): an off-set word is a run-time structural failure;
+        # this finds it before a run. ONE definition, shared with `npm run lint`.
+        run: bash scripts/lib/lint-disposition-words.sh
       - name: Shellcheck (.sh files)
         if: always()
         run: |

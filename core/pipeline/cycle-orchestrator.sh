@@ -2171,13 +2171,15 @@ _cycle_iter_dispatch() {
 # The member just dispatched declared a disposition whose action is to halt the
 # run. Prints "<word>: <reason>" and returns 0; returns 1 otherwise. Decided from
 # the WORD, never from an exit code. `unavailable`/`rate_limited` are not here:
-# the dispatch boundary already ends those runs resumable. `broken` joins once
-# the stages stop sending it for recoverable cases (#2187 PR 2).
+# the dispatch boundary already ends those runs resumable.
 _cycle_member_halt_reason() {
     local d="${_CYCLE_DISPATCH_DISPOSITION:-}"
     [[ -n "$d" ]] || return 1
     disposition_halts "$d" 2>/dev/null || return 1
-    [[ "$(disposition_response "$d" 2>/dev/null)" == "halt_misconfigured" ]] || return 1
+    case "$(disposition_response "$d" 2>/dev/null)" in
+        halt_misconfigured|halt_broken) ;;
+        *) return 1 ;;
+    esac
     printf '%s: %s' "$d" "${_CYCLE_DISPATCH_REASON:-no reason given}"
 }
 
@@ -2538,10 +2540,13 @@ cycle_orchestrator_run() {
         # design either publishes no design.md or keeps one its gate then judged
         # (#2186) — at exhaustion, neither is a design the gate accepted.
         local _iter_did_not_finish=0
-        if jq -e 'to_entries | any(.value.disposition == "interrupted")' \
-                <<< "$verdicts_blob" >/dev/null 2>&1; then
-            _iter_did_not_finish=1
-        fi
+        # #2187: "did not finish" is a predicate over the words, not one word.
+        local _unf_d
+        while IFS= read -r _unf_d; do
+            if [[ -n "$_unf_d" ]] && disposition_unfinished "$_unf_d"; then
+                _iter_did_not_finish=1
+            fi
+        done < <(jq -r '.[] | .disposition // empty' <<< "$verdicts_blob" 2>/dev/null)
 
         # Termination evaluation (priority order — see ADR-021, #1208):
         #   1) until satisfied (converged) — UNLESS the build is mid-flight
@@ -2568,7 +2573,7 @@ cycle_orchestrator_run() {
         # suppressed → it converges when the gate verification is green (a done
         # re-run passes on iter 1). GENERIC: keys only on the build member's
         # repo-neutral did_not_finish verdict — no runner/language/path/plugin.
-        if [[ "$converged" -eq 0 && "$_build_disposition" == "interrupted" ]]; then
+        if [[ "$converged" -eq 0 ]] && disposition_unfinished "$_build_disposition"; then
             converged=1  # suppress: mid-flight build is not a clean resting point
             _cycle_emit "cycle.build_unfinished.suppressed_convergence" \
                 "iter=$iter" "build_verdict=$_build_verdict" \

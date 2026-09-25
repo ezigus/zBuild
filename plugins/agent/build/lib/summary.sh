@@ -28,6 +28,11 @@ fi
 # _build_format_numstat — thin wrapper around format_numstat (#506).
 _BUILD_NUMSTAT_MAX_LINES=50
 _BUILD_NUMSTAT_FILES_COUNT=0
+# #2187: router_reason_disposition names the cause of a failed router loop.
+# shellcheck source=../../../../scripts/lib/router-rc-classify.sh
+declare -F router_reason_disposition >/dev/null 2>&1 \
+    || source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../scripts/lib" && pwd)/router-rc-classify.sh"
+
 _build_format_numstat() {
     local raw="$1"
     local allowed_name="$2"
@@ -130,7 +135,7 @@ _build_write_rate_limited_summary() {
         --argjson iterations "$iters" \
         --arg msg "${_ROUTE_LOOP_RATE_LIMIT_MESSAGE:-LLM rate-limited}" \
         '{"schema_version":$schema_version,"result_contract":2,"verdict":"incomplete",
-          "disposition":"unavailable","reason":"router_rate_limited","iterations":$iterations,
+          "disposition":"rate_limited","reason":"router_rate_limited","iterations":$iterations,
           "data":{"rate_limit":{"message":$msg}}}' \
         | atomic_write "$out" 2>/dev/null || true
     git -C "$root" reset -q 2>/dev/null || true
@@ -172,11 +177,12 @@ _build_write_build_summary() {
     local build_disposition="" build_reason="" build_data_kind=""
     if [[ "${scope_violation:-false}" == "true" ]]; then
         build_verdict="scope_violation"
-        build_disposition="broken"
+        # #2187: build ran; the verdict and the scope request carry the violation.
+        build_disposition="complete"
         build_reason="scope_violation"
     elif [[ "${terminated_reason:-error}" == "router_timeout" || "${terminated_reason:-error}" == "error" ]]; then
         build_verdict="incomplete"
-        build_disposition="interrupted"
+        build_disposition="$(router_reason_disposition "${terminated_reason:-error}")"
         build_reason="${terminated_reason:-error}"
     elif [[ "${terminated_reason:-}" == "done_sentinel" \
           && "${files_changed_count:-0}" -eq 0 ]]; then
@@ -191,7 +197,7 @@ _build_write_build_summary() {
     else
         # Any other terminated_reason (max_iterations, etc.): incomplete
         build_verdict="incomplete"
-        build_disposition="interrupted"
+        build_disposition="$(router_reason_disposition "${terminated_reason:-unknown}")"
         build_reason="${terminated_reason:-unknown}"
     fi
 
@@ -204,7 +210,7 @@ _build_write_build_summary() {
             "$_acceptance_testfiles" "${repo_root:-}" 2>/dev/null || true)"
         if [[ -n "$_inert_failing_testfile" ]]; then
             build_verdict="fail"
-            build_disposition="broken"
+            build_disposition="complete"   # #2187: the verdict carries the false completion
             build_reason="false_completion_detected"
             build_data_kind="inert_build"
             emit_event "build.inert_build" "plugin=build" \

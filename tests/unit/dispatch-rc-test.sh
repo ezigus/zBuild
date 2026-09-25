@@ -201,7 +201,7 @@ assert_eq "[SPEC-5] rc 0 has no legacy reason" "1" "$(_rc_of dispatch_rc_legacy_
 # call: 9 is "halt; operator action required", 10 is "more budget, or the work
 # must shrink", a signal is "retry as-is".
 assert_eq "[SPEC-5] rc 9 → unavailable"        "unavailable" "$(dispatch_rc_legacy_disposition 9)"
-assert_eq "[SPEC-5] rc 10 → exhausted"         "exhausted" "$(dispatch_rc_legacy_disposition 10)"
+assert_eq "[SPEC-5] rc 10 → out_of_turns (#2187)" "out_of_turns" "$(dispatch_rc_legacy_disposition 10)"
 assert_eq "[SPEC-5] rc 130 → interrupted"      "interrupted" "$(dispatch_rc_legacy_disposition 130)"
 assert_eq "[SPEC-5] rc 143 → interrupted"      "interrupted" "$(dispatch_rc_legacy_disposition 143)"
 
@@ -340,7 +340,7 @@ rm -f "$_sd/artifacts/fx-result.json"
 
 assert_eq "[SPEC-8] rc=9 with no result → unavailable, not broken" "unavailable" \
     "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 9 "" 0)"
-assert_eq "[SPEC-8] rc=10 with no result → exhausted, not broken" "exhausted" \
+assert_eq "[SPEC-8] rc=10 with no result → out_of_turns, not broken (#2187)" "out_of_turns" \
     "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 10 "" 0)"
 assert_eq "[SPEC-8] rc=143 with no result → interrupted" "interrupted" \
     "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 143 "" 0)"
@@ -348,8 +348,8 @@ assert_eq "[SPEC-8] rc=143 with no result → interrupted" "interrupted" \
 # Each drives a genuinely different operator-facing response.
 assert_eq "[SPEC-8] unavailable halts for an OPERATOR, not as a defect" \
     "halt_unavailable" "$(disposition_response unavailable)"
-assert_eq "[SPEC-8] exhausted (temporary alias, #2187) retries rather than halting" \
-    "retry" "$(disposition_response exhausted)"
+assert_eq "[SPEC-8] out_of_turns retries rather than halting (#2187)" \
+    "retry" "$(disposition_response out_of_turns)"
 
 # A legacy code with no §6 word still falls through to the observation table.
 assert_eq "[SPEC-8] rc=5 (blocked) has no word, so it stays broken" "broken" \

@@ -24,9 +24,8 @@
 #   misconfigured  the setup is wrong (operator fixes it)          → halt
 #   broken         a defect in zBuild (file a bug)                 → halt
 #
-#   exhausted      TEMPORARY alias → retry, until every stage sends timed_out /
-#                  out_of_turns (#2187 PR 2 removes it). It mapped to `escalate`,
-#                  which nothing implemented, so it silently proceeded.
+#   (`exhausted` was retired by #2187: it mapped to `escalate`, which nothing
+#   implemented, and it hid WHICH budget ran out — timed_out / out_of_turns say.)
 #
 # The response table lives HERE, not in any plugin: no stage decides its own
 # retry policy. A stage declares what happened; the engine decides what to do.
@@ -61,7 +60,7 @@
 _ZBUILD_DISPOSITION_SH_LOADED=1
 
 # The closed set, in ADR-054 §6 table order.
-_ZBUILD_DISPOSITION_SET="complete unusable timed_out out_of_turns interrupted throttled rate_limited unavailable misconfigured broken exhausted"
+_ZBUILD_DISPOSITION_SET="complete unusable timed_out out_of_turns interrupted throttled rate_limited unavailable misconfigured broken"
 
 # How long a `throttled` stage waits before a retry. Overridable because the
 # right backoff is a deployment property, not a contract property; bounded and
@@ -104,7 +103,7 @@ disposition_response() {
     case "${1-}" in
         complete)                         printf 'proceed' ;;
         unusable|timed_out|out_of_turns)  printf 'retry' ;;
-        interrupted|exhausted)            printf 'retry' ;;
+        interrupted)                      printf 'retry' ;;
         throttled)                        printf 'retry_after_wait' ;;
         rate_limited|unavailable)         printf 'halt_unavailable' ;;
         misconfigured)                    printf 'halt_misconfigured' ;;
@@ -137,6 +136,17 @@ disposition_retryable() {
     case "$r" in
         retry|retry_after_wait) return 0 ;;
         *)                      return 1 ;;
+    esac
+}
+
+# ─── disposition_unfinished <disposition> (#2187) ──────────────────────────
+# rc 0 when the word says the stage stopped before finishing its work — out of
+# time, out of turns, or stopped by an outside signal. The cycle reads this, not
+# a specific word, when it asks "did this iteration finish?".
+disposition_unfinished() {
+    case "${1-}" in
+        timed_out|out_of_turns|interrupted) return 0 ;;
+        *)                                  return 1 ;;
     esac
 }
 

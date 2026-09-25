@@ -384,7 +384,7 @@ assert_eq "diff.patch is empty on scope violation (0 bytes)" "0" "$t6_size"
 summary_t6="$(cat "$OUT_SUMMARY_T6")"
 assert_json_key "scope_violation == true" "$summary_t6" ".scope_violation" "true"
 assert_json_key "[SPEC-3] result_contract:2 on scope_violation branch" "$summary_t6" ".result_contract" "2"
-assert_json_key "[SPEC-4] disposition:broken on scope_violation branch" "$summary_t6" ".disposition" "broken"
+assert_json_key "[SPEC-4] disposition:complete on scope_violation branch — the verdict carries it (#2187)" "$summary_t6" ".disposition" "complete"
 
 t6_violation_count="$(printf '%s' "$summary_t6" | jq '.scope_violations | length' 2>/dev/null || echo 0)"
 if [[ "$t6_violation_count" -ge 1 ]]; then
@@ -939,8 +939,8 @@ _build_stage_run_inner "$SCOPE_MANIFEST" "$ARTIFACT_DIR_RL/plan.json" \
     "$ARTIFACT_DIR_RL/diff.patch" "$ARTIFACT_DIR_RL/build-summary.json" "$ARTIFACT_DIR_RL" >/dev/null 2>&1
 rc_rl=$?
 set -e
-assert_eq "[#2111] a rate-limited build declares disposition:unavailable (not interrupted)" \
-    "unavailable" "$(jq -r '.disposition // ""' "$ARTIFACT_DIR_RL/build-summary.json" 2>/dev/null || echo "")"
+assert_eq "[#2111] a rate-limited build declares disposition:rate_limited (#2187; not interrupted)" \
+    "rate_limited" "$(jq -r '.disposition // ""' "$ARTIFACT_DIR_RL/build-summary.json" 2>/dev/null || echo "")"
 assert_eq "[#2111] reason names the rate limit" \
     "router_rate_limited" "$(jq -r '.reason // ""' "$ARTIFACT_DIR_RL/build-summary.json" 2>/dev/null || echo "")"
 assert_contains "[#2111] the reset text rides under data.rate_limit.message" \
