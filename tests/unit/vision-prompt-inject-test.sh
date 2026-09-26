@@ -51,6 +51,8 @@ while [[ \$# -gt 0 ]]; do
   [[ "\$1" == "-p" && -n "\${2:-}" ]] && printf '%s' "\$2" > "\$dump" && shift 2 && continue
   shift
 done
+# The router sends the prompt on stdin (#1849: argv overflowed at 128 KiB).
+[[ -s "\$dump" ]] || cat > "\$dump"
 jq -n '{result: "ok\nLOOP_COMPLETE", usage: {input_tokens: 5, output_tokens: 5}}'
 exit 0
 MOCK

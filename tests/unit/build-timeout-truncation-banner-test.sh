@@ -93,6 +93,8 @@ while [[ \$# -gt 0 ]]; do
         *)  shift ;;
     esac
 done
+# The router sends the prompt on stdin (#1849: argv overflowed at 128 KiB).
+[[ -n "\$prompt_text" ]] || prompt_text="\$(cat)"
 printf '%s' "\$prompt_text" > "$PROMPT_DIR_A/call-\${n}.prompt"
 # Call 1: leave a PARTIAL edit in the tree, then exit 124 (timeout), no JSON
 #   output. The partial edit is the whole point of #1685 — it makes prev_diff
@@ -204,6 +206,8 @@ while [[ \$# -gt 0 ]]; do
         *)  shift ;;
     esac
 done
+# The router sends the prompt on stdin (#1849: argv overflowed at 128 KiB).
+[[ -n "\$prompt_text" ]] || prompt_text="\$(cat)"
 printf '%s' "\$prompt_text" > "$PROMPT_DIR_C/call-\${n}.prompt"
 # Call 1: timeout. Call 2: non-timeout failure. Call 3: LOOP_COMPLETE.
 if [[ "\$n" -eq 1 ]]; then exit 124; fi

@@ -836,7 +836,10 @@ _route_call_claude() {
         return 2
     fi
 
-    local -a _claude_args=(-p "$prompt" --print --model "$_ROUTE_MODEL_ID")
+    # The prompt goes on stdin, never argv: one argv string over 128 KiB
+    # (Linux MAX_ARG_STRLEN) cannot be exec'd at all — run 36238164552 lost
+    # every review lens to "Argument list too long" on a 1,600-line diff.
+    local -a _claude_args=(--print --model "$_ROUTE_MODEL_ID")
     if [[ "$max_turns" -gt 0 ]]; then
         _claude_args+=(--max-turns "$max_turns")
     else
@@ -886,6 +889,14 @@ _route_call_claude() {
         eb_emit_event "router.error" "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "reason=mktemp_failed"
         return 2
     fi
+    local _prompt_in
+    if ! _prompt_in="$(mktemp "$(zbuild_engine_tmpdir)/zb-router-prompt.XXXXXX" 2>/dev/null)" \
+        || ! printf '%s' "$prompt" > "$_prompt_in"; then
+        rm -f "$stderr_file" "${_prompt_in:-}"
+        error "router: could not stage the prompt"
+        eb_emit_event "router.error" "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "reason=mktemp_failed"
+        return 2
+    fi
 
     # ADR-024 / #671 (Wave 13-B): claude spawn is a fresh-user-shell class
     # subprocess — it MUST NOT see ZBUILD_* pipeline state. _zbuild_make_fresh_shell
@@ -911,12 +922,12 @@ _route_call_claude() {
     if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
         response="$(
             _zbuild_make_fresh_shell
-            "${_tout_cmd[@]}" claude "${_claude_args[@]}" 2>"$stderr_file"
+            "${_tout_cmd[@]}" claude "${_claude_args[@]}" <"$_prompt_in" 2>"$stderr_file"
         )" || rc=$?
     else
         response="$(
             _zbuild_make_fresh_shell
-            claude "${_claude_args[@]}" 2>"$stderr_file"
+            claude "${_claude_args[@]}" <"$_prompt_in" 2>"$stderr_file"
         )" || rc=$?
     fi
 
@@ -937,7 +948,7 @@ _route_call_claude() {
             "attempt=$_attempt" "retries=$_retries" \
             "from_secs=$_local_secs" "to_secs=$_next_secs" 2>/dev/null || true
         _local_secs="$_next_secs"
-        rm -f "$stderr_file"
+        rm -f "$stderr_file" "$_prompt_in"
         continue
     fi
 
@@ -985,7 +996,7 @@ _route_call_claude() {
                 fi
             done
         fi
-        rm -f "$stderr_file"
+        rm -f "$stderr_file" "$_prompt_in"
         continue
     fi
 
@@ -1068,7 +1079,7 @@ _route_call_claude() {
             "num_turns=${_sync_num_turns:-absent}" \
             "subtype=${_sync_subtype:-absent}" \
             2>/dev/null || true
-        rm -f "$stderr_file"
+        rm -f "$stderr_file" "$_prompt_in"
         # ADR-021 v3 R2: rc=124 (gtimeout SIGTERM) and rc=137 (SIGKILL/OOM)
         # are infra failures and MUST reach the agent plugin verbatim — they
         # carry max_turns/timeout semantics that `_router_rc_classify` maps
@@ -1079,7 +1090,7 @@ _route_call_claude() {
             *)       return 1 ;;
         esac
     fi
-    rm -f "$stderr_file"
+    rm -f "$stderr_file" "$_prompt_in"
 
     if [[ -z "$response" ]]; then
         error "claude CLI returned empty response model=$_ROUTE_MODEL_ID tier=$tier"
@@ -1615,7 +1626,11 @@ ${_diff_pointer}"
         stderr_file="$(mktemp "${_rt_tmp}/zb-loop-stderr.XXXXXX")"
         json_file="$(mktemp "${_rt_tmp}/zb-loop-json.XXXXXX")"
 
-        local -a _claude_args=(-p "$final_prompt" --print --model "$_ROUTE_MODEL_ID")
+        # The prompt goes on stdin, never argv (MAX_ARG_STRLEN — see route_to_model).
+        # In $_loop_tmp, so the RETURN trap removes it on every exit path.
+        local _prompt_in="${_loop_tmp}/iter-${iter}.prompt"
+        printf '%s' "$final_prompt" > "$_prompt_in"
+        local -a _claude_args=(--print --model "$_ROUTE_MODEL_ID")
         # ADR-018 Amendment N (#762): omit --max-turns when sentinel mt=0.
         if [[ "$mt" -gt 0 ]]; then
             _claude_args+=(--max-turns "$mt")
@@ -1699,13 +1714,14 @@ ${_diff_pointer}"
             (
                 cd "$cwd" || exit 99
                 _zbuild_make_fresh_shell
-                exec "${_tout_cmd[@]}" claude "${_claude_args[@]}"
+                # stdin AFTER the fresh shell: it points stdin at /dev/null (#2108).
+                exec "${_tout_cmd[@]}" claude "${_claude_args[@]}" <"$_prompt_in"
             ) >"$json_file" 2>"$stderr_file" &
         else
             (
                 cd "$cwd" || exit 99
                 _zbuild_make_fresh_shell
-                exec claude "${_claude_args[@]}"
+                exec claude "${_claude_args[@]}" <"$_prompt_in"
             ) >"$json_file" 2>"$stderr_file" &
         fi
         _ROUTE_LOOP_CHILD_PID=$!

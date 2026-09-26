@@ -1,0 +1,69 @@
+id: issue-acceptance
+name: Issue Acceptance
+kind: agent
+# ADR-040 §5 (as amended by #2040): a gate whose standard is the ISSUE — which
+# the judged parties (design, build) cannot re-author. gate-aggregator's roster
+# picks it up from this marker; no aggregator edit is needed to enforce it.
+convergence: gate
+version: 0.1.0
+description: |
+  Judges the finished change against the ISSUE: every requirement the issue
+  states must be met by the diff, with the tests passing. Runs inside
+  build_test_cycle after the tests and before gate-aggregator, so an unmet
+  requirement keeps the cycle from converging.
+  spec-coverage reads the issue once, before any code exists; every later
+  check judges the SPECs. A plan or design that narrows a requirement therefore
+  produces a run that is green all the way down and still not what was asked —
+  #1849 run 36238164552 shipped exactly that. This stage closes the loop at the
+  end, against the issue itself.
+  A failure names its fault class: `implementation` (a SPEC captures the
+  requirement but the code does not do it — build fixes it in the cycle) or
+  `specification` (no SPEC captures it — the template routes back to design).
+
+hooks:
+  run: issue_acceptance_run
+
+requires:
+  core:
+    - redaction
+    - event-bus
+    - router
+
+provides:
+  role: issue_acceptance
+  result_contract: 2
+  events:
+    - issue_acceptance.judged
+    - issue_acceptance.unreadable_issue
+    - issue_acceptance.result.write_failed
+
+config:
+  valid_verdicts:
+    - pass
+    - fail
+    - unreadable
+  tier_default: T2
+
+inputs:
+  - id: intake_goal
+    required: true
+  - id: design
+    required: true
+  - id: diff_patch
+    required: false
+  - id: test_results
+    required: false
+
+outputs:
+  - id: issue_acceptance_result
+    path: "${artifact_dir}/issue-acceptance-result.json"
+    type: issue-acceptance-result.json@1
+    format: json
+    required: true
+    primary: true
+  - id: issue_acceptance_summary
+    path: "${artifact_dir}/issue-acceptance-summary.md"
+    type: issue-acceptance-summary.md@1
+    format: markdown
+    required: true
+    summary: true

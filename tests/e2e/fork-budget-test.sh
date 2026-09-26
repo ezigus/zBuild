@@ -32,8 +32,10 @@ print_test_header "fork budget: external execs of a mocked full run (#2151, ADR-
 setup_test_env "fork-budget"
 
 # ADR-065 §2. Ratchets down only. History: 8000 (#2151, measured 7,128 macOS);
-# 4800 (#2152 manifest index, measured 4,335 macOS).
-FORK_BUDGET=4800
+# 4800 (#2152 manifest index, measured 4,335 macOS); 4600 (#1849 follow-up:
+# _eb_strip_ansi skips sed when no ESC byte is present — measured 4,187 macOS
+# with the issue-acceptance stage added).
+FORK_BUDGET=4600
 
 # ─── the trace harness (the --coverage-trace precedent, scripts/run-tests.sh) ──
 # BASH_ENV injects `set -x` into every child bash (the runner, the mocks, work

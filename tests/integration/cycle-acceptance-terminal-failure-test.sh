@@ -315,6 +315,7 @@ _make_plugin "spec-coverage"       "spec_coverage"
 _make_plugin "test-author"         "test_author"
 _make_plugin "spec-correspondence" "spec_correspondence"
 _make_plugin "assertion-integrity" "assertion_integrity"
+_make_plugin "issue-acceptance"    "issue_acceptance"   # #1849
 _make_plugin "build"           "builder"
 _make_plugin "test"            "tester"
 _make_plugin "shape-floor"     "shape_floor"

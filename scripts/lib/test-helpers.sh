@@ -582,6 +582,8 @@ while [[ \$# -gt 0 ]]; do
         *)  shift ;;
     esac
 done
+# The router sends the prompt on stdin (#1849: argv overflowed at 128 KiB).
+[[ -n "\$prompt_text" ]] || prompt_text="\$(cat)"
 if [[ -n "${prompt_record:-}" ]]; then
     printf '%s' "\$prompt_text" > "$prompt_record"
 fi
@@ -661,6 +663,8 @@ while [[ \$# -gt 0 ]]; do
         *)  shift ;;
     esac
 done
+# The router sends the prompt on stdin (#1849: argv overflowed at 128 KiB).
+[[ -n "\$prompt_text" ]] || prompt_text="\$(cat)"
 if [[ -n "${prompt_record:-}" ]]; then
     printf '%s' "\$prompt_text" > "$prompt_record"
 fi

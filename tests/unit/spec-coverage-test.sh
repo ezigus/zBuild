@@ -27,6 +27,8 @@
 #   SPEC-5 [guard] : v2 contract — result_contract:2, rc binary, and a stage
 #                    that merely FINDS a problem is disposition:complete
 #   SPEC-6 [change]: findings are STRUCTURED data.uncovered[], not prose
+#   SPEC-8 [change]: a SPEC that demands less than its requirement does not
+#                    cover it — fidelity, not just a mapping (#1849)
 #                    (ADR-060 §1/§2)
 set -uo pipefail
 
@@ -138,6 +140,15 @@ print_test_section "SPEC-7: the prompt says verification-process requirements ar
 assert_contains "[SPEC-7][change] the prompt distinguishes behaviour from how the change is verified" \
     "$_P" "proven by the pipeline itself"
 assert_contains "[SPEC-7][change] …and says such a requirement is never a gap" "$_P" "never a gap"
+
+# #1849 (run 36238164552): the issue said "constructs no artifact paths in code";
+# the SPEC said "no hardcoded declared-input paths" — narrower — and this stage
+# called it covered. Mapping to a SPEC is not enough; the SPEC must demand all of it.
+print_test_section "SPEC-8: a SPEC that narrows a requirement does not cover it"
+assert_contains "[SPEC-8][change] the prompt says a narrower SPEC leaves the requirement uncovered" \
+    "$_P" "demands less than the requirement"
+assert_contains "[SPEC-8][change] …naming the ways a SPEC narrows (subset of cases, weaker condition)" \
+    "$_P" "a subset of the cases"
 
 print_test_results
 exit $((FAIL > 0))
