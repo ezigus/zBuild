@@ -35,19 +35,24 @@ merge_run() {
         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/merge-summary.md}" "merge" "error" \
             "the engine dispatched this stage with no state file, so it could not run" \
             "No work was attempted. This is an engine contract violation, not a fault in the change."
-        return 2
+        return 1
     fi
 
     local state_dir; state_dir="$(dirname "$state_file")"
     local artifacts_dir="$state_dir/artifacts"
     mkdir -p "$artifacts_dir"
 
-    local gate_json="$artifacts_dir/gate-aggregator-result.json"
+    # ADR-055 §1: a declared input reaches this plugin through the engine's
+    # index and nowhere else. No index entry means the gate is absent.
+    local gate_json=""
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+        gate_json="$(jq -r '.inputs.gate_aggregator_result // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+    fi
     local merge_result_out="$artifacts_dir/merge-result.json"
 
     # Read convergence gate verdict
     local gate_verdict=""
-    if [[ -f "$gate_json" ]]; then
+    if [[ -n "$gate_json" && -f "$gate_json" ]]; then
         gate_verdict="$(jq -r '.verdict // empty' "$gate_json" 2>/dev/null || true)"
     fi
 
@@ -83,11 +88,21 @@ _merge_pr_fallback() {
     fi
     local _rc=0
     pr_open_run "$stage_id" "$state_file" || _rc=$?
+    if [[ $_rc -ne 0 ]]; then
+        # The fallback's own failure is this stage's failure — never a pass.
+        # pr-open already said how it stopped; carry its word, not a guess.
+        local _pr_disp
+        _pr_disp="$(jq -r '.disposition // empty' "$(dirname "$merge_result_out")/pr-result.json" 2>/dev/null || true)"
+        jq -n --arg reason "$reason" --arg d "${_pr_disp:-broken}" \
+            '{"result_contract":2,"verdict":"error","disposition":$d,"reason":("gate not pass — fallback to PR failed: "+$reason),"data":{"mode":"pr_fallback"}}' \
+            > "$merge_result_out"
+        return 1
+    fi
     jq -n \
         --arg reason "$reason" \
-        '{"schema_version":1,"status":"pr_fallback","reason":$reason}' \
+        '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":("gate not pass — fallback to PR: "+$reason),"data":{"mode":"pr_fallback"}}' \
         > "$merge_result_out"
-    return $_rc
+    return 0
 }
 
 # ─── _merge_run_inner ─────────────────────────────────────────────────────────
@@ -108,9 +123,9 @@ _merge_run_inner() {
         emit_event "plugin.result" "verdict=error" "plugin=merge" \
             "reason=branch_is_main" "branch=${current_branch}"
         jq -n --arg branch "$current_branch" \
-            '{"schema_version":1,"status":"error","reason":("refusing to merge from: "+$branch)}' \
+            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("refusing to merge from: "+$branch)}' \
             > "$merge_result_out"
-        return 2
+        return 1
     fi
 
     local issue_num target_branch
@@ -132,9 +147,9 @@ _merge_run_inner() {
         git checkout -b "$target_branch" 2>/dev/null || git checkout "$target_branch" 2>/dev/null || {
             error "merge_run: failed to checkout branch '${target_branch}'"
             jq -n --arg branch "$target_branch" \
-                '{"schema_version":1,"status":"error","reason":("failed to checkout: "+$branch)}' \
+                '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("failed to checkout: "+$branch)}' \
                 > "$merge_result_out"
-            return 2
+            return 1
         }
     fi
 
@@ -144,9 +159,9 @@ _merge_run_inner() {
     if ! zbuild_push_reconcile "$target_branch"; then
         error "merge_run: push reconcile failed for '${target_branch}': ${ZBUILD_PUSH_RECONCILE_ERR}"
         jq -n --arg branch "$target_branch" --arg detail "$ZBUILD_PUSH_RECONCILE_ERR" \
-            '{"schema_version":1,"status":"error","reason":("failed to push: "+$branch+": "+$detail)}' \
+            '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":("failed to push: "+$branch+": "+$detail)}' \
             > "$merge_result_out"
-        return 2
+        return 1
     fi
 
     local pr_title
@@ -169,9 +184,9 @@ _merge_run_inner() {
         --body "$pr_body" 2>&1)"; then
         error "merge_run: gh pr create failed: $gh_output"
         jq -n --arg reason "$gh_output" \
-            '{"schema_version":1,"status":"error","reason":$reason}' \
+            '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":$reason}' \
             > "$merge_result_out"
-        return 2
+        return 1
     fi
 
     local pr_url
@@ -184,9 +199,9 @@ _merge_run_inner() {
     if ! gh pr merge --squash --auto 2>/dev/null; then
         error "merge_run: gh pr merge failed"
         jq -n --arg pr_url "$pr_url" \
-            '{"schema_version":1,"status":"error","reason":"gh pr merge failed","pr_url":$pr_url}' \
+            '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":"gh pr merge failed","data":{"pr_url":$pr_url}}' \
             > "$merge_result_out"
-        return 2
+        return 1
     fi
 
     # Write pr-url.txt for downstream compatibility (ADR-013)
@@ -194,14 +209,12 @@ _merge_run_inner() {
     printf '%s\n' "$pr_url" | atomic_write "$pr_url_out"
 
     jq -n \
-        --argjson schema_version 1 \
-        --arg status "merged" \
         --arg pr_url "$pr_url" \
         --argjson pr_number "${pr_number:-0}" \
         --arg branch "$target_branch" \
         --argjson issue "${issue_num:-0}" \
-        '{"schema_version":$schema_version,"status":$status,"pr_url":$pr_url,
-          "pr_number":$pr_number,"branch":$branch,"issue":$issue}' \
+        '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"squash-merged via gh pr merge",
+          "data":{"pr_url":$pr_url,"pr_number":$pr_number,"branch":$branch,"issue":$issue}}' \
         > "$merge_result_out"
 
     # Manifest contract: pr-delivery declares pr-result.json as a REQUIRED output
@@ -210,15 +223,13 @@ _merge_run_inner() {
     # scan_plugin_outputs check is satisfied — the PR was created then squash-merged.
     local pr_result_out="$artifacts_dir/pr-result.json"
     jq -n \
-        --argjson schema_version 1 \
-        --arg status "merged" \
         --arg pr_url "$pr_url" \
         --argjson pr_number "${pr_number:-0}" \
         --argjson draft false \
         --arg branch "$target_branch" \
         --argjson issue "${issue_num:-0}" \
-        '{schema_version: $schema_version, status: $status, pr_url: $pr_url,
-          pr_number: $pr_number, draft: $draft, branch: $branch, issue: $issue}' \
+        '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"squash-merged via gh pr merge",
+          "data":{"status":"merged","pr_url":$pr_url,"pr_number":$pr_number,"draft":$draft,"branch":$branch,"issue":$issue}}' \
         > "$pr_result_out"
 
     stage_summary_write "$artifacts_dir/merge-summary.md" "merge" "pass" \

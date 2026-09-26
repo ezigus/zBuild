@@ -164,7 +164,7 @@ echo "https://github.com/mock/repo/pull/756"; exit 0
 MOCK
 chmod +x "$_mockbin6/git" "$_mockbin6/gh"
 ( PATH="$_mockbin6:$PATH" pr_open_run "pr" "$_sf6" ) >/dev/null 2>&1; _rc6=$?
-assert_eq "[SPEC-6] pr_open_run returns 2 on genuine push failure" "2" "$_rc6"
+assert_eq "[SPEC-6] pr_open_run returns 1 on genuine push failure (#1849: v2 rc ∈ {0,1})" "1" "$_rc6"
 if [[ -f "$_art6/pr-result.json" ]]; then
     assert_contains "[SPEC-6] pr-result.json .reason surfaces the real push stderr" \
         "$(jq -r '.reason // ""' "$_art6/pr-result.json" 2>/dev/null)" "non-fast-forward-XYZ"

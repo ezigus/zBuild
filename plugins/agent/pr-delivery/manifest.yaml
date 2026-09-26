@@ -43,6 +43,12 @@ inputs:
     required: false
   - id: design
     required: false
+  # #1849: merge and pr-open run inside this stage and read their inputs from
+  # its index — the gate verdict (merge) and the test verdict (pr-open's body).
+  - id: gate_aggregator_result
+    required: false
+  - id: test_results
+    required: false
 
 outputs:
   - id: pr_url

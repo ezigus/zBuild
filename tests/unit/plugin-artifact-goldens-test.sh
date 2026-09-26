@@ -179,29 +179,27 @@ fi
 
 # ─── G4: pr-result-artifact ───────────────────────────────────────────────────
 # plugins/tool/pr-open produces state/artifacts/pr-result.json
-# Required fields: schema_version=1, status, pr_url, draft=false (non-draft default), branch, issue
+# v2 contract: result_contract=2, verdict, disposition, reason; plugin fields under data.*
 print_test_section "G4: pr-result-artifact.golden"
 assert_golden_exists "pr-result-artifact"
 assert_golden_is_valid_json "pr-result-artifact"
-assert_golden_contains "pr-result-artifact" '"schema_version"'
-assert_golden_contains "pr-result-artifact" '"status"'
-assert_golden_contains "pr-result-artifact" '"pr_url"'
-assert_golden_contains "pr-result-artifact" '"draft"'
-assert_golden_contains "pr-result-artifact" '"branch"'
+assert_golden_contains "pr-result-artifact" '"result_contract"'
+assert_golden_contains "pr-result-artifact" '"verdict"'
+assert_golden_contains "pr-result-artifact" '"data"'
 
 g4_content="$(cat "$GOLDEN_DIR/pr-result-artifact.golden" 2>/dev/null || echo '{}')"
-g4_schema="$(printf '%s' "$g4_content" | jq -r '.schema_version' 2>/dev/null || echo '')"
-if [[ "$g4_schema" == "1" ]]; then
-    assert_pass "G4: pr-result-artifact schema_version == 1"
+g4_rc="$(printf '%s' "$g4_content" | jq -r '.result_contract' 2>/dev/null || echo '')"
+if [[ "$g4_rc" == "2" ]]; then
+    assert_pass "G4: pr-result-artifact result_contract == 2"
 else
-    assert_fail "G4: pr-result-artifact schema_version == 1" "got: $g4_schema"
+    assert_fail "G4: pr-result-artifact result_contract == 2" "got: $g4_rc"
 fi
 
-g4_draft="$(printf '%s' "$g4_content" | jq -r '.draft' 2>/dev/null || echo '')"
+g4_draft="$(printf '%s' "$g4_content" | jq -r '.data.draft' 2>/dev/null || echo '')"
 if [[ "$g4_draft" == "false" ]]; then
-    assert_pass "[SPEC-7] G4: pr-result-artifact draft == false (non-draft default)"
+    assert_pass "[SPEC-7] G4: pr-result-artifact data.draft == false (non-draft default)"
 else
-    assert_fail "[SPEC-7] G4: pr-result-artifact draft == false (non-draft default)" "got: $g4_draft"
+    assert_fail "[SPEC-7] G4: pr-result-artifact data.draft == false (non-draft default)" "got: $g4_draft"
 fi
 
 set +e

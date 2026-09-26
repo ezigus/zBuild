@@ -279,6 +279,22 @@ else
         "listed in ADR-019 but classify to unknown: $unclassified_from_adr"
 fi
 
+# ─── SPEC-29: verdict_classify maps 'blocked' → warn; ADR-019 row present ────
+# pr-open's valid_verdicts now includes 'blocked' (SPEC-9). Without an arm in
+# verdict_classify and a row in ADR-019, lint-verdict-classify SPEC-6 and SPEC-10
+# both fail at build time. This SPEC pins both prerequisites directly so a
+# regression is caught here before it cascades to the guard tests.
+print_test_section "29. 'blocked' classifies as warn + present in ADR-019 verdict table"
+# verdict.sh and ADR019 are already in scope from SPEC-8 and SPEC-10 above.
+assert_eq "[SPEC-29] verdict_classify(blocked) -> warn (not unknown)" \
+    "warn" "$(verdict_classify "blocked")"
+if grep -qF '`blocked`' "$ADR019"; then
+    assert_pass "[SPEC-29] ADR-019 verdict table contains a 'blocked' row"
+else
+    assert_fail "[SPEC-29] ADR-019 verdict table contains a 'blocked' row" \
+        "'blocked' is absent from $ADR019 — add a row to the verdict table (warn class)"
+fi
+
 # ─── Wiring: the lint is reachable from both entrypoints (#1682) ────────────
 print_test_section "9. wiring — npm run lint and the CI Lint job"
 assert_contains "[wiring] package.json lint chain invokes the checker" \
