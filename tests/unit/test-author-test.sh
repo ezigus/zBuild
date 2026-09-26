@@ -27,6 +27,10 @@
 #                    36202825273 (#1849): both attempts spent their whole 15
 #                    minutes planning all 23 SPECs, wrote nothing, and a
 #                    timeout left the next attempt nothing to continue
+#   SPEC-14 [change]: the result reports the testfiles as they stand after the
+#                    call (path → content hash), so an attempt that wrote
+#                    changes the stage's artifact and the engine's progress
+#                    check sees it; an attempt that wrote nothing does not
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -206,6 +210,23 @@ assert_contains "[SPEC-13][change] the prompt says to write one testfile at a ti
     "$(cat "$_TA_PROMPT")" "one testfile at a time"
 assert_contains "[SPEC-13][change] …writing each before planning the next, so a timeout keeps what is written" \
     "$(cat "$_TA_PROMPT")" "before you plan the next"
+
+print_test_section "SPEC-14: the result reports what the testfiles hold after the call"
+_setup s14
+route_to_model() { printf 'assert_eq "[SPEC-1] part %s" "1" "$n"\n' "$RANDOM" >> "$ZBUILD_REPO_ROOT/tests/acc-test.sh"; return 124; }
+test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
+assert_eq "[SPEC-14][change] a timed-out call that wrote reports the file's content hash" \
+    "$(git -C "$_R" hash-object tests/acc-test.sh 2>/dev/null)" "$(_res '.data.testfiles["tests/acc-test.sh"]')"
+_r1="$(cat "$_A/test-author-result.json" 2>/dev/null)"
+test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
+_r2="$(cat "$_A/test-author-result.json" 2>/dev/null)"
+if [[ -n "$_r1" && "$_r1" != "$_r2" ]]; then assert_pass "[SPEC-14][change] an attempt that wrote more changes the result"
+else assert_fail "[SPEC-14][change] an attempt that wrote more changes the result" "result identical across attempts"; fi
+route_to_model() { return 124; }
+test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
+assert_eq "[SPEC-14][guard] an attempt that wrote nothing leaves the result identical" \
+    "$_r2" "$(cat "$_A/test-author-result.json" 2>/dev/null)"
+route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return $_TA_RC; }
 
 print_test_results
 exit $((FAIL > 0))

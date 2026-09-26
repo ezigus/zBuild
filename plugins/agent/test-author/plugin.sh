@@ -99,9 +99,25 @@ _ta_write_result() {
         _owned="$(jq -Rnc '[inputs | select(length > 0)] | unique' <<< "$_ol" 2>/dev/null || true)"
         [[ -n "$_owned" ]] || _owned="[]"
     fi
+    # The author's work lands in the repo, not in this file — so the result
+    # carries each testfile's content hash as it stands now. An attempt that
+    # wrote changes this artifact; one that wrote nothing leaves it identical,
+    # which is what the engine's per-attempt progress check compares (#2186).
+    local _tfh="{}" _repo="${ZBUILD_REPO_ROOT:-$_TA_ROOT}" _tf _h
+    if [[ "$_owned" != "[]" ]]; then
+        local _pairs=""
+        while IFS= read -r _tf; do
+            [[ -n "$_tf" && -f "$_repo/$_tf" ]] || continue
+            _h="$(git hash-object "$_repo/$_tf" 2>/dev/null || true)"
+            [[ -n "$_h" ]] && _pairs+="$_tf"$'\t'"$_h"$'\n'
+        done < <(jq -r '.[]' <<< "$_owned" 2>/dev/null)
+        _tfh="$(jq -Rnc '[inputs | select(length > 0) | split("\t") | {(.[0]): .[1]}] | add // {}' <<< "$_pairs" 2>/dev/null || true)"
+        [[ -n "$_tfh" ]] || _tfh="{}"
+    fi
     if ! jq -n --arg v "$v" --arg d "$d" --arg r "$r" --argjson n "${n:-0}" --argjson o "${_owned:-[]}" \
+            --argjson t "$_tfh" \
         '{result_contract: 2, verdict: $v, disposition: $d, reason: $r,
-          data: {specs_covered: $n, owned_files: $o}}' \
+          data: {specs_covered: $n, owned_files: $o, testfiles: $t}}' \
         | atomic_write "$dir/test-author-result.json"; then
         _ta_emit "test_author.result.write_failed" "dir=$dir"
     fi
