@@ -119,7 +119,9 @@ verdict_classify() {
         # infrastructure hiccup — the #1702 failure mode. The stage still returns
         # rc=1 on degraded, and rc always wins, so a real halt is unaffected;
         # this classification governs the INDICATOR only.
-        request_changes|incomplete|degraded)
+        # #1849: `blocked` is pr-open's terminal decision when a review blocks
+        # the PR (rc=0, intentional stop) — warn (⚠ YELLOW), not fail.
+        request_changes|incomplete|degraded|blocked)
             echo "warn" ;;
         # #2034 spec-correspondence: does the assertion test what its SPEC SAYS?
         # `corresponds` is the clean answer. `partial` and `uncheckable` are
