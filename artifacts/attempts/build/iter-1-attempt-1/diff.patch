@@ -1,0 +1,2684 @@
+diff --git a/plugins/agent/deploy/plugin.sh b/plugins/agent/deploy/plugin.sh
+index a094347e..17bcfe8a 100755
+--- a/plugins/agent/deploy/plugin.sh
++++ b/plugins/agent/deploy/plugin.sh
+@@ -73,7 +73,7 @@ _deploy_agent_run_inner() {
+     # (checked BEFORE the gate guard so isolation/dry-run needs no gate result).
+     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
+         jq -n --arg pr_url "$pr_url" \
+-            '{schema_version:1,verdict:"deployed",mode:"dry_run",pr_url:$pr_url}' \
++            '{"result_contract":2,"verdict":"deployed","disposition":"complete","reason":"dry run — release simulated","pr_url":$pr_url,"data":{"mode":"dry_run"}}' \
+             | atomic_write "$deploy_result_out"
+         stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "skip" \
+             "dry run — no release side-effect was executed" \
+diff --git a/plugins/agent/deploy/tests/deploy-test.sh b/plugins/agent/deploy/tests/deploy-test.sh
+index d7722c8c..3f8d3f71 100755
+--- a/plugins/agent/deploy/tests/deploy-test.sh
++++ b/plugins/agent/deploy/tests/deploy-test.sh
+@@ -154,15 +154,15 @@ else
+ fi
+ 
+ # ---------------------------------------------------------------------------
+-# SPEC-7: dry-run deploy-result.json carries schema_version=1 field
++# SPEC-7: dry-run deploy-result.json carries result_contract=2 field (v2 contract)
+ # ---------------------------------------------------------------------------
+ _run7="$TEST_TEMP_DIR/run7"
+ _sf7="$(_make_state "$_run7")"
+ printf 'https://github.com/test/repo/pull/42\n' > "$_run7/artifacts/pr-url.txt"
+ 
+ ZBUILD_DRY_RUN=1 _deploy_agent_run_inner "$_sf7"
+-_sv7="$(jq -r '.schema_version' "$_run7/artifacts/deploy-result.json" 2>/dev/null || echo MISSING)"
+-assert_eq "[SPEC-7] deploy-result.json has schema_version=1" "1" "$_sv7"
++_sv7="$(jq -r '.result_contract' "$_run7/artifacts/deploy-result.json" 2>/dev/null || echo MISSING)"
++assert_eq "[SPEC-7] deploy-result.json has result_contract=2" "2" "$_sv7"
+ 
+ # ---------------------------------------------------------------------------
+ # SPEC-8: gate result MISSING (non-dry-run) → fail-closed rc=2 + verdict=error
+diff --git a/plugins/agent/pr-delivery/plugin.sh b/plugins/agent/pr-delivery/plugin.sh
+index 3cc6ea81..b8602cd3 100644
+--- a/plugins/agent/pr-delivery/plugin.sh
++++ b/plugins/agent/pr-delivery/plugin.sh
+@@ -58,12 +58,12 @@ _pr_stage_run_inner() {
+         verdict="$(jq -r '.verdict // empty' "$review_json" 2>/dev/null || true)"
+         if [[ "$verdict" == "block" ]]; then
+             warn "pr: review verdict=block — refusing PR open"
+-            printf '{"status":"blocked","verdict":"block","branch":"%s"}\n' \
+-                "${ZBUILD_BRANCH:-unknown}" > "$pr_result_out"
++            jq -n '{"result_contract":2,"verdict":"blocked","disposition":"complete","reason":"review verdict is block"}' \
++                > "$pr_result_out"
+             stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
+                 "refused to open a PR: the review verdict is block" \
+                 "No PR was delivered. The review stage judged the change not ready."
+-            return 1
++            return 0
+         fi
+     fi
+ 
+@@ -73,7 +73,8 @@ _pr_stage_run_inner() {
+         [[ "$_dry_draft" == "true" ]] || _dry_draft="false"
+         printf 'https://github.com/mock/repo/pull/0\n' | atomic_write "$pr_url_out"
+         jq -nc --arg branch "${ZBUILD_BRANCH:-unknown}" --argjson draft "$_dry_draft" \
+-            '{status:"dry_run",branch:$branch,pr_number:0,draft:$draft}' \
++            '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"dry run — PR simulated",
++              "data":{"status":"dry_run","branch":$branch,"pr_number":0,"draft":$draft}}' \
+             | atomic_write "$pr_result_out"
+         stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "skip" \
+             "dry run — no PR was opened and gh was not called" \
+diff --git a/plugins/tool/deploy-release/manifest.yaml b/plugins/tool/deploy-release/manifest.yaml
+index 2cfac9f5..91fa2409 100644
+--- a/plugins/tool/deploy-release/manifest.yaml
++++ b/plugins/tool/deploy-release/manifest.yaml
+@@ -19,6 +19,7 @@ requires:
+   plugins: []
+ 
+ provides:
++  result_contract: 2
+   role: deploy_release_executor
+   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+   # the engine's known set at load. Adding one here needs no engine-config edit.
+diff --git a/plugins/tool/deploy-release/plugin.sh b/plugins/tool/deploy-release/plugin.sh
+index 12ceeb6a..4cc84256 100755
+--- a/plugins/tool/deploy-release/plugin.sh
++++ b/plugins/tool/deploy-release/plugin.sh
+@@ -23,25 +23,35 @@ deploy_release_run() {
+     local state_file="${2:-}"
+     if [[ -z "$state_file" ]]; then
+         error "deploy_release_run: state_file argument required"
++        if [[ -n "${ZBUILD_ARTIFACT_DIR:-}" ]]; then
++            mkdir -p "$ZBUILD_ARTIFACT_DIR"
++            jq -n '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"state_file argument required"}' \
++                > "$ZBUILD_ARTIFACT_DIR/deploy-result.json"
++        fi
+         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/deploy-release-summary.md}" "deploy-release" "error" \
+             "the engine dispatched this stage with no state file, so it could not run" \
+             "No work was attempted. This is an engine contract violation, not a fault in the change."
+-        return 2
++        return 1
+     fi
+ 
+     local state_dir; state_dir="$(dirname "$state_file")"
+     local artifacts_dir="$state_dir/artifacts"
+-    local pr_url_in="$artifacts_dir/pr-url.txt"
+     local deploy_result_out="$artifacts_dir/deploy-result.json"
+     mkdir -p "$artifacts_dir"
+ 
++    local _pr_url_path="$artifacts_dir/pr-url.txt"
++    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
++        local _si_pu
++        _si_pu="$(jq -r '.inputs.pr_url // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
++        [[ -n "$_si_pu" ]] && _pr_url_path="$_si_pu"
++    fi
+     local pr_url=""
+-    [[ -f "$pr_url_in" ]] && pr_url="$(tr -d '[:space:]' < "$pr_url_in")"
++    [[ -f "$_pr_url_path" ]] && pr_url="$(tr -d '[:space:]' < "$_pr_url_path")"
+ 
+     # Dry-run: write sentinel without executing git/gh
+     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
+         jq -n --arg pr_url "$pr_url" \
+-            '{schema_version:1,verdict:"deployed",mode:"dry_run",pr_url:$pr_url}' \
++            '{"result_contract":2,"verdict":"deployed","disposition":"complete","reason":"dry run — release simulated, no tag created","pr_url":$pr_url,"data":{"mode":"dry_run"}}' \
+             | atomic_write "$deploy_result_out"
+         emit_event "deploy.release.dry_run" "plugin=deploy-release"
+         stage_summary_write "$artifacts_dir/deploy-release-summary.md" "deploy-release" "skip" \
+@@ -60,7 +70,7 @@ deploy_release_run() {
+     if ! git tag "$tag_name" 2>/dev/null; then
+         error "deploy-release: git tag failed for $tag_name"
+         jq -n --arg tag "$tag_name" \
+-            '{schema_version:1,verdict:"error",reason:"git tag failed",tag:$tag}' \
++            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"git tag failed","data":{"tag":$tag}}' \
+             > "$deploy_result_out"
+         stage_summary_write "$artifacts_dir/deploy-release-summary.md" "deploy-release" "fail" \
+             "could not create the release tag $tag_name" \
+@@ -73,7 +83,7 @@ deploy_release_run() {
+         # Roll back the local tag so a retry is not blocked by a stale tag (#757 review).
+         git tag -d "$tag_name" 2>/dev/null || true
+         jq -n --arg tag "$tag_name" \
+-            '{schema_version:1,verdict:"error",reason:"git push tag failed",tag:$tag}' \
++            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"git push tag failed","data":{"tag":$tag}}' \
+             > "$deploy_result_out"
+         stage_summary_write "$artifacts_dir/deploy-release-summary.md" "deploy-release" "fail" \
+             "could not push the release tag $tag_name to origin" \
+@@ -82,7 +92,7 @@ deploy_release_run() {
+     fi
+ 
+     jq -n --arg tag "$tag_name" --arg pr_url "$pr_url" \
+-        '{schema_version:1,verdict:"deployed",tag:$tag,pr_url:$pr_url}' \
++        '{"result_contract":2,"verdict":"deployed","disposition":"complete","reason":"git tag created and pushed to origin","pr_url":$pr_url,"data":{"tag":$tag}}' \
+         | atomic_write "$deploy_result_out"
+     emit_event "deploy.release.complete" "plugin=deploy-release" "tag=$tag_name"
+     stage_summary_write "$artifacts_dir/deploy-release-summary.md" "deploy-release" "pass" \
+diff --git a/plugins/tool/merge/manifest.yaml b/plugins/tool/merge/manifest.yaml
+index 16b13275..129cce2a 100644
+--- a/plugins/tool/merge/manifest.yaml
++++ b/plugins/tool/merge/manifest.yaml
+@@ -18,11 +18,16 @@ requires:
+     - event-bus
+     - state
+ 
++provides:
++  result_contract: 2
++  role: merge_executor
++  events:
++    - plugin.result
++
+ config:
+-  # Writes no .verdict on either verdict channel; the engine falls back to
+-  # pass for a well-formed primary (core/pipeline/verdict.sh). An ABSENT key
+-  # is a lint failure; the explicit [] is the claim (#1708).
+-  valid_verdicts: []
++  valid_verdicts:
++    - pass
++    - error
+   tier_default: T0
+ 
+ inputs:
+diff --git a/plugins/tool/merge/plugin.sh b/plugins/tool/merge/plugin.sh
+index b1fe5b84..ac22c82f 100644
+--- a/plugins/tool/merge/plugin.sh
++++ b/plugins/tool/merge/plugin.sh
+@@ -35,14 +35,18 @@ merge_run() {
+         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/merge-summary.md}" "merge" "error" \
+             "the engine dispatched this stage with no state file, so it could not run" \
+             "No work was attempted. This is an engine contract violation, not a fault in the change."
+-        return 2
++        return 1
+     fi
+ 
+     local state_dir; state_dir="$(dirname "$state_file")"
+     local artifacts_dir="$state_dir/artifacts"
+     mkdir -p "$artifacts_dir"
+ 
+-    local gate_json="$artifacts_dir/gate-aggregator-result.json"
++    local gate_json
++    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
++        gate_json="$(jq -r '.inputs.gate_aggregator_result // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
++    fi
++    [[ -z "${gate_json:-}" ]] && gate_json="$artifacts_dir/gate-aggregator-result.json"
+     local merge_result_out="$artifacts_dir/merge-result.json"
+ 
+     # Read convergence gate verdict
+@@ -85,7 +89,7 @@ _merge_pr_fallback() {
+     pr_open_run "$stage_id" "$state_file" || _rc=$?
+     jq -n \
+         --arg reason "$reason" \
+-        '{"schema_version":1,"status":"pr_fallback","reason":$reason}' \
++        '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":("gate not pass — fallback to PR: "+$reason),"data":{"mode":"pr_fallback"}}' \
+         > "$merge_result_out"
+     return $_rc
+ }
+@@ -108,9 +112,9 @@ _merge_run_inner() {
+         emit_event "plugin.result" "verdict=error" "plugin=merge" \
+             "reason=branch_is_main" "branch=${current_branch}"
+         jq -n --arg branch "$current_branch" \
+-            '{"schema_version":1,"status":"error","reason":("refusing to merge from: "+$branch)}' \
++            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("refusing to merge from: "+$branch)}' \
+             > "$merge_result_out"
+-        return 2
++        return 1
+     fi
+ 
+     local issue_num target_branch
+@@ -132,9 +136,9 @@ _merge_run_inner() {
+         git checkout -b "$target_branch" 2>/dev/null || git checkout "$target_branch" 2>/dev/null || {
+             error "merge_run: failed to checkout branch '${target_branch}'"
+             jq -n --arg branch "$target_branch" \
+-                '{"schema_version":1,"status":"error","reason":("failed to checkout: "+$branch)}' \
++                '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("failed to checkout: "+$branch)}' \
+                 > "$merge_result_out"
+-            return 2
++            return 1
+         }
+     fi
+ 
+@@ -144,9 +148,9 @@ _merge_run_inner() {
+     if ! zbuild_push_reconcile "$target_branch"; then
+         error "merge_run: push reconcile failed for '${target_branch}': ${ZBUILD_PUSH_RECONCILE_ERR}"
+         jq -n --arg branch "$target_branch" --arg detail "$ZBUILD_PUSH_RECONCILE_ERR" \
+-            '{"schema_version":1,"status":"error","reason":("failed to push: "+$branch+": "+$detail)}' \
++            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("failed to push: "+$branch+": "+$detail)}' \
+             > "$merge_result_out"
+-        return 2
++        return 1
+     fi
+ 
+     local pr_title
+@@ -169,9 +173,9 @@ _merge_run_inner() {
+         --body "$pr_body" 2>&1)"; then
+         error "merge_run: gh pr create failed: $gh_output"
+         jq -n --arg reason "$gh_output" \
+-            '{"schema_version":1,"status":"error","reason":$reason}' \
++            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":$reason}' \
+             > "$merge_result_out"
+-        return 2
++        return 1
+     fi
+ 
+     local pr_url
+@@ -184,9 +188,9 @@ _merge_run_inner() {
+     if ! gh pr merge --squash --auto 2>/dev/null; then
+         error "merge_run: gh pr merge failed"
+         jq -n --arg pr_url "$pr_url" \
+-            '{"schema_version":1,"status":"error","reason":"gh pr merge failed","pr_url":$pr_url}' \
++            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"gh pr merge failed","data":{"pr_url":$pr_url}}' \
+             > "$merge_result_out"
+-        return 2
++        return 1
+     fi
+ 
+     # Write pr-url.txt for downstream compatibility (ADR-013)
+@@ -194,14 +198,12 @@ _merge_run_inner() {
+     printf '%s\n' "$pr_url" | atomic_write "$pr_url_out"
+ 
+     jq -n \
+-        --argjson schema_version 1 \
+-        --arg status "merged" \
+         --arg pr_url "$pr_url" \
+         --argjson pr_number "${pr_number:-0}" \
+         --arg branch "$target_branch" \
+         --argjson issue "${issue_num:-0}" \
+-        '{"schema_version":$schema_version,"status":$status,"pr_url":$pr_url,
+-          "pr_number":$pr_number,"branch":$branch,"issue":$issue}' \
++        '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"squash-merged via gh pr merge",
++          "data":{"pr_url":$pr_url,"pr_number":$pr_number,"branch":$branch,"issue":$issue}}' \
+         > "$merge_result_out"
+ 
+     # Manifest contract: pr-delivery declares pr-result.json as a REQUIRED output
+@@ -210,15 +212,13 @@ _merge_run_inner() {
+     # scan_plugin_outputs check is satisfied — the PR was created then squash-merged.
+     local pr_result_out="$artifacts_dir/pr-result.json"
+     jq -n \
+-        --argjson schema_version 1 \
+-        --arg status "merged" \
+         --arg pr_url "$pr_url" \
+         --argjson pr_number "${pr_number:-0}" \
+         --argjson draft false \
+         --arg branch "$target_branch" \
+         --argjson issue "${issue_num:-0}" \
+-        '{schema_version: $schema_version, status: $status, pr_url: $pr_url,
+-          pr_number: $pr_number, draft: $draft, branch: $branch, issue: $issue}' \
++        '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"squash-merged via gh pr merge",
++          "data":{"status":"merged","pr_url":$pr_url,"pr_number":$pr_number,"draft":$draft,"branch":$branch,"issue":$issue}}' \
+         > "$pr_result_out"
+ 
+     stage_summary_write "$artifacts_dir/merge-summary.md" "merge" "pass" \
+diff --git a/plugins/tool/pr-open/manifest.yaml b/plugins/tool/pr-open/manifest.yaml
+index 5ef458e5..75b68100 100644
+--- a/plugins/tool/pr-open/manifest.yaml
++++ b/plugins/tool/pr-open/manifest.yaml
+@@ -22,6 +22,7 @@ requires:
+     - state
+ 
+ provides:
++  result_contract: 2
+   # Canonical artifact per ADR-013: pr-url.txt.
+   # The plugin also writes pr-result.json (richer status payload, listed in
+   # outputs[] below); both are written on success. See ADR-013 Implementation
+@@ -33,10 +34,10 @@ provides:
+     - plugin.pr_open.preflight_remote_has_work
+ 
+ config:
+-  # Writes no .verdict on either verdict channel; the engine falls back to
+-  # pass for a well-formed primary (core/pipeline/verdict.sh). An ABSENT key
+-  # is a lint failure; the explicit [] is the claim (#1708).
+-  valid_verdicts: []
++  valid_verdicts:
++    - pass
++    - blocked
++    - error
+   tier_default: T0
+   draft: false
+ 
+diff --git a/plugins/tool/pr-open/plugin.sh b/plugins/tool/pr-open/plugin.sh
+index 818695f1..52a2c658 100755
+--- a/plugins/tool/pr-open/plugin.sh
++++ b/plugins/tool/pr-open/plugin.sh
+@@ -3,8 +3,8 @@
+ # Opens a PR via `gh pr create`. No LLM. No redaction. T0 tool.
+ # Safety constraints:
+ #   - Non-draft by default; set _TPL_PR_DRAFT=true (pr_draft: true in template) for draft mode
+-#   - Refuses if review.json verdict == "block" (rc=2)
+-#   - Refuses if current branch is main or master (rc=2)
++#   - Refuses if review.json verdict == "block" (rc=0, verdict=blocked)
++#   - Refuses if current branch is main or master (rc=1, verdict=error)
+ # Sourced library: no set -euo pipefail.
+ 
+ [[ -n "${_ZBUILD_PR_OPEN_LOADED:-}" ]] && return 0
+@@ -37,7 +37,7 @@ pr_open_run() {
+         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/pr-open-summary.md}" "pr-open" "error" \
+             "the engine dispatched this stage with no state file, so it could not run" \
+             "No work was attempted. This is an engine contract violation, not a fault in the change."
+-        return 2
++        return 1
+     fi
+ 
+     # #888: every other git-mutating stage resolves its tree from
+@@ -59,7 +59,7 @@ pr_open_run() {
+         local _abs_dir
+         if ! _abs_dir="$(cd "$(dirname "$state_file")" 2>/dev/null && pwd)"; then
+             error "pr_open_run: cannot resolve state_file directory: $(dirname "$state_file")"
+-            return 2
++            return 1
+         fi
+         state_file="$_abs_dir/$(basename "$state_file")"
+     fi
+@@ -67,11 +67,11 @@ pr_open_run() {
+         if [[ -d "$ZBUILD_REPO_ROOT" ]]; then
+             cd "$ZBUILD_REPO_ROOT" || {
+                 error "pr_open_run: cannot cd to ZBUILD_REPO_ROOT=$ZBUILD_REPO_ROOT"
+-                return 2
++                return 1
+             }
+         else
+             error "pr_open_run: ZBUILD_REPO_ROOT=$ZBUILD_REPO_ROOT is not a directory"
+-            return 2
++            return 1
+         fi
+     fi
+ 
+@@ -188,6 +188,16 @@ _pr_open_run_inner() {
+     local _draft_bool="${_TPL_PR_DRAFT:-false}"
+     [[ "$_draft_bool" == "true" ]] || _draft_bool="false"
+ 
++    # Resolve advisory_report path: ZBUILD_STAGE_INPUTS takes precedence,
++    # artifacts_dir is the fallback (pr-delivery sources plugin.sh directly
++    # without ZBUILD_STAGE_INPUTS set in that call path — fallback required).
++    local advisory_report="$artifacts_dir/review-report.json"
++    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
++        local _si_rr
++        _si_rr="$(jq -r '.inputs.review_report // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
++        [[ -n "$_si_rr" ]] && advisory_report="$_si_rr"
++    fi
++
+     # ── Safety check 1: refuse if on main or master ──────────────────────────
+     local current_branch
+     current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
+@@ -200,10 +210,9 @@ _pr_open_run_inner() {
+             "reason=branch_is_main" "branch=${current_branch}"
+         jq -n \
+             --arg branch "$current_branch" \
+-            --argjson draft "${_draft_bool}" \
+-            '{"schema_version":1,"status":"error","reason":("refusing to open PR from branch: "+$branch),"draft":$draft}' \
++            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("refusing to open PR from branch: "+$branch)}' \
+             > "$output_pr_result_json"
+-        return 2
++        return 1
+     fi
+ 
+     # ── Safety check 2/3: review verdict source (#1142, ADR-040) ─────────────
+@@ -213,7 +222,6 @@ _pr_open_run_inner() {
+     # block; convergence was already gated by the gate-aggregator's exit_when):
+     # open the PR with no verdict guard. Fail-closed (ADR-001/#358) only when
+     # NEITHER review signal exists.
+-    local advisory_report="$artifacts_dir/review-report.json"
+     if [[ -f "$review_json_path" ]]; then
+         local verdict
+         verdict="$(jq -r '.verdict // ""' "$review_json_path" 2>/dev/null || echo "")"
+@@ -222,13 +230,12 @@ _pr_open_run_inner() {
+             stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
+                 "the review verdict blocks opening a PR" \
+                 "No PR was opened. The review stage judged the change not ready."
+-            emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
++            emit_event "plugin.result" "verdict=blocked" "plugin=pr-open" \
+                 "reason=review_verdict_block" "verdict=${verdict}"
+             jq -n \
+-                --argjson draft "${_draft_bool}" \
+-                '{"schema_version":1,"status":"blocked","reason":"review verdict is block","draft":$draft}' \
++                '{"result_contract":2,"verdict":"blocked","disposition":"complete","reason":"review verdict is block"}' \
+                 > "$output_pr_result_json"
+-            return 2
++            return 0
+         fi
+     elif [[ -f "$advisory_report" ]]; then
+         warn "pr_open: review.json absent — advisory-review mode (review-report.json present; ADR-040 lenses never block, #1142)"
+@@ -237,13 +244,12 @@ _pr_open_run_inner() {
+         stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
+             "no review signal was available to authorise a PR" \
+             "No PR was opened. Fail-closed: absence of a review is not approval."
+-        emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
++        emit_event "plugin.result" "verdict=blocked" "plugin=pr-open" \
+             "reason=review_signal_missing" "path=${review_json_path}"
+         jq -n \
+-            --argjson draft "${_draft_bool}" \
+-            '{"schema_version":1,"status":"blocked","reason":"no review signal — fail-closed per ADR-001","draft":$draft}' \
++            '{"result_contract":2,"verdict":"blocked","disposition":"complete","reason":"no review signal — fail-closed per ADR-001"}' \
+             > "$output_pr_result_json"
+-        return 2
++        return 0
+     fi
+ 
+     # ── Determine target branch ───────────────────────────────────────────────
+@@ -274,10 +280,9 @@ _pr_open_run_inner() {
+                 "reason=branch_checkout_failed" "branch=${target_branch}"
+             jq -n \
+                 --arg branch "$target_branch" \
+-                --argjson draft "${_draft_bool}" \
+-                '{"schema_version":1,"status":"error","reason":("failed to checkout branch: "+$branch),"draft":$draft}' \
++                '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("failed to checkout branch: "+$branch)}' \
+                 > "$output_pr_result_json"
+-            return 2
++            return 1
+         }
+     fi
+ 
+@@ -325,10 +330,9 @@ _pr_open_run_inner() {
+                 emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
+                     "reason=no_committed_changes" "branch=${current_branch}"
+                 jq -n \
+-                    --argjson draft "${_draft_bool}" \
+-                    '{"schema_version":1,"status":"error","reason":"no committed changes on branch or origin","draft":$draft}' \
++                    '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"no committed changes on branch or origin"}' \
+                     > "$output_pr_result_json"
+-                return 2
++                return 1
+             fi
+         fi
+     fi
+@@ -346,10 +350,9 @@ _pr_open_run_inner() {
+         emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
+             "reason=branch_push_failed" "branch=${target_branch}"
+         jq -n --arg branch "$target_branch" --arg detail "$ZBUILD_PUSH_RECONCILE_ERR" \
+-            --argjson draft "${_draft_bool}" \
+-            '{"schema_version":1,"status":"error","reason":("failed to push branch: "+$branch+": "+$detail),"draft":$draft}' \
++            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("failed to push branch: "+$branch+": "+$detail)}' \
+             > "$output_pr_result_json"
+-        return 2
++        return 1
+     fi
+ 
+     # ── Open draft PR via gh ──────────────────────────────────────────────────
+@@ -422,10 +425,9 @@ _pr_open_run_inner() {
+                 "reason=gh_pr_edit_failed"
+             jq -n \
+                 --arg reason "$gh_output" \
+-                --argjson draft "${_draft_bool}" \
+-                '{"schema_version":1,"status":"error","reason":$reason,"draft":$draft}' \
++                '{"result_contract":2,"verdict":"error","disposition":"broken","reason":$reason}' \
+                 > "$output_pr_result_json"
+-            return 2
++            return 1
+         fi
+         # Get PR URL from existing PR
+         pr_url="$(gh pr view "$existing_pr_number" --json url --jq .url 2>/dev/null || echo "")"
+@@ -448,10 +450,9 @@ _pr_open_run_inner() {
+                             "reason=gh_pr_edit_failed"
+                         jq -n \
+                             --arg reason "$gh_output" \
+-                            --argjson draft "${_draft_bool}" \
+-                            '{"schema_version":1,"status":"error","reason":$reason,"draft":$draft}' \
++                            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":$reason}' \
+                             > "$output_pr_result_json"
+-                        return 2
++                        return 1
+                     fi
+                     pr_url="$(gh pr view "$existing_pr_number" --json url --jq .url 2>/dev/null || echo "")"
+                     pr_number="$existing_pr_number"
+@@ -464,10 +465,9 @@ _pr_open_run_inner() {
+                         "reason=gh_pr_create_failed"
+                     jq -n \
+                         --arg reason "$gh_output" \
+-                        --argjson draft "${_draft_bool}" \
+-                        '{"schema_version":1,"status":"error","reason":$reason,"draft":$draft}' \
++                        '{"result_contract":2,"verdict":"error","disposition":"broken","reason":$reason}' \
+                         > "$output_pr_result_json"
+-                    return 2
++                    return 1
+                 fi
+             else
+                 error "pr_open: gh pr create failed: $gh_output"
+@@ -478,10 +478,9 @@ _pr_open_run_inner() {
+                     "reason=gh_pr_create_failed"
+                 jq -n \
+                     --arg reason "$gh_output" \
+-                    --argjson draft "${_draft_bool}" \
+-                    '{"schema_version":1,"status":"error","reason":$reason,"draft":$draft}' \
++                    '{"result_contract":2,"verdict":"error","disposition":"broken","reason":$reason}' \
+                     > "$output_pr_result_json"
+-                return 2
++                return 1
+             fi
+         else
+             # New PR created successfully
+@@ -509,15 +508,14 @@ _pr_open_run_inner() {
+     printf '%s\n' "$pr_url" | atomic_write "$(dirname "$output_pr_result_json")/pr-url.txt"
+ 
+     jq -n \
+-        --argjson schema_version 1 \
+         --arg status "$pr_status" \
+         --arg pr_url "$pr_url" \
+         --argjson pr_number "${pr_number:-0}" \
+         --argjson draft "${_draft_bool}" \
+         --arg branch "$target_branch" \
+         --argjson issue "${issue_num:-0}" \
+-        '{schema_version: $schema_version, status: $status, pr_url: $pr_url,
+-          pr_number: $pr_number, draft: $draft, branch: $branch, issue: $issue}' \
++        '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":("PR "+$status),
++          "data":{"status":$status,"pr_url":$pr_url,"pr_number":$pr_number,"draft":$draft,"branch":$branch,"issue":$issue}}' \
+         > "$output_pr_result_json"
+ 
+     stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "pass" \
+diff --git a/plugins/tool/pr-open/tests/pr-open-test.sh b/plugins/tool/pr-open/tests/pr-open-test.sh
+index b0b47562..b20c7be4 100755
+--- a/plugins/tool/pr-open/tests/pr-open-test.sh
++++ b/plugins/tool/pr-open/tests/pr-open-test.sh
+@@ -58,12 +58,12 @@ _pr_open_run_inner "$REVIEW_JSON" "$STATE_FILE" "$PR_RESULT_JSON" "999"
+ rc=$?
+ set -e
+ 
+-assert_exit_code "blocked verdict returns rc=2" "2" "$rc"
++assert_exit_code "blocked verdict returns rc=0 (blocked is a verdict outcome, not error)" "0" "$rc"
+ assert_file_exists "pr-result.json written on block" "$PR_RESULT_JSON"
+ 
+ if [[ -f "$PR_RESULT_JSON" ]]; then
+-    pr_status="$(jq -r '.status' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
+-    assert_eq "pr-result.json status=blocked" "blocked" "$pr_status"
++    pr_status="$(jq -r '.verdict' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
++    assert_eq "pr-result.json verdict=blocked" "blocked" "$pr_status"
+ fi
+ 
+ unset -f git
+@@ -92,12 +92,12 @@ _pr_open_run_inner "$REVIEW_JSON" "$STATE_FILE" "$PR_RESULT_JSON" "999"
+ rc=$?
+ set -e
+ 
+-assert_exit_code "no review signal returns rc=2" "2" "$rc"
++assert_exit_code "no review signal returns rc=0 (blocked is a verdict outcome, not error)" "0" "$rc"
+ assert_file_exists "pr-result.json written when no review signal" "$PR_RESULT_JSON"
+ 
+ if [[ -f "$PR_RESULT_JSON" ]]; then
+-    pr_status="$(jq -r '.status' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
+-    assert_eq "pr-result.json status=blocked when no review signal" "blocked" "$pr_status"
++    pr_status="$(jq -r '.verdict' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
++    assert_eq "pr-result.json verdict=blocked when no review signal" "blocked" "$pr_status"
+     pr_reason="$(jq -r '.reason' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
+     if [[ "$pr_reason" == *"no review signal"* ]]; then
+         assert_pass "pr-result.json reason names the missing review signal"
+@@ -143,8 +143,8 @@ rm -f "$REVIEW_REPORT_JSON"
+ 
+ assert_exit_code "advisory mode (review-report.json present) opens PR rc=0" "0" "$rc"
+ if [[ -f "$PR_RESULT_JSON" ]]; then
+-    assert_eq "advisory mode: status=opened (not blocked on advisory review)" \
+-        "opened" "$(jq -r '.status' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
++    assert_eq "advisory mode: verdict=pass (not blocked on advisory review)" \
++        "pass" "$(jq -r '.verdict' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
+ fi
+ 
+ unset -f git
+@@ -173,12 +173,12 @@ _pr_open_run_inner "$REVIEW_JSON" "$STATE_FILE" "$PR_RESULT_JSON" "999"
+ rc=$?
+ set -e
+ 
+-assert_exit_code "main branch returns rc=2" "2" "$rc"
++assert_exit_code "main branch returns rc=1 (infrastructure error, not verdict outcome)" "1" "$rc"
+ assert_file_exists "pr-result.json written for main branch guard" "$PR_RESULT_JSON"
+ 
+ if [[ -f "$PR_RESULT_JSON" ]]; then
+-    pr_status="$(jq -r '.status' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
+-    assert_eq "pr-result.json status=error for main branch" "error" "$pr_status"
++    pr_status="$(jq -r '.verdict' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
++    assert_eq "pr-result.json verdict=error for main branch" "error" "$pr_status"
+ fi
+ 
+ unset -f git
+@@ -224,16 +224,16 @@ assert_file_exists "pr-url.txt written on success (ADR-013 canonical)" \
+ 
+ if [[ -f "$PR_RESULT_JSON" ]]; then
+     pr_result_json="$(cat "$PR_RESULT_JSON")"
+-    assert_json_key "pr-result.json status=opened" "$pr_result_json" '.status' "opened"
+-    pr_url="$(jq -r '.pr_url' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
++    assert_json_key "pr-result.json data.status=opened" "$pr_result_json" '.data.status' "opened"
++    pr_url="$(jq -r '.data.pr_url' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
+     if [[ -n "$pr_url" && "$pr_url" != "null" ]]; then
+-        assert_pass "pr-result.json pr_url is non-empty"
++        assert_pass "pr-result.json data.pr_url is non-empty"
+     else
+-        assert_fail "pr-result.json pr_url is non-empty" "pr_url was empty or null"
++        assert_fail "pr-result.json data.pr_url is non-empty" "data.pr_url was empty or null"
+     fi
+-    assert_json_key "[SPEC-5] pr-result.json draft=false (non-draft default, _TPL_PR_DRAFT unset)" \
+-        "$pr_result_json" '.draft' "false"
+-    assert_json_key "pr-result.json branch=zbuild/issue-999" "$pr_result_json" '.branch' "zbuild/issue-999"
++    assert_json_key "[SPEC-5] pr-result.json data.draft=false (non-draft default, _TPL_PR_DRAFT unset)" \
++        "$pr_result_json" '.data.draft' "false"
++    assert_json_key "pr-result.json data.branch=zbuild/issue-999" "$pr_result_json" '.data.branch' "zbuild/issue-999"
+ fi
+ 
+ unset -f git
+@@ -357,8 +357,8 @@ fi
+ 
+ if [[ -f "$PR_RESULT_JSON" ]]; then
+     pr_result_json8="$(cat "$PR_RESULT_JSON")"
+-    assert_json_key "[SPEC-6] _TPL_PR_DRAFT=true: pr-result.json draft=true" \
+-        "$pr_result_json8" '.draft' "true"
++    assert_json_key "[SPEC-6] _TPL_PR_DRAFT=true: pr-result.json data.draft=true" \
++        "$pr_result_json8" '.data.draft' "true"
+ else
+     assert_fail "[SPEC-6] _TPL_PR_DRAFT=true: pr-result.json written" "artifact absent"
+ fi
+@@ -407,8 +407,8 @@ set -e
+ assert_exit_code "existing PR: returns rc=0 (no abort)" "0" "$rc"
+ if [[ -f "$PR_RESULT_JSON" ]]; then
+     pr_result_json9="$(cat "$PR_RESULT_JSON")"
+-    assert_json_key "existing PR: status=updated" "$pr_result_json9" '.status' "updated"
+-    assert_json_key "existing PR: pr_number=42" "$pr_result_json9" '.pr_number' "42"
++    assert_json_key "existing PR: data.status=updated" "$pr_result_json9" '.data.status' "updated"
++    assert_json_key "existing PR: data.pr_number=42" "$pr_result_json9" '.data.pr_number' "42"
+ fi
+ if grep -q "pr edit" "$GH9_ARGS"; then
+     assert_pass "existing PR: gh pr edit was called"
+diff --git a/tests/golden/pr-result-artifact.golden b/tests/golden/pr-result-artifact.golden
+index 064dbc6c..f74785fc 100644
+--- a/tests/golden/pr-result-artifact.golden
++++ b/tests/golden/pr-result-artifact.golden
+@@ -1 +1 @@
+-{"schema_version":1,"status":"opened","pr_url":"https://github.com/owner/repo/pull/42","pr_number":42,"draft":false,"branch":"zbuild/issue-0","issue":0}
+\ No newline at end of file
++{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"PR opened","data":{"status":"opened","pr_url":"https://github.com/owner/repo/pull/42","pr_number":42,"draft":false,"branch":"zbuild/issue-0","issue":0}}
+\ No newline at end of file
+diff --git a/tests/integration/merge-policy-auto-test.sh b/tests/integration/merge-policy-auto-test.sh
+old mode 100755
+new mode 100644
+index 3f2fa2b5..fc02f79c
+--- a/tests/integration/merge-policy-auto-test.sh
++++ b/tests/integration/merge-policy-auto-test.sh
+@@ -1,16 +1,16 @@
+ #!/usr/bin/env bash
+ # Integration test: merge_policy auto dispatch (I9-B / #1050)
+ #
+-# SPEC coverage:
+-#   [SPEC-1] merge_policy==auto + gate verdict==pass → merge path: merge-result.json
+-#            status==merged, gh pr merge called (not a draft PR)
+-#   [SPEC-2] merge_policy==auto + gate verdict==fail → PR fallback: pr-url.txt
+-#            written, merge-result.json status==pr_fallback
+-#   [SPEC-3] merge_policy==auto + gate artifact absent → PR fallback: same as SPEC-2
+-#   [SPEC-4] merge_policy==auto_unless_flagged + review-report absent → PR (fail-closed):
++# Test coverage:
++#   merge_policy==auto + gate verdict==pass → merge path: merge-result.json
++#            verdict==pass, gh pr merge called (not a draft PR)
++#   merge_policy==auto + gate verdict==fail → PR fallback: pr-url.txt
++#            written, merge-result.json verdict==pass data.mode==pr_fallback [SPEC-19]
++#   merge_policy==auto + gate artifact absent → PR fallback: same as above [SPEC-19]
++#   merge_policy==auto_unless_flagged + review-report absent → PR (fail-closed):
+ #            pr-url.txt written, no merge-result.json (review-report absent → fail-closed)
+-#   [SPEC-5] merge_policy==auto + gate pass but review.json absent → fail-closed:
+-#            PR fallback (status==pr_fallback), gh pr merge NOT called (ADR-001/#358)
++#   merge_policy==auto + gate pass but review.json absent → fail-closed:
++#            PR fallback (data.mode==pr_fallback), gh pr merge NOT called (ADR-001/#358)
+ set -euo pipefail
+ 
+ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+@@ -101,21 +101,21 @@ _art1="$(dirname "$_sf1")/artifacts"
+ export _TPL_MERGE_POLICY="auto"
+ ( pr_stage_run "pr" "$_sf1" ) >/dev/null 2>&1; _rc1=$?
+ 
+-assert_eq "[SPEC-1] pr_stage_run exits 0 on merge path" "0" "$_rc1"
+-assert_file_exists "[SPEC-1] merge-result.json written on merge path" \
++assert_eq "pr_stage_run exits 0 on merge path" "0" "$_rc1"
++assert_file_exists "merge-result.json written on merge path" \
+     "$_art1/merge-result.json"
+-_merge_status1="$(jq -r '.status // empty' "$_art1/merge-result.json" 2>/dev/null || true)"
+-assert_eq "[SPEC-1] merge-result.json status==merged" "merged" "$_merge_status1"
++_merge_verdict1="$(jq -r '.verdict // empty' "$_art1/merge-result.json" 2>/dev/null || true)"
++assert_eq "merge-result.json verdict==pass on merge path" "pass" "$_merge_verdict1"
+ _merge_calls1="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
+ _merge_called=0
+ [[ "$_merge_calls1" == *"merged"* ]] && _merge_called=1
+-assert_eq "[SPEC-1] gh pr merge --squash called on gate-pass path" "1" "$_merge_called"
++assert_eq "gh pr merge --squash called on gate-pass path" "1" "$_merge_called"
+ # pr-delivery's manifest declares pr-result.json a REQUIRED output on every pr-stage
+ # path (#1064 review) — the merge path must write it, not only merge-result.json.
+-assert_file_exists "[SPEC-1] pr-result.json written on merge path (manifest output)" \
++assert_file_exists "pr-result.json written on merge path (manifest output)" \
+     "$_art1/pr-result.json"
+-_pr_result_status1="$(jq -r '.status // empty' "$_art1/pr-result.json" 2>/dev/null || true)"
+-assert_eq "[SPEC-1] pr-result.json status==merged" "merged" "$_pr_result_status1"
++_pr_result_verdict1="$(jq -r '.verdict // empty' "$_art1/pr-result.json" 2>/dev/null || true)"
++assert_eq "pr-result.json verdict==pass on merge path" "pass" "$_pr_result_verdict1"
+ 
+ # ─── SPEC-2: auto + gate verdict==fail → PR fallback ─────────────────────────
+ print_test_section "SPEC-2: merge_policy==auto + gate verdict==fail → PR fallback"
+@@ -127,16 +127,19 @@ _art2="$(dirname "$_sf2")/artifacts"
+ export _TPL_MERGE_POLICY="auto"
+ ( pr_stage_run "pr" "$_sf2" ) >/dev/null 2>&1; _rc2=$?
+ 
+-assert_eq "[SPEC-2] pr_stage_run exits 0 on PR fallback (gate fail)" "0" "$_rc2"
+-assert_file_exists "[SPEC-2] pr-url.txt written on gate-fail fallback" "$_art2/pr-url.txt"
+-assert_file_exists "[SPEC-2] merge-result.json written on fallback" "$_art2/merge-result.json"
+-_merge_status2="$(jq -r '.status // empty' "$_art2/merge-result.json" 2>/dev/null || true)"
+-assert_eq "[SPEC-2] merge-result.json status==pr_fallback on gate fail" \
+-    "pr_fallback" "$_merge_status2"
++assert_eq "pr_stage_run exits 0 on PR fallback (gate fail)" "0" "$_rc2"
++assert_file_exists "pr-url.txt written on gate-fail fallback" "$_art2/pr-url.txt"
++assert_file_exists "merge-result.json written on fallback" "$_art2/merge-result.json"
++_merge_verdict2="$(jq -r '.verdict // empty' "$_art2/merge-result.json" 2>/dev/null || true)"
++assert_eq "[SPEC-19] merge-result.json verdict==pass on gate-fail fallback" \
++    "pass" "$_merge_verdict2"
++_merge_mode2="$(jq -r '.data.mode // empty' "$_art2/merge-result.json" 2>/dev/null || true)"
++assert_eq "[SPEC-19] merge-result.json data.mode==pr_fallback on gate fail" \
++    "pr_fallback" "$_merge_mode2"
+ _merge_calls2="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
+ _gh_merge2=0
+ [[ "$_merge_calls2" == *"merged"* ]] && _gh_merge2=1
+-assert_eq "[SPEC-2] gh pr merge NOT called on gate-fail fallback" "0" "$_gh_merge2"
++assert_eq "gh pr merge NOT called on gate-fail fallback" "0" "$_gh_merge2"
+ 
+ # ─── SPEC-3: auto + gate artifact absent → PR fallback ───────────────────────
+ print_test_section "SPEC-3: merge_policy==auto + gate artifact absent → PR fallback"
+@@ -148,17 +151,20 @@ _art3="$(dirname "$_sf3")/artifacts"
+ export _TPL_MERGE_POLICY="auto"
+ ( pr_stage_run "pr" "$_sf3" ) >/dev/null 2>&1; _rc3=$?
+ 
+-assert_eq "[SPEC-3] pr_stage_run exits 0 on PR fallback (gate absent)" "0" "$_rc3"
+-assert_file_exists "[SPEC-3] pr-url.txt written on gate-absent fallback" "$_art3/pr-url.txt"
+-assert_file_exists "[SPEC-3] merge-result.json written on gate-absent fallback" \
++assert_eq "pr_stage_run exits 0 on PR fallback (gate absent)" "0" "$_rc3"
++assert_file_exists "pr-url.txt written on gate-absent fallback" "$_art3/pr-url.txt"
++assert_file_exists "merge-result.json written on gate-absent fallback" \
+     "$_art3/merge-result.json"
+-_merge_status3="$(jq -r '.status // empty' "$_art3/merge-result.json" 2>/dev/null || true)"
+-assert_eq "[SPEC-3] merge-result.json status==pr_fallback on gate absent" \
+-    "pr_fallback" "$_merge_status3"
++_merge_verdict3="$(jq -r '.verdict // empty' "$_art3/merge-result.json" 2>/dev/null || true)"
++assert_eq "[SPEC-19] merge-result.json verdict==pass on gate-absent fallback" \
++    "pass" "$_merge_verdict3"
++_merge_mode3="$(jq -r '.data.mode // empty' "$_art3/merge-result.json" 2>/dev/null || true)"
++assert_eq "[SPEC-19] merge-result.json data.mode==pr_fallback on gate absent" \
++    "pr_fallback" "$_merge_mode3"
+ _merge_calls3="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
+ _gh_merge3=0
+ [[ "$_merge_calls3" == *"merged"* ]] && _gh_merge3=1
+-assert_eq "[SPEC-3] gh pr merge NOT called when gate artifact absent" "0" "$_gh_merge3"
++assert_eq "gh pr merge NOT called when gate artifact absent" "0" "$_gh_merge3"
+ 
+ # ─── SPEC-8 (#1219): auto + gate verdict==specification → PR fallback ──────────
+ # ADR-045: a design-rooted acceptance failure surfaces as gate-aggregator
+@@ -175,15 +181,18 @@ _art8="$(dirname "$_sf8")/artifacts"
+ export _TPL_MERGE_POLICY="auto"
+ ( pr_stage_run "pr" "$_sf8" ) >/dev/null 2>&1; _rc8=$?
+ 
+-assert_eq "[SPEC-8] pr_stage_run exits 0 on specification PR fallback" "0" "$_rc8"
+-assert_file_exists "[SPEC-8] pr-url.txt written on specification fallback" "$_art8/pr-url.txt"
+-_merge_status8="$(jq -r '.status // empty' "$_art8/merge-result.json" 2>/dev/null || true)"
+-assert_eq "[SPEC-8] merge-result.json status==pr_fallback on specification" \
+-    "pr_fallback" "$_merge_status8"
++assert_eq "pr_stage_run exits 0 on specification PR fallback" "0" "$_rc8"
++assert_file_exists "pr-url.txt written on specification fallback" "$_art8/pr-url.txt"
++_merge_verdict8="$(jq -r '.verdict // empty' "$_art8/merge-result.json" 2>/dev/null || true)"
++assert_eq "[SPEC-19] merge-result.json verdict==pass on specification fallback" \
++    "pass" "$_merge_verdict8"
++_merge_mode8="$(jq -r '.data.mode // empty' "$_art8/merge-result.json" 2>/dev/null || true)"
++assert_eq "[SPEC-19] merge-result.json data.mode==pr_fallback on specification" \
++    "pr_fallback" "$_merge_mode8"
+ _merge_calls8="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
+ _gh_merge8=0
+ [[ "$_merge_calls8" == *"merged"* ]] && _gh_merge8=1
+-assert_eq "[SPEC-8] gh pr merge NOT called under specification" "0" "$_gh_merge8"
++assert_eq "gh pr merge NOT called under specification" "0" "$_gh_merge8"
+ 
+ # ─── SPEC-4: auto_unless_flagged + review-report absent → PR (fail-closed) ────
+ print_test_section "SPEC-4: merge_policy==auto_unless_flagged + review-report absent → opens draft PR (fail-closed)"
+@@ -195,14 +204,14 @@ _art4="$(dirname "$_sf4")/artifacts"
+ export _TPL_MERGE_POLICY="auto_unless_flagged"
+ ( pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1; _rc4=$?
+ 
+-assert_eq "[SPEC-4] pr_stage_run exits 0 for auto_unless_flagged" "0" "$_rc4"
+-assert_file_exists "[SPEC-4] pr-url.txt written (PR opened, not merged)" "$_art4/pr-url.txt"
+-assert_file_not_exists "[SPEC-4] no merge-result.json for auto_unless_flagged path" \
++assert_eq "pr_stage_run exits 0 for auto_unless_flagged" "0" "$_rc4"
++assert_file_exists "pr-url.txt written (PR opened, not merged)" "$_art4/pr-url.txt"
++assert_file_not_exists "no merge-result.json for auto_unless_flagged path" \
+     "$_art4/merge-result.json"
+ _merge_calls4="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
+ _gh_merge4=0
+ [[ "$_merge_calls4" == *"merged"* ]] && _gh_merge4=1
+-assert_eq "[SPEC-4] gh pr merge NOT called for auto_unless_flagged" "0" "$_gh_merge4"
++assert_eq "gh pr merge NOT called for auto_unless_flagged" "0" "$_gh_merge4"
+ 
+ # ─── SPEC-5: auto + gate pass but review.json ABSENT → fail-closed PR fallback ─
+ # ADR-001/#358: pr-open refuses to publish without a review verdict on disk;
+@@ -219,13 +228,16 @@ export _TPL_MERGE_POLICY="auto"
+ _rc5=0
+ ( pr_stage_run "pr" "$_sf5" ) >/dev/null 2>&1 || _rc5=$?
+ 
+-_merge_status5="$(jq -r '.status // empty' "$_art5/merge-result.json" 2>/dev/null || true)"
+-assert_eq "[SPEC-5] gate pass but review absent → status==pr_fallback (not merged)" \
+-    "pr_fallback" "$_merge_status5"
++_merge_verdict5="$(jq -r '.verdict // empty' "$_art5/merge-result.json" 2>/dev/null || true)"
++_merge_mode5="$(jq -r '.data.mode // empty' "$_art5/merge-result.json" 2>/dev/null || true)"
++assert_eq "gate pass but review absent → verdict==pass (not a v=error)" \
++    "pass" "$_merge_verdict5"
++assert_eq "gate pass but review absent → data.mode==pr_fallback (not merged)" \
++    "pr_fallback" "$_merge_mode5"
+ _merge_calls5="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
+ _gh_merge5=0
+ [[ "$_merge_calls5" == *"merged"* ]] && _gh_merge5=1
+-assert_eq "[SPEC-5] gh pr merge NOT called when review.json absent (fail-closed)" "0" "$_gh_merge5"
++assert_eq "gh pr merge NOT called when review.json absent (fail-closed)" "0" "$_gh_merge5"
+ 
+ # ─── Results ──────────────────────────────────────────────────────────────────
+ print_test_results
+diff --git a/tests/integration/merge-policy-auto-unless-flagged-test.sh b/tests/integration/merge-policy-auto-unless-flagged-test.sh
+index 9ee737b6..a8341f66 100755
+--- a/tests/integration/merge-policy-auto-unless-flagged-test.sh
++++ b/tests/integration/merge-policy-auto-unless-flagged-test.sh
+@@ -112,8 +112,8 @@ export _TPL_MERGE_POLICY="auto_unless_flagged"
+ assert_eq "[SPEC-1] pr_stage_run exits 0 on auto-merge path (ready)" "0" "$_rc1"
+ assert_file_exists "[SPEC-1] merge-result.json written when gate+report both pass" \
+     "$_art1/merge-result.json"
+-_merge_status1="$(jq -r '.status // empty' "$_art1/merge-result.json" 2>/dev/null || true)"
+-assert_eq "[SPEC-1] merge-result.json status==merged (gate pass + ready)" "merged" "$_merge_status1"
++_merge_status1="$(jq -r '.verdict // empty' "$_art1/merge-result.json" 2>/dev/null || true)"
++assert_eq "[SPEC-1] merge-result.json verdict==pass (gate pass + ready)" "pass" "$_merge_status1"
+ _merge_calls1="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
+ _merge_called1=0
+ [[ "$_merge_calls1" == *"merged"* ]] && _merge_called1=1
+@@ -193,8 +193,8 @@ export _TPL_MERGE_POLICY="auto_unless_flagged"
+ assert_eq "[SPEC-5] pr_stage_run exits 0 on auto-merge path (advisory)" "0" "$_rc5"
+ assert_file_exists "[SPEC-5] merge-result.json written when gate pass + advisory" \
+     "$_art5/merge-result.json"
+-_merge_status5="$(jq -r '.status // empty' "$_art5/merge-result.json" 2>/dev/null || true)"
+-assert_eq "[SPEC-5] merge-result.json status==merged (gate pass + advisory)" "merged" "$_merge_status5"
++_merge_status5="$(jq -r '.verdict // empty' "$_art5/merge-result.json" 2>/dev/null || true)"
++assert_eq "[SPEC-5] merge-result.json verdict==pass (gate pass + advisory)" "pass" "$_merge_status5"
+ _merge_calls5="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
+ _merge_called5=0
+ [[ "$_merge_calls5" == *"merged"* ]] && _merge_called5=1
+diff --git a/tests/integration/pr-pipeline-test.sh b/tests/integration/pr-pipeline-test.sh
+old mode 100755
+new mode 100644
+index 05c3fc91..f2eddba9
+--- a/tests/integration/pr-pipeline-test.sh
++++ b/tests/integration/pr-pipeline-test.sh
+@@ -5,14 +5,14 @@
+ # lifecycle hooks, including the pr-open delegation path where the run's state
+ # file must be threaded through (the bug that made the pr stage fail at runtime).
+ #
+-# SPEC coverage (A3-pr migration, ADR-013 amendment pr kind:tool→agent):
+-#   [SPEC-1] simple.yaml resolves to its leaf roster with pr as the LAST leaf
++# Test coverage (A3-pr migration, ADR-013 amendment pr kind:tool→agent):
++#   simple.yaml resolves to its leaf roster with pr as the LAST leaf
+ #            (#979: repointed from the retired standard.yaml — the assertion is
+ #            "pr is the terminal leaf of the shipped roster", template-agnostic)
+-#   [SPEC-2] plugins/agent/pr-delivery/{plugin.sh,manifest.yaml} exist; id=pr-delivery
+-#   [SPEC-3] dry-run: real plugin writes pr-url.txt + pr-result.json, exits 0
+-#   [SPEC-4] verdict=block guard: real plugin refuses (rc=1), no pr-url.txt
+-#   [SPEC-5] delegation: non-dry-run threads the state file to pr-open, which
++#   plugins/agent/pr-delivery/{plugin.sh,manifest.yaml} exist; id=pr-delivery
++#   dry-run: real plugin writes pr-url.txt + pr-result.json, exits 0
++#   verdict=block guard: [SPEC-20] real plugin refuses (rc=0, verdict=blocked), no pr-url.txt
++#   delegation: non-dry-run threads the state file to pr-open, which
+ #            writes pr-url.txt from the (mocked) gh pr create — locks the
+ #            state-file-threading fix that the dogfood shipped broken.
+ set -uo pipefail
+@@ -43,18 +43,18 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
+ source "$REPO_ROOT/core/pipeline/template.sh"
+ load_template "$REPO_ROOT/config/templates/simple.yaml"
+ _leaf_count="${#_TPL_STAGES[@]}"
+-assert_eq "[SPEC-1] simple.yaml resolves a non-empty leaf roster" \
++assert_eq "simple.yaml resolves a non-empty leaf roster" \
+     "1" "$(( _leaf_count > 0 ? 1 : 0 ))"
+-assert_eq "[SPEC-1] simple.yaml last leaf stage id is pr" \
++assert_eq "simple.yaml last leaf stage id is pr" \
+     "pr" "${_TPL_STAGES[$(( _leaf_count - 1 ))]:-}"
+ 
+ # ─── SPEC-2: the real plugin files exist under the pr-delivery id ────────────
+-assert_file_exists "[SPEC-2] plugins/agent/pr-delivery/plugin.sh exists" \
++assert_file_exists "plugins/agent/pr-delivery/plugin.sh exists" \
+     "$REPO_ROOT/plugins/agent/pr-delivery/plugin.sh"
+-assert_file_exists "[SPEC-2] plugins/agent/pr-delivery/manifest.yaml exists" \
++assert_file_exists "plugins/agent/pr-delivery/manifest.yaml exists" \
+     "$REPO_ROOT/plugins/agent/pr-delivery/manifest.yaml"
+ _pr_id="$(yaml_get "$REPO_ROOT/plugins/agent/pr-delivery/manifest.yaml" "id")"
+-assert_eq "[SPEC-2] manifest id is pr-delivery (no collision with tool/pr-open id:pr)" \
++assert_eq "manifest id is pr-delivery (no collision with tool/pr-open id:pr)" \
+     "pr-delivery" "$_pr_id"
+ 
+ # ─── Source the REAL plugin (resolves its repo root via bootstrap) ───────────
+@@ -78,23 +78,29 @@ _sf3="$(_setup_run approve s3)"
+ : > "$ZBUILD_EVENTS_JSONL"
+ ( ZBUILD_DRY_RUN=1 pr_stage_run "pr" "$_sf3" ) >/dev/null 2>&1; _rc3=$?
+ _art3="$(dirname "$_sf3")/artifacts"
+-assert_eq "[SPEC-3] dry-run pr_stage_run exits 0" "0" "$_rc3"
+-assert_file_exists "[SPEC-3] pr-url.txt written" "$_art3/pr-url.txt"
+-assert_file_exists "[SPEC-3] pr-result.json written" "$_art3/pr-result.json"
+-# SPEC-9: the non-draft default is observable at the integration level — the
++assert_eq "dry-run pr_stage_run exits 0" "0" "$_rc3"
++assert_file_exists "pr-url.txt written" "$_art3/pr-url.txt"
++assert_file_exists "pr-result.json written" "$_art3/pr-result.json"
++# the non-draft default is observable at the integration level — the
+ # dry-run pr-result.json records draft=false (fails at baseline, which emitted true).
+-_draft9="$(jq -r '.draft' "$_art3/pr-result.json" 2>/dev/null || echo MISSING)"
+-assert_eq "[SPEC-9] dry-run pr-result.json records draft=false (non-draft default)" "false" "$_draft9"
++# After v2 migration the field moves from .draft to .data.draft.
++_draft9="$(jq -r '.data.draft' "$_art3/pr-result.json" 2>/dev/null || echo MISSING)"
++assert_eq "dry-run pr-result.json records data.draft=false (non-draft default)" "false" "$_draft9"
+ 
+ # ─── SPEC-4: verdict=block → the plugin refuses, no PR URL ───────────────────
+-print_test_section "SPEC-4: verdict=block guard refuses to open a PR"
++print_test_section "SPEC-4 / SPEC-20: verdict=block guard refuses to open a PR"
+ _sf4="$(_setup_run block s4)"
+ _art4="$(dirname "$_sf4")/artifacts"
+ ( ZBUILD_DRY_RUN=1 pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1; _rc4=$?
+-[[ $_rc4 -ne 0 ]] \
+-    && assert_pass "[SPEC-4] verdict=block → pr_stage_run returns non-zero" \
+-    || assert_fail "[SPEC-4] verdict=block → pr_stage_run returns non-zero" "got rc=0"
+-assert_file_not_exists "[SPEC-4] verdict=block → no pr-url.txt written" "$_art4/pr-url.txt"
++# v2: blocked is a verdict outcome (not an error), so rc=0; verdict=blocked in pr-result.json
++assert_eq "[SPEC-20] verdict=block → pr_stage_run returns rc=0 (blocked is verdict, not error)" "0" "$_rc4"
++assert_file_not_exists "[SPEC-20] verdict=block → no pr-url.txt written (PR not opened)" "$_art4/pr-url.txt"
++if [[ -f "$_art4/pr-result.json" ]]; then
++    _s4_verdict="$(jq -r '.verdict // empty' "$_art4/pr-result.json" 2>/dev/null || true)"
++    assert_eq "[SPEC-20] verdict=block → pr-result.json verdict==blocked" "blocked" "$_s4_verdict"
++else
++    assert_fail "[SPEC-20] verdict=block → pr-result.json written" "file missing at $_art4/pr-result.json"
++fi
+ 
+ # ─── SPEC-5: non-dry-run delegates to pr-open with the threaded state file ───
+ # Locks the runtime fix: the run's state file (not the unset ZBUILD_STATE_FILE)
+@@ -120,10 +126,10 @@ MOCK
+ chmod +x "$_mockbin/gh" "$_mockbin/git"
+ ( unset ZBUILD_STATE_FILE; PATH="$_mockbin:$PATH" ZBUILD_DRY_RUN=0 \
+     pr_stage_run "pr" "$_sf5" ) >/dev/null 2>&1; _rc5=$?
+-assert_eq "[SPEC-5] non-dry-run pr_stage_run exits 0 (state file threaded to pr-open)" "0" "$_rc5"
+-assert_file_exists "[SPEC-5] pr-url.txt written by pr-open delegation" "$_art5/pr-url.txt"
++assert_eq "non-dry-run pr_stage_run exits 0 (state file threaded to pr-open)" "0" "$_rc5"
++assert_file_exists "pr-url.txt written by pr-open delegation" "$_art5/pr-url.txt"
+ if [[ -f "$_art5/pr-url.txt" ]]; then
+-    assert_contains "[SPEC-5] pr-url.txt holds the gh-created URL" \
++    assert_contains "pr-url.txt holds the gh-created URL" \
+         "$(cat "$_art5/pr-url.txt")" "github.com/mock/repo/pull/756"
+ fi
+ 
+@@ -164,12 +170,12 @@ echo "https://github.com/mock/repo/pull/756"; exit 0
+ MOCK
+ chmod +x "$_mockbin6/git" "$_mockbin6/gh"
+ ( PATH="$_mockbin6:$PATH" pr_open_run "pr" "$_sf6" ) >/dev/null 2>&1; _rc6=$?
+-assert_eq "[SPEC-6] pr_open_run returns 2 on genuine push failure" "2" "$_rc6"
++assert_eq "pr_open_run returns 1 on genuine push failure (v2: error path rc=1 not rc=2)" "1" "$_rc6"
+ if [[ -f "$_art6/pr-result.json" ]]; then
+-    assert_contains "[SPEC-6] pr-result.json .reason surfaces the real push stderr" \
++    assert_contains "pr-result.json .reason surfaces the real push stderr" \
+         "$(jq -r '.reason // ""' "$_art6/pr-result.json" 2>/dev/null)" "non-fast-forward-XYZ"
+ else
+-    assert_fail "[SPEC-6] pr-result.json written on push failure" "file missing"
++    assert_fail "pr-result.json written on push failure" "file missing"
+ fi
+ 
+ cleanup_test_env
+diff --git a/tests/unit/deploy-release-v2-result-test.sh b/tests/unit/deploy-release-v2-result-test.sh
+new file mode 100644
+index 00000000..a852f4ed
+--- /dev/null
++++ b/tests/unit/deploy-release-v2-result-test.sh
+@@ -0,0 +1,363 @@
++#!/usr/bin/env bash
++# tests/unit/deploy-release-v2-result-test.sh
++# Contract v2 result assertions for the deploy-release plugin (issue #1849).
++# SPEC coverage:
++#   [SPEC-15] manifest provides declares result_contract:2 (role:deploy_release_executor,
++#             events retained; valid_verdicts already correct and unchanged)
++#   [SPEC-16] deploy-result.json carries result_contract:2, disposition, reason on every
++#             exit path (dry-run, tag success, tag failure, push failure, state_file-absent)
++#   [SPEC-17] all exit paths return rc ∈ {0,1} — state_file-absent returns rc=1 not rc=2
++#   [SPEC-18] reads pr_url path via ZBUILD_STAGE_INPUTS with artifacts_dir fallback
++#   [SPEC-23] deploy-result.json verdict=deployed and rc=0 on git tag+push success path
++#   [SPEC-24] tier_default:T0, no router: block
++#   [SPEC-25] outputs.deploy_result retains primary: true after v2 migration
++#   [SPEC-27] provides retains role:deploy_release_executor and events after result_contract:2 added
++#   [SPEC-28] hooks section has only run:, no cleanup:
++set -uo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "deploy-release plugin: v2 result contract (issue #1849)"
++setup_test_env "deploy-release-v2-result"
++
++export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
++export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
++export ZBUILD_EVENTS_DB="/dev/null"
++export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
++export ZBUILD_RUN_ID="deploy-release-v2-test-$$"
++mkdir -p "$ZBUILD_EVENTS_DIR"
++: > "$ZBUILD_EVENTS_JSONL"
++
++DR_MANIFEST="$REPO_ROOT/plugins/tool/deploy-release/manifest.yaml"
++
++# ─── SPEC-15: manifest provides declares result_contract:2, role/events unchanged ──
++print_test_section "SPEC-15: manifest provides declares result_contract:2 (role/events retained; valid_verdicts unchanged)"
++
++_s15_prov_rc="$(awk '/^provides:/{f=1} f && /result_contract:/{print $2; exit}' "$DR_MANIFEST" || echo '')"
++assert_eq "[SPEC-15] manifest provides.result_contract is 2" "2" "$_s15_prov_rc"
++
++# valid_verdicts must remain [deployed, error] — do not change them
++_vv_deployed="$(grep -v '^#' "$DR_MANIFEST" | grep -c '^[[:space:]]*- deployed$' || true)"
++_vv_error="$(grep -v '^#' "$DR_MANIFEST" | grep -c '^[[:space:]]*- error$' || true)"
++[[ "$_vv_deployed" -gt 0 ]] \
++    && assert_pass "[SPEC-15] valid_verdicts retains deployed" \
++    || assert_fail "[SPEC-15] valid_verdicts retains deployed" "missing"
++[[ "$_vv_error" -gt 0 ]] \
++    && assert_pass "[SPEC-15] valid_verdicts retains error" \
++    || assert_fail "[SPEC-15] valid_verdicts retains error" "missing"
++
++# ─── SPEC-24: tier_default:T0, no router: block ──────────────────────────────
++print_test_section "SPEC-24: tier_default:T0 with no router: block"
++
++_td="$(grep -m1 'tier_default:' "$DR_MANIFEST" | awk '{print $2}' || echo '')"
++assert_eq "[SPEC-24] manifest tier_default is T0" "T0" "$_td"
++
++_has_router="$(grep -v '^#' "$DR_MANIFEST" | grep -c '^[[:space:]]*router:' || true)"
++assert_eq "[SPEC-24] manifest has no router: block" "0" "$_has_router"
++
++# ─── SPEC-25: outputs.deploy_result retains primary: true ────────────────────
++print_test_section "SPEC-25: outputs.deploy_result retains primary: true"
++
++_has_primary="$(grep -v '^#' "$DR_MANIFEST" | grep -c 'primary:[[:space:]]*true' || true)"
++[[ "$_has_primary" -gt 0 ]] \
++    && assert_pass "[SPEC-25] manifest has primary: true on deploy_result output" \
++    || assert_fail "[SPEC-25] manifest has primary: true on deploy_result output" "missing"
++
++# ─── SPEC-27: provides retains role and events after result_contract:2 added ─
++print_test_section "SPEC-27: provides retains role:deploy_release_executor and events after result_contract:2"
++
++_s27_role="$(awk '/^provides:/{f=1} f && /^[[:space:]]*role:/{print $2; exit}' "$DR_MANIFEST" || echo '')"
++assert_eq "[SPEC-27] provides.role is deploy_release_executor" "deploy_release_executor" "$_s27_role"
++
++_ev_complete="$(awk '/^provides:/{f=1} f && /deploy\.release\.complete/{print; exit}' "$DR_MANIFEST" || echo '')"
++[[ -n "$_ev_complete" ]] \
++    && assert_pass "[SPEC-27] provides.events includes deploy.release.complete" \
++    || assert_fail "[SPEC-27] provides.events includes deploy.release.complete" "absent"
++
++_ev_dry_run="$(awk '/^provides:/{f=1} f && /deploy\.release\.dry_run/{print; exit}' "$DR_MANIFEST" || echo '')"
++[[ -n "$_ev_dry_run" ]] \
++    && assert_pass "[SPEC-27] provides.events includes deploy.release.dry_run" \
++    || assert_fail "[SPEC-27] provides.events includes deploy.release.dry_run" "absent"
++
++_ev_published="$(awk '/^provides:/{f=1} f && /release\.published/{print; exit}' "$DR_MANIFEST" || echo '')"
++[[ -n "$_ev_published" ]] \
++    && assert_pass "[SPEC-27] provides.events includes release.published" \
++    || assert_fail "[SPEC-27] provides.events includes release.published" "absent"
++
++_ev_tagged="$(awk '/^provides:/{f=1} f && /release\.tagged/{print; exit}' "$DR_MANIFEST" || echo '')"
++[[ -n "$_ev_tagged" ]] \
++    && assert_pass "[SPEC-27] provides.events includes release.tagged" \
++    || assert_fail "[SPEC-27] provides.events includes release.tagged" "absent"
++
++# ─── SPEC-28: hooks has only run:, no cleanup: ───────────────────────────────
++print_test_section "SPEC-28: hooks section has only run:, no cleanup:"
++
++_has_cleanup="$(grep -v '^#' "$DR_MANIFEST" | grep -c '^[[:space:]]*cleanup:' || true)"
++assert_eq "[SPEC-28] manifest hooks has no cleanup:" "0" "$_has_cleanup"
++
++_has_run="$(grep -v '^#' "$DR_MANIFEST" | grep -c '^[[:space:]]*run:[[:space:]]*deploy_release_run' || true)"
++[[ "$_has_run" -gt 0 ]] \
++    && assert_pass "[SPEC-28] manifest hooks has run: deploy_release_run" \
++    || assert_fail "[SPEC-28] manifest hooks has run: deploy_release_run" "missing"
++
++# ─── Plugin behavior setup ────────────────────────────────────────────────────
++# shellcheck source=../../plugins/tool/deploy-release/plugin.sh
++source "$REPO_ROOT/plugins/tool/deploy-release/plugin.sh"
++
++# _make_dr_state <dir> [pr_url]
++# Sets up a state dir with pipeline-state.json and optional pr-url.txt.
++_make_dr_state() {
++    local d="$1" pr_url="${2:-}"
++    mkdir -p "$d/artifacts"
++    printf '{"issue":1849,"branch":"zbuild/issue-1849-test"}\n' > "$d/pipeline-state.json"
++    [[ -n "$pr_url" ]] && printf '%s\n' "$pr_url" > "$d/artifacts/pr-url.txt"
++    printf '%s/pipeline-state.json' "$d"
++}
++
++# _mk_dr_mocks <bindir> [tag_rc] [push_rc]
++# Creates mock git executable. tag_rc/push_rc control git tag / git push exit codes.
++_mk_dr_mocks() {
++    local bin="$1" tag_rc="${2:-0}" push_rc="${3:-0}"
++    mkdir -p "$bin"
++    cat > "$bin/git" <<GITMOCK
++#!/usr/bin/env bash
++case "\${1:-}" in
++    tag)  [[ ${tag_rc}  -ne 0 ]] && echo "tag error"  >&2; exit ${tag_rc}  ;;
++    push) [[ ${push_rc} -ne 0 ]] && echo "push error" >&2; exit ${push_rc} ;;
++    *)    exit 0 ;;
++esac
++GITMOCK
++    chmod +x "$bin/git"
++}
++
++# ─── SPEC-16/SPEC-17: state_file-absent path — rc=1, not rc=2 ────────────────
++print_test_section "SPEC-17 (partial) / SPEC-16: state_file-absent path — rc=1, result_contract:2 in deploy-result.json"
++
++export ZBUILD_ARTIFACT_DIR="$TEST_TEMP_DIR/absent-art"
++mkdir -p "$ZBUILD_ARTIFACT_DIR"
++
++set +e
++deploy_release_run "deploy" ""
++_sfabs_rc=$?
++set -e
++
++assert_eq "[SPEC-17] state_file-absent: rc=1 (not rc=2)" "1" "$_sfabs_rc"
++
++# v2 contract: deploy-result.json written to ZBUILD_ARTIFACT_DIR even on state_file-absent
++if [[ -f "$ZBUILD_ARTIFACT_DIR/deploy-result.json" ]]; then
++    assert_eq "[SPEC-16] state_file-absent: result_contract is 2" "2" \
++        "$(jq -r '.result_contract // empty' "$ZBUILD_ARTIFACT_DIR/deploy-result.json" 2>/dev/null || true)"
++    _sfabs_disp="$(jq -r '.disposition // empty' "$ZBUILD_ARTIFACT_DIR/deploy-result.json" 2>/dev/null || true)"
++    [[ -n "$_sfabs_disp" ]] \
++        && assert_pass "[SPEC-16] state_file-absent: disposition present" \
++        || assert_fail "[SPEC-16] state_file-absent: disposition present" "absent"
++    _sfabs_reason="$(jq -r '.reason // empty' "$ZBUILD_ARTIFACT_DIR/deploy-result.json" 2>/dev/null || true)"
++    [[ -n "$_sfabs_reason" ]] \
++        && assert_pass "[SPEC-16] state_file-absent: reason present" \
++        || assert_fail "[SPEC-16] state_file-absent: reason present" "absent"
++else
++    assert_fail "[SPEC-16] state_file-absent: deploy-result.json written to ZBUILD_ARTIFACT_DIR" \
++        "file missing at $ZBUILD_ARTIFACT_DIR/deploy-result.json"
++fi
++
++unset ZBUILD_ARTIFACT_DIR
++
++# ─── SPEC-16 / SPEC-23: dry-run path ─────────────────────────────────────────
++print_test_section "SPEC-16: dry-run path — result_contract:2, disposition, reason"
++
++_s_dry_dir="$TEST_TEMP_DIR/spec-dry"
++_s_dry_sf="$(_make_dr_state "$_s_dry_dir")"
++_s_dry_art="$_s_dry_dir/artifacts"
++
++set +e
++( ZBUILD_DRY_RUN=1 deploy_release_run "deploy" "$_s_dry_sf" ) >/dev/null 2>&1
++_s_dry_rc=$?
++set -e
++
++assert_file_exists "[SPEC-16] dry-run: deploy-result.json written" "$_s_dry_art/deploy-result.json"
++if [[ -f "$_s_dry_art/deploy-result.json" ]]; then
++    assert_eq "[SPEC-16] dry-run: result_contract is 2" "2" \
++        "$(jq -r '.result_contract // empty' "$_s_dry_art/deploy-result.json" 2>/dev/null || true)"
++    _dry_disp="$(jq -r '.disposition // empty' "$_s_dry_art/deploy-result.json" 2>/dev/null || true)"
++    [[ -n "$_dry_disp" ]] \
++        && assert_pass "[SPEC-16] dry-run: disposition present" \
++        || assert_fail "[SPEC-16] dry-run: disposition present" "absent"
++    _dry_reason="$(jq -r '.reason // empty' "$_s_dry_art/deploy-result.json" 2>/dev/null || true)"
++    [[ -n "$_dry_reason" ]] \
++        && assert_pass "[SPEC-16] dry-run: reason present" \
++        || assert_fail "[SPEC-16] dry-run: reason present" "absent"
++fi
++
++# ─── SPEC-16 / SPEC-23: tag+push success path — verdict=deployed, rc=0 ───────
++print_test_section "SPEC-16 / SPEC-23: tag+push success path — result_contract:2, verdict=deployed, rc=0"
++
++_s_ok_dir="$TEST_TEMP_DIR/spec-ok"
++_s_ok_sf="$(_make_dr_state "$_s_ok_dir")"
++_s_ok_art="$_s_ok_dir/artifacts"
++_mk_dr_mocks "$TEST_TEMP_DIR/bin-ok"
++
++set +e
++( ZBUILD_DRY_RUN=0 PATH="$TEST_TEMP_DIR/bin-ok:$PATH" \
++  deploy_release_run "deploy" "$_s_ok_sf" ) >/dev/null 2>&1
++_s_ok_rc=$?
++set -e
++
++assert_file_exists "[SPEC-16/23] success: deploy-result.json written" "$_s_ok_art/deploy-result.json"
++if [[ -f "$_s_ok_art/deploy-result.json" ]]; then
++    assert_eq "[SPEC-16] success: result_contract is 2" "2" \
++        "$(jq -r '.result_contract // empty' "$_s_ok_art/deploy-result.json" 2>/dev/null || true)"
++    assert_eq "[SPEC-23] success: verdict is deployed" "deployed" \
++        "$(jq -r '.verdict // empty' "$_s_ok_art/deploy-result.json" 2>/dev/null || true)"
++    _ok_disp="$(jq -r '.disposition // empty' "$_s_ok_art/deploy-result.json" 2>/dev/null || true)"
++    [[ -n "$_ok_disp" ]] \
++        && assert_pass "[SPEC-16] success: disposition present" \
++        || assert_fail "[SPEC-16] success: disposition present" "absent"
++    _ok_reason="$(jq -r '.reason // empty' "$_s_ok_art/deploy-result.json" 2>/dev/null || true)"
++    [[ -n "$_ok_reason" ]] \
++        && assert_pass "[SPEC-16] success: reason present" \
++        || assert_fail "[SPEC-16] success: reason present" "absent"
++fi
++assert_eq "[SPEC-23] tag+push success: rc=0" "0" "$_s_ok_rc"
++
++# ─── SPEC-16: tag failure path ───────────────────────────────────────────────
++print_test_section "SPEC-16: tag failure path — result_contract:2, verdict=error, disposition, reason"
++
++_s_tf_dir="$TEST_TEMP_DIR/spec-tagfail"
++_s_tf_sf="$(_make_dr_state "$_s_tf_dir")"
++_s_tf_art="$_s_tf_dir/artifacts"
++_mk_dr_mocks "$TEST_TEMP_DIR/bin-tagfail" 1  # tag_rc=1
++
++set +e
++( ZBUILD_DRY_RUN=0 PATH="$TEST_TEMP_DIR/bin-tagfail:$PATH" \
++  deploy_release_run "deploy" "$_s_tf_sf" ) >/dev/null 2>&1
++_s_tf_rc=$?
++set -e
++
++assert_file_exists "[SPEC-16] tag-failure: deploy-result.json written" "$_s_tf_art/deploy-result.json"
++if [[ -f "$_s_tf_art/deploy-result.json" ]]; then
++    assert_eq "[SPEC-16] tag-failure: result_contract is 2" "2" \
++        "$(jq -r '.result_contract // empty' "$_s_tf_art/deploy-result.json" 2>/dev/null || true)"
++    assert_eq "[SPEC-16] tag-failure: verdict is error" "error" \
++        "$(jq -r '.verdict // empty' "$_s_tf_art/deploy-result.json" 2>/dev/null || true)"
++    _tf_disp="$(jq -r '.disposition // empty' "$_s_tf_art/deploy-result.json" 2>/dev/null || true)"
++    [[ -n "$_tf_disp" ]] \
++        && assert_pass "[SPEC-16] tag-failure: disposition present" \
++        || assert_fail "[SPEC-16] tag-failure: disposition present" "absent"
++    _tf_reason="$(jq -r '.reason // empty' "$_s_tf_art/deploy-result.json" 2>/dev/null || true)"
++    [[ -n "$_tf_reason" ]] \
++        && assert_pass "[SPEC-16] tag-failure: reason present" \
++        || assert_fail "[SPEC-16] tag-failure: reason present" "absent"
++fi
++
++# ─── SPEC-16: push failure path ──────────────────────────────────────────────
++print_test_section "SPEC-16: push failure path — result_contract:2, verdict=error, disposition, reason"
++
++_s_pf_dir="$TEST_TEMP_DIR/spec-pushfail"
++_s_pf_sf="$(_make_dr_state "$_s_pf_dir")"
++_s_pf_art="$_s_pf_dir/artifacts"
++_mk_dr_mocks "$TEST_TEMP_DIR/bin-pushfail" 0 1  # tag_rc=0, push_rc=1
++
++set +e
++( ZBUILD_DRY_RUN=0 PATH="$TEST_TEMP_DIR/bin-pushfail:$PATH" \
++  deploy_release_run "deploy" "$_s_pf_sf" ) >/dev/null 2>&1
++_s_pf_rc=$?
++set -e
++
++assert_file_exists "[SPEC-16] push-failure: deploy-result.json written" "$_s_pf_art/deploy-result.json"
++if [[ -f "$_s_pf_art/deploy-result.json" ]]; then
++    assert_eq "[SPEC-16] push-failure: result_contract is 2" "2" \
++        "$(jq -r '.result_contract // empty' "$_s_pf_art/deploy-result.json" 2>/dev/null || true)"
++    assert_eq "[SPEC-16] push-failure: verdict is error" "error" \
++        "$(jq -r '.verdict // empty' "$_s_pf_art/deploy-result.json" 2>/dev/null || true)"
++    _pf_disp="$(jq -r '.disposition // empty' "$_s_pf_art/deploy-result.json" 2>/dev/null || true)"
++    [[ -n "$_pf_disp" ]] \
++        && assert_pass "[SPEC-16] push-failure: disposition present" \
++        || assert_fail "[SPEC-16] push-failure: disposition present" "absent"
++    _pf_reason="$(jq -r '.reason // empty' "$_s_pf_art/deploy-result.json" 2>/dev/null || true)"
++    [[ -n "$_pf_reason" ]] \
++        && assert_pass "[SPEC-16] push-failure: reason present" \
++        || assert_fail "[SPEC-16] push-failure: reason present" "absent"
++fi
++
++# ─── SPEC-17: no exit path returns rc=2 ──────────────────────────────────────
++print_test_section "SPEC-17: all exit paths return rc ∈ {0,1} — no rc=2"
++
++assert_eq "[SPEC-17] state_file-absent rc in {0,1}" "1" "$(( _sfabs_rc != 2 ? 1 : 0 ))"
++assert_eq "[SPEC-17] dry-run rc in {0,1}" "1" "$(( _s_dry_rc != 2 ? 1 : 0 ))"
++assert_eq "[SPEC-17] tag+push success rc in {0,1}" "1" "$(( _s_ok_rc != 2 ? 1 : 0 ))"
++assert_eq "[SPEC-17] tag-failure rc in {0,1}" "1" "$(( _s_tf_rc != 2 ? 1 : 0 ))"
++assert_eq "[SPEC-17] push-failure rc in {0,1}" "1" "$(( _s_pf_rc != 2 ? 1 : 0 ))"
++
++# ─── SPEC-18: pr_url resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback
++print_test_section "SPEC-18: pr_url resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback"
++
++# SPEC-18a: ZBUILD_STAGE_INPUTS maps pr_url to a file at a custom path.
++# Standard artifacts_dir has NO pr-url.txt.
++# If plugin honors ZBUILD_STAGE_INPUTS: deploy-result.json captures the custom pr_url.
++# If hardcoded path only: pr_url stays "" (artifacts_dir has no pr-url.txt).
++_s18a_dir="$TEST_TEMP_DIR/spec18a"
++_s18a_sf="$(_make_dr_state "$_s18a_dir")"   # intentionally: no pr-url.txt in artifacts_dir
++_s18a_art="$_s18a_dir/artifacts"
++
++_s18a_custom="$TEST_TEMP_DIR/custom-pr-url.txt"
++printf 'https://github.com/mock/repo/pull/18a\n' > "$_s18a_custom"
++
++_s18a_si="$TEST_TEMP_DIR/spec18a-si.json"
++printf '{"inputs":{"pr_url":"%s"}}\n' "$_s18a_custom" > "$_s18a_si"
++
++_mk_dr_mocks "$TEST_TEMP_DIR/bin18a"
++
++set +e
++( ZBUILD_DRY_RUN=1 \
++  ZBUILD_STAGE_INPUTS="$_s18a_si" \
++  deploy_release_run "deploy" "$_s18a_sf" ) >/dev/null 2>&1
++_s18a_rc=$?
++set -e
++
++assert_file_exists "[SPEC-18] ZBUILD_STAGE_INPUTS: deploy-result.json written" "$_s18a_art/deploy-result.json"
++if [[ -f "$_s18a_art/deploy-result.json" ]]; then
++    _s18a_pr_url="$(jq -r '.pr_url // empty' "$_s18a_art/deploy-result.json" 2>/dev/null || true)"
++    if [[ "$_s18a_pr_url" == "https://github.com/mock/repo/pull/18a" ]]; then
++        assert_pass "[SPEC-18] ZBUILD_STAGE_INPUTS: pr_url from custom path in deploy-result.json"
++    else
++        assert_fail "[SPEC-18] ZBUILD_STAGE_INPUTS: pr_url from custom path in deploy-result.json" \
++            "got pr_url='$_s18a_pr_url' — ZBUILD_STAGE_INPUTS not honoured for pr_url"
++    fi
++fi
++
++# SPEC-18b: artifacts_dir fallback — no ZBUILD_STAGE_INPUTS, pr-url.txt in standard location.
++# Guards the pr-delivery direct-source call path (no ZBUILD_STAGE_INPUTS set).
++_s18b_dir="$TEST_TEMP_DIR/spec18b"
++_s18b_sf="$(_make_dr_state "$_s18b_dir" "https://github.com/mock/repo/pull/18b")"
++_s18b_art="$_s18b_dir/artifacts"
++
++_mk_dr_mocks "$TEST_TEMP_DIR/bin18b"
++
++set +e
++( ZBUILD_DRY_RUN=1 \
++  ZBUILD_STAGE_INPUTS="" \
++  deploy_release_run "deploy" "$_s18b_sf" ) >/dev/null 2>&1
++_s18b_rc=$?
++set -e
++
++assert_file_exists "[SPEC-18] artifacts_dir fallback: deploy-result.json written" "$_s18b_art/deploy-result.json"
++if [[ -f "$_s18b_art/deploy-result.json" ]]; then
++    _s18b_pr_url="$(jq -r '.pr_url // empty' "$_s18b_art/deploy-result.json" 2>/dev/null || true)"
++    if [[ "$_s18b_pr_url" == "https://github.com/mock/repo/pull/18b" ]]; then
++        assert_pass "[SPEC-18] artifacts_dir fallback: pr_url from artifacts_dir/pr-url.txt in deploy-result.json"
++    else
++        assert_fail "[SPEC-18] artifacts_dir fallback: pr_url from artifacts_dir/pr-url.txt in deploy-result.json" \
++            "got pr_url='$_s18b_pr_url' — artifacts_dir fallback not working"
++    fi
++fi
++
++# ─── Teardown ─────────────────────────────────────────────────────────────────
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/merge-v2-result-test.sh b/tests/unit/merge-v2-result-test.sh
+new file mode 100644
+index 00000000..8fe7ffd6
+--- /dev/null
++++ b/tests/unit/merge-v2-result-test.sh
+@@ -0,0 +1,350 @@
++#!/usr/bin/env bash
++# tests/unit/merge-v2-result-test.sh
++# Contract v2 result assertions for the merge plugin (issue #1849).
++# SPEC coverage:
++#   [SPEC-1]  manifest provides declares result_contract:2, role:merge_executor, events:[plugin.result]
++#   [SPEC-2]  merge/config valid_verdicts updated to [pass, error]
++#   [SPEC-3]  merge-result.json carries result_contract:2, verdict=pass, disposition:complete, reason
++#   [SPEC-4]  merge-result.json carries result_contract:2, verdict=pass, data.mode=pr_fallback on fallback paths
++#   [SPEC-5]  merge-result.json carries result_contract:2, verdict=error, disposition, reason on error paths
++#   [SPEC-6]  all exit paths return rc ∈ {0,1} — no rc=2
++#   [SPEC-7]  reads gate_aggregator_result via ZBUILD_STAGE_INPUTS with artifacts_dir fallback
++#   [SPEC-24] tier_default:T0, no router: block
++#   [SPEC-25] outputs.merge_result retains primary: true after v2 migration
++#   [SPEC-28] hooks section has only run:, no cleanup:
++set -uo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "merge plugin: v2 result contract (issue #1849)"
++setup_test_env "merge-v2-result"
++
++export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
++export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
++export ZBUILD_EVENTS_DB="/dev/null"
++export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
++export ZBUILD_RUN_ID="merge-v2-result-test-$$"
++mkdir -p "$ZBUILD_EVENTS_DIR"
++: > "$ZBUILD_EVENTS_JSONL"
++
++MERGE_MANIFEST="$REPO_ROOT/plugins/tool/merge/manifest.yaml"
++
++# ─── SPEC-1: manifest provides declares result_contract:2, role, events ──────
++print_test_section "SPEC-1: manifest provides declares result_contract:2, role:merge_executor, events:[plugin.result]"
++
++_prov_rc="$(awk '/^provides:/{f=1} f && /result_contract:/{print $2; exit}' "$MERGE_MANIFEST" || echo '')"
++assert_eq "[SPEC-1] manifest provides.result_contract is 2" "2" "$_prov_rc"
++
++_prov_role="$(awk '/^provides:/{f=1} f && /^[[:space:]]*role:/{print $2; exit}' "$MERGE_MANIFEST" || echo '')"
++assert_eq "[SPEC-1] manifest provides.role is merge_executor" "merge_executor" "$_prov_role"
++
++_prov_ev="$(awk '/^provides:/{f=1} f && /plugin\.result/{print; exit}' "$MERGE_MANIFEST" || echo '')"
++[[ -n "$_prov_ev" ]] \
++    && assert_pass "[SPEC-1] manifest provides.events includes plugin.result" \
++    || assert_fail "[SPEC-1] manifest provides.events includes plugin.result" "plugin.result absent"
++
++# ─── SPEC-2: valid_verdicts includes pass and error ───────────────────────────
++print_test_section "SPEC-2: config valid_verdicts updated to [pass, error]"
++
++_vv_pass="$(grep -v '^#' "$MERGE_MANIFEST" | grep -c '^[[:space:]]*- pass$' || true)"
++_vv_error="$(grep -v '^#' "$MERGE_MANIFEST" | grep -c '^[[:space:]]*- error$' || true)"
++[[ "$_vv_pass" -gt 0 ]] \
++    && assert_pass "[SPEC-2] valid_verdicts includes pass" \
++    || assert_fail "[SPEC-2] valid_verdicts includes pass" "missing from $MERGE_MANIFEST"
++[[ "$_vv_error" -gt 0 ]] \
++    && assert_pass "[SPEC-2] valid_verdicts includes error" \
++    || assert_fail "[SPEC-2] valid_verdicts includes error" "missing from $MERGE_MANIFEST"
++
++# ─── SPEC-24: tier_default:T0, no router: block ──────────────────────────────
++print_test_section "SPEC-24: tier_default:T0 with no router: block"
++
++_td="$(grep -m1 'tier_default:' "$MERGE_MANIFEST" | awk '{print $2}' || echo '')"
++assert_eq "[SPEC-24] manifest tier_default is T0" "T0" "$_td"
++
++_has_router="$(grep -v '^#' "$MERGE_MANIFEST" | grep -c '^[[:space:]]*router:' || true)"
++assert_eq "[SPEC-24] manifest has no router: block" "0" "$_has_router"
++
++# ─── SPEC-25: outputs.merge_result retains primary: true ─────────────────────
++print_test_section "SPEC-25: outputs.merge_result retains primary: true"
++
++_has_primary="$(grep -v '^#' "$MERGE_MANIFEST" | grep -c 'primary:[[:space:]]*true' || true)"
++[[ "$_has_primary" -gt 0 ]] \
++    && assert_pass "[SPEC-25] manifest has primary: true on result output" \
++    || assert_fail "[SPEC-25] manifest has primary: true on result output" "missing"
++
++# ─── SPEC-28: hooks has only run:, no cleanup: ───────────────────────────────
++print_test_section "SPEC-28: hooks section has only run:, no cleanup:"
++
++_has_cleanup="$(grep -v '^#' "$MERGE_MANIFEST" | grep -c '^[[:space:]]*cleanup:' || true)"
++assert_eq "[SPEC-28] manifest hooks has no cleanup:" "0" "$_has_cleanup"
++
++_has_run="$(grep -v '^#' "$MERGE_MANIFEST" | grep -c '^[[:space:]]*run:[[:space:]]*merge_run' || true)"
++[[ "$_has_run" -gt 0 ]] \
++    && assert_pass "[SPEC-28] manifest hooks has run: merge_run" \
++    || assert_fail "[SPEC-28] manifest hooks has run: merge_run" "missing"
++
++# ─── Plugin behavior setup ────────────────────────────────────────────────────
++# shellcheck source=../../plugins/tool/merge/plugin.sh
++source "$REPO_ROOT/plugins/tool/merge/plugin.sh"
++
++# _make_state <dir> [gate_verdict]
++# Sets up a state dir with pipeline-state.json, review.json, and optional
++# gate-aggregator-result.json. Prints path to pipeline-state.json.
++_make_state() {
++    local d="$1" gate="${2:-}"
++    mkdir -p "$d/artifacts"
++    printf '{"issue":1849,"branch":"zbuild/issue-1849-test"}\n' > "$d/pipeline-state.json"
++    printf '{"schema_version":1,"verdict":"approve","summary":"ok"}\n' > "$d/artifacts/review.json"
++    [[ -n "$gate" ]] && \
++        printf '{"schema_version":1,"verdict":"%s"}\n' "$gate" \
++            > "$d/artifacts/gate-aggregator-result.json"
++    printf '%s/pipeline-state.json' "$d"
++}
++
++# _mk_mocks <bindir> <branch> [push_rc] [create_rc]
++# Creates mock git and gh executables in bindir.
++# push_rc: exit code for git push (default 0)
++# create_rc: exit code for gh pr create (default 0)
++_mk_mocks() {
++    local bin="$1" branch="$2" push_rc="${3:-0}" create_rc="${4:-0}"
++    mkdir -p "$bin"
++    cat > "$bin/git" <<GITMOCK
++#!/usr/bin/env bash
++cmd="\${1:-}"
++[[ "\$cmd" == "-C" ]] && { shift 2; cmd="\${1:-}"; }
++case "\$cmd" in
++    rev-parse)
++        [[ "\${2:-}" == "--abbrev-ref" ]] && echo "${branch}" && exit 0
++        echo "abc1234"; exit 0 ;;
++    checkout|fetch|config|branch|tag) exit 0 ;;
++    push) [[ ${push_rc} -ne 0 ]] && echo "mock push error" >&2; exit ${push_rc} ;;
++    ls-remote) echo ""; exit 0 ;;
++    merge-base|symbolic-ref) echo ""; exit 0 ;;
++    cat-file|show-ref) exit 0 ;;
++    *) exit 0 ;;
++esac
++GITMOCK
++    cat > "$bin/gh" <<GHMOCK
++#!/usr/bin/env bash
++case "\${1:-} \${2:-}" in
++    "pr create") [[ ${create_rc} -ne 0 ]] && { echo "gh create error" >&2; exit ${create_rc}; }
++                 echo "https://github.com/mock/repo/pull/1849"; exit 0 ;;
++    "pr merge")  exit 0 ;;
++    "pr list")   echo ""; exit 0 ;;
++    *)           exit 0 ;;
++esac
++GHMOCK
++    chmod +x "$bin/git" "$bin/gh"
++}
++
++# ─── SPEC-3: squash-merge success path ───────────────────────────────────────
++print_test_section "SPEC-3: squash-merge success path — result_contract:2, verdict=pass, disposition=complete, reason"
++
++_s3_dir="$TEST_TEMP_DIR/spec3"
++_s3_sf="$(_make_state "$_s3_dir" "pass")"
++_s3_art="$_s3_dir/artifacts"
++_mk_mocks "$TEST_TEMP_DIR/bin3" "zbuild/issue-1849-test"
++
++( PATH="$TEST_TEMP_DIR/bin3:$PATH" merge_run "pr" "$_s3_sf" ) >/dev/null 2>&1; _s3_rc=$?
++
++assert_file_exists "[SPEC-3] merge-result.json written on success" "$_s3_art/merge-result.json"
++if [[ -f "$_s3_art/merge-result.json" ]]; then
++    assert_eq "[SPEC-3] result_contract is 2" "2" \
++        "$(jq -r '.result_contract // empty' "$_s3_art/merge-result.json" 2>/dev/null || true)"
++    assert_eq "[SPEC-3] verdict is pass" "pass" \
++        "$(jq -r '.verdict // empty' "$_s3_art/merge-result.json" 2>/dev/null || true)"
++    assert_eq "[SPEC-3] disposition is complete" "complete" \
++        "$(jq -r '.disposition // empty' "$_s3_art/merge-result.json" 2>/dev/null || true)"
++    _s3_reason="$(jq -r '.reason // empty' "$_s3_art/merge-result.json" 2>/dev/null || true)"
++    [[ -n "$_s3_reason" ]] \
++        && assert_pass "[SPEC-3] reason field is present" \
++        || assert_fail "[SPEC-3] reason field is present" "absent"
++fi
++
++# ─── SPEC-4: fallback paths — result_contract:2, verdict=pass, data.mode=pr_fallback
++print_test_section "SPEC-4: fallback paths — result_contract:2, verdict=pass, data.mode=pr_fallback"
++
++# gate absent
++_s4a_dir="$TEST_TEMP_DIR/spec4a"
++_s4a_sf="$(_make_state "$_s4a_dir")"
++_s4a_art="$_s4a_dir/artifacts"
++_mk_mocks "$TEST_TEMP_DIR/bin4a" "zbuild/issue-1849-test"
++
++( PATH="$TEST_TEMP_DIR/bin4a:$PATH" merge_run "pr" "$_s4a_sf" ) >/dev/null 2>&1; _s4a_rc=$?
++
++assert_file_exists "[SPEC-4] gate-absent: merge-result.json written" "$_s4a_art/merge-result.json"
++if [[ -f "$_s4a_art/merge-result.json" ]]; then
++    assert_eq "[SPEC-4] gate-absent: result_contract is 2" "2" \
++        "$(jq -r '.result_contract // empty' "$_s4a_art/merge-result.json" 2>/dev/null || true)"
++    assert_eq "[SPEC-4] gate-absent: verdict is pass" "pass" \
++        "$(jq -r '.verdict // empty' "$_s4a_art/merge-result.json" 2>/dev/null || true)"
++    assert_eq "[SPEC-4] gate-absent: data.mode is pr_fallback" "pr_fallback" \
++        "$(jq -r '.data.mode // empty' "$_s4a_art/merge-result.json" 2>/dev/null || true)"
++fi
++
++# gate verdict=fail
++_s4b_dir="$TEST_TEMP_DIR/spec4b"
++_s4b_sf="$(_make_state "$_s4b_dir" "fail")"
++_s4b_art="$_s4b_dir/artifacts"
++_mk_mocks "$TEST_TEMP_DIR/bin4b" "zbuild/issue-1849-test"
++
++( PATH="$TEST_TEMP_DIR/bin4b:$PATH" merge_run "pr" "$_s4b_sf" ) >/dev/null 2>&1; _s4b_rc=$?
++
++assert_file_exists "[SPEC-4] gate-fail: merge-result.json written" "$_s4b_art/merge-result.json"
++if [[ -f "$_s4b_art/merge-result.json" ]]; then
++    assert_eq "[SPEC-4] gate-fail: result_contract is 2" "2" \
++        "$(jq -r '.result_contract // empty' "$_s4b_art/merge-result.json" 2>/dev/null || true)"
++    assert_eq "[SPEC-4] gate-fail: verdict is pass" "pass" \
++        "$(jq -r '.verdict // empty' "$_s4b_art/merge-result.json" 2>/dev/null || true)"
++    assert_eq "[SPEC-4] gate-fail: data.mode is pr_fallback" "pr_fallback" \
++        "$(jq -r '.data.mode // empty' "$_s4b_art/merge-result.json" 2>/dev/null || true)"
++fi
++
++# ─── SPEC-5: error paths — result_contract:2, verdict=error, disposition, reason
++print_test_section "SPEC-5: error paths — result_contract:2, verdict=error, disposition, reason"
++
++# branch is main
++_s5a_dir="$TEST_TEMP_DIR/spec5a"
++_s5a_sf="$(_make_state "$_s5a_dir" "pass")"
++_s5a_art="$_s5a_dir/artifacts"
++_mk_mocks "$TEST_TEMP_DIR/bin5a" "main"
++
++( PATH="$TEST_TEMP_DIR/bin5a:$PATH" merge_run "pr" "$_s5a_sf" ) >/dev/null 2>&1; _s5a_rc=$?
++
++assert_file_exists "[SPEC-5] branch-is-main: merge-result.json written" "$_s5a_art/merge-result.json"
++if [[ -f "$_s5a_art/merge-result.json" ]]; then
++    assert_eq "[SPEC-5] branch-is-main: result_contract is 2" "2" \
++        "$(jq -r '.result_contract // empty' "$_s5a_art/merge-result.json" 2>/dev/null || true)"
++    assert_eq "[SPEC-5] branch-is-main: verdict is error" "error" \
++        "$(jq -r '.verdict // empty' "$_s5a_art/merge-result.json" 2>/dev/null || true)"
++    _s5a_disp="$(jq -r '.disposition // empty' "$_s5a_art/merge-result.json" 2>/dev/null || true)"
++    [[ -n "$_s5a_disp" ]] \
++        && assert_pass "[SPEC-5] branch-is-main: disposition present" \
++        || assert_fail "[SPEC-5] branch-is-main: disposition present" "absent"
++    _s5a_rsn="$(jq -r '.reason // empty' "$_s5a_art/merge-result.json" 2>/dev/null || true)"
++    [[ -n "$_s5a_rsn" ]] \
++        && assert_pass "[SPEC-5] branch-is-main: reason present" \
++        || assert_fail "[SPEC-5] branch-is-main: reason present" "absent"
++fi
++
++# push failure
++_s5b_dir="$TEST_TEMP_DIR/spec5b"
++_s5b_sf="$(_make_state "$_s5b_dir" "pass")"
++_s5b_art="$_s5b_dir/artifacts"
++_mk_mocks "$TEST_TEMP_DIR/bin5b" "zbuild/issue-1849-test" 1
++
++( PATH="$TEST_TEMP_DIR/bin5b:$PATH" merge_run "pr" "$_s5b_sf" ) >/dev/null 2>&1; _s5b_rc=$?
++
++assert_file_exists "[SPEC-5] push-failure: merge-result.json written" "$_s5b_art/merge-result.json"
++if [[ -f "$_s5b_art/merge-result.json" ]]; then
++    assert_eq "[SPEC-5] push-failure: result_contract is 2" "2" \
++        "$(jq -r '.result_contract // empty' "$_s5b_art/merge-result.json" 2>/dev/null || true)"
++    assert_eq "[SPEC-5] push-failure: verdict is error" "error" \
++        "$(jq -r '.verdict // empty' "$_s5b_art/merge-result.json" 2>/dev/null || true)"
++    _s5b_disp="$(jq -r '.disposition // empty' "$_s5b_art/merge-result.json" 2>/dev/null || true)"
++    [[ -n "$_s5b_disp" ]] \
++        && assert_pass "[SPEC-5] push-failure: disposition present" \
++        || assert_fail "[SPEC-5] push-failure: disposition present" "absent"
++    _s5b_rsn="$(jq -r '.reason // empty' "$_s5b_art/merge-result.json" 2>/dev/null || true)"
++    [[ -n "$_s5b_rsn" ]] \
++        && assert_pass "[SPEC-5] push-failure: reason present" \
++        || assert_fail "[SPEC-5] push-failure: reason present" "absent"
++fi
++
++# gh pr create failure
++_s5c_dir="$TEST_TEMP_DIR/spec5c"
++_s5c_sf="$(_make_state "$_s5c_dir" "pass")"
++_s5c_art="$_s5c_dir/artifacts"
++_mk_mocks "$TEST_TEMP_DIR/bin5c" "zbuild/issue-1849-test" 0 1
++
++( PATH="$TEST_TEMP_DIR/bin5c:$PATH" merge_run "pr" "$_s5c_sf" ) >/dev/null 2>&1; _s5c_rc=$?
++
++assert_file_exists "[SPEC-5] gh-failure: merge-result.json written" "$_s5c_art/merge-result.json"
++if [[ -f "$_s5c_art/merge-result.json" ]]; then
++    assert_eq "[SPEC-5] gh-failure: result_contract is 2" "2" \
++        "$(jq -r '.result_contract // empty' "$_s5c_art/merge-result.json" 2>/dev/null || true)"
++    assert_eq "[SPEC-5] gh-failure: verdict is error" "error" \
++        "$(jq -r '.verdict // empty' "$_s5c_art/merge-result.json" 2>/dev/null || true)"
++    _s5c_disp="$(jq -r '.disposition // empty' "$_s5c_art/merge-result.json" 2>/dev/null || true)"
++    [[ -n "$_s5c_disp" ]] \
++        && assert_pass "[SPEC-5] gh-failure: disposition present" \
++        || assert_fail "[SPEC-5] gh-failure: disposition present" "absent"
++    _s5c_rsn="$(jq -r '.reason // empty' "$_s5c_art/merge-result.json" 2>/dev/null || true)"
++    [[ -n "$_s5c_rsn" ]] \
++        && assert_pass "[SPEC-5] gh-failure: reason present" \
++        || assert_fail "[SPEC-5] gh-failure: reason present" "absent"
++fi
++
++# ─── SPEC-6: no exit path returns rc=2 ───────────────────────────────────────
++print_test_section "SPEC-6: all exit paths return rc ∈ {0,1} — no rc=2"
++
++assert_eq "[SPEC-6] success path rc in {0,1}" "1" "$(( _s3_rc  != 2 ? 1 : 0 ))"
++assert_eq "[SPEC-6] gate-absent fallback rc in {0,1}" "1" "$(( _s4a_rc != 2 ? 1 : 0 ))"
++assert_eq "[SPEC-6] gate-fail fallback rc in {0,1}" "1" "$(( _s4b_rc != 2 ? 1 : 0 ))"
++assert_eq "[SPEC-6] branch-is-main error rc in {0,1}" "1" "$(( _s5a_rc != 2 ? 1 : 0 ))"
++assert_eq "[SPEC-6] push-failure error rc in {0,1}" "1" "$(( _s5b_rc != 2 ? 1 : 0 ))"
++assert_eq "[SPEC-6] gh-failure error rc in {0,1}" "1" "$(( _s5c_rc != 2 ? 1 : 0 ))"
++
++# ─── SPEC-7: gate path resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback
++print_test_section "SPEC-7: gate_aggregator_result resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback"
++
++# SPEC-7a: gate at a non-standard path, ZBUILD_STAGE_INPUTS points there.
++# artifacts_dir has NO gate file. Old code ignores ZBUILD_STAGE_INPUTS →
++# no gate found → fallback taken (wrong). New code reads ZBUILD_STAGE_INPUTS →
++# gate found → merge path taken (verdict=pass, disposition=complete, no pr_fallback mode).
++_s7a_dir="$TEST_TEMP_DIR/spec7a"
++_s7a_sf="$(_make_state "$_s7a_dir")"   # intentionally: no gate in artifacts_dir
++_s7a_art="$_s7a_dir/artifacts"
++_mk_mocks "$TEST_TEMP_DIR/bin7a" "zbuild/issue-1849-test"
++
++_s7a_custom="$TEST_TEMP_DIR/custom-gate/gate-aggregator-result.json"
++mkdir -p "$(dirname "$_s7a_custom")"
++printf '{"schema_version":1,"verdict":"pass"}\n' > "$_s7a_custom"
++
++_s7a_si="$TEST_TEMP_DIR/spec7a-si.json"
++printf '{"inputs":{"gate_aggregator_result":"%s"}}\n' "$_s7a_custom" > "$_s7a_si"
++
++( PATH="$TEST_TEMP_DIR/bin7a:$PATH" ZBUILD_STAGE_INPUTS="$_s7a_si" \
++  merge_run "pr" "$_s7a_sf" ) >/dev/null 2>&1; _s7a_rc=$?
++
++assert_file_exists "[SPEC-7] ZBUILD_STAGE_INPUTS: merge-result.json written" "$_s7a_art/merge-result.json"
++if [[ -f "$_s7a_art/merge-result.json" ]]; then
++    _s7a_verdict="$(jq -r '.verdict // empty' "$_s7a_art/merge-result.json" 2>/dev/null || true)"
++    _s7a_mode="$(jq -r '.data.mode // empty' "$_s7a_art/merge-result.json" 2>/dev/null || true)"
++    # merge path taken: verdict=pass and NOT pr_fallback mode
++    [[ "$_s7a_verdict" == "pass" && "$_s7a_mode" != "pr_fallback" ]] \
++        && assert_pass "[SPEC-7] ZBUILD_STAGE_INPUTS: merge path taken (verdict=pass, no pr_fallback)" \
++        || assert_fail "[SPEC-7] ZBUILD_STAGE_INPUTS: merge path taken (verdict=pass, no pr_fallback)" \
++            "verdict=$_s7a_verdict mode=$_s7a_mode — ZBUILD_STAGE_INPUTS not honoured"
++fi
++
++# SPEC-7b: artifacts_dir fallback — no ZBUILD_STAGE_INPUTS, gate in standard location.
++# Guards that the pr-delivery direct-source path (no ZBUILD_STAGE_INPUTS set) still works.
++_s7b_dir="$TEST_TEMP_DIR/spec7b"
++_s7b_sf="$(_make_state "$_s7b_dir" "pass")"   # gate in artifacts_dir
++_s7b_art="$_s7b_dir/artifacts"
++_mk_mocks "$TEST_TEMP_DIR/bin7b" "zbuild/issue-1849-test"
++
++( PATH="$TEST_TEMP_DIR/bin7b:$PATH" ZBUILD_STAGE_INPUTS="" \
++  merge_run "pr" "$_s7b_sf" ) >/dev/null 2>&1; _s7b_rc=$?
++
++assert_file_exists "[SPEC-7] artifacts_dir fallback: merge-result.json written" "$_s7b_art/merge-result.json"
++if [[ -f "$_s7b_art/merge-result.json" ]]; then
++    _s7b_verdict="$(jq -r '.verdict // empty' "$_s7b_art/merge-result.json" 2>/dev/null || true)"
++    _s7b_mode="$(jq -r '.data.mode // empty' "$_s7b_art/merge-result.json" 2>/dev/null || true)"
++    [[ "$_s7b_verdict" == "pass" && "$_s7b_mode" != "pr_fallback" ]] \
++        && assert_pass "[SPEC-7] artifacts_dir fallback: merge path taken" \
++        || assert_fail "[SPEC-7] artifacts_dir fallback: merge path taken" \
++            "verdict=$_s7b_verdict mode=$_s7b_mode — artifacts_dir fallback not working"
++fi
++
++# ─── Teardown ─────────────────────────────────────────────────────────────────
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/plugin-artifact-goldens-test.sh b/tests/unit/plugin-artifact-goldens-test.sh
+index df44562f..fee0dad4 100755
+--- a/tests/unit/plugin-artifact-goldens-test.sh
++++ b/tests/unit/plugin-artifact-goldens-test.sh
+@@ -179,29 +179,27 @@ fi
+ 
+ # ─── G4: pr-result-artifact ───────────────────────────────────────────────────
+ # plugins/tool/pr-open produces state/artifacts/pr-result.json
+-# Required fields: schema_version=1, status, pr_url, draft=false (non-draft default), branch, issue
++# v2 contract: result_contract=2, verdict, disposition, reason; plugin fields under data.*
+ print_test_section "G4: pr-result-artifact.golden"
+ assert_golden_exists "pr-result-artifact"
+ assert_golden_is_valid_json "pr-result-artifact"
+-assert_golden_contains "pr-result-artifact" '"schema_version"'
+-assert_golden_contains "pr-result-artifact" '"status"'
+-assert_golden_contains "pr-result-artifact" '"pr_url"'
+-assert_golden_contains "pr-result-artifact" '"draft"'
+-assert_golden_contains "pr-result-artifact" '"branch"'
++assert_golden_contains "pr-result-artifact" '"result_contract"'
++assert_golden_contains "pr-result-artifact" '"verdict"'
++assert_golden_contains "pr-result-artifact" '"data"'
+ 
+ g4_content="$(cat "$GOLDEN_DIR/pr-result-artifact.golden" 2>/dev/null || echo '{}')"
+-g4_schema="$(printf '%s' "$g4_content" | jq -r '.schema_version' 2>/dev/null || echo '')"
+-if [[ "$g4_schema" == "1" ]]; then
+-    assert_pass "G4: pr-result-artifact schema_version == 1"
++g4_rc="$(printf '%s' "$g4_content" | jq -r '.result_contract' 2>/dev/null || echo '')"
++if [[ "$g4_rc" == "2" ]]; then
++    assert_pass "G4: pr-result-artifact result_contract == 2"
+ else
+-    assert_fail "G4: pr-result-artifact schema_version == 1" "got: $g4_schema"
++    assert_fail "G4: pr-result-artifact result_contract == 2" "got: $g4_rc"
+ fi
+ 
+-g4_draft="$(printf '%s' "$g4_content" | jq -r '.draft' 2>/dev/null || echo '')"
++g4_draft="$(printf '%s' "$g4_content" | jq -r '.data.draft' 2>/dev/null || echo '')"
+ if [[ "$g4_draft" == "false" ]]; then
+-    assert_pass "[SPEC-7] G4: pr-result-artifact draft == false (non-draft default)"
++    assert_pass "[SPEC-7] G4: pr-result-artifact data.draft == false (non-draft default)"
+ else
+-    assert_fail "[SPEC-7] G4: pr-result-artifact draft == false (non-draft default)" "got: $g4_draft"
++    assert_fail "[SPEC-7] G4: pr-result-artifact data.draft == false (non-draft default)" "got: $g4_draft"
+ fi
+ 
+ set +e
+diff --git a/tests/unit/pr-open-advisory-review-test.sh b/tests/unit/pr-open-advisory-review-test.sh
+index 8c3accc3..e0da9e71 100644
+--- a/tests/unit/pr-open-advisory-review-test.sh
++++ b/tests/unit/pr-open-advisory-review-test.sh
+@@ -1,6 +1,10 @@
+ #!/usr/bin/env bash
+ # Tests: pr-open advisory review-report rendering in PR body (#1707)
+ # Covers: _pr_open_render_advisory_section + body assembly in advisory mode.
++#
++# SPEC coverage:
++#   [SPEC-22] pr-open advisory review section renders finding count and top bullets
++#             in the PR body
+ set -euo pipefail
+ 
+ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+@@ -82,8 +86,8 @@ _reset_fixtures() {
+     rm -f "$PR_RESULT_JSON" "$REVIEW_JSON" "$REVIEW_REPORT_JSON" "$BODY_FILE"
+ }
+ 
+-# ─── SPEC-1: advisory mode with findings → count + top bullets + no N/A ─────
+-print_test_section "SPEC-1: review-report.json with findings → body has count, top findings, no verdict N/A"
++# ─── advisory mode with findings → count + top bullets + no N/A ─────────────
++print_test_section "SPEC-22: review-report.json with findings → body has count, top findings, no verdict N/A"
+ 
+ _reset_fixtures
+ cat > "$REVIEW_REPORT_JSON" <<'JSON'
+@@ -110,34 +114,34 @@ cat > "$REVIEW_REPORT_JSON" <<'JSON'
+ JSON
+ 
+ _run_pr_open
+-assert_exit_code "[SPEC-1] advisory mode with findings: rc=0" "0" "$RUN_RC"
++assert_exit_code "advisory mode with findings: rc=0" "0" "$RUN_RC"
+ 
+ if [[ -f "$BODY_FILE" ]]; then
+     spec1_body="$(cat "$BODY_FILE")"
+-    assert_contains "[SPEC-1] body contains finding count" \
++    assert_contains "[SPEC-22] body contains finding count" \
+         "$spec1_body" "2 finding(s)"
+-    assert_contains "[SPEC-1] body contains severity indicator" \
++    assert_contains "[SPEC-22] body contains severity indicator" \
+         "$spec1_body" "[high]"
+-    assert_contains "[SPEC-1] body contains lens name" \
++    assert_contains "[SPEC-22] body contains lens name" \
+         "$spec1_body" "security"
+     # The point of #1707: a human must be able to read WHAT was found, so the
+     # bullet carries file:line and the finding text, not just a file path.
+-    assert_contains "[SPEC-1] body contains file:line locator" \
++    assert_contains "[SPEC-22] body contains file:line locator" \
+         "$spec1_body" "foo.sh:42"
+-    assert_contains "[SPEC-1] body contains the finding message" \
++    assert_contains "[SPEC-22] body contains the finding message" \
+         "$spec1_body" "potential injection via unquoted expansion"
+     if grep -qF '**Review verdict:** N/A' <<< "$spec1_body" 2>/dev/null; then
+-        assert_fail "[SPEC-1] advisory mode: no misleading 'Review verdict: N/A'" \
++        assert_fail "advisory mode: no misleading 'Review verdict: N/A'" \
+             "body still contains 'Review verdict: N/A'"
+     else
+-        assert_pass "[SPEC-1] advisory mode: no misleading 'Review verdict: N/A'"
++        assert_pass "advisory mode: no misleading 'Review verdict: N/A'"
+     fi
+ else
+-    assert_fail "[SPEC-1] body captured from gh call" "BODY_FILE not written"
++    assert_fail "[SPEC-22] body captured from gh call" "BODY_FILE not written"
+ fi
+ 
+-# ─── SPEC-2: review.json present, no review-report.json → "no advisory review ran" ─
+-print_test_section "SPEC-2: review.json present, review-report.json absent → 'no advisory review ran' in body"
++# ─── review.json present, no review-report.json → "no advisory review ran" ──
++print_test_section "review.json present, review-report.json absent → 'no advisory review ran' in body"
+ 
+ _reset_fixtures
+ cat > "$REVIEW_JSON" <<'JSON'
+@@ -145,18 +149,18 @@ cat > "$REVIEW_JSON" <<'JSON'
+ JSON
+ 
+ _run_pr_open
+-assert_exit_code "[SPEC-2] review.json present, no report: rc=0" "0" "$RUN_RC"
++assert_exit_code "review.json present, no report: rc=0" "0" "$RUN_RC"
+ 
+ if [[ -f "$BODY_FILE" ]]; then
+     spec2_body="$(cat "$BODY_FILE")"
+-    assert_contains "[SPEC-2] body contains 'no advisory review ran'" \
++    assert_contains "body contains 'no advisory review ran'" \
+         "$spec2_body" "no advisory review ran"
+ else
+-    assert_fail "[SPEC-2] body captured from gh call" "BODY_FILE not written"
++    assert_fail "body captured from gh call" "BODY_FILE not written"
+ fi
+ 
+-# ─── SPEC-3: advisory mode, findings=[] → "no findings" in body ──────────────
+-print_test_section "SPEC-3: review-report.json with findings=[] → 'no findings' in body"
++# ─── advisory mode, findings=[] → "no findings" in body ─────────────────────
++print_test_section "review-report.json with findings=[] → 'no findings' in body"
+ 
+ _reset_fixtures
+ cat > "$REVIEW_REPORT_JSON" <<'JSON'
+@@ -164,18 +168,18 @@ cat > "$REVIEW_REPORT_JSON" <<'JSON'
+ JSON
+ 
+ _run_pr_open
+-assert_exit_code "[SPEC-3] advisory mode, no findings: rc=0" "0" "$RUN_RC"
++assert_exit_code "advisory mode, no findings: rc=0" "0" "$RUN_RC"
+ 
+ if [[ -f "$BODY_FILE" ]]; then
+     spec3_body="$(cat "$BODY_FILE")"
+-    assert_contains "[SPEC-3] body contains 'no findings'" \
++    assert_contains "body contains 'no findings'" \
+         "$spec3_body" "no findings"
+ else
+-    assert_fail "[SPEC-3] body captured from gh call" "BODY_FILE not written"
++    assert_fail "body captured from gh call" "BODY_FILE not written"
+ fi
+ 
+-# ─── SPEC-4: blocking-review mode — verdict preserved, not replaced by advisory ─
+-print_test_section "SPEC-4: review.json present with advisory report → body keeps blocking verdict"
++# ─── blocking-review mode — verdict preserved, not replaced by advisory ──────
++print_test_section "review.json present with advisory report → body keeps blocking verdict"
+ 
+ _reset_fixtures
+ cat > "$REVIEW_JSON" <<'JSON'
+@@ -198,46 +202,46 @@ cat > "$REVIEW_REPORT_JSON" <<'JSON'
+ JSON
+ 
+ _run_pr_open
+-assert_exit_code "[SPEC-4] blocking-review mode with advisory report: rc=0" "0" "$RUN_RC"
++assert_exit_code "blocking-review mode with advisory report: rc=0" "0" "$RUN_RC"
+ 
+ if [[ -f "$BODY_FILE" ]]; then
+     spec4_body="$(cat "$BODY_FILE")"
+-    assert_contains "[SPEC-4] body still contains blocking verdict line when review.json present" \
++    assert_contains "body still contains blocking verdict line when review.json present" \
+         "$spec4_body" "Review verdict:"
+     # ADR-040 §4: a high-severity advisory finding must not block the PR.
+-    assert_json_key "[SPEC-4] PR still opened despite a high advisory finding" \
+-        "$(cat "$PR_RESULT_JSON")" ".status" "opened"
++    assert_json_key "PR still opened despite a high advisory finding" \
++        "$(cat "$PR_RESULT_JSON")" ".verdict" "pass"
+ else
+-    assert_fail "[SPEC-4] body captured from gh call" "BODY_FILE not written"
++    assert_fail "body captured from gh call" "BODY_FILE not written"
+ fi
+ 
+-# ─── SPEC-5: unparseable report → says so, never "no findings" ───────────────
+-print_test_section "SPEC-5: unreadable review-report.json → explicit 'could not be read', not 'no findings'"
++# ─── unparseable report → says so, never "no findings" ───────────────────────
++print_test_section "unreadable review-report.json → explicit 'could not be read', not 'no findings'"
+ 
+ _reset_fixtures
+ # Truncated mid-object: jq cannot parse it.
+ printf '%s\n' '{"findings": [ {"severity":"high"' > "$REVIEW_REPORT_JSON"
+ 
+ _run_pr_open
+-assert_exit_code "[SPEC-5] unreadable report: rc=0" "0" "$RUN_RC"
++assert_exit_code "unreadable report: rc=0" "0" "$RUN_RC"
+ 
+ if [[ -f "$BODY_FILE" ]]; then
+     spec5_body="$(cat "$BODY_FILE")"
+-    assert_contains "[SPEC-5] body says the report could not be read" \
++    assert_contains "body says the report could not be read" \
+         "$spec5_body" "could not be read"
+     # #1618 lesson: never imply a clean result that was not verified.
+     if grep -qF 'no findings' <<< "$spec5_body" 2>/dev/null; then
+-        assert_fail "[SPEC-5] unreadable report never claims 'no findings'" \
++        assert_fail "unreadable report never claims 'no findings'" \
+             "body claims 'no findings' for a report it could not parse"
+     else
+-        assert_pass "[SPEC-5] unreadable report never claims 'no findings'"
++        assert_pass "unreadable report never claims 'no findings'"
+     fi
+ else
+-    assert_fail "[SPEC-5] body captured from gh call" "BODY_FILE not written"
++    assert_fail "body captured from gh call" "BODY_FILE not written"
+ fi
+ 
+-# ─── SPEC-6: finding text cannot inject markdown/HTML into the PR body ───────
+-print_test_section "SPEC-6: hostile finding text is escaped, not rendered as active markup"
++# ─── finding text cannot inject markdown/HTML into the PR body ───────────────
++print_test_section "hostile finding text is escaped, not rendered as active markup"
+ 
+ _reset_fixtures
+ cat > "$REVIEW_REPORT_JSON" <<'JSON'
+@@ -258,35 +262,35 @@ cat > "$REVIEW_REPORT_JSON" <<'JSON'
+ JSON
+ 
+ _run_pr_open
+-assert_exit_code "[SPEC-6] hostile finding text: rc=0" "0" "$RUN_RC"
++assert_exit_code "hostile finding text: rc=0" "0" "$RUN_RC"
+ 
+ if [[ -f "$BODY_FILE" ]]; then
+     spec6_body="$(cat "$BODY_FILE")"
+     # An escaped "\<img" still contains the substring "<img", so match only an
+     # occurrence NOT preceded by a backslash — that is the one GitHub renders.
+     if grep -qE '(^|[^\\])<img' <<< "$spec6_body" 2>/dev/null; then
+-        assert_fail "[SPEC-6] raw HTML tag from a finding is escaped" \
++        assert_fail "raw HTML tag from a finding is escaped" \
+             "body contains an unescaped '<img' tag"
+     else
+-        assert_pass "[SPEC-6] raw HTML tag from a finding is escaped"
++        assert_pass "raw HTML tag from a finding is escaped"
+     fi
+     if grep -qE '(^|[^\\])\[evil\]\(' <<< "$spec6_body" 2>/dev/null; then
+-        assert_fail "[SPEC-6] markdown link from a finding is escaped" \
++        assert_fail "markdown link from a finding is escaped" \
+             "body contains an active markdown link"
+     else
+-        assert_pass "[SPEC-6] markdown link from a finding is escaped"
++        assert_pass "markdown link from a finding is escaped"
+     fi
+-    assert_contains "[SPEC-6] the HTML tag is present in escaped form" \
++    assert_contains "the HTML tag is present in escaped form" \
+         "$spec6_body" '\<img'
+     # Escaping must neutralise markup without deleting the text itself.
+-    assert_contains "[SPEC-6] finding text is still present after escaping" \
++    assert_contains "finding text is still present after escaping" \
+         "$spec6_body" "attacker.example"
+ else
+-    assert_fail "[SPEC-6] body captured from gh call" "BODY_FILE not written"
++    assert_fail "body captured from gh call" "BODY_FILE not written"
+ fi
+ 
+-# ─── SPEC-7: more than five findings → overflow moves to a <details> block ───
+-print_test_section "SPEC-7: >5 findings → top five inline, remainder in <details>"
++# ─── more than five findings → overflow moves to a <details> block ───────────
++print_test_section "SPEC-22: >5 findings → top five inline, remainder in <details>"
+ 
+ _reset_fixtures
+ jq -n '{schema_version:1, merge_readiness:"advisory", lenses:[{name:"sre"}],
+@@ -295,15 +299,15 @@ jq -n '{schema_version:1, merge_readiness:"advisory", lenses:[{name:"sre"}],
+     > "$REVIEW_REPORT_JSON"
+ 
+ _run_pr_open
+-assert_exit_code "[SPEC-7] seven findings: rc=0" "0" "$RUN_RC"
++assert_exit_code "seven findings: rc=0" "0" "$RUN_RC"
+ 
+ if [[ -f "$BODY_FILE" ]]; then
+     spec7_body="$(cat "$BODY_FILE")"
+-    assert_contains "[SPEC-7] body reports the full finding count" \
++    assert_contains "[SPEC-22] body reports the full finding count" \
+         "$spec7_body" "7 finding(s)"
+-    assert_contains "[SPEC-7] overflow is collapsed into a details block" \
++    assert_contains "overflow is collapsed into a details block" \
+         "$spec7_body" "<details><summary>2 more finding(s)</summary>"
+-    assert_contains "[SPEC-7] details block is closed" \
++    assert_contains "details block is closed" \
+         "$spec7_body" "</details>"
+     # GitHub keeps consuming an HTML block until a blank line, so without one
+     # the next line renders as raw HTML instead of markdown. Matched with a
+@@ -311,13 +315,13 @@ if [[ -f "$BODY_FILE" ]]; then
+     # needle degrades into separate patterns (one of them empty, matching all).
+     _nl=$'\n'
+     if [[ "$spec7_body" == *"</details>${_nl}${_nl}**Test verdict:**"* ]]; then
+-        assert_pass "[SPEC-7] a blank line separates </details> from the next line"
++        assert_pass "a blank line separates </details> from the next line"
+     else
+-        assert_fail "[SPEC-7] a blank line separates </details> from the next line" \
++        assert_fail "a blank line separates </details> from the next line" \
+             "no blank line after </details>; the next line would render as raw HTML"
+     fi
+ else
+-    assert_fail "[SPEC-7] body captured from gh call" "BODY_FILE not written"
++    assert_fail "body captured from gh call" "BODY_FILE not written"
+ fi
+ 
+ # ─── Teardown ─────────────────────────────────────────────────────────────────
+diff --git a/tests/unit/pr-open-v2-result-test.sh b/tests/unit/pr-open-v2-result-test.sh
+new file mode 100644
+index 00000000..ea389509
+--- /dev/null
++++ b/tests/unit/pr-open-v2-result-test.sh
+@@ -0,0 +1,578 @@
++#!/usr/bin/env bash
++# tests/unit/pr-open-v2-result-test.sh
++# Contract v2 result assertions for the pr-open plugin (issue #1849).
++# SPEC coverage:
++#   [SPEC-8]  manifest provides declares result_contract:2 (no role — constraint preserved)
++#   [SPEC-9]  pr-open/config valid_verdicts updated to [pass,blocked,error]
++#   [SPEC-10] pr-result.json carries result_contract:2, verdict=pass, disposition, reason
++#   [SPEC-11] pr-result.json carries result_contract:2, verdict=blocked, disposition, reason; rc=0
++#   [SPEC-12] pr-result.json carries result_contract:2, verdict=error, disposition, reason; rc=1
++#   [SPEC-13] all exit paths return rc ∈ {0,1} — no rc=2
++#   [SPEC-14] reads review_report via ZBUILD_STAGE_INPUTS with artifacts_dir fallback
++#   [SPEC-24] tier_default:T0, no router: block
++#   [SPEC-25] outputs.pr_url retains primary: true after v2 migration
++#   [SPEC-26] provides retains events:[plugin.pr_open.branch_fallback_used,
++#             plugin.pr_open.preflight_remote_has_work] and has no role
++#   [SPEC-28] hooks section has only run:, no cleanup:
++set -uo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "pr-open plugin: v2 result contract (issue #1849)"
++setup_test_env "pr-open-v2-result"
++
++export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
++export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
++export ZBUILD_EVENTS_DB="/dev/null"
++export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
++export ZBUILD_RUN_ID="pr-open-v2-result-test-$$"
++mkdir -p "$ZBUILD_EVENTS_DIR"
++: > "$ZBUILD_EVENTS_JSONL"
++
++PR_MANIFEST="$REPO_ROOT/plugins/tool/pr-open/manifest.yaml"
++
++# ─── SPEC-8: manifest provides declares result_contract:2, no role ───────────
++print_test_section "SPEC-8: manifest provides declares result_contract:2 (no role — constraint preserved)"
++
++_s8_prov_rc="$(awk '/^provides:/{f=1} f && /result_contract:/{print $2; exit}' "$PR_MANIFEST" || echo '')"
++assert_eq "[SPEC-8] manifest provides.result_contract is 2" "2" "$_s8_prov_rc"
++
++# provides section ends at the next top-level key; look for role: within provides
++_s8_role="$(awk '
++    /^provides:/{in_prov=1; next}
++    /^[a-z]/{in_prov=0}
++    in_prov && /^[[:space:]]+role:/{print $2; exit}
++' "$PR_MANIFEST" || echo '')"
++assert_eq "[SPEC-8] manifest provides has no role (do-not-add constraint)" "" "$_s8_role"
++
++# ─── SPEC-9: valid_verdicts includes pass, blocked, error ────────────────────
++print_test_section "SPEC-9: config valid_verdicts updated to [pass, blocked, error]"
++
++_vv_pass="$(grep -v '^#' "$PR_MANIFEST" | grep -c '^[[:space:]]*- pass$' || true)"
++_vv_blocked="$(grep -v '^#' "$PR_MANIFEST" | grep -c '^[[:space:]]*- blocked$' || true)"
++_vv_error="$(grep -v '^#' "$PR_MANIFEST" | grep -c '^[[:space:]]*- error$' || true)"
++[[ "$_vv_pass" -gt 0 ]] \
++    && assert_pass "[SPEC-9] valid_verdicts includes pass" \
++    || assert_fail "[SPEC-9] valid_verdicts includes pass" "missing from $PR_MANIFEST"
++[[ "$_vv_blocked" -gt 0 ]] \
++    && assert_pass "[SPEC-9] valid_verdicts includes blocked" \
++    || assert_fail "[SPEC-9] valid_verdicts includes blocked" "missing from $PR_MANIFEST"
++[[ "$_vv_error" -gt 0 ]] \
++    && assert_pass "[SPEC-9] valid_verdicts includes error" \
++    || assert_fail "[SPEC-9] valid_verdicts includes error" "missing from $PR_MANIFEST"
++
++# ─── SPEC-24: tier_default:T0, no router: block ──────────────────────────────
++print_test_section "SPEC-24: tier_default:T0 with no router: block"
++
++_td="$(grep -m1 'tier_default:' "$PR_MANIFEST" | awk '{print $2}' || echo '')"
++assert_eq "[SPEC-24] manifest tier_default is T0" "T0" "$_td"
++
++_has_router="$(grep -v '^#' "$PR_MANIFEST" | grep -c '^[[:space:]]*router:' || true)"
++assert_eq "[SPEC-24] manifest has no router: block" "0" "$_has_router"
++
++# ─── SPEC-25: outputs.pr_url retains primary: true ───────────────────────────
++print_test_section "SPEC-25: outputs.pr_url retains primary: true"
++
++_has_primary="$(grep -v '^#' "$PR_MANIFEST" | grep -c 'primary:[[:space:]]*true' || true)"
++[[ "$_has_primary" -gt 0 ]] \
++    && assert_pass "[SPEC-25] manifest has primary: true on pr_url output" \
++    || assert_fail "[SPEC-25] manifest has primary: true on pr_url output" "missing"
++
++# ─── SPEC-26: provides retains events, no role ───────────────────────────────
++print_test_section "SPEC-26: provides retains events and has no role after result_contract:2 added"
++
++_ev1="$(awk '/^provides:/{f=1} f && /plugin\.pr_open\.branch_fallback_used/{print; exit}' "$PR_MANIFEST" || echo '')"
++[[ -n "$_ev1" ]] \
++    && assert_pass "[SPEC-26] provides.events includes plugin.pr_open.branch_fallback_used" \
++    || assert_fail "[SPEC-26] provides.events includes plugin.pr_open.branch_fallback_used" "absent"
++
++_ev2="$(awk '/^provides:/{f=1} f && /plugin\.pr_open\.preflight_remote_has_work/{print; exit}' "$PR_MANIFEST" || echo '')"
++[[ -n "$_ev2" ]] \
++    && assert_pass "[SPEC-26] provides.events includes plugin.pr_open.preflight_remote_has_work" \
++    || assert_fail "[SPEC-26] provides.events includes plugin.pr_open.preflight_remote_has_work" "absent"
++
++_s26_role="$(awk '
++    /^provides:/{in_prov=1; next}
++    /^[a-z]/{in_prov=0}
++    in_prov && /^[[:space:]]+role:/{print $2; exit}
++' "$PR_MANIFEST" || echo '')"
++assert_eq "[SPEC-26] provides has no role: key (do-not-add constraint preserved)" "" "$_s26_role"
++
++# ─── SPEC-28: hooks has only run:, no cleanup: ───────────────────────────────
++print_test_section "SPEC-28: hooks section has only run:, no cleanup:"
++
++_has_cleanup="$(grep -v '^#' "$PR_MANIFEST" | grep -c '^[[:space:]]*cleanup:' || true)"
++assert_eq "[SPEC-28] manifest hooks has no cleanup:" "0" "$_has_cleanup"
++
++_has_run="$(grep -v '^#' "$PR_MANIFEST" | grep -c '^[[:space:]]*run:[[:space:]]*pr_open_run' || true)"
++[[ "$_has_run" -gt 0 ]] \
++    && assert_pass "[SPEC-28] manifest hooks has run: pr_open_run" \
++    || assert_fail "[SPEC-28] manifest hooks has run: pr_open_run" "missing"
++
++# ─── Plugin behavior setup ────────────────────────────────────────────────────
++# shellcheck source=../../plugins/tool/pr-open/plugin.sh
++source "$REPO_ROOT/plugins/tool/pr-open/plugin.sh"
++
++# _make_pr_state <dir> [review_verdict]
++# Sets up a state dir. review_verdict is written to review.json when given.
++_make_pr_state() {
++    local d="$1" review_verdict="${2:-}"
++    mkdir -p "$d/artifacts"
++    printf '{"issue":1849,"branch":"zbuild/issue-1849-test"}\n' > "$d/pipeline-state.json"
++    [[ -n "$review_verdict" ]] && \
++        printf '{"schema_version":1,"verdict":"%s","summary":"ok"}\n' "$review_verdict" \
++            > "$d/artifacts/review.json"
++    printf '%s/pipeline-state.json' "$d"
++}
++
++# Git/gh stub functions shared across tests.
++# The _pr_open_run_inner function is designed for testability (see its header comment);
++# we use bash function exports so git/gh are intercepted without PATH manipulation.
++
++_stub_git_pass() {
++    git() {
++        if [[ "${1:-} ${2:-}" == "rev-parse --abbrev-ref" ]]; then
++            echo "zbuild/issue-1849-test"
++        else
++            return 0
++        fi
++    }
++    gh() {
++        case "${1:-} ${2:-}" in
++            "pr list") echo "" ;;
++            "pr create") echo "https://github.com/mock/repo/pull/1849" ;;
++            *) return 0 ;;
++        esac
++    }
++    export -f git gh
++}
++
++_stub_git_existing_pr() {
++    git() {
++        if [[ "${1:-} ${2:-}" == "rev-parse --abbrev-ref" ]]; then
++            echo "zbuild/issue-1849-test"
++        else
++            return 0
++        fi
++    }
++    gh() {
++        case "${1:-} ${2:-}" in
++            "pr list")   echo "1849" ;;
++            "pr edit")   return 0 ;;
++            "pr view")   echo "https://github.com/mock/repo/pull/1849" ;;
++            *) return 0 ;;
++        esac
++    }
++    export -f git gh
++}
++
++_stub_git_main() {
++    git() {
++        if [[ "${1:-} ${2:-}" == "rev-parse --abbrev-ref" ]]; then
++            echo "main"
++        else
++            return 0
++        fi
++    }
++    gh() { return 0; }
++    export -f git gh
++}
++
++_stub_git_push_fail() {
++    git() {
++        if [[ "${1:-} ${2:-}" == "rev-parse --abbrev-ref" ]]; then
++            echo "zbuild/issue-1849-test"
++        elif [[ "${1:-}" == "push" ]]; then
++            echo "mock push error" >&2; return 1
++        else
++            return 0
++        fi
++    }
++    gh() { case "${1:-} ${2:-}" in "pr list") echo "" ;; *) return 0 ;; esac; }
++    export -f git gh
++}
++
++_stub_git_gh_create_fail() {
++    git() {
++        if [[ "${1:-} ${2:-}" == "rev-parse --abbrev-ref" ]]; then
++            echo "zbuild/issue-1849-test"
++        else
++            return 0
++        fi
++    }
++    gh() {
++        case "${1:-} ${2:-}" in
++            "pr list")   echo "" ;;
++            "pr create") echo "gh create error" >&2; return 1 ;;
++            *) return 0 ;;
++        esac
++    }
++    export -f git gh
++}
++
++_unstub() { unset -f git gh 2>/dev/null || true; }
++
++# ─── SPEC-10: pass paths — opened and updated ────────────────────────────────
++print_test_section "SPEC-10: pass paths — result_contract:2, verdict=pass, disposition, reason"
++
++# opened path: no existing PR on remote
++_s10a_dir="$TEST_TEMP_DIR/spec10a"
++_make_pr_state "$_s10a_dir" "approve" >/dev/null
++_s10a_art="$_s10a_dir/artifacts"
++_s10a_pr="$_s10a_art/pr-result.json"
++
++_stub_git_pass
++set +e
++_pr_open_run_inner "$_s10a_art/review.json" "$_s10a_dir/pipeline-state.json" "$_s10a_pr" "1849"
++_s10a_rc=$?
++set -e
++_unstub
++
++assert_file_exists "[SPEC-10] opened: pr-result.json written" "$_s10a_pr"
++if [[ -f "$_s10a_pr" ]]; then
++    assert_eq "[SPEC-10] opened: result_contract is 2" "2" \
++        "$(jq -r '.result_contract // empty' "$_s10a_pr" 2>/dev/null || true)"
++    assert_eq "[SPEC-10] opened: verdict is pass" "pass" \
++        "$(jq -r '.verdict // empty' "$_s10a_pr" 2>/dev/null || true)"
++    _s10a_disp="$(jq -r '.disposition // empty' "$_s10a_pr" 2>/dev/null || true)"
++    [[ -n "$_s10a_disp" ]] \
++        && assert_pass "[SPEC-10] opened: disposition present" \
++        || assert_fail "[SPEC-10] opened: disposition present" "absent"
++    _s10a_reason="$(jq -r '.reason // empty' "$_s10a_pr" 2>/dev/null || true)"
++    [[ -n "$_s10a_reason" ]] \
++        && assert_pass "[SPEC-10] opened: reason present" \
++        || assert_fail "[SPEC-10] opened: reason present" "absent"
++fi
++
++# updated path: existing PR on remote
++_s10b_dir="$TEST_TEMP_DIR/spec10b"
++_make_pr_state "$_s10b_dir" "approve" >/dev/null
++_s10b_art="$_s10b_dir/artifacts"
++_s10b_pr="$_s10b_art/pr-result.json"
++
++_stub_git_existing_pr
++set +e
++_pr_open_run_inner "$_s10b_art/review.json" "$_s10b_dir/pipeline-state.json" "$_s10b_pr" "1849"
++_s10b_rc=$?
++set -e
++_unstub
++
++assert_file_exists "[SPEC-10] updated: pr-result.json written" "$_s10b_pr"
++if [[ -f "$_s10b_pr" ]]; then
++    assert_eq "[SPEC-10] updated: result_contract is 2" "2" \
++        "$(jq -r '.result_contract // empty' "$_s10b_pr" 2>/dev/null || true)"
++    assert_eq "[SPEC-10] updated: verdict is pass" "pass" \
++        "$(jq -r '.verdict // empty' "$_s10b_pr" 2>/dev/null || true)"
++    _s10b_disp="$(jq -r '.disposition // empty' "$_s10b_pr" 2>/dev/null || true)"
++    [[ -n "$_s10b_disp" ]] \
++        && assert_pass "[SPEC-10] updated: disposition present" \
++        || assert_fail "[SPEC-10] updated: disposition present" "absent"
++    _s10b_reason="$(jq -r '.reason // empty' "$_s10b_pr" 2>/dev/null || true)"
++    [[ -n "$_s10b_reason" ]] \
++        && assert_pass "[SPEC-10] updated: reason present" \
++        || assert_fail "[SPEC-10] updated: reason present" "absent"
++fi
++
++# ─── SPEC-11: blocked paths — review verdict=block and no review signal ──────
++print_test_section "SPEC-11: blocked paths — result_contract:2, verdict=blocked, disposition, reason; rc=0"
++
++# review.json verdict=block
++_s11a_dir="$TEST_TEMP_DIR/spec11a"
++_make_pr_state "$_s11a_dir" "block" >/dev/null
++_s11a_art="$_s11a_dir/artifacts"
++_s11a_pr="$_s11a_art/pr-result.json"
++
++_stub_git_pass
++set +e
++_pr_open_run_inner "$_s11a_art/review.json" "$_s11a_dir/pipeline-state.json" "$_s11a_pr" "1849"
++_s11a_rc=$?
++set -e
++_unstub
++
++assert_file_exists "[SPEC-11] review=block: pr-result.json written" "$_s11a_pr"
++if [[ -f "$_s11a_pr" ]]; then
++    assert_eq "[SPEC-11] review=block: result_contract is 2" "2" \
++        "$(jq -r '.result_contract // empty' "$_s11a_pr" 2>/dev/null || true)"
++    assert_eq "[SPEC-11] review=block: verdict is blocked" "blocked" \
++        "$(jq -r '.verdict // empty' "$_s11a_pr" 2>/dev/null || true)"
++    _s11a_disp="$(jq -r '.disposition // empty' "$_s11a_pr" 2>/dev/null || true)"
++    [[ -n "$_s11a_disp" ]] \
++        && assert_pass "[SPEC-11] review=block: disposition present" \
++        || assert_fail "[SPEC-11] review=block: disposition present" "absent"
++    _s11a_reason="$(jq -r '.reason // empty' "$_s11a_pr" 2>/dev/null || true)"
++    [[ -n "$_s11a_reason" ]] \
++        && assert_pass "[SPEC-11] review=block: reason present" \
++        || assert_fail "[SPEC-11] review=block: reason present" "absent"
++fi
++assert_eq "[SPEC-11] review=block: rc=0 (not rc=2)" "0" "$_s11a_rc"
++
++# no review signal — fail-closed: neither review.json nor review-report.json
++_s11b_dir="$TEST_TEMP_DIR/spec11b"
++_make_pr_state "$_s11b_dir" >/dev/null   # no review_verdict arg → no review.json
++_s11b_art="$_s11b_dir/artifacts"
++_s11b_pr="$_s11b_art/pr-result.json"
++
++_stub_git_pass
++set +e
++_pr_open_run_inner "$_s11b_art/review.json" "$_s11b_dir/pipeline-state.json" "$_s11b_pr" "1849"
++_s11b_rc=$?
++set -e
++_unstub
++
++assert_file_exists "[SPEC-11] no-review-signal: pr-result.json written" "$_s11b_pr"
++if [[ -f "$_s11b_pr" ]]; then
++    assert_eq "[SPEC-11] no-review-signal: result_contract is 2" "2" \
++        "$(jq -r '.result_contract // empty' "$_s11b_pr" 2>/dev/null || true)"
++    assert_eq "[SPEC-11] no-review-signal: verdict is blocked (fail-closed)" "blocked" \
++        "$(jq -r '.verdict // empty' "$_s11b_pr" 2>/dev/null || true)"
++    _s11b_disp="$(jq -r '.disposition // empty' "$_s11b_pr" 2>/dev/null || true)"
++    [[ -n "$_s11b_disp" ]] \
++        && assert_pass "[SPEC-11] no-review-signal: disposition present" \
++        || assert_fail "[SPEC-11] no-review-signal: disposition present" "absent"
++    _s11b_reason="$(jq -r '.reason // empty' "$_s11b_pr" 2>/dev/null || true)"
++    [[ -n "$_s11b_reason" ]] \
++        && assert_pass "[SPEC-11] no-review-signal: reason present" \
++        || assert_fail "[SPEC-11] no-review-signal: reason present" "absent"
++fi
++assert_eq "[SPEC-11] no-review-signal: rc=0 (not rc=2, fail-closed writes verdict=blocked)" "0" "$_s11b_rc"
++
++# ─── SPEC-12: error paths — branch-is-main, push failure, gh failure ─────────
++print_test_section "SPEC-12: error paths — result_contract:2, verdict=error, disposition, reason; rc=1 not rc=2"
++
++# branch is main
++_s12a_dir="$TEST_TEMP_DIR/spec12a"
++_make_pr_state "$_s12a_dir" "approve" >/dev/null
++_s12a_art="$_s12a_dir/artifacts"
++_s12a_pr="$_s12a_art/pr-result.json"
++
++_stub_git_main
++set +e
++_pr_open_run_inner "$_s12a_art/review.json" "$_s12a_dir/pipeline-state.json" "$_s12a_pr" "1849"
++_s12a_rc=$?
++set -e
++_unstub
++
++assert_file_exists "[SPEC-12] branch-is-main: pr-result.json written" "$_s12a_pr"
++if [[ -f "$_s12a_pr" ]]; then
++    assert_eq "[SPEC-12] branch-is-main: result_contract is 2" "2" \
++        "$(jq -r '.result_contract // empty' "$_s12a_pr" 2>/dev/null || true)"
++    assert_eq "[SPEC-12] branch-is-main: verdict is error" "error" \
++        "$(jq -r '.verdict // empty' "$_s12a_pr" 2>/dev/null || true)"
++    _s12a_disp="$(jq -r '.disposition // empty' "$_s12a_pr" 2>/dev/null || true)"
++    [[ -n "$_s12a_disp" ]] \
++        && assert_pass "[SPEC-12] branch-is-main: disposition present" \
++        || assert_fail "[SPEC-12] branch-is-main: disposition present" "absent"
++    _s12a_reason="$(jq -r '.reason // empty' "$_s12a_pr" 2>/dev/null || true)"
++    [[ -n "$_s12a_reason" ]] \
++        && assert_pass "[SPEC-12] branch-is-main: reason present" \
++        || assert_fail "[SPEC-12] branch-is-main: reason present" "absent"
++fi
++assert_eq "[SPEC-12] branch-is-main: rc=1 (not rc=2)" "1" "$_s12a_rc"
++
++# push failure
++_s12b_dir="$TEST_TEMP_DIR/spec12b"
++_make_pr_state "$_s12b_dir" "approve" >/dev/null
++_s12b_art="$_s12b_dir/artifacts"
++_s12b_pr="$_s12b_art/pr-result.json"
++
++_stub_git_push_fail
++set +e
++_pr_open_run_inner "$_s12b_art/review.json" "$_s12b_dir/pipeline-state.json" "$_s12b_pr" "1849"
++_s12b_rc=$?
++set -e
++_unstub
++
++assert_file_exists "[SPEC-12] push-failure: pr-result.json written" "$_s12b_pr"
++if [[ -f "$_s12b_pr" ]]; then
++    assert_eq "[SPEC-12] push-failure: result_contract is 2" "2" \
++        "$(jq -r '.result_contract // empty' "$_s12b_pr" 2>/dev/null || true)"
++    assert_eq "[SPEC-12] push-failure: verdict is error" "error" \
++        "$(jq -r '.verdict // empty' "$_s12b_pr" 2>/dev/null || true)"
++    _s12b_disp="$(jq -r '.disposition // empty' "$_s12b_pr" 2>/dev/null || true)"
++    [[ -n "$_s12b_disp" ]] \
++        && assert_pass "[SPEC-12] push-failure: disposition present" \
++        || assert_fail "[SPEC-12] push-failure: disposition present" "absent"
++    _s12b_reason="$(jq -r '.reason // empty' "$_s12b_pr" 2>/dev/null || true)"
++    [[ -n "$_s12b_reason" ]] \
++        && assert_pass "[SPEC-12] push-failure: reason present" \
++        || assert_fail "[SPEC-12] push-failure: reason present" "absent"
++fi
++assert_eq "[SPEC-12] push-failure: rc=1 (not rc=2)" "1" "$_s12b_rc"
++
++# gh pr create failure
++_s12c_dir="$TEST_TEMP_DIR/spec12c"
++_make_pr_state "$_s12c_dir" "approve" >/dev/null
++_s12c_art="$_s12c_dir/artifacts"
++_s12c_pr="$_s12c_art/pr-result.json"
++
++_stub_git_gh_create_fail
++set +e
++_pr_open_run_inner "$_s12c_art/review.json" "$_s12c_dir/pipeline-state.json" "$_s12c_pr" "1849"
++_s12c_rc=$?
++set -e
++_unstub
++
++assert_file_exists "[SPEC-12] gh-failure: pr-result.json written" "$_s12c_pr"
++if [[ -f "$_s12c_pr" ]]; then
++    assert_eq "[SPEC-12] gh-failure: result_contract is 2" "2" \
++        "$(jq -r '.result_contract // empty' "$_s12c_pr" 2>/dev/null || true)"
++    assert_eq "[SPEC-12] gh-failure: verdict is error" "error" \
++        "$(jq -r '.verdict // empty' "$_s12c_pr" 2>/dev/null || true)"
++    _s12c_disp="$(jq -r '.disposition // empty' "$_s12c_pr" 2>/dev/null || true)"
++    [[ -n "$_s12c_disp" ]] \
++        && assert_pass "[SPEC-12] gh-failure: disposition present" \
++        || assert_fail "[SPEC-12] gh-failure: disposition present" "absent"
++    _s12c_reason="$(jq -r '.reason // empty' "$_s12c_pr" 2>/dev/null || true)"
++    [[ -n "$_s12c_reason" ]] \
++        && assert_pass "[SPEC-12] gh-failure: reason present" \
++        || assert_fail "[SPEC-12] gh-failure: reason present" "absent"
++fi
++assert_eq "[SPEC-12] gh-failure: rc=1 (not rc=2)" "1" "$_s12c_rc"
++
++# ─── SPEC-13: no exit path returns rc=2 ──────────────────────────────────────
++print_test_section "SPEC-13: all exit paths return rc ∈ {0,1} — no rc=2"
++
++assert_eq "[SPEC-13] opened path rc in {0,1}" "1" "$(( _s10a_rc != 2 ? 1 : 0 ))"
++assert_eq "[SPEC-13] updated path rc in {0,1}" "1" "$(( _s10b_rc != 2 ? 1 : 0 ))"
++assert_eq "[SPEC-13] review=block rc in {0,1}" "1" "$(( _s11a_rc != 2 ? 1 : 0 ))"
++assert_eq "[SPEC-13] no-review-signal rc in {0,1}" "1" "$(( _s11b_rc != 2 ? 1 : 0 ))"
++assert_eq "[SPEC-13] branch-is-main rc in {0,1}" "1" "$(( _s12a_rc != 2 ? 1 : 0 ))"
++assert_eq "[SPEC-13] push-failure rc in {0,1}" "1" "$(( _s12b_rc != 2 ? 1 : 0 ))"
++assert_eq "[SPEC-13] gh-failure rc in {0,1}" "1" "$(( _s12c_rc != 2 ? 1 : 0 ))"
++
++# ─── SPEC-14: review_report path resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback
++print_test_section "SPEC-14: review_report resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback"
++
++# SPEC-14a: ZBUILD_STAGE_INPUTS maps review_report to a custom path.
++# Custom review-report.json has 2 findings; standard artifacts_dir has NONE.
++# If the plugin honors ZBUILD_STAGE_INPUTS, the PR body shows "2 finding(s)".
++# If it reads only the hardcoded artifacts_dir path, it shows "no advisory review ran".
++_s14a_dir="$TEST_TEMP_DIR/spec14a"
++_make_pr_state "$_s14a_dir" "approve" >/dev/null
++_s14a_art="$_s14a_dir/artifacts"
++# Intentionally: no review-report.json in artifacts_dir
++
++_s14a_custom="$TEST_TEMP_DIR/custom-review-report.json"
++cat > "$_s14a_custom" <<'JSON'
++{"schema_version":1,"merge_readiness":"advisory","lenses":[{"name":"security"}],
++ "findings":[
++   {"severity":"high","file":"foo.sh","line":1,"lenses":["security"],"messages":["finding A"]},
++   {"severity":"medium","file":"bar.sh","line":2,"lenses":["security"],"messages":["finding B"]}
++ ]}
++JSON
++
++_s14a_si="$TEST_TEMP_DIR/spec14a-si.json"
++printf '{"inputs":{"review_report":"%s"}}\n' "$_s14a_custom" > "$_s14a_si"
++
++_s14a_body="$TEST_TEMP_DIR/spec14a-body.txt"
++mkdir -p "$TEST_TEMP_DIR/bin14a"
++cat > "$TEST_TEMP_DIR/bin14a/git" <<'GITMOCK'
++#!/usr/bin/env bash
++if [[ "${1:-} ${2:-}" == "rev-parse --abbrev-ref" ]]; then echo "zbuild/issue-1849-test"
++else exit 0; fi
++GITMOCK
++cat > "$TEST_TEMP_DIR/bin14a/gh" <<GHMOCK
++#!/usr/bin/env bash
++next=0
++for arg in "\$@"; do
++    [[ \$next -eq 1 ]] && { printf '%s' "\$arg" > "${_s14a_body}"; next=0; }
++    [[ "\$arg" == "--body" ]] && next=1
++done
++case "\${1:-} \${2:-}" in
++    "pr list") echo "" ;;
++    *) echo "https://github.com/mock/repo/pull/1849" ;;
++esac
++exit 0
++GHMOCK
++chmod +x "$TEST_TEMP_DIR/bin14a/git" "$TEST_TEMP_DIR/bin14a/gh"
++
++mkdir -p "$TEST_TEMP_DIR/repo14a"
++( PATH="$TEST_TEMP_DIR/bin14a:$PATH" \
++  ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/repo14a" \
++  ZBUILD_STAGE_INPUTS="$_s14a_si" \
++  pr_open_run "pr" "$_s14a_dir/pipeline-state.json" ) >/dev/null 2>&1; _s14a_rc=$?
++
++if [[ -f "$_s14a_body" ]]; then
++    _s14a_body_text="$(cat "$_s14a_body")"
++    # If ZBUILD_STAGE_INPUTS was honored the custom 2-finding report was read;
++    # the advisory section shows the finding count, not "no advisory review ran".
++    if grep -q "2 finding" <<< "$_s14a_body_text" 2>/dev/null; then
++        assert_pass "[SPEC-14] ZBUILD_STAGE_INPUTS: custom review_report path honoured (finding count present)"
++    else
++        assert_fail "[SPEC-14] ZBUILD_STAGE_INPUTS: custom review_report path honoured (finding count present)" \
++            "body does not show '2 finding' — ZBUILD_STAGE_INPUTS not read for review_report"
++    fi
++    if grep -q "no advisory review ran" <<< "$_s14a_body_text" 2>/dev/null; then
++        assert_fail "[SPEC-14] ZBUILD_STAGE_INPUTS: body must not say 'no advisory review ran'" \
++            "body says 'no advisory review ran' — hardcoded path used instead of ZBUILD_STAGE_INPUTS"
++    else
++        assert_pass "[SPEC-14] ZBUILD_STAGE_INPUTS: body does not fall back to 'no advisory review ran'"
++    fi
++else
++    assert_fail "[SPEC-14] ZBUILD_STAGE_INPUTS: PR body was captured from gh call" "BODY_FILE not written"
++fi
++
++# SPEC-14b: artifacts_dir fallback — no ZBUILD_STAGE_INPUTS, review-report in standard path.
++# Guards the pr-delivery direct-source path (no ZBUILD_STAGE_INPUTS set in that call).
++_s14b_dir="$TEST_TEMP_DIR/spec14b"
++_make_pr_state "$_s14b_dir" "approve" >/dev/null
++_s14b_art="$_s14b_dir/artifacts"
++# Put review-report.json in the standard artifacts_dir location
++cat > "$_s14b_art/review-report.json" <<'JSON'
++{"schema_version":1,"merge_readiness":"advisory","lenses":[{"name":"perf"}],
++ "findings":[
++   {"severity":"low","file":"baz.sh","line":5,"lenses":["perf"],"messages":["finding C"]}
++ ]}
++JSON
++
++_s14b_body="$TEST_TEMP_DIR/spec14b-body.txt"
++mkdir -p "$TEST_TEMP_DIR/bin14b"
++cat > "$TEST_TEMP_DIR/bin14b/git" <<'GITMOCK'
++#!/usr/bin/env bash
++if [[ "${1:-} ${2:-}" == "rev-parse --abbrev-ref" ]]; then echo "zbuild/issue-1849-test"
++else exit 0; fi
++GITMOCK
++cat > "$TEST_TEMP_DIR/bin14b/gh" <<GHMOCK
++#!/usr/bin/env bash
++next=0
++for arg in "\$@"; do
++    [[ \$next -eq 1 ]] && { printf '%s' "\$arg" > "${_s14b_body}"; next=0; }
++    [[ "\$arg" == "--body" ]] && next=1
++done
++case "\${1:-} \${2:-}" in
++    "pr list") echo "" ;;
++    *) echo "https://github.com/mock/repo/pull/1849" ;;
++esac
++exit 0
++GHMOCK
++chmod +x "$TEST_TEMP_DIR/bin14b/git" "$TEST_TEMP_DIR/bin14b/gh"
++
++mkdir -p "$TEST_TEMP_DIR/repo14b"
++( PATH="$TEST_TEMP_DIR/bin14b:$PATH" \
++  ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/repo14b" \
++  ZBUILD_STAGE_INPUTS="" \
++  pr_open_run "pr" "$_s14b_dir/pipeline-state.json" ) >/dev/null 2>&1; _s14b_rc=$?
++
++if [[ -f "$_s14b_body" ]]; then
++    _s14b_body_text="$(cat "$_s14b_body")"
++    # If the artifacts_dir fallback works, the 1-finding report is found.
++    if grep -q "1 finding" <<< "$_s14b_body_text" 2>/dev/null; then
++        assert_pass "[SPEC-14] artifacts_dir fallback: review_report from standard path found"
++    else
++        assert_fail "[SPEC-14] artifacts_dir fallback: review_report from standard path found" \
++            "body does not show '1 finding' — artifacts_dir fallback not working"
++    fi
++else
++    assert_fail "[SPEC-14] artifacts_dir fallback: PR body captured from gh call" "BODY_FILE not written"
++fi
++
++# ─── Teardown ─────────────────────────────────────────────────────────────────
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/pr-open-zero-commits-halts-test.sh b/tests/unit/pr-open-zero-commits-halts-test.sh
+index fc7acc47..1b11a51c 100644
+--- a/tests/unit/pr-open-zero-commits-halts-test.sh
++++ b/tests/unit/pr-open-zero-commits-halts-test.sh
+@@ -1,13 +1,18 @@
+ #!/usr/bin/env bash
+-# Unit test (#1265, SPEC-7): pr-open halts terminally (return 2,
++# Unit test (#1265, SPEC-21): pr-open halts terminally (return 1,
+ # reason=no_committed_changes) BEFORE push + `gh pr create` when the branch has
+ # 0 commits ahead of the merge-base. Belt-and-suspenders for the #1214 dogfood:
+ # a branch with nothing to ship must fail fast, not after a wasted push and a
+ # confusing `gh` "No commits between main and branch" error.
+ #
+-# RED at baseline: today pr-open pushes first → the failure surfaces as a push /
+-# gh error (a DIFFERENT reason), and `gh pr create` IS invoked. GREEN after: the
+-# preflight returns 2 with reason=no_committed_changes and gh is never called.
++# SPEC coverage:
++#   [SPEC-21] pr-open still halts before push and before gh pr create when branch
++#             has 0 commits ahead of merge-base (v2: rc=1 not rc=2)
++#
++# RED at baseline (pre-v2): pr-open pushes first → the failure surfaces as a push /
++# gh error (a DIFFERENT reason), and `gh pr create` IS invoked. GREEN after the v1
++# fix: the preflight returns with reason=no_committed_changes and gh is never called.
++# v2 migration: rc changes from 2 to 1 (infrastructure halt, not a verdict outcome).
+ set -uo pipefail
+ 
+ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+@@ -67,25 +72,25 @@ source "$REPO_ROOT/plugins/tool/pr-open/plugin.sh"
+ 
+ ( PATH="$MOCKBIN:$PATH" pr_open_run "pr" "$STATE_FILE" ) >/dev/null 2>&1; RC=$?
+ 
+-# ── (1) returns 2 (terminal halt) ──────────────────────────────────────────
+-assert_eq "[SPEC-8] pr_open_run returns 2 on 0-commit branch" "2" "$RC"
++# ── (1) returns 1 (terminal halt — infrastructure failure in v2, not rc=2) ──
++assert_eq "[SPEC-21] pr_open_run returns 1 on 0-commit branch (not rc=2)" "1" "$RC"
+ 
+ # ── (2) reason=no_committed_changes (not a push/gh error) ──────────────────
+ if [[ -f "$ART/pr-result.json" ]]; then
+     reason="$(jq -r '.reason // ""' "$ART/pr-result.json" 2>/dev/null || echo "")"
+-    assert_contains "[SPEC-8] pr-result.json .reason cites no committed changes" \
++    assert_contains "[SPEC-21] pr-result.json .reason cites no committed changes" \
+         "$reason" "no committed changes"
+ else
+-    assert_fail "pr-result.json written on halt" "file missing"
++    assert_fail "[SPEC-21] pr-result.json written on halt" "file missing"
+ fi
+ if grep -q '"reason":"no_committed_changes"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
+-    assert_pass "plugin.result verdict=error reason=no_committed_changes emitted"
++    assert_pass "[SPEC-21] plugin.result verdict=error reason=no_committed_changes emitted"
+ else
+-    assert_fail "plugin.result verdict=error reason=no_committed_changes emitted" "missing"
++    assert_fail "[SPEC-21] plugin.result verdict=error reason=no_committed_changes emitted" "missing"
+ fi
+ 
+ # ── (3) gh pr create was NEVER invoked (halt is BEFORE gh) ──────────────────
+-assert_file_not_exists "gh pr create not reached (halt before push/gh)" "$GH_SENTINEL"
++assert_file_not_exists "[SPEC-21] gh pr create not reached (halt before push/gh)" "$GH_SENTINEL"
+ 
+ cleanup_test_env
+ print_test_results
