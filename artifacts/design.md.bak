@@ -8,6 +8,8 @@
 
 **Decision.** Migrate all three via TDD ordering per plugin: failing v2 tests first, then manifest, then plugin.sh, then update all existing tests that pin v1 fields or rc=2. Deploy-release and pr-open already have `provides:` sections; merge gains one. pr-open must NOT get a role (manifest comment constraint — retained). For declared inputs (`gate_aggregator_result`, `review_report`, `pr_url`), replace hardcoded `$artifacts_dir/…` path constructions with `ZBUILD_STAGE_INPUTS` jq reads plus an `artifacts_dir` fallback, because `pr-delivery` sources `merge.sh` and `pr-open.sh` directly without engine dispatch (no `ZBUILD_STAGE_INPUTS` set in that call path). pr_fallback maps to `verdict=pass, data.mode=pr_fallback` — not a verdict value, not added to `valid_verdicts`.
 
+**Router budgets.** All three are T0 tools with no LLM calls. Reference v2 T0 manifests (mutation-gate, shape-floor) carry no `router:` section; `tier_default: T0` is the complete and correct budget declaration for LLM-free tools. All three manifests already declare `tier_default: T0` — no `router:` block is added. **Primary outputs.** All three manifests already declare `primary: true` on their canonical result artifact (`merge_result`, `pr_url`, `deploy_result`). The merge manifest migration (adds `provides:`) must not disturb that declaration; pr-open and deploy-release retain theirs unchanged.
+
 ```scope
 plugins/tool/merge/manifest.yaml
 plugins/tool/merge/plugin.sh
@@ -63,6 +65,8 @@ SPEC-18[guard]: pr-open still refuses (writes blocked result, rc=0 after change)
 SPEC-19[guard]: pr-open still halts before push and before gh pr create when branch has 0 commits ahead of merge-base
 SPEC-20[guard]: pr-open advisory review section renders finding count and top bullets in the PR body
 SPEC-21[guard]: deploy-result.json verdict=deployed and rc=0 on git tag+push success path
+SPEC-22[guard]: all three manifests declare tier_default: T0 with no router: block — absence of router: is the correct budget declaration for LLM-free T0 tools
+SPEC-23[guard]: all three manifests retain primary: true on their canonical result output (merge_result, pr_url, deploy_result) after the v2 migration
 
 WIRING:
 plugins/tool/merge/manifest.yaml
@@ -91,26 +95,30 @@ SPEC-18: tests/integration/pr-pipeline-test.sh
 SPEC-19: tests/unit/pr-open-zero-commits-halts-test.sh
 SPEC-20: tests/unit/pr-open-advisory-review-test.sh
 SPEC-21: tests/unit/deploy-release-v2-result-test.sh
+SPEC-22: tests/unit/merge-v2-result-test.sh tests/unit/pr-open-v2-result-test.sh tests/unit/deploy-release-v2-result-test.sh
+SPEC-23: tests/unit/merge-v2-result-test.sh tests/unit/pr-open-v2-result-test.sh tests/unit/deploy-release-v2-result-test.sh
 ```
 
 ## Notes on scope expansion beyond the plan seed
 
 **New test files added to scope:**
 - `plugins/tool/pr-open/tests/pr-open-test.sh` — asserts `.status == "blocked/opened/error"` on pr-result.json (v1 field, breaks after SPEC-8–10)
-- `plugins/agent/deploy/tests/deploy-test.sh` — asserts `schema_version=1` (SPEC-7 in that file) and `verdict=deployed/skipped/error` on deploy-result.json written by deploy-release
+- `plugins/agent/deploy/tests/deploy-test.sh` — asserts `schema_version=1` and `verdict=deployed/skipped/error` on deploy-result.json written by deploy-release
 - `tests/integration/deployed-template-e2e-test.sh` — asserts `verdict=deployed` on deploy-result.json (guard behavior, must pass after migration)
 - `tests/golden/pr-result-artifact.golden` — encodes `{"schema_version":1,"status":"opened",...}`; must be updated to v2 shape
 - `tests/unit/plugin-artifact-goldens-test.sh` G4 — asserts `schema_version == 1` and exact golden match against pr-result-artifact.golden; both assertions must be updated
 
 **Integration tests with v1 field assertions that need updating:**
-- `tests/integration/merge-policy-auto-test.sh` — asserts `.status == "merged"` and `.status == "pr_fallback"` on merge-result.json (multiple SPEC)
+- `tests/integration/merge-policy-auto-test.sh` — asserts `.status == "merged"` and `.status == "pr_fallback"` on merge-result.json
 - `tests/integration/merge-policy-auto-unless-flagged-test.sh` — asserts `.status == "merged"` on merge-result.json
 - `tests/integration/pr-pipeline-test.sh` — asserts `.draft` on pr-result.json (v1 field, moves under data:)
 
-**Consuming agents included for awareness (not implementation targets unless their own result shapes need updating):**
-- `plugins/agent/pr-delivery/plugin.sh` — sources merge.sh and pr-open.sh directly; the artifacts_dir fallback exists specifically for this call path
-- `plugins/agent/deploy/plugin.sh` — calls `deploy_release_run`; writes some deploy-result.json paths directly with v1 shapes on guard paths (gate-missing, gate-fail) that are not in this issue's scope
+**Consuming agents included for awareness:**
+- `plugins/agent/pr-delivery/plugin.sh` — sources merge.sh and pr-open.sh directly; the artifacts_dir fallback in ZBUILD_STAGE_INPUTS reads is specifically for this call path
+- `plugins/agent/deploy/plugin.sh` — calls `deploy_release_run`; writes some deploy-result.json paths directly with v1 shapes on guard paths out of this issue's scope
 
-**pr-open SPEC-18 rc clarification.** After v2 migration, review-block and no-signal paths return rc=0 (not rc=2) but write `verdict=blocked`. The existing `pr-open-test.sh` and `pr-pipeline-test.sh` assertions that expect rc=2 on block must be updated to expect rc=0 with `verdict=blocked` in the result file.
+**pr-open SPEC-18 rc clarification.** After v2 migration, review-block and no-signal paths return rc=0 (not rc=2) but write `verdict=blocked`. Existing assertions in `pr-open-test.sh` and `pr-pipeline-test.sh` that expect rc=2 on block must be updated to expect rc=0 with `verdict=blocked`.
+
+**SPEC-22/23 guard rationale.** Both behaviors are currently true at the merge-base. SPEC-22 guards that the manifest migration (adding `provides:` to merge, updating `provides:` in pr-open and deploy-release) does not inadvertently introduce a `router:` block. SPEC-23 guards that the merge manifest's new `provides:` section does not displace or corrupt the `outputs[].primary: true` declaration already present.
 
 LOOP_COMPLETE
