@@ -4,9 +4,10 @@
   "disposition": "complete",
   "reason": "design_produced",
   "data": {
-    "authored_at": "2026-09-26T11:31:03Z",
-    "authored_at_commit": "b372669a533c691b3e4b6eaba72166a9bfecfe38",
+    "authored_at": "2026-09-26T13:18:17Z",
+    "authored_at_commit": "1013bc414fd20f16adcef55af8d81e95ce0cf6f2",
     "wiring_files": [
+      "core/pipeline/verdict.sh",
       "plugins/tool/deploy-release/manifest.yaml",
       "plugins/tool/merge/manifest.yaml",
       "plugins/tool/pr-open/manifest.yaml"
