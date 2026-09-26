@@ -60,6 +60,11 @@ _setup_run() {
         printf '{"schema_version":1,"merge_readiness":"%s","findings":[]}\n' "$report_readiness" \
             > "$d/artifacts/review-report.json"
     fi
+    # The engine's index for the pr stage (lifecycle.sh exports ZBUILD_STAGE_INPUTS
+    # for every dispatched stage; merge/pr-open read their inputs only from it).
+    jq -n --arg a "$d/artifacts" '{inputs: {gate_aggregator_result: ($a + "/gate-aggregator-result.json"),
+        review_report: ($a + "/review-report.json"), plan: ($a + "/plan.json"),
+        test_results: ($a + "/test-results.json")}}' > "$d/stage-inputs.json"
     printf '%s/pipeline-state.json' "$d"
 }
 
@@ -107,7 +112,7 @@ _art1="$(dirname "$_sf1")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto_unless_flagged"
-( pr_stage_run "pr" "$_sf1" ) >/dev/null 2>&1; _rc1=$?
+( ZBUILD_STAGE_INPUTS="$(dirname "$_sf1")/stage-inputs.json" pr_stage_run "pr" "$_sf1" ) >/dev/null 2>&1; _rc1=$?
 
 assert_eq "[SPEC-1] pr_stage_run exits 0 on auto-merge path (ready)" "0" "$_rc1"
 assert_file_exists "[SPEC-1] merge-result.json written when gate+report both pass" \
@@ -130,7 +135,7 @@ _art2="$(dirname "$_sf2")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto_unless_flagged"
-( pr_stage_run "pr" "$_sf2" ) >/dev/null 2>&1; _rc2=$?
+( ZBUILD_STAGE_INPUTS="$(dirname "$_sf2")/stage-inputs.json" pr_stage_run "pr" "$_sf2" ) >/dev/null 2>&1; _rc2=$?
 
 assert_eq "[SPEC-2] pr_stage_run exits 0 on PR-open path (needs_attention)" "0" "$_rc2"
 assert_file_exists "[SPEC-2] pr-url.txt written (PR opened, not merged)" "$_art2/pr-url.txt"
@@ -149,7 +154,7 @@ _art3="$(dirname "$_sf3")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto_unless_flagged"
-( pr_stage_run "pr" "$_sf3" ) >/dev/null 2>&1; _rc3=$?
+( ZBUILD_STAGE_INPUTS="$(dirname "$_sf3")/stage-inputs.json" pr_stage_run "pr" "$_sf3" ) >/dev/null 2>&1; _rc3=$?
 
 assert_eq "[SPEC-3] pr_stage_run exits 0 when gate absent" "0" "$_rc3"
 assert_file_exists "[SPEC-3] pr-url.txt written (PR opened, gate absent)" "$_art3/pr-url.txt"
@@ -168,7 +173,7 @@ _art4="$(dirname "$_sf4")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto_unless_flagged"
-( pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1; _rc4=$?
+( ZBUILD_STAGE_INPUTS="$(dirname "$_sf4")/stage-inputs.json" pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1; _rc4=$?
 
 assert_eq "[SPEC-4] pr_stage_run exits 0 when review-report absent (fail-closed)" "0" "$_rc4"
 assert_file_exists "[SPEC-4] pr-url.txt written (fail-closed, review-report absent)" \
@@ -188,7 +193,7 @@ _art5="$(dirname "$_sf5")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto_unless_flagged"
-( pr_stage_run "pr" "$_sf5" ) >/dev/null 2>&1; _rc5=$?
+( ZBUILD_STAGE_INPUTS="$(dirname "$_sf5")/stage-inputs.json" pr_stage_run "pr" "$_sf5" ) >/dev/null 2>&1; _rc5=$?
 
 assert_eq "[SPEC-5] pr_stage_run exits 0 on auto-merge path (advisory)" "0" "$_rc5"
 assert_file_exists "[SPEC-5] merge-result.json written when gate pass + advisory" \
@@ -208,7 +213,7 @@ _art6="$(dirname "$_sf6")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto_unless_flagged"
-( pr_stage_run "pr" "$_sf6" ) >/dev/null 2>&1; _rc6=$?
+( ZBUILD_STAGE_INPUTS="$(dirname "$_sf6")/stage-inputs.json" pr_stage_run "pr" "$_sf6" ) >/dev/null 2>&1; _rc6=$?
 
 assert_eq "[SPEC-6] pr_stage_run exits 0 when gate fails (PR open)" "0" "$_rc6"
 assert_file_exists "[SPEC-6] pr-url.txt written when gate fails" "$_art6/pr-url.txt"
@@ -233,7 +238,7 @@ _art7="$(dirname "$_sf7")/artifacts"
 > "$_MERGE_RECORD"
 
 export _TPL_MERGE_POLICY="auto_unless_flagged"
-( pr_stage_run "pr" "$_sf7" ) >/dev/null 2>&1; _rc7=$?
+( ZBUILD_STAGE_INPUTS="$(dirname "$_sf7")/stage-inputs.json" pr_stage_run "pr" "$_sf7" ) >/dev/null 2>&1; _rc7=$?
 
 assert_eq "[SPEC-7] pr_stage_run exits 0 on PR-open path (high+advisory)" "0" "$_rc7"
 assert_file_exists "[SPEC-7] pr-url.txt written (escalated despite advisory)" "$_art7/pr-url.txt"

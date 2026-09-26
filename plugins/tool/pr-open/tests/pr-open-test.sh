@@ -28,6 +28,11 @@ REVIEW_JSON="$ARTIFACTS_DIR/review.json"
 PR_RESULT_JSON="$ARTIFACTS_DIR/pr-result.json"
 
 mkdir -p "$ARTIFACTS_DIR"
+# The engine's index (lifecycle.sh exports ZBUILD_STAGE_INPUTS for every
+# dispatched stage): pr-open reads its declared inputs from it and nowhere else.
+jq -n --arg a "$ARTIFACTS_DIR" '{inputs: {review_report: ($a + "/review-report.json"),
+    plan: ($a + "/plan.json"), test_results: ($a + "/test-results.json")}}' > "$STATE_DIR/stage-inputs.json"
+export ZBUILD_STAGE_INPUTS="$STATE_DIR/stage-inputs.json"
 echo '{"schema_version":1,"run_id":"test-run","issue":"999","stage_statuses":{}}' > "$STATE_FILE"
 
 # ─── Source plugin under test ─────────────────────────────────────────────────
