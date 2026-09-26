@@ -1,0 +1,13 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "design_produced",
+  "data": {
+    "authored_at": "2026-09-26T22:19:43Z",
+    "authored_at_commit": "ce4b9c81b3709cfdc42e292878248bc51bcc564d",
+    "wiring_files": [
+      "plugins/agent/validate/manifest.yaml"
+    ]
+  }
+}
