@@ -1,0 +1,10 @@
+# authored_by: test-author
+d7ccf981d97577abec34c7f964b11fd7bf66eeeed233253a4eb6583f5f232ecb  plugins/agent/validate/tests/validate-test.sh
+d7ccf981d97577abec34c7f964b11fd7bf66eeeed233253a4eb6583f5f232ecb  plugins/agent/validate/tests/validate-test.sh
+d7ccf981d97577abec34c7f964b11fd7bf66eeeed233253a4eb6583f5f232ecb  plugins/agent/validate/tests/validate-test.sh
+d7ccf981d97577abec34c7f964b11fd7bf66eeeed233253a4eb6583f5f232ecb  plugins/agent/validate/tests/validate-test.sh
+d7ccf981d97577abec34c7f964b11fd7bf66eeeed233253a4eb6583f5f232ecb  plugins/agent/validate/tests/validate-test.sh
+d7ccf981d97577abec34c7f964b11fd7bf66eeeed233253a4eb6583f5f232ecb  plugins/agent/validate/tests/validate-test.sh
+d7ccf981d97577abec34c7f964b11fd7bf66eeeed233253a4eb6583f5f232ecb  plugins/agent/validate/tests/validate-test.sh
+d7ccf981d97577abec34c7f964b11fd7bf66eeeed233253a4eb6583f5f232ecb  plugins/agent/validate/tests/validate-test.sh
+d7ccf981d97577abec34c7f964b11fd7bf66eeeed233253a4eb6583f5f232ecb  plugins/agent/validate/tests/validate-test.sh
