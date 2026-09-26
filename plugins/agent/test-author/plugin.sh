@@ -193,6 +193,8 @@ REQUIREMENTS:
 ${spec_block}
 Some of these testfile(s) may already hold assertions from an earlier attempt at this contract: keep what is right, finish what is missing, fix what is wrong.
 
+Work one testfile at a time: read only what that file's SPECs need, write it to disk, and only then move on — write each file before you plan the next. Do not plan every SPEC up front. Your call has a time limit; a file already written survives it and is continued by the next attempt, and a plan that was never written is lost.
+
 Write or amend only the testfile(s) named above. Do not write, modify or stub any implementation file."
 
     # ADR-063 §1 (#2170): the budget reaches the prompt from the values that

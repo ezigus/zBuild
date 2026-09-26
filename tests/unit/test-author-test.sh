@@ -22,6 +22,11 @@
 #   SPEC-7 [change]: same budget as build, and blocking (#2188)
 #   SPEC-10..12 [change]: the author commits its testfiles — also partial work
 #                    from a timed-out call — and continues earlier work (#2188)
+#   SPEC-13 [change]: the prompt has the author write one testfile at a time —
+#                    finish and save each before starting the next. Run
+#                    36202825273 (#1849): both attempts spent their whole 15
+#                    minutes planning all 23 SPECs, wrote nothing, and a
+#                    timeout left the next attempt nothing to continue
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -191,6 +196,16 @@ route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return
 test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
 assert_contains "[SPEC-12][change] the prompt says an earlier attempt's assertions may be there" "$(cat "$_TA_PROMPT")" "earlier attempt"
 route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return $_TA_RC; }
+
+print_test_section "SPEC-13: one testfile at a time, each saved before the next"
+_setup s13
+_TA_RC=0
+: > "$_TA_PROMPT"
+test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1 || true
+assert_contains "[SPEC-13][change] the prompt says to write one testfile at a time" \
+    "$(cat "$_TA_PROMPT")" "one testfile at a time"
+assert_contains "[SPEC-13][change] …writing each before planning the next, so a timeout keeps what is written" \
+    "$(cat "$_TA_PROMPT")" "before you plan the next"
 
 print_test_results
 exit $((FAIL > 0))
