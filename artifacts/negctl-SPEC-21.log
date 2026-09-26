@@ -15,3 +15,17 @@
 
   [38;2;248;113;113m✗[0m [SPEC-21] pr_open_run returns 1 on 0-commit branch (not rc=2)
 
+### SPEC-21 head tests/unit/pr-open-zero-commits-halts-test.sh
+
+[38;2;0;212;255m[1m  pr-open: 0-commit branch halts before push (#1265)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-21] pr_open_run returns 1 on 0-commit branch (not rc=2)
+  [38;2;74;222;128m✓[0m [SPEC-21] pr-result.json .reason cites no committed changes
+  [38;2;74;222;128m✓[0m [SPEC-21] plugin.result verdict=error reason=no_committed_changes emitted
+  [38;2;74;222;128m✓[0m [SPEC-21] gh pr create not reached (halt before push/gh)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 4 tests passed[0m
+

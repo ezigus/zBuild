@@ -1,0 +1,141 @@
+### SPEC-29 baseline tests/unit/lint-verdict-classify-test.sh
+
+[38;2;0;212;255m[1m  lint-verdict-classify — manifest verdicts are classified (#1708)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m1. unclassified verdict -> rc=1, names manifest + verdict[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] lint exits 1 when a declared verdict is unclassified
+  [38;2;74;222;128m✓[0m [SPEC-1] the failure names the offending verdict
+  [38;2;74;222;128m✓[0m [SPEC-1] the failure names the offending manifest
+
+  [38;2;0;212;255m2. every declared verdict classified -> rc=0[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] lint exits 0 when all declared verdicts are classified
+
+  [38;2;0;212;255m3. primary output, absent valid_verdicts -> rc=1[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] lint exits 1 when valid_verdicts is absent
+  [38;2;74;222;128m✓[0m [SPEC-3] the failure names the manifest
+
+  [38;2;0;212;255m4. explicit valid_verdicts: [] -> rc=0[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] an explicit [] is a valid declaration
+
+  [38;2;0;212;255m5. no primary output -> exempt[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] a manifest with no primary output needs no declaration
+
+  [38;2;0;212;255m6. the shipped plugins/ tree passes[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] every shipped manifest with a primary output is compliant
+
+  [38;2;0;212;255m7. zero primary manifests -> rc=1, not a vacuous pass[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] a scan finding no primary manifests fails
+
+  [38;2;0;212;255m11. YAML flow-sequence declarations[0m
+  [38;2;74;222;128m✓[0m [SPEC-11] flow sequence [pass, fail] is accepted
+  [38;2;74;222;128m✓[0m [SPEC-11] quoted flow sequence is accepted
+  [38;2;74;222;128m✓[0m [SPEC-11] '[ ]' is the empty declaration, not a verdict
+  [38;2;74;222;128m✓[0m [SPEC-11] a bad verdict inside a flow sequence still fails
+  [38;2;74;222;128m✓[0m [SPEC-11] and it names the offending token, not the raw list
+
+  [38;2;0;212;255m12. verdict tokens are not globbed against the filesystem[0m
+  [38;2;74;222;128m✓[0m [SPEC-12] the literal token is reported, not a glob expansion
+  [38;2;74;222;128m✓[0m [SPEC-12] the token must not expand against the filesystem
+
+  [38;2;0;212;255m8. new classifications + the runtime backstop[0m
+  [38;2;74;222;128m✓[0m [SPEC-8] verdict_classify(healthy) -> pass
+  [38;2;74;222;128m✓[0m [SPEC-8] verdict_classify(deployed) -> pass
+  [38;2;74;222;128m✓[0m [SPEC-8] verdict_classify(skipped) -> pass
+  [38;2;74;222;128m✓[0m [SPEC-8] verdict_classify(degraded) -> warn
+  [38;2;74;222;128m✓[0m [SPEC-9] an undeclared runtime value still classifies unknown
+  [38;2;74;222;128m✓[0m [SPEC-9] skip and skipped remain DISTINCT strings, both pass
+
+  [38;2;0;212;255m10. ADR-019's verdict table covers every declared verdict[0m
+  [38;2;74;222;128m✓[0m [SPEC-10] every manifest-declared verdict appears in ADR-019's table
+
+  [38;2;0;212;255m13. every verdict in ADR-019's table has a verdict_classify arm[0m
+  [38;2;74;222;128m✓[0m [SPEC-13] ADR-019's verdict table parsed (23 tokens, non-vacuous)
+  [38;2;74;222;128m✓[0m [SPEC-13] every verdict in ADR-019's table has a verdict_classify arm
+
+  [38;2;0;212;255m29. 'blocked' classifies as warn + present in ADR-019 verdict table[0m
+  [38;2;248;113;113m✗[0m [SPEC-29] verdict_classify(blocked) -> warn (not unknown)
+    [2mexpected: warn, got: unknown[0m
+  [38;2;248;113;113m✗[0m [SPEC-29] ADR-019 verdict table contains a 'blocked' row
+    [2m'blocked' is absent from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.FtHl1a/docs/adr/ADR-019-review-fail-closed-on-test-failure.md — add a row to the verdict table (warn class)[0m
+
+  [38;2;0;212;255m9. wiring — npm run lint and the CI Lint job[0m
+  [38;2;74;222;128m✓[0m [wiring] package.json lint chain invokes the checker
+  [38;2;74;222;128m✓[0m [wiring] CI Lint job invokes the checker
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 30 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-29] verdict_classify(blocked) -> warn (not unknown)
+  [38;2;248;113;113m✗[0m [SPEC-29] ADR-019 verdict table contains a 'blocked' row
+
+### SPEC-29 head tests/unit/lint-verdict-classify-test.sh
+
+[38;2;0;212;255m[1m  lint-verdict-classify — manifest verdicts are classified (#1708)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m1. unclassified verdict -> rc=1, names manifest + verdict[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] lint exits 1 when a declared verdict is unclassified
+  [38;2;74;222;128m✓[0m [SPEC-1] the failure names the offending verdict
+  [38;2;74;222;128m✓[0m [SPEC-1] the failure names the offending manifest
+
+  [38;2;0;212;255m2. every declared verdict classified -> rc=0[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] lint exits 0 when all declared verdicts are classified
+
+  [38;2;0;212;255m3. primary output, absent valid_verdicts -> rc=1[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] lint exits 1 when valid_verdicts is absent
+  [38;2;74;222;128m✓[0m [SPEC-3] the failure names the manifest
+
+  [38;2;0;212;255m4. explicit valid_verdicts: [] -> rc=0[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] an explicit [] is a valid declaration
+
+  [38;2;0;212;255m5. no primary output -> exempt[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] a manifest with no primary output needs no declaration
+
+  [38;2;0;212;255m6. the shipped plugins/ tree passes[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] every shipped manifest with a primary output is compliant
+
+  [38;2;0;212;255m7. zero primary manifests -> rc=1, not a vacuous pass[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] a scan finding no primary manifests fails
+
+  [38;2;0;212;255m11. YAML flow-sequence declarations[0m
+  [38;2;74;222;128m✓[0m [SPEC-11] flow sequence [pass, fail] is accepted
+  [38;2;74;222;128m✓[0m [SPEC-11] quoted flow sequence is accepted
+  [38;2;74;222;128m✓[0m [SPEC-11] '[ ]' is the empty declaration, not a verdict
+  [38;2;74;222;128m✓[0m [SPEC-11] a bad verdict inside a flow sequence still fails
+  [38;2;74;222;128m✓[0m [SPEC-11] and it names the offending token, not the raw list
+
+  [38;2;0;212;255m12. verdict tokens are not globbed against the filesystem[0m
+  [38;2;74;222;128m✓[0m [SPEC-12] the literal token is reported, not a glob expansion
+  [38;2;74;222;128m✓[0m [SPEC-12] the token must not expand against the filesystem
+
+  [38;2;0;212;255m8. new classifications + the runtime backstop[0m
+  [38;2;74;222;128m✓[0m [SPEC-8] verdict_classify(healthy) -> pass
+  [38;2;74;222;128m✓[0m [SPEC-8] verdict_classify(deployed) -> pass
+  [38;2;74;222;128m✓[0m [SPEC-8] verdict_classify(skipped) -> pass
+  [38;2;74;222;128m✓[0m [SPEC-8] verdict_classify(degraded) -> warn
+  [38;2;74;222;128m✓[0m [SPEC-9] an undeclared runtime value still classifies unknown
+  [38;2;74;222;128m✓[0m [SPEC-9] skip and skipped remain DISTINCT strings, both pass
+
+  [38;2;0;212;255m10. ADR-019's verdict table covers every declared verdict[0m
+  [38;2;74;222;128m✓[0m [SPEC-10] every manifest-declared verdict appears in ADR-019's table
+
+  [38;2;0;212;255m13. every verdict in ADR-019's table has a verdict_classify arm[0m
+  [38;2;74;222;128m✓[0m [SPEC-13] ADR-019's verdict table parsed (24 tokens, non-vacuous)
+  [38;2;74;222;128m✓[0m [SPEC-13] every verdict in ADR-019's table has a verdict_classify arm
+
+  [38;2;0;212;255m29. 'blocked' classifies as warn + present in ADR-019 verdict table[0m
+  [38;2;74;222;128m✓[0m [SPEC-29] verdict_classify(blocked) -> warn (not unknown)
+  [38;2;74;222;128m✓[0m [SPEC-29] ADR-019 verdict table contains a 'blocked' row
+
+  [38;2;0;212;255m9. wiring — npm run lint and the CI Lint job[0m
+  [38;2;74;222;128m✓[0m [wiring] package.json lint chain invokes the checker
+  [38;2;74;222;128m✓[0m [wiring] CI Lint job invokes the checker
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 30 tests passed[0m
+

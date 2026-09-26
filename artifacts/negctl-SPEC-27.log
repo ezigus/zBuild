@@ -7,6 +7,7 @@
   [38;2;0;212;255mSPEC-15: manifest provides declares result_contract:2 (role/events retained; valid_verdicts unchanged)[0m
   [38;2;248;113;113m✗[0m [SPEC-15] manifest provides.result_contract is 2
     [2mexpected: 2, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-15] manifest provides.role is deploy_release_executor
   [38;2;74;222;128m✓[0m [SPEC-15] valid_verdicts retains deployed
   [38;2;74;222;128m✓[0m [SPEC-15] valid_verdicts retains error
 
@@ -33,7 +34,7 @@
   [38;2;248;113;113m✗[0m [SPEC-17] state_file-absent: rc=1 (not rc=2)
     [2mexpected: 1, got: 2[0m
   [38;2;248;113;113m✗[0m [SPEC-16] state_file-absent: deploy-result.json written to ZBUILD_ARTIFACT_DIR
-    [2mfile missing at /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/deploy-release-v2-result.HPvp2X/absent-art/deploy-result.json[0m
+    [2mfile missing at /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/deploy-release-v2-result.ebanIG/absent-art/deploy-result.json[0m
 
   [38;2;0;212;255mSPEC-16: dry-run path — result_contract:2, disposition, reason[0m
   [38;2;74;222;128m✓[0m [SPEC-16] dry-run: deploy-result.json written
@@ -90,7 +91,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m15 of 44 tests failed[0m
+  [38;2;248;113;113m[1m15 of 45 tests failed[0m
 
   [38;2;248;113;113m✗[0m [SPEC-15] manifest provides.result_contract is 2
   [38;2;248;113;113m✗[0m [SPEC-17] state_file-absent: rc=1 (not rc=2)

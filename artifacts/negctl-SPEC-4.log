@@ -14,9 +14,9 @@
 
   [38;2;0;212;255mSPEC-2: config valid_verdicts updated to [pass, error][0m
   [38;2;248;113;113m✗[0m [SPEC-2] valid_verdicts includes pass
-    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.3h98Sw/plugins/tool/merge/manifest.yaml[0m
+    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.FtHl1a/plugins/tool/merge/manifest.yaml[0m
   [38;2;248;113;113m✗[0m [SPEC-2] valid_verdicts includes error
-    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.3h98Sw/plugins/tool/merge/manifest.yaml[0m
+    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.FtHl1a/plugins/tool/merge/manifest.yaml[0m
 
   [38;2;0;212;255mSPEC-24: tier_default:T0 with no router: block[0m
   [38;2;74;222;128m✓[0m [SPEC-24] manifest tier_default is T0

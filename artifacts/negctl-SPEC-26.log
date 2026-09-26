@@ -8,14 +8,16 @@
   [38;2;248;113;113m✗[0m [SPEC-8] manifest provides.result_contract is 2
     [2mexpected: 2, got: [0m
   [38;2;74;222;128m✓[0m [SPEC-8] manifest provides has no role (do-not-add constraint)
+  [38;2;74;222;128m✓[0m [SPEC-8] provides retains event plugin.pr_open.branch_fallback_used
+  [38;2;74;222;128m✓[0m [SPEC-8] provides retains event plugin.pr_open.preflight_remote_has_work
 
   [38;2;0;212;255mSPEC-9: config valid_verdicts updated to [pass, blocked, error][0m
   [38;2;248;113;113m✗[0m [SPEC-9] valid_verdicts includes pass
-    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.3h98Sw/plugins/tool/pr-open/manifest.yaml[0m
+    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.FtHl1a/plugins/tool/pr-open/manifest.yaml[0m
   [38;2;248;113;113m✗[0m [SPEC-9] valid_verdicts includes blocked
-    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.3h98Sw/plugins/tool/pr-open/manifest.yaml[0m
+    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.FtHl1a/plugins/tool/pr-open/manifest.yaml[0m
   [38;2;248;113;113m✗[0m [SPEC-9] valid_verdicts includes error
-    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.3h98Sw/plugins/tool/pr-open/manifest.yaml[0m
+    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.FtHl1a/plugins/tool/pr-open/manifest.yaml[0m
 
   [38;2;0;212;255mSPEC-24: tier_default:T0 with no router: block[0m
   [38;2;74;222;128m✓[0m [SPEC-24] manifest tier_default is T0
@@ -135,7 +137,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m39 of 63 tests failed[0m
+  [38;2;248;113;113m[1m39 of 65 tests failed[0m
 
   [38;2;248;113;113m✗[0m [SPEC-8] manifest provides.result_contract is 2
   [38;2;248;113;113m✗[0m [SPEC-9] valid_verdicts includes pass

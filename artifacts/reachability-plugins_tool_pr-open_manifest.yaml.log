@@ -1,10 +1,4 @@
- merge-result.json written
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: result_contract is 2
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: verdict is pass
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: data.mode is pr_fallback
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: merge-result.json written
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: result_contract is 2
-  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: verdict is pass
+222;128m✓[0m [SPEC-4] gate-fail: verdict is pass
   [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: data.mode is pr_fallback
 
   [38;2;0;212;255mSPEC-5: error paths — result_contract:2, verdict=error, disposition, reason[0m
@@ -832,14 +826,16 @@
   [38;2;248;113;113m✗[0m [SPEC-8] manifest provides.result_contract is 2
     [2mexpected: 2, got: [0m
   [38;2;74;222;128m✓[0m [SPEC-8] manifest provides has no role (do-not-add constraint)
+  [38;2;74;222;128m✓[0m [SPEC-8] provides retains event plugin.pr_open.branch_fallback_used
+  [38;2;74;222;128m✓[0m [SPEC-8] provides retains event plugin.pr_open.preflight_remote_has_work
 
   [38;2;0;212;255mSPEC-9: config valid_verdicts updated to [pass, blocked, error][0m
   [38;2;248;113;113m✗[0m [SPEC-9] valid_verdicts includes pass
-    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.OywLyR/plugins/tool/pr-open/manifest.yaml[0m
+    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.EzFIGu/plugins/tool/pr-open/manifest.yaml[0m
   [38;2;248;113;113m✗[0m [SPEC-9] valid_verdicts includes blocked
-    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.OywLyR/plugins/tool/pr-open/manifest.yaml[0m
+    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.EzFIGu/plugins/tool/pr-open/manifest.yaml[0m
   [38;2;248;113;113m✗[0m [SPEC-9] valid_verdicts includes error
-    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.OywLyR/plugins/tool/pr-open/manifest.yaml[0m
+    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.EzFIGu/plugins/tool/pr-open/manifest.yaml[0m
 
   [38;2;0;212;255mSPEC-24: tier_default:T0 with no router: block[0m
   [38;2;74;222;128m✓[0m [SPEC-24] manifest tier_default is T0
@@ -924,7 +920,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m4 of 63 tests failed[0m
+  [38;2;248;113;113m[1m4 of 65 tests failed[0m
 
   [38;2;248;113;113m✗[0m [SPEC-8] manifest provides.result_contract is 2
   [38;2;248;113;113m✗[0m [SPEC-9] valid_verdicts includes pass
@@ -940,6 +936,8 @@
   [38;2;0;212;255mSPEC-8: manifest provides declares result_contract:2 (no role — constraint preserved)[0m
   [38;2;74;222;128m✓[0m [SPEC-8] manifest provides.result_contract is 2
   [38;2;74;222;128m✓[0m [SPEC-8] manifest provides has no role (do-not-add constraint)
+  [38;2;74;222;128m✓[0m [SPEC-8] provides retains event plugin.pr_open.branch_fallback_used
+  [38;2;74;222;128m✓[0m [SPEC-8] provides retains event plugin.pr_open.preflight_remote_has_work
 
   [38;2;0;212;255mSPEC-9: config valid_verdicts updated to [pass, blocked, error][0m
   [38;2;74;222;128m✓[0m [SPEC-9] valid_verdicts includes pass
@@ -1029,5 +1027,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 63 tests passed[0m
+  [38;2;74;222;128m[1mAll 65 tests passed[0m
 
