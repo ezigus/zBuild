@@ -43,7 +43,7 @@ _ia_input() {
 # judging a change against that must not read as satisfied (spec-coverage's rule).
 _ia_issue_is_placeholder() {
     local t="${1-}"
-    t="$(printf '%s' "$t" | tr -d '[:space:]')"
+    t="${t//[[:space:]]/}"
     [[ -z "$t" ]] && return 0
     [[ "$t" =~ ^GitHubissue#[0-9]+$ ]]
 }
