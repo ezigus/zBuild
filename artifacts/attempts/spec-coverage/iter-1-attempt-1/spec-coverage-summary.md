@@ -1,0 +1,6 @@
+## spec-coverage — uncovered
+
+- The issue explicitly requires the `cleanup` (#1829) hook to be evaluated and recorded for all three plugins (absent if nothing to free, but the absence must be recorded, not implied), and requires `provides.events` and `provides.role` for all three — SPEC-1 covers both for merge, but SPEC-8 and SPEC-15 commit only to `result_contract:2` in the pr-open and deploy-release manifests, leaving role and events declarations unspecified for those two.
+
+- NOT COVERED: cleanup hook evaluation/recording for all three plugins (#1829)
+- NOT COVERED: provides.events and provides.role declarations for pr-open (SPEC-8 covers result_contract:2 only) and deploy-release (SPEC-15 covers result_contract:2 only)
