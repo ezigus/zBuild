@@ -1,0 +1,103 @@
+### SPEC-19 baseline plugins/agent/validate/tests/validate-test.sh
+
+[38;2;0;212;255m[1m  plugin: validate agent (kind:agent, ADR-018 P1, issue #757)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m validate plugin.sh exists at expected path
+  [38;2;74;222;128m✓[0m validate_agent_run function defined after source
+  [38;2;74;222;128m✓[0m dry-run writes verdict=healthy
+  [38;2;248;113;113m✗[0m [SPEC-14] dry-run exit — result_contract=2
+    [2mexpected: 2, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-14] dry-run exit — verdict key present
+  [38;2;248;113;113m✗[0m [SPEC-14] dry-run exit — disposition key present
+    [2mdisposition absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.mwmjKS/run9/artifacts/validate-result.json[0m
+  [38;2;248;113;113m✗[0m [SPEC-14] dry-run exit — reason key present
+    [2mreason absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.mwmjKS/run9/artifacts/validate-result.json[0m
+[38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json
+  [38;2;74;222;128m✓[0m missing deploy-result.json → rc != 0
+  [38;2;74;222;128m✓[0m missing deploy-result.json → verdict=error in output
+  [38;2;248;113;113m✗[0m [SPEC-14] missing-input exit — result_contract=2
+    [2mexpected: 2, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-14] missing-input exit — verdict key present
+  [38;2;248;113;113m✗[0m [SPEC-14] missing-input exit — disposition key present
+    [2mdisposition absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.mwmjKS/run10/artifacts/validate-result.json[0m
+  [38;2;74;222;128m✓[0m [SPEC-14] missing-input exit — reason key present
+  [38;2;74;222;128m✓[0m healthy probe → verdict=healthy
+  [38;2;248;113;113m✗[0m [SPEC-14] healthy-probe exit — result_contract=2
+    [2mexpected: 2, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-14] healthy-probe exit — verdict key present
+  [38;2;248;113;113m✗[0m [SPEC-14] healthy-probe exit — disposition key present
+    [2mdisposition absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.mwmjKS/run11/artifacts/validate-result.json[0m
+  [38;2;248;113;113m✗[0m [SPEC-14] healthy-probe exit — reason key present
+    [2mreason absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.mwmjKS/run11/artifacts/validate-result.json[0m
+  [38;2;74;222;128m✓[0m failed probe → verdict=error
+  [38;2;74;222;128m✓[0m failed probe → rc propagated (rc != 0)
+  [38;2;248;113;113m✗[0m [SPEC-14] failed-probe exit — result_contract=2
+    [2mexpected: 2, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-14] failed-probe exit — verdict key present
+  [38;2;248;113;113m✗[0m [SPEC-14] failed-probe exit — disposition key present
+    [2mdisposition absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.mwmjKS/run12/artifacts/validate-result.json[0m
+  [38;2;248;113;113m✗[0m [SPEC-14] failed-probe exit — reason key present
+    [2mreason absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.mwmjKS/run12/artifacts/validate-result.json[0m
+  [38;2;74;222;128m✓[0m validate plugin has legacy-citation in header
+  [38;2;74;222;128m✓[0m legacy-citation references pipeline-stages-monitor.sh
+  [38;2;248;113;113m✗[0m [SPEC-15] manifest provides block carries result_contract: 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-16] plugin.sh has no hardcoded $artifacts_dir/deploy-result.json path construction
+    [2mhardcoded path found in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.XO6LaR/plugins/agent/validate/plugin.sh[0m
+[38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json
+  [38;2;248;113;113m✗[0m [SPEC-16] deploy_result resolved from ZBUILD_STAGE_INPUTS non-standard path → verdict=healthy
+    [2mexpected: healthy, got: error[0m
+  [38;2;74;222;128m✓[0m [SPEC-17] failed health probe → validate_agent_run rc != 0
+[38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json
+  [38;2;248;113;113m✗[0m [SPEC-18] missing-input exit → exactly rc=1
+    [2mexpected: 1, got: 2[0m
+  [38;2;248;113;113m✗[0m [SPEC-18] probe rc=2 → plugin exit clamps to rc=1
+    [2mexpected: 1, got: 2[0m
+[38;2;248;113;113m[1m✗[0m validate_agent_run: state_file argument required
+  [38;2;248;113;113m✗[0m [SPEC-18] missing state_file → validate_agent_run exactly rc=1
+    [2mexpected: 1, got: 2[0m
+  [38;2;74;222;128m✓[0m [SPEC-19] manifest config.valid_verdicts declares exactly [healthy, error]
+  [38;2;74;222;128m✓[0m [SPEC-20] manifest has no config.router block
+  [38;2;74;222;128m✓[0m [SPEC-20] manifest_router_knob timeout_s returns empty (no router block)
+  [38;2;74;222;128m✓[0m [SPEC-20] manifest_router_knob max_turns returns empty (no router block)
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run v2 output: result_contract=2
+    [2mexpected: 2, got: null[0m
+  [38;2;74;222;128m✓[0m [SPEC-21] dry-run v2 output: verdict=healthy
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run v2 output: disposition=complete
+    [2mexpected: complete, got: null[0m
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run v2 output: reason key present
+    [2mexpected: true, got: false[0m
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run v2 output: data={}
+    [2mexpected: true, got: false[0m
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run v2 output: schema_version key absent
+    [2mexpected: false, got: true[0m
+  [38;2;74;222;128m✓[0m [SPEC-22] manifest outputs validate_result declares primary: true
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m22 of 44 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-14] dry-run exit — result_contract=2
+  [38;2;248;113;113m✗[0m [SPEC-14] dry-run exit — disposition key present
+  [38;2;248;113;113m✗[0m [SPEC-14] dry-run exit — reason key present
+  [38;2;248;113;113m✗[0m [SPEC-14] missing-input exit — result_contract=2
+  [38;2;248;113;113m✗[0m [SPEC-14] missing-input exit — disposition key present
+  [38;2;248;113;113m✗[0m [SPEC-14] healthy-probe exit — result_contract=2
+  [38;2;248;113;113m✗[0m [SPEC-14] healthy-probe exit — disposition key present
+  [38;2;248;113;113m✗[0m [SPEC-14] healthy-probe exit — reason key present
+  [38;2;248;113;113m✗[0m [SPEC-14] failed-probe exit — result_contract=2
+  [38;2;248;113;113m✗[0m [SPEC-14] failed-probe exit — disposition key present
+  [38;2;248;113;113m✗[0m [SPEC-14] failed-probe exit — reason key present
+  [38;2;248;113;113m✗[0m [SPEC-15] manifest provides block carries result_contract: 2
+  [38;2;248;113;113m✗[0m [SPEC-16] plugin.sh has no hardcoded $artifacts_dir/deploy-result.json path construction
+  [38;2;248;113;113m✗[0m [SPEC-16] deploy_result resolved from ZBUILD_STAGE_INPUTS non-standard path → verdict=healthy
+  [38;2;248;113;113m✗[0m [SPEC-18] missing-input exit → exactly rc=1
+  [38;2;248;113;113m✗[0m [SPEC-18] probe rc=2 → plugin exit clamps to rc=1
+  [38;2;248;113;113m✗[0m [SPEC-18] missing state_file → validate_agent_run exactly rc=1
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run v2 output: result_contract=2
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run v2 output: disposition=complete
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run v2 output: reason key present
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run v2 output: data={}
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run v2 output: schema_version key absent
+
