@@ -1,9 +1,0 @@
-{
-  "result_contract": 2,
-  "verdict": "covered",
-  "disposition": "complete",
-  "reason": "All eight checkbox requirements from the issue map to at least one SPEC — the two gaps spec-coverage raised (router budget declaration, primary: true output) are now addressed by SPEC-22 and SPEC-23 in the current acceptance list.",
-  "data": {
-    "uncovered": []
-  }
-}
