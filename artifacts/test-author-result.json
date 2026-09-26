@@ -1,0 +1,27 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 28 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 28,
+    "owned_files": [
+      "tests/integration/merge-policy-auto-test.sh",
+      "tests/integration/pr-pipeline-test.sh",
+      "tests/unit/deploy-release-v2-result-test.sh",
+      "tests/unit/merge-v2-result-test.sh",
+      "tests/unit/pr-open-advisory-review-test.sh",
+      "tests/unit/pr-open-v2-result-test.sh",
+      "tests/unit/pr-open-zero-commits-halts-test.sh"
+    ],
+    "testfiles": {
+      "tests/integration/merge-policy-auto-test.sh": "fc02f79c9a71446c956cc04f67e358bbd2f3c482",
+      "tests/integration/pr-pipeline-test.sh": "f2eddba92098c4e658f36d5e14a453abe60d2563",
+      "tests/unit/deploy-release-v2-result-test.sh": "a852f4edf68aeebafc391fbf60f1ed7fed5db9ed",
+      "tests/unit/merge-v2-result-test.sh": "8fe7ffd6f28bab2cb5626caa4f8af97a200ef663",
+      "tests/unit/pr-open-advisory-review-test.sh": "e0da9e719d21f8893247ac7dc252f32243f0bacd",
+      "tests/unit/pr-open-v2-result-test.sh": "ea389509f11485b1167fbaf7f10f0a81dc4f80b9",
+      "tests/unit/pr-open-zero-commits-halts-test.sh": "1b11a51c82df8358176a6b0b59c1d701f0b22539"
+    }
+  }
+}

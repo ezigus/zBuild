@@ -1,0 +1,25 @@
+{
+  "result_contract": 2,
+  "verdict": "degraded",
+  "disposition": "timed_out",
+  "reason": "the model call failed (router_timeout) — no assertions were authored",
+  "data": {
+    "specs_covered": 28,
+    "owned_files": [
+      "tests/integration/merge-policy-auto-test.sh",
+      "tests/integration/pr-pipeline-test.sh",
+      "tests/unit/deploy-release-v2-result-test.sh",
+      "tests/unit/merge-v2-result-test.sh",
+      "tests/unit/pr-open-advisory-review-test.sh",
+      "tests/unit/pr-open-v2-result-test.sh",
+      "tests/unit/pr-open-zero-commits-halts-test.sh"
+    ],
+    "testfiles": {
+      "tests/integration/merge-policy-auto-test.sh": "3f2fa2b5a5ce737f8fe02213f8f7b5f579fb2279",
+      "tests/integration/pr-pipeline-test.sh": "05c3fc9162c305ec36c4bcd4924cdd6257c58d0d",
+      "tests/unit/merge-v2-result-test.sh": "8fe7ffd6f28bab2cb5626caa4f8af97a200ef663",
+      "tests/unit/pr-open-advisory-review-test.sh": "8c3accc3b6b4b09e162278c7b12d20088f19bd27",
+      "tests/unit/pr-open-zero-commits-halts-test.sh": "fc7acc47a771193dba6cb0ea5dfba857914e1df7"
+    }
+  }
+}
