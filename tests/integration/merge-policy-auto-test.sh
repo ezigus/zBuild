@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Integration test: merge_policy auto dispatch (I9-B / #1050)
 #
-# SPEC coverage:
-#   [SPEC-1] merge_policy==auto + gate verdict==pass → merge path: merge-result.json
-#            status==merged, gh pr merge called (not a draft PR)
-#   [SPEC-2] merge_policy==auto + gate verdict==fail → PR fallback: pr-url.txt
-#            written, merge-result.json status==pr_fallback
-#   [SPEC-3] merge_policy==auto + gate artifact absent → PR fallback: same as SPEC-2
-#   [SPEC-4] merge_policy==auto_unless_flagged + review-report absent → PR (fail-closed):
+# Test coverage:
+#   merge_policy==auto + gate verdict==pass → merge path: merge-result.json
+#            verdict==pass, gh pr merge called (not a draft PR)
+#   merge_policy==auto + gate verdict==fail → PR fallback: pr-url.txt
+#            written, merge-result.json verdict==pass data.mode==pr_fallback [SPEC-19]
+#   merge_policy==auto + gate artifact absent → PR fallback: same as above [SPEC-19]
+#   merge_policy==auto_unless_flagged + review-report absent → PR (fail-closed):
 #            pr-url.txt written, no merge-result.json (review-report absent → fail-closed)
-#   [SPEC-5] merge_policy==auto + gate pass but review.json absent → fail-closed:
-#            PR fallback (status==pr_fallback), gh pr merge NOT called (ADR-001/#358)
+#   merge_policy==auto + gate pass but review.json absent → fail-closed:
+#            PR fallback (data.mode==pr_fallback), gh pr merge NOT called (ADR-001/#358)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -101,21 +101,21 @@ _art1="$(dirname "$_sf1")/artifacts"
 export _TPL_MERGE_POLICY="auto"
 ( pr_stage_run "pr" "$_sf1" ) >/dev/null 2>&1; _rc1=$?
 
-assert_eq "[SPEC-1] pr_stage_run exits 0 on merge path" "0" "$_rc1"
-assert_file_exists "[SPEC-1] merge-result.json written on merge path" \
+assert_eq "pr_stage_run exits 0 on merge path" "0" "$_rc1"
+assert_file_exists "merge-result.json written on merge path" \
     "$_art1/merge-result.json"
 _merge_verdict1="$(jq -r '.verdict // empty' "$_art1/merge-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-1] merge-result.json verdict==pass on merge path" "pass" "$_merge_verdict1"
+assert_eq "merge-result.json verdict==pass on merge path" "pass" "$_merge_verdict1"
 _merge_calls1="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
 _merge_called=0
 [[ "$_merge_calls1" == *"merged"* ]] && _merge_called=1
-assert_eq "[SPEC-1] gh pr merge --squash called on gate-pass path" "1" "$_merge_called"
+assert_eq "gh pr merge --squash called on gate-pass path" "1" "$_merge_called"
 # pr-delivery's manifest declares pr-result.json a REQUIRED output on every pr-stage
 # path (#1064 review) — the merge path must write it, not only merge-result.json.
-assert_file_exists "[SPEC-1] pr-result.json written on merge path (manifest output)" \
+assert_file_exists "pr-result.json written on merge path (manifest output)" \
     "$_art1/pr-result.json"
 _pr_result_verdict1="$(jq -r '.verdict // empty' "$_art1/pr-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-1] pr-result.json verdict==pass on merge path" "pass" "$_pr_result_verdict1"
+assert_eq "pr-result.json verdict==pass on merge path" "pass" "$_pr_result_verdict1"
 
 # ─── SPEC-2: auto + gate verdict==fail → PR fallback ─────────────────────────
 print_test_section "SPEC-2: merge_policy==auto + gate verdict==fail → PR fallback"
@@ -127,19 +127,19 @@ _art2="$(dirname "$_sf2")/artifacts"
 export _TPL_MERGE_POLICY="auto"
 ( pr_stage_run "pr" "$_sf2" ) >/dev/null 2>&1; _rc2=$?
 
-assert_eq "[SPEC-2] pr_stage_run exits 0 on PR fallback (gate fail)" "0" "$_rc2"
-assert_file_exists "[SPEC-2] pr-url.txt written on gate-fail fallback" "$_art2/pr-url.txt"
-assert_file_exists "[SPEC-2] merge-result.json written on fallback" "$_art2/merge-result.json"
+assert_eq "pr_stage_run exits 0 on PR fallback (gate fail)" "0" "$_rc2"
+assert_file_exists "pr-url.txt written on gate-fail fallback" "$_art2/pr-url.txt"
+assert_file_exists "merge-result.json written on fallback" "$_art2/merge-result.json"
 _merge_verdict2="$(jq -r '.verdict // empty' "$_art2/merge-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-2][SPEC-19] merge-result.json verdict==pass on gate-fail fallback" \
+assert_eq "[SPEC-19] merge-result.json verdict==pass on gate-fail fallback" \
     "pass" "$_merge_verdict2"
 _merge_mode2="$(jq -r '.data.mode // empty' "$_art2/merge-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-2][SPEC-19] merge-result.json data.mode==pr_fallback on gate fail" \
+assert_eq "[SPEC-19] merge-result.json data.mode==pr_fallback on gate fail" \
     "pr_fallback" "$_merge_mode2"
 _merge_calls2="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
 _gh_merge2=0
 [[ "$_merge_calls2" == *"merged"* ]] && _gh_merge2=1
-assert_eq "[SPEC-2] gh pr merge NOT called on gate-fail fallback" "0" "$_gh_merge2"
+assert_eq "gh pr merge NOT called on gate-fail fallback" "0" "$_gh_merge2"
 
 # ─── SPEC-3: auto + gate artifact absent → PR fallback ───────────────────────
 print_test_section "SPEC-3: merge_policy==auto + gate artifact absent → PR fallback"
@@ -151,20 +151,20 @@ _art3="$(dirname "$_sf3")/artifacts"
 export _TPL_MERGE_POLICY="auto"
 ( pr_stage_run "pr" "$_sf3" ) >/dev/null 2>&1; _rc3=$?
 
-assert_eq "[SPEC-3] pr_stage_run exits 0 on PR fallback (gate absent)" "0" "$_rc3"
-assert_file_exists "[SPEC-3] pr-url.txt written on gate-absent fallback" "$_art3/pr-url.txt"
-assert_file_exists "[SPEC-3] merge-result.json written on gate-absent fallback" \
+assert_eq "pr_stage_run exits 0 on PR fallback (gate absent)" "0" "$_rc3"
+assert_file_exists "pr-url.txt written on gate-absent fallback" "$_art3/pr-url.txt"
+assert_file_exists "merge-result.json written on gate-absent fallback" \
     "$_art3/merge-result.json"
 _merge_verdict3="$(jq -r '.verdict // empty' "$_art3/merge-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-3][SPEC-19] merge-result.json verdict==pass on gate-absent fallback" \
+assert_eq "[SPEC-19] merge-result.json verdict==pass on gate-absent fallback" \
     "pass" "$_merge_verdict3"
 _merge_mode3="$(jq -r '.data.mode // empty' "$_art3/merge-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-3][SPEC-19] merge-result.json data.mode==pr_fallback on gate absent" \
+assert_eq "[SPEC-19] merge-result.json data.mode==pr_fallback on gate absent" \
     "pr_fallback" "$_merge_mode3"
 _merge_calls3="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
 _gh_merge3=0
 [[ "$_merge_calls3" == *"merged"* ]] && _gh_merge3=1
-assert_eq "[SPEC-3] gh pr merge NOT called when gate artifact absent" "0" "$_gh_merge3"
+assert_eq "gh pr merge NOT called when gate artifact absent" "0" "$_gh_merge3"
 
 # ─── SPEC-8 (#1219): auto + gate verdict==specification → PR fallback ──────────
 # ADR-045: a design-rooted acceptance failure surfaces as gate-aggregator
@@ -181,18 +181,18 @@ _art8="$(dirname "$_sf8")/artifacts"
 export _TPL_MERGE_POLICY="auto"
 ( pr_stage_run "pr" "$_sf8" ) >/dev/null 2>&1; _rc8=$?
 
-assert_eq "[SPEC-8] pr_stage_run exits 0 on specification PR fallback" "0" "$_rc8"
-assert_file_exists "[SPEC-8] pr-url.txt written on specification fallback" "$_art8/pr-url.txt"
+assert_eq "pr_stage_run exits 0 on specification PR fallback" "0" "$_rc8"
+assert_file_exists "pr-url.txt written on specification fallback" "$_art8/pr-url.txt"
 _merge_verdict8="$(jq -r '.verdict // empty' "$_art8/merge-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-8][SPEC-19] merge-result.json verdict==pass on specification fallback" \
+assert_eq "[SPEC-19] merge-result.json verdict==pass on specification fallback" \
     "pass" "$_merge_verdict8"
 _merge_mode8="$(jq -r '.data.mode // empty' "$_art8/merge-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-8][SPEC-19] merge-result.json data.mode==pr_fallback on specification" \
+assert_eq "[SPEC-19] merge-result.json data.mode==pr_fallback on specification" \
     "pr_fallback" "$_merge_mode8"
 _merge_calls8="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
 _gh_merge8=0
 [[ "$_merge_calls8" == *"merged"* ]] && _gh_merge8=1
-assert_eq "[SPEC-8] gh pr merge NOT called under specification" "0" "$_gh_merge8"
+assert_eq "gh pr merge NOT called under specification" "0" "$_gh_merge8"
 
 # ─── SPEC-4: auto_unless_flagged + review-report absent → PR (fail-closed) ────
 print_test_section "SPEC-4: merge_policy==auto_unless_flagged + review-report absent → opens draft PR (fail-closed)"
@@ -204,14 +204,14 @@ _art4="$(dirname "$_sf4")/artifacts"
 export _TPL_MERGE_POLICY="auto_unless_flagged"
 ( pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1; _rc4=$?
 
-assert_eq "[SPEC-4] pr_stage_run exits 0 for auto_unless_flagged" "0" "$_rc4"
-assert_file_exists "[SPEC-4] pr-url.txt written (PR opened, not merged)" "$_art4/pr-url.txt"
-assert_file_not_exists "[SPEC-4] no merge-result.json for auto_unless_flagged path" \
+assert_eq "pr_stage_run exits 0 for auto_unless_flagged" "0" "$_rc4"
+assert_file_exists "pr-url.txt written (PR opened, not merged)" "$_art4/pr-url.txt"
+assert_file_not_exists "no merge-result.json for auto_unless_flagged path" \
     "$_art4/merge-result.json"
 _merge_calls4="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
 _gh_merge4=0
 [[ "$_merge_calls4" == *"merged"* ]] && _gh_merge4=1
-assert_eq "[SPEC-4] gh pr merge NOT called for auto_unless_flagged" "0" "$_gh_merge4"
+assert_eq "gh pr merge NOT called for auto_unless_flagged" "0" "$_gh_merge4"
 
 # ─── SPEC-5: auto + gate pass but review.json ABSENT → fail-closed PR fallback ─
 # ADR-001/#358: pr-open refuses to publish without a review verdict on disk;
@@ -230,14 +230,14 @@ _rc5=0
 
 _merge_verdict5="$(jq -r '.verdict // empty' "$_art5/merge-result.json" 2>/dev/null || true)"
 _merge_mode5="$(jq -r '.data.mode // empty' "$_art5/merge-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-5] gate pass but review absent → verdict==pass (not a v=error)" \
+assert_eq "gate pass but review absent → verdict==pass (not a v=error)" \
     "pass" "$_merge_verdict5"
-assert_eq "[SPEC-5] gate pass but review absent → data.mode==pr_fallback (not merged)" \
+assert_eq "gate pass but review absent → data.mode==pr_fallback (not merged)" \
     "pr_fallback" "$_merge_mode5"
 _merge_calls5="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
 _gh_merge5=0
 [[ "$_merge_calls5" == *"merged"* ]] && _gh_merge5=1
-assert_eq "[SPEC-5] gh pr merge NOT called when review.json absent (fail-closed)" "0" "$_gh_merge5"
+assert_eq "gh pr merge NOT called when review.json absent (fail-closed)" "0" "$_gh_merge5"
 
 # ─── Results ──────────────────────────────────────────────────────────────────
 print_test_results

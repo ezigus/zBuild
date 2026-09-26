@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
-# Unit test (#1265, SPEC-7): pr-open halts terminally (return 2,
+# Unit test (#1265, SPEC-21): pr-open halts terminally (return 1,
 # reason=no_committed_changes) BEFORE push + `gh pr create` when the branch has
 # 0 commits ahead of the merge-base. Belt-and-suspenders for the #1214 dogfood:
 # a branch with nothing to ship must fail fast, not after a wasted push and a
 # confusing `gh` "No commits between main and branch" error.
 #
-# RED at baseline: today pr-open pushes first → the failure surfaces as a push /
-# gh error (a DIFFERENT reason), and `gh pr create` IS invoked. GREEN after: the
-# preflight returns 2 with reason=no_committed_changes and gh is never called.
+# SPEC coverage:
+#   [SPEC-21] pr-open still halts before push and before gh pr create when branch
+#             has 0 commits ahead of merge-base (v2: rc=1 not rc=2)
+#
+# RED at baseline (pre-v2): pr-open pushes first → the failure surfaces as a push /
+# gh error (a DIFFERENT reason), and `gh pr create` IS invoked. GREEN after the v1
+# fix: the preflight returns with reason=no_committed_changes and gh is never called.
+# v2 migration: rc changes from 2 to 1 (infrastructure halt, not a verdict outcome).
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -67,25 +72,25 @@ source "$REPO_ROOT/plugins/tool/pr-open/plugin.sh"
 
 ( PATH="$MOCKBIN:$PATH" pr_open_run "pr" "$STATE_FILE" ) >/dev/null 2>&1; RC=$?
 
-# ── (1) returns 2 (terminal halt) ──────────────────────────────────────────
-assert_eq "[SPEC-8] pr_open_run returns 2 on 0-commit branch" "2" "$RC"
+# ── (1) returns 1 (terminal halt — infrastructure failure in v2, not rc=2) ──
+assert_eq "[SPEC-21] pr_open_run returns 1 on 0-commit branch (not rc=2)" "1" "$RC"
 
 # ── (2) reason=no_committed_changes (not a push/gh error) ──────────────────
 if [[ -f "$ART/pr-result.json" ]]; then
     reason="$(jq -r '.reason // ""' "$ART/pr-result.json" 2>/dev/null || echo "")"
-    assert_contains "[SPEC-8] pr-result.json .reason cites no committed changes" \
+    assert_contains "[SPEC-21] pr-result.json .reason cites no committed changes" \
         "$reason" "no committed changes"
 else
-    assert_fail "pr-result.json written on halt" "file missing"
+    assert_fail "[SPEC-21] pr-result.json written on halt" "file missing"
 fi
 if grep -q '"reason":"no_committed_changes"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
-    assert_pass "plugin.result verdict=error reason=no_committed_changes emitted"
+    assert_pass "[SPEC-21] plugin.result verdict=error reason=no_committed_changes emitted"
 else
-    assert_fail "plugin.result verdict=error reason=no_committed_changes emitted" "missing"
+    assert_fail "[SPEC-21] plugin.result verdict=error reason=no_committed_changes emitted" "missing"
 fi
 
 # ── (3) gh pr create was NEVER invoked (halt is BEFORE gh) ──────────────────
-assert_file_not_exists "gh pr create not reached (halt before push/gh)" "$GH_SENTINEL"
+assert_file_not_exists "[SPEC-21] gh pr create not reached (halt before push/gh)" "$GH_SENTINEL"
 
 cleanup_test_env
 print_test_results
