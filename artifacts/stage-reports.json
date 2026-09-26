@@ -1,0 +1,8 @@
+{
+  "scope_files": [
+    "plugins/agent/validate/manifest.yaml",
+    "plugins/agent/validate/plugin.sh",
+    "plugins/agent/validate/tests/validate-test.sh"
+  ],
+  "wiring_files": []
+}
