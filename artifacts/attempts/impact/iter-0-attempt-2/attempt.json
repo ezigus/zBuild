@@ -1,0 +1,12 @@
+{
+  "stage": "impact",
+  "cycle_iter": 0,
+  "attempt": 2,
+  "rc": "0",
+  "generated_at": "2026-09-26T13:22:34Z",
+  "files": 2,
+  "outputs": {
+    "impact.json": "changed",
+    "impact-summary.md": "unchanged"
+  }
+}

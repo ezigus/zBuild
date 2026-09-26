@@ -114,12 +114,15 @@ DESIGN SCOPE BLOCK:
 - tests/unit/plugin-artifact-goldens-test.sh
 - docs/adr/ADR-054-stage-contract.md
 - docs/adr/ADR-055-inter-stage-data-contract-v2.md
+- docs/adr/ADR-019-review-fail-closed-on-test-failure.md
 - docs/wiki/plugins/merge.md
 - docs/wiki/plugins/pr.md
 - docs/wiki/plugins/deploy-release.md
 - core/contract/version.sh
+- core/pipeline/verdict.sh
 - core/plugin-registry/manifest-validation.sh
 - scripts/lib/lint-verdict-classify.sh
+- tests/unit/lint-verdict-classify-test.sh
 - plugins/agent/pr-delivery/plugin.sh
 - plugins/agent/deploy/plugin.sh
 
