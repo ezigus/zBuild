@@ -1,0 +1,44 @@
+### SPEC-20 baseline tests/integration/pr-pipeline-test.sh
+
+[38;2;0;212;255m[1m  pr-delivery agent plugin: real plugin integration (#756)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m simple.yaml resolves a non-empty leaf roster
+  [38;2;74;222;128m✓[0m simple.yaml last leaf stage id is pr
+  [38;2;74;222;128m✓[0m plugins/agent/pr-delivery/plugin.sh exists
+  [38;2;74;222;128m✓[0m plugins/agent/pr-delivery/manifest.yaml exists
+  [38;2;74;222;128m✓[0m manifest id is pr-delivery (no collision with tool/pr-open id:pr)
+
+  [38;2;0;212;255mSPEC-3: dry-run produces artifacts via the real plugin[0m
+  [38;2;74;222;128m✓[0m dry-run pr_stage_run exits 0
+  [38;2;74;222;128m✓[0m pr-url.txt written
+  [38;2;74;222;128m✓[0m pr-result.json written
+  [38;2;248;113;113m✗[0m dry-run pr-result.json records data.draft=false (non-draft default)
+    [2mexpected: false, got: null[0m
+
+  [38;2;0;212;255mSPEC-4 / SPEC-20: verdict=block guard refuses to open a PR[0m
+  [38;2;248;113;113m✗[0m [SPEC-20] verdict=block → pr_stage_run returns rc=0 (blocked is verdict, not error)
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [SPEC-20] verdict=block → no pr-url.txt written (PR not opened)
+  [38;2;248;113;113m✗[0m [SPEC-20] verdict=block → pr-result.json verdict==blocked
+    [2mexpected: blocked, got: block[0m
+
+  [38;2;0;212;255mSPEC-5: delegation to pr-open threads the state file[0m
+  [38;2;74;222;128m✓[0m non-dry-run pr_stage_run exits 0 (state file threaded to pr-open)
+  [38;2;74;222;128m✓[0m pr-url.txt written by pr-open delegation
+  [38;2;74;222;128m✓[0m pr-url.txt holds the gh-created URL
+
+  [38;2;0;212;255mSPEC-6: pr-open surfaces push stderr in pr-result.json[0m
+  [38;2;248;113;113m✗[0m pr_open_run returns 1 on genuine push failure (v2: error path rc=1 not rc=2)
+    [2mexpected: 1, got: 2[0m
+  [38;2;74;222;128m✓[0m pr-result.json .reason surfaces the real push stderr
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m4 of 17 tests failed[0m
+
+  [38;2;248;113;113m✗[0m dry-run pr-result.json records data.draft=false (non-draft default)
+  [38;2;248;113;113m✗[0m [SPEC-20] verdict=block → pr_stage_run returns rc=0 (blocked is verdict, not error)
+  [38;2;248;113;113m✗[0m [SPEC-20] verdict=block → pr-result.json verdict==blocked
+  [38;2;248;113;113m✗[0m pr_open_run returns 1 on genuine push failure (v2: error path rc=1 not rc=2)
+

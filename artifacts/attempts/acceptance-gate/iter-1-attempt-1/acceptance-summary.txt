@@ -1,0 +1,88 @@
+acceptance SPEC violations — SPEC-19/SPEC-20/SPEC-21 tagged as [guard] but the assertion FAILS at the merge-base — a guard must hold there by definition, so either the assertion contradicts its SPEC text or the SPEC is a mislabelled [change]
+NEGCTL PASS SPEC-1
+      design : merge manifest provides declares result_contract:2, role:merge_executor, events:[plugin.result]
+      asserts: assert_eq "[SPEC-1] manifest provides.result_contract is 2" "2" "$_prov_rc"
+NEGCTL PASS SPEC-2
+      design : merge/config valid_verdicts updated from [] to [pass,error]
+      asserts: #   [SPEC-2]  merge/config valid_verdicts updated to [pass, error]
+NEGCTL PASS SPEC-3
+      design : merge-result.json carries result_contract:2, verdict=pass, disposition:complete, reason on squash-me…
+      asserts: assert_file_exists "[SPEC-3] merge-result.json written on success" "$_s3_art/merge-result.json"
+NEGCTL PASS SPEC-4
+      design : merge-result.json carries result_contract:2, verdict=pass, data.mode=pr_fallback on gate-absent or g…
+      asserts: assert_file_exists "[SPEC-4] gate-absent: merge-result.json written" "$_s4a_art/merge-result.json"
+NEGCTL PASS SPEC-5
+      design : merge-result.json carries result_contract:2, verdict=error, disposition, reason on all error paths (…
+      asserts: assert_file_exists "[SPEC-5] branch-is-main: merge-result.json written" "$_s5a_art/merge-result.json…
+NEGCTL PASS SPEC-6
+      design : merge plugin returns rc ∈ {0,1} on all exit paths — no path returns rc=2
+      asserts: assert_eq "[SPEC-6] success path rc in {0,1}" "1" "$(( _s3_rc  != 2 ? 1 : 0 ))"
+NEGCTL PASS SPEC-7
+      design : merge plugin reads gate_aggregator_result path via ZBUILD_STAGE_INPUTS with artifacts_dir fallback (…
+      asserts: assert_file_exists "[SPEC-7] ZBUILD_STAGE_INPUTS: merge-result.json written" "$_s7a_art/merge-result…
+NEGCTL PASS SPEC-8
+      design : pr-open manifest provides declares result_contract:2 (existing events retained, no role added — cons…
+      asserts: assert_eq "[SPEC-8] manifest provides.result_contract is 2" "2" "$_s8_prov_rc"
+NEGCTL PASS SPEC-9
+      design : pr-open/config valid_verdicts updated from [] to [pass,blocked,error]
+      asserts: #   [SPEC-9]  pr-open/config valid_verdicts updated to [pass,blocked,error]
+NEGCTL PASS SPEC-10
+      design : pr-result.json carries result_contract:2, verdict=pass, disposition, reason on opened and updated pa…
+      asserts: assert_file_exists "[SPEC-10] opened: pr-result.json written" "$_s10a_pr"
+NEGCTL PASS SPEC-11
+      design : pr-result.json carries result_contract:2, verdict=blocked, disposition, reason when review verdict=b…
+      asserts: assert_file_exists "[SPEC-11] review=block: pr-result.json written" "$_s11a_pr"
+NEGCTL PASS SPEC-12
+      design : pr-result.json carries result_contract:2, verdict=error, disposition, reason on error paths (branch-…
+      asserts: assert_file_exists "[SPEC-12] branch-is-main: pr-result.json written" "$_s12a_pr"
+NEGCTL PASS SPEC-13
+      design : pr-open plugin returns rc ∈ {0,1} on all exit paths — no path returns rc=2
+      asserts: assert_eq "[SPEC-13] opened path rc in {0,1}" "1" "$(( _s10a_rc != 2 ? 1 : 0 ))"
+NEGCTL PASS SPEC-14
+      design : pr-open plugin reads review_report path via ZBUILD_STAGE_INPUTS with artifacts_dir fallback (no hard…
+      asserts: assert_pass "[SPEC-14] ZBUILD_STAGE_INPUTS: custom review_report path honoured (finding count presen…
+NEGCTL PASS SPEC-15
+      design : deploy-release manifest provides declares result_contract:2 (existing role:deploy_release_executor a…
+      asserts: assert_eq "[SPEC-15] manifest provides.result_contract is 2" "2" "$_s15_prov_rc"
+NEGCTL PASS SPEC-16
+      design : deploy-result.json carries result_contract:2, disposition, reason on every exit path (dry-run, tag s…
+      asserts: assert_eq "[SPEC-16] state_file-absent: result_contract is 2" "2" \
+NEGCTL PASS SPEC-17
+      design : deploy-release plugin returns rc ∈ {0,1} on all exit paths — state_file-absent path returns rc=1 not…
+      asserts: assert_eq "[SPEC-17] state_file-absent: rc=1 (not rc=2)" "1" "$_sfabs_rc"
+NEGCTL PASS SPEC-18
+      design : deploy-release plugin reads pr_url path via ZBUILD_STAGE_INPUTS with artifacts_dir fallback (no hard…
+      asserts: assert_file_exists "[SPEC-18] ZBUILD_STAGE_INPUTS: deploy-result.json written" "$_s18a_art/deploy-re…
+NEGCTL FAIL SPEC-19 guard_regressed
+      design : merge still routes to pr_open_run (pr-fallback) when gate verdict is not pass or gate artifact is ab…
+      asserts: assert_eq "[SPEC-19] merge-result.json verdict==pass on gate-fail fallback" \
+NEGCTL FAIL SPEC-20 guard_regressed
+      design : pr-open still refuses (writes verdict=blocked, rc=0) when review.json verdict=block
+      asserts: assert_eq "[SPEC-20] verdict=block → pr_stage_run returns rc=0 (blocked is verdict, not error)" "0" …
+NEGCTL FAIL SPEC-21 guard_regressed
+      design : pr-open still halts before push and before gh pr create when branch has 0 commits ahead of merge-bas…
+      asserts: assert_eq "[SPEC-21] pr_open_run returns 1 on 0-commit branch (not rc=2)" "1" "$RC"
+NEGCTL PASS SPEC-22 guard_spec
+      design : pr-open advisory review section renders finding count and top bullets in the PR body
+      asserts: assert_contains "[SPEC-22] body contains finding count" \
+NEGCTL PASS SPEC-23 guard_spec
+      design : deploy-result.json verdict=deployed and rc=0 on git tag+push success path
+      asserts: assert_eq "[SPEC-23] success: verdict is deployed" "deployed" \
+NEGCTL PASS SPEC-24 guard_spec
+      design : all three manifests declare tier_default: T0 with no router: block — absence of router: is the corre…
+      asserts: assert_eq "[SPEC-24] manifest tier_default is T0" "T0" "$_td"
+NEGCTL PASS SPEC-25 guard_spec
+      design : all three manifests retain primary: true on their canonical result output (merge_result, pr_url, dep…
+      asserts: #   [SPEC-25] outputs.merge_result retains primary: true after v2 migration
+NEGCTL PASS SPEC-26 guard_spec
+      design : pr-open manifest provides retains events:[plugin.pr_open.branch_fallback_used, plugin.pr_open.prefli…
+      asserts: assert_eq "[SPEC-26] provides has no role: key (do-not-add constraint preserved)" "" "$_s26_role"
+NEGCTL PASS SPEC-27 guard_spec
+      design : deploy-release manifest provides retains role:deploy_release_executor and events:[deploy.release.com…
+      asserts: assert_eq "[SPEC-27] provides.role is deploy_release_executor" "deploy_release_executor" "$_s27_role…
+NEGCTL PASS SPEC-28 guard_spec
+      design : all three manifests declare no cleanup: hook (hooks section contains only run:) — empty cleanup func…
+      asserts: assert_eq "[SPEC-28] manifest hooks has no cleanup:" "0" "$_has_cleanup"
+REACHABILITY PASS plugins/tool/merge/manifest.yaml
+REACHABILITY PASS plugins/tool/pr-open/manifest.yaml
+REACHABILITY PASS plugins/tool/deploy-release/manifest.yaml

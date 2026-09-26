@@ -1,0 +1,59 @@
+### SPEC-22 baseline tests/unit/pr-open-advisory-review-test.sh
+
+[38;2;0;212;255m[1m  pr-open: advisory review-report body rendering (#1707)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-22: review-report.json with findings → body has count, top findings, no verdict N/A[0m
+[38;2;250;204;21m[1m⚠[0m pr_open: review.json absent — advisory-review mode (review-report.json present; ADR-040 lenses never block, #1142)
+  [38;2;74;222;128m✓[0m advisory mode with findings: rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-22] body contains finding count
+  [38;2;74;222;128m✓[0m [SPEC-22] body contains severity indicator
+  [38;2;74;222;128m✓[0m [SPEC-22] body contains lens name
+  [38;2;74;222;128m✓[0m [SPEC-22] body contains file:line locator
+  [38;2;74;222;128m✓[0m [SPEC-22] body contains the finding message
+  [38;2;74;222;128m✓[0m advisory mode: no misleading 'Review verdict: N/A'
+
+  [38;2;0;212;255mreview.json present, review-report.json absent → 'no advisory review ran' in body[0m
+  [38;2;74;222;128m✓[0m review.json present, no report: rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m body contains 'no advisory review ran'
+
+  [38;2;0;212;255mreview-report.json with findings=[] → 'no findings' in body[0m
+[38;2;250;204;21m[1m⚠[0m pr_open: review.json absent — advisory-review mode (review-report.json present; ADR-040 lenses never block, #1142)
+  [38;2;74;222;128m✓[0m advisory mode, no findings: rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m body contains 'no findings'
+
+  [38;2;0;212;255mreview.json present with advisory report → body keeps blocking verdict[0m
+  [38;2;74;222;128m✓[0m blocking-review mode with advisory report: rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m body still contains blocking verdict line when review.json present
+  [38;2;248;113;113m✗[0m PR still opened despite a high advisory finding
+    [2mkey .verdict: expected pass, got: null[0m
+
+  [38;2;0;212;255munreadable review-report.json → explicit 'could not be read', not 'no findings'[0m
+[38;2;250;204;21m[1m⚠[0m pr_open: review.json absent — advisory-review mode (review-report.json present; ADR-040 lenses never block, #1142)
+  [38;2;74;222;128m✓[0m unreadable report: rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m body says the report could not be read
+  [38;2;74;222;128m✓[0m unreadable report never claims 'no findings'
+
+  [38;2;0;212;255mhostile finding text is escaped, not rendered as active markup[0m
+[38;2;250;204;21m[1m⚠[0m pr_open: review.json absent — advisory-review mode (review-report.json present; ADR-040 lenses never block, #1142)
+  [38;2;74;222;128m✓[0m hostile finding text: rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m raw HTML tag from a finding is escaped
+  [38;2;74;222;128m✓[0m markdown link from a finding is escaped
+  [38;2;74;222;128m✓[0m the HTML tag is present in escaped form
+  [38;2;74;222;128m✓[0m finding text is still present after escaping
+
+  [38;2;0;212;255mSPEC-22: >5 findings → top five inline, remainder in <details>[0m
+[38;2;250;204;21m[1m⚠[0m pr_open: review.json absent — advisory-review mode (review-report.json present; ADR-040 lenses never block, #1142)
+  [38;2;74;222;128m✓[0m seven findings: rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-22] body reports the full finding count
+  [38;2;74;222;128m✓[0m overflow is collapsed into a details block
+  [38;2;74;222;128m✓[0m details block is closed
+  [38;2;74;222;128m✓[0m a blank line separates </details> from the next line
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 27 tests failed[0m
+
+  [38;2;248;113;113m✗[0m PR still opened despite a high advisory finding
+

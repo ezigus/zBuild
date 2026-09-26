@@ -1,0 +1,179 @@
+### SPEC-26 baseline tests/unit/pr-open-v2-result-test.sh
+
+[38;2;0;212;255m[1m  pr-open plugin: v2 result contract (issue #1849)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-8: manifest provides declares result_contract:2 (no role — constraint preserved)[0m
+  [38;2;248;113;113m✗[0m [SPEC-8] manifest provides.result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-8] manifest provides has no role (do-not-add constraint)
+
+  [38;2;0;212;255mSPEC-9: config valid_verdicts updated to [pass, blocked, error][0m
+  [38;2;248;113;113m✗[0m [SPEC-9] valid_verdicts includes pass
+    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.3h98Sw/plugins/tool/pr-open/manifest.yaml[0m
+  [38;2;248;113;113m✗[0m [SPEC-9] valid_verdicts includes blocked
+    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.3h98Sw/plugins/tool/pr-open/manifest.yaml[0m
+  [38;2;248;113;113m✗[0m [SPEC-9] valid_verdicts includes error
+    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.3h98Sw/plugins/tool/pr-open/manifest.yaml[0m
+
+  [38;2;0;212;255mSPEC-24: tier_default:T0 with no router: block[0m
+  [38;2;74;222;128m✓[0m [SPEC-24] manifest tier_default is T0
+  [38;2;74;222;128m✓[0m [SPEC-24] manifest has no router: block
+
+  [38;2;0;212;255mSPEC-25: outputs.pr_url retains primary: true[0m
+  [38;2;74;222;128m✓[0m [SPEC-25] manifest has primary: true on pr_url output
+
+  [38;2;0;212;255mSPEC-26: provides retains events and has no role after result_contract:2 added[0m
+  [38;2;74;222;128m✓[0m [SPEC-26] provides.events includes plugin.pr_open.branch_fallback_used
+  [38;2;74;222;128m✓[0m [SPEC-26] provides.events includes plugin.pr_open.preflight_remote_has_work
+  [38;2;74;222;128m✓[0m [SPEC-26] provides has no role: key (do-not-add constraint preserved)
+
+  [38;2;0;212;255mSPEC-28: hooks section has only run:, no cleanup:[0m
+  [38;2;74;222;128m✓[0m [SPEC-28] manifest hooks has no cleanup:
+  [38;2;74;222;128m✓[0m [SPEC-28] manifest hooks has run: pr_open_run
+
+  [38;2;0;212;255mSPEC-10: pass paths — result_contract:2, verdict=pass, disposition, reason[0m
+  [38;2;74;222;128m✓[0m [SPEC-10] opened: pr-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-10] opened: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-10] opened: verdict is pass
+    [2mexpected: pass, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-10] opened: disposition present
+    [2mabsent[0m
+  [38;2;248;113;113m✗[0m [SPEC-10] opened: reason present
+    [2mabsent[0m
+  [38;2;74;222;128m✓[0m [SPEC-10] updated: pr-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-10] updated: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-10] updated: verdict is pass
+    [2mexpected: pass, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-10] updated: disposition present
+    [2mabsent[0m
+  [38;2;248;113;113m✗[0m [SPEC-10] updated: reason present
+    [2mabsent[0m
+
+  [38;2;0;212;255mSPEC-11: blocked paths — result_contract:2, verdict=blocked, disposition, reason; rc=0[0m
+[38;2;248;113;113m[1m✗[0m pr_open: refusing to open PR — review verdict is 'block'
+  [38;2;74;222;128m✓[0m [SPEC-11] review=block: pr-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-11] review=block: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-11] review=block: verdict is blocked
+    [2mexpected: blocked, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-11] review=block: disposition present
+    [2mabsent[0m
+  [38;2;74;222;128m✓[0m [SPEC-11] review=block: reason present
+  [38;2;248;113;113m✗[0m [SPEC-11] review=block: rc=0 (not rc=2)
+    [2mexpected: 0, got: 2[0m
+[38;2;248;113;113m[1m✗[0m pr_open: refusing to open PR — no review signal (neither review.json nor review-report.json; fail-closed per ADR-001)
+  [38;2;74;222;128m✓[0m [SPEC-11] no-review-signal: pr-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-11] no-review-signal: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-11] no-review-signal: verdict is blocked (fail-closed)
+    [2mexpected: blocked, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-11] no-review-signal: disposition present
+    [2mabsent[0m
+  [38;2;74;222;128m✓[0m [SPEC-11] no-review-signal: reason present
+  [38;2;248;113;113m✗[0m [SPEC-11] no-review-signal: rc=0 (not rc=2, fail-closed writes verdict=blocked)
+    [2mexpected: 0, got: 2[0m
+
+  [38;2;0;212;255mSPEC-12: error paths — result_contract:2, verdict=error, disposition, reason; rc=1 not rc=2[0m
+[38;2;248;113;113m[1m✗[0m pr_open: refusing to open PR from branch 'main' — use a feature branch
+  [38;2;74;222;128m✓[0m [SPEC-12] branch-is-main: pr-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-12] branch-is-main: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-12] branch-is-main: verdict is error
+    [2mexpected: error, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-12] branch-is-main: disposition present
+    [2mabsent[0m
+  [38;2;74;222;128m✓[0m [SPEC-12] branch-is-main: reason present
+  [38;2;248;113;113m✗[0m [SPEC-12] branch-is-main: rc=1 (not rc=2)
+    [2mexpected: 1, got: 2[0m
+[38;2;248;113;113m[1m✗[0m pr_open: push reconcile failed for 'zbuild/issue-1849-test': mock push error
+  [38;2;74;222;128m✓[0m [SPEC-12] push-failure: pr-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-12] push-failure: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-12] push-failure: verdict is error
+    [2mexpected: error, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-12] push-failure: disposition present
+    [2mabsent[0m
+  [38;2;74;222;128m✓[0m [SPEC-12] push-failure: reason present
+  [38;2;248;113;113m✗[0m [SPEC-12] push-failure: rc=1 (not rc=2)
+    [2mexpected: 1, got: 2[0m
+[38;2;248;113;113m[1m✗[0m pr_open: gh pr create failed: gh create error
+  [38;2;74;222;128m✓[0m [SPEC-12] gh-failure: pr-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-12] gh-failure: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-12] gh-failure: verdict is error
+    [2mexpected: error, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-12] gh-failure: disposition present
+    [2mabsent[0m
+  [38;2;74;222;128m✓[0m [SPEC-12] gh-failure: reason present
+  [38;2;248;113;113m✗[0m [SPEC-12] gh-failure: rc=1 (not rc=2)
+    [2mexpected: 1, got: 2[0m
+
+  [38;2;0;212;255mSPEC-13: all exit paths return rc ∈ {0,1} — no rc=2[0m
+  [38;2;74;222;128m✓[0m [SPEC-13] opened path rc in {0,1}
+  [38;2;74;222;128m✓[0m [SPEC-13] updated path rc in {0,1}
+  [38;2;248;113;113m✗[0m [SPEC-13] review=block rc in {0,1}
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-13] no-review-signal rc in {0,1}
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-13] branch-is-main rc in {0,1}
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-13] push-failure rc in {0,1}
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-13] gh-failure rc in {0,1}
+    [2mexpected: 1, got: 0[0m
+
+  [38;2;0;212;255mSPEC-14: review_report resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback[0m
+  [38;2;248;113;113m✗[0m [SPEC-14] ZBUILD_STAGE_INPUTS: custom review_report path honoured (finding count present)
+    [2mbody does not show '2 finding' — ZBUILD_STAGE_INPUTS not read for review_report[0m
+  [38;2;248;113;113m✗[0m [SPEC-14] ZBUILD_STAGE_INPUTS: body must not say 'no advisory review ran'
+    [2mbody says 'no advisory review ran' — hardcoded path used instead of ZBUILD_STAGE_INPUTS[0m
+  [38;2;74;222;128m✓[0m [SPEC-14] artifacts_dir fallback: review_report from standard path found
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m39 of 63 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-8] manifest provides.result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-9] valid_verdicts includes pass
+  [38;2;248;113;113m✗[0m [SPEC-9] valid_verdicts includes blocked
+  [38;2;248;113;113m✗[0m [SPEC-9] valid_verdicts includes error
+  [38;2;248;113;113m✗[0m [SPEC-10] opened: result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-10] opened: verdict is pass
+  [38;2;248;113;113m✗[0m [SPEC-10] opened: disposition present
+  [38;2;248;113;113m✗[0m [SPEC-10] opened: reason present
+  [38;2;248;113;113m✗[0m [SPEC-10] updated: result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-10] updated: verdict is pass
+  [38;2;248;113;113m✗[0m [SPEC-10] updated: disposition present
+  [38;2;248;113;113m✗[0m [SPEC-10] updated: reason present
+  [38;2;248;113;113m✗[0m [SPEC-11] review=block: result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-11] review=block: verdict is blocked
+  [38;2;248;113;113m✗[0m [SPEC-11] review=block: disposition present
+  [38;2;248;113;113m✗[0m [SPEC-11] review=block: rc=0 (not rc=2)
+  [38;2;248;113;113m✗[0m [SPEC-11] no-review-signal: result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-11] no-review-signal: verdict is blocked (fail-closed)
+  [38;2;248;113;113m✗[0m [SPEC-11] no-review-signal: disposition present
+  [38;2;248;113;113m✗[0m [SPEC-11] no-review-signal: rc=0 (not rc=2, fail-closed writes verdict=blocked)
+  [38;2;248;113;113m✗[0m [SPEC-12] branch-is-main: result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-12] branch-is-main: verdict is error
+  [38;2;248;113;113m✗[0m [SPEC-12] branch-is-main: disposition present
+  [38;2;248;113;113m✗[0m [SPEC-12] branch-is-main: rc=1 (not rc=2)
+  [38;2;248;113;113m✗[0m [SPEC-12] push-failure: result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-12] push-failure: verdict is error
+  [38;2;248;113;113m✗[0m [SPEC-12] push-failure: disposition present
+  [38;2;248;113;113m✗[0m [SPEC-12] push-failure: rc=1 (not rc=2)
+  [38;2;248;113;113m✗[0m [SPEC-12] gh-failure: result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-12] gh-failure: verdict is error
+  [38;2;248;113;113m✗[0m [SPEC-12] gh-failure: disposition present
+  [38;2;248;113;113m✗[0m [SPEC-12] gh-failure: rc=1 (not rc=2)
+  [38;2;248;113;113m✗[0m [SPEC-13] review=block rc in {0,1}
+  [38;2;248;113;113m✗[0m [SPEC-13] no-review-signal rc in {0,1}
+  [38;2;248;113;113m✗[0m [SPEC-13] branch-is-main rc in {0,1}
+  [38;2;248;113;113m✗[0m [SPEC-13] push-failure rc in {0,1}
+  [38;2;248;113;113m✗[0m [SPEC-13] gh-failure rc in {0,1}
+  [38;2;248;113;113m✗[0m [SPEC-14] ZBUILD_STAGE_INPUTS: custom review_report path honoured (finding count present)
+  [38;2;248;113;113m✗[0m [SPEC-14] ZBUILD_STAGE_INPUTS: body must not say 'no advisory review ran'
+

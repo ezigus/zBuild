@@ -1,0 +1,215 @@
+### SPEC-6 baseline tests/unit/merge-v2-result-test.sh
+
+[38;2;0;212;255m[1m  merge plugin: v2 result contract (issue #1849)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1: manifest provides declares result_contract:2, role:merge_executor, events:[plugin.result][0m
+  [38;2;248;113;113m✗[0m [SPEC-1] manifest provides.result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-1] manifest provides.role is merge_executor
+    [2mexpected: merge_executor, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-1] manifest provides.events includes plugin.result
+    [2mplugin.result absent[0m
+
+  [38;2;0;212;255mSPEC-2: config valid_verdicts updated to [pass, error][0m
+  [38;2;248;113;113m✗[0m [SPEC-2] valid_verdicts includes pass
+    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.3h98Sw/plugins/tool/merge/manifest.yaml[0m
+  [38;2;248;113;113m✗[0m [SPEC-2] valid_verdicts includes error
+    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.3h98Sw/plugins/tool/merge/manifest.yaml[0m
+
+  [38;2;0;212;255mSPEC-24: tier_default:T0 with no router: block[0m
+  [38;2;74;222;128m✓[0m [SPEC-24] manifest tier_default is T0
+  [38;2;74;222;128m✓[0m [SPEC-24] manifest has no router: block
+
+  [38;2;0;212;255mSPEC-25: outputs.merge_result retains primary: true[0m
+  [38;2;74;222;128m✓[0m [SPEC-25] manifest has primary: true on result output
+
+  [38;2;0;212;255mSPEC-28: hooks section has only run:, no cleanup:[0m
+  [38;2;74;222;128m✓[0m [SPEC-28] manifest hooks has no cleanup:
+  [38;2;74;222;128m✓[0m [SPEC-28] manifest hooks has run: merge_run
+
+  [38;2;0;212;255mSPEC-3: squash-merge success path — result_contract:2, verdict=pass, disposition=complete, reason[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] merge-result.json written on success
+  [38;2;248;113;113m✗[0m [SPEC-3] result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-3] verdict is pass
+    [2mexpected: pass, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-3] disposition is complete
+    [2mexpected: complete, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-3] reason field is present
+    [2mabsent[0m
+
+  [38;2;0;212;255mSPEC-4: fallback paths — result_contract:2, verdict=pass, data.mode=pr_fallback[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: merge-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-4] gate-absent: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-4] gate-absent: verdict is pass
+    [2mexpected: pass, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-4] gate-absent: data.mode is pr_fallback
+    [2mexpected: pr_fallback, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: merge-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-4] gate-fail: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-4] gate-fail: verdict is pass
+    [2mexpected: pass, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-4] gate-fail: data.mode is pr_fallback
+    [2mexpected: pr_fallback, got: [0m
+
+  [38;2;0;212;255mSPEC-5: error paths — result_contract:2, verdict=error, disposition, reason[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: merge-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-5] branch-is-main: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-5] branch-is-main: verdict is error
+    [2mexpected: error, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-5] branch-is-main: disposition present
+    [2mabsent[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: reason present
+  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: merge-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-5] push-failure: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-5] push-failure: verdict is error
+    [2mexpected: error, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-5] push-failure: disposition present
+    [2mabsent[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: reason present
+  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: merge-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-5] gh-failure: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-5] gh-failure: verdict is error
+    [2mexpected: error, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-5] gh-failure: disposition present
+    [2mabsent[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: reason present
+
+  [38;2;0;212;255mSPEC-6: all exit paths return rc ∈ {0,1} — no rc=2[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] success path rc in {0,1}
+  [38;2;74;222;128m✓[0m [SPEC-6] gate-absent fallback rc in {0,1}
+  [38;2;74;222;128m✓[0m [SPEC-6] gate-fail fallback rc in {0,1}
+  [38;2;248;113;113m✗[0m [SPEC-6] branch-is-main error rc in {0,1}
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-6] push-failure error rc in {0,1}
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [SPEC-6] gh-failure error rc in {0,1}
+    [2mexpected: 1, got: 0[0m
+
+  [38;2;0;212;255mSPEC-7: gate_aggregator_result resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] ZBUILD_STAGE_INPUTS: merge-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-7] ZBUILD_STAGE_INPUTS: merge path taken (verdict=pass, no pr_fallback)
+    [2mverdict= mode= — ZBUILD_STAGE_INPUTS not honoured[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] artifacts_dir fallback: merge-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-7] artifacts_dir fallback: merge path taken
+    [2mverdict= mode= — artifacts_dir fallback not working[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m29 of 48 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-1] manifest provides.result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-1] manifest provides.role is merge_executor
+  [38;2;248;113;113m✗[0m [SPEC-1] manifest provides.events includes plugin.result
+  [38;2;248;113;113m✗[0m [SPEC-2] valid_verdicts includes pass
+  [38;2;248;113;113m✗[0m [SPEC-2] valid_verdicts includes error
+  [38;2;248;113;113m✗[0m [SPEC-3] result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-3] verdict is pass
+  [38;2;248;113;113m✗[0m [SPEC-3] disposition is complete
+  [38;2;248;113;113m✗[0m [SPEC-3] reason field is present
+  [38;2;248;113;113m✗[0m [SPEC-4] gate-absent: result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-4] gate-absent: verdict is pass
+  [38;2;248;113;113m✗[0m [SPEC-4] gate-absent: data.mode is pr_fallback
+  [38;2;248;113;113m✗[0m [SPEC-4] gate-fail: result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-4] gate-fail: verdict is pass
+  [38;2;248;113;113m✗[0m [SPEC-4] gate-fail: data.mode is pr_fallback
+  [38;2;248;113;113m✗[0m [SPEC-5] branch-is-main: result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-5] branch-is-main: verdict is error
+  [38;2;248;113;113m✗[0m [SPEC-5] branch-is-main: disposition present
+  [38;2;248;113;113m✗[0m [SPEC-5] push-failure: result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-5] push-failure: verdict is error
+  [38;2;248;113;113m✗[0m [SPEC-5] push-failure: disposition present
+  [38;2;248;113;113m✗[0m [SPEC-5] gh-failure: result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-5] gh-failure: verdict is error
+  [38;2;248;113;113m✗[0m [SPEC-5] gh-failure: disposition present
+  [38;2;248;113;113m✗[0m [SPEC-6] branch-is-main error rc in {0,1}
+  [38;2;248;113;113m✗[0m [SPEC-6] push-failure error rc in {0,1}
+  [38;2;248;113;113m✗[0m [SPEC-6] gh-failure error rc in {0,1}
+  [38;2;248;113;113m✗[0m [SPEC-7] ZBUILD_STAGE_INPUTS: merge path taken (verdict=pass, no pr_fallback)
+  [38;2;248;113;113m✗[0m [SPEC-7] artifacts_dir fallback: merge path taken
+
+### SPEC-6 head tests/unit/merge-v2-result-test.sh
+
+[38;2;0;212;255m[1m  merge plugin: v2 result contract (issue #1849)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1: manifest provides declares result_contract:2, role:merge_executor, events:[plugin.result][0m
+  [38;2;74;222;128m✓[0m [SPEC-1] manifest provides.result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-1] manifest provides.role is merge_executor
+  [38;2;74;222;128m✓[0m [SPEC-1] manifest provides.events includes plugin.result
+
+  [38;2;0;212;255mSPEC-2: config valid_verdicts updated to [pass, error][0m
+  [38;2;74;222;128m✓[0m [SPEC-2] valid_verdicts includes pass
+  [38;2;74;222;128m✓[0m [SPEC-2] valid_verdicts includes error
+
+  [38;2;0;212;255mSPEC-24: tier_default:T0 with no router: block[0m
+  [38;2;74;222;128m✓[0m [SPEC-24] manifest tier_default is T0
+  [38;2;74;222;128m✓[0m [SPEC-24] manifest has no router: block
+
+  [38;2;0;212;255mSPEC-25: outputs.merge_result retains primary: true[0m
+  [38;2;74;222;128m✓[0m [SPEC-25] manifest has primary: true on result output
+
+  [38;2;0;212;255mSPEC-28: hooks section has only run:, no cleanup:[0m
+  [38;2;74;222;128m✓[0m [SPEC-28] manifest hooks has no cleanup:
+  [38;2;74;222;128m✓[0m [SPEC-28] manifest hooks has run: merge_run
+
+  [38;2;0;212;255mSPEC-3: squash-merge success path — result_contract:2, verdict=pass, disposition=complete, reason[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] merge-result.json written on success
+  [38;2;74;222;128m✓[0m [SPEC-3] result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-3] verdict is pass
+  [38;2;74;222;128m✓[0m [SPEC-3] disposition is complete
+  [38;2;74;222;128m✓[0m [SPEC-3] reason field is present
+
+  [38;2;0;212;255mSPEC-4: fallback paths — result_contract:2, verdict=pass, data.mode=pr_fallback[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: merge-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: verdict is pass
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-absent: data.mode is pr_fallback
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: merge-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: verdict is pass
+  [38;2;74;222;128m✓[0m [SPEC-4] gate-fail: data.mode is pr_fallback
+
+  [38;2;0;212;255mSPEC-5: error paths — result_contract:2, verdict=error, disposition, reason[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: merge-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: verdict is error
+  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: disposition present
+  [38;2;74;222;128m✓[0m [SPEC-5] branch-is-main: reason present
+  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: merge-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: verdict is error
+  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: disposition present
+  [38;2;74;222;128m✓[0m [SPEC-5] push-failure: reason present
+  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: merge-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: verdict is error
+  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: disposition present
+  [38;2;74;222;128m✓[0m [SPEC-5] gh-failure: reason present
+
+  [38;2;0;212;255mSPEC-6: all exit paths return rc ∈ {0,1} — no rc=2[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] success path rc in {0,1}
+  [38;2;74;222;128m✓[0m [SPEC-6] gate-absent fallback rc in {0,1}
+  [38;2;74;222;128m✓[0m [SPEC-6] gate-fail fallback rc in {0,1}
+  [38;2;74;222;128m✓[0m [SPEC-6] branch-is-main error rc in {0,1}
+  [38;2;74;222;128m✓[0m [SPEC-6] push-failure error rc in {0,1}
+  [38;2;74;222;128m✓[0m [SPEC-6] gh-failure error rc in {0,1}
+
+  [38;2;0;212;255mSPEC-7: gate_aggregator_result resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] ZBUILD_STAGE_INPUTS: merge-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-7] ZBUILD_STAGE_INPUTS: merge path taken (verdict=pass, no pr_fallback)
+  [38;2;74;222;128m✓[0m [SPEC-7] artifacts_dir fallback: merge-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-7] artifacts_dir fallback: merge path taken
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 48 tests passed[0m
+

@@ -1,0 +1,191 @@
+### SPEC-16 baseline tests/unit/deploy-release-v2-result-test.sh
+
+[38;2;0;212;255m[1m  deploy-release plugin: v2 result contract (issue #1849)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-15: manifest provides declares result_contract:2 (role/events retained; valid_verdicts unchanged)[0m
+  [38;2;248;113;113m✗[0m [SPEC-15] manifest provides.result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-15] valid_verdicts retains deployed
+  [38;2;74;222;128m✓[0m [SPEC-15] valid_verdicts retains error
+
+  [38;2;0;212;255mSPEC-24: tier_default:T0 with no router: block[0m
+  [38;2;74;222;128m✓[0m [SPEC-24] manifest tier_default is T0
+  [38;2;74;222;128m✓[0m [SPEC-24] manifest has no router: block
+
+  [38;2;0;212;255mSPEC-25: outputs.deploy_result retains primary: true[0m
+  [38;2;74;222;128m✓[0m [SPEC-25] manifest has primary: true on deploy_result output
+
+  [38;2;0;212;255mSPEC-27: provides retains role:deploy_release_executor and events after result_contract:2[0m
+  [38;2;74;222;128m✓[0m [SPEC-27] provides.role is deploy_release_executor
+  [38;2;74;222;128m✓[0m [SPEC-27] provides.events includes deploy.release.complete
+  [38;2;74;222;128m✓[0m [SPEC-27] provides.events includes deploy.release.dry_run
+  [38;2;74;222;128m✓[0m [SPEC-27] provides.events includes release.published
+  [38;2;74;222;128m✓[0m [SPEC-27] provides.events includes release.tagged
+
+  [38;2;0;212;255mSPEC-28: hooks section has only run:, no cleanup:[0m
+  [38;2;74;222;128m✓[0m [SPEC-28] manifest hooks has no cleanup:
+  [38;2;74;222;128m✓[0m [SPEC-28] manifest hooks has run: deploy_release_run
+
+  [38;2;0;212;255mSPEC-17 (partial) / SPEC-16: state_file-absent path — rc=1, result_contract:2 in deploy-result.json[0m
+[38;2;248;113;113m[1m✗[0m deploy_release_run: state_file argument required
+  [38;2;248;113;113m✗[0m [SPEC-17] state_file-absent: rc=1 (not rc=2)
+    [2mexpected: 1, got: 2[0m
+  [38;2;248;113;113m✗[0m [SPEC-16] state_file-absent: deploy-result.json written to ZBUILD_ARTIFACT_DIR
+    [2mfile missing at /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/deploy-release-v2-result.HPvp2X/absent-art/deploy-result.json[0m
+
+  [38;2;0;212;255mSPEC-16: dry-run path — result_contract:2, disposition, reason[0m
+  [38;2;74;222;128m✓[0m [SPEC-16] dry-run: deploy-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-16] dry-run: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-16] dry-run: disposition present
+    [2mabsent[0m
+  [38;2;248;113;113m✗[0m [SPEC-16] dry-run: reason present
+    [2mabsent[0m
+
+  [38;2;0;212;255mSPEC-16 / SPEC-23: tag+push success path — result_contract:2, verdict=deployed, rc=0[0m
+  [38;2;74;222;128m✓[0m [SPEC-16/23] success: deploy-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-16] success: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-23] success: verdict is deployed
+  [38;2;248;113;113m✗[0m [SPEC-16] success: disposition present
+    [2mabsent[0m
+  [38;2;248;113;113m✗[0m [SPEC-16] success: reason present
+    [2mabsent[0m
+  [38;2;74;222;128m✓[0m [SPEC-23] tag+push success: rc=0
+
+  [38;2;0;212;255mSPEC-16: tag failure path — result_contract:2, verdict=error, disposition, reason[0m
+  [38;2;74;222;128m✓[0m [SPEC-16] tag-failure: deploy-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-16] tag-failure: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-16] tag-failure: verdict is error
+  [38;2;248;113;113m✗[0m [SPEC-16] tag-failure: disposition present
+    [2mabsent[0m
+  [38;2;74;222;128m✓[0m [SPEC-16] tag-failure: reason present
+
+  [38;2;0;212;255mSPEC-16: push failure path — result_contract:2, verdict=error, disposition, reason[0m
+  [38;2;74;222;128m✓[0m [SPEC-16] push-failure: deploy-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-16] push-failure: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;74;222;128m✓[0m [SPEC-16] push-failure: verdict is error
+  [38;2;248;113;113m✗[0m [SPEC-16] push-failure: disposition present
+    [2mabsent[0m
+  [38;2;74;222;128m✓[0m [SPEC-16] push-failure: reason present
+
+  [38;2;0;212;255mSPEC-17: all exit paths return rc ∈ {0,1} — no rc=2[0m
+  [38;2;248;113;113m✗[0m [SPEC-17] state_file-absent rc in {0,1}
+    [2mexpected: 1, got: 0[0m
+  [38;2;74;222;128m✓[0m [SPEC-17] dry-run rc in {0,1}
+  [38;2;74;222;128m✓[0m [SPEC-17] tag+push success rc in {0,1}
+  [38;2;74;222;128m✓[0m [SPEC-17] tag-failure rc in {0,1}
+  [38;2;74;222;128m✓[0m [SPEC-17] push-failure rc in {0,1}
+
+  [38;2;0;212;255mSPEC-18: pr_url resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback[0m
+  [38;2;74;222;128m✓[0m [SPEC-18] ZBUILD_STAGE_INPUTS: deploy-result.json written
+  [38;2;248;113;113m✗[0m [SPEC-18] ZBUILD_STAGE_INPUTS: pr_url from custom path in deploy-result.json
+    [2mgot pr_url='' — ZBUILD_STAGE_INPUTS not honoured for pr_url[0m
+  [38;2;74;222;128m✓[0m [SPEC-18] artifacts_dir fallback: deploy-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-18] artifacts_dir fallback: pr_url from artifacts_dir/pr-url.txt in deploy-result.json
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m15 of 44 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-15] manifest provides.result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-17] state_file-absent: rc=1 (not rc=2)
+  [38;2;248;113;113m✗[0m [SPEC-16] state_file-absent: deploy-result.json written to ZBUILD_ARTIFACT_DIR
+  [38;2;248;113;113m✗[0m [SPEC-16] dry-run: result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-16] dry-run: disposition present
+  [38;2;248;113;113m✗[0m [SPEC-16] dry-run: reason present
+  [38;2;248;113;113m✗[0m [SPEC-16] success: result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-16] success: disposition present
+  [38;2;248;113;113m✗[0m [SPEC-16] success: reason present
+  [38;2;248;113;113m✗[0m [SPEC-16] tag-failure: result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-16] tag-failure: disposition present
+  [38;2;248;113;113m✗[0m [SPEC-16] push-failure: result_contract is 2
+  [38;2;248;113;113m✗[0m [SPEC-16] push-failure: disposition present
+  [38;2;248;113;113m✗[0m [SPEC-17] state_file-absent rc in {0,1}
+  [38;2;248;113;113m✗[0m [SPEC-18] ZBUILD_STAGE_INPUTS: pr_url from custom path in deploy-result.json
+
+### SPEC-16 head tests/unit/deploy-release-v2-result-test.sh
+
+[38;2;0;212;255m[1m  deploy-release plugin: v2 result contract (issue #1849)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-15: manifest provides declares result_contract:2 (role/events retained; valid_verdicts unchanged)[0m
+  [38;2;74;222;128m✓[0m [SPEC-15] manifest provides.result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-15] valid_verdicts retains deployed
+  [38;2;74;222;128m✓[0m [SPEC-15] valid_verdicts retains error
+
+  [38;2;0;212;255mSPEC-24: tier_default:T0 with no router: block[0m
+  [38;2;74;222;128m✓[0m [SPEC-24] manifest tier_default is T0
+  [38;2;74;222;128m✓[0m [SPEC-24] manifest has no router: block
+
+  [38;2;0;212;255mSPEC-25: outputs.deploy_result retains primary: true[0m
+  [38;2;74;222;128m✓[0m [SPEC-25] manifest has primary: true on deploy_result output
+
+  [38;2;0;212;255mSPEC-27: provides retains role:deploy_release_executor and events after result_contract:2[0m
+  [38;2;74;222;128m✓[0m [SPEC-27] provides.role is deploy_release_executor
+  [38;2;74;222;128m✓[0m [SPEC-27] provides.events includes deploy.release.complete
+  [38;2;74;222;128m✓[0m [SPEC-27] provides.events includes deploy.release.dry_run
+  [38;2;74;222;128m✓[0m [SPEC-27] provides.events includes release.published
+  [38;2;74;222;128m✓[0m [SPEC-27] provides.events includes release.tagged
+
+  [38;2;0;212;255mSPEC-28: hooks section has only run:, no cleanup:[0m
+  [38;2;74;222;128m✓[0m [SPEC-28] manifest hooks has no cleanup:
+  [38;2;74;222;128m✓[0m [SPEC-28] manifest hooks has run: deploy_release_run
+
+  [38;2;0;212;255mSPEC-17 (partial) / SPEC-16: state_file-absent path — rc=1, result_contract:2 in deploy-result.json[0m
+[38;2;248;113;113m[1m✗[0m deploy_release_run: state_file argument required
+  [38;2;74;222;128m✓[0m [SPEC-17] state_file-absent: rc=1 (not rc=2)
+  [38;2;74;222;128m✓[0m [SPEC-16] state_file-absent: result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-16] state_file-absent: disposition present
+  [38;2;74;222;128m✓[0m [SPEC-16] state_file-absent: reason present
+
+  [38;2;0;212;255mSPEC-16: dry-run path — result_contract:2, disposition, reason[0m
+  [38;2;74;222;128m✓[0m [SPEC-16] dry-run: deploy-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-16] dry-run: result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-16] dry-run: disposition present
+  [38;2;74;222;128m✓[0m [SPEC-16] dry-run: reason present
+
+  [38;2;0;212;255mSPEC-16 / SPEC-23: tag+push success path — result_contract:2, verdict=deployed, rc=0[0m
+  [38;2;74;222;128m✓[0m [SPEC-16/23] success: deploy-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-16] success: result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-23] success: verdict is deployed
+  [38;2;74;222;128m✓[0m [SPEC-16] success: disposition present
+  [38;2;74;222;128m✓[0m [SPEC-16] success: reason present
+  [38;2;74;222;128m✓[0m [SPEC-23] tag+push success: rc=0
+
+  [38;2;0;212;255mSPEC-16: tag failure path — result_contract:2, verdict=error, disposition, reason[0m
+  [38;2;74;222;128m✓[0m [SPEC-16] tag-failure: deploy-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-16] tag-failure: result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-16] tag-failure: verdict is error
+  [38;2;74;222;128m✓[0m [SPEC-16] tag-failure: disposition present
+  [38;2;74;222;128m✓[0m [SPEC-16] tag-failure: reason present
+
+  [38;2;0;212;255mSPEC-16: push failure path — result_contract:2, verdict=error, disposition, reason[0m
+  [38;2;74;222;128m✓[0m [SPEC-16] push-failure: deploy-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-16] push-failure: result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-16] push-failure: verdict is error
+  [38;2;74;222;128m✓[0m [SPEC-16] push-failure: disposition present
+  [38;2;74;222;128m✓[0m [SPEC-16] push-failure: reason present
+
+  [38;2;0;212;255mSPEC-17: all exit paths return rc ∈ {0,1} — no rc=2[0m
+  [38;2;74;222;128m✓[0m [SPEC-17] state_file-absent rc in {0,1}
+  [38;2;74;222;128m✓[0m [SPEC-17] dry-run rc in {0,1}
+  [38;2;74;222;128m✓[0m [SPEC-17] tag+push success rc in {0,1}
+  [38;2;74;222;128m✓[0m [SPEC-17] tag-failure rc in {0,1}
+  [38;2;74;222;128m✓[0m [SPEC-17] push-failure rc in {0,1}
+
+  [38;2;0;212;255mSPEC-18: pr_url resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback[0m
+  [38;2;74;222;128m✓[0m [SPEC-18] ZBUILD_STAGE_INPUTS: deploy-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-18] ZBUILD_STAGE_INPUTS: pr_url from custom path in deploy-result.json
+  [38;2;74;222;128m✓[0m [SPEC-18] artifacts_dir fallback: deploy-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-18] artifacts_dir fallback: pr_url from artifacts_dir/pr-url.txt in deploy-result.json
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 46 tests passed[0m
+

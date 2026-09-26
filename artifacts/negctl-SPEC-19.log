@@ -1,0 +1,73 @@
+### SPEC-19 baseline tests/integration/merge-policy-auto-test.sh
+
+[38;2;0;212;255m[1m  merge_policy auto dispatch: auto-merge on clean gates (#1050)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1: merge_policy==auto + gate verdict==pass → merged[0m
+  [38;2;74;222;128m✓[0m pr_stage_run exits 0 on merge path
+  [38;2;74;222;128m✓[0m merge-result.json written on merge path
+  [38;2;248;113;113m✗[0m merge-result.json verdict==pass on merge path
+    [2mexpected: pass, got: [0m
+  [38;2;74;222;128m✓[0m gh pr merge --squash called on gate-pass path
+  [38;2;74;222;128m✓[0m pr-result.json written on merge path (manifest output)
+  [38;2;248;113;113m✗[0m pr-result.json verdict==pass on merge path
+    [2mexpected: pass, got: [0m
+
+  [38;2;0;212;255mSPEC-2: merge_policy==auto + gate verdict==fail → PR fallback[0m
+  [38;2;74;222;128m✓[0m pr_stage_run exits 0 on PR fallback (gate fail)
+  [38;2;74;222;128m✓[0m pr-url.txt written on gate-fail fallback
+  [38;2;74;222;128m✓[0m merge-result.json written on fallback
+  [38;2;248;113;113m✗[0m [SPEC-19] merge-result.json verdict==pass on gate-fail fallback
+    [2mexpected: pass, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-19] merge-result.json data.mode==pr_fallback on gate fail
+    [2mexpected: pr_fallback, got: [0m
+  [38;2;74;222;128m✓[0m gh pr merge NOT called on gate-fail fallback
+
+  [38;2;0;212;255mSPEC-3: merge_policy==auto + gate artifact absent → PR fallback[0m
+  [38;2;74;222;128m✓[0m pr_stage_run exits 0 on PR fallback (gate absent)
+  [38;2;74;222;128m✓[0m pr-url.txt written on gate-absent fallback
+  [38;2;74;222;128m✓[0m merge-result.json written on gate-absent fallback
+  [38;2;248;113;113m✗[0m [SPEC-19] merge-result.json verdict==pass on gate-absent fallback
+    [2mexpected: pass, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-19] merge-result.json data.mode==pr_fallback on gate absent
+    [2mexpected: pr_fallback, got: [0m
+  [38;2;74;222;128m✓[0m gh pr merge NOT called when gate artifact absent
+
+  [38;2;0;212;255mSPEC-8: merge_policy==auto + gate verdict==specification → PR fallback[0m
+  [38;2;74;222;128m✓[0m pr_stage_run exits 0 on specification PR fallback
+  [38;2;74;222;128m✓[0m pr-url.txt written on specification fallback
+  [38;2;248;113;113m✗[0m [SPEC-19] merge-result.json verdict==pass on specification fallback
+    [2mexpected: pass, got: [0m
+  [38;2;248;113;113m✗[0m [SPEC-19] merge-result.json data.mode==pr_fallback on specification
+    [2mexpected: pr_fallback, got: [0m
+  [38;2;74;222;128m✓[0m gh pr merge NOT called under specification
+
+  [38;2;0;212;255mSPEC-4: merge_policy==auto_unless_flagged + review-report absent → opens draft PR (fail-closed)[0m
+  [38;2;74;222;128m✓[0m pr_stage_run exits 0 for auto_unless_flagged
+  [38;2;74;222;128m✓[0m pr-url.txt written (PR opened, not merged)
+  [38;2;74;222;128m✓[0m no merge-result.json for auto_unless_flagged path
+  [38;2;74;222;128m✓[0m gh pr merge NOT called for auto_unless_flagged
+
+  [38;2;0;212;255mSPEC-5: merge_policy==auto + gate pass + review.json absent → fail-closed (no merge)[0m
+  [38;2;248;113;113m✗[0m gate pass but review absent → verdict==pass (not a v=error)
+    [2mexpected: pass, got: [0m
+  [38;2;248;113;113m✗[0m gate pass but review absent → data.mode==pr_fallback (not merged)
+    [2mexpected: pr_fallback, got: [0m
+  [38;2;74;222;128m✓[0m gh pr merge NOT called when review.json absent (fail-closed)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m10 of 30 tests failed[0m
+
+  [38;2;248;113;113m✗[0m merge-result.json verdict==pass on merge path
+  [38;2;248;113;113m✗[0m pr-result.json verdict==pass on merge path
+  [38;2;248;113;113m✗[0m [SPEC-19] merge-result.json verdict==pass on gate-fail fallback
+  [38;2;248;113;113m✗[0m [SPEC-19] merge-result.json data.mode==pr_fallback on gate fail
+  [38;2;248;113;113m✗[0m [SPEC-19] merge-result.json verdict==pass on gate-absent fallback
+  [38;2;248;113;113m✗[0m [SPEC-19] merge-result.json data.mode==pr_fallback on gate absent
+  [38;2;248;113;113m✗[0m [SPEC-19] merge-result.json verdict==pass on specification fallback
+  [38;2;248;113;113m✗[0m [SPEC-19] merge-result.json data.mode==pr_fallback on specification
+  [38;2;248;113;113m✗[0m gate pass but review absent → verdict==pass (not a v=error)
+  [38;2;248;113;113m✗[0m gate pass but review absent → data.mode==pr_fallback (not merged)
+
