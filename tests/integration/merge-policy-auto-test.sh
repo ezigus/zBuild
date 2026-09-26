@@ -104,8 +104,8 @@ export _TPL_MERGE_POLICY="auto"
 assert_eq "[SPEC-1] pr_stage_run exits 0 on merge path" "0" "$_rc1"
 assert_file_exists "[SPEC-1] merge-result.json written on merge path" \
     "$_art1/merge-result.json"
-_merge_status1="$(jq -r '.status // empty' "$_art1/merge-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-1] merge-result.json status==merged" "merged" "$_merge_status1"
+_merge_verdict1="$(jq -r '.verdict // empty' "$_art1/merge-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-1] merge-result.json verdict==pass on merge path" "pass" "$_merge_verdict1"
 _merge_calls1="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
 _merge_called=0
 [[ "$_merge_calls1" == *"merged"* ]] && _merge_called=1
@@ -114,8 +114,8 @@ assert_eq "[SPEC-1] gh pr merge --squash called on gate-pass path" "1" "$_merge_
 # path (#1064 review) — the merge path must write it, not only merge-result.json.
 assert_file_exists "[SPEC-1] pr-result.json written on merge path (manifest output)" \
     "$_art1/pr-result.json"
-_pr_result_status1="$(jq -r '.status // empty' "$_art1/pr-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-1] pr-result.json status==merged" "merged" "$_pr_result_status1"
+_pr_result_verdict1="$(jq -r '.verdict // empty' "$_art1/pr-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-1] pr-result.json verdict==pass on merge path" "pass" "$_pr_result_verdict1"
 
 # ─── SPEC-2: auto + gate verdict==fail → PR fallback ─────────────────────────
 print_test_section "SPEC-2: merge_policy==auto + gate verdict==fail → PR fallback"
@@ -130,9 +130,12 @@ export _TPL_MERGE_POLICY="auto"
 assert_eq "[SPEC-2] pr_stage_run exits 0 on PR fallback (gate fail)" "0" "$_rc2"
 assert_file_exists "[SPEC-2] pr-url.txt written on gate-fail fallback" "$_art2/pr-url.txt"
 assert_file_exists "[SPEC-2] merge-result.json written on fallback" "$_art2/merge-result.json"
-_merge_status2="$(jq -r '.status // empty' "$_art2/merge-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-2] merge-result.json status==pr_fallback on gate fail" \
-    "pr_fallback" "$_merge_status2"
+_merge_verdict2="$(jq -r '.verdict // empty' "$_art2/merge-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-2][SPEC-19] merge-result.json verdict==pass on gate-fail fallback" \
+    "pass" "$_merge_verdict2"
+_merge_mode2="$(jq -r '.data.mode // empty' "$_art2/merge-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-2][SPEC-19] merge-result.json data.mode==pr_fallback on gate fail" \
+    "pr_fallback" "$_merge_mode2"
 _merge_calls2="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
 _gh_merge2=0
 [[ "$_merge_calls2" == *"merged"* ]] && _gh_merge2=1
@@ -152,9 +155,12 @@ assert_eq "[SPEC-3] pr_stage_run exits 0 on PR fallback (gate absent)" "0" "$_rc
 assert_file_exists "[SPEC-3] pr-url.txt written on gate-absent fallback" "$_art3/pr-url.txt"
 assert_file_exists "[SPEC-3] merge-result.json written on gate-absent fallback" \
     "$_art3/merge-result.json"
-_merge_status3="$(jq -r '.status // empty' "$_art3/merge-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-3] merge-result.json status==pr_fallback on gate absent" \
-    "pr_fallback" "$_merge_status3"
+_merge_verdict3="$(jq -r '.verdict // empty' "$_art3/merge-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-3][SPEC-19] merge-result.json verdict==pass on gate-absent fallback" \
+    "pass" "$_merge_verdict3"
+_merge_mode3="$(jq -r '.data.mode // empty' "$_art3/merge-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-3][SPEC-19] merge-result.json data.mode==pr_fallback on gate absent" \
+    "pr_fallback" "$_merge_mode3"
 _merge_calls3="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
 _gh_merge3=0
 [[ "$_merge_calls3" == *"merged"* ]] && _gh_merge3=1
@@ -177,9 +183,12 @@ export _TPL_MERGE_POLICY="auto"
 
 assert_eq "[SPEC-8] pr_stage_run exits 0 on specification PR fallback" "0" "$_rc8"
 assert_file_exists "[SPEC-8] pr-url.txt written on specification fallback" "$_art8/pr-url.txt"
-_merge_status8="$(jq -r '.status // empty' "$_art8/merge-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-8] merge-result.json status==pr_fallback on specification" \
-    "pr_fallback" "$_merge_status8"
+_merge_verdict8="$(jq -r '.verdict // empty' "$_art8/merge-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-8][SPEC-19] merge-result.json verdict==pass on specification fallback" \
+    "pass" "$_merge_verdict8"
+_merge_mode8="$(jq -r '.data.mode // empty' "$_art8/merge-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-8][SPEC-19] merge-result.json data.mode==pr_fallback on specification" \
+    "pr_fallback" "$_merge_mode8"
 _merge_calls8="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
 _gh_merge8=0
 [[ "$_merge_calls8" == *"merged"* ]] && _gh_merge8=1
@@ -219,9 +228,12 @@ export _TPL_MERGE_POLICY="auto"
 _rc5=0
 ( pr_stage_run "pr" "$_sf5" ) >/dev/null 2>&1 || _rc5=$?
 
-_merge_status5="$(jq -r '.status // empty' "$_art5/merge-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-5] gate pass but review absent → status==pr_fallback (not merged)" \
-    "pr_fallback" "$_merge_status5"
+_merge_verdict5="$(jq -r '.verdict // empty' "$_art5/merge-result.json" 2>/dev/null || true)"
+_merge_mode5="$(jq -r '.data.mode // empty' "$_art5/merge-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-5] gate pass but review absent → verdict==pass (not a v=error)" \
+    "pass" "$_merge_verdict5"
+assert_eq "[SPEC-5] gate pass but review absent → data.mode==pr_fallback (not merged)" \
+    "pr_fallback" "$_merge_mode5"
 _merge_calls5="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
 _gh_merge5=0
 [[ "$_merge_calls5" == *"merged"* ]] && _gh_merge5=1

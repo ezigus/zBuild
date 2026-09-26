@@ -83,18 +83,24 @@ assert_file_exists "[SPEC-3] pr-url.txt written" "$_art3/pr-url.txt"
 assert_file_exists "[SPEC-3] pr-result.json written" "$_art3/pr-result.json"
 # SPEC-9: the non-draft default is observable at the integration level — the
 # dry-run pr-result.json records draft=false (fails at baseline, which emitted true).
-_draft9="$(jq -r '.draft' "$_art3/pr-result.json" 2>/dev/null || echo MISSING)"
-assert_eq "[SPEC-9] dry-run pr-result.json records draft=false (non-draft default)" "false" "$_draft9"
+# After v2 migration the field moves from .draft to .data.draft.
+_draft9="$(jq -r '.data.draft' "$_art3/pr-result.json" 2>/dev/null || echo MISSING)"
+assert_eq "[SPEC-9] dry-run pr-result.json records data.draft=false (non-draft default)" "false" "$_draft9"
 
 # ─── SPEC-4: verdict=block → the plugin refuses, no PR URL ───────────────────
-print_test_section "SPEC-4: verdict=block guard refuses to open a PR"
+print_test_section "SPEC-4 / SPEC-20: verdict=block guard refuses to open a PR"
 _sf4="$(_setup_run block s4)"
 _art4="$(dirname "$_sf4")/artifacts"
 ( ZBUILD_DRY_RUN=1 pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1; _rc4=$?
-[[ $_rc4 -ne 0 ]] \
-    && assert_pass "[SPEC-4] verdict=block → pr_stage_run returns non-zero" \
-    || assert_fail "[SPEC-4] verdict=block → pr_stage_run returns non-zero" "got rc=0"
-assert_file_not_exists "[SPEC-4] verdict=block → no pr-url.txt written" "$_art4/pr-url.txt"
+# v2: blocked is a verdict outcome (not an error), so rc=0; verdict=blocked in pr-result.json
+assert_eq "[SPEC-4][SPEC-20] verdict=block → pr_stage_run returns rc=0 (blocked is verdict, not error)" "0" "$_rc4"
+assert_file_not_exists "[SPEC-4][SPEC-20] verdict=block → no pr-url.txt written (PR not opened)" "$_art4/pr-url.txt"
+if [[ -f "$_art4/pr-result.json" ]]; then
+    _s4_verdict="$(jq -r '.verdict // empty' "$_art4/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[SPEC-20] verdict=block → pr-result.json verdict==blocked" "blocked" "$_s4_verdict"
+else
+    assert_fail "[SPEC-20] verdict=block → pr-result.json written" "file missing at $_art4/pr-result.json"
+fi
 
 # ─── SPEC-5: non-dry-run delegates to pr-open with the threaded state file ───
 # Locks the runtime fix: the run's state file (not the unset ZBUILD_STATE_FILE)
@@ -164,7 +170,7 @@ echo "https://github.com/mock/repo/pull/756"; exit 0
 MOCK
 chmod +x "$_mockbin6/git" "$_mockbin6/gh"
 ( PATH="$_mockbin6:$PATH" pr_open_run "pr" "$_sf6" ) >/dev/null 2>&1; _rc6=$?
-assert_eq "[SPEC-6] pr_open_run returns 2 on genuine push failure" "2" "$_rc6"
+assert_eq "[SPEC-6] pr_open_run returns 1 on genuine push failure (v2: error path rc=1 not rc=2)" "1" "$_rc6"
 if [[ -f "$_art6/pr-result.json" ]]; then
     assert_contains "[SPEC-6] pr-result.json .reason surfaces the real push stderr" \
         "$(jq -r '.reason // ""' "$_art6/pr-result.json" 2>/dev/null)" "non-fast-forward-XYZ"
