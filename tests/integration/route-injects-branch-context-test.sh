@@ -73,6 +73,8 @@ while [[ \$# -gt 0 ]]; do
         *)  shift ;;
     esac
 done
+# The router sends the prompt on stdin (#1849: argv overflowed at 128 KiB).
+[[ -n "\$prompt" ]] || prompt="\$(cat)"
 # Only capture the first iter prompt.
 if [[ ! -f "$PROMPT_CAPTURE" ]]; then
     printf '%s' "\$prompt" > "$PROMPT_CAPTURE"

@@ -232,6 +232,7 @@ _make_plugin "impact"          "impact_analyzer"
 _make_plugin "test-author"         "test_author"
 _make_plugin "spec-correspondence" "spec_correspondence"
 _make_plugin "assertion-integrity" "assertion_integrity"
+_make_plugin "issue-acceptance"    "issue_acceptance"   # #1849
 _make_plugin "build"           "builder"
 _make_plugin "test"            "tester"
 # Decomposed mechanical gates (ADR-040) — all pass so build_test_cycle converges.

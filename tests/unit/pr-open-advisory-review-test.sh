@@ -329,6 +329,26 @@ else
     assert_fail "body captured from gh call" "BODY_FILE not written"
 fi
 
+# ─── #1849: lenses that did not run are said, never "no findings" ────────────
+# Run 36238164552: all six lenses failed before reaching the model; the report
+# had zero findings, and the PR body said "no findings" — a review that never
+# happened, shown as a clean one.
+print_test_section "SPEC-23: lenses that did not run are named in the body, not reported as clean"
+_reset_fixtures
+cat > "$REVIEW_REPORT_JSON" <<'JSON'
+{"schema_version":1,"merge_readiness":"needs_attention",
+ "lenses":[{"name":"correctness","score":0,"findings":[],"ran":false},
+           {"name":"security","score":0,"findings":[],"ran":false}],
+ "did_not_run":["correctness","security"],
+ "findings":[]}
+JSON
+_run_pr_open
+_s23_body="$(cat "$BODY_FILE" 2>/dev/null || true)"
+assert_contains "[SPEC-23] body says the lenses did not run" "$_s23_body" "2 of 2 lens(es) did not run"
+assert_contains "[SPEC-23] …and names them" "$_s23_body" "correctness, security"
+assert_eq "[SPEC-23] body does not claim a clean review" "0" \
+    "$(grep -cF '(non-blocking, ADR-040):** no findings' <<< "$_s23_body" || true)"
+
 # ─── Teardown ─────────────────────────────────────────────────────────────────
 cleanup_test_env
 print_test_results

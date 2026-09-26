@@ -21,7 +21,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 : "${FIXTURE_BIN_DIR:?FIXTURE_BIN_DIR must be set by the calling test}"
 
 # ── Stage-aware mock claude binary ────────────────────────────────────────────
-# route_to_model invokes: claude -p "<prompt>" --print --model <id>
+# route_to_model invokes: claude --print --model <id>, the prompt on stdin (#1849)
 # The mock scans the prompt for stage-specific markers and returns a canned
 # response. All responses are deterministic so the goldens are reproducible.
 cat > "$FIXTURE_BIN_DIR/claude" <<'MOCK'
@@ -34,12 +34,18 @@ while [[ $# -gt 0 ]]; do
         *)  shift ;;
     esac
 done
+# The router sends the prompt on stdin (#1849: argv overflowed at 128 KiB).
+[[ -n "$prompt" ]] || prompt="$(cat)"
 
 # #476: plan, review, security-lens now ALL run in JSON envelope mode
 # (ADR-018 Pattern 1 decision #8). Wrap every Pattern 1 response in the
 # result envelope so the router's .result extraction finds the payload.
 # Build (Pattern 2) already wraps, since route_to_model_loop drives it.
-if printf '%s' "$prompt" | grep -q "LOOP_COMPLETE"; then
+if grep -q "whether a finished CHANGE does what an ISSUE asked" <<< "$prompt"; then
+    # issue-acceptance (#1849): the fixture's one-file change meets its issue.
+    jq -n --arg r $'VERDICT: pass\nREASON: the fixture file the issue asks for is added' \
+       '{type:"result",subtype:"success",result:$r,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
+elif grep -q "LOOP_COMPLETE" <<< "$prompt"; then
     # build stage (#467 Pattern 2) — edit the fixture file directly in $PWD
     # (route_to_model_loop runs claude with cwd=$ZBUILD_REPO_ROOT) and emit a
     # result envelope with .result containing the DONE sentinel as the

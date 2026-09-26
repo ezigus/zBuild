@@ -181,6 +181,19 @@ assertion-integrity:
   gate: auto
   roles: [assertion_integrity]
 
+# ─── issue-acceptance (leaf, gate) ───────────────────────────────────────────
+# #1849: the finished change against the ISSUE. A model call on the convergence
+# path is allowed for the same reason as spec-coverage (ADR-040 §5 as amended by
+# #2040): its standard is the issue, which the judged stages cannot re-author.
+issue-acceptance:
+  gate: auto
+  roles: [issue_acceptance]
+  # Same question spec-coverage asks of the design — "was what was asked for
+  # delivered?" — now asked of the code.
+  persona: product-owner
+  router:
+    timeout_s: 600
+
 # ─── build_test_cycle (cycle) ────────────────────────────────────────────────
 # B6 (#1138, ADR-040 §2/§5): the cycle re-runs build/test then the decomposed
 # mechanical gates (shape-floor, acceptance-gate, secret-scan) and finally the
@@ -227,6 +240,12 @@ build_test_cycle:
     # aggregate non-pass, so the cycle iterates rather than converging on a
     # rewritten assertion.
     - assertion-integrity
+    # #1849: the finished change judged against the ISSUE, not the SPECs — the
+    # only check after spec-coverage that reads the issue at all. A convergence
+    # gate, so gate-aggregator's roster makes it must-pass; its fault class
+    # (`specification` → design_verify_cycle via route_back below,
+    # `implementation` → build, in this cycle) says where the fix belongs.
+    - issue-acceptance
     - gate-aggregator
   exit_when:
     stage: gate-aggregator

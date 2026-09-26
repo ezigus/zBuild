@@ -76,9 +76,11 @@ assert_eq "[SPEC-1] simple.yaml loads without error (exit 0)" "0" "$_load_rc"
 # 15 -> 17: #2022 splits assertion authorship out of build — `test-author`
 # leads build_test_cycle (assertions written from the SPEC before any code
 # exists) and `assertion-integrity` guards them just before the aggregate.
-assert_eq "[SPEC-2] _TPL_STAGES count is 19" "19" "${#_TPL_STAGES[@]}"
+# 19 -> 20: #1849 adds issue-acceptance before gate-aggregator — the finished
+# change judged against the ISSUE, the one link below the SPEC.
+assert_eq "[SPEC-2] _TPL_STAGES count is 20" "20" "${#_TPL_STAGES[@]}"
 
-_expected_stages=(hydrate intake plan design spec-coverage design-gate impact test-author spec-correspondence build test shape-floor acceptance-gate secret-scan assertion-integrity gate-aggregator review_lenses review-aggregator pr)
+_expected_stages=(hydrate intake plan design spec-coverage design-gate impact test-author spec-correspondence build test shape-floor acceptance-gate secret-scan assertion-integrity issue-acceptance gate-aggregator review_lenses review-aggregator pr)
 _i=0
 for _s in "${_expected_stages[@]}"; do
     assert_eq "[SPEC-2] _TPL_STAGES[$_i] == $_s" "$_s" "${_TPL_STAGES[$_i]}"
@@ -251,7 +253,7 @@ _btc_in_cycles=0
 for _cyc in "${_TPL_CYCLES[@]}"; do [[ "$_cyc" == "build_test_cycle" ]] && _btc_in_cycles=1; done
 assert_eq "[SPEC-14] _TPL_CYCLES contains build_test_cycle" "1" "$_btc_in_cycles"
 assert_eq "[SPEC-14] _TPL_CYCLE_STAGES_build_test_cycle" \
-    "test-author,spec-correspondence,build,test,shape-floor,acceptance-gate,secret-scan,assertion-integrity,gate-aggregator" \
+    "test-author,spec-correspondence,build,test,shape-floor,acceptance-gate,secret-scan,assertion-integrity,issue-acceptance,gate-aggregator" \
     "$_TPL_CYCLE_STAGES_build_test_cycle"
 assert_eq "[SPEC-5] [SPEC-14] _TPL_CYCLE_MAX_build_test_cycle is 5 (I10-B)" \
     "5" "$_TPL_CYCLE_MAX_build_test_cycle"
@@ -301,8 +303,8 @@ assert_eq "[SPEC-17] route_back.max == 1 (one re-author pass)" \
 # shape-floor=7,acceptance-gate=8,secret-scan=9,gate-aggregator=10).
 
 assert_eq "[SPEC-12] _TPL_STAGES[11] == shape-floor" "shape-floor" "${_TPL_STAGES[11]}"
-assert_eq "[SPEC-12] _TPL_STAGES[15] == gate-aggregator (cycle exit_when source)" \
-    "gate-aggregator" "${_TPL_STAGES[15]}"
+assert_eq "[SPEC-12] _TPL_STAGES[16] == gate-aggregator (cycle exit_when source)" \
+    "gate-aggregator" "${_TPL_STAGES[16]}"
 
 # ─── SPEC-13: design is at index 3; design-gate at 4, impact at 5 ─────────────
 # CHANGE: design sits at index 3 (after hydrate, intake, plan); its verifier

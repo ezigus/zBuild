@@ -3,7 +3,7 @@
 # divergence.
 #
 # Locks the contract from ADR-018 §Pattern 2.5:
-#   - The LLM's `claude -p <prompt>` argv MUST contain the FULL static prompt
+#   - The prompt the LLM receives (on stdin since #1849) MUST contain the FULL static prompt
 #     on every iteration (no dedupe applied to the actual model payload).
 #   - The stage_io BANNER input on iter ≥2 MUST be the deduped pointer form
 #     ("[static prompt: same as iter 1, ...] ... [diff: see ── changed-files ──
@@ -85,6 +85,8 @@ while [[ $# -gt 0 ]]; do
         *)  shift ;;
     esac
 done
+# The router sends the prompt on stdin (#1849: argv overflowed at 128 KiB).
+[[ -n "$prompt_text" ]] || prompt_text="$(cat)"
 printf '%s' "$prompt_text" > "$PROMPT_DIR/call-${n}.prompt"
 
 # Mutate working tree so subsequent iterations have non-empty git diff.

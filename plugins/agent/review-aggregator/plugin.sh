@@ -93,6 +93,9 @@ _ra_normalize_files() {
             {
               name: ((.name // $n) | tostring),
               score: ((.score // 0) | if type=="number" then floor else 0 end),
+              # #1849: a lens whose v2 result says it did not complete reviewed
+              # nothing. A file with no disposition (v1) ran.
+              ran: ((.disposition // "complete") == "complete"),
               findings: [ (.findings // [])[] |
                 if type=="object" then {
                   file: (.file // "unknown"),
@@ -385,6 +388,22 @@ _review_aggregator_run_inner() {
     # Aggregate + de-dupe into the advisory report. The manifest's primary output
     # (review-report.json) is written atomically first — #507 atomicity contract.
     _ra_aggregate "$lenses_file" | atomic_write "$out_json"
+
+    # #1849: a lens that did not run is named, counted in the summary, and makes
+    # the report needs_attention — never a clean review that did not happen. Done
+    # here, not in _ra_aggregate, which stays byte-for-byte with review-report's.
+    local _nr
+    _nr="$(jq -c '[.[] | select(.ran == false) | .name]' "$lenses_file" 2>/dev/null || printf '[]')"
+    if [[ -s "$out_json" ]]; then
+        jq --argjson nr "${_nr:-[]}" --argjson total "${lens_count:-0}" '
+            . + {did_not_run: $nr}
+            | if ($nr | length) > 0 then
+                .merge_readiness = "needs_attention"
+                | .summary = ("\($nr | length) of \($total) lens(es) did not run (\($nr | join(", "))) — "
+                              + "their review is missing, not clean. " + .summary)
+                | .escalation_note = "Some lenses did not run, so this report is incomplete; re-run the review before merging. Advisory only — this does not block the pipeline."
+              else . end' "$out_json" 2>/dev/null | atomic_write "$out_json" || true
+    fi
 
     local merge_readiness
     merge_readiness="$(jq -r '.merge_readiness // "advisory"' "$out_json" 2>/dev/null || echo advisory)"

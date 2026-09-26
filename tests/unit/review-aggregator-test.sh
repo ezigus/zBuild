@@ -203,6 +203,34 @@ else
 fi
 unset ZBUILD_CURRENT_STAGE _TPL_STAGE_IO_DESTS_review_aggregator
 
+# ─── #1849: a lens that never ran is not a clean review ──────────────────────
+# Run 36238164552: all six lenses failed before reaching the model ("Argument
+# list too long"); each wrote verdict=degraded, disposition=unavailable. The
+# report dropped that, scored them 0 with no findings, and the PR body said
+# "no findings" — a review that never happened, reported as a clean one.
+print_test_section "SPEC-10: a lens that did not run is reported as not run"
+_nr_dir="$TEST_TEMP_DIR/not-run"; mkdir -p "$_nr_dir"
+write_lens "$_nr_dir" "correctness" '{"name":"correctness","score":8,"findings":[],"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}'
+write_lens "$_nr_dir" "security" '{"result_contract":2,"verdict":"degraded","disposition":"unavailable","reason":"router_error"}'
+set +e
+_review_aggregator_run_inner "$_nr_dir" "$_nr_dir/review-report.json" "$_nr_dir/review-report.md" >/dev/null 2>&1
+set -e
+assert_eq "[SPEC-10] did_not_run names the lens that did not run" '["security"]' \
+    "$(jq -c '.did_not_run' "$_nr_dir/review-report.json" 2>/dev/null || echo MISSING)"
+assert_contains "[SPEC-10] the summary says so" \
+    "$(jq -r '.summary' "$_nr_dir/review-report.json" 2>/dev/null)" "1 of 2 lens(es) did not run"
+assert_eq "[SPEC-10] a review with a missing lens is never ready" "needs_attention" \
+    "$(jq -r '.merge_readiness' "$_nr_dir/review-report.json" 2>/dev/null)"
+assert_contains "[SPEC-10] the rendered report says so too" "$(cat "$_nr_dir/review-report.md" 2>/dev/null)" "did not run"
+# A legacy lens file (no disposition) ran — absence of the field is not failure.
+_lg_dir="$TEST_TEMP_DIR/legacy-ran"; mkdir -p "$_lg_dir"
+write_lens "$_lg_dir" "perf" '{"name":"perf","score":8,"findings":[]}'
+set +e
+_review_aggregator_run_inner "$_lg_dir" "$_lg_dir/review-report.json" "$_lg_dir/review-report.md" >/dev/null 2>&1
+set -e
+assert_eq "[SPEC-10] a lens file without a disposition counts as run" '[]' \
+    "$(jq -c '.did_not_run' "$_lg_dir/review-report.json" 2>/dev/null || echo MISSING)"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

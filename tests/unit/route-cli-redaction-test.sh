@@ -35,14 +35,20 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
 #!/usr/bin/env bash
 for a in "\$@"; do printf '%s\0' "\$a"; done > "$TEST_TEMP_DIR/last_args"
+# The router sends the prompt on stdin (#1849: argv overflowed at 128 KiB).
+cat > "$TEST_TEMP_DIR/last_stdin"
 echo "# OK response"
 exit 0
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 
-# Return the recorded prompt (the token after -p) as a single string.
+# Return the recorded prompt as a single string: the token after -p when argv
+# carries one, else what arrived on stdin (the router's channel since #1849).
 _recorded_prompt() {
-    awk 'BEGIN{RS="\0"} prev=="-p"{print; exit} {prev=$0}' "$TEST_TEMP_DIR/last_args" 2>/dev/null || true
+    local _p
+    _p="$(awk 'BEGIN{RS="\0"} prev=="-p"{print; exit} {prev=$0}' "$TEST_TEMP_DIR/last_args" 2>/dev/null || true)"
+    [[ -n "$_p" ]] || _p="$(cat "$TEST_TEMP_DIR/last_stdin" 2>/dev/null || true)"
+    printf '%s\n' "$_p"
 }
 
 # shellcheck source=../../core/router/route.sh
