@@ -188,14 +188,15 @@ _pr_open_run_inner() {
     local _draft_bool="${_TPL_PR_DRAFT:-false}"
     [[ "$_draft_bool" == "true" ]] || _draft_bool="false"
 
-    # Resolve advisory_report path: ZBUILD_STAGE_INPUTS takes precedence,
-    # artifacts_dir is the fallback (pr-delivery sources plugin.sh directly
-    # without ZBUILD_STAGE_INPUTS set in that call path — fallback required).
-    local advisory_report="$artifacts_dir/review-report.json"
+    # ADR-055 §1: declared inputs reach this plugin through the engine's index
+    # and nowhere else. lifecycle.sh exports ZBUILD_STAGE_INPUTS for every
+    # dispatched stage — pr-delivery, which sources this plugin, included — so
+    # the index names the caller's inputs (review_report, plan, test_results).
+    local advisory_report="" plan_json="" test_results_json=""
     if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        local _si_rr
-        _si_rr="$(jq -r '.inputs.review_report // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-        [[ -n "$_si_rr" ]] && advisory_report="$_si_rr"
+        advisory_report="$(jq -r '.inputs.review_report // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+        plan_json="$(jq -r '.inputs.plan // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+        test_results_json="$(jq -r '.inputs.test_results // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
     fi
 
     # ── Safety check 1: refuse if on main or master ──────────────────────────
@@ -238,9 +239,9 @@ _pr_open_run_inner() {
             return 0
         fi
     elif [[ -f "$advisory_report" ]]; then
-        warn "pr_open: review.json absent — advisory-review mode (review-report.json present; ADR-040 lenses never block, #1142)"
+        warn "pr_open: review.json absent — advisory-review mode (review_report input present; ADR-040 lenses never block, #1142)"
     else
-        error "pr_open: refusing to open PR — no review signal (neither review.json nor review-report.json; fail-closed per ADR-001)"
+        error "pr_open: refusing to open PR — no review signal (neither review.json nor the review_report input; fail-closed per ADR-001)"
         stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
             "no review signal was available to authorise a PR" \
             "No PR was opened. Fail-closed: absence of a review is not approval."
@@ -350,7 +351,7 @@ _pr_open_run_inner() {
         emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
             "reason=branch_push_failed" "branch=${target_branch}"
         jq -n --arg branch "$target_branch" --arg detail "$ZBUILD_PUSH_RECONCILE_ERR" \
-            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("failed to push branch: "+$branch+": "+$detail)}' \
+            '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":("failed to push branch: "+$branch+": "+$detail)}' \
             > "$output_pr_result_json"
         return 1
     fi
@@ -365,14 +366,14 @@ _pr_open_run_inner() {
 
     # Build PR body from upstream artifacts (plan summary, review verdict, test results)
     local plan_summary="" review_verdict="" test_verdict=""
-    if [[ -f "${artifacts_dir}/plan.json" ]]; then
-        plan_summary="$(jq -r '.goal // ""' "${artifacts_dir}/plan.json" 2>/dev/null || true)"
+    if [[ -n "$plan_json" && -f "$plan_json" ]]; then
+        plan_summary="$(jq -r '.goal // ""' "$plan_json" 2>/dev/null || true)"
     fi
     if [[ -f "$review_json_path" ]]; then
         review_verdict="$(jq -r '.verdict // ""' "$review_json_path" 2>/dev/null || true)"
     fi
-    if [[ -f "${artifacts_dir}/test-results.json" ]]; then
-        test_verdict="$(jq -r '.verdict // ""' "${artifacts_dir}/test-results.json" 2>/dev/null || true)"
+    if [[ -n "$test_results_json" && -f "$test_results_json" ]]; then
+        test_verdict="$(jq -r '.verdict // ""' "$test_results_json" 2>/dev/null || true)"
     fi
 
     local advisory_section
@@ -425,7 +426,7 @@ _pr_open_run_inner() {
                 "reason=gh_pr_edit_failed"
             jq -n \
                 --arg reason "$gh_output" \
-                '{"result_contract":2,"verdict":"error","disposition":"broken","reason":$reason}' \
+                '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":$reason}' \
                 > "$output_pr_result_json"
             return 1
         fi
@@ -450,7 +451,7 @@ _pr_open_run_inner() {
                             "reason=gh_pr_edit_failed"
                         jq -n \
                             --arg reason "$gh_output" \
-                            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":$reason}' \
+                            '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":$reason}' \
                             > "$output_pr_result_json"
                         return 1
                     fi
@@ -465,7 +466,7 @@ _pr_open_run_inner() {
                         "reason=gh_pr_create_failed"
                     jq -n \
                         --arg reason "$gh_output" \
-                        '{"result_contract":2,"verdict":"error","disposition":"broken","reason":$reason}' \
+                        '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":$reason}' \
                         > "$output_pr_result_json"
                     return 1
                 fi
@@ -478,7 +479,7 @@ _pr_open_run_inner() {
                     "reason=gh_pr_create_failed"
                 jq -n \
                     --arg reason "$gh_output" \
-                    '{"result_contract":2,"verdict":"error","disposition":"broken","reason":$reason}' \
+                    '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":$reason}' \
                     > "$output_pr_result_json"
                 return 1
             fi

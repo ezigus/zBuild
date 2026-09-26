@@ -14,6 +14,11 @@ description: |
   is controlled by _TPL_PR_DRAFT / pr_draft template key.
   No LLM dependency — T0 tool stage (ADR-013).
 
+# #1849 (ADR-054/055 migration), recorded rather than implied:
+#   - router budgets: none. T0 tool, no model call (ADR-037 §3), so there is no
+#     router block to resolve from the manifest.
+#   - cleanup: no hook. This plugin holds no live resource between calls; the
+#     engine records the absence as plugin.cleanup.absent (#1823, #1829).
 hooks:
   run: pr_open_run
 requires:
@@ -51,6 +56,16 @@ inputs:
   # it is absent — behavior unchanged; only the dead stage edge is removed.
   - id: review_report
     required: false
+  # #1849: the PR body's plan goal and test verdict — read from the engine's
+  # index (the calling pr-delivery stage's inputs), never from a path in code.
+  - id: plan
+    required: false
+  - id: test_results
+    required: false
+  # review.json is still read by path: its producer (the standard.yaml `review`
+  # stage) was retired (#979), so it cannot be declared — an input with no
+  # producer fails the lint-contract graph check. A per-repo overlay may still
+  # emit it; absent is the normal case and changes nothing.
 
 outputs:
   # #2183: this stage's error channel — whatever its subprocesses said when

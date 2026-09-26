@@ -10,6 +10,11 @@ description: |
   Invoked by plugins/agent/deploy/plugin.sh (deploy_release_run).
   Issue #757.
 
+# #1849 (ADR-054/055 migration), recorded rather than implied:
+#   - router budgets: none. T0 tool, no model call (ADR-037 §3), so there is no
+#     router block to resolve from the manifest.
+#   - cleanup: no hook. This plugin holds no live resource between calls; the
+#     engine records the absence as plugin.cleanup.absent (#1823, #1829).
 hooks:
   run: deploy_release_run
 requires:

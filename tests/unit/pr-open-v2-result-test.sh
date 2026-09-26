@@ -8,7 +8,10 @@
 #   [SPEC-11] pr-result.json carries result_contract:2, verdict=blocked, disposition, reason; rc=0
 #   [SPEC-12] pr-result.json carries result_contract:2, verdict=error, disposition, reason; rc=1
 #   [SPEC-13] all exit paths return rc ∈ {0,1} — no rc=2
-#   [SPEC-14] reads review_report via ZBUILD_STAGE_INPUTS with artifacts_dir fallback
+#   [SPEC-14] reads review_report ONLY via ZBUILD_STAGE_INPUTS; plugin.sh constructs no
+#             review-report.json / plan.json / test-results.json path (#1849 acceptance)
+#   [SPEC-30] an outward action that fails (push, gh pr create) reports unavailable
+#   [SPEC-31] the PR body's plan goal and test verdict are read from declared inputs
 #   [SPEC-24] tier_default:T0, no router: block
 #   [SPEC-25] outputs.pr_url retains primary: true after v2 migration
 #   [SPEC-26] provides retains events:[plugin.pr_open.branch_fallback_used,
@@ -449,13 +452,20 @@ assert_eq "[SPEC-12] gh-failure: rc=1 (not rc=2)" "1" "$_s12c_rc"
 # ─── SPEC-13: no exit path returns rc=2 ──────────────────────────────────────
 print_test_section "SPEC-13: all exit paths return rc ∈ {0,1} — no rc=2"
 
-assert_eq "[SPEC-13] opened path rc in {0,1}" "1" "$(( _s10a_rc != 2 ? 1 : 0 ))"
-assert_eq "[SPEC-13] updated path rc in {0,1}" "1" "$(( _s10b_rc != 2 ? 1 : 0 ))"
-assert_eq "[SPEC-13] review=block rc in {0,1}" "1" "$(( _s11a_rc != 2 ? 1 : 0 ))"
-assert_eq "[SPEC-13] no-review-signal rc in {0,1}" "1" "$(( _s11b_rc != 2 ? 1 : 0 ))"
-assert_eq "[SPEC-13] branch-is-main rc in {0,1}" "1" "$(( _s12a_rc != 2 ? 1 : 0 ))"
-assert_eq "[SPEC-13] push-failure rc in {0,1}" "1" "$(( _s12b_rc != 2 ? 1 : 0 ))"
-assert_eq "[SPEC-13] gh-failure rc in {0,1}" "1" "$(( _s12c_rc != 2 ? 1 : 0 ))"
+assert_eq "[SPEC-13] opened path rc=0" "0" "$_s10a_rc"
+assert_eq "[SPEC-13] updated path rc=0" "0" "$_s10b_rc"
+assert_eq "[SPEC-13] review=block rc=0" "0" "$_s11a_rc"
+assert_eq "[SPEC-13] no-review-signal rc=0" "0" "$_s11b_rc"
+assert_eq "[SPEC-13] branch-is-main rc=1" "1" "$_s12a_rc"
+assert_eq "[SPEC-13] push-failure rc=1" "1" "$_s12b_rc"
+assert_eq "[SPEC-13] gh-failure rc=1" "1" "$_s12c_rc"
+
+# ─── SPEC-30: outward failures are `unavailable` ──────────────────────────────
+print_test_section "SPEC-30: a failed outward action reports unavailable"
+assert_eq "[SPEC-30] push failure → unavailable" "unavailable" \
+    "$(jq -r '.disposition // empty' "$_s12b_pr" 2>/dev/null || true)"
+assert_eq "[SPEC-30] gh pr create failure → unavailable" "unavailable" \
+    "$(jq -r '.disposition // empty' "$_s12c_pr" 2>/dev/null || true)"
 
 # ─── SPEC-14: review_report path resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback
 print_test_section "SPEC-14: review_report resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback"
@@ -529,18 +539,20 @@ else
     assert_fail "[SPEC-14] ZBUILD_STAGE_INPUTS: PR body was captured from gh call" "BODY_FILE not written"
 fi
 
-# SPEC-14b: artifacts_dir fallback — no ZBUILD_STAGE_INPUTS, review-report in standard path.
-# Guards the pr-delivery direct-source path (no ZBUILD_STAGE_INPUTS set in that call).
+# SPEC-14b: no index entry → no advisory report, even with one sitting in
+# artifacts_dir. The engine exports ZBUILD_STAGE_INPUTS for every dispatched
+# stage (lifecycle.sh), pr-delivery included, and this plugin runs inside it.
 _s14b_dir="$TEST_TEMP_DIR/spec14b"
 _make_pr_state "$_s14b_dir" "approve" >/dev/null
 _s14b_art="$_s14b_dir/artifacts"
-# Put review-report.json in the standard artifacts_dir location
 cat > "$_s14b_art/review-report.json" <<'JSON'
 {"schema_version":1,"merge_readiness":"advisory","lenses":[{"name":"perf"}],
  "findings":[
    {"severity":"low","file":"baz.sh","line":5,"lenses":["perf"],"messages":["finding C"]}
  ]}
 JSON
+printf '{"schema_version":1,"goal":"ON-DISK GOAL"}\n' > "$_s14b_art/plan.json"
+printf '{"inputs":{}}\n' > "$_s14b_dir/stage-inputs.json"
 
 _s14b_body="$TEST_TEMP_DIR/spec14b-body.txt"
 mkdir -p "$TEST_TEMP_DIR/bin14b"
@@ -567,21 +579,35 @@ chmod +x "$TEST_TEMP_DIR/bin14b/git" "$TEST_TEMP_DIR/bin14b/gh"
 mkdir -p "$TEST_TEMP_DIR/repo14b"
 ( PATH="$TEST_TEMP_DIR/bin14b:$PATH" \
   ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/repo14b" \
-  ZBUILD_STAGE_INPUTS="" \
+  ZBUILD_STAGE_INPUTS="$_s14b_dir/stage-inputs.json" \
   pr_open_run "pr" "$_s14b_dir/pipeline-state.json" ) >/dev/null 2>&1; _s14b_rc=$?
+_s14b_body_text="$(cat "$_s14b_body" 2>/dev/null || true)"
+assert_eq "[SPEC-14] no index entry: a review-report.json on disk is not read" "0" "$(grep -c "1 finding" <<< "$_s14b_body_text" || true)"
+assert_eq "[SPEC-14] no index entry: a plan.json on disk is not read" "0" "$(grep -c "ON-DISK GOAL" <<< "$_s14b_body_text" || true)"
+assert_contains "[SPEC-14] …and the PR was still opened (body captured)" "$_s14b_body_text" "Closes #1849"
+_pr_code="$(grep -v '^[[:space:]]*#' "$REPO_ROOT/plugins/tool/pr-open/plugin.sh")"
+for _f in review-report.json plan.json test-results.json; do
+    assert_eq "[SPEC-14] plugin.sh constructs no $_f path" "0" "$(grep -cF "$_f" <<< "$_pr_code" || true)"
+done
 
-if [[ -f "$_s14b_body" ]]; then
-    _s14b_body_text="$(cat "$_s14b_body")"
-    # If the artifacts_dir fallback works, the 1-finding report is found.
-    if grep -q "1 finding" <<< "$_s14b_body_text" 2>/dev/null; then
-        assert_pass "[SPEC-14] artifacts_dir fallback: review_report from standard path found"
-    else
-        assert_fail "[SPEC-14] artifacts_dir fallback: review_report from standard path found" \
-            "body does not show '1 finding' — artifacts_dir fallback not working"
-    fi
-else
-    assert_fail "[SPEC-14] artifacts_dir fallback: PR body captured from gh call" "BODY_FILE not written"
-fi
+# ─── SPEC-31: plan goal and test verdict come from the index ──────────────────
+print_test_section "SPEC-31: the PR body's plan goal and test verdict are read from declared inputs"
+_s31_dir="$TEST_TEMP_DIR/spec31"
+_make_pr_state "$_s31_dir" "approve" >/dev/null
+mkdir -p "$TEST_TEMP_DIR/elsewhere31"
+printf '{"schema_version":1,"goal":"INDEXED GOAL"}\n' > "$TEST_TEMP_DIR/elsewhere31/plan.json"
+printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}\n' > "$TEST_TEMP_DIR/elsewhere31/test-results.json"
+printf '{"inputs":{"plan":"%s","test_results":"%s"}}\n' \
+    "$TEST_TEMP_DIR/elsewhere31/plan.json" "$TEST_TEMP_DIR/elsewhere31/test-results.json" > "$_s31_dir/stage-inputs.json"
+_s14b_body="$TEST_TEMP_DIR/spec31-body.txt"
+sed -i.bak "s|spec14b-body.txt|spec31-body.txt|" "$TEST_TEMP_DIR/bin14b/gh"
+( PATH="$TEST_TEMP_DIR/bin14b:$PATH" \
+  ZBUILD_REPO_ROOT="$TEST_TEMP_DIR/repo14b" \
+  ZBUILD_STAGE_INPUTS="$_s31_dir/stage-inputs.json" \
+  pr_open_run "pr" "$_s31_dir/pipeline-state.json" ) >/dev/null 2>&1
+_s31_body_text="$(cat "$TEST_TEMP_DIR/spec31-body.txt" 2>/dev/null || true)"
+assert_contains "[SPEC-31] plan goal comes from the index's plan" "$_s31_body_text" "INDEXED GOAL"
+assert_contains "[SPEC-31] test verdict comes from the index's test_results" "$_s31_body_text" "**Test verdict:** pass"
 
 # ─── Teardown ─────────────────────────────────────────────────────────────────
 cleanup_test_env

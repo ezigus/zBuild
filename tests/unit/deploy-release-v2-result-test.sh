@@ -7,7 +7,9 @@
 #   [SPEC-16] deploy-result.json carries result_contract:2, disposition, reason on every
 #             exit path (dry-run, tag success, tag failure, push failure, state_file-absent)
 #   [SPEC-17] all exit paths return rc ∈ {0,1} — state_file-absent returns rc=1 not rc=2
-#   [SPEC-18] reads pr_url path via ZBUILD_STAGE_INPUTS with artifacts_dir fallback
+#   [SPEC-18] reads pr_url ONLY via ZBUILD_STAGE_INPUTS; plugin.sh constructs no pr-url.txt path
+#   [SPEC-30] a failed tag push reports unavailable — the remote's state is unknown
+#   [SPEC-32] pr_url lives under data (ADR-054 §5), not at the top level
 #   [SPEC-23] deploy-result.json verdict=deployed and rc=0 on git tag+push success path
 #   [SPEC-24] tier_default:T0, no router: block
 #   [SPEC-25] outputs.deploy_result retains primary: true after v2 migration
@@ -292,11 +294,16 @@ fi
 # ─── SPEC-17: no exit path returns rc=2 ──────────────────────────────────────
 print_test_section "SPEC-17: all exit paths return rc ∈ {0,1} — no rc=2"
 
-assert_eq "[SPEC-17] state_file-absent rc in {0,1}" "1" "$(( _sfabs_rc != 2 ? 1 : 0 ))"
-assert_eq "[SPEC-17] dry-run rc in {0,1}" "1" "$(( _s_dry_rc != 2 ? 1 : 0 ))"
-assert_eq "[SPEC-17] tag+push success rc in {0,1}" "1" "$(( _s_ok_rc != 2 ? 1 : 0 ))"
-assert_eq "[SPEC-17] tag-failure rc in {0,1}" "1" "$(( _s_tf_rc != 2 ? 1 : 0 ))"
-assert_eq "[SPEC-17] push-failure rc in {0,1}" "1" "$(( _s_pf_rc != 2 ? 1 : 0 ))"
+assert_eq "[SPEC-17] state_file-absent rc=1" "1" "$_sfabs_rc"
+assert_eq "[SPEC-17] dry-run rc=0" "0" "$_s_dry_rc"
+assert_eq "[SPEC-17] tag+push success rc=0" "0" "$_s_ok_rc"
+assert_eq "[SPEC-17] tag-failure rc=1" "1" "$_s_tf_rc"
+assert_eq "[SPEC-17] push-failure rc=1" "1" "$_s_pf_rc"
+
+# ─── SPEC-30: outward failure is `unavailable` ────────────────────────────────
+print_test_section "SPEC-30: a failed tag push reports unavailable"
+assert_eq "[SPEC-30] push failure → unavailable" "unavailable" \
+    "$(jq -r '.disposition // empty' "$_s_pf_art/deploy-result.json" 2>/dev/null || true)"
 
 # ─── SPEC-18: pr_url resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback
 print_test_section "SPEC-18: pr_url resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback"
@@ -326,7 +333,7 @@ set -e
 
 assert_file_exists "[SPEC-18] ZBUILD_STAGE_INPUTS: deploy-result.json written" "$_s18a_art/deploy-result.json"
 if [[ -f "$_s18a_art/deploy-result.json" ]]; then
-    _s18a_pr_url="$(jq -r '.pr_url // empty' "$_s18a_art/deploy-result.json" 2>/dev/null || true)"
+    _s18a_pr_url="$(jq -r '.data.pr_url // empty' "$_s18a_art/deploy-result.json" 2>/dev/null || true)"
     if [[ "$_s18a_pr_url" == "https://github.com/mock/repo/pull/18a" ]]; then
         assert_pass "[SPEC-18] ZBUILD_STAGE_INPUTS: pr_url from custom path in deploy-result.json"
     else
@@ -335,31 +342,34 @@ if [[ -f "$_s18a_art/deploy-result.json" ]]; then
     fi
 fi
 
-# SPEC-18b: artifacts_dir fallback — no ZBUILD_STAGE_INPUTS, pr-url.txt in standard location.
-# Guards the pr-delivery direct-source call path (no ZBUILD_STAGE_INPUTS set).
+# SPEC-18b: no index entry → no pr_url, even with a pr-url.txt in artifacts_dir.
+# The engine exports ZBUILD_STAGE_INPUTS for every dispatched stage (lifecycle.sh),
+# including the deploy agent that calls this plugin.
 _s18b_dir="$TEST_TEMP_DIR/spec18b"
 _s18b_sf="$(_make_dr_state "$_s18b_dir" "https://github.com/mock/repo/pull/18b")"
 _s18b_art="$_s18b_dir/artifacts"
+printf '{"inputs":{}}\n' > "$_s18b_dir/stage-inputs.json"
 
 _mk_dr_mocks "$TEST_TEMP_DIR/bin18b"
 
 set +e
 ( ZBUILD_DRY_RUN=1 \
-  ZBUILD_STAGE_INPUTS="" \
+  ZBUILD_STAGE_INPUTS="$_s18b_dir/stage-inputs.json" \
   deploy_release_run "deploy" "$_s18b_sf" ) >/dev/null 2>&1
 _s18b_rc=$?
 set -e
 
-assert_file_exists "[SPEC-18] artifacts_dir fallback: deploy-result.json written" "$_s18b_art/deploy-result.json"
-if [[ -f "$_s18b_art/deploy-result.json" ]]; then
-    _s18b_pr_url="$(jq -r '.pr_url // empty' "$_s18b_art/deploy-result.json" 2>/dev/null || true)"
-    if [[ "$_s18b_pr_url" == "https://github.com/mock/repo/pull/18b" ]]; then
-        assert_pass "[SPEC-18] artifacts_dir fallback: pr_url from artifacts_dir/pr-url.txt in deploy-result.json"
-    else
-        assert_fail "[SPEC-18] artifacts_dir fallback: pr_url from artifacts_dir/pr-url.txt in deploy-result.json" \
-            "got pr_url='$_s18b_pr_url' — artifacts_dir fallback not working"
-    fi
-fi
+assert_eq "[SPEC-18] no index entry: a pr-url.txt on disk is not read" "" \
+    "$(jq -r '.data.pr_url // empty' "$_s18b_art/deploy-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-18] plugin.sh constructs no pr-url.txt path" "0" \
+    "$(grep -v '^[[:space:]]*#' "$REPO_ROOT/plugins/tool/deploy-release/plugin.sh" | grep -cF 'pr-url.txt' || true)"
+
+# ─── SPEC-32: plugin-specific fields live under data ──────────────────────────
+print_test_section "SPEC-32: pr_url is under data, not at the top level"
+assert_eq "[SPEC-32] dry-run: no top-level pr_url" "null" \
+    "$(jq -c '.pr_url' "$_s18a_art/deploy-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-32] success path: no top-level pr_url" "null" \
+    "$(jq -c '.pr_url' "$_s_ok_art/deploy-result.json" 2>/dev/null || true)"
 
 # ─── Teardown ─────────────────────────────────────────────────────────────────
 cleanup_test_env

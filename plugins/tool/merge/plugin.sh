@@ -42,16 +42,17 @@ merge_run() {
     local artifacts_dir="$state_dir/artifacts"
     mkdir -p "$artifacts_dir"
 
-    local gate_json
+    # ADR-055 §1: a declared input reaches this plugin through the engine's
+    # index and nowhere else. No index entry means the gate is absent.
+    local gate_json=""
     if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
         gate_json="$(jq -r '.inputs.gate_aggregator_result // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
     fi
-    [[ -z "${gate_json:-}" ]] && gate_json="$artifacts_dir/gate-aggregator-result.json"
     local merge_result_out="$artifacts_dir/merge-result.json"
 
     # Read convergence gate verdict
     local gate_verdict=""
-    if [[ -f "$gate_json" ]]; then
+    if [[ -n "$gate_json" && -f "$gate_json" ]]; then
         gate_verdict="$(jq -r '.verdict // empty' "$gate_json" 2>/dev/null || true)"
     fi
 
@@ -87,11 +88,21 @@ _merge_pr_fallback() {
     fi
     local _rc=0
     pr_open_run "$stage_id" "$state_file" || _rc=$?
+    if [[ $_rc -ne 0 ]]; then
+        # The fallback's own failure is this stage's failure — never a pass.
+        # pr-open already said how it stopped; carry its word, not a guess.
+        local _pr_disp
+        _pr_disp="$(jq -r '.disposition // empty' "$(dirname "$merge_result_out")/pr-result.json" 2>/dev/null || true)"
+        jq -n --arg reason "$reason" --arg d "${_pr_disp:-broken}" \
+            '{"result_contract":2,"verdict":"error","disposition":$d,"reason":("gate not pass — fallback to PR failed: "+$reason),"data":{"mode":"pr_fallback"}}' \
+            > "$merge_result_out"
+        return 1
+    fi
     jq -n \
         --arg reason "$reason" \
         '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":("gate not pass — fallback to PR: "+$reason),"data":{"mode":"pr_fallback"}}' \
         > "$merge_result_out"
-    return $_rc
+    return 0
 }
 
 # ─── _merge_run_inner ─────────────────────────────────────────────────────────
@@ -148,7 +159,7 @@ _merge_run_inner() {
     if ! zbuild_push_reconcile "$target_branch"; then
         error "merge_run: push reconcile failed for '${target_branch}': ${ZBUILD_PUSH_RECONCILE_ERR}"
         jq -n --arg branch "$target_branch" --arg detail "$ZBUILD_PUSH_RECONCILE_ERR" \
-            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("failed to push: "+$branch+": "+$detail)}' \
+            '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":("failed to push: "+$branch+": "+$detail)}' \
             > "$merge_result_out"
         return 1
     fi
@@ -173,7 +184,7 @@ _merge_run_inner() {
         --body "$pr_body" 2>&1)"; then
         error "merge_run: gh pr create failed: $gh_output"
         jq -n --arg reason "$gh_output" \
-            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":$reason}' \
+            '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":$reason}' \
             > "$merge_result_out"
         return 1
     fi
@@ -188,7 +199,7 @@ _merge_run_inner() {
     if ! gh pr merge --squash --auto 2>/dev/null; then
         error "merge_run: gh pr merge failed"
         jq -n --arg pr_url "$pr_url" \
-            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"gh pr merge failed","data":{"pr_url":$pr_url}}' \
+            '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":"gh pr merge failed","data":{"pr_url":$pr_url}}' \
             > "$merge_result_out"
         return 1
     fi

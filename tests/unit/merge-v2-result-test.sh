@@ -8,7 +8,11 @@
 #   [SPEC-4]  merge-result.json carries result_contract:2, verdict=pass, data.mode=pr_fallback on fallback paths
 #   [SPEC-5]  merge-result.json carries result_contract:2, verdict=error, disposition, reason on error paths
 #   [SPEC-6]  all exit paths return rc ∈ {0,1} — no rc=2
-#   [SPEC-7]  reads gate_aggregator_result via ZBUILD_STAGE_INPUTS with artifacts_dir fallback
+#   [SPEC-7]  reads gate_aggregator_result ONLY via ZBUILD_STAGE_INPUTS — plugin.sh
+#             constructs no gate-aggregator-result.json path (#1849 acceptance)
+#   [SPEC-29] a PR fallback whose pr_open_run fails is reported as a failure, not a pass
+#   [SPEC-30] an outward action that fails (push, gh pr create, gh pr merge) reports
+#             disposition=unavailable — its outcome at the remote is unknown (#1849 "Folds in")
 #   [SPEC-24] tier_default:T0, no router: block
 #   [SPEC-25] outputs.merge_result retains primary: true after v2 migration
 #   [SPEC-28] hooks section has only run:, no cleanup:
@@ -104,6 +108,14 @@ _make_state() {
     [[ -n "$gate" ]] && \
         printf '{"schema_version":1,"verdict":"%s"}\n' "$gate" \
             > "$d/artifacts/gate-aggregator-result.json"
+    # The engine's index (lifecycle.sh exports ZBUILD_STAGE_INPUTS for every
+    # dispatched stage, pr-delivery included) is the only way a declared input
+    # reaches the plugin.
+    if [[ -n "$gate" ]]; then
+        printf '{"inputs":{"gate_aggregator_result":"%s"}}\n' "$d/artifacts/gate-aggregator-result.json" > "$d/stage-inputs.json"
+    else
+        printf '{"inputs":{}}\n' > "$d/stage-inputs.json"
+    fi
     printf '%s/pipeline-state.json' "$d"
 }
 
@@ -151,7 +163,7 @@ _s3_sf="$(_make_state "$_s3_dir" "pass")"
 _s3_art="$_s3_dir/artifacts"
 _mk_mocks "$TEST_TEMP_DIR/bin3" "zbuild/issue-1849-test"
 
-( PATH="$TEST_TEMP_DIR/bin3:$PATH" merge_run "pr" "$_s3_sf" ) >/dev/null 2>&1; _s3_rc=$?
+( PATH="$TEST_TEMP_DIR/bin3:$PATH" ZBUILD_STAGE_INPUTS="$(dirname "$_s3_sf")/stage-inputs.json" merge_run "pr" "$_s3_sf" ) >/dev/null 2>&1; _s3_rc=$?
 
 assert_file_exists "[SPEC-3] merge-result.json written on success" "$_s3_art/merge-result.json"
 if [[ -f "$_s3_art/merge-result.json" ]]; then
@@ -176,7 +188,7 @@ _s4a_sf="$(_make_state "$_s4a_dir")"
 _s4a_art="$_s4a_dir/artifacts"
 _mk_mocks "$TEST_TEMP_DIR/bin4a" "zbuild/issue-1849-test"
 
-( PATH="$TEST_TEMP_DIR/bin4a:$PATH" merge_run "pr" "$_s4a_sf" ) >/dev/null 2>&1; _s4a_rc=$?
+( PATH="$TEST_TEMP_DIR/bin4a:$PATH" ZBUILD_STAGE_INPUTS="$(dirname "$_s4a_sf")/stage-inputs.json" merge_run "pr" "$_s4a_sf" ) >/dev/null 2>&1; _s4a_rc=$?
 
 assert_file_exists "[SPEC-4] gate-absent: merge-result.json written" "$_s4a_art/merge-result.json"
 if [[ -f "$_s4a_art/merge-result.json" ]]; then
@@ -194,7 +206,7 @@ _s4b_sf="$(_make_state "$_s4b_dir" "fail")"
 _s4b_art="$_s4b_dir/artifacts"
 _mk_mocks "$TEST_TEMP_DIR/bin4b" "zbuild/issue-1849-test"
 
-( PATH="$TEST_TEMP_DIR/bin4b:$PATH" merge_run "pr" "$_s4b_sf" ) >/dev/null 2>&1; _s4b_rc=$?
+( PATH="$TEST_TEMP_DIR/bin4b:$PATH" ZBUILD_STAGE_INPUTS="$(dirname "$_s4b_sf")/stage-inputs.json" merge_run "pr" "$_s4b_sf" ) >/dev/null 2>&1; _s4b_rc=$?
 
 assert_file_exists "[SPEC-4] gate-fail: merge-result.json written" "$_s4b_art/merge-result.json"
 if [[ -f "$_s4b_art/merge-result.json" ]]; then
@@ -215,7 +227,7 @@ _s5a_sf="$(_make_state "$_s5a_dir" "pass")"
 _s5a_art="$_s5a_dir/artifacts"
 _mk_mocks "$TEST_TEMP_DIR/bin5a" "main"
 
-( PATH="$TEST_TEMP_DIR/bin5a:$PATH" merge_run "pr" "$_s5a_sf" ) >/dev/null 2>&1; _s5a_rc=$?
+( PATH="$TEST_TEMP_DIR/bin5a:$PATH" ZBUILD_STAGE_INPUTS="$(dirname "$_s5a_sf")/stage-inputs.json" merge_run "pr" "$_s5a_sf" ) >/dev/null 2>&1; _s5a_rc=$?
 
 assert_file_exists "[SPEC-5] branch-is-main: merge-result.json written" "$_s5a_art/merge-result.json"
 if [[ -f "$_s5a_art/merge-result.json" ]]; then
@@ -239,7 +251,7 @@ _s5b_sf="$(_make_state "$_s5b_dir" "pass")"
 _s5b_art="$_s5b_dir/artifacts"
 _mk_mocks "$TEST_TEMP_DIR/bin5b" "zbuild/issue-1849-test" 1
 
-( PATH="$TEST_TEMP_DIR/bin5b:$PATH" merge_run "pr" "$_s5b_sf" ) >/dev/null 2>&1; _s5b_rc=$?
+( PATH="$TEST_TEMP_DIR/bin5b:$PATH" ZBUILD_STAGE_INPUTS="$(dirname "$_s5b_sf")/stage-inputs.json" merge_run "pr" "$_s5b_sf" ) >/dev/null 2>&1; _s5b_rc=$?
 
 assert_file_exists "[SPEC-5] push-failure: merge-result.json written" "$_s5b_art/merge-result.json"
 if [[ -f "$_s5b_art/merge-result.json" ]]; then
@@ -263,7 +275,7 @@ _s5c_sf="$(_make_state "$_s5c_dir" "pass")"
 _s5c_art="$_s5c_dir/artifacts"
 _mk_mocks "$TEST_TEMP_DIR/bin5c" "zbuild/issue-1849-test" 0 1
 
-( PATH="$TEST_TEMP_DIR/bin5c:$PATH" merge_run "pr" "$_s5c_sf" ) >/dev/null 2>&1; _s5c_rc=$?
+( PATH="$TEST_TEMP_DIR/bin5c:$PATH" ZBUILD_STAGE_INPUTS="$(dirname "$_s5c_sf")/stage-inputs.json" merge_run "pr" "$_s5c_sf" ) >/dev/null 2>&1; _s5c_rc=$?
 
 assert_file_exists "[SPEC-5] gh-failure: merge-result.json written" "$_s5c_art/merge-result.json"
 if [[ -f "$_s5c_art/merge-result.json" ]]; then
@@ -284,12 +296,12 @@ fi
 # ─── SPEC-6: no exit path returns rc=2 ───────────────────────────────────────
 print_test_section "SPEC-6: all exit paths return rc ∈ {0,1} — no rc=2"
 
-assert_eq "[SPEC-6] success path rc in {0,1}" "1" "$(( _s3_rc  != 2 ? 1 : 0 ))"
-assert_eq "[SPEC-6] gate-absent fallback rc in {0,1}" "1" "$(( _s4a_rc != 2 ? 1 : 0 ))"
-assert_eq "[SPEC-6] gate-fail fallback rc in {0,1}" "1" "$(( _s4b_rc != 2 ? 1 : 0 ))"
-assert_eq "[SPEC-6] branch-is-main error rc in {0,1}" "1" "$(( _s5a_rc != 2 ? 1 : 0 ))"
-assert_eq "[SPEC-6] push-failure error rc in {0,1}" "1" "$(( _s5b_rc != 2 ? 1 : 0 ))"
-assert_eq "[SPEC-6] gh-failure error rc in {0,1}" "1" "$(( _s5c_rc != 2 ? 1 : 0 ))"
+assert_eq "[SPEC-6] success path rc=0" "0" "$_s3_rc"
+assert_eq "[SPEC-6] gate-absent fallback rc=0" "0" "$_s4a_rc"
+assert_eq "[SPEC-6] gate-fail fallback rc=0" "0" "$_s4b_rc"
+assert_eq "[SPEC-6] branch-is-main error rc=1" "1" "$_s5a_rc"
+assert_eq "[SPEC-6] push-failure error rc=1" "1" "$_s5b_rc"
+assert_eq "[SPEC-6] gh-failure error rc=1" "1" "$_s5c_rc"
 
 # ─── SPEC-7: gate path resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback
 print_test_section "SPEC-7: gate_aggregator_result resolved via ZBUILD_STAGE_INPUTS with artifacts_dir fallback"
@@ -324,25 +336,49 @@ if [[ -f "$_s7a_art/merge-result.json" ]]; then
             "verdict=$_s7a_verdict mode=$_s7a_mode — ZBUILD_STAGE_INPUTS not honoured"
 fi
 
-# SPEC-7b: artifacts_dir fallback — no ZBUILD_STAGE_INPUTS, gate in standard location.
-# Guards that the pr-delivery direct-source path (no ZBUILD_STAGE_INPUTS set) still works.
+# SPEC-7b: no index entry → the gate is absent, even with a gate file sitting in
+# artifacts_dir. The plugin reads declared inputs from the index and nowhere else.
 _s7b_dir="$TEST_TEMP_DIR/spec7b"
-_s7b_sf="$(_make_state "$_s7b_dir" "pass")"   # gate in artifacts_dir
+_s7b_sf="$(_make_state "$_s7b_dir" "pass")"   # gate file in artifacts_dir
 _s7b_art="$_s7b_dir/artifacts"
 _mk_mocks "$TEST_TEMP_DIR/bin7b" "zbuild/issue-1849-test"
+printf '{"inputs":{}}\n' > "$_s7b_dir/stage-inputs.json"
 
-( PATH="$TEST_TEMP_DIR/bin7b:$PATH" ZBUILD_STAGE_INPUTS="" \
+( PATH="$TEST_TEMP_DIR/bin7b:$PATH" ZBUILD_STAGE_INPUTS="$_s7b_dir/stage-inputs.json" \
   merge_run "pr" "$_s7b_sf" ) >/dev/null 2>&1; _s7b_rc=$?
+assert_eq "[SPEC-7] no index entry → gate treated as absent (PR fallback), whatever is on disk" \
+    "pr_fallback" "$(jq -r '.data.mode // empty' "$_s7b_art/merge-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-7] plugin.sh constructs no gate-aggregator-result.json path" "0" \
+    "$(grep -v '^[[:space:]]*#' "$REPO_ROOT/plugins/tool/merge/plugin.sh" | grep -cF 'gate-aggregator-result.json' || true)"
 
-assert_file_exists "[SPEC-7] artifacts_dir fallback: merge-result.json written" "$_s7b_art/merge-result.json"
-if [[ -f "$_s7b_art/merge-result.json" ]]; then
-    _s7b_verdict="$(jq -r '.verdict // empty' "$_s7b_art/merge-result.json" 2>/dev/null || true)"
-    _s7b_mode="$(jq -r '.data.mode // empty' "$_s7b_art/merge-result.json" 2>/dev/null || true)"
-    [[ "$_s7b_verdict" == "pass" && "$_s7b_mode" != "pr_fallback" ]] \
-        && assert_pass "[SPEC-7] artifacts_dir fallback: merge path taken" \
-        || assert_fail "[SPEC-7] artifacts_dir fallback: merge path taken" \
-            "verdict=$_s7b_verdict mode=$_s7b_mode — artifacts_dir fallback not working"
-fi
+# ─── SPEC-29: PR fallback whose pr_open_run fails ─────────────────────────────
+print_test_section "SPEC-29: a PR fallback that fails is reported as a failure"
+_s29_dir="$TEST_TEMP_DIR/spec29"
+_s29_sf="$(_make_state "$_s29_dir")"          # gate absent → fallback
+_mk_mocks "$TEST_TEMP_DIR/bin29" "zbuild/issue-1849-test" 0 1   # gh pr create fails
+( PATH="$TEST_TEMP_DIR/bin29:$PATH" ZBUILD_STAGE_INPUTS="$_s29_dir/stage-inputs.json" \
+  merge_run "pr" "$_s29_sf" ) >/dev/null 2>&1; _s29_rc=$?
+assert_eq "[SPEC-29] rc=1" "1" "$_s29_rc"
+assert_eq "[SPEC-29] merge-result.json verdict is error, not pass" "error" \
+    "$(jq -r '.verdict // empty' "$_s29_dir/artifacts/merge-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-29] …carrying pr-open's own disposition" \
+    "$(jq -r '.disposition // empty' "$_s29_dir/artifacts/pr-result.json" 2>/dev/null || echo none)" \
+    "$(jq -r '.disposition // empty' "$_s29_dir/artifacts/merge-result.json" 2>/dev/null || true)"
+
+# ─── SPEC-30: outward failures are `unavailable` ──────────────────────────────
+print_test_section "SPEC-30: a failed outward action reports unavailable"
+assert_eq "[SPEC-30] push failure → unavailable" "unavailable" \
+    "$(jq -r '.disposition // empty' "$_s5b_art/merge-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-30] gh pr create failure → unavailable" "unavailable" \
+    "$(jq -r '.disposition // empty' "$_s5c_art/merge-result.json" 2>/dev/null || true)"
+_s30_dir="$TEST_TEMP_DIR/spec30"
+_s30_sf="$(_make_state "$_s30_dir" "pass")"
+_mk_mocks "$TEST_TEMP_DIR/bin30" "zbuild/issue-1849-test"
+sed -i.bak 's|"pr merge")  exit 0 ;;|"pr merge")  exit 1 ;;|' "$TEST_TEMP_DIR/bin30/gh"
+( PATH="$TEST_TEMP_DIR/bin30:$PATH" ZBUILD_STAGE_INPUTS="$_s30_dir/stage-inputs.json" \
+  merge_run "pr" "$_s30_sf" ) >/dev/null 2>&1
+assert_eq "[SPEC-30] gh pr merge failure → unavailable" "unavailable" \
+    "$(jq -r '.disposition // empty' "$_s30_dir/artifacts/merge-result.json" 2>/dev/null || true)"
 
 # ─── Teardown ─────────────────────────────────────────────────────────────────
 cleanup_test_env
