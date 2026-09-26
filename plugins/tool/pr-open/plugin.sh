@@ -3,8 +3,8 @@
 # Opens a PR via `gh pr create`. No LLM. No redaction. T0 tool.
 # Safety constraints:
 #   - Non-draft by default; set _TPL_PR_DRAFT=true (pr_draft: true in template) for draft mode
-#   - Refuses if review.json verdict == "block" (rc=2)
-#   - Refuses if current branch is main or master (rc=2)
+#   - Refuses if review.json verdict == "block" (rc=0, verdict=blocked)
+#   - Refuses if current branch is main or master (rc=1, verdict=error)
 # Sourced library: no set -euo pipefail.
 
 [[ -n "${_ZBUILD_PR_OPEN_LOADED:-}" ]] && return 0
@@ -37,7 +37,7 @@ pr_open_run() {
         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/pr-open-summary.md}" "pr-open" "error" \
             "the engine dispatched this stage with no state file, so it could not run" \
             "No work was attempted. This is an engine contract violation, not a fault in the change."
-        return 2
+        return 1
     fi
 
     # #888: every other git-mutating stage resolves its tree from
@@ -59,7 +59,7 @@ pr_open_run() {
         local _abs_dir
         if ! _abs_dir="$(cd "$(dirname "$state_file")" 2>/dev/null && pwd)"; then
             error "pr_open_run: cannot resolve state_file directory: $(dirname "$state_file")"
-            return 2
+            return 1
         fi
         state_file="$_abs_dir/$(basename "$state_file")"
     fi
@@ -67,11 +67,11 @@ pr_open_run() {
         if [[ -d "$ZBUILD_REPO_ROOT" ]]; then
             cd "$ZBUILD_REPO_ROOT" || {
                 error "pr_open_run: cannot cd to ZBUILD_REPO_ROOT=$ZBUILD_REPO_ROOT"
-                return 2
+                return 1
             }
         else
             error "pr_open_run: ZBUILD_REPO_ROOT=$ZBUILD_REPO_ROOT is not a directory"
-            return 2
+            return 1
         fi
     fi
 
@@ -188,6 +188,16 @@ _pr_open_run_inner() {
     local _draft_bool="${_TPL_PR_DRAFT:-false}"
     [[ "$_draft_bool" == "true" ]] || _draft_bool="false"
 
+    # Resolve advisory_report path: ZBUILD_STAGE_INPUTS takes precedence,
+    # artifacts_dir is the fallback (pr-delivery sources plugin.sh directly
+    # without ZBUILD_STAGE_INPUTS set in that call path — fallback required).
+    local advisory_report="$artifacts_dir/review-report.json"
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+        local _si_rr
+        _si_rr="$(jq -r '.inputs.review_report // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+        [[ -n "$_si_rr" ]] && advisory_report="$_si_rr"
+    fi
+
     # ── Safety check 1: refuse if on main or master ──────────────────────────
     local current_branch
     current_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
@@ -200,10 +210,9 @@ _pr_open_run_inner() {
             "reason=branch_is_main" "branch=${current_branch}"
         jq -n \
             --arg branch "$current_branch" \
-            --argjson draft "${_draft_bool}" \
-            '{"schema_version":1,"status":"error","reason":("refusing to open PR from branch: "+$branch),"draft":$draft}' \
+            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("refusing to open PR from branch: "+$branch)}' \
             > "$output_pr_result_json"
-        return 2
+        return 1
     fi
 
     # ── Safety check 2/3: review verdict source (#1142, ADR-040) ─────────────
@@ -213,7 +222,6 @@ _pr_open_run_inner() {
     # block; convergence was already gated by the gate-aggregator's exit_when):
     # open the PR with no verdict guard. Fail-closed (ADR-001/#358) only when
     # NEITHER review signal exists.
-    local advisory_report="$artifacts_dir/review-report.json"
     if [[ -f "$review_json_path" ]]; then
         local verdict
         verdict="$(jq -r '.verdict // ""' "$review_json_path" 2>/dev/null || echo "")"
@@ -222,13 +230,12 @@ _pr_open_run_inner() {
             stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
                 "the review verdict blocks opening a PR" \
                 "No PR was opened. The review stage judged the change not ready."
-            emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
+            emit_event "plugin.result" "verdict=blocked" "plugin=pr-open" \
                 "reason=review_verdict_block" "verdict=${verdict}"
             jq -n \
-                --argjson draft "${_draft_bool}" \
-                '{"schema_version":1,"status":"blocked","reason":"review verdict is block","draft":$draft}' \
+                '{"result_contract":2,"verdict":"blocked","disposition":"complete","reason":"review verdict is block"}' \
                 > "$output_pr_result_json"
-            return 2
+            return 0
         fi
     elif [[ -f "$advisory_report" ]]; then
         warn "pr_open: review.json absent — advisory-review mode (review-report.json present; ADR-040 lenses never block, #1142)"
@@ -237,13 +244,12 @@ _pr_open_run_inner() {
         stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
             "no review signal was available to authorise a PR" \
             "No PR was opened. Fail-closed: absence of a review is not approval."
-        emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
+        emit_event "plugin.result" "verdict=blocked" "plugin=pr-open" \
             "reason=review_signal_missing" "path=${review_json_path}"
         jq -n \
-            --argjson draft "${_draft_bool}" \
-            '{"schema_version":1,"status":"blocked","reason":"no review signal — fail-closed per ADR-001","draft":$draft}' \
+            '{"result_contract":2,"verdict":"blocked","disposition":"complete","reason":"no review signal — fail-closed per ADR-001"}' \
             > "$output_pr_result_json"
-        return 2
+        return 0
     fi
 
     # ── Determine target branch ───────────────────────────────────────────────
@@ -274,10 +280,9 @@ _pr_open_run_inner() {
                 "reason=branch_checkout_failed" "branch=${target_branch}"
             jq -n \
                 --arg branch "$target_branch" \
-                --argjson draft "${_draft_bool}" \
-                '{"schema_version":1,"status":"error","reason":("failed to checkout branch: "+$branch),"draft":$draft}' \
+                '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("failed to checkout branch: "+$branch)}' \
                 > "$output_pr_result_json"
-            return 2
+            return 1
         }
     fi
 
@@ -325,10 +330,9 @@ _pr_open_run_inner() {
                 emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                     "reason=no_committed_changes" "branch=${current_branch}"
                 jq -n \
-                    --argjson draft "${_draft_bool}" \
-                    '{"schema_version":1,"status":"error","reason":"no committed changes on branch or origin","draft":$draft}' \
+                    '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"no committed changes on branch or origin"}' \
                     > "$output_pr_result_json"
-                return 2
+                return 1
             fi
         fi
     fi
@@ -346,10 +350,9 @@ _pr_open_run_inner() {
         emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
             "reason=branch_push_failed" "branch=${target_branch}"
         jq -n --arg branch "$target_branch" --arg detail "$ZBUILD_PUSH_RECONCILE_ERR" \
-            --argjson draft "${_draft_bool}" \
-            '{"schema_version":1,"status":"error","reason":("failed to push branch: "+$branch+": "+$detail),"draft":$draft}' \
+            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("failed to push branch: "+$branch+": "+$detail)}' \
             > "$output_pr_result_json"
-        return 2
+        return 1
     fi
 
     # ── Open draft PR via gh ──────────────────────────────────────────────────
@@ -422,10 +425,9 @@ _pr_open_run_inner() {
                 "reason=gh_pr_edit_failed"
             jq -n \
                 --arg reason "$gh_output" \
-                --argjson draft "${_draft_bool}" \
-                '{"schema_version":1,"status":"error","reason":$reason,"draft":$draft}' \
+                '{"result_contract":2,"verdict":"error","disposition":"broken","reason":$reason}' \
                 > "$output_pr_result_json"
-            return 2
+            return 1
         fi
         # Get PR URL from existing PR
         pr_url="$(gh pr view "$existing_pr_number" --json url --jq .url 2>/dev/null || echo "")"
@@ -448,10 +450,9 @@ _pr_open_run_inner() {
                             "reason=gh_pr_edit_failed"
                         jq -n \
                             --arg reason "$gh_output" \
-                            --argjson draft "${_draft_bool}" \
-                            '{"schema_version":1,"status":"error","reason":$reason,"draft":$draft}' \
+                            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":$reason}' \
                             > "$output_pr_result_json"
-                        return 2
+                        return 1
                     fi
                     pr_url="$(gh pr view "$existing_pr_number" --json url --jq .url 2>/dev/null || echo "")"
                     pr_number="$existing_pr_number"
@@ -464,10 +465,9 @@ _pr_open_run_inner() {
                         "reason=gh_pr_create_failed"
                     jq -n \
                         --arg reason "$gh_output" \
-                        --argjson draft "${_draft_bool}" \
-                        '{"schema_version":1,"status":"error","reason":$reason,"draft":$draft}' \
+                        '{"result_contract":2,"verdict":"error","disposition":"broken","reason":$reason}' \
                         > "$output_pr_result_json"
-                    return 2
+                    return 1
                 fi
             else
                 error "pr_open: gh pr create failed: $gh_output"
@@ -478,10 +478,9 @@ _pr_open_run_inner() {
                     "reason=gh_pr_create_failed"
                 jq -n \
                     --arg reason "$gh_output" \
-                    --argjson draft "${_draft_bool}" \
-                    '{"schema_version":1,"status":"error","reason":$reason,"draft":$draft}' \
+                    '{"result_contract":2,"verdict":"error","disposition":"broken","reason":$reason}' \
                     > "$output_pr_result_json"
-                return 2
+                return 1
             fi
         else
             # New PR created successfully
@@ -509,15 +508,14 @@ _pr_open_run_inner() {
     printf '%s\n' "$pr_url" | atomic_write "$(dirname "$output_pr_result_json")/pr-url.txt"
 
     jq -n \
-        --argjson schema_version 1 \
         --arg status "$pr_status" \
         --arg pr_url "$pr_url" \
         --argjson pr_number "${pr_number:-0}" \
         --argjson draft "${_draft_bool}" \
         --arg branch "$target_branch" \
         --argjson issue "${issue_num:-0}" \
-        '{schema_version: $schema_version, status: $status, pr_url: $pr_url,
-          pr_number: $pr_number, draft: $draft, branch: $branch, issue: $issue}' \
+        '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":("PR "+$status),
+          "data":{"status":$status,"pr_url":$pr_url,"pr_number":$pr_number,"draft":$draft,"branch":$branch,"issue":$issue}}' \
         > "$output_pr_result_json"
 
     stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "pass" \

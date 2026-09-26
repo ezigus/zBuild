@@ -58,12 +58,12 @@ _pr_open_run_inner "$REVIEW_JSON" "$STATE_FILE" "$PR_RESULT_JSON" "999"
 rc=$?
 set -e
 
-assert_exit_code "blocked verdict returns rc=2" "2" "$rc"
+assert_exit_code "blocked verdict returns rc=0 (blocked is a verdict outcome, not error)" "0" "$rc"
 assert_file_exists "pr-result.json written on block" "$PR_RESULT_JSON"
 
 if [[ -f "$PR_RESULT_JSON" ]]; then
-    pr_status="$(jq -r '.status' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
-    assert_eq "pr-result.json status=blocked" "blocked" "$pr_status"
+    pr_status="$(jq -r '.verdict' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
+    assert_eq "pr-result.json verdict=blocked" "blocked" "$pr_status"
 fi
 
 unset -f git
@@ -92,12 +92,12 @@ _pr_open_run_inner "$REVIEW_JSON" "$STATE_FILE" "$PR_RESULT_JSON" "999"
 rc=$?
 set -e
 
-assert_exit_code "no review signal returns rc=2" "2" "$rc"
+assert_exit_code "no review signal returns rc=0 (blocked is a verdict outcome, not error)" "0" "$rc"
 assert_file_exists "pr-result.json written when no review signal" "$PR_RESULT_JSON"
 
 if [[ -f "$PR_RESULT_JSON" ]]; then
-    pr_status="$(jq -r '.status' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
-    assert_eq "pr-result.json status=blocked when no review signal" "blocked" "$pr_status"
+    pr_status="$(jq -r '.verdict' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
+    assert_eq "pr-result.json verdict=blocked when no review signal" "blocked" "$pr_status"
     pr_reason="$(jq -r '.reason' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
     if [[ "$pr_reason" == *"no review signal"* ]]; then
         assert_pass "pr-result.json reason names the missing review signal"
@@ -143,8 +143,8 @@ rm -f "$REVIEW_REPORT_JSON"
 
 assert_exit_code "advisory mode (review-report.json present) opens PR rc=0" "0" "$rc"
 if [[ -f "$PR_RESULT_JSON" ]]; then
-    assert_eq "advisory mode: status=opened (not blocked on advisory review)" \
-        "opened" "$(jq -r '.status' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
+    assert_eq "advisory mode: verdict=pass (not blocked on advisory review)" \
+        "pass" "$(jq -r '.verdict' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
 fi
 
 unset -f git
@@ -173,12 +173,12 @@ _pr_open_run_inner "$REVIEW_JSON" "$STATE_FILE" "$PR_RESULT_JSON" "999"
 rc=$?
 set -e
 
-assert_exit_code "main branch returns rc=2" "2" "$rc"
+assert_exit_code "main branch returns rc=1 (infrastructure error, not verdict outcome)" "1" "$rc"
 assert_file_exists "pr-result.json written for main branch guard" "$PR_RESULT_JSON"
 
 if [[ -f "$PR_RESULT_JSON" ]]; then
-    pr_status="$(jq -r '.status' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
-    assert_eq "pr-result.json status=error for main branch" "error" "$pr_status"
+    pr_status="$(jq -r '.verdict' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
+    assert_eq "pr-result.json verdict=error for main branch" "error" "$pr_status"
 fi
 
 unset -f git
@@ -224,16 +224,16 @@ assert_file_exists "pr-url.txt written on success (ADR-013 canonical)" \
 
 if [[ -f "$PR_RESULT_JSON" ]]; then
     pr_result_json="$(cat "$PR_RESULT_JSON")"
-    assert_json_key "pr-result.json status=opened" "$pr_result_json" '.status' "opened"
-    pr_url="$(jq -r '.pr_url' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
+    assert_json_key "pr-result.json data.status=opened" "$pr_result_json" '.data.status' "opened"
+    pr_url="$(jq -r '.data.pr_url' "$PR_RESULT_JSON" 2>/dev/null || echo "")"
     if [[ -n "$pr_url" && "$pr_url" != "null" ]]; then
-        assert_pass "pr-result.json pr_url is non-empty"
+        assert_pass "pr-result.json data.pr_url is non-empty"
     else
-        assert_fail "pr-result.json pr_url is non-empty" "pr_url was empty or null"
+        assert_fail "pr-result.json data.pr_url is non-empty" "data.pr_url was empty or null"
     fi
-    assert_json_key "[SPEC-5] pr-result.json draft=false (non-draft default, _TPL_PR_DRAFT unset)" \
-        "$pr_result_json" '.draft' "false"
-    assert_json_key "pr-result.json branch=zbuild/issue-999" "$pr_result_json" '.branch' "zbuild/issue-999"
+    assert_json_key "[SPEC-5] pr-result.json data.draft=false (non-draft default, _TPL_PR_DRAFT unset)" \
+        "$pr_result_json" '.data.draft' "false"
+    assert_json_key "pr-result.json data.branch=zbuild/issue-999" "$pr_result_json" '.data.branch' "zbuild/issue-999"
 fi
 
 unset -f git
@@ -357,8 +357,8 @@ fi
 
 if [[ -f "$PR_RESULT_JSON" ]]; then
     pr_result_json8="$(cat "$PR_RESULT_JSON")"
-    assert_json_key "[SPEC-6] _TPL_PR_DRAFT=true: pr-result.json draft=true" \
-        "$pr_result_json8" '.draft' "true"
+    assert_json_key "[SPEC-6] _TPL_PR_DRAFT=true: pr-result.json data.draft=true" \
+        "$pr_result_json8" '.data.draft' "true"
 else
     assert_fail "[SPEC-6] _TPL_PR_DRAFT=true: pr-result.json written" "artifact absent"
 fi
@@ -407,8 +407,8 @@ set -e
 assert_exit_code "existing PR: returns rc=0 (no abort)" "0" "$rc"
 if [[ -f "$PR_RESULT_JSON" ]]; then
     pr_result_json9="$(cat "$PR_RESULT_JSON")"
-    assert_json_key "existing PR: status=updated" "$pr_result_json9" '.status' "updated"
-    assert_json_key "existing PR: pr_number=42" "$pr_result_json9" '.pr_number' "42"
+    assert_json_key "existing PR: data.status=updated" "$pr_result_json9" '.data.status' "updated"
+    assert_json_key "existing PR: data.pr_number=42" "$pr_result_json9" '.data.pr_number' "42"
 fi
 if grep -q "pr edit" "$GH9_ARGS"; then
     assert_pass "existing PR: gh pr edit was called"

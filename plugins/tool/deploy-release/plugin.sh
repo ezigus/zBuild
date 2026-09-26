@@ -23,25 +23,35 @@ deploy_release_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
         error "deploy_release_run: state_file argument required"
+        if [[ -n "${ZBUILD_ARTIFACT_DIR:-}" ]]; then
+            mkdir -p "$ZBUILD_ARTIFACT_DIR"
+            jq -n '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"state_file argument required"}' \
+                > "$ZBUILD_ARTIFACT_DIR/deploy-result.json"
+        fi
         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/deploy-release-summary.md}" "deploy-release" "error" \
             "the engine dispatched this stage with no state file, so it could not run" \
             "No work was attempted. This is an engine contract violation, not a fault in the change."
-        return 2
+        return 1
     fi
 
     local state_dir; state_dir="$(dirname "$state_file")"
     local artifacts_dir="$state_dir/artifacts"
-    local pr_url_in="$artifacts_dir/pr-url.txt"
     local deploy_result_out="$artifacts_dir/deploy-result.json"
     mkdir -p "$artifacts_dir"
 
+    local _pr_url_path="$artifacts_dir/pr-url.txt"
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+        local _si_pu
+        _si_pu="$(jq -r '.inputs.pr_url // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+        [[ -n "$_si_pu" ]] && _pr_url_path="$_si_pu"
+    fi
     local pr_url=""
-    [[ -f "$pr_url_in" ]] && pr_url="$(tr -d '[:space:]' < "$pr_url_in")"
+    [[ -f "$_pr_url_path" ]] && pr_url="$(tr -d '[:space:]' < "$_pr_url_path")"
 
     # Dry-run: write sentinel without executing git/gh
     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
         jq -n --arg pr_url "$pr_url" \
-            '{schema_version:1,verdict:"deployed",mode:"dry_run",pr_url:$pr_url}' \
+            '{"result_contract":2,"verdict":"deployed","disposition":"complete","reason":"dry run — release simulated, no tag created","pr_url":$pr_url,"data":{"mode":"dry_run"}}' \
             | atomic_write "$deploy_result_out"
         emit_event "deploy.release.dry_run" "plugin=deploy-release"
         stage_summary_write "$artifacts_dir/deploy-release-summary.md" "deploy-release" "skip" \
@@ -60,7 +70,7 @@ deploy_release_run() {
     if ! git tag "$tag_name" 2>/dev/null; then
         error "deploy-release: git tag failed for $tag_name"
         jq -n --arg tag "$tag_name" \
-            '{schema_version:1,verdict:"error",reason:"git tag failed",tag:$tag}' \
+            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"git tag failed","data":{"tag":$tag}}' \
             > "$deploy_result_out"
         stage_summary_write "$artifacts_dir/deploy-release-summary.md" "deploy-release" "fail" \
             "could not create the release tag $tag_name" \
@@ -73,7 +83,7 @@ deploy_release_run() {
         # Roll back the local tag so a retry is not blocked by a stale tag (#757 review).
         git tag -d "$tag_name" 2>/dev/null || true
         jq -n --arg tag "$tag_name" \
-            '{schema_version:1,verdict:"error",reason:"git push tag failed",tag:$tag}' \
+            '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"git push tag failed","data":{"tag":$tag}}' \
             > "$deploy_result_out"
         stage_summary_write "$artifacts_dir/deploy-release-summary.md" "deploy-release" "fail" \
             "could not push the release tag $tag_name to origin" \
@@ -82,7 +92,7 @@ deploy_release_run() {
     fi
 
     jq -n --arg tag "$tag_name" --arg pr_url "$pr_url" \
-        '{schema_version:1,verdict:"deployed",tag:$tag,pr_url:$pr_url}' \
+        '{"result_contract":2,"verdict":"deployed","disposition":"complete","reason":"git tag created and pushed to origin","pr_url":$pr_url,"data":{"tag":$tag}}' \
         | atomic_write "$deploy_result_out"
     emit_event "deploy.release.complete" "plugin=deploy-release" "tag=$tag_name"
     stage_summary_write "$artifacts_dir/deploy-release-summary.md" "deploy-release" "pass" \

@@ -22,6 +22,7 @@ requires:
     - state
 
 provides:
+  result_contract: 2
   # Canonical artifact per ADR-013: pr-url.txt.
   # The plugin also writes pr-result.json (richer status payload, listed in
   # outputs[] below); both are written on success. See ADR-013 Implementation
@@ -33,10 +34,10 @@ provides:
     - plugin.pr_open.preflight_remote_has_work
 
 config:
-  # Writes no .verdict on either verdict channel; the engine falls back to
-  # pass for a well-formed primary (core/pipeline/verdict.sh). An ABSENT key
-  # is a lint failure; the explicit [] is the claim (#1708).
-  valid_verdicts: []
+  valid_verdicts:
+    - pass
+    - blocked
+    - error
   tier_default: T0
   draft: false
 

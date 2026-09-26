@@ -58,12 +58,12 @@ _pr_stage_run_inner() {
         verdict="$(jq -r '.verdict // empty' "$review_json" 2>/dev/null || true)"
         if [[ "$verdict" == "block" ]]; then
             warn "pr: review verdict=block — refusing PR open"
-            printf '{"status":"blocked","verdict":"block","branch":"%s"}\n' \
-                "${ZBUILD_BRANCH:-unknown}" > "$pr_result_out"
+            jq -n '{"result_contract":2,"verdict":"blocked","disposition":"complete","reason":"review verdict is block"}' \
+                > "$pr_result_out"
             stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
                 "refused to open a PR: the review verdict is block" \
                 "No PR was delivered. The review stage judged the change not ready."
-            return 1
+            return 0
         fi
     fi
 
@@ -73,7 +73,8 @@ _pr_stage_run_inner() {
         [[ "$_dry_draft" == "true" ]] || _dry_draft="false"
         printf 'https://github.com/mock/repo/pull/0\n' | atomic_write "$pr_url_out"
         jq -nc --arg branch "${ZBUILD_BRANCH:-unknown}" --argjson draft "$_dry_draft" \
-            '{status:"dry_run",branch:$branch,pr_number:0,draft:$draft}' \
+            '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"dry run — PR simulated",
+              "data":{"status":"dry_run","branch":$branch,"pr_number":0,"draft":$draft}}' \
             | atomic_write "$pr_result_out"
         stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "skip" \
             "dry run — no PR was opened and gh was not called" \
