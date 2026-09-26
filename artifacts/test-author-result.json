@@ -1,0 +1,18 @@
+{
+  "result_contract": 2,
+  "verdict": "degraded",
+  "disposition": "timed_out",
+  "reason": "the model call failed (router_timeout) — no assertions were authored",
+  "data": {
+    "specs_covered": 23,
+    "owned_files": [
+      "tests/integration/merge-policy-auto-test.sh",
+      "tests/integration/pr-pipeline-test.sh",
+      "tests/unit/deploy-release-v2-result-test.sh",
+      "tests/unit/merge-v2-result-test.sh",
+      "tests/unit/pr-open-advisory-review-test.sh",
+      "tests/unit/pr-open-v2-result-test.sh",
+      "tests/unit/pr-open-zero-commits-halts-test.sh"
+    ]
+  }
+}
