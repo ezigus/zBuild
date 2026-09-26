@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Tests: pr-open advisory review-report rendering in PR body (#1707)
 # Covers: _pr_open_render_advisory_section + body assembly in advisory mode.
+#
+# SPEC coverage:
+#   [SPEC-22] pr-open advisory review section renders finding count and top bullets
+#             in the PR body
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -82,8 +86,8 @@ _reset_fixtures() {
     rm -f "$PR_RESULT_JSON" "$REVIEW_JSON" "$REVIEW_REPORT_JSON" "$BODY_FILE"
 }
 
-# ─── SPEC-1: advisory mode with findings → count + top bullets + no N/A ─────
-print_test_section "SPEC-1: review-report.json with findings → body has count, top findings, no verdict N/A"
+# ─── advisory mode with findings → count + top bullets + no N/A ─────────────
+print_test_section "SPEC-22: review-report.json with findings → body has count, top findings, no verdict N/A"
 
 _reset_fixtures
 cat > "$REVIEW_REPORT_JSON" <<'JSON'
@@ -110,34 +114,34 @@ cat > "$REVIEW_REPORT_JSON" <<'JSON'
 JSON
 
 _run_pr_open
-assert_exit_code "[SPEC-1] advisory mode with findings: rc=0" "0" "$RUN_RC"
+assert_exit_code "advisory mode with findings: rc=0" "0" "$RUN_RC"
 
 if [[ -f "$BODY_FILE" ]]; then
     spec1_body="$(cat "$BODY_FILE")"
-    assert_contains "[SPEC-1] body contains finding count" \
+    assert_contains "[SPEC-22] body contains finding count" \
         "$spec1_body" "2 finding(s)"
-    assert_contains "[SPEC-1] body contains severity indicator" \
+    assert_contains "[SPEC-22] body contains severity indicator" \
         "$spec1_body" "[high]"
-    assert_contains "[SPEC-1] body contains lens name" \
+    assert_contains "[SPEC-22] body contains lens name" \
         "$spec1_body" "security"
     # The point of #1707: a human must be able to read WHAT was found, so the
     # bullet carries file:line and the finding text, not just a file path.
-    assert_contains "[SPEC-1] body contains file:line locator" \
+    assert_contains "[SPEC-22] body contains file:line locator" \
         "$spec1_body" "foo.sh:42"
-    assert_contains "[SPEC-1] body contains the finding message" \
+    assert_contains "[SPEC-22] body contains the finding message" \
         "$spec1_body" "potential injection via unquoted expansion"
     if grep -qF '**Review verdict:** N/A' <<< "$spec1_body" 2>/dev/null; then
-        assert_fail "[SPEC-1] advisory mode: no misleading 'Review verdict: N/A'" \
+        assert_fail "advisory mode: no misleading 'Review verdict: N/A'" \
             "body still contains 'Review verdict: N/A'"
     else
-        assert_pass "[SPEC-1] advisory mode: no misleading 'Review verdict: N/A'"
+        assert_pass "advisory mode: no misleading 'Review verdict: N/A'"
     fi
 else
-    assert_fail "[SPEC-1] body captured from gh call" "BODY_FILE not written"
+    assert_fail "[SPEC-22] body captured from gh call" "BODY_FILE not written"
 fi
 
-# ─── SPEC-2: review.json present, no review-report.json → "no advisory review ran" ─
-print_test_section "SPEC-2: review.json present, review-report.json absent → 'no advisory review ran' in body"
+# ─── review.json present, no review-report.json → "no advisory review ran" ──
+print_test_section "review.json present, review-report.json absent → 'no advisory review ran' in body"
 
 _reset_fixtures
 cat > "$REVIEW_JSON" <<'JSON'
@@ -145,18 +149,18 @@ cat > "$REVIEW_JSON" <<'JSON'
 JSON
 
 _run_pr_open
-assert_exit_code "[SPEC-2] review.json present, no report: rc=0" "0" "$RUN_RC"
+assert_exit_code "review.json present, no report: rc=0" "0" "$RUN_RC"
 
 if [[ -f "$BODY_FILE" ]]; then
     spec2_body="$(cat "$BODY_FILE")"
-    assert_contains "[SPEC-2] body contains 'no advisory review ran'" \
+    assert_contains "body contains 'no advisory review ran'" \
         "$spec2_body" "no advisory review ran"
 else
-    assert_fail "[SPEC-2] body captured from gh call" "BODY_FILE not written"
+    assert_fail "body captured from gh call" "BODY_FILE not written"
 fi
 
-# ─── SPEC-3: advisory mode, findings=[] → "no findings" in body ──────────────
-print_test_section "SPEC-3: review-report.json with findings=[] → 'no findings' in body"
+# ─── advisory mode, findings=[] → "no findings" in body ─────────────────────
+print_test_section "review-report.json with findings=[] → 'no findings' in body"
 
 _reset_fixtures
 cat > "$REVIEW_REPORT_JSON" <<'JSON'
@@ -164,18 +168,18 @@ cat > "$REVIEW_REPORT_JSON" <<'JSON'
 JSON
 
 _run_pr_open
-assert_exit_code "[SPEC-3] advisory mode, no findings: rc=0" "0" "$RUN_RC"
+assert_exit_code "advisory mode, no findings: rc=0" "0" "$RUN_RC"
 
 if [[ -f "$BODY_FILE" ]]; then
     spec3_body="$(cat "$BODY_FILE")"
-    assert_contains "[SPEC-3] body contains 'no findings'" \
+    assert_contains "body contains 'no findings'" \
         "$spec3_body" "no findings"
 else
-    assert_fail "[SPEC-3] body captured from gh call" "BODY_FILE not written"
+    assert_fail "body captured from gh call" "BODY_FILE not written"
 fi
 
-# ─── SPEC-4: blocking-review mode — verdict preserved, not replaced by advisory ─
-print_test_section "SPEC-4: review.json present with advisory report → body keeps blocking verdict"
+# ─── blocking-review mode — verdict preserved, not replaced by advisory ──────
+print_test_section "review.json present with advisory report → body keeps blocking verdict"
 
 _reset_fixtures
 cat > "$REVIEW_JSON" <<'JSON'
@@ -198,46 +202,46 @@ cat > "$REVIEW_REPORT_JSON" <<'JSON'
 JSON
 
 _run_pr_open
-assert_exit_code "[SPEC-4] blocking-review mode with advisory report: rc=0" "0" "$RUN_RC"
+assert_exit_code "blocking-review mode with advisory report: rc=0" "0" "$RUN_RC"
 
 if [[ -f "$BODY_FILE" ]]; then
     spec4_body="$(cat "$BODY_FILE")"
-    assert_contains "[SPEC-4] body still contains blocking verdict line when review.json present" \
+    assert_contains "body still contains blocking verdict line when review.json present" \
         "$spec4_body" "Review verdict:"
     # ADR-040 §4: a high-severity advisory finding must not block the PR.
-    assert_json_key "[SPEC-4] PR still opened despite a high advisory finding" \
-        "$(cat "$PR_RESULT_JSON")" ".status" "opened"
+    assert_json_key "PR still opened despite a high advisory finding" \
+        "$(cat "$PR_RESULT_JSON")" ".verdict" "pass"
 else
-    assert_fail "[SPEC-4] body captured from gh call" "BODY_FILE not written"
+    assert_fail "body captured from gh call" "BODY_FILE not written"
 fi
 
-# ─── SPEC-5: unparseable report → says so, never "no findings" ───────────────
-print_test_section "SPEC-5: unreadable review-report.json → explicit 'could not be read', not 'no findings'"
+# ─── unparseable report → says so, never "no findings" ───────────────────────
+print_test_section "unreadable review-report.json → explicit 'could not be read', not 'no findings'"
 
 _reset_fixtures
 # Truncated mid-object: jq cannot parse it.
 printf '%s\n' '{"findings": [ {"severity":"high"' > "$REVIEW_REPORT_JSON"
 
 _run_pr_open
-assert_exit_code "[SPEC-5] unreadable report: rc=0" "0" "$RUN_RC"
+assert_exit_code "unreadable report: rc=0" "0" "$RUN_RC"
 
 if [[ -f "$BODY_FILE" ]]; then
     spec5_body="$(cat "$BODY_FILE")"
-    assert_contains "[SPEC-5] body says the report could not be read" \
+    assert_contains "body says the report could not be read" \
         "$spec5_body" "could not be read"
     # #1618 lesson: never imply a clean result that was not verified.
     if grep -qF 'no findings' <<< "$spec5_body" 2>/dev/null; then
-        assert_fail "[SPEC-5] unreadable report never claims 'no findings'" \
+        assert_fail "unreadable report never claims 'no findings'" \
             "body claims 'no findings' for a report it could not parse"
     else
-        assert_pass "[SPEC-5] unreadable report never claims 'no findings'"
+        assert_pass "unreadable report never claims 'no findings'"
     fi
 else
-    assert_fail "[SPEC-5] body captured from gh call" "BODY_FILE not written"
+    assert_fail "body captured from gh call" "BODY_FILE not written"
 fi
 
-# ─── SPEC-6: finding text cannot inject markdown/HTML into the PR body ───────
-print_test_section "SPEC-6: hostile finding text is escaped, not rendered as active markup"
+# ─── finding text cannot inject markdown/HTML into the PR body ───────────────
+print_test_section "hostile finding text is escaped, not rendered as active markup"
 
 _reset_fixtures
 cat > "$REVIEW_REPORT_JSON" <<'JSON'
@@ -258,35 +262,35 @@ cat > "$REVIEW_REPORT_JSON" <<'JSON'
 JSON
 
 _run_pr_open
-assert_exit_code "[SPEC-6] hostile finding text: rc=0" "0" "$RUN_RC"
+assert_exit_code "hostile finding text: rc=0" "0" "$RUN_RC"
 
 if [[ -f "$BODY_FILE" ]]; then
     spec6_body="$(cat "$BODY_FILE")"
     # An escaped "\<img" still contains the substring "<img", so match only an
     # occurrence NOT preceded by a backslash — that is the one GitHub renders.
     if grep -qE '(^|[^\\])<img' <<< "$spec6_body" 2>/dev/null; then
-        assert_fail "[SPEC-6] raw HTML tag from a finding is escaped" \
+        assert_fail "raw HTML tag from a finding is escaped" \
             "body contains an unescaped '<img' tag"
     else
-        assert_pass "[SPEC-6] raw HTML tag from a finding is escaped"
+        assert_pass "raw HTML tag from a finding is escaped"
     fi
     if grep -qE '(^|[^\\])\[evil\]\(' <<< "$spec6_body" 2>/dev/null; then
-        assert_fail "[SPEC-6] markdown link from a finding is escaped" \
+        assert_fail "markdown link from a finding is escaped" \
             "body contains an active markdown link"
     else
-        assert_pass "[SPEC-6] markdown link from a finding is escaped"
+        assert_pass "markdown link from a finding is escaped"
     fi
-    assert_contains "[SPEC-6] the HTML tag is present in escaped form" \
+    assert_contains "the HTML tag is present in escaped form" \
         "$spec6_body" '\<img'
     # Escaping must neutralise markup without deleting the text itself.
-    assert_contains "[SPEC-6] finding text is still present after escaping" \
+    assert_contains "finding text is still present after escaping" \
         "$spec6_body" "attacker.example"
 else
-    assert_fail "[SPEC-6] body captured from gh call" "BODY_FILE not written"
+    assert_fail "body captured from gh call" "BODY_FILE not written"
 fi
 
-# ─── SPEC-7: more than five findings → overflow moves to a <details> block ───
-print_test_section "SPEC-7: >5 findings → top five inline, remainder in <details>"
+# ─── more than five findings → overflow moves to a <details> block ───────────
+print_test_section "SPEC-22: >5 findings → top five inline, remainder in <details>"
 
 _reset_fixtures
 jq -n '{schema_version:1, merge_readiness:"advisory", lenses:[{name:"sre"}],
@@ -295,15 +299,15 @@ jq -n '{schema_version:1, merge_readiness:"advisory", lenses:[{name:"sre"}],
     > "$REVIEW_REPORT_JSON"
 
 _run_pr_open
-assert_exit_code "[SPEC-7] seven findings: rc=0" "0" "$RUN_RC"
+assert_exit_code "seven findings: rc=0" "0" "$RUN_RC"
 
 if [[ -f "$BODY_FILE" ]]; then
     spec7_body="$(cat "$BODY_FILE")"
-    assert_contains "[SPEC-7] body reports the full finding count" \
+    assert_contains "[SPEC-22] body reports the full finding count" \
         "$spec7_body" "7 finding(s)"
-    assert_contains "[SPEC-7] overflow is collapsed into a details block" \
+    assert_contains "overflow is collapsed into a details block" \
         "$spec7_body" "<details><summary>2 more finding(s)</summary>"
-    assert_contains "[SPEC-7] details block is closed" \
+    assert_contains "details block is closed" \
         "$spec7_body" "</details>"
     # GitHub keeps consuming an HTML block until a blank line, so without one
     # the next line renders as raw HTML instead of markdown. Matched with a
@@ -311,13 +315,13 @@ if [[ -f "$BODY_FILE" ]]; then
     # needle degrades into separate patterns (one of them empty, matching all).
     _nl=$'\n'
     if [[ "$spec7_body" == *"</details>${_nl}${_nl}**Test verdict:**"* ]]; then
-        assert_pass "[SPEC-7] a blank line separates </details> from the next line"
+        assert_pass "a blank line separates </details> from the next line"
     else
-        assert_fail "[SPEC-7] a blank line separates </details> from the next line" \
+        assert_fail "a blank line separates </details> from the next line" \
             "no blank line after </details>; the next line would render as raw HTML"
     fi
 else
-    assert_fail "[SPEC-7] body captured from gh call" "BODY_FILE not written"
+    assert_fail "body captured from gh call" "BODY_FILE not written"
 fi
 
 # ─── Teardown ─────────────────────────────────────────────────────────────────

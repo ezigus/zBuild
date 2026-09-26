@@ -1,1 +1,1 @@
-{"schema_version":1,"status":"opened","pr_url":"https://github.com/owner/repo/pull/42","pr_number":42,"draft":false,"branch":"zbuild/issue-0","issue":0}
+{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"PR opened","data":{"status":"opened","pr_url":"https://github.com/owner/repo/pull/42","pr_number":42,"draft":false,"branch":"zbuild/issue-0","issue":0}}

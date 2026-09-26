@@ -242,6 +242,7 @@ and maps the verdict to one of `pass | warn | fail | unknown`:
 | `covered` (#1683)                            | pass  | `✓`   | GREEN  |
 | `skipped`, `healthy`, `deployed`             | pass  | `✓`   | GREEN  |
 | `request_changes`, `incomplete`, `degraded`  | warn  | `⚠`   | YELLOW |
+| `blocked` (#1849)                            | warn  | `⚠`   | YELLOW |
 | `partial`, `uncheckable` (#2034)             | warn  | `⚠`   | YELLOW |
 | `unjudged` (#2062)                           | warn  | `⚠`   | YELLOW |
 | `unreadable` (#1683)                         | warn  | `⚠`   | YELLOW |

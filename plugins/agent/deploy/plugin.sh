@@ -73,7 +73,7 @@ _deploy_agent_run_inner() {
     # (checked BEFORE the gate guard so isolation/dry-run needs no gate result).
     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
         jq -n --arg pr_url "$pr_url" \
-            '{schema_version:1,verdict:"deployed",mode:"dry_run",pr_url:$pr_url}' \
+            '{"result_contract":2,"verdict":"deployed","disposition":"complete","reason":"dry run — release simulated","pr_url":$pr_url,"data":{"mode":"dry_run"}}' \
             | atomic_write "$deploy_result_out"
         stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "skip" \
             "dry run — no release side-effect was executed" \

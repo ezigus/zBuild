@@ -154,15 +154,15 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# SPEC-7: dry-run deploy-result.json carries schema_version=1 field
+# SPEC-7: dry-run deploy-result.json carries result_contract=2 field (v2 contract)
 # ---------------------------------------------------------------------------
 _run7="$TEST_TEMP_DIR/run7"
 _sf7="$(_make_state "$_run7")"
 printf 'https://github.com/test/repo/pull/42\n' > "$_run7/artifacts/pr-url.txt"
 
 ZBUILD_DRY_RUN=1 _deploy_agent_run_inner "$_sf7"
-_sv7="$(jq -r '.schema_version' "$_run7/artifacts/deploy-result.json" 2>/dev/null || echo MISSING)"
-assert_eq "[SPEC-7] deploy-result.json has schema_version=1" "1" "$_sv7"
+_sv7="$(jq -r '.result_contract' "$_run7/artifacts/deploy-result.json" 2>/dev/null || echo MISSING)"
+assert_eq "[SPEC-7] deploy-result.json has result_contract=2" "2" "$_sv7"
 
 # ---------------------------------------------------------------------------
 # SPEC-8: gate result MISSING (non-dry-run) → fail-closed rc=2 + verdict=error
