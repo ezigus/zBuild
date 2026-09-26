@@ -51,6 +51,17 @@ _s8_role="$(awk '
 ' "$PR_MANIFEST" || echo '')"
 assert_eq "[SPEC-8] manifest provides has no role (do-not-add constraint)" "" "$_s8_role"
 
+# existing events must be retained after adding result_contract:2
+_s8_ev1="$(awk '/^provides:/{f=1} f && /plugin\.pr_open\.branch_fallback_used/{print; exit}' "$PR_MANIFEST" || echo '')"
+[[ -n "$_s8_ev1" ]] \
+    && assert_pass "[SPEC-8] provides retains event plugin.pr_open.branch_fallback_used" \
+    || assert_fail "[SPEC-8] provides retains event plugin.pr_open.branch_fallback_used" "absent from $PR_MANIFEST"
+
+_s8_ev2="$(awk '/^provides:/{f=1} f && /plugin\.pr_open\.preflight_remote_has_work/{print; exit}' "$PR_MANIFEST" || echo '')"
+[[ -n "$_s8_ev2" ]] \
+    && assert_pass "[SPEC-8] provides retains event plugin.pr_open.preflight_remote_has_work" \
+    || assert_fail "[SPEC-8] provides retains event plugin.pr_open.preflight_remote_has_work" "absent from $PR_MANIFEST"
+
 # ─── SPEC-9: valid_verdicts includes pass, blocked, error ────────────────────
 print_test_section "SPEC-9: config valid_verdicts updated to [pass, blocked, error]"
 

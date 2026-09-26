@@ -19,6 +19,7 @@
       "tests/integration/merge-policy-auto-test.sh",
       "tests/integration/pr-pipeline-test.sh",
       "tests/unit/deploy-release-v2-result-test.sh",
+      "tests/unit/lint-verdict-classify-test.sh",
       "tests/unit/merge-v2-result-test.sh",
       "tests/unit/pr-open-advisory-review-test.sh",
       "tests/unit/pr-open-v2-result-test.sh",

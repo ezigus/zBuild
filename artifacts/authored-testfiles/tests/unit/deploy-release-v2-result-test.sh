@@ -42,6 +42,10 @@ print_test_section "SPEC-15: manifest provides declares result_contract:2 (role/
 _s15_prov_rc="$(awk '/^provides:/{f=1} f && /result_contract:/{print $2; exit}' "$DR_MANIFEST" || echo '')"
 assert_eq "[SPEC-15] manifest provides.result_contract is 2" "2" "$_s15_prov_rc"
 
+# role:deploy_release_executor must be retained after adding result_contract:2
+_s15_prov_role="$(awk '/^provides:/{f=1} f && /^[[:space:]]*role:/{print $2; exit}' "$DR_MANIFEST" || echo '')"
+assert_eq "[SPEC-15] manifest provides.role is deploy_release_executor" "deploy_release_executor" "$_s15_prov_role"
+
 # valid_verdicts must remain [deployed, error] — do not change them
 _vv_deployed="$(grep -v '^#' "$DR_MANIFEST" | grep -c '^[[:space:]]*- deployed$' || true)"
 _vv_error="$(grep -v '^#' "$DR_MANIFEST" | grep -c '^[[:space:]]*- error$' || true)"
