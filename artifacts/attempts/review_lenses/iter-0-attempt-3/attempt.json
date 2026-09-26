@@ -1,0 +1,12 @@
+{
+  "stage": "review_lenses",
+  "cycle_iter": 0,
+  "attempt": 3,
+  "rc": "0",
+  "generated_at": "2026-09-26T14:05:30Z",
+  "files": 2,
+  "outputs": {
+    "lens-security.json": "changed",
+    "lens-security-summary.md": "changed"
+  }
+}
