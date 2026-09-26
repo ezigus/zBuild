@@ -411,7 +411,8 @@ assert_eq "[SPEC-21] dry-run v2 output: schema_version key absent" "false" "$_v2
 # SPEC-22: manifest outputs array declares validate_result with primary: true —
 #          this invariant must not regress under v2 migration
 # ---------------------------------------------------------------------------
-if grep -A 10 'id: validate_result' "$MANIFEST_FILE" | grep -q 'primary:.*true'; then
+_v22_block="$(grep -A 10 'id: validate_result' "$MANIFEST_FILE")"
+if grep -q 'primary:.*true' <<< "$_v22_block"; then
     assert_pass "[SPEC-22] manifest outputs validate_result declares primary: true"
 else
     assert_fail "[SPEC-22] manifest outputs validate_result declares primary: true" \
