@@ -7,9 +7,9 @@
 **Context.** These three plugins remain on v1 shapes (`schema_version:1`, freeform `status` field, `return 2` on error paths). They are the last batch in the F-wave migration (#1833–#1849). `core/contract/version.sh` declares `_ZBUILD_CONTRACT_MIN=1 _ZBUILD_CONTRACT_MAX=2`; after #1850 raises the floor all undeclared plugins are refused at load — migrating now is what makes that a one-line change.
 
 Current manifest state by plugin:
-- **merge**: no `provides:` block at all; `valid_verdicts: []` in config
-- **pr-open**: has `provides:` with events but no role (manifest-comment constraint — must not gain a role); `valid_verdicts: []` in config
-- **deploy-release**: has `provides:` with role and events already; `valid_verdicts: [deployed, error]` in config (already non-empty and correct for deploy-release's own exit paths); needs only `result_contract: 2` added to its existing `provides:` block
+- **merge**: no `provides:` block at all; `valid_verdicts: []` in config; `hooks:` has only `run:`
+- **pr-open**: has `provides:` with `events:` but no `role:` (manifest-comment constraint — must not gain a role); `valid_verdicts: []` in config; `hooks:` has only `run:`
+- **deploy-release**: has `provides:` with `role:deploy_release_executor` and `events:` already; `valid_verdicts: [deployed, error]` already correct; `hooks:` has only `run:`
 
 Per reference manifests (mutation-gate, teardown), `result_contract: 2` is a field inside the `provides:` section, not `config:`.
 
@@ -24,6 +24,10 @@ For declared inputs (`gate_aggregator_result`, `review_report`, `pr_url`), repla
 **Router budgets.** All three are T0 tools with no LLM calls; all manifests already declare `tier_default: T0` with no `router:` block — the correct and complete budget declaration for LLM-free tools. No `router:` block is added.
 
 **Primary outputs.** All three manifests already declare `primary: true` on their canonical result artifact. The merge manifest migration (adds `provides:`) must not displace that declaration.
+
+**Cleanup hooks (#1829).** All three plugin.sh files implement an empty cleanup function body. Per ADR-056, when `hooks.cleanup` is absent from the manifest, the engine emits `plugin.cleanup.absent` and returns rc=0 — absence is the explicit recorded state, not an omission. None of the three manifests declare a `cleanup:` hook, and none should: there is nothing to free. This is the correct and recorded declaration.
+
+**provides.events/role retained.** pr-open already declares `events:[plugin.pr_open.branch_fallback_used, plugin.pr_open.preflight_remote_has_work]` with no role (constraint preserved). deploy-release already declares `role:deploy_release_executor` and `events:[deploy.release.complete, deploy.release.dry_run, release.published, release.tagged]`. Adding `result_contract:2` to these `provides:` sections must not displace any existing key.
 
 ```scope
 plugins/tool/merge/manifest.yaml
@@ -66,14 +70,14 @@ SPEC-4[change]: merge-result.json carries result_contract:2, verdict=pass, data.
 SPEC-5[change]: merge-result.json carries result_contract:2, verdict=error, disposition, reason on all error paths (branch-is-main, push failure, gh failure)
 SPEC-6[change]: merge plugin returns rc ∈ {0,1} on all exit paths — no path returns rc=2
 SPEC-7[change]: merge plugin reads gate_aggregator_result path via ZBUILD_STAGE_INPUTS with artifacts_dir fallback (no hardcoded path for this declared input)
-SPEC-8[change]: pr-open manifest provides declares result_contract:2
+SPEC-8[change]: pr-open manifest provides declares result_contract:2 (existing events retained, no role added — constraint preserved)
 SPEC-9[change]: pr-open/config valid_verdicts updated from [] to [pass,blocked,error]
 SPEC-10[change]: pr-result.json carries result_contract:2, verdict=pass, disposition, reason on opened and updated paths
 SPEC-11[change]: pr-result.json carries result_contract:2, verdict=blocked, disposition, reason when review verdict=block or no review signal (fail-closed); rc=0 not rc=2
 SPEC-12[change]: pr-result.json carries result_contract:2, verdict=error, disposition, reason on error paths (branch-is-main, push failure, gh failure); rc=1 not rc=2
 SPEC-13[change]: pr-open plugin returns rc ∈ {0,1} on all exit paths — no path returns rc=2
 SPEC-14[change]: pr-open plugin reads review_report path via ZBUILD_STAGE_INPUTS with artifacts_dir fallback (no hardcoded path for this declared input)
-SPEC-15[change]: deploy-release manifest provides declares result_contract:2 (valid_verdicts:[deployed,error] already correct and unchanged)
+SPEC-15[change]: deploy-release manifest provides declares result_contract:2 (existing role:deploy_release_executor and events retained; valid_verdicts:[deployed,error] already correct and unchanged)
 SPEC-16[change]: deploy-result.json carries result_contract:2, disposition, reason on every exit path (dry-run, tag success, tag failure, push failure, state_file-absent)
 SPEC-17[change]: deploy-release plugin returns rc ∈ {0,1} on all exit paths — state_file-absent path returns rc=1 not rc=2
 SPEC-18[change]: deploy-release plugin reads pr_url path via ZBUILD_STAGE_INPUTS with artifacts_dir fallback (no hardcoded path for this declared input)
@@ -84,6 +88,9 @@ SPEC-22[guard]: pr-open advisory review section renders finding count and top bu
 SPEC-23[guard]: deploy-result.json verdict=deployed and rc=0 on git tag+push success path
 SPEC-24[guard]: all three manifests declare tier_default: T0 with no router: block — absence of router: is the correct budget declaration for LLM-free T0 tools
 SPEC-25[guard]: all three manifests retain primary: true on their canonical result output (merge_result, pr_url, deploy_result) after the v2 migration
+SPEC-26[guard]: pr-open manifest provides retains events:[plugin.pr_open.branch_fallback_used, plugin.pr_open.preflight_remote_has_work] and has no role after result_contract:2 is added
+SPEC-27[guard]: deploy-release manifest provides retains role:deploy_release_executor and events:[deploy.release.complete, deploy.release.dry_run, release.published, release.tagged] after result_contract:2 is added
+SPEC-28[guard]: all three manifests declare no cleanup: hook (hooks section contains only run:) — empty cleanup function bodies in plugin.sh; manifest-absent cleanup is the correct recorded declaration per ADR-056 #1829; engine emits plugin.cleanup.absent rc=0
 
 WIRING:
 plugins/tool/merge/manifest.yaml
@@ -116,26 +123,31 @@ SPEC-22: tests/unit/pr-open-advisory-review-test.sh
 SPEC-23: tests/unit/deploy-release-v2-result-test.sh
 SPEC-24: tests/unit/merge-v2-result-test.sh tests/unit/pr-open-v2-result-test.sh tests/unit/deploy-release-v2-result-test.sh
 SPEC-25: tests/unit/merge-v2-result-test.sh tests/unit/pr-open-v2-result-test.sh tests/unit/deploy-release-v2-result-test.sh
+SPEC-26: tests/unit/pr-open-v2-result-test.sh
+SPEC-27: tests/unit/deploy-release-v2-result-test.sh
+SPEC-28: tests/unit/merge-v2-result-test.sh tests/unit/pr-open-v2-result-test.sh tests/unit/deploy-release-v2-result-test.sh
 ```
 
-## Notes on scope expansion and refinements vs prior design
+## Notes on scope and refinements
 
-**Correction: deploy-release valid_verdicts.** The prior design stated "All three have `valid_verdicts: []`, which is incorrect." This was wrong for deploy-release: its manifest already carries `valid_verdicts: [deployed, error]`, which is correct for the paths deploy-release itself writes (dry-run writes `verdict:deployed`, tag/push failure writes `verdict:error`, success writes `verdict:deployed`). The `verdict:skipped` outcome is written by the deploy AGENT in its own skip path, not by deploy-release. The deploy-release manifest migration is therefore `result_contract:2` in `provides:` only — valid_verdicts is already correct and unchanged (hence SPEC-15 vs the prior design's SPEC-13 wording).
+**Cleanup hook (#1829).** All three plugin.sh files have an empty cleanup function body (`merge_cleanup`, `pr_open_cleanup`, `deploy_release_cleanup`). Per ADR-056, when `hooks.cleanup` is absent from the manifest, the engine emits `plugin.cleanup.absent` and returns rc=0. None of the three migration target manifests declare a `cleanup:` hook — correct, because there is nothing to free. SPEC-28 guards that this absence is the declared state after the v2 migration.
 
-**Correction: result_contract placement.** `result_contract: 2` is a field within the `provides:` section, not `config:`. Confirmed by reference manifests (mutation-gate, teardown, coverage-gate). All three migration targets add it to `provides:`.
+**provides declarations guarded explicitly (SPEC-26, SPEC-27).** pr-open already carries `events:` in its `provides:` block. deploy-release already carries `role:` and `events:`. SPEC-8 and SPEC-15 assert only the new `result_contract:2` field (a `[change]`); SPEC-26 and SPEC-27 guard that the existing declarations survive the edit (a `[guard]` — these are not changes, so the negative-control is skipped by the acceptance gate).
 
-**SPEC split: rc convention clarification.** The prior design combined rc change and verdict shape into single SPECs. This design separates them so the acceptance gate can prove each is independently testable. The rc convention for v2 tool plugins: verdict outcomes (pass, blocked, error for non-infrastructure failures) return rc=0; infrastructure failures (missing state_file argument) return rc=1; no path returns rc=2. Blocked path (review block, no review signal) is a verdict outcome → rc=0.
+**Correction: deploy-release valid_verdicts.** Already `[deployed, error]` — correct for the paths deploy-release itself writes. Unchanged by this migration (not in SPEC-15's scope of change).
 
-**Test files requiring rc/field updates (all in scope above):**
-- `plugins/tool/pr-open/tests/pr-open-test.sh`: three `assert_exit_code "..." "2"` assertions (blocked→rc=0, no-signal→rc=0, main-branch→rc=1); `.status` field reads become `.verdict`
-- `tests/unit/pr-open-zero-commits-halts-test.sh`: `assert_eq "[SPEC-8] pr_open_run returns 2"` → rc=1 (0-commit is an infrastructure halt, not a blocked verdict)
-- `tests/integration/pr-pipeline-test.sh`: SPEC-4 `[[ $_rc4 -ne 0 ]]` fails after blocked→rc=0; SPEC-9 `.draft` direct-field assertion moves to `.data.draft` in v2 shape
-- `tests/integration/merge-policy-auto-test.sh`: `.status == "merged"` / `.status == "pr_fallback"` → `.verdict == "pass"` + `.data.mode`
+**Correction: result_contract placement.** `result_contract: 2` belongs inside `provides:`, not `config:`. Confirmed by mutation-gate and teardown reference manifests.
+
+**rc convention.** v2: all verdict outcomes return rc=0; infrastructure failures (missing state_file, unresolvable root) return rc=1; no path returns rc=2.
+
+**Test files requiring updates (all in scope):**
+- `plugins/tool/pr-open/tests/pr-open-test.sh`: `assert_exit_code "2"` × 3 → rc=0/1; `.status` → `.verdict`
+- `tests/unit/pr-open-zero-commits-halts-test.sh`: rc=2 → rc=1 (0-commit is infrastructure halt)
+- `tests/integration/pr-pipeline-test.sh`: blocked→rc=0; `.draft` → `.data.draft`
+- `tests/integration/merge-policy-auto-test.sh`: `.status == "merged"` → `.verdict == "pass"` + `.data.mode`
 - `tests/integration/merge-policy-auto-unless-flagged-test.sh`: `.status == "merged"` → `.verdict == "pass"`
-- `plugins/agent/deploy/tests/deploy-test.sh` SPEC-7: `schema_version=1` on dry-run deploy-result.json → `result_contract=2`
-- `tests/golden/pr-result-artifact.golden`: v1 shape `{"schema_version":1,"status":"opened",...}` → v2 shape
-- `tests/unit/plugin-artifact-goldens-test.sh` G4: asserts `schema_version == 1` and `"status"` key → must update to `result_contract == 2` and `"verdict"` key
+- `plugins/agent/deploy/tests/deploy-test.sh`: `schema_version=1` → `result_contract=2`
+- `tests/golden/pr-result-artifact.golden`: v1 shape → v2 shape
+- `tests/unit/plugin-artifact-goldens-test.sh` G4: `schema_version == 1` + `"status"` → `result_contract == 2` + `"verdict"`
 
-**Consuming agents included for awareness:**
-- `plugins/agent/pr-delivery/plugin.sh`: sources merge.sh and pr-open.sh directly; `ZBUILD_STAGE_INPUTS` is not set in this call path, so the artifacts_dir fallback in input path resolution is specifically required for this call path
-- `plugins/agent/deploy/plugin.sh`: calls `deploy_release_run`; writes some deploy-result.json paths in its own skip/guard paths with v1 shapes (out of scope — deploy agent migration is a separate issue)
+**pr-delivery fallback path.** `plugins/agent/pr-delivery/plugin.sh` sources merge.sh and pr-open.sh directly without lifecycle.sh dispatch — `ZBUILD_STAGE_INPUTS` is not set in this call path. The `artifacts_dir` fallback in SPEC-7/SPEC-14/SPEC-18 is specifically required to keep this call path working after the ZBUILD_STAGE_INPUTS read is added.
