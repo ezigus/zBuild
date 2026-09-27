@@ -330,7 +330,8 @@ assert_eq "[SPEC-18] missing state_file → validate_agent_run exactly rc=1" "1"
 # Path D: structural check — no non-comment line in plugin.sh contains an explicit
 # exit or return with a literal value >= 2 (covers exit paths not reached by the
 # behavioral paths above, e.g. JSON-write failures, guard clauses)
-if grep -vE '^\s*#' "$PLUGIN_FILE" | grep -qE '\b(exit|return) [2-9][0-9]*\b'; then
+_plugin_non_comment="$(grep -vE '^\s*#' "$PLUGIN_FILE")"
+if grep -qE '\b(exit|return) [2-9][0-9]*\b' <<< "$_plugin_non_comment"; then
     assert_fail "[SPEC-18] plugin.sh has no explicit exit/return with rc>=2 in non-comment lines" \
         "Found exit/return >= 2 in non-comment lines of $PLUGIN_FILE"
 else
