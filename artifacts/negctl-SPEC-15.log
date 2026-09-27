@@ -1,0 +1,186 @@
+### SPEC-15 baseline plugins/agent/validate/tests/validate-test.sh
+
+[38;2;0;212;255m[1m  plugin: validate agent (kind:agent, ADR-018 P1, issue #757, v2 #1845)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m validate plugin.sh exists at expected path
+  [38;2;74;222;128m✓[0m validate_agent_run function defined after source
+  [38;2;74;222;128m✓[0m dry-run writes verdict=healthy
+[38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json
+  [38;2;74;222;128m✓[0m missing deploy-result.json → rc != 0
+  [38;2;74;222;128m✓[0m missing deploy-result.json → verdict=error in output
+  [38;2;74;222;128m✓[0m healthy probe → verdict=healthy
+  [38;2;74;222;128m✓[0m failed probe → verdict=error
+  [38;2;74;222;128m✓[0m failed probe → rc propagated (rc != 0)
+  [38;2;74;222;128m✓[0m validate plugin has legacy-citation in header
+  [38;2;74;222;128m✓[0m legacy-citation references pipeline-stages-monitor.sh
+[38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json
+  [38;2;248;113;113m✗[0m [SPEC-14] missing-deploy-result → result_contract=2
+    [2mexpected: 2, got: MISSING[0m
+  [38;2;74;222;128m✓[0m [SPEC-14] missing-deploy-result → verdict present
+  [38;2;248;113;113m✗[0m [SPEC-14] missing-deploy-result → disposition present
+    [2mdisposition key absent or empty[0m
+  [38;2;74;222;128m✓[0m [SPEC-14] missing-deploy-result → reason present
+  [38;2;248;113;113m✗[0m [SPEC-14] dry-run → result_contract=2
+    [2mexpected: 2, got: MISSING[0m
+  [38;2;74;222;128m✓[0m [SPEC-14] dry-run → verdict present
+  [38;2;248;113;113m✗[0m [SPEC-14] dry-run → disposition present
+    [2mdisposition key absent or empty[0m
+  [38;2;248;113;113m✗[0m [SPEC-14] dry-run → reason present
+    [2mreason key absent or empty[0m
+  [38;2;248;113;113m✗[0m [SPEC-14] probe-success → result_contract=2
+    [2mexpected: 2, got: MISSING[0m
+  [38;2;74;222;128m✓[0m [SPEC-14] probe-success → verdict present
+  [38;2;248;113;113m✗[0m [SPEC-14] probe-success → disposition present
+    [2mdisposition key absent or empty[0m
+  [38;2;248;113;113m✗[0m [SPEC-14] probe-success → reason present
+    [2mreason key absent or empty[0m
+  [38;2;248;113;113m✗[0m [SPEC-14] probe-failure → result_contract=2
+    [2mexpected: 2, got: MISSING[0m
+  [38;2;74;222;128m✓[0m [SPEC-14] probe-failure → verdict present
+  [38;2;248;113;113m✗[0m [SPEC-14] probe-failure → disposition present
+    [2mdisposition key absent or empty[0m
+  [38;2;248;113;113m✗[0m [SPEC-14] probe-failure → reason present
+    [2mreason key absent or empty[0m
+[38;2;248;113;113m[1m✗[0m validate: health-check plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.Hkx3Cu/no_hc_root/plugins/tool/health-check/plugin.sh
+  [38;2;248;113;113m✗[0m [SPEC-14] hc-plugin-missing → result_contract=2
+    [2mexpected: 2, got: MISSING[0m
+  [38;2;74;222;128m✓[0m [SPEC-14] hc-plugin-missing → verdict present
+  [38;2;248;113;113m✗[0m [SPEC-14] hc-plugin-missing → disposition present
+    [2mdisposition key absent or empty[0m
+  [38;2;74;222;128m✓[0m [SPEC-14] hc-plugin-missing → reason present
+  [38;2;248;113;113m✗[0m [SPEC-15] manifest provides block carries result_contract: 2
+    [2mresult_contract: 2 not found in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.O8S2eT/plugins/agent/validate/manifest.yaml[0m
+[38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json
+  [38;2;248;113;113m✗[0m [SPEC-16] deploy_result resolved from ZBUILD_STAGE_INPUTS → rc=0
+    [2mexpected: 0, got: 2[0m
+  [38;2;248;113;113m✗[0m [SPEC-16] deploy_result from ZBUILD_STAGE_INPUTS → verdict=healthy
+    [2mexpected: healthy, got: error[0m
+  [38;2;74;222;128m✓[0m [SPEC-17] failed probe → validate_agent_run rc != 0
+[38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json
+  [38;2;248;113;113m✗[0m [SPEC-18] missing deploy-result → rc=1 (not 2)
+    [2mexpected: 1, got: 2[0m
+  [38;2;74;222;128m✓[0m [SPEC-18] failed probe → rc=1 (not propagated hc_rc)
+[38;2;248;113;113m[1m✗[0m validate: health-check plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.Hkx3Cu/no_hc_root/plugins/tool/health-check/plugin.sh
+  [38;2;248;113;113m✗[0m [SPEC-18] hc-plugin missing → rc=1 (not 2)
+    [2mexpected: 1, got: 2[0m
+[38;2;248;113;113m[1m✗[0m validate_agent_run: state_file argument required
+  [38;2;248;113;113m✗[0m [SPEC-18] missing state_file in outer → rc=1 (not 2)
+    [2mexpected: 1, got: 2[0m
+  [38;2;74;222;128m✓[0m [SPEC-19] manifest valid_verdicts contains healthy
+  [38;2;74;222;128m✓[0m [SPEC-19] manifest valid_verdicts contains error
+  [38;2;74;222;128m✓[0m [SPEC-19] manifest valid_verdicts declares exactly 2 entries (healthy and error)
+  [38;2;74;222;128m✓[0m [SPEC-19] healthy verdict covered by passing assertion (SPEC-11)
+  [38;2;74;222;128m✓[0m [SPEC-19] error verdict covered by passing assertion (SPEC-12)
+  [38;2;74;222;128m✓[0m [SPEC-20] manifest_router_knob timeout_s returns empty (no router block)
+  [38;2;74;222;128m✓[0m [SPEC-20] manifest_router_knob max_turns returns empty (no router block)
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run result_contract=2
+    [2mexpected: 2, got: MISSING[0m
+  [38;2;74;222;128m✓[0m [SPEC-21] dry-run verdict=healthy
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run disposition=complete
+    [2mexpected: complete, got: MISSING[0m
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run reason present
+    [2mreason key absent or empty[0m
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run data={}
+    [2mexpected: {}, got: "MISSING"[0m
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run schema_version key absent
+    [2mexpected: ABSENT, got: 1[0m
+  [38;2;74;222;128m✓[0m [SPEC-22] manifest outputs declares validate_result with primary: true
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m24 of 52 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-14] missing-deploy-result → result_contract=2
+  [38;2;248;113;113m✗[0m [SPEC-14] missing-deploy-result → disposition present
+  [38;2;248;113;113m✗[0m [SPEC-14] dry-run → result_contract=2
+  [38;2;248;113;113m✗[0m [SPEC-14] dry-run → disposition present
+  [38;2;248;113;113m✗[0m [SPEC-14] dry-run → reason present
+  [38;2;248;113;113m✗[0m [SPEC-14] probe-success → result_contract=2
+  [38;2;248;113;113m✗[0m [SPEC-14] probe-success → disposition present
+  [38;2;248;113;113m✗[0m [SPEC-14] probe-success → reason present
+  [38;2;248;113;113m✗[0m [SPEC-14] probe-failure → result_contract=2
+  [38;2;248;113;113m✗[0m [SPEC-14] probe-failure → disposition present
+  [38;2;248;113;113m✗[0m [SPEC-14] probe-failure → reason present
+  [38;2;248;113;113m✗[0m [SPEC-14] hc-plugin-missing → result_contract=2
+  [38;2;248;113;113m✗[0m [SPEC-14] hc-plugin-missing → disposition present
+  [38;2;248;113;113m✗[0m [SPEC-15] manifest provides block carries result_contract: 2
+  [38;2;248;113;113m✗[0m [SPEC-16] deploy_result resolved from ZBUILD_STAGE_INPUTS → rc=0
+  [38;2;248;113;113m✗[0m [SPEC-16] deploy_result from ZBUILD_STAGE_INPUTS → verdict=healthy
+  [38;2;248;113;113m✗[0m [SPEC-18] missing deploy-result → rc=1 (not 2)
+  [38;2;248;113;113m✗[0m [SPEC-18] hc-plugin missing → rc=1 (not 2)
+  [38;2;248;113;113m✗[0m [SPEC-18] missing state_file in outer → rc=1 (not 2)
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run result_contract=2
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run disposition=complete
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run reason present
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run data={}
+  [38;2;248;113;113m✗[0m [SPEC-21] dry-run schema_version key absent
+
+### SPEC-15 head plugins/agent/validate/tests/validate-test.sh
+
+[38;2;0;212;255m[1m  plugin: validate agent (kind:agent, ADR-018 P1, issue #757, v2 #1845)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m validate plugin.sh exists at expected path
+  [38;2;74;222;128m✓[0m validate_agent_run function defined after source
+  [38;2;74;222;128m✓[0m dry-run writes verdict=healthy
+[38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json
+  [38;2;74;222;128m✓[0m missing deploy-result.json → rc != 0
+  [38;2;74;222;128m✓[0m missing deploy-result.json → verdict=error in output
+  [38;2;74;222;128m✓[0m healthy probe → verdict=healthy
+  [38;2;74;222;128m✓[0m failed probe → verdict=error
+  [38;2;74;222;128m✓[0m failed probe → rc propagated (rc != 0)
+  [38;2;74;222;128m✓[0m validate plugin has legacy-citation in header
+  [38;2;74;222;128m✓[0m legacy-citation references pipeline-stages-monitor.sh
+[38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json
+  [38;2;74;222;128m✓[0m [SPEC-14] missing-deploy-result → result_contract=2
+  [38;2;74;222;128m✓[0m [SPEC-14] missing-deploy-result → verdict present
+  [38;2;74;222;128m✓[0m [SPEC-14] missing-deploy-result → disposition present
+  [38;2;74;222;128m✓[0m [SPEC-14] missing-deploy-result → reason present
+  [38;2;74;222;128m✓[0m [SPEC-14] dry-run → result_contract=2
+  [38;2;74;222;128m✓[0m [SPEC-14] dry-run → verdict present
+  [38;2;74;222;128m✓[0m [SPEC-14] dry-run → disposition present
+  [38;2;74;222;128m✓[0m [SPEC-14] dry-run → reason present
+  [38;2;74;222;128m✓[0m [SPEC-14] probe-success → result_contract=2
+  [38;2;74;222;128m✓[0m [SPEC-14] probe-success → verdict present
+  [38;2;74;222;128m✓[0m [SPEC-14] probe-success → disposition present
+  [38;2;74;222;128m✓[0m [SPEC-14] probe-success → reason present
+  [38;2;74;222;128m✓[0m [SPEC-14] probe-failure → result_contract=2
+  [38;2;74;222;128m✓[0m [SPEC-14] probe-failure → verdict present
+  [38;2;74;222;128m✓[0m [SPEC-14] probe-failure → disposition present
+  [38;2;74;222;128m✓[0m [SPEC-14] probe-failure → reason present
+[38;2;248;113;113m[1m✗[0m validate: health-check plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.gRk3no/no_hc_root/plugins/tool/health-check/plugin.sh
+  [38;2;74;222;128m✓[0m [SPEC-14] hc-plugin-missing → result_contract=2
+  [38;2;74;222;128m✓[0m [SPEC-14] hc-plugin-missing → verdict present
+  [38;2;74;222;128m✓[0m [SPEC-14] hc-plugin-missing → disposition present
+  [38;2;74;222;128m✓[0m [SPEC-14] hc-plugin-missing → reason present
+  [38;2;74;222;128m✓[0m [SPEC-15] manifest provides block carries result_contract: 2
+  [38;2;74;222;128m✓[0m [SPEC-16] deploy_result resolved from ZBUILD_STAGE_INPUTS → rc=0
+  [38;2;74;222;128m✓[0m [SPEC-16] deploy_result from ZBUILD_STAGE_INPUTS → verdict=healthy
+  [38;2;74;222;128m✓[0m [SPEC-17] failed probe → validate_agent_run rc != 0
+[38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json
+  [38;2;74;222;128m✓[0m [SPEC-18] missing deploy-result → rc=1 (not 2)
+  [38;2;74;222;128m✓[0m [SPEC-18] failed probe → rc=1 (not propagated hc_rc)
+[38;2;248;113;113m[1m✗[0m validate: health-check plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.gRk3no/no_hc_root/plugins/tool/health-check/plugin.sh
+  [38;2;74;222;128m✓[0m [SPEC-18] hc-plugin missing → rc=1 (not 2)
+[38;2;248;113;113m[1m✗[0m validate_agent_run: state_file argument required
+  [38;2;74;222;128m✓[0m [SPEC-18] missing state_file in outer → rc=1 (not 2)
+  [38;2;74;222;128m✓[0m [SPEC-19] manifest valid_verdicts contains healthy
+  [38;2;74;222;128m✓[0m [SPEC-19] manifest valid_verdicts contains error
+  [38;2;74;222;128m✓[0m [SPEC-19] manifest valid_verdicts declares exactly 2 entries (healthy and error)
+  [38;2;74;222;128m✓[0m [SPEC-19] healthy verdict covered by passing assertion (SPEC-11)
+  [38;2;74;222;128m✓[0m [SPEC-19] error verdict covered by passing assertion (SPEC-12)
+  [38;2;74;222;128m✓[0m [SPEC-20] manifest_router_knob timeout_s returns empty (no router block)
+  [38;2;74;222;128m✓[0m [SPEC-20] manifest_router_knob max_turns returns empty (no router block)
+  [38;2;74;222;128m✓[0m [SPEC-21] dry-run result_contract=2
+  [38;2;74;222;128m✓[0m [SPEC-21] dry-run verdict=healthy
+  [38;2;74;222;128m✓[0m [SPEC-21] dry-run disposition=complete
+  [38;2;74;222;128m✓[0m [SPEC-21] dry-run reason present
+  [38;2;74;222;128m✓[0m [SPEC-21] dry-run data={}
+  [38;2;74;222;128m✓[0m [SPEC-21] dry-run schema_version key absent
+  [38;2;74;222;128m✓[0m [SPEC-22] manifest outputs declares validate_result with primary: true
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 52 tests passed[0m
+

@@ -1,0 +1,28 @@
+NEGCTL PASS SPEC-14
+      design : every terminal exit path of _validate_agent_run_inner writes a result file containing all four manda…
+      asserts: assert_eq "[SPEC-14] $label → result_contract=2" "2" "$rc2"
+NEGCTL PASS SPEC-15
+      design : manifest provides block carries result_contract: 2
+      asserts: assert_pass "[SPEC-15] manifest provides block carries result_contract: 2"
+NEGCTL PASS SPEC-16
+      design : plugin.sh resolves the deploy_result input path from ZBUILD_STAGE_INPUTS (jq .inputs.deploy_result) …
+      asserts: assert_eq "[SPEC-16] deploy_result resolved from ZBUILD_STAGE_INPUTS → rc=0" "0" "$_rc16"
+NEGCTL PASS SPEC-17 guard_spec
+      design : a failed health probe (hc_rc != 0) causes validate_agent_run to return non-zero — the #757 fail-clos…
+      asserts: assert_gt "[SPEC-17] failed probe → validate_agent_run rc != 0" "$_rc17" "0"
+NEGCTL PASS SPEC-18
+      design : all non-zero exits from plugin.sh use rc=1 — no exit path returns rc=2 or higher
+      asserts: assert_eq "[SPEC-18] missing deploy-result → rc=1 (not 2)" "1" "$_rc18a"
+NEGCTL PASS SPEC-19 guard_spec
+      design : manifest config.valid_verdicts declares exactly [healthy, error]; validate-test.sh covers healthy an…
+      asserts: assert_pass "[SPEC-19] manifest valid_verdicts contains healthy"
+NEGCTL PASS SPEC-20 guard_spec
+      design : manifest has no config.router block — manifest_router_knob returns empty string for timeout_s and ma…
+      asserts: assert_pass "[SPEC-20] manifest_router_knob timeout_s returns empty (no router block)"
+NEGCTL PASS SPEC-21
+      design : a dry-run invocation with a valid deploy-result writes validate-result.json with result_contract=2, …
+      asserts: assert_eq "[SPEC-21] dry-run result_contract=2" "2" "$_r21_rc2"
+NEGCTL PASS SPEC-22 guard_spec
+      design : manifest outputs array declares validate_result with primary: true — this invariant must not regress…
+      asserts: assert_pass "[SPEC-22] manifest outputs declares validate_result with primary: true"
+REACHABILITY PASS plugins/agent/validate/manifest.yaml
