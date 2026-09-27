@@ -22,49 +22,43 @@ ADR-058 C12 (#2211) — "the write boundary attributes by ownership, never by ti
 is noted context only: validate already writes only to its declared output path
 (`$artifacts_dir/validate-result.json`), so no write-boundary changes are required.
 
-ADR-003 (models-as-data) and ADR-032 (per-repo prompt overrides) were amended since
-the prior design but do not affect this migration: validate makes no LLM calls.
-ADR-003 is retained in scope as a reference for `tier_default: T2` confirmation only.
+ADR-003 (models-as-data) and ADR-032 (per-repo prompt overrides) do not affect this
+migration: validate makes no LLM calls. ADR-003 is retained in scope as reference for
+`tier_default: T2` confirmation only.
 
-**Scope corrections from prior design:**
-- `tests/integration/per-run-state-isolation-test.sh` is REMOVED from scope. That
-  file uses a two-stage minimal template (intake → build) with mock plugins and
-  neither sources the validate plugin nor places `deploy-result.json`.
-
-**SPEC classification correction (iteration 2):** SPEC-17, SPEC-20, SPEC-22,
-SPEC-23, SPEC-24, and SPEC-25 were tagged `[guard]` in the prior design and
-flagged `guard_regressed` by the acceptance-gate.
-
-Root cause: the v2 test file (rewritten entirely for this issue) calls
-`_validate_agent_run_inner` at the SPEC-19 healthy-coverage section (line 292)
-without `|| true`, under `set -euo pipefail`. At the merge-base, `_v2_run` places
-`deploy-result.json` at `$dir/deploy-result.json` while the old plugin derives
-`artifacts_dir` from `state_dir` and looks for `$dir/artifacts/deploy-result.json`;
-the file is absent, so the function returns rc=2, which exits the test script before
-SPEC-17, SPEC-20 through SPEC-25, SPEC-21, and SPEC-18 ever run. Those assertions
-are therefore "not found" at the baseline — which the gate correctly treats as the
-guard failing.
-
-Fix: re-tag all six as `[change]`. Their assertions fail at the merge-base (by
-never executing) and pass at HEAD (after the v2 input-resolution path is in place).
-SPEC-19 remains correctly `[guard]`: its static manifest assertions execute and pass
-before the script exits at line 292.
+**SPEC classification (iteration 3):** SPEC-17, SPEC-20, SPEC-22, SPEC-23, SPEC-24,
+and SPEC-25 are tagged `[change]`. Root cause: the v2 test file calls
+`_validate_agent_run_inner` at the SPEC-19 healthy-coverage section without `|| true`,
+under `set -euo pipefail`. At the merge-base, `_v2_run` places `deploy-result.json`
+at `$dir/deploy-result.json` while the old plugin derives `artifacts_dir` from
+`state_dir` and looks for `$dir/artifacts/deploy-result.json`; the file is absent,
+so the function returns rc=2, which exits the test script before those assertions
+ever run. They are therefore "not found" at the baseline — the gate correctly treats
+this as a guard failing. Tagging them `[change]` is correct: their assertions fail
+at the merge-base (by not executing) and pass at HEAD.
 
 **Integration test wiring (open build failure):** `tests/integration/deployed-template-e2e-test.sh`
 calls `validate_agent_run "validate" "$STATE_FILE"` but does not set `ZBUILD_STAGE_INPUTS`.
 The v2 plugin's fallback `$(dirname "$state_file")/stage-inputs.json` does not exist in
 that test environment, so the plugin returns rc=1 with "missing required input
-deploy-result.json", breaking the dry-run path that was previously green. The build
-stage must add a `ZBUILD_STAGE_INPUTS` export (a stage-inputs.json with
-`.inputs.deploy_result` pointing to `$ARTIFACTS_DIR/deploy-result.json`) before the
-`validate_agent_run` call, matching the pattern already established in `_make_state`
-and `_v2_run` helpers in the unit test.
+deploy-result.json", breaking the dry-run path that was previously green. The fix is to
+write a `stage-inputs.json` pointing to `$ARTIFACTS_DIR/deploy-result.json` and export
+`ZBUILD_STAGE_INPUTS` before the `validate_agent_run` call, matching the pattern
+already established in `_make_state` and `_v2_run` helpers in the unit test.
+
+**SPEC-26 classification:** At the merge-base (v1 plugin), `validate-result.json` carries
+`schema_version:1` — no `result_contract` key. An assertion checking for `result_contract=2`
+in the integration env correctly FAILS at merge-base and PASSES at HEAD (v2 plugin
++ ZBUILD_STAGE_INPUTS wired). Tagged `[change]`. Wiring: reverting `plugin.sh` to v1
+causes this assertion to flip (v1 never writes `result_contract`); reverting
+`manifest.yaml` alone does not flip it (plugin.sh still writes result_contract:2).
+So `plugin.sh` is added to the WIRING block.
 
 **Decision:** Rewrite `_validate_agent_run_inner` and `validate_agent_run` to write
 v2 result files on every terminal exit, resolve inputs via `ZBUILD_STAGE_INPUTS`,
 clamp all non-zero returns to rc=1, and add `result_contract: 2` to the manifest
-`provides:` block. Tests are written first (red→green). `deployed-template-e2e-test.sh`
-must export `ZBUILD_STAGE_INPUTS` before calling the validate plugin.
+`provides:` block. `deployed-template-e2e-test.sh` must export `ZBUILD_STAGE_INPUTS`
+before calling the validate plugin. Tests are written first (red→green).
 
 ```scope
 plugins/agent/validate/manifest.yaml
@@ -96,7 +90,10 @@ SPEC-22[change]: manifest outputs array declares validate_result with primary: t
 SPEC-23[change]: manifest provides.role declares validate_agent — verified in the v2 test suite (#1704)
 SPEC-24[change]: manifest provides.events declares exactly validate.input.missing and validate.probe.failed — verified in the v2 test suite (#1717)
 SPEC-25[change]: manifest hooks block declares only run and no cleanup hook — verified in the v2 test suite (#1829)
-WIRING: plugins/agent/validate/manifest.yaml
+SPEC-26[change]: the deployed-template e2e integration test exports ZBUILD_STAGE_INPUTS before the validate call and validate-result.json carries result_contract=2, confirming the v2 input-resolution path is exercised in the integration environment
+WIRING:
+plugins/agent/validate/manifest.yaml
+plugins/agent/validate/plugin.sh
 TESTFILES:
 SPEC-14: plugins/agent/validate/tests/validate-test.sh
 SPEC-15: plugins/agent/validate/tests/validate-test.sh
@@ -110,6 +107,7 @@ SPEC-22: plugins/agent/validate/tests/validate-test.sh
 SPEC-23: plugins/agent/validate/tests/validate-test.sh
 SPEC-24: plugins/agent/validate/tests/validate-test.sh
 SPEC-25: plugins/agent/validate/tests/validate-test.sh
+SPEC-26: tests/integration/deployed-template-e2e-test.sh
 ```
 
 LOOP_COMPLETE
