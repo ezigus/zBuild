@@ -7,7 +7,8 @@
   "wiring_files": [],
   "owned_files": {
     "test-author": [
-      "plugins/agent/validate/tests/validate-test.sh"
+      "plugins/agent/validate/tests/validate-test.sh",
+      "tests/integration/deployed-template-e2e-test.sh"
     ]
   }
 }
