@@ -784,7 +784,9 @@ _summaries_stage_fault() {
 # rc 0 when the manifest declares capabilities.writes_repository: true — the
 # one fact (#2174) that says a stage may change the repository, and therefore
 # may be asked to fix something. Its own reader, not yaml_get: route.sh calls it
-# where the registry is not necessarily loaded.
+# where the registry is not necessarily loaded. Same rule as
+# _wb_declares_repo_writes (core/pipeline/write-boundary-repo.sh) — keep the two
+# in step; they are separate only because neither file may source the other.
 stage_declares_repo_writes() {
     local mf="${1:-}"
     [[ -n "$mf" && -f "$mf" ]] || return 1
@@ -806,7 +808,7 @@ _summaries_reader_can_fix() {
 
 stage_summaries_count() {
     local state_file="${1:-}" plugins_root="${2:-${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}}"
-    local n=0 r=0 rec verdict fault
+    local n=0 r=0 rec verdict fault owner _cstage
     if [[ -n "$state_file" && -s "$state_file" ]]; then
         while IFS= read -r rec; do
             [[ -n "$rec" ]] || continue

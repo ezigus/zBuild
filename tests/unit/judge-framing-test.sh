@@ -19,6 +19,7 @@
 #             report, change nothing in the repository — once, first
 # J6 [guard]  a declared writer's prompt gets no such line
 # J7 [change] the cycle's RESOLVE count follows the same two rules
+# J8 [guard]  the count leaks no working variable into its caller (review #2212)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -93,6 +94,10 @@ assert_eq "[J7] a judge has nothing to resolve" "0" \
     "$(ZBUILD_CURRENT_STAGE=jf-judge ZBUILD_PLUGIN_DIR="$PROOT/agent/jf-judge" stage_summaries_count "$SF" "$PROOT" 2>/dev/null | cut -d' ' -f2)"
 assert_eq "[J7] the judge's own summary is not counted" "2" \
     "$(ZBUILD_CURRENT_STAGE=jf-judge ZBUILD_PLUGIN_DIR="$PROOT/agent/jf-judge" stage_summaries_count "$SF" "$PROOT" 2>/dev/null | cut -d' ' -f1)"
+
+unset _cstage
+stage_summaries_count "$SF" "$PROOT" >/dev/null 2>&1 || true
+assert_eq "[J8] stage_summaries_count leaks no working variable" "unset" "${_cstage-unset}"
 
 print_test_section "J5/J6: the router states a non-writer's scope"
 # shellcheck source=../../core/router/route.sh

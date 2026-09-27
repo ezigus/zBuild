@@ -352,7 +352,12 @@ _route_redact_prompt() {
             && ! grep -qF "$_ZB_READ_ONLY_SCOPE_MARKER" "$input" 2>/dev/null; then
             local _scope_tmp
             _scope_tmp="$(mktemp "$(zbuild_engine_tmpdir)/zb-scope.XXXXXX" 2>/dev/null)" || true
-            if [[ -n "$_scope_tmp" ]]; then
+            if [[ -z "$_scope_tmp" ]]; then
+                # Fail-open (a prompt must not die over a temp file), but not
+                # silently: the stage runs without being told its scope.
+                printf 'router: read-only scope not added to the prompt (no temp file under %s)\n' \
+                    "$(zbuild_engine_tmpdir 2>/dev/null || printf '?')" >&2
+            else
                 { printf '%s\n' "$_ZB_READ_ONLY_SCOPE_MARKER"
                   printf 'Your job is to read and report. Do not create, modify or delete any file in the repository — code, tests, or anything else. Write only the outputs your instructions below name.\n\n'
                   cat "$input"; } > "$_scope_tmp" \

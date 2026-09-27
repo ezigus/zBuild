@@ -51,7 +51,9 @@ _wb_repo_snapshot() {
 }
 
 # _wb_declares_repo_writes <plugin_dir> — rc 0 when the manifest declares
-# capabilities.writes_repository: true (#2174's own fact about the stage).
+# capabilities.writes_repository: true (#2174's own fact about the stage). Same
+# rule as stage_declares_repo_writes (core/pipeline/input-resolve.sh) — keep the
+# two in step.
 _wb_declares_repo_writes() {
     local _mf="${1:-}/manifest.yaml"
     [[ -f "$_mf" ]] || return 1

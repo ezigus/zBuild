@@ -489,6 +489,6 @@ write_boundary_check() {
 
 # _wb_stage_key <stage> — one path component, the key the verdict reader uses.
 _wb_stage_key() {
-    local _k="${1:-stage}"
-    printf '%s' "${_k//[^A-Za-z0-9._-]/_}"
+    if declare -F zbuild_stage_key >/dev/null 2>&1; then zbuild_stage_key "$@"; return; fi
+    local _k="${1:-stage}"; printf '%s' "${_k//[^A-Za-z0-9._-]/_}"
 }
