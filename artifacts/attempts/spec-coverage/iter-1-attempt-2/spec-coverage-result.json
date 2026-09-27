@@ -1,9 +1,0 @@
-{
-  "result_contract": 2,
-  "verdict": "unreadable",
-  "disposition": "complete",
-  "reason": "no parseable verdict from the model — the design was not judged",
-  "data": {
-    "uncovered": []
-  }
-}
