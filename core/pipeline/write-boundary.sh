@@ -18,6 +18,10 @@ _ZBUILD_WB_ROOT="$(cd "$_ZBUILD_WB_DIR/../.." && pwd)"
 # this logic is how the two halves of the boundary drift apart.
 # shellcheck source=../plugin-registry/output-paths.sh
 source "$_ZBUILD_WB_ROOT/core/plugin-registry/output-paths.sh"
+# ADR-058 C12: the run's own worktree, judged by git content. A companion
+# file for the 500-line cap (review on #2211), not a separate mechanism.
+# shellcheck source=./write-boundary-repo.sh
+source "$_ZBUILD_WB_DIR/write-boundary-repo.sh"
 
 # ─── _wb_expand_line <line> ──────────────────────────────────────────────────
 # Expand ${VAR} and ${VAR:-default} in a config line. Plain references go first
@@ -422,53 +426,6 @@ write_boundary_violation_recorded() {
 #   - a stage whose manifest does not declare capabilities.writes_repository and
 #     changes the worktree's content during its dispatch is a violation.
 
-# _wb_repo_root — the run's own worktree, or nothing. In-place mode
-# (ZBUILD_NO_WORKTREE=1) works in the user's checkout, which the user shares,
-# so it is not the run's to judge.
-_wb_repo_root() {
-    [[ "${ZBUILD_NO_WORKTREE:-}" == "1" ]] && return 1
-    local _r="${ZBUILD_REPO_ROOT:-}"
-    [[ -n "$_r" && -d "$_r" ]] || return 1
-    git -C "$_r" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
-    printf '%s' "$_r"
-}
-
-# _wb_repo_snapshot <repo> — one line per path that differs from HEAD (tracked
-# or untracked, ignored excluded): "<path>\t<content hash|deleted>", sorted.
-# Content, not status: a path whose bytes did not change during the dispatch is
-# not the dispatch's write, and a HEAD move on a clean tree (intake checking out
-# the work branch) leaves every line identical.
-_wb_repo_snapshot() {
-    local _repo="$1" _entry _xy _path _skip_next=0
-    local -a _paths=()
-    while IFS= read -r -d '' _entry; do
-        if [[ $_skip_next -eq 1 ]]; then _paths+=("$_entry"); _skip_next=0; continue; fi
-        _xy="${_entry:0:2}"; _path="${_entry:3}"
-        _paths+=("$_path")
-        [[ "$_xy" == R* || "$_xy" == C* ]] && _skip_next=1
-    done < <(git -C "$_repo" status --porcelain=v1 -z --untracked-files=all 2>/dev/null)
-    [[ ${#_paths[@]} -gt 0 ]] || return 0
-    local _p
-    for _p in "${_paths[@]}"; do
-        if [[ -f "$_repo/$_p" ]]; then
-            printf '%s\t%s\n' "$_p" "$(git -C "$_repo" hash-object -- "$_p" 2>/dev/null || printf 'unreadable')"
-        else
-            printf '%s\tdeleted\n' "$_p"
-        fi
-    done | LC_ALL=C sort -u
-}
-
-# _wb_declares_repo_writes <plugin_dir> — rc 0 when the manifest declares
-# capabilities.writes_repository: true (#2174's own fact about the stage).
-_wb_declares_repo_writes() {
-    local _mf="${1:-}/manifest.yaml"
-    [[ -f "$_mf" ]] || return 1
-    awk '
-        /^[^[:space:]#]/ { inblk = ($0 ~ /^capabilities:[[:space:]]*(#.*)?$/); next }
-        inblk && /^[[:space:]]+writes_repository:[[:space:]]*true[[:space:]]*(#.*)?$/ { found = 1 }
-        END { exit(found ? 0 : 1) }' "$_mf" 2>/dev/null
-}
-
 # ─── _wb_unattributable_recorded <state_dir> <stage> <path> <reason> ────────
 # Record a write the boundary cannot attribute to the stage. Deliberately NOT
 # silent and deliberately NOT a violation: nothing is lost (all three channels
@@ -517,11 +474,11 @@ write_boundary_check() {
     [[ -f "$_snap" ]] || return 0
     _wb_declares_repo_writes "$_pd" && return 0
     _repo="$(_wb_repo_root)" || return 0
-    local _after _changed
-    _after="$(_wb_repo_snapshot "$_repo")"
-    _changed="$(LC_ALL=C comm -3 "$_snap" <(printf '%s\n' "$_after" | grep -v '^$' || true) 2>/dev/null \
-        | sed 's/^\t//' | cut -f1 | LC_ALL=C sort -u | grep -v '^$' || true)"
+    local _changed
+    _changed="$(_wb_repo_changed "$_snap" "$_repo")"
     [[ -n "$_changed" ]] || return 0
-    write_boundary_violation_recorded "$_sd" "$_stage" "$_repo/${_changed%%$'\n'*}"
+    # Every changed path, not only the first: `broken` is terminal, so naming
+    # one per retry makes an operator pay a run per file (review on #2211).
+    write_boundary_violation_recorded "$_sd" "$_stage" "$(_wb_repo_changed_list "$_repo" "$_changed")"
     return 1
 }

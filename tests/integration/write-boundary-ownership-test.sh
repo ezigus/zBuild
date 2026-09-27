@@ -28,6 +28,10 @@
 # O8 [guard]  in-place mode (ZBUILD_NO_WORKTREE=1): the checkout is the user's,
 #             shared with the user, so the repository check does not apply
 # O9 [change] no timing heuristic remains in the boundary
+# O10 [guard] a non-writer that REVERTS earlier uncommitted work has changed
+#             the worktree too — that is a violation (review on #2211)
+# O11 [change] several changed files are all named, not only the first
+#             (review on #2211: `broken` is terminal, so one path per retry)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -168,6 +172,23 @@ _run "$FX3" judge-stage
 assert_eq "[O8] in-place mode does not apply the repository check" "0" "$RC"
 git -C "$WT" checkout -q -- tracked.txt
 unset ZBUILD_NO_WORKTREE
+
+print_test_section "O10/O11: review on #2211"
+printf 'earlier writer\n' > "$WT/tracked.txt"           # a writer's uncommitted work
+FX10="$TEST_TEMP_DIR/plugins/wb-reverts"
+_fixture "$FX10" wb-reverts false "    git -C '$WT' checkout -q -- tracked.txt"
+_run "$FX10" judge-stage
+assert_eq "[O10] a non-writer that reverts earlier work fails the dispatch" "1" "$RC"
+git -C "$WT" checkout -q -- tracked.txt
+
+FX11="$TEST_TEMP_DIR/plugins/wb-many"
+_fixture "$FX11" wb-many false "    printf 'a\\n' > '$WT/tracked.txt'; printf 'b\\n' > '$WT/other.txt'; printf 'c\\n' > '$WT/third.txt'"
+_run "$FX11" judge-stage
+_o11="$(cat "$TEST_TEMP_DIR/stderr.txt")"
+assert_contains "[O11] the first changed file is named" "$_o11" "other.txt"
+assert_contains "[O11] ...and the second" "$_o11" "third.txt"
+assert_contains "[O11] ...and the third" "$_o11" "tracked.txt"
+git -C "$WT" checkout -q -- tracked.txt other.txt; rm -f "$WT/third.txt"
 
 print_test_section "O9: no timing heuristic"
 if grep -qE 'SETTLE_MS|_wb_external_writer_witness' "$REPO_ROOT/core/pipeline/write-boundary.sh"; then

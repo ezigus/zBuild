@@ -300,42 +300,13 @@ _cls_data="$(ZBUILD_DATA_ROOT="$_DATA_ROOT" \
 assert_eq "[SPEC-4d] a redirected ZBUILD_DATA_ROOT still allows the engine's own event log" \
     "allowed" "$_cls_data"
 
-# ─── SPEC-4e: every zbuild_engine_tmpdir caller can actually see it ─────────
-# The helper lives in scripts/lib/helpers.sh. A file that calls it without
-# sourcing helpers gets an UNDEFINED function, and `$(undefined)` in a path
-# expands to the empty string rather than failing — producing `/zbuild-x.XXXX`,
-# a write at the filesystem root. That is silent and only shows up as a
-# "Read-only file system" mktemp error at runtime, which is how it reached CI.
-# A static check is the cheap guard.
-
-_bad_callers=""
-while IFS= read -r _f; do
-    [[ -z "$_f" ]] && continue
-    [[ "$_f" == *"scripts/lib/helpers.sh" ]] && continue   # the definition itself
-    # plugins/ reach the helper through zbuild_plugin_bootstrap, which sources
-    # helpers.sh on their behalf (scripts/lib/plugin-bootstrap.sh) — so either
-    # seam counts. plugins/ was outside this scan until the ad-hoc artifact
-    # roots started calling the helper (SPEC-4j below); an unsourced caller
-    # there fails the same way, and worse: `${ZBUILD_ARTIFACT_DIR:-$(undefined)/x}`
-    # expands to `/x`, an ARTIFACT root at the filesystem root.
-    grep -qE "helpers\.sh|zbuild_plugin_bootstrap" "$_f" \
-        || _bad_callers="${_bad_callers}${_f} "
-done < <(grep -rl "zbuild_engine_tmpdir" \
-    "$REPO_ROOT/core" "$REPO_ROOT/scripts" "$REPO_ROOT/plugins" 2>/dev/null || true)
-
-if [[ -z "$_bad_callers" ]]; then
-    assert_pass "[SPEC-4e] every zbuild_engine_tmpdir caller sources helpers.sh"
-else
-    assert_fail "[SPEC-4e] a zbuild_engine_tmpdir caller does not source helpers.sh" \
-        "callers missing the source: $_bad_callers"
-fi
-
-# ─── SPEC-4f: ZBUILD_WRITE_BOUNDARY_LOG captures the violation ──────────────
-# Most integration tests send the runner's stderr to /dev/null, so a halt there
-# reports rc=1 and nothing else. The sink is the channel that survives that.
+# ─── SPEC-4f: ZBUILD_WRITE_BOUNDARY_LOG captures what the sweep saw ─────────
+# Most integration tests send the runner's stderr to /dev/null, so the sink is
+# the channel that survives. Since ADR-058 C12 a shared-place hit is recorded
+# as `unattributable` (never a violation); the sink carries it all the same.
 # CHANGE: fails at baseline (the variable is not read).
 
-_wb_log="$TEST_TEMP_DIR/wb-violations.log"
+_wb_log="$TEST_TEMP_DIR/wb-sink.log"
 : > "$_wb_log"
 rm -f "$JOB_DIR/runtime/write-boundary-violated"
 write_boundary_mark "$STATE_FILE"
@@ -343,16 +314,16 @@ touch "$WATCH_DIR/sink-probe.txt"
 ZBUILD_WRITE_BOUNDARY_LOG="$_wb_log" \
     write_boundary_check "$FIXTURE_DIR" "$STATE_FILE" "sink-stage" "" >/dev/null 2>&1 || true
 _wb_log_body="$(cat "$_wb_log" 2>/dev/null || true)"
-assert_contains "[SPEC-4f] the violation log names the stage" \
+assert_contains "[SPEC-4f] the log names the stage" \
     "$_wb_log_body" "stage=sink-stage"
 # The path is the whole reason the sink exists — asserting only the stage let the
 # `path=%s` half of the format string be dropped without reddening anything.
-assert_contains "[SPEC-4f] the violation log names the offending path" \
+assert_contains "[SPEC-4f] the log names the path the sweep saw" \
     "$_wb_log_body" "path=$WATCH_DIR/sink-probe.txt"
 
 # GUARD: unset variable writes nothing anywhere — a diagnostic must not change
 # behaviour, and must not create files of its own.
-_wb_log2="$TEST_TEMP_DIR/wb-violations-2.log"
+_wb_log2="$TEST_TEMP_DIR/wb-sink-2.log"
 rm -f "$JOB_DIR/runtime/write-boundary-violated"
 write_boundary_mark "$STATE_FILE"
 touch "$WATCH_DIR/sink-probe-2.txt"
@@ -362,180 +333,6 @@ if [[ ! -e "$_wb_log2" ]]; then
 else
     assert_fail "[SPEC-4f] no sink file is created when the variable is unset" \
         "unexpected: $_wb_log2"
-fi
-
-# ─── SPEC-4g: the shipped default does not sweep the system temp ────────────
-# C9 dropped /tmp and ${TMPDIR:-/tmp} and called it "a real reduction in
-# coverage — the originally measured defect was a stage writing to /tmp". C10
-# restored them once the engine's own temps were in bounds, and that restoration
-# was MEASURED on ubuntu CI and reverted. The evidence, so this is not re-tried
-# a third time:
-#
-#   stage=intake path=/tmp/tmp.XXXXXXXXXX
-#
-# twice, in two runs. That is the default BARE-mktemp name, and `intake`
-# contains no mktemp at all — the files belonged to another process on the
-# runner (git, gh, node, npm, the Actions agent), which shares /tmp whenever
-# TMPDIR is unset. `intake` was merely what happened to be dispatching.
-#
-# The settle probe caught one and missed its twin: a writer that finishes BEFORE
-# the dispatch returns leaves nothing live to witness. That is not a gap in the
-# probe. mtime records when, never who, and no attribution logic recovers
-# authorship that was never written down.
-#
-# So the coverage C9 gave up stays given up, and for a sharper reason than C9
-# stated: not only that the engine wrote there, but that the directory belongs
-# to the whole machine. Closing it needs authorship, not a longer watch list.
-# config/write-boundary-watch.txt carries the roots commented, for an operator
-# on a dedicated box.
-
-_wl_default="$(unset ZBUILD_WRITE_BOUNDARY_WATCH; write_boundary_watch_list)"
-# Exact roots only. $HOME is redirected under the system temp in this harness,
-# so a prefix match would flag the (legitimate) $HOME entry.
-_sys_tmp_root="${TMPDIR:-/tmp}"; _sys_tmp_root="${_sys_tmp_root%/}"
-if awk -v a="/tmp" -v b="$_sys_tmp_root" \
-     '{p=$1} p==a||p==b{found=1} END{exit !found}' <<< "$_wl_default"; then
-    assert_fail "[SPEC-4g] the shipped watch list does not carry a system-temp root" \
-        "watch list: $_wl_default"
-else
-    assert_pass "[SPEC-4g] the shipped watch list does not carry a system-temp root"
-fi
-
-# GUARD: the roots an operator CAN attribute are still swept.
-for _need in "$HOME" "$PWD"; do
-    if grep -qF "$_need" <<< "$_wl_default"; then
-        assert_pass "[SPEC-4g] the shipped watch list still covers $_need"
-    else
-        assert_fail "[SPEC-4g] the shipped watch list still covers $_need" \
-            "watch list: $_wl_default"
-    fi
-done
-
-# ─── SPEC-1: the Claude CLI's own state file is not a stage violation ────────
-# ~/.claude.json is the CLI's global state file — project/session history,
-# onboarding flags, MCP config. The `claude` process the engine spawns rewrites
-# it on EVERY dispatch, with zero tool use required (measured on CLI 2.1.241: a
-# `claude -p` run in an empty dir with no tools rewrote it). That is the engine's
-# own tool doing bookkeeping, not the stage writing out of bounds — the same
-# class already exempted for the event bus in SPEC-4d above.
-#
-# #1809 allowed the DIRECTORY ~/.claude. The state file is a SIBLING of that
-# directory, sitting directly in $HOME, which the shipped watch list sweeps at
-# maxdepth:1 — so every LLM stage halted with disposition=broken. $HOME is
-# sandboxed under the test temp here, and the SHIPPED allow list is loaded
-# additively on every call, so this exercises the entry an operator gets.
-# CHANGE: fails at baseline (the entry covered the directory, not the file).
-
-_CLI_STATE="$HOME/.claude.json"
-mkdir -p "$HOME"
-printf '{}\n' > "$_CLI_STATE"
-_cls_cli="$(write_boundary_classify "$_CLI_STATE" "$JOB_DIR" "" 2>/dev/null)"
-assert_eq "[SPEC-1] the Claude CLI's own top-level state file classifies as allowed" \
-    "allowed" "$_cls_cli"
-
-# ─── SPEC-2: a glob allow entry covers the whole backup family ──────────────
-# The backups are timestamped and unbounded (.claude.json.backup-20251221-084359),
-# so no exact entry can name them. They are written rarely — migration or repair
-# — but the disposition is `broken`, terminal, so one landing mid-run kills it
-# with no retry. The matcher did root/root-slash-star only, no globs.
-# CHANGE: fails at baseline (allow entries were matched literally).
-
-_CLI_BAK="$HOME/.claude.json.backup-20251221-084359"
-printf '{}\n' > "$_CLI_BAK"
-_cls_bak="$(write_boundary_classify "$_CLI_BAK" "$JOB_DIR" "" 2>/dev/null)"
-assert_eq "[SPEC-2] a timestamped backup in the same family classifies as allowed" \
-    "allowed" "$_cls_bak"
-
-# GUARD (SPEC-4): the glob arm must not become a blanket pass. An unrelated file
-# at the same depth, under the same watched root, is still a violation.
-_HOME_STRAY="$HOME/stray-note.txt"
-printf 'x\n' > "$_HOME_STRAY"
-_cls_hstray="$(write_boundary_classify "$_HOME_STRAY" "$JOB_DIR" "" 2>/dev/null)"
-assert_eq "[SPEC-4] an unrelated file at the same depth is still a violation" \
-    "violation" "$_cls_hstray"
-
-# Both readings of where CLAUDE_CONFIG_DIR puts the state file are covered, and
-# neither was exercised before — the suite only ever ran with the variable
-# unset, so a home-relative-only entry and a config-dir-only entry were
-# indistinguishable (claude-review flagged the gap on PR #1953).
-_CCD="$TEST_TEMP_DIR/custom-claude-config"
-mkdir -p "$_CCD"
-printf '{}\n' > "$_CCD/.claude.json"
-_cls_ccd="$(CLAUDE_CONFIG_DIR="$_CCD" \
-    write_boundary_classify "$_CCD/.claude.json" "$JOB_DIR" "" 2>/dev/null)"
-assert_eq "[SPEC-1] the state file under a custom CLAUDE_CONFIG_DIR classifies as allowed" \
-    "allowed" "$_cls_ccd"
-
-_cls_home_ccd="$(CLAUDE_CONFIG_DIR="$_CCD" \
-    write_boundary_classify "$_CLI_STATE" "$JOB_DIR" "" 2>/dev/null)"
-assert_eq "[SPEC-1] the home-relative state file stays allowed when CLAUDE_CONFIG_DIR is set" \
-    "allowed" "$_cls_home_ccd"
-
-# GUARD (SPEC-4): a glob entry names FILES, not roots. Without this, the glob
-# arm reads `.claude.json*` as `.claude.json*/*` and a directory named to match
-# — `.claude.json.evil/` — carries its whole subtree in with it. Raised by
-# claude-review on PR #1953 and confirmed: the probe returned `allowed`.
-_EVIL_DIR="$HOME/.claude.json.evil"
-mkdir -p "$_EVIL_DIR"
-printf 'x\n' > "$_EVIL_DIR/inside.txt"
-_cls_evil="$(write_boundary_classify "$_EVIL_DIR/inside.txt" "$JOB_DIR" "" 2>/dev/null)"
-assert_eq "[SPEC-4] a glob entry does not grant the subtree of a directory it matches" \
-    "violation" "$_cls_evil"
-
-# ─── SPEC-3: ${VAR:-default} expands generally, not per hardcoded token ─────
-# The expander handled that form with one hardcoded string substitution PER
-# TOKEN — two for CLAUDE_CONFIG_DIR, one for TMPDIR. Every new default form
-# needed another, and a config line an operator writes with any other variable
-# expanded to nothing at all.
-# CHANGE: fails at baseline (only the three hardcoded tokens expanded).
-
-_EXP_ALLOW="$TEST_TEMP_DIR/expand-allow.txt"
-_EXP_DIR="$TEST_TEMP_DIR/expand-fallback"
-mkdir -p "$_EXP_DIR"
-printf 'x\n' > "$_EXP_DIR/written.txt"
-unset ZB_WB_NO_SUCH_VAR 2>/dev/null || true
-printf '${ZB_WB_NO_SUCH_VAR:-%s}\n' "$_EXP_DIR" > "$_EXP_ALLOW"
-_cls_exp="$(ZBUILD_WRITE_BOUNDARY_ALLOW="$_EXP_ALLOW" \
-    write_boundary_classify "$_EXP_DIR/written.txt" "$JOB_DIR" "" 2>/dev/null)"
-assert_eq "[SPEC-3] an unset \${VAR:-default} falls back to the default" \
-    "allowed" "$_cls_exp"
-
-_EXP_SET="$TEST_TEMP_DIR/expand-set"
-mkdir -p "$_EXP_SET"
-printf 'x\n' > "$_EXP_SET/written.txt"
-printf '${ZB_WB_SET_VAR:-%s}\n' "$_EXP_DIR" > "$_EXP_ALLOW"
-_cls_exp2="$(ZB_WB_SET_VAR="$_EXP_SET" ZBUILD_WRITE_BOUNDARY_ALLOW="$_EXP_ALLOW" \
-    write_boundary_classify "$_EXP_SET/written.txt" "$JOB_DIR" "" 2>/dev/null)"
-assert_eq "[SPEC-3] a set \${VAR:-default} uses the variable, not the default" \
-    "allowed" "$_cls_exp2"
-
-# The nested shape already shipped in config/write-boundary-allow.txt —
-# ${CLAUDE_CONFIG_DIR:-${HOME}/.claude} — must survive the generalisation. Plain
-# references expand innermost-first so the default is brace-free by the time the
-# defaulted form is matched.
-_NEST_ALLOW="$TEST_TEMP_DIR/expand-nested.txt"
-printf '${ZB_WB_NO_SUCH_VAR:-${TEST_TEMP_DIR}/expand-fallback}\n' > "$_NEST_ALLOW"
-_cls_nest="$(ZBUILD_WRITE_BOUNDARY_ALLOW="$_NEST_ALLOW" \
-    write_boundary_classify "$_EXP_DIR/written.txt" "$JOB_DIR" "" 2>/dev/null)"
-assert_eq "[SPEC-3] a nested \${VAR} inside a default expands too" \
-    "allowed" "$_cls_nest"
-
-# GUARD: the per-token substitutions are gone. CLAUDE_CONFIG_DIR is config data;
-# once the expander is general it has no business being named in engine code.
-# Comment lines are exempt: the expander's own comment cites the nested shape it
-# has to keep handling, and naming it there is documentation, not a code path.
-_hardcoded="$(grep -n 'CLAUDE_CONFIG_DIR' "$WB_LIB" | grep -v '^[0-9]*: *#' || true)"
-if [[ -n "$_hardcoded" ]]; then
-    assert_fail "[SPEC-3] no per-token hardcoded expansion remains in the lib" \
-        "$_hardcoded"
-else
-    assert_pass "[SPEC-3] no per-token hardcoded expansion remains in the lib"
-fi
-if grep -qF 'TMPDIR:-\/tmp' "$WB_LIB"; then
-    assert_fail "[SPEC-3] no hardcoded TMPDIR substitution remains in the lib" \
-        "$(grep -nF 'TMPDIR:-\/tmp' "$WB_LIB")"
-else
-    assert_pass "[SPEC-3] no hardcoded TMPDIR substitution remains in the lib"
 fi
 
 # ─── SPEC-4h: a candidate written by a DEMONSTRABLY live external process ────
@@ -613,78 +410,6 @@ assert_contains "[SPEC-4i] GUARD: and the marker names the worktree file, not th
     "$(cat "$JOB_DIR/runtime/write-boundary-violated" 2>/dev/null || true)" "genuine-violation.txt"
 rm -f "$WB_WT/genuine-violation.txt"
 unset ZBUILD_REPO_ROOT
-
-# ─── SPEC-4j: no plugin invents an artifact root at the system temp ─────────
-# ADR-058 §1 names five areas a stage may write into; the system temp is not
-# one of them. Eight plugins carried an ad-hoc fallback of the shape
-#   artifacts_dir="${ZBUILD_ARTIFACT_DIR:-${TMPDIR:-/tmp}/zbuild-<name>-artifacts}"
-# which mints an ARTIFACT root — the stage's declared outputs — outside every
-# allowed area whenever the plugin is invoked without a live state file.
-#
-# zbuild_engine_tmpdir is the single answer to "where may engine code put a
-# working file" (#2017), and it already resolves scratch → runtime/ → data
-# root, so the ad-hoc branch keeps working while landing in bounds.
-_ART_TMP_HITS="$(
-    { grep -rn 'ZBUILD_ARTIFACT_DIR:-${TMPDIR' "$REPO_ROOT/plugins" 2>/dev/null || true; } \
-        | { grep -v '/tests/' || true; }
-)"
-if [[ -z "$_ART_TMP_HITS" ]]; then
-    assert_pass "[SPEC-4j] no plugin roots an artifact dir at the system temp"
-else
-    assert_fail "[SPEC-4j] no plugin roots an artifact dir at the system temp" \
-        "$(printf '%s' "$_ART_TMP_HITS" | tr '\n' '|')"
-fi
-
-# ─── SPEC-4k: no engine temp under core/ is unrooted ────────────────────────
-# `mktemp` with no template, and `mktemp -t <name>`, both resolve to $TMPDIR —
-# and on macOS the templateless forms ignore $TMPDIR entirely and use
-# /var/folders, so not even C10's run-scoped TMPDIR relocates them. An unrooted
-# engine temp is therefore outside all five ADR-058 §1 areas on at least one
-# supported platform, always.
-#
-# core/ is scanned rather than the whole tree because it is the engine's own
-# code, where the rule is unconditional: scripts/ carries CLI and CI tooling
-# that legitimately runs with no job folder to write into.
-_UNROOTED="$(
-    { grep -rnE 'mktemp( +-d)? *(\)|\||;|$)|mktemp +(-d +)?-t +' "$REPO_ROOT/core" 2>/dev/null || true; } \
-        | { grep -v '/tests/' || true; } \
-        | { grep -vE '^[^:]+:[0-9]+: *#' || true; }
-)"
-if [[ -z "$_UNROOTED" ]]; then
-    assert_pass "[SPEC-4k] every mktemp under core/ names a rooted template"
-else
-    assert_fail "[SPEC-4k] every mktemp under core/ names a rooted template" \
-        "$(printf '%s' "$_UNROOTED" | tr '\n' '|')"
-fi
-
-# ─── SPEC-4l: no test writes to a hardcoded system-temp path ────────────────
-# The suite runs tiers concurrently (scripts/run-tests.sh), and the shipped
-# watch list covers the system temp again (SPEC-4g). A test writing to a fixed
-# /tmp path therefore lands in a watched root while some OTHER test's stage is
-# mid-dispatch, and that stage is blamed for it.
-#
-# Not hypothetical: restoring the roots turned the ubuntu integration tier red,
-# and the violation log named the writer —
-#   stage=build path=/tmp/intake-branch-test-out.1335049
-# from plugins/agent/intake/tests/intake-branch-test.sh, 15 sites of
-# `> /tmp/intake-branch-test-out.$$`. The `build` stage had never touched it.
-# That is the #1839 failure mode reproduced inside the suite, and the same class
-# the settle probe cannot always absorb: a writer that finishes BEFORE the
-# dispatch returns leaves no live witness.
-#
-# $TEST_TEMP_DIR is per-test and reaped, so it cannot collide.
-_TMP_WRITERS="$(
-    { grep -rnE '> */tmp/|>> */tmp/|mkdir -p +/tmp/' \
-        "$REPO_ROOT/tests" "$REPO_ROOT/plugins" 2>/dev/null || true; } \
-        | { grep -vE 'TMPDIR|TEST_TEMP_DIR' || true; } \
-        | { grep -vE '^[^:]+:[0-9]+: *#' || true; }
-)"
-if [[ -z "$_TMP_WRITERS" ]]; then
-    assert_pass "[SPEC-4l] no test writes to a hardcoded system-temp path"
-else
-    assert_fail "[SPEC-4l] no test writes to a hardcoded system-temp path" \
-        "$(printf '%s' "$_TMP_WRITERS" | tr '\n' '|')"
-fi
 
 cleanup_test_env
 print_test_results

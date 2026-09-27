@@ -538,6 +538,11 @@ and attribution comes from ownership, never from timing.**
    user's, shared with the user, so it is not the run's to judge.
 5. **The settle-window witness is removed**, with `ZBUILD_WRITE_BOUNDARY_SETTLE_MS`.
    Nothing in the boundary reads a clock to decide authorship.
+6. **Any change counts, and every change is named.** A non-writer that
+   *reverts* an earlier stage's uncommitted work has touched the worktree too.
+   The violation names every changed path (capped at 20), because `broken` is
+   terminal and one path per retry costs a run per file. The git half lives in
+   `core/pipeline/write-boundary-repo.sh`.
 
 ### Consequences
 
@@ -567,7 +572,8 @@ fences the model's tools, this checks what actually landed.
 ### Verification
 
 ```bash
-bash tests/integration/write-boundary-ownership-test.sh   # O1–O9
+bash tests/integration/write-boundary-ownership-test.sh   # O1–O11
+bash tests/unit/write-boundary-allow-and-guards-test.sh   # split from the sweep test
 bash tests/unit/write-boundary-sweep-test.sh              # SPEC-1/1b/4h/4i restated
 bash tests/integration/write-boundary-dispatch-test.sh    # SPEC-2/4/6 restated
 bash tests/unit/write-boundary-window-test.sh             # SPEC-8 restated

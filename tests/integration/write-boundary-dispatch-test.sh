@@ -194,7 +194,7 @@ echo '{}' > "$SF6"
 
 FX6="$TEST_TEMP_DIR/plugins/wb-fx6"
 _make_fixture "$FX6" "wb-fx6" "
-    echo '{}' > \"\${ZBUILD_ARTIFACT_DIR:-/tmp}/wb-fx6-result.json\"
+    echo '{}' > \"\${ZBUILD_ARTIFACT_DIR:-\${artifact_dir:-}}/wb-fx6-result.json\"
     touch \"\$ZB_WB_CANARY6_FILE\"
 "
 export ZB_WB_CANARY6_FILE="$CANARY6/bad-write-spec6.txt"
