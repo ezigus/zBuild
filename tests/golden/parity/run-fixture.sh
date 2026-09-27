@@ -44,7 +44,7 @@ done
 if grep -q "whether a finished CHANGE does what an ISSUE asked" <<< "$prompt"; then
     # issue-acceptance (#1849): the fixture's one-file change meets its issue.
     jq -n --arg r $'VERDICT: pass\nREASON: the fixture file the issue asks for is added' \
-       '{type:"result",subtype:"success",result:$r,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
+       '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 elif grep -q "LOOP_COMPLETE" <<< "$prompt"; then
     # build stage (#467 Pattern 2) — edit the fixture file directly in $PWD
     # (route_to_model_loop runs claude with cwd=$ZBUILD_REPO_ROOT) and emit a
@@ -53,11 +53,11 @@ elif grep -q "LOOP_COMPLETE" <<< "$prompt"; then
     mkdir -p "$PWD/tests/fixtures"
     printf 'parity-fixture\n' > "$PWD/tests/fixtures/parity-fixture.txt"
     jq -n --arg r $'Created fixture file.\nLOOP_COMPLETE' \
-       '{result:$r, usage:{input_tokens:5, output_tokens:3}}'
+       '{result:$r, total_cost_usd:0.001, usage:{input_tokens:5, output_tokens:3}}'
 else
     # plan stage (default — wrapped per #476)
     jq -n --arg r '{"schema_version":1,"issue":90000359,"title":"parity fixture","goal":"parity fixture goal","steps":[{"id":"step-1","description":"add parity fixture file","files":["tests/fixtures/parity-fixture.txt"],"estimated_lines":1}],"estimated_total_lines":1,"notes":""}' \
-       '{type:"result",subtype:"success",result:$r,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
+       '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 fi
 exit 0
 MOCK

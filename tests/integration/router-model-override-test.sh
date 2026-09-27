@@ -86,10 +86,10 @@ set -e
 assert_eq "TC-4: tier fallback rc=0" "0" "$rc"
 tc4_model="$(grep '"model.route"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
     jq -r 'select(.type=="model.route") | .data.model_id // empty' 2>/dev/null | tail -1 || true)"
-assert_eq "TC-4: model.route uses candidates[0] (claude-sonnet-5)" "claude-sonnet-5" "$tc4_model"
+assert_eq "TC-4: model.route uses candidates[0]'s family via its provider (sonnet)" "sonnet" "$tc4_model"
 tc4_src="$(grep '"model.route"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
     jq -r 'select(.type=="model.route") | .data.selector // empty' 2>/dev/null | tail -1 || true)"
-assert_eq "TC-4: model.route selector=candidates[0]" "candidates[0]" "$tc4_src"
+assert_eq "TC-4: model.route selector names the provider and family" "provider:anthropic/sonnet" "$tc4_src"
 
 cleanup_test_env
 print_test_results

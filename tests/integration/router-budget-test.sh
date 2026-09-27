@@ -29,7 +29,7 @@ unset ZBUILD_RUN_ID 2>/dev/null || true
 
 cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'
 #!/usr/bin/env bash
-printf '{"type":"result","subtype":"success","is_error":false,"result":"ok","usage":{"input_tokens":100,"output_tokens":20,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}\n'
+printf '{"type":"result","subtype":"success","is_error":false,"result":"ok","total_cost_usd":0.0007,"usage":{"input_tokens":100,"output_tokens":20,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}\n'
 exit 0
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"

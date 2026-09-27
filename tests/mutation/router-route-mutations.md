@@ -10,7 +10,7 @@ sed -i.mutbak 's|candidates\[0\]|candidates[1]|g' core/router/route.sh
 ```
 
 ## Expected failing test
-`tests/integration/core-router-route-test.sh` — asserts deterministic tier→model_id selection (e.g., T2 → claude-sonnet-5, T3 → claude-opus-5-5).
+`tests/integration/core-router-route-test.sh` — asserts deterministic tier→model_id selection (e.g., T2 → the sonnet family, T3 → the opus family, via the anthropic provider module).
 
 ## Test
 ```bash

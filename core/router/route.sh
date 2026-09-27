@@ -251,7 +251,7 @@ route_to_model_cli() {
 }
 
 # ── Shared state set by helpers ──────────────────────────────────────────────
-_ROUTE_MODEL_ID="" _ROUTE_PROVIDER="" _ROUTE_COST_IN="" _ROUTE_COST_OUT=""
+_ROUTE_MODEL_ID="" _ROUTE_PROVIDER="" _ROUTE_FAMILY="" _ROUTE_MODEL_USED="" _ROUTE_CALL_COST=""
 _ROUTE_CACHE_ELIGIBLE="false" _ROUTE_OVERRIDE_SOURCE="" _ROUTE_RESPONSE=""
 _ROUTE_INPUT_TOKENS=0 _ROUTE_OUTPUT_TOKENS=0
 _ROUTE_CACHE_READ=0 _ROUTE_CACHE_CREATION=0
@@ -553,10 +553,26 @@ _route_ensure_redaction() {
     return 2
 }
 
+# ─── _route_provider_load <provider> ─────────────────────────────────────────
+# Sources core/router/providers/<provider>.sh (ADR-003 amendment). The name is
+# validated so a models.json value cannot climb out of providers/.
+_route_provider_load() {
+    local p="${1:-}" f
+    [[ "$p" =~ ^[a-z][a-z0-9_-]*$ ]] || return 1
+    f="$_ZBUILD_ROOT/core/router/providers/$p.sh"
+    [[ -f "$f" ]] || return 1
+    # shellcheck source=providers/anthropic.sh
+    source "$f"
+    declare -F "provider_${p//-/_}_resolve" >/dev/null 2>&1
+}
+
 # ─── _route_lookup_model <tier> <model_override> ─────────────────────────────
-# Resolves model_id and cost metadata from models.json.
-# Sets _ROUTE_MODEL_ID, _ROUTE_PROVIDER, _ROUTE_COST_IN, _ROUTE_COST_OUT,
-# _ROUTE_CACHE_ELIGIBLE, _ROUTE_OVERRIDE_SOURCE.
+# Resolves the model for a tier. A candidate names {provider, family}; the
+# provider module turns the family into the model to request — for anthropic,
+# the CLI alias that always means the newest model of that family. A pinned
+# `id` wins. Cost never comes from here: it is the provider's to report per call.
+# Sets _ROUTE_MODEL_ID, _ROUTE_PROVIDER, _ROUTE_FAMILY, _ROUTE_CACHE_ELIGIBLE,
+# _ROUTE_OVERRIDE_SOURCE.
 _route_lookup_model() {
     local tier="$1" model_override="$2"
 
@@ -575,22 +591,38 @@ _route_lookup_model() {
     if [[ -n "$model_override" ]]; then
         _ROUTE_MODEL_ID="$model_override"
         _ROUTE_OVERRIDE_SOURCE="flag"
-        _ROUTE_PROVIDER="" _ROUTE_COST_IN="" _ROUTE_COST_OUT="" _ROUTE_CACHE_ELIGIBLE="false"
+        _ROUTE_PROVIDER="anthropic" _ROUTE_FAMILY="" _ROUTE_CACHE_ELIGIBLE="false"
+        _route_provider_load anthropic || true
     elif [[ -n "${ZBUILD_PLUGIN_MODEL:-}" ]]; then
         _ROUTE_MODEL_ID="$ZBUILD_PLUGIN_MODEL"
         _ROUTE_OVERRIDE_SOURCE="env"
-        _ROUTE_PROVIDER="" _ROUTE_COST_IN="" _ROUTE_COST_OUT="" _ROUTE_CACHE_ELIGIBLE="false"
+        _ROUTE_PROVIDER="anthropic" _ROUTE_FAMILY="" _ROUTE_CACHE_ELIGIBLE="false"
+        _route_provider_load anthropic || true
     else
-        _ROUTE_MODEL_ID="$(jq -r ".tiers.${tier}.candidates[0].id // empty" "$models_file" 2>/dev/null)" \
+        local _cand
+        _cand="$(jq -c ".tiers.${tier}.candidates[0] // empty" "$models_file" 2>/dev/null)" \
             || { error "failed to read candidates for tier $tier"; return 2; }
-        if [[ -z "$_ROUTE_MODEL_ID" ]]; then
+        if [[ -z "$_cand" ]]; then
             error "no candidates for tier $tier"; return 1
         fi
-        _ROUTE_OVERRIDE_SOURCE="candidates[0]"
-        _ROUTE_PROVIDER="$(jq -r ".tiers.${tier}.candidates[0].provider // empty" "$models_file" 2>/dev/null)" || _ROUTE_PROVIDER=""
-        _ROUTE_COST_IN="$(jq -r ".tiers.${tier}.candidates[0].cost_per_input_mtok // empty" "$models_file" 2>/dev/null)" || _ROUTE_COST_IN=""
-        _ROUTE_COST_OUT="$(jq -r ".tiers.${tier}.candidates[0].cost_per_output_mtok // empty" "$models_file" 2>/dev/null)" || _ROUTE_COST_OUT=""
-        _ROUTE_CACHE_ELIGIBLE="$(jq -r ".tiers.${tier}.candidates[0].cache_eligible // false" "$models_file" 2>/dev/null)" || _ROUTE_CACHE_ELIGIBLE="false"
+        local _pin
+        # \x1f, not a tab: `read` collapses runs of whitespace IFS characters,
+        # so an empty field (no pinned id) would shift every field after it.
+        IFS=$'\x1f' read -r _ROUTE_PROVIDER _ROUTE_FAMILY _pin _ROUTE_CACHE_ELIGIBLE < <(jq -r \
+            '[(.provider // ""), (.family // ""), (.id // ""), ((.cache_eligible // false) | tostring)] | join("\u001f")' <<< "$_cand")
+        _ROUTE_PROVIDER="${_ROUTE_PROVIDER:-anthropic}"
+        if ! _route_provider_load "$_ROUTE_PROVIDER"; then
+            error "tier $tier names provider '$_ROUTE_PROVIDER', which has no module (core/router/providers/$_ROUTE_PROVIDER.sh)"
+            return 2
+        fi
+        if [[ -n "$_pin" ]]; then
+            _ROUTE_MODEL_ID="$_pin"; _ROUTE_OVERRIDE_SOURCE="candidates[0].id"
+        elif ! _ROUTE_MODEL_ID="$("provider_${_ROUTE_PROVIDER//-/_}_resolve" "$_ROUTE_FAMILY")" || [[ -z "$_ROUTE_MODEL_ID" ]]; then
+            error "provider '$_ROUTE_PROVIDER' cannot resolve family '${_ROUTE_FAMILY:-<none>}' for tier $tier"
+            return 2
+        else
+            _ROUTE_OVERRIDE_SOURCE="provider:${_ROUTE_PROVIDER}/${_ROUTE_FAMILY}"
+        fi
     fi
     return 0
 }
@@ -780,8 +812,7 @@ _route_emit_model_route() {
         "applied=$_ROUTE_MODEL_ID" \
         "selector=${_ROUTE_OVERRIDE_SOURCE}" \
         "override_source=${_ROUTE_OVERRIDE_SOURCE}" \
-        "cost_per_input_mtok=${_ROUTE_COST_IN:-}" \
-        "cost_per_output_mtok=${_ROUTE_COST_OUT:-}" \
+        "family=${_ROUTE_FAMILY:-}" \
         "cache_eligible=${_ROUTE_CACHE_ELIGIBLE}" \
         "timeout_s=${secs}"
 }
@@ -792,6 +823,14 @@ _route_check_budget() {
     local tier="$1"
     local _budget_usd="${ZBUILD_BUDGET_USD:-}"
     [[ -z "$_budget_usd" ]] && return 0
+    # A call in this run whose cost the provider could not report means the
+    # ledger cannot prove the run is under the cap — refuse rather than guess.
+    if [[ -n "${ZBUILD_STATE_DIR:-}" && -f "$ZBUILD_STATE_DIR/runtime/cost-unknown" ]]; then
+        error "router: a call's cost could not be determined this run — refusing model call for tier=$tier under budget ${_budget_usd}"
+        eb_emit_event "cost.budget_exceeded" "tier=$tier" \
+            "model_id=$_ROUTE_MODEL_ID" "spent=unknown" "budget=${_budget_usd}" 2>/dev/null || true
+        return 1
+    fi
 
     local _ledger_file="${ZBUILD_COST_LEDGER:-${HOME}/.zbuild/cost-ledger.jsonl}"
     local _total_cost=0
@@ -862,7 +901,10 @@ _route_call_claude() {
     local -a _perm_args=()
     mapfile -t _perm_args < <(_zbuild_permission_args)
     _claude_args+=("${_perm_args[@]}")
-    [[ "${ZBUILD_ROUTER_JSON_OUTPUT:-0}" == "1" ]] && _claude_args+=(--output-format json)
+    # Always the JSON envelope: it is where the provider reports the call's cost
+    # and the concrete model that answered (ADR-003 amendment). A caller that
+    # did not ask for JSON still gets plain text — the router unwraps .result.
+    _claude_args+=(--output-format json)
 
     # ADR-029 (#1230): retry-on-timeout. On rc=124 (gtimeout SIGTERM) and while
     # attempts remain, re-spawn with an escalated LOCAL timeout before falling
@@ -1080,6 +1122,9 @@ _route_call_claude() {
             "subtype=${_sync_subtype:-absent}" \
             2>/dev/null || true
         rm -f "$stderr_file" "$_prompt_in"
+        # A failed call can still have been billed; the provider says what it cost.
+        _route_record_call "$response"
+        _route_update_ledger
         # ADR-021 v3 R2: rc=124 (gtimeout SIGTERM) and rc=137 (SIGKILL/OOM)
         # are infra failures and MUST reach the agent plugin verbatim — they
         # carry max_turns/timeout semantics that `_router_rc_classify` maps
@@ -1102,7 +1147,10 @@ _route_call_claude() {
     _ROUTE_INPUT_TOKENS=0 _ROUTE_OUTPUT_TOKENS=0
     _ROUTE_CACHE_READ=0 _ROUTE_CACHE_CREATION=0
     _ROUTE_TOOL_USES_JSON="[]"
-    if [[ "${ZBUILD_ROUTER_JSON_OUTPUT:-0}" == "1" ]]; then
+    _route_record_call "$response"
+    local _is_envelope=0
+    jq -e 'type == "object" and has("result")' <<< "$response" >/dev/null 2>&1 && _is_envelope=1
+    if [[ "$_is_envelope" == "1" || "${ZBUILD_ROUTER_JSON_OUTPUT:-0}" == "1" ]]; then
         local text_response
         text_response="$(printf '%s' "$response" | jq -r '.result // empty' 2>/dev/null || true)"
         if [[ -z "$text_response" ]]; then
@@ -1147,6 +1195,9 @@ _route_emit_outcome() {
     eb_emit_event "model.outcome" \
         "tier=$tier" \
         "model_id=$_ROUTE_MODEL_ID" \
+        "provider=${_ROUTE_PROVIDER:-}" \
+        "model_used=${_ROUTE_MODEL_USED:-}" \
+        "cost_usd=${_ROUTE_CALL_COST:-unknown}" \
         "cache_eligible=${_ROUTE_CACHE_ELIGIBLE}" \
         "input_tokens=$_ROUTE_INPUT_TOKENS" \
         "output_tokens=$_ROUTE_OUTPUT_TOKENS" \
@@ -1155,20 +1206,40 @@ _route_emit_outcome() {
         "timeout_s=${secs}"
 }
 
+# ─── _route_record_call <raw_response> ───────────────────────────────────────
+# Asks the call's provider what it cost and which model answered (ADR-003
+# amendment). Sets _ROUTE_CALL_COST (empty = the provider could not say) and
+# _ROUTE_MODEL_USED.
+_route_record_call() {
+    local raw="${1:-}" p="${_ROUTE_PROVIDER:-anthropic}"
+    p="${p//-/_}"
+    _ROUTE_CALL_COST="" _ROUTE_MODEL_USED=""
+    declare -F "provider_${p}_call_cost" >/dev/null 2>&1 \
+        && _ROUTE_CALL_COST="$("provider_${p}_call_cost" "$raw")"
+    declare -F "provider_${p}_model_used" >/dev/null 2>&1 \
+        && _ROUTE_MODEL_USED="$("provider_${p}_model_used" "$raw")"
+    return 0
+}
+
 # ─── _route_update_ledger ─────────────────────────────────────────────────────
-# Appends call cost to the cost ledger. The ledger path resolves via
-# ZBUILD_COST_LEDGER (default ~/.zbuild/cost-ledger.jsonl) so a nested run can be
-# fenced to its own ledger (#1214). Non-fatal on failure.
+# Appends the call's provider-reported cost to the cost ledger. The ledger path
+# resolves via ZBUILD_COST_LEDGER (default ~/.zbuild/cost-ledger.jsonl) so a
+# nested run can be fenced to its own ledger (#1214). A cost the provider could
+# not report is never written as 0: it is evented and marked on the run, and
+# _route_check_budget refuses further calls under a cap. Non-fatal on failure.
 _route_update_ledger() {
-    [[ -z "${_ROUTE_COST_IN:-}" || -z "${_ROUTE_COST_OUT:-}" ]] && return 0
-
+    if [[ -z "${_ROUTE_CALL_COST:-}" ]]; then
+        eb_emit_event "router.cost.unknown" "provider=${_ROUTE_PROVIDER:-}" \
+            "model_id=$_ROUTE_MODEL_ID" "stage=${ZBUILD_CURRENT_STAGE:-unknown}" 2>/dev/null || true
+        if [[ -n "${ZBUILD_STATE_DIR:-}" ]]; then
+            mkdir -p "$ZBUILD_STATE_DIR/runtime" 2>/dev/null \
+                && : > "$ZBUILD_STATE_DIR/runtime/cost-unknown" 2>/dev/null || true
+        fi
+        return 0
+    fi
     local _call_cost_usd
-    _call_cost_usd="$(awk \
-        -v i="$_ROUTE_INPUT_TOKENS" -v o="$_ROUTE_OUTPUT_TOKENS" \
-        -v ri="$_ROUTE_COST_IN" -v ro="$_ROUTE_COST_OUT" \
-        'BEGIN{printf "%.6f", (i*ri + o*ro)/1000000}' 2>/dev/null || echo 0)"
-
-    [[ "$_call_cost_usd" == "0" || "$_call_cost_usd" == "0.000000" ]] && return 0
+    _call_cost_usd="$(awk -v c="$_ROUTE_CALL_COST" 'BEGIN{printf "%.6f", c+0}' 2>/dev/null || echo 0)"
+    [[ "$_call_cost_usd" == "0.000000" ]] && return 0
 
     local _ledger_file="${ZBUILD_COST_LEDGER:-${HOME}/.zbuild/cost-ledger.jsonl}"
     local _ledger_dir; _ledger_dir="$(dirname "$_ledger_file")"
@@ -1477,6 +1548,8 @@ route_to_model_loop() {
     local empty_iter_count=0
     local iter
     for (( iter=1; iter <= max_iterations; iter++ )); do
+        # The spending cap is checked before every call, the loop's included.
+        _route_check_budget "$tier" || { _route_loop_clear_traps; return 1; }
         _ROUTE_LOOP_ITERATIONS=$iter
 
         local iter_prompt _timeout_warn=""
@@ -1918,6 +1991,9 @@ ${_diff_pointer}"
             if [[ -n "$_diag_json_path" ]]; then
                 _loop_envelope="$(cat "$_diag_json_path" 2>/dev/null || true)"
             fi
+            # A failed iteration can still have been billed; the provider says.
+            _route_record_call "$_loop_envelope"
+            _route_update_ledger
             if [[ -n "$_loop_envelope" ]] && _router_is_rate_limit "$_loop_envelope"; then
                 _loop_rate_limited=1
                 _loop_rl_msg="$(_router_rate_limit_message "$_loop_envelope")"
@@ -2043,6 +2119,9 @@ ${_diff_pointer}"
         out_tok="$(jq -r '.usage.output_tokens // 0' "$json_file" 2>/dev/null || echo 0)"
         _ROUTE_LOOP_INPUT_TOKENS=$(( _ROUTE_LOOP_INPUT_TOKENS + in_tok ))
         _ROUTE_LOOP_OUTPUT_TOKENS=$(( _ROUTE_LOOP_OUTPUT_TOKENS + out_tok ))
+        # ADR-003 amendment: the iteration's cost, as the provider reports it.
+        _route_record_call "$(<"$json_file")"
+        _route_update_ledger
         # #608: expose the most recent iteration's LLM text so the build plugin
         # can parse the COMMIT_SUMMARY marker after the loop returns.
         _ROUTE_LOOP_LAST_RESPONSE="$result_text"

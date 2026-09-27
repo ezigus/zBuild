@@ -35,9 +35,9 @@ printf '%s' "bootstrap" > "$HOME/.zbuild/scope-override-token"
 export ZBUILD_SCOPE_OVERRIDE=1
 
 # Model ids per tier (from config/models.json) — the assertion targets.
-T1_MODEL="$(jq -r '.tiers.T1.candidates[0].id' "$ZBUILD_MODELS_FILE")"
-T2_MODEL="$(jq -r '.tiers.T2.candidates[0].id' "$ZBUILD_MODELS_FILE")"
-T3_MODEL="$(jq -r '.tiers.T3.candidates[0].id' "$ZBUILD_MODELS_FILE")"
+T1_MODEL="$(jq -r '.tiers.T1.candidates[0].family' "$ZBUILD_MODELS_FILE")"
+T2_MODEL="$(jq -r '.tiers.T2.candidates[0].family' "$ZBUILD_MODELS_FILE")"
+T3_MODEL="$(jq -r '.tiers.T3.candidates[0].family' "$ZBUILD_MODELS_FILE")"
 
 # Mock claude: always succeeds; argv doesn't matter (we read model.route events).
 cat > "$TEST_TEMP_DIR/bin/claude" <<'MOCK'

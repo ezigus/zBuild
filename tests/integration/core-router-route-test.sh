@@ -66,7 +66,7 @@ set -e
 
 assert_eq "T2 route returns rc=0" "0" "$rc"
 last_model="$(cat "$TEST_TEMP_DIR/last_model" 2>/dev/null || true)"
-assert_eq "T2 selects claude-sonnet-5" "claude-sonnet-5" "$last_model"
+assert_eq "T2 selects the sonnet family (the CLI resolves it to the newest)" "sonnet" "$last_model"
 
 # ─── Test 2: T1 selects Haiku ────────────────────────────────────────────────
 : > "$TEST_TEMP_DIR/last_model"
@@ -78,7 +78,7 @@ set -e
 
 assert_eq "T1 route returns rc=0" "0" "$rc"
 last_model="$(cat "$TEST_TEMP_DIR/last_model" 2>/dev/null || true)"
-assert_eq "T1 selects claude-haiku-4-5-20251001" "claude-haiku-4-5-20251001" "$last_model"
+assert_eq "T1 selects the haiku family" "haiku" "$last_model"
 
 # ─── Test 3: T3 selects Opus ─────────────────────────────────────────────────
 : > "$TEST_TEMP_DIR/last_model"
@@ -90,7 +90,7 @@ set -e
 
 assert_eq "T3 route returns rc=0" "0" "$rc"
 last_model="$(cat "$TEST_TEMP_DIR/last_model" 2>/dev/null || true)"
-assert_eq "T3 selects claude-opus-5-5" "claude-opus-5-5" "$last_model"
+assert_eq "T3 selects the opus family" "opus" "$last_model"
 
 # ─── Test 4: T0 (wasm) returns rc=2 ─────────────────────────────────────────
 set +e
@@ -133,7 +133,7 @@ event_model="$(grep '"model.route"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
     jq -r 'select(.type=="model.route") | .data.model_id // empty' 2>/dev/null | tail -1 || true)"
 
 assert_eq "model.route event has tier=T2" "T2" "$event_tier"
-assert_eq "model.route event has model_id=claude-sonnet-5" "claude-sonnet-5" "$event_model"
+assert_eq "model.route event has model_id=sonnet (the family alias)" "sonnet" "$event_model"
 
 # ─── Test 8: response passthrough ────────────────────────────────────────────
 : > "$TEST_TEMP_DIR/last_model"

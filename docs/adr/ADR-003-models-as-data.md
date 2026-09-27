@@ -180,3 +180,44 @@ literals in favor of `resolve_tier`. Behavior was byte-identical at the cutover
 class. `tests/unit/impact-tier-test.sh` now enforces the invariant: **no
 `plugin.sh` may contain a `${ZBUILD_*_TIER:-T[0-4]}` literal**, and `resolve_tier`
 must return each plugin's manifest `config.tier_default`.
+
+## Amendment: provider modules — a tier names a family, the provider resolves it and reports cost (2026-09-26)
+
+**Context.** `models.json` pinned a model ID and a price per tier. Both went stale:
+the IDs lagged the newest models, and Haiku's price was 4× wrong. The prices fed a
+ledger estimate (tokens × price) that ignored cached tokens, and only JSON-mode calls
+were counted at all, so the spending cap (`ZBUILD_BUDGET_USD`) could not see most of a
+run, including the build loop.
+
+**Decision.**
+
+1. A tier candidate names `{provider, family}`, e.g. `{"provider": "anthropic",
+   "family": "sonnet"}`. An `id` may still pin one exact model, and when present it wins.
+   `models.json` carries no prices.
+2. Each provider is a module at `core/router/providers/<provider>.sh` implementing:
+   - `provider_<p>_resolve <family>`: the model to request for a family;
+   - `provider_<p>_call_cost <raw response>`: that call's cost in USD, or nothing
+     when the provider cannot say;
+   - `provider_<p>_model_used <raw response>`: the concrete model that answered.
+
+   The router calls these and never knows a provider's model names or prices. A tier
+   naming a provider with no module fails loudly (rc=2).
+3. **anthropic.** `resolve` returns the family alias (`haiku`/`sonnet`/`opus`), which
+   the claude CLI resolves to the newest model of that family, so every run uses the
+   latest. `call_cost` reads `total_cost_usd` from the CLI's JSON envelope, which is
+   exact, current, and includes cache reads and writes. The router therefore always
+   requests the envelope and unwraps `.result` for callers that want plain text.
+4. **Cost is recorded for every call:** single-shot, each build/test-author loop
+   iteration, and failed calls that were still billed. The concrete model and cost ride
+   `model.outcome` (`model_used`, `cost_usd`).
+5. **An unknown cost is never 0.** It is emitted as `router.cost.unknown` and marked on
+   the run (`runtime/cost-unknown`). Under a spending cap the router then refuses further
+   calls, because it can no longer prove the run is under budget. Without a cap it is
+   only recorded.
+6. **A provider that does not report cost** keeps its own price table inside its own
+   module and multiplies there. Pricing is always the provider module's concern, never
+   the engine's or `models.json`'s.
+
+**Consequences.** Model upgrades need no zbuild change for Anthropic. Ledger entries
+now include cached-token cost, so a capped run reaches its cap sooner, and correctly.
+Adding a provider is one module file plus a `models.json` entry.

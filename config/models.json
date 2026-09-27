@@ -10,13 +10,9 @@
       "class": "llm",
       "candidates": [
         {
-          "id": "claude-haiku-4-5-20251001",
           "provider": "anthropic",
+          "family": "haiku",
           "context_window": 200000,
-          "cost_per_input_mtok": 1.0,
-          "cost_per_output_mtok": 5.0,
-          "cache_read_input_mtok": 0.1,
-          "cache_creation_input_mtok": 1.25,
           "cache_eligible": true,
           "weight": 1.0
         }
@@ -26,13 +22,9 @@
       "class": "llm",
       "candidates": [
         {
-          "id": "claude-sonnet-5",
           "provider": "anthropic",
+          "family": "sonnet",
           "context_window": 1000000,
-          "cost_per_input_mtok": 2.0,
-          "cost_per_output_mtok": 10.0,
-          "cache_read_input_mtok": 0.2,
-          "cache_creation_input_mtok": 2.5,
           "cache_eligible": true,
           "weight": 1.0
         }
@@ -42,13 +34,9 @@
       "class": "llm",
       "candidates": [
         {
-          "id": "claude-opus-5-5",
           "provider": "anthropic",
+          "family": "opus",
           "context_window": 1000000,
-          "cost_per_input_mtok": 4.0,
-          "cost_per_output_mtok": 20.0,
-          "cache_read_input_mtok": 0.2,
-          "cache_creation_input_mtok": 5.0,
           "cache_eligible": true,
           "weight": 1.0
         }
