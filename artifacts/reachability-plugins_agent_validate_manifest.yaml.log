@@ -40,6 +40,7 @@
   [38;2;74;222;128m✓[0m [SPEC-18] probe rc=2 → plugin exit clamps to rc=1
 [38;2;248;113;113m[1m✗[0m validate_agent_run: state_file argument required
   [38;2;74;222;128m✓[0m [SPEC-18] missing state_file → validate_agent_run exactly rc=1
+  [38;2;74;222;128m✓[0m [SPEC-18] plugin.sh has no explicit exit/return with rc>=2 in non-comment lines
   [38;2;74;222;128m✓[0m [SPEC-19] manifest config.valid_verdicts declares exactly [healthy, error]
   [38;2;74;222;128m✓[0m [SPEC-19] validate-test.sh covers healthy verdict (SPEC-11 run)
   [38;2;74;222;128m✓[0m [SPEC-19] validate-test.sh covers error verdict (SPEC-12 run)
@@ -56,7 +57,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 46 tests failed[0m
+  [38;2;248;113;113m[1m1 of 47 tests failed[0m
 
   [38;2;248;113;113m✗[0m [SPEC-15] manifest provides block carries result_contract: 2
 
@@ -101,6 +102,7 @@
   [38;2;74;222;128m✓[0m [SPEC-18] probe rc=2 → plugin exit clamps to rc=1
 [38;2;248;113;113m[1m✗[0m validate_agent_run: state_file argument required
   [38;2;74;222;128m✓[0m [SPEC-18] missing state_file → validate_agent_run exactly rc=1
+  [38;2;74;222;128m✓[0m [SPEC-18] plugin.sh has no explicit exit/return with rc>=2 in non-comment lines
   [38;2;74;222;128m✓[0m [SPEC-19] manifest config.valid_verdicts declares exactly [healthy, error]
   [38;2;74;222;128m✓[0m [SPEC-19] validate-test.sh covers healthy verdict (SPEC-11 run)
   [38;2;74;222;128m✓[0m [SPEC-19] validate-test.sh covers error verdict (SPEC-12 run)
@@ -117,5 +119,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 46 tests passed[0m
+  [38;2;74;222;128m[1mAll 47 tests passed[0m
 
