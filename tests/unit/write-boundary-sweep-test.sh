@@ -150,13 +150,12 @@ printf 'b\n' > "$WB_WT/code.txt"
 _repo_rc=0
 write_boundary_check "$FIXTURE_DIR" "$STATE_FILE" "my-stage" "" 2>/dev/null || _repo_rc=$?
 assert_eq "[SPEC-1b] a non-writer changing the worktree fails the dispatch" "1" "$_repo_rc"
-assert_file_exists "[SPEC-1b] write-boundary-violated marker created in runtime/" \
-    "$JOB_DIR/runtime/write-boundary-violated"
-# Only the marker's existence is load-bearing for verdict.sh, but the disposition
-# is `broken` — terminal — so its body is the operator's only surviving evidence
-# of WHICH path halted the run.
+# First offence: put back and retried, so the per-stage undo marker — not the
+# halting one — is written, and its body names the path.
+assert_file_exists "[SPEC-1b] the undo marker is created in runtime/" \
+    "$JOB_DIR/runtime/write-boundary-reverted.my-stage"
 assert_contains "[SPEC-1b] the marker names the offending path" \
-    "$(cat "$JOB_DIR/runtime/write-boundary-violated" 2>/dev/null || true)" "$WB_WT/code.txt"
+    "$(cat "$JOB_DIR/runtime/write-boundary-reverted.my-stage" 2>/dev/null || true)" "$WB_WT/code.txt"
 _ev_with_path=""
 for _ev in "${_WB_EVENTS[@]}"; do
     [[ "$_ev" == *"stage.write_boundary.violated"* ]] && _ev_with_path="$_ev"
@@ -407,7 +406,7 @@ write_boundary_check "$FIXTURE_DIR" "$STATE_FILE" "guilty-stage" "" 2>/dev/null 
 assert_eq "[SPEC-4i] GUARD: a worktree write by a non-writer still fails the dispatch" \
     "1" "$_genuine_rc"
 assert_contains "[SPEC-4i] GUARD: and the marker names the worktree file, not the shared one" \
-    "$(cat "$JOB_DIR/runtime/write-boundary-violated" 2>/dev/null || true)" "genuine-violation.txt"
+    "$(cat "$JOB_DIR/runtime/write-boundary-reverted.guilty-stage" 2>/dev/null || true)" "genuine-violation.txt"
 rm -f "$WB_WT/genuine-violation.txt"
 unset ZBUILD_REPO_ROOT
 

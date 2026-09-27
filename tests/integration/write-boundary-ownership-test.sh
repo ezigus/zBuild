@@ -133,9 +133,13 @@ FX3="$TEST_TEMP_DIR/plugins/wb-edits"
 _fixture "$FX3" wb-edits false "    printf 'changed\n' > '$WT/tracked.txt'"
 _run "$FX3" judge-stage
 assert_eq "[O3] a non-writer changing a tracked file fails the dispatch" "1" "$RC"
-assert_file_exists "[O3] the violated marker is written" "$JOB/runtime/write-boundary-violated"
-assert_eq "[O3] the stage resolves to broken" "broken" \
+# First offence: put back and retried (write-boundary-revert-test.sh covers the
+# second, which halts). Later O-specs reuse judge-stage, so they are second+.
+assert_contains "[O3] the undo marker names the path" \
+    "$(cat "$JOB/runtime/write-boundary-reverted.judge-stage" 2>/dev/null || true)" "tracked.txt"
+assert_eq "[O3] the stage resolves to unusable (retried)" "unusable" \
     "$(runner_read_stage_disposition "$JOB" "$FX3/manifest.yaml" judge-stage 0 "" 0 2>/dev/null)"
+assert_eq "[O3] the file is put back" "one" "$(cat "$WT/tracked.txt")"
 assert_contains "[O3] the path is named" "$(cat "$TEST_TEMP_DIR/stderr.txt")" "tracked.txt"
 git -C "$WT" checkout -q -- tracked.txt
 

@@ -65,7 +65,7 @@ Hardcoded `/tmp` is the one thing that does not work — it is out of bounds and
 
 After every stage, the engine checks where files appeared. It only **fails** a stage for something it can prove that stage did:
 
-- **Changing the repository without saying so fails the stage.** If a stage's manifest does not declare `capabilities.writes_repository: true` and the run's worktree changed while it ran — a file edited, created or deleted — the stage ends `broken` and the path is named. Its artifacts go to the job folder and never count. The worktree belongs to this one run, and git records exactly what changed, so there is no guessing about who did it.
+- **Changing the repository without saying so is undone.** If a stage's manifest does not declare `capabilities.writes_repository: true` and the run's worktree changed while it ran — a file edited, created or deleted — the engine puts every file back exactly as it was, names the paths, and runs the stage again. If the same stage does it a second time in the same run, the run stops (`broken`). Its artifacts go to the job folder and never count. The worktree belongs to this one run, and git records exactly what changed, so there is no guessing about who did it.
 - **Files in shared places are recorded, not blamed.** `$HOME`, `~/.zbuild`, the engine's own folder, `/tmp` — other programs write there too (other runs, other tests, git, the Claude CLI), and a file's timestamp says *when* it was written, never *who* wrote it. So a file there is logged (stderr, `ZBUILD_WRITE_BOUNDARY_LOG`, and a `stage.write_boundary.unattributable` event) and the stage carries on.
 
 To make a stage that edits code, declare it:

@@ -759,6 +759,13 @@ runner_read_stage_disposition() {
        [[ -f "${state_dir}/runtime/artifact-contract-violated" ]]; then
         printf '%s' "broken"; return 0
     fi
+    # ADR-058 C12 amendment: this stage changed the repository without
+    # declaring it may, and its changes were put back. Its output cannot be
+    # trusted, so the engine retries it; a second offence wrote the halting
+    # marker above instead.
+    if [[ -f "${state_dir}/runtime/write-boundary-reverted.${stage//[^A-Za-z0-9._-]/_}" ]]; then
+        printf '%s' "unusable"; return 0
+    fi
     if [[ -n "$_d_disp" ]]; then
         # #2111: a rate limit observed on the wire ends the run whatever word
         # the stage chose — a plugin that still says `interrupted`/`throttled`

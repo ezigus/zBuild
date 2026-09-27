@@ -34,6 +34,9 @@ _test_failure_findings() {
     # awk emits one TSV row per block line: kind \t file \t text. Kinds:
     #   F file-start (FAIL)   T timeout   X ✗ line   D the line after a ✗
     #   P a passing check     E a bash error shape   L path:line: candidate
+    # The suite's real output is coloured: strip ANSI escapes first, or a ✗
+    # behind a colour code is never recognised (#1845 run 36332698182).
+    raw="$(sed $'s/\x1b\\[[0-9;]*[A-Za-z]//g' <<< "$raw")"
     local rows
     rows="$(printf '%s\n' "$raw" | awk -v t="$tmp" -v tl="$tmp_log" -v tp="$tmp_phys" '
         function rel(p) {

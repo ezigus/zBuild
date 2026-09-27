@@ -360,6 +360,38 @@ Relevant code sites:
 - `tests/unit/core-pipeline-contract-validator-test.sh` — unit coverage of the validator.
 - `tests/unit/preflight-lint-parity-test.sh` — **this claim was wrong and is corrected 2026-08-12 (#1768).** The test does *not* compare the two implementations' results. It asserts that both files contain the string `manifest-graph.sh` and that the shared parser returns non-empty output for one fixture. It is a parser-wiring check, not a parity check — which is why the two implementations were free to diverge on the source vocabulary and on which inputs they validate at all, undetected. #1768 makes it compare verdicts.
 
+## Amendment (2026-09-27): a reader that may not change the repository reads and reports
+
+Two #1845 runs showed what the summary framing did to stages that only judge:
+
+- **Run 36274909946** — issue-acceptance's own claim came back into its next
+  prompt under "RESOLVE these findings before completing", and it repeated the
+  claim every iteration, even with the suite 741/741 green.
+- **Run 36332698182** — spec-correspondence, a judge, was handed three findings
+  stamped RESOLVE, spent 19 minutes editing a failing test instead of judging
+  (9 SPECs unjudged), and the write boundary halted the run.
+
+Three rules, all keyed on one manifest fact — `capabilities.writes_repository`
+(#2174) — and none on a stage name:
+
+1. **A stage never sees its own earlier verdict.** `stage_summaries_prompt_block`
+   and `stage_summaries_count` skip the reader's own stage, including anything
+   hydrate restored from a prior run. Every judgment starts fresh.
+2. **Only a stage that can fix is told to fix.** An unowned failure is framed
+   RESOLVE only for a reader that declares `writes_repository`; any other reader
+   gets it as "context only: your job is to read and report, not to fix this",
+   and the block's opening line says the same. A reader with no manifest (the
+   cycle banner, ad-hoc callers) keeps the previous framing.
+3. **A non-writer is told its scope first.** The router opens its prompt with
+   `## YOUR SCOPE (engine-provided)`: read and report; do not create, modify or
+   delete any file in the repository. Generated from the manifest, so it covers
+   every such stage — gates, judges and lenses alike — and cannot drift.
+
+An instruction lowers the odds; it guarantees nothing. The guarantee is the
+write boundary's undo-and-retry (ADR-058 C12 amendment).
+
+Verification: `tests/unit/judge-framing-test.sh` (J1–J7).
+
 ## References
 
 - [ADR-001](ADR-001-plugin-contract.md) — plugin contract; this ADR extends the manifest schema.

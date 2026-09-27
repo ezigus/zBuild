@@ -493,14 +493,17 @@ plugin_hook_call() {
             # engine-owned areas. Fail-open: unloaded module = write_boundary_check
             # undefined = this arm is unreachable.
             if declare -F write_boundary_check >/dev/null 2>&1; then
+                _ZBUILD_WB_ACTION=""
                 if ! write_boundary_check "$plugin_dir" "$state_file_arg" "$stage_arg" \
                         "${ZBUILD_MAP_ELEMENT:-}"; then
                     # See the artifact-check arm above: same missing-terminal
                     # defect. write_boundary_violation_recorded has already named
                     # the offending path on its own three channels; this event
                     # is what closes the start/end pair.
+                    local _wb_reason="write-boundary-violation"
+                    [[ "${_ZBUILD_WB_ACTION:-}" == "reverted" ]] && _wb_reason="write-boundary-reverted"
                     emit_event "plugin.$hook_name.error" "plugin=$plugin_id" \
-                        "kind=$kind" "rc=1" "reason=write-boundary-violation"
+                        "kind=$kind" "rc=1" "reason=$_wb_reason"
                     return 1
                 fi
             fi

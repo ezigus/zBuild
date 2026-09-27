@@ -122,6 +122,9 @@ export ZBUILD_REPO_ROOT="$ZB_WB_WORKTREE"
 scan_plugin_outputs() { return 0; }
 
 _DISP_EVENTS=()
+# The first offence is put back and retried (unusable); the SECOND by the same
+# stage in the same run writes the halting marker — the precedence under test.
+plugin_hook_call "$FX2" "run" "wb-test-stage" "$STATE_FILE" || true
 plugin_hook_call "$FX2" "run" "wb-test-stage" "$STATE_FILE" || true
 unset ZBUILD_REPO_ROOT
 

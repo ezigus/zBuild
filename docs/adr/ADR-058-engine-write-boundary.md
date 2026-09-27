@@ -7,6 +7,7 @@
 **Amended:** 2026-08-23 (#1920) — the job folder is reclaimable; §1's "kept as evidence" gains a retention clock
 **Amended:** 2026-08-23 (#141) — a sixth lifetime, the **issue**; §6's clock premise is falsified (ADR-059)
 **Amended:** 2026-09-27 (C12) — the boundary attributes by ownership, never by time: shared places are recorded, the run's own worktree is judged
+**Amended:** 2026-09-27 (C12, second amendment) — the first offence is undone and retried; a second by the same stage halts
 **Related:** ADR-052 (engine-owned run worktree), ADR-011 (pluggable backends — the cache and memory stores), ADR-024 (subprocess env isolation), ADR-004 (redaction chokepoint), ADR-054 §3 (the dispatch identity seam this reuses), ADR-054 §7 (release/purge — why nothing here deletes), ADR-056 (cleanup-only lifecycle)
 
 ## Context
@@ -579,6 +580,32 @@ bash tests/integration/write-boundary-dispatch-test.sh    # SPEC-2/4/6 restated
 bash tests/unit/write-boundary-window-test.sh             # SPEC-8 restated
 bash tests/integration/per-run-state-isolation-test.sh    # prints a failed nested runner's output
 ```
+
+### C12 amendment: undo and retry (2026-09-27)
+
+C12 made the first worktree change by a non-writer `broken`, and `broken`
+halts the run. #1845 run 36332698182 paid for that immediately: a judge
+(spec-correspondence) edited one failing test once, and a run with 4½ hours of
+budget left stopped. The judge had been told to "RESOLVE" three findings it had
+no business fixing — that cause is removed separately (ADR-055 amendment below),
+but a stage that misbehaves once should cost a retry, not the run.
+
+- **Always undo.** `write_boundary_mark` now stores the content of every path
+  already differing from HEAD (`git hash-object -w`), so the undo brings back an
+  earlier stage's uncommitted work exactly — not HEAD's version of it. A clean
+  path goes back to HEAD, a new file is removed, a deleted file returns. The undo
+  is verified: the worktree must match the pre-dispatch snapshot again.
+- **First offence → `unusable`.** A per-stage marker
+  (`runtime/write-boundary-reverted.<stage>`, naming the paths) makes the verdict
+  reader resolve the stage to `unusable`, which the engine's response table
+  retries. A new dispatch of the stage clears it.
+- **Second offence by the same stage in the same run → `broken`.** The count is
+  per stage (`runtime/write-boundary.<stage>.offences`); another stage gets its
+  own first chance. An undo that could not complete also halts.
+- The recorded event is the same `stage.write_boundary.violated`, with
+  `action=reverted` on the first offence.
+
+Verification: `tests/integration/write-boundary-revert-test.sh` (D1–D5).
 
 ## References
 
