@@ -1,0 +1,30 @@
+### SPEC-25 baseline plugins/agent/validate/tests/validate-test.sh
+
+[38;2;0;212;255m[1m  plugin: validate agent (kind:agent, ADR-018 P1, issues #757 #1845)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m validate plugin.sh exists at expected path
+  [38;2;74;222;128m✓[0m validate_agent_run function defined after source
+  [38;2;74;222;128m✓[0m dry-run writes verdict=healthy
+[38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json
+  [38;2;74;222;128m✓[0m missing deploy-result.json → rc != 0
+  [38;2;74;222;128m✓[0m missing deploy-result.json → verdict=error in output
+  [38;2;74;222;128m✓[0m healthy probe → verdict=healthy
+  [38;2;74;222;128m✓[0m failed probe → verdict=error
+  [38;2;74;222;128m✓[0m failed probe → rc propagated (rc != 0)
+  [38;2;74;222;128m✓[0m validate plugin has legacy-citation in header
+  [38;2;74;222;128m✓[0m legacy-citation references pipeline-stages-monitor.sh
+  [38;2;248;113;113m✗[0m [SPEC-15] manifest provides block must carry result_contract: 2
+    [2m  role: validate_agent
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+  # the engine's known set at load. Adding one here needs no engine-config edit.
+  events:
+    - validate.input.missing
+    - validate.probe.failed[0m
+  [38;2;248;113;113m✗[0m [SPEC-16] plugin.sh must not have hardcoded $artifacts_dir/deploy-result.json
+    [2mfound hardcoded path in plugin.sh[0m
+  [38;2;248;113;113m✗[0m [SPEC-16] plugin.sh must reference ZBUILD_STAGE_INPUTS for input resolution
+    [2mZBUILD_STAGE_INPUTS not found in plugin.sh[0m
+  [38;2;74;222;128m✓[0m [SPEC-19] manifest config.valid_verdicts declares healthy and error
+  [38;2;74;222;128m✓[0m [SPEC-19] manifest config.valid_verdicts declares exactly 2 verdicts
+[38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json
