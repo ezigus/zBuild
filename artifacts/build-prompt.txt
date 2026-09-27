@@ -1,4 +1,4 @@
-============== ZBUILD BUILD — iter 2/10 ==============
+============== ZBUILD BUILD — iter 1/10 ==============
 ## ORIGINAL TASK (immutable across iterations)
 # Plan: Migrate validate plugin to contract v2
 
@@ -33,6 +33,8 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
   - plugins/agent/validate/plugin.sh
   - plugins/agent/validate/tests/validate-test.sh
   - tests/integration/deployed-template-e2e-test.sh
+  - tests/integration/per-run-state-isolation-test.sh
+  - tests/unit/sigpipe-antipattern-guard-test.sh
   - docs/wiki/plugins/validate.md
   - docs/adr/ADR-054-stage-contract.md
   - docs/adr/ADR-055-inter-stage-data-contract-v2.md
@@ -109,56 +111,15 @@ message for the per-iteration commit it creates on your behalf. If you
 omit this line the pipeline falls back to the plan title.
 
 ## DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
-# Design: Migrate validate plugin to stage contract v2 (issue #1845)
+# Design: Migrate validate plugin to contract v2
 
 ## Architectural Decision Summary
 
-**Goal.** Adopt the ADR-054 / ADR-055 v2 stage contract in `plugins/agent/validate`:
-v2 result file shape (`result_contract:2`, `verdict`, `disposition`, `reason`, `data:{}`),
-`ZBUILD_STAGE_INPUTS` for input path resolution, rc ∈ {0,1} on every exit path,
-and `result_contract: 2` in the `provides:` block of the manifest.
+**Goal:** Adopt the ADR-054/ADR-055 v2 stage contract in `plugins/agent/validate`: v2 result file shape (result_contract=2, verdict, disposition, reason, data), disposition on every exit path, rc ∈ {0,1}, name-matched input resolution via `ZBUILD_STAGE_INPUTS`, and `result_contract: 2` in the manifest.
 
-**Context.** The validate plugin currently writes `schema_version:1` result JSON with no
-`disposition` field, constructs the deploy_result input path as a hardcoded
-`$artifacts_dir/deploy-result.json` (bypassing the engine's name-matched resolution), and
-returns `rc=2` on three error paths — all of which violate the v2 contract enforced by
-the engine's versioned reader for stages that declare `result_contract: 2`. The plugin
-makes no LLM calls (no `route_to_model`), so no `config.router` block is applicable;
-`config.tier_default: T2` remains the only router-adjacent config field. Template wiring
-in `deployed.yaml` already exists; no template change is needed. `primary: true` is already
-declared on `validate_result`; `valid_verdicts: [healthy, error]` is already declared under
-`config:` — both fields need guards, not changes.
+**Context:** The validate plugin pre-migration wrote result files without `result_contract`, `disposition`, or `reason` fields, resolved the deploy-result path via a hardcoded `$artifacts_dir/deploy-result.json` construction, and returned rc=2 on some error paths. ADR-054 mandates the v2 shape on every terminal exit; ADR-055 mandates name-matched input resolution via `ZBUILD_STAGE_INPUTS`. The fail-closed probe-rc propagation (#757) must be preserved throughout.
 
-**Decision.** Tests-first:
-1. Add SPEC-14..22 to `validate-test.sh` and confirm each [change]-tagged SPEC FAILS at
-   the merge-base before touching any implementation.
-2. Update existing SPEC-9/11/12 test fixtures to export a minimal `ZBUILD_STAGE_INPUTS`
-   JSON so they resolve `deploy_result` correctly after the v2 input path change.
-3. Add `result_contract: 2` to the manifest `provides:` block.
-4. Rewrite `_validate_agent_run_inner`: resolve `deploy_result` path from
-   `ZBUILD_STAGE_INPUTS` (`jq .inputs.deploy_result`); add a `_validate_write_result`
-   helper that writes `{result_contract:2, verdict, disposition, reason, data:{}}` via
-   `atomic_write`; replace every `printf/jq` result write with helper calls using correct
-   disposition words; clamp all `return 2` exits to `return 1`; guard
-   `validate_agent_run` to emit a v2 error result when `state_file` is absent.
-5. Update the deployed-template e2e integration test to export a minimal
-   `ZBUILD_STAGE_INPUTS` JSON before calling `validate_agent_run`.
-6. Update `docs/wiki/plugins/validate.md` to reflect the v2 manifest shape.
-
-Disposition mappings: missing required input (`deploy_result` not found) or missing
-health-check plugin binary → `broken`; healthy probe or failed probe (ran to completion)
-→ `complete`; dry-run → `complete`.
-
-Router budget note: validate makes no LLM calls (`No LLM calls (no route_to_model)` in
-manifest description). No `config.router` block is needed or added. `tier_default: T2`
-stays; `manifest_router_knob` returns empty for `timeout_s` and `max_turns` (ADR-017 §11
-fallback chain — manifest layer is absent, which is correct for a non-routing stage). This
-is the same posture as `intake` (ADR-017: "intake stays without a router block (no router
-call)").
-
-
-
-LOOP_COMPLETE
+**Decision:** Rewrite `_validate_agent_run_inner` and `validate_agent_run` to write v2 result files on every terminal exit, resolve inputs via `ZBUILD_STAGE_INPUTS`, clamp all non-zero returns to rc=1, and record `result_contract: 2` in the manifest `provides:` block. Tests are written first (red→green). The `deployed-template-e2e-test.sh` integration test must set `ZBUILD_STAGE_INPUTS` before calling the validate plugin. The `per-run-state-isolation-test.sh` integration test must be fixed to avoid breakage from the input-resolution change.
 Where a design decision above conflicts with the plan, follow the design decision.
 
 ## ACCEPTANCE TESTS (you MUST make these pass)
@@ -177,12 +138,12 @@ Each test MUST contain an assert call whose label includes the [SPEC-n] tag for 
 What each SPEC requires:
 - [SPEC-14] every terminal exit path of _validate_agent_run_inner writes a result file containing all four mandatory v2 keys — result_contract=2, verdict, disposition, and reason
 - [SPEC-15] manifest provides block carries result_contract: 2
-- [SPEC-16] plugin.sh resolves the deploy_result input path from ZBUILD_STAGE_INPUTS (jq .inputs.deploy_result) — no hardcoded $artifacts_dir/deploy-result.json path construction remains
+- [SPEC-16] plugin.sh resolves the deploy_result input path from ZBUILD_STAGE_INPUTS (jq .inputs.deploy_result) — no hardcoded $artifacts_dir/deploy-result.json path construction
 - [SPEC-17] a failed health probe (hc_rc != 0) causes validate_agent_run to return non-zero — the #757 fail-closed invariant is preserved under v2
 - [SPEC-18] all non-zero exits from plugin.sh use rc=1 — no exit path returns rc=2 or higher
-- [SPEC-19] manifest config.valid_verdicts declares exactly [healthy, error]; validate-test.sh covers healthy via at least one passing assertion and error via at least one passing assertion
-- [SPEC-20] manifest has no config.router block — manifest_router_knob returns empty string for timeout_s and max_turns, confirming validate makes no LLM calls and no router budget is declared (correct posture for a non-routing stage per ADR-017)
-- [SPEC-21] a dry-run invocation with a valid deploy-result writes validate-result.json with result_contract=2, verdict=healthy, disposition=complete, reason present, and data={}; schema_version key is absent — verifying the complete v2 happy-path output shape
+- [SPEC-19] manifest config.valid_verdicts declares exactly [healthy, error]; validate-test.sh covers healthy and error via passing assertions
+- [SPEC-20] manifest has no config.router block — manifest_router_knob returns empty string for timeout_s and max_turns (correct non-routing-stage posture, ADR-017)
+- [SPEC-21] a dry-run invocation with a valid deploy-result writes validate-result.json with result_contract=2, verdict=healthy, disposition=complete, reason present, and data={}; schema_version key is absent
 - [SPEC-22] manifest outputs array declares validate_result with primary: true — this invariant must not regress under v2 migration
 
 ### SPEC IDS YOU MUST COVER (acceptance gate, ADR-036)
@@ -191,17 +152,17 @@ Every SPEC id below needs at least one assertion whose label carries its [SPEC-n
   → needs a `[SPEC-14]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
 - [SPEC-15] manifest provides block carries result_contract: 2
   → needs a `[SPEC-15]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
-- [SPEC-16] plugin.sh resolves the deploy_result input path from ZBUILD_STAGE_INPUTS (jq .inputs.deploy_result) — no hardcoded $artifacts_dir/deploy-result.json path construction remains
+- [SPEC-16] plugin.sh resolves the deploy_result input path from ZBUILD_STAGE_INPUTS (jq .inputs.deploy_result) — no hardcoded $artifacts_dir/deploy-result.json path construction
   → needs a `[SPEC-16]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
 - [SPEC-17] a failed health probe (hc_rc != 0) causes validate_agent_run to return non-zero — the #757 fail-closed invariant is preserved under v2
   → needs a `[SPEC-17]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
 - [SPEC-18] all non-zero exits from plugin.sh use rc=1 — no exit path returns rc=2 or higher
   → needs a `[SPEC-18]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
-- [SPEC-19] manifest config.valid_verdicts declares exactly [healthy, error]; validate-test.sh covers healthy via at least one passing assertion and error via at least one passing assertion
+- [SPEC-19] manifest config.valid_verdicts declares exactly [healthy, error]; validate-test.sh covers healthy and error via passing assertions
   → needs a `[SPEC-19]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
-- [SPEC-20] manifest has no config.router block — manifest_router_knob returns empty string for timeout_s and max_turns, confirming validate makes no LLM calls and no router budget is declared (correct posture for a non-routing stage per ADR-017)
+- [SPEC-20] manifest has no config.router block — manifest_router_knob returns empty string for timeout_s and max_turns (correct non-routing-stage posture, ADR-017)
   → needs a `[SPEC-20]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
-- [SPEC-21] a dry-run invocation with a valid deploy-result writes validate-result.json with result_contract=2, verdict=healthy, disposition=complete, reason present, and data={}; schema_version key is absent — verifying the complete v2 happy-path output shape
+- [SPEC-21] a dry-run invocation with a valid deploy-result writes validate-result.json with result_contract=2, verdict=healthy, disposition=complete, reason present, and data={}; schema_version key is absent
   → needs a `[SPEC-21]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
 - [SPEC-22] manifest outputs array declares validate_result with primary: true — this invariant must not regress under v2 migration
   → needs a `[SPEC-22]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
