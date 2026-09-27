@@ -71,6 +71,20 @@ _sd_for() {
 }
 
 
+# _runner_log <label> <rc> — a nested runner's own output, printed when it
+# failed. #1845: this file failed in half the pipeline's test stages with
+# nothing after `✓ T1` — every runner's output went to /dev/null and a `set -e`
+# left on by run_pipeline killed the file before its next assertion printed.
+# The cause (a nested stage blamed for another test's write, ADR-058 C12) was
+# only found by re-running with this output kept.
+_RUNNER_LOG="$TEST_TEMP_DIR/runner-last.log"
+_runner_log() {
+    [[ "${2:-0}" -eq 0 ]] && return 0
+    printf '  ---- nested runner %s exited rc=%s; its output: ----\n' "$1" "$2"
+    sed 's/^/  | /' "$_RUNNER_LOG" 2>/dev/null || true
+    printf '  ---- end %s ----\n' "$1"
+}
+
 # run_pipeline <run_id> [extra env KEY=VAL ...] — default-state run under HOME_DIR.
 run_pipeline() {
     local run_id="$1"; shift
@@ -85,8 +99,10 @@ run_pipeline() {
         ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
         ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
         ZBUILD_RUN_ID="$run_id" HOME="$HOME_DIR" PATH="$PATH" "$@" \
-        bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
-    local rc=$?; set -e; return $rc
+        bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >"$_RUNNER_LOG" 2>&1
+    local rc=$?
+    _runner_log "$run_id" "$rc"
+    return $rc
 }
 
 # ─── T1 + T2: two distinct runs isolate ─────────────────────────────────────
@@ -125,8 +141,8 @@ set +e
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_RUN_ID="run-ccc" HOME="$HOME_DIR" PATH="$PATH" \
-    bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
-rc=$?; set -e
+    bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >"$_RUNNER_LOG" 2>&1
+rc=$?; _runner_log run-ccc "$rc"
 assert_eq "T4: explicit-state run exits 0" "0" "$rc"
 assert_file_exists "T4: explicit ZBUILD_STATE_DIR used verbatim (no runs/)" "$EXPLICIT/pipeline-state.json"
 if [[ -d "$EXPLICIT/runs" ]]; then
@@ -164,8 +180,8 @@ set +e
     ZBUILD_PLUGINS_ROOT="$PLUGINS_ROOT" ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_RUN_ID="run-eee" HOME="$HOME_DIR" PATH="$PATH" \
-    bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
-t6_rc=$?; set -e
+    bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >"$_RUNNER_LOG" 2>&1
+t6_rc=$?; _runner_log t6 "$t6_rc"
 # macOS $TMPDIR is /var/folders (/var -> /private/var symlink), so a literal
 # substring match on the captured ZBUILD_EVENTS_DIR can disagree with the
 # expected RESUME_DIR. Canonicalize both via `pwd -P` before comparing, and
@@ -267,8 +283,8 @@ set +e
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     ZBUILD_CYCLES_ENABLED=0 ZBUILD_CONTRACT_VALIDATOR=warn \
     ZBUILD_RUN_ID="run-ddd" HOME="$HOME_DIR" PATH="$PATH" \
-    bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >/dev/null 2>&1
-rc_b=$?; set -e
+    bash "$RUNNER" --issue "$_ZB_ID" --no-resume --template runner-state-dir-minimal ) >"$_RUNNER_LOG" 2>&1
+rc_b=$?; _runner_log run-ddd "$rc_b"
 assert_eq "T4b: an ambient ZBUILD_STATE_FILE does not break the explicit-state run" "0" "$rc_b"
 assert_file_exists "T4b: the explicit dir is still what was used" "$EXPLICIT_B/pipeline-state.json"
 # …and T4's own command clears it too — T4b proves the technique, this pins the

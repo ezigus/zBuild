@@ -3,11 +3,15 @@
 # Integration tests for write-boundary enforcement (#1809, ADR-058 C9).
 #
 # SPEC-2[change]: a write-boundary violation resolves to broken even when the
-#                 stage declared disposition=complete in its v2 result.
+#                 stage declared disposition=complete in its v2 result. Since
+#                 ADR-058 C12 the violation is a change to the run's own worktree
+#                 by a stage that does not declare writes_repository.
 # SPEC-3[change]: a missing declared output (artifact-contract violation) likewise
 #                 resolves to broken via the new precedence branch in verdict.sh.
-# SPEC-6[change]: the watch list is operator-overridable; the allow list is
-#                 additive only — removing an engine-owned root does not widen the fence.
+# SPEC-6[change]: the watch list is operator-overridable (it decides what is
+#                 swept and recorded — C12: recorded, never halting); the allow
+#                 list is additive only — removing an engine-owned root does not
+#                 widen the fence.
 #
 # Integration because the claim spans lifecycle.sh (mark + check), write-boundary.sh
 # (sweep + classify + violation_recorded), and verdict.sh (precedence branch).
@@ -96,13 +100,21 @@ _make_fixture "$FX2" "wb-fx2" "
     cat > \"\${ZBUILD_ARTIFACT_DIR:-\${artifact_dir:-}}/wb-fx2-result.json\" <<'REOF'
 {\"result_contract\":2,\"disposition\":\"complete\",\"verdict\":\"pass\",\"reason\":\"declared complete on purpose\"}
 REOF
-    # Write to the canary dir — a boundary violation.
-    touch \"\$ZB_WB_CANARY_FILE\"
+    # Change the run's own worktree without declaring writes_repository —
+    # the attributable violation (ADR-058 C12).
+    printf 'changed\\n' > \"\$ZB_WB_WORKTREE/tracked.txt\"
 "
 
 mkdir -p "$JOB_DIR/artifacts" "$JOB_DIR/runtime"
 rm -f "$JOB_DIR/runtime/write-boundary-violated" "$JOB_DIR/runtime/artifact-contract-violated"
 export ZB_WB_CANARY_FILE="$CANARY_DIR/bad-write-spec2.txt"
+ZB_WB_WORKTREE="$TEST_TEMP_DIR/worktree"; export ZB_WB_WORKTREE
+mkdir -p "$ZB_WB_WORKTREE"
+git -C "$ZB_WB_WORKTREE" init -q
+printf 'base\n' > "$ZB_WB_WORKTREE/tracked.txt"
+git -C "$ZB_WB_WORKTREE" add -A
+git -C "$ZB_WB_WORKTREE" -c user.name=t -c user.email=t@t commit -q -m base
+export ZBUILD_REPO_ROOT="$ZB_WB_WORKTREE"
 
 # stub scan_plugin_outputs: the declared artifact will exist, but we also need
 # the real one to produce the artifact-contract-violated marker when the
@@ -111,6 +123,7 @@ scan_plugin_outputs() { return 0; }
 
 _DISP_EVENTS=()
 plugin_hook_call "$FX2" "run" "wb-test-stage" "$STATE_FILE" || true
+unset ZBUILD_REPO_ROOT
 
 # The write-boundary-violated marker must have been created by write_boundary_check.
 assert_file_exists "[SPEC-2] write-boundary-violated marker created after boundary violation" \
@@ -181,7 +194,7 @@ echo '{}' > "$SF6"
 
 FX6="$TEST_TEMP_DIR/plugins/wb-fx6"
 _make_fixture "$FX6" "wb-fx6" "
-    echo '{}' > \"\${ZBUILD_ARTIFACT_DIR:-/tmp}/wb-fx6-result.json\"
+    echo '{}' > \"\${ZBUILD_ARTIFACT_DIR:-\${artifact_dir:-}}/wb-fx6-result.json\"
     touch \"\$ZB_WB_CANARY6_FILE\"
 "
 export ZB_WB_CANARY6_FILE="$CANARY6/bad-write-spec6.txt"
@@ -196,8 +209,12 @@ unset ZBUILD_REPO_ROOT 2>/dev/null || true
 _DISP_EVENTS=()
 plugin_hook_call "$FX6" "run" "wb-stage6" "$SF6" || true
 
-assert_file_exists "[SPEC-6] operator-supplied watch list catches a write to the custom canary dir" \
-    "$JOB6/runtime/write-boundary-violated"
+_spec6_ev=""
+for _e in "${_DISP_EVENTS[@]}"; do
+    [[ "$_e" == *"stage.write_boundary.unattributable"* && "$_e" == *"bad-write-spec6.txt"* ]] && _spec6_ev="$_e"
+done
+assert_contains "[SPEC-6] operator-supplied watch list sweeps the custom canary dir (recorded)" \
+    "$_spec6_ev" "reason=shared_location"
 
 # Part B: allow list is additive — removing an engine-owned root does not widen the fence.
 # The engine-owned root is state_dir (JOB6). Even if the operator's allow file is
@@ -327,15 +344,21 @@ _make_fixture "$FX_STRAY" "wb-stray" "
 _DISP_EVENTS=()
 plugin_hook_call "$FX_STRAY" "run" "wb-stray-stage" "$SF_STRAY" || true
 
-if [[ -f "$JOB_STRAY/runtime/write-boundary-violated" ]]; then
-    assert_pass "[SPEC-4] an unrelated \$HOME-level write still halts the dispatch"
+_stray_ev=""
+for _e in "${_DISP_EVENTS[@]}"; do
+    [[ "$_e" == *"stage.write_boundary.unattributable"* && "$_e" == *"stray-note.txt"* ]] && _stray_ev="$_e"
+done
+# ADR-058 C12: $HOME is shared, so the stray write is RECORDED rather than
+# halting — which is still what proves $HOME is swept at all.
+if [[ -n "$_stray_ev" ]]; then
+    assert_pass "[SPEC-4] an unrelated \$HOME-level write is still swept (recorded)"
 else
     # The negative failing means the positive above proved nothing, so the
     # failure detail carries the whole picture rather than just the absent
     # marker: what the fixture wrote, what the engine watched, and what it
     # allowed. Reconstructed after the fact, so a stale marker cannot forge it.
     _wb_marker="$JOB_STRAY/runtime/write-boundary.wb-stray-stage.marker"
-    assert_fail "[SPEC-4] an unrelated \$HOME-level write still halts the dispatch" \
+    assert_fail "[SPEC-4] an unrelated \$HOME-level write is still swept (recorded)" \
         "stray file written: $([[ -f "$HOME/stray-note.txt" ]] && echo yes || echo NO)
   HOME=$HOME
   home listing: $(ls -a "$HOME" 2>&1 | tr '\n' ' ')

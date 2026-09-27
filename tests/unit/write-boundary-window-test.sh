@@ -174,9 +174,11 @@ touch "$_LEG_JOB/runtime/write-boundary.marker"
 _wb_clock_advance_past "$_LEG_JOB/runtime/write-boundary.marker"
 touch "$WATCH_DIR/legacy-marker-probe.txt"
 _leg_rc=0
-write_boundary_check "$FIXTURE_DIR" "$_LEG_SF" "legacy-stage" "" >/dev/null 2>&1 || _leg_rc=$?
-assert_eq "[SPEC-8] an unkeyed marker from an older engine is still honoured" \
-    "1" "$_leg_rc"
+write_boundary_check "$FIXTURE_DIR" "$_LEG_SF" "legacy-stage" "" >/dev/null 2>"$TEST_TEMP_DIR/leg.err" || _leg_rc=$?
+# ADR-058 C12: a shared-place hit is recorded, not a halt — "honoured" means the
+# window is still SWEPT, which the recorded path proves.
+assert_contains "[SPEC-8] an unkeyed marker from an older engine is still honoured (swept)" \
+    "$(cat "$TEST_TEMP_DIR/leg.err" 2>/dev/null || true)" "legacy-marker-probe.txt"
 
 cleanup_test_env
 print_test_results

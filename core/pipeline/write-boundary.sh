@@ -18,6 +18,10 @@ _ZBUILD_WB_ROOT="$(cd "$_ZBUILD_WB_DIR/../.." && pwd)"
 # this logic is how the two halves of the boundary drift apart.
 # shellcheck source=../plugin-registry/output-paths.sh
 source "$_ZBUILD_WB_ROOT/core/plugin-registry/output-paths.sh"
+# ADR-058 C12: the run's own worktree, judged by git content. A companion
+# file for the 500-line cap (review on #2211), not a separate mechanism.
+# shellcheck source=./write-boundary-repo.sh
+source "$_ZBUILD_WB_DIR/write-boundary-repo.sh"
 
 # ─── _wb_expand_line <line> ──────────────────────────────────────────────────
 # Expand ${VAR} and ${VAR:-default} in a config line. Plain references go first
@@ -128,6 +132,17 @@ write_boundary_mark() {
     fi
     # Close the window the stage would otherwise write inside undetected.
     _wb_clock_advance_past "$_marker"
+    # C12: what the run's own worktree held before this dispatch, by content.
+    # Always taken (the stage's manifest is read at check time); absent when
+    # there is no engine-owned worktree, which leaves the repository check off.
+    local _repo
+    rm -f "${_marker}.repo" 2>/dev/null || true
+    if _repo="$(_wb_repo_root)"; then
+        if ! _wb_repo_snapshot "$_repo" > "${_marker}.repo" 2>/dev/null; then
+            rm -f "${_marker}.repo" 2>/dev/null || true
+            _wb_report_degraded "mark_failed" "repo=$_repo" "worktree snapshot failed"
+        fi
+    fi
 }
 
 # ─── write_boundary_watch_list ───────────────────────────────────────────────
@@ -393,75 +408,46 @@ write_boundary_violation_recorded() {
     fi
 }
 
-# ─── _wb_external_writer_witness <state_dir> ────────────────────────────────
-# Print the path of a file that appeared AFTER the dispatch returned, if one
-# does. Empty output means no external writer could be demonstrated.
+# ─── ADR-058 C12: attribute by ownership, never by time ─────────────────────
+# `find -newer` records WHEN a file was written, never WHO wrote it. Every place
+# the sweep watches — $HOME, ~/.zbuild, the engine's own tree, and any root an
+# operator adds — is shared with other processes: other runs, other tests, the
+# Claude CLI, git, npm. So a sweep hit there can never be attributed to the
+# dispatch that happened to be running, and a boundary that halts on it hands
+# any passing process the power to kill a run (#1839, #1952, #2201, and #1845's
+# per-run-state-isolation: a nested build blamed for another test's
+# cost-ledger lock). The C10 settle-window witness tried to recover authorship
+# from timing; timing cannot supply it, so it is gone.
 #
-# By the time write_boundary_check runs, the dispatch subshell has already
-# returned — the stage's own writer is gone. So a file that is newer than a
-# marker taken NOW cannot be the swept stage's. Continued activity in a watched
-# root is therefore positive evidence of a different process, which is the only
-# thing `find -newer` can honestly say: mtime records when, never who.
-_wb_external_writer_witness() {
-    local _sd="${1:-}"
-    # Today's only caller passes an absolute state dir, so this cannot fire —
-    # but an empty one would resolve the probe to /runtime/... , and the mkdir
-    # failure would read as "no witness" and let a genuine violation through.
-    # Stating the invariant beats relying on a safe accident.
-    [[ -n "$_sd" ]] || return 0
-    local _settle="${ZBUILD_WRITE_BOUNDARY_SETTLE_MS:-250}"
-    # An operator can disable the probe outright; 0 keeps the pre-#1809 behaviour
-    # of halting on any candidate.
-    [[ "$_settle" =~ ^[0-9]+$ ]] || _settle=250
-    # Capped: the value is operator-supplied and this sleep blocks the dispatch.
-    # An unbounded one turns a misconfigured env var into a silent hang on every
-    # violation hit, which is a worse failure than the one it diagnoses.
-    [[ "$_settle" -gt 30000 ]] && _settle=30000
-    [[ "$_settle" -eq 0 ]] && return 0
+# What CAN be attributed is a change to the run's OWN worktree: ADR-059's issue
+# lock makes it exclusive to this run, and git records exactly what changed. So:
+#   - a sweep hit in a watched place is RECORDED (stderr, the log sink, and
+#     stage.write_boundary.unattributable reason=shared_location) and never halts;
+#   - a stage whose manifest does not declare capabilities.writes_repository and
+#     changes the worktree's content during its dispatch is a violation.
 
-    local _probe="${_sd}/runtime/write-boundary.settle.$$"
-    mkdir -p "${_sd}/runtime" 2>/dev/null || return 0
-    : > "$_probe" 2>/dev/null || return 0
-    _wb_clock_advance_past "$_probe"
-    sleep "$(awk "BEGIN{printf \"%.3f\", ${_settle}/1000}")" 2>/dev/null || sleep 1
-    local _witness
-    # Captured whole, then trimmed in bash. `| head -n 1` would close the pipe
-    # after one line and hand write_boundary_sweep's `find` a SIGPIPE mid-scan —
-    # the writer dies for a reason nothing logs, and under the caller's errexit
-    # it takes the dispatch with it. Any witness proves the point equally, so
-    # there is nothing to gain by stopping the scan early.
-    local _sweep_all
-    _sweep_all="$(write_boundary_sweep "$_probe" 2>/dev/null || true)"
-    _witness="${_sweep_all%%$'\n'*}"
-    rm -f "$_probe" 2>/dev/null || true
-    [[ -n "$_witness" ]] && printf '%s' "$_witness"
-    return 0
-}
-
-# ─── _wb_unattributable_recorded <state_dir> <stage> <path> <witness> ───────
-# Record a candidate the sweep cannot attribute. Deliberately NOT silent and
-# deliberately NOT a violation: nothing is lost (all three channels carry it),
-# but a candidate that cannot be tied to the stage must not resolve it to
-# `broken` — that is the disposition an operator cannot retry.
+# ─── _wb_unattributable_recorded <state_dir> <stage> <path> <reason> ────────
+# Record a write the boundary cannot attribute to the stage. Deliberately NOT
+# silent and deliberately NOT a violation: nothing is lost (all three channels
+# carry it), and it never resolves the stage to `broken`.
 _wb_unattributable_recorded() {
-    local _sd="$1" _stage="${2:-}" _path="${3:-}" _witness="${4:-}"
-    printf 'write-boundary: stage=%s candidate not attributable (external writer active: %s): %s\n' \
-        "$_stage" "$_witness" "$_path" >&2
+    local _sd="$1" _stage="${2:-}" _path="${3:-}" _reason="${4:-shared_location}"
+    printf 'write-boundary: stage=%s saw a write in a shared location (recorded, not attributable to the stage): %s\n' \
+        "$_stage" "$_path" >&2
     if [[ -n "${ZBUILD_WRITE_BOUNDARY_LOG:-}" ]]; then
-        printf 'unattributable stage=%s path=%s witness=%s\n' "$_stage" "$_path" "$_witness" \
+        printf 'unattributable stage=%s path=%s reason=%s\n' "$_stage" "$_path" "$_reason" \
             >> "$ZBUILD_WRITE_BOUNDARY_LOG" 2>/dev/null || true
     fi
     if declare -F emit_event >/dev/null 2>&1; then
         emit_event "stage.write_boundary.unattributable" "stage=${_stage}" \
-            "path=${_path}" "witness=${_witness}" || true
+            "path=${_path}" "reason=${_reason}" || true
     fi
 }
 
 # ─── write_boundary_check <plugin_dir> <state_file> <stage> [<map_element>] ──
-# Orchestrate sweep + classify. Returns 1 on the first ATTRIBUTABLE violation;
-# 0 otherwise — which covers both a clean dispatch and one whose candidates all
-# classified `unattributable`. The two zero cases are not the same event and are
-# not recorded the same way: SPEC-4i depends on the distinction staying visible.
+# Returns 1 on an ATTRIBUTABLE violation — a change to the run's own worktree by
+# a stage that does not declare it writes the repository — and 0 otherwise.
+# Sweep hits outside the allowed areas are recorded, never returned (C12).
 # First line guards on empty state_file.
 write_boundary_check() {
     local _pd="$1" _sf="${2:-}" _stage="${3:-}" _el="${4:-}"
@@ -473,26 +459,26 @@ write_boundary_check() {
     # mid-upgrade still gets swept rather than silently skipped.
     [[ -f "$_marker" ]] || _marker="${_sd}/runtime/write-boundary.marker"
     [[ -f "$_marker" ]] || return 0
-    # Resolve the allow list ONCE per dispatch, not once per swept candidate.
+
+    # 1. Observe: shared places are recorded, never judged.
     local _allow; _allow="$(write_boundary_allow_list "$_sd")"
     local _cand _cls
-    local _witness
     while IFS= read -r _cand; do
         [[ -z "$_cand" ]] && continue
         _cls="$(write_boundary_classify "$_cand" "$_sd" "$_pd" "$_allow")"
-        if [[ "$_cls" == "violation" ]]; then
-            # Only pay the settle cost on the failure path, and only once per
-            # dispatch — a clean dispatch never reaches here.
-            if [[ -z "${_witness+x}" ]]; then
-                _witness="$(_wb_external_writer_witness "$_sd")"
-            fi
-            if [[ -n "$_witness" ]]; then
-                _wb_unattributable_recorded "$_sd" "$_stage" "$_cand" "$_witness"
-                continue
-            fi
-            write_boundary_violation_recorded "$_sd" "$_stage" "$_cand"
-            return 1
-        fi
+        [[ "$_cls" == "violation" ]] && _wb_unattributable_recorded "$_sd" "$_stage" "$_cand" "shared_location"
     done <<< "$(write_boundary_sweep "$_marker")"
-    return 0
+
+    # 2. Judge: the run's own worktree, by content, for a non-writer.
+    local _snap="${_marker}.repo" _repo
+    [[ -f "$_snap" ]] || return 0
+    _wb_declares_repo_writes "$_pd" && return 0
+    _repo="$(_wb_repo_root)" || return 0
+    local _changed
+    _changed="$(_wb_repo_changed "$_snap" "$_repo")"
+    [[ -n "$_changed" ]] || return 0
+    # Every changed path, not only the first: `broken` is terminal, so naming
+    # one per retry makes an operator pay a run per file (review on #2211).
+    write_boundary_violation_recorded "$_sd" "$_stage" "$(_wb_repo_changed_list "$_repo" "$_changed")"
+    return 1
 }
