@@ -1,4 +1,4 @@
-### SPEC-15 baseline plugins/agent/validate/tests/validate-test.sh
+### plugins/agent/validate/plugin.sh reverted plugins/agent/validate/tests/validate-test.sh
 
 [38;2;0;212;255m[1m  plugin: validate agent (kind:agent, ADR-018 P1, issues #757 #1845)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -14,13 +14,7 @@
   [38;2;74;222;128m✓[0m failed probe → rc propagated (rc != 0)
   [38;2;74;222;128m✓[0m validate plugin has legacy-citation in header
   [38;2;74;222;128m✓[0m legacy-citation references pipeline-stages-monitor.sh
-  [38;2;248;113;113m✗[0m [SPEC-15] manifest provides block must carry result_contract: 2
-    [2m  role: validate_agent
-  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
-  # the engine's known set at load. Adding one here needs no engine-config edit.
-  events:
-    - validate.input.missing
-    - validate.probe.failed[0m
+  [38;2;74;222;128m✓[0m [SPEC-15] manifest provides block carries result_contract: 2
   [38;2;248;113;113m✗[0m [SPEC-16] plugin.sh must not have hardcoded $artifacts_dir/deploy-result.json
     [2mfound hardcoded path in plugin.sh[0m
   [38;2;248;113;113m✗[0m [SPEC-16] plugin.sh must reference ZBUILD_STAGE_INPUTS for input resolution
@@ -30,7 +24,7 @@
   [38;2;74;222;128m✓[0m [SPEC-19] manifest config.valid_verdicts declares healthy and error
   [38;2;74;222;128m✓[0m [SPEC-19] manifest config.valid_verdicts declares exactly 2 verdicts
 [38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json
-### SPEC-15 head plugins/agent/validate/tests/validate-test.sh
+### plugins/agent/validate/plugin.sh head plugins/agent/validate/tests/validate-test.sh
 
 [38;2;0;212;255m[1m  plugin: validate agent (kind:agent, ADR-018 P1, issues #757 #1845)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -87,7 +81,7 @@
   [38;2;74;222;128m✓[0m [SPEC-14] failed-probe exit path: verdict key present
   [38;2;74;222;128m✓[0m [SPEC-14] failed-probe exit path: disposition key present
   [38;2;74;222;128m✓[0m [SPEC-14] failed-probe exit path: reason key present and non-empty
-[38;2;248;113;113m[1m✗[0m validate: health-check plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.OQ8eIb/no-hc-plugins/plugins/tool/health-check/plugin.sh
+[38;2;248;113;113m[1m✗[0m validate: health-check plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.tarTS1/no-hc-plugins/plugins/tool/health-check/plugin.sh
   [38;2;74;222;128m✓[0m [SPEC-14] missing-hc-plugin exit path: result_contract=2
   [38;2;74;222;128m✓[0m [SPEC-14] missing-hc-plugin exit path: verdict key present
   [38;2;74;222;128m✓[0m [SPEC-14] missing-hc-plugin exit path: disposition key present
@@ -96,7 +90,7 @@
 [38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json
   [38;2;74;222;128m✓[0m [SPEC-18] missing deploy-result exits with rc=1 (not rc=2)
   [38;2;74;222;128m✓[0m [SPEC-18] failed probe with rc=5 exits with rc=1 (clamped, not rc=5)
-[38;2;248;113;113m[1m✗[0m validate: health-check plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.OQ8eIb/no-hc-plugins/plugins/tool/health-check/plugin.sh
+[38;2;248;113;113m[1m✗[0m validate: health-check plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.tarTS1/no-hc-plugins/plugins/tool/health-check/plugin.sh
   [38;2;74;222;128m✓[0m [SPEC-18] missing hc-plugin exits with rc=1 (not rc=2)
   [38;2;74;222;128m✓[0m [SPEC-18] plugin.sh has no non-comment exit/return with rc>=2
 

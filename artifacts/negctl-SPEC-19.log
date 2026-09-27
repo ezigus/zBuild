@@ -25,6 +25,8 @@
     [2mfound hardcoded path in plugin.sh[0m
   [38;2;248;113;113m✗[0m [SPEC-16] plugin.sh must reference ZBUILD_STAGE_INPUTS for input resolution
     [2mZBUILD_STAGE_INPUTS not found in plugin.sh[0m
+  [38;2;248;113;113m✗[0m [SPEC-16] plugin.sh must resolve deploy_result via jq .inputs.deploy_result
+    [2m.inputs.deploy_result not found in plugin.sh[0m
   [38;2;74;222;128m✓[0m [SPEC-19] manifest config.valid_verdicts declares healthy and error
   [38;2;74;222;128m✓[0m [SPEC-19] manifest config.valid_verdicts declares exactly 2 verdicts
 [38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json

@@ -1,3 +1,4 @@
+acceptance SPEC violations — SPEC-17/SPEC-20/SPEC-22/SPEC-23/SPEC-24/SPEC-25 tagged as [guard] but the assertion FAILS at the merge-base — a guard must hold there by definition, so either the assertion contradicts its SPEC text or the SPEC is a mislabelled [change]
 NEGCTL PASS SPEC-14
       design : every terminal exit path of _validate_agent_run_inner writes a result file containing all four manda…
       asserts: _v2_keys_ok "[SPEC-14] missing-input exit path:" "$_run14a/artifacts/validate-result.json"
@@ -7,8 +8,8 @@ NEGCTL PASS SPEC-15
 NEGCTL PASS SPEC-16
       design : plugin.sh resolves the deploy_result input path from ZBUILD_STAGE_INPUTS (jq .inputs.deploy_result) …
       asserts: assert_fail "[SPEC-16] plugin.sh must not have hardcoded \$artifacts_dir/deploy-result.json" \
-NEGCTL PASS SPEC-17
-      design : a failed health probe (hc_rc != 0) causes validate_agent_run to return non-zero — the fail-closed in…
+NEGCTL FAIL SPEC-17 guard_regressed
+      design : a failed health probe (hc_rc != 0) causes validate_agent_run to return non-zero — the #757 fail-clos…
       asserts: assert_gt "[SPEC-17] failed health probe causes validate_agent_run to return non-zero" \
 NEGCTL PASS SPEC-18
       design : all non-zero exits from plugin.sh use rc=1 — no exit path returns rc=2 or higher
@@ -16,26 +17,22 @@ NEGCTL PASS SPEC-18
 NEGCTL PASS SPEC-19 guard_spec
       design : manifest config.valid_verdicts declares exactly [healthy, error]; validate-test.sh covers healthy an…
       asserts: assert_pass "[SPEC-19] manifest config.valid_verdicts declares healthy and error"
-NEGCTL PASS SPEC-20
+NEGCTL FAIL SPEC-20 guard_regressed
       design : manifest has no config.router block — manifest_router_knob returns empty string for timeout_s and ma…
       asserts: assert_eq "[SPEC-20] manifest_router_knob timeout_s returns empty (no config.router)" \
 NEGCTL PASS SPEC-21
       design : a dry-run invocation with a valid deploy-result writes validate-result.json with result_contract=2, …
       asserts: assert_eq "[SPEC-21] dry-run writes result_contract=2" \
-NEGCTL PASS SPEC-22
-      design : manifest outputs array declares validate_result with primary: true — verified in the v2 test suite
+NEGCTL FAIL SPEC-22 guard_regressed
+      design : manifest outputs array declares validate_result with primary: true — this invariant must not regress…
       asserts: assert_pass "[SPEC-22] manifest outputs validate_result declares primary: true"
-NEGCTL PASS SPEC-23
-      design : manifest provides.role declares validate_agent — verified in the v2 test suite (#1704)
+NEGCTL FAIL SPEC-23 guard_regressed
+      design : manifest provides.role declares validate_agent (#1704)
       asserts: assert_pass "[SPEC-23] manifest provides.role declares validate_agent"
-NEGCTL PASS SPEC-24
-      design : manifest provides.events declares exactly validate.input.missing and validate.probe.failed — verifie…
+NEGCTL FAIL SPEC-24 guard_regressed
+      design : manifest provides.events declares exactly validate.input.missing and validate.probe.failed (#1717)
       asserts: assert_pass "[SPEC-24] manifest provides.events declares validate.input.missing and validate.probe.f…
-NEGCTL PASS SPEC-25
-      design : manifest hooks block declares only run and no cleanup hook — verified in the v2 test suite (#1829)
+NEGCTL FAIL SPEC-25 guard_regressed
+      design : manifest hooks block declares only run and no cleanup hook — plugin holds no live resources so the h…
       asserts: assert_pass "[SPEC-25] manifest hooks block declares run hook"
-NEGCTL PASS SPEC-26
-      design : the deployed-template e2e integration test exports ZBUILD_STAGE_INPUTS before the validate call and …
-      asserts: assert_eq "[SPEC-26] validate-result.json carries result_contract=2 (v2 input-resolution path)" \
 REACHABILITY PASS plugins/agent/validate/manifest.yaml
-REACHABILITY PASS plugins/agent/validate/plugin.sh

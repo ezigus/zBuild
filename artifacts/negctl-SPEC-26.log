@@ -1,0 +1,75 @@
+### SPEC-26 baseline tests/integration/deployed-template-e2e-test.sh
+
+[38;2;0;212;255m[1m  deployed.yaml e2e — deploy+validate+monitor dry-run dispatch (#1328-A6)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m deployed.yaml loads without error (exit 0)
+  [38;2;74;222;128m✓[0m deployed.yaml review_lenses elements include 'sre'
+  [38;2;74;222;128m✓[0m deployed.yaml has deploy stage
+  [38;2;74;222;128m✓[0m deployed.yaml has validate stage
+  [38;2;74;222;128m✓[0m deployed.yaml has monitor stage
+  [38;2;74;222;128m✓[0m deploy follows pr
+  [38;2;74;222;128m✓[0m validate follows deploy
+  [38;2;74;222;128m✓[0m monitor follows validate
+  [38;2;74;222;128m✓[0m stage 'deploy' resolves to a plugin via the registry (rc=0)
+  [38;2;74;222;128m✓[0m 'deploy' resolves under plugins/agent/deploy
+  [38;2;74;222;128m✓[0m stage 'validate' resolves to a plugin via the registry (rc=0)
+  [38;2;74;222;128m✓[0m 'validate' resolves under plugins/agent/validate
+  [38;2;74;222;128m✓[0m stage 'monitor' resolves to a plugin via the registry (rc=0)
+  [38;2;74;222;128m✓[0m 'monitor' resolves under plugins/agent/monitor
+  [38;2;74;222;128m✓[0m deploy_agent_init does not exist (ADR-056: init removed)
+  [38;2;74;222;128m✓[0m deploy_agent_run exits 0 in dry-run
+  [38;2;74;222;128m✓[0m deploy-result.json written
+  [38;2;74;222;128m✓[0m deploy-result.json verdict=deployed
+  [38;2;74;222;128m✓[0m validate_agent_init does not exist (ADR-056: init removed)
+  [38;2;74;222;128m✓[0m validate_agent_run exits 0 in dry-run
+  [38;2;74;222;128m✓[0m validate-result.json written
+  [38;2;74;222;128m✓[0m validate-result.json verdict=healthy
+  [38;2;248;113;113m✗[0m [SPEC-26] validate-result.json carries result_contract=2 (v2 input-resolution path)
+    [2mexpected: 2, got: [0m
+  [38;2;74;222;128m✓[0m monitor_stage_init does not exist (ADR-056: init removed)
+  [38;2;74;222;128m✓[0m monitor_stage_run exits 0 in dry-run
+  [38;2;74;222;128m✓[0m monitor-report.json written
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 26 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [SPEC-26] validate-result.json carries result_contract=2 (v2 input-resolution path)
+
+### SPEC-26 head tests/integration/deployed-template-e2e-test.sh
+
+[38;2;0;212;255m[1m  deployed.yaml e2e — deploy+validate+monitor dry-run dispatch (#1328-A6)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m deployed.yaml loads without error (exit 0)
+  [38;2;74;222;128m✓[0m deployed.yaml review_lenses elements include 'sre'
+  [38;2;74;222;128m✓[0m deployed.yaml has deploy stage
+  [38;2;74;222;128m✓[0m deployed.yaml has validate stage
+  [38;2;74;222;128m✓[0m deployed.yaml has monitor stage
+  [38;2;74;222;128m✓[0m deploy follows pr
+  [38;2;74;222;128m✓[0m validate follows deploy
+  [38;2;74;222;128m✓[0m monitor follows validate
+  [38;2;74;222;128m✓[0m stage 'deploy' resolves to a plugin via the registry (rc=0)
+  [38;2;74;222;128m✓[0m 'deploy' resolves under plugins/agent/deploy
+  [38;2;74;222;128m✓[0m stage 'validate' resolves to a plugin via the registry (rc=0)
+  [38;2;74;222;128m✓[0m 'validate' resolves under plugins/agent/validate
+  [38;2;74;222;128m✓[0m stage 'monitor' resolves to a plugin via the registry (rc=0)
+  [38;2;74;222;128m✓[0m 'monitor' resolves under plugins/agent/monitor
+  [38;2;74;222;128m✓[0m deploy_agent_init does not exist (ADR-056: init removed)
+  [38;2;74;222;128m✓[0m deploy_agent_run exits 0 in dry-run
+  [38;2;74;222;128m✓[0m deploy-result.json written
+  [38;2;74;222;128m✓[0m deploy-result.json verdict=deployed
+  [38;2;74;222;128m✓[0m validate_agent_init does not exist (ADR-056: init removed)
+  [38;2;74;222;128m✓[0m validate_agent_run exits 0 in dry-run
+  [38;2;74;222;128m✓[0m validate-result.json written
+  [38;2;74;222;128m✓[0m validate-result.json verdict=healthy
+  [38;2;74;222;128m✓[0m [SPEC-26] validate-result.json carries result_contract=2 (v2 input-resolution path)
+  [38;2;74;222;128m✓[0m monitor_stage_init does not exist (ADR-056: init removed)
+  [38;2;74;222;128m✓[0m monitor_stage_run exits 0 in dry-run
+  [38;2;74;222;128m✓[0m monitor-report.json written
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 26 tests passed[0m
+

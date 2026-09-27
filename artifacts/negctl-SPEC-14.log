@@ -25,6 +25,8 @@
     [2mfound hardcoded path in plugin.sh[0m
   [38;2;248;113;113m✗[0m [SPEC-16] plugin.sh must reference ZBUILD_STAGE_INPUTS for input resolution
     [2mZBUILD_STAGE_INPUTS not found in plugin.sh[0m
+  [38;2;248;113;113m✗[0m [SPEC-16] plugin.sh must resolve deploy_result via jq .inputs.deploy_result
+    [2m.inputs.deploy_result not found in plugin.sh[0m
   [38;2;74;222;128m✓[0m [SPEC-19] manifest config.valid_verdicts declares healthy and error
   [38;2;74;222;128m✓[0m [SPEC-19] manifest config.valid_verdicts declares exactly 2 verdicts
 [38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json
@@ -47,6 +49,7 @@
   [38;2;74;222;128m✓[0m [SPEC-15] manifest provides block carries result_contract: 2
   [38;2;74;222;128m✓[0m [SPEC-16] plugin.sh has no hardcoded $artifacts_dir/deploy-result.json
   [38;2;74;222;128m✓[0m [SPEC-16] plugin.sh references ZBUILD_STAGE_INPUTS
+  [38;2;74;222;128m✓[0m [SPEC-16] plugin.sh uses jq .inputs.deploy_result for input resolution
   [38;2;74;222;128m✓[0m [SPEC-19] manifest config.valid_verdicts declares healthy and error
   [38;2;74;222;128m✓[0m [SPEC-19] manifest config.valid_verdicts declares exactly 2 verdicts
   [38;2;74;222;128m✓[0m [SPEC-19] healthy probe → verdict=healthy (covering healthy verdict)
@@ -57,8 +60,10 @@
   [38;2;74;222;128m✓[0m [SPEC-23] manifest provides.role declares validate_agent
   [38;2;74;222;128m✓[0m [SPEC-24] manifest provides.events declares validate.input.missing and validate.probe.failed
   [38;2;74;222;128m✓[0m [SPEC-24] manifest provides.events declares exactly 2 events
+  [38;2;74;222;128m✓[0m [SPEC-24] manifest provides.events total list length is exactly 2
   [38;2;74;222;128m✓[0m [SPEC-25] manifest hooks block declares run hook
   [38;2;74;222;128m✓[0m [SPEC-25] manifest hooks block has no cleanup hook
+  [38;2;74;222;128m✓[0m [SPEC-25] manifest hooks block declares exactly one hook (run only)
   [38;2;74;222;128m✓[0m [SPEC-21] dry-run writes result_contract=2
   [38;2;74;222;128m✓[0m [SPEC-21] dry-run writes verdict=healthy
   [38;2;74;222;128m✓[0m [SPEC-21] dry-run writes disposition=complete
@@ -82,7 +87,7 @@
   [38;2;74;222;128m✓[0m [SPEC-14] failed-probe exit path: verdict key present
   [38;2;74;222;128m✓[0m [SPEC-14] failed-probe exit path: disposition key present
   [38;2;74;222;128m✓[0m [SPEC-14] failed-probe exit path: reason key present and non-empty
-[38;2;248;113;113m[1m✗[0m validate: health-check plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.YHqKqH/no-hc-plugins/plugins/tool/health-check/plugin.sh
+[38;2;248;113;113m[1m✗[0m validate: health-check plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.OQ8eIb/no-hc-plugins/plugins/tool/health-check/plugin.sh
   [38;2;74;222;128m✓[0m [SPEC-14] missing-hc-plugin exit path: result_contract=2
   [38;2;74;222;128m✓[0m [SPEC-14] missing-hc-plugin exit path: verdict key present
   [38;2;74;222;128m✓[0m [SPEC-14] missing-hc-plugin exit path: disposition key present
@@ -91,10 +96,11 @@
 [38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json
   [38;2;74;222;128m✓[0m [SPEC-18] missing deploy-result exits with rc=1 (not rc=2)
   [38;2;74;222;128m✓[0m [SPEC-18] failed probe with rc=5 exits with rc=1 (clamped, not rc=5)
-[38;2;248;113;113m[1m✗[0m validate: health-check plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.YHqKqH/no-hc-plugins/plugins/tool/health-check/plugin.sh
+[38;2;248;113;113m[1m✗[0m validate: health-check plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.OQ8eIb/no-hc-plugins/plugins/tool/health-check/plugin.sh
   [38;2;74;222;128m✓[0m [SPEC-18] missing hc-plugin exits with rc=1 (not rc=2)
+  [38;2;74;222;128m✓[0m [SPEC-18] plugin.sh has no non-comment exit/return with rc>=2
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 55 tests passed[0m
+  [38;2;74;222;128m[1mAll 59 tests passed[0m
 
