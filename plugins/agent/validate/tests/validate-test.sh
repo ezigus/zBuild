@@ -269,6 +269,12 @@ else
     assert_fail "[SPEC-16] plugin.sh must reference ZBUILD_STAGE_INPUTS for input resolution" \
         "ZBUILD_STAGE_INPUTS not found in plugin.sh"
 fi
+if grep -q '\.inputs\.deploy_result' "$PLUGIN_FILE"; then
+    assert_pass "[SPEC-16] plugin.sh uses jq .inputs.deploy_result for input resolution"
+else
+    assert_fail "[SPEC-16] plugin.sh must resolve deploy_result via jq .inputs.deploy_result" \
+        ".inputs.deploy_result not found in plugin.sh"
+fi
 
 # ---------------------------------------------------------------------------
 # SPEC-19: manifest valid_verdicts declares exactly [healthy, error];
@@ -331,10 +337,13 @@ fi
 # ---------------------------------------------------------------------------
 # SPEC-23: manifest provides.role declares validate_agent (#1704)
 # ---------------------------------------------------------------------------
-if grep -q 'role: validate_agent' "$_MANIFEST"; then
+_s23_provides="$(awk '/^provides:/{f=1;next} f && /^[^[:space:]]/{exit} f{print}' \
+    "$_MANIFEST" 2>/dev/null || true)"
+if grep -q 'role:[[:space:]]*validate_agent' <<< "$_s23_provides"; then
     assert_pass "[SPEC-23] manifest provides.role declares validate_agent"
 else
-    assert_fail "[SPEC-23] manifest provides.role must declare validate_agent" "absent"
+    assert_fail "[SPEC-23] manifest provides.role must declare validate_agent under provides: block" \
+        "${_s23_provides:-absent}"
 fi
 
 # ---------------------------------------------------------------------------
@@ -353,6 +362,8 @@ else
 fi
 _s24_count="$(grep -c 'validate\.' <<< "$_s24_events" 2>/dev/null || printf '0')"
 assert_eq "[SPEC-24] manifest provides.events declares exactly 2 events" "2" "$_s24_count"
+_s24_total="$(grep -c '^[[:space:]]*-' <<< "$_s24_events" 2>/dev/null || printf '0')"
+assert_eq "[SPEC-24] manifest provides.events total list length is exactly 2" "2" "$_s24_total"
 
 # ---------------------------------------------------------------------------
 # SPEC-25: manifest hooks block declares only run — no cleanup hook (#1829)
@@ -370,6 +381,8 @@ if grep -q 'cleanup:' <<< "$_s25_hooks"; then
 else
     assert_pass "[SPEC-25] manifest hooks block has no cleanup hook"
 fi
+_s25_hook_count="$(grep -cE '^[[:space:]]+[a-z_]+:' <<< "$_s25_hooks" 2>/dev/null || printf '0')"
+assert_eq "[SPEC-25] manifest hooks block declares exactly one hook (run only)" "1" "$_s25_hook_count"
 
 # ---------------------------------------------------------------------------
 # SPEC-21: dry-run writes result_contract=2, verdict=healthy, disposition=complete,
@@ -481,6 +494,16 @@ _rc18e=0
 ZBUILD_DRY_RUN=0 _validate_agent_run_inner "$_run18e/state.json" || _rc18e=$?
 assert_eq "[SPEC-18] missing hc-plugin exits with rc=1 (not rc=2)" "1" "$_rc18e"
 _VALIDATE_ROOT="$_saved_vr2"
+
+# Universal static check: no non-comment code path in plugin.sh exits with rc>=2
+_s18_nc="$(grep -v '^[[:space:]]*#' "$PLUGIN_FILE" 2>/dev/null || true)"
+_s18_high="$(grep -E '\b(exit|return)[[:space:]]+[2-9]' <<< "$_s18_nc" 2>/dev/null || true)"
+if [[ -z "$_s18_high" ]]; then
+    assert_pass "[SPEC-18] plugin.sh has no non-comment exit/return with rc>=2"
+else
+    assert_fail "[SPEC-18] plugin.sh must not exit/return with rc>=2 on any code path" \
+        "$_s18_high"
+fi
 
 # ─── Cleanup ─────────────────────────────────────────────────────────────────
 _test_cleanup_hook() { cleanup_test_env; }
