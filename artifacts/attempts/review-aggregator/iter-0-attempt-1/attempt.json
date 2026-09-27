@@ -1,0 +1,12 @@
+{
+  "stage": "review-aggregator",
+  "cycle_iter": 0,
+  "attempt": 1,
+  "rc": "0",
+  "generated_at": "2026-09-27T23:27:07Z",
+  "files": 2,
+  "outputs": {
+    "review-report.json": "changed",
+    "review-report.md": "changed"
+  }
+}
