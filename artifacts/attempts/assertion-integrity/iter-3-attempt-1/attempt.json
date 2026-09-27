@@ -1,0 +1,12 @@
+{
+  "stage": "assertion-integrity",
+  "cycle_iter": 3,
+  "attempt": 1,
+  "rc": "0",
+  "generated_at": "2026-09-27T03:03:33Z",
+  "files": 2,
+  "outputs": {
+    "assertion-integrity-result.json": "changed",
+    "assertion-integrity-summary.md": "unchanged"
+  }
+}
