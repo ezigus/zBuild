@@ -4,5 +4,10 @@
     "plugins/agent/validate/plugin.sh",
     "plugins/agent/validate/tests/validate-test.sh"
   ],
-  "wiring_files": []
+  "wiring_files": [],
+  "owned_files": {
+    "test-author": [
+      "plugins/agent/validate/tests/validate-test.sh"
+    ]
+  }
 }

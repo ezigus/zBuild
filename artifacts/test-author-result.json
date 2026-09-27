@@ -1,0 +1,15 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 12 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 12,
+    "owned_files": [
+      "plugins/agent/validate/tests/validate-test.sh"
+    ],
+    "testfiles": {
+      "plugins/agent/validate/tests/validate-test.sh": "6f0c33f41f61a753a82a4ed3b6838e1e55ae4c47"
+    }
+  }
+}
