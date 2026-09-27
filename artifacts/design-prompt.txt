@@ -128,60 +128,65 @@ WIRING field (ADR-036 Level-3, mandatory for behavioral-change issues):
 Keep the prose focused and under 200 lines (the scope block and acceptance
 block may be as long as completeness requires). Emit LOOP_COMPLETE when done.
 
-## PRIOR DESIGN (a previous attempt on this issue — a hypothesis, not a fact)
-The repository has moved since this design was written. Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW; anything that no longer holds is dropped or re-derived, and the design says what changed and why. Keep what still holds; do not start over.
-
-### SINCE THE PRIOR DESIGN (engine-collected)
-- The prior design was authored 2026-09-27T16:28:32Z (commit 9eb11437).
-- Commits on this branch since then: 1.
-- ADRs added or changed since (re-check every decision that cites one of these, or one they supersede):
-  - docs/adr/ADR-055-inter-stage-data-contract-v2.md — Supersedes: ADR-020 (inter-stage data contract) — presented as a clean v2 at the current stable state; ADR-020 is retired in-place for audit history.
-  - docs/adr/ADR-058-engine-write-boundary.md
-- Files in the prior design's scope changed since (its claims about them may be stale):
-  - docs/adr/ADR-055-inter-stage-data-contract-v2.md
+## PRIOR DESIGN (written earlier in this run — refine it against the feedback below; the tree has not moved)
 
 # Design: Migrate validate plugin to contract v2
 
 ## Architectural Decision Summary
 
 **Goal:** Adopt the ADR-054/ADR-055 v2 stage contract in `plugins/agent/validate`:
-v2 result file shape (`result_contract:2`, `verdict`, `disposition`, `reason`, `data`),
+v2 result file shape (`result_contract:2`, `verdict`, `disposition`, `reason`, `data:{}`),
 disposition on every exit path, rc ∈ {0,1}, name-matched input resolution via
 `ZBUILD_STAGE_INPUTS`, and `result_contract: 2` in the manifest `provides:` block.
+Tests written first (red→green).
 
 **Context:** The validate plugin pre-migration writes result files with
 `{"schema_version":1,"verdict":"..."}` on all exits — no `result_contract`,
 `disposition`, or `reason`. It resolves the deploy-result path via a hardcoded
 `$artifacts_dir/deploy-result.json` construction, never consulting `ZBUILD_STAGE_INPUTS`.
-Three exit paths return `rc=2` (missing state_file, missing deploy-result.json, missing
+Three exit paths return `rc=2` (no state_file arg, missing deploy-result.json, missing
 health-check plugin); the health-probe failure path propagates `$hc_rc` directly (may
 be >1). ADR-054 §4b mandates rc ∈ {0,1} for v2 plugins; ADR-054 §5 mandates the four
 mandatory result keys; ADR-055 §1 mandates name-matched input resolution. The
 fail-closed probe-rc propagation (#757) must be preserved.
 
-ADR-058 C12 (#2211) — "the write boundary attributes by ownership, never by time" — is
-noted context only: validate already writes only to its declared output path
-(`$artifacts_dir/validate-result.json`), so no write-boundary changes are required.
+**ADR-055 amendment 2026-09-27 (since prior design):** §9 now adds three rules keyed on
+`capabilities.writes_repository` — how a non-writer stage is framed when receiving stage
+summaries from other stages. Validate makes no LLM calls and receives no LLM prompt, so
+prompt-framing rules are inert for this plugin. The amendment also does not require
+validate to declare `capabilities.writes_repository: true` (validate writes only to its
+declared pipeline artifacts, not the git working tree). No scope or SPEC change required
+from this amendment.
 
-ADR-003 (models-as-data) and ADR-032 (per-repo prompt overrides) were amended since
-the prior design but do not affect this migration: validate makes no LLM calls.
-ADR-003 is retained in scope as a reference for `tier_default: T2` confirmation
-only.
+**ADR-058 C12 context (2026-09-27 amendment):** The C12 amendment introduces undo-and-retry
+for first-offense write-boundary violations. Validate already writes only to its two declared
+outputs (`validate-result.json`, `validate-summary.md`) under `$artifacts_dir/`, so no
+write-boundary changes are required for this migration.
 
-**Scope corrections from prior design:**
-- `tests/integration/per-run-state-isolation-test.sh` is REMOVED from scope. That
-  file uses a two-stage minimal template (intake → build) with mock plugins and
-  neither sources the validate plugin nor places `deploy-result.json`. The prior
-  design's claim that it needed fixing for the input-resolution change was incorrect.
-  The file was changed by a later commit (#1845 runner-log diagnostics, ADR-058 C12)
-  for unrelated reasons.
+ADR-003 (models-as-data) is retained in scope as a reference for `tier_default: T2`
+confirmation only — validate makes no LLM calls.
 
-**Decision:** Rewrite `_validate_agent_run_inner` and `validate_agent_run` to write
-v2 result files on every terminal exit, resolve inputs via `ZBUILD_STAGE_INPUTS`,
-clamp all non-zero returns to rc=1, and add `result_contract: 2` to the manifest
-`provides:` block. Tests are written first (red→green). `deployed-template-e2e-test.sh`
-must set `ZBUILD_STAGE_INPUTS` (a JSON file with `.inputs.deploy_result` pointing to
-the deploy-result.json path) before calling the validate plugin.
+**Manifest current state (verified):** The manifest already carries the correct v2 input
+declaration form (`inputs: - id: deploy_result / required: true` — no `source:`, `path:`,
+or `type:` on the input); a `summary: true` output (`validate_summary`); and `primary: true`
+on `validate_result`. It is missing only `result_contract: 2` in the `provides:` block.
+
+**Scope corrections from prior design (preserved):**
+- `tests/integration/per-run-state-isolation-test.sh` remains EXCLUDED. That file
+  uses a two-stage minimal template (intake → build) with mock plugins and neither
+  sources the validate plugin nor places `deploy-result.json`.
+- `docs/adr/ADR-058-engine-write-boundary.md` is ADDED to scope (changed since prior
+  design; referenced as context for write-boundary correctness).
+
+**Decision:** Rewrite `_validate_agent_run_inner` and `validate_agent_run` to emit v2 result
+files on every terminal exit via a helper `_validate_write_result`, resolve the deploy_result
+input path from `ZBUILD_STAGE_INPUTS` (jq `.inputs.deploy_result`), write output to
+`${ZBUILD_ARTIFACT_DIR}/validate-result.json`, clamp all non-zero returns to rc=1, and add
+`result_contract: 2` to the manifest `provides:` block. Disposition mappings: missing input
+→ `broken`; dry-run → `complete`; healthy probe → `complete`; failed probe → `complete`;
+missing hc-plugin → `broken`. Tests written first (red→green). `deployed-template-e2e-test.sh`
+must export `ZBUILD_STAGE_INPUTS` and `ZBUILD_ARTIFACT_DIR` before calling validate_agent_run
+for SPEC-9 to remain green under v2.
 
 ```scope
 plugins/agent/validate/manifest.yaml
@@ -192,6 +197,7 @@ tests/unit/sigpipe-antipattern-guard-test.sh
 docs/wiki/plugins/validate.md
 docs/adr/ADR-054-stage-contract.md
 docs/adr/ADR-055-inter-stage-data-contract-v2.md
+docs/adr/ADR-058-engine-write-boundary.md
 docs/adr/ADR-017-per-stage-router-config.md
 docs/adr/ADR-003-models-as-data.md
 config/templates/deployed.yaml

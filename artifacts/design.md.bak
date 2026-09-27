@@ -18,13 +18,11 @@ be >1). ADR-054 §4b mandates rc ∈ {0,1} for v2 plugins; ADR-054 §5 mandates 
 mandatory result keys; ADR-055 §1 mandates name-matched input resolution. The
 fail-closed probe-rc propagation (#757) must be preserved.
 
-**ADR-055 amendment 2026-09-27 (since prior design):** §9 now adds three rules keyed on
+**ADR-055 amendment 2026-09-27:** §9 adds three rules keyed on
 `capabilities.writes_repository` — how a non-writer stage is framed when receiving stage
 summaries from other stages. Validate makes no LLM calls and receives no LLM prompt, so
-prompt-framing rules are inert for this plugin. The amendment also does not require
-validate to declare `capabilities.writes_repository: true` (validate writes only to its
-declared pipeline artifacts, not the git working tree). No scope or SPEC change required
-from this amendment.
+prompt-framing rules are inert for this plugin. The amendment does not require validate to
+declare `capabilities.writes_repository: true`. No scope or SPEC change required.
 
 **ADR-058 C12 context (2026-09-27 amendment):** The C12 amendment introduces undo-and-retry
 for first-offense write-boundary violations. Validate already writes only to its two declared
@@ -36,15 +34,11 @@ confirmation only — validate makes no LLM calls.
 
 **Manifest current state (verified):** The manifest already carries the correct v2 input
 declaration form (`inputs: - id: deploy_result / required: true` — no `source:`, `path:`,
-or `type:` on the input); a `summary: true` output (`validate_summary`); and `primary: true`
-on `validate_result`. It is missing only `result_contract: 2` in the `provides:` block.
-
-**Scope corrections from prior design (preserved):**
-- `tests/integration/per-run-state-isolation-test.sh` remains EXCLUDED. That file
-  uses a two-stage minimal template (intake → build) with mock plugins and neither
-  sources the validate plugin nor places `deploy-result.json`.
-- `docs/adr/ADR-058-engine-write-boundary.md` is ADDED to scope (changed since prior
-  design; referenced as context for write-boundary correctness).
+or `type:` on the input); a `summary: true` output (`validate_summary`); `primary: true`
+on `validate_result`; `provides.role: validate_agent`; and `provides.events:` with two
+declared events (`validate.input.missing`, `validate.probe.failed`). The manifest hooks
+block declares only `run` — no `cleanup` hook — which is correct because the plugin holds
+no live resources. It is missing only `result_contract: 2` in the `provides:` block.
 
 **Decision:** Rewrite `_validate_agent_run_inner` and `validate_agent_run` to emit v2 result
 files on every terminal exit via a helper `_validate_write_result`, resolve the deploy_result
@@ -84,6 +78,9 @@ SPEC-19[guard]: manifest config.valid_verdicts declares exactly [healthy, error]
 SPEC-20[guard]: manifest has no config.router block — manifest_router_knob returns empty string for timeout_s and max_turns (correct non-routing-stage posture, ADR-017)
 SPEC-21[change]: a dry-run invocation with a valid deploy-result writes validate-result.json with result_contract=2, verdict=healthy, disposition=complete, reason present, and data={}; schema_version key is absent
 SPEC-22[guard]: manifest outputs array declares validate_result with primary: true — this invariant must not regress under v2 migration
+SPEC-23[guard]: manifest provides.role declares validate_agent (#1704)
+SPEC-24[guard]: manifest provides.events declares exactly validate.input.missing and validate.probe.failed (#1717)
+SPEC-25[guard]: manifest hooks block declares only run and no cleanup hook — plugin holds no live resources so the hook is correctly absent (#1829)
 WIRING: plugins/agent/validate/manifest.yaml
 TESTFILES:
 SPEC-14: plugins/agent/validate/tests/validate-test.sh
@@ -95,6 +92,9 @@ SPEC-19: plugins/agent/validate/tests/validate-test.sh
 SPEC-20: plugins/agent/validate/tests/validate-test.sh
 SPEC-21: plugins/agent/validate/tests/validate-test.sh
 SPEC-22: plugins/agent/validate/tests/validate-test.sh
+SPEC-23: plugins/agent/validate/tests/validate-test.sh
+SPEC-24: plugins/agent/validate/tests/validate-test.sh
+SPEC-25: plugins/agent/validate/tests/validate-test.sh
 ```
 
 LOOP_COMPLETE
