@@ -277,11 +277,16 @@ _assert_v2_keys "hc-plugin-missing" "$_run14e/artifacts/validate-result.json"
 # ===========================================================================
 # SPEC-15: manifest provides block carries result_contract: 2
 # ===========================================================================
-if grep -q "result_contract: 2" "$MANIFEST_FILE"; then
+_rc2_in_provides="$(awk '
+    /^provides:/ { in_p=1; next }
+    in_p && /^[a-z_]/ { in_p=0 }
+    in_p && /result_contract:[[:space:]]*2/ { print "found"; exit }
+' "$MANIFEST_FILE")"
+if [[ "$_rc2_in_provides" == "found" ]]; then
     assert_pass "[SPEC-15] manifest provides block carries result_contract: 2"
 else
     assert_fail "[SPEC-15] manifest provides block carries result_contract: 2" \
-        "result_contract: 2 not found in $MANIFEST_FILE"
+        "result_contract: 2 not found within provides: block in $MANIFEST_FILE"
 fi
 
 # ===========================================================================
@@ -301,6 +306,14 @@ ZBUILD_STAGE_INPUTS="$_si16" ZBUILD_DRY_RUN=1 _validate_agent_run_inner "$_sf16"
 assert_eq "[SPEC-16] deploy_result resolved from ZBUILD_STAGE_INPUTS → rc=0" "0" "$_rc16"
 _v16="$(jq -r '.verdict // "MISSING"' "$_run16/artifacts/validate-result.json" 2>/dev/null || echo MISSING)"
 assert_eq "[SPEC-16] deploy_result from ZBUILD_STAGE_INPUTS → verdict=healthy" "healthy" "$_v16"
+
+# Negative half: no hardcoded $artifacts_dir/deploy-result.json path construction in plugin.sh
+if ! grep -qE '\$artifacts_dir/deploy-result\.json' "$PLUGIN_FILE"; then
+    assert_pass "[SPEC-16] no hardcoded \$artifacts_dir/deploy-result.json in plugin.sh"
+else
+    assert_fail "[SPEC-16] no hardcoded \$artifacts_dir/deploy-result.json in plugin.sh" \
+        "hardcoded path construction found in $PLUGIN_FILE"
+fi
 
 # ===========================================================================
 # SPEC-17: a failed health probe causes validate_agent_run (outer) to return
@@ -390,9 +403,9 @@ done < <(awk '
 ' "$MANIFEST_FILE")
 assert_eq "[SPEC-19] manifest valid_verdicts declares exactly 2 entries (healthy and error)" "2" "$_vv_count"
 
-# Confirm healthy and error are covered by passing assertions in this file (SPEC-11 / SPEC-12 above)
-assert_pass "[SPEC-19] healthy verdict covered by passing assertion (SPEC-11)"
-assert_pass "[SPEC-19] error verdict covered by passing assertion (SPEC-12)"
+# Confirm healthy and error are covered by the actual SPEC-11 / SPEC-12 run results
+assert_eq "[SPEC-19] healthy verdict confirmed by SPEC-11 run" "healthy" "$_v11"
+assert_eq "[SPEC-19] error verdict confirmed by SPEC-12 run" "error" "$_v12"
 
 # ===========================================================================
 # SPEC-20: manifest has no config.router block — manifest_router_knob returns
