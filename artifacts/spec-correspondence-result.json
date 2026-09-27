@@ -1,14 +1,14 @@
 {
   "result_contract": 2,
-  "verdict": "partial",
+  "verdict": "unjudged",
   "disposition": "complete",
-  "reason": "judged 9 SPEC(s): 4 correspond, 5 partial, 0 mismatch, 0 uncheckable, 0 unjudged",
+  "reason": "judged 9 SPEC(s): 0 correspond, 0 partial, 0 mismatch, 0 uncheckable, 9 unjudged",
   "data": {
-    "corresponds": 4,
-    "partial": 5,
+    "corresponds": 0,
+    "partial": 0,
     "mismatch": 0,
     "uncheckable": 0,
-    "unjudged": 0
+    "unjudged": 9
   },
   "about": "plugins/agent/validate/tests/validate-test.sh\nplugins/agent/validate/tests/validate-test.sh\nplugins/agent/validate/tests/validate-test.sh\nplugins/agent/validate/tests/validate-test.sh\nplugins/agent/validate/tests/validate-test.sh\nplugins/agent/validate/tests/validate-test.sh\nplugins/agent/validate/tests/validate-test.sh\nplugins/agent/validate/tests/validate-test.sh\nplugins/agent/validate/tests/validate-test.sh"
 }
