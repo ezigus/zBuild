@@ -6,6 +6,7 @@
 **Amended:** 2026-08-23 (#1809) — a fifth area, `runtime/`, for live run bookkeeping
 **Amended:** 2026-08-23 (#1920) — the job folder is reclaimable; §1's "kept as evidence" gains a retention clock
 **Amended:** 2026-08-23 (#141) — a sixth lifetime, the **issue**; §6's clock premise is falsified (ADR-059)
+**Amended:** 2026-09-27 (C12) — the boundary attributes by ownership, never by time: shared places are recorded, the run's own worktree is judged
 **Related:** ADR-052 (engine-owned run worktree), ADR-011 (pluggable backends — the cache and memory stores), ADR-024 (subprocess env isolation), ADR-004 (redaction chokepoint), ADR-054 §3 (the dispatch identity seam this reuses), ADR-054 §7 (release/purge — why nothing here deletes), ADR-056 (cleanup-only lifecycle)
 
 ## Context
@@ -477,6 +478,100 @@ bash tests/unit/run-tmpdir-test.sh
 bash tests/unit/env-scrub-test.sh                     # SPEC-C10 + fail-open guard
 bash tests/unit/write-boundary-diagnostic-wired-test.sh
 bash tests/integration/runner-exports-state-dir-test.sh
+```
+
+## C12: Attribute by ownership, never by time (2026-09-27)
+
+### What kept happening
+
+C10 §6 ended: *"Closing this gap needs authorship, not a longer watch list."* The
+same defect then recurred wherever the sweep still halted. Every location it can
+report as a violation — `$HOME`, `~/.zbuild`, the engine's own tree, and any
+root an operator adds — is **shared** with other processes, and `find -newer`
+knows when a file was written, never who wrote it. Each recurrence was patched
+one file type at a time: the Claude CLI's state file (#1952), another process's
+`.git/index.lock` (#2201), bare-`mktemp` files in `/tmp` (C10 §6), and #1839.
+
+**#1845 run 36274909946** lost four build/test iterations to the next one.
+`per-run-state-isolation-test.sh` starts a small nested pipeline; the test stage
+puts one shared bookkeeping folder (`.zbuild-nested-state`, holding the cost
+ledger) inside the copied tree the nested engine runs from, and the nested
+engine sweeps its own tree at depth 2. Another test's fake model call appended
+to the ledger while the nested `build` stage was dispatching, and the nested
+run halted: `stage=build wrote outside every allowed area:
+…/.zbuild-nested-state/cost-ledger.jsonl.lock`. Measured on the diagnostic
+branch (run 36322270557): 2 of 5 nested suites failed, 0 of 5 plain ones. It
+only happens inside zBuild's own test stage, because only there is the shared
+folder inside a tree a nested engine watches — which is exactly why it read as
+"flaky" for five days.
+
+The C10 settle-window witness tried to recover authorship from timing. It
+cannot: a writer that finishes before the dispatch returns leaves nothing to
+witness, and a witness proves only that *someone* was writing *somewhere*.
+
+### Decision
+
+**A stage fails the boundary only for a write that can be attributed to it,
+and attribution comes from ownership, never from timing.**
+
+1. **Shared places are observed, never judged.** A sweep hit outside the
+   allowed areas is recorded on all three channels — stderr,
+   `ZBUILD_WRITE_BOUNDARY_LOG`, and `stage.write_boundary.unattributable` with
+   `reason=shared_location` — and `write_boundary_check` returns 0. The watch
+   list still decides what is observed; adding a root widens observation, never
+   what halts. No new event name: `unattributable` already meant "recorded, not
+   a violation".
+2. **The run's own worktree is judged, by git.** ADR-059's issue lock makes the
+   worktree exclusive to one run, and git records exactly what changed.
+   `write_boundary_mark` snapshots every path that differs from HEAD
+   (tracked or untracked, ignored excluded) with its content hash;
+   `write_boundary_check` compares. A stage whose manifest does **not** declare
+   `capabilities.writes_repository: true` (#2174's own fact about the stage)
+   and changed that content during its dispatch is a violation — the existing
+   `runtime/write-boundary-violated` marker, `stage.write_boundary.violated`,
+   `broken`. Its artifacts live in the job folder and never count.
+3. **Content, not status.** A path already dirty before the dispatch and left
+   alone is not blamed on it (an earlier writer's uncommitted work). A HEAD move
+   on a clean tree — intake checking out the work branch — changes no line of
+   the snapshot and is not a stray write.
+4. **In-place mode is exempt.** With `ZBUILD_NO_WORKTREE=1` the checkout is the
+   user's, shared with the user, so it is not the run's to judge.
+5. **The settle-window witness is removed**, with `ZBUILD_WRITE_BOUNDARY_SETTLE_MS`.
+   Nothing in the boundary reads a clock to decide authorship.
+
+### Consequences
+
+**Positive.** No process outside a run can fail it through the boundary — the
+whole class above, not the next instance of it. The check that remains is exact
+and deterministic, and it holds for any repository zBuild runs against, not
+only this one. It also covers engine and plugin code, not just the model: #2174
+fences the model's tools, this checks what actually landed.
+
+**Negative — stated, not hidden.**
+- **A stage that writes into a shared place (a hardcoded `/tmp`, `$HOME`) is
+  no longer halted.** It is recorded. That coverage was never real — the same
+  hit was just as often someone else's — and prevention lives elsewhere: the
+  model's writes are fenced by permissions (#1919, #2174), engine and plugin
+  temps are rooted in the job folder (C10, `zbuild_engine_tmpdir`), and tests
+  may not write to fixed system-temp paths (SPEC-4l).
+- **A non-writer that commits its change evades the content check** (the
+  snapshot is relative to HEAD). The commit is in the branch history, where a
+  reviewer sees it; judging HEAD moves would blame intake for doing its job.
+- **Concurrent members of one stage share one worktree.** Under `map:` or a
+  parallel group, a write by one member is attributed to each member whose
+  window it fell in. That stays inside the run and inside the stage, which is
+  where the disposition lands anyway.
+- **Ignored files are not seen** (`git status` excludes them). A build output
+  under `.gitignore` is not a change to the code under review.
+
+### Verification
+
+```bash
+bash tests/integration/write-boundary-ownership-test.sh   # O1–O9
+bash tests/unit/write-boundary-sweep-test.sh              # SPEC-1/1b/4h/4i restated
+bash tests/integration/write-boundary-dispatch-test.sh    # SPEC-2/4/6 restated
+bash tests/unit/write-boundary-window-test.sh             # SPEC-8 restated
+bash tests/integration/per-run-state-isolation-test.sh    # prints a failed nested runner's output
 ```
 
 ## References

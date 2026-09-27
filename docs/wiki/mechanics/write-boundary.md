@@ -61,6 +61,22 @@ Always keep the fallback. The engine sets these variables only when the stage wa
 
 Hardcoded `/tmp` is the one thing that does not work — it is out of bounds and nothing relocates it.
 
+## What happens when a stage writes somewhere else
+
+After every stage, the engine checks where files appeared. It only **fails** a stage for something it can prove that stage did:
+
+- **Changing the repository without saying so fails the stage.** If a stage's manifest does not declare `capabilities.writes_repository: true` and the run's worktree changed while it ran — a file edited, created or deleted — the stage ends `broken` and the path is named. Its artifacts go to the job folder and never count. The worktree belongs to this one run, and git records exactly what changed, so there is no guessing about who did it.
+- **Files in shared places are recorded, not blamed.** `$HOME`, `~/.zbuild`, the engine's own folder, `/tmp` — other programs write there too (other runs, other tests, git, the Claude CLI), and a file's timestamp says *when* it was written, never *who* wrote it. So a file there is logged (stderr, `ZBUILD_WRITE_BOUNDARY_LOG`, and a `stage.write_boundary.unattributable` event) and the stage carries on.
+
+To make a stage that edits code, declare it:
+
+```yaml
+capabilities:
+  writes_repository: true
+```
+
+**Advanced (newcomers can skip).** ADR-058 C12 records why: every earlier version judged shared places by timestamp and blamed stages for other processes' files (#1839, #1952, #2201, and #1845's nested `build` blamed for another test's cost-ledger lock). A stage that commits a change it did not declare is not caught by the content check — the commit is in the branch history instead — and in-place mode (`ZBUILD_NO_WORKTREE=1`) skips the check because that checkout is the user's.
+
 ## What CI does and does not keep
 
 The pipeline workflow uploads the whole state dir as an artifact, on success and failure alike, so a failed run is debuggable from the run page. It **excludes scratch**, for two reasons: the volume is gigabytes per run, and scratch holds raw, unredacted prompts and model output. Uploading it would carry that off the machine, around the redaction chokepoint that exists to prevent it.

@@ -1,6 +1,13 @@
 # write-boundary-watch.txt — locations the engine sweeps for out-of-bounds writes
 # after each stage dispatch (ADR-058 C9, #1809).
 #
+# ADR-058 C12: every location here is SHARED with other processes, so a hit is
+# RECORDED (stderr, ZBUILD_WRITE_BOUNDARY_LOG, stage.write_boundary.unattributable
+# reason=shared_location) and never fails the stage — mtime says when, never
+# who. What fails a stage is a change to the run's own worktree by a stage that
+# does not declare capabilities.writes_repository; that check reads git, not
+# this list. Adding a root here widens what is observed, never what halts.
+#
 # One entry per line; blank lines and # comments are ignored.
 # Format: <path>[ maxdepth:<N>]
 # Variables are expanded at sweep time: ${VAR} references the runtime environment.
@@ -28,10 +35,10 @@ ${HOME}/.zbuild
 #   stage=intake path=/tmp/tmp.XXXXXXXXXX
 # the default BARE-mktemp name. `intake` contains no mktemp at all; the files
 # were another process's, and the stage was merely what happened to be
-# dispatching. The settle probe caught one of them (logged `unattributable`,
-# with a witness) and missed its twin, because a writer that finishes before the
-# dispatch returns leaves nothing live to witness. No amount of attribution
-# logic recovers authorship that mtime never recorded.
+# dispatching. The C10 settle probe caught one of them and missed its twin,
+# because a writer that finishes before the dispatch returns leaves nothing live
+# to witness. No amount of attribution logic recovers authorship that mtime
+# never recorded — which is why C12 removed the probe and stopped halting here.
 #
 # So the coverage gap C9 named is real and stays open: a stage that hardcodes
 # /tmp is still undetected here. Closing it needs authorship, not a better

@@ -2,8 +2,12 @@
 # tests/unit/write-boundary-sweep-test.sh
 # Unit tests for core/pipeline/write-boundary.sh (#1809, ADR-058 C9).
 #
-# SPEC-1[change]: a stage writing outside its declared outputs and engine-owned
-#                 areas causes write_boundary_check to return 1 (dispatch fails).
+# SPEC-1[change]: (ADR-058 C12) a write in a watched SHARED place is recorded —
+#                 stderr, the log sink, stage.write_boundary.unattributable
+#                 reason=shared_location — and write_boundary_check returns 0;
+#                 SPEC-1b: a stage that does not declare writes_repository and
+#                 changes the run's own worktree returns 1, and the marker and
+#                 the violated event name the path.
 # SPEC-4[change]: write_boundary_classify returns declared|allowed|violation in
 #                 the correct precedence order.
 # SPEC-5[change]: write_boundary_mark and write_boundary_check are no-ops when
@@ -105,56 +109,62 @@ assert_eq "[SPEC-5] write_boundary_check returns 0 on clean dispatch (nothing ne
 assert_eq "[SPEC-5] no stage.write_boundary.violated event on a clean dispatch" \
     "0" "${#_WB_EVENTS[@]}"
 
-# ── SPEC-1[change]: write to watched dir → violation → rc=1 ──────────────────
-# Reset marker and event list.
+# ── SPEC-1[change]: write to a watched shared place → recorded, rc=0 ─────────
+# ADR-058 C12: `find -newer` knows when, never who, and every watched place is
+# shared with other processes — so a hit there can never be attributed to the
+# dispatching stage (#1845: a nested build blamed for another test's
+# cost-ledger lock).
 _WB_EVENTS=()
 rm -f "$JOB_DIR/runtime/write-boundary.marker" "$JOB_DIR/runtime/write-boundary-violated"
 write_boundary_mark "$STATE_FILE"
-
-# Write a file to the watched canary dir (simulates a plugin hardcoding a path
-# outside engine-owned areas — e.g. the /tmp case from the ADR).
 touch "$WATCH_DIR/forbidden-file.txt"
-
 _viol_rc=0
-write_boundary_check "$FIXTURE_DIR" "$STATE_FILE" "my-stage" "" 2>/dev/null || _viol_rc=$?
-assert_eq "[SPEC-1] write_boundary_check returns 1 when a file is written outside allowed areas" \
-    "1" "$_viol_rc"
-
-# Verify the violation marker was created.
-assert_file_exists "[SPEC-1] write-boundary-violated marker created in runtime/" \
-    "$JOB_DIR/runtime/write-boundary-violated"
-
-# ...and that it NAMES the offending path. Only the marker's existence is
-# load-bearing for verdict.sh, so nothing else would notice this regressing to a
-# bare `touch` — but the disposition is `broken`, which is terminal, so the
-# marker body is the operator's only surviving evidence of WHICH path halted the
-# run. Asserting existence alone left that diagnostic unprotected.
-_marker_body="$(cat "$JOB_DIR/runtime/write-boundary-violated" 2>/dev/null || true)"
-assert_contains "[SPEC-1] the marker names the offending path" \
-    "$_marker_body" "$WATCH_DIR/forbidden-file.txt"
-
-# Verify the event was emitted.
-_ev_count=0
+# stderr to a file, not $( ): a subshell would drop the _WB_EVENTS it appends.
+write_boundary_check "$FIXTURE_DIR" "$STATE_FILE" "my-stage" "" 2>"$TEST_TEMP_DIR/spec1.err" >/dev/null || _viol_rc=$?
+_viol_err="$(cat "$TEST_TEMP_DIR/spec1.err" 2>/dev/null || true)"
+assert_eq "[SPEC-1] a shared-place write does not fail the dispatch" "0" "$_viol_rc"
+assert_eq "[SPEC-1] no write-boundary-violated marker for it" \
+    "0" "$([[ -f "$JOB_DIR/runtime/write-boundary-violated" ]] && echo 1 || echo 0)"
+assert_contains "[SPEC-1] stderr still names the path" "$_viol_err" "$WATCH_DIR/forbidden-file.txt"
+_ev_sh=""
 for _ev in "${_WB_EVENTS[@]}"; do
-    [[ "$_ev" == *"stage.write_boundary.violated"* ]] && _ev_count=$((_ev_count + 1))
+    [[ "$_ev" == *"stage.write_boundary.unattributable"* ]] && _ev_sh="$_ev"
 done
-if [[ "$_ev_count" -gt 0 ]]; then
-    assert_pass "[SPEC-1] stage.write_boundary.violated event emitted on violation"
-else
-    assert_fail "[SPEC-1] stage.write_boundary.violated event emitted on violation" \
-        "events: ${_WB_EVENTS[*]:-none}"
-fi
+assert_contains "[SPEC-1] the event carries the path" "$_ev_sh" "path=$WATCH_DIR/forbidden-file.txt"
+assert_contains "[SPEC-1] ...and says it was a shared location" "$_ev_sh" "reason=shared_location"
 
-# The event must carry the offending path, not just the event name. Counting the
-# name alone let the `path=` argument be dropped from emit_event without any test
-# reddening — the event stream is the durable record of a halt, and a violation
-# that names no path leaves an operator nothing to act on.
+# ── SPEC-1b[change]: the run's own worktree changed by a non-writer → rc=1 ────
+# The one place a write can be attributed: ADR-059's issue lock makes the
+# worktree the run's alone, and git records exactly what changed.
+WB_WT="$TEST_TEMP_DIR/wb-worktree"
+mkdir -p "$WB_WT"
+git -C "$WB_WT" init -q
+printf 'a\n' > "$WB_WT/code.txt"
+git -C "$WB_WT" add -A
+git -C "$WB_WT" -c user.name=t -c user.email=t@t commit -q -m base
+export ZBUILD_REPO_ROOT="$WB_WT"
+_WB_EVENTS=()
+rm -f "$JOB_DIR/runtime/write-boundary.marker" "$JOB_DIR/runtime/write-boundary-violated"
+write_boundary_mark "$STATE_FILE"
+printf 'b\n' > "$WB_WT/code.txt"
+_repo_rc=0
+write_boundary_check "$FIXTURE_DIR" "$STATE_FILE" "my-stage" "" 2>/dev/null || _repo_rc=$?
+assert_eq "[SPEC-1b] a non-writer changing the worktree fails the dispatch" "1" "$_repo_rc"
+assert_file_exists "[SPEC-1b] write-boundary-violated marker created in runtime/" \
+    "$JOB_DIR/runtime/write-boundary-violated"
+# Only the marker's existence is load-bearing for verdict.sh, but the disposition
+# is `broken` — terminal — so its body is the operator's only surviving evidence
+# of WHICH path halted the run.
+assert_contains "[SPEC-1b] the marker names the offending path" \
+    "$(cat "$JOB_DIR/runtime/write-boundary-violated" 2>/dev/null || true)" "$WB_WT/code.txt"
 _ev_with_path=""
 for _ev in "${_WB_EVENTS[@]}"; do
     [[ "$_ev" == *"stage.write_boundary.violated"* ]] && _ev_with_path="$_ev"
 done
-assert_contains "[SPEC-1] the violation event carries path= naming the offending file" \
-    "$_ev_with_path" "path=$WATCH_DIR/forbidden-file.txt"
+assert_contains "[SPEC-1b] the violation event carries path= naming the offending file" \
+    "$_ev_with_path" "path=$WB_WT/code.txt"
+git -C "$WB_WT" checkout -q -- code.txt
+unset ZBUILD_REPO_ROOT
 
 # ── SPEC-4[change]: classifier precedence — declared → allowed → violation ───
 # Set up paths to classify:
@@ -584,20 +594,25 @@ done
 assert_eq "[SPEC-4h] the unattributable candidate is still recorded as an event" \
     "1" "$_unattr_ev"
 
-# ─── SPEC-4i: GUARD — with no external writer the same write still halts ─────
-# This is what stops SPEC-4h degenerating into "make violations pass". If this
-# assertion ever goes red the fence has been disarmed, not repaired.
+# ─── SPEC-4i: GUARD — the fence is moved, not disarmed ──────────────────────
+# SPEC-4h's shared-place hit and this one both pass (C12: timing never decides),
+# but a change to the run's own worktree by a non-writer still halts with no
+# concurrent writer anywhere. If this goes red the fence has been disarmed.
 rm -f "$WATCH_DIR"/.ext-* 2>/dev/null || true
+export ZBUILD_REPO_ROOT="$WB_WT"
 _WB_EVENTS=()
 rm -f "$JOB_DIR/runtime/write-boundary.marker" "$JOB_DIR/runtime/write-boundary-violated"
 write_boundary_mark "$STATE_FILE"
-touch "$WATCH_DIR/genuine-violation.txt"
+touch "$WATCH_DIR/genuine-shared.txt"
+printf 'stray\n' > "$WB_WT/genuine-violation.txt"
 _genuine_rc=0
 write_boundary_check "$FIXTURE_DIR" "$STATE_FILE" "guilty-stage" "" 2>/dev/null || _genuine_rc=$?
-assert_eq "[SPEC-4i] GUARD: a genuine violation with no concurrent writer still fails the dispatch" \
+assert_eq "[SPEC-4i] GUARD: a worktree write by a non-writer still fails the dispatch" \
     "1" "$_genuine_rc"
-assert_file_exists "[SPEC-4i] GUARD: the violated marker is still written" \
-    "$JOB_DIR/runtime/write-boundary-violated"
+assert_contains "[SPEC-4i] GUARD: and the marker names the worktree file, not the shared one" \
+    "$(cat "$JOB_DIR/runtime/write-boundary-violated" 2>/dev/null || true)" "genuine-violation.txt"
+rm -f "$WB_WT/genuine-violation.txt"
+unset ZBUILD_REPO_ROOT
 
 # ─── SPEC-4j: no plugin invents an artifact root at the system temp ─────────
 # ADR-058 §1 names five areas a stage may write into; the system temp is not
