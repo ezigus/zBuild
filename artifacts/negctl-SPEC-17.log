@@ -10,9 +10,9 @@
     [2mexpected: 2, got: [0m
   [38;2;74;222;128m✓[0m [SPEC-14] dry-run exit — verdict key present
   [38;2;248;113;113m✗[0m [SPEC-14] dry-run exit — disposition key present
-    [2mdisposition absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.Hinixg/run9/artifacts/validate-result.json[0m
+    [2mdisposition absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.o5eitF/run9/artifacts/validate-result.json[0m
   [38;2;248;113;113m✗[0m [SPEC-14] dry-run exit — reason key present
-    [2mreason absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.Hinixg/run9/artifacts/validate-result.json[0m
+    [2mreason absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.o5eitF/run9/artifacts/validate-result.json[0m
 [38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json
   [38;2;74;222;128m✓[0m missing deploy-result.json → rc != 0
   [38;2;74;222;128m✓[0m missing deploy-result.json → verdict=error in output
@@ -20,31 +20,31 @@
     [2mexpected: 2, got: [0m
   [38;2;74;222;128m✓[0m [SPEC-14] missing-input exit — verdict key present
   [38;2;248;113;113m✗[0m [SPEC-14] missing-input exit — disposition key present
-    [2mdisposition absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.Hinixg/run10/artifacts/validate-result.json[0m
+    [2mdisposition absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.o5eitF/run10/artifacts/validate-result.json[0m
   [38;2;74;222;128m✓[0m [SPEC-14] missing-input exit — reason key present
   [38;2;74;222;128m✓[0m healthy probe → verdict=healthy
   [38;2;248;113;113m✗[0m [SPEC-14] healthy-probe exit — result_contract=2
     [2mexpected: 2, got: [0m
   [38;2;74;222;128m✓[0m [SPEC-14] healthy-probe exit — verdict key present
   [38;2;248;113;113m✗[0m [SPEC-14] healthy-probe exit — disposition key present
-    [2mdisposition absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.Hinixg/run11/artifacts/validate-result.json[0m
+    [2mdisposition absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.o5eitF/run11/artifacts/validate-result.json[0m
   [38;2;248;113;113m✗[0m [SPEC-14] healthy-probe exit — reason key present
-    [2mreason absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.Hinixg/run11/artifacts/validate-result.json[0m
+    [2mreason absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.o5eitF/run11/artifacts/validate-result.json[0m
   [38;2;74;222;128m✓[0m failed probe → verdict=error
   [38;2;74;222;128m✓[0m failed probe → rc propagated (rc != 0)
   [38;2;248;113;113m✗[0m [SPEC-14] failed-probe exit — result_contract=2
     [2mexpected: 2, got: [0m
   [38;2;74;222;128m✓[0m [SPEC-14] failed-probe exit — verdict key present
   [38;2;248;113;113m✗[0m [SPEC-14] failed-probe exit — disposition key present
-    [2mdisposition absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.Hinixg/run12/artifacts/validate-result.json[0m
+    [2mdisposition absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.o5eitF/run12/artifacts/validate-result.json[0m
   [38;2;248;113;113m✗[0m [SPEC-14] failed-probe exit — reason key present
-    [2mreason absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.Hinixg/run12/artifacts/validate-result.json[0m
+    [2mreason absent or null in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-validate.o5eitF/run12/artifacts/validate-result.json[0m
   [38;2;74;222;128m✓[0m validate plugin has legacy-citation in header
   [38;2;74;222;128m✓[0m legacy-citation references pipeline-stages-monitor.sh
   [38;2;248;113;113m✗[0m [SPEC-15] manifest provides block carries result_contract: 2
     [2mexpected: 2, got: [0m
   [38;2;248;113;113m✗[0m [SPEC-16] plugin.sh has no hardcoded $artifacts_dir/deploy-result.json path construction
-    [2mhardcoded path found in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.Gq7DdV/plugins/agent/validate/plugin.sh[0m
+    [2mhardcoded path found in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.qZ110A/plugins/agent/validate/plugin.sh[0m
 [38;2;248;113;113m[1m✗[0m validate: missing required input deploy-result.json
   [38;2;248;113;113m✗[0m [SPEC-16] deploy_result resolved from ZBUILD_STAGE_INPUTS non-standard path → verdict=healthy
     [2mexpected: healthy, got: error[0m
