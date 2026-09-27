@@ -30,6 +30,8 @@ source "$_ZBUILD_TEST_STAGE_ROOT/core/output/stage-io.sh"
 # shellcheck source=./lib/parse.sh
 # #584: pattern bank for known test runners + honest fail-safe.
 source "$_ZBUILD_TEST_STAGE_DIR/lib/parse.sh"
+# shellcheck source=./lib/findings.sh
+source "$_ZBUILD_TEST_STAGE_DIR/lib/findings.sh"
 # shellcheck source=../../../scripts/lib/env-scrub.sh
 # ADR-024 / #671: fresh-user-shell helper for the eval subshell below.
 source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/env-scrub.sh"
@@ -472,8 +474,13 @@ _test_run_inner() {
     [[ "$_failed_for_summary" == "null" ]] && _failed_for_summary=0
     # `passed` is forwarded verbatim, "null" included: #584 forbids fabricating
     # a count the parser never recognised, and the summary says so plainly.
+    # What to fix, per failing file (lib/findings.sh): the reason, and the repo
+    # files its output points at — the latter become `about`, which the engine
+    # resolves to an owner (#2180). Computed on a non-pass only.
+    local _findings_json="[]"
+    [[ "$verdict" != "pass" ]] && _findings_json="$(_test_failure_findings "$raw_output" "$tmp")"
     _test_emit_failures_summary "$_tfs_path" "$verdict" "$_failed_for_summary" \
-        "$exit_code" "$raw_output" "$passed"
+        "$exit_code" "$raw_output" "$passed" "$(_test_findings_markdown "$_findings_json")"
 
     # #2180: keep the suite's OWN output. The summary above is an ~80-line
     # extraction; everything else was dropped. When a file fails only inside
@@ -574,7 +581,8 @@ _test_run_inner() {
     _test_write_result "$output_json" \
         "$verdict" "$_disposition" "$exit_code" "$passed" "$failed" \
         "$test_output" "$diff_applied" "$actual_test_cmd" "$reason" "$run_mode" \
-        "$_timing_json" "$_tree_sha" "$_fr_lint" "$_fr_cov" "$_fr_mut" "$_targeted_json"
+        "$_timing_json" "$_tree_sha" "$_fr_lint" "$_fr_cov" "$_fr_mut" "$_targeted_json" \
+        "$_findings_json"
 
     # #628: $tmp cleanup handled by RETURN trap installed at top of function.
     emit_event "plugin.result" "plugin=test" "verdict=${verdict}" "exit_code=${exit_code}" \
@@ -779,7 +787,7 @@ _test_emit_io_end() {
 #                                    <exit_code> <raw_output> [passed_count]
 _test_emit_failures_summary() {
     local out_path="$1" verdict="$2" failed_count="$3" exit_code="$4" raw_output="$5"
-    local passed_count="${6:-}"
+    local passed_count="${6:-}" findings_md="${7:-}"
 
     # Extract failing test lines (best-effort across common formats).
     # We keep matched lines verbatim — the build agent reads them as-is.
@@ -853,6 +861,8 @@ _test_emit_failures_summary() {
         if [[ "$verdict" == "pass" ]]; then
             printf 'The suite ran to completion with no failing assertions.\n'
         elif [[ -n "$extracted" ]]; then
+            # $( ) strips the section's trailing newlines — restore the gap.
+            [[ -n "$findings_md" ]] && printf '%s\n\n' "$findings_md"
             printf '## Failing lines (extracted)\n\n'
             printf '```\n%s\n```\n' "$extracted"
         else
@@ -1084,6 +1094,10 @@ _test_write_result() {
     # #2144: optional pre-rendered result of the targeted subset that this run
     # confirmed (run_mode=targeted+full). Empty → field omitted.
     local targeted_json="${17:-}"
+    # lib/findings.sh: [{file, reason, points_at}] for a failing run. Non-empty →
+    # data.failures, and the union of points_at → top-level `about` (#2180).
+    local findings_json="${18:-[]}"
+    [[ -n "$findings_json" ]] || findings_json="[]"
 
     local dir
     dir="$(dirname "$path")"
@@ -1133,7 +1147,9 @@ _test_write_result() {
         --arg coverage "$coverage_json" \
         --arg mutation "$mutation_json" \
         --arg targeted "$targeted_json" \
-        '{
+        --arg findings "$findings_json" \
+        '($findings | try fromjson catch []) as $fnd
+        | {
             result_contract: 2,
             verdict: $verdict,
             disposition: $disposition,
@@ -1161,8 +1177,11 @@ _test_write_result() {
                 + (if $coverage != "" then (try {coverage: ($coverage | fromjson)} catch {}) else {} end)
                 + (if $mutation != "" then (try {mutation: ($mutation | fromjson)} catch {}) else {} end)
                 + (if $targeted != "" then (try {targeted: ($targeted | fromjson)} catch {}) else {} end)
+                + (if ($fnd | length) > 0 then {failures: $fnd} else {} end)
             )
-        }' \
+        }
+        + ([$fnd[].points_at[]?] | unique
+           | if length > 0 then {about: join("\n")} else {} end)' \
         2>/dev/null \
       | atomic_write "$path"
     local _jq_rc="${PIPESTATUS[0]}"

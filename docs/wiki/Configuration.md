@@ -49,6 +49,23 @@ To customize zBuild for a specific repository, create a `.zbuild/` directory at 
 | `.zbuild/prompts/` | Repo-specific prompt overrides (see ADR-032) |
 | `.zbuild/platforms.json` | Platform identity and role-based plugin selection (see ADR-009) |
 
+### Repository rules (`.zbuild/prompts/rules.md`)
+
+Some of zBuild's stages are AI agents that write files into your repository — test-author, for example, writes your acceptance tests. They write better code when they know your house rules: which lint rules you enforce, which patterns you ban, how your tests are laid out. Put those rules in one Markdown file and every such stage is given them:
+
+```markdown
+<!-- .zbuild/prompts/rules.md — notes in comments like this one are not sent -->
+- Python 3.12, formatted with black; every file must pass `ruff check`.
+- Tests live next to the code as `test_<module>.py` and use pytest fixtures, never unittest.
+- Never call the network from a test; use the `fake_http` fixture.
+```
+
+If your repository has no `rules.md`, those stages get zBuild's short default rule set instead (follow the repository's existing style and contributor docs, pass its own linters and tests, never write secrets). Your file replaces the defaults rather than adding to them, so copy any default you want to keep.
+
+Which stages get the rules is decided by each stage's manifest (`prompt.repo_rules: true`, see [Writing Plugins](Writing-Plugins.md)). Today that is test-author.
+
+**Advanced (newcomers can skip).** The file is read through the same safety checks as the per-stage overrides (no symlinks or hardlinks out of `.zbuild/prompts/`, a 32 KiB cap), and injected by the router before redaction. Per-stage overrides (`.zbuild/prompts/<stage>-overrides.md`) still work alongside it for the stages that read them. See ADR-032 and its 2026-09-27 amendment.
+
 ---
 
 ## Environment variables

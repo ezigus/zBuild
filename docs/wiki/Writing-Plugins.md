@@ -85,6 +85,7 @@ config:     { <key>: <default> }
 inputs:     [ { id, type, source: stage:<s>|role:<r>, required } ]
 outputs:    [ { id, path: ${artifact_dir}/<file>, type, required, primary } ]
 state:      { persisted: [...], reconstructed: [...] }
+prompt:     { repo_rules: true }   # optional: give this stage the repo's .zbuild/prompts/rules.md (or zBuild's defaults) on every model call — ADR-032 amendment
 ```
 
 ### Role-then-id resolution

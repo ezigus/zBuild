@@ -44,8 +44,24 @@ load_prompt_override() {
     # `design/../plan`, etc. at the source.
     [[ "$stage" =~ ^[a-z][a-z0-9_-]*$ ]] || return 0
 
-    local rel=".zbuild/prompts/${stage}-overrides.md"
-    # Belt-and-suspenders string floor (the stage regex already prevents escapes).
+    _po_load_repo_file ".zbuild/prompts/${stage}-overrides.md" "$repo_root"
+}
+
+# load_repo_rules [repo_root]
+#   The target repo's rules for every stage that declares `prompt.repo_rules`
+#   (scripts/lib/repo-rules.sh): <repo_root>/.zbuild/prompts/rules.md, under the
+#   same containment and size rules as an override. Empty when absent.
+load_repo_rules() {
+    local repo_root="${1:-${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}}"
+    _po_load_repo_file ".zbuild/prompts/rules.md" "$repo_root"
+}
+
+# _po_load_repo_file <rel> <repo_root> — the one reader for every file under a
+# target repo's .zbuild/prompts/: string floor, symlink and hardlink
+# containment, size cap. Always rc 0; empty on any refusal.
+_po_load_repo_file() {
+    local rel="$1" repo_root="$2"
+    # Belt-and-suspenders string floor (callers build rel from a fixed shape).
     scope_floor_denied "$rel" && return 0
 
     local override_file="$repo_root/$rel"

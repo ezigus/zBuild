@@ -56,6 +56,13 @@ config:
 capabilities:
   writes_repository: true
 
+# ADR-032 amendment: it writes files into the repository, so it is given the
+# repository's rules (.zbuild/prompts/rules.md, or zBuild's defaults). #1845
+# run 36274909946: it wrote `grep … | grep -q` twice and the repo's own SIGPIPE
+# guard failed the suite — nothing had told it the rule.
+prompt:
+  repo_rules: true
+
 inputs:
   - id: design
     required: true

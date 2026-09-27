@@ -369,6 +369,25 @@ _route_redact_prompt() {
         fi
     fi
 
+    # ADR-032 amendment: the target repository's rules (or zBuild's defaults)
+    # for a stage whose manifest declares `prompt.repo_rules: true`. Here for
+    # the reason the checkpoint block is: the one funnel for every model call,
+    # before apply_scope_redaction. Lazily sourced so route.sh's load shape is
+    # unchanged for every caller that never reaches a declaring stage.
+    if [[ -n "${ZBUILD_PLUGIN_DIR:-}" && -f "${ZBUILD_PLUGIN_DIR}/manifest.yaml" ]]; then
+        if ! declare -F repo_rules_prompt_block >/dev/null 2>&1; then
+            # shellcheck source=../../scripts/lib/repo-rules.sh
+            source "$_ZBUILD_ROOT/scripts/lib/repo-rules.sh" 2>/dev/null || true
+        fi
+        if declare -F repo_rules_prompt_block >/dev/null 2>&1 \
+            && ! grep -qF "$_ZB_REPO_RULES_MARKER" "$input" 2>/dev/null; then
+            local _rr_block=""
+            _rr_block="$(repo_rules_prompt_block "$ZBUILD_PLUGIN_DIR/manifest.yaml" \
+                "${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}" 2>/dev/null || true)"
+            [[ -n "$_rr_block" ]] && printf '\n\n%s\n' "$_rr_block" >> "$input" 2>/dev/null || true
+        fi
+    fi
+
     # #1826 (ADR-055 §1): the resolved input paths, as LITERAL text. An agent
     # stage cannot read ZBUILD_STAGE_INPUTS — _zbuild_make_fresh_shell unsets the
     # whole ZBUILD_* namespace before every claude spawn — so the handover the
