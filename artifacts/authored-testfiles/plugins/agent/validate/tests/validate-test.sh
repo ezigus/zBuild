@@ -344,6 +344,13 @@ _vv="$(awk '
 assert_eq "[SPEC-19] manifest config.valid_verdicts declares exactly [healthy, error]" \
     "error,healthy" "$_vv"
 
+# SPEC-19 also mandates that validate-test.sh covers both verdicts via passing
+# assertions — verify here using results from the SPEC-11 and SPEC-12 runs above.
+assert_eq "[SPEC-19] validate-test.sh covers healthy verdict (SPEC-11 run)" \
+    "healthy" "$_v11"
+assert_eq "[SPEC-19] validate-test.sh covers error verdict (SPEC-12 run)" \
+    "error" "$_v12"
+
 # ---------------------------------------------------------------------------
 # SPEC-20: manifest has no config.router block — manifest_router_knob returns
 #          empty for timeout_s and max_turns (non-routing stage posture, ADR-017)
