@@ -1,5 +1,3 @@
 [
-  "tests/integration/deployed-template-e2e-test.sh",
-  "tests/integration/per-run-state-isolation-test.sh",
-  "tests/unit/sigpipe-antipattern-guard-test.sh"
+  "tests/integration/per-run-state-isolation-test.sh"
 ]
