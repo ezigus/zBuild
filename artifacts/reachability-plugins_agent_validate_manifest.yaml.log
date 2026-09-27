@@ -41,6 +41,8 @@
 [38;2;248;113;113m[1m✗[0m validate_agent_run: state_file argument required
   [38;2;74;222;128m✓[0m [SPEC-18] missing state_file → validate_agent_run exactly rc=1
   [38;2;74;222;128m✓[0m [SPEC-19] manifest config.valid_verdicts declares exactly [healthy, error]
+  [38;2;74;222;128m✓[0m [SPEC-19] validate-test.sh covers healthy verdict (SPEC-11 run)
+  [38;2;74;222;128m✓[0m [SPEC-19] validate-test.sh covers error verdict (SPEC-12 run)
   [38;2;74;222;128m✓[0m [SPEC-20] manifest has no config.router block
   [38;2;74;222;128m✓[0m [SPEC-20] manifest_router_knob timeout_s returns empty (no router block)
   [38;2;74;222;128m✓[0m [SPEC-20] manifest_router_knob max_turns returns empty (no router block)
@@ -54,7 +56,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 44 tests failed[0m
+  [38;2;248;113;113m[1m1 of 46 tests failed[0m
 
   [38;2;248;113;113m✗[0m [SPEC-15] manifest provides block carries result_contract: 2
 
@@ -100,6 +102,8 @@
 [38;2;248;113;113m[1m✗[0m validate_agent_run: state_file argument required
   [38;2;74;222;128m✓[0m [SPEC-18] missing state_file → validate_agent_run exactly rc=1
   [38;2;74;222;128m✓[0m [SPEC-19] manifest config.valid_verdicts declares exactly [healthy, error]
+  [38;2;74;222;128m✓[0m [SPEC-19] validate-test.sh covers healthy verdict (SPEC-11 run)
+  [38;2;74;222;128m✓[0m [SPEC-19] validate-test.sh covers error verdict (SPEC-12 run)
   [38;2;74;222;128m✓[0m [SPEC-20] manifest has no config.router block
   [38;2;74;222;128m✓[0m [SPEC-20] manifest_router_knob timeout_s returns empty (no router block)
   [38;2;74;222;128m✓[0m [SPEC-20] manifest_router_knob max_turns returns empty (no router block)
@@ -113,5 +117,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 44 tests passed[0m
+  [38;2;74;222;128m[1mAll 46 tests passed[0m
 
