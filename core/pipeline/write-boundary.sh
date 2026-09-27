@@ -137,8 +137,11 @@ write_boundary_mark() {
     # there is no engine-owned worktree, which leaves the repository check off.
     local _repo
     rm -f "${_marker}.repo" 2>/dev/null || true
+    # A new dispatch of the stage is judged on its own: an earlier attempt's
+    # undo does not follow it (the offence COUNT does — see write_boundary_check).
+    rm -f "${state_dir}/runtime/write-boundary-reverted.$(_wb_stage_key "$_stage")" 2>/dev/null || true
     if _repo="$(_wb_repo_root)"; then
-        if ! _wb_repo_snapshot "$_repo" > "${_marker}.repo" 2>/dev/null; then
+        if ! _wb_repo_snapshot "$_repo" keep > "${_marker}.repo" 2>/dev/null; then
             rm -f "${_marker}.repo" 2>/dev/null || true
             _wb_report_degraded "mark_failed" "repo=$_repo" "worktree snapshot failed"
         fi
@@ -479,6 +482,13 @@ write_boundary_check() {
     [[ -n "$_changed" ]] || return 0
     # Every changed path, not only the first: `broken` is terminal, so naming
     # one per retry makes an operator pay a run per file (review on #2211).
-    write_boundary_violation_recorded "$_sd" "$_stage" "$(_wb_repo_changed_list "$_repo" "$_changed")"
-    return 1
+    local _list; _list="$(_wb_repo_changed_list "$_repo" "$_changed")"
+
+    _wb_repo_undo_and_judge "$_snap" "$_repo" "$_sd" "$_stage" "$_changed" "$_list"
+}
+
+# _wb_stage_key <stage> — one path component, the key the verdict reader uses.
+_wb_stage_key() {
+    if declare -F zbuild_stage_key >/dev/null 2>&1; then zbuild_stage_key "$@"; return; fi
+    local _k="${1:-stage}"; printf '%s' "${_k//[^A-Za-z0-9._-]/_}"
 }

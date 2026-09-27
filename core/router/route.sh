@@ -9,6 +9,9 @@ _ZBUILD_ROUTER_LOADED=1
 
 _ROUTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _ZBUILD_ROOT="$(cd "$_ROUTER_DIR/../.." && pwd)"
+# Opens the read-only scope block for a stage that may not change the
+# repository; also its idempotence guard (_route_redact_prompt).
+_ZB_READ_ONLY_SCOPE_MARKER='## YOUR SCOPE (engine-provided)'
 
 # ─── base-include guard (#1624) ──────────────────────────────────────────────
 # route.sh is the base include for EVERY routing plugin, so one bad library here
@@ -333,6 +336,36 @@ _route_redact_prompt() {
     # if the input already carries the marker (guards re-entrancy / retries). The
     # preamble is injected HERE, before apply_scope_redaction, so it passes
     # through the redaction chokepoint by construction (ADR-004).
+    # The stage's scope, first: a stage whose manifest does not declare
+    # capabilities.writes_repository reads and reports. #1845 run 36332698182:
+    # spec-correspondence, told to RESOLVE three findings, edited a failing test
+    # instead of judging and the run halted. Prepended BEFORE the vision
+    # preamble below, which then takes line 1 (its guard is a first-line
+    # check); this block's own guard is the marker, wherever it sits.
+    if [[ -n "${ZBUILD_PLUGIN_DIR:-}" && -f "${ZBUILD_PLUGIN_DIR}/manifest.yaml" ]]; then
+        if ! declare -F stage_declares_repo_writes >/dev/null 2>&1; then
+            # shellcheck source=../pipeline/input-resolve.sh
+            source "$_ZBUILD_ROOT/core/pipeline/input-resolve.sh" 2>/dev/null || true
+        fi
+        if declare -F stage_declares_repo_writes >/dev/null 2>&1 \
+            && ! stage_declares_repo_writes "${ZBUILD_PLUGIN_DIR}/manifest.yaml" \
+            && ! grep -qF "$_ZB_READ_ONLY_SCOPE_MARKER" "$input" 2>/dev/null; then
+            local _scope_tmp
+            _scope_tmp="$(mktemp "$(zbuild_engine_tmpdir)/zb-scope.XXXXXX" 2>/dev/null)" || true
+            if [[ -z "$_scope_tmp" ]]; then
+                # Fail-open (a prompt must not die over a temp file), but not
+                # silently: the stage runs without being told its scope.
+                printf 'router: read-only scope not added to the prompt (no temp file under %s)\n' \
+                    "$(zbuild_engine_tmpdir 2>/dev/null || printf '?')" >&2
+            else
+                { printf '%s\n' "$_ZB_READ_ONLY_SCOPE_MARKER"
+                  printf 'Your job is to read and report. Do not create, modify or delete any file in the repository — code, tests, or anything else. Write only the outputs your instructions below name.\n\n'
+                  cat "$input"; } > "$_scope_tmp" \
+                    && mv "$_scope_tmp" "$input" 2>/dev/null || rm -f "$_scope_tmp" 2>/dev/null || true
+            fi
+        fi
+    fi
+
     _route_vision_preamble
     if [[ -n "${_ROUTE_VISION_PREAMBLE:-}" ]] \
         && [[ "$(head -n1 "$input" 2>/dev/null)" != '# Intent (advisory)' ]]; then

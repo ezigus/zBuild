@@ -28,6 +28,9 @@
 #     (claude-review on #2210)
 # F10 a staging path containing a space still names the failing file
 #     (claude-review on #2210)
+# F11 the suite's REAL output is coloured: a ✗ wrapped in ANSI codes is still
+#     the reason (#1845 run 36332698182 reported "exited non-zero without a
+#     failing check" for a file with two ✗ lines)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -178,6 +181,23 @@ printf '#!/usr/bin/env bash\n' > "$SP/tests/unit/state-test.sh"
 _f10="$(_test_failure_findings "$(printf 'unit: FAIL %s/tests/unit/state-test.sh\n  ✗ spaced\nunit: 0/1 passed\n' "$SP")" "$SP" 2>/dev/null || true)"
 assert_eq "[F10] a staging path with a space still names the file" "tests/unit/state-test.sh" \
     "$(jq -r '.[0].file // empty' <<< "$_f10" 2>/dev/null || true)"
+
+print_test_section "F11: coloured output (#1845 run 36332698182)"
+E=$'\033'
+_f11="$(_test_failure_findings "$(printf '%s\n' \
+    "integration: FAIL $T/tests/unit/state-test.sh" \
+    "  ${E}[38;2;74;222;128m✓${E}[0m [SPEC-4] init does not exist" \
+    "  ${E}[38;2;248;113;113m✗${E}[0m [SPEC-9] validate_agent_run exits 0 in dry-run" \
+    "    ${E}[2mexpected: 0, got: 1${E}[0m" \
+    "integration: 0/1 passed")" "$T" 2>/dev/null || true)"
+_f11_reason="$(jq -r '.[0].reason // empty' <<< "$_f11" 2>/dev/null || true)"
+assert_contains "[F11] a coloured ✗ is the reason" "$_f11_reason" "✗ [SPEC-9] validate_agent_run exits 0 in dry-run"
+assert_contains "[F11] with its detail line" "$_f11_reason" "expected: 0, got: 1"
+if grep -qF "$E" <<< "$_f11_reason"; then
+    assert_fail "[F11] no escape codes in the reason" "reason: $_f11_reason"
+else
+    assert_pass "[F11] no escape codes in the reason"
+fi
 
 print_test_section "F8: a failure that points at nothing sets no owner"
 cat > "$REPO/bin/fake-suite.sh" <<'EOF'

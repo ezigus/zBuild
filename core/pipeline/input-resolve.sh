@@ -780,14 +780,42 @@ _summaries_stage_fault() {
 # many of them are framed RESOLVE (a failing verdict). The cycle banner prints
 # this (#2124) — it used to report feedback EDGES, which a summaries-only cycle
 # has none of, and read "(no feedback — first iteration)" on every iteration.
+# ─── stage_declares_repo_writes <manifest> ──────────────────────────────────
+# rc 0 when the manifest declares capabilities.writes_repository: true — the
+# one fact (#2174) that says a stage may change the repository, and therefore
+# may be asked to fix something. Its own reader, not yaml_get: route.sh calls it
+# where the registry is not necessarily loaded. Same rule as
+# _wb_declares_repo_writes (core/pipeline/write-boundary-repo.sh) — keep the two
+# in step; they are separate only because neither file may source the other.
+stage_declares_repo_writes() {
+    local mf="${1:-}"
+    [[ -n "$mf" && -f "$mf" ]] || return 1
+    awk '
+        /^[^[:space:]#]/ { inblk = ($0 ~ /^capabilities:[[:space:]]*(#.*)?$/); next }
+        inblk && /^[[:space:]]+writes_repository:[[:space:]]*true[[:space:]]*(#.*)?$/ { found = 1 }
+        END { exit(found ? 0 : 1) }' "$mf" 2>/dev/null
+}
+
+# _summaries_reader_can_fix — rc 0 when the stage about to read the summaries
+# can act on a finding: it declares it writes the repository, or there is no
+# reader manifest to ask (the cycle banner, ad-hoc callers — unchanged).
+# #1845 run 36332698182: a judge told to RESOLVE three findings edited a test.
+_summaries_reader_can_fix() {
+    local mf="${ZBUILD_PLUGIN_DIR:-}/manifest.yaml"
+    [[ -n "${ZBUILD_PLUGIN_DIR:-}" && -f "$mf" ]] || return 0
+    stage_declares_repo_writes "$mf"
+}
+
 stage_summaries_count() {
     local state_file="${1:-}" plugins_root="${2:-${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}}"
-    local n=0 r=0 rec verdict fault
+    local n=0 r=0 rec verdict fault owner _cstage
     if [[ -n "$state_file" && -s "$state_file" ]]; then
         while IFS= read -r rec; do
             [[ -n "$rec" ]] || continue
+            IFS='|' read -r _cstage verdict _ fault owner _ <<< "$rec"
+            # A stage never counts (or sees) its own earlier verdict.
+            [[ -n "${ZBUILD_CURRENT_STAGE:-}" && "$_cstage" == "$ZBUILD_CURRENT_STAGE" ]] && continue
             n=$((n + 1))
-            IFS='|' read -r _ verdict _ fault owner _ <<< "$rec"
             # #2163: RESOLVE counts what the reader must resolve — a failure the
             # engine routes elsewhere (fault=specification/scope) is context.
             case "$verdict" in fail|failed)
@@ -800,7 +828,7 @@ stage_summaries_count() {
                     # scope. An owned finding is SOMEBODY's obligation; dropping
                     # it here under-reported every cycle that had one.
                     r=$((r + 1))
-                else
+                elif _summaries_reader_can_fix; then
                     case "$fault" in specification|scope) ;; *) r=$((r + 1)) ;; esac
                 fi ;;
             esac
@@ -833,6 +861,10 @@ stage_summaries_prompt_block() {
     while IFS= read -r rec; do
         [[ -n "$rec" ]] || continue
         IFS='|' read -r stage verdict path fault owner errpath <<< "$rec"
+        # #1845 run 36274909946: issue-acceptance's own claim came back into
+        # its next prompt and it repeated it every iteration. Every judgment
+        # starts fresh — a stage is never shown its own earlier verdict.
+        [[ -n "${ZBUILD_CURRENT_STAGE:-}" && "$stage" == "$ZBUILD_CURRENT_STAGE" ]] && continue
         body="$(head -c "$_ZB_SUMMARY_MAX_BYTES" "$path" 2>/dev/null || true)"
         # #2183: a FAILING stage ships the errors it hit, bounded, verbatim. A
         # passing stage ships none — nobody needs the noise of a clean run.
@@ -880,7 +912,14 @@ stage_summaries_prompt_block() {
                     case "$fault" in
                         specification|scope)
                             chunk="$(printf '### %s (verdict: %s) — context only: a %s fault; the engine routes this, it is not yours to fix\n%s\n' "$stage" "$verdict" "$fault" "$body")" ;;
-                        *)  chunk="$(printf '### %s (verdict: %s) — RESOLVE these findings before completing\n%s\n' "$stage" "$verdict" "$body")" ;;
+                        *)  if _summaries_reader_can_fix; then
+                                chunk="$(printf '### %s (verdict: %s) — RESOLVE these findings before completing\n%s\n' "$stage" "$verdict" "$body")"
+                            else
+                                # A stage that may not change the repository
+                                # cannot resolve anything — telling it to made a
+                                # judge edit a test (#1845 run 36332698182).
+                                chunk="$(printf '### %s (verdict: %s) — context only: your job is to read and report, not to fix this\n%s\n' "$stage" "$verdict" "$body")"
+                            fi ;;
                     esac
                 fi ;;
             *)           chunk="$(printf '### %s (verdict: %s)\n%s\n' "$stage" "$verdict" "$body")" ;;
@@ -920,8 +959,16 @@ stage_summaries_prompt_block() {
 
     [[ -n "$rendered" ]] || return 0
     printf '%s\n\n' "$_ZB_STAGE_SUMMARIES_MARKER"
-    printf 'What each completed stage reported, newest content per stage. A stage\n'
-    printf 'marked RESOLVE blocks convergence — address its findings before you\n'
-    printf 'finish. The rest is context.\n\n'
+    printf 'What each completed stage reported, newest content per stage. '
+    if _summaries_reader_can_fix; then
+        printf 'A stage\n'
+        printf 'marked RESOLVE blocks convergence — address its findings before you\n'
+        printf 'finish. The rest is context.\n\n'
+    else
+        # A reader that may not change the repository is told what it is for,
+        # not what to fix (#1845 run 36332698182).
+        printf 'All of it\n'
+        printf 'is context for your own task: read and report — do not fix anything.\n\n'
+    fi
     printf '%s' "$rendered"
 }

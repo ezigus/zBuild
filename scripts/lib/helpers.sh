@@ -126,6 +126,14 @@ zbuild_run_tmpdir() {
     printf '%s' "$_rt"
 }
 
+# zbuild_stage_key <stage> — a stage name as one safe path component. The one
+# definition: the write boundary names its per-stage markers with it and the
+# verdict reader finds them with it, so the two cannot drift apart.
+zbuild_stage_key() {
+    local _k="${1:-stage}"
+    printf '%s' "${_k//[^A-Za-z0-9._-]/_}"
+}
+
 zbuild_engine_tmpdir() {
     if [[ -n "${ZBUILD_STAGE_SCRATCH:-}" && -d "${ZBUILD_STAGE_SCRATCH}" && -w "${ZBUILD_STAGE_SCRATCH}" ]]; then
         printf '%s' "$ZBUILD_STAGE_SCRATCH"; return 0
