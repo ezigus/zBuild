@@ -46,14 +46,12 @@ printf '0.001000\n' > "$PARENT_LEDGER"
 PARENT_LEDGER_GOLD="$TEST_TEMP_DIR/parent-ledger.gold"
 cp "$PARENT_LEDGER" "$PARENT_LEDGER_GOLD"
 
-# Source router; set token-cost variables so _route_update_ledger writes something.
+# Source router; set the provider-reported call cost so _route_update_ledger
+# writes something (ADR-003 amendment: cost comes from the provider, per call).
 source "$REPO_ROOT/core/router/route.sh"
 
 _prime_router_cost() {
-    _ROUTE_INPUT_TOKENS=1000
-    _ROUTE_OUTPUT_TOKENS=1000
-    _ROUTE_COST_IN=1.0
-    _ROUTE_COST_OUT=1.0
+    _ROUTE_CALL_COST=0.002
 }
 
 # ─── SPEC-1: ZBUILD_COST_LEDGER set → router writes to fence, not HOME ───────

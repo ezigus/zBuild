@@ -73,8 +73,8 @@ export ZBUILD_SCOPE_OVERRIDE=1
 unset ZBUILD_RUN_ID 2>/dev/null || true
 
 # Expected model IDs derived from config — never hardcoded (ADR-003)
-_T1_EXPECTED="$(jq -r '.tiers.T1.candidates[0].id' "$ZBUILD_MODELS_FILE")"
-_T2_EXPECTED="$(jq -r '.tiers.T2.candidates[0].id' "$ZBUILD_MODELS_FILE")"
+_T1_EXPECTED="$(jq -r '.tiers.T1.candidates[0].family' "$ZBUILD_MODELS_FILE")"
+_T2_EXPECTED="$(jq -r '.tiers.T2.candidates[0].family' "$ZBUILD_MODELS_FILE")"
 
 # ── T1 → selects T1 candidate model ─────────────────────────────────────────
 : > "$TEST_TEMP_DIR/last_model"

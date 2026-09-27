@@ -86,7 +86,9 @@ _ROUTER_TMP="$(mktemp -d)"
 trap "rm -rf '$_ROUTER_TMP'" EXIT
 
 mkdir -p "$_ROUTER_TMP/events" "$_ROUTER_TMP/bin" "$_ROUTER_TMP/home/.zbuild"
-printf '#!/usr/bin/env bash\necho "mock-response"\nexit 0\n' > "$_ROUTER_TMP/bin/claude"
+# The real CLI answers with a JSON envelope that reports the call's cost (ADR-003
+# amendment); a stub that did not would put router.cost.unknown in the golden.
+printf '#!/usr/bin/env bash\necho '"'"'{"type":"result","subtype":"success","result":"mock-response","total_cost_usd":0.001}'"'"'\nexit 0\n' > "$_ROUTER_TMP/bin/claude"
 chmod +x "$_ROUTER_TMP/bin/claude"
 
 OLDPATH="$PATH"
