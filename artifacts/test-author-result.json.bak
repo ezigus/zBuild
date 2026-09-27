@@ -1,0 +1,15 @@
+{
+  "result_contract": 2,
+  "verdict": "degraded",
+  "disposition": "timed_out",
+  "reason": "the model call failed (router_timeout) — no assertions were authored",
+  "data": {
+    "specs_covered": 9,
+    "owned_files": [
+      "plugins/agent/validate/tests/validate-test.sh"
+    ],
+    "testfiles": {
+      "plugins/agent/validate/tests/validate-test.sh": "339abf85f84586c585a5650371a28c448bbabdb4"
+    }
+  }
+}
