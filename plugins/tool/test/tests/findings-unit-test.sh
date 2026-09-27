@@ -24,6 +24,10 @@
 #     exist in the tree, or a path outside it
 # F8  a failure that points at nothing leaves `about` unset (the fault-class
 #     routing applies, as today)
+# F9  consecutive ✗ lines are two checks, not a check and its detail
+#     (claude-review on #2210)
+# F10 a staging path containing a space still names the failing file
+#     (claude-review on #2210)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -151,6 +155,29 @@ EOF
 )" "$T" 2>/dev/null || true)"
 assert_eq "[F7] no self, no missing file, nothing outside the tree" "" \
     "$(jq -r '.[0].points_at // [] | join(",")' <<< "$_pj" 2>/dev/null || echo "<unparseable>")"
+
+print_test_section "F9/F10: review findings on #2210"
+_f9="$(_test_failure_findings "$(cat <<EOF
+unit: FAIL $T/tests/unit/state-test.sh
+  ✗ check A
+  ✗ check B
+    expected: 0, got: 1
+unit: 0/2 passed
+EOF
+)" "$T" 2>/dev/null || true)"
+_f9_reason="$(jq -r '.[0].reason // empty' <<< "$_f9" 2>/dev/null || true)"
+if grep -qF "check B" <<< "$_f9_reason"; then
+    assert_fail "[F9] the next ✗ is not taken as the first one's detail" "reason: $_f9_reason"
+else
+    assert_contains "[F9] the next ✗ is not taken as the first one's detail" "$_f9_reason" "✗ check A"
+fi
+
+SP="$TEST_TEMP_DIR/staging with space"
+mkdir -p "$SP/tests/unit"
+printf '#!/usr/bin/env bash\n' > "$SP/tests/unit/state-test.sh"
+_f10="$(_test_failure_findings "$(printf 'unit: FAIL %s/tests/unit/state-test.sh\n  ✗ spaced\nunit: 0/1 passed\n' "$SP")" "$SP" 2>/dev/null || true)"
+assert_eq "[F10] a staging path with a space still names the file" "tests/unit/state-test.sh" \
+    "$(jq -r '.[0].file // empty' <<< "$_f10" 2>/dev/null || true)"
 
 print_test_section "F8: a failure that points at nothing sets no owner"
 cat > "$REPO/bin/fake-suite.sh" <<'EOF'

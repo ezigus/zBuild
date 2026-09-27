@@ -43,7 +43,10 @@ _test_failure_findings() {
             return ""
         }
         /^[a-z]+: (FAIL|TIMEOUT) / {
-            f = rel($3); kind = ($2 == "TIMEOUT") ? "T" : "F"
+            # The path is the rest of the line, not $3: a staging dir with a
+            # space would split it (claude-review on #2210).
+            path = $0; sub(/^[a-z]+: (FAIL|TIMEOUT) /, "", path)
+            f = rel(path); kind = ($2 == "TIMEOUT") ? "T" : "F"
             inblk = (f != ""); after_x = 0
             if (inblk) printf "%s\t%s\t\n", kind, f
             next
@@ -52,7 +55,8 @@ _test_failure_findings() {
         !inblk { next }
         {
             line = $0; sub(/^[[:space:]]+/, "", line)
-            if (after_x && line != "") { printf "D\t%s\t%s\n", f, line; after_x = 0 }
+            # A ✗ right after a ✗ is the next check, not the detail of the first.
+            if (after_x && line != "" && line !~ /^(✗|✘)/) { printf "D\t%s\t%s\n", f, line; after_x = 0 }
             if (line ~ /^(✗|✘)/) { printf "X\t%s\t%s\n", f, line; after_x = 1; next }
             if (line ~ /^✓/) { printf "P\t%s\t%s\n", f, line; next }
             if (line ~ /line [0-9]+: |command not found|syntax error|unbound variable/) printf "E\t%s\t%s\n", f, line
