@@ -59,7 +59,7 @@ case "\${MOCK_MODE:-json}" in
     nocost) jq -n '{type:"result",subtype:"success",result:"hello LOOP_COMPLETE",usage:{input_tokens:5,output_tokens:3}}' ;;
     plain)  echo "hello LOOP_COMPLETE" ;;
 esac
-exit 0
+exit "\${MOCK_RC:-0}"
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
 
@@ -122,6 +122,13 @@ printf 'do the thing\n' > "$TEST_TEMP_DIR/loop-prompt.txt"
 mkdir -p "$TEST_TEMP_DIR/cwd"
 ( MOCK_MODE=json route_to_model_loop T2 "$TEST_TEMP_DIR/loop-prompt.txt" "$TEST_TEMP_DIR/cwd" 1 >/dev/null 2>&1 )
 assert_eq "[SPEC-8] the loop iteration's cost is in the ledger" "0.123000" "$(tail -1 "$ZBUILD_COST_LEDGER" 2>/dev/null)"
+
+print_test_section "SPEC-10: a failed call that was billed reaches the ledger"
+_models '{"provider":"anthropic","family":"sonnet"}'
+: > "$ZBUILD_COST_LEDGER"; rm -f "$ZBUILD_STATE_DIR/runtime/cost-unknown"
+MOCK_MODE=json MOCK_RC=1 route_to_model T2 "ping" --skip-precondition >/dev/null 2>&1
+assert_eq "[SPEC-10] the call fails (rc=1)" "1" "$?"
+assert_eq "[SPEC-10] …and its provider-reported cost is still in the ledger" "0.123000" "$(tail -1 "$ZBUILD_COST_LEDGER" 2>/dev/null)"
 
 print_test_section "SPEC-9: models.json names providers and families, no prices"
 _real="$REPO_ROOT/config/models.json"

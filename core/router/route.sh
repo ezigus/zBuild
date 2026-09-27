@@ -812,7 +812,6 @@ _route_emit_model_route() {
         "applied=$_ROUTE_MODEL_ID" \
         "selector=${_ROUTE_OVERRIDE_SOURCE}" \
         "override_source=${_ROUTE_OVERRIDE_SOURCE}" \
-        "provider=${_ROUTE_PROVIDER:-}" \
         "family=${_ROUTE_FAMILY:-}" \
         "cache_eligible=${_ROUTE_CACHE_ELIGIBLE}" \
         "timeout_s=${secs}"
