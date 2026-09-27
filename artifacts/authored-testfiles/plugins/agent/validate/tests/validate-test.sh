@@ -327,6 +327,16 @@ ZBUILD_ARTIFACT_DIR="$TEST_TEMP_DIR/run18c/artifacts" ZBUILD_STAGE_INPUTS="" \
     validate_agent_run "" "" || _rc18c=$?
 assert_eq "[SPEC-18] missing state_file → validate_agent_run exactly rc=1" "1" "$_rc18c"
 
+# Path D: structural check — no non-comment line in plugin.sh contains an explicit
+# exit or return with a literal value >= 2 (covers exit paths not reached by the
+# behavioral paths above, e.g. JSON-write failures, guard clauses)
+if grep -vE '^\s*#' "$PLUGIN_FILE" | grep -qE '\b(exit|return) [2-9][0-9]*\b'; then
+    assert_fail "[SPEC-18] plugin.sh has no explicit exit/return with rc>=2 in non-comment lines" \
+        "Found exit/return >= 2 in non-comment lines of $PLUGIN_FILE"
+else
+    assert_pass "[SPEC-18] plugin.sh has no explicit exit/return with rc>=2 in non-comment lines"
+fi
+
 # ---------------------------------------------------------------------------
 # SPEC-19: manifest config.valid_verdicts declares exactly [healthy, error];
 #          validate-test.sh covers healthy (SPEC-11, SPEC-21) and error (SPEC-10,
