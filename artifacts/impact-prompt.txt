@@ -96,6 +96,8 @@ DESIGN SCOPE BLOCK:
 - plugins/agent/validate/plugin.sh
 - plugins/agent/validate/tests/validate-test.sh
 - tests/integration/deployed-template-e2e-test.sh
+- tests/integration/per-run-state-isolation-test.sh
+- tests/unit/sigpipe-antipattern-guard-test.sh
 - docs/wiki/plugins/validate.md
 - docs/adr/ADR-054-stage-contract.md
 - docs/adr/ADR-055-inter-stage-data-contract-v2.md
@@ -105,6 +107,9 @@ DESIGN SCOPE BLOCK:
 - scripts/lib/lint-disposition-words.sh
 - scripts/lib/lint-verdict-classify.sh
 - core/pipeline/disposition.sh
+
+## PRIOR IMPACT (a previous attempt on this issue — reference & refine; re-validate against the CURRENT design)
+{"schema_version":1,"verdict":"complete","missing":[]}
 
 
 
