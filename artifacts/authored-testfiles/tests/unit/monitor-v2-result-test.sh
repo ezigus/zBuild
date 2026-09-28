@@ -286,17 +286,51 @@ assert_eq "unparseable-reply path: disposition is unusable" "unusable" \
 
 # ─── SPEC-6/SPEC-21: SIGTERM/SIGINT during route_to_model writes disposition:interrupted, ─
 # reason:signal_interrupt, and monitor_stage_run returns rc=1 (NOT the raw signal rc=130) ─
+#
+# The signal must land on the real process executing monitor_stage_run — no mock
+# can fake a trap firing — so this forks a genuine child (bash "$_s6_child_script")
+# instead of sending kill -TERM "$$" from inside this script's own process. A
+# reverted implementation with no TERM trap takes the default disposition and
+# dies immediately; if that kill target were this script's own PID, it would
+# take down this whole file (and every assertion after it, including the
+# SPEC-8/9/15/22/23/24/25 sections below) before print_test_results ever ran —
+# the same #1611/#1660 self-signal hang class documented in
+# harness-term-trap-test.sh and _acceptance_timeout_prefix (acceptance-block.sh).
+# The gtimeout -k wrapper mirrors that same helper's fallback probing so a
+# genuinely stuck child is still bounded.
 print_test_section "SIGTERM during route_to_model writes disposition:interrupted, reason:signal_interrupt, and monitor_stage_run returns rc=1 (not raw signal rc)"
 
 rm -f "$ARTIFACTS_DIR/monitor-report.json"
-_s6_orig_route="$(declare -f route_to_model)"
-# shellcheck disable=SC2329
-route_to_model() { kill -TERM "$$"; return 130; }
-set +e
+
+_s6_timeout_bin=""
+if   command -v gtimeout >/dev/null 2>&1; then _s6_timeout_bin="gtimeout"
+elif command -v timeout  >/dev/null 2>&1; then _s6_timeout_bin="timeout"
+fi
+_s6_timeout_cmd=()
+if [[ -n "$_s6_timeout_bin" ]]; then
+    if "$_s6_timeout_bin" -k 1 1 true >/dev/null 2>&1; then
+        _s6_timeout_cmd=("$_s6_timeout_bin" -k 5 20)
+    else
+        _s6_timeout_cmd=("$_s6_timeout_bin" 20)
+    fi
+fi
+
+_s6_child_script="$TEST_TEMP_DIR/s6-sigterm-child.sh"
+cat > "$_s6_child_script" <<CHILD_EOF
+#!/usr/bin/env bash
+set -uo pipefail
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+source "$PLUGIN_DIR/plugin.sh"
+route_to_model() { kill -TERM "\$\$"; return 130; }
 monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
+exit "\$?"
+CHILD_EOF
+chmod +x "$_s6_child_script"
+
+set +e
+"${_s6_timeout_cmd[@]}" bash "$_s6_child_script" >/dev/null 2>&1
 _s6_rc=$?
 set -e
-eval "$_s6_orig_route"
 
 assert_eq "SIGTERM during route_to_model: monitor_stage_run returns rc=1 (not the raw signal rc=130)" \
     "1" "$_s6_rc"
