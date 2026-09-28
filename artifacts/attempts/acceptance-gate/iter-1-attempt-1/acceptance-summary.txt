@@ -1,0 +1,47 @@
+acceptance SPEC violations — SPEC-8/SPEC-9/SPEC-12/SPEC-13/SPEC-14 tagged as [guard] but the assertion FAILS at the merge-base — a guard must hold there by definition, so either the assertion contradicts its SPEC text or the SPEC is a mislabelled [change]
+NEGCTL PASS SPEC-1
+      design : intake_run exits rc=1 (not rc=2) on every failure path — no-goal/no-issue, closed issue, failed fetc…
+      asserts: assert_eq "[#1837/SPEC-1] unset ZBUILD_GOAL with no issue returns rc=1" "1" "$rc"
+NEGCTL PASS SPEC-2
+      design : ${artifact_dir}/intake-result.json is written on every terminal exit path (both success and all fail…
+      asserts: assert_file_exists "[#1837/SPEC-2] intake-result.json written on no-goal failure" \
+NEGCTL PASS SPEC-3
+      design : the result file carries result_contract:2, a verdict in {pass,fail}, a disposition in the engine's v…
+      asserts: assert_eq "[#1837/SPEC-3] result_contract is 2" \
+NEGCTL PASS SPEC-4
+      design : manifest declares provides.result_contract: 2
+      asserts: assert_eq "[#1837/SPEC-4] manifest declares provides.result_contract: 2" \
+NEGCTL PASS SPEC-5
+      design : manifest declares config.valid_verdicts: [pass, fail] (replacing the current [])
+      asserts: assert_contains "[#1837/SPEC-5] valid_verdicts includes pass" "$_verdicts_line" "pass"
+NEGCTL PASS SPEC-6
+      design : intake-result.json appears in manifest outputs with primary: true; scope_manifest no longer has prim…
+      asserts: assert_contains "[#1837/SPEC-6] manifest outputs declares intake-result.json" \
+NEGCTL PASS SPEC-7
+      design : manifest declares config.router.timeout_s and config.router.max_turns; manifest_router_knob returns …
+      asserts: assert_pass "[#1837/SPEC-7] manifest_router_knob returns non-empty for timeout_s"
+NEGCTL FAIL SPEC-8 guard_regressed
+      design : scope-manifest.md and intake.md content on a passing run is byte-identical to a v1 baseline fixture
+      asserts: assert_pass "[#1837/SPEC-8] scope-manifest.md matches v1 baseline fixture"
+NEGCTL FAIL SPEC-9 guard_regressed
+      design : plugin.result event with plugin=intake is emitted on every success run
+      asserts: assert_pass "[#1837/SPEC-9] plugin.result event with plugin=intake emitted on success"
+NEGCTL PASS SPEC-10
+      design : plugin.sh references ZBUILD_ARTIFACT_DIR when resolving artifact_dir — a grep assertion confirms the…
+      asserts: assert_pass "[#1837/SPEC-10] plugin.sh references ZBUILD_ARTIFACT_DIR"
+NEGCTL PASS SPEC-11
+      design : manifest hooks section contains a comment explicitly recording that intake holds no live resources a…
+      asserts: assert_pass "[#1837/SPEC-11] manifest hooks section records cleanup-hook absence"
+NEGCTL FAIL SPEC-12 guard_regressed
+      design : manifest provides.role: intake is declared and retained after migration (ADR-009/#1704)
+      asserts: assert_eq "[#1837/SPEC-12] manifest provides.role: intake" "intake" "$_mf_role"
+NEGCTL FAIL SPEC-13 guard_regressed
+      design : manifest provides.events lists at least the 17 intake.* events present before migration; no event is…
+      asserts: assert_pass "[#1837/SPEC-13] manifest declares at least 17 intake.* events (found ${_event_count})"
+NEGCTL FAIL SPEC-14 guard_regressed
+      design : when template_stage_router_timeout_s() is defined and returns a value that differs from the manifest…
+      asserts: assert_pass "[#1837/SPEC-14] template timeout_s=999 wins over manifest config.router.timeout_s=${_sp…
+NEGCTL PASS SPEC-15
+      design : on a successful run, intake-result.json carries a data object with goal_len (integer, character coun…
+      asserts: assert_pass "[#1837/SPEC-15] data.goal_len is an integer"
+REACHABILITY PASS plugins/agent/intake/manifest.yaml

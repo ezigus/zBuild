@@ -1,0 +1,68 @@
+### plugins/agent/intake/manifest.yaml reverted plugins/agent/intake/tests/intake-test.sh
+
+[38;2;0;212;255m[1m  plugin: intake (goal capture + scope manifest — issue #85)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m intake manifest validates
+  [38;2;74;222;128m✓[0m intake discovered in plugin registry
+  [38;2;74;222;128m✓[0m intake manifest outputs[0].path contains scope-manifest.md
+  [38;2;248;113;113m✗[0m [#1837/SPEC-4] manifest declares provides.result_contract: 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-5] valid_verdicts includes pass
+    [2moutput missing: pass[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-5] valid_verdicts includes fail
+    [2moutput missing: fail[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-5] valid_verdicts must not be empty []
+### plugins/agent/intake/manifest.yaml head plugins/agent/intake/tests/intake-test.sh
+
+[38;2;0;212;255m[1m  plugin: intake (goal capture + scope manifest — issue #85)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m intake manifest validates
+  [38;2;74;222;128m✓[0m intake discovered in plugin registry
+  [38;2;74;222;128m✓[0m intake manifest outputs[0].path contains scope-manifest.md
+  [38;2;74;222;128m✓[0m [#1837/SPEC-4] manifest declares provides.result_contract: 2
+  [38;2;74;222;128m✓[0m [#1837/SPEC-5] valid_verdicts includes pass
+  [38;2;74;222;128m✓[0m [#1837/SPEC-5] valid_verdicts includes fail
+  [38;2;74;222;128m✓[0m [#1837/SPEC-5] valid_verdicts is not empty []
+  [38;2;74;222;128m✓[0m [#1837/SPEC-6] manifest outputs declares intake-result.json
+  [38;2;74;222;128m✓[0m [#1837/SPEC-6] intake-result.json output has primary: true
+  [38;2;74;222;128m✓[0m [#1837/SPEC-6] scope_manifest no longer has primary: true
+  [38;2;74;222;128m✓[0m [#1837/SPEC-7] manifest_router_knob returns non-empty for timeout_s
+  [38;2;74;222;128m✓[0m [#1837/SPEC-7] manifest_router_knob returns non-empty for max_turns
+  [38;2;74;222;128m✓[0m [#1837/SPEC-10] plugin.sh references ZBUILD_ARTIFACT_DIR
+  [38;2;74;222;128m✓[0m [#1837/SPEC-11] manifest hooks section records cleanup-hook absence
+  [38;2;74;222;128m✓[0m [#1837/SPEC-12] manifest provides.role: intake
+  [38;2;74;222;128m✓[0m [#1837/SPEC-13] manifest declares at least 17 intake.* events (found 20)
+  [38;2;74;222;128m✓[0m [#1837/SPEC-1] unset ZBUILD_GOAL with no issue returns rc=1
+  [38;2;74;222;128m✓[0m stderr mentions ZBUILD_GOAL
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on no-goal failure
+  [38;2;74;222;128m✓[0m valid run returns rc=0
+  [38;2;74;222;128m✓[0m state/intake.md created
+  [38;2;74;222;128m✓[0m intake.md contains sanitized goal
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on success
+  [38;2;74;222;128m✓[0m [#1837/SPEC-3] result_contract is 2
+  [38;2;74;222;128m✓[0m [#1837/SPEC-3] verdict is in {pass,fail}
+  [38;2;74;222;128m✓[0m [#1837/SPEC-3] disposition is non-empty
+  [38;2;74;222;128m✓[0m [#1837/SPEC-3] reason is non-empty
+  [38;2;74;222;128m✓[0m [#1837/SPEC-15] data.goal_len is an integer
+  [38;2;74;222;128m✓[0m [#1837/SPEC-15] data.platform_count is an integer
+  [38;2;74;222;128m✓[0m sentinel-strip run returns rc=0
+  [38;2;74;222;128m✓[0m intake.md has original prefix
+  [38;2;74;222;128m✓[0m sentinel ## Plan Summary stripped from intake.md
+  [38;2;74;222;128m✓[0m [#1837/SPEC-1] empty-after-sanitization returns rc=1
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on empty-after-sanitization
+  [38;2;74;222;128m✓[0m [#1837/SPEC-1] missing state_file returns rc=1
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on missing-state-file
+  [38;2;74;222;128m✓[0m platform-aware run returns rc=0
+  [38;2;74;222;128m✓[0m scope-manifest.md created
+  [38;2;74;222;128m✓[0m scope-manifest has + ios/
+  [38;2;74;222;128m✓[0m scope-manifest has + node/
+  [38;2;74;222;128m✓[0m scope-manifest entries are + lines
+  [38;2;74;222;128m✓[0m injection guard run returns rc=0
+  [38;2;74;222;128m✓[0m valid platform ok-platform written
+  [38;2;74;222;128m✓[0m path traversal filtered from scope-manifest
+  [38;2;74;222;128m✓[0m generic fallback run returns rc=0
+  [38;2;74;222;128m✓[0m generic fallback writes + ./
+  [golden] MISSING: /home/runner/.zbuild/repos/ezigus/zBuild/issues/1837/worktree/tests/golden/intake-scope-manifest-v1.golden (run with UPDATE_GOLDEN=1 to create)
+  [38;2;248;113;113m✗[0m [#1837/SPEC-8] scope-manifest.md matches v1 baseline fixture
