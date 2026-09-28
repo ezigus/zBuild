@@ -1,0 +1,44 @@
+{
+  "schema_version": 4,
+  "result_contract": 2,
+  "issue": 1837,
+  "files_changed": [
+    "plugins/agent/intake/lib/sanitize.sh",
+    "plugins/agent/intake/manifest.yaml",
+    "plugins/agent/intake/plugin.sh"
+  ],
+  "lines_added": 75,
+  "lines_removed": 22,
+  "diff_patch_path": "/home/runner/work/_temp/zbuild-state/artifacts/diff.patch",
+  "iterations": 3,
+  "terminated_reason": "done_sentinel",
+  "verdict": "scope_violation",
+  "disposition": "complete",
+  "reason": "scope_violation",
+  "scope_violation": true,
+  "scope_violations": [
+    "tests/golden/intake-goal-v1.golden",
+    "tests/golden/intake-scope-manifest-v1.golden"
+  ],
+  "loop_input_tokens": 35,
+  "loop_output_tokens": 49315,
+  "notes": "Build stage completed. Diff written to artifact; not applied.",
+  "scope_expansion_request": {
+    "files": [
+      {
+        "path": "tests/golden/intake-goal-v1.golden",
+        "category": "collateral_tests",
+        "created": true,
+        "evidence": "",
+        "reason": "build created new collateral artifact while implementing the plan"
+      },
+      {
+        "path": "tests/golden/intake-scope-manifest-v1.golden",
+        "category": "collateral_tests",
+        "created": true,
+        "evidence": "",
+        "reason": "build created new collateral artifact while implementing the plan"
+      }
+    ]
+  }
+}
