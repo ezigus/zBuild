@@ -1,0 +1,158 @@
+### SPEC-18 baseline plugins/agent/monitor/tests/monitor-test.sh
+
+[38;2;0;212;255m[1m  plugin: monitor (kind:agent, one-shot health assessment — issue #758)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[SPEC-2] dry-run writes mock monitor-report.json (verdict embedded) without route_to_model[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] dry-run run returns rc=0
+  [38;2;74;222;128m✓[0m [SPEC-2] monitor-report.json created in dry-run
+  [38;2;74;222;128m✓[0m [SPEC-2] dry-run monitor-report.json has .verdict=pass (embedded)
+  [38;2;74;222;128m✓[0m [SPEC-2] dry-run does NOT call route_to_model
+
+  [38;2;0;212;255m[SPEC-3] live run: mocked route_to_model rc=0 → monitor-report.json with .verdict=pass[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] live run returns rc=0
+  [38;2;74;222;128m✓[0m [SPEC-3] monitor-report.json created
+  [38;2;74;222;128m✓[0m [SPEC-3] monitor-report.json .verdict=pass on healthy response
+  [38;2;74;222;128m✓[0m [SPEC-3] appended bare pass object does NOT override the full report
+
+  [38;2;0;212;255m[SPEC-4] route_to_model failure → primary monitor-report.json (degraded) STILL written, non-zero rc[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] monitor-report.json (primary) written on model error
+  [38;2;74;222;128m✓[0m [SPEC-4] monitor-report.json .verdict=degraded on model error
+  [38;2;74;222;128m✓[0m [SPEC-4] plugin returns non-zero rc on model error (rc=1)
+
+  [38;2;0;212;255m[SPEC-6] monitor's manifest declares monitor.started, monitor.check, monitor.alert[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] monitor manifest exists
+  [38;2;74;222;128m✓[0m [SPEC-6] manifest declares monitor.started under provides.events
+  [38;2;74;222;128m✓[0m [SPEC-6] monitor.started is in the composed known set
+  [38;2;74;222;128m✓[0m [SPEC-6] manifest declares monitor.check under provides.events
+  [38;2;74;222;128m✓[0m [SPEC-6] monitor.check is in the composed known set
+  [38;2;74;222;128m✓[0m [SPEC-6] manifest declares monitor.alert under provides.events
+  [38;2;74;222;128m✓[0m [SPEC-6] monitor.alert is in the composed known set
+
+  [38;2;0;212;255m[SPEC-7] validate_manifest passes on plugins/agent/monitor/manifest.yaml[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] validate_manifest returns rc=0 for monitor manifest.yaml
+
+  [38;2;0;212;255m[SPEC-8] manifest.yaml has id=monitor, kind=agent, tier_default=T1[0m
+  [38;2;74;222;128m✓[0m [SPEC-8] manifest id=monitor
+  [38;2;74;222;128m✓[0m [SPEC-8] manifest kind=agent
+  [38;2;74;222;128m✓[0m [SPEC-8] manifest config.tier_default=T1
+
+  [38;2;0;212;255m[SPEC-9] plugin.sh contains legacy-citation for pipeline-stages-monitor.sh:150[0m
+  [38;2;74;222;128m✓[0m [SPEC-9] plugin.sh contains legacy-citation pipeline-stages-monitor.sh:150
+
+  [38;2;0;212;255m[#1847/SPEC-10] ZBUILD_DRY_RUN=1 still returns rc=0 and writes verdict=pass without calling route_to_model[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-10] dry-run still returns rc=0
+  [38;2;74;222;128m✓[0m [#1847/SPEC-10] dry-run still does NOT call route_to_model
+  [38;2;74;222;128m✓[0m [#1847/SPEC-10] dry-run still writes verdict=pass
+
+  [38;2;0;212;255m[#1847/SPEC-11] config.valid_verdicts remains exactly [pass, degraded][0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-11] manifest valid_verdicts has exactly 2 entries
+  [38;2;74;222;128m✓[0m [#1847/SPEC-11] manifest valid_verdicts is exactly [pass, degraded]
+
+  [38;2;0;212;255m[#1847/SPEC-12] inputs: still declares only deploy_result and pr_url, both required:false, no restated source/path/type[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-12] inputs: declares exactly 2 input ids
+  [38;2;74;222;128m✓[0m [#1847/SPEC-12] inputs: both entries have required:false
+  [38;2;74;222;128m✓[0m [#1847/SPEC-12] inputs: no restated source/path/type keys
+
+  [38;2;0;212;255m[#1847/SPEC-17] manifest still declares provides.events [monitor.alert, monitor.check, monitor.started]; plugin.sh still emits all three[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-17] manifest still declares monitor.started under provides.events
+  [38;2;74;222;128m✓[0m [#1847/SPEC-17] plugin.sh still emits monitor.started
+  [38;2;74;222;128m✓[0m [#1847/SPEC-17] manifest still declares monitor.check under provides.events
+  [38;2;74;222;128m✓[0m [#1847/SPEC-17] plugin.sh still emits monitor.check
+  [38;2;74;222;128m✓[0m [#1847/SPEC-17] manifest still declares monitor.alert under provides.events
+  [38;2;74;222;128m✓[0m [#1847/SPEC-17] plugin.sh still emits monitor.alert
+
+  [38;2;0;212;255m[#1847/SPEC-18] deploy_result/pr_url are read via ZBUILD_STAGE_INPUTS — no hardcoded artifacts_dir fallback remains[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-18] ZBUILD_STAGE_INPUTS-resolved run returns rc=0
+  [38;2;74;222;128m✓[0m [#1847/SPEC-18] prompt reflects the ZBUILD_STAGE_INPUTS-resolved deploy_result content
+  [38;2;74;222;128m✓[0m [#1847/SPEC-18] prompt reflects the ZBUILD_STAGE_INPUTS-resolved pr_url content
+  [38;2;248;113;113m✗[0m [#1847/SPEC-18] plugin.sh contains no hardcoded artifacts_dir deploy-result/pr-url construction
+    [2mexpected: , got: 76:    local deploy_result_json="$artifacts_dir/deploy-result.json"
+77:    local pr_url_txt="$artifacts_dir/pr-url.txt"[0m
+  [38;2;248;113;113m✗[0m [#1847/SPEC-18] with no ZBUILD_STAGE_INPUTS entry, the artifacts_dir copies must NOT reach the prompt (no fallback path)
+    [2mmarker leaked into prompt[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m2 of 42 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1847/SPEC-18] plugin.sh contains no hardcoded artifacts_dir deploy-result/pr-url construction
+  [38;2;248;113;113m✗[0m [#1847/SPEC-18] with no ZBUILD_STAGE_INPUTS entry, the artifacts_dir copies must NOT reach the prompt (no fallback path)
+
+### SPEC-18 head plugins/agent/monitor/tests/monitor-test.sh
+
+[38;2;0;212;255m[1m  plugin: monitor (kind:agent, one-shot health assessment — issue #758)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[SPEC-2] dry-run writes mock monitor-report.json (verdict embedded) without route_to_model[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] dry-run run returns rc=0
+  [38;2;74;222;128m✓[0m [SPEC-2] monitor-report.json created in dry-run
+  [38;2;74;222;128m✓[0m [SPEC-2] dry-run monitor-report.json has .verdict=pass (embedded)
+  [38;2;74;222;128m✓[0m [SPEC-2] dry-run does NOT call route_to_model
+
+  [38;2;0;212;255m[SPEC-3] live run: mocked route_to_model rc=0 → monitor-report.json with .verdict=pass[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] live run returns rc=0
+  [38;2;74;222;128m✓[0m [SPEC-3] monitor-report.json created
+  [38;2;74;222;128m✓[0m [SPEC-3] monitor-report.json .verdict=pass on healthy response
+  [38;2;74;222;128m✓[0m [SPEC-3] appended bare pass object does NOT override the full report
+
+  [38;2;0;212;255m[SPEC-4] route_to_model failure → primary monitor-report.json (degraded) STILL written, non-zero rc[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] monitor-report.json (primary) written on model error
+  [38;2;74;222;128m✓[0m [SPEC-4] monitor-report.json .verdict=degraded on model error
+  [38;2;74;222;128m✓[0m [SPEC-4] plugin returns non-zero rc on model error (rc=1)
+
+  [38;2;0;212;255m[SPEC-6] monitor's manifest declares monitor.started, monitor.check, monitor.alert[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] monitor manifest exists
+  [38;2;74;222;128m✓[0m [SPEC-6] manifest declares monitor.started under provides.events
+  [38;2;74;222;128m✓[0m [SPEC-6] monitor.started is in the composed known set
+  [38;2;74;222;128m✓[0m [SPEC-6] manifest declares monitor.check under provides.events
+  [38;2;74;222;128m✓[0m [SPEC-6] monitor.check is in the composed known set
+  [38;2;74;222;128m✓[0m [SPEC-6] manifest declares monitor.alert under provides.events
+  [38;2;74;222;128m✓[0m [SPEC-6] monitor.alert is in the composed known set
+
+  [38;2;0;212;255m[SPEC-7] validate_manifest passes on plugins/agent/monitor/manifest.yaml[0m
+  [38;2;74;222;128m✓[0m [SPEC-7] validate_manifest returns rc=0 for monitor manifest.yaml
+
+  [38;2;0;212;255m[SPEC-8] manifest.yaml has id=monitor, kind=agent, tier_default=T1[0m
+  [38;2;74;222;128m✓[0m [SPEC-8] manifest id=monitor
+  [38;2;74;222;128m✓[0m [SPEC-8] manifest kind=agent
+  [38;2;74;222;128m✓[0m [SPEC-8] manifest config.tier_default=T1
+
+  [38;2;0;212;255m[SPEC-9] plugin.sh contains legacy-citation for pipeline-stages-monitor.sh:150[0m
+  [38;2;74;222;128m✓[0m [SPEC-9] plugin.sh contains legacy-citation pipeline-stages-monitor.sh:150
+
+  [38;2;0;212;255m[#1847/SPEC-10] ZBUILD_DRY_RUN=1 still returns rc=0 and writes verdict=pass without calling route_to_model[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-10] dry-run still returns rc=0
+  [38;2;74;222;128m✓[0m [#1847/SPEC-10] dry-run still does NOT call route_to_model
+  [38;2;74;222;128m✓[0m [#1847/SPEC-10] dry-run still writes verdict=pass
+
+  [38;2;0;212;255m[#1847/SPEC-11] config.valid_verdicts remains exactly [pass, degraded][0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-11] manifest valid_verdicts has exactly 2 entries
+  [38;2;74;222;128m✓[0m [#1847/SPEC-11] manifest valid_verdicts is exactly [pass, degraded]
+
+  [38;2;0;212;255m[#1847/SPEC-12] inputs: still declares only deploy_result and pr_url, both required:false, no restated source/path/type[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-12] inputs: declares exactly 2 input ids
+  [38;2;74;222;128m✓[0m [#1847/SPEC-12] inputs: both entries have required:false
+  [38;2;74;222;128m✓[0m [#1847/SPEC-12] inputs: no restated source/path/type keys
+
+  [38;2;0;212;255m[#1847/SPEC-17] manifest still declares provides.events [monitor.alert, monitor.check, monitor.started]; plugin.sh still emits all three[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-17] manifest still declares monitor.started under provides.events
+  [38;2;74;222;128m✓[0m [#1847/SPEC-17] plugin.sh still emits monitor.started
+  [38;2;74;222;128m✓[0m [#1847/SPEC-17] manifest still declares monitor.check under provides.events
+  [38;2;74;222;128m✓[0m [#1847/SPEC-17] plugin.sh still emits monitor.check
+  [38;2;74;222;128m✓[0m [#1847/SPEC-17] manifest still declares monitor.alert under provides.events
+  [38;2;74;222;128m✓[0m [#1847/SPEC-17] plugin.sh still emits monitor.alert
+
+  [38;2;0;212;255m[#1847/SPEC-18] deploy_result/pr_url are read via ZBUILD_STAGE_INPUTS — no hardcoded artifacts_dir fallback remains[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-18] ZBUILD_STAGE_INPUTS-resolved run returns rc=0
+  [38;2;74;222;128m✓[0m [#1847/SPEC-18] prompt reflects the ZBUILD_STAGE_INPUTS-resolved deploy_result content
+  [38;2;74;222;128m✓[0m [#1847/SPEC-18] prompt reflects the ZBUILD_STAGE_INPUTS-resolved pr_url content
+  [38;2;74;222;128m✓[0m [#1847/SPEC-18] plugin.sh contains no hardcoded artifacts_dir deploy-result/pr-url construction
+  [38;2;74;222;128m✓[0m [#1847/SPEC-18] with no ZBUILD_STAGE_INPUTS entry, deploy_result/pr_url are treated as not provided
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 42 tests passed[0m
+

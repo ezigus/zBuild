@@ -1,0 +1,177 @@
+### SPEC-4 baseline tests/unit/monitor-v2-result-test.sh
+
+[38;2;0;212;255m[1m  monitor plugin: v2 result contract (issue #1847)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1847/SPEC-1] manifest declares provides.result_contract: 2[0m
+  [38;2;248;113;113m✗[0m [#1847/SPEC-1] manifest provides.result_contract is 2
+    [2mexpected: 2, got: [0m
+
+  [38;2;0;212;255m[#1847/SPEC-7] manifest declares config.router timeout_s:300, max_turns:10[0m
+  [38;2;248;113;113m✗[0m [#1847/SPEC-7] manifest config.router.timeout_s is 300
+    [2mexpected: 300, got: [0m
+  [38;2;248;113;113m✗[0m [#1847/SPEC-7] manifest config.router.max_turns is 10
+    [2mexpected: 10, got: [0m
+
+  [38;2;0;212;255m[#1847/SPEC-11] config.valid_verdicts remains exactly [pass, degraded][0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-11] valid_verdicts has exactly 2 entries
+  [38;2;74;222;128m✓[0m [#1847/SPEC-11] valid_verdicts includes pass
+  [38;2;74;222;128m✓[0m [#1847/SPEC-11] valid_verdicts includes degraded
+
+  [38;2;0;212;255m[#1847/SPEC-12] inputs: declares only deploy_result and pr_url, both required:false, no source/path/type[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-12] inputs: declares exactly 2 input ids
+  [38;2;74;222;128m✓[0m [#1847/SPEC-12] inputs: declares deploy_result
+  [38;2;74;222;128m✓[0m [#1847/SPEC-12] inputs: declares pr_url
+  [38;2;74;222;128m✓[0m [#1847/SPEC-12] inputs: both entries have required:false
+  [38;2;74;222;128m✓[0m [#1847/SPEC-12] inputs: no restated source/path/type keys
+
+  [38;2;0;212;255m[#1847/SPEC-15] outputs: block declares exactly one primary:true entry (monitor_report)[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-15] manifest has exactly one primary:true output
+  [38;2;74;222;128m✓[0m [#1847/SPEC-15] the primary:true output is monitor_report
+
+  [38;2;0;212;255m[#1847/SPEC-16] manifest still declares provides.role: monitor[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-16] provides.role is monitor
+
+  [38;2;0;212;255m[#1847/SPEC-2] dry-run monitor-report.json carries result_contract:2, disposition:complete[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-2] dry-run returns rc=0
+  [38;2;74;222;128m✓[0m [#1847/SPEC-2] dry-run writes monitor-report.json
+  [38;2;248;113;113m✗[0m [#1847/SPEC-2] dry-run: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [#1847/SPEC-2] dry-run: disposition is complete
+    [2mexpected: complete, got: [0m
+  [38;2;248;113;113m✗[0m [#1847/SPEC-20] dry-run: reason key is present and empty
+    [2mexpected: , got: MISSING_KEY[0m
+
+  [38;2;0;212;255m[#1847/SPEC-3] live pass-path monitor-report.json carries result_contract:2, disposition:complete, verdict:pass[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-3] live pass path returns rc=0
+  [38;2;74;222;128m✓[0m [#1847/SPEC-3] live pass path writes monitor-report.json
+  [38;2;248;113;113m✗[0m [#1847/SPEC-3] live pass path: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [#1847/SPEC-3] live pass path: disposition is complete
+    [2mexpected: complete, got: [0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-3] live pass path: verdict is still pass (unchanged)
+  [38;2;248;113;113m✗[0m [#1847/SPEC-20] live pass path: reason key is present and empty
+    [2mexpected: , got: MISSING_KEY[0m
+
+  [38;2;0;212;255m[#1847/SPEC-20] live degraded-verdict path: disposition:complete, reason:"" (verdict itself carries the degradation)[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-20] live degraded-verdict path writes monitor-report.json
+  [38;2;74;222;128m✓[0m [#1847/SPEC-20] live degraded-verdict path: verdict is degraded
+  [38;2;248;113;113m✗[0m [#1847/SPEC-20] live degraded-verdict path: disposition is still complete
+    [2mexpected: complete, got: [0m
+  [38;2;248;113;113m✗[0m [#1847/SPEC-20] live degraded-verdict path: reason key is present and empty
+    [2mexpected: , got: MISSING_KEY[0m
+
+  [38;2;0;212;255m[#1847/SPEC-4] route_to_model failure path carries a disposition derived via router_reason_disposition[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-4] router-failure path writes monitor-report.json
+  [38;2;248;113;113m✗[0m [#1847/SPEC-4] router-failure path: disposition is unavailable (router_reason_disposition mapping)
+    [2mexpected: unavailable, got: [0m
+  [38;2;248;113;113m✗[0m [#1847/SPEC-4] router-failure path: reason names the classified router reason
+    [2mexpected: router_rc_nonzero, got: [0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-4] router-failure path returns non-zero rc
+
+  [38;2;0;212;255m[#1847/SPEC-5] unparseable/schema-gate-failed reply path carries disposition:unusable[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-5] unparseable-reply path writes monitor-report.json
+  [38;2;248;113;113m✗[0m [#1847/SPEC-5] unparseable-reply path: disposition is unusable
+    [2mexpected: unusable, got: [0m
+
+  [38;2;0;212;255m[#1847/SPEC-6] SIGTERM during route_to_model writes disposition:interrupted, reason:signal_interrupt, and monitor_stage_run returns rc=1 (not raw signal rc)[0m
+### SPEC-4 head tests/unit/monitor-v2-result-test.sh
+
+[38;2;0;212;255m[1m  monitor plugin: v2 result contract (issue #1847)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1847/SPEC-1] manifest declares provides.result_contract: 2[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-1] manifest provides.result_contract is 2
+
+  [38;2;0;212;255m[#1847/SPEC-7] manifest declares config.router timeout_s:300, max_turns:10[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-7] manifest config.router.timeout_s is 300
+  [38;2;74;222;128m✓[0m [#1847/SPEC-7] manifest config.router.max_turns is 10
+
+  [38;2;0;212;255m[#1847/SPEC-11] config.valid_verdicts remains exactly [pass, degraded][0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-11] valid_verdicts has exactly 2 entries
+  [38;2;74;222;128m✓[0m [#1847/SPEC-11] valid_verdicts includes pass
+  [38;2;74;222;128m✓[0m [#1847/SPEC-11] valid_verdicts includes degraded
+
+  [38;2;0;212;255m[#1847/SPEC-12] inputs: declares only deploy_result and pr_url, both required:false, no source/path/type[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-12] inputs: declares exactly 2 input ids
+  [38;2;74;222;128m✓[0m [#1847/SPEC-12] inputs: declares deploy_result
+  [38;2;74;222;128m✓[0m [#1847/SPEC-12] inputs: declares pr_url
+  [38;2;74;222;128m✓[0m [#1847/SPEC-12] inputs: both entries have required:false
+  [38;2;74;222;128m✓[0m [#1847/SPEC-12] inputs: no restated source/path/type keys
+
+  [38;2;0;212;255m[#1847/SPEC-15] outputs: block declares exactly one primary:true entry (monitor_report)[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-15] manifest has exactly one primary:true output
+  [38;2;74;222;128m✓[0m [#1847/SPEC-15] the primary:true output is monitor_report
+
+  [38;2;0;212;255m[#1847/SPEC-16] manifest still declares provides.role: monitor[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-16] provides.role is monitor
+
+  [38;2;0;212;255m[#1847/SPEC-2] dry-run monitor-report.json carries result_contract:2, disposition:complete[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-2] dry-run returns rc=0
+  [38;2;74;222;128m✓[0m [#1847/SPEC-2] dry-run writes monitor-report.json
+  [38;2;74;222;128m✓[0m [#1847/SPEC-2] dry-run: result_contract is 2
+  [38;2;74;222;128m✓[0m [#1847/SPEC-2] dry-run: disposition is complete
+  [38;2;74;222;128m✓[0m [#1847/SPEC-20] dry-run: reason key is present and empty
+
+  [38;2;0;212;255m[#1847/SPEC-3] live pass-path monitor-report.json carries result_contract:2, disposition:complete, verdict:pass[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-3] live pass path returns rc=0
+  [38;2;74;222;128m✓[0m [#1847/SPEC-3] live pass path writes monitor-report.json
+  [38;2;74;222;128m✓[0m [#1847/SPEC-3] live pass path: result_contract is 2
+  [38;2;74;222;128m✓[0m [#1847/SPEC-3] live pass path: disposition is complete
+  [38;2;74;222;128m✓[0m [#1847/SPEC-3] live pass path: verdict is still pass (unchanged)
+  [38;2;74;222;128m✓[0m [#1847/SPEC-20] live pass path: reason key is present and empty
+
+  [38;2;0;212;255m[#1847/SPEC-20] live degraded-verdict path: disposition:complete, reason:"" (verdict itself carries the degradation)[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-20] live degraded-verdict path writes monitor-report.json
+  [38;2;74;222;128m✓[0m [#1847/SPEC-20] live degraded-verdict path: verdict is degraded
+  [38;2;74;222;128m✓[0m [#1847/SPEC-20] live degraded-verdict path: disposition is still complete
+  [38;2;74;222;128m✓[0m [#1847/SPEC-20] live degraded-verdict path: reason key is present and empty
+
+  [38;2;0;212;255m[#1847/SPEC-4] route_to_model failure path carries a disposition derived via router_reason_disposition[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-4] router-failure path writes monitor-report.json
+  [38;2;74;222;128m✓[0m [#1847/SPEC-4] router-failure path: disposition is unavailable (router_reason_disposition mapping)
+  [38;2;74;222;128m✓[0m [#1847/SPEC-4] router-failure path: reason names the classified router reason
+  [38;2;74;222;128m✓[0m [#1847/SPEC-4] router-failure path returns non-zero rc
+
+  [38;2;0;212;255m[#1847/SPEC-5] unparseable/schema-gate-failed reply path carries disposition:unusable[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-5] unparseable-reply path writes monitor-report.json
+  [38;2;74;222;128m✓[0m [#1847/SPEC-5] unparseable-reply path: disposition is unusable
+
+  [38;2;0;212;255m[#1847/SPEC-6] SIGTERM during route_to_model writes disposition:interrupted, reason:signal_interrupt, and monitor_stage_run returns rc=1 (not raw signal rc)[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-6] SIGTERM during route_to_model: monitor_stage_run returns rc=1 (not the raw signal rc=130)
+  [38;2;74;222;128m✓[0m [#1847/SPEC-6] monitor-report.json written on interrupt
+  [38;2;74;222;128m✓[0m [#1847/SPEC-6] disposition is interrupted
+  [38;2;74;222;128m✓[0m [#1847/SPEC-6] reason is signal_interrupt
+
+  [38;2;0;212;255m[#1847/SPEC-8/SPEC-9] assembled prompt contains TURN BUDGET and WALL CLOCK BUDGET blocks reflecting the manifest's router budget[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-8] prompt contains a TURN BUDGET block reflecting the manifest's max_turns:10
+  [38;2;74;222;128m✓[0m [#1847/SPEC-9] prompt contains a WALL CLOCK BUDGET block reflecting the manifest's timeout_s:300
+
+  [38;2;0;212;255m[#1847/SPEC-14] ZBUILD_STAGE_INPUTS-resolved deploy_result/pr_url content reaches the prompt instead of the artifacts_dir copies[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-14] prompt reflects the ZBUILD_STAGE_INPUTS-resolved deploy_result/pr_url content
+  [38;2;74;222;128m✓[0m [#1847/SPEC-14] prompt does not reflect the artifacts_dir decoy when ZBUILD_STAGE_INPUTS is present
+
+  [38;2;0;212;255m[#1847/SPEC-18] plugin.sh has no hardcoded artifacts_dir/deploy-result.json or artifacts_dir/pr-url.txt construction[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-18] plugin.sh contains no hardcoded artifacts_dir deploy-result/pr-url construction
+
+  [38;2;0;212;255m[#1847/SPEC-18] ZBUILD_STAGE_INPUTS unset with no entry: treated as not provided, no fallback path is constructed[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-18] with no ZBUILD_STAGE_INPUTS entry, artifacts_dir/deploy-result.json and pr-url.txt content does not reach the prompt
+
+  [38;2;0;212;255m[#1847/SPEC-19] manifest declares no top-level cleanup: key and carries a comment citing ADR-054 §7[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-19] manifest.yaml declares no top-level cleanup: key
+  [38;2;74;222;128m✓[0m [#1847/SPEC-19] manifest.yaml carries a comment citing ADR-054 §7
+
+  [38;2;0;212;255m[#1847/SPEC-21] router rc=10 (turn-budget exhaustion) causes monitor_stage_run to return rc=1, never the raw rc=10[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-21] rc=10 (turn-budget) path: monitor_stage_run returns rc=1 (not the raw router rc=10)
+  [38;2;74;222;128m✓[0m [#1847/SPEC-21] monitor-report.json written on rc=10 path
+
+  [38;2;0;212;255m[#1847/SPEC-22] template_stage_router_timeout/max_turns still outrank monitor's manifest config.router (SPEC-7)[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-22] _route_resolve_timeout returns the STUBBED template value, not the manifest's
+  [38;2;74;222;128m✓[0m [#1847/SPEC-22] _route_resolve_max_turns returns the STUBBED template value, not the manifest's
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 51 tests passed[0m
+
