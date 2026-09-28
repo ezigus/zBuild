@@ -76,8 +76,7 @@ apply_scope_redaction() {
 # ─── Helper: make a minimal state dir and set v2 dispatch env vars ────────────
 # Sets ZBUILD_STAGE_INPUTS (the engine's input index with pr_url and
 # gate_aggregator_result) and ZBUILD_ARTIFACT_DIR. Called in THIS shell
-# (not a subshell) so the exports reach the calling test; leaves the state
-# file path in _MS_SF.
+# (not a subshell) so the exports reach the calling test.
 _make_state() {
     local dir="$1"
     mkdir -p "$dir/artifacts" "$dir/stage-inputs"
@@ -90,7 +89,6 @@ _make_state() {
         > "$dir/stage-inputs/deploy.json"
     export ZBUILD_STAGE_INPUTS="$dir/stage-inputs/deploy.json"
     export ZBUILD_ARTIFACT_DIR="$dir/artifacts"
-    _MS_SF="$dir/state.json"
 }
 
 # ─── Helper: assert all four mandatory v2 keys are present ───────────────────
@@ -353,10 +351,10 @@ fi
 #             reason present (full v2 envelope)
 # ---------------------------------------------------------------------------
 _run_dry="$TEST_TEMP_DIR/run_dry"
-_make_state "$_run_dry"; _sf_dry="$_MS_SF"
+_make_state "$_run_dry"
 printf 'https://github.com/test/repo/pull/42\n' > "$_run_dry/artifacts/pr-url.txt"
 
-ZBUILD_DRY_RUN=1 _deploy_agent_run_inner "$_sf_dry"
+ZBUILD_DRY_RUN=1 deploy_agent_run
 _dry_out="$_run_dry/artifacts/deploy-result.json"
 
 _dry_v="$(jq -r '.verdict // empty' "$_dry_out" 2>/dev/null || printf MISSING)"
@@ -386,11 +384,11 @@ _v2_keys_ok "[#1846/SPEC-10] dry-run exit path:" "$_dry_out"
 #        (ZBUILD_STAGE_INPUTS index exists but pr_url file is absent)
 # ---------------------------------------------------------------------------
 _run_nopr="$TEST_TEMP_DIR/run_nopr"
-_make_state "$_run_nopr"; _sf_nopr="$_MS_SF"
+_make_state "$_run_nopr"
 # Do NOT create pr-url.txt — the path in the index points to a non-existent file
 
 _rc3=0
-_deploy_agent_run_inner "$_sf_nopr" || _rc3=$?
+deploy_agent_run || _rc3=$?
 assert_gt "[#1846/SPEC-3] missing pr_url input → rc != 0" "$_rc3" "0"
 
 _v3="$(jq -r '.verdict // empty' "$_run_nopr/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
@@ -406,12 +404,12 @@ assert_eq "[#1846/SPEC-13] missing pr_url → rc=1 (not rc=2+)" "1" "$_rc3"
 #        gate verdict=route_design (non-pass) → verdict=skipped (allowlist)
 # ---------------------------------------------------------------------------
 _run_gatefail="$TEST_TEMP_DIR/run_gatefail"
-_make_state "$_run_gatefail"; _sf_gatefail="$_MS_SF"
+_make_state "$_run_gatefail"
 printf 'https://github.com/test/repo/pull/42\n' > "$_run_gatefail/artifacts/pr-url.txt"
 printf '{"verdict":"fail","reason":"test failure"}\n' \
     > "$_run_gatefail/artifacts/gate-aggregator-result.json"
 
-ZBUILD_DRY_RUN=0 _deploy_agent_run_inner "$_sf_gatefail"
+ZBUILD_DRY_RUN=0 deploy_agent_run
 _v4="$(jq -r '.verdict // empty' "$_run_gatefail/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
 assert_eq "[#1846/SPEC-4] gate verdict=fail → deploy-result verdict=skipped" "skipped" "$_v4"
 
@@ -420,11 +418,11 @@ _v2_keys_ok "[#1846/SPEC-10] gate-fail exit path:" \
 
 # Fail-closed allowlist: non-pass verdict also skips
 _run_routedesign="$TEST_TEMP_DIR/run_routedesign"
-_make_state "$_run_routedesign"; _sf_routedesign="$_MS_SF"
+_make_state "$_run_routedesign"
 printf 'https://github.com/test/repo/pull/42\n' > "$_run_routedesign/artifacts/pr-url.txt"
 printf '{"verdict":"route_design"}\n' > "$_run_routedesign/artifacts/gate-aggregator-result.json"
 
-ZBUILD_DRY_RUN=0 _deploy_agent_run_inner "$_sf_routedesign"
+ZBUILD_DRY_RUN=0 deploy_agent_run
 _v4b="$(jq -r '.verdict // empty' "$_run_routedesign/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
 assert_eq "[#1846/SPEC-4] gate verdict=route_design (non-pass) → skipped (allowlist)" "skipped" "$_v4b"
 
@@ -433,12 +431,12 @@ assert_eq "[#1846/SPEC-4] gate verdict=route_design (non-pass) → skipped (allo
 #        and verdict=error
 # ---------------------------------------------------------------------------
 _run_nogate="$TEST_TEMP_DIR/run_nogate"
-_make_state "$_run_nogate"; _sf_nogate="$_MS_SF"
+_make_state "$_run_nogate"
 printf 'https://github.com/test/repo/pull/42\n' > "$_run_nogate/artifacts/pr-url.txt"
 # Do NOT create gate-aggregator-result.json
 
 _rc8=0
-ZBUILD_DRY_RUN=0 _deploy_agent_run_inner "$_sf_nogate" || _rc8=$?
+ZBUILD_DRY_RUN=0 deploy_agent_run || _rc8=$?
 assert_eq "[#1846/SPEC-8] missing gate (non-dry-run) → fail-closed rc=1 (not rc=2)" "1" "$_rc8"
 
 _v8="$(jq -r '.verdict // empty' "$_run_nogate/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
@@ -454,13 +452,13 @@ assert_eq "[#1846/SPEC-13] missing gate → rc=1 (not rc=2+)" "1" "$_rc8"
 #                          deploy-result.json disposition=unavailable
 # ---------------------------------------------------------------------------
 _run_drfail="$TEST_TEMP_DIR/run_drfail"
-_make_state "$_run_drfail"; _sf_drfail="$_MS_SF"
+_make_state "$_run_drfail"
 printf 'https://github.com/test/repo/pull/42\n' > "$_run_drfail/artifacts/pr-url.txt"
 printf '{"verdict":"pass"}\n' > "$_run_drfail/artifacts/gate-aggregator-result.json"
 
 _MOCK_DR_RC=1
 _rc20=0
-ZBUILD_DRY_RUN=0 _deploy_agent_run_inner "$_sf_drfail" || _rc20=$?
+ZBUILD_DRY_RUN=0 deploy_agent_run || _rc20=$?
 _MOCK_DR_RC=0
 
 _dp20="$(jq -r '.disposition // empty' "$_run_drfail/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
@@ -477,7 +475,7 @@ assert_eq "[#1846/SPEC-13] deploy-release non-zero → rc=1" "1" "$_rc20"
 #                          deploy-result.json disposition=broken
 # ---------------------------------------------------------------------------
 _run_drabsent="$TEST_TEMP_DIR/run_drabsent"
-_make_state "$_run_drabsent"; _sf_drabsent="$_MS_SF"
+_make_state "$_run_drabsent"
 printf 'https://github.com/test/repo/pull/42\n' > "$_run_drabsent/artifacts/pr-url.txt"
 printf '{"verdict":"pass"}\n' > "$_run_drabsent/artifacts/gate-aggregator-result.json"
 
@@ -488,7 +486,7 @@ mkdir -p "$TEST_TEMP_DIR/no-deploy-release"
 unset _ZBUILD_DEPLOY_RELEASE_LOADED
 
 _rc21=0
-ZBUILD_DRY_RUN=0 _deploy_agent_run_inner "$_sf_drabsent" || _rc21=$?
+ZBUILD_DRY_RUN=0 deploy_agent_run || _rc21=$?
 
 _DEPLOY_ROOT="$_saved_deploy_root"
 _ZBUILD_DEPLOY_RELEASE_LOADED=1
@@ -507,7 +505,7 @@ assert_eq "[#1846/SPEC-13] deploy-release absent → rc=1" "1" "$_rc21"
 #        delegates to deploy_release_run; result is v2-shaped with verdict=deployed
 # ---------------------------------------------------------------------------
 _run_success="$TEST_TEMP_DIR/run_success"
-_make_state "$_run_success"; _sf_success="$_MS_SF"
+_make_state "$_run_success"
 printf 'https://github.com/test/repo/pull/42\n' > "$_run_success/artifacts/pr-url.txt"
 printf '{"verdict":"pass"}\n' > "$_run_success/artifacts/gate-aggregator-result.json"
 
@@ -524,7 +522,7 @@ deploy_release_run() {
     return 0
 }
 
-ZBUILD_DRY_RUN=0 _deploy_agent_run_inner "$_sf_success"
+ZBUILD_DRY_RUN=0 deploy_agent_run
 assert_eq "[#1846/SPEC-2] non-dry-run with passing gate delegates to deploy_release_run" \
     "1" "$_mock_called"
 
