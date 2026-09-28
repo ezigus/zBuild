@@ -4,5 +4,10 @@
     "plugins/agent/monitor/tests/fixtures/monitor-report-v1-baseline.json",
     "tests/unit/monitor-v2-result-test.sh"
   ],
-  "wiring_files": []
+  "wiring_files": [],
+  "owned_files": {
+    "test-author": [
+      "tests/unit/monitor-v2-result-test.sh"
+    ]
+  }
 }
