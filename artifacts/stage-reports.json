@@ -5,5 +5,13 @@
     "plugins/agent/monitor/tests/monitor-test.sh",
     "tests/integration/deployed-template-e2e-test.sh"
   ],
-  "wiring_files": []
+  "wiring_files": [],
+  "owned_files": {
+    "test-author": [
+      "plugins/agent/monitor/tests/monitor-test.sh",
+      "tests/integration/deployed-template-e2e-test.sh",
+      "tests/unit/event-schema-emitted-coverage-test.sh",
+      "tests/unit/monitor-v2-result-test.sh"
+    ]
+  }
 }

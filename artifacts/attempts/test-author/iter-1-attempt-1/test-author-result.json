@@ -1,0 +1,21 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 22 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 22,
+    "owned_files": [
+      "plugins/agent/monitor/tests/monitor-test.sh",
+      "tests/integration/deployed-template-e2e-test.sh",
+      "tests/unit/event-schema-emitted-coverage-test.sh",
+      "tests/unit/monitor-v2-result-test.sh"
+    ],
+    "testfiles": {
+      "plugins/agent/monitor/tests/monitor-test.sh": "05999af30aebd97b19079f154cddab0459c2e81f",
+      "tests/integration/deployed-template-e2e-test.sh": "f17c0b8d9773461b8b7f12f576c0377b1c47b8a8",
+      "tests/unit/event-schema-emitted-coverage-test.sh": "8d95c386b23d68aa059abd164457ca8283257290",
+      "tests/unit/monitor-v2-result-test.sh": "c829129ba8261d77754e26de1d3881ae5e7a0bd7"
+    }
+  }
+}
