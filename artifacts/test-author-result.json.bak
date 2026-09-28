@@ -1,0 +1,17 @@
+{
+  "result_contract": 2,
+  "verdict": "degraded",
+  "disposition": "timed_out",
+  "reason": "the model call failed (router_timeout) — no assertions were authored",
+  "data": {
+    "specs_covered": 24,
+    "owned_files": [
+      "plugins/agent/deploy/tests/deploy-test.sh",
+      "tests/integration/deployed-template-e2e-test.sh"
+    ],
+    "testfiles": {
+      "plugins/agent/deploy/tests/deploy-test.sh": "6402e14fced97eec12bfa1e01503a80075bf7964",
+      "tests/integration/deployed-template-e2e-test.sh": "217d9fd8e9989fd7ba2fea5a8c4e1882350cc268"
+    }
+  }
+}

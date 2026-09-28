@@ -1,0 +1,17 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 24 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 24,
+    "owned_files": [
+      "plugins/agent/deploy/tests/deploy-test.sh",
+      "tests/integration/deployed-template-e2e-test.sh"
+    ],
+    "testfiles": {
+      "plugins/agent/deploy/tests/deploy-test.sh": "fdfc1068f916e63e3c9e081e5cfa9e5f5e7227a1",
+      "tests/integration/deployed-template-e2e-test.sh": "1de1bc7cde70cfc2c056191d6afbdf104452e184"
+    }
+  }
+}
