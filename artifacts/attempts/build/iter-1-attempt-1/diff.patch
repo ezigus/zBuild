@@ -1,0 +1,896 @@
+diff --git a/plugins/agent/monitor/manifest.yaml b/plugins/agent/monitor/manifest.yaml
+index 6a75cb09..396d7f33 100644
+--- a/plugins/agent/monitor/manifest.yaml
++++ b/plugins/agent/monitor/manifest.yaml
+@@ -26,6 +26,7 @@ requires:
+ 
+ provides:
+   role: monitor
++  result_contract: 2
+   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+   # the engine's known set at load. Adding one here needs no engine-config edit.
+   events:
+@@ -38,6 +39,9 @@ config:
+     - pass
+     - degraded
+   tier_default: T1
++  router:
++    timeout_s: 300 # single-shot advisory; no exploration loop needed
++    max_turns: 10  # pattern 1 single-turn; headroom for retry on schema failure
+ 
+ inputs:
+   - id: deploy_result
+@@ -64,3 +68,6 @@ outputs:
+ state:
+   persisted: []
+   reconstructed: []
++
++# hooks.cleanup is intentionally absent: this plugin holds no live resources
++# that require teardown — ADR-054 §7 (#1829).
+diff --git a/plugins/agent/monitor/plugin.sh b/plugins/agent/monitor/plugin.sh
+index a66ce65f..116e853d 100644
+--- a/plugins/agent/monitor/plugin.sh
++++ b/plugins/agent/monitor/plugin.sh
+@@ -33,6 +33,8 @@ source "$_MONITOR_ROOT/scripts/lib/llm-agent.sh"   # ADR-028 shared framework (a
+ source "$_MONITOR_ROOT/core/event-bus/event-bus.sh"
+ # shellcheck source=../../../core/router/route.sh
+ source "$_MONITOR_ROOT/core/router/route.sh"        # route_to_model redacts by construction (ADR-043)
++# shellcheck source=../../../scripts/lib/router-rc-classify.sh
++source "$_MONITOR_ROOT/scripts/lib/router-rc-classify.sh"   # _router_rc_classify + router_reason_disposition
+ 
+ # ─── envelope schema gate ─────────────────────────────────────────────────────
+ # Uniquely identifies a valid monitor report. Requiring the FULL shape (not just
+@@ -45,16 +47,59 @@ _monitor_envelope_schema_ok() {
+         >/dev/null 2>&1
+ }
+ 
+-# ─── write the primary artifact (jq builds it → correct escaping) ─────────────
+-# The primary artifact is REQUIRED on every exit path (ADR-047 §3, artifact
+-# contract). Never string-interpolate the verdict into JSON — jq escapes it.
+-_monitor_write_report() {
+-    local out="$1" verdict="$2" summary="$3"
+-    jq -cn --arg v "$verdict" --arg s "$summary" \
+-        '{schema_version:1, verdict:$v, summary:$s, checks:[]}' \
++# ─── _monitor_write_result <out> <verdict> <disposition> <reason> <summary> <checks_json> ─
++# Write a v2-compliant result file atomically (ADR-055 §"Folds in"): the model's
++# health-assessment fields (summary, checks) live nested under data, alongside
++# the disposition/reason axis (ADR-054 §6 — did the stage RUN, distinct from
++# what it found). The primary artifact is REQUIRED on every exit path (ADR-047
++# §3). Never string-interpolate into JSON — jq builds it so escaping is correct.
++_monitor_write_result() {
++    local out="$1" verdict="$2" disposition="$3" reason="$4" summary="$5" checks="${6:-[]}"
++    jq -cn --arg v "$verdict" --arg d "$disposition" --arg r "$reason" --arg s "$summary" \
++        --argjson c "$checks" \
++        '{result_contract:2, schema_version:1, verdict:$v, disposition:$d, reason:$r,
++          data:{summary:$s, checks:$c}}' \
+         | atomic_write "$out"
+ }
+ 
++# ─── _monitor_interrupt_handler ────────────────────────────────────────────────
++# Trap handler for SIGTERM/SIGINT during the route_to_model call: write
++# disposition:interrupted so the primary artifact is never silently missing
++# (ADR-063 §3). Reads $_mon_out_ref (set before trap registration) so it is
++# directly invocable in tests for SIGTERM simulation.
++_monitor_interrupt_handler() {
++    _monitor_write_result "${_mon_out_ref:-}" "degraded" "interrupted" "signal_interrupt" "" "[]"
++    _mon_interrupted=1
++}
++
++# ─── _monitor_budget_guidance <max_turns> ────────────────────────────────────
++# TURN BUDGET block for the prompt (ADR-063 §1). Skipped when max_turns == 0.
++_monitor_budget_guidance() {
++    local budget="${1:-}"
++    [[ "$budget" =~ ^[0-9]+$ && "$budget" -gt 0 ]] || { printf ''; return 0; }
++    cat <<EOF
++TURN BUDGET (read this — you have a BOUNDED tool-call budget):
++- You have about ${budget} tool-call turns to complete this health assessment.
++- A best-effort assessment with gaps named in prose BEATS exhausting the budget with no output.
++- STOP if you are running low and emit your best-effort report NOW.
++EOF
++}
++
++# ─── _monitor_wallclock_guidance <timeout_s> <elapsed_s> ────────────────────
++# WALL CLOCK BUDGET block (ADR-063 §1). Skipped when timeout_s == 0.
++_monitor_wallclock_guidance() {
++    local budget_s="${1:-}" elapsed_s="${2:-}"
++    [[ "$budget_s" =~ ^[0-9]+$ && "$budget_s" -gt 0 ]] || { printf ''; return 0; }
++    [[ "$elapsed_s" =~ ^[0-9]+$ ]] || elapsed_s=0
++    [[ "$elapsed_s" -lt "$budget_s" ]] || { printf ''; return 0; }
++    local _stop_at=$(( budget_s * 70 / 100 ))
++    cat <<EOF
++WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
++- This stage has a wall-clock budget of ${budget_s} seconds total; ~${elapsed_s}s have elapsed.
++- Target emitting your best-effort report before ~${_stop_at}s of wall-clock time.
++EOF
++}
++
+ # ─── run ────────────────────────────────────────────────────────────────────
+ # Dispatch convention (lifecycle.sh): $1=stage id, $2=state_file.
+ monitor_stage_run() {
+@@ -73,15 +118,22 @@ _monitor_stage_run_inner() {
+     local artifacts_dir="$state_dir/artifacts"
+     mkdir -p "$artifacts_dir"
+ 
+-    local deploy_result_json="$artifacts_dir/deploy-result.json"
+-    local pr_url_txt="$artifacts_dir/pr-url.txt"
+     local report_out="$artifacts_dir/monitor-report.json"
+ 
++    # #1825/#1826: engine-resolved inputs only — no hardcoded artifacts_dir path
++    # construction. An absent index, or an absent/empty entry, means the input
++    # was not provided (identical to today's "file does not exist" path).
++    local deploy_result_json="" pr_url_txt=""
++    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
++        deploy_result_json="$(jq -r '.inputs.deploy_result // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
++        pr_url_txt="$(jq -r '.inputs.pr_url // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
++    fi
++
+     emit_event "monitor.started" "plugin=monitor"
+ 
+     # Dry-run: sentinel primary artifact, no model call.
+     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
+-        _monitor_write_report "$report_out" "pass" "dry-run monitor" || return 1
++        _monitor_write_result "$report_out" "pass" "complete" "" "dry-run monitor" "[]" || return 1
+         stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "skip" \
+             "dry run — no health assessment was performed" \
+             "Nothing was monitored. This verdict asserts nothing about the deployment."
+@@ -96,11 +148,11 @@ _monitor_stage_run_inner() {
+     # possible), never as instructions — this is the prompt-injection mitigation.
+     # route_to_model owns redaction (ADR-043); the plugin does not pre-redact.
+     local deploy_block="(not available)"
+-    if [[ -f "$deploy_result_json" ]]; then
++    if [[ -n "$deploy_result_json" && -f "$deploy_result_json" ]]; then
+         deploy_block="$(jq -c . "$deploy_result_json" 2>/dev/null || printf '(unparseable deploy-result.json)')"
+     fi
+     local pr_block="(not available)"
+-    if [[ -f "$pr_url_txt" ]]; then
++    if [[ -n "$pr_url_txt" && -f "$pr_url_txt" ]]; then
+         pr_block="$(tr -d '\r\n' < "$pr_url_txt" | head -c 500)"  # sigpipe-ok: pr-url.txt is structurally a single short line
+     fi
+ 
+@@ -112,21 +164,64 @@ _monitor_stage_run_inner() {
+     prompt+="## Deploy Result (data)"$'\n'"$deploy_block"$'\n\n'
+     prompt+="## PR URL (data)"$'\n'"$pr_block"$'\n'
+ 
++    # ─── ADR-063 §1: inject budget guidance before the model call ──────────
++    local _mon_start_s="$SECONDS"
++    local _budget_max_turns; _budget_max_turns="$(_route_resolve_max_turns)"
++    local _budget_timeout_s; _budget_timeout_s="$(_route_resolve_timeout)"
++    local _budget_elapsed_s=$(( SECONDS - _mon_start_s ))
++    local _budget_block; _budget_block="$(_monitor_budget_guidance "$_budget_max_turns")"
++    if [[ -n "$_budget_block" ]]; then
++        prompt+=$'\n\n'"$_budget_block"
++    fi
++    local _wallclock_block; _wallclock_block="$(_monitor_wallclock_guidance "$_budget_timeout_s" "$_budget_elapsed_s")"
++    if [[ -n "$_wallclock_block" ]]; then
++        prompt+=$'\n\n'"$_wallclock_block"
++    fi
++
+     emit_event "monitor.check" "plugin=monitor"
+ 
+     # One-shot route_to_model (ADR-018 Pattern 1, T1). rc captured without
+-    # touching the caller's errexit.
++    # touching the caller's errexit. ADR-063 §3: register an interrupt trap so
++    # disposition:interrupted is written if the call is cut short by SIGTERM/SIGINT.
+     local response rc=0
++    _mon_out_ref="$report_out"
++    _mon_interrupted=0
++    trap '_monitor_interrupt_handler' TERM INT
+     response="$(route_to_model "T1" "$prompt")" || rc=$?
++    trap - TERM INT
++
++    # rc=130 (SIGTERM/SIGINT propagated through the router subshell): the trap
++    # above already wrote disposition:interrupted unless it raced the return —
++    # cover that race, then collapse to rc=1 per #1823 (rc ∈ {0,1} only).
++    if [[ "$rc" -eq 130 ]]; then
++        [[ "${_mon_interrupted:-0}" == "1" ]] \
++            || _monitor_write_result "$report_out" "degraded" "interrupted" "signal_interrupt" "" "[]"
++        stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
++            "the model call was interrupted by a signal, so no assessment was made" \
++            "The deployment was not assessed. Absence of an alert here is not evidence of health."
++        return 1
++    fi
++
++    # rc=10 (turn-budget exhaustion, ADR-063 §3): distinct from a generic router
++    # failure so the engine's out_of_turns retry response is actually exercised.
++    if [[ "$rc" -eq 10 ]]; then
++        _monitor_write_result "$report_out" "degraded" "out_of_turns" "budget_exhausted" "" "[]"
++        stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
++            "the model call ran out of turn budget, so no assessment was made" \
++            "The deployment was not assessed. Absence of an alert here is not evidence of health."
++        return 1
++    fi
+ 
+     if [[ $rc -ne 0 ]]; then
+-        local reason; reason="$(_llm_router_classify "$rc" 2>/dev/null || echo "model_error")"
+-        emit_event "monitor.alert" "plugin=monitor" "reason=${reason:-model_error}" "rc=$rc"
++        local _mon_v="" _mon_r=""
++        _router_rc_classify "$rc" _mon_v _mon_r 2>/dev/null || true
++        local disposition; disposition="$(router_reason_disposition "${_mon_r:-router_rc_nonzero}")"
++        emit_event "monitor.alert" "plugin=monitor" "reason=${_mon_r:-router_rc_nonzero}" "rc=$rc"
+         # Primary artifact is required on every exit path — surface a write failure.
+-        _monitor_write_report "$report_out" "degraded" "model call failed (rc=$rc)" \
++        _monitor_write_result "$report_out" "degraded" "$disposition" "${_mon_r:-router_rc_nonzero}" "" "[]" \
+             || emit_event "monitor.alert" "plugin=monitor" "reason=report_write_failed"
+         stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
+-            "the model call failed (rc=$rc, ${reason:-model_error}), so no assessment was made" \
++            "the model call failed (rc=$rc, ${_mon_r:-router_rc_nonzero}), so no assessment was made" \
+             "The deployment was not assessed. Absence of an alert here is not evidence of health."
+         return 1
+     fi
+@@ -141,7 +236,7 @@ _monitor_stage_run_inner() {
+     if [[ -z "$report_json" ]] || ! _llm_envelope_validate "$report_json" \
+             '.schema_version == 1 and (.verdict|type=="string") and (.summary|type=="string") and (.checks|type=="array")' verr; then
+         emit_event "monitor.alert" "plugin=monitor" "reason=unparseable_response" "detail=${verr:-empty}"
+-        _monitor_write_report "$report_out" "degraded" "no structured response from model" \
++        _monitor_write_result "$report_out" "degraded" "unusable" "${verr:-envelope_invalid}" "" "[]" \
+             || emit_event "monitor.alert" "plugin=monitor" "reason=report_write_failed"
+         stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
+             "the model returned no usable report (${verr:-empty}), so no assessment was made" \
+@@ -150,22 +245,27 @@ _monitor_stage_run_inner() {
+     fi
+ 
+     # Normalize the verdict and write the validated report (primary artifact).
++    # The stage RAN and produced a usable envelope either way — disposition is
++    # complete regardless of verdict; the verdict itself communicates health
++    # (ADR-054 §6: disposition and verdict are separate axes).
+     local verdict; verdict="$(printf '%s' "$report_json" | jq -r '.verdict // "degraded"')"
+     [[ "$verdict" == "pass" || "$verdict" == "degraded" ]] || verdict="degraded"
+-    printf '%s' "$report_json" | jq -c --arg v "$verdict" '.verdict=$v' | atomic_write "$report_out"
+ 
+     local _mon_summary; _mon_summary="$(jq -r '.summary // "no summary"' <<< "$report_json" 2>/dev/null || printf 'no summary')"
+-    local _mon_checks; _mon_checks="$(jq -r '.checks | length' <<< "$report_json" 2>/dev/null || printf '0')"
++    local _mon_checks_json; _mon_checks_json="$(jq -c '.checks // []' <<< "$report_json" 2>/dev/null || printf '[]')"
++    local _mon_checks_count; _mon_checks_count="$(jq -r '.checks | length' <<< "$report_json" 2>/dev/null || printf '0')"
++    _monitor_write_result "$report_out" "$verdict" "complete" "" "$_mon_summary" "$_mon_checks_json"
++
+     if [[ "$verdict" != "pass" ]]; then
+         emit_event "monitor.alert" "plugin=monitor" "verdict=$verdict"
+         stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
+             "assessed the deployment as $verdict — $_mon_summary" \
+-            "$(printf -- '- checks run: %s\n- artifact: monitor-report.json' "$_mon_checks")"
++            "$(printf -- '- checks run: %s\n- artifact: monitor-report.json' "$_mon_checks_count")"
+         return 1
+     fi
+     stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "pass" \
+         "assessed the deployment as healthy — $_mon_summary" \
+-        "$(printf -- '- checks run: %s\n- artifact: monitor-report.json' "$_mon_checks")"
++        "$(printf -- '- checks run: %s\n- artifact: monitor-report.json' "$_mon_checks_count")"
+     return 0
+ }
+ 
+diff --git a/plugins/agent/monitor/tests/monitor-test.sh b/plugins/agent/monitor/tests/monitor-test.sh
+old mode 100755
+new mode 100644
+index 692d7197..05999af3
+--- a/plugins/agent/monitor/tests/monitor-test.sh
++++ b/plugins/agent/monitor/tests/monitor-test.sh
+@@ -211,6 +211,138 @@ else
+     assert_fail "[SPEC-9] plugin.sh missing legacy-citation pipeline-stages-monitor.sh:150"
+ fi
+ 
++# ═══════════════════════════════════════════════════════════════════════════
++# #1847 (Phase 0/F: migrate monitor to contract v2) — guard assertions
++# ═══════════════════════════════════════════════════════════════════════════
++
++# ─── [#1847/SPEC-10] ZBUILD_DRY_RUN=1 still returns rc=0, verdict=pass, no route_to_model ─
++print_test_section "[#1847/SPEC-10] ZBUILD_DRY_RUN=1 still returns rc=0 and writes verdict=pass without calling route_to_model"
++
++rm -f "$ARTIFACTS_DIR/monitor-report.json"
++_ROUTE_TO_MODEL_CALLED=0
++export ZBUILD_DRY_RUN=1
++
++set +e
++monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
++_s1847_10_rc=$?
++set -e
++unset ZBUILD_DRY_RUN
++
++assert_eq "[#1847/SPEC-10] dry-run still returns rc=0" "0" "$_s1847_10_rc"
++assert_eq "[#1847/SPEC-10] dry-run still does NOT call route_to_model" "0" "$_ROUTE_TO_MODEL_CALLED"
++_s1847_10_verdict="$(jq -r '.verdict // "missing"' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'error')"
++assert_eq "[#1847/SPEC-10] dry-run still writes verdict=pass" "pass" "$_s1847_10_verdict"
++
++# ─── [#1847/SPEC-11] config.valid_verdicts remains exactly [pass, degraded] ──
++print_test_section "[#1847/SPEC-11] config.valid_verdicts remains exactly [pass, degraded]"
++
++_s1847_11_stanza="$(awk '
++    /^[[:space:]]*valid_verdicts:/ { f=1; next }
++    f && /^[[:space:]]*-[[:space:]]/ { print; next }
++    f { exit }
++' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
++_s1847_11_count="$(grep -c '^[[:space:]]*-[[:space:]]' <<< "$_s1847_11_stanza" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-11] manifest valid_verdicts has exactly 2 entries" "2" "$_s1847_11_count"
++if grep -qx '[[:space:]]*- pass' <<< "$_s1847_11_stanza" && grep -qx '[[:space:]]*- degraded' <<< "$_s1847_11_stanza"; then
++    assert_pass "[#1847/SPEC-11] manifest valid_verdicts is exactly [pass, degraded]"
++else
++    assert_fail "[#1847/SPEC-11] manifest valid_verdicts is exactly [pass, degraded]" "${_s1847_11_stanza:-absent}"
++fi
++
++# ─── [#1847/SPEC-12] inputs: still declares only deploy_result/pr_url, required:false ─
++print_test_section "[#1847/SPEC-12] inputs: still declares only deploy_result and pr_url, both required:false, no restated source/path/type"
++
++_s1847_12_inputs="$(awk '
++    /^inputs:/ { f=1; next }
++    f && /^[a-zA-Z]/ { exit }
++    f { print }
++' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
++_s1847_12_id_count="$(grep -c '^[[:space:]]*-[[:space:]]*id:' <<< "$_s1847_12_inputs" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-12] inputs: declares exactly 2 input ids" "2" "$_s1847_12_id_count"
++_s1847_12_required_false="$(grep -c 'required:[[:space:]]*false' <<< "$_s1847_12_inputs" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-12] inputs: both entries have required:false" "2" "$_s1847_12_required_false"
++_s1847_12_restated="$(grep -cE '^\s*(source|path|type):' <<< "$_s1847_12_inputs" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-12] inputs: no restated source/path/type keys" "0" "$_s1847_12_restated"
++
++# ─── [#1847/SPEC-17] provides.events unchanged; plugin.sh still emits all three ─
++print_test_section "[#1847/SPEC-17] manifest still declares provides.events [monitor.alert, monitor.check, monitor.started]; plugin.sh still emits all three"
++
++for _ev in monitor.started monitor.check monitor.alert; do
++    if grep -qxF "$_ev" <<< "$_declared_events"; then
++        assert_pass "[#1847/SPEC-17] manifest still declares $_ev under provides.events"
++    else
++        assert_fail "[#1847/SPEC-17] manifest still declares $_ev under provides.events" \
++            "absent from $_manifest_file"
++    fi
++    if grep -q "emit_event \"$_ev\"" "$PLUGIN_DIR/plugin.sh"; then
++        assert_pass "[#1847/SPEC-17] plugin.sh still emits $_ev"
++    else
++        assert_fail "[#1847/SPEC-17] plugin.sh still emits $_ev" "no emit_event \"$_ev\" call found"
++    fi
++done
++
++# ─── [#1847/SPEC-18] ZBUILD_STAGE_INPUTS-resolved deploy_result/pr_url reach the ─
++# prompt; no hardcoded $artifacts_dir/deploy-result.json / pr-url.txt fallback ─
++print_test_section "[#1847/SPEC-18] deploy_result/pr_url are read via ZBUILD_STAGE_INPUTS — no hardcoded artifacts_dir fallback remains"
++
++unset ZBUILD_STAGE_INPUTS 2>/dev/null || true
++rm -f "$ARTIFACTS_DIR/monitor-report.json"
++cp "$FIXTURE_DIR/deploy-result.json" "$ARTIFACTS_DIR/deploy-result.json"
++printf 'https://github.com/mock/repo/pull/1847\n' > "$ARTIFACTS_DIR/pr-url.txt"
++_s1847_18_si="$TEST_TEMP_DIR/stage-inputs.json"
++printf '{"inputs":{"deploy_result":"%s","pr_url":"%s"}}\n' \
++    "$ARTIFACTS_DIR/deploy-result.json" "$ARTIFACTS_DIR/pr-url.txt" > "$_s1847_18_si"
++MOCK_ROUTE_RC=0
++MOCK_ROUTE_RESPONSE='{"schema_version":1,"verdict":"pass","summary":"deployment healthy","checks":[]}'
++_ROUTE_TO_MODEL_CALLED=0
++
++set +e
++( export ZBUILD_STAGE_INPUTS="$_s1847_18_si"; monitor_stage_run "monitor" "$STATE_FILE" ) >/dev/null 2>&1
++_s1847_18_rc=$?
++set -e
++
++assert_eq "[#1847/SPEC-18] ZBUILD_STAGE_INPUTS-resolved run returns rc=0" "0" "$_s1847_18_rc"
++_s1847_18_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
++if grep -q "test-branch" <<< "$_s1847_18_prompt"; then
++    assert_pass "[#1847/SPEC-18] prompt reflects the ZBUILD_STAGE_INPUTS-resolved deploy_result content"
++else
++    assert_fail "[#1847/SPEC-18] prompt reflects the ZBUILD_STAGE_INPUTS-resolved deploy_result content" \
++        "${_s1847_18_prompt:-empty}"
++fi
++if grep -q "pull/1847" <<< "$_s1847_18_prompt"; then
++    assert_pass "[#1847/SPEC-18] prompt reflects the ZBUILD_STAGE_INPUTS-resolved pr_url content"
++else
++    assert_fail "[#1847/SPEC-18] prompt reflects the ZBUILD_STAGE_INPUTS-resolved pr_url content" \
++        "${_s1847_18_prompt:-empty}"
++fi
++
++# The static guard from the SPEC text itself: no hardcoded
++# $artifacts_dir/deploy-result.json or $artifacts_dir/pr-url.txt string
++# construction anywhere in plugin.sh.
++_s1847_18_hardcoded="$(grep -n 'artifacts_dir.*deploy-result\|artifacts_dir.*pr-url' "$PLUGIN_DIR/plugin.sh" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-18] plugin.sh contains no hardcoded artifacts_dir deploy-result/pr-url construction" \
++    "" "$_s1847_18_hardcoded"
++
++# With ZBUILD_STAGE_INPUTS unset and no entry for either optional input, the
++# plugin must treat them as not provided rather than falling back to the
++# artifacts_dir copies (which are decoyed here to prove the fallback is gone).
++rm -f "$ARTIFACTS_DIR/monitor-report.json"
++unset ZBUILD_STAGE_INPUTS 2>/dev/null || true
++printf '{"decoy":true,"marker":"MONITOR_TEST_NO_FALLBACK_MARKER"}\n' > "$ARTIFACTS_DIR/deploy-result.json"
++printf 'https://example.com/MONITOR_TEST_NO_FALLBACK_MARKER\n' > "$ARTIFACTS_DIR/pr-url.txt"
++: > "$_CAPTURED_PROMPT_FILE"
++set +e
++monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
++set -e
++_s1847_18_nofallback_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
++if grep -q "MONITOR_TEST_NO_FALLBACK_MARKER" <<< "$_s1847_18_nofallback_prompt"; then
++    assert_fail "[#1847/SPEC-18] with no ZBUILD_STAGE_INPUTS entry, the artifacts_dir copies must NOT reach the prompt (no fallback path)" \
++        "marker leaked into prompt"
++else
++    assert_pass "[#1847/SPEC-18] with no ZBUILD_STAGE_INPUTS entry, deploy_result/pr_url are treated as not provided"
++fi
++rm -f "$ARTIFACTS_DIR/deploy-result.json" "$ARTIFACTS_DIR/pr-url.txt"
++
+ # ─── cleanup + results ────────────────────────────────────────────────────────
+ cleanup_test_env
+ print_test_results
+diff --git a/tests/integration/deployed-template-e2e-test.sh b/tests/integration/deployed-template-e2e-test.sh
+old mode 100755
+new mode 100644
+index dc4aed3c..f17c0b8d
+--- a/tests/integration/deployed-template-e2e-test.sh
++++ b/tests/integration/deployed-template-e2e-test.sh
+@@ -234,6 +234,15 @@ assert_eq "[SPEC-9] monitor_stage_run exits 0 in dry-run" "0" "$_run_rc"
+ # Behavior-preservation: monitor-report.json exists
+ assert_file_exists "[SPEC-9] monitor-report.json written" "$ARTIFACTS_DIR/monitor-report.json"
+ 
++# ─── [#1847/SPEC-13] deploy→validate→monitor dry-run dispatch still ends with ─
++# monitor-report.json present and monitor_stage_run returning rc=0 (issue #1847
++# migrates monitor to contract v2; the live deployed.yaml dry-run path must
++# remain behavior-identical for a passing run).
++assert_eq "[#1847/SPEC-13] monitor_stage_run returns rc=0 in the deployed.yaml dry-run dispatch" \
++    "0" "$_run_rc"
++assert_file_exists "[#1847/SPEC-13] monitor-report.json is present after the deployed.yaml dry-run dispatch" \
++    "$ARTIFACTS_DIR/monitor-report.json"
++
+ cleanup_test_env
+ print_test_results
+ exit $((FAIL > 0))
+diff --git a/tests/unit/event-schema-emitted-coverage-test.sh b/tests/unit/event-schema-emitted-coverage-test.sh
+old mode 100755
+new mode 100644
+diff --git a/tests/unit/monitor-v2-result-test.sh b/tests/unit/monitor-v2-result-test.sh
+new file mode 100644
+index 00000000..c829129b
+--- /dev/null
++++ b/tests/unit/monitor-v2-result-test.sh
+@@ -0,0 +1,460 @@
++#!/usr/bin/env bash
++# tests/unit/monitor-v2-result-test.sh
++# Contract v2 result assertions for the monitor plugin (issue #1847, Phase 0/F).
++# SPEC coverage:
++#   [#1847/SPEC-1]  manifest declares provides.result_contract: 2
++#   [#1847/SPEC-2]  dry-run monitor-report.json carries result_contract:2, disposition:complete
++#   [#1847/SPEC-3]  live pass-path monitor-report.json carries result_contract:2, disposition:complete,
++#                   verdict:pass unchanged
++#   [#1847/SPEC-4]  route_to_model failure path carries a disposition derived via
++#                   router_reason_disposition, not a bare verdict:degraded with no disposition
++#   [#1847/SPEC-5]  unparseable/schema-gate-failed reply path carries disposition:unusable
++#   [#1847/SPEC-6]  SIGTERM during route_to_model writes disposition:interrupted before rc=130
++#   [#1847/SPEC-7]  manifest declares config.router {timeout_s:300, max_turns:10}
++#   [#1847/SPEC-8]  assembled prompt contains a TURN BUDGET block before route_to_model
++#   [#1847/SPEC-9]  assembled prompt contains a WALL CLOCK BUDGET block before route_to_model
++#   [#1847/SPEC-11] config.valid_verdicts remains exactly [pass, degraded]
++#   [#1847/SPEC-12] inputs: declares only {deploy_result, pr_url}, both required:false, no restated source/path/type
++#   [#1847/SPEC-14] ZBUILD_STAGE_INPUTS-resolved deploy_result/pr_url win over the hardcoded artifacts_dir paths
++#   [#1847/SPEC-15] outputs: block still declares exactly one primary:true entry
++#   [#1847/SPEC-16] provides.role: monitor unchanged
++#   [#1847/SPEC-18] no hardcoded artifacts_dir deploy-result/pr-url construction; no fallback path
++#   [#1847/SPEC-19] manifest declares no top-level cleanup: key; ADR-054 §7 comment present
++#   [#1847/SPEC-20] reason field always present (empty string) on every complete-disposition exit path
++#   [#1847/SPEC-21] monitor_stage_run never returns an rc outside {0,1}
++#   [#1847/SPEC-22] template accessor still outranks monitor's own manifest config.router
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "monitor plugin: v2 result contract (issue #1847)"
++setup_test_env "monitor-v2-result"
++
++export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
++export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
++export ZBUILD_EVENTS_DB="/dev/null"
++export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
++export ZBUILD_RUN_ID="monitor-v2-test-$$"
++export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
++mkdir -p "$ZBUILD_EVENTS_DIR"
++: > "$ZBUILD_EVENTS_JSONL"
++
++PLUGIN_DIR="$REPO_ROOT/plugins/agent/monitor"
++MON_MANIFEST="$PLUGIN_DIR/manifest.yaml"
++
++# ─── SPEC-1: manifest declares provides.result_contract: 2 ──────────────────
++print_test_section "[#1847/SPEC-1] manifest declares provides.result_contract: 2"
++
++_s1_rc="$(awk '/^provides:/{f=1;next} f && /^[a-zA-Z]/{f=0} f && /result_contract:/{print $2; exit}' "$MON_MANIFEST" || echo '')"
++assert_eq "[#1847/SPEC-1] manifest provides.result_contract is 2" "2" "$_s1_rc"
++
++# ─── SPEC-7: manifest declares config.router {timeout_s:300, max_turns:10} ──
++print_test_section "[#1847/SPEC-7] manifest declares config.router timeout_s:300, max_turns:10"
++
++_s7_router_block="$(grep -A3 '^[[:space:]]*router:' "$MON_MANIFEST" 2>/dev/null || true)"
++_s7_timeout="$(grep 'timeout_s:' <<< "$_s7_router_block" | awk '{print $2}' || echo '')"
++_s7_maxturns="$(grep 'max_turns:' <<< "$_s7_router_block" | awk '{print $2}' || echo '')"
++assert_eq "[#1847/SPEC-7] manifest config.router.timeout_s is 300" "300" "$_s7_timeout"
++assert_eq "[#1847/SPEC-7] manifest config.router.max_turns is 10" "10" "$_s7_maxturns"
++
++# ─── SPEC-11: config.valid_verdicts remains exactly [pass, degraded] ─────────
++print_test_section "[#1847/SPEC-11] config.valid_verdicts remains exactly [pass, degraded]"
++
++_s11_stanza="$(awk '
++    /^[[:space:]]*valid_verdicts:/ { f=1; next }
++    f && /^[[:space:]]*-[[:space:]]/ { print; next }
++    f { exit }
++' "$MON_MANIFEST" 2>/dev/null || true)"
++_s11_count="$(grep -c '^[[:space:]]*-[[:space:]]' <<< "$_s11_stanza" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-11] valid_verdicts has exactly 2 entries" "2" "$_s11_count"
++if grep -qx '[[:space:]]*- pass' <<< "$_s11_stanza"; then
++    assert_pass "[#1847/SPEC-11] valid_verdicts includes pass"
++else
++    assert_fail "[#1847/SPEC-11] valid_verdicts includes pass" "${_s11_stanza:-absent}"
++fi
++if grep -qx '[[:space:]]*- degraded' <<< "$_s11_stanza"; then
++    assert_pass "[#1847/SPEC-11] valid_verdicts includes degraded"
++else
++    assert_fail "[#1847/SPEC-11] valid_verdicts includes degraded" "${_s11_stanza:-absent}"
++fi
++
++# ─── SPEC-12: inputs: declares only {deploy_result, pr_url}, both required:false ─
++print_test_section "[#1847/SPEC-12] inputs: declares only deploy_result and pr_url, both required:false, no source/path/type"
++
++_s12_inputs="$(awk '
++    /^inputs:/ { f=1; next }
++    f && /^[a-zA-Z]/ { exit }
++    f { print }
++' "$MON_MANIFEST" 2>/dev/null || true)"
++_s12_id_count="$(grep -c '^[[:space:]]*-[[:space:]]*id:' <<< "$_s12_inputs" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-12] inputs: declares exactly 2 input ids" "2" "$_s12_id_count"
++if grep -q 'id:[[:space:]]*deploy_result' <<< "$_s12_inputs"; then
++    assert_pass "[#1847/SPEC-12] inputs: declares deploy_result"
++else
++    assert_fail "[#1847/SPEC-12] inputs: declares deploy_result" "${_s12_inputs:-absent}"
++fi
++if grep -q 'id:[[:space:]]*pr_url' <<< "$_s12_inputs"; then
++    assert_pass "[#1847/SPEC-12] inputs: declares pr_url"
++else
++    assert_fail "[#1847/SPEC-12] inputs: declares pr_url" "${_s12_inputs:-absent}"
++fi
++_s12_required_false_count="$(grep -c 'required:[[:space:]]*false' <<< "$_s12_inputs" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-12] inputs: both entries have required:false" "2" "$_s12_required_false_count"
++_s12_restated="$(grep -cE '^\s*(source|path|type):' <<< "$_s12_inputs" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-12] inputs: no restated source/path/type keys" "0" "$_s12_restated"
++
++# ─── SPEC-15: outputs: block still declares exactly one primary:true entry ───
++print_test_section "[#1847/SPEC-15] outputs: block declares exactly one primary:true entry (monitor_report)"
++
++_s15_primary_count="$(grep -c 'primary:[[:space:]]*true' "$MON_MANIFEST" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-15] manifest has exactly one primary:true output" "1" "$_s15_primary_count"
++
++_s15_primary_stanza="$(awk '
++    /^  - id: monitor_report/ { found=1 }
++    found && /^  - id:/ && !/monitor_report/ { exit }
++    found { print }
++' "$MON_MANIFEST" 2>/dev/null || true)"
++if grep -q 'primary:[[:space:]]*true' <<< "$_s15_primary_stanza"; then
++    assert_pass "[#1847/SPEC-15] the primary:true output is monitor_report"
++else
++    assert_fail "[#1847/SPEC-15] the primary:true output is monitor_report" "${_s15_primary_stanza:-absent}"
++fi
++
++# ─── SPEC-16: provides.role: monitor unchanged ───────────────────────────────
++print_test_section "[#1847/SPEC-16] manifest still declares provides.role: monitor"
++
++_s16_role="$(awk '/^provides:/{f=1;next} f && /^[a-zA-Z]/{f=0} f && /^[[:space:]]*role:/{print $2; exit}' "$MON_MANIFEST" || echo '')"
++assert_eq "[#1847/SPEC-16] provides.role is monitor" "monitor" "$_s16_role"
++
++# ─── Plugin behavior setup ────────────────────────────────────────────────────
++# shellcheck source=../../plugins/agent/monitor/plugin.sh
++source "$PLUGIN_DIR/plugin.sh"
++
++STATE_DIR="$TEST_TEMP_DIR/state"
++ARTIFACTS_DIR="$STATE_DIR/artifacts"
++STATE_FILE="$STATE_DIR/pipeline-state.json"
++mkdir -p "$ARTIFACTS_DIR"
++printf '{"schema_version":1,"run_id":"test","issue":"1847","stage_statuses":{}}\n' > "$STATE_FILE"
++
++_CAPTURED_PROMPT_FILE="$TEST_TEMP_DIR/captured-prompt.txt"
++: > "$_CAPTURED_PROMPT_FILE"
++MOCK_ROUTE_RC=0
++MOCK_ROUTE_RESPONSE='{"schema_version":1,"verdict":"pass","summary":"deployment healthy","checks":[]}'
++# shellcheck disable=SC2329  # invoked indirectly by the sourced plugin
++route_to_model() {
++    printf '%s' "${2:-}" > "$_CAPTURED_PROMPT_FILE"
++    if [[ "$MOCK_ROUTE_RC" -eq 0 ]]; then
++        printf '%s' "$MOCK_ROUTE_RESPONSE"
++    fi
++    return "$MOCK_ROUTE_RC"
++}
++
++# ─── SPEC-2: dry-run path — result_contract:2, disposition:complete ─────────
++print_test_section "[#1847/SPEC-2] dry-run monitor-report.json carries result_contract:2, disposition:complete"
++
++rm -f "$ARTIFACTS_DIR/monitor-report.json"
++export ZBUILD_DRY_RUN=1
++set +e
++monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
++_s2_rc=$?
++set -e
++unset ZBUILD_DRY_RUN
++
++assert_eq "[#1847/SPEC-2] dry-run returns rc=0" "0" "$_s2_rc"
++assert_file_exists "[#1847/SPEC-2] dry-run writes monitor-report.json" "$ARTIFACTS_DIR/monitor-report.json"
++assert_eq "[#1847/SPEC-2] dry-run: result_contract is 2" "2" \
++    "$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-2] dry-run: disposition is complete" "complete" \
++    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-20] dry-run: reason key is present and empty" "" \
++    "$(jq -r 'if has("reason") then .reason else "MISSING_KEY" end' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'MISSING_KEY')"
++
++# ─── SPEC-3: live pass path — result_contract:2, disposition:complete, verdict:pass ─
++print_test_section "[#1847/SPEC-3] live pass-path monitor-report.json carries result_contract:2, disposition:complete, verdict:pass"
++
++rm -f "$ARTIFACTS_DIR/monitor-report.json"
++MOCK_ROUTE_RC=0
++MOCK_ROUTE_RESPONSE='{"schema_version":1,"verdict":"pass","summary":"deployment healthy","checks":[]}'
++set +e
++monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
++_s3_rc=$?
++set -e
++
++assert_eq "[#1847/SPEC-3] live pass path returns rc=0" "0" "$_s3_rc"
++assert_file_exists "[#1847/SPEC-3] live pass path writes monitor-report.json" "$ARTIFACTS_DIR/monitor-report.json"
++assert_eq "[#1847/SPEC-3] live pass path: result_contract is 2" "2" \
++    "$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-3] live pass path: disposition is complete" "complete" \
++    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-3] live pass path: verdict is still pass (unchanged)" "pass" \
++    "$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-20] live pass path: reason key is present and empty" "" \
++    "$(jq -r 'if has("reason") then .reason else "MISSING_KEY" end' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'MISSING_KEY')"
++
++# ─── SPEC-20: live degraded-verdict path (valid envelope, verdict:degraded) — ─
++# disposition is still complete and reason is still "" — the health verdict
++# itself (data.summary/data.checks), not disposition/reason, communicates the
++# degradation (a separate axis, per ADR-054 §6).
++print_test_section "[#1847/SPEC-20] live degraded-verdict path: disposition:complete, reason:\"\" (verdict itself carries the degradation)"
++
++rm -f "$ARTIFACTS_DIR/monitor-report.json"
++MOCK_ROUTE_RC=0
++MOCK_ROUTE_RESPONSE='{"schema_version":1,"verdict":"degraded","summary":"probe failed","checks":[]}'
++set +e
++monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
++set -e
++
++assert_file_exists "[#1847/SPEC-20] live degraded-verdict path writes monitor-report.json" \
++    "$ARTIFACTS_DIR/monitor-report.json"
++assert_eq "[#1847/SPEC-20] live degraded-verdict path: verdict is degraded" "degraded" \
++    "$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-20] live degraded-verdict path: disposition is still complete" "complete" \
++    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-20] live degraded-verdict path: reason key is present and empty" "" \
++    "$(jq -r 'if has("reason") then .reason else "MISSING_KEY" end' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'MISSING_KEY')"
++
++# ─── SPEC-4: route_to_model failure path — disposition via router_reason_disposition ─
++print_test_section "[#1847/SPEC-4] route_to_model failure path carries a disposition derived via router_reason_disposition"
++
++rm -f "$ARTIFACTS_DIR/monitor-report.json"
++MOCK_ROUTE_RC=1
++MOCK_ROUTE_RESPONSE=""
++set +e
++monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
++_s4_rc=$?
++set -e
++
++assert_file_exists "[#1847/SPEC-4] router-failure path writes monitor-report.json" "$ARTIFACTS_DIR/monitor-report.json"
++_s4_disp="$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
++# rc=1 with no rate-limit/timeout signal classifies via _router_rc_classify as
++# router_rc_nonzero, which router_reason_disposition maps to "unavailable" — the
++# generic non-empty disposition case (not a bare verdict:degraded with no field).
++assert_eq "[#1847/SPEC-4] router-failure path: disposition is unavailable (router_reason_disposition mapping)" \
++    "unavailable" "$_s4_disp"
++# rc=1 with no rate-limit/budget-exhaustion/timeout signal classifies via
++# _router_rc_classify as reason="router_rc_nonzero" — the classified router
++# reason that fed the router_reason_disposition mapping above.
++assert_eq "[#1847/SPEC-4] router-failure path: reason names the classified router reason" \
++    "router_rc_nonzero" "$(jq -r '.reason // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
++if [[ "$_s4_rc" -ne 0 ]]; then
++    assert_pass "[#1847/SPEC-4] router-failure path returns non-zero rc"
++else
++    assert_fail "[#1847/SPEC-4] router-failure path returns non-zero rc" "rc was 0"
++fi
++
++# ─── SPEC-5: unparseable/schema-gate-failed reply path — disposition:unusable ─
++print_test_section "[#1847/SPEC-5] unparseable/schema-gate-failed reply path carries disposition:unusable"
++
++rm -f "$ARTIFACTS_DIR/monitor-report.json"
++MOCK_ROUTE_RC=0
++MOCK_ROUTE_RESPONSE='this is not JSON at all, just prose the model produced'
++set +e
++monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
++set -e
++
++assert_file_exists "[#1847/SPEC-5] unparseable-reply path writes monitor-report.json" "$ARTIFACTS_DIR/monitor-report.json"
++assert_eq "[#1847/SPEC-5] unparseable-reply path: disposition is unusable" "unusable" \
++    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
++
++# ─── SPEC-6/SPEC-21: SIGTERM/SIGINT during route_to_model writes disposition:interrupted, ─
++# reason:signal_interrupt, and monitor_stage_run returns rc=1 (NOT the raw signal rc=130) ─
++print_test_section "[#1847/SPEC-6] SIGTERM during route_to_model writes disposition:interrupted, reason:signal_interrupt, and monitor_stage_run returns rc=1 (not raw signal rc)"
++
++rm -f "$ARTIFACTS_DIR/monitor-report.json"
++_s6_orig_route="$(declare -f route_to_model)"
++# shellcheck disable=SC2329
++route_to_model() { kill -TERM "$$"; return 130; }
++set +e
++monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
++_s6_rc=$?
++set -e
++eval "$_s6_orig_route"
++
++assert_eq "[#1847/SPEC-6] SIGTERM during route_to_model: monitor_stage_run returns rc=1 (not the raw signal rc=130)" \
++    "1" "$_s6_rc"
++assert_file_exists "[#1847/SPEC-6] monitor-report.json written on interrupt" \
++    "$ARTIFACTS_DIR/monitor-report.json"
++assert_eq "[#1847/SPEC-6] disposition is interrupted" "interrupted" \
++    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-6] reason is signal_interrupt" "signal_interrupt" \
++    "$(jq -r '.reason // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
++
++# ─── SPEC-8/SPEC-9: TURN BUDGET / WALL CLOCK BUDGET blocks in the assembled prompt ─
++print_test_section "[#1847/SPEC-8/SPEC-9] assembled prompt contains TURN BUDGET and WALL CLOCK BUDGET blocks reflecting the manifest's router budget"
++
++rm -f "$ARTIFACTS_DIR/monitor-report.json"
++: > "$_CAPTURED_PROMPT_FILE"
++MOCK_ROUTE_RC=0
++MOCK_ROUTE_RESPONSE='{"schema_version":1,"verdict":"pass","summary":"deployment healthy","checks":[]}'
++export ZBUILD_PLUGIN_DIR="$PLUGIN_DIR"
++unset ZBUILD_ROUTER_TIMEOUT ZBUILD_ROUTER_MAX_TURNS ZBUILD_ROUTER_MAX_TURNS_OVERRIDE ZBUILD_CURRENT_STAGE 2>/dev/null || true
++set +e
++monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
++set -e
++unset ZBUILD_PLUGIN_DIR
++
++_s89_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
++_s89_turn_block="$(grep -i -A6 "TURN BUDGET" <<< "$_s89_prompt" 2>/dev/null || true)"
++if [[ -n "$_s89_turn_block" ]] && grep -q '10' <<< "$_s89_turn_block"; then
++    assert_pass "[#1847/SPEC-8] prompt contains a TURN BUDGET block reflecting the manifest's max_turns:10"
++else
++    assert_fail "[#1847/SPEC-8] prompt must contain a TURN BUDGET block reflecting max_turns:10" \
++        "${_s89_turn_block:-absent}"
++fi
++_s89_wc_block="$(grep -i -A6 "WALL CLOCK BUDGET" <<< "$_s89_prompt" 2>/dev/null || true)"
++if [[ -n "$_s89_wc_block" ]] && grep -q '300' <<< "$_s89_wc_block"; then
++    assert_pass "[#1847/SPEC-9] prompt contains a WALL CLOCK BUDGET block reflecting the manifest's timeout_s:300"
++else
++    assert_fail "[#1847/SPEC-9] prompt must contain a WALL CLOCK BUDGET block reflecting timeout_s:300" \
++        "${_s89_wc_block:-absent}"
++fi
++
++# ─── SPEC-14: ZBUILD_STAGE_INPUTS-resolved deploy_result/pr_url win over hardcoded paths ─
++print_test_section "[#1847/SPEC-14] ZBUILD_STAGE_INPUTS-resolved deploy_result/pr_url content reaches the prompt instead of the artifacts_dir copies"
++
++rm -f "$ARTIFACTS_DIR/monitor-report.json"
++_s14_custom_dir="$TEST_TEMP_DIR/spec14-custom"
++mkdir -p "$_s14_custom_dir"
++printf '{"decoy":false,"marker":"SPEC14_DEPLOY_MARKER"}\n' > "$_s14_custom_dir/deploy-result.json"
++printf 'https://example.com/SPEC14_PR_MARKER\n' > "$_s14_custom_dir/pr-url.txt"
++
++# Decoy content at the hardcoded artifacts_dir path: if the plugin ignores the
++# index and falls back to the hardcoded path, the prompt shows THIS instead —
++# so the assertion below correctly fails when ZBUILD_STAGE_INPUTS is not honored.
++printf '{"decoy":true,"marker":"ARTIFACTS_DIR_DECOY"}\n' > "$ARTIFACTS_DIR/deploy-result.json"
++printf 'https://example.com/ARTIFACTS_DIR_DECOY\n' > "$ARTIFACTS_DIR/pr-url.txt"
++
++_s14_si="$TEST_TEMP_DIR/spec14-stage-inputs.json"
++printf '{"inputs":{"deploy_result":"%s","pr_url":"%s"}}\n' \
++    "$_s14_custom_dir/deploy-result.json" "$_s14_custom_dir/pr-url.txt" > "$_s14_si"
++
++: > "$_CAPTURED_PROMPT_FILE"
++MOCK_ROUTE_RC=0
++MOCK_ROUTE_RESPONSE='{"schema_version":1,"verdict":"pass","summary":"deployment healthy","checks":[]}'
++set +e
++( export ZBUILD_STAGE_INPUTS="$_s14_si"; monitor_stage_run "monitor" "$STATE_FILE" ) >/dev/null 2>&1
++set -e
++
++_s14_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
++if grep -q "SPEC14_DEPLOY_MARKER" <<< "$_s14_prompt" && grep -q "SPEC14_PR_MARKER" <<< "$_s14_prompt"; then
++    assert_pass "[#1847/SPEC-14] prompt reflects the ZBUILD_STAGE_INPUTS-resolved deploy_result/pr_url content"
++else
++    assert_fail "[#1847/SPEC-14] prompt must reflect the ZBUILD_STAGE_INPUTS-resolved deploy_result/pr_url content" \
++        "${_s14_prompt:-empty}"
++fi
++if grep -q "ARTIFACTS_DIR_DECOY" <<< "$_s14_prompt"; then
++    assert_fail "[#1847/SPEC-14] prompt must NOT reflect the artifacts_dir decoy when ZBUILD_STAGE_INPUTS is present" \
++        "decoy leaked into prompt"
++else
++    assert_pass "[#1847/SPEC-14] prompt does not reflect the artifacts_dir decoy when ZBUILD_STAGE_INPUTS is present"
++fi
++
++# Restore clean artifacts_dir copies (undo the decoy) so later runs in this file
++# don't leak stage state.
++rm -f "$ARTIFACTS_DIR/deploy-result.json" "$ARTIFACTS_DIR/pr-url.txt"
++
++# ─── SPEC-18: no hardcoded artifacts_dir deploy-result/pr-url construction ───
++print_test_section "[#1847/SPEC-18] plugin.sh has no hardcoded artifacts_dir/deploy-result.json or artifacts_dir/pr-url.txt construction"
++
++_s18_grep="$(grep -n 'artifacts_dir.*deploy-result\|artifacts_dir.*pr-url' "$PLUGIN_DIR/plugin.sh" 2>/dev/null || true)"
++assert_eq "[#1847/SPEC-18] plugin.sh contains no hardcoded artifacts_dir deploy-result/pr-url construction" \
++    "" "$_s18_grep"
++
++print_test_section "[#1847/SPEC-18] ZBUILD_STAGE_INPUTS unset with no entry: treated as not provided, no fallback path is constructed"
++
++rm -f "$ARTIFACTS_DIR/monitor-report.json"
++unset ZBUILD_STAGE_INPUTS 2>/dev/null || true
++# Decoy content at the now-removed hardcoded fallback path: if the plugin still
++# constructed $artifacts_dir/deploy-result.json / pr-url.txt as a fallback, the
++# prompt would show this content instead — so this assertion correctly fails
++# were a fallback path still being built.
++printf '{"decoy":true,"marker":"SPEC18_NO_FALLBACK_MARKER"}\n' > "$ARTIFACTS_DIR/deploy-result.json"
++printf 'https://example.com/SPEC18_NO_FALLBACK_MARKER\n' > "$ARTIFACTS_DIR/pr-url.txt"
++: > "$_CAPTURED_PROMPT_FILE"
++MOCK_ROUTE_RC=0
++MOCK_ROUTE_RESPONSE='{"schema_version":1,"verdict":"pass","summary":"deployment healthy","checks":[]}'
++set +e
++monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
++set -e
++_s18_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
++if grep -q "SPEC18_NO_FALLBACK_MARKER" <<< "$_s18_prompt"; then
++    assert_fail "[#1847/SPEC-18] prompt must NOT reflect artifacts_dir/deploy-result.json or pr-url.txt content when ZBUILD_STAGE_INPUTS has no entry (no fallback path construction)" \
++        "marker leaked into prompt"
++else
++    assert_pass "[#1847/SPEC-18] with no ZBUILD_STAGE_INPUTS entry, artifacts_dir/deploy-result.json and pr-url.txt content does not reach the prompt"
++fi
++rm -f "$ARTIFACTS_DIR/deploy-result.json" "$ARTIFACTS_DIR/pr-url.txt"
++
++# ─── SPEC-19: manifest declares no top-level cleanup: key; ADR-054 §7 comment present ─
++print_test_section "[#1847/SPEC-19] manifest declares no top-level cleanup: key and carries a comment citing ADR-054 §7"
++
++if grep -qE '^\s*cleanup\s*:' "$MON_MANIFEST" 2>/dev/null; then
++    assert_fail "[#1847/SPEC-19] manifest.yaml must not declare a top-level cleanup: key" "found cleanup key"
++else
++    assert_pass "[#1847/SPEC-19] manifest.yaml declares no top-level cleanup: key"
++fi
++if grep -q 'ADR-054.*§7\|ADR-054.*§ *7' "$MON_MANIFEST" 2>/dev/null; then
++    assert_pass "[#1847/SPEC-19] manifest.yaml carries a comment citing ADR-054 §7"
++else
++    assert_fail "[#1847/SPEC-19] manifest.yaml must carry a comment citing ADR-054 §7 explaining hooks.cleanup's intentional absence" \
++        "comment absent"
++fi
++
++# ─── SPEC-21: router rc=10 (turn-budget exhaustion) also collapses to rc=1 ────
++print_test_section "[#1847/SPEC-21] router rc=10 (turn-budget exhaustion) causes monitor_stage_run to return rc=1, never the raw rc=10"
++
++rm -f "$ARTIFACTS_DIR/monitor-report.json"
++MOCK_ROUTE_RC=10
++MOCK_ROUTE_RESPONSE=""
++set +e
++monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
++_s21_rc=$?
++set -e
++
++assert_eq "[#1847/SPEC-21] rc=10 (turn-budget) path: monitor_stage_run returns rc=1 (not the raw router rc=10)" \
++    "1" "$_s21_rc"
++assert_file_exists "[#1847/SPEC-21] monitor-report.json written on rc=10 path" "$ARTIFACTS_DIR/monitor-report.json"
++
++# ─── SPEC-22: template accessor still outranks monitor's own manifest config.router ─
++print_test_section "[#1847/SPEC-22] template_stage_router_timeout/max_turns still outrank monitor's manifest config.router (SPEC-7)"
++
++_s22_manifest_timeout="$(awk '/^[[:space:]]*router:/{f=1;next} f&&/timeout_s:/{print $2;exit}' "$MON_MANIFEST" 2>/dev/null || true)"
++_s22_manifest_maxturns="$(awk '/^[[:space:]]*router:/{f=1;next} f&&/max_turns:/{print $2;exit}' "$MON_MANIFEST" 2>/dev/null || true)"
++# The stub values must diverge from whatever the manifest declares (SPEC-7 adds
++# timeout_s:300/max_turns:10) — otherwise a passing assertion could not tell
++# "the stub applied" apart from "the manifest applied and happened to match".
++if [[ "$_s22_manifest_timeout" == "111" || "$_s22_manifest_maxturns" == "12" ]]; then
++    assert_fail "[#1847/SPEC-22] stub values must diverge from the manifest's own config.router" \
++        "manifest already declares 111/12"
++fi
++
++# shellcheck disable=SC2329
++template_stage_router_timeout()   { printf '111'; }
++# shellcheck disable=SC2329
++template_stage_router_max_turns() { printf '12'; }
++
++_s22_prev_plugin_dir="${ZBUILD_PLUGIN_DIR:-__UNSET__}"
++_s22_prev_stage="${ZBUILD_CURRENT_STAGE:-__UNSET__}"
++export ZBUILD_PLUGIN_DIR="$PLUGIN_DIR"
++export ZBUILD_CURRENT_STAGE="monitor"
++unset ZBUILD_ROUTER_TIMEOUT ZBUILD_ROUTER_MAX_TURNS ZBUILD_ROUTER_MAX_TURNS_OVERRIDE 2>/dev/null || true
++
++assert_eq "[#1847/SPEC-22] _route_resolve_timeout returns the STUBBED template value, not the manifest's" \
++    "111" "$(_route_resolve_timeout)"
++assert_eq "[#1847/SPEC-22] _route_resolve_max_turns returns the STUBBED template value, not the manifest's" \
++    "12" "$(_route_resolve_max_turns)"
++
++unset -f template_stage_router_timeout template_stage_router_max_turns 2>/dev/null || true
++if [[ "$_s22_prev_plugin_dir" == "__UNSET__" ]]; then unset ZBUILD_PLUGIN_DIR; else export ZBUILD_PLUGIN_DIR="$_s22_prev_plugin_dir"; fi
++if [[ "$_s22_prev_stage" == "__UNSET__" ]]; then unset ZBUILD_CURRENT_STAGE; else export ZBUILD_CURRENT_STAGE="$_s22_prev_stage"; fi
++
++# ─── Teardown ─────────────────────────────────────────────────────────────────
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))

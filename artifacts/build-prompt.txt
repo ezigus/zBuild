@@ -1,0 +1,351 @@
+============== ZBUILD BUILD — iter 1/10 ==============
+## ORIGINAL TASK (immutable across iterations)
+# Plan: Migrate plugins/agent/monitor to contract v2
+
+**Goal:** Move the monitor plugin's result, disposition, budgets, and inputs onto contract v2 (#1821-#1826, #1829) while keeping config/templates/deployed.yaml dispatch behavior-identical for a passing run
+
+## Steps
+1. Declare v2 metadata in the manifest: provides.result_contract: 2; config.router: {timeout_s: 300, max_turns: 10} (Pattern-1 single-shot headroom, mirrors review-lens/manifest.yaml's identical comment); a one-line comment recording that no release/cleanup hook is declared because monitor holds no live resources (ADR-001 — absence is recorded, not implied; the engine's plugin.cleanup.absent event covers this automatically). valid_verdicts (pass,degraded), the primary:true monitor_report output, provides.role, and provides.events are already present — leave them.
+   - Files: `plugins/agent/monitor/manifest.yaml`
+   - Estimated lines: 10
+2. Test-first: extend monitor-test.sh with failing SPECs before touching plugin.sh — assert .result_contract==2 and .disposition=="complete" on the existing dry-run/live-pass paths, .disposition mapped via router_reason_disposition on a model-call error, a new SPEC for SIGTERM/SIGINT during the model call writing disposition:"interrupted", and a new SPEC for router rc=10 (turn-budget exhaustion) writing disposition:"out_of_turns" reason:"budget_exhausted" (core/pipeline/disposition.sh documents "exhausted" as retired by #2187 — the issue's own ADR-063 §3 citation of disposition:exhausted/disposition.sh:97 is stale against current code; out_of_turns is the live equivalent and is what triggers route.sh's retry-at-+50%-capped-at-2x path). Run each new/changed assertion and confirm it fails for the intended reason before step-3.
+   - Files: `plugins/agent/monitor/tests/monitor-test.sh`
+   - Estimated lines: 90
+3. Replace _monitor_write_report with a v2 result writer (_monitor_write_result), mirroring _review_lens_write_result: emit {result_contract:2, verdict, disposition, reason, data:{summary, checks}} via jq (never string-interpolated), folding today's rendered summary/checks strings into the namespaced data block per the issue's 'Folds in' section. Keep atomic_write.
+   - Files: `plugins/agent/monitor/plugin.sh`
+   - Estimated lines: 20
+4. Source scripts/lib/router-rc-classify.sh and wire disposition on every exit path of monitor_stage_run: dry-run and healthy-model paths -> "complete"; route_to_model rc!=0 -> router_reason_disposition(classified reason); unparseable/schema-gate-failed envelope -> "unusable"; a well-formed "degraded" verdict -> "complete" (the stage ran fine; the verdict itself communicates degradation). Every rc ∈ {0,1} per #1823 — no other exit code leaves the plugin. All SPEC-2..4 assertions from step-2 must pass.
+   - Files: `plugins/agent/monitor/plugin.sh`
+   - Estimated lines: 35
+5. Add a SIGTERM/SIGINT trap around the route_to_model call (mirrors _review_lens_interrupt_handler) that writes disposition:"interrupted" via _monitor_write_result and exits 1; add an explicit branch for router rc==10 that writes disposition:"out_of_turns" reason:"budget_exhausted" and returns 1, so the engine's existing out_of_turns retry response actually gets exercised for monitor for the first time.
+   - Files: `plugins/agent/monitor/plugin.sh`
+   - Estimated lines: 25
+6. Add ADR-063 §1 budget-guidance text to the prompt before the route_to_model call, modeled on review-lens's _review_lens_budget_guidance/_wallclock_guidance: read the effective limits via _route_resolve_max_turns and _route_resolve_timeout (core/router/route.sh) — never a hand-copied literal — and append a 'you have a BOUNDED tool-call budget' + wall-clock-target block so the model is told its actual turn/timeout limits sourced from step-1's manifest router block.
+   - Files: `plugins/agent/monitor/plugin.sh`
+   - Estimated lines: 30
+7. Delete the hardcoded deploy_result_json/pr_url_txt path construction in plugin.sh in favor of reading them from $ZBUILD_STAGE_INPUTS (engine-resolved name-matched inputs per #1825/#1826), matching design/plugin.sh's read-then-fallback pattern so existing fixtures without ZBUILD_STAGE_INPUTS set keep working. Confirm via \`grep -n 'artifact_dir.*deploy-result\|artifact_dir.*pr-url' plugins/agent/monitor/plugin.sh\` that no path construction remains, per the acceptance checklist's 'assert by grep' item.
+   - Files: `plugins/agent/monitor/plugin.sh`
+   - Estimated lines: 15
+8. Extend the deployed.yaml e2e test's existing behavior-unchanged golden check to assert the new v2 fields (result_contract:2, disposition:"complete") are present on a passing monitor dry-run, alongside the pre-existing verdict/monitor-report.json assertions — the before/after golden diff the acceptance checklist requires. A \`grep -rl 'monitor-report.json\|monitor_stage_run\|monitor-summary.md' tests/\` found only this file plus monitor-test.sh, so this is the complete additional test scope.
+   - Files: `tests/integration/deployed-template-e2e-test.sh`
+   - Estimated lines: 15
+
+## Notes
+monitor is already dispatched live in config/templates/deployed.yaml (pr->deploy->validate->monitor) and its manifest already declares valid_verdicts, a primary:true output, provides.role, and provides.events — the issue's own acceptance checklist anticipates this ('if this plugin already declares one, say so and move on'), so step-1 and step-8 are additive, not remedial; no template edit is needed for wiring. Confirmed directly against the manifest and plugin.sh in this pass (not just the prior checkpoint): manifest has no result_contract or config.router block yet; plugin.sh's _monitor_write_report writes only {schema_version,verdict,summary,checks} with no disposition/reason, no budget-guidance text, no SIGTERM/INT trap, and no rc=10 handling — matching the checkpoint's findings. Deviation from the issue text, flagged for human sign-off: the issue's 'ALSO LAND HERE' section directs disposition:"exhausted" citing disposition.sh:97->escalate and route.sh:749's +50%-capped-at-2x retry; core/pipeline/disposition.sh's own header states "exhausted" was retired by #2187 because it mapped to an unimplemented 'escalate' action and hid which budget (turns vs wall-clock) ran out. The current closed disposition set uses out_of_turns for turn exhaustion (both retried), and scripts/lib/router-rc-classify.sh's router_reason_disposition confirms router_out_of_turns -> out_of_turns; review-lens/plugin.sh already implements this exact rc==10 -> out_of_turns pattern end-to-end. This plan follows the current, working vocabulary per the CLAUDE.md anti-drift rule (spec/code wins over a stale issue citation) rather than the issue's literal 'exhausted' text — a human should confirm this correction before merge. Cleanup/release: no plugin.sh code changes planned since monitor holds no live resources to release; step-1's manifest comment plus the engine's existing plugin.cleanup.absent auto-emit is treated as satisfying that acceptance line. Router-budget values (timeout_s:300/max_turns:10) are proposed by analogy to review-lens's identical Pattern-1 comment, not independently derived from monitor-specific load data — no such data was available to read in this planning pass.
+
+## INSTRUCTIONS
+Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
+
+You have Read, Edit, Write, and
+Bash tools available. Your job is to edit the working tree to implement the
+ORIGINAL TASK above.
+
+### Scope (plan.files[])
+You may ONLY touch files listed here. Refuse any out-of-scope edit.
+  - plugins/agent/monitor/manifest.yaml
+  - plugins/agent/monitor/plugin.sh
+  - plugins/agent/monitor/tests/monitor-test.sh
+  - tests/integration/deployed-template-e2e-test.sh
+  - tests/unit/monitor-v2-result-test.sh
+  - docs/wiki/plugins/monitor.md
+  - config/templates/deployed.yaml
+  - docs/adr/ADR-054-stage-contract.md
+  - docs/adr/ADR-055-inter-stage-data-contract-v2.md
+  - docs/adr/ADR-001-plugin-contract.md
+  - core/pipeline/disposition.sh
+  - scripts/lib/router-rc-classify.sh
+  - scripts/lib/llm-agent.sh
+  - scripts/lib/lint-contract.sh
+  - plugins/agent/review-lens/plugin.sh
+  - plugins/agent/review-lens/manifest.yaml
+  - plugins/agent/review-lens/tests/review-lens-v2-budget-test.sh
+  - plugins/agent/design/plugin.sh
+  - core/pipeline/input-resolve.sh
+  - core/router/route.sh
+  - tests/unit/event-schema-emitted-coverage-test.sh
+  - tests/unit/router-manifest-budget-test.sh
+
+### How the loop works
+- Each iteration you may make code changes via Edit/Write/Bash.
+- After each iteration the pipeline captures `git diff HEAD` and feeds it
+  back to you so you can verify progress.
+- Do NOT emit a unified diff in your response — the pipeline derives the
+  canonical `diff.patch` artifact from `git diff HEAD` automatically.
+
+### Completion sentinel
+Emit `LOOP_COMPLETE` on its own line as the FINAL line of your response
+WHEN the implementation is complete — whether you just finished it OR
+it was already done before you started. If the branch already contains
+the required changes (check `git log` for commits + `git diff` for any
+remaining gap) AND no STAGE SUMMARY below is marked RESOLVE, emit
+`LOOP_COMPLETE` immediately. Do NOT keep iterating when there is nothing
+left to do. While any STAGE SUMMARY is marked RESOLVE, finishing with no
+change needs a REASON — either you fixed it, or it does not reproduce.
+
+### When a finding does not reproduce
+If a RESOLVE summary names a test and that test PASSES when you run it on this
+tree, say so and stop. Emit, on its own line before the sentinel:
+
+    NOT_REPRODUCED: <the path you ran>
+
+one line per path. This is a REPORT, not a verdict: the pipeline re-runs the
+stage that raised the finding to check. Do not keep searching for the cause of
+a failure you cannot produce, and do not change code to chase one.
+
+### Budget
+- Each iteration is ONE model call bounded by a 900-second wall clock; a
+  command that runs longer than ~2 minutes will cost you the whole call.
+- Do NOT run `npm test`, the full suite, or `npm run lint` — the pipeline has
+  already run them and their findings are in the STAGE SUMMARIES below. Run
+  only the one failing test file a summary names, and only after changing code.
+- A STAGE SUMMARY marked RESOLVE is red RIGHT NOW on this tree. Do not
+  re-verify it; start from the failing line it quotes.
+
+### Rules
+- Touch only files in the scope list above.
+- Do not run `git commit` — the pipeline owns commit semantics.
+- NEVER run a command that mutates git branch state or the working tree —
+  no `git checkout -b`/`switch`/`commit`/`push`/`tag`/`reset`. You are running
+  INSIDE the pipeline's own checkout; switching or creating a branch hijacks the
+  run. The pipeline owns the branch.
+- If you must exercise a command you are building (or any command that could
+  publish, tag, push, or otherwise mutate state), run it in `--dry-run` mode.
+  Do everything you can to verify behavior without side effects.
+- Keep changes minimal and aligned with the plan.
+- Clean up scratch siblings of the files you edit (`*.bak`, `*.orig`,
+  `*.rej`, `*.head`, `*.tmp`, `*~`). `sed -i.bak` and
+  `git show HEAD:f > f.head` both leave one behind — prefer `sed -i` with no
+  suffix, and delete any comparison scratch before you finish. Out-of-scope
+  scratch is removed for you; any OTHER out-of-scope path voids the whole
+  iteration, so do not rely on the cleanup.
+- If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.
+
+### Commit message (#608)
+Before the final `LOOP_COMPLETE` line, emit a single line of the form:
+
+    COMMIT_SUMMARY: <one-line description of this iteration's change>
+
+Keep it under 72 characters, present tense, imperative mood (e.g.
+"add foo parser" not "added"). The pipeline uses this as the git commit
+message for the per-iteration commit it creates on your behalf. If you
+omit this line the pipeline falls back to the plan title.
+
+## DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
+# ADR-style design: migrate plugins/agent/monitor to contract v2
+
+## Goal
+
+Move the `monitor` plugin's result, disposition, router budgets and inputs
+onto ADR-054/ADR-055's contract v2, matching the pattern already shipped for
+`review-lens`, `security-lens`, `spec-acceptance`, `review-report`, `merge`,
+`pr-open` and `deploy-release` (the ongoing 17-plugin F-wave, #1833–#1849).
+`monitor` is the last of that wave (issue #1847). The live `deployed.yaml`
+dispatch (`deploy → validate → monitor`) must remain behavior-identical for a
+passing run: same stages, same ordering, same `monitor-report.json` verdict
+semantics (`pass`/`degraded`).
+
+## Context
+
+Re-verified this iteration against the current tree, `plan.json`, and the
+`spec-coverage` gate's `fail` verdict from the prior iteration, which flagged
+one real gap in iteration 2's draft (all five gaps from iteration 1→2 are
+still fixed and unchanged; see "Carried forward" below).
+
+**Gap from this iteration's `spec-coverage` fail, and the correction it
+drives:**
+
+- **Unproven override precedence.** The acceptance checkbox "Router budgets
+  resolve from the manifest, and the template override still wins where one
+  is set" requires proving precedence — but SPEC-7 (as written in iteration
+  2) only asserts the manifest's `config.router` values *match*
+  `deployed.yaml`'s existing per-stage override. Both layers declare
+  `timeout_s: 300, max_turns: 10` — identical numbers — so no assertion
+  actually distinguishes "the manifest supplied this" from "the template
+  overrode the manifest and happened to land on the same number." A reader
+  cannot tell precedence held from that alone.
+
+  Investigated whether a *new* test is even necessary here, since precedence
+  itself is not new: `tests/unit/router-manifest-budget-test.sh` is a
+  standing, plugin-agnostic guard (`[SPEC-4]`, `router-manifest-budget-test.sh:213-227`)
+  that already proves `core/router/route.sh`'s `_route_resolve_knob` picks
+  the template accessor's value over `config.router.*` from an arbitrary
+  manifest fixture — the mechanism does not know or care which plugin it is
+  resolving for. That test is unaffected by this migration and stays green
+  throughout (listed in scope as reference-only, unchanged).
+
+  What that generic guard does **not** cover is `monitor`'s *own* manifest
+  content once SPEC-7 adds a `config.router` block to it — there is currently
+  no assertion anywhere that exercises `_route_resolve_timeout` /
+  `_route_resolve_max_turns` against `plugins/agent/monitor/manifest.yaml`
+  itself with a template value that *diverges* from what SPEC-7 puts there.
+  Since `route.sh`'s resolution order does not vary by plugin, this is not a
+  new behavior this migration introduces — it is the existing, already-true
+  precedence rule, newly checkable against `monitor`'s manifest because that
+  manifest didn't have a `config.router` block to check it against before.
+  Tagged `[guard]` below (SPEC-22) per the classification rule: the
+  behavior it asserts is already true at merge-base for any manifest,
+  `monitor`'s included, before this migration adds one.
+
+**Carried forward from iteration 1→2 (all re-verified this iteration, tree
+unchanged — zero commits since intake):**
+
+1. **`data:{}` folding** — `_monitor_write_result` emits `{result_contract,
+   schema_version, verdict, disposition, reason, data:{summary, checks}}`,
+   per the issue's own "Folds in" text (`plan.json` step-3), a named
+   deviation from `review-lens`'s flat shape (grepped `plugins/agent/*/plugin.sh`
+   for `data:{`/`"data":` again this iteration — still no match anywhere in
+   the tree). Flagged for human sign-off below.
+2. **Mandatory `reason` field**, always present, `""` on `complete` — matches
+   `router-rc-classify.sh:13`'s established contract.
+3. **rc ∈ {0,1} (#1823)** — the rc=10 turn-budget branch and the
+   SIGTERM/SIGINT trap both cause `monitor_stage_run` to `return 1`; the raw
+   router rc (10) and signal rc (130) never become the function's own return
+   value. Only `disposition` communicates cause.
+4. **No hardcoded path-construction fallback** — `monitor`'s two inputs
+   (`deploy_result`, `pr_url`) are already `required: false`; the hardcoded
+   `$artifacts_dir/deploy-result.json` / `$artifacts_dir/pr-url.txt` string
+   construction is deleted outright, read exclusively via
+   `$ZBUILD_STAGE_INPUTS`. `monitor-test.sh`'s existing fixture is edited to
+   point `$ZBUILD_STAGE_INPUTS` at the same file it populates today.
+5. **Cleanup/release hook recorded absence** — one-line manifest comment
+   citing `ADR-054 §7 (#1829)`, copied from `review-lens/manifest.yaml:92-94`,
+   with a matching test assertion pattern from
+   `review-lens/tests/review-lens-v2-budget-test.sh:280-291` (`[SPEC-19]`).
+
+## Decision
+
+- Add `provides.result_contract: 2` to `plugins/agent/monitor/manifest.yaml`.
+- Add `config.router: {timeout_s: 300, max_turns: 10}`, matching
+  `deployed.yaml`'s existing per-stage override (Pattern-1 single-shot
+  headroom, same comment `review-lens/manifest.yaml` uses).
+- Add the cleanup-absence comment, adapted from
+  `review-lens/manifest.yaml:92-94`:
+  ```
+  # hooks.cleanup is intentionally absent: this plugin holds no live resources
+  # that require teardown — ADR-054 §7 (#1829).
+  ```
+- Replace `_monitor_write_report` with `_monitor_write_result(out, verdict,
+  disposition, reason, summary, checks)`, writing via `jq` (never
+  string-interpolated), nested per the issue's "Folds in" instruction:
+  ```
+  {result_contract:2, schema_version:1, verdict:$v, disposition:$d,
+   reason:$r, data:{summary:$s, checks:$c}}
+  ```
+  `reason` is always passed — `""` on every `complete` call site (dry-run,
+  live pass, live degraded-verdict). Call sites and their disposition:
+  - dry-run → `complete`, `reason:""`
+  - live pass/degraded verdict (model responded, envelope validated) →
+    `complete`, `reason:""` (the health verdict itself, in `data.summary`/
+    `data.checks`, communicates degradation — a separate axis from
+    disposition, per ADR-054 §6)
+  - `route_to_model` failure (rc not in {0,10,130}) →
+    ```
+    local _mon_v="" _mon_r=""
+    _router_rc_classify "$rc" _mon_v _mon_r 2>/dev/null || true
+    local disposition; disposition="$(router_reason_disposition "${_mon_r:-router_rc_nonzero}")"
+    _monitor_write_result "$report_out" "degraded" "$disposition" "${_mon_r:-router_rc_nonzero}" "" "[]"
+    ```
+  - unparseable/schema-gate-failed reply → `unusable`,
+    `reason:"envelope_invalid"` (or the concrete parse-failure string)
+  - rc=10 (turn-budget exhaustion) → `out_of_turns`,
+    `reason:"budget_exhausted"` — matches `review-lens/plugin.sh:293-309`'s
+    rc=10 special case, ordered **before** the generic
+    `_router_rc_classify` branch
+Where a design decision above conflicts with the plan, follow the design decision.
+
+## ACCEPTANCE TESTS (you MUST make these pass)
+The acceptance testfiles listed below are read-only for this stage: the engine denies edits to them, and a mechanical check restores any change. They are the contract you implement against, written before your implementation existed. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion. If you believe an assertion genuinely does not test its SPEC, say so in your output and leave it alone.
+Each test MUST contain an assert call whose label includes the tag for the SPEC it verifies, exactly as listed below (e.g. assert_eq "[#1847/SPEC-1] ..." exp act). The acceptance-gate (ADR-036) requires every SPEC to have an assertion carrying its tag. A CHANGE-behavior SPEC-n MUST have a tagged assertion that FAILS at the merge-base baseline and passes here (a tautological change-SPEC that passes without your implementation is rejected); a GUARD/invariant SPEC-n is tagged but NOT contorted to fail at baseline. See the per-id list below.
+- SPEC-1: tests/unit/monitor-v2-result-test.sh
+- SPEC-2: tests/unit/monitor-v2-result-test.sh
+- SPEC-3: tests/unit/monitor-v2-result-test.sh
+- SPEC-4: tests/unit/monitor-v2-result-test.sh
+- SPEC-5: tests/unit/monitor-v2-result-test.sh
+- SPEC-6: tests/unit/monitor-v2-result-test.sh
+- SPEC-7: tests/unit/monitor-v2-result-test.sh
+- SPEC-8: tests/unit/monitor-v2-result-test.sh
+- SPEC-9: tests/unit/monitor-v2-result-test.sh
+- SPEC-10: plugins/agent/monitor/tests/monitor-test.sh
+- SPEC-11: plugins/agent/monitor/tests/monitor-test.sh tests/unit/monitor-v2-result-test.sh
+- SPEC-12: plugins/agent/monitor/tests/monitor-test.sh tests/unit/monitor-v2-result-test.sh
+- SPEC-13: tests/integration/deployed-template-e2e-test.sh
+- SPEC-14: tests/unit/monitor-v2-result-test.sh
+- SPEC-15: tests/unit/monitor-v2-result-test.sh
+- SPEC-16: tests/unit/monitor-v2-result-test.sh
+- SPEC-17: plugins/agent/monitor/tests/monitor-test.sh tests/unit/event-schema-emitted-coverage-test.sh
+- SPEC-18: plugins/agent/monitor/tests/monitor-test.sh tests/unit/monitor-v2-result-test.sh
+- SPEC-19: tests/unit/monitor-v2-result-test.sh
+- SPEC-20: tests/unit/monitor-v2-result-test.sh
+- SPEC-21: tests/unit/monitor-v2-result-test.sh
+- SPEC-22: tests/unit/monitor-v2-result-test.sh
+
+What each SPEC requires:
+- [#1847/SPEC-1] plugins/agent/monitor/manifest.yaml declares provides.result_contract: 2
+- [#1847/SPEC-2] monitor-report.json (dry-run path) carries result_contract:2, disposition:complete, reason:"", and data.summary/data.checks (not top-level summary/checks)
+- [#1847/SPEC-3] monitor-report.json (live pass path) carries result_contract:2, disposition:complete, reason:"", and the unchanged verdict:pass nested under data (data.summary, data.checks)
+- [#1847/SPEC-4] monitor-report.json (route_to_model failure path) carries a disposition derived via router_reason_disposition, with a non-empty reason field naming the classified router reason
+- [#1847/SPEC-5] monitor-report.json (unparseable/schema-gate-failed reply path) carries disposition:unusable and a non-empty reason
+- [#1847/SPEC-6] a SIGTERM/SIGINT received during the route_to_model call writes disposition:interrupted, reason:signal_interrupt to monitor-report.json, and monitor_stage_run returns rc=1 (not the raw signal rc)
+- [#1847/SPEC-7] plugins/agent/monitor/manifest.yaml declares config.router with timeout_s:300 and max_turns:10, matching deployed.yaml's existing per-stage override
+- [#1847/SPEC-8] the assembled prompt contains a TURN BUDGET block before the route_to_model call
+- [#1847/SPEC-9] the assembled prompt contains a WALL CLOCK BUDGET block before the route_to_model call
+- [#1847/SPEC-10] ZBUILD_DRY_RUN=1 still returns rc=0 and writes verdict=pass without calling route_to_model
+- [#1847/SPEC-11] config.valid_verdicts remains exactly [pass, degraded]
+- [#1847/SPEC-12] inputs: still declares only {id: deploy_result, required: false} and {id: pr_url, required: false} — no source/path/type restated
+- [#1847/SPEC-13] deployed.yaml's deploy → validate → monitor dry-run dispatch still ends with monitor-report.json present and monitor_stage_run returning rc=0
+- [#1847/SPEC-14] when $ZBUILD_STAGE_INPUTS is set and its .inputs.deploy_result / .inputs.pr_url entries are non-empty, monitor_stage_run reads the deploy-result / pr-url content from those resolved paths — proven by pointing the index at files in a different directory and asserting the prompt reflects that content
+- [#1847/SPEC-15] plugins/agent/monitor/manifest.yaml's outputs: block still declares exactly one primary: true entry (monitor_report) — scripts/lib/lint-contract.sh's ADR-020/#507 check must keep passing
+- [#1847/SPEC-16] plugins/agent/monitor/manifest.yaml still declares provides.role: monitor, unchanged by this migration
+- [#1847/SPEC-17] plugins/agent/monitor/manifest.yaml still declares provides.events: [monitor.alert, monitor.check, monitor.started], and plugin.sh still emits all three
+- [#1847/SPEC-18] plugin.sh contains no hardcoded $artifacts_dir/deploy-result.json or $artifacts_dir/pr-url.txt string construction — grep -n 'artifacts_dir.*deploy-result\|artifacts_dir.*pr-url' plugins/agent/monitor/plugin.sh returns no match; when $ZBUILD_STAGE_INPUTS is unset/empty or has no entry for an optional input, monitor_stage_run treats that input as not provided (identical to today's "file does not exist" path) rather than constructing any fallback path
+- [#1847/SPEC-19] plugins/agent/monitor/manifest.yaml declares no top-level cleanup: key and carries a comment citing "ADR-054 §7" explaining hooks.cleanup's intentional absence
+- [#1847/SPEC-20] monitor-report.json's reason field is always present as a JSON key on every exit path, including the complete-disposition paths (dry-run, live pass, live degraded-verdict), where its value is the empty string
+- [#1847/SPEC-21] monitor_stage_run never returns an rc outside {0,1} — the SIGTERM/SIGINT path and the router rc=10 (turn-budget) path both cause it to return 1, never the raw signal or router rc
+- [#1847/SPEC-22] with ZBUILD_PLUGIN_DIR/ZBUILD_CURRENT_STAGE pointed at monitor's own manifest.yaml, stubbing the template_stage_router_timeout / template_stage_router_max_turns accessors to return values that diverge from the manifest's config.router.{timeout_s,max_turns} (added by SPEC-7) causes _route_resolve_timeout / _route_resolve_max_turns to return the STUBBED (template) value, not the manifest's — proving the template layer still outranks monitor's newly-declared manifest defaults, not merely that the two currently agree
+
+### SPEC IDS YOU MUST COVER (acceptance gate, ADR-036)
+Every SPEC id below needs at least one assertion whose label carries its tag (as listed); self-verify the FULL set is tagged before emitting LOOP_COMPLETE. A CHANGE-behavior SPEC (new behavior this change introduces) MUST have a tagged assertion that FAILS at the merge-base baseline. A GUARD/invariant SPEC (behavior that must stay unchanged) is tagged but MUST NOT be contorted to fail at baseline.
+- [#1847/SPEC-1] plugins/agent/monitor/manifest.yaml declares provides.result_contract: 2
+  → needs a `[#1847/SPEC-1]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-2] monitor-report.json (dry-run path) carries result_contract:2, disposition:complete, reason:"", and data.summary/data.checks (not top-level summary/checks)
+  → needs a `[#1847/SPEC-2]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-3] monitor-report.json (live pass path) carries result_contract:2, disposition:complete, reason:"", and the unchanged verdict:pass nested under data (data.summary, data.checks)
+  → needs a `[#1847/SPEC-3]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-4] monitor-report.json (route_to_model failure path) carries a disposition derived via router_reason_disposition, with a non-empty reason field naming the classified router reason
+  → needs a `[#1847/SPEC-4]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-5] monitor-report.json (unparseable/schema-gate-failed reply path) carries disposition:unusable and a non-empty reason
+  → needs a `[#1847/SPEC-5]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-6] a SIGTERM/SIGINT received during the route_to_model call writes disposition:interrupted, reason:signal_interrupt to monitor-report.json, and monitor_stage_run returns rc=1 (not the raw signal rc)
+  → needs a `[#1847/SPEC-6]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-7] plugins/agent/monitor/manifest.yaml declares config.router with timeout_s:300 and max_turns:10, matching deployed.yaml's existing per-stage override
+  → needs a `[#1847/SPEC-7]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-8] the assembled prompt contains a TURN BUDGET block before the route_to_model call
+  → needs a `[#1847/SPEC-8]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-9] the assembled prompt contains a WALL CLOCK BUDGET block before the route_to_model call
+  → needs a `[#1847/SPEC-9]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-10] ZBUILD_DRY_RUN=1 still returns rc=0 and writes verdict=pass without calling route_to_model
+  → needs a `[#1847/SPEC-10]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-11] config.valid_verdicts remains exactly [pass, degraded]
+  → needs a `[#1847/SPEC-11]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-12] inputs: still declares only {id: deploy_result, required: false} and {id: pr_url, required: false} — no source/path/type restated
+  → needs a `[#1847/SPEC-12]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-13] deployed.yaml's deploy → validate → monitor dry-run dispatch still ends with monitor-report.json present and monitor_stage_run returning rc=0
+  → needs a `[#1847/SPEC-13]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-14] when $ZBUILD_STAGE_INPUTS is set and its .inputs.deploy_result / .inputs.pr_url entries are non-empty, monitor_stage_run reads the deploy-result / pr-url content from those resolved paths — proven by pointing the index at files in a different directory and asserting the prompt reflects that content
+  → needs a `[#1847/SPEC-14]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-15] plugins/agent/monitor/manifest.yaml's outputs: block still declares exactly one primary: true entry (monitor_report) — scripts/lib/lint-contract.sh's ADR-020/#507 check must keep passing
+  → needs a `[#1847/SPEC-15]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-16] plugins/agent/monitor/manifest.yaml still declares provides.role: monitor, unchanged by this migration
+  → needs a `[#1847/SPEC-16]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-17] plugins/agent/monitor/manifest.yaml still declares provides.events: [monitor.alert, monitor.check, monitor.started], and plugin.sh still emits all three
+  → needs a `[#1847/SPEC-17]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-18] plugin.sh contains no hardcoded $artifacts_dir/deploy-result.json or $artifacts_dir/pr-url.txt string construction — grep -n 'artifacts_dir.*deploy-result\|artifacts_dir.*pr-url' plugins/agent/monitor/plugin.sh returns no match; when $ZBUILD_STAGE_INPUTS is unset/empty or has no entry for an optional input, monitor_stage_run treats that input as not provided (identical to today's "file does not exist" path) rather than constructing any fallback path
+  → needs a `[#1847/SPEC-18]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-19] plugins/agent/monitor/manifest.yaml declares no top-level cleanup: key and carries a comment citing "ADR-054 §7" explaining hooks.cleanup's intentional absence
+  → needs a `[#1847/SPEC-19]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-20] monitor-report.json's reason field is always present as a JSON key on every exit path, including the complete-disposition paths (dry-run, live pass, live degraded-verdict), where its value is the empty string
+  → needs a `[#1847/SPEC-20]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-21] monitor_stage_run never returns an rc outside {0,1} — the SIGTERM/SIGINT path and the router rc=10 (turn-budget) path both cause it to return 1, never the raw signal or router rc
+  → needs a `[#1847/SPEC-21]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-22] with ZBUILD_PLUGIN_DIR/ZBUILD_CURRENT_STAGE pointed at monitor's own manifest.yaml, stubbing the template_stage_router_timeout / template_stage_router_max_turns accessors to return values that diverge from the manifest's config.router.{timeout_s,max_turns} (added by SPEC-7) causes _route_resolve_timeout / _route_resolve_max_turns to return the STUBBED (template) value, not the manifest's — proving the template layer still outranks monitor's newly-declared manifest defaults, not merely that the two currently agree
+  → needs a `[#1847/SPEC-22]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
