@@ -1,9 +1,11 @@
 {
   "result_contract": 2,
-  "verdict": "covered",
+  "verdict": "uncovered",
   "disposition": "complete",
-  "reason": "Every checkbox requirement from the issue — v2 envelope on all exit paths (SPEC-10), valid_verdicts declared and exercised (SPEC-22, SPEC-14), no constructed artifact paths (SPEC-11, SPEC-12), router budget (SPEC-15, no LLM calls so no block needed), primary output (SPEC-16), provides.role/events (SPEC-17), name-matched inputs, cleanup hook absent (SPEC-18), fail-closed gate survival (SPEC-4, SPEC-8), and the retryable/non-retryable disposition split (SPEC-20, SPEC-21) — maps to at least one SPEC that demands the full condition.",
+  "reason": "The issue requires \"behaviour is unchanged for a passing run\" but no SPEC requires updating the integration test harness (`tests/integration/deployed-template-e2e-test.sh`) to supply `ZBUILD_ARTIFACT_DIR`, so the existing e2e test breaks after the migration removes the state-file-derived path.",
   "data": {
-    "uncovered": []
+    "uncovered": [
+      "Behaviour is unchanged for a passing run — no SPEC covers updating the integration harness to set `ZBUILD_ARTIFACT_DIR`, causing the deployed-template-e2e test to fail once the plugin no longer derives its output path from the state file."
+    ]
   }
 }
