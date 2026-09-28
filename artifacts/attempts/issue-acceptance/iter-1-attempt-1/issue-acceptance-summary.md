@@ -1,5 +1,0 @@
-## issue-acceptance — fail
-
-- The "ALSO LAND HERE" section requires monitor to emit `disposition: exhausted` for the turn-budget/timeout path (ADR-063 §3), but no SPEC captures that mapping — SPEC-21 only proves the rc collapses to 1, and the diff instead uses `disposition:out_of_turns`, leaving the exhausted-disposition retry path unexercised.
-
-- NOT MET: monitor must emit `disposition: exhausted` when it runs out of turn/wall-clock budget (ADR-063 §3), engaging the engine's escalate/retry-at-+50%-capped-at-2× response
