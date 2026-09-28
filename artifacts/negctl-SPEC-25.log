@@ -26,9 +26,9 @@
   [38;2;74;222;128m✓[0m inputs: both entries have required:false
   [38;2;74;222;128m✓[0m inputs: no restated source/path/type keys
 
-  [38;2;0;212;255moutputs: block declares exactly one primary:true entry (monitor_report)[0m
-  [38;2;74;222;128m✓[0m manifest has exactly one primary:true output
-  [38;2;74;222;128m✓[0m the primary:true output is monitor_report
+  [38;2;0;212;255m[#1847/SPEC-15] outputs: block declares exactly one primary:true entry (monitor_report)[0m
+  [38;2;74;222;128m✓[0m [#1847/SPEC-15] manifest has exactly one primary:true output
+  [38;2;74;222;128m✓[0m [#1847/SPEC-15] the primary:true output is monitor_report
 
   [38;2;0;212;255mmanifest still declares provides.role: monitor[0m
   [38;2;74;222;128m✓[0m provides.role is monitor
