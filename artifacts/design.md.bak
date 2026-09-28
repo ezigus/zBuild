@@ -4,9 +4,9 @@
 
 **Goal.** Move `plugins/agent/intake` to the v2 stage contract defined by ADR-054/ADR-055: a JSON result file (`intake-result.json`) written on every exit path including signal interruption, rc ∈ {0,1}, router budgets declared in the manifest, `intake-result.json` as the primary output, and `valid_verdicts` enforced.
 
-**Context.** Intake was the last Phase-0 plugin still on the v1 contract (implicit rc, no result file, no disposition vocabulary, empty `valid_verdicts`). Five guard SPECs were mis-tagged — behaviors that were absent at the merge-base and added by this migration — requiring re-tagging to `[change]`. An interruption/SIGTERM path was listed as a third exit category in the issue acceptance checkbox but had no SPEC; SPEC-16 closes that gap. Two downstream test files hardcode intake's primary output as `scope-manifest.md` or omit `intake-result.json` from their golden snapshots and need updating.
+**Context.** Intake was the last Phase-0 plugin still on the v1 contract (implicit rc, no result file, no disposition vocabulary, empty `valid_verdicts`). The prior design iteration tagged SPEC-8/9/12/13/14 as `[guard]` but all five fail at the merge-base baseline — the manifest fields they assert (provides.role, events list, config.router) and the test infrastructure they require (golden fixtures, plugin.result event emission) do not exist in v1. These are therefore `[change]`, not `[guard]`. Additionally, spec-coverage identified a gap: SPEC-10 proves `ZBUILD_ARTIFACT_DIR` is referenced (output side), but no SPEC asserts the absence of hardcoded input artifact path construction; SPEC-17 closes that gap as a [guard] invariant. SPEC-2 was amended to enumerate three exit paths (success, failure, signal) so it covers the same ground as SPEC-16 without duplicating it.
 
-**Decision.** Implement all v2 contract requirements in plugin.sh and manifest.yaml; add a SIGTERM trap in `intake_run` that writes a fail/broken result before exiting; create the v1 golden baseline fixtures; update the artifact-type-retirement assertion and parity golden to reflect the new primary output.
+**Decision.** Implement all v2 contract requirements in plugin.sh and manifest.yaml; add a SIGTERM trap in `intake_run` that writes a fail/broken result before exiting; create the v1 golden baseline fixtures capturing pre-migration output so SPEC-8 can verify the migration leaves content unchanged; update the artifact-type-retirement assertion and parity golden to reflect the new primary output (`intake-result.json`).
 
 ```scope
 plugins/agent/intake/manifest.yaml
@@ -27,7 +27,7 @@ docs/adr/ADR-009-platform-aware-modularity.md
 
 ```acceptance
 SPEC-1[change]: intake_run exits rc=1 (not rc=2) on every failure path — no-goal/no-issue, closed issue, failed fetch, empty-after-sanitization, missing state_file, branch refused
-SPEC-2[change]: ${artifact_dir}/intake-result.json is written on every terminal exit path (success and all failure modes)
+SPEC-2[change]: ${artifact_dir}/intake-result.json is written on every terminal exit path (success, all failure modes, and SIGTERM signal interruption)
 SPEC-3[change]: the result file carries result_contract:2, a verdict in {pass,fail}, a disposition in the engine's vocabulary, and a non-empty reason
 SPEC-4[change]: manifest declares provides.result_contract: 2
 SPEC-5[change]: manifest declares config.valid_verdicts: [pass, fail] (replacing the current [])
@@ -42,10 +42,11 @@ SPEC-13[change]: manifest provides.events lists at least the 17 intake.* events 
 SPEC-14[change]: when template_stage_router_timeout_s() is defined and returns a value that differs from the manifest's declared config.router.timeout_s, _route_resolve_timeout must return the template value (template > manifest config.router.* > constant)
 SPEC-15[change]: on a successful run, intake-result.json carries a data object with goal_len (integer, character count of the sanitized goal) and platform_count (integer, number of detected platforms)
 SPEC-16[change]: when the intake_run subprocess receives SIGTERM mid-run, intake-result.json is written with verdict=fail, disposition=broken before the process exits
+SPEC-17[guard]: plugin.sh contains no hardcoded input artifact path constructions that bypass the engine-provided ZBUILD_ARTIFACT_DIR — grep over plugin.sh for patterns that construct artifact input paths without ZBUILD_ARTIFACT_DIR returns zero matches
 WIRING: plugins/agent/intake/manifest.yaml
 TESTFILES:
 SPEC-1: plugins/agent/intake/tests/intake-test.sh tests/integration/intake-refuse-on-closed-subprocess-test.sh
-SPEC-2: plugins/agent/intake/tests/intake-test.sh
+SPEC-2: plugins/agent/intake/tests/intake-test.sh tests/integration/intake-refuse-on-closed-subprocess-test.sh
 SPEC-3: plugins/agent/intake/tests/intake-test.sh
 SPEC-4: plugins/agent/intake/tests/intake-test.sh
 SPEC-5: plugins/agent/intake/tests/intake-test.sh
@@ -60,4 +61,5 @@ SPEC-13: plugins/agent/intake/tests/intake-test.sh
 SPEC-14: plugins/agent/intake/tests/intake-test.sh
 SPEC-15: plugins/agent/intake/tests/intake-test.sh
 SPEC-16: tests/integration/intake-refuse-on-closed-subprocess-test.sh
+SPEC-17: plugins/agent/intake/tests/intake-test.sh
 ```
