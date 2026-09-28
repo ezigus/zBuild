@@ -1,0 +1,15 @@
+{
+  "stage": "test",
+  "cycle_iter": 2,
+  "attempt": 1,
+  "rc": "0",
+  "generated_at": "2026-09-28T17:34:51Z",
+  "files": 4,
+  "outputs": {
+    "test-errors.log": "absent",
+    "test-results.json": "changed",
+    "test-failures-summary.md": "unchanged",
+    "test-output.log": "unchanged",
+    "test-timing.log": "changed"
+  }
+}
