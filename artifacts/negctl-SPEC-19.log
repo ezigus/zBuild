@@ -1,0 +1,156 @@
+### SPEC-19 baseline plugins/agent/deploy/tests/deploy-test.sh
+
+[38;2;0;212;255m[1m  plugin: deploy agent (kind:agent, ADR-018 P1, issues #757 #1846)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1846/SPEC-1] deploy plugin.sh exists at expected path
+  [38;2;74;222;128m✓[0m [#1846/SPEC-1] deploy_agent_run function defined after source
+  [38;2;74;222;128m✓[0m [#1846/SPEC-5] deploy plugin.sh has 'Role: deploy_agent' preamble
+  [38;2;74;222;128m✓[0m [#1846/SPEC-6] deploy plugin has no route_to_model call in non-comment code
+  [38;2;248;113;113m✗[0m [#1846/SPEC-9] manifest provides block must declare result_contract: 2
+    [2m  role: deploy_agent
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+  # the engine's known set at load. Adding one here needs no engine-config edit.
+  events:
+    - deploy.gate.missing
+    - deploy.input.missing
+    - deploy.skipped
+    - deploy.tool.failed[0m
+  [38;2;248;113;113m✗[0m [#1846/SPEC-11] plugin.sh must not derive output path from state_file/state_dir
+    [2mstate_file-derived artifact path found in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.gXG6Aa/plugins/agent/deploy/plugin.sh[0m
+  [38;2;74;222;128m✓[0m [#1846/SPEC-11] plugin.sh references ZBUILD_ARTIFACT_DIR for output path
+  [38;2;248;113;113m✗[0m [#1846/SPEC-12] plugin.sh must not hardcode pr-url.txt or gate-aggregator-result.json paths
+    [2mhardcoded input filename found in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.gXG6Aa/plugins/agent/deploy/plugin.sh[0m
+  [38;2;248;113;113m✗[0m [#1846/SPEC-12] plugin.sh must reference ZBUILD_STAGE_INPUTS for input resolution
+    [2mZBUILD_STAGE_INPUTS not found in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.gXG6Aa/plugins/agent/deploy/plugin.sh[0m
+  [38;2;248;113;113m✗[0m [#1846/SPEC-13] plugin.sh must not exit/return with rc>=2 on any code path
+    [2m        return 2
+        return 2
+        return 2
+    return 2[0m
+  [38;2;74;222;128m✓[0m [#1846/SPEC-15] manifest_router_knob timeout_s returns empty (no config.router)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-15] manifest_router_knob max_turns returns empty (no config.router)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-16] manifest outputs.deploy_result declares primary: true
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.role = deploy_agent
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events includes deploy.gate.missing
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events includes deploy.input.missing
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events includes deploy.skipped
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events includes deploy.tool.failed
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events declares exactly 4 events
+  [38;2;74;222;128m✓[0m [#1846/SPEC-18] manifest hooks block declares run hook
+  [38;2;74;222;128m✓[0m [#1846/SPEC-18] manifest hooks block has no cleanup hook
+  [38;2;74;222;128m✓[0m [#1846/SPEC-18] manifest hooks block declares exactly one hook (run only)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest config.valid_verdicts includes deployed
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest config.valid_verdicts includes error
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest config.valid_verdicts includes skipped
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest config.valid_verdicts declares exactly 3 verdicts
+  [38;2;248;113;113m✗[0m [#1846/SPEC-24] manifest must carry 'router budgets: none' comment
+    [2mnot found in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.gXG6Aa/plugins/agent/deploy/manifest.yaml[0m
+  [38;2;248;113;113m✗[0m [#1846/SPEC-24] manifest router-budget comment must reference ADR-037
+    [2mADR-037 not found in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.gXG6Aa/plugins/agent/deploy/manifest.yaml[0m
+[38;2;248;113;113m[1m✗[0m deploy_agent_run: state_file argument required
+### SPEC-19 head plugins/agent/deploy/tests/deploy-test.sh
+
+[38;2;0;212;255m[1m  plugin: deploy agent (kind:agent, ADR-018 P1, issues #757 #1846)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1846/SPEC-1] deploy plugin.sh exists at expected path
+  [38;2;74;222;128m✓[0m [#1846/SPEC-1] deploy_agent_run function defined after source
+  [38;2;74;222;128m✓[0m [#1846/SPEC-5] deploy plugin.sh has 'Role: deploy_agent' preamble
+  [38;2;74;222;128m✓[0m [#1846/SPEC-6] deploy plugin has no route_to_model call in non-comment code
+  [38;2;74;222;128m✓[0m [#1846/SPEC-9] manifest provides block declares result_contract: 2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-11] plugin.sh has no state_file-derived artifact path
+  [38;2;74;222;128m✓[0m [#1846/SPEC-11] plugin.sh references ZBUILD_ARTIFACT_DIR for output path
+  [38;2;74;222;128m✓[0m [#1846/SPEC-12] plugin.sh has no hardcoded pr-url.txt or gate-aggregator-result.json path
+  [38;2;74;222;128m✓[0m [#1846/SPEC-12] plugin.sh references ZBUILD_STAGE_INPUTS for input resolution
+  [38;2;74;222;128m✓[0m [#1846/SPEC-13] plugin.sh has no non-comment exit/return with rc>=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-15] manifest_router_knob timeout_s returns empty (no config.router)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-15] manifest_router_knob max_turns returns empty (no config.router)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-16] manifest outputs.deploy_result declares primary: true
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.role = deploy_agent
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events includes deploy.gate.missing
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events includes deploy.input.missing
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events includes deploy.skipped
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events includes deploy.tool.failed
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events declares exactly 4 events
+  [38;2;74;222;128m✓[0m [#1846/SPEC-18] manifest hooks block declares run hook
+  [38;2;74;222;128m✓[0m [#1846/SPEC-18] manifest hooks block has no cleanup hook
+  [38;2;74;222;128m✓[0m [#1846/SPEC-18] manifest hooks block declares exactly one hook (run only)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest config.valid_verdicts includes deployed
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest config.valid_verdicts includes error
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest config.valid_verdicts includes skipped
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest config.valid_verdicts declares exactly 3 verdicts
+  [38;2;74;222;128m✓[0m [#1846/SPEC-24] manifest carries 'router budgets: none' comment
+  [38;2;74;222;128m✓[0m [#1846/SPEC-24] manifest router-budget comment references ADR-037
+  [38;2;74;222;128m✓[0m [#1846/SPEC-2] dry-run writes verdict=deployed
+  [38;2;74;222;128m✓[0m [#1846/SPEC-7] dry-run deploy-result.json carries result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-7] dry-run deploy-result.json must not carry schema_version key
+  [38;2;74;222;128m✓[0m [#1846/SPEC-19] dry-run carries disposition=complete
+  [38;2;74;222;128m✓[0m [#1846/SPEC-19] dry-run carries non-empty reason
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] dry-run exit path: result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] dry-run exit path: verdict key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] dry-run exit path: disposition key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] dry-run exit path: reason key present and non-empty
+[38;2;248;113;113m[1m✗[0m deploy: missing required input pr_url
+  [38;2;74;222;128m✓[0m [#1846/SPEC-3] missing pr_url input → rc != 0
+  [38;2;74;222;128m✓[0m [#1846/SPEC-3] missing pr_url → verdict=error
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] missing-pr_url exit path: result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] missing-pr_url exit path: verdict key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] missing-pr_url exit path: disposition key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] missing-pr_url exit path: reason key present and non-empty
+  [38;2;74;222;128m✓[0m [#1846/SPEC-13] missing pr_url → rc=1 (not rc=2+)
+[38;2;250;204;21m[1m⚠[0m deploy: gate-aggregator verdict='fail' is not pass — skipping deploy
+  [38;2;74;222;128m✓[0m [#1846/SPEC-4] gate verdict=fail → deploy-result verdict=skipped
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] gate-fail exit path: result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] gate-fail exit path: verdict key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] gate-fail exit path: disposition key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] gate-fail exit path: reason key present and non-empty
+[38;2;250;204;21m[1m⚠[0m deploy: gate-aggregator verdict='route_design' is not pass — skipping deploy
+  [38;2;74;222;128m✓[0m [#1846/SPEC-4] gate verdict=route_design (non-pass) → skipped (allowlist)
+[38;2;248;113;113m[1m✗[0m deploy: gate-aggregator result missing — refusing deploy (fail-closed)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-8] missing gate (non-dry-run) → fail-closed rc=1 (not rc=2)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-8] missing gate → verdict=error
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] missing-gate exit path: result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] missing-gate exit path: verdict key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] missing-gate exit path: disposition key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] missing-gate exit path: reason key present and non-empty
+  [38;2;74;222;128m✓[0m [#1846/SPEC-13] missing gate → rc=1 (not rc=2+)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-20] deploy-release non-zero → disposition=unavailable
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-fail exit path: result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-fail exit path: verdict key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-fail exit path: disposition key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-fail exit path: reason key present and non-empty
+  [38;2;74;222;128m✓[0m [#1846/SPEC-13] deploy-release non-zero → rc=1
+[38;2;248;113;113m[1m✗[0m deploy: deploy-release plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-deploy.U0yCx6/no-deploy-release/plugins/tool/deploy-release/plugin.sh
+  [38;2;74;222;128m✓[0m [#1846/SPEC-21] deploy-release absent → disposition=broken
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-absent exit path: result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-absent exit path: verdict key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-absent exit path: disposition key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-absent exit path: reason key present and non-empty
+  [38;2;74;222;128m✓[0m [#1846/SPEC-13] deploy-release absent → rc=1
+  [38;2;74;222;128m✓[0m [#1846/SPEC-2] non-dry-run with passing gate delegates to deploy_release_run
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] successful-deploy exit path: result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] successful-deploy exit path: verdict key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] successful-deploy exit path: disposition key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] successful-deploy exit path: reason key present and non-empty
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] successful deploy writes verdict=deployed (v2)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] verdict=deployed (dry-run): result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] verdict=deployed (dry-run): verdict key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] verdict=deployed (dry-run): disposition key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] verdict=deployed (dry-run): reason key present and non-empty
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] verdict=error (missing pr_url): result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] verdict=error (missing pr_url): verdict key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] verdict=error (missing pr_url): disposition key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] verdict=error (missing pr_url): reason key present and non-empty
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] verdict=skipped (gate=fail): result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] verdict=skipped (gate=fail): verdict key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] verdict=skipped (gate=fail): disposition key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] verdict=skipped (gate=fail): reason key present and non-empty
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] verdict=deployed covered
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] verdict=error covered
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] verdict=skipped covered
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 90 tests passed[0m
+
