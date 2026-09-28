@@ -201,11 +201,27 @@ else
     assert_pass "[SPEC-4] validate_agent_init does not exist (ADR-056: init removed)"
 fi
 
+# #1845 (contract v2): validate reads its input from the index the engine hands
+# it at dispatch (ADR-055 §1) and derives no path itself. Build that index the
+# way the engine does — its own resolver, against the deployed.yaml flow loaded
+# above — rather than by hand, so this also proves the template wires
+# validate's deploy_result to the deploy stage's output.
+# shellcheck source=../../core/pipeline/input-resolve.sh
+source "$REPO_ROOT/core/pipeline/input-resolve.sh"
+ZBUILD_STAGE_INPUTS="$(_inputs_resolve_stage validate "$REPO_ROOT/plugins" "$STATE_DIR" 2>/dev/null || true)"
+export ZBUILD_STAGE_INPUTS ZBUILD_ARTIFACT_DIR="$ARTIFACTS_DIR"
+assert_eq "[#1845] the engine resolves validate's deploy_result from the deployed.yaml flow" \
+    "$ARTIFACTS_DIR/deploy-result.json" \
+    "$(jq -r '.inputs.deploy_result // empty' "${ZBUILD_STAGE_INPUTS:-/dev/null}" 2>/dev/null || true)"
+
 set +e
 validate_agent_run "validate" "$STATE_FILE"
 _run_rc=$?
 set -e
+unset ZBUILD_STAGE_INPUTS ZBUILD_ARTIFACT_DIR
 assert_eq "[SPEC-9] validate_agent_run exits 0 in dry-run" "0" "$_run_rc"
+assert_eq "[#1845] validate-result.json is a v2 result" "2" \
+    "$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/validate-result.json" 2>/dev/null || true)"
 
 # Behavior-preservation: validate-result.json exists and carries verdict=healthy
 assert_file_exists "[SPEC-9] validate-result.json written" "$ARTIFACTS_DIR/validate-result.json"
