@@ -1,0 +1,6 @@
+## design — pass
+
+- authored design.md — 13 file(s) in scope, 13 acceptance SPEC(s)
+
+- scope: plugins/agent/monitor/manifest.yaml,plugins/agent/monitor/plugin.sh,plugins/agent/monitor/tests/monitor-test.sh,tests/integration/deployed-template-e2e-test.sh,tests/unit/monitor-v2-result-test.sh,docs/wiki/plugins/monitor.md,config/templates/deployed.yaml,docs/adr/ADR-054-stage-contract.md,docs/adr/ADR-055-inter-stage-data-contract-v2.md,scripts/lib/router-rc-classify.sh,scripts/lib/llm-agent.sh,plugins/agent/review-lens/plugin.sh,plugins/agent/review-lens/manifest.yaml
+- artifact: design.md
