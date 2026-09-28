@@ -1,0 +1,14 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "PR opened",
+  "data": {
+    "status": "opened",
+    "pr_url": "https://github.com/ezigus/zBuild/pull/2221",
+    "pr_number": 2221,
+    "draft": false,
+    "branch": "zbuild/issue-1847-phase-0-f-migrate-the-monitor-plugin-to",
+    "issue": 1847
+  }
+}
