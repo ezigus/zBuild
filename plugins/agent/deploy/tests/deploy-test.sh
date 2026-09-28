@@ -588,8 +588,10 @@ _rc_r8="$(_deploy_case "$_r8" pass _ZBUILD_DEPLOY_RELEASE_LOADED=1 ZBUILD_RUN_ID
 assert_contains "[R8] the real deploy-release still runs (git was called)" "$(cat "$_r8/git.log" 2>/dev/null)" "tag zbuild-run-r8-run"
 
 # R9: no jq-into-atomic_write pipe.
-if grep -nE '\|[[:space:]]*atomic_write' "$PLUGIN_FILE" | grep -v '^[0-9]*:[[:space:]]*#' | grep -q .; then
-    assert_fail "[R9] plugin.sh has no '| atomic_write' pipe" "$(grep -nE '\|[[:space:]]*atomic_write' "$PLUGIN_FILE")"
+_r9="$(grep -nE '\|[[:space:]]*atomic_write' "$PLUGIN_FILE" 2>/dev/null || true)"
+_r9="$(grep -vE '^[0-9]+:[[:space:]]*#' <<< "$_r9" || true)"
+if [[ -n "$_r9" ]]; then
+    assert_fail "[R9] plugin.sh has no '| atomic_write' pipe" "$_r9"
 else
     assert_pass "[R9] plugin.sh has no '| atomic_write' pipe"
 fi
