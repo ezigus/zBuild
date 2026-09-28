@@ -1,0 +1,12 @@
+{
+  "stage": "review_lenses",
+  "cycle_iter": 0,
+  "attempt": 3,
+  "rc": "0",
+  "generated_at": "2026-09-28T21:41:22Z",
+  "files": 2,
+  "outputs": {
+    "lens-red-team.json": "changed",
+    "lens-red-team-summary.md": "changed"
+  }
+}
