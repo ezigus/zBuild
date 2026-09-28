@@ -16,19 +16,20 @@ name: Deploy Agent
 kind: agent
 version: 0.1.0
 description: |
-  Deploy agent (kind:agent, T2). Reads pr-url.txt and gate-aggregator verdict;
+  Deploy agent (kind:agent, T2). Reads pr-url input and gate-aggregator verdict;
   refuses deploy if gate verdict=fail. Delegates to the deploy-release tool plugin
-  for the actual git-tag + gh release create side-effect. ZBUILD_DRY_RUN=1 writes
-  mock deploy-result.json instead.
+  for the actual release side-effect (create and push a git tag). ZBUILD_DRY_RUN=1 writes
+  a v2 deploy-result.json instead.
   ADR-018 Pattern 1 (one-shot): verdict guard → deploy-release, done — no iteration.
   No LLM calls (no route_to_model). kind:agent for guard/orchestration parity with
   the pr-delivery → pr-open delegation pattern (ADR-013 amendment, issue #757).
   # legacy-citation: pipeline-stages-delivery.sh:950 (stage_deploy)
 
+# #1846 (ADR-054/055 migration), recorded rather than implied:
+#   - router budgets: none. T2 agent, no model call (ADR-037 §3), so there is no
+#     router block to resolve from the manifest.
 hooks:
   run: deploy_agent_run
-  cleanup: deploy_agent_cleanup
-
 requires:
   core:
     - redaction
@@ -37,31 +38,46 @@ requires:
   plugins: []
 
 provides:
-  artifact_type: deploy-result.json
   role: deploy_agent
-  schema_version: 1
+  result_contract: 2
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+  # the engine's known set at load. Adding one here needs no engine-config edit.
+  events:
+    - deploy.gate.missing
+    - deploy.input.missing
+    - deploy.input.refused
+    - deploy.result.unwritable
+    - deploy.skipped
+    - deploy.tool.failed
 
 config:
+  valid_verdicts:
+    - deployed
+    - error
+    - skipped
   tier_default: T2
 
 inputs:
   - id: pr_url
-    type: file
-    path: "${artifact_dir}/pr-url.txt"
-    source: stage:pr
     required: true
   - id: gate_aggregator_result
-    type: file
-    path: "${artifact_dir}/gate-aggregator-result.json"
-    source: stage:gate-aggregator
     required: true
 
 outputs:
   - id: deploy_result
     path: ${artifact_dir}/deploy-result.json
-    type: deploy-result.json
+    type: deploy-result.json@1
+    format: json
     required: true
     primary: true
+  # ADR-055 §9: this stage's statement of what it DID. required:true —
+  # written on every terminal verdict, so absence means something went wrong.
+  - id: deploy_summary
+    path: "${artifact_dir}/deploy-summary.md"
+    type: deploy-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 
 state:
   persisted: []

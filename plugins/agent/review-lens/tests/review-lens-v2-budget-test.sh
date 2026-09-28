@@ -331,6 +331,15 @@ else
     assert_fail "[SPEC-21] provides.events must include review_lens.unparseable" "absent"
 fi
 
+# ─── #1654 item 1: the lens budget is sized from measured runs ───────────────
+# A lens now reads around the change (#2215/#2216). Measured: #1845's run on the
+# old diff-only prompt peaked at 162s; #1846 run 36433206388 on the new prompt
+# had a lens call at 295s against the 300s ceiling. 600s / 20 turns leaves
+# headroom without letting a stuck lens hold the run.
+assert_eq "[#1654] manifest config.router.timeout_s is 600" "600" \
+    "$(manifest_router_knob "$PLUGIN_DIR/manifest.yaml" timeout_s 2>/dev/null || true)"
+assert_eq "[#1654] manifest config.router.max_turns is 20" "20" \
+    "$(manifest_router_knob "$PLUGIN_DIR/manifest.yaml" max_turns 2>/dev/null || true)"
 
 cleanup_test_env
 print_test_results

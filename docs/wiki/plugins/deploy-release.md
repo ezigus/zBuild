@@ -23,10 +23,13 @@ description: |
   Invoked by plugins/agent/deploy/plugin.sh (deploy_release_run).
   Issue #757.
 
+# #1849 (ADR-054/055 migration), recorded rather than implied:
+#   - router budgets: none. T0 tool, no model call (ADR-037 §3), so there is no
+#     router block to resolve from the manifest.
+#   - cleanup: no hook. This plugin holds no live resource between calls; the
+#     engine records the absence as plugin.cleanup.absent (#1823, #1829).
 hooks:
   run: deploy_release_run
-  cleanup: deploy_release_cleanup
-
 requires:
   core:
     - event-bus
@@ -34,26 +37,42 @@ requires:
   plugins: []
 
 provides:
-  artifact_type: deploy-result.json
+  result_contract: 2
   role: deploy_release_executor
-  schema_version: 1
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+  # the engine's known set at load. Adding one here needs no engine-config edit.
+  events:
+    - deploy.release.complete
+    - deploy.release.dry_run
+    - deploy.release.unwritable
+    - release.published
+    - release.tagged
 
 config:
+  valid_verdicts:
+    - deployed
+    - error
   tier_default: T0
 
 inputs:
   - id: pr_url
-    type: file
-    path: "${artifact_dir}/pr-url.txt"
-    source: stage:pr-delivery
     required: false
 
 outputs:
   - id: deploy_result
     path: ${artifact_dir}/deploy-result.json
-    type: deploy-result.json
+    type: deploy-result.json@1
+    format: json
     required: true
     primary: true
+  # ADR-055 §9: this stage's statement of what it DID. required:true —
+  # written on every terminal verdict, so absence means something went wrong.
+  - id: deploy_release_summary
+    path: "${artifact_dir}/deploy-release-summary.md"
+    type: deploy-release-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 
 state:
   persisted: []
