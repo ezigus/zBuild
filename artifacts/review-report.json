@@ -1,0 +1,433 @@
+{
+  "schema_version": 1,
+  "merge_readiness": "needs_attention",
+  "lenses": [
+    {
+      "name": "correctness",
+      "score": 5,
+      "ran": true,
+      "findings": [
+        {
+          "file": "plugins/agent/deploy/plugin.sh",
+          "category": "logic",
+          "severity": "high",
+          "line": 150,
+          "message": "deploy_release_run is called with no arguments, but plugins/tool/deploy-release/plugin.sh:21-35 requires $2 as state_file and returns rc=1 immediately when it is absent (\"state_file argument required\"), making every non-dry-run, non-skipped real deploy fail; the tests mask this by setting _ZBUILD_DEPLOY_RELEASE_LOADED=1 and providing a mock that ignores arguments, but the live plugin was not updated to remove its state_file dependency.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/deploy/plugin.sh",
+          "category": "logic",
+          "severity": "medium",
+          "line": 150,
+          "message": "When deploy_release_run returns rc=1 because state_file is absent, the error handler writes disposition=unavailable (\"retryable\"), but the actual failure is a broken calling convention (structural, not transient); this would permanently mislead operators and the engine's retry policy into treating every deploy failure as a recoverable outage.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/deploy/plugin.sh",
+          "category": "logic",
+          "severity": "low",
+          "line": 54,
+          "message": "When ZBUILD_ARTIFACT_DIR is unset, deploy_agent_run returns rc=1 without writing any result file, violating the ADR-054 contract that every terminal exit path writes a v2 envelope; the old code also had no result on this path but at least attempted a summary write via the conditional ${ZBUILD_ARTIFACT_DIR:+...} form.",
+          "introduced": true
+        }
+      ]
+    },
+    {
+      "name": "performance",
+      "score": 8,
+      "ran": true,
+      "findings": [
+        {
+          "file": "plugins/agent/deploy/plugin.sh",
+          "category": "unnecessary subprocess",
+          "severity": "low",
+          "line": 71,
+          "message": "ZBUILD_STAGE_INPUTS is parsed twice with two separate jq subprocess forks to extract pr_url and gate_aggregator_result; a single jq call emitting both fields would halve the fork+exec cost, though the deploy stage runs once per pipeline so the absolute overhead is ~2ms.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/deploy/plugin.sh",
+          "category": "unnecessary subprocess",
+          "severity": "low",
+          "line": 44,
+          "message": "_deploy_write_result invokes jq to build the envelope, but every call site first invokes a separate jq to build the data argument (_dry_data, _skip_data, _success_data), resulting in two subprocess forks per result write where one would suffice; introduced by the new helper decomposition.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/deploy/tests/deploy-test.sh",
+          "category": "unnecessary subprocess",
+          "severity": "low",
+          "line": 107,
+          "message": "_v2_keys_ok reads the same result file four times with four separate jq subprocess forks; a single jq invocation extracting all four fields via -r '[.result_contract,.verdict,.disposition,.reason]|@tsv' would reduce fork cost to one, relevant because the helper is called six times per test run.",
+          "introduced": true
+        }
+      ]
+    },
+    {
+      "name": "red-team",
+      "score": 4,
+      "ran": true,
+      "findings": [
+        {
+          "file": "plugins/agent/deploy/plugin.sh",
+          "category": "logic",
+          "severity": "high",
+          "line": 163,
+          "message": "The new code calls `deploy_release_run` with no arguments; the deploy-release plugin (`plugins/tool/deploy-release/plugin.sh` lines 22-35) treats a missing `state_file` arg as a hard error, writes `verdict=error/disposition=broken` to ZBUILD_ARTIFACT_DIR, and returns 1 — which the deploy plugin catches and overwrites with `disposition=unavailable` — making every real (non-dry-run) production deploy permanently fail at this call site.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/tool/deploy-release/plugin.sh",
+          "category": "logic",
+          "severity": "high",
+          "line": 37,
+          "message": "deploy-release derives its own `artifacts_dir` from `dirname \"$state_file\"` (line 37-38), so even if the calling convention were fixed to pass a dummy state_file, the artifacts_dir used by deploy-release would diverge from `ZBUILD_ARTIFACT_DIR` used by the deploy plugin, meaning the two plugins would write to different paths and the deploy plugin's success-path result could silently miss the release artefacts.",
+          "introduced": false
+        },
+        {
+          "file": "plugins/agent/deploy/plugin.sh",
+          "category": "logic",
+          "severity": "medium",
+          "line": 44,
+          "message": "When ZBUILD_ARTIFACT_DIR is unset, `deploy_agent_run` returns 1 immediately without writing any result file; the engine receives a missing result rather than a structured `verdict=error` envelope, which may route through a different (potentially unguarded) engine failure path than the one the v2 contract expects.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/deploy/plugin.sh",
+          "category": "coverage",
+          "severity": "medium",
+          "line": 168,
+          "message": "Tests mock `deploy_release_run` via `_ZBUILD_DEPLOY_RELEASE_LOADED=1` for every run-path test (SPEC-2, SPEC-14, SPEC-20), so the actual interface between deploy and deploy-release is never exercised; the test suite gives a green result for a production-breaking interface mismatch because the mock returns 0 unconditionally rather than validating the call signature.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/deploy/plugin.sh",
+          "category": "logic",
+          "severity": "low",
+          "line": 41,
+          "message": "`_deploy_write_result` pipes `jq -n ...` into `atomic_write` without a `# sigpipe-ok` annotation; the CLAUDE.md SIGPIPE rule prohibits unannotated pipes in `plugins/` — if `atomic_write` exits early for any reason (e.g. ENOSPC), jq receives SIGPIPE and exits non-zero, causing `_deploy_write_result` to return non-zero under `set -euo pipefail` without having written the result file, leaving the engine with no artifact.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/deploy/tests/deploy-test.sh",
+          "category": "coverage",
+          "severity": "low",
+          "line": 64,
+          "message": "`_make_state` exports `ZBUILD_STAGE_INPUTS` and `ZBUILD_ARTIFACT_DIR` into the calling shell (by design), so every test that runs after a `_make_state` call inherits those paths; a future test inserted between two existing tests without its own `_make_state` call will silently use the previous test's artifact directory and produce false-green assertions.",
+          "introduced": true
+        }
+      ]
+    },
+    {
+      "name": "scope",
+      "score": 7,
+      "ran": true,
+      "findings": [
+        {
+          "file": "plugins/agent/deploy/plugin.sh",
+          "category": "scope",
+          "severity": "medium",
+          "line": 150,
+          "message": "deploy_release_run is called with no positional arguments, but plugins/tool/deploy-release/plugin.sh still expects $1=stage_id and $2=state_file (line 21–34 of that file checks for empty state_file and returns 1 with 'state_file argument required'); every real non-dry-run deploy with a passing gate will therefore resolve to verdict=error, disposition=unavailable until deploy-release is separately migrated — the issue says 'this plugin moves on its own and nothing else has to move with it', but the arg-drop breaks the un-migrated peer's v1 interface now, not later; introduced by this change.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/deploy/tests/deploy-test.sh",
+          "category": "scope",
+          "severity": "low",
+          "line": null,
+          "message": "File permission mode changed from 100755 (executable) to 100644 (non-executable); this metadata change is not mentioned in the issue requirements and goes slightly beyond the declared migration scope for this file, though it does not affect test execution via npm test or bash invocation.",
+          "introduced": true
+        }
+      ]
+    },
+    {
+      "name": "security",
+      "score": 8,
+      "ran": true,
+      "findings": [
+        {
+          "file": "plugins/agent/deploy/plugin.sh",
+          "category": "path traversal",
+          "severity": "low",
+          "line": null,
+          "message": "File paths for pr_url_in and gate_result_in are extracted verbatim from ZBUILD_STAGE_INPUTS via jq and then opened with no boundary check (no prefix validation against ZBUILD_ARTIFACT_DIR or any expected root), so a maliciously crafted stage-inputs JSON could direct the plugin to read an arbitrary file path (e.g. /etc/passwd would pass the -f guard and be piped through tr).",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/deploy/plugin.sh",
+          "category": "injection",
+          "severity": "low",
+          "line": null,
+          "message": "The _ZBUILD_DEPLOY_RELEASE_LOADED guard variable is not a ZBUILD_* engine-dispatched variable, so it can be preset in the calling environment; when it is set, the source step is skipped and deploy_release_run is called unconditionally — if an attacker-controlled definition of deploy_release_run is already in scope (e.g. via environment function export on Linux with bash < 4.4 mitigations), it would run instead of the real plugin; safe failure only if the function is absent.",
+          "introduced": true
+        }
+      ]
+    },
+    {
+      "name": "sre",
+      "score": 2,
+      "ran": true,
+      "findings": [
+        {
+          "file": "plugins/agent/deploy/plugin.sh",
+          "category": "broken-integration",
+          "severity": "critical",
+          "line": 150,
+          "message": "deploy_agent_run calls `deploy_release_run` with no arguments, but plugins/tool/deploy-release/plugin.sh:21-34 requires `state_file` as `$2` and returns rc=1 (writing `disposition=broken`) when that argument is empty — every non-dry-run deploy with a passing gate will fail at this guard; tests pass only because they mock `deploy_release_run` via `_ZBUILD_DEPLOY_RELEASE_LOADED=1` and the mock accepts any arity.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/deploy/plugin.sh",
+          "category": "retry-misclassification",
+          "severity": "high",
+          "line": 153,
+          "message": "The deploy agent catches any non-zero rc from `deploy_release_run` and unconditionally writes `disposition=unavailable`, overwriting the deploy-release plugin's own result (which distinguishes `broken` for a local git-tag collision from `unavailable` for a network push failure); the engine's retry policy will re-attempt permanently-broken deploys — an outward-facing action against a live repo — when it should block.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/deploy/plugin.sh",
+          "category": "observability",
+          "severity": "medium",
+          "line": 54,
+          "message": "`deploy_agent_run` returns rc=1 without writing any result file or summary when `ZBUILD_ARTIFACT_DIR` is unset; the manifest declares `deploy-result.json` as `required:true primary:true`, so the engine detects the absence via the fail-closed scanner but an operator has no diagnostic artifact and no structured disposition to distinguish this from a deploy-content failure.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/tool/deploy-release/plugin.sh",
+          "category": "stale-contract",
+          "severity": "low",
+          "line": 37,
+          "message": "deploy-release still derives its own `artifacts_dir` from `state_file` (v1 pattern) and writes `deploy-result.json` to that path; if the calling-convention gap in finding #1 were fixed, the deploy-release result would land in a state-file-derived path while the deploy agent's success-path call to `_deploy_write_result` writes to `ZBUILD_ARTIFACT_DIR` — the engine only scans the latter, so deploy-release's output would be orphaned; this pre-existed this change.",
+          "introduced": false
+        }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "file": "plugins/agent/deploy/plugin.sh",
+      "category": "broken-integration",
+      "line": 150,
+      "severity": "critical",
+      "lenses": [
+        "sre"
+      ],
+      "messages": [
+        "deploy_agent_run calls `deploy_release_run` with no arguments, but plugins/tool/deploy-release/plugin.sh:21-34 requires `state_file` as `$2` and returns rc=1 (writing `disposition=broken`) when that argument is empty — every non-dry-run deploy with a passing gate will fail at this guard; tests pass only because they mock `deploy_release_run` via `_ZBUILD_DEPLOY_RELEASE_LOADED=1` and the mock accepts any arity."
+      ]
+    },
+    {
+      "file": "plugins/agent/deploy/plugin.sh",
+      "category": "coverage",
+      "line": 168,
+      "severity": "medium",
+      "lenses": [
+        "red-team"
+      ],
+      "messages": [
+        "Tests mock `deploy_release_run` via `_ZBUILD_DEPLOY_RELEASE_LOADED=1` for every run-path test (SPEC-2, SPEC-14, SPEC-20), so the actual interface between deploy and deploy-release is never exercised; the test suite gives a green result for a production-breaking interface mismatch because the mock returns 0 unconditionally rather than validating the call signature."
+      ]
+    },
+    {
+      "file": "plugins/agent/deploy/plugin.sh",
+      "category": "injection",
+      "line": null,
+      "severity": "low",
+      "lenses": [
+        "security"
+      ],
+      "messages": [
+        "The _ZBUILD_DEPLOY_RELEASE_LOADED guard variable is not a ZBUILD_* engine-dispatched variable, so it can be preset in the calling environment; when it is set, the source step is skipped and deploy_release_run is called unconditionally — if an attacker-controlled definition of deploy_release_run is already in scope (e.g. via environment function export on Linux with bash < 4.4 mitigations), it would run instead of the real plugin; safe failure only if the function is absent."
+      ]
+    },
+    {
+      "file": "plugins/agent/deploy/plugin.sh",
+      "category": "logic",
+      "line": 41,
+      "severity": "medium",
+      "lenses": [
+        "red-team"
+      ],
+      "messages": [
+        "When ZBUILD_ARTIFACT_DIR is unset, `deploy_agent_run` returns 1 immediately without writing any result file; the engine receives a missing result rather than a structured `verdict=error` envelope, which may route through a different (potentially unguarded) engine failure path than the one the v2 contract expects.",
+        "`_deploy_write_result` pipes `jq -n ...` into `atomic_write` without a `# sigpipe-ok` annotation; the CLAUDE.md SIGPIPE rule prohibits unannotated pipes in `plugins/` — if `atomic_write` exits early for any reason (e.g. ENOSPC), jq receives SIGPIPE and exits non-zero, causing `_deploy_write_result` to return non-zero under `set -euo pipefail` without having written the result file, leaving the engine with no artifact."
+      ]
+    },
+    {
+      "file": "plugins/agent/deploy/plugin.sh",
+      "category": "logic",
+      "line": 54,
+      "severity": "low",
+      "lenses": [
+        "correctness"
+      ],
+      "messages": [
+        "When ZBUILD_ARTIFACT_DIR is unset, deploy_agent_run returns rc=1 without writing any result file, violating the ADR-054 contract that every terminal exit path writes a v2 envelope; the old code also had no result on this path but at least attempted a summary write via the conditional ${ZBUILD_ARTIFACT_DIR:+...} form."
+      ]
+    },
+    {
+      "file": "plugins/agent/deploy/plugin.sh",
+      "category": "logic",
+      "line": 150,
+      "severity": "high",
+      "lenses": [
+        "correctness"
+      ],
+      "messages": [
+        "When deploy_release_run returns rc=1 because state_file is absent, the error handler writes disposition=unavailable (\"retryable\"), but the actual failure is a broken calling convention (structural, not transient); this would permanently mislead operators and the engine's retry policy into treating every deploy failure as a recoverable outage.",
+        "deploy_release_run is called with no arguments, but plugins/tool/deploy-release/plugin.sh:21-35 requires $2 as state_file and returns rc=1 immediately when it is absent (\"state_file argument required\"), making every non-dry-run, non-skipped real deploy fail; the tests mask this by setting _ZBUILD_DEPLOY_RELEASE_LOADED=1 and providing a mock that ignores arguments, but the live plugin was not updated to remove its state_file dependency."
+      ]
+    },
+    {
+      "file": "plugins/agent/deploy/plugin.sh",
+      "category": "logic",
+      "line": 163,
+      "severity": "high",
+      "lenses": [
+        "red-team"
+      ],
+      "messages": [
+        "The new code calls `deploy_release_run` with no arguments; the deploy-release plugin (`plugins/tool/deploy-release/plugin.sh` lines 22-35) treats a missing `state_file` arg as a hard error, writes `verdict=error/disposition=broken` to ZBUILD_ARTIFACT_DIR, and returns 1 — which the deploy plugin catches and overwrites with `disposition=unavailable` — making every real (non-dry-run) production deploy permanently fail at this call site."
+      ]
+    },
+    {
+      "file": "plugins/agent/deploy/plugin.sh",
+      "category": "observability",
+      "line": 54,
+      "severity": "medium",
+      "lenses": [
+        "sre"
+      ],
+      "messages": [
+        "`deploy_agent_run` returns rc=1 without writing any result file or summary when `ZBUILD_ARTIFACT_DIR` is unset; the manifest declares `deploy-result.json` as `required:true primary:true`, so the engine detects the absence via the fail-closed scanner but an operator has no diagnostic artifact and no structured disposition to distinguish this from a deploy-content failure."
+      ]
+    },
+    {
+      "file": "plugins/agent/deploy/plugin.sh",
+      "category": "path traversal",
+      "line": null,
+      "severity": "low",
+      "lenses": [
+        "security"
+      ],
+      "messages": [
+        "File paths for pr_url_in and gate_result_in are extracted verbatim from ZBUILD_STAGE_INPUTS via jq and then opened with no boundary check (no prefix validation against ZBUILD_ARTIFACT_DIR or any expected root), so a maliciously crafted stage-inputs JSON could direct the plugin to read an arbitrary file path (e.g. /etc/passwd would pass the -f guard and be piped through tr)."
+      ]
+    },
+    {
+      "file": "plugins/agent/deploy/plugin.sh",
+      "category": "retry-misclassification",
+      "line": 153,
+      "severity": "high",
+      "lenses": [
+        "sre"
+      ],
+      "messages": [
+        "The deploy agent catches any non-zero rc from `deploy_release_run` and unconditionally writes `disposition=unavailable`, overwriting the deploy-release plugin's own result (which distinguishes `broken` for a local git-tag collision from `unavailable` for a network push failure); the engine's retry policy will re-attempt permanently-broken deploys — an outward-facing action against a live repo — when it should block."
+      ]
+    },
+    {
+      "file": "plugins/agent/deploy/plugin.sh",
+      "category": "scope",
+      "line": 150,
+      "severity": "medium",
+      "lenses": [
+        "scope"
+      ],
+      "messages": [
+        "deploy_release_run is called with no positional arguments, but plugins/tool/deploy-release/plugin.sh still expects $1=stage_id and $2=state_file (line 21–34 of that file checks for empty state_file and returns 1 with 'state_file argument required'); every real non-dry-run deploy with a passing gate will therefore resolve to verdict=error, disposition=unavailable until deploy-release is separately migrated — the issue says 'this plugin moves on its own and nothing else has to move with it', but the arg-drop breaks the un-migrated peer's v1 interface now, not later; introduced by this change."
+      ]
+    },
+    {
+      "file": "plugins/agent/deploy/plugin.sh",
+      "category": "unnecessary subprocess",
+      "line": 44,
+      "severity": "low",
+      "lenses": [
+        "performance"
+      ],
+      "messages": [
+        "_deploy_write_result invokes jq to build the envelope, but every call site first invokes a separate jq to build the data argument (_dry_data, _skip_data, _success_data), resulting in two subprocess forks per result write where one would suffice; introduced by the new helper decomposition."
+      ]
+    },
+    {
+      "file": "plugins/agent/deploy/plugin.sh",
+      "category": "unnecessary subprocess",
+      "line": 71,
+      "severity": "low",
+      "lenses": [
+        "performance"
+      ],
+      "messages": [
+        "ZBUILD_STAGE_INPUTS is parsed twice with two separate jq subprocess forks to extract pr_url and gate_aggregator_result; a single jq call emitting both fields would halve the fork+exec cost, though the deploy stage runs once per pipeline so the absolute overhead is ~2ms."
+      ]
+    },
+    {
+      "file": "plugins/agent/deploy/tests/deploy-test.sh",
+      "category": "coverage",
+      "line": 64,
+      "severity": "low",
+      "lenses": [
+        "red-team"
+      ],
+      "messages": [
+        "`_make_state` exports `ZBUILD_STAGE_INPUTS` and `ZBUILD_ARTIFACT_DIR` into the calling shell (by design), so every test that runs after a `_make_state` call inherits those paths; a future test inserted between two existing tests without its own `_make_state` call will silently use the previous test's artifact directory and produce false-green assertions."
+      ]
+    },
+    {
+      "file": "plugins/agent/deploy/tests/deploy-test.sh",
+      "category": "scope",
+      "line": null,
+      "severity": "low",
+      "lenses": [
+        "scope"
+      ],
+      "messages": [
+        "File permission mode changed from 100755 (executable) to 100644 (non-executable); this metadata change is not mentioned in the issue requirements and goes slightly beyond the declared migration scope for this file, though it does not affect test execution via npm test or bash invocation."
+      ]
+    },
+    {
+      "file": "plugins/agent/deploy/tests/deploy-test.sh",
+      "category": "unnecessary subprocess",
+      "line": 107,
+      "severity": "low",
+      "lenses": [
+        "performance"
+      ],
+      "messages": [
+        "_v2_keys_ok reads the same result file four times with four separate jq subprocess forks; a single jq invocation extracting all four fields via -r '[.result_contract,.verdict,.disposition,.reason]|@tsv' would reduce fork cost to one, relevant because the helper is called six times per test run."
+      ]
+    }
+  ],
+  "pre_existing": [
+    {
+      "file": "plugins/tool/deploy-release/plugin.sh",
+      "category": "logic",
+      "line": 37,
+      "severity": "high",
+      "lenses": [
+        "red-team"
+      ],
+      "messages": [
+        "deploy-release derives its own `artifacts_dir` from `dirname \"$state_file\"` (line 37-38), so even if the calling convention were fixed to pass a dummy state_file, the artifacts_dir used by deploy-release would diverge from `ZBUILD_ARTIFACT_DIR` used by the deploy plugin, meaning the two plugins would write to different paths and the deploy plugin's success-path result could silently miss the release artefacts."
+      ]
+    },
+    {
+      "file": "plugins/tool/deploy-release/plugin.sh",
+      "category": "stale-contract",
+      "line": 37,
+      "severity": "low",
+      "lenses": [
+        "sre"
+      ],
+      "messages": [
+        "deploy-release still derives its own `artifacts_dir` from `state_file` (v1 pattern) and writes `deploy-result.json` to that path; if the calling-convention gap in finding #1 were fixed, the deploy-release result would land in a state-file-derived path while the deploy agent's success-path call to `_deploy_write_result` writes to `ZBUILD_ARTIFACT_DIR` — the engine only scans the latter, so deploy-release's output would be orphaned; this pre-existed this change."
+      ]
+    }
+  ],
+  "summary": "16 merge-readiness finding(s) across 6 lens(es) (1 critical, 3 high).",
+  "escalation_note": "One or more lenses scored <=3 or found a critical-severity issue; consider requesting a tier-2 expert review or escalating to a senior reviewer before merging. Advisory only — this does not block the pipeline.",
+  "did_not_run": []
+}
