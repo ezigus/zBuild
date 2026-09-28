@@ -13,99 +13,71 @@ semantics (`pass`/`degraded`).
 
 ## Context
 
-Re-verified this iteration against the current tree and against `plan.json`
-(the step-by-step decomposition this design was checked against) and the
+Re-verified this iteration against the current tree, `plan.json`, and the
 `spec-coverage` gate's `fail` verdict from the prior iteration, which flagged
-five real gaps in the previous draft. Each is addressed below; nothing in the
-previously-verified baseline facts (no `result_contract`, no `config.router`,
-flat `{schema_version,verdict,summary,checks}` shape, no trap, no
-`$ZBUILD_STAGE_INPUTS` read) has changed — the branch still has zero commits
-since intake.
+one real gap in iteration 2's draft (all five gaps from iteration 1→2 are
+still fixed and unchanged; see "Carried forward" below).
 
-**Gaps from the `spec-coverage` fail, and the correction each drives:**
+**Gap from this iteration's `spec-coverage` fail, and the correction it
+drives:**
 
-1. **`data:{}` folding.** `plan.json` step-3 is explicit and quotes the
-   issue's own "Folds in" section: `_monitor_write_result` must emit
-   `{result_contract, schema_version, verdict, disposition, reason,
-   data:{summary, checks}}` — the plugin-owned `summary`/`checks` fields
-   fold into a namespaced `data` block. **This corrects the prior
-   iteration's decision**, which followed `review-lens/plugin.sh:66-78`'s
-   flat, un-nested shape (confirmed again this iteration — no shipped
-   migrated plugin uses a `data:{}` wrapper; grepped `plugins/agent/*/plugin.sh`
-   for `"data":` / `data:{` and found no match anywhere in the tree). The
-   issue text for #1847 is more specific than the general wave precedent on
-   this point, and per CLAUDE.md's spec-wins rule the design follows the
-   issue's explicit instruction for **this** plugin rather than generalizing
-   review-lens's shape to it. Flagged below as a named deviation for human
-   sign-off, since it means `monitor` and `review-lens` will not share an
-   identical v2 envelope shape.
-2. **Mandatory `reason` field.** The prior draft only added `reason` on
-   failure paths. `router-rc-classify.sh:13`'s own contract (`rc=0: verdict=""
-   reason=""`) establishes the precedent that `reason` is always a present
-   key, empty string on success — `_review_lens_write_result` takes `reason`
-   as a positional arg on every call site, including the success path. The
-   corrected `_monitor_write_result` does the same: `reason` is always
-   passed, `""` on `complete`.
-3. **rc ∈ {0,1}.** `plan.json` step-4 states this directly, citing #1823:
-   "Every rc ∈ {0,1} ... no other exit code leaves the plugin." The prior
-   draft's SIGTERM/SIGINT branch let rc=130 propagate out of
-   `monitor_stage_run` — **wrong**, and contradicted by `plan.json` step-5,
-   which says the interrupt handler "writes disposition:'interrupted' ...
-   and exits 1" (not 130). Corrected below: the trap and the rc=10
-   turn-budget branch both cause `monitor_stage_run` itself to return 1;
-   only the disposition field communicates cause, never the exit code.
-4. **No hardcoded path-construction fallback.** The prior draft copied
-   `design_stage_run`'s pattern verbatim: hardcoded `$artifacts_dir/...`
-   paths as local-variable defaults, overridden by `$ZBUILD_STAGE_INPUTS`
-   when present. `plan.json` step-7 is explicit that this is wrong for
-   `monitor`: "Delete the hardcoded ... path construction ... Confirm via
-   `grep` that no path construction remains." The difference from
-   `design_stage_run`'s case: `design`'s two inputs (`scope_manifest`,
-   `plan`) are **required** — the stage cannot run without them, so a
-   same-directory default is a reasonable last resort. `monitor`'s two
-   inputs (`deploy_result`, `pr_url`) are **already declared
-   `required: false`** (`manifest.yaml`, unchanged) — the plugin already
-   has correct fail-open handling for "this input is absent" via its
-   existing `[[ -f "$deploy_result_json" ]]` guards. There is no need for a
-   hardcoded-path fallback at all: when `$ZBUILD_STAGE_INPUTS` has no entry
-   for an optional input, the correct behavior is simply "treat it as not
-   provided," identical to today's behavior when the file doesn't exist.
-   Corrected below: the hardcoded `$artifacts_dir/deploy-result.json` /
-   `$artifacts_dir/pr-url.txt` string construction is deleted outright, not
-   retained as a fallback branch. This requires updating the existing
-   `monitor-test.sh` fixture (currently populates
-   `$ARTIFACTS_DIR/deploy-result.json` directly with no
-   `$ZBUILD_STAGE_INPUTS` set) to instead point `$ZBUILD_STAGE_INPUTS` at
-   that same fixture file — an in-scope test edit, not a production
-   behavior change (the live `deployed.yaml` dispatch always runs
-   `input-resolve.sh` first and always populates the index, confirmed via
-   `core/pipeline/input-resolve.sh` and `core/plugin-registry/lifecycle.sh:403-404`).
-5. **Cleanup/release hook recorded absence.** `plan.json` step-1 requires a
-   one-line manifest comment recording that no `hooks.cleanup` is declared.
-   The prior draft omitted this entirely — no gap analysis, no SPEC, no
-   scope entry for the exact precedent. Found the shipped precedent this
-   iteration: `plugins/agent/review-lens/manifest.yaml:92-94`:
-   ```
-   # hooks.cleanup is intentionally absent: this plugin holds no live resources
-   # that require teardown — ADR-054 §7 (#1829). The stub review_lens_cleanup in
-   # plugin.sh is a reference marker only.
-   ```
-   and its dedicated test, `plugins/agent/review-lens/tests/review-lens-v2-budget-test.sh:280-291`
-   (`[SPEC-19]`): asserts (a) `manifest.yaml` has no top-level `cleanup:`
-   key, and (b) the manifest contains a comment citing `ADR-054 §7`. This
-   design copies both the comment text and the test pattern for `monitor`
-   (which holds no live resources either — an LLM health-check with no
-   locks, no writable external state). `plan.json`'s own citation of
-   "ADR-001" for this rule is the general lifecycle description
-   (`docs/adr/ADR-001-plugin-contract.md:134`); the specific "record the
-   absence" requirement and its enforced comment format is ADR-054 §7,
-   per the shipped code — this design cites both, matching review-lens.
+- **Unproven override precedence.** The acceptance checkbox "Router budgets
+  resolve from the manifest, and the template override still wins where one
+  is set" requires proving precedence — but SPEC-7 (as written in iteration
+  2) only asserts the manifest's `config.router` values *match*
+  `deployed.yaml`'s existing per-stage override. Both layers declare
+  `timeout_s: 300, max_turns: 10` — identical numbers — so no assertion
+  actually distinguishes "the manifest supplied this" from "the template
+  overrode the manifest and happened to land on the same number." A reader
+  cannot tell precedence held from that alone.
 
-**Everything else from the prior iteration is unchanged and re-verified**:
-`provides.role`, `provides.events`, `outputs:` (single `primary: true`),
-`valid_verdicts`, the ADR-063 budget-guidance blocks, the
-`_router_rc_classify`/`router_reason_disposition` three-arg call correction,
-and the wiki-staleness finding for `docs/wiki/plugins/monitor.md`.
+  Investigated whether a *new* test is even necessary here, since precedence
+  itself is not new: `tests/unit/router-manifest-budget-test.sh` is a
+  standing, plugin-agnostic guard (`[SPEC-4]`, `router-manifest-budget-test.sh:213-227`)
+  that already proves `core/router/route.sh`'s `_route_resolve_knob` picks
+  the template accessor's value over `config.router.*` from an arbitrary
+  manifest fixture — the mechanism does not know or care which plugin it is
+  resolving for. That test is unaffected by this migration and stays green
+  throughout (listed in scope as reference-only, unchanged).
+
+  What that generic guard does **not** cover is `monitor`'s *own* manifest
+  content once SPEC-7 adds a `config.router` block to it — there is currently
+  no assertion anywhere that exercises `_route_resolve_timeout` /
+  `_route_resolve_max_turns` against `plugins/agent/monitor/manifest.yaml`
+  itself with a template value that *diverges* from what SPEC-7 puts there.
+  Since `route.sh`'s resolution order does not vary by plugin, this is not a
+  new behavior this migration introduces — it is the existing, already-true
+  precedence rule, newly checkable against `monitor`'s manifest because that
+  manifest didn't have a `config.router` block to check it against before.
+  Tagged `[guard]` below (SPEC-22) per the classification rule: the
+  behavior it asserts is already true at merge-base for any manifest,
+  `monitor`'s included, before this migration adds one.
+
+**Carried forward from iteration 1→2 (all re-verified this iteration, tree
+unchanged — zero commits since intake):**
+
+1. **`data:{}` folding** — `_monitor_write_result` emits `{result_contract,
+   schema_version, verdict, disposition, reason, data:{summary, checks}}`,
+   per the issue's own "Folds in" text (`plan.json` step-3), a named
+   deviation from `review-lens`'s flat shape (grepped `plugins/agent/*/plugin.sh`
+   for `data:{`/`"data":` again this iteration — still no match anywhere in
+   the tree). Flagged for human sign-off below.
+2. **Mandatory `reason` field**, always present, `""` on `complete` — matches
+   `router-rc-classify.sh:13`'s established contract.
+3. **rc ∈ {0,1} (#1823)** — the rc=10 turn-budget branch and the
+   SIGTERM/SIGINT trap both cause `monitor_stage_run` to `return 1`; the raw
+   router rc (10) and signal rc (130) never become the function's own return
+   value. Only `disposition` communicates cause.
+4. **No hardcoded path-construction fallback** — `monitor`'s two inputs
+   (`deploy_result`, `pr_url`) are already `required: false`; the hardcoded
+   `$artifacts_dir/deploy-result.json` / `$artifacts_dir/pr-url.txt` string
+   construction is deleted outright, read exclusively via
+   `$ZBUILD_STAGE_INPUTS`. `monitor-test.sh`'s existing fixture is edited to
+   point `$ZBUILD_STAGE_INPUTS` at the same file it populates today.
+5. **Cleanup/release hook recorded absence** — one-line manifest comment
+   citing `ADR-054 §7 (#1829)`, copied from `review-lens/manifest.yaml:92-94`,
+   with a matching test assertion pattern from
+   `review-lens/tests/review-lens-v2-budget-test.sh:280-291` (`[SPEC-19]`).
 
 ## Decision
 
@@ -113,15 +85,15 @@ and the wiki-staleness finding for `docs/wiki/plugins/monitor.md`.
 - Add `config.router: {timeout_s: 300, max_turns: 10}`, matching
   `deployed.yaml`'s existing per-stage override (Pattern-1 single-shot
   headroom, same comment `review-lens/manifest.yaml` uses).
-- Add the cleanup-absence comment, copied verbatim in spirit from
-  `review-lens/manifest.yaml:92-94`, adapted for `monitor`:
+- Add the cleanup-absence comment, adapted from
+  `review-lens/manifest.yaml:92-94`:
   ```
   # hooks.cleanup is intentionally absent: this plugin holds no live resources
   # that require teardown — ADR-054 §7 (#1829).
   ```
 - Replace `_monitor_write_report` with `_monitor_write_result(out, verdict,
   disposition, reason, summary, checks)`, writing via `jq` (never
-  string-interpolated), **nested per the issue's "Folds in" instruction**:
+  string-interpolated), nested per the issue's "Folds in" instruction:
   ```
   {result_contract:2, schema_version:1, verdict:$v, disposition:$d,
    reason:$r, data:{summary:$s, checks:$c}}
@@ -133,8 +105,7 @@ and the wiki-staleness finding for `docs/wiki/plugins/monitor.md`.
     `complete`, `reason:""` (the health verdict itself, in `data.summary`/
     `data.checks`, communicates degradation — a separate axis from
     disposition, per ADR-054 §6)
-  - `route_to_model` failure (rc not in {0,10,130}) → disposition via the
-    corrected call pattern (copied from `review-lens/plugin.sh:315-317`):
+  - `route_to_model` failure (rc not in {0,10,130}) →
     ```
     local _mon_v="" _mon_r=""
     _router_rc_classify "$rc" _mon_v _mon_r 2>/dev/null || true
@@ -148,15 +119,12 @@ and the wiki-staleness finding for `docs/wiki/plugins/monitor.md`.
     rc=10 special case, ordered **before** the generic
     `_router_rc_classify` branch
   - SIGTERM/SIGINT during `route_to_model` → `interrupted`,
-    `reason:"signal_interrupt"`, via a trap
-    (`_monitor_interrupt_handler`) mirroring
-    `_review_lens_interrupt_handler`
+    `reason:"signal_interrupt"`, via a trap (`_monitor_interrupt_handler`)
+    mirroring `_review_lens_interrupt_handler`
 - **rc ∈ {0,1} (#1823):** both the rc=10 branch and the interrupt trap cause
   `monitor_stage_run` to `return 1` — the raw router rc (10) and the raw
   signal rc (130) are never the function's own return value. Only
-  `disposition` communicates *why* it returned 1; the caller/engine reads
-  the disposition field from `monitor-report.json`, not the exit code, to
-  decide retry policy (`core/pipeline/disposition.sh`'s response table).
+  `disposition` communicates *why* it returned 1.
 - Add the ADR-063 §1 TURN BUDGET / WALL CLOCK BUDGET prompt blocks
   (`_monitor_budget_guidance` / `_monitor_wallclock_guidance`), sourcing
   limits via `_route_resolve_max_turns` / `_route_resolve_timeout`
@@ -172,9 +140,8 @@ and the wiki-staleness finding for `docs/wiki/plugins/monitor.md`.
   fi
   ```
   The existing `[[ -f "$deploy_result_json" ]]` / `[[ -f "$pr_url_txt" ]]`
-  guards already handle an empty string correctly (file-exists test on `""`
-  is false) — no new conditional needed. Both inputs stay `required: false`
-  in the manifest, unchanged.
+  guards already handle an empty string correctly — no new conditional
+  needed. Both inputs stay `required: false`, unchanged.
 - `valid_verdicts: [pass, degraded]`, `outputs:`, `provides.role`,
   `provides.events` — unchanged.
 - Update `docs/wiki/plugins/monitor.md`'s embedded manifest snippet
@@ -206,32 +173,26 @@ plugins/agent/design/plugin.sh
 core/pipeline/input-resolve.sh
 core/router/route.sh
 tests/unit/event-schema-emitted-coverage-test.sh
+tests/unit/router-manifest-budget-test.sh
 ```
 
-Notes on entries new this iteration:
+Notes on the entry new this iteration:
 
-- `plugins/agent/review-lens/tests/review-lens-v2-budget-test.sh` —
-  **reference-only**, the shipped `[SPEC-19]` assertion pattern (no
-  `cleanup:` key + comment citing `ADR-054 §7`) this design's cleanup-absence
-  SPEC copies verbatim for `monitor`.
-- `core/pipeline/disposition.sh` — **reference-only**, the closed
-  disposition vocabulary and engine response table; the Decision section's
-  disposition choices (`complete`/`unusable`/`out_of_turns`/`interrupted`)
-  are drawn directly from its documented set, and its "`exhausted` retired
-  by #2187" note is why this design (like the prior iteration) does not use
-  the issue's stale `disposition:exhausted` text.
-- `docs/adr/ADR-001-plugin-contract.md` — **reference-only**, general
-  lifecycle-hook description (`cleanup` semantics, line 134) that
-  `plan.json` cites; the specific recorded-absence comment convention is
-  ADR-054 §7, per the shipped `review-lens` precedent — both are listed so
-  a reviewer can see why both ADRs are cited in the new manifest comment.
+- `tests/unit/router-manifest-budget-test.sh` — **reference-only**, unchanged
+  by this migration. Its `[SPEC-4]` (`:213-227`) is the standing, generic
+  proof that `_route_resolve_knob` picks the template accessor over any
+  manifest's `config.router.*`; SPEC-22 below extends that same proof to
+  `monitor`'s own manifest content rather than re-deriving the precedence
+  rule. Listed so a reviewer can confirm this file needs no edit and see why
+  SPEC-22 doesn't duplicate it.
 
-All other entries are unchanged from the prior iteration (see that
+All other entries are unchanged from the prior iteration — see that
 iteration's per-entry notes on `config/templates/deployed.yaml`,
-`docs/adr/ADR-054/055`, `review-lens/{plugin.sh,manifest.yaml}`,
+`docs/adr/ADR-054/055`, `review-lens/{plugin.sh,manifest.yaml,tests}`,
 `design/plugin.sh` + `input-resolve.sh`, `router-rc-classify.sh` +
-`llm-agent.sh` + `route.sh`, `lint-contract.sh`, and
-`event-schema-emitted-coverage-test.sh`).
+`llm-agent.sh` + `route.sh`, `lint-contract.sh`,
+`core/pipeline/disposition.sh`, `docs/adr/ADR-001-plugin-contract.md`, and
+`event-schema-emitted-coverage-test.sh`.
 
 ## Acceptance
 
@@ -257,6 +218,7 @@ SPEC-18[change]: plugin.sh contains no hardcoded $artifacts_dir/deploy-result.js
 SPEC-19[change]: plugins/agent/monitor/manifest.yaml declares no top-level cleanup: key and carries a comment citing "ADR-054 §7" explaining hooks.cleanup's intentional absence
 SPEC-20[change]: monitor-report.json's reason field is always present as a JSON key on every exit path, including the complete-disposition paths (dry-run, live pass, live degraded-verdict), where its value is the empty string
 SPEC-21[change]: monitor_stage_run never returns an rc outside {0,1} — the SIGTERM/SIGINT path and the router rc=10 (turn-budget) path both cause it to return 1, never the raw signal or router rc
+SPEC-22[guard]: with ZBUILD_PLUGIN_DIR/ZBUILD_CURRENT_STAGE pointed at monitor's own manifest.yaml, stubbing the template_stage_router_timeout / template_stage_router_max_turns accessors to return values that diverge from the manifest's config.router.{timeout_s,max_turns} (added by SPEC-7) causes _route_resolve_timeout / _route_resolve_max_turns to return the STUBBED (template) value, not the manifest's — proving the template layer still outranks monitor's newly-declared manifest defaults, not merely that the two currently agree
 WIRING:
 plugins/agent/monitor/manifest.yaml
 TESTFILES:
@@ -281,14 +243,17 @@ SPEC-18: plugins/agent/monitor/tests/monitor-test.sh tests/unit/monitor-v2-resul
 SPEC-19: tests/unit/monitor-v2-result-test.sh
 SPEC-20: tests/unit/monitor-v2-result-test.sh
 SPEC-21: tests/unit/monitor-v2-result-test.sh
+SPEC-22: tests/unit/monitor-v2-result-test.sh
 ```
 
 Each `[#1847/SPEC-n]`-tagged `[change]` assertion must FAIL at the merge-base
-baseline and PASS after this change; SPEC-10, 11, 12, 15, 16, 17 are guards
-already true at baseline and must stay true. `plugin.sh:123`'s current
-single-arg `_llm_router_classify "$rc"` call is dead code (always yields an
-empty reason) that this migration replaces outright — not a regression it
-introduces.
+baseline and PASS after this change; SPEC-10, 11, 12, 15, 16, 17, 22 are
+guards already true at baseline (SPEC-22's underlying precedence mechanism
+predates this issue and does not vary by plugin — see Context) and must stay
+true; the acceptance-gate skips the negative control for all guard SPECs.
+`plugin.sh:123`'s current single-arg `_llm_router_classify "$rc"` call is
+dead code (always yields an empty reason) that this migration replaces
+outright — not a regression it introduces.
 
 The `WIRING:` file is `manifest.yaml` itself: reverting it alone to
 merge-base (keeping `plugin.sh`'s new code at HEAD) removes
@@ -301,25 +266,25 @@ budgets, SPEC-8/SPEC-9) from pass to fail.
 - **Data-nesting deviation (SPEC-2/3/4/5)**: this design nests
   `summary`/`checks` under `data:{}` per the issue's explicit "Folds in"
   instruction, while every other shipped v2 migration in this wave
-  (`review-lens` et al.) keeps those fields flat/top-level. This means
-  `monitor`'s v2 envelope shape is not byte-identical to its siblings'. A
-  human should confirm this is intentional (issue-specific) rather than an
-  inconsistency to fix — the design follows the more specific instruction
-  (this issue's text, per `plan.json` step-3) over the general wave
-  precedent, per CLAUDE.md's spec-wins rule.
+  (`review-lens` et al.) keeps those fields flat/top-level. A human should
+  confirm this is intentional (issue-specific) rather than an inconsistency
+  to fix.
 - **`monitor-test.sh`'s existing deploy-result/pr-url fixture must be
   edited**, not merely extended: today it populates
   `$ARTIFACTS_DIR/deploy-result.json` directly with no
-  `$ZBUILD_STAGE_INPUTS` set (this is what SPEC-18 exercises going forward
-  as "no fallback" behavior). Making that fixture exercise the enrichment
+  `$ZBUILD_STAGE_INPUTS` set. Making that fixture exercise the enrichment
   path again requires pointing `$ZBUILD_STAGE_INPUTS` at the same file
-  (SPEC-14's job). This is a test-fixture edit, not a production-behavior
-  change — the live `deployed.yaml` dispatch always populates the index via
-  `input-resolve.sh` before `monitor` runs.
+  (SPEC-14's job) — a test-fixture edit, not a production-behavior change.
 - The shared-vs-duplicated helper choice for the two budget-guidance
-  functions is left to the build stage, as in the prior iteration.
-- Whether SPEC-4 should enumerate more than one non-{0,10,130} rc value
-  (e.g. rc=124 timeout vs. generic rc=1) is left to the build stage's test
-  design; the generic case is sufficient to prove the wiring.
+  functions is left to the build stage.
+- Whether SPEC-4 should enumerate more than one non-{0,10,130} rc value is
+  left to the build stage's test design; the generic case is sufficient to
+  prove the wiring.
+- SPEC-22 stubs the template accessor functions directly (mirroring
+  `router-manifest-budget-test.sh`'s own `[SPEC-4]` pattern) rather than
+  constructing a real divergent `deployed.yaml` override, since this design
+  makes no change to `deployed.yaml`. If a reviewer wants proof through the
+  real template file instead of a stub, that is a larger, out-of-scope
+  change to `deployed.yaml` itself — left for a human to request explicitly.
 
 LOOP_COMPLETE
