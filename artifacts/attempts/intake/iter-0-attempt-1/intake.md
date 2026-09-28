@@ -1,0 +1,107 @@
+[Phase 0/F] migrate the monitor plugin to contract v2
+
+Part of #1819 (Phase 0 — the stage↔engine contract). Member of the **F set** — one plugin per PR, each independently verifiable.
+
+Migrate `plugins/agent/monitor` to contract v2. The engine reads v1 and v2 side by side (#1824), so this plugin moves on its own and nothing else has to move with it.
+
+## What this plugin adopts
+
+- **v2 result file** (#1821) — `result_contract: 2`, and mandatory `verdict`, `disposition`, `reason`. Anything this plugin currently communicates through a sidecar, an event, or a bare exit code moves into the result; plugin-specific detail goes under `data`, namespaced.
+- **`disposition`** (#1822) — the plugin declares *how* it stopped. It no longer decides its own retry policy; the engine's response table does that.
+- **rc ∈ {0,1}** (#1823) — every other exit code this plugin returns today is expressed as a `disposition` instead.
+- **`valid_verdicts`** declared in the manifest and enforced (#1708) — a verdict outside the declared set becomes a structural failure.
+- **Router budgets** in the manifest (#1816) rather than resolved only from the template.
+- **A `primary: true` output** declared in the manifest. Prerequisite for #1850: `no primary declared -> pass` cannot be flipped until every dispatched stage has one (only 25 of 47 manifests do today). If this plugin already declares one, say so and move on.
+- **`provides.events`** declared (#1717) and **`provides.role`** declared (#1704).
+- **Name-matched inputs** (#1825) with the engine resolving paths (#1826). The manifest declares only the artifact `id` and `required:` — **no producer stage, no path, no type** — and every path this plugin constructs in code is deleted. *(Amended 2026-08-12 by #1768: this read "`from:`-style inputs", i.e. the consumer naming its producer as `from: <stage>.<output_id>`. ADR-055 §1 removed that — the producer name is redundant given output-id uniqueness, and it could not express a backwards edge. Any `source: artifacts` or `source: cycle_feedback` input in this plugin becomes an ordinary name-matched input.)*
+- **`cleanup`** (#1829) — if the plugin holds live resources, `release` frees them; if it has nothing to free, the hook is absent and that is recorded, not implied.
+
+## Folds in
+
+Monitor's whole output is observation, so it is the clearest case for the `data` block: today's rendered strings become structured, namespaced data that a consumer can read without parsing prose. Coordinate with #1659 (engine-enforced execution bounds), whose watchdog result becomes a `disposition` rather than a generic rc.
+
+## Acceptance
+
+- [ ] The plugin writes a conformant v2 result on **every** exit path — success, failure, and interruption.
+- [ ] `valid_verdicts` is declared and every verdict the plugin can emit is in it; a test drives each one.
+- [ ] The plugin constructs no artifact paths in code — assert by grep over its `plugin.sh`.
+- [ ] Router budgets resolve from the manifest, and the template override still wins where one is set.
+- [ ] Behaviour is unchanged for a passing run — a before/after golden diff on the stage's own output.
+- [ ] The manifest declares a `primary: true` output (or the issue records why this plugin is not dispatched as a stage).
+- [ ] `npm test` green with the tree committed first, so the mutation tier engages.
+- [ ] Reddens at the merge-base.
+
+Refs #1819, #1821, #1822, #1823, #1824, #1825, #1826, #1829, ADR-054, ADR-055.
+
+
+
+
+---
+
+## ALSO LAND HERE — tell the model its limits (ADR-063 §1/§3, from #2032)
+
+This migration opens `monitor`, which today tells the model nothing about its turn
+budget or timeout. Add the budget block while the file is open.
+
+**Where the numbers come from:** `_route_resolve_timeout`
+(`core/router/route.sh:659`) and `_route_resolve_max_turns` (`:671`) — the values
+that actually enforce the limit. Never a hand-copied literal, which drifts from what
+kills the call and leaves the prompt lying to the model with authority.
+
+**With v2 in place here**, `monitor` reports *which* budget ran out when its model
+call stops short: `disposition: out_of_turns` for the turn budget, `disposition:
+timed_out` for the wall clock — both named in one place,
+`router_reason_disposition` (`scripts/lib/router-rc-classify.sh`), and both mapped
+to `retry` by `core/pipeline/disposition.sh`. Do not hand-write the word; take it
+from `router_reason_disposition`.
+
+*(Amended 2026-09-28: this read "`monitor` can also emit `disposition: exhausted`
+… `disposition.sh:97` maps it to `escalate`". #2187 (ADR-054 §6a, 2026-09-25)
+retired `exhausted` — it mapped to `escalate`, which nothing implemented, and it hid
+which budget ran out. `timed_out` / `out_of_turns` replace it, and
+`scripts/lib/lint-disposition-words.sh` rejects `exhausted` as an off-set word. A
+run of this issue (#1847 run 20260928102849-23575) was failed by issue-acceptance
+and spec-coverage for not emitting the retired word.)*
+
+For reference, three stages already do the §1 half and are the models to copy:
+`plan` (turn budget plus a 70%-of-wall-clock stop target), `impact` ("BUDGET
+DISCIPLINE … you have a BOUNDED tool-call budget"), and `build` (`iter N/M`, with
+each iteration committed so a kill costs one iteration rather than the stage).
+
+## Additional context from issue comments
+
+<!-- zbuild-run-status run_id=20260928070345-90197 -->
+### zbuild run `20260928070345-90197` · issue #1847 · **interrupted**
+engine `507d524` (`main`) · started 7:03 AM ET · ceiling 1:03 PM ET (5h 22m left) · updated 7:41 AM ET
+**7:28 AM ET → 7:40 AM ET (11m39s)** · **6.1.1 test-author** · iter 1 · **error rc=130** · inputs: design
+**7:27 AM ET → 7:28 AM ET (1m18s)** · **5 impact** · **pass** — assessed the change against the design
+**7:27 AM ET → 7:27 AM ET (3s)** · **4.3.3 design-gate** · iter 3 · **pass** — The design is build-ready.
+**7:26 AM ET → 7:27 AM ET (44s)** · **4.3.2 spec-coverage** · iter 3 · **uncovered** — Two issue requirements have no covering SPEC — one is actively contradicted by a SPEC that keeps what the issue says must be deleted.
+**7:23 AM ET → 7:26 AM ET (3m07s)** · **4.3.1 design** · iter 3 · **pass** — authored design.md — 17 file(s) in scope, 18 acceptance SPEC(s)
+**7:23 AM ET → 7:23 AM ET (6s)** · **4.2.3 design-gate** · iter 2 · **pass** — The design is build-ready.
+**7:21 AM ET → 7:23 AM ET (1m11s)** · **4.2.2 spec-coverage** · iter 2 · **uncovered** — SPEC-14 covers only the case where `$ZBUILD_STAGE_INPUTS` is set and doesn't prove the hardcoded `$artifacts_dir/deploy-result.json` / `pr-url.txt` path construction is deleted from `plugin.sh`, and n…
+**7:17 AM ET → 7:21 AM ET (3m58s)** · **4.2.1 design** · iter 2 · **pass** — authored design.md — 16 file(s) in scope, 15 acceptance SPEC(s)
+**7:17 AM ET → 7:17 AM ET (6s)** · **4.1.3 design-gate** · iter 1 · **pass** — The design is build-ready.
+**7:16 AM ET → 7:17 AM ET (51s)** · **4.1.2 spec-coverage** · iter 1 · **uncovered** — two explicit acceptance checkboxes have no SPEC mapping — the code-side grep assertion and the primary-output declaration.
+**7:07 AM ET → 7:16 AM ET (9m25s)** · **4.1.1 design** · iter 1 · **pass** — authored design.md — 13 file(s) in scope, 13 acceptance SPEC(s)
+**7:03 AM ET → 7:07 AM ET (3m14s)** · **3 plan** · **pass** — decomposed the goal into 8 step(s)
+**7:03 AM ET → 7:03 AM ET (4s)** · **2 intake** · **pass** — took in the goal for issue #1847: [Phase 0/F] migrate the monitor plugin to contract v2
+**7:03 AM ET → 7:03 AM ET (4s)** · **1 hydrate** · **pass** — restored 0 artifact(s) from prior runs (empty)
+
+
+---
+
+<!-- zbuild-run-status run_id=20260928102849-23575 -->
+### zbuild run `20260928102849-23575` · issue #1847 · **aborted**
+engine `3a505db` (`main`) · started 10:28 AM ET · ceiling 4:28 PM ET (4h 34m left) · updated 11:53 AM ET · llm_rate_limited — LLM rate-limited — resets 12pm (America/New_York) 
+**11:52 AM ET → 11:53 AM ET (49s)** · **7.1.1 design** · iter 1 · **aborted rc=9** — the model call was rate-limited (LLM rate-limited — resets 12pm (America/New_York))
+**11:52 AM ET → 11:52 AM ET (2s)** · **6.1.10 gate-aggregator** · iter 1 · **fail** — rolled up 6 gate(s) into verdict fail
+**11:52 AM ET → 11:52 AM ET (12s)** · **6.1.9 issue-acceptance** · iter 1 · **fail** — The "ALSO LAND HERE" section requires monitor to emit `disposition: exhausted` for the turn-budget/timeout path (ADR-063 §3), but no SPEC captures that mapping — SPEC-21 only proves the rc collapses t…
+**11:52 AM ET → 11:52 AM ET (2s)** · **6.1.8 assertion-integrity** · iter 1 · **pass** — declared acceptance testfiles are unchanged since authoring
+**11:52 AM ET → 11:52 AM ET (7s)** · **6.1.7 secret-scan** · iter 1 · **pass** — clean diff — no secrets found
+**11:51 AM ET → 11:52 AM ET (24s)** · **6.1.6 acceptance-gate** · iter 1 · **fail rc=1** — acceptance SPEC violations — infra: negctl_error:timeout:SPEC-1/negctl_error:timeout:SPEC-2/negctl_error:timeout:SPEC-3/negctl_error:timeout:SPEC-4/negctl_error:timeout:SPEC-5/negctl_error:timeout:SPE…
+**11:51 AM ET → 11:51 AM ET (3s)** · **6.1.5 shape-floor** · iter 1 · **skip** — no_shape_change
+**11:35 AM ET → 11:51 AM ET (15m40s)** · **6.1.4 test** · iter 1 · **fail** — verdict: fail
+**11:30 AM ET → 11:35 AM ET (5m07s)** · **6.1.3 build** · iter 1 · **pass** — changed 2 file(s) over 1 iteration(s
+
+[… issue comments truncated at 4000B — read the issue for the full thread]
