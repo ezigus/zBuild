@@ -293,10 +293,11 @@ assert_eq "[#1846/SPEC-17] manifest provides.events declares exactly 4 events" "
 # ---------------------------------------------------------------------------
 _s18_hooks="$(awk '/^hooks:/{f=1;next} f && /^[^[:space:]]/{exit} f{print}' \
     "$_MANIFEST" 2>/dev/null || true)"
-if grep -q 'run:' <<< "$_s18_hooks"; then
-    assert_pass "[#1846/SPEC-18] manifest hooks block declares run hook"
+if grep -qE 'run:[[:space:]]*deploy_agent_run' <<< "$_s18_hooks"; then
+    assert_pass "[#1846/SPEC-18] manifest hooks block declares run: deploy_agent_run"
 else
-    assert_fail "[#1846/SPEC-18] manifest hooks block must declare run hook" "absent"
+    assert_fail "[#1846/SPEC-18] manifest hooks block must declare run: deploy_agent_run" \
+        "${_s18_hooks:-absent}"
 fi
 if grep -q 'cleanup:' <<< "$_s18_hooks"; then
     assert_fail "[#1846/SPEC-18] manifest hooks block must not declare cleanup hook" \
@@ -340,6 +341,12 @@ else
     assert_fail "[#1846/SPEC-24] manifest router-budget comment must reference ADR-037" \
         "ADR-037 not found in $_MANIFEST"
 fi
+if grep -q '§3' "$_MANIFEST"; then
+    assert_pass "[#1846/SPEC-24] manifest router-budget comment references §3 of ADR-037"
+else
+    assert_fail "[#1846/SPEC-24] manifest router-budget comment must reference §3 of ADR-037" \
+        "§3 not found in $_MANIFEST"
+fi
 
 # ===========================================================================
 # Behavioural assertions — dynamic tests via ZBUILD_STAGE_INPUTS dispatch
@@ -366,6 +373,8 @@ assert_eq "[#1846/SPEC-7] dry-run deploy-result.json carries result_contract=2" 
 _dry_sv="$(jq -r '.schema_version // "ABSENT"' "$_dry_out" 2>/dev/null || printf MISSING)"
 assert_eq "[#1846/SPEC-7] dry-run deploy-result.json must not carry schema_version key" \
     "ABSENT" "$_dry_sv"
+
+assert_eq "[#1846/SPEC-19] dry-run carries verdict=deployed" "deployed" "$_dry_v"
 
 _dry_dp="$(jq -r '.disposition // empty' "$_dry_out" 2>/dev/null || printf MISSING)"
 assert_eq "[#1846/SPEC-19] dry-run carries disposition=complete" "complete" "$_dry_dp"
