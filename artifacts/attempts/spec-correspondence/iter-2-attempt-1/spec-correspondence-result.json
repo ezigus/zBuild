@@ -1,0 +1,14 @@
+{
+  "result_contract": 2,
+  "verdict": "corresponds",
+  "disposition": "complete",
+  "reason": "judged 5 SPEC(s): 5 correspond, 0 partial, 0 mismatch, 0 uncheckable, 0 unjudged",
+  "data": {
+    "corresponds": 5,
+    "partial": 0,
+    "mismatch": 0,
+    "uncheckable": 0,
+    "unjudged": 0
+  },
+  "about": "tests/unit/monitor-v2-result-test.sh\ntests/unit/monitor-v2-result-test.sh\ntests/unit/monitor-v2-result-test.sh\ntests/unit/monitor-v2-result-test.sh\ntests/unit/monitor-v2-result-test.sh"
+}
