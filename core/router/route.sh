@@ -13,6 +13,22 @@ _ZBUILD_ROOT="$(cd "$_ROUTER_DIR/../.." && pwd)"
 # repository; also its idempotence guard (_route_redact_prompt).
 _ZB_READ_ONLY_SCOPE_MARKER='## YOUR SCOPE (engine-provided)'
 
+# ─── _route_has_done_sentinel <sentinel> <text> ─────────────────────────────
+# rc 0 when some LINE of <text> is the sentinel once whitespace and punctuation
+# are removed and case is ignored: `LOOP_COMPLETE.`, `**LOOP_COMPLETE**`,
+# `Loop complete!` all count; a sentence that merely MENTIONS it does not.
+# #1847 run 20260928102849-23575: design wrote "LOOP_COMPLETE." in 8 of 14
+# answers, the exact-line match missed every one, and each miss bought another
+# full model call (10 calls, ~41 min, for one design iteration).
+_route_has_done_sentinel() {
+    awk -v s="${1:-}" '
+        BEGIN { s = toupper(s); gsub(/[^A-Z0-9]/, "", s); if (s == "") exit 1 }
+        { l = toupper($0); gsub(/[^A-Z0-9]/, "", l); if (l == s) { found = 1; exit } }
+        # END runs even after an `exit` above; `found` is unset (0) unless a
+        # line matched, so an empty sentinel or no match both exit 1.
+        END { exit(found ? 0 : 1) }' <<< "${2:-}"
+}
+
 # ─── base-include guard (#1624) ──────────────────────────────────────────────
 # route.sh is the base include for EVERY routing plugin, so one bad library here
 # takes down all dispatch at once. One helper rather than nine inline copies, so
@@ -462,17 +478,26 @@ _route_redact_prompt() {
                 "${ZBUILD_STATE_DIR}/pipeline-state.json" 2>/dev/null || true)"
             if [[ -n "$_ss_block" ]]; then
                 printf '\n\n%s\n' "$_ss_block" >> "$input" 2>/dev/null || true
-                # #2124: say what shipped. Counted from the rendered block —
-                # after the ADR-029 cap — so the event is what the stage was
-                # told, not what existed (the banner's stage_summaries_count is
-                # the pre-cap number; the two differ exactly when the cap bit).
-                # The #1841 diagnosis had nothing to read here and concluded
-                # the builder never got the findings. Anchored to the
-                # renderer's full heading shape, so a body's own `### …` lines
-                # (the test summary has them) do not count.
+                # #2124: say what shipped. stages= is counted from the rendered
+                # block — after the ADR-029 cap — so it is what the stage was
+                # told, not what existed. The #1841 diagnosis had nothing to
+                # read here and concluded the builder never got the findings.
+                # Anchored to the renderer's heading shape (`### <stage>
+                # (verdict: …)`, then optionally ` — <framing>` to end of line),
+                # so a body's own `### …` lines (the test summary has them) do
+                # not count.
+                # resolve= comes from stage_summaries_count — the same rules
+                # that framed the block — not from re-reading its wording: the
+                # wording grew ("yours to fix", "context only …") and the old
+                # pattern logged resolve=0 while design was being told to fix
+                # (#1847 run 20260928102849-23575). That count is PRE-cap, so
+                # when the cap drops a finding, resolve= can exceed what the
+                # block shows (review #2218) — it says what the reader owes,
+                # not how much of it fit.
                 local _ss_n _ss_r _ss_b
-                _ss_n="$(grep -cE '^### [^ ]+ \(verdict: [^)]*\)( — RESOLVE these findings before completing)?$' <<< "$_ss_block" 2>/dev/null || true)"
-                _ss_r="$(grep -cE '^### [^ ]+ \(verdict: [^)]*\) — RESOLVE these findings before completing$' <<< "$_ss_block" 2>/dev/null || true)"
+                _ss_n="$(grep -cE '^### [^ ]+ \(verdict: [^)]*\)( — .*)?$' <<< "$_ss_block" 2>/dev/null || true)"
+                _ss_r="$(stage_summaries_count "${ZBUILD_STATE_DIR}/pipeline-state.json" 2>/dev/null || true)"
+                _ss_r="${_ss_r##* }"
                 _ss_b="$(printf '%s' "$_ss_block" | wc -c | tr -d ' ')"
                 eb_emit_event "prompt.summaries.injected" \
                     "stage=${ZBUILD_CURRENT_STAGE:-}" "stages=${_ss_n:-0}" \
@@ -1914,8 +1939,7 @@ ${_diff_pointer}"
             local _rr_done="false" _rr_limited="false"
             if [[ -s "$json_file" ]]; then
                 local _rr_res; _rr_res="$(jq -r '.result // empty' "$json_file" 2>/dev/null || true)"
-                if printf '%s\n' "$_rr_res" | \
-                   grep -qE "^[[:space:]]*${done_sentinel}[[:space:]]*\$" 2>/dev/null; then
+                if _route_has_done_sentinel "$done_sentinel" "$_rr_res"; then
                     _rr_done="true"
                 fi
                 # #1237 covered the sync path; this is the loop path, which build
@@ -1966,8 +1990,7 @@ ${_diff_pointer}"
             if [[ $rc -eq 124 && -s "$json_file" ]]; then
                 local _rc124_result
                 _rc124_result="$(jq -r '.result // empty' "$json_file" 2>/dev/null || true)"
-                if printf '%s\n' "$_rc124_result" | \
-                   grep -qE "^[[:space:]]*${done_sentinel}[[:space:]]*\$" 2>/dev/null; then
+                if _route_has_done_sentinel "$done_sentinel" "$_rc124_result"; then
                     _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
                     _ROUTE_LOOP_ITERATIONS=$iter
                     eb_emit_event "router.loop.iter.timeout_with_sentinel" \
@@ -2207,8 +2230,7 @@ ${_diff_pointer}"
         # leave the banner open for post-loop output. Line-anchored grep
         # against the result text; matches whitespace + sentinel + whitespace.
         local _iter_done_sentinel="false"
-        if printf '%s\n' "$result_text" | \
-           grep -qE "^[[:space:]]*${done_sentinel}[[:space:]]*\$" 2>/dev/null; then
+        if _route_has_done_sentinel "$done_sentinel" "$result_text"; then
             _iter_done_sentinel="true"
         fi
 
