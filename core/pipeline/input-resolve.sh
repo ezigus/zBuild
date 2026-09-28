@@ -627,8 +627,14 @@ _summaries_collect() {
             # which input it judges, and that input's producer owns the finding.
             _owner="$(_summaries_under_review_owner "$stage" "$plugins_root" "$state_dir")"
         fi
+        local _fault
+        _fault="$(_summaries_stage_fault "$stage" "$plugins_root" "$state_dir")"
+        # #1846: a fault the template routes back is owned by whoever the rewind
+        # hands it to — the author in the target unit.
+        [[ -z "$_owner" && -n "$_fault" ]] \
+            && _owner="$(_summaries_fault_owner "$_fault" "$plugins_root" "$state_dir")"
         printf '%s|%s|%s|%s|%s|%s\n' "$stage" "$verdict" "$path" \
-            "$(_summaries_stage_fault "$stage" "$plugins_root" "$state_dir")" "$_owner" \
+            "$_fault" "$_owner" \
             "$(_summaries_stage_errors_path "$stage" "$plugins_root" "$state_dir")"
     done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
 }
@@ -825,6 +831,42 @@ _summaries_under_review_owner() {
         elif [[ "$amalgam" != "$owner" ]]; then return 0; fi
     done <<< "$ids"
     printf '%s' "$amalgam"
+}
+
+# ─── _summaries_fault_owner <fault> <plugins_root> [state_dir] ──────────────
+# The stage a routed fault belongs to, or "" (#1846). The template's route_back
+# edges say which fault classes rewind to which unit; inside that unit, the
+# members that judge (an `under_review` input) name the author they judge. That
+# author is the one stage the rewind exists to re-run.
+#
+# #1846 run 20260928110313-2244: acceptance-gate found a specification fault,
+# the edge rewound to design_verify_cycle, and design re-ran being told the
+# fault was "the engine's to route, not yours to fix". Several edges or authors
+# that disagree make no owner; no template loaded makes none.
+_summaries_fault_owner() {
+    local fault="${1:-}" plugins_root="${2:-}" state_dir="${3:-${ZBUILD_STATE_DIR:-}}"
+    [[ -n "$fault" ]] || return 0
+    local v cid field op value unit members_var m author owner=""
+    for v in $(compgen -v _TPL_CYCLE_ROUTE_BACK_TO_ 2>/dev/null || true); do
+        cid="${v#_TPL_CYCLE_ROUTE_BACK_TO_}"
+        field="_TPL_CYCLE_ROUTE_BACK_FIELD_${cid}"; op="_TPL_CYCLE_ROUTE_BACK_OP_${cid}"
+        value="_TPL_CYCLE_ROUTE_BACK_VALUE_${cid}"
+        [[ "${!field:-}" == "fault" ]] || continue
+        case "${!op:-}" in
+            eq) [[ "${!value:-}" == "$fault" ]] || continue ;;
+            in) [[ " ${!value//,/ } " == *" $fault "* ]] || continue ;;
+            *)  continue ;;
+        esac
+        unit="${!v:-}"; members_var="_TPL_CYCLE_STAGES_${unit//-/_}"
+        [[ -n "${!members_var:-}" ]] || continue
+        for m in ${!members_var//,/ }; do
+            author="$(_summaries_under_review_owner "$m" "$plugins_root" "$state_dir")"
+            [[ -n "$author" ]] || continue
+            if [[ -z "$owner" ]]; then owner="$author"
+            elif [[ "$owner" != "$author" ]]; then return 0; fi
+        done
+    done
+    printf '%s' "$owner"
 }
 
 # The id of the ONE plugin in the tree whose manifest outputs <output_id>, or "".

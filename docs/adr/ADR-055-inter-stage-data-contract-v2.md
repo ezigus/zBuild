@@ -419,6 +419,16 @@ to build. "May change the repository" was standing in for the real question:
    and lives in the summaries header, which knows whether the reader owns a
    finding.
 
+4. **A routed fault belongs to whoever the rewind re-runs.** #1846 run
+   20260928110313-2244: acceptance-gate declared a `specification` fault, the
+   template's `route_back` rewound to `design_verify_cycle`, and design re-ran
+   being told the fault was "the engine's to route, not yours to fix". When a
+   failing stage's `fault` matches a `route_back` edge (`field: fault`), the
+   owner is the author inside the edge's target unit — the member that unit's
+   judges mark `under_review`. Derived from the template and the manifests
+   only; edges or authors that disagree make no owner, and with no template
+   loaded the fault keeps its context framing.
+
 **Where to mark it.** An input whose producer is the one stage able to act on
 the finding: spec-coverage and design-gate (`design`), validate
 (`deploy_result`). **Not** an input with several authors or none that can act:
@@ -427,7 +437,7 @@ gates, review lenses) are the work of build *and* test-author, and those
 readers already get RESOLVE as repository writers; an aggregator's inputs are
 other judges' verdicts, which no judge fixes.
 
-Verification: `tests/unit/finding-owner-under-review-test.sh` (U1–U9; U9 fails
+Verification: `tests/unit/finding-owner-under-review-test.sh` (U1–U13; U9 fails
 on any `under_review` naming an output no plugin produces), and J5/J6 above for
 the scope line.
 

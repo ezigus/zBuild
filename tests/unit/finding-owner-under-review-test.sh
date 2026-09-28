@@ -28,6 +28,16 @@
 #             to nobody without one
 # U9 [guard]  every `under_review` input in the tree names an output some plugin
 #             produces — a typo would silently make no owner
+#
+# #1846 run 20260928110313-2244: acceptance-gate found a SPECIFICATION fault;
+# the template's route_back rewound to design_verify_cycle, and design re-ran
+# with "0 RESOLVE" — told "a specification fault; the engine routes this, it is
+# not yours to fix" by the very rewind that routed it there.
+# U10 [change] a routed fault is owned by the author in the route_back target
+#              unit (the member its judges mark under review) — design, in simple.yaml
+# U11 [guard]  a writer outside that unit is told it is design's, not to fix it
+# U12 [guard]  a fault no route_back edge routes makes no owner (implementation → RESOLVE for a writer)
+# U13 [guard]  with no template loaded, a routed fault keeps the old context framing
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -187,6 +197,36 @@ if [[ "$_declared" -ge 3 ]]; then
 else
     assert_fail "[U9] the scan saw the declarations" "found $_declared (expected ≥3) — the guard is vacuous"
 fi
+
+print_test_section "U10–U13: a fault the template routes back"
+RS="$TEST_TEMP_DIR/routed"; RA="$RS/artifacts"; mkdir -p "$RA"
+printf 'SPEC-2 is tagged [guard] but fails at the merge-base.\n' > "$RA/gate-aggregator-summary.md"
+cat > "$RS/pipeline-state.json" <<'JSON'
+{"schema_version":1,"run_id":"rt","stage_statuses":{"gate-aggregator":"failed"},"stage_verdicts":{"gate-aggregator":"fail"}}
+JSON
+_routed() {  # <reader> <fault> [with-template:1|0]
+    local reader="$1" fault="$2" tpl="${3:-1}"
+    printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x","fault":"%s"}\n' "$fault" > "$RA/gate-aggregator-result.json"
+    (
+        if [[ "$tpl" == "1" ]]; then
+            source "$REPO_ROOT/core/pipeline/template.sh" 2>/dev/null
+            load_template "$REPO_ROOT/config/templates/simple.yaml" >/dev/null 2>&1
+        fi
+        _mdir="$(dirname "$(_inputs_stage_manifest "$reader" "$REPO_ROOT/plugins")")"
+        ZBUILD_STATE_DIR="$RS" ZBUILD_CURRENT_STAGE="$reader" ZBUILD_PLUGIN_DIR="$_mdir" \
+            stage_summaries_prompt_block "$RS/pipeline-state.json" "$REPO_ROOT/plugins" 2>/dev/null
+    ) || true
+}
+assert_contains "[U10] design, rewound to by a specification fault, is told it is its to fix" \
+    "$(_routed design specification)" "### gate-aggregator (verdict: fail) — about work you authored: these findings are yours to fix"
+assert_contains "[U10] ...and by a scope fault" \
+    "$(_routed design scope)" "### gate-aggregator (verdict: fail) — about work you authored"
+assert_contains "[U11] build is told the specification is design's" \
+    "$(_routed build specification)" "context only: about work owned by design, not yours to fix"
+assert_contains "[U12] an implementation fault is still build's to RESOLVE" \
+    "$(_routed build implementation)" "### gate-aggregator (verdict: fail) — RESOLVE these findings before completing"
+assert_contains "[U13] with no template, a routed fault keeps the context framing" \
+    "$(_routed design specification 0)" "context only: a specification fault; the engine routes this"
 
 cleanup_test_env
 print_test_results
