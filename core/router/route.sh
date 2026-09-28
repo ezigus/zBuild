@@ -24,6 +24,8 @@ _route_has_done_sentinel() {
     awk -v s="${1:-}" '
         BEGIN { s = toupper(s); gsub(/[^A-Z0-9]/, "", s); if (s == "") exit 1 }
         { l = toupper($0); gsub(/[^A-Z0-9]/, "", l); if (l == s) { found = 1; exit } }
+        # END runs even after an `exit` above; `found` is unset (0) unless a
+        # line matched, so an empty sentinel or no match both exit 1.
         END { exit(found ? 0 : 1) }' <<< "${2:-}"
 }
 
@@ -476,21 +478,24 @@ _route_redact_prompt() {
                 "${ZBUILD_STATE_DIR}/pipeline-state.json" 2>/dev/null || true)"
             if [[ -n "$_ss_block" ]]; then
                 printf '\n\n%s\n' "$_ss_block" >> "$input" 2>/dev/null || true
-                # #2124: say what shipped. Counted from the rendered block —
-                # after the ADR-029 cap — so the event is what the stage was
-                # told, not what existed (the banner's stage_summaries_count is
-                # the pre-cap number; the two differ exactly when the cap bit).
-                # The #1841 diagnosis had nothing to read here and concluded
-                # the builder never got the findings. Anchored to the
-                # renderer's full heading shape, so a body's own `### …` lines
-                # (the test summary has them) do not count.
+                # #2124: say what shipped. stages= is counted from the rendered
+                # block — after the ADR-029 cap — so it is what the stage was
+                # told, not what existed. The #1841 diagnosis had nothing to
+                # read here and concluded the builder never got the findings.
+                # Anchored to the renderer's heading shape (`### <stage>
+                # (verdict: …)`, then optionally ` — <framing>` to end of line),
+                # so a body's own `### …` lines (the test summary has them) do
+                # not count.
+                # resolve= comes from stage_summaries_count — the same rules
+                # that framed the block — not from re-reading its wording: the
+                # wording grew ("yours to fix", "context only …") and the old
+                # pattern logged resolve=0 while design was being told to fix
+                # (#1847 run 20260928102849-23575). That count is PRE-cap, so
+                # when the cap drops a finding, resolve= can exceed what the
+                # block shows (review #2218) — it says what the reader owes,
+                # not how much of it fit.
                 local _ss_n _ss_r _ss_b
-                # resolve= comes from the same rules that framed the block
-                # (stage_summaries_count), not from re-reading its wording —
-                # the wording grew ("yours to fix", "context only …") and the
-                # old pattern logged resolve=0 while design was told to fix
-                # (#1847 run 20260928102849-23575). It is the pre-cap count.
-                _ss_n="$(grep -cE '^### [^ ]+ \(verdict: [^)]*\)' <<< "$_ss_block" 2>/dev/null || true)"
+                _ss_n="$(grep -cE '^### [^ ]+ \(verdict: [^)]*\)( — .*)?$' <<< "$_ss_block" 2>/dev/null || true)"
                 _ss_r="$(stage_summaries_count "${ZBUILD_STATE_DIR}/pipeline-state.json" 2>/dev/null || true)"
                 _ss_r="${_ss_r##* }"
                 _ss_b="$(printf '%s' "$_ss_block" | wc -c | tr -d ' ')"
