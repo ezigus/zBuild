@@ -21,6 +21,9 @@
 # S4 [guard]  a run the timer really stops is still `NEGCTL ERROR timeout:`
 # S5 [change] the gate classes killed_by_signal as recoverable, and its reason
 #             names the cause and the fix
+# S6 [change] (review #2220) a SIGKILL the timer did not send (rc=137 with no
+#             kill-after in use) is infrastructure — usually the OOM killer — so
+#             it reads `NEGCTL ERROR sigkill:<spec>`, never "signal a child"
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -119,6 +122,22 @@ else
     assert_pass "[S4] skipped — no timeout binary"
 fi
 
+print_test_section "S6: an outside SIGKILL is infrastructure"
+REPO6="$(setup_git_temp_repo negctl-signal-repo6)"
+( cd "$REPO6" || exit 1; "$GIT" checkout -q -b feature; mkdir -p tests
+  printf '#!/usr/bin/env bash\nmy_feature() { return 0; }\n' > impl.sh
+  cat > tests/k-test.sh <<'EOF2'
+#!/usr/bin/env bash
+impl="$(cd "$(dirname "$0")/.." && pwd)/impl.sh"
+[[ -f "$impl" ]] || kill -KILL "$$"
+echo "  ✓ [SPEC-1] survives"
+EOF2
+  chmod +x tests/k-test.sh impl.sh; "$GIT" add -A; "$GIT" commit -q -m k )
+printf '```acceptance\nSPEC-1[change]: survives\nTESTFILES:\nSPEC-1: tests/k-test.sh\n```\n' > "$REPO6/design.md"
+OUT6="$(_ACCEPTANCE_TIMEOUT_KILL_OK=no ZBUILD_NEGCTL_TIMEOUT=60 acceptance_negctl_check "$REPO6/design.md" "$REPO6" 2>/dev/null || true)"
+assert_eq "[S6] rc=137 with no kill-after → NEGCTL ERROR sigkill:SPEC-1 (infra)" \
+    "NEGCTL ERROR sigkill:SPEC-1" "$(grep 'SPEC-1' <<< "$OUT6" || true)"
+
 print_test_section "S5: the gate's class and wording"
 # shellcheck source=../../scripts/lib/acceptance-disposition.sh
 source "$REPO_ROOT/scripts/lib/acceptance-disposition.sh"
@@ -126,9 +145,9 @@ assert_eq "[S5] killed_by_signal is recoverable (the test's author can fix it)" 
     "recoverable" "$(_ag_failure_class_disposition killed_by_signal)"
 assert_contains "[S5] the gate declares the class" \
     "$(cat "$REPO_ROOT/plugins/agent/spec-acceptance/manifest.yaml")" "- killed_by_signal"
-_ag_reason_src="$(sed -n '/^_ag_join_ids()/,/^}/p; /^_ag_build_reason()/,/^}/p' "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh")"
-eval "$_ag_reason_src"
-_reason="$(_ag_build_reason "killed_by_signal:SPEC-8" "killed_by_signal:SPEC-9")"
+# The real plugin, sourced in a subshell — no extraction by line pattern (review #2220).
+_reason="$( source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" >/dev/null 2>&1
+            _ag_build_reason "killed_by_signal:SPEC-8" "killed_by_signal:SPEC-9" 2>/dev/null )"
 assert_contains "[S5] the reason names the SPECs" "$_reason" "SPEC-8/SPEC-9"
 assert_contains "[S5] ...says the file died on a signal, not a timeout" "$_reason" "died on a signal"
 assert_contains "[S5] ...and names the usual cause" "$_reason" 'its own process'

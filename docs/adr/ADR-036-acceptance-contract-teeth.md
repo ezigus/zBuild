@@ -905,5 +905,8 @@ point read `negctl_error:timeout` under a 60s timer that never fired.
   signals its own process where no handler exists — and the fix: signal a child.
 - A verdict the file printed **before** dying is still evidence and is used as
   it stands.
+- A **SIGKILL** (137) the timer did not send is `NEGCTL ERROR sigkill:` —
+  infrastructure. Nothing in a test normally sends SIGKILL; the usual sender is
+  the OOM killer, and "signal a child" would be the wrong advice (review #2220).
 
-Verification: `tests/unit/acceptance-negctl-signal-test.sh` (S1–S5).
+Verification: `tests/unit/acceptance-negctl-signal-test.sh` (S1–S6).

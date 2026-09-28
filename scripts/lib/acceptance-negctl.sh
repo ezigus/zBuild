@@ -79,7 +79,17 @@ _negctl_is_timeout_rc() {
 # the test process was killed — often by itself. That is the test file's defect,
 # not infrastructure, and the finding names the class so its author can act.
 _negctl_is_signal_rc() {
-    [[ "$1" =~ ^[0-9]+$ ]] && (( $1 > 128 && $1 <= 192 )) && ! _negctl_is_timeout_rc "$1"
+    [[ "$1" =~ ^[0-9]+$ ]] && (( $1 > 128 && $1 <= 192 )) \
+        && ! _negctl_is_timeout_rc "$1" && ! _negctl_is_sigkill_rc "$1"
+}
+
+# rc 0 for a SIGKILL (137) the timer did not send. Nothing inside a test
+# normally sends SIGKILL; the usual sender is the OOM killer or an operator, so
+# it is INFRASTRUCTURE (`NEGCTL ERROR sigkill:`), not the test's defect — and
+# "signal a child instead" would be the wrong advice (review #2220). Before
+# #1847's fix it read `timeout`, which was also infra; only the word changed.
+_negctl_is_sigkill_rc() {
+    [[ "$1" == "137" ]] && ! _negctl_is_timeout_rc "$1"
 }
 
 # #1670: rc classes meaning "the runner could not execute the file" rather than
@@ -241,6 +251,7 @@ _negctl_guard_resolve_tfs() {
 #   timeout    — the timer stopped a run; pass/fail unknown (infrastructure)
 #   harness    — unparseable at baseline, or the runner could not execute it
 #   signal     — the file died on a signal before printing this SPEC's verdict
+#   sigkill    — ...on a SIGKILL the timer did not send (OOM, operator): infra
 # <logfile> may be empty to discard the per-TESTFILE capture.
 #
 # #1777: extracted verbatim from acceptance_negctl_check's guard arm so the
@@ -294,6 +305,7 @@ _negctl_guard_verdict() {
         # assertion: the file killed itself (or was killed) first. That is not a
         # regressed guard and not a timeout.
         if [[ "$_g_lv" -eq 2 ]] && _negctl_is_signal_rc "$_g_rc"; then printf 'signal'; return 0; fi
+        if [[ "$_g_lv" -eq 2 ]] && _negctl_is_sigkill_rc "$_g_rc"; then printf 'sigkill'; return 0; fi
         if [[ "$_g_rc" -ne 0 && "$_g_lv" -ne 1 ]]; then printf 'regressed'; return 0; fi
     done
     printf 'held'
@@ -309,7 +321,7 @@ _negctl_guard_verdict() {
 #                                no_testfile, guard_regressed, killed_by_signal}
 #   NEGCTL ERROR <detail>      — infrastructure (baseline_resolve_failed,
 #                                worktree_failed, timeout:<spec_id>,
-#                                harness:<spec_id>)
+#                                harness:<spec_id>, sigkill:<spec_id>)
 #   NEGCTL SKIP <spec_id> <detail> — no negative control possible for that SPEC
 #                                (no_impl_delta, no_prod_delta). #1715: the
 #                                reason is run-wide but the roster is not, so
@@ -428,12 +440,13 @@ acceptance_negctl_check() {
                 harness)    printf 'NEGCTL ERROR harness:%s\n' "$spec_id"; rc=1 ;;
                 regressed)  printf 'NEGCTL FAIL %s guard_regressed\n' "$spec_id"; rc=1 ;;
                 signal)     printf 'NEGCTL FAIL %s killed_by_signal\n' "$spec_id"; rc=1 ;;
+                sigkill)    printf 'NEGCTL ERROR sigkill:%s\n' "$spec_id"; rc=1 ;;
                 held)       printf 'NEGCTL PASS %s guard_spec\n' "$spec_id" ;;
                 *)          printf 'NEGCTL ERROR harness:%s\n' "$spec_id"; rc=1 ;;
             esac
             continue
         fi
-        local found_control=0 saw_tautology=0 saw_tagged=0 only_head_fail=0 saw_timeout=0 saw_harness=0 saw_signal=0
+        local found_control=0 saw_tautology=0 saw_tagged=0 only_head_fail=0 saw_timeout=0 saw_harness=0 saw_signal=0 saw_sigkill=0
         # Per-SPEC diagnostic log (opt-in via ZBUILD_NEGCTL_ARTIFACT_DIR, set by
         # the plugin from the pipeline state dir). Empty → output discarded.
         local logfile=""
@@ -509,6 +522,10 @@ acceptance_negctl_check() {
                || { [[ "$_lv_head" -eq 2 ]] && _negctl_is_signal_rc "$rc_head"; }; then
                 saw_signal=1; continue
             fi
+            if { [[ "$_lv_base" -eq 2 ]] && _negctl_is_sigkill_rc "$rc_base"; } \
+               || { [[ "$_lv_head" -eq 2 ]] && _negctl_is_sigkill_rc "$rc_head"; }; then
+                saw_sigkill=1; continue
+            fi
             # Fall back to the file rc only where the log carries no verdict for
             # this SPEC — a custom runner, an empty capture, or a run that died
             # before reaching the assertion. That is pre-#1969 behaviour, i.e.
@@ -559,8 +576,11 @@ acceptance_negctl_check() {
             # test's defect, so it is its author's to fix — not infrastructure.
             printf 'NEGCTL FAIL %s killed_by_signal\n' "$spec_id"; rc=1
         elif [[ "$saw_timeout" -eq 1 ]]; then
-            # Only-signal was a timeout: infra, not a genuine violation.
+            # Nothing but timer stops for this SPEC: infra, not a violation.
             printf 'NEGCTL ERROR timeout:%s\n' "$spec_id"; rc=1
+        elif [[ "$saw_sigkill" -eq 1 ]]; then
+            # A SIGKILL from outside (OOM, operator): infra, not the test's defect.
+            printf 'NEGCTL ERROR sigkill:%s\n' "$spec_id"; rc=1
         elif [[ "$saw_harness" -eq 1 ]]; then
             # Only-signal was 126/127: the runner could not execute the file, so
             # pass/fail is unknown (#1969). Infra, like a timeout — never a
