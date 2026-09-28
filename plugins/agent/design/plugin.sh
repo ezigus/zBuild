@@ -422,8 +422,10 @@ path/to/file2
 
    TAGGING RULE (ADR-036, enforced mechanically by the acceptance-gate stage):
    each TESTFILE must contain at least one assertion whose LABEL includes the
-   matching [SPEC-n] tag, e.g. assert_eq "[SPEC-1] carry-over count" exp act.
-   The gate fails the build if any SPEC-n has no [SPEC-n]-tagged assertion, AND
+   SPEC's tag, which carries this issue's number — for SPEC-1 of this issue:
+   $(acceptance_spec_tag SPEC-1 2>/dev/null || printf '[SPEC-1]'). A shared test
+   may already hold other issues' tags; they are not yours to change.
+   The gate fails the build if any SPEC has no assertion carrying its tag, AND
    it runs each [change]-tagged assertion against the merge-base baseline —
    the assertion MUST FAIL there. Write ONE SPEC per assertion so the negative
    control can isolate each behavior.

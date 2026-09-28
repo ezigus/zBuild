@@ -31,9 +31,12 @@ provides:
     - validate.probe.failed
 
 config:
+  # skipped: nothing was deployed (deploy skipped or failed), so nothing was
+  # validated.
   valid_verdicts:
     - healthy
     - error
+    - skipped
   tier_default: T2
 
 inputs:

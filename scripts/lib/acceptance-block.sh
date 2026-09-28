@@ -96,6 +96,22 @@ extract_acceptance_block() {
 # map to a [SPEC-n]-tagged assertion). Returns 0 when ≥1 id is found, else 1.
 # Stops at the TESTFILES: sentinel so per-SPEC binding lines (SPEC-n: path)
 # in the TESTFILES section are not misidentified as spec-id declarations.
+# acceptance_spec_tag <spec_id> — the tag an assertion carries for a SPEC.
+# Under an issue: [#<issue>/SPEC-n] — SPEC numbers restart with every design, so
+# a bare [SPEC-3] cannot say WHICH issue's SPEC-3 it is, and two issues sharing a
+# test file collided (#1845 stripped #1328's [SPEC-1..10]). The scheme adds to
+# the old one and never overlaps it: `\[SPEC-[0-9]+\]` cannot match a new tag,
+# and every reader matches the exact tag it builds here. With no issue (a
+# --goal run, ZBUILD_ISSUE unset or 0) it is the bare legacy [SPEC-n].
+acceptance_spec_tag() {
+    local sid="${1:-}" issue="${ZBUILD_ISSUE:-}"
+    if [[ "$issue" =~ ^[1-9][0-9]*$ ]]; then
+        printf '[#%s/%s]' "$issue" "$sid"
+    else
+        printf '[%s]' "$sid"
+    fi
+}
+
 acceptance_list_spec_ids() {
     local design_md="${1:-}"
     local block_output line ids_found=0

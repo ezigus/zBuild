@@ -34,8 +34,8 @@ acceptance_coverage_spec_tagged() {
         [[ -z "$tf" ]] && continue
         abs="$repo_root/$tf"
         [[ -f "$abs" ]] || continue
-        # Fixed-string match on the literal tag, e.g. "[SPEC-1]".
-        if grep -qF "[$spec_id]" "$abs" 2>/dev/null; then
+        # Fixed-string match on this issue's exact tag (acceptance_spec_tag).
+        if grep -qF "$(acceptance_spec_tag "$spec_id")" "$abs" 2>/dev/null; then
             return 0
         fi
     done
@@ -123,7 +123,7 @@ acceptance_find_assertion_sources() {
         n=${#lines[@]}
         local -a starts=()
         for (( i = 0; i < n; i++ )); do
-            [[ "${lines[i]}" == *"[$spec_id]"* ]] || continue
+            [[ "${lines[i]}" == *"$(acceptance_spec_tag "$spec_id")"* ]] || continue
             [[ "${lines[i]}" =~ ^[[:space:]]*assert[a-z_]*[[:space:]] ]] || continue
             a=$i; while (( a > 0 )) && [[ -n "${lines[a-1]// }" ]]; do (( a-- )); done
             b=$i; while (( b < n - 1 )) && [[ -n "${lines[b+1]// }" ]]; do (( b++ )); done
@@ -152,9 +152,10 @@ acceptance_find_assertion_label() {
             abs="$repo_root/$tf"
             [[ -f "$abs" ]] || continue
             if [[ "$pass" == "assert" ]]; then
-                match="$(grep -m1 -E "^[[:space:]]*assert[a-z_]*[[:space:]].*\[$spec_id\]" "$abs" 2>/dev/null || true)"
+                match="$(awk -v t="$(acceptance_spec_tag "$spec_id")" \
+                    'index($0, t) && /^[[:space:]]*assert[a-z_]*[[:space:]]/ { print; exit }' "$abs" 2>/dev/null || true)"
             else
-                match="$(grep -m1 -F "[$spec_id]" "$abs" 2>/dev/null || true)"
+                match="$(grep -m1 -F "$(acceptance_spec_tag "$spec_id")" "$abs" 2>/dev/null || true)"
             fi
             if [[ -n "$match" ]]; then
                 _acceptance_trim_label "$match"

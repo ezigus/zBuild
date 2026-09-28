@@ -110,7 +110,7 @@ _negctl_guard_log_check() {
     [[ -z "$clean" ]] && return 2
     # grep exits non-zero on no-match, which is the only way $tagged can be
     # empty — a matched line always contains the tag.
-    tagged="$(printf '%s\n' "$clean" | LC_ALL=C grep -F "[$spec_id]" 2>/dev/null)" || return 2
+    tagged="$(printf '%s\n' "$clean" | LC_ALL=C grep -F "$(acceptance_spec_tag "$spec_id")" 2>/dev/null)" || return 2
     # ✗ wins over ✓: a guard with one failing and one passing tagged assertion
     # has regressed.
     LC_ALL=C grep -qF '✗' <<< "$tagged" 2>/dev/null && return 0
@@ -209,7 +209,7 @@ _negctl_guard_resolve_tfs() {
     else
         for _tf in "$@"; do
             [[ -z "$_tf" ]] && continue
-            grep -qF "[$spec_id]" "$repo_root/$_tf" 2>/dev/null || continue
+            grep -qF "$(acceptance_spec_tag "$spec_id")" "$repo_root/$_tf" 2>/dev/null || continue
             printf '%s\n' "$_tf"
         done
     fi
@@ -432,7 +432,7 @@ acceptance_negctl_check() {
         else
             for _ctf in "${testfiles[@]:-}"; do
                 [[ -z "$_ctf" ]] && continue
-                grep -qF "[$spec_id]" "$repo_root/$_ctf" 2>/dev/null || continue
+                grep -qF "$(acceptance_spec_tag "$spec_id")" "$repo_root/$_ctf" 2>/dev/null || continue
                 saw_tagged=1; _cand_tfs+=("$_ctf")
             done
         fi
