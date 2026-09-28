@@ -1,0 +1,15 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 7 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 7,
+    "owned_files": [
+      "tests/unit/monitor-v2-result-test.sh"
+    ],
+    "testfiles": {
+      "tests/unit/monitor-v2-result-test.sh": "4d4e8f0f25fb0f089eaad2fc875c5aac8c7ea0af"
+    }
+  }
+}
