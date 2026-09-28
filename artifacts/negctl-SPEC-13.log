@@ -1,0 +1,153 @@
+### SPEC-13 baseline plugins/agent/deploy/tests/deploy-test.sh
+
+[38;2;0;212;255m[1m  plugin: deploy agent (kind:agent, ADR-018 P1, issues #757 #1846)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1846/SPEC-1] deploy plugin.sh exists at expected path
+  [38;2;74;222;128m✓[0m [#1846/SPEC-1] deploy_agent_run function defined after source
+  [38;2;74;222;128m✓[0m [#1846/SPEC-5] deploy plugin has 'Role: deploy_agent' preamble comment
+  [38;2;74;222;128m✓[0m [#1846/SPEC-6] deploy plugin has no route_to_model call in executable code
+  [38;2;248;113;113m✗[0m [#1846/SPEC-11] plugin.sh must not derive output path from state_file
+    [2mstate_file-derived artifact path found in non-comment code[0m
+  [38;2;74;222;128m✓[0m [#1846/SPEC-11] plugin.sh references ZBUILD_ARTIFACT_DIR for output path
+  [38;2;248;113;113m✗[0m [#1846/SPEC-12] plugin.sh must not construct pr-url.txt or gate-aggregator-result.json paths
+    [2mhardcoded input path found in non-comment code[0m
+  [38;2;248;113;113m✗[0m [#1846/SPEC-12] plugin.sh must reference ZBUILD_STAGE_INPUTS for input resolution
+    [2mZBUILD_STAGE_INPUTS not found in plugin.sh[0m
+  [38;2;248;113;113m✗[0m [#1846/SPEC-13] plugin.sh must not exit/return with rc>=2 on any code path
+    [2m        return 2
+        return 2
+        return 2
+    return 2[0m
+  [38;2;248;113;113m✗[0m [#1846/SPEC-9] manifest provides block must carry result_contract: 2
+    [2m  role: deploy_agent
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+  # the engine's known set at load. Adding one here needs no engine-config edit.
+  events:
+    - deploy.gate.missing
+    - deploy.input.missing
+    - deploy.skipped
+    - deploy.tool.failed[0m
+  [38;2;74;222;128m✓[0m [#1846/SPEC-15] manifest_router_knob timeout_s returns empty (no config.router)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-15] manifest_router_knob max_turns returns empty (no config.router)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-16] manifest outputs deploy_result declares primary: true
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.role declares deploy_agent
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events declares deploy.gate.missing
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events declares deploy.input.missing
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events declares deploy.skipped
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events declares deploy.tool.failed
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events declares exactly 4 events
+  [38;2;74;222;128m✓[0m [#1846/SPEC-18] manifest hooks block declares run hook
+  [38;2;74;222;128m✓[0m [#1846/SPEC-18] manifest hooks block has no cleanup hook
+  [38;2;74;222;128m✓[0m [#1846/SPEC-18] manifest hooks block declares exactly one hook (run only)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest valid_verdicts contains 'deployed'
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest valid_verdicts contains 'error'
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest valid_verdicts contains 'skipped'
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest config.valid_verdicts declares exactly 3 verdicts
+[38;2;248;113;113m[1m✗[0m deploy: missing required input pr-url.txt
+### SPEC-13 head plugins/agent/deploy/tests/deploy-test.sh
+
+[38;2;0;212;255m[1m  plugin: deploy agent (kind:agent, ADR-018 P1, issues #757 #1846)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1846/SPEC-1] deploy plugin.sh exists at expected path
+  [38;2;74;222;128m✓[0m [#1846/SPEC-1] deploy_agent_run function defined after source
+  [38;2;74;222;128m✓[0m [#1846/SPEC-5] deploy plugin has 'Role: deploy_agent' preamble comment
+  [38;2;74;222;128m✓[0m [#1846/SPEC-6] deploy plugin has no route_to_model call in executable code
+  [38;2;74;222;128m✓[0m [#1846/SPEC-11] plugin.sh has no state_file-derived output path
+  [38;2;74;222;128m✓[0m [#1846/SPEC-11] plugin.sh references ZBUILD_ARTIFACT_DIR for output path
+  [38;2;74;222;128m✓[0m [#1846/SPEC-12] plugin.sh constructs no pr-url.txt or gate-aggregator-result.json path
+  [38;2;74;222;128m✓[0m [#1846/SPEC-12] plugin.sh references ZBUILD_STAGE_INPUTS for input resolution
+  [38;2;74;222;128m✓[0m [#1846/SPEC-13] plugin.sh has no non-comment exit/return with rc>=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-9] manifest provides block carries result_contract: 2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-15] manifest_router_knob timeout_s returns empty (no config.router)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-15] manifest_router_knob max_turns returns empty (no config.router)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-16] manifest outputs deploy_result declares primary: true
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.role declares deploy_agent
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events declares deploy.gate.missing
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events declares deploy.input.missing
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events declares deploy.skipped
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events declares deploy.tool.failed
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events declares exactly 4 events
+  [38;2;74;222;128m✓[0m [#1846/SPEC-18] manifest hooks block declares run hook
+  [38;2;74;222;128m✓[0m [#1846/SPEC-18] manifest hooks block has no cleanup hook
+  [38;2;74;222;128m✓[0m [#1846/SPEC-18] manifest hooks block declares exactly one hook (run only)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest valid_verdicts contains 'deployed'
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest valid_verdicts contains 'error'
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest valid_verdicts contains 'skipped'
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest config.valid_verdicts declares exactly 3 verdicts
+  [38;2;74;222;128m✓[0m [#1846/SPEC-2] dry-run writes verdict=deployed
+  [38;2;74;222;128m✓[0m [#1846/SPEC-2] non-dry-run with passing gate delegates to deploy_release_run
+[38;2;248;113;113m[1m✗[0m deploy: missing required input pr_url
+  [38;2;74;222;128m✓[0m [#1846/SPEC-3] missing pr_url → rc != 0
+  [38;2;74;222;128m✓[0m [#1846/SPEC-3] missing pr_url → verdict=error in output
+[38;2;250;204;21m[1m⚠[0m deploy: gate-aggregator verdict='fail' is not pass — skipping deploy
+  [38;2;74;222;128m✓[0m [#1846/SPEC-4] gate verdict=fail → deploy-result verdict=skipped
+[38;2;250;204;21m[1m⚠[0m deploy: gate-aggregator verdict='route_design' is not pass — skipping deploy
+  [38;2;74;222;128m✓[0m [#1846/SPEC-4] gate verdict=route_design (non-pass) → skipped (allowlist)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-7] dry-run deploy-result.json carries result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-7] dry-run deploy-result.json must not carry schema_version key
+[38;2;248;113;113m[1m✗[0m deploy: gate-aggregator result missing — refusing deploy (fail-closed)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-8] missing gate (non-dry-run) → fail-closed rc=1 (not rc=2)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-8] missing gate → verdict=error
+  [38;2;74;222;128m✓[0m [#1846/SPEC-19] dry-run writes result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-19] dry-run writes verdict=deployed
+  [38;2;74;222;128m✓[0m [#1846/SPEC-19] dry-run writes disposition=complete
+  [38;2;74;222;128m✓[0m [#1846/SPEC-19] dry-run writes non-empty reason
+  [38;2;74;222;128m✓[0m [#1846/SPEC-20] deploy-release rc!=0 → disposition=unavailable
+  [38;2;74;222;128m✓[0m [#1846/SPEC-20] deploy-release rc!=0 → verdict=error
+[38;2;248;113;113m[1m✗[0m deploy: deploy-release plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-deploy.Ik3Alw/no-release-plugin/plugins/tool/deploy-release/plugin.sh
+  [38;2;74;222;128m✓[0m [#1846/SPEC-21] deploy-release absent → disposition=broken
+  [38;2;74;222;128m✓[0m [#1846/SPEC-21] deploy-release absent → verdict=error
+[38;2;248;113;113m[1m✗[0m deploy: missing required input pr_url
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] missing-pr_url exit path: result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] missing-pr_url exit path: verdict key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] missing-pr_url exit path: disposition key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] missing-pr_url exit path: reason key present and non-empty
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] dry-run exit path: result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] dry-run exit path: verdict key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] dry-run exit path: disposition key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] dry-run exit path: reason key present and non-empty
+[38;2;250;204;21m[1m⚠[0m deploy: gate-aggregator verdict='fail' is not pass — skipping deploy
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] skipped (gate-fail) exit path: result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] skipped (gate-fail) exit path: verdict key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] skipped (gate-fail) exit path: disposition key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] skipped (gate-fail) exit path: reason key present and non-empty
+[38;2;248;113;113m[1m✗[0m deploy: gate-aggregator result missing — refusing deploy (fail-closed)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] missing-gate exit path: result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] missing-gate exit path: verdict key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] missing-gate exit path: disposition key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] missing-gate exit path: reason key present and non-empty
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-failed exit path: result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-failed exit path: verdict key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-failed exit path: disposition key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-failed exit path: reason key present and non-empty
+[38;2;248;113;113m[1m✗[0m deploy: deploy-release plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-deploy.Ik3Alw/no-release-plugin/plugins/tool/deploy-release/plugin.sh
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-absent exit path: result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-absent exit path: verdict key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-absent exit path: disposition key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-absent exit path: reason key present and non-empty
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] success exit path: result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] success exit path: verdict key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] success exit path: disposition key present
+  [38;2;74;222;128m✓[0m [#1846/SPEC-10] success exit path: reason key present and non-empty
+[38;2;248;113;113m[1m✗[0m deploy: missing required input pr_url
+  [38;2;74;222;128m✓[0m [#1846/SPEC-13] missing pr_url exits with rc=1 (not rc=2)
+[38;2;248;113;113m[1m✗[0m deploy: gate-aggregator result missing — refusing deploy (fail-closed)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-13] missing gate exits with rc=1 (not rc=2)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-13] deploy-release rc=5 exits with rc=1 (clamped)
+[38;2;248;113;113m[1m✗[0m deploy: deploy-release plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-deploy.Ik3Alw/no-release-plugin/plugins/tool/deploy-release/plugin.sh
+  [38;2;74;222;128m✓[0m [#1846/SPEC-13] missing deploy-release plugin exits with rc=1 (not rc=2)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] deployed verdict (dry-run) has result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] deployed verdict (dry-run) is 'deployed'
+[38;2;248;113;113m[1m✗[0m deploy: missing required input pr_url
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] error verdict (missing pr_url) has result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] error verdict (missing pr_url) is 'error'
+[38;2;250;204;21m[1m⚠[0m deploy: gate-aggregator verdict='fail' is not pass — skipping deploy
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] skipped verdict (gate-fail) has result_contract=2
+  [38;2;74;222;128m✓[0m [#1846/SPEC-14] skipped verdict (gate-fail) is 'skipped'
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 82 tests passed[0m
+

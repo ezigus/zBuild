@@ -1,0 +1,47 @@
+### SPEC-5 baseline plugins/agent/deploy/tests/deploy-test.sh
+
+[38;2;0;212;255m[1m  plugin: deploy agent (kind:agent, ADR-018 P1, issues #757 #1846)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1846/SPEC-1] deploy plugin.sh exists at expected path
+  [38;2;74;222;128m✓[0m [#1846/SPEC-1] deploy_agent_run function defined after source
+  [38;2;74;222;128m✓[0m [#1846/SPEC-5] deploy plugin has 'Role: deploy_agent' preamble comment
+  [38;2;74;222;128m✓[0m [#1846/SPEC-6] deploy plugin has no route_to_model call in executable code
+  [38;2;248;113;113m✗[0m [#1846/SPEC-11] plugin.sh must not derive output path from state_file
+    [2mstate_file-derived artifact path found in non-comment code[0m
+  [38;2;74;222;128m✓[0m [#1846/SPEC-11] plugin.sh references ZBUILD_ARTIFACT_DIR for output path
+  [38;2;248;113;113m✗[0m [#1846/SPEC-12] plugin.sh must not construct pr-url.txt or gate-aggregator-result.json paths
+    [2mhardcoded input path found in non-comment code[0m
+  [38;2;248;113;113m✗[0m [#1846/SPEC-12] plugin.sh must reference ZBUILD_STAGE_INPUTS for input resolution
+    [2mZBUILD_STAGE_INPUTS not found in plugin.sh[0m
+  [38;2;248;113;113m✗[0m [#1846/SPEC-13] plugin.sh must not exit/return with rc>=2 on any code path
+    [2m        return 2
+        return 2
+        return 2
+    return 2[0m
+  [38;2;248;113;113m✗[0m [#1846/SPEC-9] manifest provides block must carry result_contract: 2
+    [2m  role: deploy_agent
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+  # the engine's known set at load. Adding one here needs no engine-config edit.
+  events:
+    - deploy.gate.missing
+    - deploy.input.missing
+    - deploy.skipped
+    - deploy.tool.failed[0m
+  [38;2;74;222;128m✓[0m [#1846/SPEC-15] manifest_router_knob timeout_s returns empty (no config.router)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-15] manifest_router_knob max_turns returns empty (no config.router)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-16] manifest outputs deploy_result declares primary: true
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.role declares deploy_agent
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events declares deploy.gate.missing
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events declares deploy.input.missing
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events declares deploy.skipped
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events declares deploy.tool.failed
+  [38;2;74;222;128m✓[0m [#1846/SPEC-17] manifest provides.events declares exactly 4 events
+  [38;2;74;222;128m✓[0m [#1846/SPEC-18] manifest hooks block declares run hook
+  [38;2;74;222;128m✓[0m [#1846/SPEC-18] manifest hooks block has no cleanup hook
+  [38;2;74;222;128m✓[0m [#1846/SPEC-18] manifest hooks block declares exactly one hook (run only)
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest valid_verdicts contains 'deployed'
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest valid_verdicts contains 'error'
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest valid_verdicts contains 'skipped'
+  [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest config.valid_verdicts declares exactly 3 verdicts
+[38;2;248;113;113m[1m✗[0m deploy: missing required input pr-url.txt
