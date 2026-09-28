@@ -177,7 +177,7 @@ else
     assert_pass "[SPEC-3] deploy_agent_init does not exist (ADR-056: init removed)"
 fi
 
-# v2 dispatch: build the stage-inputs index and set env vars (ADR-055 §1)
+# v2 dispatch: build the stage-inputs index (ADR-055 §1)
 _deploy_si_dir="$STATE_DIR/stage-inputs"
 mkdir -p "$_deploy_si_dir"
 jq -n \
@@ -185,48 +185,40 @@ jq -n \
     --arg gr "$ARTIFACTS_DIR/gate-aggregator-result.json" \
     '{"inputs":{"pr_url":$pr,"gate_aggregator_result":$gr}}' \
     > "$_deploy_si_dir/deploy.json"
+
+# ─── SPEC-23 [#1846/SPEC-23]: deploy honours ZBUILD_ARTIFACT_DIR (non-default path) ─
+# This is the canonical deploy run for this test. Using a non-default ZBUILD_ARTIFACT_DIR
+# verifies the plugin writes to the env var and not a state-file-derived path. The SPEC-9
+# assertions that follow (assert_file_exists, verdict check) read $ARTIFACTS_DIR after the
+# copy below; if this block is absent, no deploy run occurs, the file is missing, and the
+# SPEC-9 assert_file_exists fails — making this block structurally non-inert.
+_spec23_dir="$TEST_TEMP_DIR/deploy-nondefault-artifacts"
+mkdir -p "$_spec23_dir"
 export ZBUILD_STAGE_INPUTS="$_deploy_si_dir/deploy.json"
-export ZBUILD_ARTIFACT_DIR="$ARTIFACTS_DIR"
+export ZBUILD_ARTIFACT_DIR="$_spec23_dir"
 
 set +e
 deploy_agent_run
 _run_rc=$?
 set -e
-assert_eq "[SPEC-9] deploy_agent_run exits 0 in dry-run" "0" "$_run_rc"
 
-# Behavior-preservation: deploy-result.json exists and carries verdict=deployed
-assert_file_exists "[SPEC-9] deploy-result.json written" "$ARTIFACTS_DIR/deploy-result.json"
-_deploy_verdict="$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/deploy-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-9] deploy-result.json verdict=deployed" "deployed" "$_deploy_verdict"
-
-unset ZBUILD_STAGE_INPUTS ZBUILD_ARTIFACT_DIR
-
-# ─── SPEC-23 [#1846/SPEC-23]: result written to ZBUILD_ARTIFACT_DIR (non-default path) ──
-# Verifies that deploy_agent_run honours ZBUILD_ARTIFACT_DIR over any state-file-derived
-# path: result appears in the custom dir, not in STATE_DIR/artifacts. Also verifies exit 0
-# when both ZBUILD_ARTIFACT_DIR and ZBUILD_STAGE_INPUTS are supplied in dry-run.
-_spec23_dir="$TEST_TEMP_DIR/deploy-nondefault-artifacts"
-mkdir -p "$_spec23_dir"
-_spec23_si="$TEST_TEMP_DIR/deploy-spec23-inputs.json"
-jq -n \
-    --arg pr "$ARTIFACTS_DIR/pr-url.txt" \
-    --arg gr "$ARTIFACTS_DIR/gate-aggregator-result.json" \
-    '{"inputs":{"pr_url":$pr,"gate_aggregator_result":$gr}}' \
-    > "$_spec23_si"
-export ZBUILD_STAGE_INPUTS="$_spec23_si"
-export ZBUILD_ARTIFACT_DIR="$_spec23_dir"
-
-set +e
-ZBUILD_DRY_RUN=1 deploy_agent_run
-_spec23_rc=$?
-set -e
-
-assert_eq "[#1846/SPEC-23] deploy_agent_run exits 0 in dry-run with ZBUILD_ARTIFACT_DIR + ZBUILD_STAGE_INPUTS" \
-    "0" "$_spec23_rc"
+assert_eq "[#1846/SPEC-23] deploy_agent_run exits 0 in dry-run with non-default ZBUILD_ARTIFACT_DIR + ZBUILD_STAGE_INPUTS" \
+    "0" "$_run_rc"
 assert_file_exists "[#1846/SPEC-23] deploy-result.json written to non-default ZBUILD_ARTIFACT_DIR (not state-derived)" \
     "$_spec23_dir/deploy-result.json"
 
+# Copy to canonical artifact dir so validate can find it (mirrors engine artifact routing).
+if [[ -f "$_spec23_dir/deploy-result.json" ]]; then
+    cp "$_spec23_dir/deploy-result.json" "$ARTIFACTS_DIR/deploy-result.json"
+fi
 unset ZBUILD_STAGE_INPUTS ZBUILD_ARTIFACT_DIR
+
+# SPEC-9 / behavior preservation — these assertions depend on the SPEC-23 block above;
+# if that block is absent, no deploy runs and assert_file_exists fails.
+assert_eq "[SPEC-9] deploy_agent_run exits 0 in dry-run" "0" "$_run_rc"
+assert_file_exists "[SPEC-9] deploy-result.json written" "$ARTIFACTS_DIR/deploy-result.json"
+_deploy_verdict="$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/deploy-result.json" 2>/dev/null || true)"
+assert_eq "[SPEC-9] deploy-result.json verdict=deployed" "deployed" "$_deploy_verdict"
 
 # ─── SPEC-4 + SPEC-9 (validate): run + behavior preservation ─────────────────
 # CHANGE: validate_agent_init and validate_agent_finalize no longer exist.
