@@ -273,6 +273,8 @@ else
     assert_pass "[SPEC-5] monitor_stage_init does not exist (ADR-056: init removed)"
 fi
 
+# The engine names the output dir for every stage it dispatches (review #2221).
+export ZBUILD_ARTIFACT_DIR="$ARTIFACTS_DIR"
 set +e
 monitor_stage_run "monitor" "$STATE_FILE"
 _run_rc=$?
@@ -281,6 +283,15 @@ assert_eq "[SPEC-9] monitor_stage_run exits 0 in dry-run" "0" "$_run_rc"
 
 # Behavior-preservation: monitor-report.json exists
 assert_file_exists "[SPEC-9] monitor-report.json written" "$ARTIFACTS_DIR/monitor-report.json"
+
+# ─── [#1847/SPEC-13] deploy→validate→monitor dry-run dispatch still ends with ─
+# monitor-report.json present and monitor_stage_run returning rc=0 (issue #1847
+# migrates monitor to contract v2; the live deployed.yaml dry-run path must
+# remain behavior-identical for a passing run).
+assert_eq "[#1847/SPEC-13] monitor_stage_run returns rc=0 in the deployed.yaml dry-run dispatch" \
+    "0" "$_run_rc"
+assert_file_exists "[#1847/SPEC-13] monitor-report.json is present after the deployed.yaml dry-run dispatch" \
+    "$ARTIFACTS_DIR/monitor-report.json"
 
 cleanup_test_env
 print_test_results

@@ -123,8 +123,11 @@ _router_rc_classify() {
         return 0
     fi
     # #2187: the sync router records a turn-budget hit (subtype error_max_turns),
-    # which otherwise surfaces as a generic rc=1.
-    if [[ "$rc" != 0 && "${_ROUTE_LAST_BUDGET_EXHAUSTED:-0}" == "1" ]]; then
+    # which otherwise surfaces as a generic rc=1. The variable only reaches a
+    # caller in the same shell; every stage calls `$(route_to_model …)`, so the
+    # marker file is what actually crosses (#1847 — without it a budget hit read
+    # as router_rc_nonzero → `unavailable`, which ends the run instead of retrying).
+    if [[ "$rc" != 0 ]] && { [[ "${_ROUTE_LAST_BUDGET_EXHAUSTED:-0}" == "1" ]] || _router_budget_observed; }; then
         printf -v "$verdict_var" '%s' "error"
         printf -v "$reason_var"  '%s' "router_out_of_turns"
         return 0
@@ -193,6 +196,31 @@ _router_throttle_marker_path() {
     else
         printf '%s/.throttled.signal' "$ZBUILD_STATE_DIR"
     fi
+}
+
+# ─── turn-budget marker (#1847) ──────────────────────────────────────────────
+# The same boundary the throttle marker crosses: route_to_model runs in the
+# stage's `$( )` subshell, so a variable it sets never reaches the stage. One
+# file per stage, beside the throttle marker; route_to_model clears it on entry,
+# so it always describes the LAST call.
+_router_budget_marker_path() {
+    local _t; _t="$(_router_throttle_marker_path)"
+    [[ -n "$_t" ]] || return 0
+    printf '%s' "${_t/.throttled/.out_of_turns}"
+}
+_router_arm_budget_marker() {
+    local _m; _m="$(_router_budget_marker_path)"
+    [[ -n "$_m" ]] && { : > "$_m"; } 2>/dev/null
+    return 0
+}
+_router_budget_observed() {
+    local _m; _m="$(_router_budget_marker_path)"
+    [[ -n "$_m" && -e "$_m" ]]
+}
+_router_clear_budget_marker() {
+    local _m; _m="$(_router_budget_marker_path)"
+    [[ -n "$_m" ]] && rm -f "$_m" 2>/dev/null
+    return 0
 }
 
 # _router_arm_throttle_marker [message] — record that this dispatch hit a rate

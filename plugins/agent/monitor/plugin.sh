@@ -33,6 +33,8 @@ source "$_MONITOR_ROOT/scripts/lib/llm-agent.sh"   # ADR-028 shared framework (a
 source "$_MONITOR_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../core/router/route.sh
 source "$_MONITOR_ROOT/core/router/route.sh"        # route_to_model redacts by construction (ADR-043)
+# shellcheck source=../../../scripts/lib/router-rc-classify.sh
+source "$_MONITOR_ROOT/scripts/lib/router-rc-classify.sh"   # _router_rc_classify + router_reason_disposition
 
 # ─── envelope schema gate ─────────────────────────────────────────────────────
 # Uniquely identifies a valid monitor report. Requiring the FULL shape (not just
@@ -45,43 +47,135 @@ _monitor_envelope_schema_ok() {
         >/dev/null 2>&1
 }
 
-# ─── write the primary artifact (jq builds it → correct escaping) ─────────────
-# The primary artifact is REQUIRED on every exit path (ADR-047 §3, artifact
-# contract). Never string-interpolate the verdict into JSON — jq escapes it.
-_monitor_write_report() {
-    local out="$1" verdict="$2" summary="$3"
-    jq -cn --arg v "$verdict" --arg s "$summary" \
-        '{schema_version:1, verdict:$v, summary:$s, checks:[]}' \
-        | atomic_write "$out"
+# ─── _monitor_write_result <out> <verdict> <disposition> <reason> <summary> <checks_json> ─
+# Write a v2-compliant result file atomically (ADR-055 §"Folds in"): the model's
+# health-assessment fields (summary, checks) live nested under data, alongside
+# the disposition/reason axis (ADR-054 §6 — did the stage RUN, distinct from
+# what it found). The primary artifact is REQUIRED on every exit path (ADR-047
+# §3). Never string-interpolate into JSON — jq builds it so escaping is correct.
+_monitor_write_result() {
+    local out="$1" verdict="$2" disposition="$3" reason="$4" summary="$5" checks="${6:-[]}"
+    # A here-string, not a pipe: the SIGPIPE rule (review #2221).
+    atomic_write "$out" <<< "$(jq -cn --arg v "$verdict" --arg d "$disposition" --arg r "$reason" \
+        --arg s "$summary" --argjson c "$checks" \
+        '{result_contract:2, schema_version:1, verdict:$v, disposition:$d, reason:$r,
+          data:{summary:$s, checks:$c}}')"
+}
+
+# ─── _monitor_interrupt_handler ────────────────────────────────────────────────
+# Trap handler for SIGTERM/SIGINT during the route_to_model call: write
+# disposition:interrupted so the primary artifact is never silently missing
+# (ADR-063 §3). Reads $_mon_out_ref (set before trap registration) so it is
+# directly invocable in tests for SIGTERM simulation.
+# Runs in the dynamic scope of _monitor_stage_run_inner, so its locals
+# (_mon_out_ref, _mon_interrupted) are the ones it reads and sets — nothing
+# global to leak into the caller (review #2221).
+_monitor_interrupt_handler() {
+    _monitor_write_result "${_mon_out_ref:-}" "degraded" "interrupted" "signal_interrupt" "" "[]"
+    _mon_interrupted=1
+}
+
+# _monitor_input_path <id> <root> — the engine-resolved path of input <id>, or
+# "". rc 1 when it lies outside <root>, the run's state directory: the engine's
+# index only points inside the run, so any other path is refused, never read
+# into the prompt (review #2221; the same rule the deploy stage applies).
+_monitor_input_path() {
+    local id="$1" root="$2" p dir
+    [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]] || return 0
+    p="$(jq -r --arg id "$id" '.inputs[$id] // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+    [[ -n "$p" ]] || return 0
+    [[ -n "$root" ]] || return 1
+    dir="$(cd "$(dirname "$p")" 2>/dev/null && pwd -P)" || dir="$(dirname "$p")"
+    case "$dir/" in
+        "$root"/*) printf '%s' "$p" ;;
+        *) return 1 ;;
+    esac
+}
+
+# ─── _monitor_budget_guidance <max_turns> ────────────────────────────────────
+# TURN BUDGET block for the prompt (ADR-063 §1). Skipped when max_turns == 0.
+_monitor_budget_guidance() {
+    local budget="${1:-}"
+    [[ "$budget" =~ ^[0-9]+$ && "$budget" -gt 0 ]] || { printf ''; return 0; }
+    cat <<EOF
+TURN BUDGET (read this — you have a BOUNDED tool-call budget):
+- You have about ${budget} tool-call turns to complete this health assessment.
+- A best-effort assessment with gaps named in prose BEATS exhausting the budget with no output.
+- STOP if you are running low and emit your best-effort report NOW.
+EOF
+}
+
+# ─── _monitor_wallclock_guidance <timeout_s> <elapsed_s> ────────────────────
+# WALL CLOCK BUDGET block (ADR-063 §1). Skipped when timeout_s == 0.
+_monitor_wallclock_guidance() {
+    local budget_s="${1:-}" elapsed_s="${2:-}"
+    [[ "$budget_s" =~ ^[0-9]+$ && "$budget_s" -gt 0 ]] || { printf ''; return 0; }
+    [[ "$elapsed_s" =~ ^[0-9]+$ ]] || elapsed_s=0
+    [[ "$elapsed_s" -lt "$budget_s" ]] || { printf ''; return 0; }
+    local _stop_at=$(( budget_s * 70 / 100 ))
+    cat <<EOF
+WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
+- This stage has a wall-clock budget of ${budget_s} seconds total; ~${elapsed_s}s have elapsed.
+- Target emitting your best-effort report before ~${_stop_at}s of wall-clock time.
+EOF
 }
 
 # ─── run ────────────────────────────────────────────────────────────────────
 # Dispatch convention (lifecycle.sh): $1=stage id, $2=state_file.
+# Returns 0 or 1 only (ADR-054 §4b): a missing argument is the engine's
+# contract broken, reported as 1 (review #2221: this returned 2).
 monitor_stage_run() {
     local stage="${1:-}" state_file="${2:-}"
     if [[ -z "$stage" || -z "$state_file" ]]; then
         error "monitor_stage_run: stage and state_file arguments required"
-        return 2
+        return 1
     fi
+    # The stage's clock starts here, so the WALL CLOCK block reports what the
+    # stage has actually spent (review #2221: it was measured across one line).
+    local _mon_stage_start_s="$SECONDS"
     _monitor_stage_run_inner "$state_file"
 }
 
 # ADR-018 Pattern 1 (one-shot): assemble prompt → route_to_model T1 → write report.
 _monitor_stage_run_inner() {
-    local state_file="$1"
-    local state_dir; state_dir="$(dirname "$state_file")"
-    local artifacts_dir="$state_dir/artifacts"
+    # The engine names where results go (ZBUILD_ARTIFACT_DIR); nothing is built
+    # from the state file's location (review #2221, as for deploy in #2219).
+    local artifacts_dir="${ZBUILD_ARTIFACT_DIR:-}"
+    if [[ -z "$artifacts_dir" ]]; then
+        error "monitor: ZBUILD_ARTIFACT_DIR not set — nowhere to write a result"
+        emit_event "monitor.result.unwritable" "plugin=monitor" "disposition=broken"
+        return 1
+    fi
     mkdir -p "$artifacts_dir"
 
-    local deploy_result_json="$artifacts_dir/deploy-result.json"
-    local pr_url_txt="$artifacts_dir/pr-url.txt"
     local report_out="$artifacts_dir/monitor-report.json"
 
     emit_event "monitor.started" "plugin=monitor"
 
+    # #1825/#1826: engine-resolved inputs only. An absent index, or an absent
+    # entry, means the input was not provided. The run's state directory is
+    # where the index lives (<state>/stage-inputs/<stage>.json).
+    local root=""
+    [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]] \
+        && root="$(cd "$(dirname "$ZBUILD_STAGE_INPUTS")/.." 2>/dev/null && pwd -P || true)"
+    local deploy_result_json="" pr_url_txt="" _id _p
+    for _id in deploy_result pr_url; do
+        if ! _p="$(_monitor_input_path "$_id" "$root")"; then
+            error "monitor: input $_id resolves outside the run's state directory — refusing it"
+            emit_event "monitor.input.refused" "plugin=monitor" "input=$_id"
+            _monitor_write_result "$report_out" "degraded" "broken" \
+                "input $_id resolves outside the run's state directory" "" "[]"
+            stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
+                "refused input $_id: it points outside this run" \
+                "The engine's input index only points inside the run; this is a defect, not a deployment problem."
+            return 1
+        fi
+        case "$_id" in deploy_result) deploy_result_json="$_p" ;; *) pr_url_txt="$_p" ;; esac
+    done
+
     # Dry-run: sentinel primary artifact, no model call.
     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
-        _monitor_write_report "$report_out" "pass" "dry-run monitor" || return 1
+        _monitor_write_result "$report_out" "pass" "complete" "" "dry-run monitor" "[]" || return 1
         stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "skip" \
             "dry run — no health assessment was performed" \
             "Nothing was monitored. This verdict asserts nothing about the deployment."
@@ -96,11 +190,11 @@ _monitor_stage_run_inner() {
     # possible), never as instructions — this is the prompt-injection mitigation.
     # route_to_model owns redaction (ADR-043); the plugin does not pre-redact.
     local deploy_block="(not available)"
-    if [[ -f "$deploy_result_json" ]]; then
+    if [[ -n "$deploy_result_json" && -f "$deploy_result_json" ]]; then
         deploy_block="$(jq -c . "$deploy_result_json" 2>/dev/null || printf '(unparseable deploy-result.json)')"
     fi
     local pr_block="(not available)"
-    if [[ -f "$pr_url_txt" ]]; then
+    if [[ -n "$pr_url_txt" && -f "$pr_url_txt" ]]; then
         pr_block="$(tr -d '\r\n' < "$pr_url_txt" | head -c 500)"  # sigpipe-ok: pr-url.txt is structurally a single short line
     fi
 
@@ -112,21 +206,61 @@ _monitor_stage_run_inner() {
     prompt+="## Deploy Result (data)"$'\n'"$deploy_block"$'\n\n'
     prompt+="## PR URL (data)"$'\n'"$pr_block"$'\n'
 
+    # ─── ADR-063 §1: inject budget guidance before the model call ──────────
+    local _budget_max_turns; _budget_max_turns="$(_route_resolve_max_turns)"
+    local _budget_timeout_s; _budget_timeout_s="$(_route_resolve_timeout)"
+    local _budget_elapsed_s=$(( SECONDS - ${_mon_stage_start_s:-$SECONDS} ))
+    local _budget_block; _budget_block="$(_monitor_budget_guidance "$_budget_max_turns")"
+    if [[ -n "$_budget_block" ]]; then
+        prompt+=$'\n\n'"$_budget_block"
+    fi
+    local _wallclock_block; _wallclock_block="$(_monitor_wallclock_guidance "$_budget_timeout_s" "$_budget_elapsed_s")"
+    if [[ -n "$_wallclock_block" ]]; then
+        prompt+=$'\n\n'"$_wallclock_block"
+    fi
+
     emit_event "monitor.check" "plugin=monitor"
 
     # One-shot route_to_model (ADR-018 Pattern 1, T1). rc captured without
-    # touching the caller's errexit.
+    # touching the caller's errexit. ADR-063 §3: register an interrupt trap so
+    # disposition:interrupted is written if the call is cut short by SIGTERM/SIGINT.
     local response rc=0
+    local _mon_out_ref="$report_out" _mon_interrupted=0
+    # The caller's own handlers are put back afterwards, not reset to the
+    # default (review #2221 — a sourced plugin must not discard them).
+    local _mon_prev_traps; _mon_prev_traps="$(trap -p TERM INT)"
+    trap '_monitor_interrupt_handler' TERM INT
     response="$(route_to_model "T1" "$prompt")" || rc=$?
+    trap - TERM INT
+    [[ -n "$_mon_prev_traps" ]] && eval "$_mon_prev_traps"
 
+    # rc=130 (SIGTERM/SIGINT propagated through the router subshell): the trap
+    # above already wrote disposition:interrupted unless it raced the return —
+    # cover that race, then collapse to rc=1 per #1823 (rc ∈ {0,1} only).
+    if [[ "$rc" -eq 130 || "${_mon_interrupted:-0}" == "1" ]]; then
+        [[ "${_mon_interrupted:-0}" == "1" ]] \
+            || _monitor_write_result "$report_out" "degraded" "interrupted" "signal_interrupt" "" "[]"
+        emit_event "monitor.alert" "plugin=monitor" "reason=signal_interrupt" "rc=$rc"
+        stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
+            "the model call was interrupted by a signal, so no assessment was made" \
+            "The deployment was not assessed. Absence of an alert here is not evidence of health."
+        return 1
+    fi
+
+    # A turn-budget hit arrives as rc=1 with the router's budget marker (it
+    # never returns 10); _router_rc_classify names it router_out_of_turns and
+    # router_reason_disposition turns that into out_of_turns — the one place
+    # the word is decided (ADR-054 §6a). Handled by the branch below.
     if [[ $rc -ne 0 ]]; then
-        local reason; reason="$(_llm_router_classify "$rc" 2>/dev/null || echo "model_error")"
-        emit_event "monitor.alert" "plugin=monitor" "reason=${reason:-model_error}" "rc=$rc"
+        local _mon_v="" _mon_r=""
+        _router_rc_classify "$rc" _mon_v _mon_r 2>/dev/null || true
+        local disposition; disposition="$(router_reason_disposition "${_mon_r:-router_rc_nonzero}")"
+        emit_event "monitor.alert" "plugin=monitor" "reason=${_mon_r:-router_rc_nonzero}" "rc=$rc"
         # Primary artifact is required on every exit path — surface a write failure.
-        _monitor_write_report "$report_out" "degraded" "model call failed (rc=$rc)" \
+        _monitor_write_result "$report_out" "degraded" "$disposition" "${_mon_r:-router_rc_nonzero}" "" "[]" \
             || emit_event "monitor.alert" "plugin=monitor" "reason=report_write_failed"
         stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
-            "the model call failed (rc=$rc, ${reason:-model_error}), so no assessment was made" \
+            "the model call failed (rc=$rc, ${_mon_r:-router_rc_nonzero}), so no assessment was made" \
             "The deployment was not assessed. Absence of an alert here is not evidence of health."
         return 1
     fi
@@ -141,7 +275,7 @@ _monitor_stage_run_inner() {
     if [[ -z "$report_json" ]] || ! _llm_envelope_validate "$report_json" \
             '.schema_version == 1 and (.verdict|type=="string") and (.summary|type=="string") and (.checks|type=="array")' verr; then
         emit_event "monitor.alert" "plugin=monitor" "reason=unparseable_response" "detail=${verr:-empty}"
-        _monitor_write_report "$report_out" "degraded" "no structured response from model" \
+        _monitor_write_result "$report_out" "degraded" "unusable" "${verr:-envelope_invalid}" "" "[]" \
             || emit_event "monitor.alert" "plugin=monitor" "reason=report_write_failed"
         stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
             "the model returned no usable report (${verr:-empty}), so no assessment was made" \
@@ -150,22 +284,27 @@ _monitor_stage_run_inner() {
     fi
 
     # Normalize the verdict and write the validated report (primary artifact).
+    # The stage RAN and produced a usable envelope either way — disposition is
+    # complete regardless of verdict; the verdict itself communicates health
+    # (ADR-054 §6: disposition and verdict are separate axes).
     local verdict; verdict="$(printf '%s' "$report_json" | jq -r '.verdict // "degraded"')"
     [[ "$verdict" == "pass" || "$verdict" == "degraded" ]] || verdict="degraded"
-    printf '%s' "$report_json" | jq -c --arg v "$verdict" '.verdict=$v' | atomic_write "$report_out"
 
     local _mon_summary; _mon_summary="$(jq -r '.summary // "no summary"' <<< "$report_json" 2>/dev/null || printf 'no summary')"
-    local _mon_checks; _mon_checks="$(jq -r '.checks | length' <<< "$report_json" 2>/dev/null || printf '0')"
+    local _mon_checks_json; _mon_checks_json="$(jq -c '.checks // []' <<< "$report_json" 2>/dev/null || printf '[]')"
+    local _mon_checks_count; _mon_checks_count="$(jq -r '.checks | length' <<< "$report_json" 2>/dev/null || printf '0')"
+    _monitor_write_result "$report_out" "$verdict" "complete" "" "$_mon_summary" "$_mon_checks_json"
+
     if [[ "$verdict" != "pass" ]]; then
         emit_event "monitor.alert" "plugin=monitor" "verdict=$verdict"
         stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
             "assessed the deployment as $verdict — $_mon_summary" \
-            "$(printf -- '- checks run: %s\n- artifact: monitor-report.json' "$_mon_checks")"
+            "$(printf -- '- checks run: %s\n- artifact: monitor-report.json' "$_mon_checks_count")"
         return 1
     fi
     stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "pass" \
         "assessed the deployment as healthy — $_mon_summary" \
-        "$(printf -- '- checks run: %s\n- artifact: monitor-report.json' "$_mon_checks")"
+        "$(printf -- '- checks run: %s\n- artifact: monitor-report.json' "$_mon_checks_count")"
     return 0
 }
 

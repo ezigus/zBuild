@@ -26,11 +26,14 @@ requires:
 
 provides:
   role: monitor
+  result_contract: 2
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
     - monitor.alert
     - monitor.check
+    - monitor.input.refused
+    - monitor.result.unwritable
     - monitor.started
 
 config:
@@ -38,6 +41,9 @@ config:
     - pass
     - degraded
   tier_default: T1
+  router:
+    timeout_s: 300 # single-shot advisory; no exploration loop needed
+    max_turns: 10  # pattern 1 single-turn; headroom for retry on schema failure
 
 inputs:
   - id: deploy_result
@@ -64,3 +70,6 @@ outputs:
 state:
   persisted: []
   reconstructed: []
+
+# hooks.cleanup is intentionally absent: this plugin holds no live resources
+# that require teardown — ADR-054 §7 (#1829).

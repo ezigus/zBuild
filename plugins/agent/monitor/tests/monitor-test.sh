@@ -30,6 +30,7 @@ FIXTURE_DIR="$SCRIPT_DIR/fixtures"
 STATE_DIR="$TEST_TEMP_DIR/state"
 STATE_FILE="$STATE_DIR/pipeline-state.json"
 ARTIFACTS_DIR="$STATE_DIR/artifacts"
+export ZBUILD_ARTIFACT_DIR="$STATE_DIR/artifacts"   # the engine names the output dir (review #2221)
 mkdir -p "$STATE_DIR" "$ARTIFACTS_DIR"
 printf '{"schema_version":1,"run_id":"test","issue":"758","stage_statuses":{}}\n' > "$STATE_FILE"
 
@@ -210,6 +211,138 @@ if grep -q "pipeline-stages-monitor.sh:150" "$PLUGIN_DIR/plugin.sh"; then
 else
     assert_fail "[SPEC-9] plugin.sh missing legacy-citation pipeline-stages-monitor.sh:150"
 fi
+
+# ═══════════════════════════════════════════════════════════════════════════
+# #1847 (Phase 0/F: migrate monitor to contract v2) — guard assertions
+# ═══════════════════════════════════════════════════════════════════════════
+
+# ─── [#1847/SPEC-10] ZBUILD_DRY_RUN=1 still returns rc=0, verdict=pass, no route_to_model ─
+print_test_section "[#1847/SPEC-10] ZBUILD_DRY_RUN=1 still returns rc=0 and writes verdict=pass without calling route_to_model"
+
+rm -f "$ARTIFACTS_DIR/monitor-report.json"
+_ROUTE_TO_MODEL_CALLED=0
+export ZBUILD_DRY_RUN=1
+
+set +e
+monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
+_s1847_10_rc=$?
+set -e
+unset ZBUILD_DRY_RUN
+
+assert_eq "[#1847/SPEC-10] dry-run still returns rc=0" "0" "$_s1847_10_rc"
+assert_eq "[#1847/SPEC-10] dry-run still does NOT call route_to_model" "0" "$_ROUTE_TO_MODEL_CALLED"
+_s1847_10_verdict="$(jq -r '.verdict // "missing"' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || echo 'error')"
+assert_eq "[#1847/SPEC-10] dry-run still writes verdict=pass" "pass" "$_s1847_10_verdict"
+
+# ─── [#1847/SPEC-11] config.valid_verdicts remains exactly [pass, degraded] ──
+print_test_section "[#1847/SPEC-11] config.valid_verdicts remains exactly [pass, degraded]"
+
+_s1847_11_stanza="$(awk '
+    /^[[:space:]]*valid_verdicts:/ { f=1; next }
+    f && /^[[:space:]]*-[[:space:]]/ { print; next }
+    f { exit }
+' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
+_s1847_11_count="$(grep -c '^[[:space:]]*-[[:space:]]' <<< "$_s1847_11_stanza" 2>/dev/null || true)"
+assert_eq "[#1847/SPEC-11] manifest valid_verdicts has exactly 2 entries" "2" "$_s1847_11_count"
+if grep -qx '[[:space:]]*- pass' <<< "$_s1847_11_stanza" && grep -qx '[[:space:]]*- degraded' <<< "$_s1847_11_stanza"; then
+    assert_pass "[#1847/SPEC-11] manifest valid_verdicts is exactly [pass, degraded]"
+else
+    assert_fail "[#1847/SPEC-11] manifest valid_verdicts is exactly [pass, degraded]" "${_s1847_11_stanza:-absent}"
+fi
+
+# ─── [#1847/SPEC-12] inputs: still declares only deploy_result/pr_url, required:false ─
+print_test_section "[#1847/SPEC-12] inputs: still declares only deploy_result and pr_url, both required:false, no restated source/path/type"
+
+_s1847_12_inputs="$(awk '
+    /^inputs:/ { f=1; next }
+    f && /^[a-zA-Z]/ { exit }
+    f { print }
+' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
+_s1847_12_id_count="$(grep -c '^[[:space:]]*-[[:space:]]*id:' <<< "$_s1847_12_inputs" 2>/dev/null || true)"
+assert_eq "[#1847/SPEC-12] inputs: declares exactly 2 input ids" "2" "$_s1847_12_id_count"
+_s1847_12_required_false="$(grep -c 'required:[[:space:]]*false' <<< "$_s1847_12_inputs" 2>/dev/null || true)"
+assert_eq "[#1847/SPEC-12] inputs: both entries have required:false" "2" "$_s1847_12_required_false"
+_s1847_12_restated="$(grep -cE '^\s*(source|path|type):' <<< "$_s1847_12_inputs" 2>/dev/null || true)"
+assert_eq "[#1847/SPEC-12] inputs: no restated source/path/type keys" "0" "$_s1847_12_restated"
+
+# ─── [#1847/SPEC-17] provides.events unchanged; plugin.sh still emits all three ─
+print_test_section "[#1847/SPEC-17] manifest still declares provides.events [monitor.alert, monitor.check, monitor.started]; plugin.sh still emits all three"
+
+for _ev in monitor.started monitor.check monitor.alert; do
+    if grep -qxF "$_ev" <<< "$_declared_events"; then
+        assert_pass "[#1847/SPEC-17] manifest still declares $_ev under provides.events"
+    else
+        assert_fail "[#1847/SPEC-17] manifest still declares $_ev under provides.events" \
+            "absent from $_manifest_file"
+    fi
+    if grep -q "emit_event \"$_ev\"" "$PLUGIN_DIR/plugin.sh"; then
+        assert_pass "[#1847/SPEC-17] plugin.sh still emits $_ev"
+    else
+        assert_fail "[#1847/SPEC-17] plugin.sh still emits $_ev" "no emit_event \"$_ev\" call found"
+    fi
+done
+
+# ─── [#1847/SPEC-18] ZBUILD_STAGE_INPUTS-resolved deploy_result/pr_url reach the ─
+# prompt; no hardcoded $artifacts_dir/deploy-result.json / pr-url.txt fallback ─
+print_test_section "[#1847/SPEC-18] deploy_result/pr_url are read via ZBUILD_STAGE_INPUTS — no hardcoded artifacts_dir fallback remains"
+
+unset ZBUILD_STAGE_INPUTS 2>/dev/null || true
+rm -f "$ARTIFACTS_DIR/monitor-report.json"
+cp "$FIXTURE_DIR/deploy-result.json" "$ARTIFACTS_DIR/deploy-result.json"
+printf 'https://github.com/mock/repo/pull/1847\n' > "$ARTIFACTS_DIR/pr-url.txt"
+_s1847_18_si="$TEST_TEMP_DIR/stage-inputs.json"
+printf '{"inputs":{"deploy_result":"%s","pr_url":"%s"}}\n' \
+    "$ARTIFACTS_DIR/deploy-result.json" "$ARTIFACTS_DIR/pr-url.txt" > "$_s1847_18_si"
+MOCK_ROUTE_RC=0
+MOCK_ROUTE_RESPONSE='{"schema_version":1,"verdict":"pass","summary":"deployment healthy","checks":[]}'
+_ROUTE_TO_MODEL_CALLED=0
+
+set +e
+( export ZBUILD_STAGE_INPUTS="$_s1847_18_si"; monitor_stage_run "monitor" "$STATE_FILE" ) >/dev/null 2>&1
+_s1847_18_rc=$?
+set -e
+
+assert_eq "[#1847/SPEC-18] ZBUILD_STAGE_INPUTS-resolved run returns rc=0" "0" "$_s1847_18_rc"
+_s1847_18_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
+if grep -q "test-branch" <<< "$_s1847_18_prompt"; then
+    assert_pass "[#1847/SPEC-18] prompt reflects the ZBUILD_STAGE_INPUTS-resolved deploy_result content"
+else
+    assert_fail "[#1847/SPEC-18] prompt reflects the ZBUILD_STAGE_INPUTS-resolved deploy_result content" \
+        "${_s1847_18_prompt:-empty}"
+fi
+if grep -q "pull/1847" <<< "$_s1847_18_prompt"; then
+    assert_pass "[#1847/SPEC-18] prompt reflects the ZBUILD_STAGE_INPUTS-resolved pr_url content"
+else
+    assert_fail "[#1847/SPEC-18] prompt reflects the ZBUILD_STAGE_INPUTS-resolved pr_url content" \
+        "${_s1847_18_prompt:-empty}"
+fi
+
+# The static guard from the SPEC text itself: no hardcoded
+# $artifacts_dir/deploy-result.json or $artifacts_dir/pr-url.txt string
+# construction anywhere in plugin.sh.
+_s1847_18_hardcoded="$(grep -n 'artifacts_dir.*deploy-result\|artifacts_dir.*pr-url' "$PLUGIN_DIR/plugin.sh" 2>/dev/null || true)"
+assert_eq "[#1847/SPEC-18] plugin.sh contains no hardcoded artifacts_dir deploy-result/pr-url construction" \
+    "" "$_s1847_18_hardcoded"
+
+# With ZBUILD_STAGE_INPUTS unset and no entry for either optional input, the
+# plugin must treat them as not provided rather than falling back to the
+# artifacts_dir copies (which are decoyed here to prove the fallback is gone).
+rm -f "$ARTIFACTS_DIR/monitor-report.json"
+unset ZBUILD_STAGE_INPUTS 2>/dev/null || true
+printf '{"decoy":true,"marker":"MONITOR_TEST_NO_FALLBACK_MARKER"}\n' > "$ARTIFACTS_DIR/deploy-result.json"
+printf 'https://example.com/MONITOR_TEST_NO_FALLBACK_MARKER\n' > "$ARTIFACTS_DIR/pr-url.txt"
+: > "$_CAPTURED_PROMPT_FILE"
+set +e
+monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
+set -e
+_s1847_18_nofallback_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
+if grep -q "MONITOR_TEST_NO_FALLBACK_MARKER" <<< "$_s1847_18_nofallback_prompt"; then
+    assert_fail "[#1847/SPEC-18] with no ZBUILD_STAGE_INPUTS entry, the artifacts_dir copies must NOT reach the prompt (no fallback path)" \
+        "marker leaked into prompt"
+else
+    assert_pass "[#1847/SPEC-18] with no ZBUILD_STAGE_INPUTS entry, deploy_result/pr_url are treated as not provided"
+fi
+rm -f "$ARTIFACTS_DIR/deploy-result.json" "$ARTIFACTS_DIR/pr-url.txt"
 
 # ─── cleanup + results ────────────────────────────────────────────────────────
 cleanup_test_env
