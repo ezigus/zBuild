@@ -23,6 +23,8 @@
 #             are listed separately; a finding that does not say is counted
 # C8 [change] lenses are given the repository's rules, framed for a reviewer
 # C9 [change] the scope lens does not report planned-but-untouched files
+# C11 [change] ...and the design's decisions (#1654 item 3): what was DECIDED,
+#              so a lens tells "odd" from "chosen"
 # C10 [change] end to end: a lens that says introduced:false produces a result
 #              file that still says so, and the aggregator lists it as
 #              pre-existing (review on #2215: the lens's own normalization
@@ -58,6 +60,9 @@ ART="$TEST_TEMP_DIR/artifacts"; mkdir -p "$ART" "$TEST_TEMP_DIR/stage-inputs"
 printf 'ISSUE-BODY-MARKER migrate the validate plugin to contract v2\n' > "$TEST_TEMP_DIR/intake.md"
 cat > "$ART/design.md" <<'EOF'
 # Design
+
+DECISION-MARKER: validate reads its input from the engine's index, never a path.
+
 ```acceptance
 SPEC-3[change]: SPEC-TEXT-MARKER validate writes a v2 result
 TESTFILES:
@@ -82,6 +87,7 @@ print_test_section "C1–C4: what the lens is given"
 assert_contains "[C1] the issue text" "$P" "ISSUE-BODY-MARKER"
 assert_contains "[C2] the SPECs" "$P" "SPEC-TEXT-MARKER"
 assert_contains "[C3] the planned scope" "$P" "SCOPE-MARKER"
+assert_contains "[C11] the design's decisions" "$P" "DECISION-MARKER"
 # Line breaks flattened: the prompt wraps this sentence across two lines.
 if grep -qF "Report only issues you can point to in the change below" <<< "$(tr '\n' ' ' <<< "$P" | tr -s ' ')"; then
     assert_fail "[C4] no longer confined to the diff" "the confining sentence is still there"

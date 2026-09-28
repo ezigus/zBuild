@@ -559,3 +559,21 @@ acceptance_list_testfiles_for_spec() {
         printf '%s\n' "${global[@]+"${global[@]}"}"
     fi
 }
+
+# design_decisions_prose <design_md> [max_lines] — the design's DECISION PROSE:
+# everything outside fenced blocks, capped (default 120 lines). Empty when absent.
+# Shared by build (honours the decisions) and review-lens (judges against them,
+# #1654) — one extractor, so the two cannot read a design differently.
+design_decisions_prose() {
+    local design_md="${1:-}" cap="${2:-120}" body
+    [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
+    body="$(awk -v cap="$cap" '
+        /^```/ { infence = !infence; next }
+        infence { next }
+        { print; emitted++ }
+        emitted >= cap { exit }
+    ' "$design_md" 2>/dev/null || true)"
+    body="$(printf '%s\n' "$body" | sed '/./,$!d')"
+    [[ -z "${body//[[:space:]]/}" ]] && return 0
+    printf '%s\n' "$body"
+}
