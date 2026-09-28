@@ -51,24 +51,35 @@ _rl_lens_charter() {
         maintainability)
             printf '%s' "Examine the change for long-term maintainability risks: code smells, poor naming, unclear logic, coupling issues, missing tests, and violations of established patterns that make future changes harder." ;;
         scope)
-            printf '%s' "WARN ONLY (advisory, never blocking): compare the change against the PLANNED scope (the plan's declared file list / scope manifest). Flag files edited in the diff that the planned scope did not list (out-of-scope edits), and files the planned scope listed but the diff did not touch (in-scope-but-untouched). Report each as a low/medium finding describing the scope drift; never recommend reverting or blocking." ;;
+            printf '%s' "WARN ONLY (advisory, never blocking): compare the change against the PLANNED scope (the plan's declared file list / scope manifest). Flag files edited in the diff that the planned scope did not list (out-of-scope edits), and edits inside a planned file that go beyond what the issue asked for (e.g. removing or rewriting unrelated content). A planned file the change did not need to touch is NOT a finding — the plan lists files that might change. Report each as a low/medium finding describing the drift; never recommend reverting or blocking." ;;
         *)
             printf '%s' "Examine the change for issues relevant to the ${1} concern." ;;
     esac
 }
 
-# ─── _rl_build_lens_prompt <lens> <evidence_content> ────────────────────────
+# ─── _rl_build_lens_prompt <lens> <evidence_content> [context] ─────────────
 # One prompt for ONE lens. Advisory contract: emit findings + a 0-10 score only.
+# <context> is what the change was FOR — the issue, its SPECs, the planned
+# scope (#1654, #1845 PR #2213): a lens that sees only the diff reads engine-set
+# values as attacker input and cannot tell a defect from what was asked for.
 _rl_build_lens_prompt() {
-    local lens="$1" evidence="$2" charter
+    local lens="$1" evidence="$2" context="${3:-}" charter
     charter="$(_rl_lens_charter "$lens")"
     cat <<PROMPT
 You are the "${lens}" review lens. ${charter}
 
 This is an advisory report. Describe what you find; do NOT recommend a merge
-action and do NOT gate anything. Report only issues you can point to in the
-change below.
+action and do NOT gate anything.
 
+The diff below shows WHAT CHANGED. Before you judge a line,
+read the surrounding code in the repository: the rest of the file, its callers,
+what produces its inputs, and comparable code elsewhere. A problem may be proven by unchanged code
+(the change disagrees with its neighbours) — cite it. Report problems in the
+change; for each, say whether the change INTRODUCED it (or made it worse), or
+whether the code before the change already did the same thing.
+${context:+
+${context}
+}
 OUTPUT CONTRACT (obey absolutely):
 - Respond with EXACTLY ONE JSON object. First character '{', last character '}'.
 - Your response MUST begin with \`{\` — no leading prose, no trailing prose, no markdown fences.
@@ -81,7 +92,8 @@ OUTPUT CONTRACT (obey absolutely):
         "category": "<short category, e.g. logic, injection, coverage>",
         "severity": "<one of: low, medium, high, critical>",
         "line": <integer line number or null>,
-        "message": "<one-sentence description>"
+        "message": "<one-sentence description>",
+        "introduced": <true if this change introduced or worsened it; false if the code before the change already did this>
       }
     ]
   }

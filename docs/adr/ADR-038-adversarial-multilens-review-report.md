@@ -120,3 +120,39 @@ and per-lens / de-duped findings. Because the lens members are file-only
 one-liners — is the operator's human-readable review surface; the raw lens and
 report JSON remain in artifacts. Guarded by `tests/unit/review-aggregator-test.sh`
 (io-gated print, both directions) and `tests/integration/review-lenses-output-test.sh`.
+
+## Amendment (2026-09-28): a lens judges with context, and says what is new
+
+**Evidence.** #1845's PR #2213: six lenses, 22 findings, 0 critical/high. They
+missed the two real defects — a path the plugin built itself (the issue forbade
+it) and 26 assertion tags stripped from a shared test — and raised false ones:
+engine-set `ZBUILD_*` values read as attacker input, a test's hand-wiring read
+as the production path, unchanged behaviour (`ZBUILD_DRY_RUN` trust) blamed on
+the change, and every planned file the change did not touch. Each lens saw only
+the diff and was told "report only issues you can point to in the change below"
+(#1654).
+
+**Decision.** Still one isolated call per lens (§2); what it is given changes.
+1. **What the change was for.** The prompt carries the issue text, the design's
+   acceptance contract (SPECs) and the planned scope — optional name-matched
+   inputs (`intake_goal`, `design`) resolved by the engine.
+2. **Read around the change.** The diff shows what changed; the lens is told to
+   read the rest of the file, callers, input producers and comparable code, and
+   may cite unchanged code as evidence (#1654).
+3. **New or pre-existing.** Each finding carries `introduced`. The aggregator
+   counts only introduced findings toward merge readiness and lists the rest
+   under `pre_existing`; a finding that does not say is counted.
+4. **The repository's rules, as a reviewer.** `review-lens` declares
+   `prompt.repo_rules`; a non-writer's rules block reads "a change that breaks
+   one is a finding", and the rules file's "Facts reviewers need" section states
+   what is trusted (e.g. engine-set `ZBUILD_*`).
+5. **Scope lens.** Planned-but-untouched files are not findings (the plan lists
+   files that might change); edits beyond what the issue asked for are.
+6. **No self-echo.** A lens is no longer shown its own previous review, as no
+   judging stage is (ADR-055 amendment, #2212).
+
+#1654's live acceptance (a real lens catching a sibling-function inconsistency,
+and the wall-clock before/after) is verified on the next pipeline run, not in
+unit tests, which stub the model.
+
+Verification: `plugins/agent/review-lens/tests/review-lens-context-unit-test.sh` (C1–C9).

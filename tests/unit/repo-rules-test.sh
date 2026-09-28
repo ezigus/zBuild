@@ -20,7 +20,7 @@
 # R5  the router injects the block for a declaring stage — once, however many
 #     times the prompt is redacted
 # R6  the router leaves a non-declaring stage's prompt without it
-# R7  test-author declares it; no lens does (not in this change)
+# R7  test-author declares it; so does the review lens (reviewer framing)
 # R8  the declaration is a valid manifest (test-author still validates)
 # R9  zBuild's own rules carry the rule #1845's test-author broke
 set -uo pipefail
@@ -125,7 +125,9 @@ for _mf in "$REPO_ROOT"/plugins/agent/*lens*/manifest.yaml; do
     [[ -f "$_mf" ]] || continue
     [[ "$(yaml_get "$_mf" "prompt.repo_rules" 2>/dev/null || true)" == "true" ]] && _lens_decl+="$_mf "
 done
-assert_eq "[R7] no lens declares it (not in this change)" "" "$_lens_decl"
+# Since the lens-context change, the review lens declares it too — framed for a
+# reviewer (review-lens-context-unit-test.sh C8).
+assert_contains "[R7] the review lens declares it" "$_lens_decl" "plugins/agent/review-lens/manifest.yaml"
 
 # shellcheck source=../../core/plugin-registry/registry.sh
 source "$REPO_ROOT/core/plugin-registry/registry.sh" 2>/dev/null || true
