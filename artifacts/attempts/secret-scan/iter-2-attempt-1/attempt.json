@@ -1,0 +1,12 @@
+{
+  "stage": "secret-scan",
+  "cycle_iter": 2,
+  "attempt": 1,
+  "rc": "0",
+  "generated_at": "2026-09-28T20:01:19Z",
+  "files": 2,
+  "outputs": {
+    "secret-scan-result.json": "changed",
+    "secret-scan-detail.md": "unchanged"
+  }
+}
