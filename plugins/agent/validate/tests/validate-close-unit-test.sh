@@ -92,11 +92,10 @@ assert_contains "[close-3] data.probe_output carries what the probe said" \
     "$(_res '.data.probe_output // empty')" "Failed to connect"
 _MOCK_HC_RC=0 _MOCK_HC_OUT="HTTP/1.1 200 OK"
 
-rm -f "$_HC_CALLS_F"; _run_dir c3b 1
+print_test_section "close-4: no probe target is misconfigured, not unhealthy"
+rm -f "$_HC_CALLS_F"; _run_dir c4g 1
 ZBUILD_DRY_RUN=0 _validate_agent_run_inner "$RUN/state.json" >/dev/null 2>&1 || true
 assert_eq "[close-4 guard] with a target set, the probe IS run (the recorder works)" "1" "$(_hc_calls)"
-
-print_test_section "close-4: no probe target is misconfigured, not unhealthy"
 _run_dir c4 1
 unset ZBUILD_HEALTH_CHECK_URL
 rm -f "$_HC_CALLS_F"
