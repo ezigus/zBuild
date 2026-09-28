@@ -25,8 +25,8 @@ deploy_release_run() {
         error "deploy_release_run: state_file argument required"
         if [[ -n "${ZBUILD_ARTIFACT_DIR:-}" ]]; then
             mkdir -p "$ZBUILD_ARTIFACT_DIR"
-            jq -n '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"state_file argument required"}' \
-                > "$ZBUILD_ARTIFACT_DIR/deploy-result.json"
+            atomic_write "$ZBUILD_ARTIFACT_DIR/deploy-result.json" <<< \
+                "$(jq -n '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"state_file argument required"}')"
         fi
         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/deploy-release-summary.md}" "deploy-release" "error" \
             "the engine dispatched this stage with no state file, so it could not run" \

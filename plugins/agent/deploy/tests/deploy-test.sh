@@ -582,6 +582,18 @@ else
     assert_pass "[R7] ...and the outside file is never read"
 fi
 
+# R7b (review #2219 round 2): an input in a directory that does not exist,
+# outside the run, is refused — not waved through as "missing".
+_r7b="$TEST_TEMP_DIR/r7b-nodir"; _r7bev="$TEST_TEMP_DIR/r7b-events.jsonl"; : > "$_r7bev"
+_rc_r7b=0
+( _make_state "$_r7b"
+  emit_event() { printf '%s\n' "$*" >> "$_r7bev"; }
+  jq -n --arg pr "$TEST_TEMP_DIR/no-such-dir/pr-url.txt" --arg gr "$_r7b/artifacts/gate-aggregator-result.json" \
+      '{"inputs":{"pr_url":$pr,"gate_aggregator_result":$gr}}' > "$_r7b/stage-inputs/deploy.json"
+  ZBUILD_DRY_RUN=1 deploy_agent_run "deploy" "$_r7b/state.json" ) >/dev/null 2>&1 || _rc_r7b=$?
+assert_eq "[R7b] an unresolvable input directory outside the run → rc=1" "1" "$_rc_r7b"
+assert_contains "[R7b] ...refused, not reported missing" "$(cat "$_r7bev")" "deploy.input.refused"
+
 # R8: a preset guard variable cannot swap in another deploy_release_run.
 _r8="$TEST_TEMP_DIR/r8-guard"
 _rc_r8="$(_deploy_case "$_r8" pass _ZBUILD_DEPLOY_RELEASE_LOADED=1 ZBUILD_RUN_ID=r8-run)"

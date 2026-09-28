@@ -57,7 +57,12 @@ _deploy_input_path() {
     local id="$1" root="$2" p dir
     p="${_DEPLOY_INPUTS[$id]:-}"
     [[ -n "$p" ]] || return 0
-    dir="$(cd "$(dirname "$p")" 2>/dev/null && pwd -P)" || { printf '%s' "$p"; return 0; }
+    # No resolvable run root means nothing can be checked — refuse rather than
+    # let "$root"/* collapse to /* and match every path (review #2219, round 2).
+    [[ -n "$root" ]] || return 1
+    # A directory that does not exist cannot be resolved; judge the path as
+    # written. It is refused unless it already names a place inside the run.
+    dir="$(cd "$(dirname "$p")" 2>/dev/null && pwd -P)" || dir="$(dirname "$p")"
     case "$dir/" in
         "$root"/*) printf '%s' "$p" ;;
         *) return 1 ;;
