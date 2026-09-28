@@ -1,0 +1,5 @@
+## issue-acceptance — fail
+
+- `tests/integration/deployed-template-e2e-test.sh` fails because the plugin now requires `ZBUILD_ARTIFACT_DIR` (no longer deriving it from the state file path), but the integration test harness does not set that variable; the file was listed in design scope but no SPEC was written to require it to remain green.
+
+- NOT MET: Behaviour is unchanged for a passing run — the integration e2e dry-run test (`[SPEC-9] deploy_agent_run exits 0 in dry-run`) breaks after the migration because no SPEC covered updating the integration test harness to supply `ZBUILD_ARTIFACT_DIR`.
