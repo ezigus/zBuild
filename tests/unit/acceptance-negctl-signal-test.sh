@@ -24,6 +24,10 @@
 # S6 [change] (review #2220) a SIGKILL the timer did not send (rc=137 with no
 #             kill-after in use) is infrastructure — usually the OOM killer — so
 #             it reads `NEGCTL ERROR sigkill:<spec>`, never "signal a child"
+# S7 [change] (review #2220 round 2) the design-gate precheck labels them too:
+#             `GUARD SKIP <spec> signal`, not `harness`
+# S8 [change] the gate emits acceptance.gate.negctl_sigkill for a sigkill line and
+#             enriches it with the SPEC's design text, as it does for a timeout
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -137,6 +141,29 @@ printf '```acceptance\nSPEC-1[change]: survives\nTESTFILES:\nSPEC-1: tests/k-tes
 OUT6="$(_ACCEPTANCE_TIMEOUT_KILL_OK=no ZBUILD_NEGCTL_TIMEOUT=60 acceptance_negctl_check "$REPO6/design.md" "$REPO6" 2>/dev/null || true)"
 assert_eq "[S6] rc=137 with no kill-after → NEGCTL ERROR sigkill:SPEC-1 (infra)" \
     "NEGCTL ERROR sigkill:SPEC-1" "$(grep 'SPEC-1' <<< "$OUT6" || true)"
+
+print_test_section "S7: the design-gate precheck names a signal"
+OUT7="$(ZBUILD_NEGCTL_TIMEOUT=60 acceptance_negctl_guard_precheck "$DM" "$REPO" 2>/dev/null || true)"
+assert_eq "[S7] a [guard] that dies on a signal → GUARD SKIP SPEC-3 signal" \
+    "GUARD SKIP SPEC-3 signal" "$(grep 'SPEC-3' <<< "$OUT7" || true)"
+
+print_test_section "S8: the gate reports a sigkill like a timeout"
+_st8="$REPO6/.zbuild-state"; mkdir -p "$_st8/artifacts" "$_st8/events"
+cp "$REPO6/design.md" "$_st8/artifacts/design.md"
+printf '{"inputs":{"design":"%s"}}\n' "$_st8/artifacts/design.md" > "$_st8/stage-inputs.json"
+: > "$_st8/events/events.jsonl"
+( cd "$REPO6" || exit 1
+  export ZBUILD_EVENTS_DIR="$_st8/events" ZBUILD_EVENTS_JSONL="$_st8/events/events.jsonl"
+  export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+  export ZBUILD_STAGE_INPUTS="$_st8/stage-inputs.json" _ACCEPTANCE_TIMEOUT_KILL_OK=no ZBUILD_NEGCTL_TIMEOUT=60
+  unset _ZBUILD_ACCEPTANCE_GATE_LOADED
+  source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" \
+      && acceptance_gate_run "acceptance-gate" "$_st8/pipeline-state.json" ) >/dev/null 2>&1 || true
+assert_contains "[S8] the negctl_sigkill event is emitted" \
+    "$(cat "$_st8/events/events.jsonl" 2>/dev/null)" "acceptance.gate.negctl_sigkill"
+_sum8="$(cat "$_st8/artifacts/acceptance-summary.txt" 2>/dev/null)"
+assert_contains "[S8] the summary carries the sigkill line" "$_sum8" "NEGCTL ERROR sigkill:SPEC-1"
+assert_contains "[S8] ...enriched with the SPEC's design text" "$_sum8" "design : survives"
 
 print_test_section "S5: the gate's class and wording"
 # shellcheck source=../../scripts/lib/acceptance-disposition.sh

@@ -680,7 +680,7 @@ acceptance_negctl_guard_precheck() {
         out="$(_negctl_guard_verdict "$wt_dir" "$spec_id" "" "${_tfs[@]}")"
         case "$out" in
             regressed)       printf 'GUARD FAIL %s guard_regressed\n' "$spec_id"; rc=1 ;;
-            timeout|harness) printf 'GUARD SKIP %s %s\n' "$spec_id" "$out" ;;
+            timeout|harness|signal|sigkill) printf 'GUARD SKIP %s %s\n' "$spec_id" "$out" ;;
             held)            printf 'GUARD PASS %s\n' "$spec_id" ;;
             *)               printf 'GUARD SKIP %s harness\n' "$spec_id" ;;  # #2129: never a pass
         esac

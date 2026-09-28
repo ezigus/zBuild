@@ -90,6 +90,7 @@ provides:
     - acceptance.gate.tautology_escalated
     - acceptance.gate.negctl_harness_error
     - acceptance.gate.negctl_timeout
+    - acceptance.gate.negctl_sigkill
     - acceptance.gate.reachability_harness_error
     - acceptance.gate.reachability_timeout
     - acceptance.gate.skipped

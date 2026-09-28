@@ -357,8 +357,8 @@ acceptance_gate_run() {
                 _e_eid="${BASH_REMATCH[2]}"
             # #1715: the SPEC id rides in the detail token after the colon, not
             # as a standalone word, so the leading regex cannot capture it.
-            elif [[ "$line" =~ ^NEGCTL\ ERROR\ timeout:(SPEC-[0-9]+) ]]; then
-                _e_eid="${BASH_REMATCH[1]}"
+            elif [[ "$line" =~ ^NEGCTL\ ERROR\ (timeout|sigkill):(SPEC-[0-9]+) ]]; then
+                _e_eid="${BASH_REMATCH[2]}"
             fi
             if [[ -n "$_e_eid" ]]; then
                 local _e_desc _e_label _e_tf_line
@@ -416,6 +416,11 @@ acceptance_gate_run() {
                             # INFRA (ADR-036 #1188): non-terminal, distinct from a violation.
                             eb_emit_event "acceptance.gate.negctl_timeout" "stage=acceptance-gate" \
                                 "spec_id=${detail#timeout:}" "timeout_s=${ZBUILD_NEGCTL_TIMEOUT:-60}" ;;
+                        sigkill:*)
+                            # Review #2220: a SIGKILL the timer did not send (OOM,
+                            # operator) — infra, observable like a timeout.
+                            eb_emit_event "acceptance.gate.negctl_sigkill" "stage=acceptance-gate" \
+                                "spec_id=${detail#sigkill:}" ;;
                         harness:*)
                             # #1670: the baseline run never reached an assertion,
                             # so it is evidence of nothing. Advisory, like timeout.
