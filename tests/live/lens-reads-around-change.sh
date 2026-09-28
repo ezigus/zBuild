@@ -18,7 +18,7 @@
 #
 # PASS when at least <needed> of <attempts> correctness-lens runs (default 2
 # of 3) name an unchanged neighbour, the file's stated convention/invariant, or
-# "every other helper" in a finding.
+# the other helpers ("every/unlike the other …", "the other three helpers …").
 #
 # What this does and does not prove: it is a REGRESSION GUARD — lenses keep
 # reading around a change. Measured 2026-09-28, the pre-#2215 prompt ("report
@@ -112,11 +112,13 @@ for (( n = 1; n <= ATTEMPTS; n++ )); do
     out="$ART/lens-correctness-$n.json"
     ( cd "$TGT" && _review_lens_run_inner correctness "$SD/scope-manifest.md" "$ART/diff.patch" "$out" "$ART" ) \
         > "$WORK/run-$n.log" 2>&1 || true
+    # The lens writes one summary path per lens id; keep each attempt's (review #2216).
+    [[ -f "$ART/lens-correctness-summary.md" ]] && mv "$ART/lens-correctness-summary.md" "$ART/lens-correctness-summary-$n.md"
     msgs="$(jq -r '.findings[]? | "\(.file):\(.line // "-") \(.message)"' "$out" 2>/dev/null || true)"
     # Must cite UNCHANGED code: a neighbour by name, or the file's own stated
     # convention. A generic "bare git uses the cwd" is visible from the diff
     # alone and does not count.
-    if grep -qiE '_sync_fetch|_sync_current_branch|_sync_is_clean|(file|header|documented|stated)[^.]{0,40}(convention|invariant|contract|rule)|every other helper|all (the )?other helpers|lines? [1-9]-?[0-9]*\)' <<< "$msgs"; then
+    if grep -qiE '_sync_fetch|_sync_current_branch|_sync_is_clean|(file|header|documented|stated)[^.]{0,40}(convention|invariant|contract|rule)|(every|all|unlike)( of)? (the )?other|the other (two |three )?helpers|other helpers (all )?(take|pass|use|name)|lines? [1-9]-?[0-9]*\)' <<< "$msgs"; then
         hits=$(( hits + 1 )); verdict="CAUGHT"
     else
         verdict="missed"
