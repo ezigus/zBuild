@@ -620,7 +620,13 @@ _summaries_collect() {
         local _about _owner
         _about="$(_summaries_result_about "$stage" "$plugins_root" "$state_dir")"
         _owner=""
-        [[ -n "$_about" ]] && _owner="$(_summaries_owner_of "$_about" "$plugins_root" "$state_dir")"
+        if [[ -n "$_about" ]]; then
+            _owner="$(_summaries_owner_of "$_about" "$plugins_root" "$state_dir")"
+        else
+            # #1847: no runtime `about` — the judge's manifest may still say
+            # which input it judges, and that input's producer owns the finding.
+            _owner="$(_summaries_under_review_owner "$stage" "$plugins_root" "$state_dir")"
+        fi
         printf '%s|%s|%s|%s|%s|%s\n' "$stage" "$verdict" "$path" \
             "$(_summaries_stage_fault "$stage" "$plugins_root" "$state_dir")" "$_owner" \
             "$(_summaries_stage_errors_path "$stage" "$plugins_root" "$state_dir")"
@@ -761,6 +767,88 @@ _summaries_owner_of_one() {
     return 0
 }
 
+# ─── _summaries_under_review_inputs <manifest> ──────────────────────────────
+# The ids of the inputs a stage marks `under_review: true` — what it JUDGES, as
+# opposed to what it judges AGAINST (#1847). One per line.
+_summaries_under_review_inputs() {
+    local mf="${1:-}"
+    [[ -n "$mf" && -f "$mf" ]] || return 0
+    awk '
+        function flush() { if (cur != "" && ur) print cur; cur = ""; ur = 0 }
+        /^inputs:[[:space:]]*(#.*)?$/ { inb = 1; next }
+        inb && /^[^[:space:]#]/       { flush(); inb = 0 }
+        inb && /^[[:space:]]+-[[:space:]]+id:[[:space:]]*/ {
+            flush(); l = $0
+            sub(/^[[:space:]]+-[[:space:]]+id:[[:space:]]*/, "", l)
+            sub(/[[:space:]]*#.*$/, "", l); gsub(/["\047[:space:]]/, "", l)
+            cur = l; next
+        }
+        inb && /^[[:space:]]+under_review:[[:space:]]*true[[:space:]]*(#.*)?$/ { ur = 1 }
+        END { flush() }' "$mf" 2>/dev/null || true
+}
+
+# ─── _summaries_under_review_owner <stage> <plugins_root> [state_dir] ───────
+# The stage that PRODUCED what this stage judges, or "" (#1847). A judge whose
+# result names no `about` still said, in its manifest, which input is under
+# review; the author of that input is the one stage that can act on the
+# finding — whether or not it writes the repository. design writes design.md,
+# not the repository, and was told spec-coverage's findings were "context only"
+# three times running while it argued with them.
+#
+# Within a flow the producer index answers (output ids are unique per flow,
+# ADR-055 §5). With no flow, the whole tree answers only when exactly one
+# plugin declares the output — deploy and deploy-release both produce
+# deploy_result, and picking one would be a guess. Several judged inputs share
+# an owner or make none, as `about` does.
+_summaries_under_review_owner() {
+    local stage="${1:-}" plugins_root="${2:-}" state_dir="${3:-${ZBUILD_STATE_DIR:-}}"
+    local mf ids
+    mf="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
+    [[ -n "$mf" ]] || return 0
+    ids="$(_summaries_under_review_inputs "$mf")"
+    [[ -n "$ids" ]] || return 0
+
+    local flow=""
+    flow="$(_inputs_flow_stages 2>/dev/null || true)"
+    [[ -n "$flow" ]] && _inputs_build_producer_index "$plugins_root" "$state_dir" 2>/dev/null
+
+    local id owner amalgam=""
+    while IFS= read -r id; do
+        [[ -n "$id" ]] || continue
+        if [[ -n "$flow" ]]; then
+            owner="${_IR_PRODUCER[$id]:-}"
+        else
+            owner="$(_summaries_sole_producer "$id" "$plugins_root")"
+        fi
+        [[ -n "$owner" ]] || return 0
+        if [[ -z "$amalgam" ]]; then amalgam="$owner"
+        elif [[ "$amalgam" != "$owner" ]]; then return 0; fi
+    done <<< "$ids"
+    printf '%s' "$amalgam"
+}
+
+# The id of the ONE plugin in the tree whose manifest outputs <output_id>, or "".
+# One awk over every manifest, not one per manifest (ADR-065: the suite is
+# fork-bound).
+_summaries_sole_producer() {
+    local want="$1" plugins_root="$2" hits
+    _inputs_scan_manifests "$plugins_root"
+    local -a mfs=()
+    mapfile -t mfs < <(printf '%s\n' "${_IR_BY_ID[@]}" | sort -u)
+    [[ ${#mfs[@]} -gt 0 ]] || return 0
+    hits="$(awk -v want="$want" '
+        FNR == 1 { outb = 0 }
+        /^outputs:[[:space:]]*(#.*)?$/ { outb = 1; next }
+        /^[^[:space:]#]/               { outb = 0 }
+        outb && /^[[:space:]]+-[[:space:]]+id:[[:space:]]*/ {
+            l = $0; sub(/^[[:space:]]+-[[:space:]]+id:[[:space:]]*/, "", l)
+            sub(/[[:space:]]*#.*$/, "", l); gsub(/["\047[:space:]]/, "", l)
+            if (l == want) print FILENAME
+        }' "${mfs[@]}" 2>/dev/null | sort -u)"
+    [[ -n "$hits" && "$hits" != *$'\n'* ]] || return 0
+    manifest_graph_get_stage_id "$hits" 2>/dev/null || true
+}
+
 # ─── _summaries_stage_fault <stage> <plugins_root> <state_dir> ───────────────
 # The `fault` the stage's primary result declares (ADR-061 vocabulary), or "".
 _summaries_stage_fault() {
@@ -856,7 +944,7 @@ stage_summaries_prompt_block() {
         source "$_ZBUILD_IR_ROOT/scripts/lib/test-output-sanitize.sh" 2>/dev/null || true
     fi
 
-    local stage path body verdict fault chunk rec
+    local stage path body verdict fault chunk rec _owned=0
     local -a _chunks=()
     while IFS= read -r rec; do
         [[ -n "$rec" ]] || continue
@@ -906,6 +994,7 @@ stage_summaries_prompt_block() {
             fail|failed|partial|mismatch)
                 if [[ -n "$owner" && -n "$_reader" && "$owner" == "$_reader" ]]; then
                     chunk="$(printf '### %s (verdict: %s) — about work you authored: these findings are yours to fix\n%s\n' "$stage" "$verdict" "$body")"
+                    _owned=$((_owned + 1))
                 elif [[ -n "$owner" ]]; then
                     chunk="$(printf '### %s (verdict: %s) — context only: about work owned by %s, not yours to fix\n%s\n' "$stage" "$verdict" "$owner" "$body")"
                 else
@@ -960,7 +1049,10 @@ stage_summaries_prompt_block() {
     [[ -n "$rendered" ]] || return 0
     printf '%s\n\n' "$_ZB_STAGE_SUMMARIES_MARKER"
     printf 'What each completed stage reported, newest content per stage. '
-    if _summaries_reader_can_fix; then
+    # #1847: a reader that owns a finding is told to act on it whether or not it
+    # writes the repository — design authors design.md and must fix what the
+    # design judges found.
+    if _summaries_reader_can_fix || (( _owned > 0 )); then
         printf 'A stage\n'
         printf 'marked RESOLVE blocks convergence — address its findings before you\n'
         printf 'finish. The rest is context.\n\n'

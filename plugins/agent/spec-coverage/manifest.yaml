@@ -55,8 +55,10 @@ inputs:
   - id: intake_goal
     required: true
   # The artifact under review. A comparison needs both sides.
+  # under_review: its author (design) owns this stage's findings (#1847).
   - id: design
     required: true
+    under_review: true
 
 outputs:
   - id: spec_coverage_result

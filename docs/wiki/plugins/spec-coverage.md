@@ -70,6 +70,7 @@ inputs:
   # The artifact under review. A comparison needs both sides.
   - id: design
     required: true
+    under_review: true
 
 outputs:
   - id: spec_coverage_result

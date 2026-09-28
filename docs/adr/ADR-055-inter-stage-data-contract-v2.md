@@ -392,6 +392,45 @@ write boundary's undo-and-retry (ADR-058 C12 amendment).
 
 Verification: `tests/unit/judge-framing-test.sh` (J1–J7).
 
+## Amendment (2026-09-28): a finding belongs to the author of what was judged
+
+Rule 2 above was wrong for one kind of stage. **#1847 run
+20260928070345-90197**: spec-coverage said three times that the design kept
+hardcoded artifact paths the issue says to delete. design writes `design.md`,
+not the repository, so rule 2 showed it every finding as "context only: your
+job is to read and report, not to fix this" (`resolve=0` on every call). It
+argued with the finding instead of acting on it, and the flawed design went on
+to build. "May change the repository" was standing in for the real question:
+**did this reader author what the finding is about?**
+
+1. **A judge declares what it judges.** An input marked `under_review: true`
+   is the artifact under review; its other inputs are what it judges *against*.
+   When the judge's result names no `about` (#2180, which still wins), the
+   engine resolves that input's producer as the finding's owner — within the
+   flow from the producer index (§5), or, with no flow, only when exactly one
+   plugin in the tree declares the output. Several judged inputs share one
+   owner or make none. Nothing is guessed; no stage is named.
+2. **The owner is told to fix it, writer or not**, and the block's opening
+   line no longer tells a reader holding its own finding to "fix nothing".
+   Everyone else sees it as context naming the owner.
+3. **The scope line states only what is true for every non-writer**: it may not
+   change the repository and writes only its named outputs. "Your job is to
+   read and report" moved out of it — it was false for an author like design —
+   and lives in the summaries header, which knows whether the reader owns a
+   finding.
+
+**Where to mark it.** An input whose producer is the one stage able to act on
+the finding: spec-coverage and design-gate (`design`), validate
+(`deploy_result`). **Not** an input with several authors or none that can act:
+the diff and the test results (issue-acceptance, spec-acceptance, the tool
+gates, review lenses) are the work of build *and* test-author, and those
+readers already get RESOLVE as repository writers; an aggregator's inputs are
+other judges' verdicts, which no judge fixes.
+
+Verification: `tests/unit/finding-owner-under-review-test.sh` (U1–U9; U9 fails
+on any `under_review` naming an output no plugin produces), and J5/J6 above for
+the scope line.
+
 ## References
 
 - [ADR-001](ADR-001-plugin-contract.md) — plugin contract; this ADR extends the manifest schema.

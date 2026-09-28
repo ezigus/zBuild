@@ -40,8 +40,11 @@ config:
   tier_default: T2
 
 inputs:
+  # under_review: validate judges the deployment deploy made, so the stage that
+  # produced deploy_result in this flow owns its findings (#1847).
   - id: deploy_result
     required: true
+    under_review: true
 
 outputs:
   - id: validate_result
