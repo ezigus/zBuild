@@ -42,6 +42,10 @@
 #              `id:` is valid YAML too (review #2217)
 # U15 [change] the header tells a reader it has findings to fix only when one is
 #              actually in the rendered block, not when the budget dropped it (review #2217)
+# U16 [change] prompt.summaries.injected counts every summary shipped and every
+#              finding the reader must fix, whatever the heading's wording —
+#              #1847 run 20260928102849-23575 logged resolve=0 while design was
+#              told "these findings are yours to fix"
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -146,6 +150,30 @@ if grep -qF "about work you authored" <<< "$_author5"; then
     assert_fail "[U5] an undeclared input makes no owner" "the author was handed the finding"
 else
     assert_contains "[U5] an undeclared input makes no owner" "$_author5" "### ur-judge (verdict: fail) — context only"
+fi
+
+print_test_section "U16: the injection event counts what the reader was told"
+# shellcheck source=../../core/router/route.sh
+source "$REPO_ROOT/core/router/route.sh" 2>/dev/null || true
+if declare -F _route_redact_prompt >/dev/null 2>&1; then
+    apply_scope_redaction() { cp "$1" "$2" 2>/dev/null; return 0; }
+    export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events-16"; mkdir -p "$ZBUILD_EVENTS_DIR"
+    export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
+    export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
+    _mf ur-judge '  - id: ur_doc
+    required: true
+    under_review: true' ""   # U5 above removed the declaration
+    _result ur-judge '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"uncovered"}'
+    printf 'Author the doc.\n' > "$TEST_TEMP_DIR/p16.in"
+    ZBUILD_STATE_DIR="$STATE" ZBUILD_PLUGINS_ROOT="$PROOT" ZBUILD_CURRENT_STAGE=ur-author \
+        ZBUILD_PLUGIN_DIR="$PROOT/agent/ur-author" ZBUILD_SCOPE_MANIFEST="" \
+        _route_redact_prompt "$TEST_TEMP_DIR/p16.in" "$TEST_TEMP_DIR/p16.out" 0 "" >/dev/null 2>&1 || true
+    _ev16="$(jq -c 'select(.type=="prompt.summaries.injected")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
+    assert_contains "[U16] both summaries the author was shown are counted" "$_ev16" '"stages":"2"'
+    assert_contains "[U16] the finding it owns is counted as one to fix" "$_ev16" '"resolve":"1"'
+    unset -f apply_scope_redaction 2>/dev/null || true
+else
+    assert_fail "[U16] _route_redact_prompt is available" "not defined after sourcing route.sh"
 fi
 
 print_test_section "U7: the router's scope line"
