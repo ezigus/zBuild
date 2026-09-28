@@ -437,7 +437,7 @@ gates, review lenses) are the work of build *and* test-author, and those
 readers already get RESOLVE as repository writers; an aggregator's inputs are
 other judges' verdicts, which no judge fixes.
 
-Verification: `tests/unit/finding-owner-under-review-test.sh` (U1–U13; U9 fails
+Verification: `tests/unit/finding-owner-under-review-test.sh` (U1–U15; U9 fails
 on any `under_review` naming an output no plugin produces), and J5/J6 above for
 the scope line.
 

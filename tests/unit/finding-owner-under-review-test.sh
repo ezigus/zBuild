@@ -38,6 +38,10 @@
 # U11 [guard]  a writer outside that unit is told it is design's, not to fix it
 # U12 [guard]  a fault no route_back edge routes makes no owner (implementation → RESOLVE for a writer)
 # U13 [guard]  with no template loaded, a routed fault keeps the old context framing
+# U14 [change] `under_review: true` is read wherever it sits in the entry — before
+#              `id:` is valid YAML too (review #2217)
+# U15 [change] the header tells a reader it has findings to fix only when one is
+#              actually in the rendered block, not when the budget dropped it (review #2217)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -227,6 +231,45 @@ assert_contains "[U12] an implementation fault is still build's to RESOLVE" \
     "$(_routed build implementation)" "### gate-aggregator (verdict: fail) — RESOLVE these findings before completing"
 assert_contains "[U13] with no template, a routed fault keeps the context framing" \
     "$(_routed design specification 0)" "context only: a specification fault; the engine routes this"
+
+print_test_section "U14: key order inside an input entry"
+_mf ur-judge '  - required: true
+    under_review: true
+    id: ur_doc' ""
+assert_eq "[U14] under_review before id is still read" "ur_doc" \
+    "$(_summaries_under_review_inputs "$PROOT/agent/ur-judge/manifest.yaml")"
+_mf ur-judge '  - id: ur_notes
+    required: true
+  - under_review: true
+    id: ur_doc' ""
+assert_eq "[U14] ...and attaches to its own entry, not the one before" "ur_doc" \
+    "$(_summaries_under_review_inputs "$PROOT/agent/ur-judge/manifest.yaml")"
+
+print_test_section "U15: the header matches what survived the budget"
+_mf ur-judge '  - id: ur_doc
+    required: true
+    under_review: true' ""
+_result ur-judge '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"uncovered"}'
+_mf ur-late "" ""
+_result ur-late '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"x"}'
+head -c 3000 /dev/zero | tr '\0' 'x' > "$ART/ur-late-summary.md"
+cat > "$STATE/pipeline-state.json" <<'JSON'
+{"schema_version":1,"run_id":"ur","stage_statuses":{"ur-judge":"failed","ur-late":"complete"},
+ "stage_verdicts":{"ur-judge":"fail","ur-late":"pass"}}
+JSON
+_saved_total="$_ZB_SUMMARY_TOTAL_MAX_BYTES"; _ZB_SUMMARY_TOTAL_MAX_BYTES=2000
+_trim="$(_block ur-author)"
+_ZB_SUMMARY_TOTAL_MAX_BYTES="$_saved_total"
+if grep -qF "about work you authored" <<< "$_trim"; then
+    assert_fail "[U15] fixture: the owned finding was trimmed" "it survived — the budget did not bite"
+else
+    assert_pass "[U15] fixture: the owned finding was trimmed"
+fi
+if grep -qF "marked RESOLVE blocks convergence" <<< "$_trim"; then
+    assert_fail "[U15] no fix-it header when no owned finding is shown" "header promises findings the block does not carry"
+else
+    assert_pass "[U15] no fix-it header when no owned finding is shown"
+fi
 
 cleanup_test_env
 print_test_results
