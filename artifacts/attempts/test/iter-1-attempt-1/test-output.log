@@ -1,0 +1,155 @@
+
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.T0dUQB/tests/unit/artifact-type-retirement-test.sh
+
+  provides.artifact_type retirement (#1906)
+
+
+  SPEC-1. result filename resolves from the primary output
+  ✗ [SPEC-1] intake result filename is scope-manifest.md (not a bracketed list)
+    expected: scope-manifest.md, got: intake-result.json
+
+  SPEC-2. a type name is not a filename
+  ✓ [SPEC-2] security-lens result filename is security-findings.json (not the type findings.json)
+
+  SPEC-3. provides.artifact_type declared nowhere
+  ✓ [SPEC-3] no manifest declares provides.artifact_type
+
+  SPEC-4. output-github-comment declares its outputs
+  ✓ [SPEC-4] output-github-comment primary output is output-body.md
+  ✓ [SPEC-4b] the toggleable local report is declared too
+
+  SPEC-5. the unchanged majority keep the same filename
+  ✓ [SPEC-5] every cycle/gate member still resolves to its own result file
+
+  SPEC-6. the key is out of the allowed-keys list
+  ✓ [SPEC-6] provides.artifact_type removed from the allowed-keys list
+  ✓ [SPEC-6] a manifest still carrying provides.artifact_type validates
+  ✓ [SPEC-6] the key is present in the file, so the assertion is not vacuous
+
+
+  1 of 9 tests failed
+
+  ✗ [SPEC-1] intake result filename is scope-manifest.md (not a bracketed list)
+
+unit: 466/467 passed (4 skipped)
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.T0dUQB/plugins/agent/intake/tests/intake-test.sh
+
+  plugin: intake (goal capture + scope manifest — issue #85)
+
+  ✓ intake manifest validates
+  ✓ intake discovered in plugin registry
+  ✓ intake manifest outputs[0].path contains scope-manifest.md
+  ✓ [#1837/SPEC-4] manifest declares provides.result_contract: 2
+  ✓ [#1837/SPEC-5] valid_verdicts includes pass
+  ✓ [#1837/SPEC-5] valid_verdicts includes fail
+  ✓ [#1837/SPEC-5] valid_verdicts is not empty []
+  ✓ [#1837/SPEC-6] manifest outputs declares intake-result.json
+  ✓ [#1837/SPEC-6] intake-result.json output has primary: true
+  ✓ [#1837/SPEC-6] scope_manifest no longer has primary: true
+  ✓ [#1837/SPEC-7] manifest_router_knob returns non-empty for timeout_s
+  ✓ [#1837/SPEC-7] manifest_router_knob returns non-empty for max_turns
+  ✓ [#1837/SPEC-10] plugin.sh references ZBUILD_ARTIFACT_DIR
+  ✓ [#1837/SPEC-11] manifest hooks section records cleanup-hook absence
+  ✓ [#1837/SPEC-12] manifest provides.role: intake
+  ✓ [#1837/SPEC-13] manifest declares at least 17 intake.* events (found 20)
+  ✓ [#1837/SPEC-1] unset ZBUILD_GOAL with no issue returns rc=1
+  ✓ stderr mentions ZBUILD_GOAL
+  ✓ [#1837/SPEC-2] intake-result.json written on no-goal failure
+  ✓ valid run returns rc=0
+  ✓ state/intake.md created
+  ✓ intake.md contains sanitized goal
+  ✓ [#1837/SPEC-2] intake-result.json written on success
+  ✓ [#1837/SPEC-3] result_contract is 2
+  ✓ [#1837/SPEC-3] verdict is in {pass,fail}
+  ✓ [#1837/SPEC-3] disposition is non-empty
+  ✓ [#1837/SPEC-3] reason is non-empty
+  ✓ [#1837/SPEC-15] data.goal_len is an integer
+  ✓ [#1837/SPEC-15] data.platform_count is an integer
+  ✓ sentinel-strip run returns rc=0
+  ✓ intake.md has original prefix
+  ✓ sentinel ## Plan Summary stripped from intake.md
+  ✓ [#1837/SPEC-1] empty-after-sanitization returns rc=1
+  ✓ [#1837/SPEC-2] intake-result.json written on empty-after-sanitization
+  ✓ [#1837/SPEC-1] missing state_file returns rc=1
+  ✓ [#1837/SPEC-2] intake-result.json written on missing-state-file
+  ✓ platform-aware run returns rc=0
+  ✓ scope-manifest.md created
+  ✓ scope-manifest has + ios/
+  ✓ scope-manifest has + node/
+  ✓ scope-manifest entries are + lines
+  ✓ injection guard run returns rc=0
+  ✓ valid platform ok-platform written
+  ✓ path traversal filtered from scope-manifest
+  ✓ generic fallback run returns rc=0
+  ✓ generic fallback writes + ./
+  [golden] MISSING: /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.T0dUQB/tests/golden/intake-scope-manifest-v1.golden (run with UPDATE_GOLDEN=1 to create)
+  ✗ [#1837/SPEC-8] scope-manifest.md matches v1 baseline fixture
+integration: 252/253 passed
+e2e: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.T0dUQB/tests/e2e/parity-local-vs-ci-test.sh
+
+  CI/CLI parity — engine behavior is environmentally agnostic (ADR-010)
+
+  ✓ fixture script exists and is executable
+  ✓ fixture runs exit 0 in local mode
+  ✓ pipeline-state.json created (local)
+  ✓ events.jsonl created (local)
+  ✓ fixture runs exit 0 in CI mode
+  ✓ local run pipeline status=complete
+  ✓ CI run pipeline status=complete
+  ✓ event type sequence identical in local and CI modes
+  ✓ stage_statuses identical in local and CI modes
+  ✓ event sequence matches golden snapshot
+  ✓ full pipeline-state.json identical after normalization
+  ✓ artifact filename list identical across modes
+  ✓ all artifact contents identical across modes (sha256, timestamps normalized)
+  ✓ normalized state.json matches golden snapshot
+  [golden] DIFF for parity/artifact-paths:
+8a9
+> ./artifacts/attempts/intake/iter-0-attempt-1/intake-result.json
+38a40
+> ./artifacts/intake-result.json
+  ✗ artifact filename list matches golden snapshot
+    golden mismatch (run UPDATE_GOLDEN=1 to regenerate)
+
+
+  1 of 15 tests failed
+
+  ✗ artifact filename list matches golden snapshot
+
+e2e: 8/9 passed
+golden: 1/1 passed
+
+─── Mutation test results ──────────────────────────────
+  PASS  atomic-state-mutations.md  (caught: rc=3)
+  PASS  cache.md  (caught: rc=1)
+  PASS  cleanup-worktree-age-guard.md  (caught: rc=2)
+  PASS  cleanup-worktree-dirty-guard.md  (caught: rc=2)
+  PASS  detect-platforms.md  (caught: rc=11)
+  PASS  event-bus-ansi-strip.md  (caught: rc=4)
+  PASS  event-bus.md  (caught: rc=3)
+  INFRA memory.md  (patch failed after retries)
+  PASS  orch.md  (caught: rc=1)
+  PASS  output-destinations.md  (caught: rc=1)
+  PASS  pipeline-contracts.md  (caught: rc=3)
+  PASS  pipeline-dispatch-arg-mutations.md  (caught: rc=4)
+  PASS  pipeline-dispatch-failopen-mutations.md  (caught: rc=7)
+  PASS  pipeline-dispatch-mutations.md  (caught: rc=9)
+  PASS  pipeline-dispatch-prefix-mutations.md  (caught: rc=1)
+  PASS  pipeline-dispatch-selfsource-mutations.md  (caught: rc=1)
+  PASS  pipeline-resolver.md  (caught: rc=1)
+  PASS  rc-semantics.md  (caught: rc=1)
+  PASS  registry-role-resolution.md  (caught: rc=1)
+  PASS  registry-validate-manifest-mutations.md  (caught: rc=1)
+  PASS  resume-recommendation-mutations.md  (caught: rc=1)
+  PASS  router-route-mutations.md  (caught: rc=30)
+  PASS  run-status-comment.md  (caught: rc=1)
+  PASS  runner-fail-closed-mutations.md  (caught: rc=1)
+  PASS  scope-redaction-mutations.md  (caught: rc=3)
+mutation-infra: 1 non-fatal (worktree/patch contention; excluded from score — #1184)
+mutation: 24/24 passed
+lint: 1/1 passed
+
+total: 752/755 passed (4 skipped)
