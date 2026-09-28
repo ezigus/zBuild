@@ -1,9 +1,0 @@
-{
-  "scope_files": [
-    "plugins/agent/monitor/manifest.yaml",
-    "plugins/agent/monitor/plugin.sh",
-    "plugins/agent/monitor/tests/monitor-test.sh",
-    "tests/integration/deployed-template-e2e-test.sh"
-  ],
-  "wiring_files": []
-}
