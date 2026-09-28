@@ -59,8 +59,10 @@ config:
   tier_default: T0
 
 inputs:
+  # under_review: its author (design) owns this gate's findings (#1847).
   - id: design
     required: true
+    under_review: true
 
 outputs:
   - id: design_gate_result

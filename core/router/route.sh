@@ -359,7 +359,7 @@ _route_redact_prompt() {
                     "$(zbuild_engine_tmpdir 2>/dev/null || printf '?')" >&2
             else
                 { printf '%s\n' "$_ZB_READ_ONLY_SCOPE_MARKER"
-                  printf 'Your job is to read and report. Do not create, modify or delete any file in the repository — code, tests, or anything else. Write only the outputs your instructions below name.\n\n'
+                  printf 'You may not change the repository. Do not create, modify or delete any file in the repository — code, tests, or anything else. Write only the outputs your instructions below name.\n\n'
                   cat "$input"; } > "$_scope_tmp" \
                     && mv "$_scope_tmp" "$input" 2>/dev/null || rm -f "$_scope_tmp" 2>/dev/null || true
             fi

@@ -46,6 +46,9 @@ declare -F _verdict_resolve_path >/dev/null 2>&1 || \
 # shellcheck source=../plugin-registry/manifest-index.sh
 declare -F manifest_index_rows >/dev/null 2>&1 || \
     source "$_ZBUILD_IR_ROOT/core/plugin-registry/manifest-index.sh"
+# Who owns a finding — `about`, under_review inputs, routed faults (#2180, #1847).
+# shellcheck source=./finding-owner.sh
+source "$_ZBUILD_IR_DIR/finding-owner.sh"
 
 # The marker the injected prompt block opens with. Idempotence guard, exactly as
 # _ZB_CHECKPOINT_MARKER is — the agentic loop redacts once per iteration against
@@ -620,9 +623,21 @@ _summaries_collect() {
         local _about _owner
         _about="$(_summaries_result_about "$stage" "$plugins_root" "$state_dir")"
         _owner=""
-        [[ -n "$_about" ]] && _owner="$(_summaries_owner_of "$_about" "$plugins_root" "$state_dir")"
+        if [[ -n "$_about" ]]; then
+            _owner="$(_summaries_owner_of "$_about" "$plugins_root" "$state_dir")"
+        else
+            # #1847: no runtime `about` — the judge's manifest may still say
+            # which input it judges, and that input's producer owns the finding.
+            _owner="$(_summaries_under_review_owner "$stage" "$plugins_root" "$state_dir")"
+        fi
+        local _fault
+        _fault="$(_summaries_stage_fault "$stage" "$plugins_root" "$state_dir")"
+        # #1846: a fault the template routes back is owned by whoever the rewind
+        # hands it to — the author in the target unit.
+        [[ -z "$_owner" && -n "$_fault" ]] \
+            && _owner="$(_summaries_fault_owner "$_fault" "$plugins_root" "$state_dir")"
         printf '%s|%s|%s|%s|%s|%s\n' "$stage" "$verdict" "$path" \
-            "$(_summaries_stage_fault "$stage" "$plugins_root" "$state_dir")" "$_owner" \
+            "$_fault" "$_owner" \
             "$(_summaries_stage_errors_path "$stage" "$plugins_root" "$state_dir")"
     done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
 }
@@ -669,95 +684,6 @@ _summaries_stage_errors_path() {
     [[ -n "$raw" ]] || return 0
     resolved="$(_verdict_resolve_path "$raw" "$state_dir" 2>/dev/null || true)"
     [[ -s "$resolved" ]] && printf '%s' "$resolved"
-    return 0
-}
-
-# ─── _summaries_result_about <stage> <plugins_root> <state_dir> ─────────────
-# The artifact a stage's finding is ABOUT, as its primary result declares it
-# (#2180). One fact, stated by the producer about its own work — never who
-# should act on it, which is the engine's to resolve.
-_summaries_result_about() {
-    local stage="$1" plugins_root="$2" state_dir="$3" manifest raw resolved
-    manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
-    [[ -n "$manifest" ]] || return 0
-    raw="$(_verdict_primary_output_path "$manifest" 2>/dev/null || true)"
-    [[ -n "$raw" ]] || return 0
-    resolved="$(_verdict_resolve_path "$raw" "$state_dir" 2>/dev/null || true)"
-    [[ -s "$resolved" ]] || return 0
-    case "$resolved" in *.json) ;; *) return 0 ;; esac
-    jq -r '.about // empty' "$resolved" 2>/dev/null || true
-}
-
-# ─── _summaries_owner_of <about> <plugins_root> <state_dir> ─────────────────
-# Which stage OWNS the named artifact(s), or "" when nothing declares them, or
-# when the answer is not unambiguous (#2180). Two sources, both already in the
-# tree, neither a list of stage names:
-#   1. a manifest that declares the path as one of its `outputs`;
-#   2. the authoring record for repo testfiles, whose header says which stage
-#      wrote it (assertion-digests.txt).
-# `about` may name several artifacts, one per line — a contract with several
-# testfiles is one finding about all of them. They route together only when
-# they share ONE owner.
-#
-# NEVER a guess (review #2181): two plugins may declare outputs with the same
-# BASENAME, and handing the finding to whichever manifest was read first is
-# wrong silently. An ambiguous name resolves to no owner, and the framing then
-# falls back to the fault-class rule.
-_summaries_owner_of() {
-    local about="${1:-}" plugins_root="${2:-}" state_dir="${3:-}"
-    [[ -n "$about" ]] || return 0
-    local idx_root
-    idx_root="$(_manifest_index_root "$plugins_root" 2>/dev/null || printf '%s' "$plugins_root")"
-    manifest_index_load "$idx_root" 2>/dev/null || true
-    local _midx_files
-    _midx_files="${_ZBUILD_MIDX_FILES[$idx_root]:-}"
-
-    local one amalgam="" owner
-    while IFS= read -r one; do
-        [[ -n "${one//[[:space:]]/}" ]] || continue
-        owner="$(_summaries_owner_of_one "$one" "$_midx_files" "$state_dir")"
-        # One unowned or ambiguous member makes the whole finding unowned: a
-        # partial attribution would tell one stage it owns work it does not.
-        [[ -n "$owner" ]] || return 0
-        if [[ -z "$amalgam" ]]; then
-            amalgam="$owner"
-        elif [[ "$amalgam" != "$owner" ]]; then
-            return 0
-        fi
-    done <<< "$about"
-    printf '%s' "$amalgam"
-}
-
-# ─── _summaries_owner_of_one <path> <manifest_list> <state_dir> ─────────────
-# The single stage that declares this one path, or "" when none or several do.
-_summaries_owner_of_one() {
-    local about="$1" manifests="$2" state_dir="$3"
-    local base="${about##*/}" m _p found="" n=0
-    while IFS= read -r m; do
-        [[ -n "$m" ]] || continue
-        case "$m" in */tests/*) continue ;; esac
-        while IFS= read -r _p; do
-            [[ -n "$_p" ]] || continue
-            [[ "${_p##*/}" == "$base" ]] || continue
-            local _id; _id="$(manifest_index_get "$m" id 2>/dev/null || true)"
-            [[ -n "$_id" ]] || continue
-            # The same id twice (one manifest, two outputs of that name) is one
-            # owner; two DIFFERENT ids is ambiguity.
-            if [[ -z "$found" ]]; then found="$_id"; n=1
-            elif [[ "$found" != "$_id" ]]; then n=2; fi
-        done <<< "$(manifest_index_get "$m" outputs.path 2>/dev/null || true)"
-    done <<< "$manifests"
-    if [[ "$n" -eq 1 ]]; then printf '%s' "$found"; return 0; fi
-    [[ "$n" -gt 1 ]] && return 0
-
-    # A repo path: the authoring record names the stage that wrote it.
-    local dig="$state_dir/artifacts/assertion-digests.txt"
-    if [[ -s "$dig" ]] && grep -qF -- "$about" "$dig" 2>/dev/null; then
-        local by
-        by="$(sed -n 's/^#[[:space:]]*authored_by:[[:space:]]*//p' "$dig" 2>/dev/null || true)"
-        by="${by%%$'\n'*}"
-        [[ -n "$by" ]] && printf '%s' "$by"
-    fi
     return 0
 }
 
@@ -856,8 +782,8 @@ stage_summaries_prompt_block() {
         source "$_ZBUILD_IR_ROOT/scripts/lib/test-output-sanitize.sh" 2>/dev/null || true
     fi
 
-    local stage path body verdict fault chunk rec
-    local -a _chunks=()
+    local stage path body verdict fault chunk rec _owned=0
+    local -a _chunks=() _chunk_owned=()
     while IFS= read -r rec; do
         [[ -n "$rec" ]] || continue
         IFS='|' read -r stage verdict path fault owner errpath <<< "$rec"
@@ -906,6 +832,7 @@ stage_summaries_prompt_block() {
             fail|failed|partial|mismatch)
                 if [[ -n "$owner" && -n "$_reader" && "$owner" == "$_reader" ]]; then
                     chunk="$(printf '### %s (verdict: %s) — about work you authored: these findings are yours to fix\n%s\n' "$stage" "$verdict" "$body")"
+                    _chunk_owned[${#_chunks[@]}]=1
                 elif [[ -n "$owner" ]]; then
                     chunk="$(printf '### %s (verdict: %s) — context only: about work owned by %s, not yours to fix\n%s\n' "$stage" "$verdict" "$owner" "$body")"
                 else
@@ -955,12 +882,18 @@ stage_summaries_prompt_block() {
     fi
     for (( _i=_keep_from; _i<${#_chunks[@]}; _i++ )); do
         rendered="${rendered}${_chunks[_i]}"$'\n'
+        # Counted AFTER the budget trim: the header may only promise findings
+        # the block actually carries (review #2217).
+        [[ -n "${_chunk_owned[_i]:-}" ]] && _owned=$((_owned + 1))
     done
 
     [[ -n "$rendered" ]] || return 0
     printf '%s\n\n' "$_ZB_STAGE_SUMMARIES_MARKER"
     printf 'What each completed stage reported, newest content per stage. '
-    if _summaries_reader_can_fix; then
+    # #1847: a reader that owns a finding is told to act on it whether or not it
+    # writes the repository — design authors design.md and must fix what the
+    # design judges found.
+    if _summaries_reader_can_fix || (( _owned > 0 )); then
         printf 'A stage\n'
         printf 'marked RESOLVE blocks convergence — address its findings before you\n'
         printf 'finish. The rest is context.\n\n'

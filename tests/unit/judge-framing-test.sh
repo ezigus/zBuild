@@ -15,8 +15,11 @@
 #             an unowned failure as context, never as RESOLVE
 # J3 [guard]  a declared repository writer still gets RESOLVE for it
 # J4 [guard]  a reader still sees every OTHER stage's summary
-# J5 [change] the router opens a non-writer's prompt with its scope — read and
-#             report, change nothing in the repository — once, first
+# J5 [change] the router opens a non-writer's prompt with its scope — change
+#             nothing in the repository, write only the named outputs — once, first
+#             (not "your job is to read and report": design is a non-writer that
+#             AUTHORS, #1847 — the read-and-report line lives in the summaries
+#             header, which knows whether the reader owns a finding)
 # J6 [guard]  a declared writer's prompt gets no such line
 # J7 [change] the cycle's RESOLVE count follows the same two rules
 # J8 [guard]  the count leaks no working variable into its caller (review #2212)
@@ -108,12 +111,12 @@ if declare -F _route_redact_prompt >/dev/null 2>&1; then
     ZBUILD_PLUGIN_DIR="$PROOT/agent/jf-judge" ZBUILD_SCOPE_MANIFEST="" _route_redact_prompt "$IN" "$OUT" 0 "" >/dev/null 2>&1 || true
     ZBUILD_PLUGIN_DIR="$PROOT/agent/jf-judge" ZBUILD_SCOPE_MANIFEST="" _route_redact_prompt "$IN" "$OUT" 1 "" >/dev/null 2>&1 || true
     _o="$(cat "$OUT" 2>/dev/null || true)"
-    assert_contains "[J5] the scope says read and report" "$_o" "Your job is to read and report."
+    assert_contains "[J5] the scope says the repository is not the stage's to change" "$_o" "You may not change the repository."
     assert_contains "[J5] ...and to change nothing in the repository" "$_o" \
         "Do not create, modify or delete any file in the repository"
     assert_eq "[J5] stated once, however often the prompt is redacted" "1" \
-        "$(grep -c 'Your job is to read and report.' "$OUT" 2>/dev/null || true)"
-    _scope_line="$(grep -n 'Your job is to read and report.' "$OUT" | cut -d: -f1 || true)"
+        "$(grep -c 'You may not change the repository.' "$OUT" 2>/dev/null || true)"
+    _scope_line="$(grep -n 'You may not change the repository.' "$OUT" | cut -d: -f1 || true)"
     _task_line="$(grep -n 'Judge each SPEC.' "$OUT" | cut -d: -f1 || true)"
     if [[ -n "$_scope_line" && -n "$_task_line" && "$_scope_line" -lt "$_task_line" ]]; then
         assert_pass "[J5] it comes before the stage's own instructions"
@@ -124,7 +127,7 @@ if declare -F _route_redact_prompt >/dev/null 2>&1; then
     IN2="$TEST_TEMP_DIR/p2.in"; OUT2="$TEST_TEMP_DIR/p2.out"
     printf 'Build it.\n' > "$IN2"
     ZBUILD_PLUGIN_DIR="$PROOT/agent/jf-builder" ZBUILD_SCOPE_MANIFEST="" _route_redact_prompt "$IN2" "$OUT2" 0 "" >/dev/null 2>&1 || true
-    if grep -qF "Your job is to read and report." "$OUT2" 2>/dev/null; then
+    if grep -qF "$_ZB_READ_ONLY_SCOPE_MARKER" "$OUT2" 2>/dev/null; then
         assert_fail "[J6] a declared writer gets no read-only scope" "scope line injected"
     else
         assert_contains "[J6] a declared writer gets no read-only scope" "$(cat "$OUT2" 2>/dev/null)" "Build it."
