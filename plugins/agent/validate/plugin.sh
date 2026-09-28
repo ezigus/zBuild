@@ -33,13 +33,17 @@ _VALIDATE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 source "$_VALIDATE_ROOT/core/event-bus/event-bus.sh"
 
 # ─── result helper ───────────────────────────────────────────────────────────
+# _validate_write_result <dir> <verdict> <disposition> <reason> [data_json]
+# Plugin-specific detail rides under `data` (ADR-054 v2).
 _validate_write_result() {
-    local artifact_dir="$1" verdict="$2" disposition="$3" reason="$4"
+    local artifact_dir="$1" verdict="$2" disposition="$3" reason="$4" data="${5:-}"
+    [[ -n "$data" ]] || data='{}'
     jq -n \
         --arg v "$verdict" \
         --arg d "$disposition" \
         --arg r "$reason" \
-        '{result_contract:2,verdict:$v,disposition:$d,reason:$r,data:{}}' \
+        --argjson data "$data" \
+        '{result_contract:2,verdict:$v,disposition:$d,reason:$r,data:$data}' \
         | atomic_write "$artifact_dir/validate-result.json"
 }
 
@@ -63,14 +67,18 @@ validate_agent_run() {
 
 # ADR-018 Pattern 1 (one-shot): guard → dry-run/health-check → done.
 _validate_agent_run_inner() {
-    local state_file="$1"
-    local artifacts_dir="${ZBUILD_ARTIFACT_DIR:-$(dirname "$state_file")/artifacts}"
+    local state_file="$1"; : "$state_file"
+    # Every path comes from the engine (ADR-055 §1, #1826): the artifact dir it
+    # exports at dispatch (ADR-058 §3) and the input index it resolves. None is
+    # derived here — without them there is nowhere legitimate to read or write.
+    local artifacts_dir="${ZBUILD_ARTIFACT_DIR:-}"
+    if [[ -z "$artifacts_dir" ]]; then
+        error "validate: the engine provided no ZBUILD_ARTIFACT_DIR — nowhere to write a result"
+        return 1
+    fi
     mkdir -p "$artifacts_dir"
 
-    # Resolve deploy_result input path from ZBUILD_STAGE_INPUTS (ADR-055).
-    # Falls back to a sibling stage-inputs.json when the env var is not set
-    # (e.g. when called directly from tests or from the legacy dispatch path).
-    local _si_path="${ZBUILD_STAGE_INPUTS:-$(dirname "$state_file")/stage-inputs.json}"
+    local _si_path="${ZBUILD_STAGE_INPUTS:-}"
     local deploy_result_in=""
     if [[ -n "$_si_path" && -f "$_si_path" ]]; then
         deploy_result_in="$(jq -r '.inputs.deploy_result // empty' "$_si_path")"
@@ -98,6 +106,21 @@ _validate_agent_run_inner() {
         return 0
     fi
 
+    # No probe target is a setup the operator must fix, not an unhealthy
+    # deployment: say `misconfigured` and do not probe. (health-check itself
+    # reads ZBUILD_HEALTH_CHECK_URL; asking before delegating is the only way
+    # to tell "not configured" from "configured and failing", since both come
+    # back as a non-zero rc.)
+    if [[ -z "${ZBUILD_HEALTH_CHECK_URL:-}" ]]; then
+        error "validate: no probe target — set ZBUILD_HEALTH_CHECK_URL"
+        _validate_write_result "$artifacts_dir" "error" "misconfigured" \
+            "no probe target configured: ZBUILD_HEALTH_CHECK_URL is not set"
+        stage_summary_write "$artifacts_dir/validate-summary.md" "validate" "error" \
+            "no probe target is configured, so nothing could be validated" \
+            "Set ZBUILD_HEALTH_CHECK_URL to the deployment's health endpoint. No probe ran."
+        return 1
+    fi
+
     # Delegate to health-check tool plugin (performs the actual HTTP/smoke probe)
     local hc_plugin="$_VALIDATE_ROOT/plugins/tool/health-check/plugin.sh"
     if [[ -f "$hc_plugin" ]]; then
@@ -118,8 +141,12 @@ _validate_agent_run_inner() {
             fi
             local hc_snippet; hc_snippet="${hc_out:0:500}"
             emit_event "validate.probe.failed" "plugin=validate" "rc=$hc_rc"
+            # The probe's own rc and output are the diagnosis (curl: 6 DNS,
+            # 7 refused, 22 HTTP error, 28 timeout); the stage's rc is clamped
+            # to 1 (ADR-054 §4), so they are kept here, under data.
             _validate_write_result "$artifacts_dir" "error" "complete" \
-                "health probe failed (rc=$hc_rc)"
+                "health probe failed (rc=$hc_rc)" \
+                "$(jq -cn --argjson rc "$hc_rc" --arg out "$hc_snippet" '{probe_rc:$rc, probe_output:$out}')"
             stage_summary_write "$artifacts_dir/validate-summary.md" "validate" "fail" \
                 "the health probe failed (rc=$hc_rc)" \
                 "$(printf -- '- probe output: %s' "$hc_snippet")"

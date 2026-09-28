@@ -15,9 +15,6 @@
 # SPEC-10: deployed.yaml's review_lenses map group includes the 'sre' element
 #          (issue #1517) — proves the WIRING addition to this template is
 #          load-bearing, not inert (reverting it must flip this assertion).
-# SPEC-26: validate-result.json carries result_contract=2, confirming the v2
-#          input-resolution path (ZBUILD_STAGE_INPUTS) is exercised in the
-#          integration environment (issue #1845)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -98,12 +95,12 @@ load_template "$DEPLOYED_TPL"
 _load_rc=$?
 set -e
 
-assert_eq "deployed.yaml loads without error (exit 0)" "0" "$_load_rc"
+assert_eq "[SPEC-1] deployed.yaml loads without error (exit 0)" "0" "$_load_rc"
 
 # ─── SPEC-10: review_lenses map group includes 'sre' (issue #1517) ───────────
 # CHANGE: at merge-base deployed.yaml's review_lenses elements list did not
 # include 'sre' — this assertion fails there and passes at HEAD.
-assert_eq "deployed.yaml review_lenses elements include 'sre'" \
+assert_eq "[SPEC-10] deployed.yaml review_lenses elements include 'sre'" \
     "security,performance,red-team,correctness,scope,sre" \
     "${_TPL_MAP_ELEMENTS_review_lenses:-}"
 
@@ -121,16 +118,16 @@ for _i in "${!_TPL_STAGES[@]}"; do
     esac
 done
 
-assert_eq "deployed.yaml has deploy stage" "1" "$_has_deploy"
-assert_eq "deployed.yaml has validate stage" "1" "$_has_validate"
-assert_eq "deployed.yaml has monitor stage" "1" "$_has_monitor"
+assert_eq "[SPEC-2] deployed.yaml has deploy stage" "1" "$_has_deploy"
+assert_eq "[SPEC-2] deployed.yaml has validate stage" "1" "$_has_validate"
+assert_eq "[SPEC-2] deployed.yaml has monitor stage" "1" "$_has_monitor"
 # Verify ordering: pr < deploy < validate < monitor
 if [[ "$_pr_idx" -ge 0 && "$_deploy_idx" -ge 0 && "$_validate_idx" -ge 0 && "$_monitor_idx" -ge 0 ]]; then
-    assert_eq "deploy follows pr" "1" "$(( _deploy_idx > _pr_idx ? 1 : 0 ))"
-    assert_eq "validate follows deploy" "1" "$(( _validate_idx > _deploy_idx ? 1 : 0 ))"
-    assert_eq "monitor follows validate" "1" "$(( _monitor_idx > _validate_idx ? 1 : 0 ))"
+    assert_eq "[SPEC-2] deploy follows pr" "1" "$(( _deploy_idx > _pr_idx ? 1 : 0 ))"
+    assert_eq "[SPEC-2] validate follows deploy" "1" "$(( _validate_idx > _deploy_idx ? 1 : 0 ))"
+    assert_eq "[SPEC-2] monitor follows validate" "1" "$(( _monitor_idx > _validate_idx ? 1 : 0 ))"
 else
-    assert_fail "pr/deploy/validate/monitor stage indices resolved" \
+    assert_fail "[SPEC-2] pr/deploy/validate/monitor stage indices resolved" \
         "pr=$_pr_idx deploy=$_deploy_idx validate=$_validate_idx monitor=$_monitor_idx"
 fi
 
@@ -139,11 +136,11 @@ fi
 # WIRES deploy/validate/monitor to real plugins (not just that the dirs exist).
 for _stg in deploy validate monitor; do
     set +e; _rdir="$(resolve_stage_plugin "$_stg" "$PLUGINS_ROOT" 2>/dev/null)"; _rrc=$?; set -e
-    assert_eq "stage '$_stg' resolves to a plugin via the registry (rc=0)" "0" "$_rrc"
+    assert_eq "[SPEC-2] stage '$_stg' resolves to a plugin via the registry (rc=0)" "0" "$_rrc"
     case "$_rdir" in
         */plugins/agent/"$_stg"|*/plugins/agent/"$_stg"/)
-            assert_pass "'$_stg' resolves under plugins/agent/$_stg" ;;
-        *)  assert_fail "'$_stg' resolves under plugins/agent/$_stg" "got: '$_rdir'" ;;
+            assert_pass "[SPEC-2] '$_stg' resolves under plugins/agent/$_stg" ;;
+        *)  assert_fail "[SPEC-2] '$_stg' resolves under plugins/agent/$_stg" "got: '$_rdir'" ;;
     esac
 done
 
@@ -175,21 +172,21 @@ jq -n '{schema_version:1,verdict:"pass"}' > "$ARTIFACTS_DIR/gate-aggregator-resu
 source "$REPO_ROOT/plugins/agent/deploy/plugin.sh"
 
 if declare -F deploy_agent_init >/dev/null 2>&1; then
-    assert_fail "deploy_agent_init must not exist after ADR-056 (init hook removed)" ""
+    assert_fail "[SPEC-3] deploy_agent_init must not exist after ADR-056 (init hook removed)" ""
 else
-    assert_pass "deploy_agent_init does not exist (ADR-056: init removed)"
+    assert_pass "[SPEC-3] deploy_agent_init does not exist (ADR-056: init removed)"
 fi
 
 set +e
 deploy_agent_run "deploy" "$STATE_FILE"
 _run_rc=$?
 set -e
-assert_eq "deploy_agent_run exits 0 in dry-run" "0" "$_run_rc"
+assert_eq "[SPEC-9] deploy_agent_run exits 0 in dry-run" "0" "$_run_rc"
 
 # Behavior-preservation: deploy-result.json exists and carries verdict=deployed
-assert_file_exists "deploy-result.json written" "$ARTIFACTS_DIR/deploy-result.json"
+assert_file_exists "[SPEC-9] deploy-result.json written" "$ARTIFACTS_DIR/deploy-result.json"
 _deploy_verdict="$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/deploy-result.json" 2>/dev/null || true)"
-assert_eq "deploy-result.json verdict=deployed" "deployed" "$_deploy_verdict"
+assert_eq "[SPEC-9] deploy-result.json verdict=deployed" "deployed" "$_deploy_verdict"
 
 # ─── SPEC-4 + SPEC-9 (validate): run + behavior preservation ─────────────────
 # CHANGE: validate_agent_init and validate_agent_finalize no longer exist.
@@ -199,33 +196,37 @@ assert_eq "deploy-result.json verdict=deployed" "deployed" "$_deploy_verdict"
 source "$REPO_ROOT/plugins/agent/validate/plugin.sh"
 
 if declare -F validate_agent_init >/dev/null 2>&1; then
-    assert_fail "validate_agent_init must not exist after ADR-056 (init hook removed)" ""
+    assert_fail "[SPEC-4] validate_agent_init must not exist after ADR-056 (init hook removed)" ""
 else
-    assert_pass "validate_agent_init does not exist (ADR-056: init removed)"
+    assert_pass "[SPEC-4] validate_agent_init does not exist (ADR-056: init removed)"
 fi
 
-# Wire ZBUILD_STAGE_INPUTS so the v2 plugin resolves deploy_result via name-matched
-# input (ADR-055 §1). This is the path SPEC-26 exercises.
-_si_validate="$STATE_DIR/validate-stage-inputs.json"
-jq -n --arg p "$ARTIFACTS_DIR/deploy-result.json" '{"inputs":{"deploy_result":$p}}' > "$_si_validate"
-export ZBUILD_STAGE_INPUTS="$_si_validate"
+# #1845 (contract v2): validate reads its input from the index the engine hands
+# it at dispatch (ADR-055 §1) and derives no path itself. Build that index the
+# way the engine does — its own resolver, against the deployed.yaml flow loaded
+# above — rather than by hand, so this also proves the template wires
+# validate's deploy_result to the deploy stage's output.
+# shellcheck source=../../core/pipeline/input-resolve.sh
+source "$REPO_ROOT/core/pipeline/input-resolve.sh"
+ZBUILD_STAGE_INPUTS="$(_inputs_resolve_stage validate "$REPO_ROOT/plugins" "$STATE_DIR" 2>/dev/null || true)"
+export ZBUILD_STAGE_INPUTS ZBUILD_ARTIFACT_DIR="$ARTIFACTS_DIR"
+assert_eq "[#1845] the engine resolves validate's deploy_result from the deployed.yaml flow" \
+    "$ARTIFACTS_DIR/deploy-result.json" \
+    "$(jq -r '.inputs.deploy_result // empty' "${ZBUILD_STAGE_INPUTS:-/dev/null}" 2>/dev/null || true)"
 
 set +e
 validate_agent_run "validate" "$STATE_FILE"
 _run_rc=$?
 set -e
-unset ZBUILD_STAGE_INPUTS
-assert_eq "validate_agent_run exits 0 in dry-run" "0" "$_run_rc"
+unset ZBUILD_STAGE_INPUTS ZBUILD_ARTIFACT_DIR
+assert_eq "[SPEC-9] validate_agent_run exits 0 in dry-run" "0" "$_run_rc"
+assert_eq "[#1845] validate-result.json is a v2 result" "2" \
+    "$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/validate-result.json" 2>/dev/null || true)"
 
 # Behavior-preservation: validate-result.json exists and carries verdict=healthy
-assert_file_exists "validate-result.json written" "$ARTIFACTS_DIR/validate-result.json"
+assert_file_exists "[SPEC-9] validate-result.json written" "$ARTIFACTS_DIR/validate-result.json"
 _validate_verdict="$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/validate-result.json" 2>/dev/null || true)"
-assert_eq "validate-result.json verdict=healthy" "healthy" "$_validate_verdict"
-# [SPEC-26] v2 input-resolution path confirmed: result_contract=2 can only come from the
-# v2 plugin writing through the ZBUILD_STAGE_INPUTS path wired above.
-_s26_contract="$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/validate-result.json" 2>/dev/null || true)"
-assert_eq "[SPEC-26] validate-result.json carries result_contract=2 (v2 input-resolution path)" \
-    "2" "$_s26_contract"
+assert_eq "[SPEC-9] validate-result.json verdict=healthy" "healthy" "$_validate_verdict"
 
 # ─── SPEC-5 + SPEC-9 (monitor): run + behavior preservation ──────────────────
 # CHANGE: monitor_stage_init and monitor_stage_finalize no longer exist.
@@ -235,19 +236,19 @@ assert_eq "[SPEC-26] validate-result.json carries result_contract=2 (v2 input-re
 source "$REPO_ROOT/plugins/agent/monitor/plugin.sh"
 
 if declare -F monitor_stage_init >/dev/null 2>&1; then
-    assert_fail "monitor_stage_init must not exist after ADR-056 (init hook removed)" ""
+    assert_fail "[SPEC-5] monitor_stage_init must not exist after ADR-056 (init hook removed)" ""
 else
-    assert_pass "monitor_stage_init does not exist (ADR-056: init removed)"
+    assert_pass "[SPEC-5] monitor_stage_init does not exist (ADR-056: init removed)"
 fi
 
 set +e
 monitor_stage_run "monitor" "$STATE_FILE"
 _run_rc=$?
 set -e
-assert_eq "monitor_stage_run exits 0 in dry-run" "0" "$_run_rc"
+assert_eq "[SPEC-9] monitor_stage_run exits 0 in dry-run" "0" "$_run_rc"
 
 # Behavior-preservation: monitor-report.json exists
-assert_file_exists "monitor-report.json written" "$ARTIFACTS_DIR/monitor-report.json"
+assert_file_exists "[SPEC-9] monitor-report.json written" "$ARTIFACTS_DIR/monitor-report.json"
 
 cleanup_test_env
 print_test_results

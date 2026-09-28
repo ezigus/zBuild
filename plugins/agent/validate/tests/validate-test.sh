@@ -52,6 +52,9 @@ mkdir -p "$ZBUILD_EVENTS_DIR"
 export ZBUILD_RUN_ID="validate-test-$$"
 export ZBUILD_MODELS_FILE="$REPO_ROOT/config/models.json"
 export ZBUILD_ISSUE="$_ZB_ID"
+# A probe target, so the probing paths probe (the mock answers). #1845: none
+# configured is `misconfigured` — validate-close-unit-test.sh close-4.
+export ZBUILD_HEALTH_CHECK_URL="http://127.0.0.1:9/health"
 
 PLUGIN_FILE="$REPO_ROOT/plugins/agent/validate/plugin.sh"
 _MANIFEST="$REPO_ROOT/plugins/agent/validate/manifest.yaml"
@@ -77,18 +80,20 @@ apply_scope_redaction() {
 }
 
 # ─── Helper: make a minimal state file ───────────────────────────────────────
-# Side effects: sets ZBUILD_STAGE_INPUTS (stage-inputs.json pointing to
-# deploy-result.json in the artifacts dir) and ZBUILD_ARTIFACT_DIR, so both
-# v1 and v2 implementations find the expected paths consistently.
+# Sets ZBUILD_STAGE_INPUTS (the engine's input index naming deploy-result.json
+# in the artifacts dir) and ZBUILD_ARTIFACT_DIR, and leaves the state file's
+# path in _MS_SF. Called in THIS shell, never as $( ): an export inside a
+# command substitution never reaches the test, which is how PR #2213's tests
+# passed only through a path the plugin guessed for itself.
 _make_state() {
     local dir="$1"
-    mkdir -p "$dir/artifacts"
-    printf '{"issue":"$_ZB_ID","run_id":"%s"}\n' "$ZBUILD_RUN_ID" > "$dir/state.json"
+    mkdir -p "$dir/artifacts" "$dir/stage-inputs"
+    jq -n --arg iss "$_ZB_ID" --arg run "$ZBUILD_RUN_ID" '{issue:$iss, run_id:$run}' > "$dir/state.json"
     jq -n --arg p "$dir/artifacts/deploy-result.json" \
-        '{"inputs":{"deploy_result":$p}}' > "$dir/stage-inputs.json"
-    export ZBUILD_STAGE_INPUTS="$dir/stage-inputs.json"
+        '{"inputs":{"deploy_result":$p}}' > "$dir/stage-inputs/validate.json"
+    export ZBUILD_STAGE_INPUTS="$dir/stage-inputs/validate.json"
     export ZBUILD_ARTIFACT_DIR="$dir/artifacts"
-    printf '%s\n' "$dir/state.json"
+    _MS_SF="$dir/state.json"
 }
 
 # ─── Shared: mock health_check_run via load guard ────────────────────────────
@@ -123,7 +128,10 @@ fi
 # SPEC-9: ZBUILD_DRY_RUN=1 writes validate-result.json with verdict=healthy
 # ---------------------------------------------------------------------------
 _run9="$TEST_TEMP_DIR/run9"
-_sf9="$(_make_state "$_run9")"
+_make_state "$_run9"; _sf9="$_MS_SF"
+# Review on #2213: the helper wrote the literal text "$_ZB_ID" (single quotes).
+assert_eq "[helper] state.json carries the test issue id, not the literal \$_ZB_ID" \
+    "$_ZB_ID" "$(jq -r '.issue' "$_sf9" 2>/dev/null || true)"
 printf '{"schema_version":1,"verdict":"deployed","mode":"dry_run"}\n' \
     > "$_run9/artifacts/deploy-result.json"
 
@@ -135,7 +143,7 @@ assert_eq "dry-run writes verdict=healthy" "healthy" "$_v9"
 # SPEC-10: missing deploy-result.json → validate_agent_run rc!=0
 # ---------------------------------------------------------------------------
 _run10="$TEST_TEMP_DIR/run10"
-_sf10="$(_make_state "$_run10")"
+_make_state "$_run10"; _sf10="$_MS_SF"
 # Do NOT create deploy-result.json
 
 _rc10=0
@@ -149,7 +157,7 @@ assert_eq "missing deploy-result.json → verdict=error in output" "error" "$_v1
 # SPEC-11: successful health probe (rc=0) → verdict=healthy in validate-result.json
 # ---------------------------------------------------------------------------
 _run11="$TEST_TEMP_DIR/run11"
-_sf11="$(_make_state "$_run11")"
+_make_state "$_run11"; _sf11="$_MS_SF"
 printf '{"schema_version":1,"verdict":"deployed"}\n' \
     > "$_run11/artifacts/deploy-result.json"
 
@@ -162,7 +170,7 @@ assert_eq "healthy probe → verdict=healthy" "healthy" "$_v11"
 # SPEC-12: failed health probe (rc!=0) → verdict=error in validate-result.json
 # ---------------------------------------------------------------------------
 _run12="$TEST_TEMP_DIR/run12"
-_sf12="$(_make_state "$_run12")"
+_make_state "$_run12"; _sf12="$_MS_SF"
 printf '{"schema_version":1,"verdict":"deployed"}\n' \
     > "$_run12/artifacts/deploy-result.json"
 
@@ -227,17 +235,18 @@ _v2_keys_ok() {
 # ─── v2 run setup helper ─────────────────────────────────────────────────────
 # Create a run dir, optionally write deploy-result.json, set ZBUILD_STAGE_INPUTS
 # and ZBUILD_ARTIFACT_DIR, create a minimal state.json. Prints the run dir.
+# Leaves the run dir in _V2_DIR; called in THIS shell (see _make_state).
 _v2_run() {
     local name="$1" make_dr="${2:-1}"
     local dir="$TEST_TEMP_DIR/$name"
-    mkdir -p "$dir/artifacts"
+    mkdir -p "$dir/artifacts" "$dir/stage-inputs"
     local dr="$dir/deploy-result.json"
     [[ "$make_dr" == "1" ]] && printf '{"verdict":"deployed"}\n' > "$dr"
-    jq -n --arg p "$dr" '{"inputs":{"deploy_result":$p}}' > "$dir/stage-inputs.json"
-    export ZBUILD_STAGE_INPUTS="$dir/stage-inputs.json"
+    jq -n --arg p "$dr" '{"inputs":{"deploy_result":$p}}' > "$dir/stage-inputs/validate.json"
+    export ZBUILD_STAGE_INPUTS="$dir/stage-inputs/validate.json"
     export ZBUILD_ARTIFACT_DIR="$dir/artifacts"
     printf '{"run_id":"%s"}\n' "$ZBUILD_RUN_ID" > "$dir/state.json"
-    printf '%s\n' "$dir"
+    _V2_DIR="$dir"
 }
 
 # ---------------------------------------------------------------------------
@@ -292,7 +301,7 @@ _s19_count="$(grep -c '^[[:space:]]*-' <<< "$_s19_section" 2>/dev/null || printf
 assert_eq "[SPEC-19] manifest config.valid_verdicts declares exactly 2 verdicts" "2" "$_s19_count"
 
 # SPEC-19 healthy coverage: a passing assertion with verdict=healthy
-_run19h="$(_v2_run run19h 1)"
+_v2_run run19h 1; _run19h="$_V2_DIR"
 printf '{"run_id":"test"}\n' > "$_run19h/state.json"
 _MOCK_HC_RC=0
 ZBUILD_DRY_RUN=0 _validate_agent_run_inner "$_run19h/state.json"
@@ -301,7 +310,7 @@ assert_eq "[SPEC-19] healthy probe → verdict=healthy (covering healthy verdict
     "healthy" "$_s19h_v"
 
 # SPEC-19 error coverage: a passing assertion with verdict=error
-_run19e="$(_v2_run run19e 1)"
+_v2_run run19e 1; _run19e="$_V2_DIR"
 printf '{"run_id":"test"}\n' > "$_run19e/state.json"
 _MOCK_HC_RC=1
 ZBUILD_DRY_RUN=0 _validate_agent_run_inner "$_run19e/state.json" || true
@@ -360,9 +369,9 @@ else
     assert_fail "[SPEC-24] manifest provides.events must declare both required events" \
         "${_s24_events:-absent}"
 fi
-_s24_count="$(grep -c 'validate\.' <<< "$_s24_events" 2>/dev/null || printf '0')"
+_s24_count="$(grep -c 'validate\.' <<< "$_s24_events" 2>/dev/null || true)"
 assert_eq "[SPEC-24] manifest provides.events declares exactly 2 events" "2" "$_s24_count"
-_s24_total="$(grep -c '^[[:space:]]*-' <<< "$_s24_events" 2>/dev/null || printf '0')"
+_s24_total="$(grep -c '^[[:space:]]*-' <<< "$_s24_events" 2>/dev/null || true)"
 assert_eq "[SPEC-24] manifest provides.events total list length is exactly 2" "2" "$_s24_total"
 
 # ---------------------------------------------------------------------------
@@ -388,7 +397,7 @@ assert_eq "[SPEC-25] manifest hooks block declares exactly one hook (run only)" 
 # SPEC-21: dry-run writes result_contract=2, verdict=healthy, disposition=complete,
 #          reason present, data={}; schema_version key absent
 # ---------------------------------------------------------------------------
-_run21="$(_v2_run run21 1)"
+_v2_run run21 1; _run21="$_V2_DIR"
 printf '{"run_id":"test"}\n' > "$_run21/state.json"
 ZBUILD_DRY_RUN=1 _validate_agent_run_inner "$_run21/state.json"
 _s21_out="$_run21/artifacts/validate-result.json"
@@ -416,26 +425,26 @@ assert_eq "[SPEC-21] dry-run result must not have schema_version key" "ABSENT" "
 # ---------------------------------------------------------------------------
 
 # Path 1 — missing deploy-result (broken disposition)
-_run14a="$(_v2_run run14a 0)"
+_v2_run run14a 0; _run14a="$_V2_DIR"
 printf '{"run_id":"test"}\n' > "$_run14a/state.json"
 _validate_agent_run_inner "$_run14a/state.json" || true
 _v2_keys_ok "[SPEC-14] missing-input exit path:" "$_run14a/artifacts/validate-result.json"
 
 # Path 2 — dry-run (complete disposition)
-_run14b="$(_v2_run run14b 1)"
+_v2_run run14b 1; _run14b="$_V2_DIR"
 printf '{"run_id":"test"}\n' > "$_run14b/state.json"
 ZBUILD_DRY_RUN=1 _validate_agent_run_inner "$_run14b/state.json"
 _v2_keys_ok "[SPEC-14] dry-run exit path:" "$_run14b/artifacts/validate-result.json"
 
 # Path 3 — successful health probe (complete disposition)
-_run14c="$(_v2_run run14c 1)"
+_v2_run run14c 1; _run14c="$_V2_DIR"
 printf '{"run_id":"test"}\n' > "$_run14c/state.json"
 _MOCK_HC_RC=0
 ZBUILD_DRY_RUN=0 _validate_agent_run_inner "$_run14c/state.json"
 _v2_keys_ok "[SPEC-14] healthy-probe exit path:" "$_run14c/artifacts/validate-result.json"
 
 # Path 4 — failed health probe (complete disposition, non-zero rc)
-_run14d="$(_v2_run run14d 1)"
+_v2_run run14d 1; _run14d="$_V2_DIR"
 printf '{"run_id":"test"}\n' > "$_run14d/state.json"
 _MOCK_HC_RC=1
 ZBUILD_DRY_RUN=0 _validate_agent_run_inner "$_run14d/state.json" || true
@@ -443,7 +452,7 @@ _v2_keys_ok "[SPEC-14] failed-probe exit path:" "$_run14d/artifacts/validate-res
 _MOCK_HC_RC=0
 
 # Path 5 — health-check plugin file absent (broken disposition)
-_run14e="$(_v2_run run14e 1)"
+_v2_run run14e 1; _run14e="$_V2_DIR"
 printf '{"run_id":"test"}\n' > "$_run14e/state.json"
 _saved_vr="$_VALIDATE_ROOT"
 _VALIDATE_ROOT="$TEST_TEMP_DIR/no-hc-plugins"
@@ -456,7 +465,7 @@ _VALIDATE_ROOT="$_saved_vr"
 # SPEC-17: a failed health probe causes validate_agent_run to return non-zero
 #          (the #757 fail-closed invariant preserved under v2)
 # ---------------------------------------------------------------------------
-_run17="$(_v2_run run17 1)"
+_v2_run run17 1; _run17="$_V2_DIR"
 _MOCK_HC_RC=1
 _rc17=0
 ZBUILD_DRY_RUN=0 validate_agent_run "run" "$_run17/state.json" || _rc17=$?
@@ -470,14 +479,14 @@ _MOCK_HC_RC=0
 # ---------------------------------------------------------------------------
 
 # Missing deploy-result → must be rc=1 (was rc=2 in v1)
-_run18a="$(_v2_run run18a 0)"
+_v2_run run18a 0; _run18a="$_V2_DIR"
 printf '{"run_id":"test"}\n' > "$_run18a/state.json"
 _rc18a=0
 _validate_agent_run_inner "$_run18a/state.json" || _rc18a=$?
 assert_eq "[SPEC-18] missing deploy-result exits with rc=1 (not rc=2)" "1" "$_rc18a"
 
 # Failed probe with rc=5 → must be clamped to rc=1 (was $hc_rc in v1)
-_run18b="$(_v2_run run18b 1)"
+_v2_run run18b 1; _run18b="$_V2_DIR"
 printf '{"run_id":"test"}\n' > "$_run18b/state.json"
 _MOCK_HC_RC=5
 _rc18b=0
@@ -486,7 +495,7 @@ assert_eq "[SPEC-18] failed probe with rc=5 exits with rc=1 (clamped, not rc=5)"
 _MOCK_HC_RC=0
 
 # Missing hc-plugin → must be rc=1 (was rc=2 in v1)
-_run18e="$(_v2_run run18e 1)"
+_v2_run run18e 1; _run18e="$_V2_DIR"
 printf '{"run_id":"test"}\n' > "$_run18e/state.json"
 _saved_vr2="$_VALIDATE_ROOT"
 _VALIDATE_ROOT="$TEST_TEMP_DIR/no-hc-plugins"
