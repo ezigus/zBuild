@@ -1,9 +1,0 @@
-{
-  "result_contract": 2,
-  "verdict": "pass",
-  "disposition": "complete",
-  "reason": "declared acceptance testfiles are unchanged since authoring",
-  "data": {
-    "violated": []
-  }
-}
