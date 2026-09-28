@@ -159,6 +159,13 @@ _rl_context() {
         _txt="$(printf '%s' "${_txt:0:6000}" | _zbuild_sanitize_for_llm)"
         [[ -n "$_txt" ]] && out+=$'## THE ACCEPTANCE CONTRACT (the SPECs the change had to meet)\n'"$_txt"$'\n\n'
     fi
+    # #1654: what the design DECIDED — so "this is odd" and "this was chosen"
+    # can be told apart. Same extractor build honours (design_decisions_prose).
+    if [[ -n "$f" && -s "$f" ]] && declare -F design_decisions_prose >/dev/null 2>&1; then
+        _txt="$(design_decisions_prose "$f" 80)"
+        _txt="$(printf '%s' "${_txt:0:6000}" | _zbuild_sanitize_for_llm)"
+        [[ -n "${_txt//[[:space:]]/}" ]] && out+=$'## THE DESIGN DECISIONS (what the design chose, and why)\n'"$_txt"$'\n\n'
+    fi
     [[ -n "$scope" ]] || scope="$(_rl_input scope_manifest)"
     if [[ -n "$scope" && -s "$scope" ]]; then
         _txt="$(head -c 4000 "$scope" | _zbuild_sanitize_for_llm)"

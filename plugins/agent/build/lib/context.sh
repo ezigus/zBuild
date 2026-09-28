@@ -38,18 +38,9 @@ _build_read_acceptance_testfiles() {
 # to _BUILD_DESIGN_DECISIONS_MAX_LINES. Empty stdout when absent or no prose.
 _BUILD_DESIGN_DECISIONS_MAX_LINES="${_BUILD_DESIGN_DECISIONS_MAX_LINES:-120}"
 _build_read_design_decisions() {
-    local design_md="${1:-}"
-    [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
-    local body
-    body="$(awk -v cap="$_BUILD_DESIGN_DECISIONS_MAX_LINES" '
-        /^```/ { infence = !infence; next }
-        infence { next }
-        { print; emitted++ }
-        emitted >= cap { exit }
-    ' "$design_md" 2>/dev/null || true)"
-    body="$(printf '%s\n' "$body" | sed '/./,$!d')"
-    [[ -z "${body//[[:space:]]/}" ]] && return 0
-    printf '%s\n' "$body"
+    # The extractor is shared (scripts/lib/acceptance-block.sh) — review-lens
+    # judges against the same decisions (#1654).
+    design_decisions_prose "${1:-}" "$_BUILD_DESIGN_DECISIONS_MAX_LINES"
 }
 
 # _build_read_prior_build_summary (ADR-050 / #1581)

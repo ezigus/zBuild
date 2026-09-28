@@ -1,0 +1,42 @@
+name: lens live check
+# #1654 — does a real review lens catch a defect that is only visible in
+# UNCHANGED code? Calls the real model, so it is not part of `npm test`:
+# run by hand, and weekly as a regression guard (lenses keep reading around a
+# change). See tests/live/lens-reads-around-change.sh for what it does and does
+# not prove.
+on:
+  workflow_dispatch:
+    inputs:
+      attempts:
+        description: "Lens runs to make"
+        required: false
+        default: "3"
+      needed:
+        description: "Runs that must cite the unchanged neighbours"
+        required: false
+        default: "2"
+  schedule:
+    - cron: "17 6 * * 1"   # Mondays 06:17 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  lens-live:
+    name: "Lens reads around the change"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Install Claude CLI
+        run: npm install -g @anthropic-ai/claude-code@2.1.183
+      - name: Run the live check
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ATTEMPTS: ${{ inputs.attempts || '3' }}
+          NEEDED: ${{ inputs.needed || '2' }}
+        run: |
+          if [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]]; then unset ANTHROPIC_API_KEY; fi
+          bash tests/live/lens-reads-around-change.sh "$ATTEMPTS" "$NEEDED"
