@@ -1,4 +1,4 @@
-============== ZBUILD BUILD — iter 2/10 ==============
+============== ZBUILD BUILD — iter 1/10 ==============
 ## ORIGINAL TASK (immutable across iterations)
 # Plan: Close the timed_out disposition SPEC gap in the already-migrated monitor plugin
 
@@ -31,14 +31,12 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
   - plugins/agent/monitor/manifest.yaml
   - plugins/agent/monitor/tests/fixtures/monitor-report-v1-baseline.json
   - tests/unit/monitor-v2-result-test.sh
-  - tests/unit/router-reason-disposition-test.sh
+  - tests/unit/router-manifest-budget-test.sh
   - scripts/lib/router-rc-classify.sh
-  - core/router/route.sh
   - core/pipeline/disposition.sh
-  - scripts/lib/lint-disposition-words.sh
-  - docs/adr/ADR-054-stage-contract.md
   - docs/adr/ADR-063-budget-disclosure-and-partial-output.md
-  - config/templates/deployed.yaml
+  - docs/adr/ADR-054-stage-contract.md
+  - docs/adr/ADR-047-stage-agnostic-mechanics.md
 
 ### How the loop works
 - Each iteration you may make code changes via Edit/Write/Bash.
@@ -106,153 +104,160 @@ message for the per-iteration commit it creates on your behalf. If you
 omit this line the pipeline falls back to the plan title.
 
 ## DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
-# Design — Close the timed_out disposition SPEC gap in monitor (#1847)
+# Design: close the timed_out disposition SPEC gap in monitor (v2 migration, #1847)
 
-## 1. Summary
+## Summary
 
-**Goal.** Prove that `plugins/agent/monitor` fully honors ADR-063 for its v2
-migration: §1 (budget reaches the prompt from the enforcing value) and §3
-(disposition split — `timed_out` for a wall-clock timeout vs `out_of_turns`
-for a turn-budget hit), since #1847's own migration currently proves §1 only
-by block-presence and proves §3 only for the turn-budget half.
+**Goal.** Finish the monitor plugin's migration to result-contract v2 (ADR-054
+§6 / ADR-063 §3): the rc=124 (wall-clock timeout) exit path must name its
+disposition (`timed_out`) and reason (`router_timeout`) the same way every
+other budget/router-failure path does — derived from the shared
+`_router_rc_classify` → `router_reason_disposition` chokepoint, never a
+hand-copied literal.
 
-**Context.** `plugin.sh` (HEAD 8263b7b2) and `tests/unit/monitor-v2-result-test.sh`
-(HEAD 115f5b5e) already carry the full v2 migration: manifest
-`provides.result_contract: 2`, a v2 result on every exit path, and 22 SPECs.
+**Context — unchanged from the prior iteration.** Tracing the CURRENT
+plugin.sh (committed at `8263b7b2`) shows the rc=124 → `timed_out` mapping
+the issue asks for already exists and is already correctly derived through
+the shared chokepoint — no dedicated branch, no hand-copied literal. No
+further plugin.sh change is needed; build already confirmed this (0 files
+changed, 1 iteration).
 
-**ADR-063 §1 (budget-disclosure) — already implemented and already tested.**
-`plugin.sh:75-101` defines `_monitor_budget_guidance`/`_monitor_wallclock_guidance`,
-wired into the prompt at `plugin.sh:167-179`, pulling their numbers from
-`_route_resolve_max_turns`/`_route_resolve_timeout` (`core/router/route.sh:704,716`
-— the same values the router itself enforces, never hand-copied). This is
-tested today by **SPEC-8/SPEC-9** (`tests/unit/monitor-v2-result-test.sh:288-314`),
-which assert the assembled prompt contains a TURN BUDGET block reflecting the
-manifest's `max_turns:10` and a WALL CLOCK BUDGET block reflecting
-`timeout_s:300`. The spec-coverage gate flagged §1 as uncovered because the
-prior iteration of this design never named SPEC-8/SPEC-9 or traced §1 against
-the code at all — the acceptance block below now cites them explicitly so the
-design's own account of ADR-063 coverage is complete, not just the code.
+**This round's actual gap: spec-coverage, not code.** spec-coverage failed
+this run with two "NOT COVERED" items pulled from the issue's original
+acceptance checklist:
 
-ADR-063 §1 also asks for "one helper" shared across stages so the numbers are
-never restated per-stage. That extraction does not exist yet — `plan` and
-`impact` each have their own inline budget prose — but the ADR's own
-Implementation Notes order this repo's adoption explicitly: `design` → the
-advisory lenses → **`monitor`** → *then* "`plan` and `impact` — retrofit onto
-§1's shared block" (step 4, after monitor). Building that shared extraction is
-out of scope for #1847; monitor already satisfies §1's substance (pinned to
-the enforcing value, present in the prompt, tested) via its own local
-functions, matching how `design`/lenses were expected to land first.
+1. *"router budgets resolve from the manifest with template override still
+   winning"*
+2. *"manifest declares a `primary: true` output"*
 
-ADR-063 §2 (partial deliverable form) needs no new field for monitor: `checks`
-is already an unconstrained array (a short or empty list is a valid partial
-answer), and per §3 the *signal* that an answer is partial is `disposition`
-(timed_out/out_of_turns), not a new verdict value — monitor's schema
-deliberately keeps `valid_verdicts` at exactly `[pass, degraded]` (SPEC-11,
-unchanged). §2's "discriminating test" (ADR-063 Implementation Notes: "kill it
-at its bound and assert the next attempt starts from something") is therefore
-the same test as §3's, which SPEC-23/24 below cover; no separate SPEC is
-needed and inventing one would test a behavior that is already true by
-construction (the array has no minimum-length constraint), which the design
-charter's own tagging rule (§0) forbids classifying as `[change]`.
+Both behaviors are pre-existing (unchanged at merge-base) and both are
+**already exercised** in `tests/unit/monitor-v2-result-test.sh` — just not
+declared in this design's acceptance block, so the acceptance-gate has no
+`[#1847/SPEC-n]` tag to look for and nothing to report as met:
 
-**ADR-063 §3 gap (the reason this design exists).** Tracing every non-zero
-exit of `monitor_stage_run` against the live code:
+- **Router-budget-precedence**: SPEC-22 (lines 468–499) stubs
+  `template_stage_router_timeout`/`_max_turns` to sentinel values (`111`/
+  `12`) that diverge from the manifest's own `timeout_s:300`/`max_turns:10`,
+  and asserts `_route_resolve_timeout`/`_route_resolve_max_turns` return the
+  **stub**, proving the template accessor still outranks monitor's manifest
+  `config.router` block — the exact "template override still winning"
+  guarantee spec-coverage flagged as unproven. (The general precedence rule
+  — template > env > manifest > constant — is engine-owned and proven
+  target-agnostically in `tests/unit/router-manifest-budget-test.sh` SPEC-4;
+  SPEC-22 is the monitor-specific instance confirming monitor doesn't bypass
+  that machinery.)
+- **`primary:true` output**: SPEC-15 (lines 118–133) already asserts the
+  manifest declares exactly one `primary:true` output and that it is
+  `monitor_report`.
 
-- rc=130 (signal) → the `_monitor_interrupt_handler` trap writes
-  `disposition:interrupted` — proven by SPEC-6.
-- rc=10 (turn-budget exhaustion) → a dedicated branch hardcodes
-  `disposition:out_of_turns` — SPEC-21 exercises this branch but asserts
-  only the rc=1 collapse and file existence, **never the disposition value**.
-- any other non-zero rc (including 124) → the generic branch runs
-  `_router_rc_classify` then `router_reason_disposition`. For rc=124,
-  `_router_rc_classify` (`scripts/lib/router-rc-classify.sh:143`) sets
-  `reason=router_timeout` (the `_ROUTE_LAST_BUDGET_EXHAUSTED` global that
-  would otherwise short-circuit this is initialized to `0` at
-  `core/router/route.sh:117` and is only ever set to `1` inside the real
-  `route_to_model` body, which every SPEC in this file replaces wholesale —
-  so it cannot leak into a mocked rc=124 run). `router_reason_disposition`
-  then maps `router_timeout → timed_out` (`scripts/lib/router-rc-classify.sh:234`,
-  and `core/pipeline/disposition.sh:18` confirms `timed_out`/`out_of_turns`
-  are the current closed-set members — `exhausted` was retired by #2187
-  precisely because it hid which budget ran out). **No SPEC exercises this
-  path with rc=124 at all** — SPEC-4 only exercises it with rc=1 (→
-  `unavailable`).
+Neither block currently carries a `[#1847/SPEC-n]` label in its assertion
+text (confirmed by grep — SPEC-8/SPEC-9/SPEC-23/SPEC-24 already do, SPEC-15/
+SPEC-22 do not). That is the mechanical reason the acceptance-gate has
+nothing to report: `TESTFILES` in this design's own acceptance block never
+named them, so no tag was ever requested. **Decision: declare SPEC-15 and
+SPEC-22 in this design's acceptance block as `[guard]`s**, so test-author
+adds the `[#1847/SPEC-n]` tag to their existing assertion labels (no new
+assertion logic needed — the proof already exists and already exercises the
+right seam). Do not touch `router-manifest-budget-test.sh`; its own tags
+belong to #1816, not this issue.
 
-**Decision.** This is a test-coverage gap, not a runtime defect: by code
-trace, `monitor_stage_run` already writes the correct word for both budgets,
-already discloses both budgets to the model, and already carries a partial
-signal on the engine's axis. Add the missing assertions rather than changing
-`plugin.sh`:
+**SPEC-8/SPEC-9/SPEC-23/SPEC-24/SPEC-25 are unchanged from the prior
+iteration** — same text, same classification, same TESTFILES. Their
+underlying content (the sentinel-stub proof for SPEC-8/9/23, the literal-pair
+guard for SPEC-24, the golden-diff guard for SPEC-25) is still the correct
+answer to the tautology concern raised two rounds ago; nothing in this
+round's stage summaries contradicts that reasoning.
 
-1. A new SPEC mocking rc=124 and asserting `disposition:timed_out`,
-   `reason:router_timeout`, run immediately alongside the existing rc=10 case
-   so the two dispositions are provably distinct outputs of the same stage.
-2. Strengthen SPEC-21's existing rc=10 block with the `disposition:out_of_turns`
-   / `reason:budget_exhausted` assertions it never made.
-3. A conditional, narrowly-scoped patch to `plugin.sh` — build only touches
-   it if running the new SPEC first (red-run per this repo's test-first rule)
-   reveals the trace above is wrong in some way not visible from static
-   reading (e.g. bash version quoting, or a fixture that sets
-   `_ROUTE_LAST_BUDGET_EXHAUSTED` some other way). No new disposition word is
-   introduced either way — the fix, if any, only removes a bypass of
-   `router_reason_disposition`, it never hand-copies a literal.
-4. Deepen SPEC-3's "behavior is unchanged" field-presence check into a real
-   golden-diff: a `monitor-report-v1-baseline.json` fixture plus a byte-level
-   comparison of the carried-over `verdict`/`summary`/`checks` fields for a
-   passing run, so the v2 migration is not just "yes there are dispositions"
-   but "yes the pre-existing health-report shape it wraps is untouched".
-5. No implementation change for §1/§2 — the acceptance block cites the
-   pre-existing SPEC-8/SPEC-9 as guards so the design's stated ADR-063
-   coverage for monitor is complete: §1 (SPEC-8/9), §2 (structural, argued
-   above, no new SPEC), §3 (SPEC-6/21/23/24), §4 (engine-level, not
-   monitor's — the acceptance-gate/response-table wiring lives in
-   `core/pipeline/disposition.sh`, already a `retry` response for both words).
+**On the acceptance-gate's `negctl_error:timeout` across all five declared
+SPECs, and the separate `tests/integration/state-root-isolation-test.sh`
+failure**: neither is a correctness finding about this design. The negctl
+timeout is an infra-level failure to complete the revert-and-rerun check at
+all (not a assertion pass/fail), consistent with this repo's known negctl
+flake pattern under load (see plan.json's own caveat about run 23575 hitting
+the same `negctl_error:timeout` pattern near an `llm_rate_limited` abort).
+The integration-suite failure is in a nested-run/state-root-isolation
+fixture unrelated to monitor's disposition or budget-prompt behavior — it is
+not touched, referenced, or enumerated by anything in this change's scope.
+Both are named as unresolved risk below rather than acted on, since nothing
+in this design can fix an infra timeout or an unrelated pre-existing
+integration failure.
 
-No manifest, template, or ADR change is required: `config/templates/deployed.yaml`
-already wires `monitor` into the live pipeline, ADR-054 §6a already documents
-`timed_out`/`out_of_turns` as the current vocabulary, and
-`scripts/lib/lint-disposition-words.sh` already accepts both words as members
-of `core/pipeline/disposition.sh`'s closed set.
+**SPEC-24 (rc=10/`out_of_turns`/`budget_exhausted`) stays untouched,
+literal-checked, `[guard]`.** `reason:budget_exhausted` paired with
+`disposition:out_of_turns` is an established, hand-written literal pair
+shared verbatim by `plugins/agent/review-lens/plugin.sh:307` and its own
+test. It is a deliberate, cross-plugin convention for the turn-budget
+short-circuit path, intentionally independent of
+`router_reason_disposition` (whose case statement recognizes
+`router_out_of_turns`/`max_iterations`, not `budget_exhausted`). Out of
+scope for this issue.
 
-## 2. Scope
+**SPEC-25** unchanged from prior round, not named by any stage summary this
+round.
+
+No manifest, schema, or disposition-vocabulary change. `timed_out` was
+already a member of `_ZBUILD_DISPOSITION_SET`
+(`core/pipeline/disposition.sh`) before this issue and remains so.
+
+## Scope
 
 
-Rationale for each non-seed file:
+Rationale for entries added this round:
+- `router-manifest-budget-test.sh` — referenced (not modified) as the
+  engine-level proof that the template>env>manifest>constant precedence
+  rule this design's SPEC-22 relies on is real and target-agnostic (#1816
+  SPEC-4). Included for traceability only; its own `#1816` tags are not
+  this issue's to change.
 
-- `plugins/agent/monitor/manifest.yaml` — read to confirm `config.router`
-  (`timeout_s:300`, `max_turns:10`) and `result_contract:2` are already
-  correct (SPEC-1/7); these are also the numbers SPEC-8/9 assert appear in
-  the prompt. In scope in case the conditional patch needs a manifest
-  companion change, though none is currently expected.
-- `tests/unit/router-reason-disposition-test.sh` — the existing unit test for
-  `_router_rc_classify`/`router_reason_disposition` itself (asserts the
+All other scope entries and their rationale are unchanged from the prior
+iteration: `plugin.sh` is the WIRING/reachability target (this round's diff
+to it is again zero lines); `manifest.yaml` declares the `10`/`300`
+literals SPEC-8/9's sentinel divergence is chosen against, and the single
+`primary:true` output SPEC-15 asserts; `router-rc-classify.sh` owns both
+case statements SPEC-23's seam test stubs against; `disposition.sh` is the
+closed vocabulary `timed_out`/`out_of_turns` are drawn from; the three ADRs
+state the contract being fulfilled, unchanged.
+
+`plugins/agent/review-lens/plugin.sh` and its test remain cited as evidence
+for the SPEC-24 scoping decision but are NOT touched, invalidated, or
+asserted about by this change and are deliberately excluded from scope.
+
+## Acceptance
 Where a design decision above conflicts with the plan, follow the design decision.
 
 ## ACCEPTANCE TESTS (you MUST make these pass)
 The acceptance testfiles listed below are read-only for this stage: the engine denies edits to them, and a mechanical check restores any change. They are the contract you implement against, written before your implementation existed. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion. If you believe an assertion genuinely does not test its SPEC, say so in your output and leave it alone.
 Each test MUST contain an assert call whose label includes the tag for the SPEC it verifies, exactly as listed below (e.g. assert_eq "[#1847/SPEC-1] ..." exp act). The acceptance-gate (ADR-036) requires every SPEC to have an assertion carrying its tag. A CHANGE-behavior SPEC-n MUST have a tagged assertion that FAILS at the merge-base baseline and passes here (a tautological change-SPEC that passes without your implementation is rejected); a GUARD/invariant SPEC-n is tagged but NOT contorted to fail at baseline. See the per-id list below.
-- SPEC-8: tests/unit/monitor-v2-result-test.sh
-- SPEC-9: tests/unit/monitor-v2-result-test.sh
 - SPEC-23: tests/unit/monitor-v2-result-test.sh
 - SPEC-24: tests/unit/monitor-v2-result-test.sh
+- SPEC-8: tests/unit/monitor-v2-result-test.sh
+- SPEC-9: tests/unit/monitor-v2-result-test.sh
 - SPEC-25: tests/unit/monitor-v2-result-test.sh
+- SPEC-22: tests/unit/monitor-v2-result-test.sh
+- SPEC-15: tests/unit/monitor-v2-result-test.sh
 
 What each SPEC requires:
-- [#1847/SPEC-8] the assembled monitor prompt contains a TURN BUDGET block reflecting the manifest's config.router.max_turns (ADR-063 §1), rendered by _monitor_budget_guidance from _route_resolve_max_turns — the same value the router enforces, never hand-copied. Pre-existing; re-cited here so this design's ADR-063 coverage account is complete.
-- [#1847/SPEC-9] the assembled monitor prompt contains a WALL CLOCK BUDGET block reflecting the manifest's config.router.timeout_s (ADR-063 §1), rendered by _monitor_wallclock_guidance from _route_resolve_timeout. Pre-existing; re-cited here for the same reason as SPEC-8.
-- [#1847/SPEC-23] router rc=124 (wall-clock timeout) causes monitor_stage_run to write disposition:timed_out and reason:router_timeout on monitor-report.json, derived via _router_rc_classify + router_reason_disposition (never a hand-copied literal) — distinct from the rc=10 disposition:out_of_turns case (SPEC-21/SPEC-24). Already true at merge-base by code trace (generic rc!=0 branch, no rc=124 special-case bypasses the classifier); tagged guard per the "check the tree" rule, not change.
-- [#1847/SPEC-24] the existing rc=10 (turn-budget exhaustion) path (SPEC-21) additionally carries disposition:out_of_turns and reason:budget_exhausted on monitor-report.json — closing the assertion gap where SPEC-21 proved only the rc collapse to 1 and file existence, never the disposition/reason values.
-- [#1847/SPEC-25] for a live passing run, the v2 monitor-report.json's carried-over health-assessment fields (verdict, data.summary, data.checks) are byte-identical to a pre-migration v1-shaped fixture (monitor-report-v1-baseline.json) once contract-v2-only fields (result_contract, disposition, reason) are excluded from the comparison — deepening SPEC-3's field-presence check into a real diff, proving the v2 migration wraps the health report without altering it.
+- [#1847/SPEC-23] router rc=124 (wall-clock timeout) is classified through the shared _router_rc_classify → router_reason_disposition chokepoint, never a hand-copied literal — proven by stubbing router_reason_disposition to return a distinguishing sentinel for argument "router_timeout" and asserting monitor_stage_run's written monitor-report.json .disposition equals that sentinel (not a hardcoded "timed_out"); reason is "router_timeout" (from _router_rc_classify's own rc=124 case); monitor_stage_run returns rc=1 (never the raw rc=124)
+- [#1847/SPEC-24] router rc=10 (turn-budget exhaustion) continues to write the established literal pair disposition:out_of_turns, reason:budget_exhausted via its own dedicated branch (the same convention plugins/agent/review-lens/plugin.sh uses, intentionally not routed through router_reason_disposition), returning rc=1
+- [#1847/SPEC-8] the assembled monitor prompt's TURN BUDGET block reflects the value _route_resolve_max_turns returns at call time, not a value read a second way from the manifest — proven by stubbing _route_resolve_max_turns to a sentinel (e.g. 77) that diverges from the manifest's max_turns:10 and asserting the prompt echoes the sentinel, not 10
+- [#1847/SPEC-9] the assembled monitor prompt's WALL CLOCK BUDGET block reflects the value _route_resolve_timeout returns at call time, not a value read a second way from the manifest — proven by stubbing _route_resolve_timeout to a sentinel (e.g. 321) that diverges from the manifest's timeout_s:300 and asserting the prompt echoes the sentinel, not 300
+- [#1847/SPEC-25] for a live passing run, the v2 monitor-report.json's carried-over health-assessment fields (verdict, data.summary, data.checks) are byte-identical to the pre-migration v1-shaped baseline fixture
+- [#1847/SPEC-22] monitor's own template accessors (template_stage_router_timeout, template_stage_router_max_turns) continue to outrank monitor's own manifest config.router block when resolving turn/wall-clock budgets — proven by stubbing both accessors to sentinel values that diverge from the manifest's timeout_s:300/max_turns:10 and asserting _route_resolve_timeout/_route_resolve_max_turns return the stub, not the manifest value; this is monitor's instance of the engine-wide template>env>manifest>constant precedence rule (#1816), which monitor must not silently bypass
+- [#1847/SPEC-15] monitor's manifest declares exactly one primary:true output, and it is monitor_report
 
 ### SPEC IDS YOU MUST COVER (acceptance gate, ADR-036)
 Every SPEC id below needs at least one assertion whose label carries its tag (as listed); self-verify the FULL set is tagged before emitting LOOP_COMPLETE. A CHANGE-behavior SPEC (new behavior this change introduces) MUST have a tagged assertion that FAILS at the merge-base baseline. A GUARD/invariant SPEC (behavior that must stay unchanged) is tagged but MUST NOT be contorted to fail at baseline.
-- [#1847/SPEC-8] the assembled monitor prompt contains a TURN BUDGET block reflecting the manifest's config.router.max_turns (ADR-063 §1), rendered by _monitor_budget_guidance from _route_resolve_max_turns — the same value the router enforces, never hand-copied. Pre-existing; re-cited here so this design's ADR-063 coverage account is complete.
-  → needs a `[#1847/SPEC-8]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
-- [#1847/SPEC-9] the assembled monitor prompt contains a WALL CLOCK BUDGET block reflecting the manifest's config.router.timeout_s (ADR-063 §1), rendered by _monitor_wallclock_guidance from _route_resolve_timeout. Pre-existing; re-cited here for the same reason as SPEC-8.
-  → needs a `[#1847/SPEC-9]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
-- [#1847/SPEC-23] router rc=124 (wall-clock timeout) causes monitor_stage_run to write disposition:timed_out and reason:router_timeout on monitor-report.json, derived via _router_rc_classify + router_reason_disposition (never a hand-copied literal) — distinct from the rc=10 disposition:out_of_turns case (SPEC-21/SPEC-24). Already true at merge-base by code trace (generic rc!=0 branch, no rc=124 special-case bypasses the classifier); tagged guard per the "check the tree" rule, not change.
+- [#1847/SPEC-23] router rc=124 (wall-clock timeout) is classified through the shared _router_rc_classify → router_reason_disposition chokepoint, never a hand-copied literal — proven by stubbing router_reason_disposition to return a distinguishing sentinel for argument "router_timeout" and asserting monitor_stage_run's written monitor-report.json .disposition equals that sentinel (not a hardcoded "timed_out"); reason is "router_timeout" (from _router_rc_classify's own rc=124 case); monitor_stage_run returns rc=1 (never the raw rc=124)
   → needs a `[#1847/SPEC-23]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
-- [#1847/SPEC-24] the existing rc=10 (turn-budget exhaustion) path (SPEC-21) additionally carries disposition:out_of_turns and reason:budget_exhausted on monitor-report.json — closing the assertion gap where SPEC-21 proved only the rc collapse to 1 and file existence, never the disposition/reason values.
+- [#1847/SPEC-24] router rc=10 (turn-budget exhaustion) continues to write the established literal pair disposition:out_of_turns, reason:budget_exhausted via its own dedicated branch (the same convention plugins/agent/review-lens/plugin.sh uses, intentionally not routed through router_reason_disposition), returning rc=1
   → needs a `[#1847/SPEC-24]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
-- [#1847/SPEC-25] for a live passing run, the v2 monitor-report.json's carried-over health-assessment fields (verdict, data.summary, data.checks) are byte-identical to a pre-migration v1-shaped fixture (monitor-report-v1-baseline.json) once contract-v2-only fields (result_contract, disposition, reason) are excluded from the comparison — deepening SPEC-3's field-presence check into a real diff, proving the v2 migration wraps the health report without altering it.
+- [#1847/SPEC-8] the assembled monitor prompt's TURN BUDGET block reflects the value _route_resolve_max_turns returns at call time, not a value read a second way from the manifest — proven by stubbing _route_resolve_max_turns to a sentinel (e.g. 77) that diverges from the manifest's max_turns:10 and asserting the prompt echoes the sentinel, not 10
+  → needs a `[#1847/SPEC-8]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-9] the assembled monitor prompt's WALL CLOCK BUDGET block reflects the value _route_resolve_timeout returns at call time, not a value read a second way from the manifest — proven by stubbing _route_resolve_timeout to a sentinel (e.g. 321) that diverges from the manifest's timeout_s:300 and asserting the prompt echoes the sentinel, not 300
+  → needs a `[#1847/SPEC-9]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-25] for a live passing run, the v2 monitor-report.json's carried-over health-assessment fields (verdict, data.summary, data.checks) are byte-identical to the pre-migration v1-shaped baseline fixture
   → needs a `[#1847/SPEC-25]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-22] monitor's own template accessors (template_stage_router_timeout, template_stage_router_max_turns) continue to outrank monitor's own manifest config.router block when resolving turn/wall-clock budgets — proven by stubbing both accessors to sentinel values that diverge from the manifest's timeout_s:300/max_turns:10 and asserting _route_resolve_timeout/_route_resolve_max_turns return the stub, not the manifest value; this is monitor's instance of the engine-wide template>env>manifest>constant precedence rule (#1816), which monitor must not silently bypass
+  → needs a `[#1847/SPEC-22]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1847/SPEC-15] monitor's manifest declares exactly one primary:true output, and it is monitor_report
+  → needs a `[#1847/SPEC-15]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
