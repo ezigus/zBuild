@@ -1,0 +1,8 @@
+{
+  "scope_files": [
+    "plugins/agent/monitor/plugin.sh",
+    "plugins/agent/monitor/tests/fixtures/monitor-report-v1-baseline.json",
+    "tests/unit/monitor-v2-result-test.sh"
+  ],
+  "wiring_files": []
+}
