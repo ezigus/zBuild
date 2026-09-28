@@ -302,7 +302,11 @@ _rr_aggregate() {
         --argjson rank "$_RR_SEV_RANK" \
         --argjson win "$window" '
         . as $lenses
-        | [ $lenses[] as $l | ($l.findings // [])[] | . + {lens: $l.name} ] as $all
+        | [ $lenses[] as $l | ($l.findings // [])[] | . + {lens: $l.name} ] as $every
+        # Pre-existing problems (the code before the change did the same) are
+        # listed, not counted: this change does not answer for them.
+        | [ $every[] | select(.introduced != false) ] as $all
+        | [ $every[] | select(.introduced == false) ] as $old
         | ( $all
             | group_by([.file, .category, ((.line // 0) / $win | floor)])
             | map({
@@ -327,6 +331,13 @@ _rr_aggregate() {
             merge_readiness: $readiness,
             lenses: $lenses,
             findings: $flat,
+            pre_existing: ( $old
+                | group_by([.file, .category, ((.line // 0) / $win | floor)])
+                | map({file: .[0].file, category: .[0].category,
+                       line: ([ .[].line | select(. != null) ] | min),
+                       severity: ( max_by($rank[.severity] // 0) | .severity ),
+                       lenses: ([ .[].lens ] | unique),
+                       messages: ([ .[].message ] | unique)}) ),
             summary: (
               "\($flat | length) merge-readiness finding(s) across "
               + "\($lenses | length) lens(es)"
