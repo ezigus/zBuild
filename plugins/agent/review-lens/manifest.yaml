@@ -61,11 +61,24 @@ config:
     timeout_s: 300 # single-shot advisory; no exploration loop needed
     max_turns: 10  # pattern 1 single-turn; headroom for retry on schema failure
 
+# ADR-032 amendment: the repository's rules, framed for a reviewer — a change
+# that breaks one is a finding; its "facts reviewers need" (what the engine
+# sets, what is trusted) keep a lens from inventing threats.
+prompt:
+  repo_rules: true
+
 inputs:
   - id: scope_manifest
     required: true
   - id: diff_patch
     required: true
+  # What the change was FOR (#1654, #1845 PR #2213): a lens that sees only the
+  # diff cannot tell a defect from what was asked for. Optional — a flow with no
+  # design still reviews.
+  - id: intake_goal
+    required: false
+  - id: design
+    required: false
 
 outputs:
   - id: lens_result

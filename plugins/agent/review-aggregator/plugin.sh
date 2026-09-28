@@ -106,10 +106,13 @@ _ra_normalize_files() {
                   line: (.line | if type=="number" then floor
                                  elif type=="string" then (tonumber? // null)
                                  else null end),
-                  message: (.message // (.|tostring))
+                  message: (.message // (.|tostring)),
+                  # Did the change introduce it? A lens that does not say is
+                  # counted — silence must not hide a finding.
+                  introduced: (if .introduced == false then false else true end)
                 } else {
                   file: "unknown", category: "general", severity: "low",
-                  line: null, message: (.|tostring)
+                  line: null, message: (.|tostring), introduced: true
                 } end ]
             }' "$f" 2>/dev/null \
             >> "$tmp" \
@@ -295,7 +298,11 @@ _ra_aggregate() {
         --argjson rank "$_RA_SEV_RANK" \
         --argjson win "$window" '
         . as $lenses
-        | [ $lenses[] as $l | ($l.findings // [])[] | . + {lens: $l.name} ] as $all
+        | [ $lenses[] as $l | ($l.findings // [])[] | . + {lens: $l.name} ] as $every
+        # Pre-existing problems (the code before the change did the same) are
+        # listed, not counted: this change does not answer for them.
+        | [ $every[] | select(.introduced != false) ] as $all
+        | [ $every[] | select(.introduced == false) ] as $old
         | ( $all
             | group_by([.file, .category, ((.line // 0) / $win | floor)])
             | map({
@@ -320,6 +327,13 @@ _ra_aggregate() {
             merge_readiness: $readiness,
             lenses: $lenses,
             findings: $flat,
+            pre_existing: ( $old
+                | group_by([.file, .category, ((.line // 0) / $win | floor)])
+                | map({file: .[0].file, category: .[0].category,
+                       line: ([ .[].line | select(. != null) ] | min),
+                       severity: ( max_by($rank[.severity] // 0) | .severity ),
+                       lenses: ([ .[].lens ] | unique),
+                       messages: ([ .[].message ] | unique)}) ),
             summary: (
               "\($flat | length) merge-readiness finding(s) across "
               + "\($lenses | length) lens(es)"

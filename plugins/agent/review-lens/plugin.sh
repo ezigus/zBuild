@@ -42,6 +42,9 @@ source "$_RL_ROOT/scripts/lib/test-output-sanitize.sh"
 # ADR-050 (#1581): unified prior-work seam — seed from this lens's prior finding.
 # shellcheck source=../../../scripts/lib/prior-output-reader.sh
 source "$_RL_ROOT/scripts/lib/prior-output-reader.sh"
+# extract_acceptance_block: the SPECs a lens judges the change against.
+# shellcheck source=../../../scripts/lib/acceptance-block.sh
+source "$_RL_ROOT/scripts/lib/acceptance-block.sh"
 # registry.sh is idempotent (guard flag); makes resolve_persona_charter available
 # when _rl_lens_charter is called. Established precedent: plan/plugin.sh:44.
 # shellcheck source=../../../core/plugin-registry/registry.sh
@@ -134,6 +137,36 @@ _review_lens_id() {
 # judges the same basis as `review`; an empty <bundle_fallback> degrades to the
 # incremental diff.patch. Returns a path that may not exist; the caller checks
 # readability + redacts it.
+# _rl_input <id> — the path the engine's input index names, or empty.
+_rl_input() {
+    [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]] || return 0
+    jq -r --arg id "$1" '.inputs[$id] // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true
+}
+
+# _rl_context [scope_manifest] — what the change was for: the issue, its SPECs,
+# and the planned scope, each bounded and sanitised like the evidence. Every
+# piece is optional; an absent one is simply left out.
+_rl_context() {
+    local scope="${1:-}" f out="" _txt
+    f="$(_rl_input intake_goal)"
+    if [[ -n "$f" && -s "$f" ]]; then
+        _txt="$(head -c 6000 "$f" | _zbuild_sanitize_for_llm)"
+        out+=$'## THE ISSUE (what was asked for)\n'"$_txt"$'\n\n'
+    fi
+    f="$(_rl_input design)"
+    if [[ -n "$f" && -s "$f" ]] && declare -F extract_acceptance_block >/dev/null 2>&1; then
+        _txt="$(extract_acceptance_block "$f" 2>/dev/null || true)"
+        _txt="$(printf '%s' "${_txt:0:6000}" | _zbuild_sanitize_for_llm)"
+        [[ -n "$_txt" ]] && out+=$'## THE ACCEPTANCE CONTRACT (the SPECs the change had to meet)\n'"$_txt"$'\n\n'
+    fi
+    [[ -n "$scope" ]] || scope="$(_rl_input scope_manifest)"
+    if [[ -n "$scope" && -s "$scope" ]]; then
+        _txt="$(head -c 4000 "$scope" | _zbuild_sanitize_for_llm)"
+        out+=$'## THE PLANNED SCOPE (files the plan expected to change)\n'"$_txt"$'\n'
+    fi
+    printf '%s' "$out"
+}
+
 _review_lens_evidence_path() {
     local lens="$1" artifact_dir="$2" bundle_fallback="${3:-}" candidate
     [[ -n "$bundle_fallback" ]] || bundle_fallback="$artifact_dir/diff.patch"
@@ -212,24 +245,10 @@ _review_lens_run_inner() {
     fi
 
     # ─── Build the single-lens prompt ──────────────────────────────────────
-    local prompt; prompt="$(_rl_build_lens_prompt "$lens" "$evidence_content")"
+    local prompt; prompt="$(_rl_build_lens_prompt "$lens" "$evidence_content" "$(_rl_context "${2:-}")")"
+    # No PRIOR REVIEW: a lens is not shown its own earlier verdict, as no
+    # judging stage is (#2212) — it re-judges from the change, not from itself.
 
-    # ADR-050 (#1581): seed from THIS lens's prior-run finding (keyed on
-    # lens-<id>.json) so a re-run's review references what the same lens flagged
-    # before instead of starting blind. Advisory — re-judge against the CURRENT
-    # diff; sanitized like the evidence. Gated on ZBUILD_RESTORED_ARTIFACTS_DIR so
-    # it fires ONLY on a genuine cross-run restore (never this run's own lens output).
-    local _prior_lens=""
-    if [[ -n "${ZBUILD_RESTORED_ARTIFACTS_DIR:-}" ]]; then
-        _prior_lens="$(_read_prior_output "lens-${lens}.json" 2>/dev/null || true)"
-    fi
-    if [[ -n "${_prior_lens//[[:space:]]/}" ]]; then
-        _prior_lens="$(printf '%s' "$_prior_lens" | _zbuild_sanitize_for_llm)"
-        prompt+=$'\n\n## PRIOR REVIEW (this lens on a previous attempt — reference; RE-JUDGE against the current diff)\n'
-        prompt+="$_prior_lens"$'\n'
-    fi
-
-    # ─── ADR-063 §1: inject budget guidance before the model call ──────────
     local _budget_max_turns; _budget_max_turns="$(_route_resolve_max_turns)"
     local _budget_timeout_s; _budget_timeout_s="$(_route_resolve_timeout)"
     local _budget_elapsed_s=$(( SECONDS - _rl_start_s ))

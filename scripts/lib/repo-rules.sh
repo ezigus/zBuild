@@ -53,6 +53,19 @@ _repo_rules_strip_comments() {
           started = 1; print line }'
 }
 
+# _repo_rules_stage_writes <manifest> — rc 0 when the stage declares
+# capabilities.writes_repository: true. Same rule as stage_declares_repo_writes
+# (core/pipeline/input-resolve.sh) and _wb_declares_repo_writes
+# (core/pipeline/write-boundary-repo.sh) — keep the three in step.
+_repo_rules_stage_writes() {
+    local manifest="${1:-}"
+    [[ -n "$manifest" && -f "$manifest" ]] || return 1
+    awk '
+        /^[^[:space:]#]/ { inblk = ($0 ~ /^capabilities:[[:space:]]*(#.*)?$/); next }
+        inblk && /^[[:space:]]+writes_repository:[[:space:]]*true[[:space:]]*(#.*)?$/ { found = 1 }
+        END { exit(found ? 0 : 1) }' "$manifest" 2>/dev/null
+}
+
 # repo_rules_prompt_block <manifest> <repo_root> — the block for a declaring
 # stage; empty (and the prompt unchanged) for any other.
 repo_rules_prompt_block() {
@@ -71,7 +84,14 @@ repo_rules_prompt_block() {
 
     printf '%s\n\n' "$_ZB_REPO_RULES_MARKER"
     printf '%s\n' "$source_line"
-    printf 'Every file you write must follow them, and must pass the repository'\''s\n'
-    printf 'own lint and guard tests.\n\n'
+    if _repo_rules_stage_writes "$manifest"; then
+        printf 'Every file you write must follow them, and must pass the repository'\''s\n'
+        printf 'own lint and guard tests.\n\n'
+    else
+        # A stage that does not write the repository reviews against them.
+        printf 'You do not write files; judge against them:\n'
+        printf 'a change that breaks one is a finding.\n'
+        printf 'Facts stated here are true of this repository — do not report them as risks.\n\n'
+    fi
     printf '%s\n' "$body"
 }
