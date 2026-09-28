@@ -4,11 +4,10 @@
   "disposition": "complete",
   "reason": "design_produced",
   "data": {
-    "authored_at": "2026-09-28T14:16:43Z",
-    "authored_at_commit": "3a505dbce424a17c54d5461163f1ef8b86e3bbef",
+    "authored_at": "2026-09-28T17:44:07Z",
+    "authored_at_commit": "2ab6174df856f205432e8e3a60d0acb5fd48e47b",
     "wiring_files": [
-      "plugins/agent/deploy/manifest.yaml",
-      "tests/integration/deployed-template-e2e-test.sh"
+      "plugins/agent/deploy/manifest.yaml"
     ]
   }
 }

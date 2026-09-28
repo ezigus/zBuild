@@ -2,38 +2,15 @@
 
 ## Architectural Decision Summary
 
-**Goal:** Migrate `plugins/agent/deploy` to the v2 result contract (ADR-054, ADR-055, ADR-060):
-every terminal exit path writes `{result_contract:2, verdict, disposition, reason, data}`;
-input resolution via `ZBUILD_STAGE_INPUTS`; output path from `ZBUILD_ARTIFACT_DIR`; rc ∈ {0,1};
-explicit disposition values; and `result_contract:2` in the manifest `provides` block.
+**Goal:** Migrate `plugins/agent/deploy` to the v2 result contract (ADR-055 §1, ADR-060): every terminal exit path writes `{result_contract:2, verdict, disposition, reason, data}`; input resolution via `ZBUILD_STAGE_INPUTS`; output path from `ZBUILD_ARTIFACT_DIR`; rc ∈ {0,1}; explicit disposition values; `result_contract:2` in the manifest `provides` block.
 
-**Context:** The deploy plugin still uses the v1 pattern throughout `plugin.sh`:
-- All result writes use `schema_version:1` (five call-sites: missing pr_url, dry-run, missing gate, gate-not-pass/skipped, deploy-release failure, deploy-release absent).
-- Paths are derived from `state_file` arg: `local artifacts_dir="$state_dir/artifacts"` at line 52, hardcoding `pr-url.txt` and `gate-aggregator-result.json` at lines 54–55.
-- Error paths return rc=2 (lines 67, 96, 146) — ADR-054 requires rc ∈ {0,1}.
-- The manifest `provides` block has no `result_contract` field.
-- The unit test (`deploy-test.sh`) asserts `schema_version=1` (SPEC-7) and `rc=2` for missing gate (SPEC-8) — both will need inversion.
-- The integration test (`deployed-template-e2e-test.sh`) dispatches deploy without `ZBUILD_STAGE_INPUTS` or `ZBUILD_ARTIFACT_DIR` (unlike validate, which already uses `_inputs_resolve_stage` at lines 211–215).
+**Context:** The deploy plugin was last touched for issue #757 (gate-bypass hardening). It still uses the v1 pattern: output path derived from the state_file argument, inputs constructed via hardcoded `$artifacts_dir/pr-url.txt` and `$artifacts_dir/gate-aggregator-result.json`, and result shape with `schema_version` not `result_contract`. The integration test (`deployed-template-e2e-test.sh`) dispatches the plugin directly without supplying `ZBUILD_ARTIFACT_DIR` or `ZBUILD_STAGE_INPUTS` — which worked for v1 (path derived from state_file) but breaks after the v2 migration.
 
-**Router-budget absence pattern:** The deploy plugin makes no LLM calls (manifest description:
-"No LLM calls (no route_to_model)"). The v2 migration pattern for such plugins — established by
-`deploy-release` in #1849 (lines 13–16 of its manifest) — is to add an explicit comment recording
-the deliberate absence: "router budgets: none. T2 agent, no model call (ADR-037 §3), so there is no
-router block to resolve from the manifest." This comment is the manifest's statement that router
-budgets RESOLVE FROM THE MANIFEST to empty; any template-declared router value therefore takes
-precedence with no manifest conflict. SPEC-15 and SPEC-24 together cover this acceptance checkbox.
+**Decision:** Update manifest, plugin.sh, and unit tests for v2 contract. Additionally update `tests/integration/deployed-template-e2e-test.sh` to supply `ZBUILD_ARTIFACT_DIR` and `ZBUILD_STAGE_INPUTS` before calling `deploy_agent_run`, matching how `lifecycle.sh` dispatches plugins in production. Update `docs/wiki/plugins/deploy.md` to reflect the v2 manifest shape.
 
-**ADR-055 amendment (2026-09-28, current HEAD):** The amendment adds `under_review: true` input
-marker and finding-ownership logic. The validate plugin (migrated in #1845) already marks its
-`deploy_result` input `under_review: true`, making deploy the finding owner for validate's
-judgments. This is the validate plugin's concern and requires no change to the deploy manifest
-for this migration. The amendment is noted as context only; it does not alter the v2 migration scope.
+**SPEC classification correction:** SPEC-2, SPEC-3, SPEC-4 were labelled `[guard]` but each FAILS at the merge-base baseline (v1 plugin does not read `ZBUILD_STAGE_INPUTS`; the unit test's `_make_state` helper puts inputs there, so the v1 plugin never finds pr_url or gate file). These are genuine `[change]` behaviors introduced by this migration, not invariants that hold at the baseline.
 
-**Decision:** Update manifest, plugin.sh, and unit tests for v2 contract. Update
-`tests/integration/deployed-template-e2e-test.sh` to supply `ZBUILD_ARTIFACT_DIR` and
-`ZBUILD_STAGE_INPUTS` before calling `deploy_agent_run`, matching the production dispatch path
-(`lifecycle.sh` / `_inputs_resolve_stage`). Update `docs/wiki/plugins/deploy.md` to reflect
-the v2 manifest shape.
+**Iteration note:** Prior WIRING declared `tests/integration/deployed-template-e2e-test.sh` alongside `plugins/agent/deploy/manifest.yaml`. The acceptance-gate flagged it as inert: SPEC-23's TESTFILE is that same e2e test file, so reverting the WIRING also reverts the testfile — no assertion can flip. Removed from WIRING. The manifest.yaml alone is the load-bearing wiring (REACHABILITY PASS confirmed). Added SPEC-24 which test-author authored in the unit test (confirmed by acceptance-gate NEGCTL PASS) but which was absent from the prior design's acceptance block.
 
 ```scope
 plugins/agent/deploy/manifest.yaml
@@ -43,16 +20,14 @@ tests/integration/deployed-template-e2e-test.sh
 docs/wiki/plugins/deploy.md
 docs/adr/ADR-055-inter-stage-data-contract-v2.md
 docs/adr/ADR-060-stages-return-structure.md
-docs/adr/ADR-054-stage-contract.md
 core/plugin-registry/lifecycle.sh
-config/templates/deployed.yaml
 ```
 
 ```acceptance
 SPEC-1[guard]: deploy plugin.sh exists and deploy_agent_run is defined after source
-SPEC-2[change]: ZBUILD_DRY_RUN=1 writes deploy-result.json with verdict=deployed (test uses ZBUILD_STAGE_INPUTS dispatch)
-SPEC-3[change]: missing pr_url input → deploy_agent_run exits non-zero and writes verdict=error (test uses ZBUILD_STAGE_INPUTS dispatch)
-SPEC-4[change]: gate verdict=fail → deploy-result.json verdict=skipped (fail-closed allowlist; test uses ZBUILD_STAGE_INPUTS dispatch)
+SPEC-2[change]: ZBUILD_DRY_RUN=1 writes deploy-result.json with verdict=deployed
+SPEC-3[change]: missing pr_url input → deploy_agent_run exits non-zero and writes verdict=error
+SPEC-4[change]: gate verdict=fail → deploy-result.json verdict=skipped (fail-closed allowlist)
 SPEC-5[guard]: plugin.sh has "Role: deploy_agent" preamble comment
 SPEC-6[guard]: no route_to_model call in non-comment code
 SPEC-7[change]: dry-run deploy-result.json carries result_contract=2 (not schema_version=1)
@@ -63,7 +38,7 @@ SPEC-11[change]: plugin.sh derives output path from ZBUILD_ARTIFACT_DIR; no stat
 SPEC-12[change]: pr_url and gate_aggregator_result resolved via ZBUILD_STAGE_INPUTS; plugin.sh constructs no pr-url.txt or gate-aggregator-result.json path
 SPEC-13[change]: all error exit paths return rc=1; no exit path returns rc=2 or higher
 SPEC-14[change]: all three valid verdicts (deployed, error, skipped) are exercised with v2-shaped result in tests
-SPEC-15[guard]: manifest has no config.router block (deploy makes no LLM calls, T2 for guard/orchestration only); manifest_router_knob returns empty for timeout_s and max_turns; any template-declared router value therefore takes precedence with no manifest conflict — satisfying the acceptance criterion that router budgets resolve from the manifest (they resolve to empty) and template overrides win where one is set
+SPEC-15[guard]: manifest has no config.router block; manifest_router_knob returns empty for timeout_s and max_turns
 SPEC-16[guard]: manifest outputs.deploy_result retains primary: true
 SPEC-17[guard]: manifest provides.role = deploy_agent; provides.events = exactly the four declared events
 SPEC-18[guard]: manifest hooks block declares only run: deploy_agent_run; no cleanup: entry
@@ -72,10 +47,9 @@ SPEC-20[change]: deploy-release returns non-zero → deploy-result.json disposit
 SPEC-21[change]: deploy-release plugin file absent → deploy-result.json disposition=broken
 SPEC-22[guard]: manifest config.valid_verdicts lists exactly the three emittable verdicts: deployed, error, skipped
 SPEC-23[change]: with ZBUILD_ARTIFACT_DIR set to a non-default path before deploy_agent_run, the result is written to ZBUILD_ARTIFACT_DIR (not a state-file-derived path); deploy_agent_run exits 0 in dry-run when both ZBUILD_ARTIFACT_DIR and ZBUILD_STAGE_INPUTS are supplied
-SPEC-24[change]: manifest carries the router-budget-absence comment documenting that deploy makes no LLM calls (matching the deploy-release v2 pattern from #1849); the comment records "router budgets: none" and references ADR-037 §3
+SPEC-24[change]: manifest carries router-budget-absence comment documenting that deploy makes no LLM calls (strings "router budgets: none" and "ADR-037 §3" present in manifest)
 WIRING:
 plugins/agent/deploy/manifest.yaml
-tests/integration/deployed-template-e2e-test.sh
 TESTFILES:
 SPEC-1: plugins/agent/deploy/tests/deploy-test.sh
 SPEC-2: plugins/agent/deploy/tests/deploy-test.sh
