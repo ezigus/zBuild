@@ -16,15 +16,16 @@
 #   config.valid_verdicts remains exactly [pass, degraded]
 #   inputs: declares only {deploy_result, pr_url}, both required:false, no restated source/path/type
 #   ZBUILD_STAGE_INPUTS-resolved deploy_result/pr_url win over the hardcoded artifacts_dir paths
-#   outputs: block still declares exactly one primary:true entry
+#   [#1847/SPEC-15] outputs: block still declares exactly one primary:true entry
 #   provides.role: monitor unchanged
 #   no hardcoded artifacts_dir deploy-result/pr-url construction; no fallback path
 #   manifest declares no top-level cleanup: key; ADR-054 §7 comment present
 #   reason field always present (empty string) on every complete-disposition exit path
 #   monitor_stage_run never returns an rc outside {0,1}
-#   template accessor still outranks monitor's own manifest config.router
-#   [#1847/SPEC-23] router rc=124 (wall-clock timeout) writes disposition:timed_out,
-#                   reason:router_timeout — distinct from the rc=10 out_of_turns case
+#   [#1847/SPEC-22] template accessor still outranks monitor's own manifest config.router
+#   [#1847/SPEC-23] router rc=124 (wall-clock timeout) is classified through the shared
+#                   _router_rc_classify -> router_reason_disposition chokepoint (sentinel-stub
+#                   proof), distinct from the rc=10 out_of_turns case
 #   [#1847/SPEC-24] rc=10 (turn-budget) path additionally carries disposition:out_of_turns,
 #                   reason:budget_exhausted
 #   [#1847/SPEC-25] live pass-path verdict/data.summary/data.checks are byte-identical to a
@@ -116,10 +117,10 @@ _s12_restated="$(grep -cE '^\s*(source|path|type):' <<< "$_s12_inputs" 2>/dev/nu
 assert_eq "inputs: no restated source/path/type keys" "0" "$_s12_restated"
 
 # ─── SPEC-15: outputs: block still declares exactly one primary:true entry ───
-print_test_section "outputs: block declares exactly one primary:true entry (monitor_report)"
+print_test_section "[#1847/SPEC-15] outputs: block declares exactly one primary:true entry (monitor_report)"
 
 _s15_primary_count="$(grep -c 'primary:[[:space:]]*true' "$MON_MANIFEST" 2>/dev/null || true)"
-assert_eq "manifest has exactly one primary:true output" "1" "$_s15_primary_count"
+assert_eq "[#1847/SPEC-15] manifest has exactly one primary:true output" "1" "$_s15_primary_count"
 
 _s15_primary_stanza="$(awk '
     /^  - id: monitor_report/ { found=1 }
@@ -127,9 +128,9 @@ _s15_primary_stanza="$(awk '
     found { print }
 ' "$MON_MANIFEST" 2>/dev/null || true)"
 if grep -q 'primary:[[:space:]]*true' <<< "$_s15_primary_stanza"; then
-    assert_pass "the primary:true output is monitor_report"
+    assert_pass "[#1847/SPEC-15] the primary:true output is monitor_report"
 else
-    assert_fail "the primary:true output is monitor_report" "${_s15_primary_stanza:-absent}"
+    assert_fail "[#1847/SPEC-15] the primary:true output is monitor_report" "${_s15_primary_stanza:-absent}"
 fi
 
 # ─── SPEC-16: provides.role: monitor unchanged ───────────────────────────────
@@ -306,33 +307,48 @@ assert_eq "disposition is interrupted" "interrupted" \
 assert_eq "reason is signal_interrupt" "signal_interrupt" \
     "$(jq -r '.reason // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
 
-# ─── SPEC-8/SPEC-9: TURN BUDGET / WALL CLOCK BUDGET blocks in the assembled prompt ─
-print_test_section "[#1847/SPEC-8/SPEC-9] assembled prompt contains TURN BUDGET and WALL CLOCK BUDGET blocks reflecting the manifest's router budget"
+# ─── SPEC-8/SPEC-9: TURN BUDGET / WALL CLOCK BUDGET blocks reflect the value ──
+# _route_resolve_max_turns / _route_resolve_timeout return AT CALL TIME — proven
+# by stubbing each to a sentinel that diverges from the manifest's own
+# max_turns:10 / timeout_s:300 (SPEC-7), so a prompt that merely re-read the
+# manifest a second way could not pass.
+print_test_section "[#1847/SPEC-8/SPEC-9] assembled prompt echoes the _route_resolve_* sentinel, not the manifest value read a second way"
 
 rm -f "$ARTIFACTS_DIR/monitor-report.json"
 : > "$_CAPTURED_PROMPT_FILE"
 MOCK_ROUTE_RC=0
 MOCK_ROUTE_RESPONSE='{"schema_version":1,"verdict":"pass","summary":"deployment healthy","checks":[]}'
-export ZBUILD_PLUGIN_DIR="$PLUGIN_DIR"
-unset ZBUILD_ROUTER_TIMEOUT ZBUILD_ROUTER_MAX_TURNS ZBUILD_ROUTER_MAX_TURNS_OVERRIDE ZBUILD_CURRENT_STAGE 2>/dev/null || true
+
+_S89_TURNS_SENTINEL=77
+_S89_TIMEOUT_SENTINEL=321
+_s89_orig_max_turns="$(declare -f _route_resolve_max_turns)"
+_s89_orig_timeout="$(declare -f _route_resolve_timeout)"
+# shellcheck disable=SC2329
+_route_resolve_max_turns() { printf '%s' "$_S89_TURNS_SENTINEL"; }
+# shellcheck disable=SC2329
+_route_resolve_timeout()   { printf '%s' "$_S89_TIMEOUT_SENTINEL"; }
+
 set +e
 monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
 set -e
-unset ZBUILD_PLUGIN_DIR
+eval "$_s89_orig_max_turns"
+eval "$_s89_orig_timeout"
 
 _s89_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
 _s89_turn_block="$(grep -i -A6 "TURN BUDGET" <<< "$_s89_prompt" 2>/dev/null || true)"
-if [[ -n "$_s89_turn_block" ]] && grep -q '10' <<< "$_s89_turn_block"; then
-    assert_pass "[#1847/SPEC-8] prompt contains a TURN BUDGET block reflecting the manifest's max_turns:10"
+if [[ -n "$_s89_turn_block" ]] && grep -q "$_S89_TURNS_SENTINEL" <<< "$_s89_turn_block" \
+        && ! grep -q '10' <<< "$_s89_turn_block"; then
+    assert_pass "[#1847/SPEC-8] prompt's TURN BUDGET block echoes the _route_resolve_max_turns sentinel (77), not the manifest's max_turns:10"
 else
-    assert_fail "[#1847/SPEC-8] prompt must contain a TURN BUDGET block reflecting max_turns:10" \
+    assert_fail "[#1847/SPEC-8] prompt's TURN BUDGET block must echo the _route_resolve_max_turns sentinel (77), not max_turns:10" \
         "${_s89_turn_block:-absent}"
 fi
 _s89_wc_block="$(grep -i -A6 "WALL CLOCK BUDGET" <<< "$_s89_prompt" 2>/dev/null || true)"
-if [[ -n "$_s89_wc_block" ]] && grep -q '300' <<< "$_s89_wc_block"; then
-    assert_pass "[#1847/SPEC-9] prompt contains a WALL CLOCK BUDGET block reflecting the manifest's timeout_s:300"
+if [[ -n "$_s89_wc_block" ]] && grep -q "$_S89_TIMEOUT_SENTINEL" <<< "$_s89_wc_block" \
+        && ! grep -q '300' <<< "$_s89_wc_block"; then
+    assert_pass "[#1847/SPEC-9] prompt's WALL CLOCK BUDGET block echoes the _route_resolve_timeout sentinel (321), not the manifest's timeout_s:300"
 else
-    assert_fail "[#1847/SPEC-9] prompt must contain a WALL CLOCK BUDGET block reflecting timeout_s:300" \
+    assert_fail "[#1847/SPEC-9] prompt's WALL CLOCK BUDGET block must echo the _route_resolve_timeout sentinel (321), not timeout_s:300" \
         "${_s89_wc_block:-absent}"
 fi
 
@@ -446,27 +462,44 @@ assert_eq "[#1847/SPEC-24] rc=10 (turn-budget) path: disposition is out_of_turns
 assert_eq "[#1847/SPEC-24] rc=10 (turn-budget) path: reason is budget_exhausted" "budget_exhausted" \
     "$(jq -r '.reason // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
 
-# ─── SPEC-23: router rc=124 (wall-clock timeout) writes disposition:timed_out ─
-print_test_section "[#1847/SPEC-23] router rc=124 (wall-clock timeout) causes monitor_stage_run to write disposition:timed_out, reason:router_timeout"
+# ─── SPEC-23: router rc=124 classified through the shared _router_rc_classify ─
+# → router_reason_disposition chokepoint, never a hand-copied literal — proven
+# by stubbing router_reason_disposition to return a sentinel for argument
+# "router_timeout" and asserting the written disposition equals that sentinel,
+# not a hardcoded "timed_out" that would pass even if the chokepoint were
+# bypassed.
+print_test_section "[#1847/SPEC-23] router rc=124 (wall-clock timeout) is classified through the shared _router_rc_classify -> router_reason_disposition chokepoint"
 
 rm -f "$ARTIFACTS_DIR/monitor-report.json"
+_S23_SENTINEL="SENTINEL_ROUTER_TIMEOUT_9f3c"
+_s23_orig_disposition="$(declare -f router_reason_disposition)"
+# shellcheck disable=SC2329
+router_reason_disposition() {
+    if [[ "${1-}" == "router_timeout" ]]; then
+        printf '%s' "$_S23_SENTINEL"
+    else
+        printf 'unavailable'
+    fi
+}
 MOCK_ROUTE_RC=124
 MOCK_ROUTE_RESPONSE=""
 set +e
 monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
 _s23_rc=$?
 set -e
+eval "$_s23_orig_disposition"
 
 assert_eq "[#1847/SPEC-23] rc=124 (wall-clock timeout) path: monitor_stage_run returns rc=1 (not the raw router rc=124)" \
     "1" "$_s23_rc"
 assert_file_exists "[#1847/SPEC-23] monitor-report.json written on rc=124 path" "$ARTIFACTS_DIR/monitor-report.json"
-assert_eq "[#1847/SPEC-23] rc=124 (wall-clock timeout) path: disposition is timed_out" "timed_out" \
+assert_eq "[#1847/SPEC-23] rc=124 path: disposition equals the router_reason_disposition sentinel, not a hardcoded timed_out" \
+    "$_S23_SENTINEL" \
     "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
-assert_eq "[#1847/SPEC-23] rc=124 (wall-clock timeout) path: reason is router_timeout" "router_timeout" \
-    "$(jq -r '.reason // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
+assert_eq "[#1847/SPEC-23] rc=124 path: reason is router_timeout (from _router_rc_classify's own rc=124 case)" \
+    "router_timeout" "$(jq -r '.reason // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
 
 # ─── SPEC-22: template accessor still outranks monitor's own manifest config.router ─
-print_test_section "template_stage_router_timeout/max_turns still outrank monitor's manifest config.router (SPEC-7)"
+print_test_section "[#1847/SPEC-22] template_stage_router_timeout/max_turns still outrank monitor's manifest config.router (SPEC-7)"
 
 _s22_manifest_timeout="$(awk '/^[[:space:]]*router:/{f=1;next} f&&/timeout_s:/{print $2;exit}' "$MON_MANIFEST" 2>/dev/null || true)"
 _s22_manifest_maxturns="$(awk '/^[[:space:]]*router:/{f=1;next} f&&/max_turns:/{print $2;exit}' "$MON_MANIFEST" 2>/dev/null || true)"
@@ -489,9 +522,9 @@ export ZBUILD_PLUGIN_DIR="$PLUGIN_DIR"
 export ZBUILD_CURRENT_STAGE="monitor"
 unset ZBUILD_ROUTER_TIMEOUT ZBUILD_ROUTER_MAX_TURNS ZBUILD_ROUTER_MAX_TURNS_OVERRIDE 2>/dev/null || true
 
-assert_eq "_route_resolve_timeout returns the STUBBED template value, not the manifest's" \
+assert_eq "[#1847/SPEC-22] _route_resolve_timeout returns the STUBBED template value, not the manifest's" \
     "111" "$(_route_resolve_timeout)"
-assert_eq "_route_resolve_max_turns returns the STUBBED template value, not the manifest's" \
+assert_eq "[#1847/SPEC-22] _route_resolve_max_turns returns the STUBBED template value, not the manifest's" \
     "12" "$(_route_resolve_max_turns)"
 
 unset -f template_stage_router_timeout template_stage_router_max_turns 2>/dev/null || true
