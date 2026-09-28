@@ -23,6 +23,10 @@
 #             are listed separately; a finding that does not say is counted
 # C8 [change] lenses are given the repository's rules, framed for a reviewer
 # C9 [change] the scope lens does not report planned-but-untouched files
+# C10 [change] end to end: a lens that says introduced:false produces a result
+#              file that still says so, and the aggregator lists it as
+#              pre-existing (review on #2215: the lens's own normalization
+#              dropped the field, and C7 fed the aggregator by hand)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -126,6 +130,16 @@ if grep -qiE "untouched|did not touch" <<< "$_scope"; then
 else
     assert_contains "[C9] it still reports unplanned edits" "$_scope" "did not list"
 fi
+
+print_test_section "C10: introduced survives the lens's own result file"
+route_to_model() { printf '%s' '{"score":7,"findings":[{"file":"a.sh","category":"x","severity":"medium","line":3,"message":"OLD-BEHAVIOUR","introduced":false},{"file":"b.sh","category":"y","severity":"low","line":5,"message":"NEW-THING","introduced":true}]}'; return 0; }
+_review_lens_run_inner red-team "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-red-team.json" "$ART" >/dev/null 2>&1 || true
+assert_eq "[C10] the lens's result keeps introduced:false" "false" \
+    "$(jq -r '[.findings[] | select(.message == "OLD-BEHAVIOUR") | .introduced][0] | tostring' "$ART/lens-red-team.json" 2>/dev/null || true)"
+jq -n --slurpfile l "$ART/lens-red-team.json" '[{name:"red-team", score:7, findings:$l[0].findings}]' > "$TEST_TEMP_DIR/l10.json"
+AGG10="$(_ra_aggregate "$TEST_TEMP_DIR/l10.json" 2>/dev/null || true)"
+assert_eq "[C10] ...and the aggregator lists it as pre-existing" "OLD-BEHAVIOUR" \
+    "$(jq -r '.pre_existing[0].messages[0] // empty' <<< "$AGG10" 2>/dev/null || true)"
 
 cleanup_test_env
 print_test_results

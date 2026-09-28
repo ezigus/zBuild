@@ -222,8 +222,9 @@ review_lens_run() {
 # Args: $1=lens  $2=scope_manifest  $3=evidence(file)  $4=out lens-<name>.json
 #       $5=(optional) artifact dir for the intermediate redacted prompt
 _review_lens_run_inner() {
-    # $2 (scope_manifest) is accepted for call-compat but no longer read: ADR-043
-    # makes the router redact the assembled prompt by construction.
+    # $2 is the scope manifest: its content goes into the lens prompt as the
+    # planned scope (_rl_context, ADR-038 amendment). Redaction of the assembled
+    # prompt is the router's, by construction (ADR-043).
     local lens="$1" evidence="$3" out="$4"
     local artifact_dir="${5:-$(dirname "$out")}"
     local _rl_start_s="$SECONDS"
@@ -376,10 +377,13 @@ _review_lens_run_inner() {
                          | ["low","medium","high","critical"] | index($s)
                          then (.severity|tostring|ascii_downcase) else "low" end),
               line: (.line // null),
-              message: (.message // (.|tostring))
+              message: (.message // (.|tostring)),
+              # ADR-038 amendment: whether the change introduced it. Kept here —
+              # dropping it made every finding count as new (review on #2215).
+              introduced: (if .introduced == false then false else true end)
             } else {
               file: "unknown", category: "general", severity: "low",
-              line: null, message: (.|tostring)
+              line: null, message: (.|tostring), introduced: true
             } end ],
           verdict: "complete",
           disposition: "complete",
