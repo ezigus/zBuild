@@ -1,0 +1,8 @@
+{
+  "scope_files": [
+    "plugins/agent/deploy/manifest.yaml",
+    "plugins/agent/deploy/plugin.sh",
+    "plugins/agent/deploy/tests/deploy-test.sh"
+  ],
+  "wiring_files": []
+}
