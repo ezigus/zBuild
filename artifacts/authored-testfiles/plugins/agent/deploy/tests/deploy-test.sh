@@ -157,11 +157,12 @@ fi
 # ---------------------------------------------------------------------------
 # SPEC-5 [#1846/SPEC-5]: plugin.sh has "Role: deploy_agent" preamble comment
 # ---------------------------------------------------------------------------
-if grep -q "Role: deploy_agent" "$PLUGIN_FILE"; then
-    assert_pass "[#1846/SPEC-5] deploy plugin.sh has 'Role: deploy_agent' preamble"
+_s5_preamble="$(head -20 "$PLUGIN_FILE" 2>/dev/null || true)"
+if grep -qE '^[[:space:]]*#[[:space:]]*Role:[[:space:]]*deploy_agent' <<< "$_s5_preamble"; then
+    assert_pass "[#1846/SPEC-5] deploy plugin.sh has '# Role: deploy_agent' as a comment in preamble (first 20 lines)"
 else
-    assert_fail "[#1846/SPEC-5] deploy plugin.sh must have 'Role: deploy_agent' preamble" \
-        "line not found in $PLUGIN_FILE"
+    assert_fail "[#1846/SPEC-5] deploy plugin.sh must have '# Role: deploy_agent' as a comment line in preamble" \
+        "not found as comment line in first 20 lines of $PLUGIN_FILE"
 fi
 
 # ---------------------------------------------------------------------------
@@ -329,23 +330,18 @@ assert_eq "[#1846/SPEC-22] manifest config.valid_verdicts declares exactly 3 ver
 # SPEC-24 [#1846/SPEC-24]: manifest carries router-budget-absence comment
 #                          with "router budgets: none" and ADR-037 §3
 # ---------------------------------------------------------------------------
-if grep -q 'router budgets: none' "$_MANIFEST"; then
+_s24_ctx="$(grep -B2 -A3 'router budgets: none' "$_MANIFEST" 2>/dev/null || true)"
+if [[ -n "$_s24_ctx" ]]; then
     assert_pass "[#1846/SPEC-24] manifest carries 'router budgets: none' comment"
 else
     assert_fail "[#1846/SPEC-24] manifest must carry 'router budgets: none' comment" \
         "not found in $_MANIFEST"
 fi
-if grep -q 'ADR-037' "$_MANIFEST"; then
-    assert_pass "[#1846/SPEC-24] manifest router-budget comment references ADR-037"
+if grep -q 'ADR-037' <<< "$_s24_ctx" && grep -q '§3' <<< "$_s24_ctx"; then
+    assert_pass "[#1846/SPEC-24] manifest router-budget comment has 'ADR-037 §3' near 'router budgets: none'"
 else
-    assert_fail "[#1846/SPEC-24] manifest router-budget comment must reference ADR-037" \
-        "ADR-037 not found in $_MANIFEST"
-fi
-if grep -q '§3' "$_MANIFEST"; then
-    assert_pass "[#1846/SPEC-24] manifest router-budget comment references §3 of ADR-037"
-else
-    assert_fail "[#1846/SPEC-24] manifest router-budget comment must reference §3 of ADR-037" \
-        "§3 not found in $_MANIFEST"
+    assert_fail "[#1846/SPEC-24] manifest comment near 'router budgets: none' must reference both ADR-037 and §3" \
+        "${_s24_ctx:-absent}"
 fi
 
 # ===========================================================================
