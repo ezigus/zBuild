@@ -99,9 +99,7 @@ DESIGN SCOPE BLOCK:
 - docs/wiki/plugins/deploy.md
 - docs/adr/ADR-055-inter-stage-data-contract-v2.md
 - docs/adr/ADR-060-stages-return-structure.md
-- docs/adr/ADR-054-stage-contract.md
 - core/plugin-registry/lifecycle.sh
-- config/templates/deployed.yaml
 
 ## PRIOR IMPACT (a previous attempt on this issue — reference & refine; re-validate against the CURRENT design)
 {"schema_version":1,"verdict":"complete","missing":[]}
