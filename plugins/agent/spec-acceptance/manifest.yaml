@@ -119,6 +119,7 @@ config:
     - no_testfile
     - no_testfiles
     - not_passing_at_head
+    - killed_by_signal
     - wiring_not_on_path
     - guard_regressed
     - negctl_error

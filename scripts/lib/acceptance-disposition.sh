@@ -18,7 +18,7 @@ _ag_failure_class_disposition() {
         # Fixed where they are found, next iteration — the assertion has a
         # model author (test-author, #2022) and the cycle re-verifies.
         untagged_spec|tautology|inert_wiring|no_testfile|no_testfiles|\
-        not_passing_at_head|wiring_not_on_path|guard_regressed)
+        not_passing_at_head|wiring_not_on_path|guard_regressed|killed_by_signal)
             printf 'recoverable' ;;
         # Infrastructure: a flaky sandbox must never hard-fail the pipeline.
         negctl_error|reachability_error)

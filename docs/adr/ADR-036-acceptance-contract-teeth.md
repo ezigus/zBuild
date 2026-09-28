@@ -886,3 +886,24 @@ under bare tags gets new issue tags on its next run; its old bare tags stay (the
 are no longer this run's to remove) and count for nothing.
 
 Verification: `tests/unit/issue-scoped-spec-tags-test.sh` (T1–T6).
+
+## Amendment (2026-09-28): a signal is not a timeout
+
+The negative control classed exit codes 124, 137 and 143 as "timed out" —
+infrastructure, advisory, owned by nobody. Those codes are OS conventions, not
+zBuild's: GNU `timeout` exits **124** when its own timer fires (137 if its `-k`
+kill-after lands), while **143** is 128+15 — "a SIGTERM killed it", sent by
+anyone. **#1847 run 20260928144733-57620**: a TESTFILE stubbed the model call as
+`kill -TERM "$$"`, died at the merge-base after ~1s, and every SPEC after that
+point read `negctl_error:timeout` under a 60s timer that never fired.
+
+- **Timeout** is now only the timer's own codes: 124, and 137 when the kill-after
+  is in use.
+- **`killed_by_signal`** (new, recoverable): the run ended on a signal (128+N)
+  the timer did not send, and printed no ✓/✗ for this SPEC. On both the
+  `[change]` and `[guard]` paths. Its reason names the usual cause — a test that
+  signals its own process where no handler exists — and the fix: signal a child.
+- A verdict the file printed **before** dying is still evidence and is used as
+  it stands.
+
+Verification: `tests/unit/acceptance-negctl-signal-test.sh` (S1–S5).

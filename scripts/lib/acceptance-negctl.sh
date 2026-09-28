@@ -59,10 +59,28 @@ source "$_ACCEPTANCE_NEGCTL_DIR/merge-base.sh"
 source "$_ACCEPTANCE_NEGCTL_DIR/env-scrub.sh"
 
 # A timeout leaves the run's true pass/fail unknown, so it is an INFRASTRUCTURE
-# signal, never a control/violation (ADR-036 #1188): `timeout` exits 124 when it
-# TERMs the child, 143 when the child dies from that SIGTERM, 137 when a
-# -k kill-after SIGKILL lands or an external OOM kill reaches the child (128+9).
-_negctl_is_timeout_rc() { [[ "$1" -eq 124 || "$1" -eq 137 || "$1" -eq 143 ]]; }
+# signal, never a control/violation (ADR-036 #1188). Only the TIMER's own exit
+# codes mean that: GNU `timeout` exits 124 when its timer fires (whatever signal
+# then ended the child — it does not pass 143 through without --preserve-status),
+# and 137 when its -k kill-after SIGKILL lands. These are OS conventions, the
+# same in every repository and test runner.
+#
+# 143 (128+15) is NOT on the list: it means "a SIGTERM killed it", from anyone.
+# #1847 run 20260928144733-57620: a TESTFILE stubbed the model call as
+# `kill -TERM "$$"`, died at the merge-base after ~1s, and every SPEC after that
+# point was reported `timeout:` — infra, owned by nobody — under a 60s timer
+# that never fired. See _negctl_is_signal_rc.
+_negctl_is_timeout_rc() {
+    [[ "$1" -eq 124 ]] && return 0
+    [[ "$1" -eq 137 && "${_ACCEPTANCE_TIMEOUT_KILL_OK:-}" == "yes" ]]
+}
+
+# rc 0 when the run was ended by a signal (128+N) and the timer did not send it:
+# the test process was killed — often by itself. That is the test file's defect,
+# not infrastructure, and the finding names the class so its author can act.
+_negctl_is_signal_rc() {
+    [[ "$1" =~ ^[0-9]+$ ]] && (( $1 > 128 && $1 <= 192 )) && ! _negctl_is_timeout_rc "$1"
+}
 
 # #1670: rc classes meaning "the runner could not execute the file" rather than
 # "an assertion failed" — 126 (found, not executable) and 127 (command not
@@ -220,8 +238,9 @@ _negctl_guard_resolve_tfs() {
 # Runs a [guard] SPEC's TESTFILEs inside the baseline worktree and echoes ONE of:
 #   held       — every tagged assertion holds at the merge-base (a real guard)
 #   regressed  — the guard's own assertion FAILS there, so it is not an invariant
-#   timeout    — a run was killed; pass/fail unknown (infrastructure)
+#   timeout    — the timer stopped a run; pass/fail unknown (infrastructure)
 #   harness    — unparseable at baseline, or the runner could not execute it
+#   signal     — the file died on a signal before printing this SPEC's verdict
 # <logfile> may be empty to discard the per-TESTFILE capture.
 #
 # #1777: extracted verbatim from acceptance_negctl_check's guard arm so the
@@ -271,6 +290,10 @@ _negctl_guard_verdict() {
         # erased the #1658 shape — a bare guard test (`grep -q …`, no ✓/✗
         # output) that legitimately fails at the merge-base is a mislabelled
         # [change], and nothing in the rc separates it from an early abort.
+        # A signal death that printed no verdict for this SPEC never reached its
+        # assertion: the file killed itself (or was killed) first. That is not a
+        # regressed guard and not a timeout.
+        if [[ "$_g_lv" -eq 2 ]] && _negctl_is_signal_rc "$_g_rc"; then printf 'signal'; return 0; fi
         if [[ "$_g_rc" -ne 0 && "$_g_lv" -ne 1 ]]; then printf 'regressed'; return 0; fi
     done
     printf 'held'
@@ -283,7 +306,7 @@ _negctl_guard_verdict() {
 #   NEGCTL PASS <spec_id>      — ≥1 tagged testfile fails at baseline, passes at HEAD
 #   NEGCTL PASS <spec_id> guard_spec — [guard]: the invariant holds at baseline
 #   NEGCTL FAIL <spec_id> <reason>   reason ∈ {tautology, not_passing_at_head,
-#                                no_testfile, guard_regressed}
+#                                no_testfile, guard_regressed, killed_by_signal}
 #   NEGCTL ERROR <detail>      — infrastructure (baseline_resolve_failed,
 #                                worktree_failed, timeout:<spec_id>,
 #                                harness:<spec_id>)
@@ -404,12 +427,13 @@ acceptance_negctl_check() {
                 timeout)    printf 'NEGCTL ERROR timeout:%s\n' "$spec_id"; rc=1 ;;
                 harness)    printf 'NEGCTL ERROR harness:%s\n' "$spec_id"; rc=1 ;;
                 regressed)  printf 'NEGCTL FAIL %s guard_regressed\n' "$spec_id"; rc=1 ;;
+                signal)     printf 'NEGCTL FAIL %s killed_by_signal\n' "$spec_id"; rc=1 ;;
                 held)       printf 'NEGCTL PASS %s guard_spec\n' "$spec_id" ;;
                 *)          printf 'NEGCTL ERROR harness:%s\n' "$spec_id"; rc=1 ;;
             esac
             continue
         fi
-        local found_control=0 saw_tautology=0 saw_tagged=0 only_head_fail=0 saw_timeout=0 saw_harness=0
+        local found_control=0 saw_tautology=0 saw_tagged=0 only_head_fail=0 saw_timeout=0 saw_harness=0 saw_signal=0
         # Per-SPEC diagnostic log (opt-in via ZBUILD_NEGCTL_ARTIFACT_DIR, set by
         # the plugin from the pipeline state dir). Empty → output discarded.
         local logfile=""
@@ -477,6 +501,14 @@ acceptance_negctl_check() {
             _negctl_guard_log_check "$_cap_head" "$spec_id" && _lv_head=0 || _lv_head=$?
             [[ -n "$_cap_base" ]] && rm -f "$_cap_base"
             [[ -n "$_cap_head" ]] && rm -f "$_cap_head"
+            # A run that died on a signal without printing this SPEC's verdict
+            # never reached its assertion — no evidence either way, and not a
+            # timeout. A ✗/✓ printed before the death is real evidence and is
+            # used as it stands (#1847).
+            if { [[ "$_lv_base" -eq 2 ]] && _negctl_is_signal_rc "$rc_base"; } \
+               || { [[ "$_lv_head" -eq 2 ]] && _negctl_is_signal_rc "$rc_head"; }; then
+                saw_signal=1; continue
+            fi
             # Fall back to the file rc only where the log carries no verdict for
             # this SPEC — a custom runner, an empty capture, or a run that died
             # before reaching the assertion. That is pre-#1969 behaviour, i.e.
@@ -522,6 +554,10 @@ acceptance_negctl_check() {
             printf 'NEGCTL FAIL %s tautology\n' "$spec_id"; rc=1
         elif [[ "$only_head_fail" -eq 1 ]]; then
             printf 'NEGCTL FAIL %s not_passing_at_head\n' "$spec_id"; rc=1
+        elif [[ "$saw_signal" -eq 1 ]]; then
+            # The file died on a signal before this SPEC's assertion ran. The
+            # test's defect, so it is its author's to fix — not infrastructure.
+            printf 'NEGCTL FAIL %s killed_by_signal\n' "$spec_id"; rc=1
         elif [[ "$saw_timeout" -eq 1 ]]; then
             # Only-signal was a timeout: infra, not a genuine violation.
             printf 'NEGCTL ERROR timeout:%s\n' "$spec_id"; rc=1
