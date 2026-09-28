@@ -4,8 +4,10 @@
   "disposition": "complete",
   "reason": "design_produced",
   "data": {
-    "authored_at": "2026-09-28T19:03:19Z",
-    "authored_at_commit": "8263b7b2eb7624733c5c43fa159b16019e843dc4",
-    "wiring_files": []
+    "authored_at": "2026-09-28T20:08:23Z",
+    "authored_at_commit": "887c1f4c09cc08040828c3639c861fc3e7eb6c0f",
+    "wiring_files": [
+      "plugins/agent/monitor/plugin.sh"
+    ]
   }
 }
