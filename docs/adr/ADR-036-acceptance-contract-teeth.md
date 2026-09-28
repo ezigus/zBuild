@@ -857,3 +857,32 @@ results. Verification: `tests/integration/acceptance-gate-v2-reader-test.sh` (th
 pass, fail, precondition-unmet and malformed results through `runner_read_stage_verdict` with
 rc 0 — red before: `missing_field:reason`, `unknown_disposition:recoverable`), and
 `gate-v2-contract-test.sh` SPEC-15 (every mechanical gate's pass result through the reader).
+
+## Amendment (2026-09-28): a tag carries its issue — `[#<issue>/SPEC-n]`
+
+SPEC numbers restart with every design, so a bare `[SPEC-3]` never said WHICH
+issue's SPEC-3 it was. That stayed harmless while each issue's assertions lived
+in its own files; it broke when a design listed a SHARED test. #1845's design
+named `tests/integration/deployed-template-e2e-test.sh`, and test-author's
+stale-tag step (#2174) read every tag whose number was not in #1845's contract
+as stale — stripping #1328's `[SPEC-1..10]` from 26 assertions.
+
+**Decision — add, never overlap.**
+- Under an issue, the tag is `[#<issue>/SPEC-n]` (e.g. `[#1845/SPEC-3]`).
+  `acceptance_spec_tag` (`scripts/lib/acceptance-block.sh`) is the one place that
+  builds it; every reader — coverage, the negative control, reachability, label
+  lookup — matches that exact string. `ZBUILD_ISSUE` (exported by the runner)
+  supplies the number; with no issue (a `--goal` run) the tag is the bare legacy
+  `[SPEC-n]`.
+- An existing `[SPEC-n]` keeps its meaning and is never rewritten. The two forms
+  cannot match each other: `\[SPEC-[0-9]+\]` does not match a new tag, and no
+  reader looks for a bare tag under an issue.
+- test-author's stale-tag step considers only THIS issue's tags. A bare tag or
+  another issue's tag belongs to other work and is never touched. The prompts
+  (test-author, build, design) show the literal tag to write.
+
+**Cost, stated.** An issue that already has an in-flight work branch written
+under bare tags gets new issue tags on its next run; its old bare tags stay (they
+are no longer this run's to remove) and count for nothing.
+
+Verification: `tests/unit/issue-scoped-spec-tags-test.sh` (T1–T6).

@@ -57,27 +57,41 @@ EOF
     fi
 }
 
-# _ta_drop_stale_tags <design.md> <repo_root> — strip `[SPEC-n] ` from the
-# contract's testfiles where n is not a SPEC id of this contract (#2174).
+# _ta_drop_stale_tags <design.md> <repo_root> — strip THIS issue's tags whose
+# SPEC number is not in this contract (#2174): they are left over from an
+# earlier design of the same issue. Under an issue only [#<issue>/SPEC-n] tags
+# are ever considered — a legacy [SPEC-n] or another issue's [#N/SPEC-n] belongs
+# to other work and is never touched (#1845 stripped #1328's [SPEC-1..10] from a
+# shared test before tags carried their issue). With no issue (a --goal run) the
+# bare legacy tags are this run's, as before.
 _ta_drop_stale_tags() {
-    local design="$1" repo="$2" ids tf n=0 before after
+    local design="$1" repo="$2" ids tf n=0 before after re issue="${ZBUILD_ISSUE:-}"
     declare -F acceptance_list_spec_ids >/dev/null 2>&1 || return 0
     ids="$(acceptance_list_spec_ids "$design" 2>/dev/null | sed 's/^SPEC-//' | tr '\n' ' ')"
     [[ -n "$ids" ]] || return 0
+    if [[ "$issue" =~ ^[1-9][0-9]*$ ]]; then
+        re="\\[#${issue}/SPEC-[0-9]+\\]"
+    else
+        re='\[SPEC-[0-9]+\]'
+    fi
     while IFS= read -r tf; do
         [[ -n "$tf" && -f "$repo/$tf" ]] || continue
-        before="$(grep -cE '\[SPEC-[0-9]+\]' "$repo/$tf" 2>/dev/null || true)"
-        awk -v ids=" $ids " '
+        before="$(grep -cE "$re" "$repo/$tf" 2>/dev/null || true)"
+        # The pattern goes in through ENVIRON, not -v: awk processes escapes in
+        # a -v value, and `\[` would become a bracket expression.
+        ZB_TAG_RE="$re" awk -v ids=" $ids " '
             { line=$0; out="";
-              while (match(line, /\[SPEC-[0-9]+\] ?/)) {
-                  tag=substr(line, RSTART, RLENGTH); num=tag; gsub(/[^0-9]/, "", num)
+              re = ENVIRON["ZB_TAG_RE"]
+              while (match(line, re " ?")) {
+                  tag=substr(line, RSTART, RLENGTH); num=tag
+                  sub(/^.*SPEC-/, "", num); gsub(/[^0-9]/, "", num)
                   keep = index(ids, " " num " ") > 0
                   out = out substr(line, 1, RSTART-1) (keep ? tag : "")
                   line = substr(line, RSTART+RLENGTH)
               }
               print out line }' "$repo/$tf" > "$repo/$tf.zb-tags" 2>/dev/null \
             && mv -f "$repo/$tf.zb-tags" "$repo/$tf" || rm -f "$repo/$tf.zb-tags"
-        after="$(grep -cE '\[SPEC-[0-9]+\]' "$repo/$tf" 2>/dev/null || true)"
+        after="$(grep -cE "$re" "$repo/$tf" 2>/dev/null || true)"
         [[ "$before" =~ ^[0-9]+$ && "$after" =~ ^[0-9]+$ ]] && n=$(( n + before - after ))
     done < <(acceptance_list_testfiles "$design" 2>/dev/null || true)
     (( n > 0 )) && _ta_emit "test_author.stale_tags_dropped" "count=$n"
@@ -183,6 +197,7 @@ test_author_run() {
         _cls="$(acceptance_spec_classifier "$design" "$sid" 2>/dev/null || true)"
         _tfs="$(acceptance_list_testfiles_for_spec "$design" "$sid" 2>/dev/null | tr '\n' ' ')"
         spec_block="${spec_block}- ${sid} [${_cls:-change}] ${_txt}"$'\n'
+        spec_block="${spec_block}    tag: $(acceptance_spec_tag "$sid")"$'\n'
         spec_block="${spec_block}    testfile(s): ${_tfs}"$'\n'
         n=$(( n + 1 ))
     done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
@@ -203,7 +218,7 @@ test_author_run() {
 
 You cannot see the implementation, and you must not guess at it. Write what the requirement DEMANDS, not what some implementation might do. Each assertion must be able to FAIL: if the requirement were not met, your assertion must not pass.
 
-Tag each assertion with its SPEC id in square brackets, exactly as shown. You own every [SPEC-n] tag in the testfile(s) you write: a tag already there whose number is not in this contract is stale from an earlier contract — remove the tag and keep the assertion.
+Tag each assertion with the tag shown for its SPEC, exactly as shown, in the assertion's label — e.g. $(acceptance_spec_tag SPEC-1). Tags that carry THIS issue's number are yours: one already there whose SPEC is not in this contract is stale from an earlier design — remove the tag and keep the assertion. Any other tag (a bare [SPEC-n], or one naming another issue) belongs to other work: never change, move or remove it.
 
 REQUIREMENTS:
 ${spec_block}

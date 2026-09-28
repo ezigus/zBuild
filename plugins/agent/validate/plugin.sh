@@ -96,6 +96,21 @@ _validate_agent_run_inner() {
         return 1
     fi
 
+    # Validate checks the deployment deploy MADE. A deploy that did not deploy
+    # (skipped: the gate did not pass; error: the release failed) left nothing
+    # to validate — probing a fixed address and calling it healthy asserted
+    # something about a deployment that never happened.
+    local deploy_verdict
+    deploy_verdict="$(jq -r '.verdict // empty' "$deploy_result_in" 2>/dev/null || true)"
+    if [[ "$deploy_verdict" != "deployed" ]]; then
+        _validate_write_result "$artifacts_dir" "skipped" "complete" \
+            "nothing to validate: deploy reported '${deploy_verdict:-no verdict}', not deployed"
+        stage_summary_write "$artifacts_dir/validate-summary.md" "validate" "skip" \
+            "nothing was deployed (deploy: ${deploy_verdict:-no verdict}), so nothing was validated" \
+            "No probe ran."
+        return 0
+    fi
+
     # Dry-run mode: write sentinel artifact without executing the health probe
     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
         _validate_write_result "$artifacts_dir" "healthy" "complete" \
@@ -106,12 +121,28 @@ _validate_agent_run_inner() {
         return 0
     fi
 
+    # WHERE to probe: the address deploy reported (data.health_url — e.g. a
+    # preview environment or a per-version URL), else the operator's configured
+    # ZBUILD_HEALTH_CHECK_URL. An address that is not http(s) is a setup fault.
+    local probe_url
+    probe_url="$(jq -r '.data.health_url // .health_url // empty' "$deploy_result_in" 2>/dev/null || true)"
+    if [[ -n "$probe_url" && ! "$probe_url" =~ ^https?:// ]]; then
+        error "validate: deploy reported a non-http(s) address: $probe_url"
+        _validate_write_result "$artifacts_dir" "error" "misconfigured" \
+            "deploy reported an address that is not http(s): $probe_url"
+        stage_summary_write "$artifacts_dir/validate-summary.md" "validate" "error" \
+            "deploy reported an address validate cannot probe" \
+            "$(printf -- '- reported: %s\n- only http(s) addresses are probed' "$probe_url")"
+        return 1
+    fi
+    [[ -n "$probe_url" ]] || probe_url="${ZBUILD_HEALTH_CHECK_URL:-}"
+
     # No probe target is a setup the operator must fix, not an unhealthy
     # deployment: say `misconfigured` and do not probe. (health-check itself
     # reads ZBUILD_HEALTH_CHECK_URL; asking before delegating is the only way
     # to tell "not configured" from "configured and failing", since both come
     # back as a non-zero rc.)
-    if [[ -z "${ZBUILD_HEALTH_CHECK_URL:-}" ]]; then
+    if [[ -z "$probe_url" ]]; then
         error "validate: no probe target — set ZBUILD_HEALTH_CHECK_URL"
         _validate_write_result "$artifacts_dir" "error" "misconfigured" \
             "no probe target configured: ZBUILD_HEALTH_CHECK_URL is not set"
@@ -130,7 +161,7 @@ _validate_agent_run_inner() {
             # Preserve probe diagnostics and propagate failure — a failed probe must not
             # return success (#757 review). rc clamped to 1 (ADR-054 §4b).
             local hc_out hc_rc=0
-            hc_out="$(health_check_run "validate" "$state_file" 2>&1)" || hc_rc=$?
+            hc_out="$(ZBUILD_HEALTH_CHECK_URL="$probe_url" health_check_run "validate" "$state_file" 2>&1)" || hc_rc=$?
             if [[ $hc_rc -eq 0 ]]; then
                 _validate_write_result "$artifacts_dir" "healthy" "complete" \
                     "health probe reported the deployment healthy"

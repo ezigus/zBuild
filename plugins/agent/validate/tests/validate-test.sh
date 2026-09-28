@@ -17,7 +17,9 @@
 # SPEC-17: failed health probe causes validate_agent_run to return non-zero
 #          (fail-closed invariant preserved under v2)
 # SPEC-18: all non-zero exits use rc=1 (no exit path returns rc=2 or higher)
-# SPEC-19: manifest valid_verdicts=[healthy,error]; test covers both
+# SPEC-19: manifest valid_verdicts=[healthy,error,skipped]; test covers each
+#          (skipped since #1845's follow-up: nothing deployed → nothing validated;
+#          validate-deploy-target-unit-test.sh D1 drives it)
 # SPEC-20: manifest has no config.router block; manifest_router_knob returns ""
 # SPEC-21: dry-run writes result_contract=2, verdict=healthy, disposition=complete,
 #          reason present, data={}; schema_version absent
@@ -298,7 +300,7 @@ else
         "${_s19_section:-absent}"
 fi
 _s19_count="$(grep -c '^[[:space:]]*-' <<< "$_s19_section" 2>/dev/null || printf '0')"
-assert_eq "[SPEC-19] manifest config.valid_verdicts declares exactly 2 verdicts" "2" "$_s19_count"
+assert_eq "[SPEC-19] manifest config.valid_verdicts declares exactly 3 verdicts" "3" "$_s19_count"
 
 # SPEC-19 healthy coverage: a passing assertion with verdict=healthy
 _v2_run run19h 1; _run19h="$_V2_DIR"
