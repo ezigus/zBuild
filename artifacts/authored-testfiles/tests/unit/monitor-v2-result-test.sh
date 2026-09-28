@@ -26,8 +26,9 @@
 #   [#1847/SPEC-23] router rc=124 (wall-clock timeout) is classified through the shared
 #                   _router_rc_classify -> router_reason_disposition chokepoint (sentinel-stub
 #                   proof), distinct from the rc=10 out_of_turns case
-#   [#1847/SPEC-24] rc=10 (turn-budget) path additionally carries disposition:out_of_turns,
-#                   reason:budget_exhausted
+#   [#1847/SPEC-24] rc=10 (turn-budget) path carries the literal disposition:out_of_turns,
+#                   reason:budget_exhausted via its own branch — proven NOT routed through
+#                   router_reason_disposition by stubbing it to a sentinel for any argument
 #   [#1847/SPEC-25] live pass-path verdict/data.summary/data.checks are byte-identical to a
 #                   pre-migration v1-shaped fixture, contract-v2-only fields excluded
 set -euo pipefail
@@ -477,23 +478,38 @@ else
         "comment absent"
 fi
 
-# ─── SPEC-21: router rc=10 (turn-budget exhaustion) also collapses to rc=1 ────
-print_test_section "router rc=10 (turn-budget exhaustion) causes monitor_stage_run to return rc=1, never the raw rc=10"
+# ─── SPEC-24: router rc=10 (turn-budget exhaustion) writes the established ───
+# literal pair via its own dedicated branch, intentionally NOT routed through
+# router_reason_disposition — proven by stubbing router_reason_disposition to
+# return a distinguishing sentinel for ANY argument and asserting the written
+# disposition/reason are still the literal pair, not the sentinel. If the code
+# called the chokepoint (for any reason string), the sentinel would appear in
+# the output instead.
+print_test_section "[#1847/SPEC-24] router rc=10 (turn-budget) path writes disposition:out_of_turns/reason:budget_exhausted via its own branch, not router_reason_disposition"
 
 rm -f "$ARTIFACTS_DIR/monitor-report.json"
+_S24_SENTINEL="SENTINEL_ROUTER_REASON_DISPOSITION_CALLED_4e21"
+_s24_orig_disposition="$(declare -f router_reason_disposition)"
+# shellcheck disable=SC2329
+router_reason_disposition() {
+    printf '%s' "$_S24_SENTINEL"
+}
 MOCK_ROUTE_RC=10
 MOCK_ROUTE_RESPONSE=""
 set +e
 monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
-_s21_rc=$?
+_s24_rc=$?
 set -e
+eval "$_s24_orig_disposition"
 
-assert_eq "rc=10 (turn-budget) path: monitor_stage_run returns rc=1 (not the raw router rc=10)" \
-    "1" "$_s21_rc"
-assert_file_exists "monitor-report.json written on rc=10 path" "$ARTIFACTS_DIR/monitor-report.json"
-assert_eq "[#1847/SPEC-24] rc=10 (turn-budget) path: disposition is out_of_turns" "out_of_turns" \
+assert_eq "[#1847/SPEC-24] rc=10 (turn-budget) path: monitor_stage_run returns rc=1 (not the raw router rc=10)" \
+    "1" "$_s24_rc"
+assert_file_exists "[#1847/SPEC-24] monitor-report.json written on rc=10 path" "$ARTIFACTS_DIR/monitor-report.json"
+assert_eq "[#1847/SPEC-24] rc=10 (turn-budget) path: disposition is the literal out_of_turns, not the stubbed router_reason_disposition sentinel (proves its own dedicated branch, not the chokepoint)" \
+    "out_of_turns" \
     "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
-assert_eq "[#1847/SPEC-24] rc=10 (turn-budget) path: reason is budget_exhausted" "budget_exhausted" \
+assert_eq "[#1847/SPEC-24] rc=10 (turn-budget) path: reason is the literal budget_exhausted, not the stubbed router_reason_disposition sentinel" \
+    "budget_exhausted" \
     "$(jq -r '.reason // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
 
 # ─── SPEC-23: router rc=124 classified through the shared _router_rc_classify ─
