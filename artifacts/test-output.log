@@ -1,0 +1,88 @@
+
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
+
+unit: 465/465 passed (4 skipped)
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.eucKFa/tests/integration/deployed-template-e2e-test.sh
+
+  deployed.yaml e2e — deploy+validate+monitor dry-run dispatch (#1328-A6)
+
+  ✓ [SPEC-1] deployed.yaml loads without error (exit 0)
+  ✓ [SPEC-10] deployed.yaml review_lenses elements include 'sre'
+  ✓ [SPEC-2] deployed.yaml has deploy stage
+  ✓ [SPEC-2] deployed.yaml has validate stage
+  ✓ [SPEC-2] deployed.yaml has monitor stage
+  ✓ [SPEC-2] deploy follows pr
+  ✓ [SPEC-2] validate follows deploy
+  ✓ [SPEC-2] monitor follows validate
+  ✓ [SPEC-2] stage 'deploy' resolves to a plugin via the registry (rc=0)
+  ✓ [SPEC-2] 'deploy' resolves under plugins/agent/deploy
+  ✓ [SPEC-2] stage 'validate' resolves to a plugin via the registry (rc=0)
+  ✓ [SPEC-2] 'validate' resolves under plugins/agent/validate
+  ✓ [SPEC-2] stage 'monitor' resolves to a plugin via the registry (rc=0)
+  ✓ [SPEC-2] 'monitor' resolves under plugins/agent/monitor
+  ✓ [SPEC-3] deploy_agent_init does not exist (ADR-056: init removed)
+✗ deploy: the engine provided no ZBUILD_ARTIFACT_DIR — nowhere to write a result
+  ✗ [SPEC-9] deploy_agent_run exits 0 in dry-run
+    expected: 0, got: 1
+  ✗ [SPEC-9] deploy-result.json written
+    file not found: /home/runner/work/_temp/zbuild-state/scratch/test/deployed-template-e2e.rStZOV/state/artifacts/deploy-result.json
+  ✗ [SPEC-9] deploy-result.json verdict=deployed
+    expected: deployed, got: 
+  ✓ [SPEC-4] validate_agent_init does not exist (ADR-056: init removed)
+  ✓ [#1845] the engine resolves validate's deploy_result from the deployed.yaml flow
+✗ validate: missing required input deploy-result.json
+  ✗ [SPEC-9] validate_agent_run exits 0 in dry-run
+    expected: 0, got: 1
+  ✓ [#1845] validate-result.json is a v2 result
+  ✓ [SPEC-9] validate-result.json written
+  ✗ [SPEC-9] validate-result.json verdict=healthy
+    expected: healthy, got: error
+  ✓ [SPEC-5] monitor_stage_init does not exist (ADR-056: init removed)
+  ✓ [SPEC-9] monitor_stage_run exits 0 in dry-run
+  ✓ [SPEC-9] monitor-report.json written
+
+
+  5 of 27 tests failed
+
+  ✗ [SPEC-9] deploy_agent_run exits 0 in dry-run
+  ✗ [SPEC-9] deploy-result.json written
+  ✗ [SPEC-9] deploy-result.json verdict=deployed
+  ✗ [SPEC-9] validate_agent_run exits 0 in dry-run
+  ✗ [SPEC-9] validate-result.json verdict=healthy
+
+integration: 251/252 passed
+e2e: 9/9 passed
+golden: 1/1 passed
+
+─── Mutation test results ──────────────────────────────
+  PASS  atomic-state-mutations.md  (caught: rc=3)
+  PASS  cache.md  (caught: rc=1)
+  PASS  cleanup-worktree-age-guard.md  (caught: rc=2)
+  PASS  cleanup-worktree-dirty-guard.md  (caught: rc=2)
+  PASS  detect-platforms.md  (caught: rc=11)
+  PASS  event-bus-ansi-strip.md  (caught: rc=4)
+  PASS  event-bus.md  (caught: rc=3)
+  INFRA memory.md  (patch failed after retries)
+  PASS  orch.md  (caught: rc=1)
+  PASS  output-destinations.md  (caught: rc=1)
+  PASS  pipeline-contracts.md  (caught: rc=3)
+  PASS  pipeline-dispatch-arg-mutations.md  (caught: rc=4)
+  PASS  pipeline-dispatch-failopen-mutations.md  (caught: rc=7)
+  PASS  pipeline-dispatch-mutations.md  (caught: rc=9)
+  PASS  pipeline-dispatch-prefix-mutations.md  (caught: rc=1)
+  PASS  pipeline-dispatch-selfsource-mutations.md  (caught: rc=1)
+  PASS  pipeline-resolver.md  (caught: rc=1)
+  PASS  rc-semantics.md  (caught: rc=1)
+  PASS  registry-role-resolution.md  (caught: rc=1)
+  PASS  registry-validate-manifest-mutations.md  (caught: rc=1)
+  PASS  resume-recommendation-mutations.md  (caught: rc=1)
+  PASS  router-route-mutations.md  (caught: rc=30)
+  PASS  run-status-comment.md  (caught: rc=1)
+  PASS  runner-fail-closed-mutations.md  (caught: rc=1)
+  PASS  scope-redaction-mutations.md  (caught: rc=3)
+mutation-infra: 1 non-fatal (worktree/patch contention; excluded from score — #1184)
+mutation: 24/24 passed
+lint: 1/1 passed
+
+total: 751/752 passed (4 skipped)
