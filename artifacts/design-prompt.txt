@@ -159,7 +159,8 @@ and both id-match their producers' declared output ids in
 `plugins/agent/deploy/manifest.yaml` and
 `plugins/agent/pr-delivery/manifest.yaml`). What is missing, verified
 against the shipped reference implementations (`review-lens`,
-`deploy-release`, `pr-open`):
+`deploy-release`, `pr-open`) and, for the two gaps below, against the
+current tree read in this iteration:
 
 1. **No `provides.result_contract: 2`.** The manifest declares no
    contract version, so the engine treats it as v1 (`contract_version_default`,
@@ -169,7 +170,14 @@ against the shipped reference implementations (`review-lens`,
    `reason` field.** ADR-054 §5's mandatory v2 result keys are entirely
    absent; only the plugin's own `{schema_version, verdict, summary,
    checks}` shape exists (ADR-054 §5 note: `schema_version` ≠
-   `result_contract` — both must coexist, not be conflated).
+   `result_contract` — both must coexist, not be conflated). Verified
+   against `review-lens/plugin.sh`'s `_review_lens_write_result`
+   (`plugins/agent/review-lens/plugin.sh:66-78`): the v2 fields
+   (`result_contract`, `disposition`, `reason`) sit **flat, top-level,
+   alongside the plugin's own fields** (`name`, `score`, `findings`) —
+   there is no `data:{}` nesting wrapper anywhere in the shipped
+   reference shape. `monitor`'s own `summary`/`checks` fields follow the
+   same flat convention, not a nested envelope.
 3. **No disposition mapping on failure paths.** A router failure
    (`route_to_model` rc≠0) and an unparseable/schema-gate-failed reply
    both collapse to `verdict:degraded` with no `disposition` word — the
@@ -177,29 +185,53 @@ against the shipped reference implementations (`review-lens`,
    `router_reason_disposition` (`scripts/lib/router-rc-classify.sh`) into
    `timed_out`/`out_of_turns`/`interrupted`/`rate_limited`/`unavailable`/
    `misconfigured`/`unusable`, per ADR-054 §6a.
-4. **No SIGTERM/SIGINT interrupt handling.** `review-lens` and
-   `deploy-release` register a trap before the `route_to_model` call that
-   writes `disposition:interrupted` before propagating rc=130 (ADR-054
-   §6a `interrupted`); `monitor` has no trap, so a signalled dispatch
-   leaves a stale or absent primary artifact.
+4. **No SIGTERM/SIGINT interrupt handling.** `review-lens` registers a
+   trap before the `route_to_model` call (`_review_lens_interrupt_handler`,
+   `plugins/agent/review-lens/plugin.sh:84-89`) that writes
+   `disposition:interrupted` before propagating rc=130 (ADR-054 §6a
+   `interrupted`); `monitor` has no trap, so a signalled dispatch leaves a
+   stale or absent primary artifact.
 5. **No declared router budgets in the manifest.** `deployed.yaml`
    already sets `router: {timeout_s: 300, max_turns: 10}` at the
    template layer for the `monitor` stage, but the manifest itself
    declares no `config.router` block (unlike `review-lens`), so ADR-054
    §9's manifest-first resolution path has nothing to resolve for this
    plugin, and the prompt carries no ADR-063 §1 TURN BUDGET / WALL CLOCK
-   BUDGET guidance block (both `review-lens` and `spec-acceptance`-style
-   T1 stages already inject these before the model call).
-6. **`docs/wiki/plugins/monitor.md` is stale independent of this
+   BUDGET guidance block (`review-lens/plugin.sh:91-94`,
+   `_review_lens_budget_guidance`, already injects this before the model
+   call for its own T1 dispatch).
+6. **`monitor_stage_run` hardcodes its two optional input paths.**
+   `plugin.sh:76-77` builds `deploy_result_json` and `pr_url_txt` by
+   string concatenation on `$artifacts_dir` unconditionally — it never
+   looks at the engine-resolved input index. The established fix for
+   this exact gap already exists in the tree: `design_stage_run`
+   (`plugins/agent/design/plugin.sh:139-149`, ADR-050/#1826) and its
+   inner prior-design read (`plugins/agent/design/plugin.sh:478-491`)
+   both check `$ZBUILD_STAGE_INPUTS` (a JSON `{"inputs":{name:path}}`
+   index the engine exports per `core/plugin-registry/lifecycle.sh:403-404`
+   when `input-resolve.sh` ran) for the named input first, **falling
+   back to the hardcoded path only when the index is absent or empty**
+   — the comment at `design/plugin.sh:141-142` states this explicitly:
+   "falling back to the hardcoded path construction so existing test
+   fixtures keep working." `monitor` has no equivalent read at all.
+7. **`docs/wiki/plugins/monitor.md` is stale independent of this
    change** — it shows a manifest shape (`hooks.cleanup`,
    `provides.artifact_type`/`schema_version`, typed `inputs[].source:
    stage:X`) that predates ADR-055 §1 and ADR-056's cleanup-hook
    removal, already contradicting the current `manifest.yaml` on disk.
    Prior migrations in this same wave (merge/pr-open/deploy-release,
-   security-lens) updated their wiki pages in the same PR
-   ("update wiki doc to reflect contract v2 manifest shape"); this
+   security-lens) updated their wiki pages in the same PR; this
    migration must do the same for `monitor.md` rather than leave it
    further out of date.
+
+**Verified as already satisfied, not a gap:** the manifest's
+`outputs:` block already declares exactly one `primary: true` entry
+(`monitor_report`, `manifest.yaml:48-54`), and the repo-wide
+`scripts/lib/lint-contract.sh` §"ADR-020 amendment (#507)" check
+(lines ~176-187) already fails the build if any in-scope manifest has
+zero or more-than-one `primary: true` output. This migration does not
+touch `outputs:` and must not regress this — captured below as a guard
+(SPEC-15), not a change.
 
 ## Decision
 
@@ -212,11 +244,11 @@ against the shipped reference implementations (`review-lens`,
   not behavior-changing, declaration for the live path.
 - In `plugin.sh`, replace `_monitor_write_report` with a v2-shaped
   writer that emits `result_contract:2`, the existing `schema_version:1`,
-  `verdict`, `summary`, `checks` (unchanged plugin-owned shape) **plus**
-  `disposition` and `reason`, mirroring `_review_lens_write_result`'s
-  jq-constructed, atomically-written pattern. Every existing call site
-  (dry-run, router failure, unparseable reply, normal pass/degraded)
-  passes an explicit disposition:
+  `verdict`, `summary`, `checks` (unchanged plugin-owned shape, **flat,
+  top-level** — matching `_review_lens_write_result`'s precedent, not a
+  `data:{}` wrapper) **plus** `disposition` and `reason`. Every existing
+  call site (dry-run, router failure, unparseable reply, normal
+  pass/degraded) passes an explicit disposition:
   - dry-run → `disposition: complete`
   - router failure → `router_reason_disposition "$(_router_rc_classify ...)"`
     (mirrors `review-lens`'s `router_reason_disposition` call on its
@@ -231,7 +263,14 @@ against the shipped reference implementations (`review-lens`,
   `_review_lens_interrupt_handler`) that writes
   `disposition:interrupted` and lets rc=130 propagate.
   A router rc=10 (turn-budget exhaustion) writes `disposition:out_of_turns`
-  and propagates rc=10, matching `review-lens`'s rc=10 branch.
+  and propagates rc=10, matching `review-lens`'s rc=10 branch. (Note:
+  the issue's own "ALSO LAND HERE" text citing `disposition:exhausted`
+  is stale — `core/pipeline/disposition.sh` retired `exhausted` in
+  #2187 because it mapped to an unimplemented `escalate` action;
+  `out_of_turns`/`timed_out` are the current closed vocabulary and both
+  already route to `retry`. This design follows the working code, not
+  the stale issue citation, per the "spec/precedent wins over drift"
+  rule.)
 - Inject the ADR-063 §1 TURN BUDGET and WALL CLOCK BUDGET guidance
   blocks into the prompt before the `route_to_model` call, reusing the
   same shape as `_review_lens_budget_guidance` /
@@ -239,11 +278,33 @@ against the shipped reference implementations (`review-lens`,
   `_monitor_wallclock_guidance` helpers, or a shared extraction — either
   is acceptable; no shared helper currently exists in `llm-agent.sh` to
   reuse instead of duplicating).
-- `valid_verdicts: [pass, degraded]`, the `inputs:` block, and the
-  `outputs:` block (including the `monitor_summary` ADR-055 §9 summary
-  output) are **unchanged** — this migration touches the result/
-  disposition/budget axes only, not the plugin's own verdict vocabulary
-  or its artifact set.
+- Read the two optional inputs (`deploy_result`, `pr_url`) via
+  `$ZBUILD_STAGE_INPUTS` first, falling back to the current hardcoded
+  `$artifacts_dir/deploy-result.json` / `$artifacts_dir/pr-url.txt`
+  paths — the identical read-then-fallback shape already used by
+  `design_stage_run` (`plugins/agent/design/plugin.sh:143-149`):
+  ```
+  if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+      _si_deploy="$(jq -r '.inputs.deploy_result // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+      _si_pr="$(jq -r '.inputs.pr_url // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+      [[ -n "$_si_deploy" ]] && deploy_result_json="$_si_deploy"
+      [[ -n "$_si_pr" ]] && pr_url_txt="$_si_pr"
+  fi
+  ```
+  **Named tension** (see Named Gaps): this keeps the literal path
+  strings in code as a fallback, which does not satisfy an absolute
+  reading of "the plugin constructs no artifact paths in code." The
+  design follows the one working precedent in the tree
+  (`design_stage_run`) rather than inventing a stricter no-fallback
+  variant with no reference implementation to copy; SPEC-14 asserts the
+  index takes priority when present, which is the observable contract
+  the issue's engine-resolved-inputs series (#1825/#1826) actually
+  requires.
+- `valid_verdicts: [pass, degraded]` and the `outputs:` block (including
+  the `monitor_summary` ADR-055 §9 summary output and the existing
+  `monitor_report` `primary: true` declaration) are **unchanged** — this
+  migration touches the result/disposition/budget/input-resolution axes
+  only, not the plugin's own verdict vocabulary or its artifact set.
 - Update `docs/wiki/plugins/monitor.md`'s embedded manifest snippet to
   match the post-migration `manifest.yaml` (result_contract, router
   block, and drop the already-stale `hooks.cleanup`/`artifact_type`/
@@ -267,8 +328,11 @@ docs/adr/ADR-054-stage-contract.md
 docs/adr/ADR-055-inter-stage-data-contract-v2.md
 scripts/lib/router-rc-classify.sh
 scripts/lib/llm-agent.sh
+scripts/lib/lint-contract.sh
 plugins/agent/review-lens/plugin.sh
 plugins/agent/review-lens/manifest.yaml
+plugins/agent/design/plugin.sh
+core/pipeline/input-resolve.sh
 ```
 
 Notes on the non-obvious entries:
@@ -295,12 +359,21 @@ Notes on the non-obvious entries:
   stage confirms this rather than re-deriving it.
 - `plugins/agent/review-lens/{plugin.sh,manifest.yaml}` are the
   **reference implementation** this design's disposition/budget/
-  interrupt-handler pattern is copied from; listed so a reviewer can
-  diff monitor's new code against its template directly.
-- `scripts/lib/router-rc-classify.sh` and `scripts/lib/llm-agent.sh` are
+  interrupt-handler/result-shape pattern is copied from; listed so a
+  reviewer can diff monitor's new code against its template directly.
+- `plugins/agent/design/plugin.sh` and `core/pipeline/input-resolve.sh`
+  are **reference-only** — the source of the `$ZBUILD_STAGE_INPUTS`
+  read-then-fallback pattern (ADR-050/#1826) this design copies for
+  `monitor`'s two optional inputs; no change to either file.
+- `scripts/lib/router-rc-classify.sh`, `scripts/lib/llm-agent.sh` are
   **reference-only** (reused functions `_router_rc_classify`,
   `router_reason_disposition`, `_llm_envelope_parse` — no change to
   either file).
+- `scripts/lib/lint-contract.sh` is **reference-only** — the existing
+  repo-wide "exactly one `primary: true`" check (ADR-020 amendment
+  #507) that already covers `monitor`'s manifest and must keep passing
+  (SPEC-15); listed so the build stage confirms the guard rather than
+  re-deriving it, no edit expected.
 - No enumeration/roster file breaks by omission here: `provides.result_contract`
   is self-declared per manifest and read dynamically
   (`core/contract/version.sh`); `scripts/lib/lint-contract.sh`'s
@@ -326,6 +399,8 @@ SPEC-10[guard]: ZBUILD_DRY_RUN=1 still returns rc=0 and writes verdict=pass with
 SPEC-11[guard]: config.valid_verdicts remains exactly [pass, degraded]
 SPEC-12[guard]: inputs: still declares only {id: deploy_result, required: false} and {id: pr_url, required: false} — no source/path/type restated
 SPEC-13[guard]: deployed.yaml's deploy → validate → monitor dry-run dispatch still ends with monitor-report.json present and monitor_stage_run returning rc=0
+SPEC-14[change]: when $ZBUILD_STAGE_INPUTS is set and its .inputs.deploy_result / .inputs.pr_url entries are non-empty, monitor_stage_run reads the deploy-result / pr-url content from those resolved paths instead of the hardcoded $artifacts_dir/deploy-result.json / pr-url.txt paths — proven by pointing the index at files in a different directory and asserting the prompt (or report) reflects that content, not the artifacts_dir copies
+SPEC-15[guard]: plugins/agent/monitor/manifest.yaml's outputs: block still declares exactly one primary: true entry (monitor_report) — scripts/lib/lint-contract.sh's ADR-020/#507 check must keep passing for this manifest
 WIRING:
 plugins/agent/monitor/manifest.yaml
 TESTFILES:
@@ -342,19 +417,23 @@ SPEC-10: plugins/agent/monitor/tests/monitor-test.sh
 SPEC-11: plugins/agent/monitor/tests/monitor-test.sh tests/unit/monitor-v2-result-test.sh
 SPEC-12: plugins/agent/monitor/tests/monitor-test.sh tests/unit/monitor-v2-result-test.sh
 SPEC-13: tests/integration/deployed-template-e2e-test.sh
+SPEC-14: tests/unit/monitor-v2-result-test.sh
+SPEC-15: tests/unit/monitor-v2-result-test.sh
 ```
 
 Each `[#1847/SPEC-n]`-tagged assertion above must FAIL at the merge-base
 baseline (today's manifest has no `result_contract`/`disposition`/
-`router` block, and `plugin.sh` writes no `disposition` field, has no
-interrupt trap, and injects no budget guidance) and PASS after this
-change. The `WIRING:` file is `manifest.yaml` itself: reverting it alone
-to merge-base (keeping `plugin.sh`'s new disposition/budget code at
-HEAD) removes `result_contract: 2` and the `config.router` block, which
-should flip SPEC-1 and SPEC-7 (and, because the plugin can no longer
-resolve non-zero manifest-declared budgets, SPEC-8/SPEC-9) from pass to
-fail — proving the manifest declaration is load-bearing rather than
-inert.
+`router` block, `plugin.sh` writes no `disposition` field, has no
+interrupt trap, injects no budget guidance, and never reads
+`$ZBUILD_STAGE_INPUTS`) and PASS after this change, except SPEC-15,
+which is a guard already true at baseline and must stay true. The
+`WIRING:` file is `manifest.yaml` itself: reverting it alone to
+merge-base (keeping `plugin.sh`'s new disposition/budget/input-resolution
+code at HEAD) removes `result_contract: 2` and the `config.router`
+block, which should flip SPEC-1 and SPEC-7 (and, because the plugin can
+no longer resolve non-zero manifest-declared budgets, SPEC-8/SPEC-9)
+from pass to fail — proving the manifest declaration is load-bearing
+rather than inert.
 
 ## Named gaps
 
@@ -370,6 +449,23 @@ inert.
   `scripts/lib/router-rc-classify.sh`'s own unit coverage, so one
   representative case is sufficient to prove the wiring per SPEC-4's
   claim.
+- **SPEC-14 / "no artifact paths in code" tension**: the design keeps a
+  hardcoded fallback path for `deploy_result`/`pr_url` (matching
+  `design_stage_run`'s only precedent in the tree), rather than removing
+  path construction from `plugin.sh` entirely. An absolute reading of
+  "the plugin constructs no artifact paths in code" would require a
+  stricter no-fallback variant that has no working reference
+  implementation anywhere in the repo today. A human should confirm
+  this precedent-following interpretation is the intended one before
+  merge, since it is a direct, deliberate narrowing of a literal
+  acceptance phrase — the same class of judgment call the plan already
+  made for the `exhausted`→`out_of_turns` disposition correction.
+- The plan step that suggested folding `summary`/`checks` into a nested
+  `data:{}` object was checked against the shipped reference
+  (`review-lens/plugin.sh:66-78`) and found to not match: the real
+  precedent keeps plugin-owned fields flat/top-level beside the v2
+  fields. This design follows the shipped precedent, not the plan's
+  suggestion.
 
 LOOP_COMPLETE
 
@@ -378,7 +474,7 @@ LOOP_COMPLETE
 Refine the PRIOR DESIGN. Preserve all existing scope entries unless one is clearly wrong.
 
 WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
-- This stage has a wall-clock budget of 600 seconds total; ~1s have elapsed.
+- This stage has a wall-clock budget of 600 seconds total; ~0s have elapsed.
 - You cannot read a real-time clock, but estimate elapsed time from your tool-call history.
 - Target emitting your best-effort design before ~420s of wall-clock time has elapsed (70% of the 600s budget). A partial design with named gaps BEATS a hard SIGTERM that produces no output.
 
