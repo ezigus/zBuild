@@ -30,6 +30,7 @@ FIXTURE_DIR="$SCRIPT_DIR/fixtures"
 STATE_DIR="$TEST_TEMP_DIR/state"
 STATE_FILE="$STATE_DIR/pipeline-state.json"
 ARTIFACTS_DIR="$STATE_DIR/artifacts"
+export ZBUILD_ARTIFACT_DIR="$STATE_DIR/artifacts"   # the engine names the output dir (review #2221)
 mkdir -p "$STATE_DIR" "$ARTIFACTS_DIR"
 printf '{"schema_version":1,"run_id":"test","issue":"758","stage_statuses":{}}\n' > "$STATE_FILE"
 

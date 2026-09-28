@@ -55,11 +55,11 @@ _monitor_envelope_schema_ok() {
 # §3). Never string-interpolate into JSON — jq builds it so escaping is correct.
 _monitor_write_result() {
     local out="$1" verdict="$2" disposition="$3" reason="$4" summary="$5" checks="${6:-[]}"
-    jq -cn --arg v "$verdict" --arg d "$disposition" --arg r "$reason" --arg s "$summary" \
-        --argjson c "$checks" \
+    # A here-string, not a pipe: the SIGPIPE rule (review #2221).
+    atomic_write "$out" <<< "$(jq -cn --arg v "$verdict" --arg d "$disposition" --arg r "$reason" \
+        --arg s "$summary" --argjson c "$checks" \
         '{result_contract:2, schema_version:1, verdict:$v, disposition:$d, reason:$r,
-          data:{summary:$s, checks:$c}}' \
-        | atomic_write "$out"
+          data:{summary:$s, checks:$c}}')"
 }
 
 # ─── _monitor_interrupt_handler ────────────────────────────────────────────────
@@ -67,9 +67,29 @@ _monitor_write_result() {
 # disposition:interrupted so the primary artifact is never silently missing
 # (ADR-063 §3). Reads $_mon_out_ref (set before trap registration) so it is
 # directly invocable in tests for SIGTERM simulation.
+# Runs in the dynamic scope of _monitor_stage_run_inner, so its locals
+# (_mon_out_ref, _mon_interrupted) are the ones it reads and sets — nothing
+# global to leak into the caller (review #2221).
 _monitor_interrupt_handler() {
     _monitor_write_result "${_mon_out_ref:-}" "degraded" "interrupted" "signal_interrupt" "" "[]"
     _mon_interrupted=1
+}
+
+# _monitor_input_path <id> <root> — the engine-resolved path of input <id>, or
+# "". rc 1 when it lies outside <root>, the run's state directory: the engine's
+# index only points inside the run, so any other path is refused, never read
+# into the prompt (review #2221; the same rule the deploy stage applies).
+_monitor_input_path() {
+    local id="$1" root="$2" p dir
+    [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]] || return 0
+    p="$(jq -r --arg id "$id" '.inputs[$id] // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+    [[ -n "$p" ]] || return 0
+    [[ -n "$root" ]] || return 1
+    dir="$(cd "$(dirname "$p")" 2>/dev/null && pwd -P)" || dir="$(dirname "$p")"
+    case "$dir/" in
+        "$root"/*) printf '%s' "$p" ;;
+        *) return 1 ;;
+    esac
 }
 
 # ─── _monitor_budget_guidance <max_turns> ────────────────────────────────────
@@ -102,34 +122,56 @@ EOF
 
 # ─── run ────────────────────────────────────────────────────────────────────
 # Dispatch convention (lifecycle.sh): $1=stage id, $2=state_file.
+# Returns 0 or 1 only (ADR-054 §4b): a missing argument is the engine's
+# contract broken, reported as 1 (review #2221: this returned 2).
 monitor_stage_run() {
     local stage="${1:-}" state_file="${2:-}"
     if [[ -z "$stage" || -z "$state_file" ]]; then
         error "monitor_stage_run: stage and state_file arguments required"
-        return 2
+        return 1
     fi
+    # The stage's clock starts here, so the WALL CLOCK block reports what the
+    # stage has actually spent (review #2221: it was measured across one line).
+    local _mon_stage_start_s="$SECONDS"
     _monitor_stage_run_inner "$state_file"
 }
 
 # ADR-018 Pattern 1 (one-shot): assemble prompt → route_to_model T1 → write report.
 _monitor_stage_run_inner() {
-    local state_file="$1"
-    local state_dir; state_dir="$(dirname "$state_file")"
-    local artifacts_dir="$state_dir/artifacts"
+    # The engine names where results go (ZBUILD_ARTIFACT_DIR); nothing is built
+    # from the state file's location (review #2221, as for deploy in #2219).
+    local artifacts_dir="${ZBUILD_ARTIFACT_DIR:-}"
+    if [[ -z "$artifacts_dir" ]]; then
+        error "monitor: ZBUILD_ARTIFACT_DIR not set — nowhere to write a result"
+        emit_event "monitor.result.unwritable" "plugin=monitor" "disposition=broken"
+        return 1
+    fi
     mkdir -p "$artifacts_dir"
 
     local report_out="$artifacts_dir/monitor-report.json"
 
-    # #1825/#1826: engine-resolved inputs only — no hardcoded artifacts_dir path
-    # construction. An absent index, or an absent/empty entry, means the input
-    # was not provided (identical to today's "file does not exist" path).
-    local deploy_result_json="" pr_url_txt=""
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        deploy_result_json="$(jq -r '.inputs.deploy_result // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-        pr_url_txt="$(jq -r '.inputs.pr_url // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-    fi
-
     emit_event "monitor.started" "plugin=monitor"
+
+    # #1825/#1826: engine-resolved inputs only. An absent index, or an absent
+    # entry, means the input was not provided. The run's state directory is
+    # where the index lives (<state>/stage-inputs/<stage>.json).
+    local root=""
+    [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]] \
+        && root="$(cd "$(dirname "$ZBUILD_STAGE_INPUTS")/.." 2>/dev/null && pwd -P || true)"
+    local deploy_result_json="" pr_url_txt="" _id _p
+    for _id in deploy_result pr_url; do
+        if ! _p="$(_monitor_input_path "$_id" "$root")"; then
+            error "monitor: input $_id resolves outside the run's state directory — refusing it"
+            emit_event "monitor.input.refused" "plugin=monitor" "input=$_id"
+            _monitor_write_result "$report_out" "degraded" "broken" \
+                "input $_id resolves outside the run's state directory" "" "[]"
+            stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
+                "refused input $_id: it points outside this run" \
+                "The engine's input index only points inside the run; this is a defect, not a deployment problem."
+            return 1
+        fi
+        case "$_id" in deploy_result) deploy_result_json="$_p" ;; *) pr_url_txt="$_p" ;; esac
+    done
 
     # Dry-run: sentinel primary artifact, no model call.
     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
@@ -165,10 +207,9 @@ _monitor_stage_run_inner() {
     prompt+="## PR URL (data)"$'\n'"$pr_block"$'\n'
 
     # ─── ADR-063 §1: inject budget guidance before the model call ──────────
-    local _mon_start_s="$SECONDS"
     local _budget_max_turns; _budget_max_turns="$(_route_resolve_max_turns)"
     local _budget_timeout_s; _budget_timeout_s="$(_route_resolve_timeout)"
-    local _budget_elapsed_s=$(( SECONDS - _mon_start_s ))
+    local _budget_elapsed_s=$(( SECONDS - ${_mon_stage_start_s:-$SECONDS} ))
     local _budget_block; _budget_block="$(_monitor_budget_guidance "$_budget_max_turns")"
     if [[ -n "$_budget_block" ]]; then
         prompt+=$'\n\n'"$_budget_block"
@@ -184,34 +225,32 @@ _monitor_stage_run_inner() {
     # touching the caller's errexit. ADR-063 §3: register an interrupt trap so
     # disposition:interrupted is written if the call is cut short by SIGTERM/SIGINT.
     local response rc=0
-    _mon_out_ref="$report_out"
-    _mon_interrupted=0
+    local _mon_out_ref="$report_out" _mon_interrupted=0
+    # The caller's own handlers are put back afterwards, not reset to the
+    # default (review #2221 — a sourced plugin must not discard them).
+    local _mon_prev_traps; _mon_prev_traps="$(trap -p TERM INT)"
     trap '_monitor_interrupt_handler' TERM INT
     response="$(route_to_model "T1" "$prompt")" || rc=$?
     trap - TERM INT
+    [[ -n "$_mon_prev_traps" ]] && eval "$_mon_prev_traps"
 
     # rc=130 (SIGTERM/SIGINT propagated through the router subshell): the trap
     # above already wrote disposition:interrupted unless it raced the return —
     # cover that race, then collapse to rc=1 per #1823 (rc ∈ {0,1} only).
-    if [[ "$rc" -eq 130 ]]; then
+    if [[ "$rc" -eq 130 || "${_mon_interrupted:-0}" == "1" ]]; then
         [[ "${_mon_interrupted:-0}" == "1" ]] \
             || _monitor_write_result "$report_out" "degraded" "interrupted" "signal_interrupt" "" "[]"
+        emit_event "monitor.alert" "plugin=monitor" "reason=signal_interrupt" "rc=$rc"
         stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
             "the model call was interrupted by a signal, so no assessment was made" \
             "The deployment was not assessed. Absence of an alert here is not evidence of health."
         return 1
     fi
 
-    # rc=10 (turn-budget exhaustion, ADR-063 §3): distinct from a generic router
-    # failure so the engine's out_of_turns retry response is actually exercised.
-    if [[ "$rc" -eq 10 ]]; then
-        _monitor_write_result "$report_out" "degraded" "out_of_turns" "budget_exhausted" "" "[]"
-        stage_summary_write "$artifacts_dir/monitor-summary.md" "monitor" "fail" \
-            "the model call ran out of turn budget, so no assessment was made" \
-            "The deployment was not assessed. Absence of an alert here is not evidence of health."
-        return 1
-    fi
-
+    # A turn-budget hit arrives as rc=1 with the router's budget marker (it
+    # never returns 10); _router_rc_classify names it router_out_of_turns and
+    # router_reason_disposition turns that into out_of_turns — the one place
+    # the word is decided (ADR-054 §6a). Handled by the branch below.
     if [[ $rc -ne 0 ]]; then
         local _mon_v="" _mon_r=""
         _router_rc_classify "$rc" _mon_v _mon_r 2>/dev/null || true

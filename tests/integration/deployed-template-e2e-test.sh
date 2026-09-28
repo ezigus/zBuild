@@ -273,6 +273,8 @@ else
     assert_pass "[SPEC-5] monitor_stage_init does not exist (ADR-056: init removed)"
 fi
 
+# The engine names the output dir for every stage it dispatches (review #2221).
+export ZBUILD_ARTIFACT_DIR="$ARTIFACTS_DIR"
 set +e
 monitor_stage_run "monitor" "$STATE_FILE"
 _run_rc=$?

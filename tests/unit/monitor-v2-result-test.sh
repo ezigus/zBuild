@@ -25,10 +25,10 @@
 #   [#1847/SPEC-22] template accessor still outranks monitor's own manifest config.router
 #   [#1847/SPEC-23] router rc=124 (wall-clock timeout) is classified through the shared
 #                   _router_rc_classify -> router_reason_disposition chokepoint (sentinel-stub
-#                   proof), distinct from the rc=10 out_of_turns case
-#   [#1847/SPEC-24] rc=10 (turn-budget) path carries the literal disposition:out_of_turns,
-#                   reason:budget_exhausted via its own branch — proven NOT routed through
-#                   router_reason_disposition by stubbing it to a sentinel for any argument
+#                   proof), distinct from the turn-budget (out_of_turns) case
+#   [#1847/SPEC-24] a turn-budget hit (rc=1 + the router's budget marker — the router
+#                   never returns 10) is classified through router_reason_disposition
+#                   (sentinel-stub proof); corrected after review #2221
 #   [#1847/SPEC-25] live pass-path verdict/data.summary/data.checks are byte-identical to a
 #                   pre-migration v1-shaped fixture, contract-v2-only fields excluded
 set -euo pipefail
@@ -63,6 +63,7 @@ source "$PLUGIN_DIR/plugin.sh"
 STATE_DIR="$TEST_TEMP_DIR/state"
 ARTIFACTS_DIR="$STATE_DIR/artifacts"
 STATE_FILE="$STATE_DIR/pipeline-state.json"
+export ZBUILD_ARTIFACT_DIR="$STATE_DIR/artifacts"   # the engine names the output dir (review #2221)
 mkdir -p "$ARTIFACTS_DIR"
 printf '{"schema_version":1,"run_id":"test","issue":"1847","stage_statuses":{}}\n' > "$STATE_FILE"
 
@@ -379,38 +380,38 @@ else
 fi
 rm -f "$ARTIFACTS_DIR/deploy-result.json" "$ARTIFACTS_DIR/pr-url.txt"
 
-# ─── SPEC-24: router rc=10 (turn-budget exhaustion) writes the established ───
-# literal pair via its own dedicated branch, intentionally NOT routed through
-# router_reason_disposition — proven by stubbing router_reason_disposition to
-# return a distinguishing sentinel for ANY argument and asserting the written
-# disposition/reason are still the literal pair, not the sentinel. If the code
-# called the chokepoint (for any reason string), the sentinel would appear in
-# the output instead.
-print_test_section "[#1847/SPEC-24] router rc=10 (turn-budget) path writes disposition:out_of_turns/reason:budget_exhausted via its own branch, not router_reason_disposition"
+# ─── SPEC-24 (corrected after review #2221): a turn-budget hit is classified ──
+# through the shared _router_rc_classify → router_reason_disposition chokepoint,
+# never a hand-written word (the issue: "take it from router_reason_disposition").
+# The router reports a budget hit as rc=1 plus its budget marker — it never
+# returns 10, so the old dedicated rc=10 branch this SPEC used to assert was dead
+# code. Proven by stubbing router_reason_disposition to a sentinel: the written
+# disposition must BE the sentinel.
+print_test_section "[#1847/SPEC-24] a turn-budget hit (rc=1 + the router's budget marker) is classified through router_reason_disposition"
 
 rm -f "$ARTIFACTS_DIR/monitor-report.json"
 _S24_SENTINEL="SENTINEL_ROUTER_REASON_DISPOSITION_CALLED_4e21"
 _s24_orig_disposition="$(declare -f router_reason_disposition)"
+_s24_orig_route="$(declare -f route_to_model)"
 # shellcheck disable=SC2329
 router_reason_disposition() {
-    printf '%s' "$_S24_SENTINEL"
+    if [[ "${1-}" == "router_out_of_turns" ]]; then printf '%s' "$_S24_SENTINEL"; else printf 'unavailable'; fi
 }
-MOCK_ROUTE_RC=10
-MOCK_ROUTE_RESPONSE=""
+# shellcheck disable=SC2329
+route_to_model() { _router_arm_budget_marker; return 1; }
 set +e
-monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
+ZBUILD_STATE_DIR="$STATE_DIR" ZBUILD_CURRENT_STAGE=monitor monitor_stage_run "monitor" "$STATE_FILE" >/dev/null 2>&1
 _s24_rc=$?
 set -e
-eval "$_s24_orig_disposition"
+eval "$_s24_orig_disposition"; eval "$_s24_orig_route"
 
-assert_eq "[#1847/SPEC-24] rc=10 (turn-budget) path: monitor_stage_run returns rc=1 (not the raw router rc=10)" \
-    "1" "$_s24_rc"
-assert_file_exists "[#1847/SPEC-24] monitor-report.json written on rc=10 path" "$ARTIFACTS_DIR/monitor-report.json"
-assert_eq "[#1847/SPEC-24] rc=10 (turn-budget) path: disposition is the literal out_of_turns, not the stubbed router_reason_disposition sentinel (proves its own dedicated branch, not the chokepoint)" \
-    "out_of_turns" \
+assert_eq "[#1847/SPEC-24] turn-budget path: monitor_stage_run returns rc=1" "1" "$_s24_rc"
+assert_file_exists "[#1847/SPEC-24] monitor-report.json written on the turn-budget path" "$ARTIFACTS_DIR/monitor-report.json"
+assert_eq "[#1847/SPEC-24] turn-budget path: disposition comes from router_reason_disposition (the stubbed sentinel)" \
+    "$_S24_SENTINEL" \
     "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
-assert_eq "[#1847/SPEC-24] rc=10 (turn-budget) path: reason is the literal budget_exhausted, not the stubbed router_reason_disposition sentinel" \
-    "budget_exhausted" \
+assert_eq "[#1847/SPEC-24] turn-budget path: reason is the classifier's router_out_of_turns" \
+    "router_out_of_turns" \
     "$(jq -r '.reason // empty' "$ARTIFACTS_DIR/monitor-report.json" 2>/dev/null || true)"
 
 # ─── SPEC-23: router rc=124 classified through the shared _router_rc_classify ─

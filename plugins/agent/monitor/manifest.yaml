@@ -32,6 +32,8 @@ provides:
   events:
     - monitor.alert
     - monitor.check
+    - monitor.input.refused
+    - monitor.result.unwritable
     - monitor.started
 
 config:

@@ -29,8 +29,6 @@ description: |
 
 hooks:
   run: monitor_stage_run
-  cleanup: monitor_stage_cleanup
-
 requires:
   core:
     - redaction
@@ -40,34 +38,54 @@ requires:
   plugins: []
 
 provides:
-  artifact_type: monitor-report.json
   role: monitor
-  schema_version: 1
+  result_contract: 2
+  # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
+  # the engine's known set at load. Adding one here needs no engine-config edit.
+  events:
+    - monitor.alert
+    - monitor.check
+    - monitor.input.refused
+    - monitor.result.unwritable
+    - monitor.started
 
 config:
+  valid_verdicts:
+    - pass
+    - degraded
   tier_default: T1
+  router:
+    timeout_s: 300 # single-shot advisory; no exploration loop needed
+    max_turns: 10  # pattern 1 single-turn; headroom for retry on schema failure
 
 inputs:
   - id: deploy_result
-    type: file
-    path: "${artifact_dir}/deploy-result.json"
     required: false
   - id: pr_url
-    type: file
-    source: stage:pr
-    path: "${artifact_dir}/pr-url.txt"
     required: false
 
 outputs:
   - id: monitor_report
     path: "${artifact_dir}/monitor-report.json"
-    type: monitor-report.json
+    type: monitor-report.json@1
+    format: json
     required: true
     primary: true
+  # ADR-055 §9: this stage's statement of what it DID. required:true —
+  # written on every terminal verdict, so absence means something went wrong.
+  - id: monitor_summary
+    path: "${artifact_dir}/monitor-summary.md"
+    type: monitor-summary.md@1
+    format: markdown
+    required: true
+    summary: true
 
 state:
   persisted: []
   reconstructed: []
+
+# hooks.cleanup is intentionally absent: this plugin holds no live resources
+# that require teardown — ADR-054 §7 (#1829).
 ```
 
 _See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Plugins]] for the contract._
