@@ -52,10 +52,10 @@ NEGCTL PASS SPEC-17 guard_spec
       asserts: assert_pass "[#1846/SPEC-17] manifest provides.role = deploy_agent"
 NEGCTL PASS SPEC-18 guard_spec
       design : manifest hooks block declares only run: deploy_agent_run; no cleanup: entry
-      asserts: assert_pass "[#1846/SPEC-18] manifest hooks block declares run: deploy_agent_run"
+      asserts: assert_pass "[#1846/SPEC-18] manifest hooks block declares run hook"
 NEGCTL PASS SPEC-19
       design : dry-run deploy-result.json carries verdict=deployed, disposition=complete, reason present (full v2 e…
-      asserts: assert_eq "[#1846/SPEC-19] dry-run carries verdict=deployed" "deployed" "$_dry_v"
+      asserts: assert_eq "[#1846/SPEC-19] dry-run carries disposition=complete" "complete" "$_dry_dp"
 NEGCTL PASS SPEC-20
       design : deploy-release returns non-zero → deploy-result.json disposition=unavailable
       asserts: assert_eq "[#1846/SPEC-20] deploy-release non-zero → disposition=unavailable" \
@@ -67,7 +67,7 @@ NEGCTL PASS SPEC-22 guard_spec
       asserts: assert_pass "[#1846/SPEC-22] manifest config.valid_verdicts includes $_vv"
 NEGCTL PASS SPEC-23
       design : with ZBUILD_ARTIFACT_DIR set to a non-default path before deploy_agent_run, the result is written to…
-      asserts: assert_eq "[#1846/SPEC-23] deploy_agent_run exits 0 in dry-run with non-default ZBUILD_ARTIFACT_DIR …
+      asserts: assert_eq "[#1846/SPEC-23] deploy_agent_run exits 0 in dry-run with ZBUILD_ARTIFACT_DIR + ZBUILD_STA…
 NEGCTL PASS SPEC-24
       design : manifest carries the router-budget-absence comment documenting that deploy makes no LLM calls (match…
       asserts: assert_pass "[#1846/SPEC-24] manifest carries 'router budgets: none' comment"

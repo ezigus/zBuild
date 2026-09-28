@@ -1,0 +1,13 @@
+{
+  "stage": "acceptance-gate",
+  "cycle_iter": 2,
+  "attempt": 1,
+  "rc": "1",
+  "generated_at": "2026-09-28T17:37:03Z",
+  "files": 2,
+  "outputs": {
+    "acceptance-gate-errors.log": "absent",
+    "acceptance-gate-result.json": "changed",
+    "acceptance-summary.txt": "changed"
+  }
+}

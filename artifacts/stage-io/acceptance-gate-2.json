@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "run_id": "20260928140450-2358",
+  "stage": "acceptance-gate",
+  "kind": "computed",
+  "seq": 2,
+  "input": "contract summary (27 checks)",
+  "output": "contract summary: 27 checks",
+  "exit_code": 0,
+  "duration_ms": 19,
+  "metadata": {},
+  "ts": "2026-09-28T17:37:03Z"
+}
