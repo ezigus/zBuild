@@ -1,0 +1,82 @@
+### SPEC-24 baseline tests/unit/monitor-v2-result-test.sh
+
+[38;2;0;212;255m[1m  monitor plugin: v2 result contract (issue #1847)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mmanifest declares provides.result_contract: 2[0m
+  [38;2;248;113;113m✗[0m manifest provides.result_contract is 2
+    [2mexpected: 2, got: [0m
+
+  [38;2;0;212;255mmanifest declares config.router timeout_s:300, max_turns:10[0m
+  [38;2;248;113;113m✗[0m manifest config.router.timeout_s is 300
+    [2mexpected: 300, got: [0m
+  [38;2;248;113;113m✗[0m manifest config.router.max_turns is 10
+    [2mexpected: 10, got: [0m
+
+  [38;2;0;212;255mconfig.valid_verdicts remains exactly [pass, degraded][0m
+  [38;2;74;222;128m✓[0m valid_verdicts has exactly 2 entries
+  [38;2;74;222;128m✓[0m valid_verdicts includes pass
+  [38;2;74;222;128m✓[0m valid_verdicts includes degraded
+
+  [38;2;0;212;255minputs: declares only deploy_result and pr_url, both required:false, no source/path/type[0m
+  [38;2;74;222;128m✓[0m inputs: declares exactly 2 input ids
+  [38;2;74;222;128m✓[0m inputs: declares deploy_result
+  [38;2;74;222;128m✓[0m inputs: declares pr_url
+  [38;2;74;222;128m✓[0m inputs: both entries have required:false
+  [38;2;74;222;128m✓[0m inputs: no restated source/path/type keys
+
+  [38;2;0;212;255moutputs: block declares exactly one primary:true entry (monitor_report)[0m
+  [38;2;74;222;128m✓[0m manifest has exactly one primary:true output
+  [38;2;74;222;128m✓[0m the primary:true output is monitor_report
+
+  [38;2;0;212;255mmanifest still declares provides.role: monitor[0m
+  [38;2;74;222;128m✓[0m provides.role is monitor
+
+  [38;2;0;212;255mdry-run monitor-report.json carries result_contract:2, disposition:complete[0m
+  [38;2;74;222;128m✓[0m dry-run returns rc=0
+  [38;2;74;222;128m✓[0m dry-run writes monitor-report.json
+  [38;2;248;113;113m✗[0m dry-run: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m dry-run: disposition is complete
+    [2mexpected: complete, got: [0m
+  [38;2;248;113;113m✗[0m dry-run: reason key is present and empty
+    [2mexpected: , got: MISSING_KEY[0m
+
+  [38;2;0;212;255mlive pass-path monitor-report.json carries result_contract:2, disposition:complete, verdict:pass[0m
+  [38;2;74;222;128m✓[0m live pass path returns rc=0
+  [38;2;74;222;128m✓[0m live pass path writes monitor-report.json
+  [38;2;248;113;113m✗[0m live pass path: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m live pass path: disposition is complete
+    [2mexpected: complete, got: [0m
+  [38;2;74;222;128m✓[0m live pass path: verdict is still pass (unchanged)
+  [38;2;248;113;113m✗[0m live pass path: reason key is present and empty
+    [2mexpected: , got: MISSING_KEY[0m
+
+  [38;2;0;212;255m[#1847/SPEC-25] live pass-path verdict/data.summary/data.checks are byte-identical to the pre-migration v1-shaped fixture[0m
+  [38;2;248;113;113m✗[0m [#1847/SPEC-25] live pass-path health-assessment fields match the v1-shaped baseline byte-for-byte
+    [2mexpected: , got: {"schema_version":1,"verdict":"pass","summary":null,"checks":null}[0m
+
+  [38;2;0;212;255mlive degraded-verdict path: disposition:complete, reason:"" (verdict itself carries the degradation)[0m
+  [38;2;74;222;128m✓[0m live degraded-verdict path writes monitor-report.json
+  [38;2;74;222;128m✓[0m live degraded-verdict path: verdict is degraded
+  [38;2;248;113;113m✗[0m live degraded-verdict path: disposition is still complete
+    [2mexpected: complete, got: [0m
+  [38;2;248;113;113m✗[0m live degraded-verdict path: reason key is present and empty
+    [2mexpected: , got: MISSING_KEY[0m
+
+  [38;2;0;212;255mroute_to_model failure path carries a disposition derived via router_reason_disposition[0m
+  [38;2;74;222;128m✓[0m router-failure path writes monitor-report.json
+  [38;2;248;113;113m✗[0m router-failure path: disposition is unavailable (router_reason_disposition mapping)
+    [2mexpected: unavailable, got: [0m
+  [38;2;248;113;113m✗[0m router-failure path: reason names the classified router reason
+    [2mexpected: router_rc_nonzero, got: [0m
+  [38;2;74;222;128m✓[0m router-failure path returns non-zero rc
+
+  [38;2;0;212;255munparseable/schema-gate-failed reply path carries disposition:unusable[0m
+  [38;2;74;222;128m✓[0m unparseable-reply path writes monitor-report.json
+  [38;2;248;113;113m✗[0m unparseable-reply path: disposition is unusable
+    [2mexpected: unusable, got: [0m
+
+  [38;2;0;212;255mSIGTERM during route_to_model writes disposition:interrupted, reason:signal_interrupt, and monitor_stage_run returns rc=1 (not raw signal rc)[0m
