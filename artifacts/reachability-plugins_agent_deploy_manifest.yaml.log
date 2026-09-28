@@ -5,7 +5,7 @@
 
   [38;2;74;222;128m✓[0m [#1846/SPEC-1] deploy plugin.sh exists at expected path
   [38;2;74;222;128m✓[0m [#1846/SPEC-1] deploy_agent_run function defined after source
-  [38;2;74;222;128m✓[0m [#1846/SPEC-5] deploy plugin.sh has 'Role: deploy_agent' preamble
+  [38;2;74;222;128m✓[0m [#1846/SPEC-5] deploy plugin.sh has '# Role: deploy_agent' as a comment in preamble (first 20 lines)
   [38;2;74;222;128m✓[0m [#1846/SPEC-6] deploy plugin has no route_to_model call in non-comment code
   [38;2;248;113;113m✗[0m [#1846/SPEC-9] manifest provides block must declare result_contract: 2
     [2m  role: deploy_agent
@@ -38,11 +38,9 @@
   [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest config.valid_verdicts includes skipped
   [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest config.valid_verdicts declares exactly 3 verdicts
   [38;2;248;113;113m✗[0m [#1846/SPEC-24] manifest must carry 'router budgets: none' comment
-    [2mnot found in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.PkFd35/plugins/agent/deploy/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1846/SPEC-24] manifest router-budget comment must reference ADR-037
-    [2mADR-037 not found in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.PkFd35/plugins/agent/deploy/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1846/SPEC-24] manifest router-budget comment must reference §3 of ADR-037
-    [2m§3 not found in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.PkFd35/plugins/agent/deploy/manifest.yaml[0m
+    [2mnot found in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-reach.9Cr1Tx/plugins/agent/deploy/manifest.yaml[0m
+  [38;2;248;113;113m✗[0m [#1846/SPEC-24] manifest comment near 'router budgets: none' must reference both ADR-037 and §3
+    [2mabsent[0m
   [38;2;74;222;128m✓[0m [#1846/SPEC-2] dry-run writes verdict=deployed
   [38;2;74;222;128m✓[0m [#1846/SPEC-7] dry-run deploy-result.json carries result_contract=2
   [38;2;74;222;128m✓[0m [#1846/SPEC-7] dry-run deploy-result.json must not carry schema_version key
@@ -83,7 +81,7 @@
   [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-fail exit path: disposition key present
   [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-fail exit path: reason key present and non-empty
   [38;2;74;222;128m✓[0m [#1846/SPEC-13] deploy-release non-zero → rc=1
-[38;2;248;113;113m[1m✗[0m deploy: deploy-release plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-deploy.Vw50Km/no-deploy-release/plugins/tool/deploy-release/plugin.sh
+[38;2;248;113;113m[1m✗[0m deploy: deploy-release plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-deploy.ClGtaS/no-deploy-release/plugins/tool/deploy-release/plugin.sh
   [38;2;74;222;128m✓[0m [#1846/SPEC-21] deploy-release absent → disposition=broken
   [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-absent exit path: result_contract=2
   [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-absent exit path: verdict key present
@@ -114,12 +112,11 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m4 of 92 tests failed[0m
+  [38;2;248;113;113m[1m3 of 91 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1846/SPEC-9] manifest provides block must declare result_contract: 2
   [38;2;248;113;113m✗[0m [#1846/SPEC-24] manifest must carry 'router budgets: none' comment
-  [38;2;248;113;113m✗[0m [#1846/SPEC-24] manifest router-budget comment must reference ADR-037
-  [38;2;248;113;113m✗[0m [#1846/SPEC-24] manifest router-budget comment must reference §3 of ADR-037
+  [38;2;248;113;113m✗[0m [#1846/SPEC-24] manifest comment near 'router budgets: none' must reference both ADR-037 and §3
 
 ### plugins/agent/deploy/manifest.yaml head plugins/agent/deploy/tests/deploy-test.sh
 
@@ -128,7 +125,7 @@
 
   [38;2;74;222;128m✓[0m [#1846/SPEC-1] deploy plugin.sh exists at expected path
   [38;2;74;222;128m✓[0m [#1846/SPEC-1] deploy_agent_run function defined after source
-  [38;2;74;222;128m✓[0m [#1846/SPEC-5] deploy plugin.sh has 'Role: deploy_agent' preamble
+  [38;2;74;222;128m✓[0m [#1846/SPEC-5] deploy plugin.sh has '# Role: deploy_agent' as a comment in preamble (first 20 lines)
   [38;2;74;222;128m✓[0m [#1846/SPEC-6] deploy plugin has no route_to_model call in non-comment code
   [38;2;74;222;128m✓[0m [#1846/SPEC-9] manifest provides block declares result_contract: 2
   [38;2;74;222;128m✓[0m [#1846/SPEC-11] plugin.sh has no state_file-derived artifact path
@@ -153,8 +150,7 @@
   [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest config.valid_verdicts includes skipped
   [38;2;74;222;128m✓[0m [#1846/SPEC-22] manifest config.valid_verdicts declares exactly 3 verdicts
   [38;2;74;222;128m✓[0m [#1846/SPEC-24] manifest carries 'router budgets: none' comment
-  [38;2;74;222;128m✓[0m [#1846/SPEC-24] manifest router-budget comment references ADR-037
-  [38;2;74;222;128m✓[0m [#1846/SPEC-24] manifest router-budget comment references §3 of ADR-037
+  [38;2;74;222;128m✓[0m [#1846/SPEC-24] manifest router-budget comment has 'ADR-037 §3' near 'router budgets: none'
   [38;2;74;222;128m✓[0m [#1846/SPEC-2] dry-run writes verdict=deployed
   [38;2;74;222;128m✓[0m [#1846/SPEC-7] dry-run deploy-result.json carries result_contract=2
   [38;2;74;222;128m✓[0m [#1846/SPEC-7] dry-run deploy-result.json must not carry schema_version key
@@ -195,7 +191,7 @@
   [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-fail exit path: disposition key present
   [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-fail exit path: reason key present and non-empty
   [38;2;74;222;128m✓[0m [#1846/SPEC-13] deploy-release non-zero → rc=1
-[38;2;248;113;113m[1m✗[0m deploy: deploy-release plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-deploy.j7qufh/no-deploy-release/plugins/tool/deploy-release/plugin.sh
+[38;2;248;113;113m[1m✗[0m deploy: deploy-release plugin not found at: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-deploy.y6jMwR/no-deploy-release/plugins/tool/deploy-release/plugin.sh
   [38;2;74;222;128m✓[0m [#1846/SPEC-21] deploy-release absent → disposition=broken
   [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-absent exit path: result_contract=2
   [38;2;74;222;128m✓[0m [#1846/SPEC-10] deploy-release-absent exit path: verdict key present
@@ -226,5 +222,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 92 tests passed[0m
+  [38;2;74;222;128m[1mAll 91 tests passed[0m
 
