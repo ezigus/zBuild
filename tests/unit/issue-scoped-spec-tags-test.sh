@@ -22,6 +22,7 @@
 #             tag and another issue's tag survive untouched
 # T5 [change] test-author is shown the literal tag to write for each SPEC
 # T6 [change] the build prompt names the same tags
+# T7 [change] ...and so does the design prompt's tagging rule (review on #2214)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -115,6 +116,13 @@ if grep -qF 'acceptance_spec_tag' "$REPO_ROOT/plugins/agent/build/lib/prompt.sh"
     assert_pass "[T6] the build prompt names tags with acceptance_spec_tag"
 else
     assert_fail "[T6] the build prompt names tags with acceptance_spec_tag" "not called in prompt.sh"
+fi
+
+_design_src="$(sed -n '/TAGGING RULE/,/control can isolate/p' "${ZB_DESIGN_PLUGIN:-$REPO_ROOT/plugins/agent/design/plugin.sh}")"
+if grep -qF 'acceptance_spec_tag' <<< "$_design_src"; then
+    assert_pass "[T7] the design prompt's tagging rule names the tag with acceptance_spec_tag"
+else
+    assert_fail "[T7] the design prompt's tagging rule names the tag with acceptance_spec_tag" "rule: ${_design_src:0:200}"
 fi
 
 cleanup_test_env

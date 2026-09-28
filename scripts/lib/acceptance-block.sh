@@ -89,13 +89,6 @@ extract_acceptance_block() {
     return 0
 }
 
-# acceptance_list_spec_ids <design_md>  (ADR-036 / #922)
-# Prints each STABLE SPEC id (e.g. "SPEC-1", "SPEC-2") from the ```acceptance
-# block, one per line, in declaration order. Only `SPEC-<n>:` lines carry an
-# id; bare legacy `SPEC:` lines are intentionally ignored (they have no id to
-# map to a [SPEC-n]-tagged assertion). Returns 0 when ≥1 id is found, else 1.
-# Stops at the TESTFILES: sentinel so per-SPEC binding lines (SPEC-n: path)
-# in the TESTFILES section are not misidentified as spec-id declarations.
 # acceptance_spec_tag <spec_id> — the tag an assertion carries for a SPEC.
 # Under an issue: [#<issue>/SPEC-n] — SPEC numbers restart with every design, so
 # a bare [SPEC-3] cannot say WHICH issue's SPEC-3 it is, and two issues sharing a
@@ -112,6 +105,13 @@ acceptance_spec_tag() {
     fi
 }
 
+# acceptance_list_spec_ids <design_md>  (ADR-036 / #922)
+# Prints each STABLE SPEC id (e.g. "SPEC-1", "SPEC-2") from the ```acceptance
+# block, one per line, in declaration order. Only `SPEC-<n>:` lines carry an
+# id; bare legacy `SPEC:` lines are intentionally ignored (they have no id to
+# map to a [SPEC-n]-tagged assertion). Returns 0 when ≥1 id is found, else 1.
+# Stops at the TESTFILES: sentinel so per-SPEC binding lines (SPEC-n: path)
+# in the TESTFILES section are not misidentified as spec-id declarations.
 acceptance_list_spec_ids() {
     local design_md="${1:-}"
     local block_output line ids_found=0
