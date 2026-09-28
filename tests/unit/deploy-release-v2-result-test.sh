@@ -174,6 +174,24 @@ fi
 
 unset ZBUILD_ARTIFACT_DIR
 
+# ─── review #2219: the result goes to ZBUILD_ARTIFACT_DIR, never beside the state file ─
+# (Written after the change, not before it — the deploy agent's R4 test was the
+# red step for this behaviour; this pins deploy-release's own half.)
+print_test_section "review #2219: no ZBUILD_ARTIFACT_DIR → rc=1, nothing written beside the state file"
+_s_nod_dir="$TEST_TEMP_DIR/spec-noartdir"
+_s_nod_sf="$(_make_dr_state "$_s_nod_dir")"
+rm -rf "$_s_nod_dir/artifacts"
+set +e
+( unset ZBUILD_ARTIFACT_DIR; ZBUILD_DRY_RUN=1 deploy_release_run "deploy" "$_s_nod_sf" ) >/dev/null 2>&1
+_s_nod_rc=$?
+set -e
+assert_eq "[#2219] no ZBUILD_ARTIFACT_DIR → rc=1" "1" "$_s_nod_rc"
+if [[ -e "$_s_nod_dir/artifacts" ]]; then
+    assert_fail "[#2219] nothing is written beside the state file" "$_s_nod_dir/artifacts exists"
+else
+    assert_pass "[#2219] nothing is written beside the state file"
+fi
+
 # ─── SPEC-16 / SPEC-23: dry-run path ─────────────────────────────────────────
 print_test_section "SPEC-16: dry-run path — result_contract:2, disposition, reason"
 
@@ -182,7 +200,7 @@ _s_dry_sf="$(_make_dr_state "$_s_dry_dir")"
 _s_dry_art="$_s_dry_dir/artifacts"
 
 set +e
-( ZBUILD_DRY_RUN=1 deploy_release_run "deploy" "$_s_dry_sf" ) >/dev/null 2>&1
+( ZBUILD_DRY_RUN=1 ZBUILD_ARTIFACT_DIR="${_s_dry_sf%/*}/artifacts" deploy_release_run "deploy" "$_s_dry_sf" ) >/dev/null 2>&1
 _s_dry_rc=$?
 set -e
 
@@ -210,7 +228,7 @@ _mk_dr_mocks "$TEST_TEMP_DIR/bin-ok"
 
 set +e
 ( ZBUILD_DRY_RUN=0 PATH="$TEST_TEMP_DIR/bin-ok:$PATH" \
-  deploy_release_run "deploy" "$_s_ok_sf" ) >/dev/null 2>&1
+  ZBUILD_ARTIFACT_DIR="${_s_ok_sf%/*}/artifacts" deploy_release_run "deploy" "$_s_ok_sf" ) >/dev/null 2>&1
 _s_ok_rc=$?
 set -e
 
@@ -241,7 +259,7 @@ _mk_dr_mocks "$TEST_TEMP_DIR/bin-tagfail" 1  # tag_rc=1
 
 set +e
 ( ZBUILD_DRY_RUN=0 PATH="$TEST_TEMP_DIR/bin-tagfail:$PATH" \
-  deploy_release_run "deploy" "$_s_tf_sf" ) >/dev/null 2>&1
+  ZBUILD_ARTIFACT_DIR="${_s_tf_sf%/*}/artifacts" deploy_release_run "deploy" "$_s_tf_sf" ) >/dev/null 2>&1
 _s_tf_rc=$?
 set -e
 
@@ -271,7 +289,7 @@ _mk_dr_mocks "$TEST_TEMP_DIR/bin-pushfail" 0 1  # tag_rc=0, push_rc=1
 
 set +e
 ( ZBUILD_DRY_RUN=0 PATH="$TEST_TEMP_DIR/bin-pushfail:$PATH" \
-  deploy_release_run "deploy" "$_s_pf_sf" ) >/dev/null 2>&1
+  ZBUILD_ARTIFACT_DIR="${_s_pf_sf%/*}/artifacts" deploy_release_run "deploy" "$_s_pf_sf" ) >/dev/null 2>&1
 _s_pf_rc=$?
 set -e
 
@@ -327,7 +345,7 @@ _mk_dr_mocks "$TEST_TEMP_DIR/bin18a"
 set +e
 ( ZBUILD_DRY_RUN=1 \
   ZBUILD_STAGE_INPUTS="$_s18a_si" \
-  deploy_release_run "deploy" "$_s18a_sf" ) >/dev/null 2>&1
+  ZBUILD_ARTIFACT_DIR="${_s18a_sf%/*}/artifacts" deploy_release_run "deploy" "$_s18a_sf" ) >/dev/null 2>&1
 _s18a_rc=$?
 set -e
 
@@ -355,7 +373,7 @@ _mk_dr_mocks "$TEST_TEMP_DIR/bin18b"
 set +e
 ( ZBUILD_DRY_RUN=1 \
   ZBUILD_STAGE_INPUTS="$_s18b_dir/stage-inputs.json" \
-  deploy_release_run "deploy" "$_s18b_sf" ) >/dev/null 2>&1
+  ZBUILD_ARTIFACT_DIR="${_s18b_sf%/*}/artifacts" deploy_release_run "deploy" "$_s18b_sf" ) >/dev/null 2>&1
 _s18b_rc=$?
 set -e
 

@@ -33,40 +33,107 @@ _DEPLOY_ROOT="$_ZBUILD_PLUGIN_ROOT"
 source "$_DEPLOY_ROOT/core/event-bus/event-bus.sh"
 
 # Write a v2 result envelope to ZBUILD_ARTIFACT_DIR/deploy-result.json.
-# Args: out_dir verdict disposition reason [data_json]
+# Args: out_dir verdict disposition reason [pr_url] [tag] [mode]
+# The data block is built in the same jq call (one fork per write), and the
+# envelope reaches atomic_write through a here-string, not a pipe (SIGPIPE rule).
 _deploy_write_result() {
     local out_dir="$1" verdict="$2" disposition="$3" reason="$4"
-    local data_json="${5:-}"
-    [[ -z "$data_json" ]] && data_json='{}'
+    local pr_url="${5:-}" tag="${6:-}" mode="${7:-}" env
     mkdir -p "$out_dir"
-    jq -n \
-        --arg verdict "$verdict" \
-        --arg disposition "$disposition" \
-        --arg reason "$reason" \
-        --argjson data "$data_json" \
-        '{result_contract:2, verdict:$verdict, disposition:$disposition, reason:$reason, data:$data}' \
-        | atomic_write "$out_dir/deploy-result.json"
+    env="$(jq -n --arg v "$verdict" --arg d "$disposition" --arg r "$reason" \
+        --arg pr "$pr_url" --arg tag "$tag" --arg mode "$mode" \
+        '{result_contract:2, verdict:$v, disposition:$d, reason:$r,
+          data:({} + (if $pr != "" then {pr_url:$pr} else {} end)
+                   + (if $tag != "" then {tag:$tag} else {} end)
+                   + (if $mode != "" then {mode:$mode} else {} end))}')"
+    atomic_write "$out_dir/deploy-result.json" <<< "$env"
+}
+
+# _deploy_input_path <id> <root> — the engine-resolved path of input <id>, or
+# "" when it is not declared. rc 1 when the path lies OUTSIDE <root> (the run's
+# state directory): the engine's index only ever points inside the run, so any
+# other path is a defect or a forged index, and it is never opened (review #2219).
+_deploy_input_path() {
+    local id="$1" root="$2" p dir
+    p="${_DEPLOY_INPUTS[$id]:-}"
+    [[ -n "$p" ]] || return 0
+    dir="$(cd "$(dirname "$p")" 2>/dev/null && pwd -P)" || { printf '%s' "$p"; return 0; }
+    case "$dir/" in
+        "$root"/*) printf '%s' "$p" ;;
+        *) return 1 ;;
+    esac
+}
+
+# SIGTERM/SIGINT mid-release: the engine stopped the stage. Record it; the run
+# path rewrites the envelope once the interrupted command returns.
+_deploy_on_signal() {
+    _DEPLOY_INTERRUPTED=1
+    [[ -n "${ZBUILD_ARTIFACT_DIR:-}" ]] \
+        && _deploy_write_result "$ZBUILD_ARTIFACT_DIR" "error" "interrupted" "signal_interrupt"
 }
 
 # ─── run ─────────────────────────────────────────────────────────────────────
+# Args (engine dispatch): $1 = stage id, $2 = state file — passed through to
+# deploy-release, whose contract takes both (review #2219: dropping them made
+# every real deploy fail while a permissive mock kept the tests green).
 deploy_agent_run() {
+    local stage_id="${1:-deploy}" state_file="${2:-}"
     local artifacts_dir="${ZBUILD_ARTIFACT_DIR:-}"
     if [[ -z "$artifacts_dir" ]]; then
-        error "deploy_agent_run: ZBUILD_ARTIFACT_DIR not set"
+        # Nowhere to write an envelope: the event is the record (review #2219).
+        error "deploy_agent_run: ZBUILD_ARTIFACT_DIR not set — nowhere to write a result"
+        emit_event "deploy.result.unwritable" "plugin=deploy" "disposition=broken" \
+            "reason=no ZBUILD_ARTIFACT_DIR"
         return 1
     fi
     mkdir -p "$artifacts_dir"
-    _deploy_agent_run_inner
+    _DEPLOY_INTERRUPTED=0
+    trap '_deploy_on_signal' TERM INT
+    local rc=0
+    _deploy_agent_run_inner "$stage_id" "$state_file" || rc=$?
+    trap - TERM INT
+    if [[ "$_DEPLOY_INTERRUPTED" == "1" ]]; then
+        _deploy_write_result "$artifacts_dir" "error" "interrupted" "signal_interrupt"
+        stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "error" \
+            "interrupted by a signal before the deploy finished" \
+            "The release may or may not have been pushed; check the tag before retrying."
+        return 1
+    fi
+    return "$rc"
 }
 
 # ADR-018 Pattern 1 (one-shot): guard → dry-run/deploy-release → done.
 _deploy_agent_run_inner() {
+    local stage_id="$1" state_file="$2"
     local artifacts_dir="${ZBUILD_ARTIFACT_DIR:-}"
 
-    # Resolve inputs via ZBUILD_STAGE_INPUTS (ADR-055 §1)
-    local pr_url_in gate_result_in
-    pr_url_in="$(jq -r '.inputs.pr_url // empty' "${ZBUILD_STAGE_INPUTS:-/dev/null}" 2>/dev/null || true)"
-    gate_result_in="$(jq -r '.inputs.gate_aggregator_result // empty' "${ZBUILD_STAGE_INPUTS:-/dev/null}" 2>/dev/null || true)"
+    # Resolve inputs via ZBUILD_STAGE_INPUTS (ADR-055 §1) — one jq for both.
+    declare -gA _DEPLOY_INPUTS=()
+    local _k _v
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+        while IFS=$'\t' read -r _k _v; do
+            [[ -n "$_k" ]] && _DEPLOY_INPUTS["$_k"]="$_v"
+        done < <(jq -r '.inputs // {} | to_entries[] | select(.value|type=="string") | "\(.key)\t\(.value)"' \
+            "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)
+    fi
+    # The run's state directory: the index lives at <state>/stage-inputs/<stage>.json.
+    local root=""
+    [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]] \
+        && root="$(cd "$(dirname "$ZBUILD_STAGE_INPUTS")/.." 2>/dev/null && pwd -P || true)"
+    local pr_url_in="" gate_result_in="" _id _p
+    for _id in pr_url gate_aggregator_result; do
+        if ! _p="$(_deploy_input_path "$_id" "$root")"; then
+            error "deploy: input $_id resolves outside the run's state directory — refusing it"
+            emit_event "deploy.input.refused" "plugin=deploy" "input=$_id"
+            _deploy_write_result "$artifacts_dir" "error" "broken" \
+                "input $_id resolves outside the run's state directory"
+            stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "error" \
+                "refused input $_id: it points outside this run" \
+                "The engine's input index only points inside the run; this is a defect, not a deploy failure."
+            return 1
+        fi
+        case "$_id" in pr_url) pr_url_in="$_p" ;; *) gate_result_in="$_p" ;; esac
+    done
 
     # Guard: pr_url input must exist (required input from pr-delivery stage)
     if [[ ! -f "$pr_url_in" ]]; then
@@ -84,11 +151,8 @@ _deploy_agent_run_inner() {
     # Dry-run mode: write sentinel artifact without executing the release side-effect.
     # (checked BEFORE the gate guard so isolation/dry-run needs no gate result)
     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
-        local _dry_data
-        _dry_data="$(jq -n --arg pr_url "$pr_url" '{pr_url:$pr_url,mode:"dry_run"}')"
         _deploy_write_result "$artifacts_dir" "deployed" "complete" \
-            "dry run — no release side-effect was executed" \
-            "$_dry_data"
+            "dry run — no release side-effect was executed" "$pr_url" "" "dry_run"
         stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "skip" \
             "dry run — no release side-effect was executed" \
             "Nothing was deployed. This verdict asserts nothing about a real deploy."
@@ -120,52 +184,63 @@ _deploy_agent_run_inner() {
     if [[ "$gate_verdict" != "pass" ]]; then
         warn "deploy: gate-aggregator verdict='${gate_verdict:-<none>}' is not pass — skipping deploy"
         emit_event "deploy.skipped" "plugin=deploy" "reason=gate_not_pass"
-        local _skip_data
-        _skip_data="$(jq -n --arg pr_url "$pr_url" '{pr_url:$pr_url}')"
         _deploy_write_result "$artifacts_dir" "skipped" "complete" \
-            "gate-aggregator verdict not pass: ${gate_verdict:-<none>}" \
-            "$_skip_data"
+            "gate-aggregator verdict not pass: ${gate_verdict:-<none>}" "$pr_url"
         stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "skip" \
             "skipped the deploy: the gate verdict was ${gate_verdict:-<none>}, not pass" \
             "Nothing was deployed. Only an explicit pass authorises the release side-effect."
         return 0
     fi
 
-    # Delegate to deploy-release tool plugin (executes git-tag + gh release create)
-    if [[ -z "${_ZBUILD_DEPLOY_RELEASE_LOADED:-}" ]]; then
-        local release_plugin="$_DEPLOY_ROOT/plugins/tool/deploy-release/plugin.sh"
-        if [[ ! -f "$release_plugin" ]]; then
-            error "deploy: deploy-release plugin not found at: $release_plugin"
+    # Delegate to the deploy-release tool plugin (git tag + push). Always the
+    # real plugin: its include guard is cleared first, so a preset
+    # _ZBUILD_DEPLOY_RELEASE_LOADED cannot leave some other deploy_release_run in
+    # place (review #2219).
+    local release_plugin="$_DEPLOY_ROOT/plugins/tool/deploy-release/plugin.sh"
+    if [[ ! -f "$release_plugin" ]]; then
+        error "deploy: deploy-release plugin not found at: $release_plugin"
+        _deploy_write_result "$artifacts_dir" "error" "broken" \
+            "deploy-release plugin missing"
+        stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "error" \
+            "the deploy-release plugin is missing, so nothing was deployed" \
+            "This is an installation fault, not a pipeline one."
+        return 1
+    fi
+    unset _ZBUILD_DEPLOY_RELEASE_LOADED
+    # shellcheck source=../../tool/deploy-release/plugin.sh
+    source "$release_plugin"
+
+    local _rc=0
+    deploy_release_run "$stage_id" "$state_file" || _rc=$?
+    [[ "$_DEPLOY_INTERRUPTED" == "1" ]] && return 1
+    local result="$artifacts_dir/deploy-result.json"
+    if [[ "$_rc" -ne 0 ]]; then
+        # deploy-release has already written its own result — `broken` for a tag
+        # it could not create, `unavailable` for a push that did not land. That
+        # word is what the engine must act on; overwriting it with a blanket
+        # `unavailable` sent structural faults into the retry loop (review #2219).
+        emit_event "deploy.tool.failed" "plugin=deploy" "rc=$_rc"
+        local _d _r
+        _d="$(jq -r '.disposition // empty' "$result" 2>/dev/null || true)"
+        _r="$(jq -r '.reason // empty' "$result" 2>/dev/null || true)"
+        if [[ -z "$_d" ]]; then
             _deploy_write_result "$artifacts_dir" "error" "broken" \
-                "deploy-release plugin missing"
-            stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "error" \
-                "the deploy-release plugin is missing, so nothing was deployed" \
-                "This is an installation fault, not a pipeline one."
-            return 1
+                "deploy-release failed (rc=$_rc) without writing a result" "$pr_url"
+            _d="broken"; _r="deploy-release wrote no result"
         fi
-        # shellcheck source=../../tool/deploy-release/plugin.sh
-        source "$release_plugin"
+        stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "fail" \
+            "the release step failed: ${_r:-rc=$_rc}" \
+            "The gate authorised a deploy but the release did not complete (disposition: $_d). See deploy-release-summary.md."
+        return 1
     fi
 
-    deploy_release_run || {
-        local _rc=$?
-        emit_event "deploy.tool.failed" "plugin=deploy" "rc=$_rc"
-        _deploy_write_result "$artifacts_dir" "error" "unavailable" \
-            "deploy-release failed (rc=$_rc)"
-        stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "fail" \
-            "the release step failed (rc=$_rc)" \
-            "The gate authorised a deploy but the release did not complete."
-        return 1
-    }
-
-    local _success_data
-    _success_data="$(jq -n --arg pr_url "$pr_url" '{pr_url:$pr_url}')"
+    local tag
+    tag="$(jq -r '.data.tag // empty' "$result" 2>/dev/null || true)"
     _deploy_write_result "$artifacts_dir" "deployed" "complete" \
-        "deployed ${pr_url}" \
-        "$_success_data"
+        "deployed ${pr_url}" "$pr_url" "$tag"
     stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "pass" \
         "deployed the change" \
-        "$(printf -- '- pr: %s\n- see deploy-release-summary.md for the tag' "$pr_url")"
+        "$(printf -- '- pr: %s\n- tag: %s' "$pr_url" "${tag:-<none>}")"
     return 0
 }
 

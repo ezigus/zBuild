@@ -5,7 +5,7 @@ version: 0.1.0
 description: |
   Deploy agent (kind:agent, T2). Reads pr-url input and gate-aggregator verdict;
   refuses deploy if gate verdict=fail. Delegates to the deploy-release tool plugin
-  for the actual git-tag + gh release create side-effect. ZBUILD_DRY_RUN=1 writes
+  for the actual release side-effect (create and push a git tag). ZBUILD_DRY_RUN=1 writes
   a v2 deploy-result.json instead.
   ADR-018 Pattern 1 (one-shot): verdict guard → deploy-release, done — no iteration.
   No LLM calls (no route_to_model). kind:agent for guard/orchestration parity with
@@ -32,6 +32,8 @@ provides:
   events:
     - deploy.gate.missing
     - deploy.input.missing
+    - deploy.input.refused
+    - deploy.result.unwritable
     - deploy.skipped
     - deploy.tool.failed
 

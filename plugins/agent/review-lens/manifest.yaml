@@ -58,8 +58,11 @@ config:
   # ZBUILD_CURRENT_STAGE is set (e.g. a bare manual invocation).
   lens: correctness
   router:
-    timeout_s: 300 # single-shot advisory; no exploration loop needed
-    max_turns: 10  # pattern 1 single-turn; headroom for retry on schema failure
+    # #1654: sized from measured runs. A lens reads around the change
+    # (#2215/#2216); #1846 run 36433206388 had a lens call at 295s against the
+    # old 300s ceiling (#1845's diff-only prompt peaked at 162s).
+    timeout_s: 600
+    max_turns: 20
 
 # ADR-032 amendment: the repository's rules, framed for a reviewer — a change
 # that breaks one is a finding; its "facts reviewers need" (what the engine

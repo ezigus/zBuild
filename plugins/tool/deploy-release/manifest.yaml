@@ -31,6 +31,7 @@ provides:
   events:
     - deploy.release.complete
     - deploy.release.dry_run
+    - deploy.release.unwritable
     - release.published
     - release.tagged
 

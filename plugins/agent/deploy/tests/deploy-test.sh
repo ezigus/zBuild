@@ -25,6 +25,25 @@
 # SPEC-21 [#1846/SPEC-21]: deploy-release plugin file absent → disposition=broken
 # SPEC-22 [#1846/SPEC-22]: manifest config.valid_verdicts lists exactly deployed, error, skipped
 # SPEC-24 [#1846/SPEC-24]: manifest carries router-budget-absence comment ("router budgets: none" + ADR-037 §3)
+#
+# Added by hand after PR #2219's review (lenses + claude-review). The run-path
+# tests below exercise the REAL deploy-release plugin; only the outside world —
+# `git` and `gh` — is faked, on PATH. The mock these tests used before accepted
+# any arguments, so a call that dropped deploy-release's state_file argument
+# passed every test while every real deploy failed.
+# R1 [change] a passing gate cuts and pushes the release tag through the real
+#             deploy-release, and the result carries the tag and the PR
+# R2 [change] a failed `git tag` keeps deploy-release's own disposition (broken)
+# R3 [change] a failed `git push` keeps deploy-release's own disposition
+#             (unavailable) and rolls the local tag back
+# R4 [change] deploy-release writes into ZBUILD_ARTIFACT_DIR, not beside the state file
+# R5 [change] a signal mid-release writes disposition=interrupted and returns 1
+# R6 [change] no ZBUILD_ARTIFACT_DIR: rc=1 and a deploy.result.unwritable event
+#             (there is nowhere to write an envelope; the event is the record)
+# R7 [change] an input path outside the run's state directory is refused, not read
+# R8 [change] a preset _ZBUILD_DEPLOY_RELEASE_LOADED cannot swap in another
+#             deploy_release_run — the real plugin is always loaded
+# R9 [change] no `jq … | atomic_write` pipe in plugin.sh (SIGPIPE rule)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -95,10 +114,10 @@ _make_state() {
 _v2_keys_ok() {
     local lbl="$1" f="$2"
     local _rc _vd _dp _rs
-    _rc="$(jq -r '.result_contract // empty' "$f" 2>/dev/null || true)"
-    _vd="$(jq -r '.verdict // empty' "$f" 2>/dev/null || true)"
-    _dp="$(jq -r '.disposition // empty' "$f" 2>/dev/null || true)"
-    _rs="$(jq -r '.reason // ""' "$f" 2>/dev/null || true)"
+    # One jq for all four keys (review #2219: this helper forked four times per call).
+    IFS=$'\t' read -r _rc _vd _dp _rs < <(jq -r \
+        '[(.result_contract // "" | tostring), (.verdict // ""), (.disposition // ""), (.reason // "")] | @tsv' \
+        "$f" 2>/dev/null || true) || true
     assert_eq "$lbl result_contract=2" "2" "$_rc"
     if [[ -n "$_vd" ]]; then
         assert_pass "$lbl verdict key present"
@@ -117,20 +136,42 @@ _v2_keys_ok() {
     fi
 }
 
-# ─── Delegation mock ─────────────────────────────────────────────────────────
-# Prevent the real deploy-release plugin from being sourced; provide a
-# configurable mock instead. Tests that need a specific rc set _MOCK_DR_RC.
-_ZBUILD_DEPLOY_RELEASE_LOADED=1
-_MOCK_DR_RC=0
-deploy_release_run() {
-    local _artifacts_dir="${ZBUILD_ARTIFACT_DIR:-}"
-    if [[ "$_MOCK_DR_RC" -eq 0 && -n "$_artifacts_dir" ]]; then
-        jq -n '{result_contract:2,verdict:"deployed",disposition:"complete",
-                reason:"released (mock)",data:{}}' \
-            > "$_artifacts_dir/deploy-result.json"
-    fi
-    return "$_MOCK_DR_RC"
+# ─── The outside world, faked on PATH ────────────────────────────────────────
+# `git` records every call and fails on demand; nothing inside zBuild is faked.
+#   FAKE_GIT_TAG_RC / FAKE_GIT_PUSH_RC — exit code for `git tag <name>` / `git push`
+#   FAKE_GIT_PUSH_SIGNAL=1 — `git push` sends SIGTERM to the stage's shell first,
+#   as an engine stopping the stage mid-release would.
+FAKE_BIN="$TEST_TEMP_DIR/fake-bin"; mkdir -p "$FAKE_BIN"
+cat > "$FAKE_BIN/git" <<'FAKE'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FAKE_GIT_LOG"
+case "${1:-}" in
+    tag)  if [[ "${2:-}" == "-d" ]]; then exit 0; fi; exit "${FAKE_GIT_TAG_RC:-0}" ;;
+    push) if [[ "${FAKE_GIT_PUSH_SIGNAL:-0}" == "1" ]]; then kill -TERM "$PPID"; exit 143; fi
+          exit "${FAKE_GIT_PUSH_RC:-0}" ;;
+esac
+exit 0
+FAKE
+printf '#!/usr/bin/env bash\nprintf "gh %%s\\n" "$*" >> "$FAKE_GIT_LOG"\n' > "$FAKE_BIN/gh"
+chmod +x "$FAKE_BIN/git" "$FAKE_BIN/gh"
+
+# _deploy_case <dir> <gate verdict|-> [VAR=value ...] — one deploy run in a
+# SUBSHELL (nothing it exports reaches the next case), pr-url and gate result
+# seeded; prints the rc. The fake git logs to <dir>/git.log.
+_deploy_case() {
+    local dir="$1" gate="$2"; shift 2
+    (
+        _make_state "$dir"
+        printf 'https://github.com/test/repo/pull/42\n' > "$dir/artifacts/pr-url.txt"
+        [[ "$gate" == "-" ]] || printf '{"verdict":"%s"}\n' "$gate" > "$dir/artifacts/gate-aggregator-result.json"
+        export PATH="$FAKE_BIN:$PATH" FAKE_GIT_LOG="$dir/git.log" ZBUILD_DRY_RUN=0
+        local kv; for kv in "$@"; do export "${kv?}"; done
+        : > "$FAKE_GIT_LOG"
+        deploy_agent_run "deploy" "$dir/state.json"
+    ) >/dev/null 2>&1
+    printf '%s' "$?"
 }
+_rj() { jq -r "$2 // empty" "$1/artifacts/deploy-result.json" 2>/dev/null || true; }
 
 # ===========================================================================
 # Guard assertions — static checks on the plugin and manifest files
@@ -264,7 +305,9 @@ fi
 
 # ---------------------------------------------------------------------------
 # SPEC-17 [#1846/SPEC-17]: manifest provides.role = deploy_agent;
-#                          provides.events = exactly the four declared events
+#                          provides.events = exactly the declared events
+#                          (six since review #2219: deploy.input.refused (R7) and
+#                          deploy.result.unwritable (R6) joined the original four)
 # ---------------------------------------------------------------------------
 _s17_provides="$(awk '/^provides:/{f=1;next} f && /^[^[:space:]]/{exit} f{print}' \
     "$_MANIFEST" 2>/dev/null || true)"
@@ -278,7 +321,7 @@ fi
 _s17_events="$(awk \
     '/events:/{f=1;next} f && /^[[:space:]]*-/{print;next} f && /^[^[:space:]-]/{exit}' \
     "$_MANIFEST" 2>/dev/null || true)"
-for _ev in "deploy.gate.missing" "deploy.input.missing" "deploy.skipped" "deploy.tool.failed"; do
+for _ev in "deploy.gate.missing" "deploy.input.missing" "deploy.input.refused" "deploy.result.unwritable" "deploy.skipped" "deploy.tool.failed"; do
     if grep -q "$_ev" <<< "$_s17_events"; then
         assert_pass "[#1846/SPEC-17] manifest provides.events includes $_ev"
     else
@@ -286,8 +329,8 @@ for _ev in "deploy.gate.missing" "deploy.input.missing" "deploy.skipped" "deploy
             "${_s17_events:-absent}"
     fi
 done
-_s17_count="$(grep -c '^[[:space:]]*-' <<< "$_s17_events" 2>/dev/null || printf '0')"
-assert_eq "[#1846/SPEC-17] manifest provides.events declares exactly 4 events" "4" "$_s17_count"
+_s17_count="$(grep -c '^[[:space:]]*-' <<< "$_s17_events" 2>/dev/null || true)"
+assert_eq "[#1846/SPEC-17] manifest provides.events declares exactly 6 events" "6" "$_s17_count"
 
 # ---------------------------------------------------------------------------
 # SPEC-18 [#1846/SPEC-18]: manifest hooks block declares only run; no cleanup
@@ -354,10 +397,9 @@ fi
 #             reason present (full v2 envelope)
 # ---------------------------------------------------------------------------
 _run_dry="$TEST_TEMP_DIR/run_dry"
-_make_state "$_run_dry"
-printf 'https://github.com/test/repo/pull/42\n' > "$_run_dry/artifacts/pr-url.txt"
-
-ZBUILD_DRY_RUN=1 deploy_agent_run
+( _make_state "$_run_dry"
+  printf 'https://github.com/test/repo/pull/42\n' > "$_run_dry/artifacts/pr-url.txt"
+  ZBUILD_DRY_RUN=1 deploy_agent_run "deploy" "$_run_dry/state.json" ) >/dev/null 2>&1 || true
 _dry_out="$_run_dry/artifacts/deploy-result.json"
 
 _dry_v="$(jq -r '.verdict // empty' "$_dry_out" 2>/dev/null || printf MISSING)"
@@ -389,11 +431,9 @@ _v2_keys_ok "[#1846/SPEC-10] dry-run exit path:" "$_dry_out"
 #        (ZBUILD_STAGE_INPUTS index exists but pr_url file is absent)
 # ---------------------------------------------------------------------------
 _run_nopr="$TEST_TEMP_DIR/run_nopr"
-_make_state "$_run_nopr"
 # Do NOT create pr-url.txt — the path in the index points to a non-existent file
-
 _rc3=0
-deploy_agent_run || _rc3=$?
+( _make_state "$_run_nopr"; deploy_agent_run "deploy" "$_run_nopr/state.json" ) >/dev/null 2>&1 || _rc3=$?
 assert_gt "[#1846/SPEC-3] missing pr_url input → rc != 0" "$_rc3" "0"
 
 _v3="$(jq -r '.verdict // empty' "$_run_nopr/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
@@ -409,12 +449,7 @@ assert_eq "[#1846/SPEC-13] missing pr_url → rc=1 (not rc=2+)" "1" "$_rc3"
 #        gate verdict=route_design (non-pass) → verdict=skipped (allowlist)
 # ---------------------------------------------------------------------------
 _run_gatefail="$TEST_TEMP_DIR/run_gatefail"
-_make_state "$_run_gatefail"
-printf 'https://github.com/test/repo/pull/42\n' > "$_run_gatefail/artifacts/pr-url.txt"
-printf '{"verdict":"fail","reason":"test failure"}\n' \
-    > "$_run_gatefail/artifacts/gate-aggregator-result.json"
-
-ZBUILD_DRY_RUN=0 deploy_agent_run
+_deploy_case "$_run_gatefail" fail >/dev/null
 _v4="$(jq -r '.verdict // empty' "$_run_gatefail/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
 assert_eq "[#1846/SPEC-4] gate verdict=fail → deploy-result verdict=skipped" "skipped" "$_v4"
 
@@ -423,11 +458,7 @@ _v2_keys_ok "[#1846/SPEC-10] gate-fail exit path:" \
 
 # Fail-closed allowlist: non-pass verdict also skips
 _run_routedesign="$TEST_TEMP_DIR/run_routedesign"
-_make_state "$_run_routedesign"
-printf 'https://github.com/test/repo/pull/42\n' > "$_run_routedesign/artifacts/pr-url.txt"
-printf '{"verdict":"route_design"}\n' > "$_run_routedesign/artifacts/gate-aggregator-result.json"
-
-ZBUILD_DRY_RUN=0 deploy_agent_run
+_deploy_case "$_run_routedesign" route_design >/dev/null
 _v4b="$(jq -r '.verdict // empty' "$_run_routedesign/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
 assert_eq "[#1846/SPEC-4] gate verdict=route_design (non-pass) → skipped (allowlist)" "skipped" "$_v4b"
 
@@ -436,12 +467,8 @@ assert_eq "[#1846/SPEC-4] gate verdict=route_design (non-pass) → skipped (allo
 #        and verdict=error
 # ---------------------------------------------------------------------------
 _run_nogate="$TEST_TEMP_DIR/run_nogate"
-_make_state "$_run_nogate"
-printf 'https://github.com/test/repo/pull/42\n' > "$_run_nogate/artifacts/pr-url.txt"
 # Do NOT create gate-aggregator-result.json
-
-_rc8=0
-ZBUILD_DRY_RUN=0 deploy_agent_run || _rc8=$?
+_rc8="$(_deploy_case "$_run_nogate" -)"
 assert_eq "[#1846/SPEC-8] missing gate (non-dry-run) → fail-closed rc=1 (not rc=2)" "1" "$_rc8"
 
 _v8="$(jq -r '.verdict // empty' "$_run_nogate/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
@@ -453,48 +480,33 @@ _v2_keys_ok "[#1846/SPEC-10] missing-gate exit path:" \
 assert_eq "[#1846/SPEC-13] missing gate → rc=1 (not rc=2+)" "1" "$_rc8"
 
 # ---------------------------------------------------------------------------
-# SPEC-20 [#1846/SPEC-20]: deploy-release returns non-zero →
-#                          deploy-result.json disposition=unavailable
+# SPEC-20 [#1846/SPEC-20] (rewritten after review #2219): when deploy-release
+#        fails, deploy-release's OWN disposition reaches the engine — deploy
+#        never overwrites it. The old assertion (always `unavailable`) described
+#        the overwrite itself.  R2 / R3.
 # ---------------------------------------------------------------------------
-_run_drfail="$TEST_TEMP_DIR/run_drfail"
-_make_state "$_run_drfail"
-printf 'https://github.com/test/repo/pull/42\n' > "$_run_drfail/artifacts/pr-url.txt"
-printf '{"verdict":"pass"}\n' > "$_run_drfail/artifacts/gate-aggregator-result.json"
+_r2="$TEST_TEMP_DIR/r2-tagfail"
+_rc_r2="$(_deploy_case "$_r2" pass FAKE_GIT_TAG_RC=1)"
+assert_eq "[R2] a failed git tag → rc=1" "1" "$_rc_r2"
+assert_eq "[R2] ...deploy-release's disposition (broken) is what the engine reads" "broken" "$(_rj "$_r2" .disposition)"
+assert_eq "[R2] ...with its reason" "git tag failed" "$(_rj "$_r2" .reason)"
+_v2_keys_ok "[#1846/SPEC-10] tag-fail exit path:" "$_r2/artifacts/deploy-result.json"
 
-_MOCK_DR_RC=1
-_rc20=0
-ZBUILD_DRY_RUN=0 deploy_agent_run || _rc20=$?
-_MOCK_DR_RC=0
-
-_dp20="$(jq -r '.disposition // empty' "$_run_drfail/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
-assert_eq "[#1846/SPEC-20] deploy-release non-zero → disposition=unavailable" \
-    "unavailable" "$_dp20"
-
-_v2_keys_ok "[#1846/SPEC-10] deploy-release-fail exit path:" \
-    "$_run_drfail/artifacts/deploy-result.json"
-
-assert_eq "[#1846/SPEC-13] deploy-release non-zero → rc=1" "1" "$_rc20"
+_r3="$TEST_TEMP_DIR/r3-pushfail"
+_rc_r3="$(_deploy_case "$_r3" pass FAKE_GIT_PUSH_RC=1)"
+assert_eq "[R3] a failed git push → rc=1" "1" "$_rc_r3"
+assert_eq "[#1846/SPEC-20] a failed push keeps deploy-release's disposition (unavailable)" "unavailable" "$(_rj "$_r3" .disposition)"
+assert_eq "[R3] ...with its reason" "git push tag failed" "$(_rj "$_r3" .reason)"
+assert_contains "[R3] ...and the local tag is rolled back" "$(cat "$_r3/git.log" 2>/dev/null)" "tag -d zbuild-run-"
+_v2_keys_ok "[#1846/SPEC-10] push-fail exit path:" "$_r3/artifacts/deploy-result.json"
 
 # ---------------------------------------------------------------------------
 # SPEC-21 [#1846/SPEC-21]: deploy-release plugin file absent →
 #                          deploy-result.json disposition=broken
 # ---------------------------------------------------------------------------
 _run_drabsent="$TEST_TEMP_DIR/run_drabsent"
-_make_state "$_run_drabsent"
-printf 'https://github.com/test/repo/pull/42\n' > "$_run_drabsent/artifacts/pr-url.txt"
-printf '{"verdict":"pass"}\n' > "$_run_drabsent/artifacts/gate-aggregator-result.json"
-
-_saved_deploy_root="$_DEPLOY_ROOT"
-_DEPLOY_ROOT="$TEST_TEMP_DIR/no-deploy-release"
 mkdir -p "$TEST_TEMP_DIR/no-deploy-release"
-# Unset the load guard so the path check in the plugin fires (file will be absent)
-unset _ZBUILD_DEPLOY_RELEASE_LOADED
-
-_rc21=0
-ZBUILD_DRY_RUN=0 deploy_agent_run || _rc21=$?
-
-_DEPLOY_ROOT="$_saved_deploy_root"
-_ZBUILD_DEPLOY_RELEASE_LOADED=1
+_rc21="$(_deploy_case "$_run_drabsent" pass _DEPLOY_ROOT="$TEST_TEMP_DIR/no-deploy-release")"
 
 _dp21="$(jq -r '.disposition // empty' "$_run_drabsent/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
 assert_eq "[#1846/SPEC-21] deploy-release absent → disposition=broken" \
@@ -506,36 +518,81 @@ _v2_keys_ok "[#1846/SPEC-10] deploy-release-absent exit path:" \
 assert_eq "[#1846/SPEC-13] deploy-release absent → rc=1" "1" "$_rc21"
 
 # ---------------------------------------------------------------------------
-# SPEC-2 (delegation) / SPEC-10 (success path): non-dry-run with passing gate
-#        delegates to deploy_release_run; result is v2-shaped with verdict=deployed
+# SPEC-2 (delegation) / SPEC-10 (success path) — R1: through the REAL
+#        deploy-release; only git is faked.
 # ---------------------------------------------------------------------------
 _run_success="$TEST_TEMP_DIR/run_success"
-_make_state "$_run_success"
-printf 'https://github.com/test/repo/pull/42\n' > "$_run_success/artifacts/pr-url.txt"
-printf '{"verdict":"pass"}\n' > "$_run_success/artifacts/gate-aggregator-result.json"
-
-_MOCK_DR_RC=0
-_mock_called=0
-deploy_release_run() {
-    _mock_called=1
-    local _artifacts_dir="${ZBUILD_ARTIFACT_DIR:-}"
-    if [[ -n "$_artifacts_dir" ]]; then
-        jq -n '{result_contract:2,verdict:"deployed",disposition:"complete",
-                reason:"released (mock)",data:{}}' \
-            > "$_artifacts_dir/deploy-result.json"
-    fi
-    return 0
-}
-
-ZBUILD_DRY_RUN=0 deploy_agent_run
-assert_eq "[#1846/SPEC-2] non-dry-run with passing gate delegates to deploy_release_run" \
-    "1" "$_mock_called"
-
-_v2_keys_ok "[#1846/SPEC-10] successful-deploy exit path:" \
-    "$_run_success/artifacts/deploy-result.json"
-
-_vs="$(jq -r '.verdict // empty' "$_run_success/artifacts/deploy-result.json" 2>/dev/null || printf MISSING)"
+_rc_r1="$(_deploy_case "$_run_success" pass ZBUILD_RUN_ID=r1-run)"
+assert_eq "[R1] a passing gate deploys → rc=0" "0" "$_rc_r1"
+_gl="$(cat "$_run_success/git.log" 2>/dev/null)"
+assert_contains "[#1846/SPEC-2] the release tag is created" "$_gl" "tag zbuild-run-r1-run"
+assert_contains "[R1] ...and pushed to origin" "$_gl" "push origin zbuild-run-r1-run"
+_v2_keys_ok "[#1846/SPEC-10] successful-deploy exit path:" "$_run_success/artifacts/deploy-result.json"
+_vs="$(_rj "$_run_success" .verdict)"
 assert_eq "[#1846/SPEC-14] successful deploy writes verdict=deployed (v2)" "deployed" "$_vs"
+assert_eq "[R1] the result names the tag deploy-release cut" "zbuild-run-r1-run" "$(_rj "$_run_success" .data.tag)"
+assert_eq "[R1] ...and the PR" "https://github.com/test/repo/pull/42" "$(_rj "$_run_success" .data.pr_url)"
+
+# R4: deploy-release's own artifacts land in ZBUILD_ARTIFACT_DIR even when the
+# state file lives somewhere else.
+_r4="$TEST_TEMP_DIR/r4-elsewhere"; mkdir -p "$TEST_TEMP_DIR/r4-state"
+( _make_state "$_r4"
+  printf 'https://github.com/test/repo/pull/42\n' > "$_r4/artifacts/pr-url.txt"
+  printf '{"verdict":"pass"}\n' > "$_r4/artifacts/gate-aggregator-result.json"
+  export PATH="$FAKE_BIN:$PATH" FAKE_GIT_LOG="$_r4/git.log" ZBUILD_DRY_RUN=0
+  : > "$FAKE_GIT_LOG"
+  printf '{}' > "$TEST_TEMP_DIR/r4-state/state.json"
+  deploy_agent_run "deploy" "$TEST_TEMP_DIR/r4-state/state.json" ) >/dev/null 2>&1 || true
+assert_file_exists "[R4] deploy-release's summary is in ZBUILD_ARTIFACT_DIR" "$_r4/artifacts/deploy-release-summary.md"
+if [[ -e "$TEST_TEMP_DIR/r4-state/artifacts" ]]; then
+    assert_fail "[R4] nothing is written beside the state file" "$TEST_TEMP_DIR/r4-state/artifacts exists"
+else
+    assert_pass "[R4] nothing is written beside the state file"
+fi
+
+# R5: a signal mid-release (the engine stopping the stage while git pushes).
+_r5="$TEST_TEMP_DIR/r5-signal"
+_rc_r5="$(_deploy_case "$_r5" pass FAKE_GIT_PUSH_SIGNAL=1)"
+assert_eq "[R5] interrupted → rc=1" "1" "$_rc_r5"
+assert_eq "[R5] ...disposition=interrupted" "interrupted" "$(_rj "$_r5" .disposition)"
+_v2_keys_ok "[#1846/SPEC-10] interrupted exit path:" "$_r5/artifacts/deploy-result.json"
+
+# R6: no ZBUILD_ARTIFACT_DIR — nowhere to write; the event is the record.
+_r6ev="$TEST_TEMP_DIR/r6-events.jsonl"; : > "$_r6ev"
+_rc_r6=0
+( unset ZBUILD_ARTIFACT_DIR
+  emit_event() { printf '%s\n' "$*" >> "$_r6ev"; }
+  deploy_agent_run "deploy" "$TEST_TEMP_DIR/none.json" ) >/dev/null 2>&1 || _rc_r6=$?
+assert_eq "[R6] no ZBUILD_ARTIFACT_DIR → rc=1" "1" "$_rc_r6"
+assert_contains "[R6] ...and a deploy.result.unwritable event says why" "$(cat "$_r6ev")" "deploy.result.unwritable"
+
+# R7: an input path outside the run's state directory is refused.
+_r7="$TEST_TEMP_DIR/r7-outside"; _r7x="$TEST_TEMP_DIR/r7-elsewhere"; mkdir -p "$_r7x"
+printf 'https://github.com/evil/repo/pull/1\n' > "$_r7x/pr-url.txt"
+_rc_r7=0
+( _make_state "$_r7"
+  jq -n --arg pr "$_r7x/pr-url.txt" --arg gr "$_r7/artifacts/gate-aggregator-result.json" \
+      '{"inputs":{"pr_url":$pr,"gate_aggregator_result":$gr}}' > "$_r7/stage-inputs/deploy.json"
+  ZBUILD_DRY_RUN=1 deploy_agent_run "deploy" "$_r7/state.json" ) >/dev/null 2>&1 || _rc_r7=$?
+assert_eq "[R7] an input outside the state directory → rc=1" "1" "$_rc_r7"
+assert_eq "[R7] ...disposition=broken (an engine index pointing outside the run is a defect)" "broken" "$(_rj "$_r7" .disposition)"
+if grep -qF "evil/repo" "$_r7/artifacts/deploy-result.json" 2>/dev/null; then
+    assert_fail "[R7] ...and the outside file is never read" "its content reached the result"
+else
+    assert_pass "[R7] ...and the outside file is never read"
+fi
+
+# R8: a preset guard variable cannot swap in another deploy_release_run.
+_r8="$TEST_TEMP_DIR/r8-guard"
+_rc_r8="$(_deploy_case "$_r8" pass _ZBUILD_DEPLOY_RELEASE_LOADED=1 ZBUILD_RUN_ID=r8-run)"
+assert_contains "[R8] the real deploy-release still runs (git was called)" "$(cat "$_r8/git.log" 2>/dev/null)" "tag zbuild-run-r8-run"
+
+# R9: no jq-into-atomic_write pipe.
+if grep -nE '\|[[:space:]]*atomic_write' "$PLUGIN_FILE" | grep -v '^[0-9]*:[[:space:]]*#' | grep -q .; then
+    assert_fail "[R9] plugin.sh has no '| atomic_write' pipe" "$(grep -nE '\|[[:space:]]*atomic_write' "$PLUGIN_FILE")"
+else
+    assert_pass "[R9] plugin.sh has no '| atomic_write' pipe"
+fi
 
 # ---------------------------------------------------------------------------
 # SPEC-14 [#1846/SPEC-14]: all three verdicts exercised with v2-shaped result
