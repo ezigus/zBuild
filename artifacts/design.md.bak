@@ -99,6 +99,7 @@ SPEC-18[guard]: manifest hooks block declares only run: deploy_agent_run; no cle
 SPEC-19[change]: dry-run deploy-result.json carries verdict=deployed, disposition=complete, reason present (full v2 envelope)
 SPEC-20[change]: deploy-release returns non-zero → deploy-result.json disposition=unavailable
 SPEC-21[change]: deploy-release plugin file absent → deploy-result.json disposition=broken
+SPEC-22[guard]: manifest config.valid_verdicts lists exactly the three emittable verdicts: deployed, error, skipped
 WIRING: plugins/agent/deploy/manifest.yaml
 TESTFILES:
 SPEC-1: plugins/agent/deploy/tests/deploy-test.sh
@@ -122,6 +123,7 @@ SPEC-18: plugins/agent/deploy/tests/deploy-test.sh
 SPEC-19: plugins/agent/deploy/tests/deploy-test.sh
 SPEC-20: plugins/agent/deploy/tests/deploy-test.sh
 SPEC-21: plugins/agent/deploy/tests/deploy-test.sh
+SPEC-22: plugins/agent/deploy/tests/deploy-test.sh
 ```
 
 LOOP_COMPLETE
