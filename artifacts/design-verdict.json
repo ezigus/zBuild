@@ -1,0 +1,14 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "design_produced",
+  "data": {
+    "authored_at": "2026-09-28T14:11:34Z",
+    "authored_at_commit": "3a505dbce424a17c54d5461163f1ef8b86e3bbef",
+    "wiring_files": [
+      "plugins/agent/deploy/manifest.yaml",
+      "tests/integration/deployed-template-e2e-test.sh"
+    ]
+  }
+}
