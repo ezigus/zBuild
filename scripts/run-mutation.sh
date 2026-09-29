@@ -293,7 +293,9 @@ _run_one_mutant_in_worktree() {
     test_code="$(cat "${slot_base}.test")"
     file_path="$(cat "${slot_base}.file" 2>/dev/null || true)"
 
-    local wt; wt=$(mktemp -d "${TMPDIR:-/tmp}/zb-mut.XXXXXX")
+    # The owner's pid is in the name, so a teardown can tell its own trees from
+    # another live run's (#2230). $$ is the runner's pid, also in this subshell.
+    local wt; wt=$(mktemp -d "${TMPDIR:-/tmp}/zb-mut.$$.XXXXXX")
     # shellcheck disable=SC2064
     trap "git -C '$REPO_ROOT' worktree remove --force '$wt' >/dev/null 2>&1 || true; rm -rf '$wt' 2>/dev/null || true" RETURN
 
@@ -336,28 +338,40 @@ _run_one_mutant_in_worktree() {
     fi
 }
 
-# Best-effort teardown: kill in-flight mutant subshells, prune + sweep any
-# leftover zb-mut.* worktrees, drop the job dir. Idempotent. Replaces the old
-# _restore_patches EXIT trap.
+# _mut_owns_worktree <basename> — 0 when a teardown may remove this worktree: it
+# is this run's (zb-mut.<our pid>.*), or its owner is no longer alive (the
+# leftover of a killed run, #992). Another LIVE run's tree is never ours to
+# remove — `npm test` runs the mutation tier beside tests that run this script,
+# and a sweep of every zb-mut.* deleted their live mutants (#2230). A name with
+# no owner pid (the pre-#2230 form) is left alone: its run may still be alive.
+_mut_owns_worktree() {
+    local base="$1" owner
+    [[ "$base" =~ ^zb-mut\.([0-9]+)\.[^.]+$ ]] || return 1
+    owner="${BASH_REMATCH[1]}"
+    [[ "$owner" == "$$" ]] && return 0
+    kill -0 "$owner" 2>/dev/null && return 1
+    return 0
+}
+
+# Best-effort teardown: kill in-flight mutant subshells, prune + sweep this
+# run's worktrees and any a dead run left behind, drop the job dir. Idempotent.
 _mut_teardown() {
     local p wt_path line
     for p in "${_mut_pids[@]:-}"; do
         [[ -n "$p" ]] && kill "$p" 2>/dev/null || true
     done
     git -C "$REPO_ROOT" worktree prune >/dev/null 2>&1 || true
-    # Match by the zb-mut. basename our mktemp -d produces — robust across tmp
-    # roots ($TMPDIR on macOS is /var/folders/.../T/, with a /private prefix in
-    # `git worktree list` output; a tmp-root allow-list misses cases — #992).
+    # Match by basename — robust across tmp roots ($TMPDIR on macOS is
+    # /var/folders/.../T/, with a /private prefix in `git worktree list`
+    # output; a tmp-root allow-list misses cases — #992).
     while IFS= read -r line; do
         case "$line" in
             worktree\ *)
                 wt_path="${line#worktree }"
-                case "${wt_path##*/}" in
-                    zb-mut.*)
-                        git -C "$REPO_ROOT" worktree remove --force "$wt_path" >/dev/null 2>&1 || true
-                        rm -rf "$wt_path" 2>/dev/null || true
-                        ;;
-                esac
+                if _mut_owns_worktree "${wt_path##*/}"; then
+                    git -C "$REPO_ROOT" worktree remove --force "$wt_path" >/dev/null 2>&1 || true
+                    rm -rf "$wt_path" 2>/dev/null || true
+                fi
                 ;;
         esac
     done < <(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null || true)
