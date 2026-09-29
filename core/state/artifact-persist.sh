@@ -83,16 +83,51 @@ _artifact_persist_find_secret() {
             return 0
         }
     fi
+    local repo="${2:-$PWD}" base="" content
     while IFS= read -r -d '' f; do
         # Skip anything that is not text. `grep -Iq .` returns non-zero for a
         # binary file, which is the cheapest portable test available.
         grep -Iq . "$f" 2>/dev/null || continue
-        if kind="$(zbuild_scan_secret_content "$(cat "$f" 2>/dev/null)")"; then
-            rel="${f#"$art_dir"/}"
-            printf '%s:%s' "$rel" "$kind"
-            return 0
-        fi
+        content="$(cat "$f" 2>/dev/null)"
+        kind="$(zbuild_scan_secret_content "$content")" || continue
+        [[ -n "$base" ]] || base="$(_artifact_persist_scan_base "$repo")"
+        _artifact_persist_has_new_secret_line "$content" "$repo" "$base" || continue
+        rel="${f#"$art_dir"/}"
+        printf '%s:%s' "$rel" "$kind"
+        return 0
     done < <(find "$art_dir" -type f -print0 2>/dev/null)
+    return 1
+}
+
+# The merge-base the secret-scan gate diffs against, or "-" when none resolves.
+# "-" (not empty) so the caller resolves it once per scan, not once per file.
+_artifact_persist_scan_base() {
+    if ! declare -F zbuild_resolve_merge_base >/dev/null 2>&1; then
+        # shellcheck source=../../scripts/lib/merge-base.sh
+        source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../scripts/lib" 2>/dev/null && pwd)/merge-base.sh" 2>/dev/null || true
+    fi
+    local b=""
+    declare -F zbuild_resolve_merge_base >/dev/null 2>&1 && b="$(zbuild_resolve_merge_base "$1")"
+    printf '%s' "${b:--}"
+}
+
+# rc 0 when <content> has a credential-shaped line the RUN introduced — the same
+# scope as the secret-scan gate, which judges added lines only (#1835's run was
+# refused over a test line on main since #1114). A line is excused when it
+# carries the allow pragma or already exists verbatim at the merge-base. With no
+# merge-base nothing can be excused: fail closed.
+_artifact_persist_has_new_secret_line() {
+    local content="$1" repo="$2" base="$3" line needle
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        zbuild_secret_line_allowlisted "$line" && continue
+        [[ "$base" == "-" ]] && return 0
+        # A diff's context marker is not part of the source line; a '+' line is
+        # added by definition and will not be found at the base.
+        needle="${line#[+ -]}"
+        needle="${needle#"${needle%%[![:space:]]*}"}"
+        git -C "$repo" grep -qF -e "$needle" "$base" -- 2>/dev/null || return 0
+    done < <(zbuild_secret_matching_lines "$content")
     return 1
 }
 

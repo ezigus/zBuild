@@ -1,0 +1,32 @@
+id: leaf-contract-violation-units
+name: Leaf contract violation — flow with a cycle (dispatch-unit loop)
+extends: simple
+defaults:
+  strategy: fanout
+
+# Same stages as leaf-contract-violation.yaml plus a one-member cycle. The cycle
+# is what sends the runner through the dispatch-unit loop, the path every
+# shipped template takes; the leaves around it are the subject.
+flow:
+  - cv-leaf
+  - cv_cycle
+  - cv-after
+
+cv_cycle:
+  type: cycle
+  flow:
+    - cv-noop
+  exit_when:
+    all:
+      - { stage: cv-noop, field: verdict, op: eq, value: pass }
+  max_iterations: 1
+  on_max: continue
+
+cv-leaf:
+  gate: auto
+
+cv-noop:
+  gate: auto
+
+cv-after:
+  gate: auto

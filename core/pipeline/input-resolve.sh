@@ -469,6 +469,17 @@ _inputs_check_required() {
 
     local -a violations=()
     local id req paths line eff producer present damaged
+    # ADR-055 §3: an external input has no producer, so _inputs_declared drops
+    # it — which left `required: true` on one unchecked. Check its supplier here.
+    local rec src
+    while IFS= read -r rec; do
+        [[ -z "$rec" ]] && continue
+        IFS='|' read -r id _ src req _ <<< "$rec"
+        [[ "$src" == "external" && -n "$id" ]] || continue
+        [[ -z "$req" || "$req" == "true" ]] || continue
+        manifest_graph_external_supplied "$id" && continue
+        violations+=("$stage|EXTERNAL_UNSUPPLIED|$id|stage '$stage' requires external input '$id', which this run does not supply (supplier: $(manifest_graph_external_supplier "$id"))")
+    done < <(manifest_graph_get_inputs "$manifest")
     while IFS='|' read -r id req; do
         [[ "$req" == "true" ]] || continue
         paths="${_IR_PATHS[$id]:-}"

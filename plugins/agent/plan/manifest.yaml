@@ -62,9 +62,12 @@ config:
 inputs:
   - id: scope_manifest
     required: true
+  # Optional: only --goal runs set ZBUILD_GOAL; --issue runs fall back to
+  # intake.md, and the pre-dispatch check (ADR-055 §3) would refuse every one of
+  # them if this said required. #1835 replaces it with the `intake_goal` input.
   - id: goal_string
     source: external
-    required: true
+    required: false
 
 outputs:
   - id: plan

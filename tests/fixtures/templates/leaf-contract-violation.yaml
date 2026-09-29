@@ -1,0 +1,19 @@
+id: leaf-contract-violation
+name: Leaf contract violation — flat flow (linear loop)
+extends: simple
+defaults:
+  strategy: fanout
+
+# leaf-contract-violation-halts-test.sh: `cv-leaf` writes a v2 result the engine
+# rejects (no `reason`); `cv-after` records that it ran. A flat flow has no
+# cycle, so the runner takes the linear loop — still the path every flat
+# overlay and ZBUILD_CYCLES_ENABLED=0 run uses (#1807).
+flow:
+  - cv-leaf
+  - cv-after
+
+cv-leaf:
+  gate: auto
+
+cv-after:
+  gate: auto
