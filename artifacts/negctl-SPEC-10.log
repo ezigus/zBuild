@@ -1,0 +1,169 @@
+### SPEC-10 baseline plugins/agent/intake/tests/intake-test.sh
+
+[38;2;0;212;255m[1m  plugin: intake (goal capture + scope manifest — issue #85)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m intake manifest validates
+  [38;2;74;222;128m✓[0m intake discovered in plugin registry
+  [38;2;74;222;128m✓[0m intake manifest outputs[0].path contains scope-manifest.md
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] unset ZBUILD_GOAL with no issue returns rc=1
+    [2mexpected: 1, got: 2[0m
+  [38;2;74;222;128m✓[0m stderr mentions ZBUILD_GOAL
+  [38;2;74;222;128m✓[0m valid run returns rc=0
+  [38;2;74;222;128m✓[0m state/intake.md created
+  [38;2;74;222;128m✓[0m intake.md contains sanitized goal
+  [38;2;74;222;128m✓[0m sentinel-strip run returns rc=0
+  [38;2;74;222;128m✓[0m intake.md has original prefix
+  [38;2;74;222;128m✓[0m sentinel ## Plan Summary stripped from intake.md
+  [38;2;74;222;128m✓[0m platform-aware run returns rc=0
+  [38;2;74;222;128m✓[0m scope-manifest.md created
+  [38;2;74;222;128m✓[0m scope-manifest has + ios/
+  [38;2;74;222;128m✓[0m scope-manifest has + node/
+  [38;2;74;222;128m✓[0m scope-manifest entries are + lines
+  [38;2;74;222;128m✓[0m injection guard run returns rc=0
+  [38;2;74;222;128m✓[0m valid platform ok-platform written
+  [38;2;74;222;128m✓[0m path traversal filtered from scope-manifest
+  [38;2;74;222;128m✓[0m generic fallback run returns rc=0
+  [38;2;74;222;128m✓[0m generic fallback writes + ./
+  [38;2;74;222;128m✓[0m [#1837/SPEC-9] plugin.result event emitted
+  [38;2;74;222;128m✓[0m plugin.result has plugin=intake
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] empty ZBUILD_GOAL with no issue returns rc=1
+    [2mexpected: 1, got: 2[0m
+  [38;2;74;222;128m✓[0m --issue mode with no goal text returns rc=0
+  [38;2;74;222;128m✓[0m --issue mode writes fetched title to intake.md
+  [38;2;74;222;128m✓[0m --issue mode writes fetched body to intake.md
+  [38;2;248;113;113m✗[0m [#1804][#1837/SPEC-1] a failed fetch with no supplied goal fails the run rc=1
+    [2mexpected: 1, got: 2[0m
+  [38;2;74;222;128m✓[0m [#1804] and says why, naming the issue
+  [38;2;74;222;128m✓[0m [#1804] no fabricated goal is left on disk for the pipeline to use
+  [38;2;74;222;128m✓[0m [#1804] the opt-in still returns rc=0
+  [38;2;74;222;128m✓[0m [#1804] and writes the placeholder it asked for
+  [38;2;74;222;128m✓[0m [#1804] an explicit goal needs no fetch at all
+  [38;2;74;222;128m✓[0m [#1804] and is what lands in intake.md
+  [38;2;74;222;128m✓[0m title-only fetch returns rc=0
+  [38;2;74;222;128m✓[0m title-only intake.md contains title
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] T_456_a: CLOSED/COMPLETED returns rc=1
+    [2mexpected: 1, got: 2[0m
+  [38;2;74;222;128m✓[0m T_456_a: stderr mentions the issue
+  [38;2;74;222;128m✓[0m T_456_a: stderr mentions CLOSED
+  [38;2;74;222;128m✓[0m T_456_a: stderr mentions COMPLETED
+  [38;2;74;222;128m✓[0m T_456_a: stderr mentions ZBUILD_ALLOW_CLOSED_ISSUE
+  [38;2;74;222;128m✓[0m T_456_a: stderr contains issue URL
+  [38;2;74;222;128m✓[0m T_456_a: intake.refused.issue_closed event emitted
+  [38;2;74;222;128m✓[0m T_456_a: event has state_reason=COMPLETED
+  [38;2;248;113;113m✗[0m [#1837/SPEC-2] T_456_a: intake-result.json written on closed-issue refusal
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-intake.pcLGHw/state/artifacts/intake-result.json[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] T_456_b: CLOSED/NOT_PLANNED returns rc=1
+    [2mexpected: 1, got: 2[0m
+  [38;2;74;222;128m✓[0m T_456_b: stderr mentions NOT_PLANNED
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] T_456_c: CLOSED/DUPLICATE returns rc=1
+    [2mexpected: 1, got: 2[0m
+  [38;2;74;222;128m✓[0m T_456_c: stderr mentions DUPLICATE
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] T_456_d: CLOSED/empty-reason returns rc=1
+    [2mexpected: 1, got: 2[0m
+  [38;2;74;222;128m✓[0m T_456_d: stderr says <not specified>
+  [38;2;74;222;128m✓[0m T_456_d: stderr does not contain literal 'reason: null'
+  [38;2;74;222;128m✓[0m T_456_d: stderr does not contain '(null)'
+  [38;2;74;222;128m✓[0m T_456_e: OPEN/REOPENED returns rc=0
+  [38;2;74;222;128m✓[0m T_456_e: intake.md written
+  [38;2;74;222;128m✓[0m T_456_e: intake.md has title
+  [38;2;74;222;128m✓[0m T_456_e: intake.md has body
+  [38;2;74;222;128m✓[0m T_456_f: OPEN/null-reason returns rc=0
+  [38;2;74;222;128m✓[0m T_456_f: intake.md written
+  [38;2;74;222;128m✓[0m T_456_g: override + CLOSED returns rc=0
+  [38;2;74;222;128m✓[0m T_456_g: stderr warn mentions ZBUILD_ALLOW_CLOSED_ISSUE
+  [38;2;74;222;128m✓[0m T_456_g: intake.md written
+  [38;2;74;222;128m✓[0m T_456_g: intake.md has fetched title
+  [38;2;74;222;128m✓[0m T_456_g: override event emitted
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] T_456_h: ZBUILD_ALLOW_CLOSED_ISSUE=true STILL refuses rc=1 (strict =1)
+    [2mexpected: 1, got: 2[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] T_456_i: gh fail → intake fails closed on the goal rc=1 (#1804)
+    [2mexpected: 1, got: 2[0m
+  [38;2;74;222;128m✓[0m T_456_i: and it is the FETCH failure, not a closed-issue refusal
+  [38;2;74;222;128m✓[0m T_456_i: the state check passed it through
+  [38;2;74;222;128m✓[0m T_456_i: opt-in restores the pass-through path, rc=0
+  [38;2;74;222;128m✓[0m T_456_i: intake.md has placeholder under the opt-in
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] T_456_j: repo view fail + CLOSED returns rc=1
+    [2mexpected: 1, got: 2[0m
+  [38;2;74;222;128m✓[0m T_456_j: stderr still mentions CLOSED
+  [38;2;74;222;128m✓[0m T_456_j: stderr has no malformed //issues/ token
+
+  [38;2;0;212;255m#1729: comments reach the goal, bots and retractions do not[0m
+  [38;2;74;222;128m✓[0m [#1729] the fetch still succeeds
+  [38;2;74;222;128m✓[0m [#1729] an OWNER comment reaches the goal
+  [38;2;74;222;128m✓[0m [#1729] a COLLABORATOR comment reaches it too
+  [38;2;74;222;128m✓[0m [#1729] under a labelled heading, not silently concatenated
+  [38;2;74;222;128m✓[0m [#1729] a github-actions comment does NOT — it is the pipeline's own log
+  [38;2;74;222;128m✓[0m [#1729] nor any [bot] login
+  [38;2;74;222;128m✓[0m [#1729] nor a minimized comment — minimizing is an explicit retraction
+  [38;2;74;222;128m✓[0m [#1729] and the body itself survives
+  [38;2;74;222;128m✓[0m [#1729] the comment section is capped
+  [38;2;74;222;128m✓[0m [#1729] and the truncation is STATED, not silent
+  [38;2;248;113;113m✗[0m [#1837/SPEC-4] manifest provides.result_contract == 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-5] manifest config.valid_verdicts must declare pass and fail
+    [2m  valid_verdicts: []
+  tier_default: T1[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-6] intake-result.json must declare primary: true
+    [2mabsent[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-6] scope_manifest must NOT have primary: true after migration
+    [2mfound[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-7] manifest must declare config.router.timeout_s
+    [2mabsent[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-7] manifest must declare config.router.max_turns
+    [2mabsent[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-8] v1 golden fixtures must exist before migration
+    [2mmissing: intake-scope-manifest-v1.golden and/or intake-goal-v1.golden[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on success
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-intake.pcLGHw/state/artifacts/intake-result.json[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on no-goal failure
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-intake.pcLGHw/state/artifacts/intake-result.json[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] missing state_file returns rc=1
+    [2mexpected: 1, got: 2[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on missing state_file
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-intake.pcLGHw/state/artifacts/intake-result.json[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-3] intake-result.json must exist for structure check
+    [2mabsent[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-15] intake-result.json must exist for data field check
+    [2mabsent[0m
+  [38;2;74;222;128m✓[0m [#1837/SPEC-10] plugin.sh references ZBUILD_ARTIFACT_DIR
+  [38;2;248;113;113m✗[0m [#1837/SPEC-11] manifest hooks must note: intake holds no live resources and declares no cleanup hook
+    [2mhooks:
+  run: intake_run[0m
+  [38;2;74;222;128m✓[0m [#1837/SPEC-12] manifest provides.role == intake
+  [38;2;74;222;128m✓[0m [#1837/SPEC-13] manifest provides.events has >= 17 intake.* events (found: 17)
+  [38;2;248;113;113m✗[0m [#1837/SPEC-14] manifest must declare config.router.timeout_s for template override test
+    [2mabsent — SPEC-7 must pass first[0m
+  [38;2;74;222;128m✓[0m [#1837/SPEC-17] plugin.sh has no hardcoded artifact input path constructions
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m26 of 102 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] unset ZBUILD_GOAL with no issue returns rc=1
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] empty ZBUILD_GOAL with no issue returns rc=1
+  [38;2;248;113;113m✗[0m [#1804][#1837/SPEC-1] a failed fetch with no supplied goal fails the run rc=1
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] T_456_a: CLOSED/COMPLETED returns rc=1
+  [38;2;248;113;113m✗[0m [#1837/SPEC-2] T_456_a: intake-result.json written on closed-issue refusal
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] T_456_b: CLOSED/NOT_PLANNED returns rc=1
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] T_456_c: CLOSED/DUPLICATE returns rc=1
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] T_456_d: CLOSED/empty-reason returns rc=1
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] T_456_h: ZBUILD_ALLOW_CLOSED_ISSUE=true STILL refuses rc=1 (strict =1)
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] T_456_i: gh fail → intake fails closed on the goal rc=1 (#1804)
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] T_456_j: repo view fail + CLOSED returns rc=1
+  [38;2;248;113;113m✗[0m [#1837/SPEC-4] manifest provides.result_contract == 2
+  [38;2;248;113;113m✗[0m [#1837/SPEC-5] manifest config.valid_verdicts must declare pass and fail
+  [38;2;248;113;113m✗[0m [#1837/SPEC-6] intake-result.json must declare primary: true
+  [38;2;248;113;113m✗[0m [#1837/SPEC-6] scope_manifest must NOT have primary: true after migration
+  [38;2;248;113;113m✗[0m [#1837/SPEC-7] manifest must declare config.router.timeout_s
+  [38;2;248;113;113m✗[0m [#1837/SPEC-7] manifest must declare config.router.max_turns
+  [38;2;248;113;113m✗[0m [#1837/SPEC-8] v1 golden fixtures must exist before migration
+  [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on success
+  [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on no-goal failure
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] missing state_file returns rc=1
+  [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on missing state_file
+  [38;2;248;113;113m✗[0m [#1837/SPEC-3] intake-result.json must exist for structure check
+  [38;2;248;113;113m✗[0m [#1837/SPEC-15] intake-result.json must exist for data field check
+  [38;2;248;113;113m✗[0m [#1837/SPEC-11] manifest hooks must note: intake holds no live resources and declares no cleanup hook
+  [38;2;248;113;113m✗[0m [#1837/SPEC-14] manifest must declare config.router.timeout_s for template override test
+

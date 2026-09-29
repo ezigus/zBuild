@@ -1,0 +1,43 @@
+### SPEC-16 baseline tests/integration/intake-refuse-on-closed-subprocess-test.sh
+
+[38;2;0;212;255m[1m  intake refuse-on-closed — subprocess boundary (#456)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] subprocess: refuse propagates rc=1
+    [2mexpected: 1, got: 2[0m
+  [38;2;74;222;128m✓[0m subprocess: stderr mentions CLOSED
+  [38;2;74;222;128m✓[0m subprocess: stderr mentions the issue
+  [38;2;74;222;128m✓[0m subprocess: intake.md not written on refusal
+  [38;2;74;222;128m✓[0m subprocess: intake.refused.issue_closed event in jsonl
+  [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on refusal
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/intake-refuse-subprocess.UPrLjT/artifacts/intake-result.json[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-16] SIGTERM: intake-result.json written before exit
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/intake-refuse-subprocess.UPrLjT/sigterm-test/intake-result.json[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m3 of 7 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] subprocess: refuse propagates rc=1
+  [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on refusal
+  [38;2;248;113;113m✗[0m [#1837/SPEC-16] SIGTERM: intake-result.json written before exit
+
+### SPEC-16 head tests/integration/intake-refuse-on-closed-subprocess-test.sh
+
+[38;2;0;212;255m[1m  intake refuse-on-closed — subprocess boundary (#456)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1837/SPEC-1] subprocess: refuse propagates rc=1
+  [38;2;74;222;128m✓[0m subprocess: stderr mentions CLOSED
+  [38;2;74;222;128m✓[0m subprocess: stderr mentions the issue
+  [38;2;74;222;128m✓[0m subprocess: intake.md not written on refusal
+  [38;2;74;222;128m✓[0m subprocess: intake.refused.issue_closed event in jsonl
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on refusal
+  [38;2;74;222;128m✓[0m [#1837/SPEC-16] SIGTERM: intake-result.json written before exit
+  [38;2;74;222;128m✓[0m [#1837/SPEC-16] SIGTERM: verdict=fail
+  [38;2;74;222;128m✓[0m [#1837/SPEC-16] SIGTERM: disposition=broken
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 9 tests passed[0m
+
