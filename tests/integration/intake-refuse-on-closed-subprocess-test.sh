@@ -108,7 +108,8 @@ assert_eq "[#1837] a closed issue is misconfigured — nothing was down" "miscon
     "$(jq -r '.disposition // empty' "$ARTIFACT_DIR/intake-result.json" 2>/dev/null || true)"
 
 # ─── SPEC-16 [change] / SPEC-2 [change]: SIGTERM mid-run ────────────────────
-# stage_summary_write is stubbed to announce itself and then wait on a child:
+# The workspace-branch step — mid-stage, before any result exists — is stubbed
+# to announce itself and then wait on a child:
 # `wait` returns as soon as a trapped signal arrives, where a foreground `sleep`
 # would hold the trap until it finished (the old stub slept 10s every run). The
 # parent kills only once the stub has announced — no fixed delay to race.
@@ -132,10 +133,10 @@ bash -c "
     set -uo pipefail
     source '$REPO_ROOT/scripts/lib/helpers.sh'
     source '$REPO_ROOT/plugins/agent/intake/plugin.sh'
-    stage_summary_write() { : > '$_s16_ready'; sleep 30 >/dev/null 2>&1 & wait \$!; }
+    _intake_create_workspace_branch() { : > '$_s16_ready'; sleep 30 >/dev/null 2>&1 & wait \$!; }
     export ZBUILD_GOAL='sigterm test: verifying v2 signal handling'
     export ZBUILD_ARTIFACT_DIR='$_s16_art_dir'
-    export ZBUILD_INTAKE_SKIP_BRANCH=1
+    export ZBUILD_INTAKE_SKIP_BRANCH=0
     export ZBUILD_EVENTS_DIR='$ZBUILD_EVENTS_DIR'
     export ZBUILD_EVENTS_JSONL='$ZBUILD_EVENTS_JSONL'
     export ZBUILD_EVENTS_DB='$ZBUILD_EVENTS_DB'

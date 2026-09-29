@@ -42,15 +42,21 @@ _intake_write_result() {
     local json
     json="$(jq -nc --arg v "$verdict" --arg d "$disposition" --arg r "$reason" --argjson data "$data_json"         '{result_contract: 2, verdict: $v, disposition: $d, reason: $r}
          + (if $data == null then {} else {data: $data} end)')" \
-        && atomic_write "$art_dir/intake-result.json" <<< "$json" && return 0
+        && atomic_write "$art_dir/intake-result.json" <<< "$json" \
+        && _INTAKE_RESULT_VERDICT="$verdict" && return 0
     error "intake: could not write $art_dir/intake-result.json"
     return 1
 }
 
-# A signal ends the stage: record it with the one word for it, then leave.
+# A signal ends the stage: record it with the one word for it, then leave. A
+# stage that already wrote its result has finished — a late signal (a graceful
+# drain) leaves that result, and the exit status it implies, alone.
 _intake_on_signal() {
-    _intake_write_result "${ZBUILD_ARTIFACT_DIR:-}" "fail" \
-        "${1:-$STAGE_SIGNAL_DISPOSITION}" "${2:-$STAGE_SIGNAL_REASON}" || true
+    case "${_INTAKE_RESULT_VERDICT:-}" in
+        pass) exit 0 ;;
+        "")   _intake_write_result "${ZBUILD_ARTIFACT_DIR:-}" "fail" \
+                  "${1:-$STAGE_SIGNAL_DISPOSITION}" "${2:-$STAGE_SIGNAL_REASON}" || true ;;
+    esac
     exit 1
 }
 
@@ -110,6 +116,7 @@ intake_run() {
 }
 
 _intake_run_inner() {
+    _INTAKE_RESULT_VERDICT=""
     # ADR-055 §9: resolved up-front, because the closed-issue refusal below
     # returns long before state_dir is derived and must still say why.
     local _intake_art=""

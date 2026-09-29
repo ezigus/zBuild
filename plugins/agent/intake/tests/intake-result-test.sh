@@ -22,6 +22,8 @@
 # D9 [change] intake's result writer takes the disposition as its THIRD
 #             argument, like every other stage's, so the disposition-word lint
 #             sees intake's words (it saw none)
+# D10 [change] a signal after intake wrote its result leaves that result alone
+#             (review: a graceful-drain TERM after the pass turned it into a failure)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -510,6 +512,13 @@ cp "$PLUGIN_DIR/plugin.sh" "$_L/plugin.sh"
 _lint9="$(bash "$REPO_ROOT/scripts/lib/lint-disposition-words.sh" "$TEST_TEMP_DIR/lint-plugins" 2>&1 || true)"
 _n9="$(grep -oE '[0-9]+ literal' <<< "$_lint9" | grep -oE '[0-9]+' || true)"
 assert_gt "[D9] the lint reads intake's literal dispositions (found ${_n9:-0})" "${_n9:-0}" "4"
+
+print_test_section "D10: a signal after the result is written"
+_d10="$(
+    ZBUILD_GOAL="late signal check" ZBUILD_ISSUE=0 _intake_run_inner "intake" "$STATE_FILE" >/dev/null 2>&1
+    _intake_on_signal "$STAGE_SIGNAL_DISPOSITION" "$STAGE_SIGNAL_REASON" >/dev/null 2>&1
+)" || true
+assert_eq "[D10] the pass intake wrote is still the result" "complete" "$(_disp)"
 
 cleanup_test_env
 print_test_results
