@@ -60,7 +60,7 @@ assert_contains "intake discovered in plugin registry" "$discovered" "agent/inta
 # shellcheck source=../../../../plugins/agent/intake/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
 
-# ─── Test 1b: manifest declares outputs[] with scope-manifest.md first ────────
+# ─── Test 1b: manifest declares outputs[] with intake-result.json first (SPEC-6) ─
 first_output="$(awk '
     /^outputs:/ { in_outputs=1; next }
     in_outputs && /^[a-zA-Z_]/ { in_outputs=0 }
@@ -71,8 +71,8 @@ first_output="$(awk '
         print; exit
     }
 ' "$PLUGIN_DIR/manifest.yaml" 2>/dev/null || true)"
-assert_contains "intake manifest outputs[0].path contains scope-manifest.md" \
-    "$first_output" "scope-manifest.md"
+assert_contains "intake manifest outputs[0].path is intake-result.json" \
+    "$first_output" "intake-result.json"
 
 # ─── Test 2: ZBUILD_GOAL unset AND no issue → rc=2 ───────────────────────────
 unset ZBUILD_GOAL 2>/dev/null || true
@@ -173,13 +173,26 @@ assert_eq "generic fallback run returns rc=0" "0" "$rc"
 scope="$(cat "$STATE_DIR/scope-manifest.md")"
 assert_contains "generic fallback writes + ./" "$scope" "+ ./"
 
-# ─── Test 7: plugin.result event emitted ─────────────────────────────────────
-run_complete_count=$(grep -c '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
-assert_gt "[#1837/SPEC-9] plugin.result event emitted" "$run_complete_count" "0"
+# ─── Test 7: plugin.result event emitted on EVERY success run (SPEC-9) ────────
+# Reset to a clean slate so we can count exactly — two runs must yield two events.
+: > "$ZBUILD_EVENTS_JSONL"
+export ZBUILD_GOAL="spec-9 verify emission on every success run: first"
+export ZBUILD_ISSUE="0"
+set +e
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+set -e
+_s9_count1="$(grep -c '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+assert_eq "[#1837/SPEC-9] plugin.result emitted on first success run" "1" "$_s9_count1"
 
-plugin_field="$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
+export ZBUILD_GOAL="spec-9 verify emission on every success run: second"
+set +e
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+set -e
+_s9_count2="$(grep -c '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+assert_eq "[#1837/SPEC-9] plugin.result emitted on every success run (two runs yield two events)" "2" "$_s9_count2"
+_s9_plugin_field="$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
     jq -r 'select(.type=="plugin.result") | .data.plugin // empty' 2>/dev/null | tail -1 || true)"
-assert_eq "plugin.result has plugin=intake" "intake" "$plugin_field"
+assert_eq "[#1837/SPEC-9] plugin.result has plugin=intake" "intake" "$_s9_plugin_field"
 
 # ─── Test 9: empty ZBUILD_GOAL + ZBUILD_ISSUE=0 → rc=2 ──────────────────────
 export ZBUILD_GOAL=""
@@ -645,23 +658,31 @@ else
         "${_s5_vv_section:-absent}"
 fi
 
-# ─── SPEC-6 [change]: intake-result.json primary: true; scope_manifest not primary ─
-# Scoped to the intake_result stanza: look for the id, then check primary within it.
-_s6_ir_stanza="$(awk '
-    /intake.result|intake_result/ { found=1 }
-    found && /^[[:space:]]*-[[:space:]]*id:/ && !/intake.result|intake_result/ { exit }
-    found { print }
+# ─── SPEC-6 [change]: intake-result.json primary:true IN outputs; scope_manifest not ─
+# Extract the outputs section first — the stanza must live under outputs, not elsewhere.
+_s6_outputs="$(awk '
+    /^outputs:/ { in_s=1; next }
+    in_s && /^[a-zA-Z_]/ && !/^outputs:/ { exit }
+    in_s { print }
 ' "$_mf" 2>/dev/null || true)"
+
+_s6_ir_stanza="$(awk '
+    /intake.result|intake_result|intake-result/ { found=1 }
+    found && /^[[:space:]]*-[[:space:]]*id:/ && !/intake.result|intake_result|intake-result/ { exit }
+    found { print }
+' <<< "$_s6_outputs" 2>/dev/null || true)"
 if grep -q 'primary: true' <<< "$_s6_ir_stanza"; then
-    assert_pass "[#1837/SPEC-6] intake-result.json declares primary: true"
+    assert_pass "[#1837/SPEC-6] intake-result.json is in outputs section with primary: true"
 else
-    assert_fail "[#1837/SPEC-6] intake-result.json must declare primary: true" "absent"
+    assert_fail "[#1837/SPEC-6] intake-result.json must declare primary: true within the outputs section" \
+        "${_s6_outputs:-(outputs section absent)}"
 fi
+
 _s6_sm_stanza="$(awk '
     /scope.manifest|scope_manifest/ { found=1 }
     found && /^[[:space:]]*-[[:space:]]*id:/ && !/scope.manifest|scope_manifest/ { exit }
     found { print }
-' "$_mf" 2>/dev/null || true)"
+' <<< "$_s6_outputs" 2>/dev/null || true)"
 if grep -q 'primary: true' <<< "$_s6_sm_stanza"; then
     assert_fail "[#1837/SPEC-6] scope_manifest must NOT have primary: true after migration" "found"
 else
@@ -746,6 +767,67 @@ assert_eq "[#1837/SPEC-1] missing state_file returns rc=1" "1" "$_s1_miss_rc"
 assert_file_exists "[#1837/SPEC-2] intake-result.json written on missing state_file" \
     "$ARTIFACT_DIR/intake-result.json"
 
+# Empty-after-sanitization path (SPEC-1 + SPEC-2)
+# A goal consisting only of a stripped sentinel sanitizes to the empty string.
+rm -f "$ARTIFACT_DIR/intake-result.json"
+export ZBUILD_GOAL=$'\n\nHUMAN FEEDBACK\ngoal that sanitizes to nothing'
+export ZBUILD_ISSUE="0"
+set +e
+_s1_empty_rc=0
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1 || _s1_empty_rc=$?
+set -e
+assert_eq "[#1837/SPEC-1] empty-after-sanitization returns rc=1" "1" "$_s1_empty_rc"
+assert_file_exists "[#1837/SPEC-2] intake-result.json written on empty-after-sanitization failure" \
+    "$ARTIFACT_DIR/intake-result.json"
+
+# Branch-refused path (SPEC-1 + SPEC-2)
+rm -f "$ARTIFACT_DIR/intake-result.json"
+export ZBUILD_GOAL="spec-1-2 branch-refused path check"
+export ZBUILD_ISSUE="0"
+# Override the branch op to simulate a refusal; ZBUILD_INTAKE_SKIP_BRANCH guards all
+# other tests in this file, so unsetting it here is isolated to this test.
+# shellcheck disable=SC2317  # called indirectly via intake_run
+_intake_create_workspace_branch() { return 1; }
+unset ZBUILD_INTAKE_SKIP_BRANCH 2>/dev/null || true
+set +e
+_s1_branch_rc=0
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1 || _s1_branch_rc=$?
+set -e
+export ZBUILD_INTAKE_SKIP_BRANCH=1
+unset -f _intake_create_workspace_branch 2>/dev/null || true
+assert_eq "[#1837/SPEC-1] branch-refused returns rc=1" "1" "$_s1_branch_rc"
+assert_file_exists "[#1837/SPEC-2] intake-result.json written on branch-refused failure" \
+    "$ARTIFACT_DIR/intake-result.json"
+
+# SIGTERM path (SPEC-2) — subprocess trap must write result file before exit
+_s2_sig_art="$TEST_TEMP_DIR/spec2-sigterm-art"
+_s2_sig_state="$TEST_TEMP_DIR/spec2-sigterm-state"
+mkdir -p "$_s2_sig_art" "$_s2_sig_state"
+echo '{"schema_version":1,"run_id":"s2sig","issue":"0","stage_statuses":{}}' \
+    > "$_s2_sig_state/pipeline-state.json"
+set +e
+bash -c "
+    set -uo pipefail
+    source '$REPO_ROOT/scripts/lib/helpers.sh'
+    source '$PLUGIN_DIR/plugin.sh'
+    stage_summary_write() { sleep 10; }
+    export ZBUILD_GOAL='spec-2 sigterm coverage'
+    export ZBUILD_ARTIFACT_DIR='$_s2_sig_art'
+    export ZBUILD_INTAKE_SKIP_BRANCH=1
+    export ZBUILD_EVENTS_DIR='$ZBUILD_EVENTS_DIR'
+    export ZBUILD_EVENTS_JSONL='$ZBUILD_EVENTS_JSONL'
+    export ZBUILD_EVENTS_DB='$ZBUILD_EVENTS_DB'
+    export ZBUILD_EVENT_SCHEMA='$ZBUILD_EVENT_SCHEMA'
+    intake_run 'intake' '$_s2_sig_state/pipeline-state.json' &
+    _pid=\$!
+    sleep 0.3
+    kill -TERM \"\$_pid\" 2>/dev/null || true
+    wait \"\$_pid\" 2>/dev/null || true
+" 2>/dev/null
+set -e
+assert_file_exists "[#1837/SPEC-2] intake-result.json written on SIGTERM" \
+    "$_s2_sig_art/intake-result.json"
+
 # ─── SPEC-3 [change]: result file structure ──────────────────────────────────
 # Use the success-path file written above (if present) to verify v2 structure.
 # Re-run a clean success to get a predictable result.
@@ -784,28 +866,31 @@ else
 fi
 
 # ─── SPEC-15 [change]: data.goal_len and data.platform_count on success ──────
+# Use a known goal (no sentinels → sanitized == goal, goal_len == ${#goal}) and a
+# platforms.json with a fixed count so both fields can be verified by exact value.
 rm -f "$ARTIFACT_DIR/intake-result.json"
-export ZBUILD_GOAL="spec-15 data field check: this is the sanitized goal text"
+_s15_goal="spec-15 exact character count and platform count verification"
+_s15_expected_len="${#_s15_goal}"
+cat > "$STATE_DIR/platforms.json" <<'S15JSON'
+{"detected":["ios","android"],"repo_head_sha":"s15"}
+S15JSON
+_s15_expected_pc=2
+
+export ZBUILD_GOAL="$_s15_goal"
 export ZBUILD_ISSUE="0"
 set +e
 intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
 set -e
+rm -f "$STATE_DIR/platforms.json"
+
 _s15_file="$ARTIFACT_DIR/intake-result.json"
 if [[ -f "$_s15_file" ]]; then
     _s15_gl="$(jq -r '.data.goal_len // empty' "$_s15_file" 2>/dev/null || true)"
     _s15_pc="$(jq -r '.data.platform_count // empty' "$_s15_file" 2>/dev/null || true)"
-    if [[ "$_s15_gl" =~ ^[0-9]+$ ]]; then
-        assert_pass "[#1837/SPEC-15] data.goal_len is a non-negative integer"
-    else
-        assert_fail "[#1837/SPEC-15] data.goal_len must be an integer in intake-result.json" \
-            "got: ${_s15_gl:-absent}"
-    fi
-    if [[ "$_s15_pc" =~ ^[0-9]+$ ]]; then
-        assert_pass "[#1837/SPEC-15] data.platform_count is a non-negative integer"
-    else
-        assert_fail "[#1837/SPEC-15] data.platform_count must be an integer in intake-result.json" \
-            "got: ${_s15_pc:-absent}"
-    fi
+    assert_eq "[#1837/SPEC-15] data.goal_len equals sanitized goal character count" \
+        "$_s15_expected_len" "$_s15_gl"
+    assert_eq "[#1837/SPEC-15] data.platform_count equals number of detected platforms" \
+        "$_s15_expected_pc" "$_s15_pc"
 else
     assert_fail "[#1837/SPEC-15] intake-result.json must exist for data field check" "absent"
 fi
@@ -818,16 +903,23 @@ else
 fi
 
 # ─── SPEC-11 [change]: manifest hooks section has no-cleanup comment (ADR-054 §7) ─
+# Both halves of the ADR-054 §7 statement are required: "holds no live resources"
+# AND "declares no cleanup hook" — an OR would accept a partial comment.
 _s11_hooks_section="$(awk '
     /^hooks:/ { found=1 }
     found && /^[a-zA-Z_]/ && !/^hooks:/ { exit }
     found { print }
 ' "$_mf" 2>/dev/null || true)"
-if grep -qiE 'no.*cleanup|no.*live.*resource|holds no live resource|no.*hook' \
-        <<< "$_s11_hooks_section"; then
+_s11_has_no_live=0
+_s11_has_no_cleanup=0
+grep -qiE 'no.*live.*resource|holds no live' <<< "$_s11_hooks_section" \
+    && _s11_has_no_live=1 || true
+grep -qiE 'no.*cleanup.*hook|declares no cleanup' <<< "$_s11_hooks_section" \
+    && _s11_has_no_cleanup=1 || true
+if [[ "$_s11_has_no_live" -eq 1 && "$_s11_has_no_cleanup" -eq 1 ]]; then
     assert_pass "[#1837/SPEC-11] manifest hooks section records no cleanup hook (ADR-054 §7)"
 else
-    assert_fail "[#1837/SPEC-11] manifest hooks must note: intake holds no live resources and declares no cleanup hook" \
+    assert_fail "[#1837/SPEC-11] manifest hooks must note both: intake holds no live resources AND declares no cleanup hook" \
         "${_s11_hooks_section:-absent}"
 fi
 
@@ -836,12 +928,45 @@ _s12_role="$(yaml_get "$_mf" "provides.role" 2>/dev/null || true)"
 assert_eq "[#1837/SPEC-12] manifest provides.role == intake" "intake" "$_s12_role"
 
 # ─── SPEC-13 [guard]: manifest provides.events lists >= 17 intake.* events ───
+# Count floor plus per-event check: adding new events while dropping old ones
+# would satisfy a count-only assertion but violate the no-drop requirement.
 _s13_count="$(grep -c '^[[:space:]]*-[[:space:]]*intake\.' "$_mf" 2>/dev/null || true)"
 if [[ "$_s13_count" -ge 17 ]]; then
     assert_pass "[#1837/SPEC-13] manifest provides.events has >= 17 intake.* events (found: $_s13_count)"
 else
     assert_fail "[#1837/SPEC-13] manifest must list >= 17 intake.* events" \
         "found: ${_s13_count:-0}"
+fi
+_s13_required=(
+    "intake.baseline.captured"
+    "intake.branch.adopted"
+    "intake.branch.created"
+    "intake.branch.from_detached"
+    "intake.branch.noop"
+    "intake.branch.reclaim_refused"
+    "intake.branch.reclaimed"
+    "intake.branch.reused"
+    "intake.error"
+    "intake.override.closed_issue_allowed"
+    "intake.refused.branch_exists_remote_only"
+    "intake.refused.dirty_tree"
+    "intake.refused.git_unavailable"
+    "intake.refused.invalid_branch_name"
+    "intake.refused.issue_closed"
+    "intake.refused.repo_state"
+    "intake.untracked_baseline.captured"
+)
+_s13_missing=()
+for _s13_ev in "${_s13_required[@]}"; do
+    if ! grep -q "^[[:space:]]*-[[:space:]]*${_s13_ev}[[:space:]]*$" "$_mf"; then
+        _s13_missing+=("$_s13_ev")
+    fi
+done
+if [[ "${#_s13_missing[@]}" -eq 0 ]]; then
+    assert_pass "[#1837/SPEC-13] all 17 pre-migration intake.* events are still present"
+else
+    assert_fail "[#1837/SPEC-13] no pre-migration event must be dropped" \
+        "missing: ${_s13_missing[*]}"
 fi
 
 # ─── SPEC-14 [change]: template_stage_router_timeout > manifest config.router.* ─
@@ -891,10 +1016,23 @@ else
 fi
 
 # ─── SPEC-17 [guard]: no hardcoded input artifact path constructions ──────────
-# Any pattern that constructs an artifact INPUT path without ZBUILD_ARTIFACT_DIR
-# is a defect. The grep targets literal path fragments that would bypass the
-# engine-provided dir (e.g. "$state_dir/../", "state/artifacts/", etc.).
-_s17_hits="$(grep -nE '\$\{?state_dir\}?/\.\./' "$PLUGIN_DIR/plugin.sh" 2>/dev/null || true)"
+# Check multiple bypass forms: variable/../ traversal (any var, not just state_dir)
+# and bare /artifacts/<name> references on non-ZBUILD_ARTIFACT_DIR / non-_intake_art
+# lines (comments are excluded).  Both patterns must return zero matches.
+_s17_traversal="$(grep -nE '\$\{?[a-zA-Z_][a-zA-Z_0-9]*\}?/\.\./' \
+    "$PLUGIN_DIR/plugin.sh" 2>/dev/null || true)"
+_s17_bare_all="$(grep -nE '/artifacts/[a-z]' "$PLUGIN_DIR/plugin.sh" 2>/dev/null || true)"
+_s17_bare=""
+while IFS= read -r _s17_line; do
+    [[ -z "$_s17_line" ]] && continue
+    # Allow lines that reference ZBUILD_ARTIFACT_DIR or the internal _intake_art
+    # variable; reject comment-only lines carrying the string as documentation.
+    if ! grep -qE 'ZBUILD_ARTIFACT_DIR|_intake_art' <<< "$_s17_line" && \
+       ! grep -qE '^[0-9]+:[[:space:]]*#' <<< "$_s17_line"; then
+        _s17_bare+="${_s17_line}"$'\n'
+    fi
+done <<< "$_s17_bare_all"
+_s17_hits="${_s17_traversal}${_s17_bare}"
 if [[ -z "$_s17_hits" ]]; then
     assert_pass "[#1837/SPEC-17] plugin.sh has no hardcoded artifact input path constructions"
 else

@@ -103,17 +103,25 @@ assert_gt "subprocess: intake.refused.issue_closed event in jsonl" "$refused_cou
 assert_file_exists "[#1837/SPEC-2] intake-result.json written on refusal" \
     "$ARTIFACT_DIR/intake-result.json"
 
-# ─── SPEC-16 [change]: SIGTERM mid-run writes verdict=fail, disposition=broken ─
+# ─── SPEC-16 [change] / SPEC-2 [change]: SIGTERM mid-run ────────────────────
 # Run intake in a subprocess with stage_summary_write mocked to sleep long
-# enough for SIGTERM to arrive; the v2 SIGTERM trap must write the result file
-# before the process exits. stage_summary_write is a direct (non-substituted)
-# call that runs after all work is done, making the timing reliable.
+# enough for SIGTERM to arrive. The v2 SIGTERM trap must write the result file
+# before the process exits (trap body: _intake_write_result → exit 1, in that
+# order). Temporal ordering is established structurally: the artifact dir is
+# empty before the subprocess starts; only the subprocess writes to it; so a
+# file present after the subprocess exits was written by the trap before exit.
 _s16_art_dir="$TEST_TEMP_DIR/sigterm-test"
 _s16_state_dir="$TEST_TEMP_DIR/sigterm-state"
 mkdir -p "$_s16_art_dir" "$_s16_state_dir"
 _s16_state_file="$_s16_state_dir/pipeline-state.json"
 echo '{"schema_version":1,"run_id":"sigterm","issue":"0","stage_statuses":{}}' \
     > "$_s16_state_file"
+
+# Verify the dir is empty before the subprocess starts — no pre-existing result.
+if [[ -f "$_s16_art_dir/intake-result.json" ]]; then
+    assert_fail "[#1837/SPEC-16] artifact dir must be empty before SIGTERM test starts" \
+        "pre-existing file found"
+fi
 
 set +e
 bash -c "
@@ -136,7 +144,10 @@ bash -c "
 " 2>/dev/null
 set -e
 
-assert_file_exists "[#1837/SPEC-16] SIGTERM: intake-result.json written before exit" \
+# The dir was empty before; the parent never writes to it; the file present now
+# was written by the subprocess before it exited — establishing the temporal
+# constraint "before the process exits" (trap body writes, then calls exit 1).
+assert_file_exists "[#1837/SPEC-2][#1837/SPEC-16] SIGTERM: intake-result.json written before exit" \
     "$_s16_art_dir/intake-result.json"
 if [[ -f "$_s16_art_dir/intake-result.json" ]]; then
     _s16_verdict="$(jq -r '.verdict // empty' "$_s16_art_dir/intake-result.json" 2>/dev/null || true)"
