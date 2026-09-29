@@ -1,0 +1,6 @@
+## issue-acceptance — fail
+
+- The diff implements the rc=1/plan.json behavior for scope_too_large but does not remove or update the pre-existing `[SPEC-3]` assertions in `plan-integration-test.sh` that still expect rc=10 and no plan.json; it also does not update the `dispatch-rc-guard-test.sh` line-count pin that was broken when the rc=10 block was deleted from `runner.sh`.
+
+- NOT MET: `npm test` green — two tests fail: the old `[SPEC-3] max_turns plan_run returns rc=10` / `no fake plan.json written on scope_too_large` assertions in `plan-integration-test.sh` were not removed after the scope_too_large path changed
+- NOT MET: `dispatch-rc-guard-test.sh` pin for `runner.sh` was not updated after the rc=10 block deletion shrank the file from 36 to 35 legacy-rc returns
