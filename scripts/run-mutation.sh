@@ -349,7 +349,9 @@ _mut_owns_worktree() {
     [[ "$base" =~ ^zb-mut\.([0-9]+)\.[^.]+$ ]] || return 1
     owner="${BASH_REMATCH[1]}"
     [[ "$owner" == "$$" ]] && return 0
-    kill -0 "$owner" 2>/dev/null && return 1
+    # `ps -p`, not `kill -0`: kill fails on another user's live process (EPERM)
+    # just as on a dead one, and would sweep that run's tree (review #2233).
+    ps -p "$owner" >/dev/null 2>&1 && return 1
     return 0
 }
 

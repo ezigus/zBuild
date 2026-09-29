@@ -14,6 +14,8 @@
 #             mutant worktree alone — the held mutant still scores as caught
 # O2 [guard]  a leftover worktree from a run that is no longer alive is still
 #             swept (#992's cleanup is kept, scoped to dead owners)
+# O3 [change] a run owned by ANOTHER USER is alive too: `kill -0` fails on it
+#             (EPERM) exactly as on a dead pid, so its worktree was swept (review)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -106,8 +108,9 @@ assert_contains "[O1] run A's held mutant is still caught after run B's teardown
 assert_eq "[O1] run A exits 0" "0" "$a_rc"
 
 print_test_section "O2: a dead run's leftover worktree is still swept"
-# A pid that is certainly gone: a finished child.
-sh -c 'exit 0' & _dead=$!; wait "$_dead" 2>/dev/null || true
+# A pid that cannot exist (above any pid_max), so it cannot be recycled into a
+# live process mid-test the way a just-reaped child's pid can (review).
+_dead=999999999
 _stale="$(mktemp -d "${TMPDIR:-/tmp}/zb-mut.${_dead}.XXXXXX")"
 rmdir "$_stale"
 git -C "$CLONE" worktree add --detach "$_stale" HEAD >/dev/null 2>&1
@@ -121,6 +124,18 @@ if _registered "${_stale##*/}"; then
     assert_fail "[O2] a run's teardown sweeps a dead run's leftover worktree" "still registered"
 else
     assert_pass "[O2] a run's teardown sweeps a dead run's leftover worktree"
+fi
+
+print_test_section "O3: a live run owned by another user is left alone"
+# pid 1 is always alive and, for a non-root runner, not ours to signal — the
+# EPERM case. Run as root, kill -0 succeeds and the check is still exact.
+_foreign="$(mktemp -d "${TMPDIR:-/tmp}/zb-mut.1.XXXXXX")"; rmdir "$_foreign"
+git -C "$CLONE" worktree add --detach "$_foreign" HEAD >/dev/null 2>&1
+ZBUILD_MUTATION_DIR="$B_DIR" ZBUILD_MUTATION_PARALLEL_JOBS=1 bash "$RUNNER" >/dev/null 2>&1 || true
+if _registered "${_foreign##*/}"; then
+    assert_pass "[O3] another user's live run keeps its worktree"
+else
+    assert_fail "[O3] another user's live run keeps its worktree" "the teardown removed it"
 fi
 
 cleanup_test_env

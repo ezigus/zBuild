@@ -162,8 +162,8 @@ _dead_owner_trees() {
     while IFS= read -r line; do
         [[ "$line" == worktree\ * ]] || continue
         base="${line##*/}"
-        [[ "$base" =~ ^zb-mut\.([0-9]+)\. ]] || continue
-        kill -0 "${BASH_REMATCH[1]}" 2>/dev/null || n=$((n + 1))
+        [[ "$base" =~ ^zb-mut\.([0-9]+)\.[^.]+$ ]] || continue
+        ps -p "${BASH_REMATCH[1]}" >/dev/null 2>&1 || n=$((n + 1))
     done < <(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null)
     printf '%s' "$n"
 }
