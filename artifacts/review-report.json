@@ -1,0 +1,375 @@
+{
+  "schema_version": 1,
+  "merge_readiness": "needs_attention",
+  "lenses": [
+    {
+      "name": "correctness",
+      "score": 0,
+      "ran": false,
+      "findings": []
+    },
+    {
+      "name": "performance",
+      "score": 9,
+      "ran": true,
+      "findings": [
+        {
+          "file": "plugins/agent/intake/plugin.sh",
+          "category": "subprocess overhead",
+          "severity": "low",
+          "line": 33,
+          "message": "_intake_write_result forks a jq subprocess on every terminal exit path including the success path; introduced by this change, though intake is a single-shot non-LLM stage so the added latency (one fork + one atomic write per run) is negligible in practice.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/intake/plugin.sh",
+          "category": "redundant syscall",
+          "severity": "low",
+          "line": 37,
+          "message": "mkdir -p is called unconditionally inside _intake_write_result on every invocation; because multiple failure-path calls can occur within one intake_run (none do today, but the function is public), this results in redundant directory-creation syscalls on each call rather than once at stage init; introduced by this change.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/intake/tests/intake-test.sh",
+          "category": "test suite latency",
+          "severity": "low",
+          "line": 604,
+          "message": "The SPEC-2 SIGTERM sub-test introduces a sleep 0.3 busy-wait before killing the subprocess; combined with the identical sleep 0.3 in the integration SPEC-16 test, this change adds at least 600ms of wall-clock sleep to every CI run; introduced by this change.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/intake/tests/intake-test.sh",
+          "category": "test suite latency",
+          "severity": "low",
+          "line": 185,
+          "message": "The SPEC-9 rewrite now calls intake_run twice in sequence to verify per-run event emission, doubling the in-process intake_run invocations in that section relative to the previous single-call check; introduced by this change, cost is proportional to intake_run overhead per call.",
+          "introduced": true
+        }
+      ]
+    },
+    {
+      "name": "red-team",
+      "score": 0,
+      "ran": false,
+      "findings": []
+    },
+    {
+      "name": "scope",
+      "score": 9,
+      "ran": true,
+      "findings": [
+        {
+          "file": "plugins/agent/intake/tests/intake-test.sh",
+          "category": "scope",
+          "severity": "low",
+          "line": null,
+          "message": "File mode changed from 100755 to 100644 (executable bit removed); the issue asked only for v2 contract migration and test assertions — no permission change was requested or mentioned in the design.",
+          "introduced": true
+        },
+        {
+          "file": "tests/integration/intake-refuse-on-closed-subprocess-test.sh",
+          "category": "scope",
+          "severity": "low",
+          "line": null,
+          "message": "File mode changed from 100755 to 100644 (executable bit removed); same as the unit test file — this change was not part of the issue's stated scope and was not listed as a design decision.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/intake/plugin.sh",
+          "category": "scope",
+          "severity": "low",
+          "line": 33,
+          "message": "The jq argument `--argjson rc 2` names the result_contract version variable `rc`, which collides with the conventional 'return code' meaning used throughout the same function's surrounding context; this naming was not required by any SPEC and goes slightly beyond the ask for a minimal v2 plumbing change — a name like `contract_ver` would have matched the field name without introducing ambiguity.",
+          "introduced": true
+        }
+      ]
+    },
+    {
+      "name": "security",
+      "score": 7,
+      "ran": true,
+      "findings": [
+        {
+          "file": "plugins/agent/intake/plugin.sh",
+          "category": "trap lifecycle",
+          "severity": "medium",
+          "line": 114,
+          "message": "The TERM trap set inside `intake_run` is never cleared (no `trap - TERM` on normal return), so it persists in any shell that sources the plugin and calls the function directly; if SIGTERM arrives after `intake_run` has already returned successfully, the trap fires `_intake_write_result fail broken` and then `exit 1`, writing a spurious failure result over the correct one and killing the surrounding shell.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/intake/plugin.sh",
+          "category": "path traversal / defect contract",
+          "severity": "low",
+          "line": 110,
+          "message": "The fallback `_intake_art` is derived from the `state_file` argument via `dirname \"${2:-}\"/artifacts`; the repo facts state explicitly that a plugin deriving an artifact path from its state file is a defect (ADR-055 §1), and a crafted state_file containing `..` components would redirect writes to an unintended directory.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/intake/plugin.sh",
+          "category": "silent failure",
+          "severity": "low",
+          "line": 49,
+          "message": "`_intake_write_result` silently returns 0 (via `|| return 0`) if either `jq` invocation fails — including when `$data_json` is malformed JSON — so callers cannot distinguish a successful write from a suppressed failure, and the result file may be absent on a terminal exit path without any error signal.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/intake/plugin.sh",
+          "category": "misleading naming",
+          "severity": "low",
+          "line": 43,
+          "message": "The jq variable `--argjson rc 2` names the `result_contract` version field as `rc`, which universally means return-code in shell contexts; a future maintainer could replace the literal `2` with the actual return code of a command, silently corrupting the `result_contract` field.",
+          "introduced": true
+        }
+      ]
+    },
+    {
+      "name": "sre",
+      "score": 7,
+      "ran": true,
+      "findings": [
+        {
+          "file": "plugins/agent/intake/plugin.sh",
+          "category": "signal handling",
+          "severity": "medium",
+          "line": 295,
+          "message": "SIGTERM arriving after `_intake_write_result \"pass\" \"complete\"` (line ~295) but before process exit will overwrite a valid pass result with `fail/broken`; in container runtimes that send SIGTERM for graceful drain, a cleanly-completed intake stage appears failed to the engine, triggering a retry or pipeline abort.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/intake/plugin.sh",
+          "category": "observability",
+          "severity": "low",
+          "line": 59,
+          "message": "`atomic_write` is called with `2>/dev/null || true`, suppressing both the error log that atomic_write emits on disk-full / permission-denied and the non-zero return; if the write fails the result file is silently absent and the engine sees a contract violation with no diagnostic to explain why.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/intake/plugin.sh",
+          "category": "signal handling",
+          "severity": "low",
+          "line": 114,
+          "message": "The TERM trap set inside `intake_run` is never cleared with `trap - TERM` on function exit; it persists in any shell that calls `intake_run` as a function (rather than a subprocess), so a subsequent SIGTERM to that shell will call `_intake_write_result` with stale or out-of-scope `_intake_art` and then `exit 1`, terminating the shell unexpectedly.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/intake/plugin.sh",
+          "category": "observability",
+          "severity": "low",
+          "line": 42,
+          "message": "Both jq invocations in `_intake_write_result` use `|| return 0` — if jq is absent or produces invalid JSON the function returns success, no result file is written, and no log entry records the failure; the calling code proceeds as if the write succeeded.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/intake/plugin.sh",
+          "category": "failure classification",
+          "severity": "low",
+          "line": 286,
+          "message": "Branch creation failure is reported as `disposition: misconfigured`, but the failure can be transient (network outage, remote temporarily unavailable, upstream permission lag); if the engine's response table treats `misconfigured` as non-retryable operator action, a retryable failure will be treated as a permanent one.",
+          "introduced": true
+        }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "file": "plugins/agent/intake/plugin.sh",
+      "category": "failure classification",
+      "line": 286,
+      "severity": "low",
+      "lenses": [
+        "sre"
+      ],
+      "messages": [
+        "Branch creation failure is reported as `disposition: misconfigured`, but the failure can be transient (network outage, remote temporarily unavailable, upstream permission lag); if the engine's response table treats `misconfigured` as non-retryable operator action, a retryable failure will be treated as a permanent one."
+      ]
+    },
+    {
+      "file": "plugins/agent/intake/plugin.sh",
+      "category": "misleading naming",
+      "line": 43,
+      "severity": "low",
+      "lenses": [
+        "security"
+      ],
+      "messages": [
+        "The jq variable `--argjson rc 2` names the `result_contract` version field as `rc`, which universally means return-code in shell contexts; a future maintainer could replace the literal `2` with the actual return code of a command, silently corrupting the `result_contract` field."
+      ]
+    },
+    {
+      "file": "plugins/agent/intake/plugin.sh",
+      "category": "observability",
+      "line": 42,
+      "severity": "low",
+      "lenses": [
+        "sre"
+      ],
+      "messages": [
+        "Both jq invocations in `_intake_write_result` use `|| return 0` — if jq is absent or produces invalid JSON the function returns success, no result file is written, and no log entry records the failure; the calling code proceeds as if the write succeeded."
+      ]
+    },
+    {
+      "file": "plugins/agent/intake/plugin.sh",
+      "category": "observability",
+      "line": 59,
+      "severity": "low",
+      "lenses": [
+        "sre"
+      ],
+      "messages": [
+        "`atomic_write` is called with `2>/dev/null || true`, suppressing both the error log that atomic_write emits on disk-full / permission-denied and the non-zero return; if the write fails the result file is silently absent and the engine sees a contract violation with no diagnostic to explain why."
+      ]
+    },
+    {
+      "file": "plugins/agent/intake/plugin.sh",
+      "category": "path traversal / defect contract",
+      "line": 110,
+      "severity": "low",
+      "lenses": [
+        "security"
+      ],
+      "messages": [
+        "The fallback `_intake_art` is derived from the `state_file` argument via `dirname \"${2:-}\"/artifacts`; the repo facts state explicitly that a plugin deriving an artifact path from its state file is a defect (ADR-055 §1), and a crafted state_file containing `..` components would redirect writes to an unintended directory."
+      ]
+    },
+    {
+      "file": "plugins/agent/intake/plugin.sh",
+      "category": "redundant syscall",
+      "line": 37,
+      "severity": "low",
+      "lenses": [
+        "performance"
+      ],
+      "messages": [
+        "mkdir -p is called unconditionally inside _intake_write_result on every invocation; because multiple failure-path calls can occur within one intake_run (none do today, but the function is public), this results in redundant directory-creation syscalls on each call rather than once at stage init; introduced by this change."
+      ]
+    },
+    {
+      "file": "plugins/agent/intake/plugin.sh",
+      "category": "scope",
+      "line": 33,
+      "severity": "low",
+      "lenses": [
+        "scope"
+      ],
+      "messages": [
+        "The jq argument `--argjson rc 2` names the result_contract version variable `rc`, which collides with the conventional 'return code' meaning used throughout the same function's surrounding context; this naming was not required by any SPEC and goes slightly beyond the ask for a minimal v2 plumbing change — a name like `contract_ver` would have matched the field name without introducing ambiguity."
+      ]
+    },
+    {
+      "file": "plugins/agent/intake/plugin.sh",
+      "category": "signal handling",
+      "line": 114,
+      "severity": "low",
+      "lenses": [
+        "sre"
+      ],
+      "messages": [
+        "The TERM trap set inside `intake_run` is never cleared with `trap - TERM` on function exit; it persists in any shell that calls `intake_run` as a function (rather than a subprocess), so a subsequent SIGTERM to that shell will call `_intake_write_result` with stale or out-of-scope `_intake_art` and then `exit 1`, terminating the shell unexpectedly."
+      ]
+    },
+    {
+      "file": "plugins/agent/intake/plugin.sh",
+      "category": "signal handling",
+      "line": 295,
+      "severity": "medium",
+      "lenses": [
+        "sre"
+      ],
+      "messages": [
+        "SIGTERM arriving after `_intake_write_result \"pass\" \"complete\"` (line ~295) but before process exit will overwrite a valid pass result with `fail/broken`; in container runtimes that send SIGTERM for graceful drain, a cleanly-completed intake stage appears failed to the engine, triggering a retry or pipeline abort."
+      ]
+    },
+    {
+      "file": "plugins/agent/intake/plugin.sh",
+      "category": "silent failure",
+      "line": 49,
+      "severity": "low",
+      "lenses": [
+        "security"
+      ],
+      "messages": [
+        "`_intake_write_result` silently returns 0 (via `|| return 0`) if either `jq` invocation fails — including when `$data_json` is malformed JSON — so callers cannot distinguish a successful write from a suppressed failure, and the result file may be absent on a terminal exit path without any error signal."
+      ]
+    },
+    {
+      "file": "plugins/agent/intake/plugin.sh",
+      "category": "subprocess overhead",
+      "line": 33,
+      "severity": "low",
+      "lenses": [
+        "performance"
+      ],
+      "messages": [
+        "_intake_write_result forks a jq subprocess on every terminal exit path including the success path; introduced by this change, though intake is a single-shot non-LLM stage so the added latency (one fork + one atomic write per run) is negligible in practice."
+      ]
+    },
+    {
+      "file": "plugins/agent/intake/plugin.sh",
+      "category": "trap lifecycle",
+      "line": 114,
+      "severity": "medium",
+      "lenses": [
+        "security"
+      ],
+      "messages": [
+        "The TERM trap set inside `intake_run` is never cleared (no `trap - TERM` on normal return), so it persists in any shell that sources the plugin and calls the function directly; if SIGTERM arrives after `intake_run` has already returned successfully, the trap fires `_intake_write_result fail broken` and then `exit 1`, writing a spurious failure result over the correct one and killing the surrounding shell."
+      ]
+    },
+    {
+      "file": "plugins/agent/intake/tests/intake-test.sh",
+      "category": "scope",
+      "line": null,
+      "severity": "low",
+      "lenses": [
+        "scope"
+      ],
+      "messages": [
+        "File mode changed from 100755 to 100644 (executable bit removed); the issue asked only for v2 contract migration and test assertions — no permission change was requested or mentioned in the design."
+      ]
+    },
+    {
+      "file": "plugins/agent/intake/tests/intake-test.sh",
+      "category": "test suite latency",
+      "line": 185,
+      "severity": "low",
+      "lenses": [
+        "performance"
+      ],
+      "messages": [
+        "The SPEC-9 rewrite now calls intake_run twice in sequence to verify per-run event emission, doubling the in-process intake_run invocations in that section relative to the previous single-call check; introduced by this change, cost is proportional to intake_run overhead per call."
+      ]
+    },
+    {
+      "file": "plugins/agent/intake/tests/intake-test.sh",
+      "category": "test suite latency",
+      "line": 604,
+      "severity": "low",
+      "lenses": [
+        "performance"
+      ],
+      "messages": [
+        "The SPEC-2 SIGTERM sub-test introduces a sleep 0.3 busy-wait before killing the subprocess; combined with the identical sleep 0.3 in the integration SPEC-16 test, this change adds at least 600ms of wall-clock sleep to every CI run; introduced by this change."
+      ]
+    },
+    {
+      "file": "tests/integration/intake-refuse-on-closed-subprocess-test.sh",
+      "category": "scope",
+      "line": null,
+      "severity": "low",
+      "lenses": [
+        "scope"
+      ],
+      "messages": [
+        "File mode changed from 100755 to 100644 (executable bit removed); same as the unit test file — this change was not part of the issue's stated scope and was not listed as a design decision."
+      ]
+    }
+  ],
+  "pre_existing": [],
+  "summary": "2 of 6 lens(es) did not run (correctness, red-team) — their review is missing, not clean. 16 merge-readiness finding(s) across 6 lens(es) (0 critical, 0 high).",
+  "escalation_note": "Some lenses did not run, so this report is incomplete; re-run the review before merging. Advisory only — this does not block the pipeline.",
+  "did_not_run": [
+    "correctness",
+    "red-team"
+  ]
+}
