@@ -1,0 +1,23 @@
+{
+  "schema_version": 4,
+  "result_contract": 2,
+  "issue": 1835,
+  "files_changed": [
+    "core/pipeline/runner.sh",
+    "plugins/agent/plan/manifest.yaml",
+    "plugins/agent/plan/plugin.sh"
+  ],
+  "lines_added": 98,
+  "lines_removed": 51,
+  "diff_patch_path": "/home/runner/work/_temp/zbuild-state/artifacts/diff.patch",
+  "iterations": 3,
+  "terminated_reason": "router_timeout",
+  "verdict": "incomplete",
+  "disposition": "timed_out",
+  "reason": "router_timeout",
+  "scope_violation": false,
+  "scope_violations": [],
+  "loop_input_tokens": 0,
+  "loop_output_tokens": 0,
+  "notes": "Build stage completed. Diff written to artifact; not applied."
+}

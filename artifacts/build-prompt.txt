@@ -1,0 +1,320 @@
+============== ZBUILD BUILD — iter 1/10 ==============
+## ORIGINAL TASK (immutable across iterations)
+# Plan: migrate plan plugin to contract v2
+
+**Goal:** Migrate plugins/agent/plan to the v2 stage↔engine contract: v2 fields in plan.json on every exit path, intake_goal input replacing goal_string, disposition vocabulary, rc ∈ {0,1}, valid_verdicts declared, router budgets in manifest, and the leaf path's rc=10 branch in runner.sh deleted.
+
+## Steps
+1. Write failing tests covering all v2 acceptance criteria: (a) plan.json has result_contract:2, verdict=pass, disposition=complete, non-empty reason on success path; (b) plan.json has result_contract:2, verdict=error, disposition=unusable on error path (invalid_plan_response); (c) plan.json has result_contract:2, verdict=error, disposition=out_of_turns on scope_too_large path; (d) manifest declares valid_verdicts: [pass, error]; (e) router config has timeout_s and max_turns keys; (f) grep assert plugin.sh contains no ZBUILD_GOAL reference; (g) manifest declares intake_goal input with required:true and no source:; (h) runner_read_stage_verdict on a success plan.json returns pass with no contract_violation. Run and confirm RED on each new assertion.
+   - Files: `plugins/agent/plan/tests/plan-test.sh`
+   - Estimated lines: 105
+2. Update manifest.yaml: (1) add result_contract: 2 under provides alongside existing role/events; (2) replace valid_verdicts: [] with [pass, error]; (3) add timeout_s: 300 and max_turns: 45 to config.router; (4) replace goal_string input (source: external, required: false) with id: intake_goal, required: true (no source, no type — name-matched); (5) retries: 1 and retry_on_exhaustion: 1 stay; PR records why: resume-via-checkpoint makes retry-on-exhaustion safe and the manifest comments already explain the justification.
+   - Files: `plugins/agent/plan/manifest.yaml`
+   - Estimated lines: 18
+3. Update plugin.sh with five changes: (1) Add _plan_write_result helper (~18 lines) that writes a minimal {result_contract:2, verdict, disposition, reason} JSON to a given path using atomic_write — used by failure paths that have no plan.json yet. (2) Read scope_manifest from ZBUILD_STAGE_INPUTS via jq .scope_manifest, falling back to constructed path; replace the hardcoded assignment at line 111. (3) Replace the ZBUILD_GOAL + intake.md block (lines 115–124) with reading intake_goal path from ZBUILD_STAGE_INPUTS via jq .intake_goal and cat-ing the file; if missing or empty, call _plan_write_result to a best-effort path and return 1. (4) Wire _plan_write_result on failure exits: no-state-file path (~line 105, use ZBUILD_ARTIFACT_DIR env); no-goal path (~line 123, use artifacts_dir); scope_too_large path (~line 849, use output_plan_json, disposition=out_of_turns, return 1 not 10); error path (~line 861, use output_plan_json, disposition=unusable). (5) On success path: before atomic_write of plan.json, merge v2 fields into plan_json via jq: result_contract:2, verdict:pass, disposition:complete, reason dynamically incorporating step count.
+   - Files: `plugins/agent/plan/plugin.sh`
+   - Estimated lines: 72
+4. Delete the leaf path rc=10 branch from runner.sh: remove the block from 'if [[ $_rc -eq 10 ]]; then' through its closing 'fi' (lines 3506–3522, approximately 17 lines). This branch was the only consumer of plan's rc=10 signal; under v2 plan returns rc=1 with disposition=out_of_turns instead, and the generic non-zero handler below applies.
+   - Files: `core/pipeline/runner.sh`
+   - Estimated lines: 17
+5. Run npm test to confirm all new tests from step-1 go green and no existing tests regressed. If any existing assertion references return 2 or rc=10 from plan, repair the assertion to match the new rc=1 contract. plan-test.sh must stay under 1000 lines total.
+   - Files: `plugins/agent/plan/tests/plan-test.sh`
+   - Estimated lines: 10
+
+## Notes
+1. RESULT FILE: plan.json is the one v2 result file. The Direction explicitly forbids a second file (plan-result.json). On success, v2 fields are merged into the plan content JSON before atomic_write. On failure, a minimal {result_contract:2, verdict, disposition, reason} is written to the plan.json path — the engine verdict reader (verdict.sh:391-414) only requires those four fields to be non-empty strings and does not validate the surrounding plan schema.
+
+2. INTAKE_GOAL vs ZBUILD_GOAL: the manifest replaces goal_string (source: external) with intake_goal (required: true, name-matched). Plugin reads the artifact path from ZBUILD_STAGE_INPUTS just as it reads scope_manifest. Intake writes intake.md in both --goal and --issue runs, so the path is always available under v2 dispatch. The existing ZBUILD_GOAL fallback is removed entirely — the acceptance criterion requires no ZBUILD_GOAL reference in plugin.sh.
+
+3. RC=10 DELETION SCOPE: the Direction says 'the only runner change in scope is deleting the leaf path's rc=10 branch'. There are three rc=10 branches in runner.sh (lines ~3215, ~3508, ~3913). Only the leaf path (lines 3506–3522) is in scope. The cycle-loop branch (~3215) and other branch (~3913) are untouched — they belong to the cycle runner path which is not a leaf.
+
+4. ROUTER KNOBS: retries:1 and retry_on_exhaustion:1 are NOT removed. The issue says 'each knob either goes or the PR records why it still has to stay'. The existing manifest comments (lines 35–55) already document precisely why both are justified (checkpoint-based resume makes retries safe; measured data from runs 20260817*). The PR description must cite those comments.
+
+5. VALID VERDICTS: pass (plan produced) and error (scope_too_large, invalid/empty/schema failure, missing input). disposition=out_of_turns is used for scope_too_large with verdict=error, consistent with ADR-054 §6a. disposition=unusable for other errors. disposition=complete for success.
+
+6. EARLY EXIT AT LINE 105: artifacts_dir is not yet defined. Use ${ZBUILD_ARTIFACT_DIR:-} env var to construct the plan.json path; skip writing the v2 result if the env var is unset (the engine cannot read it anyway without an artifact dir).
+
+7. PARITY GOLDEN IMPACT: plan.json gains new fields (result_contract, verdict, disposition, reason). Any parity golden that snapshots plan.json content will need updating. The issue says parity goldens must be unchanged — this tension must be resolved by confirming whether parity goldens snapshot plan.json field-for-field or only check specific fields. If goldens must update, that is scope creep; note in PR if encountered.
+
+8. runner_read_stage_verdict TEST: this tests that the engine's verdict reader accepts a success plan.json. The test constructs a synthetic plan.json with all required v2 fields plus a representative plan payload, calls runner_read_stage_verdict, and asserts verdict=pass and no contract_violation variable set.
+
+9. CLEANUP HOOK: plan holds no live resources. cleanup hook remains absent — no stub needed.
+
+## INSTRUCTIONS
+Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
+
+You have Read, Edit, Write, and
+Bash tools available. Your job is to edit the working tree to implement the
+ORIGINAL TASK above.
+
+### Scope (plan.files[])
+You may ONLY touch files listed here. Refuse any out-of-scope edit.
+  - plugins/agent/plan/manifest.yaml
+  - plugins/agent/plan/plugin.sh
+  - plugins/agent/plan/tests/plan-test.sh
+  - plugins/agent/plan/tests/plan-integration-test.sh
+  - core/pipeline/disposition.sh
+  - core/pipeline/runner.sh
+  - core/pipeline/verdict.sh
+  - scripts/lib/router-rc-classify.sh
+  - docs/adr/ADR-054-stage-contract.md
+  - docs/adr/ADR-055-inter-stage-data-contract-v2.md
+  - docs/wiki/plugins/plan.md
+  - tests/unit/plan-prompt-override-test.sh
+  - tests/unit/plan-persona-framing-test.sh
+  - tests/unit/plan-notes-contract-test.sh
+  - tests/unit/plan-prompt-issue-discipline-test.sh
+  - tests/unit/plan-context-lib-test.sh
+  - tests/unit/stage-checkpoint-test.sh
+  - tests/unit/artifact-type-retirement-test.sh
+  - tests/unit/engine-stage-reports-test.sh
+  - tests/unit/abort-propagation-test.sh
+  - tests/unit/router-manifest-budget-test.sh
+  - tests/unit/dispatch-rc-test.sh
+  - tests/integration/agent-stage-banner-rendered-markdown-test.sh
+  - tests/integration/dispatch-rc-signal-boundary-test.sh
+  - tests/lib/run-status-comment-mock-roster.sh
+  - tests/integration/cycle-on-max-pipeline-continues-test.sh
+  - tests/integration/cycle-acceptance-terminal-failure-test.sh
+  - tests/integration/cycle-rate-limit-aborts-run-test.sh
+  - tests/integration/design-pipeline-test.sh
+  - tests/unit/core-pipeline-contract-validator-test.sh
+  - tests/unit/lint-contract-test.sh
+  - tests/golden/parity/artifact-paths.golden
+  - tests/e2e/parity-local-vs-ci-test.sh
+  - tests/golden/plan-artifact.golden
+  - tests/unit/plugin-artifact-goldens-test.sh
+
+### How the loop works
+- Each iteration you may make code changes via Edit/Write/Bash.
+- After each iteration the pipeline captures `git diff HEAD` and feeds it
+  back to you so you can verify progress.
+- Do NOT emit a unified diff in your response — the pipeline derives the
+  canonical `diff.patch` artifact from `git diff HEAD` automatically.
+
+### Completion sentinel
+Emit `LOOP_COMPLETE` on its own line as the FINAL line of your response
+WHEN the implementation is complete — whether you just finished it OR
+it was already done before you started. If the branch already contains
+the required changes (check `git log` for commits + `git diff` for any
+remaining gap) AND no STAGE SUMMARY below is marked RESOLVE, emit
+`LOOP_COMPLETE` immediately. Do NOT keep iterating when there is nothing
+left to do. While any STAGE SUMMARY is marked RESOLVE, finishing with no
+change needs a REASON — either you fixed it, or it does not reproduce.
+
+### When a finding does not reproduce
+If a RESOLVE summary names a test and that test PASSES when you run it on this
+tree, say so and stop. Emit, on its own line before the sentinel:
+
+    NOT_REPRODUCED: <the path you ran>
+
+one line per path. This is a REPORT, not a verdict: the pipeline re-runs the
+stage that raised the finding to check. Do not keep searching for the cause of
+a failure you cannot produce, and do not change code to chase one.
+
+### Budget
+- Each iteration is ONE model call bounded by a 900-second wall clock; a
+  command that runs longer than ~2 minutes will cost you the whole call.
+- Do NOT run `npm test`, the full suite, or `npm run lint` — the pipeline has
+  already run them and their findings are in the STAGE SUMMARIES below. Run
+  only the one failing test file a summary names, and only after changing code.
+- A STAGE SUMMARY marked RESOLVE is red RIGHT NOW on this tree. Do not
+  re-verify it; start from the failing line it quotes.
+
+### Rules
+- Touch only files in the scope list above.
+- Do not run `git commit` — the pipeline owns commit semantics.
+- NEVER run a command that mutates git branch state or the working tree —
+  no `git checkout -b`/`switch`/`commit`/`push`/`tag`/`reset`. You are running
+  INSIDE the pipeline's own checkout; switching or creating a branch hijacks the
+  run. The pipeline owns the branch.
+- If you must exercise a command you are building (or any command that could
+  publish, tag, push, or otherwise mutate state), run it in `--dry-run` mode.
+  Do everything you can to verify behavior without side effects.
+- Keep changes minimal and aligned with the plan.
+- Clean up scratch siblings of the files you edit (`*.bak`, `*.orig`,
+  `*.rej`, `*.head`, `*.tmp`, `*~`). `sed -i.bak` and
+  `git show HEAD:f > f.head` both leave one behind — prefer `sed -i` with no
+  suffix, and delete any comparison scratch before you finish. Out-of-scope
+  scratch is removed for you; any OTHER out-of-scope path voids the whole
+  iteration, so do not rely on the cleanup.
+- If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.
+
+### Commit message (#608)
+Before the final `LOOP_COMPLETE` line, emit a single line of the form:
+
+    COMMIT_SUMMARY: <one-line description of this iteration's change>
+
+Keep it under 72 characters, present tense, imperative mood (e.g.
+"add foo parser" not "added"). The pipeline uses this as the git commit
+message for the per-iteration commit it creates on your behalf. If you
+omit this line the pipeline falls back to the plan title.
+
+## DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
+# Design: Migrate plan plugin to contract v2 (issue #1835)
+
+## Summary
+
+**Goal.** Bring `plugins/agent/plan` into full conformance with the v2
+stage↔engine contract (ADR-054, ADR-055): v2 result fields in plan.json on every
+exit path, `intake_goal` input replacing `goal_string`, disposition vocabulary
+(current set per #2187), `rc ∈ {0,1}`, `valid_verdicts` updated, router budgets
+in manifest, and the leaf-path rc=10 block in runner.sh deleted.
+
+**Context.** The plan plugin predates the v2 contract. Its manifest declares
+`valid_verdicts: []` (no verdict) and has no `result_contract` field.
+`plan_run` returns rc=2 on early-exit conditions the contract requires to be
+rc=1, and rc=10 for scope_too_large where the v2 contract requires rc=1 with
+`disposition=out_of_turns` written into the primary output. The `scope_manifest`
+path is hard-coded from `dirname(state_file)` rather than read from
+`ZBUILD_STAGE_INPUTS`. No v2 fields are written, so `_verdict_read_result` cannot
+surface disposition to the engine.
+
+The `goal_string` input is declared `source: external, required: false` with a
+comment in the manifest explicitly noting "#1835 replaces it with the
+`intake_goal` input." Other already-migrated plugins (review-lens, security-lens,
+issue-acceptance, spec-coverage, review-report) all declare `intake_goal`
+as a stage input and read it from `ZBUILD_STAGE_INPUTS`. `intake_goal` is
+`intake`'s output at `${state_dir}/intake.md`.
+
+**Re-verification against HEAD (commit dacf305b):**
+
+1. **ADR-054 §6a (#2187) amended the disposition vocabulary.** `exhausted`
+   is retired; new words are `unusable`, `timed_out`, `out_of_turns`,
+   `rate_limited`, `misconfigured`, `broken`. `disposition.sh` confirms the
+   closed set. `router_reason_disposition` maps: router_timeout → timed_out,
+   router_out_of_turns|max_iterations → out_of_turns, router_config_error |
+   router_budget_exceeded → misconfigured, no_progress → unusable.
+
+2. **The stale comment in runner.sh** at line ~2873 reads: "plan says
+   `scope_too_large` with rc=10 and has nowhere else to put it." After migration
+   this is false — plan IS v2 and DOES have another channel. Update it.
+
+3. **rc=10 in runner.sh: three blocks exist.** Lines ~3215 (cycle dispatch),
+   ~3506 (leaf-path `stage:*` case), ~3913 (legacy dispatch). `review-lens`
+   also returns rc=10 but is v2, so dispatch_rc_narrow converts it before any
+   handler fires. Plan is the only v1 plugin returning rc=10 to the leaf path;
+   after migration its rc=10 is also narrowed. The leaf-path block at ~3506 thus
+   becomes dead code and is deleted. The cycle-dispatch (~3215) and legacy-dispatch
+   (~3913) blocks are kept — they may be reached by other v1 plugins.
+
+4. **manifest retries/exhaustion knobs** (`router.retries: 1`,
+   `router.retry_on_exhaustion: 1`) are RETAINED, not removed. The manifest
+   comments explain why: `role: checkpoint` makes attempt 2 resume from prior
+   exploration, so a retry on exhaustion or timeout is not the naive re-derivation
+   #1727 argued against. This is a deliberate design decision, not an oversight.
+
+5. **manifest.yaml has `plan-checkpoint.md` (role: checkpoint) and
+   `plan-summary.md` (summary: true)** added before #1835 — guards, not changed.
+
+**Decision.** Follow the build plugin as the reference implementation for
+enriching the primary JSON output with v2 fields inline. Enrich plan.json on
+every terminal path with `result_contract:2, verdict, disposition, reason` so
+that `_verdict_read_result` can surface disposition to the engine. On success,
+plan.json carries both plan data and v2 fields. On failure paths, write a minimal
+plan.json with only v2 fields (matching build's pattern on early-exit paths).
+
+Disposition table (per disposition.sh closed set, ADR-054 §6a #2187):
+- success → complete
+- schema/empty/invalid_plan_response → unusable
+- scope_too_large (max_turns exhaustion) → out_of_turns
+- router timeout → timed_out (via `router_reason_disposition`)
+- signal/oom → interrupted (via `router_reason_disposition`)
+- router config error → misconfigured (via `router_reason_disposition`)
+- missing state_file / unresolvable goal → broken
+
+Update manifest: `result_contract:2` in provides, `valid_verdicts: [pass, error]`,
+`config.router.timeout_s: 300, max_turns: 45`; keep `retries: 1` and
+`retry_on_exhaustion: 1` (explicitly retained, see context §4 above).
+Change all `return 2` paths in `plan_run` / `_plan_run_inner` to `return 1`.
+Replace `goal_string` input (source: external) with `intake_goal` input (reading
+from `ZBUILD_STAGE_INPUTS` like review-lens does). Remove hardcoded
+`$state_dir/intake.md` fallback and `$state_dir/scope-manifest.md` construction.
+Change the scope_too_large `return 10` to `return 1`. Delete runner.sh leaf-path
+block at ~3506-3522; update stale comment at ~2873. Update
+`plan-integration-test.sh` SPEC-3 to assert rc=1 and plan.json IS written.
+
+
+
+LOOP_COMPLETE
+Where a design decision above conflicts with the plan, follow the design decision.
+
+## ACCEPTANCE TESTS (you MUST make these pass)
+The acceptance testfiles listed below are read-only for this stage: the engine denies edits to them, and a mechanical check restores any change. They are the contract you implement against, written before your implementation existed. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion. If you believe an assertion genuinely does not test its SPEC, say so in your output and leave it alone.
+Each test MUST contain an assert call whose label includes the tag for the SPEC it verifies, exactly as listed below (e.g. assert_eq "[#1835/SPEC-1] ..." exp act). The acceptance-gate (ADR-036) requires every SPEC to have an assertion carrying its tag. A CHANGE-behavior SPEC-n MUST have a tagged assertion that FAILS at the merge-base baseline and passes here (a tautological change-SPEC that passes without your implementation is rejected); a GUARD/invariant SPEC-n is tagged but NOT contorted to fail at baseline. See the per-id list below.
+- SPEC-1: plugins/agent/plan/tests/plan-test.sh
+- SPEC-2: plugins/agent/plan/tests/plan-test.sh
+- SPEC-3: plugins/agent/plan/tests/plan-integration-test.sh
+- SPEC-4: plugins/agent/plan/tests/plan-test.sh
+- SPEC-5: plugins/agent/plan/tests/plan-test.sh
+- SPEC-6: plugins/agent/plan/tests/plan-test.sh
+- SPEC-7: plugins/agent/plan/tests/plan-test.sh
+- SPEC-8: plugins/agent/plan/tests/plan-integration-test.sh
+- SPEC-9: plugins/agent/plan/tests/plan-test.sh
+- SPEC-10: plugins/agent/plan/tests/plan-test.sh
+- SPEC-11: plugins/agent/plan/tests/plan-test.sh
+- SPEC-12: plugins/agent/plan/tests/plan-test.sh
+- SPEC-13: plugins/agent/plan/tests/plan-test.sh
+- SPEC-14: plugins/agent/plan/tests/plan-test.sh
+- SPEC-15: plugins/agent/plan/tests/plan-test.sh
+- SPEC-16: plugins/agent/plan/tests/plan-test.sh
+- SPEC-17: plugins/agent/plan/tests/plan-test.sh
+
+What each SPEC requires:
+- [#1835/SPEC-1] success path writes plan.json with result_contract:2, verdict=pass, disposition=complete, reason populated; _verdict_read_result can read disposition from plan.json primary and surface complete to the engine
+- [#1835/SPEC-2] error path (schema_violation / empty_result_envelope / invalid_plan_response) writes plan.json with result_contract:2, verdict=error, disposition=unusable, rc=1
+- [#1835/SPEC-3] scope_too_large path (max_turns exhaustion) writes plan.json with result_contract:2, verdict=error, disposition=out_of_turns, rc=1 — plan-integration-test.sh SPEC-3 currently asserts rc=10 and no plan.json; after migration it must assert rc=1 and plan.json present with out_of_turns
+- [#1835/SPEC-4] manifest declares provides.result_contract=2 and config.valid_verdicts contains pass and error
+- [#1835/SPEC-5] plan_run reads scope_manifest path from ZBUILD_STAGE_INPUTS index when the env var is set (mirrors review-lens / security-lens pattern)
+- [#1835/SPEC-6] plan_run returns rc=1 (not rc=2) when state_file argument is missing; and disposition=broken when state_file is the engine's responsibility — this is an engine contract violation
+- [#1835/SPEC-7] existing plan.json primary output is still written on success and its content (schema_version, steps[], scope_files) is unchanged
+- [#1835/SPEC-8] non-max_turns router failure (rc≠0, not recovered, subtype≠error_max_turns) writes plan.json with disposition resolved via router_reason_disposition — timed_out for router timeout, interrupted for signal/oom, misconfigured for router config errors; verdict=error; rc=1
+- [#1835/SPEC-9] manifest config.router declares max_turns: 45 and timeout_s: 300; _route_resolve_max_turns returns 45 and _route_resolve_timeout returns 300 when no template or env override is set
+- [#1835/SPEC-10] plan manifest's plan output entry declares primary: true
+- [#1835/SPEC-11] plan_run replaces goal_string (source: external) with intake_goal input; reads goal from ZBUILD_STAGE_INPUTS-provided path; removes hardcoded $state_dir/intake.md fallback; when intake_goal path is absent or unreadable, writes plan.json with disposition=broken and returns rc=1
+- [#1835/SPEC-12] plugin.sh contains no hardcoded input paths constructed from $state_dir/ beyond the authorized artifacts_dir derivation — grep -E '\$state_dir/[[:alnum:]]' plugin.sh | grep -v artifacts returns empty; at merge-base lines 111 (scope-manifest.md) and 117-118 (intake.md) match, so the assertion fails there
+- [#1835/SPEC-13] manifest declares provides.role: planner (required by #1704); migration must not remove this field
+- [#1835/SPEC-14] manifest declares provides.events with at least the plan plugin's current 9-event vocabulary (plan.context.persisted, plan.context.resume_skipped, plan.context.resumed, plan.dod_violation, plan.envelope.recovered, plan.flow_wiring_missing, plan.scope.violation, plan.scope_too_large, plan.router_failed); required by #1717
+- [#1835/SPEC-15] manifest declares plan-summary.md output with summary: true and plan-checkpoint.md output with role: checkpoint — both added before #1835 and must survive migration
+- [#1835/SPEC-16] runner.sh leaf-path `stage:*` case rc=10 block deleted — the block at lines ~3506-3522 carrying the unique comment "plan turn budget exhausted" is removed; the stale comment at line ~2873 is updated to remove the false claim that plan has nowhere else to put scope_too_large; confirmed by grep showing "plan turn budget exhausted" absent from runner.sh after the change (at merge-base the grep matches, so the test fails there)
+- [#1835/SPEC-17] manifest config.router retains retries: 1 and retry_on_exhaustion: 1; neither is removed by this migration — the checkpoint mechanism makes retries safe (attempt 2 resumes from prior exploration per #1879 and #1727), and both knobs have documented justifications that survive the v2 migration intact
+
+### SPEC IDS YOU MUST COVER (acceptance gate, ADR-036)
+Every SPEC id below needs at least one assertion whose label carries its tag (as listed); self-verify the FULL set is tagged before emitting LOOP_COMPLETE. A CHANGE-behavior SPEC (new behavior this change introduces) MUST have a tagged assertion that FAILS at the merge-base baseline. A GUARD/invariant SPEC (behavior that must stay unchanged) is tagged but MUST NOT be contorted to fail at baseline.
+- [#1835/SPEC-1] success path writes plan.json with result_contract:2, verdict=pass, disposition=complete, reason populated; _verdict_read_result can read disposition from plan.json primary and surface complete to the engine
+  → needs a `[#1835/SPEC-1]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1835/SPEC-2] error path (schema_violation / empty_result_envelope / invalid_plan_response) writes plan.json with result_contract:2, verdict=error, disposition=unusable, rc=1
+  → needs a `[#1835/SPEC-2]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1835/SPEC-3] scope_too_large path (max_turns exhaustion) writes plan.json with result_contract:2, verdict=error, disposition=out_of_turns, rc=1 — plan-integration-test.sh SPEC-3 currently asserts rc=10 and no plan.json; after migration it must assert rc=1 and plan.json present with out_of_turns
+  → needs a `[#1835/SPEC-3]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1835/SPEC-4] manifest declares provides.result_contract=2 and config.valid_verdicts contains pass and error
+  → needs a `[#1835/SPEC-4]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1835/SPEC-5] plan_run reads scope_manifest path from ZBUILD_STAGE_INPUTS index when the env var is set (mirrors review-lens / security-lens pattern)
+  → needs a `[#1835/SPEC-5]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1835/SPEC-6] plan_run returns rc=1 (not rc=2) when state_file argument is missing; and disposition=broken when state_file is the engine's responsibility — this is an engine contract violation
+  → needs a `[#1835/SPEC-6]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1835/SPEC-7] existing plan.json primary output is still written on success and its content (schema_version, steps[], scope_files) is unchanged
+  → needs a `[#1835/SPEC-7]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1835/SPEC-8] non-max_turns router failure (rc≠0, not recovered, subtype≠error_max_turns) writes plan.json with disposition resolved via router_reason_disposition — timed_out for router timeout, interrupted for signal/oom, misconfigured for router config errors; verdict=error; rc=1
+  → needs a `[#1835/SPEC-8]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1835/SPEC-9] manifest config.router declares max_turns: 45 and timeout_s: 300; _route_resolve_max_turns returns 45 and _route_resolve_timeout returns 300 when no template or env override is set
+  → needs a `[#1835/SPEC-9]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1835/SPEC-10] plan manifest's plan output entry declares primary: true
+  → needs a `[#1835/SPEC-10]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1835/SPEC-11] plan_run replaces goal_string (source: external) with intake_goal input; reads goal from ZBUILD_STAGE_INPUTS-provided path; removes hardcoded $state_dir/intake.md fallback; when intake_goal path is absent or unreadable, writes plan.json with disposition=broken and returns rc=1
+  → needs a `[#1835/SPEC-11]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1835/SPEC-12] plugin.sh contains no hardcoded input paths constructed from $state_dir/ beyond the authorized artifacts_dir derivation — grep -E '\$state_dir/[[:alnum:]]' plugin.sh | grep -v artifacts returns empty; at merge-base lines 111 (scope-manifest.md) and 117-118 (intake.md) match, so the assertion fails there
+  → needs a `[#1835/SPEC-12]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1835/SPEC-13] manifest declares provides.role: planner (required by #1704); migration must not remove this field
+  → needs a `[#1835/SPEC-13]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1835/SPEC-14] manifest declares provides.events with at least the plan plugin's current 9-event vocabulary (plan.context.persisted, plan.context.resume_skipped, plan.context.resumed, plan.dod_violation, plan.envelope.recovered, plan.flow_wiring_missing, plan.scope.violation, plan.scope_too_large, plan.router_failed); required by #1717
+  → needs a `[#1835/SPEC-14]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1835/SPEC-15] manifest declares plan-summary.md output with summary: true and plan-checkpoint.md output with role: checkpoint — both added before #1835 and must survive migration
+  → needs a `[#1835/SPEC-15]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1835/SPEC-16] runner.sh leaf-path `stage:*` case rc=10 block deleted — the block at lines ~3506-3522 carrying the unique comment "plan turn budget exhausted" is removed; the stale comment at line ~2873 is updated to remove the false claim that plan has nowhere else to put scope_too_large; confirmed by grep showing "plan turn budget exhausted" absent from runner.sh after the change (at merge-base the grep matches, so the test fails there)
+  → needs a `[#1835/SPEC-16]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1835/SPEC-17] manifest config.router retains retries: 1 and retry_on_exhaustion: 1; neither is removed by this migration — the checkpoint mechanism makes retries safe (attempt 2 resumes from prior exploration per #1879 and #1727), and both knobs have documented justifications that survive the v2 migration intact
+  → needs a `[#1835/SPEC-17]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+
+## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
+A previous attempt on this issue ended build with verdict=incomplete and touched 3 file(s): core/pipeline/runner.sh, plugins/agent/plan/manifest.yaml, plugins/agent/plan/plugin.sh. That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present and no STAGE SUMMARY is marked RESOLVE.

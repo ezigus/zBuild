@@ -1,0 +1,23 @@
+{
+  "schema_version": 4,
+  "result_contract": 2,
+  "issue": 1835,
+  "files_changed": [],
+  "lines_added": 0,
+  "lines_removed": 0,
+  "diff_patch_path": "/home/runner/work/_temp/zbuild-state/artifacts/diff.patch",
+  "iterations": 1,
+  "terminated_reason": "done_sentinel",
+  "verdict": "fail",
+  "disposition": "complete",
+  "reason": "false_completion_detected",
+  "scope_violation": false,
+  "scope_violations": [],
+  "loop_input_tokens": 3,
+  "loop_output_tokens": 604,
+  "notes": "Build stage completed. Diff written to artifact; not applied.",
+  "failing_acceptance_testfile": "plugins/agent/plan/tests/plan-integration-test.sh",
+  "data": {
+    "build_kind": "inert_build"
+  }
+}
