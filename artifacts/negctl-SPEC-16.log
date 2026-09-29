@@ -41,11 +41,16 @@
   [38;2;0;212;255m6. write-boundary wiring leaves lifecycle.sh rc-clean[0m
   [38;2;74;222;128m✓[0m [SPEC-7] lifecycle.sh still has 0 legacy rc returns after write-boundary wiring (#1809)
 
+  [38;2;0;212;255m[#1835/SPEC-16] runner.sh legacy-rc count lowered from 36 to 35[0m
+  [38;2;248;113;113m✗[0m [#1835/SPEC-16] runner.sh legacy-rc count is 35 after rc=10 block deletion
+    [2mexpected: 35, got: 36[0m
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 24 tests failed[0m
+  [38;2;248;113;113m[1m2 of 25 tests failed[0m
 
   [38;2;248;113;113m✗[0m [SPEC-1] core/pipeline/runner.sh GREW a private rc (35 → 36)
+  [38;2;248;113;113m✗[0m [#1835/SPEC-16] runner.sh legacy-rc count is 35 after rc=10 block deletion
 
 ### SPEC-16 head tests/unit/dispatch-rc-guard-test.sh
 
@@ -89,7 +94,10 @@
   [38;2;0;212;255m6. write-boundary wiring leaves lifecycle.sh rc-clean[0m
   [38;2;74;222;128m✓[0m [SPEC-7] lifecycle.sh still has 0 legacy rc returns after write-boundary wiring (#1809)
 
+  [38;2;0;212;255m[#1835/SPEC-16] runner.sh legacy-rc count lowered from 36 to 35[0m
+  [38;2;74;222;128m✓[0m [#1835/SPEC-16] runner.sh legacy-rc count is 35 after rc=10 block deletion
+
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 24 tests passed[0m
+  [38;2;74;222;128m[1mAll 25 tests passed[0m
 

@@ -139,6 +139,7 @@
   [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json schema_version=1 unchanged (guard)
   [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json steps[] non-empty (guard)
   [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json scope_files non-empty (guard)
+  [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json scope_files[0] preserves step file value (guard)
   [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json steps[0].id matches fixture value (guard)
   [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json steps[0].description matches fixture value (guard)
 

@@ -27,7 +27,7 @@
     [2mexpected: 1, got: 10[0m
   [38;2;74;222;128m✓[0m [#1835/SPEC-3] plan.scope_too_large still fired
   [38;2;248;113;113m✗[0m [#1835/SPEC-3] plan.json written on scope_too_large (v2)
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-plan-integration.Vhl75M/state/artifacts/plan.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-plan-integration.Q5y53z/state/artifacts/plan.json[0m
   [38;2;248;113;113m✗[0m [#1835/SPEC-3] plan.json result_contract=2 on scope_too_large
     [2mexpected: 2, got: [0m
   [38;2;248;113;113m✗[0m [#1835/SPEC-3] plan.json verdict=error on scope_too_large
@@ -67,7 +67,7 @@
   [38;2;248;113;113m✗[0m [#1835/SPEC-3] max_turns plan_run returns rc=1 (not rc=10 after v2 migration)
     [2mexpected: 1, got: 10[0m
   [38;2;248;113;113m✗[0m [#1835/SPEC-3] plan.json written on scope_too_large path
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-plan-integration.Vhl75M/state/artifacts/plan.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-plan-integration.Q5y53z/state/artifacts/plan.json[0m
   [38;2;248;113;113m✗[0m [#1835/SPEC-3] plan.json result_contract=2 on out_of_turns path
     [2mexpected: 2, got: [0m
   [38;2;248;113;113m✗[0m [#1835/SPEC-3] plan.json verdict=error on out_of_turns path
@@ -79,7 +79,7 @@
   [38;2;0;212;255m[#1835/SPEC-8] non-max_turns router failure writes plan.json via router_reason_disposition[0m
   [38;2;74;222;128m✓[0m [#1835/SPEC-8] router timeout (rc=124) → plugin rc=1
   [38;2;248;113;113m✗[0m [#1835/SPEC-8] router timeout writes plan.json
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-plan-integration.Vhl75M/state/artifacts/plan.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-plan-integration.Q5y53z/state/artifacts/plan.json[0m
   [38;2;248;113;113m✗[0m [#1835/SPEC-8] router timeout result_contract=2
     [2mexpected: 2, got: [0m
   [38;2;248;113;113m✗[0m [#1835/SPEC-8] router timeout verdict=error
@@ -88,7 +88,7 @@
     [2mexpected: timed_out, got: [0m
   [38;2;74;222;128m✓[0m [#1835/SPEC-8] OOM kill (rc=137) → plugin rc=1
   [38;2;248;113;113m✗[0m [#1835/SPEC-8] OOM kill writes plan.json
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-plan-integration.Vhl75M/state/artifacts/plan.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-plan-integration.Q5y53z/state/artifacts/plan.json[0m
   [38;2;248;113;113m✗[0m [#1835/SPEC-8] OOM kill result_contract=2
     [2mexpected: 2, got: [0m
   [38;2;248;113;113m✗[0m [#1835/SPEC-8] OOM kill verdict=error
@@ -97,7 +97,7 @@
     [2mexpected: interrupted, got: [0m
   [38;2;74;222;128m✓[0m [#1835/SPEC-8] config error (rc=2) → plugin rc=1
   [38;2;248;113;113m✗[0m [#1835/SPEC-8] config error writes plan.json
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-plan-integration.Vhl75M/state/artifacts/plan.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-plan-integration.Q5y53z/state/artifacts/plan.json[0m
   [38;2;248;113;113m✗[0m [#1835/SPEC-8] config error result_contract=2
     [2mexpected: 2, got: [0m
   [38;2;248;113;113m✗[0m [#1835/SPEC-8] config error verdict=error
@@ -215,9 +215,12 @@
   [38;2;74;222;128m✓[0m [#1835/SPEC-8] config error writes plan.json
   [38;2;74;222;128m✓[0m [#1835/SPEC-8] config error result_contract=2
   [38;2;74;222;128m✓[0m [#1835/SPEC-8] config error verdict=error
-  [38;2;74;222;128m✓[0m [#1835/SPEC-8] config error disposition=misconfigured
+  [38;2;248;113;113m✗[0m [#1835/SPEC-8] config error disposition=misconfigured
+    [2mexpected: misconfigured, got: unusable[0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 55 tests passed[0m
+  [38;2;248;113;113m[1m1 of 55 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1835/SPEC-8] config error disposition=misconfigured
 
