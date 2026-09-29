@@ -97,7 +97,7 @@ rc="$(ZBUILD_ISSUE="" _check ext-issue "$M5")"
 assert_eq "[SPEC-5] required gh_issue_body with no issue is refused" "1" "$rc"
 rc="$(ZBUILD_ISSUE="0" _check ext-issue "$M5")"
 assert_eq "[SPEC-5] issue 0 (a --goal run) does not supply gh_issue_body" "1" "$rc"
-rc="$(ZBUILD_ISSUE="1835" _check ext-issue "$M5")"
+rc="$(ZBUILD_ISSUE="$(zb_test_issue)" _check ext-issue "$M5")"
 assert_eq "[SPEC-5] a real issue number supplies gh_issue_body" "0" "$rc"
 
 print_test_results
