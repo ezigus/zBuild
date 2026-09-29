@@ -199,11 +199,26 @@ atomic_write() {
         atomic_replace "$target" "${target}.bak" \
             || warn "atomic_write: .bak rotation failed for $target (best-effort, continuing)"
     fi
-    if ! mv "$tmp" "$target"; then
+    if ! replace_keep_mode "$tmp" "$target"; then
         error "atomic_write: failed to move $tmp into place at $target"
         rm -f "$tmp"
         return 1
     fi
+}
+
+# ─── replace_keep_mode <new_file> <target> ──────────────────────────────────
+# Moves <new_file> into place at <target>, giving it <target>'s permission bits
+# when <target> exists (#2225). A file written to a temp path and moved over the
+# original gets default permissions, so every rewrite of an executable test
+# silently dropped its x bit — #2219, #2221 and #2223 each flipped test files to
+# 100644. A new target keeps <new_file>'s own mode.
+replace_keep_mode() {
+    local src="$1" target="$2" mode=""
+    if [[ -e "$target" ]]; then
+        mode="$(stat -f '%Lp' "$target" 2>/dev/null || stat -c '%a' "$target" 2>/dev/null || true)"
+        [[ "$mode" =~ ^[0-7]{3,4}$ ]] && chmod "$mode" "$src" 2>/dev/null
+    fi
+    mv -f "$src" "$target"
 }
 
 # ─── JSON validation with .bak recovery ─────────────────────────────────────

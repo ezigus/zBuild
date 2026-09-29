@@ -90,7 +90,7 @@ _ta_drop_stale_tags() {
                   line = substr(line, RSTART+RLENGTH)
               }
               print out line }' "$repo/$tf" > "$repo/$tf.zb-tags" 2>/dev/null \
-            && mv -f "$repo/$tf.zb-tags" "$repo/$tf" || rm -f "$repo/$tf.zb-tags"
+            && replace_keep_mode "$repo/$tf.zb-tags" "$repo/$tf" || rm -f "$repo/$tf.zb-tags"
         after="$(grep -cE "$re" "$repo/$tf" 2>/dev/null || true)"
         [[ "$before" =~ ^[0-9]+$ && "$after" =~ ^[0-9]+$ ]] && n=$(( n + before - after ))
     done < <(acceptance_list_testfiles "$design" 2>/dev/null || true)
