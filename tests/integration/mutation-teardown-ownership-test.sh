@@ -98,8 +98,10 @@ assert_contains "[O1] fixture: run B completed" "$(cat "$TEST_TEMP_DIR/b.out")" 
 touch "$GO"
 a_rc=0; wait "$A_PID" || a_rc=$?
 a_raw="$(cat "$A_OUT")"
+# An all-pass run prints only its score line (the per-spec table appears on a
+# fail or infra outcome), so the score is what says the mutant was caught.
 assert_contains "[O1] run A's held mutant is still caught after run B's teardown" \
-    "$a_raw" "PASS  01-held.md"
+    "$a_raw" "mutation: 1/1 passed"
 assert_eq "[O1] run A exits 0" "0" "$a_rc"
 
 print_test_section "O2: a dead run's leftover worktree is still swept"
