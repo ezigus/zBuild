@@ -158,6 +158,27 @@ _runner_retry_budget() {
     printf '%s' "$v"
 }
 
+# ─── _runner_leaf_contract_halt <state_file> <stage> <reason> ───────────────
+# A leaf stage whose v2 result the engine rejected ends the run; rc 0 when it
+# did. A cycle already halts on this (#550); a leaf recorded `error` and went on,
+# which is how #1835's run shipped a plan result with no `reason`. Safe ahead of
+# #1798: a contract violation is a zBuild defect (ADR-054 §6 `broken`), never a
+# transient failure, so this cannot turn a network hiccup into a dead run.
+# Reads main()'s _runner_run_id / _runner_issue and sets its _runner_ended.
+_runner_leaf_contract_halt() {
+    local sf="$1" st="$2" why="${3:-}"
+    [[ "$why" == contract_violation:* ]] || return 1
+    _update_stage_status "$sf" "$st" "failed"
+    _set_pipeline_status "$sf" "failed"
+    eb_emit_event "stage.fail" "stage=$st" "reason=$why" 2>/dev/null || true
+    eb_emit_event "pipeline.end" "status=failed" "stage=$st" "reason=$why" \
+        "run_id=${_runner_run_id:-}" "issue=${_runner_issue:-}" 2>/dev/null || true
+    _render_pipeline_end "failed" "$st"
+    _runner_ended=true
+    error "Stage $st wrote a result the engine rejects ($why) — a zBuild defect; the run stops here"
+    return 0
+}
+
 # ─── _runner_attempt_made_progress <artifact_dir> <stage> <iter> (#2187) ─────
 # Attempts are numbered from 1 (attempt-archive.sh writes n+1).
 # rc 0 when the stage's LATEST attempt in this iteration changed any of its
@@ -3510,6 +3531,9 @@ main() {
                         error "Stage $_ust failed (rc=$_rc)"
                         return 1
                     fi
+                    if _runner_leaf_contract_halt "$state_file" "$_ust" "${_CYCLE_DISPATCH_REASON:-}"; then
+                        return 1
+                    fi
                     _update_stage_status "$state_file" "$_ust" "complete"
                     _zbuild_state_set_stage_verdict "$state_file" "$_ust" "${_CYCLE_DISPATCH_VERDICT:-pass}"
                     eb_emit_event "stage.complete" "stage=$_ust" "verdict=${_CYCLE_DISPATCH_VERDICT:-pass}" \
@@ -3808,6 +3832,10 @@ main() {
                 _verdict_manifest="$_verdict_plugin_dir/manifest.yaml"
             fi
             _verdict_class="$(runner_read_stage_verdict "$state_dir" "$_verdict_manifest" "$stage" 0)"
+            if _runner_leaf_contract_halt "$state_file" "$stage" \
+                    "$(runner_read_stage_reason "$state_dir" "$_verdict_manifest" "$stage" 0 2>/dev/null || true)"; then
+                return 1
+            fi
             # Persist verdict for observability/resume (schema-additive).
             _zbuild_state_set_stage_verdict "$state_file" "$stage" "$_verdict_class"
             eb_emit_event "stage.complete" "stage=$stage" "verdict=$_verdict_class"

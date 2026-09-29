@@ -57,3 +57,24 @@ zbuild_scan_secret_content() {
 
     return 1
 }
+
+# ─── zbuild_secret_line_allowlisted <line> ───────────────────────────────────
+# The inline opt-out both the secret-scan gate and persist honour (the common
+# detect-secrets idiom), so a deliberate fixture is allowed in one place.
+zbuild_secret_line_allowlisted() {
+    case "${1-}" in
+        *"allowlist secret"* | *"secret-scan:allow"*) return 0 ;;
+    esac
+    return 1
+}
+
+# ─── zbuild_secret_matching_lines <content> ──────────────────────────────────
+# Each line of <content> that zbuild_scan_secret_content flags on its own. Lets
+# a caller judge a finding line by line instead of condemning the whole file.
+zbuild_secret_matching_lines() {
+    local line
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        zbuild_scan_secret_content "$line" >/dev/null && printf '%s\n' "$line"
+    done <<< "${1-}"
+    return 0
+}

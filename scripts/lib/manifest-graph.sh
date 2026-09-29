@@ -48,6 +48,34 @@ manifest_graph_external_allowlist() {
     echo "gh_issue_body gh_issue_view gh_comments goal_string scope_paths working_tree git_branch"
 }
 
+# ─── manifest_graph_external_supplier <id> ────────────────────────────────────
+# What supplies each allowlisted external id — the kind the pre-dispatch check
+# tests. Empty for an id outside the allowlist. An allowlisted id with no entry
+# here would be declarable but uncheckable, which is how #1835's run relied on a
+# ZBUILD_GOAL no --issue run ever sets.
+manifest_graph_external_supplier() {
+    case "${1-}" in
+        gh_issue_body|gh_issue_view|gh_comments) printf 'issue' ;;
+        goal_string)                             printf 'goal' ;;
+        scope_paths)                             printf 'scope_paths' ;;
+        working_tree|git_branch)                 printf 'git' ;;
+        *)                                       return 0 ;;
+    esac
+}
+
+# ─── manifest_graph_external_supplied <id> ────────────────────────────────────
+# rc 0 when the run actually supplies <id>. Read at dispatch, not at load: the
+# runner exports ZBUILD_GOAL / ZBUILD_ISSUE before the first stage.
+manifest_graph_external_supplied() {
+    case "$(manifest_graph_external_supplier "${1-}")" in
+        issue)       [[ "${ZBUILD_ISSUE:-}" =~ ^[0-9]+$ && "${ZBUILD_ISSUE}" -gt 0 ]] ;;
+        goal)        [[ -n "${ZBUILD_GOAL//[[:space:]]/}" ]] ;;
+        scope_paths) [[ -n "${ZBUILD_SCOPE_PATHS//[[:space:]]/}" ]] ;;
+        git)         git rev-parse --is-inside-work-tree >/dev/null 2>&1 ;;
+        *)           return 1 ;;
+    esac
+}
+
 # ─── ADR-020 closed templating var set (decision #5) ──────────────────────────
 # `cycle_feedback_dir` added by #511 (F2): resolves to $ZBUILD_CYCLE_FEEDBACK_DIR
 # at expansion time. Only valid on inputs declared `source: cycle_feedback` —

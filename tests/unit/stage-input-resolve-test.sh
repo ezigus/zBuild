@@ -46,6 +46,10 @@ print_test_header "stage input resolution — declared inputs become paths (#182
 setup_test_env "stage-input-resolve"
 
 unset ZBUILD_INPUTS_RESOLVE ZBUILD_STAGE_INPUTS ZBUILD_INPUTS_FLOW 2>/dev/null || true
+# The consumer declares a REQUIRED external gh_issue_body. Since ADR-055 §3's
+# pre-dispatch check, an unsupplied one refuses the stage — so this run supplies
+# it, as a real --issue run does (input-resolve-external-test.sh owns the refusal).
+ZBUILD_ISSUE="$(zb_test_issue)"; export ZBUILD_ISSUE
 unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR ZBUILD_RESTORED_ARTIFACTS_DIR 2>/dev/null || true
 
 STATE="$TEST_TEMP_DIR/state"

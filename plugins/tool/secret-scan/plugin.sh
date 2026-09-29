@@ -82,13 +82,10 @@ _ss_path_allowlisted() {
 }
 
 # ─── _ss_line_pragma_allowlisted ──────────────────────────────────────────────
-# True when the offending line carries an inline allowlist pragma. Mirrors the
-# common detect-secrets idiom so a deliberate fixture can opt out in place.
+# True when the offending line carries an inline allowlist pragma. One
+# definition, shared with persist's push gate (secret-patterns.sh).
 _ss_line_pragma_allowlisted() {
-    case "$1" in
-        *"allowlist secret"* | *"secret-scan:allow"*) return 0 ;;
-    esac
-    return 1
+    zbuild_secret_line_allowlisted "$1"
 }
 
 # ─── _ss_scan_diff ────────────────────────────────────────────────────────────
