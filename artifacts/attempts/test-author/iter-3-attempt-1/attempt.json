@@ -1,0 +1,12 @@
+{
+  "stage": "test-author",
+  "cycle_iter": 3,
+  "attempt": 1,
+  "rc": "1",
+  "generated_at": "2026-09-29T18:41:25Z",
+  "files": 2,
+  "outputs": {
+    "test-author-result.json": "changed",
+    "test-author-summary.md": "changed"
+  }
+}
