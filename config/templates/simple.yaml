@@ -157,8 +157,11 @@ test-author:
   router:
     # #2188: the same budget as build — authoring a 15–25 SPEC contract is
     # build-sized work (#1849: two 600s calls both timed out mid-write).
+    # #2225: per CALL now — test-author loops until it says it is done, like
+    # build, so a big contract takes more calls instead of overrunning one.
     timeout_s: 900
     max_turns: 0
+    max_iterations: 6
 
 # ─── spec-correspondence (leaf, advisory) ────────────────────────────────────
 # ADR-040 §5: it makes a model call, so it may not gate. Its finding reaches
