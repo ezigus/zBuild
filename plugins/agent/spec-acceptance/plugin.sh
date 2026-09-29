@@ -138,7 +138,7 @@ _ag_join_ids() {
 # member_terminal_failure. Repo-agnostic: ids come verbatim from the design's
 # acceptance block. Genuine violations lead; infra classes trail.
 _ag_build_reason() {
-    local f untagged="" taut="" nohead="" notf="" inert="" notpath="" infra="" malformed=0 grd="" nofiles="" sig=""
+    local f untagged="" taut="" nohead="" notf="" inert="" notpath="" infra="" malformed=0 grd="" nofiles="" sig="" unr=""
     for f in "$@"; do
         case "$f" in
             tautology:*)            taut="$taut ${f#tautology:}" ;;
@@ -149,6 +149,7 @@ _ag_build_reason() {
             inert_wiring:*)         inert="$inert ${f#inert_wiring:}" ;;
             wiring_not_on_path:*)   notpath="$notpath ${f#wiring_not_on_path:}" ;;
             guard_regressed:*)      grd="$grd ${f#guard_regressed:}" ;;
+            guard_unreached:*)      unr="$unr ${f#guard_unreached:}" ;;
             killed_by_signal:*)     sig="$sig ${f#killed_by_signal:}" ;;
             malformed_acceptance_block) malformed=1 ;;
             negctl_error:* | reachability_error:*) infra="$infra $f" ;;
@@ -165,6 +166,15 @@ _ag_build_reason() {
     [[ -n "$nofiles"  ]] && clauses+=("WIRING $(_ag_join_ids "$nofiles") has no declared TESTFILE on disk — nothing could flip")
     [[ -n "$notpath"  ]] && clauses+=("WIRING $(_ag_join_ids "$notpath") not in this commit's diff — declare WIRING: none or name a file this change actually touches")
     [[ -n "$grd"      ]] && clauses+=("$(_ag_join_ids "$grd") tagged as [guard] but the assertion FAILS at the merge-base — a guard must hold there by definition, so either the assertion contradicts its SPEC text or the SPEC is a mislabelled [change]")
+    if [[ -n "$unr" ]]; then
+        local _u _u_where="" _u_after
+        for _u in $unr; do
+            _u_after=""
+            [[ " ${_ag_unreached_after:-} " == *" $_u="* ]] && { _u_after="${_ag_unreached_after##* $_u=}"; _u_after="${_u_after%% *}"; }
+            _u_where="${_u_where:+$_u_where, }$_u${_u_after:+ (the file stopped after $_u_after)}"
+        done
+        clauses+=("$_u_where — the guard's assertion never ran at the merge-base: an earlier step in its TESTFILE exits the file on the pre-change code, so nothing was measured; the guard itself is not in question")
+    fi
     [[ -n "$sig"      ]] && clauses+=("$(_ag_join_ids "$sig") TESTFILE died on a signal before the assertion ran (not a timeout) — usually a test that signals its own process (\$\$) where no handler exists yet; signal a child process instead")
     [[ "$malformed" -eq 1 ]] && clauses+=("acceptance block malformed")
     [[ -n "$infra"    ]] && clauses+=("infra: $(_ag_join_ids "$infra")")
@@ -324,6 +334,9 @@ acceptance_gate_run() {
 
     local verdict="pass"
     local -a failures=()
+    # #1835: "<spec>=<last SPEC the file printed>" for each unreached guard;
+    # read by _ag_build_reason (dynamic scope) to say where the file stopped.
+    local _ag_unreached_after=""
     # #1211: one concise verdict line per SPEC (negctl) / per WIRING target
     # (reachability), surfaced to the operator after the checks run.
     local -a summary_lines=()
@@ -385,6 +398,13 @@ acceptance_gate_run() {
                     # "NEGCTL FAIL <spec_id> <reason>"
                     local rest="${line#NEGCTL FAIL }"
                     local sid="${rest%% *}" reason="${rest#* }"
+                    # #1835: a guard_unreached line carries where the file
+                    # stopped (`after=SPEC-n`) — detail, not part of the class.
+                    if [[ "$reason" == *" "* ]]; then
+                        [[ "$reason" == "guard_unreached after="* ]] \
+                            && _ag_unreached_after="$_ag_unreached_after $sid=${reason#guard_unreached after=}"
+                        reason="${reason%% *}"
+                    fi
                     # #1220: an untagged SPEC necessarily has no tagged testfile;
                     # negctl reports no_testfile for it, but Level 1 already flagged
                     # it as untagged_spec — suppress the duplicate.
@@ -537,6 +557,19 @@ acceptance_gate_run() {
         severity="$(_ag_classify_disposition "${failures[@]}")"
         reason_msg="$(_ag_build_reason "${failures[@]}")"
     fi
+    # #2180/#1835: when EVERY finding is an unreached guard, the finding is about
+    # the testfile(s) that stopped — their author is the one who can fix them,
+    # and the engine resolves that owner from `about`. A mixed set keeps the
+    # fault-class framing: naming one owner would hide the rest from build.
+    local about="" _only_unr=1 f
+    for f in "${failures[@]:-}"; do
+        [[ -z "$f" || "$f" == guard_unreached:* ]] || { _only_unr=0; break; }
+    done
+    if [[ ${#failures[@]} -gt 0 && "$_only_unr" -eq 1 ]]; then
+        about="$(for f in "${failures[@]}"; do
+                    acceptance_list_testfiles_for_spec "$design_md" "${f#guard_unreached:}" 2>/dev/null
+                 done | awk 'NF && !seen[$0]++')"
+    fi
     # ADR-054: reason is mandatory; a pass says what it verified. Kept apart
     # from reason_msg, which is the VIOLATION prose the operator summary leads
     # with (#1220) — a pass must not read as a finding there.
@@ -664,9 +697,10 @@ acceptance_gate_run() {
     # `--arg rt ""` + a `(if $rt=="" ...)` conditional keeps it absent otherwise,
     # so a build-fixable failure's artifact is byte-shape-identical to today.
     jq -cn --arg v "$verdict" --arg d "$disposition" --arg sv "$severity" --arg r "${reason_msg:-$_pass_reason}" \
-        --arg ft "$fault" --argjson f "$failures_json" \
+        --arg ft "$fault" --argjson f "$failures_json" --arg ab "$about" \
         '{result_contract:2,verdict:$v,disposition:$d,severity:$sv,reason:$r,failures:$f}
-         + (if $ft=="" then {} else {fault:$ft} end)' | atomic_write "$result_file"
+         + (if $ft=="" then {} else {fault:$ft} end)
+         + (if $ab=="" then {} else {about:$ab} end)' | atomic_write "$result_file"
 
     eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=$verdict"
 

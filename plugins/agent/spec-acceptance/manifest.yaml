@@ -123,6 +123,7 @@ config:
     - killed_by_signal
     - wiring_not_on_path
     - guard_regressed
+    - guard_unreached
     - negctl_error
     - reachability_error
     - malformed_acceptance_block
