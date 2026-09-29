@@ -1,0 +1,1 @@
+Both prior impact files are confirmed present with the stale plan-specific `rc=10` comments. The design scope block doesn't include either. The shape-change-golden entries are already in scope; the shape-change-numeric entries are false positives (they pin pipeline stage counts, not plan-event counts, and the stage count is unchanged by this migration).
