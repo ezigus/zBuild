@@ -5,7 +5,8 @@
 
   [38;2;74;222;128m✓[0m intake manifest validates
   [38;2;74;222;128m✓[0m intake discovered in plugin registry
-  [38;2;74;222;128m✓[0m intake manifest outputs[0].path contains scope-manifest.md
+  [38;2;248;113;113m✗[0m intake manifest outputs[0].path is intake-result.json
+    [2moutput missing: intake-result.json[0m
   [38;2;248;113;113m✗[0m [#1837/SPEC-1] unset ZBUILD_GOAL with no issue returns rc=1
     [2mexpected: 1, got: 2[0m
   [38;2;74;222;128m✓[0m stderr mentions ZBUILD_GOAL
@@ -25,8 +26,9 @@
   [38;2;74;222;128m✓[0m path traversal filtered from scope-manifest
   [38;2;74;222;128m✓[0m generic fallback run returns rc=0
   [38;2;74;222;128m✓[0m generic fallback writes + ./
-  [38;2;74;222;128m✓[0m [#1837/SPEC-9] plugin.result event emitted
-  [38;2;74;222;128m✓[0m plugin.result has plugin=intake
+  [38;2;74;222;128m✓[0m [#1837/SPEC-9] plugin.result emitted on first success run
+  [38;2;74;222;128m✓[0m [#1837/SPEC-9] plugin.result emitted on every success run (two runs yield two events)
+  [38;2;74;222;128m✓[0m [#1837/SPEC-9] plugin.result has plugin=intake
   [38;2;248;113;113m✗[0m [#1837/SPEC-1] empty ZBUILD_GOAL with no issue returns rc=1
     [2mexpected: 1, got: 2[0m
   [38;2;74;222;128m✓[0m --issue mode with no goal text returns rc=0
@@ -52,7 +54,7 @@
   [38;2;74;222;128m✓[0m T_456_a: intake.refused.issue_closed event emitted
   [38;2;74;222;128m✓[0m T_456_a: event has state_reason=COMPLETED
   [38;2;248;113;113m✗[0m [#1837/SPEC-2] T_456_a: intake-result.json written on closed-issue refusal
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-intake.pcLGHw/state/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-intake.ljwTWT/state/artifacts/intake-result.json[0m
   [38;2;248;113;113m✗[0m [#1837/SPEC-1] T_456_b: CLOSED/NOT_PLANNED returns rc=1
     [2mexpected: 1, got: 2[0m
   [38;2;74;222;128m✓[0m T_456_b: stderr mentions NOT_PLANNED
@@ -104,8 +106,48 @@
   [38;2;248;113;113m✗[0m [#1837/SPEC-5] manifest config.valid_verdicts must declare pass and fail
     [2m  valid_verdicts: []
   tier_default: T1[0m
-  [38;2;248;113;113m✗[0m [#1837/SPEC-6] intake-result.json must declare primary: true
-    [2mabsent[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-6] intake-result.json must declare primary: true within the outputs section
+    [2m  - id: scope_manifest
+    path: ${state_dir}/scope-manifest.md
+    type: scope-manifest.md@1
+    format: markdown
+    required: true
+    # ADR-020 amendment (#507): primary output (non-JSON). Indicator falls
+    # back to rc-only — present == pass; absent (rc=0 anyway) == warn.
+    primary: true
+  - id: intake_goal
+    path: ${state_dir}/intake.md
+    type: intake.md@1
+    format: markdown
+    required: true
+  # ADR-020 / #663: side-channel outputs previously documented as
+  # "intentional side-effects". intake-baseline-ref.txt is written when
+  # the intake-baseline capture succeeds; intake-branch.txt is written
+  # when branch creation succeeds (opt-out via ZBUILD_INTAKE_SKIP_BRANCH;
+  # tests that aren't git repos disable it). Both are required:false
+  # so downstream consumers must fall back gracefully when absent
+  # (pr-open does this; see #484). primary:false — scope_manifest is the
+  # canonical primary artifact per #507.
+  - id: intake_baseline_ref
+    path: ${state_dir}/intake-baseline-ref.txt
+    type: intake-baseline-ref.txt@1
+    format: text
+    primary: false
+    required: false
+  - id: intake_branch
+    path: ${state_dir}/intake-branch.txt
+    type: intake-branch.txt@1
+    format: text
+    primary: false
+    required: false
+  # ADR-055 §9: this stage's statement of what it DID. required:true —
+  # written on every terminal verdict, so absence means something went wrong.
+  - id: intake_summary
+    path: "${artifact_dir}/intake-summary.md"
+    type: intake-summary.md@1
+    format: markdown
+    required: true
+    summary: true[0m
   [38;2;248;113;113m✗[0m [#1837/SPEC-6] scope_manifest must NOT have primary: true after migration
     [2mfound[0m
   [38;2;248;113;113m✗[0m [#1837/SPEC-7] manifest must declare config.router.timeout_s
@@ -115,31 +157,42 @@
   [38;2;248;113;113m✗[0m [#1837/SPEC-8] v1 golden fixtures must exist before migration
     [2mmissing: intake-scope-manifest-v1.golden and/or intake-goal-v1.golden[0m
   [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on success
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-intake.pcLGHw/state/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-intake.ljwTWT/state/artifacts/intake-result.json[0m
   [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on no-goal failure
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-intake.pcLGHw/state/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-intake.ljwTWT/state/artifacts/intake-result.json[0m
   [38;2;248;113;113m✗[0m [#1837/SPEC-1] missing state_file returns rc=1
     [2mexpected: 1, got: 2[0m
   [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on missing state_file
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-intake.pcLGHw/state/artifacts/intake-result.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-intake.ljwTWT/state/artifacts/intake-result.json[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] empty-after-sanitization returns rc=1
+    [2mexpected: 1, got: 2[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on empty-after-sanitization failure
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-intake.ljwTWT/state/artifacts/intake-result.json[0m
+  [38;2;74;222;128m✓[0m [#1837/SPEC-1] branch-refused returns rc=1
+  [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on branch-refused failure
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-intake.ljwTWT/state/artifacts/intake-result.json[0m
+  [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on SIGTERM
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/plugin-intake.ljwTWT/spec2-sigterm-art/intake-result.json[0m
   [38;2;248;113;113m✗[0m [#1837/SPEC-3] intake-result.json must exist for structure check
     [2mabsent[0m
   [38;2;248;113;113m✗[0m [#1837/SPEC-15] intake-result.json must exist for data field check
     [2mabsent[0m
   [38;2;74;222;128m✓[0m [#1837/SPEC-10] plugin.sh references ZBUILD_ARTIFACT_DIR
-  [38;2;248;113;113m✗[0m [#1837/SPEC-11] manifest hooks must note: intake holds no live resources and declares no cleanup hook
+  [38;2;248;113;113m✗[0m [#1837/SPEC-11] manifest hooks must note both: intake holds no live resources AND declares no cleanup hook
     [2mhooks:
   run: intake_run[0m
   [38;2;74;222;128m✓[0m [#1837/SPEC-12] manifest provides.role == intake
   [38;2;74;222;128m✓[0m [#1837/SPEC-13] manifest provides.events has >= 17 intake.* events (found: 17)
+  [38;2;74;222;128m✓[0m [#1837/SPEC-13] all 17 pre-migration intake.* events are still present
   [38;2;248;113;113m✗[0m [#1837/SPEC-14] manifest must declare config.router.timeout_s for template override test
     [2mabsent — SPEC-7 must pass first[0m
   [38;2;74;222;128m✓[0m [#1837/SPEC-17] plugin.sh has no hardcoded artifact input path constructions
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m26 of 102 tests failed[0m
+  [38;2;248;113;113m[1m31 of 109 tests failed[0m
 
+  [38;2;248;113;113m✗[0m intake manifest outputs[0].path is intake-result.json
   [38;2;248;113;113m✗[0m [#1837/SPEC-1] unset ZBUILD_GOAL with no issue returns rc=1
   [38;2;248;113;113m✗[0m [#1837/SPEC-1] empty ZBUILD_GOAL with no issue returns rc=1
   [38;2;248;113;113m✗[0m [#1804][#1837/SPEC-1] a failed fetch with no supplied goal fails the run rc=1
@@ -153,7 +206,7 @@
   [38;2;248;113;113m✗[0m [#1837/SPEC-1] T_456_j: repo view fail + CLOSED returns rc=1
   [38;2;248;113;113m✗[0m [#1837/SPEC-4] manifest provides.result_contract == 2
   [38;2;248;113;113m✗[0m [#1837/SPEC-5] manifest config.valid_verdicts must declare pass and fail
-  [38;2;248;113;113m✗[0m [#1837/SPEC-6] intake-result.json must declare primary: true
+  [38;2;248;113;113m✗[0m [#1837/SPEC-6] intake-result.json must declare primary: true within the outputs section
   [38;2;248;113;113m✗[0m [#1837/SPEC-6] scope_manifest must NOT have primary: true after migration
   [38;2;248;113;113m✗[0m [#1837/SPEC-7] manifest must declare config.router.timeout_s
   [38;2;248;113;113m✗[0m [#1837/SPEC-7] manifest must declare config.router.max_turns
@@ -162,9 +215,13 @@
   [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on no-goal failure
   [38;2;248;113;113m✗[0m [#1837/SPEC-1] missing state_file returns rc=1
   [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on missing state_file
+  [38;2;248;113;113m✗[0m [#1837/SPEC-1] empty-after-sanitization returns rc=1
+  [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on empty-after-sanitization failure
+  [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on branch-refused failure
+  [38;2;248;113;113m✗[0m [#1837/SPEC-2] intake-result.json written on SIGTERM
   [38;2;248;113;113m✗[0m [#1837/SPEC-3] intake-result.json must exist for structure check
   [38;2;248;113;113m✗[0m [#1837/SPEC-15] intake-result.json must exist for data field check
-  [38;2;248;113;113m✗[0m [#1837/SPEC-11] manifest hooks must note: intake holds no live resources and declares no cleanup hook
+  [38;2;248;113;113m✗[0m [#1837/SPEC-11] manifest hooks must note both: intake holds no live resources AND declares no cleanup hook
   [38;2;248;113;113m✗[0m [#1837/SPEC-14] manifest must declare config.router.timeout_s for template override test
 
 ### SPEC-5 head plugins/agent/intake/tests/intake-test.sh
@@ -174,8 +231,7 @@
 
   [38;2;74;222;128m✓[0m intake manifest validates
   [38;2;74;222;128m✓[0m intake discovered in plugin registry
-  [38;2;248;113;113m✗[0m intake manifest outputs[0].path contains scope-manifest.md
-    [2moutput missing: scope-manifest.md[0m
+  [38;2;74;222;128m✓[0m intake manifest outputs[0].path is intake-result.json
   [38;2;74;222;128m✓[0m [#1837/SPEC-1] unset ZBUILD_GOAL with no issue returns rc=1
   [38;2;74;222;128m✓[0m stderr mentions ZBUILD_GOAL
   [38;2;74;222;128m✓[0m valid run returns rc=0
@@ -194,8 +250,9 @@
   [38;2;74;222;128m✓[0m path traversal filtered from scope-manifest
   [38;2;74;222;128m✓[0m generic fallback run returns rc=0
   [38;2;74;222;128m✓[0m generic fallback writes + ./
-  [38;2;74;222;128m✓[0m [#1837/SPEC-9] plugin.result event emitted
-  [38;2;74;222;128m✓[0m plugin.result has plugin=intake
+  [38;2;74;222;128m✓[0m [#1837/SPEC-9] plugin.result emitted on first success run
+  [38;2;74;222;128m✓[0m [#1837/SPEC-9] plugin.result emitted on every success run (two runs yield two events)
+  [38;2;74;222;128m✓[0m [#1837/SPEC-9] plugin.result has plugin=intake
   [38;2;74;222;128m✓[0m [#1837/SPEC-1] empty ZBUILD_GOAL with no issue returns rc=1
   [38;2;74;222;128m✓[0m --issue mode with no goal text returns rc=0
   [38;2;74;222;128m✓[0m --issue mode writes fetched title to intake.md
@@ -260,7 +317,7 @@
   [38;2;74;222;128m✓[0m [#1729] and the truncation is STATED, not silent
   [38;2;74;222;128m✓[0m [#1837/SPEC-4] manifest provides.result_contract == 2
   [38;2;74;222;128m✓[0m [#1837/SPEC-5] manifest config.valid_verdicts declares pass and fail
-  [38;2;74;222;128m✓[0m [#1837/SPEC-6] intake-result.json declares primary: true
+  [38;2;74;222;128m✓[0m [#1837/SPEC-6] intake-result.json is in outputs section with primary: true
   [38;2;74;222;128m✓[0m [#1837/SPEC-6] scope_manifest does not have primary: true
   [38;2;74;222;128m✓[0m [#1837/SPEC-7] manifest declares config.router.timeout_s
   [38;2;74;222;128m✓[0m [#1837/SPEC-7] manifest declares config.router.max_turns
@@ -270,22 +327,26 @@
   [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on no-goal failure
   [38;2;74;222;128m✓[0m [#1837/SPEC-1] missing state_file returns rc=1
   [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on missing state_file
+  [38;2;74;222;128m✓[0m [#1837/SPEC-1] empty-after-sanitization returns rc=1
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on empty-after-sanitization failure
+  [38;2;74;222;128m✓[0m [#1837/SPEC-1] branch-refused returns rc=1
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on branch-refused failure
+  [38;2;74;222;128m✓[0m [#1837/SPEC-2] intake-result.json written on SIGTERM
   [38;2;74;222;128m✓[0m [#1837/SPEC-3] result_contract == 2
   [38;2;74;222;128m✓[0m [#1837/SPEC-3] verdict is in {pass, fail}
   [38;2;74;222;128m✓[0m [#1837/SPEC-3] disposition is in engine vocabulary
   [38;2;74;222;128m✓[0m [#1837/SPEC-3] reason is non-empty
-  [38;2;74;222;128m✓[0m [#1837/SPEC-15] data.goal_len is a non-negative integer
-  [38;2;74;222;128m✓[0m [#1837/SPEC-15] data.platform_count is a non-negative integer
+  [38;2;74;222;128m✓[0m [#1837/SPEC-15] data.goal_len equals sanitized goal character count
+  [38;2;74;222;128m✓[0m [#1837/SPEC-15] data.platform_count equals number of detected platforms
   [38;2;74;222;128m✓[0m [#1837/SPEC-10] plugin.sh references ZBUILD_ARTIFACT_DIR
   [38;2;74;222;128m✓[0m [#1837/SPEC-11] manifest hooks section records no cleanup hook (ADR-054 §7)
   [38;2;74;222;128m✓[0m [#1837/SPEC-12] manifest provides.role == intake
   [38;2;74;222;128m✓[0m [#1837/SPEC-13] manifest provides.events has >= 17 intake.* events (found: 17)
+  [38;2;74;222;128m✓[0m [#1837/SPEC-13] all 17 pre-migration intake.* events are still present
   [38;2;74;222;128m✓[0m [#1837/SPEC-14] template value wins over manifest config.router.timeout_s
   [38;2;74;222;128m✓[0m [#1837/SPEC-17] plugin.sh has no hardcoded artifact input path constructions
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 107 tests failed[0m
-
-  [38;2;248;113;113m✗[0m intake manifest outputs[0].path contains scope-manifest.md
+  [38;2;74;222;128m[1mAll 114 tests passed[0m
 
