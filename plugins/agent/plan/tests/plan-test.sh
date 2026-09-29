@@ -879,6 +879,12 @@ _s7_steps="$(printf '%s' "$_s7_json" | jq '.steps | length' 2>/dev/null || echo 
 assert_gt "[#1835/SPEC-7] plan.json steps[] non-empty (guard)" "$_s7_steps" "0"
 _s7_sf_len="$(printf '%s' "$_s7_json" | jq '.scope_files | length' 2>/dev/null || echo 0)"
 assert_gt "[#1835/SPEC-7] plan.json scope_files non-empty (guard)" "$_s7_sf_len" "0"
+# Content preserved: scope_files[] must contain the step's file path verbatim.
+# The pre-migration plugin already produced scope_files; the migration must not
+# strip or transform it. Fails if the migrated plugin omits the value.
+_s7_sf_first="$(printf '%s' "$_s7_json" | jq -r '.scope_files[0] // empty' 2>/dev/null || true)"
+assert_eq "[#1835/SPEC-7] plan.json scope_files[0] preserves step file value (guard)" \
+    "core/foo.sh" "$_s7_sf_first"
 # Content preserved: field values from the canned fixture must appear verbatim,
 # not just be present. Fails if the migration strips or transforms the plan data.
 _s7_step_id="$(printf '%s' "$_s7_json" | jq -r '.steps[0].id // empty' 2>/dev/null || true)"
