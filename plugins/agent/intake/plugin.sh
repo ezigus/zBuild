@@ -27,6 +27,38 @@ source "$_INTAKE_DIR/lib/branch-names.sh"
 # shellcheck source=lib/branch-ops.sh
 source "$_INTAKE_DIR/lib/branch-ops.sh"
 
+# ─── v2 result writer ────────────────────────────────────────────────────────
+# Write intake-result.json to the artifact dir (ADR-055 contract v2).
+# Args: $1=verdict $2=disposition $3=reason [$4=data-json-object]
+# Uses ZBUILD_ARTIFACT_DIR first (engine-provided); falls back to _intake_art
+# (derived from state_file) for callers that set _intake_art in their scope.
+_intake_write_result() {
+    local verdict="$1" disposition="$2" reason="$3" data_json="${4:-}"
+    local art_dir="${ZBUILD_ARTIFACT_DIR:-${_intake_art:-}}"
+    [[ -z "$art_dir" ]] && return 0
+    mkdir -p "$art_dir" 2>/dev/null || true
+    local json
+    if [[ -n "$data_json" ]]; then
+        json="$(jq -nc \
+            --argjson rc 2 \
+            --arg v "$verdict" \
+            --arg d "$disposition" \
+            --arg r "$reason" \
+            --argjson data "$data_json" \
+            '{result_contract: $rc, verdict: $v, disposition: $d, reason: $r, data: $data}' \
+            2>/dev/null)" || return 0
+    else
+        json="$(jq -nc \
+            --argjson rc 2 \
+            --arg v "$verdict" \
+            --arg d "$disposition" \
+            --arg r "$reason" \
+            '{result_contract: $rc, verdict: $v, disposition: $d, reason: $r}' \
+            2>/dev/null)" || return 0
+    fi
+    atomic_write "$art_dir/intake-result.json" <<< "$json" 2>/dev/null || true
+}
+
 # ─── run ─────────────────────────────────────────────────────────────────────
 # Args: $1 = stage_id, $2 = state_file
 # Reads: ZBUILD_GOAL (env), ZBUILD_ISSUE (env, optional)
@@ -76,6 +108,11 @@ intake_run() {
     # returns long before state_dir is derived and must still say why.
     local _intake_art=""
     [[ -n "${2:-}" ]] && _intake_art="$(dirname "${2:-}")/artifacts"
+
+    # ADR-054 §4: SIGTERM trap — write fail/broken before the process exits.
+    # Fires only when the subshell running intake_run receives SIGTERM.
+    trap '_intake_write_result "fail" "broken" "intake was interrupted by SIGTERM" 2>/dev/null || true; exit 1' TERM
+
     local goal="${ZBUILD_GOAL:-}"
     local issue="${ZBUILD_ISSUE:-0}"
 
@@ -87,10 +124,12 @@ intake_run() {
             local _state_rc=0
             _intake_check_issue_state "$issue" || _state_rc=$?
             if [[ $_state_rc -ne 0 ]]; then
+                _intake_write_result "fail" "unavailable" \
+                    "refused issue #$issue — it is not in an actionable state"
                 stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "fail" \
                     "refused issue #$issue — it is not in an actionable state" \
                     "No goal was taken in. A closed or locked issue is not work to start."
-                return $_state_rc
+                return 1
             fi
 
             # Fetch real title + body from GitHub so the plan stage has context.
@@ -158,21 +197,27 @@ intake_run() {
                 # one was the exception, and it produced the most expensive
                 # possible way to discover the fetch had failed.
                 error "intake_run: could not read issue #${issue} (gh rc=${gh_rc}) and no --goal was supplied — refusing to run against a goal that says nothing about what to build. Supply --goal, or set ZBUILD_INTAKE_ALLOW_PLACEHOLDER=1 for an offline smoke run."
-                return 2
+                _intake_write_result "fail" "unavailable" \
+                    "could not read issue #${issue} (gh rc=${gh_rc}) and no goal was supplied"
+                return 1
             fi
         else
             error "intake_run: ZBUILD_GOAL is required (or pass --issue <N>)"
-            return 2
+            _intake_write_result "fail" "misconfigured" \
+                "ZBUILD_GOAL is required (or pass --issue <N>)"
+            return 1
         fi
     fi
 
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
         error "intake_run: state_file argument required"
+        _intake_write_result "fail" "broken" \
+            "the engine dispatched this stage with no state file"
         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/intake-summary.md}" "intake" "error" \
             "the engine dispatched this stage with no state file, so it could not run" \
             "No work was attempted. This is an engine contract violation, not a fault in the change."
-        return 2
+        return 1
     fi
     local state_dir; state_dir="$(dirname "$state_file")"
 
@@ -180,10 +225,12 @@ intake_run() {
     sanitized="$(_intake_strip_synthesized "$goal")"
     if [[ -z "$sanitized" ]]; then
         error "intake_run: goal empty after sentinel sanitization"
+        _intake_write_result "fail" "broken" \
+            "the goal was empty after sentinel sanitization"
         stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "fail" \
             "the goal was empty after sanitization, so there is nothing to plan" \
             "No goal was taken in. Every downstream stage would have had no subject."
-        return 2
+        return 1
     fi
 
     # Read detected platforms (written by core/detect/platforms.sh before intake runs)
@@ -236,13 +283,18 @@ intake_run() {
         _intake_create_workspace_branch "$state_dir" "$issue" "$_title_line" \
             || _branch_rc=$?
         if [[ $_branch_rc -ne 0 ]]; then
+            _intake_write_result "fail" "misconfigured" \
+                "could not create the workspace branch"
             stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "fail" \
                 "could not create the workspace branch" \
                 "Fail-closed: work does not proceed on the current branch, which may be main."
-            return $_branch_rc
+            return 1
         fi
     fi
 
+    _intake_write_result "pass" "complete" \
+        "took in the goal for issue #$issue: ${_title_line:0:60}" \
+        "{\"goal_len\": ${#sanitized}, \"platform_count\": ${#platforms[@]}}"
     stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "pass" \
         "took in the goal for issue #$issue: ${_title_line:0:60}" \
         "$(printf -- '- goal length: %s chars\n- platforms: %s' "${#sanitized}" "${#platforms[@]}")"

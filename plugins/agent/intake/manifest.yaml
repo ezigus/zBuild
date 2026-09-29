@@ -17,6 +17,8 @@ description: |
 
 hooks:
   run: intake_run
+  # ADR-054 §7: intake holds no live resources (no spawned processes, no locks,
+  # no open handles beyond what atomic_write closes) and declares no cleanup hook.
 
 requires:
   core:
@@ -30,14 +32,20 @@ requires:
 inputs: []
 
 outputs:
+  # ADR-055 v2: JSON result file — verdict-bearing primary output.
+  - id: intake_result
+    path: "${artifact_dir}/intake-result.json"
+    type: intake-result.json@1
+    format: json
+    required: true
+    primary: true
   - id: scope_manifest
     path: ${state_dir}/scope-manifest.md
     type: scope-manifest.md@1
     format: markdown
     required: true
-    # ADR-020 amendment (#507): primary output (non-JSON). Indicator falls
-    # back to rc-only — present == pass; absent (rc=0 anyway) == warn.
-    primary: true
+    # ADR-020 amendment (#507): non-JSON secondary output. Under v2, primary
+    # is intake-result.json; scope_manifest is the downstream-consumed artifact.
   - id: intake_goal
     path: ${state_dir}/intake.md
     type: intake.md@1
@@ -73,6 +81,7 @@ outputs:
     summary: true
 
 provides:
+  result_contract: 2
   role: intake
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
@@ -102,8 +111,12 @@ capabilities:
   merges_scope_override: true
 
 config:
-  # Writes no .verdict on either verdict channel; the engine falls back to
-  # pass for a well-formed primary (core/pipeline/verdict.sh). An ABSENT key
-  # is a lint failure; the explicit [] is the claim (#1708).
-  valid_verdicts: []
+  valid_verdicts:
+    - pass
+    - fail
   tier_default: T1
+  # ADR-017 §11 (#1816): declared so the template override wins. intake makes
+  # no LLM calls; max_turns: 0 omits --max-turns.
+  router:
+    timeout_s: 120
+    max_turns: 0

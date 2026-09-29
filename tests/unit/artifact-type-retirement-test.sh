@@ -35,8 +35,8 @@ setup_test_env "artifact-type-retirement"
 # intake's declared value was a bracketed list; the fallback is the real file.
 print_test_section "SPEC-1. result filename resolves from the primary output"
 _s1="$(manifest_graph_result_filename "$REPO_ROOT/plugins/agent/intake/manifest.yaml" 2>/dev/null || echo "<rc1>")"
-assert_eq "[SPEC-1] intake result filename is scope-manifest.md (not a bracketed list)" \
-    "scope-manifest.md" "$_s1"
+assert_eq "[SPEC-1] intake result filename is intake-result.json (v2 primary, not scope-manifest.md)" \
+    "intake-result.json" "$_s1"
 
 # ─── SPEC-2 [change]: a TYPE name is not a filename ───────────────────────────
 # security-lens declared `findings.json` (its outputs[].type) while the file it
