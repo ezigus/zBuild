@@ -63,6 +63,9 @@ jq -n \
       updated_at:$now}' > "$STATE_FILE"
 
 # ─── Stage 1: run intake plugin ──────────────────────────────────────────────
+# The engine names every stage's artifact dir (core/plugin-registry/lifecycle.sh);
+# intake no longer guesses one beside the state file (#1837).
+export ZBUILD_ARTIFACT_DIR="$STATE_DIR/artifacts"
 source "$REPO_ROOT/plugins/agent/intake/plugin.sh"
 set +e
 intake_run "intake" "$STATE_FILE" 2>/dev/null

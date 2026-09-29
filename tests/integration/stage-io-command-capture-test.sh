@@ -91,6 +91,9 @@ STATE_FILE="$STATE_DIR/pipeline-state.json"
 mkdir -p "$STATE_DIR"
 echo '{"schema_version":1,"run_id":"test","issue":"$_ZB_ID","stage_statuses":{}}' > "$STATE_FILE"
 
+# The engine names every stage's artifact dir (core/plugin-registry/lifecycle.sh);
+# intake no longer guesses one beside the state file (#1837).
+export ZBUILD_ARTIFACT_DIR="$STATE_DIR/artifacts"
 unset ZBUILD_GOAL 2>/dev/null || true
 export ZBUILD_ISSUE="$_ZB_ID"
 

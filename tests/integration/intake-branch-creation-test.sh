@@ -53,6 +53,8 @@ export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
 export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 mkdir -p "$ZBUILD_EVENTS_DIR"
 
+# The engine names every stage's artifact dir (core/plugin-registry/lifecycle.sh);
+# intake no longer guesses one beside the state file (#1837).
 # ── Run intake_run from a forked subprocess (mirrors how runner.sh invokes
 #    plugins): a fresh bash interpreter so we exercise the real source/init
 #    chain, not state inherited from this shell.
@@ -71,6 +73,7 @@ subprocess_out="$(
     ZBUILD_GOAL="add branch creation to intake" \
     ZBUILD_ISSUE="$_ZB_ID" \
     ZBUILD_ALLOW_CLOSED_ISSUE=1 \
+    ZBUILD_ARTIFACT_DIR="$STATE_DIR/artifacts" \
     bash -c "
         set -uo pipefail
         cd '$REPO'
@@ -123,6 +126,7 @@ env -u CI \
 ZBUILD_GOAL="add branch creation to intake" \
 ZBUILD_ISSUE="$_ZB_ID" \
 ZBUILD_ALLOW_CLOSED_ISSUE=1 \
+ZBUILD_ARTIFACT_DIR="$STATE_DIR/artifacts" \
 bash -c "
     set -uo pipefail
     cd '$REPO'
