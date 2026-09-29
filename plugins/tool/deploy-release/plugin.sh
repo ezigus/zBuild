@@ -87,6 +87,7 @@ deploy_release_run() {
         error "deploy-release: git push tag failed for $tag_name"
         # Roll back the local tag so a retry is not blocked by a stale tag (#757 review).
         git tag -d "$tag_name" 2>/dev/null || true
+        # disposition-ok: the git remote (tag push) is not responding
         atomic_write "$deploy_result_out" <<< "$(jq -n --arg tag "$tag_name" \
             '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":"git push tag failed","data":{"tag":$tag}}')"
         stage_summary_write "$artifacts_dir/deploy-release-summary.md" "deploy-release" "fail" \

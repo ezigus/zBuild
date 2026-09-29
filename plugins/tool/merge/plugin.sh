@@ -158,6 +158,7 @@ _merge_run_inner() {
     # covers the default branch (merge has no main/master guard of its own here).
     if ! zbuild_push_reconcile "$target_branch"; then
         error "merge_run: push reconcile failed for '${target_branch}': ${ZBUILD_PUSH_RECONCILE_ERR}"
+        # disposition-ok: GitHub (git push) is not responding
         jq -n --arg branch "$target_branch" --arg detail "$ZBUILD_PUSH_RECONCILE_ERR" \
             '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":("failed to push: "+$branch+": "+$detail)}' \
             > "$merge_result_out"
@@ -183,6 +184,7 @@ _merge_run_inner() {
         --title "$pr_title" \
         --body "$pr_body" 2>&1)"; then
         error "merge_run: gh pr create failed: $gh_output"
+        # disposition-ok: GitHub (gh pr create) is not responding
         jq -n --arg reason "$gh_output" \
             '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":$reason}' \
             > "$merge_result_out"
@@ -198,6 +200,7 @@ _merge_run_inner() {
 
     if ! gh pr merge --squash --auto 2>/dev/null; then
         error "merge_run: gh pr merge failed"
+        # disposition-ok: GitHub (gh pr merge) is not responding
         jq -n --arg pr_url "$pr_url" \
             '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":"gh pr merge failed","data":{"pr_url":$pr_url}}' \
             > "$merge_result_out"

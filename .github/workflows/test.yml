@@ -61,6 +61,11 @@ jobs:
         # #2187 (ADR-054 §6a): an off-set word is a run-time structural failure;
         # this finds it before a run. ONE definition, shared with `npm run lint`.
         run: bash scripts/lib/lint-disposition-words.sh
+      - name: Stage signals (a plugin records a signal through the shared helper)
+        if: always()
+        # #2225: one word for "stopped by a signal" (interrupted) and the
+        # caller's handlers put back — no raw TERM/INT trap in plugins/.
+        run: bash scripts/lib/lint-stage-signals.sh
       - name: Shellcheck (.sh files)
         if: always()
         run: |
