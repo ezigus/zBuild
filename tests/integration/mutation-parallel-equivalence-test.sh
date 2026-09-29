@@ -153,13 +153,30 @@ assert_contains "no-op fixture is accounted FAIL" "$(cat "$SER_OUT")" "FAIL  03-
 
 # ─── Test 2: no stray worktrees left behind ──────────────────────────────────
 print_test_section "2. parallel run leaves no stray worktrees"
-wt_before="$(git -C "$REPO_ROOT" worktree list | wc -l | tr -d ' ')"
+# Another LIVE run's worktree (npm test runs the mutation tier beside this test)
+# is not a leak, and must not be counted as one (#2230). Stand one in, owned by
+# this test's own — live — pid.
+_other="$(mktemp -d "${TMPDIR:-/tmp}/zb-mut.$$.XXXXXX")"; rmdir "$_other"
+git -C "$REPO_ROOT" worktree add --detach "$_other" HEAD >/dev/null 2>&1 || true
+# _dead_owner_trees — registered zb-mut.<pid>.* whose owner is gone: a leak.
+_dead_owner_trees() {
+    local line base n=0
+    while IFS= read -r line; do
+        [[ "$line" == worktree\ * ]] || continue
+        base="${line##*/}"
+        [[ "$base" =~ ^zb-mut\.([0-9]+)\. ]] || continue
+        kill -0 "${BASH_REMATCH[1]}" 2>/dev/null || n=$((n + 1))
+    done < <(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null)
+    printf '%s' "$n"
+}
 _run_fixture 4 "$TEST_TEMP_DIR/wt-probe.out" >/dev/null
-wt_after="$(git -C "$REPO_ROOT" worktree list | wc -l | tr -d ' ')"
-assert_eq "worktree count unchanged across a parallel run" "$wt_before" "$wt_after"
-
-stray="$(git -C "$REPO_ROOT" worktree list --porcelain 2>/dev/null | grep -c 'zb-mut\.' || true)"
-assert_eq "no zb-mut. worktree path remains registered" "0" "$stray"
+assert_eq "no worktree of a finished run remains registered" "0" "$(_dead_owner_trees)"
+if git -C "$REPO_ROOT" worktree list --porcelain | grep -qF "${_other##*/}"; then
+    assert_pass "another live run's worktree is left alone (#2230)"
+else
+    assert_fail "another live run's worktree is left alone (#2230)" "the run removed it"
+fi
+git -C "$REPO_ROOT" worktree remove --force "$_other" >/dev/null 2>&1 || true
 
 # ─── Test 3: stdin-EOF + timeout guard ───────────────────────────────────────
 print_test_section "3. read-blocked test gets EOF; sleeping test is time-bounded"
