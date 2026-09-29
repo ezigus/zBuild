@@ -59,6 +59,9 @@ REPO="$TEST_TEMP_DIR/repo"
 mkdir -p "$REPO/tests"
 printf '%s\n' 'assert_eq "[SPEC-1] placeholder" "1" "$got"' > "$REPO/tests/acc-test.sh"
 export ZBUILD_REPO_ROOT="$REPO"
+# #2225: test-author now works in route_to_model_loop, which diffs a git tree.
+( cd "$REPO" && git init -q -b main . && git config user.email t@e.st && git config user.name t \
+    && git add -A && git commit -q -m seed ) >/dev/null 2>&1
 
 cat > "$ART/design.md" <<'EOF'
 # Design
@@ -75,7 +78,9 @@ CLAUDE_CALLED="$TEST_TEMP_DIR/claude-called.txt"
 cat > "$TEST_TEMP_DIR/bin/claude" <<MOCK
 #!/usr/bin/env bash
 printf 'called\n' >> "$CLAUDE_CALLED"
-printf 'authored the assertions\n'
+cat >/dev/null
+# #2225: answered the way the CLI answers the loop — JSON, with the done marker.
+jq -n '{type:"result",result:"authored the assertions\nLOOP_COMPLETE",usage:{input_tokens:1,output_tokens:1}}'
 exit 0
 MOCK
 chmod +x "$TEST_TEMP_DIR/bin/claude"
