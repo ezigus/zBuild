@@ -238,7 +238,7 @@ The rule above — "each word exists only because the engine acts differently on
 | `interrupted` | an outside signal stopped it | retry |
 | `throttled` | a short rate limit, recovering | wait, then retry |
 | `rate_limited` | the account's usage limit | end the run, resumable |
-| `unavailable` | the model provider is not responding | end the run, resumable |
+| `unavailable` | an external service zBuild depends on is not responding (the model provider, GitHub, the git remote) | end the run, resumable |
 | `misconfigured` | the setup is wrong — the operator fixes it | halt |
 | `broken` | a defect in zBuild — file a bug | halt |
 
@@ -249,6 +249,7 @@ The rule above — "each word exists only because the engine acts differently on
 - **Migrated (#2187 PR 2):** every v2 stage now sends the cause word — a model's unusable output → `unusable`; a scope violation or a false completion → `complete` with that verdict; a setup failure (no model tier, the router's own rc=2 checks) → `misconfigured`; a missing engine-promised input → `broken`. Model-call failures are named in ONE place, `router_reason_disposition` (`scripts/lib/router-rc-classify.sh`), which the router feeds a turn-budget hit as `router_out_of_turns`. `exhausted` is retired and `broken` halts. "Did not finish" is the predicate `disposition_unfinished` (timed_out, out_of_turns, interrupted), not one word. `scripts/lib/lint-disposition-words.sh` (npm run lint + CI Lint) rejects a literal off-set word.
 
 - **Chosen once, not per plugin (2026-09-29, #2225).** A stage records being stopped by a signal through `scripts/lib/stage-signal.sh` (`stage_signal_begin <callback>` / `stage_signal_end`): the callback receives the one word for it, `interrupted` (reason `signal_interrupt`), and the caller's own TERM/INT handlers are put back afterwards. `scripts/lib/lint-stage-signals.sh` refuses a raw TERM/INT trap in `plugins/` (a deliberate one carries `# signal-ok: <why>`). A literal `unavailable` names the external service that is not responding in a `# disposition-ok:` note (`scripts/lib/lint-disposition-words.sh`) — #1837's intake wrote `broken` on SIGTERM and `unavailable` for a closed issue, neither of which an outage or a retry explains.
+- **`unavailable` is any external service, not only the model (2026-09-29, #1837).** The word was scoped to the model provider, but the action — end the run, resume when the service is back — is the same whichever outside service is down. GitHub (`gh issue view`, `gh pr create`) and the git remote (`git push`, `git fetch`) land here too. Anything the operator chose or set up — a closed issue, an invalid branch name, a dirty tree, a missing goal — is `misconfigured`: nothing was down.
 
 ### 7. Teardown and clean: one code path, two triggers
 

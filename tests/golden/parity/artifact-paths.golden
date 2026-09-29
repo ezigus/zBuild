@@ -6,6 +6,7 @@
 ./artifacts/attempts/hydrate/iter-0-attempt-1/hydrate-result.json
 ./artifacts/attempts/hydrate/iter-0-attempt-1/hydrate-summary.md
 ./artifacts/attempts/intake/iter-0-attempt-1/attempt.json
+./artifacts/attempts/intake/iter-0-attempt-1/intake-result.json
 ./artifacts/attempts/intake/iter-0-attempt-1/intake-summary.md
 ./artifacts/attempts/intake/iter-0-attempt-1/intake.md
 ./artifacts/attempts/intake/iter-0-attempt-1/scope-manifest.md
@@ -36,6 +37,7 @@
 ./artifacts/diff.patch
 ./artifacts/hydrate-result.json
 ./artifacts/hydrate-summary.md
+./artifacts/intake-result.json
 ./artifacts/intake-summary.md
 ./artifacts/persist-result.json
 ./artifacts/persist-summary.md

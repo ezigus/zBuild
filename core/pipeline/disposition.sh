@@ -20,7 +20,8 @@
 #   interrupted    an outside signal stopped it                    → retry
 #   throttled      a short rate limit, recovering                  → wait, retry
 #   rate_limited   the account's usage limit                       → end run, resumable
-#   unavailable    the model provider is not responding            → end run, resumable
+#   unavailable    an external service zBuild depends on is not    → end run, resumable
+#                  responding (model provider, GitHub, git remote)
 #   misconfigured  the setup is wrong (operator fixes it)          → halt
 #   broken         a defect in zBuild (file a bug)                 → halt
 #
