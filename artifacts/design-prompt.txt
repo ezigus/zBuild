@@ -211,6 +211,16 @@ that claims plan uses rc=10 as its sole v1 channel.
 - `tests/unit/lint-contract-test.sh` — TC-8 runs lint against real repo manifests.
   In scope as a guard.
 
+**SPEC-12 rationale (spec-coverage feedback).** SPEC-5 and SPEC-11 address two
+specific hardcoded path removals but leave open whether additional `$state_dir/<path>`
+constructions survive. SPEC-12 closes this with a grep-based blanket assertion:
+after migration, `grep -E '\$state_dir/[[:alnum:]]' plugin.sh | grep -v artifacts`
+returns empty. At the merge-base, lines 111 (`$state_dir/scope-manifest.md`) and
+117–118 (`$state_dir/intake.md`) both match — the grep FAILS there, making this a
+valid `[change]`. The sole authorized `$state_dir/` pattern post-migration is
+`artifacts_dir="$state_dir/artifacts"` (the output directory derivation, not an
+input path construction).
+
 ```scope
 plugins/agent/plan/manifest.yaml
 plugins/agent/plan/plugin.sh
@@ -255,6 +265,7 @@ SPEC-8[change]: non-max_turns router failure path (rc≠0, not recovered, subtyp
 SPEC-9[change]: manifest config.router declares max_turns: 45 and timeout_s: 300; _route_resolve_max_turns returns 45 and _route_resolve_timeout returns 300 when no template or env override is set; a template-level override beats the manifest value when set
 SPEC-10[guard]: plan manifest's plan output entry declares primary: true
 SPEC-11[change]: plan_run no longer constructs $state_dir/intake.md by hardcoded path — the legacy ZBUILD_GOAL fallback via intake.md is removed; when ZBUILD_GOAL is unset, plan_run writes result with disposition=unusable and returns rc=1 (goal_string is declared required/source:external so the engine guarantees ZBUILD_GOAL is set for v2 callers)
+SPEC-12[change]: plugin.sh contains no hardcoded input paths constructed from $state_dir/ beyond the authorized artifacts_dir derivation — verified by grep: grep -E '\$state_dir/[[:alnum:]]' plugin.sh | grep -v artifacts returns empty; at merge-base this grep matches lines 111 (scope-manifest.md) and 117-118 (intake.md), so the assertion fails there
 WIRING:
 plugins/agent/plan/manifest.yaml
 TESTFILES:
@@ -269,9 +280,8 @@ SPEC-8: plugins/agent/plan/tests/plan-test.sh
 SPEC-9: plugins/agent/plan/tests/plan-test.sh
 SPEC-10: plugins/agent/plan/tests/plan-test.sh
 SPEC-11: plugins/agent/plan/tests/plan-test.sh
+SPEC-12: plugins/agent/plan/tests/plan-test.sh
 ```
-
-LOOP_COMPLETE
 
 (Durable copy: https://github.com/ezigus/zBuild/blob/zbuild/state/issue-1835/artifacts/design.md — reference it, but VERIFY against the CURRENT inputs above; the code may have moved on since.)
 

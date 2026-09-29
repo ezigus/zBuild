@@ -52,6 +52,10 @@ plugins (runner.sh `runner_read_stage_disposition` already handles this via
 `_verdict_read_result`). Update the stale comment in runner.sh at line 2832
 that claims plan uses rc=10 as its sole v1 channel.
 
+The manifest already carries `provides.role: planner` (added by #1704) and
+`provides.events:` with 9 declared events (added by #1717). The migration must
+not remove either. SPEC-13 and SPEC-14 guard these as invariants.
+
 **Re-verification of changed files (since prior design, commit 900db6b0):**
 - `scripts/lib/router-rc-classify.sh` — gained `router_reason_disposition`
   and budget-marker helpers; referenced in SPEC-8 and the plugin's failure path.
@@ -83,9 +87,15 @@ constructions survive. SPEC-12 closes this with a grep-based blanket assertion:
 after migration, `grep -E '\$state_dir/[[:alnum:]]' plugin.sh | grep -v artifacts`
 returns empty. At the merge-base, lines 111 (`$state_dir/scope-manifest.md`) and
 117–118 (`$state_dir/intake.md`) both match — the grep FAILS there, making this a
-valid `[change]`. The sole authorized `$state_dir/` pattern post-migration is
-`artifacts_dir="$state_dir/artifacts"` (the output directory derivation, not an
-input path construction).
+valid `[change]`.
+
+**SPEC-13/14 rationale (spec-coverage feedback, iteration 3).** The
+spec-coverage stage flagged that no SPEC covered `provides.role` (#1704) and
+`provides.events` (#1717). Both are already present in the current manifest
+(lines 21 and 24-33): `provides.role: planner` and 9 declared events. Because
+these exist at the merge-base, they are `[guard]` invariants — the migration
+must not remove them, but tagging them `[change]` would be dishonest (the
+negative control cannot fail at baseline for something already true).
 
 ```scope
 plugins/agent/plan/manifest.yaml
@@ -132,6 +142,8 @@ SPEC-9[change]: manifest config.router declares max_turns: 45 and timeout_s: 300
 SPEC-10[guard]: plan manifest's plan output entry declares primary: true
 SPEC-11[change]: plan_run no longer constructs $state_dir/intake.md by hardcoded path — the legacy ZBUILD_GOAL fallback via intake.md is removed; when ZBUILD_GOAL is unset, plan_run writes result with disposition=unusable and returns rc=1 (goal_string is declared required/source:external so the engine guarantees ZBUILD_GOAL is set for v2 callers)
 SPEC-12[change]: plugin.sh contains no hardcoded input paths constructed from $state_dir/ beyond the authorized artifacts_dir derivation — verified by grep: grep -E '\$state_dir/[[:alnum:]]' plugin.sh | grep -v artifacts returns empty; at merge-base this grep matches lines 111 (scope-manifest.md) and 117-118 (intake.md), so the assertion fails there
+SPEC-13[guard]: manifest declares provides.role: planner (required by #1704); migration must not remove this field
+SPEC-14[guard]: manifest declares provides.events with at least the plan plugin's current 9-event vocabulary (plan.context.persisted, plan.context.resume_skipped, plan.context.resumed, plan.dod_violation, plan.envelope.recovered, plan.flow_wiring_missing, plan.scope.violation, plan.scope_too_large, plan.router_failed); required by #1717
 WIRING:
 plugins/agent/plan/manifest.yaml
 TESTFILES:
@@ -147,4 +159,6 @@ SPEC-9: plugins/agent/plan/tests/plan-test.sh
 SPEC-10: plugins/agent/plan/tests/plan-test.sh
 SPEC-11: plugins/agent/plan/tests/plan-test.sh
 SPEC-12: plugins/agent/plan/tests/plan-test.sh
+SPEC-13: plugins/agent/plan/tests/plan-test.sh
+SPEC-14: plugins/agent/plan/tests/plan-test.sh
 ```
