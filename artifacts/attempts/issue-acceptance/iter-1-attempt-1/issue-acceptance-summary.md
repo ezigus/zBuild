@@ -1,0 +1,5 @@
+## issue-acceptance — pass
+
+- Every substantive issue requirement is met — v2 result file with rc=1 on all failure paths, valid_verdicts [pass, fail], primary:true on intake-result.json, router budgets in manifest, SIGTERM trap, disposition:unavailable on failed fetch, no hardcoded artifact paths, cleanup comment, and golden parity fixtures all appear in the diff; the two test failures (a pre-existing outputs[0] assertion not updated for the new output ordering, and a stale artifact-filename golden snapshot) are implementation oversights that fall under the test-green criterion, which the pipeline proves and the judging rules exclude.
+
+- every requirement the issue states is met by the change
