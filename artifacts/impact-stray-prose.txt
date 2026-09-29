@@ -1,0 +1,1 @@
+Both prior impact gaps are confirmed valid against the current design. `core/pipeline/verdict.sh` was already added to scope; the remaining two gaps still exist.
