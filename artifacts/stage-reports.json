@@ -4,5 +4,11 @@
     "plugins/agent/intake/plugin.sh",
     "plugins/agent/intake/tests/intake-test.sh"
   ],
-  "wiring_files": []
+  "wiring_files": [],
+  "owned_files": {
+    "test-author": [
+      "plugins/agent/intake/tests/intake-test.sh",
+      "tests/integration/intake-refuse-on-closed-subprocess-test.sh"
+    ]
+  }
 }

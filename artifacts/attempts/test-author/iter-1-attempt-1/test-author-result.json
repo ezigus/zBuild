@@ -1,0 +1,17 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 17 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 17,
+    "owned_files": [
+      "plugins/agent/intake/tests/intake-test.sh",
+      "tests/integration/intake-refuse-on-closed-subprocess-test.sh"
+    ],
+    "testfiles": {
+      "plugins/agent/intake/tests/intake-test.sh": "a4b8d9f6b69be9fbc8a958a686c0935d89bab74f",
+      "tests/integration/intake-refuse-on-closed-subprocess-test.sh": "ceb756ec9ceb984707944f934c21dba76c97658b"
+    }
+  }
+}
