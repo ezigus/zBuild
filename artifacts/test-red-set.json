@@ -1,5 +1,0 @@
-[
-  "plugins/agent/intake/tests/intake-test.sh",
-  "tests/e2e/parity-local-vs-ci-test.sh",
-  "tests/unit/artifact-type-retirement-test.sh"
-]

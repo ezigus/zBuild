@@ -1,1 +1,0 @@
-tests/unit/artifact-type-retirement-test.sh

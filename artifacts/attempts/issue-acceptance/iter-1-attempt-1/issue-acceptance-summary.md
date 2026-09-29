@@ -1,7 +1,0 @@
-## issue-acceptance — fail
-
-- SPEC-2 groups exit paths as "success and all failure modes" — two categories — but the issue names interruption/SIGTERM as a third distinct exit path in checkbox #1, and no SPEC requires a signal trap or result write on that path; additionally SPEC-8's golden baseline fixture (intake-scope-manifest-v1.golden) was never created, making the unchanged-behavior requirement unverifiable and the test fails.
-
-- NOT MET: plugin writes a conformant v2 result on process interruption/SIGTERM (issue checkbox #1 lists "success, failure, and interruption" as three distinct paths
-- NOT MET: no SPEC addresses the signal path)
-- NOT MET: behaviour unchanged for a passing run — the golden baseline fixture for SPEC-8 was not created and the test fails with "MISSING: …intake-scope-manifest-v1.golden"

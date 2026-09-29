@@ -1,5 +1,0 @@
-## spec-coverage — uncovered
-
-- The issue's acceptance checkbox "The plugin constructs no artifact paths in code — assert by grep over its `plugin.sh`" requires a negative assertion (no hardcoded path construction); SPEC-10 only provides a positive assertion that `ZBUILD_ARTIFACT_DIR` is referenced for `artifact_dir`, leaving the absence of in-code input artifact path construction unverified by any SPEC.
-
-- NOT COVERED: plugin constructs no artifact paths in code — SPEC-10 asserts ZBUILD_ARTIFACT_DIR is referenced (output side only) but no SPEC asserts that no hardcoded input artifact paths are constructed in plugin.sh
