@@ -1,2 +1,0 @@
-core/plugin-registry/lifecycle.sh
-scripts/lib/abort-propagation.sh
