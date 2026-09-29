@@ -63,9 +63,11 @@ SYSGREP=/usr/bin/grep
 # carried since then. These two are the enforcing callers it never had (the
 # disposition table's `halt_unavailable` was announced, not acted on), and the
 # orchestrator arm that stops the generic catch-all collapsing 9 into 4.
+# #1835 removed the leaf-path rc=10 block from runner.sh (scope_too_large is
+# now a v2 disposition, not a special rc), lowering the count back to 35.
 # #1850 deletes them with the rest of the vocabulary.
 _PINNED="
-core/pipeline/runner.sh|36
+core/pipeline/runner.sh|35
 core/pipeline/cycle-orchestrator.sh|30
 core/pipeline/parallel-orchestrator.sh|4
 core/pipeline/strategies/map.sh|6

@@ -879,6 +879,14 @@ _s7_steps="$(printf '%s' "$_s7_json" | jq '.steps | length' 2>/dev/null || echo 
 assert_gt "[#1835/SPEC-7] plan.json steps[] non-empty (guard)" "$_s7_steps" "0"
 _s7_sf_len="$(printf '%s' "$_s7_json" | jq '.scope_files | length' 2>/dev/null || echo 0)"
 assert_gt "[#1835/SPEC-7] plan.json scope_files non-empty (guard)" "$_s7_sf_len" "0"
+# Content preserved: field values from the canned fixture must appear verbatim,
+# not just be present. Fails if the migration strips or transforms the plan data.
+_s7_step_id="$(printf '%s' "$_s7_json" | jq -r '.steps[0].id // empty' 2>/dev/null || true)"
+assert_eq "[#1835/SPEC-7] plan.json steps[0].id matches fixture value (guard)" \
+    "step-1" "$_s7_step_id"
+_s7_step_desc="$(printf '%s' "$_s7_json" | jq -r '.steps[0].description // empty' 2>/dev/null || true)"
+assert_eq "[#1835/SPEC-7] plan.json steps[0].description matches fixture value (guard)" \
+    "do thing" "$_s7_step_desc"
 
 # ─── [#1835/SPEC-1][change] success path writes v2 result fields ─────────────
 # plan.json on the success path must carry result_contract:2, verdict=pass,
@@ -897,9 +905,17 @@ if [[ -n "$_s1_reason" ]]; then
 else
     assert_fail "[#1835/SPEC-1] plan.json reason is non-empty on success"
 fi
-# _verdict_read_result can surface disposition: plan.json has result_contract=2 and
-# disposition=complete, so the engine's reader will expose it (contract guarantee).
-# The direct field assertions above are the load-bearing check.
+# Read half: _verdict_read_result must surface disposition=complete from plan.json primary.
+# Fails at merge-base because plan.json has no result_contract or disposition fields there.
+# shellcheck source=../../../../core/pipeline/verdict.sh
+source "$REPO_ROOT/core/pipeline/verdict.sh" 2>/dev/null || true
+if declare -F _verdict_read_result >/dev/null 2>&1; then
+    _verdict_read_result "$_V2_STATE" "$PLUGIN_DIR/manifest.yaml" "plan" "0" _s1r
+    assert_eq "[#1835/SPEC-1] _verdict_read_result surfaces disposition=complete from plan.json primary" \
+        "complete" "$_s1r_disp"
+else
+    assert_fail "[#1835/SPEC-1] _verdict_read_result not available — verdict.sh not sourced"
+fi
 
 # ─── [#1835/SPEC-2][change] error path writes plan.json with v2 fields ───────
 # On schema_violation / empty_result_envelope / invalid_plan_response, plan.json
@@ -944,7 +960,33 @@ _s2b_rc=$?
 set -e
 assert_eq "[#1835/SPEC-2] empty_result_envelope rc=1" "1" "$_s2b_rc"
 assert_file_exists "[#1835/SPEC-2] empty_result_envelope writes plan.json" "$_S2_ARTIFACTS/plan.json"
+assert_eq "[#1835/SPEC-2] empty_result_envelope result_contract=2" "2" \
+    "$(jq -r '.result_contract // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
+assert_eq "[#1835/SPEC-2] empty_result_envelope verdict=error" "error" \
+    "$(jq -r '.verdict // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
 assert_eq "[#1835/SPEC-2] empty_result_envelope disposition=unusable" "unusable" \
+    "$(jq -r '.disposition // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
+
+# invalid_plan_response: route_to_model returns non-zero rc with non-recoverable content.
+# Triggers the "legacy fallback for other rc paths" branch — not 124/137/2 (SPEC-8),
+# not max_turns (SPEC-3), but a generic router failure whose content is not a valid plan.
+_ORIG_RTM_SPEC2="$(declare -f route_to_model)"
+route_to_model() { printf '%s' '{"error":"router configuration failure"}'; return 1; }
+rm -f "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true
+: > "$ZBUILD_EVENTS_JSONL"
+set +e
+plan_run "plan" "$_S2_STATE_FILE" >/dev/null 2>&1
+_s2c_rc=$?
+set -e
+unset -f route_to_model
+if [[ -n "$_ORIG_RTM_SPEC2" ]]; then eval "$_ORIG_RTM_SPEC2"; fi
+assert_eq "[#1835/SPEC-2] invalid_plan_response rc=1" "1" "$_s2c_rc"
+assert_file_exists "[#1835/SPEC-2] invalid_plan_response writes plan.json" "$_S2_ARTIFACTS/plan.json"
+assert_eq "[#1835/SPEC-2] invalid_plan_response result_contract=2" "2" \
+    "$(jq -r '.result_contract // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
+assert_eq "[#1835/SPEC-2] invalid_plan_response verdict=error" "error" \
+    "$(jq -r '.verdict // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
+assert_eq "[#1835/SPEC-2] invalid_plan_response disposition=unusable" "unusable" \
     "$(jq -r '.disposition // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
 
 # Restore canned plan for remaining tests.
@@ -1026,13 +1068,21 @@ assert_eq "[#1835/SPEC-6] plan.json disposition=broken when state_file missing" 
 
 # ─── [#1835/SPEC-9][change] manifest config.router max_turns=45 and timeout_s=300 ─
 print_test_section "[#1835/SPEC-9] manifest router budget knobs and resolver behavior"
-_s9_config="$(awk '/^config:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)"
-if grep -qE 'max_turns:[[:space:]]*45' <<< "$_s9_config" 2>/dev/null; then
+# Extract only the lines indented under `  router:` inside `config:`, so a stray
+# max_turns in another sub-key cannot produce a false pass.
+_s9_router="$(awk '
+    /^config:/{in_c=1;next}
+    in_c && /^  router:/{in_r=1;next}
+    in_r && /^    /{print;next}
+    in_r && /^  [a-zA-Z]/{exit}
+    in_c && /^[a-zA-Z]/{exit}
+' "$_MANIFEST_FILE" 2>/dev/null || true)"
+if grep -qE 'max_turns:[[:space:]]*45' <<< "$_s9_router"; then
     assert_pass "[#1835/SPEC-9] manifest config.router.max_turns: 45"
 else
     assert_fail "[#1835/SPEC-9] manifest config.router.max_turns: 45"
 fi
-if grep -qE 'timeout_s:[[:space:]]*300' <<< "$_s9_config" 2>/dev/null; then
+if grep -qE 'timeout_s:[[:space:]]*300' <<< "$_s9_router"; then
     assert_pass "[#1835/SPEC-9] manifest config.router.timeout_s: 300"
 else
     assert_fail "[#1835/SPEC-9] manifest config.router.timeout_s: 300"
@@ -1057,11 +1107,20 @@ assert_eq "[#1835/SPEC-9] _route_resolve_timeout returns 300" "300" "$_s9_to"
 # ─── [#1835/SPEC-10][guard] plan output entry declares primary: true ─────────
 print_test_section "[#1835/SPEC-10] plan output entry declares primary: true (guard)"
 _s10_outputs="$(awk '/^outputs:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)"
-if grep -q 'primary: true' <<< "$_s10_outputs" 2>/dev/null; then
-    assert_pass "[#1835/SPEC-10] plan output entry has primary: true"
+# Extract the block for the specific "id: plan" entry (ends at the next "- id:").
+_s10_plan_block="$(awk '/id: plan$/{f=1;print;next} f && /- id:/{exit} f{print}' \
+    <<< "$_s10_outputs" 2>/dev/null || true)"
+if grep -q 'primary: true' <<< "$_s10_plan_block"; then
+    assert_pass "[#1835/SPEC-10] primary: true is bound to the plan output entry"
 else
-    assert_fail "[#1835/SPEC-10] plan output entry has primary: true"
+    assert_fail "[#1835/SPEC-10] primary: true is bound to the plan output entry"
 fi
+# Exactly one output entry carries primary: true (no other entry must have it).
+_s10_outputs_tmp="$TEST_TEMP_DIR/s10-outputs-1835.txt"
+printf '%s\n' "$_s10_outputs" > "$_s10_outputs_tmp"
+_s10_primary_count="$(grep -c 'primary: true' "$_s10_outputs_tmp" 2>/dev/null)" || _s10_primary_count="0"
+assert_eq "[#1835/SPEC-10] exactly one primary: true in outputs block" "1" \
+    "${_s10_primary_count//[$'\n\r ']/}"
 
 # ─── [#1835/SPEC-11][change] reads goal from ZBUILD_STAGE_INPUTS intake_goal ─
 # plan_run must read the goal from the ZBUILD_STAGE_INPUTS-provided intake_goal
@@ -1134,6 +1193,38 @@ assert_file_exists "[#1835/SPEC-11] absent intake_goal writes plan.json with dis
 assert_eq "[#1835/SPEC-11] absent intake_goal disposition=broken" "broken" \
     "$(jq -r '.disposition // empty' "$_S11B_STATE/artifacts/plan.json" 2>/dev/null || true)"
 
+# [#1835/SPEC-11] unreadable intake_goal file → rc=1, disposition=broken
+# The "file is unreadable" case is distinct from "file is absent": the path
+# exists but open() fails. After migration, plan_run must treat both as broken.
+_S11C_STATE="$TEST_TEMP_DIR/state-spec11c-1835"
+mkdir -p "$_S11C_STATE/artifacts"
+printf '{"schema_version":1,"run_id":"test","issue":"%s","stage_statuses":{}}\n' \
+    "$_ZB_ID" > "$_S11C_STATE/pipeline-state.json"
+cat > "$_S11C_STATE/scope-manifest.md" <<'_S11CSCOPE'
++ core/
++ plugins/
+_S11CSCOPE
+_S11C_GOAL="$TEST_TEMP_DIR/unreadable-intake-goal-1835.md"
+printf 'unreadable goal content\n' > "$_S11C_GOAL"
+chmod 000 "$_S11C_GOAL"
+_S11C_SI="$TEST_TEMP_DIR/stage-inputs-spec11c-1835.json"
+jq -n --arg ig "$_S11C_GOAL" --arg sm "$_S11C_STATE/scope-manifest.md" \
+    '{"inputs":{"intake_goal":$ig,"scope_manifest":$sm}}' > "$_S11C_SI"
+export ZBUILD_STAGE_INPUTS="$_S11C_SI"
+unset ZBUILD_GOAL 2>/dev/null || true
+set +e
+plan_run "plan" "$_S11C_STATE/pipeline-state.json" >/dev/null 2>&1
+_s11c_rc=$?
+set -e
+chmod 644 "$_S11C_GOAL" 2>/dev/null || true
+unset ZBUILD_STAGE_INPUTS 2>/dev/null || true
+export ZBUILD_GOAL="test goal"
+assert_eq "[#1835/SPEC-11] unreadable intake_goal → rc=1" "1" "$_s11c_rc"
+assert_file_exists "[#1835/SPEC-11] unreadable intake_goal writes plan.json with disposition=broken" \
+    "$_S11C_STATE/artifacts/plan.json"
+assert_eq "[#1835/SPEC-11] unreadable intake_goal disposition=broken" "broken" \
+    "$(jq -r '.disposition // empty' "$_S11C_STATE/artifacts/plan.json" 2>/dev/null || true)"
+
 # Restore canned plan for remaining tests.
 CANNED_PLAN='{"schema_version":1,"issue":'"$_ZB_ID"',"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
 
@@ -1178,15 +1269,23 @@ done
 # ─── [#1835/SPEC-15][guard] manifest declares plan-summary.md and plan-checkpoint.md ─
 print_test_section "[#1835/SPEC-15] manifest output entries with summary and checkpoint roles (guard)"
 _s15_outputs="$(awk '/^outputs:/{found=1;next} found && /^[a-zA-Z]/{exit} found{print}' "$_MANIFEST_FILE" 2>/dev/null || true)"
-if grep -q 'summary: true' <<< "$_s15_outputs" 2>/dev/null; then
-    assert_pass "[#1835/SPEC-15] manifest declares an output with summary: true (plan-summary.md)"
+# summary: true must be bound specifically to the plan-summary.md entry, not any output.
+_s15_summary_block="$(awk \
+    '/id: plan-summary.md/{f=1;print;next} f && /- id:/{exit} f{print}' \
+    <<< "$_s15_outputs" 2>/dev/null || true)"
+if grep -q 'summary: true' <<< "$_s15_summary_block"; then
+    assert_pass "[#1835/SPEC-15] plan-summary.md output entry has summary: true"
 else
-    assert_fail "[#1835/SPEC-15] manifest declares an output with summary: true (plan-summary.md)"
+    assert_fail "[#1835/SPEC-15] plan-summary.md output entry has summary: true"
 fi
-if grep -q 'role: checkpoint' <<< "$_s15_outputs" 2>/dev/null; then
-    assert_pass "[#1835/SPEC-15] manifest declares an output with role: checkpoint (plan-checkpoint.md)"
+# role: checkpoint must be bound specifically to the plan-checkpoint.md entry, not any output.
+_s15_checkpoint_block="$(awk \
+    '/id: plan-checkpoint/{f=1;print;next} f && /- id:/{exit} f{print}' \
+    <<< "$_s15_outputs" 2>/dev/null || true)"
+if grep -q 'role: checkpoint' <<< "$_s15_checkpoint_block"; then
+    assert_pass "[#1835/SPEC-15] plan-checkpoint.md output entry has role: checkpoint"
 else
-    assert_fail "[#1835/SPEC-15] manifest declares an output with role: checkpoint (plan-checkpoint.md)"
+    assert_fail "[#1835/SPEC-15] plan-checkpoint.md output entry has role: checkpoint"
 fi
 
 # ─── [#1835/SPEC-16][change] runner.sh leaf-path rc=10 block deleted ─────────
@@ -1203,16 +1302,50 @@ fi
 
 # ─── [#1835/SPEC-17][guard] manifest router retains retries=1 and retry_on_exhaustion=1 ─
 print_test_section "[#1835/SPEC-17] manifest router retains retries=1 and retry_on_exhaustion=1 (guard)"
-if grep -q 'retries: 1' "$_MANIFEST_FILE" 2>/dev/null; then
+# Narrow to the config.router: sub-block so a match elsewhere in the manifest
+# cannot produce a false pass (same extraction as SPEC-9).
+_s17_router="$(awk '
+    /^config:/{in_c=1;next}
+    in_c && /^  router:/{in_r=1;next}
+    in_r && /^    /{print;next}
+    in_r && /^  [a-zA-Z]/{exit}
+    in_c && /^[a-zA-Z]/{exit}
+' "$_MANIFEST_FILE" 2>/dev/null || true)"
+if grep -qE 'retries:[[:space:]]*1' <<< "$_s17_router"; then
     assert_pass "[#1835/SPEC-17] manifest config.router.retries: 1 retained"
 else
     assert_fail "[#1835/SPEC-17] manifest config.router.retries: 1 retained"
 fi
-if grep -q 'retry_on_exhaustion: 1' "$_MANIFEST_FILE" 2>/dev/null; then
+if grep -qE 'retry_on_exhaustion:[[:space:]]*1' <<< "$_s17_router"; then
     assert_pass "[#1835/SPEC-17] manifest config.router.retry_on_exhaustion: 1 retained"
 else
     assert_fail "[#1835/SPEC-17] manifest config.router.retry_on_exhaustion: 1 retained"
 fi
+
+# ─── [#1835/SPEC-18][guard] template override beats manifest budget defaults ───
+# After the manifest gains explicit max_turns:45 / timeout_s:300, a template that
+# sets its own values must still win. Guards that adding manifest defaults does not
+# break the template > manifest precedence documented in ADR-003.
+# Fails at merge-base only if the manifest change introduces a precedence bug.
+print_test_section "[#1835/SPEC-18] template override beats manifest budget defaults (guard)"
+# Define template accessor stubs the router calls when ZBUILD_CURRENT_STAGE is set.
+# See router-manifest-budget-test.sh [SPEC-4] for the accessor naming convention.
+template_stage_router_max_turns() { printf '22\n'; }
+template_stage_router_timeout()   { printf '150\n'; }
+
+_s18_mt=""
+_s18_to=""
+if declare -F _route_resolve_max_turns >/dev/null 2>&1; then
+    _s18_mt="$(ZBUILD_CURRENT_STAGE=plan ZBUILD_PLUGIN_DIR="$PLUGIN_DIR" \
+        _route_resolve_max_turns 2>/dev/null || true)"
+fi
+if declare -F _route_resolve_timeout >/dev/null 2>&1; then
+    _s18_to="$(ZBUILD_CURRENT_STAGE=plan ZBUILD_PLUGIN_DIR="$PLUGIN_DIR" \
+        _route_resolve_timeout 2>/dev/null || true)"
+fi
+unset -f template_stage_router_max_turns template_stage_router_timeout 2>/dev/null || true
+assert_eq "[#1835/SPEC-18] template max_turns=22 beats manifest default (45)" "22" "$_s18_mt"
+assert_eq "[#1835/SPEC-18] template timeout=150 beats manifest default (300)" "150" "$_s18_to"
 
 # ─── Teardown ─────────────────────────────────────────────────────────────────
 cleanup_test_env
