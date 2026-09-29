@@ -1,6 +1,0 @@
-## design — pass
-
-- authored design.md — 29 file(s) in scope, 11 acceptance SPEC(s)
-
-- scope: plugins/agent/plan/manifest.yaml,plugins/agent/plan/plugin.sh,plugins/agent/plan/tests/plan-test.sh,plugins/agent/plan/tests/plan-integration-test.sh,core/pipeline/disposition.sh,core/pipeline/runner.sh,scripts/lib/router-rc-classify.sh,docs/adr/ADR-054-stage-contract.md,docs/adr/ADR-055-inter-stage-data-contract-v2.md,docs/wiki/plugins/plan.md,tests/unit/plan-prompt-override-test.sh,tests/unit/plan-persona-framing-test.sh,tests/unit/plan-notes-contract-test.sh,tests/unit/plan-prompt-issue-discipline-test.sh,tests/unit/plan-context-lib-test.sh,tests/unit/stage-checkpoint-test.sh,tests/unit/artifact-type-retirement-test.sh,tests/unit/engine-stage-reports-test.sh,tests/unit/abort-propagation-test.sh,tests/unit/router-manifest-budget-test.sh,tests/integration/agent-stage-banner-rendered-markdown-test.sh,tests/integration/dispatch-rc-signal-boundary-test.sh,tests/lib/run-status-comment-mock-roster.sh,tests/integration/cycle-on-max-pipeline-continues-test.sh,tests/integration/cycle-acceptance-terminal-failure-test.sh,tests/integration/cycle-rate-limit-aborts-run-test.sh,tests/integration/design-pipeline-test.sh,tests/unit/core-pipeline-contract-validator-test.sh,tests/unit/lint-contract-test.sh
-- artifact: design.md

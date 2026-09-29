@@ -1,6 +1,0 @@
-## spec-coverage — uncovered
-
-- SPEC-6 specifies `rc=1` for the missing-`state_file` exit path but no SPEC requires that path to write a conformant v2 result file, leaving the acceptance checkbox "v2 result on **every** exit path" partially uncovered.
-
-- NOT COVERED: acceptance checkbox 1 (v2 result on every exit path) — SPEC-6 changes the exit code for the missing-`state_file` case but does not mandate a result file be written on that path
-- NOT COVERED: SPEC-11 covers only the `ZBUILD_GOAL`-unset sub-case with a result write, leaving the `state_file`-missing sub-case without a result-write requirement

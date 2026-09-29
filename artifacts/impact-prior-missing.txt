@@ -1,3 +1,0 @@
-core/pipeline/verdict.sh
-core/plugin-registry/lifecycle.sh
-scripts/lib/abort-propagation.sh
