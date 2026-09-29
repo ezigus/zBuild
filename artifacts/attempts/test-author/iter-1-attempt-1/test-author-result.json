@@ -1,0 +1,17 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 17 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 17,
+    "owned_files": [
+      "plugins/agent/plan/tests/plan-integration-test.sh",
+      "plugins/agent/plan/tests/plan-test.sh"
+    ],
+    "testfiles": {
+      "plugins/agent/plan/tests/plan-integration-test.sh": "5b26b8cf4f94223319efcc833edb6a91115bb198",
+      "plugins/agent/plan/tests/plan-test.sh": "d91041a2ae4a17fba3abbde114d2841a19690092"
+    }
+  }
+}

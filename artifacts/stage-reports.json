@@ -5,5 +5,11 @@
     "plugins/agent/plan/plugin.sh",
     "plugins/agent/plan/tests/plan-test.sh"
   ],
-  "wiring_files": []
+  "wiring_files": [],
+  "owned_files": {
+    "test-author": [
+      "plugins/agent/plan/tests/plan-integration-test.sh",
+      "plugins/agent/plan/tests/plan-test.sh"
+    ]
+  }
 }
