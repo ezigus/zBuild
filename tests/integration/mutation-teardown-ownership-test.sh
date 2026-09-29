@@ -128,7 +128,8 @@ fi
 
 print_test_section "O3: a live run owned by another user is left alone"
 # pid 1 is always alive and, for a non-root runner, not ours to signal — the
-# EPERM case. Run as root, kill -0 succeeds and the check is still exact.
+# EPERM case, which `kill -0` mistook for a dead owner. Run as root, pid 1 is
+# still alive, so the requirement holds either way.
 _foreign="$(mktemp -d "${TMPDIR:-/tmp}/zb-mut.1.XXXXXX")"; rmdir "$_foreign"
 git -C "$CLONE" worktree add --detach "$_foreign" HEAD >/dev/null 2>&1
 ZBUILD_MUTATION_DIR="$B_DIR" ZBUILD_MUTATION_PARALLEL_JOBS=1 bash "$RUNNER" >/dev/null 2>&1 || true
