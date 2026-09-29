@@ -58,7 +58,8 @@ Commands:
   doctor                 Validate install and configuration (bash>=5, claude, gh, sqlite3, etc.)
   pipeline start         Start a pipeline (--issue <N>|--goal "<text>") [--dry-run]
                          [--platform-override <p>] [--scope <path>]...
-                         [--no-resume]
+                         [--no-resume]     Recreate instead of reusing the prior
+                                           run's work (default: resume, #2225).
                          [--dev-engine]    Permit running the engine from inside
                                            the target repo (ADR-023 / #1629).
                                            Local debugging only: edits to core/,

@@ -288,6 +288,31 @@ Follow-up — LANDED (makes the foundation live):
 
 Deterministic gates are intentionally left to re-evaluate fresh (§3).
 
+## Amendment (2026-09-29, #2225): the run's resume intent reaches every stage
+
+Prior-work reuse had no switch a stage could see. After a usage-limit abort,
+re-adding `zbuild-run` starts a new run that `hydrate` seeds with the old
+artifacts — but nothing told a stage it was a resume, so design ran again every
+time (~20 min on #1835 and #1837) and the loop's rounds reset.
+
+- **One variable, `ZBUILD_RESUME`**, exported by the runner before any stage
+  runs: `1` by default (reuse prior work), `0` with `--no-resume` — and
+  `ZBUILD_RESUME=0` in the environment is the same as the flag, as
+  `ZBUILD_SELF_HOST=1` is for `--self-host`. The pipeline workflow has a
+  `no_resume` input (like `dry_run`); the daemon leaves the default.
+- **`0` recreates.** `hydrate` restores nothing. It still fetches and adopts the
+  saved-work history, so the next snapshot extends it instead of force-pushing a
+  new one over it (review #2229).
+- **Each stage decides what `1` means for it.** design keeps the prior run's
+  design without a model call when design-gate passed that exact `design.md`
+  (it now records the hash it judged) and spec-coverage found it covered, the prior run did not
+  send the work back to design (`fault` specification/scope), this run has no
+  design yet (not a rewind), and the issue text (`intake.md`) is byte-identical;
+  otherwise it refines as before. Other stages already continue from restored
+  work (plan's checkpoint, test-author's and build's committed files).
+
+Verification: `tests/unit/resume-default-test.sh` (R1–R9).
+
 ## References
 
 - [ADR-001](ADR-001-plugin-contract.md) — plugin contract (this adds the reuse obligation).

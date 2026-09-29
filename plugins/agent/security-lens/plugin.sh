@@ -81,8 +81,8 @@ _security_lens_write_result() {
 # Registered as TERM/INT trap in _security_lens_run_inner around the model call.
 _security_lens_interrupt_handler() {
     _sl_interrupted=1
-    _security_lens_write_result "${_sl_out_ref:-/dev/null}" "error" "interrupted" \
-        "signal_interrupt"
+    _security_lens_write_result "${_sl_out_ref:-/dev/null}" "error" \
+        "${1:-$STAGE_SIGNAL_DISPOSITION}" "${2:-$STAGE_SIGNAL_REASON}"
 }
 
 # ─── run ────────────────────────────────────────────────────────────────────
@@ -200,10 +200,10 @@ _security_lens_run_inner() {
     export ZBUILD_ROUTER_ARTIFACT_ID=security-lens
     _sl_out_ref="$output"
     _sl_interrupted=0
-    trap '_security_lens_interrupt_handler' TERM INT
+    stage_signal_begin _security_lens_interrupt_handler
     # #491: do NOT redirect route_to_model's stderr — see ADR-015 §v4.
     raw_response="$(route_to_model "$tier" "$prompt")" || router_rc=$?
-    trap - TERM INT
+    stage_signal_end
     if [[ "$_prev_json_env" == "__UNSET__" ]]; then
         unset ZBUILD_ROUTER_JSON_OUTPUT
     else

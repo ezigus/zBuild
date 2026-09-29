@@ -24,6 +24,11 @@ on:
         required: false
         type: boolean
         default: false
+      no_resume:
+        description: "Recreate everything instead of reusing the prior run's work (#2225). Default: resume."
+        required: false
+        type: boolean
+        default: false
       template:
         description: "Pipeline template id (e.g. simple, deployed). Empty = zbuild default (simple)."
         required: false
@@ -208,6 +213,9 @@ jobs:
           fi
           if [[ "${{ inputs.dry_run }}" == "true" ]]; then
             args+=(--dry-run)
+          fi
+          if [[ "${{ inputs.no_resume }}" == "true" ]]; then
+            args+=(--no-resume)
           fi
           if [[ -n "${{ inputs.template }}" ]]; then
             args+=(--template "${{ inputs.template }}")

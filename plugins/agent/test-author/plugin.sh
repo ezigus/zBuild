@@ -90,7 +90,7 @@ _ta_drop_stale_tags() {
                   line = substr(line, RSTART+RLENGTH)
               }
               print out line }' "$repo/$tf" > "$repo/$tf.zb-tags" 2>/dev/null \
-            && mv -f "$repo/$tf.zb-tags" "$repo/$tf" || rm -f "$repo/$tf.zb-tags"
+            && replace_keep_mode "$repo/$tf.zb-tags" "$repo/$tf" || rm -f "$repo/$tf.zb-tags"
         after="$(grep -cE "$re" "$repo/$tf" 2>/dev/null || true)"
         [[ "$before" =~ ^[0-9]+$ && "$after" =~ ^[0-9]+$ ]] && n=$(( n + before - after ))
     done < <(acceptance_list_testfiles "$design" 2>/dev/null || true)
@@ -226,7 +226,10 @@ Some of these testfile(s) may already hold assertions from an earlier attempt at
 
 Work one testfile at a time: read only what that file's SPECs need, write it to disk, and only then move on — write each file before you plan the next. Do not plan every SPEC up front. Your call has a time limit; a file already written survives it and is continued by the next attempt, and a plan that was never written is lost.
 
-Write or amend only the testfile(s) named above. Do not write, modify or stub any implementation file."
+Write or amend only the testfile(s) named above. Do not write, modify or stub any implementation file.
+
+You will be called again until you are done: what you wrote stays on disk and the next call picks up from it. When EVERY SPEC above has its assertion written to disk, end your reply with a line containing only:
+LOOP_COMPLETE"
 
     # ADR-063 §1 (#2170): the budget reaches the prompt from the values that
     # enforce it — never a literal. Same shape as design/plan/review-lens.
@@ -242,26 +245,56 @@ Write or amend only the testfile(s) named above. Do not write, modify or stub an
     local tier="T2" rc=0
     declare -f resolve_tier >/dev/null 2>&1 && tier="$(resolve_tier test-author "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null || printf 'T2')"
 
-    if ! declare -f route_to_model >/dev/null 2>&1; then
+    if ! declare -f route_to_model_loop >/dev/null 2>&1; then
         _ta_write_result "$art" "degraded" "broken" \
             "no router available to author assertions" "$n"
         return 1
     fi
-    route_to_model "$tier" "$prompt" >/dev/null 2>&1 || rc=$?
+    # #2225: like build, the author works in a loop until it says it is done —
+    # each call with its own time limit, each starting from the testfiles the
+    # earlier calls left on disk; they are committed when the loop ends, done
+    # or not. (Not between calls: the loop measures progress against the last
+    # commit, so a mid-loop commit reads as "no progress".) One call for the
+    # whole contract overran on every 15–25 SPEC contract (#1846, #1837).
+    local max_iter; max_iter="$(_route_resolve_max_iterations 2>/dev/null || printf '10')"
+    [[ "$max_iter" =~ ^[0-9]+$ && "$max_iter" -gt 0 ]] || max_iter=10
+    [[ -n "${ZBUILD_CYCLE_ITER:-}" && "$max_iter" -gt 15 ]] && max_iter=15
+    local prompt_file
+    prompt_file="$(mktemp "$(zbuild_engine_tmpdir 2>/dev/null || printf '%s' "${TMPDIR:-/tmp}")/zb-ta-prompt.XXXXXX")" || {
+        _ta_write_result "$art" "degraded" "broken" "could not create the prompt file" "$n"
+        return 1
+    }
+    printf '%s' "$prompt" > "$prompt_file"
+    # The loop shows the model only its own testfiles' progress — never the
+    # implementation, which this stage must not see (#2022; review #2229).
+    local _ctx; _ctx="$(acceptance_list_testfiles "$design" 2>/dev/null | paste -sd, - || true)"
+    route_to_model_loop "$tier" "$prompt_file" "$repo" "$max_iter" \
+        --context-paths "${_ctx:-.zbuild-no-testfiles}" || rc=$?
+    rm -f "$prompt_file"
+    local _end="${_ROUTE_LOOP_TERMINATED_REASON:-}"
 
-    if [[ $rc -ne 0 ]]; then
-        # ADR-054 §6: the engine's closed set decides what happens next; this
-        # stage only says HOW it stopped. _llm_router_classify owns the mapping
-        # so a new rc does not need a new opinion here.
-        local _v="" _reason="" _disp=""
-        if declare -f _llm_router_classify >/dev/null 2>&1; then
-            _llm_router_classify "$rc" _v _reason 2>/dev/null || true
+    if [[ "$_end" != "done_sentinel" ]]; then
+        # ADR-054 §6: this stage only says HOW it stopped; the one mapping from
+        # a router or loop reason to its word decides which (#2187). A loop that
+        # used every call without finishing is `out_of_turns`.
+        local _reason="$_end" _disp="" _v=""
+        if [[ "$rc" -eq 130 ]]; then
+            _reason="signal"
+        elif [[ -z "$_end" ]]; then
+            # The loop never got going (no model CLI, a bad tier): classify its
+            # rc the way single-shot calls are (review #2229).
+            _router_rc_classify "$rc" _v _reason 2>/dev/null || _reason="router_rc_nonzero"
         fi
-        # #2187: the one mapping from a router failure to its cause word.
-        _disp="$(router_reason_disposition "${_reason:-router_rc_nonzero}")"
+        if [[ "$_reason" == "error" ]]; then
+            # The loop's own machinery failed (e.g. git diff) — zBuild's defect,
+            # not an outside service (review #2229).
+            _disp="broken"
+        else
+            _disp="$(router_reason_disposition "$_reason")"
+        fi
         _ta_write_result "$art" "degraded" "$_disp" \
-            "the model call failed (${_reason:-rc=$rc}) — no assertions were authored" "$n"
-        _ta_commit_testfiles "$design" "$repo" "test-author: partial assertions (${_reason:-rc=$rc}) — continued by the next attempt"
+            "the author did not finish (${_reason}) — what it wrote is kept for the next attempt" "$n"
+        _ta_commit_testfiles "$design" "$repo" "test-author: partial assertions (${_reason}) — continued by the next attempt"
         return 1
     fi
 

@@ -279,6 +279,7 @@ _pr_open_run_inner() {
             "No PR was opened."
         emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
             "reason=branch_push_failed" "branch=${target_branch}"
+        # disposition-ok: GitHub (git push) is not responding
         jq -n --arg branch "$target_branch" --arg detail "$ZBUILD_PUSH_RECONCILE_ERR" \
             '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":("failed to push branch: "+$branch+": "+$detail)}' \
             > "$output_pr_result_json"
@@ -353,6 +354,7 @@ _pr_open_run_inner() {
                 "The PR exists but its body or title is not current."
             emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                 "reason=gh_pr_edit_failed"
+            # disposition-ok: GitHub (gh pr edit) is not responding
             jq -n \
                 --arg reason "$gh_output" \
                 '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":$reason}' \
@@ -378,6 +380,7 @@ _pr_open_run_inner() {
                             "The PR exists but its body or title is not current."
                         emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                             "reason=gh_pr_edit_failed"
+                        # disposition-ok: GitHub (gh pr edit) is not responding
                         jq -n \
                             --arg reason "$gh_output" \
                             '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":$reason}' \
@@ -393,6 +396,7 @@ _pr_open_run_inner() {
                         "No PR was opened."
                     emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                         "reason=gh_pr_create_failed"
+                    # disposition-ok: GitHub (gh pr create) is not responding
                     jq -n \
                         --arg reason "$gh_output" \
                         '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":$reason}' \
@@ -406,6 +410,7 @@ _pr_open_run_inner() {
                     "No PR was opened."
                 emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
                     "reason=gh_pr_create_failed"
+                # disposition-ok: GitHub (gh pr create) is not responding
                 jq -n \
                     --arg reason "$gh_output" \
                     '{"result_contract":2,"verdict":"error","disposition":"unavailable","reason":$reason}' \

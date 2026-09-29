@@ -70,6 +70,20 @@ source "$REPO_ROOT/plugins/agent/test-author/plugin.sh"
 # this reason.
 route_to_model() { printf '%s' "$2" > "$_TA_PROMPT"; printf 'authored\n'; return $_TA_RC; }
 resolve_tier() { printf 'T2'; }
+# #2225: test-author calls the model through route_to_model_loop now. These
+# tests' requirements are unchanged, so the loop is stubbed to hand its prompt
+# to whichever route_to_model stub a section defines, and to end the way the
+# real loop would: done on rc=0, otherwise with the router's reason.
+route_to_model_loop() {
+    local _p; _p="$(cat "$2")"
+    local _rc=0; route_to_model "$1" "$_p" >/dev/null || _rc=$?
+    case "$_rc" in
+        0)   _ROUTE_LOOP_TERMINATED_REASON="done_sentinel" ;;
+        124) _ROUTE_LOOP_TERMINATED_REASON="router_timeout" ;;
+        *)   _ROUTE_LOOP_TERMINATED_REASON="error" ;;
+    esac
+    return "$_rc"
+}
 
 _setup() {
     _S="$TEST_TEMP_DIR/$1"; _A="$_S/artifacts"; _R="$_S/repo"

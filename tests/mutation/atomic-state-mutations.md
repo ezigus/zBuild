@@ -2,11 +2,11 @@
 `scripts/lib/helpers.sh` — `atomic_write` lives here (referenced by `core/state/atomic.sh::locked_state_update`).
 
 ## Mutation
-Neutralize the `mv "$tmp" "$target"` atomic rename step in `atomic_write`, leaving the temp file in place without replacing the target. Simulates a half-written state where the canonical file is never updated. (#1773 wrapped the `mv` in an rc check, so the patch targets the guarded form.)
+Neutralize the atomic rename step in `atomic_write` (`replace_keep_mode "$tmp" "$target"` since #2225, which keeps the target's mode; a plain `mv` before that), leaving the temp file in place without replacing the target. Simulates a half-written state where the canonical file is never updated. (#1773 wrapped the rename in an rc check, so the patch targets the guarded form.)
 
 ## Patch
 ```bash
-sed -i.mutbak 's|    if ! mv "\$tmp" "\$target"; then|    if ! : ; then|' scripts/lib/helpers.sh
+sed -i.mutbak 's|    if ! replace_keep_mode "\$tmp" "\$target"; then|    if ! : ; then|' scripts/lib/helpers.sh
 ```
 
 ## Expected failing test

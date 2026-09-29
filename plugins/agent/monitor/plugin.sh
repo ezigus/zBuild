@@ -71,7 +71,8 @@ _monitor_write_result() {
 # (_mon_out_ref, _mon_interrupted) are the ones it reads and sets — nothing
 # global to leak into the caller (review #2221).
 _monitor_interrupt_handler() {
-    _monitor_write_result "${_mon_out_ref:-}" "degraded" "interrupted" "signal_interrupt" "" "[]"
+    _monitor_write_result "${_mon_out_ref:-}" "degraded" \
+        "${1:-$STAGE_SIGNAL_DISPOSITION}" "${2:-$STAGE_SIGNAL_REASON}" "" "[]"
     _mon_interrupted=1
 }
 
@@ -226,13 +227,11 @@ _monitor_stage_run_inner() {
     # disposition:interrupted is written if the call is cut short by SIGTERM/SIGINT.
     local response rc=0
     local _mon_out_ref="$report_out" _mon_interrupted=0
-    # The caller's own handlers are put back afterwards, not reset to the
-    # default (review #2221 — a sourced plugin must not discard them).
-    local _mon_prev_traps; _mon_prev_traps="$(trap -p TERM INT)"
-    trap '_monitor_interrupt_handler' TERM INT
+    # The shared helper records a signal and puts the caller's own handlers
+    # back afterwards (#2225; review #2221).
+    stage_signal_begin _monitor_interrupt_handler
     response="$(route_to_model "T1" "$prompt")" || rc=$?
-    trap - TERM INT
-    [[ -n "$_mon_prev_traps" ]] && eval "$_mon_prev_traps"
+    stage_signal_end
 
     # rc=130 (SIGTERM/SIGINT propagated through the router subshell): the trap
     # above already wrote disposition:interrupted unless it raced the return —

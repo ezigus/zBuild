@@ -74,7 +74,8 @@ _deploy_input_path() {
 _deploy_on_signal() {
     _DEPLOY_INTERRUPTED=1
     [[ -n "${ZBUILD_ARTIFACT_DIR:-}" ]] \
-        && _deploy_write_result "$ZBUILD_ARTIFACT_DIR" "error" "interrupted" "signal_interrupt"
+        && _deploy_write_result "$ZBUILD_ARTIFACT_DIR" "error" \
+            "${1:-$STAGE_SIGNAL_DISPOSITION}" "${2:-$STAGE_SIGNAL_REASON}"
 }
 
 # ─── run ─────────────────────────────────────────────────────────────────────
@@ -93,10 +94,10 @@ deploy_agent_run() {
     fi
     mkdir -p "$artifacts_dir"
     _DEPLOY_INTERRUPTED=0
-    trap '_deploy_on_signal' TERM INT
+    stage_signal_begin _deploy_on_signal
     local rc=0
     _deploy_agent_run_inner "$stage_id" "$state_file" || rc=$?
-    trap - TERM INT
+    stage_signal_end
     if [[ "$_DEPLOY_INTERRUPTED" == "1" ]]; then
         _deploy_write_result "$artifacts_dir" "error" "interrupted" "signal_interrupt"
         stage_summary_write "$artifacts_dir/deploy-summary.md" "deploy" "error" \

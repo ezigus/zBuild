@@ -88,6 +88,13 @@ zbuild_plugin_bootstrap() {
         return 1
     }
 
+    # #2225: how a stage records being stopped by a signal — one word for it.
+    # shellcheck source=./stage-signal.sh
+    source "$_proot/scripts/lib/stage-signal.sh" || {
+        printf 'plugin-bootstrap: failed to source stage-signal.sh\n' >&2
+        return 1
+    }
+
     # Best-effort source artifact-render.sh so plugins inherit the renderer
     # registry without each having to source it explicitly. ADR-018.
     local _render="$_proot/scripts/lib/artifact-render.sh"

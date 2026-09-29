@@ -85,7 +85,8 @@ _review_lens_write_result() {
 # Reads $_rl_out_ref (set by _review_lens_run_inner before trap registration)
 # so it can be invoked directly in tests for SIGTERM simulation (SPEC-13).
 _review_lens_interrupt_handler() {
-    _review_lens_write_result "${_rl_out_ref:-}" "degraded" "interrupted" "signal_interrupt"
+    _review_lens_write_result "${_rl_out_ref:-}" "degraded" \
+        "${1:-$STAGE_SIGNAL_DISPOSITION}" "${2:-$STAGE_SIGNAL_REASON}"
     # Ctrl-C reaches the whole process group: this trap fires AND the router
     # subshell returns 130. Record the write so the rc=130 branch skips its own.
     _rl_interrupted=1
@@ -299,7 +300,7 @@ _review_lens_run_inner() {
     # if the model call is cut short by SIGTERM or SIGINT (SPEC-13).
     _rl_out_ref="$out"
     _rl_interrupted=0
-    trap '_review_lens_interrupt_handler' TERM INT
+    stage_signal_begin _review_lens_interrupt_handler
     raw_response="$(route_to_model "$tier" "$prompt")" || router_rc=$?
     if [[ "$_prev_json_env" == "__UNSET__" ]]; then
         unset ZBUILD_ROUTER_JSON_OUTPUT
@@ -320,12 +321,12 @@ _review_lens_run_inner() {
     # rc=130 (SIGINT propagated through subshell) — distinct from advisory rc=0
     # degrade paths; write interrupted disposition and propagate the signal code.
     if [[ "$router_rc" -eq 130 ]]; then
-        trap - TERM INT
+        stage_signal_end
         [[ "${_rl_interrupted:-0}" == "1" ]] \
             || _review_lens_write_result "$out" "degraded" "interrupted" "signal_interrupt"
         return 130
     fi
-    trap - TERM INT
+    stage_signal_end
 
     # rc=10 (budget/turn exhaustion — ADR-063 §3): distinct from advisory rc=0
     # degrade paths. Write disposition:exhausted and propagate rc=10 so the engine
