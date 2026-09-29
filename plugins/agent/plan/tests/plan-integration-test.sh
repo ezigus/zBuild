@@ -513,16 +513,22 @@ assert_eq "[#1835/SPEC-8] OOM kill disposition=interrupted" "interrupted" \
     "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
 
 # rc=2 (router config error) → disposition=misconfigured
+# route.sh normalises all non-124/137 claude binary exit codes to rc=1 (see
+# _route_call_claude case statement). The real router rc=2 path comes from the
+# router's own setup checks BEFORE the claude binary is invoked — specifically
+# the max_turns validation at the top of _route_call_claude. Setting
+# ZBUILD_ROUTER_MAX_TURNS to a non-numeric value forces that path: the resolver
+# returns the invalid value, the validator fires, and route_to_model returns 2
+# without ever calling the claude binary. This is the router_config_error case
+# _router_rc_classify maps to disposition=misconfigured.
 rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
-_S8_CFG_RESULT="$TEST_TEMP_DIR/s8-config-result.txt"
-printf '%s' "" > "$_S8_CFG_RESULT"
-_install_plan_error_mock_file --subtype "error_during_execution" \
-    --result-file "$_S8_CFG_RESULT" --rc 2
+export ZBUILD_ROUTER_MAX_TURNS="INVALID_MAX_TURNS_1835"
 set +e
 plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
 _s8_cfg_rc=$?
 set -e
+unset ZBUILD_ROUTER_MAX_TURNS 2>/dev/null || true
 assert_eq "[#1835/SPEC-8] config error (rc=2) → plugin rc=1" "1" "$_s8_cfg_rc"
 assert_file_exists "[#1835/SPEC-8] config error writes plan.json" "$ARTIFACTS_DIR/plan.json"
 assert_eq "[#1835/SPEC-8] config error result_contract=2" "2" \
