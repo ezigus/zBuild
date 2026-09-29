@@ -113,7 +113,9 @@ Usage: runner.sh --issue <N>|--goal "<text>" [--dry-run] [--template <id>]
   --template <id>   Pipeline template to use (default: simple)
   --resume          Resume an existing run (skip completed stages)
   --from-stage <s>  Skip ahead to stage <s> when resuming (emits warning)
-  --no-resume       Force fresh start even if an in_progress state exists
+  --no-resume       Recreate: start fresh even if a state exists, restore no
+                    prior-run work and adopt no prior branch (default: resume,
+                    reusing prior work; ZBUILD_RESUME=0 is the same, #2225)
   --force           Resume even if status=aborted
   --self-host       Dogfood zBuild's own engine: redirect read-only contract-
                     grammar libs to a working-tree snapshot (#963, ADR-023)
@@ -682,6 +684,17 @@ _runner_validate_startup_preflight() {
 
     # enforce: fail-closed
     return 2
+}
+
+# _runner_resume_intent <no_resume:true|false> — 1 (resume: reuse prior work)
+# or 0 (recreate). The default is to resume (#2225); --no-resume, or
+# ZBUILD_RESUME=0 already in the environment, recreates.
+_runner_resume_intent() {
+    if [[ "${1:-false}" == "true" || "${ZBUILD_RESUME:-1}" == "0" ]]; then
+        printf '0'
+    else
+        printf '1'
+    fi
 }
 
 # _runner_startup_preflight_gate <dry_run> <resume_mode> (ADR-051 §warn-first, #1318)
@@ -1578,6 +1591,13 @@ main() {
 
     # #963: ZBUILD_SELF_HOST=1 is equivalent to the --self-host flag.
     [[ "${ZBUILD_SELF_HOST:-0}" == "1" ]] && self_host=true
+    # #2225: the run's resume intent reaches every stage as ZBUILD_RESUME —
+    # 1 (reuse prior work) unless --no-resume, and ZBUILD_RESUME=0 in the
+    # environment is the same as the flag. Each stage decides what reuse means
+    # for it; hydrate restores nothing under 0.
+    ZBUILD_RESUME="$(_runner_resume_intent "$no_resume")"
+    export ZBUILD_RESUME
+    [[ "$ZBUILD_RESUME" == "0" ]] && no_resume=true
 
     if [[ -z "$issue" && -z "$goal" ]]; then
         error "Must specify --issue <N> or --goal \"<text>\""

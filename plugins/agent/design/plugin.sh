@@ -278,6 +278,28 @@ _design_state_blob_url() {
 #   $2 = plan_json_path
 #   $3 = output_design_md path
 #   $4 = artifact_dir
+# _design_prior_reusable <artifact_dir> — rc 0 when the prior run's design may
+# stand as this run's without a model call (#2225): the run resumes (the
+# default), this run has no design yet (so not a rewind), the prior design
+# passed design-gate, the prior run did not send the work back to design, and
+# the issue text is byte-identical. Anything else — design runs as before.
+# A resume used to re-run design every time (~20 min, #1835/#1837) because no
+# stage was told it was one.
+_design_prior_reusable() {
+    local ad="$1" rr="${ZBUILD_RESTORED_ARTIFACTS_DIR:-}"
+    [[ "${ZBUILD_RESUME:-1}" != "0" ]] || return 1
+    [[ -n "$rr" && -s "$rr/design.md" ]] || return 1
+    [[ ! -s "$ad/design.md" ]] || return 1
+    [[ "$(jq -r '.verdict // empty' "$rr/design-gate-result.json" 2>/dev/null)" == "pass" ]] || return 1
+    if [[ -s "$rr/gate-aggregator-result.json" ]]; then
+        case "$(jq -r '.fault // empty' "$rr/gate-aggregator-result.json" 2>/dev/null)" in
+            specification|scope) return 1 ;;
+        esac
+    fi
+    local now="${ZBUILD_STATE_DIR:-$(dirname "$ad")}/intake.md" prior; prior="$(dirname "$rr")/intake.md"
+    [[ -s "$now" && -s "$prior" ]] && cmp -s "$now" "$prior"
+}
+
 _design_stage_run_inner() {
     local scope_manifest="$1"
     local plan_json_path="$2"
@@ -300,6 +322,18 @@ _design_stage_run_inner() {
     # below. verdict.sh reads it as design's raw verdict for the cycle.
     local design_verdict_sidecar="$artifact_dir/design-verdict.json"
     rm -f "$design_verdict_sidecar"
+
+    # #2225: a resumed run keeps a design the prior run already got past its gate.
+    if _design_prior_reusable "$artifact_dir"; then
+        cp "${ZBUILD_RESTORED_ARTIFACTS_DIR}/design.md" "$output_design_md"
+        emit_event "design.reused" "plugin=design" "source=prior_run" >/dev/null 2>&1 || true
+        _design_write_result "$artifact_dir" "pass" "complete" \
+            "reused the prior run's design (it passed design-gate; the issue text is unchanged)"
+        stage_summary_write "$artifact_dir/design-summary.md" "design" "pass" \
+            "reused the prior run's design — it passed design-gate and the issue text is unchanged" \
+            "Resumed run (#2225). Run with --no-resume to write a new design."
+        return 0
+    fi
 
     if [[ ! -f "$plan_json_path" ]]; then
         error "_design_stage_run_inner: plan.json not found at $plan_json_path"

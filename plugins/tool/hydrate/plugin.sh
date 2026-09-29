@@ -87,6 +87,16 @@ hydrate_run() {
     # expression here rather than inventing one keeps the two halves from
     # drifting — a boundary whose halves disagree about where something lives is
     # not a boundary (#1809).
+    # #2225: --no-resume recreates — nothing from a prior run is restored and no
+    # prior work branch is adopted, so every stage starts from nothing.
+    if [[ "${ZBUILD_RESUME:-1}" == "0" ]]; then
+        _hydrate_write_result "$_artifacts_dir" "complete" \
+            "fresh start (--no-resume): prior work not restored, prior branch not adopted" "skipped" 0
+        emit_event "hydrate.complete" "stage=$_stage_id" "issue=$_issue" \
+            "restored=0" "reason=no_resume" 2>/dev/null || true
+        return 0
+    fi
+
     local _target="${ZBUILD_RESTORED_ARTIFACTS_DIR:-$_state_dir/restored-artifacts/artifacts}"
     local _restored_root; _restored_root="$(dirname "$_target")"
     local _staging="${_restored_root}.staging"
