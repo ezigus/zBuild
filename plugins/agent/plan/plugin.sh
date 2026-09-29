@@ -890,22 +890,21 @@ $_plan_instructions"
             local _reason="invalid_plan_response"
             [[ $router_rc -eq 0 && -z "$raw_response" ]] && _reason="empty_result_envelope"
             [[ $schema_failed -eq 1 ]] && _reason="schema_violation"
-            # v2: derive disposition from router rc when the router itself failed;
-            # fall back to unusable for parse/schema failures (router rc=0).
-            # route_to_model collapses non-124/137 CLI exits to rc=1; that maps
-            # to router_rc_nonzero → "unavailable" in the shared table. For plan
-            # any unclassified router failure is an operator config issue, so
-            # remap "unavailable" to "misconfigured" within this plugin.
+            # v2: derive disposition from router rc for specific signals
+            # (timed_out/interrupted/misconfigured); generic rc=1 stays unusable.
             local _v2_disp="unusable"
             if [[ $router_rc -ne 0 ]]; then
                 local _rc_verdict="" _rc_reason=""
                 _router_rc_classify "$router_rc" _rc_verdict _rc_reason
                 local _rc_disp
                 _rc_disp="$(router_reason_disposition "${_rc_reason:-}")"
-                if [[ -z "$_rc_disp" || "$_rc_disp" == "unavailable" ]]; then
-                    _rc_disp="misconfigured"
+                # Only use the router-derived disposition when it names a specific
+                # signal (timed_out, interrupted, misconfigured). A generic rc=1
+                # ("router_rc_nonzero") maps to "unavailable" which has no more
+                # information than "unusable" — keep unusable so SPEC-2 holds.
+                if [[ -n "$_rc_disp" && "$_rc_disp" != "unavailable" ]]; then
+                    _v2_disp="$_rc_disp"
                 fi
-                _v2_disp="$_rc_disp"
             fi
             _plan_write_result "$output_plan_json" "error" "$_v2_disp" "$_reason"
             error "_plan_run_inner: no valid plan.json produced (reason=$_reason)"
