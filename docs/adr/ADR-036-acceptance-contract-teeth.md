@@ -910,3 +910,16 @@ point read `negctl_error:timeout` under a 60s timer that never fired.
   the OOM killer, and "signal a child" would be the wrong advice (review #2220).
 
 Verification: `tests/unit/acceptance-negctl-signal-test.sh` (S1–S6).
+
+### Amendment (2026-09-29, #1835) — a guard that never ran is not a regressed guard
+
+The negative control runs HEAD's TESTFILE against the merge-base code. On #1835 an earlier `[change]` step in that file called a function that returns non-zero before the change, bare under `set -e`. So the file exited there, and every assertion after it never ran. The gate read "no verdict for SPEC-18" as "SPEC-18 fails at the merge-base" and reported `guard_regressed`. It declared a specification fault and rewound design three times to relabel a guard that held. Verified: at the merge-base the template still wins, as SPEC-18 says.
+
+- **`guard_unreached`** (new, recoverable): the file exited non-zero and printed ✓/✗ verdicts for **other** SPECs of this contract, but none for this one. So it stopped before this assertion ran. The line names the last SPEC that printed (`after=SPEC-n`). The signal is the contract's own tag shape, so it holds for any language.
+- **Unchanged:**
+  - A bare guard test with no verdict lines at all (#1658) keeps the file's exit code as its verdict. It cannot be told apart from an early stop, the reason #2129 backed out.
+  - A guard that prints its **own** ✗ is still `guard_regressed`.
+- **Not a specification fault.** Design is not rewound. When every finding is an unreached guard, the result's `about` names the testfile(s), so the engine frames the finding for the stage that wrote them (#2180).
+- **The design-gate precheck fails open on it:** `GUARD SKIP <spec> guard_unreached`.
+
+Verification: `tests/unit/acceptance-negctl-unreached-test.sh` (U1–U6).
