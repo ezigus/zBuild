@@ -1,0 +1,371 @@
+### SPEC-16 baseline plugins/agent/plan/tests/plan-test.sh
+
+[38;2;0;212;255m[1m  plugin: plan (plan-stage agent plugin — issue #340)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m plan_run returns rc=0
+  [38;2;74;222;128m✓[0m plan.json artifact created
+  [38;2;74;222;128m✓[0m plan exports ZBUILD_ROUTER_JSON_OUTPUT=1 around route_to_model (#476)
+  [38;2;74;222;128m✓[0m plan exports ZBUILD_ROUTER_ARTIFACT_ID=plan around route_to_model (#483)
+  [38;2;74;222;128m✓[0m plan.json schema_version == 1
+  [38;2;74;222;128m✓[0m plan.json .steps | length > 0
+  [38;2;74;222;128m✓[0m plan prompt names schema_version field
+  [38;2;74;222;128m✓[0m plan prompt names steps array
+  [38;2;74;222;128m✓[0m plan prompt describes a step's id field
+  [38;2;74;222;128m✓[0m plan prompt describes a step's description field
+  [38;2;74;222;128m✓[0m plan prompt describes a step's files field
+  [38;2;74;222;128m✓[0m plan prompt demands exactly one JSON object response
+  [38;2;74;222;128m✓[0m plan prompt forbids markdown code fences
+  [38;2;74;222;128m✓[0m plan prompt still includes the goal text
+  [38;2;74;222;128m✓[0m plan prompt no longer forbids tool calls
+  [38;2;74;222;128m✓[0m plan prompt no longer says no tool-use
+  [38;2;74;222;128m✓[0m plan prompt invites read-only exploration (Read/Grep/Glob)
+  [38;2;74;222;128m✓[0m plan prompt forbids mutating tools (Edit/Write)
+  [38;2;74;222;128m✓[0m plan prompt states its turn budget
+  [38;2;74;222;128m✓[0m [budget] guidance names the budget number
+  [38;2;74;222;128m✓[0m [budget] guidance biases toward a best-effort plan
+  [38;2;74;222;128m✓[0m [budget] empty for the 0 (unlimited) sentinel
+  [38;2;74;222;128m✓[0m [budget] empty for a non-numeric budget
+  [38;2;74;222;128m✓[0m [SPEC-7] plan prompt states its wall-clock budget
+  [38;2;74;222;128m✓[0m [SPEC-8] wallclock guidance names the budget seconds
+  [38;2;74;222;128m✓[0m [SPEC-8] wallclock guidance mentions best-effort plan
+  [38;2;74;222;128m✓[0m [SPEC-8] empty for zero budget
+  [38;2;74;222;128m✓[0m [SPEC-8] empty for non-numeric budget
+  [38;2;74;222;128m✓[0m [SPEC-8] empty when elapsed >= budget (degenerate)
+  [38;2;74;222;128m✓[0m plan prompt inlines the scope manifest
+  [38;2;74;222;128m✓[0m plan prompt includes manifest prefix
+  [38;2;74;222;128m✓[0m in-scope plan returns rc=0
+  [38;2;74;222;128m✓[0m in-scope plan.json written
+  [38;2;74;222;128m✓[0m in-scope plan emits no violation events
+  [38;2;74;222;128m✓[0m [SPEC-2] in-scope plugin.result payload.scope_violations=0
+  [38;2;74;222;128m✓[0m out-of-scope plan returns rc=0 (fail-soft)
+  [38;2;74;222;128m✓[0m out-of-scope plan.json still written
+  [38;2;74;222;128m✓[0m out-of-scope plan emits exactly one violation event
+  [38;2;74;222;128m✓[0m violation reason=out_of_scope
+  [38;2;74;222;128m✓[0m violation path reports offender
+  [38;2;74;222;128m✓[0m scope_violations=1 in plugin.result
+  [38;2;74;222;128m✓[0m two offenders emit two violation events
+  [38;2;74;222;128m✓[0m mixed plan reports only out-of-scope path
+  [38;2;74;222;128m✓[0m mixed violation path is the offender
+  [38;2;74;222;128m✓[0m absolute path violation reason=absolute_path
+  [38;2;74;222;128m✓[0m traversal violation reason=out_of_repo
+  [38;2;74;222;128m✓[0m malformed files[] non-string returns rc=1
+  [38;2;74;222;128m✓[0m malformed plan error reason=schema_violation (#476)
+  [38;2;74;222;128m✓[0m empty files[] returns rc=0
+  [38;2;74;222;128m✓[0m empty files[] emits no violations
+  [38;2;74;222;128m✓[0m empty .result returns rc=1 (#476)
+  [38;2;74;222;128m✓[0m empty .result emits reason=empty_result_envelope (#476)
+  [38;2;74;222;128m✓[0m #478: prose-prefixed JSON returns rc=0
+  [38;2;74;222;128m✓[0m #478: plan.json written despite prose preface
+  [38;2;74;222;128m✓[0m #478: plan.json parsed from prose-prefixed payload
+  [38;2;74;222;128m✓[0m #478: plan prompt demands first character must be {
+  [38;2;74;222;128m✓[0m #478 / ADR-028: prompt forbids prose before/after JSON
+  [38;2;74;222;128m✓[0m plan_run no longer fail-closes on missing manifest (router-owned, ADR-043)
+  [38;2;74;222;128m✓[0m #842-A: plan_run rc=0 (no cycle env — plan is a leaf)
+  [38;2;74;222;128m✓[0m #842-A: prompt is non-empty (guard)
+  [38;2;74;222;128m✓[0m #842-A: plan prompt has no PRIOR PLAN / PRIOR IMPACT headings
+  [38;2;74;222;128m✓[0m #842-B: plan_run rc=0 with stale feedback env
+  [38;2;74;222;128m✓[0m #842-B: prompt is non-empty (guard)
+  [38;2;74;222;128m✓[0m #842-B: stale cycle feedback not spliced — plan is a leaf
+
+[38;2;0;212;255m[1m  T_SANITIZE (#721): _zbuild_sanitize_for_llm applied to plan redacted_content[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m T_SANITIZE: _plan_run_inner rc=0
+  [38;2;74;222;128m✓[0m [SPEC-3] plan redacted_content OOS-marker tags stripped before LLM prompt
+  [38;2;74;222;128m✓[0m [SPEC-4] plan redacted_content genuine text survives sanitize
+
+[38;2;0;212;255m[1m  Issue #1052 — plan-stage resilience (resumable context + recovery)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[SPEC-1][change] persist plan-context on success[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] plan_run rc=0 on success
+  [38;2;74;222;128m✓[0m [SPEC-1] plan.context.persisted emitted on success
+  [38;2;74;222;128m✓[0m [SPEC-1] plan-context.json written to artifacts
+  [38;2;74;222;128m✓[0m [SPEC-1] plan-context status=complete on success
+  [38;2;74;222;128m✓[0m [SPEC-1] plan-context goal_hash matches normalized goal
+  [38;2;74;222;128m✓[0m [SPEC-1] plan-context.md readable
+
+  [38;2;0;212;255m[SPEC-2][change] resume splices prior exploration context[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] plan_run rc=0 with resume enabled
+  [38;2;74;222;128m✓[0m [SPEC-2] prompt carries PRIOR EXPLORATION CONTEXT heading
+  [38;2;74;222;128m✓[0m [SPEC-2] prompt carries the prior exploration sentinel
+  [38;2;74;222;128m✓[0m [SPEC-2] plan.context.resumed emitted
+
+  [38;2;0;212;255m[SPEC-2][guard] resume refused on mismatch / disable[0m
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] ZBUILD_PLAN_RESUME=0 must not splice prior context
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] no plan.context.resumed when disabled
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] goal_hash mismatch must not splice prior context
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] no plan.context.resumed on goal_hash mismatch
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] scope-manifest change must not splice prior context
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] no plan.context.resumed on scope-manifest change
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] plan.context.resume_skipped fires on guard mismatch
+
+  [38;2;0;212;255m[SPEC-4][change] envelope recovery of a single schema-bearer[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] _plan_recover_envelope_json returns rc=0 on single bearer
+  [38;2;74;222;128m✓[0m [SPEC-4] recovered object has schema_version=1
+  [38;2;74;222;128m✓[0m [SPEC-4] recovered object has non-empty steps[]
+
+  [38;2;0;212;255m[SPEC-4][guard] recovery fails closed on ambiguity[0m
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] two schema-bearers → recovery rc!=0 (fail closed)
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] object missing non-empty steps[] rejected
+  [38;2;74;222;128m✓[0m [SPEC-5] postamble-wrapped plan → framework recovery → rc=0
+  [38;2;74;222;128m✓[0m [SPEC-5] plan.json holds the real envelope, not the postamble
+
+  [38;2;0;212;255m[SPEC-1/SPEC-2] persona fallback is behavior-only (no role prefix)[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] plan_run rc=0 with persona absent
+  [38;2;74;222;128m✓[0m [SPEC-1] persona fallback does not contain profession-prefix role declaration
+  [38;2;74;222;128m✓[0m [SPEC-1] persona fallback DOES contain behavior sentence
+  [38;2;74;222;128m✓[0m [SPEC-2] plan_run rc=0 with persona present
+  [38;2;74;222;128m✓[0m [SPEC-2] persona-present framing sentinel appears in prompt
+
+  [38;2;0;212;255m[#1727] rc=124 falls through to recovery instead of aborting[0m
+  [38;2;74;222;128m✓[0m [#1727] rc=124 with a recoverable plan -> rc=0 (was: fatal 1)
+  [38;2;74;222;128m✓[0m [#1727] the salvaged plan.json was written
+  [38;2;74;222;128m✓[0m [#1727] plan.router_failed is emitted
+  [38;2;74;222;128m✓[0m [#1727] the event records router_rc=124
+  [38;2;74;222;128m✓[0m [#1727] event says recovery_attempted, not recoverable
+  [38;2;74;222;128m✓[0m [#1727] router_fatal is no longer emitted
+  [38;2;74;222;128m✓[0m [#1727] guard: unrecoverable rc=124 still fails (rc=1)
+
+[38;2;0;212;255m[1m  Issue #1835 — plan plugin contract v2 migration[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1835/SPEC-7] plan.json original fields survive v2 migration (guard)[0m
+  [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan_run rc=0 on success
+  [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json still created on success
+  [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json schema_version=1 unchanged (guard)
+  [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json steps[] non-empty (guard)
+  [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json scope_files non-empty (guard)
+
+  [38;2;0;212;255m[#1835/SPEC-1] success path writes v2 result fields into plan.json[0m
+  [38;2;248;113;113m✗[0m [#1835/SPEC-1] plan.json result_contract=2 on success
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [#1835/SPEC-1] plan.json verdict=pass on success
+    [2mexpected: pass, got: [0m
+  [38;2;248;113;113m✗[0m [#1835/SPEC-1] plan.json disposition=complete on success
+    [2mexpected: complete, got: [0m
+  [38;2;248;113;113m✗[0m [#1835/SPEC-1] plan.json reason is non-empty on success
+### SPEC-16 head plugins/agent/plan/tests/plan-test.sh
+
+[38;2;0;212;255m[1m  plugin: plan (plan-stage agent plugin — issue #340)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m plan_run returns rc=0
+  [38;2;74;222;128m✓[0m plan.json artifact created
+  [38;2;74;222;128m✓[0m plan exports ZBUILD_ROUTER_JSON_OUTPUT=1 around route_to_model (#476)
+  [38;2;74;222;128m✓[0m plan exports ZBUILD_ROUTER_ARTIFACT_ID=plan around route_to_model (#483)
+  [38;2;74;222;128m✓[0m plan.json schema_version == 1
+  [38;2;74;222;128m✓[0m plan.json .steps | length > 0
+  [38;2;74;222;128m✓[0m plan prompt names schema_version field
+  [38;2;74;222;128m✓[0m plan prompt names steps array
+  [38;2;74;222;128m✓[0m plan prompt describes a step's id field
+  [38;2;74;222;128m✓[0m plan prompt describes a step's description field
+  [38;2;74;222;128m✓[0m plan prompt describes a step's files field
+  [38;2;74;222;128m✓[0m plan prompt demands exactly one JSON object response
+  [38;2;74;222;128m✓[0m plan prompt forbids markdown code fences
+  [38;2;74;222;128m✓[0m plan prompt still includes the goal text
+  [38;2;74;222;128m✓[0m plan prompt no longer forbids tool calls
+  [38;2;74;222;128m✓[0m plan prompt no longer says no tool-use
+  [38;2;74;222;128m✓[0m plan prompt invites read-only exploration (Read/Grep/Glob)
+  [38;2;74;222;128m✓[0m plan prompt forbids mutating tools (Edit/Write)
+  [38;2;74;222;128m✓[0m plan prompt states its turn budget
+  [38;2;74;222;128m✓[0m [budget] guidance names the budget number
+  [38;2;74;222;128m✓[0m [budget] guidance biases toward a best-effort plan
+  [38;2;74;222;128m✓[0m [budget] empty for the 0 (unlimited) sentinel
+  [38;2;74;222;128m✓[0m [budget] empty for a non-numeric budget
+  [38;2;74;222;128m✓[0m [SPEC-7] plan prompt states its wall-clock budget
+  [38;2;74;222;128m✓[0m [SPEC-8] wallclock guidance names the budget seconds
+  [38;2;74;222;128m✓[0m [SPEC-8] wallclock guidance mentions best-effort plan
+  [38;2;74;222;128m✓[0m [SPEC-8] empty for zero budget
+  [38;2;74;222;128m✓[0m [SPEC-8] empty for non-numeric budget
+  [38;2;74;222;128m✓[0m [SPEC-8] empty when elapsed >= budget (degenerate)
+  [38;2;74;222;128m✓[0m plan prompt inlines the scope manifest
+  [38;2;74;222;128m✓[0m plan prompt includes manifest prefix
+  [38;2;74;222;128m✓[0m in-scope plan returns rc=0
+  [38;2;74;222;128m✓[0m in-scope plan.json written
+  [38;2;74;222;128m✓[0m in-scope plan emits no violation events
+  [38;2;74;222;128m✓[0m [SPEC-2] in-scope plugin.result payload.scope_violations=0
+  [38;2;74;222;128m✓[0m out-of-scope plan returns rc=0 (fail-soft)
+  [38;2;74;222;128m✓[0m out-of-scope plan.json still written
+  [38;2;74;222;128m✓[0m out-of-scope plan emits exactly one violation event
+  [38;2;74;222;128m✓[0m violation reason=out_of_scope
+  [38;2;74;222;128m✓[0m violation path reports offender
+  [38;2;74;222;128m✓[0m scope_violations=1 in plugin.result
+  [38;2;74;222;128m✓[0m two offenders emit two violation events
+  [38;2;74;222;128m✓[0m mixed plan reports only out-of-scope path
+  [38;2;74;222;128m✓[0m mixed violation path is the offender
+  [38;2;74;222;128m✓[0m absolute path violation reason=absolute_path
+  [38;2;74;222;128m✓[0m traversal violation reason=out_of_repo
+  [38;2;74;222;128m✓[0m malformed files[] non-string returns rc=1
+  [38;2;74;222;128m✓[0m malformed plan error reason=schema_violation (#476)
+  [38;2;74;222;128m✓[0m empty files[] returns rc=0
+  [38;2;74;222;128m✓[0m empty files[] emits no violations
+  [38;2;74;222;128m✓[0m empty .result returns rc=1 (#476)
+  [38;2;74;222;128m✓[0m empty .result emits reason=empty_result_envelope (#476)
+  [38;2;74;222;128m✓[0m #478: prose-prefixed JSON returns rc=0
+  [38;2;74;222;128m✓[0m #478: plan.json written despite prose preface
+  [38;2;74;222;128m✓[0m #478: plan.json parsed from prose-prefixed payload
+  [38;2;74;222;128m✓[0m #478: plan prompt demands first character must be {
+  [38;2;74;222;128m✓[0m #478 / ADR-028: prompt forbids prose before/after JSON
+  [38;2;74;222;128m✓[0m plan_run no longer fail-closes on missing manifest (router-owned, ADR-043)
+  [38;2;74;222;128m✓[0m #842-A: plan_run rc=0 (no cycle env — plan is a leaf)
+  [38;2;74;222;128m✓[0m #842-A: prompt is non-empty (guard)
+  [38;2;74;222;128m✓[0m #842-A: plan prompt has no PRIOR PLAN / PRIOR IMPACT headings
+  [38;2;74;222;128m✓[0m #842-B: plan_run rc=0 with stale feedback env
+  [38;2;74;222;128m✓[0m #842-B: prompt is non-empty (guard)
+  [38;2;74;222;128m✓[0m #842-B: stale cycle feedback not spliced — plan is a leaf
+
+[38;2;0;212;255m[1m  T_SANITIZE (#721): _zbuild_sanitize_for_llm applied to plan redacted_content[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m T_SANITIZE: _plan_run_inner rc=0
+  [38;2;74;222;128m✓[0m [SPEC-3] plan redacted_content OOS-marker tags stripped before LLM prompt
+  [38;2;74;222;128m✓[0m [SPEC-4] plan redacted_content genuine text survives sanitize
+
+[38;2;0;212;255m[1m  Issue #1052 — plan-stage resilience (resumable context + recovery)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[SPEC-1][change] persist plan-context on success[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] plan_run rc=0 on success
+  [38;2;74;222;128m✓[0m [SPEC-1] plan.context.persisted emitted on success
+  [38;2;74;222;128m✓[0m [SPEC-1] plan-context.json written to artifacts
+  [38;2;74;222;128m✓[0m [SPEC-1] plan-context status=complete on success
+  [38;2;74;222;128m✓[0m [SPEC-1] plan-context goal_hash matches normalized goal
+  [38;2;74;222;128m✓[0m [SPEC-1] plan-context.md readable
+
+  [38;2;0;212;255m[SPEC-2][change] resume splices prior exploration context[0m
+  [38;2;74;222;128m✓[0m [SPEC-2] plan_run rc=0 with resume enabled
+  [38;2;74;222;128m✓[0m [SPEC-2] prompt carries PRIOR EXPLORATION CONTEXT heading
+  [38;2;74;222;128m✓[0m [SPEC-2] prompt carries the prior exploration sentinel
+  [38;2;74;222;128m✓[0m [SPEC-2] plan.context.resumed emitted
+
+  [38;2;0;212;255m[SPEC-2][guard] resume refused on mismatch / disable[0m
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] ZBUILD_PLAN_RESUME=0 must not splice prior context
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] no plan.context.resumed when disabled
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] goal_hash mismatch must not splice prior context
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] no plan.context.resumed on goal_hash mismatch
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] scope-manifest change must not splice prior context
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] no plan.context.resumed on scope-manifest change
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] plan.context.resume_skipped fires on guard mismatch
+
+  [38;2;0;212;255m[SPEC-4][change] envelope recovery of a single schema-bearer[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] _plan_recover_envelope_json returns rc=0 on single bearer
+  [38;2;74;222;128m✓[0m [SPEC-4] recovered object has schema_version=1
+  [38;2;74;222;128m✓[0m [SPEC-4] recovered object has non-empty steps[]
+
+  [38;2;0;212;255m[SPEC-4][guard] recovery fails closed on ambiguity[0m
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] two schema-bearers → recovery rc!=0 (fail closed)
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] object missing non-empty steps[] rejected
+  [38;2;74;222;128m✓[0m [SPEC-5] postamble-wrapped plan → framework recovery → rc=0
+  [38;2;74;222;128m✓[0m [SPEC-5] plan.json holds the real envelope, not the postamble
+
+  [38;2;0;212;255m[SPEC-1/SPEC-2] persona fallback is behavior-only (no role prefix)[0m
+  [38;2;74;222;128m✓[0m [SPEC-1] plan_run rc=0 with persona absent
+  [38;2;74;222;128m✓[0m [SPEC-1] persona fallback does not contain profession-prefix role declaration
+  [38;2;74;222;128m✓[0m [SPEC-1] persona fallback DOES contain behavior sentence
+  [38;2;74;222;128m✓[0m [SPEC-2] plan_run rc=0 with persona present
+  [38;2;74;222;128m✓[0m [SPEC-2] persona-present framing sentinel appears in prompt
+
+  [38;2;0;212;255m[#1727] rc=124 falls through to recovery instead of aborting[0m
+  [38;2;74;222;128m✓[0m [#1727] rc=124 with a recoverable plan -> rc=0 (was: fatal 1)
+  [38;2;74;222;128m✓[0m [#1727] the salvaged plan.json was written
+  [38;2;74;222;128m✓[0m [#1727] plan.router_failed is emitted
+  [38;2;74;222;128m✓[0m [#1727] the event records router_rc=124
+  [38;2;74;222;128m✓[0m [#1727] event says recovery_attempted, not recoverable
+  [38;2;74;222;128m✓[0m [#1727] router_fatal is no longer emitted
+  [38;2;74;222;128m✓[0m [#1727] guard: unrecoverable rc=124 still fails (rc=1)
+
+[38;2;0;212;255m[1m  Issue #1835 — plan plugin contract v2 migration[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m[#1835/SPEC-7] plan.json original fields survive v2 migration (guard)[0m
+  [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan_run rc=0 on success
+  [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json still created on success
+  [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json schema_version=1 unchanged (guard)
+  [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json steps[] non-empty (guard)
+  [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json scope_files non-empty (guard)
+
+  [38;2;0;212;255m[#1835/SPEC-1] success path writes v2 result fields into plan.json[0m
+  [38;2;74;222;128m✓[0m [#1835/SPEC-1] plan.json result_contract=2 on success
+  [38;2;74;222;128m✓[0m [#1835/SPEC-1] plan.json verdict=pass on success
+  [38;2;74;222;128m✓[0m [#1835/SPEC-1] plan.json disposition=complete on success
+  [38;2;74;222;128m✓[0m [#1835/SPEC-1] plan.json reason is non-empty on success
+
+  [38;2;0;212;255m[#1835/SPEC-2] error path writes plan.json with v2 fields (disposition=unusable)[0m
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] schema_violation rc=1
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] schema_violation writes plan.json with v2 fields
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] schema_violation plan.json result_contract=2
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] schema_violation plan.json verdict=error
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] schema_violation plan.json disposition=unusable
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] empty_result_envelope rc=1
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] empty_result_envelope writes plan.json
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] empty_result_envelope disposition=unusable
+
+  [38;2;0;212;255m[#1835/SPEC-4] manifest declares result_contract=2 and valid_verdicts=[pass,error][0m
+  [38;2;74;222;128m✓[0m [#1835/SPEC-4] manifest provides.result_contract: 2
+  [38;2;74;222;128m✓[0m [#1835/SPEC-4] manifest valid_verdicts contains pass and error
+
+  [38;2;0;212;255m[#1835/SPEC-5] reads scope_manifest from ZBUILD_STAGE_INPUTS[0m
+  [38;2;74;222;128m✓[0m [#1835/SPEC-5] plan_run rc=0 with ZBUILD_STAGE_INPUTS
+  [38;2;74;222;128m✓[0m [#1835/SPEC-5] scope_manifest read from ZBUILD_STAGE_INPUTS (custom prefix in prompt)
+
+  [38;2;0;212;255m[#1835/SPEC-6] rc=1 (not rc=2) when state_file missing; plan.json disposition=broken[0m
+  [38;2;74;222;128m✓[0m [#1835/SPEC-6] plan_run returns rc=1 (not rc=2) when state_file missing
+  [38;2;74;222;128m✓[0m [#1835/SPEC-6] plan.json written with v2 fields on broken path
+  [38;2;74;222;128m✓[0m [#1835/SPEC-6] plan.json result_contract=2 on broken path
+  [38;2;74;222;128m✓[0m [#1835/SPEC-6] plan.json disposition=broken when state_file missing
+
+  [38;2;0;212;255m[#1835/SPEC-9] manifest router budget knobs and resolver behavior[0m
+  [38;2;74;222;128m✓[0m [#1835/SPEC-9] manifest config.router.max_turns: 45
+  [38;2;74;222;128m✓[0m [#1835/SPEC-9] manifest config.router.timeout_s: 300
+  [38;2;74;222;128m✓[0m [#1835/SPEC-9] _route_resolve_max_turns returns 45 from manifest (no override)
+  [38;2;74;222;128m✓[0m [#1835/SPEC-9] _route_resolve_timeout returns 300
+
+  [38;2;0;212;255m[#1835/SPEC-10] plan output entry declares primary: true (guard)[0m
+  [38;2;74;222;128m✓[0m [#1835/SPEC-10] plan output entry has primary: true
+
+  [38;2;0;212;255m[#1835/SPEC-11] reads goal from ZBUILD_STAGE_INPUTS intake_goal path[0m
+  [38;2;74;222;128m✓[0m [#1835/SPEC-11] plan_run rc=0 when intake_goal provided via ZBUILD_STAGE_INPUTS
+  [38;2;74;222;128m✓[0m [#1835/SPEC-11] goal read from ZBUILD_STAGE_INPUTS intake_goal path
+  [38;2;74;222;128m✓[0m [#1835/SPEC-11] hardcoded $state_dir/intake.md fallback is removed
+  [38;2;74;222;128m✓[0m [#1835/SPEC-11] absent intake_goal path → rc=1
+  [38;2;74;222;128m✓[0m [#1835/SPEC-11] absent intake_goal writes plan.json with disposition=broken
+  [38;2;74;222;128m✓[0m [#1835/SPEC-11] absent intake_goal disposition=broken
+
+  [38;2;0;212;255m[#1835/SPEC-12] plugin.sh no hardcoded $state_dir/ input paths[0m
+  [38;2;74;222;128m✓[0m [#1835/SPEC-12] plugin.sh has no hardcoded $state_dir/<input> paths beyond artifacts_dir
+
+  [38;2;0;212;255m[#1835/SPEC-13] manifest provides.role: planner (guard)[0m
+  [38;2;74;222;128m✓[0m [#1835/SPEC-13] manifest provides.role: planner
+
+  [38;2;0;212;255m[#1835/SPEC-14] manifest provides.events with 9-event vocabulary (guard)[0m
+  [38;2;74;222;128m✓[0m [#1835/SPEC-14] manifest declares event: plan.context.persisted
+  [38;2;74;222;128m✓[0m [#1835/SPEC-14] manifest declares event: plan.context.resume_skipped
+  [38;2;74;222;128m✓[0m [#1835/SPEC-14] manifest declares event: plan.context.resumed
+  [38;2;74;222;128m✓[0m [#1835/SPEC-14] manifest declares event: plan.dod_violation
+  [38;2;74;222;128m✓[0m [#1835/SPEC-14] manifest declares event: plan.envelope.recovered
+  [38;2;74;222;128m✓[0m [#1835/SPEC-14] manifest declares event: plan.flow_wiring_missing
+  [38;2;74;222;128m✓[0m [#1835/SPEC-14] manifest declares event: plan.scope.violation
+  [38;2;74;222;128m✓[0m [#1835/SPEC-14] manifest declares event: plan.scope_too_large
+  [38;2;74;222;128m✓[0m [#1835/SPEC-14] manifest declares event: plan.router_failed
+
+  [38;2;0;212;255m[#1835/SPEC-15] manifest output entries with summary and checkpoint roles (guard)[0m
+  [38;2;74;222;128m✓[0m [#1835/SPEC-15] manifest declares an output with summary: true (plan-summary.md)
+  [38;2;74;222;128m✓[0m [#1835/SPEC-15] manifest declares an output with role: checkpoint (plan-checkpoint.md)
+
+  [38;2;0;212;255m[#1835/SPEC-16] runner.sh leaf-path rc=10 plan-scope_too_large block deleted[0m
+  [38;2;74;222;128m✓[0m [#1835/SPEC-16] runner.sh leaf-path 'plan turn budget exhausted' block is absent
+
+  [38;2;0;212;255m[#1835/SPEC-17] manifest router retains retries=1 and retry_on_exhaustion=1 (guard)[0m
+  [38;2;74;222;128m✓[0m [#1835/SPEC-17] manifest config.router.retries: 1 retained
+  [38;2;74;222;128m✓[0m [#1835/SPEC-17] manifest config.router.retry_on_exhaustion: 1 retained
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 155 tests passed[0m
+
