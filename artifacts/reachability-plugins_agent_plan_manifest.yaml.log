@@ -139,12 +139,15 @@
   [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json schema_version=1 unchanged (guard)
   [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json steps[] non-empty (guard)
   [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json scope_files non-empty (guard)
+  [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json steps[0].id matches fixture value (guard)
+  [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json steps[0].description matches fixture value (guard)
 
   [38;2;0;212;255m[#1835/SPEC-1] success path writes v2 result fields into plan.json[0m
   [38;2;74;222;128m✓[0m [#1835/SPEC-1] plan.json result_contract=2 on success
   [38;2;74;222;128m✓[0m [#1835/SPEC-1] plan.json verdict=pass on success
   [38;2;74;222;128m✓[0m [#1835/SPEC-1] plan.json disposition=complete on success
   [38;2;74;222;128m✓[0m [#1835/SPEC-1] plan.json reason is non-empty on success
+  [38;2;74;222;128m✓[0m [#1835/SPEC-1] _verdict_read_result surfaces disposition=complete from plan.json primary
 
   [38;2;0;212;255m[#1835/SPEC-2] error path writes plan.json with v2 fields (disposition=unusable)[0m
   [38;2;74;222;128m✓[0m [#1835/SPEC-2] schema_violation rc=1
@@ -154,7 +157,15 @@
   [38;2;74;222;128m✓[0m [#1835/SPEC-2] schema_violation plan.json disposition=unusable
   [38;2;74;222;128m✓[0m [#1835/SPEC-2] empty_result_envelope rc=1
   [38;2;74;222;128m✓[0m [#1835/SPEC-2] empty_result_envelope writes plan.json
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] empty_result_envelope result_contract=2
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] empty_result_envelope verdict=error
   [38;2;74;222;128m✓[0m [#1835/SPEC-2] empty_result_envelope disposition=unusable
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] invalid_plan_response rc=1
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] invalid_plan_response writes plan.json
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] invalid_plan_response result_contract=2
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] invalid_plan_response verdict=error
+  [38;2;248;113;113m✗[0m [#1835/SPEC-2] invalid_plan_response disposition=unusable
+    [2mexpected: unusable, got: misconfigured[0m
 
   [38;2;0;212;255m[#1835/SPEC-4] manifest declares result_contract=2 and valid_verdicts=[pass,error][0m
   [38;2;248;113;113m✗[0m [#1835/SPEC-4] manifest provides.result_contract: 2
@@ -299,12 +310,15 @@
   [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json schema_version=1 unchanged (guard)
   [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json steps[] non-empty (guard)
   [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json scope_files non-empty (guard)
+  [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json steps[0].id matches fixture value (guard)
+  [38;2;74;222;128m✓[0m [#1835/SPEC-7] plan.json steps[0].description matches fixture value (guard)
 
   [38;2;0;212;255m[#1835/SPEC-1] success path writes v2 result fields into plan.json[0m
   [38;2;74;222;128m✓[0m [#1835/SPEC-1] plan.json result_contract=2 on success
   [38;2;74;222;128m✓[0m [#1835/SPEC-1] plan.json verdict=pass on success
   [38;2;74;222;128m✓[0m [#1835/SPEC-1] plan.json disposition=complete on success
   [38;2;74;222;128m✓[0m [#1835/SPEC-1] plan.json reason is non-empty on success
+  [38;2;74;222;128m✓[0m [#1835/SPEC-1] _verdict_read_result surfaces disposition=complete from plan.json primary
 
   [38;2;0;212;255m[#1835/SPEC-2] error path writes plan.json with v2 fields (disposition=unusable)[0m
   [38;2;74;222;128m✓[0m [#1835/SPEC-2] schema_violation rc=1
@@ -314,7 +328,15 @@
   [38;2;74;222;128m✓[0m [#1835/SPEC-2] schema_violation plan.json disposition=unusable
   [38;2;74;222;128m✓[0m [#1835/SPEC-2] empty_result_envelope rc=1
   [38;2;74;222;128m✓[0m [#1835/SPEC-2] empty_result_envelope writes plan.json
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] empty_result_envelope result_contract=2
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] empty_result_envelope verdict=error
   [38;2;74;222;128m✓[0m [#1835/SPEC-2] empty_result_envelope disposition=unusable
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] invalid_plan_response rc=1
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] invalid_plan_response writes plan.json
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] invalid_plan_response result_contract=2
+  [38;2;74;222;128m✓[0m [#1835/SPEC-2] invalid_plan_response verdict=error
+  [38;2;248;113;113m✗[0m [#1835/SPEC-2] invalid_plan_response disposition=unusable
+    [2mexpected: unusable, got: misconfigured[0m
 
   [38;2;0;212;255m[#1835/SPEC-4] manifest declares result_contract=2 and valid_verdicts=[pass,error][0m
   [38;2;74;222;128m✓[0m [#1835/SPEC-4] manifest provides.result_contract: 2
@@ -337,7 +359,8 @@
   [38;2;74;222;128m✓[0m [#1835/SPEC-9] _route_resolve_timeout returns 300
 
   [38;2;0;212;255m[#1835/SPEC-10] plan output entry declares primary: true (guard)[0m
-  [38;2;74;222;128m✓[0m [#1835/SPEC-10] plan output entry has primary: true
+  [38;2;74;222;128m✓[0m [#1835/SPEC-10] primary: true is bound to the plan output entry
+  [38;2;74;222;128m✓[0m [#1835/SPEC-10] exactly one primary: true in outputs block
 
   [38;2;0;212;255m[#1835/SPEC-11] reads goal from ZBUILD_STAGE_INPUTS intake_goal path[0m
   [38;2;74;222;128m✓[0m [#1835/SPEC-11] plan_run rc=0 when intake_goal provided via ZBUILD_STAGE_INPUTS
@@ -346,6 +369,9 @@
   [38;2;74;222;128m✓[0m [#1835/SPEC-11] absent intake_goal path → rc=1
   [38;2;74;222;128m✓[0m [#1835/SPEC-11] absent intake_goal writes plan.json with disposition=broken
   [38;2;74;222;128m✓[0m [#1835/SPEC-11] absent intake_goal disposition=broken
+  [38;2;74;222;128m✓[0m [#1835/SPEC-11] unreadable intake_goal → rc=1
+  [38;2;74;222;128m✓[0m [#1835/SPEC-11] unreadable intake_goal writes plan.json with disposition=broken
+  [38;2;74;222;128m✓[0m [#1835/SPEC-11] unreadable intake_goal disposition=broken
 
   [38;2;0;212;255m[#1835/SPEC-12] plugin.sh no hardcoded $state_dir/ input paths[0m
   [38;2;74;222;128m✓[0m [#1835/SPEC-12] plugin.sh has no hardcoded $state_dir/<input> paths beyond artifacts_dir
@@ -365,17 +391,4 @@
   [38;2;74;222;128m✓[0m [#1835/SPEC-14] manifest declares event: plan.router_failed
 
   [38;2;0;212;255m[#1835/SPEC-15] manifest output entries with summary and checkpoint roles (guard)[0m
-  [38;2;74;222;128m✓[0m [#1835/SPEC-15] manifest declares an output with summary: true (plan-summary.md)
-  [38;2;74;222;128m✓[0m [#1835/SPEC-15] manifest declares an output with role: checkpoint (plan-checkpoint.md)
-
-  [38;2;0;212;255m[#1835/SPEC-16] runner.sh leaf-path rc=10 plan-scope_too_large block deleted[0m
-  [38;2;74;222;128m✓[0m [#1835/SPEC-16] runner.sh leaf-path 'plan turn budget exhausted' block is absent
-
-  [38;2;0;212;255m[#1835/SPEC-17] manifest router retains retries=1 and retry_on_exhaustion=1 (guard)[0m
-  [38;2;74;222;128m✓[0m [#1835/SPEC-17] manifest config.router.retries: 1 retained
-  [38;2;74;222;128m✓[0m [#1835/SPEC-17] manifest config.router.retry_on_exhaustion: 1 retained
-
-[2m  ──────────────────────────────────────────[0m
-
-  [38;2;74;222;128m[1mAll 155 tests passed[0m
-
+  [38;2;248;113;113m✗[0m [#1835/SPEC-15] plan-summary.md output entry has summary: true
