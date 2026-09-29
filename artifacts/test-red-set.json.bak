@@ -1,4 +1,3 @@
 [
-  "plugins/agent/plan/tests/plan-integration-test.sh",
-  "tests/unit/dispatch-rc-guard-test.sh"
+  "plugins/agent/plan/tests/plan-test.sh"
 ]
