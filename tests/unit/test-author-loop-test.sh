@@ -21,6 +21,9 @@
 #             out_of_turns (from the shared mapping), rc=1, its work committed
 # A4 [change] the prompt tells the model to say it is done once every SPEC has
 #             its assertion
+# A5 [change] the loop never shows the author the implementation (review #2229):
+#             neither the uncommitted change nor build's commits reach any call's
+#             prompt — only the testfiles' own progress does
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -76,6 +79,12 @@ _run() {
     printf '#!/usr/bin/env bash\n' > "$d/repo/tests/acc-test.sh"
     ( cd "$d/repo" && git init -q -b main . && git config user.email t@e.st && git config user.name t \
         && git add -A && git commit -q -m seed ) >/dev/null 2>&1
+    # An implementation the author must not see: a build commit since intake,
+    # and an uncommitted change.
+    git -C "$d/repo" rev-parse HEAD > "$d/state/intake-baseline-ref.txt"
+    mkdir -p "$d/repo/src"; printf 'impl_secret() { echo IMPL-SECRET-COMMITTED; }\n' > "$d/repo/src/impl.sh"
+    ( cd "$d/repo" && git add -A && git commit -q -m "build: IMPL-SECRET-SUBJECT" ) >/dev/null 2>&1
+    printf 'IMPL-SECRET-UNCOMMITTED\n' > "$d/repo/src/wip.sh"
     cat > "$d/state/artifacts/design.md" <<'EOF'
 ```acceptance
 SPEC-1[change]: first
@@ -113,6 +122,16 @@ _seen="$(tr '\n' ' ' < "$TEST_TEMP_DIR/a1/fake/commits-seen")"
 assert_eq "[A2] the work accumulates across calls — after each call the file holds every assertion so far (counts: $_seen)" \
     "1 2 3 " "$_seen"
 assert_contains "[A4] the prompt says how to finish" "$(cat "$TEST_TEMP_DIR/a1/fake/prompt.1" 2>/dev/null)" "LOOP_COMPLETE"
+
+print_test_section "A5: the author stays blind to the implementation"
+_all="$(cat "$TEST_TEMP_DIR"/a1/fake/prompt.* 2>/dev/null)"
+if grep -qE 'IMPL-SECRET' <<< "$_all"; then
+    assert_fail "[A5] no prompt shows the implementation" "$(grep -oE 'IMPL-SECRET[A-Z-]*' <<< "$_all" | sort -u | tr '\n' ' ')"
+else
+    assert_pass "[A5] no prompt shows the implementation"
+fi
+assert_contains "[A5] ...while a later call still sees the testfile's own progress" \
+    "$(cat "$TEST_TEMP_DIR/a1/fake/prompt.2" 2>/dev/null)" "assertion 1"
 
 print_test_section "A3: not finished within the loop"
 _rc3="$(_run a3 0 2)"

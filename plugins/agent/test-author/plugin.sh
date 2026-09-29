@@ -265,7 +265,11 @@ LOOP_COMPLETE"
         return 1
     }
     printf '%s' "$prompt" > "$prompt_file"
-    route_to_model_loop "$tier" "$prompt_file" "$repo" "$max_iter" || rc=$?
+    # The loop shows the model only its own testfiles' progress — never the
+    # implementation, which this stage must not see (#2022; review #2229).
+    local _ctx; _ctx="$(acceptance_list_testfiles "$design" 2>/dev/null | paste -sd, - || true)"
+    route_to_model_loop "$tier" "$prompt_file" "$repo" "$max_iter" \
+        --context-paths "${_ctx:-.zbuild-no-testfiles}" || rc=$?
     rm -f "$prompt_file"
     local _end="${_ROUTE_LOOP_TERMINATED_REASON:-error}"
 

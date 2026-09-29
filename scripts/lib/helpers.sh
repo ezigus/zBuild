@@ -215,7 +215,10 @@ atomic_write() {
 replace_keep_mode() {
     local src="$1" target="$2" mode=""
     if [[ -e "$target" ]]; then
-        mode="$(stat -f '%Lp' "$target" 2>/dev/null || stat -c '%a' "$target" 2>/dev/null || true)"
+        # GNU first: GNU reads `stat -f` as "file-system status" and prints a
+        # block to stdout before failing, which would poison the value; BSD
+        # rejects `-c` and prints nothing (review #2229).
+        mode="$(stat -c '%a' "$target" 2>/dev/null || stat -f '%Lp' "$target" 2>/dev/null || true)"
         [[ "$mode" =~ ^[0-7]{3,4}$ ]] && chmod "$mode" "$src" 2>/dev/null
     fi
     mv -f "$src" "$target"

@@ -1510,6 +1510,11 @@ route_to_model_loop() {
     local inter_turn_hook="_route_loop_default_hook"
     local model_override=""
     local scope_allowlist=""
+    # #2225 (review #2229): --context-paths <csv> limits what the loop shows the
+    # model between calls — the cumulative diff and the branch state — and what
+    # it counts as progress, to those paths. test-author passes its testfiles:
+    # it must see its own progress and never the implementation (#2022).
+    local context_paths=""
     # #646: when set, route_to_model_loop returns WITHOUT closing the final
     # iter's stage-io banner ONLY on the DONE-sentinel exit path. Other exit
     # paths (no_progress, max_iterations, error rc≥2, SIGINT) keep the
@@ -1528,6 +1533,7 @@ route_to_model_loop() {
             --inter-turn-hook)    inter_turn_hook="$2";     shift 2 ;;
             --model)              model_override="$2";      shift 2 ;;
             --scope-allowlist)    scope_allowlist="$2";     shift 2 ;;
+            --context-paths)      context_paths="$2";       shift 2 ;;
             --defer-final-banner-close) defer_final_banner_close="true"; shift ;;
             *) error "route_to_model_loop: unknown flag '$1'"; return 2 ;;
         esac
@@ -1670,10 +1676,12 @@ ${prev_diff}"
             _intake_ref="$(cat "$ZBUILD_STATE_DIR/intake-baseline-ref.txt" 2>/dev/null || true)"
         fi
         if [[ -n "$_intake_ref" ]]; then
-            if _commits="$(git -C "$cwd" log "${_intake_ref}..HEAD" --oneline -n 10 2>/dev/null)"; then :; else
+            local -a _bctx=()
+            [[ -n "$context_paths" ]] && IFS=',' read -r -a _bctx <<< "$context_paths"
+            if _commits="$(git -C "$cwd" log "${_intake_ref}..HEAD" --oneline -n 10 -- "${_bctx[@]}" 2>/dev/null)"; then :; else
                 _commits="<unreadable>"
             fi
-            _stat="$(git -C "$cwd" diff "${_intake_ref}..HEAD" --stat 2>/dev/null || true)"
+            _stat="$(git -C "$cwd" diff "${_intake_ref}..HEAD" --stat -- "${_bctx[@]}" 2>/dev/null || true)"
             _short_head="$(git -C "$cwd" rev-parse --short HEAD 2>/dev/null || echo unknown)"
             iter_prompt="${iter_prompt}
 
@@ -2179,7 +2187,7 @@ ${_diff_pointer}"
             fi
             rm -f "$stderr_file" "$json_file"
             # Capture diff after error iteration too so progress isn't lost.
-            _route_loop_capture_diff "$cwd" "$diff_cap" prev_diff || {
+            _ROUTE_LOOP_CONTEXT_PATHS="$context_paths" _route_loop_capture_diff "$cwd" "$diff_cap" prev_diff || {
                 _ROUTE_LOOP_TERMINATED_REASON="error"
                 _route_loop_clear_traps
                 return 2
@@ -2288,7 +2296,7 @@ ${_diff_pointer}"
         rm -f "$json_file"
 
         # Capture diff for next iteration's prompt.
-        _route_loop_capture_diff "$cwd" "$diff_cap" prev_diff || {
+        _ROUTE_LOOP_CONTEXT_PATHS="$context_paths" _route_loop_capture_diff "$cwd" "$diff_cap" prev_diff || {
             _ROUTE_LOOP_TERMINATED_REASON="error"
             _route_loop_clear_traps
             # #628: $_loop_tmp cleanup handled by RETURN trap above.
@@ -2392,7 +2400,13 @@ _route_loop_capture_diff() {
     # Stream directly to disk; do not let `$()` touch the byte stream.
     local _diff_tmp; _diff_tmp="$(mktemp "$(zbuild_engine_tmpdir)/zb-loop-diff.XXXXXX")"
     local diff_rc=0
-    git -C "$cwd" diff HEAD > "$_diff_tmp" 2>/dev/null || diff_rc=$?
+    local -a _ctx=()
+    [[ -n "${_ROUTE_LOOP_CONTEXT_PATHS:-}" ]] && IFS=',' read -r -a _ctx <<< "$_ROUTE_LOOP_CONTEXT_PATHS"
+    if [[ ${#_ctx[@]} -gt 0 ]]; then
+        git -C "$cwd" diff HEAD -- "${_ctx[@]}" > "$_diff_tmp" 2>/dev/null || diff_rc=$?
+    else
+        git -C "$cwd" diff HEAD > "$_diff_tmp" 2>/dev/null || diff_rc=$?
+    fi
     if [[ $diff_rc -ne 0 ]]; then
         rm -f "$_diff_tmp"
         # Best-effort: clear `-N` intent-to-add entries so a later iteration's

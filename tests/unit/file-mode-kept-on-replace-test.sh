@@ -11,6 +11,9 @@
 # P2 [change] the stale-tag step keeps a testfile executable (and still rewrites it)
 # P3 [guard]  a NEW file from atomic_write is not made executable
 # P4 [change] replace_keep_mode puts a file in place with the target's mode
+# P5 [change] ...with GNU stat (Linux) as well as BSD stat (macOS) — GNU reads
+#             `stat -f` as "file-system status" and prints a block to stdout
+#             (review #2229); simulated here with coreutils' gstat as `stat`
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -72,10 +75,22 @@ S4="$TEST_TEMP_DIR/src.tmp"; printf 'new\n' > "$S4"; chmod 600 "$S4"
 if declare -F replace_keep_mode >/dev/null 2>&1; then
     replace_keep_mode "$S4" "$T4"
     assert_eq "[P4] the content is the new file's" "new" "$(cat "$T4")"
-    _m="$(stat -f '%Lp' "$T4" 2>/dev/null || stat -c '%a' "$T4" 2>/dev/null)"
+    _m="$(stat -c '%a' "$T4" 2>/dev/null || stat -f '%Lp' "$T4" 2>/dev/null)"
     assert_eq "[P4] the mode is the target's (750)" "750" "$_m"
 else
     assert_fail "[P4] replace_keep_mode exists in helpers.sh" "not defined"
+fi
+
+print_test_section "P5: GNU stat"
+if command -v gstat >/dev/null 2>&1 || stat --version >/dev/null 2>&1; then
+    _gnu="$(command -v gstat 2>/dev/null || command -v stat)"
+    mkdir -p "$TEST_TEMP_DIR/gnu-bin"; ln -sf "$_gnu" "$TEST_TEMP_DIR/gnu-bin/stat"
+    T5="$TEST_TEMP_DIR/t5.sh"; printf 'old\n' > "$T5"; chmod 755 "$T5"
+    S5="$TEST_TEMP_DIR/s5.tmp"; printf 'new\n' > "$S5"; chmod 600 "$S5"
+    ( PATH="$TEST_TEMP_DIR/gnu-bin:$PATH"; replace_keep_mode "$S5" "$T5" ) >/dev/null 2>&1
+    assert_eq "[P5] with GNU stat the target keeps its mode" "exec" "$(_is_exec "$T5")"
+else
+    assert_pass "[P5] skipped — no GNU stat available"
 fi
 
 cleanup_test_env
