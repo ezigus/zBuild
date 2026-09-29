@@ -1,0 +1,14 @@
+{
+  "result_contract": 2,
+  "verdict": "mismatch",
+  "disposition": "complete",
+  "reason": "judged 17 SPEC(s): 7 correspond, 9 partial, 1 mismatch, 0 uncheckable, 0 unjudged",
+  "data": {
+    "corresponds": 7,
+    "partial": 9,
+    "mismatch": 1,
+    "uncheckable": 0,
+    "unjudged": 0
+  },
+  "about": "plugins/agent/intake/tests/intake-test.sh\ntests/integration/intake-refuse-on-closed-subprocess-test.sh\nplugins/agent/intake/tests/intake-test.sh\ntests/integration/intake-refuse-on-closed-subprocess-test.sh\nplugins/agent/intake/tests/intake-test.sh\nplugins/agent/intake/tests/intake-test.sh\nplugins/agent/intake/tests/intake-test.sh\nplugins/agent/intake/tests/intake-test.sh\nplugins/agent/intake/tests/intake-test.sh\nplugins/agent/intake/tests/intake-test.sh\nplugins/agent/intake/tests/intake-test.sh\nplugins/agent/intake/tests/intake-test.sh\nplugins/agent/intake/tests/intake-test.sh\nplugins/agent/intake/tests/intake-test.sh\nplugins/agent/intake/tests/intake-test.sh\nplugins/agent/intake/tests/intake-test.sh\nplugins/agent/intake/tests/intake-test.sh\ntests/integration/intake-refuse-on-closed-subprocess-test.sh\nplugins/agent/intake/tests/intake-test.sh"
+}
