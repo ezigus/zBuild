@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "run_id": "20260929020153-2337",
+  "stage": "test",
+  "kind": "command",
+  "seq": 1,
+  "input": "npm\\ test",
+  "output": "unit 472/472 · integration 252/253 · e2e 8/9 · golden 1/1 · mutation 24/24 · lint 1/1 · FAIL: integration e2e (exit 1)",
+  "exit_code": 1,
+  "duration_ms": 1937348,
+  "metadata": {
+    "cwd": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.Hqic3N",
+    "verdict": "fail",
+    "passed": "758",
+    "failed": "2",
+    "exit_code": "1"
+  },
+  "ts": "2026-09-29T03:18:38Z"
+}
