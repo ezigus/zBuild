@@ -1,0 +1,5 @@
+## spec-coverage — uncovered
+
+- The issue requires "the plugin constructs no artifact paths in code — assert by grep over its `plugin.sh`" as a blanket guarantee, but SPEC-5 and SPEC-11 only address two specific removals (scope_manifest resolution and intake.md hardcoded path); no SPEC makes the comprehensive assertion that all constructed artifact paths are gone.
+
+- NOT COVERED: "The plugin constructs no artifact paths in code — assert by grep over its plugin.sh" — SPEC-5 and SPEC-11 cover two named paths but leave any other hardcoded artifact paths unaddressed and provide no grep-based blanket assertion.
