@@ -15,6 +15,9 @@
 #             passes the helper and an annotated (# signal-ok:) trap
 # G4 [change] lint-disposition-words refuses a literal `unavailable` with no
 #             # disposition-ok: note naming the service, and passes an annotated one
+# G6 [change] a second stage_signal_begin before stage_signal_end is refused, and
+#             the first guard still restores the caller's handler (review #2229:
+#             nesting overwrote the saved handler and swallowed later signals)
 # G5 [change] the real tree passes both (every plugin uses the helper; every
 #             `unavailable` names its service)
 set -uo pipefail
@@ -47,6 +50,22 @@ if [[ -f "$REPO_ROOT/scripts/lib/stage-signal.sh" ]]; then
 else
     assert_fail "[G1] scripts/lib/stage-signal.sh exists" "missing"
     assert_fail "[G2] scripts/lib/stage-signal.sh exists" "missing"
+fi
+
+print_test_section "G6: no nesting"
+if [[ -f "$REPO_ROOT/scripts/lib/stage-signal.sh" ]]; then
+    _out6="$(
+        # shellcheck source=../../scripts/lib/stage-signal.sh
+        source "$REPO_ROOT/scripts/lib/stage-signal.sh"
+        _cb() { :; }
+        trap 'printf "CALLER\n"' TERM
+        stage_signal_begin _cb
+        if stage_signal_begin _cb 2>/dev/null; then printf 'nested=accepted\n'; else printf 'nested=refused\n'; fi
+        stage_signal_end
+        trap -p TERM
+    )"
+    assert_contains "[G6] a nested begin is refused" "$_out6" "nested=refused"
+    assert_contains "[G6] ...and the caller's handler is still restored" "$_out6" "CALLER"
 fi
 
 print_test_section "G3: lint-stage-signals"

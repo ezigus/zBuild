@@ -271,15 +271,27 @@ LOOP_COMPLETE"
     route_to_model_loop "$tier" "$prompt_file" "$repo" "$max_iter" \
         --context-paths "${_ctx:-.zbuild-no-testfiles}" || rc=$?
     rm -f "$prompt_file"
-    local _end="${_ROUTE_LOOP_TERMINATED_REASON:-error}"
+    local _end="${_ROUTE_LOOP_TERMINATED_REASON:-}"
 
     if [[ "$_end" != "done_sentinel" ]]; then
         # ADR-054 §6: this stage only says HOW it stopped; the one mapping from
         # a router or loop reason to its word decides which (#2187). A loop that
         # used every call without finishing is `out_of_turns`.
-        local _reason="$_end" _disp=""
-        [[ "$rc" -eq 130 ]] && _reason="signal"
-        _disp="$(router_reason_disposition "$_reason")"
+        local _reason="$_end" _disp="" _v=""
+        if [[ "$rc" -eq 130 ]]; then
+            _reason="signal"
+        elif [[ -z "$_end" ]]; then
+            # The loop never got going (no model CLI, a bad tier): classify its
+            # rc the way single-shot calls are (review #2229).
+            _router_rc_classify "$rc" _v _reason 2>/dev/null || _reason="router_rc_nonzero"
+        fi
+        if [[ "$_reason" == "error" ]]; then
+            # The loop's own machinery failed (e.g. git diff) — zBuild's defect,
+            # not an outside service (review #2229).
+            _disp="broken"
+        else
+            _disp="$(router_reason_disposition "$_reason")"
+        fi
         _ta_write_result "$art" "degraded" "$_disp" \
             "the author did not finish (${_reason}) — what it wrote is kept for the next attempt" "$n"
         _ta_commit_testfiles "$design" "$repo" "test-author: partial assertions (${_reason}) — continued by the next attempt"

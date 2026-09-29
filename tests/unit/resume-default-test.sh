@@ -13,12 +13,19 @@
 # R2 [change] the runner exports it before any stage runs
 # R3 [change] the pipeline workflow has a no_resume input that passes --no-resume;
 #             the daemon leaves it at the default
-# R4 [change] hydrate under ZBUILD_RESUME=0 restores nothing and adopts no prior branch
+# R4 [change] hydrate under ZBUILD_RESUME=0 restores nothing — and still adopts
+#             the saved history, so the next snapshot extends it instead of
+#             force-pushing a new one over it (review #2229)
 # R5 [change] design reuses a qualifying prior design with no model call
 # R6 [change] ...not under ZBUILD_RESUME=0
 # R7 [change] ...not when the issue text changed
 # R8 [change] ...not when the prior run sent the work back to design
 # R9 [change] ...not when this run already has a design (a rewind)
+# R10 [change] ...not when the prior spec-coverage said uncovered (review #2229)
+# R11 [change] ...not when the design-gate pass was for a DIFFERENT design.md
+#              than the one restored (review #2229: a later rewrite, or a partial
+#              design kept after a timeout, would otherwise ride an old pass)
+# R12 [change] design-gate records the hash of the design.md it judged
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -76,7 +83,7 @@ _calls="$TEST_TEMP_DIR/hydrate-calls"; : > "$_calls"
     _artifact_persist_adopt_remote() { echo adopt >> "$_calls"; return 0; }
     hydrate_run hydrate "$_H/state/pipeline-state.json"
 ) >/dev/null 2>&1 || true
-assert_eq "[R4] nothing is fetched, restored or adopted" "" "$(tr '\n' ' ' < "$_calls")"
+assert_eq "[R4] nothing is restored — the saved history is still fetched and adopted" "fetch adopt " "$(tr '\n' ' ' < "$_calls")"
 assert_contains "[R4] ...and the result says why" \
     "$(jq -r '.reason // empty' "$_H/state/artifacts/hydrate-result.json" 2>/dev/null)" "--no-resume"
 
@@ -100,9 +107,10 @@ git -C "$FIX" init -q; git -C "$FIX" config user.email t@t; git -C "$FIX" config
 printf 'x\n' > "$FIX/foo.sh"; git -C "$FIX" add -A; git -C "$FIX" commit -qm seed
 export ZBUILD_REPO_ROOT="$FIX"
 
-# _design_case <name> [prior-gate-fault] [resume] [goal-now] [existing-design] — prints model calls.
+# _design_case <name> [prior-gate-fault] [resume] [goal-now] [existing-design] [coverage] [sha-mismatch] — prints model calls.
 _design_case() {
     local d="$TEST_TEMP_DIR/$1" fault="${2:-}" resume="${3:-1}" goal="${4:-Migrate the thing.}" existing="${5:-}"
+    local coverage="${6:-covered}" mismatch="${7:-}"
     local ad="$d/state/artifacts" rr="$d/state/restored-artifacts"
     mkdir -p "$ad" "$rr/artifacts"
     printf 'scope: all\n' > "$d/state/scope-manifest.md"
@@ -110,7 +118,10 @@ _design_case() {
     printf '%s\n' "$goal" > "$d/state/intake.md"
     printf 'Migrate the thing.\n' > "$rr/intake.md"
     printf '# Design (prior)\n\n```scope\nfoo.sh\n```\n' > "$rr/artifacts/design.md"
-    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"build-ready"}\n' > "$rr/artifacts/design-gate-result.json"
+    local _sha; _sha="$(git hash-object "$rr/artifacts/design.md")"
+    [[ -n "$mismatch" ]] && _sha="0000000000000000000000000000000000000000"
+    jq -n --arg sha "$_sha" '{result_contract:2,verdict:"pass",disposition:"complete",reason:"build-ready",data:{design_sha:$sha}}' > "$rr/artifacts/design-gate-result.json"
+    jq -n --arg v "$coverage" '{result_contract:2,verdict:$v,disposition:"complete",reason:"x"}' > "$rr/artifacts/spec-coverage-result.json"
     [[ -n "$fault" ]] && printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x","fault":"%s"}\n' "$fault" > "$rr/artifacts/gate-aggregator-result.json"
     [[ -n "$existing" ]] && printf '# Design (this run)\n' > "$ad/design.md"
     : > "$MODEL_CALLS"
@@ -131,6 +142,20 @@ assert_eq "[R7] when the issue text changed design runs" "1" "$(_design_case r7 
 assert_eq "[R8] when the prior run sent the work back to design, design runs" "1" "$(_design_case r8 specification)"
 assert_eq "[R8] ...an implementation fault is not a rewind — still reused" "0" "$(_design_case r8b implementation)"
 assert_eq "[R9] when this run already has a design (a rewind), design runs" "1" "$(_design_case r9 "" 1 "Migrate the thing." yes)"
+assert_eq "[R10] when the prior spec-coverage said uncovered, design runs" "1" "$(_design_case r10 "" 1 "Migrate the thing." "" uncovered)"
+assert_eq "[R11] when the gate's pass was for a different design.md, design runs" "1" "$(_design_case r11 "" 1 "Migrate the thing." "" covered yes)"
+
+print_test_section "R12: design-gate records what it judged"
+_G="$TEST_TEMP_DIR/gate/state"; mkdir -p "$_G/artifacts"
+printf '# Design\n\n```scope\nfoo.sh\n```\n' > "$_G/artifacts/design.md"
+printf '{}' > "$_G/pipeline-state.json"
+( source "$REPO_ROOT/plugins/tool/design-gate/plugin.sh" >/dev/null 2>&1
+  emit_event() { :; }; eb_emit_event() { :; }
+  unset ZBUILD_STAGE_INPUTS
+  design_gate_run design-gate "$_G/pipeline-state.json" ) >/dev/null 2>&1 || true
+assert_eq "[R12] design-gate-result.json carries the judged design's hash" \
+    "$(git hash-object "$_G/artifacts/design.md")" \
+    "$(jq -r '.data.design_sha // empty' "$_G/artifacts/design-gate-result.json" 2>/dev/null)"
 
 cleanup_test_env
 print_test_results

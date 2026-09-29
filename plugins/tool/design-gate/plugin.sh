@@ -224,9 +224,15 @@ design_gate_run() {
             '{declared:$d,verified:$v,failed:$f,skipped:$s}')"
     fi
 
-    jq -n --arg v "$verdict" --argjson viol "$violations_json" --argjson gp "$_gp_json" --arg r "$reason" \
-        '{"result_contract":2,"schema_version":1,"verdict":$v,"disposition":"complete","reason":$r,"violations":$viol}
-         + (if $gp==null then {} else {"guard_precheck":$gp} end)' | atomic_write "$result_path"
+    # #2225 (review #2229): the verdict names the exact design.md it judged, so a
+    # later run reusing a design can tell a pass for THIS design from a pass for
+    # an earlier one that was rewritten afterwards.
+    local _dg_sha; _dg_sha="$(git hash-object "$design_md" 2>/dev/null || true)"
+    atomic_write "$result_path" <<< "$(jq -n --arg v "$verdict" --argjson viol "$violations_json" \
+        --argjson gp "$_gp_json" --arg r "$reason" --arg sha "$_dg_sha" \
+        '{"result_contract":2,"schema_version":1,"verdict":$v,"disposition":"complete","reason":$r,"violations":$viol,
+          "data":{"design_sha":$sha}}
+         + (if $gp==null then {} else {"guard_precheck":$gp} end)')"
 
     if [[ "$verdict" == "fail" ]]; then
         {

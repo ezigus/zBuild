@@ -1499,6 +1499,9 @@ _route_parse_commit_summary_line() {
 }
 
 route_to_model_loop() {
+    # Reset before ANY return: an early exit must not leave the previous loop's
+    # reason (a stale done_sentinel reads as success to the caller) — #2225.
+    _ROUTE_LOOP_TERMINATED_REASON=""
     if [[ $# -lt 4 ]]; then
         error "route_to_model_loop requires <tier> <prompt_file> <cwd> <max_iterations>"
         return 2
@@ -1635,7 +1638,11 @@ route_to_model_loop() {
     local iter
     for (( iter=1; iter <= max_iterations; iter++ )); do
         # The spending cap is checked before every call, the loop's included.
-        _route_check_budget "$tier" || { _route_loop_clear_traps; return 1; }
+        _route_check_budget "$tier" || {
+            # #2225: named, so the stage can say why it stopped (misconfigured —
+            # the operator's cap), instead of an empty reason.
+            _ROUTE_LOOP_TERMINATED_REASON="router_budget_exceeded"
+            _route_loop_clear_traps; return 1; }
         _ROUTE_LOOP_ITERATIONS=$iter
 
         local iter_prompt _timeout_warn=""

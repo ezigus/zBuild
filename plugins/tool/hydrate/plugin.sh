@@ -87,11 +87,19 @@ hydrate_run() {
     # expression here rather than inventing one keeps the two halves from
     # drifting — a boundary whose halves disagree about where something lives is
     # not a boundary (#1809).
-    # #2225: --no-resume recreates — nothing from a prior run is restored and no
-    # prior work branch is adopted, so every stage starts from nothing.
+    # #2225: --no-resume recreates — nothing from a prior run is restored. The
+    # saved history is still fetched and adopted (below), so the next snapshot
+    # extends it rather than force-pushing a new one over it (review #2229).
     if [[ "${ZBUILD_RESUME:-1}" == "0" ]]; then
+        if ! _hydrate_fetch "$_issue"; then
+            emit_event "hydrate.fetch.failed" "stage=$_stage_id" "issue=$_issue" 2>/dev/null || true
+        fi
+        if ! _artifact_persist_adopt_remote "$_issue"; then
+            emit_event "hydrate.adopt.failed" "stage=$_stage_id" "issue=$_issue" \
+                "reason=${_ARTIFACT_PERSIST_LAST_REASON:-unknown}" 2>/dev/null || true
+        fi
         _hydrate_write_result "$_artifacts_dir" "complete" \
-            "fresh start (--no-resume): prior work not restored, prior branch not adopted" "skipped" 0
+            "fresh start (--no-resume): prior work not restored; the saved history is kept" "skipped" 0
         emit_event "hydrate.complete" "stage=$_stage_id" "issue=$_issue" \
             "restored=0" "reason=no_resume" 2>/dev/null || true
         return 0

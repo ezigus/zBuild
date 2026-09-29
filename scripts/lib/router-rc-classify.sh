@@ -263,7 +263,7 @@ router_reason_disposition() {
         router_out_of_turns|max_iterations)  printf 'out_of_turns' ;;
         router_rate_limited)                 printf 'rate_limited' ;;
         router_oom_kill|signal|sigint)       printf 'interrupted' ;;
-        router_config_error)                 printf 'misconfigured' ;;
+        router_config_error|router_budget_exceeded) printf 'misconfigured' ;;
         no_progress)                         printf 'unusable' ;;
         *)                                   printf 'unavailable' ;;
     esac

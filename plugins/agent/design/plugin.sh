@@ -281,8 +281,9 @@ _design_state_blob_url() {
 # _design_prior_reusable <artifact_dir> — rc 0 when the prior run's design may
 # stand as this run's without a model call (#2225): the run resumes (the
 # default), this run has no design yet (so not a rewind), the prior design
-# passed design-gate, the prior run did not send the work back to design, and
-# the issue text is byte-identical. Anything else — design runs as before.
+# passed design-gate — a pass recorded for that exact design.md — and
+# spec-coverage found it covered, the prior run did not send the work back to
+# design, and the issue text is byte-identical. Anything else — design runs as before.
 # A resume used to re-run design every time (~20 min, #1835/#1837) because no
 # stage was told it was one.
 _design_prior_reusable() {
@@ -291,6 +292,12 @@ _design_prior_reusable() {
     [[ -n "$rr" && -s "$rr/design.md" ]] || return 1
     [[ ! -s "$ad/design.md" ]] || return 1
     [[ "$(jq -r '.verdict // empty' "$rr/design-gate-result.json" 2>/dev/null)" == "pass" ]] || return 1
+    # The pass must be for THIS design.md, not an earlier one that a later
+    # iteration rewrote (or a partial kept after a timeout) — review #2229.
+    local _judged; _judged="$(jq -r '.data.design_sha // empty' "$rr/design-gate-result.json" 2>/dev/null)"
+    [[ -n "$_judged" && "$_judged" == "$(git hash-object "$rr/design.md" 2>/dev/null)" ]] || return 1
+    # The cycle's other exit condition: spec-coverage must have found it covered.
+    [[ "$(jq -r '.verdict // empty' "$rr/spec-coverage-result.json" 2>/dev/null)" == "covered" ]] || return 1
     if [[ -s "$rr/gate-aggregator-result.json" ]]; then
         case "$(jq -r '.fault // empty' "$rr/gate-aggregator-result.json" 2>/dev/null)" in
             specification|scope) return 1 ;;

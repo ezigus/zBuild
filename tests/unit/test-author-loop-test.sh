@@ -21,6 +21,12 @@
 #             out_of_turns (from the shared mapping), rc=1, its work committed
 # A4 [change] the prompt tells the model to say it is done once every SPEC has
 #             its assertion
+# A6 [change] a loop that cannot start (no model CLI) is misconfigured — not
+#             unavailable, which would read as "an external service is down"
+# A7 [change] the loop's spending-cap exit names its cause (router_budget_exceeded
+#             → misconfigured) instead of leaving no reason
+# A8 [change] a loop that fails at startup never reports the PREVIOUS loop's
+#             end reason (a stale done_sentinel read as success)
 # A5 [change] the loop never shows the author the implementation (review #2229):
 #             neither the uncommitted change nor build's commits reach any call's
 #             prompt — only the testfiles' own progress does
@@ -96,7 +102,15 @@ tests/acc-test.sh
 EOF
     printf '{}' > "$d/state/pipeline-state.json"
     (
-        export PATH="$TEST_TEMP_DIR/bin:$PATH" FAKE_DIR="$d/fake" FAKE_REPO="$d/repo" FAKE_DONE_AT="$2"
+        if [[ "${ZB_HIDE_CLAUDE:-0}" == "1" ]]; then
+            # Only the tools the loop needs — never a directory that also holds
+            # a real `claude` (Homebrew keeps jq and claude side by side).
+            local _t; for _t in jq gtimeout timeout gstat; do
+                command -v "$_t" >/dev/null 2>&1 && ln -sf "$(command -v "$_t")" "$TEST_TEMP_DIR/nobin/$_t"
+            done
+            export PATH="$TEST_TEMP_DIR/nobin:/usr/bin:/bin"
+        else export PATH="$TEST_TEMP_DIR/bin:$PATH"; fi
+        export FAKE_DIR="$d/fake" FAKE_REPO="$d/repo" FAKE_DONE_AT="$2"
         export ZBUILD_STATE_DIR="$d/state" ZBUILD_ARTIFACT_DIR="$d/state/artifacts" ZBUILD_REPO_ROOT="$d/repo"
         export ZBUILD_EVENTS_DIR="$d/events" ZBUILD_EVENTS_JSONL="$d/events/events.jsonl"
         export ZBUILD_RUN_ID="ta-loop-$$" ZBUILD_CURRENT_STAGE=test-author ZBUILD_ROUTER_MAX_ITERATIONS="$3"
@@ -139,6 +153,43 @@ assert_eq "[A3] the loop's calls were all made" "2" "$(_calls a3)"
 assert_eq "[A3] rc=1" "1" "$_rc3"
 assert_eq "[A3] disposition out_of_turns (the shared mapping)" "out_of_turns" "$(_res a3 .disposition)"
 assert_eq "[A3] the work is committed" "" "$(git -C "$TEST_TEMP_DIR/a3/repo" status --porcelain -- tests/acc-test.sh 2>/dev/null)"
+
+print_test_section "A6: a loop that cannot start"
+mkdir -p "$TEST_TEMP_DIR/nobin"
+_rc6="$(ZB_HIDE_CLAUDE=1 _run a6 1 3)"
+assert_eq "[A6] no model CLI → rc=1" "1" "$_rc6"
+assert_eq "[A6] ...disposition misconfigured, not unavailable" "misconfigured" "$(_res a6 .disposition)"
+
+print_test_section "A7/A8: the loop's own end reasons"
+_a78="$(
+    export PATH="$TEST_TEMP_DIR/bin:$PATH" FAKE_DIR="$TEST_TEMP_DIR/a78" FAKE_REPO="$TEST_TEMP_DIR/a78/repo" FAKE_DONE_AT=1
+    mkdir -p "$FAKE_DIR/repo/tests" "$FAKE_DIR/state" "$FAKE_DIR/events"; : > "$FAKE_DIR/calls"; : > "$FAKE_DIR/commits-seen"
+    printf 'x\n' > "$FAKE_REPO/tests/acc-test.sh"
+    ( cd "$FAKE_REPO" && git init -q -b main . && git config user.email t@e.st && git config user.name t && git add -A && git commit -q -m s ) >/dev/null 2>&1
+    export ZBUILD_STATE_DIR="$FAKE_DIR/state" ZBUILD_EVENTS_DIR="$FAKE_DIR/events" ZBUILD_EVENTS_JSONL="$FAKE_DIR/events/events.jsonl"
+    export ZBUILD_RUN_ID="ta-a78-$$" ZBUILD_CURRENT_STAGE=test-author
+    : > "$ZBUILD_EVENTS_JSONL"
+    source "$REPO_ROOT/core/event-bus/event-bus.sh"; source "$REPO_ROOT/core/pipeline/template.sh"
+    source "$REPO_ROOT/core/output/stage-io.sh"; source "$REPO_ROOT/core/router/route.sh"
+    load_template "$TEST_TEMP_DIR/template.yaml" >/dev/null 2>&1
+    P="$TEST_TEMP_DIR/a78-prompt.txt"; printf 'go\n' > "$P"
+    route_to_model_loop T2 "$P" "$FAKE_REPO" 2 >/dev/null 2>&1
+    printf 'first=%s ' "${_ROUTE_LOOP_TERMINATED_REASON:-}"
+    route_to_model_loop T9 "$P" "$FAKE_REPO" 2 >/dev/null 2>&1
+    printf 'badtier=%s ' "${_ROUTE_LOOP_TERMINATED_REASON:-}"
+    _route_check_budget() { return 1; }
+    route_to_model_loop T2 "$P" "$FAKE_REPO" 2 >/dev/null 2>&1
+    printf 'budget=%s' "${_ROUTE_LOOP_TERMINATED_REASON:-}"
+)"
+assert_contains "[A8] fixture: the first loop ended done" "$_a78" "first=done_sentinel"
+if grep -q 'badtier=done_sentinel' <<< "$_a78"; then
+    assert_fail "[A8] a loop that fails at startup does not report the previous loop's done" "$_a78"
+else
+    assert_pass "[A8] a loop that fails at startup does not report the previous loop's done"
+fi
+assert_contains "[A7] the spending-cap exit names its cause" "$_a78" "budget=router_budget_exceeded"
+assert_eq "[A7] ...which is misconfigured (an operator's cap)" "misconfigured" \
+    "$( source "$REPO_ROOT/scripts/lib/router-rc-classify.sh"; router_reason_disposition router_budget_exceeded )"
 
 cleanup_test_env
 print_test_results

@@ -22,6 +22,12 @@ _ZB_SIGNAL_PREV=""
 _ZB_SIGNAL_CB=""
 
 stage_signal_begin() {
+    # One guard at a time: a second begin would save THIS guard's handler as the
+    # "caller's" and lose the real one (review #2229). Refused, not stacked.
+    if [[ -n "$_ZB_SIGNAL_CB" ]]; then
+        printf 'stage_signal_begin: already guarding (%s) — end it first\n' "$_ZB_SIGNAL_CB" >&2
+        return 1
+    fi
     _ZB_SIGNAL_CB="${1:?stage_signal_begin needs a callback}"
     _ZB_SIGNAL_PREV="$(trap -p TERM INT)"
     trap '_stage_signal_fire' TERM INT

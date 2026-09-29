@@ -113,9 +113,9 @@ Usage: runner.sh --issue <N>|--goal "<text>" [--dry-run] [--template <id>]
   --template <id>   Pipeline template to use (default: simple)
   --resume          Resume an existing run (skip completed stages)
   --from-stage <s>  Skip ahead to stage <s> when resuming (emits warning)
-  --no-resume       Recreate: start fresh even if a state exists, restore no
-                    prior-run work and adopt no prior branch (default: resume,
-                    reusing prior work; ZBUILD_RESUME=0 is the same, #2225)
+  --no-resume       Recreate: start fresh even if a state exists and restore no
+                    prior-run work (default: resume, reusing prior work;
+                    ZBUILD_RESUME=0 is the same, #2225)
   --force           Resume even if status=aborted
   --self-host       Dogfood zBuild's own engine: redirect read-only contract-
                     grammar libs to a working-tree snapshot (#963, ADR-023)
