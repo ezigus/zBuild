@@ -2870,11 +2870,11 @@ main() {
             return 9
         fi
         # #1823 (ADR-054 §4b): narrow ONLY a v2 stage, and only here. A v1
-        # plugin's rc is still its sole channel — `plan` says `scope_too_large`
-        # with rc=10 and has nowhere else to put it — so v1 returns exactly what
-        # it always did and nothing unmigrated changes behaviour. A v2 stage
-        # declared a `disposition`, so it has somewhere else to say everything
-        # its rc was carrying, and is held to {0,1}. #1850 drops the gate.
+        # plugin's rc is still its sole channel; v1 plugins that have not yet
+        # migrated to contract v2 return exactly what they always did and nothing
+        # unmigrated changes behaviour. A v2 stage declared a `disposition`, so
+        # it has somewhere else to say everything its rc was carrying, and is
+        # held to {0,1}. #1850 drops the gate.
         #
         # The version comes back on STDOUT from a cheap probe. It must NOT ride a
         # global: the readers above are all invoked as `x="$(...)"`, and a `$()`
@@ -3502,23 +3502,6 @@ main() {
                             _runner_ended=true
                             error "Stage $_ust aborted (rc=$_rc): LLM CLI unavailable"
                             return 9
-                        fi
-                        # #1052: rc=10 = scope_too_large — plan turn budget exhausted;
-                        # status=aborted (mirrors rc=9). Distinct from rc=8/rc=9.
-                        if [[ $_rc -eq 10 ]]; then
-                            _set_pipeline_status "$state_file" "aborted"
-                            eb_emit_event "stage.fail" "stage=$_ust" "rc=$_rc" \
-                                || { _r=$?; warn "eb_emit_event stage.fail failed (rc=$_r)"; true; }
-                            eb_emit_event "pipeline.aborted" "stage=$_ust" \
-                                "run_id=$_runner_run_id" "issue=$_runner_issue" \
-                                "reason=scope_too_large" "status=aborted" 2>/dev/null || true
-                            eb_emit_event "pipeline.end" "status=aborted" "stage=$_ust" "rc=$_rc" \
-                                "run_id=$_runner_run_id" "issue=$_runner_issue" \
-                                || { _r=$?; warn "eb_emit_event pipeline.end status=aborted failed (rc=$_r)"; true; }
-                            _render_pipeline_end "aborted" "$_ust" "$_rc"
-                            _runner_ended=true
-                            error "Stage $_ust aborted (rc=$_rc): scope_too_large — SPLIT THIS ISSUE"
-                            return 10
                         fi
                         _set_pipeline_status "$state_file" "interrupted"
                         eb_emit_event "stage.fail" "stage=$_ust" "rc=$_rc" \
