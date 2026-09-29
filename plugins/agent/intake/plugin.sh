@@ -28,42 +28,32 @@ source "$_INTAKE_DIR/lib/branch-names.sh"
 source "$_INTAKE_DIR/lib/branch-ops.sh"
 
 # ─── v2 result writer ────────────────────────────────────────────────────────
-# Write intake-result.json to the artifact dir (ADR-055 contract v2).
-# Args: $1=verdict $2=disposition $3=reason [$4=data-json-object]
-# Uses ZBUILD_ARTIFACT_DIR first (engine-provided); falls back to _intake_art
-# (derived from state_file) for callers that set _intake_art in their scope.
+# _intake_write_result <art_dir> <verdict> <disposition> <reason> [data-json]
+# The disposition is the THIRD argument, as in every other stage's writer, so
+# lint-disposition-words reads intake's words. There is no fallback directory:
+# the engine names the artifact dir, and a result that cannot be written is
+# reported, never skipped — a stage with no result reads as a pass-less run.
 _intake_write_result() {
-    local verdict="$1" disposition="$2" reason="$3" data_json="${4:-}"
-    local art_dir="${ZBUILD_ARTIFACT_DIR:-${_intake_art:-}}"
-    [[ -z "$art_dir" ]] && return 0
-    mkdir -p "$art_dir" 2>/dev/null || true
-    local json
-    if [[ -n "$data_json" ]]; then
-        json="$(jq -nc \
-            --argjson rc 2 \
-            --arg v "$verdict" \
-            --arg d "$disposition" \
-            --arg r "$reason" \
-            --argjson data "$data_json" \
-            '{result_contract: $rc, verdict: $v, disposition: $d, reason: $r, data: $data}' \
-            2>/dev/null)" || return 0
-    else
-        json="$(jq -nc \
-            --argjson rc 2 \
-            --arg v "$verdict" \
-            --arg d "$disposition" \
-            --arg r "$reason" \
-            '{result_contract: $rc, verdict: $v, disposition: $d, reason: $r}' \
-            2>/dev/null)" || return 0
+    local art_dir="$1" verdict="$2" disposition="$3" reason="$4" data_json="${5:-null}"
+    if [[ -z "$art_dir" ]]; then
+        error "intake: ZBUILD_ARTIFACT_DIR is not set — the engine gave intake nowhere to write intake-result.json"
+        return 1
     fi
-    atomic_write "$art_dir/intake-result.json" <<< "$json" 2>/dev/null || true
+    local json
+    json="$(jq -nc --arg v "$verdict" --arg d "$disposition" --arg r "$reason" --argjson data "$data_json"         '{result_contract: 2, verdict: $v, disposition: $d, reason: $r}
+         + (if $data == null then {} else {data: $data} end)')" \
+        && atomic_write "$art_dir/intake-result.json" <<< "$json" && return 0
+    error "intake: could not write $art_dir/intake-result.json"
+    return 1
 }
 
-# ─── run ─────────────────────────────────────────────────────────────────────
-# Args: $1 = stage_id, $2 = state_file
-# Reads: ZBUILD_GOAL (env), ZBUILD_ISSUE (env, optional)
-# Writes: $(dirname $state_file)/scope-manifest.md
-#         $(dirname $state_file)/intake.md
+# A signal ends the stage: record it with the one word for it, then leave.
+_intake_on_signal() {
+    _intake_write_result "${ZBUILD_ARTIFACT_DIR:-}" "fail" \
+        "${1:-$STAGE_SIGNAL_DISPOSITION}" "${2:-$STAGE_SIGNAL_REASON}" || true
+    exit 1
+}
+
 # _intake_compose_goal <issue_json> <comment_max_bytes>
 # title + body, then qualifying comments under a labelled heading. Keeps
 # OWNER/MEMBER/COLLABORATOR; drops github-actions, any [bot] login, and
@@ -103,15 +93,28 @@ _intake_compose_goal() {
     fi
 }
 
+# ─── run ─────────────────────────────────────────────────────────────────────
+# Args: $1 = stage_id, $2 = state_file
+# Reads: ZBUILD_GOAL (env), ZBUILD_ISSUE (env, optional)
+# Writes: $(dirname $state_file)/scope-manifest.md
+#         $(dirname $state_file)/intake.md
+#         $ZBUILD_ARTIFACT_DIR/intake-result.json (every exit path)
 intake_run() {
+    # The signal guard spans the whole stage and is ended on every return, so
+    # the caller's own TERM/INT handlers come back (#2225 stage-signal).
+    stage_signal_begin _intake_on_signal || return 1
+    local rc=0
+    _intake_run_inner "$@" || rc=$?
+    stage_signal_end
+    return "$rc"
+}
+
+_intake_run_inner() {
     # ADR-055 §9: resolved up-front, because the closed-issue refusal below
     # returns long before state_dir is derived and must still say why.
     local _intake_art=""
     [[ -n "${2:-}" ]] && _intake_art="$(dirname "${2:-}")/artifacts"
-
-    # ADR-054 §4: SIGTERM trap — write fail/broken before the process exits.
-    # Fires only when the subshell running intake_run receives SIGTERM.
-    trap '_intake_write_result "fail" "broken" "intake was interrupted by SIGTERM" 2>/dev/null || true; exit 1' TERM
+    local _art="${ZBUILD_ARTIFACT_DIR:-}"
 
     local goal="${ZBUILD_GOAL:-}"
     local issue="${ZBUILD_ISSUE:-0}"
@@ -124,7 +127,8 @@ intake_run() {
             local _state_rc=0
             _intake_check_issue_state "$issue" || _state_rc=$?
             if [[ $_state_rc -ne 0 ]]; then
-                _intake_write_result "fail" "unavailable" \
+                # Closed is the operator's choice, not an outage: misconfigured.
+                _intake_write_result "$_art" "fail" "misconfigured" \
                     "refused issue #$issue — it is not in an actionable state"
                 stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "fail" \
                     "refused issue #$issue — it is not in an actionable state" \
@@ -197,13 +201,14 @@ intake_run() {
                 # one was the exception, and it produced the most expensive
                 # possible way to discover the fetch had failed.
                 error "intake_run: could not read issue #${issue} (gh rc=${gh_rc}) and no --goal was supplied — refusing to run against a goal that says nothing about what to build. Supply --goal, or set ZBUILD_INTAKE_ALLOW_PLACEHOLDER=1 for an offline smoke run."
-                _intake_write_result "fail" "unavailable" \
-                    "could not read issue #${issue} (gh rc=${gh_rc}) and no goal was supplied"
+                # disposition-ok: GitHub (gh issue view) is not responding
+                _intake_write_result "$_art" "fail" "unavailable" \
+                    "could not read issue #${issue} from GitHub (gh rc=${gh_rc}) and no goal was supplied"
                 return 1
             fi
         else
             error "intake_run: ZBUILD_GOAL is required (or pass --issue <N>)"
-            _intake_write_result "fail" "misconfigured" \
+            _intake_write_result "$_art" "fail" "misconfigured" \
                 "ZBUILD_GOAL is required (or pass --issue <N>)"
             return 1
         fi
@@ -212,7 +217,7 @@ intake_run() {
     local state_file="${2:-}"
     if [[ -z "$state_file" ]]; then
         error "intake_run: state_file argument required"
-        _intake_write_result "fail" "broken" \
+        _intake_write_result "$_art" "fail" "broken" \
             "the engine dispatched this stage with no state file"
         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/intake-summary.md}" "intake" "error" \
             "the engine dispatched this stage with no state file, so it could not run" \
@@ -225,7 +230,8 @@ intake_run() {
     sanitized="$(_intake_strip_synthesized "$goal")"
     if [[ -z "$sanitized" ]]; then
         error "intake_run: goal empty after sentinel sanitization"
-        _intake_write_result "fail" "broken" \
+        # The input is empty, not zBuild: misconfigured.
+        _intake_write_result "$_art" "fail" "misconfigured" \
             "the goal was empty after sentinel sanitization"
         stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "fail" \
             "the goal was empty after sanitization, so there is nothing to plan" \
@@ -283,18 +289,25 @@ intake_run() {
         _intake_create_workspace_branch "$state_dir" "$issue" "$_title_line" \
             || _branch_rc=$?
         if [[ $_branch_rc -ne 0 ]]; then
-            _intake_write_result "fail" "misconfigured" \
-                "could not create the workspace branch"
+            # Only fetching the remote branch reaches the network; every other
+            # refusal (dirty tree, bad name, mid-rebase) is the setup's to fix.
+            local _b_disp="misconfigured" _b_reason="could not create the workspace branch"
+            if [[ -n "${_INTAKE_BRANCH_FETCH_FAILED:-}" ]]; then
+                # disposition-ok: the git remote (fetch) is not responding
+                _b_disp="unavailable"
+                _b_reason="could not fetch the remote branch '${_INTAKE_BRANCH_FETCH_FAILED}' — the git remote is not responding"
+            fi
+            _intake_write_result "$_art" "fail" "$_b_disp" "$_b_reason"
             stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "fail" \
-                "could not create the workspace branch" \
+                "$_b_reason" \
                 "Fail-closed: work does not proceed on the current branch, which may be main."
             return 1
         fi
     fi
 
-    _intake_write_result "pass" "complete" \
+    _intake_write_result "$_art" "pass" "complete" \
         "took in the goal for issue #$issue: ${_title_line:0:60}" \
-        "{\"goal_len\": ${#sanitized}, \"platform_count\": ${#platforms[@]}}"
+        "{\"goal_len\": ${#sanitized}, \"platform_count\": ${#platforms[@]}}" || return 1
     stage_summary_write "${_intake_art:+$_intake_art/intake-summary.md}" "intake" "pass" \
         "took in the goal for issue #$issue: ${_title_line:0:60}" \
         "$(printf -- '- goal length: %s chars\n- platforms: %s' "${#sanitized}" "${#platforms[@]}")"

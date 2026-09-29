@@ -285,6 +285,9 @@ _intake_checkout_branch() {
     if git show-ref --verify --quiet "refs/remotes/origin/$target"; then
         # Fetch the remote branch as a local tracking branch.
         if ! git fetch origin "$target:$target" >/dev/null 2>&1; then
+            # The one network step here: the caller reports it as the remote
+            # not responding, not as a setup fault.
+            _INTAKE_BRANCH_FETCH_FAILED="$target"
             error "intake_branch: failed to fetch remote branch '$target'"
             emit_event "intake.error" \
                 "plugin=intake" "branch=$target" "reason=fetch_failed"
@@ -348,6 +351,7 @@ _intake_checkout_branch() {
 # state writes. Returns 0 on success, 2 on any refusal/error.
 _intake_create_workspace_branch() {
     local state_dir="$1" issue="$2" title="$3"
+    _INTAKE_BRANCH_FETCH_FAILED=""
 
     # Env override (with deprecated WORKSPACE_BRANCH alias).
     local override="${ZBUILD_WORKSPACE_BRANCH:-}"

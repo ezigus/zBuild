@@ -3,7 +3,9 @@
 # boundary (issue #456). Lesson from #449 — assert artifacts AND event are
 # emitted from a subprocess, not just the in-process call.
 # #1837: also covers SPEC-1 (rc=1 on refuse), SPEC-2 (result file written
-# on refusal), and SPEC-16 (SIGTERM mid-run writes fail/broken result).
+# on refusal), and SPEC-16 (SIGTERM mid-run writes a fail result). The close-out
+# fixed the words: a closed issue is misconfigured (the operator chose it; nothing
+# was down) and a signal is interrupted (retry), never broken (halt).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -102,22 +104,24 @@ assert_gt "subprocess: intake.refused.issue_closed event in jsonl" "$refused_cou
 # ─── SPEC-2 [change]: intake-result.json written on the refusal path ─────────
 assert_file_exists "[#1837/SPEC-2] intake-result.json written on refusal" \
     "$ARTIFACT_DIR/intake-result.json"
+assert_eq "[#1837] a closed issue is misconfigured — nothing was down" "misconfigured" \
+    "$(jq -r '.disposition // empty' "$ARTIFACT_DIR/intake-result.json" 2>/dev/null || true)"
 
 # ─── SPEC-16 [change] / SPEC-2 [change]: SIGTERM mid-run ────────────────────
-# Run intake in a subprocess with stage_summary_write mocked to sleep long
-# enough for SIGTERM to arrive. The v2 SIGTERM trap must write the result file
-# before the process exits (trap body: _intake_write_result → exit 1, in that
-# order). Temporal ordering is established structurally: the artifact dir is
-# empty before the subprocess starts; only the subprocess writes to it; so a
-# file present after the subprocess exits was written by the trap before exit.
+# stage_summary_write is stubbed to announce itself and then wait on a child:
+# `wait` returns as soon as a trapped signal arrives, where a foreground `sleep`
+# would hold the trap until it finished (the old stub slept 10s every run). The
+# parent kills only once the stub has announced — no fixed delay to race.
+# Temporal ordering is structural: the artifact dir is empty before the
+# subprocess starts and only the subprocess writes to it.
 _s16_art_dir="$TEST_TEMP_DIR/sigterm-test"
 _s16_state_dir="$TEST_TEMP_DIR/sigterm-state"
 mkdir -p "$_s16_art_dir" "$_s16_state_dir"
 _s16_state_file="$_s16_state_dir/pipeline-state.json"
+_s16_ready="$TEST_TEMP_DIR/sigterm-ready"
 echo '{"schema_version":1,"run_id":"sigterm","issue":"0","stage_statuses":{}}' \
     > "$_s16_state_file"
 
-# Verify the dir is empty before the subprocess starts — no pre-existing result.
 if [[ -f "$_s16_art_dir/intake-result.json" ]]; then
     assert_fail "[#1837/SPEC-16] artifact dir must be empty before SIGTERM test starts" \
         "pre-existing file found"
@@ -128,7 +132,7 @@ bash -c "
     set -uo pipefail
     source '$REPO_ROOT/scripts/lib/helpers.sh'
     source '$REPO_ROOT/plugins/agent/intake/plugin.sh'
-    stage_summary_write() { sleep 10; }
+    stage_summary_write() { : > '$_s16_ready'; sleep 30 >/dev/null 2>&1 & wait \$!; }
     export ZBUILD_GOAL='sigterm test: verifying v2 signal handling'
     export ZBUILD_ARTIFACT_DIR='$_s16_art_dir'
     export ZBUILD_INTAKE_SKIP_BRANCH=1
@@ -138,22 +142,23 @@ bash -c "
     export ZBUILD_EVENT_SCHEMA='$ZBUILD_EVENT_SCHEMA'
     intake_run 'intake' '$_s16_state_file' &
     _subpid=\$!
-    sleep 0.3
+    for _i in \$(seq 1 200); do [[ -e '$_s16_ready' ]] && break; sleep 0.05; done
     kill -TERM \"\$_subpid\" 2>/dev/null || true
     wait \"\$_subpid\" 2>/dev/null || true
+    pkill -f 'sleep 30' -P \"\$_subpid\" 2>/dev/null || true
 " 2>/dev/null
 set -e
 
-# The dir was empty before; the parent never writes to it; the file present now
-# was written by the subprocess before it exited — establishing the temporal
-# constraint "before the process exits" (trap body writes, then calls exit 1).
+assert_file_exists "[#1837/SPEC-16] fixture: the stub was reached before the signal" "$_s16_ready"
 assert_file_exists "[#1837/SPEC-2][#1837/SPEC-16] SIGTERM: intake-result.json written before exit" \
     "$_s16_art_dir/intake-result.json"
 if [[ -f "$_s16_art_dir/intake-result.json" ]]; then
-    _s16_verdict="$(jq -r '.verdict // empty' "$_s16_art_dir/intake-result.json" 2>/dev/null || true)"
-    _s16_disp="$(jq -r '.disposition // empty' "$_s16_art_dir/intake-result.json" 2>/dev/null || true)"
-    assert_eq "[#1837/SPEC-16] SIGTERM: verdict=fail" "fail" "$_s16_verdict"
-    assert_eq "[#1837/SPEC-16] SIGTERM: disposition=broken" "broken" "$_s16_disp"
+    assert_eq "[#1837/SPEC-16] SIGTERM: verdict=fail" "fail" \
+        "$(jq -r '.verdict // empty' "$_s16_art_dir/intake-result.json" 2>/dev/null || true)"
+    assert_eq "[#1837/SPEC-16] SIGTERM: disposition=interrupted (retry), not broken (halt)" "interrupted" \
+        "$(jq -r '.disposition // empty' "$_s16_art_dir/intake-result.json" 2>/dev/null || true)"
+    assert_eq "[#1837/SPEC-16] SIGTERM: reason=signal_interrupt" "signal_interrupt" \
+        "$(jq -r '.reason // empty' "$_s16_art_dir/intake-result.json" 2>/dev/null || true)"
 fi
 
 cleanup_test_env
