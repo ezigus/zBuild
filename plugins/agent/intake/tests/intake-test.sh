@@ -40,6 +40,12 @@ STATE_FILE="$STATE_DIR/pipeline-state.json"
 mkdir -p "$STATE_DIR"
 echo '{"schema_version":1,"run_id":"test","issue":"0","stage_statuses":{}}' > "$STATE_FILE"
 
+# Artifact dir for SPEC-2/3/9/15 result file checks (ZBUILD_ARTIFACT_DIR set
+# early so every intake_run in this file writes its result here)
+ARTIFACT_DIR="$STATE_DIR/artifacts"
+mkdir -p "$ARTIFACT_DIR"
+export ZBUILD_ARTIFACT_DIR="$ARTIFACT_DIR"
+
 # ─── Test 1: manifest validates + plugin is discoverable ─────────────────────
 set +e
 validate_manifest "$PLUGIN_DIR/manifest.yaml" >/dev/null 2>&1
@@ -77,7 +83,7 @@ err="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
 rc=$?
 set -e
 
-assert_eq "unset ZBUILD_GOAL with no issue returns rc=2" "2" "$rc"
+assert_eq "[#1837/SPEC-1] unset ZBUILD_GOAL with no issue returns rc=1" "1" "$rc"
 assert_contains "stderr mentions ZBUILD_GOAL" "$err" "ZBUILD_GOAL"
 
 # ─── Test 3: goal written to state/intake.md ─────────────────────────────────
@@ -169,7 +175,7 @@ assert_contains "generic fallback writes + ./" "$scope" "+ ./"
 
 # ─── Test 7: plugin.result event emitted ─────────────────────────────────────
 run_complete_count=$(grep -c '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
-assert_gt "[SPEC-2] plugin.result event emitted" "$run_complete_count" "0"
+assert_gt "[#1837/SPEC-9] plugin.result event emitted" "$run_complete_count" "0"
 
 plugin_field="$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | \
     jq -r 'select(.type=="plugin.result") | .data.plugin // empty' 2>/dev/null | tail -1 || true)"
@@ -184,7 +190,7 @@ intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 
-assert_eq "empty ZBUILD_GOAL with no issue returns rc=2" "2" "$rc"
+assert_eq "[#1837/SPEC-1] empty ZBUILD_GOAL with no issue returns rc=1" "1" "$rc"
 
 # ─── gh mock for --issue tests ───────────────────────────────────────────────
 # Use the shared mock_binary helper (no string interpolation into the mock
@@ -305,7 +311,7 @@ intake_stderr="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
 rc=$?
 set -e
 
-assert_eq "[#1804] a failed fetch with no supplied goal fails the run" "2" "$rc"
+assert_eq "[#1804][#1837/SPEC-1] a failed fetch with no supplied goal fails the run rc=1" "1" "$rc"
 assert_contains "[#1804] and says why, naming the issue" \
     "$intake_stderr" "#$_ZB_ID"
 assert_file_not_exists "[#1804] no fabricated goal is left on disk for the pipeline to use" \
@@ -368,7 +374,7 @@ t456a_err="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
 rc=$?
 set -e
 
-assert_eq "T_456_a: CLOSED/COMPLETED returns rc=2" "2" "$rc"
+assert_eq "[#1837/SPEC-1] T_456_a: CLOSED/COMPLETED returns rc=1" "1" "$rc"
 assert_contains "T_456_a: stderr mentions the issue" "$t456a_err" "#$_ZB_ID"
 assert_contains "T_456_a: stderr mentions CLOSED" "$t456a_err" "CLOSED"
 assert_contains "T_456_a: stderr mentions COMPLETED" "$t456a_err" "COMPLETED"
@@ -381,6 +387,8 @@ assert_gt "T_456_a: intake.refused.issue_closed event emitted" "$refused_count" 
 state_reason_field="$(grep '"intake.refused.issue_closed"' "$ZBUILD_EVENTS_JSONL" \
     | jq -r 'select(.type=="intake.refused.issue_closed") | .data.state_reason // empty' | tail -1)"
 assert_eq "T_456_a: event has state_reason=COMPLETED" "COMPLETED" "$state_reason_field"
+assert_file_exists "[#1837/SPEC-2] T_456_a: intake-result.json written on closed-issue refusal" \
+    "$ARTIFACT_DIR/intake-result.json"
 
 # ─── T_456_b: CLOSED/NOT_PLANNED ────────────────────────────────────────────
 _set_gh_mock "x" "y" 0 CLOSED NOT_PLANNED
@@ -391,7 +399,7 @@ t456b_err="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
 rc=$?
 set -e
 
-assert_eq "T_456_b: CLOSED/NOT_PLANNED returns rc=2" "2" "$rc"
+assert_eq "[#1837/SPEC-1] T_456_b: CLOSED/NOT_PLANNED returns rc=1" "1" "$rc"
 assert_contains "T_456_b: stderr mentions NOT_PLANNED" "$t456b_err" "NOT_PLANNED"
 
 # ─── T_456_c: CLOSED/DUPLICATE ──────────────────────────────────────────────
@@ -403,7 +411,7 @@ t456c_err="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
 rc=$?
 set -e
 
-assert_eq "T_456_c: CLOSED/DUPLICATE returns rc=2" "2" "$rc"
+assert_eq "[#1837/SPEC-1] T_456_c: CLOSED/DUPLICATE returns rc=1" "1" "$rc"
 assert_contains "T_456_c: stderr mentions DUPLICATE" "$t456c_err" "DUPLICATE"
 
 # ─── T_456_d: CLOSED with empty stateReason ─────────────────────────────────
@@ -415,7 +423,7 @@ t456d_err="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
 rc=$?
 set -e
 
-assert_eq "T_456_d: CLOSED/empty-reason returns rc=2" "2" "$rc"
+assert_eq "[#1837/SPEC-1] T_456_d: CLOSED/empty-reason returns rc=1" "1" "$rc"
 assert_contains "T_456_d: stderr says <not specified>" "$t456d_err" "<not specified>"
 if grep -q 'reason: null' <<< "$t456d_err"; then
     assert_fail "T_456_d: stderr must not literal-contain 'reason: null'"
@@ -490,7 +498,7 @@ rc=$?
 set -e
 
 unset ZBUILD_ALLOW_CLOSED_ISSUE
-assert_eq "T_456_h: ZBUILD_ALLOW_CLOSED_ISSUE=true STILL refuses (strict =1)" "2" "$rc"
+assert_eq "[#1837/SPEC-1] T_456_h: ZBUILD_ALLOW_CLOSED_ISSUE=true STILL refuses rc=1 (strict =1)" "1" "$rc"
 
 # ─── T_456_i: gh issue view rc=1 → the STATE check falls through ────────────
 # What this case is about is the state check: an unreadable issue must not be
@@ -508,7 +516,7 @@ t456i_err="$(intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null)"
 rc=$?
 set -e
 
-assert_eq "T_456_i: gh fail → intake fails closed on the goal (#1804)" "2" "$rc"
+assert_eq "[#1837/SPEC-1] T_456_i: gh fail → intake fails closed on the goal rc=1 (#1804)" "1" "$rc"
 assert_contains "T_456_i: and it is the FETCH failure, not a closed-issue refusal" \
     "$t456i_err" "could not read issue"
 grep -qiE 'closed|not in an actionable state' <<< "$t456i_err" \
@@ -537,7 +545,7 @@ rc=$?
 set -e
 
 unset MOCK_GH_REPO_RC
-assert_eq "T_456_j: repo view fail + CLOSED returns rc=2" "2" "$rc"
+assert_eq "[#1837/SPEC-1] T_456_j: repo view fail + CLOSED returns rc=1" "1" "$rc"
 assert_contains "T_456_j: stderr still mentions CLOSED" "$t456j_err" "CLOSED"
 if grep -q '//issues/' <<< "$t456j_err"; then
     assert_fail "T_456_j: stderr must not contain malformed //issues/ token"
@@ -617,6 +625,282 @@ assert_contains "[#1729] and the truncation is STATED, not silent" \
 unset MOCK_GH_COMMENTS
 
 _clear_gh_mock
+
+# ════════════════════════════════════════════════════════════════════════════
+# #1837: v2 contract — acceptance assertions
+# ════════════════════════════════════════════════════════════════════════════
+
+_mf="$PLUGIN_DIR/manifest.yaml"
+
+# ─── SPEC-4 [change]: manifest declares provides.result_contract: 2 ─────────
+_s4_contract="$(yaml_get "$_mf" "provides.result_contract" 2>/dev/null || true)"
+assert_eq "[#1837/SPEC-4] manifest provides.result_contract == 2" "2" "$_s4_contract"
+
+# ─── SPEC-5 [change]: manifest config.valid_verdicts: [pass, fail] ───────────
+_s5_vv_section="$(grep -A6 'valid_verdicts' "$_mf" 2>/dev/null || true)"
+if grep -q 'pass' <<< "$_s5_vv_section" && grep -q 'fail' <<< "$_s5_vv_section"; then
+    assert_pass "[#1837/SPEC-5] manifest config.valid_verdicts declares pass and fail"
+else
+    assert_fail "[#1837/SPEC-5] manifest config.valid_verdicts must declare pass and fail" \
+        "${_s5_vv_section:-absent}"
+fi
+
+# ─── SPEC-6 [change]: intake-result.json primary: true; scope_manifest not primary ─
+# Scoped to the intake_result stanza: look for the id, then check primary within it.
+_s6_ir_stanza="$(awk '
+    /intake.result|intake_result/ { found=1 }
+    found && /^[[:space:]]*-[[:space:]]*id:/ && !/intake.result|intake_result/ { exit }
+    found { print }
+' "$_mf" 2>/dev/null || true)"
+if grep -q 'primary: true' <<< "$_s6_ir_stanza"; then
+    assert_pass "[#1837/SPEC-6] intake-result.json declares primary: true"
+else
+    assert_fail "[#1837/SPEC-6] intake-result.json must declare primary: true" "absent"
+fi
+_s6_sm_stanza="$(awk '
+    /scope.manifest|scope_manifest/ { found=1 }
+    found && /^[[:space:]]*-[[:space:]]*id:/ && !/scope.manifest|scope_manifest/ { exit }
+    found { print }
+' "$_mf" 2>/dev/null || true)"
+if grep -q 'primary: true' <<< "$_s6_sm_stanza"; then
+    assert_fail "[#1837/SPEC-6] scope_manifest must NOT have primary: true after migration" "found"
+else
+    assert_pass "[#1837/SPEC-6] scope_manifest does not have primary: true"
+fi
+
+# ─── SPEC-7 [change]: manifest declares config.router.timeout_s and max_turns ─
+# manifest_router_knob is loaded via registry.sh → manifest-validation.sh
+_s7_timeout="$(manifest_router_knob "$_mf" timeout_s 2>/dev/null || true)"
+_s7_maxturns="$(manifest_router_knob "$_mf" max_turns 2>/dev/null || true)"
+if [[ -n "$_s7_timeout" ]]; then
+    assert_pass "[#1837/SPEC-7] manifest declares config.router.timeout_s"
+else
+    assert_fail "[#1837/SPEC-7] manifest must declare config.router.timeout_s" "absent"
+fi
+if [[ -n "$_s7_maxturns" ]]; then
+    assert_pass "[#1837/SPEC-7] manifest declares config.router.max_turns"
+else
+    assert_fail "[#1837/SPEC-7] manifest must declare config.router.max_turns" "absent"
+fi
+
+# ─── SPEC-8 [change]: scope-manifest.md and intake.md byte-identical to v1 golden ─
+_s8_scope_golden="$REPO_ROOT/tests/golden/intake-scope-manifest-v1.golden"
+_s8_goal_golden="$REPO_ROOT/tests/golden/intake-goal-v1.golden"
+if [[ -f "$_s8_scope_golden" && -f "$_s8_goal_golden" ]]; then
+    cat > "$STATE_DIR/platforms.json" <<'JSON'
+{"detected":["ios","node"],"repo_head_sha":"golden"}
+JSON
+    export ZBUILD_GOAL="golden-parity: verify v1 intake content is preserved"
+    rm -f "$STATE_DIR/scope-manifest.md" "$STATE_DIR/intake.md"
+    set +e
+    intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+    set -e
+    if cmp -s "$STATE_DIR/scope-manifest.md" "$_s8_scope_golden"; then
+        assert_pass "[#1837/SPEC-8] scope-manifest.md is byte-identical to v1 golden"
+    else
+        assert_fail "[#1837/SPEC-8] scope-manifest.md must match v1 golden fixture" \
+            "run: diff $STATE_DIR/scope-manifest.md $_s8_scope_golden"
+    fi
+    if cmp -s "$STATE_DIR/intake.md" "$_s8_goal_golden"; then
+        assert_pass "[#1837/SPEC-8] intake.md is byte-identical to v1 golden"
+    else
+        assert_fail "[#1837/SPEC-8] intake.md must match v1 golden fixture" \
+            "run: diff $STATE_DIR/intake.md $_s8_goal_golden"
+    fi
+else
+    assert_fail "[#1837/SPEC-8] v1 golden fixtures must exist before migration" \
+        "missing: intake-scope-manifest-v1.golden and/or intake-goal-v1.golden"
+fi
+rm -f "$STATE_DIR/platforms.json"
+
+# ─── SPEC-2 [change]: intake-result.json written on every exit path ──────────
+# Success path: run with a known goal and no issue
+rm -f "$ARTIFACT_DIR/intake-result.json"
+export ZBUILD_GOAL="spec-2 success verification"
+export ZBUILD_ISSUE="0"
+set +e
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+set -e
+assert_file_exists "[#1837/SPEC-2] intake-result.json written on success" \
+    "$ARTIFACT_DIR/intake-result.json"
+
+# No-goal failure path
+rm -f "$ARTIFACT_DIR/intake-result.json"
+export ZBUILD_GOAL=""
+export ZBUILD_ISSUE="0"
+set +e
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+set -e
+assert_file_exists "[#1837/SPEC-2] intake-result.json written on no-goal failure" \
+    "$ARTIFACT_DIR/intake-result.json"
+
+# Missing state_file path (SPEC-1 + SPEC-2)
+rm -f "$ARTIFACT_DIR/intake-result.json"
+export ZBUILD_GOAL="spec-1-2 missing-state-file check"
+export ZBUILD_ISSUE="0"
+set +e
+_s1_miss_rc=0
+intake_run "intake" "" >/dev/null 2>&1 || _s1_miss_rc=$?
+set -e
+assert_eq "[#1837/SPEC-1] missing state_file returns rc=1" "1" "$_s1_miss_rc"
+assert_file_exists "[#1837/SPEC-2] intake-result.json written on missing state_file" \
+    "$ARTIFACT_DIR/intake-result.json"
+
+# ─── SPEC-3 [change]: result file structure ──────────────────────────────────
+# Use the success-path file written above (if present) to verify v2 structure.
+# Re-run a clean success to get a predictable result.
+rm -f "$ARTIFACT_DIR/intake-result.json"
+export ZBUILD_GOAL="spec-3 result structure check"
+export ZBUILD_ISSUE="0"
+set +e
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+set -e
+_s3_file="$ARTIFACT_DIR/intake-result.json"
+if [[ -f "$_s3_file" ]]; then
+    assert_eq "[#1837/SPEC-3] result_contract == 2" \
+        "2" "$(jq -r '.result_contract // empty' "$_s3_file" 2>/dev/null || true)"
+    _s3_verdict="$(jq -r '.verdict // empty' "$_s3_file" 2>/dev/null || true)"
+    if [[ "$_s3_verdict" == "pass" || "$_s3_verdict" == "fail" ]]; then
+        assert_pass "[#1837/SPEC-3] verdict is in {pass, fail}"
+    else
+        assert_fail "[#1837/SPEC-3] verdict must be pass or fail" "got: ${_s3_verdict:-empty}"
+    fi
+    _s3_disp="$(jq -r '.disposition // empty' "$_s3_file" 2>/dev/null || true)"
+    _s3_valid_disps="complete interrupted throttled broken unusable timed_out out_of_turns misconfigured unavailable"
+    if [[ -n "$_s3_disp" ]] && grep -qw "$_s3_disp" <<< "$_s3_valid_disps"; then
+        assert_pass "[#1837/SPEC-3] disposition is in engine vocabulary"
+    else
+        assert_fail "[#1837/SPEC-3] disposition must be in engine vocabulary" \
+            "got: ${_s3_disp:-empty}"
+    fi
+    _s3_reason="$(jq -r '.reason // ""' "$_s3_file" 2>/dev/null || true)"
+    if [[ -n "$_s3_reason" ]]; then
+        assert_pass "[#1837/SPEC-3] reason is non-empty"
+    else
+        assert_fail "[#1837/SPEC-3] reason must be non-empty" "empty"
+    fi
+else
+    assert_fail "[#1837/SPEC-3] intake-result.json must exist for structure check" "absent"
+fi
+
+# ─── SPEC-15 [change]: data.goal_len and data.platform_count on success ──────
+rm -f "$ARTIFACT_DIR/intake-result.json"
+export ZBUILD_GOAL="spec-15 data field check: this is the sanitized goal text"
+export ZBUILD_ISSUE="0"
+set +e
+intake_run "intake" "$STATE_FILE" >/dev/null 2>&1
+set -e
+_s15_file="$ARTIFACT_DIR/intake-result.json"
+if [[ -f "$_s15_file" ]]; then
+    _s15_gl="$(jq -r '.data.goal_len // empty' "$_s15_file" 2>/dev/null || true)"
+    _s15_pc="$(jq -r '.data.platform_count // empty' "$_s15_file" 2>/dev/null || true)"
+    if [[ "$_s15_gl" =~ ^[0-9]+$ ]]; then
+        assert_pass "[#1837/SPEC-15] data.goal_len is a non-negative integer"
+    else
+        assert_fail "[#1837/SPEC-15] data.goal_len must be an integer in intake-result.json" \
+            "got: ${_s15_gl:-absent}"
+    fi
+    if [[ "$_s15_pc" =~ ^[0-9]+$ ]]; then
+        assert_pass "[#1837/SPEC-15] data.platform_count is a non-negative integer"
+    else
+        assert_fail "[#1837/SPEC-15] data.platform_count must be an integer in intake-result.json" \
+            "got: ${_s15_pc:-absent}"
+    fi
+else
+    assert_fail "[#1837/SPEC-15] intake-result.json must exist for data field check" "absent"
+fi
+
+# ─── SPEC-10 [guard]: plugin.sh references ZBUILD_ARTIFACT_DIR ───────────────
+if grep -q 'ZBUILD_ARTIFACT_DIR' "$PLUGIN_DIR/plugin.sh"; then
+    assert_pass "[#1837/SPEC-10] plugin.sh references ZBUILD_ARTIFACT_DIR"
+else
+    assert_fail "[#1837/SPEC-10] plugin.sh must reference ZBUILD_ARTIFACT_DIR" "not found"
+fi
+
+# ─── SPEC-11 [change]: manifest hooks section has no-cleanup comment (ADR-054 §7) ─
+_s11_hooks_section="$(awk '
+    /^hooks:/ { found=1 }
+    found && /^[a-zA-Z_]/ && !/^hooks:/ { exit }
+    found { print }
+' "$_mf" 2>/dev/null || true)"
+if grep -qiE 'no.*cleanup|no.*live.*resource|holds no live resource|no.*hook' \
+        <<< "$_s11_hooks_section"; then
+    assert_pass "[#1837/SPEC-11] manifest hooks section records no cleanup hook (ADR-054 §7)"
+else
+    assert_fail "[#1837/SPEC-11] manifest hooks must note: intake holds no live resources and declares no cleanup hook" \
+        "${_s11_hooks_section:-absent}"
+fi
+
+# ─── SPEC-12 [guard]: manifest provides.role: intake ─────────────────────────
+_s12_role="$(yaml_get "$_mf" "provides.role" 2>/dev/null || true)"
+assert_eq "[#1837/SPEC-12] manifest provides.role == intake" "intake" "$_s12_role"
+
+# ─── SPEC-13 [guard]: manifest provides.events lists >= 17 intake.* events ───
+_s13_count="$(grep -c '^[[:space:]]*-[[:space:]]*intake\.' "$_mf" 2>/dev/null || true)"
+if [[ "$_s13_count" -ge 17 ]]; then
+    assert_pass "[#1837/SPEC-13] manifest provides.events has >= 17 intake.* events (found: $_s13_count)"
+else
+    assert_fail "[#1837/SPEC-13] manifest must list >= 17 intake.* events" \
+        "found: ${_s13_count:-0}"
+fi
+
+# ─── SPEC-14 [change]: template_stage_router_timeout > manifest config.router.* ─
+# Requires route.sh for _route_resolve_timeout. Source it only if not already loaded.
+if ! declare -F _route_resolve_timeout >/dev/null 2>&1; then
+    # shellcheck source=../../../../core/router/route.sh
+    source "$REPO_ROOT/core/router/route.sh" 2>/dev/null || true
+fi
+if declare -F _route_resolve_timeout >/dev/null 2>&1; then
+    _s14_mf_timeout="$(manifest_router_knob "$_mf" timeout_s 2>/dev/null || true)"
+    if [[ -n "$_s14_mf_timeout" ]]; then
+        _s14_prev_pdir="${ZBUILD_PLUGIN_DIR:-__UNSET__}"
+        _s14_prev_stage="${ZBUILD_CURRENT_STAGE:-__UNSET__}"
+        _s14_prev_rt="${ZBUILD_ROUTER_TIMEOUT:-__UNSET__}"
+        export ZBUILD_PLUGIN_DIR="$PLUGIN_DIR"
+        export ZBUILD_CURRENT_STAGE="intake"
+        unset ZBUILD_ROUTER_TIMEOUT 2>/dev/null || true
+        _s14_tpl_val=$(( _s14_mf_timeout + 100 ))
+        # Define the template accessor that _route_resolve_knob calls.
+        # shellcheck disable=SC2317  # called indirectly via _route_resolve_timeout
+        template_stage_router_timeout() { printf '%s\n' "$_s14_tpl_val"; }
+        _s14_resolved="$(_route_resolve_timeout)"
+        assert_eq "[#1837/SPEC-14] template value wins over manifest config.router.timeout_s" \
+            "$_s14_tpl_val" "$_s14_resolved"
+        unset -f template_stage_router_timeout 2>/dev/null || true
+        if [[ "$_s14_prev_pdir" == "__UNSET__" ]]; then
+            unset ZBUILD_PLUGIN_DIR
+        else
+            export ZBUILD_PLUGIN_DIR="$_s14_prev_pdir"
+        fi
+        if [[ "$_s14_prev_stage" == "__UNSET__" ]]; then
+            unset ZBUILD_CURRENT_STAGE
+        else
+            export ZBUILD_CURRENT_STAGE="$_s14_prev_stage"
+        fi
+        if [[ "$_s14_prev_rt" == "__UNSET__" ]]; then
+            unset ZBUILD_ROUTER_TIMEOUT
+        else
+            export ZBUILD_ROUTER_TIMEOUT="$_s14_prev_rt"
+        fi
+    else
+        assert_fail "[#1837/SPEC-14] manifest must declare config.router.timeout_s for template override test" \
+            "absent — SPEC-7 must pass first"
+    fi
+else
+    assert_fail "[#1837/SPEC-14] _route_resolve_timeout not available (route.sh failed to load)" "absent"
+fi
+
+# ─── SPEC-17 [guard]: no hardcoded input artifact path constructions ──────────
+# Any pattern that constructs an artifact INPUT path without ZBUILD_ARTIFACT_DIR
+# is a defect. The grep targets literal path fragments that would bypass the
+# engine-provided dir (e.g. "$state_dir/../", "state/artifacts/", etc.).
+_s17_hits="$(grep -nE '\$\{?state_dir\}?/\.\./' "$PLUGIN_DIR/plugin.sh" 2>/dev/null || true)"
+if [[ -z "$_s17_hits" ]]; then
+    assert_pass "[#1837/SPEC-17] plugin.sh has no hardcoded artifact input path constructions"
+else
+    assert_fail "[#1837/SPEC-17] plugin.sh must not construct artifact input paths without ZBUILD_ARTIFACT_DIR" \
+        "$_s17_hits"
+fi
 
 # ─── Teardown ────────────────────────────────────────────────────────────────
 cleanup_test_env
