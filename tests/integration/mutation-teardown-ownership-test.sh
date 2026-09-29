@@ -27,19 +27,20 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 print_test_header "scripts/run-mutation.sh — teardown removes only its own worktrees (#2230)"
 setup_test_env "mutation-teardown-ownership"
 
-RUNNER="$REPO_ROOT/scripts/run-mutation.sh"
-
-# The runner refuses a dirty tree in its target dirs; skip rather than false-fail.
-_dirty="$( { git -C "$REPO_ROOT" diff --name-only -- core plugins scripts tests
-             git -C "$REPO_ROOT" ls-files --others --exclude-standard -- core plugins scripts tests
-           } 2>/dev/null )"
-if [[ -n "$_dirty" ]]; then
-    print_test_section "SKIP — working tree dirty in mutation-target dirs"
-    assert_pass "skipped: cannot exercise runner on a dirty tree (commit/stash first)"
-    cleanup_test_env
-    print_test_results
-    exit 0
-fi
+# Everything runs in a throwaway clone carrying THIS tree's runner, so the real
+# repo's worktree registry is never touched (and a dirty dev tree needs no skip).
+CLONE="$TEST_TEMP_DIR/clone"
+git clone -q --shared "$REPO_ROOT" "$CLONE"
+git -C "$CLONE" config user.email t@t
+git -C "$CLONE" config user.name t
+cp "$REPO_ROOT/scripts/run-mutation.sh" "$CLONE/scripts/run-mutation.sh"
+git -C "$CLONE" commit -qam "runner under test" --allow-empty
+RUNNER="$CLONE/scripts/run-mutation.sh"
+# _registered <basename> — 0 when a worktree of that name is registered in the clone.
+_registered() {
+    local list; list="$(git -C "$CLONE" worktree list --porcelain 2>/dev/null)"
+    grep -qF "$1" <<< "$list"
+}
 
 READY="$TEST_TEMP_DIR/held-ready"
 GO="$TEST_TEMP_DIR/held-go"
@@ -109,16 +110,15 @@ print_test_section "O2: a dead run's leftover worktree is still swept"
 sh -c 'exit 0' & _dead=$!; wait "$_dead" 2>/dev/null || true
 _stale="$(mktemp -d "${TMPDIR:-/tmp}/zb-mut.${_dead}.XXXXXX")"
 rmdir "$_stale"
-git -C "$REPO_ROOT" worktree add --detach "$_stale" HEAD >/dev/null 2>&1
-if git -C "$REPO_ROOT" worktree list --porcelain | grep -qF "${_stale##*/}"; then
+git -C "$CLONE" worktree add --detach "$_stale" HEAD >/dev/null 2>&1
+if _registered "${_stale##*/}"; then
     assert_pass "[O2] fixture: a leftover worktree from a dead run is registered"
 else
-    assert_fail "[O2] fixture: a leftover worktree from a dead run is registered" "git worktree add failed"
+    assert_fail "[O2] fixture: a leftover worktree from a dead run is registered" "the fixture could not add it"
 fi
 ZBUILD_MUTATION_DIR="$B_DIR" ZBUILD_MUTATION_PARALLEL_JOBS=1 bash "$RUNNER" >/dev/null 2>&1 || true
-if git -C "$REPO_ROOT" worktree list --porcelain | grep -qF "${_stale##*/}"; then
+if _registered "${_stale##*/}"; then
     assert_fail "[O2] a run's teardown sweeps a dead run's leftover worktree" "still registered"
-    git -C "$REPO_ROOT" worktree remove --force "$_stale" >/dev/null 2>&1 || true
 else
     assert_pass "[O2] a run's teardown sweeps a dead run's leftover worktree"
 fi

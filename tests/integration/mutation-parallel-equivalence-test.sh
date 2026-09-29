@@ -153,11 +153,9 @@ assert_contains "no-op fixture is accounted FAIL" "$(cat "$SER_OUT")" "FAIL  03-
 
 # ─── Test 2: no stray worktrees left behind ──────────────────────────────────
 print_test_section "2. parallel run leaves no stray worktrees"
-# Another LIVE run's worktree (npm test runs the mutation tier beside this test)
-# is not a leak, and must not be counted as one (#2230). Stand one in, owned by
-# this test's own — live — pid.
-_other="$(mktemp -d "${TMPDIR:-/tmp}/zb-mut.$$.XXXXXX")"; rmdir "$_other"
-git -C "$REPO_ROOT" worktree add --detach "$_other" HEAD >/dev/null 2>&1 || true
+# A leak is a registered worktree whose run has FINISHED. Another live run's
+# tree (npm test runs the mutation tier beside this test) is not one, so it is
+# not counted (#2230); mutation-teardown-ownership-test.sh covers leaving it alone.
 # _dead_owner_trees — registered zb-mut.<pid>.* whose owner is gone: a leak.
 _dead_owner_trees() {
     local line base n=0
@@ -171,12 +169,6 @@ _dead_owner_trees() {
 }
 _run_fixture 4 "$TEST_TEMP_DIR/wt-probe.out" >/dev/null
 assert_eq "no worktree of a finished run remains registered" "0" "$(_dead_owner_trees)"
-if git -C "$REPO_ROOT" worktree list --porcelain | grep -qF "${_other##*/}"; then
-    assert_pass "another live run's worktree is left alone (#2230)"
-else
-    assert_fail "another live run's worktree is left alone (#2230)" "the run removed it"
-fi
-git -C "$REPO_ROOT" worktree remove --force "$_other" >/dev/null 2>&1 || true
 
 # ─── Test 3: stdin-EOF + timeout guard ───────────────────────────────────────
 print_test_section "3. read-blocked test gets EOF; sleeping test is time-bounded"
