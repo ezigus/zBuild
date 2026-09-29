@@ -1,0 +1,172 @@
+
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.2ezFSL/tests/unit/dispatch-rc-guard-test.sh
+
+  dispatch-rc guard — the legacy rc inventory is a ratchet (#1823)
+
+
+  1. The inventory matches the pin exactly
+  ✗ [SPEC-1] core/pipeline/runner.sh SHRANK (36 → 35) — lower the pin
+    Progress must be locked in: set core/pipeline/runner.sh to 35 in _PINNED so the next change cannot spend the slack.
+  ✓ [SPEC-1] core/pipeline/cycle-orchestrator.sh holds 30 legacy rc returns
+  ✓ [SPEC-1] core/pipeline/parallel-orchestrator.sh holds 4 legacy rc returns
+  ✓ [SPEC-1] core/pipeline/strategies/map.sh holds 6 legacy rc returns
+  ✓ [SPEC-1] core/pipeline/strategies/fanout.sh holds 2 legacy rc returns
+  ✓ [SPEC-1] core/pipeline/strategies/sequential.sh holds 1 legacy rc returns
+  ✓ [SPEC-1] core/pipeline/strategies/composite.sh holds 0 legacy rc returns
+  ✓ [SPEC-1] core/plugin-registry/lifecycle.sh holds 0 legacy rc returns
+  ✓ [SPEC-1] scripts/lib/abort-propagation.sh holds 6 legacy rc returns
+
+  2. The contract boundary itself is clean
+  ✓ [SPEC-2] plugin_hook_call returns nothing outside {0,1}
+  ✓ [SPEC-2] the ZBUILD_HOOK_ABSENT sentinel is gone
+  ✓ [SPEC-2] an absent optional hook is still recorded on the event stream
+
+  3. The stage dispatch boundary narrows before reading
+  ✓ [SPEC-3] the cycle dispatch boundary both observes and narrows
+  ✓ [SPEC-3] it observes the RAW status before narrowing it away
+  ✓ [SPEC-3] the throttle marker is cleared before the dispatch
+  ✓ [SPEC-3] cycle_dispatch_stage applies the v2 narrowing gate
+  ✓ [SPEC-3] parallel_dispatch_stage applies it too
+  ✓ [SPEC-3] both dispatch boundaries clear the throttle marker
+
+  4. The version gate cannot be fed by a subshell global
+  ✓ [SPEC-4] no gate reads a contract global
+  ✓ [SPEC-4] both boundaries fetch the version via stdout
+
+  5. _cycle_handle_terminal_rc has both 130 and 143 arms
+  ✓ [SPEC-5] _cycle_handle_terminal_rc has a combined 130|143 arm
+  ✓ [SPEC-5] the 143 arm is inside _cycle_handle_terminal_rc
+  ✓ [SPEC-5] the 130 arm is still present in _cycle_handle_terminal_rc
+
+  6. write-boundary wiring leaves lifecycle.sh rc-clean
+  ✓ [SPEC-7] lifecycle.sh still has 0 legacy rc returns after write-boundary wiring (#1809)
+
+
+  1 of 24 tests failed
+
+  ✗ [SPEC-1] core/pipeline/runner.sh SHRANK (36 → 35) — lower the pin
+
+unit: 477/478 passed (4 skipped)
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.2ezFSL/plugins/agent/plan/tests/plan-integration-test.sh
+
+  plugin: plan — integration (real claude stub, subprocess boundary)
+
+  ✓ variant 1: in-scope plan returns rc=0
+  ✓ variant 1: plan.json written
+  ✓ variant 1: no violation events
+  ✓ variant 2: out-of-scope returns rc=0 (fail-soft)
+  ✓ variant 2: plan.json still written
+  ✓ variant 2: one violation event
+  ✓ variant 2: violation path is offender
+  ✓ variant 3 (#478): prose-prefixed envelope returns rc=0
+  ✓ variant 3 (#478): plan.json written despite prose preface
+  ✓ variant 3 (#478): plan.json parsed via parser-side helper
+  ✓ variant 3 (#478): no scope violations on in-scope payload
+  ✓ variant 4 (#483): plan_run still rc=0 with banner capture on
+  ✓ variant 4 (#483): OUTPUT banner contains rendered markdown heading
+  ✓ variant 4 (#483): raw JSON absent from output section
+
+  Issue #1052 — plan resilience (subprocess boundary, error mock)
+
+
+  [SPEC-3][change] max_turns → rc=10 scope_too_large
+  ✗ [SPEC-3] max_turns plan_run returns rc=10
+    expected: 10, got: 1
+  ✓ [SPEC-3] plan.scope_too_large emitted
+  ✓ [SPEC-3] plan-context status=scope_too_large
+  ✓ [SPEC-3] terminal stderr says SPLIT IT
+  ✗ [SPEC-3] no fake plan.json written on scope_too_large
+    file should not exist: /home/runner/work/_temp/zbuild-state/scratch/test/plugin-plan-integration.pn1IA5/state/artifacts/plan.json
+
+  [SPEC-3][guard] non-max_turns crash stays claude_cli_failed
+  ✓ [SPEC-3][guard] non-max_turns crash does not return rc=10 (rc=1)
+  ✓ [SPEC-3][guard] no plan.scope_too_large on non-max_turns crash
+
+  [SPEC-1][change] partial reasoning from sidecar in plan-context.md
+  ✓ [SPEC-1] plan-context.md written on scope_too_large
+  ✓ [SPEC-1] plan-context.md carries partial reasoning from sidecar
+
+  [SPEC-4][change] recover a valid plan from a max_turns envelope
+  ✓ [SPEC-4] recovered valid plan → rc=0
+  ✓ [SPEC-4] plan.envelope.recovered emitted
+  ✓ [SPEC-4] plan.json written from recovered envelope
+  ✓ [SPEC-4] plan.json is the recovered plan
+  ✓ [SPEC-4] plan-context status=complete after recovery
+
+  [SPEC-2][change] dogfood resume across two runs
+  ✓ [SPEC-2] dogfood run 2 returns rc=0
+  ✓ [SPEC-2] run 2 prompt carries run-1 exploration sentinel
+  ✓ [SPEC-2] run 2 prompt carries PRIOR EXPLORATION CONTEXT heading
+  ✓ [SPEC-2] plan.context.resumed fired on run 2
+
+  [SPEC-2][guard] resumed context redacted before the prompt
+  ✓ [SPEC-2][guard] out-of-scope token present ONLY inside redaction wrapper (resumed splice was redacted)
+
+  Issue #1835 — plan contract v2: scope_too_large and router failure paths
+
+
+  [#1835/SPEC-3] max_turns → rc=1, plan.json with disposition=out_of_turns
+  ✓ [#1835/SPEC-3] max_turns plan_run returns rc=1 (not rc=10 after v2 migration)
+  ✓ [#1835/SPEC-3] plan.json written on scope_too_large path
+  ✓ [#1835/SPEC-3] plan.json result_contract=2 on out_of_turns path
+  ✓ [#1835/SPEC-3] plan.json verdict=error on out_of_turns path
+  ✓ [#1835/SPEC-3] plan.json disposition=out_of_turns
+  ✓ [#1835/SPEC-3] plan.scope_too_large still emitted on v2 path
+
+  [#1835/SPEC-8] non-max_turns router failure writes plan.json via router_reason_disposition
+  ✓ [#1835/SPEC-8] router timeout (rc=124) → plugin rc=1
+  ✓ [#1835/SPEC-8] router timeout writes plan.json
+  ✓ [#1835/SPEC-8] router timeout result_contract=2
+  ✓ [#1835/SPEC-8] router timeout verdict=error
+  ✓ [#1835/SPEC-8] router timeout disposition=timed_out
+  ✓ [#1835/SPEC-8] OOM kill (rc=137) → plugin rc=1
+  ✓ [#1835/SPEC-8] OOM kill writes plan.json
+  ✓ [#1835/SPEC-8] OOM kill disposition=interrupted
+  ✓ [#1835/SPEC-8] config error (rc=2) → plugin rc=1
+  ✓ [#1835/SPEC-8] config error writes plan.json
+  ✓ [#1835/SPEC-8] config error disposition=misconfigured
+
+
+  2 of 50 tests failed
+
+  ✗ [SPEC-3] max_turns plan_run returns rc=10
+  ✗ [SPEC-3] no fake plan.json written on scope_too_large
+
+integration: 255/256 passed
+e2e: 9/9 passed
+golden: 1/1 passed
+
+─── Mutation test results ──────────────────────────────
+  PASS  atomic-state-mutations.md  (caught: rc=3)
+  PASS  cache.md  (caught: rc=1)
+  PASS  cleanup-worktree-age-guard.md  (caught: rc=2)
+  PASS  cleanup-worktree-dirty-guard.md  (caught: rc=2)
+  PASS  detect-platforms.md  (caught: rc=11)
+  PASS  event-bus-ansi-strip.md  (caught: rc=4)
+  PASS  event-bus.md  (caught: rc=3)
+  INFRA memory.md  (patch failed after retries)
+  PASS  orch.md  (caught: rc=1)
+  PASS  output-destinations.md  (caught: rc=1)
+  PASS  pipeline-contracts.md  (caught: rc=3)
+  PASS  pipeline-dispatch-arg-mutations.md  (caught: rc=4)
+  PASS  pipeline-dispatch-failopen-mutations.md  (caught: rc=7)
+  PASS  pipeline-dispatch-mutations.md  (caught: rc=9)
+  PASS  pipeline-dispatch-prefix-mutations.md  (caught: rc=1)
+  PASS  pipeline-dispatch-selfsource-mutations.md  (caught: rc=1)
+  PASS  pipeline-resolver.md  (caught: rc=1)
+  PASS  rc-semantics.md  (caught: rc=1)
+  PASS  registry-role-resolution.md  (caught: rc=1)
+  PASS  registry-validate-manifest-mutations.md  (caught: rc=1)
+  PASS  resume-recommendation-mutations.md  (caught: rc=1)
+  PASS  router-route-mutations.md  (caught: rc=30)
+  PASS  run-status-comment.md  (caught: rc=1)
+  PASS  runner-fail-closed-mutations.md  (caught: rc=1)
+  PASS  scope-redaction-mutations.md  (caught: rc=3)
+mutation-infra: 1 non-fatal (worktree/patch contention; excluded from score — #1184)
+mutation: 24/24 passed
+lint: 1/1 passed
+
+total: 767/769 passed (4 skipped)
