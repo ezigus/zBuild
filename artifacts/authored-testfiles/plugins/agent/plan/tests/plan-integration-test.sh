@@ -233,33 +233,34 @@ MOCK
     chmod +x "$mock_bin"
 }
 
-# ─── [SPEC-3][change] max_turns envelope → rc=10 / scope_too_large ────────────
-# A max_turns failure must become a terminal rc=10 with plan.scope_too_large
-# emitted, plan-context status=scope_too_large, a "SPLIT IT" message on stderr,
-# and NO fake plan.json written. (Wave A: rc=10, NOT rc=8 — rc=8 is already
-# blocking_member_failure per ADR-013; rc=10 is the next free terminal abort rc.)
-print_test_section "[SPEC-3][change] max_turns → rc=10 scope_too_large"
+# ─── [#1835/SPEC-3][change] max_turns → rc=1, disposition=out_of_turns ────────
+# After v2 migration, a max_turns exhaustion must write plan.json with
+# result_contract:2 / verdict=error / disposition=out_of_turns and return rc=1.
+# plan.scope_too_large must still fire.  rc=10 is gone.
+# The result is intentionally not a valid plan so recovery does not succeed.
+print_test_section "[#1835/SPEC-3] max_turns → rc=1, disposition=out_of_turns (v2 migration)"
 rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
-export ZBUILD_GOAL="a very large goal that exhausts the turn budget"
-# Default error mock = error_max_turns, exit 1.
-install_envelope_mock_claude_error
-unset ZBUILD_MOCK_SUBTYPE ZBUILD_MOCK_RESULT ZBUILD_MOCK_RC ZBUILD_MOCK_NUM_TURNS 2>/dev/null || true
-_S3_STDERR="$TEST_TEMP_DIR/s3-stderr.txt"
+export ZBUILD_PLAN_RESUME=0
+_S3V2_RESULT="$TEST_TEMP_DIR/s3v2-result.txt"
+printf '%s' "turn budget exhausted, not a valid plan" > "$_S3V2_RESULT"
+_install_plan_error_mock_file --subtype "error_max_turns" --result-file "$_S3V2_RESULT" --rc 1
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>"$_S3_STDERR"
-rc=$?
+plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_s3v2_rc=$?
 set -e
-assert_eq "[SPEC-3] max_turns plan_run returns rc=10" "10" "$rc"
-assert_event_emitted "[SPEC-3] plan.scope_too_large emitted" \
+assert_eq "[#1835/SPEC-3] max_turns plan_run returns rc=1 (not rc=10 after v2 migration)" "1" "$_s3v2_rc"
+assert_event_emitted "[#1835/SPEC-3] plan.scope_too_large still fired" \
     "$ZBUILD_EVENTS_JSONL" "plan.scope_too_large"
-_s3_status="$(jq -r '.status // empty' "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true)"
-assert_eq "[SPEC-3] plan-context status=scope_too_large" "scope_too_large" "$_s3_status"
-_s3_err="$(cat "$_S3_STDERR" 2>/dev/null || true)"
-assert_contains_regex "[SPEC-3] terminal stderr says SPLIT IT" \
-    "$_s3_err" "SPLIT IT"
-assert_file_not_exists "[SPEC-3] no fake plan.json written on scope_too_large" \
+assert_file_exists "[#1835/SPEC-3] plan.json written on scope_too_large (v2)" \
     "$ARTIFACTS_DIR/plan.json"
+assert_eq "[#1835/SPEC-3] plan.json result_contract=2 on scope_too_large" "2" \
+    "$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
+assert_eq "[#1835/SPEC-3] plan.json verdict=error on scope_too_large" "error" \
+    "$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
+assert_eq "[#1835/SPEC-3] plan.json disposition=out_of_turns" "out_of_turns" \
+    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
+unset ZBUILD_PLAN_RESUME 2>/dev/null || true
 
 # ─── [SPEC-3][guard] non-max_turns crash stays claude_cli_failed ─────────────
 # A genuine CLI crash (different subtype) must NOT become rc=10 and must NOT emit
@@ -504,6 +505,10 @@ _s8_oom_rc=$?
 set -e
 assert_eq "[#1835/SPEC-8] OOM kill (rc=137) → plugin rc=1" "1" "$_s8_oom_rc"
 assert_file_exists "[#1835/SPEC-8] OOM kill writes plan.json" "$ARTIFACTS_DIR/plan.json"
+assert_eq "[#1835/SPEC-8] OOM kill result_contract=2" "2" \
+    "$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
+assert_eq "[#1835/SPEC-8] OOM kill verdict=error" "error" \
+    "$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
 assert_eq "[#1835/SPEC-8] OOM kill disposition=interrupted" "interrupted" \
     "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
 
@@ -520,6 +525,10 @@ _s8_cfg_rc=$?
 set -e
 assert_eq "[#1835/SPEC-8] config error (rc=2) → plugin rc=1" "1" "$_s8_cfg_rc"
 assert_file_exists "[#1835/SPEC-8] config error writes plan.json" "$ARTIFACTS_DIR/plan.json"
+assert_eq "[#1835/SPEC-8] config error result_contract=2" "2" \
+    "$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
+assert_eq "[#1835/SPEC-8] config error verdict=error" "error" \
+    "$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
 assert_eq "[#1835/SPEC-8] config error disposition=misconfigured" "misconfigured" \
     "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
 
