@@ -1,0 +1,9 @@
+{
+  "scope_files": [
+    "core/pipeline/runner.sh",
+    "plugins/agent/plan/manifest.yaml",
+    "plugins/agent/plan/plugin.sh",
+    "plugins/agent/plan/tests/plan-test.sh"
+  ],
+  "wiring_files": []
+}
