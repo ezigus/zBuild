@@ -133,7 +133,7 @@ bash -c "
     set -uo pipefail
     source '$REPO_ROOT/scripts/lib/helpers.sh'
     source '$REPO_ROOT/plugins/agent/intake/plugin.sh'
-    _intake_create_workspace_branch() { : > '$_s16_ready'; sleep 30 >/dev/null 2>&1 & wait \$!; }
+    _intake_create_workspace_branch() { sleep 30 >/dev/null 2>&1 & printf '%s' \$! > '$_s16_ready'; wait \$!; }
     export ZBUILD_GOAL='sigterm test: verifying v2 signal handling'
     export ZBUILD_ARTIFACT_DIR='$_s16_art_dir'
     export ZBUILD_INTAKE_SKIP_BRANCH=0
@@ -143,10 +143,12 @@ bash -c "
     export ZBUILD_EVENT_SCHEMA='$ZBUILD_EVENT_SCHEMA'
     intake_run 'intake' '$_s16_state_file' &
     _subpid=\$!
-    for _i in \$(seq 1 200); do [[ -e '$_s16_ready' ]] && break; sleep 0.05; done
+    for _i in \$(seq 1 200); do [[ -s '$_s16_ready' ]] && break; sleep 0.05; done
     kill -TERM \"\$_subpid\" 2>/dev/null || true
     wait \"\$_subpid\" 2>/dev/null || true
-    pkill -f 'sleep 30' -P \"\$_subpid\" 2>/dev/null || true
+    # The stub's sleep outlives the killed stage (it is reparented, so -P
+    # would find nothing): kill it by the pid the stub recorded (review).
+    kill \"\$(cat '$_s16_ready')\" 2>/dev/null || true
 " 2>/dev/null
 set -e
 

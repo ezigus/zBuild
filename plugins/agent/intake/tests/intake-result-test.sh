@@ -36,38 +36,19 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "plugin: intake — v2 result contract (#1837)"
 setup_test_env "plugin-intake-result"
-_ZB_ID="$(zb_test_issue)"
-
-export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
-export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
-export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
-mkdir -p "$ZBUILD_EVENTS_DIR"
-export ZBUILD_INTAKE_SKIP_BRANCH=1
-
-# shellcheck source=../../../../core/plugin-registry/registry.sh
-source "$REPO_ROOT/core/plugin-registry/registry.sh"
-PLUGIN_DIR="$REPO_ROOT/plugins/agent/intake"
-
-STATE_DIR="$TEST_TEMP_DIR/state"
-STATE_FILE="$STATE_DIR/pipeline-state.json"
-mkdir -p "$STATE_DIR"
-echo '{"schema_version":1,"run_id":"test","issue":"0","stage_statuses":{}}' > "$STATE_FILE"
-ARTIFACT_DIR="$STATE_DIR/artifacts"
-mkdir -p "$ARTIFACT_DIR"
-export ZBUILD_ARTIFACT_DIR="$ARTIFACT_DIR"
-
-# shellcheck source=../../../../plugins/agent/intake/plugin.sh
-source "$PLUGIN_DIR/plugin.sh"
+# shellcheck source=intake-test-lib.sh
+source "$SCRIPT_DIR/intake-test-lib.sh"
+# The gh mock is only for the issue tests; intake here runs goal-first.
+rm -f "$TEST_TEMP_DIR/bin/gh"
 
 # _disp — the disposition intake last wrote; _reason — its reason.
 _disp()   { jq -r '.disposition // empty' "$ARTIFACT_DIR/intake-result.json" 2>/dev/null || true; }
 _reason() { jq -r '.reason // empty' "$ARTIFACT_DIR/intake-result.json" 2>/dev/null || true; }
-# _run_intake [state_file] — runs intake with a clean result file; prints rc.
+# _run_intake — runs intake with a clean result file; prints rc.
 _run_intake() {
     rm -f "$ARTIFACT_DIR/intake-result.json"
     local rc=0
-    intake_run "intake" "${1-$STATE_FILE}" >/dev/null 2>&1 || rc=$?
+    intake_run "intake" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
     printf '%s' "$rc"
 }
 
@@ -248,8 +229,11 @@ if [[ -f "$_s3_file" ]]; then
         assert_fail "[#1837/SPEC-3] verdict must be pass or fail" "got: ${_s3_verdict:-empty}"
     fi
     _s3_disp="$(jq -r '.disposition // empty' "$_s3_file" 2>/dev/null || true)"
-    _s3_valid_disps="complete interrupted throttled broken unusable timed_out out_of_turns misconfigured unavailable"
-    if [[ -n "$_s3_disp" ]] && grep -qw "$_s3_disp" <<< "$_s3_valid_disps"; then
+    # The engine's closed set, not a hand-kept copy that drifts (review: the
+    # copy here had lost rate_limited).
+    # shellcheck source=../../../../core/pipeline/disposition.sh
+    source "$REPO_ROOT/core/pipeline/disposition.sh"
+    if disposition_is_valid "$_s3_disp"; then
         assert_pass "[#1837/SPEC-3] disposition is in engine vocabulary"
     else
         assert_fail "[#1837/SPEC-3] disposition must be in engine vocabulary" \
@@ -378,35 +362,18 @@ fi
 if declare -F _route_resolve_timeout >/dev/null 2>&1; then
     _s14_mf_timeout="$(manifest_router_knob "$_mf" timeout_s 2>/dev/null || true)"
     if [[ -n "$_s14_mf_timeout" ]]; then
-        _s14_prev_pdir="${ZBUILD_PLUGIN_DIR:-__UNSET__}"
-        _s14_prev_stage="${ZBUILD_CURRENT_STAGE:-__UNSET__}"
-        _s14_prev_rt="${ZBUILD_ROUTER_TIMEOUT:-__UNSET__}"
-        export ZBUILD_PLUGIN_DIR="$PLUGIN_DIR"
-        export ZBUILD_CURRENT_STAGE="intake"
-        unset ZBUILD_ROUTER_TIMEOUT 2>/dev/null || true
+        # In a subshell: the env and the template accessor die with it, so
+        # nothing needs saving and restoring by hand.
         _s14_tpl_val=$(( _s14_mf_timeout + 100 ))
-        # Define the template accessor that _route_resolve_knob calls.
-        # shellcheck disable=SC2317  # called indirectly via _route_resolve_timeout
-        template_stage_router_timeout() { printf '%s\n' "$_s14_tpl_val"; }
-        _s14_resolved="$(_route_resolve_timeout)"
+        _s14_resolved="$(
+            export ZBUILD_PLUGIN_DIR="$PLUGIN_DIR" ZBUILD_CURRENT_STAGE="intake"
+            unset ZBUILD_ROUTER_TIMEOUT
+            # shellcheck disable=SC2317  # called indirectly via _route_resolve_timeout
+            template_stage_router_timeout() { printf '%s\n' "$_s14_tpl_val"; }
+            _route_resolve_timeout
+        )"
         assert_eq "[#1837/SPEC-14] template value wins over manifest config.router.timeout_s" \
             "$_s14_tpl_val" "$_s14_resolved"
-        unset -f template_stage_router_timeout 2>/dev/null || true
-        if [[ "$_s14_prev_pdir" == "__UNSET__" ]]; then
-            unset ZBUILD_PLUGIN_DIR
-        else
-            export ZBUILD_PLUGIN_DIR="$_s14_prev_pdir"
-        fi
-        if [[ "$_s14_prev_stage" == "__UNSET__" ]]; then
-            unset ZBUILD_CURRENT_STAGE
-        else
-            export ZBUILD_CURRENT_STAGE="$_s14_prev_stage"
-        fi
-        if [[ "$_s14_prev_rt" == "__UNSET__" ]]; then
-            unset ZBUILD_ROUTER_TIMEOUT
-        else
-            export ZBUILD_ROUTER_TIMEOUT="$_s14_prev_rt"
-        fi
     else
         assert_fail "[#1837/SPEC-14] manifest must declare config.router.timeout_s for template override test" \
             "absent — SPEC-7 must pass first"
@@ -499,12 +466,13 @@ assert_eq "[D7] a result that cannot be written fails the stage" "1" "$_rc7"
 assert_contains "[D7] ...and says which file" "$_err7" "intake-result.json"
 
 print_test_section "D8: no fallback path"
-rm -rf "$ARTIFACT_DIR"
+# The fallback dir EXISTS (it is where a state-file-relative write would go), so
+# a write there is seen; removing it would make the check vacuous (review).
+rm -f "$ARTIFACT_DIR/intake-result.json"
 _err8="$( unset ZBUILD_ARTIFACT_DIR; ZBUILD_GOAL="no artifact dir check" ZBUILD_ISSUE=0 \
     intake_run "intake" "$STATE_FILE" 2>&1 >/dev/null )" || true
 assert_file_not_exists "[D8] no result is written beside the state file" "$STATE_DIR/artifacts/intake-result.json"
 assert_contains "[D8] ...and intake says the engine gave it no artifact dir" "$_err8" "ZBUILD_ARTIFACT_DIR"
-mkdir -p "$ARTIFACT_DIR"
 
 print_test_section "D9: the disposition-word lint sees intake"
 _L="$TEST_TEMP_DIR/lint-plugins/agent/intake"; mkdir -p "$_L"

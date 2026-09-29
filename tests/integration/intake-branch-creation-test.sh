@@ -87,6 +87,8 @@ rc=$?
 set -e
 
 assert_eq "intake_run subprocess rc=0" "0" "$rc"
+# On a failure, show what intake said — the rc alone does not say why.
+[[ "$rc" == "0" ]] || printf '%s\n' "$subprocess_out" >&2
 
 cur_branch="$(cd "$REPO" && git symbolic-ref --short HEAD 2>/dev/null)"
 assert_eq "real repo HEAD is on derived branch" \
