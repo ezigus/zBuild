@@ -129,6 +129,13 @@ else
     assert_fail "[SPEC-2] completion event should record discovery=roster" "absent"
 fi
 
+# ─── [#1842/SPEC-10]: roster discovery collects group members when env vars set ─
+# Guard: when group env vars (_TPL_PARALLEL_GROUPS, _TPL_PARALLEL_FLOW_*) are in
+# scope, the aggregator must still collect all declared members (regression guard
+# for post-migration roster discovery).
+assert_eq "[#1842/SPEC-10] roster discovery collects all declared group members" "3" \
+    "$(jq '.lenses | length' "$OUT_JSON" 2>/dev/null)"
+
 # ─── SPEC-3: legacy glob fallback when no group binding is in scope ───────────
 print_test_section "SPEC-3: no group env → legacy lens-*.json glob fallback"
 unset _TPL_PARALLEL_GROUPS _TPL_STAGES _TPL_PARALLEL_AGGREGATE_rev_group _TPL_PARALLEL_FLOW_rev_group

@@ -231,6 +231,35 @@ set -e
 assert_eq "[SPEC-10] a lens file without a disposition counts as run" '[]' \
     "$(jq -c '.did_not_run' "$_lg_dir/review-report.json" 2>/dev/null || echo MISSING)"
 
+# ─── [#1842/SPEC-8]: advisory never aborts — hook returns 0 on all paths ──────
+# Guard: with an empty artifact dir (no lens files discoverable), the hook must
+# still return 0 (advisory-never-aborts invariant preserved post-migration).
+_d_s8="$TEST_TEMP_DIR/spec8-guard"
+mkdir -p "$_d_s8/artifacts"
+echo '{"schema_version":1,"run_id":"spec8g","issue":"0","stage_statuses":{}}' \
+    > "$_d_s8/pipeline-state.json"
+_si_s8="$_d_s8/stage-inputs.json"
+printf '{"inputs":{"lens_result":[]}}\n' > "$_si_s8"
+set +e
+ZBUILD_STAGE_INPUTS="$_si_s8" review_aggregator_run "review-aggregator" \
+    "$_d_s8/pipeline-state.json" >/dev/null 2>&1
+_rc_s8=$?
+set -e
+assert_eq "[#1842/SPEC-8] hook returns 0 (advisory never aborts)" "0" "$_rc_s8"
+
+# ─── [#1842/SPEC-9]: _ra_aggregate ≡ _rr_aggregate byte-for-byte ─────────────
+# Guard: after the v2 migration the aggregation logic must remain byte-identical
+# to _rr_aggregate (ADR-038 / SPEC-5 predecessor invariant). Use a fresh input
+# independent of the earlier SPEC-5 run to verify equivalence independently.
+_lenses_s9="$TEST_TEMP_DIR/spec9-guard-lenses.json"
+printf '%s\n' \
+    '[{"name":"s9","score":6,"findings":[{"file":"g.sh","category":"logic","severity":"high","line":5,"message":"s9 guard issue","introduced":true}]}]' \
+    > "$_lenses_s9"
+_ra_out_s9="$(_ra_aggregate "$_lenses_s9")"
+_rr_out_s9="$(_rr_aggregate "$_lenses_s9")"
+assert_eq "[#1842/SPEC-9] _ra_aggregate output matches _rr_aggregate byte-for-byte" \
+    "$_rr_out_s9" "$_ra_out_s9"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
