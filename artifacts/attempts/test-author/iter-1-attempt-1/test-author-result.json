@@ -1,0 +1,19 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 12 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 12,
+    "owned_files": [
+      "tests/unit/review-aggregator-roster-test.sh",
+      "tests/unit/review-aggregator-test.sh",
+      "tests/unit/review-aggregator-v2-test.sh"
+    ],
+    "testfiles": {
+      "tests/unit/review-aggregator-roster-test.sh": "84520e676f58b7ccc3fe8e48cbe1d2bbc0d11d98",
+      "tests/unit/review-aggregator-test.sh": "8a0556cd11e59c3b92ba230bbc888a56e1adf6f6",
+      "tests/unit/review-aggregator-v2-test.sh": "70eae2a6189436631de379100a0fe1ad408f680b"
+    }
+  }
+}

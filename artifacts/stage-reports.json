@@ -6,5 +6,12 @@
     "tests/unit/review-aggregator-test.sh",
     "tests/unit/review-aggregator-v2-test.sh"
   ],
-  "wiring_files": []
+  "wiring_files": [],
+  "owned_files": {
+    "test-author": [
+      "tests/unit/review-aggregator-roster-test.sh",
+      "tests/unit/review-aggregator-test.sh",
+      "tests/unit/review-aggregator-v2-test.sh"
+    ]
+  }
 }
