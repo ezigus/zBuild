@@ -157,9 +157,9 @@ omit this line the pipeline falls back to the plan title.
 
 **Goal.** Migrate `plugins/agent/impact` to the ADR-054 contract v2 shape: one result file on every exit path, `disposition` from `router_reason_disposition`, `rc ∈ {0,1}`, router budgets declared in the manifest, inputs read from the engine's index (`ZBUILD_STAGE_INPUTS`), signal handling via `stage_signal_begin/end`, and no artifact paths constructed inside plugin code.
 
-**Context.** Impact is the only agent plugin remaining at v1 in the F-wave migration (#1833–#1849). Its `impact_run` currently derives paths from `state_file` (the v1 calling convention), writes bare `schema_version:1` envelopes on router failure paths, has no signal guard, returns `rc=2` on early exits, and has no `config.router` defaults in its manifest. The three integration tests that call `impact_run "impact" "$STATE_FILE"` directly will need their setup updated to provide `ZBUILD_STAGE_INPUTS` and `ZBUILD_ARTIFACT_DIR`.
+**Context.** Impact is the only agent plugin remaining at v1 in the F-wave migration (#1833–#1849). Its `impact_run` currently derives paths from `state_file` (the v1 calling convention), writes bare `schema_version:1` envelopes on router failure paths, has no signal guard, returns `rc=2` on early exits, and has no `config.router` defaults in its manifest. The three integration tests that call `impact_run "impact" "$STATE_FILE"` directly need their setup updated to provide `ZBUILD_STAGE_INPUTS` and `ZBUILD_ARTIFACT_DIR`. The manifest's `provides.role`, `provides.events`, and `valid_verdicts` declarations were already present at the merge-base and are guards; the cleanup hook comment, `result_contract: 2`, and `config.router` block are new additions.
 
-**Decision.** Follow the plan's 10-step sequence (test-first, then implementation). Split `impact_run` into a signal-guarded wrapper and a `_plan_run_entry`-style entry function. Add `_impact_write_result` and `_impact_input` helpers modelled on their plan counterparts. Add `result_contract: 2` and a `config.router` block (timeout\_s: 600, max\_turns: 45; no retries — the template wins and the plan explicitly says impact no longer carries its own `router.retries`) to the manifest. Update the three integration tests whose `impact_run` call site assumes the old state_file derivation, and update the router-timeout test whose assertion on `.router_rc` breaks when the router failure paths switch to the v2 result shape (which carries `disposition` + `reason` but not `router_rc`). The manifest `config.router` values are defaults that sit below the template accessor in the `_route_resolve_knob` chain (`template > env > manifest > constant`); simple.yaml's per-stage `timeout_s: 600`, `max_turns: 45`, and `retries: 1` continue to win.
+**Decision.** Follow the plan's 10-step sequence (test-first, then implementation). Split `impact_run` into a signal-guarded wrapper and a `_plan_run_entry`-style entry function. Add `_impact_write_result` and `_impact_input` helpers modelled on their plan counterparts. Add `result_contract: 2` and a `config.router` block (timeout_s: 600, max_turns: 45; no retries — the template wins and the plan explicitly says impact no longer carries its own `router.retries`) to the manifest. Record cleanup hook absence explicitly in the hooks block with a reason comment (per #1829 — absence recorded, not implied). Update the three integration tests whose `impact_run` call site assumes the old state_file derivation, and update the router-timeout test whose assertion on `.router_rc` breaks when the router failure paths switch to the v2 result shape (which carries `disposition` + `reason` but not `router_rc`). The manifest `config.router` values are defaults that sit below the template accessor in the `_route_resolve_knob` chain (`template > env > manifest > constant`); simple.yaml's per-stage values continue to win.
 
 
 
@@ -182,6 +182,10 @@ Each test MUST contain an assert call whose label includes the tag for the SPEC 
 - SPEC-11: tests/integration/impact-router-timeout-782-test.sh
 - SPEC-12: tests/integration/impact-pipeline-test.sh
 - SPEC-13: tests/unit/impact-v2-result-contract-test.sh
+- SPEC-14: tests/unit/impact-v2-result-contract-test.sh
+- SPEC-15: tests/unit/impact-v2-result-contract-test.sh
+- SPEC-16: tests/unit/impact-v2-result-contract-test.sh
+- SPEC-17: tests/unit/impact-v2-result-contract-test.sh
 
 What each SPEC requires:
 - [#1838/SPEC-1] impact_run writes a result_contract:2 JSON with verdict, disposition, and reason on every early-exit path (missing ZBUILD_ARTIFACT_DIR → broken/broken, missing required input → broken/broken)
@@ -192,11 +196,15 @@ What each SPEC requires:
 - [#1838/SPEC-6] manifest.yaml declares a config.router block with timeout_s: 600 and max_turns: 45
 - [#1838/SPEC-7] impact_run reads scope_manifest, design, and plan input paths from ZBUILD_STAGE_INPUTS (the engine's index) rather than constructing them from the state_file argument
 - [#1838/SPEC-8] plugins/agent/impact/plugin.sh contains no hardcoded artifact path constructions (no string literals of the form artifacts_dir/design.md, state_dir/scope-manifest.md, etc. built by the plugin)
-- [#1838/SPEC-9] impact_run returns rc=0 on a router timeout (rc=124) — graceful error class preserved
+- [#1838/SPEC-9] impact_run (v2 calling convention: ZBUILD_STAGE_INPUTS + ZBUILD_ARTIFACT_DIR) writes impact.json and returns rc=0 on a router timeout (rc=124)
 - [#1838/SPEC-10] _impact_run_inner writes verdict=incomplete on a recoverable router failure (rc=124 or rc=1) so the cycle re-iterates
 - [#1838/SPEC-11] _impact_run_inner writes verdict=error on a genuine infra failure (rc=137 OOM kill) so the cycle blocked-predicate can flag it
-- [#1838/SPEC-12] impact verdict and missing[] fields survive the v2 envelope merge — the success path output still carries the LLM's structured data (schema_version, verdict, missing[]) alongside the v2 contract fields
+- [#1838/SPEC-12] impact.json on the success path carries both v2 envelope fields (result_contract=2, disposition=complete) and the original LLM data (schema_version, verdict, missing[]) — the v2 merge preserves all LLM-authored fields
 - [#1838/SPEC-13] when impact's manifest declares config.router.timeout_s: 600 and a per-stage template accessor returns a different value, _route_resolve_timeout returns the template value — the manifest acts as a default, not an override (template > manifest precedence preserved per _route_resolve_knob)
+- [#1838/SPEC-14] manifest.yaml's provides.events roster is present and lists all nine impact events (impact.contract.violation through impact.verdict.incomplete) — pre-existing declaration not regressed by the v2 migration (per #1717)
+- [#1838/SPEC-15] manifest.yaml declares provides.role: impact_analyzer — pre-existing declaration not regressed by the v2 migration (per #1704)
+- [#1838/SPEC-16] manifest.yaml's hooks block explicitly records the absence of a cleanup hook with a reason comment stating no live resources are held (per #1829 — absence is recorded, not implied)
+- [#1838/SPEC-17] manifest.yaml declares valid_verdicts: [complete, incomplete, error] covering all emitted verdicts — pre-existing declaration not regressed by the v2 migration (per #1708)
 
 ### SPEC IDS YOU MUST COVER (acceptance gate, ADR-036)
 Every SPEC id below needs at least one assertion whose label carries its tag (as listed); self-verify the FULL set is tagged before emitting LOOP_COMPLETE. A CHANGE-behavior SPEC (new behavior this change introduces) MUST have a tagged assertion that FAILS at the merge-base baseline. A GUARD/invariant SPEC (behavior that must stay unchanged) is tagged but MUST NOT be contorted to fail at baseline.
@@ -216,13 +224,21 @@ Every SPEC id below needs at least one assertion whose label carries its tag (as
   → needs a `[#1838/SPEC-7]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
 - [#1838/SPEC-8] plugins/agent/impact/plugin.sh contains no hardcoded artifact path constructions (no string literals of the form artifacts_dir/design.md, state_dir/scope-manifest.md, etc. built by the plugin)
   → needs a `[#1838/SPEC-8]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
-- [#1838/SPEC-9] impact_run returns rc=0 on a router timeout (rc=124) — graceful error class preserved
+- [#1838/SPEC-9] impact_run (v2 calling convention: ZBUILD_STAGE_INPUTS + ZBUILD_ARTIFACT_DIR) writes impact.json and returns rc=0 on a router timeout (rc=124)
   → needs a `[#1838/SPEC-9]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
 - [#1838/SPEC-10] _impact_run_inner writes verdict=incomplete on a recoverable router failure (rc=124 or rc=1) so the cycle re-iterates
   → needs a `[#1838/SPEC-10]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
 - [#1838/SPEC-11] _impact_run_inner writes verdict=error on a genuine infra failure (rc=137 OOM kill) so the cycle blocked-predicate can flag it
   → needs a `[#1838/SPEC-11]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
-- [#1838/SPEC-12] impact verdict and missing[] fields survive the v2 envelope merge — the success path output still carries the LLM's structured data (schema_version, verdict, missing[]) alongside the v2 contract fields
+- [#1838/SPEC-12] impact.json on the success path carries both v2 envelope fields (result_contract=2, disposition=complete) and the original LLM data (schema_version, verdict, missing[]) — the v2 merge preserves all LLM-authored fields
   → needs a `[#1838/SPEC-12]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
 - [#1838/SPEC-13] when impact's manifest declares config.router.timeout_s: 600 and a per-stage template accessor returns a different value, _route_resolve_timeout returns the template value — the manifest acts as a default, not an override (template > manifest precedence preserved per _route_resolve_knob)
   → needs a `[#1838/SPEC-13]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1838/SPEC-14] manifest.yaml's provides.events roster is present and lists all nine impact events (impact.contract.violation through impact.verdict.incomplete) — pre-existing declaration not regressed by the v2 migration (per #1717)
+  → needs a `[#1838/SPEC-14]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1838/SPEC-15] manifest.yaml declares provides.role: impact_analyzer — pre-existing declaration not regressed by the v2 migration (per #1704)
+  → needs a `[#1838/SPEC-15]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1838/SPEC-16] manifest.yaml's hooks block explicitly records the absence of a cleanup hook with a reason comment stating no live resources are held (per #1829 — absence is recorded, not implied)
+  → needs a `[#1838/SPEC-16]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1838/SPEC-17] manifest.yaml declares valid_verdicts: [complete, incomplete, error] covering all emitted verdicts — pre-existing declaration not regressed by the v2 migration (per #1708)
+  → needs a `[#1838/SPEC-17]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
