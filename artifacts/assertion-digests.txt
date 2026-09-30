@@ -1,0 +1,8 @@
+# authored_by: test-author
+98c7bb5aebcefdbfdbfe14c6d8c323680a486ae23a21ac4170306cda976a4d92  tests/integration/cycle-member-unfinished-no-convergence-test.sh
+98c7bb5aebcefdbfdbfe14c6d8c323680a486ae23a21ac4170306cda976a4d92  tests/integration/cycle-member-unfinished-no-convergence-test.sh
+d66254814b3e8567b66a1c661a9d57ff17681a386641a7f6709b72014117c2ff  tests/unit/spec-coverage-test.sh
+77550c5a52917581f4d3b7af04c3e07f8d3cee3a47deb8089c9998d80336fc91  tests/unit/spec-correspondence-test.sh
+c4e186a4b65b1dcfddec639cd6e5ef1beff8fdf07a286eb612ebda00c03ce575  tests/unit/review-report-v2-contract-test.sh
+98c7bb5aebcefdbfdbfe14c6d8c323680a486ae23a21ac4170306cda976a4d92  tests/integration/cycle-member-unfinished-no-convergence-test.sh
+2d0069ce0e8c5ea36071eacf2b3e70cb87359d9e8ee19aef840c9a57f57d2d1f  tests/unit/adr-063-vocabulary-test.sh
