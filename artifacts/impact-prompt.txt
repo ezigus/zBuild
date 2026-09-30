@@ -124,6 +124,9 @@ DESIGN SCOPE BLOCK:
 - core/contract/version.sh
 - config/templates/simple.yaml
 
+## PRIOR IMPACT (a previous attempt on this issue — reference & refine; re-validate against the CURRENT design)
+{"schema_version":1,"verdict":"complete","missing":[]}
+
 
 
 ## Project-specific guidance (operator override)
