@@ -14,7 +14,8 @@
   [38;2;74;222;128m✓[0m T7: missing[] carries reason + evidence in the envelope
   [38;2;248;113;113m✗[0m [#1838/SPEC-12] incomplete path → result_contract=2 (v2 field)
     [2mexpected: 2, got: MISSING[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-12] incomplete path → missing[] and verdict survive v2 envelope merge
+  [38;2;74;222;128m✓[0m [#1838/SPEC-12] incomplete path → schema_version=1 (LLM data preserved)
+  [38;2;248;113;113m✗[0m [#1838/SPEC-12] incomplete path → missing[], verdict, disposition survive v2 envelope merge
     [2mgot: {"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"step-1","files_to_add":["tests/unit/template-test.sh","tests/integration/runner-test.sh"],"reason":"simple.yaml flow shape change requires test updates","evidence":"both tests pin the simple.yaml flow shape"}]}[0m
 
   [38;2;0;212;255m2. impact returns verdict=complete when plan covers everything[0m
@@ -35,10 +36,10 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m5 of 18 tests failed[0m
+  [38;2;248;113;113m[1m5 of 19 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1838/SPEC-12] incomplete path → result_contract=2 (v2 field)
-  [38;2;248;113;113m✗[0m [#1838/SPEC-12] incomplete path → missing[] and verdict survive v2 envelope merge
+  [38;2;248;113;113m✗[0m [#1838/SPEC-12] incomplete path → missing[], verdict, disposition survive v2 envelope merge
   [38;2;248;113;113m✗[0m [#1838/SPEC-12] complete path → result_contract=2 (v2 field)
   [38;2;248;113;113m✗[0m [#1838/SPEC-12] complete path → disposition=complete (v2 field)
   [38;2;248;113;113m✗[0m [#1838/SPEC-12] complete path → LLM data and v2 contract fields coexist
@@ -58,7 +59,8 @@
   [38;2;74;222;128m✓[0m T6: no impact_feedback.md sidecar is written (ADR-060)
   [38;2;74;222;128m✓[0m T7: missing[] carries reason + evidence in the envelope
   [38;2;74;222;128m✓[0m [#1838/SPEC-12] incomplete path → result_contract=2 (v2 field)
-  [38;2;74;222;128m✓[0m [#1838/SPEC-12] incomplete path → missing[] and verdict survive v2 envelope merge
+  [38;2;74;222;128m✓[0m [#1838/SPEC-12] incomplete path → schema_version=1 (LLM data preserved)
+  [38;2;74;222;128m✓[0m [#1838/SPEC-12] incomplete path → missing[], verdict, disposition survive v2 envelope merge
 
   [38;2;0;212;255m2. impact returns verdict=complete when plan covers everything[0m
   [38;2;74;222;128m✓[0m T8: _impact_run_inner returns rc=0 on complete verdict
@@ -75,5 +77,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 18 tests passed[0m
+  [38;2;74;222;128m[1mAll 19 tests passed[0m
 

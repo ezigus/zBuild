@@ -6,15 +6,15 @@
   [38;2;248;113;113m✗[0m [#1838/SPEC-5] manifest provides.result_contract=2 (under provides)
     [2mexpected: 2, got: MISSING[0m
   [38;2;248;113;113m✗[0m [#1838/SPEC-6] manifest config.router.timeout_s=600
-    [2mno timeout_s: 600 in config.router block of /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.UWucIc/plugins/agent/impact/manifest.yaml[0m
+    [2mno timeout_s: 600 in config.router block of /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.HqXP7w/plugins/agent/impact/manifest.yaml[0m
   [38;2;248;113;113m✗[0m [#1838/SPEC-6] manifest config.router.max_turns=45
-    [2mno max_turns: 45 in config.router block of /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.UWucIc/plugins/agent/impact/manifest.yaml[0m
+    [2mno max_turns: 45 in config.router block of /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.HqXP7w/plugins/agent/impact/manifest.yaml[0m
   [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → rc=1
     [2mexpected: 1, got: 0[0m
   [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → result_contract=2
     [2mexpected: 2, got: MISSING[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → verdict=error
-    [2mexpected: error, got: incomplete[0m
+  [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → verdict=broken
+    [2mexpected: broken, got: incomplete[0m
   [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → disposition=broken
     [2mexpected: broken, got: MISSING[0m
   [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → reason=missing_artifact_dir
@@ -23,8 +23,8 @@
     [2mexpected: 1, got: 0[0m
   [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing required input → result_contract=2
     [2mexpected: 2, got: MISSING[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing required input → verdict=error
-    [2mexpected: error, got: MISSING[0m
+  [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing required input → verdict=broken
+    [2mexpected: broken, got: MISSING[0m
   [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing required input → disposition=broken
     [2mexpected: broken, got: MISSING[0m
   [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing required input → reason=input_missing
@@ -63,52 +63,44 @@
     [2mexpected: verdict:complete, got: MISSING[0m
   [38;2;74;222;128m✓[0m [#1838/SPEC-7] impact_run succeeds using ZBUILD_STAGE_INPUTS paths (rc=0)
   [38;2;248;113;113m✗[0m [#1838/SPEC-7] scope_manifest path from ZBUILD_STAGE_INPUTS (not state_file)
-    [2mexpected: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/impact-v2-result-contract.CjXkq0/spec7_custom_scope.md, got: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/impact-v2-result-contract.CjXkq0/spec7/state/scope-manifest.md[0m
+    [2mexpected: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/impact-v2-result-contract.PWPEOZ/spec7_custom_scope.md, got: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/impact-v2-result-contract.PWPEOZ/spec7/state/scope-manifest.md[0m
+  [38;2;248;113;113m✗[0m [#1838/SPEC-7] design path from ZBUILD_STAGE_INPUTS (not state_file)
+    [2mexpected: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/impact-v2-result-contract.PWPEOZ/spec7_custom_design.md, got: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/impact-v2-result-contract.PWPEOZ/spec7/state/artifacts/design.md[0m
+  [38;2;248;113;113m✗[0m [#1838/SPEC-7] plan path from ZBUILD_STAGE_INPUTS (not state_file)
+    [2mexpected: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/impact-v2-result-contract.PWPEOZ/spec7_custom_plan.json, got: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/impact-v2-result-contract.PWPEOZ/spec7/state/artifacts/plan.json[0m
   [38;2;74;222;128m✓[0m [#1838/SPEC-13] template (300) beats manifest default (600)
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.contract.violation
-    [2mimpact.contract.violation not listed in provides.events of /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.UWucIc/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.envelope.malformed
-    [2mimpact.envelope.malformed not listed in provides.events of /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.UWucIc/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.envelope.recovered
-    [2mimpact.envelope.recovered not listed in provides.events of /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.UWucIc/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.hallucination.filtered
-    [2mimpact.hallucination.filtered not listed in provides.events of /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.UWucIc/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.scope.expanded
-    [2mimpact.scope.expanded not listed in provides.events of /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.UWucIc/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.scope.plateau
-    [2mimpact.scope.plateau not listed in provides.events of /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.UWucIc/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.verdict.complete
-    [2mimpact.verdict.complete not listed in provides.events of /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.UWucIc/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.verdict.error
-    [2mimpact.verdict.error not listed in provides.events of /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.UWucIc/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.verdict.incomplete
-    [2mimpact.verdict.incomplete not listed in provides.events of /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.UWucIc/plugins/agent/impact/manifest.yaml[0m
+  [38;2;74;222;128m✓[0m [#1838/SPEC-14] provides.events includes impact.contract.violation
+  [38;2;74;222;128m✓[0m [#1838/SPEC-14] provides.events includes impact.envelope.malformed
+  [38;2;74;222;128m✓[0m [#1838/SPEC-14] provides.events includes impact.envelope.recovered
+  [38;2;74;222;128m✓[0m [#1838/SPEC-14] provides.events includes impact.hallucination.filtered
+  [38;2;74;222;128m✓[0m [#1838/SPEC-14] provides.events includes impact.scope.expanded
+  [38;2;74;222;128m✓[0m [#1838/SPEC-14] provides.events includes impact.scope.plateau
+  [38;2;74;222;128m✓[0m [#1838/SPEC-14] provides.events includes impact.verdict.complete
+  [38;2;74;222;128m✓[0m [#1838/SPEC-14] provides.events includes impact.verdict.error
+  [38;2;74;222;128m✓[0m [#1838/SPEC-14] provides.events includes impact.verdict.incomplete
   [38;2;74;222;128m✓[0m [#1838/SPEC-15] manifest provides.role=impact_analyzer
   [38;2;74;222;128m✓[0m [#1838/SPEC-16] hooks block has no cleanup: hook defined
   [38;2;248;113;113m✗[0m [#1838/SPEC-16] hooks block records cleanup absence with 'no live resources' reason
     [2mcleanup_comment=0 no_live_resources=0[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-17] manifest valid_verdicts includes complete
-    [2mcomplete not listed under valid_verdicts in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.UWucIc/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-17] manifest valid_verdicts includes incomplete
-    [2mincomplete not listed under valid_verdicts in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.UWucIc/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-17] manifest valid_verdicts includes error
-    [2merror not listed under valid_verdicts in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.UWucIc/plugins/agent/impact/manifest.yaml[0m
+  [38;2;74;222;128m✓[0m [#1838/SPEC-17] manifest valid_verdicts includes complete
+  [38;2;74;222;128m✓[0m [#1838/SPEC-17] manifest valid_verdicts includes incomplete
+  [38;2;74;222;128m✓[0m [#1838/SPEC-17] manifest valid_verdicts includes error
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m39 of 51 tests failed[0m
+  [38;2;248;113;113m[1m29 of 53 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1838/SPEC-5] manifest provides.result_contract=2 (under provides)
   [38;2;248;113;113m✗[0m [#1838/SPEC-6] manifest config.router.timeout_s=600
   [38;2;248;113;113m✗[0m [#1838/SPEC-6] manifest config.router.max_turns=45
   [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → rc=1
   [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → result_contract=2
-  [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → verdict=error
+  [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → verdict=broken
   [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → disposition=broken
   [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → reason=missing_artifact_dir
   [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing required input → rc=1
   [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing required input → result_contract=2
-  [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing required input → verdict=error
+  [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing required input → verdict=broken
   [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing required input → disposition=broken
   [38;2;248;113;113m✗[0m [#1838/SPEC-1] missing required input → reason=input_missing
   [38;2;248;113;113m✗[0m [#1838/SPEC-2] signal before result → result_contract=2
@@ -124,19 +116,9 @@
   [38;2;248;113;113m✗[0m [#1838/SPEC-4] success path → disposition=complete
   [38;2;248;113;113m✗[0m [#1838/SPEC-4] success path → reason from verdict summary (verdict:complete)
   [38;2;248;113;113m✗[0m [#1838/SPEC-7] scope_manifest path from ZBUILD_STAGE_INPUTS (not state_file)
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.contract.violation
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.envelope.malformed
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.envelope.recovered
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.hallucination.filtered
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.scope.expanded
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.scope.plateau
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.verdict.complete
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.verdict.error
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.verdict.incomplete
+  [38;2;248;113;113m✗[0m [#1838/SPEC-7] design path from ZBUILD_STAGE_INPUTS (not state_file)
+  [38;2;248;113;113m✗[0m [#1838/SPEC-7] plan path from ZBUILD_STAGE_INPUTS (not state_file)
   [38;2;248;113;113m✗[0m [#1838/SPEC-16] hooks block records cleanup absence with 'no live resources' reason
-  [38;2;248;113;113m✗[0m [#1838/SPEC-17] manifest valid_verdicts includes complete
-  [38;2;248;113;113m✗[0m [#1838/SPEC-17] manifest valid_verdicts includes incomplete
-  [38;2;248;113;113m✗[0m [#1838/SPEC-17] manifest valid_verdicts includes error
 
 ### SPEC-5 head tests/unit/impact-v2-result-contract-test.sh
 
@@ -148,12 +130,12 @@
   [38;2;74;222;128m✓[0m [#1838/SPEC-6] manifest config.router.max_turns=45
   [38;2;74;222;128m✓[0m [#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → rc=1
   [38;2;74;222;128m✓[0m [#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → result_contract=2
-  [38;2;74;222;128m✓[0m [#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → verdict=error
+  [38;2;74;222;128m✓[0m [#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → verdict=broken
   [38;2;74;222;128m✓[0m [#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → disposition=broken
   [38;2;74;222;128m✓[0m [#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → reason=missing_artifact_dir
   [38;2;74;222;128m✓[0m [#1838/SPEC-1] missing required input → rc=1
   [38;2;74;222;128m✓[0m [#1838/SPEC-1] missing required input → result_contract=2
-  [38;2;74;222;128m✓[0m [#1838/SPEC-1] missing required input → verdict=error
+  [38;2;74;222;128m✓[0m [#1838/SPEC-1] missing required input → verdict=broken
   [38;2;74;222;128m✓[0m [#1838/SPEC-1] missing required input → disposition=broken
   [38;2;74;222;128m✓[0m [#1838/SPEC-1] missing required input → reason=input_missing
   [38;2;74;222;128m✓[0m [#1838/SPEC-2] signal before result → result_contract=2
@@ -178,49 +160,26 @@
   [38;2;74;222;128m✓[0m [#1838/SPEC-4] success path → reason from verdict summary (verdict:complete)
   [38;2;74;222;128m✓[0m [#1838/SPEC-7] impact_run succeeds using ZBUILD_STAGE_INPUTS paths (rc=0)
   [38;2;74;222;128m✓[0m [#1838/SPEC-7] scope_manifest path from ZBUILD_STAGE_INPUTS (not state_file)
+  [38;2;74;222;128m✓[0m [#1838/SPEC-7] design path from ZBUILD_STAGE_INPUTS (not state_file)
+  [38;2;74;222;128m✓[0m [#1838/SPEC-7] plan path from ZBUILD_STAGE_INPUTS (not state_file)
   [38;2;74;222;128m✓[0m [#1838/SPEC-13] template (300) beats manifest default (600)
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.contract.violation
-    [2mimpact.contract.violation not listed in provides.events of /home/runner/.zbuild/repos/ezigus/zBuild/issues/1838/worktree/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.envelope.malformed
-    [2mimpact.envelope.malformed not listed in provides.events of /home/runner/.zbuild/repos/ezigus/zBuild/issues/1838/worktree/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.envelope.recovered
-    [2mimpact.envelope.recovered not listed in provides.events of /home/runner/.zbuild/repos/ezigus/zBuild/issues/1838/worktree/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.hallucination.filtered
-    [2mimpact.hallucination.filtered not listed in provides.events of /home/runner/.zbuild/repos/ezigus/zBuild/issues/1838/worktree/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.scope.expanded
-    [2mimpact.scope.expanded not listed in provides.events of /home/runner/.zbuild/repos/ezigus/zBuild/issues/1838/worktree/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.scope.plateau
-    [2mimpact.scope.plateau not listed in provides.events of /home/runner/.zbuild/repos/ezigus/zBuild/issues/1838/worktree/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.verdict.complete
-    [2mimpact.verdict.complete not listed in provides.events of /home/runner/.zbuild/repos/ezigus/zBuild/issues/1838/worktree/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.verdict.error
-    [2mimpact.verdict.error not listed in provides.events of /home/runner/.zbuild/repos/ezigus/zBuild/issues/1838/worktree/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.verdict.incomplete
-    [2mimpact.verdict.incomplete not listed in provides.events of /home/runner/.zbuild/repos/ezigus/zBuild/issues/1838/worktree/plugins/agent/impact/manifest.yaml[0m
+  [38;2;74;222;128m✓[0m [#1838/SPEC-14] provides.events includes impact.contract.violation
+  [38;2;74;222;128m✓[0m [#1838/SPEC-14] provides.events includes impact.envelope.malformed
+  [38;2;74;222;128m✓[0m [#1838/SPEC-14] provides.events includes impact.envelope.recovered
+  [38;2;74;222;128m✓[0m [#1838/SPEC-14] provides.events includes impact.hallucination.filtered
+  [38;2;74;222;128m✓[0m [#1838/SPEC-14] provides.events includes impact.scope.expanded
+  [38;2;74;222;128m✓[0m [#1838/SPEC-14] provides.events includes impact.scope.plateau
+  [38;2;74;222;128m✓[0m [#1838/SPEC-14] provides.events includes impact.verdict.complete
+  [38;2;74;222;128m✓[0m [#1838/SPEC-14] provides.events includes impact.verdict.error
+  [38;2;74;222;128m✓[0m [#1838/SPEC-14] provides.events includes impact.verdict.incomplete
   [38;2;74;222;128m✓[0m [#1838/SPEC-15] manifest provides.role=impact_analyzer
   [38;2;74;222;128m✓[0m [#1838/SPEC-16] hooks block has no cleanup: hook defined
   [38;2;74;222;128m✓[0m [#1838/SPEC-16] hooks block records cleanup absence with 'no live resources' reason
-  [38;2;248;113;113m✗[0m [#1838/SPEC-17] manifest valid_verdicts includes complete
-    [2mcomplete not listed under valid_verdicts in /home/runner/.zbuild/repos/ezigus/zBuild/issues/1838/worktree/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-17] manifest valid_verdicts includes incomplete
-    [2mincomplete not listed under valid_verdicts in /home/runner/.zbuild/repos/ezigus/zBuild/issues/1838/worktree/plugins/agent/impact/manifest.yaml[0m
-  [38;2;248;113;113m✗[0m [#1838/SPEC-17] manifest valid_verdicts includes error
-    [2merror not listed under valid_verdicts in /home/runner/.zbuild/repos/ezigus/zBuild/issues/1838/worktree/plugins/agent/impact/manifest.yaml[0m
+  [38;2;74;222;128m✓[0m [#1838/SPEC-17] manifest valid_verdicts includes complete
+  [38;2;74;222;128m✓[0m [#1838/SPEC-17] manifest valid_verdicts includes incomplete
+  [38;2;74;222;128m✓[0m [#1838/SPEC-17] manifest valid_verdicts includes error
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m12 of 51 tests failed[0m
-
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.contract.violation
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.envelope.malformed
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.envelope.recovered
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.hallucination.filtered
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.scope.expanded
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.scope.plateau
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.verdict.complete
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.verdict.error
-  [38;2;248;113;113m✗[0m [#1838/SPEC-14] provides.events includes impact.verdict.incomplete
-  [38;2;248;113;113m✗[0m [#1838/SPEC-17] manifest valid_verdicts includes complete
-  [38;2;248;113;113m✗[0m [#1838/SPEC-17] manifest valid_verdicts includes incomplete
-  [38;2;248;113;113m✗[0m [#1838/SPEC-17] manifest valid_verdicts includes error
+  [38;2;74;222;128m[1mAll 53 tests passed[0m
 
