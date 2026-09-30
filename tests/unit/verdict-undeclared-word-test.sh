@@ -15,6 +15,8 @@
 #             (the lint owns a missing declaration)
 # V4 [guard]  a v1 result is unchanged (the check is part of the v2 contract)
 # V5 [guard]  an inline flow list `valid_verdicts: [complete, error]` is honoured
+# V6 [change] a scalar `valid_verdicts: pass` is not a list — the parser says so
+#             (`invalid`), the reader does not treat it as one (review #2247)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -79,6 +81,13 @@ assert_eq "[V3] an absent declaration is not checked here" "warn" "$(_read banan
 _manifest '  valid_verdicts: [complete, error]'
 assert_eq "[V5] a flow list is honoured (declared)" "pass" "$(_read complete)"
 assert_eq "[V5] a flow list is honoured (undeclared)" "error" "$(_read broken)"
+
+_manifest '  valid_verdicts: complete'
+# shellcheck source=../../scripts/lib/manifest-valid-verdicts.sh
+source "$REPO_ROOT/scripts/lib/manifest-valid-verdicts.sh"
+assert_eq "[V6] a scalar is reported invalid, not a one-item list" "invalid complete" \
+    "$(manifest_valid_verdicts_state "$TEST_TEMP_DIR/manifest.yaml")"
+assert_eq "[V6] ...and the reader does not check against it" "warn" "$(_read banana)"
 
 cleanup_test_env
 print_test_results

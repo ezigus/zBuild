@@ -23,6 +23,7 @@
 # S4 [guard]  with no block, the prompt carries no such section and the
 #             "another tag: never change" rule stands
 # S5 [change] design is told it can declare the block
+# S6 [change] every supersedes block is read, not only the first (review #2247)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -84,6 +85,10 @@ _author() {
         cd "$TEST_TEMP_DIR/repo" && test_author_run test-author "$TEST_TEMP_DIR/state/pipeline-state.json"
     ) >/dev/null 2>&1
 }
+
+_design with
+printf '\n```supersedes\ntests/other-test.sh [SPEC-4]: a second block\n```\n' >> "$D/design.md"
+assert_contains "[S6] a second supersedes block is read too" "$(acceptance_list_supersedes "$D/design.md" 2>/dev/null)" "tests/other-test.sh"
 
 print_test_section "S2/S3: test-author with a supersedes block"
 _design with; _author

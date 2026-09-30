@@ -430,7 +430,8 @@ acceptance_list_supersedes() {
     while IFS= read -r line; do
         line="${line%$'\r'}"
         if [[ "$line" == '```supersedes' ]]; then in_block=1; continue; fi
-        [[ $in_block -eq 1 && "$line" == '```' ]] && break
+        # Every block counts, not only the first (review #2247).
+        if [[ $in_block -eq 1 && "$line" == '```' ]]; then in_block=0; continue; fi
         [[ $in_block -eq 1 && -n "$line" ]] || continue
         path="${line%% *}"; rest="${line#* }"
         [[ "$path" == /* || "/$path/" == *"/../"* || "$rest" == "$line" ]] && continue

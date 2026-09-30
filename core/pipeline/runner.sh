@@ -3311,8 +3311,8 @@ main() {
                                 _set_pipeline_status "$state_file" "failed"
                                 eb_emit_event "pipeline.end" "status=failed" "cycle=$_cyc_id" \
                                     "reason=$_CYCLE_LAST_TERMINATED_REASON" "on_max=halt" \
-                                    "run_id=$_runner_run_id" "issue=$_runner_issue"
-                                _render_pipeline_end "failed"
+                                    "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
+                                _render_pipeline_end "failed" || true
                                 _runner_ended=true
                                 error "Cycle $_cyc_id did not converge (reason=$_CYCLE_LAST_TERMINATED_REASON) and is on_max: halt — the run stops here; no later stage runs"
                                 return 1

@@ -32,9 +32,10 @@ while IFS= read -r -d '' f; do
             if (ok) next
             s = $0
             sub(/^[[:space:]]*#.*/, "", s)
-            # `< "<word>"` (a single `<`, not `<<` / `<<<` / `<(`) and then a
+            # `< <path>` (a single `<`, not `<<` / `<<<` / `<(`) and then a
             # 2>/dev/null in the same simple command (no ;, |, &&, || between).
-            if (match(s, /(^|[^<])<[[:space:]]*"[^"]+"[^;|&]*2>[[:space:]]*\/dev\/null/)) {
+            # The path may be double-quoted, single-quoted or a bare variable.
+            if (match(s, /(^|[^<])<[[:space:]]*("[^"]+"|\047[^\047]+\047|\$\{?[A-Za-z_][A-Za-z0-9_]*\}?)[^;|&]*2>[[:space:]]*\/dev\/null/)) {
                 t = s; gsub(/\t/, " ", t)
                 print NR "\t" t
             }

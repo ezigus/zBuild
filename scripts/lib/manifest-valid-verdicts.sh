@@ -11,6 +11,7 @@ _ZBUILD_MANIFEST_VALID_VERDICTS_LOADED=1
 #   absent            — no valid_verdicts key anywhere in the manifest
 #   empty             — declared as an explicit inline [] (or a key with no items)
 #   list <v1> <v2> …  — declared block list or flow sequence
+#   invalid <raw>     — a bare scalar where a list is required
 # Scoped to the `config:` block so an unrelated key elsewhere cannot satisfy it.
 manifest_valid_verdicts_state() {
     # Pure bash, no subprocess: the runtime reader calls this for every stage
@@ -48,7 +49,9 @@ manifest_valid_verdicts_state() {
         if [[ ${#vals[@]} -eq 0 ]]; then printf 'empty\n'; else printf 'list %s\n' "${vals[*]}"; fi
         return 0
     fi
-    if [[ -z "$inline" ]]; then printf 'empty\n'; else printf 'list %s\n' "$inline"; fi
+    # A bare scalar (`valid_verdicts: pass`) is not a list (review #2247):
+    # report it, never read it as a one-item list.
+    if [[ -z "$inline" ]]; then printf 'empty\n'; else printf 'invalid %s\n' "$inline"; fi
 }
 
 # manifest_verdict_declared <manifest> <word> — rc 0 when <word> is in the

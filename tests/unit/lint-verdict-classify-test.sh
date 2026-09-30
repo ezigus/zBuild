@@ -56,6 +56,7 @@ _mk_manifest() {
         case "${1:-}" in
             NONE)  : ;;
             EMPTY) printf '  valid_verdicts: []\n' ;;
+            SCALAR) printf '  valid_verdicts: pass\n' ;;
             *)     printf '  valid_verdicts:\n'
                    for v in "$@"; do printf '    - %s\n' "$v"; done ;;
         esac
@@ -98,6 +99,13 @@ _mk_manifest "$R3/undeclared" primary NONE
 _run_lint "$R3"; rc3=$LINT_RC
 assert_eq "[SPEC-3] lint exits 1 when valid_verdicts is absent" "1" "$rc3"
 assert_contains "[SPEC-3] the failure names the manifest" "$LINT_OUT" "undeclared/manifest.yaml"
+
+# ─── #2247: a bare scalar is not a list ──────────────────────────────────────
+R3s="$TEST_TEMP_DIR/r3s"
+_mk_manifest "$R3s/scalar" primary SCALAR
+_run_lint "$R3s"
+assert_eq "[#2247] valid_verdicts as a bare scalar (not a list) fails the lint" "1" "$LINT_RC"
+assert_contains "[#2247] ...naming the manifest" "$LINT_OUT" "scalar/manifest.yaml"
 
 # ─── SPEC-4: an explicit empty declaration is valid ─────────────────────────
 print_test_section "4. explicit valid_verdicts: [] -> rc=0"

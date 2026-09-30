@@ -80,14 +80,15 @@ while IFS= read -r -d '' f; do
                 print NR "\t" m "\t" ok
                 t = substr(t, RSTART + RLENGTH)
             }
-            # Assignment to a variable named exactly `verdict`.
-            if (match(s, /(^|[^a-zA-Z_])verdict="[a-z_]+"/)) {
-                m = substr(s, RSTART, RLENGTH); sub(/.*="/, "", m); sub(/"$/, "", m)
+            # Assignment to a variable named exactly `verdict`: double-quoted,
+            # single-quoted or bare (review #2247).
+            if (match(s, /(^|[^a-zA-Z_])verdict=("[a-z_]+"|\047[a-z_]+\047|[a-z_]+([[:space:];]|$))/)) {
+                m = substr(s, RSTART, RLENGTH); sub(/.*=/, "", m); gsub(/["\047;[:space:]]/, "", m)
                 print NR "\t" m "\t" ok
             }
-            # A result writer: the second quoted argument.
-            if (match(s, /_write_(result|v2)[[:space:]]+"[^"]*"[[:space:]]+"[a-z_]+"/)) {
-                m = substr(s, RSTART, RLENGTH); sub(/"$/, "", m); sub(/.*"/, "", m)
+            # A result writer: the second argument, double- or single-quoted.
+            if (match(s, /_write_(result|v2)[[:space:]]+("[^"]*"|\047[^\047]*\047)[[:space:]]+("[a-z_]+"|\047[a-z_]+\047)/)) {
+                m = substr(s, RSTART, RLENGTH); sub(/["\047]$/, "", m); sub(/.*["\047]/, "", m)
                 print NR "\t" m "\t" ok
             }
         }

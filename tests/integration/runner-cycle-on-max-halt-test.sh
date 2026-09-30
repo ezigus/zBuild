@@ -15,6 +15,8 @@
 # H2 [guard]  continue + the cycle out of rounds → review IS dispatched (#527)
 # H3 [change] `abort` (the old word runner-final-status used) behaves as halt
 # H4 [guard]  halt + the cycle converged (rc 0) → review IS dispatched
+# H5 [change] a failing event bus does not kill the halt path before it records
+#             the run's end (review #2247: the emit was unguarded under set -e)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -47,7 +49,7 @@ install_template_overlay "$OVERLAY_REPO" cycle-halt-minimal cycle-fallthrough-mi
 # _run <template> <cycle_rc> <reason> → prints the case dir. Records every stage
 # the runner dispatches in <dir>/dispatched.
 _run() {
-    local tpl="$1" crc="$2" reason="$3" d
+    local tpl="$1" crc="$2" reason="$3" extra="${4:-}" d
     mkdir -p "$TEST_TEMP_DIR"
     d="$(mktemp -d "$TEST_TEMP_DIR/case-XXXXXX")"
     (
@@ -68,6 +70,7 @@ _run() {
             mkdir -p \"\$(dirname \"\$4\")/artifacts\"
             return 0
         }"
+        [[ -n "$extra" ]] && eval "$extra"
         cd "$OVERLAY_REPO" || exit 1
         main --issue "$_ZB_ISSUE" --template "$tpl" > "$d/runner.log" 2>&1
         printf '%s' "$?" > "$d/runner.rc"
@@ -96,6 +99,15 @@ assert_eq "[H3] on_max: abort stops the run too" "0" "$(_dispatched "$H3" review
 print_test_section "H4: a converged halt cycle carries on"
 H4="$(_run cycle-halt-minimal 0 converged)"
 assert_eq "[H4] a halt cycle that converged does not stop the run" "1" "$(_dispatched "$H4" review)"
+
+print_test_section "H5: a failing event bus"
+# Only the halt path's pipeline.end emit fails — every other event still works,
+# so the run reaches the halt block as it would in production — and under
+# `set -e`, as runner.sh runs (this harness otherwise runs main with it off).
+H5="$(_run cycle-halt-minimal 2 max_iterations 'eval "$(declare -f eb_emit_event | sed "1s/eb_emit_event/_zb_real_emit/")"; eb_emit_event() { [[ "$1" == pipeline.end ]] && return 1; _zb_real_emit "$@"; }; set -e')"
+assert_eq "[H5] review is still not dispatched" "0" "$(_dispatched "$H5" review)"
+assert_contains "[H5] the halt path runs to its end (its message is printed)" \
+    "$(cat "$H5/runner.log" 2>/dev/null)" "the run stops here"
 
 cleanup_test_env
 print_test_results

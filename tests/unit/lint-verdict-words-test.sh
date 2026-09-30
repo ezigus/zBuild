@@ -16,6 +16,7 @@
 # W4 [guard]  a manifest with no declared list is skipped (lint-verdict-classify
 #             owns that)
 # W5 [change] the real tree passes
+# W6 [change] single-quoted and unquoted literals are read too (review #2247)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -49,6 +50,16 @@ assert_eq "[W3] an annotated literal passes" "0" "$(_lint)"
 printf 'id: x\nconfig:\n  tier_default: T1\n' > "$P/manifest.yaml"
 printf '%s\n' "printf '{\"verdict\":\"broken\"}'" > "$P/plugin.sh"
 assert_eq "[W4] a manifest with no declared list is skipped" "0" "$(_lint)"
+
+printf 'id: x\nconfig:\n  valid_verdicts:\n    - pass\n    - fail\n' > "$P/manifest.yaml"
+printf '%s\n' "verdict='broken'" > "$P/plugin.sh"
+assert_eq "[W6] a single-quoted assignment is refused" "1" "$(_lint)"
+printf '%s\n' 'local verdict=broken' > "$P/plugin.sh"
+assert_eq "[W6] an unquoted assignment is refused" "1" "$(_lint)"
+printf '%s\n' "_x_write_result \"\$dir\" 'broken' 'broken' 'r'" > "$P/plugin.sh"
+assert_eq "[W6] a single-quoted writer argument is refused" "1" "$(_lint)"
+printf '%s\n' 'local verdict=pass' "verdict='fail'" > "$P/plugin.sh"
+assert_eq "[W6] ...declared ones pass" "0" "$(_lint)"
 
 _real="$(bash "$LINT" 2>&1)"; _real_rc=$?
 assert_eq "[W5] the real tree passes" "0" "$_real_rc"

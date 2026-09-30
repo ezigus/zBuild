@@ -12,6 +12,7 @@
 # R3 [change] `# redirect-ok: <why>` on the line or the 3 above excuses one
 # R4 [change] the real tree passes
 # R5 [guard]  the reordered form really is silent for a missing file
+# R6 [change] a single-quoted or unquoted path is read too (review #2247)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,6 +37,12 @@ printf '%s\n' 'sum="$(cksum 2>/dev/null < "$f" || printf absent)"' '{ cksum < "$
 assert_eq "[R2] stderr redirected first, or a group, passes" "0" "$(_lint)"
 printf '%s\n' '# redirect-ok: the file is created two lines above' 'n="$(wc -l < "$f" 2>/dev/null)"' > "$F"
 assert_eq "[R3] an annotated line passes" "0" "$(_lint)"
+printf '%s\n' "n=\"\$(wc -c < '/tmp/x' 2>/dev/null)\"" > "$F"
+assert_eq "[R6] a single-quoted path is refused" "1" "$(_lint)"
+printf '%s\n' 'n="$(wc -c < $f 2>/dev/null)"' > "$F"
+assert_eq "[R6] an unquoted variable path is refused" "1" "$(_lint)"
+printf '%s\n' 'n="$(wc -c 2>/dev/null < $f)"' > "$F"
+assert_eq "[R6] ...and its reordered form passes" "0" "$(_lint)"
 _real="$(bash "$LINT" 2>&1)"; _rc=$?
 assert_eq "[R4] the real tree passes" "0" "$_rc"
 [[ "$_rc" -eq 0 ]] || printf '%s\n' "$_real" >&2

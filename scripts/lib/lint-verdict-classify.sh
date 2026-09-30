@@ -80,6 +80,11 @@ while IFS= read -r manifest; do
         empty)
             : # explicit "writes no verdict" — nothing to classify
             ;;
+        invalid*)
+            echo "✗ $plugin_rel: config.valid_verdicts is a bare scalar ('${state#invalid }'), not a list" >&2
+            echo "    write it as a list: valid_verdicts: [${state#invalid }]  (review #2247)" >&2
+            violations=$((violations + 1))
+            ;;
         list*)
             # read -ra, not an unquoted `for v in ${state#list }`: word-splitting
             # is wanted here but pathname expansion is NOT, and an unquoted
