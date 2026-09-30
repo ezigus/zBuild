@@ -138,7 +138,7 @@ _negctl_guard_log_check() {
     [[ -z "$clean" ]] && return 2
     # grep exits non-zero on no-match, which is the only way $tagged can be
     # empty — a matched line always contains the tag.
-    tagged="$(printf '%s\n' "$clean" | LC_ALL=C grep -F "$(acceptance_spec_tag "$spec_id")" 2>/dev/null)" || return 2
+    tagged="$(LC_ALL=C grep -F "$(acceptance_spec_tag "$spec_id")" <<< "$clean" 2>/dev/null)" || return 2
     # ✗ wins over ✓: a guard with one failing and one passing tagged assertion
     # has regressed.
     LC_ALL=C grep -qF '✗' <<< "$tagged" 2>/dev/null && return 0
@@ -612,6 +612,11 @@ acceptance_negctl_check() {
             printf 'NEGCTL FAIL %s tautology\n' "$spec_id"; rc=1
         elif [[ "$only_head_fail" -eq 1 ]]; then
             printf 'NEGCTL FAIL %s not_passing_at_head\n' "$spec_id"; rc=1
+        # Unreached ranks BELOW tautology and not_passing_at_head on purpose:
+        # those are what a file that DID reach the assertion showed — evidence —
+        # and unreached is only the absence of it in another file. Evidence
+        # outranks absence; the unreached file is still named when it is all
+        # there is (review #2235).
         elif [[ -n "$ub_after" ]]; then
             printf 'NEGCTL FAIL %s unreached_at_base after=%s\n' "$spec_id" "$ub_after"; rc=1
         elif [[ -n "$uh_after" ]]; then

@@ -43,6 +43,10 @@
 # U10 [change] a command missing at the merge-base (rc 127) inside a file that
 #             printed other verdicts is unreached, not "the runner could not
 #             execute the file"
+# U11 [guard]  _negctl_last_other_verdict reads the contract's own tag shape:
+#             bare and issue-prefixed tags, another issue's tags ignored, this
+#             SPEC's own lines ignored, colour codes stripped, the LAST one wins,
+#             nothing found in an empty or verdict-free log (review #2235)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -264,6 +268,20 @@ print_test_section "U9: unreached on the new code is never escalated to design"
 _r9="$(_gate_run "$REPO" 2)"
 assert_contains "[U9] the gate reports it" "$(jq -r '.failures[]?' "$_r9" 2>/dev/null)" "unreached_at_head:SPEC-8"
 assert_contains "[U9] ...and says where the file stopped" "$(jq -r '.reason // empty' "$_r9" 2>/dev/null)" "SPEC-8 (the file stopped after SPEC-7)"
+
+print_test_section "U11: reading where the file stopped"
+_L11="$TEST_TEMP_DIR/u11.log"
+_lov() { _negctl_last_other_verdict "$_L11" "$1"; printf ' rc=%s' "$?"; }
+printf '  \033[32m✓\033[0m [SPEC-1] a\n  ✗ [SPEC-2] b\n  some noise [SPEC-4] without a verdict\n  ✓ [SPEC-3] c (own line)\n' > "$_L11"
+assert_eq "[U11] bare tags: the last OTHER SPEC with a verdict, colour codes stripped" "SPEC-2 rc=0" "$(unset ZBUILD_ISSUE; _lov SPEC-3)"
+printf '  ✓ [#1835/SPEC-1] a\n  ✓ [#999/SPEC-7] another issue\n  ✗ [SPEC-8] bare, not this contract\n' > "$_L11"
+assert_eq "[U11] issue-prefixed tags: only this issue's contract counts" "SPEC-1 rc=0" "$(ZBUILD_ISSUE=1835 _lov SPEC-18)"
+printf '  ✓ [#1835/SPEC-18] its own line\n' > "$_L11"
+assert_eq "[U11] its own line is not another SPEC's" " rc=1" "$(ZBUILD_ISSUE=1835 _lov SPEC-18)"
+printf 'no verdicts here\n' > "$_L11"
+assert_eq "[U11] a log with no verdict lines finds nothing" " rc=1" "$(unset ZBUILD_ISSUE; _lov SPEC-3)"
+: > "$_L11"
+assert_eq "[U11] an empty log finds nothing" " rc=1" "$(unset ZBUILD_ISSUE; _lov SPEC-3)"
 
 cleanup_test_env
 print_test_results
