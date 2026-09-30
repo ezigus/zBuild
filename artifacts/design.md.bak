@@ -16,15 +16,19 @@ direct string concatenation (`$artifacts_dir/review.json`,
 `ZBUILD_STAGE_INPUTS` index. It also returns `rc=2` on the missing-state-file
 path, which ADR-054 §4 forbids for v2 stages. Success paths (merge-delegation,
 pr-open-delegation) write nothing to pr-result.json; the fallback-gh success path
-writes a v1-format result. No signal trap exists. The three sibling plugins it
-delegates to (`merge`, `pr-open`) are already v2; pr-delivery itself is the gap.
+writes a v1-format result with top-level `{status, branch, pr_url, draft}` fields.
+No signal trap exists. The three sibling plugins it delegates to (`merge`,
+`pr-open`) are already v2; pr-delivery itself is the gap.
 
 **Decision.** Four-file migration following the established pattern (see
 `plugins/tool/merge/`, `plugins/tool/pr-open/`):
 - **manifest.yaml**: add `provides.result_contract: 2`, `provides.events:
   [pr.delivery.blocked, pr.delivery.opened, pr.delivery.dry_run]`, change
-  `config.valid_verdicts` from `[]` to `[pass, error]`. No `router:` block added:
-  pr-delivery makes no direct LLM calls; this criterion is explicitly inapplicable.
+  `config.valid_verdicts` from `[]` to `[pass, error]`. Inputs remain declared
+  with only `id` and `required:` — no `path`, `type`, or `from/producer` field
+  (name-matched inputs, per ADR-055 §"Name-matched inputs"). No `router:` block
+  added: pr-delivery makes no direct LLM calls; this criterion is explicitly
+  inapplicable.
 - **plugin.sh**: introduce `_pr_delivery_write_result` helper writing the v2
   envelope `{result_contract:2, verdict, disposition, reason, data:{...}}`;
   resolve `review_report` and `gate_aggregator_result` inputs exclusively from
@@ -35,7 +39,9 @@ delegates to (`merge`, `pr-open`) are already v2; pr-delivery itself is the gap.
   path — including the pr-open SUCCESS, merge SUCCESS, and fallback-gh SUCCESS
   paths which currently write nothing or a v1 envelope — with appropriate
   `verdict` (`pass`/`error`) and `disposition`
-  (`complete`/`interrupted`/`unavailable`/`precondition_unmet`).
+  (`complete`/`interrupted`/`unavailable`/`precondition_unmet`). On the
+  fallback-gh SUCCESS path, v1 top-level fields (`branch`, `pr_url`, `draft`)
+  are preserved inside `.data` for downstream behavioral equivalence.
 - **tests/unit/pr-delivery-v2-result-test.sh** (new): TDD-first unit test
   covering all SPECs; written before touching the implementation; confirmed
   red at the merge-base.
@@ -77,6 +83,8 @@ SPEC-16[change]: fallback-gh SUCCESS path writes pr-result.json carrying result_
 SPEC-17[change]: SIGTERM/SIGINT trap writes pr-result.json carrying result_contract:2, verdict=error, disposition=interrupted and exits rc=1 (no signal trap exists today)
 SPEC-18[guard]: manifest has no router: block — pr-delivery makes no direct LLM calls; absence of router: is the explicit policy, not an omission
 SPEC-19[change]: dry-run v2 pr-result.json carries .data.branch and .data.draft (v1 top-level fields preserved inside the v2 .data envelope — behavioral equivalence for the passing run)
+SPEC-20[guard]: manifest inputs section declares only id and required: on each entry — no path, type, from, or producer field (name-matched inputs; the current manifest already satisfies this and the migration must not add such fields)
+SPEC-21[change]: fallback-gh SUCCESS path v2 pr-result.json carries .data.branch, .data.pr_url, and .data.draft (v1 top-level fields preserved inside the v2 .data envelope — behavioral equivalence for the fallback-gh passing run; currently these fields are written at the top level, not under .data)
 WIRING:
 plugins/agent/pr-delivery/manifest.yaml
 TESTFILES:
@@ -99,6 +107,8 @@ SPEC-16: tests/unit/pr-delivery-v2-result-test.sh
 SPEC-17: tests/unit/pr-delivery-v2-result-test.sh
 SPEC-18: tests/unit/pr-delivery-v2-result-test.sh
 SPEC-19: tests/unit/pr-delivery-v2-result-test.sh tests/integration/pr-pipeline-test.sh
+SPEC-20: tests/unit/pr-delivery-v2-result-test.sh
+SPEC-21: tests/unit/pr-delivery-v2-result-test.sh
 ```
 
 ```supersedes
