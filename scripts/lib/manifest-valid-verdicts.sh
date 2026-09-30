@@ -13,55 +13,42 @@ _ZBUILD_MANIFEST_VALID_VERDICTS_LOADED=1
 #   list <v1> <v2> …  — declared block list or flow sequence
 # Scoped to the `config:` block so an unrelated key elsewhere cannot satisfy it.
 manifest_valid_verdicts_state() {
-    awk '
-        /^config:[[:space:]]*$/ { in_cfg=1; next }
-        in_cfg && /^[a-zA-Z_]/  { in_cfg=0 }
-        in_cfg && /^[[:space:]]*valid_verdicts:/ {
-            found=1
-            # Inline form: valid_verdicts: []  (or any inline scalar/flow value)
-            line=$0
-            sub(/^[[:space:]]*valid_verdicts:[[:space:]]*/, "", line)
-            if (line ~ /^\[[[:space:]]*\]$/) { inline_empty=1 }
-            else if (line != "") { inline_other=line }
-            in_list=1
-            next
-        }
-        # Items of the block list: "    - value"
-        in_cfg && in_list && /^[[:space:]]+-[[:space:]]*[^[:space:]]/ {
-            v=$0
-            sub(/^[[:space:]]*-[[:space:]]*/, "", v)
-            sub(/[[:space:]]*#.*$/, "", v)      # strip trailing comment
-            gsub(/[[:space:]]*$/, "", v)
-            if (v != "") { vals[n++]=v }
-            next
-        }
-        # A comment line inside the list does not end it.
-        in_cfg && in_list && /^[[:space:]]*#/ { next }
-        # Any other key at config-item depth ends the list.
-        in_cfg && in_list && /^[[:space:]]+[^-[:space:]]/ { in_list=0 }
-        END {
-            if (!found) { print "absent"; exit }
-            if (n > 0) {
-                printf "list"
-                for (i = 0; i < n; i++) printf " %s", vals[i]
-                printf "\n"
-                exit
-            }
-            if (inline_empty || inline_other == "") { print "empty"; exit }
-            # YAML flow sequence: `valid_verdicts: [pass, fail]`. Valid YAML, so
-            # parse it rather than reject it — passing the raw "[pass, fail]"
-            # through would word-split into "[pass," and "fail]", and BOTH would
-            # classify unknown, failing a structurally correct manifest.
-            if (inline_other ~ /^\[.*\]$/) {
-                sub(/^\[[[:space:]]*/, "", inline_other)
-                sub(/[[:space:]]*\]$/, "", inline_other)
-                gsub(/[[:space:]]*,[[:space:]]*/, " ", inline_other)
-                gsub(/["'"'"']/, "", inline_other)
-                if (inline_other == "") { print "empty"; exit }
-            }
-            print "list " inline_other
-        }
-    ' "$1"
+    # Pure bash, no subprocess: the runtime reader calls this for every stage
+    # read, and the suite is fork-bound (ADR-065, #2236).
+    local f="$1" line in_cfg=0 in_list=0 found=0 inline="" v
+    local -a vals=()
+    [[ -f "$f" ]] || { printf 'absent\n'; return 0; }
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line%$'\r'}"
+        if [[ "$line" =~ ^config:[[:space:]]*$ ]]; then in_cfg=1; continue; fi
+        [[ $in_cfg -eq 1 && "$line" =~ ^[a-zA-Z_] ]] && { in_cfg=0; in_list=0; }
+        [[ $in_cfg -eq 1 ]] || continue
+        if [[ "$line" =~ ^[[:space:]]*valid_verdicts:[[:space:]]*(.*)$ ]]; then
+            found=1; inline="${BASH_REMATCH[1]}"; inline="${inline%%#*}"
+            inline="${inline%"${inline##*[![:space:]]}"}"
+            in_list=1; continue
+        fi
+        if [[ $in_list -eq 1 ]]; then
+            if [[ "$line" =~ ^[[:space:]]+-[[:space:]]*([^[:space:]].*)$ ]]; then
+                v="${BASH_REMATCH[1]}"; v="${v%%#*}"; v="${v%"${v##*[![:space:]]}"}"
+                [[ -n "$v" ]] && vals+=("$v")
+                continue
+            fi
+            [[ "$line" =~ ^[[:space:]]*# ]] && continue
+            [[ "$line" =~ ^[[:space:]]+[^-[:space:]] ]] && in_list=0
+        fi
+    done < "$f"
+    if [[ $found -eq 0 ]]; then printf 'absent\n'; return 0; fi
+    if [[ ${#vals[@]} -gt 0 ]]; then printf 'list %s\n' "${vals[*]}"; return 0; fi
+    # YAML flow sequence: `valid_verdicts: [pass, fail]`.
+    if [[ "$inline" == "["*"]" ]]; then
+        inline="${inline#[}"; inline="${inline%]}"
+        inline="${inline//,/ }"; inline="${inline//\"/}"; inline="${inline//\'/}"
+        read -ra vals <<< "$inline"
+        if [[ ${#vals[@]} -eq 0 ]]; then printf 'empty\n'; else printf 'list %s\n' "${vals[*]}"; fi
+        return 0
+    fi
+    if [[ -z "$inline" ]]; then printf 'empty\n'; else printf 'list %s\n' "$inline"; fi
 }
 
 # manifest_verdict_declared <manifest> <word> — rc 0 when <word> is in the

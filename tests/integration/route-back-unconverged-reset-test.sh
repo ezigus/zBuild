@@ -28,6 +28,10 @@ setup_test_env "route-back-unconverged-reset"
 # repo; the cd below is what actually contains it.
 _ZB_ISSUE="$(zb_test_issue)"
 _ZB_REPO="$(zb_test_repo rb-unconverged)"
+# #2241: an earlier cycle that falls through unconverged is the subject here —
+# the CONTINUE path. simple.yaml's design cycle is on_max: halt (the runner now
+# stops there), so drive simple.yaml with that one cycle set to continue.
+install_simple_design_continue "$_ZB_REPO" || { echo "overlay install failed" >&2; exit 1; }
 
 _tmp="$(mktemp -d "$TEST_TEMP_DIR/rb-XXXXXX")"
 (
@@ -77,7 +81,7 @@ _tmp="$(mktemp -d "$TEST_TEMP_DIR/rb-XXXXXX")"
         return 0
     }
 
-    main --issue "$_ZB_ISSUE" --template simple >/dev/null 2>&1
+    main --issue "$_ZB_ISSUE" --template simple-design-continue >/dev/null 2>&1
 )
 
 _state="$_tmp/state/pipeline-state.json"

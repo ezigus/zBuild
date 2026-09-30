@@ -1032,6 +1032,31 @@ setup_git_master_origin() {
 # engine tree unchanged — only the overlay id needs a fixture.
 #
 # Usage: install_template_overlay <repo> <id> [<id> ...]
+# install_simple_design_continue <repo> — overlay template `simple-design-continue`:
+# the shipped simple.yaml with design_verify_cycle set to on_max: continue.
+# #2241: simple.yaml's design cycle is on_max: halt (#2176), and the runner now
+# honours it. Tests whose subject is the CONTINUE path past an exhausted design
+# cycle (#766, #1217) drive this instead — generated from the real template at
+# test time, so it never drifts from it.
+install_simple_design_continue() {
+    local _repo="${1:?install_simple_design_continue: <repo> required}" _src_root
+    _src_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    mkdir -p "$_repo/.zbuild/templates"
+    awk '
+        /^id: simple$/ { print "id: simple-design-continue"; print "extends: simple"; next }
+        /^design_verify_cycle:/ { in_dvc = 1 }
+        in_dvc && /^[a-z_-]+:/ && !/^design_verify_cycle:/ { in_dvc = 0 }
+        in_dvc && /^  on_max: halt$/ { print "  on_max: continue"; next }
+        { print }
+    ' "$_src_root/config/templates/simple.yaml" > "$_repo/.zbuild/templates/simple-design-continue.yaml"
+    grep -q '^id: simple-design-continue$' "$_repo/.zbuild/templates/simple-design-continue.yaml" || return 1
+    # Committed, as install_template_overlay_committed does: an untracked
+    # overlay leaves the tree dirty and intake refuses to start on it.
+    local _git; _git="$(command -v git 2>/dev/null || echo /usr/bin/git)"
+    "$_git" -C "$_repo" add .zbuild/templates >/dev/null 2>&1 || return 1
+    "$_git" -C "$_repo" commit -q -m "add test template overlay" >/dev/null 2>&1 || return 1
+}
+
 install_template_overlay() {
     local _repo="$1"; shift
     # Fail fast on an empty repo arg (e.g. an unset OVERLAY_REPO): otherwise we'd
