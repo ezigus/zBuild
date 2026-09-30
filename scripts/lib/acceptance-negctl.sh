@@ -167,6 +167,24 @@ _negctl_last_other_verdict() {
     printf '%s' "$last"
 }
 
+# _negctl_guard_fails_at_head <repo_root> <spec_id> <tf...> — rc 0 when the
+# guard's OWN check prints ✗ on the new code too (#2244). Then the check itself
+# is broken — it fails whatever the code does — and that is its author's to fix,
+# not a mislabelled [guard] for design to relabel. #1838: `grep -qF "- x"` read
+# `- x` as an option and failed on both sides; the gate blamed design.
+_negctl_guard_fails_at_head() {
+    local repo_root="$1" spec_id="$2"; shift 2
+    local tf cap rc
+    for tf in "$@"; do
+        cap="$(mktemp "$(zbuild_engine_tmpdir)/zb-negctl-head.XXXXXX")" || return 1
+        _negctl_run "$repo_root/$tf" "$repo_root" "$cap" >/dev/null 2>&1 || true
+        rc=0; _negctl_guard_log_check "$cap" "$spec_id" || rc=$?
+        rm -f "$cap"
+        [[ "$rc" -eq 0 ]] && return 0
+    done
+    return 1
+}
+
 # _negctl_run <testfile_abs> <cwd> [logfile]  → echoes nothing, returns the rc.
 # Runs with ZBUILD_TEST_QUIET unset (so labeled output is produced) under an
 # optional timeout (ZBUILD_NEGCTL_TIMEOUT, default 60s). When <logfile> is given
@@ -345,7 +363,8 @@ _negctl_guard_verdict() {
 #   NEGCTL PASS <spec_id> guard_spec — [guard]: the invariant holds at baseline
 #   NEGCTL FAIL <spec_id> <reason>   reason ∈ {tautology, not_passing_at_head,
 #                                no_testfile, guard_regressed, guard_unreached,
-#                                guard_unverified, unreached_at_base,
+#                                guard_unverified, guard_test_broken,
+#                                unreached_at_base,
 #                                unreached_at_head, killed_by_signal}
 #   NEGCTL ERROR <detail>      — infrastructure (baseline_resolve_failed,
 #                                worktree_failed, timeout:<spec_id>,
@@ -466,7 +485,13 @@ acceptance_negctl_check() {
             case "$_g_out" in
                 timeout)    printf 'NEGCTL ERROR timeout:%s\n' "$spec_id"; rc=1 ;;
                 harness)    printf 'NEGCTL ERROR harness:%s\n' "$spec_id"; rc=1 ;;
-                regressed)  printf 'NEGCTL FAIL %s guard_regressed\n' "$spec_id"; rc=1 ;;
+                regressed)
+                    if _negctl_guard_fails_at_head "$repo_root" "$spec_id" "${_g_tfs[@]}"; then
+                        printf 'NEGCTL FAIL %s guard_test_broken\n' "$spec_id"
+                    else
+                        printf 'NEGCTL FAIL %s guard_regressed\n' "$spec_id"
+                    fi
+                    rc=1 ;;
                 signal)     printf 'NEGCTL FAIL %s killed_by_signal\n' "$spec_id"; rc=1 ;;
                 unreached:*) printf 'NEGCTL FAIL %s guard_unreached after=%s\n' "$spec_id" "${_g_out#unreached:}"; rc=1 ;;
                 unverified) printf 'NEGCTL FAIL %s guard_unverified\n' "$spec_id"; rc=1 ;;
@@ -729,7 +754,12 @@ acceptance_negctl_guard_precheck() {
         fi
         out="$(_negctl_guard_verdict "$wt_dir" "$spec_id" "" "${_tfs[@]}")"
         case "$out" in
-            regressed)       printf 'GUARD FAIL %s guard_regressed\n' "$spec_id"; rc=1 ;;
+            regressed)
+                if _negctl_guard_fails_at_head "$repo_root" "$spec_id" "${_tfs[@]}"; then
+                    printf 'GUARD SKIP %s guard_test_broken\n' "$spec_id"
+                else
+                    printf 'GUARD FAIL %s guard_regressed\n' "$spec_id"; rc=1
+                fi ;;
             timeout|harness|signal|sigkill) printf 'GUARD SKIP %s %s\n' "$spec_id" "$out" ;;
             unreached:*)     printf 'GUARD SKIP %s guard_unreached\n' "$spec_id" ;;
             unverified)      printf 'GUARD SKIP %s guard_unverified\n' "$spec_id" ;;

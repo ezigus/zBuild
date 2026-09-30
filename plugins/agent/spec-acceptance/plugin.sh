@@ -153,7 +153,7 @@ _ag_unreached_where() {
 # member_terminal_failure. Repo-agnostic: ids come verbatim from the design's
 # acceptance block. Genuine violations lead; infra classes trail.
 _ag_build_reason() {
-    local f untagged="" taut="" nohead="" notf="" inert="" notpath="" infra="" malformed=0 grd="" nofiles="" sig="" unr="" unb="" unh="" unv=""
+    local f untagged="" taut="" nohead="" notf="" inert="" notpath="" infra="" malformed=0 grd="" nofiles="" sig="" unr="" unb="" unh="" unv="" brk=""
     for f in "$@"; do
         case "$f" in
             tautology:*)            taut="$taut ${f#tautology:}" ;;
@@ -168,6 +168,7 @@ _ag_build_reason() {
             unreached_at_base:*)    unb="$unb ${f#unreached_at_base:}" ;;
             unreached_at_head:*)    unh="$unh ${f#unreached_at_head:}" ;;
             guard_unverified:*)     unv="$unv ${f#guard_unverified:}" ;;
+            guard_test_broken:*)    brk="$brk ${f#guard_test_broken:}" ;;
             killed_by_signal:*)     sig="$sig ${f#killed_by_signal:}" ;;
             malformed_acceptance_block) malformed=1 ;;
             negctl_error:* | reachability_error:*) infra="$infra $f" ;;
@@ -187,6 +188,7 @@ _ag_build_reason() {
     [[ -n "$unr" ]] && clauses+=("$(_ag_unreached_where "$unr") — the guard never ran at the merge-base: an earlier step in its TESTFILE exits the file on the pre-change code, so nothing was measured; the guard itself is not in question")
     [[ -n "$unb" ]] && clauses+=("$(_ag_unreached_where "$unb") — never ran at the merge-base: an earlier step in its TESTFILE exits the file on the pre-change code, so its negative control is unproven")
     [[ -n "$unh" ]] && clauses+=("$(_ag_unreached_where "$unh") — never ran on the new code: an earlier step in its TESTFILE exits the file before the assertion, so it was not checked")
+    [[ -n "$brk" ]] && clauses+=("$(_ag_join_ids "$brk") [guard] check fails on the new code too, not only at the merge-base — the check itself is broken (it fails whatever the code does), so the guard's label is not in question")
     [[ -n "$unv" ]] && clauses+=("$(_ag_join_ids "$unv") [guard] not verified at the merge-base — its TESTFILE failed without printing a ✓/✗ verdict for the SPEC, so a failed check cannot be told from a file that stopped first; make the assertion print its own tagged verdict")
     [[ -n "$sig"      ]] && clauses+=("$(_ag_join_ids "$sig") TESTFILE died on a signal before the assertion ran (not a timeout) — usually a test that signals its own process (\$\$) where no handler exists yet; signal a child process instead")
     [[ "$malformed" -eq 1 ]] && clauses+=("acceptance block malformed")
@@ -577,7 +579,7 @@ acceptance_gate_run() {
     local about="" _only_unr=1 f
     for f in "${failures[@]:-}"; do
         case "$f" in
-            ""|guard_unreached:*|guard_unverified:*|unreached_at_base:*) ;;
+            ""|guard_unreached:*|guard_unverified:*|guard_test_broken:*|unreached_at_base:*) ;;
             *) _only_unr=0; break ;;
         esac
     done
