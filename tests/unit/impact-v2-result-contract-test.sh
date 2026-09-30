@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Tests: impact plugin v2 result contract (issue #1838).
 # SPEC-1  [change]: impact_run writes result_contract:2 on every early-exit path
-#                   (missing ZBUILD_ARTIFACT_DIR → broken/broken,
-#                    missing required input → broken/broken)
+#                   (missing ZBUILD_ARTIFACT_DIR → nothing written, said so;
+#                    missing required input → error/broken)
 # SPEC-2  [change]: impact_run installs a stage_signal_begin guard; an
 #                   interruption before any result is written produces
 #                   result_contract:2 with disposition=interrupted, reason=signal_interrupt
@@ -103,9 +103,9 @@ fi
 
 # ─── SPEC-1: impact_run writes result_contract:2 on every early-exit path ────
 
-# Path A: missing ZBUILD_ARTIFACT_DIR → impact_run writes broken/broken to
-# a state-file-derived fallback (the only write path available without an
-# explicit artifact dir). SPEC-1 requires the write; this asserts where it goes.
+# Path A: missing ZBUILD_ARTIFACT_DIR → the engine gave impact nowhere to write.
+# Nothing is written beside the state file (no path is derived from it, #1837's
+# rule and this issue's "constructs no artifact paths"); impact says so, rc=1.
 _setup_fixture spec1a
 unset ZBUILD_ARTIFACT_DIR
 _S1A_INPUTS="$TEST_TEMP_DIR/spec1a_inputs.json"
@@ -117,22 +117,17 @@ stage_signal_begin() { return 0; }
 stage_signal_end() { return 0; }
 
 _rc_s1a=0
-impact_run "impact" "$_F_STATE_FILE" 2>/dev/null || _rc_s1a=$?
+_s1a_err="$(impact_run "impact" "$_F_STATE_FILE" 2>&1 >/dev/null)" || _rc_s1a=$?
 unset ZBUILD_STAGE_INPUTS
 
 assert_eq "[#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → rc=1" "1" "$_rc_s1a"
-_s1a_rc2="$(jq -r '.result_contract // "MISSING"' "$_F_IMPACT" 2>/dev/null || echo MISSING)"
-_s1a_verdict="$(jq -r '.verdict // "MISSING"' "$_F_IMPACT" 2>/dev/null || echo MISSING)"
-_s1a_disp="$(jq -r '.disposition // "MISSING"' "$_F_IMPACT" 2>/dev/null || echo MISSING)"
-assert_eq "[#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → result_contract=2" "2" "$_s1a_rc2"
-assert_eq "[#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → verdict=broken" "broken" "$_s1a_verdict"
-assert_eq "[#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → disposition=broken" "broken" "$_s1a_disp"
-_s1a_reason="$(jq -r '.reason // "MISSING"' "$_F_IMPACT" 2>/dev/null || echo MISSING)"
-assert_eq "[#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → reason=missing_artifact_dir" \
-    "missing_artifact_dir" "$_s1a_reason"
+assert_file_not_exists "[#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → nothing written beside the state file" "$_F_IMPACT"
+assert_contains "[#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → says the engine gave it no artifact dir" \
+    "$_s1a_err" "ZBUILD_ARTIFACT_DIR"
 
 # Path B: ZBUILD_ARTIFACT_DIR is set but a required input is missing from the
-# engine's index (scope_manifest not named) → broken/broken.
+# engine's index (scope_manifest not named) → verdict error (a DECLARED verdict,
+# #1708 / SPEC-17), disposition broken (the engine's contract, not the change).
 _setup_fixture spec1b
 export ZBUILD_ARTIFACT_DIR="$TEST_TEMP_DIR/spec1b_artifacts"
 mkdir -p "$ZBUILD_ARTIFACT_DIR"
@@ -152,7 +147,7 @@ _s1b_disp="$(jq -r '.disposition // "MISSING"' "$_s1b_out" 2>/dev/null || echo M
 _s1b_verdict="$(jq -r '.verdict // "MISSING"' "$_s1b_out" 2>/dev/null || echo MISSING)"
 _s1b_reason="$(jq -r '.reason // "MISSING"' "$_s1b_out" 2>/dev/null || echo MISSING)"
 assert_eq "[#1838/SPEC-1] missing required input → result_contract=2" "2" "$_s1b_rc2"
-assert_eq "[#1838/SPEC-1] missing required input → verdict=broken" "broken" "$_s1b_verdict"
+assert_eq "[#1838/SPEC-1] missing required input → verdict=error (declared; broken is a disposition)" "error" "$_s1b_verdict"
 assert_eq "[#1838/SPEC-1] missing required input → disposition=broken" "broken" "$_s1b_disp"
 assert_eq "[#1838/SPEC-1] missing required input → reason=input_missing" "input_missing" "$_s1b_reason"
 

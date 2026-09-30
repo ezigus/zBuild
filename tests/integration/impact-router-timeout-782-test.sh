@@ -14,7 +14,8 @@
 #   I2: rc=124 → impact.json verdict=incomplete (best-effort), reason=router_timeout
 #   I3: plugin.result event emitted with reason=router_timeout
 #   I4: impact.verdict.incomplete event emitted (cycle re-iterates with signal)
-#   I5: rc=1 (max_turns) → best-effort verdict=incomplete (#892)
+#   I5: rc=1 (a generic router failure, router_rc_nonzero) → best-effort verdict=incomplete (#892);
+#       a real turn-budget hit is covered by impact-v2-closeout-test C4
 #   I6: rc=137 (OOM) → verdict=error (error class preserved for genuine infra fail)
 set -uo pipefail
 
@@ -108,7 +109,7 @@ case "$events" in
         assert_fail "I4: impact.verdict.incomplete event NOT emitted" ;;
 esac
 
-# ─── I5 (#892): rc=1 (max_turns/non-timeout) → best-effort verdict=incomplete ─
+# ─── I5 (#892): rc=1 (a generic router failure) → best-effort verdict=incomplete ─
 # Was fail-closed (rc=1, no impact.json). Now impact NEVER returns empty on a
 # router failure: it writes verdict=incomplete + a best-effort feedback note so
 # the cycle re-iterates (another shot) instead of getting a missing artifact.
