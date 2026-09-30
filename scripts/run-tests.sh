@@ -252,7 +252,7 @@ _rt_run_inner() {
   # Gated on a trace file existing, so the untraced path is byte-identical —
   # the parallel tier's output guarantee depends on that (#1058).
   if [[ -n "${3:-}" && -f "${3:-}" ]]; then
-    awk -v b="$(wc -c < "$3" 2>/dev/null | tr -d ' ')" -v p="$1" \
+    awk -v b="$(wc -c 2>/dev/null < "$3" | tr -d ' ')" -v p="$1" \
       'BEGIN { printf "trace %d %s\n", b, p }' \
       >> "$ZBUILD_TEST_TIMING_FILE" 2>/dev/null || true
   fi

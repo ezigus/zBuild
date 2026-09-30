@@ -77,7 +77,7 @@ repo_rules_prompt_block() {
     if [[ -n "${body//[[:space:]]/}" ]]; then
         source_line="These are this repository's rules (.zbuild/prompts/rules.md)."
     else
-        body="$(_repo_rules_strip_comments < "$_ZB_REPO_RULES_DEFAULT" 2>/dev/null || true)"
+        body="$(_repo_rules_strip_comments 2>/dev/null < "$_ZB_REPO_RULES_DEFAULT" || true)"
         [[ -n "${body//[[:space:]]/}" ]] || return 0
         source_line="This repository has no .zbuild/prompts/rules.md, so these are zBuild's default rules."
     fi

@@ -95,7 +95,7 @@ _zbuild_pg_grace() {
 zbuild_pg_record_pgid() {
     local _f="${1:-}" _pgid=""
     [[ -n "$_f" && -f "$_f" ]] || return 1
-    IFS=$'\t' read -r _pgid _ < "$_f" 2>/dev/null || true
+    IFS=$'\t' read -r _pgid _ 2>/dev/null < "$_f" || true
     [[ "$_pgid" =~ ^[0-9]+$ ]] || return 1
     printf '%s' "$_pgid"
 }

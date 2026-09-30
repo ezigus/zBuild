@@ -90,7 +90,7 @@ _reachability_run_once() {
 _reachability_bound_log() {
     local f="$1" cap="${2:-65536}"
     [[ -n "$f" && -f "$f" ]] || return 0
-    local sz; sz="$(wc -c < "$f" 2>/dev/null || echo 0)"
+    local sz; sz="$(wc -c 2>/dev/null < "$f" || echo 0)"
     if [[ "$sz" =~ ^[0-9]+$ && "$sz" -gt "$cap" ]]; then
         tail -c "$cap" "$f" > "$f.tmp" 2>/dev/null && mv "$f.tmp" "$f" 2>/dev/null || true
     fi

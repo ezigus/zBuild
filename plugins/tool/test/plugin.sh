@@ -406,7 +406,7 @@ _test_run_inner() {
             emit_event "test.targeted.confirming" "passed=${_tp}" 2>/dev/null || true
             # The full run is the authoritative one: its rows get their own
             # `run` label (#2167) — the subset's rows stay above, nothing is rm'd.
-            _zbt_tl_before="$(wc -c < "$_zbt_timing_log" 2>/dev/null | tr -d ' ')"; [[ "$_zbt_tl_before" =~ ^[0-9]+$ ]] || _zbt_tl_before=0
+            _zbt_tl_before="$(wc -c 2>/dev/null < "$_zbt_timing_log" | tr -d ' ')"; [[ "$_zbt_tl_before" =~ ^[0-9]+$ ]] || _zbt_tl_before=0
             # The parser's pass is authoritative (#584), so the subset's rc no
             # longer matters; the full run's rc replaces it below.
             test_rc=0
@@ -875,7 +875,7 @@ _test_emit_failures_summary() {
     # 8 KB cap with truncation marker.
     local _max=8192
     local _bytes
-    _bytes="$(wc -c < "$tmp" 2>/dev/null | tr -d ' ')"
+    _bytes="$(wc -c 2>/dev/null < "$tmp" | tr -d ' ')"
     if [[ "$_bytes" =~ ^[0-9]+$ && "$_bytes" -gt "$_max" ]]; then
         local _tmp2; _tmp2="$(mktemp "${out_path}.XXXXXX" 2>/dev/null || echo "${out_path}.tmp2")"
         head -c "$_max" "$tmp" > "$_tmp2" 2>/dev/null
@@ -896,7 +896,7 @@ _test_timing_mark_run() {
     local log="$1" mode="${2:-full}" before="${3:-0}" n=0 tmp
     [[ -f "$log" ]] || return 0
     [[ "$before" =~ ^[0-9]+$ ]] || before=0
-    local after; after="$(wc -c < "$log" 2>/dev/null | tr -d ' ')"
+    local after; after="$(wc -c 2>/dev/null < "$log" | tr -d ' ')"
     [[ "$after" =~ ^[0-9]+$ && "$after" -gt "$before" ]] || return 0
     n="$(grep -c '^run ' "$log" 2>/dev/null || true)"; [[ "$n" =~ ^[0-9]+$ ]] || n=0
     tmp="$(mktemp "${log}.XXXXXX" 2>/dev/null)" || return 0

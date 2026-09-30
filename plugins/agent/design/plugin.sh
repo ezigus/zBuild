@@ -636,7 +636,7 @@ DESIGN_PROMPT
     fi
     # #2186: what design.md was before THIS call — on a timeout, whether the call
     # wrote a new design is the one fact that decides what gets published.
-    local _design_before; _design_before="$(cksum < "$output_design_md" 2>/dev/null || printf 'absent')"
+    local _design_before; _design_before="$(cksum 2>/dev/null < "$output_design_md" || printf 'absent')"
     route_to_model_loop "$tier" "$prompt_input_file" "$repo_root" "$max_iter" \
         --scope-allowlist "$plan_files_csv" \
         --defer-final-banner-close || router_rc=$?
@@ -664,7 +664,7 @@ DESIGN_PROMPT
     # Either way the sidecar says incomplete/interrupted (#1261), which the
     # cycle reads as "this iteration did not finish".
     if [[ "${_ROUTE_LOOP_TERMINATED_REASON:-}" == "router_timeout" ]]; then
-        local _design_after; _design_after="$(cksum < "$output_design_md" 2>/dev/null || printf 'absent')"
+        local _design_after; _design_after="$(cksum 2>/dev/null < "$output_design_md" || printf 'absent')"
         mkdir -p "$artifact_dir"
         if [[ -s "$output_design_md" && "$_design_after" != "$_design_before" ]]; then
             warn "_design_stage_run_inner: router loop timed out after writing design.md — keeping it for the gates to judge"

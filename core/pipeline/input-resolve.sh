@@ -509,7 +509,7 @@ _inputs_check_required() {
         # N-1 broken lens results would otherwise ride in on the strength of one.
         [[ -n "${_IR_ISMAP[$id]:-}" && -n "$damaged" ]] && present=0
         if [[ $present -eq 0 && -n "$damaged" ]]; then
-            violations+=("$stage|INPUT_DAMAGED|$id|producer '$producer' wrote output '$id' but it is unusable ($(_inputs_format_for "$damaged" "$id"), $(wc -c < "$damaged" 2>/dev/null | tr -d ' ') bytes); consumer '$stage' requires it: $damaged")
+            violations+=("$stage|INPUT_DAMAGED|$id|producer '$producer' wrote output '$id' but it is unusable ($(_inputs_format_for "$damaged" "$id"), $(wc -c 2>/dev/null < "$damaged" | tr -d ' ') bytes); consumer '$stage' requires it: $damaged")
         elif [[ $present -eq 0 ]]; then
             violations+=("$stage|INPUT_MISSING|$id|producer '$producer' declares output '$id' but its artifact is absent; consumer '$stage' requires it (looked for: ${paths//$'\n'/, })")
         fi
@@ -818,7 +818,7 @@ stage_summaries_prompt_block() {
         if declare -F _zbuild_sanitize_for_llm >/dev/null 2>&1; then
             body="$(printf '%s' "$body" | _zbuild_sanitize_for_llm 2>/dev/null || printf '%s' "$body")"
         fi
-        if [[ "$(wc -c < "$path" 2>/dev/null || echo 0)" -gt "$_ZB_SUMMARY_MAX_BYTES" ]]; then
+        if [[ "$(wc -c 2>/dev/null < "$path" || echo 0)" -gt "$_ZB_SUMMARY_MAX_BYTES" ]]; then
             body="${body}"$'\n'"[… truncated at ${_ZB_SUMMARY_MAX_BYTES}B —"
             body="${body} read the artifact directly for the full text]"
         fi
