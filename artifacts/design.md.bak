@@ -52,6 +52,10 @@ vocabulary. The test (`tests/unit/adr-063-vocabulary-test.sh`) asserts the statu
 line is Accepted and no §3/§4 prescription still uses the retired words — following
 the `adr-migration-claims-test.sh` pattern of making ADR claims falsifiable.
 
+ADR-021 also receives an amendment block documenting the new
+`cycle.member_unfinished.suppressed_convergence` suppression case, parallel to the
+existing `cycle.build_unfinished.suppressed_convergence` block at line 849–851.
+
 ```scope
 core/pipeline/cycle-orchestrator.sh
 core/pipeline/disposition.sh
@@ -60,6 +64,7 @@ plugins/agent/spec-correspondence/plugin.sh
 plugins/agent/review-report/plugin.sh
 scripts/lib/router-rc-classify.sh
 config/event-schema.json
+docs/adr/ADR-021-pipeline-cycle-semantics.md
 docs/adr/ADR-063-budget-disclosure-and-partial-output.md
 tests/integration/cycle-member-unfinished-no-convergence-test.sh
 tests/unit/spec-coverage-test.sh
@@ -98,7 +103,7 @@ SPEC-7: tests/unit/adr-063-vocabulary-test.sh
 ```
 
 ```supersedes
-tests/unit/review-report-v2-contract-test.sh [SPEC-5]: asserts `disposition=complete` when a lens subshell call returns rc=1 — after §3/B the disposition is router_reason_disposition of the worst failed lens rc (unavailable for rc=1/router_rc_nonzero); the stale #2187 comment at line 131 that justified hardcoding 'complete' is removed
+tests/unit/review-report-v2-contract-test.sh [SPEC-5]: asserts `disposition=complete` when a lens subshell call returns rc=1 — after §3/B the disposition is router_reason_disposition of the worst failed lens rc (rc=1 → router_rc_nonzero → unavailable); the stale #2187 comment at line 131 that justified hardcoding 'complete' is removed
 ```
 
 LOOP_COMPLETE
