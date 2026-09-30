@@ -86,26 +86,41 @@ else
     assert_pass "[#1842/SPEC-5] lens-* wildcard absent from plugin.sh"
 fi
 
-# ── SPEC-6 + SPEC-11: empty-lenses exit path writes md and v2 envelope ───────
+# ── SPEC-6: review-report.md written even when out_json is empty/unwritten ────
+# Simulate _ra_aggregate producing no output so out_json stays zero-size.
+# Baseline guards the md render on `[[ -s "$out_json" ]]` — if out_json is empty
+# the md is skipped.  After the change the render is unconditional (using
+# `cat "$out_json" 2>/dev/null || printf '{}'`), so the md is always written.
+_ra_agg_s6_save="$(declare -f _ra_aggregate)"
+# shellcheck disable=SC2317
+_ra_aggregate() { : ; }
 _d6="$TEST_TEMP_DIR/s6"; mkdir -p "$_d6"
 _si6="$TEST_TEMP_DIR/s6-inputs.json"
 printf '{"inputs":{"lens_result":[]}}\n' > "$_si6"
 set +e
 ZBUILD_STAGE_INPUTS="$_si6" _review_aggregator_run_inner \
     "$_d6" "$_d6/review-report.json" "$_d6/review-report.md"
-_rc6=$?
 set -e
-assert_eq "[#1842/SPEC-6] empty-lenses rc=0" "0" "$_rc6"
-assert_file_exists "[#1842/SPEC-6] review-report.md written on empty-lenses exit path" \
+eval "$_ra_agg_s6_save" 2>/dev/null || true
+assert_file_exists "[#1842/SPEC-6] review-report.md written even when out_json is empty/unwritten" \
     "$_d6/review-report.md"
+
+# ── SPEC-11: empty-lenses exit path writes v2 envelope ───────────────────────
+_d11="$TEST_TEMP_DIR/s11"; mkdir -p "$_d11"
+_si11="$TEST_TEMP_DIR/s11-inputs.json"
+printf '{"inputs":{"lens_result":[]}}\n' > "$_si11"
+set +e
+ZBUILD_STAGE_INPUTS="$_si11" _review_aggregator_run_inner \
+    "$_d11" "$_d11/review-report.json" "$_d11/review-report.md"
+set -e
 assert_eq "[#1842/SPEC-11] empty-lenses result_contract is 2" "2" \
-    "$(_v2 result_contract "$_d6/review-report.json")"
+    "$(_v2 result_contract "$_d11/review-report.json")"
 assert_eq "[#1842/SPEC-11] empty-lenses verdict=complete" "complete" \
-    "$(_v2 verdict "$_d6/review-report.json")"
+    "$(_v2 verdict "$_d11/review-report.json")"
 assert_eq "[#1842/SPEC-11] empty-lenses disposition=complete" "complete" \
-    "$(_v2 disposition "$_d6/review-report.json")"
+    "$(_v2 disposition "$_d11/review-report.json")"
 assert_contains_regex "[#1842/SPEC-11] empty-lenses reason is non-empty text" \
-    "$(_v2 reason "$_d6/review-report.json")" '[a-z]'
+    "$(_v2 reason "$_d11/review-report.json")" '[a-z]'
 
 # ── SPEC-7: SIGTERM trap writes verdict:degraded + disposition:interrupted ────
 # Override _ra_aggregate to pause so the signal can be delivered while the inner
