@@ -57,6 +57,22 @@ else
     assert_pass "[#1838/SPEC-8] no 'state_dir/artifacts' path construction in plugin.sh"
 fi
 
+# Broader guard: no state_dir derived from state_file (v1 pattern: state_dir=$(dirname …)).
+if grep -qE 'state_dir.*dirname.*state_file|dirname.*state_file.*state_dir' "$_PLUGIN" 2>/dev/null; then
+    assert_fail "[#1838/SPEC-8] no state_dir derived from state_file in plugin.sh" \
+        "found state_file-derived path construction (v1 calling-convention)"
+else
+    assert_pass "[#1838/SPEC-8] no state_dir derived from state_file in plugin.sh"
+fi
+
+# Broader guard: no $state_dir/<path> construction of any filename.
+if grep -qE '\$\{?state_dir\}?/' "$_PLUGIN" 2>/dev/null; then
+    assert_fail "[#1838/SPEC-8] no \$state_dir/ path constructions in plugin.sh" \
+        "found \$state_dir/<path> construction — plugin must not derive paths from state_file"
+else
+    assert_pass "[#1838/SPEC-8] no \$state_dir/ path constructions in plugin.sh"
+fi
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

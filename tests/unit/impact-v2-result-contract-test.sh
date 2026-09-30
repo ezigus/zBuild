@@ -81,24 +81,24 @@ _setup_fixture() {
 
 # ─── SPEC-5: manifest declares result_contract:2 under provides ───────────────
 
-_mf_rc2="$(grep -m1 'result_contract:' "$_IMPACT_MF" 2>/dev/null | awk '{print $2}' || true)"
-assert_eq "[#1838/SPEC-5] manifest provides.result_contract=2" "2" "$_mf_rc2"
+# result_contract: 2 must appear within the provides: section, not just anywhere.
+_mf_rc2="$(awk '/^provides:/{f=1;next} f && /^[[:alpha:]]/{f=0} f && /result_contract:/{print $2;exit}' "$_IMPACT_MF" 2>/dev/null || true)"
+assert_eq "[#1838/SPEC-5] manifest provides.result_contract=2 (under provides)" "2" "${_mf_rc2:-MISSING}"
 
 # ─── SPEC-6: manifest declares config.router block with timeout_s/max_turns ──
-
-if grep -q 'config\.router\|config:' "$_IMPACT_MF" 2>/dev/null && \
-   grep -q 'timeout_s:\s*600' "$_IMPACT_MF" 2>/dev/null; then
+# Both values must appear within the config.router sub-block specifically.
+_router_block="$(awk '/^  router:/{f=1;next} f && /^  [^[:space:]-]/{f=0} f{print}' "$_IMPACT_MF" 2>/dev/null || true)"
+if grep -q 'timeout_s:[[:space:]]*600' <<< "$_router_block" 2>/dev/null; then
     assert_pass "[#1838/SPEC-6] manifest config.router.timeout_s=600"
 else
     assert_fail "[#1838/SPEC-6] manifest config.router.timeout_s=600" \
-        "no config.router.timeout_s: 600 found in $_IMPACT_MF"
+        "no timeout_s: 600 in config.router block of $_IMPACT_MF"
 fi
-
-if grep -q 'max_turns:\s*45' "$_IMPACT_MF" 2>/dev/null; then
+if grep -q 'max_turns:[[:space:]]*45' <<< "$_router_block" 2>/dev/null; then
     assert_pass "[#1838/SPEC-6] manifest config.router.max_turns=45"
 else
     assert_fail "[#1838/SPEC-6] manifest config.router.max_turns=45" \
-        "no max_turns: 45 found in $_IMPACT_MF"
+        "no max_turns: 45 in config.router block of $_IMPACT_MF"
 fi
 
 # ─── SPEC-1: impact_run writes result_contract:2 on every early-exit path ────
@@ -127,6 +127,9 @@ _s1a_disp="$(jq -r '.disposition // "MISSING"' "$_F_IMPACT" 2>/dev/null || echo 
 assert_eq "[#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → result_contract=2" "2" "$_s1a_rc2"
 assert_eq "[#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → verdict=error" "error" "$_s1a_verdict"
 assert_eq "[#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → disposition=broken" "broken" "$_s1a_disp"
+_s1a_reason="$(jq -r '.reason // "MISSING"' "$_F_IMPACT" 2>/dev/null || echo MISSING)"
+assert_eq "[#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → reason=missing_artifact_dir" \
+    "missing_artifact_dir" "$_s1a_reason"
 
 # Path B: ZBUILD_ARTIFACT_DIR is set but a required input is missing from the
 # engine's index (scope_manifest not named) → broken/broken.
@@ -146,8 +149,12 @@ assert_eq "[#1838/SPEC-1] missing required input → rc=1" "1" "$_rc_s1b"
 _s1b_out="$TEST_TEMP_DIR/spec1b_artifacts/impact.json"
 _s1b_rc2="$(jq -r '.result_contract // "MISSING"' "$_s1b_out" 2>/dev/null || echo MISSING)"
 _s1b_disp="$(jq -r '.disposition // "MISSING"' "$_s1b_out" 2>/dev/null || echo MISSING)"
+_s1b_verdict="$(jq -r '.verdict // "MISSING"' "$_s1b_out" 2>/dev/null || echo MISSING)"
+_s1b_reason="$(jq -r '.reason // "MISSING"' "$_s1b_out" 2>/dev/null || echo MISSING)"
 assert_eq "[#1838/SPEC-1] missing required input → result_contract=2" "2" "$_s1b_rc2"
+assert_eq "[#1838/SPEC-1] missing required input → verdict=error" "error" "$_s1b_verdict"
 assert_eq "[#1838/SPEC-1] missing required input → disposition=broken" "broken" "$_s1b_disp"
+assert_eq "[#1838/SPEC-1] missing required input → reason=input_missing" "input_missing" "$_s1b_reason"
 
 # ─── SPEC-2: stage_signal_begin guard; signal → interrupted/signal_interrupt ──
 
@@ -233,9 +240,12 @@ assert_eq "[#1838/SPEC-3] rc=137 → _impact_run_inner returns rc=0" "0" "$_rc_s
 _s3b_rc2="$(jq -r '.result_contract // "MISSING"' "$_S3_IMPACT" 2>/dev/null || echo MISSING)"
 _s3b_disp="$(jq -r '.disposition // "MISSING"' "$_S3_IMPACT" 2>/dev/null || echo MISSING)"
 _s3b_has_router_rc="$(jq -r 'has("router_rc")' "$_S3_IMPACT" 2>/dev/null || echo true)"
+_s3b_reason="$(jq -r '.reason // "MISSING"' "$_S3_IMPACT" 2>/dev/null || echo MISSING)"
 assert_eq "[#1838/SPEC-3] rc=137 → result_contract=2" "2" "$_s3b_rc2"
 assert_eq "[#1838/SPEC-3] rc=137 → disposition=interrupted (router_oom_kill)" \
     "interrupted" "$_s3b_disp"
+assert_eq "[#1838/SPEC-3] rc=137 → reason=router_oom_kill (from rc classifier)" \
+    "router_oom_kill" "$_s3b_reason"
 assert_eq "[#1838/SPEC-3] rc=137 → no router_rc field in v2 result" "false" "$_s3b_has_router_rc"
 
 # ─── SPEC-4: _impact_run_inner success path writes result_contract:2 ──────────
@@ -258,24 +268,24 @@ assert_file_exists "[#1838/SPEC-4] success path → impact.json written" "$_S4_I
 
 _s4_rc2="$(jq -r '.result_contract // "MISSING"' "$_S4_IMPACT" 2>/dev/null || echo MISSING)"
 _s4_disp="$(jq -r '.disposition // "MISSING"' "$_S4_IMPACT" 2>/dev/null || echo MISSING)"
-_s4_reason="$(jq -r '.reason // empty' "$_S4_IMPACT" 2>/dev/null || true)"
+_s4_reason="$(jq -r '.reason // "MISSING"' "$_S4_IMPACT" 2>/dev/null || echo MISSING)"
 
 assert_eq "[#1838/SPEC-4] success path → result_contract=2" "2" "$_s4_rc2"
 assert_eq "[#1838/SPEC-4] success path → disposition=complete" "complete" "$_s4_disp"
-if [[ -n "$_s4_reason" ]]; then
-    assert_pass "[#1838/SPEC-4] success path → reason is non-empty"
-else
-    assert_fail "[#1838/SPEC-4] success path → reason is non-empty" \
-        "got empty reason in $(cat "$_S4_IMPACT" 2>/dev/null | head -c 200)"
-fi
+# reason must be populated FROM the verdict summary — for verdict=complete with
+# empty missing[], the plugin encodes this as "verdict:complete".
+assert_eq "[#1838/SPEC-4] success path → reason from verdict summary (verdict:complete)" \
+    "verdict:complete" "$_s4_reason"
 
 # ─── SPEC-7: impact_run reads inputs from ZBUILD_STAGE_INPUTS ─────────────────
-# Inputs placed at NON-DEFAULT paths; default v1 paths absent — success is
-# only possible if the engine's index is used.
+# Inputs placed at NON-DEFAULT paths; default v1 paths absent — only
+# ZBUILD_STAGE_INPUTS paths can work.  A spy on _impact_run_inner captures the
+# actual scope_manifest arg to verify the engine's index was used, not a
+# state_file-derived path.
 
 _setup_fixture spec7
 
-# Inputs at custom paths (nowhere near state_dir or artifacts_dir).
+# Inputs at custom paths (not where state_file-derived logic would look).
 _S7_SCOPE="$TEST_TEMP_DIR/spec7_custom_scope.md"
 _S7_DESIGN="$TEST_TEMP_DIR/spec7_custom_design.md"
 _S7_PLAN="$TEST_TEMP_DIR/spec7_custom_plan.json"
@@ -288,19 +298,25 @@ _S7_INPUTS="$TEST_TEMP_DIR/spec7_inputs.json"
 printf '{"inputs":{"scope_manifest":"%s","design":"%s","plan":"%s"}}\n' \
     "$_S7_SCOPE" "$_S7_DESIGN" "$_S7_PLAN" > "$_S7_INPUTS"
 
+# Delete default-path files so a state_file-path-constructing plugin cannot succeed.
+rm -f "$_F_SCOPE" "$_F_DESIGN" "$_F_PLAN"
+
+# Spy: capture scope_manifest path ($1) passed by impact_run → _impact_run_entry.
+# Proves the engine's input index is used, not a state_file-derived construction.
+_s7_spy_scope_file="$TEST_TEMP_DIR/spec7_spy_scope.txt"
+_impact_run_inner() {
+    printf '%s' "$1" > "$_s7_spy_scope_file"
+    # Write a valid v2 impact.json so impact_run accepts success
+    printf '{"result_contract":2,"verdict":"complete","disposition":"complete","reason":"verdict:complete","schema_version":1,"missing":[]}\n' \
+        > "${4:-/dev/null}"
+    _IMPACT_RESULT_WRITTEN=1
+    return 0
+}
+
 export ZBUILD_STAGE_INPUTS="$_S7_INPUTS"
 export ZBUILD_ARTIFACT_DIR="$TEST_TEMP_DIR/spec7_artifacts"
 mkdir -p "$ZBUILD_ARTIFACT_DIR"
 
-# Delete the v1 default-path files so the plugin cannot succeed by old path
-# construction from state_file.  Only ZBUILD_STAGE_INPUTS paths can work.
-rm -f "$_F_SCOPE" "$_F_DESIGN" "$_F_PLAN"
-
-route_to_model() {
-    printf '%s' '{"schema_version":1,"verdict":"complete","missing":[]}'
-    return 0
-}
-# Neutralise signal guard for this test.
 stage_signal_begin() { return 0; }
 stage_signal_end() { return 0; }
 
@@ -310,12 +326,9 @@ impact_run "impact" "$_F_STATE_FILE" 2>/dev/null || _rc_s7=$?
 unset ZBUILD_ARTIFACT_DIR ZBUILD_STAGE_INPUTS
 
 assert_eq "[#1838/SPEC-7] impact_run succeeds using ZBUILD_STAGE_INPUTS paths (rc=0)" "0" "$_rc_s7"
-if [[ -f "$TEST_TEMP_DIR/spec7_artifacts/impact.json" ]]; then
-    assert_pass "[#1838/SPEC-7] impact.json written at ZBUILD_ARTIFACT_DIR"
-else
-    assert_fail "[#1838/SPEC-7] impact.json written at ZBUILD_ARTIFACT_DIR" \
-        "file not found: $TEST_TEMP_DIR/spec7_artifacts/impact.json"
-fi
+_s7_received_scope="$(cat "$_s7_spy_scope_file" 2>/dev/null || echo MISSING)"
+assert_eq "[#1838/SPEC-7] scope_manifest path from ZBUILD_STAGE_INPUTS (not state_file)" \
+    "$_S7_SCOPE" "$_s7_received_scope"
 
 # ─── SPEC-13: template accessor beats manifest config.router.timeout_s ────────
 # When impact's manifest declares config.router.timeout_s: 600 and a per-stage
@@ -337,6 +350,69 @@ assert_eq "[#1838/SPEC-13] template (300) beats manifest default (600)" "300" "$
 
 unset ZBUILD_CURRENT_STAGE ZBUILD_PLUGIN_DIR ZBUILD_YAML_CACHE
 unset -f template_stage_router_timeout 2>/dev/null || true
+
+# ─── SPEC-14: provides.events lists all nine impact events ────────────────────
+# Pre-existing declaration guarded against regression by the v2 migration.
+
+_s14_events_block="$(awk '/^  events:/{f=1;next} f && (/^  [^[:space:]-]/ || /^[^[:space:]]/){f=0} f{print}' "$_IMPACT_MF" 2>/dev/null || true)"
+for _s14_ev in \
+    "impact.contract.violation" \
+    "impact.envelope.malformed" \
+    "impact.envelope.recovered" \
+    "impact.hallucination.filtered" \
+    "impact.scope.expanded" \
+    "impact.scope.plateau" \
+    "impact.verdict.complete" \
+    "impact.verdict.error" \
+    "impact.verdict.incomplete"; do
+    if grep -qF "- $_s14_ev" <<< "$_s14_events_block" 2>/dev/null; then
+        assert_pass "[#1838/SPEC-14] provides.events includes $_s14_ev"
+    else
+        assert_fail "[#1838/SPEC-14] provides.events includes $_s14_ev" \
+            "$_s14_ev not listed in provides.events of $_IMPACT_MF"
+    fi
+done
+
+# ─── SPEC-15: provides.role: impact_analyzer ─────────────────────────────────
+
+_s15_role="$(awk '/^provides:/{f=1;next} f && /^[[:alpha:]]/{f=0} f && /^ *role:/{print $2;exit}' "$_IMPACT_MF" 2>/dev/null || true)"
+assert_eq "[#1838/SPEC-15] manifest provides.role=impact_analyzer" \
+    "impact_analyzer" "${_s15_role:-MISSING}"
+
+# ─── SPEC-16: hooks block records cleanup absence with reason comment ──────────
+# Per #1829: absence is recorded, not implied.
+
+_s16_hooks_block="$(awk '/^hooks:/{f=1;next} f && /^[[:alpha:]]/{f=0} f{print}' "$_IMPACT_MF" 2>/dev/null || true)"
+# No cleanup: key defined in hooks.
+if grep -qE '^[[:space:]]*cleanup:' "$_IMPACT_MF" 2>/dev/null; then
+    assert_fail "[#1838/SPEC-16] hooks block has no cleanup: hook defined" \
+        "cleanup: key found in manifest"
+else
+    assert_pass "[#1838/SPEC-16] hooks block has no cleanup: hook defined"
+fi
+# Absence recorded with a comment mentioning "no live resources".
+_s16_has_comment=0
+_s16_has_reason=0
+grep -qi 'cleanup' <<< "$_s16_hooks_block" 2>/dev/null && _s16_has_comment=1 || true
+grep -qi 'no live resources' <<< "$_s16_hooks_block" 2>/dev/null && _s16_has_reason=1 || true
+if [[ "$_s16_has_comment" -eq 1 && "$_s16_has_reason" -eq 1 ]]; then
+    assert_pass "[#1838/SPEC-16] hooks block records cleanup absence with 'no live resources' reason"
+else
+    assert_fail "[#1838/SPEC-16] hooks block records cleanup absence with 'no live resources' reason" \
+        "cleanup_comment=${_s16_has_comment} no_live_resources=${_s16_has_reason}"
+fi
+
+# ─── SPEC-17: valid_verdicts covers all emitted verdicts ──────────────────────
+
+_s17_vv_block="$(awk '/^  valid_verdicts:/{f=1;next} f && (/^  [^[:space:]-]/ || /^[^[:space:]]/){f=0} f{print}' "$_IMPACT_MF" 2>/dev/null || true)"
+for _s17_vv in "complete" "incomplete" "error"; do
+    if grep -qF "- $_s17_vv" <<< "$_s17_vv_block" 2>/dev/null; then
+        assert_pass "[#1838/SPEC-17] manifest valid_verdicts includes $_s17_vv"
+    else
+        assert_fail "[#1838/SPEC-17] manifest valid_verdicts includes $_s17_vv" \
+            "$_s17_vv not listed under valid_verdicts in $_IMPACT_MF"
+    fi
+done
 
 _test_cleanup_hook() { cleanup_test_env; }
 print_test_results
