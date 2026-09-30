@@ -890,21 +890,15 @@ $_plan_instructions"
             local _reason="invalid_plan_response"
             [[ $router_rc -eq 0 && -z "$raw_response" ]] && _reason="empty_result_envelope"
             [[ $schema_failed -eq 1 ]] && _reason="schema_violation"
-            # v2: derive disposition from router rc for specific signals
-            # (timed_out/interrupted/misconfigured); generic rc=1 stays unusable.
+            # The model answered with something that is not a plan → unusable.
+            # A failed router CALL is named by the shared mapping, never by this
+            # plugin (#1835; #2225 "chosen once, not per plugin").
             local _v2_disp="unusable"
             if [[ $router_rc -ne 0 ]]; then
-                local _rc_verdict="" _rc_reason=""
+                local _rc_verdict="" _rc_reason="" _rc_disp=""
                 _router_rc_classify "$router_rc" _rc_verdict _rc_reason
-                local _rc_disp
                 _rc_disp="$(router_reason_disposition "${_rc_reason:-}")"
-                # Only use the router-derived disposition when it names a specific
-                # signal (timed_out, interrupted, misconfigured). A generic rc=1
-                # ("router_rc_nonzero") maps to "unavailable" which has no more
-                # information than "unusable" — keep unusable so SPEC-2 holds.
-                if [[ -n "$_rc_disp" && "$_rc_disp" != "unavailable" ]]; then
-                    _v2_disp="$_rc_disp"
-                fi
+                [[ -n "$_rc_disp" ]] && _v2_disp="$_rc_disp"
             fi
             _plan_write_result "$output_plan_json" "error" "$_v2_disp" "$_reason"
             error "_plan_run_inner: no valid plan.json produced (reason=$_reason)"

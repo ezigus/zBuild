@@ -977,11 +977,12 @@ assert_eq "[#1835/SPEC-2] empty_result_envelope verdict=error" "error" \
 assert_eq "[#1835/SPEC-2] empty_result_envelope disposition=unusable" "unusable" \
     "$(jq -r '.disposition // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
 
-# invalid_plan_response: route_to_model returns non-zero rc with non-recoverable content.
-# Triggers the "legacy fallback for other rc paths" branch — not 124/137/2 (SPEC-8),
-# not max_turns (SPEC-3), but a generic router failure whose content is not a valid plan.
+# invalid_plan_response: the model ANSWERED (router rc=0) with content that is
+# not a plan — the output cannot be used. A failed router CALL is not this case:
+# the issue names model-call failures by router_reason_disposition, not by the
+# plugin (asserted below).
 _ORIG_RTM_SPEC2="$(declare -f route_to_model)"
-route_to_model() { printf '%s' '{"error":"router configuration failure"}'; return 1; }
+route_to_model() { printf '%s' 'this is not a plan at all'; return 0; }
 rm -f "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
 set +e
@@ -998,6 +999,24 @@ assert_eq "[#1835/SPEC-2] invalid_plan_response verdict=error" "error" \
     "$(jq -r '.verdict // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
 assert_eq "[#1835/SPEC-2] invalid_plan_response disposition=unusable" "unusable" \
     "$(jq -r '.disposition // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
+
+# A failed router call (generic rc=1) is a model-call failure: its word comes
+# from the shared mapping, never a plugin's own choice (#1835 issue text;
+# #2225 "chosen once, not per plugin").
+# shellcheck source=../../../../scripts/lib/router-rc-classify.sh
+source "$REPO_ROOT/scripts/lib/router-rc-classify.sh"
+_s2_rc1_v=""; _s2_rc1_r=""
+_router_rc_classify 1 _s2_rc1_v _s2_rc1_r
+_s2_rc1_expect="$(router_reason_disposition "$_s2_rc1_r")"
+route_to_model() { printf '%s' '{"error":"router failure"}'; return 1; }
+rm -f "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true
+set +e
+plan_run "plan" "$_S2_STATE_FILE" >/dev/null 2>&1
+set -e
+unset -f route_to_model
+if [[ -n "$_ORIG_RTM_SPEC2" ]]; then eval "$_ORIG_RTM_SPEC2"; fi
+assert_eq "[#1835/SPEC-8] a failed router call (rc=1) takes the shared mapping's word ($_s2_rc1_expect)" \
+    "$_s2_rc1_expect" "$(jq -r '.disposition // empty' "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true)"
 
 # Restore canned plan for remaining tests.
 CANNED_PLAN='{"schema_version":1,"issue":'"$_ZB_ID"',"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
