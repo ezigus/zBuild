@@ -145,15 +145,19 @@ else
         "got: $(head -c 300 "$IMPACT_OUT" 2>/dev/null)"
 fi
 
-# [#1838/SPEC-12]: missing[] (LLM data) must survive the v2 envelope merge.
+# [#1838/SPEC-12]: ALL LLM-authored fields (schema_version, verdict, missing[]) must
+# survive the v2 envelope merge alongside the new envelope fields.
 _p12a_rc2=$(jq -r '.result_contract // empty' "$IMPACT_OUT" 2>/dev/null || true)
+_p12a_sv=$(jq -r '.schema_version // empty' "$IMPACT_OUT" 2>/dev/null || true)
 assert_eq "[#1838/SPEC-12] incomplete path → result_contract=2 (v2 field)" \
     "2" "${_p12a_rc2:-MISSING}"
-if jq -e 'has("verdict") and has("missing") and (.missing | length) > 0 and has("result_contract")' \
+assert_eq "[#1838/SPEC-12] incomplete path → schema_version=1 (LLM data preserved)" \
+    "1" "${_p12a_sv:-MISSING}"
+if jq -e 'has("verdict") and has("missing") and (.missing | length) > 0 and has("result_contract") and has("disposition")' \
         "$IMPACT_OUT" >/dev/null 2>&1; then
-    assert_pass "[#1838/SPEC-12] incomplete path → missing[] and verdict survive v2 envelope merge"
+    assert_pass "[#1838/SPEC-12] incomplete path → missing[], verdict, disposition survive v2 envelope merge"
 else
-    assert_fail "[#1838/SPEC-12] incomplete path → missing[] and verdict survive v2 envelope merge" \
+    assert_fail "[#1838/SPEC-12] incomplete path → missing[], verdict, disposition survive v2 envelope merge" \
         "got: $(head -c 300 "$IMPACT_OUT" 2>/dev/null)"
 fi
 
