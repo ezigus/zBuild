@@ -24,8 +24,8 @@
     [2mstill present[0m
   [38;2;248;113;113m✗[0m [#1842/SPEC-5] lens-* wildcard must be absent from plugin.sh
     [2mstill present[0m
-  [38;2;74;222;128m✓[0m [#1842/SPEC-6] empty-lenses rc=0
-  [38;2;74;222;128m✓[0m [#1842/SPEC-6] review-report.md written on empty-lenses exit path
+  [38;2;248;113;113m✗[0m [#1842/SPEC-6] review-report.md written even when out_json is empty/unwritten
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-aggregator-v2.QpA4Gy/s6/review-report.md[0m
   [38;2;248;113;113m✗[0m [#1842/SPEC-11] empty-lenses result_contract is 2
     [2mexpected: 2, got: [0m
   [38;2;248;113;113m✗[0m [#1842/SPEC-11] empty-lenses verdict=complete
@@ -40,12 +40,12 @@
   [38;2;248;113;113m✗[0m [#1842/SPEC-7] interrupted writes disposition:interrupted
     [2mexpected: interrupted, got: [0m
   [38;2;248;113;113m✗[0m [#1842/SPEC-7] summary written on SIGTERM path
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-aggregator-v2.A14BYS/s7/review-report.md[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-aggregator-v2.QpA4Gy/s7/review-report.md[0m
   [38;2;74;222;128m✓[0m [#1842/SPEC-12] manifest config: declares no router: key (ADR-017 §11 not applicable)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m17 of 22 tests failed[0m
+  [38;2;248;113;113m[1m18 of 21 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1842/SPEC-1] manifest declares result_contract: 2
   [38;2;248;113;113m✗[0m [#1842/SPEC-2] valid_verdicts lists complete
@@ -57,6 +57,7 @@
   [38;2;248;113;113m✗[0m [#1842/SPEC-4] reason is non-empty text
   [38;2;248;113;113m✗[0m [#1842/SPEC-5] _ra_collect_lenses_glob must be absent from plugin.sh
   [38;2;248;113;113m✗[0m [#1842/SPEC-5] lens-* wildcard must be absent from plugin.sh
+  [38;2;248;113;113m✗[0m [#1842/SPEC-6] review-report.md written even when out_json is empty/unwritten
   [38;2;248;113;113m✗[0m [#1842/SPEC-11] empty-lenses result_contract is 2
   [38;2;248;113;113m✗[0m [#1842/SPEC-11] empty-lenses verdict=complete
   [38;2;248;113;113m✗[0m [#1842/SPEC-11] empty-lenses disposition=complete
@@ -65,8 +66,8 @@
   [38;2;248;113;113m✗[0m [#1842/SPEC-7] interrupted writes disposition:interrupted
   [38;2;248;113;113m✗[0m [#1842/SPEC-7] summary written on SIGTERM path
 
-mv: cannot stat '/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-aggregator-v2.A14BYS/s7/review-report.json.tmp.z6nECM': No such file or directory
-[38;2;248;113;113m[1m✗[0m atomic_write: failed to move /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-aggregator-v2.A14BYS/s7/review-report.json.tmp.z6nECM into place at /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-aggregator-v2.A14BYS/s7/review-report.json
+mv: cannot stat '/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-aggregator-v2.QpA4Gy/s7/review-report.json.tmp.4zVPsH': No such file or directory
+[38;2;248;113;113m[1m✗[0m atomic_write: failed to move /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-aggregator-v2.QpA4Gy/s7/review-report.json.tmp.4zVPsH into place at /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/review-aggregator-v2.QpA4Gy/s7/review-report.json
 ### SPEC-11 head tests/unit/review-aggregator-v2-test.sh
 
 [38;2;0;212;255m[1m  review-aggregator — contract v2 (#1842)[0m
@@ -83,8 +84,7 @@ mv: cannot stat '/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/re
   [38;2;74;222;128m✓[0m [#1842/SPEC-4] reason is non-empty text
   [38;2;74;222;128m✓[0m [#1842/SPEC-5] _ra_collect_lenses_glob absent from plugin.sh
   [38;2;74;222;128m✓[0m [#1842/SPEC-5] lens-* wildcard absent from plugin.sh
-  [38;2;74;222;128m✓[0m [#1842/SPEC-6] empty-lenses rc=0
-  [38;2;74;222;128m✓[0m [#1842/SPEC-6] review-report.md written on empty-lenses exit path
+  [38;2;74;222;128m✓[0m [#1842/SPEC-6] review-report.md written even when out_json is empty/unwritten
   [38;2;74;222;128m✓[0m [#1842/SPEC-11] empty-lenses result_contract is 2
   [38;2;74;222;128m✓[0m [#1842/SPEC-11] empty-lenses verdict=complete
   [38;2;74;222;128m✓[0m [#1842/SPEC-11] empty-lenses disposition=complete
@@ -97,5 +97,5 @@ mv: cannot stat '/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/re
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 22 tests passed[0m
+  [38;2;74;222;128m[1mAll 21 tests passed[0m
 

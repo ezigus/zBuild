@@ -18,8 +18,7 @@
   [38;2;74;222;128m✓[0m [#1842/SPEC-4] reason is non-empty text
   [38;2;74;222;128m✓[0m [#1842/SPEC-5] _ra_collect_lenses_glob absent from plugin.sh
   [38;2;74;222;128m✓[0m [#1842/SPEC-5] lens-* wildcard absent from plugin.sh
-  [38;2;74;222;128m✓[0m [#1842/SPEC-6] empty-lenses rc=0
-  [38;2;74;222;128m✓[0m [#1842/SPEC-6] review-report.md written on empty-lenses exit path
+  [38;2;74;222;128m✓[0m [#1842/SPEC-6] review-report.md written even when out_json is empty/unwritten
   [38;2;74;222;128m✓[0m [#1842/SPEC-11] empty-lenses result_contract is 2
   [38;2;74;222;128m✓[0m [#1842/SPEC-11] empty-lenses verdict=complete
   [38;2;74;222;128m✓[0m [#1842/SPEC-11] empty-lenses disposition=complete
@@ -32,7 +31,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m4 of 22 tests failed[0m
+  [38;2;248;113;113m[1m4 of 21 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1842/SPEC-1] manifest declares result_contract: 2
   [38;2;248;113;113m✗[0m [#1842/SPEC-2] valid_verdicts lists complete
@@ -55,8 +54,7 @@
   [38;2;74;222;128m✓[0m [#1842/SPEC-4] reason is non-empty text
   [38;2;74;222;128m✓[0m [#1842/SPEC-5] _ra_collect_lenses_glob absent from plugin.sh
   [38;2;74;222;128m✓[0m [#1842/SPEC-5] lens-* wildcard absent from plugin.sh
-  [38;2;74;222;128m✓[0m [#1842/SPEC-6] empty-lenses rc=0
-  [38;2;74;222;128m✓[0m [#1842/SPEC-6] review-report.md written on empty-lenses exit path
+  [38;2;74;222;128m✓[0m [#1842/SPEC-6] review-report.md written even when out_json is empty/unwritten
   [38;2;74;222;128m✓[0m [#1842/SPEC-11] empty-lenses result_contract is 2
   [38;2;74;222;128m✓[0m [#1842/SPEC-11] empty-lenses verdict=complete
   [38;2;74;222;128m✓[0m [#1842/SPEC-11] empty-lenses disposition=complete
@@ -69,5 +67,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 22 tests passed[0m
+  [38;2;74;222;128m[1mAll 21 tests passed[0m
 

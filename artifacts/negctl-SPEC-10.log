@@ -13,9 +13,9 @@
   [38;2;74;222;128m✓[0m [SPEC-1] a group member does not self-resolve as the aggregator
 
   [38;2;0;212;255mSPEC-2: roster aggregates non-lens-* outputs[0m
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.qoqvTl/core/event-bus/event-bus.sh: line 71: /home/runner/.zbuild/ephemeral-events/3458533/events.db.lock: No such file or directory
-[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/.zbuild/ephemeral-events/3458533/events.db": unable to open database file
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.qoqvTl/core/event-bus/event-bus.sh: line 257: /home/runner/.zbuild/ephemeral-events/3458533/events.db.lock: No such file or directory
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.X3iOLO/core/event-bus/event-bus.sh: line 71: /home/runner/.zbuild/ephemeral-events/2352762/events.db.lock: No such file or directory
+[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/.zbuild/ephemeral-events/2352762/events.db": unable to open database file
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.X3iOLO/core/event-bus/event-bus.sh: line 257: /home/runner/.zbuild/ephemeral-events/2352762/events.db.lock: No such file or directory
   [38;2;74;222;128m✓[0m [SPEC-2] run returns 0 (advisory)
   [38;2;74;222;128m✓[0m [SPEC-2] roster collected exactly the 3 declared members (2 id + 1 role-bound)
   [38;2;74;222;128m✓[0m [SPEC-2] foo member (audit-foo.json) aggregated
@@ -26,9 +26,9 @@
   [38;2;74;222;128m✓[0m [#1842/SPEC-10] roster discovery collects all declared group members
 
   [38;2;0;212;255mSPEC-3: no group env → legacy lens-*.json glob fallback[0m
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.qoqvTl/core/event-bus/event-bus.sh: line 71: /home/runner/.zbuild/ephemeral-events/3458533/events.db.lock: No such file or directory
-[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/.zbuild/ephemeral-events/3458533/events.db": unable to open database file
-/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.qoqvTl/core/event-bus/event-bus.sh: line 257: /home/runner/.zbuild/ephemeral-events/3458533/events.db.lock: No such file or directory
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.X3iOLO/core/event-bus/event-bus.sh: line 71: /home/runner/.zbuild/ephemeral-events/2352762/events.db.lock: No such file or directory
+[event-bus] WARN: sqlite3 failed: Error: unable to open database "/home/runner/.zbuild/ephemeral-events/2352762/events.db": unable to open database file
+/home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.X3iOLO/core/event-bus/event-bus.sh: line 257: /home/runner/.zbuild/ephemeral-events/2352762/events.db.lock: No such file or directory
   [38;2;74;222;128m✓[0m [SPEC-3] fallback glob collected the 2 lens-*.json files
 
 [2m  ──────────────────────────────────────────[0m

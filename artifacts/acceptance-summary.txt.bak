@@ -1,3 +1,4 @@
+acceptance SPEC violations — SPEC-6 tautological — passes at the baseline, so it asserts no change
 NEGCTL PASS SPEC-1
       design : manifest provides.result_contract == 2 (v2 contract declared)
       asserts: assert_contains_regex "[#1842/SPEC-1] manifest declares result_contract: 2" \
@@ -13,9 +14,9 @@ NEGCTL PASS SPEC-4
 NEGCTL PASS SPEC-5
       design : _ra_collect_lenses_glob function and lens-*.json wildcard are deleted from plugin.sh — all lens inpu…
       asserts: assert_fail "[#1842/SPEC-5] _ra_collect_lenses_glob must be absent from plugin.sh" \
-NEGCTL PASS SPEC-6
+NEGCTL FAIL SPEC-6 tautology
       design : review-report.md (summary) is written on the empty-lenses exit path (currently skipped when out_json…
-      asserts: assert_file_exists "[#1842/SPEC-6] review-report.md written even when out_json is empty/unwritten" \
+      asserts: assert_eq "[#1842/SPEC-6] empty-lenses rc=0" "0" "$_rc6"
 NEGCTL PASS SPEC-7
       design : SIGTERM/SIGINT trap writes verdict:degraded + disposition:interrupted + summary then re-raises (no t…
       asserts: assert_eq "[#1842/SPEC-7] SIGTERM makes process exit non-zero (signal re-raised)" \
