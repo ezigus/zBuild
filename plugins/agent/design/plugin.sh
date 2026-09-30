@@ -506,6 +506,16 @@ WIRING field (ADR-036 Level-3, mandatory for behavioral-change issues):
   (keeping all other implementation changes at HEAD) and require ≥1 TESTFILE
   to flip pass→fail — proving the wiring is load-bearing, not inert.
 
+Existing checks this change makes wrong (#2243): when the change alters a
+behaviour an EXISTING assertion pins (one that is not a SPEC of this contract),
+list it in a \`\`\`supersedes block — one line per check, the testfile path,
+the assertion's tag, and why it is now wrong:
+\`\`\`supersedes
+tests/unit/foo-test.sh [SPEC-3]: \`verdict\` is now the v2 result's status key, not a merge decision
+\`\`\`
+Updating those checks to the new behaviour is part of writing the tests. Omit
+the block when no existing check changes meaning.
+
 Keep the prose focused and under 200 lines (the scope block and acceptance
 block may be as long as completeness requires). Emit LOOP_COMPLETE when done.
 DESIGN_PROMPT
