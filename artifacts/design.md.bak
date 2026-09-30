@@ -4,9 +4,9 @@
 
 **Goal.** Migrate `plugins/agent/impact` to the ADR-054 contract v2 shape: one result file on every exit path, `disposition` from `router_reason_disposition`, `rc ∈ {0,1}`, router budgets declared in the manifest, inputs read from the engine's index (`ZBUILD_STAGE_INPUTS`), signal handling via `stage_signal_begin/end`, and no artifact paths constructed inside plugin code.
 
-**Context.** Impact is the only agent plugin remaining at v1 in the F-wave migration (#1833–#1849). Its `impact_run` currently derives paths from `state_file` (the v1 calling convention), writes bare `schema_version:1` envelopes on router failure paths, has no signal guard, returns `rc=2` on early exits, and has no `config.router` defaults in its manifest. The three integration tests that call `impact_run "impact" "$STATE_FILE"` directly need their setup updated to provide `ZBUILD_STAGE_INPUTS` and `ZBUILD_ARTIFACT_DIR`. The manifest's `provides.role` and `provides.events` declarations were already present at the merge-base and are guards; the cleanup hook absence comment and the v2 contract fields (`result_contract: 2`, `config.router`) are new additions.
+**Context.** Impact is the only agent plugin remaining at v1 in the F-wave migration (#1833–#1849). Its `impact_run` currently derives paths from `state_file` (the v1 calling convention), writes bare `schema_version:1` envelopes on router failure paths, has no signal guard, returns `rc=2` on early exits, and has no `config.router` defaults in its manifest. The three integration tests that call `impact_run "impact" "$STATE_FILE"` directly need their setup updated to provide `ZBUILD_STAGE_INPUTS` and `ZBUILD_ARTIFACT_DIR`. The manifest's `provides.role`, `provides.events`, and `valid_verdicts` declarations were already present at the merge-base and are guards; the cleanup hook comment, `result_contract: 2`, and `config.router` block are new additions.
 
-**Decision.** Follow the plan's 10-step sequence (test-first, then implementation). Split `impact_run` into a signal-guarded wrapper and a `_plan_run_entry`-style entry function. Add `_impact_write_result` and `_impact_input` helpers modelled on their plan counterparts. Add `result_contract: 2` and a `config.router` block (timeout\_s: 600, max\_turns: 45; no retries — the template wins and the plan explicitly says impact no longer carries its own `router.retries`) to the manifest. Record cleanup hook absence explicitly in the hooks block with a reason comment (per #1829 — absence recorded, not implied). Update the three integration tests whose `impact_run` call site assumes the old state_file derivation, and update the router-timeout test whose assertion on `.router_rc` breaks when the router failure paths switch to the v2 result shape (which carries `disposition` + `reason` but not `router_rc`). The manifest `config.router` values are defaults that sit below the template accessor in the `_route_resolve_knob` chain (`template > env > manifest > constant`); simple.yaml's per-stage values continue to win.
+**Decision.** Follow the plan's 10-step sequence (test-first, then implementation). Split `impact_run` into a signal-guarded wrapper and a `_plan_run_entry`-style entry function. Add `_impact_write_result` and `_impact_input` helpers modelled on their plan counterparts. Add `result_contract: 2` and a `config.router` block (timeout_s: 600, max_turns: 45; no retries — the template wins and the plan explicitly says impact no longer carries its own `router.retries`) to the manifest. Record cleanup hook absence explicitly in the hooks block with a reason comment (per #1829 — absence recorded, not implied). Update the three integration tests whose `impact_run` call site assumes the old state_file derivation, and update the router-timeout test whose assertion on `.router_rc` breaks when the router failure paths switch to the v2 result shape (which carries `disposition` + `reason` but not `router_rc`). The manifest `config.router` values are defaults that sit below the template accessor in the `_route_resolve_knob` chain (`template > env > manifest > constant`); simple.yaml's per-stage values continue to win.
 
 ```scope
 plugins/agent/impact/manifest.yaml
@@ -59,6 +59,7 @@ SPEC-13[guard]: when impact's manifest declares config.router.timeout_s: 600 and
 SPEC-14[guard]: manifest.yaml's provides.events roster is present and lists all nine impact events (impact.contract.violation through impact.verdict.incomplete) — pre-existing declaration not regressed by the v2 migration (per #1717)
 SPEC-15[guard]: manifest.yaml declares provides.role: impact_analyzer — pre-existing declaration not regressed by the v2 migration (per #1704)
 SPEC-16[change]: manifest.yaml's hooks block explicitly records the absence of a cleanup hook with a reason comment stating no live resources are held (per #1829 — absence is recorded, not implied)
+SPEC-17[guard]: manifest.yaml declares valid_verdicts: [complete, incomplete, error] covering all emitted verdicts — pre-existing declaration not regressed by the v2 migration (per #1708)
 WIRING: plugins/agent/impact/manifest.yaml
 TESTFILES:
 SPEC-1: tests/unit/impact-v2-result-contract-test.sh
@@ -77,6 +78,7 @@ SPEC-13: tests/unit/impact-v2-result-contract-test.sh
 SPEC-14: tests/unit/impact-v2-result-contract-test.sh
 SPEC-15: tests/unit/impact-v2-result-contract-test.sh
 SPEC-16: tests/unit/impact-v2-result-contract-test.sh
+SPEC-17: tests/unit/impact-v2-result-contract-test.sh
 ```
 
 LOOP_COMPLETE
