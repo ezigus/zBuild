@@ -135,8 +135,14 @@ esac
 
 _s3_r1_rc2="$(jq -r '.result_contract // "MISSING"' "$IMPACT_OUT" 2>/dev/null || echo MISSING)"
 _s3_r1_no_rrc="$(jq -r 'has("router_rc")' "$IMPACT_OUT" 2>/dev/null || echo true)"
+_s3_r1_disp="$(jq -r '.disposition // "MISSING"' "$IMPACT_OUT" 2>/dev/null || echo MISSING)"
+_s3_r1_reason="$(jq -r '.reason // "MISSING"' "$IMPACT_OUT" 2>/dev/null || echo MISSING)"
 assert_eq "[#1838/SPEC-3] rc=1 → result_contract=2 (v2 contract)" "2" "$_s3_r1_rc2"
 assert_eq "[#1838/SPEC-3] rc=1 → no router_rc field in v2 result" "false" "$_s3_r1_no_rrc"
+assert_eq "[#1838/SPEC-3] rc=1 → disposition=unavailable (router_rc_nonzero)" \
+    "unavailable" "$_s3_r1_disp"
+assert_eq "[#1838/SPEC-3] rc=1 → reason=router_rc_nonzero (from rc classifier)" \
+    "router_rc_nonzero" "$_s3_r1_reason"
 assert_eq "[#1838/SPEC-10] rc=1 (max_turns) → verdict=incomplete (recoverable, cycle re-iterates)" \
     "incomplete" "$(jq -r '.verdict' "$IMPACT_OUT" 2>/dev/null || echo MISSING)"
 
@@ -154,8 +160,14 @@ assert_eq "I6: rc=137 (OOM) → verdict=error (error class preserved, not best-e
 
 _s3_r137_rc2="$(jq -r '.result_contract // "MISSING"' "$IMPACT_OUT" 2>/dev/null || echo MISSING)"
 _s3_r137_no_rrc="$(jq -r 'has("router_rc")' "$IMPACT_OUT" 2>/dev/null || echo true)"
+_s3_r137_disp="$(jq -r '.disposition // "MISSING"' "$IMPACT_OUT" 2>/dev/null || echo MISSING)"
+_s3_r137_reason="$(jq -r '.reason // "MISSING"' "$IMPACT_OUT" 2>/dev/null || echo MISSING)"
 assert_eq "[#1838/SPEC-3] rc=137 → result_contract=2 (v2 contract)" "2" "$_s3_r137_rc2"
 assert_eq "[#1838/SPEC-3] rc=137 → no router_rc field in v2 result" "false" "$_s3_r137_no_rrc"
+assert_eq "[#1838/SPEC-3] rc=137 → disposition=interrupted (router_oom_kill)" \
+    "interrupted" "$_s3_r137_disp"
+assert_eq "[#1838/SPEC-3] rc=137 → reason=router_oom_kill (from rc classifier)" \
+    "router_oom_kill" "$_s3_r137_reason"
 assert_eq "[#1838/SPEC-11] rc=137 (OOM) → verdict=error (genuine infra failure, cycle blocked-predicate)" \
     "error" "$(jq -r '.verdict' "$IMPACT_OUT" 2>/dev/null || echo MISSING)"
 
