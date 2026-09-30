@@ -81,7 +81,7 @@ _fb_count() {
     local src
     while IFS= read -r src; do
         [[ -f "$src" ]] || continue
-        grep -n 'fork-budget-exempt:' "$src" 2>/dev/null | cut -d: -f1 | sed "s|^|$src:|" >> "$exempt" || true
+        grep -n 'fork-budget-exempt:' "$src" 2>/dev/null | awk -F: -v p="$src" '{ print p ":" $1 }' >> "$exempt" || true
     done < <(awk '/^\++@[^@]*@ /{ s = $0; sub(/^\++@/, "", s); sub(/:[0-9]*@ .*$/, "", s); if (!(s in seen)) { seen[s] = 1; print s } }' "$trace")
     # pass 1: one `site<TAB>word` row per candidate command word (no forks per line);
     # an exempt site's row is tagged so pass 2 lists it apart.
@@ -222,10 +222,14 @@ fi
 # The pool's own execs scale with the work units it runs (the fixture dispatches
 # 2), never with how long they take: its poll sleep is exempt, and no counted
 # pool line runs more than once per unit.
-assert_contains "[SPEC-6] the worker pool's poll sleep is listed as an exempt wait" \
-    "$(cat "$SITES.exempt" 2>/dev/null)" $'local_engine.sh:'
+if grep -qE $'\tlocal_engine\\.sh:[0-9]+\tsleep$' "$SITES.exempt" 2>/dev/null; then
+    assert_pass "[SPEC-6] the worker pool's poll sleep is listed as an exempt wait"
+else
+    assert_fail "[SPEC-6] the worker pool's poll sleep is listed as an exempt wait" "exempt: $(cat "$SITES.exempt" 2>/dev/null)"
+fi
 _pool_max="$(awk -F'\t' '$2 ~ /^local_engine\.sh:/ && $1 > m { m = $1 } END { print m + 0 }' "$SITES")"
-assert_eq "[SPEC-6] …and no counted pool line runs more than once per work unit" "1" "$(( _pool_max <= 2 ))"
+echo "  busiest counted pool line: ${_pool_max} execs (2 work units)"
+assert_eq "[SPEC-6] …and no counted pool line runs more than once per work unit (max ${_pool_max})" "1" "$(( _pool_max <= 2 ))"
 if (( _total <= FORK_BUDGET )); then
     assert_pass "[SPEC-4] ${_total} external execs ≤ FORK_BUDGET ${FORK_BUDGET}"
 else
