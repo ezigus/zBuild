@@ -19,6 +19,13 @@
 #         external execs (an fd-7-closed child traces to stderr; a run that died
 #         early must not pass as "under budget").
 # SPEC-4: total external execs ≤ FORK_BUDGET.
+# SPEC-5: a line marked `# fork-budget-exempt: <why>` is not counted (listed
+#         apart instead); an unmarked line in the same loop still is (#2236).
+#         How often a wait loop sleeps measures elapsed time, not code — under
+#         load the same tree counted 4,528 and 4,610.
+# SPEC-6: the worker pool's execs scale with its work units, not with how long
+#         they take: its poll sleep is exempt, and no counted pool line runs
+#         more than once per unit (#2236).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,8 +41,9 @@ setup_test_env "fork-budget"
 # ADR-065 §2. Ratchets down only. History: 8000 (#2151, measured 7,128 macOS);
 # 4800 (#2152 manifest index, measured 4,335 macOS); 4600 (#1849 follow-up:
 # _eb_strip_ansi skips sed when no ESC byte is present — measured 4,187 macOS
-# with the issue-acceptance stage added).
-FORK_BUDGET=4600
+# with the issue-acceptance stage added); 4550 (#2236: the pool's poll wait is
+# exempt and its clock read a builtin — measured 4,499 macOS, the same under load).
+FORK_BUDGET=4550
 
 # ─── the trace harness (the --coverage-trace precedent, scripts/run-tests.sh) ──
 # BASH_ENV injects `set -x` into every child bash (the runner, the mocks, work
@@ -63,13 +71,26 @@ _fb_traced() {
 # fixture's mocks. Leading `VAR=val` words and wrappers (exec, command, env,
 # nice, timeout N) are stripped so the wrapped command is classified — and the
 # wrapper counted too when it is itself a binary.
+# A source line marked `# fork-budget-exempt: <why>` is a wait whose repeat count
+# is elapsed time, not code (#2236): its rows go to <sites_out>.exempt instead.
 _fb_count() {
     local trace="$1" sites="$2"
-    local pairs="$TEST_TEMP_DIR/pairs.$$"
-    # pass 1: one `site<TAB>word` row per candidate command word (no forks per line)
-    awk '
+    local pairs="$TEST_TEMP_DIR/pairs.$$" exempt="$TEST_TEMP_DIR/exempt.$$"
+    # The marked lines of every traced source file, as `path:line`.
+    : > "$exempt"
+    local src
+    while IFS= read -r src; do
+        [[ -f "$src" ]] || continue
+        grep -n 'fork-budget-exempt:' "$src" 2>/dev/null | cut -d: -f1 | sed "s|^|$src:|" >> "$exempt" || true
+    done < <(awk '/^\++@[^@]*@ /{ s = $0; sub(/^\++@/, "", s); sub(/:[0-9]*@ .*$/, "", s); if (!(s in seen)) { seen[s] = 1; print s } }' "$trace")
+    # pass 1: one `site<TAB>word` row per candidate command word (no forks per line);
+    # an exempt site's row is tagged so pass 2 lists it apart.
+    awk -v exf="$exempt" '
+        BEGIN { while ((getline l < exf) > 0) ex[l] = 1 }
         /^\++@[^@]*@ / {
-            site = $0; sub(/^\++@/, "", site); sub(/@ .*$/, "", site); n = split(site, sp, "/"); site = sp[n]
+            site = $0; sub(/^\++@/, "", site); sub(/@ .*$/, "", site)
+            tag = (site in ex) ? "\tX" : ""
+            n = split(site, sp, "/"); site = sp[n]
             line = $0; sub(/^\++@[^@]*@ /, "", line)
             m = split(line, w, " ")
             for (i = 1; i <= m; i++) {
@@ -78,9 +99,9 @@ _fb_count() {
                 if (t == "exec" || t == "command" || t == "env" || t == "nice") continue
                 # `timeout N cmd` is two processes — timeout forks cmd so it can
                 # kill it — so both are counted (one row each), and N is skipped.
-                if ((t == "timeout" || t == "gtimeout") && i < m) { print site "\t" t; i++; continue }
+                if ((t == "timeout" || t == "gtimeout") && i < m) { print site "\t" t tag; i++; continue }
                 gsub(/^[\x27"]|[\x27"]$/, "", t)
-                print site "\t" t
+                print site "\t" t tag
                 break
             }
         }' "$trace" > "$pairs"
@@ -97,17 +118,21 @@ _fb_count() {
     # would return before sort finished writing (review on #2153).
     local extlist=""; for w in "${!ext[@]}"; do extlist+="$w "; done
     local unsorted="$TEST_TEMP_DIR/sites-unsorted.$$"
-    awk -v extlist="$extlist" -v out="$unsorted" '
+    awk -v extlist="$extlist" -v out="$unsorted" -v xout="$unsorted.x" '
         BEGIN { n = split(extlist, a, " "); for (i = 1; i <= n; i++) ext[a[i]] = 1 }
         BEGIN { FS = "\t" }
+        ($2 in ext) && $3 == "X" { xsite[$1 "\t" $2]++; next }
         ($2 in ext) { total++; site[$1 "\t" $2]++ }
         END {
+            printf "" > out; printf "" > xout
             for (k in site) printf "%d\t%s\n", site[k], k > out
-            close(out)
+            for (k in xsite) printf "%d\t%s\n", xsite[k], k > xout
+            close(out); close(xout)
             print total + 0
         }' "$pairs"
     sort -rn "$unsorted" > "$sites" 2>/dev/null || : > "$sites"
-    rm -f "$pairs" "$unsorted"
+    sort -rn "$unsorted.x" > "$sites.exempt" 2>/dev/null || : > "$sites.exempt"
+    rm -f "$pairs" "$unsorted" "$unsorted.x" "$exempt"
 }
 
 # ─── SPEC-1: the canary ──────────────────────────────────────────────────────
@@ -123,6 +148,22 @@ _fb_traced "$TEST_TEMP_DIR/canary.trace" bash "$CANARY"
 _canary_n="$(_fb_count "$TEST_TEMP_DIR/canary.trace" "$TEST_TEMP_DIR/canary.sites")"
 assert_eq "[SPEC-1] the canary's one dirname is counted, its builtins are not" "1" "$_canary_n"
 assert_contains "[SPEC-1] …and attributed to its call site" "$(cat "$TEST_TEMP_DIR/canary.sites")" "canary.sh:2"$'\t'"dirname"
+
+# ─── SPEC-5: an exempt wait is listed, not counted ───────────────────────────
+print_test_section "SPEC-5: a marked wait is not counted"
+WAITER="$TEST_TEMP_DIR/waiter.sh"
+cat > "$WAITER" <<'EOF'
+#!/usr/bin/env bash
+for _ in 1 2 3; do
+    sleep 0  # fork-budget-exempt: canary wait
+    sleep 0
+done
+EOF
+_fb_traced "$TEST_TEMP_DIR/waiter.trace" bash "$WAITER"
+_waiter_n="$(_fb_count "$TEST_TEMP_DIR/waiter.trace" "$TEST_TEMP_DIR/waiter.sites")"
+assert_eq "[SPEC-5] only the unmarked sleep is counted (3 of 6)" "3" "$_waiter_n"
+assert_contains "[SPEC-5] …the marked one is listed apart" \
+    "$(cat "$TEST_TEMP_DIR/waiter.sites.exempt" 2>/dev/null)" "waiter.sh:3"$'\t'"sleep"
 
 # ─── SPEC-2: the mocked full run under tracing ───────────────────────────────
 print_test_section "SPEC-2: the mocked full run under tracing"
@@ -149,6 +190,10 @@ _files="$(awk -F'\t' '{ split($2, p, ":"); f[p[1]] = 1 } END { print length(f) }
 echo "  external execs: $_total (budget $FORK_BUDGET) across $_files source files"
 echo "  top call sites:"
 awk -F'\t' 'NR <= 12 { printf "    %5d  %-34s %s\n", $1, $2, $3 }' "$SITES"
+if [[ -s "$SITES.exempt" ]]; then
+    echo "  exempt waits (not counted — their repeat count is elapsed time):"
+    awk -F'\t' '{ printf "    %5d  %-34s %s\n", $1, $2, $3 }' "$SITES.exempt"
+fi
 echo "  by file:"
 awk -F'\t' '{ split($2, p, ":"); f[p[1]] += $1 } END { for (k in f) printf "%d\t%s\n", f[k], k }' "$SITES" \
     | sort -rn | awk 'NR <= 10 { printf "    %5d  %s\n", $1, $2 }'
@@ -174,6 +219,13 @@ if (( _files >= 20 && _total >= 1000 )); then
 else
     assert_fail "[SPEC-3] the trace is live" "only ${_files} files / ${_total} execs — fd 7 lost, or the run died early"
 fi
+# The pool's own execs scale with the work units it runs (the fixture dispatches
+# 2), never with how long they take: its poll sleep is exempt, and no counted
+# pool line runs more than once per unit.
+assert_contains "[SPEC-6] the worker pool's poll sleep is listed as an exempt wait" \
+    "$(cat "$SITES.exempt" 2>/dev/null)" $'local_engine.sh:'
+_pool_max="$(awk -F'\t' '$2 ~ /^local_engine\.sh:/ && $1 > m { m = $1 } END { print m + 0 }' "$SITES")"
+assert_eq "[SPEC-6] …and no counted pool line runs more than once per work unit" "1" "$(( _pool_max <= 2 ))"
 if (( _total <= FORK_BUDGET )); then
     assert_pass "[SPEC-4] ${_total} external execs ≤ FORK_BUDGET ${FORK_BUDGET}"
 else

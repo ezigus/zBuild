@@ -112,7 +112,7 @@ _orch_local_collect_results() {
 
     local pass_count=0 fail_count=0
     local deadline=0
-    [[ "$timeout_s" -gt 0 ]] && deadline=$(( $(date +%s) + timeout_s ))
+    [[ "$timeout_s" -gt 0 ]] && deadline=$(( ${EPOCHSECONDS:-$(date +%s)} + timeout_s ))
 
     local pid_file slot_id result_base wrapper_pid inner_pid rc
     for pid_file in "${pool_dir}/${pid_subdir}/"*.pid; do
@@ -124,14 +124,14 @@ _orch_local_collect_results() {
         [[ -f "${result_base}.inner_pid" ]] && inner_pid="$(cat "${result_base}.inner_pid")"
 
         while [[ ! -f "${result_base}.exit" ]]; do
-            if [[ "$timeout_s" -gt 0 && "$(date +%s)" -ge "$deadline" ]]; then
+            if [[ "$timeout_s" -gt 0 && "${EPOCHSECONDS:-$(date +%s)}" -ge "$deadline" ]]; then
                 _orch_local_kill_slot TERM "$wrapper_pid" "$inner_pid"
                 sleep 0.5
                 _orch_local_kill_slot KILL "$wrapper_pid" "$inner_pid"
                 echo "124" > "${result_base}.exit"
                 break
             fi
-            sleep 0.1
+            sleep 0.1  # fork-budget-exempt: polls until the slot exits — the count is how long it ran (#2236)
         done
 
         rc="$(cat "${result_base}.exit" 2>/dev/null || echo 1)"
