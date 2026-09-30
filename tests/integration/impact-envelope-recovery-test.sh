@@ -68,6 +68,9 @@ apply_scope_redaction() {
     cat "$_input" > "$_output"
     return 0
 }
+atomic_write() { cat > "$1"; }
+stage_signal_begin() { return 0; }
+stage_signal_end() { return 0; }
 
 # Router emits the #908 failure shape: a valid envelope FIRST, then a postamble
 # carrying its OWN balanced object after a stray ```json fence.
@@ -85,6 +88,14 @@ export ZBUILD_REPO_ROOT="$REPO_ROOT"
 
 STATE_FILE="$STATE_DIR/pipeline-state.json"
 printf '%s' '{"schema_version":1,"run_id":"t908","issue":"908","stage_statuses":{}}' > "$STATE_FILE"
+
+# v2 contract: engine-provided artifact dir and stage inputs.
+export ZBUILD_ARTIFACT_DIR="$ARTIFACTS_DIR"
+_RECOVERY_INPUTS="$TEST_TEMP_DIR/recovery-inputs.json"
+printf '{"inputs":{"scope_manifest":"%s","design":"%s","plan":"%s"}}\n' \
+    "$STATE_DIR/scope-manifest.md" "$ARTIFACTS_DIR/design.md" "$ARTIFACTS_DIR/plan.json" \
+    > "$_RECOVERY_INPUTS"
+export ZBUILD_STAGE_INPUTS="$_RECOVERY_INPUTS"
 
 # ─── R1-R5: brace-bearing postamble recovers ────────────────────────────────
 : > "$ZBUILD_EVENTS_JSONL"

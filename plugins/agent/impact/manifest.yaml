@@ -13,6 +13,9 @@ description: |
 
 hooks:
   run: impact_run
+  # No cleanup hook: impact holds no live resources (no spawned processes,
+  # no locks, no open handles beyond what atomic_write closes). Absence is
+  # recorded here, not implied.
 requires:
   core:
     - redaction
@@ -23,6 +26,7 @@ requires:
 
 provides:
   role: impact_analyzer
+  result_contract: 2
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -45,6 +49,14 @@ config:
   # #1242: the T2 tier's higher per-turn latency also drove the wall-clock budget
   # up — router.timeout_s is now 600 (matching `design`), not the old 180.
   tier_default: T2
+  # Manifest defaults for the router — below the template accessor and env knob
+  # in _route_resolve_knob's precedence chain (template > env > manifest > constant).
+  # The template's per-stage router block already carries the same values and wins;
+  # these exist as the safety net when no template override is present.
+  # No retries: impact no longer carries its own router.retries (#1838).
+  router:
+    timeout_s: 600
+    max_turns: 45
   valid_verdicts:
     - complete
     - incomplete
