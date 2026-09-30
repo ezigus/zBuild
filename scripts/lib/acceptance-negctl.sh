@@ -138,12 +138,33 @@ _negctl_guard_log_check() {
     [[ -z "$clean" ]] && return 2
     # grep exits non-zero on no-match, which is the only way $tagged can be
     # empty — a matched line always contains the tag.
-    tagged="$(printf '%s\n' "$clean" | LC_ALL=C grep -F "$(acceptance_spec_tag "$spec_id")" 2>/dev/null)" || return 2
+    tagged="$(LC_ALL=C grep -F "$(acceptance_spec_tag "$spec_id")" <<< "$clean" 2>/dev/null)" || return 2
     # ✗ wins over ✓: a guard with one failing and one passing tagged assertion
     # has regressed.
     LC_ALL=C grep -qF '✗' <<< "$tagged" 2>/dev/null && return 0
     LC_ALL=C grep -qF '✓' <<< "$tagged" 2>/dev/null && return 1
     return 2
+}
+
+# _negctl_last_other_verdict <logfile> <spec_id> → prints the id of the LAST
+# other SPEC of this contract that printed a ✓/✗ verdict, rc 0; rc 1 when none
+# did. A file that printed verdicts for its other SPECs and none for this one
+# stopped before this assertion ran (#1835): what it says about the guard is
+# nothing. Keyed on the contract's own tag shape, so it holds for any language;
+# a bare guard test (#1658, no verdict lines at all) finds nothing here.
+_negctl_last_other_verdict() {
+    local logfile="$1" spec_id="$2" tag prefix line rest id last=""
+    [[ -n "${ZBUILD_ACCEPTANCE_RUN_CMD:-}" || ! -f "$logfile" ]] && return 1
+    tag="$(acceptance_spec_tag "$spec_id")"
+    prefix="${tag%"$spec_id"]}SPEC-"
+    while IFS= read -r line; do
+        [[ "$line" == *"$prefix"* && ( "$line" == *✓* || "$line" == *✗* ) ]] || continue
+        rest="${line#*"$prefix"}"
+        id="SPEC-${rest%%]*}"
+        [[ "$id" =~ ^SPEC-[0-9]+$ && "$id" != "$spec_id" ]] && last="$id"
+    done < <(LC_ALL=C sed -E $'s/\x1b\\[[0-9;?]*[a-zA-Z~]//g' "$logfile" 2>/dev/null)
+    [[ -n "$last" ]] || return 1
+    printf '%s' "$last"
 }
 
 # _negctl_run <testfile_abs> <cwd> [logfile]  → echoes nothing, returns the rc.
@@ -259,7 +280,7 @@ _negctl_guard_resolve_tfs() {
 # discrimination lives here and therefore cannot drift between the two callers.
 _negctl_guard_verdict() {
     local wt_dir="$1" spec_id="$2" logfile="$3"; shift 3
-    local _g_tf _g_rc _g_capfile _g_lv
+    local _g_tf _g_rc _g_capfile _g_lv _g_after
     for _g_tf in "$@"; do
         # A baseline run that never reached an assertion (unparseable at the
         # merge-base, or a runner that could not execute it) proves nothing
@@ -283,30 +304,35 @@ _negctl_guard_verdict() {
             [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
             printf 'timeout'; return 0
         fi
-        if _negctl_is_harness_rc "$_g_rc"; then
-            [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
-            printf 'harness'; return 0
-        fi
-        # lv=1 (a ✓-marked [spec_id] line, no ✗) is the ONLY outcome that clears
-        # a non-zero file rc: a sibling [change] assertion reddened the file
-        # while the guard's own assertion held. Everything else — ✗ found,
-        # nothing marked, custom runner — keeps the file-rc verdict.
-        _g_lv=1
+        # 0 = this SPEC printed ✗, 1 = it printed ✓ (and no ✗), 2 = no verdict of
+        # its own. Only consulted on a non-zero file rc: a clean file holds.
+        _g_lv=1 _g_after=""
         if [[ "$_g_rc" -ne 0 ]]; then
             _negctl_guard_log_check "$_g_capfile" "$spec_id" && _g_lv=0 || _g_lv=$?
+            # #1835: no verdict of its own, verdicts for OTHER SPECs — the file
+            # stopped before this assertion ran.
+            [[ "$_g_lv" -eq 2 ]] && _g_after="$(_negctl_last_other_verdict "$_g_capfile" "$spec_id")"
         fi
         [[ -n "$_g_capfile" ]] && rm -f "$_g_capfile"
-        # rc≠0 with no tagged verdict (lv=2) KEEPS the file-rc verdict. #2129
-        # tried to read it as "died before its assertion ran" and skip; that
-        # erased the #1658 shape — a bare guard test (`grep -q …`, no ✓/✗
-        # output) that legitimately fails at the merge-base is a mislabelled
-        # [change], and nothing in the rc separates it from an early abort.
+        # A file that printed other verdicts EXECUTED: a 126/127 from inside it
+        # is a command the change introduces, missing at the merge-base — the
+        # file stopped there, the runner did not fail to start it.
+        if [[ -n "$_g_after" ]] && ! _negctl_is_signal_rc "$_g_rc" && ! _negctl_is_sigkill_rc "$_g_rc"; then
+            printf 'unreached:%s' "$_g_after"; return 0
+        fi
+        if _negctl_is_harness_rc "$_g_rc"; then printf 'harness'; return 0; fi
         # A signal death that printed no verdict for this SPEC never reached its
         # assertion: the file killed itself (or was killed) first. That is not a
         # regressed guard and not a timeout.
         if [[ "$_g_lv" -eq 2 ]] && _negctl_is_signal_rc "$_g_rc"; then printf 'signal'; return 0; fi
         if [[ "$_g_lv" -eq 2 ]] && _negctl_is_sigkill_rc "$_g_rc"; then printf 'sigkill'; return 0; fi
-        if [[ "$_g_rc" -ne 0 && "$_g_lv" -ne 1 ]]; then printf 'regressed'; return 0; fi
+        # ONLY this SPEC's own ✗ says the guard fails at the merge-base.
+        if [[ "$_g_lv" -eq 0 ]]; then printf 'regressed'; return 0; fi
+        # rc≠0 and no verdict anywhere in the file — a bare check (#1658), or a
+        # framework that prints no ✓/✗ lines. Its rc cannot tell "checked and
+        # failed" from "died first", so it is not called a failure: the gate
+        # sends it to the file's owner first and to design only if it persists.
+        if [[ "$_g_rc" -ne 0 && "$_g_lv" -eq 2 ]]; then printf 'unverified'; return 0; fi
     done
     printf 'held'
     return 0
@@ -318,7 +344,9 @@ _negctl_guard_verdict() {
 #   NEGCTL PASS <spec_id>      — ≥1 tagged testfile fails at baseline, passes at HEAD
 #   NEGCTL PASS <spec_id> guard_spec — [guard]: the invariant holds at baseline
 #   NEGCTL FAIL <spec_id> <reason>   reason ∈ {tautology, not_passing_at_head,
-#                                no_testfile, guard_regressed, killed_by_signal}
+#                                no_testfile, guard_regressed, guard_unreached,
+#                                guard_unverified, unreached_at_base,
+#                                unreached_at_head, killed_by_signal}
 #   NEGCTL ERROR <detail>      — infrastructure (baseline_resolve_failed,
 #                                worktree_failed, timeout:<spec_id>,
 #                                harness:<spec_id>, sigkill:<spec_id>)
@@ -440,6 +468,8 @@ acceptance_negctl_check() {
                 harness)    printf 'NEGCTL ERROR harness:%s\n' "$spec_id"; rc=1 ;;
                 regressed)  printf 'NEGCTL FAIL %s guard_regressed\n' "$spec_id"; rc=1 ;;
                 signal)     printf 'NEGCTL FAIL %s killed_by_signal\n' "$spec_id"; rc=1 ;;
+                unreached:*) printf 'NEGCTL FAIL %s guard_unreached after=%s\n' "$spec_id" "${_g_out#unreached:}"; rc=1 ;;
+                unverified) printf 'NEGCTL FAIL %s guard_unverified\n' "$spec_id"; rc=1 ;;
                 sigkill)    printf 'NEGCTL ERROR sigkill:%s\n' "$spec_id"; rc=1 ;;
                 held)       printf 'NEGCTL PASS %s guard_spec\n' "$spec_id" ;;
                 *)          printf 'NEGCTL ERROR harness:%s\n' "$spec_id"; rc=1 ;;
@@ -447,6 +477,7 @@ acceptance_negctl_check() {
             continue
         fi
         local found_control=0 saw_tautology=0 saw_tagged=0 only_head_fail=0 saw_timeout=0 saw_harness=0 saw_signal=0 saw_sigkill=0
+        local ub_after="" uh_after=""
         # Per-SPEC diagnostic log (opt-in via ZBUILD_NEGCTL_ARTIFACT_DIR, set by
         # the plugin from the pipeline state dir). Empty → output discarded.
         local logfile=""
@@ -512,6 +543,11 @@ acceptance_negctl_check() {
             local _lv_base=2 _lv_head=2
             _negctl_guard_log_check "$_cap_base" "$spec_id" && _lv_base=0 || _lv_base=$?
             _negctl_guard_log_check "$_cap_head" "$spec_id" && _lv_head=0 || _lv_head=$?
+            # #1835: this SPEC printed nothing of its own while others did — the
+            # file stopped before its assertion ran, on that side.
+            local _ub="" _uh=""
+            [[ "$_lv_base" -eq 2 && "$rc_base" -ne 0 ]] && _ub="$(_negctl_last_other_verdict "$_cap_base" "$spec_id")"
+            [[ "$_lv_head" -eq 2 && "$rc_head" -ne 0 ]] && _uh="$(_negctl_last_other_verdict "$_cap_head" "$spec_id")"
             [[ -n "$_cap_base" ]] && rm -f "$_cap_base"
             [[ -n "$_cap_head" ]] && rm -f "$_cap_head"
             # A run that died on a signal without printing this SPEC's verdict
@@ -526,6 +562,11 @@ acceptance_negctl_check() {
                || { [[ "$_lv_head" -eq 2 ]] && _negctl_is_sigkill_rc "$rc_head"; }; then
                 saw_sigkill=1; continue
             fi
+            # Unreached is "not measured", never "failed": at the merge-base it
+            # proves no negative control; on the new code it hides the SPEC
+            # from the check. Both are the file's or the code's, never design's.
+            if [[ -n "$_ub" ]]; then ub_after="$_ub"; continue; fi
+            if [[ -n "$_uh" ]]; then uh_after="$_uh"; continue; fi
             # Fall back to the file rc only where the log carries no verdict for
             # this SPEC — a custom runner, an empty capture, or a run that died
             # before reaching the assertion. That is pre-#1969 behaviour, i.e.
@@ -571,6 +612,15 @@ acceptance_negctl_check() {
             printf 'NEGCTL FAIL %s tautology\n' "$spec_id"; rc=1
         elif [[ "$only_head_fail" -eq 1 ]]; then
             printf 'NEGCTL FAIL %s not_passing_at_head\n' "$spec_id"; rc=1
+        # Unreached ranks BELOW tautology and not_passing_at_head on purpose:
+        # those are what a file that DID reach the assertion showed — evidence —
+        # and unreached is only the absence of it in another file. Evidence
+        # outranks absence; the unreached file is still named when it is all
+        # there is (review #2235).
+        elif [[ -n "$ub_after" ]]; then
+            printf 'NEGCTL FAIL %s unreached_at_base after=%s\n' "$spec_id" "$ub_after"; rc=1
+        elif [[ -n "$uh_after" ]]; then
+            printf 'NEGCTL FAIL %s unreached_at_head after=%s\n' "$spec_id" "$uh_after"; rc=1
         elif [[ "$saw_signal" -eq 1 ]]; then
             # The file died on a signal before this SPEC's assertion ran. The
             # test's defect, so it is its author's to fix — not infrastructure.
@@ -681,6 +731,8 @@ acceptance_negctl_guard_precheck() {
         case "$out" in
             regressed)       printf 'GUARD FAIL %s guard_regressed\n' "$spec_id"; rc=1 ;;
             timeout|harness|signal|sigkill) printf 'GUARD SKIP %s %s\n' "$spec_id" "$out" ;;
+            unreached:*)     printf 'GUARD SKIP %s guard_unreached\n' "$spec_id" ;;
+            unverified)      printf 'GUARD SKIP %s guard_unverified\n' "$spec_id" ;;
             held)            printf 'GUARD PASS %s\n' "$spec_id" ;;
             *)               printf 'GUARD SKIP %s harness\n' "$spec_id" ;;  # #2129: never a pass
         esac

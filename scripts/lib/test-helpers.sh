@@ -194,7 +194,11 @@ assert_fail() {
     FAIL=$((FAIL + 1))
     FAILURES[${#FAILURES[@]}]="$desc"
     echo -e "  ${RED}✗${RESET} ${desc}"
-    [[ -n "$detail" ]] && echo -e "    ${DIM}${detail}${RESET}"
+    # An `if`, not `[[ … ]] && …` as the last line: with no detail that returned
+    # 1, and under `set -e` the file stopped at its first failure — every later
+    # assertion went unmeasured (#2234; 13 SPECs on #1835).
+    if [[ -n "$detail" ]]; then echo -e "    ${DIM}${detail}${RESET}"; fi
+    return 0
 }
 
 assert_eq() {
