@@ -6,7 +6,7 @@
 
 **Context.** Impact is the only agent plugin remaining at v1 in the F-wave migration (#1833–#1849). Its `impact_run` currently derives paths from `state_file` (the v1 calling convention), writes bare `schema_version:1` envelopes on router failure paths, has no signal guard, returns `rc=2` on early exits, and has no `config.router` defaults in its manifest. The three integration tests that call `impact_run "impact" "$STATE_FILE"` directly will need their setup updated to provide `ZBUILD_STAGE_INPUTS` and `ZBUILD_ARTIFACT_DIR`.
 
-**Decision.** Follow the plan's 10-step sequence (test-first, then implementation). Split `impact_run` into a signal-guarded wrapper and a `_plan_run_entry`-style entry function. Add `_impact_write_result` and `_impact_input` helpers modelled on their plan counterparts. Add `result_contract: 2` and a `config.router` block (timeout\_s: 600, max\_turns: 45; no retries — the template wins) to the manifest. Update the three integration tests whose `impact_run` call site assumes the old state_file derivation, and update the router-timeout test whose assertion on `.router_rc` breaks when the router failure paths switch to the v2 result shape (which carries `disposition` + `reason` but not `router_rc`).
+**Decision.** Follow the plan's 10-step sequence (test-first, then implementation). Split `impact_run` into a signal-guarded wrapper and a `_plan_run_entry`-style entry function. Add `_impact_write_result` and `_impact_input` helpers modelled on their plan counterparts. Add `result_contract: 2` and a `config.router` block (timeout\_s: 600, max\_turns: 45; no retries — the template wins and the plan explicitly says impact no longer carries its own `router.retries`) to the manifest. Update the three integration tests whose `impact_run` call site assumes the old state_file derivation, and update the router-timeout test whose assertion on `.router_rc` breaks when the router failure paths switch to the v2 result shape (which carries `disposition` + `reason` but not `router_rc`). The manifest `config.router` values are defaults that sit below the template accessor in the `_route_resolve_knob` chain (`template > env > manifest > constant`); simple.yaml's per-stage `timeout_s: 600`, `max_turns: 45`, and `retries: 1` continue to win.
 
 ```scope
 plugins/agent/impact/manifest.yaml
@@ -30,6 +30,7 @@ tests/unit/impact-scope-plateau-test.sh
 tests/unit/impact-envelope-recovery-test.sh
 tests/unit/impact-prefilter-test.sh
 tests/unit/impact-prefilter-order-detector-test.sh
+tests/unit/router-manifest-budget-test.sh
 tests/lib/run-status-comment-mock-roster.sh
 docs/adr/ADR-054-stage-contract.md
 docs/wiki/plugins/impact.md
@@ -38,6 +39,7 @@ scripts/lib/stage-signal.sh
 scripts/lib/plugin-bootstrap.sh
 core/pipeline/disposition.sh
 core/contract/version.sh
+config/templates/simple.yaml
 ```
 
 ```acceptance
@@ -53,6 +55,7 @@ SPEC-9[guard]: impact_run returns rc=0 on a router timeout (rc=124) — graceful
 SPEC-10[guard]: _impact_run_inner writes verdict=incomplete on a recoverable router failure (rc=124 or rc=1) so the cycle re-iterates
 SPEC-11[guard]: _impact_run_inner writes verdict=error on a genuine infra failure (rc=137 OOM kill) so the cycle blocked-predicate can flag it
 SPEC-12[guard]: impact verdict and missing[] fields survive the v2 envelope merge — the success path output still carries the LLM's structured data (schema_version, verdict, missing[]) alongside the v2 contract fields
+SPEC-13[guard]: when impact's manifest declares config.router.timeout_s: 600 and a per-stage template accessor returns a different value, _route_resolve_timeout returns the template value — the manifest acts as a default, not an override (template > manifest precedence preserved per _route_resolve_knob)
 WIRING: plugins/agent/impact/manifest.yaml
 TESTFILES:
 SPEC-1: tests/unit/impact-v2-result-contract-test.sh
@@ -67,6 +70,7 @@ SPEC-9: tests/integration/impact-router-timeout-782-test.sh
 SPEC-10: tests/integration/impact-router-timeout-782-test.sh
 SPEC-11: tests/integration/impact-router-timeout-782-test.sh
 SPEC-12: tests/integration/impact-pipeline-test.sh
+SPEC-13: tests/unit/impact-v2-result-contract-test.sh
 ```
 
 LOOP_COMPLETE
