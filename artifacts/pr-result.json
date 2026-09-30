@@ -1,0 +1,14 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "PR opened",
+  "data": {
+    "status": "opened",
+    "pr_url": "https://github.com/ezigus/zBuild/pull/2239",
+    "pr_number": 2239,
+    "draft": false,
+    "branch": "zbuild/issue-1842-ci",
+    "issue": 1842
+  }
+}
