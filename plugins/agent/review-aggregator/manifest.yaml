@@ -15,8 +15,8 @@ description: |
   Collapses N parallel advisory review-lens outputs into ONE advisory
   merge-readiness report (ADR-040 §3/§4, EPIC #1129 C2; evolves ADR-038).
 
-  Globs the lens group's lens-<name>.json results from the shared artifacts
-  dir, de-dupes their findings by file + category + proximity window, carries
+  Reads the lens group's results from the engine-resolved `lens_result` input
+  (the review_lenses map group's member paths, ADR-055 §1.4), de-dupes their findings by file + category + proximity window, carries
   the max severity + the union of contributing lenses + the union of messages,
   and renders an advisory report (review-report.json + review-report.md). The
   dedup/severity/union logic is ported verbatim from review-report's
@@ -24,8 +24,10 @@ description: |
 
   Does NO LLM call — it merges lens JSON only (no router, no redaction
   chokepoint traffic). Advisory only: it never recommends a merge action and
-  never gates the pipeline. It always writes review-report.json first and
-  returns 0 (an empty / absent lens group degrades to an empty report).
+  never gates the pipeline. Every exit writes a v2 review-report.json and its
+  .md summary; an empty lens set reports needs_attention (no review happened),
+  never ready (#1753). rc 1 when the engine gave it no inputs or nowhere to
+  write, or a signal stopped it.
 
   Bound by ROLE (resolver.sh reads provides.role). This stage is advisory: it
   used to opt out of contracts.sh's blocking contract-violated machinery by
@@ -73,16 +75,18 @@ provides:
 # for `valid_verdicts`, which the engine DOES read (#1708).
 
 config:
-  # v2 verdicts: complete = ran to completion; degraded = interrupted by signal.
+  # v2 verdicts: complete = aggregated; degraded = no report behind it (no
+  # stage inputs, or stopped by a signal).
   # ADR-055 §4 — must be non-empty for a v2-compliant stage (#1708).
   valid_verdicts: [complete, degraded]
 
 inputs:
-  # The lens group's per-lens results, read by glob from the shared artifacts
-  # dir (each review-lens stage writes lens-<name>.json there). required:false
-  # keeps the aggregator composable — an empty group degrades to an empty report.
+  # The lens group's per-lens results: a map producer, so the engine hands over
+  # the SET of member paths (ADR-055 §1.4). Required (#1842): with no lens
+  # result there is nothing to aggregate, and the engine refuses the dispatch
+  # rather than letting an absent review read as a clean one (#1753).
   - id: lens_result
-    required: false
+    required: true
 
 outputs:
   # FIRST entry — always written; keeps the stage green without opting into the

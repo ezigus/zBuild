@@ -135,8 +135,13 @@ source "$REPO_ROOT/plugins/agent/review-aggregator/plugin.sh"
 AGG_OUT="$TEST_TEMP_DIR/agg.out"
 export _TPL_STAGE_IO_DESTS_review_aggregator="file,stdout"   # io dests include stdout
 export ZBUILD_CURRENT_STAGE="review-aggregator"
+# The engine hands the aggregator its lens set and output dir (#1842).
+_agg_inputs="$TEST_TEMP_DIR/agg-inputs.json"
+jq -n '{schema_version:1, stage:"review-aggregator", inputs:{lens_result:$ARGS.positional}}' \
+    --args "$ARTIFACT_DIR"/lens-*.json > "$_agg_inputs"
 set +e
-review_aggregator_run "review-aggregator" "$STATE_FILE" 2>"$AGG_OUT" >/dev/null
+ZBUILD_ARTIFACT_DIR="$ARTIFACT_DIR" ZBUILD_STAGE_INPUTS="$_agg_inputs" \
+    review_aggregator_run "review-aggregator" "$STATE_FILE" 2>"$AGG_OUT" >/dev/null
 set -e
 unset ZBUILD_CURRENT_STAGE
 agg="$(cat "$AGG_OUT")"

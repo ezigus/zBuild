@@ -2,16 +2,10 @@
 # plugins/agent/review-aggregator — collapse N parallel lens outputs into ONE
 # advisory merge-readiness report (ADR-040 §3/§4, EPIC #1129 C2; evolves ADR-038).
 #
-# ROSTER-DRIVEN discovery (Phase 2, naming-agnostic): the aggregator runs as a
-# separate, non-member stage, so it SELF-RESOLVES which parallel group it serves
-# via Phase 1's binding — the `aggregate: advisory` group whose bound non-member
-# `convergence: advisory` aggregator (first such stage in canonical order) is
-# THIS stage. It then reads that group's members from _TPL_PARALLEL_FLOW_<group>
-# and, for each member, resolves the member's manifest (id-first then
-# provides.role) and its DECLARED result artifact — exactly like gate-aggregator's
-# _ga_member_manifest / _ga_manifest_result_file — collecting those files instead
-# of a per-lens filename glob. ZBUILD_STAGE_INPUTS (ADR-055 §1.4) is now the
-# primary discovery path; roster is the fallback (#1842 removes the glob).
+# INPUTS: the engine resolves the `lens_result` input — the `review_lenses` map
+# group's set of member result paths (ADR-055 §1.4) — and hands it over in
+# ZBUILD_STAGE_INPUTS. That set is the only place lenses come from: no roster
+# lookup, no directory glob (#1842). Output goes to ZBUILD_ARTIFACT_DIR.
 #
 # It de-dupes the collected findings by file + category + proximity, carries max
 # severity + the union of contributing lenses + messages, and renders an advisory
@@ -21,8 +15,10 @@
 #
 # Does NO LLM call — it merges lens JSON only (no router, no ADR-004 redaction
 # traffic). Advisory only: it never recommends a merge action and never gates the
-# pipeline. _review_aggregator_run_inner ALWAYS writes review-report.json first
-# and returns 0 (an empty / absent lens group degrades to an empty report).
+# pipeline. Every exit writes a v2 review-report.json and its .md summary. rc 0
+# when it aggregated (an empty lens set reports needs_attention — no review
+# happened — never ready, #1753); rc 1 when the engine gave it nothing to read
+# or nowhere to write, or a signal stopped it.
 #
 # ADR refs: ADR-001 (plugin contract), ADR-038 (lens aggregation logic origin),
 #           ADR-040 (composable gate+lens stages; advisory aggregator).
@@ -41,16 +37,6 @@ _RA_ROOT="$_ZBUILD_PLUGIN_ROOT"
 source "$_RA_ROOT/core/event-bus/event-bus.sh"
 # render_review_report_md + atomic_write arrive via plugin-bootstrap (helpers.sh
 # + artifact-render.sh); no explicit source needed.
-
-# Manifest libs for ROSTER-DRIVEN member discovery (Phase 2): member id →
-# manifest (manifest_graph_collect) + manifest → declared result file
-# (manifest_graph_primary_output) + convergence/role scalar reads (yaml_get).
-# Mirrors gate-aggregator's sourcing. Best-effort: a missing lib degrades to the
-# legacy glob fallback (the env arrays will simply be absent in that case).
-# shellcheck source=../../../scripts/lib/manifest-graph.sh
-source "$_RA_ROOT/scripts/lib/manifest-graph.sh" 2>/dev/null || true
-# shellcheck source=../../../core/plugin-registry/manifest-validation.sh
-source "$_RA_ROOT/core/plugin-registry/manifest-validation.sh" 2>/dev/null || true
 
 # Severity ordinal map (jq-injected for max-severity selection in dedup). Ported
 # from review-report/lib/lenses.sh (_RR_SEV_RANK) — keep the two in lockstep.
@@ -125,172 +111,20 @@ _ra_normalize_files() {
     printf '%s' "${#pairs[@]}"
 }
 
-# ─── _ra_input <id> ──────────────────────────────────────────────────────────
-# Read a single named input path from ZBUILD_STAGE_INPUTS. Mirrors _rl_input.
-_ra_input() {
-    [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]] || return 0
-    jq -r --arg id "$1" '.inputs[$id] // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true
-}
-
-# ─── _ra_collect_lenses_inputs <out_lenses_file> ─────────────────────────────
-# PRIMARY discovery (ADR-055 §1.4): read the engine-resolved lens_result array
-# from ZBUILD_STAGE_INPUTS and normalize those paths. Each file's fallback name
-# is the basename minus the `lens-` prefix (mirrors roster convention).
-_ra_collect_lenses_inputs() {
+# ─── _ra_collect_lenses <out_lenses_file> ────────────────────────────────────
+# The engine's lens_result set from ZBUILD_STAGE_INPUTS, normalized. A map input
+# is an array; a lone path is accepted as a set of one. Each file's fallback name
+# is its basename minus the `lens-` prefix. Echoes the count.
+_ra_collect_lenses() {
     local out_file="$1"
-    if [[ -z "${ZBUILD_STAGE_INPUTS:-}" || ! -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        printf '[]' > "$out_file"; printf '0'; return 0
-    fi
     local -a pairs=()
     local f name
     while IFS= read -r f; do
         [[ -n "$f" && -f "$f" ]] || continue
         name="$(basename "$f" .json)"; name="${name#lens-}"
         pairs+=("$name|$f")
-    done < <(jq -r '.inputs.lens_result // [] | .[]' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)
-    _ra_normalize_files "$out_file" "${pairs[@]}"
-}
-
-# ─── _ra_member_manifest <plugins_root> <member> ─────────────────────────────
-# Resolve a parallel-group member stage id to its plugin manifest path. Mirrors
-# gate-aggregator's _ga_member_manifest: id-match first (manifest_graph_collect),
-# else bind by the member's first declared role (_TPL_STAGE_ROLES_<safe>) to the
-# manifest whose provides.role matches. Echoes the manifest path; rc 1 if unresolved.
-_ra_member_manifest() {
-    local plugins_root="$1" member="$2" m
-    declare -f manifest_graph_collect >/dev/null 2>&1 || return 1
-    m="$(manifest_graph_collect "$plugins_root" "$member" 2>/dev/null)"
-    if [[ -n "$m" && -f "$m" ]]; then printf '%s\n' "$m"; return 0; fi
-    local safe="${member//-/_}" roles_var roles role cand r
-    roles_var="_TPL_STAGE_ROLES_${safe}"
-    roles="${!roles_var:-}"
-    role="${roles%%,*}"            # first declared role
-    [[ -z "$role" ]] && return 1
-    while IFS= read -r -d '' cand; do
-        r="$(yaml_get "$cand" "provides.role" 2>/dev/null)"
-        if [[ "$r" == "$role" ]]; then printf '%s\n' "$cand"; return 0; fi
-    done < <(find "$plugins_root" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
-    return 1
-}
-
-# ─── _ra_manifest_result_file <manifest> <member> ────────────────────────────
-# The member's recorded result artifact FILENAME: provides.artifact_type, else
-# the basename of the primary output's declared path (mirrors gate-aggregator's
-# _ga_manifest_result_file). The lens members share ONE manifest whose primary
-# output path is PER-MEMBER parameterized (lens-${ZBUILD_REVIEW_LENS_ID}.json);
-# any leftover ${...} placeholder is expanded to the member's derived lens id —
-# the member stage id minus the `review-lens-`/`lens-`/`lens_` prefix, exactly
-# how the review-lens plugin derives its id and writes lens-<id>.json.
-_ra_manifest_result_file() {
-    local manifest="$1" member="$2" at row path base
-    at="$(yaml_get "$manifest" "provides.artifact_type" 2>/dev/null)"
-    if [[ -n "$at" ]]; then printf '%s\n' "$at"; return 0; fi
-    declare -f manifest_graph_primary_output >/dev/null 2>&1 || return 1
-    row="$(manifest_graph_primary_output "$manifest" 2>/dev/null)" || return 1
-    path="${row##*|}"
-    [[ -z "$path" ]] && return 1
-    base="${path##*/}"
-    if [[ "$base" == *'${'* ]]; then
-        local sid="$member"
-        sid="${sid#review-lens-}"; sid="${sid#lens-}"; sid="${sid#lens_}"
-        while [[ "$base" == *'${'* ]]; do
-            base="${base%%'${'*}${sid}${base#*\}}"
-        done
-    fi
-    printf '%s\n' "$base"
-}
-
-# ─── _ra_stage_convergence <plugins_root> <stage_id> → gate|advisory|"" ───────
-# Resolve a template stage id to its plugin manifest's `convergence:` marker,
-# mirroring contract-validator's _cv_stage_convergence: id-matching manifest is
-# authoritative, else bind by the stage's first declared role. Empty when the
-# stage carries no marker (legacy / untyped).
-_ra_stage_convergence() {
-    local proot="$1" sid="$2" m val="" cand r
-    declare -f manifest_graph_collect >/dev/null 2>&1 || return 0
-    local safe="${sid//-/_}" roles_var role
-    roles_var="_TPL_STAGE_ROLES_${safe}"
-    role="${!roles_var:-}"; role="${role%%,*}"
-    m="$(manifest_graph_collect "$proot" "$sid" 2>/dev/null || true)"
-    if [[ -n "$m" && -f "$m" ]]; then
-        val="$(yaml_get "$m" convergence 2>/dev/null)"
-    elif [[ -n "$role" ]]; then
-        while IFS= read -r -d '' cand; do
-            r="$(yaml_get "$cand" "provides.role" 2>/dev/null)"
-            if [[ "$r" == "$role" ]]; then
-                val="$(yaml_get "$cand" convergence 2>/dev/null)"
-                break
-            fi
-        done < <(find "$proot" -name manifest.yaml -not -path '*/tests/*' -print0 2>/dev/null)
-    fi
-    printf '%s' "$val"
-}
-
-# ─── _ra_resolve_group <plugins_root> <self_stage> ───────────────────────────
-# SELF-RESOLVE which `aggregate: advisory` parallel group THIS aggregator serves
-# (Phase 1 binding). For each advisory group, the bound aggregator is the FIRST
-# non-member `convergence: advisory` stage in canonical (_TPL_STAGES) order —
-# the same rule contract-validator/lint enforce. Echoes the group id whose bound
-# aggregator is <self_stage>; rc 1 when no template/group env is in scope or no
-# group binds to this stage (→ caller uses the legacy glob fallback).
-_ra_resolve_group() {
-    local plugins_root="$1" self_stage="$2"
-    [[ -z "$self_stage" ]] && return 1
-    declare -p _TPL_PARALLEL_GROUPS >/dev/null 2>&1 || return 1
-    [[ "${#_TPL_PARALLEL_GROUPS[@]}" -eq 0 ]] && return 1
-    declare -p _TPL_STAGES >/dev/null 2>&1 || return 1
-    local g gsafe agg_var flow_var flow
-    for g in "${_TPL_PARALLEL_GROUPS[@]}"; do
-        gsafe="${g//-/_}"
-        agg_var="_TPL_PARALLEL_AGGREGATE_${gsafe}"
-        [[ "${!agg_var:-}" == "advisory" ]] || continue
-        flow_var="_TPL_PARALLEL_FLOW_${gsafe}"
-        flow="${!flow_var:-}"
-        local -A members=()
-        local IFS_s="$IFS"; IFS=','
-        # shellcheck disable=SC2206
-        local -a ms=($flow)
-        IFS="$IFS_s"
-        local m; for m in "${ms[@]}"; do [[ -n "$m" ]] && members["$m"]=1; done
-        # Bound aggregator = first non-member convergence:advisory stage.
-        local st bound=""
-        for st in "${_TPL_STAGES[@]}"; do
-            [[ -n "${members[$st]:-}" ]] && continue
-            if [[ "$(_ra_stage_convergence "$plugins_root" "$st")" == "advisory" ]]; then
-                bound="$st"; break
-            fi
-        done
-        if [[ "$bound" == "$self_stage" ]]; then printf '%s' "$g"; return 0; fi
-    done
-    return 1
-}
-
-# ─── _ra_collect_lenses_roster <plugins_root> <group> <artifact_dir> <out> ───
-# ROSTER discovery: read the group's members from _TPL_PARALLEL_FLOW_<group>,
-# resolve each member's manifest + declared result file, and normalize the files
-# present in <artifact_dir> (naming-agnostic — paths resolved by manifest, not glob). The
-# per-file fallback name is the member's derived lens id. Echoes the count.
-_ra_collect_lenses_roster() {
-    local plugins_root="$1" group="$2" artifact_dir="$3" out_file="$4"
-    local gsafe="${group//-/_}"
-    local flow_var="_TPL_PARALLEL_FLOW_${gsafe}"
-    local flow="${!flow_var:-}"
-    local IFS_s="$IFS"; IFS=','
-    # shellcheck disable=SC2206
-    local -a member_list=($flow)
-    IFS="$IFS_s"
-    local -a pairs=()
-    local member manifest rf f name
-    for member in "${member_list[@]}"; do
-        [[ -z "$member" ]] && continue
-        manifest="$(_ra_member_manifest "$plugins_root" "$member")" || continue
-        rf="$(_ra_manifest_result_file "$manifest" "$member")" || continue
-        [[ -z "$rf" ]] && continue
-        f="$artifact_dir/$rf"
-        [[ -f "$f" ]] || continue
-        name="${member#review-lens-}"; name="${name#lens-}"; name="${name#lens_}"
-        pairs+=("$name|$f")
-    done
+    done < <(jq -r '.inputs.lens_result // [] | if type == "array" then .[] else . end' \
+        "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)
     _ra_normalize_files "$out_file" "${pairs[@]}"
 }
 
@@ -357,135 +191,107 @@ _ra_aggregate() {
     || printf '{"schema_version":1,"merge_readiness":"advisory","lenses":[],"findings":[],"summary":"Report unavailable: aggregation error."}'
 }
 
-# Module-level refs set by _review_aggregator_run_inner before trap registration.
+# Set by _review_aggregator_run_inner before the signal guard goes up.
 _ra_out_json_ref=""
 _ra_out_md_ref=""
 
-# The v2 execution-status key, constructed in two pieces to pass the
-# pre-v2 coercion-vocabulary guard in aggregator-test.sh SPEC-3 (which predates
-# ADR-055 and used this term to mean merge decision, not execution status).
-_RA_V2_ESTATUS_KEY="$(printf 'verd')$(printf 'ict')"
+# _ra_write_result <out_json> <verdict> <disposition> <reason> [summary]
+# A report with no aggregation behind it (no inputs, or stopped by a signal):
+# empty lens/finding lists, the v2 envelope, and a summary saying why.
+_ra_write_result() {
+    local out="$1" verdict="$2" disp="$3" reason="$4"
+    local summary="${5:-No review report: $reason.}"
+    jq -nc --arg v "$verdict" --arg d "$disp" --arg r "$reason" --arg s "$summary" \
+        '{result_contract:2, verdict:$v, disposition:$d, reason:$r,
+          schema_version:1, merge_readiness:"needs_attention", lenses:[], findings:[],
+          did_not_run:[], summary:$s}' | atomic_write "$out"
+}
 
-# Signal handler: write degraded v2 result + summary, restore trap, re-raise.
-_ra_interrupt_handler() {
-    [[ -n "${_ra_out_json_ref:-}" ]] || { stage_signal_end; exit 143; }
-    jq -nc --arg vk "$_RA_V2_ESTATUS_KEY" \
-        '{result_contract:2,schema_version:1,merge_readiness:"advisory",lenses:[],findings:[],did_not_run:[],summary:"Review interrupted by signal.",($vk):"degraded",disposition:"interrupted",reason:"signal_interrupt"}' \
-        | atomic_write "$_ra_out_json_ref" 2>/dev/null || true
-    [[ -n "${_ra_out_md_ref:-}" ]] && \
-        render_review_report_md "$(cat "$_ra_out_json_ref" 2>/dev/null || printf '{}')" \
-            | atomic_write "$_ra_out_md_ref" 2>/dev/null || true
+_ra_render_md() {
+    render_review_report_md "$(cat "$_ra_out_json_ref" 2>/dev/null || printf '{}')" \
+        | atomic_write "$_ra_out_md_ref" 2>/dev/null || true
+}
+
+# A signal stops the stage: record it in the words the shared guard passes.
+_ra_on_signal() {
+    _ra_write_result "$_ra_out_json_ref" "degraded" "$1" "$2" \
+        "Review aggregation stopped by a signal; this report is incomplete." 2>/dev/null || true
+    _ra_render_md
     stage_signal_end
-    exit 143
+    exit 1
 }
 
 # ─── review_aggregator_run ──────────────────────────────────────────────────
-# Hook: review_aggregator_run(stage, state_file). Derives artifact paths and
-# delegates to the unit-testable inner function.
+# Hook: review_aggregator_run(stage, state_file). Writes where the engine says
+# (ZBUILD_ARTIFACT_DIR) — never into a directory derived from the state file.
 review_aggregator_run() {
-    local state_file="${2:-}"
-    if [[ -z "$state_file" ]]; then
-        error "review_aggregator_run: state_file argument required"
-        return 2
+    local out_dir="${ZBUILD_ARTIFACT_DIR:-}"
+    if [[ -z "$out_dir" ]]; then
+        error "review_aggregator_run: ZBUILD_ARTIFACT_DIR is not set — the engine gave the aggregator nowhere to write its report"
+        return 1
     fi
-    local state_dir; state_dir="$(dirname "$state_file")"
-    local artifact_dir="$state_dir/artifacts"
-    mkdir -p "$artifact_dir"
-
-    _review_aggregator_run_inner \
-        "$artifact_dir" \
-        "$artifact_dir/review-report.json" \
-        "$artifact_dir/review-report.md"
+    mkdir -p "$out_dir"
+    _review_aggregator_run_inner "$out_dir" "$out_dir/review-report.json" "$out_dir/review-report.md"
 }
 
 # Inner implementation — unit-testable with explicit paths.
-# Args: $1=artifact_dir  $2=out review-report.json  $3=out .md
+# Args: $1=work dir (the combined lens array lands here)  $2=out .json  $3=out .md
 _review_aggregator_run_inner() {
-    local artifact_dir="$1" out_json="$2" out_md="$3"
-    if [[ -z "$out_json" ]]; then
-        error "_review_aggregator_run_inner: output path required"
-        return 2
-    fi
-    mkdir -p "$artifact_dir"
-
-    # Collect lens results. ZBUILD_STAGE_INPUTS (ADR-055 §1.4) is primary;
-    # ROSTER-DRIVEN discovery is the fallback; no glob fallback (removed in #1842).
-    local lenses_file="$artifact_dir/review-aggregator-lenses.json"
-    local lens_count group="" discovery
-    local self_stage="${ZBUILD_CURRENT_STAGE:-}"
-    local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_RA_ROOT/plugins}"
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        discovery="inputs"
-        lens_count="$(_ra_collect_lenses_inputs "$lenses_file")"
-    else
-        if [[ -n "$self_stage" ]]; then
-            group="$(_ra_resolve_group "$plugins_root" "$self_stage")" || group=""
-        fi
-        if [[ -n "$group" ]]; then
-            discovery="roster"
-            lens_count="$(_ra_collect_lenses_roster "$plugins_root" "$group" "$artifact_dir" "$lenses_file")"
-        else
-            # Legacy invocation (unit test / standalone): discover lens-prefixed
-            # JSON files via find regex — no ZBUILD_STAGE_INPUTS, no group env.
-            discovery="legacy"
-            local -a _l_pairs=()
-            local _l_f _l_n
-            while IFS= read -r _l_f; do
-                _l_n="$(basename "$_l_f" .json)"; _l_n="${_l_n#lens-}"
-                _l_pairs+=("$_l_n|$_l_f")
-            done < <(find "$artifact_dir" -maxdepth 1 -type f \
-                -regex '.*/lens-[^/]*\.json$' 2>/dev/null | LC_ALL=C sort)
-            lens_count="$(_ra_normalize_files "$lenses_file" "${_l_pairs[@]}")"
-        fi
-    fi
-    if [[ "${lens_count:-0}" -eq 0 ]]; then
-        emit_event "review_aggregator.no_lenses" \
-            "artifact_dir=$(basename "$artifact_dir")" "discovery=$discovery"
-    fi
-
-    # Register interrupt handler: writes degraded execution status + summary if
-    # SIGTERM/SIGINT arrives during aggregation (ADR-055 §3, #1842).
+    local work_dir="$1" out_json="$2" out_md="$3"
+    mkdir -p "$work_dir"
     _ra_out_json_ref="$out_json"
     _ra_out_md_ref="$out_md"
-    stage_signal_begin _ra_interrupt_handler
+    stage_signal_begin _ra_on_signal
+
+    if [[ -z "${ZBUILD_STAGE_INPUTS:-}" || ! -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+        error "review-aggregator: no stage inputs (ZBUILD_STAGE_INPUTS='${ZBUILD_STAGE_INPUTS:-}') — the engine did not hand over the lens results"
+        _ra_write_result "$out_json" "degraded" "misconfigured" "stage_inputs_missing" \
+            "No review report: the engine did not hand this stage its lens results."
+        _ra_render_md
+        emit_event "plugin.result" "plugin=review-aggregator" \
+            "merge_readiness=needs_attention" "lens_count=0"
+        stage_signal_end
+        return 1
+    fi
+
+    local lenses_file="$work_dir/review-aggregator-lenses.json"
+    local lens_count
+    lens_count="$(_ra_collect_lenses "$lenses_file")"
+    if [[ "${lens_count:-0}" -eq 0 ]]; then
+        emit_event "review_aggregator.no_lenses" "artifact_dir=$(basename "$work_dir")"
+    fi
 
     # Aggregate + de-dupe into the advisory report. The manifest's primary output
     # (review-report.json) is written atomically first — #507 atomicity contract.
     _ra_aggregate "$lenses_file" | atomic_write "$out_json"
 
-    # #1849: a lens that did not run is named, counted in the summary, and makes
-    # the report needs_attention — never a clean review that did not happen. Done
-    # here, not in _ra_aggregate, which stays byte-for-byte with review-report's.
+    # What _ra_aggregate cannot see stays out of it (it is byte-for-byte with
+    # review-report's _rr_aggregate): #1849 — a lens that did not run is named
+    # and makes the report needs_attention; #1753 — no lens at all is no review,
+    # never `ready` (all() over an empty score list is true). Then the envelope.
     local _nr
     _nr="$(jq -c '[.[] | select(.ran == false) | .name]' "$lenses_file" 2>/dev/null || printf '[]')"
-    if [[ -s "$out_json" ]]; then
-        jq --argjson nr "${_nr:-[]}" --argjson total "${lens_count:-0}" '
-            . + {did_not_run: $nr}
-            | if ($nr | length) > 0 then
-                .merge_readiness = "needs_attention"
-                | .summary = ("\($nr | length) of \($total) lens(es) did not run (\($nr | join(", "))) — "
-                              + "their review is missing, not clean. " + .summary)
-                | .escalation_note = "Some lenses did not run, so this report is incomplete; re-run the review before merging. Advisory only — this does not block the pipeline."
-              else . end' "$out_json" 2>/dev/null | atomic_write "$out_json" || true
-    fi
-
-    # Embed v2 envelope when running in a v2-contract context (ADR-055 §3).
-    # Guard on ZBUILD_STAGE_INPUTS: the engine always sets it for v2 stages;
-    # legacy unit-test invocations without it stay v1-compatible.
-    if [[ -s "$out_json" && -n "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        jq --arg vk "$_RA_V2_ESTATUS_KEY" \
-            '. + {result_contract: 2, ($vk): "complete", disposition: "complete", reason: "review aggregation complete"}' \
-            "$out_json" 2>/dev/null | atomic_write "$out_json" || true
-    fi
+    jq --argjson nr "${_nr:-[]}" --argjson total "${lens_count:-0}" '
+        . + {did_not_run: $nr}
+        | if $total == 0 then
+            .merge_readiness = "needs_attention"
+            | .summary = "No lens results reached this stage — no review happened. " + (.summary // "")
+            | .escalation_note = "No lens ran, so nothing was reviewed; re-run the review before merging. Advisory only — this does not block the pipeline."
+          elif ($nr | length) > 0 then
+            .merge_readiness = "needs_attention"
+            | .summary = ("\($nr | length) of \($total) lens(es) did not run (\($nr | join(", "))) — "
+                          + "their review is missing, not clean. " + .summary)
+            | .escalation_note = "Some lenses did not run, so this report is incomplete; re-run the review before merging. Advisory only — this does not block the pipeline."
+          else . end
+        | . + {result_contract: 2, verdict: "complete", disposition: "complete",
+               reason: "aggregated \($total) lens result(s)"}' \
+        "$out_json" 2>/dev/null | atomic_write "$out_json" || true
 
     local merge_readiness
     merge_readiness="$(jq -r '.merge_readiness // "advisory"' "$out_json" 2>/dev/null || echo advisory)"
 
-    stage_signal_end
-
-    # Always render the summary markdown — written on every terminal exit path,
-    # including empty-lens runs (ADR-055 §9, #1842 SPEC-6/SPEC-11).
-    render_review_report_md "$(cat "$out_json" 2>/dev/null || printf '{}')" | atomic_write "$out_md" 2>/dev/null || true
+    # The summary is written on every exit (ADR-055 §9).
+    _ra_render_md
 
     # Issue OUT (ADR-038): surface the merge-readiness report to the operator as
     # PROSE — io-gated on this stage's own destinations so a file-only install
@@ -505,7 +311,7 @@ _review_aggregator_run_inner() {
     emit_event "plugin.result" \
         "plugin=review-aggregator" \
         "merge_readiness=$merge_readiness" \
-        "lens_count=$lens_count" \
-        "discovery=$discovery"
+        "lens_count=$lens_count"
+    stage_signal_end
     return 0
 }

@@ -1,0 +1,83 @@
+{
+  "did_not_run": [],
+  "escalation_note": null,
+  "findings": [
+    {
+      "category": "logic",
+      "file": "core/x.sh",
+      "lenses": [
+        "correctness",
+        "security"
+      ],
+      "line": 42,
+      "messages": [
+        "off-by-one in loop",
+        "same region higher severity"
+      ],
+      "severity": "high"
+    }
+  ],
+  "lenses": [
+    {
+      "findings": [
+        {
+          "category": "logic",
+          "file": "core/x.sh",
+          "introduced": true,
+          "line": 42,
+          "message": "off-by-one in loop",
+          "severity": "medium"
+        }
+      ],
+      "name": "correctness",
+      "ran": true,
+      "score": 6
+    },
+    {
+      "findings": [],
+      "name": "performance",
+      "ran": true,
+      "score": 9
+    },
+    {
+      "findings": [
+        {
+          "category": "logic",
+          "file": "core/x.sh",
+          "introduced": true,
+          "line": 47,
+          "message": "same region higher severity",
+          "severity": "high"
+        },
+        {
+          "category": "style",
+          "file": "core/z.sh",
+          "introduced": false,
+          "line": 3,
+          "message": "pre-existing",
+          "severity": "low"
+        }
+      ],
+      "name": "security",
+      "ran": true,
+      "score": 8
+    }
+  ],
+  "merge_readiness": "advisory",
+  "pre_existing": [
+    {
+      "category": "style",
+      "file": "core/z.sh",
+      "lenses": [
+        "security"
+      ],
+      "line": 3,
+      "messages": [
+        "pre-existing"
+      ],
+      "severity": "low"
+    }
+  ],
+  "schema_version": 1,
+  "summary": "1 merge-readiness finding(s) across 3 lens(es) (0 critical, 1 high)."
+}

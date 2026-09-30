@@ -9,7 +9,7 @@
 # SPEC-4[change]  success-path writes result_contract:2 + verdict:complete + ...
 # SPEC-5[change]  _ra_collect_lenses_glob and lens-* absent from plugin.sh
 # SPEC-6[change]  review-report.md written on empty-lenses exit path
-# SPEC-7[change]  SIGTERM/SIGINT trap writes degraded + re-raises
+# SPEC-7[change]  SIGTERM/SIGINT writes degraded/interrupted and ends with rc 1
 # SPEC-11[change] empty-lenses exit path writes result_contract:2 + verdict:complete + ...
 # SPEC-12[guard]  manifest config: declares no router: key
 set -uo pipefail
@@ -153,8 +153,7 @@ wait "$_sig_pid" 2>/dev/null
 _sig_rc=$?
 set -e
 eval "$_ra_agg_save" 2>/dev/null || true
-assert_eq "[#1842/SPEC-7] SIGTERM makes process exit non-zero (signal re-raised)" \
-    "1" "$(( _sig_rc != 0 ? 1 : 0 ))"
+assert_eq "[#1842/SPEC-7] SIGTERM ends the stage with rc 1" "1" "$_sig_rc"
 assert_eq "[#1842/SPEC-7] interrupted writes verdict:degraded" "degraded" \
     "$(_v2 verdict "$_d7/review-report.json")"
 assert_eq "[#1842/SPEC-7] interrupted writes disposition:interrupted" "interrupted" \
