@@ -37,6 +37,9 @@ description: |
 
 hooks:
   run: review_aggregator_run
+# hooks.cleanup is intentionally absent: this plugin holds no live resources
+# that require teardown — ADR-054 §7. No router: section in config: either;
+# this stage makes no LLM calls (ADR-017 §11 budget declaration not applicable).
 
 requires:
   # `redaction` is mandatory for kind: agent (ADR-004 / validate_manifest), even
@@ -48,6 +51,7 @@ requires:
   plugins: []
 
 provides:
+  result_contract: 2
   role: review_aggregator
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
@@ -69,10 +73,9 @@ provides:
 # for `valid_verdicts`, which the engine DOES read (#1708).
 
 config:
-  # Writes no .verdict on either verdict channel; the engine falls back to
-  # pass for a well-formed primary (core/pipeline/verdict.sh). An ABSENT key
-  # is a lint failure; the explicit [] is the claim (#1708).
-  valid_verdicts: []
+  # v2 verdicts: complete = ran to completion; degraded = interrupted by signal.
+  # ADR-055 §4 — must be non-empty for a v2-compliant stage (#1708).
+  valid_verdicts: [complete, degraded]
 
 inputs:
   # The lens group's per-lens results, read by glob from the shared artifacts
@@ -94,7 +97,7 @@ outputs:
     path: "${artifact_dir}/review-report.md"
     type: review-report.md@1
     format: markdown
-    required: false
+    required: true
     # #1986: this stage suppresses the lens summaries it aggregates, so it MUST
     # publish one itself — otherwise the roster's findings reach no prompt at
     # all and the loss is silent. The merged merge-readiness report IS that
