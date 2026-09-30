@@ -12,11 +12,11 @@
 #             out_of_turns) — the stage's own rule for max_turns, SPEC-10's intent
 # C5 [change] a router failure the shared mapping cannot name is warned and
 #             recorded as unusable — never a silent `interrupted`
-# C6 [change] a real SIGTERM (the guard not stubbed) writes interrupted /
+# C6 [guard]  a real SIGTERM (the guard not stubbed) writes interrupted /
 #             signal_interrupt
-# C7 [change] router budgets resolve from the manifest when no template or env
+# C7 [guard]  router budgets resolve from the manifest when no template or env
 #             sets one (the issue's checkbox; SPEC-13 covered only the override)
-# C8 [change] a passing run's impact.json is the v1 output plus the v2 fields,
+# C8 [guard]  a passing run's impact.json is the v1 output plus the v2 fields,
 #             byte-for-byte against a golden (the issue's "before/after golden diff")
 # C9 [change] plugin.sh derives no path from the state file (SPEC-8's grep missed
 #             `dirname "${state_file…}"`)
