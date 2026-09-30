@@ -1,0 +1,28 @@
+id: cycle-abort-minimal
+name: Cycle abort alias minimal (#2241)
+extends: simple
+
+# runner-cycle-on-max-halt-test.sh (#2241): the same two units as
+# cycle-fallthrough-minimal, with the cycle marked on_max: halt. The runner must
+# stop when the cycle runs out of rounds — the review leaf must not run.
+stages:
+  - id: build_test_cycle
+    type: cycle
+    stages: [build, test]
+    until:
+      stage: test
+      field: verdict
+      op: eq
+      value: pass
+    max_iterations: 3
+    on_max: abort
+  - id: review
+    gate: auto
+
+# The cycle's members must be defined even though cycle_orchestrator_run is
+# stubbed: load_template validates the reference before anything is dispatched.
+stage_definitions:
+  build:
+    roles: [builder]
+  test:
+    roles: [tester]

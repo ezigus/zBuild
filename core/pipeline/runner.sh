@@ -3301,6 +3301,23 @@ main() {
                         # #938: gate the message on on_max so it matches the
                         # status _runner_compute_final_status computes (continue
                         # + downstream approve → complete, not failed).
+                        # #2241: `on_max: halt` STOPS the run here. Until now every
+                        # unconverged cycle fell through to the next unit and halt
+                        # only changed the final label — #1842's design never passed
+                        # and the run still built and opened a PR. `abort` is the
+                        # word runner-final-status used; it means the same.
+                        case "$_RUNNER_CYCLE_UNCONVERGED_ON_MAX" in
+                            halt|abort)
+                                _set_pipeline_status "$state_file" "failed"
+                                eb_emit_event "pipeline.end" "status=failed" "cycle=$_cyc_id" \
+                                    "reason=$_CYCLE_LAST_TERMINATED_REASON" "on_max=halt" \
+                                    "run_id=$_runner_run_id" "issue=$_runner_issue"
+                                _render_pipeline_end "failed"
+                                _runner_ended=true
+                                error "Cycle $_cyc_id did not converge (reason=$_CYCLE_LAST_TERMINATED_REASON) and is on_max: halt — the run stops here; no later stage runs"
+                                return 1
+                                ;;
+                        esac
                         warn "$(_runner_unconverged_msg "$_cyc_id" "$_rc" "$_CYCLE_LAST_TERMINATED_REASON" "$_RUNNER_CYCLE_UNCONVERGED_ON_MAX")"
                     fi
                     ;;
