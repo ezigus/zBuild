@@ -1,0 +1,21 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 13 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 13,
+    "owned_files": [
+      "tests/integration/impact-pipeline-test.sh",
+      "tests/integration/impact-router-timeout-782-test.sh",
+      "tests/unit/impact-no-path-construction-test.sh",
+      "tests/unit/impact-v2-result-contract-test.sh"
+    ],
+    "testfiles": {
+      "tests/integration/impact-pipeline-test.sh": "fc7d84fbc5273c177fb39e728657540b5b2d1f51",
+      "tests/integration/impact-router-timeout-782-test.sh": "27a31d636c2969cd58e5290b0f29d9d7bd97f3de",
+      "tests/unit/impact-no-path-construction-test.sh": "6d048cc3e48a0eed7759d5fdb63e8e9369b7cc42",
+      "tests/unit/impact-v2-result-contract-test.sh": "4764445e091c2fe56f36bf956509bfd6f5cfa947"
+    }
+  }
+}

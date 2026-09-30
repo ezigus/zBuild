@@ -7,5 +7,13 @@
     "tests/unit/impact-v2-disposition-test.sh",
     "tests/unit/impact-v2-result-contract-test.sh"
   ],
-  "wiring_files": []
+  "wiring_files": [],
+  "owned_files": {
+    "test-author": [
+      "tests/integration/impact-pipeline-test.sh",
+      "tests/integration/impact-router-timeout-782-test.sh",
+      "tests/unit/impact-no-path-construction-test.sh",
+      "tests/unit/impact-v2-result-contract-test.sh"
+    ]
+  }
 }
