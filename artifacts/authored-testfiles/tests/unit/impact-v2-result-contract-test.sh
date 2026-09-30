@@ -125,7 +125,7 @@ _s1a_rc2="$(jq -r '.result_contract // "MISSING"' "$_F_IMPACT" 2>/dev/null || ec
 _s1a_verdict="$(jq -r '.verdict // "MISSING"' "$_F_IMPACT" 2>/dev/null || echo MISSING)"
 _s1a_disp="$(jq -r '.disposition // "MISSING"' "$_F_IMPACT" 2>/dev/null || echo MISSING)"
 assert_eq "[#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → result_contract=2" "2" "$_s1a_rc2"
-assert_eq "[#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → verdict=error" "error" "$_s1a_verdict"
+assert_eq "[#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → verdict=broken" "broken" "$_s1a_verdict"
 assert_eq "[#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → disposition=broken" "broken" "$_s1a_disp"
 _s1a_reason="$(jq -r '.reason // "MISSING"' "$_F_IMPACT" 2>/dev/null || echo MISSING)"
 assert_eq "[#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → reason=missing_artifact_dir" \
@@ -152,7 +152,7 @@ _s1b_disp="$(jq -r '.disposition // "MISSING"' "$_s1b_out" 2>/dev/null || echo M
 _s1b_verdict="$(jq -r '.verdict // "MISSING"' "$_s1b_out" 2>/dev/null || echo MISSING)"
 _s1b_reason="$(jq -r '.reason // "MISSING"' "$_s1b_out" 2>/dev/null || echo MISSING)"
 assert_eq "[#1838/SPEC-1] missing required input → result_contract=2" "2" "$_s1b_rc2"
-assert_eq "[#1838/SPEC-1] missing required input → verdict=error" "error" "$_s1b_verdict"
+assert_eq "[#1838/SPEC-1] missing required input → verdict=broken" "broken" "$_s1b_verdict"
 assert_eq "[#1838/SPEC-1] missing required input → disposition=broken" "broken" "$_s1b_disp"
 assert_eq "[#1838/SPEC-1] missing required input → reason=input_missing" "input_missing" "$_s1b_reason"
 
@@ -301,11 +301,16 @@ printf '{"inputs":{"scope_manifest":"%s","design":"%s","plan":"%s"}}\n' \
 # Delete default-path files so a state_file-path-constructing plugin cannot succeed.
 rm -f "$_F_SCOPE" "$_F_DESIGN" "$_F_PLAN"
 
-# Spy: capture scope_manifest path ($1) passed by impact_run → _impact_run_entry.
-# Proves the engine's input index is used, not a state_file-derived construction.
+# Spy: capture all three input paths ($1=$scope, $2=$design, $3=$plan) passed by
+# impact_run → _impact_run_inner. Proves the engine's input index is used for
+# all three inputs, not state_file-derived path construction.
 _s7_spy_scope_file="$TEST_TEMP_DIR/spec7_spy_scope.txt"
+_s7_spy_design_file="$TEST_TEMP_DIR/spec7_spy_design.txt"
+_s7_spy_plan_file="$TEST_TEMP_DIR/spec7_spy_plan.txt"
 _impact_run_inner() {
     printf '%s' "$1" > "$_s7_spy_scope_file"
+    printf '%s' "$2" > "$_s7_spy_design_file"
+    printf '%s' "$3" > "$_s7_spy_plan_file"
     # Write a valid v2 impact.json so impact_run accepts success
     printf '{"result_contract":2,"verdict":"complete","disposition":"complete","reason":"verdict:complete","schema_version":1,"missing":[]}\n' \
         > "${4:-/dev/null}"
@@ -329,6 +334,12 @@ assert_eq "[#1838/SPEC-7] impact_run succeeds using ZBUILD_STAGE_INPUTS paths (r
 _s7_received_scope="$(cat "$_s7_spy_scope_file" 2>/dev/null || echo MISSING)"
 assert_eq "[#1838/SPEC-7] scope_manifest path from ZBUILD_STAGE_INPUTS (not state_file)" \
     "$_S7_SCOPE" "$_s7_received_scope"
+_s7_received_design="$(cat "$_s7_spy_design_file" 2>/dev/null || echo MISSING)"
+assert_eq "[#1838/SPEC-7] design path from ZBUILD_STAGE_INPUTS (not state_file)" \
+    "$_S7_DESIGN" "$_s7_received_design"
+_s7_received_plan="$(cat "$_s7_spy_plan_file" 2>/dev/null || echo MISSING)"
+assert_eq "[#1838/SPEC-7] plan path from ZBUILD_STAGE_INPUTS (not state_file)" \
+    "$_S7_PLAN" "$_s7_received_plan"
 
 # ─── SPEC-13: template accessor beats manifest config.router.timeout_s ────────
 # When impact's manifest declares config.router.timeout_s: 600 and a per-stage
@@ -365,7 +376,7 @@ for _s14_ev in \
     "impact.verdict.complete" \
     "impact.verdict.error" \
     "impact.verdict.incomplete"; do
-    if grep -qF "- $_s14_ev" <<< "$_s14_events_block" 2>/dev/null; then
+    if grep -qF -- "- $_s14_ev" <<< "$_s14_events_block" 2>/dev/null; then
         assert_pass "[#1838/SPEC-14] provides.events includes $_s14_ev"
     else
         assert_fail "[#1838/SPEC-14] provides.events includes $_s14_ev" \
@@ -406,7 +417,7 @@ fi
 
 _s17_vv_block="$(awk '/^  valid_verdicts:/{f=1;next} f && (/^  [^[:space:]-]/ || /^[^[:space:]]/){f=0} f{print}' "$_IMPACT_MF" 2>/dev/null || true)"
 for _s17_vv in "complete" "incomplete" "error"; do
-    if grep -qF "- $_s17_vv" <<< "$_s17_vv_block" 2>/dev/null; then
+    if grep -qF -- "- $_s17_vv" <<< "$_s17_vv_block" 2>/dev/null; then
         assert_pass "[#1838/SPEC-17] manifest valid_verdicts includes $_s17_vv"
     else
         assert_fail "[#1838/SPEC-17] manifest valid_verdicts includes $_s17_vv" \
