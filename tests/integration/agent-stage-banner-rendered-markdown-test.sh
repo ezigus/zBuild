@@ -78,7 +78,12 @@ export ZBUILD_STAGE_IO_FD=3
 # shellcheck source=../../plugins/agent/plan/plugin.sh
 source "$REPO_ROOT/plugins/agent/plan/plugin.sh"
 
-export ZBUILD_GOAL="banner integration test"
+# #1835: plan reads its inputs only from the engine's index and writes to the
+# engine's artifact dir — set both as the engine's dispatch does.
+printf '%s\n' "banner integration test" > "$STATE_DIR/intake.md"
+jq -n --arg g "$STATE_DIR/intake.md" --arg s "$STATE_DIR/scope-manifest.md" \
+    '{inputs:{intake_goal:$g, scope_manifest:$s}}' > "$STATE_DIR/stage-inputs.json"
+export ZBUILD_STAGE_INPUTS="$STATE_DIR/stage-inputs.json" ZBUILD_ARTIFACT_DIR="$STATE_DIR/artifacts"
 export ZBUILD_ISSUE="$_ZB_ID"
 
 set +e

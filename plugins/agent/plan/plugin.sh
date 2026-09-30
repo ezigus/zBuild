@@ -92,43 +92,10 @@ WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
 EOF
 }
 
-# ─── run ────────────────────────────────────────────────────────────────────
-# Hook called by the pipeline runner: plan_run(stage, state_file)
-# Derives artifact paths from state_dir and delegates to the inner function.
-plan_run() {
-    local state_file="${2:-}"
-    if [[ -z "$state_file" ]]; then
-        error "plan_run: state_file argument required"
-        stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/plan-summary.md}" "plan" "error" \
-            "the engine dispatched this stage with no state file, so it could not run" \
-            "No work was attempted. This is an engine contract violation, not a fault in the change."
-        return 2
-    fi
-    local state_dir; state_dir="$(dirname "$state_file")"
-    local artifacts_dir="$state_dir/artifacts"
-    mkdir -p "$artifacts_dir"
-
-    local scope_manifest="$state_dir/scope-manifest.md"
-    # Do not pre-check scope_manifest existence — apply_scope_redaction handles
-    # the missing-manifest fail-closed path (ADR-004) and the operator override.
-
-    local goal_text="${ZBUILD_GOAL:-}"
-    if [[ -z "$goal_text" ]]; then
-        if [[ -f "$state_dir/intake.md" ]]; then
-            goal_text="$(cat "$state_dir/intake.md")"
-        fi
-    fi
-    if [[ -z "$goal_text" ]]; then
-        error "plan_run: ZBUILD_GOAL is unset and $state_dir/intake.md is missing or empty"
-        return 2
-    fi
-
-    _plan_run_inner \
-        "$scope_manifest" \
-        "$goal_text" \
-        "$artifacts_dir/plan.json" \
-        "$artifacts_dir"
-}
+# The stage's entry point, its inputs and its result writer (#1835) live in
+# lib/entry.sh — plan_run is defined there.
+# shellcheck source=lib/entry.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/entry.sh"
 
 # ─── _plan_with_scope_files <plan-json> (#2189) ───────────────────────────────
 # The plan with `scope_files` added: its files[] and every step's files[],
@@ -334,7 +301,7 @@ _plan_run_inner() {
 
     if [[ -z "$scope_manifest" || -z "$goal_text" || -z "$output_plan_json" ]]; then
         error "_plan_run_inner: requires <scope_manifest> <goal_text> <output_plan_json> [artifact_dir]"
-        return 2
+        return 1
     fi
 
     mkdir -p "$artifact_dir"
@@ -839,20 +806,38 @@ $_plan_instructions"
                 # D9 (#1024) guard: scope_too_large is a SUCCESSFUL model run that
                 # hit a budget, NOT CLI unavailability. The plan plugin never
                 # calls _zbuild_record_cli_fail (only review/test_assessment do),
-                # so the #1024 counter is untouched here — rc=10 (scope_too_large)
+                # so the #1024 counter is untouched here — rc=1 (scope_too_large)
                 # and rc=9 (llm_unavailable) stay semantically distinct. Reset
                 # defensively in case a future wrapper records it for this path.
                 _zbuild_reset_cli_fail 2>/dev/null || true
 
-                # No fake plan.json. Terminal abort code (Wave A: rc=10, NOT rc=8;
-                # rc=8 is blocking_member_failure per ADR-013).
-                return 10
+                # v2 contract: write plan.json with out_of_turns disposition so
+                # the engine's verdict reader can surface disposition to the run log.
+                _plan_write_result "$output_plan_json" "error" "out_of_turns" \
+                    "plan exhausted its turn budget (turns=${_stl_turns:-unknown}) without a complete plan"
+
+                return 1
             fi
 
-            # (c) Genuine non-max_turns failure → existing claude_cli_failed path.
+            # (c) Genuine non-max_turns failure → write v2 result and return 1.
             local _reason="invalid_plan_response"
             [[ $router_rc -eq 0 && -z "$raw_response" ]] && _reason="empty_result_envelope"
             [[ $schema_failed -eq 1 ]] && _reason="schema_violation"
+            # The model answered with something that is not a plan → unusable.
+            # A failed router CALL is named by the shared mapping, never by this
+            # plugin (#1835; #2225 "chosen once, not per plugin").
+            local _v2_disp="unusable"
+            if [[ $router_rc -ne 0 ]]; then
+                local _rc_verdict="" _rc_reason="" _rc_disp=""
+                _router_rc_classify "$router_rc" _rc_verdict _rc_reason
+                _rc_disp="$(router_reason_disposition "${_rc_reason:-}")"
+                if [[ -n "$_rc_disp" ]]; then
+                    _v2_disp="$_rc_disp"
+                else
+                    warn "plan: router_reason_disposition returned nothing for rc=$router_rc reason=${_rc_reason:-<none>} — recording 'unusable'"
+                fi
+            fi
+            _plan_write_result "$output_plan_json" "error" "$_v2_disp" "$_reason"
             error "_plan_run_inner: no valid plan.json produced (reason=$_reason)"
             stage_summary_write "$artifact_dir/plan-summary.md" "plan" "error" \
                 "no valid plan.json produced ($_reason)" \
@@ -866,10 +851,23 @@ $_plan_instructions"
     # #2189: plan.json carries its own scope list, which the engine reads off
     # the plan's report instead of re-deriving it from plan.json by path.
     plan_json="$(_plan_with_scope_files "$plan_json")"
-    printf '%s\n' "$plan_json" | atomic_write "$output_plan_json"
 
     local step_count
     step_count="$(printf '%s' "$plan_json" | jq '.steps | length' 2>/dev/null || echo 0)"
+
+    # v2 contract (#1835): merge result fields into plan.json so the engine's
+    # verdict reader can surface disposition. plan.json is the sole result file.
+    # A plan without the v2 fields is not a result the engine can read — never
+    # write one silently (the old `|| printf "$plan_json"` fallback did).
+    local _v2_plan
+    if ! _v2_plan="$(jq -c --arg r "plan decomposed into ${step_count} step(s)" \
+            '. + {result_contract:2,verdict:"pass",disposition:"complete",reason:$r}' <<< "$plan_json")" \
+        || ! atomic_write "$output_plan_json" <<< "$_v2_plan"; then
+        error "_plan_run_inner: could not write $output_plan_json"
+        return 1
+    fi
+    plan_json="$_v2_plan"
+    _PLAN_RESULT_WRITTEN=1
 
     # ADR-018 Pattern 1 (#468): post-validate step.files[] against the
     # scope-manifest. Fail-soft — plan.json is written regardless; review

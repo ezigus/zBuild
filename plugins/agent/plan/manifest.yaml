@@ -9,6 +9,8 @@ description: |
 
 hooks:
   run: plan_run
+  # ADR-054 §7 (#1835): plan holds no live resources (no spawned processes, no
+  # locks, no open handles beyond what atomic_write closes) and declares no cleanup hook.
 requires:
   core:
     - redaction
@@ -19,6 +21,7 @@ requires:
 
 provides:
   role: planner
+  result_contract: 2
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
@@ -53,21 +56,18 @@ config:
   router:
     retries: 1
     retry_on_exhaustion: 1
-  # Writes no .verdict on either verdict channel; the engine falls back to
-  # pass for a well-formed primary (core/pipeline/verdict.sh). An ABSENT key
-  # is a lint failure; the explicit [] is the claim (#1708).
-  valid_verdicts: []
+    timeout_s: 300
+    max_turns: 45
+  valid_verdicts:
+    - pass
+    - error
   tier_default: T2
 
 inputs:
   - id: scope_manifest
     required: true
-  # Optional: only --goal runs set ZBUILD_GOAL; --issue runs fall back to
-  # intake.md, and the pre-dispatch check (ADR-055 §3) would refuse every one of
-  # them if this said required. #1835 replaces it with the `intake_goal` input.
-  - id: goal_string
-    source: external
-    required: false
+  - id: intake_goal
+    required: true
 
 outputs:
   - id: plan
@@ -103,7 +103,7 @@ outputs:
     role: checkpoint
   # ADR-055 §9: this stage's statement of what it DID. required:true —
   # written on every terminal verdict, so absence means something went wrong.
-  - id: plan_summary
+  - id: plan-summary.md
     path: "${artifact_dir}/plan-summary.md"
     type: plan-summary.md@1
     format: markdown

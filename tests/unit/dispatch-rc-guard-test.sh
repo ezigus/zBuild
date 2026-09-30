@@ -63,9 +63,11 @@ SYSGREP=/usr/bin/grep
 # carried since then. These two are the enforcing callers it never had (the
 # disposition table's `halt_unavailable` was announced, not acted on), and the
 # orchestrator arm that stops the generic catch-all collapsing 9 into 4.
+# #1835 removed the leaf-path rc=10 block from runner.sh (scope_too_large is
+# now a v2 disposition, not a special rc), lowering the count back to 35.
 # #1850 deletes them with the rest of the vocabulary.
 _PINNED="
-core/pipeline/runner.sh|36
+core/pipeline/runner.sh|35
 core/pipeline/cycle-orchestrator.sh|30
 core/pipeline/parallel-orchestrator.sh|4
 core/pipeline/strategies/map.sh|6
@@ -270,6 +272,20 @@ _wb_lc="$(_count_legacy "$REPO_ROOT/core/plugin-registry/lifecycle.sh")"
 _wb_lc="${_wb_lc//[$'\n\r ']/}"
 assert_eq "[SPEC-7] lifecycle.sh still has 0 legacy rc returns after write-boundary wiring (#1809)" \
     "0" "$_wb_lc"
+
+# ─────────────────────────────────────────────────────────────────────────────
+print_test_section "[#1835/SPEC-16] runner.sh legacy-rc count lowered from 36 to 35"
+
+# [#1835/SPEC-16][change]: the leaf-path `stage:*` case rc=10 block that handled
+# plan turn-budget exhaustion was deleted in the v2 migration (#1835). Its
+# deletion lowers the legacy-rc count in runner.sh from 36 to 35.  The _PINNED
+# ratchet above already pins runner.sh to 35; this section adds an explicitly-
+# tagged assertion so the acceptance-gate's NEGCTL check can locate it.
+# Fails at the merge-base (runner.sh still carries the rc=10 block → count=36).
+_s16_runner_count="$(_count_legacy "$REPO_ROOT/core/pipeline/runner.sh")"
+_s16_runner_count="${_s16_runner_count//[$'\n\r ']/}"
+assert_eq "[#1835/SPEC-16] runner.sh legacy-rc count is 35 after rc=10 block deletion" "35" \
+    "$_s16_runner_count"
 
 print_test_results
 exit $((FAIL > 0))
