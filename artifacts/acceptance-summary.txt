@@ -1,0 +1,41 @@
+acceptance SPEC violations — SPEC-9/SPEC-12 tagged as [guard] but the assertion FAILS at the merge-base — a guard must hold there by definition, so either the assertion contradicts its SPEC text or the SPEC is a mislabelled [change]
+NEGCTL PASS SPEC-1
+      design : impact_run writes a result_contract:2 JSON with verdict, disposition, and reason on every early-exit…
+      asserts: assert_eq "[#1838/SPEC-1] missing ZBUILD_ARTIFACT_DIR → rc=1" "1" "$_rc_s1a"
+NEGCTL PASS SPEC-2
+      design : impact_run installs a stage_signal_begin guard; an interruption before any result is written produce…
+      asserts: assert_eq "[#1838/SPEC-2] signal before result → result_contract=2" "2" "$_s2_rc2"
+NEGCTL PASS SPEC-3
+      design : _impact_run_inner writes result_contract:2 on router failure paths with disposition from router_reas…
+      asserts: assert_eq "[#1838/SPEC-3] rc=124 → _impact_run_inner returns rc=0 (graceful)" "0" "$_rc_s3a"
+NEGCTL PASS SPEC-4
+      design : _impact_run_inner writes result_contract:2 on the success path with disposition=complete and reason …
+      asserts: assert_eq "[#1838/SPEC-4] success path → rc=0" "0" "$_rc_s4"
+NEGCTL PASS SPEC-5
+      design : manifest.yaml declares result_contract: 2 under provides
+      asserts: assert_eq "[#1838/SPEC-5] manifest provides.result_contract=2" "2" "$_mf_rc2"
+NEGCTL PASS SPEC-6
+      design : manifest.yaml declares a config.router block with timeout_s: 600 and max_turns: 45
+      asserts: assert_pass "[#1838/SPEC-6] manifest config.router.timeout_s=600"
+NEGCTL PASS SPEC-7
+      design : impact_run reads scope_manifest, design, and plan input paths from ZBUILD_STAGE_INPUTS (the engine's…
+      asserts: assert_eq "[#1838/SPEC-7] impact_run succeeds using ZBUILD_STAGE_INPUTS paths (rc=0)" "0" "$_rc_s7"
+NEGCTL PASS SPEC-8
+      design : plugins/agent/impact/plugin.sh contains no hardcoded artifact path constructions (no string literals…
+      asserts: assert_fail "[#1838/SPEC-8] no 'artifacts_dir/design.md' literal in plugin.sh" \
+NEGCTL FAIL SPEC-9 guard_regressed
+      design : impact_run returns rc=0 on a router timeout (rc=124) — graceful error class preserved
+      asserts: assert_eq "[#1838/SPEC-9] impact_run rc=0 on router timeout (rc=124)" "0" "$_s9_rc"
+NEGCTL PASS SPEC-10 guard_spec
+      design : _impact_run_inner writes verdict=incomplete on a recoverable router failure (rc=124 or rc=1) so the …
+      asserts: assert_eq "[#1838/SPEC-10] rc=124 → verdict=incomplete (recoverable, cycle re-iterates)" \
+NEGCTL PASS SPEC-11 guard_spec
+      design : _impact_run_inner writes verdict=error on a genuine infra failure (rc=137 OOM kill) so the cycle blo…
+      asserts: assert_eq "[#1838/SPEC-11] rc=137 (OOM) → verdict=error (genuine infra failure, cycle blocked-predic…
+NEGCTL FAIL SPEC-12 guard_regressed
+      design : impact verdict and missing[] fields survive the v2 envelope merge — the success path output still ca…
+      asserts: assert_eq "[#1838/SPEC-12] incomplete path → result_contract=2 (v2 field)" \
+NEGCTL PASS SPEC-13 guard_spec
+      design : when impact's manifest declares config.router.timeout_s: 600 and a per-stage template accessor retur…
+      asserts: assert_eq "[#1838/SPEC-13] template (300) beats manifest default (600)" "300" "$_s13_got"
+REACHABILITY PASS plugins/agent/impact/manifest.yaml

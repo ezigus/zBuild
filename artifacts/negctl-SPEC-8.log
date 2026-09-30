@@ -1,0 +1,37 @@
+### SPEC-8 baseline tests/unit/impact-no-path-construction-test.sh
+
+[38;2;0;212;255m[1m  impact: no hardcoded artifact path constructions (#1838/SPEC-8)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m [#1838/SPEC-8] no 'artifacts_dir/design.md' literal in plugin.sh
+    [2mfound hardcoded path construction: artifacts_dir/design.md[0m
+  [38;2;248;113;113m✗[0m [#1838/SPEC-8] no 'state_dir/scope-manifest.md' literal in plugin.sh
+    [2mfound hardcoded path construction: state_dir/scope-manifest.md[0m
+  [38;2;248;113;113m✗[0m [#1838/SPEC-8] no 'artifacts_dir/plan.json' literal in plugin.sh
+    [2mfound hardcoded path construction: artifacts_dir/plan.json[0m
+  [38;2;248;113;113m✗[0m [#1838/SPEC-8] no 'state_dir/artifacts' path construction in plugin.sh
+    [2mfound hardcoded artifact dir construction from state_dir[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m4 of 4 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1838/SPEC-8] no 'artifacts_dir/design.md' literal in plugin.sh
+  [38;2;248;113;113m✗[0m [#1838/SPEC-8] no 'state_dir/scope-manifest.md' literal in plugin.sh
+  [38;2;248;113;113m✗[0m [#1838/SPEC-8] no 'artifacts_dir/plan.json' literal in plugin.sh
+  [38;2;248;113;113m✗[0m [#1838/SPEC-8] no 'state_dir/artifacts' path construction in plugin.sh
+
+### SPEC-8 head tests/unit/impact-no-path-construction-test.sh
+
+[38;2;0;212;255m[1m  impact: no hardcoded artifact path constructions (#1838/SPEC-8)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1838/SPEC-8] no 'artifacts_dir/design.md' literal in plugin.sh
+  [38;2;74;222;128m✓[0m [#1838/SPEC-8] no 'state_dir/scope-manifest.md' literal in plugin.sh
+  [38;2;74;222;128m✓[0m [#1838/SPEC-8] no 'artifacts_dir/plan.json' literal in plugin.sh
+  [38;2;74;222;128m✓[0m [#1838/SPEC-8] no 'state_dir/artifacts' path construction in plugin.sh
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 4 tests passed[0m
+
