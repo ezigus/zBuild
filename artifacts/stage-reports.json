@@ -1,0 +1,10 @@
+{
+  "scope_files": [
+    "plugins/agent/review-aggregator/manifest.yaml",
+    "plugins/agent/review-aggregator/plugin.sh",
+    "tests/unit/review-aggregator-roster-test.sh",
+    "tests/unit/review-aggregator-test.sh",
+    "tests/unit/review-aggregator-v2-test.sh"
+  ],
+  "wiring_files": []
+}
