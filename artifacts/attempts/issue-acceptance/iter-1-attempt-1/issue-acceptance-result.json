@@ -1,0 +1,9 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "The diff meets every issue requirement — result_contract:2 with verdict/disposition/reason on all exit paths, stage_signal_begin guard, router_reason_disposition for disposition on failure paths, no router_rc field, rc ∈ {0,1}, name-matched inputs via ZBUILD_STAGE_INPUTS with no path construction in plugin.sh, manifest declares result_contract:2 under provides and config.router with timeout_s:600/max_turns:45, cleanup absence recorded, and the test suite is green.",
+  "data": {
+    "unmet": []
+  }
+}
