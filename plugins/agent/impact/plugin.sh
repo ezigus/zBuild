@@ -100,7 +100,7 @@ _impact_run_entry() {
         _fallback_dir="$(dirname "${state_file:-.}")/artifacts"
         mkdir -p "$_fallback_dir" 2>/dev/null || true
         error "impact_run: ZBUILD_ARTIFACT_DIR is not set"
-        _impact_write_result "${_fallback_dir}/impact.json" "error" "broken" \
+        _impact_write_result "${_fallback_dir}/impact.json" "broken" "broken" \
             "missing_artifact_dir" || true
         return 1
     fi
@@ -116,7 +116,7 @@ _impact_run_entry() {
         [[ -z "$scope_manifest" ]] && _missing="scope_manifest"
         [[ -z "$design_md_path" ]] && _missing="${_missing:+$_missing, }design"
         error "impact_run: the engine's input index (ZBUILD_STAGE_INPUTS) names no $_missing"
-        _impact_write_result "${artifacts_dir}/impact.json" "error" "broken" "input_missing"
+        _impact_write_result "${artifacts_dir}/impact.json" "broken" "broken" "input_missing"
         return 1
     fi
 
