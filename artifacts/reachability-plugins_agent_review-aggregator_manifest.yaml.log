@@ -1,0 +1,73 @@
+### plugins/agent/review-aggregator/manifest.yaml reverted tests/unit/review-aggregator-v2-test.sh
+
+[38;2;0;212;255m[1m  review-aggregator — contract v2 (#1842)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m [#1842/SPEC-1] manifest declares result_contract: 2
+    [2moutput missing pattern: ^  result_contract: 2$[0m
+  [38;2;248;113;113m✗[0m [#1842/SPEC-2] valid_verdicts lists complete
+    [2moutput missing: complete[0m
+  [38;2;248;113;113m✗[0m [#1842/SPEC-2] valid_verdicts lists degraded
+    [2moutput missing: degraded[0m
+  [38;2;248;113;113m✗[0m [#1842/SPEC-3] review_report_md declares required: true
+    [2moutput missing: true[0m
+  [38;2;74;222;128m✓[0m [#1842/SPEC-4] success-path rc=0
+  [38;2;74;222;128m✓[0m [#1842/SPEC-4] result_contract is 2
+  [38;2;74;222;128m✓[0m [#1842/SPEC-4] verdict=complete
+  [38;2;74;222;128m✓[0m [#1842/SPEC-4] disposition=complete
+  [38;2;74;222;128m✓[0m [#1842/SPEC-4] reason is non-empty text
+  [38;2;74;222;128m✓[0m [#1842/SPEC-5] _ra_collect_lenses_glob absent from plugin.sh
+  [38;2;74;222;128m✓[0m [#1842/SPEC-5] lens-* wildcard absent from plugin.sh
+  [38;2;74;222;128m✓[0m [#1842/SPEC-6] empty-lenses rc=0
+  [38;2;74;222;128m✓[0m [#1842/SPEC-6] review-report.md written on empty-lenses exit path
+  [38;2;74;222;128m✓[0m [#1842/SPEC-11] empty-lenses result_contract is 2
+  [38;2;74;222;128m✓[0m [#1842/SPEC-11] empty-lenses verdict=complete
+  [38;2;74;222;128m✓[0m [#1842/SPEC-11] empty-lenses disposition=complete
+  [38;2;74;222;128m✓[0m [#1842/SPEC-11] empty-lenses reason is non-empty text
+  [38;2;74;222;128m✓[0m [#1842/SPEC-7] SIGTERM makes process exit non-zero (signal re-raised)
+  [38;2;74;222;128m✓[0m [#1842/SPEC-7] interrupted writes verdict:degraded
+  [38;2;74;222;128m✓[0m [#1842/SPEC-7] interrupted writes disposition:interrupted
+  [38;2;74;222;128m✓[0m [#1842/SPEC-7] summary written on SIGTERM path
+  [38;2;74;222;128m✓[0m [#1842/SPEC-12] manifest config: declares no router: key (ADR-017 §11 not applicable)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m4 of 22 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1842/SPEC-1] manifest declares result_contract: 2
+  [38;2;248;113;113m✗[0m [#1842/SPEC-2] valid_verdicts lists complete
+  [38;2;248;113;113m✗[0m [#1842/SPEC-2] valid_verdicts lists degraded
+  [38;2;248;113;113m✗[0m [#1842/SPEC-3] review_report_md declares required: true
+
+### plugins/agent/review-aggregator/manifest.yaml head tests/unit/review-aggregator-v2-test.sh
+
+[38;2;0;212;255m[1m  review-aggregator — contract v2 (#1842)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1842/SPEC-1] manifest declares result_contract: 2
+  [38;2;74;222;128m✓[0m [#1842/SPEC-2] valid_verdicts lists complete
+  [38;2;74;222;128m✓[0m [#1842/SPEC-2] valid_verdicts lists degraded
+  [38;2;74;222;128m✓[0m [#1842/SPEC-3] review_report_md declares required: true
+  [38;2;74;222;128m✓[0m [#1842/SPEC-4] success-path rc=0
+  [38;2;74;222;128m✓[0m [#1842/SPEC-4] result_contract is 2
+  [38;2;74;222;128m✓[0m [#1842/SPEC-4] verdict=complete
+  [38;2;74;222;128m✓[0m [#1842/SPEC-4] disposition=complete
+  [38;2;74;222;128m✓[0m [#1842/SPEC-4] reason is non-empty text
+  [38;2;74;222;128m✓[0m [#1842/SPEC-5] _ra_collect_lenses_glob absent from plugin.sh
+  [38;2;74;222;128m✓[0m [#1842/SPEC-5] lens-* wildcard absent from plugin.sh
+  [38;2;74;222;128m✓[0m [#1842/SPEC-6] empty-lenses rc=0
+  [38;2;74;222;128m✓[0m [#1842/SPEC-6] review-report.md written on empty-lenses exit path
+  [38;2;74;222;128m✓[0m [#1842/SPEC-11] empty-lenses result_contract is 2
+  [38;2;74;222;128m✓[0m [#1842/SPEC-11] empty-lenses verdict=complete
+  [38;2;74;222;128m✓[0m [#1842/SPEC-11] empty-lenses disposition=complete
+  [38;2;74;222;128m✓[0m [#1842/SPEC-11] empty-lenses reason is non-empty text
+  [38;2;74;222;128m✓[0m [#1842/SPEC-7] SIGTERM makes process exit non-zero (signal re-raised)
+  [38;2;74;222;128m✓[0m [#1842/SPEC-7] interrupted writes verdict:degraded
+  [38;2;74;222;128m✓[0m [#1842/SPEC-7] interrupted writes disposition:interrupted
+  [38;2;74;222;128m✓[0m [#1842/SPEC-7] summary written on SIGTERM path
+  [38;2;74;222;128m✓[0m [#1842/SPEC-12] manifest config: declares no router: key (ADR-017 §11 not applicable)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 22 tests passed[0m
+

@@ -1,0 +1,53 @@
+### SPEC-9 baseline tests/unit/review-aggregator-test.sh
+
+[38;2;0;212;255m[1m  review-aggregator — advisory lens collapse (#1141)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m review-aggregator manifest validates (kind: agent + requires.core)
+  [38;2;74;222;128m✓[0m review-aggregator is discovered
+  [38;2;74;222;128m✓[0m [SPEC-1] run returns 0 (advisory never aborts)
+  [38;2;74;222;128m✓[0m [SPEC-1] writes review-report.json
+  [38;2;74;222;128m✓[0m [SPEC-1] report has 4 lenses (one per lens-*.json)
+  [38;2;74;222;128m✓[0m [SPEC-1] schema_version present
+  [38;2;74;222;128m✓[0m [SPEC-2] flat findings de-duped to 2
+  [38;2;74;222;128m✓[0m [SPEC-2] merged finding carries the correctness lens
+  [38;2;74;222;128m✓[0m [SPEC-2] merged finding carries the security lens
+  [38;2;74;222;128m✓[0m [SPEC-2] merged finding takes MAX severity (high)
+  [38;2;74;222;128m✓[0m [SPEC-2] y.sh stays a separate critical finding
+  [38;2;74;222;128m✓[0m [SPEC-3] critical finding → merge_readiness=needs_attention
+  [38;2;74;222;128m✓[0m [SPEC-3] report carries no verdict field
+  [38;2;74;222;128m✓[0m [SPEC-3] needs_attention report carries non-empty escalation_note
+  [38;2;74;222;128m✓[0m [SPEC-3] no coercion vocabulary in review-aggregator source
+  [38;2;74;222;128m✓[0m [SPEC-4] md names the correctness lens + score
+  [38;2;74;222;128m✓[0m [SPEC-4] md renders a finding message (not blank)
+  [38;2;74;222;128m✓[0m [SPEC-4] de-duped section names contributing lenses
+  [38;2;74;222;128m✓[0m [SPEC-5] aggregator wrote its combined lenses array
+  [38;2;74;222;128m✓[0m [SPEC-5] _ra_aggregate output matches _rr_aggregate byte-for-byte
+  [38;2;74;222;128m✓[0m [SPEC-6] empty lens group returns 0
+  [38;2;74;222;128m✓[0m [SPEC-6] a report is still written on an empty group
+  [38;2;74;222;128m✓[0m [SPEC-6] empty group → 0 lenses
+  [38;2;74;222;128m✓[0m [SPEC-6] empty group → 0 findings
+  [38;2;74;222;128m✓[0m [SPEC-6] review_aggregator.no_lenses event emitted
+  [38;2;74;222;128m✓[0m [SPEC-7] malformed lens file still returns 0
+  [38;2;74;222;128m✓[0m [SPEC-7] malformed lens collected as empty entry (2 lenses)
+  [38;2;74;222;128m✓[0m [SPEC-8] review_aggregator_run(stage, state_file) returns 0
+  [38;2;74;222;128m✓[0m [SPEC-8] hook writes review-report.json into artifacts dir
+
+  [38;2;0;212;255mSPEC-9: io-gated prose print[0m
+  [38;2;74;222;128m✓[0m [SPEC-9a] prose report printed to fd-2 (stdout dest)
+  [38;2;74;222;128m✓[0m [SPEC-9a] merge-readiness line printed
+  [38;2;74;222;128m✓[0m [SPEC-9b] file-only dest → aggregator prints nothing
+
+  [38;2;0;212;255mSPEC-10: a lens that did not run is reported as not run[0m
+  [38;2;74;222;128m✓[0m [SPEC-10] did_not_run names the lens that did not run
+  [38;2;74;222;128m✓[0m [SPEC-10] the summary says so
+  [38;2;74;222;128m✓[0m [SPEC-10] a review with a missing lens is never ready
+  [38;2;74;222;128m✓[0m [SPEC-10] the rendered report says so too
+  [38;2;74;222;128m✓[0m [SPEC-10] a lens file without a disposition counts as run
+  [38;2;74;222;128m✓[0m [#1842/SPEC-8] hook returns 0 (advisory never aborts)
+  [38;2;74;222;128m✓[0m [#1842/SPEC-9] _ra_aggregate output matches _rr_aggregate byte-for-byte
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 39 tests passed[0m
+
