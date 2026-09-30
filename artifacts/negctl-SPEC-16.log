@@ -1,4 +1,4 @@
-### SPEC-7 baseline tests/unit/impact-v2-result-contract-test.sh
+### SPEC-16 baseline tests/unit/impact-v2-result-contract-test.sh
 
 [38;2;0;212;255m[1m  impact: v2 result contract — impact.json on all exit paths (#1838)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -138,7 +138,7 @@
   [38;2;248;113;113m✗[0m [#1838/SPEC-17] manifest valid_verdicts includes incomplete
   [38;2;248;113;113m✗[0m [#1838/SPEC-17] manifest valid_verdicts includes error
 
-### SPEC-7 head tests/unit/impact-v2-result-contract-test.sh
+### SPEC-16 head tests/unit/impact-v2-result-contract-test.sh
 
 [38;2;0;212;255m[1m  impact: v2 result contract — impact.json on all exit paths (#1838)[0m
 [2m  ══════════════════════════════════════════[0m

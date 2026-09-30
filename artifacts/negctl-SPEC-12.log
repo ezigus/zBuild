@@ -43,3 +43,37 @@
   [38;2;248;113;113m✗[0m [#1838/SPEC-12] complete path → disposition=complete (v2 field)
   [38;2;248;113;113m✗[0m [#1838/SPEC-12] complete path → LLM data and v2 contract fields coexist
 
+### SPEC-12 head tests/integration/impact-pipeline-test.sh
+
+[38;2;0;212;255m[1m  impact agent — _impact_run_inner shape + verdict-driven feedback (Wave 19-J #744)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m1. impact returns verdict=incomplete with missing[] when plan has gaps[0m
+  [38;2;74;222;128m✓[0m T1: _impact_run_inner returns rc=0 on valid incomplete verdict
+  [38;2;74;222;128m✓[0m T2: impact.json written
+  [38;2;74;222;128m✓[0m T3: verdict=incomplete
+  [38;2;74;222;128m✓[0m T4: missing[] has 1 entry
+  [38;2;74;222;128m✓[0m T5: missing[0].files_to_add preserved
+  [38;2;74;222;128m✓[0m T6: no impact_feedback.md sidecar is written (ADR-060)
+  [38;2;74;222;128m✓[0m T7: missing[] carries reason + evidence in the envelope
+  [38;2;74;222;128m✓[0m [#1838/SPEC-12] incomplete path → result_contract=2 (v2 field)
+  [38;2;74;222;128m✓[0m [#1838/SPEC-12] incomplete path → missing[] and verdict survive v2 envelope merge
+
+  [38;2;0;212;255m2. impact returns verdict=complete when plan covers everything[0m
+  [38;2;74;222;128m✓[0m T8: _impact_run_inner returns rc=0 on complete verdict
+  [38;2;74;222;128m✓[0m T9: verdict=complete
+  [38;2;74;222;128m✓[0m T10: missing[] is empty when complete
+  [38;2;74;222;128m✓[0m [#1838/SPEC-12] complete path → result_contract=2 (v2 field)
+  [38;2;74;222;128m✓[0m [#1838/SPEC-12] complete path → disposition=complete (v2 field)
+  [38;2;74;222;128m✓[0m [#1838/SPEC-12] complete path → schema_version=1 (LLM data preserved)
+  [38;2;74;222;128m✓[0m [#1838/SPEC-12] complete path → LLM data and v2 contract fields coexist
+
+  [38;2;0;212;255m3. forward-compat: unified_plan from multi-planner has same shape, processed identically[0m
+  [38;2;74;222;128m✓[0m T11: _impact_run_inner processes unified_plan with identical contract
+  [38;2;74;222;128m✓[0m T12: unified_plan impact verdict=complete (forward-compat smoke)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 18 tests passed[0m
+

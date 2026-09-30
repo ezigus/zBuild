@@ -28,6 +28,9 @@
     [2mexpected: 2, got: MISSING[0m
   [38;2;248;113;113m✗[0m [#1838/SPEC-3] rc=1 → no router_rc field in v2 result
     [2mexpected: false, got: true[0m
+  [38;2;248;113;113m✗[0m [#1838/SPEC-3] rc=1 → disposition=unavailable (router_rc_nonzero)
+    [2mexpected: unavailable, got: MISSING[0m
+  [38;2;74;222;128m✓[0m [#1838/SPEC-3] rc=1 → reason=router_rc_nonzero (from rc classifier)
   [38;2;74;222;128m✓[0m [#1838/SPEC-10] rc=1 (max_turns) → verdict=incomplete (recoverable, cycle re-iterates)
 [38;2;248;113;113m[1m✗[0m _impact_run_inner: router rc=137 → verdict=error reason=router_oom_kill
   [38;2;74;222;128m✓[0m I6: rc=137 plugin returns rc=0 (graceful)
@@ -35,22 +38,27 @@
   [38;2;248;113;113m✗[0m [#1838/SPEC-3] rc=137 → result_contract=2 (v2 contract)
     [2mexpected: 2, got: MISSING[0m
   [38;2;74;222;128m✓[0m [#1838/SPEC-3] rc=137 → no router_rc field in v2 result
+  [38;2;248;113;113m✗[0m [#1838/SPEC-3] rc=137 → disposition=interrupted (router_oom_kill)
+    [2mexpected: interrupted, got: MISSING[0m
+  [38;2;74;222;128m✓[0m [#1838/SPEC-3] rc=137 → reason=router_oom_kill (from rc classifier)
   [38;2;74;222;128m✓[0m [#1838/SPEC-11] rc=137 (OOM) → verdict=error (genuine infra failure, cycle blocked-predicate)
   [38;2;248;113;113m✗[0m [#1838/SPEC-9] impact_run rc=0 on router timeout (rc=124)
     [2mexpected: 0, got: 2[0m
   [38;2;248;113;113m✗[0m [#1838/SPEC-9] impact.json written after router timeout
-    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/impact-router-timeout-782.6I2kOo/spec9-artifacts/impact.json[0m
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/impact-router-timeout-782.4VIkzZ/spec9-artifacts/impact.json[0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m8 of 26 tests failed[0m
+  [38;2;248;113;113m[1m10 of 30 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1838/SPEC-3] rc=124 → result_contract=2 (v2 contract)
   [38;2;248;113;113m✗[0m [#1838/SPEC-3] rc=124 → disposition=timed_out (from router_reason_disposition)
   [38;2;248;113;113m✗[0m [#1838/SPEC-3] rc=124 → no router_rc field in v2 result
   [38;2;248;113;113m✗[0m [#1838/SPEC-3] rc=1 → result_contract=2 (v2 contract)
   [38;2;248;113;113m✗[0m [#1838/SPEC-3] rc=1 → no router_rc field in v2 result
+  [38;2;248;113;113m✗[0m [#1838/SPEC-3] rc=1 → disposition=unavailable (router_rc_nonzero)
   [38;2;248;113;113m✗[0m [#1838/SPEC-3] rc=137 → result_contract=2 (v2 contract)
+  [38;2;248;113;113m✗[0m [#1838/SPEC-3] rc=137 → disposition=interrupted (router_oom_kill)
   [38;2;248;113;113m✗[0m [#1838/SPEC-9] impact_run rc=0 on router timeout (rc=124)
   [38;2;248;113;113m✗[0m [#1838/SPEC-9] impact.json written after router timeout
 

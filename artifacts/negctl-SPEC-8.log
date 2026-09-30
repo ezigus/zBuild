@@ -11,15 +11,21 @@
     [2mfound hardcoded path construction: artifacts_dir/plan.json[0m
   [38;2;248;113;113m✗[0m [#1838/SPEC-8] no 'state_dir/artifacts' path construction in plugin.sh
     [2mfound hardcoded artifact dir construction from state_dir[0m
+  [38;2;248;113;113m✗[0m [#1838/SPEC-8] no state_dir derived from state_file in plugin.sh
+    [2mfound state_file-derived path construction (v1 calling-convention)[0m
+  [38;2;248;113;113m✗[0m [#1838/SPEC-8] no $state_dir/ path constructions in plugin.sh
+    [2mfound $state_dir/<path> construction — plugin must not derive paths from state_file[0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m4 of 4 tests failed[0m
+  [38;2;248;113;113m[1m6 of 6 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1838/SPEC-8] no 'artifacts_dir/design.md' literal in plugin.sh
   [38;2;248;113;113m✗[0m [#1838/SPEC-8] no 'state_dir/scope-manifest.md' literal in plugin.sh
   [38;2;248;113;113m✗[0m [#1838/SPEC-8] no 'artifacts_dir/plan.json' literal in plugin.sh
   [38;2;248;113;113m✗[0m [#1838/SPEC-8] no 'state_dir/artifacts' path construction in plugin.sh
+  [38;2;248;113;113m✗[0m [#1838/SPEC-8] no state_dir derived from state_file in plugin.sh
+  [38;2;248;113;113m✗[0m [#1838/SPEC-8] no $state_dir/ path constructions in plugin.sh
 
 ### SPEC-8 head tests/unit/impact-no-path-construction-test.sh
 
@@ -30,8 +36,10 @@
   [38;2;74;222;128m✓[0m [#1838/SPEC-8] no 'state_dir/scope-manifest.md' literal in plugin.sh
   [38;2;74;222;128m✓[0m [#1838/SPEC-8] no 'artifacts_dir/plan.json' literal in plugin.sh
   [38;2;74;222;128m✓[0m [#1838/SPEC-8] no 'state_dir/artifacts' path construction in plugin.sh
+  [38;2;74;222;128m✓[0m [#1838/SPEC-8] no state_dir derived from state_file in plugin.sh
+  [38;2;74;222;128m✓[0m [#1838/SPEC-8] no $state_dir/ path constructions in plugin.sh
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 4 tests passed[0m
+  [38;2;74;222;128m[1mAll 6 tests passed[0m
 
