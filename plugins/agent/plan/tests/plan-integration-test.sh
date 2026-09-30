@@ -3,6 +3,7 @@
 # Exercises route_to_model -> _route_call_claude across the subprocess boundary
 # (real subshell, real exec) and verifies the scope post-validation contract
 # from ADR-018 Pattern 1 (#468).
+# shellcheck disable=SC2034  # PLAN_GOAL / CANNED_PLAN are read by plan-integration-lib.sh's _run_plan and model mock
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,77 +18,8 @@ print_test_header "plugin: plan — integration (real claude stub, subprocess bo
 
 setup_test_env "plugin-plan-integration"
 
-# #1921 follow-up: reserved test identity (zb_test_issue). These were real
-# issue numbers; a run keyed to one writes fabricated prior work onto that
-# issue's state branch. Only identity positions and the strings DERIVED from
-# them are swept — a bare number elsewhere is not an identity.
-_ZB_ID="$(zb_test_issue)"
-
-export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
-export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
-export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
-export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
-mkdir -p "$ZBUILD_EVENTS_DIR"
-
-PLUGIN_DIR="$REPO_ROOT/plugins/agent/plan"
-
-STATE_DIR="$TEST_TEMP_DIR/state"
-STATE_FILE="$STATE_DIR/pipeline-state.json"
-ARTIFACTS_DIR="$STATE_DIR/artifacts"
-mkdir -p "$STATE_DIR" "$ARTIFACTS_DIR"
-echo '{"schema_version":1,"run_id":"test","issue":"'"$_ZB_ID"'","stage_statuses":{}}' > "$STATE_FILE"
-
-cat > "$STATE_DIR/scope-manifest.md" <<'SCOPE'
-+ core/
-+ plugins/
-SCOPE
-# ADR-043: redaction is owned by route_to_model, which reads the manifest from
-# ZBUILD_SCOPE_MANIFEST (the runner exports it per-stage). Export it so the
-# router performs REAL redaction — this is what wraps out-of-scope paths in the
-# resumed-context splice (the [SPEC-2][guard] assertion below).
-export ZBUILD_SCOPE_MANIFEST="$STATE_DIR/scope-manifest.md"
-
-PLAN_GOAL="integration test goal"
-export ZBUILD_RUN_ID="integ-test"
-export ZBUILD_ISSUE="$_ZB_ID"
-
-# Stub a real `claude` binary on PATH. route_to_model -> _route_call_claude
-# resolves it via `command -v claude` and then execs it.
-#
-# #476: envelope-aware via the shared helper. Plan now exports
-# ZBUILD_ROUTER_JSON_OUTPUT=1 (ADR-018 Pattern 1 decision #8), so the router
-# adds --output-format json. The helper wraps in envelope on that argv;
-# otherwise emits raw.
-CANNED_RESPONSE_FILE="$TEST_TEMP_DIR/claude-canned.json"
-: > "$CANNED_RESPONSE_FILE"
-install_envelope_mock_claude --file "$CANNED_RESPONSE_FILE"
-
-# Source plugin
-# shellcheck source=../../../../plugins/agent/plan/plugin.sh
-source "$PLUGIN_DIR/plugin.sh"
-
-# #1835: plan reads its inputs ONLY from the engine's index and writes to the
-# engine's artifact dir. _run_plan dispatches it the way the engine does
-# (core/plugin-registry/lifecycle.sh): PLAN_GOAL is the goal intake would have
-# written to intake.md; an index the test set itself is used as-is.
-_run_plan() {
-    local sf="${1:-}" sd si
-    if [[ -z "$sf" ]]; then plan_run "plan"; return; fi
-    sd="$(dirname "$sf")"
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        ZBUILD_ARTIFACT_DIR="${ZBUILD_ARTIFACT_DIR:-$sd/artifacts}" plan_run "plan" "$sf"; return
-    fi
-    printf '%s\n' "${PLAN_GOAL-}" > "$sd/intake.md"
-    si="$sd/stage-inputs.json"
-    jq -n --arg g "$sd/intake.md" --arg s "$sd/scope-manifest.md" \
-        '{inputs:{intake_goal:$g, scope_manifest:$s}}' > "$si"
-    ZBUILD_STAGE_INPUTS="$si" ZBUILD_ARTIFACT_DIR="${ZBUILD_ARTIFACT_DIR:-$sd/artifacts}" plan_run "plan" "$sf"
-}
-
-# ADR-043: route_to_model fail-closes if the events log does not yet exist (in
-# production the runner emits stage events before any LLM stage). Create it so
-# variant 1's router redaction can emit, mirroring the runner.
-: > "$ZBUILD_EVENTS_JSONL"
+# shellcheck source=plan-integration-lib.sh
+source "$SCRIPT_DIR/plan-integration-lib.sh"
 
 # ─── Variant 1: in-scope plan → plan.json written, no violations ─────────────
 printf '%s\n' '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}' > "$CANNED_RESPONSE_FILE"
@@ -192,64 +124,8 @@ fi
 # ═══════════════════════════════════════════════════════════════════════════
 print_test_header "Issue #1052 — plan resilience (subprocess boundary, error mock)"
 
-# Route the router's diagnostic sidecar into the test artifacts dir.
-export ZBUILD_STATE_DIR="$STATE_DIR"
-export ZBUILD_ARTIFACT_DIR="$ARTIFACTS_DIR"
-export ZBUILD_CURRENT_STAGE=plan
-# Cross-run cache isolated under the test temp dir.
-export ZBUILD_PLAN_CONTEXT_DIR="$TEST_TEMP_DIR/plan-context-cache"
-mkdir -p "$ZBUILD_PLAN_CONTEXT_DIR"
+_plan_error_boundary_env
 
-# ── File-channel error mock (scrub-safe) ─────────────────────────────────────
-# WHY: route.sh runs claude under _zbuild_make_fresh_shell, which scrubs ALL
-# ZBUILD_* env vars before exec — so the shared install_envelope_mock_claude_error
-# tuning vars (ZBUILD_MOCK_SUBTYPE/RESULT/RC) never reach the mock subprocess and
-# it always emits its defaults. To exercise the NON-default error envelopes
-# (specific subtype / a valid-plan .result / a sentinel partial-reasoning) across
-# the real subprocess boundary, this mock reads its envelope fields from FILES
-# whose paths are baked into the mock at INSTALL time (mirrors
-# install_envelope_mock_claude --file, which survives the scrub for the same
-# reason). Same shape route.sh persists to its diagnostic sidecar; then exit rc.
-# Args: --subtype <s> --result-file <path> --rc <n> [--num-turns <n>]
-#       [--record-prompt <path>]
-_install_plan_error_mock_file() {
-    local subtype="error_max_turns" result_file="" rc="1" num_turns="25" prompt_record=""
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --subtype)       subtype="$2"; shift 2 ;;
-            --result-file)   result_file="$2"; shift 2 ;;
-            --rc)            rc="$2"; shift 2 ;;
-            --num-turns)     num_turns="$2"; shift 2 ;;
-            --record-prompt) prompt_record="$2"; shift 2 ;;
-            *)               shift ;;
-        esac
-    done
-    mkdir -p "$TEST_TEMP_DIR/bin"
-    local mock_bin="$TEST_TEMP_DIR/bin/claude"
-    cat > "$mock_bin" <<MOCK
-#!/usr/bin/env bash
-# Test-local scrub-safe error mock (#1052 plan integration). Reads envelope
-# fields from baked-in file paths, not env vars (which route.sh scrubs).
-prompt_text=""
-while [[ \$# -gt 0 ]]; do
-    case "\$1" in
-        -p) prompt_text="\${2:-}"; shift 2 ;;
-        *)  shift ;;
-    esac
-done
-if [[ -n "${prompt_record:-}" ]]; then
-    printf '%s' "\$prompt_text" > "$prompt_record"
-fi
-_result="\$(cat "$result_file" 2>/dev/null || true)"
-jq -n \\
-    --arg st "$subtype" \\
-    --argjson nt "$num_turns" \\
-    --arg r "\$_result" \\
-    '{type:"result",subtype:\$st,is_error:true,num_turns:\$nt,result:\$r,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
-exit $rc
-MOCK
-    chmod +x "$mock_bin"
-}
 
 # ─── [#1835/SPEC-3][change] max_turns → rc=1, disposition=out_of_turns ────────
 # After v2 migration, a max_turns exhaustion must write plan.json with
@@ -442,121 +318,6 @@ else
 fi
 unset ZBUILD_PLAN_RESUME ZBUILD_ISSUE_NUMBER 2>/dev/null || true
 
-# ═══════════════════════════════════════════════════════════════════════════
-#  Issue #1835 — SPEC-3 and SPEC-8 migration assertions
-# ═══════════════════════════════════════════════════════════════════════════
-print_test_header "Issue #1835 — plan contract v2: scope_too_large and router failure paths"
-
-# Restore clean state for #1835 tests.
-rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true
-: > "$ZBUILD_EVENTS_JSONL"
-PLAN_GOAL="a very large goal that exhausts the turn budget"
-unset ZBUILD_PLAN_RESUME ZBUILD_ISSUE_NUMBER 2>/dev/null || true
-
-# ─── [#1835/SPEC-3][change] scope_too_large path → rc=1, plan.json with disposition=out_of_turns ─
-# After migration: max_turns exhaustion writes plan.json with result_contract:2,
-# verdict=error, disposition=out_of_turns and returns rc=1 (not rc=10). plan.json
-# MUST be present (not absent as in the pre-migration contract).
-# Fails at baseline because the current plugin returns rc=10 and writes no plan.json.
-print_test_section "[#1835/SPEC-3] max_turns → rc=1, plan.json with disposition=out_of_turns"
-rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true
-: > "$ZBUILD_EVENTS_JSONL"
-# Default error mock = error_max_turns, exit 1 (same mock as the existing SPEC-3 block).
-install_envelope_mock_claude_error
-unset ZBUILD_MOCK_SUBTYPE ZBUILD_MOCK_RESULT ZBUILD_MOCK_RC ZBUILD_MOCK_NUM_TURNS 2>/dev/null || true
-set +e
-_run_plan "$STATE_FILE" >/dev/null 2>&1
-_s3v2_rc=$?
-set -e
-assert_eq "[#1835/SPEC-3] max_turns plan_run returns rc=1 (not rc=10 after v2 migration)" "1" "$_s3v2_rc"
-assert_file_exists "[#1835/SPEC-3] plan.json written on scope_too_large path" "$ARTIFACTS_DIR/plan.json"
-assert_eq "[#1835/SPEC-3] plan.json result_contract=2 on out_of_turns path" "2" \
-    "$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-3] plan.json verdict=error on out_of_turns path" "error" \
-    "$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-3] plan.json disposition=out_of_turns" "out_of_turns" \
-    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
-# plan.scope_too_large event must still fire — the signal is still needed even though
-# the exit code changed from 10 to 1.
-assert_event_emitted "[#1835/SPEC-3] plan.scope_too_large still emitted on v2 path" \
-    "$ZBUILD_EVENTS_JSONL" "plan.scope_too_large"
-
-# ─── [#1835/SPEC-8][change] non-max_turns router failure → plan.json via router_reason_disposition ─
-# A router failure with subtype≠error_max_turns and no recoverable plan must
-# write plan.json with verdict=error and disposition resolved from router_reason_disposition:
-# timed_out for rc=124 (router_timeout), interrupted for rc=137 (router_oom_kill),
-# misconfigured for rc=2 (router_config_error). rc=1 on all paths.
-# Fails at baseline because the non-max_turns failure path does not write plan.json at all.
-print_test_section "[#1835/SPEC-8] non-max_turns router failure writes plan.json via router_reason_disposition"
-
-# rc=124 (wall-clock timeout) → disposition=timed_out
-rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true
-: > "$ZBUILD_EVENTS_JSONL"
-export ZBUILD_PLAN_RESUME=0
-_S8_RESULT="$TEST_TEMP_DIR/s8-timeout-result.txt"
-printf '%s' "" > "$_S8_RESULT"
-_install_plan_error_mock_file --subtype "error_during_execution" \
-    --result-file "$_S8_RESULT" --rc 124
-set +e
-_run_plan "$STATE_FILE" >/dev/null 2>&1
-_s8_timeout_rc=$?
-set -e
-assert_eq "[#1835/SPEC-8] router timeout (rc=124) → plugin rc=1" "1" "$_s8_timeout_rc"
-assert_file_exists "[#1835/SPEC-8] router timeout writes plan.json" "$ARTIFACTS_DIR/plan.json"
-assert_eq "[#1835/SPEC-8] router timeout result_contract=2" "2" \
-    "$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-8] router timeout verdict=error" "error" \
-    "$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-8] router timeout disposition=timed_out" "timed_out" \
-    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
-
-# rc=137 (OOM kill) → disposition=interrupted
-rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true
-: > "$ZBUILD_EVENTS_JSONL"
-_S8_OOM_RESULT="$TEST_TEMP_DIR/s8-oom-result.txt"
-printf '%s' "" > "$_S8_OOM_RESULT"
-_install_plan_error_mock_file --subtype "error_during_execution" \
-    --result-file "$_S8_OOM_RESULT" --rc 137
-set +e
-_run_plan "$STATE_FILE" >/dev/null 2>&1
-_s8_oom_rc=$?
-set -e
-assert_eq "[#1835/SPEC-8] OOM kill (rc=137) → plugin rc=1" "1" "$_s8_oom_rc"
-assert_file_exists "[#1835/SPEC-8] OOM kill writes plan.json" "$ARTIFACTS_DIR/plan.json"
-assert_eq "[#1835/SPEC-8] OOM kill result_contract=2" "2" \
-    "$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-8] OOM kill verdict=error" "error" \
-    "$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-8] OOM kill disposition=interrupted" "interrupted" \
-    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
-
-# rc=2 (router config error) → disposition=misconfigured
-# route.sh normalises all non-124/137 claude binary exit codes to rc=1 (see
-# _route_call_claude case statement). The real router rc=2 path comes from the
-# router's own setup checks BEFORE the claude binary is invoked — specifically
-# the max_turns validation at the top of _route_call_claude. Setting
-# ZBUILD_ROUTER_MAX_TURNS to a non-numeric value forces that path: the resolver
-# returns the invalid value, the validator fires, and route_to_model returns 2
-# without ever calling the claude binary. This is the router_config_error case
-# _router_rc_classify maps to disposition=misconfigured.
-rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true
-: > "$ZBUILD_EVENTS_JSONL"
-export ZBUILD_ROUTER_MAX_TURNS="INVALID_MAX_TURNS_1835"
-set +e
-_run_plan "$STATE_FILE" >/dev/null 2>&1
-_s8_cfg_rc=$?
-set -e
-unset ZBUILD_ROUTER_MAX_TURNS 2>/dev/null || true
-assert_eq "[#1835/SPEC-8] config error (rc=2) → plugin rc=1" "1" "$_s8_cfg_rc"
-assert_file_exists "[#1835/SPEC-8] config error writes plan.json" "$ARTIFACTS_DIR/plan.json"
-assert_eq "[#1835/SPEC-8] config error result_contract=2" "2" \
-    "$(jq -r '.result_contract // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-8] config error verdict=error" "error" \
-    "$(jq -r '.verdict // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
-assert_eq "[#1835/SPEC-8] config error disposition=misconfigured" "misconfigured" \
-    "$(jq -r '.disposition // empty' "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true)"
-
-unset ZBUILD_PLAN_RESUME 2>/dev/null || true
 
 cleanup_test_env
 print_test_results

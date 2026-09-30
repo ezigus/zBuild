@@ -15,6 +15,8 @@
 #             never a path derived from the state file
 # P6 [change] plugin.sh constructs no input or artifact path — brace forms
 #             included (the run's SPEC-12 grep missed `${state_dir}/…`)
+# P7 [change] a router failure the shared mapping cannot name is said out loud,
+#             not silently replaced by the plugin's own word (review #2237)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -94,6 +96,20 @@ jq '.inputs |= del(.intake_goal)' "$D4b/stage-inputs.json" > "$D4b/si.tmp" && mv
   export ZBUILD_ARTIFACT_DIR="$TEST_TEMP_DIR/nogoal/art"
   plan_run plan "$SF4b" ) >/dev/null 2>&1
 assert_eq "[P4] an index without intake_goal is not rescued by ZBUILD_GOAL" "0" "$(wc -l < "$MODEL_CALLS" | tr -d ' ')"
+assert_eq "[P4] ...and says the engine gave it no intake_goal (broken)" "broken" \
+    "$(jq -r '.disposition // empty' "$TEST_TEMP_DIR/nogoal/art/plan.json" 2>/dev/null)"
+
+print_test_section "P7: a router failure the shared mapping cannot name"
+# Cannot happen today (the classifier has a catch-all the mapping covers), but
+# the plugin's own "unusable" must not stand in silently for the shared word.
+SF7="$(_stage unmapped)"; D7="$(dirname "$SF7")"
+_err7="$(
+    route_to_model() { printf '%s' '{"error":"x"}'; return 1; }
+    router_reason_disposition() { printf ''; }
+    export ZBUILD_STAGE_INPUTS="$D7/stage-inputs.json" ZBUILD_ARTIFACT_DIR="$TEST_TEMP_DIR/unmapped/art"
+    plan_run plan "$SF7" 2>&1 >/dev/null
+)" || true
+assert_contains "[P7] the plugin says the shared mapping returned nothing" "$_err7" "router_reason_disposition returned nothing"
 
 print_test_section "P1: an outside signal"
 SF1="$(_stage sig)"; D1="$(dirname "$SF1")"
