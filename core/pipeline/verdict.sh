@@ -420,8 +420,9 @@ _verdict_read_result() {
             # declares (#1708). #1838 wrote `broken` (a disposition word) as a
             # verdict and every gate passed it, because this read it as `warn`.
             # A manifest that declares no list is the lint's to refuse.
-            local _vd_rc=0 _decl_verdict
-            _decl_verdict="$(jq -r '.verdict // empty' "$resolved" 2>/dev/null || true)"
+            # The verdict was read into <prefix>_verdict above — no second jq.
+            local _vd_rc=0 _vd_name="${p}_verdict" _decl_verdict
+            _decl_verdict="${!_vd_name}"
             manifest_verdict_declared "$manifest" "$_decl_verdict" || _vd_rc=$?
             [[ "$_vd_rc" -eq 1 ]] && \
                 printf -v "${p}_viol" '%s' "contract_violation:unknown_verdict:${_decl_verdict}"
