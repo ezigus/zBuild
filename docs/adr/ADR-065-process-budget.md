@@ -36,6 +36,14 @@ test shell resolves it to a file on `PATH` (or it is one of the fixture's mocks)
 total is within budget. Its failure output is the diagnosis: the top call sites and per-file
 totals, so the next reader starts where the forks are.
 
+> **Amended 2026-09-30 (#2236).** The count must not depend on load. The same tree measured 4,528
+> alone and 4,610 inside a full `npm test`: the worker pool's wait loop
+> (`core/orch/local_engine.sh`) ran `sleep 0.1` and `date +%s` once per poll, so it counted elapsed
+> time, not code (18 polls quiet, 44 under load). The clock read is now `$EPOCHSECONDS`, a builtin,
+> and a wait whose repeat count is elapsed time carries `# fork-budget-exempt: <why>` on its line. The
+> test lists marked sites apart ("exempt waits") and does not count them. The marker is only for a
+> poll's wait, never for work: a marked line that execs anything other than the wait hides real forks.
+
 ### §2 — The budget only ratchets down
 
 A PR that removes forks lowers `FORK_BUDGET` to just above its new measurement. A PR that must
