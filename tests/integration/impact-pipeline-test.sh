@@ -145,6 +145,18 @@ else
         "got: $(head -c 300 "$IMPACT_OUT" 2>/dev/null)"
 fi
 
+# [#1838/SPEC-12]: missing[] (LLM data) must survive the v2 envelope merge.
+_p12a_rc2=$(jq -r '.result_contract // empty' "$IMPACT_OUT" 2>/dev/null || true)
+assert_eq "[#1838/SPEC-12] incomplete path → result_contract=2 (v2 field)" \
+    "2" "${_p12a_rc2:-MISSING}"
+if jq -e 'has("verdict") and has("missing") and (.missing | length) > 0 and has("result_contract")' \
+        "$IMPACT_OUT" >/dev/null 2>&1; then
+    assert_pass "[#1838/SPEC-12] incomplete path → missing[] and verdict survive v2 envelope merge"
+else
+    assert_fail "[#1838/SPEC-12] incomplete path → missing[] and verdict survive v2 envelope merge" \
+        "got: $(head -c 300 "$IMPACT_OUT" 2>/dev/null)"
+fi
+
 print_test_section "2. impact returns verdict=complete when plan covers everything"
 
 route_to_model() {
@@ -166,6 +178,25 @@ assert_eq "T9: verdict=complete" "complete" "$verdict2"
 
 missing2_count=$(jq -r '.missing | length' "$IMPACT_OUT" 2>/dev/null)
 assert_eq "T10: missing[] is empty when complete" "0" "$missing2_count"
+
+# [#1838/SPEC-12]: LLM data (schema_version, verdict, missing[]) and v2 contract
+# fields (result_contract, disposition) coexist in the complete-path output.
+_p12b_rc2=$(jq -r '.result_contract // empty' "$IMPACT_OUT" 2>/dev/null || true)
+_p12b_disp=$(jq -r '.disposition // empty' "$IMPACT_OUT" 2>/dev/null || true)
+_p12b_sv=$(jq -r '.schema_version // empty' "$IMPACT_OUT" 2>/dev/null || true)
+assert_eq "[#1838/SPEC-12] complete path → result_contract=2 (v2 field)" \
+    "2" "${_p12b_rc2:-MISSING}"
+assert_eq "[#1838/SPEC-12] complete path → disposition=complete (v2 field)" \
+    "complete" "${_p12b_disp:-MISSING}"
+assert_eq "[#1838/SPEC-12] complete path → schema_version=1 (LLM data preserved)" \
+    "1" "${_p12b_sv:-MISSING}"
+if jq -e 'has("verdict") and has("missing") and has("result_contract") and has("disposition")' \
+        "$IMPACT_OUT" >/dev/null 2>&1; then
+    assert_pass "[#1838/SPEC-12] complete path → LLM data and v2 contract fields coexist"
+else
+    assert_fail "[#1838/SPEC-12] complete path → LLM data and v2 contract fields coexist" \
+        "got: $(head -c 300 "$IMPACT_OUT" 2>/dev/null)"
+fi
 
 print_test_section "3. forward-compat: unified_plan from multi-planner has same shape, processed identically"
 

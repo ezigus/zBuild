@@ -76,12 +76,22 @@ assert_eq "I2: reason=router_timeout preserved in artifact" "router_timeout" "$r
 
 # ADR-060: the best-effort note was a model-free prose string duplicating what
 # reason + router_rc already say. The re-iterate signal is now structural.
-if jq -e '.reason != null and .reason != "" and (.router_rc != null)' "$IMPACT_OUT" >/dev/null 2>&1; then
-    assert_pass "I2: structured re-iterate signal present (reason + router_rc)"
+if jq -e '.reason != null and .reason != ""' "$IMPACT_OUT" >/dev/null 2>&1; then
+    assert_pass "I2: structured reason carries the re-iterate signal"
 else
-    assert_fail "I2: structured re-iterate signal present (reason + router_rc)" \
+    assert_fail "I2: structured reason carries the re-iterate signal" \
         "got: $(head -c 200 "$IMPACT_OUT" 2>/dev/null)"
 fi
+
+_s3i_rc2="$(jq -r '.result_contract // "MISSING"' "$IMPACT_OUT" 2>/dev/null || echo MISSING)"
+_s3i_disp="$(jq -r '.disposition // "MISSING"' "$IMPACT_OUT" 2>/dev/null || echo MISSING)"
+_s3i_no_rrc="$(jq -r 'has("router_rc")' "$IMPACT_OUT" 2>/dev/null || echo true)"
+assert_eq "[#1838/SPEC-3] rc=124 → result_contract=2 (v2 contract)" "2" "$_s3i_rc2"
+assert_eq "[#1838/SPEC-3] rc=124 → disposition=timed_out (from router_reason_disposition)" \
+    "timed_out" "$_s3i_disp"
+assert_eq "[#1838/SPEC-3] rc=124 → no router_rc field in v2 result" "false" "$_s3i_no_rrc"
+assert_eq "[#1838/SPEC-10] rc=124 → verdict=incomplete (recoverable, cycle re-iterates)" \
+    "incomplete" "$verdict"
 
 events="$(cat "$ZBUILD_EVENTS_JSONL")"
 case "$events" in
@@ -123,6 +133,13 @@ case "$(cat "$ZBUILD_EVENTS_JSONL" 2>/dev/null)" in
     *) assert_fail "I5: impact.verdict.incomplete event NOT emitted" ;;
 esac
 
+_s3_r1_rc2="$(jq -r '.result_contract // "MISSING"' "$IMPACT_OUT" 2>/dev/null || echo MISSING)"
+_s3_r1_no_rrc="$(jq -r 'has("router_rc")' "$IMPACT_OUT" 2>/dev/null || echo true)"
+assert_eq "[#1838/SPEC-3] rc=1 → result_contract=2 (v2 contract)" "2" "$_s3_r1_rc2"
+assert_eq "[#1838/SPEC-3] rc=1 → no router_rc field in v2 result" "false" "$_s3_r1_no_rrc"
+assert_eq "[#1838/SPEC-10] rc=1 (max_turns) → verdict=incomplete (recoverable, cycle re-iterates)" \
+    "incomplete" "$(jq -r '.verdict' "$IMPACT_OUT" 2>/dev/null || echo MISSING)"
+
 # ─── I6 (#782 preserved): rc=137 (OOM) → verdict=error (genuine infra failure) ─
 # A timeout is recoverable (best-effort incomplete); an OOM kill is a genuine
 # infra error and keeps the verdict=error class so the cycle can flag it.
@@ -134,6 +151,41 @@ _impact_run_inner "$SCOPE_MANIFEST" "$DESIGN_MD" "$PLAN_JSON" "$IMPACT_OUT" "$AR
 assert_eq "I6: rc=137 plugin returns rc=0 (graceful)" "0" "$rc"
 assert_eq "I6: rc=137 (OOM) → verdict=error (error class preserved, not best-effort)" \
     "error" "$(jq -r '.verdict' "$IMPACT_OUT" 2>/dev/null)"
+
+_s3_r137_rc2="$(jq -r '.result_contract // "MISSING"' "$IMPACT_OUT" 2>/dev/null || echo MISSING)"
+_s3_r137_no_rrc="$(jq -r 'has("router_rc")' "$IMPACT_OUT" 2>/dev/null || echo true)"
+assert_eq "[#1838/SPEC-3] rc=137 → result_contract=2 (v2 contract)" "2" "$_s3_r137_rc2"
+assert_eq "[#1838/SPEC-3] rc=137 → no router_rc field in v2 result" "false" "$_s3_r137_no_rrc"
+assert_eq "[#1838/SPEC-11] rc=137 (OOM) → verdict=error (genuine infra failure, cycle blocked-predicate)" \
+    "error" "$(jq -r '.verdict' "$IMPACT_OUT" 2>/dev/null || echo MISSING)"
+
+# ─── SPEC-9: impact_run returns rc=0 on a router timeout (rc=124) ────────────
+
+_s9_artifacts="$TEST_TEMP_DIR/spec9-artifacts"
+mkdir -p "$_s9_artifacts"
+_s9_state_file="$TEST_TEMP_DIR/spec9-state.json"
+printf '{}' > "$_s9_state_file"
+_s9_inputs="$TEST_TEMP_DIR/spec9-inputs.json"
+printf '{"inputs":{"scope_manifest":"%s","design":"%s","plan":"%s"}}\n' \
+    "$SCOPE_MANIFEST" "$DESIGN_MD" "$PLAN_JSON" > "$_s9_inputs"
+
+export ZBUILD_ARTIFACT_DIR="$_s9_artifacts"
+export ZBUILD_STAGE_INPUTS="$_s9_inputs"
+stage_signal_begin() { return 0; }
+stage_signal_end() { return 0; }
+atomic_write() { cat > "$1"; }
+warn() { return 0; }
+stage_summary_write() { return 0; }
+route_to_model() { return 124; }
+: > "$ZBUILD_EVENTS_JSONL"
+
+_s9_rc=0
+impact_run "impact" "$_s9_state_file" 2>/dev/null || _s9_rc=$?
+unset ZBUILD_ARTIFACT_DIR ZBUILD_STAGE_INPUTS
+
+assert_eq "[#1838/SPEC-9] impact_run rc=0 on router timeout (rc=124)" "0" "$_s9_rc"
+assert_file_exists "[#1838/SPEC-9] impact.json written after router timeout" \
+    "$_s9_artifacts/impact.json"
 
 cleanup_test_env
 print_test_results
