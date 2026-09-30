@@ -1,0 +1,13 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "design_produced",
+  "data": {
+    "authored_at": "2026-09-30T03:50:59Z",
+    "authored_at_commit": "c725c1492dc2efa684b38fae07bf58458d7d210b",
+    "wiring_files": [
+      "plugins/agent/review-aggregator/manifest.yaml"
+    ]
+  }
+}
