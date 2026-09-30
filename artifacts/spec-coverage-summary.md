@@ -1,0 +1,5 @@
+## spec-coverage — uncovered
+
+- The explicit acceptance criterion "the plugin writes a conformant v2 result on **every** exit path — success, failure, and interruption" is not fully covered — SPEC-6 requires only that `review-report.md` (the summary) is written on the empty-lenses early-exit path, but no SPEC requires `review-report.json` to carry the v2 envelope (`result_contract:2`, `verdict`, `disposition`, `reason`) on that path.
+
+- NOT COVERED: v2 result JSON with full v2 fields written on the empty-lenses / failure exit path — SPEC-6 covers only the summary file on that path, leaving the result JSON without a v2-fields guard for the failure case
