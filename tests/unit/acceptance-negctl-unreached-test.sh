@@ -47,6 +47,9 @@
 #             bare and issue-prefixed tags, another issue's tags ignored, this
 #             SPEC's own lines ignored, colour codes stripped, the LAST one wins,
 #             nothing found in an empty or verdict-free log (review #2235)
+# U12 [guard]  the whole gate on a contract whose ONLY finding is
+#             unreached_at_base: not a specification fault, and `about` names
+#             the testfile (review #2235 round 3)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -283,6 +286,28 @@ printf 'no verdicts here\n' > "$_L11"
 assert_eq "[U11] a log with no verdict lines finds nothing" " rc=1" "$(unset ZBUILD_ISSUE; _lov SPEC-3)"
 : > "$_L11"
 assert_eq "[U11] an empty log finds nothing" " rc=1" "$(unset ZBUILD_ISSUE; _lov SPEC-3)"
+
+print_test_section "U12: the gate, when unreached_at_base is the only finding"
+REPO12="$(setup_git_temp_repo negctl-unreached-repo12)"
+( cd "$REPO12" || exit 1; "$GIT" checkout -q -b feature; mkdir -p tests
+  printf '#!/usr/bin/env bash\nnew_feature() { return 0; }\n' > impl.sh
+  cat > tests/u-test.sh <<'EOF12'
+#!/usr/bin/env bash
+set -euo pipefail
+impl="$(cd "$(dirname "$0")/.." && pwd)/impl.sh"
+# shellcheck disable=SC1090
+[[ -f "$impl" ]] && source "$impl"
+if declare -F new_feature >/dev/null; then echo "  ✓ [SPEC-1] the feature"; else echo "  ✗ [SPEC-1] the feature"; fi
+declare -F new_feature >/dev/null
+if declare -F new_feature >/dev/null; then echo "  ✓ [SPEC-2] a second feature"; else echo "  ✗ [SPEC-2] a second feature"; fi
+EOF12
+  chmod +x tests/u-test.sh impl.sh; "$GIT" add -A; "$GIT" commit -q -m u )
+printf '```acceptance\nSPEC-1[change]: the feature\nSPEC-2[change]: a second feature\nTESTFILES:\nSPEC-1: tests/u-test.sh\nSPEC-2: tests/u-test.sh\n```\n' > "$REPO12/design.md"
+_r12="$(_gate_run "$REPO12" 2)"
+assert_eq "[U12] the only failure is unreached_at_base" "unreached_at_base:SPEC-2" \
+    "$(jq -r '.failures | join(",")' "$_r12" 2>/dev/null)"
+assert_eq "[U12] not a specification fault, even on round 2" "" "$(jq -r '.fault // empty' "$_r12" 2>/dev/null)"
+assert_eq "[U12] about names the testfile" "tests/u-test.sh" "$(jq -r '.about // empty' "$_r12" 2>/dev/null)"
 
 cleanup_test_env
 print_test_results
