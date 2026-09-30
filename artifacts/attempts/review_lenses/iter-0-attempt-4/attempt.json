@@ -1,0 +1,12 @@
+{
+  "stage": "review_lenses",
+  "cycle_iter": 0,
+  "attempt": 4,
+  "rc": "0",
+  "generated_at": "2026-09-30T06:36:53Z",
+  "files": 2,
+  "outputs": {
+    "lens-sre.json": "changed",
+    "lens-sre-summary.md": "changed"
+  }
+}
