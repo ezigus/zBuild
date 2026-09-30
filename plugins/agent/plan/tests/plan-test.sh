@@ -56,6 +56,24 @@ CANNED_PLAN='{"schema_version":1,"issue":'"$_ZB_ID"',"title":"fixture","goal":"t
 # shellcheck source=../../../../plugins/agent/plan/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
 
+# #1835: plan reads its inputs ONLY from the engine's index and writes to the
+# engine's artifact dir. _run_plan dispatches it the way the engine does
+# (core/plugin-registry/lifecycle.sh): PLAN_GOAL is the goal intake would have
+# written to intake.md; an index the test set itself is used as-is.
+_run_plan() {
+    local sf="${1:-}" sd si
+    if [[ -z "$sf" ]]; then plan_run "plan"; return; fi
+    sd="$(dirname "$sf")"
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+        ZBUILD_ARTIFACT_DIR="${ZBUILD_ARTIFACT_DIR:-$sd/artifacts}" plan_run "plan" "$sf"; return
+    fi
+    printf '%s\n' "${PLAN_GOAL-}" > "$sd/intake.md"
+    si="$sd/stage-inputs.json"
+    jq -n --arg g "$sd/intake.md" --arg s "$sd/scope-manifest.md" \
+        '{inputs:{intake_goal:$g, scope_manifest:$s}}' > "$si"
+    ZBUILD_STAGE_INPUTS="$si" ZBUILD_ARTIFACT_DIR="${ZBUILD_ARTIFACT_DIR:-$sd/artifacts}" plan_run "plan" "$sf"
+}
+
 # ─── Mock: apply_scope_redaction — copy input to output, succeed ─────────────
 # Overrides the real function loaded by scope-redaction.sh above.
 apply_scope_redaction() {
@@ -91,10 +109,10 @@ route_to_model() {
 }
 
 # ─── Test 2: plan_run produces plan.json ─────────────────────────────────────
-export ZBUILD_GOAL="test goal"
+PLAN_GOAL="test goal"
 
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 
@@ -214,7 +232,7 @@ EVENTS_FILE="$ZBUILD_EVENTS_JSONL"
 : > "$EVENTS_FILE" 2>/dev/null || true
 CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh","plugins/agent/plan/plugin.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "in-scope plan returns rc=0" "0" "$rc"
@@ -228,7 +246,7 @@ assert_eq "[SPEC-2] in-scope plugin.result payload.scope_violations=0" "0" "${sv
 : > "$EVENTS_FILE"
 CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["legacy/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "out-of-scope plan returns rc=0 (fail-soft)" "0" "$rc"
@@ -246,7 +264,7 @@ assert_eq "scope_violations=1 in plugin.result" "1" "$sv"
 : > "$EVENTS_FILE"
 CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["legacy/a.sh","docs/b.md"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 set -e
 violation_count="$(jq -r 'select(.type=="plan.scope.violation") | .type' "$EVENTS_FILE" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "two offenders emit two violation events" "2" "$violation_count"
@@ -255,7 +273,7 @@ assert_eq "two offenders emit two violation events" "2" "$violation_count"
 : > "$EVENTS_FILE"
 CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/ok.sh","legacy/bad.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 set -e
 violation_count="$(jq -r 'select(.type=="plan.scope.violation") | .type' "$EVENTS_FILE" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "mixed plan reports only out-of-scope path" "1" "$violation_count"
@@ -266,7 +284,7 @@ assert_eq "mixed violation path is the offender" "legacy/bad.sh" "$voff"
 : > "$EVENTS_FILE"
 CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["/etc/passwd"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 set -e
 reason="$(jq -r 'select(.type=="plan.scope.violation") | .data.reason' "$EVENTS_FILE" 2>/dev/null | head -1)"
 assert_eq "absolute path violation reason=absolute_path" "absolute_path" "$reason"
@@ -275,7 +293,7 @@ assert_eq "absolute path violation reason=absolute_path" "absolute_path" "$reaso
 : > "$EVENTS_FILE"
 CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["../escape.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 set -e
 reason="$(jq -r 'select(.type=="plan.scope.violation") | .data.reason' "$EVENTS_FILE" 2>/dev/null | head -1)"
 assert_eq "traversal violation reason=out_of_repo" "out_of_repo" "$reason"
@@ -287,7 +305,7 @@ assert_eq "traversal violation reason=out_of_repo" "out_of_repo" "$reason"
 : > "$EVENTS_FILE"
 CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":[123],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "malformed files[] non-string returns rc=1" "1" "$rc"
@@ -298,7 +316,7 @@ assert_eq "malformed plan error reason=schema_violation (#476)" "schema_violatio
 : > "$EVENTS_FILE"
 CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"refactor only","files":[],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "empty files[] returns rc=0" "0" "$rc"
@@ -313,7 +331,7 @@ assert_eq "empty files[] emits no violations" "0" "$violation_count"
 : > "$EVENTS_FILE"
 CANNED_PLAN=''
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "empty .result returns rc=1 (#476)" "1" "$rc"
@@ -331,7 +349,7 @@ CANNED_PLAN='Now I have a complete picture.
 
 {"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "#478: prose-prefixed JSON returns rc=0" "0" "$rc"
@@ -364,7 +382,7 @@ printf 'test goal\n' > "$NO_SCOPE_STATE_DIR/intake.md"
 # No scope-manifest.md written — the router (not the plugin) owns fail-closed.
 
 set +e
-plan_run "plan" "$NO_SCOPE_STATE_FILE" >/dev/null 2>&1
+_run_plan "$NO_SCOPE_STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 
@@ -388,7 +406,7 @@ _842_clean() {
 
 # ─── #842-A: no cycle env → clean prompt (baseline) ─────────────────────────
 _842_clean
-set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
+set +e; _run_plan "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
 assert_eq "#842-A: plan_run rc=0 (no cycle env — plan is a leaf)" "0" "$rc"
 captured_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
 assert_contains "#842-A: prompt is non-empty (guard)" "$captured_prompt" "test goal"
@@ -406,7 +424,7 @@ export ZBUILD_CYCLE_ITER=2
 export ZBUILD_CYCLE_FEEDBACK_DIR="$TEST_TEMP_DIR/cycle-feedback-842"
 printf '%s' "STALE_SENTINEL_BODY" > "$ZBUILD_CYCLE_FEEDBACK_DIR/prior_plan.txt"
 printf '%s' "STALE_IMPACT_SENTINEL" > "$ZBUILD_CYCLE_FEEDBACK_DIR/prior_impact_feedback.txt"
-set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
+set +e; _run_plan "$STATE_FILE" >/dev/null 2>&1; rc=$?; set -e
 assert_eq "#842-B: plan_run rc=0 with stale feedback env" "0" "$rc"
 captured_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
 assert_contains "#842-B: prompt is non-empty (guard)" "$captured_prompt" "test goal"
@@ -496,10 +514,10 @@ mkdir -p "$ZBUILD_PLAN_CONTEXT_DIR"
 # the human-readable plan-context.md must be readable.
 print_test_section "[SPEC-1][change] persist plan-context on success"
 : > "$EVENTS_FILE"
-export ZBUILD_GOAL="test goal"
+PLAN_GOAL="test goal"
 CANNED_PLAN='{"schema_version":1,"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "[SPEC-1] plan_run rc=0 on success" "0" "$rc"
@@ -523,7 +541,7 @@ assert_file_exists "[SPEC-1] plan-context.md readable" \
 print_test_section "[SPEC-2][change] resume splices prior exploration context"
 : > "$EVENTS_FILE"
 : > "$_CAPTURED_PROMPT_FILE"
-export ZBUILD_GOAL="resume me please"
+PLAN_GOAL="resume me please"
 export ZBUILD_PLAN_RESUME=1
 _RESUME_TOKEN="PRIOR_EXPLORATION_SENTINEL_42"
 _gh="$(zbuild_goal_hash "resume me please")"
@@ -561,7 +579,7 @@ export ZBUILD_ISSUE_NUMBER="$_ZB_ID"
 _seed_repo_id="$(zbuild_repo_id)"
 _seed_plan_context "$ZBUILD_PLAN_CONTEXT_DIR/$_seed_repo_id/$_ZB_ID" "$_seed_repo_id" "$_ZB_ID"
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "[SPEC-2] plan_run rc=0 with resume enabled" "0" "$rc"
@@ -582,7 +600,7 @@ print_test_section "[SPEC-2][guard] resume refused on mismatch / disable"
 # (a) ZBUILD_PLAN_RESUME=0 disables resume even with a matching cache entry.
 : > "$EVENTS_FILE"; : > "$_CAPTURED_PROMPT_FILE"
 export ZBUILD_PLAN_RESUME=0
-set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; set -e
+set +e; _run_plan "$STATE_FILE" >/dev/null 2>&1; set -e
 _guard_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
 if grep -qF "$_RESUME_TOKEN" <<<"$_guard_prompt"; then
     assert_fail "[SPEC-2][guard] ZBUILD_PLAN_RESUME=0 must not splice prior context"
@@ -595,8 +613,8 @@ assert_eq "[SPEC-2][guard] no plan.context.resumed when disabled" "0" "$_resumed
 # (b) goal_hash mismatch — different goal text, same cache → no resume.
 : > "$EVENTS_FILE"; : > "$_CAPTURED_PROMPT_FILE"
 export ZBUILD_PLAN_RESUME=1
-export ZBUILD_GOAL="a completely different goal that does not match the cache"
-set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; set -e
+PLAN_GOAL="a completely different goal that does not match the cache"
+set +e; _run_plan "$STATE_FILE" >/dev/null 2>&1; set -e
 _guard_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
 if grep -qF "$_RESUME_TOKEN" <<<"$_guard_prompt"; then
     assert_fail "[SPEC-2][guard] goal_hash mismatch must not splice prior context"
@@ -609,14 +627,14 @@ assert_eq "[SPEC-2][guard] no plan.context.resumed on goal_hash mismatch" "0" "$
 # (c) scope-manifest change — matching goal_hash but the manifest hash differs
 # from the seeded scope_manifest_ref → refuse resume (Pillar B condition).
 : > "$EVENTS_FILE"; : > "$_CAPTURED_PROMPT_FILE"
-export ZBUILD_GOAL="resume me please"
+PLAN_GOAL="resume me please"
 # Mutate the live manifest so its hash no longer matches the seeded ref.
 cat > "$STATE_DIR/scope-manifest.md" <<'SCOPE2'
 + core/
 + plugins/
 + scripts/
 SCOPE2
-set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; set -e
+set +e; _run_plan "$STATE_FILE" >/dev/null 2>&1; set -e
 _guard_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
 if grep -qF "$_RESUME_TOKEN" <<<"$_guard_prompt"; then
     assert_fail "[SPEC-2][guard] scope-manifest change must not splice prior context"
@@ -636,7 +654,7 @@ cat > "$STATE_DIR/scope-manifest.md" <<'SCOPE'
 + plugins/
 SCOPE
 unset ZBUILD_ISSUE_NUMBER ZBUILD_PLAN_RESUME 2>/dev/null || true
-export ZBUILD_GOAL="test goal"
+PLAN_GOAL="test goal"
 
 # ─── [SPEC-4][change] envelope recovery from prose-wrapped/last-turn result ───
 # _plan_recover_envelope_json must salvage exactly one schema-valid plan object
@@ -694,7 +712,7 @@ CANNED_PLAN='{"schema_version":1,"title":"recovered-via-framework","goal":"g","s
 
 Trailing prose describing the plan. {"note":"brace-bearing postamble junk"}'
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "[SPEC-5] postamble-wrapped plan → framework recovery → rc=0" "0" "$rc"
@@ -720,7 +738,7 @@ persona_stage_framing() { return 1; }
 
 : > "$_CAPTURED_PROMPT_FILE"
 CANNED_PLAN='{"schema_version":1,"issue":'"$_ZB_ID"',"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
-set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; _spf_rc=$?; set -e
+set +e; _run_plan "$STATE_FILE" >/dev/null 2>&1; _spf_rc=$?; set -e
 assert_eq "[SPEC-1] plan_run rc=0 with persona absent" "0" "$_spf_rc"
 _spf_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
 if grep -q "You are a software planning agent" <<<"$_spf_prompt"; then
@@ -739,7 +757,7 @@ persona_stage_framing() {
 }
 
 : > "$_CAPTURED_PROMPT_FILE"
-set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; _spf_rc2=$?; set -e
+set +e; _run_plan "$STATE_FILE" >/dev/null 2>&1; _spf_rc2=$?; set -e
 assert_eq "[SPEC-2] plan_run rc=0 with persona present" "0" "$_spf_rc2"
 _spf_prompt2="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
 assert_contains "[SPEC-2] persona-present framing sentinel appears in prompt" \
@@ -780,7 +798,7 @@ route_to_model() {
 
 : > "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true
 rm -f "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true
-set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; _rc1727=$?; set -e
+set +e; _run_plan "$STATE_FILE" >/dev/null 2>&1; _rc1727=$?; set -e
 
 # THE ASSERTION THAT REDDENS AT THE MERGE-BASE: rc=124 used to return 1 here.
 assert_eq "[#1727] rc=124 with a recoverable plan -> rc=0 (was: fatal 1)" \
@@ -825,7 +843,7 @@ fi
 # about REACHING the decision, not about passing regardless.
 route_to_model() { printf '%s' 'not-a-plan'; return 124; }
 rm -f "$ARTIFACTS_DIR/plan.json" 2>/dev/null || true
-set +e; plan_run "plan" "$STATE_FILE" >/dev/null 2>&1; _rc1727b=$?; set -e
+set +e; _run_plan "$STATE_FILE" >/dev/null 2>&1; _rc1727b=$?; set -e
 if [[ "$_rc1727b" -ne 0 ]]; then
     assert_pass "[#1727] guard: unrecoverable rc=124 still fails (rc=$_rc1727b)"
 else
@@ -846,7 +864,7 @@ _MANIFEST_FILE="$PLUGIN_DIR/manifest.yaml"
 
 # Restore canonical state for #1835 tests.
 CANNED_PLAN='{"schema_version":1,"issue":'"$_ZB_ID"',"title":"fixture","goal":"test goal","steps":[{"id":"step-1","description":"do thing","files":["core/foo.sh"],"estimated_lines":10}],"estimated_total_lines":10,"notes":""}'
-export ZBUILD_GOAL="test goal"
+PLAN_GOAL="test goal"
 unset ZBUILD_PLAN_RESUME ZBUILD_ISSUE_NUMBER ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR 2>/dev/null || true
 
 # Fresh state dir for v2-specific runs so earlier tests' plan.json writes don't
@@ -867,7 +885,7 @@ print_test_section "[#1835/SPEC-7] plan.json original fields survive v2 migratio
 : > "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true
 : > "$_CAPTURED_PROMPT_FILE"
 set +e
-plan_run "plan" "$_V2_STATE_FILE" >/dev/null 2>&1
+_run_plan "$_V2_STATE_FILE" >/dev/null 2>&1
 _s17_rc=$?
 set -e
 assert_eq "[#1835/SPEC-7] plan_run rc=0 on success" "0" "$_s17_rc"
@@ -948,7 +966,7 @@ CANNED_PLAN='{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1",
 rm -f "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
 set +e
-plan_run "plan" "$_S2_STATE_FILE" >/dev/null 2>&1
+_run_plan "$_S2_STATE_FILE" >/dev/null 2>&1
 _s2a_rc=$?
 set -e
 assert_eq "[#1835/SPEC-2] schema_violation rc=1" "1" "$_s2a_rc"
@@ -965,7 +983,7 @@ CANNED_PLAN=''
 rm -f "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
 set +e
-plan_run "plan" "$_S2_STATE_FILE" >/dev/null 2>&1
+_run_plan "$_S2_STATE_FILE" >/dev/null 2>&1
 _s2b_rc=$?
 set -e
 assert_eq "[#1835/SPEC-2] empty_result_envelope rc=1" "1" "$_s2b_rc"
@@ -986,7 +1004,7 @@ route_to_model() { printf '%s' 'this is not a plan at all'; return 0; }
 rm -f "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
 set +e
-plan_run "plan" "$_S2_STATE_FILE" >/dev/null 2>&1
+_run_plan "$_S2_STATE_FILE" >/dev/null 2>&1
 _s2c_rc=$?
 set -e
 unset -f route_to_model
@@ -1011,7 +1029,7 @@ _s2_rc1_expect="$(router_reason_disposition "$_s2_rc1_r")"
 route_to_model() { printf '%s' '{"error":"router failure"}'; return 1; }
 rm -f "$_S2_ARTIFACTS/plan.json" 2>/dev/null || true
 set +e
-plan_run "plan" "$_S2_STATE_FILE" >/dev/null 2>&1
+_run_plan "$_S2_STATE_FILE" >/dev/null 2>&1
 set -e
 unset -f route_to_model
 if [[ -n "$_ORIG_RTM_SPEC2" ]]; then eval "$_ORIG_RTM_SPEC2"; fi
@@ -1054,8 +1072,7 @@ _S5SCOPE_OLD
 # Custom manifest routed via ZBUILD_STAGE_INPUTS with a unique prefix.
 _S5_CUSTOM_MANIFEST="$TEST_TEMP_DIR/custom-scope-1835.md"
 printf '+ CUSTOM_SCOPE_1835/\n+ plugins/\n' > "$_S5_CUSTOM_MANIFEST"
-# Goal file — include intake_goal so the run succeeds even when ZBUILD_GOAL
-# is not used after migration.
+# Goal file — the index must name intake_goal too: plan reads its goal from the index only (#1835)
 _S5_GOAL_FILE="$TEST_TEMP_DIR/goal-spec5-1835.md"
 printf '%s\n' "test goal" > "$_S5_GOAL_FILE"
 _S5_SI="$TEST_TEMP_DIR/stage-inputs-spec5-1835.json"
@@ -1065,7 +1082,7 @@ jq -n --arg sm "$_S5_CUSTOM_MANIFEST" --arg ig "$_S5_GOAL_FILE" \
 : > "$_CAPTURED_PROMPT_FILE"
 export ZBUILD_STAGE_INPUTS="$_S5_SI"
 set +e
-plan_run "plan" "$_S5_STATE/pipeline-state.json" >/dev/null 2>&1
+_run_plan "$_S5_STATE/pipeline-state.json" >/dev/null 2>&1
 _s5_rc=$?
 set -e
 unset ZBUILD_STAGE_INPUTS 2>/dev/null || true
@@ -1084,7 +1101,7 @@ _S6_ARTIFACTS="$TEST_TEMP_DIR/spec6-artifacts-1835"
 mkdir -p "$_S6_ARTIFACTS"
 export ZBUILD_ARTIFACT_DIR="$_S6_ARTIFACTS"
 set +e
-plan_run "plan" >/dev/null 2>&1
+_run_plan >/dev/null 2>&1
 _s6_rc=$?
 set -e
 unset ZBUILD_ARTIFACT_DIR 2>/dev/null || true
@@ -1154,7 +1171,7 @@ assert_eq "[#1835/SPEC-10] exactly one primary: true in outputs block" "1" \
 # ─── [#1835/SPEC-11][change] reads goal from ZBUILD_STAGE_INPUTS intake_goal ─
 # plan_run must read the goal from the ZBUILD_STAGE_INPUTS-provided intake_goal
 # path and must NOT fall back to $state_dir/intake.md. Fails at baseline because
-# the plugin falls back to $state_dir/intake.md when ZBUILD_GOAL is unset.
+# the plugin reads it from the index only — no ZBUILD_GOAL, no $state_dir/intake.md (#1835).
 print_test_section "[#1835/SPEC-11] reads goal from ZBUILD_STAGE_INPUTS intake_goal path"
 _S11_STATE="$TEST_TEMP_DIR/state-spec11-1835"
 mkdir -p "$_S11_STATE/artifacts"
@@ -1175,20 +1192,20 @@ jq -n --arg ig "$_S11_GOAL_FILE" --arg sm "$_S11_STATE/scope-manifest.md" \
 : > "$_CAPTURED_PROMPT_FILE"
 CANNED_PLAN='{"schema_version":1,"issue":'"$_ZB_ID"',"title":"fixture","goal":"SI_INTAKE_GOAL_SENTINEL_1835","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
 export ZBUILD_STAGE_INPUTS="$_S11_SI"
-unset ZBUILD_GOAL 2>/dev/null || true
+unset PLAN_GOAL
 set +e
-plan_run "plan" "$_S11_STATE/pipeline-state.json" >/dev/null 2>&1
+_run_plan "$_S11_STATE/pipeline-state.json" >/dev/null 2>&1
 _s11_rc=$?
 set -e
 unset ZBUILD_STAGE_INPUTS 2>/dev/null || true
-export ZBUILD_GOAL="test goal"
+PLAN_GOAL="test goal"
 _s11_prompt="$(cat "$_CAPTURED_PROMPT_FILE" 2>/dev/null || true)"
 assert_eq "[#1835/SPEC-11] plan_run rc=0 when intake_goal provided via ZBUILD_STAGE_INPUTS" "0" "$_s11_rc"
 if grep -qF "SI_INTAKE_GOAL_SENTINEL_1835" <<< "$_s11_prompt"; then
     assert_pass "[#1835/SPEC-11] goal read from ZBUILD_STAGE_INPUTS intake_goal path"
 else
     assert_fail "[#1835/SPEC-11] goal read from ZBUILD_STAGE_INPUTS intake_goal path" \
-        "sentinel not in prompt — still using old fallback or ZBUILD_GOAL"
+        "sentinel not in prompt — goal not taken from the index"
 fi
 if grep -qF "OLD_FALLBACK_INTAKE_CONTENT_1835" <<< "$_s11_prompt"; then
     assert_fail "[#1835/SPEC-11] hardcoded \$state_dir/intake.md fallback must be removed"
@@ -1208,14 +1225,14 @@ _S11B_SI="$TEST_TEMP_DIR/stage-inputs-spec11b-1835.json"
 jq -n --arg ig "/nonexistent/intake-goal-1835.md" --arg sm "$_S11B_STATE/scope-manifest.md" \
     '{"inputs":{"intake_goal":$ig,"scope_manifest":$sm}}' > "$_S11B_SI"
 export ZBUILD_STAGE_INPUTS="$_S11B_SI"
-unset ZBUILD_GOAL 2>/dev/null || true
+unset PLAN_GOAL
 CANNED_PLAN='{"schema_version":1,"title":"fixture","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}'
 set +e
-plan_run "plan" "$_S11B_STATE/pipeline-state.json" >/dev/null 2>&1
+_run_plan "$_S11B_STATE/pipeline-state.json" >/dev/null 2>&1
 _s11b_rc=$?
 set -e
 unset ZBUILD_STAGE_INPUTS 2>/dev/null || true
-export ZBUILD_GOAL="test goal"
+PLAN_GOAL="test goal"
 assert_eq "[#1835/SPEC-11] absent intake_goal path → rc=1" "1" "$_s11b_rc"
 assert_file_exists "[#1835/SPEC-11] absent intake_goal writes plan.json with disposition=broken" \
     "$_S11B_STATE/artifacts/plan.json"
@@ -1240,14 +1257,14 @@ _S11C_SI="$TEST_TEMP_DIR/stage-inputs-spec11c-1835.json"
 jq -n --arg ig "$_S11C_GOAL" --arg sm "$_S11C_STATE/scope-manifest.md" \
     '{"inputs":{"intake_goal":$ig,"scope_manifest":$sm}}' > "$_S11C_SI"
 export ZBUILD_STAGE_INPUTS="$_S11C_SI"
-unset ZBUILD_GOAL 2>/dev/null || true
+unset PLAN_GOAL
 set +e
-plan_run "plan" "$_S11C_STATE/pipeline-state.json" >/dev/null 2>&1
+_run_plan "$_S11C_STATE/pipeline-state.json" >/dev/null 2>&1
 _s11c_rc=$?
 set -e
 chmod 644 "$_S11C_GOAL" 2>/dev/null || true
 unset ZBUILD_STAGE_INPUTS 2>/dev/null || true
-export ZBUILD_GOAL="test goal"
+PLAN_GOAL="test goal"
 assert_eq "[#1835/SPEC-11] unreadable intake_goal → rc=1" "1" "$_s11c_rc"
 assert_file_exists "[#1835/SPEC-11] unreadable intake_goal writes plan.json with disposition=broken" \
     "$_S11C_STATE/artifacts/plan.json"

@@ -47,7 +47,7 @@ SCOPE
 # resumed-context splice (the [SPEC-2][guard] assertion below).
 export ZBUILD_SCOPE_MANIFEST="$STATE_DIR/scope-manifest.md"
 
-export ZBUILD_GOAL="integration test goal"
+PLAN_GOAL="integration test goal"
 export ZBUILD_RUN_ID="integ-test"
 export ZBUILD_ISSUE="$_ZB_ID"
 
@@ -66,6 +66,24 @@ install_envelope_mock_claude --file "$CANNED_RESPONSE_FILE"
 # shellcheck source=../../../../plugins/agent/plan/plugin.sh
 source "$PLUGIN_DIR/plugin.sh"
 
+# #1835: plan reads its inputs ONLY from the engine's index and writes to the
+# engine's artifact dir. _run_plan dispatches it the way the engine does
+# (core/plugin-registry/lifecycle.sh): PLAN_GOAL is the goal intake would have
+# written to intake.md; an index the test set itself is used as-is.
+_run_plan() {
+    local sf="${1:-}" sd si
+    if [[ -z "$sf" ]]; then plan_run "plan"; return; fi
+    sd="$(dirname "$sf")"
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+        ZBUILD_ARTIFACT_DIR="${ZBUILD_ARTIFACT_DIR:-$sd/artifacts}" plan_run "plan" "$sf"; return
+    fi
+    printf '%s\n' "${PLAN_GOAL-}" > "$sd/intake.md"
+    si="$sd/stage-inputs.json"
+    jq -n --arg g "$sd/intake.md" --arg s "$sd/scope-manifest.md" \
+        '{inputs:{intake_goal:$g, scope_manifest:$s}}' > "$si"
+    ZBUILD_STAGE_INPUTS="$si" ZBUILD_ARTIFACT_DIR="${ZBUILD_ARTIFACT_DIR:-$sd/artifacts}" plan_run "plan" "$sf"
+}
+
 # ADR-043: route_to_model fail-closes if the events log does not yet exist (in
 # production the runner emits stage events before any LLM stage). Create it so
 # variant 1's router redaction can emit, mirroring the runner.
@@ -75,7 +93,7 @@ source "$PLUGIN_DIR/plugin.sh"
 printf '%s\n' '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}' > "$CANNED_RESPONSE_FILE"
 
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "variant 1: in-scope plan returns rc=0" "0" "$rc"
@@ -88,7 +106,7 @@ assert_eq "variant 1: no violation events" "0" "$v1_violations"
 printf '%s\n' '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["legacy/oops.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}' > "$CANNED_RESPONSE_FILE"
 
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "variant 2: out-of-scope returns rc=0 (fail-soft)" "0" "$rc"
@@ -108,7 +126,7 @@ printf 'Now I have a complete picture.\n\n%s\n' \
     > "$CANNED_RESPONSE_FILE"
 
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "variant 3 (#478): prose-prefixed envelope returns rc=0" "0" "$rc"
@@ -139,7 +157,7 @@ exec 3>"$BANNER_OUT"
 export ZBUILD_STAGE_IO_FD=3
 
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 
@@ -246,7 +264,7 @@ _S3V2_RESULT="$TEST_TEMP_DIR/s3v2-result.txt"
 printf '%s' "turn budget exhausted, not a valid plan" > "$_S3V2_RESULT"
 _install_plan_error_mock_file --subtype "error_max_turns" --result-file "$_S3V2_RESULT" --rc 1
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 _s3v2_rc=$?
 set -e
 assert_eq "[#1835/SPEC-3] max_turns plan_run returns rc=1 (not rc=10 after v2 migration)" "1" "$_s3v2_rc"
@@ -275,7 +293,7 @@ _S3G_RESULT="$TEST_TEMP_DIR/s3g-result.txt"
 printf '%s' "crashed partway, not a turn-budget exhaustion" > "$_S3G_RESULT"
 _install_plan_error_mock_file --subtype "error_during_execution" --result-file "$_S3G_RESULT" --rc 1
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 if [[ "$rc" -eq 10 ]]; then
@@ -298,7 +316,7 @@ _S1_RESULT="$TEST_TEMP_DIR/s1-result.txt"
 printf '%s' "SIDECAR_PARTIAL_REASONING_SENTINEL: explored core/router and plugins/agent/plan" > "$_S1_RESULT"
 _install_plan_error_mock_file --subtype "error_max_turns" --result-file "$_S1_RESULT" --rc 1
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 set -e
 assert_file_exists "[SPEC-1] plan-context.md written on scope_too_large" \
     "$ARTIFACTS_DIR/plan-context.md"
@@ -319,7 +337,7 @@ _S4_RESULT="$TEST_TEMP_DIR/s4-result.txt"
 printf '%s' '{"schema_version":1,"title":"recovered-from-envelope","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}' > "$_S4_RESULT"
 _install_plan_error_mock_file --subtype "error_max_turns" --result-file "$_S4_RESULT" --rc 1
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "[SPEC-4] recovered valid plan → rc=0" "0" "$rc"
@@ -340,7 +358,7 @@ unset ZBUILD_PLAN_RESUME 2>/dev/null || true
 print_test_section "[SPEC-2][change] dogfood resume across two runs"
 rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
-export ZBUILD_GOAL="dogfood resume goal across two runs"
+PLAN_GOAL="dogfood resume goal across two runs"
 export ZBUILD_PLAN_RESUME=1
 export ZBUILD_ISSUE_NUMBER="$_ZB_ID"
 # Run 1: error mock with a distinctive partial reasoning sentinel (file channel,
@@ -349,7 +367,7 @@ _R1_RESULT="$TEST_TEMP_DIR/dogfood-run1-result.txt"
 printf '%s' "DOGFOOD_RUN1_EXPLORATION: mapped the router and plan plugin" > "$_R1_RESULT"
 _install_plan_error_mock_file --subtype "error_max_turns" --result-file "$_R1_RESULT" --rc 1
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 set -e
 # Run 2: success mock that records the prompt it received.
 : > "$ZBUILD_EVENTS_JSONL"
@@ -359,7 +377,7 @@ _RUN2_PLAN="$TEST_TEMP_DIR/run2-canned.json"
 printf '%s\n' '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["core/foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}' > "$_RUN2_PLAN"
 install_envelope_mock_claude --record-prompt "$_RUN2_PROMPT" --file "$_RUN2_PLAN"
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
 assert_eq "[SPEC-2] dogfood run 2 returns rc=0" "0" "$rc"
@@ -377,7 +395,7 @@ assert_event_emitted "[SPEC-2] plan.context.resumed fired on run 2" \
 print_test_section "[SPEC-2][guard] resumed context redacted before the prompt"
 rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
-export ZBUILD_GOAL="redaction guard resume goal"
+PLAN_GOAL="redaction guard resume goal"
 export ZBUILD_PLAN_RESUME=1
 # Run 1: error mock whose partial reasoning references an out-of-scope PATH. The
 # scope-manifest allows only core/ and plugins/, so legacy/ is out of scope.
@@ -391,7 +409,7 @@ _GUARD_RESULT="$TEST_TEMP_DIR/guard-run1-result.txt"
 printf '%s' "explored the file legacy/frozen/OUT_OF_SCOPE_SECRET.sh while planning" > "$_GUARD_RESULT"
 _install_plan_error_mock_file --subtype "error_max_turns" --result-file "$_GUARD_RESULT" --rc 1
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 set -e
 # Run 2: success mock that records the prompt. The redaction chokepoint must
 # scrub the out-of-scope token from the spliced prior context.
@@ -400,7 +418,7 @@ _GUARD_PROMPT="$TEST_TEMP_DIR/guard-prompt.txt"
 : > "$_GUARD_PROMPT"
 install_envelope_mock_claude --record-prompt "$_GUARD_PROMPT" --file "$_RUN2_PLAN"
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 set -e
 _guard_prompt_body="$(cat "$_GUARD_PROMPT" 2>/dev/null || true)"
 # apply_scope_redaction WRAPS out-of-scope content in <out-of-scope-context>
@@ -432,7 +450,7 @@ print_test_header "Issue #1835 — plan contract v2: scope_too_large and router 
 # Restore clean state for #1835 tests.
 rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null || true
 : > "$ZBUILD_EVENTS_JSONL"
-export ZBUILD_GOAL="a very large goal that exhausts the turn budget"
+PLAN_GOAL="a very large goal that exhausts the turn budget"
 unset ZBUILD_PLAN_RESUME ZBUILD_ISSUE_NUMBER 2>/dev/null || true
 
 # ─── [#1835/SPEC-3][change] scope_too_large path → rc=1, plan.json with disposition=out_of_turns ─
@@ -447,7 +465,7 @@ rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null 
 install_envelope_mock_claude_error
 unset ZBUILD_MOCK_SUBTYPE ZBUILD_MOCK_RESULT ZBUILD_MOCK_RC ZBUILD_MOCK_NUM_TURNS 2>/dev/null || true
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 _s3v2_rc=$?
 set -e
 assert_eq "[#1835/SPEC-3] max_turns plan_run returns rc=1 (not rc=10 after v2 migration)" "1" "$_s3v2_rc"
@@ -480,7 +498,7 @@ printf '%s' "" > "$_S8_RESULT"
 _install_plan_error_mock_file --subtype "error_during_execution" \
     --result-file "$_S8_RESULT" --rc 124
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 _s8_timeout_rc=$?
 set -e
 assert_eq "[#1835/SPEC-8] router timeout (rc=124) → plugin rc=1" "1" "$_s8_timeout_rc"
@@ -500,7 +518,7 @@ printf '%s' "" > "$_S8_OOM_RESULT"
 _install_plan_error_mock_file --subtype "error_during_execution" \
     --result-file "$_S8_OOM_RESULT" --rc 137
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 _s8_oom_rc=$?
 set -e
 assert_eq "[#1835/SPEC-8] OOM kill (rc=137) → plugin rc=1" "1" "$_s8_oom_rc"
@@ -525,7 +543,7 @@ rm -f "$ARTIFACTS_DIR/plan.json" "$ARTIFACTS_DIR/plan-context.json" 2>/dev/null 
 : > "$ZBUILD_EVENTS_JSONL"
 export ZBUILD_ROUTER_MAX_TURNS="INVALID_MAX_TURNS_1835"
 set +e
-plan_run "plan" "$STATE_FILE" >/dev/null 2>&1
+_run_plan "$STATE_FILE" >/dev/null 2>&1
 _s8_cfg_rc=$?
 set -e
 unset ZBUILD_ROUTER_MAX_TURNS 2>/dev/null || true
