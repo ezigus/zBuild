@@ -96,63 +96,85 @@ EOF
 # Writes a minimal v2 result JSON to <out-path> via atomic_write.
 # Used by failure paths that have no plan content yet.
 _plan_write_result() {
-    local _out="$1" _verdict="$2" _disposition="$3" _reason="$4"
+    local _out="$1" _verdict="$2" _disposition="$3" _reason="$4" _json
     [[ -z "$_out" ]] && return 0
-    jq -n \
-        --arg v "$_verdict" \
-        --arg d "$_disposition" \
-        --arg r "$_reason" \
-        '{result_contract:2,verdict:$v,disposition:$d,reason:$r}' \
-        | atomic_write "$_out" 2>/dev/null || true
+    # A result that cannot be written is reported, never skipped: a stage with
+    # no result reads as one that explained nothing (#1837's rule, here too).
+    if _json="$(jq -nc --arg v "$_verdict" --arg d "$_disposition" --arg r "$_reason" \
+            '{result_contract:2,verdict:$v,disposition:$d,reason:$r}')" \
+        && atomic_write "$_out" <<< "$_json"; then
+        _PLAN_RESULT_WRITTEN=1
+        return 0
+    fi
+    error "plan: could not write $_out"
+    return 1
 }
 
 # ─── run ────────────────────────────────────────────────────────────────────
 # Hook called by the pipeline runner: plan_run(stage, state_file)
-# Derives artifact paths from state_dir and delegates to the inner function.
+# Inputs come from the engine's index and the result goes to the engine's
+# artifact dir (#1835); nothing is derived from the state file.
 plan_run() {
-    local state_file="${2:-}"
-    if [[ -z "$state_file" ]]; then
-        error "plan_run: state_file argument required"
-        if [[ -n "${ZBUILD_ARTIFACT_DIR:-}" ]]; then
-            _plan_write_result "${ZBUILD_ARTIFACT_DIR}/plan.json" "error" "broken" "state_file_missing"
-        fi
-        stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/plan-summary.md}" "plan" "error" \
-            "the engine dispatched this stage with no state file, so it could not run" \
-            "No work was attempted. This is an engine contract violation, not a fault in the change."
+    # The signal guard spans the whole stage and is ended on every return, so
+    # the caller's own TERM/INT handlers come back (#2225 stage-signal).
+    stage_signal_begin _plan_on_signal || return 1
+    local rc=0
+    _plan_run_entry "$@" || rc=$?
+    stage_signal_end
+    return "$rc"
+}
+
+# An outside signal ends the stage: record it with the one word for it (#1835:
+# "every exit path — success, failure, and interruption"). A result already
+# written stands.
+_plan_on_signal() {
+    if [[ -n "${ZBUILD_ARTIFACT_DIR:-}" && -z "${_PLAN_RESULT_WRITTEN:-}" ]]; then
+        _plan_write_result "${ZBUILD_ARTIFACT_DIR}/plan.json" "error" \
+            "${1:-$STAGE_SIGNAL_DISPOSITION}" "${2:-$STAGE_SIGNAL_REASON}" || true
+    fi
+    exit 1
+}
+
+# _plan_input <id> — the path the engine resolved for input <id>, from its
+# index (ZBUILD_STAGE_INPUTS). Empty when the engine named none. Nothing is
+# guessed: no environment variable, no path derived from the state file (#1835).
+_plan_input() {
+    [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]] || return 0
+    jq -r --arg id "$1" '.inputs[$id] // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true
+}
+
+_plan_run_entry() {
+    _PLAN_RESULT_WRITTEN=""
+    # The engine names the artifact dir (core/plugin-registry/lifecycle.sh); plan
+    # does not derive one from its state file.
+    local artifacts_dir="${ZBUILD_ARTIFACT_DIR:-}"
+    if [[ -z "$artifacts_dir" ]]; then
+        error "plan_run: ZBUILD_ARTIFACT_DIR is not set — the engine gave plan nowhere to write plan.json"
         return 1
     fi
-    local state_dir; state_dir="$(dirname "$state_file")"
-    local artifacts_dir="${state_dir}/artifacts"
     mkdir -p "$artifacts_dir"
 
-    # Resolve scope_manifest: prefer ZBUILD_STAGE_INPUTS index, then ZBUILD_SCOPE_MANIFEST env,
-    # then the canonical per-state-dir path. Do not pre-check existence — the router
-    # owns fail-closed for a missing manifest (ADR-043).
-    local scope_manifest=""
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        scope_manifest="$(jq -r '.inputs.scope_manifest // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+    # Both inputs come from the engine's index, or the stage cannot run: a
+    # missing one is the engine's contract broken, not a goal to go looking for.
+    local scope_manifest goal_path goal_text=""
+    scope_manifest="$(_plan_input scope_manifest)"
+    goal_path="$(_plan_input intake_goal)"
+    if [[ -z "$scope_manifest" || -z "$goal_path" ]]; then
+        local _missing=""
+        [[ -z "$scope_manifest" ]] && _missing="scope_manifest"
+        [[ -z "$goal_path" ]] && _missing="${_missing:+$_missing, }intake_goal"
+        error "plan_run: the engine's input index (ZBUILD_STAGE_INPUTS) names no $_missing"
+        _plan_write_result "${artifacts_dir}/plan.json" "error" "broken" "input_missing"
+        return 1
     fi
-    [[ -z "$scope_manifest" ]] && scope_manifest="${ZBUILD_SCOPE_MANIFEST:-}"
-    [[ -z "$scope_manifest" ]] && scope_manifest="${state_dir}/scope-manifest.md"
-
-    # Resolve goal: prefer ZBUILD_STAGE_INPUTS.intake_goal path, then ZBUILD_GOAL env.
-    local goal_text=""
-    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
-        local _si_goal_path
-        _si_goal_path="$(jq -r '.inputs.intake_goal // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
-        if [[ -n "$_si_goal_path" ]]; then
-            if [[ -f "$_si_goal_path" ]]; then
-                goal_text="$(cat "$_si_goal_path")"
-            else
-                error "plan_run: intake_goal path unreadable: $_si_goal_path"
-                _plan_write_result "${artifacts_dir}/plan.json" "error" "broken" "intake_goal_path_unreadable"
-                return 1
-            fi
-        fi
+    if [[ ! -f "$goal_path" ]]; then
+        error "plan_run: intake_goal path unreadable: $goal_path"
+        _plan_write_result "${artifacts_dir}/plan.json" "error" "broken" "intake_goal_path_unreadable"
+        return 1
     fi
-    [[ -z "$goal_text" ]] && goal_text="${ZBUILD_GOAL:-}"
+    goal_text="$(cat "$goal_path")"
     if [[ -z "$goal_text" ]]; then
-        error "plan_run: intake_goal not available from ZBUILD_STAGE_INPUTS and ZBUILD_GOAL is unset"
+        error "plan_run: intake_goal is empty: $goal_path"
         _plan_write_result "${artifacts_dir}/plan.json" "error" "broken" "intake_goal_missing"
         return 1
     fi
@@ -920,15 +942,17 @@ $_plan_instructions"
 
     # v2 contract (#1835): merge result fields into plan.json so the engine's
     # verdict reader can surface disposition. plan.json is the sole result file.
-    plan_json="$(printf '%s' "$plan_json" | jq -c \
-        --argjson rc 2 \
-        --arg v "pass" \
-        --arg d "complete" \
-        --arg r "plan decomposed into ${step_count} step(s)" \
-        '. + {result_contract:$rc,verdict:$v,disposition:$d,reason:$r}' 2>/dev/null \
-        || printf '%s' "$plan_json")"
-
-    printf '%s\n' "$plan_json" | atomic_write "$output_plan_json"
+    # A plan without the v2 fields is not a result the engine can read — never
+    # write one silently (the old `|| printf "$plan_json"` fallback did).
+    local _v2_plan
+    if ! _v2_plan="$(jq -c --arg r "plan decomposed into ${step_count} step(s)" \
+            '. + {result_contract:2,verdict:"pass",disposition:"complete",reason:$r}' <<< "$plan_json")" \
+        || ! atomic_write "$output_plan_json" <<< "$_v2_plan"; then
+        error "_plan_run_inner: could not write $output_plan_json"
+        return 1
+    fi
+    plan_json="$_v2_plan"
+    _PLAN_RESULT_WRITTEN=1
 
     # ADR-018 Pattern 1 (#468): post-validate step.files[] against the
     # scope-manifest. Fail-soft — plan.json is written regardless; review

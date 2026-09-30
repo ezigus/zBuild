@@ -9,6 +9,8 @@ description: |
 
 hooks:
   run: plan_run
+  # ADR-054 §7 (#1835): plan holds no live resources (no spawned processes, no
+  # locks, no open handles beyond what atomic_write closes) and declares no cleanup hook.
 requires:
   core:
     - redaction
