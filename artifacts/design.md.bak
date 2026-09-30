@@ -27,8 +27,9 @@ trap.  Every one of these gaps was acceptable before the v2 wave; none is after 
    `ZBUILD_STAGE_INPUTS`), remove `_ra_collect_lenses_glob`, update discovery
    order to ZBUILD_STAGE_INPUTS → roster, embed v2 fields
    (`result_contract:2 / verdict:complete / disposition:complete / reason`) in the
-   written `review-report.json`, write `review_report_md` on every terminal exit
-   path (including the empty-lens early path), register a SIGTERM/SIGINT trap that
+   written `review-report.json` on **every** terminal exit path (including the
+   empty-lens early path), write `review_report_md` on every terminal exit
+   path, register a SIGTERM/SIGINT trap that
    writes `verdict:degraded / disposition:interrupted` and summary then re-raises.
 4. **Existing tests** — update SPEC-3 in `review-aggregator-test.sh` (invert
    "no verdict field" → "verdict == complete"), add ZBUILD_STAGE_INPUTS fixture
@@ -75,6 +76,7 @@ SPEC-7[change]: SIGTERM/SIGINT trap writes verdict:degraded + disposition:interr
 SPEC-8[guard]: plugin always returns 0 (advisory never aborts — existing invariant)
 SPEC-9[guard]: _ra_aggregate output matches _rr_aggregate byte-for-byte (equivalence preserved)
 SPEC-10[guard]: roster discovery still collects declared group members when group env vars are set
+SPEC-11[change]: empty-lenses exit path writes result_contract:2 + verdict:complete + disposition:complete + non-empty reason into review-report.json (v2 envelope present even when no lenses are collected)
 WIRING: plugins/agent/review-aggregator/manifest.yaml
 TESTFILES:
 SPEC-1: tests/unit/review-aggregator-v2-test.sh
@@ -87,4 +89,5 @@ SPEC-7: tests/unit/review-aggregator-v2-test.sh
 SPEC-8: tests/unit/review-aggregator-test.sh
 SPEC-9: tests/unit/review-aggregator-test.sh
 SPEC-10: tests/unit/review-aggregator-roster-test.sh
+SPEC-11: tests/unit/review-aggregator-v2-test.sh
 ```
