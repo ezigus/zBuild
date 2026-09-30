@@ -911,15 +911,24 @@ point read `negctl_error:timeout` under a 60s timer that never fired.
 
 Verification: `tests/unit/acceptance-negctl-signal-test.sh` (S1–S6).
 
-### Amendment (2026-09-29, #1835) — a guard that never ran is not a regressed guard
+### Amendment (2026-09-29, #2234) — not measured is never "failed"
 
-The negative control runs HEAD's TESTFILE against the merge-base code. On #1835 an earlier `[change]` step in that file called a function that returns non-zero before the change, bare under `set -e`. So the file exited there, and every assertion after it never ran. The gate read "no verdict for SPEC-18" as "SPEC-18 fails at the merge-base" and reported `guard_regressed`. It declared a specification fault and rewound design three times to relabel a guard that held. Verified: at the merge-base the template still wins, as SPEC-18 says.
+The negative control runs HEAD's TESTFILE against the merge-base code (and again at HEAD). On #1835 an earlier `[change]` step in that file called a function that returns non-zero before the change, bare under `set -e`, so the file exited there. Every assertion after that point never ran. The gate read "no verdict for SPEC-18" as "SPEC-18 fails at the merge-base". It reported `guard_regressed`, declared a specification fault, and rewound design three times to relabel a guard that held. Verified: at the merge-base the template still wins, as SPEC-18 says.
 
-- **`guard_unreached`** (new, recoverable): the file exited non-zero and printed ✓/✗ verdicts for **other** SPECs of this contract, but none for this one. So it stopped before this assertion ran. The line names the last SPEC that printed (`after=SPEC-n`). The signal is the contract's own tag shape, so it holds for any language.
-- **Unchanged:**
-  - A bare guard test with no verdict lines at all (#1658) keeps the file's exit code as its verdict. It cannot be told apart from an early stop, the reason #2129 backed out.
-  - A guard that prints its **own** ✗ is still `guard_regressed`.
-- **Not a specification fault.** Design is not rewound. When every finding is an unreached guard, the result's `about` names the testfile(s), so the engine frames the finding for the stage that wrote them (#2180).
-- **The design-gate precheck fails open on it:** `GUARD SKIP <spec> guard_unreached`.
+**The rule.** Only an assertion's **own** printed verdict is evidence about it. When there is none, the file's output says which of two cases it is.
 
-Verification: `tests/unit/acceptance-negctl-unreached-test.sh` (U1–U6).
+- **Unreached.** The file printed ✓/✗ verdicts for **other** SPECs of this contract and none for this one, so it stopped before this assertion ran. The line names the last SPEC that printed (`after=SPEC-n`). This holds in any language, because it reads the contract's own tag shape. Unreached is the file's or the code's to fix, **never design's**:
+  - `guard_unreached`: a `[guard]` at the merge-base;
+  - `unreached_at_base`: a `[change]` at the merge-base. Its negative control is unproven; before this it was accepted as valid;
+  - `unreached_at_head`: a `[change]` on the new code. It is not escalated to design, unlike `not_passing_at_head`.
+- **A 126/127 exit inside a file that printed other verdicts** is a command the change introduces, missing at the merge-base: the file executed and stopped there. It is unreached, not `harness`.
+- **Unverified (`guard_unverified`).** The file printed no verdicts at all: a bare check (#1658), or a framework that does not print the contract's ✓/✗ lines. Its rc cannot tell "checked and failed" from "died first".
+  - It still **fails** the gate. #2129's reason for not skipping it stands; NC-F7 must not go inert.
+  - It is not called a regression. On the first round the finding goes to the testfile's owner. It escalates to a specification fault only if it is still unverified on round 2 (`acceptance.gate.guard_unverified_escalated`).
+- **Unchanged:** a guard that prints its **own** ✗ at the merge-base is still `guard_regressed`, a specification fault on round 1.
+- **`about`:** when every finding is about a testfile that did not measure its SPEC (`guard_unreached`, `unreached_at_base`, `guard_unverified`), the result's `about` names the testfile(s), so the engine frames the finding for the stage that wrote them (#2180).
+- **The design-gate precheck fails open on both:** `GUARD SKIP <spec> guard_unreached|guard_unverified`.
+
+Why design is the last resort: rewinding design on a guess re-authors a correct design, and the same failure returns every round (#1835: three rounds, 6h). Sending a real design fault to build or test-author first costs one round, and the round-2 escalation still reaches design.
+
+Verification: `tests/unit/acceptance-negctl-unreached-test.sh` (U1–U10).

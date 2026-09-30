@@ -178,8 +178,10 @@ assert_eq "S6: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
 # A [guard]-classified SPEC whose assertion FAILS at baseline must yield
 # verdict=fail with guard_regressed in failures[] and severity=recoverable —
 # the assertion contradicts its own SPEC, and #1583 routes that to build.
+# #2234: the guard prints its OWN ✗ — only that says it fails at the merge-base
+# (a bare `exit 1` is guard_unverified: the rc cannot tell failed from stopped).
 REPO6b="$(_build_repo gate-guard-regressed '#!/usr/bin/env bash
-# [SPEC-1] guard: invariant broken (exits 1 to simulate regression at baseline)
+echo "  ✗ [SPEC-1] guard: invariant broken at baseline"
 exit 1')"
 cat > "$REPO6b/design.md" <<'EOF'
 ```acceptance

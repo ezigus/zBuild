@@ -186,11 +186,13 @@ assert_eq "[SPEC-2] NC-F2: guard SPEC fails at baseline → NEGCTL FAIL guard_re
     "NEGCTL FAIL SPEC-1 guard_regressed" "$(grep 'SPEC-1' <<<"$OUT3b")"
 assert_eq "[SPEC-2] NC-F2: guard FAIL guard_regressed yields rc=1" "1" "$RC3b"
 
-# ── NC-F2b (#2129): a bare failing guard test at the baseline is still regressed ─
+# ── NC-F2b (#2129, #2234): a bare failing guard test at the baseline is unverified ─
 # A guard test with no ✓/✗ output (plain `grep -q`/`false`, exit 1) that fails
-# at the merge-base is the #1658 shape — a mislabelled [change] — and nothing
-# in its rc separates it from a file that died early. #2129 considered reading
-# lv=2 as "unobserved → skip" and rejected it: NC-F7 would have gone inert.
+# at the merge-base may be the #1658 shape — a mislabelled [change] — or a file
+# that died early; nothing in its rc separates the two. #2129 rejected SKIPPING
+# it (NC-F7 would have gone inert). #2234 does not skip it either: it still
+# FAILS the check, as guard_unverified — not measured is never "failed" — and
+# the gate sends it to the file's owner first and to design if it persists.
 REPO3u="$(setup_git_temp_repo negctl-repo3u)"
 (
     cd "$REPO3u"
@@ -212,8 +214,8 @@ EOF
 set +e
 OUT3u="$(acceptance_negctl_check "$DM3u" "$REPO3u")"; RC3u=$?
 set -e
-assert_eq "[#2129] NC-F2b: a bare guard test failing at baseline stays guard_regressed" \
-    "NEGCTL FAIL SPEC-1 guard_regressed" "$(grep 'SPEC-1' <<<"$OUT3u")"
+assert_eq "[#2234] NC-F2b: a bare guard test failing at baseline is guard_unverified" \
+    "NEGCTL FAIL SPEC-1 guard_unverified" "$(grep 'SPEC-1' <<<"$OUT3u")"
 assert_eq "[#2129] NC-F2b: …and fails the check (rc=1)" "1" "$RC3u"
 
 # ── NC-F2c (#2129): an unrecognised guard-verdict word is infra, never a pass ──
@@ -428,8 +430,11 @@ EOF
 set +e
 OUT3h="$(acceptance_negctl_check "$DM3h" "$REPO3h")"; RC3h=$?
 set -e
+# #2234: a bare inverted guard cannot be told from an early stop by its rc, so
+# it is guard_unverified — it still fails the gate, and escalates to design on
+# round 2 (acceptance-negctl-unreached-test.sh U7). It is not inert.
 assert_eq "[SPEC-8] NC-F7: an inverted guard assertion reddens at the merge-base" \
-    "NEGCTL FAIL SPEC-1 guard_regressed" "$(grep 'SPEC-1' <<<"$OUT3h")"
+    "NEGCTL FAIL SPEC-1 guard_unverified" "$(grep 'SPEC-1' <<<"$OUT3h")"
 assert_eq "[SPEC-8] NC-F7: the inverted guard fails the gate (rc=1)" "1" "$RC3h"
 
 # ── NC-G: a test that outlives ZBUILD_NEGCTL_TIMEOUT → INFRA, not a violation ──
@@ -1036,7 +1041,7 @@ set +e
 OUT_U="$(ZBUILD_NEGCTL_ARTIFACT_DIR="$LOGDIR_U" acceptance_negctl_check "$DM_U" "$REPO_U")"
 set -e
 assert_eq "[SPEC-2] NC-U: a sibling TESTFILE's ✓ does not clear another file's bare failure" \
-    "NEGCTL FAIL SPEC-2 guard_regressed" "$(grep 'SPEC-2' <<<"$OUT_U")"
+    "NEGCTL FAIL SPEC-2 guard_unverified" "$(grep 'SPEC-2' <<<"$OUT_U")"
 rm -rf "$LOGDIR_U"
 
 # ── NC-V: [SPEC-3] the log scan is gated on the default bash runner ──────────────
