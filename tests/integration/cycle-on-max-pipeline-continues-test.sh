@@ -47,7 +47,7 @@ mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 # ─── Stub plugins (every required role) ──────────────────────────────────
 # #979: standard.yaml retired → drive the shipped default simple.yaml. The
 # on_max=continue continue-past-exhaustion mechanic is identical; simple.yaml's
-# design_verify_cycle (on_max=continue) is the exhausting cycle here, forced by a
+# design_verify_cycle (on_max=continue in the overlay, #2241) is the exhausting cycle here, forced by a
 # design-gate stub that never returns verdict=pass. All other stages succeed so
 # the runner walks past the exhausted cycle to impact → build_test_cycle →
 # review_lenses → pr and ends status=success.
@@ -263,9 +263,13 @@ RUNNER_STDERR="$TEST_TEMP_DIR/runner.stderr"
 # failure.
 [[ -d "$_ZB_REPO" ]] || { echo "zb_test_repo did not produce a repo" >&2; exit 1; }
 set +e
+# #2241: simple.yaml's design cycle is on_max: halt, and the runner honours
+# it — this file's subject is the CONTINUE path, so it drives simple.yaml with
+# that one cycle set to continue (the halt path: runner-cycle-on-max-halt-test).
+install_simple_design_continue "$_ZB_REPO" || { echo "overlay install failed" >&2; exit 1; }
 ( cd "$_ZB_REPO" && bash "$REPO_ROOT/core/pipeline/runner.sh" \
     --goal "$_ZB_GOAL" \
-    --template simple \
+    --template simple-design-continue \
     --no-resume \
     >"$TEST_TEMP_DIR/runner.stdout" \
     2>"$RUNNER_STDERR" )

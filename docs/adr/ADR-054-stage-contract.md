@@ -387,3 +387,13 @@ Relevant code sites as of writing:
 - [ADR-047](ADR-047-stage-agnostic-mechanics.md) — stage-agnostic mechanics; the parent principle. Its thesis — the mechanics read declared data, never stage names — is this contract one level up.
 - [ADR-055](ADR-055-inter-stage-data-contract-v2.md) — the data and declaration surfaces; written with this ADR.
 - [ADR-056](ADR-056-run-cleanup-only-lifecycle.md) — carries out the `init`/`finalize` deletion and owns the resulting hook lifecycle (§1).
+
+### Amendment (2026-09-30, #2242) — the verdict is closed to the manifest's words
+
+Under `result_contract: 2`, a verdict outside the manifest's `config.valid_verdicts` is a structural failure, `contract_violation:unknown_verdict:<word>`. That is the rule #1708 stated and the reader already applied to dispositions. Until now the reader returned `warn`, even for `verdict: banana`, so #1838's `broken` (a disposition word used as a verdict) passed every gate.
+
+- A manifest that declares no list is left to `lint-verdict-classify`.
+- `scripts/lib/lint-verdict-words.sh` refuses an undeclared literal in CI.
+- The list is read by one parser, `scripts/lib/manifest-valid-verdicts.sh`, shared by the reader and both lints.
+
+Verification: `tests/unit/verdict-undeclared-word-test.sh`, `tests/unit/lint-verdict-words-test.sh`.

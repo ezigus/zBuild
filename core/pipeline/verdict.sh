@@ -59,6 +59,11 @@ if ! declare -F disposition_is_valid >/dev/null 2>&1; then
     # shellcheck source=./disposition.sh
     source "$_ZBUILD_VERDICT_ROOT/core/pipeline/disposition.sh"
 fi
+# #2242: the declared verdict list, read the way the lints read it.
+if ! declare -F manifest_verdict_declared >/dev/null 2>&1; then
+    # shellcheck source=../../scripts/lib/manifest-valid-verdicts.sh
+    source "$_ZBUILD_VERDICT_ROOT/scripts/lib/manifest-valid-verdicts.sh"
+fi
 # #1823: the fallback classification for a dispatch that left no result. NOT
 # `|| true` — without it the reader would silently fall back to nothing at all
 # for exactly the dispatches that need explaining.
@@ -410,6 +415,17 @@ _verdict_read_result() {
             # operator sees what the stage actually said, and <prefix>_disp keeps
             # that same word rather than a substituted member.
             printf -v "${p}_viol" '%s' "contract_violation:unknown_disposition:${_decl_disp}"
+        else
+            # #2242: the VERDICT is closed too — to the words the manifest
+            # declares (#1708). #1838 wrote `broken` (a disposition word) as a
+            # verdict and every gate passed it, because this read it as `warn`.
+            # A manifest that declares no list is the lint's to refuse.
+            # The verdict was read into <prefix>_verdict above — no second jq.
+            local _vd_rc=0 _vd_name="${p}_verdict" _decl_verdict
+            _decl_verdict="${!_vd_name}"
+            manifest_verdict_declared "$manifest" "$_decl_verdict" || _vd_rc=$?
+            [[ "$_vd_rc" -eq 1 ]] && \
+                printf -v "${p}_viol" '%s' "contract_violation:unknown_verdict:${_decl_verdict}"
         fi
     fi
     return 0

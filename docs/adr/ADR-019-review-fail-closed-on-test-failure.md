@@ -394,3 +394,13 @@ against, and the build cycle cannot change it. On #1841 the gate rejected the de
 on its last pass, the run proceeded, and every later iteration inherited findings
 the builder was not allowed to act on. A design its own gate rejects three times
 ends the run as `failed` (reason `design_not_converged`) for a person to look at.
+
+### Amendment (2026-09-30, #2241) — `on_max: halt` stops the run
+
+#2176 made design_verify_cycle `on_max: halt`, but the runner never honoured it. Every unconverged cycle fell through to the next unit, and `halt` changed only the final status label. #1842's design never converged, and the run still built the change, passed the gates and opened a PR.
+
+- The runner now **stops** when a `halt` cycle runs out of rounds. The status is `failed` and `pipeline.end` names the cycle and the reason. No later unit runs, so no PR opens.
+- `continue` is unchanged: it falls through to the next unit.
+- The words: the template says `halt`, and `abort` (the word runner-final-status used) means the same.
+
+Verification: `tests/integration/runner-cycle-on-max-halt-test.sh`.

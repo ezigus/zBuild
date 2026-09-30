@@ -490,7 +490,7 @@ _artifact_persist_push() {
         [[ -n "$_p_err" ]] && rm -f "$_p_err"
         return 0
     fi
-    local err=""; [[ -n "$_p_err" ]] && err="$(tr '\n' ' ' < "$_p_err" 2>/dev/null | cut -c1-300)"
+    local err=""; [[ -n "$_p_err" ]] && err="$(tr '\n' ' ' 2>/dev/null < "$_p_err" | cut -c1-300)"
     [[ -n "$_p_err" ]] && rm -f "$_p_err"
     _ARTIFACT_PERSIST_LAST_STATUS="failed"
     _ARTIFACT_PERSIST_LAST_REASON="git push $branch failed: ${err:-<no stderr>}"

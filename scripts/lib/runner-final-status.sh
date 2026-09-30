@@ -19,6 +19,9 @@ _runner_compute_final_status() {
     # Conservative default: empty on_max treated as "abort" (preserves the
     # historical behavior where unconverged → failed regardless).
     [[ -z "$on_max" ]] && on_max="abort"
+    # #2241: the template's word is `halt` (cycle-orchestrator accepts
+    # continue|halt); `abort` is this file's older word for the same thing.
+    [[ "$on_max" == "halt" ]] && on_max="abort"
 
     # Downstream failure ALWAYS wins.
     if [[ "$downstream_success" != "1" ]]; then

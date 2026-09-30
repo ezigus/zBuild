@@ -932,3 +932,17 @@ The negative control runs HEAD's TESTFILE against the merge-base code (and again
 Why design is the last resort: rewinding design on a guess re-authors a correct design, and the same failure returns every round (#1835: three rounds, 6h). Sending a real design fault to build or test-author first costs one round, and the round-2 escalation still reaches design.
 
 Verification: `tests/unit/acceptance-negctl-unreached-test.sh` (U1–U10).
+
+### Amendment (2026-09-30, #2244, #2243) — a broken guard test, and existing checks the change makes wrong
+
+- **`guard_test_broken` (#2244).** A `[guard]`'s own check prints ✗ at the merge-base. The gate now also runs it at HEAD, and if it prints ✗ there too, the check itself is broken: it fails whatever the code does.
+  - It is recoverable, not a specification fault.
+  - The finding is `about` the testfile.
+  - The design-gate precheck fails open on it.
+  - #1838: `grep -qF "- x"` (read as an option) failed on both sides and was blamed on design as a mislabel.
+- **`supersedes` (#2243).** Design may list existing checks the change makes wrong, in a separate fenced block: `path [TAG]: why`.
+  - Updating them to the new behaviour is test-author's job, and those files join its context paths. Only listed tags become editable.
+  - Build stays read-only on testfiles.
+  - #1842: no stage could make the edit, so build evaded an old grep.
+
+Verification: `tests/unit/acceptance-negctl-guard-broken-test.sh`, `tests/unit/test-author-supersedes-test.sh`.

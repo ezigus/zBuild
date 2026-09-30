@@ -36,7 +36,7 @@ _zbuild_diff_stat() {
     # `git apply --numstat -` works without a working tree and parses any
     # unified diff. Binary files get `-\t-\t<path>` which we surface as `bin`.
     local numstat
-    numstat="$(git apply --numstat - < "$patch_file" 2>/dev/null || true)"
+    numstat="$(git apply --numstat - 2>/dev/null < "$patch_file" || true)"
 
     if [[ -z "$numstat" ]]; then
         printf '## Changed files (0 total)\n'

@@ -166,7 +166,9 @@ REPO3b="$(setup_git_temp_repo negctl-repo3b)"
     printf '# guard fixture\n' > guard_impl.sh
     # This guard test ASSERTS and fails — a ✗-marked [SPEC-1] line at the
     # baseline (a bare exit 1 is the same verdict, see NC-F2b).
-    printf '#!/usr/bin/env bash\necho "✗ [SPEC-1] guard: invariant broken"\nexit 1\n' > tests/guard-fail-test.sh
+    # #2244: a genuine mislabel fails on the old code and HOLDS on the new —
+    # a check that fails on both is a broken test, not a mislabelled guard.
+    printf '#!/usr/bin/env bash\nif [[ -f "$(dirname "$0")/../guard_impl.sh" ]]; then echo "✓ [SPEC-1] guard: invariant"; else echo "✗ [SPEC-1] guard: invariant broken"; exit 1; fi\n' > tests/guard-fail-test.sh
     chmod +x tests/guard-fail-test.sh
     "$GIT" add -A; "$GIT" commit -q -m "feat: guard spec with broken invariant"
 )

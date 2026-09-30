@@ -180,9 +180,10 @@ assert_eq "S6: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
 # the assertion contradicts its own SPEC, and #1583 routes that to build.
 # #2234: the guard prints its OWN ✗ — only that says it fails at the merge-base
 # (a bare `exit 1` is guard_unverified: the rc cannot tell failed from stopped).
+# #2244: a genuine mislabel — ✗ on the old code, ✓ on the new (impl.sh exists
+# only on the branch). A check that printed ✗ on both would be a broken test.
 REPO6b="$(_build_repo gate-guard-regressed '#!/usr/bin/env bash
-echo "  ✗ [SPEC-1] guard: invariant broken at baseline"
-exit 1')"
+if [[ -f "$(dirname "$0")/../impl.sh" ]]; then echo "  ✓ [SPEC-1] guard: invariant"; else echo "  ✗ [SPEC-1] guard: invariant broken at baseline"; exit 1; fi')"
 cat > "$REPO6b/design.md" <<'EOF'
 ```acceptance
 SPEC-1[guard]: invariant that must not regress

@@ -213,6 +213,22 @@ test_author_run() {
     # build summary, no implementation of any kind: an author that can read the
     # code will describe the code, which is the very defect this stage exists to
     # remove. The omission is the mechanism, and it is asserted in the test.
+    # #2243: existing checks the design says this change makes wrong. Updating
+    # them to the new behaviour is part of this job — no other stage may (build
+    # is read-only on testfiles; #1842 evaded one instead). Only these become
+    # editable; any other foreign tag stays untouchable.
+    local sup_block="" _sp _st _sw
+    while IFS=$'\t' read -r _sp _st _sw; do
+        [[ -n "$_sp" ]] || continue
+        sup_block="${sup_block}- ${_sp} ${_st}: ${_sw}"$'\n'
+    done < <(acceptance_list_supersedes "$design" 2>/dev/null || true)
+    local sup_section=""
+    if [[ -n "$sup_block" ]]; then
+        sup_section="
+EXISTING CHECKS THIS CHANGE MAKES WRONG — these assertions exist already and assert the old behaviour. Update each to the behaviour this change introduces (the requirements above), keeping its tag. These are the only foreign tags you may change:
+${sup_block}"
+    fi
+
     local prompt
     prompt="You are the test author. Write the acceptance assertions for the requirements below, in the language and idiom the target repository already uses.
 
@@ -222,11 +238,12 @@ Tag each assertion with the tag shown for its SPEC, exactly as shown, in the ass
 
 REQUIREMENTS:
 ${spec_block}
+${sup_section}
 Some of these testfile(s) may already hold assertions from an earlier attempt at this contract: keep what is right, finish what is missing, fix what is wrong.
 
 Work one testfile at a time: read only what that file's SPECs need, write it to disk, and only then move on — write each file before you plan the next. Do not plan every SPEC up front. Your call has a time limit; a file already written survives it and is continued by the next attempt, and a plan that was never written is lost.
 
-Write or amend only the testfile(s) named above. Do not write, modify or stub any implementation file.
+Write or amend only the testfile(s) named above${sup_block:+, and the existing checks listed above}. Do not write, modify or stub any implementation file.
 
 You will be called again until you are done: what you wrote stays on disk and the next call picks up from it. When EVERY SPEC above has its assertion written to disk, end your reply with a line containing only:
 LOOP_COMPLETE"
@@ -267,7 +284,8 @@ LOOP_COMPLETE"
     printf '%s' "$prompt" > "$prompt_file"
     # The loop shows the model only its own testfiles' progress — never the
     # implementation, which this stage must not see (#2022; review #2229).
-    local _ctx; _ctx="$(acceptance_list_testfiles "$design" 2>/dev/null | paste -sd, - || true)"
+    local _ctx; _ctx="$( { acceptance_list_testfiles "$design"; acceptance_list_supersedes "$design" | cut -f1; } 2>/dev/null \
+        | awk 'NF && !seen[$0]++' | paste -sd, - || true)"
     route_to_model_loop "$tier" "$prompt_file" "$repo" "$max_iter" \
         --context-paths "${_ctx:-.zbuild-no-testfiles}" || rc=$?
     rm -f "$prompt_file"

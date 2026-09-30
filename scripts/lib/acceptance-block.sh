@@ -417,6 +417,30 @@ _acceptance_run_cache_begin() {
 # (stripping the prefix to expose the bare path). Mirrors the path-traversal
 # guard used by build (never surfaces an absolute or ".."-containing path).
 # Empty when the block/TESTFILES is absent.
+# acceptance_list_supersedes <design_md>  (#2243)
+# The existing checks this change makes wrong, from design.md's ```supersedes
+# block — a fact about the change, stated by design; updating them to the new
+# behaviour is test-author's (#1842: nobody could, so build evaded one). One line
+# per check:  <repo-relative-path> <tag>: <why>
+# Prints "<path>\t<tag>\t<why>" per valid line. Absolute and ../ paths are
+# refused, as for TESTFILES. No block → nothing.
+acceptance_list_supersedes() {
+    local design_md="${1:-}" line in_block=0 path rest tag why
+    [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
+    while IFS= read -r line; do
+        line="${line%$'\r'}"
+        if [[ "$line" == '```supersedes' ]]; then in_block=1; continue; fi
+        # Every block counts, not only the first (review #2247).
+        if [[ $in_block -eq 1 && "$line" == '```' ]]; then in_block=0; continue; fi
+        [[ $in_block -eq 1 && -n "$line" ]] || continue
+        path="${line%% *}"; rest="${line#* }"
+        [[ "$path" == /* || "/$path/" == *"/../"* || "$rest" == "$line" ]] && continue
+        tag="${rest%%:*}"; why="${rest#*:}"; why="${why# }"
+        [[ "$tag" == "["*"]" ]] || continue
+        printf '%s\t%s\t%s\n' "$path" "$tag" "$why"
+    done < "$design_md"
+}
+
 acceptance_list_testfiles() {
     local design_md="${1:-}"
     [[ -z "$design_md" || ! -f "$design_md" ]] && return 0

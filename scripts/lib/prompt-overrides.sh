@@ -100,7 +100,7 @@ _po_load_repo_file() {
 
     local size
     # BSD wc -c pads with leading spaces — strip to bare digits.
-    size="$(wc -c < "$override_file" 2>/dev/null | tr -d '[:space:]')"
+    size="$(wc -c 2>/dev/null < "$override_file" | tr -d '[:space:]')"
     [[ "$size" =~ ^[0-9]+$ ]] || size=0
     if (( size > max )); then
         head -c "$max" "$override_file"

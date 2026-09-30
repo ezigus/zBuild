@@ -273,7 +273,7 @@ rsc_tail_loop() {
             rsc_log "$state_dir" "parent ${parent} gone; final render done"
             return 0
         fi
-        size=0; [[ -f "$events" ]] && size="$(wc -c < "$events" 2>/dev/null | tr -d ' ')"
+        size=0; [[ -f "$events" ]] && size="$(wc -c 2>/dev/null < "$events" | tr -d ' ')"
         if [[ "$size" != "$last_size" ]]; then dirty=1; last_size="$size"; fi
         if [[ $dirty -eq 1 && $seen_start -eq 0 ]]; then
             _rsc_has_type "$events" 'pipeline\.start|pipeline\.resume' && seen_start=1

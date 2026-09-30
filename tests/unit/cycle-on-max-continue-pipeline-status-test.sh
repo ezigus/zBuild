@@ -57,6 +57,12 @@ _runner_compute_final_status 1 "continue" 1 status
 assert_eq "[SPEC-2] T1: _runner_compute_final_status(1,continue,1) → complete_unconverged" "complete_unconverged" "$status"
 assert_eq "[SPEC-1] T1: runner stamps complete_unconverged when cycle exhausts on_max=continue + downstream pass" "complete_unconverged" "$status"
 
+# T2b (#2241): on_max=halt — the template's word — is the same as abort, even
+# when the downstream verdict passed.
+status=""
+_runner_compute_final_status 1 "halt" 1 status
+assert_eq "[#2241] T2b: unconverged + on_max=halt + downstream pass → failed" "failed" "$status"
+
 # T2: on_max=abort → "failed" regardless
 status=""
 _runner_compute_final_status 1 "abort" 1 status

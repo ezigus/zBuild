@@ -978,7 +978,7 @@ _cycle_detect_plateau() {
         return 1
     fi
     local lines=0
-    [[ -f "$history_file" ]] && lines="$(wc -l < "$history_file" 2>/dev/null | tr -d ' ')"
+    [[ -f "$history_file" ]] && lines="$(wc -l 2>/dev/null < "$history_file" | tr -d ' ')"
     if ! [[ "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -lt "$window" ]]; then
         _cycle_emit "cycle.plateau.skipped" "iter=$_CYCLE_TRAP_ITER" \
             "reason=insufficient_history" "have=$lines" "need=$window"
@@ -1014,7 +1014,7 @@ _cycle_detect_velocity_plateau() {
         return 1
     fi
     local lines=0
-    [[ -f "$history_file" ]] && lines="$(wc -l < "$history_file" 2>/dev/null | tr -d ' ')"
+    [[ -f "$history_file" ]] && lines="$(wc -l 2>/dev/null < "$history_file" | tr -d ' ')"
     if ! [[ "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -lt "$window" ]]; then
         _cycle_emit "cycle.plateau.skipped" "iter=$_CYCLE_TRAP_ITER" \
             "reason=insufficient_history" "have=$lines" "need=$window"
@@ -1126,7 +1126,7 @@ _cycle_detect_divergence() {
         return 1
     fi
     local lines=0
-    [[ -f "$history_file" ]] && lines="$(wc -l < "$history_file" 2>/dev/null | tr -d ' ')"
+    [[ -f "$history_file" ]] && lines="$(wc -l 2>/dev/null < "$history_file" | tr -d ' ')"
     if ! [[ "$lines" =~ ^[0-9]+$ ]] || [[ "$lines" -lt $(( k + 1 )) ]]; then
         return 1
     fi
@@ -1344,7 +1344,7 @@ _cycle_apply_feedback() {
         # downstream agent can see truncation occurred (and won't be
         # misled into thinking that's the entire history).
         local _g1_size
-        _g1_size="$(wc -c < "$dst" 2>/dev/null | tr -d ' ' || echo 0)"
+        _g1_size="$(wc -c 2>/dev/null < "$dst" | tr -d ' ' || echo 0)"
         if [[ "$_g1_size" =~ ^[0-9]+$ ]] && [[ "$_g1_size" -gt "$_g1_max_field_chars" ]]; then
             local _g1_marker="… [ADR-029 G1 tail_truncate: dropped $((_g1_size - _g1_max_field_chars)) leading chars; kept tail of $_g1_max_field_chars / $_g1_size] …"
             # Next to $dst, which is already state-rooted (ADR-058 §1 area 1).

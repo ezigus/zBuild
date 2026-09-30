@@ -57,7 +57,11 @@ You will be shown two things:
 ISSUE — what was asked for, in the requester's own words.
 ACCEPTANCE — the SPEC sentences the design commits to.
 
-Judge only this: is there anything the ISSUE requires that no SPEC covers?
+Judge only this: what does the ISSUE require that no SPEC covers?
+
+Check EVERY requirement, and list EVERY one that no SPEC fully covers —
+not only the first you find. The design is revised once per round and
+fixes only what you list; a gap left out of this answer costs a whole round.
 
 An issue contains more than requirements — context, rationale, links, history.
 Those are not requirements and their absence from the SPECs is not a gap. Judge
@@ -76,11 +80,11 @@ merge base, that the full suite is green, that the mutation tier runs, that the
 tree is committed first — is proven by the pipeline itself, not by a SPEC. It is
 never a gap. Judge the BEHAVIOUR the issue requires of the software.
 
-Answer in at most three lines:
+Answer in exactly this form:
 
 VERDICT: covered | uncovered
 REASON: <one sentence>
-UNCOVERED: <semicolon-separated requirements no SPEC covers; omit when covered>
+UNCOVERED: <every requirement no SPEC fully covers, separated by semicolons, all on this one line; omit when covered>
 
 Do not suggest SPEC text. Do not rewrite the design. Answer only.
 

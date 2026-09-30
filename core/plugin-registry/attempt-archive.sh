@@ -61,7 +61,7 @@ attempt_outputs_fingerprint() {
         [[ -n "$raw" ]] || continue
         resolved="$(_registry_resolve_output_path "$raw" "$state_dir" "$artifact_dir" 2>/dev/null || true)"
         [[ -n "$resolved" ]] || continue
-        sum="$(cksum < "$resolved" 2>/dev/null || printf 'absent')"
+        sum="$(cksum 2>/dev/null < "$resolved" || printf 'absent')"
         printf '%s\t%s\n' "${resolved##*/}" "$sum"
     done <<< "$(_attempt_output_paths "$manifest")"
 }

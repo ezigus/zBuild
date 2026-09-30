@@ -321,7 +321,7 @@ _route_vision_preamble() {
     # as the sole separator between the preamble and the actual prompt.
     local _body
     _body="$(awk 'NR==1&&/^---/{fm=1;next} fm&&/^---/{fm=0;next} fm{next} NF{print}' \
-        < "$_path" 2>/dev/null || true)"
+        2>/dev/null < "$_path" || true)"
     [[ -n "$_body" ]] || return 0
     # Size cap (defense-in-depth): validate_vision_doc enforces the ~300-word
     # vision cap, but hard-cap the injected bytes so an oversized doc

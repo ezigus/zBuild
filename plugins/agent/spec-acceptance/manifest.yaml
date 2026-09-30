@@ -126,6 +126,7 @@ config:
     - guard_regressed
     - guard_unreached
     - guard_unverified
+    - guard_test_broken
     - unreached_at_base
     - unreached_at_head
     - negctl_error
