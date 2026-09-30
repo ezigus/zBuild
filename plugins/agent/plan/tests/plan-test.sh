@@ -916,9 +916,13 @@ fi
 # shellcheck source=../../../../core/pipeline/verdict.sh
 source "$REPO_ROOT/core/pipeline/verdict.sh" 2>/dev/null || true
 if declare -F _verdict_read_result >/dev/null 2>&1; then
-    _verdict_read_result "$_V2_STATE" "$PLUGIN_DIR/manifest.yaml" "plan" "0" _s1r
+    # Before the change the reader rejects plan.json (rc≠0): that is this
+    # assertion FAILING, not a reason to stop the file — under `set -e` a bare
+    # call exited here and every later SPEC went unmeasured at the merge-base.
+    _s1r_disp=""
+    _verdict_read_result "$_V2_STATE" "$PLUGIN_DIR/manifest.yaml" "plan" "0" _s1r || true
     assert_eq "[#1835/SPEC-1] _verdict_read_result surfaces disposition=complete from plan.json primary" \
-        "complete" "$_s1r_disp"
+        "complete" "${_s1r_disp:-}"
 else
     assert_fail "[#1835/SPEC-1] _verdict_read_result not available — verdict.sh not sourced"
 fi
