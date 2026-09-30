@@ -51,10 +51,10 @@ SPEC-5[change]: manifest.yaml declares result_contract: 2 under provides
 SPEC-6[change]: manifest.yaml declares a config.router block with timeout_s: 600 and max_turns: 45
 SPEC-7[change]: impact_run reads scope_manifest, design, and plan input paths from ZBUILD_STAGE_INPUTS (the engine's index) rather than constructing them from the state_file argument
 SPEC-8[change]: plugins/agent/impact/plugin.sh contains no hardcoded artifact path constructions (no string literals of the form artifacts_dir/design.md, state_dir/scope-manifest.md, etc. built by the plugin)
-SPEC-9[guard]: impact_run returns rc=0 on a router timeout (rc=124) — graceful error class preserved
+SPEC-9[change]: impact_run (v2 calling convention: ZBUILD_STAGE_INPUTS + ZBUILD_ARTIFACT_DIR) writes impact.json and returns rc=0 on a router timeout (rc=124)
 SPEC-10[guard]: _impact_run_inner writes verdict=incomplete on a recoverable router failure (rc=124 or rc=1) so the cycle re-iterates
 SPEC-11[guard]: _impact_run_inner writes verdict=error on a genuine infra failure (rc=137 OOM kill) so the cycle blocked-predicate can flag it
-SPEC-12[guard]: impact verdict and missing[] fields survive the v2 envelope merge — the success path output still carries the LLM's structured data (schema_version, verdict, missing[]) alongside the v2 contract fields
+SPEC-12[change]: impact.json on the success path carries both v2 envelope fields (result_contract=2, disposition=complete) and the original LLM data (schema_version, verdict, missing[]) — the v2 merge preserves all LLM-authored fields
 SPEC-13[guard]: when impact's manifest declares config.router.timeout_s: 600 and a per-stage template accessor returns a different value, _route_resolve_timeout returns the template value — the manifest acts as a default, not an override (template > manifest precedence preserved per _route_resolve_knob)
 WIRING: plugins/agent/impact/manifest.yaml
 TESTFILES:

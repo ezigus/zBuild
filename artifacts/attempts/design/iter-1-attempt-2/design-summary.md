@@ -1,0 +1,6 @@
+## design — pass
+
+- authored design.md — 31 file(s) in scope, 13 acceptance SPEC(s)
+
+- scope: plugins/agent/impact/manifest.yaml,plugins/agent/impact/plugin.sh,tests/unit/impact-v2-result-contract-test.sh,tests/unit/impact-v2-disposition-test.sh,tests/unit/impact-no-path-construction-test.sh,tests/golden/impact-passing-run.json,tests/integration/impact-prefilter-781-regression-test.sh,tests/integration/impact-envelope-recovery-test.sh,tests/integration/impact-scope-plateau-test.sh,tests/integration/impact-router-timeout-782-test.sh,tests/integration/impact-pipeline-test.sh,tests/integration/design-impact-cycle-integration-test.sh,tests/unit/impact-max-turns-test.sh,tests/unit/impact-tier-test.sh,tests/unit/impact-persona-framing-test.sh,tests/unit/impact-prompt-override-test.sh,tests/unit/impact-hallucination-filter-test.sh,tests/unit/impact-scope-plateau-test.sh,tests/unit/impact-envelope-recovery-test.sh,tests/unit/impact-prefilter-test.sh,tests/unit/impact-prefilter-order-detector-test.sh,tests/unit/router-manifest-budget-test.sh,tests/lib/run-status-comment-mock-roster.sh,docs/adr/ADR-054-stage-contract.md,docs/wiki/plugins/impact.md,scripts/lib/router-rc-classify.sh,scripts/lib/stage-signal.sh,scripts/lib/plugin-bootstrap.sh,core/pipeline/disposition.sh,core/contract/version.sh,config/templates/simple.yaml
+- artifact: design.md
