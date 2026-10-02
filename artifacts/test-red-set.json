@@ -1,0 +1,5 @@
+[
+  "tests/unit/lint-disposition-words-test.sh",
+  "tests/unit/lint-verdict-words-test.sh",
+  "tests/unit/stage-signal-test.sh"
+]
