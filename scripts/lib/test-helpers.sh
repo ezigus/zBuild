@@ -292,6 +292,33 @@ assert_file_not_exists() {
 
 # ─── Test Environment ────────────────────────────────────────────────────────
 
+# ─── Which engine locations a test may share (#2252 F, #1910) ────────────────
+# Every ZBUILD_* variable naming a place the engine WRITES is cleared per test,
+# so it falls back to the sandboxed $HOME (below) or whatever the test sets
+# after setup. The pipeline's test stage exports ZBUILD_STATE_ROOT, a cost
+# ledger and a cache dir for the suite it runs; clearing only STATE_DIR and
+# ARTIFACT_DIR let every test file share one stage-io folder and seq counter
+# (#2032 run 36969130031). tests/unit/test-env-isolation-test.sh fails on any
+# location variable the engine reads that is in neither list.
+_ZB_TEST_ISOLATED_VARS=(
+    ZBUILD_STATE_ROOT ZBUILD_STATE_DIR ZBUILD_ARTIFACT_DIR ZBUILD_STATE_FILE
+    ZBUILD_DATA_ROOT ZBUILD_RUN_ROOT ZBUILD_POOL_ROOT ZBUILD_SCRATCH_ROOT
+    ZBUILD_WORKTREE_ROOT ZBUILD_STAGE_INPUTS ZBUILD_RESTORED_ARTIFACTS_DIR
+    ZBUILD_CYCLE_FEEDBACK_DIR ZBUILD_NEGCTL_ARTIFACT_DIR ZBUILD_PLAN_CONTEXT_DIR
+    ZBUILD_RUN_START_MARKER ZBUILD_EVENTS_DIR ZBUILD_EVENTS_JSONL ZBUILD_EVENTS_DB
+    ZBUILD_MEMORY_DB ZBUILD_CACHE_DIR ZBUILD_COST_LEDGER ZBUILD_ROUTER_TOOL_USES_FILE
+    ZBUILD_WIKI_ROOT ZBUILD_INSTALL_DIR ZBUILD_BIN_DIR
+)
+# Code, config and the test runner's own channels: read, or deliberately shared
+# by run-tests.sh across files (the timing file).
+_ZB_TEST_INHERITED_VARS=(
+    ZBUILD_PLUGINS_ROOT ZBUILD_PLUGINS_DIR ZBUILD_PLUGIN_DIR ZBUILD_CORE_DIR
+    ZBUILD_CONTRACT_LIB_DIR ZBUILD_REPO_ROOT ZBUILD_MAIN_REPO_ROOT ZBUILD_PROJECT_ROOT
+    ZBUILD_CONFIG_FILE ZBUILD_MODELS_FILE ZBUILD_DISABLED_FILE
+    ZBUILD_SECRET_SCAN_ALLOWLIST_FILE ZBUILD_TESTS_DIR ZBUILD_MUTATION_DIR
+    ZBUILD_TEST_TIMING_FILE ZBUILD_RELEASE_LOCAL_DIR ZBUILD_RELEASE_VERSION_FILE
+)
+
 setup_test_env() {
     local test_name="${1:-zb-test}"
     # Clean up auto-created temp dir and create a named one
@@ -319,8 +346,8 @@ setup_test_env() {
     # plan_context_recover_sidecar_reasoning (which uses these vars when set)
     # and other callers that manage their own artifact paths after setup.
     mkdir -p "$TEST_TEMP_DIR/home/.zbuild/state"
-    unset ZBUILD_STATE_DIR
-    unset ZBUILD_ARTIFACT_DIR
+    # #2252 F: every written location, not only STATE_DIR / ARTIFACT_DIR.
+    unset "${_ZB_TEST_ISOLATED_VARS[@]}"
     export NO_GITHUB=true
     export GIT_TERMINAL_PROMPT=0
 
