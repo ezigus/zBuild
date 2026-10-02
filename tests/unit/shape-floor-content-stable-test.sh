@@ -20,6 +20,9 @@
 # C3 [guard]  the pass was on a different tree → fail
 # C4 [guard]  a targeted (partial) run → fail
 # C5 [guard]  no test result at all → fail, as before
+# C6 [check]  no goldens, only a floor TEST: a failure elsewhere → it is verified
+# C7 [check]  ...a failure IN that floor test → it is not (C6/C7 added in review
+#             on #2256: the failing-file comparison decides here, not a golden)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -71,6 +74,14 @@ _results "$TREE" targeted '[]'
 assert_eq "[C4] a targeted run → fail" "fail" "$(_verdict)"
 rm -f "$S/artifacts/test-results.json"; unset ZBUILD_STAGE_INPUTS
 assert_eq "[C5] no test result → fail" "fail" "$(_verdict)"
+
+rm -f "$T/tests/golden/full/event-sequence.golden"
+( cd "$T" && git add -A && git commit -qm "no golden" ) >/dev/null 2>&1
+TREE="$(git -C "$T" rev-parse 'HEAD^{tree}')"
+_results "$TREE" full '[{"file":"tests/unit/elsewhere-test.sh","reason":"x"}]'
+assert_eq "[C6] a failure elsewhere → the floor test is verified → pass" "pass" "$(_verdict)"
+_results "$TREE" full '[{"file":"tests/unit/order-test.sh","reason":"x"}]'
+assert_eq "[C7] the floor test itself failed → fail" "fail" "$(_verdict)"
 
 cleanup_test_env
 print_test_results
