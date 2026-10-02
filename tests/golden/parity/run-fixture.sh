@@ -45,6 +45,11 @@ if grep -q "whether a finished CHANGE does what an ISSUE asked" <<< "$prompt"; t
     # issue-acceptance (#1849): the fixture's one-file change meets its issue.
     jq -n --arg r $'VERDICT: pass\nREASON: the fixture file the issue asks for is added' \
        '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
+elif grep -q 'review lens\. ' <<< "$prompt"; then
+    # a review lens (#1842): no concerns — a real lens result for the engine to
+    # hand the aggregator, as in production.
+    jq -n --arg r '{"score":9,"findings":[]}' \
+       '{type:"result",subtype:"success",result:$r,total_cost_usd:0.001,usage:{input_tokens:0,output_tokens:0},tool_uses:[]}'
 elif grep -q "LOOP_COMPLETE" <<< "$prompt"; then
     # build stage (#467 Pattern 2) — edit the fixture file directly in $PWD
     # (route_to_model_loop runs claude with cwd=$ZBUILD_REPO_ROOT) and emit a
@@ -91,15 +96,28 @@ for _candidate in /usr/bin/git /usr/local/bin/git /opt/homebrew/bin/git; do
 done
 case "${1:-}" in
     rev-parse)
+        # The branch name is pinned; everything else is the real answer from the
+        # mock repo (#1842). A made-up toplevel/HEAD left intake with no baseline
+        # and build's cumulative diff empty, so no stage downstream of build ever
+        # saw the change.
         if [[ "${2:-}" == "--abbrev-ref" ]]; then
             echo "zbuild/issue-90000359"
-        elif [[ "${2:-}" == "--show-toplevel" ]]; then
-            echo "/tmp/mock-repo"
+        elif [[ -n "$_real_git" && -n "${ZBUILD_REPO_ROOT:-}" ]]; then
+            exec "$_real_git" -C "$ZBUILD_REPO_ROOT" "$@"
         else
             echo "/tmp/mock-repo"
         fi
         ;;
     remote)   echo "https://github.com/testuser/testrepo.git" ;;
+    config)
+        # The repo's identity (zbuild_repo_id) is its origin URL — the same fixed
+        # one `remote` reports — never its run-specific path (#1842).
+        if [[ "${2:-}" == "--get" && "${3:-}" == "remote.origin.url" ]]; then
+            echo "https://github.com/testuser/testrepo.git"
+        else
+            [[ -n "$_real_git" ]] && exec "$_real_git" "$@"
+        fi
+        ;;
     apply)    exit 0 ;;
     push)     exit 0 ;;
     checkout) exit 0 ;;
@@ -155,51 +173,107 @@ extends: simple
 defaults:
   strategy: fanout
 
-stages:
-  # #1074: hydrate is a FLOW stage, and an old-shape template's flow is its own
-  # `stages:` list — it inherits nothing from the base (ADR-016 full replace).
-  # Listed explicitly so this fixture keeps exercising prior-work restore.
-  - id: hydrate
-    gate: auto
-    roles: [hydrate]
-  - id: intake
-    gate: auto
-  - id: plan
-    gate: auto
-  - id: build
-    gate: auto
-  - id: test
-    gate: auto
-  # #979: the retired `review` stage is replaced by `review-aggregator` (a KEEP
-  # stage). The old single `review` stage resolved to no plugin and aborted the
-  # run at LOAD under the resolvability preflight. review-aggregator is the live
-  # advisory review-family stage in production simple.yaml (review_lenses ->
-  # review-aggregator -> pr); with no lens group it degrades to an empty advisory
-  # review-report.json (no LLM call) and returns 0 — which also gives the pr
-  # stage the review signal its ADR-001 fail-closed guard requires.
-  - id: review-aggregator
-    gate: auto
-  - id: pr
-    gate: auto
-    # pr-delivery now provides role: pr (canonical, ADR-042). Other stages
-    # still resolve by stage id (no roles declared).
-    roles: [pr]
+# #1842: `flow:` (not the old `stages:` list) so the review family can run as in
+# production: review_lenses (a map group, one lens to keep the run small) ->
+# review-aggregator -> pr. The aggregator requires lens_result, and pr-open
+# fails closed without the review report — an aggregator over zero lenses used to
+# hand it a "ready" review that never happened (#1753).
+flow:
+  - hydrate
+  - intake
+  - plan
+  - build
+  - test
+  - review_lenses
+  - review-aggregator
+  - pr
+
+# A `flow:` override is a FULL replace (ADR-016 lock 1, template-resolver.sh):
+# nothing is inherited from simple.yaml, so every section this run needs is here
+# — the roles the old `stages:` list gave hydrate and pr, and simple.yaml's
+# always-run stages.
+always_run:
+  - release
+  - persist
+
+hydrate:
+  gate: auto
+  roles: [hydrate]
+
+pr:
+  gate: auto
+  # pr-delivery provides role: pr (canonical, ADR-042).
+  roles: [pr]
+
+review-aggregator:
+  gate: auto
+  roles: [review_aggregator]
+
+release:
+  gate: auto
+  roles: [teardown]
+  router:
+    timeout_s: 30
+  io:
+    destinations: [file]
+    tail_lines: 50
+
+persist:
+  gate: auto
+  roles: [persist]
+  router:
+    timeout_s: 120
+  io:
+    destinations: [file]
+    tail_lines: 50
+
+review_lenses:
+  type: map
+  over: lenses
+  elements:
+    - correctness
+  roles: [review_lens]
+  as: ZBUILD_REVIEW_LENS_ID
+  max_parallel: 1
+  on_member_error: continue
+  aggregate: advisory
+  io:
+    destinations: [file]
 TPL
 
 # ── Mock repo for the test stage to copy and apply diffs against ─────────────
 # #467: build now needs a real git repo so `git diff HEAD` works (not just a
 # bare .git dir). Use the system git binary BEFORE we shadow it on PATH below.
+# #1842: `/usr/bin/env git` resolves through PATH, and the calling test has
+# already put FIXTURE_BIN_DIR (the mock git) on it — the mock answers `init`
+# with nothing, so the "repo" had no .git and every build diffed a non-repo
+# (loop.git_diff_failed, an empty diff.patch). Name the real binary.
+_FIXTURE_REAL_GIT=""
+for _candidate in /usr/bin/git /usr/local/bin/git /opt/homebrew/bin/git; do
+    [[ -x "$_candidate" ]] && { _FIXTURE_REAL_GIT="$_candidate"; break; }
+done
+: "${_FIXTURE_REAL_GIT:?run-fixture: no real git binary found}"
+# Pinned identity and clock: the repo's commits (the seed, and build's) get the
+# same SHA in every run, so the local and CI runs stay byte-comparable.
+export GIT_AUTHOR_NAME=parity-fixture GIT_AUTHOR_EMAIL=parity@zbuild
+export GIT_COMMITTER_NAME=parity-fixture GIT_COMMITTER_EMAIL=parity@zbuild
+export GIT_AUTHOR_DATE="2026-01-01T00:00:00Z" GIT_COMMITTER_DATE="2026-01-01T00:00:00Z"
 MOCK_REPO="$FIXTURE_STATE_DIR/mock-repo"
 mkdir -p "$MOCK_REPO"
 (
     cd "$MOCK_REPO"
-    /usr/bin/env git init -q
-    /usr/bin/env git config user.email parity@zbuild
-    /usr/bin/env git config user.name parity-fixture
+    "$_FIXTURE_REAL_GIT" init -q
+    "$_FIXTURE_REAL_GIT" config user.email parity@zbuild
+    "$_FIXTURE_REAL_GIT" config user.name parity-fixture
     echo seed > seed.txt
-    /usr/bin/env git add seed.txt
-    /usr/bin/env git commit -q -m "parity seed"
+    "$_FIXTURE_REAL_GIT" add seed.txt
+    "$_FIXTURE_REAL_GIT" commit -q -m "parity seed"
 ) >/dev/null 2>&1
+# ZBUILD_INTAKE_SKIP_BRANCH=1 (below) skips the intake step that records the
+# run's baseline (plugins/agent/intake/lib/branch-ops.sh). Record what it would:
+# the seed commit. Without it build's cumulative diff is `diff HEAD` after its
+# own commit — empty — and no reviewer downstream sees the change (#1842).
+"$_FIXTURE_REAL_GIT" -C "$MOCK_REPO" rev-parse HEAD > "$FIXTURE_STATE_DIR/intake-baseline-ref.txt"
 
 # ── Wire up environment ───────────────────────────────────────────────────────
 export PATH="$FIXTURE_BIN_DIR:$PATH"

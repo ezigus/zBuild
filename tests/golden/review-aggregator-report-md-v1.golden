@@ -1,0 +1,22 @@
+## Review Report
+
+**Merge Readiness:** advisory
+
+1 merge-readiness finding(s) across 3 lens(es) (0 critical, 1 high).
+
+### Lens Findings
+
+#### correctness (score: 6/10)
+- [medium] core/x.sh:42 — off-by-one in loop
+
+#### performance (score: 9/10)
+No findings.
+
+#### security (score: 8/10)
+- [high] core/x.sh:47 — same region higher severity
+- [low] core/z.sh:3 — pre-existing
+
+
+### Merge-Readiness Findings (de-duped)
+- [high] core/x.sh:42 — off-by-one in loop; same region higher severity _(lenses: correctness, security)_
+

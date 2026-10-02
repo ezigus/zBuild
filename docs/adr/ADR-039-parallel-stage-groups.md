@@ -251,6 +251,13 @@ fallback. The discovery mode (`roster` | `glob`) is recorded on the `plugin.run.
 discovery + self-resolution + fallback) alongside the existing `tests/unit/review-aggregator-test.sh`
 (glob fallback) and `tests/integration/review-report-advisory-flow-test.sh`.
 
+> **Amended 2026-09-30 (#1842).** Roster discovery and the `lens-*.json` glob fallback are both retired.
+> The engine resolves the `lens_result` input — a `map` producer's set of member paths (ADR-055 §1.4) —
+> and the aggregator reads that set from `ZBUILD_STAGE_INPUTS` and nothing else; the input is
+> `required: true`, so an aggregator with no lens results is refused at dispatch, and one handed an empty
+> set reports `needs_attention` (no review happened), never `ready`. `review-aggregator-roster-test.sh` is
+> removed with the code it guarded; `review-aggregator-closeout-test.sh` guards the replacement.
+
 ## References
 
 - [ADR-027](ADR-027-recursive-flow-template-format.md) — recursive-flow template format; `type: parallel`

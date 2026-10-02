@@ -476,11 +476,13 @@ review_lenses:
     max_turns: 25
 
 # ─── review-aggregator (leaf, ADVISORY) ──────────────────────────────────────
-# C2 (#1141, ADR-040 §3/§4): merges the review_lenses members' lens-*.json results
-# (glob from the shared artifacts dir) into ONE advisory merge-readiness report
-# (review-report.json + review-report.md). Does NO LLM call — it merges lens JSON
-# only. Bound by role review_aggregator to plugins/agent/review-aggregator. Always
-# writes the report and returns 0; never recommends a merge action, never blocks.
+# C2 (#1141, ADR-040 §3/§4): merges the review_lenses members' results — the
+# lens_result set the engine hands it (ADR-055 §1.4, #1842) — into ONE advisory
+# merge-readiness report (review-report.json + review-report.md). Does NO LLM call
+# — it merges lens JSON only. Bound by role review_aggregator to
+# plugins/agent/review-aggregator. Requires lens_result: with no lens result the
+# engine refuses it, and an empty set reports needs_attention, never "ready"
+# (#1753). Never recommends a merge action, never blocks.
 # The report.json filename is unchanged, so merge / pr-delivery consume it as before.
 review-aggregator:
   gate: auto

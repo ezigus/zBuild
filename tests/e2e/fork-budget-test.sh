@@ -14,6 +14,8 @@
 #
 # SPEC-1: a canary script with exactly one external exec counts exactly 1 — the
 #         detector cannot go inert.
+# SPEC-1b: the words inside an assigned value (xtrace quotes them) are data,
+#          never commands (#1842).
 # SPEC-2: the mocked run still exits 0 under tracing and writes events.jsonl.
 # SPEC-3: liveness floor — the trace names ≥ 20 source files and ≥ 1,000
 #         external execs (an fd-7-closed child traces to stderr; a run that died
@@ -43,7 +45,12 @@ setup_test_env "fork-budget"
 # _eb_strip_ansi skips sed when no ESC byte is present — measured 4,187 macOS
 # with the issue-acceptance stage added); 4550 (#2236: the pool's poll wait is
 # exempt and its clock read a builtin — measured 4,499 macOS, the same under load).
-FORK_BUDGET=4550
+# 6340 (#1842, ADR-065 §2 amendment): the fixture now runs what production runs —
+# a real mock repo (hydrate, build's diff, persist's snapshot used to fail fast),
+# and review_lenses -> review-aggregator -> pr. Measured 6,280 macOS; the same
+# counter on main's fixture reads 4,367 (132 phantom execs in quoted values are
+# gone, SPEC-1b). The biggest new site is persist's per-file git, #2249.
+FORK_BUDGET=6340
 
 # ─── the trace harness (the --coverage-trace precedent, scripts/run-tests.sh) ──
 # BASH_ENV injects `set -x` into every child bash (the runner, the mocks, work
@@ -95,7 +102,16 @@ _fb_count() {
             m = split(line, w, " ")
             for (i = 1; i <= m; i++) {
                 t = w[i]
-                if (t ~ /^[A-Za-z_][A-Za-z0-9_]*=/) continue          # VAR=val prefix
+                if (t ~ /^[A-Za-z_][A-Za-z0-9_]*=/) {                  # VAR=val prefix
+                    # xtrace single-quotes a value with spaces (v=<q>a b c<q>,
+                    # q = 0x27). Its words are data: skip to the closing quote.
+                    v = t; sub(/^[A-Za-z_][A-Za-z0-9_]*=/, "", v)
+                    if (v ~ /^\$?\x27/ && !(length(v) > 1 && v ~ /\x27$/ && v !~ /^\$?\x27$/)) {
+                        while (i < m && w[i] !~ /\x27$/) i++
+                        if (w[i] !~ /\x27$/) i++
+                    }
+                    continue
+                }
                 if (t == "exec" || t == "command" || t == "env" || t == "nice") continue
                 # `timeout N cmd` is two processes — timeout forks cmd so it can
                 # kill it — so both are counted (one row each), and N is skipped.
@@ -148,6 +164,21 @@ _fb_traced "$TEST_TEMP_DIR/canary.trace" bash "$CANARY"
 _canary_n="$(_fb_count "$TEST_TEMP_DIR/canary.trace" "$TEST_TEMP_DIR/canary.sites")"
 assert_eq "[SPEC-1] the canary's one dirname is counted, its builtins are not" "1" "$_canary_n"
 assert_contains "[SPEC-1] …and attributed to its call site" "$(cat "$TEST_TEMP_DIR/canary.sites")" "canary.sh:2"$'\t'"dirname"
+
+# ─── SPEC-1b: an assignment's value is not a command ─────────────────────────
+# xtrace prints `v='review lens: security'` for an assignment whose value has
+# spaces. The words inside the quotes are data; `security` is a binary on macOS,
+# and 178 phantom execs per site were counted from such values (#1842).
+QUOTED="$TEST_TEMP_DIR/quoted.sh"
+cat > "$QUOTED" <<'EOF'
+#!/usr/bin/env bash
+v="first ls second"
+w='x cat y'
+z=$'a\tmkdir b'
+EOF
+_fb_traced "$TEST_TEMP_DIR/quoted.trace" bash "$QUOTED"
+assert_eq "[SPEC-1b] words inside an assigned value are not counted" "0" \
+    "$(_fb_count "$TEST_TEMP_DIR/quoted.trace" "$TEST_TEMP_DIR/quoted.sites")"
 
 # ─── SPEC-5: an exempt wait is listed, not counted ───────────────────────────
 print_test_section "SPEC-5: a marked wait is not counted"

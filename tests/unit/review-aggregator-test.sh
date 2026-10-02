@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Tests: plugins/agent/review-aggregator — collapse N parallel lens outputs into
 # ONE advisory merge-readiness report (#1141 C2, ADR-040 §3/§4; evolves ADR-038).
-# Globs lens-<name>.json from the shared artifacts dir, de-dupes findings by
+# Reads the lens_result set the engine hands it (ZBUILD_STAGE_INPUTS), de-dupes findings by
 # file + category + proximity (max severity + union of lenses/messages), renders
-# review-report.json + .md. Advisory only: NEVER blocks — always returns 0.
+# review-report.json + .md. Advisory only: it never blocks the pipeline. It
+# returns 0 when it aggregated, 1 when the engine gave it no inputs or nowhere
+# to write, or a signal stopped it (#1842; those paths: closeout-test).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,6 +43,21 @@ source "$PLUGIN_DIR/plugin.sh"
 write_lens() {
     printf '%s\n' "$3" > "$1/lens-$2.json"
 }
+# _inputs_for <dir> — the engine's stage-inputs index handing over every lens
+# fixture in <dir> (the test finds them; the plugin never looks) (#1842).
+_inputs_for() {
+    local -a ls=()
+    local f
+    for f in "$1"/lens-*.json; do [[ -f "$f" ]] && ls+=("$f"); done
+    jq -n '{schema_version:1, stage:"review-aggregator", inputs:{lens_result:$ARGS.positional}}' \
+        --args "${ls[@]}" > "$1/stage-inputs.json"
+    printf '%s' "$1/stage-inputs.json"
+}
+# _run_inner <dir> — run the aggregator over <dir>'s lenses, output into <dir>.
+_run_inner() {
+    ZBUILD_STAGE_INPUTS="$(_inputs_for "$1")" \
+        _review_aggregator_run_inner "$1" "$1/review-report.json" "$1/review-report.md"
+}
 
 # ─── Fixtures: mirror the review-report aggregation test's canned lens set ────
 # x.sh logic @42 (correctness, medium) and @47 (security, high) are within the
@@ -61,11 +78,11 @@ out_json="$artifact_dir/review-report.json"
 out_md="$artifact_dir/review-report.md"
 
 set +e
-_review_aggregator_run_inner "$artifact_dir" "$out_json" "$out_md"
+_run_inner "$artifact_dir"
 _run_rc=$?
 set -e
 
-# ─── SPEC-1: glob collapses N lens files → one report with N lenses ──────────
+# ─── SPEC-1: N handed lens files → one report with N lenses ─────────────────
 assert_eq "[SPEC-1] run returns 0 (advisory never aborts)" "0" "$_run_rc"
 assert_file_exists "[SPEC-1] writes review-report.json" "$out_json"
 assert_eq "[SPEC-1] report has 4 lenses (one per lens-*.json)" "4" "$(jq '.lenses | length' "$out_json")"
@@ -81,14 +98,12 @@ assert_eq "[SPEC-2] merged finding takes MAX severity (high)" "high" \
 assert_eq "[SPEC-2] y.sh stays a separate critical finding" "critical" \
     "$(jq -r '.findings[] | select(.file=="core/y.sh") | .severity' "$out_json")"
 
-# ─── SPEC-3: advisory only — needs_attention, but rc 0 and NO verdict field ──
+# ─── SPEC-3: advisory only — needs_attention, but rc 0 and no merge decision ──
+# The v2 verdict is the stage's execution status (#1842), never a merge call.
 assert_eq "[SPEC-3] critical finding → merge_readiness=needs_attention" "needs_attention" \
     "$(jq -r '.merge_readiness' "$out_json")"
-if jq -e '.verdict' "$out_json" >/dev/null 2>&1; then
-    assert_fail "[SPEC-3] report must carry NO verdict field" "found .verdict"
-else
-    assert_pass "[SPEC-3] report carries no verdict field"
-fi
+assert_eq "[SPEC-3] the verdict is execution status (complete), not a merge decision" "complete" \
+    "$(jq -r '.verdict // empty' "$out_json")"
 _esc_note="$(jq -r '.escalation_note // empty' "$out_json" 2>/dev/null)"
 if [[ -n "$_esc_note" ]]; then
     assert_pass "[SPEC-3] needs_attention report carries non-empty escalation_note"
@@ -96,7 +111,7 @@ else
     assert_fail "[SPEC-3] needs_attention report must carry escalation_note" "field absent"
 fi
 # Source-level no-coercion proof: the aggregator never emits a merge decision.
-if grep -qiE '\b(approve|request_changes)\b|"block"|verdict' "$PLUGIN_DIR/plugin.sh"; then
+if grep -qiE '\b(approve|request_changes)\b|"block"' "$PLUGIN_DIR/plugin.sh"; then
     assert_fail "[SPEC-3] no coercion vocabulary in review-aggregator source" "found coercion token"
 else
     assert_pass "[SPEC-3] no coercion vocabulary in review-aggregator source"
@@ -123,13 +138,15 @@ assert_eq "[SPEC-5] _ra_aggregate output matches _rr_aggregate byte-for-byte" "$
 _empty_dir="$TEST_TEMP_DIR/empty"
 mkdir -p "$_empty_dir"
 set +e
-_review_aggregator_run_inner "$_empty_dir" "$_empty_dir/review-report.json" "$_empty_dir/review-report.md"
+_run_inner "$_empty_dir"
 _empty_rc=$?
 set -e
 assert_eq "[SPEC-6] empty lens group returns 0" "0" "$_empty_rc"
 assert_file_exists "[SPEC-6] a report is still written on an empty group" "$_empty_dir/review-report.json"
 assert_eq "[SPEC-6] empty group → 0 lenses" "0" "$(jq '.lenses | length' "$_empty_dir/review-report.json")"
 assert_eq "[SPEC-6] empty group → 0 findings" "0" "$(jq '.findings | length' "$_empty_dir/review-report.json")"
+assert_eq "[SPEC-6] empty group is never ready (#1753)" "needs_attention" \
+    "$(jq -r '.merge_readiness' "$_empty_dir/review-report.json")"
 if grep -q '"review_aggregator.no_lenses"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
     assert_pass "[SPEC-6] review_aggregator.no_lenses event emitted"
 else
@@ -143,7 +160,7 @@ printf '{ not json at all ' > "$_bad_dir/lens-correctness.json"
 write_lens "$_bad_dir" "security" \
     '{"schema_version":1,"name":"security","score":9,"findings":[]}'
 set +e
-_review_aggregator_run_inner "$_bad_dir" "$_bad_dir/review-report.json" "$_bad_dir/review-report.md"
+_run_inner "$_bad_dir"
 _bad_rc=$?
 set -e
 assert_eq "[SPEC-7] malformed lens file still returns 0" "0" "$_bad_rc"
@@ -158,11 +175,12 @@ echo '{"schema_version":1,"run_id":"ra-hook-001","issue":"0","stage_statuses":{}
 write_lens "$STATE_DIR/artifacts" "edge-case" \
     '{"schema_version":1,"name":"edge-case","score":8,"findings":[]}'
 set +e
-review_aggregator_run "review-aggregator" "$STATE_FILE" >/dev/null 2>&1
+ZBUILD_ARTIFACT_DIR="$STATE_DIR/artifacts" ZBUILD_STAGE_INPUTS="$(_inputs_for "$STATE_DIR/artifacts")" \
+    review_aggregator_run "review-aggregator" "$STATE_FILE" >/dev/null 2>&1
 _rc_hook=$?
 set -e
 assert_eq "[SPEC-8] review_aggregator_run(stage, state_file) returns 0" "0" "$_rc_hook"
-assert_file_exists "[SPEC-8] hook writes review-report.json into artifacts dir" \
+assert_file_exists "[SPEC-8] hook writes review-report.json into ZBUILD_ARTIFACT_DIR" \
     "$STATE_DIR/artifacts/review-report.json"
 
 # ─── SPEC-9 (Issue OUT): aggregator prints the prose report to fd-2, io-gated ─
@@ -182,6 +200,8 @@ write_lens "$STATE_DIR9/artifacts" "security" \
 # (a) stdout destination present → prose printed to fd-2.
 export _TPL_STAGE_IO_DESTS_review_aggregator="file,stdout"
 export ZBUILD_CURRENT_STAGE="review-aggregator"
+export ZBUILD_ARTIFACT_DIR="$STATE_DIR9/artifacts"
+ZBUILD_STAGE_INPUTS="$(_inputs_for "$STATE_DIR9/artifacts")"; export ZBUILD_STAGE_INPUTS
 PRINT_OUT="$TEST_TEMP_DIR/agg-print.out"
 set +e
 review_aggregator_run "review-aggregator" "$STATE_FILE9" 2>"$PRINT_OUT" >/dev/null
@@ -201,7 +221,7 @@ if grep -q '## Review Report' "$PRINT_OUT2"; then
 else
     assert_pass "[SPEC-9b] file-only dest → aggregator prints nothing"
 fi
-unset ZBUILD_CURRENT_STAGE _TPL_STAGE_IO_DESTS_review_aggregator
+unset ZBUILD_CURRENT_STAGE _TPL_STAGE_IO_DESTS_review_aggregator ZBUILD_ARTIFACT_DIR ZBUILD_STAGE_INPUTS
 
 # ─── #1849: a lens that never ran is not a clean review ──────────────────────
 # Run 36238164552: all six lenses failed before reaching the model ("Argument
@@ -213,7 +233,7 @@ _nr_dir="$TEST_TEMP_DIR/not-run"; mkdir -p "$_nr_dir"
 write_lens "$_nr_dir" "correctness" '{"name":"correctness","score":8,"findings":[],"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}'
 write_lens "$_nr_dir" "security" '{"result_contract":2,"verdict":"degraded","disposition":"unavailable","reason":"router_error"}'
 set +e
-_review_aggregator_run_inner "$_nr_dir" "$_nr_dir/review-report.json" "$_nr_dir/review-report.md" >/dev/null 2>&1
+_run_inner "$_nr_dir" >/dev/null 2>&1
 set -e
 assert_eq "[SPEC-10] did_not_run names the lens that did not run" '["security"]' \
     "$(jq -c '.did_not_run' "$_nr_dir/review-report.json" 2>/dev/null || echo MISSING)"
@@ -226,10 +246,39 @@ assert_contains "[SPEC-10] the rendered report says so too" "$(cat "$_nr_dir/rev
 _lg_dir="$TEST_TEMP_DIR/legacy-ran"; mkdir -p "$_lg_dir"
 write_lens "$_lg_dir" "perf" '{"name":"perf","score":8,"findings":[]}'
 set +e
-_review_aggregator_run_inner "$_lg_dir" "$_lg_dir/review-report.json" "$_lg_dir/review-report.md" >/dev/null 2>&1
+_run_inner "$_lg_dir" >/dev/null 2>&1
 set -e
 assert_eq "[SPEC-10] a lens file without a disposition counts as run" '[]' \
     "$(jq -c '.did_not_run' "$_lg_dir/review-report.json" 2>/dev/null || echo MISSING)"
+
+# ─── [#1842/SPEC-8]: advisory never aborts — hook returns 0 on all paths ──────
+# Guard: with an empty artifact dir (no lens files discoverable), the hook must
+# still return 0 (advisory-never-aborts invariant preserved post-migration).
+_d_s8="$TEST_TEMP_DIR/spec8-guard"
+mkdir -p "$_d_s8/artifacts"
+echo '{"schema_version":1,"run_id":"spec8g","issue":"0","stage_statuses":{}}' \
+    > "$_d_s8/pipeline-state.json"
+_si_s8="$_d_s8/stage-inputs.json"
+printf '{"inputs":{"lens_result":[]}}\n' > "$_si_s8"
+set +e
+ZBUILD_ARTIFACT_DIR="$_d_s8/artifacts" ZBUILD_STAGE_INPUTS="$_si_s8" review_aggregator_run "review-aggregator" \
+    "$_d_s8/pipeline-state.json" >/dev/null 2>&1
+_rc_s8=$?
+set -e
+assert_eq "[#1842/SPEC-8] hook returns 0 (advisory never aborts)" "0" "$_rc_s8"
+
+# ─── [#1842/SPEC-9]: _ra_aggregate ≡ _rr_aggregate byte-for-byte ─────────────
+# Guard: after the v2 migration the aggregation logic must remain byte-identical
+# to _rr_aggregate (ADR-038 / SPEC-5 predecessor invariant). Use a fresh input
+# independent of the earlier SPEC-5 run to verify equivalence independently.
+_lenses_s9="$TEST_TEMP_DIR/spec9-guard-lenses.json"
+printf '%s\n' \
+    '[{"name":"s9","score":6,"findings":[{"file":"g.sh","category":"logic","severity":"high","line":5,"message":"s9 guard issue","introduced":true}]}]' \
+    > "$_lenses_s9"
+_ra_out_s9="$(_ra_aggregate "$_lenses_s9")"
+_rr_out_s9="$(_rr_aggregate "$_lenses_s9")"
+assert_eq "[#1842/SPEC-9] _ra_aggregate output matches _rr_aggregate byte-for-byte" \
+    "$_rr_out_s9" "$_ra_out_s9"
 
 cleanup_test_env
 print_test_results

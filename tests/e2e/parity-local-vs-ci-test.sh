@@ -124,6 +124,10 @@ assert_eq "full pipeline-state.json identical after normalization" \
 # also the standing proof of the relocation: delete it and this test reports the
 # staging tree at ./scratch/test/zbuild-test-stage.XXXXXX/, which is precisely
 # #1918's end-to-end acceptance criterion.
+# The mock repo's .git/ is git's own layout (sample hooks vary by git
+# version), not an artifact of the run (#1842). LC_ALL=C: a locale collation
+# ignores punctuation, so `review_lenses` vs `review-aggregator` sorted
+# differently on Linux CI than on macOS.
 _artifact_paths() {
     local dir="$1"
     ( cd "$dir" && \
@@ -131,13 +135,14 @@ _artifact_paths() {
         -not -path './events/*' \
         -not -path './runtime/*' \
         -not -path './scratch/*' \
+        -not -path './mock-repo/.git/*' \
         -not -name '*.lock' \
         -not -name '*.bak' \
         -not -name '*.db' \
         -not -name '*.db-journal' \
         -not -name '*.db-shm' \
         -not -name '*.db-wal' \
-        | sort )
+        | LC_ALL=C sort )
 }
 
 local_paths="$(_artifact_paths "$RUN1_DIR")"
@@ -167,15 +172,18 @@ _normalize_for_sha() {
     if [[ "$f" == *.json ]]; then
         # created_at (#1052 plan-context mirror) is a legitimate per-run wall
         # clock — normalize it alongside the other ephemeral timestamp fields.
-        body="$(jq -S 'del(.updated_at, .generated_at, .ts, .created_at)' "$f" 2>/dev/null)" \
+        # duration_ms (a stage-io record's wall-clock timing, #1842) likewise.
+        body="$(jq -S 'del(.updated_at, .generated_at, .ts, .created_at, .duration_ms)' "$f" 2>/dev/null)" \
             || body="$(cat "$f")"
     else
         # Non-JSON artifacts (e.g. plan-context.md) embed `created_at:` as a
         # rendered line; drop it so the per-run timestamp doesn't mask divergence.
         body="$(sed '/created_at/d' "$f")"
     fi
-    # Strip run-specific dir prefix so embedded absolute paths normalize.
-    printf '%s' "$body" | sed "s|${run_dir}|__RUN_DIR__|g"
+    # Strip run-specific dir prefix so embedded absolute paths normalize. A
+    # recorded prompt carries its WALL CLOCK budget line ("~Ns have elapsed");
+    # N is elapsed time, so under load the two runs differ by a second (#1842).
+    printf '%s' "$body" | sed -e "s|${run_dir}|__RUN_DIR__|g" -e 's/~[0-9][0-9]*s have elapsed/~Ns have elapsed/g'
 }
 
 mismatched_artifacts=()

@@ -6,6 +6,7 @@
 ./artifacts/attempts/hydrate/iter-0-attempt-1/hydrate-result.json
 ./artifacts/attempts/hydrate/iter-0-attempt-1/hydrate-summary.md
 ./artifacts/attempts/intake/iter-0-attempt-1/attempt.json
+./artifacts/attempts/intake/iter-0-attempt-1/intake-baseline-ref.txt
 ./artifacts/attempts/intake/iter-0-attempt-1/intake-result.json
 ./artifacts/attempts/intake/iter-0-attempt-1/intake-summary.md
 ./artifacts/attempts/intake/iter-0-attempt-1/intake.md
@@ -27,6 +28,9 @@
 ./artifacts/attempts/review-aggregator/iter-0-attempt-1/attempt.json
 ./artifacts/attempts/review-aggregator/iter-0-attempt-1/review-report.json
 ./artifacts/attempts/review-aggregator/iter-0-attempt-1/review-report.md
+./artifacts/attempts/review_lenses/iter-0-attempt-1/attempt.json
+./artifacts/attempts/review_lenses/iter-0-attempt-1/lens-correctness-summary.md
+./artifacts/attempts/review_lenses/iter-0-attempt-1/lens-correctness.json
 ./artifacts/attempts/test/iter-0-attempt-1/attempt.json
 ./artifacts/attempts/test/iter-0-attempt-1/test-failures-summary.md
 ./artifacts/attempts/test/iter-0-attempt-1/test-output.log
@@ -39,6 +43,8 @@
 ./artifacts/hydrate-summary.md
 ./artifacts/intake-result.json
 ./artifacts/intake-summary.md
+./artifacts/lens-correctness-summary.md
+./artifacts/lens-correctness.json
 ./artifacts/persist-result.json
 ./artifacts/persist-summary.md
 ./artifacts/plan-context.json
@@ -52,11 +58,14 @@
 ./artifacts/review-aggregator-lenses.json
 ./artifacts/review-report.json
 ./artifacts/review-report.md
+./artifacts/stage-io/review_lenses-1.json
+./artifacts/stage-reports.json
 ./artifacts/teardown-result.json
 ./artifacts/teardown-summary.md
 ./artifacts/test-failures-summary.md
 ./artifacts/test-output.log
 ./artifacts/test-results.json
+./intake-baseline-ref.txt
 ./intake.md
 ./mock-repo/seed.txt
 ./mock-repo/tests/fixtures/parity-fixture.txt
@@ -71,4 +80,5 @@
 ./stage-inputs/pr.json
 ./stage-inputs/release.json
 ./stage-inputs/review-aggregator.json
+./stage-inputs/review_lenses.json
 ./stage-inputs/test.json

@@ -15,8 +15,8 @@ description: |
   Collapses N parallel advisory review-lens outputs into ONE advisory
   merge-readiness report (ADR-040 §3/§4, EPIC #1129 C2; evolves ADR-038).
 
-  Globs the lens group's lens-<name>.json results from the shared artifacts
-  dir, de-dupes their findings by file + category + proximity window, carries
+  Reads the lens group's results from the engine-resolved `lens_result` input
+  (the review_lenses map group's member paths, ADR-055 §1.4), de-dupes their findings by file + category + proximity window, carries
   the max severity + the union of contributing lenses + the union of messages,
   and renders an advisory report (review-report.json + review-report.md). The
   dedup/severity/union logic is ported verbatim from review-report's
@@ -24,8 +24,10 @@ description: |
 
   Does NO LLM call — it merges lens JSON only (no router, no redaction
   chokepoint traffic). Advisory only: it never recommends a merge action and
-  never gates the pipeline. It always writes review-report.json first and
-  returns 0 (an empty / absent lens group degrades to an empty report).
+  never gates the pipeline. Every exit writes a v2 review-report.json and its
+  .md summary; an empty lens set reports needs_attention (no review happened),
+  never ready (#1753). rc 1 when the engine gave it no inputs or nowhere to
+  write, or a signal stopped it.
 
   Bound by ROLE (resolver.sh reads provides.role). This stage is advisory: it
   used to opt out of contracts.sh's blocking contract-violated machinery by
@@ -37,6 +39,9 @@ description: |
 
 hooks:
   run: review_aggregator_run
+# hooks.cleanup is intentionally absent: this plugin holds no live resources
+# that require teardown — ADR-054 §7. No router: section in config: either;
+# this stage makes no LLM calls (ADR-017 §11 budget declaration not applicable).
 
 requires:
   # `redaction` is mandatory for kind: agent (ADR-004 / validate_manifest), even
@@ -48,6 +53,7 @@ requires:
   plugins: []
 
 provides:
+  result_contract: 2
   role: review_aggregator
   # ADR-001 §"Declared events" (#1717) — this plugin's own events, composed into
   # the engine's known set at load. Adding one here needs no engine-config edit.
@@ -69,17 +75,18 @@ provides:
 # for `valid_verdicts`, which the engine DOES read (#1708).
 
 config:
-  # Writes no .verdict on either verdict channel; the engine falls back to
-  # pass for a well-formed primary (core/pipeline/verdict.sh). An ABSENT key
-  # is a lint failure; the explicit [] is the claim (#1708).
-  valid_verdicts: []
+  # v2 verdicts: complete = aggregated; degraded = no report behind it (no
+  # stage inputs, or stopped by a signal).
+  # ADR-055 §4 — must be non-empty for a v2-compliant stage (#1708).
+  valid_verdicts: [complete, degraded]
 
 inputs:
-  # The lens group's per-lens results, read by glob from the shared artifacts
-  # dir (each review-lens stage writes lens-<name>.json there). required:false
-  # keeps the aggregator composable — an empty group degrades to an empty report.
+  # The lens group's per-lens results: a map producer, so the engine hands over
+  # the SET of member paths (ADR-055 §1.4). Required (#1842): with no lens
+  # result there is nothing to aggregate, and the engine refuses the dispatch
+  # rather than letting an absent review read as a clean one (#1753).
   - id: lens_result
-    required: false
+    required: true
 
 outputs:
   # FIRST entry — always written; keeps the stage green without opting into the
@@ -94,7 +101,7 @@ outputs:
     path: "${artifact_dir}/review-report.md"
     type: review-report.md@1
     format: markdown
-    required: false
+    required: true
     # #1986: this stage suppresses the lens summaries it aggregates, so it MUST
     # publish one itself — otherwise the roster's findings reach no prompt at
     # all and the loss is silent. The merged merge-readiness report IS that

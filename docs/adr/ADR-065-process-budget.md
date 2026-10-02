@@ -51,6 +51,15 @@ raise it says why in an amendment to this ADR (the ADR-053 §5 precedent for the
 "It is only a few hundred more" is not a reason; the run-4 postmortem of #1840 is what a few
 hundred per stage per iteration adds up to.
 
+> **Amended 2026-10-01 (#1842): raised to 6,340, with the reason.** The measured fixture
+> (`tests/golden/parity/run-fixture.sh`) was not running what production runs:
+> - Its mock repo was never a git repo. `/usr/bin/env git init` resolved to the fixture's own mock `git`, which does nothing.
+> - Its mock `rev-parse` answered with a made-up path.
+> - Hydrate, build's diff and persist's snapshot therefore all failed fast and cheaply.
+> - It ran `review-aggregator` over zero lenses. That "ready" review is what let `pr-open` open a PR (#1753), and #1842 now refuses it.
+>
+> The fixture now has a real repo and the production review family, one lens wide. That costs about 1,900 execs that a real run was always paying. Separately, the counter read words inside a quoted assigned value as commands (`v='review lens: security'` counted macOS's `security` binary). That accounted for 132 execs on main's fixture; SPEC-1b holds the fix. Measured: main's fixture 4,367 with the fixed counter, #1842's fixture 6,280 (macOS). The largest new site, persist's two `git` processes per artifact file, is #2249, which ratchets this back down.
+
 ### §3 — A memo is only as good as its fill in the parent shell
 
 `$( … )` and `< <( … )` fork: the child inherits every associative array the parent has filled
