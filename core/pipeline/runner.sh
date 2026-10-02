@@ -2083,6 +2083,12 @@ main() {
     # the resolved state_dir. Without this export the var is unset in plugin
     # subshells and the #617 BRANCH STATE block is silently skipped.
     export ZBUILD_STATE_DIR="$state_dir"
+    # #2252: the moment this run began. A file in a reused state dir, or in its
+    # attempt archive, is THIS run's only if it is not older than this marker —
+    # so a reader never mistakes an earlier run's leftover for this run's work.
+    mkdir -p "$state_dir/runtime" 2>/dev/null || true
+    : > "$state_dir/runtime/run-start" 2>/dev/null || true
+    export ZBUILD_RUN_START_MARKER="$state_dir/runtime/run-start"
     # ADR-058 C10: one run-scoped temp root, resolved here because this is the
     # first point where state_dir is absolutized (ADR-052, just above) and the
     # same "expose to EVERY stage, one place" seam as the exports around it.

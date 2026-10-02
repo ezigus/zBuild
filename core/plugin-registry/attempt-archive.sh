@@ -25,6 +25,34 @@ _ZBUILD_ATTEMPT_ARCHIVE_LOADED=1
 # shellcheck source=output-paths.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/output-paths.sh" 2>/dev/null || true
 
+# ─── attempt_is_this_run <file> ──────────────────────────────────────────────
+# #2252: rc 0 when <file> was written by THIS run — not older than the runner's
+# run-start marker (ZBUILD_RUN_START_MARKER). A reused state dir can hold an
+# earlier run's files; without the marker (a stage run outside the runner) every
+# file present counts.
+attempt_is_this_run() {
+    local f="$1" m="${ZBUILD_RUN_START_MARKER:-}"
+    [[ -s "$f" ]] || return 1
+    [[ -n "$m" && -e "$m" ]] || return 0
+    [[ "$m" -nt "$f" ]] && return 1
+    return 0
+}
+
+# ─── attempt_latest_copy <artifact_dir> <basename> ───────────────────────────
+# #2252: this run's newest archived copy of <basename>, from any stage's
+# attempts. Prints its path; rc 1 when this run archived none. Pure bash
+# (glob + -nt), so a reader on the hot path pays no fork.
+attempt_latest_copy() {
+    local dir="$1" base="$2" f best=""
+    [[ -n "$dir" && -n "$base" && -d "$dir/attempts" ]] || return 1
+    for f in "$dir"/attempts/*/iter-*-attempt-*/"$base"; do
+        attempt_is_this_run "$f" || continue
+        if [[ -z "$best" || "$f" -nt "$best" ]]; then best="$f"; fi
+    done
+    [[ -n "$best" ]] || return 1
+    printf '%s' "$best"
+}
+
 # ─── _attempt_output_paths <manifest> ─────────────────────────────────────────
 # Every declared output path (raw, unresolved), one per line.
 _attempt_output_paths() {

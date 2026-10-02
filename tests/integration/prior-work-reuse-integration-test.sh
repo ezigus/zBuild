@@ -115,10 +115,16 @@ got_bs="$(_read_prior_output "build-summary.json")"
 assert_contains "T4 seam returns the restored build-summary" "$got_bs" "empty_diff"
 
 # ─── T5: cross-run tier beats the local state fallback ────────────────────────
-# Seam order is intra-cycle > restored > local. With a DIFFERENT local copy and no
-# cycle, the restored (prior-run) artifact must win.
-mkdir -p "$ZBUILD_STATE_DIR/artifacts"
+# Seam order is intra-cycle > this run's own > restored (#2252). A local copy an
+# EARLIER run left in a reused state dir is not this run's, so the restored
+# (prior-run) artifact must win over it.
+mkdir -p "$ZBUILD_STATE_DIR/artifacts" "$ZBUILD_STATE_DIR/runtime"
 printf 'LOCAL STALE DESIGN — must not win\n' > "$ZBUILD_STATE_DIR/artifacts/design.md"
+# #2252: "stale" means left by an EARLIER run — older than this run's start. A
+# local copy THIS run wrote beats the restored one (own-run-artifacts-first-test).
+touch -t 202601010000 "$ZBUILD_STATE_DIR/artifacts/design.md"
+: > "$ZBUILD_STATE_DIR/runtime/run-start"
+export ZBUILD_RUN_START_MARKER="$ZBUILD_STATE_DIR/runtime/run-start"
 got_design2="$(_read_prior_output "design.md")"
 assert_contains "T5 restored (cross-run) beats local fallback" "$got_design2" "earlier attempt"
 if [[ "$got_design2" == *"LOCAL STALE"* ]]; then
@@ -126,6 +132,7 @@ if [[ "$got_design2" == *"LOCAL STALE"* ]]; then
 else
     assert_pass "T5 local stale copy did not leak"
 fi
+unset ZBUILD_RUN_START_MARKER
 
 # ─── T6: absent state branch → restore no-op, seam falls through to empty ──────
 runner_ws2="$TEST_TEMP_DIR/ci-runner-firstrun"

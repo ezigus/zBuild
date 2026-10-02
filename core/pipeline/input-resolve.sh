@@ -42,6 +42,10 @@ declare -F atomic_write >/dev/null 2>&1 || \
 # shellcheck source=./verdict.sh
 declare -F _verdict_resolve_path >/dev/null 2>&1 || \
     source "$_ZBUILD_IR_ROOT/core/pipeline/verdict.sh"
+# #2252: this run's archived copies come before an earlier run's.
+# shellcheck source=../plugin-registry/attempt-archive.sh
+declare -F attempt_latest_copy >/dev/null 2>&1 || \
+    source "$_ZBUILD_IR_ROOT/core/plugin-registry/attempt-archive.sh"
 # #2152: the manifest index _inputs_scan_manifests reads from.
 # shellcheck source=../plugin-registry/manifest-index.sh
 declare -F manifest_index_rows >/dev/null 2>&1 || \
@@ -288,6 +292,14 @@ _inputs_effective_path() {
         [[ -s "$f" ]] && { printf '%s' "$f"; return 0; }
     fi
     [[ -s "$live" ]] && { printf '%s' "$live"; return 0; }
+    # #2252: a live file this run produced and then cleared (a cycle re-entry)
+    # is this run's newest archived copy — never an earlier run's (#1844 run
+    # 36969128968 redid its design from the Sept 30 run's).
+    local own
+    if declare -F attempt_latest_copy >/dev/null 2>&1 \
+            && own="$(attempt_latest_copy "${live%/*}" "$base")"; then
+        printf '%s' "$own"; return 0
+    fi
     local restored="${ZBUILD_RESTORED_ARTIFACTS_DIR:-}"
     [[ -n "$restored" && -s "$restored/$base" ]] && { printf '%s' "$restored/$base"; return 0; }
     printf '%s' "$live"
