@@ -208,6 +208,24 @@ _sf_floor_file_updated() {
     [[ -n "$changed" ]]
 }
 
+# ─── _sf_floor_verified <path> (#1874) ───────────────────────────────────────
+# rc 0 when an UNEDITED floor file is shown still correct by this run's own full
+# test pass on this exact tree (the caller sets _SF_VERIFY_OK, _SF_FAILED_COUNT
+# and _SF_FAILED_FILES from the test stage's result). A test file is verified
+# when the pass did not list it as failing; a golden only when nothing failed —
+# a golden mismatch surfaces as some other test failing. A shape change that
+# leaves the floor correct is then satisfiable without a cosmetic edit, which
+# #2183 (rightly) no longer counts.
+_sf_floor_verified() {
+    local f="$1"
+    [[ "${_SF_VERIFY_OK:-0}" == "1" ]] || return 1
+    if [[ "$f" == *event-sequence.golden ]]; then
+        [[ "${_SF_FAILED_COUNT:-1}" == "0" ]]
+        return
+    fi
+    [[ $'\n'"${_SF_FAILED_FILES:-}"$'\n' != *$'\n'"$f"$'\n'* ]]
+}
+
 # ─── _sf_collect_missing_floor_files <repo_root> <diff_files_text> ───────────
 # Prints repo-relative paths of event-sequence.golden and _TPL_STAGES[N]-indexed
 # test files that are absent from the supplied diff_files_text (one path per line).
@@ -219,16 +237,41 @@ _sf_collect_missing_floor_files() {
     # Present in the diff AND actually changed — see _sf_floor_file_updated.
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
-        if ! grep -qxF "$f" <<< "$diff_files" || ! _sf_floor_file_updated "$repo_root" "$f"; then
+        if { ! grep -qxF "$f" <<< "$diff_files" || ! _sf_floor_file_updated "$repo_root" "$f"; } \
+                && ! _sf_floor_verified "$f"; then
             printf '%s\n' "$f"
         fi
     done < <(_impact_list_event_goldens "$tests_root")
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
-        if ! grep -qxF "$f" <<< "$diff_files" || ! _sf_floor_file_updated "$repo_root" "$f"; then
+        if { ! grep -qxF "$f" <<< "$diff_files" || ! _sf_floor_file_updated "$repo_root" "$f"; } \
+                && ! _sf_floor_verified "$f"; then
             printf '%s\n' "$f"
         fi
     done < <(_impact_list_order_assertions "$tests_root")
+}
+
+# ─── sf_scope_floor_files <repo_root> <file>... (#1874) ──────────────────────
+# The floor a change's SCOPE owes: when any of <file>... matches a glob in
+# config/shape-change-paths.txt, every event-sequence golden and every
+# _TPL_STAGES[N] test, repo-relative, one per line; nothing otherwise. The same
+# listers _sf_collect_missing_floor_files judges with — computed into scope up
+# front, so build is never refused a file the gate then demands (#1701, #2032).
+sf_scope_floor_files() {
+    local repo="$1"; shift
+    local paths="$repo/config/shape-change-paths.txt" pattern f hit=0
+    [[ -f "$paths" && $# -gt 0 ]] || return 0
+    while IFS= read -r pattern; do
+        pattern="${pattern#"${pattern%%[![:space:]]*}"}"
+        [[ -z "$pattern" || "$pattern" == "#"* ]] && continue
+        for f in "$@"; do
+            # shellcheck disable=SC2053
+            [[ "$f" == $pattern ]] && { hit=1; break 2; }
+        done
+    done < "$paths"
+    (( hit )) || return 0
+    _impact_list_event_goldens "$repo/tests"
+    _impact_list_order_assertions "$repo/tests"
 }
 
 # ─── _sf_shape_floor <repo_root> ─────────────────────────────────────────────
@@ -315,28 +358,12 @@ _sf_shape_floor() {
         return 0
     fi
 
-    # Verify golden files are in diff.
-    local tests_root="$repo_root/tests"
-    local missing=0 golden order_file
-    # Present in the diff AND actually changed: a comment-only touch is not an
-    # update (#2183). One shared predicate with the escalation collector, so
-    # the gate and its reason can never disagree about what counts.
-    while IFS= read -r golden; do
-        [[ -z "$golden" ]] && continue
-        if ! grep -qxF "$golden" <<< "$diff_files" || ! _sf_floor_file_updated "$repo_root" "$golden"; then
-            missing=1; break
-        fi
-    done < <(_impact_list_event_goldens "$tests_root")
-
-    # Verify _TPL_STAGES[N]-indexed test files are in diff.
-    if [[ $missing -eq 0 ]]; then
-        while IFS= read -r order_file; do
-            [[ -z "$order_file" ]] && continue
-            if ! grep -qxF "$order_file" <<< "$diff_files" || ! _sf_floor_file_updated "$repo_root" "$order_file"; then
-                missing=1; break
-            fi
-        done < <(_impact_list_order_assertions "$tests_root")
-    fi
+    # Verify the floor: every event golden and stage-order test is updated, or
+    # shown still correct by this run's own test pass (#1874). One judge —
+    # _sf_collect_missing_floor_files — for the verdict and for the list the
+    # detail names, so the two can never disagree.
+    local missing=0
+    [[ -n "$(_sf_collect_missing_floor_files "$repo_root" "$diff_files")" ]] && missing=1
 
     if [[ $missing -eq 1 ]]; then
         printf 'SHAPE_FLOOR FAIL missing_floor_files\n'

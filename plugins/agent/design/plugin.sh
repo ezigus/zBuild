@@ -72,10 +72,19 @@ _design_write_result() {
         _wiring="$(jq -Rnc '[inputs | select(length > 0 and . != "none")] | unique' <<< "$_wl" 2>/dev/null || true)"
         [[ -n "$_wiring" ]] || _wiring="[]"
     fi
+    # #1874: and the files it scoped the change to — so the engine's one scope
+    # list is the one build works to, not plan's alone.
+    local _scope="[]"
+    if [[ -s "$dir/design.md" ]] && declare -F acceptance_list_scope >/dev/null 2>&1; then
+        local _sl; _sl="$(acceptance_list_scope "$dir/design.md" 2>/dev/null || true)"
+        _scope="$(jq -Rnc '[inputs | select(length > 0)]' <<< "$_sl" 2>/dev/null || true)"
+        [[ -n "$_scope" ]] || _scope="[]"
+    fi
     jq -n --arg v "$verdict" --arg d "$disposition" --arg r "$reason" --arg at "$_at" --arg sha "$_sha" \
-        --argjson w "${_wiring:-[]}" \
+        --argjson w "${_wiring:-[]}" --argjson sc "${_scope:-[]}" \
         '{result_contract: 2, verdict: $v, disposition: $d, reason: $r,
-          data: {authored_at: $at, authored_at_commit: $sha, wiring_files: $w}}' \
+          data: ({authored_at: $at, authored_at_commit: $sha, wiring_files: $w}
+                 + (if ($sc | length) > 0 then {scope_files: $sc} else {} end))}' \
         | atomic_write "$dir/design-verdict.json" 2>/dev/null \
         || warn "_design_write_result: failed to write design-verdict.json (verdict=$verdict)"
 }

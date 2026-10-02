@@ -63,6 +63,26 @@ shape_floor_run() {
         return 0
     fi
 
+    # #1874: this run's own test pass is the evidence an unedited floor file is
+    # still correct — read by name from the engine's index, never by path.
+    _SF_VERIFY_OK=0; _SF_FAILED_COUNT=1; _SF_FAILED_FILES=""
+    local _tr=""
+    if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
+        _tr="$(jq -r '.inputs.test_results // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+    fi
+    if [[ -n "$_tr" && -s "$_tr" ]]; then
+        local _head_tree _t="" _m="" _n=""
+        _head_tree="$(git -C "$repo_root" rev-parse 'HEAD^{tree}' 2>/dev/null || true)"
+        IFS=$'\t' read -r _t _m _n < <(jq -r '[(.data.tree_sha // ""), (.data.run_mode // .run_mode // ""),
+                                               ((.data.failed // 0) | tostring)] | @tsv' "$_tr" 2>/dev/null || true)
+        # Only a FULL pass on THIS tree is evidence; a targeted run covers part of it.
+        if [[ -n "$_head_tree" && "$_t" == "$_head_tree" && "$_m" == *full* && "$_n" =~ ^[0-9]+$ ]]; then
+            _SF_VERIFY_OK=1; _SF_FAILED_COUNT="$_n"
+            _SF_FAILED_FILES="$(jq -r '.data.failures[]?.file // empty' "$_tr" 2>/dev/null || true)"
+        fi
+    fi
+    export _SF_VERIFY_OK _SF_FAILED_COUNT _SF_FAILED_FILES
+
     local _shape_out=""
     _shape_out="$(_sf_shape_floor "$repo_root")"
 
@@ -71,6 +91,8 @@ shape_floor_run() {
         *"SHAPE_FLOOR PASS"*)
             verdict="pass"
             detail="all shape-change floor files present"
+            [[ "$_SF_VERIFY_OK" == "1" ]] \
+                && detail="every shape-change floor file is updated, or unedited and shown still correct by this run's full test pass"
             _sf_emit "shape_floor.pass"
             ;;
         *"SHAPE_FLOOR FAIL"*)

@@ -55,7 +55,11 @@ config:
     - skip
   tier_default: T0
 
-inputs: []
+inputs:
+  # #1874: this run's own test pass is the evidence an unedited floor file is
+  # still correct. Optional — without it, every floor file must be edited.
+  - id: test_results
+    required: false
 
 outputs:
   - id: shape_floor_result

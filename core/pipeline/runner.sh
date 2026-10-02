@@ -503,6 +503,24 @@ _runner_export_scope_allowlist() {
     if [[ -s "$rec" ]]; then
         csv="$(jq -r '(.scope_files // []) | unique | join(",")' "$rec" 2>/dev/null || echo "")"
     fi
+    # #1874: the shape floor is part of the scope — computed here, mechanically,
+    # so build, redaction and shape-floor all read one list that already holds
+    # the files a shape change owes. Memoised per scope: this runs every stage.
+    if [[ -n "$csv" && "$csv" != "${_RUNNER_FLOOR_KEY:-}" ]]; then
+        _RUNNER_FLOOR_KEY="$csv"; _RUNNER_FLOOR_CSV="$csv"
+        if ! declare -F sf_scope_floor_files >/dev/null 2>&1; then
+            # shellcheck source=../../scripts/lib/shape-floor.sh
+            source "${_ZBUILD_CONTRACT_LIB_DIR:-$_ZBUILD_ROOT/scripts/lib}/shape-floor.sh" 2>/dev/null || true
+        fi
+        if declare -F sf_scope_floor_files >/dev/null 2>&1; then
+            local -a _scope_arr=() ; local _ff
+            IFS=',' read -r -a _scope_arr <<< "$csv"
+            while IFS= read -r _ff; do
+                [[ -n "$_ff" && ",$_RUNNER_FLOOR_CSV," != *",$_ff,"* ]] && _RUNNER_FLOOR_CSV+=",$_ff"
+            done < <(sf_scope_floor_files "${ZBUILD_REPO_ROOT:-$PWD}" "${_scope_arr[@]}" 2>/dev/null)
+        fi
+    fi
+    [[ -n "$csv" ]] && csv="${_RUNNER_FLOOR_CSV:-$csv}"
     export ZBUILD_SCOPE_ALLOWLIST="$csv"
 }
 

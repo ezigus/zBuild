@@ -201,6 +201,22 @@ _build_load_context() {
             >/dev/null 2>&1 || true
     fi
 
+    # #1874: the engine's scope list (plan ∪ design, plus the shape floor a
+    # shape change owes) is the one build works to — the same list redaction and
+    # shape-floor read, so build is never refused a file the gate then demands.
+    if [[ -n "${ZBUILD_SCOPE_ALLOWLIST:-}" ]]; then
+        local _ctx_eng_f
+        local -a _ctx_eng=()
+        IFS=',' read -r -a _ctx_eng <<< "$ZBUILD_SCOPE_ALLOWLIST"
+        for _ctx_eng_f in "${_ctx_eng[@]}"; do
+            [[ -n "$_ctx_eng_f" ]] || continue
+            case ",$plan_files_csv," in
+                *",$_ctx_eng_f,"*) ;;
+                *) plan_files_csv="${plan_files_csv:+$plan_files_csv,}$_ctx_eng_f" ;;
+            esac
+        done
+    fi
+
     # #840 (ADR-030): consume scope grant from cycle orchestrator.
     if [[ -n "${ZBUILD_SCOPE_EXPANSION_GRANT:-}" && -f "$ZBUILD_SCOPE_EXPANSION_GRANT" ]]; then
         while IFS= read -r _ctx_granted; do

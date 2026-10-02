@@ -381,3 +381,15 @@ safeguard is the second-measurement pattern ADR-036 already uses for
 `inert_wiring` (#1711): advisory on iteration 1, authoritative on iteration 2+,
 bounding a wrong verdict to one wasted iteration. The architecture decides what is
 *admissible*; a stage's own evidence decides whether it is *ready*.
+
+## Amendment (#1874, 2026-10-02) — the shape floor is computed into scope, and a still-correct floor needs no edit
+
+The shape floor (the event goldens and `_TPL_STAGES[N]` tests a pipeline-shape change owes) was computed only when it was judged, so build could be refused the very files the gate then demanded.
+
+- **Into scope.** The engine's one scope list (`ZBUILD_SCOPE_ALLOWLIST`, `_runner_export_scope_allowlist`) is the union of the scope files plan **and design** report, plus the floor whenever a reported file matches `config/shape-change-paths.txt` (`sf_scope_floor_files`).
+- **One list everywhere.** Build works to that list, and redaction and shape-floor read the same one.
+- **Satisfiable when content-stable.** shape-floor reads the test stage's result by name (`test_results`). An unedited floor file is accepted when a full pass on this exact tree (`tree_sha`) shows it still correct:
+  - a test file that is not among the failures;
+  - a golden only when nothing failed.
+
+  A targeted run, a different tree or no result is no evidence, and the file must still be edited.
