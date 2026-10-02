@@ -1,0 +1,14 @@
+{
+  "scope_files": [
+    "core/pipeline/cycle-orchestrator.sh",
+    "docs/adr/ADR-063-budget-disclosure-and-partial-output.md",
+    "plugins/agent/review-report/plugin.sh",
+    "plugins/agent/spec-correspondence/plugin.sh",
+    "plugins/agent/spec-coverage/plugin.sh",
+    "tests/integration/cycle-member-unfinished-no-convergence-test.sh",
+    "tests/unit/review-report-v2-contract-test.sh",
+    "tests/unit/spec-correspondence-test.sh",
+    "tests/unit/spec-coverage-test.sh"
+  ],
+  "wiring_files": []
+}
