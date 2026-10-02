@@ -1,0 +1,247 @@
+### SPEC-16 baseline tests/integration/pr-pipeline-test.sh
+
+[38;2;0;212;255m[1m  pr-delivery agent plugin: real plugin integration (#756)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] simple.yaml resolves a non-empty leaf roster
+  [38;2;74;222;128m✓[0m [SPEC-1] simple.yaml last leaf stage id is pr
+  [38;2;74;222;128m✓[0m [SPEC-2] plugins/agent/pr-delivery/plugin.sh exists
+  [38;2;74;222;128m✓[0m [SPEC-2] plugins/agent/pr-delivery/manifest.yaml exists
+  [38;2;74;222;128m✓[0m [SPEC-2] manifest id is pr-delivery (no collision with tool/pr-open id:pr)
+
+  [38;2;0;212;255mSPEC-3: dry-run produces artifacts via the real plugin[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] dry-run pr_stage_run exits 0
+  [38;2;74;222;128m✓[0m [SPEC-3] pr-url.txt written
+  [38;2;74;222;128m✓[0m [SPEC-3] pr-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-9] dry-run pr-result.json records draft=false (non-draft default)
+
+  [38;2;0;212;255mSPEC-4: review_report block guard (via ZBUILD_STAGE_INPUTS) refuses to open a PR[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] review_report block → pr_stage_run returns non-zero
+  [38;2;74;222;128m✓[0m [SPEC-4] review_report block → no pr-url.txt written
+
+  [38;2;0;212;255mSPEC-5: delegation to pr-open threads the state file[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] non-dry-run pr_stage_run exits 0 (state file threaded to pr-open)
+  [38;2;74;222;128m✓[0m [SPEC-5] pr-url.txt written by pr-open delegation
+  [38;2;74;222;128m✓[0m [SPEC-5] pr-url.txt holds the gh-created URL
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] pr-result.json result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] pr-result.json verdict is pass
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] pr-result.json disposition is complete
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] pr-result.json data.pr_url is non-empty
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] pr-result.json data.draft is false
+
+  [38;2;0;212;255mSPEC-6: pr-open surfaces push stderr in pr-result.json[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] pr_open_run returns 1 on genuine push failure (#1849: v2 rc ∈ {0,1})
+  [38;2;74;222;128m✓[0m [SPEC-6] pr-result.json .reason surfaces the real push stderr
+
+  [38;2;0;212;255m#1844/SPEC-8: pr-open blocked verdict → pr-delivery rc=1/error/complete/review_signal_missing[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-open blocked → rc=1
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-result.json result_contract is 2
+  [38;2;248;113;113m✗[0m [#1844/SPEC-8] pr-result.json verdict is error
+    [2mexpected: error, got: blocked[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-result.json disposition is complete
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-result.json reason contains review_signal_missing
+
+  [38;2;0;212;255m#1844/SPEC-10: fallback gh-pr-create failure → rc=1/error/unavailable[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-10] fallback gh failure → rc=1
+  [38;2;248;113;113m✗[0m [#1844/SPEC-10] pr-result.json result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-10] pr-result.json verdict is error
+    [2mexpected: error, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-10] pr-result.json disposition is unavailable
+    [2mexpected: unavailable, got: [0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m4 of 30 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1844/SPEC-8] pr-result.json verdict is error
+  [38;2;248;113;113m✗[0m [#1844/SPEC-10] pr-result.json result_contract is 2
+  [38;2;248;113;113m✗[0m [#1844/SPEC-10] pr-result.json verdict is error
+  [38;2;248;113;113m✗[0m [#1844/SPEC-10] pr-result.json disposition is unavailable
+
+### SPEC-16 head tests/integration/pr-pipeline-test.sh
+
+[38;2;0;212;255m[1m  pr-delivery agent plugin: real plugin integration (#756)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] simple.yaml resolves a non-empty leaf roster
+  [38;2;74;222;128m✓[0m [SPEC-1] simple.yaml last leaf stage id is pr
+  [38;2;74;222;128m✓[0m [SPEC-2] plugins/agent/pr-delivery/plugin.sh exists
+  [38;2;74;222;128m✓[0m [SPEC-2] plugins/agent/pr-delivery/manifest.yaml exists
+  [38;2;74;222;128m✓[0m [SPEC-2] manifest id is pr-delivery (no collision with tool/pr-open id:pr)
+
+  [38;2;0;212;255mSPEC-3: dry-run produces artifacts via the real plugin[0m
+  [38;2;74;222;128m✓[0m [SPEC-3] dry-run pr_stage_run exits 0
+  [38;2;74;222;128m✓[0m [SPEC-3] pr-url.txt written
+  [38;2;74;222;128m✓[0m [SPEC-3] pr-result.json written
+  [38;2;74;222;128m✓[0m [SPEC-9] dry-run pr-result.json records draft=false (non-draft default)
+
+  [38;2;0;212;255mSPEC-4: review_report block guard (via ZBUILD_STAGE_INPUTS) refuses to open a PR[0m
+  [38;2;74;222;128m✓[0m [SPEC-4] review_report block → pr_stage_run returns non-zero
+  [38;2;74;222;128m✓[0m [SPEC-4] review_report block → no pr-url.txt written
+
+  [38;2;0;212;255mSPEC-5: delegation to pr-open threads the state file[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] non-dry-run pr_stage_run exits 0 (state file threaded to pr-open)
+  [38;2;74;222;128m✓[0m [SPEC-5] pr-url.txt written by pr-open delegation
+  [38;2;74;222;128m✓[0m [SPEC-5] pr-url.txt holds the gh-created URL
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] pr-result.json result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] pr-result.json verdict is pass
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] pr-result.json disposition is complete
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] pr-result.json data.pr_url is non-empty
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] pr-result.json data.draft is false
+
+  [38;2;0;212;255mSPEC-6: pr-open surfaces push stderr in pr-result.json[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] pr_open_run returns 1 on genuine push failure (#1849: v2 rc ∈ {0,1})
+  [38;2;74;222;128m✓[0m [SPEC-6] pr-result.json .reason surfaces the real push stderr
+
+  [38;2;0;212;255m#1844/SPEC-8: pr-open blocked verdict → pr-delivery rc=1/error/complete/review_signal_missing[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-open blocked → rc=1
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-result.json result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-result.json verdict is error
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-result.json disposition is complete
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-result.json reason contains review_signal_missing
+
+  [38;2;0;212;255m#1844/SPEC-10: fallback gh-pr-create failure → rc=1/error/unavailable[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-10] fallback gh failure → rc=1
+  [38;2;74;222;128m✓[0m [#1844/SPEC-10] pr-result.json result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-10] pr-result.json verdict is error
+  [38;2;74;222;128m✓[0m [#1844/SPEC-10] pr-result.json disposition is unavailable
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 30 tests passed[0m
+
+### SPEC-16 baseline tests/unit/plugin-artifact-goldens-test.sh
+
+[38;2;0;212;255m[1m  plugin artifact goldens — 5 plugin output contracts (issue #367)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mG1: plan-artifact.golden[0m
+  [38;2;74;222;128m✓[0m golden file exists: plan-artifact.golden
+  [38;2;74;222;128m✓[0m golden plan-artifact is valid JSON
+  [38;2;74;222;128m✓[0m golden plan-artifact contains '"schema_version"'
+  [38;2;74;222;128m✓[0m golden plan-artifact contains '"steps"'
+  [38;2;74;222;128m✓[0m G1: plan-artifact schema_version == 1
+  [38;2;74;222;128m✓[0m G1: plan-artifact steps array is non-empty
+  [38;2;74;222;128m✓[0m G1: plan-artifact exact golden match
+
+  [38;2;0;212;255mG2: build-summary-artifact.golden[0m
+  [38;2;74;222;128m✓[0m golden file exists: build-summary-artifact.golden
+  [38;2;74;222;128m✓[0m golden build-summary-artifact is valid JSON
+  [38;2;74;222;128m✓[0m golden build-summary-artifact contains '"schema_version"'
+  [38;2;74;222;128m✓[0m golden build-summary-artifact contains '"files_changed"'
+  [38;2;74;222;128m✓[0m golden build-summary-artifact contains '"lines_added"'
+  [38;2;74;222;128m✓[0m golden build-summary-artifact contains '"lines_removed"'
+  [38;2;74;222;128m✓[0m golden build-summary-artifact contains '"diff_patch_path"'
+  [38;2;74;222;128m✓[0m golden build-summary-artifact contains '"notes"'
+  [38;2;74;222;128m✓[0m G2: build-summary-artifact schema_version == 4 (#602 drops .apply_check)
+  [38;2;74;222;128m✓[0m G2: build-summary notes field mentions artifact
+  [38;2;74;222;128m✓[0m G2: build-summary-artifact exact golden match
+
+  [38;2;0;212;255mG3: review-artifact.golden[0m
+  [38;2;74;222;128m✓[0m golden file exists: review-artifact.golden
+  [38;2;74;222;128m✓[0m golden review-artifact is valid JSON
+  [38;2;74;222;128m✓[0m golden review-artifact contains '"schema_version"'
+  [38;2;74;222;128m✓[0m golden review-artifact contains '"verdict"'
+  [38;2;74;222;128m✓[0m golden review-artifact contains '"confidence"'
+  [38;2;74;222;128m✓[0m golden review-artifact contains '"issues"'
+  [38;2;74;222;128m✓[0m golden review-artifact contains '"summary"'
+  [38;2;74;222;128m✓[0m G3: review-artifact schema_version == 1
+  [38;2;74;222;128m✓[0m G3: review-artifact verdict is a valid value (approve)
+  [38;2;74;222;128m✓[0m G3: review-artifact exact golden match
+
+  [38;2;0;212;255mG4: pr-result-artifact.golden[0m
+  [38;2;74;222;128m✓[0m golden file exists: pr-result-artifact.golden
+  [38;2;74;222;128m✓[0m golden pr-result-artifact is valid JSON
+  [38;2;74;222;128m✓[0m golden pr-result-artifact contains '"result_contract"'
+  [38;2;74;222;128m✓[0m golden pr-result-artifact contains '"verdict"'
+  [38;2;74;222;128m✓[0m golden pr-result-artifact contains '"data"'
+  [38;2;74;222;128m✓[0m G4: pr-result-artifact result_contract == 2
+  [38;2;74;222;128m✓[0m [SPEC-7] G4: pr-result-artifact data.draft == false (non-draft default)
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] pr-result-artifact golden verdict == pass
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] pr-result-artifact golden disposition == complete
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] pr-result-artifact golden data.pr_url is non-empty
+  [38;2;74;222;128m✓[0m G4: pr-result-artifact exact golden match
+
+  [38;2;0;212;255mG5: orch-sequential-capabilities.golden[0m
+  [38;2;74;222;128m✓[0m golden file exists: orch-sequential-capabilities.golden
+  [38;2;74;222;128m✓[0m golden orch-sequential-capabilities is valid JSON
+  [38;2;74;222;128m✓[0m golden orch-sequential-capabilities contains '"backend"'
+  [38;2;74;222;128m✓[0m golden orch-sequential-capabilities contains '"capabilities"'
+  [38;2;74;222;128m✓[0m golden orch-sequential-capabilities contains '"sequential"'
+  [38;2;74;222;128m✓[0m G5: orch-sequential-capabilities backend == sequential
+  [38;2;74;222;128m✓[0m G5: orch-sequential-capabilities has non-empty capabilities array
+  [38;2;74;222;128m✓[0m G5: orch-sequential live orch_capabilities() matches golden
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 47 tests passed[0m
+
+### SPEC-16 head tests/unit/plugin-artifact-goldens-test.sh
+
+[38;2;0;212;255m[1m  plugin artifact goldens — 5 plugin output contracts (issue #367)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mG1: plan-artifact.golden[0m
+  [38;2;74;222;128m✓[0m golden file exists: plan-artifact.golden
+  [38;2;74;222;128m✓[0m golden plan-artifact is valid JSON
+  [38;2;74;222;128m✓[0m golden plan-artifact contains '"schema_version"'
+  [38;2;74;222;128m✓[0m golden plan-artifact contains '"steps"'
+  [38;2;74;222;128m✓[0m G1: plan-artifact schema_version == 1
+  [38;2;74;222;128m✓[0m G1: plan-artifact steps array is non-empty
+  [38;2;74;222;128m✓[0m G1: plan-artifact exact golden match
+
+  [38;2;0;212;255mG2: build-summary-artifact.golden[0m
+  [38;2;74;222;128m✓[0m golden file exists: build-summary-artifact.golden
+  [38;2;74;222;128m✓[0m golden build-summary-artifact is valid JSON
+  [38;2;74;222;128m✓[0m golden build-summary-artifact contains '"schema_version"'
+  [38;2;74;222;128m✓[0m golden build-summary-artifact contains '"files_changed"'
+  [38;2;74;222;128m✓[0m golden build-summary-artifact contains '"lines_added"'
+  [38;2;74;222;128m✓[0m golden build-summary-artifact contains '"lines_removed"'
+  [38;2;74;222;128m✓[0m golden build-summary-artifact contains '"diff_patch_path"'
+  [38;2;74;222;128m✓[0m golden build-summary-artifact contains '"notes"'
+  [38;2;74;222;128m✓[0m G2: build-summary-artifact schema_version == 4 (#602 drops .apply_check)
+  [38;2;74;222;128m✓[0m G2: build-summary notes field mentions artifact
+  [38;2;74;222;128m✓[0m G2: build-summary-artifact exact golden match
+
+  [38;2;0;212;255mG3: review-artifact.golden[0m
+  [38;2;74;222;128m✓[0m golden file exists: review-artifact.golden
+  [38;2;74;222;128m✓[0m golden review-artifact is valid JSON
+  [38;2;74;222;128m✓[0m golden review-artifact contains '"schema_version"'
+  [38;2;74;222;128m✓[0m golden review-artifact contains '"verdict"'
+  [38;2;74;222;128m✓[0m golden review-artifact contains '"confidence"'
+  [38;2;74;222;128m✓[0m golden review-artifact contains '"issues"'
+  [38;2;74;222;128m✓[0m golden review-artifact contains '"summary"'
+  [38;2;74;222;128m✓[0m G3: review-artifact schema_version == 1
+  [38;2;74;222;128m✓[0m G3: review-artifact verdict is a valid value (approve)
+  [38;2;74;222;128m✓[0m G3: review-artifact exact golden match
+
+  [38;2;0;212;255mG4: pr-result-artifact.golden[0m
+  [38;2;74;222;128m✓[0m golden file exists: pr-result-artifact.golden
+  [38;2;74;222;128m✓[0m golden pr-result-artifact is valid JSON
+  [38;2;74;222;128m✓[0m golden pr-result-artifact contains '"result_contract"'
+  [38;2;74;222;128m✓[0m golden pr-result-artifact contains '"verdict"'
+  [38;2;74;222;128m✓[0m golden pr-result-artifact contains '"data"'
+  [38;2;74;222;128m✓[0m G4: pr-result-artifact result_contract == 2
+  [38;2;74;222;128m✓[0m [SPEC-7] G4: pr-result-artifact data.draft == false (non-draft default)
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] pr-result-artifact golden verdict == pass
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] pr-result-artifact golden disposition == complete
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] pr-result-artifact golden data.pr_url is non-empty
+  [38;2;74;222;128m✓[0m G4: pr-result-artifact exact golden match
+
+  [38;2;0;212;255mG5: orch-sequential-capabilities.golden[0m
+  [38;2;74;222;128m✓[0m golden file exists: orch-sequential-capabilities.golden
+  [38;2;74;222;128m✓[0m golden orch-sequential-capabilities is valid JSON
+  [38;2;74;222;128m✓[0m golden orch-sequential-capabilities contains '"backend"'
+  [38;2;74;222;128m✓[0m golden orch-sequential-capabilities contains '"capabilities"'
+  [38;2;74;222;128m✓[0m golden orch-sequential-capabilities contains '"sequential"'
+  [38;2;74;222;128m✓[0m G5: orch-sequential-capabilities backend == sequential
+  [38;2;74;222;128m✓[0m G5: orch-sequential-capabilities has non-empty capabilities array
+  [38;2;74;222;128m✓[0m G5: orch-sequential live orch_capabilities() matches golden
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 47 tests passed[0m
+

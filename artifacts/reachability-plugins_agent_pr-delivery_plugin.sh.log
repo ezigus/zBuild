@@ -1,0 +1,245 @@
+### plugins/agent/pr-delivery/plugin.sh reverted tests/unit/pr-delivery-v2-result-test.sh
+
+[38;2;0;212;255m[1m  pr-delivery plugin: v2 result contract (issue #1844)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1: manifest provides declares result_contract:2, valid_verdicts, events, role, primary, hooks[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] manifest provides.result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] config.valid_verdicts includes pass
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] config.valid_verdicts includes error
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] provides.events includes pr.delivery.blocked
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] provides.events includes pr.delivery.opened
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] provides.events includes pr.delivery.dry_run
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] provides.role is pr
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] pr_url output retains primary: true
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] hooks has no cleanup:
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] hooks has run:
+
+  [38;2;0;212;255mSPEC-2: missing state_file → rc=1, pr-result.json result_contract:2/error/misconfigured[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-2] missing state_file → rc=1 (not rc=2)
+    [2mexpected: 1, got: 2[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-2] pr-result.json written on missing state_file
+    [2mfile absent at /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/pr-delivery-v2-result.P4tuj0/spec2-artifacts/pr-result.json[0m
+
+  [38;2;0;212;255mSPEC-3: review_report via ZBUILD_STAGE_INPUTS signals block → rc=1/error/complete[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-3] review_report block → rc=1
+  [38;2;248;113;113m✗[0m [#1844/SPEC-3] pr-result.json result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-3] pr-result.json verdict is error
+    [2mexpected: error, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-3] pr-result.json disposition is complete
+    [2mexpected: complete, got: [0m
+
+  [38;2;0;212;255mSPEC-4: dry-run → rc=0, pr-result.json result_contract:2/pass/complete[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-4] dry-run → rc=0
+  [38;2;248;113;113m✗[0m [#1844/SPEC-4] pr-result.json result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-4] pr-result.json verdict is pass
+    [2mexpected: pass, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-4] pr-result.json disposition is complete
+    [2mexpected: complete, got: [0m
+
+  [38;2;0;212;255mSPEC-5: merge delegation success → rc=0, pr-result.json result_contract:2/pass/complete[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-5] merge delegation success → rc=0
+  [38;2;248;113;113m✗[0m [#1844/SPEC-5] pr-result.json written on merge delegation success
+    [2mfile absent[0m
+
+  [38;2;0;212;255mSPEC-6: merge delegation failure → rc=1, pr-result.json result_contract:2/error/unavailable[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-6] merge delegation failure → rc=1
+  [38;2;248;113;113m✗[0m [#1844/SPEC-6] pr-result.json written on merge delegation failure
+    [2mfile absent[0m
+
+  [38;2;0;212;255mSPEC-7: pr-open delegation success → rc=0, pr-result.json result_contract:2/pass/complete[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-open delegation success → rc=0
+  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-result.json result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-result.json verdict is pass
+  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-result.json disposition is complete
+
+  [38;2;0;212;255mSPEC-8: pr-open verdict=blocked → rc=1, pr-result.json result_contract:2/error/complete/review_signal_missing[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-open verdict=blocked → rc=1
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-result.json result_contract is 2
+  [38;2;248;113;113m✗[0m [#1844/SPEC-8] pr-result.json verdict is error
+    [2mexpected: error, got: blocked[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-result.json disposition is complete
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-result.json reason contains review_signal_missing
+
+  [38;2;0;212;255mSPEC-9: fallback gh-pr-create success → rc=0, pr-result.json result_contract:2/pass/complete[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-9] fallback gh-pr-create success → rc=0
+  [38;2;248;113;113m✗[0m [#1844/SPEC-9] pr-result.json result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-9] pr-result.json verdict is pass
+    [2mexpected: pass, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-9] pr-result.json disposition is complete
+    [2mexpected: complete, got: [0m
+
+  [38;2;0;212;255mSPEC-10: fallback gh-pr-create failure → rc=1, pr-result.json result_contract:2/error/unavailable[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-10] fallback gh-pr-create failure → rc=1
+  [38;2;248;113;113m✗[0m [#1844/SPEC-10] pr-result.json result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-10] pr-result.json verdict is error
+    [2mexpected: error, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-10] pr-result.json disposition is unavailable
+    [2mexpected: unavailable, got: [0m
+
+  [38;2;0;212;255mSPEC-11: plugin.sh has no hardcoded gate-aggregator-result.json or review-report.json[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-11] plugin.sh has no hardcoded gate-aggregator-result.json
+    [2mexpected: 0, got: 1[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-11] plugin.sh has no hardcoded review-report.json
+    [2mexpected: 0, got: 1[0m
+
+  [38;2;0;212;255mSPEC-12: plugin.sh has no hardcoded review.json literal[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-12] plugin.sh has no hardcoded review.json
+    [2mexpected: 0, got: 1[0m
+
+  [38;2;0;212;255mSPEC-13: manifest config: section has comment recording intentional router: absence[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-13] manifest config: section has a comment about router: absence
+
+  [38;2;0;212;255mSPEC-14: plugin.sh installs _pr_delivery_on_signal; signal → pr-result.json interrupted/rc=1[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-14] _pr_delivery_on_signal is defined
+    [2mfunction not found[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-14] signal → run exits rc=1
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-14] pr-result.json result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-14] pr-result.json verdict is error
+    [2mexpected: error, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-14] pr-result.json disposition is interrupted
+    [2mexpected: interrupted, got: [0m
+
+  [38;2;0;212;255mSPEC-15: manifest inputs entries contain only id: and required: fields (ADR-055 §1)[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-15] manifest inputs has no path: fields
+  [38;2;74;222;128m✓[0m [#1844/SPEC-15] manifest inputs has no type: fields
+  [38;2;74;222;128m✓[0m [#1844/SPEC-15] manifest inputs has no source: fields
+  [38;2;74;222;128m✓[0m [#1844/SPEC-15] manifest inputs has no stage: fields
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m25 of 54 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1844/SPEC-2] missing state_file → rc=1 (not rc=2)
+  [38;2;248;113;113m✗[0m [#1844/SPEC-2] pr-result.json written on missing state_file
+  [38;2;248;113;113m✗[0m [#1844/SPEC-3] pr-result.json result_contract is 2
+  [38;2;248;113;113m✗[0m [#1844/SPEC-3] pr-result.json verdict is error
+  [38;2;248;113;113m✗[0m [#1844/SPEC-3] pr-result.json disposition is complete
+  [38;2;248;113;113m✗[0m [#1844/SPEC-4] pr-result.json result_contract is 2
+  [38;2;248;113;113m✗[0m [#1844/SPEC-4] pr-result.json verdict is pass
+  [38;2;248;113;113m✗[0m [#1844/SPEC-4] pr-result.json disposition is complete
+  [38;2;248;113;113m✗[0m [#1844/SPEC-5] pr-result.json written on merge delegation success
+  [38;2;248;113;113m✗[0m [#1844/SPEC-6] pr-result.json written on merge delegation failure
+  [38;2;248;113;113m✗[0m [#1844/SPEC-8] pr-result.json verdict is error
+  [38;2;248;113;113m✗[0m [#1844/SPEC-9] pr-result.json result_contract is 2
+  [38;2;248;113;113m✗[0m [#1844/SPEC-9] pr-result.json verdict is pass
+  [38;2;248;113;113m✗[0m [#1844/SPEC-9] pr-result.json disposition is complete
+  [38;2;248;113;113m✗[0m [#1844/SPEC-10] pr-result.json result_contract is 2
+  [38;2;248;113;113m✗[0m [#1844/SPEC-10] pr-result.json verdict is error
+  [38;2;248;113;113m✗[0m [#1844/SPEC-10] pr-result.json disposition is unavailable
+  [38;2;248;113;113m✗[0m [#1844/SPEC-11] plugin.sh has no hardcoded gate-aggregator-result.json
+  [38;2;248;113;113m✗[0m [#1844/SPEC-11] plugin.sh has no hardcoded review-report.json
+  [38;2;248;113;113m✗[0m [#1844/SPEC-12] plugin.sh has no hardcoded review.json
+  [38;2;248;113;113m✗[0m [#1844/SPEC-14] _pr_delivery_on_signal is defined
+  [38;2;248;113;113m✗[0m [#1844/SPEC-14] signal → run exits rc=1
+  [38;2;248;113;113m✗[0m [#1844/SPEC-14] pr-result.json result_contract is 2
+  [38;2;248;113;113m✗[0m [#1844/SPEC-14] pr-result.json verdict is error
+  [38;2;248;113;113m✗[0m [#1844/SPEC-14] pr-result.json disposition is interrupted
+
+### plugins/agent/pr-delivery/plugin.sh head tests/unit/pr-delivery-v2-result-test.sh
+
+[38;2;0;212;255m[1m  pr-delivery plugin: v2 result contract (issue #1844)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-1: manifest provides declares result_contract:2, valid_verdicts, events, role, primary, hooks[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] manifest provides.result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] config.valid_verdicts includes pass
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] config.valid_verdicts includes error
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] provides.events includes pr.delivery.blocked
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] provides.events includes pr.delivery.opened
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] provides.events includes pr.delivery.dry_run
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] provides.role is pr
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] pr_url output retains primary: true
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] hooks has no cleanup:
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] hooks has run:
+
+  [38;2;0;212;255mSPEC-2: missing state_file → rc=1, pr-result.json result_contract:2/error/misconfigured[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-2] missing state_file → rc=1 (not rc=2)
+  [38;2;74;222;128m✓[0m [#1844/SPEC-2] pr-result.json result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-2] pr-result.json verdict is error
+  [38;2;74;222;128m✓[0m [#1844/SPEC-2] pr-result.json disposition is misconfigured
+
+  [38;2;0;212;255mSPEC-3: review_report via ZBUILD_STAGE_INPUTS signals block → rc=1/error/complete[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-3] review_report block → rc=1
+  [38;2;74;222;128m✓[0m [#1844/SPEC-3] pr-result.json result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-3] pr-result.json verdict is error
+  [38;2;74;222;128m✓[0m [#1844/SPEC-3] pr-result.json disposition is complete
+
+  [38;2;0;212;255mSPEC-4: dry-run → rc=0, pr-result.json result_contract:2/pass/complete[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-4] dry-run → rc=0
+  [38;2;74;222;128m✓[0m [#1844/SPEC-4] pr-result.json result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-4] pr-result.json verdict is pass
+  [38;2;74;222;128m✓[0m [#1844/SPEC-4] pr-result.json disposition is complete
+
+  [38;2;0;212;255mSPEC-5: merge delegation success → rc=0, pr-result.json result_contract:2/pass/complete[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-5] merge delegation success → rc=0
+  [38;2;74;222;128m✓[0m [#1844/SPEC-5] pr-result.json result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-5] pr-result.json verdict is pass
+  [38;2;74;222;128m✓[0m [#1844/SPEC-5] pr-result.json disposition is complete
+
+  [38;2;0;212;255mSPEC-6: merge delegation failure → rc=1, pr-result.json result_contract:2/error/unavailable[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-6] merge delegation failure → rc=1
+  [38;2;74;222;128m✓[0m [#1844/SPEC-6] pr-result.json result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-6] pr-result.json verdict is error
+  [38;2;74;222;128m✓[0m [#1844/SPEC-6] pr-result.json disposition is unavailable
+
+  [38;2;0;212;255mSPEC-7: pr-open delegation success → rc=0, pr-result.json result_contract:2/pass/complete[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-open delegation success → rc=0
+  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-result.json result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-result.json verdict is pass
+  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-result.json disposition is complete
+
+  [38;2;0;212;255mSPEC-8: pr-open verdict=blocked → rc=1, pr-result.json result_contract:2/error/complete/review_signal_missing[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-open verdict=blocked → rc=1
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-result.json result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-result.json verdict is error
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-result.json disposition is complete
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-result.json reason contains review_signal_missing
+
+  [38;2;0;212;255mSPEC-9: fallback gh-pr-create success → rc=0, pr-result.json result_contract:2/pass/complete[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-9] fallback gh-pr-create success → rc=0
+  [38;2;74;222;128m✓[0m [#1844/SPEC-9] pr-result.json result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-9] pr-result.json verdict is pass
+  [38;2;74;222;128m✓[0m [#1844/SPEC-9] pr-result.json disposition is complete
+
+  [38;2;0;212;255mSPEC-10: fallback gh-pr-create failure → rc=1, pr-result.json result_contract:2/error/unavailable[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-10] fallback gh-pr-create failure → rc=1
+  [38;2;74;222;128m✓[0m [#1844/SPEC-10] pr-result.json result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-10] pr-result.json verdict is error
+  [38;2;74;222;128m✓[0m [#1844/SPEC-10] pr-result.json disposition is unavailable
+
+  [38;2;0;212;255mSPEC-11: plugin.sh has no hardcoded gate-aggregator-result.json or review-report.json[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-11] plugin.sh has no hardcoded gate-aggregator-result.json
+  [38;2;74;222;128m✓[0m [#1844/SPEC-11] plugin.sh has no hardcoded review-report.json
+
+  [38;2;0;212;255mSPEC-12: plugin.sh has no hardcoded review.json literal[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-12] plugin.sh has no hardcoded review.json
+
+  [38;2;0;212;255mSPEC-13: manifest config: section has comment recording intentional router: absence[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-13] manifest config: section has a comment about router: absence
+
+  [38;2;0;212;255mSPEC-14: plugin.sh installs _pr_delivery_on_signal; signal → pr-result.json interrupted/rc=1[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-14] _pr_delivery_on_signal is defined
+  [38;2;74;222;128m✓[0m [#1844/SPEC-14] signal → run exits rc=1
+  [38;2;74;222;128m✓[0m [#1844/SPEC-14] pr-result.json result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-14] pr-result.json verdict is error
+  [38;2;74;222;128m✓[0m [#1844/SPEC-14] pr-result.json disposition is interrupted
+
+  [38;2;0;212;255mSPEC-15: manifest inputs entries contain only id: and required: fields (ADR-055 §1)[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-15] manifest inputs has no path: fields
+  [38;2;74;222;128m✓[0m [#1844/SPEC-15] manifest inputs has no type: fields
+  [38;2;74;222;128m✓[0m [#1844/SPEC-15] manifest inputs has no source: fields
+  [38;2;74;222;128m✓[0m [#1844/SPEC-15] manifest inputs has no stage: fields
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 60 tests passed[0m
+

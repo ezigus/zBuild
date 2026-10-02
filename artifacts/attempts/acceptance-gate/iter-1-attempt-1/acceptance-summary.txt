@@ -1,0 +1,50 @@
+acceptance SPEC violations — SPEC-7/SPEC-16 tautological — passes at the baseline, so it asserts no change
+NEGCTL PASS SPEC-1
+      design : manifest provides declares result_contract:2; config.valid_verdicts contains pass and error; provide…
+      asserts: assert_eq "[#1844/SPEC-1] manifest provides.result_contract is 2" "2" "$_prov_rc"
+NEGCTL PASS SPEC-2
+      design : missing state_file argument → rc=1 (not rc=2) and pr-result.json written with result_contract:2, ver…
+      asserts: assert_eq "[#1844/SPEC-2] missing state_file → rc=1 (not rc=2)" "1" "$_s2_rc"
+NEGCTL PASS SPEC-3
+      design : review_report (via ZBUILD_STAGE_INPUTS) signals block → rc=1, pr-result.json has result_contract:2, …
+      asserts: assert_eq "[#1844/SPEC-3] review_report block → rc=1" "1" "$_s3_rc"
+NEGCTL PASS SPEC-4
+      design : dry-run path → rc=0, pr-result.json has result_contract:2, verdict=pass, disposition=complete
+      asserts: assert_eq "[#1844/SPEC-4] dry-run → rc=0" "0" "$_s4_rc"
+NEGCTL PASS SPEC-5
+      design : merge delegation success → rc=0, pr-result.json has result_contract:2, verdict=pass, disposition=com…
+      asserts: assert_eq "[#1844/SPEC-5] merge delegation success → rc=0" "0" "$_s5_rc"
+NEGCTL PASS SPEC-6
+      design : merge delegation failure → rc=1, pr-result.json has result_contract:2, verdict=error, disposition=un…
+      asserts: assert_eq "[#1844/SPEC-6] merge delegation failure → rc=1" "1" "$_s6_rc"
+NEGCTL FAIL SPEC-7 tautology
+      design : pr-open delegation success → rc=0, pr-result.json has result_contract:2, verdict=pass, disposition=c…
+      asserts: assert_eq "[#1844/SPEC-7] pr-open delegation success → rc=0" "0" "$_s7_rc"
+NEGCTL PASS SPEC-8
+      design : pr-open returns rc=0 with verdict=blocked → pr-delivery returns rc=1, pr-result.json has result_cont…
+      asserts: assert_eq "[#1844/SPEC-8] pr-open verdict=blocked → rc=1" "1" "$_s8_rc"
+NEGCTL PASS SPEC-9
+      design : fallback gh-pr-create success → rc=0, pr-result.json has result_contract:2, verdict=pass, dispositio…
+      asserts: assert_eq "[#1844/SPEC-9] fallback gh-pr-create success → rc=0" "0" "$_s9_rc"
+NEGCTL PASS SPEC-10
+      design : fallback gh-pr-create failure → rc=1, pr-result.json has result_contract:2, verdict=error, dispositi…
+      asserts: assert_eq "[#1844/SPEC-10] fallback gh-pr-create failure → rc=1" "1" "$_s10_rc"
+NEGCTL PASS SPEC-11
+      design : plugin.sh contains no hardcoded gate-aggregator-result.json or review-report.json literal path strin…
+      asserts: assert_eq "[#1844/SPEC-11] plugin.sh has no hardcoded gate-aggregator-result.json" "0" "$_s11_gate"
+NEGCTL PASS SPEC-12
+      design : plugin.sh contains no hardcoded review.json literal path string — dead input guard removed
+      asserts: assert_eq "[#1844/SPEC-12] plugin.sh has no hardcoded review.json" "0" "$_s12_rv"
+NEGCTL PASS SPEC-13
+      design : manifest config: section contains a comment recording the intentional absence of a router: block (pr…
+      asserts: #   [#1844/SPEC-13] manifest config: section comments intentional router: absence
+NEGCTL PASS SPEC-14
+      design : plugin.sh installs a stage_signal_begin trap (_pr_delivery_on_signal); when a SIGTERM/SIGINT fires d…
+      asserts: assert_pass "[#1844/SPEC-14] _pr_delivery_on_signal is defined"
+NEGCTL PASS SPEC-15 guard_spec
+      design : manifest inputs: every entry contains only id: and required: fields — no path:, type:, source:, or s…
+      asserts: assert_eq "[#1844/SPEC-15] manifest inputs has no path: fields" "0" "$_s15_path"
+NEGCTL FAIL SPEC-16 tautology
+      design : passing pr-open delegation produces pr-result.json whose result_contract equals 2, verdict equals pa…
+      asserts: assert_eq "[#1844/SPEC-16] pr-result.json result_contract is 2" "2" \
+REACHABILITY PASS plugins/agent/pr-delivery/plugin.sh
