@@ -1,0 +1,329 @@
+### SPEC-8 baseline tests/unit/pr-delivery-v2-result-test.sh
+
+[38;2;0;212;255m[1m  pr-delivery plugin: v2 result contract (issue #1844)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m#1844/SPEC-1: manifest provides.result_contract is 2[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-1] manifest provides.result_contract is 2
+    [2mexpected: 2, got: [0m
+
+  [38;2;0;212;255m#1844/SPEC-2: manifest config.valid_verdicts is [pass, error][0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-2] valid_verdicts includes pass
+    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.gLR6xb/plugins/agent/pr-delivery/manifest.yaml[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-2] valid_verdicts includes error
+    [2mmissing from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.gLR6xb/plugins/agent/pr-delivery/manifest.yaml[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-2] valid_verdicts is not the empty list []
+    [2mexpected: 0, got: 1[0m
+
+  [38;2;0;212;255m#1844/SPEC-3: manifest provides.events declares pr.delivery.{blocked,opened,dry_run}[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-3] provides.events includes pr.delivery.blocked
+    [2mabsent from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.gLR6xb/plugins/agent/pr-delivery/manifest.yaml[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-3] provides.events includes pr.delivery.opened
+    [2mabsent from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.gLR6xb/plugins/agent/pr-delivery/manifest.yaml[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-3] provides.events includes pr.delivery.dry_run
+    [2mabsent from /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.gLR6xb/plugins/agent/pr-delivery/manifest.yaml[0m
+
+  [38;2;0;212;255m#1844/SPEC-11: manifest provides.role remains pr[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-11] manifest provides.role is pr
+
+  [38;2;0;212;255m#1844/SPEC-12: outputs.pr_url retains primary: true[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-12] manifest has primary: true on pr_url output
+
+  [38;2;0;212;255m#1844/SPEC-13: hooks has run: pr_stage_run and no cleanup:[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-13] manifest hooks has run: pr_stage_run
+  [38;2;74;222;128m✓[0m [#1844/SPEC-13] manifest hooks has no cleanup:
+
+  [38;2;0;212;255m#1844/SPEC-18: manifest has no router: block[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-18] manifest has no router: block
+
+  [38;2;0;212;255m#1844/SPEC-20: manifest inputs entries declare only id and required:[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-20] inputs section has no path: fields
+  [38;2;74;222;128m✓[0m [#1844/SPEC-20] inputs section has no type: fields
+  [38;2;74;222;128m✓[0m [#1844/SPEC-20] inputs section has no from: fields
+  [38;2;74;222;128m✓[0m [#1844/SPEC-20] inputs section has no producer: fields
+
+  [38;2;0;212;255m#1844/SPEC-10: plugin.sh constructs no hardcoded gate-aggregator-result.json or review-report.json paths[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-10] plugin.sh constructs no gate-aggregator-result.json path
+    [2mexpected: 0, got: 1[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-10] plugin.sh constructs no review-report.json path
+    [2mexpected: 0, got: 1[0m
+
+  [38;2;0;212;255m#1844/SPEC-9 + SPEC-24: missing-state-file path returns rc=1 and writes pr-result.json[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-9] missing-state-file: rc=1 (not rc=2)
+    [2mexpected: 1, got: 2[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-24] missing-state-file: pr-result.json written
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/pr-delivery-v2-result.asjRKs/spec9/artifacts/pr-result.json[0m
+
+  [38;2;0;212;255m#1844/SPEC-4: block guard exit path writes v2 pr-result.json[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-4] block guard: pr-result.json written
+  [38;2;248;113;113m✗[0m [#1844/SPEC-4] block guard: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-4] block guard: verdict is error
+    [2mexpected: error, got: block[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-4] block guard: disposition present
+    [2mabsent[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-4] block guard: reason present
+    [2mabsent[0m
+
+  [38;2;0;212;255m#1844/SPEC-5 + SPEC-19: dry-run exit path writes v2 pr-result.json with .data.branch and .data.draft[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-5] dry-run: pr-result.json written
+  [38;2;248;113;113m✗[0m [#1844/SPEC-5] dry-run: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-5] dry-run: verdict is pass
+    [2mexpected: pass, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-5] dry-run: disposition present
+    [2mabsent[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-5] dry-run: reason present
+    [2mabsent[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-19] dry-run: .data.branch present
+    [2mabsent[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-19] dry-run: .data.draft present
+    [2mabsent[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-5] dry-run: rc=0
+
+  [38;2;0;212;255m#1844/SPEC-8: fallback-gh-fail writes pr-result.json with verdict=error, disposition=unavailable[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] fallback-gh-fail: pr-result.json written
+  [38;2;248;113;113m✗[0m [#1844/SPEC-8] fallback-gh-fail: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-8] fallback-gh-fail: verdict is error
+    [2mexpected: error, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-8] fallback-gh-fail: disposition is unavailable
+    [2mexpected: unavailable, got: [0m
+
+  [38;2;0;212;255m#1844/SPEC-16 + SPEC-21: fallback-gh SUCCESS writes v2 pr-result.json with .data envelope[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] fallback-gh success: pr-result.json written
+  [38;2;248;113;113m✗[0m [#1844/SPEC-16] fallback-gh success: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-16] fallback-gh success: verdict is pass
+    [2mexpected: pass, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-16] fallback-gh success: disposition is complete
+    [2mexpected: complete, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-16] fallback-gh success: reason present
+    [2mabsent[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-21] fallback-gh success: .data.branch present
+    [2mabsent[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-21] fallback-gh success: .data.pr_url present
+    [2mabsent[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-21] fallback-gh success: .data.draft present
+    [2mabsent[0m
+
+  [38;2;0;212;255m#1844/SPEC-6: merge-delegation FAIL writes pr-result.json: result_contract:2, verdict=error[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-6] merge-fail: pr-result.json written
+    [2mfile not found: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/pr-delivery-v2-result.asjRKs/spec6/artifacts/pr-result.json[0m
+
+  [38;2;0;212;255m#1844/SPEC-7: pr-open FAIL path has pr-result.json: result_contract:2, verdict=error (guard)[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-open fail: pr-result.json written
+  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-open fail: result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-open fail: verdict is error
+
+  [38;2;0;212;255m#1844/SPEC-14: pr-open SUCCESS path has pr-result.json: result_contract:2, verdict=pass (guard)[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-14] pr-open success: pr-result.json written
+  [38;2;74;222;128m✓[0m [#1844/SPEC-14] pr-open success: result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-14] pr-open success: verdict is pass
+
+  [38;2;0;212;255m#1844/SPEC-15: merge SUCCESS path has pr-result.json: result_contract:2, verdict=pass (guard)[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-15] merge success: pr-result.json written
+  [38;2;74;222;128m✓[0m [#1844/SPEC-15] merge success: result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-15] merge success: verdict is pass
+
+  [38;2;0;212;255m#1844/SPEC-17: SIGTERM trap writes pr-result.json: result_contract:2, verdict=error, disposition=interrupted; rc=1[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-17] SIGTERM: pr-result.json written
+  [38;2;248;113;113m✗[0m [#1844/SPEC-17] SIGTERM: result_contract is 2
+    [2mexpected: 2, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-17] SIGTERM: verdict is error
+    [2mexpected: error, got: [0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-17] SIGTERM: disposition is interrupted
+    [2mexpected: interrupted, got: [0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-17] SIGTERM: rc=1
+
+  [38;2;0;212;255m#1844/SPEC-22 + SPEC-23: pr-open rc=0 but verdict=blocked → pr-delivery rewrites error result and summary[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-22] pr-open blocked rc=0: pr-delivery returns rc=1
+    [2mexpected: 1, got: 0[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-22] pr-open blocked rc=0: pr-result.json written
+  [38;2;74;222;128m✓[0m [#1844/SPEC-22] pr-open blocked rc=0: result_contract is 2
+  [38;2;248;113;113m✗[0m [#1844/SPEC-22] pr-open blocked rc=0: verdict is error
+    [2mexpected: error, got: blocked[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-22] pr-open blocked rc=0: disposition is complete
+  [38;2;248;113;113m✗[0m [#1844/SPEC-22] pr-open blocked rc=0: reason is review_signal_missing
+    [2mexpected: review_signal_missing, got: no review signal — fail-closed per ADR-001[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-23] pr-open blocked rc=0: pr-delivery-summary.md written
+  [38;2;74;222;128m✓[0m [#1844/SPEC-23] summary does NOT say 'pass — delivered ... delegating to the pr-open stage'
+  [38;2;248;113;113m✗[0m [#1844/SPEC-23] summary names review_signal_missing
+    [2mabsent from summary[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-23] summary states no PR was opened
+    [2mabsent from summary[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m40 of 70 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1844/SPEC-1] manifest provides.result_contract is 2
+  [38;2;248;113;113m✗[0m [#1844/SPEC-2] valid_verdicts includes pass
+  [38;2;248;113;113m✗[0m [#1844/SPEC-2] valid_verdicts includes error
+  [38;2;248;113;113m✗[0m [#1844/SPEC-2] valid_verdicts is not the empty list []
+  [38;2;248;113;113m✗[0m [#1844/SPEC-3] provides.events includes pr.delivery.blocked
+  [38;2;248;113;113m✗[0m [#1844/SPEC-3] provides.events includes pr.delivery.opened
+  [38;2;248;113;113m✗[0m [#1844/SPEC-3] provides.events includes pr.delivery.dry_run
+  [38;2;248;113;113m✗[0m [#1844/SPEC-10] plugin.sh constructs no gate-aggregator-result.json path
+  [38;2;248;113;113m✗[0m [#1844/SPEC-10] plugin.sh constructs no review-report.json path
+  [38;2;248;113;113m✗[0m [#1844/SPEC-9] missing-state-file: rc=1 (not rc=2)
+  [38;2;248;113;113m✗[0m [#1844/SPEC-24] missing-state-file: pr-result.json written
+  [38;2;248;113;113m✗[0m [#1844/SPEC-4] block guard: result_contract is 2
+  [38;2;248;113;113m✗[0m [#1844/SPEC-4] block guard: verdict is error
+  [38;2;248;113;113m✗[0m [#1844/SPEC-4] block guard: disposition present
+  [38;2;248;113;113m✗[0m [#1844/SPEC-4] block guard: reason present
+  [38;2;248;113;113m✗[0m [#1844/SPEC-5] dry-run: result_contract is 2
+  [38;2;248;113;113m✗[0m [#1844/SPEC-5] dry-run: verdict is pass
+  [38;2;248;113;113m✗[0m [#1844/SPEC-5] dry-run: disposition present
+  [38;2;248;113;113m✗[0m [#1844/SPEC-5] dry-run: reason present
+  [38;2;248;113;113m✗[0m [#1844/SPEC-19] dry-run: .data.branch present
+  [38;2;248;113;113m✗[0m [#1844/SPEC-19] dry-run: .data.draft present
+  [38;2;248;113;113m✗[0m [#1844/SPEC-8] fallback-gh-fail: result_contract is 2
+  [38;2;248;113;113m✗[0m [#1844/SPEC-8] fallback-gh-fail: verdict is error
+  [38;2;248;113;113m✗[0m [#1844/SPEC-8] fallback-gh-fail: disposition is unavailable
+  [38;2;248;113;113m✗[0m [#1844/SPEC-16] fallback-gh success: result_contract is 2
+  [38;2;248;113;113m✗[0m [#1844/SPEC-16] fallback-gh success: verdict is pass
+  [38;2;248;113;113m✗[0m [#1844/SPEC-16] fallback-gh success: disposition is complete
+  [38;2;248;113;113m✗[0m [#1844/SPEC-16] fallback-gh success: reason present
+  [38;2;248;113;113m✗[0m [#1844/SPEC-21] fallback-gh success: .data.branch present
+  [38;2;248;113;113m✗[0m [#1844/SPEC-21] fallback-gh success: .data.pr_url present
+  [38;2;248;113;113m✗[0m [#1844/SPEC-21] fallback-gh success: .data.draft present
+  [38;2;248;113;113m✗[0m [#1844/SPEC-6] merge-fail: pr-result.json written
+  [38;2;248;113;113m✗[0m [#1844/SPEC-17] SIGTERM: result_contract is 2
+  [38;2;248;113;113m✗[0m [#1844/SPEC-17] SIGTERM: verdict is error
+  [38;2;248;113;113m✗[0m [#1844/SPEC-17] SIGTERM: disposition is interrupted
+  [38;2;248;113;113m✗[0m [#1844/SPEC-22] pr-open blocked rc=0: pr-delivery returns rc=1
+  [38;2;248;113;113m✗[0m [#1844/SPEC-22] pr-open blocked rc=0: verdict is error
+  [38;2;248;113;113m✗[0m [#1844/SPEC-22] pr-open blocked rc=0: reason is review_signal_missing
+  [38;2;248;113;113m✗[0m [#1844/SPEC-23] summary names review_signal_missing
+  [38;2;248;113;113m✗[0m [#1844/SPEC-23] summary states no PR was opened
+
+### SPEC-8 head tests/unit/pr-delivery-v2-result-test.sh
+
+[38;2;0;212;255m[1m  pr-delivery plugin: v2 result contract (issue #1844)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m#1844/SPEC-1: manifest provides.result_contract is 2[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-1] manifest provides.result_contract is 2
+
+  [38;2;0;212;255m#1844/SPEC-2: manifest config.valid_verdicts is [pass, error][0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-2] valid_verdicts includes pass
+  [38;2;74;222;128m✓[0m [#1844/SPEC-2] valid_verdicts includes error
+  [38;2;74;222;128m✓[0m [#1844/SPEC-2] valid_verdicts is not the empty list []
+
+  [38;2;0;212;255m#1844/SPEC-3: manifest provides.events declares pr.delivery.{blocked,opened,dry_run}[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-3] provides.events includes pr.delivery.blocked
+  [38;2;74;222;128m✓[0m [#1844/SPEC-3] provides.events includes pr.delivery.opened
+  [38;2;74;222;128m✓[0m [#1844/SPEC-3] provides.events includes pr.delivery.dry_run
+
+  [38;2;0;212;255m#1844/SPEC-11: manifest provides.role remains pr[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-11] manifest provides.role is pr
+
+  [38;2;0;212;255m#1844/SPEC-12: outputs.pr_url retains primary: true[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-12] manifest has primary: true on pr_url output
+
+  [38;2;0;212;255m#1844/SPEC-13: hooks has run: pr_stage_run and no cleanup:[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-13] manifest hooks has run: pr_stage_run
+  [38;2;74;222;128m✓[0m [#1844/SPEC-13] manifest hooks has no cleanup:
+
+  [38;2;0;212;255m#1844/SPEC-18: manifest has no router: block[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-18] manifest has no router: block
+
+  [38;2;0;212;255m#1844/SPEC-20: manifest inputs entries declare only id and required:[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-20] inputs section has no path: fields
+  [38;2;74;222;128m✓[0m [#1844/SPEC-20] inputs section has no type: fields
+  [38;2;74;222;128m✓[0m [#1844/SPEC-20] inputs section has no from: fields
+  [38;2;74;222;128m✓[0m [#1844/SPEC-20] inputs section has no producer: fields
+
+  [38;2;0;212;255m#1844/SPEC-10: plugin.sh constructs no hardcoded gate-aggregator-result.json or review-report.json paths[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-10] plugin.sh constructs no gate-aggregator-result.json path
+  [38;2;74;222;128m✓[0m [#1844/SPEC-10] plugin.sh constructs no review-report.json path
+
+  [38;2;0;212;255m#1844/SPEC-9 + SPEC-24: missing-state-file path returns rc=1 and writes pr-result.json[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-9] missing-state-file: rc=1 (not rc=2)
+  [38;2;74;222;128m✓[0m [#1844/SPEC-24] missing-state-file: pr-result.json written
+  [38;2;74;222;128m✓[0m [#1844/SPEC-24] missing-state-file: result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-24] missing-state-file: verdict is error
+  [38;2;74;222;128m✓[0m [#1844/SPEC-24] missing-state-file: disposition present
+  [38;2;74;222;128m✓[0m [#1844/SPEC-24] missing-state-file: reason present
+
+  [38;2;0;212;255m#1844/SPEC-4: block guard exit path writes v2 pr-result.json[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-4] block guard: pr-result.json written
+  [38;2;74;222;128m✓[0m [#1844/SPEC-4] block guard: result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-4] block guard: verdict is error
+  [38;2;74;222;128m✓[0m [#1844/SPEC-4] block guard: disposition present
+  [38;2;74;222;128m✓[0m [#1844/SPEC-4] block guard: reason present
+
+  [38;2;0;212;255m#1844/SPEC-5 + SPEC-19: dry-run exit path writes v2 pr-result.json with .data.branch and .data.draft[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-5] dry-run: pr-result.json written
+  [38;2;74;222;128m✓[0m [#1844/SPEC-5] dry-run: result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-5] dry-run: verdict is pass
+  [38;2;74;222;128m✓[0m [#1844/SPEC-5] dry-run: disposition present
+  [38;2;74;222;128m✓[0m [#1844/SPEC-5] dry-run: reason present
+  [38;2;74;222;128m✓[0m [#1844/SPEC-19] dry-run: .data.branch present
+  [38;2;74;222;128m✓[0m [#1844/SPEC-19] dry-run: .data.draft present
+  [38;2;74;222;128m✓[0m [#1844/SPEC-5] dry-run: rc=0
+
+  [38;2;0;212;255m#1844/SPEC-8: fallback-gh-fail writes pr-result.json with verdict=error, disposition=unavailable[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] fallback-gh-fail: pr-result.json written
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] fallback-gh-fail: result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] fallback-gh-fail: verdict is error
+  [38;2;74;222;128m✓[0m [#1844/SPEC-8] fallback-gh-fail: disposition is unavailable
+
+  [38;2;0;212;255m#1844/SPEC-16 + SPEC-21: fallback-gh SUCCESS writes v2 pr-result.json with .data envelope[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] fallback-gh success: pr-result.json written
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] fallback-gh success: result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] fallback-gh success: verdict is pass
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] fallback-gh success: disposition is complete
+  [38;2;74;222;128m✓[0m [#1844/SPEC-16] fallback-gh success: reason present
+  [38;2;74;222;128m✓[0m [#1844/SPEC-21] fallback-gh success: .data.branch present
+  [38;2;74;222;128m✓[0m [#1844/SPEC-21] fallback-gh success: .data.pr_url present
+  [38;2;74;222;128m✓[0m [#1844/SPEC-21] fallback-gh success: .data.draft present
+
+  [38;2;0;212;255m#1844/SPEC-6: merge-delegation FAIL writes pr-result.json: result_contract:2, verdict=error[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-6] merge-fail: pr-result.json written
+  [38;2;74;222;128m✓[0m [#1844/SPEC-6] merge-fail: result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-6] merge-fail: verdict is error
+  [38;2;74;222;128m✓[0m [#1844/SPEC-6] merge-fail: disposition present
+  [38;2;74;222;128m✓[0m [#1844/SPEC-6] merge-fail: reason present
+
+  [38;2;0;212;255m#1844/SPEC-7: pr-open FAIL path has pr-result.json: result_contract:2, verdict=error (guard)[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-open fail: pr-result.json written
+  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-open fail: result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-open fail: verdict is error
+
+  [38;2;0;212;255m#1844/SPEC-14: pr-open SUCCESS path has pr-result.json: result_contract:2, verdict=pass (guard)[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-14] pr-open success: pr-result.json written
+  [38;2;74;222;128m✓[0m [#1844/SPEC-14] pr-open success: result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-14] pr-open success: verdict is pass
+
+  [38;2;0;212;255m#1844/SPEC-15: merge SUCCESS path has pr-result.json: result_contract:2, verdict=pass (guard)[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-15] merge success: pr-result.json written
+  [38;2;74;222;128m✓[0m [#1844/SPEC-15] merge success: result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-15] merge success: verdict is pass
+
+  [38;2;0;212;255m#1844/SPEC-17: SIGTERM trap writes pr-result.json: result_contract:2, verdict=error, disposition=interrupted; rc=1[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-17] SIGTERM: pr-result.json written
+  [38;2;74;222;128m✓[0m [#1844/SPEC-17] SIGTERM: result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-17] SIGTERM: verdict is error
+  [38;2;74;222;128m✓[0m [#1844/SPEC-17] SIGTERM: disposition is interrupted
+  [38;2;74;222;128m✓[0m [#1844/SPEC-17] SIGTERM: rc=1
+
+  [38;2;0;212;255m#1844/SPEC-22 + SPEC-23: pr-open rc=0 but verdict=blocked → pr-delivery rewrites error result and summary[0m
+  [38;2;74;222;128m✓[0m [#1844/SPEC-22] pr-open blocked rc=0: pr-delivery returns rc=1
+  [38;2;74;222;128m✓[0m [#1844/SPEC-22] pr-open blocked rc=0: pr-result.json written
+  [38;2;74;222;128m✓[0m [#1844/SPEC-22] pr-open blocked rc=0: result_contract is 2
+  [38;2;74;222;128m✓[0m [#1844/SPEC-22] pr-open blocked rc=0: verdict is error
+  [38;2;74;222;128m✓[0m [#1844/SPEC-22] pr-open blocked rc=0: disposition is complete
+  [38;2;74;222;128m✓[0m [#1844/SPEC-22] pr-open blocked rc=0: reason is review_signal_missing
+  [38;2;74;222;128m✓[0m [#1844/SPEC-23] pr-open blocked rc=0: pr-delivery-summary.md written
+  [38;2;74;222;128m✓[0m [#1844/SPEC-23] summary does NOT say 'pass — delivered ... delegating to the pr-open stage'
+  [38;2;74;222;128m✓[0m [#1844/SPEC-23] summary names review_signal_missing
+  [38;2;74;222;128m✓[0m [#1844/SPEC-23] summary states no PR was opened
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 78 tests passed[0m
+

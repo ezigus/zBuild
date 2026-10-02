@@ -1,0 +1,73 @@
+NEGCTL PASS SPEC-1
+      design : manifest provides.result_contract is 2
+      asserts: assert_eq "[#1844/SPEC-1] manifest provides.result_contract is 2" "2" "$_s1_rc"
+NEGCTL PASS SPEC-2
+      design : manifest config.valid_verdicts is [pass, error] — no longer the empty list
+      asserts: assert_eq "[#1844/SPEC-2] valid_verdicts is not the empty list []" "0" "$_vv_empty"
+NEGCTL PASS SPEC-3
+      design : manifest provides.events declares pr.delivery.blocked, pr.delivery.opened, and pr.delivery.dry_run
+      asserts: #   [#1844/SPEC-3]  manifest provides.events declares pr.delivery.blocked, pr.delivery.opened, pr.de…
+NEGCTL PASS SPEC-4
+      design : block guard exit path writes pr-result.json carrying result_contract:2, verdict=error, non-empty dis…
+      asserts: assert_file_exists "[#1844/SPEC-4] block guard: pr-result.json written" "$_s4_pr"
+NEGCTL PASS SPEC-5
+      design : dry-run exit path writes pr-result.json carrying result_contract:2, verdict=pass, non-empty disposit…
+      asserts: assert_file_exists "[#1844/SPEC-5] dry-run: pr-result.json written" "$_s5_pr"
+NEGCTL PASS SPEC-6
+      design : merge-delegation FAIL path writes pr-result.json carrying result_contract:2, verdict=error, non-empt…
+      asserts: assert_file_exists "[#1844/SPEC-6] merge-fail: pr-result.json written" "$_s6_pr"
+NEGCTL PASS SPEC-7 guard_spec
+      design : pr-open-delegation FAIL path has pr-result.json carrying result_contract:2, verdict=error (pr-open a…
+      asserts: assert_file_exists "[#1844/SPEC-7] pr-open fail: pr-result.json written" "$_s7_pr"
+NEGCTL PASS SPEC-8
+      design : fallback-gh-fail exit path writes pr-result.json carrying result_contract:2, verdict=error, disposit…
+      asserts: assert_file_exists "[#1844/SPEC-8] fallback-gh-fail: pr-result.json written" "$_s8_pr"
+NEGCTL PASS SPEC-9
+      design : missing-state-file exit path returns rc=1 (not rc=2 as today)
+      asserts: assert_eq "[#1844/SPEC-9] missing-state-file: rc=1 (not rc=2)" "1" "$_s9_rc"
+NEGCTL PASS SPEC-10
+      design : plugin.sh resolves gate_aggregator_result and review_report exclusively via ZBUILD_STAGE_INPUTS — no…
+      asserts: assert_eq "[#1844/SPEC-10] plugin.sh constructs no gate-aggregator-result.json path" "0" "$_gate_har…
+NEGCTL PASS SPEC-11 guard_spec
+      design : provides.role remains pr — no regression in stage resolution
+      asserts: assert_eq "[#1844/SPEC-11] manifest provides.role is pr" "pr" "$_role"
+NEGCTL PASS SPEC-12 guard_spec
+      design : outputs.pr_url retains primary: true
+      asserts: #   [#1844/SPEC-12] outputs.pr_url retains primary: true
+NEGCTL PASS SPEC-13 guard_spec
+      design : hooks section has run: pr_stage_run and no cleanup: entry
+      asserts: assert_eq "[#1844/SPEC-13] manifest hooks has no cleanup:" "0" "$_has_cleanup"
+NEGCTL PASS SPEC-14 guard_spec
+      design : pr-open delegation SUCCESS path has pr-result.json carrying result_contract:2, verdict=pass (pr-open…
+      asserts: assert_file_exists "[#1844/SPEC-14] pr-open success: pr-result.json written" "$_s14_pr"
+NEGCTL PASS SPEC-15 guard_spec
+      design : merge delegation SUCCESS path has pr-result.json carrying result_contract:2, verdict=pass (merge alr…
+      asserts: assert_file_exists "[#1844/SPEC-15] merge success: pr-result.json written" "$_s15_pr"
+NEGCTL PASS SPEC-16
+      design : fallback-gh SUCCESS path writes pr-result.json carrying result_contract:2, verdict=pass, disposition…
+      asserts: assert_file_exists "[#1844/SPEC-16] fallback-gh success: pr-result.json written" "$_s16_pr"
+NEGCTL PASS SPEC-17
+      design : SIGTERM/SIGINT trap writes pr-result.json carrying result_contract:2, verdict=error, disposition=int…
+      asserts: assert_file_exists "[#1844/SPEC-17] SIGTERM: pr-result.json written" "$_s17_pr"
+NEGCTL PASS SPEC-18 guard_spec
+      design : manifest has no router: block — pr-delivery makes no direct LLM calls; absence of router: is the exp…
+      asserts: assert_eq "[#1844/SPEC-18] manifest has no router: block" "0" "$_has_router"
+NEGCTL PASS SPEC-19
+      design : dry-run v2 pr-result.json carries .data.branch and .data.draft (v1 top-level fields preserved inside…
+      asserts: #   [#1844/SPEC-19] dry-run v2 pr-result.json carries .data.branch and .data.draft
+NEGCTL PASS SPEC-20 guard_spec
+      design : manifest inputs section declares only id and required: on each entry — no path, type, from, or produ…
+      asserts: assert_eq "[#1844/SPEC-20] inputs section has no path: fields" "0" "$_has_path_field"
+NEGCTL PASS SPEC-21
+      design : fallback-gh SUCCESS path v2 pr-result.json carries .data.branch, .data.pr_url, and .data.draft (v1 t…
+      asserts: #   [#1844/SPEC-21] fallback-gh SUCCESS v2 pr-result.json carries .data.branch, .data.pr_url, .data.…
+NEGCTL PASS SPEC-22
+      design : when pr-open delegation returns rc=0 but pr-result.json verdict is not pass (verdict=blocked — no-re…
+      asserts: assert_eq "[#1844/SPEC-22] pr-open blocked rc=0: pr-delivery returns rc=1" "1" "$_s22_rc"
+NEGCTL PASS SPEC-23
+      design : when pr-open delegation returns rc=0 but pr-result.json verdict is not pass (the #2250 blocked path)…
+      asserts: assert_file_exists "[#1844/SPEC-23] pr-open blocked rc=0: pr-delivery-summary.md written" "$_s22_sum…
+NEGCTL PASS SPEC-24
+      design : missing-state-file exit path writes pr-result.json carrying result_contract:2, verdict=error, non-em…
+      asserts: assert_file_exists "[#1844/SPEC-24] missing-state-file: pr-result.json written" "$_s9_pr"
+REACHABILITY PASS plugins/agent/pr-delivery/manifest.yaml
