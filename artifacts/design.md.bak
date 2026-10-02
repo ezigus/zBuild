@@ -34,11 +34,11 @@ SPEC-1[change]: manifest provides declares result_contract:2; config.valid_verdi
 SPEC-2[change]: missing state_file argument → rc=1 (not rc=2) and pr-result.json written with result_contract:2, verdict=error, disposition=misconfigured
 SPEC-3[change]: review_report (via ZBUILD_STAGE_INPUTS) signals block → rc=1, pr-result.json has result_contract:2, verdict=error, disposition=complete
 SPEC-4[change]: dry-run path → rc=0, pr-result.json has result_contract:2, verdict=pass, disposition=complete
-SPEC-5[change]: merge delegation success → rc=0, pr-result.json has result_contract:2, verdict=pass
-SPEC-6[change]: merge delegation failure → rc=1, pr-result.json has result_contract:2, verdict=error
+SPEC-5[change]: merge delegation success → rc=0, pr-result.json has result_contract:2, verdict=pass, disposition=complete
+SPEC-6[change]: merge delegation failure → rc=1, pr-result.json has result_contract:2, verdict=error, disposition=unavailable (fallback when delegate writes no result file)
 SPEC-7[change]: pr-open delegation success → rc=0, pr-result.json has result_contract:2, verdict=pass, disposition=complete
 SPEC-8[change]: pr-open returns rc=0 with verdict=blocked → pr-delivery returns rc=1, pr-result.json has result_contract:2, verdict=error, disposition=complete, reason contains review_signal_missing (locks #2250 at v2 result level)
-SPEC-9[change]: fallback gh-pr-create success → rc=0, pr-result.json has result_contract:2, verdict=pass
+SPEC-9[change]: fallback gh-pr-create success → rc=0, pr-result.json has result_contract:2, verdict=pass, disposition=complete
 SPEC-10[change]: fallback gh-pr-create failure → rc=1, pr-result.json has result_contract:2, verdict=error, disposition=unavailable
 SPEC-11[change]: plugin.sh contains no hardcoded gate-aggregator-result.json or review-report.json literal path strings — inputs resolved via ZBUILD_STAGE_INPUTS
 SPEC-12[change]: plugin.sh contains no hardcoded review.json literal path string — dead input guard removed
