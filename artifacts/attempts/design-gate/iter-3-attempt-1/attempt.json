@@ -1,0 +1,13 @@
+{
+  "stage": "design-gate",
+  "cycle_iter": 3,
+  "attempt": 1,
+  "rc": "0",
+  "generated_at": "2026-10-02T21:56:49Z",
+  "files": 2,
+  "outputs": {
+    "design-gate-result.json": "changed",
+    "design-gate-feedback.md": "unchanged"
+  },
+  "progress": true
+}
