@@ -114,19 +114,23 @@ kill -KILL "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
 assert_contains "[SPEC-3] the body on GitHub already had the running row (start before end)" "$(last_body)" '**8:10 AM ET → running** · **4 build**'
 
 # ─── SPEC-4: terminal flushes immediately and the process stays alive ──────
+# This sidecar's gap between edits is an hour, so the only way an edit can
+# follow pipeline.end is the flush-at-once rule — the wait can then be generous
+# without weakening the check. (It used to sleep past a 2 s gap and demand an
+# edit within 1.5 s: an ordinary timed edit passed it, and suite load failed it
+# — #2258.)
 S2="$TEST_TEMP_DIR/s2"; mkdir -p "$S2"; : > "$S2/events.jsonl"; : > "$GH_LOG"; rm -f "$GH_BODIES"/*
 ev "$S2/events.jsonl" 13:00:00 pipeline.start "" "" run_id=r-loop issue=90000042 engine_sha=abc1234 engine_branch=main
-start_sidecar "$S2" "$PARENT"
+ZBUILD_STATUS_COMMENT_MIN_INTERVAL=3600 start_sidecar "$S2" "$PARENT"
 wait_for_event "$GH_LOG" '^api repos/testuser/testrepo/issues/90000042/comments' 30 0.1
 ev "$S2/events.jsonl" 13:00:05 plugin.run.start 1 intake plugin=intake kind=agent
 ev "$S2/events.jsonl" 13:00:06 stage.complete 1 intake stage=intake verdict=pass
-sleep 2.5                                             # let the interval elapse
 : > "$GH_LOG"
 ev "$S2/events.jsonl" 13:00:07 pipeline.end "" "" status=success run_id=r-loop issue=90000042
-if wait_for_event "$GH_LOG" 'X PATCH' 15 0.1; then
-    assert_pass "[SPEC-4] pipeline.end → PATCH within 1.5s"
+if wait_for_event "$GH_LOG" 'X PATCH' 200 0.1; then
+    assert_pass "[SPEC-4] pipeline.end → PATCH without waiting out the gap between edits"
 else
-    assert_fail "[SPEC-4] pipeline.end → PATCH within 1.5s" "no PATCH"
+    assert_fail "[SPEC-4] pipeline.end → PATCH without waiting out the gap between edits" "no PATCH"
 fi
 wait_for_body '**success**' 100 0.1 || true
 assert_contains "[SPEC-4] final header says success" "$(last_body)" '**success**'
@@ -135,13 +139,10 @@ if alive "$pid"; then
 else
     assert_fail "[SPEC-4] the sidecar is still alive after the terminal event" "exited"
 fi
-# An always-run stage after pipeline.end is still rendered.
-: > "$GH_LOG"
+# An always-run stage after pipeline.end: the hour-long gap holds its timed
+# edit back, so SPEC-5's final render is where it must land.
 ev "$S2/events.jsonl" 13:00:08 plugin.run.start 9 persist plugin=persist kind=tool
 ev "$S2/events.jsonl" 13:00:09 stage.complete 9 persist stage=persist verdict=pass
-wait_for_event "$GH_LOG" 'X PATCH' 40 0.1
-wait_for_body '**9 persist**' 100 0.1 || true
-assert_contains "[SPEC-4] a stage after pipeline.end still lands" "$(last_body)" '**9 persist**'
 
 # ─── SPEC-5: TERM → final render, exit 0 ────────────────────────────────────
 : > "$GH_LOG"
@@ -155,6 +156,7 @@ else
 fi
 assert_eq "[SPEC-5] TERM produced one final PATCH" "1" "$(patches)"
 assert_contains "[SPEC-5] final body keeps the terminal status from the events" "$(last_body)" '**success**'
+assert_contains "[SPEC-5] a stage after pipeline.end lands in the final render" "$(last_body)" '**9 persist**'
 
 # ─── SPEC-6: TERM before any terminal event → interrupted ───────────────────
 S3="$TEST_TEMP_DIR/s3"; mkdir -p "$S3"; : > "$S3/events.jsonl"; : > "$GH_LOG"; rm -f "$GH_BODIES"/*
