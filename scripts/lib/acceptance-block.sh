@@ -424,6 +424,21 @@ _acceptance_run_cache_begin() {
 # per check:  <repo-relative-path> <tag>: <why>
 # Prints "<path>\t<tag>\t<why>" per valid line. Absolute and ../ paths are
 # refused, as for TESTFILES. No block → nothing.
+acceptance_list_scope() {
+    # #2252: the files design scoped the change to — its ```scope block, one per
+    # line, as build is given them (plugins/agent/build/lib/scope.sh). Lets a
+    # gate tell a file build could have edited from one only design can change.
+    local design_md="${1:-}" line in_block=0
+    [[ -n "$design_md" && -f "$design_md" ]] || return 0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" =~ ^'```scope'[[:space:]]*$ ]]; then in_block=1; continue; fi
+        if [[ $in_block -eq 1 && "$line" =~ ^'```'[[:space:]]*$ ]]; then break; fi
+        [[ $in_block -eq 1 ]] || continue
+        line="${line#"${line%%[![:space:]]*}"}"; line="${line%"${line##*[![:space:]]}"}"
+        [[ -n "$line" ]] && printf '%s\n' "${line#./}"
+    done < "$design_md"
+}
+
 acceptance_list_supersedes() {
     local design_md="${1:-}" line in_block=0 path rest tag why
     [[ -z "$design_md" || ! -f "$design_md" ]] && return 0
