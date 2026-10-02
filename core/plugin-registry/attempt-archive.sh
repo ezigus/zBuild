@@ -25,21 +25,57 @@ _ZBUILD_ATTEMPT_ARCHIVE_LOADED=1
 # shellcheck source=output-paths.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/output-paths.sh" 2>/dev/null || true
 
-# ─── _attempt_output_paths <manifest> ─────────────────────────────────────────
-# Every declared output path (raw, unresolved), one per line.
-_attempt_output_paths() {
-    local manifest="$1"
+# ─── attempt_is_this_run <file> ──────────────────────────────────────────────
+# #2252: rc 0 when <file> was written by THIS run — not older than the runner's
+# run-start marker (ZBUILD_RUN_START_MARKER). A reused state dir can hold an
+# earlier run's files; without the marker (a stage run outside the runner) every
+# file present counts.
+attempt_is_this_run() {
+    local f="$1" m="${ZBUILD_RUN_START_MARKER:-}"
+    [[ -s "$f" ]] || return 1
+    [[ -n "$m" && -e "$m" ]] || return 0
+    [[ "$m" -nt "$f" ]] && return 1
+    return 0
+}
+
+# ─── attempt_latest_copy <artifact_dir> <basename> ───────────────────────────
+# #2252: this run's newest archived copy of <basename>, from any stage's
+# attempts. Prints its path; rc 1 when this run archived none. Pure bash
+# (glob + -nt), so a reader on the hot path pays no fork.
+attempt_latest_copy() {
+    local dir="$1" base="$2" f best=""
+    [[ -n "$dir" && -n "$base" && -d "$dir/attempts" ]] || return 1
+    for f in "$dir"/attempts/*/iter-*-attempt-*/"$base"; do
+        attempt_is_this_run "$f" || continue
+        if [[ -z "$best" || "$f" -nt "$best" ]]; then best="$f"; fi
+    done
+    [[ -n "$best" ]] || return 1
+    printf '%s' "$best"
+}
+
+# ─── _attempt_manifest_facts <manifest> ──────────────────────────────────────
+# One scan of the manifest (#2252: one awk per call, never one per question):
+#   P<TAB><raw path>   every declared output path, unresolved
+#   S<TAB><basename>   an output marked `summary: true` — narrative, never work
+#   R                  capabilities.writes_repository: true
+_attempt_manifest_facts() {
     awk '
-        /^outputs:[[:space:]]*$/ { in_block = 1; next }
-        in_block && /^[a-zA-Z_]/  { in_block = 0 }
-        in_block && /^[[:space:]]+path:[[:space:]]*/ {
+        function flush() { if (p != "") { print "P\t" p; if (s) { b = p; sub(/.*\//, "", b); print "S\t" b } } p = ""; s = 0 }
+        /^outputs:[[:space:]]*$/      { in_out = 1; in_cap = 0; next }
+        /^capabilities:[[:space:]]*$/ { flush(); in_cap = 1; in_out = 0; next }
+        /^[a-zA-Z_]/                  { flush(); in_out = 0; in_cap = 0 }
+        in_cap && /^[[:space:]]+writes_repository:[[:space:]]*true[[:space:]]*(#.*)?$/ { print "R" }
+        in_out && /^[[:space:]]*-[[:space:]]+id:/ { flush() }
+        in_out && /^[[:space:]]+path:[[:space:]]*/ {
             line = $0
             sub(/^[[:space:]]+path:[[:space:]]*/, "", line)
             sub(/[[:space:]]*#.*/, "", line)
             gsub(/^["'"'"']|["'"'"']$/, "", line)
-            if (line != "") print line
+            p = line
         }
-    ' "$manifest" 2>/dev/null || true
+        in_out && /^[[:space:]]+summary:[[:space:]]*true/ { s = 1 }
+        END { flush() }
+    ' "$1" 2>/dev/null || true
 }
 
 # ─── attempt_outputs_fingerprint <plugin_dir> <state_file> ──────────────────
@@ -56,14 +92,29 @@ attempt_outputs_fingerprint() {
     else state_dir="${ZBUILD_STATE_DIR:-}"; fi
     [[ -n "$state_dir" ]] || return 0
     artifact_dir="${ZBUILD_ARTIFACT_DIR:-$state_dir/artifacts}"
-    local raw resolved sum
-    while IFS= read -r raw; do
-        [[ -n "$raw" ]] || continue
+    local _k raw resolved sum facts
+    facts="$(_attempt_manifest_facts "$manifest")"
+    while IFS=$'\t' read -r _k raw; do
+        [[ "$_k" == P && -n "$raw" ]] || continue
         resolved="$(_registry_resolve_output_path "$raw" "$state_dir" "$artifact_dir" 2>/dev/null || true)"
         [[ -n "$resolved" ]] || continue
         sum="$(cksum 2>/dev/null < "$resolved" || printf 'absent')"
         printf '%s\t%s\n' "${resolved##*/}" "$sum"
-    done <<< "$(_attempt_output_paths "$manifest")"
+    done <<< "$facts"
+    # #2252: a stage that writes the repository does its work THERE — its
+    # declared outputs are reports of it. One more line fingerprints the tree:
+    # HEAD, the status, and the diff against HEAD. No readable HEAD → no line,
+    # and the outputs decide as for any other stage.
+    if [[ $'\n'"$facts"$'\n' == *$'\nR\n'* ]]; then
+        local repo="${ZBUILD_REPO_ROOT:-}" head st df
+        if [[ -n "$repo" ]] && head="$(git -C "$repo" rev-parse HEAD 2>/dev/null)" && [[ -n "$head" ]]; then
+            st="$(git -C "$repo" status --porcelain -uall 2>/dev/null || true)"
+            # The diff is hashed as it streams — never held whole in memory
+            # (review on #2253); cksum reads all of it, so no early-exit pipe.
+            df="$(git -C "$repo" diff HEAD 2>/dev/null | cksum)"
+            printf '__repository__\t%s\n' "$(cksum <<< "$head"$'\n'"$st"$'\n'"$df")"
+        fi
+    fi
 }
 
 # ─── attempt_archive_outputs <plugin_dir> <state_file> <stage> [rc] [before] ─
@@ -105,7 +156,11 @@ attempt_archive_outputs() {
     # an old attempt wants. _registry_output_path_rows drops those by design (it
     # serves the fail-closed presence scan), so this reads the block itself —
     # one awk per dispatch, no shared index state to be warm or cold.
-    local _paths; _paths="$(_attempt_output_paths "$manifest")"
+    local _facts _paths="" _summ="" _fk _fv
+    _facts="$(_attempt_manifest_facts "$manifest")"
+    while IFS=$'\t' read -r _fk _fv; do
+        case "$_fk" in P) _paths+="$_fv"$'\n' ;; S) _summ+="$_fv"$'\n' ;; esac
+    done <<< "$_facts"
     [[ -n "$_paths" ]] || { rmdir "$_dest" 2>/dev/null || true; return 0; }
 
     local raw resolved copied=0
@@ -130,22 +185,36 @@ attempt_archive_outputs() {
     # its values, and a stage id is interpolated here.
     # #2186: which declared outputs THIS dispatch changed. Without a before
     # fingerprint there is nothing to compare, and the record says nothing.
-    local _outputs="{}" _unchanged="" _name _was _now _state
+    local _outputs="{}" _unchanged="" _name _was _now _state _progress=""
     if [[ -n "$before" ]]; then
+        # #2252: progress is a change to the WORK. For a repository-writing
+        # stage that is the tree (__repository__); otherwise any declared output
+        # except a narrative summary. A report rewritten every attempt is not it.
+        local _repo_stage=0
+        [[ $'\n'"$before" == *$'\n__repository__\t'* ]] && _repo_stage=1
+        _progress=false
         while IFS=$'\t' read -r _name _now; do
             [[ -n "$_name" ]] || continue
             _was="$(awk -F'\t' -v n="$_name" '$1 == n { print $2; exit }' <<< "$before")"
             if [[ "$_now" == "absent" ]]; then _state="absent"
             elif [[ "$_now" == "$_was" ]]; then _state="unchanged"; _unchanged+="${_unchanged:+,}$_name"
             else _state="changed"; fi
+            if [[ "$_state" == "changed" ]]; then
+                if (( _repo_stage )); then
+                    [[ "$_name" == "__repository__" ]] && _progress=true
+                elif [[ $'\n'"$_summ" != *$'\n'"$_name"$'\n'* ]]; then
+                    _progress=true
+                fi
+            fi
             _outputs="$(jq -c --arg k "$_name" --arg v "$_state" '. + {($k): $v}' <<< "$_outputs" 2>/dev/null || printf '%s' "$_outputs")"
         done <<< "$(attempt_outputs_fingerprint "$plugin_dir" "$state_file")"
     fi
     jq -n --arg s "$stage" --argjson i "$_iter" --argjson a "$(( _n + 1 ))" \
           --arg rc "${rc:-}" --arg at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --argjson f "$copied" \
-          --argjson o "$_outputs" \
+          --argjson o "$_outputs" --arg pg "$_progress" \
           '{stage:$s, cycle_iter:$i, attempt:$a, rc:$rc, generated_at:$at, files:$f}
-           + (if $o == {} then {} else {outputs:$o} end)' \
+           + (if $o == {} then {} else {outputs:$o} end)
+           + (if $pg == "" then {} else {progress:($pg == "true")} end)' \
         > "$_dest/attempt.json" 2>/dev/null || true
     if [[ -n "$_unchanged" ]] && declare -F emit_event >/dev/null 2>&1; then
         emit_event "stage.outputs.unchanged" "stage=$stage" "iter=$_iter" \

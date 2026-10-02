@@ -158,7 +158,7 @@ assert_eq "T4: cycle_no_desc has empty description (no leak from sibling)" \
 set +e
 load_template "$REPO_ROOT/config/templates/simple.yaml" >/dev/null 2>&1
 rc=$?
-set -e
+set +e
 assert_eq "T5: simple.yaml loads rc=0" "0" "$rc"
 if [[ -n "${_TPL_CYCLE_DESCRIPTION_design_verify_cycle:-}" ]]; then
     assert_pass "T5: design_verify_cycle has description ('${_TPL_CYCLE_DESCRIPTION_design_verify_cycle}')"

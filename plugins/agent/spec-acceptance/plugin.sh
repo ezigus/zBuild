@@ -598,10 +598,22 @@ acceptance_gate_run() {
     # that fixes it (ADR-055's rule for data, applied to control).
     #
     # ADR-036 #1583: only design can fix a WIRING declaration, so the failure
-    # must not be blamed on build.
-    local f
+    # must not be blamed on build — when build COULD NOT have made the edit.
+    # #2252: a target in the change's scope that the diff did not touch is an
+    # edit design asked for and build did not make (#2032: an event left out of
+    # config/event-schema.json). Iteration 1 is build's turn, as for inert_wiring
+    # (#1711); from iteration 2 the declaration is what is left.
+    local f _wt _scope
+    _scope="$(acceptance_list_scope "$design_md" 2>/dev/null || true)"
     for f in "${failures[@]:-}"; do
-        [[ "$f" == wiring_not_on_path:* ]] && fault="specification" && break
+        [[ "$f" == wiring_not_on_path:* ]] || continue
+        _wt="${f#wiring_not_on_path:}"; _wt="${_wt#./}"
+        if [[ "${ZBUILD_CYCLE_ITER:-1}" -lt 2 ]] && grep -qxF -- "$_wt" <<< "$_scope"; then
+            eb_emit_event "acceptance.gate.wiring_build_turn" "stage=acceptance-gate" \
+                "target=$_wt" "iter=${ZBUILD_CYCLE_ITER:-1}" 2>/dev/null || true
+            continue
+        fi
+        fault="specification"; break
     done
     # #1777: guard_regressed is design-rooted by construction. Build cannot fix a
     # SPEC tagged [guard] whose assertion asserts a change — the correction is

@@ -155,6 +155,12 @@ issue_acceptance_run() {
         fi
     fi
 
+    # #2252: the limits this call runs under, from the values the router enforces.
+    declare -F stage_budget_note >/dev/null 2>&1 || \
+        source "$_IA_ROOT/scripts/lib/stage-budget-note.sh" 2>/dev/null || true
+    local _budget_note=""
+    declare -F stage_budget_note >/dev/null 2>&1 && _budget_note="$(stage_budget_note "your verdict")"
+    [[ -n "$_budget_note" ]] && _framed+=$'\n\n'"$_budget_note"
     local _raw="" rc=0
     # No 2>/dev/null: the stage-io banner writes to fd 2 (ADR-015 §v4).
     if declare -f route_to_model >/dev/null 2>&1; then

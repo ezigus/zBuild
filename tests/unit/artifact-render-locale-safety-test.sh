@@ -28,7 +28,7 @@ INPUT_INLINE="$(printf '\xc0\x80\x1b[1mbold\x1b[0m')"
 set +e
 OUT_INLINE="$(_artifact_md_escape_inline "$INPUT_INLINE" 2>/dev/null)"
 rc_inline=$?
-set -e
+set +e
 assert_eq "T1: _artifact_md_escape_inline rc=0 on ANSI + invalid byte" \
     "0" "$rc_inline"
 if [[ "$OUT_INLINE" == *bold* ]]; then
@@ -48,7 +48,7 @@ INPUT_BLOCK="$(printf 'line1\xc0\x80\n\x1b[31mline2 red\x1b[0m\nline3\n')"
 set +e
 OUT_BLOCK="$(_artifact_md_escape_block "$INPUT_BLOCK" 2>/dev/null)"
 rc_block=$?
-set -e
+set +e
 assert_eq "T2: _artifact_md_escape_block rc=0 on multi-line invalid bytes" \
     "0" "$rc_block"
 # Block escape preserves newlines; line2 should be visible without ANSI.
@@ -69,7 +69,7 @@ HOSTILE_INLINE="$(LC_ALL=invalid.bogus _artifact_md_escape_inline "$(printf '\x1
 rc_h_inline=$?
 HOSTILE_BLOCK="$(LC_ALL=invalid.bogus _artifact_md_escape_block "$(printf '\x1b[31mz\x1b[0m\n')" 2>/dev/null)"
 rc_h_block=$?
-set -e
+set +e
 assert_eq "T3: inline escape under hostile caller LC_ALL → rc=0" \
     "0" "$rc_h_inline"
 assert_eq "T3: block escape under hostile caller LC_ALL → rc=0" \

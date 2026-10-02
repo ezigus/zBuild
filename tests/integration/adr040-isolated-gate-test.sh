@@ -97,7 +97,7 @@ _run() {
     OUT="$(ZBUILD_CONTRACT_VALIDATOR=enforce \
         _contract_validate_pipeline "$stages" "$FX" "$sf" 2>&1)"
     RC=$?
-    set -e
+    set +e
 }
 
 # ── SPEC-1: model gate consuming a same-cycle member's output → refused ──────

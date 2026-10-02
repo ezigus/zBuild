@@ -131,7 +131,7 @@ _MOCK_DESIGN_WRITE_PATH=""    # LLM writes nothing (timed out)
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
-set -e
+set +e
 
 # SPEC-1: no design is published — the stale one is gone and nothing is
 # fabricated in its place — and the real gate fails, so the cycle re-iterates.
@@ -216,7 +216,7 @@ _MOCK_DESIGN_WRITE_PATH=""
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
-set -e
+set +e
 
 assert_eq "[SPEC-5] rc=137 → _design_stage_run_inner returns rc=1 (terminal)" "1" "$_rc"
 
@@ -244,7 +244,7 @@ _MOCK_DESIGN_WRITE_PATH="$_F_DESIGN"
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
-set -e
+set +e
 
 assert_eq "[SPEC-8] rc=0 with valid design.md → _design_stage_run_inner returns rc=0" "0" "$_rc"
 
@@ -280,7 +280,7 @@ _MOCK_DESIGN_WRITE_PATH=""
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
-set -e
+set +e
 assert_eq "[SPEC-9] timeout + stale design not removable → returns rc=1 (terminal)" "1" "$_rc"
 if grep -q '"reason":"stale_design_not_removed"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
     assert_pass "[SPEC-9b] → plugin.result reason=stale_design_not_removed"
@@ -301,7 +301,7 @@ _MOCK_DESIGN_WRITE_PATH="$_F_DESIGN"      # the model wrote its design, then was
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
-set -e
+set +e
 assert_eq "[SPEC-12] timeout after a new design → returns rc=0" "0" "$_rc"
 if grep -q '^SPEC-1\[guard\]: works' "$_F_DESIGN" 2>/dev/null; then
     assert_pass "[SPEC-12] the design this call wrote is kept as written"

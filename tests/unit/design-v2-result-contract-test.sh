@@ -94,7 +94,7 @@ _MOCK_DESIGN_WRITE_PATH="$_F_DESIGN"
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
-set -e
+set +e
 
 _sc1_rc2="$(jq -r '.result_contract // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
 _sc1_verdict="$(jq -r '.verdict // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
@@ -115,7 +115,7 @@ _MOCK_DESIGN_WRITE_PATH=""
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
-set -e
+set +e
 
 _sc2_rc2="$(jq -r '.result_contract // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
 _sc2_verdict="$(jq -r '.verdict // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
@@ -134,7 +134,7 @@ _MOCK_DESIGN_WRITE_PATH=""
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
-set -e
+set +e
 
 _sc3_verdict="$(jq -r '.verdict // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
 _sc3_disp="$(jq -r '.disposition // "MISSING"' "$_F_SIDECAR" 2>/dev/null || echo MISSING)"
@@ -190,7 +190,7 @@ printf '{}' > "$_F_STATE_FILE"
 set +e
 design_stage_run "design" "$_F_STATE_FILE"
 _rc5=$?
-set -e
+set +e
 
 unset ZBUILD_STAGE_INPUTS
 
@@ -239,7 +239,7 @@ _MOCK_DESIGN_WRITE_PATH=""
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
-set -e
+set +e
 _assert_error_path "SPEC-6" "no design.md produced" "missing_design_md"
 
 # SPEC-7 — a design.md with no ```scope block.
@@ -258,7 +258,7 @@ route_to_model_loop() {
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
-set -e
+set +e
 _assert_error_path "SPEC-7" "design.md without a scope block" "missing_scope_block"
 
 # SPEC-8 — a design.md with a scope block but no ```acceptance block.
@@ -275,7 +275,7 @@ route_to_model_loop() {
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
-set -e
+set +e
 _assert_error_path "SPEC-8" "design.md without an acceptance block" "missing_acceptance_block"
 
 # SPEC-9 — the model wrote design.md to the repo root, where a TRACKED file
@@ -295,7 +295,7 @@ route_to_model_loop() {
 set +e
 _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
-set -e
+set +e
 _assert_error_path "SPEC-9" "tracked design.md at repo root" "stray_conflict"
 
 # The operator's file is the whole reason this path refuses — it must survive.

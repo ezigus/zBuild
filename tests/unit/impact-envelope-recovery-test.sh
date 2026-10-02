@@ -51,7 +51,7 @@ esac
 u3_raw='Here is some prose. {"unrelated":true} and {"also":"no schema"}'
 set +e
 u3_out="$(_impact_recover_envelope_json "$u3_raw" 2>/dev/null)"; u3_rc=$?
-set -e
+set +e
 assert_eq "U3: no schema object -> empty stdout" "" "$u3_out"
 assert_eq "U3: no schema object -> rc=1" "1" "$u3_rc"
 
@@ -68,7 +68,7 @@ u5_raw='{"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_m
 trailing {"schema_version":1,"verdict":"incomplete","missing":[],"impact_feedback_md":"SECOND"}'
 set +e
 u5_out="$(_impact_recover_envelope_json "$u5_raw" 2>/dev/null)"; u5_rc=$?
-set -e
+set +e
 assert_eq "U5: two schema-bearing objects -> ambiguous -> empty (fail closed)" "" "$u5_out"
 assert_eq "U5: two schema-bearing objects -> rc=1 (no recovery)" "1" "$u5_rc"
 
@@ -88,7 +88,7 @@ u6_raw='Example: {"schema_version":1,"verdict":"complete","missing":[]}
 Real answer: {"schema_version":1,"verdict":"banana","missing":[]}'
 set +e
 u6_out="$(_impact_recover_envelope_json "$u6_raw" 2>/dev/null)"; u6_rc=$?
-set -e
+set +e
 case "$u6_out" in
     *'"complete"'*) assert_fail "U6: must NOT recover the preamble example as the verdict" "$u6_out" ;;
     *) assert_pass "U6: did not ship the preamble example as the verdict" ;;
@@ -107,7 +107,7 @@ assert_eq "U6: example + gate-failing real answer (2 schema bearers) -> rc=1 (fa
 # them must delete this assertion and say why.
 set +e
 u6b_out="$(_llm_recover_envelope_json "$u6_raw" _impact_envelope_schema_ok 2>/dev/null)"; u6b_rc=$?
-set -e
+set +e
 assert_eq "U6b: the shared ONE-phase helper recovers where impact must not (rc=0)" "0" "$u6b_rc"
 assert_eq "U6b: and what it recovers is the EXAMPLE -- the outcome impact prevents" \
     "complete" "$(printf '%s' "$u6b_out" | jq -r '.verdict' 2>/dev/null)"

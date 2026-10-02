@@ -84,6 +84,7 @@ provides:
     - acceptance.gate.guard_regressed
     - acceptance.gate.inert_wiring
     - acceptance.gate.inert_wiring_escalated
+    - acceptance.gate.wiring_build_turn
     - acceptance.gate.no_testfiles
     - acceptance.gate.not_passing_at_head
     - acceptance.gate.not_passing_at_head_escalated

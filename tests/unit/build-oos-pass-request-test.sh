@@ -60,8 +60,9 @@ REQ3b="$(_build_pending_collateral_request "pass" "see core/pipeline/template.sh
 assert_eq "T3b: in-scope file in feedback → empty" "" "$REQ3b"
 
 # ─── T4: OOS SOURCE file → classified structural (resolver denies, not build) ─
-FEEDBACK_SRC="$(printf 'also touch %s for the route change\n' "$SRC")"
-REQ4="$(_build_pending_collateral_request "pass" "$FEEDBACK_SRC" "$PLAN_CSV")"
+# #2252: build asks for a source file in its own words (`BLOCKED:`); failure text
+# naming a path is not a request (build-scope-request-evidence-test E1).
+REQ4="$(_build_blocked_request "$(printf 'BLOCKED: route change requires %s (out of scope)\n' "$SRC")" "$PLAN_CSV")"
 assert_eq "T4: source file classified structural" "structural" \
     "$(jq -r '.files[] | select(.path=="'"$SRC"'") | .category' <<<"$REQ4" 2>/dev/null)"
 

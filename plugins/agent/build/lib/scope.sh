@@ -61,8 +61,18 @@ _build_detect_out_of_scope_files() {
 # _build_scope_expansion_request <oos_files_newline> <feedback_body> (#840)
 # Builds an ADR-030 scope_expansion_request from the out-of-scope files build is
 # blocked on. Echoes {files:[...]} or nothing.
+#
+# #2252: a request carries EVIDENCE that build needs the file, or it is not made.
+# <evidence_mode> says where the evidence comes from:
+#   quote  (default) — a quoted token from the failure text, found in the file.
+#                      A path that merely APPEARS in failure text is not evidence:
+#                      #1844 and #2032 asked for files with "evidence": "" — ones
+#                      already fixed, or failing for an environment reason — and
+#                      the denial routed each run back to design.
+#   edited           — build edited the file out of scope; the edit is the
+#                      evidence, so the request is made even with no quote.
 _build_scope_expansion_request() {
-    local oos="$1" feedback="$2"
+    local oos="$1" feedback="$2" mode="${3:-quote}"
     [[ -z "$oos" ]] && return 0
     # Use _BUILD_ROOT (set by zbuild_plugin_bootstrap before this lib is sourced).
     local _gov="$_BUILD_ROOT/scripts/lib/scope-governance.sh"
@@ -78,19 +88,23 @@ _build_scope_expansion_request() {
         | grep -oE "'[^']{2,}'|\"[^\"]{2,}\"" 2>/dev/null \
         | sed -E "s/^['\"]//; s/['\"]\$//" | sort -u)
 
-    local entries="[]" f cls ev
+    local entries="[]" f cls ev why
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
         cls="$(scope_collateral_class "$f")"
-        ev=""
+        ev="" why="build blocked on out-of-scope file named in test feedback"
+        [[ "$mode" == "edited" ]] && why="build edited this out-of-scope file"
         if [[ -f "$f" ]]; then
             for _t in "${tokens[@]:-}"; do
                 [[ -z "$_t" ]] && continue
                 if LC_ALL=C grep -qF -- "$_t" "$f" 2>/dev/null; then ev="$_t"; break; fi
             done
         fi
-        entries="$(jq -c --arg p "$f" --arg c "$cls" --arg e "$ev" \
-            '. + [{path:$p, category:$c, evidence:$e, reason:"build blocked on out-of-scope file named in test feedback"}]' \
+        # The quote (when found) is what the resolver checks to grant. An edit is
+        # itself evidence of need; a path merely named in failure text is not.
+        [[ -n "$ev" || "$mode" == "edited" ]] || continue
+        entries="$(jq -c --arg p "$f" --arg c "$cls" --arg e "$ev" --arg r "$why" \
+            '. + [{path:$p, category:$c, evidence:$e, reason:$r}]' \
             <<<"$entries" 2>/dev/null || printf '%s' "$entries")"
     done <<< "$oos"
 
@@ -123,7 +137,35 @@ _build_edited_collateral_request() {
     done <<< "$oos_nl"
     edited="${edited%$'\n'}"
     [[ -z "$edited" ]] && return 0
-    _build_scope_expansion_request "$edited" "$feedback"
+    _build_scope_expansion_request "$edited" "$feedback" edited
+}
+
+# _build_blocked_request <model_response> <plan_files_csv> (#2252)
+# The prompt tells build to write `BLOCKED: <gate> requires <file> (out of scope)`
+# when it truly needs a file it may not touch; nothing read that line until now.
+# Each such file — not in scope, and not one build itself reported
+# NOT_REPRODUCED — becomes a request whose evidence is build's own line.
+_build_blocked_request() {
+    local resp="$1" plan_csv="$2" line f
+    [[ -n "$resp" ]] || return 0
+    local _gov="$_BUILD_ROOT/scripts/lib/scope-governance.sh"
+    # shellcheck source=/dev/null
+    [[ -f "$_gov" ]] && source "$_gov"
+    declare -F scope_collateral_class >/dev/null 2>&1 || return 0
+    local nr; nr="$(_build_not_reproduced "$resp" | tr '\n' ',')"
+    local entries="[]" re='^[[:space:]]*BLOCKED:.*[[:space:]]requires[[:space:]]+([^[:space:]]+)[[:space:]]+\(out of scope\)'
+    while IFS= read -r line; do
+        [[ "$line" =~ $re ]] || continue
+        f="${BASH_REMATCH[1]}"
+        case ",$plan_csv," in *",$f,"*) continue ;; esac
+        case ",$nr," in *",$f,"*) continue ;; esac
+        line="${line#"${line%%[![:space:]]*}"}"
+        entries="$(jq -c --arg p "$f" --arg c "$(scope_collateral_class "$f")" --arg e "$line" \
+            'if any(.[]; .path == $p) then . else . + [{path:$p, category:$c, evidence:$e, reason:"build reported it is blocked on this file"}] end' \
+            <<<"$entries" 2>/dev/null || printf '%s' "$entries")"
+    done <<< "$resp"
+    [[ "$entries" == "[]" ]] && return 0
+    jq -nc --argjson f "$entries" '{files:$f}' 2>/dev/null || true
 }
 
 # _build_created_collateral_request <created_path> [created_path...] (#870)

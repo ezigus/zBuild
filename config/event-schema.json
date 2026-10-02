@@ -127,6 +127,7 @@
     "plugin.artifact.missing",
     "plugin.artifact.empty",
     "plugin.run.artifact_check_failed",
+    "plugin.run.artifact_check_skipped",
     "plugin.tamper.detected",
     "router.max_iterations.override_ignored",
     "loop.iteration",

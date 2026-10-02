@@ -337,10 +337,12 @@ install_envelope_mock_claude \
 OUTPUT_R9="$TEST_TEMP_DIR/findings_r9.json"
 _security_lens_run_inner "$INPUT" "$MANIFEST" "$OUTPUT_R9" "$TEST_TEMP_DIR" >/dev/null 2>&1
 assert_file_exists "R9: claude was invoked (argv capture file written)" "$ARGV_CAPTURE"
-if grep -qx '\--output-format' "$ARGV_CAPTURE" && grep -qx 'json' "$ARGV_CAPTURE"; then
-    assert_pass "R9 (#476): security-lens invokes claude with --output-format json"
+# #2139: the router asks for stream-json — the same envelope as its last line,
+# with every step recorded before it — so either structured form satisfies #476.
+if grep -qx '\--output-format' "$ARGV_CAPTURE" && grep -qxE 'json|stream-json' "$ARGV_CAPTURE"; then
+    assert_pass "R9 (#476): security-lens invokes claude with a structured --output-format"
 else
-    assert_fail "R9 (#476): expected --output-format json in argv" "got: $(tr '\n' ' ' < "$ARGV_CAPTURE")"
+    assert_fail "R9 (#476): expected --output-format json or stream-json in argv" "got: $(tr '\n' ' ' < "$ARGV_CAPTURE")"
 fi
 
 # ─── R10 (#483): security-lens tags capture with metadata.artifact ───────────

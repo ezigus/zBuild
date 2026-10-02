@@ -144,7 +144,7 @@ _run() {
     set +e
     cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
     RUN_RC=$?
-    set -e
+    set +e
 }
 
 # ─── SPEC-1: timeout never fatal ─────────────────────────────────────────────
@@ -283,7 +283,7 @@ load_template "$_5C_TPL"
 set +e
 cycle_orchestrator_run "build-test" "$_5C_SD" "$_5C_SD/pipeline-state.json"
 _5C_RC=$?
-set -e
+set +e
 assert_eq "[SPEC-5c] non-test gate fail + tests pass + no test-results → rc=2 (not rc=8)" "2" "$_5C_RC"
 
 # ─── SPEC-8: repo-agnostic — no zbuild plugin id / path / test-format in path ─

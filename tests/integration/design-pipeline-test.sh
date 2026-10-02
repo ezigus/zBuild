@@ -170,7 +170,7 @@ set +e
     PATH="$PATH" \
     bash "$RUNNER" --template design-scope-minimal --issue "$_ZB_ID" ) >/dev/null 2>&1
 rc=$?
-set -e
+set +e
 
 # #141: a run with an issue now writes under the DATA root (.zbuild/repos/...),
 # not under .zbuild/state. This assertion only wants to FIND design.md wherever

@@ -982,7 +982,9 @@ _route_call_claude() {
     # Always the JSON envelope: it is where the provider reports the call's cost
     # and the concrete model that answered (ADR-003 amendment). A caller that
     # did not ask for JSON still gets plain text — the router unwraps .result.
-    _claude_args+=(--output-format json)
+    # #2139: stream-json (needs --verbose under --print): a call killed at its
+    # wall clock still returns the steps it made, not nothing.
+    _claude_args+=(--output-format stream-json --verbose)
 
     # ADR-029 (#1230): retry-on-timeout. On rc=124 (gtimeout SIGTERM) and while
     # attempts remain, re-spawn with an escalated LOCAL timeout before falling
@@ -1050,6 +1052,10 @@ _route_call_claude() {
             claude "${_claude_args[@]}" <"$_prompt_in" 2>"$stderr_file"
         )" || rc=$?
     fi
+    # #2139: keep the step stream for the diagnostic; everything below reads
+    # the envelope, exactly as it did when the CLI printed only that.
+    local _sync_stream="$response"
+    response="$(_route_stream_envelope_text <<< "$_sync_stream")"
 
     # ADR-029 (#1230): retry a bare router timeout (rc=124) with an escalated
     # local budget BEFORE the verbatim-124 fallback + diagnostic path. Only
@@ -1130,7 +1136,12 @@ _route_call_claude() {
         local _sync_diag_base="${ZBUILD_CURRENT_STAGE:-router}-sync-error"
         local _sync_json_path="$_sync_diag_dir/${_sync_diag_base}.raw-claude-output.json"
         local _sync_stderr_path="$_sync_diag_dir/${_sync_diag_base}.raw-claude-stderr.txt"
-        printf '%s' "$response" > "$_sync_json_path" 2>/dev/null || _sync_json_path=""
+        # #2139: a killed call has no envelope — keep its step stream instead.
+        if [[ -z "$response" && -n "$_sync_stream" ]]; then
+            printf '%s' "$_sync_stream" > "$_sync_json_path" 2>/dev/null || _sync_json_path=""
+        else
+            printf '%s' "$response" > "$_sync_json_path" 2>/dev/null || _sync_json_path=""
+        fi
         if [[ -f "$stderr_file" ]]; then
             cp "$stderr_file" "$_sync_stderr_path" 2>/dev/null || _sync_stderr_path=""
         else
@@ -1138,7 +1149,14 @@ _route_call_claude() {
         fi
         # Parse JSON envelope fields once; #762 adds subtype/output_tokens/cost.
         local _sync_is_error="" _sync_err_text="" _sync_num_turns="" _sync_subtype="" _sync_out_tokens="" _sync_cost="" _sync_api_status=""
-        if [[ -n "$_sync_json_path" && -f "$_sync_json_path" ]]; then
+        local _sync_last_tool=""
+        if [[ -z "$response" && -n "$_sync_stream" && -n "$_sync_json_path" ]]; then
+            # #2139 (review on #2253): killed before its result — the stream is
+            # the record, so read the turns and the last tool from it.
+            local _sync_prog; _sync_prog="$(_route_stream_progress "$_sync_json_path")"
+            _sync_num_turns="${_sync_prog%% *}"; _sync_last_tool="${_sync_prog#* }"
+            [[ "$_sync_num_turns" == "0" ]] && _sync_num_turns=""
+        elif [[ -n "$_sync_json_path" && -f "$_sync_json_path" ]]; then
             _sync_is_error="$(jq -r '.is_error // empty' "$_sync_json_path" 2>/dev/null || true)"
             if _sync_err_text="$(jq -r '.error // empty' "$_sync_json_path" 2>/dev/null)"; then
                 _sync_err_text="${_sync_err_text:0:200}"
@@ -1199,6 +1217,7 @@ _route_call_claude() {
             "is_error=${_sync_is_error:-absent}" \
             "error_text=${_sync_err_text:-absent}" \
             "num_turns=${_sync_num_turns:-absent}" \
+            "last_tool=${_sync_last_tool:-absent}" \
             "subtype=${_sync_subtype:-absent}" \
             2>/dev/null || true
         rm -f "$stderr_file" "$_prompt_in"
@@ -1496,6 +1515,51 @@ _route_parse_commit_summary_line() {
         | cut -c1-72 || true)"
     printf '%s' "$out"
     return 0
+}
+
+# ─── #2139: the model call's step stream ──────────────────────────────────────
+# The loop asks the CLI for `stream-json`: one JSON line per step, written as it
+# happens. A call killed at its wall clock used to leave nothing — the `json`
+# format prints its one envelope only at the end — so a timeout could not say
+# what the model had been doing (#1844 run 36969128968: 12 empty captures).
+
+# _route_stream_envelope_text — stdin: what the CLI printed; stdout: the call's
+# final envelope. One jq pass reads JSON lines and pretty-printed JSON alike:
+# the last `"type":"result"` object when the output is a step stream; the whole
+# output when it is no stream (a plain envelope or text, as stubs and older CLIs
+# print); nothing when the stream ended before a result (a killed call).
+_route_stream_envelope_text() {
+    local raw; raw="$(cat)"
+    [[ -n "$raw" ]] || return 0
+    local env
+    if env="$(jq -sc 'if ([.[] | objects | select(has("type"))] | length) == 0 then "__PLAIN__"
+                      else ([.[] | objects | select(.type == "result")] | last // "__NONE__") end' \
+                <<< "$raw" 2>/dev/null)"; then
+        case "$env" in
+            '"__PLAIN__"') printf '%s' "$raw" ;;
+            '"__NONE__"')  ;;
+            *)             printf '%s\n' "$env" ;;
+        esac
+    else
+        printf '%s' "$raw"   # not JSON at all: hand it on unchanged
+    fi
+}
+
+# _route_stream_envelope <stream_file> <envelope_out> — the same, file to file.
+_route_stream_envelope() {
+    _route_stream_envelope_text 2>/dev/null < "$1" > "$2" || : > "$2"
+}
+
+# _route_stream_progress <stream_file> — "<turns> <last_tool>" read from the
+# stream: assistant messages so far, and the last tool the model called.
+_route_stream_progress() {
+    local stream="$1"
+    [[ -s "$stream" ]] || { printf '0 '; return 0; }
+    jq -rs '
+        [ .[] | select(type == "object" and .type == "assistant") ] as $a
+        | ([ $a[] | .message.content[]? | select(.type == "tool_use") | .name ] | last // "") as $t
+        | "\($a | length) \($t)"
+    ' "$stream" 2>/dev/null || printf '0 '
 }
 
 route_to_model_loop() {
@@ -1797,6 +1861,7 @@ ${_diff_pointer}"
         # The prompt goes on stdin, never argv (MAX_ARG_STRLEN — see route_to_model).
         # In $_loop_tmp, so the RETURN trap removes it on every exit path.
         local _prompt_in="${_loop_tmp}/iter-${iter}.prompt"
+        local _stream_file="${_loop_tmp}/iter-${iter}.stream.jsonl"
         printf '%s' "$final_prompt" > "$_prompt_in"
         local -a _claude_args=(--print --model "$_ROUTE_MODEL_ID")
         # ADR-018 Amendment N (#762): omit --max-turns when sentinel mt=0.
@@ -1816,7 +1881,9 @@ ${_diff_pointer}"
         local -a _perm_args=()
         mapfile -t _perm_args < <(_zbuild_permission_args)
         _claude_args+=("${_perm_args[@]}")
-        _claude_args+=(--output-format json)
+        # #2139: stream-json (needs --verbose under --print) — every step lands
+        # on disk as it happens, so a killed call still leaves its record.
+        _claude_args+=(--output-format stream-json --verbose)
 
         # ADR-029 (#1230): intra-iteration retry-on-timeout. router.retries is the
         # count of per-iteration CALL retries with an escalated LOCAL timeout,
@@ -1884,13 +1951,13 @@ ${_diff_pointer}"
                 _zbuild_make_fresh_shell
                 # stdin AFTER the fresh shell: it points stdin at /dev/null (#2108).
                 exec "${_tout_cmd[@]}" claude "${_claude_args[@]}" <"$_prompt_in"
-            ) >"$json_file" 2>"$stderr_file" &
+            ) >"$_stream_file" 2>"$stderr_file" &
         else
             (
                 cd "$cwd" || exit 99
                 _zbuild_make_fresh_shell
                 exec claude "${_claude_args[@]}" <"$_prompt_in"
-            ) >"$json_file" 2>"$stderr_file" &
+            ) >"$_stream_file" 2>"$stderr_file" &
         fi
         _ROUTE_LOOP_CHILD_PID=$!
         set +m
@@ -1907,6 +1974,8 @@ ${_diff_pointer}"
         wait "$_ROUTE_LOOP_CHILD_PID" 2>/dev/null || rc=$?
         _ROUTE_LOOP_CHILD_PID=""
         _ROUTE_LOOP_CHILD_PGID=""
+        # #2139: the envelope everything below reads is the stream's result line.
+        _route_stream_envelope "$_stream_file" "$json_file"
 
         # #612: rc=130 means the child claude was interrupted by SIGINT (either
         # delivered to the foreground process group by the operator's Ctrl-C, or
@@ -2047,7 +2116,13 @@ ${_diff_pointer}"
             local _diag_stderr_path=""
             if [[ -f "$json_file" ]]; then
                 _diag_json_path="$_diag_dir/${_diag_base}.raw-claude-output.json"
-                cp "$json_file" "$_diag_json_path" 2>/dev/null || _diag_json_path=""
+                # #2139: no envelope (killed before its result) → keep the step
+                # stream itself, which is the only record of what the call did.
+                if [[ ! -s "$json_file" && -s "${_stream_file:-}" ]]; then
+                    cp "$_stream_file" "$_diag_json_path" 2>/dev/null || _diag_json_path=""
+                else
+                    cp "$json_file" "$_diag_json_path" 2>/dev/null || _diag_json_path=""
+                fi
             fi
             if [[ -f "$stderr_file" ]]; then
                 _diag_stderr_path="$_diag_dir/${_diag_base}.raw-claude-stderr.txt"
@@ -2055,7 +2130,13 @@ ${_diff_pointer}"
             fi
             # Parse envelope fields once; #762 adds subtype/cost.
             local _diag_is_error="" _diag_err_text="" _diag_num_turns="" _diag_out_tokens="" _diag_subtype="" _diag_cost=""
-            if [[ -n "$_diag_json_path" ]]; then
+            local _diag_last_tool=""
+            if [[ ! -s "$json_file" && -s "${_stream_file:-}" ]]; then
+                # Killed before its result: count the turns the stream recorded.
+                local _diag_prog; _diag_prog="$(_route_stream_progress "$_stream_file")"
+                _diag_num_turns="${_diag_prog%% *}"; _diag_last_tool="${_diag_prog#* }"
+                [[ "$_diag_num_turns" == "0" ]] && _diag_num_turns=""
+            elif [[ -n "$_diag_json_path" ]]; then
                 _diag_is_error="$(jq -r '.is_error // empty' "$_diag_json_path" 2>/dev/null || true)"
                 if _diag_err_text="$(jq -r '.error // empty' "$_diag_json_path" 2>/dev/null)"; then
                     _diag_err_text="${_diag_err_text:0:200}"
@@ -2129,6 +2210,7 @@ ${_diff_pointer}"
                 "is_error=${_diag_is_error:-absent}" \
                 "error_text=${_diag_err_text:-absent}" \
                 "num_turns=${_diag_num_turns:-absent}" \
+                "last_tool=${_diag_last_tool:-absent}" \
                 "output_tokens=${_diag_out_tokens:-absent}" \
                 "subtype=${_diag_subtype:-absent}" \
                 2>/dev/null || true

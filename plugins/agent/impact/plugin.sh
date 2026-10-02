@@ -355,6 +355,12 @@ $_impact_instructions"
     # ─── Assemble the raw prompt (ADR-043: route_to_model redacts it). ──────
     local redacted_prompt
     redacted_prompt="$(cat "$prompt_file")"
+    # #2252: the limits this call runs under, from the values the router enforces.
+    declare -F stage_budget_note >/dev/null 2>&1 || \
+        source "$_IMPACT_ROOT/scripts/lib/stage-budget-note.sh" 2>/dev/null || true
+    local _budget_note=""
+    declare -F stage_budget_note >/dev/null 2>&1 && _budget_note="$(stage_budget_note "your JSON verdict")"
+    [[ -n "$_budget_note" ]] && redacted_prompt+=$'\n\n'"$_budget_note"
 
     # ─── Route to LLM (T2 default per manifest config.tier_default, #960/#1230) ─
     # The fallback MUST match manifest tier_default (T2). On T1 (haiku) impact's

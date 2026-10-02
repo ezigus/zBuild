@@ -188,6 +188,12 @@ _security_lens_run_inner() {
             "reason=tier_unresolved"
         return 1
     fi
+    # #2252: the limits this call runs under, from the values the router enforces.
+    declare -F stage_budget_note >/dev/null 2>&1 || \
+        source "$_SEC_LENS_ROOT/scripts/lib/stage-budget-note.sh" 2>/dev/null || true
+    local _budget_note=""
+    declare -F stage_budget_note >/dev/null 2>&1 && _budget_note="$(stage_budget_note "your findings")"
+    [[ -n "$_budget_note" ]] && prompt+=$'\n\n'"$_budget_note"
     local raw_response="" router_rc=0
     local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
     export ZBUILD_ROUTER_JSON_OUTPUT=1

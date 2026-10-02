@@ -151,7 +151,7 @@ mkdir -p "$ZBUILD_ARTIFACT_DIR"
 set +e
 deploy_release_run "deploy" ""
 _sfabs_rc=$?
-set -e
+set +e
 
 assert_eq "[SPEC-17] state_file-absent: rc=1 (not rc=2)" "1" "$_sfabs_rc"
 
@@ -184,7 +184,7 @@ rm -rf "$_s_nod_dir/artifacts"
 set +e
 ( unset ZBUILD_ARTIFACT_DIR; ZBUILD_DRY_RUN=1 deploy_release_run "deploy" "$_s_nod_sf" ) >/dev/null 2>&1
 _s_nod_rc=$?
-set -e
+set +e
 assert_eq "[#2219] no ZBUILD_ARTIFACT_DIR → rc=1" "1" "$_s_nod_rc"
 if [[ -e "$_s_nod_dir/artifacts" ]]; then
     assert_fail "[#2219] nothing is written beside the state file" "$_s_nod_dir/artifacts exists"
@@ -202,7 +202,7 @@ _s_dry_art="$_s_dry_dir/artifacts"
 set +e
 ( ZBUILD_DRY_RUN=1 ZBUILD_ARTIFACT_DIR="${_s_dry_sf%/*}/artifacts" deploy_release_run "deploy" "$_s_dry_sf" ) >/dev/null 2>&1
 _s_dry_rc=$?
-set -e
+set +e
 
 assert_file_exists "[SPEC-16] dry-run: deploy-result.json written" "$_s_dry_art/deploy-result.json"
 if [[ -f "$_s_dry_art/deploy-result.json" ]]; then
@@ -230,7 +230,7 @@ set +e
 ( ZBUILD_DRY_RUN=0 PATH="$TEST_TEMP_DIR/bin-ok:$PATH" \
   ZBUILD_ARTIFACT_DIR="${_s_ok_sf%/*}/artifacts" deploy_release_run "deploy" "$_s_ok_sf" ) >/dev/null 2>&1
 _s_ok_rc=$?
-set -e
+set +e
 
 assert_file_exists "[SPEC-16/23] success: deploy-result.json written" "$_s_ok_art/deploy-result.json"
 if [[ -f "$_s_ok_art/deploy-result.json" ]]; then
@@ -261,7 +261,7 @@ set +e
 ( ZBUILD_DRY_RUN=0 PATH="$TEST_TEMP_DIR/bin-tagfail:$PATH" \
   ZBUILD_ARTIFACT_DIR="${_s_tf_sf%/*}/artifacts" deploy_release_run "deploy" "$_s_tf_sf" ) >/dev/null 2>&1
 _s_tf_rc=$?
-set -e
+set +e
 
 assert_file_exists "[SPEC-16] tag-failure: deploy-result.json written" "$_s_tf_art/deploy-result.json"
 if [[ -f "$_s_tf_art/deploy-result.json" ]]; then
@@ -291,7 +291,7 @@ set +e
 ( ZBUILD_DRY_RUN=0 PATH="$TEST_TEMP_DIR/bin-pushfail:$PATH" \
   ZBUILD_ARTIFACT_DIR="${_s_pf_sf%/*}/artifacts" deploy_release_run "deploy" "$_s_pf_sf" ) >/dev/null 2>&1
 _s_pf_rc=$?
-set -e
+set +e
 
 assert_file_exists "[SPEC-16] push-failure: deploy-result.json written" "$_s_pf_art/deploy-result.json"
 if [[ -f "$_s_pf_art/deploy-result.json" ]]; then
@@ -347,7 +347,7 @@ set +e
   ZBUILD_STAGE_INPUTS="$_s18a_si" \
   ZBUILD_ARTIFACT_DIR="${_s18a_sf%/*}/artifacts" deploy_release_run "deploy" "$_s18a_sf" ) >/dev/null 2>&1
 _s18a_rc=$?
-set -e
+set +e
 
 assert_file_exists "[SPEC-18] ZBUILD_STAGE_INPUTS: deploy-result.json written" "$_s18a_art/deploy-result.json"
 if [[ -f "$_s18a_art/deploy-result.json" ]]; then
@@ -375,7 +375,7 @@ set +e
   ZBUILD_STAGE_INPUTS="$_s18b_dir/stage-inputs.json" \
   ZBUILD_ARTIFACT_DIR="${_s18b_sf%/*}/artifacts" deploy_release_run "deploy" "$_s18b_sf" ) >/dev/null 2>&1
 _s18b_rc=$?
-set -e
+set +e
 
 assert_eq "[SPEC-18] no index entry: a pr-url.txt on disk is not read" "" \
     "$(jq -r '.data.pr_url // empty' "$_s18b_art/deploy-result.json" 2>/dev/null || true)"

@@ -191,7 +191,7 @@ set +e
 ( cd "$OVERLAY_REPO" && env -u ZBUILD_STATE_DIR -u ZBUILD_STATE_ROOT \
     ZBUILD_RUN_ID="$RUN_ID" HOME="$HOME_DIR" bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" ) >/dev/null 2>&1
 rc=$?
-set -e
+set +e
 
 assert_eq "runner exits 0" "0" "$rc"
 assert_file_exists "intake wrote baseline ref" "$STATE_DIR/intake-baseline-ref.txt"

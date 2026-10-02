@@ -93,7 +93,7 @@ assert_eq "SPEC-2c: a stage without the capability reads empty (merge skipped)" 
 # ─── SPEC-3: missing template fails closed (no bogus built-in roster) ─────────
 set +e
 out="$(bash "$RUNNER" --issue "$_ZB_ID" --dry-run --template no_such_template_xyz 2>&1)"; _rc=$?
-set -e
+set +e
 assert_eq "SPEC-3: missing template → fail-closed (rc=2)" "2" "$_rc"
 assert_contains "SPEC-3: error names the missing template / not found" "$out" "not found"
 

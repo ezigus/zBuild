@@ -108,7 +108,7 @@ MOCK_DESIGN_WRITE_PATH="$fixture/design.md"   # LLM writes to repo root, not dec
 set +e
 _design_stage_run_inner "$scope_manifest" "$plan_json" "$output_md" "$artifact_dir"
 rc=$?
-set -e
+set +e
 assert_eq "T1: recovery branch returns rc=0" "0" "$rc"
 [[ -f "$output_md" ]] \
     && assert_pass "T1: design.md present at declared path after recovery" \
@@ -137,7 +137,7 @@ unset _bt
 set +e
 _design_stage_run_inner "$scope_manifest" "$plan_json" "$output_md" "$artifact_dir"
 rc=$?
-set -e
+set +e
 assert_eq "T2: tracked-conflict branch returns rc=1" "1" "$rc"
 if grep -q '"design.stray.conflict"' "$ZBUILD_EVENTS_JSONL" && \
    grep -q '"reason":"tracked"' <<< "$(grep '"design.stray.conflict"' "$ZBUILD_EVENTS_JSONL")"; then
@@ -160,7 +160,7 @@ MOCK_DESIGN_WRITE_PATH="$output_md"   # LLM does the right thing
 set +e
 _design_stage_run_inner "$scope_manifest" "$plan_json" "$output_md" "$artifact_dir"
 rc=$?
-set -e
+set +e
 assert_eq "T3: happy-path rc=0" "0" "$rc"
 [[ -f "$output_md" ]] \
     && assert_pass "T3: design.md at declared path" \
@@ -179,7 +179,7 @@ fixture="$FIXTURE_DIR"; scope_manifest="$SCOPE_MANIFEST"; plan_json="$PLAN_JSON"
 MOCK_DESIGN_WRITE_PATH="$output_md"
 set +e
 _design_stage_run_inner "$scope_manifest" "$plan_json" "$output_md" "$artifact_dir" >/dev/null 2>&1
-set -e
+set +e
 if grep -qF "$output_md" "$_MOCK_ROUTE_PROMPT_CAPTURE" 2>/dev/null; then
     assert_pass "T4: prompt contains absolute destination path ($output_md)"
 else

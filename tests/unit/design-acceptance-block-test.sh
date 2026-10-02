@@ -85,7 +85,7 @@ MOCK_DESIGN_BODY="$(_make_design_body_with_acceptance 'tests/unit/stub-a-test.sh
 set +e
 _design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR"
 rc=$?
-set -e
+set +e
 assert_eq "T1: design with acceptance block returns rc=0" "0" "$rc"
 [[ -f "$OUTPUT_MD" ]] \
     && assert_pass "T1: design.md written at declared path" \
@@ -110,7 +110,7 @@ MOCK_DESIGN_BODY="$(printf '# Design\n\n%sscope\nfoo.sh\n%s\n' "$local_bt" "$loc
 set +e
 _design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR"
 rc=$?
-set -e
+set +e
 assert_eq "T2: missing acceptance block returns rc=1" "1" "$rc"
 if grep -q '"plugin.result"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null && \
    grep -q '"reason":"missing_acceptance_block"' <<< "$(grep '"plugin.result"' "$ZBUILD_EVENTS_JSONL")"; then
@@ -134,7 +134,7 @@ printf '#!/usr/bin/env bash\necho "existing content"\n' > "$FIXTURE_DIR/tests/un
 set +e
 _design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR"
 rc=$?
-set -e
+set +e
 assert_eq "T3: existing file scenario returns rc=0" "0" "$rc"
 existing_content="$(cat "$FIXTURE_DIR/tests/unit/existing-test.sh")"
 if grep -q "existing content" <<< "$existing_content"; then
@@ -153,7 +153,7 @@ printf '# Design\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC: it works\nTESTFIL
 set +e
 extract_acceptance_block "$work_file" >/dev/null 2>&1
 ab_rc=$?
-set -e
+set +e
 assert_eq "T4: extract_acceptance_block returns 0 on well-formed design.md" "0" "$ab_rc"
 
 # ─── T6: acceptance_spec_is_guard works for [guard]-classified SPEC ──────────
@@ -164,7 +164,7 @@ printf '# Design\n\n%sacceptance\nSPEC-1[guard]: invariant\nSPEC-2[change]: new 
 set +e
 acceptance_spec_is_guard "$work_file_t6" "SPEC-1"; t6_guard_rc=$?
 acceptance_spec_is_guard "$work_file_t6" "SPEC-2"; t6_change_rc=$?
-set -e
+set +e
 assert_eq "T6: [guard] SPEC recognized (rc=0)" "0" "$t6_guard_rc"
 assert_eq "T6: [change] SPEC not a guard (rc=1)" "1" "$t6_change_rc"
 
@@ -175,7 +175,7 @@ printf '# Design\n\n%sacceptance\nSPEC-1[change]: first\nSPEC-2[guard]: second\n
     "$_t7_bt" "$_t7_bt" > "$work_file_t7"
 set +e
 t7_out="$(acceptance_list_spec_ids "$work_file_t7")"; t7_rc=$?
-set -e
+set +e
 assert_eq "T7: acceptance_list_spec_ids returns 0" "0" "$t7_rc"
 assert_eq "T7: SPEC-1 listed (bare, no classifier)" "1" "$(echo "$t7_out" | grep -c '^SPEC-1$')"
 assert_eq "T7: SPEC-2 listed (bare, no classifier)" "1" "$(echo "$t7_out" | grep -c '^SPEC-2$')"
@@ -190,7 +190,7 @@ set +e
 acceptance_spec_is_guard "$work_file_t8" "SPEC-1"; t8_g=$?
 acceptance_spec_is_guard "$work_file_t8" "SPEC-2"; t8_c=$?
 acceptance_spec_is_guard "$work_file_t8" "SPEC-3"; t8_u=$?
-set -e
+set +e
 assert_eq "T8: [guard] is guard (rc=0)" "0" "$t8_g"
 assert_eq "T8: [change] is not guard (rc=1)" "1" "$t8_c"
 assert_eq "T8: unclassified is not guard (rc=1)" "1" "$t8_u"

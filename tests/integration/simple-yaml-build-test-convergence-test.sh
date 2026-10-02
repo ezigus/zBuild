@@ -117,7 +117,7 @@ cycle_dispatch_stage() {
 set +e
 cycle_orchestrator_run "build_test_cycle" "$ZBUILD_STATE_DIR" "$ZBUILD_STATE_FILE"
 _ORC_RC=$?
-set -e
+set +e
 
 assert_eq "[SPEC-3] cycle converged (rc=0, not max_iterations)" "0" "$_ORC_RC"
 assert_eq "[SPEC-3] terminated reason is converged (not max_iterations)" \

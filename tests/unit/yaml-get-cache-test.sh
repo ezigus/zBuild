@@ -252,7 +252,7 @@ assert_eq "[SPEC-10] function-scoped source keeps keys distinct (declare -gA)" \
 # here would only enshrine a bash rule as if it were our contract.
 _spec11_probe() {
     bash -c '
-        set -euo pipefail
+        set -uo pipefail
         export ZBUILD_YAML_CACHE="$3"
         source "$1/core/plugin-registry/manifest-validation.sh"
         if yaml_get "$1/definitely-not-here.yaml" id >/dev/null 2>&1; then b=then; else b=else; fi

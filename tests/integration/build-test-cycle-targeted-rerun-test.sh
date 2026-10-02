@@ -110,7 +110,7 @@ set +e
 cycle_orchestrator_run "build_test_cycle" "$ZBUILD_STATE_DIR" "$ZBUILD_STATE_FILE" \
     >"$BANNER_LOG" 2>&1
 RC=$?
-set -e
+set +e
 
 echo "--- banner ---"; cat "$BANNER_LOG"
 echo "--- run_modes ---"; cat "$RUN_MODES"

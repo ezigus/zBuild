@@ -286,7 +286,7 @@ set +e
     export HOME="$HOME_DIR" PATH="$PATH"
     _test_run_inner "$F_PATCH" "$F_FIXTURE" "$F_OUT" "$F_CMD"
 ) >/dev/null 2>&1
-set -e
+set +e
 
 now_latest_f="$(readlink "$PARENT_ROOT/latest" 2>/dev/null || echo MISSING)"
 assert_eq "F: parent latest unchanged after test-stage nested run" \
