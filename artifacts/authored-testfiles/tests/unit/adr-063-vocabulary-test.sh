@@ -68,5 +68,32 @@ else
         "neither timed_out nor out_of_turns found"
 fi
 
+# ── SPEC-8: §1 uses per-stage budget-guidance helpers language ────────────────
+# The old §1 baseline said "One helper renders the budget block." After the
+# amendment each stage has its own _<stage>_budget_guidance helper that reads
+# the enforcing values. Assert the per-stage language is present and the old
+# single-helper baseline is absent.
+if grep -qF 'One helper renders the budget block' "$ADR" 2>/dev/null; then
+    assert_fail "[#2032/SPEC-8] §1 must not contain 'One helper renders the budget block' (replaced by per-stage helpers)" \
+        "found old single-helper language"
+else
+    assert_pass "[#2032/SPEC-8] §1 does not contain the old single-helper language"
+fi
+
+if grep -qE '_[a-z_]+_budget_guidance' "$ADR" 2>/dev/null; then
+    assert_pass "[#2032/SPEC-8] ADR-063 §1 contains per-stage _<stage>_budget_guidance helper language"
+else
+    assert_fail "[#2032/SPEC-8] ADR-063 §1 must contain per-stage _<stage>_budget_guidance helper language" \
+        "no _<stage>_budget_guidance pattern found"
+fi
+
+# ── SPEC-9: amendment back-pointer explicitly names #2187 ─────────────────────
+if grep -qF '#2187' "$ADR" 2>/dev/null; then
+    assert_pass "[#2032/SPEC-9] ADR-063 contains amendment back-pointer to #2187"
+else
+    assert_fail "[#2032/SPEC-9] ADR-063 must contain an amendment back-pointer that explicitly names #2187 (the issue that retired exhausted/escalate vocabulary)" \
+        "#2187 not found in the document"
+fi
+
 print_test_results
 exit $((FAIL > 0))
