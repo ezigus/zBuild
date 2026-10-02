@@ -5,5 +5,12 @@
     "tests/integration/pr-pipeline-test.sh",
     "tests/unit/pr-delivery-v2-result-test.sh"
   ],
-  "wiring_files": []
+  "wiring_files": [],
+  "owned_files": {
+    "test-author": [
+      "tests/integration/merge-policy-auto-test.sh",
+      "tests/integration/pr-pipeline-test.sh",
+      "tests/unit/pr-delivery-v2-result-test.sh"
+    ]
+  }
 }
