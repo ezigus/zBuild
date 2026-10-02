@@ -17,15 +17,17 @@
     "plan": "complete",
     "pr": "complete",
     "review-aggregator": "complete",
+    "review_lenses": "complete",
     "test": "complete"
   },
   "stage_verdicts": {
     "build": "pass",
-    "hydrate": "warn",
+    "hydrate": "pass",
     "intake": "pass",
     "plan": "pass",
     "pr": "pass",
     "review-aggregator": "pass",
+    "review_lenses": "pass",
     "test": "error"
   },
   "status": "complete"

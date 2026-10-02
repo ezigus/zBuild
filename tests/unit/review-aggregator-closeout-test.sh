@@ -20,6 +20,11 @@
 # K9 [change] the verdict key is written literally, not assembled to dodge a grep
 # K10 [guard] a passing run's report is unchanged from main's v1 plugin, apart
 #             from the v2 envelope (golden: tests/golden/review-aggregator-*)
+# K11 [guard]  the real chain: a review_lenses map group's lens files, resolved by
+#             the engine against the real manifests, reach the aggregator as its
+#             lens set
+# K11 [change] with no lens result on disk, the engine refuses to dispatch the
+#             aggregator (the refusal that replaces a vacuous "ready")
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -150,6 +155,40 @@ assert_eq "[K10] ...and the rendered summary matches" \
     "$(cat "$_k10/review-report.md" 2>/dev/null)"
 assert_eq "[K10] ...with the envelope complete/complete" "complete/complete" \
     "$(_f verdict "$_k10/review-report.json")/$(_f disposition "$_k10/review-report.json")"
+
+print_test_section "K11: the engine hands the aggregator its lens set"
+# shellcheck source=../../core/pipeline/template.sh
+source "$REPO_ROOT/core/pipeline/template.sh"
+# shellcheck source=../../core/pipeline/input-resolve.sh
+source "$REPO_ROOT/core/pipeline/input-resolve.sh"
+_k11="$TEST_TEMP_DIR/k11"; mkdir -p "$_k11/state/artifacts"
+cat > "$_k11/tpl.yaml" <<'EOF'
+id: k11
+flow:
+  - review_lenses
+  - review-aggregator
+review_lenses:
+  type: map
+  over: lenses
+  elements:
+    - correctness
+    - security
+  roles: [review_lens]
+  as: ZBUILD_REVIEW_LENS_ID
+review-aggregator:
+  roles: [review_aggregator]
+EOF
+load_template "$_k11/tpl.yaml" >/dev/null 2>&1
+_err="$(_inputs_check_required review-aggregator "$REPO_ROOT/plugins" "$_k11/state" 2>&1)"; _rc=$?
+assert_eq "[K11] no lens result on disk → the engine refuses the dispatch" "1" "$_rc"
+assert_contains "[K11] ...naming the input" "$_err" "lens_result"
+_lens "$_k11/state/artifacts/lens-correctness.json" correctness 8
+_lens "$_k11/state/artifacts/lens-security.json" security 6
+_idx="$(_inputs_resolve_stage review-aggregator "$REPO_ROOT/plugins" "$_k11/state" 2>/dev/null)"
+ZBUILD_ARTIFACT_DIR="$_k11/state/artifacts" ZBUILD_STAGE_INPUTS="$_idx" \
+    review_aggregator_run review-aggregator "$_k11/x" >/dev/null 2>&1
+assert_eq "[K11] both lens results reach the aggregator through the engine" '["correctness","security"]' \
+    "$(jq -c '[.lenses[].name]' "$_k11/state/artifacts/review-report.json" 2>/dev/null || echo MISSING)"
 
 cleanup_test_env
 print_test_results
