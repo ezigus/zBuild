@@ -13,6 +13,8 @@
 # W2 [guard]  target in scope, iter 2 → specification (build had its try)
 # W3 [guard]  target NOT in the change's scope → specification at once — build
 #             may not edit it, only design can fix the declaration
+# SC1 [change] the scope reader drops an absolute or ../ path, as its sibling
+#             readers do (review on #2253)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -107,6 +109,12 @@ _design other.json
 unset ZBUILD_CYCLE_ITER
 set +e; _run_gate "$REPO"; set -e
 assert_eq "[W3] not in scope → specification at once" "specification" "$(_fault)"
+
+# shellcheck source=../../scripts/lib/acceptance-block.sh
+source "$REPO_ROOT/scripts/lib/acceptance-block.sh"
+printf '```scope\nimpl.sh\n../escape.sh\n/etc/abs.sh\na/../b.sh\n```\n' > "$TEST_TEMP_DIR/sc1.md"
+assert_eq "[SC1] only the in-repo relative path is read" "impl.sh" \
+    "$(acceptance_list_scope "$TEST_TEMP_DIR/sc1.md" | tr '\n' ' ' | sed 's/ $//')"
 
 cleanup_test_env
 print_test_results

@@ -299,10 +299,11 @@ _inputs_effective_path() {
     fi
     # #2252: a live file this run produced and then cleared (a cycle re-entry)
     # is this run's newest archived copy — never an earlier run's (#1844 run
-    # 36969128968 redid its design from the Sept 30 run's).
+    # 36969128968 redid its design from the Sept 30 run's). The archive sits
+    # under the artifact dir whatever subfolder the output is declared in.
     local own
     if declare -F attempt_latest_copy >/dev/null 2>&1 \
-            && own="$(attempt_latest_copy "${live%/*}" "$base")"; then
+            && own="$(attempt_latest_copy "${ZBUILD_ARTIFACT_DIR:-${live%/*}}" "$base")"; then
         printf '%s' "$own"; return 0
     fi
     local restored="${ZBUILD_RESTORED_ARTIFACTS_DIR:-}"

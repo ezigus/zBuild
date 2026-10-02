@@ -25,6 +25,8 @@
 # O10 [change] input resolution: a LIVE file older than this run's start (a
 #             reused state dir's leftover) is not this run's either (review on
 #             #2253)
+# O11 [change] an output declared in a SUBFOLDER of the artifact dir still finds
+#             this run's archived copy (review on #2253)
 # O9 [guard]  an archived copy older than this run's start is ignored too
 set -uo pipefail
 
@@ -97,6 +99,13 @@ assert_eq "[O9] an archived leftover is ignored too" "RESTORED impact" \
 assert_eq "[O10] input resolution skips a live leftover too" "RESTORED plan" \
     "$(cat "$(_inputs_effective_path "$ART2/plan.json" plan)" 2>/dev/null)"
 unset ZBUILD_RUN_START_MARKER
+
+print_test_section "O11: an output in a subfolder"
+export ZBUILD_STATE_DIR="$S" ZBUILD_ARTIFACT_DIR="$ART" ZBUILD_RESTORED_ARTIFACTS_DIR="$RESTORED"
+mkdir -p "$ART/sub"; printf 'OLD RUN nested\n' > "$RESTORED/nested.json"
+_archive design 4 nested.json "THIS RUN nested"
+assert_eq "[O11] a subfolder output finds this run's archived copy" "THIS RUN nested" \
+    "$(cat "$(_inputs_effective_path "$ART/sub/nested.json" nested)" 2>/dev/null)"
 
 cleanup_test_env
 print_test_results

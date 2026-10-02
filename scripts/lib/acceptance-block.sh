@@ -435,7 +435,9 @@ acceptance_list_scope() {
         if [[ $in_block -eq 1 && "$line" =~ ^'```'[[:space:]]*$ ]]; then break; fi
         [[ $in_block -eq 1 ]] || continue
         line="${line#"${line%%[![:space:]]*}"}"; line="${line%"${line##*[![:space:]]}"}"
-        [[ -n "$line" ]] && printf '%s\n' "${line#./}"
+        # The siblings' rule: only an in-repo relative path (review on #2253).
+        [[ -z "$line" || "$line" == /* || "/$line/" == *"/../"* ]] && continue
+        printf '%s\n' "${line#./}"
     done < "$design_md"
 }
 
