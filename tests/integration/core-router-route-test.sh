@@ -337,7 +337,9 @@ printf '%s\n' "\$@" > "$TEST_TEMP_DIR/last_args"
 while [[ \$# -gt 0 ]]; do
     case "\$1" in
         --model)          model_id="\${2:-}"; shift 2 ;;
-        --output-format)  [[ "\${2:-}" == "json" ]] && use_json=true; shift 2 ;;
+        # #2139: the router asks for stream-json; its last line is the same
+        # result envelope json mode prints, so the stub answers both alike.
+        --output-format)  [[ "\${2:-}" == "json" || "\${2:-}" == "stream-json" ]] && use_json=true; shift 2 ;;
         *)                shift ;;
     esac
 done

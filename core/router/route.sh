@@ -1539,7 +1539,7 @@ _route_stream_envelope_text() {
 
 # _route_stream_envelope <stream_file> <envelope_out> — the same, file to file.
 _route_stream_envelope() {
-    _route_stream_envelope_text < "$1" > "$2" 2>/dev/null || : > "$2"
+    _route_stream_envelope_text 2>/dev/null < "$1" > "$2" || : > "$2"
 }
 
 # _route_stream_progress <stream_file> — "<turns> <last_tool>" read from the

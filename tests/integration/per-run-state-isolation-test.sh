@@ -25,6 +25,10 @@ source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
 print_test_header "per-run state isolation (#887)"
 setup_test_env "per-run-state-isolation-887"
+# This test is about where the RUNNER puts events when nobody pinned them, so
+# it starts with them unpinned (setup_test_env points them into the test's own
+# folder for ordinary tests, #2252).
+unset ZBUILD_EVENTS_DIR ZBUILD_EVENTS_JSONL ZBUILD_EVENTS_DB
 
 # #1921 follow-up: reserved test identity (zb_test_issue). These were real
 # issue numbers; a run keyed to one writes fabricated prior work onto that
