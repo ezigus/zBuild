@@ -188,6 +188,32 @@ _artifact_persist_git_dir() {
     esac
 }
 
+# ─── _artifact_persist_stage_batch <git_dir> <index> (#2249) ─────────────────
+# Stage _abs[] (paths) / _rel[] (names in the tree) into <index> in two git
+# calls. The two arrays are NOT parameters: they are the caller's locals, read
+# through bash dynamic scope, so only _artifact_persist_snapshot (which fills
+# them) may call this. A tab inside a path is safe: --index-info takes the path
+# as everything after the first tab (artifact-persist-batch-test B4).
+# rc 1 — nothing trusted — when either call fails, a path holds a newline
+# (stdin is line-delimited), or the blob count does not match.
+_artifact_persist_stage_batch() {
+    local gd="$1" idx="$2" paths="" blobs info="" i b
+    (( ${#_abs[@]} > 0 )) || return 1
+    for (( i = 0; i < ${#_abs[@]}; i++ )); do
+        [[ "${_abs[$i]}" == *$'\n'* || "${_rel[$i]}" == *$'\n'* ]] && return 1
+        paths+="${_abs[$i]}"$'\n'
+    done
+    blobs="$(GIT_DIR="$gd" git hash-object -w --stdin-paths 2>/dev/null <<< "${paths%$'\n'}")" || return 1
+    local -a _b=()
+    mapfile -t _b <<< "$blobs"
+    (( ${#_b[@]} == ${#_abs[@]} )) || return 1
+    for (( i = 0; i < ${#_b[@]}; i++ )); do
+        b="${_b[$i]}"
+        [[ "$b" =~ ^[0-9a-f]{40,64}$ ]] || return 1
+        info+="100644 $b"$'\t'"${_rel[$i]}"$'\n'
+    done
+    GIT_INDEX_FILE="$idx" GIT_DIR="$gd" git update-index --index-info 2>/dev/null <<< "${info%$'\n'}"
+}
 
 # ─── _artifact_persist_snapshot <state_dir> <issue> [repo_root] ─────────────
 # Commit the current artifact area onto the state branch WITHOUT touching the
@@ -243,39 +269,42 @@ _artifact_persist_snapshot() {
     # staged — while the `extra` loop below has always skipped-and-continued. A
     # file that vanished mid-scan (the artifact area has live writers) or is
     # unreadable must cost us that one file, not the whole snapshot.
-    local added=0 skipped=0 f rel blob first_skip=""
+    local added=0 skipped=0 f rel blob first_skip="" n
+    local -a _abs=() _rel=()
     while IFS= read -r -d '' f; do
-        rel="artifacts/${f#"$art_dir"/}"
-        if ! blob="$(GIT_DIR="$_gd" git hash-object -w "$f" 2>/dev/null)"; then
-            skipped=$((skipped + 1)); [[ -z "$first_skip" ]] && first_skip="$rel (hash-object)"
-            continue
-        fi
-        if ! GIT_INDEX_FILE="$tmp_index" GIT_DIR="$_gd" \
-                git update-index --add --cacheinfo "100644,$blob,$rel" 2>/dev/null; then
-            skipped=$((skipped + 1)); [[ -z "$first_skip" ]] && first_skip="$rel (update-index)"
-            continue
-        fi
-        added=$((added + 1))
+        _abs+=("$f"); _rel+=("artifacts/${f#"$art_dir"/}")
     done < <(find "$art_dir" -type f -print0 2>/dev/null)
-
     # Include a handful of top-level state docs when present (scope manifest etc.).
     local extra
     for extra in scope-manifest.md intake.md; do
         [[ -f "$state_dir/$extra" ]] || continue
-        if ! blob="$(GIT_DIR="$_gd" git hash-object -w "$state_dir/$extra" 2>/dev/null)"; then
-            skipped=$((skipped + 1)); [[ -z "$first_skip" ]] && first_skip="$extra (hash-object)"
-            continue
-        fi
-        # #1878: was `|| true` followed by an unconditional added++ — it counted a
-        # doc that update-index had just REFUSED, inflating `added` and letting a
-        # snapshot claim it staged something it had not.
-        if ! GIT_INDEX_FILE="$tmp_index" GIT_DIR="$_gd" \
-                git update-index --add --cacheinfo "100644,$blob,$extra" 2>/dev/null; then
-            skipped=$((skipped + 1)); [[ -z "$first_skip" ]] && first_skip="$extra (update-index)"
-            continue
-        fi
-        added=$((added + 1))
+        _abs+=("$state_dir/$extra"); _rel+=("$extra")
     done
+
+    # #2249: two git calls for the whole set — `hash-object --stdin-paths` and
+    # `update-index --index-info` — instead of two per file (a run snapshots
+    # after every stage, over hundreds of files). Any failure in the batch (an
+    # unreadable file aborts hash-object) falls back to the per-file loop below,
+    # so #1878's rule holds: a file we cannot stage costs only that file.
+    if _artifact_persist_stage_batch "$_gd" "$tmp_index"; then
+        added=${#_abs[@]}
+    else
+        rm -f "$tmp_index"
+        for (( n = 0; n < ${#_abs[@]}; n++ )); do
+            f="${_abs[$n]}"; rel="${_rel[$n]}"
+            if ! blob="$(GIT_DIR="$_gd" git hash-object -w "$f" 2>/dev/null)"; then
+                skipped=$((skipped + 1)); [[ -z "$first_skip" ]] && first_skip="$rel (hash-object)"
+                continue
+            fi
+            # #1878: a refused entry is a skip, never counted as staged.
+            if ! GIT_INDEX_FILE="$tmp_index" GIT_DIR="$_gd" \
+                    git update-index --add --cacheinfo "100644,$blob,$rel" 2>/dev/null; then
+                skipped=$((skipped + 1)); [[ -z "$first_skip" ]] && first_skip="$rel (update-index)"
+                continue
+            fi
+            added=$((added + 1))
+        done
+    fi
 
     _ARTIFACT_PERSIST_LAST_SKIPPED="$skipped"
 
