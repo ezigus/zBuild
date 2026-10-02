@@ -10,5 +10,14 @@
     "tests/unit/spec-correspondence-test.sh",
     "tests/unit/spec-coverage-test.sh"
   ],
-  "wiring_files": []
+  "wiring_files": [],
+  "owned_files": {
+    "test-author": [
+      "tests/integration/cycle-member-unfinished-no-convergence-test.sh",
+      "tests/unit/adr-063-vocabulary-test.sh",
+      "tests/unit/review-report-v2-contract-test.sh",
+      "tests/unit/spec-correspondence-test.sh",
+      "tests/unit/spec-coverage-test.sh"
+    ]
+  }
 }
