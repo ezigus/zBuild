@@ -1,4 +1,0 @@
-[
-  "tests/integration/merge-policy-auto-test.sh",
-  "tests/integration/pr-pipeline-test.sh"
-]

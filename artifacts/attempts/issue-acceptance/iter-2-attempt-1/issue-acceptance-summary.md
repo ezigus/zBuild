@@ -1,6 +1,0 @@
-## issue-acceptance — fail
-
-- Two pre-existing integration tests fail — `merge-policy-auto-unless-flagged-test.sh` SPEC-4 (auto_unless_flagged + absent review-report path regressed) and `pr-pipeline-test.sh` SPEC-6 (pr-open push-stderr surfacing regressed) — meaning the migration broke existing behaviors the issue required to preserve.
-
-- NOT MET: Behaviour is unchanged for a passing run
-- NOT MET: `npm test` green with the tree committed first

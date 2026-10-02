@@ -1,8 +1,0 @@
-[
-  "tests/integration/merge-policy-auto-test.sh",
-  "tests/integration/merge-policy-auto-unless-flagged-test.sh",
-  "tests/integration/pr-pipeline-test.sh",
-  "tests/unit/lint-disposition-words-test.sh",
-  "tests/unit/lint-verdict-words-test.sh",
-  "tests/unit/stage-signal-test.sh"
-]
