@@ -36,7 +36,7 @@ NEGCTL PASS SPEC-12 guard_spec
       asserts: #   [#1844/SPEC-12] outputs.pr_url retains primary: true
 NEGCTL PASS SPEC-13 guard_spec
       design : hooks section has run: pr_stage_run and no cleanup: entry
-      asserts: assert_eq "[#1844/SPEC-13] manifest hooks has run: pr_stage_run" "1" "$(( _has_run > 0 ? 1 : 0 ))"
+      asserts: assert_eq "[#1844/SPEC-13] manifest hooks has no cleanup:" "0" "$_has_cleanup"
 NEGCTL PASS SPEC-14 guard_spec
       design : pr-open delegation SUCCESS path has pr-result.json carrying result_contract:2, verdict=pass (pr-open…
       asserts: assert_file_exists "[#1844/SPEC-14] pr-open success: pr-result.json written" "$_s14_pr"
