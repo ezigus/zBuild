@@ -4,7 +4,7 @@
   "disposition": "complete",
   "reason": "design_produced",
   "data": {
-    "authored_at": "2026-10-02T07:08:45Z",
+    "authored_at": "2026-10-02T07:21:56Z",
     "authored_at_commit": "ecf0749bbdd655b515fc73b252d9b92382bf2801",
     "wiring_files": [
       "config/event-schema.json",

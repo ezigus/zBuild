@@ -20,12 +20,15 @@ and sets `converged=1`, so the new block's `converged==0` guard is false. The
 empty-diff resting point is also safe: empty_diff members emit `disposition:complete`,
 so `_iter_did_not_finish` stays 0.
 
-**The new event `cycle.member_unfinished.suppressed_convergence` must be registered in
-`config/event-schema.json` under `known_types`.** Omitting this causes
-`event-schema-emitted-coverage-test.sh` to fail (confirmed in iteration 1 test run).
-The build stage in iteration 1 missed this registration — iteration 2 must add it.
-`config/event-schema.json` is correctly listed in WIRING; the acceptance-gate
-reachability check will pass once the file is modified.
+**MANDATORY — event-schema registration (missed in iteration 1).** The new event
+`cycle.member_unfinished.suppressed_convergence` MUST be registered in
+`config/event-schema.json` under `known_types`. The build stage emitted the event from
+`cycle-orchestrator.sh` but did NOT add it to the schema — `event-schema-emitted-coverage-test.sh`
+fails until the registration is present. Place the entry after the two existing
+`cycle.*suppressed_convergence` entries (currently at lines 109–111 of the schema):
+`"cycle.member_unfinished.suppressed_convergence"`. Because `config/event-schema.json`
+is declared in WIRING, the acceptance-gate reachability check will fail if the file is
+not in the diff — the build stage must actually modify this file.
 
 **(A.3) max_iterations boundary.** When the suppression block fires on the LAST
 iteration (iter == max_iterations), convergence is suppressed and the cycle cannot
@@ -40,26 +43,32 @@ all hardcode `disposition:"complete"` even when `route_to_model` exits non-zero.
 `router_reason_disposition` (`scripts/lib/router-rc-classify.sh`) — already in
 scope via `route.sh` — maps a router reason to the correct disposition word.
 Each plugin captures the router rc, classifies it with `_router_rc_classify`, and
-passes the result to its result-writer. The fallback assignment
-`|| _*_disposition="unavailable"` (for cases where `router_reason_disposition`
-returns empty) **requires a `# disposition-ok: the model router is not responding`
-annotation on or within three lines before it** — required by `lint-disposition-words`
-(ADR-054 §6a), enforced by `stage-signal-test.sh [G5]`. Iteration 1 added the
-fallback without the annotation, causing `lint-disposition-words-test.sh` and
-`stage-signal-test.sh [G5]` to fail. The two specific locations are:
+passes the result to its result-writer.
+
+**MANDATORY — lint-disposition-words annotation (missed in iteration 1).** The fallback
+`|| _*_disposition="unavailable"` (for cases where `router_reason_disposition` returns
+empty) REQUIRES a `# disposition-ok: the model router is not responding` comment on or
+within three lines BEFORE the assignment — enforced by ADR-054 §6a and
+`stage-signal-test.sh [G5]`. Iteration 1 added both fallback assignments WITHOUT this
+annotation, causing `lint-disposition-words-test.sh` and `stage-signal-test.sh [G5]` to
+fail. The annotation must be added immediately before these two exact locations:
   - `plugins/agent/spec-correspondence/plugin.sh:315` (`_sc_disposition="unavailable"`)
   - `plugins/agent/review-report/plugin.sh:180` (`_disposition="unavailable"`)
+
 For `review-report`, the first non-zero rc across all failed lenses is selected
 before classification (any unfinished disposition triggers retry).
 
-**(C) §C — ADR-063.** ADR-063 was proposed against the `exhausted` vocabulary
-that #2187 retired. Status advances to Accepted; §3/§4 vocabulary is updated to
-`timed_out`/`out_of_turns` per `router_reason_disposition`; the `exhausted → escalate`
-branch of §4 is stricken (the retry table in ADR-029 replaces it); §1's "One helper"
-note is updated to per-stage helpers; a dated back-pointer to #2187 is added.
-SPEC-7 verifies the amendment is in place. ADR-021 receives an amendment block
-documenting the new `cycle.member_unfinished.suppressed_convergence` suppression case
-(already landed in commit `ecf0749b`).
+**(C) §C — ADR-063.** ADR-063 was proposed against the `exhausted` vocabulary that
+#2187 retired. The amendment must satisfy all of these verifiable properties: status
+advances to Accepted; prescriptive `exhausted` as the §3 disposition word is removed;
+prescriptive `escalate` as the §4 engine action is stricken; §1's "One helper" language
+is replaced with per-stage `_<stage>_budget_guidance` helpers rendered from the
+enforcing values; and a dated amendment back-pointer explicitly referencing #2187 is
+present (for the vocabulary retirement). SPEC-7 covers (1)–(3) and updated vocabulary,
+SPEC-8 covers the §1 per-stage helpers language, SPEC-9 covers the #2187 back-pointer.
+ADR-021 receives an amendment block documenting the new
+`cycle.member_unfinished.suppressed_convergence` suppression case (already landed in
+commit `ecf0749b`).
 
 **Shape-floor.** `config/shape-change-paths.txt` includes both
 `core/pipeline/cycle-orchestrator.sh` and `config/event-schema.json`. Because
@@ -112,6 +121,8 @@ SPEC-4[change]: spec-correspondence — when the router call exits non-zero, spe
 SPEC-5[change]: review-report — when one or more lens subshells return a non-zero exit code, review-report.json carries the disposition classified from the first failed lens rc via router_reason_disposition, not the hardcoded 'complete'
 SPEC-6[change]: at max_iterations when the last iteration has any member with an unfinished disposition, the §4/A suppression block fires (preventing false complete), and the cycle takes the existing #1261 exhaustion path — emitting cycle.timeout_exhausted with reason=design_timeout_exhausted and term_rc=8, not rc=0 complete
 SPEC-7[change]: docs/adr/ADR-063-budget-disclosure-and-partial-output.md status header reads "Accepted" and the document contains no prescriptive use of `exhausted` as the §3 disposition word or `escalate` as the §4 engine action — vocabulary is updated to timed_out/out_of_turns per #2187
+SPEC-8[change]: docs/adr/ADR-063-budget-disclosure-and-partial-output.md §1 uses per-stage budget-guidance helpers language — each stage has its own _<stage>_budget_guidance helper that reads the enforcing values; the baseline single-helper "One helper renders the budget block" language is absent
+SPEC-9[change]: docs/adr/ADR-063-budget-disclosure-and-partial-output.md contains an amendment back-pointer that explicitly names #2187 (the issue that retired exhausted/escalate vocabulary)
 WIRING:
 core/pipeline/cycle-orchestrator.sh
 plugins/agent/spec-coverage/plugin.sh
@@ -127,6 +138,8 @@ SPEC-4: tests/unit/spec-correspondence-test.sh
 SPEC-5: tests/unit/review-report-v2-contract-test.sh
 SPEC-6: tests/integration/cycle-member-unfinished-no-convergence-test.sh
 SPEC-7: tests/unit/adr-063-vocabulary-test.sh
+SPEC-8: tests/unit/adr-063-vocabulary-test.sh
+SPEC-9: tests/unit/adr-063-vocabulary-test.sh
 ```
 
 ```supersedes
