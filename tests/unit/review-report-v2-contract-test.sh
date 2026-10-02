@@ -14,7 +14,8 @@
 #                  reason/data on a normal run; merge_readiness/findings/lenses stay top-level
 # SPEC-3[change]:  missing state_file → rc=1 (was 2) and an error/broken v2 result at $ZBUILD_ARTIFACT_DIR
 # SPEC-4[change]:  missing out_json → rc=1 (was 2) and an error/broken v2 result
-# SPEC-5[change]:  a lens subshell that fails → disposition=complete (#2187), verdict stays pass, rc=0
+# SPEC-5[change]:  a lens subshell that fails → disposition classified via router_reason_disposition
+#                  (rc=1 → unavailable), verdict stays pass, rc=0 (#2032/SPEC-5)
 # SPEC-6[guard]:   the contract verdict is never coerced by findings — needs_attention still verdict=pass
 # SPEC-7[change]:  every lens prompt carries a TURN BUDGET block sourced from _route_resolve_max_turns
 #                  and _route_resolve_timeout (env override → the block says so; never a literal)
@@ -128,11 +129,11 @@ assert_eq "[SPEC-4] missing out_json → rc=1" "1" "$_rc"
 assert_eq "[SPEC-4] missing out_json → verdict=error" "error" "$(_v2 verdict "$_d4/review-report.json")"
 assert_eq "[SPEC-4] missing out_json → disposition=broken" "broken" "$(_v2 disposition "$_d4/review-report.json")"
 
-# ── SPEC-5: a failed lens → exhausted (ADR-063 §3), still advisory ───────────
+# ── SPEC-5: a failed lens → disposition from router_reason_disposition (#2032/SPEC-5) ──
 _d5="$TEST_TEMP_DIR/s5"; _fixture "$_d5"
 _RR_FAIL_LENS=performance _rr_run_inner "$_d5/scope.md" "$_d5/diff.patch" "$_d5/review-report.json" "$_d5/review-report.md" 2>/dev/null; _rc=$?
 assert_eq "[SPEC-5] failed lens → rc=0 (advisory never aborts)" "0" "$_rc"
-assert_eq "[SPEC-5] failed lens → disposition=complete, the report covers the lenses that ran (#2187)" "complete" "$(_v2 disposition "$_d5/review-report.json")"
+assert_eq "[#2032/SPEC-5] failed lens → disposition classified from first failed lens rc (rc=1 → router_rc_nonzero → unavailable)" "unavailable" "$(_v2 disposition "$_d5/review-report.json")"
 assert_eq "[SPEC-5] failed lens → verdict stays pass" "pass" "$(_v2 verdict "$_d5/review-report.json")"
 assert_contains "[SPEC-5] reason names the lens that failed" "$(_v2 reason "$_d5/review-report.json")" "performance"
 
