@@ -1,0 +1,219 @@
+============== ZBUILD BUILD — iter 1/10 ==============
+## ORIGINAL TASK (immutable across iterations)
+# Plan: migrate pr-delivery to contract v2
+
+**Goal:** Adopt result_contract:2 in the pr-delivery plugin: v2 result file on every exit path, valid_verdicts declared, manifest events and result_contract, inputs resolved via ZBUILD_STAGE_INPUTS, rc∈{0,1}, and fold-in #2250 already partially in place is fully locked by the new unit test.
+
+## Steps
+1. Write a failing unit test (TDD first) for all v2 acceptance criteria. Cover: SPEC-1 manifest has result_contract:2 under provides:, valid_verdicts includes pass and error, events list includes pr.delivery.opened/pr.delivery.blocked/pr.delivery.dry_run, role:pr, primary:true on pr_url output, hooks has only run: (no cleanup:); SPEC-2 missing state_file → rc=1 (not 2) and pr-result.json has result_contract:2, verdict=error, disposition=misconfigured; SPEC-3 review verdict=block guard → rc=1, result has result_contract:2, verdict=error, disposition=complete; SPEC-4 dry-run → rc=0, result has result_contract:2, verdict=pass, disposition=complete; SPEC-5 merge delegation success → rc=0, result has result_contract:2, verdict=pass; SPEC-6 merge delegation failure → rc=1, result has result_contract:2, verdict=error; SPEC-7 pr-open delegation success → rc=0, result has result_contract:2, verdict=pass, disposition=complete; SPEC-8 pr-open returns rc=0 verdict:blocked → rc=1, result has result_contract:2, verdict=error, disposition=complete, reason contains review_signal_missing (fold-in #2250 — locks behavior already partially coded but not yet locked by a v2 result assertion); SPEC-9 fallback gh success → rc=0, result has result_contract:2, verdict=pass; SPEC-10 fallback gh failure → rc=1, result has result_contract:2, verdict=error, disposition=unavailable; SPEC-11 grep over plugin.sh asserts no hardcoded gate-aggregator-result.json or review-report.json path strings; SPEC-12 grep over plugin.sh asserts no hardcoded review.json path string (dead input). Confirm test FAILS at merge-base and state the red step in the PR body.
+   - Files: `tests/unit/pr-delivery-v2-result-test.sh`
+   - Estimated lines: 240
+2. Update manifest.yaml: add result_contract: 2 under provides: (after role: pr); add events: list under provides: with three entries: pr.delivery.blocked, pr.delivery.opened, pr.delivery.dry_run; change valid_verdicts: [] to a YAML block list with pass and error. No router: block added — pr-delivery makes no direct LLM calls and the criterion is satisfied by its absence. No cleanup: hook — plugin holds no live resources; absence is already correct. primary:true on pr_url and role:pr are already present; no change.
+   - Files: `plugins/agent/pr-delivery/manifest.yaml`
+   - Estimated lines: 12
+3. Update plugin.sh: (a) add _pr_delivery_write_result helper that writes {result_contract:2, verdict, disposition, reason, data:{branch}} via jq -nc piped through atomic_write to pr-result.json; (b) in pr_stage_run fix the missing-state_file path: change return 2 to return 1 and call _pr_delivery_write_result (verdict=error, disposition=misconfigured); (c) in _pr_stage_run_inner remove the dead review_json variable (line 51) and its guard block (lines 56-68) — review.json is not a declared manifest input per manifest comment; (d) resolve gate_aggregator_result and review_report inputs from ZBUILD_STAGE_INPUTS (jq -r '.inputs.gate_aggregator_result // empty' and '.inputs.review_report // empty') rather than constructing $artifacts_dir/gate-aggregator-result.json and $artifacts_dir/review-report.json hardcoded paths; (e) call _pr_delivery_write_result on every terminal exit path with the correct verdict/disposition/reason: review-block exit → error/complete, dry-run → pass/complete, merge-delegation success → pass/complete, merge-delegation failure → error/(disposition read from merge result or 'unavailable'), pr-open success → pass/complete, pr-open blocked → error/complete reason=review_signal_missing (the #2250 path already detects this; it now also writes the v2 result), pr-open failure → error/(disposition read from pr-open result or 'unavailable'), fallback-gh success → pass/complete, fallback-gh failure → error/unavailable. The pr-result.json writes that existed before for v1 are replaced with _pr_delivery_write_result calls, preserving any data fields (branch, pr_url, pr_number, draft) under a data: key.
+   - Files: `plugins/agent/pr-delivery/plugin.sh`
+   - Estimated lines: 105
+4. Update integration test with additive v2 assertions on existing SPECs and a new SPEC-10. For SPEC-3 (dry-run): after existing assertions add: jq -r '.result_contract' pr-result.json == 2, .verdict == pass, .disposition non-empty. For SPEC-4 (block guard): add jq assertions that pr-result.json has result_contract:2, verdict=error, disposition=complete. For SPEC-5 (pr-open delegation): add jq assertion result_contract:2, verdict=pass. Add SPEC-10 for #2250 integration-level check: mock pr-open to write verdict:blocked rc=0 (no pr-url.txt); run pr_stage_run; assert rc=1, result has result_contract:2 verdict=error disposition=complete, reason contains review_signal_missing, summary does NOT contain 'delivered'. No existing assertions are removed.
+   - Files: `tests/integration/pr-pipeline-test.sh`
+   - Estimated lines: 60
+
+## Notes
+1. Router block: pr-delivery makes no direct LLM calls — it delegates to merge and pr-open which carry their own router config. The 'Router budgets resolve from the manifest' acceptance criterion is satisfied by the documented absence of a router: block.
+2. Dead review_json path: $artifacts_dir/review.json is NOT a declared manifest input (the manifest comment at lines 34-39 explains it was dropped when stage:review was retired). Step-3 removes this hardcoded path and its guard block entirely; the review_report declared input (review-report.json via ZBUILD_STAGE_INPUTS) is the surviving source.
+3. valid_verdicts: [pass, error]. The dry_run path is pass (successful no-op); the block guard, missing state_file, and all failure paths are error. No skip verdict is used.
+4. Fold-in #2250: the plugin already reads pr-open's verdict (lines 165-179 of current plugin.sh) and returns rc=1 on blocked. pr-delivery-blocked-test.sh (already exists) covers the behavior (P1-P4). The new unit test step-1 locks this behavior at the v2 result level (SPEC-8: result_contract:2, verdict=error, reason=review_signal_missing). Step-4 adds an integration-level SPEC-10.
+5. Disposition for merge/pr-open delegation failure: read from the delegate's result file (.disposition field). If the delegate's result file is absent (plugin crashed before writing), fall back to 'unavailable'.
+6. Golden diff acceptance criterion: covered by additive field assertions in step-4 on the stage's pr-result.json rather than a frozen golden fixture. A frozen golden would fail on the enriched envelope; field-level assertions serve the same verification purpose.
+7. 'Reddens at the merge-base' DoD: satisfied by step-1 — the unit test is written first, confirmed red (manifest has no result_contract:2 and plugin writes no v2 result), PR body states the assertion and failure mode.
+8. Coverage floor: step-1 unit test sources and exercises plugin.sh so the denominator does not grow without numerator coverage.
+9. No cleanup: hook — the plugin holds no live resources; absence is the correct statement per #1829 and is already present in the current manifest.
+10. pr-delivery-blocked-test.sh already exists in tests/unit/ and will continue to run alongside the new test. It is NOT replaced — it covers behavior (rc, summary text); the new test covers v2 result structure. Both are in scope.
+
+## INSTRUCTIONS
+Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
+
+You have Read, Edit, Write, and
+Bash tools available. Your job is to edit the working tree to implement the
+ORIGINAL TASK above.
+
+### Scope (plan.files[])
+You may ONLY touch files listed here. Refuse any out-of-scope edit.
+  - plugins/agent/pr-delivery/manifest.yaml
+  - plugins/agent/pr-delivery/plugin.sh
+  - tests/unit/pr-delivery-v2-result-test.sh
+  - tests/integration/pr-pipeline-test.sh
+  - tests/unit/pr-delivery-blocked-test.sh
+  - tests/integration/merge-policy-auto-test.sh
+  - tests/integration/merge-policy-auto-unless-flagged-test.sh
+  - tests/golden/pr-result-artifact.golden
+  - tests/unit/plugin-artifact-goldens-test.sh
+  - docs/wiki/plugins/pr-delivery.md
+  - docs/adr/ADR-055-inter-stage-data-contract-v2.md
+  - docs/adr/ADR-054-stage-contract.md
+  - docs/adr/ADR-013-canonical-stage-list.md
+  - core/pipeline/verdict.sh
+  - core/plugin-registry/manifest-validation.sh
+  - core/plugin-registry/manifest-index.sh
+  - config/templates/simple.yaml
+  - scripts/lib/stage-signal.sh
+
+### How the loop works
+- Each iteration you may make code changes via Edit/Write/Bash.
+- After each iteration the pipeline captures `git diff HEAD` and feeds it
+  back to you so you can verify progress.
+- Do NOT emit a unified diff in your response — the pipeline derives the
+  canonical `diff.patch` artifact from `git diff HEAD` automatically.
+
+### Completion sentinel
+Emit `LOOP_COMPLETE` on its own line as the FINAL line of your response
+WHEN the implementation is complete — whether you just finished it OR
+it was already done before you started. If the branch already contains
+the required changes (check `git log` for commits + `git diff` for any
+remaining gap) AND no STAGE SUMMARY below is marked RESOLVE, emit
+`LOOP_COMPLETE` immediately. Do NOT keep iterating when there is nothing
+left to do. While any STAGE SUMMARY is marked RESOLVE, finishing with no
+change needs a REASON — either you fixed it, or it does not reproduce.
+
+### When a finding does not reproduce
+If a RESOLVE summary names a test and that test PASSES when you run it on this
+tree, say so and stop. Emit, on its own line before the sentinel:
+
+    NOT_REPRODUCED: <the path you ran>
+
+one line per path. This is a REPORT, not a verdict: the pipeline re-runs the
+stage that raised the finding to check. Do not keep searching for the cause of
+a failure you cannot produce, and do not change code to chase one.
+
+### Budget
+- Each iteration is ONE model call bounded by a 900-second wall clock; a
+  command that runs longer than ~2 minutes will cost you the whole call.
+- Finish this call's work and commit before ~630s. Work you saved
+  survives a timeout; the call itself returns nothing, so say what is left as you go.
+- Do NOT run `npm test`, the full suite, or `npm run lint` — the pipeline has
+  already run them and their findings are in the STAGE SUMMARIES below. Run
+  only the one failing test file a summary names, and only after changing code.
+- A STAGE SUMMARY marked RESOLVE is red RIGHT NOW on this tree. Do not
+  re-verify it; start from the failing line it quotes.
+
+### Rules
+- Touch only files in the scope list above.
+- Do not run `git commit` — the pipeline owns commit semantics.
+- NEVER run a command that mutates git branch state or the working tree —
+  no `git checkout -b`/`switch`/`commit`/`push`/`tag`/`reset`. You are running
+  INSIDE the pipeline's own checkout; switching or creating a branch hijacks the
+  run. The pipeline owns the branch.
+- If you must exercise a command you are building (or any command that could
+  publish, tag, push, or otherwise mutate state), run it in `--dry-run` mode.
+  Do everything you can to verify behavior without side effects.
+- Keep changes minimal and aligned with the plan.
+- Clean up scratch siblings of the files you edit (`*.bak`, `*.orig`,
+  `*.rej`, `*.head`, `*.tmp`, `*~`). `sed -i.bak` and
+  `git show HEAD:f > f.head` both leave one behind — prefer `sed -i` with no
+  suffix, and delete any comparison scratch before you finish. Out-of-scope
+  scratch is removed for you; any OTHER out-of-scope path voids the whole
+  iteration, so do not rely on the cleanup.
+- If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.
+
+### Commit message (#608)
+Before the final `LOOP_COMPLETE` line, emit a single line of the form:
+
+    COMMIT_SUMMARY: <one-line description of this iteration's change>
+
+Keep it under 72 characters, present tense, imperative mood (e.g.
+"add foo parser" not "added"). The pipeline uses this as the git commit
+message for the per-iteration commit it creates on your behalf. If you
+omit this line the pipeline falls back to the plan title.
+
+## DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
+# Design: Migrate pr-delivery to Contract v2 (#1844)
+
+## Architectural Decision Summary
+
+**Goal.** Adopt result_contract:2 in the pr-delivery plugin: every terminal exit path writes `{result_contract:2, verdict, disposition, reason, data}` to pr-result.json; the manifest declares `result_contract:2`, `valid_verdicts:[pass,error]`, and three delivery events under `provides:`; rc is in {0,1}; gate_aggregator_result and review_report inputs are resolved via ZBUILD_STAGE_INPUTS; the dead hardcoded `review.json` guard is removed; a SIGTERM/SIGINT trap via `stage_signal_begin` writes an interrupted result.
+
+**Context.** pr-delivery is the final agent stage. Its manifest carries `valid_verdicts:[]` and no `result_contract` key (v1 default). The plugin writes bare v1 JSON on most paths and returns `rc=2` on the missing-state-file path — both violations of ADR-054 §4 (rc∈{0,1}) and ADR-055 §v2 (uniform result envelope). Issue #2250 wired pr-open-blocked detection (plugin.sh lines 165-179) but never locked it with a v2 result assertion. Two input paths (`gate-aggregator-result.json`, `review-report.json`) are hardcoded artifact-dir strings. The `review.json` guard (lines 56-68) is dead code. The plugin has no `stage_signal_begin` guard, so a mid-execution SIGTERM/SIGINT leaves no result file (analogous to intake before #1837; other v2 agent plugins — intake, plan, review-aggregator, deploy — all install a signal handler). The manifest has no comment recording the intentional absence of a `router:` block (pr-delivery is kind:agent but makes no direct LLM calls; `plugins/tool/pr-open/manifest.yaml` lines 17-21 and `plugins/tool/merge/manifest.yaml` lines 15-16 document this pattern for tool plugins).
+
+**Decision.** Add `_pr_delivery_write_result` helper; replace all v1 pr-result.json writes with v2 calls on every exit path; fix `return 2 → return 1`; remove the dead review.json guard; resolve `gate_aggregator_result` and `review_report` from ZBUILD_STAGE_INPUTS with path fallback; source `scripts/lib/stage-signal.sh` and add `stage_signal_begin _pr_delivery_on_signal` / `stage_signal_end` guard around the delegation work so SIGTERM/SIGINT writes verdict=error/disposition=interrupted. Update manifest with `result_contract:2`, `valid_verdicts:[pass,error]`, events list, and a comment recording the router-absent rationale (analogous to pr-open/merge manifests). Write the unit test first (TDD), confirm red at merge-base, then implement. Extend the integration test with additive v2 assertions and bind the passing-run result shape to `tests/golden/pr-result-artifact.golden` via SPEC-16.
+
+
+
+
+LOOP_COMPLETE
+Where a design decision above conflicts with the plan, follow the design decision.
+
+## ACCEPTANCE TESTS (you MUST make these pass)
+The acceptance testfiles listed below are read-only for this stage: the engine denies edits to them, and a mechanical check restores any change. They are the contract you implement against, written before your implementation existed. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion. If you believe an assertion genuinely does not test its SPEC, say so in your output and leave it alone.
+Each test MUST contain an assert call whose label includes the tag for the SPEC it verifies, exactly as listed below (e.g. assert_eq "[#1844/SPEC-1] ..." exp act). The acceptance-gate (ADR-036) requires every SPEC to have an assertion carrying its tag. A CHANGE-behavior SPEC-n MUST have a tagged assertion that FAILS at the merge-base baseline and passes here (a tautological change-SPEC that passes without your implementation is rejected); a GUARD/invariant SPEC-n is tagged but NOT contorted to fail at baseline. See the per-id list below.
+- SPEC-1: tests/unit/pr-delivery-v2-result-test.sh
+- SPEC-2: tests/unit/pr-delivery-v2-result-test.sh
+- SPEC-3: tests/unit/pr-delivery-v2-result-test.sh
+- SPEC-4: tests/unit/pr-delivery-v2-result-test.sh
+- SPEC-5: tests/unit/pr-delivery-v2-result-test.sh
+- SPEC-6: tests/unit/pr-delivery-v2-result-test.sh
+- SPEC-7: tests/unit/pr-delivery-v2-result-test.sh
+- SPEC-8: tests/unit/pr-delivery-v2-result-test.sh tests/integration/pr-pipeline-test.sh
+- SPEC-9: tests/unit/pr-delivery-v2-result-test.sh
+- SPEC-10: tests/unit/pr-delivery-v2-result-test.sh tests/integration/pr-pipeline-test.sh
+- SPEC-11: tests/unit/pr-delivery-v2-result-test.sh
+- SPEC-12: tests/unit/pr-delivery-v2-result-test.sh
+- SPEC-13: tests/unit/pr-delivery-v2-result-test.sh
+- SPEC-14: tests/unit/pr-delivery-v2-result-test.sh
+- SPEC-15: tests/unit/pr-delivery-v2-result-test.sh
+- SPEC-16: tests/integration/pr-pipeline-test.sh tests/unit/plugin-artifact-goldens-test.sh
+
+What each SPEC requires:
+- [#1844/SPEC-1] manifest provides declares result_contract:2; config.valid_verdicts contains pass and error; provides.events includes pr.delivery.blocked, pr.delivery.opened, pr.delivery.dry_run; role:pr and primary:true on pr_url are retained; hooks section has only run: (no cleanup:)
+- [#1844/SPEC-2] missing state_file argument → rc=1 (not rc=2) and pr-result.json written with result_contract:2, verdict=error, disposition=misconfigured
+- [#1844/SPEC-3] review_report (via ZBUILD_STAGE_INPUTS) signals block → rc=1, pr-result.json has result_contract:2, verdict=error, disposition=complete
+- [#1844/SPEC-4] dry-run path → rc=0, pr-result.json has result_contract:2, verdict=pass, disposition=complete
+- [#1844/SPEC-5] merge delegation success → rc=0, pr-result.json has result_contract:2, verdict=pass, disposition=complete
+- [#1844/SPEC-6] merge delegation failure → rc=1, pr-result.json has result_contract:2, verdict=error, disposition=unavailable (fallback when delegate writes no result file)
+- [#1844/SPEC-7] pr-open delegation success → rc=0, pr-result.json has result_contract:2, verdict=pass, disposition=complete
+- [#1844/SPEC-8] pr-open returns rc=0 with verdict=blocked → pr-delivery returns rc=1, pr-result.json has result_contract:2, verdict=error, disposition=complete, reason contains review_signal_missing (locks #2250 at v2 result level)
+- [#1844/SPEC-9] fallback gh-pr-create success → rc=0, pr-result.json has result_contract:2, verdict=pass, disposition=complete
+- [#1844/SPEC-10] fallback gh-pr-create failure → rc=1, pr-result.json has result_contract:2, verdict=error, disposition=unavailable
+- [#1844/SPEC-11] plugin.sh contains no hardcoded gate-aggregator-result.json or review-report.json literal path strings — inputs resolved via ZBUILD_STAGE_INPUTS
+- [#1844/SPEC-12] plugin.sh contains no hardcoded review.json literal path string — dead input guard removed
+- [#1844/SPEC-13] manifest config: section contains a comment recording the intentional absence of a router: block (pr-delivery makes no direct model calls; analogous to pr-open/manifest.yaml lines 17-21 and merge/manifest.yaml lines 15-16)
+- [#1844/SPEC-14] plugin.sh installs a stage_signal_begin trap (_pr_delivery_on_signal); when a SIGTERM/SIGINT fires during delegation, pr-result.json is written with result_contract:2, verdict=error, disposition=interrupted, and the run function exits rc=1
+- [#1844/SPEC-15] manifest inputs: every entry contains only id: and required: fields — no path:, type:, source:, or stage: fields — conformant with ADR-055 §1
+- [#1844/SPEC-16] passing pr-open delegation produces pr-result.json whose result_contract equals 2, verdict equals pass, disposition equals complete, data.pr_url is non-empty, and data.draft equals false — matching the structure of tests/golden/pr-result-artifact.golden
+
+### SPEC IDS YOU MUST COVER (acceptance gate, ADR-036)
+Every SPEC id below needs at least one assertion whose label carries its tag (as listed); self-verify the FULL set is tagged before emitting LOOP_COMPLETE. A CHANGE-behavior SPEC (new behavior this change introduces) MUST have a tagged assertion that FAILS at the merge-base baseline. A GUARD/invariant SPEC (behavior that must stay unchanged) is tagged but MUST NOT be contorted to fail at baseline.
+- [#1844/SPEC-1] manifest provides declares result_contract:2; config.valid_verdicts contains pass and error; provides.events includes pr.delivery.blocked, pr.delivery.opened, pr.delivery.dry_run; role:pr and primary:true on pr_url are retained; hooks section has only run: (no cleanup:)
+  → needs a `[#1844/SPEC-1]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1844/SPEC-2] missing state_file argument → rc=1 (not rc=2) and pr-result.json written with result_contract:2, verdict=error, disposition=misconfigured
+  → needs a `[#1844/SPEC-2]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1844/SPEC-3] review_report (via ZBUILD_STAGE_INPUTS) signals block → rc=1, pr-result.json has result_contract:2, verdict=error, disposition=complete
+  → needs a `[#1844/SPEC-3]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1844/SPEC-4] dry-run path → rc=0, pr-result.json has result_contract:2, verdict=pass, disposition=complete
+  → needs a `[#1844/SPEC-4]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1844/SPEC-5] merge delegation success → rc=0, pr-result.json has result_contract:2, verdict=pass, disposition=complete
+  → needs a `[#1844/SPEC-5]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1844/SPEC-6] merge delegation failure → rc=1, pr-result.json has result_contract:2, verdict=error, disposition=unavailable (fallback when delegate writes no result file)
+  → needs a `[#1844/SPEC-6]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1844/SPEC-7] pr-open delegation success → rc=0, pr-result.json has result_contract:2, verdict=pass, disposition=complete
+  → needs a `[#1844/SPEC-7]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1844/SPEC-8] pr-open returns rc=0 with verdict=blocked → pr-delivery returns rc=1, pr-result.json has result_contract:2, verdict=error, disposition=complete, reason contains review_signal_missing (locks #2250 at v2 result level)
+  → needs a `[#1844/SPEC-8]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1844/SPEC-9] fallback gh-pr-create success → rc=0, pr-result.json has result_contract:2, verdict=pass, disposition=complete
+  → needs a `[#1844/SPEC-9]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1844/SPEC-10] fallback gh-pr-create failure → rc=1, pr-result.json has result_contract:2, verdict=error, disposition=unavailable
+  → needs a `[#1844/SPEC-10]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1844/SPEC-11] plugin.sh contains no hardcoded gate-aggregator-result.json or review-report.json literal path strings — inputs resolved via ZBUILD_STAGE_INPUTS
+  → needs a `[#1844/SPEC-11]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1844/SPEC-12] plugin.sh contains no hardcoded review.json literal path string — dead input guard removed
+  → needs a `[#1844/SPEC-12]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1844/SPEC-13] manifest config: section contains a comment recording the intentional absence of a router: block (pr-delivery makes no direct model calls; analogous to pr-open/manifest.yaml lines 17-21 and merge/manifest.yaml lines 15-16)
+  → needs a `[#1844/SPEC-13]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1844/SPEC-14] plugin.sh installs a stage_signal_begin trap (_pr_delivery_on_signal); when a SIGTERM/SIGINT fires during delegation, pr-result.json is written with result_contract:2, verdict=error, disposition=interrupted, and the run function exits rc=1
+  → needs a `[#1844/SPEC-14]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1844/SPEC-15] manifest inputs: every entry contains only id: and required: fields — no path:, type:, source:, or stage: fields — conformant with ADR-055 §1
+  → needs a `[#1844/SPEC-15]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+- [#1844/SPEC-16] passing pr-open delegation produces pr-result.json whose result_contract equals 2, verdict equals pass, disposition equals complete, data.pr_url is non-empty, and data.draft equals false — matching the structure of tests/golden/pr-result-artifact.golden
+  → needs a `[#1844/SPEC-16]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+
+## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
+A previous attempt on this issue ended build with verdict=pass having changed nothing (0 files). That is not evidence the work is done: read the STAGE SUMMARIES below — a RESOLVE summary means the suite is red on this tree and there is work to do. Do not restart from scratch; continue from what is on this branch (check `git log` / `git diff`).
