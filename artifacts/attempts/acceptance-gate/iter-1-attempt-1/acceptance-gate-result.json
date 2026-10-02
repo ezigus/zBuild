@@ -1,0 +1,1 @@
+{"result_contract":2,"verdict":"fail","disposition":"complete","severity":"recoverable","reason":"acceptance SPEC violations — WIRING config/event-schema.json not in this commit's diff — declare WIRING: none or name a file this change actually touches","failures":["wiring_not_on_path:config/event-schema.json"],"fault":"specification"}

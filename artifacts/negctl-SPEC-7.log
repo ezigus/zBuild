@@ -1,0 +1,39 @@
+### SPEC-7 baseline tests/unit/adr-063-vocabulary-test.sh
+
+[38;2;0;212;255m[1m  ADR-063 vocabulary amendment: Accepted, retired exhausted/escalate (#2032)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] ADR-063 exists
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] ADR-063 status header must read Accepted
+    [2mgot: **Status:** Proposed (2026-09-02)[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] §3 must not prescribe 'disposition: exhausted' (retired — timed_out/out_of_turns per #2187)
+    [2mfound prescriptive 'disposition: exhausted'[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] §4 must not prescribe 'exhausted → escalate' (retired action — ADR-029 retry table)
+    [2mfound 'exhausted → escalate'[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] ADR-063 must contain updated vocabulary (timed_out/out_of_turns)
+    [2mneither timed_out nor out_of_turns found[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m4 of 5 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] ADR-063 status header must read Accepted
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] §3 must not prescribe 'disposition: exhausted' (retired — timed_out/out_of_turns per #2187)
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] §4 must not prescribe 'exhausted → escalate' (retired action — ADR-029 retry table)
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] ADR-063 must contain updated vocabulary (timed_out/out_of_turns)
+
+### SPEC-7 head tests/unit/adr-063-vocabulary-test.sh
+
+[38;2;0;212;255m[1m  ADR-063 vocabulary amendment: Accepted, retired exhausted/escalate (#2032)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] ADR-063 exists
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] ADR-063 status header reads Accepted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] §3 does not prescribe 'disposition: exhausted' (retired word removed)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] §4 does not prescribe 'exhausted → escalate' (action stricken)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] ADR-063 contains updated vocabulary (timed_out or out_of_turns per #2187)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 5 tests passed[0m
+

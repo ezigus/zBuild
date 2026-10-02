@@ -1,0 +1,99 @@
+### SPEC-4 baseline tests/unit/spec-correspondence-test.sh
+
+[38;2;0;212;255m[1m  spec-correspondence: the assertion vs the sentence (#2034)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1][change] the prompt carries the requirement TEXT
+  [38;2;74;222;128m✓[0m [SPEC-1][change] and the assertion source
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] the prompt carries NO diff
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] nor the build summary
+  [38;2;74;222;128m✓[0m [SPEC-3][change] partial is offered as a verdict
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] rc is binary
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] a stage that merely reports is disposition=complete
+  [38;2;74;222;128m✓[0m [SPEC-3][change] valid_verdicts declares 'corresponds'
+  [38;2;74;222;128m✓[0m [SPEC-3][change] valid_verdicts declares 'partial'
+  [38;2;74;222;128m✓[0m [SPEC-3][change] valid_verdicts declares 'mismatch'
+  [38;2;74;222;128m✓[0m [SPEC-3][change] valid_verdicts declares 'uncheckable'
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] the manifest marks it advisory
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] no exit_when in any template names it
+  [38;2;74;222;128m✓[0m [SPEC-6][change] the QA persona's perspective reaches the prompt
+  [38;2;74;222;128m✓[0m [SPEC-6][change] simple.yaml binds the persona to the stage
+  [38;2;74;222;128m✓[0m [SPEC-7][change] all three SPECs were judged
+  [38;2;74;222;128m✓[0m [SPEC-7][change] the counters account for every SPEC judged
+  [38;2;74;222;128m✓[0m [SPEC-8][change] zero successful judgments does not classify as a pass
+  [38;2;74;222;128m✓[0m [SPEC-8][change] and the word it writes is one the engine classifies
+  [38;2;74;222;128m✓[0m [#2108] a stdin-draining model still leaves every SPEC judged (1 batch + 3 fallback calls)
+  [38;2;74;222;128m✓[0m [#2108] the stage judged all 3 SPECs
+  [38;2;74;222;128m✓[0m [#2129] zero SPEC ids → verdict=uncheckable
+  [38;2;74;222;128m✓[0m [#2129] the reason says nothing was judged
+
+  [38;2;0;212;255m#2143: batched judging + stage clock[0m
+  [38;2;74;222;128m✓[0m [#2143] all 3 SPECs are judged in ONE model call
+  [38;2;74;222;128m✓[0m [#2143] the batch prompt carries every SPEC id (SPEC-1 as a section heading)
+  [38;2;74;222;128m✓[0m [#2143] the batch prompt carries every SPEC id (SPEC-2 as a section heading)
+  [38;2;74;222;128m✓[0m [#2143] the batch prompt carries every SPEC id (SPEC-3 as a section heading)
+  [38;2;74;222;128m✓[0m [#2143] the prompt asks for the heading's identifier on each answer line
+  [38;2;74;222;128m✓[0m [#2143] …and every requirement text
+  [38;2;74;222;128m✓[0m [#2143] the tally reflects the batched verdicts
+  [38;2;74;222;128m✓[0m [#2143] SPECs the clock cut off are unjudged, not invented
+  [38;2;74;222;128m✓[0m [#2143] at most the batch + one fallback call before the clock
+
+  [38;2;0;212;255m[#2032/SPEC-4] router non-zero rc → disposition from router_reason_disposition[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-4] router rc=1 (non-zero) → disposition=unavailable, not hardcoded 'complete'
+    [2mexpected: unavailable, got: complete[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 34 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#2032/SPEC-4] router rc=1 (non-zero) → disposition=unavailable, not hardcoded 'complete'
+
+### SPEC-4 head tests/unit/spec-correspondence-test.sh
+
+[38;2;0;212;255m[1m  spec-correspondence: the assertion vs the sentence (#2034)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1][change] the prompt carries the requirement TEXT
+  [38;2;74;222;128m✓[0m [SPEC-1][change] and the assertion source
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] the prompt carries NO diff
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] nor the build summary
+  [38;2;74;222;128m✓[0m [SPEC-3][change] partial is offered as a verdict
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] rc is binary
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] a stage that merely reports is disposition=complete
+  [38;2;74;222;128m✓[0m [SPEC-3][change] valid_verdicts declares 'corresponds'
+  [38;2;74;222;128m✓[0m [SPEC-3][change] valid_verdicts declares 'partial'
+  [38;2;74;222;128m✓[0m [SPEC-3][change] valid_verdicts declares 'mismatch'
+  [38;2;74;222;128m✓[0m [SPEC-3][change] valid_verdicts declares 'uncheckable'
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] the manifest marks it advisory
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] no exit_when in any template names it
+  [38;2;74;222;128m✓[0m [SPEC-6][change] the QA persona's perspective reaches the prompt
+  [38;2;74;222;128m✓[0m [SPEC-6][change] simple.yaml binds the persona to the stage
+  [38;2;74;222;128m✓[0m [SPEC-7][change] all three SPECs were judged
+  [38;2;74;222;128m✓[0m [SPEC-7][change] the counters account for every SPEC judged
+  [38;2;74;222;128m✓[0m [SPEC-8][change] zero successful judgments does not classify as a pass
+  [38;2;74;222;128m✓[0m [SPEC-8][change] and the word it writes is one the engine classifies
+  [38;2;74;222;128m✓[0m [#2108] a stdin-draining model still leaves every SPEC judged (1 batch + 3 fallback calls)
+  [38;2;74;222;128m✓[0m [#2108] the stage judged all 3 SPECs
+  [38;2;74;222;128m✓[0m [#2129] zero SPEC ids → verdict=uncheckable
+  [38;2;74;222;128m✓[0m [#2129] the reason says nothing was judged
+
+  [38;2;0;212;255m#2143: batched judging + stage clock[0m
+  [38;2;74;222;128m✓[0m [#2143] all 3 SPECs are judged in ONE model call
+  [38;2;74;222;128m✓[0m [#2143] the batch prompt carries every SPEC id (SPEC-1 as a section heading)
+  [38;2;74;222;128m✓[0m [#2143] the batch prompt carries every SPEC id (SPEC-2 as a section heading)
+  [38;2;74;222;128m✓[0m [#2143] the batch prompt carries every SPEC id (SPEC-3 as a section heading)
+  [38;2;74;222;128m✓[0m [#2143] the prompt asks for the heading's identifier on each answer line
+  [38;2;74;222;128m✓[0m [#2143] …and every requirement text
+  [38;2;74;222;128m✓[0m [#2143] the tally reflects the batched verdicts
+  [38;2;74;222;128m✓[0m [#2143] SPECs the clock cut off are unjudged, not invented
+  [38;2;74;222;128m✓[0m [#2143] at most the batch + one fallback call before the clock
+
+  [38;2;0;212;255m[#2032/SPEC-4] router non-zero rc → disposition from router_reason_disposition[0m
+  [38;2;74;222;128m✓[0m [#2032/SPEC-4] router rc=1 (non-zero) → disposition=unavailable, not hardcoded 'complete'
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 34 tests passed[0m
+
