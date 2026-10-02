@@ -121,6 +121,11 @@ assert_file_exists "pr-result.json written on merge path (manifest output)" \
     "$_art1/pr-result.json"
 _pr_result_verdict1="$(jq -r '.verdict // empty' "$_art1/pr-result.json" 2>/dev/null || true)"
 assert_eq "pr-result.json verdict==pass on merge path" "pass" "$_pr_result_verdict1"
+# [#1844/SPEC-15]: merge delegation SUCCESS path has pr-result.json with result_contract:2, verdict=pass
+assert_eq "[#1844/SPEC-15] merge success: pr-result.json result_contract is 2" "2" \
+    "$(jq -r '.result_contract // empty' "$_art1/pr-result.json" 2>/dev/null || true)"
+assert_eq "[#1844/SPEC-15] merge success: pr-result.json verdict is pass" "pass" \
+    "$(jq -r '.verdict // empty' "$_art1/pr-result.json" 2>/dev/null || true)"
 
 # ─── SPEC-2: auto + gate verdict==fail → PR fallback ─────────────────────────
 print_test_section "SPEC-2: merge_policy==auto + gate verdict==fail → PR fallback"
