@@ -29,10 +29,14 @@ source "$REPO_ROOT/plugins/agent/pr-delivery/plugin.sh"
 # A stand-in pr-open: the plugin is re-sourced from _PR_ROOT on every call.
 FAKE="$TEST_TEMP_DIR/root"; mkdir -p "$FAKE/plugins/tool/pr-open"
 _fake_pr_open() {  # _fake_pr_open <verdict> <reason>
+    # The result is built with jq here (any reason text stays valid JSON) and
+    # the fake only copies it into place (review on #2255).
+    jq -n --arg v "$1" --arg r "$2" \
+        '{result_contract:2, verdict:$v, disposition:"complete", reason:$r}' > "$FAKE/pr-result.json"
     cat > "$FAKE/plugins/tool/pr-open/plugin.sh" <<EOF
 pr_open_run() {
     local d; d="\$(dirname "\$2")/artifacts"
-    printf '{"result_contract":2,"verdict":"$1","disposition":"complete","reason":"$2"}\n' > "\$d/pr-result.json"
+    cp "$FAKE/pr-result.json" "\$d/pr-result.json"
     [[ "$1" == pass ]] && printf 'https://example.test/pr/1\n' > "\$d/pr-url.txt"
     return 0
 }
