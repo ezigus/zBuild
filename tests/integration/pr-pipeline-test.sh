@@ -81,10 +81,28 @@ _art3="$(dirname "$_sf3")/artifacts"
 assert_eq "[SPEC-3] dry-run pr_stage_run exits 0" "0" "$_rc3"
 assert_file_exists "[SPEC-3] pr-url.txt written" "$_art3/pr-url.txt"
 assert_file_exists "[SPEC-3] pr-result.json written" "$_art3/pr-result.json"
-# SPEC-9: the non-draft default is observable at the integration level — the
-# dry-run pr-result.json records draft=false (fails at baseline, which emitted true).
-_draft9="$(jq -r '.draft' "$_art3/pr-result.json" 2>/dev/null || echo MISSING)"
-assert_eq "[SPEC-9] dry-run pr-result.json records draft=false (non-draft default)" "false" "$_draft9"
+# [#1844/SPEC-5]: dry-run pr-result.json carries result_contract:2, verdict=pass
+if [[ -f "$_art3/pr-result.json" ]]; then
+    assert_eq "[#1844/SPEC-5] dry-run: pr-result.json result_contract is 2" "2" \
+        "$(jq -r '.result_contract // empty' "$_art3/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-5] dry-run: pr-result.json verdict is pass" "pass" \
+        "$(jq -r '.verdict // empty' "$_art3/pr-result.json" 2>/dev/null || true)"
+fi
+# SPEC-9 (superseded by #1844): draft field moves to .data.draft in the v2 envelope.
+# The old top-level .draft returns null after migration; .data.draft carries the value.
+_draft9="$(jq -r '.data.draft' "$_art3/pr-result.json" 2>/dev/null || echo MISSING)"
+assert_eq "[SPEC-9] dry-run pr-result.json records .data.draft=false (v2 envelope; non-draft default)" "false" "$_draft9"
+# [#1844/SPEC-19]: dry-run v2 pr-result.json carries .data.branch and .data.draft
+if [[ -f "$_art3/pr-result.json" ]]; then
+    _s19_branch="$(jq -r '.data.branch // empty' "$_art3/pr-result.json" 2>/dev/null || true)"
+    [[ -n "$_s19_branch" ]] \
+        && assert_pass "[#1844/SPEC-19] dry-run integration: .data.branch present" \
+        || assert_fail "[#1844/SPEC-19] dry-run integration: .data.branch present" "absent"
+    _s19_draft="$(jq -r '.data.draft // empty' "$_art3/pr-result.json" 2>/dev/null || true)"
+    [[ -n "$_s19_draft" ]] \
+        && assert_pass "[#1844/SPEC-19] dry-run integration: .data.draft present" \
+        || assert_fail "[#1844/SPEC-19] dry-run integration: .data.draft present" "absent"
+fi
 
 # ─── SPEC-4: verdict=block → the plugin refuses, no PR URL ───────────────────
 print_test_section "SPEC-4: verdict=block guard refuses to open a PR"
@@ -95,6 +113,15 @@ _art4="$(dirname "$_sf4")/artifacts"
     && assert_pass "[SPEC-4] verdict=block → pr_stage_run returns non-zero" \
     || assert_fail "[SPEC-4] verdict=block → pr_stage_run returns non-zero" "got rc=0"
 assert_file_not_exists "[SPEC-4] verdict=block → no pr-url.txt written" "$_art4/pr-url.txt"
+# [#1844/SPEC-4]: block guard writes pr-result.json with result_contract:2, verdict=error
+if [[ -f "$_art4/pr-result.json" ]]; then
+    assert_eq "[#1844/SPEC-4] block guard integration: result_contract is 2" "2" \
+        "$(jq -r '.result_contract // empty' "$_art4/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-4] block guard integration: verdict is error" "error" \
+        "$(jq -r '.verdict // empty' "$_art4/pr-result.json" 2>/dev/null || true)"
+else
+    assert_fail "[#1844/SPEC-4] block guard integration: pr-result.json written" "file missing"
+fi
 
 # ─── SPEC-5: non-dry-run delegates to pr-open with the threaded state file ───
 # Locks the runtime fix: the run's state file (not the unset ZBUILD_STATE_FILE)
@@ -125,6 +152,66 @@ assert_file_exists "[SPEC-5] pr-url.txt written by pr-open delegation" "$_art5/p
 if [[ -f "$_art5/pr-url.txt" ]]; then
     assert_contains "[SPEC-5] pr-url.txt holds the gh-created URL" \
         "$(cat "$_art5/pr-url.txt")" "github.com/mock/repo/pull/756"
+fi
+# [#1844/SPEC-14]: pr-open SUCCESS path has pr-result.json carrying result_contract:2, verdict=pass
+if [[ -f "$_art5/pr-result.json" ]]; then
+    assert_eq "[#1844/SPEC-14] pr-open delegation success: result_contract is 2" "2" \
+        "$(jq -r '.result_contract // empty' "$_art5/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-14] pr-open delegation success: verdict is pass" "pass" \
+        "$(jq -r '.verdict // empty' "$_art5/pr-result.json" 2>/dev/null || true)"
+else
+    assert_fail "[#1844/SPEC-14] pr-open delegation success: pr-result.json written" "file missing"
+fi
+
+# ─── SPEC-22 + SPEC-23: pr-open rc=0 but verdict=blocked (#2250) ─────────────
+# pr-open returns rc=0 with verdict=blocked when there is no review signal (no
+# review.json present). pr-delivery's own block guard only fires when review.json
+# EXISTS with verdict=block — so the test uses no review.json. pr-delivery must
+# then detect the blocked verdict and overwrite pr-result.json with verdict=error,
+# reason=review_signal_missing and rc=1.
+print_test_section "SPEC-10 (#2250): pr-open rc=0 verdict=blocked → pr-delivery corrects result and summary"
+# Custom setup without review.json so pr-delivery's block guard is bypassed
+# and pr-open's fail-closed path writes verdict=blocked with rc=0.
+_d10="$TEST_TEMP_DIR/run-s10"
+mkdir -p "$_d10/artifacts"
+printf '{"issue":756}\n' > "$_d10/pipeline-state.json"
+# No review.json → pr-open will write verdict=blocked with rc=0
+_sf10="$_d10/pipeline-state.json"
+_art10="$_d10/artifacts"
+
+set +e
+( ZBUILD_DRY_RUN=0 PATH="$_mockbin:$PATH" \
+  ZBUILD_STAGE_INPUTS="/dev/null" \
+    pr_stage_run "pr" "$_sf10" ) >/dev/null 2>&1; _rc10=$?
+set -e
+
+# [#1844/SPEC-22]: rc must be 1 (not 0)
+assert_eq "[#1844/SPEC-22] pr-open blocked (no review): pr-delivery returns rc=1" "1" "$_rc10"
+if [[ -f "$_art10/pr-result.json" ]]; then
+    assert_eq "[#1844/SPEC-22] pr-open blocked: result_contract is 2" "2" \
+        "$(jq -r '.result_contract // empty' "$_art10/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-22] pr-open blocked: verdict is error" "error" \
+        "$(jq -r '.verdict // empty' "$_art10/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-22] pr-open blocked: disposition is complete" "complete" \
+        "$(jq -r '.disposition // empty' "$_art10/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-22] pr-open blocked: reason is review_signal_missing" "review_signal_missing" \
+        "$(jq -r '.reason // empty' "$_art10/pr-result.json" 2>/dev/null || true)"
+else
+    assert_fail "[#1844/SPEC-22] pr-open blocked: pr-result.json written" "file missing"
+fi
+# [#1844/SPEC-23]: summary must not say "pass — delivered … delegating to the pr-open stage"
+if [[ -f "$_art10/pr-delivery-summary.md" ]]; then
+    _s23_pass_text=0
+    grep -qi "pass.*delivered.*delegating.*pr-open" "$_art10/pr-delivery-summary.md" && _s23_pass_text=1 || true
+    assert_eq "[#1844/SPEC-23] blocked summary: does NOT say 'pass — delivered … delegating to pr-open'" \
+        "0" "$_s23_pass_text"
+    _s23_signal_missing=0
+    grep -qi "review_signal_missing" "$_art10/pr-delivery-summary.md" && _s23_signal_missing=1 || true
+    [[ "$_s23_signal_missing" -eq 1 ]] \
+        && assert_pass "[#1844/SPEC-23] blocked summary: names review_signal_missing" \
+        || assert_fail "[#1844/SPEC-23] blocked summary: names review_signal_missing" "absent"
+else
+    assert_fail "[#1844/SPEC-23] pr-open blocked: pr-delivery-summary.md written" "file missing"
 fi
 
 # ─── SPEC-6: pr-open surfaces the real push stderr in pr-result.json .reason ──
