@@ -81,7 +81,8 @@ shape_floor_run() {
             _SF_FAILED_FILES="$(jq -r '.data.failures[]?.file // empty' "$_tr" 2>/dev/null || true)"
         fi
     fi
-    export _SF_VERIFY_OK _SF_FAILED_COUNT _SF_FAILED_FILES
+    # Plain shell variables: the library runs in a subshell of this one, which
+    # inherits them; exporting would hand them to every child (review #2256).
 
     local _shape_out=""
     _shape_out="$(_sf_shape_floor "$repo_root")"

@@ -220,8 +220,10 @@ _sf_floor_verified() {
     local f="$1"
     [[ "${_SF_VERIFY_OK:-0}" == "1" ]] || return 1
     if [[ "$f" == *event-sequence.golden ]]; then
-        [[ "${_SF_FAILED_COUNT:-1}" == "0" ]]
-        return
+        # Explicit: a bare false test before `return` would trip set -e in a
+        # caller that does not guard the call (review on #2256).
+        [[ "${_SF_FAILED_COUNT:-1}" == "0" ]] && return 0
+        return 1
     fi
     [[ $'\n'"${_SF_FAILED_FILES:-}"$'\n' != *$'\n'"$f"$'\n'* ]]
 }
