@@ -202,6 +202,30 @@ else
     assert_fail "[SPEC-7] G4: pr-result-artifact data.draft == false (non-draft default)" "got: $g4_draft"
 fi
 
+# [#1844/SPEC-16]: the golden must encode the full v2 pr-delivery result shape —
+# result_contract=2, verdict=pass, disposition=complete, data.pr_url non-empty,
+# data.draft=false. This pins the golden to the v2 contract introduced in #1844.
+g4_verdict="$(printf '%s' "$g4_content" | jq -r '.verdict' 2>/dev/null || echo '')"
+if [[ "$g4_verdict" == "pass" ]]; then
+    assert_pass "[#1844/SPEC-16] pr-result-artifact golden verdict == pass"
+else
+    assert_fail "[#1844/SPEC-16] pr-result-artifact golden verdict == pass" "got: $g4_verdict"
+fi
+
+g4_disp="$(printf '%s' "$g4_content" | jq -r '.disposition' 2>/dev/null || echo '')"
+if [[ "$g4_disp" == "complete" ]]; then
+    assert_pass "[#1844/SPEC-16] pr-result-artifact golden disposition == complete"
+else
+    assert_fail "[#1844/SPEC-16] pr-result-artifact golden disposition == complete" "got: $g4_disp"
+fi
+
+g4_pr_url="$(printf '%s' "$g4_content" | jq -r '.data.pr_url // empty' 2>/dev/null || echo '')"
+if [[ -n "$g4_pr_url" ]]; then
+    assert_pass "[#1844/SPEC-16] pr-result-artifact golden data.pr_url is non-empty"
+else
+    assert_fail "[#1844/SPEC-16] pr-result-artifact golden data.pr_url is non-empty" "empty or absent"
+fi
+
 set +e
 assert_golden "pr-result-artifact" "$g4_content"
 g4_golden_rc=$?

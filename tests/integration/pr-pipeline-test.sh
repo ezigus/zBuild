@@ -86,15 +86,24 @@ assert_file_exists "[SPEC-3] pr-result.json written" "$_art3/pr-result.json"
 _draft9="$(jq -r '.draft' "$_art3/pr-result.json" 2>/dev/null || echo MISSING)"
 assert_eq "[SPEC-9] dry-run pr-result.json records draft=false (non-draft default)" "false" "$_draft9"
 
-# ─── SPEC-4: verdict=block → the plugin refuses, no PR URL ───────────────────
-print_test_section "SPEC-4: verdict=block guard refuses to open a PR"
-_sf4="$(_setup_run block s4)"
+# ─── SPEC-4: review_report via ZBUILD_STAGE_INPUTS signals block → refuses ────
+# #1844: the hardcoded review.json guard (plugin.sh lines 56-68) is removed; the
+# block guard now reads review_report from ZBUILD_STAGE_INPUTS. The review_report
+# is at a non-standard path so a hardcoded-path read would silently miss it.
+print_test_section "SPEC-4: review_report block guard (via ZBUILD_STAGE_INPUTS) refuses to open a PR"
+_sf4="$(_setup_run approve s4)"
 _art4="$(dirname "$_sf4")/artifacts"
-( ZBUILD_DRY_RUN=1 pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1; _rc4=$?
+_rr4="$TEST_TEMP_DIR/review-report-s4.json"
+jq -n '{merge_readiness:"needs_attention",findings:[{severity:"critical",summary:"blocking"}],summary:"t"}' \
+    > "$_rr4"
+_si4="$TEST_TEMP_DIR/si-s4.json"
+printf '{"inputs":{"review_report":"%s"}}\n' "$_rr4" > "$_si4"
+( ZBUILD_STAGE_INPUTS="$_si4" ZBUILD_DRY_RUN=0 \
+    pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1; _rc4=$?
 [[ $_rc4 -ne 0 ]] \
-    && assert_pass "[SPEC-4] verdict=block → pr_stage_run returns non-zero" \
-    || assert_fail "[SPEC-4] verdict=block → pr_stage_run returns non-zero" "got rc=0"
-assert_file_not_exists "[SPEC-4] verdict=block → no pr-url.txt written" "$_art4/pr-url.txt"
+    && assert_pass "[SPEC-4] review_report block → pr_stage_run returns non-zero" \
+    || assert_fail "[SPEC-4] review_report block → pr_stage_run returns non-zero" "got rc=0"
+assert_file_not_exists "[SPEC-4] review_report block → no pr-url.txt written" "$_art4/pr-url.txt"
 
 # ─── SPEC-5: non-dry-run delegates to pr-open with the threaded state file ───
 # Locks the runtime fix: the run's state file (not the unset ZBUILD_STATE_FILE)
@@ -125,6 +134,25 @@ assert_file_exists "[SPEC-5] pr-url.txt written by pr-open delegation" "$_art5/p
 if [[ -f "$_art5/pr-url.txt" ]]; then
     assert_contains "[SPEC-5] pr-url.txt holds the gh-created URL" \
         "$(cat "$_art5/pr-url.txt")" "github.com/mock/repo/pull/756"
+fi
+
+# [#1844/SPEC-16]: passing pr-open delegation produces pr-result.json with the
+# v2 structure matching tests/golden/pr-result-artifact.golden.
+if [[ -f "$_art5/pr-result.json" ]]; then
+    assert_eq "[#1844/SPEC-16] pr-result.json result_contract is 2" "2" \
+        "$(jq -r '.result_contract // empty' "$_art5/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-16] pr-result.json verdict is pass" "pass" \
+        "$(jq -r '.verdict // empty' "$_art5/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-16] pr-result.json disposition is complete" "complete" \
+        "$(jq -r '.disposition // empty' "$_art5/pr-result.json" 2>/dev/null || true)"
+    _s16_url="$(jq -r '.data.pr_url // empty' "$_art5/pr-result.json" 2>/dev/null || true)"
+    [[ -n "$_s16_url" ]] \
+        && assert_pass "[#1844/SPEC-16] pr-result.json data.pr_url is non-empty" \
+        || assert_fail "[#1844/SPEC-16] pr-result.json data.pr_url is non-empty" "empty"
+    assert_eq "[#1844/SPEC-16] pr-result.json data.draft is false" "false" \
+        "$(jq -r '.data.draft' "$_art5/pr-result.json" 2>/dev/null || echo MISSING)"
+else
+    assert_fail "[#1844/SPEC-16] pr-result.json written by pr-open delegation" "file absent"
 fi
 
 # ─── SPEC-6: pr-open surfaces the real push stderr in pr-result.json .reason ──
@@ -170,6 +198,84 @@ if [[ -f "$_art6/pr-result.json" ]]; then
         "$(jq -r '.reason // ""' "$_art6/pr-result.json" 2>/dev/null)" "non-fast-forward-XYZ"
 else
     assert_fail "[SPEC-6] pr-result.json written on push failure" "file missing"
+fi
+
+# ─── #1844/SPEC-8: pr-open returns verdict=blocked → rc=1, error/complete/review_signal_missing
+# Uses the real pr-delivery plugin with a fake pr-open that writes verdict=blocked.
+print_test_section "#1844/SPEC-8: pr-open blocked verdict → pr-delivery rc=1/error/complete/review_signal_missing"
+_fake8="$TEST_TEMP_DIR/fake-pr-open-s8"
+mkdir -p "$_fake8/plugins/tool/pr-open"
+cat > "$_fake8/plugins/tool/pr-open/plugin.sh" <<'PROMOCK'
+pr_open_run() {
+    local d; d="$(dirname "$2")/artifacts"
+    mkdir -p "$d"
+    jq -n '{result_contract:2,verdict:"blocked",disposition:"complete",reason:"review_signal_missing"}' \
+        > "$d/pr-result.json"
+    return 0
+}
+PROMOCK
+_sf8="$(_setup_run approve s8)"
+_art8="$(dirname "$_sf8")/artifacts"
+_si8="$TEST_TEMP_DIR/si-s8.json"
+printf '{"inputs":{}}\n' > "$_si8"
+( _PR_ROOT="$_fake8" _TPL_MERGE_POLICY=manual ZBUILD_DRY_RUN=0 \
+    ZBUILD_STAGE_INPUTS="$_si8" _pr_stage_run_inner "$_sf8" ) >/dev/null 2>&1; _rc8=$?
+assert_eq "[#1844/SPEC-8] pr-open blocked → rc=1" "1" "$_rc8"
+if [[ -f "$_art8/pr-result.json" ]]; then
+    assert_eq "[#1844/SPEC-8] pr-result.json result_contract is 2" "2" \
+        "$(jq -r '.result_contract // empty' "$_art8/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-8] pr-result.json verdict is error" "error" \
+        "$(jq -r '.verdict // empty' "$_art8/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-8] pr-result.json disposition is complete" "complete" \
+        "$(jq -r '.disposition // empty' "$_art8/pr-result.json" 2>/dev/null || true)"
+    _s8_reason="$(jq -r '.reason // empty' "$_art8/pr-result.json" 2>/dev/null || true)"
+    if grep -q 'review_signal_missing' <<< "$_s8_reason"; then
+        assert_pass "[#1844/SPEC-8] pr-result.json reason contains review_signal_missing"
+    else
+        assert_fail "[#1844/SPEC-8] pr-result.json reason contains review_signal_missing" \
+            "got: $_s8_reason"
+    fi
+else
+    assert_fail "[#1844/SPEC-8] pr-result.json written on pr-open blocked" "file absent"
+fi
+
+# ─── #1844/SPEC-10: fallback gh-pr-create failure → rc=1, error/unavailable ──
+# No pr-open plugin in fake root → direct gh fallback; gh fails → unavailable.
+print_test_section "#1844/SPEC-10: fallback gh-pr-create failure → rc=1/error/unavailable"
+_fake10="$TEST_TEMP_DIR/fake-pr-open-s10"
+mkdir -p "$_fake10/plugins/tool"
+_bin10="$TEST_TEMP_DIR/bin-s10"
+mkdir -p "$_bin10"
+cat > "$_bin10/gh" <<'GHMOCK'
+#!/usr/bin/env bash
+[[ "${1:-} ${2:-}" == "pr create" ]] && { echo "gh failed" >&2; exit 1; }
+exit 0
+GHMOCK
+cat > "$_bin10/git" <<'GITMOCK'
+#!/usr/bin/env bash
+case "${1:-}" in
+    rev-parse) echo "zbuild/issue-756"; exit 0 ;;
+    *) exit 0 ;;
+esac
+GITMOCK
+chmod +x "$_bin10/gh" "$_bin10/git"
+_sf10="$(_setup_run approve s10)"
+_art10="$(dirname "$_sf10")/artifacts"
+_si10="$TEST_TEMP_DIR/si-s10.json"
+printf '{"inputs":{}}\n' > "$_si10"
+( _PR_ROOT="$_fake10" _TPL_MERGE_POLICY=manual ZBUILD_DRY_RUN=0 \
+    ZBUILD_STAGE_INPUTS="$_si10" PATH="$_bin10:$PATH" \
+    _pr_stage_run_inner "$_sf10" ) >/dev/null 2>&1; _rc10=$?
+assert_eq "[#1844/SPEC-10] fallback gh failure → rc=1" "1" "$_rc10"
+if [[ -f "$_art10/pr-result.json" ]]; then
+    assert_eq "[#1844/SPEC-10] pr-result.json result_contract is 2" "2" \
+        "$(jq -r '.result_contract // empty' "$_art10/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-10] pr-result.json verdict is error" "error" \
+        "$(jq -r '.verdict // empty' "$_art10/pr-result.json" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-10] pr-result.json disposition is unavailable" "unavailable" \
+        "$(jq -r '.disposition // empty' "$_art10/pr-result.json" 2>/dev/null || true)"
+else
+    assert_fail "[#1844/SPEC-10] pr-result.json written on fallback gh failure" "file absent"
 fi
 
 cleanup_test_env
