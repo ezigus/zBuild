@@ -61,7 +61,7 @@ set +e
 ZBUILD_STAGE_INPUTS="$_si4" _review_aggregator_run_inner \
     "$_d4" "$_d4/review-report.json" "$_d4/review-report.md"
 _rc4=$?
-set -e
+set +e
 assert_eq "[#1842/SPEC-4] success-path rc=0" "0" "$_rc4"
 assert_eq "[#1842/SPEC-4] result_contract is 2" "2" \
     "$(_v2 result_contract "$_d4/review-report.json")"
@@ -100,7 +100,7 @@ printf '{"inputs":{"lens_result":[]}}\n' > "$_si6"
 set +e
 ZBUILD_STAGE_INPUTS="$_si6" _review_aggregator_run_inner \
     "$_d6" "$_d6/review-report.json" "$_d6/review-report.md"
-set -e
+set +e
 eval "$_ra_agg_s6_save" 2>/dev/null || true
 assert_file_exists "[#1842/SPEC-6] review-report.md written even when out_json is empty/unwritten" \
     "$_d6/review-report.md"
@@ -112,7 +112,7 @@ printf '{"inputs":{"lens_result":[]}}\n' > "$_si11"
 set +e
 ZBUILD_STAGE_INPUTS="$_si11" _review_aggregator_run_inner \
     "$_d11" "$_d11/review-report.json" "$_d11/review-report.md"
-set -e
+set +e
 assert_eq "[#1842/SPEC-11] empty-lenses result_contract is 2" "2" \
     "$(_v2 result_contract "$_d11/review-report.json")"
 assert_eq "[#1842/SPEC-11] empty-lenses verdict=complete" "complete" \
@@ -151,7 +151,7 @@ done
 kill -SIGTERM "$_sig_pid" 2>/dev/null || true
 wait "$_sig_pid" 2>/dev/null
 _sig_rc=$?
-set -e
+set +e
 eval "$_ra_agg_save" 2>/dev/null || true
 assert_eq "[#1842/SPEC-7] SIGTERM ends the stage with rc 1" "1" "$_sig_rc"
 assert_eq "[#1842/SPEC-7] interrupted writes verdict:degraded" "degraded" \

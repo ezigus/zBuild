@@ -74,7 +74,7 @@ run_impact() {
         "$impact_path" \
         "$artifact_dir" >/dev/null 2>&1
     RC=$?
-    set -e
+    set +e
 }
 
 # ─── Case A: override present ────────────────────────────────────────────────

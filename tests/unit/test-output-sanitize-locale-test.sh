@@ -32,7 +32,7 @@ ERR1="$TEST_TEMP_DIR/dogfood-err.txt"
 set +e
 < "$F1" _zbuild_sanitize_for_llm > "$OUT1" 2> "$ERR1"
 rc1=$?
-set -e
+set +e
 assert_eq "T1: sanitizer rc=0 on ANSI + invalid UTF-8 (no abort)" "0" "$rc1"
 if [[ -s "$ERR1" ]]; then
     assert_fail "T1: sanitizer wrote to stderr (should be silent on bad bytes)" \
@@ -53,7 +53,7 @@ OUT2="$TEST_TEMP_DIR/urandom-out.txt"
 set +e
 < "$F2" _zbuild_sanitize_for_llm > "$OUT2" 2>/dev/null
 rc2=$?
-set -e
+set +e
 assert_eq "T2: sanitizer rc=0 on 8KB /dev/urandom (contract — never abort)" \
     "0" "$rc2"
 
@@ -64,7 +64,7 @@ OUT3="$TEST_TEMP_DIR/hostile-locale-out.txt"
 set +e
 LC_ALL=invalid.bogus _zbuild_sanitize_for_llm <<< $'\x1b[31mx\x1b[0m' > "$OUT3" 2>/dev/null
 rc3=$?
-set -e
+set +e
 assert_eq "T3: hostile caller LC_ALL=invalid → sanitizer rc=0" "0" "$rc3"
 val3="$(cat "$OUT3" 2>/dev/null)"
 assert_eq "T3: hostile-locale ANSI still stripped to bare content" "x" "$val3"

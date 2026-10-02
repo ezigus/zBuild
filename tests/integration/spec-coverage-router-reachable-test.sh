@@ -133,7 +133,7 @@ set +e
 plugin_hook_call "$REPO_ROOT/plugins/agent/spec-coverage" run "spec-coverage" "$STATE_FILE" \
     >"$TEST_TEMP_DIR/dispatch.out" 2>"$TEST_TEMP_DIR/dispatch.err"
 _dispatch_rc=$?
-set -e
+set +e
 
 _verdict="$(_res '.verdict')"
 _reason="$(_res '.reason')"

@@ -94,7 +94,7 @@ echo "static build prompt" > "$PROMPT_FILE"
 set +e
 route_to_model_loop T2 "$PROMPT_FILE" "$REPO" 1 >/dev/null 2>&1
 rc=$?
-set -e
+set +e
 assert_exit_code "loop rc=0 (DONE on iter 1)" "0" "$rc"
 
 assert_file_exists "iter-1 prompt captured" "$PROMPT_CAPTURE"

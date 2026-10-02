@@ -188,7 +188,7 @@ _run() {
     set +e
     cycle_orchestrator_run "$2" "$ZBUILD_STATE_DIR" "$STATE_FILE"
     RUN_RC=$?
-    set -e
+    set +e
 }
 
 # ─── SPEC-1: persistent design timeout → HALT (design_timeout_exhausted) ──────

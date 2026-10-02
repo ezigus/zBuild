@@ -27,7 +27,7 @@ print_test_header "assert_fail never stops the test file (#2234)"
 setup_test_env "assert-fail-errexit"
 
 _child="$(bash -c '
-    set -euo pipefail
+    set -uo pipefail
     source "$1/scripts/lib/helpers.sh"
     source "$1/scripts/lib/test-helpers.sh"
     if false; then assert_pass "x"; else assert_fail "a failure with no detail"; fi

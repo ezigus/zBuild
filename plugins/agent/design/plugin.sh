@@ -499,7 +499,11 @@ WIRING field (ADR-036 Level-3, mandatory for behavioral-change issues):
 - One repo-relative path per line (multi-line WIRING: section is allowed):
     WIRING:
     plugins/agent/acceptance-gate/plugin.sh
-    config/event-schema.json
+    core/pipeline/runner.sh
+- A registry or data file is not WIRING: adding a name to an event list, a
+  schema or a config list changes no behaviour, so reverting it flips no test
+  and the gate rejects it as inert. Name the file whose CODE calls the new
+  behaviour; a registry entry the change needs belongs in the scope block.
 - For pure-utility changes (helpers with no live dispatch path), declare
   \`WIRING: none\` to explicitly exempt the reachability check.
 - The acceptance-gate will revert the declared WIRING file to the merge-base

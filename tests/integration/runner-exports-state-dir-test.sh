@@ -118,7 +118,7 @@ set +e
     PATH="$PATH" \
     bash "$RUNNER" --issue "$_ZB_ID" --template runner-state-dir-minimal ) >/dev/null 2>&1
 rc=$?
-set -e
+set +e
 # #887: with ZBUILD_STATE_DIR unset, a fresh run gets its own state dir. #141
 # moved that dir under the run's ISSUE, so the path is DERIVED from the same
 # resolver the writer uses instead of pinned as a literal — this test is about

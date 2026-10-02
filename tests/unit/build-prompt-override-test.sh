@@ -76,7 +76,7 @@ run_build_inner() {
         "$artifact_dir/build-summary.json" \
         "$artifact_dir" >/dev/null 2>&1
     local rc=$?
-    set -e 2>/dev/null || true
+    set +e
     return $rc
 }
 

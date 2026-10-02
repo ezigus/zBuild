@@ -16,6 +16,8 @@
 #             cleared per test, or a code/config location tests may inherit —
 #             a new one cannot leak in unclassified
 # I3 [guard]  a code/config location (e.g. ZBUILD_PLUGINS_ROOT) is inherited
+# I4 [change] the event bus's paths point into the test's own folder (it
+#             resolves them when sourced, before setup, from the real $HOME)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,7 +40,7 @@ done
 export ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins"
 setup_test_env "test-env-isolation"
 for v in ZBUILD_STATE_ROOT ZBUILD_COST_LEDGER ZBUILD_CACHE_DIR "${_written[@]}"; do
-    if [[ "${!v:-}" == "$SHARED" ]]; then
+    if [[ "${!v:-}" == "$SHARED" || ( -n "${!v:-}" && "${!v}" != "$TEST_TEMP_DIR"* ) ]]; then
         assert_fail "[I1] $v is cleared per test" "still $SHARED"
     else
         assert_pass "[I1] $v is cleared per test"
@@ -62,6 +64,10 @@ done <<< "$_all"
 
 print_test_section "I3: code/config locations are inherited"
 assert_eq "[I3] ZBUILD_PLUGINS_ROOT survives setup_test_env" "$REPO_ROOT/plugins" "${ZBUILD_PLUGINS_ROOT:-}"
+
+print_test_section "I4: events land in the test's own folder"
+assert_eq "[I4] ZBUILD_EVENTS_JSONL is inside the test's folder" "inside" \
+    "$([[ "${ZBUILD_EVENTS_JSONL:-}" == "$TEST_TEMP_DIR"/* ]] && echo inside || echo "${ZBUILD_EVENTS_JSONL:-unset}")"
 
 cleanup_test_env
 print_test_results

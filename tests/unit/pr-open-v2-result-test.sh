@@ -243,7 +243,7 @@ _stub_git_pass
 set +e
 _pr_open_run_inner "$_s10a_art/review.json" "$_s10a_dir/pipeline-state.json" "$_s10a_pr" "1849"
 _s10a_rc=$?
-set -e
+set +e
 _unstub
 
 assert_file_exists "[SPEC-10] opened: pr-result.json written" "$_s10a_pr"
@@ -272,7 +272,7 @@ _stub_git_existing_pr
 set +e
 _pr_open_run_inner "$_s10b_art/review.json" "$_s10b_dir/pipeline-state.json" "$_s10b_pr" "1849"
 _s10b_rc=$?
-set -e
+set +e
 _unstub
 
 assert_file_exists "[SPEC-10] updated: pr-result.json written" "$_s10b_pr"
@@ -304,7 +304,7 @@ _stub_git_pass
 set +e
 _pr_open_run_inner "$_s11a_art/review.json" "$_s11a_dir/pipeline-state.json" "$_s11a_pr" "1849"
 _s11a_rc=$?
-set -e
+set +e
 _unstub
 
 assert_file_exists "[SPEC-11] review=block: pr-result.json written" "$_s11a_pr"
@@ -334,7 +334,7 @@ _stub_git_pass
 set +e
 _pr_open_run_inner "$_s11b_art/review.json" "$_s11b_dir/pipeline-state.json" "$_s11b_pr" "1849"
 _s11b_rc=$?
-set -e
+set +e
 _unstub
 
 assert_file_exists "[SPEC-11] no-review-signal: pr-result.json written" "$_s11b_pr"
@@ -367,7 +367,7 @@ _stub_git_main
 set +e
 _pr_open_run_inner "$_s12a_art/review.json" "$_s12a_dir/pipeline-state.json" "$_s12a_pr" "1849"
 _s12a_rc=$?
-set -e
+set +e
 _unstub
 
 assert_file_exists "[SPEC-12] branch-is-main: pr-result.json written" "$_s12a_pr"
@@ -397,7 +397,7 @@ _stub_git_push_fail
 set +e
 _pr_open_run_inner "$_s12b_art/review.json" "$_s12b_dir/pipeline-state.json" "$_s12b_pr" "1849"
 _s12b_rc=$?
-set -e
+set +e
 _unstub
 
 assert_file_exists "[SPEC-12] push-failure: pr-result.json written" "$_s12b_pr"
@@ -427,7 +427,7 @@ _stub_git_gh_create_fail
 set +e
 _pr_open_run_inner "$_s12c_art/review.json" "$_s12c_dir/pipeline-state.json" "$_s12c_pr" "1849"
 _s12c_rc=$?
-set -e
+set +e
 _unstub
 
 assert_file_exists "[SPEC-12] gh-failure: pr-result.json written" "$_s12c_pr"

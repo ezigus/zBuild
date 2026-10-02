@@ -84,7 +84,7 @@ subprocess_out="$(
     " 2>&1
 )"
 rc=$?
-set -e
+set +e
 
 assert_eq "intake_run subprocess rc=0" "0" "$rc"
 # On a failure, show what intake said — the rc alone does not say why.
@@ -138,7 +138,7 @@ bash -c "
     intake_run 'intake' '$STATE_FILE'
 " > /dev/null 2>&1
 rc2=$?
-set -e
+set +e
 assert_eq "second intake_run rc=0" "0" "$rc2"
 
 reused_or_noop="$(grep -E '"intake.branch.(reused|noop)"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"

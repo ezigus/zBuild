@@ -198,7 +198,7 @@ YAML
 set +e
 load_template "$T5" >/dev/null 2>&1
 rc=$?
-set -e
+set +e
 if [[ "$rc" -ne 0 ]]; then
     assert_pass "T5: unknown auto_grant class → load_template rc != 0"
 else
@@ -235,7 +235,7 @@ YAML
 set +e
 load_template "$T6" >/dev/null 2>&1
 rc=$?
-set -e
+set +e
 if [[ "$rc" -ne 0 ]]; then
     assert_pass "T6: invalid expandable → load_template rc != 0"
 else

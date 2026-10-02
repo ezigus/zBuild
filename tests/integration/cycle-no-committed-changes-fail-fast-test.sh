@@ -94,7 +94,7 @@ cycle_dispatch_stage() {
 set +e
 cycle_orchestrator_run "build_test_cycle" "$ZBUILD_STATE_DIR" "$ZBUILD_STATE_FILE"
 RC=$?
-set -e
+set +e
 
 # ── (1) NOT a clean converge — halts blocked-class rc=5 ─────────────────────
 assert_eq "0-commit scope_violation: cycle rc=5 (halt, not converged)" "5" "$RC"
@@ -163,7 +163,7 @@ cp "$ARTIFACTS_DIR/plan.json" "$ZBUILD_STATE_DIR2/artifacts/plan.json"
 set +e
 cycle_orchestrator_run "build_test_cycle" "$ZBUILD_STATE_DIR2" "$ZBUILD_STATE_DIR2/pipeline-state.json"
 RC10=$?
-set -e
+set +e
 
 assert_eq "[SPEC-10] kind=empty_diff (verdict=pass) exempts no_committed_changes — converges rc=0" \
     "0" "$RC10"

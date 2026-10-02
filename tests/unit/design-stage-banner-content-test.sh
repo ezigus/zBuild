@@ -105,7 +105,7 @@ MOCK_LLM_STDOUT_SUMMARY="Design document written to $OUTPUT_MD. It covers Decisi
 set +e
 _design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1
 rc=$?
-set -e
+set +e
 assert_eq "T1: happy path rc=0" "0" "$rc"
 banner=$(cat "$_CAPTURED_BANNER_OUTPUT" 2>/dev/null)
 if grep -q '# Design Doc T1' "$_CAPTURED_BANNER_OUTPUT" 2>/dev/null; then
@@ -134,7 +134,7 @@ MOCK_LLM_STDOUT_SUMMARY="Design document written. LOOP_COMPLETE"
 set +e
 _design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1
 rc=$?
-set -e
+set +e
 assert_eq "T2: recovery path rc=0" "0" "$rc"
 if grep -q '# Design Doc T2 (recovered)' "$_CAPTURED_BANNER_OUTPUT" 2>/dev/null; then
     assert_pass "T2: banner shows recovered design.md content"
@@ -151,7 +151,7 @@ MOCK_LLM_STDOUT_SUMMARY="I failed to include the scope block — sorry."
 set +e
 _design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1
 rc=$?
-set -e
+set +e
 assert_eq "T3: missing scope block returns rc=1" "1" "$rc"
 # On failure, the banner SHOULD show the LLM's stdout summary (the
 # diagnostic) — NOT the file content. The override skip in the failure
@@ -189,7 +189,7 @@ MOCK_LLM_STDOUT_SUMMARY="ignore me"
 set +e
 _design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1
 rc=$?
-set -e
+set +e
 assert_eq "T4: large file rc=0" "0" "$rc"
 banner_size=$(wc -c < "$_CAPTURED_BANNER_OUTPUT" | tr -d ' ')
 file_size=$(wc -c < "$_T4_TMP" | tr -d ' ')

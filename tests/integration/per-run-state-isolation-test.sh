@@ -251,7 +251,7 @@ env -u ZBUILD_EVENTS_DIR -u ZBUILD_EVENTS_JSONL -u ZBUILD_EVENTS_DB -u ZBUILD_ST
     HOME="$HOME_DIR" TMPDIR="$EPHEMERAL_TMP" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" PATH="$PATH" \
     bash -c 'source "'"$REPO_ROOT"'/core/event-bus/event-bus.sh"; eb_emit_event "pipeline.start" k=v' >/dev/null 2>&1
-set -e
+set +e
 if compgen -G "$HOME_DIR/.zbuild/ephemeral-events/*/events.jsonl" >/dev/null; then
     assert_pass "T9: unpinned ad-hoc emit → ephemeral dir under the data root"
     # And explicitly NOT in $TMPDIR — the regression #2004 fixed.

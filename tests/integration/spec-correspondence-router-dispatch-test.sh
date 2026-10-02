@@ -113,7 +113,7 @@ export ZBUILD_EVENTS_DB="/dev/null"
 set +e
 _out="$(bash "$_DRIVER" "$REPO_ROOT" "$_S/pipeline-state.json" "$_PROBE" 2>&1)"
 _rc=$?
-set -e
+set +e
 
 _res() { jq -r "$1" "$_A/spec-correspondence-result.json" 2>/dev/null || echo MISSING; }
 

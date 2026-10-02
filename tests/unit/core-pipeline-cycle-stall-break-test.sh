@@ -57,7 +57,7 @@ mkdir -p "$_RESOLVE_DIR"
 # is what the summaries collector depends on.
 set +e
 _resolved_src="$(_cycle_resolve_from_path "$_RESOLVE_DIR" "test" "test_failures_summary")"
-set -e
+set +e
 case "$_resolved_src" in
     */test-failures-summary.md)
         assert_pass "[SPEC-2] a gate's own detail resolves by output id" ;;

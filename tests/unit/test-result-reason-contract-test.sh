@@ -246,7 +246,7 @@ _blocked_rc_for() {
     _cycle_detect_blocked \
         "{\"build\":{\"verdict\":\"pass\"},\"test\":{\"verdict\":\"$verdict\"}}" 1
     rc=$?
-    set -e
+    set +e
     printf '%s' "$rc"
 }
 

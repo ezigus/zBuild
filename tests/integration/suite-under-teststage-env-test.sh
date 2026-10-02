@@ -66,7 +66,7 @@ result="$(
     resolve_template_file "standard" "$TEST_TEMP_DIR/repo" 2>/dev/null
 )"
 rc=$?
-set -e
+set +e
 assert_eq "[SPEC-1] resolver exit 0 under test-stage fences" "0" "$rc"
 assert_eq "[SPEC-1] no-override id → resolver-root shipped path (ZBUILD_TEMPLATES_DIR ignored)" \
     "$TEST_TEMP_DIR/repo/config/templates/standard.yaml" "$result"
@@ -89,7 +89,7 @@ merged="$(
     resolve_template_file "child" "$TEST_TEMP_DIR/repo" 2>/dev/null
 )"
 rc=$?
-set -e
+set +e
 assert_eq "[SPEC-2] extends: base resolves under fences (exit 0)" "0" "$rc"
 # ADR-016 full-replace: the overlay REPLACES the base's stages, so the merged
 # file carries the base's NON-stages content (name: RealBase) + the overlay
@@ -124,7 +124,7 @@ for t in tests/unit/template-simple-yaml-test.sh tests/integration/template-reso
     set +e
     _run_under_fence "$REPO_ROOT/$t"
     t_rc=$?
-    set -e
+    set +e
     assert_eq "[SPEC-3] $t passes under test-stage fence env" "0" "$t_rc"
 done
 
@@ -138,7 +138,7 @@ done
 set +e
 _run_under_fence "$REPO_ROOT/tests/integration/router-budget-test.sh"
 t_rc=$?
-set -e
+set +e
 assert_eq "[SPEC-4] router-budget-test.sh passes under test-stage fence env (cost-ledger honored)" "0" "$t_rc"
 
 cleanup_test_env

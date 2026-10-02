@@ -348,6 +348,14 @@ setup_test_env() {
     mkdir -p "$TEST_TEMP_DIR/home/.zbuild/state"
     # #2252 F: every written location, not only STATE_DIR / ARTIFACT_DIR.
     unset "${_ZB_TEST_ISOLATED_VARS[@]}"
+    # The event bus resolves its paths when it is SOURCED — usually before this
+    # call, with the real $HOME — so clearing them would leave it nowhere to
+    # write, and leaving them would write under the real ~/.zbuild. Point them
+    # into this test's own folder; a test that wants its own sets them after.
+    export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"
+    export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
+    export ZBUILD_EVENTS_DB="$ZBUILD_EVENTS_DIR/events.db"
+    mkdir -p "$ZBUILD_EVENTS_DIR"
     export NO_GITHUB=true
     export GIT_TERMINAL_PROMPT=0
 

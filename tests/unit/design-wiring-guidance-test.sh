@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# tests/unit/design-wiring-guidance-test.sh — design is told that a registry or
+# data file is not WIRING (#2252 G).
+#
+# Why: WIRING names the file that routes the live path to the new code; the gate
+# reverts it and expects a test to flip. Listing a name in a registry (an event
+# list, a schema) changes no behaviour, so reverting it flips nothing and the
+# gate rightly calls it inert — #2032 run 36969130031's design declared
+# config/event-schema.json as WIRING in all three of its designs. The prompt's
+# own example listed that very file.
+#
+# G1 [change] the prompt's WIRING example does not name config/event-schema.json
+# G2 [change] the prompt says a registry or data file is not WIRING
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# shellcheck source=../../scripts/lib/helpers.sh
+source "$REPO_ROOT/scripts/lib/helpers.sh"
+# shellcheck source=../../scripts/lib/test-helpers.sh
+source "$REPO_ROOT/scripts/lib/test-helpers.sh"
+print_test_header "design: a registry or data file is not WIRING (#2252 G)"
+setup_test_env "design-wiring-guidance"
+
+# Source the design plugin so real route.sh / redaction get loaded, then override.
+# shellcheck source=../../plugins/agent/design/plugin.sh
+source "$REPO_ROOT/plugins/agent/design/plugin.sh"
+
+# Override budget resolvers with known sentinel values so the assertions can be
+# precise: any appearance of "777" for timeout or "99" for max_turns proves the
+# live resolver output reached the prompt.
+_route_resolve_max_turns() { printf '99'; }
+_route_resolve_timeout()   { printf '777'; }
+
+_MOCK_DESIGN_WRITE_PATH=""
+route_to_model_loop() {
+    local _bt='```'
+    if [[ -n "${_MOCK_DESIGN_WRITE_PATH:-}" ]]; then
+        mkdir -p "$(dirname "$_MOCK_DESIGN_WRITE_PATH")"
+        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[guard]: works\nWIRING: none\nTESTFILES:\n%s\n' \
+            "$_bt" "$_bt" "$_bt" "$_bt" > "$_MOCK_DESIGN_WRITE_PATH"
+    fi
+    _ROUTE_LOOP_ITERATIONS=1
+    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
+    _ROUTE_LOOP_INPUT_TOKENS=0
+    _ROUTE_LOOP_OUTPUT_TOKENS=0
+    return 0
+}
+
+apply_scope_redaction() { cp "$1" "$2"; return 0; }
+atomic_write() { local dest="$1"; cat - > "$dest"; }
+
+FIX="$TEST_TEMP_DIR/fixture"
+mkdir -p "$FIX"
+git -C "$FIX" init --quiet >/dev/null 2>&1
+git -C "$FIX" config user.email 'test@example.com' >/dev/null 2>&1
+git -C "$FIX" config user.name  'test' >/dev/null 2>&1
+ARTIFACT_DIR="$FIX/state/artifacts"; mkdir -p "$ARTIFACT_DIR"
+SCOPE_MANIFEST="$FIX/state/scope-manifest.md"; printf 'scope: all\n' > "$SCOPE_MANIFEST"
+PLAN_JSON="$ARTIFACT_DIR/plan.json"
+cat > "$PLAN_JSON" <<'EOF'
+{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["foo.sh"],"estimated_lines":5}],"estimated_total_lines":5,"notes":""}
+EOF
+OUTPUT_MD="$ARTIFACT_DIR/design.md"
+export ZBUILD_REPO_ROOT="$FIX"
+export ZBUILD_EVENTS_JSONL="$FIX/state/events.jsonl"
+export ZBUILD_EVENTS_DIR="$FIX/state"
+: > "$ZBUILD_EVENTS_JSONL"
+_MOCK_DESIGN_WRITE_PATH="$OUTPUT_MD"
+
+_design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1 || true
+
+PROMPT="$ARTIFACT_DIR/design-prompt.txt"
+_wiring="$(awk '/^WIRING field/{f=1} f&&/^Existing checks this change makes wrong/{exit} f' "$PROMPT" 2>/dev/null)"
+assert_contains "fixture: the prompt carries the WIRING guidance" "$_wiring" "WIRING field"
+if grep -q 'config/event-schema.json' <<< "$_wiring"; then
+    assert_fail "[G1] the WIRING example does not name a registry file" "example lists config/event-schema.json"
+else
+    assert_pass "[G1] the WIRING example does not name a registry file"
+fi
+assert_contains "[G2] a registry or data file is not WIRING" "$_wiring" "registry or data file is not WIRING"
+
+cleanup_test_env
+print_test_results
+exit $((FAIL > 0))
