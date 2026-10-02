@@ -158,10 +158,16 @@ _impact_run_inner() {
     local design_md_path="$2"
     local plan_json_path="$3"
     local output_impact_json="$4"
-    local artifact_dir="${5:-$(dirname "$output_impact_json")}"
+    # The working dir comes from the caller or the engine — never derived from
+    # the output path (review on #2240).
+    local artifact_dir="${5:-${ZBUILD_ARTIFACT_DIR:-}}"
 
     if [[ -z "$scope_manifest" || -z "$design_md_path" || -z "$output_impact_json" ]]; then
         error "_impact_run_inner: requires <scope_manifest> <design_md_path> <plan_json_path> <output_impact_json> [artifact_dir]"
+        return 1
+    fi
+    if [[ -z "$artifact_dir" ]]; then
+        error "_impact_run_inner: no working dir — pass <artifact_dir> or set ZBUILD_ARTIFACT_DIR"
         return 1
     fi
 
@@ -607,6 +613,9 @@ $_impact_instructions"
     fi
     if ! atomic_write "$output_impact_json" <<< "$_v2_impact"; then
         error "impact: could not write $output_impact_json"
+        # Every other failure leaves a result; so does this one, if a smaller
+        # write can still land.
+        _impact_write_result "$output_impact_json" error broken result_write_failed '{"missing":[]}' || true
         return 1
     fi
     _IMPACT_RESULT_WRITTEN=1

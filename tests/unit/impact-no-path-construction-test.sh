@@ -24,8 +24,24 @@ _PLUGIN="$REPO_ROOT/plugins/agent/impact/plugin.sh"
 # that must be removed when inputs are read from ZBUILD_STAGE_INPUTS instead of
 # derived from state_file.
 
+# The patterns match the bare and the braced form (`$x/f` and `${x}/f`) — a
+# refactor that braces the variable must not slip past (review on #2240).
+_P_DESIGN='\$\{?artifacts_dir\}?/design\.md'
+_P_SCOPE='\$\{?state_dir\}?/scope-manifest\.md'
+_P_PLAN='\$\{?artifacts_dir\}?/plan\.json'
+_P_ARTDIR='\$\{?state_dir\}?/artifacts'
+# shellcheck disable=SC2016  # literal source text, not expansions
+for _pair in "$_P_DESIGN|\${artifacts_dir}/design.md" "$_P_SCOPE|\${state_dir}/scope-manifest.md" \
+             "$_P_PLAN|\${artifacts_dir}/plan.json" "$_P_ARTDIR|\${state_dir}/artifacts"; do
+    if grep -qE "${_pair%%|*}" <<< "${_pair#*|}"; then
+        assert_pass "[#1838/SPEC-8-self] the guard catches the braced form ${_pair#*|}"
+    else
+        assert_fail "[#1838/SPEC-8-self] the guard catches the braced form ${_pair#*|}" "pattern ${_pair%%|*} is blind to it"
+    fi
+done
+
 # artifacts_dir/design.md — v1 path construction for the design input.
-if grep -qE 'artifacts_dir[/]design\.md|artifacts_dir/design\.md' "$_PLUGIN" 2>/dev/null; then
+if grep -qE "$_P_DESIGN" "$_PLUGIN" 2>/dev/null; then
     assert_fail "[#1838/SPEC-8] no 'artifacts_dir/design.md' literal in plugin.sh" \
         "found hardcoded path construction: artifacts_dir/design.md"
 else
@@ -33,7 +49,7 @@ else
 fi
 
 # state_dir/scope-manifest.md — v1 path construction for the scope-manifest input.
-if grep -qE 'state_dir[/]scope-manifest\.md|state_dir/scope-manifest\.md' "$_PLUGIN" 2>/dev/null; then
+if grep -qE "$_P_SCOPE" "$_PLUGIN" 2>/dev/null; then
     assert_fail "[#1838/SPEC-8] no 'state_dir/scope-manifest.md' literal in plugin.sh" \
         "found hardcoded path construction: state_dir/scope-manifest.md"
 else
@@ -41,7 +57,7 @@ else
 fi
 
 # artifacts_dir/plan.json — v1 path construction for the plan input.
-if grep -qE 'artifacts_dir[/]plan\.json|artifacts_dir/plan\.json' "$_PLUGIN" 2>/dev/null; then
+if grep -qE "$_P_PLAN" "$_PLUGIN" 2>/dev/null; then
     assert_fail "[#1838/SPEC-8] no 'artifacts_dir/plan.json' literal in plugin.sh" \
         "found hardcoded path construction: artifacts_dir/plan.json"
 else
@@ -50,7 +66,7 @@ fi
 
 # state_dir/artifacts — broad guard: the plugin must not derive an artifact dir
 # from its state_file argument at all.  The engine sets ZBUILD_ARTIFACT_DIR.
-if grep -qE 'state_dir/artifacts|state_dir\}/artifacts' "$_PLUGIN" 2>/dev/null; then
+if grep -qE "$_P_ARTDIR" "$_PLUGIN" 2>/dev/null; then
     assert_fail "[#1838/SPEC-8] no 'state_dir/artifacts' path construction in plugin.sh" \
         "found hardcoded artifact dir construction from state_dir"
 else

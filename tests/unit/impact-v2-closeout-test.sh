@@ -20,6 +20,11 @@
 #             byte-for-byte against a golden (the issue's "before/after golden diff")
 # C9 [change] plugin.sh derives no path from the state file (SPEC-8's grep missed
 #             `dirname "${state_file…}"`)
+# C10 [change] a passing run whose final write fails still tries to leave an
+#             error result (review on #2240): never return with no result when
+#             a write can still land
+# C11 [change] _impact_run_inner takes its working dir from the caller or the
+#             engine (ZBUILD_ARTIFACT_DIR) — never derived from the output path
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -134,6 +139,29 @@ assert_eq "[C8] ...and carries result_contract 2" "2" "$(_res "$D8" .result_cont
 print_test_section "C9: no path from the state file"
 _hits="$(grep -nE 'dirname "\$\{?state_file|\$\{?state_dir\}?/' "$PLUGIN_DIR/plugin.sh" | grep -vE '^[0-9]+:[[:space:]]*#' || true)"
 assert_eq "[C9] plugin.sh derives no path from the state file" "" "$_hits"
+
+print_test_section "C10: the final write fails"
+D10="$(_fixture c10)"
+_e10="$(_impact "$D10" 'atomic_write() { local _in; _in="$(cat)"; [[ "$_in" == *"\"disposition\":\"complete\""* ]] && return 1; printf "%s\n" "$_in" > "$1"; }')"
+assert_contains "[C10] the failed write is reported" "$_e10" "could not write"
+assert_eq "[C10] ...and an error result is left in its place" "error/broken/result_write_failed" \
+    "$(_res "$D10" .verdict)/$(_res "$D10" .disposition)/$(_res "$D10" .reason)"
+
+print_test_section "C11: no working dir derived from the output path"
+D11="$(_fixture c11)"
+_e11="$(
+    unset ZBUILD_ARTIFACT_DIR
+    export ZBUILD_EVENTS_JSONL="$D11/events.jsonl" ZBUILD_REPO_ROOT="$D11"
+    source "$PLUGIN_DIR/plugin.sh" >/dev/null 2>&1
+    apply_scope_redaction() { cp "$1" "$2"; }
+    route_to_model() { printf '%s\n' "$CANNED"; return 0; }
+    _impact_run_inner "$D11/state/scope-manifest.md" "$D11/state/design.md" "$D11/state/plan.json" \
+        "$D11/elsewhere/impact.json" 2>&1; echo "RC=$?"
+)"
+assert_contains "[C11] no working dir and no ZBUILD_ARTIFACT_DIR → refused" "$_e11" "RC=1"
+assert_contains "[C11] ...naming what is missing" "$_e11" "ZBUILD_ARTIFACT_DIR"
+assert_eq "[C11] ...and nothing is created beside the output path" "absent" \
+    "$([[ -e "$D11/elsewhere" ]] && echo present || echo absent)"
 
 cleanup_test_env
 print_test_results
