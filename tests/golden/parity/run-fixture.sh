@@ -126,7 +126,7 @@ case "${1:-}" in
         # build's repo; intercept apply/push/checkout as before.
         _subcmd="${3:-}"
         case "$_subcmd" in
-            diff|add|status|init|config|commit|log)
+            diff|add|status|init|config|commit|log|rev-parse)
                 [[ -n "$_real_git" ]] && exec "$_real_git" "$@"
                 exit 0
                 ;;

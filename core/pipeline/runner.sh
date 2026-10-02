@@ -196,6 +196,11 @@ _runner_attempt_made_progress() {
         (( k > n )) && { n="$k"; latest="$d/attempt.json"; }
     done
     [[ -n "$latest" ]] || return 0
+    # #2252: the archive's own judgement of the WORK, when it made one.
+    if jq -e 'has("progress")' "$latest" >/dev/null 2>&1; then
+        jq -e '.progress == true' "$latest" >/dev/null 2>&1
+        return
+    fi
     jq -e 'has("outputs") | not' "$latest" >/dev/null 2>&1 && return 0
     jq -e '[.outputs[]] | any(. == "changed")' "$latest" >/dev/null 2>&1
 }
