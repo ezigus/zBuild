@@ -1,9 +1,0 @@
-{
-  "result_contract": 2,
-  "verdict": "covered",
-  "disposition": "complete",
-  "reason": "Every acceptance checkbox maps to at least one SPEC that demands the full required behaviour.",
-  "data": {
-    "uncovered": []
-  }
-}
