@@ -84,7 +84,7 @@ DIAG="$(jq -c 'select(.type=="router.loop.iter.error.diagnostic")' "$ZBUILD_EVEN
 RAW="$(jq -r '.data.raw_json_path // empty' <<< "$DIAG" 2>/dev/null)"
 assert_contains "fixture: the call was killed at its wall clock" "$DIAG" '"rc":"124"'
 assert_eq "[S1] the raw output holds the three steps made before the kill" "3" \
-    "$(grep -c '"type":"assistant"' "$RAW" 2>/dev/null || echo 0)"
+    "$(grep -c '"type":"assistant"' "$RAW" 2>/dev/null || true)"
 assert_eq "[S2] the diagnostic says 3 turns ran" "3" "$(jq -r '.data.num_turns // empty' <<< "$DIAG" 2>/dev/null)"
 assert_eq "[S2] ...and names the last tool" "Bash" "$(jq -r '.data.last_tool // empty' <<< "$DIAG" 2>/dev/null)"
 
@@ -106,7 +106,7 @@ _stub hang; : > "$ZBUILD_EVENTS_JSONL"
     route_to_model T2 "judge this"
 ) >/dev/null 2>&1
 assert_eq "[S4] the single-call raw output holds the three steps" "3" \
-    "$(grep -c '"type":"assistant"' "$ZBUILD_ARTIFACT_DIR/stage-io/build-sync-error.raw-claude-output.json" 2>/dev/null || echo 0)"
+    "$(grep -c '"type":"assistant"' "$ZBUILD_ARTIFACT_DIR/stage-io/build-sync-error.raw-claude-output.json" 2>/dev/null || true)"
 
 cleanup_test_env
 print_test_results
