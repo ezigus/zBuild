@@ -1,0 +1,248 @@
+
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.8pNMMT/tests/unit/lint-verdict-words-test.sh
+
+  every literal verdict is one the manifest declares (#2242)
+
+  ✓ [W1] an undeclared verdict in a JSON literal is refused
+  ✓ [W1] ...in a jq object
+  ✓ [W1] ...in an assignment
+  ✓ [W1] ...as a result writer's second argument
+  ✓ [W2] declared literals pass
+  ✓ [W3] an annotated literal passes
+  ✓ [W4] a manifest with no declared list is skipped
+  ✓ [W6] a single-quoted assignment is refused
+  ✓ [W6] an unquoted assignment is refused
+  ✓ [W6] a single-quoted writer argument is refused
+  ✓ [W6] ...declared ones pass
+  ✗ [W5] the real tree passes
+    expected: 0, got: 1
+lint-verdict-words: agent/pr-delivery/plugin.sh:116 writes verdict 'block', which agent/pr-delivery/manifest.yaml does not declare in valid_verdicts
+lint-verdict-words: 1 literal verdict(s) not declared by their plugin's manifest (of 200 checked) — declare the word in config.valid_verdicts, use a declared one, or mark a non-own verdict '# verdict-ok: <why>'
+
+
+  1 of 12 tests failed
+
+  ✗ [W5] the real tree passes
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.8pNMMT/tests/unit/lint-disposition-words-test.sh
+
+  lint-disposition-words — stages write only words the engine knows (#2187)
+
+
+  SPEC-1: an off-set word in a JSON literal
+  ✓ [SPEC-1] lint exits 1
+  ✓ [SPEC-1] it names the word
+  ✓ [SPEC-1] it names file:line
+
+  SPEC-2: an off-set word passed to a result-writer
+  ✓ [SPEC-2] lint exits 1
+  ✓ [SPEC-2] it names the word
+
+  SPEC-2b: an assignment at the start of a line is read, a longer name is not
+  ✓ [SPEC-2b] lint exits 1 on the line-start assignment
+  ✓ [SPEC-2b] it names that word
+  ✓ [SPEC-2b] a variable that merely contains the name is not read
+
+  SPEC-3: set words and computed values pass
+  ✓ [SPEC-3] lint exits 0
+
+  SPEC-4: the shipped tree
+  ✗ [SPEC-4] the shipped plugins/ tree passes
+    expected: 0, got: 1
+  ✓ [SPEC-4] …having found literal words to check (non-vacuous)
+
+  SPEC-5: wiring
+  ✓ [SPEC-5] npm run lint runs it
+  ✓ [SPEC-5] the CI Lint job runs it
+
+
+  1 of 13 tests failed
+
+  ✗ [SPEC-4] the shipped plugins/ tree passes
+
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.8pNMMT/tests/unit/stage-signal-test.sh
+
+  stop-reason words chosen once: the signal helper and its lints (#2225 §2)
+
+
+  G1/G2: the helper
+  ✓ [G1] a TERM runs the callback with interrupted / signal_interrupt
+  ✓ [G2] the caller's own TERM handler is back afterwards
+
+  G6: no nesting
+  ✓ [G6] a nested begin is refused
+  ✓ [G6] ...and the caller's handler is still restored
+
+  G3: lint-stage-signals
+  ✓ [G3] a raw TERM/INT trap in a plugin is refused
+  ✓ [G3] the helper passes
+  ✓ [G3] an annotated trap passes
+
+  G4: lint-disposition-words and unavailable
+  ✓ [G4] an unexplained unavailable is refused
+  ✓ [G4] an annotated unavailable passes
+
+  G5: the real tree
+  ✗ [G5] every plugin's signal handling uses the helper
+    expected: 0, got: 1
+  ✗ [G5] every literal unavailable names its service
+    expected: 0, got: 1
+
+
+  2 of 11 tests failed
+
+  ✗ [G5] every plugin's signal handling uses the helper
+  ✗ [G5] every literal unavailable names its service
+
+unit: 488/491 passed (4 skipped)
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.8pNMMT/tests/integration/merge-policy-auto-unless-flagged-test.sh
+
+  merge_policy auto_unless_flagged: escalation on review-report (#1051)
+
+
+  SPEC-1: auto_unless_flagged + gate pass + merge_readiness=ready → merged
+  ✓ [SPEC-1] pr_stage_run exits 0 on auto-merge path (ready)
+  ✓ [SPEC-1] merge-result.json written when gate+report both pass
+  ✓ [SPEC-1] merge-result.json verdict==pass (gate pass + ready)
+  ✓ [SPEC-1] gh pr merge called when gate pass + merge_readiness=ready
+
+  SPEC-2: auto_unless_flagged + gate pass + needs_attention → PR open
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.8pNMMT/tests/integration/merge-policy-auto-test.sh
+
+  merge_policy auto dispatch: auto-merge on clean gates (#1050)
+
+
+  SPEC-1: merge_policy==auto + gate verdict==pass → merged
+  ✓ pr_stage_run exits 0 on merge path
+  ✓ merge-result.json written on merge path
+  ✓ merge-result.json verdict==pass on merge path
+  ✓ gh pr merge --squash called on gate-pass path
+  ✓ pr-result.json written on merge path (manifest output)
+  ✓ pr-result.json verdict==pass on merge path
+  ✓ [#1844/SPEC-15] merge success: pr-result.json result_contract is 2
+  ✓ [#1844/SPEC-15] merge success: pr-result.json verdict is pass
+
+  SPEC-2: merge_policy==auto + gate verdict==fail → PR fallback
+  ✓ pr_stage_run exits 0 on PR fallback (gate fail)
+  ✓ pr-url.txt written on gate-fail fallback
+  ✓ merge-result.json written on fallback
+  ✓ [SPEC-19] merge-result.json verdict==pass on gate-fail fallback
+  ✓ [SPEC-19] merge-result.json data.mode==pr_fallback on gate fail
+  ✓ gh pr merge NOT called on gate-fail fallback
+
+  SPEC-3: merge_policy==auto + gate artifact absent → PR fallback
+  ✓ pr_stage_run exits 0 on PR fallback (gate absent)
+  ✓ pr-url.txt written on gate-absent fallback
+  ✓ merge-result.json written on gate-absent fallback
+  ✓ [SPEC-19] merge-result.json verdict==pass on gate-absent fallback
+  ✓ [SPEC-19] merge-result.json data.mode==pr_fallback on gate absent
+  ✓ gh pr merge NOT called when gate artifact absent
+
+  SPEC-8: merge_policy==auto + gate verdict==specification → PR fallback
+  ✓ pr_stage_run exits 0 on specification PR fallback
+  ✓ pr-url.txt written on specification fallback
+  ✓ [SPEC-19] merge-result.json verdict==pass on specification fallback
+  ✓ [SPEC-19] merge-result.json data.mode==pr_fallback on specification
+  ✓ gh pr merge NOT called under specification
+
+  SPEC-4: merge_policy==auto_unless_flagged + review-report absent → opens draft PR (fail-closed)
+integration: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.8pNMMT/tests/integration/pr-pipeline-test.sh
+
+  pr-delivery agent plugin: real plugin integration (#756)
+
+  ✓ [SPEC-1] simple.yaml resolves a non-empty leaf roster
+  ✓ [SPEC-1] simple.yaml last leaf stage id is pr
+  ✓ [SPEC-2] plugins/agent/pr-delivery/plugin.sh exists
+  ✓ [SPEC-2] plugins/agent/pr-delivery/manifest.yaml exists
+  ✓ [SPEC-2] manifest id is pr-delivery (no collision with tool/pr-open id:pr)
+
+  SPEC-3: dry-run produces artifacts via the real plugin
+  ✓ [SPEC-3] dry-run pr_stage_run exits 0
+  ✓ [SPEC-3] pr-url.txt written
+  ✓ [SPEC-3] pr-result.json written
+  ✓ [#1844/SPEC-5] dry-run: pr-result.json result_contract is 2
+  ✓ [#1844/SPEC-5] dry-run: pr-result.json verdict is pass
+  ✓ [SPEC-9] dry-run pr-result.json records .data.draft=false (v2 envelope; non-draft default)
+  ✓ [#1844/SPEC-19] dry-run integration: .data.branch present
+  ✓ [#1844/SPEC-19] dry-run integration: .data.draft present
+
+  SPEC-4: verdict=block guard refuses to open a PR
+  ✓ [SPEC-4] verdict=block → pr_stage_run returns non-zero
+  ✓ [SPEC-4] verdict=block → no pr-url.txt written
+  ✓ [#1844/SPEC-4] block guard integration: result_contract is 2
+  ✓ [#1844/SPEC-4] block guard integration: verdict is error
+
+  SPEC-5: delegation to pr-open threads the state file
+  ✓ [SPEC-5] non-dry-run pr_stage_run exits 0 (state file threaded to pr-open)
+  ✓ [SPEC-5] pr-url.txt written by pr-open delegation
+  ✓ [SPEC-5] pr-url.txt holds the gh-created URL
+  ✓ [#1844/SPEC-14] pr-open delegation success: result_contract is 2
+  ✓ [#1844/SPEC-14] pr-open delegation success: verdict is pass
+
+  SPEC-10 (#2250): pr-open rc=0 verdict=blocked → pr-delivery corrects result and summary
+  ✓ [#1844/SPEC-22] pr-open blocked (no review): pr-delivery returns rc=1
+  ✓ [#1844/SPEC-22] pr-open blocked: result_contract is 2
+  ✓ [#1844/SPEC-22] pr-open blocked: verdict is error
+  ✓ [#1844/SPEC-22] pr-open blocked: disposition is complete
+  ✓ [#1844/SPEC-22] pr-open blocked: reason is review_signal_missing
+  ✓ [#1844/SPEC-23] blocked summary: does NOT say 'pass — delivered … delegating to pr-open'
+  ✓ [#1844/SPEC-23] blocked summary: names review_signal_missing
+
+  SPEC-6: pr-open surfaces push stderr in pr-result.json
+integration: 260/263 passed
+e2e: 9/9 passed
+golden: 1/1 passed
+
+─── Mutation test results ──────────────────────────────
+  PASS  atomic-state-mutations.md  (caught: rc=3)
+  PASS  cache.md  (caught: rc=1)
+  PASS  cleanup-worktree-age-guard.md  (caught: rc=2)
+  PASS  cleanup-worktree-dirty-guard.md  (caught: rc=2)
+  PASS  detect-platforms.md  (caught: rc=11)
+  PASS  event-bus-ansi-strip.md  (caught: rc=4)
+  PASS  event-bus.md  (caught: rc=3)
+  INFRA memory.md  (patch failed after retries)
+  PASS  orch.md  (caught: rc=1)
+  PASS  output-destinations.md  (caught: rc=1)
+  PASS  pipeline-contracts.md  (caught: rc=3)
+  PASS  pipeline-dispatch-arg-mutations.md  (caught: rc=4)
+  PASS  pipeline-dispatch-failopen-mutations.md  (caught: rc=7)
+  PASS  pipeline-dispatch-mutations.md  (caught: rc=9)
+  PASS  pipeline-dispatch-prefix-mutations.md  (caught: rc=1)
+  PASS  pipeline-dispatch-selfsource-mutations.md  (caught: rc=10)
+  PASS  pipeline-resolver.md  (caught: rc=1)
+  PASS  rc-semantics.md  (caught: rc=1)
+  PASS  registry-role-resolution.md  (caught: rc=1)
+  PASS  registry-validate-manifest-mutations.md  (caught: rc=1)
+  PASS  resume-recommendation-mutations.md  (caught: rc=1)
+  PASS  router-route-mutations.md  (caught: rc=30)
+  PASS  run-status-comment.md  (caught: rc=1)
+  PASS  runner-fail-closed-mutations.md  (caught: rc=3)
+  PASS  scope-redaction-mutations.md  (caught: rc=3)
+mutation-infra: 1 non-fatal (worktree/patch contention; excluded from score — #1184)
+mutation: 24/24 passed
+lint: FAIL (npm run lint)
+
+> zbuild@0.1.0 lint
+> bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 | xargs -0 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-test-identity.sh && bash scripts/lib/lint-llm-envelope.sh && bash scripts/lib/lint-verdict-classify.sh && bash scripts/lib/lint-disposition-classify.sh && bash scripts/lib/lint-silenced-redirect.sh && bash scripts/lib/lint-verdict-words.sh && bash scripts/lib/lint-disposition-words.sh && bash scripts/lib/lint-stage-signals.sh && bash scripts/lib/lint-stage-checkpoint.sh
+
+lint-model-names: OK — no hardcoded model names in core/ plugins/ scripts/
+lint-doc-style: OK — 13 in-scope page(s) have a plain-language newcomer opening (README + docs/wiki/*.md, excluding _Sidebar.md and generated subdirs).
+lint-vision: OK — docs/VISION.md conforms to ADR-049.
+validate-mechanics-yaml: OK — 18 mechanics validated
+lint-doc-freshness: OK — 56 plugin(s), 18 mechanic(s) — all checks passed.
+lint-action-versions: OK — no action version drift detected.
+lint-grep-c: OK — no grep -c || echo occurrences in scripts/ core/ plugins/ tests/
+lint-test-identity: OK — no real issue number used as test identity
+lint-llm-envelope: OK — 60 plugin source(s) checked, no markdown-document envelope fields
+lint-verdict-classify: 34 manifest(s) checked, all declared verdicts classify
+lint-disposition-classify: 1 manifest(s) checked, all declared failure classes classify
+lint-silenced-redirect: clean
+lint-verdict-words: agent/pr-delivery/plugin.sh:116 writes verdict 'block', which agent/pr-delivery/manifest.yaml does not declare in valid_verdicts
+lint-verdict-words: 1 literal verdict(s) not declared by their plugin's manifest (of 200 checked) — declare the word in config.valid_verdicts, use a declared one, or mark a non-own verdict '# verdict-ok: <why>'
+lint: 0/1 passed
+
+total: 782/789 passed (4 skipped)
