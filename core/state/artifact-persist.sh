@@ -188,16 +188,14 @@ _artifact_persist_git_dir() {
     esac
 }
 
-
-# ─── _artifact_persist_snapshot <state_dir> <issue> [repo_root] ─────────────
-# Commit the current artifact area onto the state branch WITHOUT touching the
-# working tree or the real index (uses a throwaway GIT_INDEX_FILE + plumbing).
-# Snapshots state/artifacts/** plus a few top-level state docs if present.
-# Returns 0 on success (or clean no-op when there is nothing to snapshot), 1 on
 # ─── _artifact_persist_stage_batch <git_dir> <index> (#2249) ─────────────────
-# Stage the caller's _abs[] (paths) / _rel[] (names in the tree) into <index>
-# in two git calls. rc 1 — nothing trusted — when either call fails, a path
-# holds a newline (stdin is line-delimited), or the blob count does not match.
+# Stage _abs[] (paths) / _rel[] (names in the tree) into <index> in two git
+# calls. The two arrays are NOT parameters: they are the caller's locals, read
+# through bash dynamic scope, so only _artifact_persist_snapshot (which fills
+# them) may call this. A tab inside a path is safe: --index-info takes the path
+# as everything after the first tab (artifact-persist-batch-test B4).
+# rc 1 — nothing trusted — when either call fails, a path holds a newline
+# (stdin is line-delimited), or the blob count does not match.
 _artifact_persist_stage_batch() {
     local gd="$1" idx="$2" paths="" blobs info="" i b
     (( ${#_abs[@]} > 0 )) || return 1
@@ -217,6 +215,11 @@ _artifact_persist_stage_batch() {
     GIT_INDEX_FILE="$idx" GIT_DIR="$gd" git update-index --index-info 2>/dev/null <<< "${info%$'\n'}"
 }
 
+# ─── _artifact_persist_snapshot <state_dir> <issue> [repo_root] ─────────────
+# Commit the current artifact area onto the state branch WITHOUT touching the
+# working tree or the real index (uses a throwaway GIT_INDEX_FILE + plumbing).
+# Snapshots state/artifacts/** plus a few top-level state docs if present.
+# Returns 0 on success (or clean no-op when there is nothing to snapshot), 1 on
 # any git failure. Never disturbs the caller's checkout.
 _artifact_persist_snapshot() {
     _artifact_persist_reset_status

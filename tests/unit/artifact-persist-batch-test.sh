@@ -13,6 +13,8 @@
 # B2 [guard]  every file is in the snapshot, at artifacts/<rel>
 # B3 [guard]  an unreadable file costs only itself (#1878): the rest are saved
 #             and the skip is counted
+# B4 [guard]  a tab inside a file name is staged under its whole name (review
+#             on #2257: --index-info splits only at the first tab)
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -65,6 +67,12 @@ TREE="$("$REAL_GIT" -C "$fx" ls-tree -r --name-only "$(_artifact_persist_branch 
 assert_eq "[B3] the snapshot still succeeds" "0" "$rc"
 assert_contains "[B3] the readable files are saved" "$TREE" "artifacts/a-11.json"
 assert_eq "[B3] ...and the skip is counted" "1" "${_ARTIFACT_PERSIST_LAST_SKIPPED:-}"
+
+print_test_section "B4: a tab in a name"
+printf 'tabbed\n' > "$state/artifacts/a"$'\t'"b.json"
+_artifact_persist_snapshot "$state" "$ISSUE" "$fx" >/dev/null 2>&1
+assert_eq "[B4] the tab-named file is saved under its whole name" "tabbed" \
+    "$("$REAL_GIT" -C "$fx" show "$(_artifact_persist_branch "$ISSUE"):artifacts/a"$'\t'"b.json" 2>/dev/null)"
 
 cleanup_test_env
 print_test_results
