@@ -5,11 +5,11 @@
 
 
   [38;2;0;212;255m[#2032/SPEC-2] guard: all complete dispositions — cycle converges normally[0m
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:49:53 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:40:40 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 1.1s ══════════════════ 06:49:54 UTC ══
+══ design-verify [cycle] seq=1 output OK 1.1s ══════════════════ 07:40:41 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
@@ -19,20 +19,20 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] new suppression block did not fire (all members complete)
 
   [38;2;0;212;255m[#2032/SPEC-1] unfinished member + exit_when match → suppression, not convergence[0m
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:49:54 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:40:41 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 06:49:55 UTC ══
+══ design-verify [cycle] seq=1 output OK 1.0s ══════════════════ 07:40:42 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
 
-══ design-verify [cycle] seq=2 input ═══════════════════════════ 06:49:57 UTC ══
+══ design-verify [cycle] seq=2 input ═══════════════════════════ 07:40:44 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ design-verify [cycle] seq=2 output OK 0.8s ══════════════════ 06:49:58 UTC ══
+══ design-verify [cycle] seq=2 output OK 0.8s ══════════════════ 07:40:45 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
@@ -42,39 +42,39 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] build-member suppression did not fire (correct — no build member)
 
   [38;2;0;212;255m[#2032/SPEC-1] out_of_turns and interrupted also trigger suppression[0m
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:49:59 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:40:46 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 06:49:59 UTC ══
+══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 07:40:46 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
 
-══ design-verify [cycle] seq=2 input ═══════════════════════════ 06:50:01 UTC ══
+══ design-verify [cycle] seq=2 input ═══════════════════════════ 07:40:49 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ design-verify [cycle] seq=2 output OK 0.9s ══════════════════ 06:50:02 UTC ══
+══ design-verify [cycle] seq=2 output OK 0.8s ══════════════════ 07:40:49 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] out_of_turns disposition triggers suppression
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] out_of_turns case: cycle iterated (>= 2 iters)
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:50:02 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:40:50 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 06:50:03 UTC ══
+══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 07:40:51 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
 
-══ design-verify [cycle] seq=2 input ═══════════════════════════ 06:50:05 UTC ══
+══ design-verify [cycle] seq=2 input ═══════════════════════════ 07:40:53 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ design-verify [cycle] seq=2 output OK 0.8s ══════════════════ 06:50:06 UTC ══
+══ design-verify [cycle] seq=2 output OK 0.9s ══════════════════ 07:40:54 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
@@ -82,20 +82,20 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] interrupted case: cycle iterated (>= 2 iters)
 
   [38;2;0;212;255m[#2032/SPEC-6] suppression at max_iterations → exhaustion (rc=8), not false complete[0m
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:50:06 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:40:54 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 06:50:07 UTC ══
+══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 07:40:55 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
 
-══ design-verify [cycle] seq=2 input ═══════════════════════════ 06:50:09 UTC ══
+══ design-verify [cycle] seq=2 input ═══════════════════════════ 07:40:57 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ design-verify [cycle] seq=2 output OK 0.9s ══════════════════ 06:50:10 UTC ══
+══ design-verify [cycle] seq=2 output OK 1.0s ══════════════════ 07:40:58 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
@@ -117,11 +117,11 @@ health: progress=0 (no progress) - defects=0 → score=0
 
 
   [38;2;0;212;255m[#2032/SPEC-2] guard: all complete dispositions — cycle converges normally[0m
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:48:41 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:39:23 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 1.0s ══════════════════ 06:48:43 UTC ══
+══ design-verify [cycle] seq=1 output OK 1.0s ══════════════════ 07:39:24 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
@@ -131,20 +131,20 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] new suppression block did not fire (all members complete)
 
   [38;2;0;212;255m[#2032/SPEC-1] unfinished member + exit_when match → suppression, not convergence[0m
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:48:43 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:39:25 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 06:48:44 UTC ══
+══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 07:39:25 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
 
-══ design-verify [cycle] seq=2 input ═══════════════════════════ 06:48:45 UTC ══
+══ design-verify [cycle] seq=2 input ═══════════════════════════ 07:39:27 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ design-verify [cycle] seq=2 output OK 0.8s ══════════════════ 06:48:46 UTC ══
+══ design-verify [cycle] seq=2 output OK 0.9s ══════════════════ 07:39:28 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
@@ -154,39 +154,39 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] build-member suppression did not fire (correct — no build member)
 
   [38;2;0;212;255m[#2032/SPEC-1] out_of_turns and interrupted also trigger suppression[0m
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:48:47 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:39:29 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 06:48:48 UTC ══
+══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 07:39:30 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
 
-══ design-verify [cycle] seq=2 input ═══════════════════════════ 06:48:49 UTC ══
+══ design-verify [cycle] seq=2 input ═══════════════════════════ 07:39:31 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ design-verify [cycle] seq=2 output OK 0.8s ══════════════════ 06:48:50 UTC ══
+══ design-verify [cycle] seq=2 output OK 0.9s ══════════════════ 07:39:32 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] out_of_turns disposition triggers suppression
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] out_of_turns case: cycle iterated (>= 2 iters)
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:48:50 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:39:33 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 06:48:51 UTC ══
+══ design-verify [cycle] seq=1 output OK 1.0s ══════════════════ 07:39:34 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
 
-══ design-verify [cycle] seq=2 input ═══════════════════════════ 06:48:53 UTC ══
+══ design-verify [cycle] seq=2 input ═══════════════════════════ 07:39:35 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ design-verify [cycle] seq=2 output OK 0.8s ══════════════════ 06:48:54 UTC ══
+══ design-verify [cycle] seq=2 output OK 0.9s ══════════════════ 07:39:36 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
@@ -194,20 +194,20 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] interrupted case: cycle iterated (>= 2 iters)
 
   [38;2;0;212;255m[#2032/SPEC-6] suppression at max_iterations → exhaustion (rc=8), not false complete[0m
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:48:54 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:39:36 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 06:48:55 UTC ══
+══ design-verify [cycle] seq=1 output OK 1.0s ══════════════════ 07:39:38 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
 
-══ design-verify [cycle] seq=2 input ═══════════════════════════ 06:48:57 UTC ══
+══ design-verify [cycle] seq=2 input ═══════════════════════════ 07:39:39 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ design-verify [cycle] seq=2 output OK 1.0s ══════════════════ 06:48:58 UTC ══
+══ design-verify [cycle] seq=2 output OK 1.0s ══════════════════ 07:39:40 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
@@ -229,11 +229,11 @@ health: progress=0 (no progress) - defects=0 → score=0
 
 
   [38;2;0;212;255m[#2032/SPEC-2] guard: all complete dispositions — cycle converges normally[0m
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:49:53 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:40:40 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 1.1s ══════════════════ 06:49:54 UTC ══
+══ design-verify [cycle] seq=1 output OK 1.1s ══════════════════ 07:40:41 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
@@ -243,20 +243,20 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] new suppression block did not fire (all members complete)
 
   [38;2;0;212;255m[#2032/SPEC-1] unfinished member + exit_when match → suppression, not convergence[0m
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:49:54 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:40:41 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 06:49:55 UTC ══
+══ design-verify [cycle] seq=1 output OK 1.0s ══════════════════ 07:40:42 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
 
-══ design-verify [cycle] seq=2 input ═══════════════════════════ 06:49:57 UTC ══
+══ design-verify [cycle] seq=2 input ═══════════════════════════ 07:40:44 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ design-verify [cycle] seq=2 output OK 0.8s ══════════════════ 06:49:58 UTC ══
+══ design-verify [cycle] seq=2 output OK 0.8s ══════════════════ 07:40:45 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
@@ -266,39 +266,39 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] build-member suppression did not fire (correct — no build member)
 
   [38;2;0;212;255m[#2032/SPEC-1] out_of_turns and interrupted also trigger suppression[0m
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:49:59 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:40:46 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 06:49:59 UTC ══
+══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 07:40:46 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
 
-══ design-verify [cycle] seq=2 input ═══════════════════════════ 06:50:01 UTC ══
+══ design-verify [cycle] seq=2 input ═══════════════════════════ 07:40:49 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ design-verify [cycle] seq=2 output OK 0.9s ══════════════════ 06:50:02 UTC ══
+══ design-verify [cycle] seq=2 output OK 0.8s ══════════════════ 07:40:49 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] out_of_turns disposition triggers suppression
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] out_of_turns case: cycle iterated (>= 2 iters)
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:50:02 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:40:50 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 06:50:03 UTC ══
+══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 07:40:51 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
 
-══ design-verify [cycle] seq=2 input ═══════════════════════════ 06:50:05 UTC ══
+══ design-verify [cycle] seq=2 input ═══════════════════════════ 07:40:53 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ design-verify [cycle] seq=2 output OK 0.8s ══════════════════ 06:50:06 UTC ══
+══ design-verify [cycle] seq=2 output OK 0.9s ══════════════════ 07:40:54 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
@@ -306,20 +306,20 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] interrupted case: cycle iterated (>= 2 iters)
 
   [38;2;0;212;255m[#2032/SPEC-6] suppression at max_iterations → exhaustion (rc=8), not false complete[0m
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:50:06 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:40:54 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 06:50:07 UTC ══
+══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 07:40:55 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
 
-══ design-verify [cycle] seq=2 input ═══════════════════════════ 06:50:09 UTC ══
+══ design-verify [cycle] seq=2 input ═══════════════════════════ 07:40:57 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ design-verify [cycle] seq=2 output OK 0.9s ══════════════════ 06:50:10 UTC ══
+══ design-verify [cycle] seq=2 output OK 1.0s ══════════════════ 07:40:58 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
@@ -341,11 +341,11 @@ health: progress=0 (no progress) - defects=0 → score=0
 
 
   [38;2;0;212;255m[#2032/SPEC-2] guard: all complete dispositions — cycle converges normally[0m
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:48:41 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:39:23 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 1.0s ══════════════════ 06:48:43 UTC ══
+══ design-verify [cycle] seq=1 output OK 1.0s ══════════════════ 07:39:24 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
@@ -355,20 +355,20 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] new suppression block did not fire (all members complete)
 
   [38;2;0;212;255m[#2032/SPEC-1] unfinished member + exit_when match → suppression, not convergence[0m
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:48:43 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:39:25 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 06:48:44 UTC ══
+══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 07:39:25 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
 
-══ design-verify [cycle] seq=2 input ═══════════════════════════ 06:48:45 UTC ══
+══ design-verify [cycle] seq=2 input ═══════════════════════════ 07:39:27 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ design-verify [cycle] seq=2 output OK 0.8s ══════════════════ 06:48:46 UTC ══
+══ design-verify [cycle] seq=2 output OK 0.9s ══════════════════ 07:39:28 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
@@ -378,39 +378,39 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] build-member suppression did not fire (correct — no build member)
 
   [38;2;0;212;255m[#2032/SPEC-1] out_of_turns and interrupted also trigger suppression[0m
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:48:47 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:39:29 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 06:48:48 UTC ══
+══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 07:39:30 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
 
-══ design-verify [cycle] seq=2 input ═══════════════════════════ 06:48:49 UTC ══
+══ design-verify [cycle] seq=2 input ═══════════════════════════ 07:39:31 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ design-verify [cycle] seq=2 output OK 0.8s ══════════════════ 06:48:50 UTC ══
+══ design-verify [cycle] seq=2 output OK 0.9s ══════════════════ 07:39:32 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] out_of_turns disposition triggers suppression
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] out_of_turns case: cycle iterated (>= 2 iters)
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:48:50 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:39:33 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 06:48:51 UTC ══
+══ design-verify [cycle] seq=1 output OK 1.0s ══════════════════ 07:39:34 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
 
-══ design-verify [cycle] seq=2 input ═══════════════════════════ 06:48:53 UTC ══
+══ design-verify [cycle] seq=2 input ═══════════════════════════ 07:39:35 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ design-verify [cycle] seq=2 output OK 0.8s ══════════════════ 06:48:54 UTC ══
+══ design-verify [cycle] seq=2 output OK 0.9s ══════════════════ 07:39:36 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
@@ -418,20 +418,20 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] interrupted case: cycle iterated (>= 2 iters)
 
   [38;2;0;212;255m[#2032/SPEC-6] suppression at max_iterations → exhaustion (rc=8), not false complete[0m
-══ design-verify [cycle] seq=1 input ═══════════════════════════ 06:48:54 UTC ══
+══ design-verify [cycle] seq=1 input ═══════════════════════════ 07:39:36 UTC ══
 (no feedback — first iteration)
 
 
-══ design-verify [cycle] seq=1 output OK 0.9s ══════════════════ 06:48:55 UTC ══
+══ design-verify [cycle] seq=1 output OK 1.0s ══════════════════ 07:39:38 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──
 
-══ design-verify [cycle] seq=2 input ═══════════════════════════ 06:48:57 UTC ══
+══ design-verify [cycle] seq=2 input ═══════════════════════════ 07:39:39 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ design-verify [cycle] seq=2 output OK 1.0s ══════════════════ 06:48:58 UTC ══
+══ design-verify [cycle] seq=2 output OK 1.0s ══════════════════ 07:39:40 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-verify ✓ ──

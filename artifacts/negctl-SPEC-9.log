@@ -1,4 +1,4 @@
-### SPEC-7 baseline tests/unit/adr-063-vocabulary-test.sh
+### SPEC-9 baseline tests/unit/adr-063-vocabulary-test.sh
 
 [38;2;0;212;255m[1m  ADR-063 vocabulary amendment: Accepted, retired exhausted/escalate (#2032)[0m
 [2m  ══════════════════════════════════════════[0m
@@ -31,7 +31,7 @@
   [38;2;248;113;113m✗[0m [#2032/SPEC-8] ADR-063 §1 must contain per-stage _<stage>_budget_guidance helper language
   [38;2;248;113;113m✗[0m [#2032/SPEC-9] ADR-063 must contain an amendment back-pointer that explicitly names #2187 (the issue that retired exhausted/escalate vocabulary)
 
-### SPEC-7 head tests/unit/adr-063-vocabulary-test.sh
+### SPEC-9 head tests/unit/adr-063-vocabulary-test.sh
 
 [38;2;0;212;255m[1m  ADR-063 vocabulary amendment: Accepted, retired exhausted/escalate (#2032)[0m
 [2m  ══════════════════════════════════════════[0m
