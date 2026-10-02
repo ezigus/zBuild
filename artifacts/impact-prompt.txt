@@ -183,6 +183,16 @@ DESIGN SCOPE BLOCK:
 - tests/unit/router-reason-disposition-test.sh
 - tests/unit/disposition-vocabulary-test.sh
 - tests/unit/adr-063-vocabulary-test.sh
+- tests/unit/event-schema-emitted-coverage-test.sh
+- tests/unit/lint-disposition-words-test.sh
+- tests/unit/stage-signal-test.sh
+- tests/golden/full-pipeline/event-sequence.golden
+- tests/golden/parity/event-sequence.golden
+- tests/unit/template-simple-yaml-test.sh
+- tests/unit/build-oos-pass-request-test.sh
+- tests/unit/core-pipeline-template-test.sh
+- tests/unit/template-resolvability-preflight-test.sh
+- tests/unit/impact-prefilter-order-detector-test.sh
 
 ## PRIOR IMPACT (a previous attempt on this issue — reference & refine; re-validate against the CURRENT design)
 {"schema_version":1,"verdict":"incomplete","missing":[{"step_id":"prefilter","files_to_add":["tests/golden/full-pipeline/event-sequence.golden","tests/golden/parity/event-sequence.golden","tests/unit/build-oos-pass-request-test.sh","tests/unit/core-pipeline-template-test.sh","tests/unit/impact-prefilter-order-detector-test.sh","tests/unit/template-resolvability-preflight-test.sh","tests/unit/template-simple-yaml-test.sh"],"reason":"deterministic prefilter floor (#781/#881): shape-change detected; event-sequence goldens + stage-order (_TPL_STAGES[N]) tests required regardless of LLM judgment"}]}
