@@ -2567,16 +2567,18 @@ cycle_orchestrator_run() {
         # surface the repo-neutral `interrupted` disposition (a router-timeout /
         # dispatch-interrupt mid-flight resting point: build's #1208 verdict,
         # design's #1261 verdict)? Read from the blob disposition field — no plugin
-        # id / language / path. Consumed ONLY by the reason-aware exhaustion halt
-        # below; keying on the TERMINATING iteration is correct because a timed-out
-        # design either publishes no design.md or keeps one its gate then judged
-        # (#2186) — at exhaustion, neither is a design the gate accepted.
-        local _iter_did_not_finish=0
+        # id / language / path. Consumed by the reason-aware exhaustion halt below
+        # AND by the #2032 convergence suppression block; keying on the TERMINATING
+        # iteration is correct because a timed-out design either publishes no
+        # design.md or keeps one its gate then judged (#2186) — at exhaustion,
+        # neither is a design the gate accepted.
+        local _iter_did_not_finish=0 _first_unf_disposition=""
         # #2187: "did not finish" is a predicate over the words, not one word.
         local _unf_d
         while IFS= read -r _unf_d; do
             if [[ -n "$_unf_d" ]] && disposition_unfinished "$_unf_d"; then
                 _iter_did_not_finish=1
+                [[ -z "$_first_unf_disposition" ]] && _first_unf_disposition="$_unf_d"
             fi
         done < <(jq -r '.[] | .disposition // empty' <<< "$verdicts_blob" 2>/dev/null)
 
@@ -2610,6 +2612,19 @@ cycle_orchestrator_run() {
             _cycle_emit "cycle.build_unfinished.suppressed_convergence" \
                 "iter=$iter" "build_verdict=$_build_verdict" \
                 "reason=build_mid_flight_not_a_resting_point"
+        fi
+
+        # #2032/SPEC-1 — generic unfinished-member convergence suppression. When
+        # any iteration member carries an unfinished disposition (timed_out,
+        # out_of_turns, interrupted, etc.), the cycle must NOT converge even when
+        # exit_when fires — the member's partial result is not a clean resting
+        # point. Fires only if the build-specific block above did not already fire
+        # (its converged=1 prevents this guard's converged==0 condition).
+        if [[ "$converged" -eq 0 ]] && [[ "$_iter_did_not_finish" -eq 1 ]]; then
+            converged=1  # suppress: an unfinished member is not a clean resting point
+            _cycle_emit "cycle.member_unfinished.suppressed_convergence" \
+                "iter=$iter" "disposition=${_first_unf_disposition:-unfinished}" \
+                "reason=member_unfinished_not_a_resting_point"
         fi
 
         # #1265 — no-committed-changes fail-fast. A convergence that would fire

@@ -1,8 +1,11 @@
 # ADR-063 — Stages are told their limits, and say when they hit them
 
-**Status:** Proposed (2026-09-02)
+**Status:** Accepted, amended 2026-10-02 by #2032
 **Issue:** #2032
-**Amends:** ADR-054 §6 (no new vocabulary — `exhausted` is adopted, not invented)
+**Amends:** ADR-054 §6 (disposition vocabulary)
+**Amendment note (2026-10-02, #2032):** vocabulary updated per #2187. The word `exhausted` (which this ADR originally adopted) is retired; #2187 replaces it with the specific words from
+`router_reason_disposition` (`timed_out`, `out_of_turns`, etc.). The engine action for budget
+responses is also retired; see #2187 for the full migration.
 **Related:** ADR-029 (budget escalation), ADR-060 (structure to the engine, prose to humans), #1986 (summary ingestion)
 
 ## Context
@@ -33,8 +36,8 @@ shrink". It is wired end to end:
 | | |
 |---|---|
 | `core/pipeline/disposition.sh:53` | in `_ZBUILD_DISPOSITION_SET` |
-| `core/pipeline/disposition.sh:97` | `exhausted) printf 'escalate'` |
-| `core/pipeline/dispatch-rc.sh:177` | `rc=10 → exhausted` |
+| `core/pipeline/disposition.sh:97` | (retired — `escalate` action removed per #2187) |
+| `core/pipeline/dispatch-rc.sh:177` | `rc=10 → timed_out` (via `router_reason_disposition`) |
 | `core/router/route.sh:749` | `_route_escalate_timeout` — retry at +50%, capped at 2× base (ADR-029) |
 
 **No LLM stage has ever emitted it.** The producer side was never built, so the
@@ -89,8 +92,8 @@ it is not a third time.
 |---|---|---|
 | §1 | budget reaches the prompt from the value that enforces it | **no** — prompt text |
 | §2 | each stage declares a partial form of its deliverable | **no** for a stage whose deliverable is a file |
-| §3 | partial is signalled as `disposition: exhausted` | **yes** |
-| §4 | gates fail closed on `exhausted` | **yes** |
+| §3 | partial is signalled with the disposition word from `router_reason_disposition` (`timed_out`, `out_of_turns`, etc.) | **yes** |
+| §4 | gates fail closed on an unfinished disposition | **yes** |
 
 §3 and §4 are blocked because `disposition` is a v2-only field:
 `runner_read_stage_disposition` (`core/pipeline/verdict.sh:674`) reads it from the
@@ -114,9 +117,11 @@ remembering this ADR.
 
 ### 1. The budget reaches the prompt from the value that enforces it
 
-One helper renders the budget block — turns, wall-clock seconds, and the stop
-target — interpolated from the same numbers the engine will act on. Stages do not
-restate them.
+Each stage has its own `_<stage>_budget_guidance` helper (e.g. `_design_budget_guidance`,
+`_build_budget_guidance`) that reads the enforcing values — turns, wall-clock seconds,
+and the stop target — directly from the same numbers the engine will act on. Stages do
+not restate them. Each `_<stage>_budget_guidance` helper is the single source of truth
+for that stage's budget block; the invariant is per-stage, not a single shared helper.
 
 A hand-copied bound is worse than no bound: it drifts from what actually kills the
 call, and then the prompt is lying to the model with authority. `plan` computes
@@ -133,9 +138,12 @@ The existing shapes are the model: `impact` has `verdict:incomplete` +
 `missing[]`; `plan` has steps-so-far plus named gaps. `design` has none, which is
 why it can only ever return everything or nothing.
 
-### 3. Partial is signalled as `disposition: exhausted`
+### 3. Partial is signalled with the disposition word classified by `router_reason_disposition`
 
-Machine-readable, on the engine's axis, using the word that already exists.
+Machine-readable, on the engine's axis, using the word that names the cause (#2187).
+The classifier is `router_reason_disposition` (`scripts/lib/router-rc-classify.sh`),
+which maps router exit reasons to disposition words: `timed_out` (for a wall-clock
+kill), `out_of_turns` (for a turn-budget exhaustion), `interrupted`, etc.
 
 The stage's `verdict` stays its own vocabulary (ADR-054 §6) — `incomplete`,
 `request_changes`, whatever the stage means. Disposition answers the different
@@ -150,15 +158,16 @@ is *explained*; `disposition` is where it is *declared*.
 
 Two halves, and neither is optional:
 
-- `exhausted → escalate` already routes to `_route_escalate_timeout` (+50%,
-  capped at 2× base). Wire the producers so it runs. A signal nothing acts on is
-  the inert-mechanism defect one layer up.
+- Router-side timeout growth already handles budget escalation via `_route_escalate_timeout`
+  (+50%, capped at 2× base, ADR-029). The `escalate` engine action is retired per #2187;
+  retry and growth are router-side, not disposition-driven.
 - **A gate must not accept a partial as complete.** This is the risk the change
   introduces: giving `design` permission to emit early is dangerous precisely
   when the design gate cannot tell the difference, and a half-built design that
   passes is worse than a design stage that failed loudly. Any gate reading a
-  stage whose disposition is `exhausted` fails closed unless it declares
-  otherwise.
+  stage whose disposition is unfinished (`timed_out`, `out_of_turns`, etc.) fails
+  closed unless it declares otherwise. Implemented: `cycle-orchestrator.sh` suppresses
+  convergence when any member carries an unfinished disposition (#2032/SPEC-1).
 
 ### 5. Two implementation shapes, chosen by the work
 
@@ -181,8 +190,9 @@ through. **Do not build a second channel for this.**
 
 ## Consequences
 
-- **`exhausted` stops being decorative.** Its response table entry and ADR-029's
-  escalation have never executed for an LLM stage; after this they do.
+- **Unfinished disposition words stop being decorative.** `timed_out`, `out_of_turns`,
+  and their siblings (`router_reason_disposition`) now flow from every stage through
+  the cycle convergence guard — the engine responds to them, not just records them.
 - **"Was that answer complete?" becomes answerable by a machine**, for every
   stage, without parsing prose.
 - **A stage can be told to stop early, so some answers get worse.** That is the
@@ -208,8 +218,9 @@ Adoption order, cheapest evidence first:
 4. **`plan` and `impact`** — retrofit onto §1's shared block and add §3's
    disposition. Their instructions are already right; only the source of the
    numbers and the machine-readable signal change.
-5. **`build`** — already checkpointed; confirm it reports `exhausted` when the
-   iteration budget is spent rather than falling out silently.
+5. **`build`** — already checkpointed; confirm it reports the correct unfinished
+   disposition word (via `router_reason_disposition`) when the iteration budget
+   is spent rather than falling out silently.
 
 The discriminating test, per stage: kill it at its bound and assert the next
 attempt starts from something. A stage that passes that with the mechanism

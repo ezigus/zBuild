@@ -92,11 +92,14 @@ ASSERTION:
 $2"
 }
 
-# _sc_call <tier> <task> — frame the task through the persona registry and
-# route it. persona_stage_framing emits "{perspective}\n\n{task}" and returns 1
-# when the persona is absent, in which case the task stands alone (#1627/#1628).
+# _sc_call <tier> <task> [rc_sink] — frame the task through the persona registry
+# and route it. If rc_sink is given, the raw router exit code is written to that
+# file when the call exits non-zero (temp-file pattern: command substitution
+# prevents a nameref from crossing the subshell boundary). persona_stage_framing
+# emits "{perspective}\n\n{task}" and returns 1 when the persona is absent, in
+# which case the task stands alone (#1627/#1628).
 _sc_call() {
-    local tier="$1" _task="$2" _framed="$2" _raw=""
+    local tier="$1" _task="$2" _framed="$2" _rc_sink="${3:-}" _raw=""
     if declare -f persona_stage_framing >/dev/null 2>&1; then
         local _pid="quality-assurance" _pdir=""
         if declare -f resolve_persona >/dev/null 2>&1; then
@@ -117,8 +120,10 @@ _sc_call() {
     [[ -n "$_budget_note" ]] && _framed+=$'\n\n'"$_budget_note"
     # No 2>/dev/null: the stage-io input banner writes to fd 2 (#491). stdin
     # is /dev/null: a model that drains stdin must not eat a caller's stream (#2108).
+    # rc_sink: write the exit code to the sink file so the parent can classify
+    # the disposition without a nameref crossing the subshell boundary.
     if declare -f route_to_model >/dev/null 2>&1; then
-        _raw="$(route_to_model "$tier" "$_framed" </dev/null || true)"
+        _raw="$(route_to_model "$tier" "$_framed" </dev/null; printf '%d' "$?" > "${_rc_sink:-/dev/null}")"
     fi
     printf '%s' "$_raw"
 }
@@ -157,17 +162,17 @@ Reserve mismatch for a genuine disagreement. Do not suggest a fix. Do not rewrit
     done
 }
 
-# _sc_write_result <dir> <verdict> <reason> <counts_json> [about]
+# _sc_write_result <dir> <verdict> <reason> <counts_json> [about] [disposition]
 # #2180: `about` is the artifact these findings concern — the testfile(s) this
 # stage was pointed at by the contract. Its own fact; the engine resolves from
 # it who owns that artifact and therefore whose findings these are.
 _sc_write_result() {
-    local dir="$1" v="$2" r="$3" d="${4:-{\}}" about="${5:-}"
+    local dir="$1" v="$2" r="$3" d="${4:-{\}}" about="${5:-}" _sc_wr_disp="${6:-complete}"
     mkdir -p "$dir" 2>/dev/null || true
     # ADR-054 §6: `disposition` says how the STAGE stopped. This stage completed
     # whatever it concluded about the SPECs — the verdict carries that.
-    if ! jq -n --arg v "$v" --arg r "$r" --argjson d "$d" --arg a "$about" \
-        '{result_contract: 2, verdict: $v, disposition: "complete", reason: $r, data: $d}
+    if ! jq -n --arg v "$v" --arg r "$r" --argjson d "$d" --arg a "$about" --arg disp "$_sc_wr_disp" \
+        '{result_contract: 2, verdict: $v, disposition: $disp, reason: $r, data: $d}
          + (if $a != "" then {about: $a} else {} end)' \
         | atomic_write "$dir/spec-correspondence-result.json"; then
         _sc_emit "spec_correspondence.result.write_failed" "dir=$dir"
@@ -209,6 +214,7 @@ spec_correspondence_run() {
     # incremented nothing (the `*)` arm) left it there. Eight junk replies wrote
     # a clean pass in run 33944161764.
     local sid n=0 n_corr=0 n_part=0 n_mis=0 n_unch=0 n_unj=0 findings="" worst=""
+    local _sc_batch_disposition="complete"
     # #2143: collect every judgeable (requirement, assertion) pair FIRST, judge
     # them in ONE model call, and fall back to a per-SPEC call only for what
     # the batch left unjudged — and only while the stage clock has time. Run
@@ -245,8 +251,18 @@ spec_correspondence_run() {
     for (( _i=0; _i<n; _i++ )); do _verdicts+=(""); _reasons+=(""); done
 
     if [[ "$n" -gt 0 ]]; then
-        local _batch_raw
-        _batch_raw="$(_sc_call "$tier" "$(_sc_batch_prompt _ids _txts _srcs)")"
+        local _batch_raw _sc_batch_rc_tmp _sc_batch_router_rc=0
+        _sc_batch_rc_tmp="$(mktemp 2>/dev/null || printf '%s' "${TMPDIR:-/tmp}/sc_batch_rc.$$")"
+        _batch_raw="$(_sc_call "$tier" "$(_sc_batch_prompt _ids _txts _srcs)" "$_sc_batch_rc_tmp")"
+        _sc_batch_router_rc="$(cat "$_sc_batch_rc_tmp" 2>/dev/null || printf '0')"
+        rm -f "$_sc_batch_rc_tmp"
+        if [[ "$_sc_batch_router_rc" -ne 0 ]]; then
+            local _sc_cl_v="" _sc_cl_r=""
+            _router_rc_classify "$_sc_batch_router_rc" _sc_cl_v _sc_cl_r 2>/dev/null || true
+            # disposition-ok: the model router is not responding
+            _sc_batch_disposition="$(router_reason_disposition "${_sc_cl_r:-router_rc_nonzero}" 2>/dev/null || true)"
+            [[ -z "$_sc_batch_disposition" ]] && _sc_batch_disposition="unavailable"
+        fi
         for (( _i=0; _i<n; _i++ )); do
             # A glob match, not a regex built from the id (review on #2148):
             # nothing in the id can change the pattern, and no grep per SPEC.
@@ -320,7 +336,7 @@ spec_correspondence_run() {
         "$(jq -nc --argjson c "$n_corr" --argjson p "$n_part" --argjson m "$n_mis" \
                   --argjson u "$n_unch" --argjson j "$n_unj" \
             '{corresponds:$c, partial:$p, mismatch:$m, uncheckable:$u, unjudged:$j}')" \
-        "$_sc_about"
+        "$_sc_about" "${_sc_batch_disposition:-complete}"
     stage_summary_write "$art/spec-correspondence-summary.md" "spec-correspondence" "$worst" \
         "$reason" \
         "${findings:-- every judged assertion tests the SPEC it claims to cover}"

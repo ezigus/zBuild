@@ -95,15 +95,15 @@ ACCEPTANCE:
 $2"
 }
 
-# _scv_write <dir> <verdict> <reason> <uncovered_json>
+# _scv_write <dir> <verdict> <reason> <uncovered_json> [disposition]
 _scv_write() {
-    local dir="$1" v="$2" r="$3" u="${4:-[]}"
+    local dir="$1" v="$2" r="$3" u="${4:-[]}" disp="${5:-complete}"
     mkdir -p "$dir" 2>/dev/null || true
     # ADR-054 §6: `disposition` says how the STAGE stopped, not what it
     # concluded — this stage completed either way. ADR-060 §1/§2: the finding is
     # structured, never a prose document.
-    if ! jq -n --arg v "$v" --arg r "$r" --argjson u "$u" \
-        '{result_contract: 2, verdict: $v, disposition: "complete", reason: $r,
+    if ! jq -n --arg v "$v" --arg r "$r" --argjson u "$u" --arg d "$disp" \
+        '{result_contract: 2, verdict: $v, disposition: $d, reason: $r,
           data: {uncovered: $u}}' \
         | atomic_write "$dir/spec-coverage-result.json"; then
         _scv_emit "spec_coverage.result.write_failed" "dir=$dir"
@@ -178,11 +178,15 @@ spec_coverage_run() {
     local _budget_note=""
     declare -F stage_budget_note >/dev/null 2>&1 && _budget_note="$(stage_budget_note "your verdict")"
     [[ -n "$_budget_note" ]] && _framed+=$'\n\n'"$_budget_note"
-    local _raw=""
+    local _raw="" _scv_router_rc=0
     # No 2>/dev/null on this call: the stage-io input banner writes to fd 2 and
     # suppressing it breaks ADR-015 §v4's ordering (the #491 defect).
     if declare -f route_to_model >/dev/null 2>&1; then
-        _raw="$(route_to_model "$tier" "$_framed" || true)"
+        local _scv_rc_tmp
+        _scv_rc_tmp="$(mktemp 2>/dev/null || printf '%s' "${TMPDIR:-/tmp}/scv_rc.$$")"
+        _raw="$(route_to_model "$tier" "$_framed"; printf '%d' "$?" > "$_scv_rc_tmp")"
+        _scv_router_rc="$(cat "$_scv_rc_tmp" 2>/dev/null || printf '0')"
+        rm -f "$_scv_rc_tmp"
     fi
 
     # No `| head`: SIGPIPE kills the writer under errexit for a reason nothing
@@ -196,8 +200,15 @@ spec_coverage_run() {
     _u_line="${_u_line%%$'\n'*}"; _u_line="${_u_line#UNCOVERED:}"
 
     if [[ -z "$_v" ]]; then
+        local _scv_disp="complete"
+        if [[ "$_scv_router_rc" -ne 0 ]]; then
+            local _scv_cl_v="" _scv_cl_r=""
+            _router_rc_classify "$_scv_router_rc" _scv_cl_v _scv_cl_r 2>/dev/null || true
+            _scv_disp="$(router_reason_disposition "${_scv_cl_r:-router_rc_nonzero}" 2>/dev/null || true)"
+            [[ -z "$_scv_disp" ]] && _scv_disp="unavailable"
+        fi
         _scv_write "$art" "unreadable" \
-            "no parseable verdict from the model — the design was not judged" "[]"
+            "no parseable verdict from the model — the design was not judged" "[]" "$_scv_disp"
         return 0
     fi
 
