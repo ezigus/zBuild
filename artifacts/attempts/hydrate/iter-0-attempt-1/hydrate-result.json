@@ -2,10 +2,10 @@
   "result_contract": 2,
   "verdict": "complete",
   "disposition": "complete",
-  "reason": "no prior work for issue 1844 (first run)",
+  "reason": "restored 75 artifact(s) from zbuild/state/issue-1844",
   "data": {
-    "status": "empty",
-    "restored": 0,
-    "source": null
+    "status": "restored",
+    "restored": 75,
+    "source": "remote"
   }
 }

@@ -1,9 +1,0 @@
-{
-  "scope_files": [
-    "plugins/agent/pr-delivery/manifest.yaml",
-    "plugins/agent/pr-delivery/plugin.sh",
-    "tests/integration/pr-pipeline-test.sh",
-    "tests/unit/pr-delivery-v2-result-test.sh"
-  ],
-  "wiring_files": []
-}
