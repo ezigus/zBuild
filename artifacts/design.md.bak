@@ -17,7 +17,8 @@ string concatenation (`$artifacts_dir/gate-aggregator-result.json`,
 `ZBUILD_STAGE_INPUTS` index. The `review.json` path is intentionally a by-path
 read (documented in both manifests; its producer was retired in #979 and the guard
 is a fail-closed optional legacy check that must stay by-path). The plugin returns
-`rc=2` on the missing-state-file path, which ADR-054 §4 forbids for v2 stages. The
+`rc=2` on the missing-state-file path (line 38 of plugin.sh), which ADR-054 §4
+forbids for v2 stages — and writes no `pr-result.json` on that path at all. The
 block-guard, dry-run, fallback-gh, and missing-state-file paths write v1-format
 results or no result. No signal trap exists. The three paths that delegate to
 `merge_run` or `pr_open_run` rely on those tools to write pr-result.json — which
@@ -54,8 +55,8 @@ fork-budget fixture.
   envelope `{result_contract:2, verdict, disposition, reason, data:{...}}`;
   resolve `gate_aggregator_result` and `review_report` exclusively from
   `ZBUILD_STAGE_INPUTS` (review.json stays a by-path optional read); change
-  `return 2` to `return 1` on missing-state-file and write verdict=error,
-  disposition=misconfigured; install a
+  `return 2` to `return 1` on missing-state-file and call `_pr_delivery_write_result`
+  with verdict=error, disposition=misconfigured, non-empty reason; install a
   `trap '_pr_delivery_write_result ... interrupted ... rc=1' SIGTERM SIGINT`
   at function entry; call `_pr_delivery_write_result` on every terminal exit
   path owned exclusively by pr-delivery (block guard, dry run, fallback-gh,
@@ -111,6 +112,7 @@ SPEC-20[guard]: manifest inputs section declares only id and required: on each e
 SPEC-21[change]: fallback-gh SUCCESS path v2 pr-result.json carries .data.branch, .data.pr_url, and .data.draft (v1 top-level fields preserved inside the v2 .data envelope)
 SPEC-22[change]: when pr-open delegation returns rc=0 but pr-result.json verdict is not pass (verdict=blocked — no-review-signal or review-block handled by pr-open with rc=0), pr-delivery writes pr-result.json carrying result_contract:2, verdict=error, disposition=complete, reason=review_signal_missing and returns rc=1 (#2250: read pr-open verdict, not just rc)
 SPEC-23[change]: when pr-open delegation returns rc=0 but pr-result.json verdict is not pass (the #2250 blocked path), pr-delivery-summary.md states that no PR was opened and names review_signal_missing — it does NOT say "pass — delivered the change by delegating to the pr-open stage" (the current summary text for any rc=0 from pr-open)
+SPEC-24[change]: missing-state-file exit path writes pr-result.json carrying result_contract:2, verdict=error, non-empty disposition, non-empty reason (currently this path writes no pr-result.json at all — the "every exit path" requirement from the plan is not satisfied by the rc change alone)
 WIRING:
 plugins/agent/pr-delivery/manifest.yaml
 TESTFILES:
@@ -137,6 +139,7 @@ SPEC-20: tests/unit/pr-delivery-v2-result-test.sh
 SPEC-21: tests/unit/pr-delivery-v2-result-test.sh
 SPEC-22: tests/unit/pr-delivery-v2-result-test.sh tests/integration/pr-pipeline-test.sh
 SPEC-23: tests/unit/pr-delivery-v2-result-test.sh tests/integration/pr-pipeline-test.sh
+SPEC-24: tests/unit/pr-delivery-v2-result-test.sh
 ```
 
 ```supersedes

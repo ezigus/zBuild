@@ -151,7 +151,8 @@ block may be as long as completeness requires). Emit LOOP_COMPLETE when done.
 in ADR-054/ADR-055 strictness: v2 result file on every exit path, `valid_verdicts`
 narrowed from `[]` to `[pass, error]`, declared `provides.events`, input paths
 resolved from `ZBUILD_STAGE_INPUTS`, `rc ∈ {0,1}` on all terminal paths, and fold
-in #2250 (read pr-open verdict after delegation, not just rc).
+in #2250 (read pr-open verdict after delegation, not just rc — and reflect blocked
+state in both the result JSON and the stage summary).
 
 **Context.** pr-delivery is the only remaining `kind: agent` plugin at the PR
 delivery tier whose manifest still declares `valid_verdicts: []` and lacks
@@ -167,10 +168,13 @@ results or no result. No signal trap exists. The three paths that delegate to
 `merge_run` or `pr_open_run` rely on those tools to write pr-result.json — which
 they already do in v2 format — but pr-delivery adds no wrapper. The `#2250` gap:
 when `pr_open_run` returns rc=0 with `verdict=blocked` in pr-result.json (e.g., no
-review signal present), pr-delivery currently treats the rc=0 as success and
-returns 0 without PR delivery having occurred.
+review signal present), pr-delivery currently treats the rc=0 as success, returns 0,
+and writes the stage summary saying "pass — delivered the change by delegating to
+the pr-open stage" — without PR delivery having occurred. Both the result JSON and
+the summary must be corrected.
 
-**Revision from prior design.** Three SPECs reclassified after verifying tree state:
+**Reclassifications from prior design iterations.** Three SPECs reclassified after
+verifying tree state:
 
 - **SPEC-7** [change] → [guard]: `pr_open_run` (v2) already writes pr-result.json with
   `result_contract:2, verdict=error` on failure paths; the assertion passes at baseline.
@@ -179,16 +183,10 @@ returns 0 without PR delivery having occurred.
 - **SPEC-15** [change] → [guard]: `merge_run` (v2) already writes pr-result.json with
   `result_contract:2, verdict=pass` on merge success; assertion passes at baseline.
 
-New **SPEC-22[change]** added for #2250: pr-delivery must read the delegated
-pr-result.json verdict after `pr_open_run` returns rc=0, and when verdict≠pass
-(i.e., verdict=blocked — the no-review-signal or review-block case that pr-open
-handles with rc=0), return rc=1 with verdict=error, disposition=complete,
-reason=review_signal_missing.
-
 **New ADRs (ADR-039, ADR-065) have no bearing on this migration.** ADR-039 is
 about parallel stage groups; pr-delivery has no parallel-group membership.
 ADR-065 constrains the engine's fork budget; pr-delivery does not run in the
-fork-budget fixture (tests/e2e/fork-budget-test.sh).
+fork-budget fixture.
 
 **Decision.** Four-file migration following the established pattern (see
 `plugins/tool/merge/`, `plugins/tool/pr-open/`):
@@ -210,14 +208,16 @@ fork-budget fixture (tests/e2e/fork-budget-test.sh).
   success paths (merge, pr-open) where the delegate already wrote a v2 result,
   pr-delivery does NOT double-write — the delegate's result stands as the
   stage result. After `pr_open_run` returns rc=0, read pr-result.json verdict —
-  if verdict≠pass (blocked), return rc=1 with verdict=error, disposition=complete,
-  reason=review_signal_missing (#2250).
+  if verdict≠pass (blocked), overwrite pr-result.json with verdict=error,
+  disposition=complete, reason=review_signal_missing AND write
+  pr-delivery-summary.md naming the blocked state and reason=review_signal_missing,
+  then return rc=1 (#2250).
 - **tests/unit/pr-delivery-v2-result-test.sh** (new): TDD-first unit test
   covering all [change] SPECs; written before touching the implementation.
 - **tests/integration/pr-pipeline-test.sh**: add v2 envelope assertions to
   SPEC-3 (dry-run), SPEC-4 (block guard), SPEC-5 (delegation); update SPEC-9
   assertion from top-level `.draft` to `.data.draft`; add new SPEC-10 for
-  the #2250 fold-in.
+  the #2250 fold-in (both result JSON and summary content).
 
 ```scope
 plugins/agent/pr-delivery/manifest.yaml
@@ -255,6 +255,7 @@ SPEC-19[change]: dry-run v2 pr-result.json carries .data.branch and .data.draft 
 SPEC-20[guard]: manifest inputs section declares only id and required: on each entry — no path, type, from, or producer field (name-matched inputs; the current manifest already satisfies this and the migration must not add such fields)
 SPEC-21[change]: fallback-gh SUCCESS path v2 pr-result.json carries .data.branch, .data.pr_url, and .data.draft (v1 top-level fields preserved inside the v2 .data envelope)
 SPEC-22[change]: when pr-open delegation returns rc=0 but pr-result.json verdict is not pass (verdict=blocked — no-review-signal or review-block handled by pr-open with rc=0), pr-delivery writes pr-result.json carrying result_contract:2, verdict=error, disposition=complete, reason=review_signal_missing and returns rc=1 (#2250: read pr-open verdict, not just rc)
+SPEC-23[change]: when pr-open delegation returns rc=0 but pr-result.json verdict is not pass (the #2250 blocked path), pr-delivery-summary.md states that no PR was opened and names review_signal_missing — it does NOT say "pass — delivered the change by delegating to the pr-open stage" (the current summary text for any rc=0 from pr-open)
 WIRING:
 plugins/agent/pr-delivery/manifest.yaml
 TESTFILES:
@@ -280,6 +281,7 @@ SPEC-19: tests/unit/pr-delivery-v2-result-test.sh tests/integration/pr-pipeline-
 SPEC-20: tests/unit/pr-delivery-v2-result-test.sh
 SPEC-21: tests/unit/pr-delivery-v2-result-test.sh
 SPEC-22: tests/unit/pr-delivery-v2-result-test.sh tests/integration/pr-pipeline-test.sh
+SPEC-23: tests/unit/pr-delivery-v2-result-test.sh tests/integration/pr-pipeline-test.sh
 ```
 
 ```supersedes
