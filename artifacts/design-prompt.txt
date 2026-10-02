@@ -151,11 +151,24 @@ The repository has moved since this design was written. Every claim it makes abo
 
 ### SINCE THE PRIOR DESIGN (engine-collected)
 - The prior design was authored 2026-09-30T17:28:56Z (commit ff1fcb8e).
-- Commits on this branch since then: 2.
+- Commits on this branch since then: 4.
 - ADRs added or changed since (re-check every decision that cites one of these, or one they supersede):
+  - docs/adr/ADR-021-pipeline-cycle-semantics.md
   - docs/adr/ADR-039-parallel-stage-groups.md
+  - docs/adr/ADR-063-budget-disclosure-and-partial-output.md
   - docs/adr/ADR-065-process-budget.md
-- No file in the prior design's scope changed since.
+- Files in the prior design's scope changed since (its claims about them may be stale):
+  - core/pipeline/cycle-orchestrator.sh
+  - plugins/agent/spec-coverage/plugin.sh
+  - plugins/agent/spec-correspondence/plugin.sh
+  - plugins/agent/review-report/plugin.sh
+  - docs/adr/ADR-021-pipeline-cycle-semantics.md
+  - docs/adr/ADR-063-budget-disclosure-and-partial-output.md
+  - tests/integration/cycle-member-unfinished-no-convergence-test.sh
+  - tests/unit/spec-coverage-test.sh
+  - tests/unit/spec-correspondence-test.sh
+  - tests/unit/review-report-v2-contract-test.sh
+  - tests/unit/adr-063-vocabulary-test.sh
 
 # Design — §3/§4: unfinished member blocks convergence; gates emit real disposition
 
@@ -271,8 +284,10 @@ LOOP_COMPLETE
 
 Refine the PRIOR DESIGN. Preserve all existing scope entries unless one is clearly wrong.
 
+If the STAGE SUMMARIES name a tautological [change] SPEC — one that passes at the merge-base baseline, so it asserts nothing — either RE-AUTHOR that SPEC so it describes behavior that is genuinely NEW (fails at baseline, passes at HEAD), or, when the behavior already exists at the merge-base, re-tag it [guard]: there is nothing to change and no assertion can be made to fail there. Build is forbidden to touch acceptance assertions (ADR-036), so only this stage can. Preserve all other scope and acceptance entries.
+
 WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
-- This stage has a wall-clock budget of 600 seconds total; ~0s have elapsed.
+- This stage has a wall-clock budget of 600 seconds total; ~1s have elapsed.
 - You cannot read a real-time clock, but estimate elapsed time from your tool-call history.
 - Target emitting your best-effort design before ~420s of wall-clock time has elapsed (70% of the 600s budget). A partial design with named gaps BEATS a hard SIGTERM that produces no output.
 
