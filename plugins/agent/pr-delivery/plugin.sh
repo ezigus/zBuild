@@ -162,6 +162,22 @@ _pr_stage_run_inner() {
                     "No PR was delivered. See the pr-open stage-summary.md for why."
                 return "$_rc"
             fi
+            # #2250: pr-open REFUSES with rc 0 and verdict "blocked" (no review
+            # signal, or a blocking review — ADR-001 fail-closed). Its exit code
+            # alone said "delivered"; its verdict says what happened.
+            local _po_verdict="" _po_reason=""
+            if [[ -s "$pr_result_out" ]]; then
+                _po_verdict="$(jq -r '.verdict // empty' "$pr_result_out" 2>/dev/null || true)"
+                _po_reason="$(jq -r '.reason // empty' "$pr_result_out" 2>/dev/null || true)"
+            fi
+            if [[ "$_po_verdict" == "blocked" ]]; then
+                stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
+                    "pr-open refused to open a PR: ${_po_reason:-blocked}" \
+                    "No PR was opened. See the pr-open stage-summary.md for why."
+                emit_event "plugin.result" "verdict=fail" "plugin=pr-delivery" \
+                    "reason=pr_open_blocked" "detail=${_po_reason:-blocked}"
+                return 1
+            fi
             stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "pass" \
                 "delivered the change by delegating to the pr-open stage" \
                 "See the pr-open stage-summary.md for the result."
