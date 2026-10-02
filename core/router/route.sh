@@ -1149,7 +1149,14 @@ _route_call_claude() {
         fi
         # Parse JSON envelope fields once; #762 adds subtype/output_tokens/cost.
         local _sync_is_error="" _sync_err_text="" _sync_num_turns="" _sync_subtype="" _sync_out_tokens="" _sync_cost="" _sync_api_status=""
-        if [[ -n "$_sync_json_path" && -f "$_sync_json_path" ]]; then
+        local _sync_last_tool=""
+        if [[ -z "$response" && -n "$_sync_stream" && -n "$_sync_json_path" ]]; then
+            # #2139 (review on #2253): killed before its result — the stream is
+            # the record, so read the turns and the last tool from it.
+            local _sync_prog; _sync_prog="$(_route_stream_progress "$_sync_json_path")"
+            _sync_num_turns="${_sync_prog%% *}"; _sync_last_tool="${_sync_prog#* }"
+            [[ "$_sync_num_turns" == "0" ]] && _sync_num_turns=""
+        elif [[ -n "$_sync_json_path" && -f "$_sync_json_path" ]]; then
             _sync_is_error="$(jq -r '.is_error // empty' "$_sync_json_path" 2>/dev/null || true)"
             if _sync_err_text="$(jq -r '.error // empty' "$_sync_json_path" 2>/dev/null)"; then
                 _sync_err_text="${_sync_err_text:0:200}"
@@ -1210,6 +1217,7 @@ _route_call_claude() {
             "is_error=${_sync_is_error:-absent}" \
             "error_text=${_sync_err_text:-absent}" \
             "num_turns=${_sync_num_turns:-absent}" \
+            "last_tool=${_sync_last_tool:-absent}" \
             "subtype=${_sync_subtype:-absent}" \
             2>/dev/null || true
         rm -f "$stderr_file" "$_prompt_in"

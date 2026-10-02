@@ -24,6 +24,14 @@ while IFS= read -r -d '' f; do
         _bad=$((_bad + 1))
     done < <(awk '
         doc != "" { t = $0; sub(/^\t+/, "", t); if (t == doc) doc = ""; next }
+        /^[[:space:]]*#/ { next }
+        # The line itself is judged BEFORE a heredoc it opens hides what follows:
+        # a set -e on the opening line belongs to the test shell (review #2253).
+        !seen && /^set -[a-zA-Z]+/ {
+            seen = 1; hdr = $0; f = $2; sub(/^-/, "", f)
+            haserr = (f ~ /e/); next
+        }
+        seen && !haserr && /^[[:space:]]*set -[a-zA-Z]*e[a-zA-Z]*([[:space:]]|$)/ { print NR "\t" hdr }
         {
             line = $0
             if (match(line, /<<-?[[:space:]]*["\047]?[A-Za-z_][A-Za-z0-9_]*["\047]?/)) {
@@ -31,12 +39,6 @@ while IFS= read -r -d '' f; do
                 if (line !~ /<<</) doc = d
             }
         }
-        /^[[:space:]]*#/ { next }
-        !seen && /^set -[a-zA-Z]+/ {
-            seen = 1; hdr = $0; f = $2; sub(/^-/, "", f)
-            haserr = (f ~ /e/); next
-        }
-        seen && !haserr && /^[[:space:]]*set -[a-zA-Z]*e[a-zA-Z]*([[:space:]]|$)/ { print NR "\t" hdr }
     ' "$f" 2>/dev/null)
 done < <(find "$_LTE_ROOT/tests" "$_LTE_ROOT/plugins" -name '*-test.sh' -print0 2>/dev/null)
 

@@ -22,6 +22,9 @@
 # O7 [guard]  prior-output reader: nothing of this run's → the restored copy
 # O8 [guard]  a file older than this run's start (a reused state dir's leftover)
 #             is not this run's: the restored copy wins over it
+# O10 [change] input resolution: a LIVE file older than this run's start (a
+#             reused state dir's leftover) is not this run's either (review on
+#             #2253)
 # O9 [guard]  an archived copy older than this run's start is ignored too
 set -uo pipefail
 
@@ -91,6 +94,8 @@ assert_eq "[O8] a leftover older than this run's start loses to the restored cop
 rm -f "$ART2/impact.json"
 assert_eq "[O9] an archived leftover is ignored too" "RESTORED impact" \
     "$(_read_prior_output impact.json)"
+assert_eq "[O10] input resolution skips a live leftover too" "RESTORED plan" \
+    "$(cat "$(_inputs_effective_path "$ART2/plan.json" plan)" 2>/dev/null)"
 unset ZBUILD_RUN_START_MARKER
 
 cleanup_test_env

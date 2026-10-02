@@ -109,7 +109,9 @@ attempt_outputs_fingerprint() {
         local repo="${ZBUILD_REPO_ROOT:-}" head st df
         if [[ -n "$repo" ]] && head="$(git -C "$repo" rev-parse HEAD 2>/dev/null)" && [[ -n "$head" ]]; then
             st="$(git -C "$repo" status --porcelain -uall 2>/dev/null || true)"
-            df="$(git -C "$repo" diff HEAD 2>/dev/null || true)"
+            # The diff is hashed as it streams — never held whole in memory
+            # (review on #2253); cksum reads all of it, so no early-exit pipe.
+            df="$(git -C "$repo" diff HEAD 2>/dev/null | cksum)"
             printf '__repository__\t%s\n' "$(cksum <<< "$head"$'\n'"$st"$'\n'"$df")"
         fi
     fi

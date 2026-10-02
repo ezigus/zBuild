@@ -13,7 +13,8 @@
 # P1 [change] a repository-writing stage whose attempt changed only its report
 #             made no progress
 # P2 [guard]  ...one whose attempt committed a change made progress
-# P3 [guard]  ...one whose attempt left an uncommitted edit made progress
+# P3 [guard]  ...one whose attempt only left an uncommitted edit — no output
+#             changed — made progress (isolated per review on #2253)
 # P4 [change] any other stage: a change to only its narrative summary is no
 #             progress
 # P5 [guard]  ...a change to its primary output is progress
@@ -67,8 +68,8 @@ _attempt "$P" builder 'printf "{\"n\":2}" > "$ART/builder-result.json"; printf "
 assert_eq "[P1] only its report changed → no progress" "no" "$(_progress builder)"
 _attempt "$P" builder 'printf x > "$REPO/f.txt"; "$GIT" -C "$REPO" add f.txt; "$GIT" -C "$REPO" commit -qm c; printf "{\"n\":3}" > "$ART/builder-result.json"'
 assert_eq "[P2] it committed a change → progress" "yes" "$(_progress builder)"
-_attempt "$P" builder 'printf y > "$REPO/g.txt"; printf "{\"n\":4}" > "$ART/builder-result.json"'
-assert_eq "[P3] it left an uncommitted edit → progress" "yes" "$(_progress builder)"
+_attempt "$P" builder 'printf y > "$REPO/g.txt"'
+assert_eq "[P3] an uncommitted edit alone (no output changed) → progress" "yes" "$(_progress builder)"
 
 print_test_section "P4-P5: any other stage"
 Q="$TEST_TEMP_DIR/plugins/designer"; _plugin "$Q" false

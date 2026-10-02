@@ -16,6 +16,8 @@
 #             loop (LOOP_COMPLETE)
 # S4 [change] the single-call path (route_to_model) keeps a killed call's steps
 #             too
+# S5 [change] ...and its diagnostic event says how many turns ran and the last
+#             tool (review on #2253)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -105,6 +107,9 @@ _stub hang; : > "$ZBUILD_EVENTS_JSONL"
     export ZBUILD_CURRENT_STAGE=build
     route_to_model T2 "judge this"
 ) >/dev/null 2>&1
+_SD="$(jq -c 'select(.type=="router.error.diagnostic")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)"
+assert_eq "[S5] the single-call diagnostic says 3 turns ran" "3" "$(jq -r '.data.num_turns // empty' <<< "$_SD" 2>/dev/null)"
+assert_eq "[S5] ...and names the last tool" "Bash" "$(jq -r '.data.last_tool // empty' <<< "$_SD" 2>/dev/null)"
 assert_eq "[S4] the single-call raw output holds the three steps" "3" \
     "$(grep -c '"type":"assistant"' "$ZBUILD_ARTIFACT_DIR/stage-io/build-sync-error.raw-claude-output.json" 2>/dev/null || true)"
 

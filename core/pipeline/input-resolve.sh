@@ -291,7 +291,12 @@ _inputs_effective_path() {
         local f="$fb/${in_id}.txt"
         [[ -s "$f" ]] && { printf '%s' "$f"; return 0; }
     fi
-    [[ -s "$live" ]] && { printf '%s' "$live"; return 0; }
+    # #2252 (review on #2253): a live file older than this run's start is a
+    # reused state dir's leftover, not this run's — the same rule as below.
+    if [[ -s "$live" ]] && { ! declare -F attempt_is_this_run >/dev/null 2>&1 \
+            || attempt_is_this_run "$live"; }; then
+        printf '%s' "$live"; return 0
+    fi
     # #2252: a live file this run produced and then cleared (a cycle re-entry)
     # is this run's newest archived copy — never an earlier run's (#1844 run
     # 36969128968 redid its design from the Sept 30 run's).
