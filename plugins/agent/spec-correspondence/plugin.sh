@@ -109,6 +109,12 @@ _sc_call() {
             export ZBUILD_STAGE_IO_PERSONA="$_pid"   # ADR-015: the banner names the persona
         fi
     fi
+    # #2252: the limits this call runs under, from the values the router enforces.
+    declare -F stage_budget_note >/dev/null 2>&1 || \
+        source "$_SC_ROOT/scripts/lib/stage-budget-note.sh" 2>/dev/null || true
+    local _budget_note=""
+    declare -F stage_budget_note >/dev/null 2>&1 && _budget_note="$(stage_budget_note "your judgement")"
+    [[ -n "$_budget_note" ]] && _framed+=$'\n\n'"$_budget_note"
     # No 2>/dev/null: the stage-io input banner writes to fd 2 (#491). stdin
     # is /dev/null: a model that drains stdin must not eat a caller's stream (#2108).
     if declare -f route_to_model >/dev/null 2>&1; then

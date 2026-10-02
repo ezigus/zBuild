@@ -172,6 +172,12 @@ spec_coverage_run() {
         fi
     fi
 
+    # #2252: the limits this call runs under, from the values the router enforces.
+    declare -F stage_budget_note >/dev/null 2>&1 || \
+        source "$_SCV_ROOT/scripts/lib/stage-budget-note.sh" 2>/dev/null || true
+    local _budget_note=""
+    declare -F stage_budget_note >/dev/null 2>&1 && _budget_note="$(stage_budget_note "your verdict")"
+    [[ -n "$_budget_note" ]] && _framed+=$'\n\n'"$_budget_note"
     local _raw=""
     # No 2>/dev/null on this call: the stage-io input banner writes to fd 2 and
     # suppressing it breaks ADR-015 §v4's ordering (the #491 defect).

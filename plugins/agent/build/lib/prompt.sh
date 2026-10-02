@@ -94,6 +94,8 @@ a failure you cannot produce, and do not change code to chase one.
 ### Budget
 - Each iteration is ONE model call bounded by a ${_budget_wall}-second wall clock; a
   command that runs longer than ~2 minutes will cost you the whole call.
+- Finish this call's work and commit before ~$(( _budget_wall * 70 / 100 ))s. Work you saved
+  survives a timeout; the call itself returns nothing, so say what is left as you go.
 - Do NOT run \`npm test\`, the full suite, or \`npm run lint\` — the pipeline has
   already run them and their findings are in the STAGE SUMMARIES below. Run
   only the one failing test file a summary names, and only after changing code.

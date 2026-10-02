@@ -50,6 +50,8 @@ scan_plugin_outputs() {
     local plugin_dir="$1"
     local state_file="${2:-}"
     local stage="${3:-}"
+    # #2252: `probe` answers present-or-not with no events, findings or marker.
+    local probe="${4:-}"
     local manifest="$plugin_dir/manifest.yaml"
 
     # No manifest, no outputs to scan — silently succeed.
@@ -105,6 +107,9 @@ scan_plugin_outputs() {
             _event="plugin.artifact.empty"
         fi
 
+        if [[ -n "$_violation" && "$probe" == "probe" ]]; then
+            return 1
+        fi
         if [[ -n "$_violation" ]]; then
             if [[ "$_violation" == "absent" ]]; then
                 error "scan_plugin_outputs: plugin=$plugin_id declared output missing: $resolved (template: $raw_path)"
@@ -479,9 +484,13 @@ plugin_hook_call() {
             # overwrote its retryable word with `broken` and halted the run
             # (#1844: design timed out, and the run ended instead of retrying).
             # Its own word stands; the retry rule decides what happens next.
+            # Read the stage's word only when an output IS missing (a quiet
+            # probe first): the read costs several jq calls per dispatch, and a
+            # probe that passes means there is nothing for the full check to say.
             local _lcr_state="" _lcr_contract="" _lcr_verdict="" _lcr_disp="" _lcr_reason="" \
-                  _lcr_viol="" _lcr_path="" _lcr_present="" _lc_unfinished=""
-            if declare -F _verdict_read_result >/dev/null 2>&1 \
+                  _lcr_viol="" _lcr_path="" _lcr_present="" _lc_unfinished="" _lc_missing=0
+            scan_plugin_outputs "$plugin_dir" "$state_file_arg" "$stage_arg" probe 2>/dev/null || _lc_missing=1
+            if (( _lc_missing )) && declare -F _verdict_read_result >/dev/null 2>&1 \
                     && declare -F disposition_unfinished >/dev/null 2>&1 \
                     && [[ -n "$state_file_arg" ]]; then
                 _verdict_read_result "$(dirname "$state_file_arg")" "$manifest" "$stage_arg" 0 _lcr 2>/dev/null || true
@@ -490,7 +499,7 @@ plugin_hook_call() {
             if [[ -n "$_lc_unfinished" ]]; then
                 emit_event "plugin.$hook_name.artifact_check_skipped" "plugin=$plugin_id" \
                     "kind=$kind" "disposition=$_lc_unfinished"
-            elif ! scan_plugin_outputs "$plugin_dir" "$state_file_arg" "$stage_arg"; then
+            elif (( _lc_missing )) && ! scan_plugin_outputs "$plugin_dir" "$state_file_arg" "$stage_arg"; then
                 emit_event "plugin.$hook_name.artifact_check_failed" \
                     "plugin=$plugin_id" "kind=$kind"
                 # A dispatch that STARTED must also END. This arm and the
