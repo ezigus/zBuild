@@ -96,6 +96,8 @@ YAML
 # Plan format: "stage:v1,v2,...;stage2:..."  (comma-separated per-iter tokens)
 # Tokens:
 #   unf  — disposition=timed_out (unfinished), verdict=incomplete
+#   oot  — disposition=out_of_turns (unfinished), verdict=incomplete
+#   int  — disposition=interrupted (unfinished), verdict=incomplete
 #   pass — disposition=complete (empty / default), verdict=pass
 cycle_dispatch_stage() {
     local stage="$1" iter="$2"
@@ -119,9 +121,13 @@ cycle_dispatch_stage() {
     _CYCLE_DISPATCH_DISPOSITION=""
     _CYCLE_DISPATCH_DATA_KIND=""
     _CYCLE_DISPATCH_REPORT="{}"
-    if [[ "$v" == "unf" ]]; then
-        # Unfinished: disposition=timed_out, verdict classified from incomplete.
-        _CYCLE_DISPATCH_DISPOSITION="timed_out"
+    if [[ "$v" == "unf" || "$v" == "oot" || "$v" == "int" ]]; then
+        # Unfinished: disposition varies by token; verdict classified from incomplete.
+        case "$v" in
+            unf) _CYCLE_DISPATCH_DISPOSITION="timed_out" ;;
+            oot) _CYCLE_DISPATCH_DISPOSITION="out_of_turns" ;;
+            int) _CYCLE_DISPATCH_DISPOSITION="interrupted" ;;
+        esac
         _CYCLE_DISPATCH_VERDICT="$(verdict_classify "incomplete" 2>/dev/null || echo fail)"
         _CYCLE_DISPATCH_VERDICT_RAW="incomplete"
     else
@@ -151,6 +157,11 @@ _run() {
     set +e
 }
 
+# ── Wiring: new event must be declared in config/event-schema.json ───────────
+_schema_reg="$(grep -c '"cycle.member_unfinished.suppressed_convergence"' "$ZBUILD_EVENT_SCHEMA" 2>/dev/null || true)"
+assert_eq "[#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence is declared in config/event-schema.json" \
+    "1" "$_schema_reg"
+
 # ── SPEC-2 [#2032/SPEC-2]: all members disposition:complete → converges normally ──
 print_test_section "SPEC-2: all-complete exit_when converges; suppression block absent"
 _run "$DESIGN_TPL" "dvc" "design:pass;design-gate:pass"
@@ -175,6 +186,26 @@ assert_eq "[#2032/SPEC-1] cycle ran 2 iterations (not 1): the suppressed iter fo
 _supp1="$(grep -c '"cycle.member_unfinished.suppressed_convergence"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
 assert_eq "[#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence was emitted once" \
     "1" "$_supp1"
+
+# ── SPEC-1 [#2032/SPEC-1]: out_of_turns disposition also suppresses convergence ──
+print_test_section "SPEC-1: out_of_turns member suppresses convergence — cycle iterates instead"
+_run "$DESIGN_TPL" "dvc" "design:oot,pass;design-gate:pass,pass"
+assert_eq "[#2032/SPEC-1] out_of_turns member blocks convergence: rc=0 (converges on iter 2)" \
+    "0" "$RUN_RC"
+assert_eq "[#2032/SPEC-1] cycle ran 2 iterations with out_of_turns suppression" \
+    "2" "${_CYCLE_LAST_ITERATIONS:-0}"
+_supp_oot="$(grep -c '"cycle.member_unfinished.suppressed_convergence"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+assert_eq "[#2032/SPEC-1] suppression block fired for out_of_turns member" "1" "$_supp_oot"
+
+# ── SPEC-1 [#2032/SPEC-1]: interrupted disposition also suppresses convergence ──
+print_test_section "SPEC-1: interrupted member suppresses convergence — cycle iterates instead"
+_run "$DESIGN_TPL" "dvc" "design:int,pass;design-gate:pass,pass"
+assert_eq "[#2032/SPEC-1] interrupted member blocks convergence: rc=0 (converges on iter 2)" \
+    "0" "$RUN_RC"
+assert_eq "[#2032/SPEC-1] cycle ran 2 iterations with interrupted suppression" \
+    "2" "${_CYCLE_LAST_ITERATIONS:-0}"
+_supp_int="$(grep -c '"cycle.member_unfinished.suppressed_convergence"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+assert_eq "[#2032/SPEC-1] suppression block fired for interrupted member" "1" "$_supp_int"
 
 # ── SPEC-6 [#2032/SPEC-6]: unfinished member at max_iterations → exhaustion path ──
 # Plan: both iters — design=timed_out, design-gate=pass.
