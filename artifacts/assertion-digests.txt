@@ -1,0 +1,20 @@
+# authored_by: test-author
+ff66e79b5343564a4ca4db720e48a461af0108ec820ada592ebc684cdefed35f  tests/unit/pr-delivery-v2-result-test.sh
+ff66e79b5343564a4ca4db720e48a461af0108ec820ada592ebc684cdefed35f  tests/unit/pr-delivery-v2-result-test.sh
+ff66e79b5343564a4ca4db720e48a461af0108ec820ada592ebc684cdefed35f  tests/unit/pr-delivery-v2-result-test.sh
+ff66e79b5343564a4ca4db720e48a461af0108ec820ada592ebc684cdefed35f  tests/unit/pr-delivery-v2-result-test.sh
+ff66e79b5343564a4ca4db720e48a461af0108ec820ada592ebc684cdefed35f  tests/unit/pr-delivery-v2-result-test.sh
+ff66e79b5343564a4ca4db720e48a461af0108ec820ada592ebc684cdefed35f  tests/unit/pr-delivery-v2-result-test.sh
+ff66e79b5343564a4ca4db720e48a461af0108ec820ada592ebc684cdefed35f  tests/unit/pr-delivery-v2-result-test.sh
+ff66e79b5343564a4ca4db720e48a461af0108ec820ada592ebc684cdefed35f  tests/unit/pr-delivery-v2-result-test.sh
+7b4beb26bd3c8e85030ff10fbbe5c64b924f2ec2357b1371aa2612a8c3ae65e7  tests/integration/pr-pipeline-test.sh
+ff66e79b5343564a4ca4db720e48a461af0108ec820ada592ebc684cdefed35f  tests/unit/pr-delivery-v2-result-test.sh
+ff66e79b5343564a4ca4db720e48a461af0108ec820ada592ebc684cdefed35f  tests/unit/pr-delivery-v2-result-test.sh
+7b4beb26bd3c8e85030ff10fbbe5c64b924f2ec2357b1371aa2612a8c3ae65e7  tests/integration/pr-pipeline-test.sh
+ff66e79b5343564a4ca4db720e48a461af0108ec820ada592ebc684cdefed35f  tests/unit/pr-delivery-v2-result-test.sh
+ff66e79b5343564a4ca4db720e48a461af0108ec820ada592ebc684cdefed35f  tests/unit/pr-delivery-v2-result-test.sh
+ff66e79b5343564a4ca4db720e48a461af0108ec820ada592ebc684cdefed35f  tests/unit/pr-delivery-v2-result-test.sh
+ff66e79b5343564a4ca4db720e48a461af0108ec820ada592ebc684cdefed35f  tests/unit/pr-delivery-v2-result-test.sh
+ff66e79b5343564a4ca4db720e48a461af0108ec820ada592ebc684cdefed35f  tests/unit/pr-delivery-v2-result-test.sh
+7b4beb26bd3c8e85030ff10fbbe5c64b924f2ec2357b1371aa2612a8c3ae65e7  tests/integration/pr-pipeline-test.sh
+ba0606041adb008435cae4d9c71a467488e906fdaf8b89f94112e87c64acaa3b  tests/unit/plugin-artifact-goldens-test.sh
