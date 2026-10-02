@@ -1,4 +1,4 @@
-============== ZBUILD BUILD — iter 1/10 ==============
+============== ZBUILD BUILD — iter 2/10 ==============
 ## ORIGINAL TASK (immutable across iterations)
 # Plan: §3/§4 — unfinished member blocks convergence; gates emit real disposition
 
@@ -296,4 +296,4 @@ Every SPEC id below needs at least one assertion whose label carries its tag (as
   → needs a `[#2032/SPEC-9]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
 
 ## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
-A previous attempt on this issue ended build with verdict=pass having changed nothing (0 files). That is not evidence the work is done: read the STAGE SUMMARIES below — a RESOLVE summary means the suite is red on this tree and there is work to do. Do not restart from scratch; continue from what is on this branch (check `git log` / `git diff`).
+A previous attempt on this issue ended build with verdict=pass and touched 7 file(s): config/event-schema.json, core/pipeline/cycle-orchestrator.sh, docs/adr/ADR-021-pipeline-cycle-semantics.md, docs/adr/ADR-063-budget-disclosure-and-partial-output.md, plugins/agent/review-report/plugin.sh, plugins/agent/spec-correspondence/plugin.sh, plugins/agent/spec-coverage/plugin.sh. That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present and no STAGE SUMMARY is marked RESOLVE.
