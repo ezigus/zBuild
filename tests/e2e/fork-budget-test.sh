@@ -50,7 +50,10 @@ setup_test_env "fork-budget"
 # and review_lenses -> review-aggregator -> pr. Measured 6,280 macOS; the same
 # counter on main's fixture reads 4,367 (132 phantom execs in quoted values are
 # gone, SPEC-1b). The biggest new site is persist's per-file git, #2249.
-FORK_BUDGET=6340
+# 5740 (#2249): persist stages a snapshot in two git calls instead of two per
+# file, and the fixture's git plumbing is real so snapshots actually save —
+# measured 5,685 macOS (artifact-persist.sh 1,072 → 305).
+FORK_BUDGET=5740
 
 # ─── the trace harness (the --coverage-trace precedent, scripts/run-tests.sh) ──
 # BASH_ENV injects `set -x` into every child bash (the runner, the mocks, work

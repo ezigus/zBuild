@@ -60,6 +60,8 @@ hundred per stage per iteration adds up to.
 >
 > The fixture now has a real repo and the production review family, one lens wide. That costs about 1,900 execs that a real run was always paying. Separately, the counter read words inside a quoted assigned value as commands (`v='review lens: security'` counted macOS's `security` binary). That accounted for 132 execs on main's fixture; SPEC-1b holds the fix. Measured: main's fixture 4,367 with the fixed counter, #1842's fixture 6,280 (macOS). The largest new site, persist's two `git` processes per artifact file, is #2249, which ratchets this back down.
 
+> **Ratcheted 2026-10-02 (#2249): 6,340 → 5,740.** Persist staged each artifact with two `git` processes; it now stages a whole snapshot with two (`hash-object --stdin-paths`, `update-index --index-info`), and falls back to per-file staging only when a batch fails (#1878). The fixture's local git plumbing now reaches real git, so its snapshots save instead of failing fast. Measured 5,685 on macOS.
+
 ### §3 — A memo is only as good as its fill in the parent shell
 
 `$( … )` and `< <( … )` fork: the child inherits every associative array the parent has filled

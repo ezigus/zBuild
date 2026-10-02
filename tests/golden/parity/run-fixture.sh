@@ -118,6 +118,13 @@ case "${1:-}" in
             [[ -n "$_real_git" ]] && exec "$_real_git" "$@"
         fi
         ;;
+    # #2249: local object/index/ref plumbing goes to real git — persist builds
+    # its snapshot with it (GIT_DIR=…, no -C). Answering "" made every mocked
+    # snapshot fail, so the run's persist cost was the mock's, not the engine's.
+    # Network commands (push, fetch, ls-remote) stay mocked.
+    hash-object|update-index|write-tree|commit-tree|update-ref|ls-tree|cat-file|show-ref|for-each-ref|rev-list|merge-base)
+        [[ -n "$_real_git" ]] && exec "$_real_git" "$@"
+        exit 1 ;;
     apply)    exit 0 ;;
     push)     exit 0 ;;
     checkout) exit 0 ;;
@@ -268,6 +275,11 @@ mkdir -p "$MOCK_REPO"
     echo seed > seed.txt
     "$_FIXTURE_REAL_GIT" add seed.txt
     "$_FIXTURE_REAL_GIT" commit -q -m "parity seed"
+    # #2249: the trunk the run branched from, as a real clone has it. With git
+    # plumbing real, pr-open's "anything to ship?" check measures commits ahead
+    # of the merge-base — without a trunk ref that base is HEAD itself and the
+    # build's commit reads as nothing to ship.
+    "$_FIXTURE_REAL_GIT" update-ref refs/remotes/origin/main HEAD
 ) >/dev/null 2>&1
 # ZBUILD_INTAKE_SKIP_BRANCH=1 (below) skips the intake step that records the
 # run's baseline (plugins/agent/intake/lib/branch-ops.sh). Record what it would:
