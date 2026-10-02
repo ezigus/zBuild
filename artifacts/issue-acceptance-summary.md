@@ -1,0 +1,5 @@
+## issue-acceptance — pass
+
+- All three scope items (A: unfinished-member convergence suppression generalised to any disposition_unfinished member; B: spec-coverage, spec-correspondence, and review-report disposition classified via router_reason_disposition instead of hardcoded 'complete'; C: ADR-063 amended to Accepted with #2187 back-pointer and updated vocabulary) are implemented, tested with NEGCTL PASS on all 9 SPECs, and the full suite is green.
+
+- every requirement the issue states is met by the change
