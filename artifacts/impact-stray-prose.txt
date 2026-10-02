@@ -1,0 +1,9 @@
+I have enough information to compile the verdict. Let me summarize my findings:
+
+1. **Golden files (MUST KEEP per prefilter rules)**: Both `tests/golden/full-pipeline/event-sequence.golden` and `tests/golden/parity/event-sequence.golden` exist and the prefilter mandates I keep them.
+
+2. **Shape-change-numeric**: The numeric "9" in these test files refers to `ADR-055 §9` comments and test-case labels, not pipeline stage counts. This design adds no stages — the suppression block is within the cycle orchestrator's convergence logic. All 42 numeric candidates are false positives.
+
+3. **Shape-change-order** (`_TPL_STAGES[N]`): Confirmed `cycle-orchestrator.sh` does not reference `_TPL_STAGES` at all. The design only adds a convergence-suppression block, not template stage reordering. All 5 order candidates are false positives.
+
+4. **No additional gaps found**: `router_reason_disposition` and `_router_rc_classify` (called by the fixed plugins) are already in scope via `scripts/lib/router-rc-classify.sh`. The `lint-disposition-words-test.sh` which tests plugin disposition word correctness is not broken — plugins switch from hardcoded `"complete"` (valid) to computed `$(router_reason_disposition …)` which the lint script already classifies as a passing computed value. No test outside the design scope pins a symbol that this change modifies.
