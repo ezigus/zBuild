@@ -225,14 +225,31 @@ _build_write_build_summary() {
             | jq -R . | jq -sc . 2>/dev/null || echo '[]')"
     fi
 
-    # #792: post-LLM no-progress diagnostic.
-    if [[ "$build_data_kind" == "empty_diff" && -n "${_feedback_body:-}" && -n "${plan_files_csv:-}" ]]; then
+    # #2252: build's own BLOCKED lines come first — the one request with build's
+    # word that it needs the file.
+    _sum_scope_expansion_request_json="$(_build_blocked_request \
+        "${_ROUTE_LOOP_LAST_RESPONSE:-}" "${plan_files_csv:-}" 2>/dev/null || true)"
+    if [[ -n "$_sum_scope_expansion_request_json" ]]; then
+        if [[ "$build_data_kind" == "empty_diff" ]]; then
+            _sum_build_reason="no_progress_scope_blocked"
+        else
+            _sum_build_reason="scope_request_pending"
+        fi
+        _sum_out_of_scope_files_json="$(jq -c '[.files[].path]' \
+            <<<"$_sum_scope_expansion_request_json" 2>/dev/null || echo '[]')"
+    fi
+
+    # #792: post-LLM no-progress diagnostic. #2252: only a file the failure text
+    # gives evidence for (a quote found in it) is requested.
+    if [[ -z "$_sum_scope_expansion_request_json" && "$build_data_kind" == "empty_diff" && -n "${_feedback_body:-}" && -n "${plan_files_csv:-}" ]]; then
         _sum_oos_paths="$(_build_detect_out_of_scope_files "$_feedback_body" "$plan_files_csv")"
         if [[ -n "$_sum_oos_paths" ]]; then
-            _sum_build_reason="no_progress_scope_blocked"
-            _sum_out_of_scope_files_json="$(printf '%s\n' "$_sum_oos_paths" \
-                | jq -R . | jq -sc . 2>/dev/null || echo '[]')"
             _sum_scope_expansion_request_json="$(_build_scope_expansion_request "$_sum_oos_paths" "${_feedback_body:-}" 2>/dev/null || true)"
+        fi
+        if [[ -n "$_sum_scope_expansion_request_json" ]]; then
+            _sum_build_reason="no_progress_scope_blocked"
+            _sum_out_of_scope_files_json="$(jq -c '[.files[].path]' \
+                <<<"$_sum_scope_expansion_request_json" 2>/dev/null || echo '[]')"
         fi
     fi
 

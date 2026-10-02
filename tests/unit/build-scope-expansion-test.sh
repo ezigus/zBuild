@@ -35,10 +35,13 @@ assert_eq "T1: path" "$PINNED" "$(jq -r '.files[0].path' <<<"$REQ")"
 assert_eq "T1: classified collateral_tests" "collateral_tests" "$(jq -r '.files[0].category' <<<"$REQ")"
 assert_eq "T1: evidence = old value found in file" "still has 8 stages (#754)" "$(jq -r '.files[0].evidence' <<<"$REQ")"
 
-# ─── T2: evidence empty when feedback shares no token with the file ──────
+# ─── T2: no evidence → no request (#2252) ─────────────────────────────────
+# A path the failure text names, with no quote found in it, is not evidence that
+# build needs it: #1844 and #2032 requested such files ("evidence": ""), the
+# denial routed each run back to design, and the files were not needed. A file
+# build truly needs it names with `BLOCKED:` (build-scope-request-evidence-test).
 REQ2="$(_build_scope_expansion_request "$PINNED" "unrelated feedback with no quoted tokens")"
-assert_eq "T2: still emits the file" "$PINNED" "$(jq -r '.files[0].path' <<<"$REQ2")"
-assert_eq "T2: evidence empty (resolver will deny → clean abandon)" "" "$(jq -r '.files[0].evidence' <<<"$REQ2")"
+assert_eq "T2: no evidence → no request" "" "$REQ2"
 
 # ─── T3: empty OOS list → no request ─────────────────────────────────────
 REQ3="$(_build_scope_expansion_request "" "$FEEDBACK")"
