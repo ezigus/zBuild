@@ -73,6 +73,16 @@ _vv_error="$(grep -v '^#' "$PR_MANIFEST" | grep -c '^[[:space:]]*- error$' || tr
 _vv_empty="$(grep -v '^[[:space:]]*#' "$PR_MANIFEST" | grep -c 'valid_verdicts:[[:space:]]*\[\]' || true)"
 assert_eq "[#1844/SPEC-2] valid_verdicts is not the empty list []" "0" "$_vv_empty"
 
+# The list must be exactly [pass, error]: count all entries, must be exactly 2.
+_vv_total="$(awk '
+    /^[[:space:]]*valid_verdicts:/{f=1; next}
+    f && /^[[:space:]]*#/{next}
+    f && /^[[:space:]]*-[[:space:]]/{c++}
+    f && /^[[:space:]]*[^-[:space:]#]/{f=0}
+    END{print c+0}
+' "$PR_MANIFEST")"
+assert_eq "[#1844/SPEC-2] valid_verdicts has exactly 2 entries (pass and error, no others)" "2" "$_vv_total"
+
 # ─── SPEC-3: provides.events declares all three delivery events ───────────────
 print_test_section "#1844/SPEC-3: manifest provides.events declares pr.delivery.{blocked,opened,dry_run}"
 
@@ -109,9 +119,7 @@ _has_primary="$(grep -v '^#' "$PR_MANIFEST" | grep -c 'primary:[[:space:]]*true'
 print_test_section "#1844/SPEC-13: hooks has run: pr_stage_run and no cleanup:"
 
 _has_run="$(grep -v '^#' "$PR_MANIFEST" | grep -c '^[[:space:]]*run:[[:space:]]*pr_stage_run' || true)"
-[[ "$_has_run" -gt 0 ]] \
-    && assert_pass "[#1844/SPEC-13] manifest hooks has run: pr_stage_run" \
-    || assert_fail "[#1844/SPEC-13] manifest hooks has run: pr_stage_run" "missing"
+assert_eq "[#1844/SPEC-13] manifest hooks has run: pr_stage_run" "1" "$(( _has_run > 0 ? 1 : 0 ))"
 
 _has_cleanup="$(grep -v '^#' "$PR_MANIFEST" | grep -c '^[[:space:]]*cleanup:' || true)"
 assert_eq "[#1844/SPEC-13] manifest hooks has no cleanup:" "0" "$_has_cleanup"
@@ -140,6 +148,17 @@ assert_eq "[#1844/SPEC-20] inputs section has no from: fields" "0" "$_has_from_f
 _has_producer_field="$(grep -c '^\s*producer:' <<< "$_inputs_section" || true)"
 assert_eq "[#1844/SPEC-20] inputs section has no producer: fields" "0" "$_has_producer_field"
 
+# Each input entry must declare ONLY id and required: — no other field names.
+_inputs_extra_count=0
+while IFS= read -r _inln; do
+    [[ "$_inln" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${_inln//[[:space:]]/}" ]] && continue
+    [[ "$_inln" =~ ^[[:space:]]*-[[:space:]]*id: ]] && continue
+    [[ "$_inln" =~ ^[[:space:]]*required: ]] && continue
+    (( _inputs_extra_count++ )) || true
+done < <(awk '/^inputs:/{f=1; next} f && /^[a-z]/{f=0} f{print}' "$PR_MANIFEST")
+assert_eq "[#1844/SPEC-20] inputs entries have no fields beyond id and required:" "0" "$_inputs_extra_count"
+
 # ─── SPEC-10: plugin.sh resolves inputs via ZBUILD_STAGE_INPUTS only ──────────
 print_test_section "#1844/SPEC-10: plugin.sh constructs no hardcoded gate-aggregator-result.json or review-report.json paths"
 
@@ -150,6 +169,11 @@ assert_eq "[#1844/SPEC-10] plugin.sh constructs no gate-aggregator-result.json p
 
 _report_hardcoded="$(grep -v '^[[:space:]]*#' "$_plugin_sh" | grep -cF 'review-report.json' || true)"
 assert_eq "[#1844/SPEC-10] plugin.sh constructs no review-report.json path" "0" "$_report_hardcoded"
+
+# Positive: plugin.sh must reference ZBUILD_STAGE_INPUTS to resolve stage inputs.
+_zbuild_inputs_ref="$(grep -v '^[[:space:]]*#' "$_plugin_sh" | grep -c 'ZBUILD_STAGE_INPUTS' || true)"
+assert_eq "[#1844/SPEC-10] plugin.sh references ZBUILD_STAGE_INPUTS to resolve stage inputs" "1" \
+    "$(( _zbuild_inputs_ref > 0 ? 1 : 0 ))"
 
 # ─── Plugin behavior setup ─────────────────────────────────────────────────────
 # shellcheck source=../../plugins/agent/pr-delivery/plugin.sh
@@ -546,6 +570,41 @@ if [[ -f "$_s17_pr" ]]; then
 fi
 assert_eq "[#1844/SPEC-17] SIGTERM: rc=1" "1" "$_s17_rc"
 
+# SIGINT path — same requirement: pr-result.json with disposition=interrupted and rc=1
+print_test_section "#1844/SPEC-17: SIGINT trap writes pr-result.json: result_contract:2, verdict=error, disposition=interrupted; rc=1"
+
+_s17i_dir="$TEST_TEMP_DIR/spec17i"
+_s17i_sf="$(_mk_state "$_s17i_dir" "approve")"
+_s17i_art="$_s17i_dir/artifacts"
+_s17i_pr="$_s17i_art/pr-result.json"
+
+_mk_bins "$TEST_TEMP_DIR/bin17i" "zbuild/issue-1844-test"
+cat > "$TEST_TEMP_DIR/bin17i/gh" <<'GHSIGINT'
+#!/usr/bin/env bash
+kill -INT "$PPID" 2>/dev/null || true
+exit 1
+GHSIGINT
+chmod +x "$TEST_TEMP_DIR/bin17i/gh"
+
+set +e
+( export _PR_ROOT="$_FAKE_ROOT"
+  PATH="$TEST_TEMP_DIR/bin17i:$PATH" ZBUILD_DRY_RUN=0 \
+  ZBUILD_STAGE_INPUTS="$_s17i_dir/stage-inputs.json" \
+  _TPL_MERGE_POLICY="none" \
+  pr_stage_run "pr" "$_s17i_sf" ) >/dev/null 2>&1; _s17i_rc=$?
+set -e
+
+assert_file_exists "[#1844/SPEC-17] SIGINT: pr-result.json written" "$_s17i_pr"
+if [[ -f "$_s17i_pr" ]]; then
+    assert_eq "[#1844/SPEC-17] SIGINT: result_contract is 2" "2" \
+        "$(jq -r '.result_contract // empty' "$_s17i_pr" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-17] SIGINT: verdict is error" "error" \
+        "$(jq -r '.verdict // empty' "$_s17i_pr" 2>/dev/null || true)"
+    assert_eq "[#1844/SPEC-17] SIGINT: disposition is interrupted" "interrupted" \
+        "$(jq -r '.disposition // empty' "$_s17i_pr" 2>/dev/null || true)"
+fi
+assert_eq "[#1844/SPEC-17] SIGINT: rc=1" "1" "$_s17i_rc"
+
 # ─── SPEC-22 + SPEC-23: pr-open rc=0 but verdict≠pass (#2250) ────────────────
 print_test_section "#1844/SPEC-22 + SPEC-23: pr-open rc=0 but verdict=blocked → pr-delivery rewrites error result and summary"
 
@@ -593,11 +652,10 @@ if [[ -f "$_s22_summary" ]]; then
         && assert_pass "[#1844/SPEC-23] summary names review_signal_missing" \
         || assert_fail "[#1844/SPEC-23] summary names review_signal_missing" "absent from summary"
 
+    # Must affirmatively state that no PR was opened — not just name the reason.
     _s23_has_no_pr_opened=0
-    grep -qi "no pr" "$_s22_summary" && _s23_has_no_pr_opened=1 || true
-    [[ "$_s23_has_no_pr_opened" -eq 1 ]] \
-        && assert_pass "[#1844/SPEC-23] summary states no PR was opened" \
-        || assert_fail "[#1844/SPEC-23] summary states no PR was opened" "absent from summary"
+    grep -qiE "no pr|no pull request|pr.*not.*open|was not opened" "$_s22_summary" && _s23_has_no_pr_opened=1 || true
+    assert_eq "[#1844/SPEC-23] summary affirmatively states no PR was opened" "1" "$_s23_has_no_pr_opened"
 fi
 
 # ─── Teardown ─────────────────────────────────────────────────────────────────
