@@ -1,0 +1,6 @@
+[
+  "tests/integration/route-back-budget-exhausted-test.sh",
+  "tests/unit/event-schema-emitted-coverage-test.sh",
+  "tests/unit/lint-disposition-words-test.sh",
+  "tests/unit/stage-signal-test.sh"
+]
