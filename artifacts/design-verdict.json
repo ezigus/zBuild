@@ -1,0 +1,18 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "design_produced",
+  "data": {
+    "authored_at": "2026-10-02T05:35:34Z",
+    "authored_at_commit": "09b960e2425a62a427c46a5631100ed9a602da36",
+    "wiring_files": [
+      "config/event-schema.json",
+      "core/pipeline/cycle-orchestrator.sh",
+      "docs/adr/ADR-063-budget-disclosure-and-partial-output.md",
+      "plugins/agent/review-report/plugin.sh",
+      "plugins/agent/spec-correspondence/plugin.sh",
+      "plugins/agent/spec-coverage/plugin.sh"
+    ]
+  }
+}
