@@ -1,0 +1,9 @@
+{
+  "result_contract": 2,
+  "verdict": "covered",
+  "disposition": "complete",
+  "reason": "Every acceptance checkbox maps to SPECs that fully cover its condition — A to SPEC-1/SPEC-2/SPEC-6, B to SPEC-3/SPEC-4/SPEC-5, C to SPEC-7.",
+  "data": {
+    "uncovered": []
+  }
+}
