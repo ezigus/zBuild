@@ -2,11 +2,11 @@
 
 ## Architectural Decision Summary
 
-**Goal.** Adopt result_contract:2 in the pr-delivery plugin: every terminal exit path writes `{result_contract:2, verdict, disposition, reason, data}` to pr-result.json; the manifest declares `result_contract:2`, `valid_verdicts:[pass,error]`, and three delivery events under `provides:`; rc is in {0,1}; gate_aggregator_result and review_report inputs are resolved via ZBUILD_STAGE_INPUTS; the dead hardcoded `review.json` guard is removed.
+**Goal.** Adopt result_contract:2 in the pr-delivery plugin: every terminal exit path writes `{result_contract:2, verdict, disposition, reason, data}` to pr-result.json; the manifest declares `result_contract:2`, `valid_verdicts:[pass,error]`, and three delivery events under `provides:`; rc is in {0,1}; gate_aggregator_result and review_report inputs are resolved via ZBUILD_STAGE_INPUTS; the dead hardcoded `review.json` guard is removed; a SIGTERM/SIGINT trap via `stage_signal_begin` writes an interrupted result.
 
-**Context.** pr-delivery is the final agent stage in the pipeline. Its manifest carries `valid_verdicts: []` and no `result_contract` key (defaults to v1). The plugin writes bare v1 JSON (status-keyed) on most paths and returns `rc=2` on the missing-state-file path — both violations of ADR-054 §4 (rc∈{0,1}) and ADR-055 §v2 (uniform result envelope). Issue #2250 wired the pr-open-blocked detection (plugin.sh lines 165-179) but never locked it with a v2 result assertion. Two input paths (`gate-aggregator-result.json`, `review-report.json`) are hardcoded artifact-dir strings rather than resolved via ZBUILD_STAGE_INPUTS. The `review.json` guard (lines 56-68) is dead code: the manifest comment at lines 34-39 records that the review input was dropped when stage:review was retired; review_report via ZBUILD_STAGE_INPUTS is the surviving review source.
+**Context.** pr-delivery is the final agent stage. Its manifest carries `valid_verdicts:[]` and no `result_contract` key (v1 default). The plugin writes bare v1 JSON on most paths and returns `rc=2` on the missing-state-file path — both violations of ADR-054 §4 (rc∈{0,1}) and ADR-055 §v2 (uniform result envelope). Issue #2250 wired pr-open-blocked detection (plugin.sh lines 165-179) but never locked it with a v2 result assertion. Two input paths (`gate-aggregator-result.json`, `review-report.json`) are hardcoded artifact-dir strings. The `review.json` guard (lines 56-68) is dead code. The plugin has no `stage_signal_begin` guard, so a mid-execution SIGTERM/SIGINT leaves no result file (analogous to intake before #1837; other v2 agent plugins — intake, plan, review-aggregator, deploy — all install a signal handler). The manifest has no comment recording the intentional absence of a `router:` block (pr-delivery is kind:agent but makes no direct LLM calls; `plugins/tool/pr-open/manifest.yaml` lines 17-21 and `plugins/tool/merge/manifest.yaml` lines 15-16 document this pattern for tool plugins).
 
-**Decision.** Add `_pr_delivery_write_result` helper to plugin.sh; replace all v1 pr-result.json writes with v2 calls on every exit path; fix `return 2 → return 1` on the missing-state-file path; remove the dead review.json guard block; resolve `gate_aggregator_result` and `review_report` from ZBUILD_STAGE_INPUTS (with path fallback for non-engine invocations). Update manifest.yaml with `result_contract:2`, `valid_verdicts:[pass,error]`, and `events:[pr.delivery.blocked, pr.delivery.opened, pr.delivery.dry_run]`. Write the unit test first (TDD), confirm it is red at merge-base, then implement. Update the integration test with additive v2 assertions on existing SPECs plus SPEC-10 for the pr-open-blocked integration path; update SPEC-4's fixture from review.json to review_report (ZBUILD_STAGE_INPUTS) since the old guard mechanism is removed.
+**Decision.** Add `_pr_delivery_write_result` helper; replace all v1 pr-result.json writes with v2 calls on every exit path; fix `return 2 → return 1`; remove the dead review.json guard; resolve `gate_aggregator_result` and `review_report` from ZBUILD_STAGE_INPUTS with path fallback; source `scripts/lib/stage-signal.sh` and add `stage_signal_begin _pr_delivery_on_signal` / `stage_signal_end` guard around the delegation work so SIGTERM/SIGINT writes verdict=error/disposition=interrupted. Update manifest with `result_contract:2`, `valid_verdicts:[pass,error]`, events list, and a comment recording the router-absent rationale (analogous to pr-open/merge manifests). Write the unit test first (TDD), confirm red at merge-base, then implement. Extend the integration test with additive v2 assertions and bind the passing-run result shape to `tests/golden/pr-result-artifact.golden` via SPEC-16.
 
 ```scope
 plugins/agent/pr-delivery/manifest.yaml
@@ -26,6 +26,7 @@ core/pipeline/verdict.sh
 core/plugin-registry/manifest-validation.sh
 core/plugin-registry/manifest-index.sh
 config/templates/simple.yaml
+scripts/lib/stage-signal.sh
 ```
 
 ```acceptance
@@ -41,6 +42,10 @@ SPEC-9[change]: fallback gh-pr-create success → rc=0, pr-result.json has resul
 SPEC-10[change]: fallback gh-pr-create failure → rc=1, pr-result.json has result_contract:2, verdict=error, disposition=unavailable
 SPEC-11[change]: plugin.sh contains no hardcoded gate-aggregator-result.json or review-report.json literal path strings — inputs resolved via ZBUILD_STAGE_INPUTS
 SPEC-12[change]: plugin.sh contains no hardcoded review.json literal path string — dead input guard removed
+SPEC-13[change]: manifest config: section contains a comment recording the intentional absence of a router: block (pr-delivery makes no direct model calls; analogous to pr-open/manifest.yaml lines 17-21 and merge/manifest.yaml lines 15-16)
+SPEC-14[change]: plugin.sh installs a stage_signal_begin trap (_pr_delivery_on_signal); when a SIGTERM/SIGINT fires during delegation, pr-result.json is written with result_contract:2, verdict=error, disposition=interrupted, and the run function exits rc=1
+SPEC-15[guard]: manifest inputs: every entry contains only id: and required: fields — no path:, type:, source:, or stage: fields — conformant with ADR-055 §1
+SPEC-16[change]: passing pr-open delegation produces pr-result.json whose result_contract equals 2, verdict equals pass, disposition equals complete, data.pr_url is non-empty, and data.draft equals false — matching the structure of tests/golden/pr-result-artifact.golden
 WIRING: plugins/agent/pr-delivery/plugin.sh
 TESTFILES:
 SPEC-1: tests/unit/pr-delivery-v2-result-test.sh
@@ -55,6 +60,10 @@ SPEC-9: tests/unit/pr-delivery-v2-result-test.sh
 SPEC-10: tests/unit/pr-delivery-v2-result-test.sh tests/integration/pr-pipeline-test.sh
 SPEC-11: tests/unit/pr-delivery-v2-result-test.sh
 SPEC-12: tests/unit/pr-delivery-v2-result-test.sh
+SPEC-13: tests/unit/pr-delivery-v2-result-test.sh
+SPEC-14: tests/unit/pr-delivery-v2-result-test.sh
+SPEC-15: tests/unit/pr-delivery-v2-result-test.sh
+SPEC-16: tests/integration/pr-pipeline-test.sh tests/unit/plugin-artifact-goldens-test.sh
 ```
 
 ```supersedes
