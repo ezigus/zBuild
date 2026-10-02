@@ -53,13 +53,14 @@ source "$PLUGIN_DIR/plugin.sh"
 # ── stubs ────────────────────────────────────────────────────────────────────
 # _RR_REPLY_MODE selects the canned reply shape; _RR_FAIL_LENS makes one lens's
 # call return non-zero. Both are exported because each lens runs in a subshell.
-export _RR_REPLY_MODE="normal" _RR_FAIL_LENS=""
+export _RR_REPLY_MODE="normal" _RR_FAIL_LENS="" _RR_FAIL_LENS_RC=1 _RR_FAIL_LENS2="" _RR_FAIL_LENS2_RC=1
 export _RR_PROMPTS="$TEST_TEMP_DIR/prompts"; mkdir -p "$_RR_PROMPTS"
 route_to_model() {
     local prompt="$2" lens="other"
     [[ "$prompt" =~ \"([a-z-]+)\"\ review\ lens ]] && lens="${BASH_REMATCH[1]}"
     printf '%s' "$prompt" > "$_RR_PROMPTS/$lens.txt"
-    if [[ -n "$_RR_FAIL_LENS" && "$lens" == "$_RR_FAIL_LENS" ]]; then return 1; fi
+    if [[ -n "$_RR_FAIL_LENS" && "$lens" == "$_RR_FAIL_LENS" ]]; then return "${_RR_FAIL_LENS_RC:-1}"; fi
+    if [[ -n "$_RR_FAIL_LENS2" && "$lens" == "$_RR_FAIL_LENS2" ]]; then return "${_RR_FAIL_LENS2_RC:-1}"; fi
     case "$_RR_REPLY_MODE" in
         normal)
             if [[ "$lens" == "security" ]]; then
@@ -135,9 +136,20 @@ assert_eq "[SPEC-4] missing out_json → disposition=broken" "broken" "$(_v2 dis
 _d5="$TEST_TEMP_DIR/s5"; _fixture "$_d5"
 _RR_FAIL_LENS=performance _rr_run_inner "$_d5/scope.md" "$_d5/diff.patch" "$_d5/review-report.json" "$_d5/review-report.md" 2>/dev/null; _rc=$?
 assert_eq "[SPEC-5] failed lens → rc=0 (advisory never aborts)" "0" "$_rc"
-assert_eq "[SPEC-5][#2032/SPEC-5] failed lens → disposition=unavailable (router_reason_disposition of worst rc: rc=1→router_rc_nonzero→unavailable)" "unavailable" "$(_v2 disposition "$_d5/review-report.json")"
+assert_eq "[SPEC-5][#2032/SPEC-5] failed lens → disposition=unavailable (router_reason_disposition of first failed lens rc: rc=1→router_rc_nonzero→unavailable)" "unavailable" "$(_v2 disposition "$_d5/review-report.json")"
 assert_eq "[SPEC-5] failed lens → verdict stays pass" "pass" "$(_v2 verdict "$_d5/review-report.json")"
 assert_contains "[SPEC-5] reason names the lens that failed" "$(_v2 reason "$_d5/review-report.json")" "performance"
+
+# Distinguish "first failed lens rc" from "worst rc": correctness (index 0 in
+# _RR_LENSES, rc=1 → unavailable) fails before performance (index 6, rc=124 →
+# timed_out). If the implementation used the worst rc, disposition would be
+# timed_out; if it uses the first failed lens rc, disposition is unavailable.
+_d5b="$TEST_TEMP_DIR/s5b"; _fixture "$_d5b"
+_RR_FAIL_LENS=correctness _RR_FAIL_LENS_RC=1 _RR_FAIL_LENS2=performance _RR_FAIL_LENS2_RC=124 \
+    _rr_run_inner "$_d5b/scope.md" "$_d5b/diff.patch" "$_d5b/review-report.json" "$_d5b/review-report.md" 2>/dev/null
+assert_eq "[SPEC-5][#2032/SPEC-5] first failed lens rc governs (not worst): correctness(rc=1→unavailable) not performance(rc=124→timed_out)" \
+    "unavailable" "$(_v2 disposition "$_d5b/review-report.json")"
+export _RR_FAIL_LENS="" _RR_FAIL_LENS_RC=1 _RR_FAIL_LENS2="" _RR_FAIL_LENS2_RC=1
 
 # ── SPEC-7: budget block from the resolvers, never a literal ─────────────────
 _d7="$TEST_TEMP_DIR/s7"; _fixture "$_d7"
