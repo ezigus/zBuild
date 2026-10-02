@@ -178,8 +178,10 @@ _normalize_for_sha() {
         # rendered line; drop it so the per-run timestamp doesn't mask divergence.
         body="$(sed '/created_at/d' "$f")"
     fi
-    # Strip run-specific dir prefix so embedded absolute paths normalize.
-    printf '%s' "$body" | sed "s|${run_dir}|__RUN_DIR__|g"
+    # Strip run-specific dir prefix so embedded absolute paths normalize. A
+    # recorded prompt carries its WALL CLOCK budget line ("~Ns have elapsed");
+    # N is elapsed time, so under load the two runs differ by a second (#1842).
+    printf '%s' "$body" | sed -e "s|${run_dir}|__RUN_DIR__|g" -e 's/~[0-9][0-9]*s have elapsed/~Ns have elapsed/g'
 }
 
 mismatched_artifacts=()
