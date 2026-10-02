@@ -80,7 +80,7 @@ else
     assert_pass "[#2032/SPEC-8] §1 does not contain the old single-helper language"
 fi
 
-if grep -qE '_[a-z_]+_budget_guidance' "$ADR" 2>/dev/null; then
+if grep -qF '_<stage>_budget_guidance' "$ADR" 2>/dev/null; then
     assert_pass "[#2032/SPEC-8] ADR-063 §1 contains per-stage _<stage>_budget_guidance helper language"
 else
     assert_fail "[#2032/SPEC-8] ADR-063 §1 must contain per-stage _<stage>_budget_guidance helper language" \

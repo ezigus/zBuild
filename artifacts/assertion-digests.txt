@@ -5,6 +5,6 @@ e6f0c86d7cacd4feeea93c4edb3aa6355d814f763a3964e0b66fef1195ed3f8f  tests/unit/spe
 0a35505c3e972da5f496683928c12166377022a9a72af8dc0a2435572f76edc8  tests/unit/spec-correspondence-test.sh
 05be3ceb7cd59c9b415aac3f27b03ffe4ae24bad5c1d28fdead6b422f0d0fcba  tests/unit/review-report-v2-contract-test.sh
 47b773d3f28a90cfc93f2b55611af8932b491bd6faab947b1f835a56170aa7dd  tests/integration/cycle-member-unfinished-no-convergence-test.sh
-b08be3d16531df6c69075580b45e30c5a1ec6d6a50536c6edb00f39954acd4c0  tests/unit/adr-063-vocabulary-test.sh
-b08be3d16531df6c69075580b45e30c5a1ec6d6a50536c6edb00f39954acd4c0  tests/unit/adr-063-vocabulary-test.sh
-b08be3d16531df6c69075580b45e30c5a1ec6d6a50536c6edb00f39954acd4c0  tests/unit/adr-063-vocabulary-test.sh
+291a02bd1cd487238eac1aa7155d446dfa842d34209e81211f31068e05974301  tests/unit/adr-063-vocabulary-test.sh
+291a02bd1cd487238eac1aa7155d446dfa842d34209e81211f31068e05974301  tests/unit/adr-063-vocabulary-test.sh
+291a02bd1cd487238eac1aa7155d446dfa842d34209e81211f31068e05974301  tests/unit/adr-063-vocabulary-test.sh
