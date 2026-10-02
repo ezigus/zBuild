@@ -30,6 +30,17 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/advisory-section.sh"
 # ─── pr_open_run ─────────────────────────────────────────────────────────────
 # Entry point invoked by the pipeline runner.
 # Args: $1 = stage_id, $2 = state_file
+# _pr_open_existing_number <branch> — the number of the open PR for <branch>, or
+# nothing. #2250: any non-numeric answer (a URL, an error line) is "no PR";
+# taking it as a number made `--argjson pr_number` fail and left pr-result.json
+# empty (#1844 run 36969128968).
+_pr_open_existing_number() {
+    local n
+    n="$(gh pr list --head "$1" --state open --json number --jq '.[0].number' 2>/dev/null || true)"
+    [[ "$n" =~ ^[0-9]+$ ]] && printf '%s' "$n"
+    return 0
+}
+
 pr_open_run() {
     local stage_id="${1:-pr}"; : "$stage_id"  # consumed by pipeline runner; unused in body
     local state_file="${2:-}"
@@ -342,7 +353,7 @@ _pr_open_run_inner() {
 
     # ── Check for existing open PR on this branch ────────────────────────────────
     local existing_pr_number
-    existing_pr_number="$(gh pr list --head "$target_branch" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")"
+    existing_pr_number="$(_pr_open_existing_number "$target_branch")"
 
     local gh_output pr_url pr_number
     if [[ -n "$existing_pr_number" ]]; then
@@ -370,7 +381,7 @@ _pr_open_run_inner() {
             # Check if the failure was due to a race condition (PR created after list)
             if grep -qi "pull request already exists" <<< "$gh_output"; then
                 # Retry detection in case PR was created between list and create
-                existing_pr_number="$(gh pr list --head "$target_branch" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")"
+                existing_pr_number="$(_pr_open_existing_number "$target_branch")"
                 if [[ -n "$existing_pr_number" ]]; then
                     # Re-update the PR and treat as updated
                     if ! gh_output="$(gh pr edit "$existing_pr_number" --title "$pr_title" --body "$pr_body" 2>&1)"; then
@@ -445,7 +456,7 @@ _pr_open_run_inner() {
     jq -n \
         --arg status "$pr_status" \
         --arg pr_url "$pr_url" \
-        --argjson pr_number "${pr_number:-0}" \
+        --argjson pr_number "$([[ "${pr_number:-}" =~ ^[0-9]+$ ]] && printf '%s' "$pr_number" || printf '0')" \
         --argjson draft "${_draft_bool}" \
         --arg branch "$target_branch" \
         --argjson issue "${issue_num:-0}" \
