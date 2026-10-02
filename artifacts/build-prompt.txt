@@ -1,4 +1,4 @@
-============== ZBUILD BUILD — iter 1/10 ==============
+============== ZBUILD BUILD — iter 2/10 ==============
 ## ORIGINAL TASK (immutable across iterations)
 # Plan: migrate pr-delivery to contract v2
 
@@ -304,3 +304,6 @@ Every SPEC id below needs at least one assertion whose label carries its tag (as
   → needs a `[#1844/SPEC-23]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
 - [#1844/SPEC-24] missing-state-file exit path writes pr-result.json carrying result_contract:2, verdict=error, non-empty disposition, non-empty reason (currently this path writes no pr-result.json at all — the "every exit path" requirement from the plan is not satisfied by the rc change alone)
   → needs a `[#1844/SPEC-24]`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)
+
+## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
+A previous attempt on this issue ended build with verdict=incomplete having changed nothing (0 files). That is not evidence the work is done: read the STAGE SUMMARIES below — a RESOLVE summary means the suite is red on this tree and there is work to do. Do not restart from scratch; continue from what is on this branch (check `git log` / `git diff`).
