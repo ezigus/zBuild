@@ -28,10 +28,12 @@
   [38;2;74;222;128m✓[0m [SPEC-4] missing out_json → verdict=error
   [38;2;74;222;128m✓[0m [SPEC-4] missing out_json → disposition=broken
   [38;2;74;222;128m✓[0m [SPEC-5] failed lens → rc=0 (advisory never aborts)
-  [38;2;248;113;113m✗[0m [SPEC-5][#2032/SPEC-5] failed lens → disposition=unavailable (router_reason_disposition of worst rc: rc=1→router_rc_nonzero→unavailable)
+  [38;2;248;113;113m✗[0m [SPEC-5][#2032/SPEC-5] failed lens → disposition=unavailable (router_reason_disposition of first failed lens rc: rc=1→router_rc_nonzero→unavailable)
     [2mexpected: unavailable, got: complete[0m
   [38;2;74;222;128m✓[0m [SPEC-5] failed lens → verdict stays pass
   [38;2;74;222;128m✓[0m [SPEC-5] reason names the lens that failed
+  [38;2;248;113;113m✗[0m [SPEC-5][#2032/SPEC-5] first failed lens rc governs (not worst): correctness(rc=1→unavailable) not performance(rc=124→timed_out)
+    [2mexpected: unavailable, got: complete[0m
   [38;2;74;222;128m✓[0m [SPEC-7] lens prompt carries a TURN BUDGET block
   [38;2;74;222;128m✓[0m [SPEC-7] block reflects ZBUILD_ROUTER_MAX_TURNS=77 (from _route_resolve_max_turns)
   [38;2;74;222;128m✓[0m [SPEC-7] block reflects ZBUILD_ROUTER_TIMEOUT=123 (from _route_resolve_timeout)
@@ -55,9 +57,10 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 48 tests failed[0m
+  [38;2;248;113;113m[1m2 of 49 tests failed[0m
 
-  [38;2;248;113;113m✗[0m [SPEC-5][#2032/SPEC-5] failed lens → disposition=unavailable (router_reason_disposition of worst rc: rc=1→router_rc_nonzero→unavailable)
+  [38;2;248;113;113m✗[0m [SPEC-5][#2032/SPEC-5] failed lens → disposition=unavailable (router_reason_disposition of first failed lens rc: rc=1→router_rc_nonzero→unavailable)
+  [38;2;248;113;113m✗[0m [SPEC-5][#2032/SPEC-5] first failed lens rc governs (not worst): correctness(rc=1→unavailable) not performance(rc=124→timed_out)
 
 ### SPEC-5 head tests/unit/review-report-v2-contract-test.sh
 
@@ -89,9 +92,10 @@
   [38;2;74;222;128m✓[0m [SPEC-4] missing out_json → verdict=error
   [38;2;74;222;128m✓[0m [SPEC-4] missing out_json → disposition=broken
   [38;2;74;222;128m✓[0m [SPEC-5] failed lens → rc=0 (advisory never aborts)
-  [38;2;74;222;128m✓[0m [SPEC-5][#2032/SPEC-5] failed lens → disposition=unavailable (router_reason_disposition of worst rc: rc=1→router_rc_nonzero→unavailable)
+  [38;2;74;222;128m✓[0m [SPEC-5][#2032/SPEC-5] failed lens → disposition=unavailable (router_reason_disposition of first failed lens rc: rc=1→router_rc_nonzero→unavailable)
   [38;2;74;222;128m✓[0m [SPEC-5] failed lens → verdict stays pass
   [38;2;74;222;128m✓[0m [SPEC-5] reason names the lens that failed
+  [38;2;74;222;128m✓[0m [SPEC-5][#2032/SPEC-5] first failed lens rc governs (not worst): correctness(rc=1→unavailable) not performance(rc=124→timed_out)
   [38;2;74;222;128m✓[0m [SPEC-7] lens prompt carries a TURN BUDGET block
   [38;2;74;222;128m✓[0m [SPEC-7] block reflects ZBUILD_ROUTER_MAX_TURNS=77 (from _route_resolve_max_turns)
   [38;2;74;222;128m✓[0m [SPEC-7] block reflects ZBUILD_ROUTER_TIMEOUT=123 (from _route_resolve_timeout)
@@ -115,5 +119,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 48 tests passed[0m
+  [38;2;74;222;128m[1mAll 49 tests passed[0m
 
