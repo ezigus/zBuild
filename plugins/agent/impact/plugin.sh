@@ -46,24 +46,84 @@ source "$_IMPACT_ROOT/scripts/lib/prompt-overrides.sh"
 # shellcheck source=../../../core/plugin-registry/registry.sh
 source "$_IMPACT_ROOT/core/plugin-registry/registry.sh"
 
-# ─── run ────────────────────────────────────────────────────────────────────
-impact_run() {
-    local state_file="${2:-}"
-    if [[ -z "$state_file" ]]; then
-        error "impact_run: state_file argument required"
-        stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/impact-summary.md}" "impact" "error" \
-            "the engine dispatched this stage with no state file, so it could not run" \
-            "No work was attempted. This is an engine contract violation, not a fault in the change."
-        return 2
+# ─── v2 contract helpers ────────────────────────────────────────────────────
+
+# _impact_write_result <out-path> <verdict> <disposition> <reason> [extra-json]
+# Writes a v2 result to <out-path> via atomic_write; [extra-json] (an object)
+# is merged in (schema_version, missing[]). Every result goes through here: a
+# write that fails is reported and the result is NOT marked written (#1838
+# close-out — the old inline `|| printf >` fallbacks set the flag regardless).
+_impact_write_result() {
+    local _out="$1" _verdict="$2" _disposition="$3" _reason="$4" _extra="${5:-null}" _json
+    [[ -z "$_out" ]] && return 0
+    if _json="$(jq -nc --arg v "$_verdict" --arg d "$_disposition" --arg r "$_reason" --argjson x "$_extra" \
+            '{result_contract:2,verdict:$v,disposition:$d,reason:$r} + ($x // {})')" \
+        && atomic_write "$_out" <<< "$_json"; then
+        _IMPACT_RESULT_WRITTEN=1
+        return 0
     fi
-    local state_dir; state_dir="$(dirname "$state_file")"
-    local artifacts_dir="$state_dir/artifacts"
+    error "impact: could not write $_out"
+    return 1
+}
+
+# _impact_input <id> — the path the engine resolved for input <id>, from
+# ZBUILD_STAGE_INPUTS. Empty when the engine named none; nothing is guessed.
+_impact_input() {
+    [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]] || return 0
+    jq -r --arg id "$1" '.inputs[$id] // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true
+}
+
+# ─── run ────────────────────────────────────────────────────────────────────
+
+# Signal handler: write interrupted result if none has been written yet.
+_impact_on_signal() {
+    if [[ -n "${ZBUILD_ARTIFACT_DIR:-}" && -z "${_IMPACT_RESULT_WRITTEN:-}" ]]; then
+        _impact_write_result "${ZBUILD_ARTIFACT_DIR}/impact.json" "error" \
+            "${1:-$STAGE_SIGNAL_DISPOSITION}" "${2:-$STAGE_SIGNAL_REASON}" || true
+    fi
+    exit 1
+}
+
+# Hook called by the pipeline runner: impact_run(stage, state_file)
+impact_run() {
+    _IMPACT_RESULT_WRITTEN=""
+    stage_signal_begin _impact_on_signal || return 1
+    local rc=0
+    _impact_run_entry "$@" || rc=$?
+    stage_signal_end
+    return "$rc"
+}
+
+# _impact_run_entry: reads inputs from engine index, uses ZBUILD_ARTIFACT_DIR.
+_impact_run_entry() {
+    # The engine names the artifact dir (core/plugin-registry/lifecycle.sh);
+    # impact derives none from its state file.
+    local artifacts_dir="${ZBUILD_ARTIFACT_DIR:-}"
+    if [[ -z "$artifacts_dir" ]]; then
+        error "impact_run: ZBUILD_ARTIFACT_DIR is not set — the engine gave impact nowhere to write impact.json"
+        return 1
+    fi
     mkdir -p "$artifacts_dir"
 
+    local scope_manifest design_md_path plan_json_path
+    scope_manifest="$(_impact_input scope_manifest)"
+    design_md_path="$(_impact_input design)"
+    plan_json_path="$(_impact_input plan)"
+
+    if [[ -z "$scope_manifest" || -z "$design_md_path" ]]; then
+        local _missing=""
+        [[ -z "$scope_manifest" ]] && _missing="scope_manifest"
+        [[ -z "$design_md_path" ]] && _missing="${_missing:+$_missing, }design"
+        error "impact_run: the engine's input index (ZBUILD_STAGE_INPUTS) names no $_missing"
+        # verdict `error` (declared, #1708); `broken` is the disposition — how it stopped.
+        _impact_write_result "${artifacts_dir}/impact.json" "error" "broken" "input_missing"
+        return 1
+    fi
+
     _impact_run_inner \
-        "$state_dir/scope-manifest.md" \
-        "$artifacts_dir/design.md" \
-        "$artifacts_dir/plan.json" \
+        "$scope_manifest" \
+        "$design_md_path" \
+        "${plan_json_path:-}" \
         "$artifacts_dir/impact.json" \
         "$artifacts_dir"
 }
@@ -98,11 +158,17 @@ _impact_run_inner() {
     local design_md_path="$2"
     local plan_json_path="$3"
     local output_impact_json="$4"
-    local artifact_dir="${5:-$(dirname "$output_impact_json")}"
+    # The working dir comes from the caller or the engine — never derived from
+    # the output path (review on #2240).
+    local artifact_dir="${5:-${ZBUILD_ARTIFACT_DIR:-}}"
 
     if [[ -z "$scope_manifest" || -z "$design_md_path" || -z "$output_impact_json" ]]; then
         error "_impact_run_inner: requires <scope_manifest> <design_md_path> <plan_json_path> <output_impact_json> [artifact_dir]"
-        return 2
+        return 1
+    fi
+    if [[ -z "$artifact_dir" ]]; then
+        error "_impact_run_inner: no working dir — pass <artifact_dir> or set ZBUILD_ARTIFACT_DIR"
+        return 1
     fi
 
     mkdir -p "$artifact_dir"
@@ -113,7 +179,8 @@ _impact_run_inner() {
             "no design.md to assess impact against" \
             "There was no design to compare the change against."
         emit_event "plugin.result" "verdict=error" "plugin=impact" "reason=missing_design_md"
-        return 2
+        _impact_write_result "$output_impact_json" error broken missing_design_md '{"missing":[]}' || true
+        return 1
     fi
 
     # Extract scope from design.md's ```scope block (primary source).
@@ -296,7 +363,13 @@ $_impact_instructions"
     # Tier from the single source of truth: impact's own manifest
     # config.tier_default (T2), via resolve_tier (#1231). ZBUILD_IMPACT_TIER
     # still overrides. No hardcoded literal — that is what drifted in #960/#1230.
-    local tier; tier="$(resolve_tier impact "$_IMPACT_DIR")" || return 1
+    local tier
+    if ! tier="$(resolve_tier impact "$_IMPACT_DIR")"; then
+        # A setup failure (no model tier) is `misconfigured` (ADR-054 §6a).
+        error "_impact_run_inner: could not resolve a model tier for impact"
+        _impact_write_result "$output_impact_json" error misconfigured no_model_tier '{"missing":[]}' || true
+        return 1
+    fi
     local raw_response="" router_rc=0
     local _prev_json_env="${ZBUILD_ROUTER_JSON_OUTPUT-__UNSET__}"
     local _prev_artifact_env="${ZBUILD_ROUTER_ARTIFACT_ID-__UNSET__}"
@@ -334,43 +407,37 @@ $_impact_instructions"
     fi
 
     if [[ $router_rc -ne 0 ]]; then
-        # #782: ADR-021 error class for infra timeouts (rc=124 = gtimeout).
-        # Write impact.json with verdict=error so the cycle's blocked-
-        # predicate can distinguish "router timed out" from "model wrong".
-        # Fail-soft return so the cycle can record the error verdict and
-        # decide on its own termination (rather than blowing up the runner).
-        local _rc_verdict _rc_reason
+        # #782/#937: v2 contract — disposition from router_reason_disposition,
+        # no router_rc field. Recoverable (timeout, max_turns) → verdict=incomplete
+        # so the cycle re-iterates. Genuine infra errors (OOM rc=137) → verdict=error
+        # so the cycle's blocked-predicate can flag them.
+        local _rc_verdict _rc_reason _rc_disp
         _router_rc_classify "$router_rc" _rc_verdict _rc_reason
+        _rc_disp="$(router_reason_disposition "${_rc_reason:-}")"
         error "_impact_run_inner: router rc=$router_rc → verdict=$_rc_verdict reason=$_rc_reason"
         stage_summary_write "$artifact_dir/impact-summary.md" "impact" "error" \
             "the model call failed ($_rc_reason)" \
             "No impact assessment was produced this iteration."
-        emit_event "plugin.result" "verdict=error" "plugin=impact" "reason=$_rc_reason" "router_rc=$router_rc"
-        # #937: a TIMEOUT (rc=124, reason=router_timeout) is RECOVERABLE — fall
-        # through to the #892 best-effort verdict=incomplete path (re-iterate)
-        # rather than writing an empty verdict=error that wastes the iteration.
-        # The plugin.result verdict=error event above already preserves reason=router_timeout
-        # for postmortems. Genuine infra errors (OOM rc=137, claude crash) keep
-        # verdict=error so the cycle's blocked-predicate can flag them.
-        if [[ "$_rc_verdict" == "error" && "$_rc_reason" != "router_timeout" ]]; then
-            printf '{"schema_version":1,"verdict":"error","reason":"%s","missing":[]}\n' \
-                "$_rc_reason" > "$output_impact_json"
-            # Emit verdict event for cycle predicate consumption.
-            emit_event "impact.verdict.error" "plugin=impact" "artifact=impact.json" "reason=$_rc_reason"
-            return 0
+        emit_event "plugin.result" "verdict=${_rc_verdict:-error}" "plugin=impact" "reason=${_rc_reason:-}"
+
+        # A turn-budget hit is recoverable like a timeout (the comment above,
+        # SPEC-10's intent) — only a genuine infra failure is `error`.
+        if [[ -z "$_rc_disp" ]]; then
+            warn "impact: router_reason_disposition returned nothing for rc=$router_rc reason=${_rc_reason:-<none>} — recording 'unusable'"
+            _rc_disp="unusable"
         fi
-        # #892 + #937: best-effort verdict on a RECOVERABLE router failure —
-        # rc=1 (max_turns) OR rc=124 (timeout). Was a fail-CLOSED return 1 with
-        # NO impact.json, which gave the cycle a MISSING artifact and an empty
-        # iteration. Instead write verdict=incomplete (so the cycle RE-ITERATES,
-        # another shot). ADR-060: the signal is structural — reason carries the
-        # classification ($_rc_reason, e.g. router_timeout) and router_rc the
-        # raw code, so the artifact records what failed without a prose note.
-        jq -nc --arg reason "$_rc_reason" --arg rc "$router_rc" \
-            '{schema_version:1, verdict:"incomplete", reason:$reason, router_rc:$rc, missing:[]}' \
-            > "$output_impact_json" 2>/dev/null \
-            || printf '{"schema_version":1,"verdict":"incomplete","reason":"%s","router_rc":"%s","missing":[]}\n' "$_rc_reason" "$router_rc" > "$output_impact_json"
-        emit_event "impact.verdict.incomplete" "plugin=impact" "artifact=impact.json" "reason=router_failed_best_effort"
+        local _out_verdict _out_event
+        if [[ "$_rc_verdict" == "error" && "$_rc_reason" != "router_timeout" && "$_rc_reason" != "router_out_of_turns" ]]; then
+            _out_verdict="error"
+            _out_event="impact.verdict.error"
+        else
+            _out_verdict="incomplete"
+            _out_event="impact.verdict.incomplete"
+        fi
+
+        _impact_write_result "$output_impact_json" "$_out_verdict" "$_rc_disp" "${_rc_reason:-router_failed}" \
+            '{"schema_version":1,"missing":[]}' || return 1
+        emit_event "$_out_event" "plugin=impact" "artifact=impact.json" "reason=${_rc_reason:-}"
         return 0
     fi
 
@@ -405,6 +472,7 @@ $_impact_instructions"
             "the model returned an empty impact response" \
             "No impact assessment was produced this iteration."
         emit_event "plugin.result" "verdict=error" "plugin=impact" "reason=empty_response"
+        _impact_write_result "$output_impact_json" error broken empty_response '{"missing":[]}' || true
         return 1
     fi
 
@@ -452,10 +520,8 @@ $_impact_instructions"
             emit_event "impact.envelope.malformed" "plugin=impact" \
                 "classification=$_cls" "detail=$_detail" \
                 "raw_bytes=${#raw_response}" "artifact=impact.json"
-            jq -nc --arg cls "$_cls" \
-                '{schema_version:1, verdict:"incomplete", reason:("envelope_" + $cls), missing:[]}' \
-                > "$output_impact_json" 2>/dev/null \
-                || printf '{"schema_version":1,"verdict":"incomplete","reason":"envelope_%s","missing":[]}\n' "$_cls" > "$output_impact_json"
+            _impact_write_result "$output_impact_json" incomplete unusable "envelope_${_cls}" \
+                '{"schema_version":1,"missing":[]}' || return 1
             emit_event "impact.verdict.incomplete" "plugin=impact" \
                 "artifact=impact.json" "reason=envelope_malformed_best_effort"
             return 0
@@ -485,6 +551,7 @@ $_impact_instructions"
                 "could not merge the prefilter results into impact.json" \
                 "The assessment ran but could not be assembled into its artifact."
             emit_event "plugin.result" "verdict=error" "plugin=impact" "reason=prefilter_merge_failed"
+            _impact_write_result "$output_impact_json" error broken prefilter_merge_failed '{"missing":[]}' || true
             return 1
         fi
         if [[ "$_missing_golden_json" != "[]" ]] && [[ -n "$_missing_golden_json" ]]; then
@@ -503,6 +570,7 @@ $_impact_instructions"
                     "could not inject the prefilter results into impact.json" \
                     "The assessment ran but could not be assembled into its artifact."
                 emit_event "plugin.result" "verdict=error" "plugin=impact" "reason=prefilter_inject_failed"
+                _impact_write_result "$output_impact_json" error broken prefilter_inject_failed '{"missing":[]}' || true
                 return 1
             fi
         fi
@@ -526,8 +594,31 @@ $_impact_instructions"
     local verdict
     verdict="$(printf '%s' "$impact_json" | jq -r '.verdict' 2>/dev/null || echo incomplete)"
 
-    # Write impact.json
-    printf '%s\n' "$impact_json" | atomic_write "$output_impact_json"
+    # v2 contract: merge result_contract:2, disposition:complete, reason into the
+    # LLM output so all fields (schema_version, verdict, missing[]) survive.
+    local _v2_reason _missing_count
+    _missing_count="$(printf '%s' "$impact_json" | jq '.missing | length' 2>/dev/null || echo 0)"
+    if [[ "$verdict" == "complete" ]]; then
+        _v2_reason="verdict:complete"
+    else
+        _v2_reason="verdict:${verdict:-incomplete},missing_count:${_missing_count:-0}"
+    fi
+    # Never a v1-shaped impact.json: a merge that fails is an error result.
+    local _v2_impact
+    if ! _v2_impact="$(jq -c --arg r "$_v2_reason" \
+            '. + {result_contract:2,disposition:"complete",reason:$r}' <<< "$impact_json" 2>/dev/null)"; then
+        error "_impact_run_inner: could not add the v2 fields to impact.json"
+        _impact_write_result "$output_impact_json" error broken v2_merge_failed '{"missing":[]}' || true
+        return 1
+    fi
+    if ! atomic_write "$output_impact_json" <<< "$_v2_impact"; then
+        error "impact: could not write $output_impact_json"
+        # Every other failure leaves a result; so does this one, if a smaller
+        # write can still land.
+        _impact_write_result "$output_impact_json" error broken result_write_failed '{"missing":[]}' || true
+        return 1
+    fi
+    _IMPACT_RESULT_WRITTEN=1
 
     # Emit verdict event for cycle predicate consumption.
     case "$verdict" in

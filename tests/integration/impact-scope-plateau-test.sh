@@ -55,6 +55,9 @@ PLAN
 source "$PLUGIN_DIR/plugin.sh"
 
 apply_scope_redaction() { cat "$1" > "$2"; return 0; }
+atomic_write() { cat > "$1"; }
+stage_signal_begin() { return 0; }
+stage_signal_end() { return 0; }
 
 # A real, existing COLLATERAL (tests/) file so #911 keeps it and the backstop
 # accepts it. Use this very test file.
@@ -65,6 +68,14 @@ route_to_model() { printf '%s' "$CANNED_IMPACT_RESPONSE"; return 0; }
 export ZBUILD_REPO_ROOT="$REPO_ROOT"
 STATE_FILE="$STATE_DIR/pipeline-state.json"
 printf '%s' '{"schema_version":1,"run_id":"t936","issue":"936","stage_statuses":{}}' > "$STATE_FILE"
+
+# v2 contract: engine-provided artifact dir and stage inputs.
+export ZBUILD_ARTIFACT_DIR="$ARTIFACTS_DIR"
+_PLATEAU_INPUTS="$TEST_TEMP_DIR/plateau-inputs.json"
+printf '{"inputs":{"scope_manifest":"%s","design":"%s","plan":"%s"}}\n' \
+    "$STATE_DIR/scope-manifest.md" "$ARTIFACTS_DIR/design.md" "$ARTIFACTS_DIR/plan.json" \
+    > "$_PLATEAU_INPUTS"
+export ZBUILD_STAGE_INPUTS="$_PLATEAU_INPUTS"
 
 # ─── P1: iter 1 records the set, stays incomplete ───────────────────────────
 : > "$ZBUILD_EVENTS_JSONL"

@@ -68,6 +68,9 @@ apply_scope_redaction() {
     cat "$_input" > "$_output"
     return 0
 }
+atomic_write() { cat > "$1"; }
+stage_signal_begin() { return 0; }
+stage_signal_end() { return 0; }
 
 _CAPTURED_IMPACT_PROMPT_FILE="$TEST_TEMP_DIR/captured-impact-prompt.txt"
 : > "$_CAPTURED_IMPACT_PROMPT_FILE"
@@ -81,6 +84,14 @@ route_to_model() {
 # Use the REAL repo root so the prefilter scans the real
 # config/templates/simple.yaml + tests/golden/**.
 export ZBUILD_REPO_ROOT="$REPO_ROOT"
+
+# v2 contract: engine-provided artifact dir and stage inputs.
+export ZBUILD_ARTIFACT_DIR="$ARTIFACTS_DIR"
+_PREFILTER_INPUTS="$TEST_TEMP_DIR/prefilter-inputs.json"
+printf '{"inputs":{"scope_manifest":"%s","design":"%s","plan":"%s"}}\n' \
+    "$STATE_DIR/scope-manifest.md" "$ARTIFACTS_DIR/design.md" "$ARTIFACTS_DIR/plan.json" \
+    > "$_PREFILTER_INPUTS"
+export ZBUILD_STAGE_INPUTS="$_PREFILTER_INPUTS"
 
 # ─── I1+I2: shape-change plan with empty LLM missing[] ──────────────────────
 # Plan touches simple.yaml → prefilter detects shape change → forces
