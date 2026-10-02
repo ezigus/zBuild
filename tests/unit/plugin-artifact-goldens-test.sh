@@ -204,7 +204,17 @@ fi
 
 # [#1844/SPEC-16]: the golden must encode the full v2 pr-delivery result shape —
 # result_contract=2, verdict=pass, disposition=complete, data.pr_url non-empty,
-# data.draft=false. This pins the golden to the v2 contract introduced in #1844.
+# data.draft=false, reason="". reason is FIRST: the old golden (written by pr-open)
+# had reason:"PR opened"; this assertion fails at the pre-build baseline, making the
+# negctl check non-tautological.
+g4_reason="$(printf '%s' "$g4_content" | jq -r '.reason' 2>/dev/null || echo 'MISSING')"
+if [[ "$g4_reason" == "" ]]; then
+    assert_pass "[#1844/SPEC-16] pr-result-artifact golden reason is empty (pr-delivery wrote it)"
+else
+    assert_fail "[#1844/SPEC-16] pr-result-artifact golden reason is empty (pr-delivery wrote it)" \
+        "got: '$g4_reason'"
+fi
+
 g4_verdict="$(printf '%s' "$g4_content" | jq -r '.verdict' 2>/dev/null || echo '')"
 if [[ "$g4_verdict" == "pass" ]]; then
     assert_pass "[#1844/SPEC-16] pr-result-artifact golden verdict == pass"
@@ -224,6 +234,20 @@ if [[ -n "$g4_pr_url" ]]; then
     assert_pass "[#1844/SPEC-16] pr-result-artifact golden data.pr_url is non-empty"
 else
     assert_fail "[#1844/SPEC-16] pr-result-artifact golden data.pr_url is non-empty" "empty or absent"
+fi
+
+g4_rc2="$(printf '%s' "$g4_content" | jq -r '.result_contract' 2>/dev/null || echo '')"
+if [[ "$g4_rc2" == "2" ]]; then
+    assert_pass "[#1844/SPEC-16] pr-result-artifact golden result_contract == 2"
+else
+    assert_fail "[#1844/SPEC-16] pr-result-artifact golden result_contract == 2" "got: $g4_rc2"
+fi
+
+g4_dd="$(printf '%s' "$g4_content" | jq -r '.data.draft' 2>/dev/null || echo '')"
+if [[ "$g4_dd" == "false" ]]; then
+    assert_pass "[#1844/SPEC-16] pr-result-artifact golden data.draft == false"
+else
+    assert_fail "[#1844/SPEC-16] pr-result-artifact golden data.draft == false" "got: $g4_dd"
 fi
 
 set +e

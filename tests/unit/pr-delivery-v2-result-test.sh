@@ -272,8 +272,10 @@ cat > "$_s7_fake/plugins/tool/pr-open/plugin.sh" <<'PROMOCK'
 pr_open_run() {
     local d; d="$(dirname "$2")/artifacts"
     mkdir -p "$d"
-    jq -n '{result_contract:2,verdict:"pass",disposition:"complete",reason:"PR opened",data:{pr_url:"https://github.com/mock/pull/7",draft:false}}' \
-        > "$d/pr-result.json"
+    # Write ONLY pr-url.txt — pr-delivery must write its own v2 result.
+    # A mock that pre-writes result_contract:2 is tautological: the baseline
+    # passed through pr-open's file without overwriting it, so result_contract:2
+    # would already be present and no pr-delivery change would be required to pass.
     printf 'https://github.com/mock/pull/7\n' > "$d/pr-url.txt"
     return 0
 }
@@ -289,8 +291,11 @@ _mk_si "$_s7_si"
     ZBUILD_STAGE_INPUTS="$_s7_si"
     _pr_stage_run_inner "$_s7_sf"
 ) >/dev/null 2>&1; _s7_rc=$?
-assert_eq "[#1844/SPEC-7] pr-open delegation success → rc=0" "0" "$_s7_rc"
+# File-existence check is FIRST: at the pre-build baseline the plugin never writes
+# pr-result.json on the pr-open success path (it just returns 0), so the first
+# tagged assertion fails there — making the negctl check non-tautological.
 if [[ -f "$_s7_art/pr-result.json" ]]; then
+    assert_pass "[#1844/SPEC-7] pr-result.json written on pr-open delegation success"
     assert_eq "[#1844/SPEC-7] pr-result.json result_contract is 2" "2" \
         "$(jq -r '.result_contract // empty' "$_s7_art/pr-result.json" 2>/dev/null || true)"
     assert_eq "[#1844/SPEC-7] pr-result.json verdict is pass" "pass" \
@@ -300,6 +305,7 @@ if [[ -f "$_s7_art/pr-result.json" ]]; then
 else
     assert_fail "[#1844/SPEC-7] pr-result.json written on pr-open delegation success" "file absent"
 fi
+assert_eq "[#1844/SPEC-7] pr-open delegation success → rc=0" "0" "$_s7_rc"
 
 # ─── SPEC-8: pr-open returns verdict=blocked → rc=1, error/complete, reason=review_signal_missing
 print_test_section "SPEC-8: pr-open verdict=blocked → rc=1, pr-result.json result_contract:2/error/complete/review_signal_missing"

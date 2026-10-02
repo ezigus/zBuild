@@ -138,7 +138,13 @@ fi
 
 # [#1844/SPEC-16]: passing pr-open delegation produces pr-result.json with the
 # v2 structure matching tests/golden/pr-result-artifact.golden.
+# reason is FIRST: at baseline the real pr-open writes reason:"PR opened" so the
+# first tagged assertion fails there — making the negctl check non-tautological.
 if [[ -f "$_art5/pr-result.json" ]]; then
+    # pr-delivery writes reason:"" — the real pr-open writes reason:"PR opened";
+    # this is the discriminating assertion that fails at the pre-build baseline.
+    assert_eq "[#1844/SPEC-16] pr-result.json reason is empty (pr-delivery wrote it)" "" \
+        "$(jq -r '.reason // ""' "$_art5/pr-result.json" 2>/dev/null || true)"
     assert_eq "[#1844/SPEC-16] pr-result.json result_contract is 2" "2" \
         "$(jq -r '.result_contract // empty' "$_art5/pr-result.json" 2>/dev/null || true)"
     assert_eq "[#1844/SPEC-16] pr-result.json verdict is pass" "pass" \
