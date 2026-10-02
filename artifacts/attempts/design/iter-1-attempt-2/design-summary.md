@@ -1,6 +1,0 @@
-## design — pass
-
-- authored design.md — 28 file(s) in scope, 7 acceptance SPEC(s)
-
-- scope: core/pipeline/cycle-orchestrator.sh,core/pipeline/disposition.sh,plugins/agent/spec-coverage/plugin.sh,plugins/agent/spec-correspondence/plugin.sh,plugins/agent/review-report/plugin.sh,scripts/lib/router-rc-classify.sh,config/event-schema.json,docs/adr/ADR-021-pipeline-cycle-semantics.md,docs/adr/ADR-063-budget-disclosure-and-partial-output.md,tests/integration/cycle-member-unfinished-no-convergence-test.sh,tests/unit/spec-coverage-test.sh,tests/unit/spec-correspondence-test.sh,tests/unit/review-report-v2-contract-test.sh,tests/unit/convergence-timeouts-never-fatal-1208-test.sh,tests/unit/design-timeout-exhaustion-halt-1261-test.sh,tests/unit/router-reason-disposition-test.sh,tests/unit/disposition-vocabulary-test.sh,tests/unit/adr-063-vocabulary-test.sh,tests/unit/event-schema-emitted-coverage-test.sh,tests/unit/lint-disposition-words-test.sh,tests/unit/stage-signal-test.sh,tests/golden/full-pipeline/event-sequence.golden,tests/golden/parity/event-sequence.golden,tests/unit/template-simple-yaml-test.sh,tests/unit/build-oos-pass-request-test.sh,tests/unit/core-pipeline-template-test.sh,tests/unit/template-resolvability-preflight-test.sh,tests/unit/impact-prefilter-order-detector-test.sh
-- artifact: design.md

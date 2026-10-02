@@ -1,6 +1,0 @@
-## issue-acceptance — fail
-
-- The diff emits `cycle.member_unfinished.suppressed_convergence` without registering the event type in `config/event-schema.json`, and the `unavailable` fallback assignments added in `spec-correspondence/plugin.sh:315` and `review-report/plugin.sh:180` lack the `# disposition-ok:` annotation required by the lint-disposition-words rule — both are direct consequences of this diff, confirmed by the failing `event-schema-emitted-coverage-test.sh`, `lint-disposition-words-test.sh`, and `stage-signal-test.sh`.
-
-- NOT MET: §4/A — `cycle.member_unfinished.suppressed_convergence` not declared in `config/event-schema.json`
-- NOT MET: §3/B — `unavailable` fallback literals in `spec-correspondence/plugin.sh` and `review-report/plugin.sh` violate `lint-disposition-words` (missing service annotation)

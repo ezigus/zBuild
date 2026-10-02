@@ -1,5 +1,0 @@
-## issue-acceptance — fail
-
-- The test for SPEC-8 uses `grep -qE '_[a-z_]+_budget_guidance'` which cannot match the literal `_<stage>_budget_guidance` text added to ADR-063 because `<` and `>` are not in `[a-z_]`, so the assertion always fails even though the ADR contains the required per-stage helpers language.
-
-- NOT MET: docs/adr/ADR-063-budget-disclosure-and-partial-output.md §1 per-stage _<stage>_budget_guidance helper language verifiable by the test (SPEC-8)
