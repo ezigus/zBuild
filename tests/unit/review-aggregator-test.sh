@@ -3,7 +3,9 @@
 # ONE advisory merge-readiness report (#1141 C2, ADR-040 §3/§4; evolves ADR-038).
 # Reads the lens_result set the engine hands it (ZBUILD_STAGE_INPUTS), de-dupes findings by
 # file + category + proximity (max severity + union of lenses/messages), renders
-# review-report.json + .md. Advisory only: NEVER blocks — always returns 0.
+# review-report.json + .md. Advisory only: it never blocks the pipeline. It
+# returns 0 when it aggregated, 1 when the engine gave it no inputs or nowhere
+# to write, or a signal stopped it (#1842; those paths: closeout-test).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

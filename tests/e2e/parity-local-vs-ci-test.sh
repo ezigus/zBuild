@@ -125,7 +125,9 @@ assert_eq "full pipeline-state.json identical after normalization" \
 # staging tree at ./scratch/test/zbuild-test-stage.XXXXXX/, which is precisely
 # #1918's end-to-end acceptance criterion.
 # The mock repo's .git/ is git's own layout (sample hooks vary by git
-# version), not an artifact of the run (#1842).
+# version), not an artifact of the run (#1842). LC_ALL=C: a locale collation
+# ignores punctuation, so `review_lenses` vs `review-aggregator` sorted
+# differently on Linux CI than on macOS.
 _artifact_paths() {
     local dir="$1"
     ( cd "$dir" && \
@@ -140,7 +142,7 @@ _artifact_paths() {
         -not -name '*.db-journal' \
         -not -name '*.db-shm' \
         -not -name '*.db-wal' \
-        | sort )
+        | LC_ALL=C sort )
 }
 
 local_paths="$(_artifact_paths "$RUN1_DIR")"
