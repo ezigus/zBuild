@@ -1,0 +1,59 @@
+### SPEC-9 baseline tests/unit/adr-063-vocabulary-test.sh
+
+[38;2;0;212;255m[1m  ADR-063 vocabulary update — accepted with #2187 vocabulary (#2032)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] ADR-063 file exists
+
+  [38;2;0;212;255mSPEC-7: Accepted status and retired exhausted/escalate vocabulary[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] status header reads Accepted
+    [2moutput missing: Accepted[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] prescriptive 'disposition: exhausted' is removed from §3
+    [2mexpected: 0, got: 4[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] prescriptive exhausted→escalate §4 chain is stricken
+    [2mexpected: 0, got: 2[0m
+
+  [38;2;0;212;255mSPEC-8: per-stage _<stage>_budget_guidance helpers replace One-helper baseline[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-8] 'One helper renders the budget block' baseline language is absent
+    [2mexpected: 0, got: 1[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-8] §1 uses per-stage _<stage>_budget_guidance helpers language
+    [2moutput missing: _budget_guidance[0m
+
+  [38;2;0;212;255mSPEC-9: amendment back-pointer explicitly names #2187[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-9] document contains an amendment back-pointer naming #2187
+    [2moutput missing: #2187[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m6 of 7 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] status header reads Accepted
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] prescriptive 'disposition: exhausted' is removed from §3
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] prescriptive exhausted→escalate §4 chain is stricken
+  [38;2;248;113;113m✗[0m [#2032/SPEC-8] 'One helper renders the budget block' baseline language is absent
+  [38;2;248;113;113m✗[0m [#2032/SPEC-8] §1 uses per-stage _<stage>_budget_guidance helpers language
+  [38;2;248;113;113m✗[0m [#2032/SPEC-9] document contains an amendment back-pointer naming #2187
+
+### SPEC-9 head tests/unit/adr-063-vocabulary-test.sh
+
+[38;2;0;212;255m[1m  ADR-063 vocabulary update — accepted with #2187 vocabulary (#2032)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] ADR-063 file exists
+
+  [38;2;0;212;255mSPEC-7: Accepted status and retired exhausted/escalate vocabulary[0m
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] status header reads Accepted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] prescriptive 'disposition: exhausted' is removed from §3
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] prescriptive exhausted→escalate §4 chain is stricken
+
+  [38;2;0;212;255mSPEC-8: per-stage _<stage>_budget_guidance helpers replace One-helper baseline[0m
+  [38;2;74;222;128m✓[0m [#2032/SPEC-8] 'One helper renders the budget block' baseline language is absent
+  [38;2;74;222;128m✓[0m [#2032/SPEC-8] §1 uses per-stage _<stage>_budget_guidance helpers language
+
+  [38;2;0;212;255mSPEC-9: amendment back-pointer explicitly names #2187[0m
+  [38;2;74;222;128m✓[0m [#2032/SPEC-9] document contains an amendment back-pointer naming #2187
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 7 tests passed[0m
+

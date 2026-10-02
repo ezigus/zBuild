@@ -1,0 +1,565 @@
+### plugins/agent/review-report/plugin.sh reverted tests/integration/cycle-member-unfinished-no-convergence-test.sh
+
+[38;2;0;212;255m[1m  cycle: unfinished member suppresses false convergence (#2032)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-2: all-complete exit_when converges; suppression block absent[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:43:42 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 1.1s ════════════════════════════ 22:43:43 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] all-complete exit_when: rc=0 (converged)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] converged on the first iteration (no suppression needed)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] terminated with reason=converged
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] suppression block did NOT fire (all members were complete)
+
+  [38;2;0;212;255mSPEC-1: unfinished member suppresses convergence — cycle iterates instead[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:43:43 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:43:44 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:43:46 UTC ══
+(no feedback edges, no stage summaries)
+
+
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 22:43:46 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] unfinished member blocks convergence: rc=0 (converges on iter 2, not iter 1)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations (not 1): the suppressed iter forced another
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence was emitted once
+
+  [38;2;0;212;255mSPEC-6: unfinished at max_iterations — exhaustion path, not rc=0 complete[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:43:47 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:43:48 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:43:49 UTC ══
+(no feedback edges, no stage summaries)
+
+
+══ dvc [cycle] seq=2 output OK 0.9s ════════════════════════════ 22:43:50 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] unfinished at max_iterations: rc=8 (exhaustion halt, not rc=0 complete)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] terminated reason is design_timeout_exhausted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] cycle.timeout_exhausted was emitted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] cycle.timeout_exhausted reason=design_timeout_exhausted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] suppression block fired on both iterations preventing false complete
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 12 tests passed[0m
+
+### plugins/agent/review-report/plugin.sh head tests/integration/cycle-member-unfinished-no-convergence-test.sh
+
+[38;2;0;212;255m[1m  cycle: unfinished member suppresses false convergence (#2032)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-2: all-complete exit_when converges; suppression block absent[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:42:51 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 1.0s ════════════════════════════ 22:42:52 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] all-complete exit_when: rc=0 (converged)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] converged on the first iteration (no suppression needed)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] terminated with reason=converged
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] suppression block did NOT fire (all members were complete)
+
+  [38;2;0;212;255mSPEC-1: unfinished member suppresses convergence — cycle iterates instead[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:42:52 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:42:53 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:42:55 UTC ══
+(no feedback edges, no stage summaries)
+
+
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 22:42:56 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] unfinished member blocks convergence: rc=0 (converges on iter 2, not iter 1)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations (not 1): the suppressed iter forced another
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence was emitted once
+
+  [38;2;0;212;255mSPEC-6: unfinished at max_iterations — exhaustion path, not rc=0 complete[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:42:56 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:42:57 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:42:59 UTC ══
+(no feedback edges, no stage summaries)
+
+
+══ dvc [cycle] seq=2 output OK 0.9s ════════════════════════════ 22:43:00 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] unfinished at max_iterations: rc=8 (exhaustion halt, not rc=0 complete)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] terminated reason is design_timeout_exhausted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] cycle.timeout_exhausted was emitted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] cycle.timeout_exhausted reason=design_timeout_exhausted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] suppression block fired on both iterations preventing false complete
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 12 tests passed[0m
+
+### plugins/agent/review-report/plugin.sh reverted tests/integration/cycle-member-unfinished-no-convergence-test.sh
+
+[38;2;0;212;255m[1m  cycle: unfinished member suppresses false convergence (#2032)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-2: all-complete exit_when converges; suppression block absent[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:43:42 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 1.1s ════════════════════════════ 22:43:43 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] all-complete exit_when: rc=0 (converged)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] converged on the first iteration (no suppression needed)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] terminated with reason=converged
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] suppression block did NOT fire (all members were complete)
+
+  [38;2;0;212;255mSPEC-1: unfinished member suppresses convergence — cycle iterates instead[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:43:43 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:43:44 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:43:46 UTC ══
+(no feedback edges, no stage summaries)
+
+
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 22:43:46 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] unfinished member blocks convergence: rc=0 (converges on iter 2, not iter 1)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations (not 1): the suppressed iter forced another
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence was emitted once
+
+  [38;2;0;212;255mSPEC-6: unfinished at max_iterations — exhaustion path, not rc=0 complete[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:43:47 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:43:48 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:43:49 UTC ══
+(no feedback edges, no stage summaries)
+
+
+══ dvc [cycle] seq=2 output OK 0.9s ════════════════════════════ 22:43:50 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] unfinished at max_iterations: rc=8 (exhaustion halt, not rc=0 complete)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] terminated reason is design_timeout_exhausted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] cycle.timeout_exhausted was emitted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] cycle.timeout_exhausted reason=design_timeout_exhausted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] suppression block fired on both iterations preventing false complete
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 12 tests passed[0m
+
+### plugins/agent/review-report/plugin.sh head tests/integration/cycle-member-unfinished-no-convergence-test.sh
+
+[38;2;0;212;255m[1m  cycle: unfinished member suppresses false convergence (#2032)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-2: all-complete exit_when converges; suppression block absent[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:42:51 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 1.0s ════════════════════════════ 22:42:52 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] all-complete exit_when: rc=0 (converged)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] converged on the first iteration (no suppression needed)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] terminated with reason=converged
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] suppression block did NOT fire (all members were complete)
+
+  [38;2;0;212;255mSPEC-1: unfinished member suppresses convergence — cycle iterates instead[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:42:52 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:42:53 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:42:55 UTC ══
+(no feedback edges, no stage summaries)
+
+
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 22:42:56 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] unfinished member blocks convergence: rc=0 (converges on iter 2, not iter 1)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations (not 1): the suppressed iter forced another
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence was emitted once
+
+  [38;2;0;212;255mSPEC-6: unfinished at max_iterations — exhaustion path, not rc=0 complete[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:42:56 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:42:57 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:42:59 UTC ══
+(no feedback edges, no stage summaries)
+
+
+══ dvc [cycle] seq=2 output OK 0.9s ════════════════════════════ 22:43:00 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] unfinished at max_iterations: rc=8 (exhaustion halt, not rc=0 complete)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] terminated reason is design_timeout_exhausted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] cycle.timeout_exhausted was emitted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] cycle.timeout_exhausted reason=design_timeout_exhausted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] suppression block fired on both iterations preventing false complete
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 12 tests passed[0m
+
+### plugins/agent/review-report/plugin.sh reverted tests/unit/spec-coverage-test.sh
+
+[38;2;0;212;255m[1m  spec-coverage: does the design cover the ISSUE? (#1683)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-2][change] a covering design yields covered
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] rc is binary
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] a stage that merely reports is disposition=complete
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] the prompt carries the issue text
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] and the acceptance block
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] and NOT the diff
+  [38;2;74;222;128m✓[0m [SPEC-1][change] an uncovered requirement yields uncovered
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] and rc stays binary
+  [38;2;74;222;128m✓[0m [SPEC-6][change] the finding is a structured data.uncovered[] element
+  [38;2;74;222;128m✓[0m [SPEC-6][change] and it is a real array, not a string
+  [38;2;74;222;128m✓[0m [SPEC-3][change] placeholder issue text yields unreadable
+  [38;2;74;222;128m✓[0m [SPEC-3][change] refused on the PLACEHOLDER path, not a silent router failure
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] rc binary on the unreadable path too
+
+  [38;2;0;212;255mSPEC-7: the prompt says verification-process requirements are not gaps[0m
+  [38;2;74;222;128m✓[0m [SPEC-7][change] the prompt distinguishes behaviour from how the change is verified
+  [38;2;74;222;128m✓[0m [SPEC-7][change] …and says such a requirement is never a gap
+
+  [38;2;0;212;255mSPEC-8: a SPEC that narrows a requirement does not cover it[0m
+  [38;2;74;222;128m✓[0m [SPEC-8][change] the prompt says a narrower SPEC leaves the requirement uncovered
+  [38;2;74;222;128m✓[0m [SPEC-8][change] …naming the ways a SPEC narrows (subset of cases, weaker condition)
+
+  [38;2;0;212;255mSPEC-3 [#2032]: non-zero router exit — disposition classified, not complete[0m
+  [38;2;74;222;128m✓[0m [#2032/SPEC-3] rc=124 router timeout: disposition=timed_out, not hardcoded complete
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 19 tests passed[0m
+
+### plugins/agent/review-report/plugin.sh head tests/unit/spec-coverage-test.sh
+
+[38;2;0;212;255m[1m  spec-coverage: does the design cover the ISSUE? (#1683)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-2][change] a covering design yields covered
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] rc is binary
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] a stage that merely reports is disposition=complete
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] the prompt carries the issue text
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] and the acceptance block
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] and NOT the diff
+  [38;2;74;222;128m✓[0m [SPEC-1][change] an uncovered requirement yields uncovered
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] and rc stays binary
+  [38;2;74;222;128m✓[0m [SPEC-6][change] the finding is a structured data.uncovered[] element
+  [38;2;74;222;128m✓[0m [SPEC-6][change] and it is a real array, not a string
+  [38;2;74;222;128m✓[0m [SPEC-3][change] placeholder issue text yields unreadable
+  [38;2;74;222;128m✓[0m [SPEC-3][change] refused on the PLACEHOLDER path, not a silent router failure
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] rc binary on the unreadable path too
+
+  [38;2;0;212;255mSPEC-7: the prompt says verification-process requirements are not gaps[0m
+  [38;2;74;222;128m✓[0m [SPEC-7][change] the prompt distinguishes behaviour from how the change is verified
+  [38;2;74;222;128m✓[0m [SPEC-7][change] …and says such a requirement is never a gap
+
+  [38;2;0;212;255mSPEC-8: a SPEC that narrows a requirement does not cover it[0m
+  [38;2;74;222;128m✓[0m [SPEC-8][change] the prompt says a narrower SPEC leaves the requirement uncovered
+  [38;2;74;222;128m✓[0m [SPEC-8][change] …naming the ways a SPEC narrows (subset of cases, weaker condition)
+
+  [38;2;0;212;255mSPEC-3 [#2032]: non-zero router exit — disposition classified, not complete[0m
+  [38;2;74;222;128m✓[0m [#2032/SPEC-3] rc=124 router timeout: disposition=timed_out, not hardcoded complete
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 19 tests passed[0m
+
+### plugins/agent/review-report/plugin.sh reverted tests/unit/spec-correspondence-test.sh
+
+[38;2;0;212;255m[1m  spec-correspondence: the assertion vs the sentence (#2034)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1][change] the prompt carries the requirement TEXT
+  [38;2;74;222;128m✓[0m [SPEC-1][change] and the assertion source
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] the prompt carries NO diff
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] nor the build summary
+  [38;2;74;222;128m✓[0m [SPEC-3][change] partial is offered as a verdict
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] rc is binary
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] a stage that merely reports is disposition=complete
+  [38;2;74;222;128m✓[0m [SPEC-3][change] valid_verdicts declares 'corresponds'
+  [38;2;74;222;128m✓[0m [SPEC-3][change] valid_verdicts declares 'partial'
+  [38;2;74;222;128m✓[0m [SPEC-3][change] valid_verdicts declares 'mismatch'
+  [38;2;74;222;128m✓[0m [SPEC-3][change] valid_verdicts declares 'uncheckable'
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] the manifest marks it advisory
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] no exit_when in any template names it
+  [38;2;74;222;128m✓[0m [SPEC-6][change] the QA persona's perspective reaches the prompt
+  [38;2;74;222;128m✓[0m [SPEC-6][change] simple.yaml binds the persona to the stage
+  [38;2;74;222;128m✓[0m [SPEC-7][change] all three SPECs were judged
+  [38;2;74;222;128m✓[0m [SPEC-7][change] the counters account for every SPEC judged
+  [38;2;74;222;128m✓[0m [SPEC-8][change] zero successful judgments does not classify as a pass
+  [38;2;74;222;128m✓[0m [SPEC-8][change] and the word it writes is one the engine classifies
+  [38;2;74;222;128m✓[0m [#2108] a stdin-draining model still leaves every SPEC judged (1 batch + 3 fallback calls)
+  [38;2;74;222;128m✓[0m [#2108] the stage judged all 3 SPECs
+  [38;2;74;222;128m✓[0m [#2129] zero SPEC ids → verdict=uncheckable
+  [38;2;74;222;128m✓[0m [#2129] the reason says nothing was judged
+
+  [38;2;0;212;255m#2143: batched judging + stage clock[0m
+  [38;2;74;222;128m✓[0m [#2143] all 3 SPECs are judged in ONE model call
+  [38;2;74;222;128m✓[0m [#2143] the batch prompt carries every SPEC id (SPEC-1 as a section heading)
+  [38;2;74;222;128m✓[0m [#2143] the batch prompt carries every SPEC id (SPEC-2 as a section heading)
+  [38;2;74;222;128m✓[0m [#2143] the batch prompt carries every SPEC id (SPEC-3 as a section heading)
+  [38;2;74;222;128m✓[0m [#2143] the prompt asks for the heading's identifier on each answer line
+  [38;2;74;222;128m✓[0m [#2143] …and every requirement text
+  [38;2;74;222;128m✓[0m [#2143] the tally reflects the batched verdicts
+  [38;2;74;222;128m✓[0m [#2143] SPECs the clock cut off are unjudged, not invented
+  [38;2;74;222;128m✓[0m [#2143] at most the batch + one fallback call before the clock
+
+  [38;2;0;212;255mSPEC-4 [#2032]: non-zero router exit — disposition classified, not complete[0m
+  [38;2;74;222;128m✓[0m [#2032/SPEC-4] rc=1 router failure: disposition=unavailable, not hardcoded complete
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 34 tests passed[0m
+
+### plugins/agent/review-report/plugin.sh head tests/unit/spec-correspondence-test.sh
+
+[38;2;0;212;255m[1m  spec-correspondence: the assertion vs the sentence (#2034)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1][change] the prompt carries the requirement TEXT
+  [38;2;74;222;128m✓[0m [SPEC-1][change] and the assertion source
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] the prompt carries NO diff
+  [38;2;74;222;128m✓[0m [SPEC-2][guard] nor the build summary
+  [38;2;74;222;128m✓[0m [SPEC-3][change] partial is offered as a verdict
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] rc is binary
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] a stage that merely reports is disposition=complete
+  [38;2;74;222;128m✓[0m [SPEC-3][change] valid_verdicts declares 'corresponds'
+  [38;2;74;222;128m✓[0m [SPEC-3][change] valid_verdicts declares 'partial'
+  [38;2;74;222;128m✓[0m [SPEC-3][change] valid_verdicts declares 'mismatch'
+  [38;2;74;222;128m✓[0m [SPEC-3][change] valid_verdicts declares 'uncheckable'
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] the manifest marks it advisory
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] no exit_when in any template names it
+  [38;2;74;222;128m✓[0m [SPEC-6][change] the QA persona's perspective reaches the prompt
+  [38;2;74;222;128m✓[0m [SPEC-6][change] simple.yaml binds the persona to the stage
+  [38;2;74;222;128m✓[0m [SPEC-7][change] all three SPECs were judged
+  [38;2;74;222;128m✓[0m [SPEC-7][change] the counters account for every SPEC judged
+  [38;2;74;222;128m✓[0m [SPEC-8][change] zero successful judgments does not classify as a pass
+  [38;2;74;222;128m✓[0m [SPEC-8][change] and the word it writes is one the engine classifies
+  [38;2;74;222;128m✓[0m [#2108] a stdin-draining model still leaves every SPEC judged (1 batch + 3 fallback calls)
+  [38;2;74;222;128m✓[0m [#2108] the stage judged all 3 SPECs
+  [38;2;74;222;128m✓[0m [#2129] zero SPEC ids → verdict=uncheckable
+  [38;2;74;222;128m✓[0m [#2129] the reason says nothing was judged
+
+  [38;2;0;212;255m#2143: batched judging + stage clock[0m
+  [38;2;74;222;128m✓[0m [#2143] all 3 SPECs are judged in ONE model call
+  [38;2;74;222;128m✓[0m [#2143] the batch prompt carries every SPEC id (SPEC-1 as a section heading)
+  [38;2;74;222;128m✓[0m [#2143] the batch prompt carries every SPEC id (SPEC-2 as a section heading)
+  [38;2;74;222;128m✓[0m [#2143] the batch prompt carries every SPEC id (SPEC-3 as a section heading)
+  [38;2;74;222;128m✓[0m [#2143] the prompt asks for the heading's identifier on each answer line
+  [38;2;74;222;128m✓[0m [#2143] …and every requirement text
+  [38;2;74;222;128m✓[0m [#2143] the tally reflects the batched verdicts
+  [38;2;74;222;128m✓[0m [#2143] SPECs the clock cut off are unjudged, not invented
+  [38;2;74;222;128m✓[0m [#2143] at most the batch + one fallback call before the clock
+
+  [38;2;0;212;255mSPEC-4 [#2032]: non-zero router exit — disposition classified, not complete[0m
+  [38;2;74;222;128m✓[0m [#2032/SPEC-4] rc=1 router failure: disposition=unavailable, not hardcoded complete
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 34 tests passed[0m
+
+### plugins/agent/review-report/plugin.sh reverted tests/unit/review-report-v2-contract-test.sh
+
+[38;2;0;212;255m[1m  review-report — stage contract v2 (#1843)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] provides.result_contract: 2
+  [38;2;74;222;128m✓[0m [SPEC-1] config.router.timeout_s declared
+  [38;2;74;222;128m✓[0m [SPEC-1] config.router.max_turns declared
+  [38;2;74;222;128m✓[0m [SPEC-1] valid_verdicts declares pass
+  [38;2;74;222;128m✓[0m [SPEC-1] valid_verdicts declares error
+  [38;2;74;222;128m✓[0m [SPEC-1] review_report output is primary: true
+  [38;2;74;222;128m✓[0m [SPEC-2] normal run rc=0
+  [38;2;74;222;128m✓[0m [SPEC-2] primary result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-2] primary verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] primary disposition=complete
+  [38;2;74;222;128m✓[0m [SPEC-2] primary reason is non-empty text
+  [38;2;74;222;128m✓[0m [SPEC-2] primary carries a data object
+  [38;2;74;222;128m✓[0m [SPEC-2] merge_readiness still top-level (pr-open reads it)
+  [38;2;74;222;128m✓[0m [SPEC-2] lenses still top-level
+  [38;2;74;222;128m✓[0m [SPEC-2] findings still top-level
+  [38;2;74;222;128m✓[0m [SPEC-6] needs_attention report still verdict=pass (no coercion)
+  [38;2;74;222;128m✓[0m [SPEC-3] missing state_file → rc=1 (ADR-054 §4: rc ∈ {0,1})
+  [38;2;74;222;128m✓[0m [SPEC-3] missing state_file → result_contract 2 at $ZBUILD_ARTIFACT_DIR
+  [38;2;74;222;128m✓[0m [SPEC-3] missing state_file → verdict=error
+  [38;2;74;222;128m✓[0m [SPEC-3] missing state_file → disposition=broken
+  [38;2;74;222;128m✓[0m [SPEC-3] missing state_file → summary written (ADR-055 §9)
+  [38;2;74;222;128m✓[0m [SPEC-4] missing out_json → rc=1
+  [38;2;74;222;128m✓[0m [SPEC-4] missing out_json → verdict=error
+  [38;2;74;222;128m✓[0m [SPEC-4] missing out_json → disposition=broken
+  [38;2;74;222;128m✓[0m [SPEC-5] failed lens → rc=0 (advisory never aborts)
+  [38;2;248;113;113m✗[0m [#2032/SPEC-5] failed lens → disposition classified from first failed lens rc (rc=1 → router_rc_nonzero → unavailable)
+    [2mexpected: unavailable, got: complete[0m
+  [38;2;74;222;128m✓[0m [SPEC-5] failed lens → verdict stays pass
+  [38;2;74;222;128m✓[0m [SPEC-5] reason names the lens that failed
+  [38;2;74;222;128m✓[0m [SPEC-7] lens prompt carries a TURN BUDGET block
+  [38;2;74;222;128m✓[0m [SPEC-7] block reflects ZBUILD_ROUTER_MAX_TURNS=77 (from _route_resolve_max_turns)
+  [38;2;74;222;128m✓[0m [SPEC-7] block reflects ZBUILD_ROUTER_TIMEOUT=123 (from _route_resolve_timeout)
+  [38;2;74;222;128m✓[0m [SPEC-7] the engine's escalation override wins in the block too
+  [38;2;74;222;128m✓[0m [SPEC-8] envelope followed by a brace-bearing sign-off is recovered (finding kept)
+  [38;2;74;222;128m✓[0m [SPEC-8] recovered lens keeps its score
+  [38;2;74;222;128m✓[0m [SPEC-8] unparseable reply → rc=0
+  [38;2;74;222;128m✓[0m [SPEC-8] unparseable reply still emits review_report.lens.unparseable (visible failure kept)
+  [38;2;74;222;128m✓[0m [SPEC-8] unparseable reply → lens reports nothing, not a fabricated score
+  [38;2;74;222;128m✓[0m [SPEC-9] scope_manifest resolved from the ZBUILD_STAGE_INPUTS index
+  [38;2;74;222;128m✓[0m [SPEC-9] hook path writes a complete v2 primary
+  [38;2;74;222;128m✓[0m [SPEC-9] real fan-out restored after the mock (11 lens calls again)
+  [38;2;74;222;128m✓[0m [SPEC-9] plugin.sh constructs no scope-manifest.md path
+  [38;2;74;222;128m✓[0m [SPEC-10] plugin.sh contains no 'return 2'
+  [38;2;74;222;128m✓[0m [SPEC-11] manifest declares no review-report-result.json output
+  [38;2;74;222;128m✓[0m [SPEC-11] plugin.sh writes no review-report-result.json
+  [38;2;74;222;128m✓[0m [SPEC-11] normal run leaves no sidecar
+  [38;2;74;222;128m✓[0m [SPEC-12] tier unresolved → rc=1
+  [38;2;74;222;128m✓[0m [SPEC-12] tier unresolved → verdict=error
+  [38;2;74;222;128m✓[0m [SPEC-12] tier unresolved → disposition=misconfigured (#2187)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 48 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#2032/SPEC-5] failed lens → disposition classified from first failed lens rc (rc=1 → router_rc_nonzero → unavailable)
+
+### plugins/agent/review-report/plugin.sh head tests/unit/review-report-v2-contract-test.sh
+
+[38;2;0;212;255m[1m  review-report — stage contract v2 (#1843)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-1] provides.result_contract: 2
+  [38;2;74;222;128m✓[0m [SPEC-1] config.router.timeout_s declared
+  [38;2;74;222;128m✓[0m [SPEC-1] config.router.max_turns declared
+  [38;2;74;222;128m✓[0m [SPEC-1] valid_verdicts declares pass
+  [38;2;74;222;128m✓[0m [SPEC-1] valid_verdicts declares error
+  [38;2;74;222;128m✓[0m [SPEC-1] review_report output is primary: true
+  [38;2;74;222;128m✓[0m [SPEC-2] normal run rc=0
+  [38;2;74;222;128m✓[0m [SPEC-2] primary result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-2] primary verdict=pass
+  [38;2;74;222;128m✓[0m [SPEC-2] primary disposition=complete
+  [38;2;74;222;128m✓[0m [SPEC-2] primary reason is non-empty text
+  [38;2;74;222;128m✓[0m [SPEC-2] primary carries a data object
+  [38;2;74;222;128m✓[0m [SPEC-2] merge_readiness still top-level (pr-open reads it)
+  [38;2;74;222;128m✓[0m [SPEC-2] lenses still top-level
+  [38;2;74;222;128m✓[0m [SPEC-2] findings still top-level
+  [38;2;74;222;128m✓[0m [SPEC-6] needs_attention report still verdict=pass (no coercion)
+  [38;2;74;222;128m✓[0m [SPEC-3] missing state_file → rc=1 (ADR-054 §4: rc ∈ {0,1})
+  [38;2;74;222;128m✓[0m [SPEC-3] missing state_file → result_contract 2 at $ZBUILD_ARTIFACT_DIR
+  [38;2;74;222;128m✓[0m [SPEC-3] missing state_file → verdict=error
+  [38;2;74;222;128m✓[0m [SPEC-3] missing state_file → disposition=broken
+  [38;2;74;222;128m✓[0m [SPEC-3] missing state_file → summary written (ADR-055 §9)
+  [38;2;74;222;128m✓[0m [SPEC-4] missing out_json → rc=1
+  [38;2;74;222;128m✓[0m [SPEC-4] missing out_json → verdict=error
+  [38;2;74;222;128m✓[0m [SPEC-4] missing out_json → disposition=broken
+  [38;2;74;222;128m✓[0m [SPEC-5] failed lens → rc=0 (advisory never aborts)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-5] failed lens → disposition classified from first failed lens rc (rc=1 → router_rc_nonzero → unavailable)
+  [38;2;74;222;128m✓[0m [SPEC-5] failed lens → verdict stays pass
+  [38;2;74;222;128m✓[0m [SPEC-5] reason names the lens that failed
+  [38;2;74;222;128m✓[0m [SPEC-7] lens prompt carries a TURN BUDGET block
+  [38;2;74;222;128m✓[0m [SPEC-7] block reflects ZBUILD_ROUTER_MAX_TURNS=77 (from _route_resolve_max_turns)
+  [38;2;74;222;128m✓[0m [SPEC-7] block reflects ZBUILD_ROUTER_TIMEOUT=123 (from _route_resolve_timeout)
+  [38;2;74;222;128m✓[0m [SPEC-7] the engine's escalation override wins in the block too
+  [38;2;74;222;128m✓[0m [SPEC-8] envelope followed by a brace-bearing sign-off is recovered (finding kept)
+  [38;2;74;222;128m✓[0m [SPEC-8] recovered lens keeps its score
+  [38;2;74;222;128m✓[0m [SPEC-8] unparseable reply → rc=0
+  [38;2;74;222;128m✓[0m [SPEC-8] unparseable reply still emits review_report.lens.unparseable (visible failure kept)
+  [38;2;74;222;128m✓[0m [SPEC-8] unparseable reply → lens reports nothing, not a fabricated score
+  [38;2;74;222;128m✓[0m [SPEC-9] scope_manifest resolved from the ZBUILD_STAGE_INPUTS index
+  [38;2;74;222;128m✓[0m [SPEC-9] hook path writes a complete v2 primary
+  [38;2;74;222;128m✓[0m [SPEC-9] real fan-out restored after the mock (11 lens calls again)
+  [38;2;74;222;128m✓[0m [SPEC-9] plugin.sh constructs no scope-manifest.md path
+  [38;2;74;222;128m✓[0m [SPEC-10] plugin.sh contains no 'return 2'
+  [38;2;74;222;128m✓[0m [SPEC-11] manifest declares no review-report-result.json output
+  [38;2;74;222;128m✓[0m [SPEC-11] plugin.sh writes no review-report-result.json
+  [38;2;74;222;128m✓[0m [SPEC-11] normal run leaves no sidecar
+  [38;2;74;222;128m✓[0m [SPEC-12] tier unresolved → rc=1
+  [38;2;74;222;128m✓[0m [SPEC-12] tier unresolved → verdict=error
+  [38;2;74;222;128m✓[0m [SPEC-12] tier unresolved → disposition=misconfigured (#2187)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 48 tests passed[0m
+
