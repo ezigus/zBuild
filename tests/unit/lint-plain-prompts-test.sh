@@ -19,6 +19,8 @@
 # P4 [guard]  a parser key (WIRING:, TESTFILES:, LOOP_COMPLETE) is allowed
 # P5 [guard]  a file listed in the sources list that does not exist fails
 # P6 [change] the real tree passes
+# P7 [change] a variable NAME is not prompt text — only its value reaches a
+#             model (`$inert`, `${_TPL_STAGES[@]}` in a printf line)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -60,6 +62,13 @@ assert_eq "[P4] parser keys are allowed" "0" "$rc"
 
 _src plugins/x/gone.sh; _lint
 assert_eq "[P5] a listed file that does not exist fails" "1" "$rc"
+
+# shellcheck disable=SC2016  # literal fixture text
+printf '%s\n' '[[ -n "$inert" ]] && clauses+=("$(_ids "$inert") was put back")' > "$R/plugins/x/e.sh"
+# shellcheck disable=SC2016  # literal fixture text
+printf '%s\n' 'printf "%s\n" "${_TPL_STAGES[@]}"' > "$R/plugins/x/f.sh"
+printf '%s\n' 'plugins/x/e.sh' 'plugins/x/f.sh printf' > "$R/config/model-facing-sources.txt"; _lint
+assert_eq "[P7] variable names are not prompt text" "0" "$rc"
 
 bash "$LINT" "$REPO_ROOT" > "$TEST_TEMP_DIR/real.out" 2>&1; rc=$?
 assert_eq "[P6] the real tree passes" "0" "$rc"

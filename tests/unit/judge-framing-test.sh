@@ -89,7 +89,7 @@ assert_contains "[J2] it is told the finding is context" "$_judge" "### jf-gate 
 _builder="$(ZBUILD_CURRENT_STAGE=jf-builder ZBUILD_PLUGIN_DIR="$PROOT/agent/jf-builder" \
     stage_summaries_prompt_block "$SF" "$PROOT" 2>/dev/null || true)"
 assert_contains "[J3] a declared writer is still told to RESOLVE an unowned failure" \
-    "$_builder" "### jf-gate (verdict: fail) — RESOLVE these findings before completing"
+    "$_builder" "### jf-gate (verdict: fail) — fix these findings before you finish"
 assert_contains "[J4] a writer still sees the judge's summary" "$_builder" "jf-judge-SUMMARY-BODY"
 
 print_test_section "J7: the RESOLVE count follows the same rules"

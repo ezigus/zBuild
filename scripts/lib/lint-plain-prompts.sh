@@ -38,6 +38,15 @@ LIST="$ROOT/config/model-facing-sources.txt"
 FORBIDDEN='NEGCTL|REACHABILITY|[Ii]nert|[Tt]autolog|WIRING_MISSING|UNCLASSIFIED|GUARD_REGRESSED|[Nn]egative control|ADR-[0-9]+|_TPL_[A-Z]'
 
 bad=0 files=0
+# A model sees a variable's VALUE, never its name: strip $name / ${…} first.
+_check() {   # _check <file> <lineno> <line>
+    local _s="$3"
+    while [[ "$_s" =~ (\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*) ]]; do
+        _s="${_s/"${BASH_REMATCH[1]}"/}"
+    done
+    [[ "$_s" =~ $FORBIDDEN ]] && _report "$1" "$2" "$_s"
+    return 0
+}
 _report() {   # _report <file> <lineno> <line>
     local hit; hit="$(grep -oE "$FORBIDDEN" <<< "$3" | tr '\n' ' ')"
     echo "lint-plain-prompts: $1:$2 uses ${hit% } — say what the model must do, in plain words (ADR-067)" >&2
@@ -59,7 +68,7 @@ while IFS= read -r entry || [[ -n "$entry" ]]; do
     if [[ "$f" == *.md ]]; then
         while IFS= read -r line || [[ -n "$line" ]]; do
             n=$((n + 1))
-            [[ "$line" =~ $FORBIDDEN ]] && _report "$rel" "$n" "$line"
+            _check "$rel" "$n" "$line"
         done < "$f"
         continue
     fi
@@ -70,14 +79,14 @@ while IFS= read -r entry || [[ -n "$entry" ]]; do
         # A stage summary call, and the lines it continues onto with `\`.
         if [[ -z "$term" && ( $cont -eq 1 || "$trimmed" == stage_summary_write* || "$trimmed" == *"clauses+=("* \
               || ( "$mode" == printf && "$trimmed" == printf* ) ) && "$trimmed" != \#* ]]; then
-            [[ "$line" =~ $FORBIDDEN ]] && _report "$rel" "$n" "$line"
+            _check "$rel" "$n" "$line"
             if [[ "$line" == *'\' ]]; then cont=1; else cont=0; fi
             continue
         fi
         if [[ -n "$term" ]]; then
             local_line="${line#"${line%%[!$'\t']*}"}"   # <<- strips leading tabs
             if [[ "$line" == "$term" || "$local_line" == "$term" ]]; then term=""; continue; fi
-            [[ "$line" =~ $FORBIDDEN ]] && _report "$rel" "$n" "$line"
+            _check "$rel" "$n" "$line"
             continue
         fi
         # A heredoc opener: <<WORD, <<-WORD, <<'WORD', <<"WORD".
