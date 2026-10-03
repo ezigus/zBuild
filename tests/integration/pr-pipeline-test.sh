@@ -11,7 +11,7 @@
 #            "pr is the terminal leaf of the shipped roster", template-agnostic)
 #   [SPEC-2] plugins/agent/pr-delivery/{plugin.sh,manifest.yaml} exist; id=pr-delivery
 #   [SPEC-3] dry-run: real plugin writes pr-url.txt + pr-result.json, exits 0
-#   [SPEC-4] verdict=block guard: real plugin refuses (rc=1), no pr-url.txt
+#   [SPEC-4] a needs_attention review does not block: pr-open opens the PR (ADR-040 §4)
 #   [SPEC-5] delegation: non-dry-run threads the state file to pr-open, which
 #            writes pr-url.txt from the (mocked) gh pr create — locks the
 #            state-file-threading fix that the dogfood shipped broken.
@@ -86,25 +86,6 @@ assert_file_exists "[SPEC-3] pr-result.json written" "$_art3/pr-result.json"
 _draft9="$(jq -r '.data.draft' "$_art3/pr-result.json" 2>/dev/null || echo MISSING)"
 assert_eq "[SPEC-9] dry-run pr-result.json records draft=false (non-draft default)" "false" "$_draft9"
 
-# ─── SPEC-4: review_report via ZBUILD_STAGE_INPUTS signals block → refuses ────
-# #1844: the hardcoded review.json guard (plugin.sh lines 56-68) is removed; the
-# block guard now reads review_report from ZBUILD_STAGE_INPUTS. The review_report
-# is at a non-standard path so a hardcoded-path read would silently miss it.
-print_test_section "SPEC-4: review_report block guard (via ZBUILD_STAGE_INPUTS) refuses to open a PR"
-_sf4="$(_setup_run approve s4)"
-_art4="$(dirname "$_sf4")/artifacts"
-_rr4="$TEST_TEMP_DIR/review-report-s4.json"
-jq -n '{merge_readiness:"needs_attention",findings:[{severity:"critical",summary:"blocking"}],summary:"t"}' \
-    > "$_rr4"
-_si4="$TEST_TEMP_DIR/si-s4.json"
-printf '{"inputs":{"review_report":"%s"}}\n' "$_rr4" > "$_si4"
-( ZBUILD_STAGE_INPUTS="$_si4" ZBUILD_DRY_RUN=0 \
-    pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1; _rc4=$?
-[[ $_rc4 -ne 0 ]] \
-    && assert_pass "[SPEC-4] review_report block → pr_stage_run returns non-zero" \
-    || assert_fail "[SPEC-4] review_report block → pr_stage_run returns non-zero" "got rc=0"
-assert_file_not_exists "[SPEC-4] review_report block → no pr-url.txt written" "$_art4/pr-url.txt"
-
 # ─── SPEC-5: non-dry-run delegates to pr-open with the threaded state file ───
 # Locks the runtime fix: the run's state file (not the unset ZBUILD_STATE_FILE)
 # reaches pr-open, which reads .issue and writes pr-url.txt from `gh pr create`.
@@ -127,6 +108,25 @@ esac
 exit 0
 MOCK
 chmod +x "$_mockbin/gh" "$_mockbin/git"
+
+# ─── SPEC-4: a review that needs attention never blocks delivery ──────────────
+# ADR-040 §4 (#1844, Eric 2026-10-03): the review is advisory. A needs_attention
+# report — read through ZBUILD_STAGE_INPUTS at a non-standard path — does not
+# refuse delivery; pr-delivery hands over to pr-open, which opens the PR.
+# Runs under the gh/git mocks: unmocked, the real pr-open would create a branch
+# in the checkout the suite runs from (it did, in the #1844 worktree).
+print_test_section "SPEC-4: a needs_attention review does not block — pr-open opens the PR"
+_sf4="$(_setup_run approve s4)"
+_art4="$(dirname "$_sf4")/artifacts"
+_rr4="$TEST_TEMP_DIR/review-report-s4.json"
+jq -n '{merge_readiness:"needs_attention",findings:[{severity:"critical",summary:"blocking"}],summary:"t"}' \
+    > "$_rr4"
+_si4="$TEST_TEMP_DIR/si-s4.json"
+printf '{"inputs":{"review_report":"%s"}}\n' "$_rr4" > "$_si4"
+( unset ZBUILD_STATE_FILE; PATH="$_mockbin:$PATH" ZBUILD_STAGE_INPUTS="$_si4" ZBUILD_DRY_RUN=0 \
+    pr_stage_run "pr" "$_sf4" ) >/dev/null 2>&1; _rc4=$?
+assert_eq "[SPEC-4] a needs_attention review → pr_stage_run delivers (rc=0)" "0" "$_rc4"
+assert_file_exists "[SPEC-4] a needs_attention review → pr-open wrote pr-url.txt" "$_art4/pr-url.txt"
 ( unset ZBUILD_STATE_FILE; PATH="$_mockbin:$PATH" ZBUILD_DRY_RUN=0 \
     pr_stage_run "pr" "$_sf5" ) >/dev/null 2>&1; _rc5=$?
 assert_eq "[SPEC-5] non-dry-run pr_stage_run exits 0 (state file threaded to pr-open)" "0" "$_rc5"
