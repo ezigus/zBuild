@@ -313,9 +313,17 @@ jobs:
             if [[ "$new_commits" -eq 0 ]]; then
               echo "::notice::'$branch' has no commits beyond base — build produced nothing to push"
             else
-              git push --force origin "refs/heads/$branch:refs/heads/$branch" \
-                && echo "::notice::pushed '$branch' ($new_commits commit(s)) to origin" \
-                || { echo "::error::failed to push '$branch'"; exit 1; }
+              # #2264: force replaces an older attempt, but never a remote that is
+              # AHEAD of this ref — that is a stale ref, and the stage-end pushes
+              # already put the newer commits there (#1844 run 37066147994).
+              # shellcheck source=/dev/null
+              source "${ZBUILD_HOME:-$HOME/.local/share/zbuild}/scripts/lib/git-remote.sh"
+              push_rc=0; zbuild_push_branch_no_rewind "$branch" || push_rc=$?
+              case "$push_rc" in
+                0) echo "::notice::pushed '$branch' ($new_commits commit(s)) to origin" ;;
+                1) echo "::warning::not pushing '$branch': ${ZBUILD_PUSH_RECONCILE_ERR}" ;;
+                *) echo "::error::failed to push '$branch': ${ZBUILD_PUSH_RECONCILE_ERR}"; exit 1 ;;
+              esac
             fi
           fi
 

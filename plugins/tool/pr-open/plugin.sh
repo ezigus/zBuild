@@ -21,6 +21,8 @@ _PR_OPEN_ROOT="$_ZBUILD_PLUGIN_ROOT"
 source "$_PR_OPEN_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../scripts/lib/git-remote.sh
 source "$_PR_OPEN_ROOT/scripts/lib/git-remote.sh"
+# shellcheck source=../../../scripts/lib/run-branch.sh
+source "$_PR_OPEN_ROOT/scripts/lib/run-branch.sh"
 # #1265: merge-base resolver for the 0-commit preflight (halt before push/gh).
 # shellcheck source=../../../scripts/lib/merge-base.sh
 source "$_PR_OPEN_ROOT/scripts/lib/merge-base.sh"
@@ -211,6 +213,27 @@ _pr_open_run_inner() {
         emit_event "plugin.pr_open.branch_fallback_used" \
             "plugin=pr-open" "branch=${target_branch}" "reason=no_state_branch"
     fi
+    # #2264: a detached HEAD is the run's newest work, not a reason to switch the
+    # tree back to the branch ref — that ref can be behind it (#1844 run
+    # 37066147994 checked out a ref three commits stale and lost the PR). Move
+    # the branch to HEAD when that drops nothing; when the two diverged, refuse
+    # rather than pick one and lose the other.
+    if [[ "$current_branch" == "HEAD" ]]; then
+        if zbuild_keep_head_on_branch "$PWD" "$target_branch"; then
+            current_branch="$target_branch"
+        elif [[ "$ZBUILD_HEAD_OUTCOME" == "diverged" ]]; then
+            error "pr_open: HEAD and '${target_branch}' diverged — refusing to pick one and drop the other"
+            stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
+                "HEAD and the run branch diverged, so it is unclear which commits to ship" \
+                "No PR was opened. Neither line of commits was moved or pushed."
+            emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
+                "reason=head_diverged_from_branch" "branch=${target_branch}"
+            jq -n --arg branch "$target_branch" \
+                '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("HEAD and the run branch diverged: "+$branch)}' \
+                > "$output_pr_result_json"
+            return 1
+        fi
+    fi
     if [[ "$current_branch" != "$target_branch" ]]; then
         git checkout -b "$target_branch" 2>/dev/null || git checkout "$target_branch" 2>/dev/null || {
             error "pr_open: failed to create or switch to branch '${target_branch}'"
@@ -349,7 +372,9 @@ _pr_open_run_inner() {
 
     local -a _gh_args=()
     [[ "${_draft_bool}" == "true" ]] && _gh_args+=("--draft")
-    _gh_args+=(--title "$pr_title" --body "$pr_body")
+    # #2264: name the branch; gh infers it from an upstream a re-run's push may
+    # not have set.
+    _gh_args+=(--head "$target_branch" --title "$pr_title" --body "$pr_body")
 
     # ── Check for existing open PR on this branch ────────────────────────────────
     local existing_pr_number
