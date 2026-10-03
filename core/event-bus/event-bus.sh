@@ -193,7 +193,7 @@ eb_emit_event() {
     # #1706 (ADR-054 §3.1): a map member's own name rides the envelope only
     # when it differs from the stage, so every other envelope is unchanged.
     local unit="${ZBUILD_UNIT:-}"
-    [[ "$unit" =~ ^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)?$ && "$unit" != "$stage" ]] || unit=""
+    [[ "$unit" =~ ^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+){0,2}$ && "$unit" != "$stage" ]] || unit=""
 
     # Validate-or-cast $issue to a non-negative integer. Coming from env, an
     # unsanitized string here would break the SQL INSERT below ($issue is

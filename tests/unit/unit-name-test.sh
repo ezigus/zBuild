@@ -21,6 +21,9 @@
 # U5 [change] two members' router error records have different file names
 # U6 [change] a map whose members would share a name is refused before any
 #             member starts, and the refusal names the duplicate
+# U7 [change] a map with two roles runs every role on every element: each unit
+#             is named <stage>.<role>.<element>, so all of them run, each with
+#             its own name
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -137,6 +140,20 @@ fi
 assert_eq "[U6] no member started" "0" "$(grep -c . "$DISPATCHED" || true)"
 assert_contains "[U6] the refusal names the duplicate" \
     "$(cat "$ZBUILD_EVENTS_JSONL" 2>/dev/null)" "review_lenses.correctness"
+
+print_test_section "U7: a map with two roles names each unit by role too"
+# Dispatch for real, so each member reports the name it ran under.
+# shellcheck disable=SC2329
+orch_dispatch() { printf '%s\n' "$2" >> "$DISPATCHED"; bash "$2" >/dev/null 2>&1 || true; printf 'slot-001\n'; return 0; }
+: > "$DISPATCHED"; : > "$SEEN"
+# shellcheck disable=SC2034
+_MAP_DIM_lenses=(correctness security)
+_strategy_run_map "pool-u7" review_lenses $'lens_one\nlens_two' "$SF" "$TEST_TEMP_DIR/plugins" lenses >/dev/null 2>&1; _rc=$?
+assert_eq "[U7] the two-role map runs" "0" "$_rc"
+assert_eq "[U7] every role ran on every element" "4" "$(grep -c . "$DISPATCHED" || true)"
+_names="$(grep -E '^review_lenses=' "$SEEN" | cut -d= -f2- | sort -u | tr '\n' ' ')"
+assert_eq "[U7] each unit has its own name, role included" \
+    "review_lenses.lens_one.correctness review_lenses.lens_one.security review_lenses.lens_two.correctness review_lenses.lens_two.security " "$_names"
 
 cleanup_test_env
 print_test_results

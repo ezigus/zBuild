@@ -51,7 +51,7 @@ _strategy_orch_scratch_dir() {
     fi
 }
 
-# ─── _strategy_make_work_unit <plugin_dir> <stage> <state_file> [<platform>] [<map_element>] [<map_dimension>] [<env_target>] ───
+# ─── _strategy_make_work_unit <plugin_dir> <stage> <state_file> [<platform>] [<map_element>] [<map_dimension>] [<env_target>] [<unit_element>] ───
 # Creates a self-contained executable shell script that calls plugin_hook_call.
 # Validates stage and platform before baking into the script body.
 # Prints the path of the temp file; caller is responsible for cleanup (rm -f).
@@ -71,7 +71,7 @@ _strategy_orch_scratch_dir() {
 # template, never hardcoded here. Validated as a shell identifier before baking.
 _strategy_make_work_unit() {
     local plugin_dir="$1" stage="$2" state_file="$3" platform="${4:-generic}"
-    local map_element="${5:-}" map_dimension="${6:-}" env_target="${7:-}"
+    local map_element="${5:-}" map_dimension="${6:-}" env_target="${7:-}" unit_element="${8:-}"
 
     _strategy_validate_stage "$stage"   || return 2
     _strategy_validate_platform "$platform" || return 2
@@ -93,6 +93,12 @@ _strategy_make_work_unit() {
     fi
     if [[ -n "$map_dimension" && ! "$map_dimension" =~ ^[a-zA-Z0-9_]{1,64}$ ]]; then
         warn "strategy: invalid map dimension: ${map_dimension} (expected ^[A-Za-z0-9_]{1,64}$)" || true
+        return 2
+    fi
+    # unit_element (#1706): the caller's name for this member after the stage
+    # (`<element>` or `<role>.<element>`); baked like the others, so validated.
+    if [[ -n "$unit_element" && ! "$unit_element" =~ ^[a-zA-Z0-9_-]{1,64}(\.[a-zA-Z0-9_-]{1,64})?$ ]]; then
+        warn "strategy: invalid unit element: ${unit_element}" || true
         return 2
     fi
     if [[ -n "$env_target" && ! "$env_target" =~ ^[a-zA-Z_][a-zA-Z0-9_]{0,63}$ ]]; then
@@ -139,7 +145,7 @@ export ${env_target}='${map_element}'"
     # #1706 (ADR-054 §3.1): the member's own name is <stage>.<element> — the
     # declared element, or the platform when the map is over platforms.
     # plugin_hook_call turns it into ZBUILD_UNIT for exactly one dispatch.
-    local _unit_elem="$map_element"
+    local _unit_elem="${unit_element:-$map_element}"
     [[ -z "$_unit_elem" && "$platform" != "generic" ]] && _unit_elem="$platform"
     [[ -n "$_unit_elem" ]] && _map_env_lines="${_map_env_lines:+${_map_env_lines}
 }export ZBUILD_UNIT_ELEMENT='${_unit_elem}'"
