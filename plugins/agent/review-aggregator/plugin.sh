@@ -81,8 +81,6 @@ _ra_normalize_files() {
               # #1849: a lens whose v2 result says it did not complete reviewed
               # nothing. A file with no disposition (v1) ran.
               ran: ((.disposition // "complete") == "complete"),
-              # #2270: what a cut-off lens saved as it went, unchecked.
-              partial_notes: ((.data.partial_notes // "") | tostring),
               findings: [ (.findings // [])[] |
                 if type=="object" then {
                   file: (.file // "unknown"),
@@ -101,7 +99,11 @@ _ra_normalize_files() {
                   file: "unknown", category: "general", severity: "low",
                   line: null, message: (.|tostring), introduced: true
                 } end ]
-            }' "$f" 2>/dev/null \
+            }
+            # #2270: what a cut-off lens saved as it went, unchecked. Only when
+            # there is some, so a finished review'"'"'s report is unchanged.
+            + (if ((.data.partial_notes // "") | tostring) != ""
+               then {partial_notes: (.data.partial_notes | tostring)} else {} end)' "$f" 2>/dev/null \
             >> "$tmp" \
             || jq -nc --arg n "$name" '{name:$n, score:0, findings:[]}' >> "$tmp"
         printf '\n' >> "$tmp"
