@@ -67,13 +67,17 @@ _review_lens_envelope_schema_ok() {
 # Called on every terminal exit path (degrade + success) so the file is always
 # on disk — ADR-055 §3. Verdict appears here as a jq field, not a coercion token.
 # _review_lens_saved_notes <artifact_dir> — what this lens saved as it went
-# (#2270), capped; empty when nothing was saved. A call cut off by time or
-# turns returns nothing; this is all it leaves.
+# (#2270), capped; empty when nothing was saved. A call cut off by time, turns
+# or a signal returns nothing; this is all it leaves.
 _review_lens_saved_notes() {
     local cp
     declare -F _checkpoint_declared_path >/dev/null 2>&1 || return 0
-    cp="$(_checkpoint_declared_path "$_RL_DIR/manifest.yaml" "${1%/artifacts}" 2>/dev/null || true)"
-    [[ -n "$cp" && -s "$cp" ]] || return 0
+    # Resolved against a stand-in state dir, then its artifacts folder swapped
+    # for the real one — so the notes are found whatever that folder is called.
+    cp="$(_checkpoint_declared_path "$_RL_DIR/manifest.yaml" "/_rl_sd" 2>/dev/null || true)"
+    [[ "$cp" == /_rl_sd/artifacts/* ]] || return 0
+    cp="${1%/}/${cp#/_rl_sd/artifacts/}"
+    [[ -s "$cp" ]] || return 0
     head -c 4000 "$cp" 2>/dev/null || true
 }
 
@@ -99,7 +103,8 @@ _review_lens_write_result() {
 # so it can be invoked directly in tests for SIGTERM simulation (SPEC-13).
 _review_lens_interrupt_handler() {
     _review_lens_write_result "${_rl_out_ref:-}" "degraded" \
-        "${1:-$STAGE_SIGNAL_DISPOSITION}" "${2:-$STAGE_SIGNAL_REASON}"
+        "${1:-$STAGE_SIGNAL_DISPOSITION}" "${2:-$STAGE_SIGNAL_REASON}" \
+        "$(_review_lens_saved_notes "${_rl_out_ref%/*}")"
     # Ctrl-C reaches the whole process group: this trap fires AND the router
     # subshell returns 130. Record the write so the rc=130 branch skips its own.
     _rl_interrupted=1

@@ -686,6 +686,9 @@ _summaries_collect() {
 # The stage's save-as-you-go file, when the stage ended cut off (its result's
 # disposition is timed_out or out_of_turns) and the file holds notes; else "".
 # A cut-off call returns nothing — this file is the only thing it leaves.
+# A map stage's paths carry `${map_element}`, which stays unresolved here (no
+# element is set when summaries are collected), so a map stage is skipped: each
+# member hands over through its own result (`data.partial_notes`, #2270).
 _summaries_cutoff_checkpoint() {
     local stage="$1" plugins_root="$2" state_dir="$3" manifest raw res disp cp
     manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"

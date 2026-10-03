@@ -16,6 +16,8 @@
 #             its checkpoint hands them on: the summary later stages read
 #             carries them, marked as unfinished work
 # C4 [guard]  a stage that finished does not get its checkpoint appended
+# C5 [change] with no map element set, `${map_element}` stays unresolved — it
+#             never collapses to "" and points at a file no element owns
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -53,6 +55,14 @@ assert_eq "[C2] the red-team element's checkpoint path" "/s/artifacts/lens-red-t
 # shellcheck disable=SC2016
 _c="$(ZBUILD_MAP_ELEMENT='../x' _verdict_resolve_path '${artifact_dir}/lens-${map_element}.md' /s)"
 assert_eq "[C2] an element name cannot leave the artifacts folder" "/s/artifacts/lens-___x.md" "$_c"
+
+# shellcheck disable=SC2016  # a literal template path
+_d="$(unset ZBUILD_MAP_ELEMENT; _verdict_resolve_path '${artifact_dir}/lens-${map_element}-checkpoint.md' /s)"
+if [[ "$_d" == "/s/artifacts/lens--checkpoint.md" ]]; then
+    assert_fail "[C5] no element: the path does not collapse to lens--checkpoint.md" "it did"
+else
+    assert_pass "[C5] no element: the path does not collapse to lens--checkpoint.md"
+fi
 
 print_test_section "C3/C4: a cut-off stage hands over its notes"
 # shellcheck source=../../core/pipeline/input-resolve.sh

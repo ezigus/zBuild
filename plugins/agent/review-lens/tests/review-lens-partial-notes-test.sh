@@ -11,6 +11,8 @@
 #             them in its result (data.partial_notes)
 # N2 [change] the review report shows them under that lens, marked unfinished
 # N3 [guard]  a lens that times out with nothing saved still reads "did not run"
+# N4 [change] a lens stopped by a signal also hands over what it saved
+# N5 [change] the notes are found whatever the artifacts folder is called
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -67,6 +69,21 @@ _md="$(cat "$artifact_dir/review-report.md" 2>/dev/null)"
 assert_contains "[N2] the report shows the correctness lens's notes" "$_md" "draft is written twice"
 assert_contains "[N2] marked unfinished" "$_md" "did not finish"
 assert_contains "[N3] a lens with nothing saved still reads did not run" "$_md" "red-team"
+
+# A lens stopped by a signal, with notes saved.
+out4="$artifact_dir/lens-architecture.json"
+printf 'Read route.sh: the retry loop never resets.\n' > "$artifact_dir/lens-architecture-checkpoint.md"
+# shellcheck disable=SC2031  # each lens runs in its own subshell on purpose
+( export ZBUILD_MAP_ELEMENT=architecture
+  _rl_out_ref="$out4"; _review_lens_interrupt_handler ) >/dev/null 2>&1
+assert_contains "[N4] a signal-stopped lens carries its saved notes" \
+    "$(jq -r '.data.partial_notes // empty' "$out4" 2>/dev/null)" "the retry loop never resets"
+
+# An artifacts folder with another name.
+odd="$TEST_TEMP_DIR/run-artifacts-x"; mkdir -p "$odd"
+printf 'Read lifecycle.sh: the lock is never released.\n' > "$odd/lens-performance-checkpoint.md"
+assert_contains "[N5] notes found in an artifacts folder not named 'artifacts'" \
+    "$(ZBUILD_MAP_ELEMENT=performance _review_lens_saved_notes "$odd" 2>/dev/null)" "the lock is never released"
 
 cleanup_test_env
 print_test_results
