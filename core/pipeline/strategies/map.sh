@@ -115,8 +115,9 @@ _strategy_map_resolve_max() {
 #   5 — invalid/unknown dimension name (fail-closed; runner surfaces as failure)
 #   6 — infrastructure failure (orch_spawn failed for a batch sub-pool). Fail-closed:
 #       NOT subject to on_member_error — an infra failure is never a member outcome.
-#   7 — two members would run under one unit name (#1706); refused before any
-#       member starts. Fail-closed, like 5 and 6.
+#   Two members that would run under one unit name (#1706) are refused before
+#   any member starts: rc 1 (ADR-054 §4 — rc says only "failed"); the
+#   strategy.unit_name_conflict event says why. Not subject to on_member_error.
 _strategy_run_map() {
     local pool_id="$1" stage="$2" roles_out="$3" state_file="$4" plugins_root="$5"
     local dimension="${6:-platforms}" env_target="${7:-}"
@@ -163,7 +164,7 @@ _strategy_run_map() {
                 warn "map: two members of '$stage' would both run as '$_u_name' — refusing the group" || true
                 eb_emit_event "strategy.unit_name_conflict" "stage=$stage" "unit=$_u_name" 2>/dev/null || true
                 orch_shutdown "$pool_id" 2>/dev/null || true
-                return 7
+                return 1
             fi
             _unit_seen[$_u_name]=1
         done
