@@ -1,0 +1,13 @@
+{
+  "stage": "review_lenses",
+  "cycle_iter": 0,
+  "attempt": 2,
+  "rc": "0",
+  "generated_at": "2026-10-03T00:40:05Z",
+  "files": 2,
+  "outputs": {
+    "lens-performance.json": "changed",
+    "lens-performance-summary.md": "changed"
+  },
+  "progress": true
+}
