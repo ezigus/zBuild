@@ -202,7 +202,7 @@ assert_contains "[SPEC-2] S6b: guard_regressed in failures[]" \
 assert_eq "[SPEC-2] S6b: guard_regressed severity=recoverable (build re-authors the assertion)" \
     "recoverable" "$(jq -r .severity <<<"$RESULT")"
 assert_contains "[SPEC-2] S6b: the reason names the contradiction, not a generic failure" \
-    "$(jq -r .reason <<<"$RESULT")" "mislabelled"
+    "$(jq -r .reason <<<"$RESULT")" "the requirement is really a [change]"
 
 # ── S6c: [SPEC-3] guard whose baseline run ERRORS → advisory, does not block ────
 # #1670's third criterion: a guard test that cannot RUN at the merge-base proves
@@ -337,7 +337,8 @@ fi
 REASON="$(jq -r '.reason // ""' <<<"$RESULT")"
 assert_contains "S11: reason names SPEC-1" "$REASON" "SPEC-1"
 assert_contains "S11: reason names SPEC-2" "$REASON" "SPEC-2"
-assert_contains_regex "S11: reason names the tautology class" "$REASON" "[Tt]autolog"
+# #2269: the class is said in plain words, not by the check's name.
+assert_contains "S11: reason names the already-passing class" "$REASON" "already passes on the code from before this change"
 
 # ── S12 (#1583 + #1585): a tautology is BUILD-FIXABLE → NO fault, RECOVERABLE ─
 # Since #1477 removed design's stub-writer, BUILD authors assertion bodies, so a

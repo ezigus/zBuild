@@ -124,7 +124,7 @@ print_test_section "3. the SPEC IDS section states them too"
 
 # The id-only line is what let the drift through; the text must sit ON the line
 # that says "you MUST cover", not merely somewhere in the file.
-_ids_section="$(awk '/SPEC IDS YOU MUST COVER/,/^## /' <<< "$PROMPT")"
+_ids_section="$(awk '/REQUIREMENTS YOUR CODE MUST MEET/,/^## /' <<< "$PROMPT")"
 assert_contains "[SPEC-3] the must-cover list names what SPEC-7 requires" \
     "$_ids_section" "live under data:{} not at the top level"
 assert_contains "[SPEC-3] and what SPEC-9 requires" \
@@ -144,8 +144,8 @@ PROMPT2="$(cat "$_out2" 2>/dev/null)"
 
 assert_contains "[SPEC-4] the id still appears when its text cannot be resolved" \
     "$PROMPT2" "SPEC-7"
-assert_contains "[SPEC-4] the tagged-assertion requirement still appears" \
-    "$PROMPT2" "tagged assertion"
+assert_contains "[SPEC-4] the line still says its test is already written" \
+    "$PROMPT2" "its test is already written"
 if [[ -s "$_out2" ]]; then
     assert_pass "[SPEC-4] the stage still produces a prompt"
 else
@@ -199,6 +199,21 @@ if declare -F _build_gather_acceptance_specs >/dev/null 2>&1; then
 else
     assert_fail "[SPEC-6] _build_gather_acceptance_specs exists" "function not defined"
 fi
+
+# ─── P: build is told only what it can act on (#2269) ────────────────────────
+# Build may not touch the acceptance tests (SPEC-5). It used to be told, in the
+# same prompt, to make sure each test carries its tag and fails on the old code
+# — work only the test author can do, in the check's own vocabulary.
+print_test_section "P. the build prompt speaks plainly and asks only for code"
+for _w in baseline merge-base contorted "ADR-036" tautolog "self-verify" "MUST contain an assert" "acceptance-gate"; do
+    if grep -qiF -- "$_w" <<< "$PROMPT"; then
+        assert_fail "[P1] the build prompt does not say '$_w'" "found in the composed prompt"
+    else
+        assert_pass "[P1] the build prompt does not say '$_w'"
+    fi
+done
+assert_contains "[P2] build is told to make the tests pass by changing code only" \
+    "$PROMPT" "Make them pass by changing code only"
 
 cleanup_test_env
 print_test_results

@@ -263,7 +263,7 @@ printf '```acceptance\nSPEC-1[guard]: impl present\nTESTFILES:\nSPEC-1: tests/b-
 _r7a="$(_gate_run "$REPO7" 1)"
 assert_eq "[U7] round 1: not a specification fault" "" "$(jq -r '.fault // empty' "$_r7a" 2>/dev/null)"
 assert_eq "[U7] round 1: about the testfile" "tests/b-test.sh" "$(jq -r '.about // empty' "$_r7a" 2>/dev/null)"
-assert_contains "[U7] round 1: the reason says it could not tell" "$(jq -r '.reason // empty' "$_r7a" 2>/dev/null)" "not verified"
+assert_contains "[U7] round 1: the reason says it could not tell" "$(jq -r '.reason // empty' "$_r7a" 2>/dev/null)" "cannot be told from a file that stopped first"
 _r7b="$(_gate_run "$REPO7" 2)"
 assert_eq "[U7] round 2: still unverified → a specification fault" "specification" "$(jq -r '.fault // empty' "$_r7b" 2>/dev/null)"
 

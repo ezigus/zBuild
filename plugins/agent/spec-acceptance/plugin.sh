@@ -177,27 +177,39 @@ _ag_build_reason() {
     local -a clauses=()
     # #2163: state the finding; who acts on it is the engine's routing (the
     # fault class), not a remedy this stage addresses to another.
-    [[ -n "$taut"     ]] && clauses+=("$(_ag_join_ids "$taut") tautological — passes at the baseline, so it asserts no change")
-    [[ -n "$nohead"   ]] && clauses+=("$(_ag_join_ids "$nohead") not passing at HEAD — fix the implementation or the assertion")
-    [[ -n "$untagged" ]] && clauses+=("$(_ag_join_ids "$untagged") untagged — add a matching [SPEC-n] assertion in TESTFILES")
-    [[ -n "$notf"     ]] && clauses+=("$(_ag_join_ids "$notf") missing a tagged TESTFILE")
-    [[ -n "$inert"    ]] && clauses+=("WIRING $(_ag_join_ids "$inert") inert — reverting it breaks no TESTFILE")
-    [[ -n "$nofiles"  ]] && clauses+=("WIRING $(_ag_join_ids "$nofiles") has no declared TESTFILE on disk — nothing could flip")
-    [[ -n "$notpath"  ]] && clauses+=("WIRING $(_ag_join_ids "$notpath") not in this commit's diff — declare WIRING: none or name a file this change actually touches")
-    [[ -n "$grd"      ]] && clauses+=("$(_ag_join_ids "$grd") tagged as [guard] but the assertion FAILS at the merge-base — a guard must hold there by definition, so either the assertion contradicts its SPEC text or the SPEC is a mislabelled [change]")
-    [[ -n "$unr" ]] && clauses+=("$(_ag_unreached_where "$unr") — the guard never ran at the merge-base: an earlier step in its TESTFILE exits the file on the pre-change code, so nothing was measured; the guard itself is not in question")
-    [[ -n "$unb" ]] && clauses+=("$(_ag_unreached_where "$unb") — never ran at the merge-base: an earlier step in its TESTFILE exits the file on the pre-change code, so its negative control is unproven")
-    [[ -n "$unh" ]] && clauses+=("$(_ag_unreached_where "$unh") — never ran on the new code: an earlier step in its TESTFILE exits the file before the assertion, so it was not checked")
-    [[ -n "$brk" ]] && clauses+=("$(_ag_join_ids "$brk") [guard] check fails on the new code too, not only at the merge-base — the check itself is broken (it fails whatever the code does), so the guard's label is not in question")
-    [[ -n "$unv" ]] && clauses+=("$(_ag_join_ids "$unv") [guard] not verified at the merge-base — its TESTFILE failed without printing a ✓/✗ verdict for the SPEC, so a failed check cannot be told from a file that stopped first; make the assertion print its own tagged verdict")
-    [[ -n "$sig"      ]] && clauses+=("$(_ag_join_ids "$sig") TESTFILE died on a signal before the assertion ran (not a timeout) — usually a test that signals its own process (\$\$) where no handler exists yet; signal a child process instead")
-    [[ "$malformed" -eq 1 ]] && clauses+=("acceptance block malformed")
-    [[ -n "$infra"    ]] && clauses+=("infra: $(_ag_join_ids "$infra")")
+    # #2269: each clause says what was tried, what happened, and what to change,
+    # in words the reader was given — never the name of the check.
+    [[ -n "$taut"     ]] && clauses+=("$(_ag_join_ids "$taut"): its test already passes on the code from before this change, so it cannot tell whether the change was made — make it check something the old code gets wrong")
+    [[ -n "$nohead"   ]] && clauses+=("$(_ag_join_ids "$nohead"): its test does not pass on the new code — the code or the test is wrong")
+    [[ -n "$untagged" ]] && clauses+=("$(_ag_join_ids "$untagged"): no assertion in the test files carries its tag — add one labelled with it")
+    [[ -n "$notf"     ]] && clauses+=("$(_ag_join_ids "$notf"): no test file is listed for it under TESTFILES:")
+    [[ -n "$inert"    ]] && clauses+=("$(_ag_join_ids "$inert") was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none")
+    [[ -n "$nofiles"  ]] && clauses+=("$(_ag_join_ids "$nofiles"): none of the listed test files exist, so putting it back could not be checked")
+    [[ -n "$notpath"  ]] && clauses+=("$(_ag_join_ids "$notpath") is not changed by this change — name a file the change touches, or write WIRING: none")
+    [[ -n "$grd"      ]] && clauses+=("$(_ag_join_ids "$grd") is tagged [guard] but its test fails on the code from before this change — a guard must pass there, so either the test does not match its requirement or the requirement is really a [change]")
+    [[ -n "$unr" ]] && clauses+=("$(_ag_unreached_where "$unr"): the guard's test never ran on the code from before this change — an earlier step in its test file stops the file there, so nothing was measured; the guard itself is not in question")
+    [[ -n "$unb" ]] && clauses+=("$(_ag_unreached_where "$unb"): its test never ran on the code from before this change — an earlier step in its test file stops the file there, so it is not shown to fail on the old code")
+    [[ -n "$unh" ]] && clauses+=("$(_ag_unreached_where "$unh"): its test never ran on the new code — an earlier step in its test file stops the file before the assertion, so it was not checked")
+    [[ -n "$brk" ]] && clauses+=("$(_ag_join_ids "$brk"): its [guard] test fails on the new code too, not only before the change — the test itself is broken (it fails whatever the code does), so the guard's label is not in question")
+    [[ -n "$unv" ]] && clauses+=("$(_ag_join_ids "$unv"): its [guard] test file failed on the old code without printing a ✓/✗ line for the requirement, so a failed check cannot be told from a file that stopped first — make the assertion print its own tagged result")
+    [[ -n "$sig"      ]] && clauses+=("$(_ag_join_ids "$sig"): its test file died on a signal before the assertion ran (not a timeout) — usually a test that signals its own process (\$\$) where no handler exists yet; signal a child process instead")
+    [[ "$malformed" -eq 1 ]] && clauses+=("the acceptance block could not be read")
+    if [[ -n "$infra" ]]; then
+        local _i _ib="" _ir=""
+        for _i in $infra; do
+            case "$_i" in
+                negctl_error:*)       _ib="$_ib ${_i#negctl_error:}" ;;
+                reachability_error:*) _ir="$_ir ${_i#reachability_error:}" ;;
+            esac
+        done
+        [[ -n "$_ib" ]] && clauses+=("the run of $(_ag_join_ids "$_ib")'s test on the code from before this change could not be done (a problem in the pipeline, not in your change)")
+        [[ -n "$_ir" ]] && clauses+=("putting $(_ag_join_ids "$_ir") back to its old version could not be done (a problem in the pipeline, not in your change)")
+    fi
     local out="" c
     for c in ${clauses[@]+"${clauses[@]}"}; do
         if [[ -z "$out" ]]; then out="$c"; else out="$out; $c"; fi
     done
-    printf 'acceptance SPEC violations — %s' "$out"
+    printf 'the acceptance check failed — %s' "$out"
 }
 
 # _ag_noop_precondition_unmet <result_file> <precondition_id> — write the no-op

@@ -168,7 +168,8 @@ _build_compose_prompt_body() {
             # #2163: a fact about THIS stage's permissions — never a claim about
             # who else does what (ADR-061: stages do not name stages).
             printf 'The acceptance testfiles listed below are read-only for this stage: the engine denies edits to them, and a mechanical check restores any change. They are the contract you implement against, written before your implementation existed. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion. If you believe an assertion genuinely does not test its SPEC, say so in your output and leave it alone.\n'
-            printf 'Each test MUST contain an assert call whose label includes the tag for the SPEC it verifies, exactly as listed below (e.g. assert_eq "%s ..." exp act). The acceptance-gate (ADR-036) requires every SPEC to have an assertion carrying its tag. A CHANGE-behavior SPEC-n MUST have a tagged assertion that FAILS at the merge-base baseline and passes here (a tautological change-SPEC that passes without your implementation is rejected); a GUARD/invariant SPEC-n is tagged but NOT contorted to fail at baseline. See the per-id list below.\n' "$(_bp_spec_tag SPEC-1)"
+            # #2269: build can only change code, so it is asked only for that.
+            printf 'These tests were written before your code. Make them pass by changing code only. Each requirement below is checked by the assertion labelled with its tag (for SPEC-1 of this issue: %s).\n' "$(_bp_spec_tag SPEC-1)"
             local _at_tf
             while IFS= read -r _at_tf; do
                 [[ -n "$_at_tf" ]] && printf -- '- %s\n' "$_at_tf"
@@ -185,8 +186,8 @@ _build_compose_prompt_body() {
             done <<< "$_acceptance_spec_ids"
         fi
         if [[ -n "$_acceptance_spec_ids" ]]; then
-            printf '\n### SPEC IDS YOU MUST COVER (acceptance gate, ADR-036)\n'
-            printf 'Every SPEC id below needs at least one assertion whose label carries its tag (as listed); self-verify the FULL set is tagged before emitting LOOP_COMPLETE. A CHANGE-behavior SPEC (new behavior this change introduces) MUST have a tagged assertion that FAILS at the merge-base baseline. A GUARD/invariant SPEC (behavior that must stay unchanged) is tagged but MUST NOT be contorted to fail at baseline.\n'
+            printf '\n### REQUIREMENTS YOUR CODE MUST MEET\n'
+            printf 'Your change is done when the test for every requirement below passes.\n'
             # #1978: each line is "SPEC-n<TAB>requirement". Naming the id alone
             # made the demand a SHAPE requirement — "an assertion tagged
             # [SPEC-n] that fails at baseline" — satisfiable by an assertion
@@ -200,9 +201,9 @@ _build_compose_prompt_body() {
                 [[ "$_sline" == *$'\t'* ]] && _stext="${_sline#*$'\t'}"
                 if [[ -n "$_stext" ]]; then
                     printf -- '- %s %s\n' "$(_bp_spec_tag "$_sid")" "$_stext"
-                    printf -- '  → needs a `%s`-tagged assertion that tests exactly that (change → fails at baseline; guard → tagged, not contorted)\n' "$(_bp_spec_tag "$_sid")"
+                    printf -- '  → its test is already written; make it pass\n'
                 else
-                    printf -- '- %s needs a `%s`-tagged assertion (change → fails at baseline; guard → tagged, not contorted)\n' "$(_bp_spec_tag "$_sid")" "$(_bp_spec_tag "$_sid")"
+                    printf -- '- %s — its test is already written; make it pass\n' "$(_bp_spec_tag "$_sid")"
                 fi
             done <<< "$_acceptance_spec_ids"
         fi
