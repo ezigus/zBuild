@@ -105,7 +105,7 @@ _SUMMARY_BLOCK="$(stage_summaries_prompt_block "$FB_STATE/pipeline-state.json" \
 assert_contains "[SPEC-1] the failure detail reaches the prompt" \
     "$_SUMMARY_BLOCK" "[SPEC-3] foo"
 assert_contains "[SPEC-1] and it is framed as blocking, not passive context" \
-    "$_SUMMARY_BLOCK" "RESOLVE"
+    "$_SUMMARY_BLOCK" "fix these findings"
 
 print_test_section "SPEC-3: empty_diff + gate!=pass ⇒ runs ALL iters → rc=2 (no early stall-break, #1208)"
 _GA_VERDICT="fail"
