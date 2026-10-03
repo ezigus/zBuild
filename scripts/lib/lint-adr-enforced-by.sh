@@ -16,7 +16,7 @@
 #
 # Usage: bash scripts/lib/lint-adr-enforced-by.sh [repo_root]
 # Exit:  0 = every live ADR is enforced or baselined; 1 = violation.
-set -uo pipefail
+set -euo pipefail
 
 ROOT="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 ADR_DIR="$ROOT/docs/adr"

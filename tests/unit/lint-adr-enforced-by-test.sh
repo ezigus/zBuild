@@ -17,7 +17,10 @@
 #             baseline only shrinks — remove the entry)
 # A6 [change] an ADR in the baseline but missing from docs/adr → fail (stale entry)
 # A7 [guard]  the real tree passes
-# A8 [change] the issue form requires the ADR § an issue is based on
+# A8 [guard]  the issue form requires the ADR § an issue is based on (written
+#             after the form, so no red step is claimed)
+# A9 [guard]  an `## Enforced by` section that names no test fails (review on #2281)
+# A10 [guard] a superseded ADR still listed in the baseline fails (review on #2281)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -72,12 +75,19 @@ _lint_real="$(bash "$LINT" "$REPO_ROOT" 2>&1)"; rc=$?
 assert_eq "[A7] the real tree passes" "0" "$rc"
 [[ $rc -eq 0 ]] || printf '%s\n' "$_lint_real" | tail -5
 
+# A8: within the form's `id: adr` entry (up to the next `- type:`), `required: true`.
+# Plain awk — no YAML library the suite does not already depend on.
 FORM="$REPO_ROOT/.github/ISSUE_TEMPLATE/change.yml"
-if ruby -ryaml -e 'f=YAML.load_file(ARGV[0]); a=f["body"].find{|b| b["id"]=="adr"}; exit((a && a.dig("validations","required")==true) ? 0 : 1)' "$FORM" 2>/dev/null; then
-    assert_pass "[A8] the issue form requires the ADR § field"
-else
-    assert_fail "[A8] the issue form requires the ADR § field" "$FORM has no required 'adr' field"
-fi
+_a8="$(awk '/^[[:space:]]*- type:/{inb=0} /^[[:space:]]*id:[[:space:]]*adr[[:space:]]*$/{inb=1} inb&&/^[[:space:]]*required:[[:space:]]*true/{print "yes"; exit}' "$FORM" 2>/dev/null)"
+assert_eq "[A8] the issue form requires the ADR § field" "yes" "$_a8"
+
+_reset; _adr ADR-908-x "Accepted" 'Covered by the unit tests, see the suite.'; _lint
+assert_eq "[A9] a section that names no test fails" "1" "$rc"
+assert_contains "[A9] it says the section names no test" "$out" "names no test"
+
+_reset; _adr ADR-909-x "Superseded by ADR-903"; printf 'ADR-909-x.md\n' > "$R/config/adr-enforcement-baseline.txt"; _lint
+assert_eq "[A10] a superseded ADR left in the baseline fails" "1" "$rc"
+assert_contains "[A10] it says to remove the entry" "$out" "ADR-909-x.md"
 
 cleanup_test_env
 print_test_results
