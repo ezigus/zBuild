@@ -115,6 +115,8 @@ _strategy_map_resolve_max() {
 #   5 — invalid/unknown dimension name (fail-closed; runner surfaces as failure)
 #   6 — infrastructure failure (orch_spawn failed for a batch sub-pool). Fail-closed:
 #       NOT subject to on_member_error — an infra failure is never a member outcome.
+#   7 — two members would run under one unit name (#1706); refused before any
+#       member starts. Fail-closed, like 5 and 6.
 _strategy_run_map() {
     local pool_id="$1" stage="$2" roles_out="$3" state_file="$4" plugins_root="$5"
     local dimension="${6:-platforms}" env_target="${7:-}"
@@ -147,6 +149,25 @@ _strategy_run_map() {
     # #1312: resolve the concurrency cap (mirrors ADR-039 FIFO pool).
     local max_parallel
     max_parallel="$(_strategy_map_resolve_max "$max_raw")"
+
+    # #1706 (ADR-054 §3.1): every member runs under <stage>.<element>. Two
+    # members with one name would write the same records at the same time, so
+    # the group is refused before any member starts.
+    local -A _unit_seen=()
+    local _u_role _u_elem _u_name
+    while IFS= read -r _u_role; do
+        [[ -z "$_u_role" ]] && continue
+        for _u_elem in "${elements[@]}"; do
+            _u_name="${stage}.${_u_elem}"
+            if [[ -n "${_unit_seen[$_u_name]:-}" ]]; then
+                warn "map: two members of '$stage' would both run as '$_u_name' — refusing the group" || true
+                eb_emit_event "strategy.unit_name_conflict" "stage=$stage" "unit=$_u_name" 2>/dev/null || true
+                orch_shutdown "$pool_id" 2>/dev/null || true
+                return 7
+            fi
+            _unit_seen[$_u_name]=1
+        done
+    done <<< "$roles_out"
 
     # Build the ordered list of (plugin_dir, element) work items by iterating
     # roles × elements — same order as before, just collected before dispatch.

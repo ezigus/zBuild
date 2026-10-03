@@ -234,6 +234,11 @@ plugin_hook_call() {
     # would split the key across the boundary. scan_plugin_outputs has no such
     # cross-boundary reader and wants the literal argument.
     local -x ZBUILD_CURRENT_STAGE="${1:-${ZBUILD_CURRENT_STAGE:-}}"
+    # #1706 (ADR-054 §3.1): the unit's own name — the stage, or <stage>.<element>
+    # for a map member — for this dispatch only. The element is consumed here, so
+    # a stage dispatched from inside the member is named by its own stage.
+    local -x ZBUILD_UNIT="${ZBUILD_CURRENT_STAGE}${ZBUILD_UNIT_ELEMENT:+.${ZBUILD_UNIT_ELEMENT}}"
+    local -x ZBUILD_UNIT_ELEMENT=""
     local -x ZBUILD_PLUGIN="$plugin_id"
     local -x ZBUILD_PLUGIN_KIND="$kind"
     local -x ZBUILD_PLUGIN_DIR="$plugin_dir"

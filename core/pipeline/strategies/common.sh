@@ -136,6 +136,14 @@ export ${env_target}='${map_element}'"
         fi
     fi
 
+    # #1706 (ADR-054 §3.1): the member's own name is <stage>.<element> — the
+    # declared element, or the platform when the map is over platforms.
+    # plugin_hook_call turns it into ZBUILD_UNIT for exactly one dispatch.
+    local _unit_elem="$map_element"
+    [[ -z "$_unit_elem" && "$platform" != "generic" ]] && _unit_elem="$platform"
+    [[ -n "$_unit_elem" ]] && _map_env_lines="${_map_env_lines:+${_map_env_lines}
+}export ZBUILD_UNIT_ELEMENT='${_unit_elem}'"
+
     cat > "$wu" <<WORKUNIT
 #!/usr/bin/env bash
 set -euo pipefail

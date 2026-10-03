@@ -124,6 +124,12 @@ if [[ -f "$_ROUTER_DIR/permissions.sh" ]]; then
     source "$_ROUTER_DIR/permissions.sh"
 fi
 
+# #1706: map members run concurrently under one stage name; naming the record
+# by the unit keeps one member's failure from overwriting another's.
+_route_sync_diag_base() {
+    printf '%s-sync-error' "${ZBUILD_UNIT:-${ZBUILD_CURRENT_STAGE:-router}}"
+}
+
 # route_to_model <tier> <prompt> [--skip-precondition] [--model <id>]
 # Exit codes: 0=success, 1=recoverable, 2=fatal
 #
@@ -1133,7 +1139,7 @@ _route_call_claude() {
         # parsed fields (#762: surface error_max_turns subtype to terminal).
         local _sync_diag_dir="${ZBUILD_ARTIFACT_DIR:-${ZBUILD_STATE_DIR:-${ZBUILD_STATE_ROOT:-$HOME/.zbuild/state}}/artifacts}/stage-io"
         mkdir -p "$_sync_diag_dir" 2>/dev/null || true
-        local _sync_diag_base="${ZBUILD_CURRENT_STAGE:-router}-sync-error"
+        local _sync_diag_base; _sync_diag_base="$(_route_sync_diag_base)"
         local _sync_json_path="$_sync_diag_dir/${_sync_diag_base}.raw-claude-output.json"
         local _sync_stderr_path="$_sync_diag_dir/${_sync_diag_base}.raw-claude-stderr.txt"
         # #2139: a killed call has no envelope — keep its step stream instead.
