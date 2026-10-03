@@ -1,6 +1,7 @@
+acceptance SPEC violations — WIRING config/event-schema.json inert — reverting it breaks no TESTFILE
 NEGCTL PASS SPEC-1
       design : when converged==0 (exit_when predicate matched) and any iteration member carries an unfinished dispo…
-      asserts: assert_eq "[#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence is declared in config/event…
+      asserts: assert_eq "[#2032/SPEC-1] unfinished member blocks convergence: rc=0 (converges on iter 2, not iter …
 NEGCTL PASS SPEC-2 guard_spec
       design : when all iteration members carry disposition:complete and the exit_when predicate matches, the cycle…
       asserts: assert_eq "[#2032/SPEC-2] all-complete exit_when: rc=0 (converged)" "0" "$RUN_RC"
@@ -30,4 +31,4 @@ REACHABILITY PASS plugins/agent/spec-coverage/plugin.sh
 REACHABILITY PASS plugins/agent/spec-correspondence/plugin.sh
 REACHABILITY PASS plugins/agent/review-report/plugin.sh
 REACHABILITY PASS docs/adr/ADR-063-budget-disclosure-and-partial-output.md
-REACHABILITY PASS config/event-schema.json
+REACHABILITY FAIL inert_wiring config/event-schema.json

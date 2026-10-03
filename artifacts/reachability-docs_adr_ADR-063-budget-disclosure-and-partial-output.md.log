@@ -1,60 +1,7 @@
-### docs/adr/ADR-063-budget-disclosure-and-partial-output.md reverted tests/integration/cycle-member-unfinished-no-convergence-test.sh
-
-[38;2;0;212;255m[1m  cycle: unfinished member suppresses false convergence (#2032)[0m
-[2m  ══════════════════════════════════════════[0m
+es)
 
 
-  [38;2;0;212;255mSPEC-2: all-complete exit_when converges; suppression block absent[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:44:09 UTC ══
-(no feedback — first iteration)
-
-
-══ dvc [cycle] seq=1 output OK 1.1s ════════════════════════════ 22:44:11 UTC ══
-exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
-health: progress=0 (no progress) - defects=0 → score=0
-── end stage-io: dvc ✓ ──
-  [38;2;74;222;128m✓[0m [#2032/SPEC-2] all-complete exit_when: rc=0 (converged)
-  [38;2;74;222;128m✓[0m [#2032/SPEC-2] converged on the first iteration (no suppression needed)
-  [38;2;74;222;128m✓[0m [#2032/SPEC-2] terminated with reason=converged
-  [38;2;74;222;128m✓[0m [#2032/SPEC-2] suppression block did NOT fire (all members were complete)
-
-  [38;2;0;212;255mSPEC-1: unfinished member suppresses convergence — cycle iterates instead[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:44:11 UTC ══
-(no feedback — first iteration)
-
-
-══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:44:12 UTC ══
-exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
-health: progress=0 (no progress) - defects=0 → score=0
-── end stage-io: dvc ✓ ──
-
-══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:44:14 UTC ══
-(no feedback edges, no stage summaries)
-
-
-══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 22:44:15 UTC ══
-exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
-health: progress=0 (no progress) - defects=0 → score=0
-── end stage-io: dvc ✓ ──
-  [38;2;74;222;128m✓[0m [#2032/SPEC-1] unfinished member blocks convergence: rc=0 (converges on iter 2, not iter 1)
-  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations (not 1): the suppressed iter forced another
-  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence was emitted once
-
-  [38;2;0;212;255mSPEC-6: unfinished at max_iterations — exhaustion path, not rc=0 complete[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:44:15 UTC ══
-(no feedback — first iteration)
-
-
-══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:44:16 UTC ══
-exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
-health: progress=0 (no progress) - defects=0 → score=0
-── end stage-io: dvc ✓ ──
-
-══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:44:17 UTC ══
-(no feedback edges, no stage summaries)
-
-
-══ dvc [cycle] seq=2 output OK 1.0s ════════════════════════════ 22:44:18 UTC ══
+══ dvc [cycle] seq=2 output OK 0.9s ════════════════════════════ 00:24:39 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -66,20 +13,21 @@ health: progress=0 (no progress) - defects=0 → score=0
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 12 tests passed[0m
+  [38;2;74;222;128m[1mAll 19 tests passed[0m
 
 ### docs/adr/ADR-063-budget-disclosure-and-partial-output.md head tests/integration/cycle-member-unfinished-no-convergence-test.sh
 
 [38;2;0;212;255m[1m  cycle: unfinished member suppresses false convergence (#2032)[0m
 [2m  ══════════════════════════════════════════[0m
 
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence is declared in config/event-schema.json
 
   [38;2;0;212;255mSPEC-2: all-complete exit_when converges; suppression block absent[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:42:51 UTC ══
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:22:26 UTC ══
 (no feedback — first iteration)
 
 
-══ dvc [cycle] seq=1 output OK 1.0s ════════════════════════════ 22:42:52 UTC ══
+══ dvc [cycle] seq=1 output OK 1.0s ════════════════════════════ 00:22:27 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -89,20 +37,20 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] suppression block did NOT fire (all members were complete)
 
   [38;2;0;212;255mSPEC-1: unfinished member suppresses convergence — cycle iterates instead[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:42:52 UTC ══
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:22:27 UTC ══
 (no feedback — first iteration)
 
 
-══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:42:53 UTC ══
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:22:28 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
 
-══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:42:55 UTC ══
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:22:30 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 22:42:56 UTC ══
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 00:22:31 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -110,21 +58,65 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations (not 1): the suppressed iter forced another
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence was emitted once
 
-  [38;2;0;212;255mSPEC-6: unfinished at max_iterations — exhaustion path, not rc=0 complete[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:42:56 UTC ══
+  [38;2;0;212;255mSPEC-1: out_of_turns member suppresses convergence — cycle iterates instead[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:22:31 UTC ══
 (no feedback — first iteration)
 
 
-══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:42:57 UTC ══
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:22:32 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
 
-══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:42:59 UTC ══
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:22:34 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ dvc [cycle] seq=2 output OK 0.9s ════════════════════════════ 22:43:00 UTC ══
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 00:22:35 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] out_of_turns member blocks convergence: rc=0 (converges on iter 2)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations with out_of_turns suppression
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] suppression block fired for out_of_turns member
+
+  [38;2;0;212;255mSPEC-1: interrupted member suppresses convergence — cycle iterates instead[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:22:35 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:22:36 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:22:38 UTC ══
+(no feedback edges, no stage summaries)
+
+
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 00:22:39 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] interrupted member blocks convergence: rc=0 (converges on iter 2)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations with interrupted suppression
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] suppression block fired for interrupted member
+
+  [38;2;0;212;255mSPEC-6: unfinished at max_iterations — exhaustion path, not rc=0 complete[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:22:39 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:22:40 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:22:42 UTC ══
+(no feedback edges, no stage summaries)
+
+
+══ dvc [cycle] seq=2 output OK 1.0s ════════════════════════════ 00:22:43 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -136,20 +128,21 @@ health: progress=0 (no progress) - defects=0 → score=0
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 12 tests passed[0m
+  [38;2;74;222;128m[1mAll 19 tests passed[0m
 
 ### docs/adr/ADR-063-budget-disclosure-and-partial-output.md reverted tests/integration/cycle-member-unfinished-no-convergence-test.sh
 
 [38;2;0;212;255m[1m  cycle: unfinished member suppresses false convergence (#2032)[0m
 [2m  ══════════════════════════════════════════[0m
 
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence is declared in config/event-schema.json
 
   [38;2;0;212;255mSPEC-2: all-complete exit_when converges; suppression block absent[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:44:09 UTC ══
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:24:22 UTC ══
 (no feedback — first iteration)
 
 
-══ dvc [cycle] seq=1 output OK 1.1s ════════════════════════════ 22:44:11 UTC ══
+══ dvc [cycle] seq=1 output OK 1.1s ════════════════════════════ 00:24:23 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -159,20 +152,20 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] suppression block did NOT fire (all members were complete)
 
   [38;2;0;212;255mSPEC-1: unfinished member suppresses convergence — cycle iterates instead[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:44:11 UTC ══
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:24:23 UTC ══
 (no feedback — first iteration)
 
 
-══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:44:12 UTC ══
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:24:24 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
 
-══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:44:14 UTC ══
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:24:26 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 22:44:15 UTC ══
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 00:24:27 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -180,21 +173,65 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations (not 1): the suppressed iter forced another
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence was emitted once
 
-  [38;2;0;212;255mSPEC-6: unfinished at max_iterations — exhaustion path, not rc=0 complete[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:44:15 UTC ══
+  [38;2;0;212;255mSPEC-1: out_of_turns member suppresses convergence — cycle iterates instead[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:24:27 UTC ══
 (no feedback — first iteration)
 
 
-══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:44:16 UTC ══
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:24:28 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
 
-══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:44:17 UTC ══
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:24:30 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ dvc [cycle] seq=2 output OK 1.0s ════════════════════════════ 22:44:18 UTC ══
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 00:24:31 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] out_of_turns member blocks convergence: rc=0 (converges on iter 2)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations with out_of_turns suppression
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] suppression block fired for out_of_turns member
+
+  [38;2;0;212;255mSPEC-1: interrupted member suppresses convergence — cycle iterates instead[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:24:31 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:24:32 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:24:34 UTC ══
+(no feedback edges, no stage summaries)
+
+
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 00:24:35 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] interrupted member blocks convergence: rc=0 (converges on iter 2)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations with interrupted suppression
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] suppression block fired for interrupted member
+
+  [38;2;0;212;255mSPEC-6: unfinished at max_iterations — exhaustion path, not rc=0 complete[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:24:35 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:24:36 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:24:38 UTC ══
+(no feedback edges, no stage summaries)
+
+
+══ dvc [cycle] seq=2 output OK 0.9s ════════════════════════════ 00:24:39 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -206,20 +243,21 @@ health: progress=0 (no progress) - defects=0 → score=0
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 12 tests passed[0m
+  [38;2;74;222;128m[1mAll 19 tests passed[0m
 
 ### docs/adr/ADR-063-budget-disclosure-and-partial-output.md head tests/integration/cycle-member-unfinished-no-convergence-test.sh
 
 [38;2;0;212;255m[1m  cycle: unfinished member suppresses false convergence (#2032)[0m
 [2m  ══════════════════════════════════════════[0m
 
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence is declared in config/event-schema.json
 
   [38;2;0;212;255mSPEC-2: all-complete exit_when converges; suppression block absent[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:42:51 UTC ══
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:22:26 UTC ══
 (no feedback — first iteration)
 
 
-══ dvc [cycle] seq=1 output OK 1.0s ════════════════════════════ 22:42:52 UTC ══
+══ dvc [cycle] seq=1 output OK 1.0s ════════════════════════════ 00:22:27 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -229,20 +267,20 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] suppression block did NOT fire (all members were complete)
 
   [38;2;0;212;255mSPEC-1: unfinished member suppresses convergence — cycle iterates instead[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:42:52 UTC ══
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:22:27 UTC ══
 (no feedback — first iteration)
 
 
-══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:42:53 UTC ══
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:22:28 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
 
-══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:42:55 UTC ══
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:22:30 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 22:42:56 UTC ══
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 00:22:31 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -250,21 +288,65 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations (not 1): the suppressed iter forced another
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence was emitted once
 
-  [38;2;0;212;255mSPEC-6: unfinished at max_iterations — exhaustion path, not rc=0 complete[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:42:56 UTC ══
+  [38;2;0;212;255mSPEC-1: out_of_turns member suppresses convergence — cycle iterates instead[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:22:31 UTC ══
 (no feedback — first iteration)
 
 
-══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:42:57 UTC ══
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:22:32 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
 
-══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:42:59 UTC ══
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:22:34 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ dvc [cycle] seq=2 output OK 0.9s ════════════════════════════ 22:43:00 UTC ══
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 00:22:35 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] out_of_turns member blocks convergence: rc=0 (converges on iter 2)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations with out_of_turns suppression
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] suppression block fired for out_of_turns member
+
+  [38;2;0;212;255mSPEC-1: interrupted member suppresses convergence — cycle iterates instead[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:22:35 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:22:36 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:22:38 UTC ══
+(no feedback edges, no stage summaries)
+
+
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 00:22:39 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] interrupted member blocks convergence: rc=0 (converges on iter 2)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations with interrupted suppression
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] suppression block fired for interrupted member
+
+  [38;2;0;212;255mSPEC-6: unfinished at max_iterations — exhaustion path, not rc=0 complete[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:22:39 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:22:40 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:22:42 UTC ══
+(no feedback edges, no stage summaries)
+
+
+══ dvc [cycle] seq=2 output OK 1.0s ════════════════════════════ 00:22:43 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -276,7 +358,7 @@ health: progress=0 (no progress) - defects=0 → score=0
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 12 tests passed[0m
+  [38;2;74;222;128m[1mAll 19 tests passed[0m
 
 ### docs/adr/ADR-063-budget-disclosure-and-partial-output.md reverted tests/unit/spec-coverage-test.sh
 
@@ -477,6 +559,7 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-5] failed lens → disposition classified from first failed lens rc (rc=1 → router_rc_nonzero → unavailable)
   [38;2;74;222;128m✓[0m [SPEC-5] failed lens → verdict stays pass
   [38;2;74;222;128m✓[0m [SPEC-5] reason names the lens that failed
+  [38;2;74;222;128m✓[0m [#2032/SPEC-5] first failed lens rc wins: correctness(rc=124→timed_out) before performance(rc=1→unavailable)
   [38;2;74;222;128m✓[0m [SPEC-7] lens prompt carries a TURN BUDGET block
   [38;2;74;222;128m✓[0m [SPEC-7] block reflects ZBUILD_ROUTER_MAX_TURNS=77 (from _route_resolve_max_turns)
   [38;2;74;222;128m✓[0m [SPEC-7] block reflects ZBUILD_ROUTER_TIMEOUT=123 (from _route_resolve_timeout)
@@ -500,7 +583,7 @@ health: progress=0 (no progress) - defects=0 → score=0
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 48 tests passed[0m
+  [38;2;74;222;128m[1mAll 49 tests passed[0m
 
 ### docs/adr/ADR-063-budget-disclosure-and-partial-output.md head tests/unit/review-report-v2-contract-test.sh
 
@@ -535,6 +618,7 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-5] failed lens → disposition classified from first failed lens rc (rc=1 → router_rc_nonzero → unavailable)
   [38;2;74;222;128m✓[0m [SPEC-5] failed lens → verdict stays pass
   [38;2;74;222;128m✓[0m [SPEC-5] reason names the lens that failed
+  [38;2;74;222;128m✓[0m [#2032/SPEC-5] first failed lens rc wins: correctness(rc=124→timed_out) before performance(rc=1→unavailable)
   [38;2;74;222;128m✓[0m [SPEC-7] lens prompt carries a TURN BUDGET block
   [38;2;74;222;128m✓[0m [SPEC-7] block reflects ZBUILD_ROUTER_MAX_TURNS=77 (from _route_resolve_max_turns)
   [38;2;74;222;128m✓[0m [SPEC-7] block reflects ZBUILD_ROUTER_TIMEOUT=123 (from _route_resolve_timeout)
@@ -558,20 +642,21 @@ health: progress=0 (no progress) - defects=0 → score=0
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 48 tests passed[0m
+  [38;2;74;222;128m[1mAll 49 tests passed[0m
 
 ### docs/adr/ADR-063-budget-disclosure-and-partial-output.md reverted tests/integration/cycle-member-unfinished-no-convergence-test.sh
 
 [38;2;0;212;255m[1m  cycle: unfinished member suppresses false convergence (#2032)[0m
 [2m  ══════════════════════════════════════════[0m
 
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence is declared in config/event-schema.json
 
   [38;2;0;212;255mSPEC-2: all-complete exit_when converges; suppression block absent[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:44:09 UTC ══
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:24:22 UTC ══
 (no feedback — first iteration)
 
 
-══ dvc [cycle] seq=1 output OK 1.1s ════════════════════════════ 22:44:11 UTC ══
+══ dvc [cycle] seq=1 output OK 1.1s ════════════════════════════ 00:24:23 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -581,20 +666,20 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] suppression block did NOT fire (all members were complete)
 
   [38;2;0;212;255mSPEC-1: unfinished member suppresses convergence — cycle iterates instead[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:44:11 UTC ══
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:24:23 UTC ══
 (no feedback — first iteration)
 
 
-══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:44:12 UTC ══
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:24:24 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
 
-══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:44:14 UTC ══
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:24:26 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 22:44:15 UTC ══
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 00:24:27 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -602,21 +687,65 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations (not 1): the suppressed iter forced another
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence was emitted once
 
-  [38;2;0;212;255mSPEC-6: unfinished at max_iterations — exhaustion path, not rc=0 complete[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:44:15 UTC ══
+  [38;2;0;212;255mSPEC-1: out_of_turns member suppresses convergence — cycle iterates instead[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:24:27 UTC ══
 (no feedback — first iteration)
 
 
-══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:44:16 UTC ══
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:24:28 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
 
-══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:44:17 UTC ══
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:24:30 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ dvc [cycle] seq=2 output OK 1.0s ════════════════════════════ 22:44:18 UTC ══
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 00:24:31 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] out_of_turns member blocks convergence: rc=0 (converges on iter 2)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations with out_of_turns suppression
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] suppression block fired for out_of_turns member
+
+  [38;2;0;212;255mSPEC-1: interrupted member suppresses convergence — cycle iterates instead[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:24:31 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:24:32 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:24:34 UTC ══
+(no feedback edges, no stage summaries)
+
+
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 00:24:35 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] interrupted member blocks convergence: rc=0 (converges on iter 2)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations with interrupted suppression
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] suppression block fired for interrupted member
+
+  [38;2;0;212;255mSPEC-6: unfinished at max_iterations — exhaustion path, not rc=0 complete[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:24:35 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:24:36 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:24:38 UTC ══
+(no feedback edges, no stage summaries)
+
+
+══ dvc [cycle] seq=2 output OK 0.9s ════════════════════════════ 00:24:39 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -628,20 +757,21 @@ health: progress=0 (no progress) - defects=0 → score=0
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 12 tests passed[0m
+  [38;2;74;222;128m[1mAll 19 tests passed[0m
 
 ### docs/adr/ADR-063-budget-disclosure-and-partial-output.md head tests/integration/cycle-member-unfinished-no-convergence-test.sh
 
 [38;2;0;212;255m[1m  cycle: unfinished member suppresses false convergence (#2032)[0m
 [2m  ══════════════════════════════════════════[0m
 
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence is declared in config/event-schema.json
 
   [38;2;0;212;255mSPEC-2: all-complete exit_when converges; suppression block absent[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:42:51 UTC ══
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:22:26 UTC ══
 (no feedback — first iteration)
 
 
-══ dvc [cycle] seq=1 output OK 1.0s ════════════════════════════ 22:42:52 UTC ══
+══ dvc [cycle] seq=1 output OK 1.0s ════════════════════════════ 00:22:27 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -651,20 +781,20 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] suppression block did NOT fire (all members were complete)
 
   [38;2;0;212;255mSPEC-1: unfinished member suppresses convergence — cycle iterates instead[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:42:52 UTC ══
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:22:27 UTC ══
 (no feedback — first iteration)
 
 
-══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:42:53 UTC ══
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:22:28 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
 
-══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:42:55 UTC ══
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:22:30 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 22:42:56 UTC ══
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 00:22:31 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -672,21 +802,65 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations (not 1): the suppressed iter forced another
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence was emitted once
 
-  [38;2;0;212;255mSPEC-6: unfinished at max_iterations — exhaustion path, not rc=0 complete[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:42:56 UTC ══
+  [38;2;0;212;255mSPEC-1: out_of_turns member suppresses convergence — cycle iterates instead[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:22:31 UTC ══
 (no feedback — first iteration)
 
 
-══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 22:42:57 UTC ══
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:22:32 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
 
-══ dvc [cycle] seq=2 input ═════════════════════════════════════ 22:42:59 UTC ══
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:22:34 UTC ══
 (no feedback edges, no stage summaries)
 
 
-══ dvc [cycle] seq=2 output OK 0.9s ════════════════════════════ 22:43:00 UTC ══
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 00:22:35 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] out_of_turns member blocks convergence: rc=0 (converges on iter 2)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations with out_of_turns suppression
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] suppression block fired for out_of_turns member
+
+  [38;2;0;212;255mSPEC-1: interrupted member suppresses convergence — cycle iterates instead[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:22:35 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:22:36 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:22:38 UTC ══
+(no feedback edges, no stage summaries)
+
+
+══ dvc [cycle] seq=2 output OK 0.8s ════════════════════════════ 00:22:39 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] interrupted member blocks convergence: rc=0 (converges on iter 2)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle ran 2 iterations with interrupted suppression
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] suppression block fired for interrupted member
+
+  [38;2;0;212;255mSPEC-6: unfinished at max_iterations — exhaustion path, not rc=0 complete[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:22:39 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.9s ════════════════════════════ 00:22:40 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+
+══ dvc [cycle] seq=2 input ═════════════════════════════════════ 00:22:42 UTC ══
+(no feedback edges, no stage summaries)
+
+
+══ dvc [cycle] seq=2 output OK 1.0s ════════════════════════════ 00:22:43 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -698,7 +872,7 @@ health: progress=0 (no progress) - defects=0 → score=0
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 12 tests passed[0m
+  [38;2;74;222;128m[1mAll 19 tests passed[0m
 
 ### docs/adr/ADR-063-budget-disclosure-and-partial-output.md reverted tests/unit/adr-063-vocabulary-test.sh
 
@@ -714,27 +888,40 @@ health: progress=0 (no progress) - defects=0 → score=0
     [2mexpected: 0, got: 4[0m
   [38;2;248;113;113m✗[0m [#2032/SPEC-7] prescriptive exhausted→escalate §4 chain is stricken
     [2mexpected: 0, got: 2[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] no prescriptive '→ escalate' directive in any form
+    [2mexpected: 0, got: 1[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] replacement vocabulary 'timed_out' is present in the amended document
+    [2moutput missing: timed_out[0m
 
   [38;2;0;212;255mSPEC-8: per-stage _<stage>_budget_guidance helpers replace One-helper baseline[0m
   [38;2;248;113;113m✗[0m [#2032/SPEC-8] 'One helper renders the budget block' baseline language is absent
     [2mexpected: 0, got: 1[0m
   [38;2;248;113;113m✗[0m [#2032/SPEC-8] §1 uses per-stage _<stage>_budget_guidance helpers language
     [2moutput missing: _budget_guidance[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-8] per-stage plurality: at least two distinct _<stage>_budget_guidance names present
+    [2mexpected >1, got: 0
+0[0m
 
   [38;2;0;212;255mSPEC-9: amendment back-pointer explicitly names #2187[0m
   [38;2;248;113;113m✗[0m [#2032/SPEC-9] document contains an amendment back-pointer naming #2187
     [2moutput missing: #2187[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-9] #2187 appears in an amendment back-pointer (on a line with 'amendment'/'amended')
+    [2moutput missing: #2187[0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m6 of 7 tests failed[0m
+  [38;2;248;113;113m[1m10 of 11 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#2032/SPEC-7] status header reads Accepted
   [38;2;248;113;113m✗[0m [#2032/SPEC-7] prescriptive 'disposition: exhausted' is removed from §3
   [38;2;248;113;113m✗[0m [#2032/SPEC-7] prescriptive exhausted→escalate §4 chain is stricken
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] no prescriptive '→ escalate' directive in any form
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] replacement vocabulary 'timed_out' is present in the amended document
   [38;2;248;113;113m✗[0m [#2032/SPEC-8] 'One helper renders the budget block' baseline language is absent
   [38;2;248;113;113m✗[0m [#2032/SPEC-8] §1 uses per-stage _<stage>_budget_guidance helpers language
+  [38;2;248;113;113m✗[0m [#2032/SPEC-8] per-stage plurality: at least two distinct _<stage>_budget_guidance names present
   [38;2;248;113;113m✗[0m [#2032/SPEC-9] document contains an amendment back-pointer naming #2187
+  [38;2;248;113;113m✗[0m [#2032/SPEC-9] #2187 appears in an amendment back-pointer (on a line with 'amendment'/'amended')
 
 ### docs/adr/ADR-063-budget-disclosure-and-partial-output.md head tests/unit/adr-063-vocabulary-test.sh
 
@@ -747,15 +934,19 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-7] status header reads Accepted
   [38;2;74;222;128m✓[0m [#2032/SPEC-7] prescriptive 'disposition: exhausted' is removed from §3
   [38;2;74;222;128m✓[0m [#2032/SPEC-7] prescriptive exhausted→escalate §4 chain is stricken
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] no prescriptive '→ escalate' directive in any form
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] replacement vocabulary 'timed_out' is present in the amended document
 
   [38;2;0;212;255mSPEC-8: per-stage _<stage>_budget_guidance helpers replace One-helper baseline[0m
   [38;2;74;222;128m✓[0m [#2032/SPEC-8] 'One helper renders the budget block' baseline language is absent
   [38;2;74;222;128m✓[0m [#2032/SPEC-8] §1 uses per-stage _<stage>_budget_guidance helpers language
+  [38;2;74;222;128m✓[0m [#2032/SPEC-8] per-stage plurality: at least two distinct _<stage>_budget_guidance names present
 
   [38;2;0;212;255mSPEC-9: amendment back-pointer explicitly names #2187[0m
   [38;2;74;222;128m✓[0m [#2032/SPEC-9] document contains an amendment back-pointer naming #2187
+  [38;2;74;222;128m✓[0m [#2032/SPEC-9] #2187 appears in an amendment back-pointer (on a line with 'amendment'/'amended')
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 7 tests passed[0m
+  [38;2;74;222;128m[1mAll 11 tests passed[0m
 

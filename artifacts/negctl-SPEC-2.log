@@ -3,13 +3,15 @@
 [38;2;0;212;255m[1m  cycle: unfinished member suppresses false convergence (#2032)[0m
 [2m  ══════════════════════════════════════════[0m
 
+  [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence is declared in config/event-schema.json
+    [2mexpected: 1, got: 0[0m
 
   [38;2;0;212;255mSPEC-2: all-complete exit_when converges; suppression block absent[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:42:04 UTC ══
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:21:23 UTC ══
 (no feedback — first iteration)
 
 
-══ dvc [cycle] seq=1 output OK 1.1s ════════════════════════════ 22:42:05 UTC ══
+══ dvc [cycle] seq=1 output OK 1.0s ════════════════════════════ 00:21:24 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -19,11 +21,11 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] suppression block did NOT fire (all members were complete)
 
   [38;2;0;212;255mSPEC-1: unfinished member suppresses convergence — cycle iterates instead[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:42:05 UTC ══
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:21:24 UTC ══
 (no feedback — first iteration)
 
 
-══ dvc [cycle] seq=1 output OK 0.8s ════════════════════════════ 22:42:06 UTC ══
+══ dvc [cycle] seq=1 output OK 0.8s ════════════════════════════ 00:21:25 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -33,12 +35,42 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence was emitted once
     [2mexpected: 1, got: 0[0m
 
-  [38;2;0;212;255mSPEC-6: unfinished at max_iterations — exhaustion path, not rc=0 complete[0m
-══ dvc [cycle] seq=1 input ═════════════════════════════════════ 22:42:06 UTC ══
+  [38;2;0;212;255mSPEC-1: out_of_turns member suppresses convergence — cycle iterates instead[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:21:26 UTC ══
 (no feedback — first iteration)
 
 
-══ dvc [cycle] seq=1 output OK 0.8s ════════════════════════════ 22:42:07 UTC ══
+══ dvc [cycle] seq=1 output OK 0.8s ════════════════════════════ 00:21:26 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] out_of_turns member blocks convergence: rc=0 (converges on iter 2)
+  [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle ran 2 iterations with out_of_turns suppression
+    [2mexpected: 2, got: 1[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-1] suppression block fired for out_of_turns member
+    [2mexpected: 1, got: 0[0m
+
+  [38;2;0;212;255mSPEC-1: interrupted member suppresses convergence — cycle iterates instead[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:21:27 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.8s ════════════════════════════ 00:21:28 UTC ══
+exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: dvc ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] interrupted member blocks convergence: rc=0 (converges on iter 2)
+  [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle ran 2 iterations with interrupted suppression
+    [2mexpected: 2, got: 1[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-1] suppression block fired for interrupted member
+    [2mexpected: 1, got: 0[0m
+
+  [38;2;0;212;255mSPEC-6: unfinished at max_iterations — exhaustion path, not rc=0 complete[0m
+══ dvc [cycle] seq=1 input ═════════════════════════════════════ 00:21:28 UTC ══
+(no feedback — first iteration)
+
+
+══ dvc [cycle] seq=1 output OK 0.8s ════════════════════════════ 00:21:29 UTC ══
 exit_when stage=design-gate field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: dvc ✓ ──
@@ -55,10 +87,15 @@ health: progress=0 (no progress) - defects=0 → score=0
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m7 of 12 tests failed[0m
+  [38;2;248;113;113m[1m12 of 19 tests failed[0m
 
+  [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence is declared in config/event-schema.json
   [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle ran 2 iterations (not 1): the suppressed iter forced another
   [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence was emitted once
+  [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle ran 2 iterations with out_of_turns suppression
+  [38;2;248;113;113m✗[0m [#2032/SPEC-1] suppression block fired for out_of_turns member
+  [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle ran 2 iterations with interrupted suppression
+  [38;2;248;113;113m✗[0m [#2032/SPEC-1] suppression block fired for interrupted member
   [38;2;248;113;113m✗[0m [#2032/SPEC-6] unfinished at max_iterations: rc=8 (exhaustion halt, not rc=0 complete)
   [38;2;248;113;113m✗[0m [#2032/SPEC-6] terminated reason is design_timeout_exhausted
   [38;2;248;113;113m✗[0m [#2032/SPEC-6] cycle.timeout_exhausted was emitted
