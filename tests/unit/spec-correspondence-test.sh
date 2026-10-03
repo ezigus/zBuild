@@ -285,5 +285,31 @@ assert_contains "[#2143] SPECs the clock cut off are unjudged, not invented" \
     "$(cat "$_A3/spec-correspondence-summary.md" 2>/dev/null || true)" "unjudged"
 if [[ "$(wc -l < "$_SC_CALLS" | tr -d ' ')" -le 2 ]]; then assert_pass "[#2143] at most the batch + one fallback call before the clock"; else assert_fail "[#2143] too many calls under the clock" "$(wc -l < "$_SC_CALLS")"; fi
 
+# ── SPEC-4 [#2032/SPEC-4]: non-zero router exit → disposition from router_reason_disposition ──
+# route_to_model exits non-zero and produces no parseable verdict. After §3/B,
+# spec-correspondence-result.json must carry the disposition classified via
+# router_reason_disposition, not the hardcoded 'complete'.
+# rc=1 → _router_rc_classify → reason=router_rc_nonzero → router_reason_disposition → unavailable
+print_test_section "SPEC-4 [#2032]: non-zero router exit — disposition classified, not complete"
+_SC5="$TEST_TEMP_DIR/run5"; _A5="$_SC5/artifacts"; _R5="$_SC5/repo"
+mkdir -p "$_A5" "$_R5/tests"
+export ZBUILD_REPO_ROOT="$_R5" ZBUILD_ARTIFACT_DIR="$_A5"
+cat > "$_A5/design.md" <<'EOF'
+# Design
+```acceptance
+SPEC-1[change]: thing holds
+TESTFILES:
+SPEC-1: tests/acc-test.sh
+WIRING: scripts/thing.sh
+```
+EOF
+printf 'assert_pass "[SPEC-1] thing holds"\n' > "$_R5/tests/acc-test.sh"
+printf '{}' > "$_SC5/pipeline-state.json"
+route_to_model() { cat >/dev/null; return 1; }
+set +e; spec_correspondence_run "spec-correspondence" "$_SC5/pipeline-state.json" >/dev/null 2>&1; set -e
+_res5() { jq -r "$1" "$_A5/spec-correspondence-result.json" 2>/dev/null || echo MISSING; }
+assert_eq "[#2032/SPEC-4] rc=1 router failure: disposition=unavailable, not hardcoded complete" \
+    "unavailable" "$(_res5 '.disposition')"
+
 print_test_results
 exit $((FAIL > 0))

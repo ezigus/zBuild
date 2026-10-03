@@ -150,5 +150,17 @@ assert_contains "[SPEC-8][change] the prompt says a narrower SPEC leaves the req
 assert_contains "[SPEC-8][change] …naming the ways a SPEC narrows (subset of cases, weaker condition)" \
     "$_P" "a subset of the cases"
 
+# ── SPEC-3 [#2032/SPEC-3]: non-zero router exit → disposition from router_reason_disposition ──
+# route_to_model exits rc=124 (timeout) and produces no parseable verdict. After §3/B,
+# spec-coverage-result.json must carry disposition classified via router_reason_disposition,
+# not the hardcoded 'complete'.
+# rc=124 → _router_rc_classify → reason=router_timeout → router_reason_disposition → timed_out
+print_test_section "SPEC-3 [#2032]: non-zero router exit — disposition classified, not complete"
+_setup router_timeout_case
+route_to_model() { return 124; }
+set +e; spec_coverage_run "spec-coverage" "$_S/pipeline-state.json"; set -e
+assert_eq "[#2032/SPEC-3] rc=124 router timeout: disposition=timed_out, not hardcoded complete" \
+    "timed_out" "$(_res '.disposition')"
+
 print_test_results
 exit $((FAIL > 0))

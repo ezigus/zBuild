@@ -161,17 +161,24 @@ _rr_run_inner() {
     local lenses_file
     lenses_file="$(_rr_fanout_lenses "$scope_manifest" "$evidence" "$artifact_dir" "$tier" "$_budget_guidance")"
 
-    # ADR-063 §3: a lens whose call returned non-zero ran out of something —
-    # the report is still written (advisory), but the disposition says
-    # `exhausted` so the engine's response table can act on it.
-    local _rr_failed_lenses="" _rr_lens_name _rr_lens_rc
+    # §3/B (#2032): a lens whose call returned non-zero ran out of something —
+    # the report is still written (advisory), but the disposition is classified
+    # via router_reason_disposition so the engine's response table can act on it.
+    local _rr_failed_lenses="" _rr_lens_name _rr_lens_rc _rr_first_nonzero_rc=0
     for _rr_lens_name in "${_RR_LENSES[@]}"; do
         _rr_lens_rc="$(cat "$artifact_dir/lens-${_rr_lens_name}.rc" 2>/dev/null || echo 1)"
-        [[ "$_rr_lens_rc" -ne 0 ]] && _rr_failed_lenses="${_rr_failed_lenses:+$_rr_failed_lenses, }$_rr_lens_name"
+        if [[ "$_rr_lens_rc" -ne 0 ]]; then
+            _rr_failed_lenses="${_rr_failed_lenses:+$_rr_failed_lenses, }$_rr_lens_name"
+            [[ "$_rr_first_nonzero_rc" -eq 0 ]] && _rr_first_nonzero_rc="$_rr_lens_rc"
+        fi
     done
     local _disposition="complete" _reason
     if [[ -n "$_rr_failed_lenses" ]]; then
-        _disposition="complete"   # #2187: the report ran; each lens reports its own cause
+        local _rr_cl_v="" _rr_cl_r=""
+        _router_rc_classify "$_rr_first_nonzero_rc" _rr_cl_v _rr_cl_r 2>/dev/null || true
+        # disposition-ok: the model router is not responding
+        _disposition="$(router_reason_disposition "${_rr_cl_r:-router_rc_nonzero}" 2>/dev/null || true)"
+        [[ -z "$_disposition" ]] && _disposition="unavailable"
         _reason="lens call(s) returned non-zero: ${_rr_failed_lenses}; the report covers the lenses that completed"
     else
         _reason="all ${#_RR_LENSES[@]} lenses completed; advisory report written"

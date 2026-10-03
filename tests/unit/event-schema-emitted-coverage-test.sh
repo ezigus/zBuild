@@ -148,5 +148,15 @@ else
     assert_fail "[SPEC-5] redaction.marker_neutralized is NOT registered in event-schema.json known_types"
 fi
 
+# [#2032] cycle.member_unfinished.suppressed_convergence must be registered as
+# an engine event (emitted via _cycle_emit which is a dynamic call site, so the
+# grep-for-literal pass above cannot detect it — an explicit guard is required).
+if grep -qxF "cycle.member_unfinished.suppressed_convergence" <<< "$_engine_types"; then
+    assert_pass "cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types"
+else
+    assert_fail "cycle.member_unfinished.suppressed_convergence is NOT registered in event-schema.json known_types" \
+        "add it to config/event-schema.json known_types (dynamic emit via _cycle_emit makes grep-for-literal blind to it)"
+fi
+
 print_test_results
 exit $((FAIL > 0))
