@@ -9,6 +9,12 @@ zBuild's architecture and migration plan live in:
 
 **If implementation drifts from spec, the spec wins.** PRs cite the relevant ADR or KEEPERS section in the description.
 
+### Every ADR statement has a test (#2268)
+
+- **A rule that lives only in an ADR's prose is a missing test.** When a run passes something wrong, look first for the ADR statement nothing enforces, and write that test.
+- **Every live ADR has an `## Enforced by` section** naming, per statement (§), the test or lint that enforces it. A new or changed statement ships with its test in the same PR. `scripts/lib/lint-adr-enforced-by.sh` (in `npm run lint`) fails a live ADR without the section, or one naming a file that does not exist. ADRs written before this rule are listed in `config/adr-enforcement-baseline.txt`, which only shrinks.
+- **Every issue is based on an ADR:** it cites the ADR and § it implements. If no ADR covers the change, the issue first creates one or amends an existing one. ADRs must not contradict each other: a later decision amends the earlier ADR in the same PR.
+
 ## Behavioral rules
 
 - Do what has been asked; nothing more, nothing less.

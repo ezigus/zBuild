@@ -1,0 +1,36 @@
+name: Change or bug
+description: A change to zBuild. Every issue is based on an ADR (#2268).
+body:
+  - type: input
+    id: adr
+    attributes:
+      label: ADR §
+      description: >-
+        The ADR and section this implements, e.g. "ADR-054 §5". If no ADR covers
+        it, this issue first creates one or amends an existing one; say which.
+      placeholder: ADR-054 §5
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What is wrong or missing
+      description: What happened, with evidence (run id, file:line, test output).
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: Fix
+      description: The change, and the ADR statement(s) it adds or changes.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance
+      description: >-
+        Checklist. The first item is the test, written first, that fails today
+        and enforces the ADR statement.
+    validations:
+      required: true
