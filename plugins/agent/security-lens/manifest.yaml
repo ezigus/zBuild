@@ -81,6 +81,14 @@ outputs:
     format: markdown
     required: true
     summary: true
+  # #2270: save as you go. A call cut off by time or turns returns nothing;
+  # this file is what it leaves, and the summary later stages read carries it.
+  - id: security-lens-checkpoint
+    path: "${artifact_dir}/security-lens-checkpoint.md"
+    type: checkpoint.md@1
+    format: markdown
+    required: false
+    role: checkpoint
 
 state:
   persisted: [last_findings, last_cycle_score]

@@ -173,11 +173,32 @@ Checkpointing is stronger where it applies, because it does not depend on the
 model judging its own remaining budget correctly. `design` produces one artifact,
 so it wants the early-wind-up shape.
 
+**Amended 2026-10-03 (#2270): every stage that calls a model saves as it goes.**
+The two shapes are no longer alternatives. Early wind-up stays where it applies,
+but every stage that calls a model also declares a save-as-you-go file (an output
+with `role: checkpoint`); the engine tells the model to write what it has found
+there as it works. A one-artifact stage still has notes worth keeping: #1844 run
+37066147994's correctness lens had traced the plugin and found real defects when
+it was killed at 300 s, and the review recorded "did not run". Stages running in
+parallel inside one map each get their own file — `${map_element}` in a path
+resolves to the element's name. Enforced by `tests/unit/save-as-you-go-test.sh`
+C1 (every model-calling plugin declares the file) and C2 (one file per map
+element, and the name cannot leave the artifacts folder), and by
+`scripts/lib/lint-stage-checkpoint.sh` (every declared path resolves).
+
 ### 6. Carry-forward rides on the existing summary channel
 
 #1986 has every stage publish a summary and every following stage ingest them. A
 partial attempt's summary is how the next attempt learns what the last one got
 through. **Do not build a second channel for this.**
+
+**Amended 2026-10-03 (#2270):** when a stage ends cut off (`timed_out` or
+`out_of_turns`), the summary later stages read carries what it saved, marked as
+unfinished and unchecked; a stage that finished does not get its notes appended.
+A review lens cut off this way puts its notes in its result (`data.partial_notes`),
+and the review report shows them under that lens. Enforced by
+`tests/unit/save-as-you-go-test.sh` C3/C4 and
+`plugins/agent/review-lens/tests/review-lens-partial-notes-test.sh` N1–N3.
 
 ## Consequences
 

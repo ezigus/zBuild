@@ -628,7 +628,14 @@ render_review_report_md() {
                    "- [\(.severity|esc)] \(.file|esc)" +
                    (if .line then ":\(.line)" else "" end) +
                    " — \(.message|esc)" ] | join("\n") )
-          else "No findings." end )' 2>/dev/null || true
+          else "No findings." end ) +
+        # #2270: a lens cut off by time or turns — what it saved as it went.
+        ( if (.ran == false) and ((.partial_notes // "") != "")
+          then "\n\nThis lens did not finish — what it found before it was cut off (unfinished, not checked):\n" +
+               ( [ .partial_notes | tostring
+                   | gsub("\u001b\\[[0-9;?]*[A-Za-z~]"; "") | gsub("\u001b."; "") | gsub("`"; "\\`")
+                   | split("\n")[] | "> " + . ] | join("\n") )
+          else "" end )' 2>/dev/null || true
 
     local flat_len
     flat_len="$(printf '%s' "$input" | jq -r '.findings | if type=="array" then length else 0 end' 2>/dev/null || printf '0')"

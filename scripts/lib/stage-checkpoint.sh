@@ -68,7 +68,13 @@ _checkpoint_declared_path() {
     ' "$manifest" 2>/dev/null)"
     [[ -n "$raw" ]] || return 0
 
-    # Reuse the engine's existing interpolation rather than adding a sixth copy.
+    # Reuse the engine's existing interpolation rather than adding a sixth copy —
+    # loading it when the caller has not (#2270: ${map_element} lives only there).
+    if ! declare -F _verdict_resolve_path >/dev/null 2>&1; then
+        local _sc_root; _sc_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+        # shellcheck source=../../core/pipeline/verdict.sh
+        [[ -f "$_sc_root/core/pipeline/verdict.sh" ]] && source "$_sc_root/core/pipeline/verdict.sh" >/dev/null 2>&1
+    fi
     if declare -F _verdict_resolve_path >/dev/null 2>&1; then
         _verdict_resolve_path "$raw" "$state_dir"
         return 0
