@@ -118,7 +118,7 @@ else
     assert_fail "[T6] the build prompt names tags with acceptance_spec_tag" "not called in prompt.sh"
 fi
 
-_design_src="$(sed -n '/TAGGING RULE/,/control can isolate/p' "${ZB_DESIGN_PLUGIN:-$REPO_ROOT/plugins/agent/design/plugin.sh}")"
+_design_src="$(sed -n '/Test labels:/,/checked on its own/p' "${ZB_DESIGN_PLUGIN:-$REPO_ROOT/plugins/agent/design/plugin.sh}")"
 if grep -qF 'acceptance_spec_tag' <<< "$_design_src"; then
     assert_pass "[T7] the design prompt's tagging rule names the tag with acceptance_spec_tag"
 else
