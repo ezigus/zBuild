@@ -69,12 +69,19 @@ MOCK
 chmod +x "$FIXTURE_BIN_DIR/claude"
 
 # ── Mock gh binary — returns a fixed PR URL on `gh pr create` ────────────────
+# FIXTURE_GH_PR_CREATE_FAIL=1 makes `gh pr create` refuse, as it did in #1844
+# run 37066147994 — the run's last stage then fails (#2265).
 cat > "$FIXTURE_BIN_DIR/gh" <<'MOCK'
 #!/usr/bin/env bash
 case "${1:-}" in
     pr)
         case "${2:-}" in
-            create) echo "https://github.com/testuser/testrepo/pull/90000359" ;;
+            create)
+                if [[ "${FIXTURE_GH_PR_CREATE_FAIL:-}" == "1" ]]; then
+                    echo "aborted: you must first push the current branch to a remote, or use the --head flag" >&2
+                    exit 1
+                fi
+                echo "https://github.com/testuser/testrepo/pull/90000359" ;;
             *)      echo "" ;;
         esac
         ;;
