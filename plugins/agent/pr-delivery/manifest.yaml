@@ -3,12 +3,12 @@ name: PR Stage
 kind: agent
 version: 0.1.0
 description: |
-  PR delivery agent (kind:agent, T2). Reads review.json and refuses if verdict==block.
-  Delegates to the pr-open tool plugin (T0) for the actual gh pr create call, passing
-  the run's state file through. ZBUILD_DRY_RUN=1 writes mock artifacts instead.
+  PR delivery agent (kind:agent, T2). Reads review_report via ZBUILD_STAGE_INPUTS
+  and refuses delivery if merge_readiness=needs_attention. Delegates to the merge
+  plugin (policy: auto or auto_unless_flagged) or the pr-open tool plugin (policy:
+  manual or fallback), passing the run's state file through.
+  ZBUILD_DRY_RUN=1 writes mock artifacts instead.
   ADR-018 Pattern 1 (one-shot): verdict guard → pr-open, done — no iteration loop.
-  plan.json/design.md are accepted as optional inputs (reserved for future PR-body
-  composition; not yet consumed by the one-shot implementation).
   # legacy-citation: pipeline-stages-delivery.sh:81 (stage_pr)
 
 hooks:
@@ -22,21 +22,27 @@ requires:
 
 provides:
   role: pr
+  result_contract: 2
+  events:
+    - pr.delivery.blocked
+    - pr.delivery.opened
+    - pr.delivery.dry_run
 
 config:
-  # Writes no .verdict on either verdict channel; the engine falls back to
-  # pass for a well-formed primary (core/pipeline/verdict.sh). An ABSENT key
-  # is a lint failure; the explicit [] is the claim (#1708).
-  valid_verdicts: []
+  # No router: block — pr-delivery makes no direct model calls; it delegates to
+  # merge/pr-open which carry their own router config. Router budgets resolve from
+  # those manifests, not this one. Analogous to plugins/tool/pr-open/manifest.yaml
+  # lines 17-21 and plugins/tool/merge/manifest.yaml lines 15-16 (ADR-037 §3).
+  valid_verdicts:
+    - pass
+    - fail    # a refusal (pr-open blocked delivery) — a judgement, not a breakdown (#1844)
+    - error
   tier_default: T2
 
 inputs:
   # #979 (EPIC #1277): the standard.yaml `review` stage (review.json) was retired,
-  # so its stage:review input is dropped — it dangled and tripped the lint-contract
-  # data-dependency graph check. The advisory review-aggregator (review-report.json,
-  # below) is the only remaining review source. pr-delivery's verdict guard still
-  # no-ops when review.json is absent (plugin.sh `[[ -f "$review_json" ]]`) and the
-  # auto_unless_flagged path reads review-report.json — behavior unchanged.
+  # so its stage:review input is dropped. The advisory review-aggregator
+  # (review-report.json, below) is the only remaining review source.
   - id: review_report
     required: false
   - id: plan
@@ -56,12 +62,14 @@ outputs:
     type: pr-url.txt@1
     format: text
     required: true
-    primary: true
+  # ADR-054 §5 (#1844): the v2 result file is the primary output, so the engine
+  # reads its verdict, disposition and reason. pr-url.txt stays an ordinary output.
   - id: pr_result
     path: ${artifact_dir}/pr-result.json
     type: pr-result.json@1
     format: json
     required: true
+    primary: true
   # ADR-055 §9: this stage's statement of what it DID. required:true —
   # written on every terminal verdict, so absence means something went wrong.
   - id: pr_delivery_summary

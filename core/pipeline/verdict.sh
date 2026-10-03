@@ -374,13 +374,29 @@ _verdict_read_result() {
     if [[ ! -s "$resolved" ]]; then
         printf -v "${p}_state" '%s' "absent"; return 0
     fi
-    if ! jq empty "$resolved" >/dev/null 2>&1; then
-        printf -v "${p}_state" '%s' "malformed"
-        printf -v "${p}_viol" '%s' "contract_violation:malformed_json"
-        return 0
+    # One jq for every field (ADR-065): this runs on every read of every stage's
+    # result, and it used to cost eight. Lines: contract, verdict, disposition,
+    # the first mandatory field that is missing or empty, then the reason (last,
+    # because free text may span lines) ending in a \001 marker.
+    local _rr_out _rr_rest
+    if ! _rr_out="$(jq -r '. as $o
+        | def ok($f): ($o|has($f)) and ($o[$f]|type == "string") and ($o[$f]|length > 0);
+        [ ($o.result_contract // 1 | tostring),
+          ($o.verdict // "" | tostring | gsub("\n"; " ")),
+          ($o.disposition // "" | tostring | gsub("\n"; " ")),
+          ([ "verdict", "disposition", "reason" | select(ok(.) | not) ] | first // ""),
+          (($o.reason // "" | tostring) + "\u0001") ] | join("\n")' "$resolved" 2>/dev/null)"; then
+        if ! jq empty "$resolved" >/dev/null 2>&1; then
+            printf -v "${p}_state" '%s' "malformed"
+            printf -v "${p}_viol" '%s' "contract_violation:malformed_json"
+            return 0
+        fi
+        _rr_out=$'1\n\n\n\n\001'   # valid JSON but not an object: v1, no fields
     fi
-
-    local _sv; _sv="$(jq -r '.result_contract // 1' "$resolved" 2>/dev/null || echo 1)"
+    local _sv="${_rr_out%%$'\n'*}"; _rr_rest="${_rr_out#*$'\n'}"
+    local _rr_verdict="${_rr_rest%%$'\n'*}"; _rr_rest="${_rr_rest#*$'\n'}"
+    local _rr_disp="${_rr_rest%%$'\n'*}"; _rr_rest="${_rr_rest#*$'\n'}"
+    local _rr_missing="${_rr_rest%%$'\n'*}"; _rr_rest="${_rr_rest#*$'\n'}"
     [[ "$_sv" =~ ^[0-9]+$ ]] || _sv=1
     printf -v "${p}_contract" '%s' "$_sv"
     # NOTE: do NOT try to publish the version on a global from here. Every
@@ -390,21 +406,17 @@ _verdict_read_result() {
     # fire: green, and inert. That is exactly what #1823 shipped for one commit
     # before review caught it. The dispatch boundary uses
     # `_verdict_probe_contract` instead, whose answer comes back on stdout.
-    printf -v "${p}_verdict" '%s' "$(jq -r '.verdict // empty' "$resolved" 2>/dev/null || true)"
-    printf -v "${p}_reason" '%s' "$(jq -r '.reason // empty' "$resolved" 2>/dev/null || true)"
+    printf -v "${p}_verdict" '%s' "$_rr_verdict"
+    # The \001 marks the end: `$( )` strips trailing newlines, so an empty
+    # reason would otherwise shift every field above it.
+    printf -v "${p}_reason" '%s' "${_rr_rest%$'\001'}"
 
     if [[ "$_sv" -ge "$_ZBUILD_CONTRACT_V2" ]]; then
-        local _decl_disp; _decl_disp="$(jq -r '.disposition // empty' "$resolved" 2>/dev/null || true)"
+        local _decl_disp="$_rr_disp"
         printf -v "${p}_disp" '%s' "$_decl_disp"
         # Every mandatory field must be present AND non-empty. `reason` counts:
         # a result that cannot explain itself to an operator is incomplete.
-        local _f _missing=""
-        for _f in verdict disposition reason; do
-            if ! jq -e --arg f "$_f" 'has($f) and (.[$f] | type == "string") and (.[$f] | length > 0)' \
-                    "$resolved" >/dev/null 2>&1; then
-                _missing="$_f"; break
-            fi
-        done
+        local _missing="$_rr_missing"
         if [[ -n "$_missing" ]]; then
             printf -v "${p}_viol" '%s' "contract_violation:missing_field:${_missing}"
         elif ! disposition_is_valid "$_decl_disp"; then
