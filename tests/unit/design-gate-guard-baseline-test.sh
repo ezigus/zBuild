@@ -138,8 +138,10 @@ assert_contains "[SPEC-1] the violation names the offending SPEC" \
     "$VIOL" "GUARD_REGRESSED_AT_BASELINE SPEC-1"
 assert_contains "[SPEC-2] the violation suggests the likely correction ([change])" \
     "$VIOL" "tag it [change]"
+# #2269: the feedback design reads names the SPEC in a plain sentence; the code
+# stays in the JSON (asserted above).
 assert_contains "[SPEC-2] the feedback file names the offending SPEC" \
-    "$FEEDBACK" "GUARD_REGRESSED_AT_BASELINE SPEC-1"
+    "$FEEDBACK" "SPEC-1 is tagged [guard], but its test fails on the code from before this change"
 
 # ─── 2. A legitimate guard is NOT rejected ───────────────────────────────────
 if grep -q "GUARD_REGRESSED_AT_BASELINE SPEC-2" <<< "$VIOL"; then

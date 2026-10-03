@@ -59,6 +59,24 @@ _dg_scope_nonempty() {
 # Runs C1..C6, collects ALL violations, writes verdict-in-artifact, emits
 # design_gate.{pass,fail}. Always rc=0.
 # Args: $1 = stage_id, $2 = state_file
+# _dg_plain <violation> — the sentence design reads for one violation (#2269).
+# The code stays in the result JSON (other code and tests read it); the feedback
+# file says what to change, in the words design was given.
+_dg_plain() {
+    local v="$1" rest="${1#* }"
+    local id="${rest%% *}"
+    case "$v" in
+        SCOPE_MISSING*)      printf 'design.md has no scope block — add a ```scope block listing every file the change touches' ;;
+        ACCEPTANCE_MISSING*) printf 'design.md has no readable ```acceptance block — add one with a line per requirement' ;;
+        UNCLASSIFIED*)       printf '%s has no tag — mark it [change] (its test fails on the code as it is before your change, and passes after) or [guard] (its test passes both before and after)' "$id" ;;
+        MISSING_TESTFILE_FOR_SPEC*) printf '%s has no test file listed — add a "%s: <test file>" line under TESTFILES:' "$id" "$id" ;;
+        "WIRING_MISSING ("*) printf 'the acceptance block does not say which existing file calls the new code — add a WIRING: line naming it, or WIRING: none if nothing calls it yet' ;;
+        WIRING_MISSING*)     printf 'the WIRING file %s does not exist — name a file that exists in the repository, or WIRING: none' "$id" ;;
+        GUARD_REGRESSED_AT_BASELINE*) printf '%s is tagged [guard], but its test fails on the code from before this change — a guard must pass there; if this requirement describes a change, tag it [change]' "$id" ;;
+        *) printf '%s' "$v" ;;
+    esac
+}
+
 design_gate_run() {
     local stage_id="${1:-design-gate}"; : "$stage_id"
     local state_file="${2:-}"
@@ -237,13 +255,14 @@ design_gate_run() {
     if [[ "$verdict" == "fail" ]]; then
         {
             printf '# Design-gate: structural violations\n\n'
-            printf 'The design contract is not build-ready. Fix these and re-emit design.md:\n\n'
-            printf -- '- %s\n' "${violations[@]}"
+            printf 'The design is not ready to build. Fix these and write design.md again:\n\n'
+            local _dg_v
+            for _dg_v in "${violations[@]}"; do printf -- '- %s\n' "$(_dg_plain "$_dg_v")"; done
             # Say what C6 actually managed to check, so a design author is never
             # left inferring coverage from silence.
             if [[ $_gp_declared -gt 0 ]]; then
                 printf '\n## Guard baseline coverage\n\n'
-                printf -- '- %d [guard] SPEC(s) declared; %d verified at the merge-base, %d failed.\n' \
+                printf -- '- %d [guard] requirement(s) declared; %d checked on the code from before this change, %d failed there.\n' \
                     "$_gp_declared" "$_gp_verified" "$_gp_failed"
                 [[ ${#_gp_skips[@]} -gt 0 ]] && printf -- '- not verified: %s\n' "${_gp_skips[*]}"
             fi
