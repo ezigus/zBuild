@@ -190,6 +190,10 @@ eb_emit_event() {
     # upstream fault that must not become a row key downstream.
     local seq="${ZBUILD_STAGE_IO_SEQ_LABEL:-}"
     [[ "$seq" =~ ^[0-9]+(\.[0-9]+)*$ ]] || seq=""
+    # #1706 (ADR-054 §3.1): a map member's own name rides the envelope only
+    # when it differs from the stage, so every other envelope is unchanged.
+    local unit="${ZBUILD_UNIT:-}"
+    [[ "$unit" =~ ^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+){0,2}$ && "$unit" != "$stage" ]] || unit=""
 
     # Validate-or-cast $issue to a non-negative integer. Coming from env, an
     # unsanitized string here would break the SQL INSERT below ($issue is
@@ -208,10 +212,12 @@ eb_emit_event() {
         --arg kind "$kind" \
         --arg stage "$stage" \
         --arg seq "$seq" \
+        --arg unit "$unit" \
         --argjson data "$payload" \
         '{ts: $ts, run_id: $run_id, issue: $issue, type: $type, plugin: $plugin, kind: $kind, data: $data, schema_version: 1}
          + (if $stage != "" then {stage: $stage} else {} end)
-         + (if $seq != "" then {seq: $seq} else {} end)')"
+         + (if $seq != "" then {seq: $seq} else {} end)
+         + (if $unit != "" then {unit: $unit} else {} end)')"
 
     # Single-writer JSONL via flock
     if zbuild_has_flock; then

@@ -92,6 +92,7 @@ Run-time context is passed via env vars exported by the runner — never via pos
 | `ZBUILD_PLUGIN` | the serving plugin's `id` | `$plugin_dir/manifest.yaml` |
 | `ZBUILD_PLUGIN_KIND` | the serving plugin's `kind` | `$plugin_dir/manifest.yaml` |
 | `ZBUILD_PLUGIN_DIR` | the serving plugin's directory | `$1` of `plugin_hook_call` |
+| `ZBUILD_UNIT` | this unit's own name: the stage, or `<stage>.<element>` for a map member — `<stage>.<role>.<element>` when the map runs more than one role (amended 2026-10-03, #1706) | `stage_id` plus the element the map generator bakes into the work unit |
 
 **Why the engine and not the plugin.** A plugin is self-defining about *what it is* — `scripts/lib/plugin-bootstrap.sh` resolves `_ZBUILD_PLUGIN_DIR` from the plugin's own `BASH_SOURCE`, needing no engine. It can never be self-defining about *which stage it is currently serving*. Stage name, role and plugin id are three distinct namespaces and only the template holds the mapping: `review_lenses` (stage) is served by `review-lens` (plugin id) via role `review_lens`, and under `map:` all six lens members receive that one stage name. Everything keyed to the flow — the run timeline, `stage_statuses`, the per-stage router knobs — needs the stage name; introspection yields only the plugin id.
 
@@ -100,6 +101,14 @@ The engine's answer cannot differ from the plugin's own: `plugin_hook_call` sour
 **Why `plugin_hook_call`.** It is the only site reaching all four dispatch arms. The `map:` arm executes a generated standalone script (`core/pipeline/strategies/common.sh`) that the runner cannot export into — but `plugin_hook_call` is that script's last line.
 
 **Lifetime is one dispatch.** Declared `local -x`, not `export`. This reaches the lifecycle's own `plugin.*` emits (which fire outside the plugin subshell), reaches the subshell and anything it spawns, and unsets on return. Identity from stage *N* must not be visible during stage *N+1*; a plain `export` would trade a blank field for a stale one.
+
+**Each unit has its own name — amended 2026-10-03 (#1706).** Under `map:` every member receives the group's stage name, and that stays: the group is what template settings (router budgets, retries) are looked up by. But the members run at the same time, so anything a member writes or emits under the stage name alone collides. #2032 run 37066151065 lost red-team's diagnosis this way: the router named its error record `review_lenses-sync-error`, and the correctness lens's record overwrote it. So:
+
+- `ZBUILD_UNIT` is `<stage>.<element>` for a map member (the declared element, or the platform for a map over platforms) and the stage name otherwise. It lives for one dispatch, like the rest of this table. A stage dispatched from inside a member is named by its own stage. Enforced by `tests/unit/unit-name-test.sh` U1–U3.
+- An engine event emitted inside a member carries `unit` in its envelope; an event outside a map carries no `unit` key, so every other envelope is unchanged. Enforced by U4.
+- Per-member records are named by the unit; the router's error record is the first (`<unit>-sync-error`). Enforced by U5. The router's throttle and turn-budget markers stay keyed by stage, because the runner reads them at the group level, outside the members.
+- A map that runs more than one role runs every role on every element, so the role is part of the name: `<stage>.<role>.<element>`. Enforced by U7.
+- **Two units with one name never start together.** A map whose members would share a name is refused before any member starts (rc 1 — failed, per §4; the `strategy.unit_name_conflict` event names the duplicate). Enforced by U6.
 
 **Two owners, two questions, deliberately not merged.** `_ZBUILD_PLUGIN_DIR` (plugin-owned, set at source time) answers *where are my files on disk* and must keep working when a plugin is sourced with no engine present. `ZBUILD_PLUGIN_DIR` (engine-owned, set at dispatch) answers *who is this dispatch for*. In production they are always equal. Plugin code uses the former to locate its own assets; shared engine libraries use the latter to know whom they serve.
 

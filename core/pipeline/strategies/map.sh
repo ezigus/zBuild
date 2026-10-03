@@ -115,6 +115,16 @@ _strategy_map_resolve_max() {
 #   5 — invalid/unknown dimension name (fail-closed; runner surfaces as failure)
 #   6 — infrastructure failure (orch_spawn failed for a batch sub-pool). Fail-closed:
 #       NOT subject to on_member_error — an infra failure is never a member outcome.
+#   Two members that would run under one unit name (#1706) are refused before
+#   any member starts: rc 1 (ADR-054 §4 — rc says only "failed"); the
+#   strategy.unit_name_conflict event says why. Not subject to on_member_error.
+# _map_unit_element <var> <role_count> <role> <element> — sets <var> to the part
+# of a member's unit name after the stage (#1706): the element, or
+# <role>.<element> when the map runs more than one role. No subshell per member.
+_map_unit_element() {
+    if [[ "$2" -gt 1 ]]; then printf -v "$1" '%s.%s' "$3" "$4"; else printf -v "$1" '%s' "$4"; fi
+}
+
 _strategy_run_map() {
     local pool_id="$1" stage="$2" roles_out="$3" state_file="$4" plugins_root="$5"
     local dimension="${6:-platforms}" env_target="${7:-}"
@@ -148,6 +158,28 @@ _strategy_run_map() {
     local max_parallel
     max_parallel="$(_strategy_map_resolve_max "$max_raw")"
 
+    # #1706 (ADR-054 §3.1): every member runs under <stage>.<element>. Two
+    # members with one name would write the same records at the same time, so
+    # the group is refused before any member starts.
+    # With more than one role every role runs on every element, so the role is
+    # part of the name: <stage>.<role>.<element>.
+    local -A _unit_seen=()
+    local _u_role _u_elem _u_name _u_roles=0
+    while IFS= read -r _u_role; do [[ -n "$_u_role" ]] && _u_roles=$((_u_roles + 1)); done <<< "$roles_out"
+    while IFS= read -r _u_role; do
+        [[ -z "$_u_role" ]] && continue
+        for _u_elem in "${elements[@]}"; do
+            _map_unit_element _u_name "$_u_roles" "$_u_role" "$_u_elem"; _u_name="${stage}.${_u_name}"
+            if [[ -n "${_unit_seen[$_u_name]:-}" ]]; then
+                warn "map: two members of '$stage' would both run as '$_u_name' — refusing the group" || true
+                eb_emit_event "strategy.unit_name_conflict" "stage=$stage" "unit=$_u_name" 2>/dev/null || true
+                orch_shutdown "$pool_id" 2>/dev/null || true
+                return 1
+            fi
+            _unit_seen[$_u_name]=1
+        done
+    done <<< "$roles_out"
+
     # Build the ordered list of (plugin_dir, element) work items by iterating
     # roles × elements — same order as before, just collected before dispatch.
     local -a wu_list=() plugin_list=()
@@ -171,10 +203,11 @@ _strategy_run_map() {
             # An optional env_target (arg 7, from the template's `as:`) additionally
             # sets a named env var to the element — a generic mapping the strategy
             # applies without knowing which dimension or var it is.
+            _map_unit_element _u_elem "$_u_roles" "$role" "$element"
             if [[ "$dimension" == "platforms" ]]; then
-                wu="$(_strategy_make_work_unit "$plugin_dir" "$stage" "$state_file" "$element")"
+                wu="$(_strategy_make_work_unit "$plugin_dir" "$stage" "$state_file" "$element" "" "" "" "$_u_elem")"
             else
-                wu="$(_strategy_make_work_unit "$plugin_dir" "$stage" "$state_file" "generic" "$element" "$dimension" "$env_target")"
+                wu="$(_strategy_make_work_unit "$plugin_dir" "$stage" "$state_file" "generic" "$element" "$dimension" "$env_target" "$_u_elem")"
             fi || {
                 warn "map: failed to create work unit for role=$role element=$element" || true
                 fail_count=$((fail_count + 1))
