@@ -75,8 +75,8 @@ assert_eq "[#1844/SPEC-1] provides.role is pr" "pr" "$_prov_role"
 
 _has_primary="$(grep -v '^#' "$PR_MANIFEST" | grep -c 'primary:[[:space:]]*true' || true)"
 [[ "$_has_primary" -gt 0 ]] \
-    && assert_pass "[#1844/SPEC-1] pr_url output retains primary: true" \
-    || assert_fail "[#1844/SPEC-1] pr_url output retains primary: true" "missing"
+    && assert_pass "[#1844/SPEC-1] an output is primary (the v2 result, ADR-054 §5)" \
+    || assert_fail "[#1844/SPEC-1] an output is primary (the v2 result, ADR-054 §5)" "missing"
 
 _has_cleanup="$(grep -v '^#' "$PR_MANIFEST" | grep -c '^[[:space:]]*cleanup:' || true)"
 assert_eq "[#1844/SPEC-1] hooks has no cleanup:" "0" "$_has_cleanup"
@@ -571,6 +571,15 @@ _d9_sf="$(_mk_state d9)"; _d9_art="$(dirname "$_d9_sf")/artifacts"; _d9_si="$TES
 ) >/dev/null 2>&1
 assert_eq "[D9] a signal during a dry run leaves an interrupted result" "interrupted" \
     "$(jq -r '.disposition // empty' "$_d9_art/pr-result.json" 2>/dev/null)"
+
+# D10: the direct-gh fallback reports gh's own error (review on #2285).
+_d10_sf="$(_mk_state d10)"; _d10_art="$(dirname "$_d10_sf")/artifacts"; _d10_si="$TEST_TEMP_DIR/d10-si.json"; _mk_si "$_d10_si"
+mkdir -p "$TEST_TEMP_DIR/d10bin" "$TEST_TEMP_DIR/fake-d10/plugins/tool"
+printf '#!/usr/bin/env bash\necho "GraphQL: Resource not accessible by integration" >&2\nexit 1\n' > "$TEST_TEMP_DIR/d10bin/gh"; chmod +x "$TEST_TEMP_DIR/d10bin/gh"
+( _PR_ROOT="$TEST_TEMP_DIR/fake-d10"; _TPL_MERGE_POLICY=manual; ZBUILD_DRY_RUN=0; ZBUILD_STAGE_INPUTS="$_d10_si"
+  PATH="$TEST_TEMP_DIR/d10bin:$PATH" _pr_stage_run_inner "$_d10_sf" ) >/dev/null 2>&1
+assert_contains "[D10] the fallback's failure reason carries gh's own error" \
+    "$(jq -r '.reason // empty' "$_d10_art/pr-result.json" 2>/dev/null)" "Resource not accessible"
 
 cleanup_test_env
 print_test_results

@@ -265,8 +265,9 @@ _pr_stage_run_inner() {
     local -a _fb_gh_args=()
     [[ "${_fb_draft}" == "true" ]] && _fb_gh_args+=("--draft")
     _fb_gh_args+=(--title "$title" --body "")
-    local pr_url
-    if pr_url="$(gh pr create "${_fb_gh_args[@]}" 2>/dev/null)"; then
+    local pr_url _fb_err="$artifacts_dir/.gh-pr-create.err"
+    if pr_url="$(gh pr create "${_fb_gh_args[@]}" 2>"$_fb_err")"; then
+        rm -f "$_fb_err"
         printf '%s\n' "$pr_url" | atomic_write "$pr_url_out"
         stage_signal_end
         _pr_delivery_write_result "$artifacts_dir" "pass" "complete" "PR opened directly with gh: $pr_url" "$pr_url"
@@ -277,8 +278,10 @@ _pr_stage_run_inner() {
         return 0
     else
         stage_signal_end
+        # gh's own words, so the failure says what went wrong (review on #2285).
+        local _fb_detail; _fb_detail="$(tr '\n' ' ' 2>/dev/null < "$_fb_err" || true)"; rm -f "$_fb_err"
         # disposition-ok: GitHub (gh pr create) is not responding
-        _pr_delivery_write_result "$artifacts_dir" "error" "unavailable" "gh_pr_create_failed"
+        _pr_delivery_write_result "$artifacts_dir" "error" "unavailable" "gh pr create failed: ${_fb_detail:-no error output}"
         stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
             "could not open a PR for branch $branch" \
             "No PR was delivered. The direct gh fallback failed."

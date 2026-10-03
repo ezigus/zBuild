@@ -463,6 +463,9 @@ validate_manifest() {
                 _pc_path=""; _pc_prim=0
             elif [[ "$_pc_line" =~ ^[[:space:]]+path:[[:space:]]*(.*)$ ]]; then
                 _pc_path="${BASH_REMATCH[1]}"
+                # Like the engine's reader: drop a trailing comment and quotes.
+                [[ "$_pc_path" =~ ^(.*[^[:space:]])[[:space:]]+#.*$ ]] && _pc_path="${BASH_REMATCH[1]}"
+                _pc_path="${_pc_path//\'/}"
             elif [[ "$_pc_line" =~ ^[[:space:]]+primary:[[:space:]]*true ]]; then
                 _pc_prim=1
             fi
