@@ -53,7 +53,10 @@ setup_test_env "fork-budget"
 # 5740 (#2249): persist stages a snapshot in two git calls instead of two per
 # file, and the fixture's git plumbing is real so snapshots actually save —
 # measured 5,685 macOS (artifact-persist.sh 1,072 → 305).
-FORK_BUDGET=5740
+# 5540 (#1844): a v2 result is read with one jq instead of eight
+# (verdict.sh _verdict_read_result) — measured 5,481 macOS, even though design,
+# pr-open and pr-delivery are now read as v2 (their results became primary).
+FORK_BUDGET=5540
 
 # ─── the trace harness (the --coverage-trace precedent, scripts/run-tests.sh) ──
 # BASH_ENV injects `set -x` into every child bash (the runner, the mocks, work

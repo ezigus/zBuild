@@ -452,12 +452,22 @@ validate_manifest() {
     # as v1 — its disposition and reason are never seen. ADR-047 §3's
     # `<stage>-verdict.json` sidecar is the verdict channel for v1 stages only.
     if [[ "$_decl_contract" =~ ^[0-9]+$ && "$_decl_contract" -ge "$_ZBUILD_CONTRACT_V2" ]]; then
-        local _prim_c
-        _prim_c="$(awk '/^outputs:/{o=1;next} o&&/^[a-zA-Z_]/{o=0}
-            o&&/^[[:space:]]*-[[:space:]]*id:/{if(pr=="true"&&pa!=""){print pa;done=1;exit} pa="";pr=""}
-            o&&/^[[:space:]]+path:/{sub(/^[[:space:]]+path:[[:space:]]*/,"");pa=$0}
-            o&&/^[[:space:]]+primary:[[:space:]]*true/{pr="true"}
-            END{if(!done&&pr=="true"&&pa!="")print pa}' "$manifest" 2>/dev/null)"
+        # Plain bash, no fork: this runs for every plugin at load (ADR-065).
+        local _prim_c="" _pc_line _pc_in=0 _pc_path="" _pc_prim=0
+        while IFS= read -r _pc_line || [[ -n "$_pc_line" ]]; do
+            if [[ "$_pc_line" == outputs:* ]]; then _pc_in=1; continue; fi
+            [[ $_pc_in -eq 1 ]] || continue
+            [[ "$_pc_line" =~ ^[a-zA-Z_] ]] && break
+            if [[ "$_pc_line" =~ ^[[:space:]]*-[[:space:]]*id: ]]; then
+                [[ $_pc_prim -eq 1 && -n "$_pc_path" ]] && { _prim_c="$_pc_path"; break; }
+                _pc_path=""; _pc_prim=0
+            elif [[ "$_pc_line" =~ ^[[:space:]]+path:[[:space:]]*(.*)$ ]]; then
+                _pc_path="${BASH_REMATCH[1]}"
+            elif [[ "$_pc_line" =~ ^[[:space:]]+primary:[[:space:]]*true ]]; then
+                _pc_prim=1
+            fi
+        done < "$manifest"
+        [[ -z "$_prim_c" && $_pc_prim -eq 1 ]] && _prim_c="$_pc_path"
         _prim_c="${_prim_c//\"/}"
         if [[ -n "$_prim_c" && "$_prim_c" != *.json ]]; then
             error "validate_manifest($manifest): plugin '${_pid_c:-unknown}' declares result_contract ${_decl_contract} but its primary output is ${_prim_c} — a v2 stage's primary output must be its v2 result JSON (ADR-054 §5); make the result file primary and keep ${_prim_c##*/} as an ordinary output"

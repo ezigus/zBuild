@@ -17,12 +17,14 @@
 # `gh pr create` refusing.
 #
 # E1 [change] the failing stage is recorded as failed
-# E2 [change] the run records how it ended: pipeline.end status=failed
-# E3 [change] the run-status comment says failed, not interrupted
+# E2 [change] the run records how it ended: a pipeline.end whose status is a
+#             real outcome — `failed`, or `aborted` when the stage's v2 result
+#             says something outside us is down (pr-open labels a refused
+#             `gh pr create` `unavailable`; since #1844 the engine reads that)
+# E3 [change] the run-status comment shows that recorded outcome, not "interrupted"
 # E4 [guard]  the run exits non-zero
-# E5 [guard]  the state file keeps ADR-006's resumable word for a mid-stage
-#             failure ("interrupted": aborted mid-flight, resumable) — the
-#             comment, not the state file, is what tells a person it failed
+# E5 [guard]  the state file keeps a resumable word (ADR-006: `interrupted` for
+#             a mid-stage failure, `aborted` for an outside outage), never in_progress
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -59,14 +61,17 @@ fi
 
 assert_eq "[E1] the pr stage is recorded as failed" "failed" \
     "$(jq -r '.stage_statuses.pr // "none"' "$STATE" 2>/dev/null)"
-assert_eq "[E2] pipeline.end records status=failed" "failed" \
-    "$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS" 2>/dev/null | tail -n1)"
+_end="$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS" 2>/dev/null | tail -n1)"
+assert_eq "[E2] pipeline.end records a real outcome (failed or aborted)" "1" \
+    "$([[ "$_end" == failed || "$_end" == aborted ]] && echo 1 || echo 0)"
 # shellcheck source=../../scripts/lib/run-status-render.sh
 source "$REPO_ROOT/scripts/lib/run-status-render.sh"
 _body="$(rsc_render_body "$EVENTS" "$TEST_TEMP_DIR" 2>/dev/null)"
-assert_contains "[E3] the run-status comment says failed" "$_body" "**failed**"
+assert_contains "[E3] the run-status comment shows the recorded outcome" "$_body" "**${_end:-none}**"
 assert_eq "[E4] the run exits non-zero" "1" "$([[ $_run_rc -ne 0 ]] && echo 1 || echo 0)"
-assert_eq "[E5] the state file keeps ADR-006's resumable status" "interrupted" "$(jq -r '.status // "none"' "$STATE" 2>/dev/null)"
+_st="$(jq -r '.status // "none"' "$STATE" 2>/dev/null)"
+assert_eq "[E5] the state file keeps a resumable status (interrupted or aborted)" "1" \
+    "$([[ "$_st" == interrupted || "$_st" == aborted ]] && echo 1 || echo 0)"
 
 cleanup_test_env
 print_test_results

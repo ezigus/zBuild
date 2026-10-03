@@ -67,6 +67,7 @@ stage.start
 plugin.run.start
 plugin.pr_open.branch_fallback_used
 plugin.result
+pr.delivery.opened
 plugin.run.complete
 stage.complete
 artifact.snapshot.saved
