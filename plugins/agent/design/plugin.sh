@@ -460,9 +460,9 @@ path/to/file2
    code as it is before your change:
    - \`SPEC-n[change]:\` — the test must
      fail on the code as it is before your change, and pass after it.
-     Look at the code first: if the behaviour is
-     already there today (the code, manifest or output already exists), it is
-     not a change — tag it [guard]. A [change] whose test already passes can
+     Look at the code first:
+     if the behaviour is already there today (the code, manifest or output
+     already exists), it is not a change — tag it [guard]. A [change] whose test already passes can
      never be tested honestly, and the build stalls on it.
    - \`SPEC-n[guard]:\` — something that must keep working: its test should
      pass both before and after your change. Do not force it to fail before.
@@ -594,7 +594,8 @@ DESIGN_PROMPT
     # is not something a gate should be authoring prose about.
     if [[ "$(jq -r '.stage_verdicts["acceptance-gate"] // empty' \
             "$(dirname "$artifact_dir")/pipeline-state.json" 2>/dev/null || true)" == "fail" ]]; then
-        printf '\nIf the STAGE SUMMARIES name a tautological [change] SPEC — one that passes at the merge-base baseline, so it asserts nothing — either RE-AUTHOR that SPEC so it describes behavior that is genuinely NEW (fails at baseline, passes at HEAD), or, when the behavior already exists at the merge-base, re-tag it [guard]: there is nothing to change and no assertion can be made to fail there. Build is forbidden to touch acceptance assertions (ADR-036), so only this stage can. Preserve all other scope and acceptance entries.\n' \
+        # #2269: plain words; no other stage named (ADR-061), no ADR number.
+        printf '\nIf the STAGE SUMMARIES say a [change] requirement'"'"'s test already passes on the code from before this change, rewrite that requirement so it describes behaviour that is new (its test fails on the old code and passes after) — or, if the behaviour already exists, tag it [guard]: there is nothing to change, so no test can be made to fail on the old code. The tests cannot be changed later in this run, so this is where it is fixed. Keep every other scope and acceptance entry.\n' \
             >> "$prompt_input_file"
     fi
 

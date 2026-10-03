@@ -302,7 +302,7 @@ gate_aggregator_run() {
     [[ ${#failed[@]} -gt 0 ]] && _ga_failed_list="$(printf '%s, ' "${failed[@]}")" && _ga_failed_list="${_ga_failed_list%, }"
     stage_summary_write "$artifacts_dir/gate-aggregator-summary.md" "gate-aggregator" "$verdict" \
         "rolled up ${#gate_pairs[@]} gate(s) into verdict $verdict" \
-        "$(printf -- '- failed: %s\n- fault: %s' "$_ga_failed_list" "${_ga_fault:-none declared}")"
+        "$(printf -- '- failed: %s\n- what has to change: %s' "$_ga_failed_list" "$(case "${_ga_fault:-}" in specification) echo "the design";; scope) echo "the scope";; implementation) echo "the code";; "") echo "not stated";; *) echo "$_ga_fault";; esac)")"
 
     _ga_emit "plugin.result" "plugin=gate-aggregator" "verdict=$verdict"
     return 0

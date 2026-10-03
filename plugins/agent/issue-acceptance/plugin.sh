@@ -65,7 +65,7 @@ partly — a subset of the cases, a weaker condition, some of the files — is u
 
 An issue contains more than requirements — context, rationale, links, history.
 Those are not requirements. A requirement about HOW the change is verified (tests
-fail at the merge base, the suite is green, the tree is committed first) is proven
+fail on the code from before the change, the suite is green, the tree is committed first) is proven
 by the pipeline itself; never judge it here.
 
 If a requirement is unmet, name its fault:

@@ -26,8 +26,8 @@ source "$REPO_ROOT/plugins/agent/build/plugin.sh"
 out="$(_build_compose_instructions "src/foo.sh,src/bar.sh")"
 
 # R1: section header still present.
-assert_contains "R1: section header '### Completion sentinel' present" \
-    "$out" "### Completion sentinel"
+assert_contains "R1: section header '### Saying you are done' present" \
+    "$out" "### Saying you are done"
 
 # R2: the sharpened wording covers the already-done case.
 assert_contains "R2: prompt instructs LLM to emit sentinel whether just finished OR already done" \

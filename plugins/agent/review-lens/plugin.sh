@@ -147,6 +147,25 @@ _rl_input() {
 # _rl_context [scope_manifest] — what the change was for: the issue, its SPECs,
 # and the planned scope, each bounded and sanitised like the evidence. Every
 # piece is optional; an absent one is simply left out.
+# _rl_requirements_readable <design.md> — the acceptance block as a reviewer
+# reads it (#2269): each requirement with what its tag means, the file that
+# calls the new code, and the test files that check each one.
+_rl_requirements_readable() {
+    local design="$1" sid txt cls kind tfs w
+    while IFS= read -r sid; do
+        [[ -n "$sid" ]] || continue
+        txt="$(acceptance_spec_text "$design" "$sid" 2>/dev/null || true)"
+        cls="$(acceptance_spec_classifier "$design" "$sid" 2>/dev/null || true)"
+        kind="new behaviour"; [[ "$cls" == guard ]] && kind="must keep working"
+        tfs="$(acceptance_list_testfiles_for_spec "$design" "$sid" 2>/dev/null | tr '\n' ' ')"
+        printf -- '- %s (%s): %s\n' "$sid" "$kind" "${txt:-<no text>}"
+        [[ -n "${tfs// /}" ]] && printf -- '  checked by: %s\n' "${tfs% }"
+    done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
+    w="$(acceptance_list_wiring "$design" 2>/dev/null | tr '\n' ' ')"
+    [[ -n "${w// /}" ]] && printf -- '- The existing file that calls the new code: %s\n' "${w% }"
+    return 0
+}
+
 _rl_context() {
     local scope="${1:-}" f out="" _txt
     f="$(_rl_input intake_goal)"
@@ -155,10 +174,11 @@ _rl_context() {
         out+=$'## THE ISSUE (what was asked for)\n'"$_txt"$'\n\n'
     fi
     f="$(_rl_input design)"
-    if [[ -n "$f" && -s "$f" ]] && declare -F extract_acceptance_block >/dev/null 2>&1; then
-        _txt="$(extract_acceptance_block "$f" 2>/dev/null || true)"
+    if [[ -n "$f" && -s "$f" ]] && declare -F acceptance_list_spec_ids >/dev/null 2>&1; then
+        # #2269: the requirements as sentences, not the raw block's keys and tags.
+        _txt="$(_rl_requirements_readable "$f")"
         _txt="$(printf '%s' "${_txt:0:6000}" | _zbuild_sanitize_for_llm)"
-        [[ -n "$_txt" ]] && out+=$'## THE ACCEPTANCE CONTRACT (the SPECs the change had to meet)\n'"$_txt"$'\n\n'
+        [[ -n "$_txt" ]] && out+=$'## THE REQUIREMENTS (what the change had to meet)\n'"$_txt"$'\n\n'
     fi
     # #1654: what the design DECIDED — so "this is odd" and "this was chosen"
     # can be told apart. Same extractor build honours (design_decisions_prose).

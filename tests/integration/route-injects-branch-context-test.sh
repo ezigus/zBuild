@@ -124,16 +124,16 @@ else
     assert_fail "diff stat references a.txt and b.txt" "missing"
 fi
 
-# Both labels present (Commits + Diff vs intake baseline)
+# Both labels present (Commits + Changes since this run started)
 if [[ "$captured" == *"Commits:"* ]]; then
     assert_pass "block contains 'Commits:' label"
 else
     assert_fail "block contains 'Commits:' label" "missing"
 fi
-if [[ "$captured" == *"Diff vs intake baseline"* ]]; then
-    assert_pass "block contains 'Diff vs intake baseline' label"
+if [[ "$captured" == *"Changes since this run started"* ]]; then
+    assert_pass "block contains 'Changes since this run started' label"
 else
-    assert_fail "block contains 'Diff vs intake baseline' label" "missing"
+    assert_fail "block contains 'Changes since this run started' label" "missing"
 fi
 
 cleanup_test_env

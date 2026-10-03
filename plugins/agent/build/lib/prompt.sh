@@ -71,7 +71,7 @@ ${scope_section}
 - Do NOT emit a unified diff in your response — the pipeline derives the
   canonical \`diff.patch\` artifact from \`git diff HEAD\` automatically.
 
-### Completion sentinel
+### Saying you are done
 Emit \`LOOP_COMPLETE\` on its own line as the FINAL line of your response
 WHEN the implementation is complete — whether you just finished it OR
 it was already done before you started. If the branch already contains

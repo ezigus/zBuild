@@ -175,14 +175,27 @@ shape_floor_run() {
         local _mf_list _mf
         _mf_list="$(_sf_collect_missing_floor_files "$repo_root" "$(_sf_diff_files "$repo_root")" 2>/dev/null || true)"
         if [[ -n "$_mf_list" ]]; then
-            _body="A shape change is in flight, so these files must change with it and did not:"$'\n'
+            # #2269: plain words; and since #2256 a still-correct file needs no edit.
+            _body="This change alters a count, order or list that these files also spell out, and they were not updated."$'\n'
+            _body="${_body}Update any that are now wrong. A file that is still correct can stay as it is: the full test run on this change shows that."$'\n'
             while IFS= read -r _mf; do
                 [[ -n "$_mf" ]] || continue
                 _body="${_body}- ${_mf}"$'\n'
             done <<< "$_mf_list"
         fi
     fi
-    stage_summary_write "$artifacts_dir/shape-floor-detail.md" "shape-floor" "$verdict" "$detail" "$_body"
+    # #2269: the summary's headline is a sentence; the reason token stays in the
+    # result JSON, where other code reads it.
+    local _plain="$detail"
+    case "$detail" in
+        missing_floor_files*)  _plain="files that spell out a count, order or list this change alters were not updated${detail#missing_floor_files}" ;;
+        no_baseline)           _plain="skipped: there is no earlier version to compare this change against" ;;
+        no_shape_change)       _plain="skipped: this change does not alter any count, order or list other files spell out" ;;
+        schema_append_only)    _plain="skipped: the change only adds to a schema, so nothing that spells it out goes stale" ;;
+        template_comment_only) _plain="skipped: the change only edits comments in a template" ;;
+        unparseable_output)    _plain="the check could not read its own result (a problem in the pipeline, not in your change)" ;;
+    esac
+    stage_summary_write "$artifacts_dir/shape-floor-detail.md" "shape-floor" "$verdict" "$_plain" "$_body"
 
     _sf_emit "plugin.result" "plugin=shape-floor" "verdict=$verdict"
     return 0
