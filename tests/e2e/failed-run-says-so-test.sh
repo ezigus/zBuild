@@ -39,15 +39,13 @@ FIXTURE="$REPO_ROOT/tests/golden/parity/run-fixture.sh"
 RUN_DIR="$TEST_TEMP_DIR/run"; BIN_DIR="$TEST_TEMP_DIR/bin"
 mkdir -p "$RUN_DIR/events" "$BIN_DIR"
 
-set +e
+_run_rc=0
 (
     unset GITHUB_ACTIONS CI GITHUB_STEP_SUMMARY RUNNER_OS 2>/dev/null || true
     FIXTURE_GH_PR_CREATE_FAIL=1 FIXTURE_STATE_DIR="$RUN_DIR" FIXTURE_BIN_DIR="$BIN_DIR" \
         ZBUILD_PLAN_CONTEXT_DIR="$TEST_TEMP_DIR/pc" \
-        bash "$FIXTURE" > "${KEEP_LOG:-$TEST_TEMP_DIR/run.log}" 2>&1
-)
-_run_rc=$?
-set -e
+        bash "$FIXTURE" > "$TEST_TEMP_DIR/run.log" 2>&1
+) || _run_rc=$?
 
 EVENTS="$RUN_DIR/events/events.jsonl"
 STATE="$(find "$RUN_DIR" -name pipeline-state.json -not -path '*/restored-artifacts/*' 2>/dev/null | head -n1)"   # sigpipe-ok: find output is small and fully read
