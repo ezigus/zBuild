@@ -82,14 +82,14 @@ outputs:
     type: pr-url.txt@1
     format: text
     required: true
-    # ADR-020 amendment (#507): canonical primary (non-JSON). Indicator
-    # falls back to rc-only: present == pass.
-    primary: true
+  # ADR-054 §5 (#1844): the v2 result file is the primary output, so the engine
+  # reads its verdict, disposition and reason. pr-url.txt stays an ordinary output.
   - id: pr_result
     path: ${artifact_dir}/pr-result.json
     type: pr-result.json@1
     format: json
     required: true
+    primary: true
   # ADR-055 §9: this stage's statement of what it DID. required:true —
   # written on every terminal verdict, so absence means something went wrong.
   - id: pr_open_summary

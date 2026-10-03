@@ -447,6 +447,23 @@ validate_manifest() {
         error "validate_manifest($manifest): $_msg"
         errors=$((errors + 1))
     fi
+    # ADR-054 §5 (#1844): a v2 stage's result file IS its primary output. A
+    # non-JSON primary (design.md, pr-url.txt) makes the engine read the stage
+    # as v1 — its disposition and reason are never seen. ADR-047 §3's
+    # `<stage>-verdict.json` sidecar is the verdict channel for v1 stages only.
+    if [[ "$_decl_contract" =~ ^[0-9]+$ && "$_decl_contract" -ge "$_ZBUILD_CONTRACT_V2" ]]; then
+        local _prim_c
+        _prim_c="$(awk '/^outputs:/{o=1;next} o&&/^[a-zA-Z_]/{o=0}
+            o&&/^[[:space:]]*-[[:space:]]*id:/{if(pr=="true"&&pa!=""){print pa;done=1;exit} pa="";pr=""}
+            o&&/^[[:space:]]+path:/{sub(/^[[:space:]]+path:[[:space:]]*/,"");pa=$0}
+            o&&/^[[:space:]]+primary:[[:space:]]*true/{pr="true"}
+            END{if(!done&&pr=="true"&&pa!="")print pa}' "$manifest" 2>/dev/null)"
+        _prim_c="${_prim_c//\"/}"
+        if [[ -n "$_prim_c" && "$_prim_c" != *.json ]]; then
+            error "validate_manifest($manifest): plugin '${_pid_c:-unknown}' declares result_contract ${_decl_contract} but its primary output is ${_prim_c} — a v2 stage's primary output must be its v2 result JSON (ADR-054 §5); make the result file primary and keep ${_prim_c##*/} as an ordinary output"
+            errors=$((errors + 1))
+        fi
+    fi
 
     # ─── #287/#294: hooks per kind ──────────────────────────────────────────
     # Every kind-required hook must be declared in the manifest's hooks: block.

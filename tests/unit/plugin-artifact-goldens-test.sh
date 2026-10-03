@@ -202,18 +202,19 @@ else
     assert_fail "[SPEC-7] G4: pr-result-artifact data.draft == false (non-draft default)" "got: $g4_draft"
 fi
 
-# [#1844/SPEC-16]: the golden must encode the full v2 pr-delivery result shape —
+# [#1844/SPEC-16]: the golden encodes the v2 pr-delivery result shape —
 # result_contract=2, verdict=pass, disposition=complete, data.pr_url non-empty,
-# data.draft=false, reason="". reason is FIRST: the old golden (written by pr-open)
-# had reason:"PR opened"; this assertion fails at the pre-build baseline, making the
-# negctl check non-tautological.
-g4_reason="$(printf '%s' "$g4_content" | jq -r '.reason' 2>/dev/null || echo 'MISSING')"
-if [[ "$g4_reason" == "" ]]; then
-    assert_pass "[#1844/SPEC-16] pr-result-artifact golden reason is empty (pr-delivery wrote it)"
+# data.draft=false — with a non-empty reason (ADR-054 §5: reason is mandatory, and
+# the engine refuses an empty one) and plugin fields under data only (no
+# top-level draft). The run's first golden had reason:"" and a top-level draft.
+g4_reason="$(printf '%s' "$g4_content" | jq -r '.reason // ""' 2>/dev/null || echo '')"
+if [[ -n "$g4_reason" ]]; then
+    assert_pass "[#1844/SPEC-16] pr-result-artifact golden reason is non-empty"
 else
-    assert_fail "[#1844/SPEC-16] pr-result-artifact golden reason is empty (pr-delivery wrote it)" \
-        "got: '$g4_reason'"
+    assert_fail "[#1844/SPEC-16] pr-result-artifact golden reason is non-empty" "got: '$g4_reason'"
 fi
+assert_eq "[#1844/SPEC-16] pr-result-artifact golden has no top-level draft" "false" \
+    "$(printf '%s' "$g4_content" | jq -r 'has("draft")' 2>/dev/null || echo error)"
 
 g4_verdict="$(printf '%s' "$g4_content" | jq -r '.verdict' 2>/dev/null || echo '')"
 if [[ "$g4_verdict" == "pass" ]]; then

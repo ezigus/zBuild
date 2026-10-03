@@ -134,11 +134,13 @@ else
     assert_fail "[#1844/SPEC-2] pr-result.json written on missing state_file" "file absent at $_s2_art/pr-result.json"
 fi
 
-# ─── SPEC-3: review_report via ZBUILD_STAGE_INPUTS signals block ──────────────
-# The review_report is at a non-standard path so a hardcoded-path read would miss
-# it. The block is triggered by merge_readiness=needs_attention with a critical
-# finding. The test fails if the plugin ignores ZBUILD_STAGE_INPUTS.
-print_test_section "SPEC-3: review_report via ZBUILD_STAGE_INPUTS signals block → rc=1/error/complete"
+# ─── SPEC-3: a review that needs attention never blocks delivery ──────────────
+# ADR-040 §4: the review is advisory. A `needs_attention` report (even with a
+# critical finding) does not refuse delivery; pr-delivery hands over to pr-open,
+# which opens the PR without merging — exactly what main did before #1844. The
+# run's code refused delivery outright here (review_blocked); Eric 2026-10-03:
+# remove it. The report is read through ZBUILD_STAGE_INPUTS (non-standard path).
+print_test_section "SPEC-3: a needs_attention review does not block — pr-open is called"
 
 _s3_sf="$(_mk_state s3)"
 _s3_art="$(dirname "$_s3_sf")/artifacts"
@@ -147,25 +149,28 @@ jq -n '{merge_readiness:"needs_attention",findings:[{severity:"critical",summary
     > "$_s3_rr"
 _s3_si="$TEST_TEMP_DIR/spec3-si.json"
 _mk_si "$_s3_si" "$_s3_rr"
+_s3_fake="$TEST_TEMP_DIR/fake-s3"; _s3_called="$TEST_TEMP_DIR/s3-pr-open-called"
+mkdir -p "$_s3_fake/plugins/tool/merge" "$_s3_fake/plugins/tool/pr-open"
+cat > "$_s3_fake/plugins/tool/pr-open/plugin.sh" <<PROMOCK
+pr_open_run() {
+    local d; d="\$(dirname "\$2")/artifacts"; mkdir -p "\$d"
+    : > "$_s3_called"
+    printf 'https://github.com/owner/repo/pull/3\n' > "\$d/pr-url.txt"
+    jq -n '{result_contract:2,verdict:"pass",disposition:"complete",reason:"PR opened"}' > "\$d/pr-result.json"
+    return 0
+}
+PROMOCK
 (
-    _PR_ROOT="$TEST_TEMP_DIR/fake-s3"
-    mkdir -p "$_PR_ROOT/plugins/tool/merge" "$_PR_ROOT/plugins/tool/pr-open"
+    _PR_ROOT="$_s3_fake"
     ZBUILD_STAGE_INPUTS="$_s3_si"
     ZBUILD_DRY_RUN=0
     _TPL_MERGE_POLICY=manual
     _pr_stage_run_inner "$_s3_sf"
 ) >/dev/null 2>&1; _s3_rc=$?
-assert_eq "[#1844/SPEC-3] review_report block → rc=1" "1" "$_s3_rc"
-if [[ -f "$_s3_art/pr-result.json" ]]; then
-    assert_eq "[#1844/SPEC-3] pr-result.json result_contract is 2" "2" \
-        "$(jq -r '.result_contract // empty' "$_s3_art/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-3] pr-result.json verdict is error" "error" \
-        "$(jq -r '.verdict // empty' "$_s3_art/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-3] pr-result.json disposition is complete" "complete" \
-        "$(jq -r '.disposition // empty' "$_s3_art/pr-result.json" 2>/dev/null || true)"
-else
-    assert_fail "[#1844/SPEC-3] pr-result.json written on review_report block" "file absent"
-fi
+assert_eq "[#1844/SPEC-3] a needs_attention review does not refuse delivery (rc=0)" "0" "$_s3_rc"
+assert_file_exists "[#1844/SPEC-3] pr-open was called" "$_s3_called"
+assert_eq "[#1844/SPEC-3] pr-result.json verdict is pass" "pass" \
+    "$(jq -r '.verdict // empty' "$_s3_art/pr-result.json" 2>/dev/null || true)"
 
 # ─── SPEC-4: dry-run → rc=0, result_contract:2, verdict=pass, disposition=complete
 print_test_section "SPEC-4: dry-run → rc=0, pr-result.json result_contract:2/pass/complete"
@@ -316,7 +321,7 @@ cat > "$_s8_fake/plugins/tool/pr-open/plugin.sh" <<'PROMOCK'
 pr_open_run() {
     local d; d="$(dirname "$2")/artifacts"
     mkdir -p "$d"
-    jq -n '{result_contract:2,verdict:"blocked",disposition:"complete",reason:"review_signal_missing"}' \
+    jq -n '{result_contract:2,verdict:"blocked",disposition:"complete",reason:"review verdict is block"}' \
         > "$d/pr-result.json"
     return 0
 }
@@ -336,15 +341,15 @@ assert_eq "[#1844/SPEC-8] pr-open verdict=blocked → rc=1" "1" "$_s8_rc"
 if [[ -f "$_s8_art/pr-result.json" ]]; then
     assert_eq "[#1844/SPEC-8] pr-result.json result_contract is 2" "2" \
         "$(jq -r '.result_contract // empty' "$_s8_art/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-8] pr-result.json verdict is error" "error" \
+    assert_eq "[#1844/SPEC-8] a refusal is verdict fail (Eric 2026-10-03)" "fail" \
         "$(jq -r '.verdict // empty' "$_s8_art/pr-result.json" 2>/dev/null || true)"
     assert_eq "[#1844/SPEC-8] pr-result.json disposition is complete" "complete" \
         "$(jq -r '.disposition // empty' "$_s8_art/pr-result.json" 2>/dev/null || true)"
     _s8_reason="$(jq -r '.reason // empty' "$_s8_art/pr-result.json" 2>/dev/null || true)"
-    if grep -q 'review_signal_missing' <<< "$_s8_reason"; then
-        assert_pass "[#1844/SPEC-8] pr-result.json reason contains review_signal_missing"
+    if grep -q 'review verdict is block' <<< "$_s8_reason"; then
+        assert_pass "[#1844/SPEC-8] pr-result.json reason keeps pr-open's own reason"
     else
-        assert_fail "[#1844/SPEC-8] pr-result.json reason contains review_signal_missing" \
+        assert_fail "[#1844/SPEC-8] pr-result.json reason keeps pr-open's own reason" \
             "got: $_s8_reason"
     fi
 else
@@ -528,6 +533,45 @@ assert_eq "[#1844/SPEC-15] manifest inputs has no source: fields" "0" "$_s15_sou
 assert_eq "[#1844/SPEC-15] manifest inputs has no stage: fields" "0" "$_s15_stage"
 
 # ─── Teardown ─────────────────────────────────────────────────────────────────
+# ─── D: the defects found in review (2026-10-03) ───────────────────────────────
+print_test_section "D: merge keeps pr_url, reasons, draft, events, signal on dry-run"
+# D4: the merge path keeps the PR URL merge reported.
+_d4_fake="$TEST_TEMP_DIR/fake-d4"; mkdir -p "$_d4_fake/plugins/tool/merge"
+cat > "$_d4_fake/plugins/tool/merge/plugin.sh" <<'MERGEMOCK'
+merge_run() {
+    local d; d="$(dirname "$2")/artifacts"; mkdir -p "$d"
+    jq -n '{result_contract:2,verdict:"pass",disposition:"complete",reason:"squash-merged",data:{pr_url:"https://github.com/owner/repo/pull/44"}}' \
+        > "$d/merge-result.json"
+    return 0
+}
+MERGEMOCK
+_d4_sf="$(_mk_state d4)"; _d4_art="$(dirname "$_d4_sf")/artifacts"; _d4_si="$TEST_TEMP_DIR/d4-si.json"; _mk_si "$_d4_si"
+( _PR_ROOT="$_d4_fake"; _TPL_MERGE_POLICY=auto; ZBUILD_DRY_RUN=0; ZBUILD_STAGE_INPUTS="$_d4_si"; _pr_stage_run_inner "$_d4_sf" ) >/dev/null 2>&1
+assert_eq "[D4] the merge path keeps merge's pr_url" "https://github.com/owner/repo/pull/44" \
+    "$(jq -r '.data.pr_url // empty' "$_d4_art/pr-result.json" 2>/dev/null)"
+# D5: every pass result explains itself (ADR-054 §5: reason is mandatory and non-empty).
+for _d5 in "$_s4_art" "$_s5_art" "$_s7_art" "$_s3_art" "$_d4_art"; do
+    _r="$(jq -r '.reason // ""' "$_d5/pr-result.json" 2>/dev/null)"
+    assert_eq "[D5] a pass result has a non-empty reason (${_d5##*/state-})" "1" "$([[ -n "$_r" ]] && echo 1 || echo 0)"
+done
+# D6: plugin fields live under data only (ADR-054 §5) — no top-level draft.
+assert_eq "[D6] no top-level draft in the v2 result" "false" \
+    "$(jq -r 'has("draft")' "$_s7_art/pr-result.json" 2>/dev/null)"
+# D7: the events the manifest declares are emitted.
+for _ev in pr.delivery.opened pr.delivery.blocked pr.delivery.dry_run; do
+    _n="$(jq -r --arg t "$_ev" 'select(.type==$t) | .type' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+    assert_eq "[D7] $_ev is emitted" "1" "$([[ "$_n" -ge 1 ]] && echo 1 || echo 0)"
+done
+# D9: a signal during a dry run still leaves an interrupted result.
+_d9_sf="$(_mk_state d9)"; _d9_art="$(dirname "$_d9_sf")/artifacts"; _d9_si="$TEST_TEMP_DIR/d9-si.json"; _mk_si "$_d9_si"
+(
+    _TPL_MERGE_POLICY=manual; export ZBUILD_DRY_RUN=1; export ZBUILD_STAGE_INPUTS="$_d9_si"
+    stage_signal_begin() { local _cb="$1"; stage_signal_end() { return 0; }; "$_cb" interrupted signal_interrupt || true; return 0; }
+    _pr_stage_run_inner "$_d9_sf"
+) >/dev/null 2>&1
+assert_eq "[D9] a signal during a dry run leaves an interrupted result" "interrupted" \
+    "$(jq -r '.disposition // empty' "$_d9_art/pr-result.json" 2>/dev/null)"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

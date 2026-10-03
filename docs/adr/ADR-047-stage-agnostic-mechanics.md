@@ -82,6 +82,16 @@ A stage's **work-product artifact ≠ its verdict-channel**. A stage whose prima
 is non-JSON (e.g. `design.md`) writes a small separate verdict JSON — this is the
 **normal** contract, not a special-case sidecar.
 
+> **Amended 2026-10-03 (#1844; ADR-054 §5 wins).** For a **result-contract v2** stage the
+> verdict channel IS its primary output: the v2 result JSON (`result_contract`, `verdict`,
+> `disposition`, `reason`) is declared `primary: true`, and the work product (`design.md`,
+> `pr-url.txt`) is an ordinary output. The non-JSON-primary + `<stage>-verdict.json` sidecar
+> above is the channel for **v1 stages only**: the engine reads a non-JSON primary as v1 and
+> takes only `.verdict` from the sidecar, so a v2 stage reporting that way had its
+> `disposition` and `reason` silently ignored (design, pr-open and pr-delivery did, until
+> #1844). `validate_manifest` refuses a v2 manifest whose primary is not JSON
+> (`tests/unit/v2-primary-is-result-test.sh`).
+
 ### 4. Capability flags (declared, not name-inferred)
 
 Where a mechanic needs a stage-specific capability, the stage **declares** it and the

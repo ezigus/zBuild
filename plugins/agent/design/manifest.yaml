@@ -59,6 +59,15 @@ outputs:
     type: design.md@1
     format: markdown
     required: true
+  # ADR-054 §5 (#1844): the v2 result file is the primary output, so the engine
+  # reads design's verdict, disposition and reason (a timed-out design is seen
+  # as timed_out, not as "design.md present"). Written on every exit and cleared
+  # at the start of every run (plugin.sh), so it is never stale.
+  - id: design_result
+    path: "${artifact_dir}/design-verdict.json"
+    type: design-verdict.json@1
+    format: json
+    required: true
     primary: true
   # ADR-055 §9: this stage's statement of what it DID. required:true —
   # written on every terminal verdict, so absence means something went wrong.

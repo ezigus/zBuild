@@ -1,1 +1,1 @@
-{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"","draft":false,"data":{"branch":"zbuild/issue-0","pr_url":"https://github.com/owner/repo/pull/42","draft":false}}
+{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"PR opened by pr-open: https://github.com/owner/repo/pull/42","data":{"branch":"zbuild/issue-0","pr_url":"https://github.com/owner/repo/pull/42","draft":false}}

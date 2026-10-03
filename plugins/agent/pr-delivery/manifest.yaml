@@ -35,6 +35,7 @@ config:
   # lines 17-21 and plugins/tool/merge/manifest.yaml lines 15-16 (ADR-037 §3).
   valid_verdicts:
     - pass
+    - fail    # a refusal (pr-open blocked delivery) — a judgement, not a breakdown (#1844)
     - error
   tier_default: T2
 
@@ -61,12 +62,14 @@ outputs:
     type: pr-url.txt@1
     format: text
     required: true
-    primary: true
+  # ADR-054 §5 (#1844): the v2 result file is the primary output, so the engine
+  # reads its verdict, disposition and reason. pr-url.txt stays an ordinary output.
   - id: pr_result
     path: ${artifact_dir}/pr-result.json
     type: pr-result.json@1
     format: json
     required: true
+    primary: true
   # ADR-055 §9: this stage's statement of what it DID. required:true —
   # written on every terminal verdict, so absence means something went wrong.
   - id: pr_delivery_summary

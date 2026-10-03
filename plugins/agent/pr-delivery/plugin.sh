@@ -4,12 +4,13 @@
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 #
 # Stage: pr (ADR-013 T2, ADR-018 Pattern 1 — one-shot)
-# Produces: state/artifacts/pr-url.txt (canonical), pr-result.json (v2)
+# Produces: pr-result.json (the v2 result; primary, ADR-054 §5), pr-url.txt
 #
 # Lifecycle:
 #   pr_stage_run        — derive paths, delegate to _pr_stage_run_inner
-#   _pr_stage_run_inner — read review_report guard, write v2 artifacts
-#   pr_stage_cleanup    — no-op
+#   _pr_stage_run_inner — merge (policy auto / auto_unless_flagged) or pr-open,
+#                         then write the v2 result. The review never blocks
+#                         (ADR-040 §4); no cleanup hook (nothing held open).
 #
 # legacy-citation: pipeline-stages-delivery.sh:81 (stage_pr)
 
@@ -46,7 +47,7 @@ _pr_delivery_write_result() {
         --arg pr_url "$_pr_url" \
         --argjson draft "$_draft" \
         --arg branch "${ZBUILD_BRANCH:-unknown}" \
-        '{result_contract:2,verdict:$verdict,disposition:$disposition,reason:$reason,draft:$draft,
+        '{result_contract:2,verdict:$verdict,disposition:$disposition,reason:$reason,
           data:{branch:$branch,pr_url:$pr_url,draft:$draft}}' \
         | atomic_write "${_out_dir}/pr-result.json"
 }
@@ -101,36 +102,25 @@ _pr_stage_run_inner() {
         _gate_verdict_early="$(jq -r '.verdict // empty' "$_gate_result" 2>/dev/null || true)"
     fi
 
-    # Block on review_report=needs_attention unless policy=auto or
-    # (auto_unless_flagged AND gate=pass — fall through to pr-open in that case).
-    if [[ "$_policy" != "auto" && \
-          ! ( "$_policy" == "auto_unless_flagged" && "$_gate_verdict_early" == "pass" ) ]]; then
-        if [[ -n "$_review_report" && -f "$_review_report" ]]; then
-            local _rr_readiness
-            _rr_readiness="$(jq -r '.merge_readiness // empty' "$_review_report" 2>/dev/null || true)"
-            if [[ "$_rr_readiness" == "needs_attention" ]]; then
-                warn "pr: review_report merge_readiness=needs_attention — refusing PR delivery"
-                _pr_delivery_write_result "$artifacts_dir" "error" "complete" "review_blocked"
-                stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
-                    "refused to deliver: review_report signals needs_attention" \
-                    "No PR was delivered. The review report blocked delivery."
-                return 1
-            fi
-        fi
-    fi
+    # ADR-040 §4 (#1844): the review is advisory and never blocks delivery. A
+    # report that needs attention keeps auto_unless_flagged from MERGING (below);
+    # the change is still delivered as a PR by pr-open.
+
+    # Signal guard over everything that can write a result, the dry run included
+    # (#2225 §2, ADR-054 §6a).
+    stage_signal_begin _pr_delivery_on_signal
 
     # Dry-run mode: write sentinel artifacts without calling gh
     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
         printf 'https://github.com/mock/repo/pull/0\n' | atomic_write "$pr_url_out"
-        _pr_delivery_write_result "$artifacts_dir" "pass" "complete" "dry_run"
+        stage_signal_end
+        _pr_delivery_write_result "$artifacts_dir" "pass" "complete" "dry run: no PR opened, gh not called"
+        emit_event "pr.delivery.dry_run" "plugin=pr-delivery"
         stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "skip" \
             "dry run — no PR was opened and gh was not called" \
             "Nothing was delivered. This verdict asserts nothing about a real PR."
         return 0
     fi
-
-    # Signal guard around delegation work (#2225 §2, ADR-054 §6a)
-    stage_signal_begin _pr_delivery_on_signal
 
     # Auto-merge path (ADR-037 §4 / I9-B #1050)
     if [[ "$_policy" == "auto" ]]; then
@@ -158,7 +148,9 @@ _pr_stage_run_inner() {
                     _m_disp="$(jq -r '.disposition // "complete"' \
                         "$artifacts_dir/merge-result.json" 2>/dev/null || echo 'complete')"
                 stage_signal_end
-                _pr_delivery_write_result "$artifacts_dir" "pass" "$_m_disp" "merged"
+                _pr_delivery_write_result "$artifacts_dir" "pass" "$_m_disp" "merged by the merge stage" \
+                    "$(jq -r '.data.pr_url // empty' "$artifacts_dir/merge-result.json" 2>/dev/null || true)"
+                emit_event "pr.delivery.opened" "plugin=pr-delivery" "via=merge"
                 stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "pass" \
                     "delivered the change by delegating to the merge stage (policy: auto)" \
                     "See the merge stage-summary.md for the result."
@@ -201,7 +193,9 @@ _pr_stage_run_inner() {
                         _m_disp="$(jq -r '.disposition // "complete"' \
                             "$artifacts_dir/merge-result.json" 2>/dev/null || echo 'complete')"
                     stage_signal_end
-                    _pr_delivery_write_result "$artifacts_dir" "pass" "$_m_disp" "merged"
+                    _pr_delivery_write_result "$artifacts_dir" "pass" "$_m_disp" "merged by the merge stage" \
+                        "$(jq -r '.data.pr_url // empty' "$artifacts_dir/merge-result.json" 2>/dev/null || true)"
+                    emit_event "pr.delivery.opened" "plugin=pr-delivery" "via=merge"
                     stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "pass" \
                         "delivered the change by delegating to the merge stage (policy: auto_unless_flagged)" \
                         "See the merge stage-summary.md for the result."
@@ -241,7 +235,9 @@ _pr_stage_run_inner() {
             fi
             if [[ "$_po_verdict" == "blocked" ]]; then
                 stage_signal_end
-                _pr_delivery_write_result "$artifacts_dir" "error" "complete" "review_signal_missing"
+                _pr_delivery_write_result "$artifacts_dir" "fail" "complete" \
+                    "pr-open refused to open a PR: ${_po_reason:-blocked}"
+                emit_event "pr.delivery.blocked" "plugin=pr-delivery" "detail=${_po_reason:-blocked}"
                 stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
                     "pr-open refused to open a PR: ${_po_reason:-blocked}" \
                     "No PR was opened. See the pr-open stage-summary.md for why."
@@ -252,7 +248,8 @@ _pr_stage_run_inner() {
             local _po_url=""
             [[ -f "$pr_url_out" ]] && _po_url="$(head -1 "$pr_url_out" 2>/dev/null || true)"
             stage_signal_end
-            _pr_delivery_write_result "$artifacts_dir" "pass" "complete" "" "$_po_url"
+            _pr_delivery_write_result "$artifacts_dir" "pass" "complete" "PR opened by pr-open: ${_po_url:-url not reported}" "$_po_url"
+            emit_event "pr.delivery.opened" "plugin=pr-delivery" "via=pr-open"
             stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "pass" \
                 "delivered the change by delegating to the pr-open stage" \
                 "See the pr-open stage-summary.md for the result."
@@ -272,7 +269,8 @@ _pr_stage_run_inner() {
     if pr_url="$(gh pr create "${_fb_gh_args[@]}" 2>/dev/null)"; then
         printf '%s\n' "$pr_url" | atomic_write "$pr_url_out"
         stage_signal_end
-        _pr_delivery_write_result "$artifacts_dir" "pass" "complete" "" "$pr_url"
+        _pr_delivery_write_result "$artifacts_dir" "pass" "complete" "PR opened directly with gh: $pr_url" "$pr_url"
+        emit_event "pr.delivery.opened" "plugin=pr-delivery" "via=gh"
         stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "pass" \
             "opened a PR directly via gh (fallback path)" \
             "$(printf -- '- pr: %s\n- branch: %s' "$pr_url" "$branch")"

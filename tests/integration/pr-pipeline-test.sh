@@ -83,7 +83,7 @@ assert_file_exists "[SPEC-3] pr-url.txt written" "$_art3/pr-url.txt"
 assert_file_exists "[SPEC-3] pr-result.json written" "$_art3/pr-result.json"
 # SPEC-9: the non-draft default is observable at the integration level — the
 # dry-run pr-result.json records draft=false (fails at baseline, which emitted true).
-_draft9="$(jq -r '.draft' "$_art3/pr-result.json" 2>/dev/null || echo MISSING)"
+_draft9="$(jq -r '.data.draft' "$_art3/pr-result.json" 2>/dev/null || echo MISSING)"
 assert_eq "[SPEC-9] dry-run pr-result.json records draft=false (non-draft default)" "false" "$_draft9"
 
 # ─── SPEC-4: review_report via ZBUILD_STAGE_INPUTS signals block → refuses ────
@@ -141,10 +141,11 @@ fi
 # reason is FIRST: at baseline the real pr-open writes reason:"PR opened" so the
 # first tagged assertion fails there — making the negctl check non-tautological.
 if [[ -f "$_art5/pr-result.json" ]]; then
-    # pr-delivery writes reason:"" — the real pr-open writes reason:"PR opened";
-    # this is the discriminating assertion that fails at the pre-build baseline.
-    assert_eq "[#1844/SPEC-16] pr-result.json reason is empty (pr-delivery wrote it)" "" \
-        "$(jq -r '.reason // ""' "$_art5/pr-result.json" 2>/dev/null || true)"
+    # pr-delivery writes its OWN result over pr-open's: its reason names the
+    # hand-over ("PR opened by pr-open: <url>"), where pr-open's reads "PR opened".
+    # Non-empty — ADR-054 §5 makes reason mandatory, and the engine refuses "".
+    assert_contains "[#1844/SPEC-16] pr-result.json reason is pr-delivery's (names the hand-over)" \
+        "$(jq -r '.reason // ""' "$_art5/pr-result.json" 2>/dev/null || true)" "PR opened by pr-open"
     assert_eq "[#1844/SPEC-16] pr-result.json result_contract is 2" "2" \
         "$(jq -r '.result_contract // empty' "$_art5/pr-result.json" 2>/dev/null || true)"
     assert_eq "[#1844/SPEC-16] pr-result.json verdict is pass" "pass" \
@@ -230,7 +231,7 @@ assert_eq "[#1844/SPEC-8] pr-open blocked → rc=1" "1" "$_rc8"
 if [[ -f "$_art8/pr-result.json" ]]; then
     assert_eq "[#1844/SPEC-8] pr-result.json result_contract is 2" "2" \
         "$(jq -r '.result_contract // empty' "$_art8/pr-result.json" 2>/dev/null || true)"
-    assert_eq "[#1844/SPEC-8] pr-result.json verdict is error" "error" \
+    assert_eq "[#1844/SPEC-8] a refusal is verdict fail (Eric 2026-10-03)" "fail" \
         "$(jq -r '.verdict // empty' "$_art8/pr-result.json" 2>/dev/null || true)"
     assert_eq "[#1844/SPEC-8] pr-result.json disposition is complete" "complete" \
         "$(jq -r '.disposition // empty' "$_art8/pr-result.json" 2>/dev/null || true)"
