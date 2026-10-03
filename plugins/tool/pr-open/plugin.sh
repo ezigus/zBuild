@@ -232,6 +232,17 @@ _pr_open_run_inner() {
                 '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("HEAD and the run branch diverged: "+$branch)}' \
                 > "$output_pr_result_json"
             return 1
+        else
+            error "pr_open: could not check whether HEAD is on '${target_branch}' (git error) — refusing"
+            stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
+                "could not check whether HEAD is on the run branch" \
+                "No PR was opened."
+            emit_event "plugin.result" "verdict=error" "plugin=pr-open" \
+                "reason=head_check_failed" "branch=${target_branch}"
+            jq -n --arg branch "$target_branch" \
+                '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("could not check whether HEAD is on the run branch: "+$branch)}' \
+                > "$output_pr_result_json"
+            return 1
         fi
     fi
     if [[ "$current_branch" != "$target_branch" ]]; then

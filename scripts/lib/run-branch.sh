@@ -23,6 +23,7 @@
 _ZBUILD_RUN_BRANCH_LOADED=1
 
 ZBUILD_HEAD_OUTCOME=""
+ZBUILD_HEAD_WAS=""
 
 # zbuild_keep_head_on_branch <repo> <branch>
 # Sets ZBUILD_HEAD_OUTCOME and ZBUILD_HEAD_WAS (the ref or "detached" HEAD named):

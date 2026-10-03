@@ -25,6 +25,8 @@
 # B3 [guard]  a ref that diverged from the remote (a re-run that started over)
 #             still replaces it
 # B4 [guard]  a branch the remote lacks is pushed
+# B5 [change] the remote is ahead but its commit cannot be fetched → refuse,
+#             never push blind (review on #2266)
 # W1 [change] the workflow's post-run push goes through the refusing helper
 set -uo pipefail
 
@@ -162,6 +164,18 @@ assert_eq "[B3] a diverged ref (a run that started over) replaces the remote" "$
 _remote_pair b4; _g "$RP" push -q origin --delete "$B" >/dev/null 2>&1; NEW="$(_sha "$RP" HEAD)"
 _push
 assert_eq "[B4] a branch the remote lacks is pushed" "$NEW" "$(_sha "$RM" "refs/heads/$B")"
+
+# B5: ls-remote works, fetch fails, and the remote's commit is not local.
+_remote_pair b5; NEWER="$TEST_TEMP_DIR/b5-other"; git clone -q "$RM" "$NEWER" >/dev/null 2>&1
+( cd "$NEWER" && git config user.email t@e.st && git config user.name t && git checkout -q "$B" \
+    && printf 'n\n' >> f && git add f && git commit -q -m newer && git push -q origin "$B" ) >/dev/null 2>&1
+AHEAD="$(_sha "$RM" "refs/heads/$B")"
+REAL_GIT="$(command -v git)"; mkdir -p "$TEST_TEMP_DIR/nofetch"
+printf '#!/usr/bin/env bash\n[[ "$1" == fetch ]] && exit 1\nexec "%s" "$@"\n' "$REAL_GIT" > "$TEST_TEMP_DIR/nofetch/git"
+chmod +x "$TEST_TEMP_DIR/nofetch/git"
+( cd "$RP" && PATH="$TEST_TEMP_DIR/nofetch:$PATH" zbuild_push_branch_no_rewind "$B" ) >/dev/null 2>&1; rc=$?
+assert_eq "[B5] an unfetchable remote tip is refused (rc 3)" "3" "$rc"
+assert_eq "[B5] the remote keeps its commit" "$AHEAD" "$(_sha "$RM" "refs/heads/$B")"
 
 print_test_section "W: the workflow uses it"
 WF="$REPO_ROOT/.github/workflows/zbuild-pipeline.yml"

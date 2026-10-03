@@ -158,6 +158,14 @@ _merge_run_inner() {
                 '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("HEAD and the run branch diverged: "+$branch)}' \
                 > "$merge_result_out"
             return 1
+        else
+            error "merge_run: could not check whether HEAD is on '${target_branch}' (git error) — refusing"
+            emit_event "plugin.result" "verdict=error" "plugin=merge" \
+                "reason=head_check_failed" "branch=${target_branch}"
+            jq -n --arg branch "$target_branch" \
+                '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("could not check whether HEAD is on the run branch: "+$branch)}' \
+                > "$merge_result_out"
+            return 1
         fi
     fi
 

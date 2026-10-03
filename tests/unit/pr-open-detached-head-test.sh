@@ -15,9 +15,12 @@
 # P4 [change] gh pr create is told the branch (--head), never left to infer it
 # P5 [change] HEAD and the branch diverged → pr-open refuses, names why, and
 #             neither pushes nor calls gh
+# P6 [change] the HEAD check itself fails (git error) → pr-open refuses and says
+#             so, instead of falling through to a checkout (review on #2266)
 # M1 [change] merge (same checkout plumbing) also ends with the run branch at
 #             HEAD's commit, and HEAD on it
 # M2 [change] merge also refuses a diverged HEAD, and calls no gh
+# M3 [change] merge also refuses when the HEAD check fails
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -104,6 +107,15 @@ assert_eq "[P5] the branch keeps its own commit" "$BR" "$(_sha "$REPO" "refs/hea
 assert_eq "[P5] origin is untouched" "$RM_BEFORE" "$(_sha "$REMOTE" "refs/heads/$B")"
 assert_eq "[P5] gh was never called" "" "$(cat "$GH_LOG" 2>/dev/null)"
 
+print_test_section "P6: the HEAD check fails — refuse, say why"
+_fixture p6
+( cd "$REPO" && zbuild_keep_head_on_branch() { ZBUILD_HEAD_OUTCOME="error"; return 2; }
+  pr_open_run "pr" "$STATE_FILE" ) >/dev/null 2>&1; rc=$?
+assert_eq "[P6] pr-open refuses (rc 1)" "1" "$rc"
+assert_contains "[P6] the result says the HEAD check failed" \
+    "$(jq -r '.reason // ""' "$STATE_DIR/artifacts/pr-result.json" 2>/dev/null)" "could not check"
+assert_eq "[P6] gh was never called" "" "$(cat "$GH_LOG" 2>/dev/null)"
+
 print_test_section "M: merge has the same plumbing"
 # shellcheck source=../../plugins/tool/merge/plugin.sh
 source "$REPO_ROOT/plugins/tool/merge/plugin.sh"
@@ -127,6 +139,12 @@ BR="$(_sha "$REPO" "refs/heads/$B")"
 assert_eq "[M2] merge refuses (rc 1)" "1" "$rc"
 assert_eq "[M2] the branch keeps its own commit" "$BR" "$(_sha "$REPO" "refs/heads/$B")"
 assert_eq "[M2] gh was never called" "" "$(cat "$GH_LOG" 2>/dev/null)"
+
+_fixture m3; _gate_pass
+( cd "$REPO" && zbuild_keep_head_on_branch() { ZBUILD_HEAD_OUTCOME="error"; return 2; }
+  ZBUILD_STAGE_INPUTS="$STATE_DIR/stage-inputs.json" merge_run "pr" "$STATE_FILE" ) >/dev/null 2>&1; rc=$?
+assert_eq "[M3] merge refuses when the HEAD check fails (rc 1)" "1" "$rc"
+assert_eq "[M3] gh was never called" "" "$(cat "$GH_LOG" 2>/dev/null)"
 
 cleanup_test_env
 print_test_results

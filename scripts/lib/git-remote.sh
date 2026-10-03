@@ -157,8 +157,12 @@ zbuild_push_branch_no_rewind() {
     local remote_sha="${remote_ls%%[[:space:]]*}"
     if [[ -n "$remote_sha" && "$remote_sha" != "$local_sha" ]]; then
         git fetch -q origin "refs/heads/$branch" >/dev/null 2>&1 || true
-        if git cat-file -e "${remote_sha}^{commit}" 2>/dev/null \
-           && git merge-base --is-ancestor "$local_sha" "$remote_sha" 2>/dev/null; then
+        # Never push blind: a tip we cannot see might be ahead of us.
+        if ! git cat-file -e "${remote_sha}^{commit}" 2>/dev/null; then
+            ZBUILD_PUSH_RECONCILE_ERR="cannot resolve origin tip ${remote_sha:0:8} (fetch failed) — not pushing over it"
+            return 3
+        fi
+        if git merge-base --is-ancestor "$local_sha" "$remote_sha" 2>/dev/null; then
             ZBUILD_PUSH_RECONCILE_ERR="origin/$branch (${remote_sha:0:8}) is ahead of the local ref (${local_sha:0:8}) — refusing to rewind it"
             return 1
         fi
