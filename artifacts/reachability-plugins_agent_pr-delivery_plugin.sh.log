@@ -20,7 +20,7 @@
   [38;2;248;113;113m✗[0m [#1844/SPEC-2] missing state_file → rc=1 (not rc=2)
     [2mexpected: 1, got: 2[0m
   [38;2;248;113;113m✗[0m [#1844/SPEC-2] pr-result.json written on missing state_file
-    [2mfile absent at /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/pr-delivery-v2-result.P4tuj0/spec2-artifacts/pr-result.json[0m
+    [2mfile absent at /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/pr-delivery-v2-result.iY3YcG/spec2-artifacts/pr-result.json[0m
 
   [38;2;0;212;255mSPEC-3: review_report via ZBUILD_STAGE_INPUTS signals block → rc=1/error/complete[0m
   [38;2;74;222;128m✓[0m [#1844/SPEC-3] review_report block → rc=1
@@ -51,10 +51,9 @@
     [2mfile absent[0m
 
   [38;2;0;212;255mSPEC-7: pr-open delegation success → rc=0, pr-result.json result_contract:2/pass/complete[0m
+  [38;2;248;113;113m✗[0m [#1844/SPEC-7] pr-result.json written on pr-open delegation success
+    [2mfile absent[0m
   [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-open delegation success → rc=0
-  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-result.json result_contract is 2
-  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-result.json verdict is pass
-  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-result.json disposition is complete
 
   [38;2;0;212;255mSPEC-8: pr-open verdict=blocked → rc=1, pr-result.json result_contract:2/error/complete/review_signal_missing[0m
   [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-open verdict=blocked → rc=1
@@ -115,7 +114,7 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m25 of 54 tests failed[0m
+  [38;2;248;113;113m[1m26 of 52 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#1844/SPEC-2] missing state_file → rc=1 (not rc=2)
   [38;2;248;113;113m✗[0m [#1844/SPEC-2] pr-result.json written on missing state_file
@@ -127,6 +126,7 @@
   [38;2;248;113;113m✗[0m [#1844/SPEC-4] pr-result.json disposition is complete
   [38;2;248;113;113m✗[0m [#1844/SPEC-5] pr-result.json written on merge delegation success
   [38;2;248;113;113m✗[0m [#1844/SPEC-6] pr-result.json written on merge delegation failure
+  [38;2;248;113;113m✗[0m [#1844/SPEC-7] pr-result.json written on pr-open delegation success
   [38;2;248;113;113m✗[0m [#1844/SPEC-8] pr-result.json verdict is error
   [38;2;248;113;113m✗[0m [#1844/SPEC-9] pr-result.json result_contract is 2
   [38;2;248;113;113m✗[0m [#1844/SPEC-9] pr-result.json verdict is pass
@@ -192,10 +192,11 @@
   [38;2;74;222;128m✓[0m [#1844/SPEC-6] pr-result.json disposition is unavailable
 
   [38;2;0;212;255mSPEC-7: pr-open delegation success → rc=0, pr-result.json result_contract:2/pass/complete[0m
-  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-open delegation success → rc=0
+  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-result.json written on pr-open delegation success
   [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-result.json result_contract is 2
   [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-result.json verdict is pass
   [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-result.json disposition is complete
+  [38;2;74;222;128m✓[0m [#1844/SPEC-7] pr-open delegation success → rc=0
 
   [38;2;0;212;255mSPEC-8: pr-open verdict=blocked → rc=1, pr-result.json result_contract:2/error/complete/review_signal_missing[0m
   [38;2;74;222;128m✓[0m [#1844/SPEC-8] pr-open verdict=blocked → rc=1
@@ -241,5 +242,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 60 tests passed[0m
+  [38;2;74;222;128m[1mAll 61 tests passed[0m
 

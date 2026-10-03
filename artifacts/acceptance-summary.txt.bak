@@ -1,3 +1,4 @@
+acceptance SPEC violations — SPEC-7/SPEC-16 tautological — passes at the baseline, so it asserts no change
 NEGCTL PASS SPEC-1
       design : manifest provides declares result_contract:2; config.valid_verdicts contains pass and error; provide…
       asserts: assert_eq "[#1844/SPEC-1] manifest provides.result_contract is 2" "2" "$_prov_rc"
@@ -16,9 +17,9 @@ NEGCTL PASS SPEC-5
 NEGCTL PASS SPEC-6
       design : merge delegation failure → rc=1, pr-result.json has result_contract:2, verdict=error, disposition=un…
       asserts: assert_eq "[#1844/SPEC-6] merge delegation failure → rc=1" "1" "$_s6_rc"
-NEGCTL PASS SPEC-7
+NEGCTL FAIL SPEC-7 tautology
       design : pr-open delegation success → rc=0, pr-result.json has result_contract:2, verdict=pass, disposition=c…
-      asserts: assert_pass "[#1844/SPEC-7] pr-result.json written on pr-open delegation success"
+      asserts: assert_eq "[#1844/SPEC-7] pr-open delegation success → rc=0" "0" "$_s7_rc"
 NEGCTL PASS SPEC-8
       design : pr-open returns rc=0 with verdict=blocked → pr-delivery returns rc=1, pr-result.json has result_cont…
       asserts: assert_eq "[#1844/SPEC-8] pr-open verdict=blocked → rc=1" "1" "$_s8_rc"
@@ -43,7 +44,7 @@ NEGCTL PASS SPEC-14
 NEGCTL PASS SPEC-15 guard_spec
       design : manifest inputs: every entry contains only id: and required: fields — no path:, type:, source:, or s…
       asserts: assert_eq "[#1844/SPEC-15] manifest inputs has no path: fields" "0" "$_s15_path"
-NEGCTL PASS SPEC-16
+NEGCTL FAIL SPEC-16 tautology
       design : passing pr-open delegation produces pr-result.json whose result_contract equals 2, verdict equals pa…
-      asserts: assert_eq "[#1844/SPEC-16] pr-result.json reason is empty (pr-delivery wrote it)" "" \
+      asserts: assert_eq "[#1844/SPEC-16] pr-result.json result_contract is 2" "2" \
 REACHABILITY PASS plugins/agent/pr-delivery/plugin.sh
