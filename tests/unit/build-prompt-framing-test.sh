@@ -219,7 +219,7 @@ unset -f _read_prior_output
 print_test_section "#2183: a finding that does not reproduce can be reported"
 # Read the shipped text directly: this is the prompt the stage sends, and the
 # rule under test is a property of that text, not of how it is assembled.
-_t2183="$(sed -n '/### Completion sentinel/,/### Budget/p' \
+_t2183="$(sed -n '/### Saying you are done/,/### Budget/p' \
     "$REPO_ROOT/plugins/agent/build/lib/prompt.sh" 2>/dev/null || true)"
 assert_contains "[#2183] premise: the section under test was read" "$_t2183" "LOOP_COMPLETE"
 assert_contains "[#2183] the prompt tells it how to report a non-reproduction" \

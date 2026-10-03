@@ -395,7 +395,7 @@ Rules:
   entry MUST be a string repo-relative path under a scope-manifest prefix.
 - Keep steps small and independently testable.
 
-## Issue-body discipline (Wave 19-F, #738)
+## Following the issue's own checklists
 
 If the goal text contains sections titled "Definition of done", "Acceptance
 criteria", "Anti-patterns", or "5-test trial" (or similar operational
@@ -419,13 +419,12 @@ checklists), you MUST honor the following:
    "declared but disabled" unless the issue body explicitly grants that
    latitude.
 
-4. For migration keepers (issues with a "5-test trial" section or that cite
-   KEEPERS §), the plan MUST wire the migrated code into the live execution
-   path. Plans that create scaffolding (manifests, plugin directories,
-   stage sections) without modifying the actual dispatched flow are invalid.
-   Concretely: if the issue migrates stage X, the plan MUST include a step
-   that modifies `config/templates/standard.yaml` (or its referenced
-   template) so X appears in the live `flow:` and runs in a dogfood.
+4. If the issue moves behaviour from one place to another (a migration), the
+   plan MUST include the step that makes the running program use the new
+   code — not only new files beside the old. A plan that adds manifests,
+   plugin directories or template sections without changing what actually
+   runs is invalid. For example, if the issue moves stage X, include the step
+   that puts X into the template's `flow:` so it runs.
 
 Goal:
 PLAN_PROMPT

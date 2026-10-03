@@ -75,8 +75,8 @@ demands less than the requirement — a subset of the cases, a weaker condition,
 some of the files, a narrower scope — leaves it uncovered. Name the requirement
 as uncovered and say what the SPEC leaves out.
 
-A requirement about HOW the change is verified — that the tests fail at the
-merge base, that the full suite is green, that the mutation tier runs, that the
+A requirement about HOW the change is verified — that the tests fail on the
+code from before the change, that the full suite is green, that the mutation tests run, that the
 tree is committed first — is proven by the pipeline itself, not by a SPEC. It is
 never a gap. Judge the BEHAVIOUR the issue requires of the software.
 

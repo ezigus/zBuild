@@ -256,9 +256,9 @@ assert_contains "[U10] ...and by a scope fault" \
 assert_contains "[U11] build is told the specification is design's" \
     "$(_routed build specification)" "context only: about work owned by design, not yours to fix"
 assert_contains "[U12] an implementation fault is still build's to RESOLVE" \
-    "$(_routed build implementation)" "### gate-aggregator (verdict: fail) — RESOLVE these findings before completing"
+    "$(_routed build implementation)" "### gate-aggregator (verdict: fail) — fix these findings before you finish"
 assert_contains "[U13] with no template, a routed fault keeps the context framing" \
-    "$(_routed design specification 0)" "context only: a specification fault; the engine routes this"
+    "$(_routed design specification 0)" "context only: the design has to change for this"
 
 print_test_section "U14: key order inside an input entry"
 _mf ur-judge '  - required: true
@@ -293,7 +293,7 @@ if grep -qF "about work you authored" <<< "$_trim"; then
 else
     assert_pass "[U15] fixture: the owned finding was trimmed"
 fi
-if grep -qF "marked RESOLVE blocks convergence" <<< "$_trim"; then
+if grep -qF "keeps the pipeline from moving on" <<< "$_trim"; then
     assert_fail "[U15] no fix-it header when no owned finding is shown" "header promises findings the block does not carry"
 else
     assert_pass "[U15] no fix-it header when no owned finding is shown"

@@ -96,8 +96,10 @@ _setup() {
 # Design
 ```acceptance
 SPEC-1[change]: plugin-specific fields live under data:{} not at the top level
+SPEC-2[guard]: the top-level result keys are unchanged
 TESTFILES:
 SPEC-1: tests/acc-test.sh
+SPEC-2: tests/acc-test.sh
 WIRING: scripts/thing.sh
 ```
 EOF
@@ -114,6 +116,12 @@ _setup ok
 _TA_RC=0
 set +e; test_author_run "test-author" "$_S/pipeline-state.json"; _rc=$?; set -e
 _P="$(cat "$_TA_PROMPT" 2>/dev/null || true)"
+# #2269: test-author is told what each tag demands, in before-and-after words —
+# it is the stage first asked to fix a wrong one.
+assert_contains "[TA-P1] a [change] requirement says its test must fail before and pass after" \
+    "$_P" "must FAIL on the code as it was before this change, and pass after"
+assert_contains "[TA-P2] a [guard] requirement says its test must pass before and after" \
+    "$_P" "must pass both before and after this change"
 
 assert_contains "[SPEC-1][change] the prompt carries the SPEC's requirement TEXT" \
     "$_P" "fields live under data:{} not at the top level"

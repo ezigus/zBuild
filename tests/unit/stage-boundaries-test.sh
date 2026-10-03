@@ -72,7 +72,7 @@ _test_head="$(grep -E '^### sb-test' <<< "$_blk" || true)"
 if [[ "$_gate_head" == *"RESOLVE"* ]]; then assert_fail "[SPEC-1] a failure with fault=specification is NOT a RESOLVE obligation for the reader" "$_gate_head"; else assert_pass "[SPEC-1] a failure with fault=specification is NOT a RESOLVE obligation for the reader"; fi
 assert_contains "[SPEC-1] …it is framed as context the engine routes" "$_gate_head" "context only"
 assert_contains "[SPEC-1] …and its body is still visible (stages see everything)" "$_blk" "SPEC-21 passes at the baseline"
-assert_contains "[SPEC-1] a failure with no fault keeps RESOLVE" "$_test_head" "RESOLVE these findings"
+assert_contains "[SPEC-1] a failure with no fault keeps RESOLVE" "$_test_head" "fix these findings before you finish"
 
 # ─── SPEC-2: the build prompt names no other stage ───────────────────────────
 print_test_section "SPEC-2: the build prompt states read-only paths, names no stage"
@@ -113,7 +113,9 @@ print_test_section "SPEC-4: the tautology finding is a fact, not an instruction 
 source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" >/dev/null 2>&1 || true
 if declare -F _ag_build_reason >/dev/null 2>&1; then
     _r="$(_ag_build_reason "tautology:SPEC-21")"
-    assert_contains "[SPEC-4] states the fact" "$_r" "passes at the baseline"
+    # #2269: the fact in plain words ("already passes on the code from before
+    # this change"), not the check's vocabulary ("passes at the baseline").
+    assert_contains "[SPEC-4] states the fact" "$_r" "already passes on the code from before this change"
     if grep -q 're-author' <<< "$_r"; then assert_fail "[SPEC-4] no remedy addressed to another stage" "$_r"; else assert_pass "[SPEC-4] no remedy addressed to another stage"; fi
 else
     assert_fail "[SPEC-4] _ag_build_reason is defined" "missing"
@@ -241,14 +243,14 @@ printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":
 ' > "$ART6/sb-judge-result.json"
 _blk6_none="$(ZBUILD_CURRENT_STAGE=sb-builder stage_summaries_prompt_block "$STATE6/pipeline-state.json" "$PROOT6" 2>/dev/null || true)"
 assert_contains "[SPEC-6] a finding about nothing in particular keeps the old framing" \
-    "$(_head_of sb-judge "$_blk6_none")" "RESOLVE these findings"
+    "$(_head_of sb-judge "$_blk6_none")" "fix these findings before you finish"
 
 # An `about` nobody declares resolves to no owner — never to a guess.
 printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x","about":"nobody-declares-this.txt"}
 ' > "$ART6/sb-judge-result.json"
 _blk6_unk="$(ZBUILD_CURRENT_STAGE=sb-builder stage_summaries_prompt_block "$STATE6/pipeline-state.json" "$PROOT6" 2>/dev/null || true)"
 assert_contains "[SPEC-6] an unowned artifact keeps the old framing rather than inventing an owner" \
-    "$(_head_of sb-judge "$_blk6_unk")" "RESOLVE these findings"
+    "$(_head_of sb-judge "$_blk6_unk")" "fix these findings before you finish"
 
 # A REPO path (an authored testfile) is owned by the stage that recorded it.
 printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x","about":"tests/unit/authored-by-me-test.sh"}

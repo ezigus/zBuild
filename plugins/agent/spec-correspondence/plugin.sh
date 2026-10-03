@@ -142,7 +142,7 @@ For EACH pair below, judge only this: if the ASSERTION passes, does that establi
 
 Answer with exactly one line per SPEC, in this form and nothing else — begin each line with that SPEC's identifier from its \`###\` heading, exactly as written there:
 
-<identifier>: VERDICT: corresponds | REASON: <one sentence>
+<identifier>: VERDICT: <corresponds, partial, mismatch or uncheckable> | REASON: <one sentence>
 
   corresponds — passing this assertion would establish the requirement.
   partial     — it tests the right thing, but establishes only part of it.

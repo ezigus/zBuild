@@ -10,7 +10,12 @@
 # own example listed that very file.
 #
 # G1 [change] the prompt's WIRING example does not name config/event-schema.json
-# G2 [change] the prompt says a registry or data file is not WIRING
+# G2 [change] the WIRING key comes with the plain question it stands for, and
+#             says a list, schema or config entry is never that file (#2269)
+# G3 [change] the acceptance section speaks plainly: no internal check names
+#             (inert, negative control, reachability), no ADR numbers, no
+#             "dispatch table entry" example (a list entry) (#2269)
+# G4 [change] [change]/[guard] are explained as before-and-after questions (#2269)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -72,14 +77,26 @@ _MOCK_DESIGN_WRITE_PATH="$OUTPUT_MD"
 _design_stage_run_inner "$SCOPE_MANIFEST" "$PLAN_JSON" "$OUTPUT_MD" "$ARTIFACT_DIR" >/dev/null 2>&1 || true
 
 PROMPT="$ARTIFACT_DIR/design-prompt.txt"
-_wiring="$(awk '/^WIRING field/{f=1} f&&/^Existing checks this change makes wrong/{exit} f' "$PROMPT" 2>/dev/null)"
-assert_contains "fixture: the prompt carries the WIRING guidance" "$_wiring" "WIRING field"
+_wiring="$(awk '/^WIRING:/{f=1} f&&/^Existing checks this change makes wrong/{exit} f' "$PROMPT" 2>/dev/null)"
+assert_contains "fixture: the prompt carries the WIRING guidance" "$_wiring" "WIRING:"
+# The whole acceptance section: from the acceptance item to the supersedes note.
+_acc="$(awk '/fenced block listing behavioral claims|block listing the behaviour/{f=1} f&&/^Existing checks this change makes wrong/{exit} f' "$PROMPT" 2>/dev/null)"
 if grep -q 'config/event-schema.json' <<< "$_wiring"; then
     assert_fail "[G1] the WIRING example does not name a registry file" "example lists config/event-schema.json"
 else
     assert_pass "[G1] the WIRING example does not name a registry file"
 fi
-assert_contains "[G2] a registry or data file is not WIRING" "$_wiring" "registry or data file is not WIRING"
+assert_contains "[G2] the WIRING key asks the plain question" "$_wiring" "Which existing file calls the new code?"
+assert_contains "[G2] a list, schema or config entry is never that file" "$_wiring" "A list, schema or config entry is never this file"
+for _w in inert "negative control" reachability "ADR-" "dispatch table entry" "load-bearing" "CHECK THE TREE" "merge-base"; do
+    if grep -qiF -- "$_w" <<< "$_acc"; then
+        assert_fail "[G3] the acceptance section does not say '$_w'" "found in the rendered prompt"
+    else
+        assert_pass "[G3] the acceptance section does not say '$_w'"
+    fi
+done
+assert_contains "[G4] [change] is explained as fails-before, passes-after" "$_acc" "fail on the code as it is before your change"
+assert_contains "[G4] [guard] is explained as passes both before and after" "$_acc" "pass both before and after"
 
 cleanup_test_env
 print_test_results

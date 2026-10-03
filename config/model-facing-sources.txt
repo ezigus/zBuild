@@ -1,0 +1,29 @@
+# Files whose heredocs (or, for .md, whole text) are sent to a model — prompts
+# and the feedback a later stage reads. scripts/lib/lint-plain-prompts.sh reads
+# them for engine-internal words (#2269, ADR-067). Add a file when it starts
+# building model-facing text.
+plugins/agent/design/plugin.sh
+plugins/agent/plan/plugin.sh
+plugins/agent/test-author/plugin.sh
+plugins/agent/build/lib/prompt.sh
+plugins/agent/impact/plugin.sh
+plugins/agent/issue-acceptance/plugin.sh
+plugins/agent/spec-coverage/plugin.sh
+plugins/agent/spec-correspondence/plugin.sh
+plugins/agent/review-lens/plugin.sh
+plugins/agent/review-lens/lib/charters.sh
+plugins/agent/review-report/lib/lenses.sh
+plugins/agent/security-lens/plugin.sh
+plugins/agent/security-lens/prompts/security.md
+plugins/agent/spec-acceptance/plugin.sh
+plugins/tool/design-gate/plugin.sh
+plugins/tool/shape-floor/plugin.sh
+scripts/lib/acceptance-reachability.sh
+scripts/lib/acceptance-negctl.sh
+scripts/lib/stage-budget-note.sh printf
+scripts/lib/stage-checkpoint.sh printf
+scripts/lib/repo-rules.sh printf
+config/prompts/default-rules.md
+core/pipeline/input-resolve.sh printf
+core/router/route.sh
+plugins/agent/intake/prompts/intake.md

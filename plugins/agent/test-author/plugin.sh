@@ -197,6 +197,12 @@ test_author_run() {
         _cls="$(acceptance_spec_classifier "$design" "$sid" 2>/dev/null || true)"
         _tfs="$(acceptance_list_testfiles_for_spec "$design" "$sid" 2>/dev/null | tr '\n' ' ')"
         spec_block="${spec_block}- ${sid} [${_cls:-change}] ${_txt}"$'\n'
+        # #2269: what the tag demands of the test, in before-and-after words.
+        if [[ "${_cls:-change}" == guard ]]; then
+            spec_block="${spec_block}    its test must pass both before and after this change"$'\n'
+        else
+            spec_block="${spec_block}    its test must FAIL on the code as it was before this change, and pass after"$'\n'
+        fi
         spec_block="${spec_block}    tag: $(acceptance_spec_tag "$sid")"$'\n'
         spec_block="${spec_block}    testfile(s): ${_tfs}"$'\n'
         n=$(( n + 1 ))

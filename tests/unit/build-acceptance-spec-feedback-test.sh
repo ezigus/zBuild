@@ -83,7 +83,7 @@ tests/unit/build-acceptance-spec-feedback-test.sh
 DESIGN
 unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_FEEDBACK_DIR
 p="$(_drive_build)"
-if grep -qF "SPEC IDS YOU MUST COVER" <<< "$p"; then
+if grep -qF "REQUIREMENTS YOUR CODE MUST MEET" <<< "$p"; then
     assert_pass "L1a: prompt has the SPEC-id enumeration header"
 else
     assert_fail "L1a: prompt must enumerate SPEC ids" "(missing)"
@@ -108,7 +108,7 @@ tests/unit/build-acceptance-spec-feedback-test.sh
 ```
 DESIGN
 p="$(_drive_build)"
-grep -qF "SPEC IDS YOU MUST COVER" <<< "$p" \
+grep -qF "REQUIREMENTS YOUR CODE MUST MEET" <<< "$p" \
     && assert_fail "L1c: must NOT enumerate when there are no SPEC-n ids" "(present)" \
     || assert_pass "L1c: enumeration block self-omits on id-less acceptance block"
 

@@ -259,7 +259,7 @@ EXISTENCE VERIFICATION (mandatory — do not skip):
 Rules:
 - For each file in the DESIGN SCOPE BLOCK, identify symbols, constants,
   counts, stage IDs, or ORDERING/POSITION/SEQUENCE assertions (e.g. a test
-  asserting an array index like _TPL_STAGES[2], or "X comes before Y")
+  asserting "the third stage is X", or "X comes before Y")
   defined or changed there. A change that REORDERS stages invalidates every
   test that pins a stage by its position/index, even if the stage set is
   unchanged.
@@ -276,7 +276,7 @@ Rules:
   every file that pins a CHANGED symbol/count/order/path is already in the
   DESIGN SCOPE BLOCK, even if topically-related files remain unlisted.
 - If no gaps found, return verdict="complete" with missing=[].
-- missing[] is what the design agent reads on iter N+1 when you returned
+- missing[] is what the design reads in the next round when you returned
   incomplete. Make it actionable: name the missing files in files_to_add,
   say why in reason, and cite the specific symbol, assertion, or line that
   linked them in evidence. Do NOT write a markdown report — there is no
@@ -286,8 +286,8 @@ BUDGET DISCIPLINE (read this — you have a BOUNDED tool-call budget):
 - You have a LIMITED number of tool calls. Do NOT exhaust them grepping
   exhaustively — a partial-but-emitted verdict beats running out of turns
   and returning nothing.
-- Triage: target the HIGHEST-RISK gaps first (renamed/removed symbols, shape
-  counts, order assertions, goldens). A handful of focused greps, not a sweep.
+- Triage: target the HIGHEST-RISK gaps first (renamed/removed symbols, changed
+  counts, order assertions, expected-output snapshot files). A handful of focused greps, not a sweep.
 - STOP exploring and EMIT your JSON verdict well before your budget runs out.
   If unsure but out of budget, return verdict="incomplete" with the gaps you
   DID find — never keep searching past the point of being able to answer.

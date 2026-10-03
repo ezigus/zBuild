@@ -143,7 +143,7 @@ assert_eq "scenario-A: mock claude invoked twice (iter-1 timeout + iter-2 comple
 
 iter2_prompt_a="$(cat "$PROMPT_DIR_A/call-2.prompt" 2>/dev/null || true)"
 
-if [[ "$iter2_prompt_a" == *"prior iteration timed out"* ]]; then
+if [[ "$iter2_prompt_a" == *"previous round ran out of time"* ]]; then
     assert_pass "[SPEC-1] scenario-A: iter-2 prompt contains truncation banner after iter-1 rc=124"
 else
     assert_fail "[SPEC-1] scenario-A: iter-2 prompt contains truncation banner after iter-1 rc=124" \
@@ -152,7 +152,7 @@ fi
 
 # iter-1 must NOT have the banner (it is the first iteration)
 iter1_prompt_a="$(cat "$PROMPT_DIR_A/call-1.prompt" 2>/dev/null || true)"
-if [[ "$iter1_prompt_a" == *"prior iteration timed out"* ]]; then
+if [[ "$iter1_prompt_a" == *"previous round ran out of time"* ]]; then
     assert_fail "[SPEC-1] scenario-A: iter-1 prompt must NOT contain banner (it is the first)" \
         "prompt_head=$(printf '%s' "$iter1_prompt_a" | head -c 300)"
 else
@@ -231,7 +231,7 @@ call_count_c="$(wc -l < "$COUNTER_C" | tr -d ' ')"
 assert_eq "scenario-C: mock claude invoked three times (124 → 1 → complete)" "3" "$call_count_c"
 
 iter2_prompt_c="$(cat "$PROMPT_DIR_C/call-2.prompt" 2>/dev/null || true)"
-if [[ "$iter2_prompt_c" == *"prior iteration timed out"* ]]; then
+if [[ "$iter2_prompt_c" == *"previous round ran out of time"* ]]; then
     assert_pass "scenario-C: iter-2 carries the banner (its predecessor DID time out)"
 else
     assert_fail "scenario-C: iter-2 carries the banner (its predecessor DID time out)" \
@@ -239,7 +239,7 @@ else
 fi
 
 iter3_prompt_c="$(cat "$PROMPT_DIR_C/call-3.prompt" 2>/dev/null || true)"
-if [[ "$iter3_prompt_c" == *"prior iteration timed out"* ]]; then
+if [[ "$iter3_prompt_c" == *"previous round ran out of time"* ]]; then
     assert_fail "scenario-C: iter-3 must NOT carry the banner (its predecessor failed rc=1, not rc=124)" \
         "prompt_head=$(printf '%s' "$iter3_prompt_c" | head -c 300)"
 else

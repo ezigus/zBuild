@@ -1712,7 +1712,7 @@ route_to_model_loop() {
         local iter_prompt _timeout_warn=""
         if [[ "$prev_iter_timed_out" == "true" ]] && (( iter >= 2 )); then
             _timeout_warn="
-> **WARNING — prior iteration timed out (rc=124):** The model's previous response
+> **WARNING — the previous round ran out of time:** The model's previous response
 > was cut off. LOOP_COMPLETE was NOT received. Re-verify the implementation
 > before emitting LOOP_COMPLETE.
 "
@@ -1760,7 +1760,7 @@ ${prev_diff}"
 Commits:
 ${_commits:-  (none)}
 
-Diff vs intake baseline:
+Changes since this run started:
 ${_stat:-  (no changes)}"
         fi
 

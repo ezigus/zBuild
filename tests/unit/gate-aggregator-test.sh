@@ -377,6 +377,37 @@ assert_eq "TC-21: no conflict event — neither word is a member" \
 
 unset -f eb_emit_event
 
+# ── TC-22 (#2269, ADR-067): the summary never forwards a raw fault word ─────
+# The summary's "what has to change" line is model-facing. A fault word with no
+# plain phrase (one added to the vocabulary later) must not reach a model as
+# the bare code; the result JSON keeps the word for code that reads it.
+_saved_set="$_ZBUILD_FAULT_SET"
+_ZBUILD_FAULT_SET="$_saved_set contract_drift"
+SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
+write_all "$AD" "pass"
+printf '{"verdict":"fail","fault":"contract_drift","reason":"x"}\n' > "$AD/acceptance-gate-result.json"
+OUT="$(run_agg "$SF")"
+_ZBUILD_FAULT_SET="$_saved_set"
+assert_json_key "TC-22: fixture — the new word is selected" "$OUT" '.fault' "contract_drift"
+_sum="$(cat "$AD/gate-aggregator-summary.md" 2>/dev/null)"
+assert_contains "TC-22: the summary has its what-has-to-change line" "$_sum" "what has to change:"
+if grep -qF "contract_drift" <<< "$_sum"; then
+    assert_fail "TC-22: the summary does not forward the raw fault word" "found in gate-aggregator-summary.md"
+else
+    assert_pass "TC-22: the summary does not forward the raw fault word"
+fi
+for _fw in specification scope implementation; do
+    SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
+    write_all "$AD" "pass"
+    printf '{"verdict":"fail","fault":"%s","reason":"x"}\n' "$_fw" > "$AD/acceptance-gate-result.json"
+    run_agg "$SF" >/dev/null
+    if grep -qE "what has to change: ${_fw}\$" "$AD/gate-aggregator-summary.md" 2>/dev/null; then
+        assert_fail "TC-22: fault '$_fw' is said as a phrase, not the bare word" "bare word"
+    else
+        assert_pass "TC-22: fault '$_fw' is said as a phrase, not the bare word"
+    fi
+done
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

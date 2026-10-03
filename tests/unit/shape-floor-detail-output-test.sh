@@ -168,7 +168,8 @@ _run_with "bash: line 3: syntax error near unexpected token"
 assert_eq "[SPEC-7] unparseable output → verdict=fail" "fail" "$(_verdict_of)"
 assert_eq "[SPEC-7] …with reason=unparseable_output" "unparseable_output" \
     "$(jq -r '.reason // ""' "$RESULT" 2>/dev/null || true)"
-assert_contains "[SPEC-7] the summary says so" "$(cat "$DETAIL" 2>/dev/null)" "unparseable_output"
+# #2269: the summary says it in plain words; the token stays in the result JSON (above).
+assert_contains "[SPEC-7] the summary says so" "$(cat "$DETAIL" 2>/dev/null)" "could not read its own result"
 _run_with ""
 assert_eq "[SPEC-7] empty output → verdict=fail" "fail" "$(_verdict_of)"
 _run_with "SHAPE_FLOOR SKIP no_shape_change"
@@ -191,12 +192,12 @@ _d8="$(cat "$DETAIL" 2>/dev/null || true)"
 assert_contains "[SPEC-8] the detail names the golden file" \
     "$_d8" "tests/golden/event-sequence.golden"
 assert_contains "[SPEC-8] …and the order test" "$_d8" "tests/unit/pins-order-test.sh"
-assert_contains "[SPEC-8] …and still carries the reason token" "$_d8" "missing_floor_files"
+assert_contains "[SPEC-8] …and still states the reason, in plain words (#2269)" "$_d8" "were not updated"
 # A fail with NO resolvable list must not invent one, and must still say why.
 unset -f _sf_collect_missing_floor_files
 _run_with "SHAPE_FLOOR FAIL missing_floor_files"
 assert_contains "[SPEC-8] an unresolvable list still states the reason" \
-    "$(cat "$DETAIL" 2>/dev/null)" "missing_floor_files"
+    "$(cat "$DETAIL" 2>/dev/null)" "were not updated"
 # A passing verdict names nothing.
 _sf_collect_missing_floor_files() { printf 'tests/golden/event-sequence.golden\n'; }
 _run_with "SHAPE_FLOOR PASS"

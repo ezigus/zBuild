@@ -86,7 +86,7 @@ repo_rules_prompt_block() {
     printf '%s\n' "$source_line"
     if _repo_rules_stage_writes "$manifest"; then
         printf 'Every file you write must follow them, and must pass the repository'\''s\n'
-        printf 'own lint and guard tests.\n\n'
+        printf 'own lint checks and tests.\n\n'
     else
         # A stage that does not write the repository reviews against them.
         printf 'You do not write files; judge against them:\n'

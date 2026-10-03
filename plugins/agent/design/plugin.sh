@@ -452,74 +452,67 @@ path/to/file1
 path/to/file2
 \`\`\`
 
-3. A \`\`\`acceptance fenced block listing behavioral claims with STABLE NUMERIC
-   IDS and CLASSIFICATION TAGS, and test file paths (TESTFILES: section). Each
-   SPEC line carries a permanent id, a type tag, and describes ONE observable,
-   testable behavior change this implementation must satisfy.
+3. A \`\`\`acceptance block listing the behaviour this change must deliver. Each
+   line is one requirement: a permanent number (SPEC-1, SPEC-2, …), a tag, and
+   ONE behaviour someone could observe and test.
 
-   CLASSIFICATION (required on every SPEC-n line):
-   - \`SPEC-n[change]:\` — a NEW behavior that did not exist before; the tagged
-     test MUST FAIL at the merge-base baseline and PASS after this change.
-     CHECK THE TREE before tagging: if the behavior already exists at the merge-base
-     (the code, manifest or output is already there), it is NOT a change — tag it
-     [guard]. A [change] that is already true cannot be tested honestly and stalls
-     the whole build cycle.
-   - \`SPEC-n[guard]:\` — an INVARIANT that must not regress; do NOT contort it
-     to fail at baseline. The acceptance-gate skips the negative control for
-     guards.
-   Unclassified \`SPEC-n:\` lines are accepted for backward compatibility but
-   new designs should always classify.
+   The tag answers one question about the requirement's test, run against the
+   code as it is before your change:
+   - \`SPEC-n[change]:\` — the test must
+     fail on the code as it is before your change, and pass after it.
+     Look at the code first:
+     if the behaviour is already there today (the code, manifest or output
+     already exists), it is not a change — tag it [guard]. A [change] whose test already passes can
+     never be tested honestly, and the build stalls on it.
+   - \`SPEC-n[guard]:\` — something that must keep working: its test should
+     pass both before and after your change. Do not force it to fail before.
+   Every requirement line carries one of the two tags.
 
-   TAGGING RULE (ADR-036, enforced mechanically by the acceptance-gate stage):
-   each TESTFILE must contain at least one assertion whose LABEL includes the
-   SPEC's tag, which carries this issue's number — for SPEC-1 of this issue:
+   Test labels: each test file under TESTFILES holds at least one assertion
+   whose label carries the requirement's tag, which includes this issue's
+   number — for SPEC-1 of this issue:
    $(acceptance_spec_tag SPEC-1 2>/dev/null || printf '[SPEC-1]'). A shared test
-   may already hold other issues' tags; they are not yours to change.
-   The gate fails the build if any SPEC has no assertion carrying its tag, AND
-   it runs each [change]-tagged assertion against the merge-base baseline —
-   the assertion MUST FAIL there. Write ONE SPEC per assertion so the negative
-   control can isolate each behavior.
+   may already hold other issues' tags; leave them alone. Each [change]
+   assertion is also run against the code from before your change and must
+   fail there, so write ONE requirement per assertion — then each behaviour is
+   checked on its own.
 
 The \`\`\`acceptance block format:
 \`\`\`acceptance
 SPEC-1[change]: <one new behavior this change introduces>
 SPEC-2[guard]: <an invariant this change must not break>
-WIRING: <repo-relative-path-to-wiring-file>
+WIRING: <the existing file that calls the new code>
 TESTFILES:
 SPEC-1: tests/unit/some-test.sh
 SPEC-2: tests/integration/other-test.sh
 \`\`\`
 
-Per-SPEC TESTFILES binding (preferred for new designs):
-- Prefix each testfile path with \`SPEC-n: \` to bind it exclusively to that SPEC.
-  Example: \`SPEC-1: tests/unit/foo-test.sh\`
-- Multiple paths for one SPEC: \`SPEC-1: tests/unit/a-test.sh tests/unit/b-test.sh\`
-- Plain (unqualified) paths remain valid as a global fallback for backward
-  compatibility, but new designs SHOULD author one \`SPEC-n: path\` line per
-  \`[change]\` SPEC. This lets the gate prove each SPEC is tested by its own
-  dedicated file, not a sibling's passing control.
+Bind each test file to its requirement:
+- Prefix the path with \`SPEC-n: \`, e.g. \`SPEC-1: tests/unit/foo-test.sh\`.
+- Several paths for one requirement: \`SPEC-1: tests/unit/a-test.sh tests/unit/b-test.sh\`
+- Write one \`SPEC-n: path\` line per [change] requirement, so each requirement
+  is proven by its own test file. A path with no \`SPEC-n:\` prefix applies to
+  every requirement.
 
-WIRING field (ADR-036 Level-3, mandatory for behavioral-change issues):
-- Declare the SEPARABLE wiring file that connects the new behavior to the
-  live production call-path (e.g. the plugin registration file, the source
-  directive, the dispatch table entry). This is NOT the implementation file
-  itself — it is the file whose presence/modification routes the live path
-  to the new implementation.
-- One repo-relative path per line (multi-line WIRING: section is allowed):
+WIRING: Which existing file calls the new code?
+- Name the file in your scope whose code calls (or loads) the new behaviour:
+  the place a running program reaches it from. It is not the file that
+  implements the behaviour. If that file were put back to how it is today, at
+  least one of your test files would fail.
+- A list, schema or config entry is never this file: adding a name to an event
+  list, a schema or a config list changes no behaviour on its own. A list entry
+  your change needs belongs in the scope block.
+- One path per line; several lines are allowed:
     WIRING:
-    plugins/agent/acceptance-gate/plugin.sh
+    plugins/agent/build/plugin.sh
     core/pipeline/runner.sh
-- A registry or data file is not WIRING: adding a name to an event list, a
-  schema or a config list changes no behaviour, so reverting it flips no test
-  and the gate rejects it as inert. Name the file whose CODE calls the new
-  behaviour; a registry entry the change needs belongs in the scope block.
-- For pure-utility changes (helpers with no live dispatch path), declare
-  \`WIRING: none\` to explicitly exempt the reachability check.
-- The acceptance-gate will revert the declared WIRING file to the merge-base
-  (keeping all other implementation changes at HEAD) and require ≥1 TESTFILE
-  to flip pass→fail — proving the wiring is load-bearing, not inert.
+- If nothing calls the new code yet (a helper used later), write
+  \`WIRING: none\`.
+- After the build, the file you name is put back to its old version (everything
+  else kept), and at least one test must then fail. That is how the pipeline
+  checks you named the right file.
 
-Existing checks this change makes wrong (#2243): when the change alters a
+Existing checks this change makes wrong: when the change alters a
 behaviour an EXISTING assertion pins (one that is not a SPEC of this contract),
 list it in a \`\`\`supersedes block — one line per check, the testfile path,
 the assertion's tag, and why it is now wrong:
@@ -601,7 +594,8 @@ DESIGN_PROMPT
     # is not something a gate should be authoring prose about.
     if [[ "$(jq -r '.stage_verdicts["acceptance-gate"] // empty' \
             "$(dirname "$artifact_dir")/pipeline-state.json" 2>/dev/null || true)" == "fail" ]]; then
-        printf '\nIf the STAGE SUMMARIES name a tautological [change] SPEC — one that passes at the merge-base baseline, so it asserts nothing — either RE-AUTHOR that SPEC so it describes behavior that is genuinely NEW (fails at baseline, passes at HEAD), or, when the behavior already exists at the merge-base, re-tag it [guard]: there is nothing to change and no assertion can be made to fail there. Build is forbidden to touch acceptance assertions (ADR-036), so only this stage can. Preserve all other scope and acceptance entries.\n' \
+        # #2269: plain words; no other stage named (ADR-061), no ADR number.
+        printf '\nIf the STAGE SUMMARIES say a [change] requirement'"'"'s test already passes on the code from before this change, rewrite that requirement so it describes behaviour that is new (its test fails on the old code and passes after) — or, if the behaviour already exists, tag it [guard]: there is nothing to change, so no test can be made to fail on the old code. The tests cannot be changed later in this run, so this is where it is fixed. Keep every other scope and acceptance entry.\n' \
             >> "$prompt_input_file"
     fi
 

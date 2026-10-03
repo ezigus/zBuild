@@ -83,8 +83,8 @@ assert_contains "[#2109] iter=1: the event names the WIRING target" \
 assert_eq "[#2109] iter=1: recoverable — build gets its honest retry" "recoverable" \
     "$(jq -r '.severity // empty' <<<"$RESULT")"
 assert_eq "[#2109] iter=1: no fault" "" "$(jq -r '.fault // empty' <<<"$RESULT")"
-assert_contains "[#2109] iter=1: the reason says not passing at HEAD, not inert" \
-    "$(jq -r '.reason // empty' <<<"$RESULT")" "not passing at HEAD"
+assert_contains "[#2109] iter=1: the reason says the test does not pass on the new code, not inert" \
+    "$(jq -r '.reason // empty' <<<"$RESULT")" "does not pass on the new code"
 
 # ── iter 2: the #2097 escalation applies to the same class ───────────────────
 export ZBUILD_CYCLE_ITER=2

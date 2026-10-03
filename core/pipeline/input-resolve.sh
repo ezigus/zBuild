@@ -867,9 +867,11 @@ stage_summaries_prompt_block() {
                 else
                     case "$fault" in
                         specification|scope)
-                            chunk="$(printf '### %s (verdict: %s) — context only: a %s fault; the engine routes this, it is not yours to fix\n%s\n' "$stage" "$verdict" "$fault" "$body")" ;;
+                            # #2269: say what has to change, not the fault class's name.
+                            local _what="the design"; [[ "$fault" == scope ]] && _what="the scope"
+                            chunk="$(printf '### %s (verdict: %s) — context only: %s has to change for this; another step does that, it is not yours to fix\n%s\n' "$stage" "$verdict" "$_what" "$body")" ;;
                         *)  if _summaries_reader_can_fix; then
-                                chunk="$(printf '### %s (verdict: %s) — RESOLVE these findings before completing\n%s\n' "$stage" "$verdict" "$body")"
+                                chunk="$(printf '### %s (verdict: %s) — fix these findings before you finish\n%s\n' "$stage" "$verdict" "$body")"
                             else
                                 # A stage that may not change the repository
                                 # cannot resolve anything — telling it to made a
@@ -924,8 +926,8 @@ stage_summaries_prompt_block() {
     # design judges found.
     if _summaries_reader_can_fix || (( _owned > 0 )); then
         printf 'A stage\n'
-        printf 'marked RESOLVE blocks convergence — address its findings before you\n'
-        printf 'finish. The rest is context.\n\n'
+        printf 'marked "fix these findings" keeps the pipeline from moving on — fix them\n'
+        printf 'before you finish. The rest is context.\n\n'
     else
         # A reader that may not change the repository is told what it is for,
         # not what to fix (#1845 run 36332698182).
