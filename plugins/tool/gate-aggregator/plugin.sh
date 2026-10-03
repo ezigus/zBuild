@@ -302,10 +302,21 @@ gate_aggregator_run() {
     [[ ${#failed[@]} -gt 0 ]] && _ga_failed_list="$(printf '%s, ' "${failed[@]}")" && _ga_failed_list="${_ga_failed_list%, }"
     stage_summary_write "$artifacts_dir/gate-aggregator-summary.md" "gate-aggregator" "$verdict" \
         "rolled up ${#gate_pairs[@]} gate(s) into verdict $verdict" \
-        "$(printf -- '- failed: %s\n- what has to change: %s' "$_ga_failed_list" "$(case "${_ga_fault:-}" in specification) echo "the design";; scope) echo "the scope";; implementation) echo "the code";; "") echo "not stated";; *) echo "$_ga_fault";; esac)")"
+        "$(printf -- '- failed: %s\n- what has to change: %s' "$_ga_failed_list" "$(_ga_fault_plain "${_ga_fault:-}")")"
 
     _ga_emit "plugin.result" "plugin=gate-aggregator" "verdict=$verdict"
     return 0
+}
+
+# The summary is model-facing (ADR-067): a fault word with no phrase here is
+# never forwarded bare — the result JSON keeps the word for code that reads it.
+_ga_fault_plain() {
+    case "$1" in
+        specification)  echo "the design" ;;
+        scope)          echo "the scope" ;;
+        implementation) echo "the code" ;;
+        *)              echo "not stated" ;;
+    esac
 }
 
 # ─── gate_aggregator_cleanup ──────────────────────────────────────────────────

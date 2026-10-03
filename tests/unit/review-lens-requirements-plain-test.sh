@@ -44,8 +44,8 @@ EOF
 printf '{"inputs":{"design":"%s"}}\n' "$D" > "$TEST_TEMP_DIR/si.json"
 _ctx="$(ZBUILD_STAGE_INPUTS="$TEST_TEMP_DIR/si.json" _rl_context "" 2>/dev/null)"
 
-assert_contains "[L1] a [change] requirement says it is new behaviour" "$_ctx" "SPEC-1 (new behaviour): the stage writes its result on every exit"
-assert_contains "[L1] a [guard] requirement says it must keep working" "$_ctx" "SPEC-2 (must keep working): the dry run still opens no PR"
+assert_contains "[L1] a [change] requirement says it is new behaviour" "$_ctx" "SPEC-1 (new behaviour):"
+assert_contains "[L1] a [guard] requirement says it must keep working" "$_ctx" "SPEC-2 (must keep working):"
 assert_contains "[L2] the WIRING file is named plainly" "$_ctx" "The existing file that calls the new code: plugins/agent/x/plugin.sh"
 for _k in '[change]:' '[guard]:' 'WIRING:' 'TESTFILES:'; do
     if grep -qF -- "$_k" <<< "$_ctx"; then

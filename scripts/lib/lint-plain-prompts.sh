@@ -83,6 +83,8 @@ while IFS= read -r entry || [[ -n "$entry" ]]; do
             if [[ "$line" == *'\' ]]; then cont=1; else cont=0; fi
             continue
         fi
+        # A comment line ends a `\` continuation: what follows is code again.
+        [[ "$trimmed" == \#* ]] && cont=0
         if [[ -n "$term" ]]; then
             local_line="${line#"${line%%[!$'\t']*}"}"   # <<- strips leading tabs
             if [[ "$line" == "$term" || "$local_line" == "$term" ]]; then term=""; continue; fi

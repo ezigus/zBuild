@@ -21,6 +21,8 @@
 # P6 [change] the real tree passes
 # P7 [change] a variable NAME is not prompt text — only its value reaches a
 #             model (`$inert`, `${_TPL_STAGES[@]}` in a printf line)
+# P8 [change] a comment ends a `\` continuation: the line after it is code, not
+#             the summary call's text
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -69,6 +71,13 @@ printf '%s\n' '[[ -n "$inert" ]] && clauses+=("$(_ids "$inert") was put back")' 
 printf '%s\n' 'printf "%s\n" "${_TPL_STAGES[@]}"' > "$R/plugins/x/f.sh"
 printf '%s\n' 'plugins/x/e.sh' 'plugins/x/f.sh printf' > "$R/config/model-facing-sources.txt"; _lint
 assert_eq "[P7] variable names are not prompt text" "0" "$rc"
+
+# shellcheck disable=SC2016,SC1003  # literal fixture text
+printf '%s\n' 'stage_summary_write "$f" x pass "the check ran" \' '# NEGCTL: why the next line exists' \
+    'mode=NEGCTL' > "$R/plugins/x/g.sh"
+_src plugins/x/g.sh; _lint
+assert_eq "[P8] a comment ends a continuation; the next line is code" "0" "$rc"
+[[ $rc -eq 0 ]] || printf '%s\n' "$out"
 
 bash "$LINT" "$REPO_ROOT" > "$TEST_TEMP_DIR/real.out" 2>&1; rc=$?
 assert_eq "[P6] the real tree passes" "0" "$rc"

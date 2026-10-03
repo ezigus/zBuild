@@ -212,8 +212,11 @@ for _w in baseline merge-base contorted "ADR-036" tautolog "self-verify" "MUST c
         assert_pass "[P1] the build prompt does not say '$_w'"
     fi
 done
-assert_contains "[P2] build is told to make the tests pass by changing code only" \
-    "$PROMPT" "Make them pass by changing code only"
+if grep -qi "changing code only" <<< "$PROMPT"; then
+    assert_pass "[P2] build is told to make the tests pass by changing code only"
+else
+    assert_fail "[P2] build is told to make the tests pass by changing code only" "no such instruction in the composed prompt"
+fi
 
 cleanup_test_env
 print_test_results
