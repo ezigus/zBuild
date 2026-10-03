@@ -119,6 +119,8 @@
     "state.recover",
     "artifact.snapshot.saved",
     "artifact.snapshot.failed",
+    "pipeline.head.reattached",
+    "pipeline.head.diverged",
     "artifact.restore.applied",
     "artifact.restore.failed",
     "state.corruption.unrecoverable",

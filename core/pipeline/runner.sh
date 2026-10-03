@@ -101,6 +101,9 @@ source "$_ZBUILD_ROOT/core/state/artifact-persist.sh"
 # the runner — not any plugin — acquires it before the first stage dispatches.
 # shellcheck source=../../scripts/lib/worktree.sh
 source "$_ZBUILD_ROOT/scripts/lib/worktree.sh"
+# #2264: a stage can leave HEAD off the run branch; every stage end puts it back.
+# shellcheck source=../../scripts/lib/run-branch.sh
+source "$_ZBUILD_ROOT/scripts/lib/run-branch.sh"
 
 _usage() {
     # Usage shown on error or --help. Unix convention: stderr (#619).
@@ -245,6 +248,34 @@ _runner_push_work_branch() {
     return 0
 }
 
+# ─── _runner_keep_head_on_branch <state_dir> <stage> (#2264) ─────────────────
+# A model call can leave HEAD off the run branch; every later commit then lands
+# on HEAD alone while the branch ref — which pr-open checks out and the post-run
+# step pushes — falls behind. #1844 run 37066147994 lost its work that way. At
+# every stage end, put HEAD back on the branch when that drops nothing, and say
+# which stage left it off; when the two diverged, move nothing and say so.
+_runner_keep_head_on_branch() {
+    local _sd="${1:-}" _stage="${2:-unknown}" _branch=""
+    [[ -f "$_sd/intake-branch.txt" ]] && read -r _branch 2>/dev/null < "$_sd/intake-branch.txt"
+    _branch="${_branch//[[:space:]]/}"
+    [[ -n "$_branch" ]] || return 0
+    local _repo="${ZBUILD_REPO_ROOT:-}"
+    [[ -n "$_repo" ]] || _repo="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    [[ -n "$_repo" ]] || return 0
+    zbuild_keep_head_on_branch "$_repo" "$_branch"
+    case "$ZBUILD_HEAD_OUTCOME" in
+        reattached)
+            eb_emit_event "pipeline.head.reattached" "stage=$_stage" "branch=$_branch" \
+                "was=$ZBUILD_HEAD_WAS" 2>/dev/null || true
+            warn "stage '$_stage' left HEAD off the run branch ($ZBUILD_HEAD_WAS) — moved '$_branch' to HEAD" ;;
+        diverged)
+            eb_emit_event "pipeline.head.diverged" "stage=$_stage" "branch=$_branch" \
+                "was=$ZBUILD_HEAD_WAS" 2>/dev/null || true
+            warn "stage '$_stage' left HEAD off the run branch and the two diverged — '$_branch' not moved" ;;
+    esac
+    return 0
+}
+
 # ─── _runner_snapshot_artifacts <state_dir> <stage> (ADR-050, #1581/#1878) ───
 # Snapshot the artifact area onto the state branch at a stage boundary, so a
 # completed stage's work survives a mid-run crash/rate-limit and is available to
@@ -270,6 +301,8 @@ _runner_snapshot_artifacts() {
     local _snap_state_dir="${1:-}" _snap_stage="${2:-unknown}"
     [[ -n "$_snap_state_dir" ]] || _snap_state_dir="${ZBUILD_STATE_DIR:-}"
     [[ -n "$_snap_state_dir" ]] || return 0
+    # Before the identity guard: a --goal or local run needs its branch kept too.
+    _runner_keep_head_on_branch "$_snap_state_dir" "$_snap_stage"
     # #1931: identity, not issue number. `issue > 0` excluded every --goal run
     # from the durable store, so nothing was ever snapshotted for one and the
     # push had nothing to send.

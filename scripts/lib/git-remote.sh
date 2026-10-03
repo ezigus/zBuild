@@ -135,3 +135,39 @@ zbuild_push_reconcile() {
     _grm_push --force-with-lease="${branch}:${remote_sha}" origin "$branch" && return 0
     return 3
 }
+
+# zbuild_push_branch_no_rewind <branch> — push refs/heads/<branch> to origin,
+# replacing whatever is there, EXCEPT when origin is ahead of it (#2264).
+#
+# The post-run step force-pushes the run branch so a re-run that started over
+# replaces the old attempt (a diverged branch is the normal re-run shape). But a
+# local ref that origin is AHEAD of is not a newer attempt — it is a stale ref,
+# and the stage-end pushes already put the newer commits on origin. #1844 run
+# 37066147994 force-pushed exactly that and rewound the run's work off the
+# branch. Refuse it; the caller reports. rc 0 pushed or nothing to do, 1 refused
+# (stale), 3 push or lookup failed. Reason in ZBUILD_PUSH_RECONCILE_ERR.
+zbuild_push_branch_no_rewind() {
+    local branch="${1:-}"
+    ZBUILD_PUSH_RECONCILE_ERR=""
+    [[ -n "$branch" ]] || { ZBUILD_PUSH_RECONCILE_ERR="empty branch"; return 3; }
+    local local_sha; local_sha="$(git rev-parse -q --verify "refs/heads/$branch^{commit}" 2>/dev/null)" \
+        || { ZBUILD_PUSH_RECONCILE_ERR="no local branch '$branch'"; return 3; }
+    local remote_ls; remote_ls="$(git ls-remote --heads origin "refs/heads/$branch" 2>&1)" \
+        || { ZBUILD_PUSH_RECONCILE_ERR="ls-remote failed: $remote_ls"; return 3; }
+    local remote_sha="${remote_ls%%[[:space:]]*}"
+    if [[ -n "$remote_sha" && "$remote_sha" != "$local_sha" ]]; then
+        git fetch -q origin "refs/heads/$branch" >/dev/null 2>&1 || true
+        # Never push blind: a tip we cannot see might be ahead of us.
+        if ! git cat-file -e "${remote_sha}^{commit}" 2>/dev/null; then
+            ZBUILD_PUSH_RECONCILE_ERR="cannot resolve origin tip ${remote_sha:0:8} (fetch failed) — not pushing over it"
+            return 3
+        fi
+        if git merge-base --is-ancestor "$local_sha" "$remote_sha" 2>/dev/null; then
+            ZBUILD_PUSH_RECONCILE_ERR="origin/$branch (${remote_sha:0:8}) is ahead of the local ref (${local_sha:0:8}) — refusing to rewind it"
+            return 1
+        fi
+    fi
+    [[ "$remote_sha" == "$local_sha" ]] && return 0
+    _grm_push --force origin "refs/heads/$branch:refs/heads/$branch" && return 0
+    return 3
+}

@@ -22,6 +22,8 @@ _MERGE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 source "$_MERGE_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=../../../scripts/lib/git-remote.sh
 source "$_MERGE_ROOT/scripts/lib/git-remote.sh"
+# shellcheck source=../../../scripts/lib/run-branch.sh
+source "$_MERGE_ROOT/scripts/lib/run-branch.sh"
 
 # ─── merge_run ───────────────────────────────────────────────────────────────
 # Entry point invoked by pr-delivery when _TPL_MERGE_POLICY == auto.
@@ -142,6 +144,31 @@ _merge_run_inner() {
         target_branch="zbuild/issue-${issue_num}"
     fi
 
+    # #2264: a detached HEAD is the run's newest work — move the branch to it
+    # rather than switch the tree back to a ref that may be behind (pr-open has
+    # the same guard). Diverged: refuse rather than drop one side.
+    if [[ "$current_branch" == "HEAD" ]]; then
+        if zbuild_keep_head_on_branch "$PWD" "$target_branch"; then
+            current_branch="$target_branch"
+        elif [[ "$ZBUILD_HEAD_OUTCOME" == "diverged" ]]; then
+            error "merge_run: HEAD and '${target_branch}' diverged — refusing to pick one and drop the other"
+            emit_event "plugin.result" "verdict=error" "plugin=merge" \
+                "reason=head_diverged_from_branch" "branch=${target_branch}"
+            jq -n --arg branch "$target_branch" \
+                '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("HEAD and the run branch diverged: "+$branch)}' \
+                > "$merge_result_out"
+            return 1
+        else
+            error "merge_run: could not check whether HEAD is on '${target_branch}' (git error) — refusing"
+            emit_event "plugin.result" "verdict=error" "plugin=merge" \
+                "reason=head_check_failed" "branch=${target_branch}"
+            jq -n --arg branch "$target_branch" \
+                '{"result_contract":2,"verdict":"error","disposition":"broken","reason":("could not check whether HEAD is on the run branch: "+$branch)}' \
+                > "$merge_result_out"
+            return 1
+        fi
+    fi
+
     # Checkout and push target branch (same plumbing as pr-open)
     if [[ "$current_branch" != "$target_branch" ]]; then
         git checkout -b "$target_branch" 2>/dev/null || git checkout "$target_branch" 2>/dev/null || {
@@ -181,6 +208,7 @@ _merge_run_inner() {
     fi
     local gh_output
     if ! gh_output="$(gh pr create \
+        --head "$target_branch" \
         --title "$pr_title" \
         --body "$pr_body" 2>&1)"; then
         error "merge_run: gh pr create failed: $gh_output"
