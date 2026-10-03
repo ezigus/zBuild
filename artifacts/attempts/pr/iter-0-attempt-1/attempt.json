@@ -1,0 +1,14 @@
+{
+  "stage": "pr",
+  "cycle_iter": 0,
+  "attempt": 1,
+  "rc": "1",
+  "generated_at": "2026-10-03T00:46:00Z",
+  "files": 2,
+  "outputs": {
+    "pr-url.txt": "absent",
+    "pr-result.json": "changed",
+    "pr-delivery-summary.md": "changed"
+  },
+  "progress": true
+}
