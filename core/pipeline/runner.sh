@@ -2808,7 +2808,7 @@ main() {
             # 37066147994's pr stage).
             local _cd_had_e=0; case $- in *e*) _cd_had_e=1 ;; esac
             set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?
-            (( _cd_had_e )) && set -e
+            [[ $_cd_had_e -eq 1 ]] && set -e
             _cd_manifest="$_cd_plugin_dir/manifest.yaml"
             # #1823: read the RAW wait status once, here. The observation is the one
             # fact worth keeping across the narrowing — it separates a stage that was
@@ -2993,7 +2993,7 @@ main() {
         # #2265: restore the caller's errexit (see cycle_dispatch_stage).
         local _pd_had_e=0; case $- in *e*) _pd_had_e=1 ;; esac
         set +e; plugin_hook_call "$_pd_plugin_dir" run "$_pd_stage" "$_pd_state"; _pd_rc=$?
-        (( _pd_had_e )) && set -e
+        [[ $_pd_had_e -eq 1 ]] && set -e
         local _pd_manifest="$_pd_plugin_dir/manifest.yaml"
         # CLASSIFIED verdict (pass|warn|fail|…) — authoritative for the
         # .stage_verdicts contract + indicator glyph, recorded by the parent.

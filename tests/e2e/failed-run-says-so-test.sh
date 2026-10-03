@@ -63,7 +63,7 @@ assert_eq "[E2] pipeline.end records status=failed" "failed" \
     "$(jq -r 'select(.type=="pipeline.end") | .data.status' "$EVENTS" 2>/dev/null | tail -n1)"
 # shellcheck source=../../scripts/lib/run-status-render.sh
 source "$REPO_ROOT/scripts/lib/run-status-render.sh"
-_body="$(rsc_render_body "$EVENTS" "$TEST_TEMP_DIR" 2>/dev/null | head -n3)"   # sigpipe-ok: rendered body is captured in full by $( ) before head reads it
+_body="$(rsc_render_body "$EVENTS" "$TEST_TEMP_DIR" 2>/dev/null)"
 assert_contains "[E3] the run-status comment says failed" "$_body" "**failed**"
 assert_eq "[E4] the run exits non-zero" "1" "$([[ $_run_rc -ne 0 ]] && echo 1 || echo 0)"
 assert_eq "[E5] the state file keeps ADR-006's resumable status" "interrupted" "$(jq -r '.status // "none"' "$STATE" 2>/dev/null)"
