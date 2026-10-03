@@ -8,7 +8,8 @@
 #
 # This lint makes the rule mechanical. A live ADR (not Superseded / Deprecated /
 # Withdrawn / Rejected) carries an `## Enforced by` section naming the tests that
-# enforce its statements, and every test or lint path named there must exist.
+# enforce its statements, and every repo path named there (tests/, scripts/,
+# core/, plugins/, config/, .github/) must exist.
 #
 # The ADRs written before this rule are listed in config/adr-enforcement-baseline.txt.
 # The baseline only shrinks: an entry whose ADR now has its section, or whose ADR
@@ -73,7 +74,7 @@ for f in "$ADR_DIR"/ADR-*.md; do
     fi
     # Every backticked repo path in the section must exist.
     rest="$section"; named=0
-    while [[ "$rest" =~ \`((tests|scripts|core|plugins)/[^\`[:space:]]+)\` ]]; do
+    while [[ "$rest" =~ \`((tests|scripts|core|plugins|config|\.github)/[^\`[:space:]]+)\` ]]; do
         p="${BASH_REMATCH[1]}"; rest="${rest#*"\`$p\`"}"
         named=$((named + 1))
         p="${p%%:*}"   # allow file:line

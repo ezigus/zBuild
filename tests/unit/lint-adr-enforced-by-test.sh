@@ -21,6 +21,8 @@
 #             after the form, so no red step is claimed)
 # A9 [guard]  an `## Enforced by` section that names no test fails (review on #2281)
 # A10 [guard] a superseded ADR still listed in the baseline fails (review on #2281)
+# A11 [change] a missing `.github/` or `config/` file named in the section fails
+#             too (review on #2281: those were silently skipped)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -84,6 +86,10 @@ assert_eq "[A8] the issue form requires the ADR § field" "yes" "$_a8"
 _reset; _adr ADR-908-x "Accepted" 'Covered by the unit tests, see the suite.'; _lint
 assert_eq "[A9] a section that names no test fails" "1" "$rc"
 assert_contains "[A9] it says the section names no test" "$out" "names no test"
+
+_reset; _adr ADR-910-x "Accepted" '- §1 → `tests/unit/real-test.sh`, `.github/ISSUE_TEMPLATE/gone.yml`'; _lint
+assert_eq "[A11] a missing .github file named in the section fails" "1" "$rc"
+assert_contains "[A11] it names the missing file" "$out" ".github/ISSUE_TEMPLATE/gone.yml"
 
 _reset; _adr ADR-909-x "Superseded by ADR-903"; printf 'ADR-909-x.md\n' > "$R/config/adr-enforcement-baseline.txt"; _lint
 assert_eq "[A10] a superseded ADR left in the baseline fails" "1" "$rc"
