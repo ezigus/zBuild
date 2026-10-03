@@ -32,11 +32,13 @@ source "$_PR_ROOT/core/event-bus/event-bus.sh"
 # ─── v2 result helpers ───────────────────────────────────────────────────────
 _PR_DELIVERY_ARTIFACTS_DIR=""
 
+# Convention matches other write-result helpers (security-lens, intake, etc.):
+# first arg is the artifacts dir, then verdict, disposition, reason, pr_url.
 _pr_delivery_write_result() {
-    local _verdict="$1" _disposition="$2" _reason="${3:-}" _pr_url="${4:-}"
+    local _out_dir="$1" _verdict="$2" _disposition="$3" _reason="${4:-}" _pr_url="${5:-}"
     local _draft="${_TPL_PR_DRAFT:-false}"
     [[ "$_draft" == "true" ]] || _draft="false"
-    [[ -z "$_PR_DELIVERY_ARTIFACTS_DIR" ]] && return 1
+    [[ -z "$_out_dir" ]] && return 1
     jq -nc \
         --arg verdict "$_verdict" \
         --arg disposition "$_disposition" \
@@ -46,12 +48,12 @@ _pr_delivery_write_result() {
         --arg branch "${ZBUILD_BRANCH:-unknown}" \
         '{result_contract:2,verdict:$verdict,disposition:$disposition,reason:$reason,draft:$draft,
           data:{branch:$branch,pr_url:$pr_url,draft:$draft}}' \
-        | atomic_write "${_PR_DELIVERY_ARTIFACTS_DIR}/pr-result.json"
+        | atomic_write "${_out_dir}/pr-result.json"
 }
 
 _pr_delivery_on_signal() {
     local _disp="${1:-interrupted}" _reason="${2:-signal_interrupt}"
-    _pr_delivery_write_result "error" "$_disp" "$_reason"
+    _pr_delivery_write_result "$_PR_DELIVERY_ARTIFACTS_DIR" "error" "$_disp" "$_reason"
     exit 1
 }
 
@@ -61,7 +63,7 @@ pr_stage_run() {
     if [[ -z "$state_file" ]]; then
         error "pr_stage_run: state_file argument required"
         _PR_DELIVERY_ARTIFACTS_DIR="${ZBUILD_ARTIFACT_DIR:-}"
-        _pr_delivery_write_result "error" "misconfigured" "missing_state_file"
+        _pr_delivery_write_result "$_PR_DELIVERY_ARTIFACTS_DIR" "error" "misconfigured" "missing_state_file"
         stage_summary_write "${ZBUILD_ARTIFACT_DIR:+$ZBUILD_ARTIFACT_DIR/pr-delivery-summary.md}" \
             "pr-delivery" "error" \
             "the engine dispatched this stage with no state file, so it could not run" \
@@ -108,7 +110,7 @@ _pr_stage_run_inner() {
             _rr_readiness="$(jq -r '.merge_readiness // empty' "$_review_report" 2>/dev/null || true)"
             if [[ "$_rr_readiness" == "needs_attention" ]]; then
                 warn "pr: review_report merge_readiness=needs_attention — refusing PR delivery"
-                _pr_delivery_write_result "error" "complete" "review_blocked"
+                _pr_delivery_write_result "$artifacts_dir" "error" "complete" "review_blocked"
                 stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
                     "refused to deliver: review_report signals needs_attention" \
                     "No PR was delivered. The review report blocked delivery."
@@ -120,7 +122,7 @@ _pr_stage_run_inner() {
     # Dry-run mode: write sentinel artifacts without calling gh
     if [[ "${ZBUILD_DRY_RUN:-0}" == "1" ]]; then
         printf 'https://github.com/mock/repo/pull/0\n' | atomic_write "$pr_url_out"
-        _pr_delivery_write_result "pass" "complete" "dry_run"
+        _pr_delivery_write_result "$artifacts_dir" "pass" "complete" "dry_run"
         stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "skip" \
             "dry run — no PR was opened and gh was not called" \
             "Nothing was delivered. This verdict asserts nothing about a real PR."
@@ -145,7 +147,7 @@ _pr_stage_run_inner() {
                         _m_disp="$(jq -r '.disposition // "unavailable"' \
                             "$artifacts_dir/merge-result.json" 2>/dev/null || echo 'unavailable')"
                     stage_signal_end
-                    _pr_delivery_write_result "error" "$_m_disp" "merge_failed"
+                    _pr_delivery_write_result "$artifacts_dir" "error" "$_m_disp" "merge_failed"
                     stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
                         "delegated to the merge stage, which did not complete (rc=$_rc)" \
                         "No PR was delivered. See the merge stage-summary.md for why."
@@ -156,7 +158,7 @@ _pr_stage_run_inner() {
                     _m_disp="$(jq -r '.disposition // "complete"' \
                         "$artifacts_dir/merge-result.json" 2>/dev/null || echo 'complete')"
                 stage_signal_end
-                _pr_delivery_write_result "pass" "$_m_disp" "merged"
+                _pr_delivery_write_result "$artifacts_dir" "pass" "$_m_disp" "merged"
                 stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "pass" \
                     "delivered the change by delegating to the merge stage (policy: auto)" \
                     "See the merge stage-summary.md for the result."
@@ -188,7 +190,7 @@ _pr_stage_run_inner() {
                             _m_disp="$(jq -r '.disposition // "unavailable"' \
                                 "$artifacts_dir/merge-result.json" 2>/dev/null || echo 'unavailable')"
                         stage_signal_end
-                        _pr_delivery_write_result "error" "$_m_disp" "merge_failed"
+                        _pr_delivery_write_result "$artifacts_dir" "error" "$_m_disp" "merge_failed"
                         stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
                             "delegated to the merge stage, which did not complete (rc=$_rc)" \
                             "No PR was delivered. See the merge stage-summary.md for why."
@@ -199,7 +201,7 @@ _pr_stage_run_inner() {
                         _m_disp="$(jq -r '.disposition // "complete"' \
                             "$artifacts_dir/merge-result.json" 2>/dev/null || echo 'complete')"
                     stage_signal_end
-                    _pr_delivery_write_result "pass" "$_m_disp" "merged"
+                    _pr_delivery_write_result "$artifacts_dir" "pass" "$_m_disp" "merged"
                     stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "pass" \
                         "delivered the change by delegating to the merge stage (policy: auto_unless_flagged)" \
                         "See the merge stage-summary.md for the result."
@@ -224,7 +226,7 @@ _pr_stage_run_inner() {
                     _po_disp="$(jq -r '.disposition // "unavailable"' \
                         "$pr_result_out" 2>/dev/null || echo 'unavailable')"
                 stage_signal_end
-                _pr_delivery_write_result "error" "$_po_disp" "pr_open_failed"
+                _pr_delivery_write_result "$artifacts_dir" "error" "$_po_disp" "pr_open_failed"
                 stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
                     "delegated to the pr-open stage, which did not complete (rc=$_rc)" \
                     "No PR was delivered. See the pr-open stage-summary.md for why."
@@ -239,7 +241,7 @@ _pr_stage_run_inner() {
             fi
             if [[ "$_po_verdict" == "blocked" ]]; then
                 stage_signal_end
-                _pr_delivery_write_result "error" "complete" "review_signal_missing"
+                _pr_delivery_write_result "$artifacts_dir" "error" "complete" "review_signal_missing"
                 stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
                     "pr-open refused to open a PR: ${_po_reason:-blocked}" \
                     "No PR was opened. See the pr-open stage-summary.md for why."
@@ -250,7 +252,7 @@ _pr_stage_run_inner() {
             local _po_url=""
             [[ -f "$pr_url_out" ]] && _po_url="$(head -1 "$pr_url_out" 2>/dev/null || true)"
             stage_signal_end
-            _pr_delivery_write_result "pass" "complete" "" "$_po_url"
+            _pr_delivery_write_result "$artifacts_dir" "pass" "complete" "" "$_po_url"
             stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "pass" \
                 "delivered the change by delegating to the pr-open stage" \
                 "See the pr-open stage-summary.md for the result."
@@ -270,14 +272,15 @@ _pr_stage_run_inner() {
     if pr_url="$(gh pr create "${_fb_gh_args[@]}" 2>/dev/null)"; then
         printf '%s\n' "$pr_url" | atomic_write "$pr_url_out"
         stage_signal_end
-        _pr_delivery_write_result "pass" "complete" "" "$pr_url"
+        _pr_delivery_write_result "$artifacts_dir" "pass" "complete" "" "$pr_url"
         stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "pass" \
             "opened a PR directly via gh (fallback path)" \
             "$(printf -- '- pr: %s\n- branch: %s' "$pr_url" "$branch")"
         return 0
     else
         stage_signal_end
-        _pr_delivery_write_result "error" "unavailable" "gh_pr_create_failed"
+        # disposition-ok: GitHub (gh pr create) is not responding
+        _pr_delivery_write_result "$artifacts_dir" "error" "unavailable" "gh_pr_create_failed"
         stage_summary_write "$artifacts_dir/pr-delivery-summary.md" "pr-delivery" "fail" \
             "could not open a PR for branch $branch" \
             "No PR was delivered. The direct gh fallback failed."
