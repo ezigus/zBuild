@@ -81,6 +81,8 @@ _ra_normalize_files() {
               # #1849: a lens whose v2 result says it did not complete reviewed
               # nothing. A file with no disposition (v1) ran.
               ran: ((.disposition // "complete") == "complete"),
+              # #2270: what a cut-off lens saved as it went, unchecked.
+              partial_notes: ((.data.partial_notes // "") | tostring),
               findings: [ (.findings // [])[] |
                 if type=="object" then {
                   file: (.file // "unknown"),

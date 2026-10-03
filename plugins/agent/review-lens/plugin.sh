@@ -66,8 +66,19 @@ _review_lens_envelope_schema_ok() {
 # entirely from the $out parameter (no literal artifact filename strings inside).
 # Called on every terminal exit path (degrade + success) so the file is always
 # on disk — ADR-055 §3. Verdict appears here as a jq field, not a coercion token.
+# _review_lens_saved_notes <artifact_dir> — what this lens saved as it went
+# (#2270), capped; empty when nothing was saved. A call cut off by time or
+# turns returns nothing; this is all it leaves.
+_review_lens_saved_notes() {
+    local cp
+    declare -F _checkpoint_declared_path >/dev/null 2>&1 || return 0
+    cp="$(_checkpoint_declared_path "$_RL_DIR/manifest.yaml" "${1%/artifacts}" 2>/dev/null || true)"
+    [[ -n "$cp" && -s "$cp" ]] || return 0
+    head -c 4000 "$cp" 2>/dev/null || true
+}
+
 _review_lens_write_result() {
-    local out="$1" verdict="$2" disposition="$3" reason="$4"
+    local out="$1" verdict="$2" disposition="$3" reason="$4" notes="${5:-}"
     local _base _name
     _base="$(basename "$out")"
     _name="${_base%.json}"; _name="${_name#lens-}"
@@ -76,7 +87,9 @@ _review_lens_write_result() {
         --arg v "$verdict" \
         --arg d "$disposition" \
         --arg r "$reason" \
-        '{result_contract:2, schema_version:1, name:$n, score:0, findings:[], verdict:$v, disposition:$d, reason:$r}' \
+        --arg pn "$notes" \
+        '{result_contract:2, schema_version:1, name:$n, score:0, findings:[], verdict:$v, disposition:$d, reason:$r}
+         + (if $pn != "" then {data:{partial_notes:$pn}} else {} end)' \
         | atomic_write "$out" 2>/dev/null || true
 }
 
@@ -352,7 +365,8 @@ _review_lens_run_inner() {
     # degrade paths. Write disposition:exhausted and propagate rc=10 so the engine
     # can apply the §3 escalation (disposition.sh:97 → route.sh:749 +50% retry).
     if [[ "$router_rc" -eq 10 ]]; then
-        _review_lens_write_result "$out" "degraded" "out_of_turns" "budget_exhausted"
+        _review_lens_write_result "$out" "degraded" "out_of_turns" "budget_exhausted" \
+            "$(_review_lens_saved_notes "$artifact_dir")"
         return 10
     fi
 
@@ -362,7 +376,8 @@ _review_lens_run_inner() {
         emit_event "review_lens.failed" "lens=$lens" "router_rc=$router_rc"
         local _rl_v="" _rl_r=""
         _router_rc_classify "$router_rc" _rl_v _rl_r 2>/dev/null || true
-        _review_lens_write_result "$out" "degraded" "$(router_reason_disposition "${_rl_r:-router_rc_nonzero}")" "router_error"
+        _review_lens_write_result "$out" "degraded" "$(router_reason_disposition "${_rl_r:-router_rc_nonzero}")" "router_error" \
+            "$(_review_lens_saved_notes "$artifact_dir")"
         stage_summary_write "$artifact_dir/lens-${lens}-summary.md" "review-lens-${lens}" "skip" \
             "the model call failed, so this lens reviewed nothing" \
             "Advisory lens: no findings were produced. Absence here is not evidence of a clean change."

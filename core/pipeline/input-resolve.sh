@@ -42,6 +42,11 @@ declare -F atomic_write >/dev/null 2>&1 || \
 # shellcheck source=./verdict.sh
 declare -F _verdict_resolve_path >/dev/null 2>&1 || \
     source "$_ZBUILD_IR_ROOT/core/pipeline/verdict.sh"
+# #2270: a cut-off stage's save-as-you-go file is read through the same
+# declared-path reader the prompt block uses.
+# shellcheck source=../../scripts/lib/stage-checkpoint.sh
+declare -F _checkpoint_declared_path >/dev/null 2>&1 || \
+    source "$_ZBUILD_IR_ROOT/scripts/lib/stage-checkpoint.sh"
 # #2252: this run's archived copies come before an earlier run's.
 # shellcheck source=../plugin-registry/attempt-archive.sh
 declare -F attempt_latest_copy >/dev/null 2>&1 || \
@@ -665,10 +670,36 @@ _summaries_collect() {
         # hands it to — the author in the target unit.
         [[ -z "$_owner" && -n "$_fault" ]] \
             && _owner="$(_summaries_fault_owner "$_fault" "$plugins_root" "$state_dir")"
-        printf '%s|%s|%s|%s|%s|%s\n' "$stage" "$verdict" "$path" \
+        # #2270: a stage cut off by time or turns hands over what it saved.
+        local _cutcp=""
+        case "$verdict" in
+            fail|failed|error|broken|degraded|incomplete)
+                _cutcp="$(_summaries_cutoff_checkpoint "$stage" "$plugins_root" "$state_dir")" ;;
+        esac
+        printf '%s|%s|%s|%s|%s|%s|%s\n' "$stage" "$verdict" "$path" \
             "$_fault" "$_owner" \
-            "$(_summaries_stage_errors_path "$stage" "$plugins_root" "$state_dir")"
+            "$(_summaries_stage_errors_path "$stage" "$plugins_root" "$state_dir")" "$_cutcp"
     done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
+}
+
+# ─── _summaries_cutoff_checkpoint <stage> <plugins_root> <state_dir> (#2270) ─
+# The stage's save-as-you-go file, when the stage ended cut off (its result's
+# disposition is timed_out or out_of_turns) and the file holds notes; else "".
+# A cut-off call returns nothing — this file is the only thing it leaves.
+_summaries_cutoff_checkpoint() {
+    local stage="$1" plugins_root="$2" state_dir="$3" manifest raw res disp cp
+    manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
+    [[ -n "$manifest" ]] || return 0
+    raw="$(_verdict_primary_output_path "$manifest" 2>/dev/null || true)"
+    [[ -n "$raw" ]] || return 0
+    res="$(_verdict_resolve_path "$raw" "$state_dir" 2>/dev/null || true)"
+    [[ "$res" == *.json && -s "$res" ]] || return 0
+    disp="$(jq -r '.disposition // empty' "$res" 2>/dev/null || true)"
+    case "$disp" in timed_out|out_of_turns) ;; *) return 0 ;; esac
+    declare -F _checkpoint_declared_path >/dev/null 2>&1 || return 0
+    cp="$(_checkpoint_declared_path "$manifest" "$state_dir" 2>/dev/null || true)"
+    [[ -n "$cp" && -s "$cp" ]] && printf '%s' "$cp"
+    return 0
 }
 
 # ─── _summaries_stage_errors_path <stage> <plugins_root> <state_dir> ───────
@@ -815,7 +846,7 @@ stage_summaries_prompt_block() {
     local -a _chunks=() _chunk_owned=()
     while IFS= read -r rec; do
         [[ -n "$rec" ]] || continue
-        IFS='|' read -r stage verdict path fault owner errpath <<< "$rec"
+        IFS='|' read -r stage verdict path fault owner errpath cutcp <<< "$rec"
         # #1845 run 36274909946: issue-acceptance's own claim came back into
         # its next prompt and it repeated it every iteration. Every judgment
         # starts fresh — a stage is never shown its own earlier verdict.
@@ -832,6 +863,12 @@ stage_summaries_prompt_block() {
                         body="${body}"$'\n\n'"errors this stage hit (last ${_ZB_ERRORS_MAX_BYTES}B of its declared error output):"$'\n'"$_errtail"
                     fi ;;
             esac
+        fi
+        # #2270: what a cut-off stage saved as it went — its own notes, unchecked.
+        if [[ -n "${cutcp:-}" && -s "$cutcp" ]]; then
+            local _cpnotes
+            _cpnotes="$(head -c "$_ZB_ERRORS_MAX_BYTES" "$cutcp" 2>/dev/null || true)"
+            [[ -n "$_cpnotes" ]] && body="${body}"$'\n\n'"What it found before it was cut off (unfinished — its own notes, not checked):"$'\n'"$_cpnotes"
         fi
         if declare -F _zbuild_sanitize_for_llm >/dev/null 2>&1; then
             body="$(printf '%s' "$body" | _zbuild_sanitize_for_llm 2>/dev/null || printf '%s' "$body")"

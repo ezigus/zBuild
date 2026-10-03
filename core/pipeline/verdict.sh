@@ -269,6 +269,10 @@ _verdict_resolve_path() {
     # the runner itself guarantees, so a hostile value cannot traverse.
     local _rid="${ZBUILD_RUN_ID:-}"; _rid="${_rid//[^A-Za-z0-9._-]/_}"
     p="${p//\$\{run_id\}/$_rid}"
+    # #2270: a map element's own name, so parallel elements never share a file.
+    # Sanitized like run_id — it is interpolated into a path.
+    local _me="${ZBUILD_MAP_ELEMENT:-}"; _me="${_me//[^A-Za-z0-9._-]/_}"; _me="${_me//../__}"
+    p="${p//\$\{map_element\}/$_me}"
     if [[ "$p" != /* ]]; then
         p="$state_dir/$p"
     fi
