@@ -24,6 +24,13 @@ Before this ADR, ADRs were prose. Some statements had tests, most did not, and n
 - Filling the 65 baselined ADRs is tracked from #2268, highest-risk statements first.
 - Superseded, Deprecated, Withdrawn and Rejected ADRs need no section.
 
+## Implementation Notes (#2268)
+
+- `scripts/lib/lint-adr-enforced-by.sh`: reads each ADR's `**Status:**` line; Superseded, Deprecated, Withdrawn and Rejected ADRs are skipped. A live ADR's `## Enforced by` section runs to the next `##` heading, and every backticked `tests/`, `scripts/`, `core/` or `plugins/` path in it must exist (a `:line` suffix is allowed).
+- `config/adr-enforcement-baseline.txt`: the 65 live ADRs that predate this decision. It only shrinks.
+- `.github/ISSUE_TEMPLATE/change.yml`: the issue form; "ADR §" is required.
+- The 2026-10-03 audit behind this decision is in `docs/audits/adr-2026-10-03/`: for every ADR, its statements, each one's enforcing test or UNTESTED, its risk, and the conflicts between ADRs.
+
 ## Enforced by
 
 - §2, §5 → `scripts/lib/lint-adr-enforced-by.sh` (in `npm run lint`), tested by `tests/unit/lint-adr-enforced-by-test.sh` A1–A7
