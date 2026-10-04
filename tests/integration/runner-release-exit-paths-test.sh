@@ -89,8 +89,12 @@ build_run() {
 }
 build_cleanup() {
     printf 'build:%s\n' "${3:-NOSCOPE}" >> "${RELEASE_MARKER}"
-    # A hook that never returns — used to prove the dispatch is bounded.
-    [[ "${BLOCK_CLEANUP:-0}" == "1" ]] && sleep 120
+    # A hook that never returns — used to prove the dispatch is bounded. It
+    # records its own pid so SPEC-6 can check it does not outlive the run (#2287).
+    if [[ "${BLOCK_CLEANUP:-0}" == "1" ]]; then
+        printf '%s\n' "$BASHPID" >> "${RELEASE_MARKER%/*}/hook.pid"
+        sleep 120
+    fi
     return 0
 }
 PLUG
@@ -296,12 +300,32 @@ set +e
 set -e
 _elapsed=$(( $(date +%s) - _t0 ))
 unset BLOCK_CLEANUP ZBUILD_RELEASE_TIMEOUT
-# The blocking hook sleeps 120s; the 3s bound must cut it short. Allow generous
+# The blocking hook sleeps 120s. The bound is the release stage's own
+# `router.timeout_s` (30 in the template, which takes precedence over
+# ZBUILD_RELEASE_TIMEOUT), so the runner returns in about 30s. Allow generous
 # headroom for a loaded host while still failing an unbounded wait.
 if [[ "$_elapsed" -lt 60 ]]; then
     assert_pass "[SPEC-6] blocking cleanup is bounded (runner exited in ${_elapsed}s)"
 else
     assert_fail "[SPEC-6] blocking cleanup is bounded" "runner took ${_elapsed}s"
+fi
+# #2287: the bound must stop the hook, not just stop waiting for it. Before,
+# the hook lived on after the run, finished its sleep ~2 min later, and wrote
+# into a state folder the run no longer owned. Checked after a short grace for
+# the kill to land.
+sleep 3
+_hook_pid="$(head -n 1 "$CASE_DIR/hook.pid" 2>/dev/null || true)"
+if [[ -z "$_hook_pid" ]]; then
+    assert_fail "[SPEC-6] fixture: the blocking hook recorded its pid" "no $CASE_DIR/hook.pid"
+elif kill -0 "$_hook_pid" 2>/dev/null; then
+    assert_fail "[SPEC-6] the blocked hook does not outlive the run" "pid $_hook_pid still alive after the runner returned"
+    # Leave nothing behind for the rest of the suite: the hook first, so it
+    # cannot carry on once its sleep ends, then the sleep it leaves orphaned.
+    _hook_kids="$(pgrep -P "$_hook_pid" 2>/dev/null || true)"
+    kill -KILL "$_hook_pid" 2>/dev/null || true
+    for _k in $_hook_kids; do kill -KILL "$_k" 2>/dev/null || true; done
+else
+    assert_pass "[SPEC-6] the blocked hook does not outlive the run"
 fi
 
 cleanup_test_env

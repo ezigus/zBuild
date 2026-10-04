@@ -2394,14 +2394,26 @@ main() {
             #
             # `|| true` because an always-run stage's failure is recorded as an
             # event and must NEVER change the run's exit status.
+            #
+            # #2287: the bound must stop the hook, not just stop waiting for it.
+            # Signalling the one PID reached only the outer shell: the subshell
+            # running the stage hooks, and anything it spawned, lived on after
+            # the run and wrote into its state minutes later. `set -m` (as the
+            # router's model spawn does, #2056) makes each job a process-group
+            # leader, so `kill -- -<pid>` reaches the whole tree — TERM, then
+            # KILL after a short grace for a hook that traps TERM. The watchdog
+            # gets its own group too, so cancelling it leaves no `sleep` behind.
             (
                 export ZBUILD_TEARDOWN_SCOPE=release
+                set -m
                 plugin_hook_call "$_ar_dir" run "$_ar_stage" "$_runner_state_file" &
                 _ar_pid=$!
-                ( sleep "$_ar_to"; kill -TERM "$_ar_pid" 2>/dev/null || true ) &
+                ( sleep "$_ar_to"; kill -TERM -- -"$_ar_pid" 2>/dev/null || true
+                  sleep 2; kill -KILL -- -"$_ar_pid" 2>/dev/null || true ) &
                 _wd_pid=$!
+                set +m
                 wait "$_ar_pid" 2>/dev/null || true
-                kill -TERM "$_wd_pid" 2>/dev/null || true
+                kill -TERM -- -"$_wd_pid" 2>/dev/null || true
                 wait "$_wd_pid" 2>/dev/null || true
             ) >/dev/null 2>&1 || true
         done
