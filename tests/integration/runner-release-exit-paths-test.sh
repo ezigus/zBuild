@@ -311,9 +311,10 @@ else
 fi
 # #2287: the bound must stop the hook, not just stop waiting for it. Before,
 # the hook lived on after the run, finished its sleep ~2 min later, and wrote
-# into a state folder the run no longer owned. Checked after a short grace for
-# the kill to land.
-sleep 3
+# into a state folder the run no longer owned. The kills are sent before the
+# runner returns; the 1s grace only covers the killed processes exiting on a
+# loaded host.
+sleep 1
 _hook_pid="$(head -n 1 "$CASE_DIR/hook.pid" 2>/dev/null || true)"
 if [[ -z "$_hook_pid" ]]; then
     assert_fail "[SPEC-6] fixture: the blocking hook recorded its pid" "no $CASE_DIR/hook.pid"
