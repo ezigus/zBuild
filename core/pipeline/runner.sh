@@ -2408,7 +2408,7 @@ main() {
                 set -m
                 plugin_hook_call "$_ar_dir" run "$_ar_stage" "$_runner_state_file" &
                 _ar_pid=$!
-                ( sleep "$_ar_to"; kill -TERM -- -"$_ar_pid" 2>/dev/null || true
+                ( set +m; sleep "$_ar_to"; kill -TERM -- -"$_ar_pid" 2>/dev/null || true
                   sleep 2; kill -KILL -- -"$_ar_pid" 2>/dev/null || true ) &
                 _wd_pid=$!
                 set +m

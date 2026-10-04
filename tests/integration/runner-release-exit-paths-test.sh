@@ -255,8 +255,10 @@ else
     # #2029: the force-kill grace is DERIVED from the engine's own teardown
     # budget, not guessed.
     #
-    # The engine bounds each release hook at ZBUILD_RELEASE_TIMEOUT
-    # (core/pipeline/runner.sh:2025), PER STAGE — default 30s. Three stages
+    # The engine bounds each always-run stage by its template `router.timeout_s`,
+    # falling back to ZBUILD_RELEASE_TIMEOUT (default 30s) only when the template
+    # sets none (#2287) — so the pin below is a fallback, and this case relies on
+    # its hooks returning promptly rather than on the bound. Three stages
     # release on this path, so an unpinned run is entitled to spend far longer
     # tidying up than the 3s literal that used to sit here. When it did, this
     # test SIGKILLed the runner mid-teardown and then asserted on the markers
@@ -292,14 +294,14 @@ fi
 # run) that this mechanism exists to prevent.
 print_test_section "SPEC-6: a cleanup hook that blocks cannot hang the runner"
 _prep blocking
-export BUILD_RC=0 BLOCK_CLEANUP=1 ZBUILD_RELEASE_TIMEOUT=3
+export BUILD_RC=0 BLOCK_CLEANUP=1
 _t0=$(date +%s)
 set +e
 ( cd "$OVERLAY_REPO" && bash "$RUNNER" --template resume-minimal --goal "release-blocking" ) \
     >"$CASE_DIR/out" 2>&1
 set -e
 _elapsed=$(( $(date +%s) - _t0 ))
-unset BLOCK_CLEANUP ZBUILD_RELEASE_TIMEOUT
+unset BLOCK_CLEANUP
 # The blocking hook sleeps 120s. The bound is the release stage's own
 # `router.timeout_s` (30 in the template, which takes precedence over
 # ZBUILD_RELEASE_TIMEOUT), so the runner returns in about 30s. Allow generous
