@@ -38,6 +38,8 @@ source "$_CYCLE_ORCH_ROOT/scripts/lib/abort-propagation.sh"
 source "$_CYCLE_ORCH_ROOT/core/state/atomic.sh"
 # shellcheck source=../state/resume.sh
 source "$_CYCLE_ORCH_ROOT/core/state/resume.sh"
+# shellcheck source=./unowned.sh
+source "$_CYCLE_ORCH_ROOT/core/pipeline/unowned.sh"
 # shellcheck source=../event-bus/event-bus.sh
 source "$_CYCLE_ORCH_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=./template.sh
@@ -84,6 +86,7 @@ _CYCLE_LAST_PLATEAU_EVIDENCE=""
 # #1284 (ADR-047): multi-condition exit_when state — populated by _cycle_load_template.
 # Empty combinator means single-condition mode (byte-identical behavior).
 _CYCLE_EXIT_COMBINATOR=""
+_CYCLE_UNOWNED=""
 _CYCLE_EXIT_CONDITIONS=()
 
 # #833: last-evaluated termination predicate, stashed by _cycle_check_until /
@@ -320,6 +323,9 @@ _cycle_load_template() {
     fi
 
     _CYCLE_ON_MAX="${!on_max_var:-continue}"
+    # #2271 (ADR-068): yield | halt | "" (the loop counts no answers).
+    local _uo_var="_TPL_CYCLE_UNOWNED_${safe}"
+    _CYCLE_UNOWNED="${!_uo_var:-}"
     if [[ "$_CYCLE_ON_MAX" != "continue" && "$_CYCLE_ON_MAX" != "halt" ]]; then
         error "cycle '$cycle_id': on_max must be continue|halt, got: $_CYCLE_ON_MAX"
         _cycle_emit "cycle.config.invalid" "reason=on_max_invalid" \
@@ -1782,6 +1788,7 @@ _cycle_iter_dispatch() {
             # reloads both from its own template, and an outer `all:` would
             # otherwise be judged against the inner's leftovers.
             local _outer_exit_comb="$_CYCLE_EXIT_COMBINATOR"
+            local _outer_unowned="${_CYCLE_UNOWNED:-}"
             local -a _outer_exit_conds=( ${_CYCLE_EXIT_CONDITIONS[@]+"${_CYCLE_EXIT_CONDITIONS[@]}"} )
             # #2271 (ADR-068): what the inner loop does when it runs out of
             # rounds decides whether this outer round may carry on past it.
@@ -1817,6 +1824,8 @@ _cycle_iter_dispatch() {
             _CYCLE_DIVERGENCE_WINDOW="$_outer_diverg_w"
             _CYCLE_VELOCITY_PLATEAU_WINDOW="$_outer_velopl_w"
             _CYCLE_EXIT_COMBINATOR="$_outer_exit_comb"
+            local _inner_reason="${_CYCLE_LAST_TERMINATED_REASON:-}"
+            _CYCLE_UNOWNED="$_outer_unowned"
             _CYCLE_EXIT_CONDITIONS=( ${_outer_exit_conds[@]+"${_outer_exit_conds[@]}"} )
             # #2271 (ADR-068): an inner loop that ends without converging ends
             # this outer round when it may not be carried past — it declares
@@ -1824,6 +1833,19 @@ _cycle_iter_dispatch() {
             # loop then goes round from the top, each inner loop with a fresh
             # counter. With no outer rounds left, rc 8 still stops the run.
             local _end_round=0
+            # #2271 (ADR-068): an outer loop with `unowned: halt` stops the run
+            # when the members of this part also disclaimed a finding an inner
+            # loop yielded — nobody owns it (report: artifacts/unowned-findings.md).
+            if [[ "${_CYCLE_UNOWNED:-}" == "halt" ]] && _unowned_halt_check "$state_dir" "$s"; then
+                _CYCLE_LAST_TERMINATED_REASON="unowned_finding"
+                _cycle_emit "cycle.unowned_finding" "iter=$iter" "stage=$s" "action=halt" 2>/dev/null || true
+                _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "8" "unowned_finding" "failed"
+                _cycle_state_write_member_atomic "$state_file" "$s" "failed" "unowned_finding" || true
+                _cycle_clear_traps
+                [[ $_had_e -eq 1 ]] && set -e
+                return 8
+            fi
+            [[ "$_inner_reason" == "unowned_finding" ]] && _end_round=1
             if [[ $rc -ne 0 && $rc -ne 6 && $rc -ne 11 && $rc -ne 130 && $rc -ne 143 ]]; then
                 if [[ $rc -eq 8 ]]; then
                     (( iter < _CYCLE_MAX_ITER )) && { _end_round=1; rc=2; }
@@ -2461,9 +2483,14 @@ cycle_orchestrator_run() {
         "stages=${_CYCLE_STAGES[*]}" 2>/dev/null || true
 
     local iter
+    # #2271 (ADR-068): a finding an inner loop yielded belongs to this run of
+    # the outer loop only.
+    [[ "${_CYCLE_UNOWNED:-}" == "halt" ]] && rm -f "$state_dir/$_UNOWNED_YIELD_FILE" 2>/dev/null
     for (( iter=1; iter <= _CYCLE_MAX_ITER; iter++ )); do
         _CYCLE_TRAP_ITER="$iter"
         _CYCLE_LAST_ITERATIONS="$iter"
+        # #2271 (ADR-068): each round counts only the answers given in it.
+        [[ "${_CYCLE_UNOWNED:-}" == "yield" ]] && _unowned_clear_round "$state_dir" "${_CYCLE_STAGES[@]}"
 
         # #682: 2 blank lines BEFORE each iter separator (inter-iter gap),
         # except before the very first iter where 1 blank is enough — the
@@ -2765,6 +2792,14 @@ cycle_orchestrator_run() {
             # the cycle is not expandable). Abandon cleanly — never loop.
             _CYCLE_LAST_TERMINATED_REASON="blocked_on_scope"
             overall_status="blocked_on_scope"; term_rc=7
+        elif [[ "${_CYCLE_UNOWNED:-}" == "yield" ]] \
+             && _unowned_yield_check "$state_dir" "$cycle_id" "${_CYCLE_STAGES[@]}"; then
+            # #2271 (ADR-068): every member here that answers findings said
+            # "nothing to do" to the same one — this loop cannot resolve it. End
+            # early; the outer loop goes round from the top, carrying it.
+            _CYCLE_LAST_TERMINATED_REASON="unowned_finding"
+            _cycle_emit "cycle.unowned_finding" "iter=$iter" "action=yield" 2>/dev/null || true
+            overall_status="max_iterations"; term_rc=2
         elif _cycle_route_back_early_matches "$cycle_id" "$verdicts_blob" "$iter"; then
             # #2119: a gate declared a fault the template routes upstream. Rewind
             # NOW (the block below converts this correctable terminal to rc=11)

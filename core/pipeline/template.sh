@@ -235,6 +235,7 @@ load_template() {
                 printf -v "_TPL_CYCLE_STAGES_${safe}"        '%s' "$cstages"
                 printf -v "_TPL_CYCLE_MAX_${safe}"           '%s' "$cmax"
                 printf -v "_TPL_CYCLE_ON_MAX_${safe}"        '%s' "${conmax:-continue}"
+                printf -v "_TPL_CYCLE_UNOWNED_${safe}"       '%s' ""
                 printf -v "_TPL_CYCLE_UNTIL_STAGE_${safe}"   '%s' "$custage"
                 printf -v "_TPL_CYCLE_UNTIL_FIELD_${safe}"   '%s' "$cufield"
                 printf -v "_TPL_CYCLE_UNTIL_OP_${safe}"      '%s' "$cuop"
@@ -534,6 +535,15 @@ load_template() {
                 # and _tpl_validate_route_back still REJECTS a route_back genuinely
                 # declared on a nested cycle.
                 _TPL_ROUTE_BACK_DECLARED+=("$rb_cid")
+                ;;
+            UO)
+                # #2271 (ADR-068): <cid>|<yield|halt>
+                local uo_cid uo_val
+                IFS='|' read -r uo_cid uo_val <<< "$payload"
+                case "$uo_val" in
+                    yield|halt) printf -v "_TPL_CYCLE_UNOWNED_${uo_cid//-/_}" '%s' "$uo_val" ;;
+                    *) error "load_template: cycle '${uo_cid}': unowned must be yield or halt (got '${uo_val}')"; return 1 ;;
+                esac
                 ;;
             EW)
                 # #1284 (ADR-047): multi-condition exit_when for cycles.
@@ -1827,7 +1837,7 @@ _tpl_translate_new_shape() {
         cyc_rb_to = ""; cyc_rb_stage = ""; cyc_rb_field = ""; cyc_rb_op = ""; cyc_rb_value = ""; cyc_rb_max = ""
         cyc_plateau = ""; cyc_diverg = ""; cyc_velopl = ""
         cyc_desc = ""
-        cyc_expand = ""; cyc_autogrant = ""; cyc_escalate = ""; cyc_ondeny = ""
+        cyc_expand = ""; cyc_autogrant = ""; cyc_escalate = ""; cyc_ondeny = ""; cyc_unowned = ""
         # #1284 (ADR-047): multi-condition exit_when accumulators.
         cyc_ew_comb = ""; cyc_ew_n = 0; cyc_ew_cur_s = ""; cyc_ew_cur_f = ""; cyc_ew_cur_o = ""; cyc_ew_cur_v = ""
         delete cyc_ew_cond_s; delete cyc_ew_cond_f; delete cyc_ew_cond_o; delete cyc_ew_cond_v
@@ -1853,7 +1863,7 @@ _tpl_translate_new_shape() {
         cyc_rb_to = ""; cyc_rb_stage = ""; cyc_rb_field = ""; cyc_rb_op = ""; cyc_rb_value = ""; cyc_rb_max = ""
         cyc_plateau = ""; cyc_diverg = ""; cyc_velopl = ""
         cyc_desc = ""
-        cyc_expand = ""; cyc_autogrant = ""; cyc_escalate = ""; cyc_ondeny = ""
+        cyc_expand = ""; cyc_autogrant = ""; cyc_escalate = ""; cyc_ondeny = ""; cyc_unowned = ""
         # #1284 (ADR-047): multi-condition exit_when accumulators.
         cyc_ew_comb = ""; cyc_ew_n = 0; cyc_ew_cur_s = ""; cyc_ew_cur_f = ""; cyc_ew_cur_o = ""; cyc_ew_cur_v = ""
         delete cyc_ew_cond_s; delete cyc_ew_cond_f; delete cyc_ew_cond_o; delete cyc_ew_cond_v
@@ -1919,6 +1929,7 @@ _tpl_translate_new_shape() {
                                 cyc_plateau "|" cyc_diverg "|" cyc_velopl "|" cyc_desc "|" \
                                 cyc_expand "|" cyc_autogrant "|" cyc_escalate "|" cyc_ondeny
             cyc_abort[cur_key] = cyc_as "|" cyc_af "|" cyc_ao "|" cyc_av
+            if (cyc_unowned != "") cyc_unowned_v[cur_key] = cyc_unowned
             # #1217 (ADR-045): only stash route_back when a target is declared,
             # so emit_cycle_dfs can guard the RB| row on presence (empty ⇒ inert).
             if (cyc_rb_to != "") {
@@ -2095,6 +2106,12 @@ _tpl_translate_new_shape() {
             }
             if ($0 ~ /^[[:space:]]+on_max:/) {
                 v = $0; sub(/^[[:space:]]+on_max:[[:space:]]*/, "", v); cyc_on_max = trim(v); next
+            }
+            # #2271 (ADR-068): what the loop does with a finding none of its
+            # members owns — `yield` (end this loop, let the outer go round) or
+            # `halt` (stop the run with a report). Absent: the loop counts nothing.
+            if ($0 ~ /^[[:space:]]+unowned:/) {
+                v = $0; sub(/^[[:space:]]+unowned:[[:space:]]*/, "", v); cyc_unowned = trim(v); next
             }
             # #831: optional operator-facing description. Strip a single
             # layer of surrounding "..." or single-quotes; never used in
@@ -2442,6 +2459,8 @@ _tpl_translate_new_shape() {
             }
             print "EW|" ew_row
         }
+        # #2271 (ADR-068): the unowned-finding rule of the loop, only when declared.
+        if (cyc_unowned_v[k] != "") print "UO|" k "|" cyc_unowned_v[k]
     }
     function extract_cyc_flow(k,    d) {
         # cyc_data[k] = cyc_flow|cmax|conmax|cus|cuf|cuo|cuv|cplateau|cdiverg|cyc_velopl
