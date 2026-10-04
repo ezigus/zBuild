@@ -170,6 +170,7 @@
     "stage.write_boundary.mark_failed",
     "stage.write_boundary.window_unbounded",
     "stage.write_boundary.unattributable",
-    "strategy.unit_name_conflict"
+    "strategy.unit_name_conflict",
+    "cycle.round.ended_early"
   ]
 }

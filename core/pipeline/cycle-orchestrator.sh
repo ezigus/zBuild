@@ -1778,6 +1778,15 @@ _cycle_iter_dispatch() {
             local _outer_plateau_w="$_CYCLE_PLATEAU_WINDOW"
             local _outer_diverg_w="$_CYCLE_DIVERGENCE_WINDOW"
             local _outer_velopl_w="$_CYCLE_VELOCITY_PLATEAU_WINDOW"
+            # #2271: the outer's multi-condition exit_when too — the inner run
+            # reloads both from its own template, and an outer `all:` would
+            # otherwise be judged against the inner's leftovers.
+            local _outer_exit_comb="$_CYCLE_EXIT_COMBINATOR"
+            local -a _outer_exit_conds=( ${_CYCLE_EXIT_CONDITIONS[@]+"${_CYCLE_EXIT_CONDITIONS[@]}"} )
+            # #2271 (ADR-068): what the inner loop does when it runs out of
+            # rounds decides whether this outer round may carry on past it.
+            local _inner_on_max_var="_TPL_CYCLE_ON_MAX_${s//-/_}"
+            local _inner_on_max="${!_inner_on_max_var:-continue}"
             cycle_orchestrator_run "$s" "$state_dir" "$state_file"
             rc=$?
             # Wave 19-B (#718): restore prior seq prefix BEFORE any return path
@@ -1807,6 +1816,21 @@ _cycle_iter_dispatch() {
             _CYCLE_PLATEAU_WINDOW="$_outer_plateau_w"
             _CYCLE_DIVERGENCE_WINDOW="$_outer_diverg_w"
             _CYCLE_VELOCITY_PLATEAU_WINDOW="$_outer_velopl_w"
+            _CYCLE_EXIT_COMBINATOR="$_outer_exit_comb"
+            _CYCLE_EXIT_CONDITIONS=( ${_outer_exit_conds[@]+"${_outer_exit_conds[@]}"} )
+            # #2271 (ADR-068): an inner loop that ends without converging ends
+            # this outer round when it may not be carried past — it declares
+            # `on_max: halt`, or it ran out with tests failing (rc 8). The outer
+            # loop then goes round from the top, each inner loop with a fresh
+            # counter. With no outer rounds left, rc 8 still stops the run.
+            local _end_round=0
+            if [[ $rc -ne 0 && $rc -ne 6 && $rc -ne 11 && $rc -ne 130 && $rc -ne 143 ]]; then
+                if [[ $rc -eq 8 ]]; then
+                    (( iter < _CYCLE_MAX_ITER )) && { _end_round=1; rc=2; }
+                elif [[ "$_inner_on_max" == "halt" ]]; then
+                    _end_round=1
+                fi
+            fi
             # #1822: the same leak Wave 19-C-2 (#726) fixed for the verdict
             # channel, one channel over. The inner run dispatches its own leaf
             # members, each publishing _CYCLE_DISPATCH_DISPOSITION; on return the
@@ -1878,6 +1902,11 @@ _cycle_iter_dispatch() {
             # mapped from the nested cycle's terminal rc.
             _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "$verdict" "$status"
             _cycle_state_write_member_atomic "$state_file" "$s" "$_CYCLE_DISPATCH_STATUS" "$_CYCLE_DISPATCH_VERDICT" || true
+            if [[ $_end_round -eq 1 ]]; then
+                _cycle_emit "cycle.round.ended_early" "iter=$iter" "stage=$s" \
+                    "reason=inner_loop_unconverged" 2>/dev/null || true
+                break
+            fi
             continue
         fi
         # ADR-039 (#1132, amends ADR-021): parallel-group-as-member branch.
