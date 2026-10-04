@@ -321,6 +321,16 @@ Three consequences:
 - **`purge` follows the same pattern.** It is a deleter like the `clean_*` stages, and there is no
   reason for it to be engine code while its siblings are template-composed.
 
+**An always-run stage's time bound stops the stage, not just the wait — amended 2026-10-04 (#2287).**
+Each always-run stage runs under a bound: its own `router.timeout_s` from the template, or
+`ZBUILD_RELEASE_TIMEOUT` (default 30 s) when the template sets none. When the bound fires, the
+stage and **everything it started** are stopped: the stage is spawned as its own process group, and
+the bound sends TERM to the group, then KILL after a short grace. Signalling only the stage's own
+PID left the subshell running the hooks alive; a blocked hook outlived the run and wrote into its
+state minutes later. No process from an always-run stage outlives the run. Enforced by
+`tests/integration/runner-release-exit-paths-test.sh` SPEC-6 ("the blocked hook does not outlive
+the run").
+
 ### 8. Fail-closed artifact scanner contract
 
 Per ADR-001 §"Fail-closed scanner contract": if a plugin declares `provides.artifact_type` but no artifact exists at `outputs[].path` after `run` completes with `rc=0`, the engine emits a synthetic blocking finding. Absent evidence IS blocking evidence.
