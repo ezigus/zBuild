@@ -107,6 +107,8 @@ source "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"
 # _route_redact_prompt — the shared single-shot + loop funnel — injects its block.
 # shellcheck source=../../scripts/lib/stage-checkpoint.sh
 source "$_ZBUILD_ROOT/scripts/lib/stage-checkpoint.sh"
+# shellcheck source=../../scripts/lib/stage-answers.sh
+source "$_ZBUILD_ROOT/scripts/lib/stage-answers.sh"
 # VIS-C (ADR-049): vision-document loader/validator — guard-idempotent source.
 # Loaded here so _route_redact_prompt (shared funnel for single-shot + loop)
 # can inject the advisory Intent preamble into every stage prompt.
@@ -128,6 +130,18 @@ fi
 # by the unit keeps one member's failure from overwriting another's.
 _route_sync_diag_base() {
     printf '%s-sync-error' "${ZBUILD_UNIT:-${ZBUILD_CURRENT_STAGE:-router}}"
+}
+
+# #2271 (ADR-068): every model call that carries findings asks for an answer
+# to each one — in the one funnel every prompt crosses, so no stage knows the
+# others. Once per prompt file: the loop redacts the same file every iteration.
+_route_answers_append() {
+    local input="$1" blk
+    declare -F answers_prompt_block >/dev/null 2>&1 || return 0
+    grep -qF "$_ZB_ANSWERS_MARKER" "$input" 2>/dev/null && return 0
+    blk="$(answers_prompt_block "$input" 2>/dev/null || true)"
+    [[ -n "$blk" ]] && printf '\n\n%s\n' "$blk" >> "$input" 2>/dev/null
+    return 0
 }
 
 # route_to_model <tier> <prompt> [--skip-precondition] [--model <id>]
@@ -424,6 +438,7 @@ _route_redact_prompt() {
             printf '\n\n%s\n' "$_cp_block" >> "$input" 2>/dev/null || true
         fi
     fi
+    _route_answers_append "$input"
 
     # ADR-032 amendment: the target repository's rules (or zBuild's defaults)
     # for a stage whose manifest declares `prompt.repo_rules: true`. Here for
@@ -1288,6 +1303,8 @@ _route_call_claude() {
     fi
 
     _ROUTE_RESPONSE="$response"
+    # #2271 (ADR-068): keep the answers this reply gave, for the engine to count.
+    declare -F answers_record >/dev/null 2>&1 && answers_record "$response"
     return 0
     # ADR-029 (#1230): closes the retry-on-timeout `while`. Every path above
     # either returns or `continue`s, so this is reached only structurally.
@@ -2306,6 +2323,8 @@ ${_diff_pointer}"
         # #608: expose the most recent iteration's LLM text so the build plugin
         # can parse the COMMIT_SUMMARY marker after the loop returns.
         _ROUTE_LOOP_LAST_RESPONSE="$result_text"
+        # #2271 (ADR-068): the latest iteration's answers stand for the stage.
+        declare -F answers_record >/dev/null 2>&1 && answers_record "$result_text"
         # #1329: parse THIS iteration's COMMIT_SUMMARY at the source and keep only
         # the sanitized one-line value (newline-separated). Storing the parsed
         # summary — not the raw result_text — keeps the accumulator bounded and
