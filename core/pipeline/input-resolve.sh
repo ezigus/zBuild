@@ -676,9 +676,10 @@ _summaries_collect() {
             fail|failed|error|broken|degraded|incomplete)
                 _cutcp="$(_summaries_cutoff_checkpoint "$stage" "$plugins_root" "$state_dir")" ;;
         esac
-        printf '%s|%s|%s|%s|%s|%s|%s\n' "$stage" "$verdict" "$path" \
+        printf '%s|%s|%s|%s|%s|%s|%s|%s\n' "$stage" "$verdict" "$path" \
             "$_fault" "$_owner" \
-            "$(_summaries_stage_errors_path "$stage" "$plugins_root" "$state_dir")" "$_cutcp"
+            "$(_summaries_stage_errors_path "$stage" "$plugins_root" "$state_dir")" "$_cutcp" \
+            "$(_summaries_result_path "$stage" "$plugins_root" "$state_dir")"
     done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
 }
 
@@ -689,14 +690,24 @@ _summaries_collect() {
 # A map stage's paths carry `${map_element}`, which stays unresolved here (no
 # element is set when summaries are collected), so a map stage is skipped: each
 # member hands over through its own result (`data.partial_notes`, #2270).
-_summaries_cutoff_checkpoint() {
-    local stage="$1" plugins_root="$2" state_dir="$3" manifest raw res disp cp
+# _summaries_result_path <stage> <plugins_root> <state_dir> — the stage's
+# primary (v2 result) file, resolved, when it exists; else "".
+_summaries_result_path() {
+    local stage="$1" plugins_root="$2" state_dir="$3" manifest raw res
     manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
     [[ -n "$manifest" ]] || return 0
     raw="$(_verdict_primary_output_path "$manifest" 2>/dev/null || true)"
     [[ -n "$raw" ]] || return 0
     res="$(_verdict_resolve_path "$raw" "$state_dir" 2>/dev/null || true)"
-    [[ "$res" == *.json && -s "$res" ]] || return 0
+    [[ "$res" == *.json && -s "$res" ]] && printf '%s' "$res"
+    return 0
+}
+
+_summaries_cutoff_checkpoint() {
+    local stage="$1" plugins_root="$2" state_dir="$3" manifest res disp cp
+    res="$(_summaries_result_path "$stage" "$plugins_root" "$state_dir")"
+    [[ -n "$res" ]] || return 0
+    manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
     disp="$(jq -r '.disposition // empty' "$res" 2>/dev/null || true)"
     case "$disp" in timed_out|out_of_turns) ;; *) return 0 ;; esac
     declare -F _checkpoint_declared_path >/dev/null 2>&1 || return 0
@@ -849,12 +860,22 @@ stage_summaries_prompt_block() {
     local -a _chunks=() _chunk_owned=()
     while IFS= read -r rec; do
         [[ -n "$rec" ]] || continue
-        IFS='|' read -r stage verdict path fault owner errpath cutcp <<< "$rec"
+        IFS='|' read -r stage verdict path fault owner errpath cutcp respath <<< "$rec"
         # #1845 run 36274909946: issue-acceptance's own claim came back into
         # its next prompt and it repeated it every iteration. Every judgment
         # starts fresh — a stage is never shown its own earlier verdict.
         [[ -n "${ZBUILD_CURRENT_STAGE:-}" && "$stage" == "$ZBUILD_CURRENT_STAGE" ]] && continue
         body="$(head -c "$_ZB_SUMMARY_MAX_BYTES" "$path" 2>/dev/null || true)"
+        # #2271 (ADR-068): each finding on its own line, naming the stage that
+        # opened it — the reference later stages answer by.
+        if [[ -n "${respath:-}" ]]; then
+            local _nf
+            _nf="$(jq -r --arg s "$stage" '(.data.findings // [])[]?
+                    | select(type == "object" and (.n|type) == "number")
+                    | "- \($s) finding \(.n) (opened by \($s)): \(.text|tostring|gsub("[\r\n]+"; " "))"' \
+                    "$respath" 2>/dev/null || true)"
+            [[ -n "$_nf" ]] && body="${_nf}"$'\n\n'"${body}"
+        fi
         # #2183: a FAILING stage ships the errors it hit, bounded, verbatim. A
         # passing stage ships none — nobody needs the noise of a clean run.
         if [[ -n "$errpath" && -s "$errpath" ]]; then

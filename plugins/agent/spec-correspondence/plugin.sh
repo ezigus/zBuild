@@ -316,10 +316,13 @@ spec_correspondence_run() {
     local _sc_about=""
     declare -f acceptance_list_testfiles >/dev/null 2>&1 \
         && _sc_about="$(acceptance_list_testfiles "$design" 2>/dev/null || true)"
+    # #2271 (ADR-068): each SPEC that did not correspond is a numbered finding.
+    local _sc_fl="${findings//$'\n'- /$'\n'}"; _sc_fl="${_sc_fl#- }"
     _sc_write_result "$art" "$worst" "$reason" \
         "$(jq -nc --argjson c "$n_corr" --argjson p "$n_part" --argjson m "$n_mis" \
                   --argjson u "$n_unch" --argjson j "$n_unj" \
-            '{corresponds:$c, partial:$p, mismatch:$m, uncheckable:$u, unjudged:$j}')" \
+                  --argjson fnd "$(stage_findings_json <<< "$_sc_fl")" \
+            '{corresponds:$c, partial:$p, mismatch:$m, uncheckable:$u, unjudged:$j, findings:$fnd}')" \
         "$_sc_about"
     stage_summary_write "$art/spec-correspondence-summary.md" "spec-correspondence" "$worst" \
         "$reason" \

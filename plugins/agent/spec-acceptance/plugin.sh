@@ -37,6 +37,8 @@ _AG_ROOT="$_ZBUILD_PLUGIN_ROOT"
 source "$_AG_ROOT/scripts/lib/acceptance-disposition.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_AG_ROOT/core/event-bus/event-bus.sh"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$_AG_ROOT/scripts/lib/stage-summary.sh"
 # #1241: mechanical gates open no router/command span, so this plugin sources the
 # stage-io chokepoint directly (router plugins get it via route.sh) to frame its
 # operator summary. Load-once sentinel makes this a no-op when the runner already
@@ -752,9 +754,16 @@ acceptance_gate_run() {
     # the lint refuses that, so absence here is never silently a routing answer.
     # `--arg rt ""` + a `(if $rt=="" ...)` conditional keeps it absent otherwise,
     # so a build-fixable failure's artifact is byte-shape-identical to today.
+    # #2271 (ADR-068): each clause of the plain reason — one kind of problem and
+    # the SPECs it concerns — is a numbered finding.
+    local _ag_fnd="[]"
+    if [[ "$verdict" == "fail" && -n "${reason_msg:-}" ]]; then
+        local _ag_cl="${reason_msg#the acceptance check failed — }"
+        _ag_fnd="$(printf '%s\n' "${_ag_cl//; /$'\n'}" | stage_findings_json)"
+    fi
     jq -cn --arg v "$verdict" --arg d "$disposition" --arg sv "$severity" --arg r "${reason_msg:-$_pass_reason}" \
-        --arg ft "$fault" --argjson f "$failures_json" --arg ab "$about" \
-        '{result_contract:2,verdict:$v,disposition:$d,severity:$sv,reason:$r,failures:$f}
+        --arg ft "$fault" --argjson f "$failures_json" --arg ab "$about" --argjson fnd "${_ag_fnd:-[]}" \
+        '{result_contract:2,verdict:$v,disposition:$d,severity:$sv,reason:$r,failures:$f,data:{findings:$fnd}}
          + (if $ft=="" then {} else {fault:$ft} end)
          + (if $ab=="" then {} else {about:$ab} end)' | atomic_write "$result_file"
 

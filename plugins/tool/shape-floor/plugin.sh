@@ -147,13 +147,28 @@ shape_floor_run() {
         fi
     fi
 
+    # #2271 (ADR-068): each file that spells out what this change altered is a
+    # numbered finding; a failure with no file list is one finding.
+    local _sf_fnd="[]"
+    if [[ "$verdict" == "fail" ]]; then
+        local _sf_fl=""
+        declare -f _sf_collect_missing_floor_files >/dev/null 2>&1 && declare -f _sf_diff_files >/dev/null 2>&1 \
+            && _sf_fl="$(_sf_collect_missing_floor_files "$repo_root" "$(_sf_diff_files "$repo_root")" 2>/dev/null || true)"
+        if [[ -n "$_sf_fl" ]]; then
+            _sf_fnd="$(while IFS= read -r _sf_f; do
+                [[ -n "$_sf_f" ]] && printf '%s spells out a count, order or list this change alters; update it if it is now wrong\n' "$_sf_f"
+            done <<< "$_sf_fl" | stage_findings_json)"
+        else
+            _sf_fnd="$(printf 'the shape check failed: %s\n' "$detail" | stage_findings_json)"
+        fi
+    fi
     if [[ -n "$fault" ]]; then
-        jq -n --arg v "$verdict" --arg r "$detail" --arg f "$fault" \
-            '{"result_contract":2,"verdict":$v,"disposition":"complete","reason":$r,"fault":$f}' \
+        jq -n --arg v "$verdict" --arg r "$detail" --arg f "$fault" --argjson fnd "${_sf_fnd:-[]}" \
+            '{"result_contract":2,"verdict":$v,"disposition":"complete","reason":$r,"fault":$f,"data":{"findings":$fnd}}' \
             | atomic_write "$result_path"
     else
-        jq -n --arg v "$verdict" --arg r "$detail" \
-            '{"result_contract":2,"verdict":$v,"disposition":"complete","reason":$r}' \
+        jq -n --arg v "$verdict" --arg r "$detail" --argjson fnd "${_sf_fnd:-[]}" \
+            '{"result_contract":2,"verdict":$v,"disposition":"complete","reason":$r,"data":{"findings":$fnd}}' \
             | atomic_write "$result_path"
     fi
 

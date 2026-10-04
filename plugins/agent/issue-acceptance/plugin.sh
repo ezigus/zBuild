@@ -98,8 +98,10 @@ TEST VERDICT: $4"
 _ia_write() {
     local dir="$1" v="$2" d="$3" r="$4" f="${5:-}" u="${6:-[]}"
     mkdir -p "$dir" 2>/dev/null || true
-    if ! jq -n --arg v "$v" --arg d "$d" --arg r "$r" --arg f "$f" --argjson u "$u" \
-        '{result_contract: 2, verdict: $v, disposition: $d, reason: $r, data: {unmet: $u}}
+    # #2271 (ADR-068): each unmet acceptance item is a numbered finding.
+    local _fnd; _fnd="$(jq -r '.[]? | "The issue requires this and the change does not meet it: " + tostring' <<< "$u" 2>/dev/null | stage_findings_json)"
+    if ! jq -n --arg v "$v" --arg d "$d" --arg r "$r" --arg f "$f" --argjson u "$u" --argjson fnd "${_fnd:-[]}" \
+        '{result_contract: 2, verdict: $v, disposition: $d, reason: $r, data: {unmet: $u, findings: $fnd}}
          + (if $f != "" then {fault: $f} else {} end)' \
         | atomic_write "$dir/issue-acceptance-result.json"; then
         _ia_emit "issue_acceptance.result.write_failed" "dir=$dir"

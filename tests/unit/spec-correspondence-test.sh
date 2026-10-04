@@ -180,7 +180,7 @@ _res2() { jq -r "$1" "$_A2/spec-correspondence-result.json" 2>/dev/null || echo 
 _judged="$(_res2 '.reason' | sed -n 's/^judged \([0-9][0-9]*\) SPEC(s).*/\1/p')"
 assert_eq "[SPEC-7][change] all three SPECs were judged" "3" "${_judged:-NONE}"
 assert_eq "[SPEC-7][change] the counters account for every SPEC judged" \
-    "$_judged" "$(_res2 '[.data | to_entries[] | .value] | add')"
+    "$_judged" "$(_res2 '[.data | to_entries[] | .value | numbers] | add')"
 
 # Asserted through the engine's own reader, not against a literal word: what
 # must not happen is a GREEN indicator, and verdict_classify is what decides

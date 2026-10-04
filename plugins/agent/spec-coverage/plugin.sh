@@ -102,9 +102,11 @@ _scv_write() {
     # ADR-054 §6: `disposition` says how the STAGE stopped, not what it
     # concluded — this stage completed either way. ADR-060 §1/§2: the finding is
     # structured, never a prose document.
-    if ! jq -n --arg v "$v" --arg r "$r" --argjson u "$u" \
+    # #2271 (ADR-068): each uncovered requirement is a numbered finding.
+    local _fnd; _fnd="$(jq -r '.[]? | "The issue asks for this and no SPEC covers it: " + tostring' <<< "$u" 2>/dev/null | stage_findings_json)"
+    if ! jq -n --arg v "$v" --arg r "$r" --argjson u "$u" --argjson fnd "${_fnd:-[]}" \
         '{result_contract: 2, verdict: $v, disposition: "complete", reason: $r,
-          data: {uncovered: $u}}' \
+          data: {uncovered: $u, findings: $fnd}}' \
         | atomic_write "$dir/spec-coverage-result.json"; then
         _scv_emit "spec_coverage.result.write_failed" "dir=$dir"
     fi
