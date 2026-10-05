@@ -109,6 +109,9 @@ source "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"
 source "$_ZBUILD_ROOT/scripts/lib/stage-checkpoint.sh"
 # shellcheck source=../../scripts/lib/stage-answers.sh
 source "$_ZBUILD_ROOT/scripts/lib/stage-answers.sh"
+# #2308: the part of every stage prompt that is the same for all stages.
+# shellcheck source=../../scripts/lib/stage-conduct.sh
+source "$_ZBUILD_ROOT/scripts/lib/stage-conduct.sh"
 # VIS-C (ADR-049): vision-document loader/validator — guard-idempotent source.
 # Loaded here so _route_redact_prompt (shared funnel for single-shot + loop)
 # can inject the advisory Intent preamble into every stage prompt.
@@ -527,9 +530,19 @@ _route_redact_prompt() {
         fi
     fi
 
-    # Last of the additions: the findings arrive with the stage summaries
-    # above, so asking for answers any earlier asks about nothing (#2294).
+    # The findings arrive with the stage summaries above, so asking for
+    # answers any earlier asks about nothing (#2294).
     _route_answers_append "$input"
+
+    # #2308 (ADR-067 §8): last, the part every stage shares — and the rule that
+    # opens each stage's limits. Only for a stage that calls a model, which is
+    # one that declares a save-as-you-go file (ADR-068 §6); any other prompt is
+    # left as it is.
+    if [[ -n "${ZBUILD_PLUGIN_DIR:-}" ]] && declare -F stage_conduct_apply >/dev/null 2>&1 \
+        && declare -F _checkpoint_declared_path >/dev/null 2>&1 \
+        && [[ -n "$(_checkpoint_declared_path "$ZBUILD_PLUGIN_DIR/manifest.yaml" "${ZBUILD_STATE_DIR:-/nonexistent}" 2>/dev/null)" ]]; then
+        stage_conduct_apply "$input"
+    fi
 
     if [[ -n "$manifest" ]] && declare -F apply_scope_redaction >/dev/null 2>&1; then
         # A configured manifest is authoritative: apply_scope_redaction handles a
