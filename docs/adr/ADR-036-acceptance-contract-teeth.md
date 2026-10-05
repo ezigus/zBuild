@@ -956,3 +956,9 @@ The negative control skips with `no_prod_delta` when every changed path is a tes
 - Documentation paths are not test paths; this amendment does not change that.
 
 Verification: `tests/unit/acceptance-negctl-plugin-tests-test.sh` (P1 skip, P2 guard).
+
+### Amendment (2026-10-05, #2304) — code nobody claims fails the check (ADR-069)
+
+Requirements now carry a status (ADR-069 §1): `[code]`, `[no-code]` or `[done]`; the old `[change]` is read as code and `[guard]` as done. A new first check (ADR-069 §5) fails the acceptance check when the branch changes production code (anything except `tests/`, `plugins/<kind>/<id>/tests/`, `docs/` and `*.md`) and no requirement is code. The failure class is `unclaimed_code` (recoverable). The rest of this ADR's guard rules are replaced by ADR-069 in PR B of #2304.
+
+Verification: `tests/unit/acceptance-unclaimed-code-test.sh` (U1–U4).

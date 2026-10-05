@@ -17,10 +17,11 @@ _ag_failure_class_disposition() {
     case "${1:-}" in
         # Fixed where they are found, next iteration — the assertion has a
         # model author (test-author, #2022) and the cycle re-verifies.
+        # unclaimed_code (#2304): design adds the [code] requirement.
         untagged_spec|tautology|inert_wiring|no_testfile|no_testfiles|\
         not_passing_at_head|wiring_not_on_path|guard_regressed|guard_unreached|\
         guard_unverified|guard_test_broken|unreached_at_base|unreached_at_head|\
-        killed_by_signal)
+        killed_by_signal|unclaimed_code)
             printf 'recoverable' ;;
         # Infrastructure: a flaky sandbox must never hard-fail the pipeline.
         negctl_error|reachability_error)

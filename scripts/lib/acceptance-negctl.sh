@@ -58,6 +58,61 @@ source "$_ACCEPTANCE_NEGCTL_DIR/merge-base.sh"
 # shellcheck source=env-scrub.sh
 source "$_ACCEPTANCE_NEGCTL_DIR/env-scrub.sh"
 
+# _acceptance_is_test_path <path> — a test file: under tests/, or under a
+# plugin's own plugins/<kind>/<id>/tests/ (#2300).
+_acceptance_is_test_path() {
+    [[ "${1:-}" == tests/* || "${1:-}" =~ ^plugins/[^/]+/[^/]+/tests/ ]]
+}
+
+# _acceptance_is_production_path <path> — production code (ADR-069 §5): any
+# path except tests (above), docs/ and Markdown files.
+_acceptance_is_production_path() {
+    local p="${1:-}"
+    [[ -n "$p" ]] || return 1
+    _acceptance_is_test_path "$p" && return 1
+    [[ "$p" == docs/* || "$p" == *.md ]] && return 1
+    return 0
+}
+
+# acceptance_unclaimed_code_check <design_md> <repo_root>  (#2304, ADR-069 §5)
+# A requirement marked no-code or done is never run against the old code, so
+# a change could ship code under those labels with nothing showing its tests
+# fail without it. When the branch (merge-base..HEAD) changes production code
+# and the block declares requirements but none of them is code, print one line
+# per production path:
+#   UNCLAIMED_CODE <path>
+# and return 1. Otherwise print nothing and return 0. An untagged requirement
+# counts as code: the negative control checks it as one (design-gate C3 rejects
+# it before it gets here). A block with no requirement ids has no status to
+# read, and a baseline that does not resolve has no diff to judge — both are
+# silent here (the gate's preconditions and Level 1 own those cases).
+acceptance_unclaimed_code_check() {
+    local design_md="${1:-}" repo_root="${2:-}"
+    [[ -n "$design_md" && -n "$repo_root" && -f "$design_md" ]] || return 0
+    local block_output
+    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
+    local line any_id=0
+    while IFS= read -r line; do
+        [[ "$line" == "TESTFILES:" ]] && break
+        [[ "$line" =~ $_ACCEPTANCE_SPEC_RE ]] || continue
+        any_id=1
+        case "${BASH_REMATCH[3]}" in
+            ""|code|change) return 0 ;;
+        esac
+    done <<< "$block_output"
+    [[ "$any_id" -eq 1 ]] || return 0
+    local base_sha; base_sha="$(zbuild_resolve_merge_base "$repo_root")"
+    [[ -n "$base_sha" ]] || return 0
+    local p found=0
+    while IFS= read -r p; do
+        if _acceptance_is_production_path "$p"; then
+            printf 'UNCLAIMED_CODE %s\n' "$p"
+            found=1
+        fi
+    done < <(git -C "$repo_root" diff --name-only "$base_sha" HEAD 2>/dev/null || true)
+    [[ "$found" -eq 0 ]]
+}
+
 # A timeout leaves the run's true pass/fail unknown, so it is an INFRASTRUCTURE
 # signal, never a control/violation (ADR-036 #1188). Only the TIMER's own exit
 # codes mean that: GNU `timeout` exits 124 when its timer fires (whatever signal
@@ -412,7 +467,7 @@ acceptance_negctl_check() {
     if [[ "${#_nd_paths[@]}" -gt 0 ]]; then
         local _nd_all_test=1
         for _nd_p in "${_nd_paths[@]}"; do
-            if [[ "$_nd_p" != tests/* && ! "$_nd_p" =~ ^plugins/[^/]+/[^/]+/tests/ ]]; then
+            if ! _acceptance_is_test_path "$_nd_p"; then
                 _nd_all_test=0; break
             fi
         done

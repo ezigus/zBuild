@@ -18,16 +18,21 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 GIT="$(command -v git)"
 
 # build a repo whose `main` lacks impl and whose feature HEAD adds impl + tests
-_build_repo() {  # _build_repo <name> <head_test_body>
-    local name="$1" body="$2"
+# <impl> (default impl.sh) is the non-test file the branch adds. A [guard]-only
+# design that edits production code now fails as unclaimed code (#2304,
+# ADR-069 §5), so the guard cases that pin other behaviour add docs/impl.md: the
+# backstop does not count docs/ as code, and the negative control still sees a
+# change to run against.
+_build_repo() {  # _build_repo <name> <head_test_body> [<impl>]
+    local name="$1" body="$2" impl="${3:-impl.sh}"
     local repo; repo="$(setup_git_temp_repo "$name")"
     (
         cd "$repo"
         "$GIT" checkout -q -b feature
-        mkdir -p tests
-        printf '#!/usr/bin/env bash\nmy_feature() { return 0; }\n' > impl.sh
+        mkdir -p tests "$(dirname "$impl")"
+        printf '#!/usr/bin/env bash\nmy_feature() { return 0; }\n' > "$impl"
         printf '%s\n' "$body" > tests/feature-test.sh
-        chmod +x tests/feature-test.sh impl.sh
+        chmod +x tests/feature-test.sh "$impl"
         "$GIT" add -A; "$GIT" commit -q -m "feat"
     )
     printf '%s' "$repo"
@@ -162,7 +167,7 @@ assert_eq "S5: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
 # not rejected as tautological (which is a [change]-SPEC rule, not a guard rule).
 REPO6="$(_build_repo gate-guard '#!/usr/bin/env bash
 # [SPEC-1] guard: invariant that must not regress
-exit 0')"
+exit 0' docs/impl.md)"
 cat > "$REPO6/design.md" <<'EOF'
 ```acceptance
 SPEC-1[guard]: invariant that must not regress
@@ -213,7 +218,7 @@ assert_contains "[SPEC-2] S6b: the reason names the contradiction, not a generic
 REPO6c="$(_build_repo gate-guard-harness '#!/usr/bin/env bash
 set -euo pipefail
 # [SPEC-1] guard: invariant
-helper_added_by_this_change')"
+helper_added_by_this_change' docs/impl.md)"
 cat > "$REPO6c/design.md" <<'EOF'
 ```acceptance
 SPEC-1[guard]: invariant that must not regress
@@ -514,7 +519,7 @@ assert_contains "[SPEC-3] S16c: empty SPEC text renders <no description>" \
 # Use a guard SPEC so Level-1 coverage check is exempt (guard SPECs skip negctl).
 REPO16B="$(_build_repo gate-enrich-nolabel '#!/usr/bin/env bash
 # no spec tag in this file
-exit 0')"
+exit 0' docs/impl.md)"
 cat > "$REPO16B/design.md" <<'EOF'
 ```acceptance
 SPEC-1[guard]: some invariant

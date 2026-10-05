@@ -13,6 +13,12 @@
 [[ -n "${_ACCEPTANCE_BLOCK_LOADED:-}" ]] && return 0
 _ACCEPTANCE_BLOCK_LOADED=1
 
+# One requirement line: `SPEC-<n>[<tag>]:`. The tag may hold hyphens, so
+# `[no-code]` is a tag (#2304, ADR-069 §1) — it used to be `[a-z]+`, and a
+# `SPEC-2[no-code]:` line was silently dropped from every list. Groups:
+# 1 = the id, 3 = the tag (empty when the line has none).
+_ACCEPTANCE_SPEC_RE='^(SPEC-[0-9]+)(\[([a-z-]+)\])?:'
+
 # #2010: zbuild_engine_tmpdir names where engine code writes temp files (the
 # run memo, #2110). Lazy-sourced, same pattern acceptance-reachability.sh uses:
 # this file is sourced from several entry points and cannot assume helpers.sh
@@ -64,7 +70,7 @@ extract_acceptance_block() {
                 elif [[ -n "$line" ]]; then
                     testfiles+=("$line")
                 fi
-            elif [[ "$line" == SPEC:* || "$line" =~ ^SPEC-[0-9]+(\[[a-z]+\])?: ]]; then
+            elif [[ "$line" == SPEC:* || "$line" =~ $_ACCEPTANCE_SPEC_RE ]]; then
                 specs+=("$line")
             fi
         fi
@@ -121,7 +127,7 @@ acceptance_list_spec_ids() {
         # Stop scanning once we enter the TESTFILES section — per-SPEC binding
         # lines (SPEC-n: path) share the SPEC id regex and must not be emitted.
         [[ "$line" == "TESTFILES:" ]] && break
-        if [[ "$line" =~ ^(SPEC-[0-9]+)(\[[a-z]+\])?: ]]; then
+        if [[ "$line" =~ $_ACCEPTANCE_SPEC_RE ]]; then
             printf '%s\n' "${BASH_REMATCH[1]}"
             ids_found=1
         fi
@@ -129,25 +135,81 @@ acceptance_list_spec_ids() {
     [[ $ids_found -eq 1 ]]
 }
 
+# _acceptance_spec_line <block_output> <spec_id>  (#2304, ADR-069 §1)
+# Finds the requirement line for <spec_id> in an extracted block and sets, with
+# no subshell (so reading a requirement costs no extra fork):
+#   _ACC_SPEC_TAG    the tag, or empty
+#   _ACC_SPEC_STATUS code | no-code | done | unknown:<tag> | "" (no tag). The
+#                    old tags keep meaning what they did: [change] is code,
+#                    [guard] is done (the code already does it).
+#   _ACC_SPEC_REST   everything after the colon, leading space trimmed
+#   _ACC_SPEC_TEXT   what it requires: REST, stopping before ` evidence: ` when
+#                    the requirement is done (the evidence is not a requirement)
+# Returns 1 when the block has no such line. Stops at TESTFILES: — the per-SPEC
+# binding lines there share the `SPEC-n:` shape, and a path is not a requirement.
+_acceptance_spec_line() {
+    local _block="${1:-}" _sid="${2:-}" _l
+    _ACC_SPEC_TAG="" _ACC_SPEC_STATUS="" _ACC_SPEC_REST="" _ACC_SPEC_TEXT=""
+    [[ -n "$_block" && -n "$_sid" ]] || return 1
+    while IFS= read -r _l; do
+        [[ "$_l" == "TESTFILES:" ]] && break
+        if [[ "$_l" =~ $_ACCEPTANCE_SPEC_RE && "${BASH_REMATCH[1]}" == "$_sid" ]]; then
+            _ACC_SPEC_TAG="${BASH_REMATCH[3]}"
+            _ACC_SPEC_REST="${_l#*:}"
+            _ACC_SPEC_REST="${_ACC_SPEC_REST#"${_ACC_SPEC_REST%%[![:space:]]*}"}"
+            _ACC_SPEC_TEXT="$_ACC_SPEC_REST"
+            case "$_ACC_SPEC_TAG" in
+                "")          _ACC_SPEC_STATUS="" ;;
+                code|change) _ACC_SPEC_STATUS="code" ;;
+                no-code)     _ACC_SPEC_STATUS="no-code" ;;
+                done|guard)  _ACC_SPEC_STATUS="done"
+                             _ACC_SPEC_TEXT="${_ACC_SPEC_REST%% evidence: *}" ;;
+                *)           _ACC_SPEC_STATUS="unknown:$_ACC_SPEC_TAG" ;;
+            esac
+            return 0
+        fi
+    done <<< "$_block"
+    return 1
+}
+
+# acceptance_spec_status <design_md> <spec_id>  (#2304, ADR-069 §1)
+# Echoes the requirement's status: code, no-code, done, unknown:<tag>, or an
+# empty line when it carries no tag or the id is absent.
+acceptance_spec_status() {
+    local design_md="${1:-}" spec_id="${2:-}" block_output
+    [[ -n "$design_md" && -n "$spec_id" && -f "$design_md" ]] || { printf '\n'; return 0; }
+    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || { printf '\n'; return 0; }
+    _acceptance_spec_line "$block_output" "$spec_id" || { printf '\n'; return 0; }
+    printf '%s\n' "$_ACC_SPEC_STATUS"
+}
+
+# acceptance_spec_evidence <design_md> <spec_id>  (#2304, ADR-069 §1)
+# Echoes the evidence an "already done" requirement names — the items after
+# ` evidence: ` on its line (`file:line` or a test file), one per line. Empty
+# for any other status, and when none is named.
+acceptance_spec_evidence() {
+    local design_md="${1:-}" spec_id="${2:-}" block_output
+    [[ -n "$design_md" && -n "$spec_id" && -f "$design_md" ]] || return 0
+    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
+    _acceptance_spec_line "$block_output" "$spec_id" || return 0
+    [[ "$_ACC_SPEC_STATUS" == "done" && "$_ACC_SPEC_REST" == *" evidence: "* ]] || return 0
+    local -a _items=()
+    read -ra _items <<< "${_ACC_SPEC_REST#* evidence: }"
+    [[ ${#_items[@]} -gt 0 ]] && printf '%s\n' "${_items[@]}"
+    return 0
+}
+
 # acceptance_spec_text <design_md> <spec_id>  (#1978)
-# Echoes what the SPEC REQUIRES — the prose after `SPEC-n[classifier]:` — with
-# no id and no classifier. Empty when the id is absent or the block is missing.
-#
-# Stops at TESTFILES: for the same reason acceptance_list_spec_ids does: the
-# per-SPEC binding lines there share the `SPEC-n:` shape, and a path is not a
-# requirement.
+# Echoes what the SPEC REQUIRES — the prose after `SPEC-n[tag]:` — with no id,
+# no tag, and (#2304) no evidence. Empty when the id is absent or the block is
+# missing.
 acceptance_spec_text() {
-    local design_md="${1:-}" spec_id="${2:-}" line block_output
+    local design_md="${1:-}" spec_id="${2:-}" block_output
     [[ -n "$design_md" && -n "$spec_id" && -f "$design_md" ]] || return 0
     block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
     [[ -z "$block_output" ]] && return 0
-    while IFS= read -r line; do
-        [[ "$line" == "TESTFILES:" ]] && break
-        if [[ "$line" =~ ^${spec_id}(\[[a-z]+\])?:[[:space:]]*(.*)$ ]]; then
-            printf '%s\n' "${BASH_REMATCH[2]}"
-            return 0
-        fi
-    done <<< "$block_output"
+    _acceptance_spec_line "$block_output" "$spec_id" || return 0
+    printf '%s\n' "$_ACC_SPEC_TEXT"
     return 0
 }
 
@@ -544,19 +606,13 @@ acceptance_spec_desc() {
     [[ -z "$design_md" || -z "$spec_id" || ! -f "$design_md" ]] && return 0
     local block_output
     block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
-    local line
-    while IFS= read -r line; do
-        [[ "$line" == "TESTFILES:" ]] && break
-        if [[ "$line" =~ ^${spec_id}(\[[a-z]+\])?:[[:space:]]*(.*) ]]; then
-            local text="${BASH_REMATCH[2]}"
-            if [[ ${#text} -gt 100 ]]; then
-                printf '%s…\n' "${text:0:100}"
-            else
-                printf '%s\n' "$text"
-            fi
-            return 0
-        fi
-    done <<< "$block_output"
+    _acceptance_spec_line "$block_output" "$spec_id" || return 0
+    local text="$_ACC_SPEC_TEXT"
+    if [[ ${#text} -gt 100 ]]; then
+        printf '%s…\n' "${text:0:100}"
+    else
+        printf '%s\n' "$text"
+    fi
     return 0
 }
 

@@ -6,6 +6,8 @@
 # reachability — for verifying a design's acceptance contract. A different repo
 # may bind a different plugin to the same role without adopting SPEC.
 #
+# Level 0: a change that edits production code needs ≥1 [code] requirement
+#          (ADR-069 §5, #2304) — otherwise it fails as unclaimed_code.
 # Level 1: every SPEC-n id in the design ```acceptance block must have ≥1
 #          [SPEC-n]-tagged assertion across the declared TESTFILES.
 # Level 2: each SPEC-n's tagged test must fail at the merge-base baseline and
@@ -155,8 +157,10 @@ _ag_unreached_where() {
 # acceptance block. Genuine violations lead; infra classes trail.
 _ag_build_reason() {
     local f untagged="" taut="" nohead="" notf="" inert="" notpath="" infra="" malformed=0 grd="" nofiles="" sig="" unr="" unb="" unh="" unv="" brk=""
+    local -a unclaimed=()
     for f in "$@"; do
         case "$f" in
+            unclaimed_code:*)       unclaimed+=("${f#unclaimed_code:}") ;;
             tautology:*)            taut="$taut ${f#tautology:}" ;;
             not_passing_at_head:*)  nohead="$nohead ${f#not_passing_at_head:}" ;;
             untagged_spec:*)        untagged="$untagged ${f#untagged_spec:}" ;;
@@ -179,6 +183,16 @@ _ag_build_reason() {
     # #2163: state the finding, never a remedy addressed to another stage.
     # #2269: each clause says what was tried, what happened, and what to change,
     # in words the reader was given — never the name of the check.
+    # #2304 (ADR-069 §5): leads — nothing else matters while code ships with
+    # no requirement saying what it must do. At most three files are named.
+    if [[ ${#unclaimed[@]} -gt 0 ]]; then
+        local _uc_names="${unclaimed[0]}" _uc_i
+        for ((_uc_i = 1; _uc_i < ${#unclaimed[@]} && _uc_i < 3; _uc_i++)); do
+            _uc_names="$_uc_names, ${unclaimed[$_uc_i]}"
+        done
+        [[ ${#unclaimed[@]} -gt 3 ]] && _uc_names="$_uc_names and $(( ${#unclaimed[@]} - 3 )) more"
+        clauses+=("this change edits code ($_uc_names) but no requirement says what that code must now do — add a [code] requirement with a test")
+    fi
     [[ -n "$taut"     ]] && clauses+=("$(_ag_join_ids "$taut"): its test already passes on the code from before this change, so it cannot tell whether the change was made — make it check something the old code gets wrong")
     [[ -n "$nohead"   ]] && clauses+=("$(_ag_join_ids "$nohead"): its test does not pass on the new code — the code or the test is wrong")
     [[ -n "$untagged" ]] && clauses+=("$(_ag_join_ids "$untagged"): no assertion in the test files carries its tag — add one labelled with it")
@@ -373,6 +387,25 @@ acceptance_gate_run() {
     # report). Space-delimited set (" SPEC-1 SPEC-2 ") — membership via glob
     # pattern `*" $sid "*`; simpler than declare -A for a small id set.
     local untagged_ids=" "
+
+    # ── Level 0: code nobody claims (#2304, ADR-069 §5) ──────────────────────
+    # A [no-code] or [done] requirement is never run against the old code, so
+    # a change that edits production code needs at least one [code]
+    # requirement — or nothing shows its tests fail without it. Reported with
+    # the other levels in the same pass (#1220), not as an early exit.
+    local _uc_path _uc_n=0 _uc_first=""
+    while IFS= read -r line; do
+        [[ "$line" == "UNCLAIMED_CODE "* ]] || continue
+        _uc_path="${line#UNCLAIMED_CODE }"
+        failures+=("unclaimed_code:$_uc_path")
+        [[ -z "$_uc_first" ]] && _uc_first="$_uc_path"
+        _uc_n=$((_uc_n + 1))
+        verdict="fail"
+    done < <(acceptance_unclaimed_code_check "$design_md" "$repo_root" || true)
+    if [[ "$_uc_n" -gt 0 ]]; then
+        eb_emit_event "acceptance.gate.unclaimed_code" "stage=acceptance-gate" \
+            "files=$_uc_n" "first=$_uc_first"
+    fi
 
     # ── Level 1: SPEC-n tag-presence ─────────────────────────────────────────
     while IFS= read -r line; do
