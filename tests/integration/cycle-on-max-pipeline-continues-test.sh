@@ -290,8 +290,10 @@ mi_count="$(jq -c 'select(.type=="cycle.complete" and (.data.reason=="max_iterat
     && assert_pass "T1.1: cycle.complete fired with non-convergence reason for design_verify_cycle (count=$mi_count)" \
     || assert_fail "T1.1: cycle.complete MUST fire with non-convergence reason" "count=$mi_count"
 
-# T1.2: cycle.unconverged event MUST be emitted (proves runner.sh:1292 reached)
-unconv_count="$(jq -c 'select(.type=="cycle.unconverged" and .data.cycle_id=="design_verify_cycle")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
+# T1.2: cycle.unconverged event MUST be emitted (proves runner.sh:1292 reached).
+# #2271: the runner continues past the TOP-LEVEL unit, which is delivery_loop
+# (the design loop is nested in it).
+unconv_count="$(jq -c 'select(.type=="cycle.unconverged" and .data.cycle_id=="delivery_loop")' "$EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')"
 assert_eq "T1.2: cycle.unconverged event emitted (proves runner continues past cycle exit)" "1" "$unconv_count"
 
 # T1.3: pipeline.abort (EXIT trap) MUST NOT fire on the on_max=continue path

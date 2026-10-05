@@ -1766,7 +1766,7 @@ _cycle_iter_dispatch() {
                 return 8
             fi
             [[ "$_inner_reason" == "unowned_finding" ]] && _end_round=1
-            if [[ $rc -ne 0 && $rc -ne 6 && $rc -ne 130 && $rc -ne 143 ]]; then
+            if [[ $rc -ne 0 && $rc -ne 5 && $rc -ne 6 && $rc -ne 9 && $rc -ne 130 && $rc -ne 143 ]]; then
                 if [[ $rc -eq 8 ]]; then
                     (( iter < _CYCLE_MAX_ITER )) && { _end_round=1; rc=2; }
                 elif [[ "$_inner_on_max" == "halt" ]]; then
@@ -1815,6 +1815,14 @@ _cycle_iter_dispatch() {
                    _cycle_state_write_member_atomic "$state_file" "$s" "failed" "blocking_member_failure" || true
                    _cycle_clear_traps
                    return 8 ;;
+                5|9) # #2271: a nested loop that is blocked (5) or whose model call
+                   # is unavailable / rate-limited (9) stops the run — going round
+                   # would only repeat it. The inner loop's reason travels with it.
+                   _CYCLE_LAST_TERMINATED_REASON="${_inner_reason:-}"
+                   _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "${_inner_reason:-blocked}" "failed"
+                   _cycle_state_write_member_atomic "$state_file" "$s" "failed" "${_inner_reason:-blocked}" || true
+                   _cycle_clear_traps
+                   return "$rc" ;;
                 130|143)
                    _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "aborted" "aborted"
                    _cycle_state_write_member_atomic "$state_file" "$s" "aborted" "aborted" || true
@@ -2464,6 +2472,15 @@ cycle_orchestrator_run() {
             _cycle_clear_traps
             _CYCLE_TRAP_CYCLE_ID=''
             return 9
+        fi
+        # #2271: rc=5 is a nested loop that is blocked — structural, so going
+        # round would only repeat it. Passed up as 5 (its reason kept), not
+        # collapsed into config_invalid (rc=4) below.
+        if [[ $_iter_rc -eq 5 ]]; then
+            _CYCLE_LAST_TERMINATED_REASON="${_CYCLE_LAST_TERMINATED_REASON:-blocked}"
+            _cycle_clear_traps
+            _CYCLE_TRAP_CYCLE_ID=''
+            return 5
         fi
         if [[ $_iter_rc -ne 0 ]]; then
             # #1208: the ADR-029 G2 abandon (rc=4 reason=timeout_abandoned) was

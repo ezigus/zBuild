@@ -20,6 +20,10 @@
 #             fresh counter, and the outer loop then converges
 # L5 [change] an outer exit_when with several conditions is read correctly
 #             after an inner loop with a single condition has run inside it
+# L6 [guard]  a build loop that is blocked (a structural failure) stops the run
+#             — the outer loop does not go round to repeat it (written after
+#             the fix, with the rate-limit case covered by
+#             cycle-rate-limit-aborts-run-test.sh)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -119,6 +123,8 @@ cycle_dispatch_stage() {
                 fail-first-round)
                     [[ "$(wc -c < "$OUTER_ROUND_FILE" | tr -d ' ')" == "1" ]] && _CYCLE_DISPATCH_VERDICT="fail" ;;
             esac ;;
+        build)
+            [[ "${BUILD:-ok}" == "blocked" ]] && { _CYCLE_DISPATCH_VERDICT="fail"; _CYCLE_DISPATCH_VERDICT_RAW="error"; } ;;
         test)
             if [[ "${TEST:-pass}" == "fail" ]]; then
                 _CYCLE_DISPATCH_VERDICT="fail"
@@ -172,6 +178,11 @@ DESIGN_GATE=fail-first-round TEST=pass _run; rc=$?
 assert_eq "[L4] the outer loop converges in round 2" "0" "$rc"
 assert_eq "[L4] design started at round 1 in both outer rounds" "2" "$(_count design 1)"
 assert_eq "[L4] build ran once, in round 2" "1" "$(_count build 1)"
+
+print_test_section "L6: a blocked build loop stops the run"
+DESIGN_GATE=pass TEST=fail BUILD=blocked _run; rc=$?
+assert_eq "[L6] the outer loop does not go round" "1" "$(_count design 1)"
+assert_eq "[L6] the run stops as blocked (rc=5), not as a config error" "5" "$rc"
 
 cleanup_test_env
 print_test_results

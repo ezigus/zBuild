@@ -41,24 +41,24 @@ export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"; mkdir -p "$ZBUILD_STATE_DIR"
 # shellcheck disable=SC1090
 source "$REPO_ROOT/core/pipeline/template.sh"
 load_template "$REPO_ROOT/config/templates/simple.yaml"
-assert_eq "T1: simple.yaml declares 2 cycles (design_verify + inner build_test)" \
-    "2" "${#_TPL_CYCLES[@]}"
+# #2271: 3 cycles — delivery_loop (top level) holding design_verify_cycle and
+# build_test_cycle.
+assert_eq "T1: simple.yaml declares 3 cycles (delivery_loop + design_verify + build_test)" \
+    "3" "${#_TPL_CYCLES[@]}"
 has_inner=0
 for c in "${_TPL_CYCLES[@]}"; do
     [[ "$c" == "build_test_cycle" ]] && has_inner=1
 done
 assert_eq "T1: inner build_test_cycle is registered" "1" "$has_inner"
-# build_test_cycle is a top-level dispatch unit; design_verify_cycle precedes it.
-has_cyc=0
-has_design_verify=0
+# #2271: delivery_loop is the top-level dispatch unit; both inner loops sit in
+# it, design first.
+has_outer=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
-    [[ "$u" == "cycle:build_test_cycle" ]] && has_cyc=1
-    [[ "$u" == "cycle:design_verify_cycle" ]] && has_design_verify=1
+    [[ "$u" == "cycle:delivery_loop" ]] && has_outer=1
 done
-assert_eq "T1: dispatch units include cycle:build_test_cycle" \
-    "1" "$has_cyc"
-assert_eq "T1: dispatch units include cycle:design_verify_cycle (ADR-046)" \
-    "1" "$has_design_verify"
+assert_eq "T1: dispatch units include cycle:delivery_loop" "1" "$has_outer"
+assert_eq "T1: delivery_loop runs the design loop, impact, then build_test_cycle" \
+    "design_verify_cycle,impact,build_test_cycle" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
 # ADR-040 (#1138): the inner cycle's feedback edge is now the consolidated
 # gate-aggregator payload (gate-aggregator:gate_feedback → build:gate_feedback)
 # — the composable-gate successor to standard's test_assessment feedback.
@@ -211,7 +211,8 @@ for _g in test-results shape-floor-result acceptance-gate-result lint-result \
           coverage-result mutation-result secret-scan-result; do
     printf '{"verdict":"pass"}\n' > "$T6_ART_DIR/$_g.json"
 done
-# shape-floor escalates to design; the suite and the tautology are build-fixable.
+# Three failing gates; one still writes a fault (an older plugin) — #2271: the
+# aggregator never rolls it up.
 printf '{"verdict":"fail","reason":"missing_floor_files","fault":"scope"}\n' \
     > "$T6_ART_DIR/shape-floor-result.json"
 printf '{"verdict":"fail","disposition":"recoverable","failures":["tautology:SPEC-1"]}\n' \
@@ -221,11 +222,10 @@ printf '{"verdict":"fail","test_output":"FAIL tests/unit/sigpipe-antipattern-gua
 
 gate_aggregator_run "gate-aggregator" "$T6_STATE_DIR/state.json" >/dev/null 2>&1 || true
 
-# #1987: the verdict stays fail; the rolled-up fault says whose problem it is.
 assert_json_key "T6: mixed failure set still leaves verdict=fail" \
     "$(cat "$T6_ART_DIR/gate-aggregator-result.json")" '.verdict' "fail"
-assert_json_key "T6: and the rolled-up fault is scope (shape-floor's escalation)" \
-    "$(cat "$T6_ART_DIR/gate-aggregator-result.json")" '.fault' "scope"
+assert_eq "T6: and no fault is rolled up (#2271)" "" \
+    "$(jq -r '.fault // ""' "$T6_ART_DIR/gate-aggregator-result.json")"
 assert_file_not_exists "T6: the aggregator renders no payload of its own" \
     "$T6_ART_DIR/gate-feedback.md"
 

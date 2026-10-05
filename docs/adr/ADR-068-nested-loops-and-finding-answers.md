@@ -38,10 +38,20 @@ Each misroute was fixed with another rule (#1777, #2157, #1847, #1846). In #2032
 - A stage now spends some of each prompt on the answer block. That is the price of letting each stage judge its own job instead of the engine guessing.
 - A finding a stage misjudges as its own circles at most until the loop budgets run out. A finding nobody owns stops the run at once, with a report.
 
+## Implementation Notes
+
+- `core/pipeline/unowned.sh`: answer counting (`_unowned_yield_check`, `_unowned_halt_check`, the report).
+- `scripts/lib/stage-answers.sh`: the answer request the router appends, and the parser the router records replies with (`answers_record` → `<state>/finding-answers/<unit>.json`).
+- `scripts/lib/stage-summary.sh` `stage_findings_json`: every check writes `data.findings` through it.
+- `core/pipeline/input-resolve.sh`: lists each finding with its opener and gives every reader one framing.
+- `core/pipeline/cycle-orchestrator.sh`: the end-of-round rule for nested loops, `unowned: yield|halt`, and rc 5/9 passing straight up from an inner loop.
+- `core/pipeline/template.sh`: the `unowned:` key (`UO` row), the `route_back` refusal, the flow-ordered stage list, and the loop validator over each loop's full expansion.
+- An inner loop that is blocked (rc 5) or whose model call is unavailable or rate-limited (rc 9) stops the run rather than going round; going round would only repeat it.
+
 ## Enforced by
 
 - §1 → `tests/unit/no-fault-routing-test.sh` R1 (a template with `route_back` is refused, and the error says what replaces it)
-- §2, §3, §4 → `tests/integration/nested-loop-rounds-test.sh` L1–L5; `tests/integration/cycle-member-dispatch-events-test.sh` §3 (rc 8 still halts on the last outer round)
+- §2, §3, §4 → `tests/integration/nested-loop-rounds-test.sh` L1–L6; `tests/integration/cycle-member-dispatch-events-test.sh` §3 (rc 8 still halts on the last outer round); `tests/integration/cycle-rate-limit-aborts-run-test.sh` (rc 9 from an inner loop ends the run)
 - §5 → `tests/unit/numbered-findings-test.sh` N1–N5
 - §6, §7 → `tests/unit/finding-answers-test.sh` A1–A6
 - §8 → `tests/integration/unowned-finding-test.sh` U1–U4
