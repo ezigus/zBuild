@@ -1,0 +1,186 @@
+============== ZBUILD BUILD — iter 1/10 ==============
+## ORIGINAL TASK (immutable across iterations)
+# Plan: ADR-028 closeout: mark review-lens and review-report as migrated
+
+**Goal:** Fix ADR-028 and its guard test to reflect that review-lens and review-report ARE migrated to _llm_envelope_parse --schema-gate, closing out the record left behind by #1840/#1843.
+
+## Steps
+1. Fix the guard test first (write RED, then fix to GREEN): update the header comment to describe review-lens as migrated (not the unmigrated counter-example); fix SPEC-3 to exclude comment lines when grepping for extract_first_json_object (use grep -v '^[[:space:]]*#') so it correctly takes the 'migrated' branch rather than matching the explanatory comment at plugin.sh:394; fix SPEC-2 to add review-lens and review-report to the loop, and to search all non-test .sh files under each plugin's directory tree (not only plugin.sh) so that review-report's parser in lib/lenses.sh is found. After writing these changes, the fixed SPEC-3 takes the 'migrated' branch unconditionally; the RED step is that prior to this fix the test matched a comment and took the wrong branch — state that in the PR body.
+   - Files: `tests/unit/adr-migration-claims-test.sh`
+   - Estimated lines: 35
+2. Amend ADR-028 §Migration: (1) in the Per-stage gates list (around line 181-185), add entries for _review_lens_envelope_schema_ok (review-lens) and _rr_lens_envelope_schema_ok (review-report) with their gate criteria; (2) in the migration paragraph (around line 187), add review-lens and review-report to the migrated-stage list with a dated note citing #1840 and #1843; (3) replace the 'not migrated' paragraph (around line 189) with a dated correction note; (4) remove the false 'review-lens was not migrated' claim (around line 193). Preserve the 2026-09-02 correction note as history. Run npm test and npm run lint to confirm all green.
+   - Files: `docs/adr/ADR-028-shared-llm-agent-framework.md`
+   - Estimated lines: 20
+
+## Notes
+All code is already correct — both plugins use _llm_envelope_parse --schema-gate (review-lens at plugin.sh:398 via _review_lens_envelope_schema_ok; review-report at lib/lenses.sh:162 via _rr_lens_envelope_schema_ok). Only two files change. The RED step for SPEC-3: before the fix, grep on plugin.sh matched the comment at line 394 (which mentions extract_first_json_object to explain why it was replaced), causing the test to take the 'not migrated' conditional branch entirely — the 'migrated' assertion never ran. After the fix (excluding comment lines), no match exists and the test unconditionally asserts the migrated state. SPEC-2's RED step: adding review-lens and review-report to the loop immediately exercises them; since the code is already migrated, SPEC-2 goes green on the first run after step-1 (no separate red step there). ADR-028 is checked against config/adr-enforcement-baseline.txt — if it is already grandfathered, no Enforced-by section is needed; if it is not grandfathered, a lint failure would require adding one. The prior plan assumed it is grandfathered; this should be verified before merging. review-report's lib/ directory contains no test .sh files, so the 'non-test .sh' search (excluding paths matching */tests/*) is unambiguous.
+
+## INSTRUCTIONS
+Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
+
+You have Read, Edit, Write, and
+Bash tools available. Your job is to edit the working tree to implement the
+ORIGINAL TASK above.
+
+### Scope (plan.files[])
+You may ONLY touch files listed here. Refuse any out-of-scope edit.
+  - docs/adr/ADR-028-shared-llm-agent-framework.md
+  - tests/unit/adr-migration-claims-test.sh
+  - plugins/agent/review-lens/plugin.sh
+  - plugins/agent/review-report/lib/lenses.sh
+  - plugins/agent/review-report/plugin.sh
+  - plugins/agent/review-lens/tests/review-lens-v2-result-test.sh
+  - config/adr-enforcement-baseline.txt
+
+### How the loop works
+- Each iteration you may make code changes via Edit/Write/Bash.
+- After each iteration the pipeline captures `git diff HEAD` and feeds it
+  back to you so you can verify progress.
+- Do NOT emit a unified diff in your response — the pipeline derives the
+  canonical `diff.patch` artifact from `git diff HEAD` automatically.
+
+### Saying you are done
+Emit `LOOP_COMPLETE` on its own line as the FINAL line of your response
+WHEN the implementation is complete — whether you just finished it OR
+it was already done before you started. If the branch already contains
+the required changes (check `git log` for commits + `git diff` for any
+remaining gap) AND no STAGE SUMMARY below is headed "— its findings, to answer",
+emit `LOOP_COMPLETE` immediately. Do NOT keep iterating when there is
+nothing left to do. While any STAGE SUMMARY is headed that way, finishing
+with no change needs each of its findings answered: `done` (you changed
+something for it), `nothing to do` with the reason, or not reproduced.
+
+### When a finding does not reproduce
+If a failing summary names a test and that test PASSES when you run it on this
+tree, say so and stop. Emit, on its own line before the sentinel:
+
+    NOT_REPRODUCED: <the path you ran>
+
+one line per path. This is a REPORT, not a verdict: the pipeline re-runs the
+stage that raised the finding to check. Do not keep searching for the cause of
+a failure you cannot produce, and do not change code to chase one.
+
+### Budget
+- Each iteration is ONE model call bounded by a 900-second wall clock; a
+  command that runs longer than ~2 minutes will cost you the whole call.
+- Finish this call's work and commit before ~630s. Work you saved
+  survives a timeout; the call itself returns nothing, so say what is left as you go.
+- Do NOT run `npm test`, the full suite, or `npm run lint` — the pipeline has
+  already run them and their findings are in the STAGE SUMMARIES below. Run
+  only the one failing test file a summary names, and only after changing code.
+- A STAGE SUMMARY headed "— its findings, to answer" is red RIGHT NOW on this tree.
+  Do not re-verify it; start from the failing line it quotes.
+
+### Rules
+- Touch only files in the scope list above.
+- Do not run `git commit` — the pipeline owns commit semantics.
+- NEVER run a command that mutates git branch state or the working tree —
+  no `git checkout -b`/`switch`/`commit`/`push`/`tag`/`reset`. You are running
+  INSIDE the pipeline's own checkout; switching or creating a branch hijacks the
+  run. The pipeline owns the branch.
+- If you must exercise a command you are building (or any command that could
+  publish, tag, push, or otherwise mutate state), run it in `--dry-run` mode.
+  Do everything you can to verify behavior without side effects.
+- Keep changes minimal and aligned with the plan.
+- Clean up scratch siblings of the files you edit (`*.bak`, `*.orig`,
+  `*.rej`, `*.head`, `*.tmp`, `*~`). `sed -i.bak` and
+  `git show HEAD:f > f.head` both leave one behind — prefer `sed -i` with no
+  suffix, and delete any comparison scratch before you finish. Out-of-scope
+  scratch is removed for you; any OTHER out-of-scope path voids the whole
+  iteration, so do not rely on the cleanup.
+- If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.
+
+### Commit message (#608)
+Before the final `LOOP_COMPLETE` line, emit a single line of the form:
+
+    COMMIT_SUMMARY: <one-line description of this iteration's change>
+
+Keep it under 72 characters, present tense, imperative mood (e.g.
+"add foo parser" not "added"). The pipeline uses this as the git commit
+message for the per-iteration commit it creates on your behalf. If you
+omit this line the pipeline falls back to the plan title.
+
+## DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
+# Design — #2035: ADR-028 closeout: mark review-lens and review-report as migrated
+
+## Summary
+
+**Goal.** Close out the stale record in ADR-028 §Migration and its guard test
+(`adr-migration-claims-test.sh`). Both still say `review-lens` and
+`review-report` are not migrated, but PRs #1840 and #1843 already migrated them
+to `_llm_envelope_parse --schema-gate`.
+
+**Context.** The guard test has a latent bug: its SPEC-3 grep for
+`extract_first_json_object` in `review-lens/plugin.sh` does not exclude comment
+lines. A comment at `plugin.sh:394` ("schema-gated envelope parser replaces bare
+`extract_first_json_object`") matches the grep, causing SPEC-3 to take the "not
+migrated" branch and pass for the wrong reason. The stale ADR claim goes
+undetected. Additionally, the pre-#2035 SPEC-2 loop only checks `plan`,
+`security-lens`, and `monitor` — it never checks `review-lens` or
+`review-report` — so no assertion would have failed even if the migration had
+been incomplete.
+
+**Decision.** Fix two files only:
+1. `tests/unit/adr-migration-claims-test.sh` — expand SPEC-2 loop to cover
+   `review-lens` and `review-report` (searching all non-test `.sh` files per
+   plugin directory, since `review-report`'s migration lives in `lib/lenses.sh`);
+   fix SPEC-3 grep to exclude comment-only lines (`^[^#]*`); add a new SPEC-1
+   assertion that the ADR contains no stale "not migrated" claim for these
+   plugins.
+2. `docs/adr/ADR-028-shared-llm-agent-framework.md` — update §Migration: add
+   `_review_lens_envelope_schema_ok` and `_rr_lens_envelope_schema_ok` to the
+   per-stage gates list; replace the stale "not migrated" paragraph with a dated
+   migration note citing #1840/#1843. The 2026-09-02 correction note is
+   preserved.
+
+**SPEC-2 and SPEC-3 are [guard], not [change].** The migration patterns are
+pre-existing code (`review-lens/plugin.sh` and `review-report/lib/lenses.sh`
+both already contain `_llm_envelope_parse --schema-gate` before this change).
+Test assertions checking for these patterns pass on old code — tagging them
+[change] caused tautology failures in acceptance-gate (negctl). The real
+[change] is SPEC-1: the ADR's stale "**not** migrated" claim causes SPEC-1 to
+fail on old code and pass only after the ADR is corrected. WIRING is therefore
+`docs/adr/ADR-028-shared-llm-agent-framework.md` (reverting it restores the
+stale claim; SPEC-1 then fails).
+
+
+
+
+LOOP_COMPLETE
+Where a design decision above conflicts with the plan, follow the design decision.
+
+## ACCEPTANCE TESTS (you MUST make these pass)
+The acceptance testfiles listed below are read-only for this stage: the engine denies edits to them, and a mechanical check restores any change. They are the contract you implement against, written before your implementation existed. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion. If you believe an assertion genuinely does not test its SPEC, say so in your output and leave it alone.
+These tests were written before your code. Make them pass by changing code only. Each requirement below is checked by the assertion labelled with its tag (for SPEC-1 of this issue: [#2035/SPEC-1]).
+- SPEC-1: tests/unit/adr-migration-claims-test.sh
+- SPEC-2: tests/unit/adr-migration-claims-test.sh
+- SPEC-3: tests/unit/adr-migration-claims-test.sh
+- SPEC-4: tests/unit/adr-migration-claims-test.sh
+- SPEC-5: tests/unit/adr-migration-claims-test.sh plugins/agent/review-lens/tests/review-lens-v2-result-test.sh
+- SPEC-6: tests/unit/adr-migration-claims-test.sh
+
+What each SPEC requires:
+- [#2035/SPEC-1] tests/unit/adr-migration-claims-test.sh contains an assertion that ADR-028 does not contain a stale "not migrated" claim for review-lens or review-report; this assertion fails before the ADR is updated (stale text present) and passes after.
+- [#2035/SPEC-2] review-lens/plugin.sh uses _llm_envelope_parse --schema-gate; the explicit file-level assertion added to adr-migration-claims-test.sh passes both before and after this change (migration pre-exists from #1840).
+- [#2035/SPEC-3] review-report/lib/lenses.sh uses _llm_envelope_parse --schema-gate; the explicit file-level assertion added to adr-migration-claims-test.sh passes both before and after this change (migration pre-exists from #1843).
+- [#2035/SPEC-4] tests/unit/adr-migration-claims-test.sh SPEC-3 grep excludes comment-only lines (^[^#]*extract_first_json_object) so the comment at plugin.sh:394 does not trigger the wrong branch; passes both before and after.
+- [#2035/SPEC-5] review-lens/plugin.sh uses _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok (pre-existing; confirmed by the SPEC-2 loop expansion and by review-lens-v2-result-test.sh SPEC-4).
+- [#2035/SPEC-6] review-report/lib/lenses.sh uses _llm_envelope_parse --schema-gate _rr_lens_envelope_schema_ok (pre-existing; confirmed by the SPEC-2 loop expansion).
+
+### REQUIREMENTS YOUR CODE MUST MEET
+Your change is done when the test for every requirement below passes.
+- [#2035/SPEC-1] tests/unit/adr-migration-claims-test.sh contains an assertion that ADR-028 does not contain a stale "not migrated" claim for review-lens or review-report; this assertion fails before the ADR is updated (stale text present) and passes after.
+  → its test is already written; make it pass
+- [#2035/SPEC-2] review-lens/plugin.sh uses _llm_envelope_parse --schema-gate; the explicit file-level assertion added to adr-migration-claims-test.sh passes both before and after this change (migration pre-exists from #1840).
+  → its test is already written; make it pass
+- [#2035/SPEC-3] review-report/lib/lenses.sh uses _llm_envelope_parse --schema-gate; the explicit file-level assertion added to adr-migration-claims-test.sh passes both before and after this change (migration pre-exists from #1843).
+  → its test is already written; make it pass
+- [#2035/SPEC-4] tests/unit/adr-migration-claims-test.sh SPEC-3 grep excludes comment-only lines (^[^#]*extract_first_json_object) so the comment at plugin.sh:394 does not trigger the wrong branch; passes both before and after.
+  → its test is already written; make it pass
+- [#2035/SPEC-5] review-lens/plugin.sh uses _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok (pre-existing; confirmed by the SPEC-2 loop expansion and by review-lens-v2-result-test.sh SPEC-4).
+  → its test is already written; make it pass
+- [#2035/SPEC-6] review-report/lib/lenses.sh uses _llm_envelope_parse --schema-gate _rr_lens_envelope_schema_ok (pre-existing; confirmed by the SPEC-2 loop expansion).
+  → its test is already written; make it pass
+
+## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
+A previous attempt on this issue ended build with verdict=pass having changed nothing (0 files). That is not evidence the work is done: read the STAGE SUMMARIES below — a summary headed "— its findings, to answer" means a check is red on this tree and there is work to do. Do not restart from scratch; continue from what is on this branch (check `git log` / `git diff`).
