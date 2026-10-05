@@ -65,14 +65,37 @@ else
         "still on the old path: $_unmigrated"
 fi
 
+# ── [#2035/SPEC-2]: review-lens/plugin.sh uses _llm_envelope_parse --schema-gate ──
+# review-report's migration lives in lib/lenses.sh, checked separately below.
+_rl_plugin="$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
+if grep -qE '_llm_envelope_parse[^|]*--schema-gate' "$_rl_plugin" 2>/dev/null; then
+    assert_pass "[#2035/SPEC-2]: review-lens/plugin.sh uses _llm_envelope_parse --schema-gate"
+else
+    assert_fail "[#2035/SPEC-2]: review-lens/plugin.sh uses _llm_envelope_parse --schema-gate" \
+        "pattern absent in $_rl_plugin"
+fi
+
+# ── [#2035/SPEC-3]: review-report/lib/lenses.sh uses _llm_envelope_parse --schema-gate ──
+_rr_lenses="$REPO_ROOT/plugins/agent/review-report/lib/lenses.sh"
+if grep -qE '_llm_envelope_parse[^|]*--schema-gate' "$_rr_lenses" 2>/dev/null; then
+    assert_pass "[#2035/SPEC-3]: review-report/lib/lenses.sh uses _llm_envelope_parse --schema-gate"
+else
+    assert_fail "[#2035/SPEC-3]: review-report/lib/lenses.sh uses _llm_envelope_parse --schema-gate" \
+        "pattern absent in $_rr_lenses"
+fi
+
 # ── SPEC-3: a stage NOT migrated is not described as if it were ────────────
 # review-lens is the counter-example the ADR got wrong. It is allowed to stay on
 # `extract_first_json_object` — it fails visibly, emitting review_lens.unparseable
 # and a summary that says the lens reviewed nothing — but the ADR must not claim
 # otherwise. This asserts the two agree, in whichever direction they agree.
+# The grep excludes comment-only lines so plugin.sh:394's comment
+# ("schema-gated envelope parser replaces bare `extract_first_json_object`")
+# does not cause a false classification as un-migrated.
 _rl="$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
-if [[ -f "$_rl" ]] && grep -qE 'extract_first_json_object' "$_rl"; then
-    # Not migrated. The ADR must say so, or say nothing.
+if [[ -f "$_rl" ]] && grep -qE '^[^#]*extract_first_json_object' "$_rl"; then
+    # Not migrated: non-comment code still calls bare extract_first_json_object.
+    # The ADR must say so, or say nothing about it being migrated.
     if grep -qE 'All four Pattern-1 stages.*review' "$ADR"; then
         assert_fail "SPEC-3: the ADR does not claim review-lens is migrated" \
             "review-lens still calls extract_first_json_object; the ADR says otherwise"
@@ -81,6 +104,56 @@ if [[ -f "$_rl" ]] && grep -qE 'extract_first_json_object' "$_rl"; then
     fi
 else
     assert_pass "SPEC-3: review-lens migrated — no stale claim possible"
+fi
+
+# ── [#2035/SPEC-1]: ADR-028 has no stale "not migrated" claim for review-lens or review-report ──
+# PRs #1840 and #1843 migrated both plugins. The ADR's Amendment v1.2 paragraph
+# that described them as not migrated is stale. This assertion fails while that
+# paragraph remains, and passes after the ADR is corrected.
+if grep -qE '(review-lens|review-report).*\*\*not\*\*.*migrat|\*\*not\*\*.*migrat.*(review-lens|review-report)' "$ADR"; then
+    assert_fail "[#2035/SPEC-1]: ADR-028 has no stale \"not migrated\" claim for review-lens or review-report" \
+        "ADR-028 still describes review-lens or review-report as not migrated"
+else
+    assert_pass "[#2035/SPEC-1]: ADR-028 has no stale \"not migrated\" claim for review-lens or review-report"
+fi
+
+# ── [#2035/SPEC-4]: comment-excluding grep guard ─────────────────────────────
+# review-lens/plugin.sh has a comment at plugin.sh:394 that mentions
+# extract_first_json_object. A comment-inclusive grep would match it and falsely
+# classify review-lens as un-migrated, taking the wrong branch in SPEC-3 above.
+# This guard asserts: the comment EXISTS (proving the risk is real) AND no
+# non-comment code line uses extract_first_json_object (confirming the
+# comment-excluding grep `^[^#]*extract_first_json_object` is the correct test).
+_rl_guard="$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
+if [[ -f "$_rl_guard" ]]; then
+    _has_comment=false
+    _has_noncomment=false
+    grep -qE '#.*extract_first_json_object' "$_rl_guard" && _has_comment=true
+    grep -qE '^[^#]*extract_first_json_object' "$_rl_guard" && _has_noncomment=true
+    if $_has_comment && ! $_has_noncomment; then
+        assert_pass "[#2035/SPEC-4]: comment-excluding grep (^[^#]*) correctly ignores plugin.sh:394 comment; no non-comment use"
+    else
+        assert_fail "[#2035/SPEC-4]: comment-excluding grep (^[^#]*) correctly ignores plugin.sh:394 comment; no non-comment use" \
+            "comment present: $_has_comment, non-comment code present: $_has_noncomment"
+    fi
+fi
+
+# ── [#2035/SPEC-5]: review-lens/plugin.sh uses _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok ──
+_rl_spec5="$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
+if grep -q '_llm_envelope_parse.*--schema-gate.*_review_lens_envelope_schema_ok' "$_rl_spec5" 2>/dev/null; then
+    assert_pass "[#2035/SPEC-5]: review-lens/plugin.sh uses _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok"
+else
+    assert_fail "[#2035/SPEC-5]: review-lens/plugin.sh uses _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok" \
+        "pattern absent in $_rl_spec5"
+fi
+
+# ── [#2035/SPEC-6]: review-report/lib/lenses.sh uses _llm_envelope_parse --schema-gate _rr_lens_envelope_schema_ok ──
+_rr_spec6="$REPO_ROOT/plugins/agent/review-report/lib/lenses.sh"
+if grep -q '_llm_envelope_parse.*--schema-gate.*_rr_lens_envelope_schema_ok' "$_rr_spec6" 2>/dev/null; then
+    assert_pass "[#2035/SPEC-6]: review-report/lib/lenses.sh uses _llm_envelope_parse --schema-gate _rr_lens_envelope_schema_ok"
+else
+    assert_fail "[#2035/SPEC-6]: review-report/lib/lenses.sh uses _llm_envelope_parse --schema-gate _rr_lens_envelope_schema_ok" \
+        "pattern absent in $_rr_spec6"
 fi
 
 # ── SPEC-4: no live code cites a RETIRED ADR as its authority ──────────────

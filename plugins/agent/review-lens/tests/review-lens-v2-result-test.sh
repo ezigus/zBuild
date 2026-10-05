@@ -228,9 +228,9 @@ assert_eq "[SPEC-4] recovered lens result has valid findings array (1 finding)" 
 # Confirm _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok is present in plugin.sh
 if grep -q '_llm_envelope_parse.*--schema-gate.*_review_lens_envelope_schema_ok' \
     "$PLUGIN_DIR/plugin.sh" 2>/dev/null; then
-    assert_pass "[SPEC-4] plugin.sh uses _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok"
+    assert_pass "[SPEC-4] [#2035/SPEC-5] plugin.sh uses _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok"
 else
-    assert_fail "[SPEC-4] plugin.sh must use _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok" "absent"
+    assert_fail "[SPEC-4] [#2035/SPEC-5] plugin.sh must use _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok" "absent"
 fi
 
 # ─── SPEC-5 [change]: ADR-063 budget guidance in prompt when max_turns > 0 ────
