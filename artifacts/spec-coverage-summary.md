@@ -1,5 +1,0 @@
-## spec-coverage — covered
-
-- Every behavioral requirement from the issue's acceptance checklist maps to a SPEC that demands the full requirement — SPEC-1 covers A-red-first (timed_out blocks convergence), SPEC-2 covers complete-still-converges, SPEC-6 covers max_iterations exhaustion path, SPEC-3/4/5 cover the B router-disposition fixes for all three plugins, and SPEC-7/8/9 cover the C ADR-063 amendment; the npm-test/lint-green item is a pipeline verification requirement, not a behavioural gap.
-
-- every requirement the issue states maps to a declared SPEC
