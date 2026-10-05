@@ -35,6 +35,9 @@
   [38;2;74;222;128m✓[0m [SPEC-5][#2032/SPEC-5] multiple failing lenses → rc=0 (advisory never aborts)
   [38;2;248;113;113m✗[0m [SPEC-5][#2032/SPEC-5] multiple failing lenses → disposition from first failed lens rc (all rc=1 → unavailable)
     [2mexpected: unavailable, got: complete[0m
+  [38;2;74;222;128m✓[0m [SPEC-5][#2032/SPEC-5] mixed-rc multi-lens → rc=0 (advisory never aborts)
+  [38;2;248;113;113m✗[0m [SPEC-5][#2032/SPEC-5] mixed-rc multi-lens: first lens (correctness, rc=124 → timed_out) wins over later lenses (rc=1 → unavailable)
+    [2mexpected: timed_out, got: complete[0m
   [38;2;74;222;128m✓[0m [SPEC-7] lens prompt carries a TURN BUDGET block
   [38;2;74;222;128m✓[0m [SPEC-7] block reflects ZBUILD_ROUTER_MAX_TURNS=77 (from _route_resolve_max_turns)
   [38;2;74;222;128m✓[0m [SPEC-7] block reflects ZBUILD_ROUTER_TIMEOUT=123 (from _route_resolve_timeout)
@@ -58,10 +61,11 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m2 of 50 tests failed[0m
+  [38;2;248;113;113m[1m3 of 52 tests failed[0m
 
   [38;2;248;113;113m✗[0m [SPEC-5][#2032/SPEC-5] failed lens → disposition from first failed lens rc (rc=1 → unavailable, not hardcoded complete)
   [38;2;248;113;113m✗[0m [SPEC-5][#2032/SPEC-5] multiple failing lenses → disposition from first failed lens rc (all rc=1 → unavailable)
+  [38;2;248;113;113m✗[0m [SPEC-5][#2032/SPEC-5] mixed-rc multi-lens: first lens (correctness, rc=124 → timed_out) wins over later lenses (rc=1 → unavailable)
 
 ### SPEC-5 head tests/unit/review-report-v2-contract-test.sh
 
@@ -98,6 +102,8 @@
   [38;2;74;222;128m✓[0m [SPEC-5] reason names the lens that failed
   [38;2;74;222;128m✓[0m [SPEC-5][#2032/SPEC-5] multiple failing lenses → rc=0 (advisory never aborts)
   [38;2;74;222;128m✓[0m [SPEC-5][#2032/SPEC-5] multiple failing lenses → disposition from first failed lens rc (all rc=1 → unavailable)
+  [38;2;74;222;128m✓[0m [SPEC-5][#2032/SPEC-5] mixed-rc multi-lens → rc=0 (advisory never aborts)
+  [38;2;74;222;128m✓[0m [SPEC-5][#2032/SPEC-5] mixed-rc multi-lens: first lens (correctness, rc=124 → timed_out) wins over later lenses (rc=1 → unavailable)
   [38;2;74;222;128m✓[0m [SPEC-7] lens prompt carries a TURN BUDGET block
   [38;2;74;222;128m✓[0m [SPEC-7] block reflects ZBUILD_ROUTER_MAX_TURNS=77 (from _route_resolve_max_turns)
   [38;2;74;222;128m✓[0m [SPEC-7] block reflects ZBUILD_ROUTER_TIMEOUT=123 (from _route_resolve_timeout)
@@ -121,5 +127,5 @@
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 50 tests passed[0m
+  [38;2;74;222;128m[1mAll 52 tests passed[0m
 

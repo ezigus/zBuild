@@ -3,10 +3,11 @@
 [38;2;0;212;255m[1m  cycle: unfinished member suppresses convergence (#2032)[0m
 [2m  ══════════════════════════════════════════[0m
 
-══ design-only [cycle] seq=1 input ═════════════════════════════ 12:11:20 UTC ══
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence registered in event-schema.json
+══ design-only [cycle] seq=1 input ═════════════════════════════ 13:07:04 UTC ══
 (no feedback — first iteration)
 
-══ design-only [cycle] seq=1 output OK 0.6s ════════════════════ 12:11:21 UTC ══
+══ design-only [cycle] seq=1 output OK 0.6s ════════════════════ 13:07:05 UTC ══
 exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-only ✓ ──
@@ -14,10 +15,10 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] terminated reason is converged (not suppressed)
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] suppression event NOT emitted when all dispositions are complete
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] exactly 1 dispatch (converged on first iter — suppression did not fire)
-══ design-only [cycle] seq=1 input ═════════════════════════════ 12:11:21 UTC ══
+══ design-only [cycle] seq=1 input ═════════════════════════════ 13:07:05 UTC ══
 (no feedback — first iteration)
 
-══ design-only [cycle] seq=1 output OK 0.4s ════════════════════ 12:11:22 UTC ══
+══ design-only [cycle] seq=1 output OK 0.4s ════════════════════ 13:07:06 UTC ══
 exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-only ✓ ──
@@ -25,10 +26,10 @@ health: progress=0 (no progress) - defects=0 → score=0
     [2mexpected: 1, got: 0[0m
   [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle iterated after suppression (2 dispatch calls, not the pre-fix 1)
     [2mexpected: 2, got: 1[0m
-══ design-only [cycle] seq=1 input ═════════════════════════════ 12:11:22 UTC ══
+══ design-only [cycle] seq=1 input ═════════════════════════════ 13:07:06 UTC ══
 (no feedback — first iteration)
 
-══ design-only [cycle] seq=1 output OK 0.4s ════════════════════ 12:11:22 UTC ══
+══ design-only [cycle] seq=1 output OK 0.4s ════════════════════ 13:07:06 UTC ══
 exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-only ✓ ──
@@ -36,10 +37,10 @@ health: progress=0 (no progress) - defects=0 → score=0
     [2mexpected: 1, got: 0[0m
   [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle iterated after out_of_turns suppression (2 dispatch calls)
     [2mexpected: 2, got: 1[0m
-══ design-only [cycle] seq=1 input ═════════════════════════════ 12:11:23 UTC ══
+══ design-only [cycle] seq=1 input ═════════════════════════════ 13:07:07 UTC ══
 (no feedback — first iteration)
 
-══ design-only [cycle] seq=1 output OK 0.4s ════════════════════ 12:11:23 UTC ══
+══ design-only [cycle] seq=1 output OK 0.4s ════════════════════ 13:07:07 UTC ══
 exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-only ✓ ──
@@ -47,10 +48,10 @@ health: progress=0 (no progress) - defects=0 → score=0
     [2mexpected: 1, got: 0[0m
   [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle iterated after interrupted suppression (2 dispatch calls)
     [2mexpected: 2, got: 1[0m
-══ design-max1 [cycle] seq=1 input ═════════════════════════════ 12:11:23 UTC ══
+══ design-max1 [cycle] seq=1 input ═════════════════════════════ 13:07:07 UTC ══
 (no feedback — first iteration)
 
-══ design-max1 [cycle] seq=1 output OK 0.4s ════════════════════ 12:11:24 UTC ══
+══ design-max1 [cycle] seq=1 output OK 0.4s ════════════════════ 13:07:08 UTC ══
 exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-max1 ✓ ──
@@ -65,7 +66,7 @@ health: progress=0 (no progress) - defects=0 → score=0
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m10 of 14 tests failed[0m
+  [38;2;248;113;113m[1m10 of 15 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence emitted when member has timed_out disposition
   [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle iterated after suppression (2 dispatch calls, not the pre-fix 1)
@@ -83,10 +84,11 @@ health: progress=0 (no progress) - defects=0 → score=0
 [38;2;0;212;255m[1m  cycle: unfinished member suppresses convergence (#2032)[0m
 [2m  ══════════════════════════════════════════[0m
 
-══ design-only [cycle] seq=1 input ═════════════════════════════ 12:11:24 UTC ══
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence registered in event-schema.json
+══ design-only [cycle] seq=1 input ═════════════════════════════ 13:07:08 UTC ══
 (no feedback — first iteration)
 
-══ design-only [cycle] seq=1 output OK 0.5s ════════════════════ 12:11:25 UTC ══
+══ design-only [cycle] seq=1 output OK 0.5s ════════════════════ 13:07:09 UTC ══
 exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-only ✓ ──
@@ -94,61 +96,61 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] terminated reason is converged (not suppressed)
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] suppression event NOT emitted when all dispositions are complete
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] exactly 1 dispatch (converged on first iter — suppression did not fire)
-══ design-only [cycle] seq=1 input ═════════════════════════════ 12:11:25 UTC ══
+══ design-only [cycle] seq=1 input ═════════════════════════════ 13:07:09 UTC ══
 (no feedback — first iteration)
 
-══ design-only [cycle] seq=1 output OK 0.5s ════════════════════ 12:11:26 UTC ══
+══ design-only [cycle] seq=1 output OK 0.5s ════════════════════ 13:07:10 UTC ══
 exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-only ✓ ──
 
-══ design-only [cycle] seq=2 input ═════════════════════════════ 12:11:26 UTC ══
+══ design-only [cycle] seq=2 input ═════════════════════════════ 13:07:10 UTC ══
 (no feedback edges, no stage summaries)
 
-══ design-only [cycle] seq=2 output OK 0.4s ════════════════════ 12:11:27 UTC ══
+══ design-only [cycle] seq=2 output OK 0.4s ════════════════════ 13:07:11 UTC ══
 exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-only ✓ ──
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence emitted when member has timed_out disposition
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle iterated after suppression (2 dispatch calls, not the pre-fix 1)
-══ design-only [cycle] seq=1 input ═════════════════════════════ 12:11:27 UTC ══
+══ design-only [cycle] seq=1 input ═════════════════════════════ 13:07:11 UTC ══
 (no feedback — first iteration)
 
-══ design-only [cycle] seq=1 output OK 0.5s ════════════════════ 12:11:27 UTC ══
+══ design-only [cycle] seq=1 output OK 0.5s ════════════════════ 13:07:12 UTC ══
 exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-only ✓ ──
 
-══ design-only [cycle] seq=2 input ═════════════════════════════ 12:11:28 UTC ══
+══ design-only [cycle] seq=2 input ═════════════════════════════ 13:07:12 UTC ══
 (no feedback edges, no stage summaries)
 
-══ design-only [cycle] seq=2 output OK 0.4s ════════════════════ 12:11:29 UTC ══
+══ design-only [cycle] seq=2 output OK 0.4s ════════════════════ 13:07:13 UTC ══
 exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-only ✓ ──
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] suppression fires when member has out_of_turns disposition
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle iterated after out_of_turns suppression (2 dispatch calls)
-══ design-only [cycle] seq=1 input ═════════════════════════════ 12:11:29 UTC ══
+══ design-only [cycle] seq=1 input ═════════════════════════════ 13:07:13 UTC ══
 (no feedback — first iteration)
 
-══ design-only [cycle] seq=1 output OK 0.5s ════════════════════ 12:11:29 UTC ══
+══ design-only [cycle] seq=1 output OK 0.5s ════════════════════ 13:07:13 UTC ══
 exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-only ✓ ──
 
-══ design-only [cycle] seq=2 input ═════════════════════════════ 12:11:30 UTC ══
+══ design-only [cycle] seq=2 input ═════════════════════════════ 13:07:14 UTC ══
 (no feedback edges, no stage summaries)
 
-══ design-only [cycle] seq=2 output OK 0.4s ════════════════════ 12:11:30 UTC ══
+══ design-only [cycle] seq=2 output OK 0.4s ════════════════════ 13:07:15 UTC ══
 exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-only ✓ ──
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] suppression fires when member has interrupted disposition
   [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle iterated after interrupted suppression (2 dispatch calls)
-══ design-max1 [cycle] seq=1 input ═════════════════════════════ 12:11:31 UTC ══
+══ design-max1 [cycle] seq=1 input ═════════════════════════════ 13:07:15 UTC ══
 (no feedback — first iteration)
 
-══ design-max1 [cycle] seq=1 output OK 0.5s ════════════════════ 12:11:31 UTC ══
+══ design-max1 [cycle] seq=1 output OK 0.5s ════════════════════ 13:07:15 UTC ══
 exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-max1 ✓ ──
@@ -159,5 +161,5 @@ health: progress=0 (no progress) - defects=0 → score=0
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 14 tests passed[0m
+  [38;2;74;222;128m[1mAll 15 tests passed[0m
 
