@@ -1,0 +1,43 @@
+{
+  "result_contract": 2,
+  "verdict": "partial",
+  "disposition": "complete",
+  "reason": "judged 9 SPEC(s): 2 correspond, 7 partial, 0 mismatch, 0 uncheckable, 0 unjudged",
+  "data": {
+    "corresponds": 2,
+    "partial": 7,
+    "mismatch": 0,
+    "uncheckable": 0,
+    "unjudged": 0,
+    "findings": [
+      {
+        "n": 1,
+        "text": "SPEC-1 partial: The assertion tests only the timed_out disposition, but the requirement states suppression must fire for any of three dispositions — timed_out, out_of_turns, or interrupted."
+      },
+      {
+        "n": 2,
+        "text": "SPEC-3 partial: The assertion tests only rc=124; the requirement covers any non-zero exit from route_to_model, with rc=124 named only as a parenthetical example."
+      },
+      {
+        "n": 3,
+        "text": "SPEC-4 partial: The assertion tests only rc=1; the requirement states the disposition must be classified correctly whenever the router call exits non-zero, covering the full non-zero range."
+      },
+      {
+        "n": 4,
+        "text": "SPEC-5 partial: The assertion tests a single failing lens; the requirement says \"one or more\" and specifies behaviour for the first failed lens in a multi-lens failure, which the single-lens case does not establish."
+      },
+      {
+        "n": 5,
+        "text": "SPEC-7 partial: The assertion verifies the old exhausted/escalate vocabulary is absent but does not verify the replacement vocabulary (timed_out/out_of_turns) is present, which the requirement also requires."
+      },
+      {
+        "n": 6,
+        "text": "SPEC-8 partial: The assertion verifies _budget_guidance appears at least once, but the requirement demands each stage has its own helper, which a single-occurrence count does not establish."
+      },
+      {
+        "n": 7,
+        "text": "SPEC-9 partial: The assertion checks that \"#2187\" appears anywhere in the file, but the requirement calls for an amendment back-pointer — a specific structural context the grep for any occurrence does not confirm."
+      }
+    ]
+  }
+}
