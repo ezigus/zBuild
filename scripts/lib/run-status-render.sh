@@ -244,7 +244,7 @@ rsc_render_row() {
         [[ -n "$iter" ]] && line+=" · iter ${iter}"
         local inputs; inputs="$(rsc_row_inputs_line "$state_dir" "$stage")"
         [[ -n "$inputs" ]] && line+=" · inputs: ${inputs}"
-        [[ -n "$summaries" ]] && line+=" · ${summaries} stage summaries (${resolve} RESOLVE)"
+        [[ -n "$summaries" ]] && line+=" · ${summaries} stage summaries (${resolve} failing)"
     else
         [[ -z "$ended" ]] && ended="$started"
         line="**$(_rsc_clock "$started") → $(_rsc_clock "$ended") ($(rsc_duration "$started" "$ended"))** · **${seq} ${stage}**"
