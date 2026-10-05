@@ -2480,7 +2480,7 @@ cycle_orchestrator_run() {
             _CYCLE_LAST_TERMINATED_REASON="${_CYCLE_LAST_TERMINATED_REASON:-blocked}"
             _cycle_clear_traps
             _CYCLE_TRAP_CYCLE_ID=''
-            return 5
+            return "$_iter_rc"   # the inner loop's own rc, passed through
         fi
         if [[ $_iter_rc -ne 0 ]]; then
             # #1208: the ADR-029 G2 abandon (rc=4 reason=timeout_abandoned) was
