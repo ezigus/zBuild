@@ -1,0 +1,295 @@
+============== ZBUILD BUILD — iter 1/10 ==============
+## ORIGINAL TASK (immutable across iterations)
+# Plan: §3/§4 — unfinished member blocks convergence; gates emit real disposition
+
+**Goal:** Suppress cycle convergence when any iteration member's disposition satisfies disposition_unfinished (§4/A), route router-terminated reason through router_reason_disposition in spec-coverage/spec-correspondence/review-report instead of hardcoding 'complete' (§3/B), and amend ADR-063 to Accepted on #2187's vocabulary (§C).
+
+## Steps
+1. Write the red tests for §4/A (must fail at merge-base before the engine fix). New integration test file with three cases keyed on disposition words: T1 — design_verify_cycle fixture where design returns disposition:timed_out with structurally valid design.md, design-gate passes, spec-coverage is covered → the cycle does NOT converge on that iteration (red: converges today). T2 — same fixture with disposition:complete → cycle DOES converge (positive baseline, must stay green). T3 — at max_iterations with the last iteration member having disposition:timed_out → cycle takes the existing exhaustion path, not complete. Reference construction pattern from tests/integration/cycle-multi-iter-cumulative-test.sh (stubbed verdicts_blob, no live LLM).
+   - Files: `tests/integration/cycle-member-unfinished-no-convergence-test.sh`
+   - Estimated lines: 135
+2. Engine fix for §4/A in cycle-orchestrator.sh. After the build-specific convergence suppression block (which fires when disposition_unfinished "$_build_disposition"), add a second generic suppression block: if converged==0 AND _iter_did_not_finish==1 then set converged=1 and emit cycle.member_unfinished.suppressed_convergence with iter/disposition context. This catches non-build members (e.g. design timed_out) that the build-specific block misses. The build-specific check fires first for a timed-out build, so the generic block's converged==0 guard prevents double-fire. The _iter_did_not_finish variable is already in scope, computed from ALL members via disposition_unfinished. Update the comment above _iter_did_not_finish to note it is now used for both the reason-aware exhaustion halt and convergence suppression.
+   - Files: `core/pipeline/cycle-orchestrator.sh`
+   - Estimated lines: 16
+3. Write the red tests for §3/B (must fail at merge-base, before plugin fixes). Three additions: (1) In tests/unit/spec-coverage-test.sh add SPEC-9: when route_to_model exits non-zero (stubbed rc), result has disposition:timed_out not 'complete'. (2) In tests/unit/spec-correspondence-test.sh add a parallel case: router timeout yields disposition from router_reason_disposition, not 'complete'. (3) In tests/unit/review-report-v2-contract-test.sh add a case: when a lens rc file holds a non-zero router exit code, the stage's result disposition is the router_reason_disposition of that code, not 'complete'. All three must fail before the corresponding plugin fixes.
+   - Files: `tests/unit/spec-coverage-test.sh`, `tests/unit/spec-correspondence-test.sh`, `tests/unit/review-report-v2-contract-test.sh`
+   - Estimated lines: 110
+4. Fix spec-coverage for §3/B. In spec_coverage_run (~line 187), replace '|| true' with an rc-capture pattern: run route_to_model in a subshell that writes the rc to a temp file, then read it back in the parent. Add an optional disposition parameter to _scv_write (default 'complete'). In the no-parseable-verdict branch (~line 201), when rc is non-zero, classify via _router_rc_classify + router_reason_disposition and pass the resulting disposition word to _scv_write instead of the hardcoded 'complete'. Reference implementation: plugins/agent/review-lens/plugin.sh (similar rc-capture + router_reason_disposition pattern).
+   - Files: `plugins/agent/spec-coverage/plugin.sh`
+   - Estimated lines: 22
+5. Fix spec-correspondence for §3/B. In _sc_call (~line 121), the route_to_model call uses '|| true'; replace with rc capture to a temp file (a nameref cannot cross the command-substitution subshell boundary, so the temp-file pattern is required). Add an optional disposition parameter to _sc_write_result (default 'complete'). In spec_correspondence_run, pass a temp file path to _sc_call, read back the rc after the call, classify via _router_rc_classify + router_reason_disposition, and forward the disposition to _sc_write_result when rc is non-zero. Clean up the temp file after reading.
+   - Files: `plugins/agent/spec-correspondence/plugin.sh`
+   - Estimated lines: 28
+6. Fix review-report for §3/B. In the failed-lens loop (~lines 167-171), track the first non-zero rc seen across all failed lenses by reading per-lens .rc files alongside the existing verdict reads. After the loop, when _rr_failed_lenses is non-empty and a non-zero rc was recorded, classify it via _router_rc_classify + router_reason_disposition to get the disposition word; pass that to _rr_write_v2 instead of the hardcoded 'complete' at ~line 174. Note: _rr_write_v2 already accepts disposition as its third argument, so no signature change needed.
+   - Files: `plugins/agent/review-report/plugin.sh`
+   - Estimated lines: 16
+7. Amend ADR-063 (§C). Change Status to 'Accepted, amended 2026-10-05 by #2032'. In §3: replace every instance of 'exhausted' with 'timed_out'/'out_of_turns', note the classifier is router_reason_disposition (scripts/lib/router-rc-classify.sh:259), and add that 'complete' must never be hardcoded for a model-calling stage. In §4: strike 'exhausted → escalate' (retry + router-side timeout growth via ADR-029/route.sh replace it); keep and update the gate-fail-closed rule noting it is now implemented. In §1: replace 'one shared helper' with 'per-stage _<stage>_budget_guidance helpers each reading the enforcing values'. Add dated back-pointer to #2187.
+   - Files: `docs/adr/ADR-063-budget-disclosure-and-partial-output.md`
+   - Estimated lines: 55
+
+## Notes
+ORDERING: Steps 1 and 3 (red tests) must be committed and confirmed failing before their corresponding implementation steps (2 and 4-6) per the TDD discipline in CLAUDE.md and the issue's acceptance criteria. The PR body must state the assertion and how it failed at the merge-base. ADR amendment (step 7) lands last after all tests are green.
+
+CYCLE-ORCHESTRATOR INSERTION POINT (step 2): The build-specific suppression block ends with a 'fi' at approximately line 2579 (after emitting cycle.build_unfinished.suppressed_convergence). The new generic block goes immediately after that fi, before the comment block introducing the no-committed-changes guard (~line 2596). The _iter_did_not_finish variable is already computed at ~2541-2548 from ALL members via disposition_unfinished. If the build is unfinished, both the build-specific check (converged=1) and the generic check (converged==0 guard fails) would fire — harmless, build-specific wins. The empty_diff resting point is safe: it sets all members' dispositions to 'complete', so disposition_unfinished returns false, _iter_did_not_finish stays 0, and the generic check does not fire.
+
+SPEC-CORRESPONDENCE RC CAPTURE (step 5): _sc_call's output is captured via command substitution (its stdout is the raw model reply). Shell semantics prevent a nameref from crossing the subshell boundary. A temp file written inside the subshell and read by the parent is the correct mechanism, matching the approach used in review-lens and other similar stages.
+
+REVIEW-REPORT WORST-RC (step 6): The .rc files per lens store raw router exit codes. 'First non-zero found' is sufficient — all non-zero codes classify to some unfinished disposition via router_reason_disposition. _rr_write_v2 already accepts disposition as its third positional argument; no signature change needed.
+
+DESIGN-GATE NOT IN SCOPE: design-gate is a tool stage that did complete; it is design's timed_out disposition that suppresses convergence, and the engine fix (step 2) handles that. The issue explicitly says the fix is keyed on the disposition word, not the stage name.
+
+BLOCKED-ON CONTEXT: This plan does NOT touch plan or impact (blocked on #1835/#1838). It only fixes spec-coverage, spec-correspondence, and review-report, all of which are already on result_contract v2. The ADR amendment documents the per-stage helper pattern but does not add new budget-block helpers to remaining stages (#2222's scope).
+
+SCOPE FILES CONFIRMED: cycle-orchestrator.sh, ADR-063.md, review-report/plugin.sh, spec-correspondence/plugin.sh, spec-coverage/plugin.sh, and the three unit test files all verified to exist at their expected paths. tests/integration/cycle-member-unfinished-no-convergence-test.sh is net-new (does not exist yet).
+
+## INSTRUCTIONS
+Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
+
+You have Read, Edit, Write, and
+Bash tools available. Your job is to edit the working tree to implement the
+ORIGINAL TASK above.
+
+### Scope (plan.files[])
+You may ONLY touch files listed here. Refuse any out-of-scope edit.
+  - core/pipeline/cycle-orchestrator.sh
+  - core/pipeline/disposition.sh
+  - plugins/agent/spec-coverage/plugin.sh
+  - plugins/agent/spec-correspondence/plugin.sh
+  - plugins/agent/review-report/plugin.sh
+  - scripts/lib/router-rc-classify.sh
+  - config/event-schema.json
+  - docs/adr/ADR-021-pipeline-cycle-semantics.md
+  - docs/adr/ADR-063-budget-disclosure-and-partial-output.md
+  - tests/integration/cycle-member-unfinished-no-convergence-test.sh
+  - tests/unit/spec-coverage-test.sh
+  - tests/unit/spec-correspondence-test.sh
+  - tests/unit/review-report-v2-contract-test.sh
+  - tests/unit/convergence-timeouts-never-fatal-1208-test.sh
+  - tests/unit/design-timeout-exhaustion-halt-1261-test.sh
+  - tests/unit/router-reason-disposition-test.sh
+  - tests/unit/disposition-vocabulary-test.sh
+  - tests/unit/adr-063-vocabulary-test.sh
+  - tests/unit/event-schema-emitted-coverage-test.sh
+  - tests/unit/lint-disposition-words-test.sh
+  - tests/unit/stage-signal-test.sh
+  - tests/golden/full-pipeline/event-sequence.golden
+  - tests/golden/parity/event-sequence.golden
+  - tests/unit/template-simple-yaml-test.sh
+  - tests/unit/build-oos-pass-request-test.sh
+  - tests/unit/core-pipeline-template-test.sh
+  - tests/unit/template-resolvability-preflight-test.sh
+  - tests/unit/impact-prefilter-order-detector-test.sh
+
+### How the loop works
+- Each iteration you may make code changes via Edit/Write/Bash.
+- After each iteration the pipeline captures `git diff HEAD` and feeds it
+  back to you so you can verify progress.
+- Do NOT emit a unified diff in your response — the pipeline derives the
+  canonical `diff.patch` artifact from `git diff HEAD` automatically.
+
+### Saying you are done
+Emit `LOOP_COMPLETE` on its own line as the FINAL line of your response
+WHEN the implementation is complete — whether you just finished it OR
+it was already done before you started. If the branch already contains
+the required changes (check `git log` for commits + `git diff` for any
+remaining gap) AND no STAGE SUMMARY below is marked RESOLVE, emit
+`LOOP_COMPLETE` immediately. Do NOT keep iterating when there is nothing
+left to do. While any STAGE SUMMARY is marked RESOLVE, finishing with no
+change needs a REASON — either you fixed it, or it does not reproduce.
+
+### When a finding does not reproduce
+If a RESOLVE summary names a test and that test PASSES when you run it on this
+tree, say so and stop. Emit, on its own line before the sentinel:
+
+    NOT_REPRODUCED: <the path you ran>
+
+one line per path. This is a REPORT, not a verdict: the pipeline re-runs the
+stage that raised the finding to check. Do not keep searching for the cause of
+a failure you cannot produce, and do not change code to chase one.
+
+### Budget
+- Each iteration is ONE model call bounded by a 900-second wall clock; a
+  command that runs longer than ~2 minutes will cost you the whole call.
+- Finish this call's work and commit before ~630s. Work you saved
+  survives a timeout; the call itself returns nothing, so say what is left as you go.
+- Do NOT run `npm test`, the full suite, or `npm run lint` — the pipeline has
+  already run them and their findings are in the STAGE SUMMARIES below. Run
+  only the one failing test file a summary names, and only after changing code.
+- A STAGE SUMMARY marked RESOLVE is red RIGHT NOW on this tree. Do not
+  re-verify it; start from the failing line it quotes.
+
+### Rules
+- Touch only files in the scope list above.
+- Do not run `git commit` — the pipeline owns commit semantics.
+- NEVER run a command that mutates git branch state or the working tree —
+  no `git checkout -b`/`switch`/`commit`/`push`/`tag`/`reset`. You are running
+  INSIDE the pipeline's own checkout; switching or creating a branch hijacks the
+  run. The pipeline owns the branch.
+- If you must exercise a command you are building (or any command that could
+  publish, tag, push, or otherwise mutate state), run it in `--dry-run` mode.
+  Do everything you can to verify behavior without side effects.
+- Keep changes minimal and aligned with the plan.
+- Clean up scratch siblings of the files you edit (`*.bak`, `*.orig`,
+  `*.rej`, `*.head`, `*.tmp`, `*~`). `sed -i.bak` and
+  `git show HEAD:f > f.head` both leave one behind — prefer `sed -i` with no
+  suffix, and delete any comparison scratch before you finish. Out-of-scope
+  scratch is removed for you; any OTHER out-of-scope path voids the whole
+  iteration, so do not rely on the cleanup.
+- If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.
+
+### Commit message (#608)
+Before the final `LOOP_COMPLETE` line, emit a single line of the form:
+
+    COMMIT_SUMMARY: <one-line description of this iteration's change>
+
+Keep it under 72 characters, present tense, imperative mood (e.g.
+"add foo parser" not "added"). The pipeline uses this as the git commit
+message for the per-iteration commit it creates on your behalf. If you
+omit this line the pipeline falls back to the plan title.
+
+## DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
+# Design — §3/§4: unfinished member blocks convergence; gates emit real disposition
+
+**Issue:** #2032  
+**Status:** Proposed
+
+## Architectural decision summary
+
+**Goal.** Two independent behavioral gaps produce the same symptom — a stage that did
+not finish appears complete to downstream consumers.
+
+**(A) §4/A — engine.** The build-specific convergence suppression fires only when the
+commit-producing member is unfinished (`cycle-orchestrator.sh:2608`). A
+`design_verify_cycle` has no commit-producing member, so when `design` times out but
+`design-gate` matches the `exit_when` predicate on stale output, the cycle converges
+falsely. The fix adds a second suppression block after the existing two (build-unfinished
+at line 2608 and no-committed-changes at line 2646) that fires when
+`converged==0 AND _iter_did_not_finish==1` — `_iter_did_not_finish` is already computed
+over all members at lines 2575–2582 using `disposition_unfinished`. The new block cannot
+double-fire with the build block: when the build member is unfinished, the build block
+fires first and sets `converged=1`, so the new block's `converged==0` guard is false.
+The empty-diff resting point is also safe: empty_diff members emit `disposition:complete`,
+so `_iter_did_not_finish` stays 0.
+
+**MANDATORY — event-schema registration.** The new event
+`cycle.member_unfinished.suppressed_convergence` MUST be registered in
+`config/event-schema.json` under `known_types`. Place the entry after the two existing
+`cycle.*suppressed_convergence` entries (currently at lines 109–110):
+`"cycle.member_unfinished.suppressed_convergence"`. Because `config/event-schema.json`
+is declared in WIRING, the acceptance-gate reachability check will fail if the file is
+not in the diff — the build stage must actually modify this file.
+
+**(A.3) max_iterations boundary.** When the suppression block fires on the LAST
+iteration (iter == max_iterations), convergence is suppressed and the cycle cannot
+iterate further. The `elif [[ "$converged" -eq 0 ]]` branch (which would emit
+`complete`) is now skipped; the `_cycle_check_max_iterations` branch fires instead.
+Because `_iter_did_not_finish==1` and `_exh_tests_reported==0` (no test member in a
+`design_verify_cycle`), the existing #1261 exhaustion path fires:
+`cycle.timeout_exhausted` is emitted and `term_rc=8`. SPEC-6 covers this boundary.
+
+**ADR-021 amendment.** ADR-021 must receive an amendment block documenting the new
+`cycle.member_unfinished.suppressed_convergence` suppression case alongside the two
+existing suppressions (`cycle.build_unfinished.suppressed_convergence` and
+`cycle.no_committed_changes.suppressed_convergence`). This amendment is NOT yet in
+the current tree and must be authored as part of this issue.
+
+**(B) §3/B — plugins.** `spec-coverage`, `spec-correspondence`, and `review-report`
+all hardcode `disposition:"complete"` even when `route_to_model` exits non-zero.
+`router_reason_disposition` (`scripts/lib/router-rc-classify.sh`) — already in
+scope via `route.sh` (which both plugins already source at file scope) — maps a
+router reason to the correct disposition word. Each plugin captures the router rc,
+classifies it with `_router_rc_classify`, and passes the result to its result-writer.
+
+Both `spec-coverage` and `spec-correspondence` received `stage_budget_note` injections
+in commit 3036277c (#2252), shifting subsequent line numbers by approximately 6 lines
+relative to earlier references, but the fix structure is unchanged.
+
+**MANDATORY — lint-disposition-words annotation.** The fallback
+`|| _*_disposition="unavailable"` (for cases where `router_reason_disposition` returns
+empty) REQUIRES a `# disposition-ok: the model router is not responding` comment on or
+within three lines BEFORE the assignment — enforced by ADR-054 §6a and
+`stage-signal-test.sh [G5]`. The annotation must be added immediately before the
+fallback assignments in:
+  - `plugins/agent/spec-correspondence/plugin.sh` (within `spec_correspondence_run`
+    after the router call, near the new `_sc_disposition` assignment)
+  - `plugins/agent/review-report/plugin.sh` (within `_rr_run_inner`, near the new
+    `_disposition` fallback, currently around line 174 after expansion)
+
+For `review-report`, the first non-zero rc across all failed lenses is selected
+before classification (any unfinished disposition triggers retry).
+
+**(C) §C — ADR-063.** ADR-063 was proposed against the `exhausted` vocabulary that
+#2187 retired. The amendment must satisfy all of these verifiable properties: status
+advances to Accepted; prescriptive `exhausted` as the §3 disposition word is removed;
+prescriptive `escalate` as the §4 engine action is stricken; §1's "One helper" language
+is replaced with per-stage `_<stage>_budget_guidance` helpers rendered from the
+enforcing values; and a dated amendment back-pointer explicitly referencing #2187 is
+present (for the vocabulary retirement). SPEC-7 covers (1)–(3) and updated vocabulary,
+SPEC-8 covers the §1 per-stage helpers language, SPEC-9 covers the #2187 back-pointer.
+
+**Shape-floor.** `config/shape-change-paths.txt` includes both
+`core/pipeline/cycle-orchestrator.sh` and `config/event-schema.json`. Because
+`cycle-orchestrator.sh` is in the diff, the shape-floor fires. Per ADR-040 §Amendment
+(#1874, 2026-10-02), the shape-floor gate accepts a content-stable golden file WITHOUT
+an edit when a full test pass on this exact tree shows it still correct: a golden file
+that is NOT among the failures in `test_results` is accepted unedited. The standard
+full-pipeline and parity golden scenarios do NOT emit
+`cycle.member_unfinished.suppressed_convergence`, so their event sequences are stable.
+These files remain in scope (the gate still requires they appear in the diff allowlist),
+but the build stage does NOT need to force non-comment edits into them if the test
+suite passes cleanly. The append-only exemption (schema sole-match) does NOT apply
+because `cycle-orchestrator.sh` is also matched.
+
+
+
+
+LOOP_COMPLETE
+Where a design decision above conflicts with the plan, follow the design decision.
+
+## ACCEPTANCE TESTS (you MUST make these pass)
+The acceptance testfiles listed below are read-only for this stage: the engine denies edits to them, and a mechanical check restores any change. They are the contract you implement against, written before your implementation existed. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion. If you believe an assertion genuinely does not test its SPEC, say so in your output and leave it alone.
+These tests were written before your code. Make them pass by changing code only. Each requirement below is checked by the assertion labelled with its tag (for SPEC-1 of this issue: [#2032/SPEC-1]).
+- SPEC-1: tests/integration/cycle-member-unfinished-no-convergence-test.sh
+- SPEC-2: tests/integration/cycle-member-unfinished-no-convergence-test.sh
+- SPEC-3: tests/unit/spec-coverage-test.sh
+- SPEC-4: tests/unit/spec-correspondence-test.sh
+- SPEC-5: tests/unit/review-report-v2-contract-test.sh
+- SPEC-6: tests/integration/cycle-member-unfinished-no-convergence-test.sh
+- SPEC-7: tests/unit/adr-063-vocabulary-test.sh
+- SPEC-8: tests/unit/adr-063-vocabulary-test.sh
+- SPEC-9: tests/unit/adr-063-vocabulary-test.sh
+
+What each SPEC requires:
+- [#2032/SPEC-1] when converged==0 (exit_when predicate matched) and any iteration member carries an unfinished disposition (timed_out, out_of_turns, or interrupted), the cycle does NOT converge — it emits cycle.member_unfinished.suppressed_convergence and iterates instead
+- [#2032/SPEC-2] when all iteration members carry disposition:complete and the exit_when predicate matches, the cycle converges normally; the new unfinished-member suppression block does not fire
+- [#2032/SPEC-3] spec-coverage — when route_to_model exits non-zero (e.g., rc=124 timeout) and produces no parseable verdict, spec-coverage-result.json carries the disposition classified via router_reason_disposition (e.g., timed_out), not the hardcoded 'complete'
+- [#2032/SPEC-4] spec-correspondence — when the router call exits non-zero, spec-correspondence-result.json carries the disposition classified via router_reason_disposition, not the hardcoded 'complete'
+- [#2032/SPEC-5] review-report — when one or more lens subshells return a non-zero exit code, review-report.json carries the disposition classified from the first failed lens rc via router_reason_disposition, not the hardcoded 'complete'
+- [#2032/SPEC-6] at max_iterations when the last iteration has any member with an unfinished disposition, the §4/A suppression block fires (preventing false complete), and the cycle takes the existing #1261 exhaustion path — emitting cycle.timeout_exhausted with reason=design_timeout_exhausted and term_rc=8, not rc=0 complete
+- [#2032/SPEC-7] docs/adr/ADR-063-budget-disclosure-and-partial-output.md status header reads "Accepted" and the document contains no prescriptive use of `exhausted` as the §3 disposition word or `escalate` as the §4 engine action — vocabulary is updated to timed_out/out_of_turns per #2187
+- [#2032/SPEC-8] docs/adr/ADR-063-budget-disclosure-and-partial-output.md §1 uses per-stage budget-guidance helpers language — each stage has its own _<stage>_budget_guidance helper that reads the enforcing values; the baseline single-helper "One helper renders the budget block" language is absent
+- [#2032/SPEC-9] docs/adr/ADR-063-budget-disclosure-and-partial-output.md contains an amendment back-pointer that explicitly names #2187 (the issue that retired exhausted/escalate vocabulary)
+
+### REQUIREMENTS YOUR CODE MUST MEET
+Your change is done when the test for every requirement below passes.
+- [#2032/SPEC-1] when converged==0 (exit_when predicate matched) and any iteration member carries an unfinished disposition (timed_out, out_of_turns, or interrupted), the cycle does NOT converge — it emits cycle.member_unfinished.suppressed_convergence and iterates instead
+  → its test is already written; make it pass
+- [#2032/SPEC-2] when all iteration members carry disposition:complete and the exit_when predicate matches, the cycle converges normally; the new unfinished-member suppression block does not fire
+  → its test is already written; make it pass
+- [#2032/SPEC-3] spec-coverage — when route_to_model exits non-zero (e.g., rc=124 timeout) and produces no parseable verdict, spec-coverage-result.json carries the disposition classified via router_reason_disposition (e.g., timed_out), not the hardcoded 'complete'
+  → its test is already written; make it pass
+- [#2032/SPEC-4] spec-correspondence — when the router call exits non-zero, spec-correspondence-result.json carries the disposition classified via router_reason_disposition, not the hardcoded 'complete'
+  → its test is already written; make it pass
+- [#2032/SPEC-5] review-report — when one or more lens subshells return a non-zero exit code, review-report.json carries the disposition classified from the first failed lens rc via router_reason_disposition, not the hardcoded 'complete'
+  → its test is already written; make it pass
+- [#2032/SPEC-6] at max_iterations when the last iteration has any member with an unfinished disposition, the §4/A suppression block fires (preventing false complete), and the cycle takes the existing #1261 exhaustion path — emitting cycle.timeout_exhausted with reason=design_timeout_exhausted and term_rc=8, not rc=0 complete
+  → its test is already written; make it pass
+- [#2032/SPEC-7] docs/adr/ADR-063-budget-disclosure-and-partial-output.md status header reads "Accepted" and the document contains no prescriptive use of `exhausted` as the §3 disposition word or `escalate` as the §4 engine action — vocabulary is updated to timed_out/out_of_turns per #2187
+  → its test is already written; make it pass
+- [#2032/SPEC-8] docs/adr/ADR-063-budget-disclosure-and-partial-output.md §1 uses per-stage budget-guidance helpers language — each stage has its own _<stage>_budget_guidance helper that reads the enforcing values; the baseline single-helper "One helper renders the budget block" language is absent
+  → its test is already written; make it pass
+- [#2032/SPEC-9] docs/adr/ADR-063-budget-disclosure-and-partial-output.md contains an amendment back-pointer that explicitly names #2187 (the issue that retired exhausted/escalate vocabulary)
+  → its test is already written; make it pass
+
+## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
+A previous attempt on this issue ended build with verdict=pass and touched 1 file(s): tests/unit/event-schema-emitted-coverage-test.sh. That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present and no STAGE SUMMARY is marked RESOLVE.
