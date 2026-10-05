@@ -51,18 +51,25 @@ MANIFEST="$PLUGIN_DIR/manifest.yaml"
 source "$PLUGIN_DIR/plugin.sh"
 
 # ── stubs ────────────────────────────────────────────────────────────────────
-# _RR_REPLY_MODE selects the canned reply shape; _RR_FAIL_LENS makes one lens's
-# call return non-zero; _RR_FAIL_ALL_RC (when non-empty) makes ALL lenses fail
-# with that rc — used to test the "one or more" multi-lens failure path.
+# _RR_REPLY_MODE selects the canned reply shape; _RR_FAIL_LENS makes one named
+# lens fail; _RR_FAIL_LENS_RC sets that lens's rc (default 1); _RR_FAIL_ALL_RC
+# makes ALL lenses fail with that rc, except the named _RR_FAIL_LENS which uses
+# _RR_FAIL_LENS_RC when set (mixed-rc ordering test).
 # All are exported because each lens runs in a subshell.
-export _RR_REPLY_MODE="normal" _RR_FAIL_LENS="" _RR_FAIL_ALL_RC=""
+export _RR_REPLY_MODE="normal" _RR_FAIL_LENS="" _RR_FAIL_ALL_RC="" _RR_FAIL_LENS_RC=""
 export _RR_PROMPTS="$TEST_TEMP_DIR/prompts"; mkdir -p "$_RR_PROMPTS"
 route_to_model() {
     local prompt="$2" lens="other"
     [[ "$prompt" =~ \"([a-z-]+)\"\ review\ lens ]] && lens="${BASH_REMATCH[1]}"
     printf '%s' "$prompt" > "$_RR_PROMPTS/$lens.txt"
-    if [[ -n "$_RR_FAIL_ALL_RC" ]]; then return "$_RR_FAIL_ALL_RC"; fi
-    if [[ -n "$_RR_FAIL_LENS" && "$lens" == "$_RR_FAIL_LENS" ]]; then return 1; fi
+    if [[ -n "$_RR_FAIL_ALL_RC" ]]; then
+        # _RR_FAIL_LENS_RC overrides for one named lens (mixed-rc ordering test).
+        if [[ -n "$_RR_FAIL_LENS" && "$lens" == "$_RR_FAIL_LENS" && -n "$_RR_FAIL_LENS_RC" ]]; then
+            return "$_RR_FAIL_LENS_RC"
+        fi
+        return "$_RR_FAIL_ALL_RC"
+    fi
+    if [[ -n "$_RR_FAIL_LENS" && "$lens" == "$_RR_FAIL_LENS" ]]; then return "${_RR_FAIL_LENS_RC:-1}"; fi
     case "$_RR_REPLY_MODE" in
         normal)
             if [[ "$lens" == "security" ]]; then
@@ -146,6 +153,18 @@ _RR_FAIL_ALL_RC=1 _rr_run_inner "$_d5b/scope.md" "$_d5b/diff.patch" "$_d5b/revie
 assert_eq "[SPEC-5][#2032/SPEC-5] multiple failing lenses → rc=0 (advisory never aborts)" "0" "$_rc5b"
 assert_eq "[SPEC-5][#2032/SPEC-5] multiple failing lenses → disposition from first failed lens rc (all rc=1 → unavailable)" \
     "unavailable" "$(_v2 disposition "$_d5b/review-report.json")"
+
+# SPEC-5 ordering: correctness is the first lens in _RR_LENSES[]; it fails with
+# rc=124 (timed_out) while every other lens fails with rc=1 (unavailable).
+# Disposition must be timed_out — from the FIRST failing lens, not a later one.
+# This distinguishes "first failed lens rc" from any other ordering or hardcoding.
+_d5c="$TEST_TEMP_DIR/s5c"; _fixture "$_d5c"
+_RR_FAIL_LENS=correctness _RR_FAIL_LENS_RC=124 _RR_FAIL_ALL_RC=1 \
+    _rr_run_inner "$_d5c/scope.md" "$_d5c/diff.patch" "$_d5c/review-report.json" "$_d5c/review-report.md" 2>/dev/null; _rc5c=$?
+unset _RR_FAIL_LENS_RC
+assert_eq "[SPEC-5][#2032/SPEC-5] mixed-rc multi-lens → rc=0 (advisory never aborts)" "0" "$_rc5c"
+assert_eq "[SPEC-5][#2032/SPEC-5] mixed-rc multi-lens: first lens (correctness, rc=124 → timed_out) wins over later lenses (rc=1 → unavailable)" \
+    "timed_out" "$(_v2 disposition "$_d5c/review-report.json")"
 
 # ── SPEC-7: budget block from the resolvers, never a literal ─────────────────
 _d7="$TEST_TEMP_DIR/s7"; _fixture "$_d7"

@@ -140,6 +140,12 @@ _run_cycle() {
     cycle_orchestrator_run "$2" "$ZBUILD_STATE_DIR" "$STATE_FILE" || RUN_RC=$?
 }
 
+# ── Event-schema registration check ─────────────────────────────────────────
+# The new suppression event MUST be registered in event-schema.json (SPEC-1 wiring).
+# Reverting the schema registration would break this assertion.
+assert_contains "[#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence registered in event-schema.json" \
+    "$(cat "$ZBUILD_EVENT_SCHEMA" 2>/dev/null)" "cycle.member_unfinished.suppressed_convergence"
+
 # ── SPEC-2[guard]: all members complete + exit_when match → converges normally ─
 # The new suppression block must NOT fire when every member's disposition is
 # complete. This test passes both before and after the fix.
