@@ -1659,6 +1659,26 @@ _cycle_iter_dispatch() {
         local _member_type_var="_TPL_STAGE_TYPE_${s//-/_}"
         local _member_type="${!_member_type_var:-leaf}"
         if [[ "$_member_type" == "cycle" ]]; then
+            # #2271 (ADR-068): about to re-enter the loop that yielded a finding.
+            # If every stage that answers findings and ran before it this round
+            # (design, impact, …) also said "nothing to do", nobody owns it: the
+            # run stops (report: artifacts/unowned-findings.md). One "done" from
+            # any of them hands it back to the loop.
+            if [[ "${_CYCLE_UNOWNED:-}" == "halt" && "$(_unowned_yielder "$state_dir")" == "$s" ]]; then
+                local -a _uo_before=() _uo_m
+                for _uo_m in "${_CYCLE_STAGES[@]}"; do
+                    [[ "$_uo_m" == "$s" ]] && break
+                    _uo_before+=("$_uo_m")
+                done
+                if _unowned_halt_check "$state_dir" "${_uo_before[@]}"; then
+                    _CYCLE_LAST_TERMINATED_REASON="unowned_finding"
+                    _cycle_emit "cycle.unowned_finding" "iter=$iter" "stage=$s" "action=halt" 2>/dev/null || true
+                    _cycle_state_write_member_atomic "$state_file" "$s" "failed" "unowned_finding" || true
+                    _cycle_clear_traps
+                    [[ $_had_e -eq 1 ]] && set -e
+                    return 8
+                fi
+            fi
             set +e
             # Wave 19-B (#718): set ZBUILD_SEQ_PREFIX to this member's label so
             # the nested cycle's children inherit the full path
@@ -1753,18 +1773,6 @@ _cycle_iter_dispatch() {
             # loop then goes round from the top, each inner loop with a fresh
             # counter. With no outer rounds left, rc 8 still stops the run.
             local _end_round=0
-            # #2271 (ADR-068): an outer loop with `unowned: halt` stops the run
-            # when the members of this part also disclaimed a finding an inner
-            # loop yielded — nobody owns it (report: artifacts/unowned-findings.md).
-            if [[ "${_CYCLE_UNOWNED:-}" == "halt" ]] && _unowned_halt_check "$state_dir" "$s"; then
-                _CYCLE_LAST_TERMINATED_REASON="unowned_finding"
-                _cycle_emit "cycle.unowned_finding" "iter=$iter" "stage=$s" "action=halt" 2>/dev/null || true
-                _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "8" "unowned_finding" "failed"
-                _cycle_state_write_member_atomic "$state_file" "$s" "failed" "unowned_finding" || true
-                _cycle_clear_traps
-                [[ $_had_e -eq 1 ]] && set -e
-                return 8
-            fi
             [[ "$_inner_reason" == "unowned_finding" ]] && _end_round=1
             if [[ $rc -ne 0 && $rc -ne 5 && $rc -ne 6 && $rc -ne 9 && $rc -ne 130 && $rc -ne 143 ]]; then
                 if [[ $rc -eq 8 ]]; then
@@ -2694,7 +2702,7 @@ cycle_orchestrator_run() {
             # early; the outer loop goes round from the top, carrying it.
             _CYCLE_LAST_TERMINATED_REASON="unowned_finding"
             _cycle_emit "cycle.unowned_finding" "iter=$iter" "action=yield" 2>/dev/null || true
-            overall_status="max_iterations"; term_rc=2
+            overall_status="unowned_finding"; term_rc=2
         elif _cycle_check_max_iterations "$iter" "$_CYCLE_MAX_ITER"; then
             # #1208 — THE single fatal condition: the cycle exhausted its
             # iteration budget WITHOUT a clean, passing convergence. Split

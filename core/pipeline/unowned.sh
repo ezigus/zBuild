@@ -6,8 +6,9 @@
 #   - a loop with `unowned: yield` ends early when every one of its members that
 #     answers findings said `nothing to do` to the same finding — the outer loop
 #     then goes round from the top, carrying every finding;
-#   - a loop with `unowned: halt` stops the run when the members that answer in
-#     the next part of the loop also say `nothing to do` to it — nobody owns it.
+#   - a loop with `unowned: halt` stops the run when every member that answers
+#     findings and ran before the yielding loop came round again also said
+#     `nothing to do` to it — nobody owns it.
 # One `done` from anyone keeps a finding where it is. A member that should have
 # answered and did not counts as not disclaiming.
 #
@@ -95,34 +96,46 @@ _unowned_yield_check() {
     return 0
 }
 
-# _unowned_halt_check <state_dir> <member_cycle> — after <member_cycle> ran in an
-# outer loop with `unowned: halt`: rc 0 when its answering members also said
-# `nothing to do` to a finding an inner loop yielded — nobody owns it; the report
-# is written. A `done` hands the finding back to the loop (record cleared). rc 1
-# when there is nothing to stop for.
+# _unowned_halt_check <state_dir> <member...> — the outer loop (`unowned: halt`)
+# is about to re-enter the loop that yielded a finding; <member...> are the
+# outer loop's members that ran before it this round. Every one of them that
+# answers findings is expected to answer the yielded finding:
+#   - one `done` from any of them hands it back to the loop (record cleared), rc 1;
+#   - all `nothing to do` → nobody owns it: the report is written, rc 0;
+#   - a member that did not answer counts as not disclaiming, rc 1.
 _unowned_halt_check() {
-    local sd="$1" mc="$2" yf
-    yf="$sd/$_UNOWNED_YIELD_FILE"
+    local sd="$1"; shift
+    local yf="$sd/$_UNOWNED_YIELD_FILE"
     [[ -s "$yf" ]] || return 1
-    [[ "$(jq -r '.loop // empty' "$yf" 2>/dev/null)" == "$mc" ]] && return 1
-    local mv="_TPL_CYCLE_STAGES_${mc//-/_}" m
-    local -a members=() ans_members=()
-    IFS=',' read -r -a members <<< "${!mv:-$mc}"
-    while IFS= read -r m; do [[ -n "$m" ]] && ans_members+=("$m"); done < <(_unowned_answerers "${members[@]}")
-    [[ ${#ans_members[@]} -gt 0 ]] || return 1
+    local -a leaves=() ans=(); local m l
+    for m in "$@"; do
+        local sv="_TPL_CYCLE_STAGES_${m//-/_}"
+        if declare -F _tpl_flow_leaves >/dev/null 2>&1 && [[ -n "${!sv:-}" ]]; then
+            while IFS= read -r l; do [[ -n "$l" ]] && leaves+=("$l"); done < <(_tpl_flow_leaves "$m")
+        else
+            leaves+=("$m")
+        fi
+    done
+    while IFS= read -r m; do [[ -n "$m" ]] && ans+=("$m"); done < <(_unowned_answerers "${leaves[@]}")
+    [[ ${#ans[@]} -gt 0 ]] || return 1
     local answers refs still
-    answers="$(_unowned_answers_of "$sd" "${ans_members[@]}")"
+    answers="$(_unowned_answers_of "$sd" "${ans[@]}")"
     refs="$(jq -c '.refs' "$yf" 2>/dev/null || printf '[]')"
-    # Of the yielded findings these members answered: one `done` hands it back.
     if jq -e --argjson refs "$refs" 'any(.[]; (.ref as $r | $refs | index($r)) and .answer == "done")' \
             <<< "$answers" >/dev/null 2>&1; then
         rm -f "$yf" 2>/dev/null || true
         return 1
     fi
-    still="$(jq -c --argjson refs "$refs" '[ .[] | select(.answer == "nothing to do" and (.ref as $r | $refs | index($r))) | .ref ] | unique' <<< "$answers" 2>/dev/null || printf '[]')"
+    still="$(_unowned_refs "$answers" "${ans[@]}")"
+    still="$(jq -c --argjson refs "$refs" '[ .[] | select(. as $r | $refs | index($r)) ]' <<< "${still:-[]}" 2>/dev/null || printf '[]')"
     [[ -n "$still" && "$still" != "[]" ]] || return 1
     _unowned_report "$sd" "$still" "$(jq -c --argjson a "$answers" '.answers + $a' "$yf" 2>/dev/null || printf '[]')"
     return 0
+}
+
+# _unowned_yielder <state_dir> — the loop that yielded a finding this round, or "".
+_unowned_yielder() {
+    jq -r '.loop // empty' "$1/$_UNOWNED_YIELD_FILE" 2>/dev/null || true
 }
 
 # _unowned_finding_text <state_dir> <opener> <n> — the finding's own words, from

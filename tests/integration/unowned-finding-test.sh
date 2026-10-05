@@ -14,10 +14,16 @@
 #             starts again at design
 # U2 [guard]  one build-side stage answers `done` → no early exit; the build
 #             loop keeps its rounds
-# U3 [change] design also disclaims it → the run stops; the report names the
-#             finding, the stage that opened it, and every answer with its why
+# U3 [change] design and impact (every answering stage before the build loop)
+#             also disclaim it → the run stops; the report names the finding,
+#             the stage that opened it, and every answer with its why
 # U4 [change] design answers `done` → the run carries on: the build loop runs
 #             again, starting at round 1
+# U5 [change] design disclaims it but a later outer-loop stage before the build
+#             loop (impact) answers `done` → the run carries on: one `done`
+#             from anyone keeps a finding (review #2291)
+# U6 [change] an early hand-back is recorded as such in the loop's state, not
+#             as rounds exhausted
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -52,6 +58,7 @@ outer_loop:
   type: cycle
   flow:
     - design_loop
+    - impact
     - build_loop
   exit_when:
     all:
@@ -90,6 +97,8 @@ build_loop:
 
 design:
   roles: [designer]
+impact:
+  roles: [impact]
 test_author:
   roles: [test_author]
 build:
@@ -103,7 +112,7 @@ FA="$ZBUILD_STATE_DIR/finding-answers"
 # Which members answer findings — in production, the stages that call a model.
 # shellcheck disable=SC2329  # called by the orchestrator
 # shellcheck disable=SC2329  # called by the orchestrator
-_cycle_stage_answers_findings() { case "$1" in design|test_author|build) return 0 ;; *) return 1 ;; esac; }
+_cycle_stage_answers_findings() { case "$1" in design|impact|test_author|build) return 0 ;; *) return 1 ;; esac; }
 # shellcheck disable=SC2329  # called by the stub below
 _ans() {   # _ans <stage> <answer> <why> — record this stage's answer to "acc finding 1"
     mkdir -p "$FA"
@@ -125,6 +134,7 @@ cycle_dispatch_stage() {
         test_author) [[ -n "${TA:-}" ]] && _ans test_author "$TA" "the test checks what the requirement says" ;;
         build)       [[ -n "${BUILD:-}" ]] && _ans build "$BUILD" "the code passes the tests it was given" ;;
         design)      [[ -n "${DESIGN:-}" ]] && _ans design "$DESIGN" "the wiring choice is right as written" ;;
+        impact)      [[ -n "${IMPACT:-}" ]] && _ans impact "$IMPACT" "the plan now names the calling file" ;;
     esac
     return 0
 }
@@ -150,7 +160,7 @@ TA="done" BUILD="nothing to do" DESIGN="done" _run
 assert_eq "[U2] no early exit: the build loop keeps its rounds" "2" "$(_count acc 3)"
 
 print_test_section "U3: design disclaims it too"
-TA="nothing to do" BUILD="nothing to do" DESIGN="nothing to do" _run; rc=$?
+TA="nothing to do" BUILD="nothing to do" DESIGN="nothing to do" IMPACT="nothing to do" _run; rc=$?
 if [[ "$rc" -ne 0 ]]; then
     assert_pass "[U3] the run stops (rc=$rc)"
 else
@@ -163,10 +173,22 @@ assert_contains "[U3] ...and the stage that opened it" "$_rep" "opened by acc"
 assert_contains "[U3] ...and its text" "$_rep" "is not the file that calls the new code"
 assert_contains "[U3] ...and design's answer and why" "$_rep" "design: nothing to do — the wiring choice is right as written"
 assert_contains "[U3] ...and build's answer" "$_rep" "build: nothing to do"
+assert_contains "[U3] ...and impact's answer" "$_rep" "impact: nothing to do"
 
 print_test_section "U4: design does the work"
 TA="nothing to do" BUILD="nothing to do" DESIGN="done" _run
 assert_eq "[U4] the build loop runs again, from round 1" "2" "$(_count test_author 1)"
+
+print_test_section "U5: a later outer-loop stage does the work"
+TA="nothing to do" BUILD="nothing to do" DESIGN="nothing to do" IMPACT="done" _run; rc=$?
+assert_eq "[U5] no report — impact did work on it" "absent" \
+    "$( [[ -s "$ZBUILD_STATE_DIR/artifacts/unowned-findings.md" ]] && echo present || echo absent )"
+assert_eq "[U5] the build loop runs again, from round 1" "2" "$(_count test_author 1)"
+
+print_test_section "U6: the early hand-back is recorded as such"
+TA="nothing to do" BUILD="nothing to do" DESIGN="done" _run
+assert_eq "[U6] the build loop's state says it ended on an unowned finding" "unowned_finding" \
+    "$(jq -r '.cycle_iterations.build_loop.status // empty' "$ZBUILD_STATE_DIR/pipeline-state.json" 2>/dev/null)"
 
 cleanup_test_env
 print_test_results

@@ -1178,6 +1178,12 @@ _render_cycle_exit() {
             glyph="⚠"; color="${YELLOW:-}"
             text="Cycle ${cycle_id} halted: blocked on scope (needs files outside write-scope)"
             ;;
+        unowned_finding)
+            # #2271 (ADR-068): every stage here disclaimed the same finding, so
+            # the loop hands it back; the outer loop goes round or stops.
+            glyph="⚠"; color="${YELLOW:-}"
+            text="Cycle ${cycle_id} ended early (${iter}/${max}): no stage in it owns a finding"
+            ;;
         error|config_invalid)
             glyph="✗"; color="${RED:-}"
             text="Cycle ${cycle_id} failed: ${reason}"
