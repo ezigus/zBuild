@@ -1,0 +1,10 @@
+{
+  "result_contract": 2,
+  "verdict": "covered",
+  "disposition": "complete",
+  "reason": "Every requirement in the issue's acceptance criteria (A/B/C, all six checkboxes) maps to a SPEC, and each SPEC is fully addressed by the design — SPEC-1/2/6 by the new `converged==0 AND _iter_did_not_finish==1` suppression block (A), SPEC-3/4/5 by routing the router rc through `router_reason_disposition` in all three plugins (B), and SPEC-7/8/9 by the ADR-063 amendment requirements (C).",
+  "data": {
+    "uncovered": [],
+    "findings": []
+  }
+}
