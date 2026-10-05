@@ -9,6 +9,7 @@
     "tests/unit/adr-migration-claims-test.sh"
   ],
   "wiring_files": [
+    "docs/adr/ADR-028-shared-llm-agent-framework.md",
     "tests/unit/adr-migration-claims-test.sh"
   ],
   "owned_files": {
