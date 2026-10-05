@@ -13,17 +13,21 @@ description: |
   pure grep over design.md (structural checks C1..C5), with NO
   baseline run and NO model call (ADR-037 §3 invariant).
 
-  Runs six structural checks and reports ALL violations in ONE pass (no
+  Runs five structural checks and reports ALL violations in ONE pass (no
   whack-a-mole):
     C1 SCOPE           — design.md carries a non-empty ```scope block.
     C2 ACCEPTANCE      — the ```acceptance block is present + parseable.
-    C3 CLASSIFIED      — every SPEC-n carries a [change] or [guard] classifier.
-    C4 CHANGE-TESTFILE — if ≥1 [change] SPEC, TESTFILES is non-empty AND each
-                         declared testfile exists on disk.
+    C3 STATUS          — every SPEC-n carries a status: [code], [no-code] or
+                         [done] (the old [change] reads as code). An unknown
+                         tag, or the retired [guard], is rejected. A [done]
+                         SPEC names evidence after ` evidence: ` — repo-relative
+                         paths (or path:N) that exist, N within the file
+                         (#2304, ADR-069).
+    C4 CODE-TESTFILE   — each [code] SPEC declares ≥1 testfile (existence is
+                         checked later, by the acceptance gate, #1649).
     C5 WIRING          — a WIRING: section is present ("none" ok); each concrete
                          path exists on disk.
-    C6 LEVEL-1 TAGS    — every SPEC-n has a [SPEC-n] tag in a declared testfile
-                         (acceptance-coverage.sh, shifted left from acceptance-gate).
+  (C6, the [guard] baseline pre-check, was removed with [guard] — ADR-069.)
 
   verdict = pass IFF zero violations, else fail (verdict-in-artifact, ADR-040).
   Always returns rc=0; the verdict lives in design-gate-result.json and the

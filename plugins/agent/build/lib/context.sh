@@ -115,12 +115,14 @@ _build_read_prior_assessment() {
 # _build_gather_acceptance_specs <design_md>  (#1978)
 # One line per SPEC: "SPEC-n<TAB>what it requires". A SPEC whose text cannot be
 # resolved emits the bare id, so the prompt degrades to the id-only form rather
-# than dropping a SPEC the gate will still demand coverage for.
+# than dropping a SPEC the gate will still demand coverage for. A done SPEC is
+# left out: the code already does it, so build has nothing to do (#2304, ADR-069 §6).
 _build_gather_acceptance_specs() {
     local design_md="${1:-}" sid text
     [[ -n "$design_md" && -f "$design_md" ]] || return 0
     while IFS= read -r sid; do
         [[ -n "$sid" ]] || continue
+        [[ "$(acceptance_spec_status "$design_md" "$sid" 2>/dev/null)" == "done" ]] && continue
         text="$(acceptance_spec_text "$design_md" "$sid" 2>/dev/null || true)"
         if [[ -n "$text" ]]; then
             printf '%s\t%s\n' "$sid" "$text"

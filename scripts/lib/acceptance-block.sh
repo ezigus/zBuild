@@ -140,8 +140,9 @@ acceptance_list_spec_ids() {
 # no subshell (so reading a requirement costs no extra fork):
 #   _ACC_SPEC_TAG    the tag, or empty
 #   _ACC_SPEC_STATUS code | no-code | done | unknown:<tag> | "" (no tag). The
-#                    old tags keep meaning what they did: [change] is code,
-#                    [guard] is done (the code already does it).
+#                    old tags are still read: [change] is code, and [guard] is
+#                    done (the design-gate rejects [guard], so a new design
+#                    never carries it; an old one still reads sensibly).
 #   _ACC_SPEC_REST   everything after the colon, leading space trimmed
 #   _ACC_SPEC_TEXT   what it requires: REST, stopping before ` evidence: ` when
 #                    the requirement is done (the evidence is not a requirement)
@@ -211,44 +212,6 @@ acceptance_spec_text() {
     _acceptance_spec_line "$block_output" "$spec_id" || return 0
     printf '%s\n' "$_ACC_SPEC_TEXT"
     return 0
-}
-
-# acceptance_spec_is_guard <design_md> <spec_id>
-# Returns 0 when the SPEC line for spec_id carries a [guard] classifier,
-# 1 otherwise (unclassified or [change] = not a guard).
-acceptance_spec_is_guard() {
-    local design_md="${1:-}" spec_id="${2:-}"
-    [[ -z "$design_md" || -z "$spec_id" || ! -f "$design_md" ]] && return 1
-    local block_output
-    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 1
-    grep -qF "${spec_id}[guard]:" <<< "$block_output"
-}
-
-# acceptance_spec_classifier <design_md> <spec_id>  (ADR-046 / #1218)
-# Echoes the SPEC's classifier — "change", "guard", or "" (unclassified) — by
-# reading the [classifier] token on its SPEC line. Reuses the [guard] parse
-# pattern; the empty string means the SPEC carries no classifier at all.
-# Returns 0 always (the caller inspects the echoed value).
-acceptance_spec_classifier() {
-    local design_md="${1:-}" spec_id="${2:-}"
-    [[ -z "$design_md" || -z "$spec_id" || ! -f "$design_md" ]] && { printf '\n'; return 0; }
-    local block_output
-    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || { printf '\n'; return 0; }
-    if grep -qF "${spec_id}[change]:" <<< "$block_output"; then
-        printf 'change\n'
-    elif grep -qF "${spec_id}[guard]:" <<< "$block_output"; then
-        printf 'guard\n'
-    else
-        printf '\n'
-    fi
-}
-
-# acceptance_spec_is_change <design_md> <spec_id>  (ADR-046 / #1218)
-# Returns 0 when the SPEC line for spec_id carries a [change] classifier,
-# 1 otherwise (unclassified or [guard] = not a change).
-acceptance_spec_is_change() {
-    local design_md="${1:-}" spec_id="${2:-}"
-    [[ "$(acceptance_spec_classifier "$design_md" "$spec_id")" == "change" ]]
 }
 
 # acceptance_list_wiring <design_md>  (ADR-036 Level-3 / #956)

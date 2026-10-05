@@ -166,17 +166,24 @@ _rl_input() {
 # decisions and planned scope, each bounded and sanitised like the evidence.
 # Every piece is optional; an absent one is simply left out.
 # _rl_requirements_readable <design.md> — the acceptance block as a reviewer
-# reads it (#2269): each requirement with what its tag means, the file that
-# calls the new code, and the test files that check each one.
+# reads it (#2269): each requirement with what its status means (#2304,
+# ADR-069), the evidence a done one names, the file that calls the new code,
+# and the test files that check each one.
 _rl_requirements_readable() {
-    local design="$1" sid txt cls kind tfs w
+    local design="$1" sid txt st kind tfs ev w
     while IFS= read -r sid; do
         [[ -n "$sid" ]] || continue
         txt="$(acceptance_spec_text "$design" "$sid" 2>/dev/null || true)"
-        cls="$(acceptance_spec_classifier "$design" "$sid" 2>/dev/null || true)"
-        kind="new behaviour"; [[ "$cls" == guard ]] && kind="must keep working"
+        st="$(acceptance_spec_status "$design" "$sid" 2>/dev/null || true)"
+        case "$st" in
+            no-code) kind="work that changes no behaviour" ;;
+            done)    kind="already done — the code already does this" ;;
+            *)       kind="new behaviour" ;;
+        esac
         tfs="$(acceptance_list_testfiles_for_spec "$design" "$sid" 2>/dev/null | tr '\n' ' ')"
         printf -- '- %s (%s): %s\n' "$sid" "$kind" "${txt:-<no text>}"
+        ev="$(acceptance_spec_evidence "$design" "$sid" 2>/dev/null | tr '\n' ' ')"
+        [[ -n "${ev// /}" ]] && printf -- '  shown by: %s\n' "${ev% }"
         [[ -n "${tfs// /}" ]] && printf -- '  checked by: %s\n' "${tfs% }"
     done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
     w="$(acceptance_list_wiring "$design" 2>/dev/null | tr '\n' ' ')"

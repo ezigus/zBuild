@@ -28,8 +28,8 @@ source "$REPO_ROOT/plugins/agent/spec-acceptance/plugin.sh" >/dev/null 2>&1
 
 _all="$(_ag_build_reason tautology:SPEC-1 not_passing_at_head:SPEC-2 untagged_spec:SPEC-3 \
     no_testfile:SPEC-4 no_testfiles:lib/a.sh inert_wiring:config/x.json wiring_not_on_path:lib/b.sh \
-    guard_regressed:SPEC-5 guard_unreached:SPEC-6 unreached_at_base:SPEC-7 unreached_at_head:SPEC-8 \
-    guard_unverified:SPEC-9 guard_test_broken:SPEC-10 killed_by_signal:SPEC-11 \
+    unclaimed_code:scripts/x.sh unreached_at_base:SPEC-7 unreached_at_head:SPEC-8 \
+    killed_by_signal:SPEC-11 \
     malformed_acceptance_block negctl_error:SPEC-12 reachability_error:lib/c.sh 2>/dev/null)"
 
 # TESTFILE as a word is jargon; the key `TESTFILES:` the model writes is not.
@@ -49,7 +49,7 @@ _taut="$(_ag_build_reason tautology:SPEC-1 2>/dev/null)"
 assert_contains "[F3] says the test already passes on the old code" "$_taut" "already passes on the code from before this change"
 assert_contains "[F3] says what to check instead" "$_taut" "something the old code gets wrong"
 
-for _id in SPEC-1 SPEC-2 SPEC-3 SPEC-4 lib/a.sh config/x.json lib/b.sh SPEC-5 SPEC-9 SPEC-10 SPEC-11 SPEC-12 lib/c.sh; do
+for _id in SPEC-1 SPEC-2 SPEC-3 SPEC-4 lib/a.sh config/x.json lib/b.sh scripts/x.sh SPEC-7 SPEC-8 SPEC-11 SPEC-12 lib/c.sh; do
     assert_contains "[F4] the feedback names $_id" "$_all" "$_id"
 done
 

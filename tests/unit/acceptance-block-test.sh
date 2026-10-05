@@ -155,34 +155,16 @@ else
     printf "  \033[32m✓\033[0m TC-5: scope block content absent from output\n"
 fi
 
-# ── TC-6: acceptance_spec_is_guard recognizes [guard] classifier ──────────────
-tc6_file="$WORK_DIR/tc6_design.md"
-cat > "$tc6_file" <<'EOF'
-```acceptance
-SPEC-1[guard]: invariant that must not regress
-SPEC-2[change]: new behavior introduced
-TESTFILES:
-tests/unit/foo-test.sh
-tests/integration/bar-test.sh
-```
-EOF
-
-set +e
-acceptance_spec_is_guard "$tc6_file" "SPEC-1"; tc6_guard_rc=$?
-acceptance_spec_is_guard "$tc6_file" "SPEC-2"; tc6_change_rc=$?
-acceptance_spec_is_guard "$tc6_file" "SPEC-99"; tc6_miss_rc=$?
-set -e
-assert_eq "TC-6: [guard] SPEC recognized as guard (rc=0)" "0" "$tc6_guard_rc"
-assert_eq "TC-6: [change] SPEC not recognized as guard (rc=1)" "1" "$tc6_change_rc"
-assert_eq "TC-6: missing SPEC not recognized as guard (rc=1)" "1" "$tc6_miss_rc"
+# ── TC-6: retired — acceptance_spec_is_guard went with [guard] (#2304, ADR-069).
+# Status reading is covered by tests/unit/requirement-status-test.sh.
 
 # ── TC-7: acceptance_list_spec_ids returns bare ids from classified lines ─────
 tc7_file="$WORK_DIR/tc7_design.md"
 cat > "$tc7_file" <<'EOF'
 ```acceptance
-SPEC-1[change]: first new behavior
-SPEC-2[guard]: second invariant
-SPEC-3: unclassified legacy
+SPEC-1[code]: first new behavior
+SPEC-2[done]: second, already there evidence: foo.sh
+SPEC-3: no status, legacy
 TESTFILES:
 tests/unit/foo-test.sh
 ```

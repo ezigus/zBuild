@@ -329,10 +329,10 @@ design:
 
 # ─── design-gate (leaf, design_verify_cycle member) ──────────────────────────
 # T0 tool gate (ADR-046, #1218): PRE-build mechanical structural gate. Pure grep
-# over design.md + the red-first stubs (NO LLM, NO baseline — ADR-037 §3). Runs
-# the 6 structural checks (scope non-empty; every SPEC [change|guard]-classified;
-# every [change] SPEC has an existing TESTFILE; WIRING present/none + paths exist;
-# Level-1 SPEC-tag-presence; acceptance block well-formed) and reports ALL
+# over design.md (NO LLM, NO baseline — ADR-037 §3). Runs the 5 structural
+# checks (scope non-empty; acceptance block well-formed; every SPEC has a status
+# — [code], [no-code] or [done] with evidence that exists (ADR-069); every [code]
+# SPEC declares a TESTFILE; WIRING present/none + paths exist) and reports ALL
 # violations in ONE pass. verdict-in-artifact; the design_verify_cycle exit_when
 # reads design-gate.verdict == pass. Bound by role design_gate.
 design-gate:

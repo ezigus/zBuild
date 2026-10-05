@@ -10,9 +10,10 @@
 #          (ADR-069 §5, #2304) — otherwise it fails as unclaimed_code.
 # Level 1: every SPEC-n id in the design ```acceptance block must have ≥1
 #          [SPEC-n]-tagged assertion across the declared TESTFILES.
-# Level 2: each SPEC-n's tagged test must fail at the merge-base baseline and
-#          pass at HEAD (negative control — rejects tautological "green but
-#          inert" tests, the #844 defect class).
+# Level 2: each code SPEC-n's tagged test must fail at the merge-base baseline
+#          and pass at HEAD (negative control — rejects tautological "green but
+#          inert" tests, the #844 defect class). Done and no-code SPECs are not
+#          run (ADR-069 §4).
 # Level 3: if the design declares a WIRING: section, revert each declared file
 #          to merge-base (keeping all other changes at HEAD) and require ≥1
 #          TESTFILE to flip pass→fail — proving the wiring is load-bearing.
@@ -102,8 +103,8 @@ _ag_classify_disposition() {
         # The table lives in scripts/lib/acceptance-disposition.sh so the lint
         # reads the same rows (#1959). Recoverable: untagged_spec, tautology,
         # inert_wiring (#1585), no_testfile(s) (#2109), not_passing_at_head
-        # (#2097), wiring_not_on_path (#1686), guard_regressed
-        # (#1670). Advisory: negctl_error / reachability_error. Terminal:
+        # (#2097), wiring_not_on_path (#1686), unclaimed_code (#2304).
+        # Advisory: negctl_error / reachability_error. Terminal:
         # malformed_acceptance_block. A terminal class OUTRANKS recoverable.
         cls="$(_ag_failure_class_disposition "${f%%:*}")"
         case "$cls" in
@@ -156,7 +157,7 @@ _ag_unreached_where() {
 # member_terminal_failure. Repo-agnostic: ids come verbatim from the design's
 # acceptance block. Genuine violations lead; infra classes trail.
 _ag_build_reason() {
-    local f untagged="" taut="" nohead="" notf="" inert="" notpath="" infra="" malformed=0 grd="" nofiles="" sig="" unr="" unb="" unh="" unv="" brk=""
+    local f untagged="" taut="" nohead="" notf="" inert="" notpath="" infra="" malformed=0 nofiles="" sig="" unb="" unh=""
     local -a unclaimed=()
     for f in "$@"; do
         case "$f" in
@@ -168,12 +169,8 @@ _ag_build_reason() {
             no_testfiles:*)         nofiles="$nofiles ${f#no_testfiles:}" ;;
             inert_wiring:*)         inert="$inert ${f#inert_wiring:}" ;;
             wiring_not_on_path:*)   notpath="$notpath ${f#wiring_not_on_path:}" ;;
-            guard_regressed:*)      grd="$grd ${f#guard_regressed:}" ;;
-            guard_unreached:*)      unr="$unr ${f#guard_unreached:}" ;;
             unreached_at_base:*)    unb="$unb ${f#unreached_at_base:}" ;;
             unreached_at_head:*)    unh="$unh ${f#unreached_at_head:}" ;;
-            guard_unverified:*)     unv="$unv ${f#guard_unverified:}" ;;
-            guard_test_broken:*)    brk="$brk ${f#guard_test_broken:}" ;;
             killed_by_signal:*)     sig="$sig ${f#killed_by_signal:}" ;;
             malformed_acceptance_block) malformed=1 ;;
             negctl_error:* | reachability_error:*) infra="$infra $f" ;;
@@ -200,12 +197,8 @@ _ag_build_reason() {
     [[ -n "$inert"    ]] && clauses+=("$(_ag_join_ids "$inert") was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none")
     [[ -n "$nofiles"  ]] && clauses+=("$(_ag_join_ids "$nofiles"): none of the listed test files exist, so putting it back could not be checked")
     [[ -n "$notpath"  ]] && clauses+=("$(_ag_join_ids "$notpath") is not changed by this change — name a file the change touches, or write WIRING: none")
-    [[ -n "$grd"      ]] && clauses+=("$(_ag_join_ids "$grd") is tagged [guard] but its test fails on the code from before this change — a guard must pass there, so either the test does not match its requirement or the requirement is really a [change]")
-    [[ -n "$unr" ]] && clauses+=("$(_ag_unreached_where "$unr"): the guard's test never ran on the code from before this change — an earlier step in its test file stops the file there, so nothing was measured; the guard itself is not in question")
     [[ -n "$unb" ]] && clauses+=("$(_ag_unreached_where "$unb"): its test never ran on the code from before this change — an earlier step in its test file stops the file there, so it is not shown to fail on the old code")
     [[ -n "$unh" ]] && clauses+=("$(_ag_unreached_where "$unh"): its test never ran on the new code — an earlier step in its test file stops the file before the assertion, so it was not checked")
-    [[ -n "$brk" ]] && clauses+=("$(_ag_join_ids "$brk"): its [guard] test fails on the new code too, not only before the change — the test itself is broken (it fails whatever the code does), so the guard's label is not in question")
-    [[ -n "$unv" ]] && clauses+=("$(_ag_join_ids "$unv"): its [guard] test file failed on the old code without printing a ✓/✗ line for the requirement, so a failed check cannot be told from a file that stopped first — make the assertion print its own tagged result")
     [[ -n "$sig"      ]] && clauses+=("$(_ag_join_ids "$sig"): its test file died on a signal before the assertion ran (not a timeout) — usually a test that signals its own process (\$\$) where no handler exists yet; signal a child process instead")
     [[ "$malformed" -eq 1 ]] && clauses+=("the acceptance block could not be read")
     if [[ -n "$infra" ]]; then
@@ -375,7 +368,10 @@ acceptance_gate_run() {
 
     local verdict="pass"
     local -a failures=()
-    # #1835: "<spec>=<last SPEC the file printed>" for each unreached guard;
+    # #2304: what the pass reason counts (ADR-069) — requirements checked on the
+    # old and new code, already done, and needing no code.
+    local _ag_n_checked=0 _ag_n_done=0 _ag_n_nocode=0
+    # #1835: "<spec>=<last SPEC the file printed>" for each unreached SPEC;
     # read by _ag_build_reason (dynamic scope) to say where the file stopped.
     local _ag_unreached_after=""
     # #1211: one concise verdict line per SPEC (negctl) / per WIRING target
@@ -420,7 +416,7 @@ acceptance_gate_run() {
 
     # ── Level 2: baseline negative-control ───────────────────────────────────
     # #1220: runs REGARDLESS of Level 1's outcome so every violation class (e.g.
-    # a tautological [change] SPEC) is reported in the SAME pass — no whack-a-mole.
+    # a tautological [code] SPEC) is reported in the SAME pass — no whack-a-mole.
     {
         while IFS= read -r line; do
             [[ -z "$line" ]] && continue
@@ -452,7 +448,9 @@ acceptance_gate_run() {
             fi
             summary_lines+=("$_e_enriched")  # #1211: one operator line per SPEC (enriched)
             case "$line" in
-                "NEGCTL PASS "*) : ;;  # control confirmed
+                "NEGCTL PASS "*) _ag_n_checked=$((_ag_n_checked + 1)) ;;  # control confirmed
+                "NEGCTL SKIP "*" already_done") _ag_n_done=$((_ag_n_done + 1)) ;;
+                "NEGCTL SKIP "*" no_code")      _ag_n_nocode=$((_ag_n_nocode + 1)) ;;
                 "NEGCTL SKIP "*) : ;;  # no_impl_delta — legitimate skip
                 "NEGCTL FAIL "*)
                     # "NEGCTL FAIL <spec_id> <reason>"
@@ -473,15 +471,8 @@ acceptance_gate_run() {
                     fi
                     failures+=("$reason:$sid")
                     verdict="fail"
-                    # #1670: guard verdicts ride the same "<spec_id> <reason>"
-                    # shape as every other FAIL line, so only the event differs.
-                    if [[ "$reason" == "guard_regressed" ]]; then
-                        eb_emit_event "acceptance.gate.guard_regressed" "stage=acceptance-gate" \
-                            "spec_id=$sid"
-                    else
-                        eb_emit_event "acceptance.gate.tautology" "stage=acceptance-gate" \
-                            "spec_id=$sid" "reason=$reason"
-                    fi
+                    eb_emit_event "acceptance.gate.tautology" "stage=acceptance-gate" \
+                        "spec_id=$sid" "reason=$reason"
                     ;;
                 "NEGCTL ERROR "*)
                     local detail="${line#NEGCTL ERROR }"
@@ -611,8 +602,9 @@ acceptance_gate_run() {
     fi
     # ADR-054: reason is mandatory; a pass says what it verified. Kept apart
     # from reason_msg, which is the VIOLATION prose the operator summary leads
-    # with (#1220) — a pass must not read as a finding there.
-    local _pass_reason; _pass_reason="all $(acceptance_list_spec_ids "$design_md" 2>/dev/null | grep -c . || true) SPEC(s) verified"
+    # with (#1220) — a pass must not read as a finding there. #2304: it counts
+    # each status, so a pass that checked nothing on the old code says so.
+    local _pass_reason="the acceptance check passed — ${_ag_n_checked} checked on the old and new code, ${_ag_n_done} already done, ${_ag_n_nocode} no code"
     # #2271 (ADR-068): the gate states its findings; it never decides who fixes
     # them. Every stage answers each finding, and the loops carry what nobody in
     # the build loop owns back to design.

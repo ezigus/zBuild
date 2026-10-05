@@ -25,7 +25,7 @@ source "$_ACCEPTANCE_REACHABILITY_DIR/acceptance-block.sh"
 # shellcheck source=env-scrub.sh
 source "$_ACCEPTANCE_REACHABILITY_DIR/env-scrub.sh"
 # #2109: the per-[SPEC-n] log scan is negctl's (#1969); one rule, two callers.
-if ! declare -F _negctl_guard_log_check >/dev/null 2>&1; then
+if ! declare -F _negctl_spec_log_check >/dev/null 2>&1; then
     # shellcheck source=acceptance-negctl.sh
     source "$_ACCEPTANCE_REACHABILITY_DIR/acceptance-negctl.sh"
 fi
@@ -272,8 +272,8 @@ acceptance_reachability_check() {
             # Per-SPEC evidence: 0 = a ✗ line for the id, 1 = ✓ and no ✗, 2 = none.
             local _any_verdict=0 _lv_h _lv_r
             for _sid in ${_spec_ids[@]+"${_spec_ids[@]}"}; do
-                _negctl_guard_log_check "$_cap_head" "$_sid" && _lv_h=0 || _lv_h=$?
-                _negctl_guard_log_check "$_cap_rev" "$_sid" && _lv_r=0 || _lv_r=$?
+                _negctl_spec_log_check "$_cap_head" "$_sid" && _lv_h=0 || _lv_h=$?
+                _negctl_spec_log_check "$_cap_rev" "$_sid" && _lv_r=0 || _lv_r=$?
                 [[ "$_lv_h" -ne 2 || "$_lv_r" -ne 2 ]] && _any_verdict=1
                 if [[ "$_lv_h" -eq 1 && "$_lv_r" -eq 0 ]]; then found_flip=1; break; fi
                 [[ "$_lv_h" -eq 0 && -z "$red_at_head" ]] && red_at_head="$tf"

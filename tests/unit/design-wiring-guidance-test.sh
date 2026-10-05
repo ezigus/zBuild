@@ -15,7 +15,7 @@
 # G3 [change] the acceptance section speaks plainly: no internal check names
 #             (inert, negative control, reachability), no ADR numbers, no
 #             "dispatch table entry" example (a list entry) (#2269)
-# G4 [change] [change]/[guard] are explained as before-and-after questions (#2269)
+# G4 [change] the three statuses are explained in before-and-after words (#2269, #2304)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,7 +43,7 @@ route_to_model_loop() {
     local _bt='```'
     if [[ -n "${_MOCK_DESIGN_WRITE_PATH:-}" ]]; then
         mkdir -p "$(dirname "$_MOCK_DESIGN_WRITE_PATH")"
-        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[guard]: works\nWIRING: none\nTESTFILES:\n%s\n' \
+        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: works\nWIRING: none\nTESTFILES:\n%s\n' \
             "$_bt" "$_bt" "$_bt" "$_bt" > "$_MOCK_DESIGN_WRITE_PATH"
     fi
     _ROUTE_LOOP_ITERATIONS=1
@@ -80,7 +80,7 @@ PROMPT="$ARTIFACT_DIR/design-prompt.txt"
 _wiring="$(awk '/^WIRING:/{f=1} f&&/^Existing checks this change makes wrong/{exit} f' "$PROMPT" 2>/dev/null)"
 assert_contains "fixture: the prompt carries the WIRING guidance" "$_wiring" "WIRING:"
 # The whole acceptance section: from the acceptance item to the supersedes note.
-_acc="$(awk '/fenced block listing behavioral claims|block listing the behaviour/{f=1} f&&/^Existing checks this change makes wrong/{exit} f' "$PROMPT" 2>/dev/null)"
+_acc="$(awk '/fenced block listing behavioral claims|block listing the behaviour|block listing what this change must deliver/{f=1} f&&/^Existing checks this change makes wrong/{exit} f' "$PROMPT" 2>/dev/null)"
 if grep -q 'config/event-schema.json' <<< "$_wiring"; then
     assert_fail "[G1] the WIRING example does not name a registry file" "example lists config/event-schema.json"
 else
@@ -95,8 +95,9 @@ for _w in inert "negative control" reachability "ADR-" "dispatch table entry" "l
         assert_pass "[G3] the acceptance section does not say '$_w'"
     fi
 done
-assert_contains "[G4] [change] is explained as fails-before, passes-after" "$_acc" "fail on the code as it is before your change"
-assert_contains "[G4] [guard] is explained as passes both before and after" "$_acc" "pass both before and after"
+assert_contains "[G4] [code] is explained as fails-before, passes-after" "$_acc" "fail on the code as it is before your change"
+assert_contains "[G4] [no-code] is explained as passes after, need not fail before" "$_acc" "it need not fail before"
+assert_contains "[G4] [done] is explained as what the code already does" "$_acc" "the code already does it"
 
 cleanup_test_env
 print_test_results

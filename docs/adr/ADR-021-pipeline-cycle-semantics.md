@@ -914,7 +914,9 @@ recoverable disposition in the design plugin:
    acceptance line; that stub PASSED the design-gate — especially after #1255
    exempted `[guard]` specs from tag-coverage — so the cycle CONVERGED on the
    stub instead of re-iterating. That defeated the purpose and is corrected
-   here: the timeout artifact must FAIL the design-gate.)
+   here: the timeout artifact must FAIL the design-gate. Historical note
+   (#2304, ADR-069): `[guard]` no longer exists — the design-gate rejects it,
+   and a `[done]` requirement must name evidence that exists.)
 4. `design.timeout.stub_written` is emitted (registered in event-schema.json),
    but only when the marker write actually succeeds. A FAILED marker write is a
    genuine filesystem/infra error, not a recoverable timeout: it emits

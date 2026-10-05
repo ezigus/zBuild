@@ -133,5 +133,8 @@ starts the clock on data collection.
   counts both quote styles, stops at an indented `)`, and reports NOBLOCK — not 0 — when the
   array is missing, so a rename cannot make the cap pass vacuously. Without this the cap is only asserted,
   never shown to work — SPEC-17 is a `[guard]`, so the acceptance gate skips its negative control.
+  (Historical note, #2304 / ADR-069: `[guard]` is gone. The equivalent today is a `[done]` or
+  `[no-code]` requirement, which the acceptance check does not run on the old code — the same
+  reason SPEC-17b demonstrates the cap.)
 - SPEC-17c in `tests/unit/run-tests-parallel-test.sh` — statically verifies both CI jobs set
   `ZBUILD_TEST_TIMING_FILE` (§6), catching a silent removal of the wiring.

@@ -27,6 +27,9 @@
 #                    36202825273 (#1849): both attempts spent their whole 15
 #                    minutes planning all 23 SPECs, wrote nothing, and a
 #                    timeout left the next attempt nothing to continue
+#   T1/T2 (#2304, ADR-069 §6): a [done] requirement gets no test (and an
+#                    all-done design no model call); a [no-code] one need not
+#                    fail before the change
 #   SPEC-14 [change]: the result reports the testfiles as they stand after the
 #                    call (path → content hash), so an attempt that wrote
 #                    changes the stage's artifact and the engine's progress
@@ -96,7 +99,8 @@ _setup() {
 # Design
 ```acceptance
 SPEC-1[change]: plugin-specific fields live under data:{} not at the top level
-SPEC-2[guard]: the top-level result keys are unchanged
+SPEC-2[no-code]: the top-level result keys are unchanged
+SPEC-3[done]: results already carry a schema_version evidence: tests/acc-test.sh
 TESTFILES:
 SPEC-1: tests/acc-test.sh
 SPEC-2: tests/acc-test.sh
@@ -120,8 +124,14 @@ _P="$(cat "$_TA_PROMPT" 2>/dev/null || true)"
 # it is the stage first asked to fix a wrong one.
 assert_contains "[TA-P1] a [change] requirement says its test must fail before and pass after" \
     "$_P" "must FAIL on the code as it was before this change, and pass after"
-assert_contains "[TA-P2] a [guard] requirement says its test must pass before and after" \
-    "$_P" "must pass both before and after this change"
+# #2304 (ADR-069 §6): a [no-code] requirement's test need not fail first; a
+# [done] requirement gets no test at all.
+assert_contains "[T1] a [no-code] requirement says its test must pass after and need not fail before" \
+    "$_P" "its test must pass after this change; it need not fail before"
+assert_eq "[T1] a [done] requirement is left out of the prompt" "0" \
+    "$(grep -c 'SPEC-3\|schema_version' <<< "$_P" || true)"
+assert_eq "[T1] no requirement is told to pass both before and after" "0" \
+    "$(grep -c 'pass both before and after' <<< "$_P" || true)"
 
 assert_contains "[SPEC-1][change] the prompt carries the SPEC's requirement TEXT" \
     "$_P" "fields live under data:{} not at the top level"
@@ -135,6 +145,24 @@ assert_eq "[SPEC-4][guard] the result declares result_contract 2" "2" "$(_res '.
 assert_eq "[SPEC-4][guard] rc is binary — a good pass is 0" "0" "$_rc"
 assert_eq "[SPEC-4][guard] a completed pass is disposition=complete" \
     "complete" "$(_res '.disposition')"
+
+# ─── T2 (#2304, ADR-069 §6): every requirement already done → no model call ─
+_setup alldone
+cat > "$_A/design.md" <<'EOF'
+# Design
+```acceptance
+SPEC-1[done]: results already carry a schema_version evidence: tests/acc-test.sh
+TESTFILES:
+WIRING: none
+```
+EOF
+rm -f "$_TA_PROMPT"
+set +e; test_author_run "test-author" "$_S/pipeline-state.json" >/dev/null 2>&1; _rc_ad=$?; set -e
+assert_eq "[T2] a design whose requirements are all done makes no model call" "absent" \
+    "$([[ -e "$_TA_PROMPT" ]] && echo present || echo absent)"
+assert_eq "[T2] ...and completes" "complete" "$(_res '.disposition')"
+assert_contains "[T2] ...saying there is nothing to write" "$(_res '.reason')" "already done"
+assert_eq "[T2] ...rc 0" "0" "$_rc_ad"
 
 # ─── Router failure ─────────────────────────────────────────────────────────
 _setup timeout

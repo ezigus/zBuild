@@ -142,3 +142,11 @@ still-tautological SPEC hard-fails cleanly after one re-author pass — no ping-
 ### Amendment (2026-10-04, #2271)
 
 `design_verify_cycle` is no longer a `route_back` target. It is nested in `delivery_loop` with the build loop (ADR-068 §1); a design loop that runs out of rounds ends that loop's round, and build is skipped. Tests: `tests/integration/nested-loop-rounds-test.sh` L2/L4, `tests/unit/template-simple-yaml-test.sh` SPEC-18.
+
+### Amendment (2026-10-05, #2304 part B) — C3/C4 read the requirement status; C6 is removed (ADR-069)
+
+- **C3 STATUS** replaces C3 CLASSIFIED. Every requirement carries a status: `[code]`, `[no-code]` or `[done]` (the old `[change]` is read as code). No tag is `NO_STATUS`; an unknown tag, or the retired `[guard]`, is `UNKNOWN_STATUS`. A `[done]` requirement names evidence after ` evidence: `; none is `DONE_NO_EVIDENCE`, and an item that is absolute, contains `..`, names no file, or names a line outside the file is `DONE_BAD_EVIDENCE` (ADR-069 §2).
+- **C4 CODE-HAS-TESTFILE** applies to `[code]` requirements only (and the old `[change]`). Existence is still checked later, by the acceptance gate (#1649).
+- **C6 GUARD-BASELINE** (#1777) is removed with `[guard]`. The design-gate runs nothing again, and its result has no `guard_precheck` block.
+
+The feedback file says each of these in plain words (#2269). Verification: `tests/unit/design-gate-test.sh` G1–G6, `tests/unit/design-gate-feedback-plain-test.sh`.

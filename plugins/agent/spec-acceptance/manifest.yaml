@@ -74,7 +74,6 @@ provides:
     - acceptance.gate.baseline_resolve_failed
     - acceptance.gate.complete
     - acceptance.gate.file_timeout
-    - acceptance.gate.guard_regressed
     - acceptance.gate.inert_wiring
     - acceptance.gate.no_testfiles
     - acceptance.gate.not_passing_at_head
@@ -113,10 +112,6 @@ config:
     - not_passing_at_head
     - killed_by_signal
     - wiring_not_on_path
-    - guard_regressed
-    - guard_unreached
-    - guard_unverified
-    - guard_test_broken
     - unreached_at_base
     - unreached_at_head
     - negctl_error

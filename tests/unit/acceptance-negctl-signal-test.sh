@@ -16,16 +16,15 @@
 #             printed) is `NEGCTL FAIL <spec> killed_by_signal`, not a timeout
 # S2 [change] a SPEC that printed its ✗ before the file died keeps that evidence:
 #             the control holds (NEGCTL PASS)
-# S3 [change] a [guard] SPEC whose baseline run dies on a signal is
-#             killed_by_signal too — not guard_regressed, not a timeout
+# S3 [change] a SPEC whose file dies on a signal on both the old and new code
+#             is killed_by_signal too — not a timeout
 # S4 [guard]  a run the timer really stops is still `NEGCTL ERROR timeout:`
 # S5 [change] the gate classes killed_by_signal as recoverable, and its reason
 #             names the cause and the fix
 # S6 [change] (review #2220) a SIGKILL the timer did not send (rc=137 with no
 #             kill-after in use) is infrastructure — usually the OOM killer — so
 #             it reads `NEGCTL ERROR sigkill:<spec>`, never "signal a child"
-# S7 [change] (review #2220 round 2) the design-gate precheck labels them too:
-#             `GUARD SKIP <spec> signal`, not `harness`
+# (S7, the design-gate [guard] pre-check's label, went with [guard] — #2304.)
 # S8 [change] the gate emits acceptance.gate.negctl_sigkill for a sigkill line and
 #             enriches it with the SPEC's design text, as it does for a timeout
 set -uo pipefail
@@ -72,7 +71,7 @@ if [[ -f "$impl" ]]; then echo "  ✓ [SPEC-2] handler installed"; else echo "  
 kill -TERM "$$"
 [[ -f "$impl" ]]
 EOF
-    # S3: a [guard] whose file kills itself at the baseline.
+    # S3: a file that kills itself on both sides.
     cat > tests/s3-test.sh <<'EOF'
 #!/usr/bin/env bash
 impl="$(cd "$(dirname "$0")/.." && pwd)/impl.sh"
@@ -89,7 +88,7 @@ cat > "$DM" <<'EOF'
 ```acceptance
 SPEC-1[change]: survives a TERM
 SPEC-2[change]: handler installed
-SPEC-3[guard]: still fine
+SPEC-3[code]: still fine
 TESTFILES:
 SPEC-1: tests/s1-test.sh
 SPEC-2: tests/s2-test.sh
@@ -103,7 +102,7 @@ assert_eq "[S1] no verdict before the signal → killed_by_signal" \
     "NEGCTL FAIL SPEC-1 killed_by_signal" "$(grep 'SPEC-1' <<< "$OUT" || true)"
 assert_eq "[S2] a ✗ printed before the signal is still evidence → the control holds" \
     "NEGCTL PASS SPEC-2" "$(grep 'SPEC-2' <<< "$OUT" || true)"
-assert_eq "[S3] a [guard] that dies on a signal → killed_by_signal" \
+assert_eq "[S3] a file that dies on a signal on both sides → killed_by_signal" \
     "NEGCTL FAIL SPEC-3 killed_by_signal" "$(grep 'SPEC-3' <<< "$OUT" || true)"
 if grep -q 'timeout' <<< "$OUT"; then
     assert_fail "[S1] nothing here is reported as a timeout" "$(grep timeout <<< "$OUT")"
@@ -141,11 +140,6 @@ printf '```acceptance\nSPEC-1[change]: survives\nTESTFILES:\nSPEC-1: tests/k-tes
 OUT6="$(_ACCEPTANCE_TIMEOUT_KILL_OK=no ZBUILD_NEGCTL_TIMEOUT=60 acceptance_negctl_check "$REPO6/design.md" "$REPO6" 2>/dev/null || true)"
 assert_eq "[S6] rc=137 with no kill-after → NEGCTL ERROR sigkill:SPEC-1 (infra)" \
     "NEGCTL ERROR sigkill:SPEC-1" "$(grep 'SPEC-1' <<< "$OUT6" || true)"
-
-print_test_section "S7: the design-gate precheck names a signal"
-OUT7="$(ZBUILD_NEGCTL_TIMEOUT=60 acceptance_negctl_guard_precheck "$DM" "$REPO" 2>/dev/null || true)"
-assert_eq "[S7] a [guard] that dies on a signal → GUARD SKIP SPEC-3 signal" \
-    "GUARD SKIP SPEC-3 signal" "$(grep 'SPEC-3' <<< "$OUT7" || true)"
 
 print_test_section "S8: the gate reports a sigkill like a timeout"
 _st8="$REPO6/.zbuild-state"; mkdir -p "$_st8/artifacts" "$_st8/events"
