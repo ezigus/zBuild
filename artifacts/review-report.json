@@ -1,0 +1,300 @@
+{
+  "schema_version": 1,
+  "merge_readiness": "needs_attention",
+  "lenses": [
+    {
+      "name": "correctness",
+      "score": 0,
+      "ran": false,
+      "findings": [],
+      "partial_notes": "# Correctness lens checkpoint\n\n## Status: in progress\n\n## Files read so far: none\n\n## Next: read cycle-orchestrator.sh around line 2579, router-rc-classify.sh, spec-coverage plugin, spec-correspondence plugin, review-report plugin"
+    },
+    {
+      "name": "performance",
+      "score": 9,
+      "ran": true,
+      "findings": [
+        {
+          "file": "plugins/agent/spec-coverage/plugin.sh",
+          "category": "unnecessary allocation",
+          "severity": "low",
+          "line": 183,
+          "message": "mktemp is called unconditionally on every spec_coverage_run invocation — including the success path — adding one temp-file creation, a file write, a cat read, and an rm per stage run, even though the rc-file is only needed when route_to_model exits non-zero.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/spec-correspondence/plugin.sh",
+          "category": "unnecessary allocation",
+          "severity": "low",
+          "line": 243,
+          "message": "mktemp is called unconditionally at the top of spec_correspondence_run — including when n==0 (no SPECs to check) — so a temp file is created, initialized, and then cleaned up without ever being written by _sc_call; deferring the allocation to the non-zero-n branch or to the rc-classification block would avoid the process spawn on the vacuous path.",
+          "introduced": true
+        }
+      ]
+    },
+    {
+      "name": "red-team",
+      "score": 8,
+      "ran": true,
+      "findings": [
+        {
+          "file": "plugins/agent/spec-correspondence/plugin.sh",
+          "category": "logic",
+          "severity": "low",
+          "line": 273,
+          "message": "The same `_sc_rc_file` is passed to both the batch call (line 253) and each individual per-spec fallback call (line 273); the last `printf '%s' \"$?\"` written by any call overwrites earlier writes, so if the batch times out (rc=124) but one subsequent individual fallback call succeeds (rc=0), `_sc_router_rc` is read as 0 and `_sc_disposition` is reported as 'complete' — masking the batch timeout and preventing `_route_escalate_timeout` from growing the budget on the next retry cycle; the test covers only the all-calls-fail scenario.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/spec-coverage/plugin.sh",
+          "category": "logic",
+          "severity": "low",
+          "line": 188,
+          "message": "When `mktemp` fails and `_scv_rc_file` is empty, the inner subshell executes `printf '%s' \"$?\" > \"\"` which generates a bash error on stderr (suppressed by `|| true`) but silently abandons the rc capture, causing `_rtm_rc` to remain 0 and the disposition to stay 'complete' even when `route_to_model` times out; `spec-correspondence` avoids this with the safer `${_rc_file:-/dev/null}` pattern but `spec-coverage` does not apply the same guard.",
+          "introduced": true
+        }
+      ]
+    },
+    {
+      "name": "scope",
+      "score": 9,
+      "ran": true,
+      "findings": [
+        {
+          "file": "docs/adr/ADR-063-budget-disclosure-and-partial-output.md",
+          "category": "scope",
+          "severity": "low",
+          "line": null,
+          "message": "Several sentences in the background narrative were rewritten from present to past tense (e.g. 'has ever emitted' → 'emitted', 'has never run' → 'never ran') as editorial cleanup; §C requires updating the status, vocabulary, and §1/§4 prescription text, but does not ask for prose tense changes elsewhere in the document — minor additional edits within an in-scope file.",
+          "introduced": true
+        }
+      ]
+    },
+    {
+      "name": "security",
+      "score": 9,
+      "ran": true,
+      "findings": [
+        {
+          "file": "plugins/agent/spec-coverage/plugin.sh",
+          "category": "temp-file race",
+          "severity": "low",
+          "line": 184,
+          "message": "mktemp creates a world-accessible path in /tmp; a local attacker who replaces the file between the subshell write (printf '$?' > ...) and the parent-shell read (cat) could substitute an arbitrary integer, causing the wrong disposition word to be emitted — at worst 'complete' instead of 'timed_out', which re-introduces the false-convergence defect this change exists to prevent.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/spec-correspondence/plugin.sh",
+          "category": "temp-file race",
+          "severity": "low",
+          "line": 246,
+          "message": "Same mktemp-in-/tmp pattern as spec-coverage: a local attacker could overwrite the rc file between the inner-subshell write and the outer read, controlling which disposition word is written to spec-correspondence-result.json.",
+          "introduced": true
+        }
+      ]
+    },
+    {
+      "name": "sre",
+      "score": 7,
+      "ran": true,
+      "findings": [
+        {
+          "file": "plugins/agent/spec-correspondence/plugin.sh",
+          "category": "observability",
+          "severity": "medium",
+          "line": 248,
+          "message": "A single `_sc_rc_file` is shared across the batch call and every per-spec fallback call; if the batch call times out (rc=124) but a subsequent per-spec fallback call succeeds (rc=0), the final `_sc_router_rc` reads 0 and `disposition: complete` is written — the timeout signal is silently lost.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/spec-coverage/plugin.sh",
+          "category": "reliability",
+          "severity": "low",
+          "line": 184,
+          "message": "`_scv_rc_file` is created with `mktemp` but no trap is installed; if `spec_coverage_run` exits unexpectedly between the `mktemp` call and the `rm -f` at line 192, the temp file leaks — the same pattern applies to `_sc_rc_file` in `spec-correspondence/plugin.sh`.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/review-report/plugin.sh",
+          "category": "observability",
+          "severity": "low",
+          "line": 169,
+          "message": "When a lens `.rc` file is absent (lens subshell died before writing it), the `|| echo 1` fallback produces rc=1 which `router_reason_disposition` maps to the catch-all `unavailable`; a lens killed by a signal would be classified as `unavailable` rather than `interrupted`, misrepresenting the failure cause in the disposition field.",
+          "introduced": true
+        },
+        {
+          "file": "core/pipeline/cycle-orchestrator.sh",
+          "category": "observability",
+          "severity": "low",
+          "line": 2590,
+          "message": "`cycle.member_unfinished.suppressed_convergence` emits only `iter` and `reason=member_did_not_finish`; unlike `cycle.build_unfinished.suppressed_convergence` which also emits `build_verdict`, this event carries no member identity — determining which member triggered suppression requires separately cross-referencing the verdicts blob.",
+          "introduced": true
+        },
+        {
+          "file": "plugins/agent/review-report/plugin.sh",
+          "category": "reliability",
+          "severity": "low",
+          "line": 175,
+          "message": "Before this change `review-report` always wrote `disposition: complete` on lens failure; after, it writes `disposition: unavailable` (rc=1) or `timed_out` (rc=124). `unavailable` is NOT in `disposition_unfinished`, so the new cycle suppression does not fire for it — but any engine consumer that applies the ADR-054 §6 response table to this field will now see `halt_unavailable` where it previously saw `proceed`, a net-new halt path for this advisory stage.",
+          "introduced": true
+        }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "file": "core/pipeline/cycle-orchestrator.sh",
+      "category": "observability",
+      "line": 2590,
+      "severity": "low",
+      "lenses": [
+        "sre"
+      ],
+      "messages": [
+        "`cycle.member_unfinished.suppressed_convergence` emits only `iter` and `reason=member_did_not_finish`; unlike `cycle.build_unfinished.suppressed_convergence` which also emits `build_verdict`, this event carries no member identity — determining which member triggered suppression requires separately cross-referencing the verdicts blob."
+      ]
+    },
+    {
+      "file": "docs/adr/ADR-063-budget-disclosure-and-partial-output.md",
+      "category": "scope",
+      "line": null,
+      "severity": "low",
+      "lenses": [
+        "scope"
+      ],
+      "messages": [
+        "Several sentences in the background narrative were rewritten from present to past tense (e.g. 'has ever emitted' → 'emitted', 'has never run' → 'never ran') as editorial cleanup; §C requires updating the status, vocabulary, and §1/§4 prescription text, but does not ask for prose tense changes elsewhere in the document — minor additional edits within an in-scope file."
+      ]
+    },
+    {
+      "file": "plugins/agent/review-report/plugin.sh",
+      "category": "observability",
+      "line": 169,
+      "severity": "low",
+      "lenses": [
+        "sre"
+      ],
+      "messages": [
+        "When a lens `.rc` file is absent (lens subshell died before writing it), the `|| echo 1` fallback produces rc=1 which `router_reason_disposition` maps to the catch-all `unavailable`; a lens killed by a signal would be classified as `unavailable` rather than `interrupted`, misrepresenting the failure cause in the disposition field."
+      ]
+    },
+    {
+      "file": "plugins/agent/review-report/plugin.sh",
+      "category": "reliability",
+      "line": 175,
+      "severity": "low",
+      "lenses": [
+        "sre"
+      ],
+      "messages": [
+        "Before this change `review-report` always wrote `disposition: complete` on lens failure; after, it writes `disposition: unavailable` (rc=1) or `timed_out` (rc=124). `unavailable` is NOT in `disposition_unfinished`, so the new cycle suppression does not fire for it — but any engine consumer that applies the ADR-054 §6 response table to this field will now see `halt_unavailable` where it previously saw `proceed`, a net-new halt path for this advisory stage."
+      ]
+    },
+    {
+      "file": "plugins/agent/spec-correspondence/plugin.sh",
+      "category": "logic",
+      "line": 273,
+      "severity": "low",
+      "lenses": [
+        "red-team"
+      ],
+      "messages": [
+        "The same `_sc_rc_file` is passed to both the batch call (line 253) and each individual per-spec fallback call (line 273); the last `printf '%s' \"$?\"` written by any call overwrites earlier writes, so if the batch times out (rc=124) but one subsequent individual fallback call succeeds (rc=0), `_sc_router_rc` is read as 0 and `_sc_disposition` is reported as 'complete' — masking the batch timeout and preventing `_route_escalate_timeout` from growing the budget on the next retry cycle; the test covers only the all-calls-fail scenario."
+      ]
+    },
+    {
+      "file": "plugins/agent/spec-correspondence/plugin.sh",
+      "category": "observability",
+      "line": 248,
+      "severity": "medium",
+      "lenses": [
+        "sre"
+      ],
+      "messages": [
+        "A single `_sc_rc_file` is shared across the batch call and every per-spec fallback call; if the batch call times out (rc=124) but a subsequent per-spec fallback call succeeds (rc=0), the final `_sc_router_rc` reads 0 and `disposition: complete` is written — the timeout signal is silently lost."
+      ]
+    },
+    {
+      "file": "plugins/agent/spec-correspondence/plugin.sh",
+      "category": "temp-file race",
+      "line": 246,
+      "severity": "low",
+      "lenses": [
+        "security"
+      ],
+      "messages": [
+        "Same mktemp-in-/tmp pattern as spec-coverage: a local attacker could overwrite the rc file between the inner-subshell write and the outer read, controlling which disposition word is written to spec-correspondence-result.json."
+      ]
+    },
+    {
+      "file": "plugins/agent/spec-correspondence/plugin.sh",
+      "category": "unnecessary allocation",
+      "line": 243,
+      "severity": "low",
+      "lenses": [
+        "performance"
+      ],
+      "messages": [
+        "mktemp is called unconditionally at the top of spec_correspondence_run — including when n==0 (no SPECs to check) — so a temp file is created, initialized, and then cleaned up without ever being written by _sc_call; deferring the allocation to the non-zero-n branch or to the rc-classification block would avoid the process spawn on the vacuous path."
+      ]
+    },
+    {
+      "file": "plugins/agent/spec-coverage/plugin.sh",
+      "category": "logic",
+      "line": 188,
+      "severity": "low",
+      "lenses": [
+        "red-team"
+      ],
+      "messages": [
+        "When `mktemp` fails and `_scv_rc_file` is empty, the inner subshell executes `printf '%s' \"$?\" > \"\"` which generates a bash error on stderr (suppressed by `|| true`) but silently abandons the rc capture, causing `_rtm_rc` to remain 0 and the disposition to stay 'complete' even when `route_to_model` times out; `spec-correspondence` avoids this with the safer `${_rc_file:-/dev/null}` pattern but `spec-coverage` does not apply the same guard."
+      ]
+    },
+    {
+      "file": "plugins/agent/spec-coverage/plugin.sh",
+      "category": "reliability",
+      "line": 184,
+      "severity": "low",
+      "lenses": [
+        "sre"
+      ],
+      "messages": [
+        "`_scv_rc_file` is created with `mktemp` but no trap is installed; if `spec_coverage_run` exits unexpectedly between the `mktemp` call and the `rm -f` at line 192, the temp file leaks — the same pattern applies to `_sc_rc_file` in `spec-correspondence/plugin.sh`."
+      ]
+    },
+    {
+      "file": "plugins/agent/spec-coverage/plugin.sh",
+      "category": "temp-file race",
+      "line": 184,
+      "severity": "low",
+      "lenses": [
+        "security"
+      ],
+      "messages": [
+        "mktemp creates a world-accessible path in /tmp; a local attacker who replaces the file between the subshell write (printf '$?' > ...) and the parent-shell read (cat) could substitute an arbitrary integer, causing the wrong disposition word to be emitted — at worst 'complete' instead of 'timed_out', which re-introduces the false-convergence defect this change exists to prevent."
+      ]
+    },
+    {
+      "file": "plugins/agent/spec-coverage/plugin.sh",
+      "category": "unnecessary allocation",
+      "line": 183,
+      "severity": "low",
+      "lenses": [
+        "performance"
+      ],
+      "messages": [
+        "mktemp is called unconditionally on every spec_coverage_run invocation — including the success path — adding one temp-file creation, a file write, a cat read, and an rm per stage run, even though the rc-file is only needed when route_to_model exits non-zero."
+      ]
+    }
+  ],
+  "pre_existing": [],
+  "summary": "1 of 6 lens(es) did not run (correctness) — their review is missing, not clean. 12 merge-readiness finding(s) across 6 lens(es) (0 critical, 0 high).",
+  "escalation_note": "Some lenses did not run, so this report is incomplete; re-run the review before merging. Advisory only — this does not block the pipeline.",
+  "did_not_run": [
+    "correctness"
+  ],
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "aggregated 6 lens result(s)"
+}
