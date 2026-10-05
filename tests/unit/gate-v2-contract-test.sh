@@ -76,7 +76,8 @@ done
 
 # ── SPEC-4 (manifest): design_gate_feedback output must be required:true ──────
 assert_eq "[SPEC-4] design-gate manifest has no required:false output (design_gate_feedback is now required:true)" \
-    "0" "$(grep -c 'required: false' "$REPO_ROOT/plugins/tool/design-gate/manifest.yaml" 2>/dev/null || true)"
+    "0" "$(awk '/^outputs:/{o=1;next} o&&/^[a-z_]+:/{exit} o' "$REPO_ROOT/plugins/tool/design-gate/manifest.yaml" | grep -c 'required: false' || true)"
+# (#2306: the outputs section only — the optional `requirements` INPUT is not an output.)
 
 # ── SPEC-5: coverage/lint/mutation resolve test_results via ZBUILD_STAGE_INPUTS ─
 _SI_DIR="$TEST_TEMP_DIR/si-inputs"

@@ -52,23 +52,26 @@ _scv_issue_is_placeholder() {
 _scv_prompt() {
     printf '%s' "You are checking whether a DESIGN covers what an ISSUE asked for.
 
-You will be shown two things:
+You will be shown three things:
 
 ISSUE — what was asked for, in the requester's own words.
+REQUIREMENTS — the issue's requirements, numbered R-1, R-2, … by the pipeline.
 ACCEPTANCE — the SPEC sentences the design commits to.
 
-Judge only this: what does the ISSUE require that no SPEC covers?
+Judge only this: what does the issue require that no SPEC covers?
 
-Check EVERY requirement, and list EVERY one that no SPEC fully covers —
-not only the first you find. The design is revised once per round and
+Judge every requirement in REQUIREMENTS by its words. Check EVERY requirement,
+and list EVERY one that no SPEC fully covers — not only the first you find — by
+its id and words (R-2: <its words>). The design is revised once per round and
 fixes only what you list; a gap left out of this answer costs a whole round.
+
+Read the ISSUE for what a requirement means. A SPEC may say which requirements
+it covers; check its words, not only the ids it names. When none are listed
+under REQUIREMENTS, read the requirements from the ISSUE itself.
 
 An issue contains more than requirements — context, rationale, links, history.
 Those are not requirements and their absence from the SPECs is not a gap. Judge
 what the issue REQUIRES, not everything it mentions.
-
-If the issue enumerates expectations explicitly (checkboxes, a numbered list),
-each one is a requirement and must map to a SPEC.
 
 Mapping is not enough: the SPEC must demand ALL of the requirement. A SPEC that
 demands less than the requirement — a subset of the cases, a weaker condition,
@@ -94,6 +97,9 @@ Do not suggest SPEC text. Do not rewrite the design. Answer only.
 
 ISSUE:
 $1
+
+REQUIREMENTS:
+${3:-<none listed>}
 
 ACCEPTANCE:
 $2"
@@ -164,7 +170,12 @@ spec_coverage_run() {
     # plugins/persona/product-owner/ actually changes behaviour. resolve_persona
     # returns the DIRECTORY; persona_stage_framing wants the id.
     local _task _framed _pid="product-owner" _pdir
-    _task="$(_scv_prompt "$issue" "$acc")"
+    # #2306 (ADR-070 §4): the issue's requirements as intake numbered them.
+    local _req_f="" _reqs=""
+    [[ -s "${ZBUILD_STAGE_INPUTS:-}" ]] && _req_f="$(jq -r '.inputs.requirements // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null)"
+    declare -F acceptance_requirements_list >/dev/null 2>&1 \
+        && _reqs="$(acceptance_requirements_list "${_req_f:-$art/requirements.json}")"
+    _task="$(_scv_prompt "$issue" "$acc" "$_reqs")"
     _framed="$_task"
     if declare -f persona_stage_framing >/dev/null 2>&1; then
         if declare -f resolve_persona >/dev/null 2>&1; then
