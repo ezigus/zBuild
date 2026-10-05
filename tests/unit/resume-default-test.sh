@@ -16,16 +16,15 @@
 # R4 [change] hydrate under ZBUILD_RESUME=0 restores nothing — and still adopts
 #             the saved history, so the next snapshot extends it instead of
 #             force-pushing a new one over it (review #2229)
-# R5 [change] design reuses a qualifying prior design with no model call
-# R6 [change] ...not under ZBUILD_RESUME=0
-# R7 [change] ...not when the issue text changed
-# R8 [change] ...not when the prior run stopped on a finding no stage owned
-#             (#2271: artifacts/unowned-findings.md replaces the routed fault)
-# R9 [change] ...not when this run already has a design (a rewind)
-# R10 [change] ...not when the prior spec-coverage said uncovered (review #2229)
-# R11 [change] ...not when the design-gate pass was for a DIFFERENT design.md
-#              than the one restored (review #2229: a later rewrite, or a partial
-#              design kept after a timeout, would otherwise ride an old pass)
+# R5 [change] design always makes its model call, even for a prior design that
+#             passed design-gate and spec-coverage on the same issue text — it
+#             emits no design.reused, and the prior design reaches the prompt as
+#             a reference to check, not as this run's design (#2299, ADR-050 §6).
+#             #2035 run 37289704344 kept an untested design in 1 second.
+# R6–R11 [guard] design runs in each case the old reuse rule turned on:
+#             ZBUILD_RESUME=0, changed issue text, a finding nobody owned (R8),
+#             an ordinary failed gate (R8b), a rewind, an uncovered spec, and
+#             a gate pass for a different design.md
 # R12 [change] design-gate records the hash of the design.md it judged
 set -uo pipefail
 
@@ -88,12 +87,14 @@ assert_eq "[R4] nothing is restored — the saved history is still fetched and a
 assert_contains "[R4] ...and the result says why" \
     "$(jq -r '.reason // empty' "$_H/state/artifacts/hydrate-result.json" 2>/dev/null)" "--no-resume"
 
-print_test_section "R5–R9: design"
+print_test_section "R5–R11: design always runs"
 # shellcheck source=../../plugins/agent/design/plugin.sh
 source "$REPO_ROOT/plugins/agent/design/plugin.sh"
 MODEL_CALLS="$TEST_TEMP_DIR/design-model-calls"; : > "$MODEL_CALLS"
+DESIGN_EVENTS="$TEST_TEMP_DIR/design-events"; : > "$DESIGN_EVENTS"
 route_to_model_loop() {
     echo call >> "$MODEL_CALLS"
+    cp "$2" "$MOCK_PROMPT_COPY" 2>/dev/null || true
     printf '# Design (fresh)\n\n```scope\nfoo.sh\n```\n' > "$MOCK_DESIGN_WRITE_PATH"
     _ROUTE_LOOP_FINAL_OUTPUT="ok"; _ROUTE_LOOP_ITERATIONS=1
     _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
@@ -102,6 +103,7 @@ route_to_model_loop() {
 }
 apply_scope_redaction() { cp "$1" "$2"; return 0; }
 _route_loop_close_final_banner() { return 0; }
+emit_event() { printf '%s\n' "$1" >> "$DESIGN_EVENTS"; return 0; }
 
 FIX="$TEST_TEMP_DIR/fix"; mkdir -p "$FIX"
 git -C "$FIX" init -q; git -C "$FIX" config user.email t@t; git -C "$FIX" config user.name t
@@ -131,23 +133,28 @@ _design_case() {
         printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x"}\n' > "$rr/artifacts/gate-aggregator-result.json"
     fi
     [[ -n "$existing" ]] && printf '# Design (this run)\n' > "$ad/design.md"
-    : > "$MODEL_CALLS"
+    : > "$MODEL_CALLS"; : > "$DESIGN_EVENTS"
     ( cd "$FIX" && ZBUILD_STATE_DIR="$d/state" ZBUILD_RESTORED_ARTIFACTS_DIR="$rr/artifacts" ZBUILD_RESUME="$resume" \
-        MOCK_DESIGN_WRITE_PATH="$ad/design.md" \
+        MOCK_DESIGN_WRITE_PATH="$ad/design.md" MOCK_PROMPT_COPY="$d/prompt-seen.txt" \
         _design_stage_run_inner "$d/state/scope-manifest.md" "$ad/plan.json" "$ad/design.md" "$ad" ) >/dev/null 2>&1 || true
     wc -l < "$MODEL_CALLS" | tr -d ' '
 }
 
-assert_eq "[R5] a qualifying prior design is reused — no model call" "0" "$(_design_case r5)"
-assert_contains "[R5] ...its content is this run's design" "$(cat "$TEST_TEMP_DIR/r5/state/artifacts/design.md" 2>/dev/null)" "Design (prior)"
-assert_eq "[R5] ...and design says it passed, reusing it" "pass" \
-    "$(jq -r '.verdict // empty' "$TEST_TEMP_DIR/r5/state/artifacts/design-verdict.json" 2>/dev/null)"
-assert_contains "[R5] ...naming the reuse" \
-    "$(jq -r '.reason // empty' "$TEST_TEMP_DIR/r5/state/artifacts/design-verdict.json" 2>/dev/null)" "reused"
+assert_eq "[R5] a prior design that passed both checks on the same issue text — design still makes its model call" "1" "$(_design_case r5)"
+if grep -qx 'design.reused' "$DESIGN_EVENTS"; then
+    assert_fail "[R5] ...and emits no design.reused" "design.reused was emitted"
+else
+    assert_pass "[R5] ...and emits no design.reused"
+fi
+assert_contains "[R5] ...this run's design is the one the model wrote" \
+    "$(cat "$TEST_TEMP_DIR/r5/state/artifacts/design.md" 2>/dev/null)" "Design (fresh)"
+_r5_prompt="$(cat "$TEST_TEMP_DIR/r5/prompt-seen.txt" 2>/dev/null)"
+assert_contains "[R5] ...the prior design reaches the prompt" "$_r5_prompt" "# Design (prior)"
+assert_contains "[R5] ...as a reference to check, not a fact" "$_r5_prompt" "## PRIOR DESIGN (a previous attempt on this issue — a hypothesis, not a fact)"
 assert_eq "[R6] under ZBUILD_RESUME=0 design runs" "1" "$(_design_case r6 "" 0)"
 assert_eq "[R7] when the issue text changed design runs" "1" "$(_design_case r7 "" 1 "Migrate the OTHER thing.")"
 assert_eq "[R8] when the prior run stopped on a finding nobody owned, design runs" "1" "$(_design_case r8 unowned)"
-assert_eq "[R8] ...an ordinary failed gate is no reason to redo design — still reused" "0" "$(_design_case r8b failed)"
+assert_eq "[R8b] after an ordinary failed gate, design runs" "1" "$(_design_case r8b failed)"
 assert_eq "[R9] when this run already has a design (a rewind), design runs" "1" "$(_design_case r9 "" 1 "Migrate the thing." yes)"
 assert_eq "[R10] when the prior spec-coverage said uncovered, design runs" "1" "$(_design_case r10 "" 1 "Migrate the thing." "" uncovered)"
 assert_eq "[R11] when the gate's pass was for a different design.md, design runs" "1" "$(_design_case r11 "" 1 "Migrate the thing." "" covered yes)"
