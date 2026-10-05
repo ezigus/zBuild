@@ -451,7 +451,7 @@ if declare -F _cycle_render_feedback_digest >/dev/null 2>&1; then
     _CYCLE_FEEDBACK=()
     _dig="$(ZBUILD_PLUGINS_ROOT="$PROOT" _cycle_render_feedback_digest 2 "$STATE" 2>/dev/null || true)"
     assert_contains "[SPEC-11] iter 2, no edges: banner names the summary count" "$_dig" "3 stage summaries"
-    assert_contains "[SPEC-11] …and how many are framed RESOLVE" "$_dig" "1 RESOLVE"
+    assert_contains "[SPEC-11] …and how many are failing (#2292)" "$_dig" "1 failing"
     if [[ "$_dig" == *"first iteration"* ]]; then
         assert_fail "[SPEC-11] iter 2 must not claim 'first iteration'" "$_dig"
     else

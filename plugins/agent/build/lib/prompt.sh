@@ -76,13 +76,14 @@ Emit \`LOOP_COMPLETE\` on its own line as the FINAL line of your response
 WHEN the implementation is complete — whether you just finished it OR
 it was already done before you started. If the branch already contains
 the required changes (check \`git log\` for commits + \`git diff\` for any
-remaining gap) AND no STAGE SUMMARY below is marked RESOLVE, emit
-\`LOOP_COMPLETE\` immediately. Do NOT keep iterating when there is nothing
-left to do. While any STAGE SUMMARY is marked RESOLVE, finishing with no
-change needs a REASON — either you fixed it, or it does not reproduce.
+remaining gap) AND no STAGE SUMMARY below is headed "— its findings, to answer",
+emit \`LOOP_COMPLETE\` immediately. Do NOT keep iterating when there is
+nothing left to do. While any STAGE SUMMARY is headed that way, finishing
+with no change needs each of its findings answered: \`done\` (you changed
+something for it), \`nothing to do\` with the reason, or not reproduced.
 
 ### When a finding does not reproduce
-If a RESOLVE summary names a test and that test PASSES when you run it on this
+If a failing summary names a test and that test PASSES when you run it on this
 tree, say so and stop. Emit, on its own line before the sentinel:
 
     NOT_REPRODUCED: <the path you ran>
@@ -99,8 +100,8 @@ a failure you cannot produce, and do not change code to chase one.
 - Do NOT run \`npm test\`, the full suite, or \`npm run lint\` — the pipeline has
   already run them and their findings are in the STAGE SUMMARIES below. Run
   only the one failing test file a summary names, and only after changing code.
-- A STAGE SUMMARY marked RESOLVE is red RIGHT NOW on this tree. Do not
-  re-verify it; start from the failing line it quotes.
+- A STAGE SUMMARY headed "— its findings, to answer" is red RIGHT NOW on this tree.
+  Do not re-verify it; start from the failing line it quotes.
 
 ### Rules
 - Touch only files in the scope list above.

@@ -35,7 +35,7 @@ LIST="$ROOT/config/model-facing-sources.txt"
 [[ -f "$LIST" ]] || { echo "lint-plain-prompts: no $LIST" >&2; exit 1; }
 
 # One extended regex; matched case-sensitively except where noted in the class.
-FORBIDDEN='NEGCTL|REACHABILITY|[Ii]nert|[Tt]autolog|WIRING_MISSING|UNCLASSIFIED|GUARD_REGRESSED|[Nn]egative control|ADR-[0-9]+|_TPL_[A-Z]'
+FORBIDDEN='NEGCTL|REACHABILITY|[Ii]nert|[Tt]autolog|WIRING_MISSING|UNCLASSIFIED|GUARD_REGRESSED|[Nn]egative control|ADR-[0-9]+|_TPL_[A-Z]|RESOLVE'
 
 bad=0 files=0
 # A model sees a variable's VALUE, never its name: strip $name / ${…} first.

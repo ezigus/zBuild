@@ -41,4 +41,5 @@ The 2026-10-03 audit found the same pattern in about 15 places: check names in f
 - §2 (design check) → `tests/unit/design-gate-feedback-plain-test.sh` D1–D3
 - §2 (shape check) → `tests/unit/shape-floor-summary-plain-test.sh` S1–S3
 - §6 (build) → `tests/unit/build-prompt-spec-text-test.sh` P1–P2
+- §1 (build's stop rule names the real summary heading, never a retired marker) → `tests/unit/build-prompt-summary-marker-test.sh` M1–M6 (#2292)
 - §7 (review lens) → `tests/unit/review-lens-requirements-plain-test.sh` L1–L4

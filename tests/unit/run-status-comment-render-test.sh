@@ -112,7 +112,7 @@ assert_eq "[SPEC-3] linear row: no iter, <1s for equal timestamps" \
     "$intake_row"
 test_row="$(row_of '**6.1.2 test**')"
 assert_eq "[SPEC-3] open row: start, running, inputs, injected summaries count" \
-    '**9:22 AM ET → running** · **6.1.2 test** · iter 1 · inputs: diff, plan · 3 stage summaries (0 RESOLVE)' \
+    '**9:22 AM ET → running** · **6.1.2 test** · iter 1 · inputs: diff, plan · 3 stage summaries (0 failing)' \
     "$test_row"
 deploy_row="$(row_of '**9 deploy**')"
 assert_eq "[SPEC-3] open row without an injection: inputs only" \

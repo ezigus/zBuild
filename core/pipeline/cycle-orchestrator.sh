@@ -699,7 +699,7 @@ _cycle_render_summaries_digest() {
     if [[ "$n" -eq 0 ]]; then
         printf '(no feedback edges, no stage summaries)'
     else
-        printf 'summaries(%s stage summaries, %s RESOLVE)' "$n" "$r"
+        printf 'summaries(%s stage summaries, %s failing)' "$n" "$r"
     fi
     return 0
 }
