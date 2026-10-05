@@ -30,6 +30,21 @@ if [[ "${_ZBUILD_ROUTER_RC_CLASSIFY_LOADED:-}" == "1" ]]; then
 fi
 _ZBUILD_ROUTER_RC_CLASSIFY_LOADED=1
 
+# #2296: a stream is judged by its own records — prints `refused`, its final result line, nothing, or a lone envelope back.
+_router_stream_envelope() {
+    local json="${1:-}" got=""
+    if [[ "$json" == *$'\n'* && "$json" == '{"type":'* ]] && command -v jq >/dev/null 2>&1; then
+        got="$(jq -nRrc '[inputs | fromjson? // empty] as $r
+            | if ($r | length) == 0 then "single"
+              elif any($r[]; .type == "rate_limit_event"
+                    and (.rate_limit_info.status // "allowed") == "rejected") then "refused"
+              else ([$r[] | select(.type == "result")] | last // empty) end' \
+            <<< "$json" 2>/dev/null || true)"
+        [[ "$got" != "single" ]] && { printf '%s' "$got"; return 0; }
+    fi
+    printf '%s' "$json"
+}
+
 # _router_is_budget_exhausted <claude_output_json> — returns 0 when the envelope
 # says the model ran OUT OF BUDGET rather than failing. Repo-agnostic: keys only
 # on the claude CLI's own fields.
@@ -43,6 +58,8 @@ _router_is_budget_exhausted() {
     local json="${1:-}"
     [[ -z "$json" ]] && return 1
     command -v jq >/dev/null 2>&1 || return 1
+    json="$(_router_stream_envelope "$json")"
+    case "$json" in refused|'') return 1 ;; esac
     local subtype="" terminal=""
     subtype="$(printf '%s' "$json" | jq -r '.subtype // empty' 2>/dev/null || true)"
     terminal="$(printf '%s' "$json" | jq -r '.terminal_reason // empty' 2>/dev/null || true)"
@@ -57,6 +74,8 @@ _router_is_budget_exhausted() {
 _router_is_rate_limit() {
     local json="${1:-}"
     [[ -z "$json" ]] && return 1
+    json="$(_router_stream_envelope "$json")"
+    case "$json" in refused) return 0 ;; '') return 1 ;; esac
     local status="" is_error="" result="" errtext=""
     if command -v jq >/dev/null 2>&1; then
         status="$(printf '%s' "$json"  | jq -r '.api_error_status // empty' 2>/dev/null || true)"
@@ -97,6 +116,8 @@ _router_is_rate_limit() {
 _router_rate_limit_message() {
     local json="${1:-}"
     local result="" status="" tail=""
+    json="$(_router_stream_envelope "$json")"
+    [[ "$json" == refused ]] && json=""
     if command -v jq >/dev/null 2>&1; then
         result="$(printf '%s' "$json" | jq -r '.result // empty'          2>/dev/null || true)"
         status="$(printf '%s' "$json" | jq -r '.api_error_status // empty' 2>/dev/null || true)"
