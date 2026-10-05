@@ -54,6 +54,6 @@ Each misroute was fixed with another rule (#1777, #2157, #1847, #1846). In #2032
 - §1 → `tests/unit/no-fault-routing-test.sh` R1 (a template with `route_back` is refused, and the error says what replaces it)
 - §2, §3, §4 → `tests/integration/nested-loop-rounds-test.sh` L1–L6; `tests/integration/cycle-member-dispatch-events-test.sh` §3 (rc 8 still halts on the last outer round); `tests/integration/cycle-rate-limit-aborts-run-test.sh` (rc 9 from an inner loop ends the run)
 - §5 → `tests/unit/numbered-findings-test.sh` N1–N5
-- §6, §7 → `tests/unit/finding-answers-test.sh` A1–A6
+- §6, §7 → `tests/unit/finding-answers-test.sh` A1–A7 (A7: the request comes after the findings the funnel adds, #2294)
 - §8 → `tests/integration/unowned-finding-test.sh` U1–U9; `tests/unit/runner-render-cycle-divider-test.sh` (the hand-back banner)
 - §9 → `tests/unit/no-fault-routing-test.sh` R2–R4; `tests/unit/dispatch-rc-test.sh` SPEC-5 (rc 11 retired)

@@ -19,6 +19,10 @@
 #             with the answering stage recorded; malformed lines are ignored
 # A5 [change] `satisfied` counts only from the stage that opened the finding
 # A6 [change] the router appends the block to a prompt with findings, once
+# A7 [change] through the whole funnel: findings that arrive with the stage
+#             summaries are asked about — the block comes after them, and
+#             before redaction (#2294: it was appended before the summaries,
+#             so no live stage was ever asked)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -95,6 +99,39 @@ cp "$P" "$TEST_TEMP_DIR/p6.txt"
 ( export ZBUILD_CURRENT_STAGE=build ZBUILD_STATE_DIR="$S"
   _route_answers_append "$TEST_TEMP_DIR/p6.txt"; _route_answers_append "$TEST_TEMP_DIR/p6.txt" ) >/dev/null 2>&1
 assert_eq "[A6] the router appends the block once" "1" "$(grep -c 'Answer every finding' "$TEST_TEMP_DIR/p6.txt" 2>/dev/null || true)"
+
+# A7: the prompt a stage writes holds no findings; they arrive with the stage
+# summaries the funnel adds. The summary renderer is stubbed to its real
+# heading and line shapes — what is under test is the funnel's order.
+S7="$TEST_TEMP_DIR/state7"; mkdir -p "$S7"
+printf '{"schema_version":1}\n' > "$S7/pipeline-state.json"
+printf 'Do your task.\n' > "$TEST_TEMP_DIR/p7.txt"
+SNAP7="$TEST_TEMP_DIR/p7.snap"
+(
+    # shellcheck source=../../core/pipeline/input-resolve.sh
+    source "$REPO_ROOT/core/pipeline/input-resolve.sh" >/dev/null 2>&1
+    stage_summaries_prompt_block() {
+        printf '%s\n' "=== STAGE SUMMARIES ===" \
+            "### test (verdict: fail) — its findings, to answer" \
+            "- test finding 1 (opened by test): run-tests-test.sh fails on line 40"
+    }
+    stage_summaries_count() { printf '1 1\n'; }
+    apply_scope_redaction() { cp "$1" "$SNAP7"; cp "$1" "$2"; return 0; }
+    export ZBUILD_CURRENT_STAGE=build ZBUILD_STATE_DIR="$S7"
+    unset ZBUILD_PLUGIN_DIR ZBUILD_STAGE_INPUTS
+    ZBUILD_SCOPE_MANIFEST="$TEST_TEMP_DIR/m7.yaml"; : > "$ZBUILD_SCOPE_MANIFEST"
+    _route_redact_prompt "$TEST_TEMP_DIR/p7.txt" "$TEST_TEMP_DIR/p7.out" 0 ""
+) >/dev/null 2>&1
+_p7="$(cat "$SNAP7" 2>/dev/null)"
+assert_contains "[A7] the funnel added the summaries (fixture live)" "$_p7" "- test finding 1 (opened by test)"
+assert_contains "[A7] and asked for an answer to them, before redaction" "$_p7" "Answer every finding"
+_ln_f="$(grep -n -- '- test finding 1' "$SNAP7" 2>/dev/null | cut -d: -f1)"
+_ln_a="$(grep -n 'Answer every finding' "$SNAP7" 2>/dev/null | cut -d: -f1)"
+if [[ -n "$_ln_f" && -n "$_ln_a" && "$_ln_a" -gt "$_ln_f" ]]; then
+    assert_pass "[A7] the request comes after the findings it asks about"
+else
+    assert_fail "[A7] the request comes after the findings it asks about" "finding line ${_ln_f:-none}, request line ${_ln_a:-none}"
+fi
 
 cleanup_test_env
 print_test_results
