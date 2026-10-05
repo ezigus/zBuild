@@ -446,10 +446,10 @@ RC15="$RC"; RESULT15="$RESULT"; EVENTS15="$EVENTS"
 
 assert_eq "[SPEC-3] S15: wiring_not_on_path → rc=1" "1" "$RC15"
 assert_eq "[SPEC-3] S15: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT15")"
-assert_eq "[SPEC-3] S15: severity=recoverable (design-rewind, not terminal halt)" \
+assert_eq "[SPEC-3] S15: severity=recoverable (not a terminal halt)" \
     "recoverable" "$(jq -r .severity <<<"$RESULT15")"
-assert_eq "[SPEC-3] S15: fault=specification (first live activation of dormant carrier)" \
-    "specification" "$(jq -r '.fault // ""' <<<"$RESULT15")"
+assert_eq "[#2271] S15: no fault class — the gate never decides who fixes it" \
+    "" "$(jq -r '.fault // ""' <<<"$RESULT15")"
 assert_contains "[SPEC-3] S15: failures[] contains wiring_not_on_path" \
     "$(jq -rc .failures <<<"$RESULT15")" "wiring_not_on_path"
 assert_event_emitted "[SPEC-3] S15: wiring_not_on_path event emitted" \

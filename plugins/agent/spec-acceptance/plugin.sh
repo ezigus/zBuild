@@ -21,7 +21,7 @@
 
 # Size (CLAUDE.md "under 500 lines unless there is a strong reason"): over, and
 # left that way. The file is one contract end to end — SPEC failure vocabulary →
-# disposition → reason → fault — and ADR-021 puts that mapping HERE
+# disposition → reason — and ADR-021 puts that mapping HERE
 # precisely so the cycle engine stays generic and knows none of this gate's
 # vocabulary. Splitting it would scatter one mapping across two files for a line
 # count, which is how the engine learned a plugin's vocabulary in the first place.
@@ -37,6 +37,8 @@ _AG_ROOT="$_ZBUILD_PLUGIN_ROOT"
 source "$_AG_ROOT/scripts/lib/acceptance-disposition.sh"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_AG_ROOT/core/event-bus/event-bus.sh"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$_AG_ROOT/scripts/lib/stage-summary.sh"
 # #1241: mechanical gates open no router/command span, so this plugin sources the
 # stage-io chokepoint directly (router plugins get it via route.sh) to frame its
 # operator summary. Load-once sentinel makes this a no-op when the runner already
@@ -98,8 +100,7 @@ _ag_classify_disposition() {
         # The table lives in scripts/lib/acceptance-disposition.sh so the lint
         # reads the same rows (#1959). Recoverable: untagged_spec, tautology,
         # inert_wiring (#1585), no_testfile(s) (#2109), not_passing_at_head
-        # (#2097), wiring_not_on_path (#1686 — design-rooted but NOT terminal:
-        # the aggregator must see the fault to drive the rewind), guard_regressed
+        # (#2097), wiring_not_on_path (#1686), guard_regressed
         # (#1670). Advisory: negctl_error / reachability_error. Terminal:
         # malformed_acceptance_block. A terminal class OUTRANKS recoverable.
         cls="$(_ag_failure_class_disposition "${f%%:*}")"
@@ -175,8 +176,7 @@ _ag_build_reason() {
         esac
     done
     local -a clauses=()
-    # #2163: state the finding; who acts on it is the engine's routing (the
-    # fault class), not a remedy this stage addresses to another.
+    # #2163: state the finding, never a remedy addressed to another stage.
     # #2269: each clause says what was tried, what happened, and what to change,
     # in words the reader was given — never the name of the check.
     [[ -n "$taut"     ]] && clauses+=("$(_ag_join_ids "$taut"): its test already passes on the code from before this change, so it cannot tell whether the change was made — make it check something the old code gets wrong")
@@ -556,16 +556,8 @@ acceptance_gate_run() {
     # message that NAMES the offending SPEC ids + class, replacing the opaque
     # member_terminal_failure the cycle otherwise surfaces.
     local failures_json="[]" disposition reason_msg=""
-    # #1583 (supersedes #1219): tautology is NOT design-rooted. Since #2022 the
-    # test-author stage owns every assertion body, so a tautological [change]
-    # SPEC (assertion passes at the merge-base baseline) is fixed by re-authoring
-    # there; the gate declares NO specification fault for it and the cycle stays
-    # in build_test_cycle. The diagnosis reaches the next prompts as this stage's
-    # `summary: true` output (ADR-055 §9, #1979 — there is no feedback edge).
-    # Re-authoring is safe by construction — the mechanical negative control
-    # re-runs next iteration and rejects a still-tautological result. The fault
-    # carrier is retained (absent-when-empty) for the design-rooted classes
-    # below (#1711 inert_wiring, #2097 not_passing_at_head).
+    # The diagnosis reaches the next prompts as this stage's numbered findings
+    # and `summary: true` output (ADR-055 §9, #2271).
     # SPEC-vocabulary → generic-field mapping stays HERE (ADR-021). verdict /
     # disposition / rc UNCHANGED.
     # #2161: two words, two fields. `disposition` is ADR-054's closed set —
@@ -577,143 +569,20 @@ acceptance_gate_run() {
     # the pass path wrote `disposition: none` and no `reason`, and the v2
     # reader (verdict.sh) refused it. The fail paths carried the same wrong
     # words and were only ever tolerated because rc≠0 skips the reader.
-    local fault="" severity="none"
+    local severity="none"
     disposition="complete"
     if [[ ${#failures[@]} -gt 0 ]]; then
         failures_json="$(printf '%s\n' "${failures[@]}" | jq -R . | jq -s .)"
         severity="$(_ag_classify_disposition "${failures[@]}")"
         reason_msg="$(_ag_build_reason "${failures[@]}")"
     fi
-    # #2180/#1835: when EVERY finding is about a TESTFILE that did not measure
-    # its SPEC (unreached, or unverified) — their author is the one who can fix them,
-    # and the engine resolves that owner from `about`. A mixed set keeps the
-    # fault-class framing: naming one owner would hide the rest from build.
-    local about="" _only_unr=1 f
-    for f in "${failures[@]:-}"; do
-        case "$f" in
-            ""|guard_unreached:*|guard_unverified:*|guard_test_broken:*|unreached_at_base:*) ;;
-            *) _only_unr=0; break ;;
-        esac
-    done
-    if [[ ${#failures[@]} -gt 0 && "$_only_unr" -eq 1 ]]; then
-        about="$(for f in "${failures[@]}"; do
-                    acceptance_list_testfiles_for_spec "$design_md" "${f#*:}" 2>/dev/null
-                 done | awk 'NF && !seen[$0]++')"
-    fi
     # ADR-054: reason is mandatory; a pass says what it verified. Kept apart
     # from reason_msg, which is the VIOLATION prose the operator summary leads
     # with (#1220) — a pass must not read as a finding there.
     local _pass_reason; _pass_reason="all $(acceptance_list_spec_ids "$design_md" 2>/dev/null | grep -c . || true) SPEC(s) verified"
-    # #1987: these three classes are all "the SPECIFICATION is wrong" — the
-    # declaration, the classification, or the wiring the design asserted. The
-    # gate knows THAT much about its own failure; it does not name the stage
-    # that fixes it (ADR-055's rule for data, applied to control).
-    #
-    # ADR-036 #1583: only design can fix a WIRING declaration, so the failure
-    # must not be blamed on build — when build COULD NOT have made the edit.
-    # #2252: a target in the change's scope that the diff did not touch is an
-    # edit design asked for and build did not make (#2032: an event left out of
-    # config/event-schema.json). Iteration 1 is build's turn, as for inert_wiring
-    # (#1711); from iteration 2 the declaration is what is left.
-    local f _wt _scope
-    _scope="$(acceptance_list_scope "$design_md" 2>/dev/null || true)"
-    for f in "${failures[@]:-}"; do
-        [[ "$f" == wiring_not_on_path:* ]] || continue
-        _wt="${f#wiring_not_on_path:}"; _wt="${_wt#./}"
-        if [[ "${ZBUILD_CYCLE_ITER:-1}" -lt 2 ]] && grep -qxF -- "$_wt" <<< "$_scope"; then
-            eb_emit_event "acceptance.gate.wiring_build_turn" "stage=acceptance-gate" \
-                "target=$_wt" "iter=${ZBUILD_CYCLE_ITER:-1}" 2>/dev/null || true
-            continue
-        fi
-        fault="specification"; break
-    done
-    # #1777: guard_regressed is design-rooted by construction. Build cannot fix a
-    # SPEC tagged [guard] whose assertion asserts a change — the correction is
-    # the tag (or the assertion), and both live in the design. Without a
-    # declared fault the failure landed in the gate-aggregator's residual[]
-    # partition and was written to the BUILD-facing gate-feedback.md, so on #1809
-    # the run rewound to design carrying a design-feedback.md that named only
-    # shape-floor and never mentioned the offending SPEC. Design re-authored
-    # nothing, build re-ran, and the same guard failed again.
-    #
-    # Disposition stays recoverable: terminal would halt the cycle before the
-    # aggregator reads the fault and routes on it (same rationale as
-    # #1686/#1711 above).
-    if [[ -z "$fault" ]]; then
-        for f in "${failures[@]:-}"; do
-            if [[ "$f" == guard_regressed:* ]]; then
-                fault="specification"
-                break
-            fi
-        done
-    fi
-    # #1835: an unverified guard that is STILL unverified on iter>=2 goes to
-    # design. Round 1 sends it to the testfile's author (about, above), who can
-    # make the assertion print its own verdict; if it then prints ✗ it is a
-    # regressed guard, and if it still cannot be read the label is what is left.
-    if [[ -z "$fault" && "${ZBUILD_CYCLE_ITER:-1}" -ge 2 ]]; then
-        for f in "${failures[@]:-}"; do
-            if [[ "$f" == guard_unverified:* ]]; then
-                fault="specification"
-                eb_emit_event "acceptance.gate.guard_unverified_escalated" \
-                    "stage=acceptance-gate" "spec=${f#guard_unverified:}" "iter=${ZBUILD_CYCLE_ITER:-1}"
-                break
-            fi
-        done
-    fi
-    # #1711: inert_wiring on iter≥2 is a specification fault. The first build
-    # attempt (iter=1) is preserved as a real try; a still-inert target on
-    # iter≥2 is unreachable by build and the declaration itself is wrong.
-    # Disposition stays recoverable — terminal would halt before the aggregator
-    # reads the fault (same rationale as #1686).
-    if [[ -z "$fault" && "${ZBUILD_CYCLE_ITER:-1}" -ge 2 ]]; then
-        for f in "${failures[@]:-}"; do
-            if [[ "$f" == inert_wiring:* ]]; then
-                fault="specification"
-                eb_emit_event "acceptance.gate.inert_wiring_escalated" \
-                    "stage=acceptance-gate" \
-                    "target=${f#inert_wiring:}" "iter=${ZBUILD_CYCLE_ITER:-1}"
-                break
-            fi
-        done
-    fi
-    # #2157: a tautology that SURVIVES to iter>=2 is design-rooted. #1583 gives
-    # test-author one honest try (iter 1: no fault) — but no assertion for a
-    # behaviour that already exists at the baseline can fail at the baseline,
-    # so a second tautology on the same run means the [change] tag is the
-    # defect, and design is the stage that owns the tag (ADR-036 §tautology).
-    # #1840 run 5 looped two full iterations (2h10m each) on exactly this.
-    if [[ -z "$fault" && "${ZBUILD_CYCLE_ITER:-1}" -ge 2 ]]; then
-        for f in "${failures[@]:-}"; do
-            if [[ "$f" == tautology:* ]]; then
-                fault="specification"
-                eb_emit_event "acceptance.gate.tautology_escalated" \
-                    "stage=acceptance-gate" \
-                    "spec=${f#tautology:}" "iter=${ZBUILD_CYCLE_ITER:-1}"
-                break
-            fi
-        done
-    fi
-
-    # #2097: same shape for not_passing_at_head. Iter 1 is build's honest try
-    # (S14: no fault). Still failing at HEAD on iter>=2 means impl and assertion
-    # cannot be made to agree with the SPEC, so the premise is what is suspect
-    # and design is the stage that can fix a premise.
-    if [[ -z "$fault" && "${ZBUILD_CYCLE_ITER:-1}" -ge 2 ]]; then
-        for f in "${failures[@]:-}"; do
-            if [[ "$f" == not_passing_at_head:* ]]; then
-                fault="specification"
-                # #2109: negctl keys this class by SPEC id, reachability by the
-                # TESTFILE that is red — name the attribute for what it holds.
-                local _npah="${f#not_passing_at_head:}" _npah_attr="testfile"
-                [[ "$_npah" == SPEC-* ]] && _npah_attr="spec"
-                eb_emit_event "acceptance.gate.not_passing_at_head_escalated" \
-                    "stage=acceptance-gate" \
-                    "${_npah_attr}=${_npah}" "iter=${ZBUILD_CYCLE_ITER:-1}"
-                break
-            fi
-        done
-    fi
+    # #2271 (ADR-068): the gate states its findings; it never decides who fixes
+    # them. Every stage answers each finding, and the loops carry what nobody in
+    # the build loop owns back to design.
 
     # ── Operator summary (#1211) ─────────────────────────────────────────────
     # Surface the concise per-check verdict lines the operator actually needs;
@@ -747,16 +616,17 @@ acceptance_gate_run() {
     fi
 
     # ── Write result artifact ────────────────────────────────────────────────
-    # #1219/#1987: add the declared fault class ONLY when set. An absent fault
-    # on a failing gate means "fixed where it was found" is not yet declared —
-    # the lint refuses that, so absence here is never silently a routing answer.
-    # `--arg rt ""` + a `(if $rt=="" ...)` conditional keeps it absent otherwise,
-    # so a build-fixable failure's artifact is byte-shape-identical to today.
+    # #2271 (ADR-068): each clause of the plain reason — one kind of problem and
+    # the SPECs it concerns — is a numbered finding.
+    local _ag_fnd="[]"
+    if [[ "$verdict" == "fail" && -n "${reason_msg:-}" ]]; then
+        local _ag_cl="${reason_msg#the acceptance check failed — }"
+        _ag_fnd="$(printf '%s\n' "${_ag_cl//; /$'\n'}" | stage_findings_json)"
+    fi
     jq -cn --arg v "$verdict" --arg d "$disposition" --arg sv "$severity" --arg r "${reason_msg:-$_pass_reason}" \
-        --arg ft "$fault" --argjson f "$failures_json" --arg ab "$about" \
-        '{result_contract:2,verdict:$v,disposition:$d,severity:$sv,reason:$r,failures:$f}
-         + (if $ft=="" then {} else {fault:$ft} end)
-         + (if $ab=="" then {} else {about:$ab} end)' | atomic_write "$result_file"
+        --argjson f "$failures_json" --argjson fnd "${_ag_fnd:-[]}" \
+        '{result_contract:2,verdict:$v,disposition:$d,severity:$sv,reason:$r,failures:$f,data:{findings:$fnd}}' \
+        | atomic_write "$result_file"
 
     eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=$verdict"
 

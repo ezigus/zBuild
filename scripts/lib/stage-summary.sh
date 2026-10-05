@@ -16,6 +16,15 @@
 [[ -n "${_ZBUILD_STAGE_SUMMARY_SH_LOADED:-}" ]] && return 0
 _ZBUILD_STAGE_SUMMARY_SH_LOADED=1
 
+# ─── stage_findings_json — one finding per line on stdin → [{n, text}] ──────
+# #2271 (ADR-068): a check lists what it found as numbered items in its result
+# (`data.findings`), so later stages can answer each one and the check that
+# opened it can close it. Blank lines are skipped; numbering starts at 1.
+stage_findings_json() {
+    jq -R -s -c '[ split("\n")[] | sub("^\\s+"; "") | sub("\\s+$"; "") | select(length > 0) ]
+                 | to_entries | map({n: (.key + 1), text: .value})' 2>/dev/null || printf '[]'
+}
+
 # ─── stage_summary_write <path> <stage> <verdict> <reason> [body] ────────────
 # Writes the gate's summary on EVERY terminal verdict — pass, fail and skip.
 #

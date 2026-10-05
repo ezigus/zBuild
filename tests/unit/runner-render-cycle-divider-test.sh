@@ -94,6 +94,9 @@ emit_cycle_banner() {
             exit-unknown)
                 _render_cycle_exit build-test some_typo_reason 2 5
                 ;;
+            exit-unowned)
+                _render_cycle_exit build-test unowned_finding 1 3
+                ;;
         esac
     " 2>&1
 }
@@ -219,5 +222,15 @@ verify_glyph "blocked" "✗" "blocked"
 verify_glyph "error" "✗" "error/default"
 
 cleanup_test_env
+# #2271 (ADR-068): a loop that hands back a finding none of its stages owns
+# ends early by design — the banner says so in words, never the raw token.
+_uo="$(emit_cycle_banner layout exit-unowned || true)"
+assert_contains "[#2271] the hand-back banner says the loop ended early" "$_uo" "ended early"
+if grep -qF 'unowned_finding' <<< "$_uo"; then
+    assert_fail "[#2271] the banner never shows the raw reason token" "$_uo"
+else
+    assert_pass "[#2271] the banner never shows the raw reason token"
+fi
+
 print_test_results
 exit "$FAIL"

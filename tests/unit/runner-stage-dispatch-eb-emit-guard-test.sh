@@ -70,8 +70,8 @@ _drive_with_failing_eb() {
         # shellcheck disable=SC1091
         cd "$_ZB_REPO" || exit 1
         source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
-        # #979: resolve the owned route-back-cycles fixture (retired standard.yaml).
-        resolve_template_file() { echo "$REPO_ROOT/tests/fixtures/templates/route-back-cycles.yaml"; }
+        # #979: resolve the owned two-cycles fixture (retired standard.yaml).
+        resolve_template_file() { echo "$REPO_ROOT/tests/fixtures/templates/two-cycles.yaml"; }
 
         eval "cycle_orchestrator_run() { _CYCLE_LAST_TERMINATED_REASON=\"$_reason\"; _CYCLE_LAST_ITERATIONS=1; return $_cycle_rc; }"
         eval "_TARGET_FAIL_EVENT='$_fail_event'"
@@ -96,7 +96,7 @@ _drive_with_failing_eb() {
             printf '{"verdict":"request_changes"}' > "$artdir/review.json"
             return 0
         }
-        main --issue "$_ZB_ISSUE" --template route-back-cycles >/dev/null 2>"$_stderr"
+        main --issue "$_ZB_ISSUE" --template two-cycles >/dev/null 2>"$_stderr"
     )
     printf '%s' "$_tmp"
 }
@@ -118,7 +118,7 @@ _assert_warn_and_no_abort() {
         "1" "$_hit_flag"
 }
 
-# #979: route-back-cycles.yaml (owned fixture) makes plan a leaf + design_impact_cycle the next dispatch
+# #979: two-cycles.yaml (owned fixture) makes plan a leaf + design_impact_cycle the next dispatch
 # unit; build_review_cycle is the outer. The only pre-cycle linear stage:* unit is
 # `intake`. To exercise the stage:* arm's eb_emit_event guards (the bug
 # repro), we assert behavior on `intake` — intake dispatches through stage:*

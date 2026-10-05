@@ -1,6 +1,6 @@
 # ADR-045: Bounded Typed Backward-Route Primitive (rc=11 route_back)
 
-**Status:** Accepted (#1217, keystone of the pipeline-correctness EPIC #1216; amended #1225 — nested-cycle propagation)
+**Status:** Superseded by ADR-068 (2026-10-04, #2271) — nested loops and counted answers replace the backward route; `route_back` is refused at load. Previously: Accepted (#1217; amended #1225).
 **Amended:** 2026-09-16 (#2119) — the bounded backward route fires at the iteration the declared fault appears, not only at exhaustion: when the edge's budget remains (global passes < `ZBUILD_ROUTE_BACK_BUDGET`, edge count < `max`), the iteration is not the last, and the predicate matches this iteration's blob, the cycle emits `cycle.route_back.early` and takes the existing correctable-terminal → rc=11 path. Budget accounting, fallback and the exhaustion path are unchanged. #1841 re-failed the same `fault: specification` gate for four iterations before design got the rewind.
 **Date:** 2026-07-03 (amended 2026-07-04, #1225)
 **Depends on:** ADR-021 (pipeline cycle semantics / rc table), ADR-027 (recursive flow template format / acyclicity), ADR-040 (composable gate/lens taxonomy — advisory stages never drive loops)

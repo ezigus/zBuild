@@ -21,9 +21,7 @@ flow:
   - hydrate
   - intake
   - plan
-  - design_verify_cycle
-  - impact
-  - build_test_cycle
+  - delivery_loop
   - review_lenses
   - review-aggregator
   - pr
@@ -55,6 +53,22 @@ always_run:
   - release
   - persist
 
+# ─── delivery_loop (cycle) — #2271, ADR-068; mirrors simple.yaml ────────────
+delivery_loop:
+  type: cycle
+  description: Design, then build, until both pass — going round when a finding needs design
+  flow:
+    - design_verify_cycle
+    - impact
+    - build_test_cycle
+  exit_when:
+    all:
+      - { stage: design_verify_cycle, field: verdict, op: eq, value: pass }
+      - { stage: build_test_cycle, field: verdict, op: eq, value: pass }
+  max_iterations: 2
+  on_max: halt
+  unowned: halt
+
 # ─── design_verify_cycle (cycle) ─────────────────────────────────────────────
 design_verify_cycle:
   type: cycle
@@ -71,8 +85,8 @@ design_verify_cycle:
     all:
       - { stage: design-gate, field: verdict, op: eq, value: pass }
       - { stage: spec-coverage, field: verdict, op: ne, value: uncovered }
-  max_iterations: 3
-  on_max: continue
+  max_iterations: 2
+  on_max: halt
   feedback:
     - from:
         stage: design
@@ -98,20 +112,9 @@ build_test_cycle:
     field: verdict
     op: eq
     value: pass
-  max_iterations: 5
+  max_iterations: 3
   on_max: continue
-  route_back:
-    to: design_verify_cycle
-    when:
-      stage: gate-aggregator
-      # #1987: the template owns the mapping from a declared FAULT class to a
-      # destination. The gate says what KIND of problem it found; only the
-      # template knows that specifications and scope are authored upstream in
-      # design_verify_cycle. `in` because two classes share this destination.
-      field: fault
-      op: in
-      value: specification scope
-    max: 1
+  unowned: yield
 
 # ─── intake (leaf) ───────────────────────────────────────────────────────────
 intake:

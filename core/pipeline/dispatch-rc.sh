@@ -19,7 +19,8 @@
 #
 # The engine grew a private rc vocabulary one caller at a time — 5 blocked,
 # 6 cycle_abort, 8 blocking_member_failure, 9 llm_unavailable, 10 scope_too_large,
-# 11 route_back, 130/143 signal — and every reader mapped it differently.
+# 11 route_back (retired by #2271), 130/143 signal — and every reader mapped it
+# differently.
 # `cycle_orchestrator_run` special-cases 8, 11 and 130 and collapses every other
 # abort rc to 4 (config_invalid), so a cycle_abort and a SIGTERM both surface to
 # an operator as a configuration error. An integer channel with no declared
@@ -149,7 +150,6 @@ dispatch_rc_legacy_reason() {
         8)     printf 'blocking_member_failure' ;;
         9)     printf 'llm_unavailable' ;;
         10)    printf 'scope_too_large' ;;
-        11)    printf 'route_back' ;;
         130)   printf 'aborted' ;;
         143)   printf 'aborted' ;;
         *)     return 1 ;;
@@ -166,8 +166,8 @@ dispatch_rc_legacy_reason() {
 #   10 scope_too_large  → exhausted    "more budget, or the work must shrink"
 #   130/143 signal      → interrupted  "retry as-is"
 #
-# The rest — blocked, cycle_abort, blocking_member_failure, route_back,
-# config_invalid — deliberately map to NOTHING. They are control-flow decisions
+# The rest — blocked, cycle_abort, blocking_member_failure, config_invalid —
+# deliberately map to NOTHING. They are control-flow decisions
 # the cycle made, not statements about whether a stage got far enough to
 # produce a verdict worth reading, and ADR-054 §4 re-homes them onto routing
 # state (ADR-045) and the blocking-member halt (ADR-013) rather than onto §6.

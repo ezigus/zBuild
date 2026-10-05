@@ -23,6 +23,8 @@ _DG_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_DG_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$_DG_ROOT/scripts/lib/stage-summary.sh" 2>/dev/null || true
 # #1783: source the grammar lib from the contract-reader seam, not from the
 # engine root. This gate parses the design's acceptance block, so a run that
 # edits the block grammar must be gated by ITS copy, not the installed one.
@@ -246,10 +248,16 @@ design_gate_run() {
     # later run reusing a design can tell a pass for THIS design from a pass for
     # an earlier one that was rewritten afterwards.
     local _dg_sha; _dg_sha="$(git hash-object "$design_md" 2>/dev/null || true)"
+    # #2271 (ADR-068): each violation as a numbered finding, in the sentence
+    # design reads — the codes stay in `violations` for code that reads them.
+    local _dg_findings="[]" _dg_fv
+    if [[ ${#violations[@]} -gt 0 ]]; then
+        _dg_findings="$(for _dg_fv in "${violations[@]}"; do _dg_plain "$_dg_fv"; printf '\n'; done | stage_findings_json)"
+    fi
     atomic_write "$result_path" <<< "$(jq -n --arg v "$verdict" --argjson viol "$violations_json" \
-        --argjson gp "$_gp_json" --arg r "$reason" --arg sha "$_dg_sha" \
+        --argjson gp "$_gp_json" --arg r "$reason" --arg sha "$_dg_sha" --argjson fnd "${_dg_findings:-[]}" \
         '{"result_contract":2,"schema_version":1,"verdict":$v,"disposition":"complete","reason":$r,"violations":$viol,
-          "data":{"design_sha":$sha}}
+          "data":{"design_sha":$sha, "findings":$fnd}}
          + (if $gp==null then {} else {"guard_precheck":$gp} end)')"
 
     if [[ "$verdict" == "fail" ]]; then

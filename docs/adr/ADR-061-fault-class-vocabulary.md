@@ -1,6 +1,6 @@
 # ADR-061 — Fault-class vocabulary (stages stop naming stages)
 
-**Status:** Accepted (2026-08-31)
+**Status:** Superseded by ADR-068 (2026-10-04, #2271) — no fault classes; every stage answers each finding and the engine only counts the answers. Previously: Accepted (2026-08-31).
 **Issue:** #1987
 **Supersedes:** the `route_target` scalar (ADR-045 §"route verdict"), and #1767
 **Related:** ADR-054 §6 (verdict/disposition split — the precedent this mirrors),

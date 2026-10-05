@@ -68,7 +68,7 @@ SYSGREP=/usr/bin/grep
 # #1850 deletes them with the rest of the vocabulary.
 _PINNED="
 core/pipeline/runner.sh|35
-core/pipeline/cycle-orchestrator.sh|30
+core/pipeline/cycle-orchestrator.sh|29
 core/pipeline/parallel-orchestrator.sh|4
 core/pipeline/strategies/map.sh|6
 core/pipeline/strategies/fanout.sh|2

@@ -150,7 +150,8 @@ assert_contains "T5: cycle_iterations[build-test].status present" "$ci_present" 
 load_template "$REPO_ROOT/config/templates/simple.yaml"
 has_cycle_unit=0
 for u in "${_TPL_DISPATCH_UNITS[@]}"; do
-    [[ "$u" == "cycle:build_test_cycle" ]] && has_cycle_unit=1
+    # #2271: build_test_cycle is nested in the top-level delivery_loop.
+    [[ "$u" == "cycle:delivery_loop" ]] && has_cycle_unit=1
 done
 assert_eq "T6: simple.yaml declares a cycle dispatch unit (#511)" \
     "1" "$has_cycle_unit"

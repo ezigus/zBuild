@@ -19,7 +19,8 @@
 # R5 [change] design reuses a qualifying prior design with no model call
 # R6 [change] ...not under ZBUILD_RESUME=0
 # R7 [change] ...not when the issue text changed
-# R8 [change] ...not when the prior run sent the work back to design
+# R8 [change] ...not when the prior run stopped on a finding no stage owned
+#             (#2271: artifacts/unowned-findings.md replaces the routed fault)
 # R9 [change] ...not when this run already has a design (a rewind)
 # R10 [change] ...not when the prior spec-coverage said uncovered (review #2229)
 # R11 [change] ...not when the design-gate pass was for a DIFFERENT design.md
@@ -122,7 +123,13 @@ _design_case() {
     [[ -n "$mismatch" ]] && _sha="0000000000000000000000000000000000000000"
     jq -n --arg sha "$_sha" '{result_contract:2,verdict:"pass",disposition:"complete",reason:"build-ready",data:{design_sha:$sha}}' > "$rr/artifacts/design-gate-result.json"
     jq -n --arg v "$coverage" '{result_contract:2,verdict:$v,disposition:"complete",reason:"x"}' > "$rr/artifacts/spec-coverage-result.json"
-    [[ -n "$fault" ]] && printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x","fault":"%s"}\n' "$fault" > "$rr/artifacts/gate-aggregator-result.json"
+    # #2271: $2 = unowned → the prior run stopped on a finding nobody owned;
+    # anything else → an ordinary failed gate, which is no reason to redo design.
+    if [[ "$fault" == "unowned" ]]; then
+        printf '# Findings no stage owns\n\n## acceptance-gate finding 1 (opened by acceptance-gate)\n' > "$rr/artifacts/unowned-findings.md"
+    elif [[ -n "$fault" ]]; then
+        printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x"}\n' > "$rr/artifacts/gate-aggregator-result.json"
+    fi
     [[ -n "$existing" ]] && printf '# Design (this run)\n' > "$ad/design.md"
     : > "$MODEL_CALLS"
     ( cd "$FIX" && ZBUILD_STATE_DIR="$d/state" ZBUILD_RESTORED_ARTIFACTS_DIR="$rr/artifacts" ZBUILD_RESUME="$resume" \
@@ -139,8 +146,8 @@ assert_contains "[R5] ...naming the reuse" \
     "$(jq -r '.reason // empty' "$TEST_TEMP_DIR/r5/state/artifacts/design-verdict.json" 2>/dev/null)" "reused"
 assert_eq "[R6] under ZBUILD_RESUME=0 design runs" "1" "$(_design_case r6 "" 0)"
 assert_eq "[R7] when the issue text changed design runs" "1" "$(_design_case r7 "" 1 "Migrate the OTHER thing.")"
-assert_eq "[R8] when the prior run sent the work back to design, design runs" "1" "$(_design_case r8 specification)"
-assert_eq "[R8] ...an implementation fault is not a rewind — still reused" "0" "$(_design_case r8b implementation)"
+assert_eq "[R8] when the prior run stopped on a finding nobody owned, design runs" "1" "$(_design_case r8 unowned)"
+assert_eq "[R8] ...an ordinary failed gate is no reason to redo design — still reused" "0" "$(_design_case r8b failed)"
 assert_eq "[R9] when this run already has a design (a rewind), design runs" "1" "$(_design_case r9 "" 1 "Migrate the thing." yes)"
 assert_eq "[R10] when the prior spec-coverage said uncovered, design runs" "1" "$(_design_case r10 "" 1 "Migrate the thing." "" uncovered)"
 assert_eq "[R11] when the gate's pass was for a different design.md, design runs" "1" "$(_design_case r11 "" 1 "Migrate the thing." "" covered yes)"

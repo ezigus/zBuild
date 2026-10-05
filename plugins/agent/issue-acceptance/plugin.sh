@@ -68,15 +68,9 @@ Those are not requirements. A requirement about HOW the change is verified (test
 fail on the code from before the change, the suite is green, the tree is committed first) is proven
 by the pipeline itself; never judge it here.
 
-If a requirement is unmet, name its fault:
-  specification — no SPEC captures the requirement (the contract missed it)
-  implementation — a SPEC captures it, but the code does not do it
-If both kinds occur, answer specification.
-
-Answer in at most four lines:
+Answer in at most three lines:
 
 VERDICT: pass | fail
-FAULT: specification | implementation   (omit on pass)
 REASON: <one sentence>
 UNMET: <semicolon-separated issue requirements the diff does not meet; omit on pass>
 
@@ -94,13 +88,14 @@ $3
 TEST VERDICT: $4"
 }
 
-# _ia_write <dir> <verdict> <disposition> <reason> [fault] [unmet_json]
+# _ia_write <dir> <verdict> <disposition> <reason> [unmet_json]
 _ia_write() {
-    local dir="$1" v="$2" d="$3" r="$4" f="${5:-}" u="${6:-[]}"
+    local dir="$1" v="$2" d="$3" r="$4" u="${5:-[]}"
     mkdir -p "$dir" 2>/dev/null || true
-    if ! jq -n --arg v "$v" --arg d "$d" --arg r "$r" --arg f "$f" --argjson u "$u" \
-        '{result_contract: 2, verdict: $v, disposition: $d, reason: $r, data: {unmet: $u}}
-         + (if $f != "" then {fault: $f} else {} end)' \
+    # #2271 (ADR-068): each unmet acceptance item is a numbered finding.
+    local _fnd; _fnd="$(jq -r '.[]? | "The issue requires this and the change does not meet it: " + tostring' <<< "$u" 2>/dev/null | stage_findings_json)"
+    if ! jq -n --arg v "$v" --arg d "$d" --arg r "$r" --argjson u "$u" --argjson fnd "${_fnd:-[]}" \
+        '{result_contract: 2, verdict: $v, disposition: $d, reason: $r, data: {unmet: $u, findings: $fnd}}' \
         | atomic_write "$dir/issue-acceptance-result.json"; then
         _ia_emit "issue_acceptance.result.write_failed" "dir=$dir"
     fi
@@ -179,11 +174,9 @@ issue_acceptance_run() {
     fi
 
     # No `| head` (#1886): capture in full, trim in bash.
-    local _v _fault _r _u_line
+    local _v _r _u_line
     _v="$(grep -oE 'VERDICT:[[:space:]]*(pass|fail)' <<< "$_raw" || true)"
     _v="${_v%%$'\n'*}"; _v="${_v##*[[:space:]]}"
-    _fault="$(grep -oE 'FAULT:[[:space:]]*(specification|implementation)' <<< "$_raw" || true)"
-    _fault="${_fault%%$'\n'*}"; _fault="${_fault##*[[:space:]]}"
     _r="$(grep -E '^REASON:' <<< "$_raw" || true)"
     _r="${_r%%$'\n'*}"; _r="${_r#REASON:}"; _r="${_r#"${_r%%[![:space:]]*}"}"
     _u_line="$(grep -E '^UNMET:' <<< "$_raw" || true)"
@@ -198,19 +191,15 @@ issue_acceptance_run() {
 
     local _u_json='[]'
     if [[ "$_v" == "fail" ]]; then
-        # A fail with no class is still a code problem to fix in the cycle.
-        _fault="${_fault:-implementation}"
         if [[ -n "${_u_line// }" ]]; then
             _u_json="$(tr ';' '\n' <<< "$_u_line" \
                 | jq -Rsc 'split("\n") | map(sub("^[[:space:]]+";"") | sub("[[:space:]]+$";"")) | map(select(length > 0))' 2>/dev/null || true)"
             [[ -n "$_u_json" ]] || _u_json='[]'
         fi
-    else
-        _fault=""
     fi
 
-    _ia_emit "issue_acceptance.judged" "verdict=$_v" "fault=${_fault:-none}"
-    _ia_write "$art" "$_v" "complete" "${_r:-judged the change against the issue}" "$_fault" "$_u_json"
+    _ia_emit "issue_acceptance.judged" "verdict=$_v"
+    _ia_write "$art" "$_v" "complete" "${_r:-judged the change against the issue}" "$_u_json"
     return 0
 }
 

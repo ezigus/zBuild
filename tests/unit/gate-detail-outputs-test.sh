@@ -24,8 +24,8 @@
 #                    design_feedback, and no consumer is left naming them
 #   SPEC-4 [change]: the aggregator no longer covers a roster, so the members it
 #                    used to render now reach prompts themselves
-#   SPEC-5 [guard] : the aggregator still emits ONE convergence verdict and the
-#                    fault roll-up — the two jobs only it can do
+#   SPEC-5 [guard] : the aggregator still emits ONE convergence verdict — the
+#                    job only it can do (#2271 retired the fault roll-up)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -146,15 +146,14 @@ else
 fi
 
 # ─── SPEC-5: the jobs only it can do survive ─────────────────────────────────
-print_test_section "5. the convergence verdict and fault roll-up survive"
+print_test_section "5. the convergence verdict survives"
 
 assert_contains "[SPEC-5] it is still the convergence gate" \
     "$(cat "$AGG")" "convergence: gate"
 _agg_ids="$(manifest_graph_get_outputs "$AGG" | cut -d'|' -f1 | tr '\n' ' ')"
 assert_contains "[SPEC-5] it still declares its result artifact" \
     "$_agg_ids" "gate_aggregator_result"
-assert_contains "[SPEC-5] and still rolls up the fault class" \
-    "$(cat "$REPO_ROOT/plugins/tool/gate-aggregator/plugin.sh")" "fault_vocabulary"
+
 
 cleanup_test_env
 print_test_results

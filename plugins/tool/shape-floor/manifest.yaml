@@ -44,7 +44,6 @@ provides:
   # the engine's known set at load. Adding one here needs no engine-config edit.
   events:
     - shape_floor.fail
-    - shape_floor.oos_escalation
     - shape_floor.pass
     - shape_floor.skip
 

@@ -41,8 +41,8 @@ source "$_ZBUILD_MANIFEST_VALIDATION_DIR/requires-core.sh"
 # `persona` (#1304) is a DATA-only kind: identity metadata (role + perspective),
 # no plugin.sh and no hooks. See _required_hooks_for_kind (returns "" for it) and
 # the persona.role requirement in validate_manifest.
-# `recovery` was RETIRED (#1900) — superseded by `disposition` (ADR-054 §6) and
-# `route_back` (ADR-045); reasoning in ADR-001's 2026-08-20 amendment. Do not re-add.
+# `recovery` was RETIRED (#1900) — superseded by `disposition` (ADR-054 §6);
+# reasoning in ADR-001's 2026-08-20 amendment. Do not re-add.
 ZBUILD_PLUGIN_KINDS=(agent tool orchestrator claim-coordinator daemon persona)
 
 # ─── yaml_get memoization (#1614) ───────────────────────────────────────────

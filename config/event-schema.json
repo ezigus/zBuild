@@ -72,9 +72,6 @@
     "cycle.divergence",
     "cycle.iteration.complete",
     "cycle.iteration.reused",
-    "cycle.route_back.early",
-    "cycle.route_back.exhausted_unchanged",
-    "cycle.route_back.blocked_on_scope",
     "cycle.aborted",
     "cycle.config.invalid",
     "cycle.feedback.missing",
@@ -89,7 +86,6 @@
     "cycle.auto_enabled",
     "cycle.disabled",
     "cycle.unconverged",
-    "cycle.route_back",
     "cycle.predicate.evaluated",
     "cycle.member.dispatch.start",
     "cycle.member.dispatch.complete",
@@ -170,6 +166,8 @@
     "stage.write_boundary.mark_failed",
     "stage.write_boundary.window_unbounded",
     "stage.write_boundary.unattributable",
-    "strategy.unit_name_conflict"
+    "strategy.unit_name_conflict",
+    "cycle.round.ended_early",
+    "cycle.unowned_finding"
   ]
 }

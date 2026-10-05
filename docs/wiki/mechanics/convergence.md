@@ -10,4 +10,4 @@ How a [[mechanics/cycle]] decides to stop. Every cycle is **bounded** and conver
 - **`on_max`** — what happens when the bound is hit without converging: `continue` (fall through to the next stage — ADR-019) or fail. `simple.yaml` uses `on_max: continue` so an unconverged cycle still proceeds.
 - **plateau / stall detection** — the engine emits `cycle.plateau` / `cycle.stalled` events when iterations stop making progress.
 
-See [[mechanics/cycle]], [[mechanics/gates]], [[mechanics/route_back]].
+See [[mechanics/cycle]], [[mechanics/gates]], [[mechanics/finding-answers]].

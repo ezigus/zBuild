@@ -23,6 +23,8 @@ _ZBUILD_TEST_STAGE_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # ─── Dependencies ─────────────────────────────────────────────────────────────
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_ZBUILD_TEST_STAGE_ROOT/core/event-bus/event-bus.sh"
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$_ZBUILD_TEST_STAGE_ROOT/scripts/lib/stage-summary.sh"
 # shellcheck source=../../../core/output/stage-io.sh
 # #497: stage_io_begin/_end wrap the eval below to satisfy ADR-015 §v4
 # input-before-action / output-after-action ordering contract.
@@ -1148,6 +1150,7 @@ _test_write_result() {
         --arg mutation "$mutation_json" \
         --arg targeted "$targeted_json" \
         --arg findings "$findings_json" \
+        --argjson numbered "$(jq -r '.[]? | "\(.file) fails: \(.reason)"' <<< "${findings_json:-[]}" 2>/dev/null | stage_findings_json)" \
         '($findings | try fromjson catch []) as $fnd
         | {
             result_contract: 2,
@@ -1178,10 +1181,10 @@ _test_write_result() {
                 + (if $mutation != "" then (try {mutation: ($mutation | fromjson)} catch {}) else {} end)
                 + (if $targeted != "" then (try {targeted: ($targeted | fromjson)} catch {}) else {} end)
                 + (if ($fnd | length) > 0 then {failures: $fnd} else {} end)
+                # #2271 (ADR-068): each failing test file is a numbered finding.
+                + {findings: $numbered}
             )
-        }
-        + ([$fnd[].points_at[]?] | unique
-           | if length > 0 then {about: join("\n")} else {} end)' \
+        }' \
         2>/dev/null \
       | atomic_write "$path"
     local _jq_rc="${PIPESTATUS[0]}"

@@ -983,3 +983,7 @@ A parallel, additive guard alongside the `did_not_finish` (#1208/#1261) mid-flig
 - **Terminal (rc=5, blocked-class).** In the by-severity ladder, AFTER `_scope_action` resolution and the `max_iterations` check, if `_no_committed_changes` AND `_scope_action != grant`: `overall_status=no_committed_changes`, `term_rc=5`, emit `cycle.no_committed_changes`. rc=5 halts the pipeline immediately (never reaches review/`pr`) and, like `blocked`, NEVER route_backs (only rc=2/rc=8 reroute). When `_scope_action == grant` the #870/#840 expansion lets the next iter commit, so the cycle does NOT terminate (falls through to iterate).
 - **Reason enum extension.** `cycle.complete reason` rc=5 now restates `_CYCLE_LAST_TERMINATED_REASON ∈ {blocked, no_committed_changes}`.
 - **Repo-neutral / fail-soft.** Keys only on commit-count + build verdict — no stage id / language / path. Absent/empty `intake-baseline-ref.txt` (resumed / non-intake run) → the predicate returns false, so the guard never false-fires.
+
+### Amendment (2026-10-04, #2271) — nested loops, no backward route
+
+ADR-068 supersedes the rc 11 `route_back` row of this ADR's terminal table. An inner loop that ends without converging ends the outer round when it declares `on_max: halt` or ran out with tests failing (rc 8); the outer loop goes round, each inner loop restarting at round 1. With no outer rounds left, rc 8 still stops the run. A loop may declare `unowned: yield | halt` (ADR-068 §8). Tests: `tests/integration/nested-loop-rounds-test.sh`, `tests/integration/unowned-finding-test.sh`.

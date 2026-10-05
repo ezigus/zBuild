@@ -56,7 +56,10 @@ setup_test_env "fork-budget"
 # 5540 (#1844): a v2 result is read with one jq instead of eight
 # (verdict.sh _verdict_read_result) — measured 5,481 macOS, even though design,
 # pr-open and pr-delivery are now read as v2 (their results became primary).
-FORK_BUDGET=5540
+# 5480 (#2271): the per-stage owner and fault lookups in the summary collector
+# are gone with fault routing, which more than pays for numbered findings and
+# answers — measured 5,426 macOS (Linux CI census 5,276).
+FORK_BUDGET=5480
 
 # ─── the trace harness (the --coverage-trace precedent, scripts/run-tests.sh) ──
 # BASH_ENV injects `set -x` into every child bash (the runner, the mocks, work

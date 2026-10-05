@@ -38,6 +38,8 @@ source "$_CYCLE_ORCH_ROOT/scripts/lib/abort-propagation.sh"
 source "$_CYCLE_ORCH_ROOT/core/state/atomic.sh"
 # shellcheck source=../state/resume.sh
 source "$_CYCLE_ORCH_ROOT/core/state/resume.sh"
+# shellcheck source=./unowned.sh
+source "$_CYCLE_ORCH_ROOT/core/pipeline/unowned.sh"
 # shellcheck source=../event-bus/event-bus.sh
 source "$_CYCLE_ORCH_ROOT/core/event-bus/event-bus.sh"
 # shellcheck source=./template.sh
@@ -84,6 +86,7 @@ _CYCLE_LAST_PLATEAU_EVIDENCE=""
 # #1284 (ADR-047): multi-condition exit_when state — populated by _cycle_load_template.
 # Empty combinator means single-condition mode (byte-identical behavior).
 _CYCLE_EXIT_COMBINATOR=""
+_CYCLE_UNOWNED=""
 _CYCLE_EXIT_CONDITIONS=()
 
 # #833: last-evaluated termination predicate, stashed by _cycle_check_until /
@@ -320,6 +323,9 @@ _cycle_load_template() {
     fi
 
     _CYCLE_ON_MAX="${!on_max_var:-continue}"
+    # #2271 (ADR-068): yield | halt | "" (the loop counts no answers).
+    local _uo_var="_TPL_CYCLE_UNOWNED_${safe}"
+    _CYCLE_UNOWNED="${!_uo_var:-}"
     if [[ "$_CYCLE_ON_MAX" != "continue" && "$_CYCLE_ON_MAX" != "halt" ]]; then
         error "cycle '$cycle_id': on_max must be continue|halt, got: $_CYCLE_ON_MAX"
         _cycle_emit "cycle.config.invalid" "reason=on_max_invalid" \
@@ -868,85 +874,6 @@ _cycle_check_abort_when() {
     # instead of the exit_when evaluation that actually drove the iteration.
     if [[ "$_match" == "true" ]]; then
         _cycle_stash_predicate "abort_when" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
-    fi
-    return $_rc
-}
-
-# ─── _cycle_route_back_early_matches <cycle_id> <blob> <iter> (#2119) ───────
-# The early-rewind condition: an edge is declared, budget remains, this is not
-# already the last iteration (exhaustion handles that), and the predicate
-# matches this iteration's blob. The probe here emits the predicate event
-# (eb_emit_event writes to the events file, not stdout); the conversion block
-# that follows sees _CYCLE_RB_EARLY and skips re-running the predicate, so
-# the event is emitted once per iteration.
-_cycle_route_back_early_matches() {
-    local cid="$1" blob="$2" it="$3"
-    local to_var="_TPL_CYCLE_ROUTE_BACK_TO_${cid//-/_}"
-    [[ -n "${!to_var:-}" ]] || return 1
-    _cycle_route_back_budget_left "$cid" || return 1
-    _cycle_check_max_iterations "$it" "$_CYCLE_MAX_ITER" && return 1
-    local _e=0; case $- in *e*) _e=1 ;; esac
-    set +e; _cycle_check_route_back "$blob" >/dev/null 2>&1; local m=$?; [[ $_e -eq 1 ]] && set -e
-    [[ $m -eq 0 ]]
-}
-
-# ─── _cycle_route_back_budget_left <cycle_id> (#2119) ───────────────────────
-# True while the runner would still honour a rewind for this edge: global
-# passes below ZBUILD_ROUTE_BACK_BUDGET and this edge below its `max`. Reads
-# the runner's dynamically-scoped locals; absent (unit harness) → available.
-_cycle_route_back_budget_left() {
-    local cid="$1" safe passes budget cnt max
-    safe="${cid//-/_}"
-    # The runner counts total forward PASSES starting at 1 (runner.sh:
-    # `_RUNNER_ROUTE_BACK_PASSES=1`; a rewind is allowed while passes < budget),
-    # so the absent-runner default mirrors that, not a count of rewinds.
-    passes="${_RUNNER_ROUTE_BACK_PASSES:-1}"; budget="${_RUNNER_ROUTE_BACK_BUDGET:-2}"
-    local cnt_var="_RUNNER_ROUTE_BACK_EDGE_${safe}" max_var="_TPL_CYCLE_ROUTE_BACK_MAX_${safe}"
-    cnt="${!cnt_var:-0}"; max="${!max_var:-2}"
-    [[ "$max" =~ ^[1-9][0-9]*$ ]] || max=2
-    (( passes < budget && cnt < max ))
-}
-
-# ─── _cycle_check_route_back <verdicts_blob> ─────────────────────────────────
-# #1217 (ADR-045). Mirrors _cycle_check_abort_when against the per-cycle
-# _TPL_CYCLE_ROUTE_BACK_{STAGE,FIELD,OP,VALUE}_<cid> predicate. Returns 0 if the
-# predicate fired (route back requested), else 1. Missing field → 1 (NEVER
-# spuriously reroute). Emits the predicate event (kind=route_back); the caller
-# converts a matched terminal into rc=11 and stashes the target for the runner.
-_cycle_check_route_back() {
-    local blob="$1"
-    local safe="${_CYCLE_TRAP_CYCLE_ID//-/_}"
-    local stage_var="_TPL_CYCLE_ROUTE_BACK_STAGE_${safe}"
-    local stage="${!stage_var:-}"
-    local field_var="_TPL_CYCLE_ROUTE_BACK_FIELD_${safe}"
-    local field="${!field_var:-}"
-    local op_var="_TPL_CYCLE_ROUTE_BACK_OP_${safe}"
-    local op="${!op_var:-}"
-    local val_var="_TPL_CYCLE_ROUTE_BACK_VALUE_${safe}"
-    local expected="${!val_var:-}"
-    [[ -z "$stage" || -z "$field" || -z "$op" || -z "$expected" ]] && return 1
-    local actual
-    actual="$(jq -r --arg s "$stage" --arg f "$field" \
-        '.[$s][$f] // empty' <<< "$blob" 2>/dev/null || true)"
-    if [[ -z "$actual" || "$actual" == "null" ]]; then
-        _cycle_emit_predicate "route_back" "$stage" "$field" "$op" "$expected" "" "false"
-        return 1
-    fi
-    local _match="false"
-    local _rc=1
-    case "$op" in
-        eq) [[ "$actual" == "$expected" ]] && { _match="true"; _rc=0; } ;;
-        ne) [[ "$actual" != "$expected" ]] && { _match="true"; _rc=0; } ;;
-        # #1987: `in` matches any member of a space-separated set. Added because
-        # a closed vocabulary makes one-of genuinely necessary — two fault
-        # classes can share a destination, and expressing that as two edges
-        # needs a list grammar this parser does not have. `eq`/`ne` are
-        # unchanged, so every existing predicate behaves identically.
-        in) [[ " $expected " == *" $actual "* ]] && { _match="true"; _rc=0; } ;;
-    esac
-    _cycle_emit_predicate "route_back" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
-    if [[ "$_match" == "true" ]]; then
-        _cycle_stash_predicate "route_back" "$stage" "$field" "$op" "$expected" "$actual" "$_match"
     fi
     return $_rc
 }
@@ -1652,7 +1579,6 @@ _cycle_iter_dispatch() {
         # #1822: same defensive clear. A stale disposition bleeding into the
         # next member's dispatch event would misreport why THAT member stopped.
         _CYCLE_DISPATCH_DISPOSITION=""
-        _CYCLE_DISPATCH_FAULT=""
         _CYCLE_DISPATCH_REPORT="{}"
         _CYCLE_DISPATCH_DATA_KIND=""
         # ADR-025 (Wave 15-B #684) pre-flight: the sentinel may have been
@@ -1733,6 +1659,26 @@ _cycle_iter_dispatch() {
         local _member_type_var="_TPL_STAGE_TYPE_${s//-/_}"
         local _member_type="${!_member_type_var:-leaf}"
         if [[ "$_member_type" == "cycle" ]]; then
+            # #2271 (ADR-068): about to re-enter the loop that yielded a finding.
+            # If every stage that answers findings and ran before it this round
+            # (design, impact, …) also said "nothing to do", nobody owns it: the
+            # run stops (report: artifacts/unowned-findings.md). One "done" from
+            # any of them hands it back to the loop.
+            if [[ "${_CYCLE_UNOWNED:-}" == "halt" && "$(_unowned_yielder "$state_dir")" == "$s" ]]; then
+                local -a _uo_before=() _uo_m
+                for _uo_m in "${_CYCLE_STAGES[@]}"; do
+                    [[ "$_uo_m" == "$s" ]] && break
+                    _uo_before+=("$_uo_m")
+                done
+                if _unowned_halt_check "$state_dir" "${_uo_before[@]}"; then
+                    _CYCLE_LAST_TERMINATED_REASON="unowned_finding"
+                    _cycle_emit "cycle.unowned_finding" "iter=$iter" "stage=$s" "action=halt" 2>/dev/null || true
+                    _cycle_state_write_member_atomic "$state_file" "$s" "failed" "unowned_finding" || true
+                    _cycle_clear_traps
+                    [[ $_had_e -eq 1 ]] && set -e
+                    return 8
+                fi
+            fi
             set +e
             # Wave 19-B (#718): set ZBUILD_SEQ_PREFIX to this member's label so
             # the nested cycle's children inherit the full path
@@ -1778,6 +1724,16 @@ _cycle_iter_dispatch() {
             local _outer_plateau_w="$_CYCLE_PLATEAU_WINDOW"
             local _outer_diverg_w="$_CYCLE_DIVERGENCE_WINDOW"
             local _outer_velopl_w="$_CYCLE_VELOCITY_PLATEAU_WINDOW"
+            # #2271: the outer's multi-condition exit_when too — the inner run
+            # reloads both from its own template, and an outer `all:` would
+            # otherwise be judged against the inner's leftovers.
+            local _outer_exit_comb="$_CYCLE_EXIT_COMBINATOR"
+            local _outer_unowned="${_CYCLE_UNOWNED:-}"
+            local -a _outer_exit_conds=( ${_CYCLE_EXIT_CONDITIONS[@]+"${_CYCLE_EXIT_CONDITIONS[@]}"} )
+            # #2271 (ADR-068): what the inner loop does when it runs out of
+            # rounds decides whether this outer round may carry on past it.
+            local _inner_on_max_var="_TPL_CYCLE_ON_MAX_${s//-/_}"
+            local _inner_on_max="${!_inner_on_max_var:-continue}"
             cycle_orchestrator_run "$s" "$state_dir" "$state_file"
             rc=$?
             # Wave 19-B (#718): restore prior seq prefix BEFORE any return path
@@ -1807,6 +1763,24 @@ _cycle_iter_dispatch() {
             _CYCLE_PLATEAU_WINDOW="$_outer_plateau_w"
             _CYCLE_DIVERGENCE_WINDOW="$_outer_diverg_w"
             _CYCLE_VELOCITY_PLATEAU_WINDOW="$_outer_velopl_w"
+            _CYCLE_EXIT_COMBINATOR="$_outer_exit_comb"
+            local _inner_reason="${_CYCLE_LAST_TERMINATED_REASON:-}"
+            _CYCLE_UNOWNED="$_outer_unowned"
+            _CYCLE_EXIT_CONDITIONS=( ${_outer_exit_conds[@]+"${_outer_exit_conds[@]}"} )
+            # #2271 (ADR-068): an inner loop that ends without converging ends
+            # this outer round when it may not be carried past — it declares
+            # `on_max: halt`, or it ran out with tests failing (rc 8). The outer
+            # loop then goes round from the top, each inner loop with a fresh
+            # counter. With no outer rounds left, rc 8 still stops the run.
+            local _end_round=0
+            [[ "$_inner_reason" == "unowned_finding" ]] && _end_round=1
+            if [[ $rc -ne 0 && $rc -ne 5 && $rc -ne 6 && $rc -ne 9 && $rc -ne 130 && $rc -ne 143 ]]; then
+                if [[ $rc -eq 8 ]]; then
+                    (( iter < _CYCLE_MAX_ITER )) && { _end_round=1; rc=2; }
+                elif [[ "$_inner_on_max" == "halt" ]]; then
+                    _end_round=1
+                fi
+            fi
             # #1822: the same leak Wave 19-C-2 (#726) fixed for the verdict
             # channel, one channel over. The inner run dispatches its own leaf
             # members, each publishing _CYCLE_DISPATCH_DISPOSITION; on return the
@@ -1849,14 +1823,14 @@ _cycle_iter_dispatch() {
                    _cycle_state_write_member_atomic "$state_file" "$s" "failed" "blocking_member_failure" || true
                    _cycle_clear_traps
                    return 8 ;;
-                11) # #1217 (ADR-045): route_back propagates outward to the
-                    # runner — only the runner owns dispatch-unit rewind; an
-                    # inner cycle cannot rewind the outer loop.
-                   _CYCLE_LAST_TERMINATED_REASON="route_back"
-                   _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "route_back" "failed"
-                   _cycle_state_write_member_atomic "$state_file" "$s" "failed" "route_back" || true
+                5|9) # #2271: a nested loop that is blocked (5) or whose model call
+                   # is unavailable / rate-limited (9) stops the run — going round
+                   # would only repeat it. The inner loop's reason travels with it.
+                   _CYCLE_LAST_TERMINATED_REASON="${_inner_reason:-}"
+                   _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "${_inner_reason:-blocked}" "failed"
+                   _cycle_state_write_member_atomic "$state_file" "$s" "failed" "${_inner_reason:-blocked}" || true
                    _cycle_clear_traps
-                   return 11 ;;
+                   return "$rc" ;;
                 130|143)
                    _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "aborted" "aborted"
                    _cycle_state_write_member_atomic "$state_file" "$s" "aborted" "aborted" || true
@@ -1869,8 +1843,7 @@ _cycle_iter_dispatch() {
             verdict="$_CYCLE_DISPATCH_VERDICT"
             status="$_CYCLE_DISPATCH_STATUS"
             blob="$(jq -c --arg s "$s" --arg v "$verdict" --arg st "$status" \
-                --arg ft "${_CYCLE_DISPATCH_FAULT:-}" \
-                '. + {($s): {verdict:$v, status:$st, fault:$ft}}' <<< "$blob" 2>/dev/null)" || blob="{}"
+                '. + {($s): {verdict:$v, status:$st}}' <<< "$blob" 2>/dev/null)" || blob="{}"
             if [[ $rc -ne 0 ]]; then
                 fail=$(( fail + 1 ))
             fi
@@ -1878,6 +1851,11 @@ _cycle_iter_dispatch() {
             # mapped from the nested cycle's terminal rc.
             _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "$verdict" "$status"
             _cycle_state_write_member_atomic "$state_file" "$s" "$_CYCLE_DISPATCH_STATUS" "$_CYCLE_DISPATCH_VERDICT" || true
+            if [[ $_end_round -eq 1 ]]; then
+                _cycle_emit "cycle.round.ended_early" "iter=$iter" "stage=$s" \
+                    "reason=inner_loop_unconverged" 2>/dev/null || true
+                break
+            fi
             continue
         fi
         # ADR-039 (#1132, amends ADR-021): parallel-group-as-member branch.
@@ -1933,8 +1911,7 @@ _cycle_iter_dispatch() {
             verdict="$_CYCLE_DISPATCH_VERDICT"
             status="$_CYCLE_DISPATCH_STATUS"
             blob="$(jq -c --arg s "$s" --arg v "$verdict" --arg st "$status" \
-                --arg ft "${_CYCLE_DISPATCH_FAULT:-}" \
-                '. + {($s): {verdict:$v, status:$st, fault:$ft}}' <<< "$blob" 2>/dev/null)" || blob="{}"
+                '. + {($s): {verdict:$v, status:$st}}' <<< "$blob" 2>/dev/null)" || blob="{}"
             if [[ $rc -ne 0 ]]; then
                 fail=$(( fail + 1 ))
             fi
@@ -2033,9 +2010,8 @@ _cycle_iter_dispatch() {
         fi
         blob="$(jq -c --arg s "$s" --arg v "$verdict" --arg st "$status" \
             --arg d "${_CYCLE_DISPATCH_DISPOSITION:-}" --arg k "${_CYCLE_DISPATCH_DATA_KIND:-}" \
-            --arg ft "${_CYCLE_DISPATCH_FAULT:-}" \
             --argjson rp "$(jq -c 'if type == "object" then . else {} end' <<< "${_CYCLE_DISPATCH_REPORT:-{\}}" 2>/dev/null || printf '{}')" \
-            '. + {($s): {verdict:$v, status:$st, disposition:$d, kind:$k, fault:$ft, report:$rp}}' <<< "$blob" 2>/dev/null)" || blob="{}"
+            '. + {($s): {verdict:$v, status:$st, disposition:$d, kind:$k, report:$rp}}' <<< "$blob" 2>/dev/null)" || blob="{}"
         # #2183: a member reported that it re-checked a finding and it did not
         # reproduce. Captured HERE, right after the dispatch that wrote it: the
         # reuse decision this feeds is at the NEXT iteration, by which time the
@@ -2301,10 +2277,6 @@ _cycle_handle_terminal_rc() {
         # ADR-013 blocking:true → "blocking_member_failure" (immediate, rc-only);
         # the ADR-021 disposition=terminal path → "member_terminal_failure".
         8)   reason="${_CYCLE_LAST_TERMINATED_REASON:-blocking_member_failure}" ;;
-        # #1217 (ADR-045): rc=11 is a CONTINUE-with-bounded-rewind class, not a
-        # halt. The runner translates it into a rewind; this restates the reason
-        # on the cycle.complete event for legibility.
-        11)  reason="route_back" ;;
         130|143) reason="aborted" ;;
         *)       reason="error" ;;
     esac
@@ -2360,19 +2332,6 @@ cycle_orchestrator_run() {
     _CYCLE_TRAP_CYCLE_ID="$cycle_id"
     _CYCLE_TRAP_ITER=0
     _CYCLE_LAST_TERMINATED_REASON=""
-    # #1217 (ADR-045): reset the route_back hand-off globals per run so a stale
-    # target/fallback from a prior cycle can never leak into this one.
-    _CYCLE_ROUTE_BACK_TO=""
-    _CYCLE_ROUTE_BACK_FALLBACK_RC=""
-    # #1227: reset the stashed original reason per run so a stale cause from a
-    # prior cycle can never leak into this one's exhausted-path terminal event.
-    _CYCLE_ROUTE_BACK_FALLBACK_REASON=""
-    # #1225 (ADR-045): reset the edge-owner id per run so a stale owner from a
-    # prior cycle can never key the runner's per-edge counter/max onto the wrong
-    # cycle. A NESTED cycle sets this to its own id in the by-severity reroute so
-    # the runner honors the INNER edge's declared `max`, not the outer unit's.
-    _CYCLE_ROUTE_BACK_EDGE_ID=""
-    _CYCLE_RB_EARLY=0   # #2119: the early-match hand-off never outlives a run
     _CYCLE_LAST_ITERATIONS=0
     # #2117: a reusable verification belongs to THIS cycle run only.
     _CYCLE_VERIFIED_FP=""; _CYCLE_VERIFIED_ITER=""; _CYCLE_VERIFIED_BLOB=""
@@ -2432,9 +2391,22 @@ cycle_orchestrator_run() {
         "stages=${_CYCLE_STAGES[*]}" 2>/dev/null || true
 
     local iter
+    # #2271 (ADR-068): a finding an inner loop yielded belongs to this run of
+    # the outer loop only.
+    [[ "${_CYCLE_UNOWNED:-}" == "halt" ]] && rm -f "$state_dir/$_UNOWNED_YIELD_FILE" 2>/dev/null
     for (( iter=1; iter <= _CYCLE_MAX_ITER; iter++ )); do
         _CYCLE_TRAP_ITER="$iter"
         _CYCLE_LAST_ITERATIONS="$iter"
+        # #2271 (ADR-068): each round counts only the answers given in it. An
+        # outer `halt` loop clears every stage in its tree (design, impact, …):
+        # one that answers nothing this round must not count an old answer.
+        if [[ "${_CYCLE_UNOWNED:-}" == "yield" ]]; then
+            _unowned_clear_round "$state_dir" "${_CYCLE_STAGES[@]}"
+        elif [[ "${_CYCLE_UNOWNED:-}" == "halt" ]] && declare -F _tpl_flow_leaves >/dev/null 2>&1; then
+            local -a _uo_tree=() _uo_l
+            while IFS= read -r _uo_l; do [[ -n "$_uo_l" ]] && _uo_tree+=("$_uo_l"); done < <(_tpl_flow_leaves "$cycle_id")
+            [[ ${#_uo_tree[@]} -gt 0 ]] && _unowned_clear_round "$state_dir" "${_uo_tree[@]}"
+        fi
 
         # #682: 2 blank lines BEFORE each iter separator (inter-iter gap),
         # except before the very first iter where 1 blank is enough — the
@@ -2507,20 +2479,6 @@ cycle_orchestrator_run() {
             _CYCLE_TRAP_CYCLE_ID=''
             return 130
         fi
-        # #1225 (ADR-045): rc=11 from a NESTED member cycle is route_back — it must
-        # bubble outward through EVERY enclosing cycle to the runner (only the
-        # runner owns dispatch-unit rewind), exactly like rc=8/130 above. Without
-        # this branch the generic `-ne 0` catch-all below collapses it to rc=4
-        # (config_invalid, silent HALT) and the runner's bounded rewind is never
-        # reached. The inner cycle already stashed the hand-off globals
-        # (_CYCLE_ROUTE_BACK_{TO,FALLBACK_RC,EDGE_ID}); they survive the
-        # nested-dispatch restore block, so just propagate.
-        if [[ $_iter_rc -eq 11 ]]; then
-            _CYCLE_LAST_TERMINATED_REASON="route_back"
-            _cycle_clear_traps
-            _CYCLE_TRAP_CYCLE_ID=''
-            return 11
-        fi
         # #2111: rc=9 is the LLM-abort the runner owns (#1024: unavailable;
         # #2111: rate-limited). It must reach the runner as 9 so the run ends
         # aborted — the generic arm below read it as config_invalid (rc=4),
@@ -2530,6 +2488,15 @@ cycle_orchestrator_run() {
             _cycle_clear_traps
             _CYCLE_TRAP_CYCLE_ID=''
             return 9
+        fi
+        # #2271: rc=5 is a nested loop that is blocked — structural, so going
+        # round would only repeat it. Passed up as 5 (its reason kept), not
+        # collapsed into config_invalid (rc=4) below.
+        if [[ $_iter_rc -eq 5 ]]; then
+            _CYCLE_LAST_TERMINATED_REASON="${_CYCLE_LAST_TERMINATED_REASON:-blocked}"
+            _cycle_clear_traps
+            _CYCLE_TRAP_CYCLE_ID=''
+            return "$_iter_rc"   # the inner loop's own rc, passed through
         fi
         if [[ $_iter_rc -ne 0 ]]; then
             # #1208: the ADR-029 G2 abandon (rc=4 reason=timeout_abandoned) was
@@ -2736,16 +2703,14 @@ cycle_orchestrator_run() {
             # the cycle is not expandable). Abandon cleanly — never loop.
             _CYCLE_LAST_TERMINATED_REASON="blocked_on_scope"
             overall_status="blocked_on_scope"; term_rc=7
-        elif _cycle_route_back_early_matches "$cycle_id" "$verdicts_blob" "$iter"; then
-            # #2119: a gate declared a fault the template routes upstream. Rewind
-            # NOW (the block below converts this correctable terminal to rc=11)
-            # instead of re-failing the same gate until max_iterations — #1841
-            # burned four iterations that way. Only while the budget lasts; at
-            # exhaustion the fallback below still applies.
-            _cycle_emit "cycle.route_back.early" "iter=$iter" "max=$_CYCLE_MAX_ITER"
-            _CYCLE_LAST_TERMINATED_REASON="specification_fault"
-            overall_status="max_iterations"; term_rc=2
-            _CYCLE_RB_EARLY=1
+        elif [[ "${_CYCLE_UNOWNED:-}" == "yield" ]] \
+             && _unowned_yield_check "$state_dir" "$cycle_id" "${_CYCLE_STAGES[@]}"; then
+            # #2271 (ADR-068): every member here that answers findings said
+            # "nothing to do" to the same one — this loop cannot resolve it. End
+            # early; the outer loop goes round from the top, carrying it.
+            _CYCLE_LAST_TERMINATED_REASON="unowned_finding"
+            _cycle_emit "cycle.unowned_finding" "iter=$iter" "action=yield" 2>/dev/null || true
+            overall_status="unowned_finding"; term_rc=2
         elif _cycle_check_max_iterations "$iter" "$_CYCLE_MAX_ITER"; then
             # #1208 — THE single fatal condition: the cycle exhausted its
             # iteration budget WITHOUT a clean, passing convergence. Split
@@ -2821,7 +2786,7 @@ cycle_orchestrator_run() {
             # (a scope_violation discarded the diff, or nothing was ever committed)
             # and no governed scope grant is pending to let the next iter commit.
             # Halt terminally (rc=5 blocked-class → the pipeline stops before
-            # review/pr; blocked never route_backs, see below) instead of shipping
+            # review/pr) instead of shipping
             # an empty branch to a confusing `pr` abort. When _scope_action==grant
             # the #870/#840 expansion lets the next iter commit, so we do NOT
             # terminate (fall through to in_progress and iterate).
@@ -2837,78 +2802,6 @@ cycle_orchestrator_run() {
             # scope-deny — genuine structural failures still halt fast.
             _CYCLE_LAST_TERMINATED_REASON="blocked"
             overall_status="blocked"; term_rc=5
-        fi
-
-        # #1217 (ADR-045): bounded typed backward-route. ONLY a CORRECTABLE
-        # non-clean terminal (rc=2 unconverged / rc=8 member_terminal_failure /
-        # rc=7 scope-deny, #2178: a build that cannot complete under the
-        # contract) may reroute — a clean converge (0), abort (6), blocked (5),
-        # config (4) and signals (130/143) NEVER reroute. When the
-        # route_back predicate matches, convert the terminal into rc=11
-        # (route_back) and STASH the by-severity fallback rc + target as GLOBALS
-        # (no `local`) so the runner can (a) rewind the dispatch index to the
-        # target if budget remains, or (b) restore the fallback rc for the
-        # normal by-severity terminal handling if budget is exhausted. Only the
-        # runner owns dispatch-unit rewind; the orchestrator merely reclassifies.
-        # #1261: a timeout-exhaustion (design_timeout_exhausted) is an INFRA
-        # failure, never a correctable content terminal — it must NEVER reroute
-        # (route_back exists to let build re-drive design on a CONTENT tautology).
-        # #2178: scope-deny (7) is correctable too — see the cannot-complete
-        # rule below; without budget it stays the terminal it was.
-        if [[ ( $term_rc -eq 2 || $term_rc -eq 8 || $term_rc -eq 7 ) \
-              && "$_CYCLE_LAST_TERMINATED_REASON" != "design_timeout_exhausted" ]]; then
-            local _rb_to_var="_TPL_CYCLE_ROUTE_BACK_TO_${cycle_id//-/_}"
-            if [[ -n "${!_rb_to_var:-}" ]]; then
-                local _rce=0; case $- in *e*) _rce=1 ;; esac
-                local _rb_matched=1
-                if [[ "${_CYCLE_RB_EARLY:-0}" -eq 1 ]]; then
-                    _rb_matched=0; _CYCLE_RB_EARLY=0   # #2119: already matched this iteration
-                else
-                    set +e; _cycle_check_route_back "$verdicts_blob"; _rb_matched=$?; [[ $_rce -eq 1 ]] && set -e
-                fi
-                # #2172/#2178: a build that CANNOT COMPLETE under the current
-                # contract is the contract's problem, not the builder's — the
-                # loop widens to the template's route_back target under the
-                # same budget as a declared fault. The engine reads no reason
-                # from build; two facts it already holds say so:
-                #   - exhausted with the suite failing and a build that changed
-                #     NOTHING (#1841: a design contradicting a newer ADR,
-                #     enforced by guard tests outside its scope);
-                #   - a scope request the policy denied (35674168348: the
-                #     builder needed files the contract forbids — the run ended
-                #     instead of the design being asked).
-                local _rb_cannot=""
-                case "$_CYCLE_LAST_TERMINATED_REASON" in
-                    blocked_on_scope) _rb_cannot="cycle.route_back.blocked_on_scope" ;;
-                    max_iterations_tests_failing)
-                        [[ "$_build_kind" == "empty_diff" ]] && _rb_cannot="cycle.route_back.exhausted_unchanged" ;;
-                esac
-                if [[ $_rb_matched -ne 0 && -n "$_rb_cannot" ]] \
-                   && _cycle_route_back_budget_left "$cycle_id"; then
-                    _cycle_emit "$_rb_cannot" "iter=$iter" \
-                        "build_kind=$_build_kind" "reason=$_CYCLE_LAST_TERMINATED_REASON"
-                    _rb_matched=0
-                fi
-                if [[ $_rb_matched -eq 0 ]]; then
-                    _CYCLE_ROUTE_BACK_FALLBACK_RC=$term_rc
-                    # #1227: stash the ORIGINAL terminal reason alongside the
-                    # fallback rc so the runner can restore it on the
-                    # budget/cap-exhausted no-rewind path — otherwise the final
-                    # cycle.complete/pipeline.end would misreport "route_back"
-                    # instead of the real cause (e.g. the tautology message).
-                    _CYCLE_ROUTE_BACK_FALLBACK_REASON="$_CYCLE_LAST_TERMINATED_REASON"
-                    _CYCLE_ROUTE_BACK_TO="${!_rb_to_var}"
-                    # #1225 (ADR-045): stash the id of the cycle that OWNS this
-                    # edge so the runner keys the per-edge counter + declared max
-                    # on the real edge. For a top-level cycle this equals the
-                    # dispatch-unit id (byte-identical behavior); for a NESTED
-                    # cycle it is the inner id, so the operator's inner `max` is
-                    # honored instead of the outer unit's default.
-                    _CYCLE_ROUTE_BACK_EDGE_ID="$cycle_id"
-                    _CYCLE_LAST_TERMINATED_REASON="route_back"
-                    overall_status="route_back"; term_rc=11
-                fi
-            fi
         fi
 
         # Single atomic state write per iter boundary.

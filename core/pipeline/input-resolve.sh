@@ -55,9 +55,6 @@ declare -F attempt_latest_copy >/dev/null 2>&1 || \
 # shellcheck source=../plugin-registry/manifest-index.sh
 declare -F manifest_index_rows >/dev/null 2>&1 || \
     source "$_ZBUILD_IR_ROOT/core/plugin-registry/manifest-index.sh"
-# Who owns a finding — `about`, under_review inputs, routed faults (#2180, #1847).
-# shellcheck source=./finding-owner.sh
-source "$_ZBUILD_IR_DIR/finding-owner.sh"
 
 # The marker the injected prompt block opens with. Idempotence guard, exactly as
 # _ZB_CHECKPOINT_MARKER is — the agentic loop redacts once per iteration against
@@ -648,37 +645,17 @@ _summaries_collect() {
         path="$(_summaries_stage_summary_path "$stage" "$plugins_root" "$state_dir")"
         [[ -n "$path" && -s "$path" ]] || continue
         verdict="$(jq -r --arg s "$stage" '.stage_verdicts[$s] // "unknown"' "$state_file" 2>/dev/null || echo unknown)"
-        # #2163: the producer's declared fault class rides along — the field
-        # route_back already keys on. It decides whether the reader is OBLIGED
-        # (no fault: the reader's to fix) or merely informed (specification /
-        # scope: the engine routes it). Read from the stage's primary result.
-        # #2180: and WHO owns the artifact the finding is about, when the
-        # producer named one. The reader is told it is theirs only when it is.
-        local _about _owner
-        _about="$(_summaries_result_about "$stage" "$plugins_root" "$state_dir")"
-        _owner=""
-        if [[ -n "$_about" ]]; then
-            _owner="$(_summaries_owner_of "$_about" "$plugins_root" "$state_dir")"
-        else
-            # #1847: no runtime `about` — the judge's manifest may still say
-            # which input it judges, and that input's producer owns the finding.
-            _owner="$(_summaries_under_review_owner "$stage" "$plugins_root" "$state_dir")"
-        fi
-        local _fault
-        _fault="$(_summaries_stage_fault "$stage" "$plugins_root" "$state_dir")"
-        # #1846: a fault the template routes back is owned by whoever the rewind
-        # hands it to — the author in the target unit.
-        [[ -z "$_owner" && -n "$_fault" ]] \
-            && _owner="$(_summaries_fault_owner "$_fault" "$plugins_root" "$state_dir")"
         # #2270: a stage cut off by time or turns hands over what it saved.
         local _cutcp=""
         case "$verdict" in
             fail|failed|error|broken|degraded|incomplete)
                 _cutcp="$(_summaries_cutoff_checkpoint "$stage" "$plugins_root" "$state_dir")" ;;
         esac
-        printf '%s|%s|%s|%s|%s|%s|%s\n' "$stage" "$verdict" "$path" \
-            "$_fault" "$_owner" \
-            "$(_summaries_stage_errors_path "$stage" "$plugins_root" "$state_dir")" "$_cutcp"
+        # #2271 (ADR-068): no owner and no fault class — the engine does not
+        # decide who owns a finding; every reader answers each one itself.
+        printf '%s|%s|%s|%s|%s|%s\n' "$stage" "$verdict" "$path" \
+            "$(_summaries_stage_errors_path "$stage" "$plugins_root" "$state_dir")" "$_cutcp" \
+            "$(_summaries_result_path "$stage" "$plugins_root" "$state_dir")"
     done < <(jq -r '(.stage_statuses // {}) | keys_unsorted[]' "$state_file" 2>/dev/null || true)
 }
 
@@ -689,14 +666,24 @@ _summaries_collect() {
 # A map stage's paths carry `${map_element}`, which stays unresolved here (no
 # element is set when summaries are collected), so a map stage is skipped: each
 # member hands over through its own result (`data.partial_notes`, #2270).
-_summaries_cutoff_checkpoint() {
-    local stage="$1" plugins_root="$2" state_dir="$3" manifest raw res disp cp
+# _summaries_result_path <stage> <plugins_root> <state_dir> — the stage's
+# primary (v2 result) file, resolved, when it exists; else "".
+_summaries_result_path() {
+    local stage="$1" plugins_root="$2" state_dir="$3" manifest raw res
     manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
     [[ -n "$manifest" ]] || return 0
     raw="$(_verdict_primary_output_path "$manifest" 2>/dev/null || true)"
     [[ -n "$raw" ]] || return 0
     res="$(_verdict_resolve_path "$raw" "$state_dir" 2>/dev/null || true)"
-    [[ "$res" == *.json && -s "$res" ]] || return 0
+    [[ "$res" == *.json && -s "$res" ]] && printf '%s' "$res"
+    return 0
+}
+
+_summaries_cutoff_checkpoint() {
+    local stage="$1" plugins_root="$2" state_dir="$3" manifest res disp cp
+    res="$(_summaries_result_path "$stage" "$plugins_root" "$state_dir")"
+    [[ -n "$res" ]] || return 0
+    manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
     disp="$(jq -r '.disposition // empty' "$res" 2>/dev/null || true)"
     case "$disp" in timed_out|out_of_turns) ;; *) return 0 ;; esac
     declare -F _checkpoint_declared_path >/dev/null 2>&1 || return 0
@@ -750,19 +737,6 @@ _summaries_stage_errors_path() {
     return 0
 }
 
-# ─── _summaries_stage_fault <stage> <plugins_root> <state_dir> ───────────────
-# The `fault` the stage's primary result declares (ADR-061 vocabulary), or "".
-_summaries_stage_fault() {
-    local stage="$1" plugins_root="$2" state_dir="$3" manifest raw resolved
-    manifest="$(_inputs_stage_manifest "$stage" "$plugins_root" 2>/dev/null || true)"
-    [[ -n "$manifest" ]] || return 0
-    raw="$(_verdict_primary_output_path "$manifest" 2>/dev/null || true)"
-    [[ -n "$raw" ]] || return 0
-    resolved="$(_verdict_resolve_path "$raw" "$state_dir" 2>/dev/null || true)"
-    [[ -s "$resolved" ]] || return 0
-    case "$resolved" in *.json) ;; *) return 0 ;; esac
-    jq -r '.fault // empty' "$resolved" 2>/dev/null || true
-}
 
 # ─── stage_summaries_count <state_file> [plugins_root] ───────────────────────
 # "<stages> <resolve>": how many summaries the next prompt will carry and how
@@ -785,42 +759,20 @@ stage_declares_repo_writes() {
         END { exit(found ? 0 : 1) }' "$mf" 2>/dev/null
 }
 
-# _summaries_reader_can_fix — rc 0 when the stage about to read the summaries
-# can act on a finding: it declares it writes the repository, or there is no
-# reader manifest to ask (the cycle banner, ad-hoc callers — unchanged).
-# #1845 run 36332698182: a judge told to RESOLVE three findings edited a test.
-_summaries_reader_can_fix() {
-    local mf="${ZBUILD_PLUGIN_DIR:-}/manifest.yaml"
-    [[ -n "${ZBUILD_PLUGIN_DIR:-}" && -f "$mf" ]] || return 0
-    stage_declares_repo_writes "$mf"
-}
 
 stage_summaries_count() {
     local state_file="${1:-}" plugins_root="${2:-${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}}"
-    local n=0 r=0 rec verdict fault owner _cstage
+    local n=0 r=0 rec verdict _cstage
     if [[ -n "$state_file" && -s "$state_file" ]]; then
         while IFS= read -r rec; do
             [[ -n "$rec" ]] || continue
-            IFS='|' read -r _cstage verdict _ fault owner _ <<< "$rec"
+            IFS='|' read -r _cstage verdict _ <<< "$rec"
             # A stage never counts (or sees) its own earlier verdict.
             [[ -n "${ZBUILD_CURRENT_STAGE:-}" && "$_cstage" == "$ZBUILD_CURRENT_STAGE" ]] && continue
             n=$((n + 1))
-            # #2163: RESOLVE counts what the reader must resolve — a failure the
-            # engine routes elsewhere (fault=specification/scope) is context.
-            case "$verdict" in fail|failed)
-                # #2180: a finding routed to an owner is that owner's obligation,
-                # not the generic RESOLVE count for whoever is reading.
-                if [[ -n "$owner" && -n "${ZBUILD_CURRENT_STAGE:-}" ]]; then
-                    [[ "$owner" == "$ZBUILD_CURRENT_STAGE" ]] && r=$((r + 1))
-                elif [[ -n "$owner" ]]; then
-                    # Review #2181: the cycle banner counts with no reader in
-                    # scope. An owned finding is SOMEBODY's obligation; dropping
-                    # it here under-reported every cycle that had one.
-                    r=$((r + 1))
-                elif _summaries_reader_can_fix; then
-                    case "$fault" in specification|scope) ;; *) r=$((r + 1)) ;; esac
-                fi ;;
-            esac
+            # #2271 (ADR-068): every failing stage's findings are for every
+            # reader to answer — the engine no longer narrows them to an owner.
+            case "$verdict" in fail|failed) r=$((r + 1)) ;; esac
         done < <(_summaries_collect "$state_file" "$plugins_root")
     fi
     printf '%s %s' "$n" "$r"
@@ -845,16 +797,26 @@ stage_summaries_prompt_block() {
         source "$_ZBUILD_IR_ROOT/scripts/lib/test-output-sanitize.sh" 2>/dev/null || true
     fi
 
-    local stage path body verdict fault chunk rec _owned=0
-    local -a _chunks=() _chunk_owned=()
+    local stage path body verdict chunk rec
+    local -a _chunks=()
     while IFS= read -r rec; do
         [[ -n "$rec" ]] || continue
-        IFS='|' read -r stage verdict path fault owner errpath cutcp <<< "$rec"
+        IFS='|' read -r stage verdict path errpath cutcp respath <<< "$rec"
         # #1845 run 36274909946: issue-acceptance's own claim came back into
         # its next prompt and it repeated it every iteration. Every judgment
         # starts fresh — a stage is never shown its own earlier verdict.
         [[ -n "${ZBUILD_CURRENT_STAGE:-}" && "$stage" == "$ZBUILD_CURRENT_STAGE" ]] && continue
         body="$(head -c "$_ZB_SUMMARY_MAX_BYTES" "$path" 2>/dev/null || true)"
+        # #2271 (ADR-068): each finding on its own line, naming the stage that
+        # opened it — the reference later stages answer by.
+        if [[ -n "${respath:-}" ]]; then
+            local _nf
+            _nf="$(jq -r --arg s "$stage" '(.data.findings // [])[]?
+                    | select(type == "object" and (.n|type) == "number")
+                    | "- \($s) finding \(.n) (opened by \($s)): \(.text|tostring|gsub("[\r\n]+"; " "))"' \
+                    "$respath" 2>/dev/null || true)"
+            [[ -n "$_nf" ]] && body="${_nf}"$'\n\n'"${body}"
+        fi
         # #2183: a FAILING stage ships the errors it hit, bounded, verbatim. A
         # passing stage ships none — nobody needs the noise of a clean run.
         if [[ -n "$errpath" && -s "$errpath" ]]; then
@@ -880,47 +842,13 @@ stage_summaries_prompt_block() {
             body="${body}"$'\n'"[… truncated at ${_ZB_SUMMARY_MAX_BYTES}B —"
             body="${body} read the artifact directly for the full text]"
         fi
-        # #1979: framing follows the VERDICT. The retired per-plugin readers
-        # framed gate feedback as "resolve every finding above"; losing that
-        # imperative with the wire would have downgraded a directive into
-        # passive context. Applied by verdict rather than by naming two stages,
-        # so a third gate needs no new prose.
-        # #2163: the obligation follows the FAULT CLASS, not the verdict alone.
-        # A failure the producer blamed on the specification or the scope is
-        # the engine's to route (route_back keys on the same field); the reader
-        # sees it — every stage sees every summary — but is not told to fix it.
-        # #1840 runs 5–7: "re-author the assertions" stamped RESOLVE for the
-        # builder, which then edited the read-only testfile every iteration.
-        # #2180: when the producer named the artifact its finding is about and
-        # the engine could resolve an owner, the obligation follows OWNERSHIP —
-        # the stage that wrote the thing is the only one that can change it.
-        # Every stage still SEES every finding; only the framing differs. With
-        # no resolvable owner the fault-class rule below is unchanged.
-        local _reader="${ZBUILD_CURRENT_STAGE:-}"
+        # #2271 (ADR-068): one framing for every reader. The engine no longer
+        # decides whose finding this is — every stage answers each one itself
+        # (the router asks it to, scripts/lib/stage-answers.sh).
         case "$verdict" in
             fail|failed|partial|mismatch)
-                if [[ -n "$owner" && -n "$_reader" && "$owner" == "$_reader" ]]; then
-                    chunk="$(printf '### %s (verdict: %s) — about work you authored: these findings are yours to fix\n%s\n' "$stage" "$verdict" "$body")"
-                    _chunk_owned[${#_chunks[@]}]=1
-                elif [[ -n "$owner" ]]; then
-                    chunk="$(printf '### %s (verdict: %s) — context only: about work owned by %s, not yours to fix\n%s\n' "$stage" "$verdict" "$owner" "$body")"
-                else
-                    case "$fault" in
-                        specification|scope)
-                            # #2269: say what has to change, not the fault class's name.
-                            local _what="the design"; [[ "$fault" == scope ]] && _what="the scope"
-                            chunk="$(printf '### %s (verdict: %s) — context only: %s has to change for this; another step does that, it is not yours to fix\n%s\n' "$stage" "$verdict" "$_what" "$body")" ;;
-                        *)  if _summaries_reader_can_fix; then
-                                chunk="$(printf '### %s (verdict: %s) — fix these findings before you finish\n%s\n' "$stage" "$verdict" "$body")"
-                            else
-                                # A stage that may not change the repository
-                                # cannot resolve anything — telling it to made a
-                                # judge edit a test (#1845 run 36332698182).
-                                chunk="$(printf '### %s (verdict: %s) — context only: your job is to read and report, not to fix this\n%s\n' "$stage" "$verdict" "$body")"
-                            fi ;;
-                    esac
-                fi ;;
-            *)           chunk="$(printf '### %s (verdict: %s)\n%s\n' "$stage" "$verdict" "$body")" ;;
+                chunk="$(printf '### %s (verdict: %s) — its findings, to answer\n%s\n' "$stage" "$verdict" "$body")" ;;
+            *)  chunk="$(printf '### %s (verdict: %s)\n%s\n' "$stage" "$verdict" "$body")" ;;
         esac
         _chunks+=("$chunk")
     done < <(_summaries_collect "$state_file" "$plugins_root")
@@ -953,26 +881,11 @@ stage_summaries_prompt_block() {
     fi
     for (( _i=_keep_from; _i<${#_chunks[@]}; _i++ )); do
         rendered="${rendered}${_chunks[_i]}"$'\n'
-        # Counted AFTER the budget trim: the header may only promise findings
-        # the block actually carries (review #2217).
-        [[ -n "${_chunk_owned[_i]:-}" ]] && _owned=$((_owned + 1))
     done
 
     [[ -n "$rendered" ]] || return 0
     printf '%s\n\n' "$_ZB_STAGE_SUMMARIES_MARKER"
-    printf 'What each completed stage reported, newest content per stage. '
-    # #1847: a reader that owns a finding is told to act on it whether or not it
-    # writes the repository — design authors design.md and must fix what the
-    # design judges found.
-    if _summaries_reader_can_fix || (( _owned > 0 )); then
-        printf 'A stage\n'
-        printf 'marked "fix these findings" keeps the pipeline from moving on — fix them\n'
-        printf 'before you finish. The rest is context.\n\n'
-    else
-        # A reader that may not change the repository is told what it is for,
-        # not what to fix (#1845 run 36332698182).
-        printf 'All of it\n'
-        printf 'is context for your own task: read and report — do not fix anything.\n\n'
-    fi
+    printf 'What each completed stage reported, newest content per stage. Each\n'
+    printf 'finding is on its own line with the stage that opened it.\n\n'
     printf '%s' "$rendered"
 }

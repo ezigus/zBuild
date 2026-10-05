@@ -86,7 +86,6 @@ cycle_dispatch_stage() {
                 > "$_art/gate-aggregator-result.json"
             _CYCLE_DISPATCH_VERDICT="$_GA_VERDICT"
             _CYCLE_DISPATCH_VERDICT_RAW="$_GA_VERDICT"
-            _CYCLE_DISPATCH_FAULT="${_GA_FAULT:-}"
             ;;
         *)
             # shape-floor, acceptance-gate, secret-scan: all pass (verdict

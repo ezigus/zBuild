@@ -449,34 +449,6 @@ _runner_status_comment_reap() {
     return 0
 }
 
-# ─── _runner_resolve_unit_index <to> (#1217, ADR-045) ────────────────────────
-# Echo the index of <to> in _TPL_DISPATCH_UNITS[]: by direct unit id (stripping
-# the stage:/cycle:/parallel: prefix) first, then by cycle/parallel MEMBERSHIP.
-# Echo -1 if unresolved. Mirrors template.sh:_tpl_resolve_unit_index so the
-# load-time route_back validator and this run-time rewind agree on ordering.
-_runner_resolve_unit_index() {
-    local _to="$1" _i _u _uid
-    [[ -z "$_to" ]] && { echo "-1"; return 0; }
-    for (( _i = 0; _i < ${#_TPL_DISPATCH_UNITS[@]}; _i++ )); do
-        _u="${_TPL_DISPATCH_UNITS[_i]}"; _uid="${_u#*:}"
-        [[ "$_uid" == "$_to" ]] && { echo "$_i"; return 0; }
-    done
-    for (( _i = 0; _i < ${#_TPL_DISPATCH_UNITS[@]}; _i++ )); do
-        _u="${_TPL_DISPATCH_UNITS[_i]}"; _uid="${_u#*:}"
-        local _safe="${_uid//-/_}"
-        case "$_u" in
-            cycle:*)
-                local _mv="_TPL_CYCLE_STAGES_${_safe}"
-                [[ ",${!_mv:-}," == *",$_to,"* ]] && { echo "$_i"; return 0; } ;;
-            parallel:*)
-                local _pv="_TPL_PARALLEL_FLOW_${_safe}"
-                [[ ",${!_pv:-}," == *",$_to,"* ]] && { echo "$_i"; return 0; } ;;
-        esac
-    done
-    echo "-1"
-    return 0
-}
-
 # ─── _runner_now_short (#508) — HH:MM:SS UTC for stage banners ───────────────
 # Returns ??:??:?? UTC when the underlying clock primitive yields nothing
 # (defensive — the operator-visible banner still renders without crashing).
@@ -1205,6 +1177,12 @@ _render_cycle_exit() {
             # #840: build needs out-of-scope files the policy won't grant.
             glyph="⚠"; color="${YELLOW:-}"
             text="Cycle ${cycle_id} halted: blocked on scope (needs files outside write-scope)"
+            ;;
+        unowned_finding)
+            # #2271 (ADR-068): every stage here disclaimed the same finding, so
+            # the loop hands it back; the outer loop goes round or stops.
+            glyph="⚠"; color="${YELLOW:-}"
+            text="Cycle ${cycle_id} ended early (${iter}/${max}): no stage in it owns a finding"
             ;;
         error|config_invalid)
             glyph="✗"; color="${RED:-}"
@@ -2766,7 +2744,6 @@ main() {
         _CYCLE_DISPATCH_STATUS=""
         _CYCLE_DISPATCH_REASON=""
         _CYCLE_DISPATCH_DISPOSITION=""
-        _CYCLE_DISPATCH_FAULT=""
         _CYCLE_DISPATCH_REPORT="{}"
         _CYCLE_DISPATCH_DATA_KIND=""
         local _cd_plugin_dir _cd_rc=0
@@ -2868,12 +2845,6 @@ main() {
             # the dispatch event; the response table that interprets it lives in
             # core/pipeline/disposition.sh, never in a plugin.
             _CYCLE_DISPATCH_DISPOSITION="$(runner_read_stage_disposition "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" "$_cd_observation" "$_cd_rate_limited" 2>/dev/null || echo "")"
-            # #1987: the declared fault class, captured on the same channel as
-            # the disposition. The two are different axes — disposition says
-            # whether the stage got far enough to be believed, fault says whose
-            # problem the failure is — and the cycle's route_back predicate
-            # reads this one.
-            _CYCLE_DISPATCH_FAULT="$(runner_read_stage_fault "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || echo "")"
             # #2189: what this member reported for the cycle to act on — read
             # off the member itself, never a stage's artifact by name.
             _CYCLE_DISPATCH_REPORT="$(runner_read_stage_report "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc" 2>/dev/null || printf '{}')"
@@ -3114,26 +3085,11 @@ main() {
         # #796 / ADR-021 v3 R1: capture on_max value of the unconverged cycle
         # so the final-status aggregator can honor on_max=continue.
         local _RUNNER_CYCLE_UNCONVERGED_ON_MAX=""
-        # #1217 (ADR-045): GLOBAL bounded backward-route budget. The count is the
-        # TOTAL number of forward passes over the routed segment across the WHOLE
-        # run; the initial forward pass counts as 1, so the default of 2 permits
-        # EXACTLY one jump back. Config-overridable (repo-agnostic) via
-        # ZBUILD_ROUTE_BACK_BUDGET. This global total is the HARD ceiling; each
-        # edge's own `max` is a subordinate local cap enforced below.
-        local _RUNNER_ROUTE_BACK_BUDGET="${ZBUILD_ROUTE_BACK_BUDGET:-2}"
-        [[ "$_RUNNER_ROUTE_BACK_BUDGET" =~ ^[0-9]+$ ]] || _RUNNER_ROUTE_BACK_BUDGET=2
-        # #1227: clamp to >=1. A budget of 0 gives a confusing "pass 1/0" and
-        # silently disables route_back; the initial forward pass always counts as 1.
-        if (( _RUNNER_ROUTE_BACK_BUDGET < 1 )); then _RUNNER_ROUTE_BACK_BUDGET=1; fi
-        local _RUNNER_ROUTE_BACK_PASSES=1
         # #682 (Wave 15-D): cardinal counter for the cycle-aware dispatch loop.
         # Each unit (stage OR cycle) occupies ONE cardinal slot — cycles render
         # internal `<iter>.<position>` labels via the orchestrator while linear
         # stages render the cardinal directly via ZBUILD_STAGE_IO_SEQ_LABEL.
         local _runner_cardinal=0
-        # #1217 (ADR-045): INDEX-form loop so rc=11 (route_back) can rewind _ui to
-        # a strictly-earlier dispatch unit and replay forward (see the rc=11
-        # branch in the cycle arm). Forward-only when no cycle ever returns 11.
         local _ui
         for (( _ui = 0; _ui < ${#_TPL_DISPATCH_UNITS[@]}; _ui++ )); do
             _unit="${_TPL_DISPATCH_UNITS[_ui]}"
@@ -3177,78 +3133,9 @@ main() {
                     cycle_orchestrator_run "$_cyc_id" "$state_dir" "$state_file" && _rc=0 || _rc=$?
                     unset ZBUILD_SEQ_PREFIX
                     _runner_rearm_traps
-                    # #1217 (ADR-045): rc=11 = route_back — a CONTINUE-with-bounded-
-                    # rewind class (NOT a halt; deliberately absent from the halt-case
-                    # below). Resolve the stashed target to a dispatch-unit index; if
-                    # it is STRICTLY earlier AND both the global budget and this edge's
-                    # own `max` cap remain, emit cycle.route_back, rewind _ui and replay
-                    # forward. Otherwise restore the by-severity fallback rc and fall
-                    # through to the normal terminal handling below (NO rewind).
-                    if [[ $_rc -eq 11 ]]; then
-                        local _rb_tgt _rb_edge_safe _rb_edge_var _rb_edge_count _rb_edge_max_var _rb_edge_max
-                        _rb_tgt="$(_runner_resolve_unit_index "${_CYCLE_ROUTE_BACK_TO:-}")"
-                        # #1225 (ADR-045): key the per-edge counter + declared max
-                        # on the cycle that OWNS the edge, not the top-level
-                        # dispatch unit. For a top-level route_back the owner IS
-                        # the dispatch unit (_CYCLE_ROUTE_BACK_EDGE_ID==_cyc_id) →
-                        # byte-identical. For a NESTED cycle the inner id keys the
-                        # inner's declared `max`; without it the outer unit's empty
-                        # var defaulted to 2, silently ignoring the operator.
-                        _rb_edge_safe="${_CYCLE_ROUTE_BACK_EDGE_ID:-$_cyc_id}"
-                        _rb_edge_safe="${_rb_edge_safe//-/_}"
-                        _rb_edge_var="_RUNNER_ROUTE_BACK_EDGE_${_rb_edge_safe}"
-                        _rb_edge_count="${!_rb_edge_var:-0}"
-                        _rb_edge_max_var="_TPL_CYCLE_ROUTE_BACK_MAX_${_rb_edge_safe}"
-                        _rb_edge_max="${!_rb_edge_max_var:-2}"
-                        [[ "$_rb_edge_max" =~ ^[1-9][0-9]*$ ]] || _rb_edge_max=2
-                        if [[ "$_rb_tgt" -ge 0 && "$_rb_tgt" -lt "$_ui" \
-                              && "$_RUNNER_ROUTE_BACK_PASSES" -lt "$_RUNNER_ROUTE_BACK_BUDGET" \
-                              && "$_rb_edge_count" -lt "$_rb_edge_max" ]]; then
-                            eb_emit_event "cycle.route_back" "cycle_id=$_cyc_id" \
-                                "target=${_CYCLE_ROUTE_BACK_TO}" "reason=route_back" \
-                                "pass=$_RUNNER_ROUTE_BACK_PASSES" \
-                                "budget=$_RUNNER_ROUTE_BACK_BUDGET" \
-                                "run_id=$_runner_run_id" "issue=$_runner_issue" \
-                                2>/dev/null || true
-                            _RUNNER_ROUTE_BACK_PASSES=$(( _RUNNER_ROUTE_BACK_PASSES + 1 ))
-                            printf -v "$_rb_edge_var" '%s' "$(( _rb_edge_count + 1 ))"
-                            warn "Cycle $_cyc_id route_back → '${_CYCLE_ROUTE_BACK_TO}' (pass $_RUNNER_ROUTE_BACK_PASSES/$_RUNNER_ROUTE_BACK_BUDGET); replaying forward"
-                            # #1217 review fix (SHOULD-FIX): the routed segment
-                            # [target..here] will replay. If a cycle IN that
-                            # segment was flagged unconverged, discard the stale
-                            # flag now so the replay's outcome is authoritative
-                            # (prevents a false-fail after a successful
-                            # correction). Scoped to the segment so an
-                            # unconverged cycle BEFORE the target (not replayed)
-                            # is never masked.
-                            if [[ "${_RUNNER_CYCLE_UNCONVERGED:-0}" -eq 1 && -n "${_RUNNER_CYCLE_UNCONVERGED_ID:-}" ]]; then
-                                local _rb_unconv_idx
-                                _rb_unconv_idx="$(_runner_resolve_unit_index "$_RUNNER_CYCLE_UNCONVERGED_ID")"
-                                if [[ "$_rb_unconv_idx" -ge "$_rb_tgt" ]]; then
-                                    _RUNNER_CYCLE_UNCONVERGED=0
-                                    _RUNNER_CYCLE_UNCONVERGED_REASON=""
-                                    _RUNNER_CYCLE_UNCONVERGED_ID=""
-                                    _RUNNER_CYCLE_UNCONVERGED_ON_MAX=""
-                                fi
-                            fi
-                            _ui=$(( _rb_tgt - 1 ))
-                            continue
-                        fi
-                        # Budget/edge-cap exhausted OR unresolved/forward target →
-                        # restore the fallback rc and fall through (NO rewind).
-                        _rc="${_CYCLE_ROUTE_BACK_FALLBACK_RC:-2}"
-                        # #1227: also restore the ORIGINAL terminal reason the
-                        # orchestrator stashed, so cycle.complete/pipeline.end
-                        # name the real cause instead of "route_back".
-                        if [[ -n "${_CYCLE_ROUTE_BACK_FALLBACK_REASON:-}" ]]; then
-                            _CYCLE_LAST_TERMINATED_REASON="$_CYCLE_ROUTE_BACK_FALLBACK_REASON"
-                        fi
-                        warn "Cycle $_cyc_id route_back budget/cap exhausted (pass $_RUNNER_ROUTE_BACK_PASSES/$_RUNNER_ROUTE_BACK_BUDGET) → fallback rc=$_rc"
-                    fi
                     _cycle_handle_terminal_rc "$_rc" "$_cyc_id" "$state_file" || true
                     # #1217 review fix (SHOULD-FIX): a previously-unconverged
-                    # cycle that now converges (rc=0, e.g. on a route_back
-                    # replay) clears the stale unconverged signal so the
+                    # cycle that now converges (rc=0) clears the stale unconverged signal so the
                     # final-status aggregator doesn't report a false-fail after
                     # a successful correction. Scoped to the SAME cycle id so a
                     # different, still-unconverged cycle is never masked when an

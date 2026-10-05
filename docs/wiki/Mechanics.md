@@ -20,7 +20,7 @@ The complete set. A template is a composition of these; there are no others.
 |---|---|
 | [[mechanics/gates]] | `auto` vs blocking gates; verdicts that pass/fail a stage. |
 | [[mechanics/convergence]] | `exit_when`, all/any conditions, `on_max` behavior for cycles. |
-| [[mechanics/route_back]] | Send work to an earlier stage on failure (ADR-045). |
+| [[mechanics/finding-answers]] | Every stage answers every finding; a loop counts the answers and goes round or stops (ADR-068). |
 | [[mechanics/aggregators]] | Mechanical (gate-aggregator) vs advisory (review-aggregator) merges. |
 
 ## Cross-cutting mechanics

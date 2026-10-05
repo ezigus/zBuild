@@ -11,7 +11,7 @@ convergence: gate
 # #1988: this stage no longer aggregates a roster for prompt purposes. It
 # stopped rendering gate detail — every gate publishes its own summary now
 # — so covering the roster would suppress the members and ship an aggregate
-# containing nothing. It remains the convergence gate and the fault roll-up.
+# containing nothing. It remains the convergence gate.
 version: 0.1.0
 description: |
   Deterministic, LLM-free T0 convergence aggregator (ADR-040 §2, EPIC #1129 B5,
@@ -36,7 +36,9 @@ description: |
     - any REQUIRED gate artifact missing or malformed → verdict=fail (NOT skip);
       a gate that did not run cannot be trusted to have passed.
   Always returns rc=0; the verdict lives in gate-aggregator-result.json and the
-  fault roll-up in gate-aggregator-summary.md (ADR-040 verdict-in-artifact, ADR-055 §9).
+  list of failed gates in gate-aggregator-summary.md (ADR-040 verdict-in-artifact,
+  ADR-055 §9). No fault class (#2271, ADR-068): the engine does not decide whose
+  problem a failure is.
   ADR-037 §3 invariant: T0 tool stages contain no LLM/router calls.
 
 hooks:
@@ -55,19 +57,9 @@ provides:
   events:
     - gate_aggregator.fail
     - gate_aggregator.pass
-    # #1757/#1987: more than one distinct fault class among the failed gates.
-    # The vocabulary's table order picks the winner; this names every class seen
-    # so the loser is not discarded silently.
-    - gate_aggregator.fault_conflict
-    # #1987: a failed gate declared a word outside the closed vocabulary. Never
-    # selected, and never dropped in silence — gate and engine disagreeing about
-    # the contract is itself the finding.
-    - gate_aggregator.fault_unrecognised
 
 config:
-  # #1987: the aggregate verdict no longer mutates into route_<target>.
-  # exit_when still binds to verdict==pass; the template's route_back keys on
-  # the declared fault class.
+  # exit_when binds to verdict==pass.
   valid_verdicts:
     - pass
     - fail

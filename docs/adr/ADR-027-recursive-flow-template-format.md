@@ -439,3 +439,7 @@ from claude argv; defer to claude CLI default". The `build` stage in
 remain at the conventional 25. Templates that copy the schema examples
 verbatim will continue to work — only stages that explicitly want the
 unbounded behavior set `max_turns: 0`.
+
+### Amendment (2026-10-04, #2271)
+
+The `route_back` acyclicity carve-out is gone (ADR-068): a template declaring `route_back` is refused at load. An outer loop's own stages may sit between its inner loops; the stage list follows flow order, and each loop's full expansion must be contiguous. Re-entering an inner loop resets its round counter. Tests: `tests/unit/no-fault-routing-test.sh` R1, `tests/unit/template-simple-yaml-test.sh` SPEC-2/SPEC-18, `tests/integration/nested-loop-rounds-test.sh`.

@@ -2,9 +2,9 @@
 # Tests (#2163): no plugin knows about another plugin — the engine derives
 # obligations and permissions from declared data.
 #
-# SPEC-1 [change]: the STAGE SUMMARIES heading stamps RESOLVE by FAULT CLASS —
-#   a failing summary whose result declares fault=specification (or scope) is
-#   "context only — the engine routes this"; a failure with no fault keeps RESOLVE.
+# SPEC-1 [change]: the STAGE SUMMARIES heading is the same for every failing
+#   stage whatever it declares (#2271: no fault classes, no routing) — its
+#   findings, to answer — and every body stays visible.
 # SPEC-2 [change]: the build prompt's acceptance section names no other stage;
 #   it states the paths that are read-only for THIS stage.
 # SPEC-3 [change]: the spawn deny rule is rendered with an absolute path in
@@ -31,8 +31,8 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/ev"; mkdir -p "$ZBUILD_EVENTS_DIR"
 export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"; : > "$ZBUILD_EVENTS_JSONL"
 
-# ─── SPEC-1: RESOLVE by fault class ──────────────────────────────────────────
-print_test_section "SPEC-1: the summaries heading stamps RESOLVE by fault class"
+# ─── SPEC-1: one heading for every failing stage (#2271) ────────────────────
+print_test_section "SPEC-1: every failing stage gets the same heading"
 # shellcheck disable=SC1091
 source "$REPO_ROOT/core/pipeline/input-resolve.sh"
 PROOT="$TEST_TEMP_DIR/plugins"; STATE="$TEST_TEMP_DIR/state"; ART="$STATE/artifacts"
@@ -69,10 +69,9 @@ printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":
 _blk="$(stage_summaries_prompt_block "$STATE/pipeline-state.json" "$PROOT" 2>/dev/null || true)"
 _gate_head="$(grep -E '^### sb-gate' <<< "$_blk" || true)"
 _test_head="$(grep -E '^### sb-test' <<< "$_blk" || true)"
-if [[ "$_gate_head" == *"RESOLVE"* ]]; then assert_fail "[SPEC-1] a failure with fault=specification is NOT a RESOLVE obligation for the reader" "$_gate_head"; else assert_pass "[SPEC-1] a failure with fault=specification is NOT a RESOLVE obligation for the reader"; fi
-assert_contains "[SPEC-1] …it is framed as context the engine routes" "$_gate_head" "context only"
+assert_contains "[SPEC-1] a stage that still writes a fault gets the common heading" "$_gate_head" "its findings, to answer"
 assert_contains "[SPEC-1] …and its body is still visible (stages see everything)" "$_blk" "SPEC-21 passes at the baseline"
-assert_contains "[SPEC-1] a failure with no fault keeps RESOLVE" "$_test_head" "fix these findings before you finish"
+assert_contains "[SPEC-1] a failure with no fault gets the same heading" "$_test_head" "its findings, to answer"
 
 # ─── SPEC-2: the build prompt names no other stage ───────────────────────────
 print_test_section "SPEC-2: the build prompt states read-only paths, names no stage"
@@ -154,172 +153,8 @@ else
     assert_fail "[SPEC-5] _build_restore_authored_testfiles is defined" "missing"
 fi
 
-# ─── SPEC-6 (#2180): a finding goes to whoever OWNS the thing it is about ───
-# Fault class alone cannot say WHO fixes a finding, and the same wording used
-# to reach every reader: a criticism of a test assertion read as an instruction
-# to the builder and as background to the stage that wrote it. #1841 run
-# 35720879137 judged the same two assertions weak on four consecutive passes
-# and nobody was ever told they were theirs.
-#
-# The producer states one fact of its own — WHICH artifact its finding is about
-# (`about`) — and the engine resolves the owner from the manifests. No stage
-# names another; the owner is looked up, never declared by the finder.
-print_test_section "SPEC-6: the engine routes a finding to the owner of the artifact it names"
-
-PROOT6="$TEST_TEMP_DIR/plugins6"; STATE6="$TEST_TEMP_DIR/state6"; ART6="$STATE6/artifacts"
-mkdir -p "$PROOT6/tool/sb-judge" "$PROOT6/agent/sb-author" "$ART6"
-# The judge: fails, and says which artifact its finding concerns.
-cat > "$PROOT6/tool/sb-judge/manifest.yaml" <<'EOF'
-id: sb-judge
-name: sb-judge
-kind: tool
-version: 0.0.1
-convergence: advisory
-hooks:
-  run: sb_judge_run
-inputs: []
-outputs:
-  - id: sb_judge_result
-    path: ${artifact_dir}/sb-judge-result.json
-    type: json
-    required: true
-    primary: true
-  - id: sb_judge_detail
-    path: ${artifact_dir}/sb-judge-detail.txt
-    type: text
-    required: false
-    summary: true
-EOF
-# The owner: its manifest DECLARES the artifact the finding is about.
-cat > "$PROOT6/agent/sb-author/manifest.yaml" <<'EOF'
-id: sb-author
-name: sb-author
-kind: agent
-version: 0.0.1
-hooks:
-  run: sb_author_run
-inputs: []
-outputs:
-  - id: sb_author_work
-    path: ${artifact_dir}/authored-thing.txt
-    type: text
-    required: true
-    primary: true
-EOF
-_TPL_STAGES=(sb-author sb-judge)
-printf '{"schema_version":1,"run_id":"sb6","stage_statuses":{"sb-author":"complete","sb-judge":"failed"},"stage_verdicts":{"sb-author":"pass","sb-judge":"fail"}}
-' > "$STATE6/pipeline-state.json"
-printf 'THE-JUDGE-FINDING: the second assertion proves less than its requirement
-' > "$ART6/sb-judge-detail.txt"
-printf 'authored
-' > "$ART6/authored-thing.txt"
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"2 weak","about":"authored-thing.txt"}
-' > "$ART6/sb-judge-result.json"
-
-_head_of() { grep -E "^### $1" <<< "$2" || true; }
-
-# Reader = the owner.
-_blk6_owner="$(ZBUILD_CURRENT_STAGE=sb-author stage_summaries_prompt_block "$STATE6/pipeline-state.json" "$PROOT6" 2>/dev/null || true)"
-_h6_owner="$(_head_of sb-judge "$_blk6_owner")"
-assert_contains "[SPEC-6] the owner of the named artifact is told it is theirs" \
-    "$_h6_owner" "are yours to fix"
-assert_contains "[SPEC-6] …and the finding itself is there" \
-    "$_blk6_owner" "THE-JUDGE-FINDING"
-
-# Reader = anyone else.
-_blk6_other="$(ZBUILD_CURRENT_STAGE=sb-builder stage_summaries_prompt_block "$STATE6/pipeline-state.json" "$PROOT6" 2>/dev/null || true)"
-_h6_other="$(_head_of sb-judge "$_blk6_other")"
-if [[ -n "$_h6_other" && "$_h6_other" == *"not yours to fix"* && "$_h6_other" != *"are yours to fix"* ]]; then
-    assert_pass "[SPEC-6] a non-owner is NOT told to fix it"
-else
-    assert_fail "[SPEC-6] a non-owner is NOT told to fix it" "${_h6_other:-<no heading rendered>}"
-fi
-assert_contains "[SPEC-6] …the non-owner is told who owns it" "$_h6_other" "sb-author"
-assert_contains "[SPEC-6] …and still sees the finding (every stage sees everything)" \
-    "$_blk6_other" "THE-JUDGE-FINDING"
-
-# No `about` → unchanged behaviour: a failure with no fault is the reader's.
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"2 weak"}
-' > "$ART6/sb-judge-result.json"
-_blk6_none="$(ZBUILD_CURRENT_STAGE=sb-builder stage_summaries_prompt_block "$STATE6/pipeline-state.json" "$PROOT6" 2>/dev/null || true)"
-assert_contains "[SPEC-6] a finding about nothing in particular keeps the old framing" \
-    "$(_head_of sb-judge "$_blk6_none")" "fix these findings before you finish"
-
-# An `about` nobody declares resolves to no owner — never to a guess.
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x","about":"nobody-declares-this.txt"}
-' > "$ART6/sb-judge-result.json"
-_blk6_unk="$(ZBUILD_CURRENT_STAGE=sb-builder stage_summaries_prompt_block "$STATE6/pipeline-state.json" "$PROOT6" 2>/dev/null || true)"
-assert_contains "[SPEC-6] an unowned artifact keeps the old framing rather than inventing an owner" \
-    "$(_head_of sb-judge "$_blk6_unk")" "fix these findings before you finish"
-
-# A REPO path (an authored testfile) is owned by the stage that recorded it.
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x","about":"tests/unit/authored-by-me-test.sh"}
-' > "$ART6/sb-judge-result.json"
-printf '# authored_by: sb-author\n' > "$ART6/assertion-digests.txt"
-printf 'deadbeef  tests/unit/authored-by-me-test.sh\n' >> "$ART6/assertion-digests.txt"
-_blk6_tf="$(ZBUILD_CURRENT_STAGE=sb-author stage_summaries_prompt_block "$STATE6/pipeline-state.json" "$PROOT6" 2>/dev/null || true)"
-assert_contains "[SPEC-6] an authored testfile is owned by the stage that recorded authoring it" \
-    "$(_head_of sb-judge "$_blk6_tf")" "are yours to fix"
-
-# Review #2181: two stages can declare outputs with the SAME basename. Matching
-# on the filename alone hands the finding to whichever manifest is read first —
-# silently, and possibly to the wrong stage. An ambiguous name has no owner.
-mkdir -p "$PROOT6/tool/sb-twin"
-cat > "$PROOT6/tool/sb-twin/manifest.yaml" <<'EOF'
-id: sb-twin
-name: sb-twin
-kind: tool
-version: 0.0.1
-hooks:
-  run: sb_twin_run
-inputs: []
-outputs:
-  - id: sb_twin_work
-    path: ${artifact_dir}/authored-thing.txt
-    type: text
-    required: true
-    primary: true
-EOF
-yaml_cache_flush 2>/dev/null || true
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x","about":"authored-thing.txt"}\n' > "$ART6/sb-judge-result.json"
-_blk6_amb="$(ZBUILD_CURRENT_STAGE=sb-author stage_summaries_prompt_block "$STATE6/pipeline-state.json" "$PROOT6" 2>/dev/null || true)"
-_h6_amb="$(_head_of sb-judge "$_blk6_amb")"
-if [[ "$_h6_amb" == *"are yours to fix"* ]]; then
-    assert_fail "[SPEC-6] a name TWO stages declare has no owner — it is never given to the first one found" "$_h6_amb"
-else
-    assert_pass "[SPEC-6] a name TWO stages declare has no owner — it is never given to the first one found"
-fi
-rm -rf "$PROOT6/tool/sb-twin"; yaml_cache_flush 2>/dev/null || true
-
-# Review #2181: `about` may name SEVERAL artifacts (a contract with several
-# testfiles). One owner for all of them is still one owner; a split set is not.
-jq -n '{result_contract:2, verdict:"fail", disposition:"complete", reason:"x",
-        about:"authored-thing.txt\nauthored-thing.txt"}' > "$ART6/sb-judge-result.json"
-_blk6_multi="$(ZBUILD_CURRENT_STAGE=sb-author stage_summaries_prompt_block "$STATE6/pipeline-state.json" "$PROOT6" 2>/dev/null || true)"
-assert_contains "[SPEC-6] several artifacts with ONE owner still route to that owner" \
-    "$(_head_of sb-judge "$_blk6_multi")" "are yours to fix"
-
-# Review #2181: the banner counts with no reader in scope. An owned finding is
-# somebody's obligation — dropping it there under-reports the cycle.
-printf '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"x","about":"authored-thing.txt"}\n' > "$ART6/sb-judge-result.json"
-_cnt6="$(unset ZBUILD_CURRENT_STAGE; stage_summaries_count "$STATE6/pipeline-state.json" "$PROOT6" 2>/dev/null || true)"
-assert_eq "[SPEC-6] with no reader in scope an owned finding still counts as an obligation" \
-    "1 1" "$_cnt6"
-
-# ─── SPEC-7 (#2180): the judge states which artifact it judged ──────────────
-# Its own fact — the contract told it which testfiles to read. Without it the
-# engine has nothing to resolve an owner from.
-print_test_section "SPEC-7: spec-correspondence records the artifact its findings are about"
-# shellcheck disable=SC1091
-source "$REPO_ROOT/plugins/agent/spec-correspondence/plugin.sh" 2>/dev/null || true
-if declare -F _sc_write_result >/dev/null 2>&1; then
-    ART7="$TEST_TEMP_DIR/art7"; mkdir -p "$ART7"
-    _sc_write_result "$ART7" "partial" "judged 2" '{}' "tests/unit/x-test.sh" >/dev/null 2>&1 || true
-    assert_eq "[SPEC-7] the result names the testfile it judged" "tests/unit/x-test.sh" \
-        "$(jq -r '.about // ""' "$ART7/spec-correspondence-result.json" 2>/dev/null)"
-else
-    assert_fail "[SPEC-7] _sc_write_result is defined" "missing"
-fi
+# SPEC-6/SPEC-7 (#2180) tested routing a finding to the owner of the artifact
+# it named; #2271 retired ownership routing — every stage answers each finding.
 
 cleanup_test_env
 print_test_results

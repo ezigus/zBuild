@@ -416,3 +416,7 @@ Under `result_contract: 2`, a verdict outside the manifest's `config.valid_verdi
 - The list is read by one parser, `scripts/lib/manifest-valid-verdicts.sh`, shared by the reader and both lints.
 
 Verification: `tests/unit/verdict-undeclared-word-test.sh`, `tests/unit/lint-verdict-words-test.sh`.
+
+### Amendment (2026-10-04, #2271)
+
+§4: rc 11 (`route_back`) is retired from the engine's vocabulary with the backward route itself (ADR-068). Test: `tests/unit/dispatch-rc-test.sh` SPEC-5.

@@ -190,8 +190,11 @@ secret_scan_run() {
             | jq -sc .)"
         local count
         count="$(printf '%s\n' "$findings_json" | jq 'length')"
-        jq -n --arg base "$base" --argjson n "$count" --argjson f "$findings_json" \
-            '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"secret_found","baseline":$base,"finding_count":$n,"findings":$f}' \
+        # #2271 (ADR-068): each location as a numbered finding — never the value.
+        local _ss_fnd
+        _ss_fnd="$(jq -r '.[] | "a secret-like value (\(.rule)) was added at \(.file):\(.line); remove it"' <<< "$findings_json" 2>/dev/null | stage_findings_json)"
+        jq -n --arg base "$base" --argjson n "$count" --argjson f "$findings_json" --argjson fnd "${_ss_fnd:-[]}" \
+            '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"secret_found","baseline":$base,"finding_count":$n,"findings":$f,"data":{"findings":$fnd}}' \
             | atomic_write "$result_path"
         # #1988: publish what only this gate knows. The finding LOCATIONS are
         # the actionable part and never reached a prompt — the aggregator

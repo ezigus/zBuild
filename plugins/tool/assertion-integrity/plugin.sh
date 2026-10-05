@@ -118,9 +118,12 @@ assertion_integrity_run() {
 
     # ADR-054 §5/§6: one result file; disposition describes how the STAGE
     # stopped, not what it concluded. This stage completed either way.
-    if ! jq -n --arg v "$verdict" --arg r "$reason" --arg f "${violated% }" \
+    # #2271 (ADR-068): each changed acceptance file is a numbered finding.
+    local _fnd _fv
+    _fnd="$(for _fv in ${violated% }; do printf '%s was changed after the tests were written; the authored version is restored before the next build\n' "$_fv"; done | stage_findings_json)"
+    if ! jq -n --arg v "$verdict" --arg r "$reason" --arg f "${violated% }" --argjson fnd "${_fnd:-[]}" \
         '{result_contract: 2, verdict: $v, disposition: "complete", reason: $r,
-          data: {violated: (if $f == "" then [] else ($f | split(" ")) end)}}' \
+          data: {violated: (if $f == "" then [] else ($f | split(" ")) end), findings: $fnd}}' \
         | atomic_write "$art/assertion-integrity-result.json"; then
         _ai_emit "assertion_integrity.result.write_failed" "dir=$art"
     fi

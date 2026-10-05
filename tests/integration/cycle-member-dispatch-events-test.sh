@@ -216,7 +216,7 @@ inner_dispatch_complete_verdict=$(jq -r 'select(.type=="cycle.member.dispatch.co
 assert_eq "inner_cycle dispatch.complete verdict=pass" "pass" "$inner_dispatch_complete_verdict"
 
 # ── Section 3: inner exhausts with FAILING tests → outer HALTS (#1208) ──────
-print_test_section "3. inner exhausts with failing tests → outer halts (never advisory-rescued, #1208)"
+print_test_section "3. inner exhausts with failing tests → outer goes round, then halts (never advisory-rescued, #1208, #2271)"
 
 : > "$ZBUILD_EVENTS_JSONL"
 rm -f "$STATE_FILE" "${STATE_FILE}.bak" "${STATE_FILE}.lock"
@@ -261,12 +261,16 @@ set +e; cycle_orchestrator_run "outer_cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE"; 
 
 # Instrumentation intact: the inner-cycle member's start+complete pair still fires.
 inner_start=$(jq -c 'select(.type=="cycle.member.dispatch.start" and .data.cycle_id=="outer_cycle" and .data.member=="inner_cycle")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
-assert_eq "inner_cycle dispatch.start emitted (instrumentation intact)" "1" "$inner_start"
+# #2271 (ADR-068): with an outer round left, the outer loop goes round instead
+# of halting — so the inner loop runs once per outer round (max_iterations 2).
+# The #1208 guarantee holds on the LAST round: exhausted with failing tests is
+# never rescued, it propagates as blocking_member_failure (rc 8).
+assert_eq "inner_cycle dispatch.start emitted once per outer round (instrumentation intact)" "2" "$inner_start"
 
-inner_member_complete_rc=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="inner_cycle") | .data.rc' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
-assert_eq "inner_cycle dispatch.complete rc=8 (#1208: exhausted with failing tests)" "8" "$inner_member_complete_rc"
+inner_member_complete_rc=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="inner_cycle") | .data.rc' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)
+assert_eq "inner_cycle's last dispatch.complete rc=8 (#1208: exhausted with failing tests)" "8" "$inner_member_complete_rc"
 
-inner_member_complete_verdict=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="inner_cycle") | .data.verdict' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+inner_member_complete_verdict=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="inner_cycle") | .data.verdict' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)
 assert_eq "inner_cycle dispatch.complete verdict=blocking_member_failure (propagated)" \
     "blocking_member_failure" "$inner_member_complete_verdict"
 
@@ -276,7 +280,7 @@ assert_eq "inner_cycle dispatch.complete verdict=blocking_member_failure (propag
 # last leaf value. Same leak class Wave 19-C-2 (#726) fixed for the verdict
 # channel; without the clear, a nested-cycle failure would be reported to an
 # operator as retryable purely because its last inner member happened to be.
-inner_member_complete_disp=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="inner_cycle") | .data.disposition // ""' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)
+inner_member_complete_disp=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="inner_cycle") | .data.disposition // ""' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)
 assert_eq "inner_cycle dispatch.complete disposition is EMPTY (no inner-member leak)" \
     "" "$inner_member_complete_disp"
 # And the inner cycle's OWN leaf members do carry theirs — proving the clear is

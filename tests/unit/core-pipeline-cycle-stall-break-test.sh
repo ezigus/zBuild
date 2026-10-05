@@ -104,8 +104,10 @@ _SUMMARY_BLOCK="$(stage_summaries_prompt_block "$FB_STATE/pipeline-state.json" \
     || assert_fail "[SPEC-1] a failing gate contributes a summary" "block was empty"
 assert_contains "[SPEC-1] the failure detail reaches the prompt" \
     "$_SUMMARY_BLOCK" "[SPEC-3] foo"
-assert_contains "[SPEC-1] and it is framed as blocking, not passive context" \
-    "$_SUMMARY_BLOCK" "fix these findings"
+# #2271: every reader gets the same framing — the failing stage's findings,
+# for each stage to answer itself; the engine no longer decides whose they are.
+assert_contains "[SPEC-1] and it is framed as findings to answer, not passive context" \
+    "$_SUMMARY_BLOCK" "its findings, to answer"
 
 print_test_section "SPEC-3: empty_diff + gate!=pass ⇒ runs ALL iters → rc=2 (no early stall-break, #1208)"
 _GA_VERDICT="fail"
@@ -113,7 +115,7 @@ _run_cycle "stall"
 assert_eq "[SPEC-3] cycle rc=2 (unconverged→review)" "2" "$_RUN_RC"
 assert_eq "[SPEC-3] terminated reason is max_iterations (not stalled — early break removed)" \
     "max_iterations" "${_CYCLE_LAST_TERMINATED_REASON:-}"
-assert_eq "[SPEC-3] ran ALL 5 iterations (no early terminator)" "5" "${_CYCLE_LAST_ITERATIONS:-}"
+assert_eq "[SPEC-3] ran ALL 3 iterations (no early terminator)" "3" "${_CYCLE_LAST_ITERATIONS:-}"
 if grep -q 'cycle.stalled' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
     assert_fail "[SPEC-3] no cycle.stalled event (stall-break removed)" "cycle.stalled emitted"
 else
@@ -126,9 +128,9 @@ fi
 # needs to see ZBUILD_CYCLE_ITER advance). #1840 spent 45 min of tests and
 # 68 min of gate on each of three identical trees.
 _n_test="$(grep -c '"cycle.member.dispatch.complete".*"member":"test"' "$ZBUILD_EVENTS_JSONL" || true)"
-assert_eq "[SPEC-3b] the passing test member is dispatched exactly ONCE across 5 iterations" "1" "$_n_test"
-assert_eq "[SPEC-3c] iterations 2–5 reuse the test member's verdict (4 reuse events)" \
-    "4" "$(grep '"cycle.iteration.reused"' "$ZBUILD_EVENTS_JSONL" | grep -c '"member":"test"' || true)"
+assert_eq "[SPEC-3b] the passing test member is dispatched exactly ONCE across 3 iterations" "1" "$_n_test"
+assert_eq "[SPEC-3c] iterations 2–3 reuse the test member's verdict (2 reuse events)" \
+    "2" "$(grep '"cycle.iteration.reused"' "$ZBUILD_EVENTS_JSONL" | grep -c '"member":"test"' || true)"
 assert_contains "[SPEC-3c] a reuse event names the iteration it reuses" \
     "$(grep '"cycle.iteration.reused"' "$ZBUILD_EVENTS_JSONL" | head -1)" '"from_iter":"1"'
 _n_ga="$(grep -c '"cycle.member.dispatch.complete".*"member":"gate-aggregator"' "$ZBUILD_EVENTS_JSONL" || true)"
@@ -149,8 +151,8 @@ _cycle_tree_fingerprint() { printf 'x\n' >> "$_FP_COUNTER"; printf 'fp-%s' "$(wc
 _run_cycle "changed"
 assert_eq "[SPEC-3f] with a different fingerprint each iteration nothing is reused" \
     "0" "$(grep -c '"cycle.iteration.reused"' "$ZBUILD_EVENTS_JSONL" || true)"
-assert_eq "[SPEC-3f] the test member ran every iteration (5)" \
-    "5" "$(grep -c '"cycle.member.dispatch.complete".*"member":"test"' "$ZBUILD_EVENTS_JSONL" || true)"
+assert_eq "[SPEC-3f] the test member ran every iteration (3)" \
+    "3" "$(grep -c '"cycle.member.dispatch.complete".*"member":"test"' "$ZBUILD_EVENTS_JSONL" || true)"
 if declare -F _orig_cycle_tree_fingerprint >/dev/null 2>&1; then
     eval "$(declare -f _orig_cycle_tree_fingerprint | sed '1s/^_orig_cycle_tree_fingerprint/_cycle_tree_fingerprint/')"
 else
@@ -162,14 +164,9 @@ fi
 # 2/8), so the cycle burned every remaining iteration re-failing the same
 # gate before design got the rewind. It now fires at the iteration the fault
 # appears, while the edge's budget lasts.
-print_test_section "SPEC-11 [#2119]: a specification fault routes back at the iteration it appears"
-_GA_VERDICT="fail"; _GA_FAULT="specification"
-_run_cycle "early-rb"
-assert_eq "[SPEC-11] the cycle returns route_back (rc=11)" "11" "$_RUN_RC"
-assert_eq "[SPEC-11] after ONE iteration, not at exhaustion" "1" "${_CYCLE_LAST_ITERATIONS:-}"
-assert_eq "[SPEC-11] cycle.route_back.early emitted" "1" "$(grep -c '"cycle.route_back.early"' "$ZBUILD_EVENTS_JSONL" || true)"
-assert_eq "[SPEC-11] the rewind target is the design cycle" "design_verify_cycle" "${_CYCLE_ROUTE_BACK_TO:-}"
-_GA_FAULT=""
+# SPEC-11 (#2119) is retired with route_back (#2271): a finding the build loop
+# cannot resolve now ends it early through counted answers — see
+# tests/integration/unowned-finding-test.sh U1.
 
 print_test_section "SPEC-4/SPEC-10: empty_diff + gate=pass ⇒ converged (no false stall)"
 _GA_VERDICT="pass"

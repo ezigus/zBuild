@@ -1079,8 +1079,10 @@ install_simple_design_continue() {
     mkdir -p "$_repo/.zbuild/templates"
     awk '
         /^id: simple$/ { print "id: simple-design-continue"; print "extends: simple"; next }
-        /^design_verify_cycle:/ { in_dvc = 1 }
-        in_dvc && /^[a-z_-]+:/ && !/^design_verify_cycle:/ { in_dvc = 0 }
+        # #2271: the design loop is nested in delivery_loop, which is the
+        # top-level loop now — both continue past exhaustion in this overlay.
+        /^(design_verify_cycle|delivery_loop):/ { in_dvc = 1; print; next }
+        in_dvc && /^[a-z_-]+:/ { in_dvc = 0 }
         in_dvc && /^  on_max: halt$/ { print "  on_max: continue"; next }
         { print }
     ' "$_src_root/config/templates/simple.yaml" > "$_repo/.zbuild/templates/simple-design-continue.yaml"

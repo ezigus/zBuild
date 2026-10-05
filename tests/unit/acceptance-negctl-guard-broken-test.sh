@@ -84,7 +84,7 @@ printf '{"inputs":{"design":"%s"}}\n' "$st/artifacts/design.md" > "$st/stage-inp
 R="$st/artifacts/acceptance-gate-result.json"
 assert_eq "[G3] the gate fails" "fail" "$(jq -r '.verdict // empty' "$R" 2>/dev/null)"
 assert_eq "[G3] ...without blaming the specification" "" "$(jq -r '.fault // empty' "$R" 2>/dev/null)"
-assert_eq "[G3] ...about the testfile" "tests/broken-test.sh" "$(jq -r '.about // empty' "$R" 2>/dev/null)"
+assert_contains "[G3] ...its numbered finding says the test itself is broken" "$(jq -r '.data.findings[]?.text' "$R" 2>/dev/null)" "the test itself is broken"
 assert_contains "[G3] the reason says the test itself fails on the new code" "$(jq -r '.reason // empty' "$R" 2>/dev/null)" "fails on the new code too"
 
 cleanup_test_env

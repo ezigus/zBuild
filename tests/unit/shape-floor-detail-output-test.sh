@@ -116,8 +116,8 @@ export ZBUILD_SHAPE_FLOOR_SCOPE="plugins/tool/shape-floor/plugin.sh"
 _run_with "SHAPE_FLOOR FAIL missing_floor_files: tests/golden/x.golden"
 
 assert_eq "[SPEC-5 guard] out-of-scope fail → result verdict=fail" "fail" "$(_verdict_of)"
-assert_eq "[SPEC-5 guard] out-of-scope fail still records fault=scope" \
-    "scope" "$(jq -r '.fault // ""' "$RESULT" 2>/dev/null || true)"
+assert_eq "[SPEC-5 guard] out-of-scope fail records no fault class (#2271)" \
+    "" "$(jq -r '.fault // ""' "$RESULT" 2>/dev/null || true)"
 if [[ -s "$DETAIL" ]]; then
     assert_pass "[SPEC-5 guard] out-of-scope fail still writes the summary"
 else

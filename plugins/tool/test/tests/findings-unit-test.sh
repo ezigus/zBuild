@@ -12,9 +12,8 @@
 #
 # F1  a guard failure: the failing file, its ✗ line as the reason, and the
 #     offending file it names (path:line:) under points_at
-# F2  the result carries data.failures and a top-level `about` = the pointed-at
-#     files, newline-separated (#2180's shape, which the engine resolves to an
-#     owner)
+# F2  the result carries data.failures, and each failing file is a numbered
+#     finding (#2271: no top-level `about` — ownership is not the engine's)
 # F3  the stage summary opens with a "Failing files" section: file — reason
 # F4  a ✗ followed by its expected/got detail line: both are the reason
 # F5  a file that exits non-zero after its last passing check with no ✗ says
@@ -22,8 +21,7 @@
 # F6  a TIMEOUT says it timed out
 # F7  points_at never names the failing file itself, a path that does not
 #     exist in the tree, or a path outside it
-# F8  a failure that points at nothing leaves `about` unset (the fault-class
-#     routing applies, as today)
+# F8  the result never carries a top-level `about`
 # F9  consecutive ✗ lines are two checks, not a check and its detail
 #     (claude-review on #2210)
 # F10 a staging path containing a space still names the failing file
@@ -39,7 +37,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "plugin: test stage names what to fix (failing files, reasons, about)"
+print_test_header "plugin: test stage names what to fix (failing files, reasons, findings)"
 
 setup_test_env "test-stage-findings"
 
@@ -104,8 +102,10 @@ _f_points="$(jq -r '.data.failures[0].points_at // [] | join(",")' "$OUT_JSON" 2
 assert_eq "[F1] the failing file, repo-relative" "tests/unit/guard-test.sh" "$_f_file"
 assert_contains "[F1] the reason is the failing check" "$_f_reason" "all tiers free of the forbidden-pipe antipattern"
 assert_eq "[F1] points_at is the offending file the guard named" "plugins/x/tests/authored-test.sh" "$_f_points"
-assert_eq "[F2] about names the pointed-at file (the engine resolves its owner)" \
-    "plugins/x/tests/authored-test.sh" "$(jq -r '.about // empty' "$OUT_JSON" 2>/dev/null || true)"
+# #2271: no top-level `about` — ownership is not the engine's to resolve. The
+# failing file is a numbered finding; the pointed-at file stays in failures[].
+assert_contains "[F2] the failing file is a numbered finding" \
+    "$(jq -r '.data.findings[]?.text' "$OUT_JSON" 2>/dev/null || true)" "tests/unit/guard-test.sh fails"
 
 print_test_section "F3: the summary opens with what to fix"
 _sum="$(cat "$ARTIFACT_DIR/test-failures-summary.md" 2>/dev/null || true)"

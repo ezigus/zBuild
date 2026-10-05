@@ -67,7 +67,7 @@ Templates bind stages to **roles**, not plugin ids. At resolution time the engin
 
 ### Gates and convergence
 
-Mechanical [[mechanics/gates]] produce pass/fail verdicts. Cycles are bounded and converge via [[mechanics/convergence]] (`exit_when`, `on_max`). The [[mechanics/aggregators|gate-aggregator]] is the sole merge-blocker. Review lenses are advisory. The [[mechanics/route_back]] primitive (rc=11, ADR-045) lets a cycle send work back to an earlier stage.
+Mechanical [[mechanics/gates]] produce pass/fail verdicts. Cycles are bounded and converge via [[mechanics/convergence]] (`exit_when`, `on_max`). The [[mechanics/aggregators|gate-aggregator]] is the sole merge-blocker. Review lenses are advisory. Loops nest instead of jumping back: every stage answers every finding, and a loop counts the answers to decide whether to go round or stop ([[mechanics/finding-answers]], ADR-068).
 
 ### Formal decisions
 

@@ -191,3 +191,7 @@ modified — so confidence is substituted by these deterministic gates):
 - [ADR-040](ADR-040-composable-gate-lens-taxonomy.md) — marker-driven discovery.
   **Amended (extended).**
 - [ADR-042](ADR-042-stage-portability.md) — role-then-id resolution. **Completed.**
+
+### Amendment (2026-10-04, #2271)
+
+The preflight no longer considers stages "reachable by `route_back`". Counting answers (`core/pipeline/unowned.sh`) names no stage: the stages that answer findings are the stages that declare a save-as-you-go output (ADR-063 §5). Test: `tests/integration/unowned-finding-test.sh`.

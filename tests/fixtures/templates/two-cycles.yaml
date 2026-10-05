@@ -1,13 +1,11 @@
-id: route-back-cycles
-name: Route-back cycles fixture
+id: two-cycles
+name: Two cycles fixture
 extends: null
-# Owned fixture (#979): replaces the retired standard.yaml for the route_back
-# budget tests. Those tests fully stub cycle_orchestrator_run/cycle_dispatch_stage
-# and key the mock on the dispatch-unit name `design_impact_cycle` (converges)
-# vs. a second cycle (route_backs). The template therefore only needs to declare
-# these two cycle dispatch units in order; the per-edge cap is injected via the
-# _TPL_CYCLE_ROUTE_BACK_MAX_build_review_cycle env export at test time (standard.yaml
-# declared no route_back either — the export survived load_template).
+# Owned fixture (#979; renamed from route-back-cycles in #2271, which retired
+# route_back). Tests that fully stub cycle_orchestrator_run/cycle_dispatch_stage
+# key the mock on the dispatch-unit names — `design_impact_cycle` and a second
+# cycle — so the template only needs to declare these two cycle dispatch units
+# in order, after a leaf.
 defaults:
   strategy: fanout
 
