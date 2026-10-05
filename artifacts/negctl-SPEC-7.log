@@ -1,0 +1,65 @@
+### SPEC-7 baseline tests/unit/adr-063-vocabulary-test.sh
+
+[38;2;0;212;255m[1m  ADR-063: vocabulary amendment — timed_out/out_of_turns, per-stage helpers, #2187 pointer (#2032)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-7 [#2032/SPEC-7]: Status=Accepted; no prescriptive exhausted/escalate[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] ADR-063 Status must read Accepted (was Proposed before this change)
+    [2m**Status:** Proposed (2026-09-02)[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] prescriptive 'disposition: exhausted' must be removed from ADR-063
+    [2mfound: | §3 | partial is signalled as `disposition: exhausted` | **yes** |[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] prescriptive 'exhausted → escalate' engine action must be removed from ADR-063
+    [2mfound: - `exhausted → escalate` already routes to `_route_escalate_timeout` (+50%,[0m
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] timed_out appears in ADR-063 as updated vocabulary
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] out_of_turns appears in ADR-063 as updated vocabulary
+
+  [38;2;0;212;255mSPEC-8 [#2032/SPEC-8]: per-stage _<stage>_budget_guidance helpers; old single-helper text absent[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-8] old single-helper baseline 'One helper renders the budget block' must be removed from §1
+    [2mfound: One helper renders the budget block — turns, wall-clock seconds, and the stop[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-8] per-stage _<stage>_budget_guidance helpers must be named in ADR-063 §1
+    [2mno _*_budget_guidance pattern found in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.unTq8s/docs/adr/ADR-063-budget-disclosure-and-partial-output.md[0m
+
+  [38;2;0;212;255mSPEC-9 [#2032/SPEC-9]: amendment back-pointer naming #2187 present[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-9] ADR-063 must contain an amendment back-pointer naming #2187
+    [2m#2187 not found in /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.unTq8s/docs/adr/ADR-063-budget-disclosure-and-partial-output.md[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-9] #2187 must appear in an amendment context naming the vocabulary retirement
+    [2mcontext around #2187: [0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m7 of 9 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] ADR-063 Status must read Accepted (was Proposed before this change)
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] prescriptive 'disposition: exhausted' must be removed from ADR-063
+  [38;2;248;113;113m✗[0m [#2032/SPEC-7] prescriptive 'exhausted → escalate' engine action must be removed from ADR-063
+  [38;2;248;113;113m✗[0m [#2032/SPEC-8] old single-helper baseline 'One helper renders the budget block' must be removed from §1
+  [38;2;248;113;113m✗[0m [#2032/SPEC-8] per-stage _<stage>_budget_guidance helpers must be named in ADR-063 §1
+  [38;2;248;113;113m✗[0m [#2032/SPEC-9] ADR-063 must contain an amendment back-pointer naming #2187
+  [38;2;248;113;113m✗[0m [#2032/SPEC-9] #2187 must appear in an amendment context naming the vocabulary retirement
+
+### SPEC-7 head tests/unit/adr-063-vocabulary-test.sh
+
+[38;2;0;212;255m[1m  ADR-063: vocabulary amendment — timed_out/out_of_turns, per-stage helpers, #2187 pointer (#2032)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255mSPEC-7 [#2032/SPEC-7]: Status=Accepted; no prescriptive exhausted/escalate[0m
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] ADR-063 Status reads Accepted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] no prescriptive 'disposition: exhausted' in ADR-063
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] no prescriptive 'exhausted → escalate' engine action in ADR-063
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] timed_out appears in ADR-063 as updated vocabulary
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] out_of_turns appears in ADR-063 as updated vocabulary
+
+  [38;2;0;212;255mSPEC-8 [#2032/SPEC-8]: per-stage _<stage>_budget_guidance helpers; old single-helper text absent[0m
+  [38;2;74;222;128m✓[0m [#2032/SPEC-8] 'One helper renders the budget block' is absent (per-stage helpers language used)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-8] per-stage _<stage>_budget_guidance helper pattern present in ADR-063
+
+  [38;2;0;212;255mSPEC-9 [#2032/SPEC-9]: amendment back-pointer naming #2187 present[0m
+  [38;2;74;222;128m✓[0m [#2032/SPEC-9] ADR-063 contains a reference to #2187
+  [38;2;74;222;128m✓[0m [#2032/SPEC-9] #2187 reference is in an amendment/vocabulary-retirement context
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 9 tests passed[0m
+
