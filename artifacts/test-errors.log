@@ -1,0 +1,39 @@
+unit: FAIL /home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.BonH1e/tests/unit/lint-test-errexit-test.sh
+
+[38;2;0;212;255m[1m  a test file never turns stop-on-error on mid-file (#2252 G)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [L1] no -e header, then set -e → refused
+  [38;2;74;222;128m✓[0m [L2] ...set -euo pipefail mid-file → refused
+  [38;2;74;222;128m✓[0m [L3] an -e header may toggle it
+  [38;2;74;222;128m✓[0m [L4] set +e and set -o pipefail are fine
+  [38;2;248;113;113m✗[0m [L5] the real tree passes
+    [2mexpected: 0, got: 1[0m
+lint-test-errexit: tests/integration/cycle-member-unfinished-no-convergence-test.sh:142 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
+lint-test-errexit: 1 file(s) switch stop-on-error on mid-file
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 5 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [L5] the real tree passes
+
+lint: FAIL (npm run lint)
+
+> zbuild@0.1.0 lint
+> bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 | xargs -0 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-test-identity.sh && bash scripts/lib/lint-llm-envelope.sh && bash scripts/lib/lint-verdict-classify.sh && bash scripts/lib/lint-disposition-classify.sh && bash scripts/lib/lint-silenced-redirect.sh && bash scripts/lib/lint-test-errexit.sh && bash scripts/lib/lint-verdict-words.sh && bash scripts/lib/lint-disposition-words.sh && bash scripts/lib/lint-stage-signals.sh && bash scripts/lib/lint-stage-checkpoint.sh && bash scripts/lib/lint-adr-enforced-by.sh && bash scripts/lib/lint-plain-prompts.sh
+
+lint-model-names: OK — no hardcoded model names in core/ plugins/ scripts/
+lint-doc-style: OK — 13 in-scope page(s) have a plain-language newcomer opening (README + docs/wiki/*.md, excluding _Sidebar.md and generated subdirs).
+lint-vision: OK — docs/VISION.md conforms to ADR-049.
+validate-mechanics-yaml: OK — 18 mechanics validated
+lint-doc-freshness: OK — 56 plugin(s), 18 mechanic(s) — all checks passed.
+lint-action-versions: OK — no action version drift detected.
+lint-grep-c: OK — no grep -c || echo occurrences in scripts/ core/ plugins/ tests/
+lint-test-identity: OK — no real issue number used as test identity
+lint-llm-envelope: OK — 60 plugin source(s) checked, no markdown-document envelope fields
+lint-verdict-classify: 34 manifest(s) checked, all declared verdicts classify
+lint-disposition-classify: 1 manifest(s) checked, all declared failure classes classify
+lint-silenced-redirect: clean
+lint-test-errexit: tests/integration/cycle-member-unfinished-no-convergence-test.sh:142 turns stop-on-error on in a file that runs without it (header: set -uo pipefail) — an expected non-zero rc after this line kills the file; use 'cmd || rc=$?' instead
+lint-test-errexit: 1 file(s) switch stop-on-error on mid-file
