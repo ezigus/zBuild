@@ -172,6 +172,10 @@ assert_contains "T6: the prompt offers SPEC-n[done]: for what the code already d
 assert_contains "T6: the evidence syntax is shown" "$_t6_prompt" "after \` evidence: \`"
 assert_contains "T6: the example block carries a [done] line with evidence" "$_t6_prompt" \
     "SPEC-3[done]: <something the code already does> evidence: scripts/x.sh:42"
+# #2305 (ADR-069 §9): design-gate rejects a [code] requirement that describes
+# file contents, so the prompt says so before design writes one.
+assert_contains "T6: a [code] requirement must describe behaviour, not file contents (#2305)" "$_t6_prompt" \
+    "A [code] requirement describes what the code does, not what a file contains"
 for _old in '[guard]' '[change]'; do
     if grep -qF -- "$_old" <<< "$_t6_prompt"; then
         assert_fail "T6: the prompt no longer offers $_old" "found in design-prompt.txt"

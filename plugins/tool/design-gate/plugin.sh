@@ -64,6 +64,33 @@ _dg_evidence_ok() {
     [[ "$n" -ge 1 && "$n" -le "${lines:-0}" ]]
 }
 
+# _dg_describes_contents <text> — rc 0 when a [code] requirement's words only
+# say what a file contains or that it exists (#2305, ADR-069 §9). Such a
+# requirement fails before the change and passes after it, so it satisfies the
+# fail-first rule while proving nothing about behaviour. All three must hold:
+#   - it names a file: a path with / or a source extension, or the word file,
+#     manifest, source, script or function;
+#   - it uses a contents verb: contains, defines, declares, exists, is/are
+#     present, has a … key/field/entry/function, greps;
+#   - it has no behaviour word: returns, emits, writes, fails, prints, exits,
+#     rejects, skips, stops, runs, refuses, outputs, logs, calls, reports,
+#     passes, creates, removes, produces, reads, sends (any ending), or when, if,
+#     whenever, unless, given.
+# Text inside backticks or double quotes is a quoted name, not a verb, so it is
+# dropped before the verbs are read. False positives block real designs: keep
+# the lists tight.
+_dg_describes_contents() {
+    local raw="${1,,}" t
+    local b='(^|[^a-z0-9_])' e='([^a-z0-9_]|$)'
+    [[ "$raw" =~ ${b}([a-z0-9_.-]+/[a-z0-9_./-]+|[a-z0-9_-]+\.(sh|bash|ya?ml|json|md|py|js|ts|toml|txt)|files?|manifests?|source|scripts?|functions?)${e} ]] || return 1
+    t="$raw"
+    while [[ "$t" =~ ^(.*)\`[^\`]*\`(.*)$ ]]; do t="${BASH_REMATCH[1]} ${BASH_REMATCH[2]}"; done
+    while [[ "$t" =~ ^(.*)\"[^\"]*\"(.*)$ ]]; do t="${BASH_REMATCH[1]} ${BASH_REMATCH[2]}"; done
+    [[ "$t" =~ ${b}(contains?|defines?|declares?|exists?|greps?|(is|are)\ +present|(has|have)\ +(a|an|the)\ +([^ ]+\ +){0,3}(keys?|fields?|entry|entries|functions?))${e} ]] || return 1
+    [[ "$t" =~ ${b}((return|emit|write|fail|print|exit|reject|skip|stop|run|refuse|output|log|call|report|pass|create|remove|produce|read|send)[a-z]*|written|wrote|ran|when|if|whenever|unless|given)${e} ]] && return 1
+    return 0
+}
+
 # ─── design_gate_run ──────────────────────────────────────────────────────────
 # Runs C1..C5, collects ALL violations, writes verdict-in-artifact, emits
 # design_gate.{pass,fail}. Always rc=0.
@@ -83,6 +110,7 @@ _dg_plain() {
         UNKNOWN_STATUS*)     printf '%s is tagged %s, which is not a status — tag it [code] if it needs code, [no-code] if it needs work that changes no behaviour, or [done] if the code already does it, naming the evidence after " evidence: "' "$id" "$third" ;;
         DONE_NO_EVIDENCE*)   printf '%s is marked [done] but names no evidence — end its line with " evidence: " and a file and line (scripts/x.sh:42) or an existing test file that shows the code already does it' "$id" ;;
         DONE_BAD_EVIDENCE*)  printf 'the evidence %s for %s does not point at the repository — name a file that exists, by its path from the repository root (no leading / and no ..), with a line number inside the file' "$third" "$id" ;;
+        CONTENTS_NOT_BEHAVIOUR*) printf '%s describes what a file contains, not what the code does — describe the behaviour someone could observe (an input and what happens), or, if the code already does it, mark it [done] with evidence' "$id" ;;
         MISSING_TESTFILE_FOR_SPEC*) printf '%s has no test file listed — add a "%s: <test file>" line under TESTFILES:' "$id" "$id" ;;
         "WIRING_MISSING ("*) printf 'the acceptance block does not say which existing file calls the new code — add a WIRING: line naming it, or WIRING: none if nothing calls it yet' ;;
         WIRING_MISSING*)     printf 'the WIRING file %s does not exist — name a file that exists in the repository, or WIRING: none' "$id" ;;
@@ -146,7 +174,9 @@ design_gate_run() {
                     # its own proposed test file. The acceptance gate checks it.
                     # Traversal is dropped by acceptance-block.sh while parsing.
                     [[ -n "$(acceptance_list_testfiles_for_spec "$design_md" "$_spec" 2>/dev/null || true)" ]] \
-                        || violations+=("MISSING_TESTFILE_FOR_SPEC $_spec (no testfile declared for [code] SPEC)") ;;
+                        || violations+=("MISSING_TESTFILE_FOR_SPEC $_spec (no testfile declared for [code] SPEC)")
+                    _dg_describes_contents "$_ACC_SPEC_TEXT" \
+                        && violations+=("CONTENTS_NOT_BEHAVIOUR $_spec (describes file contents, not behaviour)") ;;
                 done)
                     if [[ "$_ACC_SPEC_TAG" == "guard" ]]; then
                         violations+=("UNKNOWN_STATUS $_spec [guard] (the retired tag; use [done] with evidence)")
