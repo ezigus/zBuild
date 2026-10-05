@@ -42,8 +42,12 @@ _unowned_answerers() {
 _unowned_clear_round() {
     local sd="$1"; shift
     [[ -d "$sd/finding-answers" && $# -gt 0 ]] || return 0
-    local -a f=() m
-    for m in "$@"; do f+=("$sd/finding-answers/$m.json"); done
+    local -a f=() m u
+    for m in "$@"; do
+        f+=("$sd/finding-answers/$m.json")
+        # A map member's per-unit files too (<stage>.<element>.json).
+        for u in "$sd/finding-answers/$m".*.json; do [[ -e "$u" ]] && f+=("$u"); done
+    done
     rm -f "${f[@]}" 2>/dev/null || true
 }
 

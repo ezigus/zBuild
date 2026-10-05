@@ -27,6 +27,8 @@
 # U7 [change] an answer left over from an earlier run or round never counts:
 #             a stage that answers nothing this round does not disclaim
 #             (review #2291 round 2)
+# U9 [change] the same for a map member's per-unit answer file
+#             (<stage>.<element>.json) — review #2291 round 3
 # U8 [guard]  with no stage before the yielding loop, nothing can disclaim: no
 #             stop, and the yielded finding stays recorded
 set -uo pipefail
@@ -210,6 +212,22 @@ _run_with_stale() {
 }
 TA="nothing to do" BUILD="nothing to do" DESIGN="" IMPACT="nothing to do" _run_with_stale
 assert_eq "[U7] no report — design said nothing this time" "absent" \
+    "$( [[ -s "$ZBUILD_STATE_DIR/artifacts/unowned-findings.md" ]] && echo present || echo absent )"
+
+print_test_section "U9: a leftover per-unit answer does not count"
+_run_with_stale_unit() {
+    : > "$LOG"; : > "$ZBUILD_EVENTS_JSONL"; rm -rf "$FA" "$ZBUILD_STATE_DIR/artifacts/unowned-findings.md"
+    mkdir -p "$FA"
+    jq -nc '{"acc finding 1": {answer:"nothing to do", why:"left over", by:"design.unit"}}' > "$FA/design.unit.json"
+    local sf="$ZBUILD_STATE_DIR/pipeline-state.json"
+    rm -f "$sf" "$sf.bak" "$sf.lock"
+    jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$sf"
+    _TPL_STAGES=(); _TPL_CYCLES=()
+    load_template "$TPL" >/dev/null 2>&1 || return 99
+    cycle_orchestrator_run outer_loop "$ZBUILD_STATE_DIR" "$sf" >/dev/null 2>&1
+}
+TA="nothing to do" BUILD="nothing to do" DESIGN="" IMPACT="nothing to do" _run_with_stale_unit
+assert_eq "[U9] no report — the per-unit answer was left over" "absent" \
     "$( [[ -s "$ZBUILD_STATE_DIR/artifacts/unowned-findings.md" ]] && echo present || echo absent )"
 
 print_test_section "U8: nothing ran before the yielding loop"
