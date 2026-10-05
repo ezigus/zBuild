@@ -2,10 +2,10 @@
 # and the feedback a later stage reads. scripts/lib/lint-plain-prompts.sh reads
 # them for engine-internal words (#2269, ADR-067). Add a file when it starts
 # building model-facing text.
-plugins/agent/design/plugin.sh
+plugins/agent/design/plugin.sh printf
 plugins/agent/plan/plugin.sh
 plugins/agent/test-author/plugin.sh
-plugins/agent/build/lib/prompt.sh
+plugins/agent/build/lib/prompt.sh printf
 plugins/agent/impact/plugin.sh
 plugins/agent/issue-acceptance/plugin.sh
 plugins/agent/spec-coverage/plugin.sh
@@ -28,3 +28,4 @@ core/pipeline/input-resolve.sh printf
 core/router/route.sh
 plugins/agent/intake/prompts/intake.md
 scripts/lib/stage-answers.sh
+scripts/lib/stage-conduct.sh

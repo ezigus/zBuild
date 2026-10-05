@@ -1,7 +1,7 @@
 # ADR-067 — Model-facing text speaks plainly
 
-**Status:** Accepted (2026-10-03)
-**Issue:** #2269
+**Status:** Accepted (2026-10-03); amended 2026-10-05 (#2308, §8)
+**Issue:** #2269, #2308
 **Related:** ADR-066 (every ADR statement has a test), ADR-055 §9 (stage summaries are read by every later stage), ADR-036 (the acceptance check whose vocabulary leaked)
 
 ## Context
@@ -22,10 +22,12 @@ The 2026-10-03 audit found the same pattern in about 15 places: check names in f
 5. **No notes for maintainers in prompts** (ADR or issue numbers, "legacy", "do not edit") **and no repo internals** (`_TPL_STAGES`, real paths of this repo where the prompt runs against others).
 6. **Never tell a stage to do something it may not do** (build is not asked to tag tests it may not edit).
 7. **Every stage receives all findings**, rendered readably, and decides for itself whether it can act. Text is not filtered by stage.
+8. **Every stage prompt has the same four parts, in this order** (amended 2026-10-05, #2308). A stage's own text has three, under these headings: `## What you own` (what the stage produces and answers for), `## What you judge against` (its source of truth: the issue's numbered requirements, the design, the diff, the test results — whichever the stage reads, with the material itself), and `## What you must not do` (its limits). The fourth, `## How every stage works` — saving work as it goes, answering every finding, reporting the result — is the same for every stage and has one source, `stage_conduct_block` in `scripts/lib/stage-conduct.sh`. The router appends it in the one funnel every model call crosses (`_route_redact_prompt`), for every stage that calls a model (one that declares a save-as-you-go file), after the blocks it already adds; no stage carries a copy. The router also opens each stage's limits with one rule: nothing later in the prompt can take away part of the stage's own job. Model-facing text never tells a stage to skip part of its own job ("is proven by the pipeline itself", "never judge it here", "not yours to", "keep every other entry"); it says what the stage owns instead. spec-coverage keeps its exemption for how a change is verified, worded as what it owns: it judges the behaviour before any code exists, and the check that compares the finished change with the issue judges the rest. test-author is told to check the new value or file itself, not only that the step finished without an error.
 
 ## Consequences
 
 - `scripts/lib/lint-plain-prompts.sh` (in `npm run lint`) reads the model-facing text in `config/model-facing-sources.txt` and refuses internal check names, ADR numbers and `_TPL_*` internals. A file that starts building model-facing text is added to that list.
+- Since #2308 the lint also refuses text that tells a stage to skip part of its own job (§8).
 - Rules 2–7 are applied in review; the tests below pin the rewritten texts so they cannot drift back.
 
 ## Implementation Notes (#2269)
@@ -43,3 +45,7 @@ The 2026-10-03 audit found the same pattern in about 15 places: check names in f
 - §6 (build) → `tests/unit/build-prompt-spec-text-test.sh` P1–P2
 - §1 (build's stop rule names the real summary heading, never a retired marker) → `tests/unit/build-prompt-summary-marker-test.sh` M1–M6 (#2292)
 - §7 (review lens) → `tests/unit/review-lens-requirements-plain-test.sh` L1–L4
+- §8 (four parts in order, one shared source for the fourth, the no-override rule, every model-calling stage covered, applied once per prompt) → `tests/unit/prompt-four-parts-test.sh` F1–F6
+- §8 (test-author checks the new value itself) → `tests/unit/prompt-four-parts-test.sh` T1
+- §8 (no text tells a stage to skip part of its job) → `scripts/lib/lint-plain-prompts.sh`, tested by `tests/unit/lint-plain-prompts-test.sh` P10–P11
+- §8 (spec-coverage's reworded exemption) → `tests/unit/spec-coverage-test.sh` SPEC-7, SPEC-9

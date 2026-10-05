@@ -22,6 +22,10 @@
 #   - the retired [guard] tag (#2304, ADR-069 §8): a model offered it writes it
 #     back, and the design-gate refuses it;
 #   - maintainer notes and internals: ADR-<n>, _TPL_*.
+# It also refuses text that tells a stage to skip part of its own job (#2308,
+# ADR-067 §8): "is proven by the pipeline itself … never judge it here" told two
+# stages to leave what the issue required unchecked. The phrases are the ones
+# found in the tree; say what the stage owns instead.
 # Parser keys the engine reads back (WIRING:, TESTFILES:, LOOP_COMPLETE, BLOCKED:)
 # are allowed: the plain question sits beside them in the prompt.
 #
@@ -39,6 +43,9 @@ LIST="$ROOT/config/model-facing-sources.txt"
 # One extended regex; matched case-sensitively except where noted in the class.
 FORBIDDEN='NEGCTL|REACHABILITY|[Ii]nert|[Tt]autolog|WIRING_MISSING|UNCLASSIFIED|GUARD_REGRESSED|[Nn]egative control|ADR-[0-9]+|_TPL_[A-Z]|RESOLVE|\[guard\]'
 
+# Phrases that tell a stage to leave part of its own job undone.
+SKIP_JOB='[Nn]ever judge|proven by the pipeline|[Nn]ever a gap|not yours to|[Nn]ot your job|[Kk]eep every other|[Dd]o not re-verify|[Nn]ever change, move or remove|is checked later'
+
 bad=0 files=0
 # A model sees a variable's VALUE, never its name: strip $name / ${…} first.
 _check() {   # _check <file> <lineno> <line>
@@ -47,6 +54,10 @@ _check() {   # _check <file> <lineno> <line>
         _s="${_s/"${BASH_REMATCH[1]}"/}"
     done
     [[ "$_s" =~ $FORBIDDEN ]] && _report "$1" "$2" "$_s"
+    if [[ "$_s" =~ $SKIP_JOB ]]; then
+        echo "lint-plain-prompts: $1:$2 tells a stage to skip part of its own job (\"${BASH_REMATCH[0]}\") — say what the stage owns instead (ADR-067)" >&2
+        bad=$((bad + 1))
+    fi
     return 0
 }
 _report() {   # _report <file> <lineno> <line>

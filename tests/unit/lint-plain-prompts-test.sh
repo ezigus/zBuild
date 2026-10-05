@@ -26,6 +26,12 @@
 # P9 [code]   the retired [guard] tag in a heredoc fails: a model reading it
 #             would offer it back, and the design-gate refuses it (#2304,
 #             ADR-069 §8)
+# P10 [code]  a heredoc telling a stage to skip part of its own job fails —
+#             "is proven by the pipeline itself … never judge it here" told
+#             two stages to leave what the issue required unchecked (#2308,
+#             ADR-067 §8)
+# P11 [code]  so does an answer form that calls a finding "not yours to"
+#             change, and a "keep every other entry" re-prompt
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -86,6 +92,22 @@ printf '%s\n' 'cat <<EOF' 'If the code already does it, tag it [guard].' 'EOF' >
 _src plugins/x/h.sh; _lint
 assert_eq "[P9] a heredoc offering the retired [guard] tag fails" "1" "$rc"
 assert_contains "[P9] it names the file and line" "$out" "plugins/x/h.sh:2"
+
+printf '%s\n' 'cat <<EOF' 'How it is verified is proven by the pipeline itself; never judge it here.' 'EOF' > "$R/plugins/x/i.sh"
+_src plugins/x/i.sh; _lint
+assert_eq "[P10] a heredoc telling a stage to skip part of its job fails" "1" "$rc"
+assert_contains "[P10] it names the file and line" "$out" "plugins/x/i.sh:2"
+assert_contains "[P10] it says what is wrong" "$out" "skip part of its own job"
+
+printf '%s\n' 'cat <<EOF' '  nothing to do — <why it is not yours to change>' 'EOF' > "$R/plugins/x/j.sh"
+_src plugins/x/j.sh; _lint
+assert_eq "[P11] an answer form calling a finding 'not yours to' change fails" "1" "$rc"
+printf '%s\n' 'cat <<EOF' 'Fix that one. Keep every other scope and acceptance entry.' 'EOF' > "$R/plugins/x/k.sh"
+_src plugins/x/k.sh; _lint
+assert_eq "[P11] a re-prompt to keep every other entry fails" "1" "$rc"
+printf '%s\n' 'cat <<EOF' 'Judge the behaviour the issue requires; the later check judges how it is tested.' 'EOF' > "$R/plugins/x/l.sh"
+_src plugins/x/l.sh; _lint
+assert_eq "[P11] saying what the stage owns is allowed" "0" "$rc"
 
 bash "$LINT" "$REPO_ROOT" > "$TEST_TEMP_DIR/real.out" 2>&1; rc=$?
 assert_eq "[P6] the real tree passes" "0" "$rc"
