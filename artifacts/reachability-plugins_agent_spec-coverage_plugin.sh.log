@@ -1,0 +1,271 @@
+### plugins/agent/spec-coverage/plugin.sh reverted tests/integration/cycle-member-unfinished-no-convergence-test.sh
+
+[38;2;0;212;255m[1m  cycle: unfinished member suppresses convergence (#2032)[0m
+[2m  ══════════════════════════════════════════[0m
+
+══ design-only [cycle] seq=1 input ═════════════════════════════ 10:20:53 UTC ══
+(no feedback — first iteration)
+
+══ design-only [cycle] seq=1 output OK 0.6s ════════════════════ 10:20:54 UTC ══
+exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: design-only ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] complete disposition + exit_when match → rc=0 (converges normally)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] terminated reason is converged (not suppressed)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] suppression event NOT emitted when all dispositions are complete
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] exactly 1 dispatch (converged on first iter — suppression did not fire)
+══ design-only [cycle] seq=1 input ═════════════════════════════ 10:20:54 UTC ══
+(no feedback — first iteration)
+
+══ design-only [cycle] seq=1 output OK 0.5s ════════════════════ 10:20:55 UTC ══
+exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: design-only ✓ ──
+
+══ design-only [cycle] seq=2 input ═════════════════════════════ 10:20:56 UTC ══
+(no feedback edges, no stage summaries)
+
+══ design-only [cycle] seq=2 output OK 0.4s ════════════════════ 10:20:56 UTC ══
+exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: design-only ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence emitted when member has timed_out disposition
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle iterated after suppression (2 dispatch calls, not the pre-fix 1)
+══ design-max1 [cycle] seq=1 input ═════════════════════════════ 10:20:56 UTC ══
+(no feedback — first iteration)
+
+══ design-max1 [cycle] seq=1 output OK 0.5s ════════════════════ 10:20:57 UTC ══
+exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: design-max1 ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] at max_iterations with unfinished member → term_rc=8 (not rc=0 false complete)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] cycle.timeout_exhausted emitted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] cycle.timeout_exhausted reason=design_timeout_exhausted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] terminated_reason=design_timeout_exhausted
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 10 tests passed[0m
+
+### plugins/agent/spec-coverage/plugin.sh head tests/integration/cycle-member-unfinished-no-convergence-test.sh
+
+[38;2;0;212;255m[1m  cycle: unfinished member suppresses convergence (#2032)[0m
+[2m  ══════════════════════════════════════════[0m
+
+══ design-only [cycle] seq=1 input ═════════════════════════════ 10:20:49 UTC ══
+(no feedback — first iteration)
+
+══ design-only [cycle] seq=1 output OK 0.5s ════════════════════ 10:20:50 UTC ══
+exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: design-only ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] complete disposition + exit_when match → rc=0 (converges normally)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] terminated reason is converged (not suppressed)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] suppression event NOT emitted when all dispositions are complete
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] exactly 1 dispatch (converged on first iter — suppression did not fire)
+══ design-only [cycle] seq=1 input ═════════════════════════════ 10:20:50 UTC ══
+(no feedback — first iteration)
+
+══ design-only [cycle] seq=1 output OK 0.5s ════════════════════ 10:20:51 UTC ══
+exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: design-only ✓ ──
+
+══ design-only [cycle] seq=2 input ═════════════════════════════ 10:20:51 UTC ══
+(no feedback edges, no stage summaries)
+
+══ design-only [cycle] seq=2 output OK 0.5s ════════════════════ 10:20:52 UTC ══
+exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: design-only ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence emitted when member has timed_out disposition
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle iterated after suppression (2 dispatch calls, not the pre-fix 1)
+══ design-max1 [cycle] seq=1 input ═════════════════════════════ 10:20:52 UTC ══
+(no feedback — first iteration)
+
+══ design-max1 [cycle] seq=1 output OK 0.5s ════════════════════ 10:20:53 UTC ══
+exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: design-max1 ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] at max_iterations with unfinished member → term_rc=8 (not rc=0 false complete)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] cycle.timeout_exhausted emitted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] cycle.timeout_exhausted reason=design_timeout_exhausted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] terminated_reason=design_timeout_exhausted
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 10 tests passed[0m
+
+### plugins/agent/spec-coverage/plugin.sh reverted tests/integration/cycle-member-unfinished-no-convergence-test.sh
+
+[38;2;0;212;255m[1m  cycle: unfinished member suppresses convergence (#2032)[0m
+[2m  ══════════════════════════════════════════[0m
+
+══ design-only [cycle] seq=1 input ═════════════════════════════ 10:20:53 UTC ══
+(no feedback — first iteration)
+
+══ design-only [cycle] seq=1 output OK 0.6s ════════════════════ 10:20:54 UTC ══
+exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: design-only ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] complete disposition + exit_when match → rc=0 (converges normally)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] terminated reason is converged (not suppressed)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] suppression event NOT emitted when all dispositions are complete
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] exactly 1 dispatch (converged on first iter — suppression did not fire)
+══ design-only [cycle] seq=1 input ═════════════════════════════ 10:20:54 UTC ══
+(no feedback — first iteration)
+
+══ design-only [cycle] seq=1 output OK 0.5s ════════════════════ 10:20:55 UTC ══
+exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: design-only ✓ ──
+
+══ design-only [cycle] seq=2 input ═════════════════════════════ 10:20:56 UTC ══
+(no feedback edges, no stage summaries)
+
+══ design-only [cycle] seq=2 output OK 0.4s ════════════════════ 10:20:56 UTC ══
+exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: design-only ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence emitted when member has timed_out disposition
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle iterated after suppression (2 dispatch calls, not the pre-fix 1)
+══ design-max1 [cycle] seq=1 input ═════════════════════════════ 10:20:56 UTC ══
+(no feedback — first iteration)
+
+══ design-max1 [cycle] seq=1 output OK 0.5s ════════════════════ 10:20:57 UTC ══
+exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: design-max1 ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] at max_iterations with unfinished member → term_rc=8 (not rc=0 false complete)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] cycle.timeout_exhausted emitted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] cycle.timeout_exhausted reason=design_timeout_exhausted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] terminated_reason=design_timeout_exhausted
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 10 tests passed[0m
+
+### plugins/agent/spec-coverage/plugin.sh head tests/integration/cycle-member-unfinished-no-convergence-test.sh
+
+[38;2;0;212;255m[1m  cycle: unfinished member suppresses convergence (#2032)[0m
+[2m  ══════════════════════════════════════════[0m
+
+══ design-only [cycle] seq=1 input ═════════════════════════════ 10:20:49 UTC ══
+(no feedback — first iteration)
+
+══ design-only [cycle] seq=1 output OK 0.5s ════════════════════ 10:20:50 UTC ══
+exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: design-only ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] complete disposition + exit_when match → rc=0 (converges normally)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] terminated reason is converged (not suppressed)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] suppression event NOT emitted when all dispositions are complete
+  [38;2;74;222;128m✓[0m [#2032/SPEC-2] exactly 1 dispatch (converged on first iter — suppression did not fire)
+══ design-only [cycle] seq=1 input ═════════════════════════════ 10:20:50 UTC ══
+(no feedback — first iteration)
+
+══ design-only [cycle] seq=1 output OK 0.5s ════════════════════ 10:20:51 UTC ══
+exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: design-only ✓ ──
+
+══ design-only [cycle] seq=2 input ═════════════════════════════ 10:20:51 UTC ══
+(no feedback edges, no stage summaries)
+
+══ design-only [cycle] seq=2 output OK 0.5s ════════════════════ 10:20:52 UTC ══
+exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: design-only ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence emitted when member has timed_out disposition
+  [38;2;74;222;128m✓[0m [#2032/SPEC-1] cycle iterated after suppression (2 dispatch calls, not the pre-fix 1)
+══ design-max1 [cycle] seq=1 input ═════════════════════════════ 10:20:52 UTC ══
+(no feedback — first iteration)
+
+══ design-max1 [cycle] seq=1 output OK 0.5s ════════════════════ 10:20:53 UTC ══
+exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: design-max1 ✓ ──
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] at max_iterations with unfinished member → term_rc=8 (not rc=0 false complete)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] cycle.timeout_exhausted emitted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] cycle.timeout_exhausted reason=design_timeout_exhausted
+  [38;2;74;222;128m✓[0m [#2032/SPEC-6] terminated_reason=design_timeout_exhausted
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 10 tests passed[0m
+
+### plugins/agent/spec-coverage/plugin.sh reverted tests/unit/spec-coverage-test.sh
+
+[38;2;0;212;255m[1m  spec-coverage: does the design cover the ISSUE? (#1683)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-2][change] a covering design yields covered
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] rc is binary
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] a stage that merely reports is disposition=complete
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] the prompt carries the issue text
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] and the acceptance block
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] and NOT the diff
+  [38;2;74;222;128m✓[0m [SPEC-1][change] an uncovered requirement yields uncovered
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] and rc stays binary
+  [38;2;74;222;128m✓[0m [SPEC-6][change] the finding is a structured data.uncovered[] element
+  [38;2;74;222;128m✓[0m [SPEC-6][change] and it is a real array, not a string
+  [38;2;74;222;128m✓[0m [SPEC-3][change] placeholder issue text yields unreadable
+  [38;2;74;222;128m✓[0m [SPEC-3][change] refused on the PLACEHOLDER path, not a silent router failure
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] rc binary on the unreadable path too
+
+  [38;2;0;212;255mSPEC-7: the prompt says verification-process requirements are not gaps[0m
+  [38;2;74;222;128m✓[0m [SPEC-7][change] the prompt distinguishes behaviour from how the change is verified
+  [38;2;74;222;128m✓[0m [SPEC-7][change] …and says such a requirement is never a gap
+
+  [38;2;0;212;255mSPEC-8: a SPEC that narrows a requirement does not cover it[0m
+  [38;2;74;222;128m✓[0m [SPEC-8][change] the prompt says a narrower SPEC leaves the requirement uncovered
+  [38;2;74;222;128m✓[0m [SPEC-8][change] …naming the ways a SPEC narrows (subset of cases, weaker condition)
+
+  [38;2;0;212;255m[#2032/SPEC-3]: router timeout classified into disposition[0m
+  [38;2;74;222;128m✓[0m [#2032/SPEC-3] rc=0 — finding a timeout is not a stage failure
+  [38;2;248;113;113m✗[0m [#2032/SPEC-3] route_to_model rc=124 → disposition=timed_out (not hardcoded complete)
+    [2mexpected: timed_out, got: complete[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m1 of 20 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#2032/SPEC-3] route_to_model rc=124 → disposition=timed_out (not hardcoded complete)
+
+### plugins/agent/spec-coverage/plugin.sh head tests/unit/spec-coverage-test.sh
+
+[38;2;0;212;255m[1m  spec-coverage: does the design cover the ISSUE? (#1683)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [SPEC-2][change] a covering design yields covered
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] rc is binary
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] result_contract is 2
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] a stage that merely reports is disposition=complete
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] the prompt carries the issue text
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] and the acceptance block
+  [38;2;74;222;128m✓[0m [SPEC-4][guard] and NOT the diff
+  [38;2;74;222;128m✓[0m [SPEC-1][change] an uncovered requirement yields uncovered
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] and rc stays binary
+  [38;2;74;222;128m✓[0m [SPEC-6][change] the finding is a structured data.uncovered[] element
+  [38;2;74;222;128m✓[0m [SPEC-6][change] and it is a real array, not a string
+  [38;2;74;222;128m✓[0m [SPEC-3][change] placeholder issue text yields unreadable
+  [38;2;74;222;128m✓[0m [SPEC-3][change] refused on the PLACEHOLDER path, not a silent router failure
+  [38;2;74;222;128m✓[0m [SPEC-5][guard] rc binary on the unreadable path too
+
+  [38;2;0;212;255mSPEC-7: the prompt says verification-process requirements are not gaps[0m
+  [38;2;74;222;128m✓[0m [SPEC-7][change] the prompt distinguishes behaviour from how the change is verified
+  [38;2;74;222;128m✓[0m [SPEC-7][change] …and says such a requirement is never a gap
+
+  [38;2;0;212;255mSPEC-8: a SPEC that narrows a requirement does not cover it[0m
+  [38;2;74;222;128m✓[0m [SPEC-8][change] the prompt says a narrower SPEC leaves the requirement uncovered
+  [38;2;74;222;128m✓[0m [SPEC-8][change] …naming the ways a SPEC narrows (subset of cases, weaker condition)
+
+  [38;2;0;212;255m[#2032/SPEC-3]: router timeout classified into disposition[0m
+  [38;2;74;222;128m✓[0m [#2032/SPEC-3] rc=0 — finding a timeout is not a stage failure
+  [38;2;74;222;128m✓[0m [#2032/SPEC-3] route_to_model rc=124 → disposition=timed_out (not hardcoded complete)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 20 tests passed[0m
+
