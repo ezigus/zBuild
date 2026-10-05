@@ -256,7 +256,13 @@ _run_gate_with_md "$(_g_md 'SPEC-1[code]: x' 'SPEC-2[guard]: an old guard')"
 assert_eq "[G2] an old [guard] tag → verdict=fail" "fail" "$VERDICT"
 assert_contains "[G2] the violation names it" "$(_viol)" "UNKNOWN_STATUS SPEC-2"
 assert_contains "[G2] the feedback tells design what to use instead" "$(cat "$FEEDBACK_PATH")" \
-    "SPEC-2 is tagged [guard], which is not a status"
+    "SPEC-2 carries the old guard tag, which is no longer a status"
+# #2304 (ADR-069 §8): the feedback is read by design; the literal tag would be
+# offered back to it, so the sentence names the tag without writing it.
+assert_eq "[G2] the feedback does not write the retired tag itself" "0" \
+    "$(grep -cF '[guard]' "$FEEDBACK_PATH" || true)"
+assert_eq "[G2] ...nor does the finding design answers" "0" \
+    "$(jq -r '.data.findings[].text' "$RESULT_JSON" | grep -cF '[guard]' || true)"
 _run_gate_with_md "$(_g_md 'SPEC-1[code]: x' 'SPEC-2[maybe]: unknown')"
 assert_contains "[G2] an unknown tag is rejected the same way" "$(_viol)" "UNKNOWN_STATUS SPEC-2"
 _run_gate_with_md "$(_g_md 'SPEC-1[change]: x' 'SPEC-2[no-code]: docs')"

@@ -78,6 +78,8 @@ _dg_plain() {
         SCOPE_MISSING*)      printf 'design.md has no scope block — add a ```scope block listing every file the change touches' ;;
         ACCEPTANCE_MISSING*) printf 'design.md has no readable ```acceptance block — add one with a line per requirement' ;;
         NO_STATUS*)          printf '%s has no status — tag it [code] if it needs code (its test fails on the code from before your change and passes after), [no-code] if it needs work that changes no behaviour (docs, a test, config or a refactor), or [done] if the code already does it (then name the evidence after " evidence: ")' "$id" ;;
+        # The retired tag is named, not written: design would copy it back.
+        "UNKNOWN_STATUS "*" [guard] "*) printf '%s carries the old guard tag, which is no longer a status — tag it [done] if the code already does it, naming the evidence after " evidence: ", or [code] if it needs code' "$id" ;;
         UNKNOWN_STATUS*)     printf '%s is tagged %s, which is not a status — tag it [code] if it needs code, [no-code] if it needs work that changes no behaviour, or [done] if the code already does it, naming the evidence after " evidence: "' "$id" "$third" ;;
         DONE_NO_EVIDENCE*)   printf '%s is marked [done] but names no evidence — end its line with " evidence: " and a file and line (scripts/x.sh:42) or an existing test file that shows the code already does it' "$id" ;;
         DONE_BAD_EVIDENCE*)  printf 'the evidence %s for %s does not point at the repository — name a file that exists, by its path from the repository root (no leading / and no ..), with a line number inside the file' "$third" "$id" ;;

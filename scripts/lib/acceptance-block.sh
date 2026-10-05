@@ -637,3 +637,42 @@ design_decisions_prose() {
     [[ -z "${body//[[:space:]]/}" ]] && return 0
     printf '%s\n' "$body"
 }
+
+# acceptance_requirements_for_judge <design_md> [repo_root]  (#2304, ADR-069 §7)
+# The requirements as issue-acceptance reads them: each one's words and, in
+# plain words, what its status means — never the raw tag. A done requirement
+# also gets its evidence and up to 20 lines around each cited line, read from
+# the commit at HEAD (what ships, not the working copy); 6000 characters of
+# excerpts in all. The caller cleans the text before it reaches a model.
+acceptance_requirements_for_judge() {
+    local design_md="${1:-}" root="${2:-.}" blk l sid ev path n from body budget=6000
+    blk="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
+    while IFS= read -r l; do
+        [[ "$l" == "TESTFILES:" ]] && break
+        [[ "$l" =~ $_ACCEPTANCE_SPEC_RE ]] || continue
+        sid="${BASH_REMATCH[1]}"
+        _acceptance_spec_line "$blk" "$sid" || continue
+        printf -- '- %s: %s\n' "$sid" "$_ACC_SPEC_TEXT"
+        case "$_ACC_SPEC_STATUS" in
+            no-code) printf '  Status: needs work (no code) — nothing checked it mechanically; judge it yourself, and say whether its tests would catch it broken\n' ;;
+            done)    printf '  Status: already done — design says the code already does this; check the claim\n' ;;
+            *)       printf '  Status: needs work (code) — its test failed on the old code and passes now\n'; continue ;;
+        esac
+        [[ "$_ACC_SPEC_STATUS" == "done" && "$_ACC_SPEC_REST" == *" evidence: "* ]] || continue
+        local -a _evs=(); read -ra _evs <<< "${_ACC_SPEC_REST#* evidence: }"
+        for ev in "${_evs[@]+"${_evs[@]}"}"; do
+            printf '  Evidence: %s\n' "$ev"
+            path="$ev" n=1
+            [[ "$ev" =~ ^(.+):([0-9]+)$ ]] && { path="${BASH_REMATCH[1]}"; n=$((10#${BASH_REMATCH[2]})); }
+            [[ "$path" != /* && "/$path/" != *"/../"* && $budget -gt 0 ]] || continue
+            from=$(( n > 10 ? n - 10 : 1 ))
+            # awk reads to the end (no early exit), so git never takes SIGPIPE.
+            body="$(git -C "$root" show "HEAD:$path" 2>/dev/null \
+                | awk -v a="$from" -v b="$((from + 19))" 'NR >= a && NR <= b { printf "    %d| %s\n", NR, $0 }')" || body=""
+            [[ -n "$body" ]] || { printf '    (not found in the commit at HEAD)\n'; continue; }
+            body="${body:0:$budget}"; budget=$((budget - ${#body}))
+            printf '%s\n' "$body"
+        done
+    done <<< "$blk"
+    return 0
+}
