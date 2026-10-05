@@ -57,6 +57,26 @@ _router_is_budget_exhausted() {
 _router_is_rate_limit() {
     local json="${1:-}"
     [[ -z "$json" ]] && return 1
+    # #2296: stream-json (#2139) is one record per line. Judge it by the CLI's
+    # own records only — a refused rate_limit_event, or the final result line —
+    # never by text found anywhere in it: a failed tool call writes
+    # "is_error":true and a file the model read can say "rate limit". A stream
+    # cut off by its time limit has no result line, and that is not a limit.
+    # `fromjson?` skips the line a kill truncated.
+    if [[ "$json" == *$'\n'* && "$json" == '{"type":'* ]] && command -v jq >/dev/null 2>&1; then
+        local verdict
+        verdict="$(jq -nRc '[inputs | fromjson? // empty] as $r
+            | if any($r[]; .type == "rate_limit_event"
+                    and (.rate_limit_info.status // "allowed") == "rejected")
+              then "refused"
+              else ([$r[] | select(.type == "result")] | last // "none") end' \
+            <<< "$json" 2>/dev/null || true)"
+        case "$verdict" in
+            '"refused"') return 0 ;;
+            '"none"'|'') return 1 ;;
+            *) _router_is_rate_limit "$verdict"; return $? ;;
+        esac
+    fi
     local status="" is_error="" result="" errtext=""
     if command -v jq >/dev/null 2>&1; then
         status="$(printf '%s' "$json"  | jq -r '.api_error_status // empty' 2>/dev/null || true)"

@@ -105,5 +105,49 @@ v=""; r=""
 _router_rc_classify 1 v r 0
 assert_eq "T12b: explicit flag=0 reason still router_rc_nonzero" "router_rc_nonzero" "$r"
 
+# ── #2296: the router reads stream-json (#2139), one JSON line per step ──────
+# A call cut off by its time limit has no final `result` line. The detector
+# must judge the stream by the CLI's own records — the final result line and
+# the rate_limit_event status — never by words found anywhere in it: a failed
+# tool call writes "is_error":true, and any file the model read can say "rate
+# limit". Both #2032 runs (2026-10-05) stopped on exactly that. Line shapes are
+# copied from run 37275725824's capture.
+_rle_ok='{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1791199800,"rateLimitType":"five_hour","overageStatus":"rejected","overageDisabledReason":"org_level_disabled","isUsingOverage":false},"session_id":"s"}'
+_rle_no='{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1791199800,"rateLimitType":"five_hour","overageStatus":"rejected","isUsingOverage":false},"session_id":"s"}'
+_init='{"type":"system","subtype":"init","session_id":"s"}'
+_tool_err='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"File does not exist.","is_error":true,"tool_use_id":"t1"}]},"session_id":"s"}'
+_read_rl='{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"the individual timeouts — a rate limit, most likely; a usage limit; quota; overloaded","tool_use_id":"t2"}]},"session_id":"s"}'
+_think='{"type":"system","subtype":"thinking_tokens","estimated_tokens":309,"session_id":"s"}'
+
+# T13: cut off mid-work — no result line, a failed tool call, "rate limit" in
+#      content read, the account's record says allowed → NOT a rate limit.
+_cut="$(printf '%s\n' "$_init" "$_rle_ok" "$_tool_err" "$_read_rl" "$_think")"
+set +e; _router_is_rate_limit "$_cut"; rc=$?; set -e
+assert_eq "T13: a stream cut off by its time limit is not a rate limit" "1" "$rc"
+
+# T14: a finished stream whose result succeeded, same noise inside → NOT.
+_done="$(printf '%s\n' "$_init" "$_rle_ok" "$_tool_err" "$_read_rl" '{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"s"}')"
+set +e; _router_is_rate_limit "$_done"; rc=$?; set -e
+assert_eq "T14: a finished stream with tool errors and the words is not a rate limit" "1" "$rc"
+
+# T15: the account's record refuses the call → a rate limit, result or not.
+_refused="$(printf '%s\n' "$_init" "$_rle_no" "$_think")"
+set +e; _router_is_rate_limit "$_refused"; rc=$?; set -e
+assert_eq "T15: rate_limit_event status rejected is a rate limit" "0" "$rc"
+
+# T16: the stream's final result line is an errored 429 envelope → a rate limit.
+_r429="$(printf '%s\n' "$_init" "$_rle_ok" '{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"result":"Session limit reached ∙ resets 3am","session_id":"s"}')"
+set +e; _router_is_rate_limit "$_r429"; rc=$?; set -e
+assert_eq "T16: a final 429 result line is a rate limit" "0" "$rc"
+
+# T17: final result line errored with limit text (no status) → a rate limit.
+_rtxt="$(printf '%s\n' "$_init" '{"type":"result","subtype":"success","is_error":true,"result":"Claude AI usage limit reached|1791199800","session_id":"s"}')"
+set +e; _router_is_rate_limit "$_rtxt"; rc=$?; set -e
+assert_eq "T17: a final errored result naming a limit is a rate limit" "0" "$rc"
+
+# T18: the reset time is read from the final result line of a stream.
+_m="$(_router_rate_limit_message "$_r429")"
+assert_contains "T18: the message carries the stream's result text" "$_m" "resets 3am"
+
 print_test_results
 exit $((FAIL > 0))
