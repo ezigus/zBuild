@@ -47,7 +47,6 @@ ADR-041-flock-serialization-chokepoint.md
 ADR-042-stage-portability.md
 ADR-043-redaction-by-construction.md
 ADR-044-repo-declarable-test-count-contract.md
-ADR-045-bounded-typed-backward-route.md
 ADR-046-design-verify-shift-left.md
 ADR-047-stage-agnostic-mechanics.md
 ADR-048-release-versioning-signing.md
@@ -63,7 +62,6 @@ ADR-057-build-mode-criteria.md
 ADR-058-engine-write-boundary.md
 ADR-059-issue-vs-run-keying.md
 ADR-060-stages-return-structure.md
-ADR-061-fault-class-vocabulary.md
 ADR-062-engine-owned-reclamation.md
 ADR-063-budget-disclosure-and-partial-output.md
 ADR-064-run-status-comment.md

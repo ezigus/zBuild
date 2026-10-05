@@ -455,3 +455,7 @@ the scope line.
 - `scripts/lib/manifest-graph.sh` — shared parser.
 - `scripts/lib/lint-contract.sh` — CI lint.
 - `tests/integration/pipeline-preflight-missing-stage-test.sh` — keystone test.
+
+### Amendment (2026-10-04, #2271) — the finding-owner rules are withdrawn
+
+The engine no longer resolves who owns a finding: `about`, `under_review` and the routed-fault owner are gone with `core/pipeline/finding-owner.sh`. Every reader gets the same framing for a failing stage, its numbered findings, and answers each one itself (ADR-068 §5–§7). Tests: `tests/unit/stage-boundaries-test.sh` SPEC-1, `tests/unit/judge-framing-test.sh`, `tests/unit/no-fault-routing-test.sh` R3.

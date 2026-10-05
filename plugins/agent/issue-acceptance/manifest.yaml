@@ -16,9 +16,8 @@ description: |
   produces a run that is green all the way down and still not what was asked —
   #1849 run 36238164552 shipped exactly that. This stage closes the loop at the
   end, against the issue itself.
-  A failure names its fault class: `implementation` (a SPEC captures the
-  requirement but the code does not do it — build fixes it in the cycle) or
-  `specification` (no SPEC captures it — the template routes back to design).
+  Each unmet requirement is a numbered finding; every stage answers it, and
+  who fixes it is never this stage's to say (#2271, ADR-068).
 
 hooks:
   run: issue_acceptance_run

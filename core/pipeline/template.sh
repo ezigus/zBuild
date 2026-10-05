@@ -42,8 +42,6 @@ _TPL_ALWAYS_RUN=()
 _TPL_DISPATCH_UNITS=()
 # ADR-021: list of cycle ids declared in template (in declaration order).
 _TPL_CYCLES=()
-# #1219 (ADR-045): cycle ids whose route_back was DECLARED by the current parse.
-_TPL_ROUTE_BACK_DECLARED=()
 # ADR-039 (#1130): list of parallel group ids declared in template (in
 # declaration order). Sibling of _TPL_CYCLES — a `type: parallel` group folds
 # to one "parallel:<gid>" dispatch unit. Template-layer parse/validate only;
@@ -127,11 +125,6 @@ load_template() {
     _TPL_CYCLES=()
     _TPL_PARALLEL_GROUPS=()
     _TPL_MAP_GROUPS=()
-    # #1219 (ADR-045): cycles whose route_back is DECLARED by THIS parse (an RB|
-    # row). Distinguishes a live declaration from a route_back var left over by a
-    # prior in-process load_template, so the stale-scrub below is surgical.
-    _TPL_ROUTE_BACK_DECLARED=()
-
     # ADR-027 (Wave 17-B #703): shape detector. The new shape uses `flow:` at
     # top level + per-stage top-level sections discriminated by `type:`. The
     # old shape (Wave 15-D era) uses `stages:` + `stage_definitions:`. Detect
@@ -512,29 +505,10 @@ load_template() {
                        "_TPL_CYCLE_ABORT_WHEN_VALUE_${aw_safe}"
                 ;;
             RB)
-                # #1217 (ADR-045): bounded typed backward-route for a cycle.
-                # Format: <cid>|<to>|<stage>|<field>|<op>|<value>|<max>
-                local rb_cid rb_to rb_stage rb_field rb_op rb_value rb_max
-                IFS='|' read -r rb_cid rb_to rb_stage rb_field rb_op rb_value rb_max <<< "$payload"
-                local rb_safe="${rb_cid//-/_}"
-                printf -v "_TPL_CYCLE_ROUTE_BACK_TO_${rb_safe}"    '%s' "$rb_to"
-                printf -v "_TPL_CYCLE_ROUTE_BACK_STAGE_${rb_safe}" '%s' "$rb_stage"
-                printf -v "_TPL_CYCLE_ROUTE_BACK_FIELD_${rb_safe}" '%s' "$rb_field"
-                printf -v "_TPL_CYCLE_ROUTE_BACK_OP_${rb_safe}"    '%s' "$rb_op"
-                printf -v "_TPL_CYCLE_ROUTE_BACK_VALUE_${rb_safe}" '%s' "$rb_value"
-                printf -v "_TPL_CYCLE_ROUTE_BACK_MAX_${rb_safe}"   '%s' "$rb_max"
-                export "_TPL_CYCLE_ROUTE_BACK_TO_${rb_safe}" \
-                       "_TPL_CYCLE_ROUTE_BACK_STAGE_${rb_safe}" \
-                       "_TPL_CYCLE_ROUTE_BACK_FIELD_${rb_safe}" \
-                       "_TPL_CYCLE_ROUTE_BACK_OP_${rb_safe}" \
-                       "_TPL_CYCLE_ROUTE_BACK_VALUE_${rb_safe}" \
-                       "_TPL_CYCLE_ROUTE_BACK_MAX_${rb_safe}"
-                # #1219: record that THIS parse declared route_back on this cycle,
-                # so the stale-scrub below (which clears route_back inherited from a
-                # prior in-process load_template) never clears a live declaration —
-                # and _tpl_validate_route_back still REJECTS a route_back genuinely
-                # declared on a nested cycle.
-                _TPL_ROUTE_BACK_DECLARED+=("$rb_cid")
+                # #2271 (ADR-068): the backward jump is gone. Refused, not ignored:
+                # a template relying on it would otherwise run without it silently.
+                error "load_template: cycle '${payload%%|*}' declares route_back, which was removed (#2271): nested loops replace it — put the loops inside one outer loop and give the inner one 'unowned: yield'"
+                return 1
                 ;;
             UO)
                 # #2271 (ADR-068): <cid>|<yield|halt>
@@ -640,6 +614,12 @@ load_template() {
         collected_router_timeout collected_router_max_turns \
         collected_router_max_iterations collected_router_retries || return 1
 
+    # #2271: a loop's stages are collected as each loop's definition arrives —
+    # inner loops first — so a direct member between two inner loops (impact,
+    # between the design and build loops) would land last. Put each top-level
+    # loop's stages back in the order they run.
+    _tpl_order_by_flow stage_data_rows
+
     # Populate per-stage state (flat _TPL_STAGES[] + per-id env vars).
     local stage_id roles strategy io_dests io_tail io_redact router_timeout router_max_turns router_max_iterations router_retries
     for row in "${stage_data_rows[@]}"; do
@@ -744,49 +724,6 @@ load_template() {
     # ADR-027 contract validator (Wave 17-B #703): reference-graph acyclicity.
     # If any cycle's flow transitively includes itself, refuse to load.
     _tpl_validate_flow_acyclic || return 1
-    # #1219 (ADR-045): scrub STALE route_back exports left over from a PRIOR
-    # load_template in the same process (route_back vars are exported and never
-    # reset per-cycle). A route_back var on a cycle that is NOT a dispatch unit of
-    # THIS template AND was NOT declared by THIS parse can only be such a leftover.
-    # #1225 (ADR-045): route_back is now valid on a NESTED cycle too (its rc=11
-    # propagates to the runner), so the scrub does NOT key on top-level-ness — it
-    # keeps every route_back DECLARED by this parse (top-level OR nested) and only
-    # clears UNDECLARED inheritance. Without this, loading a template WHOSE cycle
-    # declares route_back (simple.yaml's top-level build_test_cycle) and THEN one
-    # that reuses the id for a NESTED cycle (standard.yaml nests build_test_cycle)
-    # would leave the stale route_back on the nested cycle. This stays surgical —
-    # it clears only stale inheritance, never a live edge declared this parse.
-    local _rb_cid _rb_safe _rb_u _rb_top _rb_declared
-    for _rb_cid in ${_TPL_CYCLES[@]+"${_TPL_CYCLES[@]}"}; do
-        # Keep a route_back DECLARED by this parse (top-level OR nested — #1225
-        # supports nested route_back; the validator below enforces strictly-earlier
-        # target regardless of nesting).
-        _rb_declared=0
-        for _rb_u in ${_TPL_ROUTE_BACK_DECLARED[@]+"${_TPL_ROUTE_BACK_DECLARED[@]}"}; do
-            [[ "$_rb_u" == "$_rb_cid" ]] && { _rb_declared=1; break; }
-        done
-        [[ $_rb_declared -eq 1 ]] && continue
-        # Keep a top-level cycle's route_back var (a test may inject an edge `max`
-        # for one, #1217); only a NON-top-level cycle's UNDECLARED route_back is
-        # stale inheritance from a prior in-process load.
-        _rb_top=0
-        for _rb_u in ${_TPL_DISPATCH_UNITS[@]+"${_TPL_DISPATCH_UNITS[@]}"}; do
-            [[ "$_rb_u" == "cycle:$_rb_cid" ]] && { _rb_top=1; break; }
-        done
-        [[ $_rb_top -eq 1 ]] && continue
-        _rb_safe="${_rb_cid//-/_}"
-        unset "_TPL_CYCLE_ROUTE_BACK_TO_${_rb_safe}" \
-              "_TPL_CYCLE_ROUTE_BACK_STAGE_${_rb_safe}" \
-              "_TPL_CYCLE_ROUTE_BACK_FIELD_${_rb_safe}" \
-              "_TPL_CYCLE_ROUTE_BACK_OP_${_rb_safe}" \
-              "_TPL_CYCLE_ROUTE_BACK_VALUE_${_rb_safe}" \
-              "_TPL_CYCLE_ROUTE_BACK_MAX_${_rb_safe}" 2>/dev/null || true
-    done
-    # #1217 (ADR-045): the bounded route_back edge carve-out. Permitted iff the
-    # target is a strictly-earlier dispatch unit and `max` is a finite positive
-    # int (rejects forward/self/unbounded). Runs AFTER _tpl_build_dispatch_units
-    # (line above) so _TPL_DISPATCH_UNITS[] ordering is available.
-    _tpl_validate_route_back || return 1
 }
 
 # ─── _tpl_parse_stages_v2 — parse `stages:` block with inline cycle support ──
@@ -1181,67 +1118,49 @@ _tpl_validate_cycles() {
         local -a cs=($stages_csv)
         IFS="$IFS_save"
 
-        # Each stage must be a known _TPL_STAGES entry; positions must be
-        # contiguous-ascending (no gaps, no out-of-order).
-        # ADR-027 (Wave 17-B): a member that is itself a cycle is skipped
-        # for canonical-position checks — it isn't in _TPL_STAGES[] by
-        # design (only leaf stages are). The cycle's own validator runs
-        # separately when its own _TPL_CYCLE_STAGES_<id> is checked.
-        local first_pos=-1 last_pos=-1
-        local s
+        # Every stage of the loop — its inner loops and parallel groups expanded
+        # where they sit (#2271: an outer loop's own stages may sit between its
+        # inner loops) — must be a known _TPL_STAGES entry, contiguous and in
+        # order. A stage belongs DIRECTLY to at most one loop.
+        local s _c _is_cyc _is_par _pg
         for s in "${cs[@]}"; do
-            local _s_type_var="_TPL_STAGE_TYPE_${s//-/_}"
-            local _s_type="${!_s_type_var:-leaf}"
-            if [[ "$_s_type" == "cycle" ]]; then
-                continue
+            _is_cyc=0; _is_par=0
+            for _c in "${_TPL_CYCLES[@]}"; do [[ "$_c" == "$s" ]] && { _is_cyc=1; break; }; done
+            for _pg in "${_TPL_PARALLEL_GROUPS[@]}"; do [[ "$_pg" == "$s" ]] && { _is_par=1; break; }; done
+            [[ $_is_cyc -eq 1 || $_is_par -eq 1 ]] && continue
+            if [[ -n "${seen_stage[$s]:-}" ]]; then
+                error "cycle '$cid': stage '$s' is in another cycle (cycles must not overlap)"
+                return 1
             fi
-            # Also skip cycle-id check via _TPL_CYCLES membership (the
-            # _TPL_STAGE_TYPE_* var isn't set until later in load_template
-            # — defensive when called during the per-cycle pre-pass).
-            local _is_cyc=0 _c
-            for _c in "${_TPL_CYCLES[@]}"; do
-                [[ "$_c" == "$s" ]] && _is_cyc=1 && break
-            done
-            [[ $_is_cyc -eq 1 ]] && continue
-            # ADR-039 (#1132): a member that is a parallel group is likewise not
-            # in _TPL_STAGES[] (only its leaf members are). Skip it here — the
-            # group structure is validated by _tpl_validate_parallel.
-            local _is_par=0 _pg
-            for _pg in "${_TPL_PARALLEL_GROUPS[@]}"; do
-                [[ "$_pg" == "$s" ]] && _is_par=1 && break
-            done
-            [[ $_is_par -eq 1 ]] && continue
-            local pos=-1 i
+            seen_stage[$s]=1
+        done
+        local first_pos=-1 last_pos=-1 pos i
+        while IFS= read -r s; do
+            [[ -n "$s" ]] || continue
+            pos=-1
             for i in "${!_TPL_STAGES[@]}"; do
-                if [[ "${_TPL_STAGES[$i]}" == "$s" ]]; then
-                    pos=$i
-                    break
-                fi
+                [[ "${_TPL_STAGES[$i]}" == "$s" ]] && { pos=$i; break; }
             done
             if [[ $pos -eq -1 ]]; then
                 error "cycle '$cid': stage '$s' not in template stages[]"
                 return 1
             fi
-            if [[ -n "${seen_stage[$s]:-}" ]]; then
-                error "cycle '$cid': stage '$s' is in another cycle (cycles must not overlap)"
+            if [[ $first_pos -ne -1 && $pos -ne $((last_pos + 1)) ]]; then
+                error "cycle '$cid': stages must be a contiguous subsequence of template stages[]"
                 return 1
             fi
-            if [[ $first_pos -eq -1 ]]; then
-                first_pos=$pos
-            else
-                if [[ $pos -ne $((last_pos + 1)) ]]; then
-                    error "cycle '$cid': stages must be a contiguous subsequence of template stages[]"
-                    return 1
-                fi
-            fi
+            [[ $first_pos -eq -1 ]] && first_pos=$pos
             last_pos=$pos
-            seen_stage[$s]=1
-        done
+        done < <(_tpl_flow_leaves "$cid")
 
-        # A cycle whose members are ALL nested cycles / parallel groups has no
-        # canonical leaf position of its own (first_pos stays -1) — there is
-        # nothing to overlap-check or advance prev_end with. (#1132)
-        if [[ $first_pos -ne -1 ]]; then
+        # Top-level loops must not overlap each other; a nested loop lies inside
+        # its outer loop's range by construction.
+        local _nested_in=0 _oc _ov
+        for _oc in "${_TPL_CYCLES[@]}"; do
+            _ov="_TPL_CYCLE_STAGES_${_oc//-/_}"
+            [[ ",${!_ov:-}," == *",$cid,"* ]] && { _nested_in=1; break; }
+        done
+        if [[ $_nested_in -eq 0 && $first_pos -ne -1 ]]; then
             if [[ $first_pos -le $prev_end ]]; then
                 error "cycle '$cid': overlaps a previously declared cycle"
                 return 1
@@ -1833,8 +1752,8 @@ _tpl_translate_new_shape() {
         cyc_flow = ""; cyc_max = ""; cyc_on_max = "continue"
         cyc_us = ""; cyc_uf = ""; cyc_uo = ""; cyc_uv = ""
         cyc_as = ""; cyc_af = ""; cyc_ao = ""; cyc_av = ""
-        # #1217 (ADR-045): route_back predicate + target + per-edge cap.
-        cyc_rb_to = ""; cyc_rb_stage = ""; cyc_rb_field = ""; cyc_rb_op = ""; cyc_rb_value = ""; cyc_rb_max = ""
+        # #2271: a backward-jump key is refused at load (cyc_rb_declared).
+        cyc_rb_declared = 0
         cyc_plateau = ""; cyc_diverg = ""; cyc_velopl = ""
         cyc_desc = ""
         cyc_expand = ""; cyc_autogrant = ""; cyc_escalate = ""; cyc_ondeny = ""; cyc_unowned = ""
@@ -1848,7 +1767,7 @@ _tpl_translate_new_shape() {
         map_over = ""; map_elements = ""; map_max = ""; map_onerr = "continue"; map_agg = ""; map_as = ""; in_map_elems = 0
         nfb = 0
         in_roles = 0; in_io_block = 0; in_io_dests = 0; in_router_block = 0
-        in_cflow = 0; in_exit_when = 0; in_abort_when = 0; in_route_back = 0; in_rb_when = 0
+        in_cflow = 0; in_exit_when = 0; in_abort_when = 0
         in_plateau = 0; in_diverg = 0; in_velopl = 0; in_feedback = 0; in_fb_item = 0; in_scope_policy = 0
         fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
     }
@@ -1859,8 +1778,8 @@ _tpl_translate_new_shape() {
         cyc_flow = ""; cyc_max = ""; cyc_on_max = "continue"
         cyc_us = ""; cyc_uf = ""; cyc_uo = ""; cyc_uv = ""
         cyc_as = ""; cyc_af = ""; cyc_ao = ""; cyc_av = ""
-        # #1217 (ADR-045): route_back predicate + target + per-edge cap.
-        cyc_rb_to = ""; cyc_rb_stage = ""; cyc_rb_field = ""; cyc_rb_op = ""; cyc_rb_value = ""; cyc_rb_max = ""
+        # #2271: a backward-jump key is refused at load (cyc_rb_declared).
+        cyc_rb_declared = 0
         cyc_plateau = ""; cyc_diverg = ""; cyc_velopl = ""
         cyc_desc = ""
         cyc_expand = ""; cyc_autogrant = ""; cyc_escalate = ""; cyc_ondeny = ""; cyc_unowned = ""
@@ -1874,7 +1793,7 @@ _tpl_translate_new_shape() {
         map_over = ""; map_elements = ""; map_max = ""; map_onerr = "continue"; map_agg = ""; map_as = ""; in_map_elems = 0
         nfb = 0
         in_roles = 0; in_io_block = 0; in_io_dests = 0; in_router_block = 0
-        in_cflow = 0; in_exit_when = 0; in_abort_when = 0; in_route_back = 0; in_rb_when = 0
+        in_cflow = 0; in_exit_when = 0; in_abort_when = 0
         in_plateau = 0; in_diverg = 0; in_velopl = 0; in_feedback = 0; in_fb_item = 0; in_scope_policy = 0
         fb_from_stage = ""; fb_from_output = ""; fb_to_stage = ""; fb_to_field = ""; fb_required = "false"
         # Copilot P2: fb_kind must reset per-section so a prior "to" cannot
@@ -1930,11 +1849,7 @@ _tpl_translate_new_shape() {
                                 cyc_expand "|" cyc_autogrant "|" cyc_escalate "|" cyc_ondeny
             cyc_abort[cur_key] = cyc_as "|" cyc_af "|" cyc_ao "|" cyc_av
             if (cyc_unowned != "") cyc_unowned_v[cur_key] = cyc_unowned
-            # #1217 (ADR-045): only stash route_back when a target is declared,
-            # so emit_cycle_dfs can guard the RB| row on presence (empty ⇒ inert).
-            if (cyc_rb_to != "") {
-                cyc_route_back[cur_key] = cyc_rb_to "|" cyc_rb_stage "|" cyc_rb_field "|" cyc_rb_op "|" cyc_rb_value "|" cyc_rb_max
-            }
+            if (cyc_rb_declared) cyc_rb_seen[cur_key] = 1
             cyc_fb_count[cur_key] = nfb
             for (k = 1; k <= nfb; k++) {
                 cyc_fb[cur_key, k] = fb[k]
@@ -2092,7 +2007,7 @@ _tpl_translate_new_shape() {
                 if ($0 ~ /\[/) {
                     cyc_flow = strip_inline_list($0); in_cflow = 0
                 } else { in_cflow = 1 }
-                in_exit_when = 0; in_abort_when = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; in_feedback = 0; in_route_back = 0; in_rb_when = 0
+                in_exit_when = 0; in_abort_when = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; in_feedback = 0
                 next
             }
             if (in_cflow && $0 ~ /^[[:space:]]+-[[:space:]]/) {
@@ -2124,7 +2039,7 @@ _tpl_translate_new_shape() {
             # #840 scope_policy (ADR-030): nested block; children guarded by
             # in_scope_policy. auto_grant inline list [a, b] → csv a,b.
             if ($0 ~ /^[[:space:]]+scope_policy:[[:space:]]*$/) {
-                in_scope_policy = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_feedback = 0; in_route_back = 0; in_rb_when = 0; next
+                in_scope_policy = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_feedback = 0; next
             }
             if (in_scope_policy && $0 ~ /^[[:space:]]+expandable:/) {
                 v = $0; sub(/^[[:space:]]+expandable:[[:space:]]*/, "", v); cyc_expand = trim(v); next
@@ -2140,57 +2055,31 @@ _tpl_translate_new_shape() {
                 v = $0; sub(/^[[:space:]]+on_deny:[[:space:]]*/, "", v); cyc_ondeny = trim(v); next
             }
             if ($0 ~ /^[[:space:]]+plateau:[[:space:]]*$/) {
-                in_plateau = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_velopl = 0; in_feedback = 0; in_scope_policy = 0; in_route_back = 0; in_rb_when = 0; next
+                in_plateau = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_velopl = 0; in_feedback = 0; in_scope_policy = 0; next
             }
             if (in_plateau && $0 ~ /^[[:space:]]+window:/) {
                 v = $0; sub(/^[[:space:]]+window:[[:space:]]*/, "", v); cyc_plateau = trim(v); next
             }
             if ($0 ~ /^[[:space:]]+divergence:[[:space:]]*$/) {
-                in_diverg = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_plateau = 0; in_velopl = 0; in_feedback = 0; in_scope_policy = 0; in_route_back = 0; in_rb_when = 0; next
+                in_diverg = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_plateau = 0; in_velopl = 0; in_feedback = 0; in_scope_policy = 0; next
             }
             if (in_diverg && $0 ~ /^[[:space:]]+window:/) {
                 v = $0; sub(/^[[:space:]]+window:[[:space:]]*/, "", v); cyc_diverg = trim(v); next
             }
             if ($0 ~ /^[[:space:]]+velocity_plateau:[[:space:]]*$/) {
-                in_velopl = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_plateau = 0; in_diverg = 0; in_feedback = 0; in_scope_policy = 0; in_route_back = 0; in_rb_when = 0; next
+                in_velopl = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_plateau = 0; in_diverg = 0; in_feedback = 0; in_scope_policy = 0; next
             }
             if (in_velopl && $0 ~ /^[[:space:]]+window:/) {
                 v = $0; sub(/^[[:space:]]+window:[[:space:]]*/, "", v); cyc_velopl = trim(v); next
             }
             if ($0 ~ /^[[:space:]]+exit_when:[[:space:]]*$/) {
-                in_exit_when = 1; in_abort_when = 0; in_cflow = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; in_feedback = 0; in_scope_policy = 0; in_route_back = 0; in_rb_when = 0; next
+                in_exit_when = 1; in_abort_when = 0; in_cflow = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; in_feedback = 0; in_scope_policy = 0; next
             }
             if ($0 ~ /^[[:space:]]+abort_when:[[:space:]]*$/) {
-                in_abort_when = 1; in_exit_when = 0; in_cflow = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; in_feedback = 0; in_scope_policy = 0; in_route_back = 0; in_rb_when = 0; next
+                in_abort_when = 1; in_exit_when = 0; in_cflow = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; in_feedback = 0; in_scope_policy = 0; next
             }
-            # #1217 (ADR-045): route_back — sibling of exit_when/abort_when.
-            # Cycle-level backward-route target + predicate + per-edge cap. The
-            # predicate lives under a nested `when:` block (in_rb_when).
-            if ($0 ~ /^[[:space:]]+route_back:[[:space:]]*$/) {
-                in_route_back = 1; in_rb_when = 0
-                in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; in_feedback = 0; in_scope_policy = 0; next
-            }
-            if (in_route_back && $0 ~ /^[[:space:]]+to:/) {
-                v = $0; sub(/^[[:space:]]+to:[[:space:]]*/, "", v); cyc_rb_to = trim(v); next
-            }
-            if (in_route_back && $0 ~ /^[[:space:]]+when:[[:space:]]*$/) {
-                in_rb_when = 1; next
-            }
-            if (in_route_back && $0 ~ /^[[:space:]]+max:[[:space:]]*/) {
-                v = $0; sub(/^[[:space:]]+max:[[:space:]]*/, "", v); cyc_rb_max = trim(v); in_rb_when = 0; next
-            }
-            if (in_rb_when && $0 ~ /^[[:space:]]+stage:/) {
-                v = $0; sub(/^[[:space:]]+stage:[[:space:]]*/, "", v); cyc_rb_stage = trim(v); next
-            }
-            if (in_rb_when && $0 ~ /^[[:space:]]+field:/) {
-                v = $0; sub(/^[[:space:]]+field:[[:space:]]*/, "", v); cyc_rb_field = trim(v); next
-            }
-            if (in_rb_when && $0 ~ /^[[:space:]]+op:/) {
-                v = $0; sub(/^[[:space:]]+op:[[:space:]]*/, "", v); cyc_rb_op = trim(v); next
-            }
-            if (in_rb_when && $0 ~ /^[[:space:]]+value:/) {
-                v = $0; sub(/^[[:space:]]+value:[[:space:]]*/, "", v); cyc_rb_value = trim(v); next
-            }
+            # #2271 (ADR-068): the key is refused at load — nested loops replace it.
+            if ($0 ~ /^[[:space:]]+route_back:/) { cyc_rb_declared = 1; next }   # #2271 refusal
             # #1284 (ADR-047): single-condition handlers must NOT fire once an
             # all:/any: combinator has been seen (cyc_ew_comb != ""), otherwise a
             # a block-form condition field:/op:/value: continuation line would be
@@ -2258,7 +2147,7 @@ _tpl_translate_new_shape() {
                 v = $0; sub(/^[[:space:]]+value:[[:space:]]*/, "", v); cyc_av = trim(v); next
             }
             if ($0 ~ /^[[:space:]]+feedback:[[:space:]]*$/) {
-                in_feedback = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; in_route_back = 0; in_rb_when = 0; next
+                in_feedback = 1; in_exit_when = 0; in_abort_when = 0; in_cflow = 0; in_plateau = 0; in_diverg = 0; in_velopl = 0; next
             }
             if (in_feedback && $0 ~ /^[[:space:]]+-[[:space:]]+from:/) {
                 # Close previous in-flight item.
@@ -2448,9 +2337,7 @@ _tpl_translate_new_shape() {
         for (j = 1; j <= cnt; j++) print "FB|" k "|" cyc_fb[k, j]
         aw = cyc_abort[k]
         if (aw != "" && aw != "|||") print "AW|" k "|" aw
-        # #1217 (ADR-045): route_back row (guarded on target presence).
-        rb = cyc_route_back[k]
-        if (rb != "") print "RB|" k "|" rb
+        if (cyc_rb_seen[k]) print "RB|" k   # #2271 refusal
         # #1284 (ADR-047): multi-condition exit_when row.
         if (cyc_ew_combinator[k] != "" && cyc_ew_count[k] + 0 > 0) {
             ew_row = k "|" cyc_ew_combinator[k] "|" cyc_ew_count[k]
@@ -2469,6 +2356,73 @@ _tpl_translate_new_shape() {
         return d
     }
     ' "$file"
+}
+
+# _tpl_flow_leaves <cycle_id> — the leaf stages of a loop in the order they
+# run: inner loops and parallel groups expanded where they sit in its flow.
+_tpl_flow_leaves() {
+    local c="$1" v m c2 is_cyc
+    v="_TPL_CYCLE_STAGES_${c//-/_}"
+    local -a ms=()
+    IFS=',' read -r -a ms <<< "${!v:-}"
+    for m in "${ms[@]}"; do
+        [[ -n "$m" ]] || continue
+        is_cyc=0
+        for c2 in "${_TPL_CYCLES[@]}"; do [[ "$c2" == "$m" ]] && { is_cyc=1; break; }; done
+        if [[ $is_cyc -eq 1 ]]; then
+            _tpl_flow_leaves "$m"
+            continue
+        fi
+        v="_TPL_PARALLEL_FLOW_${m//-/_}"
+        if [[ -n "${!v:-}" ]]; then
+            printf '%s\n' ${!v//,/ }
+            continue
+        fi
+        printf '%s\n' "$m"
+    done
+}
+
+# _tpl_order_by_flow <rows_array_name> — reorder, in place, each top-level
+# loop's contiguous block of stage rows ("<id>|…") into flow order. Rows of
+# stages outside any loop keep their place.
+_tpl_order_by_flow() {
+    local -n _rows="$1"
+    [[ ${#_TPL_CYCLES[@]} -gt 0 && ${#_rows[@]} -gt 0 ]] || return 0
+    local -A _rank=() _top=() _nested=()
+    local c m i=0
+    # A loop that is a member of another loop is not top-level.
+    for c in "${_TPL_CYCLES[@]}"; do
+        local v="_TPL_CYCLE_STAGES_${c//-/_}"
+        for m in ${!v//,/ }; do _nested[$m]=1; done
+    done
+    for c in "${_TPL_CYCLES[@]}"; do
+        [[ -n "${_nested[$c]:-}" ]] && continue
+        i=0
+        while IFS= read -r m; do
+            [[ -n "$m" && -z "${_top[$m]:-}" ]] || continue
+            _top[$m]="$c"; _rank[$m]=$i; i=$((i + 1))
+        done < <(_tpl_flow_leaves "$c")
+    done
+    local -a out=() block=()
+    local row id cur="" r
+    _tpl_flush_block() {
+        [[ ${#block[@]} -gt 0 ]] || return 0
+        while IFS= read -r r; do out+=("${r#*$'\t'}"); done < <(
+            for r in "${block[@]}"; do printf '%s\t%s\n' "${_rank[${r%%|*}]:-0}" "$r"; done | sort -s -n -k1,1)
+        block=()
+    }
+    for row in "${_rows[@]}"; do
+        id="${row%%|*}"
+        if [[ -n "${_top[$id]:-}" && "${_top[$id]}" == "$cur" ]]; then
+            block+=("$row"); continue
+        fi
+        _tpl_flush_block
+        cur="${_top[$id]:-}"
+        if [[ -n "$cur" ]]; then block+=("$row"); else out+=("$row"); fi
+    done
+    _tpl_flush_block
+    unset -f _tpl_flush_block
+    _rows=("${out[@]}")
 }
 
 # _tpl_validate_flow_acyclic — ADR-027 reference-graph acyclicity.
@@ -2524,87 +2478,6 @@ _tpl_flow_reaches() {
     return 1
 }
 
-# _tpl_resolve_unit_index <to> — echo the index of <to> in _TPL_DISPATCH_UNITS,
-# by direct unit id (stripping stage:/cycle:/parallel:) first, then by cycle/
-# parallel MEMBERSHIP. Echo -1 if unresolved. Mirrors the runner's
-# _runner_resolve_unit_index so load-time validation and run-time rewind agree.
-_tpl_resolve_unit_index() {
-    local _to="$1" _i _u _uid
-    for (( _i = 0; _i < ${#_TPL_DISPATCH_UNITS[@]}; _i++ )); do
-        _u="${_TPL_DISPATCH_UNITS[_i]}"; _uid="${_u#*:}"
-        [[ "$_uid" == "$_to" ]] && { echo "$_i"; return 0; }
-    done
-    for (( _i = 0; _i < ${#_TPL_DISPATCH_UNITS[@]}; _i++ )); do
-        _u="${_TPL_DISPATCH_UNITS[_i]}"; _uid="${_u#*:}"
-        local _safe="${_uid//-/_}"
-        case "$_u" in
-            cycle:*)
-                local _mv="_TPL_CYCLE_STAGES_${_safe}"
-                [[ ",${!_mv:-}," == *",$_to,"* ]] && { echo "$_i"; return 0; } ;;
-            parallel:*)
-                local _pv="_TPL_PARALLEL_FLOW_${_safe}"
-                [[ ",${!_pv:-}," == *",$_to,"* ]] && { echo "$_i"; return 0; } ;;
-        esac
-    done
-    echo "-1"
-    return 0
-}
-
-# _tpl_validate_route_back — #1217 (ADR-045) acyclicity carve-out. For every
-# cycle declaring a route_back target: (a) `to` MUST resolve to a dispatch unit
-# STRICTLY earlier than the cycle (reject forward/self — an unbounded loop);
-# (b) `max` MUST be a finite positive int (reject empty/0/non-numeric). The
-# backward edge is PERMITTED precisely because it is budget-bounded — it lives
-# in a separate var, never in membership flow, so _tpl_validate_flow_acyclic is
-# unchanged.
-_tpl_validate_route_back() {
-    [[ ${#_TPL_CYCLES[@]} -eq 0 ]] && return 0
-    local cid safe to op max cyc_idx to_idx
-    for cid in "${_TPL_CYCLES[@]}"; do
-        safe="${cid//-/_}"
-        local to_var="_TPL_CYCLE_ROUTE_BACK_TO_${safe}"
-        to="${!to_var:-}"
-        [[ -z "$to" ]] && continue
-        # #1225 (ADR-045): route_back is supported on a NESTED cycle too — its
-        # rc=11 now bubbles outward through every enclosing cycle's main loop to
-        # the runner (#1225 cycle-orchestrator fix), so the load-time
-        # top-level-only rejection from #1217 is lifted. The strictly-earlier
-        # check below is the sole guard: _tpl_resolve_unit_index resolves BOTH a
-        # nested cid and its `to` target by MEMBERSHIP to their enclosing
-        # TOP-LEVEL dispatch-unit index, so `to_idx < cyc_idx` constrains a nested
-        # route_back's target to a top-level unit strictly BEFORE the enclosing
-        # top-level cycle (the only thing the runner can rewind) and auto-rejects
-        # a sibling-member / self target (both resolve to the SAME enclosing
-        # top-level index → not strictly-earlier).
-        # #1217 review fix (NIT): reject an unsupported predicate op at load —
-        # the orchestrator's route_back evaluator only implements eq/ne (mirrors
-        # exit_when/abort_when); any other op would silently never match.
-        local op_var="_TPL_CYCLE_ROUTE_BACK_OP_${safe}"
-        op="${!op_var:-}"
-        case "$op" in
-            eq|ne|in) ;;
-            *) error "load_template: cycle '$cid' route_back.when.op='${op:-<empty>}' is unsupported (only 'eq', 'ne' and 'in' are implemented, ADR-045/#1987)"
-               return 1 ;;
-        esac
-        local max_var="_TPL_CYCLE_ROUTE_BACK_MAX_${safe}"
-        max="${!max_var:-}"
-        if ! [[ "$max" =~ ^[1-9][0-9]*$ ]]; then
-            error "load_template: cycle '$cid' route_back.max must be a finite positive integer (got '${max:-<empty>}') — an unbounded backward-route is forbidden (ADR-045)"
-            return 1
-        fi
-        cyc_idx="$(_tpl_resolve_unit_index "$cid")"
-        to_idx="$(_tpl_resolve_unit_index "$to")"
-        if [[ "$to_idx" -lt 0 ]]; then
-            error "load_template: cycle '$cid' route_back.to='$to' does not resolve to any declared dispatch unit / stage"
-            return 1
-        fi
-        if [[ "$to_idx" -ge "$cyc_idx" ]]; then
-            error "load_template: cycle '$cid' route_back.to='$to' must be a STRICTLY EARLIER unit (forward/self route_back forbidden — would be an unbounded loop, ADR-045)"
-            return 1
-        fi
-    done
-    return 0
-}
 
 template_stage_roles() {
     local stage_id="$1"

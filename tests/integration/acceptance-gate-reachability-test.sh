@@ -319,21 +319,22 @@ assert_contains "R6a: iter=1 failures contain inert_wiring YAML target" \
 r6a_rt="$(jq -r '.fault // empty' <<<"$RESULT" 2>/dev/null || echo '')"
 assert_eq "R6a: iter=1 → no fault (build gets first attempt)" "" "$r6a_rt"
 
-# R6b: ZBUILD_CYCLE_ITER=2 — still-inert target escalates to fault=specification
+# R6b: ZBUILD_CYCLE_ITER=2 — the same finding, never a fault class (#2271: the
+# gate does not decide who fixes it; the loops do)
 export ZBUILD_CYCLE_ITER=2
 set +e; _run_gate "$REPO_R6"; set -e
 unset ZBUILD_CYCLE_ITER
-assert_eq "[SPEC-1] R6b: iter=2 inert_wiring escalated → rc=1" "1" "$RC"
+assert_eq "[SPEC-1] R6b: iter=2 still inert → rc=1" "1" "$RC"
 assert_eq "[SPEC-1] R6b: iter=2 → verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
 r6b_failures="$(jq -r '.failures[]' <<<"$RESULT" 2>/dev/null || echo '')"
 assert_contains "[SPEC-1] R6b: iter=2 failures contain inert_wiring YAML target" \
     "$r6b_failures" "inert_wiring:.github/workflows/test.yml"
 assert_eq "[SPEC-1] R6b: iter=2 → severity=recoverable" "recoverable" \
     "$(jq -r '.severity' <<<"$RESULT")"
-assert_eq "[SPEC-1] R6b: iter=2 → fault=specification (iter=1 had none)" "specification" \
+assert_eq "[#2271] R6b: iter=2 → no fault class" "" \
     "$(jq -r '.fault // empty' <<<"$RESULT")"
-assert_event_emitted "[SPEC-1] R6b: inert_wiring_escalated event emitted" \
-    "$EVENTS" "acceptance.gate.inert_wiring_escalated"
+assert_contains "[#2271] R6b: iter=2 → the finding is listed, numbered" \
+    "$(jq -r '.data.findings[]?.text' <<<"$RESULT")" "was put back to its old version"
 
 cleanup_test_env
 print_test_results

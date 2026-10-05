@@ -146,7 +146,9 @@ OUT="$(run_agg "$SF")"
 # exit_when still binds to verdict==pass; the template's route_back keys on the
 # fault, so no stage names a stage.
 assert_json_key "TC-10: design-rooted fail → verdict stays fail" "$OUT" '.verdict' "fail"
-assert_json_key "TC-10: the declared fault is mirrored into the aggregate" "$OUT" '.fault' "specification"
+# #2271 (ADR-068): a fault a gate still writes is not rolled up — the engine no
+# longer decides whose problem a failure is.
+assert_eq "TC-10: a gate's fault is not rolled up into the aggregate" "" "$(jq -r '.fault // ""' <<< "$OUT")"
 assert_contains "TC-10: failed[] still names the acceptance-gate" "$OUT" "acceptance-gate"
 # #1988: the aggregator renders nothing. The SPEC reaches design through the
 # acceptance gate's own summary; what this stage still owns is the roll-up.
@@ -217,7 +219,7 @@ printf '{"verdict":"fail","disposition":"recoverable","fault":"specification","r
 OUT="$(run_agg "$SF")"
 assert_json_key "[SPEC-3] wiring_not_on_path → verdict stays fail" \
     "$OUT" '.verdict' "fail"
-assert_json_key "[SPEC-3] fault mirrored into aggregate" "$OUT" '.fault' "specification"
+assert_eq "[SPEC-3] no fault in the aggregate (#2271)" "" "$(jq -r '.fault // ""' <<< "$OUT")"
 assert_contains "[SPEC-3] failed[] names the acceptance-gate" "$OUT" "acceptance-gate"
 assert_file_not_exists "[SPEC-3] the aggregator renders no design payload" "$AD/design-feedback.md"
 
@@ -268,7 +270,7 @@ printf '{"verdict":"fail","reason":"missing_floor_files","fault":"specification"
     > "$AD/shape-floor-result.json"
 OUT="$(run_agg "$SF")"
 assert_json_key "TC-16: all-routed → verdict stays fail" "$OUT" '.verdict' "fail"
-assert_json_key "TC-16: and the fault is specification" "$OUT" '.fault' "specification"
+assert_eq "TC-16: and no fault in the aggregate (#2271)" "" "$(jq -r '.fault // ""' <<< "$OUT")"
 assert_file_not_exists "TC-16: the aggregator renders no design payload" "$AD/design-feedback.md"
 assert_file_not_exists "TC-16: gate-feedback.md absent (nothing build can fix)" \
     "$AD/gate-feedback.md"
@@ -299,114 +301,8 @@ assert_file_not_exists "TC-18: stale gate-feedback.md removed on pass" \
 assert_file_not_exists "TC-18: stale design-feedback.md removed on pass" \
     "$AD/design-feedback.md"
 
-# ── TC-19 (#1757): two distinct route targets emit a conflict signal ─────────
-# Roster order picks the winner. The loser used to vanish with no log, no event
-# and no record that a conflict existed. Only "design" is emitted today, so this
-# path is expected to stay dormant — it exists to be visible if that changes.
-_GA_EV_LOG="$TEST_TEMP_DIR/ga-events.log"
-: > "$_GA_EV_LOG"
-# run_agg captures stdout with $( ), so the plugin body runs in a SUBSHELL: a
-# stub appending to a shell variable would be discarded with it. Append to a
-# file, which outlives the subshell.
-eb_emit_event() { printf '%s\n' "$*" >> "$_GA_EV_LOG"; }
-
-SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
-write_all "$AD" "pass"
-printf '{"verdict":"fail","reason":"missing_floor_files","fault":"specification"}\n' \
-    > "$AD/shape-floor-result.json"
-printf '{"verdict":"fail","reason":"out of scope","fault":"scope"}\n' \
-    > "$AD/coverage-result.json"
-OUT="$(run_agg "$SF")"
-
-# #1987: the winner is the VOCABULARY's table order, not roster order. Roster
-# order meant two disagreeing gates were resolved by which file was read first.
-assert_json_key "TC-19: verdict stays fail" "$OUT" '.verdict' "fail"
-assert_json_key "TC-19: the vocabulary's order picks the winner" \
-    "$OUT" '.fault' "specification"
-# The loser must not vanish. Before #1757 it was dropped with no log and no
-# event; the scan still runs to completion and names every class it saw.
-_GA_CONFLICT="$(grep -F 'fault_conflict' "$_GA_EV_LOG" || true)"
-assert_contains "TC-19: conflict event emitted" \
-    "$_GA_CONFLICT" "gate_aggregator.fault_conflict"
-assert_contains "TC-19: conflict event names the selected class" \
-    "$_GA_CONFLICT" "selected=specification"
-assert_contains "TC-19: conflict event names BOTH classes, not just the winner" \
-    "$_GA_CONFLICT" "faults=specification scope"
-
-# The losing-route gate must not vanish: it is not the rewind target's problem,
-# so it lands in residual[] and reaches build like any other unrouted failure.
-# This is the property residual[] exists for, and it was previously untested.
-assert_file_not_exists "TC-19: the aggregator renders no build payload" \
-    "$AD/gate-feedback.md"
-# The losing-route gate must still be NAMED — that is the #1757 property. With
-# no payloads to partition, it is the aggregate's failed[] that must carry both.
-assert_contains "TC-19: the losing-route gate is still named" "$OUT" "coverage"
-assert_contains "TC-19: alongside the winning one" "$OUT" "shape-floor"
-
-# ── TC-20 (GUARD, #1757): a single route target emits NO conflict ────────────
-# The #1720 single-routed path must not start emitting a conflict event.
-: > "$_GA_EV_LOG"
-SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
-write_all "$AD" "pass"
-printf '{"verdict":"fail","reason":"missing_floor_files","fault":"specification"}\n' \
-    > "$AD/shape-floor-result.json"
-OUT="$(run_agg "$SF")"
-assert_json_key "TC-20: single routed gate → verdict stays fail" "$OUT" '.verdict' "fail"
-assert_json_key "TC-20: and the fault is specification" "$OUT" '.fault' "specification"
-assert_eq "TC-20: no conflict event for a single route target" \
-    "0" "$( { grep -cF 'route_conflict' "$_GA_EV_LOG" || true; } )"
-# ── TC-21 (GUARD, #1987): a fault outside the closed set is never selected ───
-# The old test pinned a compound multi-word target. A closed vocabulary has no
-# such member, so the guard becomes the stronger one: an unrecognised word is
-# refused and announced, never silently adopted as a routing destination.
-: > "$_GA_EV_LOG"
-SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
-write_all "$AD" "pass"
-printf '{"verdict":"fail","reason":"a","fault":"re plan"}\n' \
-    > "$AD/shape-floor-result.json"
-printf '{"verdict":"fail","reason":"b","fault":"wedged"}\n' \
-    > "$AD/coverage-result.json"
-OUT="$(run_agg "$SF")"
-assert_eq "TC-21: an unrecognised fault is never selected" \
-    "" "$(jq -r '.fault // ""' <<< "$OUT")"
-assert_json_key "TC-21: and the verdict is still a plain fail" "$OUT" '.verdict' "fail"
-assert_contains "TC-21: the unrecognised word is announced, not dropped" \
-    "$(cat "$_GA_EV_LOG")" "gate_aggregator.fault_unrecognised"
-assert_eq "TC-21: no conflict event — neither word is a member" \
-    "0" "$( { grep -cF 'fault_conflict' "$_GA_EV_LOG" || true; } )"
-
-unset -f eb_emit_event
-
-# ── TC-22 (#2269, ADR-067): the summary never forwards a raw fault word ─────
-# The summary's "what has to change" line is model-facing. A fault word with no
-# plain phrase (one added to the vocabulary later) must not reach a model as
-# the bare code; the result JSON keeps the word for code that reads it.
-_saved_set="$_ZBUILD_FAULT_SET"
-_ZBUILD_FAULT_SET="$_saved_set contract_drift"
-SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
-write_all "$AD" "pass"
-printf '{"verdict":"fail","fault":"contract_drift","reason":"x"}\n' > "$AD/acceptance-gate-result.json"
-OUT="$(run_agg "$SF")"
-_ZBUILD_FAULT_SET="$_saved_set"
-assert_json_key "TC-22: fixture — the new word is selected" "$OUT" '.fault' "contract_drift"
-_sum="$(cat "$AD/gate-aggregator-summary.md" 2>/dev/null)"
-assert_contains "TC-22: the summary has its what-has-to-change line" "$_sum" "what has to change:"
-if grep -qF "contract_drift" <<< "$_sum"; then
-    assert_fail "TC-22: the summary does not forward the raw fault word" "found in gate-aggregator-summary.md"
-else
-    assert_pass "TC-22: the summary does not forward the raw fault word"
-fi
-for _fw in specification scope implementation; do
-    SF="$(fresh_artifacts)"; AD="$(dirname "$SF")/artifacts"
-    write_all "$AD" "pass"
-    printf '{"verdict":"fail","fault":"%s","reason":"x"}\n' "$_fw" > "$AD/acceptance-gate-result.json"
-    run_agg "$SF" >/dev/null
-    if grep -qE "what has to change: ${_fw}\$" "$AD/gate-aggregator-summary.md" 2>/dev/null; then
-        assert_fail "TC-22: fault '$_fw' is said as a phrase, not the bare word" "bare word"
-    else
-        assert_pass "TC-22: fault '$_fw' is said as a phrase, not the bare word"
-    fi
-done
+# TC-19..TC-22 (#1757, #1987, #2269) tested the fault-class roll-up, its
+# conflict signal and its plain wording; #2271 retired fault classes.
 
 cleanup_test_env
 print_test_results

@@ -192,28 +192,27 @@ assert_eq "[SPEC-4] resolve_template_file exit 0" "0" "$_resolve_rc"
 assert_eq "[SPEC-4] resolve_template_file 'simple' returns shipped path" \
     "$REPO_ROOT/config/templates/simple.yaml" "$_resolved"
 
-# ─── SPEC-11: dispatch units are 8 (cycles + map groups each fold to one) ─────
-# B6 (#1138): the build_test_cycle's members collapse into ONE cycle dispatch
-# unit (6 members after #1129 Change C dropped lint/coverage/mutation). C3
-# (#1142): the review_lenses group collapses into ONE dispatch unit, and
-# review-aggregator is its own stage unit.
-# #1218 (ADR-046): design + design-gate collapse into ONE design_verify_cycle
-# dispatch unit, and impact is its own stage unit right after it.
-# #1295 (ADR-047 §2): review_lenses converted from parallel:→map:review_lenses.
-# #1074: hydrate is a leaf and therefore its own dispatch unit, at index 0.
-# Count is now 9: hydrate, intake, plan, cycle:design_verify_cycle,
-# stage:impact, cycle:build_test_cycle, map:review_lenses,
-# stage:review-aggregator, pr.
-assert_eq "[SPEC-11] dispatch units count is 9" "9" "${#_TPL_DISPATCH_UNITS[@]}"
+# ─── SPEC-11: dispatch units (cycles + map groups each fold to one) ───────────
+# #2271 (ADR-068): design_verify_cycle, impact and build_test_cycle fold into
+# ONE outer loop, delivery_loop. Count is 7: hydrate, intake, plan,
+# cycle:delivery_loop, map:review_lenses, stage:review-aggregator, pr.
+assert_eq "[SPEC-11] dispatch units count is 7" "7" "${#_TPL_DISPATCH_UNITS[@]}"
 assert_eq "[SPEC-11] dispatch[0] stage:hydrate"        "stage:hydrate"        "${_TPL_DISPATCH_UNITS[0]}"
 assert_eq "[SPEC-11] dispatch[1] stage:intake"         "stage:intake"         "${_TPL_DISPATCH_UNITS[1]}"
 assert_eq "[SPEC-11] dispatch[2] stage:plan"           "stage:plan"           "${_TPL_DISPATCH_UNITS[2]}"
-assert_eq "[SPEC-11] dispatch[3] cycle:design_verify_cycle" "cycle:design_verify_cycle" "${_TPL_DISPATCH_UNITS[3]}"
-assert_eq "[SPEC-11] dispatch[4] stage:impact"         "stage:impact"         "${_TPL_DISPATCH_UNITS[4]}"
-assert_eq "[SPEC-11] dispatch[5] cycle:build_test_cycle" "cycle:build_test_cycle" "${_TPL_DISPATCH_UNITS[5]}"
-assert_eq "[SPEC-11] dispatch[6] map:review_lenses"    "map:review_lenses"    "${_TPL_DISPATCH_UNITS[6]}"
-assert_eq "[SPEC-11] dispatch[7] stage:review-aggregator" "stage:review-aggregator" "${_TPL_DISPATCH_UNITS[7]}"
-assert_eq "[SPEC-11] dispatch[8] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[8]}"
+assert_eq "[SPEC-11] dispatch[3] cycle:delivery_loop"  "cycle:delivery_loop"  "${_TPL_DISPATCH_UNITS[3]}"
+assert_eq "[SPEC-11] dispatch[4] map:review_lenses"    "map:review_lenses"    "${_TPL_DISPATCH_UNITS[4]}"
+assert_eq "[SPEC-11] dispatch[5] stage:review-aggregator" "stage:review-aggregator" "${_TPL_DISPATCH_UNITS[5]}"
+assert_eq "[SPEC-11] dispatch[6] stage:pr"             "stage:pr"             "${_TPL_DISPATCH_UNITS[6]}"
+
+# ─── SPEC-18 (#2271, ADR-068): the outer loop and its rules ──────────────────
+assert_eq "[SPEC-18] delivery_loop holds the design loop, impact and the build loop" \
+    "design_verify_cycle,impact,build_test_cycle" "${_TPL_CYCLE_STAGES_delivery_loop:-}"
+assert_eq "[SPEC-18] delivery_loop runs at most 2 rounds" "2" "${_TPL_CYCLE_MAX_delivery_loop:-}"
+assert_eq "[SPEC-18] delivery_loop halts when its rounds are spent" "halt" "${_TPL_CYCLE_ON_MAX_delivery_loop:-}"
+assert_eq "[SPEC-18] delivery_loop stops on a finding nobody owns" "halt" "${_TPL_CYCLE_UNOWNED_delivery_loop:-}"
+assert_eq "[SPEC-18] the build loop yields a finding nobody in it owns" "yield" "${_TPL_CYCLE_UNOWNED_build_test_cycle:-}"
+assert_eq "[SPEC-18] the design loop counts no answers itself" "" "${_TPL_CYCLE_UNOWNED_design_verify_cycle:-}"
 
 # ─── SPEC-16 (#1218, ADR-046): design_verify_cycle registered correctly ───────
 # _TPL_CYCLES must ALSO contain design_verify_cycle (design → design-gate); its
@@ -224,8 +223,8 @@ for _cyc in "${_TPL_CYCLES[@]}"; do [[ "$_cyc" == "design_verify_cycle" ]] && _d
 assert_eq "[SPEC-16] _TPL_CYCLES contains design_verify_cycle" "1" "$_dvc_in_cycles"
 assert_eq "[SPEC-16] _TPL_CYCLE_STAGES_design_verify_cycle" \
     "design,spec-coverage,design-gate" "$_TPL_CYCLE_STAGES_design_verify_cycle"
-assert_eq "[SPEC-16] _TPL_CYCLE_MAX_design_verify_cycle is 3" \
-    "3" "$_TPL_CYCLE_MAX_design_verify_cycle"
+assert_eq "[SPEC-16] _TPL_CYCLE_MAX_design_verify_cycle is 2 (#2271)" \
+    "2" "$_TPL_CYCLE_MAX_design_verify_cycle"
 # #1683: design_verify_cycle converges on TWO conditions now (#1284/ADR-047
 # multi-condition), so the single-condition UNTIL_* vars are deliberately empty
 # and the combinator vars carry the contract instead.
@@ -255,8 +254,8 @@ assert_eq "[SPEC-14] _TPL_CYCLES contains build_test_cycle" "1" "$_btc_in_cycles
 assert_eq "[SPEC-14] _TPL_CYCLE_STAGES_build_test_cycle" \
     "test-author,spec-correspondence,build,test,shape-floor,acceptance-gate,secret-scan,assertion-integrity,issue-acceptance,gate-aggregator" \
     "$_TPL_CYCLE_STAGES_build_test_cycle"
-assert_eq "[SPEC-5] [SPEC-14] _TPL_CYCLE_MAX_build_test_cycle is 5 (I10-B)" \
-    "5" "$_TPL_CYCLE_MAX_build_test_cycle"
+assert_eq "[SPEC-5] [SPEC-14] _TPL_CYCLE_MAX_build_test_cycle is 3 (#2271)" \
+    "3" "$_TPL_CYCLE_MAX_build_test_cycle"
 
 # ─── SPEC-15: build_test_cycle exit_when predicate fields are set correctly ───
 # CHANGE (I10-A #976): the exit_when block must parse into UNTIL_* vars so the
@@ -270,31 +269,6 @@ assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_OP_build_test_cycle" \
     "eq" "$_TPL_CYCLE_UNTIL_OP_build_test_cycle"
 assert_eq "[SPEC-15] _TPL_CYCLE_UNTIL_VALUE_build_test_cycle" \
     "pass" "$_TPL_CYCLE_UNTIL_VALUE_build_test_cycle"
-
-# ─── SPEC-17 (#1219, ADR-045/ADR-046): build_test_cycle route_back → design ───
-# The final EPIC #1216 wiring: a design-rooted acceptance failure (tautology)
-# surfaces as gate-aggregator.verdict==route_design, which the build_test_cycle's
-# route_back edge matches to REWIND to the earlier design_verify_cycle (re-author
-# the SPEC), bounded to one pass (max: 1). This parses into the sibling
-# _TPL_CYCLE_ROUTE_BACK_* vars (a sibling of exit_when, #1217). Adding route_back
-# is NOT a new stage/dispatch unit → the 18-entry _TPL_STAGES count (SPEC-2) and
-# the 8-unit dispatch list (SPEC-11) are UNCHANGED.
-assert_eq "[SPEC-17] route_back.to == design_verify_cycle (earlier top-level unit)" \
-    "design_verify_cycle" "${_TPL_CYCLE_ROUTE_BACK_TO_build_test_cycle:-}"
-assert_eq "[SPEC-17] route_back.when.stage == gate-aggregator" \
-    "gate-aggregator" "${_TPL_CYCLE_ROUTE_BACK_STAGE_build_test_cycle:-}"
-# #1987: the predicate keys on the declared FAULT class, not on a verdict that
-# had mutated into route_<target>. `in` because `specification` and `scope`
-# share this destination — with only `eq` available, one of them would have
-# silently stopped rewinding.
-assert_eq "[SPEC-17] route_back.when.field == fault" \
-    "fault" "${_TPL_CYCLE_ROUTE_BACK_FIELD_build_test_cycle:-}"
-assert_eq "[SPEC-17] route_back.when.op == in" \
-    "in" "${_TPL_CYCLE_ROUTE_BACK_OP_build_test_cycle:-}"
-assert_eq "[SPEC-17] route_back.when.value names both routable classes" \
-    "specification scope" "${_TPL_CYCLE_ROUTE_BACK_VALUE_build_test_cycle:-}"
-assert_eq "[SPEC-17] route_back.max == 1 (one re-author pass)" \
-    "1" "${_TPL_CYCLE_ROUTE_BACK_MAX_build_test_cycle:-}"
 
 # ─── SPEC-12: shape-floor is at index 7 in _TPL_STAGES (after build/test) ─────
 # CHANGE (#1218, ADR-046): design-gate + impact inserted at indices 3,4 shift the

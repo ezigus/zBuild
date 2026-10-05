@@ -48,10 +48,10 @@ mechanics:
     defined_in: core/redaction/scope-redaction.sh
     adr: ADR-004
 
-  - name: route_back
-    summary: Send work to an earlier stage on failure (ADR-045).
-    defined_in: core/pipeline/runner.sh
-    adr: ADR-045
+  - name: finding-answers
+    summary: Every stage answers every finding; a loop counts the answers and goes round or stops (ADR-068).
+    defined_in: core/pipeline/unowned.sh
+    adr: ADR-068
 
   - name: router-models-as-data
     summary: Tiered model routing from config; no model names in code (ADR-003).

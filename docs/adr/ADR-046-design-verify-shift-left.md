@@ -138,3 +138,7 @@ OTHER cycle across the rewind).
 > the runtime validator skipped optional inputs entirely — no validation of any kind. `design/plugin.sh` splices it into the prompt keyed on file PRESENCE
 (absent on the first pass → no-op). Bounded by ADR-045's per-edge `max: 1` + the global budget, so a
 still-tautological SPEC hard-fails cleanly after one re-author pass — no ping-pong.
+
+### Amendment (2026-10-04, #2271)
+
+`design_verify_cycle` is no longer a `route_back` target. It is nested in `delivery_loop` with the build loop (ADR-068 §1); a design loop that runs out of rounds ends that loop's round, and build is skipped. Tests: `tests/integration/nested-loop-rounds-test.sh` L2/L4, `tests/unit/template-simple-yaml-test.sh` SPEC-18.

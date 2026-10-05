@@ -291,8 +291,8 @@ _design_state_blob_url() {
 # stand as this run's without a model call (#2225): the run resumes (the
 # default), this run has no design yet (so not a rewind), the prior design
 # passed design-gate — a pass recorded for that exact design.md — and
-# spec-coverage found it covered, the prior run did not send the work back to
-# design, and the issue text is byte-identical. Anything else — design runs as before.
+# spec-coverage found it covered, the prior run did not stop on a finding no
+# stage owned (#2271), and the issue text is byte-identical. Anything else — design runs as before.
 # A resume used to re-run design every time (~20 min, #1835/#1837) because no
 # stage was told it was one.
 _design_prior_reusable() {
@@ -307,11 +307,9 @@ _design_prior_reusable() {
     [[ -n "$_judged" && "$_judged" == "$(git hash-object "$rr/design.md" 2>/dev/null)" ]] || return 1
     # The cycle's other exit condition: spec-coverage must have found it covered.
     [[ "$(jq -r '.verdict // empty' "$rr/spec-coverage-result.json" 2>/dev/null)" == "covered" ]] || return 1
-    if [[ -s "$rr/gate-aggregator-result.json" ]]; then
-        case "$(jq -r '.fault // empty' "$rr/gate-aggregator-result.json" 2>/dev/null)" in
-            specification|scope) return 1 ;;
-        esac
-    fi
+    # #2271 (ADR-068): a run that stopped because nobody owned a finding left
+    # it for a human — design has to look again.
+    [[ ! -s "$rr/unowned-findings.md" ]] || return 1
     local now="${ZBUILD_STATE_DIR:-$(dirname "$ad")}/intake.md" prior; prior="$(dirname "$rr")/intake.md"
     [[ -s "$now" && -s "$prior" ]] && cmp -s "$now" "$prior"
 }
@@ -583,15 +581,9 @@ DESIGN_PROMPT
         fi
     fi
 
-    # #1219 (ADR-045/ADR-046): on a route_back REPLAY, splice the design-rooted
-    # gate feedback so design RE-AUTHORS the named tautological [change] SPEC(s)
-    # (build is forbidden to touch acceptance assertions, ADR-036). Keyed on file
-    # presence (see reader) — absent on the first pass → no-op, byte-identical prompt.
-    # #1988: the acceptance gate's detail now reaches this prompt as an
-    # engine-collected summary (#1976) — the aggregator no longer renders a
-    # design-facing payload, and no longer suppresses the gates that do. What
-    # design still needs stated is what to DO about a specification fault, which
-    # is not something a gate should be authoring prose about.
+    # When the acceptance check failed, say what design can do about a [change]
+    # requirement whose test already passes (build may not touch acceptance
+    # assertions, ADR-036). The check's findings reach this prompt numbered.
     if [[ "$(jq -r '.stage_verdicts["acceptance-gate"] // empty' \
             "$(dirname "$artifact_dir")/pipeline-state.json" 2>/dev/null || true)" == "fail" ]]; then
         # #2269: plain words; no other stage named (ADR-061), no ADR number.

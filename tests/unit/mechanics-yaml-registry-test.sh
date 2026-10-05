@@ -47,7 +47,7 @@ EXPECTED_MECHANICS=(
     map
     parallel
     redaction-chokepoint
-    route_back
+    finding-answers
     router-models-as-data
     scope-governance
     sequence

@@ -83,7 +83,7 @@ _Newcomers can skip this section._
 - ADR-025 — abort-propagation contract; the cycle installs its own INT/TERM traps and re-installs them after each member dispatch because `route.sh` clobbers them
 - ADR-029 — router-timeout escalation (G2/G3): per-member consecutive timeout counters (`_CYCLE_TIMEOUT_RUN`) and max-turns base anchors (`_CYCLE_TURNS_BASE`) survive re-entry across iterations
 - ADR-039 — a cycle member may be a `type: parallel` group; the cycle orchestrator dispatches it via `parallel-orchestrator.sh`
-- ADR-045 — [[route_back]]: a later stage can re-enter a cycle (rc=11)
+- ADR-068 — [[mechanics/finding-answers]]: nested loops and counted answers (supersedes ADR-045's route_back)
 - ADR-047 — multi-condition `exit_when` with `combinator: all|any`; single-condition mode is byte-identical to the pre-ADR-047 behavior
 
 **Engine ceiling:** `_CYCLE_ABSOLUTE_MAX=10`. Templates that request more than 10 iterations are clamped and a `cycle.config.invalid` event is emitted. This ceiling is checked before the template's own `max_iterations` value.
@@ -94,4 +94,4 @@ _Newcomers can skip this section._
 
 **Convergence detection** runs automatically when `plateau_window` or `divergence_window` are set. Plateau fires when the score series is unchanged for `plateau_window` consecutive iterations; divergence fires when quality regresses for `divergence_window` consecutive iterations. Both are overridable per cycle in the template.
 
-See also [[mechanics/convergence]], [[mechanics/route_back]], and [[Pipeline-and-Stages]].
+See also [[mechanics/convergence]], [[mechanics/finding-answers]], and [[Pipeline-and-Stages]].

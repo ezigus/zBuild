@@ -11,8 +11,8 @@
 #   SPEC-1 [change]: the prompt carries the issue, the SPECs, the diff and the
 #                    test verdict — every piece the judgement needs
 #   SPEC-2 [change]: a requirement the code does not meet → verdict=fail,
-#                    fault=implementation (build fixes it, in the cycle)
-#   SPEC-3 [change]: a requirement no SPEC captures → fault=specification
+#                    and each unmet requirement a numbered finding (#2271)
+#   SPEC-3 [change]: no fault class is asked for or written (#2271)
 #                    (the template routes that back to design)
 #   SPEC-4 [change]: every requirement met → verdict=pass
 #   SPEC-5 [guard] : a placeholder issue is never a pass
@@ -78,21 +78,26 @@ assert_contains "[SPEC-1] the SPEC text" "$_p" "the plugin reads its inputs from
 assert_contains "[SPEC-1] the diff" "$_p" '+gate="$(jq -r .inputs.gate'
 assert_contains "[SPEC-1] the test verdict" "$_p" "TEST VERDICT: pass"
 
-print_test_section "SPEC-2: unmet by the code → fail, fault=implementation"
+print_test_section "SPEC-2: unmet by the code → fail, a numbered finding"
 _setup s2
-_IA_ANSWER=$'VERDICT: fail\nFAULT: implementation\nREASON: the push failure is reported as broken\nUNMET: an interrupted push reports unavailable'
+_IA_ANSWER=$'VERDICT: fail\nREASON: the push failure is reported as broken\nUNMET: an interrupted push reports unavailable'
 _run; _rc=$?
 assert_eq "[SPEC-2] rc=0 (the verdict is in the artifact)" "0" "$_rc"
 assert_eq "[SPEC-2] verdict=fail" "fail" "$(_res .verdict)"
-assert_eq "[SPEC-2] fault=implementation" "implementation" "$(_res .fault)"
+assert_contains "[SPEC-2] the unmet requirement is a numbered finding" "$(_res '.data.findings[0].text')" "an interrupted push reports unavailable"
 assert_eq "[SPEC-2] the unmet requirement is named" "an interrupted push reports unavailable" "$(_res '.data.unmet[0]')"
 assert_eq "[SPEC-2] the stage completed" "complete" "$(_res .disposition)"
 
-print_test_section "SPEC-3: no SPEC captures it → fault=specification"
+print_test_section "SPEC-3: no fault class — the stage does not decide who fixes it"
 _setup s3
 _IA_ANSWER=$'VERDICT: fail\nFAULT: specification\nREASON: no SPEC asks for it\nUNMET: no artifact paths in code'
 _run
-assert_eq "[SPEC-3] fault=specification" "specification" "$(_res .fault)"
+assert_eq "[SPEC-3] a fault line in the reply is not written" "null" "$(_res .fault)"
+if grep -q 'FAULT' "$REPO_ROOT/plugins/agent/issue-acceptance/plugin.sh"; then
+    assert_fail "[SPEC-3] the prompt no longer asks for a fault" "FAULT still in plugin.sh"
+else
+    assert_pass "[SPEC-3] the prompt no longer asks for a fault"
+fi
 
 print_test_section "SPEC-4: every requirement met → pass"
 _setup s4

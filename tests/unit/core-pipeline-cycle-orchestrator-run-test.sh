@@ -185,13 +185,12 @@ assert_eq "T12c first call rc=0" "0" "$rc_t12c_1"
 assert_eq "T12c second call config_invalid rc=4" "4" "$rc_t12c_2"
 assert_eq "[SPEC-3] second sequential top-level call clears stale persist (not restores)" "" "${_CYCLE_TIMEOUT_RUN[s1]:-}"
 
-# ── N2 (#1225): NESTED cycle route_back propagates rc=11 outward, NOT rc=4 ─────
-# An inner cycle that route_backs returns rc=11 to the enclosing outer cycle's
-# member dispatch (the `11)` case). BEFORE #1225 the outer main loop had no rc=11
-# branch → the `_iter_rc -ne 0` catch-all collapsed it to rc=4 (config_invalid,
-# silent HALT), never reaching the runner's rewind. This asserts the outer
-# cycle_orchestrator_run now BUBBLES 11 (mirroring rc=8/130) and preserves the
-# hand-off globals (route_back target + edge-owner id) for the runner.
+# ── N2 (#1800, #2271): a nested cycle that ends unconverged is recorded ──────
+# The outer dispatches `inner` through the NESTED-cycle branch. When the inner
+# loop runs out of rounds without converging, the outer must record it in
+# stage_statuses and stage_verdicts like any member — a post-mortem's first
+# question (why did the outer loop go round?) is the one state has to answer.
+# (#2271 retired route_back, which this section used to drive.)
 NESTED_RB_TPL="$TEST_TEMP_DIR/nested-rb.yaml"
 cat > "$NESTED_RB_TPL" <<'EOF'
 id: nested-rb-run
@@ -223,14 +222,6 @@ inner:
     field: verdict
     op: eq
     value: pass
-  route_back:
-    to: plan
-    when:
-      stage: test
-      field: verdict
-      op: eq
-      value: retry
-    max: 2
   max_iterations: 2
   on_max: continue
 build:
@@ -241,25 +232,18 @@ EOF
 _seed
 _TPL_STAGES=(); _TPL_CYCLES=()
 set +e; load_template "$NESTED_RB_TPL"; rc=$?; set -e
-assert_eq "N2: nested route_back template LOADS rc=0 (#1225 lifts nested rejection)" "0" "$rc"
-# inner test always emits verdict=retry (status complete, rc 0) → inner exhausts
-# unconverged (rc=2) → route_back predicate (retry) matches → inner returns 11.
+assert_eq "N2: nested template LOADS rc=0" "0" "$rc"
 MOCK_VERDICTS="build:pass;test:retry"
-_CYCLE_ROUTE_BACK_TO=""; _CYCLE_ROUTE_BACK_FALLBACK_RC=""; _CYCLE_ROUTE_BACK_EDGE_ID=""
 set +e; cycle_orchestrator_run "outer" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc_n2=$?; set -e
-assert_eq "N2: outer cycle_orchestrator_run BUBBLES rc=11 (NOT rc=4 collapse)" "11" "$rc_n2"
-assert_eq "N2: reason=route_back" "route_back" "$_CYCLE_LAST_TERMINATED_REASON"
-assert_eq "N2: route_back target=plan preserved through the outer loop" "plan" "$_CYCLE_ROUTE_BACK_TO"
-assert_eq "N2: edge-owner id = INNER cycle (so runner keys the inner's max)" "inner" "$_CYCLE_ROUTE_BACK_EDGE_ID"
-# #1800: the outer dispatches `inner` through the NESTED-cycle branch, and rc=11
-# takes its propagate-outward early return — the path where the member is
-# dispatched but the loop never reaches the bottom-of-branch write. The record
-# has to pair with the dispatch.complete event here too, or the one shape a
-# post-mortem most needs (why did the run rewind?) is the one state cannot show.
+if [[ "$rc_n2" -ne 0 ]]; then
+    assert_pass "N2: the outer loop does not converge (rc=$rc_n2)"
+else
+    assert_fail "N2: the outer loop does not converge" "rc=0"
+fi
 n2_inner_ss="$(jq -r '.stage_statuses.inner // "missing"' "$STATE_FILE")"
-assert_eq "[SPEC-4] nested-cycle member in stage_statuses on route_back" "failed" "$n2_inner_ss"
+assert_eq "[SPEC-4] nested-cycle member in stage_statuses when unconverged" "failed" "$n2_inner_ss"
 n2_inner_sv="$(jq -r '.stage_verdicts.inner // "missing"' "$STATE_FILE")"
-assert_eq "[SPEC-5] nested-cycle member in stage_verdicts on route_back" "route_back" "$n2_inner_sv"
+assert_eq "[SPEC-5] nested-cycle member in stage_verdicts when unconverged" "fail" "$n2_inner_sv"
 
 # T13: stage_statuses and stage_verdicts written per cycle member (#1800)
 # SPEC-4/5/6 fail at baseline: _cycle_iter_dispatch did not write stage_statuses

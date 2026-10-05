@@ -88,8 +88,8 @@ FAILED_BLOCK="$(_state_with_verdict failed fail)"
 assert_contains "[SPEC-1] the failing stage's body is present" "$FAILED_BLOCK" "GATE-FINDINGS-BODY"
 # Case-insensitive: the requirement is that the framing is imperative, not that
 # it is shouted.
-# #2269: imperative, in plain words ("fix these findings"), not RESOLVE.
-if grep -qiF 'fix these findings' <<< "$FAILED_BLOCK"; then
+# #2271: findings to answer — every stage answers each one itself.
+if grep -qiF 'its findings, to answer' <<< "$FAILED_BLOCK"; then
     assert_pass "[SPEC-1] and it is framed as something to resolve"
 else
     assert_fail "[SPEC-1] and it is framed as something to resolve" \

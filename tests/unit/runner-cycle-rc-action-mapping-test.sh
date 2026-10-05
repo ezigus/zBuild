@@ -45,8 +45,8 @@ _drive() {
         # shellcheck disable=SC1091
         cd "$_ZB_REPO" || exit 1
         source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
-        # #979: resolve the owned route-back-cycles fixture (retired standard.yaml).
-        resolve_template_file() { echo "$REPO_ROOT/tests/fixtures/templates/route-back-cycles.yaml"; }
+        # #979: resolve the owned two-cycles fixture (retired standard.yaml).
+        resolve_template_file() { echo "$REPO_ROOT/tests/fixtures/templates/two-cycles.yaml"; }
         # Make the stub cycle-aware: design_impact_cycle always converges (rc=0)
         # so this test focuses on build_review_cycle's rc → status mapping.
         eval "cycle_orchestrator_run() {
@@ -66,7 +66,7 @@ _drive() {
             printf '{"verdict":"request_changes"}' > "$artdir/review.json"
             return 0
         }
-        main --issue "$_ZB_ISSUE" --template route-back-cycles >/dev/null 2>&1
+        main --issue "$_ZB_ISSUE" --template two-cycles >/dev/null 2>&1
     )
     printf '%s' "$_tmp"
 }
@@ -100,7 +100,7 @@ for _i in "${!_cases[@]}"; do
     _state="$_dir/state/pipeline-state.json"
     _got_status="$(jq -r '.status' "$_state" 2>/dev/null)"
     assert_eq "rc=$_rc → pipeline_status=$_exp_status" "$_exp_status" "$_got_status"
-    # #979: route-back-cycles.yaml (owned fixture) wraps plan as a leaf + design_impact_cycle (design+impact)
+    # #979: two-cycles.yaml (owned fixture) wraps plan as a leaf + design_impact_cycle (design+impact)
     # and review inside the outer build_review_cycle (ADR-026). The only top-level
     # stage:* unit is intake. Use `intake` as a smoke that stage:* dispatch
     # ran when rc∈{0,1,2,3} (continue path).

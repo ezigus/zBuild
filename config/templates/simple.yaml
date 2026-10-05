@@ -35,9 +35,7 @@ flow:
   - hydrate
   - intake
   - plan
-  - design_verify_cycle
-  - impact
-  - build_test_cycle
+  - delivery_loop
   - review_lenses
   - review-aggregator
   - pr
@@ -66,6 +64,35 @@ always_run:
   - release
   - persist
 
+# ─── delivery_loop (cycle) — #2271, ADR-068 ─────────────────────────────────
+# One outer loop holds the design loop and the build loop. Every stage sees
+# every finding and answers each one ("done" + what it changed, "nothing to do"
+# + why); the engine only counts the answers — it never decides who owns a
+# finding, and nothing jumps backwards.
+#   - The build loop ends early (`unowned: yield`) when every build-side stage
+#     answered "nothing to do" to the same finding. This loop then goes round
+#     from design, carrying every finding; each inner loop starts again at 1.
+#   - If design also answers "nothing to do" to it, nobody owns it: the run
+#     stops (`unowned: halt`) with artifacts/unowned-findings.md.
+#   - A design loop that runs out of rounds ends this round (build is skipped)
+#     and this loop goes round. When this loop's rounds are spent, the run stops.
+delivery_loop:
+  type: cycle
+  description: Design, then build, until both pass — going round when a finding needs design
+  flow:
+    - design_verify_cycle
+    # The semantic judge of the design (advisory by placement, ADR-040): once
+    # per round, after the design loop, never driving convergence.
+    - impact
+    - build_test_cycle
+  exit_when:
+    all:
+      - { stage: design_verify_cycle, field: verdict, op: eq, value: pass }
+      - { stage: build_test_cycle, field: verdict, op: eq, value: pass }
+  max_iterations: 2
+  on_max: halt
+  unowned: halt
+
 # ─── design_verify_cycle (cycle) ─────────────────────────────────────────────
 # ADR-046 (#1218, EPIC #1216): give the design stage an independent verifier that
 # loops back TO it BEFORE the build cycle — so design/contract defects are caught
@@ -78,9 +105,9 @@ always_run:
 # rule (A) is satisfied by binding exit_when directly to it — a single gate, no
 # separate aggregator needed (contrast build_test_cycle's gate-aggregator, which
 # rolls up MANY gates). exit_when fires on design-gate.verdict == pass.
-# max_iterations: 3, on_max: halt (#2176, reversing ADR-019's fall-through for
-# THIS cycle: a contract the gate rejected three times is not built — the build
-# cycle cannot change it, so it only inherits findings it cannot act on).
+# max_iterations: 2, on_max: halt (#2176): a contract the gate still rejects is
+# not built. Nested in delivery_loop (#2271), running out of rounds ends that
+# loop's round — build is skipped — and the outer loop goes round.
 #
 # Feedback (block-form `to:` per the Wave 18-B translator):
 #  (a) design-gate.design_gate_feedback → design.prior_impact_feedback — REUSE
@@ -91,9 +118,9 @@ always_run:
 #      so iter N+1 refines rather than re-creates (#773 lesson).
 #
 # The SEMANTIC sibling (LLM judge: are the SPECs genuinely new + separable?) is the
-# `impact` stage placed as a lone top-level stage AFTER this cycle (advisory by
-# placement, ADR-040) — NOT a cycle member, so the LLM never re-runs per design
-# iteration and never drives convergence.
+# `impact` stage, placed AFTER this cycle in delivery_loop (advisory by placement,
+# ADR-040) — NOT a member of this cycle, so it never re-runs per design iteration
+# and never drives convergence.
 design_verify_cycle:
   type: cycle
   description: Verify the design contract is build-ready until design-gate passes
@@ -118,7 +145,7 @@ design_verify_cycle:
     all:
       - { stage: design-gate, field: verdict, op: eq, value: pass }
       - { stage: spec-coverage, field: verdict, op: ne, value: uncovered }
-  max_iterations: 3
+  max_iterations: 2
   on_max: halt
   feedback:
     - from:
@@ -215,9 +242,10 @@ issue-acceptance:
 # plugins remain canonical (ADR-013) but dormant for future reuse.)
 # The individual gates are NON-blocking (no blocking:true):
 # they emit verdict-in-artifact (ADR-004) and the cycle iterates-to-fix; the loop
-# converges via exit_when, never via per-gate hard-blocks. max_iterations: 5 with
-# on_max: continue (ADR-019 fall-through to operator — the unconverged verdict
-# still records, the pipeline continues to review).
+# converges via exit_when, never via per-gate hard-blocks. max_iterations: 3.
+# Nested in delivery_loop (#2271): running out of rounds hands back to that loop,
+# which goes round from design; `unowned: yield` ends this loop early when every
+# build-side stage answered "nothing to do" to the same finding.
 build_test_cycle:
   type: cycle
   description: Build, test, and run the mechanical gates until gate-aggregator passes
@@ -247,9 +275,8 @@ build_test_cycle:
     - assertion-integrity
     # #1849: the finished change judged against the ISSUE, not the SPECs — the
     # only check after spec-coverage that reads the issue at all. A convergence
-    # gate, so gate-aggregator's roster makes it must-pass; its fault class
-    # (`specification` → design_verify_cycle via route_back below,
-    # `implementation` → build, in this cycle) says where the fix belongs.
+    # gate, so gate-aggregator's roster makes it must-pass; each unmet
+    # requirement is a numbered finding every stage answers.
     - issue-acceptance
     - gate-aggregator
   exit_when:
@@ -257,8 +284,9 @@ build_test_cycle:
     field: verdict
     op: eq
     value: pass
-  max_iterations: 5
+  max_iterations: 3
   on_max: continue
+  unowned: yield
   # The cycle CONVERGES rather than spinning build(no-op)→…→gate-aggregator(fail)
   # because the aggregator's consolidated gate-feedback.md reaches build. B2
   # (ADR-040): the gate-aggregator is the SINGLE collector of failure detail,
@@ -266,35 +294,6 @@ build_test_cycle:
   # through a feedback: wire plus a bespoke reader; #1979 retired both — the
   # aggregator marks that output `summary: true` (#1976) and the engine injects
   # it, framed by verdict, with no per-consumer wiring.
-  # ─── route_back (#1219, ADR-045/ADR-046 — final EPIC #1216 wiring) ──────────
-  # A DESIGN-ROOTED acceptance failure (a tautological [change] SPEC that cannot
-  # be made to fail-at-baseline) CANNOT be fixed by build — ADR-036 forbids build
-  # from touching acceptance assertions. The acceptance-gate marks it with a
-  # generic route_target scalar; the gate-aggregator rolls that up into
-  # verdict==route_design (≠pass, so exit_when never converges and merge stays on
-  # the PR path). This route_back edge matches that verdict and REWINDS to the
-  # EARLIER design_verify_cycle so design re-authors the SPEC (reading the focused
-  # design-feedback.md the aggregator wrote). Bounded: max:1 (one re-author pass);
-  # the global route_back budget (default 2 = one jump) also caps it. Still
-  # tautological after the rewind → budget exhausted → the by-severity terminal
-  # (rc=8) hard-fails cleanly, naming the SPEC. NO ping-pong. The target is an
-  # EARLIER top-level dispatch unit (design_verify_cycle precedes build_test_cycle
-  # in flow), satisfying _tpl_validate_route_back (#1217). Declared ABOVE feedback:
-  # (both orders are valid) so the sibling `when: stage:` never confuses the
-  # line-based feedback-edge parsers (template.sh / lint-contract.sh).
-  route_back:
-    to: design_verify_cycle
-    when:
-      stage: gate-aggregator
-      # #1987: the template owns the mapping from a declared FAULT class to a
-      # destination. The gate says what KIND of problem it found; only the
-      # template knows that specifications and scope are authored upstream in
-      # design_verify_cycle. `in` because two classes share this destination.
-      field: fault
-      op: in
-      value: specification scope
-    max: 1
-
 # ─── intake (leaf) ───────────────────────────────────────────────────────────
 intake:
   gate: auto

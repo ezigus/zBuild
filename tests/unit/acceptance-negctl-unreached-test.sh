@@ -30,16 +30,15 @@
 #             `guard_regressed` — a real mislabel is still caught
 # U5 [change] the design-gate precheck rejects a design for neither:
 #             `GUARD SKIP <spec> guard_unreached|guard_unverified`
-# U6 [change] the gate: recoverable, NOT a specification fault (design is not
-#             rewound), a reason that names the SPEC and the last verdict the
-#             file printed, and `about` naming the testfile, so the stage that
-#             wrote it is told it is its to fix
-# U7 [change] guard_unverified: no fault on the first round (about names the
-#             testfile); a specification fault from the second round on
+# U6 [change] the gate: recoverable, no fault class, a reason that names the
+#             SPEC and the last verdict the file printed, and a numbered finding
+#             every stage answers (#2271: no `about`, no routing)
+# U7 [change] guard_unverified: the same finding every round, never a fault
+#             class (#2271 retired the round-2 escalation)
 # U8 [change] a [change] SPEC the file never reached at the merge-base is
 #             `unreached_at_base` — its negative control is unproven, not valid
 # U9 [change] a [change] SPEC the file never reached on the NEW code is
-#             `unreached_at_head` — build's, and never escalated to design
+#             `unreached_at_head` — never a fault class
 # U10 [change] a command missing at the merge-base (rc 127) inside a file that
 #             printed other verdicts is unreached, not "the runner could not
 #             execute the file"
@@ -48,8 +47,8 @@
 #             SPEC's own lines ignored, colour codes stripped, the LAST one wins,
 #             nothing found in an empty or verdict-free log (review #2235)
 # U12 [guard]  the whole gate on a contract whose ONLY finding is
-#             unreached_at_base: not a specification fault, and `about` names
-#             the testfile (review #2235 round 3)
+#             unreached_at_base: no fault class, and the numbered finding says
+#             the test never ran on the old code (review #2235 round 3)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -188,7 +187,7 @@ assert_eq "[U5] ...nor for an unverified one" \
 assert_eq "[U5] ...while a real mislabel still does" \
     "GUARD FAIL SPEC-5 guard_regressed" "$(grep -E '^[A-Z]+ [A-Z]+ SPEC-5( |$)' <<< "$OUT5" || true)"
 
-print_test_section "U6: the gate's class, fault, reason and about"
+print_test_section "U6: the gate's class, fault, reason and numbered finding"
 # shellcheck source=../../scripts/lib/acceptance-disposition.sh
 source "$REPO_ROOT/scripts/lib/acceptance-disposition.sh"
 assert_eq "[U6] guard_unreached is recoverable" \
@@ -229,8 +228,9 @@ _res6="$_st6/artifacts/acceptance-gate-result.json"
 assert_eq "[U6] the gate fails the SPEC" "fail" "$(jq -r '.verdict // empty' "$_res6" 2>/dev/null)"
 assert_eq "[U6] ...and does NOT blame the specification (design is not rewound)" "" \
     "$(jq -r '.fault // empty' "$_res6" 2>/dev/null)"
-assert_eq "[U6] ...its finding is about the testfile that stopped" "tests/c-test.sh" \
-    "$(jq -r '.about // empty' "$_res6" 2>/dev/null)"
+# #2271: no `about` — the numbered finding itself says which SPEC never ran.
+assert_contains "[U6] ...its numbered finding names the SPEC that never ran" \
+    "$(jq -r '.data.findings[]?.text' "$_res6" 2>/dev/null)" "never ran"
 _reason6="$(jq -r '.reason // empty' "$_res6" 2>/dev/null)"
 assert_contains "[U6] the reason names the SPEC" "$_reason6" "SPEC-2"
 assert_contains "[U6] ...says its assertion never ran at the merge-base" "$_reason6" "never ran"
@@ -253,7 +253,7 @@ _gate_run() {
     printf '%s' "$st/artifacts/acceptance-gate-result.json"
 }
 
-print_test_section "U7: an unverified guard — its owner first, design on the next round"
+print_test_section "U7: an unverified guard — the same finding every round, never a fault class (#2271)"
 REPO7="$(setup_git_temp_repo negctl-unreached-repo7)"
 ( cd "$REPO7" || exit 1; "$GIT" checkout -q -b feature; mkdir -p tests
   printf '#!/usr/bin/env bash\nnew_feature() { return 0; }\n' > impl.sh
@@ -262,10 +262,10 @@ REPO7="$(setup_git_temp_repo negctl-unreached-repo7)"
 printf '```acceptance\nSPEC-1[guard]: impl present\nTESTFILES:\nSPEC-1: tests/b-test.sh\n```\n' > "$REPO7/design.md"
 _r7a="$(_gate_run "$REPO7" 1)"
 assert_eq "[U7] round 1: not a specification fault" "" "$(jq -r '.fault // empty' "$_r7a" 2>/dev/null)"
-assert_eq "[U7] round 1: about the testfile" "tests/b-test.sh" "$(jq -r '.about // empty' "$_r7a" 2>/dev/null)"
 assert_contains "[U7] round 1: the reason says it could not tell" "$(jq -r '.reason // empty' "$_r7a" 2>/dev/null)" "cannot be told from a file that stopped first"
 _r7b="$(_gate_run "$REPO7" 2)"
-assert_eq "[U7] round 2: still unverified → a specification fault" "specification" "$(jq -r '.fault // empty' "$_r7b" 2>/dev/null)"
+assert_eq "[U7] round 2: still no fault class" "" "$(jq -r '.fault // empty' "$_r7b" 2>/dev/null)"
+assert_contains "[U7] round 2: the same finding, numbered" "$(jq -r '.data.findings[]?.text' "$_r7b" 2>/dev/null)" "cannot be told from a file that stopped first"
 
 print_test_section "U9: unreached on the new code is never escalated to design"
 _r9="$(_gate_run "$REPO" 2)"
@@ -307,7 +307,7 @@ _r12="$(_gate_run "$REPO12" 2)"
 assert_eq "[U12] the only failure is unreached_at_base" "unreached_at_base:SPEC-2" \
     "$(jq -r '.failures | join(",")' "$_r12" 2>/dev/null)"
 assert_eq "[U12] not a specification fault, even on round 2" "" "$(jq -r '.fault // empty' "$_r12" 2>/dev/null)"
-assert_eq "[U12] about names the testfile" "tests/u-test.sh" "$(jq -r '.about // empty' "$_r12" 2>/dev/null)"
+assert_contains "[U12] the numbered finding says the test never ran on the old code" "$(jq -r '.data.findings[]?.text' "$_r12" 2>/dev/null)" "never ran on the code from before this change"
 
 cleanup_test_env
 print_test_results

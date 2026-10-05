@@ -118,35 +118,6 @@ shape_floor_run() {
             ;;
     esac
 
-    # Out-of-scope escalation: if every missing floor file is absent from build's scope,
-    # route back to design so scope can be expanded rather than spinning in build.
-    # Empty scope (pre-plan runs) is treated as unconstrained — no escalation.
-    local fault=""
-    if [[ "$verdict" == "fail" ]]; then
-        local _scope="${ZBUILD_SHAPE_FLOOR_SCOPE:-${ZBUILD_SCOPE_ALLOWLIST:-}}"
-        if [[ -n "$_scope" ]] && declare -f _sf_collect_missing_floor_files >/dev/null 2>&1 \
-            && declare -f _sf_diff_files >/dev/null 2>&1; then
-            local _diff_files _total=0 _oos=0 _mf
-            _diff_files="$(_sf_diff_files "$repo_root")"
-            while IFS= read -r _mf; do
-                [[ -z "$_mf" ]] && continue
-                _total=$(( _total + 1 ))
-                # #1884: the substitution completes before grep -q runs, so its early exit signals nobody.
-                if ! grep -qxF "$_mf" <<< "$(printf '%s' "$_scope" | tr ',' '\n')"; then
-                    _oos=$(( _oos + 1 ))
-                fi
-            done < <(_sf_collect_missing_floor_files "$repo_root" "$_diff_files")
-            if [[ $_total -gt 0 && $_oos -eq $_total ]]; then
-                # #1987: the BOUNDARY is wrong — every missing floor file is
-                # outside the build's scope allowlist, so build cannot touch
-                # them. This gate knows that much about its own failure; where
-                # a scope fault is corrected is the template's to decide.
-                fault="scope"
-                _sf_emit "shape_floor.oos_escalation"
-            fi
-        fi
-    fi
-
     # #2271 (ADR-068): each file that spells out what this change altered is a
     # numbered finding; a failure with no file list is one finding.
     local _sf_fnd="[]"
@@ -162,27 +133,17 @@ shape_floor_run() {
             _sf_fnd="$(printf 'the shape check failed: %s\n' "$detail" | stage_findings_json)"
         fi
     fi
-    if [[ -n "$fault" ]]; then
-        jq -n --arg v "$verdict" --arg r "$detail" --arg f "$fault" --argjson fnd "${_sf_fnd:-[]}" \
-            '{"result_contract":2,"verdict":$v,"disposition":"complete","reason":$r,"fault":$f,"data":{"findings":$fnd}}' \
-            | atomic_write "$result_path"
-    else
-        jq -n --arg v "$verdict" --arg r "$detail" --argjson fnd "${_sf_fnd:-[]}" \
-            '{"result_contract":2,"verdict":$v,"disposition":"complete","reason":$r,"data":{"findings":$fnd}}' \
-            | atomic_write "$result_path"
-    fi
+    jq -n --arg v "$verdict" --arg r "$detail" --argjson fnd "${_sf_fnd:-[]}" \
+        '{"result_contract":2,"verdict":$v,"disposition":"complete","reason":$r,"data":{"findings":$fnd}}' \
+        | atomic_write "$result_path"
 
     # #1988: publish what only this gate knows. Its detail used to reach a
     # prompt only through the aggregator's rendering; it is now a declared
     # summary output (#1976), and cleared on a non-fail so a stale file from a
     # previous iteration never renders as a current finding.
-    # #2053: outside the fault branch. `fault` is set only for an out-of-scope
-    # failure, so nesting this under it left the output — declared required —
-    # missing on pass, skip and an ordinary in-scope fail, and could not clear
-    # anything on a non-fail because it never ran there. ADR-055 §9: written on
-    # EVERY terminal verdict, because absence is not a legitimate state.
-    # #2180: say WHICH files would satisfy the floor. The list is already
-    # computed above (the escalation needs it); writing only the reason token
+    # #2053: ADR-055 §9 — written on EVERY terminal verdict, because absence is
+    # not a legitimate state.
+    # #2180: say WHICH files would satisfy the floor. Writing only the reason token
     # told #1841's builder that a rule was broken and not what to do about it.
     local _body=""
     if [[ "$verdict" == "fail" ]] && declare -f _sf_collect_missing_floor_files >/dev/null 2>&1 \

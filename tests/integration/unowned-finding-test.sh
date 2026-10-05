@@ -102,7 +102,9 @@ LOG="$TEST_TEMP_DIR/dispatch.log"
 FA="$ZBUILD_STATE_DIR/finding-answers"
 # Which members answer findings — in production, the stages that call a model.
 # shellcheck disable=SC2329  # called by the orchestrator
+# shellcheck disable=SC2329  # called by the orchestrator
 _cycle_stage_answers_findings() { case "$1" in design|test_author|build) return 0 ;; *) return 1 ;; esac; }
+# shellcheck disable=SC2329  # called by the stub below
 _ans() {   # _ans <stage> <answer> <why> — record this stage's answer to "acc finding 1"
     mkdir -p "$FA"
     jq -nc --arg a "$2" --arg w "$3" --arg b "$1" '{"acc finding 1": {answer:$a, why:$w, by:$b}}' > "$FA/$1.json"

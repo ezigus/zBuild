@@ -181,11 +181,11 @@ _sf_oos_rt=""
 [[ -f "$_sf_oos_result" ]] \
     && _sf_oos_rt="$(jq -r '.fault // empty' "$_sf_oos_result" 2>/dev/null)"
 
-# #1987: the gate declares the KIND of fault — the boundary is wrong — and the
-# template maps that class to a destination. It no longer names `design`, which
-# would be meaningless in a flow without a design stage.
-assert_eq "[SPEC-2] out-of-scope missing floor files → fault=scope in artifact" \
-    "scope" "$_sf_oos_rt"
+# #2271 (ADR-068): no fault class. The files are numbered findings; build
+# answers "nothing to do" for files it may not touch, and the loops do the rest.
+assert_eq "[SPEC-2] out-of-scope missing floor files → no fault class" "" "$_sf_oos_rt"
+assert_contains "[SPEC-2] ...each missing file is a numbered finding" \
+    "$(jq -r '.data.findings[]?.text' "$_sf_oos_result" 2>/dev/null)" "spells out a count, order or list"
 
 # ─── SPEC-8 (GUARD): additive but STRUCTURAL schema change → FAIL, not SKIP ──
 # The append-only exemption covers known_types entries only. A diff that adds a

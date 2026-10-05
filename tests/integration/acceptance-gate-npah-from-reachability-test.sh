@@ -2,7 +2,7 @@
 # tests/integration/acceptance-gate-npah-from-reachability-test.sh — #2109
 # The gate's Level-3 check names a TESTFILE that is red at HEAD for what it is
 # (not_passing_at_head), never as inert wiring — and the plugin classifies and
-# escalates it exactly like negctl's per-SPEC finding (#2097).
+# reports it exactly like negctl's per-SPEC finding (#2097).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -86,18 +86,12 @@ assert_eq "[#2109] iter=1: no fault" "" "$(jq -r '.fault // empty' <<<"$RESULT")
 assert_contains "[#2109] iter=1: the reason says the test does not pass on the new code, not inert" \
     "$(jq -r '.reason // empty' <<<"$RESULT")" "does not pass on the new code"
 
-# ── iter 2: the #2097 escalation applies to the same class ───────────────────
+# #2271 (ADR-068): no round-2 escalation — the gate states the same finding in
+# every round, and never a fault class; the loops decide where it goes.
 export ZBUILD_CYCLE_ITER=2
 set +e; _run_gate "$REPO" >/dev/null 2>&1; set -e
-assert_eq "[#2109] iter=2: still not passing at HEAD → fault=specification (same as #2097)" \
-    "specification" "$(jq -r '.fault // empty' <<<"$RESULT")"
-# negctl reports the same file per SPEC and its finding leads (first match
-# escalates), so the attribute is spec=; a reachability-only finding would
-# carry testfile= — the attribute is named for what it holds, never a path
-# under `spec=`.
-_esc="$(grep '"acceptance.gate.not_passing_at_head_escalated"' "$EVENTS" || true)"
-assert_eq "[#2109] iter=2: the escalation names a SPEC id under spec= or a path under testfile=, never a path under spec=" \
-    "ok" "$( { grep -q '"spec":"SPEC-1"' <<<"$_esc" || grep -q '"testfile":"tests/feature-test.sh"' <<<"$_esc"; } && ! grep -q '"spec":"tests/' <<<"$_esc" && echo ok || echo bad)"
+assert_eq "[#2271] iter=2: still not_passing_at_head, never a fault class" "" "$(jq -r '.fault // empty' <<<"$RESULT")"
+assert_contains "[#2271] iter=2: the same finding, numbered" "$(jq -r '.data.findings[]?.text' <<<"$RESULT")" "does not pass on the new code"
 unset ZBUILD_CYCLE_ITER
 
 cleanup_test_env

@@ -11,9 +11,8 @@
 #     (9 SPECs unjudged), and the write boundary halted the run.
 #
 # J1 [change] a stage's own summary is not injected into its own prompt
-# J2 [change] a reader that does not declare capabilities.writes_repository sees
-#             an unowned failure as context, never as RESOLVE
-# J3 [guard]  a declared repository writer still gets RESOLVE for it
+# J2/J3 (retired by #2271): every reader now gets the same heading for a
+#             failing stage and answers each finding itself
 # J4 [guard]  a reader still sees every OTHER stage's summary
 # J5 [change] the router opens a non-writer's prompt with its scope — change
 #             nothing in the repository, write only the named outputs — once, first
@@ -21,7 +20,8 @@
 #             AUTHORS, #1847 — the read-and-report line lives in the summaries
 #             header, which knows whether the reader owns a finding)
 # J6 [guard]  a declared writer's prompt gets no such line
-# J7 [change] the cycle's RESOLVE count follows the same two rules
+# J7 [change] the cycle's count follows the same rule: every failing stage other
+#             than the reader's own counts, for every reader (#2271)
 # J8 [guard]  the count leaks no working variable into its caller (review #2212)
 set -uo pipefail
 
@@ -84,16 +84,16 @@ if grep -qF "RESOLVE" <<< "$_judge"; then
 else
     assert_pass "[J2] a non-writer is never told to RESOLVE"
 fi
-assert_contains "[J2] it is told the finding is context" "$_judge" "### jf-gate (verdict: fail) — context only"
+assert_contains "[#2271] the judge gets the same heading as everyone" "$_judge" "### jf-gate (verdict: fail) — its findings, to answer"
 
 _builder="$(ZBUILD_CURRENT_STAGE=jf-builder ZBUILD_PLUGIN_DIR="$PROOT/agent/jf-builder" \
     stage_summaries_prompt_block "$SF" "$PROOT" 2>/dev/null || true)"
-assert_contains "[J3] a declared writer is still told to RESOLVE an unowned failure" \
-    "$_builder" "### jf-gate (verdict: fail) — fix these findings before you finish"
+assert_contains "[#2271] a writer gets the same heading as the judge" \
+    "$_builder" "### jf-gate (verdict: fail) — its findings, to answer"
 assert_contains "[J4] a writer still sees the judge's summary" "$_builder" "jf-judge-SUMMARY-BODY"
 
-print_test_section "J7: the RESOLVE count follows the same rules"
-assert_eq "[J7] a judge has nothing to resolve" "0" \
+print_test_section "J7: the count follows the same rule"
+assert_eq "[J7] a judge counts the other failing stage too — it answers its findings" "1" \
     "$(ZBUILD_CURRENT_STAGE=jf-judge ZBUILD_PLUGIN_DIR="$PROOT/agent/jf-judge" stage_summaries_count "$SF" "$PROOT" 2>/dev/null | cut -d' ' -f2)"
 assert_eq "[J7] the judge's own summary is not counted" "2" \
     "$(ZBUILD_CURRENT_STAGE=jf-judge ZBUILD_PLUGIN_DIR="$PROOT/agent/jf-judge" stage_summaries_count "$SF" "$PROOT" 2>/dev/null | cut -d' ' -f1)"

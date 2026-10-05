@@ -393,3 +393,7 @@ The shape floor (the event goldens and `_TPL_STAGES[N]` tests a pipeline-shape c
   - a golden only when nothing failed.
 
   A targeted run, a different tree or no result is no evidence, and the file must still be edited.
+
+### Amendment (2026-10-04, #2271)
+
+The gate aggregator no longer rolls up a fault class (ADR-068 §9); it emits the one convergence verdict. Tests: `tests/unit/gate-aggregator-test.sh` TC-10/TC-16, `tests/unit/gate-detail-outputs-test.sh` SPEC-5.

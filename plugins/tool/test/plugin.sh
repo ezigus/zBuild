@@ -1184,9 +1184,7 @@ _test_write_result() {
                 # #2271 (ADR-068): each failing test file is a numbered finding.
                 + {findings: $numbered}
             )
-        }
-        + ([$fnd[].points_at[]?] | unique
-           | if length > 0 then {about: join("\n")} else {} end)' \
+        }' \
         2>/dev/null \
       | atomic_write "$path"
     local _jq_rc="${PIPESTATUS[0]}"

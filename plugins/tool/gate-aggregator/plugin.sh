@@ -26,10 +26,6 @@ _GA_ROOT="$_ZBUILD_PLUGIN_ROOT"
 
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_GA_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
-# #1987: the closed fault vocabulary. Sourced rather than restated — a second
-# copy of the word list is a second contract.
-# shellcheck source=../../../core/pipeline/fault.sh
-source "$_GA_ROOT/core/pipeline/fault.sh" 2>/dev/null || true
 
 # Manifest libs for ROSTER-DRIVEN discovery (ADR-040 §2): the must-pass set is
 # derived at runtime from the cycle members' own `convergence:` markers — no
@@ -175,10 +171,7 @@ gate_aggregator_run() {
 
     local result_path="$artifacts_dir/gate-aggregator-result.json"
     local feedback_path="$artifacts_dir/gate-feedback.md"
-    # #1219 (ADR-045/ADR-046): the FOCUSED design-rooted feedback the
-    # build_test_cycle route_back carries to the design_verify_cycle on a
-    # route_<target> verdict. Persists across the rewind (per-run artifacts dir is
-    # shared and durable) → design reads it on replay.
+    # A payload an older engine wrote; removed below, never read.
     local design_feedback_path="$artifacts_dir/design-feedback.md"
 
     # ADR-040 §2: discover the must-pass roster (cycle-driven or legacy fallback).
@@ -202,58 +195,6 @@ gate_aggregator_run() {
         esac
     done
 
-    # ─── #1219 (ADR-045) / #1987: the declared FAULT class ────────────────────
-    # Roster-driven, no plugin vocabulary: read each FAILED gate's declared
-    # `fault`. The verdict stays pass/fail — the fault says WHOSE problem it is,
-    # and the template's route_back maps that class to a destination. That is
-    # the same split ADR-054 §6 draws between verdict and disposition, and it is
-    # why the aggregate no longer mutates its verdict into route_<target>:
-    # exit_when still binds to verdict==pass, and no stage names a stage.
-    #
-    # Selection is deterministic and DECLARED: the vocabulary's table order.
-    # Previously it was "first non-empty over roster order", so two gates
-    # disagreeing were resolved by which file was read first, with the loser
-    # dropped silently (#1757). The full scan still runs to completion and emits
-    # gate_aggregator.fault_conflict naming every class it saw.
-    local _ga_fault="" _rt_i _rt _fc
-    local _ga_seen=() _ga_seen_i
-    if [[ "$verdict" == "fail" ]]; then
-        for _rt_i in "${!failed[@]}"; do
-            _rt="$(jq -r '.fault // empty' "$artifacts_dir/${failed_files[$_rt_i]}" 2>/dev/null || true)"
-            [[ "$_rt" == "null" ]] && _rt=""
-            [[ -z "$_rt" ]] && continue
-            # #1987: a word outside the closed set is never selected — the
-            # scan below only iterates vocabulary members. Announce it rather
-            # than dropping it silently: an unrecognised fault means a gate and
-            # the engine disagree about the contract, which is the #1757 lesson
-            # applied to the vocabulary itself.
-            if ! fault_is_valid "$_rt"; then
-                _ga_emit "gate_aggregator.fault_unrecognised" \
-                    "gate=${failed[$_rt_i]}" "fault=$_rt"
-                continue
-            fi
-            local _ga_dup=0
-            for _ga_seen_i in ${_ga_seen[@]+"${_ga_seen[@]}"}; do
-                [[ "$_ga_seen_i" == "$_rt" ]] && { _ga_dup=1; break; }
-            done
-            [[ $_ga_dup -eq 0 ]] && _ga_seen+=("$_rt")
-        done
-        # #1987: selection is by the VOCABULARY's declared order, not by which
-        # gate happened to be read first. Previously the winner was "the FIRST
-        # non-empty" over roster order, so two gates disagreeing were resolved
-        # by file iteration — the loser dropped with no record. Iterating the
-        # closed set makes the precedence a declared property of the engine.
-        for _fc in $(fault_vocabulary); do
-            for _ga_seen_i in ${_ga_seen[@]+"${_ga_seen[@]}"}; do
-                [[ "$_ga_seen_i" == "$_fc" ]] && { _ga_fault="$_fc"; break 2; }
-            done
-        done
-        if [[ ${#_ga_seen[@]} -gt 1 ]]; then
-            _ga_emit "gate_aggregator.fault_conflict" \
-                "faults=${_ga_seen[*]}" "selected=$_ga_fault"
-        fi
-    fi
-
     # Build the gates {name: status} object and the failed[] array via jq so the
     # JSON is well-formed regardless of gate-name content.
     local gates_json failed_json
@@ -266,19 +207,17 @@ gate_aggregator_run() {
         failed_json="[]"
     fi
 
-    # #1987: the VERDICT stays pass/fail and the FAULT carries whose problem it
-    # is — the same split ADR-054 §6 draws between verdict and disposition. The
-    # aggregate verdict no longer mutates into route_<target>: exit_when still
-    # binds to verdict==pass, and the template's route_back keys on the fault.
+    # #2271 (ADR-068): one verdict for exit_when to bind to (ADR-040 §5). No
+    # fault class — the engine no longer decides whose problem a failure is.
     local _ga_reason="all ${#gate_pairs[@]} gate(s) passed"
     if [[ "$verdict" != "pass" && ${#failed[@]} -gt 0 ]]; then
         _ga_reason="gates failed: $(printf '%s ' "${failed[@]}")"
         _ga_reason="${_ga_reason% }"
     fi
     jq -n --arg v "$verdict" --argjson g "$gates_json" --argjson f "$failed_json" \
-        --arg ft "$_ga_fault" --arg r "$_ga_reason" \
-        '{"result_contract":2,"verdict":$v,"disposition":"complete","reason":$r,"gates":$g,"failed":$f}
-         + (if $ft=="" then {} else {"fault":$ft} end)' | atomic_write "$result_path"
+        --arg r "$_ga_reason" \
+        '{"result_contract":2,"verdict":$v,"disposition":"complete","reason":$r,"gates":$g,"failed":$f}' \
+        | atomic_write "$result_path"
 
     # ─── #1988: the aggregator no longer renders prose ───────────────────────
     # It used to partition failed[] and write gate-feedback.md / design-feedback.md,
@@ -288,9 +227,7 @@ gate_aggregator_run() {
     # speaks for itself, framed by its verdict.
     #
     # What remains here is what only this stage can do: ONE convergence verdict
-    # for exit_when to bind to (ADR-040 §5), and the fault roll-up (#1987).
-    # Authoring prose ABOUT design was never its business — it relays a class
-    # each gate declares; it does not decide what design ought to read.
+    # for exit_when to bind to (ADR-040 §5).
     #
     # Stale payloads from a run on an older engine are removed rather than left
     # to be collected as current findings.
@@ -302,21 +239,10 @@ gate_aggregator_run() {
     [[ ${#failed[@]} -gt 0 ]] && _ga_failed_list="$(printf '%s, ' "${failed[@]}")" && _ga_failed_list="${_ga_failed_list%, }"
     stage_summary_write "$artifacts_dir/gate-aggregator-summary.md" "gate-aggregator" "$verdict" \
         "rolled up ${#gate_pairs[@]} gate(s) into verdict $verdict" \
-        "$(printf -- '- failed: %s\n- what has to change: %s' "$_ga_failed_list" "$(_ga_fault_plain "${_ga_fault:-}")")"
+        "$(printf -- '- failed: %s' "$_ga_failed_list")"
 
     _ga_emit "plugin.result" "plugin=gate-aggregator" "verdict=$verdict"
     return 0
-}
-
-# The summary is model-facing (ADR-067): a fault word with no phrase here is
-# never forwarded bare — the result JSON keeps the word for code that reads it.
-_ga_fault_plain() {
-    case "$1" in
-        specification)  echo "the design" ;;
-        scope)          echo "the scope" ;;
-        implementation) echo "the code" ;;
-        *)              echo "not stated" ;;
-    esac
 }
 
 # ─── gate_aggregator_cleanup ──────────────────────────────────────────────────

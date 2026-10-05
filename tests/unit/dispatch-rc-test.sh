@@ -178,7 +178,7 @@ assert_eq "[SPEC-5] rc 10 → scope_too_large"         "scope_too_large" "$(disp
 # dispatch-rc signal, NOT a verdict string. Guard: must not be removed from legacy mapping.
 assert_eq "[SPEC-13] rc 10 → scope_too_large (dispatch signal, not verdict; unchanged by #1832)" \
     "scope_too_large" "$(dispatch_rc_legacy_reason 10)"
-assert_eq "[SPEC-5] rc 11 → route_back"              "route_back" "$(dispatch_rc_legacy_reason 11)"
+assert_eq "[SPEC-5] rc 11 is retired (#2271)"        "" "$(dispatch_rc_legacy_reason 11)"
 assert_eq "[SPEC-5] rc 4 → config_invalid"           "config_invalid" "$(dispatch_rc_legacy_reason 4)"
 
 # 130 and 143 must AGREE. _cycle_handle_terminal_rc has a `130)` arm and no
