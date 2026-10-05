@@ -1,0 +1,17 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 6 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 6,
+    "owned_files": [
+      "plugins/agent/review-lens/tests/review-lens-v2-result-test.sh",
+      "tests/unit/adr-migration-claims-test.sh"
+    ],
+    "testfiles": {
+      "plugins/agent/review-lens/tests/review-lens-v2-result-test.sh": "87715e94f01f644fea7ebb0b3f87b33fdf0c37db",
+      "tests/unit/adr-migration-claims-test.sh": "61c5099613eadbe29543cd669b2aa63c4247ea13"
+    }
+  }
+}

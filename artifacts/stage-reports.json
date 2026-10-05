@@ -10,5 +10,11 @@
   ],
   "wiring_files": [
     "tests/unit/adr-migration-claims-test.sh"
-  ]
+  ],
+  "owned_files": {
+    "test-author": [
+      "plugins/agent/review-lens/tests/review-lens-v2-result-test.sh",
+      "tests/unit/adr-migration-claims-test.sh"
+    ]
+  }
 }
