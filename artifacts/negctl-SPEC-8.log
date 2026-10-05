@@ -9,23 +9,31 @@
     [2mexpected: 0, got: 2[0m
   [38;2;248;113;113m✗[0m [#2032/SPEC-7] §4 does not prescribe exhausted→escalate action (vocabulary retired by #2187)
     [2mexpected: 0, got: 2[0m
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] ADR-063 uses replacement vocabulary timed_out (not just removing exhausted)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] ADR-063 uses replacement vocabulary out_of_turns (per #2187)
   [38;2;248;113;113m✗[0m [#2032/SPEC-8] §1 baseline single-helper sentence is absent (replaced by per-stage helpers)
     [2mexpected: 0, got: 1[0m
   [38;2;248;113;113m✗[0m [#2032/SPEC-8] §1 contains per-stage _<stage>_budget_guidance helper language
     [2mexpected >0, got: 0[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-8] §1 names multiple distinct per-stage helpers (each stage has its own, not a shared one)
+    [2mexpected >1, got: 0[0m
   [38;2;248;113;113m✗[0m [#2032/SPEC-9] ADR-063 contains amendment back-pointer naming #2187
+    [2mexpected >0, got: 0[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-9] #2187 appears in an amendment context (back-pointer, not an incidental mention)
     [2mexpected >0, got: 0[0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m6 of 6 tests failed[0m
+  [38;2;248;113;113m[1m8 of 10 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#2032/SPEC-7] ADR-063 status header reads Accepted
   [38;2;248;113;113m✗[0m [#2032/SPEC-7] §3 does not prescribe disposition:exhausted (vocabulary retired by #2187)
   [38;2;248;113;113m✗[0m [#2032/SPEC-7] §4 does not prescribe exhausted→escalate action (vocabulary retired by #2187)
   [38;2;248;113;113m✗[0m [#2032/SPEC-8] §1 baseline single-helper sentence is absent (replaced by per-stage helpers)
   [38;2;248;113;113m✗[0m [#2032/SPEC-8] §1 contains per-stage _<stage>_budget_guidance helper language
+  [38;2;248;113;113m✗[0m [#2032/SPEC-8] §1 names multiple distinct per-stage helpers (each stage has its own, not a shared one)
   [38;2;248;113;113m✗[0m [#2032/SPEC-9] ADR-063 contains amendment back-pointer naming #2187
+  [38;2;248;113;113m✗[0m [#2032/SPEC-9] #2187 appears in an amendment context (back-pointer, not an incidental mention)
 
 ### SPEC-8 head tests/unit/adr-063-vocabulary-test.sh
 
@@ -35,11 +43,15 @@
   [38;2;74;222;128m✓[0m [#2032/SPEC-7] ADR-063 status header reads Accepted
   [38;2;74;222;128m✓[0m [#2032/SPEC-7] §3 does not prescribe disposition:exhausted (vocabulary retired by #2187)
   [38;2;74;222;128m✓[0m [#2032/SPEC-7] §4 does not prescribe exhausted→escalate action (vocabulary retired by #2187)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] ADR-063 uses replacement vocabulary timed_out (not just removing exhausted)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-7] ADR-063 uses replacement vocabulary out_of_turns (per #2187)
   [38;2;74;222;128m✓[0m [#2032/SPEC-8] §1 baseline single-helper sentence is absent (replaced by per-stage helpers)
   [38;2;74;222;128m✓[0m [#2032/SPEC-8] §1 contains per-stage _<stage>_budget_guidance helper language
+  [38;2;74;222;128m✓[0m [#2032/SPEC-8] §1 names multiple distinct per-stage helpers (each stage has its own, not a shared one)
   [38;2;74;222;128m✓[0m [#2032/SPEC-9] ADR-063 contains amendment back-pointer naming #2187
+  [38;2;74;222;128m✓[0m [#2032/SPEC-9] #2187 appears in an amendment context (back-pointer, not an incidental mention)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 6 tests passed[0m
+  [38;2;74;222;128m[1mAll 10 tests passed[0m
 

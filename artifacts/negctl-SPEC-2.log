@@ -3,10 +3,10 @@
 [38;2;0;212;255m[1m  cycle: unfinished member suppresses convergence (#2032)[0m
 [2m  ══════════════════════════════════════════[0m
 
-══ design-only [cycle] seq=1 input ═════════════════════════════ 10:20:15 UTC ══
+══ design-only [cycle] seq=1 input ═════════════════════════════ 12:10:41 UTC ══
 (no feedback — first iteration)
 
-══ design-only [cycle] seq=1 output OK 0.6s ════════════════════ 10:20:16 UTC ══
+══ design-only [cycle] seq=1 output OK 0.6s ════════════════════ 12:10:41 UTC ══
 exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-only ✓ ──
@@ -14,10 +14,10 @@ health: progress=0 (no progress) - defects=0 → score=0
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] terminated reason is converged (not suppressed)
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] suppression event NOT emitted when all dispositions are complete
   [38;2;74;222;128m✓[0m [#2032/SPEC-2] exactly 1 dispatch (converged on first iter — suppression did not fire)
-══ design-only [cycle] seq=1 input ═════════════════════════════ 10:20:16 UTC ══
+══ design-only [cycle] seq=1 input ═════════════════════════════ 12:10:41 UTC ══
 (no feedback — first iteration)
 
-══ design-only [cycle] seq=1 output OK 0.5s ════════════════════ 10:20:17 UTC ══
+══ design-only [cycle] seq=1 output OK 0.4s ════════════════════ 12:10:42 UTC ══
 exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-only ✓ ──
@@ -25,10 +25,32 @@ health: progress=0 (no progress) - defects=0 → score=0
     [2mexpected: 1, got: 0[0m
   [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle iterated after suppression (2 dispatch calls, not the pre-fix 1)
     [2mexpected: 2, got: 1[0m
-══ design-max1 [cycle] seq=1 input ═════════════════════════════ 10:20:17 UTC ══
+══ design-only [cycle] seq=1 input ═════════════════════════════ 12:10:42 UTC ══
 (no feedback — first iteration)
 
-══ design-max1 [cycle] seq=1 output OK 0.4s ════════════════════ 10:20:17 UTC ══
+══ design-only [cycle] seq=1 output OK 0.4s ════════════════════ 12:10:43 UTC ══
+exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: design-only ✓ ──
+  [38;2;248;113;113m✗[0m [#2032/SPEC-1] suppression fires when member has out_of_turns disposition
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle iterated after out_of_turns suppression (2 dispatch calls)
+    [2mexpected: 2, got: 1[0m
+══ design-only [cycle] seq=1 input ═════════════════════════════ 12:10:43 UTC ══
+(no feedback — first iteration)
+
+══ design-only [cycle] seq=1 output OK 0.4s ════════════════════ 12:10:43 UTC ══
+exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
+health: progress=0 (no progress) - defects=0 → score=0
+── end stage-io: design-only ✓ ──
+  [38;2;248;113;113m✗[0m [#2032/SPEC-1] suppression fires when member has interrupted disposition
+    [2mexpected: 1, got: 0[0m
+  [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle iterated after interrupted suppression (2 dispatch calls)
+    [2mexpected: 2, got: 1[0m
+══ design-max1 [cycle] seq=1 input ═════════════════════════════ 12:10:44 UTC ══
+(no feedback — first iteration)
+
+══ design-max1 [cycle] seq=1 output OK 0.4s ════════════════════ 12:10:44 UTC ══
 exit_when stage=design field=verdict op=eq value=pass → MATCHED (got=pass)
 health: progress=0 (no progress) - defects=0 → score=0
 ── end stage-io: design-max1 ✓ ──
@@ -43,10 +65,14 @@ health: progress=0 (no progress) - defects=0 → score=0
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m6 of 10 tests failed[0m
+  [38;2;248;113;113m[1m10 of 14 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence emitted when member has timed_out disposition
   [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle iterated after suppression (2 dispatch calls, not the pre-fix 1)
+  [38;2;248;113;113m✗[0m [#2032/SPEC-1] suppression fires when member has out_of_turns disposition
+  [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle iterated after out_of_turns suppression (2 dispatch calls)
+  [38;2;248;113;113m✗[0m [#2032/SPEC-1] suppression fires when member has interrupted disposition
+  [38;2;248;113;113m✗[0m [#2032/SPEC-1] cycle iterated after interrupted suppression (2 dispatch calls)
   [38;2;248;113;113m✗[0m [#2032/SPEC-6] at max_iterations with unfinished member → term_rc=8 (not rc=0 false complete)
   [38;2;248;113;113m✗[0m [#2032/SPEC-6] cycle.timeout_exhausted emitted
   [38;2;248;113;113m✗[0m [#2032/SPEC-6] cycle.timeout_exhausted reason=design_timeout_exhausted

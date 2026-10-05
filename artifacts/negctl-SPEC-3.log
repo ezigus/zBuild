@@ -30,12 +30,16 @@
   [38;2;74;222;128m✓[0m [#2032/SPEC-3] rc=0 — finding a timeout is not a stage failure
   [38;2;248;113;113m✗[0m [#2032/SPEC-3] route_to_model rc=124 → disposition=timed_out (not hardcoded complete)
     [2mexpected: timed_out, got: complete[0m
+  [38;2;74;222;128m✓[0m [#2032/SPEC-3] rc=0 for any non-zero router rc (not a stage failure)
+  [38;2;248;113;113m✗[0m [#2032/SPEC-3] route_to_model rc=1 → disposition=unavailable (any non-zero rc classified, not hardcoded complete)
+    [2mexpected: unavailable, got: complete[0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m1 of 20 tests failed[0m
+  [38;2;248;113;113m[1m2 of 22 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#2032/SPEC-3] route_to_model rc=124 → disposition=timed_out (not hardcoded complete)
+  [38;2;248;113;113m✗[0m [#2032/SPEC-3] route_to_model rc=1 → disposition=unavailable (any non-zero rc classified, not hardcoded complete)
 
 ### SPEC-3 head tests/unit/spec-coverage-test.sh
 
@@ -68,8 +72,10 @@
   [38;2;0;212;255m[#2032/SPEC-3]: router timeout classified into disposition[0m
   [38;2;74;222;128m✓[0m [#2032/SPEC-3] rc=0 — finding a timeout is not a stage failure
   [38;2;74;222;128m✓[0m [#2032/SPEC-3] route_to_model rc=124 → disposition=timed_out (not hardcoded complete)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-3] rc=0 for any non-zero router rc (not a stage failure)
+  [38;2;74;222;128m✓[0m [#2032/SPEC-3] route_to_model rc=1 → disposition=unavailable (any non-zero rc classified, not hardcoded complete)
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 20 tests passed[0m
+  [38;2;74;222;128m[1mAll 22 tests passed[0m
 
