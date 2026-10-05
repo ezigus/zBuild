@@ -400,8 +400,9 @@ acceptance_negctl_check() {
         return 0
     fi
 
-    # Test-only diff: every changed path is under tests/ → no production code to
-    # revert, so the baseline worktree would be byte-identical for all impl paths.
+    # Test-only diff: every changed path is under tests/ or a plugin's own
+    # plugins/<kind>/<id>/tests/ (#2300) → no production code to revert, so the
+    # baseline worktree would be byte-identical for all impl paths.
     # Tautology-fail would be a false positive; skip instead.
     local -a _nd_paths=()
     local _nd_p
@@ -411,7 +412,7 @@ acceptance_negctl_check() {
     if [[ "${#_nd_paths[@]}" -gt 0 ]]; then
         local _nd_all_test=1
         for _nd_p in "${_nd_paths[@]}"; do
-            if [[ "$_nd_p" != tests/* ]]; then
+            if [[ "$_nd_p" != tests/* && ! "$_nd_p" =~ ^plugins/[^/]+/[^/]+/tests/ ]]; then
                 _nd_all_test=0; break
             fi
         done
