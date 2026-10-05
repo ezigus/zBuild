@@ -1,4 +1,4 @@
-============== ZBUILD BUILD — iter 2/10 ==============
+============== ZBUILD BUILD — iter 3/10 ==============
 ## ORIGINAL TASK (immutable across iterations)
 # Plan: ADR-028 closeout: mark review-lens and review-report as migrated
 
@@ -149,4 +149,4 @@ Your change is done when the test for every requirement below passes.
   → its test is already written; make it pass
 
 ## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
-A previous attempt on this issue ended build with verdict=pass and touched 1 file(s): docs/adr/ADR-028-shared-llm-agent-framework.md. That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present and no STAGE SUMMARY is marked RESOLVE.
+A previous attempt on this issue ended build with verdict=pass having changed nothing (0 files). That is not evidence the work is done: read the STAGE SUMMARIES below — a RESOLVE summary means the suite is red on this tree and there is work to do. Do not restart from scratch; continue from what is on this branch (check `git log` / `git diff`).
