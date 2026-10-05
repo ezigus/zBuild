@@ -1,0 +1,5 @@
+## spec-coverage — covered
+
+- Every behavioral requirement in the issue's acceptance checkboxes maps fully to a SPEC — scope A (engine suppression) to SPEC-1/2/6, scope B (plugin disposition) to SPEC-3/4/5, and scope C (ADR amendment) to SPEC-7/8/9.
+
+- every requirement the issue states maps to a declared SPEC
