@@ -5,6 +5,7 @@
 # SPEC coverage:
 #   [SPEC-22] pr-open advisory review section renders finding count and top bullets
 #             in the PR body
+#   [SPEC-24] pre_existing lens findings are listed in the PR body, bounded (#2301)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -348,6 +349,52 @@ assert_contains "[SPEC-23] body says the lenses did not run" "$_s23_body" "2 of 
 assert_contains "[SPEC-23] …and names them" "$_s23_body" "correctness, security"
 assert_eq "[SPEC-23] body does not claim a clean review" "0" \
     "$(grep -cF '(non-blocking, ADR-040):** no findings' <<< "$_s23_body" || true)"
+
+# ─── #2301: pre-existing findings reach the PR body ──────────────────────────
+# On #2035 the correctness lens found a stale header comment the issue asked to
+# update; the aggregator filed it under pre_existing and pr-open printed only
+# .findings, so the finding never reached the PR (ADR-040 2026-10-05).
+print_test_section "SPEC-24: a pre_existing finding is listed in the PR body in its own section"
+_reset_fixtures
+cat > "$REVIEW_REPORT_JSON" <<'JSON'
+{"schema_version":1,"merge_readiness":"advisory",
+ "lenses":[{"name":"correctness","score":6,"findings":[]}],
+ "findings":[],
+ "pre_existing":[{"severity":"medium","file":"tests/unit/guard-test.sh","line":3,
+   "category":"correctness","lenses":["correctness"],
+   "messages":["the guard test header comment is stale; the issue asked for it to be updated"]}]}
+JSON
+_run_pr_open
+assert_exit_code "pre_existing finding: rc=0" "0" "$RUN_RC"
+_s24_body="$(cat "$BODY_FILE" 2>/dev/null || true)"
+assert_contains "[SPEC-24] body contains the pre-existing finding's text" "$_s24_body" \
+    "the guard test header comment is stale; the issue asked for it to be updated"
+assert_contains "[SPEC-24] body carries the pre-existing section heading" "$_s24_body" \
+    "Already in the code before this change (not introduced here)"
+assert_contains "[SPEC-24] body locates the pre-existing finding" "$_s24_body" \
+    "tests/unit/guard-test.sh:3"
+
+print_test_section "SPEC-24: more than five pre_existing findings are bounded like the advisory list"
+_reset_fixtures
+jq -n '{schema_version:1, merge_readiness:"advisory", lenses:[{name:"sre"}], findings:[],
+        pre_existing: [ range(0;8) | {severity:"low", file:"old\(.).sh", line:.,
+                                      lenses:["sre"], messages:["old problem \(.)"]} ]}' \
+    > "$REVIEW_REPORT_JSON"
+_run_pr_open
+_s24b_body="$(cat "$BODY_FILE" 2>/dev/null || true)"
+assert_contains "[SPEC-24] overflow pre-existing findings collapse into details" "$_s24b_body" \
+    "<details><summary>3 more pre-existing finding(s)</summary>"
+assert_contains "[SPEC-24] the last pre-existing finding is still listed" "$_s24b_body" "old problem 7"
+
+print_test_section "SPEC-24: no pre_existing findings → no pre-existing section"
+_reset_fixtures
+cat > "$REVIEW_REPORT_JSON" <<'JSON'
+{"schema_version":1,"merge_readiness":"advisory","lenses":[],"findings":[],"pre_existing":[]}
+JSON
+_run_pr_open
+_s24c_body="$(cat "$BODY_FILE" 2>/dev/null || true)"
+assert_eq "[SPEC-24] empty pre_existing adds no section" "0" \
+    "$(grep -cF 'Already in the code before this change' <<< "$_s24c_body" || true)"
 
 # ─── Teardown ─────────────────────────────────────────────────────────────────
 cleanup_test_env
