@@ -438,7 +438,6 @@ _route_redact_prompt() {
             printf '\n\n%s\n' "$_cp_block" >> "$input" 2>/dev/null || true
         fi
     fi
-    _route_answers_append "$input"
 
     # ADR-032 amendment: the target repository's rules (or zBuild's defaults)
     # for a stage whose manifest declares `prompt.repo_rules: true`. Here for
@@ -527,6 +526,10 @@ _route_redact_prompt() {
             fi
         fi
     fi
+
+    # Last of the additions: the findings arrive with the stage summaries
+    # above, so asking for answers any earlier asks about nothing (#2294).
+    _route_answers_append "$input"
 
     if [[ -n "$manifest" ]] && declare -F apply_scope_redaction >/dev/null 2>&1; then
         # A configured manifest is authoritative: apply_scope_redaction handles a
