@@ -5,7 +5,7 @@
 
   [38;2;74;222;128m✓[0m SPEC-0: ADR-028 exists
   [38;2;74;222;128m✓[0m SPEC-1: deleted stages are named as deleted, not as current
-  [38;2;74;222;128m✓[0m SPEC-2 [#2035/SPEC-2] [#2035/SPEC-3]: every stage claimed migrated uses the shared parser
+  [38;2;74;222;128m✓[0m SPEC-2 [#2035/SPEC-2] [#2035/SPEC-3]: every stage claimed migrated uses _llm_envelope_parse --schema-gate
   [38;2;74;222;128m✓[0m SPEC-3: review-lens migrated — no stale claim possible
   [38;2;248;113;113m✗[0m [#2035/SPEC-1] ADR-028 must not contain stale 'not migrated' claim for review-lens or review-report
     [2mstale claim found for: review-lens review-report [0m
