@@ -164,5 +164,15 @@ assert_eq "[#2032/SPEC-3] rc=0 — finding a timeout is not a stage failure" "0"
 assert_eq "[#2032/SPEC-3] route_to_model rc=124 → disposition=timed_out (not hardcoded complete)" \
     "timed_out" "$(_res '.disposition')"
 
+# SPEC-3 covers any non-zero rc, not just rc=124 (which is named only as an example).
+# rc=1 (generic non-zero, no output) must also produce a classified disposition, not 'complete'.
+_setup sc3_rc1 "# Add a --dry-run flag, and make it refuse a missing config"
+route_to_model() { return 1; }
+set +e; spec_coverage_run "spec-coverage" "$_S/pipeline-state.json"; _rc_s3b=$?; set -e
+route_to_model() { printf '%s' "$2" > "$_SCV_PROMPT"; printf '%s' "$_SCV_REPLY"; return 0; }
+assert_eq "[#2032/SPEC-3] rc=0 for any non-zero router rc (not a stage failure)" "0" "$_rc_s3b"
+assert_eq "[#2032/SPEC-3] route_to_model rc=1 → disposition=unavailable (any non-zero rc classified, not hardcoded complete)" \
+    "unavailable" "$(_res '.disposition')"
+
 print_test_results
 exit $((FAIL > 0))

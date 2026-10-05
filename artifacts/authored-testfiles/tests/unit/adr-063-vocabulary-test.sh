@@ -40,8 +40,6 @@ if [[ ! -f "$ADR" ]]; then
     exit 1
 fi
 
-_adr_text="$(cat "$ADR")"
-
 # ── SPEC-7[change]: status=Accepted, no prescriptive exhausted/escalate vocab ──
 # The status header line must read "Accepted".
 _status_line="$(grep -m1 '^\*\*Status:\*\*' "$ADR" 2>/dev/null || true)"
@@ -62,6 +60,15 @@ _escalate_prescriptive="$(grep -c 'exhausted.*escalate\|escalate.*already routes
 assert_eq "[#2032/SPEC-7] §4 does not prescribe exhausted→escalate action (vocabulary retired by #2187)" \
     "0" "$_escalate_prescriptive"
 
+# The replacement vocabulary (timed_out / out_of_turns) must be present —
+# retiring the old words without introducing the new ones is not an update.
+_timed_out_count="$(grep -c 'timed_out' "$ADR" 2>/dev/null || true)"
+assert_gt "[#2032/SPEC-7] ADR-063 uses replacement vocabulary timed_out (not just removing exhausted)" \
+    "$_timed_out_count" "0"
+_out_of_turns_count="$(grep -c 'out_of_turns' "$ADR" 2>/dev/null || true)"
+assert_gt "[#2032/SPEC-7] ADR-063 uses replacement vocabulary out_of_turns (per #2187)" \
+    "$_out_of_turns_count" "0"
+
 # ── SPEC-8[change]: §1 uses per-stage helpers, not the single-helper baseline ──
 # The old §1 text "One helper renders the budget block" must be absent.
 _old_single_helper="$(grep -c 'One helper renders the budget block' "$ADR" 2>/dev/null || true)"
@@ -69,17 +76,31 @@ assert_eq "[#2032/SPEC-8] §1 baseline single-helper sentence is absent (replace
     "0" "$_old_single_helper"
 
 # Per-stage helper language must be present: each stage gets its own
-# _<stage>_budget_guidance helper. Check for the characteristic pattern.
+# _<stage>_budget_guidance helper. The requirement says "each stage has its own"
+# helper, so there must be MORE THAN ONE distinct helper name, not just a single
+# shared helper referenced multiple times.
 _per_stage_helper="$(grep -c '_budget_guidance\b' "$ADR" 2>/dev/null || true)"
 assert_gt "[#2032/SPEC-8] §1 contains per-stage _<stage>_budget_guidance helper language" \
     "$_per_stage_helper" "0"
+# Distinct helper names: each stage's helper has a different prefix (e.g.
+# _design_budget_guidance, _build_budget_guidance). Count unique names.
+_distinct_helpers="$(grep -oE '_[a-z_]+_budget_guidance\b' "$ADR" 2>/dev/null | sort -u | wc -l | tr -d ' ' || true)"
+assert_gt "[#2032/SPEC-8] §1 names multiple distinct per-stage helpers (each stage has its own, not a shared one)" \
+    "$_distinct_helpers" "1"
 
 # ── SPEC-9[change]: amendment back-pointer names #2187 ─────────────────────────
 # The document must contain an explicit reference to #2187 as the issue that
-# retired the exhausted/escalate vocabulary.
+# retired the exhausted/escalate vocabulary. The requirement calls for an
+# amendment BACK-POINTER, meaning #2187 must appear in a structural amendment
+# context — not just as a comment or incidental mention.
 _2187_ref="$(grep -c '#2187' "$ADR" 2>/dev/null || true)"
 assert_gt "[#2032/SPEC-9] ADR-063 contains amendment back-pointer naming #2187" \
     "$_2187_ref" "0"
+# A back-pointer lives in an amendment section or amends: line — check that
+# #2187 appears alongside amendment-context words (amend/amendment/Amended).
+_2187_amendment="$(grep -c 'mend.*#2187\|#2187.*mend' "$ADR" 2>/dev/null || true)"
+assert_gt "[#2032/SPEC-9] #2187 appears in an amendment context (back-pointer, not an incidental mention)" \
+    "$_2187_amendment" "0"
 
 cleanup_test_env
 print_test_results

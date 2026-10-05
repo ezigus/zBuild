@@ -136,10 +136,8 @@ _run_cycle() {
     load_template "$1"
     MOCK_DISPOSITIONS="$3"
     _mock_call=0
-    set +e
-    cycle_orchestrator_run "$2" "$ZBUILD_STATE_DIR" "$STATE_FILE"
-    RUN_RC=$?
-    set -e
+    RUN_RC=0
+    cycle_orchestrator_run "$2" "$ZBUILD_STATE_DIR" "$STATE_FILE" || RUN_RC=$?
 }
 
 # ── SPEC-2[guard]: all members complete + exit_when match → converges normally ─
@@ -172,6 +170,22 @@ assert_eq "[#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence emitted
 # Cycle must iterate after suppression: iter 1 suppressed → iter 2 dispatched → 2 total.
 # Before fix this is 1 (cycle converged immediately on iter 1).
 assert_eq "[#2032/SPEC-1] cycle iterated after suppression (2 dispatch calls, not the pre-fix 1)" \
+    "2" "$_mock_call"
+
+# SPEC-1 covers all three unfinished dispositions — also out_of_turns:
+_run_cycle "$TPL_A" "design-only" "out_of_turns,complete"
+_s1_oot="$(grep -c '"cycle.member_unfinished.suppressed_convergence"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+assert_eq "[#2032/SPEC-1] suppression fires when member has out_of_turns disposition" \
+    "1" "$_s1_oot"
+assert_eq "[#2032/SPEC-1] cycle iterated after out_of_turns suppression (2 dispatch calls)" \
+    "2" "$_mock_call"
+
+# SPEC-1 covers all three unfinished dispositions — also interrupted:
+_run_cycle "$TPL_A" "design-only" "interrupted,complete"
+_s1_int="$(grep -c '"cycle.member_unfinished.suppressed_convergence"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
+assert_eq "[#2032/SPEC-1] suppression fires when member has interrupted disposition" \
+    "1" "$_s1_int"
+assert_eq "[#2032/SPEC-1] cycle iterated after interrupted suppression (2 dispatch calls)" \
     "2" "$_mock_call"
 
 # ── SPEC-6[change]: at max_iterations with unfinished member → term_rc=8 ──────
