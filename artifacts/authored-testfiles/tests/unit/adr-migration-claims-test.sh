@@ -52,10 +52,13 @@ fi
 
 # ── SPEC-2 [#2035/SPEC-2] [#2035/SPEC-3]: every stage claimed migrated uses the shared parser ───
 # The claim, checked against the code rather than against itself.
-# Expanded (#2035) to include review-lens and review-report: these plugins were
-# migrated in #1840/#1843 but were missing from this loop. For review-lens and
-# review-report the search covers all non-test .sh files under the plugin dir,
-# since review-report's migration lives in lib/lenses.sh, not plugin.sh.
+# plan/security-lens/monitor use _llm_envelope_classify; review-lens and review-report
+# use _llm_envelope_parse --schema-gate. Expanded (#2035) to include review-lens and
+# review-report: these plugins were migrated in #1840/#1843 but were missing from this
+# loop. For review-lens and review-report the search covers all non-test .sh files under
+# the plugin dir, since review-report's migration lives in lib/lenses.sh, not plugin.sh.
+# The grep for review-lens/review-report checks --schema-gate specifically, not just any
+# envelope call, so a bare _llm_envelope_parse without --schema-gate would still fail [#2035].
 _unmigrated=""
 for _s in plan security-lens monitor; do
     _p="$REPO_ROOT/plugins/agent/$_s/plugin.sh"
@@ -67,16 +70,16 @@ for _s in review-lens review-report; do
     if [[ -d "$_dir" ]]; then
         _2035_found=""
         while IFS= read -r -d '' _f; do
-            grep -qE '_llm_envelope_(parse|classify)' "$_f" && _2035_found=1 && break
+            grep -qE '_llm_envelope_parse.*--schema-gate' "$_f" && _2035_found=1 && break
         done < <(find "$_dir" -name '*.sh' ! -path '*/tests/*' -print0)
         [[ -n "$_2035_found" ]] || _unmigrated+="$_s "
     fi
 done
 if [[ -z "$_unmigrated" ]]; then
-    assert_pass "SPEC-2 [#2035/SPEC-2] [#2035/SPEC-3]: every stage claimed migrated uses the shared parser"
+    assert_pass "SPEC-2 [#2035/SPEC-2] [#2035/SPEC-3]: every stage claimed migrated uses _llm_envelope_parse --schema-gate"
 else
-    assert_fail "SPEC-2 [#2035/SPEC-2] [#2035/SPEC-3]: every stage claimed migrated uses the shared parser" \
-        "still on the old path: $_unmigrated"
+    assert_fail "SPEC-2 [#2035/SPEC-2] [#2035/SPEC-3]: every stage claimed migrated uses _llm_envelope_parse --schema-gate" \
+        "still on the old path or missing --schema-gate: $_unmigrated"
 fi
 
 # ── SPEC-3: a stage NOT migrated is not described as if it were ────────────
