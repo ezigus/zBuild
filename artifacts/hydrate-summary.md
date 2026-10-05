@@ -1,6 +1,6 @@
 ## hydrate — complete
 
-- restored 0 artifact(s) from prior runs (empty)
+- restored 254 artifact(s) from prior runs (restored)
 
-- source: none
-- detail: no prior work for issue 2035 (first run)
+- source: remote
+- detail: restored 254 artifact(s) from zbuild/state/issue-2035

@@ -1,1 +1,0 @@
-The prior checkpoint confirmed all changed symbols are within design scope. The acceptance-gate failure is about test tautology (SPEC-2/3 passing before the change), not missing files from scope.

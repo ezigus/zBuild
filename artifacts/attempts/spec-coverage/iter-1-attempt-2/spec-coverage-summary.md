@@ -1,5 +1,0 @@
-## spec-coverage — covered
-
-- Every behavioral acceptance checkbox maps to a design SPEC — SPEC-1 covers "ADR-028 names both stages as migrated; no sentence says otherwise," and SPEC-2/SPEC-3 (reinforced by SPEC-5/6's explicit "SPEC-2 loop expansion" language) cover "SPEC-2 covers review-lens and review-report and passes"; the remaining checkboxes are pipeline-verification or mutation-testing items that are never SPEC gaps by rule.
-
-- every requirement the issue states maps to a declared SPEC
