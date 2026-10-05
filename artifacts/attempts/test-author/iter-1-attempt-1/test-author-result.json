@@ -1,0 +1,23 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 9 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 9,
+    "owned_files": [
+      "tests/integration/cycle-member-unfinished-no-convergence-test.sh",
+      "tests/unit/adr-063-vocabulary-test.sh",
+      "tests/unit/review-report-v2-contract-test.sh",
+      "tests/unit/spec-correspondence-test.sh",
+      "tests/unit/spec-coverage-test.sh"
+    ],
+    "testfiles": {
+      "tests/integration/cycle-member-unfinished-no-convergence-test.sh": "23e3a2d50dc517d0f6abf561dc9a8de7cb5aa745",
+      "tests/unit/adr-063-vocabulary-test.sh": "0c6ab9cb7162d0b1de51dcc46ebc421b82aef7d9",
+      "tests/unit/review-report-v2-contract-test.sh": "b29cd7ef38249b8682854868bdcd84119443b592",
+      "tests/unit/spec-correspondence-test.sh": "e50fed7d226a08b0bb36eef45a4dcc55d73f8cb8",
+      "tests/unit/spec-coverage-test.sh": "f682d02d291adb42b38bfb3be120f76d77909e27"
+    }
+  }
+}

@@ -1,0 +1,10 @@
+# authored_by: test-author
+32ca64972b91efdc4b0790714d4218ee5ad137bdc9d6b17fb9f8becca0ae32a0  tests/integration/cycle-member-unfinished-no-convergence-test.sh
+32ca64972b91efdc4b0790714d4218ee5ad137bdc9d6b17fb9f8becca0ae32a0  tests/integration/cycle-member-unfinished-no-convergence-test.sh
+11d3e18a491a2ab870d47f854a4929241e359a3c71023c981adcdaa998048482  tests/unit/spec-coverage-test.sh
+882e2775270a1ed961d45358992d8eef48a38650241950d6ded074f23f483710  tests/unit/spec-correspondence-test.sh
+e4d6674dc0dcd7f79efeaa74493c1560e78c27309f477df60e5032d47c6be812  tests/unit/review-report-v2-contract-test.sh
+32ca64972b91efdc4b0790714d4218ee5ad137bdc9d6b17fb9f8becca0ae32a0  tests/integration/cycle-member-unfinished-no-convergence-test.sh
+47ffc5dcf22bdb7779f7380447b0d9f39cd15c862863b56b213cc7d8c57e188c  tests/unit/adr-063-vocabulary-test.sh
+47ffc5dcf22bdb7779f7380447b0d9f39cd15c862863b56b213cc7d8c57e188c  tests/unit/adr-063-vocabulary-test.sh
+47ffc5dcf22bdb7779f7380447b0d9f39cd15c862863b56b213cc7d8c57e188c  tests/unit/adr-063-vocabulary-test.sh
