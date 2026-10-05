@@ -1,0 +1,14 @@
+{
+  "stage": "review_lenses",
+  "cycle_iter": 0,
+  "attempt": 6,
+  "rc": "0",
+  "generated_at": "2026-10-05T10:17:21Z",
+  "files": 2,
+  "outputs": {
+    "lens-scope.json": "changed",
+    "lens-scope-summary.md": "changed",
+    "lens-${map_element}-checkpoint.md": "absent"
+  },
+  "progress": true
+}
