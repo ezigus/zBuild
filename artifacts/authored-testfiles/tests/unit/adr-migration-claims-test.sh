@@ -50,15 +50,13 @@ else
         "named with no retirement note: $_ghosts"
 fi
 
-# ── SPEC-2 [#2035/SPEC-2] [#2035/SPEC-3]: every stage claimed migrated uses the shared parser ───
+# ── SPEC-2: every stage claimed migrated uses the shared parser ─────────────
 # The claim, checked against the code rather than against itself.
 # plan/security-lens/monitor use _llm_envelope_classify; review-lens and review-report
-# use _llm_envelope_parse --schema-gate. Expanded (#2035) to include review-lens and
-# review-report: these plugins were migrated in #1840/#1843 but were missing from this
-# loop. For review-lens and review-report the search covers all non-test .sh files under
-# the plugin dir, since review-report's migration lives in lib/lenses.sh, not plugin.sh.
-# The grep for review-lens/review-report checks --schema-gate specifically, not just any
-# envelope call, so a bare _llm_envelope_parse without --schema-gate would still fail [#2035].
+# use _llm_envelope_parse --schema-gate. Expanded (#2035) to cover review-lens and
+# review-report across all non-test .sh files per plugin dir (review-report's migration
+# lives in lib/lenses.sh, not plugin.sh). The review-lens/review-report grep checks
+# --schema-gate specifically; a bare _llm_envelope_parse without it still fails.
 _unmigrated=""
 for _s in plan security-lens monitor; do
     _p="$REPO_ROOT/plugins/agent/$_s/plugin.sh"
@@ -76,10 +74,32 @@ for _s in review-lens review-report; do
     fi
 done
 if [[ -z "$_unmigrated" ]]; then
-    assert_pass "SPEC-2 [#2035/SPEC-2] [#2035/SPEC-3]: every stage claimed migrated uses _llm_envelope_parse --schema-gate"
+    assert_pass "SPEC-2: every stage claimed migrated uses _llm_envelope_parse or _llm_envelope_classify"
 else
-    assert_fail "SPEC-2 [#2035/SPEC-2] [#2035/SPEC-3]: every stage claimed migrated uses _llm_envelope_parse --schema-gate" \
+    assert_fail "SPEC-2: every stage claimed migrated uses _llm_envelope_parse or _llm_envelope_classify" \
         "still on the old path or missing --schema-gate: $_unmigrated"
+fi
+
+# ── [#2035/SPEC-2]: review-lens/plugin.sh uses _llm_envelope_parse --schema-gate ──
+# Explicit file-level check added in #2035: review-lens was absent from the SPEC-2 loop
+# in the old test file, so no assertion covered it. Passes because plugin.sh has the call.
+_2035_rl_sh="$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
+if grep -qE '_llm_envelope_parse.*--schema-gate' "$_2035_rl_sh" 2>/dev/null; then
+    assert_pass "[#2035/SPEC-2] review-lens/plugin.sh uses _llm_envelope_parse --schema-gate"
+else
+    assert_fail "[#2035/SPEC-2] review-lens/plugin.sh must use _llm_envelope_parse --schema-gate" \
+        "absent"
+fi
+
+# ── [#2035/SPEC-3]: review-report/lib/lenses.sh uses _llm_envelope_parse --schema-gate ──
+# Explicit file-level check added in #2035: review-report was absent from the SPEC-2 loop
+# in the old test file. Passes because lib/lenses.sh (not plugin.sh) has the call.
+_2035_rr_sh="$REPO_ROOT/plugins/agent/review-report/lib/lenses.sh"
+if grep -qE '_llm_envelope_parse.*--schema-gate' "$_2035_rr_sh" 2>/dev/null; then
+    assert_pass "[#2035/SPEC-3] review-report/lib/lenses.sh uses _llm_envelope_parse --schema-gate"
+else
+    assert_fail "[#2035/SPEC-3] review-report/lib/lenses.sh must use _llm_envelope_parse --schema-gate" \
+        "absent"
 fi
 
 # ── SPEC-3: a stage NOT migrated is not described as if it were ────────────
