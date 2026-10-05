@@ -245,36 +245,10 @@ IMPACT_SCHEMA
     local _impact_body
     _impact_body="$(cat <<'IMPACT_PROMPT'
 
-Tool use:
-- You MAY use the Read tool to inspect files in the design scope.
-- You MAY use the Grep tool to search the repo for symbols and references.
-- Do NOT call Edit, Write, or Bash. This stage is read-only.
-
-EXISTENCE VERIFICATION (mandatory — do not skip):
-- Before adding any path to missing[].files_to_add, confirm the file exists
-  in the repository using the Read or Grep tool.
-- NEVER list a path you cannot verify is present in the repo. Non-existent
-  paths MUST NOT be flagged as scope gaps.
-
-Rules:
-- For each file in the DESIGN SCOPE BLOCK, identify symbols, constants,
-  counts, stage IDs, or ORDERING/POSITION/SEQUENCE assertions (e.g. a test
-  asserting "the third stage is X", or "X comes before Y")
-  defined or changed there. A change that REORDERS stages invalidates every
-  test that pins a stage by its position/index, even if the stage set is
-  unchanged.
-- Grep the repo for those symbols. Find files NOT already listed in the
-  DESIGN SCOPE BLOCK that reference or pin them.
+## What you own
+missing[]: the files the DESIGN SCOPE BLOCK below leaves out, and your verdict.
 - For each gap, add an entry to missing[] with a step_id (use the closest
   logical grouping), the files to add, and a one-line reason.
-- RELEVANCE: a file is a scope gap ONLY if it references a symbol, constant,
-  count, stage id, ORDER/position, or path that THIS change adds, removes,
-  renames, reorders, or re-counts. Name that specific reference in the reason.
-- ADJACENCY IS NOT A GAP: a file is NOT missing merely because it lives in the
-  same directory, imports a shared lib, or sits in the changed file's reference
-  closure. Do NOT chase transitive references. Return verdict="complete" once
-  every file that pins a CHANGED symbol/count/order/path is already in the
-  DESIGN SCOPE BLOCK, even if topically-related files remain unlisted.
 - If no gaps found, return verdict="complete" with missing=[].
 - missing[] is what the design reads in the next round when you returned
   incomplete. Make it actionable: name the missing files in files_to_add,
@@ -294,7 +268,44 @@ BUDGET DISCIPLINE (read this — you have a BOUNDED tool-call budget):
 - After emitting the closing `}`, output NOTHING — no trailing commentary,
   no ` ``` ` or ` ```json ` fence, no summary sentence.
 
+## What you judge against
+The DESIGN SCOPE BLOCK below, and the repository as it is now.
+
+Tool use:
+- You MAY use the Read tool to inspect files in the design scope.
+- You MAY use the Grep tool to search the repo for symbols and references.
+
+Rules:
+- For each file in the DESIGN SCOPE BLOCK, identify symbols, constants,
+  counts, stage IDs, or ORDERING/POSITION/SEQUENCE assertions (e.g. a test
+  asserting "the third stage is X", or "X comes before Y")
+  defined or changed there. A change that REORDERS stages invalidates every
+  test that pins a stage by its position/index, even if the stage set is
+  unchanged.
+- Grep the repo for those symbols. Find files NOT already listed in the
+  DESIGN SCOPE BLOCK that reference or pin them.
+- RELEVANCE: a file is a scope gap ONLY if it references a symbol, constant,
+  count, stage id, ORDER/position, or path that THIS change adds, removes,
+  renames, reorders, or re-counts. Name that specific reference in the reason.
+- ADJACENCY IS NOT A GAP: a file is NOT missing merely because it lives in the
+  same directory, imports a shared lib, or sits in the changed file's reference
+  closure. Do NOT chase transitive references. Return verdict="complete" once
+  every file that pins a CHANGED symbol/count/order/path is already in the
+  DESIGN SCOPE BLOCK, even if topically-related files remain unlisted.
+
+EXISTENCE VERIFICATION (mandatory — do not skip):
+- Before adding any path to missing[].files_to_add, confirm the file exists
+  in the repository using the Read or Grep tool.
 IMPACT_PROMPT
+)"
+    # #2308: the limits close the stage's own text, after the material it judges.
+    local _impact_limits
+    _impact_limits="$(cat <<'IMPACT_LIMITS'
+## What you must not do
+- Do NOT call Edit, Write, or Bash. This stage is read-only.
+- NEVER list a path you cannot verify is present in the repo. Non-existent
+  paths MUST NOT be flagged as scope gaps.
+IMPACT_LIMITS
 )"
     local _impact_instructions="${_framing}
 ${_impact_body}"
@@ -340,9 +351,10 @@ $_impact_instructions"
             _prior_impact="$(printf '%s' "$_prior_impact" | _zbuild_sanitize_for_llm)"
     fi
     if [[ -n "${_prior_impact//[[:space:]]/}" ]]; then
-        prompt+=$'\n## PRIOR IMPACT (a previous attempt on this issue — reference & refine; re-validate against the CURRENT design)\n'
+        prompt+=$'\n### PRIOR IMPACT (a previous attempt on this issue — reference & refine; re-validate against the CURRENT design)\n'
         prompt+="$_prior_impact"$'\n'
     fi
+    prompt+=$'\n'"$_impact_limits"$'\n'
 
     local prompt_file="$artifact_dir/impact-prompt.txt"
     printf '%s\n' "$prompt" > "$prompt_file"

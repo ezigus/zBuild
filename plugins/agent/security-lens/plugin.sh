@@ -160,7 +160,14 @@ _security_lens_run_inner() {
     # #721: strip OOS-marker tags and ANSI codes — input may carry
     # <out-of-scope-context> wrappers and ANSI fragments from terminal capture.
     input_content="$(printf '%s' "$input_content" | _zbuild_sanitize_for_llm)"
-    prompt="${sys_prompt}"$'\n\n'"${input_content}"
+    # #2308: the change is what this lens judges against, so it sits in that
+    # part, before the lens's limits.
+    local _limits_h='## What you must not do'
+    if [[ "$sys_prompt" == *"$_limits_h"* ]]; then
+        prompt="${sys_prompt%%"$_limits_h"*}${input_content}"$'\n\n'"${_limits_h}${sys_prompt#*"$_limits_h"}"
+    else
+        prompt="${sys_prompt}"$'\n\n'"${input_content}"
+    fi
 
     # ─── Route to LLM (hardcoded T3, matching manifest config.tier_default) ──
     # ZBUILD_SECURITY_LENS_TIER overrides for testing. Manifest-driven tier

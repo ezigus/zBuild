@@ -113,9 +113,8 @@ _rr_build_lens_prompt() {
     cat <<PROMPT
 ${budget_block}You are the "${lens}" review lens. ${charter}
 
-This is an advisory report. Describe what you find; do NOT recommend a merge
-action and do NOT gate anything. Report only issues you can point to in the
-change below.
+## What you own
+An advisory report for this one lens: each problem you find, and a score.
 
 OUTPUT CONTRACT (obey absolutely):
 - Respond with EXACTLY ONE JSON object. First character '{', last character '}'.
@@ -135,8 +134,15 @@ OUTPUT CONTRACT (obey absolutely):
   }
 - If you find nothing for this lens, return {"score": 10, "findings": []}.
 
+## What you judge against
+The change below. Report only issues you can point to in it.
+
 CHANGE UNDER REVIEW:
 ${evidence}
+
+## What you must not do
+- This is an advisory report. Describe what you find; do NOT recommend a merge
+  action and do NOT gate anything.
 
 Emit the JSON object now.
 PROMPT

@@ -355,37 +355,16 @@ _design_stage_run_inner() {
     cat > "$prompt_input_file" <<DESIGN_PROMPT
 ${_framing}
 
-## Plan
-$(printf '%s' "$plan_json" | jq -r '.title // "Untitled"' 2>/dev/null)
-
-$(printf '%s' "$plan_json" | jq -r '.description // .goal // ""' 2>/dev/null)
-
-## Seed scope (from plan.files[])
-${scope_list}
-
-## Tools (read-only — this stage may NOT modify the working tree)
-- You MAY use the Read tool to inspect any file in the repository.
-- You MAY use the Grep tool to search the whole repository for symbols,
-  constants, references, and hardcoded values.
-- You MAY use the Glob tool to discover files by pattern.
-- Do NOT call Edit, Write, or Bash for implementation. The ONLY file you
-  write is the design.md at the exact path below. Your job is to ENUMERATE
-  scope, not to implement.
-
-## Instructions
-
+## What you own
 Write the design document to this EXACT absolute path:
   $output_design_md
-Do NOT write to ./design.md, design.md, or any other path. The harvester
-expects the file at the absolute path above; any other location is a
-contract violation that will fail this stage.
 
 The design document MUST include:
 1. A brief architectural decision summary (goal, context, decision).
 2. A \`\`\`scope fenced block that is an EXHAUSTIVE enumeration of every file
    in the repository that this change touches, invalidates, references,
    validates, documents, or assumes anything about — NOT merely the seed
-   scope. The seed above is a starting point, never the answer. You MUST actively search the repo (Read/Grep/Glob) and include:
+   scope. The seed below is a starting point, never the answer. You MUST actively search the repo (Read/Grep/Glob) and include:
      - every TEST that asserts behavior you are changing — INCLUDING tests
        that hardcode a value you are changing (a stage count, an event
        count, a name list, an ordering). For every constant, count, list,
@@ -487,12 +466,27 @@ the block when no existing check changes meaning.
 
 Keep the prose focused and under 200 lines (the scope block and acceptance
 block may be as long as completeness requires). Emit LOOP_COMPLETE when done.
+
+## What you judge against
+### Plan
+$(printf '%s' "$plan_json" | jq -r '.title // "Untitled"' 2>/dev/null)
+
+$(printf '%s' "$plan_json" | jq -r '.description // .goal // ""' 2>/dev/null)
+
+### Seed scope (from plan.files[])
+${scope_list}
+
+### Tools (read-only — this stage may NOT modify the working tree)
+- You MAY use the Read tool to inspect any file in the repository.
+- You MAY use the Grep tool to search the whole repository for symbols,
+  constants, references, and hardcoded values.
+- You MAY use the Glob tool to discover files by pattern.
 DESIGN_PROMPT
     # #2306 (ADR-070 §3): the issue's requirements, numbered by the engine; every
     # one is covered by a SPEC, and the design-gate checks that by script.
     local _req_f="" _reqs; [[ -s "${ZBUILD_STAGE_INPUTS:-}" ]] && _req_f="$(jq -r '.inputs.requirements // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null)"
     _reqs="$(acceptance_requirements_list "${_req_f:-$artifact_dir/requirements.json}")"
-    [[ -n "$_reqs" ]] && printf '\n## Requirements from the issue (numbered by the engine)\n%s\n\nEvery requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `SPEC-1[code]: <behaviour> covers: R-1 R-2`. A requirement the code already meets is covered by a [done] SPEC with evidence.\n' "$_reqs" >> "$prompt_input_file"
+    [[ -n "$_reqs" ]] && printf '\n### Requirements from the issue (numbered by the engine)\n%s\n\nEvery requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `SPEC-1[code]: <behaviour> covers: R-1 R-2`. A requirement the code already meets is covered by a [done] SPEC with evidence.\n' "$_reqs" >> "$prompt_input_file"
 
     # design_impact_cycle feedback: on iter ≥ 2, splice prior impact gap-report
     # and prior design.md into the prompt so design EXPANDS its scope block
@@ -526,9 +520,9 @@ DESIGN_PROMPT
         # refinement, iter >= 2) is not that: the tree has not moved, and it
         # is refined as before (review on #2173).
         if [[ "${ZBUILD_CYCLE_ITER:-1}" =~ ^[0-9]+$ && "${ZBUILD_CYCLE_ITER:-1}" -ge 2 && -s "${ZBUILD_CYCLE_FEEDBACK_DIR:-/nonexistent}/design.txt" ]]; then
-            printf '\n## PRIOR DESIGN (written earlier in this run — refine it against the feedback below; the tree has not moved)\n' >> "$prompt_input_file"
+            printf '\n### PRIOR DESIGN (written earlier in this run — refine it against the feedback below; the tree has not moved)\n' >> "$prompt_input_file"
         else
-            printf '\n## PRIOR DESIGN (a previous attempt on this issue — a hypothesis, not a fact)\n' >> "$prompt_input_file"
+            printf '\n### PRIOR DESIGN (a previous attempt on this issue — a hypothesis, not a fact)\n' >> "$prompt_input_file"
             printf 'The repository has moved since this design was written. Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW; anything that no longer holds is dropped or re-derived, and the design says what changed and why. Keep what still holds; do not start over.\n' >> "$prompt_input_file"
             _design_prior_drift_block >> "$prompt_input_file"
         fi
@@ -558,7 +552,7 @@ DESIGN_PROMPT
     if [[ "$(jq -r '.stage_verdicts["acceptance-gate"] // empty' \
             "$(dirname "$artifact_dir")/pipeline-state.json" 2>/dev/null || true)" == "fail" ]]; then
         # #2269: plain words; no other stage named (ADR-061), no ADR number.
-        printf '\nIf the STAGE SUMMARIES say a [code] requirement'"'"'s test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file and line, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Keep every other scope and acceptance entry.\n' \
+        printf '\nIf the STAGE SUMMARIES say a [code] requirement'"'"'s test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file and line, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Check the other scope and acceptance entries against the feedback too, and fix any it shows is wrong.\n' \
             >> "$prompt_input_file"
     fi
 
@@ -575,7 +569,18 @@ DESIGN_PROMPT
     _tb_guidance="$(_design_budget_guidance "$_budget_max_turns")"
     [[ -n "$_wc_guidance" ]] && printf '\n%s\n' "$_wc_guidance" >> "$prompt_input_file"
     [[ -n "$_tb_guidance" ]] && printf '\n%s\n' "$_tb_guidance" >> "$prompt_input_file"
-    printf '\nIf you have not finished all sections when the budget nears, name the unfinished sections rather than silently omitting them — a partial design with named gaps is safer than silence.\n' >> "$prompt_input_file"
+    # #2308: the limits close the stage's own text; the router adds the part
+    # every stage shares (saving as you go, answering, reporting a partial result).
+    cat >> "$prompt_input_file" <<DESIGN_LIMITS
+
+## What you must not do
+- Do NOT call Edit, Write, or Bash for implementation. The ONLY file you
+  write is the design.md at the exact path above. Your job is to ENUMERATE
+  scope, not to implement.
+- Do NOT write to ./design.md, design.md, or any other path. The harvester
+  expects the file at the absolute path above; any other location is a
+  contract violation that will fail this stage.
+DESIGN_LIMITS
 
     # ADR-032: append the per-repo prompt override AFTER the core contract (so
     # the operator overlay can never precede or weaken the shipped charter).

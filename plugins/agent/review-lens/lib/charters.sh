@@ -70,23 +70,15 @@ _rl_build_lens_prompt() {
     cat <<PROMPT
 You are the "${lens}" review lens. ${charter}
 
+## What you own
+An advisory report for this one lens: each problem you find in the change,
+and a score. For each problem, say whether the change INTRODUCED it (or made it
+worse), or whether the code before the change already did the same thing.
 Compare the change with the issue it was made for. If the change does not
 deliver part of what the issue asked for, report it as a finding: name any part
 of the issue that the change does not deliver, judged as the "${lens}" lens
 judges.
 
-This is an advisory report. Describe what you find; do NOT recommend a merge
-action and do NOT gate anything.
-
-The diff below shows WHAT CHANGED. Before you judge a line,
-read the surrounding code in the repository: the rest of the file, its callers,
-what produces its inputs, and comparable code elsewhere. A problem may be proven by unchanged code
-(the change disagrees with its neighbours) — cite it. Report problems in the
-change; for each, say whether the change INTRODUCED it (or made it worse), or
-whether the code before the change already did the same thing.
-${context:+
-${context}
-}
 OUTPUT CONTRACT (obey absolutely):
 - Respond with EXACTLY ONE JSON object. First character '{', last character '}'.
 - Your response MUST begin with \`{\` — no leading prose, no trailing prose, no markdown fences.
@@ -106,8 +98,21 @@ OUTPUT CONTRACT (obey absolutely):
   }
 - If you find nothing for this lens, return {"score": 10, "findings": []}.
 
+## What you judge against
+The diff below shows WHAT CHANGED. Before you judge a line,
+read the surrounding code in the repository: the rest of the file, its callers,
+what produces its inputs, and comparable code elsewhere. A problem may be proven by unchanged code
+(the change disagrees with its neighbours) — cite it. Report problems in the
+change.
+${context:+
+${context}
+}
 CHANGE UNDER REVIEW:
 ${evidence}
+
+## What you must not do
+- This is an advisory report. Describe what you find; do NOT recommend a merge
+  action and do NOT gate anything.
 
 Emit the JSON object now.
 PROMPT
