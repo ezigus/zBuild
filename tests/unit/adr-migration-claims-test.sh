@@ -85,10 +85,9 @@ else
 fi
 
 # ── SPEC-3: a stage NOT migrated is not described as if it were ────────────
-# review-lens is the counter-example the ADR got wrong. It is allowed to stay on
-# `extract_first_json_object` — it fails visibly, emitting review_lens.unparseable
-# and a summary that says the lens reviewed nothing — but the ADR must not claim
-# otherwise. This asserts the two agree, in whichever direction they agree.
+# review-lens was the counter-example the ADR got wrong; it has since migrated
+# (#1840). This asserts the ADR and the code agree, in whichever direction —
+# so a future plugin back on `extract_first_json_object` is not claimed migrated.
 # The grep excludes comment-only lines so plugin.sh:394's comment
 # ("schema-gated envelope parser replaces bare `extract_first_json_object`")
 # does not cause a false classification as un-migrated.
@@ -110,7 +109,10 @@ fi
 # PRs #1840 and #1843 migrated both plugins. The ADR's Amendment v1.2 paragraph
 # that described them as not migrated is stale. This assertion fails while that
 # paragraph remains, and passes after the ADR is corrected.
-if grep -qE '(review-lens|review-report).*\*\*not\*\*.*migrat|\*\*not\*\*.*migrat.*(review-lens|review-report)' "$ADR"; then
+# Bold or plain, either order, within one sentence: "review-lens is not migrated",
+# "Not migrated: review-lens". The correction note's "described them as not
+# migrated was stale" names neither stage in its sentence, so it does not match.
+if grep -qiE '(review-lens|review-report)[^.]*(is|are|was|were|remains|stays)[[:space:]]+(\*\*)?not(\*\*)?[[:space:]]+migrat|(\*\*)?not(\*\*)?[[:space:]]+migrat[^.]*(review-lens|review-report)' "$ADR"; then
     assert_fail "[#2035/SPEC-1]: ADR-028 has no stale \"not migrated\" claim for review-lens or review-report" \
         "ADR-028 still describes review-lens or review-report as not migrated"
 else
@@ -136,6 +138,9 @@ if [[ -f "$_rl_guard" ]]; then
         assert_fail "[#2035/SPEC-4]: comment-excluding grep (^[^#]*) correctly ignores plugin.sh:394 comment; no non-comment use" \
             "comment present: $_has_comment, non-comment code present: $_has_noncomment"
     fi
+else
+    assert_fail "[#2035/SPEC-4]: comment-excluding grep (^[^#]*) correctly ignores plugin.sh:394 comment; no non-comment use" \
+        "$_rl_guard is missing"
 fi
 
 # ── [#2035/SPEC-5]: review-lens/plugin.sh uses _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok ──
