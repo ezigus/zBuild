@@ -95,6 +95,18 @@ else
         "word 'out_of_turns' not found in $ADR_063"
 fi
 
+# The §3 section header must not prescribe 'exhausted' as the disposition word.
+# Old header: "### 3. Partial is signalled as `disposition: exhausted`"
+# This catches prose forms like "Partial is signalled as `exhausted`" not caught by the
+# disposition: prefix regex above. FAILS on old code.
+_sec3_header="$(grep -E '^### 3\.' "$ADR_063" 2>/dev/null || true)"
+if grep -q 'exhausted' <<< "$_sec3_header" 2>/dev/null; then
+    assert_fail "[#2032/SPEC-7] §3 section header must not prescribe 'exhausted' as the disposition word" \
+        "header text: $_sec3_header"
+else
+    assert_pass "[#2032/SPEC-7] §3 section header does not prescribe 'exhausted' as the disposition word"
+fi
+
 # ── SPEC-8 [#2032/SPEC-8]: per-stage helpers, no single-helper baseline text ──
 print_test_section "SPEC-8 [#2032/SPEC-8]: per-stage _<stage>_budget_guidance helpers; old single-helper text absent"
 
@@ -114,6 +126,26 @@ if grep -qE '_[a-z_]+_budget_guidance' "$ADR_063" 2>/dev/null; then
 else
     assert_fail "[#2032/SPEC-8] per-stage _<stage>_budget_guidance helpers must be named in ADR-063 §1" \
         "no _*_budget_guidance pattern found in $ADR_063"
+fi
+
+# The pattern must appear specifically in §1 (between "### 1." and "### 2." headers).
+# FAILS on old code: §1 body has the single-helper baseline, not the per-stage helper names.
+_sec1_body="$(awk '/^### 1\./{f=1; next} /^### [0-9]+\./{if(f){exit}} f{print}' "$ADR_063" 2>/dev/null || true)"
+if grep -qE '_[a-z_]+_budget_guidance' <<< "$_sec1_body" 2>/dev/null; then
+    assert_pass "[#2032/SPEC-8] per-stage _<stage>_budget_guidance language is in §1 body specifically"
+else
+    assert_fail "[#2032/SPEC-8] per-stage _<stage>_budget_guidance helpers must be defined in ADR-063 §1" \
+        "pattern absent from §1 (between '### 1.' and '### 2.')"
+fi
+
+# "Each stage has its own" — at least 2 distinct helper names must be present.
+# FAILS on old code: old §1 names no per-stage helpers at all.
+_helper_count="$(grep -oE '_[a-z_]+_budget_guidance' "$ADR_063" 2>/dev/null | sort -u | wc -l | tr -d ' ' || true)"
+if [[ "${_helper_count:-0}" -ge 2 ]]; then
+    assert_pass "[#2032/SPEC-8] ≥2 distinct per-stage _<stage>_budget_guidance helpers named (each stage has its own)"
+else
+    assert_fail "[#2032/SPEC-8] ADR-063 must name ≥2 distinct per-stage budget_guidance helpers (got ${_helper_count:-0})" \
+        "found: $(grep -oE '_[a-z_]+_budget_guidance' "$ADR_063" 2>/dev/null | sort -u | tr '\n' ' ' || true)"
 fi
 
 # ── SPEC-9 [#2032/SPEC-9]: amendment back-pointer explicitly names #2187 ──────

@@ -136,6 +136,10 @@ assert_eq "[SPEC-5] failed lens → rc=0 (advisory never aborts)" "0" "$_rc"
 assert_eq "[SPEC-5] failed lens → disposition classified from first failed lens rc (rc=1 → router_rc_nonzero → unavailable)" "unavailable" "$(_v2 disposition "$_d5/review-report.json")"
 assert_eq "[SPEC-5] failed lens → verdict stays pass" "pass" "$(_v2 verdict "$_d5/review-report.json")"
 assert_contains "[SPEC-5] reason names the lens that failed" "$(_v2 reason "$_d5/review-report.json")" "performance"
+# [#2032/SPEC-5]: disposition must come from router_reason_disposition of the first failed lens rc,
+# not the hardcoded 'complete'. rc=1 → router_rc_nonzero → unavailable. FAILS on old code.
+assert_eq "[#2032/SPEC-5] failed lens rc=1 → disposition=unavailable via router_reason_disposition (not hardcoded complete)" \
+    "unavailable" "$(_v2 disposition "$_d5/review-report.json")"
 
 # ── SPEC-7: budget block from the resolvers, never a literal ─────────────────
 _d7="$TEST_TEMP_DIR/s7"; _fixture "$_d7"
