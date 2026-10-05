@@ -30,6 +30,23 @@ if [[ "${_ZBUILD_ROUTER_RC_CLASSIFY_LOADED:-}" == "1" ]]; then
 fi
 _ZBUILD_ROUTER_RC_CLASSIFY_LOADED=1
 
+# #2296: a stream-json capture (#2139) is judged by the CLI's own records, never
+# by text inside it. Prints `refused`, else its final result line, else nothing;
+# a single envelope (even one printed over several lines) is printed back.
+_router_stream_envelope() {
+    local json="${1:-}" got=""
+    if [[ "$json" == *$'\n'* && "$json" == '{"type":'* ]] && command -v jq >/dev/null 2>&1; then
+        got="$(jq -nRrc '[inputs | fromjson? // empty] as $r
+            | if ($r | length) == 0 then "single"
+              elif any($r[]; .type == "rate_limit_event"
+                    and (.rate_limit_info.status // "allowed") == "rejected") then "refused"
+              else ([$r[] | select(.type == "result")] | last // empty) end' \
+            <<< "$json" 2>/dev/null || true)"
+        [[ "$got" != "single" ]] && { printf '%s' "$got"; return 0; }
+    fi
+    printf '%s' "$json"
+}
+
 # _router_is_budget_exhausted <claude_output_json> — returns 0 when the envelope
 # says the model ran OUT OF BUDGET rather than failing. Repo-agnostic: keys only
 # on the claude CLI's own fields.
@@ -43,6 +60,8 @@ _router_is_budget_exhausted() {
     local json="${1:-}"
     [[ -z "$json" ]] && return 1
     command -v jq >/dev/null 2>&1 || return 1
+    json="$(_router_stream_envelope "$json")"
+    case "$json" in refused|'') return 1 ;; esac
     local subtype="" terminal=""
     subtype="$(printf '%s' "$json" | jq -r '.subtype // empty' 2>/dev/null || true)"
     terminal="$(printf '%s' "$json" | jq -r '.terminal_reason // empty' 2>/dev/null || true)"
@@ -57,26 +76,8 @@ _router_is_budget_exhausted() {
 _router_is_rate_limit() {
     local json="${1:-}"
     [[ -z "$json" ]] && return 1
-    # #2296: stream-json (#2139) is one record per line. Judge it by the CLI's
-    # own records only — a refused rate_limit_event, or the final result line —
-    # never by text found anywhere in it: a failed tool call writes
-    # "is_error":true and a file the model read can say "rate limit". A stream
-    # cut off by its time limit has no result line, and that is not a limit.
-    # `fromjson?` skips the line a kill truncated.
-    if [[ "$json" == *$'\n'* && "$json" == '{"type":'* ]] && command -v jq >/dev/null 2>&1; then
-        local verdict
-        verdict="$(jq -nRc '[inputs | fromjson? // empty] as $r
-            | if any($r[]; .type == "rate_limit_event"
-                    and (.rate_limit_info.status // "allowed") == "rejected")
-              then "refused"
-              else ([$r[] | select(.type == "result")] | last // "none") end' \
-            <<< "$json" 2>/dev/null || true)"
-        case "$verdict" in
-            '"refused"') return 0 ;;
-            '"none"'|'') return 1 ;;
-            *) _router_is_rate_limit "$verdict"; return $? ;;
-        esac
-    fi
+    json="$(_router_stream_envelope "$json")"
+    case "$json" in refused) return 0 ;; '') return 1 ;; esac
     local status="" is_error="" result="" errtext=""
     if command -v jq >/dev/null 2>&1; then
         status="$(printf '%s' "$json"  | jq -r '.api_error_status // empty' 2>/dev/null || true)"
@@ -117,6 +118,8 @@ _router_is_rate_limit() {
 _router_rate_limit_message() {
     local json="${1:-}"
     local result="" status="" tail=""
+    json="$(_router_stream_envelope "$json")"
+    [[ "$json" == refused ]] && json=""
     if command -v jq >/dev/null 2>&1; then
         result="$(printf '%s' "$json" | jq -r '.result // empty'          2>/dev/null || true)"
         status="$(printf '%s' "$json" | jq -r '.api_error_status // empty' 2>/dev/null || true)"

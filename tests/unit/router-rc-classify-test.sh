@@ -149,5 +149,32 @@ assert_eq "T17: a final errored result naming a limit is a rate limit" "0" "$rc"
 _m="$(_router_rate_limit_message "$_r429")"
 assert_contains "T18: the message carries the stream's result text" "$_m" "resets 3am"
 
+# T19 (review #2297): the reset text comes from the FINAL result line, not
+#      from any earlier record that happens to carry a `result` field.
+_two="$(printf '%s\n' "$_init" '{"type":"system","subtype":"note","result":"limit resets 9pm","session_id":"s"}' '{"type":"result","subtype":"success","is_error":true,"api_error_status":429,"result":"Session limit reached ∙ resets 3am","session_id":"s"}')"
+_m="$(_router_rate_limit_message "$_two")"
+assert_contains "T19: the message reads the final result line" "$_m" "resets 3am"
+if [[ "$_m" == *9pm* ]]; then
+    assert_fail "T19: and not an earlier record's text" "got: $_m"
+else
+    assert_pass "T19: and not an earlier record's text"
+fi
+
+# T20 (review #2297): a stream that ran out of turns says so in its final
+#      result line; the system lines' own subtypes must not hide it.
+_mt="$(printf '%s\n' "$_init" "$_think" '{"type":"result","subtype":"error_max_turns","is_error":true,"num_turns":96,"session_id":"s"}')"
+set +e; _router_is_budget_exhausted "$_mt"; rc=$?; set -e
+assert_eq "T20: a stream ending in error_max_turns is budget-exhausted" "0" "$rc"
+set +e; _router_is_budget_exhausted "$_done"; rc=$?; set -e
+assert_eq "T20: a stream that finished is not budget-exhausted" "1" "$rc"
+set +e; _router_is_budget_exhausted "$_cut"; rc=$?; set -e
+assert_eq "T20: a stream cut off by its time limit is not budget-exhausted" "1" "$rc"
+
+# T21 (review #2297): one envelope printed across several lines is read as
+#      one envelope, not as a stream of unparseable lines.
+_pretty="$(printf '{"type":"result",\n "subtype":"success",\n "is_error":true,\n "api_error_status":429,\n "result":"Session limit reached"}')"
+set +e; _router_is_rate_limit "$_pretty"; rc=$?; set -e
+assert_eq "T21: a pretty-printed 429 envelope is a rate limit" "0" "$rc"
+
 print_test_results
 exit $((FAIL > 0))
