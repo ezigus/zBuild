@@ -30,9 +30,7 @@ if [[ "${_ZBUILD_ROUTER_RC_CLASSIFY_LOADED:-}" == "1" ]]; then
 fi
 _ZBUILD_ROUTER_RC_CLASSIFY_LOADED=1
 
-# #2296: a stream-json capture (#2139) is judged by the CLI's own records, never
-# by text inside it. Prints `refused`, else its final result line, else nothing;
-# a single envelope (even one printed over several lines) is printed back.
+# #2296: a stream is judged by its own records — prints `refused`, its final result line, nothing, or a lone envelope back.
 _router_stream_envelope() {
     local json="${1:-}" got=""
     if [[ "$json" == *$'\n'* && "$json" == '{"type":'* ]] && command -v jq >/dev/null 2>&1; then
