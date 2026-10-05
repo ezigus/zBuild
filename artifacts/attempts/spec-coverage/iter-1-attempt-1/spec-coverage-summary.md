@@ -1,5 +1,0 @@
-## spec-coverage — covered
-
-- Every acceptance checkbox in the issue maps fully to a SPEC — A's convergence suppression (SPEC-1/2/6), B's three plugins emitting real dispositions (SPEC-3/4/5), and C's ADR-063 amendment (SPEC-7/8/9); the "npm test green" requirement is pipeline verification, not a behavioral gap.
-
-- every requirement the issue states maps to a declared SPEC
