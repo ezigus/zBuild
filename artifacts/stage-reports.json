@@ -36,5 +36,14 @@
     "plugins/agent/review-report/plugin.sh",
     "plugins/agent/spec-correspondence/plugin.sh",
     "plugins/agent/spec-coverage/plugin.sh"
-  ]
+  ],
+  "owned_files": {
+    "test-author": [
+      "tests/integration/cycle-member-unfinished-no-convergence-test.sh",
+      "tests/unit/adr-063-vocabulary-test.sh",
+      "tests/unit/review-report-v2-contract-test.sh",
+      "tests/unit/spec-correspondence-test.sh",
+      "tests/unit/spec-coverage-test.sh"
+    ]
+  }
 }
