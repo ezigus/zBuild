@@ -29,7 +29,7 @@ Each misroute was fixed with another rule (#1777, #2157, #1847, #1846). In #2032
    - **`unowned: yield`** on a loop: when every member of the loop that answers findings (other than the finding's opener) answered `nothing to do` to the same finding, the loop ends early. The outer loop then goes round from the top, carrying every finding.
    - **`unowned: halt`** on the outer loop: just before the yielding loop comes round again, every stage that answers findings and ran in between (the design loop's stages, impact, …) is checked. If all of them answered `nothing to do` to that finding, nobody owns it. The run stops and writes `artifacts/unowned-findings.md`, listing each finding, the stage that opened it, and every answer with its why.
    - An early hand-back is recorded as such: the loop's state reads `unowned_finding`, and its banner says it ended early.
-   - One `done` from anyone keeps a finding where it is. A member that should have answered and did not counts as not disclaiming.
+   - One `done` from anyone keeps a finding where it is. A member that should have answered and did not counts as not disclaiming. Each round counts only answers given in it: a loop clears its stages' answers when a round starts.
 9. **No fault classes.** No stage writes a `fault`, the gate aggregator rolls none up, and rc 11 is retired from the engine's vocabulary (ADR-054 §4).
 
 ## Consequences
@@ -55,5 +55,5 @@ Each misroute was fixed with another rule (#1777, #2157, #1847, #1846). In #2032
 - §2, §3, §4 → `tests/integration/nested-loop-rounds-test.sh` L1–L6; `tests/integration/cycle-member-dispatch-events-test.sh` §3 (rc 8 still halts on the last outer round); `tests/integration/cycle-rate-limit-aborts-run-test.sh` (rc 9 from an inner loop ends the run)
 - §5 → `tests/unit/numbered-findings-test.sh` N1–N5
 - §6, §7 → `tests/unit/finding-answers-test.sh` A1–A6
-- §8 → `tests/integration/unowned-finding-test.sh` U1–U6; `tests/unit/runner-render-cycle-divider-test.sh` (the hand-back banner)
+- §8 → `tests/integration/unowned-finding-test.sh` U1–U8; `tests/unit/runner-render-cycle-divider-test.sh` (the hand-back banner)
 - §9 → `tests/unit/no-fault-routing-test.sh` R2–R4; `tests/unit/dispatch-rc-test.sh` SPEC-5 (rc 11 retired)

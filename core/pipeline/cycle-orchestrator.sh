@@ -2397,8 +2397,16 @@ cycle_orchestrator_run() {
     for (( iter=1; iter <= _CYCLE_MAX_ITER; iter++ )); do
         _CYCLE_TRAP_ITER="$iter"
         _CYCLE_LAST_ITERATIONS="$iter"
-        # #2271 (ADR-068): each round counts only the answers given in it.
-        [[ "${_CYCLE_UNOWNED:-}" == "yield" ]] && _unowned_clear_round "$state_dir" "${_CYCLE_STAGES[@]}"
+        # #2271 (ADR-068): each round counts only the answers given in it. An
+        # outer `halt` loop clears every stage in its tree (design, impact, …):
+        # one that answers nothing this round must not count an old answer.
+        if [[ "${_CYCLE_UNOWNED:-}" == "yield" ]]; then
+            _unowned_clear_round "$state_dir" "${_CYCLE_STAGES[@]}"
+        elif [[ "${_CYCLE_UNOWNED:-}" == "halt" ]] && declare -F _tpl_flow_leaves >/dev/null 2>&1; then
+            local -a _uo_tree=() _uo_l
+            while IFS= read -r _uo_l; do [[ -n "$_uo_l" ]] && _uo_tree+=("$_uo_l"); done < <(_tpl_flow_leaves "$cycle_id")
+            [[ ${#_uo_tree[@]} -gt 0 ]] && _unowned_clear_round "$state_dir" "${_uo_tree[@]}"
+        fi
 
         # #682: 2 blank lines BEFORE each iter separator (inter-iter gap),
         # except before the very first iter where 1 blank is enough — the

@@ -24,6 +24,11 @@
 #             from anyone keeps a finding (review #2291)
 # U6 [change] an early hand-back is recorded as such in the loop's state, not
 #             as rounds exhausted
+# U7 [change] an answer left over from an earlier run or round never counts:
+#             a stage that answers nothing this round does not disclaim
+#             (review #2291 round 2)
+# U8 [guard]  with no stage before the yielding loop, nothing can disclaim: no
+#             stop, and the yielded finding stays recorded
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -189,6 +194,30 @@ print_test_section "U6: the early hand-back is recorded as such"
 TA="nothing to do" BUILD="nothing to do" DESIGN="done" _run
 assert_eq "[U6] the build loop's state says it ended on an unowned finding" "unowned_finding" \
     "$(jq -r '.cycle_iterations.build_loop.status // empty' "$ZBUILD_STATE_DIR/pipeline-state.json" 2>/dev/null)"
+
+print_test_section "U7: a leftover answer does not count"
+# _run clears the answers directory, then this case leaves design's answer from
+# an earlier run in place; design answers nothing this time.
+_run_with_stale() {
+    : > "$LOG"; : > "$ZBUILD_EVENTS_JSONL"; rm -rf "$FA" "$ZBUILD_STATE_DIR/artifacts/unowned-findings.md"
+    _ans design "nothing to do" "left over from an earlier run"
+    local sf="$ZBUILD_STATE_DIR/pipeline-state.json"
+    rm -f "$sf" "$sf.bak" "$sf.lock"
+    jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$sf"
+    _TPL_STAGES=(); _TPL_CYCLES=()
+    load_template "$TPL" >/dev/null 2>&1 || return 99
+    cycle_orchestrator_run outer_loop "$ZBUILD_STATE_DIR" "$sf" >/dev/null 2>&1
+}
+TA="nothing to do" BUILD="nothing to do" DESIGN="" IMPACT="nothing to do" _run_with_stale
+assert_eq "[U7] no report — design said nothing this time" "absent" \
+    "$( [[ -s "$ZBUILD_STATE_DIR/artifacts/unowned-findings.md" ]] && echo present || echo absent )"
+
+print_test_section "U8: nothing ran before the yielding loop"
+mkdir -p "$FA"; printf '{"loop":"build_loop","refs":["acc finding 1"],"answers":[]}\n' > "$ZBUILD_STATE_DIR/unowned-yield.json"
+_unowned_halt_check "$ZBUILD_STATE_DIR"; _rc8=$?
+assert_eq "[U8] no stop when no stage could have answered" "1" "$_rc8"
+assert_eq "[U8] the yielded finding stays recorded" "present" \
+    "$( [[ -s "$ZBUILD_STATE_DIR/unowned-yield.json" ]] && echo present || echo absent )"
 
 cleanup_test_env
 print_test_results
