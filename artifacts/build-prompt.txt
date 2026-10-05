@@ -1,4 +1,4 @@
-============== ZBUILD BUILD — iter 1/10 ==============
+============== ZBUILD BUILD — iter 2/10 ==============
 ## ORIGINAL TASK (immutable across iterations)
 # Plan: §3/§4 — unfinished member blocks convergence; gates emit real disposition
 
@@ -291,3 +291,6 @@ Your change is done when the test for every requirement below passes.
   → its test is already written; make it pass
 - [#2032/SPEC-9] docs/adr/ADR-063-budget-disclosure-and-partial-output.md contains an amendment back-pointer that explicitly names #2187 (the issue that retired exhausted/escalate vocabulary)
   → its test is already written; make it pass
+
+## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
+A previous attempt on this issue ended build with verdict=incomplete and touched 1 file(s): tests/unit/event-schema-emitted-coverage-test.sh. That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present and no STAGE SUMMARY is headed "— its findings, to answer".
