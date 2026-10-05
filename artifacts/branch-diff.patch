@@ -1,0 +1,904 @@
+diff --git a/config/event-schema.json b/config/event-schema.json
+index 95afc0e1..312223c2 100644
+--- a/config/event-schema.json
++++ b/config/event-schema.json
+@@ -104,6 +104,7 @@
+     "cycle.member.blocking_failure",
+     "cycle.build_unfinished.suppressed_convergence",
+     "cycle.no_committed_changes.suppressed_convergence",
++    "cycle.member_unfinished.suppressed_convergence",
+     "cycle.no_committed_changes",
+     "cycle.timeout_exhausted",
+     "selfhost.contract_lib.snapshot",
+diff --git a/core/pipeline/cycle-orchestrator.sh b/core/pipeline/cycle-orchestrator.sh
+index 4a407790..4a3ee50c 100644
+--- a/core/pipeline/cycle-orchestrator.sh
++++ b/core/pipeline/cycle-orchestrator.sh
+@@ -2579,6 +2579,19 @@ cycle_orchestrator_run() {
+                 "reason=build_mid_flight_not_a_resting_point"
+         fi
+ 
++        # #2032 — generic member-unfinished convergence suppression. When ANY
++        # iteration member carries an unfinished disposition (timed_out,
++        # out_of_turns, interrupted), the exit_when predicate matching is not
++        # a clean resting point — the member did not produce a consumable result.
++        # converged==0 guard prevents double-fire when the build block above
++        # already set converged=1 for the same iter.
++        if [[ "$converged" -eq 0 && "$_iter_did_not_finish" -eq 1 ]]; then
++            converged=1
++            _cycle_emit "cycle.member_unfinished.suppressed_convergence" \
++                "iter=$iter" \
++                "reason=member_did_not_finish"
++        fi
++
+         # #1265 — no-committed-changes fail-fast. A convergence that would fire
+         # with ZERO commits ahead of the intake baseline (e.g. a scope_violation
+         # discarded the entire diff, or the tree was never committed) is a FALSE
+diff --git a/docs/adr/ADR-021-pipeline-cycle-semantics.md b/docs/adr/ADR-021-pipeline-cycle-semantics.md
+index 1a2cb60c..17730981 100644
+--- a/docs/adr/ADR-021-pipeline-cycle-semantics.md
++++ b/docs/adr/ADR-021-pipeline-cycle-semantics.md
+@@ -3,6 +3,7 @@
+ **Status:** Proposed (F1) → Accepted (after F2 / #511)
+ **Date:** 2026-05-30
+ **Amends:** ADR-006 (resume contract), ADR-013 (canonical stage list), ADR-015 (stage-io v6), ADR-018 (Pattern 2 inner loops), ADR-020 (contract validator)
++**Amended:** 2026-10-05 (#2032) — generic member-unfinished convergence suppression: when any iteration member carries an unfinished disposition (`timed_out`, `out_of_turns`, `interrupted`) and the `exit_when` predicate fires, convergence is suppressed and `cycle.member_unfinished.suppressed_convergence` is emitted. This joins the two existing suppressions: `cycle.build_unfinished.suppressed_convergence` (#1208) fires only when the build member is unfinished; `cycle.no_committed_changes.suppressed_convergence` (#1265) fires when an iteration would converge on zero commits. The new suppression fires for ANY member, on ANY cycle type (including design-only cycles without a build member). The `converged==0` guard prevents double-fire with the build-specific suppression. At `max_iterations` when the suppression fires, the existing #1261 exhaustion path halts with `cycle.timeout_exhausted` and `term_rc=8`.
+ **Amended:** 2026-10-05 (#2296) — R2: a `stream-json` capture is judged by the CLI's own records (a refused `rate_limit_event`, the final `result` line), never by text found anywhere in it; a call cut off by its time limit is not a rate limit.
+ **Amended:** 2026-09-16 (#2117) — an unchanged tree is not re-verified. When `build` reports `empty_diff` on iter ≥ 2 and the tree fingerprint (HEAD + `git status --porcelain`) equals the one recorded when the previous iteration finished all members, every later member that PASSED then is reused from that iteration (blob entry copied, artifact kept — the #511 Pin-8 pre-iteration cleanup is now per member, right before dispatch — `cycle.iteration.reused` emitted, no dispatch). A member that FAILED re-runs so its iter-aware escalation (#1711, #2097) sees `ZBUILD_CYCLE_ITER` advance; (since #2144 a test pass is always full-suite confirmed by the stage itself, so no run mode is read here). The #1208 "run all tries" contract is intact — iterations still run; they no longer re-verify. #1840 spent 45 min of tests and a 68-min gate on each of three identical trees.
+ **Amended by:** ADR-042 — cycle members now resolve their plugin role-then-id via the shared `resolve_stage_plugin` helper, not id-only.
+@@ -136,6 +137,7 @@ Registered in `config/event-schema.json::known_types`:
+ | `cycle.metric.invalid` | cycle_id, metric, value |
+ | `cycle.plateau.skipped` | cycle_id, iter, reason, have, need |
+ | `cycle.iter.stale_artifact` | cycle_id, iter, path |
++| `cycle.member_unfinished.suppressed_convergence` | cycle_id, iter, reason=member_did_not_finish (#2032) |
+ 
+ ### Orchestrator surface
+ 
+diff --git a/docs/adr/ADR-063-budget-disclosure-and-partial-output.md b/docs/adr/ADR-063-budget-disclosure-and-partial-output.md
+index 1d5dc22a..ac2b7002 100644
+--- a/docs/adr/ADR-063-budget-disclosure-and-partial-output.md
++++ b/docs/adr/ADR-063-budget-disclosure-and-partial-output.md
+@@ -1,8 +1,9 @@
+ # ADR-063 — Stages are told their limits, and say when they hit them
+ 
+-**Status:** Proposed (2026-09-02)
++**Status:** Accepted, amended 2026-10-05 by #2032
+ **Issue:** #2032
+-**Amends:** ADR-054 §6 (no new vocabulary — `exhausted` is adopted, not invented)
++**Amends:** ADR-054 §6 (vocabulary updated to `timed_out`/`out_of_turns` per #2187)
++**Amended:** 2026-10-05 (#2032) — vocabulary updated per #2187: the stale disposition word and the stale §4 engine action word are retired; `timed_out`/`out_of_turns` replace the former, and the engine's timeout-retry path (ADR-029) replaces the latter; §1 per-stage `_<stage>_budget_guidance` helpers replace the single shared helper.
+ **Related:** ADR-029 (budget escalation), ADR-060 (structure to the engine, prose to humans), #1986 (summary ingestion)
+ 
+ ## Context
+@@ -27,19 +28,19 @@ that nine attempts learned nothing from each other.
+ 
+ ### The engine already knows what to do about this
+ 
+-`exhausted` is in ADR-054 §6's closed set, meaning "more budget, or the work must
+-shrink". It is wired end to end:
++`timed_out` and `out_of_turns` (the vocabulary #2187 standardised from the earlier
++`exhausted`) are in ADR-054 §6's closed set, meaning "more budget, or the work must
++shrink". The classification chain is wired end to end:
+ 
+ | | |
+ |---|---|
+-| `core/pipeline/disposition.sh:53` | in `_ZBUILD_DISPOSITION_SET` |
+-| `core/pipeline/disposition.sh:97` | `exhausted) printf 'escalate'` |
+-| `core/pipeline/dispatch-rc.sh:177` | `rc=10 → exhausted` |
+-| `core/router/route.sh:749` | `_route_escalate_timeout` — retry at +50%, capped at 2× base (ADR-029) |
+-
+-**No LLM stage has ever emitted it.** The producer side was never built, so the
+-escalation path has never run. A stage that runs out of time simply dies, and the
+-engine sees a dead call rather than a stage saying "I ran out; here is what I
++| `core/pipeline/disposition.sh` | `_ZBUILD_DISPOSITION_SET` includes `timed_out`, `out_of_turns` |
++| `scripts/lib/router-rc-classify.sh:280` | `router_reason_disposition` — maps router reason to disposition word |
++| `core/router/route.sh` | `_route_escalate_timeout` — retry at +50%, capped at 2× base (ADR-029) |
++
++**No LLM stage emitted the signal.** The producer side was never built, so the
++escalation path never ran. A stage that ran out of time simply died, and the
++engine saw a dead call rather than a stage saying "I ran out; here is what I
+ had".
+ 
+ This is the defect class this repo keeps finding: a declared mechanism with no
+@@ -89,15 +90,15 @@ it is not a third time.
+ |---|---|---|
+ | §1 | budget reaches the prompt from the value that enforces it | **no** — prompt text |
+ | §2 | each stage declares a partial form of its deliverable | **no** for a stage whose deliverable is a file |
+-| §3 | partial is signalled as `disposition: exhausted` | **yes** |
+-| §4 | gates fail closed on `exhausted` | **yes** |
++| §3 | partial is signalled as `disposition: timed_out` or `out_of_turns` | **yes** |
++| §4 | gates fail closed on unfinished dispositions | **yes** |
+ 
+ §3 and §4 are blocked because `disposition` is a v2-only field:
+ `runner_read_stage_disposition` (`core/pipeline/verdict.sh:674`) reads it from the
+ result file, and `_verdict_read_result` resolves `result_contract // 1`. ADR-054 §6
+ consults the vocabulary only at `result_contract >= 2`, and **none of the eight
+ model-driven stages is on v2** (tracked as [Phase 0/F], #1833–#1850). A stage
+-emitting `exhausted` before its migration writes a field nothing reads.
++emitting an unfinished disposition before its migration writes a field nothing reads.
+ 
+ **§1 and §2 nonetheless wait for §3 and §4, by choice.** They are technically
+ unblocked, and the temptation to land them early is real — they are where the cost
+@@ -114,9 +115,11 @@ remembering this ADR.
+ 
+ ### 1. The budget reaches the prompt from the value that enforces it
+ 
+-One helper renders the budget block — turns, wall-clock seconds, and the stop
+-target — interpolated from the same numbers the engine will act on. Stages do not
+-restate them.
++Each stage has its own `_<stage>_budget_guidance` helper that reads the enforcing
++values — turns, wall-clock seconds, and the stop target — and renders the budget
++block for that stage's prompt. Stages do not restate them; the helper interpolates
++from the same numbers the engine will act on (e.g. `_spec_coverage_budget_guidance`,
++`_spec_correspondence_budget_guidance`, `_review_lens_budget_guidance`).
+ 
+ A hand-copied bound is worse than no bound: it drifts from what actually kills the
+ call, and then the prompt is lying to the model with authority. `plan` computes
+@@ -133,9 +136,14 @@ The existing shapes are the model: `impact` has `verdict:incomplete` +
+ `missing[]`; `plan` has steps-so-far plus named gaps. `design` has none, which is
+ why it can only ever return everything or nothing.
+ 
+-### 3. Partial is signalled as `disposition: exhausted`
++### 3. Partial is signalled with an unfinished disposition word
+ 
+-Machine-readable, on the engine's axis, using the word that already exists.
++Machine-readable, on the engine's axis, using the vocabulary `router_reason_disposition`
++(`scripts/lib/router-rc-classify.sh`) classifies from the router exit code:
++`timed_out` (rc=124, wall-clock killed), `out_of_turns` (turn budget hit),
++`interrupted` (signal), and related words. Stages call `router_reason_disposition`
++instead of hardcoding `complete` — the word `complete` must never be hardcoded
++for a model-calling stage when the model call may not have finished.
+ 
+ The stage's `verdict` stays its own vocabulary (ADR-054 §6) — `incomplete`,
+ `request_changes`, whatever the stage means. Disposition answers the different
+@@ -150,15 +158,18 @@ is *explained*; `disposition` is where it is *declared*.
+ 
+ Two halves, and neither is optional:
+ 
+-- `exhausted → escalate` already routes to `_route_escalate_timeout` (+50%,
+-  capped at 2× base). Wire the producers so it runs. A signal nothing acts on is
+-  the inert-mechanism defect one layer up.
++- An unfinished disposition (`timed_out`, `out_of_turns`) routes to
++  `_route_escalate_timeout` (+50%, capped at 2× base, via ADR-029/route.sh).
++  Wire the producers so it runs. A signal nothing acts on is the
++  inert-mechanism defect one layer up.
+ - **A gate must not accept a partial as complete.** This is the risk the change
+   introduces: giving `design` permission to emit early is dangerous precisely
+   when the design gate cannot tell the difference, and a half-built design that
+   passes is worse than a design stage that failed loudly. Any gate reading a
+-  stage whose disposition is `exhausted` fails closed unless it declares
+-  otherwise.
++  stage whose disposition is unfinished (`disposition_unfinished` in
++  `core/pipeline/disposition.sh`) fails closed unless it declares otherwise.
++  This is now implemented: the cycle-orchestrator suppresses convergence when
++  any iteration member carries an unfinished disposition (#2032).
+ 
+ ### 5. Two implementation shapes, chosen by the work
+ 
+diff --git a/plugins/agent/review-report/plugin.sh b/plugins/agent/review-report/plugin.sh
+index a22eb386..4e6a8513 100644
+--- a/plugins/agent/review-report/plugin.sh
++++ b/plugins/agent/review-report/plugin.sh
+@@ -162,16 +162,23 @@ _rr_run_inner() {
+     lenses_file="$(_rr_fanout_lenses "$scope_manifest" "$evidence" "$artifact_dir" "$tier" "$_budget_guidance")"
+ 
+     # ADR-063 §3: a lens whose call returned non-zero ran out of something —
+-    # the report is still written (advisory), but the disposition says
+-    # `exhausted` so the engine's response table can act on it.
+-    local _rr_failed_lenses="" _rr_lens_name _rr_lens_rc
++    # the report is still written (advisory), but the disposition reflects
++    # the cause so the engine's response table can act on it (#2032/SPEC-5).
++    local _rr_failed_lenses="" _rr_lens_name _rr_lens_rc _rr_first_failed_rc=0
+     for _rr_lens_name in "${_RR_LENSES[@]}"; do
+         _rr_lens_rc="$(cat "$artifact_dir/lens-${_rr_lens_name}.rc" 2>/dev/null || echo 1)"
+-        [[ "$_rr_lens_rc" -ne 0 ]] && _rr_failed_lenses="${_rr_failed_lenses:+$_rr_failed_lenses, }$_rr_lens_name"
++        if [[ "$_rr_lens_rc" -ne 0 ]]; then
++            _rr_failed_lenses="${_rr_failed_lenses:+$_rr_failed_lenses, }$_rr_lens_name"
++            [[ "$_rr_first_failed_rc" -eq 0 ]] && _rr_first_failed_rc="$_rr_lens_rc"
++        fi
+     done
+     local _disposition="complete" _reason
+     if [[ -n "$_rr_failed_lenses" ]]; then
+-        _disposition="complete"   # #2187: the report ran; each lens reports its own cause
++        local _rr_rv _rr_rr
++        _router_rc_classify "$_rr_first_failed_rc" _rr_rv _rr_rr 2>/dev/null || true
++        # disposition-ok: the model router is not responding
++        _disposition="$(router_reason_disposition "${_rr_rr:-}" 2>/dev/null || true)"
++        [[ -n "$_disposition" ]] || _disposition="unavailable"
+         _reason="lens call(s) returned non-zero: ${_rr_failed_lenses}; the report covers the lenses that completed"
+     else
+         _reason="all ${#_RR_LENSES[@]} lenses completed; advisory report written"
+diff --git a/plugins/agent/spec-correspondence/plugin.sh b/plugins/agent/spec-correspondence/plugin.sh
+index ba29391a..e296a355 100644
+--- a/plugins/agent/spec-correspondence/plugin.sh
++++ b/plugins/agent/spec-correspondence/plugin.sh
+@@ -92,11 +92,14 @@ ASSERTION:
+ $2"
+ }
+ 
+-# _sc_call <tier> <task> — frame the task through the persona registry and
+-# route it. persona_stage_framing emits "{perspective}\n\n{task}" and returns 1
+-# when the persona is absent, in which case the task stands alone (#1627/#1628).
++# _sc_call <tier> <task> [rc_file] — frame the task through the persona registry
++# and route it. persona_stage_framing emits "{perspective}\n\n{task}" and returns
++# 1 when the persona is absent, in which case the task stands alone (#1627/#1628).
++# rc_file: if given, the router exit code is written there (subshell boundary
++# prevents a nameref from crossing; a file survives it — same pattern as
++# review-lens and other stages that need the rc from inside a command substitution).
+ _sc_call() {
+-    local tier="$1" _task="$2" _framed="$2" _raw=""
++    local tier="$1" _task="$2" _rc_file="${3:-}" _framed="$2" _raw=""
+     if declare -f persona_stage_framing >/dev/null 2>&1; then
+         local _pid="quality-assurance" _pdir=""
+         if declare -f resolve_persona >/dev/null 2>&1; then
+@@ -118,7 +121,7 @@ _sc_call() {
+     # No 2>/dev/null: the stage-io input banner writes to fd 2 (#491). stdin
+     # is /dev/null: a model that drains stdin must not eat a caller's stream (#2108).
+     if declare -f route_to_model >/dev/null 2>&1; then
+-        _raw="$(route_to_model "$tier" "$_framed" </dev/null || true)"
++        _raw="$(route_to_model "$tier" "$_framed" </dev/null; printf '%s' "$?" > "${_rc_file:-/dev/null}" || true)"
+     fi
+     printf '%s' "$_raw"
+ }
+@@ -157,14 +160,14 @@ Reserve mismatch for a genuine disagreement. Do not suggest a fix. Do not rewrit
+     done
+ }
+ 
+-# _sc_write_result <dir> <verdict> <reason> <counts_json>
++# _sc_write_result <dir> <verdict> <reason> <counts_json> [disposition]
+ _sc_write_result() {
+-    local dir="$1" v="$2" r="$3" d="${4:-{\}}"
++    local dir="$1" v="$2" r="$3" d="${4:-{\}}" disp="${5:-complete}"
+     mkdir -p "$dir" 2>/dev/null || true
+     # ADR-054 §6: `disposition` says how the STAGE stopped. This stage completed
+     # whatever it concluded about the SPECs — the verdict carries that.
+-    if ! jq -n --arg v "$v" --arg r "$r" --argjson d "$d" \
+-        '{result_contract: 2, verdict: $v, disposition: "complete", reason: $r, data: $d}' \
++    if ! jq -n --arg v "$v" --arg r "$r" --arg disp "$disp" --argjson d "$d" \
++        '{result_contract: 2, verdict: $v, disposition: $disp, reason: $r, data: $d}' \
+         | atomic_write "$dir/spec-correspondence-result.json"; then
+         _sc_emit "spec_correspondence.result.write_failed" "dir=$dir"
+     fi
+@@ -240,9 +243,14 @@ spec_correspondence_run() {
+     local _i
+     for (( _i=0; _i<n; _i++ )); do _verdicts+=(""); _reasons+=(""); done
+ 
++    # Temp file to capture route_to_model rc across command-substitution boundaries
++    # (#2032/SPEC-4): a nameref cannot cross a subshell; a file survives it.
++    local _sc_rc_file; _sc_rc_file="$(mktemp)" || _sc_rc_file=""
++    [[ -n "$_sc_rc_file" ]] && printf '0' > "$_sc_rc_file" 2>/dev/null || true
++
+     if [[ "$n" -gt 0 ]]; then
+         local _batch_raw
+-        _batch_raw="$(_sc_call "$tier" "$(_sc_batch_prompt _ids _txts _srcs)")"
++        _batch_raw="$(_sc_call "$tier" "$(_sc_batch_prompt _ids _txts _srcs)" "$_sc_rc_file")"
+         for (( _i=0; _i<n; _i++ )); do
+             # A glob match, not a regex built from the id (review on #2148):
+             # nothing in the id can change the pattern, and no grep per SPEC.
+@@ -262,7 +270,7 @@ spec_correspondence_run() {
+             continue
+         fi
+         local _one_raw
+-        _one_raw="$(_sc_call "$tier" "$(_sc_prompt "${_txts[_i]}" "${_srcs[_i]}")")"
++        _one_raw="$(_sc_call "$tier" "$(_sc_prompt "${_txts[_i]}" "${_srcs[_i]}")" "$_sc_rc_file")"
+         _verdicts[_i]="$(_sc_parse_verdict "$_one_raw")"
+         _reasons[_i]="$(_sc_parse_reason "$_one_raw")"
+     done
+@@ -307,11 +315,28 @@ spec_correspondence_run() {
+     _sc_emit "spec_correspondence.judged" "specs=$n" "mismatch=$n_mis" "partial=$n_part" "unjudged=$n_unj"
+     # #2271 (ADR-068): each SPEC that did not correspond is a numbered finding.
+     local _sc_fl="${findings//$'\n'- /$'\n'}"; _sc_fl="${_sc_fl#- }"
++
++    # #2032/SPEC-4: classify the router rc into a disposition word so the engine
++    # can act on it; a non-zero rc means the model was not reached.
++    local _sc_router_rc=0 _sc_disposition="complete"
++    if [[ -n "$_sc_rc_file" && -f "$_sc_rc_file" ]]; then
++        _sc_router_rc="$(cat "$_sc_rc_file" 2>/dev/null || echo 0)"
++        rm -f "$_sc_rc_file" 2>/dev/null || true
++    fi
++    if [[ "$_sc_router_rc" -ne 0 ]]; then
++        local _sc_rv _sc_rr
++        _router_rc_classify "$_sc_router_rc" _sc_rv _sc_rr 2>/dev/null || true
++        # disposition-ok: the model router is not responding
++        _sc_disposition="$(router_reason_disposition "${_sc_rr:-}" 2>/dev/null || true)"
++        [[ -n "$_sc_disposition" ]] || _sc_disposition="unavailable"
++    fi
++
+     _sc_write_result "$art" "$worst" "$reason" \
+         "$(jq -nc --argjson c "$n_corr" --argjson p "$n_part" --argjson m "$n_mis" \
+                   --argjson u "$n_unch" --argjson j "$n_unj" \
+                   --argjson fnd "$(stage_findings_json <<< "$_sc_fl")" \
+-            '{corresponds:$c, partial:$p, mismatch:$m, uncheckable:$u, unjudged:$j, findings:$fnd}')"
++            '{corresponds:$c, partial:$p, mismatch:$m, uncheckable:$u, unjudged:$j, findings:$fnd}')" \
++        "$_sc_disposition"
+     stage_summary_write "$art/spec-correspondence-summary.md" "spec-correspondence" "$worst" \
+         "$reason" \
+         "${findings:-- every judged assertion tests the SPEC it claims to cover}"
+diff --git a/plugins/agent/spec-coverage/plugin.sh b/plugins/agent/spec-coverage/plugin.sh
+index fb342e07..d12eabcd 100644
+--- a/plugins/agent/spec-coverage/plugin.sh
++++ b/plugins/agent/spec-coverage/plugin.sh
+@@ -95,17 +95,17 @@ ACCEPTANCE:
+ $2"
+ }
+ 
+-# _scv_write <dir> <verdict> <reason> <uncovered_json>
++# _scv_write <dir> <verdict> <reason> <uncovered_json> [disposition]
+ _scv_write() {
+-    local dir="$1" v="$2" r="$3" u="${4:-[]}"
++    local dir="$1" v="$2" r="$3" u="${4:-[]}" d="${5:-complete}"
+     mkdir -p "$dir" 2>/dev/null || true
+     # ADR-054 §6: `disposition` says how the STAGE stopped, not what it
+     # concluded — this stage completed either way. ADR-060 §1/§2: the finding is
+     # structured, never a prose document.
+     # #2271 (ADR-068): each uncovered requirement is a numbered finding.
+     local _fnd; _fnd="$(jq -r '.[]? | "The issue asks for this and no SPEC covers it: " + tostring' <<< "$u" 2>/dev/null | stage_findings_json)"
+-    if ! jq -n --arg v "$v" --arg r "$r" --argjson u "$u" --argjson fnd "${_fnd:-[]}" \
+-        '{result_contract: 2, verdict: $v, disposition: "complete", reason: $r,
++    if ! jq -n --arg v "$v" --arg r "$r" --arg d "$d" --argjson u "$u" --argjson fnd "${_fnd:-[]}" \
++        '{result_contract: 2, verdict: $v, disposition: $d, reason: $r,
+           data: {uncovered: $u, findings: $fnd}}' \
+         | atomic_write "$dir/spec-coverage-result.json"; then
+         _scv_emit "spec_coverage.result.write_failed" "dir=$dir"
+@@ -180,11 +180,16 @@ spec_coverage_run() {
+     local _budget_note=""
+     declare -F stage_budget_note >/dev/null 2>&1 && _budget_note="$(stage_budget_note "your verdict")"
+     [[ -n "$_budget_note" ]] && _framed+=$'\n\n'"$_budget_note"
+-    local _raw=""
++    local _raw="" _rtm_rc=0 _scv_rc_file
++    _scv_rc_file="$(mktemp)" || _scv_rc_file=""
+     # No 2>/dev/null on this call: the stage-io input banner writes to fd 2 and
+     # suppressing it breaks ADR-015 §v4's ordering (the #491 defect).
+     if declare -f route_to_model >/dev/null 2>&1; then
+-        _raw="$(route_to_model "$tier" "$_framed" || true)"
++        _raw="$(route_to_model "$tier" "$_framed"; printf '%s' "$?" > "$_scv_rc_file" || true)"
++    fi
++    if [[ -n "$_scv_rc_file" && -f "$_scv_rc_file" ]]; then
++        _rtm_rc="$(cat "$_scv_rc_file" 2>/dev/null || echo 0)"
++        rm -f "$_scv_rc_file" 2>/dev/null || true
+     fi
+ 
+     # No `| head`: SIGPIPE kills the writer under errexit for a reason nothing
+@@ -198,8 +203,16 @@ spec_coverage_run() {
+     _u_line="${_u_line%%$'\n'*}"; _u_line="${_u_line#UNCOVERED:}"
+ 
+     if [[ -z "$_v" ]]; then
++        local _scv_disp="complete"
++        if [[ "$_rtm_rc" -ne 0 ]]; then
++            local _scv_rv _scv_rr
++            _router_rc_classify "$_rtm_rc" _scv_rv _scv_rr 2>/dev/null || true
++            # disposition-ok: the model router is not responding
++            _scv_disp="$(router_reason_disposition "${_scv_rr:-}" 2>/dev/null || true)"
++            [[ -n "$_scv_disp" ]] || _scv_disp="unavailable"
++        fi
+         _scv_write "$art" "unreadable" \
+-            "no parseable verdict from the model — the design was not judged" "[]"
++            "no parseable verdict from the model — the design was not judged" "[]" "$_scv_disp"
+         return 0
+     fi
+ 
+diff --git a/tests/integration/cycle-member-unfinished-no-convergence-test.sh b/tests/integration/cycle-member-unfinished-no-convergence-test.sh
+new file mode 100644
+index 00000000..db951bb0
+--- /dev/null
++++ b/tests/integration/cycle-member-unfinished-no-convergence-test.sh
+@@ -0,0 +1,221 @@
++#!/usr/bin/env bash
++# tests/integration/cycle-member-unfinished-no-convergence-test.sh
++# When a cycle's exit_when predicate is satisfied but any iteration member
++# carries an unfinished disposition (timed_out, out_of_turns, interrupted),
++# the cycle must NOT converge — it emits cycle.member_unfinished.suppressed_convergence
++# and iterates. At max_iterations with an unfinished tail, the suppression
++# fires first, then the existing #1261 exhaustion path halts with term_rc=8.
++#
++#   SPEC-1[change] (#2032): exit_when match + unfinished member disposition → convergence
++#                           suppressed, cycle.member_unfinished.suppressed_convergence
++#                           emitted, cycle iterates instead.
++#                           FAILS before: cycle converges immediately (disposition ignored)
++#   SPEC-2[guard]  (#2032): all members complete + exit_when match → converges normally;
++#                           the suppression block does not fire.
++#                           Passes both before and after the change.
++#   SPEC-6[change] (#2032): at max_iterations when last iter has an unfinished member,
++#                           the §4/A suppression fires (preventing false complete) and the
++#                           cycle takes the #1261 exhaustion path: cycle.timeout_exhausted
++#                           with reason=design_timeout_exhausted and term_rc=8.
++#                           FAILS before: cycle converges rc=0 (no suppression block)
++set -uo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "cycle: unfinished member suppresses convergence (#2032)"
++setup_test_env "cycle-member-unfinished-no-convergence"
++
++export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
++export ZBUILD_EVENTS_DIR="$TEST_TEMP_DIR/events"; mkdir -p "$ZBUILD_EVENTS_DIR"
++export ZBUILD_EVENTS_JSONL="$ZBUILD_EVENTS_DIR/events.jsonl"
++export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"; mkdir -p "$ZBUILD_STATE_DIR"
++
++# shellcheck source=../../core/pipeline/template.sh
++source "$REPO_ROOT/core/pipeline/template.sh"
++# shellcheck source=../../core/pipeline/cycle-orchestrator.sh
++source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
++# verdict_classify lives in verdict.sh; stub below uses it to classify verdicts
++# identically to how runner.sh drives the dispatch — the same path the fix keys on.
++# shellcheck source=../../core/pipeline/verdict.sh
++source "$REPO_ROOT/core/pipeline/verdict.sh"
++
++# ── state seed ───────────────────────────────────────────────────────────────
++STATE_FILE="$ZBUILD_STATE_DIR/pipeline-state.json"
++_seed() {
++    : > "$ZBUILD_EVENTS_JSONL"
++    rm -f "$STATE_FILE" "${STATE_FILE}.bak" "${STATE_FILE}.lock"
++    rm -rf "$ZBUILD_STATE_DIR/artifacts"
++    mkdir -p "$ZBUILD_STATE_DIR/artifacts"
++    printf '{"schema_version":1,"status":"in_progress","stage_statuses":{}}' > "$STATE_FILE"
++}
++
++# ── Templates ────────────────────────────────────────────────────────────────
++# Template A: design-only cycle, max_iterations=2 (for SPEC-1/SPEC-2).
++# No build member → the existing build_unfinished suppression (line 2575) does
++# NOT fire. Only the new member_unfinished suppression (SPEC-1) can fire.
++TPL_A="$TEST_TEMP_DIR/design-only-max2.yaml"
++cat > "$TPL_A" <<'YAML'
++id: unfinished2032
++name: unfinished member test max2
++defaults:
++  strategy: fanout
++stages:
++  - id: design-only
++    type: cycle
++    stages: [design]
++    until:
++      stage: design
++      field: verdict
++      op: eq
++      value: pass
++    max_iterations: 2
++    on_max: continue
++stage_definitions:
++  design:
++    roles: [designer]
++YAML
++
++# Template B: design-only cycle, max_iterations=1 (for SPEC-6).
++# The first (and only) iteration has max_iterations hit, so with an unfinished
++# member the §4/A suppression fires, then the exhaustion path fires.
++TPL_B="$TEST_TEMP_DIR/design-only-max1.yaml"
++cat > "$TPL_B" <<'YAML'
++id: unfinished2032max1
++name: unfinished member test max1
++defaults:
++  strategy: fanout
++stages:
++  - id: design-max1
++    type: cycle
++    stages: [design]
++    until:
++      stage: design
++      field: verdict
++      op: eq
++      value: pass
++    max_iterations: 1
++    on_max: continue
++stage_definitions:
++  design:
++    roles: [designer]
++YAML
++
++# ── Dispatch stub ─────────────────────────────────────────────────────────────
++# MOCK_DISPOSITIONS: comma-separated list of dispositions, one per dispatch call.
++# The stub always returns verdict=pass so the exit_when predicate matches; only
++# the disposition varies. This isolates the suppression logic from verdict routing.
++MOCK_DISPOSITIONS="complete"
++_mock_call=0
++cycle_dispatch_stage() {
++    _mock_call=$(( _mock_call + 1 ))
++    local _IFS_save="$IFS"; IFS=','
++    # shellcheck disable=SC2206
++    local -a _disp_list=($MOCK_DISPOSITIONS); IFS="$_IFS_save"
++    local _idx=$(( _mock_call - 1 ))
++    [[ $_idx -ge ${#_disp_list[@]} ]] && _idx=$(( ${#_disp_list[@]} - 1 ))
++    local _d="${_disp_list[$_idx]:-complete}"
++    # verdict=pass satisfies the `until: value: pass` predicate on every iter.
++    _CYCLE_DISPATCH_VERDICT="$(verdict_classify "pass" 2>/dev/null || printf 'pass')"
++    _CYCLE_DISPATCH_VERDICT_RAW="pass"
++    _CYCLE_DISPATCH_DISPOSITION="$_d"
++    _CYCLE_DISPATCH_STATUS="complete"
++    _CYCLE_DISPATCH_REASON=""
++    _CYCLE_DISPATCH_DATA_KIND=""
++    return 0
++}
++
++_run_cycle() {
++    # $1 = template file  $2 = cycle id  $3 = MOCK_DISPOSITIONS value
++    _seed
++    load_template "$1"
++    MOCK_DISPOSITIONS="$3"
++    _mock_call=0
++    RUN_RC=0
++    cycle_orchestrator_run "$2" "$ZBUILD_STATE_DIR" "$STATE_FILE" || RUN_RC=$?
++}
++
++# ── Event-schema registration check ─────────────────────────────────────────
++# The new suppression event MUST be registered in event-schema.json (SPEC-1 wiring).
++# Reverting the schema registration would break this assertion.
++assert_contains "[#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence registered in event-schema.json" \
++    "$(cat "$ZBUILD_EVENT_SCHEMA" 2>/dev/null)" "cycle.member_unfinished.suppressed_convergence"
++
++# ── SPEC-2[guard]: all members complete + exit_when match → converges normally ─
++# The new suppression block must NOT fire when every member's disposition is
++# complete. This test passes both before and after the fix.
++
++_run_cycle "$TPL_A" "design-only" "complete"
++
++assert_eq "[#2032/SPEC-2] complete disposition + exit_when match → rc=0 (converges normally)" \
++    "0" "$RUN_RC"
++assert_eq "[#2032/SPEC-2] terminated reason is converged (not suppressed)" \
++    "converged" "${_CYCLE_LAST_TERMINATED_REASON:-MISSING}"
++_s2_supp="$(grep -c '"cycle.member_unfinished.suppressed_convergence"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
++assert_eq "[#2032/SPEC-2] suppression event NOT emitted when all dispositions are complete" \
++    "0" "$_s2_supp"
++assert_eq "[#2032/SPEC-2] exactly 1 dispatch (converged on first iter — suppression did not fire)" \
++    "1" "$_mock_call"
++
++# ── SPEC-1[change]: exit_when match + unfinished member → suppressed, iterates ─
++# Iter 1: design returns verdict=pass (exit_when matches) AND disposition=timed_out.
++# Before fix: cycle converges immediately (rc=0, 1 dispatch, no event emitted).
++# After  fix: convergence suppressed, cycle.member_unfinished.suppressed_convergence
++#             emitted, cycle iterates. Iter 2: complete → converges (rc=0, 2 dispatches).
++
++_run_cycle "$TPL_A" "design-only" "timed_out,complete"
++
++_s1_supp="$(grep -c '"cycle.member_unfinished.suppressed_convergence"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
++assert_eq "[#2032/SPEC-1] cycle.member_unfinished.suppressed_convergence emitted when member has timed_out disposition" \
++    "1" "$_s1_supp"
++# Cycle must iterate after suppression: iter 1 suppressed → iter 2 dispatched → 2 total.
++# Before fix this is 1 (cycle converged immediately on iter 1).
++assert_eq "[#2032/SPEC-1] cycle iterated after suppression (2 dispatch calls, not the pre-fix 1)" \
++    "2" "$_mock_call"
++
++# SPEC-1 covers all three unfinished dispositions — also out_of_turns:
++_run_cycle "$TPL_A" "design-only" "out_of_turns,complete"
++_s1_oot="$(grep -c '"cycle.member_unfinished.suppressed_convergence"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
++assert_eq "[#2032/SPEC-1] suppression fires when member has out_of_turns disposition" \
++    "1" "$_s1_oot"
++assert_eq "[#2032/SPEC-1] cycle iterated after out_of_turns suppression (2 dispatch calls)" \
++    "2" "$_mock_call"
++
++# SPEC-1 covers all three unfinished dispositions — also interrupted:
++_run_cycle "$TPL_A" "design-only" "interrupted,complete"
++_s1_int="$(grep -c '"cycle.member_unfinished.suppressed_convergence"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
++assert_eq "[#2032/SPEC-1] suppression fires when member has interrupted disposition" \
++    "1" "$_s1_int"
++assert_eq "[#2032/SPEC-1] cycle iterated after interrupted suppression (2 dispatch calls)" \
++    "2" "$_mock_call"
++
++# ── SPEC-6[change]: at max_iterations with unfinished member → term_rc=8 ──────
++# max_iterations=1: the only iter has verdict=pass (exit_when matches) but
++# disposition=timed_out.
++# Before fix: §4/A suppression absent → converged==0 → rc=0 (false complete).
++# After  fix: §4/A suppression sets converged=1 → max_iterations path fires →
++#             _iter_did_not_finish==1 && _exh_tests_reported==0 → term_rc=8,
++#             cycle.timeout_exhausted emitted with reason=design_timeout_exhausted.
++
++_run_cycle "$TPL_B" "design-max1" "timed_out"
++
++assert_eq "[#2032/SPEC-6] at max_iterations with unfinished member → term_rc=8 (not rc=0 false complete)" \
++    "8" "$RUN_RC"
++_s6_ev="$(grep -c '"cycle.timeout_exhausted"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
++assert_eq "[#2032/SPEC-6] cycle.timeout_exhausted emitted" \
++    "1" "$_s6_ev"
++_s6_reason="$(jq -r 'select(.type == "cycle.timeout_exhausted") | .data.reason' \
++    "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1 || true)"
++assert_eq "[#2032/SPEC-6] cycle.timeout_exhausted reason=design_timeout_exhausted" \
++    "design_timeout_exhausted" "${_s6_reason:-MISSING}"
++assert_eq "[#2032/SPEC-6] terminated_reason=design_timeout_exhausted" \
++    "design_timeout_exhausted" "${_CYCLE_LAST_TERMINATED_REASON:-MISSING}"
++
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/adr-063-vocabulary-test.sh b/tests/unit/adr-063-vocabulary-test.sh
+new file mode 100644
+index 00000000..7474ec77
+--- /dev/null
++++ b/tests/unit/adr-063-vocabulary-test.sh
+@@ -0,0 +1,107 @@
++#!/usr/bin/env bash
++# tests/unit/adr-063-vocabulary-test.sh — ADR-063 vocabulary and structure (#2032).
++#
++# ADR-063 was written with `exhausted`/`escalate` vocabulary that #2187 retired
++# in favour of timed_out/out_of_turns. §1 referenced a single shared budget-
++# guidance helper that per-stage helpers replaced. These tests assert the document
++# has been updated and that no stale language survives.
++#
++#   SPEC-7[change] (#2032): ADR-063 status is "Accepted" and the document contains
++#                           no prescriptive use of `exhausted` as the §3 disposition
++#                           word or `escalate` as the §4 engine action.
++#                           Fails before: status is "Proposed" and both stale words appear.
++#   SPEC-8[change] (#2032): §1 uses per-stage budget-guidance helper language —
++#                           each stage has its own _<stage>_budget_guidance helper;
++#                           the baseline single-helper "One helper renders the budget
++#                           block" language is absent.
++#                           Fails before: the old single-helper sentence is present.
++#   SPEC-9[change] (#2032): document contains an amendment back-pointer that
++#                           explicitly names #2187 (the issue that retired the
++#                           exhausted/escalate vocabulary).
++#                           Fails before: no #2187 mention.
++set -uo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "ADR-063 vocabulary and structure (#2032)"
++setup_test_env "adr-063-vocabulary"
++
++ADR="$REPO_ROOT/docs/adr/ADR-063-budget-disclosure-and-partial-output.md"
++
++if [[ ! -f "$ADR" ]]; then
++    assert_fail "[#2032/SPEC-7] ADR-063 file exists" "not found at $ADR"
++    print_test_results
++    exit 1
++fi
++
++# ── SPEC-7[change]: status=Accepted, no prescriptive exhausted/escalate vocab ──
++# The status header line must read "Accepted".
++_status_line="$(grep -m1 '^\*\*Status:\*\*' "$ADR" 2>/dev/null || true)"
++assert_contains "[#2032/SPEC-7] ADR-063 status header reads Accepted" \
++    "$_status_line" "Accepted"
++
++# §3 disposition word: the document must NOT prescribe `exhausted` as the
++# machine-readable disposition to emit. "exhausted" may appear in historical
++# context, but must not appear in a prescriptive "disposition: exhausted" form.
++_exhausted_prescriptive="$(grep -c 'disposition: \`exhausted\`\|disposition: exhausted\b\|as \`disposition: exhausted\`' "$ADR" 2>/dev/null || true)"
++assert_eq "[#2032/SPEC-7] §3 does not prescribe disposition:exhausted (vocabulary retired by #2187)" \
++    "0" "$_exhausted_prescriptive"
++
++# §4 engine action: the document must NOT prescribe `escalate` as the engine action
++# for the timed-out disposition. "escalate" may appear in historical context but
++# must not appear in the "exhausted → escalate" action prescription form.
++_escalate_prescriptive="$(grep -c 'exhausted.*escalate\|escalate.*already routes\|→ escalate\b' "$ADR" 2>/dev/null || true)"
++assert_eq "[#2032/SPEC-7] §4 does not prescribe exhausted→escalate action (vocabulary retired by #2187)" \
++    "0" "$_escalate_prescriptive"
++
++# The replacement vocabulary (timed_out / out_of_turns) must be present —
++# retiring the old words without introducing the new ones is not an update.
++_timed_out_count="$(grep -c 'timed_out' "$ADR" 2>/dev/null || true)"
++assert_gt "[#2032/SPEC-7] ADR-063 uses replacement vocabulary timed_out (not just removing exhausted)" \
++    "$_timed_out_count" "0"
++_out_of_turns_count="$(grep -c 'out_of_turns' "$ADR" 2>/dev/null || true)"
++assert_gt "[#2032/SPEC-7] ADR-063 uses replacement vocabulary out_of_turns (per #2187)" \
++    "$_out_of_turns_count" "0"
++
++# ── SPEC-8[change]: §1 uses per-stage helpers, not the single-helper baseline ──
++# The old §1 text "One helper renders the budget block" must be absent.
++_old_single_helper="$(grep -c 'One helper renders the budget block' "$ADR" 2>/dev/null || true)"
++assert_eq "[#2032/SPEC-8] §1 baseline single-helper sentence is absent (replaced by per-stage helpers)" \
++    "0" "$_old_single_helper"
++
++# Per-stage helper language must be present: each stage gets its own
++# _<stage>_budget_guidance helper. The requirement says "each stage has its own"
++# helper, so there must be MORE THAN ONE distinct helper name, not just a single
++# shared helper referenced multiple times.
++_per_stage_helper="$(grep -c '_budget_guidance\b' "$ADR" 2>/dev/null || true)"
++assert_gt "[#2032/SPEC-8] §1 contains per-stage _<stage>_budget_guidance helper language" \
++    "$_per_stage_helper" "0"
++# Distinct helper names: each stage's helper has a different prefix (e.g.
++# _design_budget_guidance, _build_budget_guidance). Count unique names.
++_distinct_helpers="$(grep -oE '_[a-z_]+_budget_guidance\b' "$ADR" 2>/dev/null | sort -u | wc -l | tr -d ' ' || true)"
++assert_gt "[#2032/SPEC-8] §1 names multiple distinct per-stage helpers (each stage has its own, not a shared one)" \
++    "$_distinct_helpers" "1"
++
++# ── SPEC-9[change]: amendment back-pointer names #2187 ─────────────────────────
++# The document must contain an explicit reference to #2187 as the issue that
++# retired the exhausted/escalate vocabulary. The requirement calls for an
++# amendment BACK-POINTER, meaning #2187 must appear in a structural amendment
++# context — not just as a comment or incidental mention.
++_2187_ref="$(grep -c '#2187' "$ADR" 2>/dev/null || true)"
++assert_gt "[#2032/SPEC-9] ADR-063 contains amendment back-pointer naming #2187" \
++    "$_2187_ref" "0"
++# A back-pointer lives in an amendment section or amends: line — check that
++# #2187 appears alongside amendment-context words (amend/amendment/Amended).
++_2187_amendment="$(grep -c 'mend.*#2187\|#2187.*mend' "$ADR" 2>/dev/null || true)"
++assert_gt "[#2032/SPEC-9] #2187 appears in an amendment context (back-pointer, not an incidental mention)" \
++    "$_2187_amendment" "0"
++
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/event-schema-emitted-coverage-test.sh b/tests/unit/event-schema-emitted-coverage-test.sh
+index 8d95c386..70464603 100755
+--- a/tests/unit/event-schema-emitted-coverage-test.sh
++++ b/tests/unit/event-schema-emitted-coverage-test.sh
+@@ -148,5 +148,14 @@ else
+     assert_fail "[SPEC-5] redaction.marker_neutralized is NOT registered in event-schema.json known_types"
+ fi
+ 
++# [#2032] cycle.member_unfinished.suppressed_convergence is emitted dynamically via
++# _cycle_emit (structurally invisible to the emit-site scan above), so it must be
++# explicitly confirmed present in the engine known_types.
++if grep -qxF "cycle.member_unfinished.suppressed_convergence" <<< "$_engine_types"; then
++    assert_pass "[#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types"
++else
++    assert_fail "[#2032] cycle.member_unfinished.suppressed_convergence is NOT registered in event-schema.json known_types"
++fi
++
+ print_test_results
+ exit $((FAIL > 0))
+diff --git a/tests/unit/review-report-v2-contract-test.sh b/tests/unit/review-report-v2-contract-test.sh
+index 2f02b52e..5d419196 100755
+--- a/tests/unit/review-report-v2-contract-test.sh
++++ b/tests/unit/review-report-v2-contract-test.sh
+@@ -51,15 +51,25 @@ MANIFEST="$PLUGIN_DIR/manifest.yaml"
+ source "$PLUGIN_DIR/plugin.sh"
+ 
+ # ── stubs ────────────────────────────────────────────────────────────────────
+-# _RR_REPLY_MODE selects the canned reply shape; _RR_FAIL_LENS makes one lens's
+-# call return non-zero. Both are exported because each lens runs in a subshell.
+-export _RR_REPLY_MODE="normal" _RR_FAIL_LENS=""
++# _RR_REPLY_MODE selects the canned reply shape; _RR_FAIL_LENS makes one named
++# lens fail; _RR_FAIL_LENS_RC sets that lens's rc (default 1); _RR_FAIL_ALL_RC
++# makes ALL lenses fail with that rc, except the named _RR_FAIL_LENS which uses
++# _RR_FAIL_LENS_RC when set (mixed-rc ordering test).
++# All are exported because each lens runs in a subshell.
++export _RR_REPLY_MODE="normal" _RR_FAIL_LENS="" _RR_FAIL_ALL_RC="" _RR_FAIL_LENS_RC=""
+ export _RR_PROMPTS="$TEST_TEMP_DIR/prompts"; mkdir -p "$_RR_PROMPTS"
+ route_to_model() {
+     local prompt="$2" lens="other"
+     [[ "$prompt" =~ \"([a-z-]+)\"\ review\ lens ]] && lens="${BASH_REMATCH[1]}"
+     printf '%s' "$prompt" > "$_RR_PROMPTS/$lens.txt"
+-    if [[ -n "$_RR_FAIL_LENS" && "$lens" == "$_RR_FAIL_LENS" ]]; then return 1; fi
++    if [[ -n "$_RR_FAIL_ALL_RC" ]]; then
++        # _RR_FAIL_LENS_RC overrides for one named lens (mixed-rc ordering test).
++        if [[ -n "$_RR_FAIL_LENS" && "$lens" == "$_RR_FAIL_LENS" && -n "$_RR_FAIL_LENS_RC" ]]; then
++            return "$_RR_FAIL_LENS_RC"
++        fi
++        return "$_RR_FAIL_ALL_RC"
++    fi
++    if [[ -n "$_RR_FAIL_LENS" && "$lens" == "$_RR_FAIL_LENS" ]]; then return "${_RR_FAIL_LENS_RC:-1}"; fi
+     case "$_RR_REPLY_MODE" in
+         normal)
+             if [[ "$lens" == "security" ]]; then
+@@ -128,14 +138,34 @@ assert_eq "[SPEC-4] missing out_json → rc=1" "1" "$_rc"
+ assert_eq "[SPEC-4] missing out_json → verdict=error" "error" "$(_v2 verdict "$_d4/review-report.json")"
+ assert_eq "[SPEC-4] missing out_json → disposition=broken" "broken" "$(_v2 disposition "$_d4/review-report.json")"
+ 
+-# ── SPEC-5: a failed lens → exhausted (ADR-063 §3), still advisory ───────────
++# ── SPEC-5[#2032]: a failed lens → disposition from rc via router_reason_disposition ─
+ _d5="$TEST_TEMP_DIR/s5"; _fixture "$_d5"
+ _RR_FAIL_LENS=performance _rr_run_inner "$_d5/scope.md" "$_d5/diff.patch" "$_d5/review-report.json" "$_d5/review-report.md" 2>/dev/null; _rc=$?
+ assert_eq "[SPEC-5] failed lens → rc=0 (advisory never aborts)" "0" "$_rc"
+-assert_eq "[SPEC-5] failed lens → disposition=complete, the report covers the lenses that ran (#2187)" "complete" "$(_v2 disposition "$_d5/review-report.json")"
++assert_eq "[SPEC-5][#2032/SPEC-5] failed lens → disposition from first failed lens rc (rc=1 → unavailable, not hardcoded complete)" "unavailable" "$(_v2 disposition "$_d5/review-report.json")"
+ assert_eq "[SPEC-5] failed lens → verdict stays pass" "pass" "$(_v2 verdict "$_d5/review-report.json")"
+ assert_contains "[SPEC-5] reason names the lens that failed" "$(_v2 reason "$_d5/review-report.json")" "performance"
+ 
++# SPEC-5 "one or MORE": all lenses fail with rc=1 — the multi-lens path must also
++# classify disposition from the first failed lens rc, not hardcode 'complete'.
++_d5b="$TEST_TEMP_DIR/s5b"; _fixture "$_d5b"
++_RR_FAIL_ALL_RC=1 _rr_run_inner "$_d5b/scope.md" "$_d5b/diff.patch" "$_d5b/review-report.json" "$_d5b/review-report.md" 2>/dev/null; _rc5b=$?
++assert_eq "[SPEC-5][#2032/SPEC-5] multiple failing lenses → rc=0 (advisory never aborts)" "0" "$_rc5b"
++assert_eq "[SPEC-5][#2032/SPEC-5] multiple failing lenses → disposition from first failed lens rc (all rc=1 → unavailable)" \
++    "unavailable" "$(_v2 disposition "$_d5b/review-report.json")"
++
++# SPEC-5 ordering: correctness is the first lens in _RR_LENSES[]; it fails with
++# rc=124 (timed_out) while every other lens fails with rc=1 (unavailable).
++# Disposition must be timed_out — from the FIRST failing lens, not a later one.
++# This distinguishes "first failed lens rc" from any other ordering or hardcoding.
++_d5c="$TEST_TEMP_DIR/s5c"; _fixture "$_d5c"
++_RR_FAIL_LENS=correctness _RR_FAIL_LENS_RC=124 _RR_FAIL_ALL_RC=1 \
++    _rr_run_inner "$_d5c/scope.md" "$_d5c/diff.patch" "$_d5c/review-report.json" "$_d5c/review-report.md" 2>/dev/null; _rc5c=$?
++unset _RR_FAIL_LENS_RC
++assert_eq "[SPEC-5][#2032/SPEC-5] mixed-rc multi-lens → rc=0 (advisory never aborts)" "0" "$_rc5c"
++assert_eq "[SPEC-5][#2032/SPEC-5] mixed-rc multi-lens: first lens (correctness, rc=124 → timed_out) wins over later lenses (rc=1 → unavailable)" \
++    "timed_out" "$(_v2 disposition "$_d5c/review-report.json")"
++
+ # ── SPEC-7: budget block from the resolvers, never a literal ─────────────────
+ _d7="$TEST_TEMP_DIR/s7"; _fixture "$_d7"
+ ZBUILD_ROUTER_MAX_TURNS=77 ZBUILD_ROUTER_TIMEOUT=123 \
+diff --git a/tests/unit/spec-correspondence-test.sh b/tests/unit/spec-correspondence-test.sh
+index 8a7afc43..6593a55b 100755
+--- a/tests/unit/spec-correspondence-test.sh
++++ b/tests/unit/spec-correspondence-test.sh
+@@ -285,5 +285,56 @@ assert_contains "[#2143] SPECs the clock cut off are unjudged, not invented" \
+     "$(cat "$_A3/spec-correspondence-summary.md" 2>/dev/null || true)" "unjudged"
+ if [[ "$(wc -l < "$_SC_CALLS" | tr -d ' ')" -le 2 ]]; then assert_pass "[#2143] at most the batch + one fallback call before the clock"; else assert_fail "[#2143] too many calls under the clock" "$(wc -l < "$_SC_CALLS")"; fi
+ 
++# ─── [#2032/SPEC-4]: route_to_model non-zero rc → disposition classified ────────
++# Before fix: `|| true` in _sc_call discards the rc; _sc_write_result always writes
++#             disposition:"complete".
++# After  fix: the rc is captured, classified via _router_rc_classify +
++#             router_reason_disposition, and the result carries the classified word
++#             (rc=1 → router_rc_nonzero → unavailable).
++print_test_section "[#2032/SPEC-4]: router non-zero rc classified into disposition"
++_SC5="$TEST_TEMP_DIR/run5"; _A5="$_SC5/artifacts"; _R5="$_SC5/repo"
++mkdir -p "$_A5" "$_R5/tests"
++export ZBUILD_REPO_ROOT="$_R5" ZBUILD_ARTIFACT_DIR="$_A5"
++printf 'assert_pass "[SPEC-1] thing holds"\n' > "$_R5/tests/rc-test.sh"
++cat > "$_A5/design.md" <<'EOF'
++# Design
++```acceptance
++SPEC-1[change]: thing holds
++TESTFILES:
++SPEC-1: tests/rc-test.sh
++WIRING: scripts/rc.sh
++```
++EOF
++printf '{}' > "$_SC5/pipeline-state.json"
++# All route_to_model calls return rc=1 (non-zero, no output).
++# Before fix: disposition=complete (rc discarded).
++# After  fix: disposition=unavailable (rc=1 → router_rc_nonzero → unavailable).
++route_to_model() { cat >/dev/null; return 1; }
++set +e; spec_correspondence_run "spec-correspondence" "$_SC5/pipeline-state.json" >/dev/null 2>&1; set -e
++assert_eq "[#2032/SPEC-4] route_to_model rc=1 → disposition=unavailable (not hardcoded complete)" \
++    "unavailable" "$(jq -r '.disposition // empty' "$_A5/spec-correspondence-result.json" 2>/dev/null || echo MISSING)"
++
++# SPEC-4 covers the full non-zero range, not just rc=1.
++# rc=124 (timeout) must also produce a classified disposition — router_reason_disposition
++# maps it to timed_out, which is distinct from both 'unavailable' and hardcoded 'complete'.
++_SC6="$TEST_TEMP_DIR/run6"; _A6="$_SC6/artifacts"; _R6="$_SC6/repo"
++mkdir -p "$_A6" "$_R6/tests"
++export ZBUILD_REPO_ROOT="$_R6" ZBUILD_ARTIFACT_DIR="$_A6"
++printf 'assert_pass "[SPEC-1] thing holds"\n' > "$_R6/tests/rc124-test.sh"
++cat > "$_A6/design.md" <<'EOF'
++# Design
++```acceptance
++SPEC-1[change]: thing holds
++TESTFILES:
++SPEC-1: tests/rc124-test.sh
++WIRING: scripts/rc124.sh
++```
++EOF
++printf '{}' > "$_SC6/pipeline-state.json"
++route_to_model() { cat >/dev/null; return 124; }
++set +e; spec_correspondence_run "spec-correspondence" "$_SC6/pipeline-state.json" >/dev/null 2>&1; set -e
++assert_eq "[#2032/SPEC-4] route_to_model rc=124 → disposition=timed_out (timeout rc also classified, not hardcoded complete)" \
++    "timed_out" "$(jq -r '.disposition // empty' "$_A6/spec-correspondence-result.json" 2>/dev/null || echo MISSING)"
++
+ print_test_results
+ exit $((FAIL > 0))
+diff --git a/tests/unit/spec-coverage-test.sh b/tests/unit/spec-coverage-test.sh
+index e098d563..7f50fa7a 100755
+--- a/tests/unit/spec-coverage-test.sh
++++ b/tests/unit/spec-coverage-test.sh
+@@ -150,5 +150,29 @@ assert_contains "[SPEC-8][change] the prompt says a narrower SPEC leaves the req
+ assert_contains "[SPEC-8][change] …naming the ways a SPEC narrows (subset of cases, weaker condition)" \
+     "$_P" "a subset of the cases"
+ 
++# ─── [#2032/SPEC-3]: route_to_model rc=124 (timeout) → disposition=timed_out ──
++# Before fix: `|| true` discards the rc and _scv_write always writes disposition:"complete".
++# After  fix: rc is captured, classified via _router_rc_classify + router_reason_disposition,
++#             and the result carries the classified disposition (rc=124 → router_timeout → timed_out).
++print_test_section "[#2032/SPEC-3]: router timeout classified into disposition"
++_setup sc3_timeout "# Add a --dry-run flag, and make it refuse a missing config"
++route_to_model() { return 124; }   # timeout, no output — rc must not be discarded
++set +e; spec_coverage_run "spec-coverage" "$_S/pipeline-state.json"; _rc_s3=$?; set -e
++# Restore the module-level stub so later tests are unaffected (none exist, but safe).
++route_to_model() { printf '%s' "$2" > "$_SCV_PROMPT"; printf '%s' "$_SCV_REPLY"; return 0; }
++assert_eq "[#2032/SPEC-3] rc=0 — finding a timeout is not a stage failure" "0" "$_rc_s3"
++assert_eq "[#2032/SPEC-3] route_to_model rc=124 → disposition=timed_out (not hardcoded complete)" \
++    "timed_out" "$(_res '.disposition')"
++
++# SPEC-3 covers any non-zero rc, not just rc=124 (which is named only as an example).
++# rc=1 (generic non-zero, no output) must also produce a classified disposition, not 'complete'.
++_setup sc3_rc1 "# Add a --dry-run flag, and make it refuse a missing config"
++route_to_model() { return 1; }
++set +e; spec_coverage_run "spec-coverage" "$_S/pipeline-state.json"; _rc_s3b=$?; set -e
++route_to_model() { printf '%s' "$2" > "$_SCV_PROMPT"; printf '%s' "$_SCV_REPLY"; return 0; }
++assert_eq "[#2032/SPEC-3] rc=0 for any non-zero router rc (not a stage failure)" "0" "$_rc_s3b"
++assert_eq "[#2032/SPEC-3] route_to_model rc=1 → disposition=unavailable (any non-zero rc classified, not hardcoded complete)" \
++    "unavailable" "$(_res '.disposition')"
++
+ print_test_results
+ exit $((FAIL > 0))
