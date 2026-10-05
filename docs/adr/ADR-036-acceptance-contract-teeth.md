@@ -946,3 +946,13 @@ Verification: `tests/unit/acceptance-negctl-unreached-test.sh` (U1–U10).
   - #1842: no stage could make the edit, so build evaded an old grep.
 
 Verification: `tests/unit/acceptance-negctl-guard-broken-test.sh`, `tests/unit/test-author-supersedes-test.sh`.
+
+### Amendment (2026-10-05, #2300) — plugin tests are tests for the test-only skip
+
+The negative control skips with `no_prod_delta` when every changed path is a test, because there is no old code to run the tests against. It counted a path as a test only when it started with `tests/`. Plugin tests live under `plugins/<kind>/<id>/tests/`, so #2035 (plugin tests, `tests/unit/` and an ADR) was judged as a code change, and each test file "passed on the old code".
+
+- **The rule.** A path counts as a test path when it starts with `tests/` **or** matches `plugins/<kind>/<id>/tests/`. A change made only of such paths skips with `no_prod_delta`.
+- **Guard.** Any other path in the change, such as `plugins/<kind>/<id>/plugin.sh`, is production code, and the full control runs.
+- Documentation paths are not test paths; this amendment does not change that.
+
+Verification: `tests/unit/acceptance-negctl-plugin-tests-test.sh` (P1 skip, P2 guard).
