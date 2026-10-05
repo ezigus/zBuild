@@ -1,4 +1,4 @@
-============== ZBUILD BUILD — iter 1/10 ==============
+============== ZBUILD BUILD — iter 2/10 ==============
 ## ORIGINAL TASK (immutable across iterations)
 # Plan: ADR-028 closeout: mark review-lens and review-report as migrated
 
@@ -147,3 +147,6 @@ Your change is done when the test for every requirement below passes.
   → its test is already written; make it pass
 - [#2035/SPEC-6] review-report/lib/lenses.sh uses _llm_envelope_parse --schema-gate _rr_lens_envelope_schema_ok (pre-existing; confirmed by SPEC-3 expansion).
   → its test is already written; make it pass
+
+## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
+A previous attempt on this issue ended build with verdict=pass and touched 1 file(s): docs/adr/ADR-028-shared-llm-agent-framework.md. That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present and no STAGE SUMMARY is marked RESOLVE.
