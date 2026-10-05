@@ -64,9 +64,10 @@ requirement does not make the narrowed version enough. A requirement met only
 partly — a subset of the cases, a weaker condition, some of the files — is unmet.
 
 An issue contains more than requirements — context, rationale, links, history.
-Those are not requirements. A requirement about HOW the change is verified (tests
-fail on the code from before the change, the suite is green, the tree is committed first) is proven
-by the pipeline itself; never judge it here.
+Those are not requirements. Judge every requirement the issue states, including
+what its tests must catch (for example \"putting the old code back turns the test
+red\"). The pipeline does not check those for you. For each one, ask: if the
+change were broken, would its tests catch it? If they would not, it is unmet.
 
 Answer in at most three lines:
 

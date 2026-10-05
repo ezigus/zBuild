@@ -21,6 +21,8 @@
 #   SPEC-7 [change]: inputs come from the engine's index only — no path in code
 #   SPEC-8 [change]: simple.yaml runs it in build_test_cycle before the
 #                    gate-aggregator, and the aggregator's roster includes it
+#   SPEC-9 [change]: the prompt judges what the tests must catch too, and asks
+#                    whether the tests would catch a broken change (#2303)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -154,6 +156,26 @@ assert_eq "[SPEC-8] the manifest marks it a convergence gate" "gate" \
 ) > "$TEST_TEMP_DIR/roster.txt" 2>/dev/null
 assert_contains "[SPEC-8] gate-aggregator's must-pass roster includes it" \
     "$(cat "$TEST_TEMP_DIR/roster.txt")" "issue-acceptance:issue-acceptance-result.json"
+
+# #2303: on #2035 this stage passed PR #2298 while the issue's "the tests must
+# catch X" requirements were unmet, because its prompt said a requirement about
+# how the change is verified is "proven by the pipeline itself; never judge it
+# here". The pipeline never proved them. The prompt is built by the plugin's own
+# composer, so a copy of the text cannot stand in for it.
+print_test_section "SPEC-9: the whole issue is judged, including what the tests must catch (#2303)"
+_p9="$(_ia_prompt "ISSUE-TEXT" "SPEC-TEXT" "DIFF-TEXT" "pass")"
+# One line, single spaces: a phrase the prompt wraps across lines is still found.
+_p9="$(tr -s '[:space:]' ' ' <<< "$_p9")"
+assert_contains "[SPEC-9] the composer built a real prompt (the issue text is in it)" "$_p9" "ISSUE-TEXT"
+assert_eq "[SPEC-9] the prompt does not exempt requirements about how the change is verified" \
+    "0" "$(grep -cF "proven by the pipeline itself" <<< "$_p9" || true)"
+assert_eq "[SPEC-9] the prompt does not tell the model to skip any requirement" \
+    "0" "$(grep -cF "never judge it here" <<< "$_p9" || true)"
+assert_contains "[SPEC-9] the prompt says what the tests must catch is a requirement to judge" \
+    "$_p9" "including what its tests must catch"
+assert_contains "[SPEC-9] the prompt asks whether the tests would catch a broken change" \
+    "$_p9" "if the change were broken, would its tests catch it?"
+assert_contains "[SPEC-9] the narrowed-SPEC rule is kept" "$_p9" "a SPEC that narrowed a"
 
 print_test_results
 exit $((FAIL > 0))
