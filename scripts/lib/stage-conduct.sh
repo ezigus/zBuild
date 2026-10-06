@@ -53,7 +53,8 @@ EOF
 
 # stage_conduct_apply <prompt_file> — open the stage's limits with the rule
 # nothing overrides, and append part 4. Each happens once per file: the loop
-# applies the funnel to the same file every iteration.
+# applies the funnel to the same file every iteration. It edits the file in
+# place, so a caller passes the prompt copy it is about to send.
 stage_conduct_apply() {
     local f="${1:-}" tmp
     [[ -f "$f" ]] || return 0

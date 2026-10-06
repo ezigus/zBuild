@@ -105,11 +105,14 @@ _zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"
 source "$_ZBUILD_ROOT/scripts/lib/persona-resolve.sh"
 # #1879: the engine-generic stage checkpoint. Sourced here because
 # _route_redact_prompt — the shared single-shot + loop funnel — injects its block.
+_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/stage-checkpoint.sh"
 # shellcheck source=../../scripts/lib/stage-checkpoint.sh
 source "$_ZBUILD_ROOT/scripts/lib/stage-checkpoint.sh"
+_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/stage-answers.sh"
 # shellcheck source=../../scripts/lib/stage-answers.sh
 source "$_ZBUILD_ROOT/scripts/lib/stage-answers.sh"
 # #2308: the part of every stage prompt that is the same for all stages.
+_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/stage-conduct.sh"
 # shellcheck source=../../scripts/lib/stage-conduct.sh
 source "$_ZBUILD_ROOT/scripts/lib/stage-conduct.sh"
 # VIS-C (ADR-049): vision-document loader/validator — guard-idempotent source.

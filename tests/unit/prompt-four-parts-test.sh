@@ -233,12 +233,16 @@ done
 _check spec-correspondence "$RAW/spec-correspondence-batch.txt"
 
 # ─── F6: a second pass through the funnel changes nothing ───────────────────
-_f6="$TEST_TEMP_DIR/funnel-twice"
-_funnel build "$RAW/build.txt" "$_f6.1"
-_funnel build "$_f6.1" "$_f6.2"
-assert_eq "[F6] a second pass adds no second no-override rule" "1" \
-    "$(grep -cxF -- "${OWN_RULE:-<no rule>}" "$_f6.2" 2>/dev/null || true)"
-assert_eq "[F6] ...and no second shared part" "1" "$(grep -cxF -- "$H_CONDUCT" "$_f6.2" 2>/dev/null || true)"
+# Every stage, not one representative (review #2321): the guard is per file.
+for _s in "${STAGES[@]}"; do
+    [[ -s "$RAW/$_s.txt" ]] || continue
+    _f6="$TEST_TEMP_DIR/funnel-twice-$_s"
+    _funnel "$_s" "$RAW/$_s.txt" "$_f6.1"
+    _funnel "$_s" "$_f6.1" "$_f6.2"
+    assert_eq "[F6] $_s: a second pass adds no second no-override rule" "1" \
+        "$(grep -cxF -- "${OWN_RULE:-<no rule>}" "$_f6.2" 2>/dev/null || true)"
+    assert_eq "[F6] $_s: ...and no second shared part" "1" "$(grep -cxF -- "$H_CONDUCT" "$_f6.2" 2>/dev/null || true)"
+done
 
 # ─── T1: test-author checks the value itself ────────────────────────────────
 _ta="$(cat "$RAW/test-author.txt" 2>/dev/null)"
