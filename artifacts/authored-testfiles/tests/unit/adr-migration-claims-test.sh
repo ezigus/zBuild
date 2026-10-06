@@ -90,6 +90,33 @@ else
         "no _llm_envelope_parse in non-test code: $_unmigrated_rl"
 fi
 
+# [#2035/SPEC-5] structural: this test's loop uses find -not -path to exclude test files
+if grep -qF "find \"\$_rl_dir_path\" -name '*.sh' -not -path '*/tests/*'" "${BASH_SOURCE[0]}"; then
+    assert_pass "[#2035/SPEC-5]: SPEC-2 loop uses find with -not -path to exclude test files"
+else
+    assert_fail "[#2035/SPEC-5]: SPEC-2 loop uses find with -not -path to exclude test files" \
+        "find with -not -path '*/tests/*' not found in the review-lens/review-report loop"
+fi
+
+# [#2035/SPEC-5] absence: no bare extract_first_json_object in review-lens/review-report non-test code
+_bare_rl=""
+for _rl_dir2 in review-lens review-report; do
+    _rl_dir2_path="$REPO_ROOT/plugins/agent/$_rl_dir2"
+    [[ -d "$_rl_dir2_path" ]] || continue
+    while IFS= read -r -d '' _f2; do
+        if grep -qE '^[^#]*extract_first_json_object' "$_f2"; then
+            _bare_rl+="$_rl_dir2 "
+            break
+        fi
+    done < <(find "$_rl_dir2_path" -name '*.sh' -not -path '*/tests/*' -print0)
+done
+if [[ -z "$_bare_rl" ]]; then
+    assert_pass "[#2035/SPEC-5]: no bare extract_first_json_object in review-lens/review-report non-test code"
+else
+    assert_fail "[#2035/SPEC-5]: no bare extract_first_json_object in review-lens/review-report non-test code" \
+        "bare extract_first_json_object found in: $_bare_rl"
+fi
+
 # ── SPEC-3: a stage NOT migrated is not described as if it were ────────────
 # review-lens is the counter-example the ADR got wrong. It is allowed to stay on
 # `extract_first_json_object` — it fails visibly, emitting review_lens.unparseable
@@ -143,6 +170,14 @@ else
         "non-comment extract_first_json_object found; SPEC-3 not-migrated branch would fire"
 fi
 
+# [#2035/SPEC-4] structural: the SPEC-3 grep in this file uses the comment-excluding pattern
+if grep -qF "grep -qE '^[^#]*extract_first_json_object' \"\$_rl\"" "${BASH_SOURCE[0]}"; then
+    assert_pass "[#2035/SPEC-4]: SPEC-3 grep uses comment-excluding ^[^#]* pattern"
+else
+    assert_fail "[#2035/SPEC-4]: SPEC-3 grep uses comment-excluding ^[^#]* pattern" \
+        "SPEC-3 grep does not use '^[^#]*extract_first_json_object' with the \$_rl variable"
+fi
+
 # ── [#2035/SPEC-1]: ADR-028 has no stale "not migrated" claim ───────────────
 # After migration, no sentence in ADR-028 should call review-lens or
 # review-report "not migrated". Fails on the current ADR (lines 189 and 193
@@ -154,19 +189,20 @@ else
     assert_pass "[#2035/SPEC-1]: ADR-028 has no text calling review-lens or review-report not migrated"
 fi
 
-# ── [#2035/SPEC-6]: ADR-028 names the schema-gate functions for both stages ─
-# After migration, ADR-028 must positively name _review_lens_envelope_schema_ok
-# and _rr_lens_envelope_schema_ok in its migration record. Fails on the current
-# ADR (neither name appears) and passes once the ADR update adds the migration note.
+# ── [#2035/SPEC-6]: ADR-028 names the schema-gate functions in its migration record ─
+# After migration, ADR-028 Amendment v1.2 (the migration record) must positively
+# name _review_lens_envelope_schema_ok and _rr_lens_envelope_schema_ok. Checks only
+# the Amendment v1.2 section so a name added elsewhere does not satisfy the requirement.
+_v12_text=$(awk '/^## Amendment v1\.2/{found=1} found{print}' "$ADR")
 _missing_gates=""
 for _fn in _review_lens_envelope_schema_ok _rr_lens_envelope_schema_ok; do
-    grep -qF "$_fn" "$ADR" || _missing_gates+="$_fn "
+    grep -qF "$_fn" <<< "$_v12_text" || _missing_gates+="$_fn "
 done
 if [[ -z "$_missing_gates" ]]; then
-    assert_pass "[#2035/SPEC-6]: ADR-028 names _review_lens_envelope_schema_ok and _rr_lens_envelope_schema_ok"
+    assert_pass "[#2035/SPEC-6]: ADR-028 Amendment v1.2 names both schema-gate functions"
 else
-    assert_fail "[#2035/SPEC-6]: ADR-028 names _review_lens_envelope_schema_ok and _rr_lens_envelope_schema_ok" \
-        "missing from ADR-028: $_missing_gates"
+    assert_fail "[#2035/SPEC-6]: ADR-028 Amendment v1.2 names both schema-gate functions" \
+        "missing from ADR-028 Amendment v1.2: $_missing_gates"
 fi
 
 print_test_results
