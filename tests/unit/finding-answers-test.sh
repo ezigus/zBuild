@@ -23,6 +23,14 @@
 #             summaries are asked about — the block comes after them, and
 #             before redaction (#2294: it was appended before the summaries,
 #             so no live stage was ever asked)
+# A8 [change] an answer line wrapped in common markdown is still read: bold
+#             with the colon inside or outside, inline code, a leading `- `,
+#             `* ` or `> `; the answer word in any case. The line must still
+#             have the `ANSWER <stage> finding <n>:` shape (#2322: design
+#             answered in bold three times and none was recorded)
+# A9 [change] one vocabulary: `NOT_REPRODUCED` / `not reproduced` is recorded
+#             as `nothing to do`, and the reason is kept (#2322: build's
+#             NOT_REPRODUCED answer was not recorded)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -132,6 +140,52 @@ if [[ -n "$_ln_f" && -n "$_ln_a" && "$_ln_a" -gt "$_ln_f" ]]; then
 else
     assert_fail "[A7] the request comes after the findings it asks about" "finding line ${_ln_f:-none}, request line ${_ln_a:-none}"
 fi
+
+# A8: markdown around an answer line (#2322). The first line is design's reply
+# from #2032 run 37289606005, verbatim.
+_m="$(ZBUILD_CURRENT_STAGE=design answers_parse "$(cat <<'EOF'
+**ANSWER spec-correspondence finding 1:** done — SPEC-5 no longer claims ordering
+**ANSWER spec-correspondence finding 2**: nothing to do — the wiring is already in the plan
+`ANSWER spec-correspondence finding 3: done — split SPEC-2`
+- ANSWER spec-correspondence finding 4: Nothing To Do — not mine
+* ANSWER spec-correspondence finding 5: DONE — renamed the test
+> ANSWER spec-correspondence finding 6: done — quoted
+**ANSWER spec-correspondence:** done — no finding number
+- the spec-correspondence finding 8 is done — prose, not an answer
+EOF
+)" 2>/dev/null)"
+_ans() { jq -r --arg k "spec-correspondence finding $1" '.[$k].answer // "absent"' <<< "$_m" 2>/dev/null; }
+assert_eq "[A8] bold, colon inside the bold" "done" "$(_ans 1)"
+assert_contains "[A8] ...and the why is kept, without the markdown" \
+    "$(jq -r '.["spec-correspondence finding 1"].why // empty' <<< "$_m" 2>/dev/null)" "SPEC-5 no longer claims ordering"
+assert_eq "[A8] bold, colon outside the bold" "nothing to do" "$(_ans 2)"
+assert_eq "[A8] inline code" "done" "$(_ans 3)"
+assert_eq "[A8] a leading '- ', answer word in mixed case" "nothing to do" "$(_ans 4)"
+assert_eq "[A8] a leading '* ', answer word in capitals" "done" "$(_ans 5)"
+assert_eq "[A8] a leading '> '" "done" "$(_ans 6)"
+assert_eq "[A8] markdown does not excuse a line without the finding shape" "1" \
+    "$(jq -r '[keys[] | select(test("finding [0-9]+$") | not)] | length + 1' <<< "$_m" 2>/dev/null)"
+assert_eq "[A8] prose that mentions a finding is not an answer" "absent" "$(_ans 8)"
+
+# A9: one vocabulary — not reproduced is a reason for nothing to do (#2322).
+_n="$(ZBUILD_CURRENT_STAGE=build answers_parse "$(cat <<'EOF'
+ANSWER test finding 1: NOT_REPRODUCED — tests/unit/a-test.sh passes on this tree
+- ANSWER test finding 2: nothing to do — not reproduced: tests/unit/b-test.sh
+ANSWER test finding 3: not reproduced: tests/unit/c-test.sh
+EOF
+)" 2>/dev/null)"
+assert_eq "[A9] NOT_REPRODUCED is recorded as nothing to do" "nothing to do" \
+    "$(jq -r '.["test finding 1"].answer // "absent"' <<< "$_n" 2>/dev/null)"
+assert_contains "[A9] ...and keeps the reason" \
+    "$(jq -r '.["test finding 1"].why // empty' <<< "$_n" 2>/dev/null)" "tests/unit/a-test.sh passes on this tree"
+assert_eq "[A9] nothing to do — not reproduced: <path> is nothing to do" "nothing to do" \
+    "$(jq -r '.["test finding 2"].answer // "absent"' <<< "$_n" 2>/dev/null)"
+assert_contains "[A9] ...and keeps the path" \
+    "$(jq -r '.["test finding 2"].why // empty' <<< "$_n" 2>/dev/null)" "not reproduced: tests/unit/b-test.sh"
+assert_eq "[A9] 'not reproduced:' on its own is nothing to do" "nothing to do" \
+    "$(jq -r '.["test finding 3"].answer // "absent"' <<< "$_n" 2>/dev/null)"
+assert_contains "[A9] ...and keeps the path" \
+    "$(jq -r '.["test finding 3"].why // empty' <<< "$_n" 2>/dev/null)" "tests/unit/c-test.sh"
 
 cleanup_test_env
 print_test_results

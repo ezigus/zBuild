@@ -7,6 +7,7 @@
 # answers each one with a standard word:
 #   done — <what it changed>         nothing to do — <why>     (any stage)
 #   satisfied — <why>                (only the stage that opened the finding)
+# "Not reproduced" is a reason for `nothing to do`, not a fourth word (#2322).
 # The router appends the request to the prompt (answers_prompt_block) and reads
 # the answers back from the reply (answers_record). The engine only counts them.
 #
@@ -76,11 +77,18 @@ EOF
 # finding reference: {"<stage> finding <n>": {answer, why, by}}. Lines that are
 # not well-formed answers are ignored. `satisfied` counts only from the stage
 # that opened the finding.
+# Models wrap lines in markdown (#2322), so the line may start with `- `, `* `,
+# `> `, bold or a backtick, and bold or a backtick may sit either side of the
+# colon; the words match in any case. `not reproduced` is a reason for
+# `nothing to do`, never a word of its own.
 answers_parse() {
     local by="${ZBUILD_UNIT:-${ZBUILD_CURRENT_STAGE:-}}" me="${ZBUILD_CURRENT_STAGE:-}"
     jq -R -s -c --arg by "$by" --arg me "$me" '
         [ split("\n")[]
-          | capture("^\\s*ANSWER (?<opener>[A-Za-z0-9_.-]+) finding (?<n>[0-9]+):\\s*(?<answer>done|nothing to do|satisfied)\\s*(—|--|-)\\s*(?<why>.+?)\\s*$")?
+          | capture("^[\\s>*`_-]*ANSWER (?<opener>[A-Za-z0-9_.-]+) finding (?<n>[0-9]+)[\\s*`_]*:[\\s*`_]*(?<answer>done|nothing to do|satisfied|not[ _]reproduced)[\\s*`_]*(—|--|-|:)\\s*(?<why>.+?)[\\s*`]*$"; "i")?
+          | .answer |= ascii_downcase
+          | if (.answer | test("^not[ _]reproduced$"))
+            then .answer = "nothing to do" | .why = "not reproduced: \(.why)" else . end
           | select(.answer != "satisfied" or .opener == $me)
           | {key: "\(.opener) finding \(.n)", value: {answer, why, by: $by}} ]
         | from_entries' <<< "${1:-}" 2>/dev/null || printf '{}'
