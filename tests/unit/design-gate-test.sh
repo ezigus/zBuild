@@ -3,7 +3,7 @@
 # (ADR-046, EPIC #1216 issue #1218). T0, no-LLM, no-baseline; pure grep over
 # design.md. Runs 5 structural checks (C1..C5), reports ALL violations in ONE
 # pass, verdict-in-artifact, ALWAYS exits rc=0. C3 is the requirement status
-# (#2304, ADR-069): G1–G6 below.
+# (#2304, ADR-069): G1–G6 below; G7 (#2305) reads a [code] requirement's words.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -298,6 +298,44 @@ assert_eq "[G6] the feedback has no guard coverage section" "0" \
     "$(grep -c 'Guard baseline' "$FEEDBACK_PATH" || true)"
 assert_eq "[G6] the gate no longer defines a guard pre-check" "absent" \
     "$(declare -F acceptance_negctl_guard_precheck >/dev/null && echo present || echo absent)"
+
+# ─── G7: a [code] requirement describes behaviour, not file contents ────────
+# (#2305, ADR-069 §9) "plugin.sh contains `_foo`" fails on the old code and
+# passes on the new, so the fail-first rule accepts it while it proves nothing
+# about what the code does. The gate reads the requirement's words: a contents
+# or existence verb about a file, with no behaviour verb, is rejected.
+_run_gate_with_md "$(_g_md 'SPEC-1[code]: plugin.sh contains `_foo`')"
+assert_eq "[G7] 'plugin.sh contains _foo' as [code] → verdict=fail" "fail" "$VERDICT"
+assert_contains "[G7] the violation names it" "$(_viol)" "CONTENTS_NOT_BEHAVIOUR SPEC-1"
+assert_contains "[G7] the feedback says it in plain words" "$(cat "$FEEDBACK_PATH")" \
+    "SPEC-1 describes what a file contains, not what the code does — describe the behaviour someone could observe (an input and what happens), or, if the code already does it, mark it [done] with evidence"
+assert_eq "[G7] the feedback does not write the code" "0" "$(grep -cF CONTENTS_NOT_BEHAVIOUR "$FEEDBACK_PATH" || true)"
+for _t in 'the manifest declares key `x`' 'scripts/x.sh defines function bar' \
+          'the file tests/x-test.sh exists' 'the helper is present in scripts/lib/x.sh' \
+          'the manifest has a `config.router` key' 'the test greps plugin.sh for `_foo`' \
+          '`plugin.sh` contains `fails`'; do
+    _run_gate_with_md "$(_g_md "SPEC-1[code]: $_t")"
+    assert_contains "[G7] '$_t' as [code] is rejected" "$(_viol)" "CONTENTS_NOT_BEHAVIOUR SPEC-1"
+done
+_run_gate_with_md "$(_g_md 'SPEC-1[change]: plugin.sh contains `_foo`')"
+assert_contains "[G7] ...and so is the old [change] tag" "$(_viol)" "CONTENTS_NOT_BEHAVIOUR SPEC-1"
+for _t in 'an empty input returns rc 1' 'build writes a summary when the diff is empty' \
+          'scripts/x.sh prints an error and exits 1 when the file does not exist' \
+          'the design prompt contains the evidence syntax' \
+          'a manifest that declares no key is rejected by the loader' \
+          'design-gate fails a design whose scope block is empty'; do
+    _run_gate_with_md "$(_g_md "SPEC-1[code]: $_t")"
+    assert_eq "[G7] guard: '$_t' passes" "pass" "$VERDICT"
+done
+_run_gate_with_md "$(_g_md 'SPEC-1[code]: an empty input returns rc 1' 'SPEC-2[done]: scripts/three.sh contains line two evidence: scripts/three.sh:2')"
+assert_eq "[G7] guard: a [done] requirement may describe what a file contains" "pass" "$VERDICT"
+_run_gate_with_md "$(_g_md 'SPEC-1[code]: an empty input returns rc 1' 'SPEC-2[no-code]: docs/x.md contains the new section')"
+assert_eq "[G7] guard: a [no-code] requirement may describe what a file contains" "pass" "$VERDICT"
+# One bad [code] requirement with no test file draws both violations in the
+# same pass (review #2319): the gate reports everything at once (SPEC-7).
+_run_gate_with_md "$(_g_md 'SPEC-1[code]: an empty input returns rc 1' 'SPEC-2[code]: plugin.sh contains `_bar`')"
+assert_contains "[G7] a contents-only requirement with no test file is named for the missing test file" "$(_viol)" "MISSING_TESTFILE_FOR_SPEC SPEC-2"
+assert_contains "[G7] ...and, in the same pass, for describing contents" "$(_viol)" "CONTENTS_NOT_BEHAVIOUR SPEC-2"
 
 # ─── SPEC-11 (#1227 fix 1): C1 fence tolerates trailing whitespace ───────────
 # The design stage asserts the scope block with `grep -q '^```scope'`, which

@@ -422,6 +422,7 @@ path/to/file2
    The status says what work the requirement needs. Look at the code before you choose:
    - \`SPEC-n[code]:\` — it needs code. Its test must fail on the code as it is before your change, and pass after it.
      If the code already does it, it is not [code]: its test would already pass, and the build stalls on it.
+     A [code] requirement describes what the code does, not what a file contains: not "x.sh contains foo" or "file y exists".
    - \`SPEC-n[no-code]:\` — it needs work that changes no behaviour: docs, a
      test, config, or a refactor. Its test must pass after the change; it need not fail before.
    - \`SPEC-n[done]:\` — the code already does it. Name the evidence at the end of the line, after \` evidence: \` —
