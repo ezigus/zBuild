@@ -100,7 +100,7 @@ EOF
 # _sc_call <tier> <task> [rc_file] — frame the task through the persona registry
 # and route it. persona_stage_framing emits "{perspective}\n\n{task}" and returns
 # 1 when the persona is absent, in which case the task stands alone (#1627/#1628).
-# rc_file: if given, the router exit code is written there (subshell boundary
+# rc_file: if given, the first non-zero router exit code is kept there (subshell boundary
 # prevents a nameref from crossing; a file survives it — same pattern as
 # review-lens and other stages that need the rc from inside a command substitution).
 _sc_call() {
@@ -126,7 +126,18 @@ _sc_call() {
     # No 2>/dev/null: the stage-io input banner writes to fd 2 (#491). stdin
     # is /dev/null: a model that drains stdin must not eat a caller's stream (#2108).
     if declare -f route_to_model >/dev/null 2>&1; then
-        _raw="$(route_to_model "$tier" "$_framed" </dev/null; printf '%s' "$?" > "${_rc_file:-/dev/null}" || true)"
+        local _call_rc=0
+        _raw="$(route_to_model "$tier" "$_framed" </dev/null)" || _call_rc=$?
+        # The batch call and every fallback call share one rc file. The FIRST
+        # non-zero rc is kept: a later success must not hide an earlier failure
+        # (review on PR #2262), and the first failure is the cause — later calls
+        # ran on whatever time the first one left.
+        if [[ -n "$_rc_file" && "$_call_rc" -ne 0 ]]; then
+            local _prev_rc=0
+            [[ -f "$_rc_file" ]] && _prev_rc="$(cat "$_rc_file" 2>/dev/null || printf '0')"
+            [[ "$_prev_rc" =~ ^[0-9]+$ ]] || _prev_rc=0
+            [[ "$_prev_rc" -ne 0 ]] || printf '%s' "$_call_rc" > "$_rc_file" 2>/dev/null || true
+        fi
     fi
     printf '%s' "$_raw"
 }

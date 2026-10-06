@@ -336,5 +336,39 @@ set +e; spec_correspondence_run "spec-correspondence" "$_SC6/pipeline-state.json
 assert_eq "[#2032/SPEC-4] route_to_model rc=124 → disposition=timed_out (timeout rc also classified, not hardcoded complete)" \
     "timed_out" "$(jq -r '.disposition // empty' "$_A6/spec-correspondence-result.json" 2>/dev/null || echo MISSING)"
 
+# Review on PR #2262: the batch call and every per-SPEC fallback call share one
+# rc file. The batch times out (rc=124, no reply), the fallback for SPEC-1 then
+# succeeds (rc=0). The stage must still say it timed out: a later success must
+# not hide an earlier failure. Before the fix the fallback's 0 overwrote the 124
+# and the result said `complete`.
+_SC7="$TEST_TEMP_DIR/run7"; _A7="$_SC7/artifacts"; _R7="$_SC7/repo"
+mkdir -p "$_A7" "$_R7/tests"
+export ZBUILD_REPO_ROOT="$_R7" ZBUILD_ARTIFACT_DIR="$_A7"
+printf 'assert_pass "[SPEC-1] thing holds"\n' > "$_R7/tests/mixed-test.sh"
+cat > "$_A7/design.md" <<'EOF'
+# Design
+```acceptance
+SPEC-1[change]: thing holds
+TESTFILES:
+SPEC-1: tests/mixed-test.sh
+WIRING: scripts/mixed.sh
+```
+EOF
+printf '{}' > "$_SC7/pipeline-state.json"
+_SC7_CALLS="$_SC7/calls"; : > "$_SC7_CALLS"
+route_to_model() {
+    cat >/dev/null
+    printf 'x\n' >> "$_SC7_CALLS"
+    local _n; _n="$(wc -l < "$_SC7_CALLS")"; _n="${_n//[[:space:]]/}"
+    if [[ "$_n" -eq 1 ]]; then return 124; fi
+    printf 'VERDICT: corresponds\nREASON: the assertion checks the SPEC'
+    return 0
+}
+set +e; spec_correspondence_run "spec-correspondence" "$_SC7/pipeline-state.json" >/dev/null 2>&1; set -e
+assert_eq "[#2032/review] batch call timed out, fallback call succeeded → one call made it to the fallback" \
+    "2" "$(wc -l < "$_SC7_CALLS" | tr -d '[:space:]')"
+assert_eq "[#2032/review] batch rc=124 then fallback rc=0 → disposition=timed_out (a later success does not hide an earlier timeout)" \
+    "timed_out" "$(jq -r '.disposition // empty' "$_A7/spec-correspondence-result.json" 2>/dev/null || echo MISSING)"
+
 print_test_results
 exit $((FAIL > 0))
