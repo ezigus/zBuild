@@ -33,6 +33,9 @@
 #              redaction allow-list the engine passes as scope_manifest (#2302:
 #              on #2035 the section read "+ ./", so the scope lens had no file
 #              list to compare the change against); no scope block, no section
+# C13 [change] every lens in the default template is told to name any part of
+#              the issue the change does not deliver, in its own terms (#2307:
+#              no lens flagged that PR #2298 skipped parts of its issue)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -179,6 +182,23 @@ elif grep -qF 'THE PLANNED SCOPE' <<< "$_P12"; then
 else
     assert_pass "[C12] no scope block, no planned-scope section"
 fi
+
+print_test_section "C13: every default lens compares the change with the issue (#2307)"
+# The lens list is the default template's, read from the file the engine runs.
+_c13_lenses="$(yq -r '.review_lenses.elements[]' "$REPO_ROOT/config/templates/simple.yaml" 2>/dev/null || true)"
+if [[ -z "${_c13_lenses//[[:space:]]/}" ]]; then
+    assert_fail "[C13] the default template lists its review lenses" "no elements read from simple.yaml"
+fi
+while IFS= read -r _c13; do
+    [[ -n "$_c13" ]] || continue
+    : > "$PROMPT_F"
+    _review_lens_run_inner "$_c13" "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-$_c13.json" "$ART" >/dev/null 2>&1 || true
+    _P13="$(tr '\n' ' ' < "$PROMPT_F" 2>/dev/null | tr -s ' ')"
+    [[ -n "${_P13// /}" ]] || { assert_fail "[C13] the $_c13 lens ran and sent a prompt" "no prompt captured"; continue; }
+    assert_contains "[C13] the $_c13 lens is told to name any part of the issue the change does not deliver" \
+        "$_P13" "name any part of the issue that the change does not deliver"
+    assert_contains "[C13] ...judged in the $_c13 lens's own terms" "$_P13" "as the \"$_c13\" lens"
+done <<< "$_c13_lenses"
 
 print_test_section "C10: introduced survives the lens's own result file"
 route_to_model() { printf '%s' '{"score":7,"findings":[{"file":"a.sh","category":"x","severity":"medium","line":3,"message":"OLD-BEHAVIOUR","introduced":false},{"file":"b.sh","category":"y","severity":"low","line":5,"message":"NEW-THING","introduced":true}]}'; return 0; }

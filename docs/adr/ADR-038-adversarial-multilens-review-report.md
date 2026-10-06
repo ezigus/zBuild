@@ -172,3 +172,23 @@ with no scope block gives no planned-scope section.
 
 Verification: `plugins/agent/review-lens/tests/review-lens-context-unit-test.sh`
 (C12; C3 now reads the scope block too).
+
+## Amendment (2026-10-05): every lens compares the change with the issue (#2307)
+
+**Evidence.** Every lens prompt carries "THE ISSUE (what was asked for)", but no
+charter asked whether the change delivers it: `scope` looks only for over-reach,
+`correctness` and `red-team` look at logic and attacks, and `design-conformance`
+is not in the default template and compares against the design. No lens flagged
+that PR #2298 skipped the loop expansion, the red step and the negative control
+its issue asked for.
+
+**Decision.** Every lens compares the change with the issue and names any part
+of the issue the change does not deliver, in its own terms, as a finding. The
+instruction is written once, in the prompt builder (`_rl_build_lens_prompt`,
+`plugins/agent/review-lens/lib/charters.sh`), so it reaches every lens whether
+its charter comes from a persona manifest or the built-in fallback; no charter
+repeats it.
+
+Verification: `plugins/agent/review-lens/tests/review-lens-context-unit-test.sh`
+(C13: for each lens in `config/templates/simple.yaml`'s `review_lenses`, the
+prompt the plugin sends carries the instruction).

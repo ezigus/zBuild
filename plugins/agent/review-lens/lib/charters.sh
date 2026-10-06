@@ -62,11 +62,18 @@ _rl_lens_charter() {
 # <context> is what the change was FOR — the issue, its SPECs, the planned
 # scope (#1654, #1845 PR #2213): a lens that sees only the diff reads engine-set
 # values as attacker input and cannot tell a defect from what was asked for.
+# The "compare with the issue" paragraph is here, not in each charter, so every
+# lens (persona manifest or fallback) gets it from one source (#2307).
 _rl_build_lens_prompt() {
     local lens="$1" evidence="$2" context="${3:-}" charter
     charter="$(_rl_lens_charter "$lens")"
     cat <<PROMPT
 You are the "${lens}" review lens. ${charter}
+
+Compare the change with the issue it was made for. If the change does not
+deliver part of what the issue asked for, report it as a finding: name any part
+of the issue that the change does not deliver, judged as the "${lens}" lens
+judges.
 
 This is an advisory report. Describe what you find; do NOT recommend a merge
 action and do NOT gate anything.
