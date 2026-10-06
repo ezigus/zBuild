@@ -7,20 +7,23 @@
   [38;2;74;222;128m✓[0m SPEC-1: deleted stages are named as deleted, not as current
   [38;2;74;222;128m✓[0m SPEC-2: every stage claimed migrated uses the shared parser
   [38;2;74;222;128m✓[0m [#2035/SPEC-5]: review-lens and review-report have _llm_envelope_parse in non-test sh files
+  [38;2;74;222;128m✓[0m [#2035/SPEC-5]: SPEC-2 loop uses find with -not -path to exclude test files
+  [38;2;74;222;128m✓[0m [#2035/SPEC-5]: no bare extract_first_json_object in review-lens/review-report non-test code
   [38;2;74;222;128m✓[0m SPEC-3: review-lens migrated — no stale claim possible
   [38;2;74;222;128m✓[0m SPEC-4: no live code cites a retired ADR as authority
   [38;2;74;222;128m✓[0m [#2035/SPEC-4]: comment-excluding grep does not trigger on review-lens/plugin.sh
+  [38;2;74;222;128m✓[0m [#2035/SPEC-4]: SPEC-3 grep uses comment-excluding ^[^#]* pattern
   [38;2;248;113;113m✗[0m [#2035/SPEC-1]: ADR-028 has no text calling review-lens or review-report not migrated
     [2mstale not-migrated claim still present in ADR-028[0m
-  [38;2;248;113;113m✗[0m [#2035/SPEC-6]: ADR-028 names _review_lens_envelope_schema_ok and _rr_lens_envelope_schema_ok
-    [2mmissing from ADR-028: _review_lens_envelope_schema_ok _rr_lens_envelope_schema_ok [0m
+  [38;2;248;113;113m✗[0m [#2035/SPEC-6]: ADR-028 Amendment v1.2 names both schema-gate functions
+    [2mmissing from ADR-028 Amendment v1.2: _review_lens_envelope_schema_ok _rr_lens_envelope_schema_ok [0m
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;248;113;113m[1m2 of 9 tests failed[0m
+  [38;2;248;113;113m[1m2 of 12 tests failed[0m
 
   [38;2;248;113;113m✗[0m [#2035/SPEC-1]: ADR-028 has no text calling review-lens or review-report not migrated
-  [38;2;248;113;113m✗[0m [#2035/SPEC-6]: ADR-028 names _review_lens_envelope_schema_ok and _rr_lens_envelope_schema_ok
+  [38;2;248;113;113m✗[0m [#2035/SPEC-6]: ADR-028 Amendment v1.2 names both schema-gate functions
 
 ### SPEC-6 head tests/unit/adr-migration-claims-test.sh
 
@@ -31,13 +34,16 @@
   [38;2;74;222;128m✓[0m SPEC-1: deleted stages are named as deleted, not as current
   [38;2;74;222;128m✓[0m SPEC-2: every stage claimed migrated uses the shared parser
   [38;2;74;222;128m✓[0m [#2035/SPEC-5]: review-lens and review-report have _llm_envelope_parse in non-test sh files
+  [38;2;74;222;128m✓[0m [#2035/SPEC-5]: SPEC-2 loop uses find with -not -path to exclude test files
+  [38;2;74;222;128m✓[0m [#2035/SPEC-5]: no bare extract_first_json_object in review-lens/review-report non-test code
   [38;2;74;222;128m✓[0m SPEC-3: review-lens migrated — no stale claim possible
   [38;2;74;222;128m✓[0m SPEC-4: no live code cites a retired ADR as authority
   [38;2;74;222;128m✓[0m [#2035/SPEC-4]: comment-excluding grep does not trigger on review-lens/plugin.sh
+  [38;2;74;222;128m✓[0m [#2035/SPEC-4]: SPEC-3 grep uses comment-excluding ^[^#]* pattern
   [38;2;74;222;128m✓[0m [#2035/SPEC-1]: ADR-028 has no text calling review-lens or review-report not migrated
-  [38;2;74;222;128m✓[0m [#2035/SPEC-6]: ADR-028 names _review_lens_envelope_schema_ok and _rr_lens_envelope_schema_ok
+  [38;2;74;222;128m✓[0m [#2035/SPEC-6]: ADR-028 Amendment v1.2 names both schema-gate functions
 
 [2m  ──────────────────────────────────────────[0m
 
-  [38;2;74;222;128m[1mAll 9 tests passed[0m
+  [38;2;74;222;128m[1mAll 12 tests passed[0m
 
