@@ -35,10 +35,13 @@ mkdir -p "$GOLDEN_DIR"
 # source time under NO_COLOR=1 (layout) or FORCE_COLOR=1 (colored); each
 # variant then runs in its own ( ) subshell so no call can leak state into the
 # next. Output (fd 1 + fd 2) lands in $RENDER_DIR/<variant>.<mode>.
+# The subshells isolate variables, not files: every variant in one mode shares
+# ZBUILD_STATE_DIR and ZBUILD_EVENTS_DIR. Today the renderers only write to fd 2;
+# a variant that writes a state file would be seen by the variants after it.
 RENDER_DIR="$TEST_TEMP_DIR/rendered"
 mkdir -p "$RENDER_DIR"
 render_mode() {
-    local mode="$1"
+    local mode="$1" rc=0 made=0 v
     local env_pre=""
     if [[ "$mode" == "layout" ]]; then
         env_pre="unset FORCE_COLOR; export NO_COLOR=1"
@@ -54,7 +57,7 @@ render_mode() {
         export ZBUILD_EVENTS_DIR='$TEST_TEMP_DIR/events'
         export ZBUILD_EVENTS_JSONL='$TEST_TEMP_DIR/events/events.jsonl'
         mkdir -p \"\$ZBUILD_STATE_DIR\" \"\$ZBUILD_EVENTS_DIR\"
-        source '$REPO_ROOT/core/pipeline/runner.sh'
+        source '$REPO_ROOT/core/pipeline/runner.sh' || { echo 'runner.sh failed to load' >&2; exit 3; }
 
         for variant in $ALL_VARIANTS; do
             (
@@ -107,7 +110,16 @@ render_mode() {
             esac
             ) > '$RENDER_DIR/'\"\$variant\".'$mode' 2>&1
         done
-    " || true
+    " 2> "$RENDER_DIR/_load.$mode.err" || rc=$?
+    for v in $ALL_VARIANTS; do [[ -f "$RENDER_DIR/$v.$mode" ]] && made=$((made + 1)); done
+    # A runner that fails to load must say so once, here, not as 28 empty
+    # golden mismatches further down (review #2328).
+    if [[ $rc -eq 0 && $made -eq $(wc -w <<< "$ALL_VARIANTS") ]]; then
+        assert_pass "[setup] runner.sh loaded and every variant rendered ($mode)"
+    else
+        assert_fail "[setup] runner.sh loaded and every variant rendered ($mode)" \
+            "rc=$rc, $made rendered; $(head -c 600 "$RENDER_DIR/_load.$mode.err" 2>/dev/null)"
+    fi
 }
 
 # emit_cycle_banner <mode> <variant> — the pre-rendered output for one pair.
