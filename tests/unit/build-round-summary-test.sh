@@ -144,6 +144,21 @@ assert_eq "R2: files_changed empty" \
 assert_eq "R2: passes = 1" "1" "$(jq -r '.passes // empty' "$SUMMARY_JSON" 2>/dev/null || true)"
 
 cd "$REPO_ROOT"
+# R3: a round on record from ANOTHER iteration, opened under set -euo pipefail
+# (as the engine sources build): the lookup finds nothing and must not stop
+# the stage. #2323's first cut died here — read returns 1 at end of input.
+print_test_section "R3: another iteration's round, under set -e"
+_r3="$TEST_TEMP_DIR/r3-summary.json"
+printf '%s\n' '{"round":{"run_id":"run-r3","cycle_id":"c","iter":"1","base":"abc","passes":1,"iterations":2}}' > "$_r3"
+_r3_out="$(bash -c '
+    set -euo pipefail
+    source "'"$REPO_ROOT"'/plugins/agent/build/lib/round.sh"
+    export ZBUILD_RUN_ID=run-r3 ZBUILD_CYCLE_ID=c ZBUILD_CYCLE_ITER=2
+    _build_round_open "'"$_r3"'" "'"$REPO_ROOT"'"
+    printf "passes=%s" "$_BUILD_ROUND_PASSES"
+' 2>/dev/null || echo "died")"
+assert_eq "[R3] the lookup does not stop the stage, and the round starts at pass 1" "passes=1" "$_r3_out"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
