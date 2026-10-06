@@ -194,7 +194,7 @@ while IFS= read -r _c13; do
     : > "$PROMPT_F"
     _review_lens_run_inner "$_c13" "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-$_c13.json" "$ART" >/dev/null 2>&1 || true
     _P13="$(tr '\n' ' ' < "$PROMPT_F" 2>/dev/null | tr -s ' ')"
-    [[ -n "${_P13// /}" ]] || assert_fail "[C13] the $_c13 lens ran and sent a prompt" "no prompt captured"
+    [[ -n "${_P13// /}" ]] || { assert_fail "[C13] the $_c13 lens ran and sent a prompt" "no prompt captured"; continue; }
     assert_contains "[C13] the $_c13 lens is told to name any part of the issue the change does not deliver" \
         "$_P13" "name any part of the issue that the change does not deliver"
     assert_contains "[C13] ...judged in the $_c13 lens's own terms" "$_P13" "as the \"$_c13\" lens"
