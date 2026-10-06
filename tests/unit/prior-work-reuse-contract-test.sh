@@ -138,7 +138,7 @@ printf '{"schema_version":1,"verdict":"approve","summary":"ok"}\n' > "$_C5/artif
     source "$REPO_ROOT/plugins/tool/pr-open/plugin.sh"
     git() { [[ "${1:-} ${2:-}" == "rev-parse --abbrev-ref" ]] && echo "zbuild/issue-1849-test"; return 0; }
     gh() {
-        printf '%s %s %s\n' "${1:-}" "${2:-}" "${3:-}" >> "$_GH_LOG"
+        printf '%s\n' "$*" >> "$_GH_LOG"
         case "${1:-} ${2:-}" in
             "pr list")   echo "1849" ;;
             "pr view")   echo "https://github.com/mock/repo/pull/1849" ;;
@@ -155,6 +155,12 @@ if grep -q '^pr edit 1849' "$_GH_LOG"; then
     assert_pass "[C5] the existing PR is edited"
 else
     assert_fail "[C5] the existing PR is edited" "calls: $(tr '\n' ';' < "$_GH_LOG")"
+fi
+# review #2336: the lookup asks only for OPEN PRs; a closed one must not be reused.
+if grep -q '^pr list .*--state open' "$_GH_LOG"; then
+    assert_pass "[C5] the existing-PR lookup asks only for open PRs"
+else
+    assert_fail "[C5] the existing-PR lookup asks only for open PRs" "calls: $(tr '\n' ';' < "$_GH_LOG")"
 fi
 if grep -q '^pr create' "$_GH_LOG"; then
     assert_fail "[C5] no second PR is opened" "gh pr create was called"
@@ -187,6 +193,9 @@ _c6_step="$(awk '
             match($0, /^[[:space:]]+/); if (RLENGTH <= ind) exit; print substr($0, ind + 3) }
 ' "$REPO_ROOT/.github/workflows/zbuild-daemon.yml")"
 _c6_step="${_c6_step//\$\{\{ github.repository \}\}/o/r}"
+# review #2336: the extraction depends on the step's indentation. If the YAML is
+# ever reformatted, fail here, not on text that happens to match.
+assert_contains "[C6] fixture: the completion step was read whole" "$_c6_step" 'ABORT_REASON" == "llm_rate_limited"' 
 _c6_body="$TEST_TEMP_DIR/c6-body"
 (
     gh() { while [[ $# -gt 0 ]]; do [[ "$1" == "--body" ]] && printf '%s' "$2" > "$_c6_body"; shift; done; }
