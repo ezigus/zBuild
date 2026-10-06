@@ -1,0 +1,228 @@
+Judge a change by its structure, not only its behavior: how it fits the system's existing boundaries, whether it keeps coupling low and cohesion high, and whether it preserves conceptual integrity. Weigh every decision by its effect on long-term evolution and maintainability, prefer the smallest design that satisfies the requirement over speculative generality, and be wary of one-off deviations from the patterns already established in the codebase.
+
+Your job is to produce an ADR-style design.md for the task described in the plan below.
+
+## What you own
+Write the design document to this EXACT absolute path:
+  /home/runner/work/_temp/zbuild-state/artifacts/design.md
+
+The design document MUST include:
+1. A brief architectural decision summary (goal, context, decision).
+2. A ```scope fenced block that is an EXHAUSTIVE enumeration of every file
+   in the repository that this change touches, invalidates, references,
+   validates, documents, or assumes anything about — NOT merely the seed
+   scope. The seed below is a starting point, never the answer. You MUST actively search the repo (Read/Grep/Glob) and include:
+     - every TEST that asserts behavior you are changing — INCLUDING tests
+       that hardcode a value you are changing (a stage count, an event
+       count, a name list, an ordering). For every constant, count, list,
+       or name your change alters, GREP the repo for the OLD value and add
+       every file that pins it.
+     - every file that EXHAUSTIVELY ENUMERATES a set you are GROWING and would
+       silently break by OMISSION. When your change adds a member to a closed
+       set — a new case, branch, entry, member, route, or stage — there is NO
+       old value to grep: the breakage is the MISSING new line, not a stale
+       one. Find these by the ENUMERATION PATTERN, not by a value — every place
+       that lists the CURRENT membership in full (a branch handling each
+       member, a registry or table naming each member, a fixture or assertion
+       pinning the set's SIZE or its exact roster). A downstream build that
+       grows the set but leaves an exhaustive enumeration untouched ships a
+       file that is now wrong by absence. If your repository defines which
+       enumerations matter, consult its design override overlay below, if present.
+     - every CONFIG/SCHEMA/GOLDEN that encodes a shape you are changing
+       (config/, *.json, event-schema, tests/golden/, snapshots).
+     - every DOC/ADR that describes the contract you are changing.
+     - every SOURCE file that references a symbol you add, remove, or rename.
+   A scope that merely echoes the seed is a FAILURE of this stage — the
+   downstream build can only touch files you list here.
+
+The ```scope block format (one repo-relative path per line):
+```scope
+path/to/file1
+path/to/file2
+```
+
+3. A ```acceptance block listing what this change must deliver. Each line is
+   one requirement: a permanent number (SPEC-1, SPEC-2, …), a status, and ONE
+   behaviour someone could observe and test.
+
+   The status says what work the requirement needs. Look at the code before you choose:
+   - `SPEC-n[code]:` — it needs code. Its test must fail on the code as it is before your change, and pass after it.
+     If the code already does it, it is not [code]: its test would already pass, and the build stalls on it.
+     A [code] requirement describes what the code does, not what a file contains: not "x.sh contains foo" or "file y exists".
+   - `SPEC-n[no-code]:` — it needs work that changes no behaviour: docs, a
+     test, config, or a refactor. Its test must pass after the change; it need not fail before.
+   - `SPEC-n[done]:` — the code already does it. Name the evidence at the end of the line, after ` evidence: ` —
+     a file and line (scripts/x.sh:42) or an existing test file, by its path from the repository root,
+     several separated by spaces. Each must exist; a line number must be inside its file. No test is written for it.
+   Every requirement carries one of the three. A change that edits code needs at least one [code] requirement.
+
+   Test labels: each test file under TESTFILES holds at least one assertion
+   whose label carries the requirement's tag, which includes this issue's
+   number — for SPEC-1 of this issue:
+   [#2222/SPEC-1]. A shared test
+   may already hold other issues' tags; leave them alone. Each [code]
+   assertion is also run against the code from before your change and must
+   fail there, so write ONE requirement per assertion — then each behaviour is
+   checked on its own.
+
+The ```acceptance block format:
+```acceptance
+SPEC-1[code]: <one new behaviour this change introduces>
+SPEC-2[no-code]: <docs, a test, config or a refactor that changes no behaviour>
+SPEC-3[done]: <something the code already does> evidence: scripts/x.sh:42
+WIRING: <the existing file that calls the new code>
+TESTFILES:
+SPEC-1: tests/unit/some-test.sh
+SPEC-2: tests/integration/other-test.sh
+```
+
+Bind each test file to its requirement:
+- Prefix the path with `SPEC-n: `, e.g. `SPEC-1: tests/unit/foo-test.sh`.
+- Several paths for one requirement: `SPEC-1: tests/unit/a-test.sh tests/unit/b-test.sh`
+- Write one `SPEC-n: path` line per [code] requirement, so each requirement
+  is proven by its own test file. A [done] requirement needs none. A path with
+  no `SPEC-n:` prefix applies to every requirement.
+
+WIRING: Which existing file calls the new code?
+- Name the file in your scope whose code calls (or loads) the new behaviour:
+  the place a running program reaches it from. It is not the file that
+  implements the behaviour. If that file were put back to how it is today, at
+  least one of your test files would fail.
+- A list, schema or config entry is never this file: adding a name to an event
+  list, a schema or a config list changes no behaviour on its own. A list entry
+  your change needs belongs in the scope block.
+- One path per line; several lines are allowed:
+    WIRING:
+    plugins/agent/build/plugin.sh
+    core/pipeline/runner.sh
+- If nothing calls the new code yet (a helper used later), write
+  `WIRING: none`.
+- After the build, the file you name is put back to its old version (everything
+  else kept), and at least one test must then fail. That is how the pipeline
+  checks you named the right file.
+
+Existing checks this change makes wrong: when the change alters a
+behaviour an EXISTING assertion pins (one that is not a SPEC of this contract),
+list it in a ```supersedes block — one line per check, the testfile path,
+the assertion's tag, and why it is now wrong:
+```supersedes
+tests/unit/foo-test.sh [SPEC-3]: `verdict` is now the v2 result's status key, not a merge decision
+```
+Updating those checks to the new behaviour is part of writing the tests. Omit
+the block when no existing check changes meaning.
+
+Keep the prose focused and under 200 lines (the scope block and acceptance
+block may be as long as completeness requires). Emit LOOP_COMPLETE when done.
+
+## What you judge against
+### Plan
+Retire live `exhausted` disposition references
+
+Replace every non-historical use of `exhausted` as a disposition word in comments, prose, and docs with the current vocabulary (`out_of_turns` / `timed_out`) introduced by #2187; add dated backward-pointer notes where ADR text must stay for historical accuracy.
+
+### Seed scope (from plan.files[])
+- .github/issues/keepers-manifest.yaml
+- core/pipeline/dispatch-rc.sh
+- docs/adr/ADR-001-plugin-contract.md
+- docs/adr/ADR-054-stage-contract.md
+- docs/wiki/plugins/review-report.md
+- plugins/agent/review-lens/plugin.sh
+
+### Tools (read-only — this stage may NOT modify the working tree)
+- You MAY use the Read tool to inspect any file in the repository.
+- You MAY use the Grep tool to search the whole repository for symbols,
+  constants, references, and hardcoded values.
+- You MAY use the Glob tool to discover files by pattern.
+
+### Requirements from the issue (numbered by the engine)
+- R-1: **Red first:** for each of `impact`, `security-lens`, `spec-coverage`, `issue-acceptance`, a test that sets the resolved `timeout_s` / `max_turns` to distinctive values and asserts the prompt contains them. Fails at the merge-base (no block, or a hand-copied number).
+- R-2: Changing the resolved values changes the rendered numbers (proves they are not hand-copied).
+- R-3: `impact`'s existing prompt-contract assertions (`plugins/agent/impact/tests/impact-prompt-contract-test.sh`) still pass.
+- R-4: `/usr/bin/grep -rnE 'exhausted' core plugins scripts docs/wiki .github/issues docs/adr/ADR-001* docs/adr/ADR-054*` finds `exhausted` as a disposition only in explicitly historical text.
+- R-5: `npm test` and `npm run lint` green.
+
+Every requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `SPEC-1[code]: <behaviour> covers: R-1 R-2`. A requirement the code already meets is covered by a [done] SPEC with evidence.
+
+WALL CLOCK BUDGET (read this — the stage has a hard OS wall-clock timeout):
+- This stage has a wall-clock budget of 600 seconds total; ~0s have elapsed.
+- You cannot read a real-time clock, but estimate elapsed time from your tool-call history.
+- Target emitting your best-effort design before ~420s of wall-clock time has elapsed (70% of the 600s budget). A partial design with named gaps BEATS a hard SIGTERM that produces no output.
+
+## What you must not do
+- Do NOT call Edit, Write, or Bash for implementation. The ONLY file you
+  write is the design.md at the exact path above. Your job is to ENUMERATE
+  scope, not to implement.
+- Do NOT write to ./design.md, design.md, or any other path. The harvester
+  expects the file at the absolute path above; any other location is a
+  contract violation that will fail this stage.
+
+
+## Project-specific guidance (operator override)
+
+# zBuild design-stage scope overrides
+
+Per-repo overlay to the generic design charter's "enumerated set / absence-by-
+omission" principle (ADR-032/033). The shipped engine states the principle; this
+file states this repo's genuine domain-specific enumerations that break by
+OMISSION. Consult this when a change grows, shrinks, or renames a closed set in
+this repository.
+
+> **ADR-047 tombstone (EPIC #1277 / #1282).** zBuild's pipeline stage set is NO
+> LONGER a closed, engine-owned vocabulary. `_ZBUILD_CANONICAL_STAGES` was
+> demoted (ADR-047 §5): stage membership is now a manifest-derived, fail-closed
+> resolvability preflight and stage ordering a data-dependency DAG — both keyed
+> on declared data, not a hardcoded roster. The former Rules ABS-1/ABS-2/ABS-3
+> here enumerated that now-open roster and are retired. What remains below is the
+> **generic** principle only (it names no stage), plus this repo's real closed
+> sets. A change that adds/removes/renames a pipeline stage is now a template +
+> plugin change; it no longer breaks an engine-owned roster enumeration.
+
+## Rule ABS — generic enumerated-set / absence-by-omission wisdom
+
+Some closed sets in this repo break by OMISSION rather than by a stale token you
+can grep: the breakage is a MISSING (or orphaned) line, not a changed one. When a
+change grows, shrinks, or renames such a set, every enumeration of that set is
+wrong by omission — yet there is nothing to grep for, because the defect is the
+absent entry.
+
+When a change touches a genuinely-closed, exhaustively-enumerated set in this
+repo, design MUST include in scope every test or config that enumerates or COUNTS
+that set. Because the breakage is an absence, do not trust a hardcoded list of
+sites to stay complete — rediscover the sites each time (see "How to find them").
+
+This principle is target-agnostic: it applies to any closed set, and it does not
+presume the pipeline stage set is closed (per the ADR-047 tombstone above, it is
+not). Use it for sets that are genuinely closed in this repo, declared here per
+ADR-032 as this repo's domain-specific enumerations.
+
+## How to find them
+
+Enumeration/count sites are most often mock-plugin roster blocks (one call per
+member) or literal counts of the set. Rediscover them with:
+
+```
+grep -rln '_make_plugin\|_make_role_plugin\|_make_verdict_plugin\|mock_plugin_factory' tests/
+grep -rln 'stage\.complete\|plugin\.run\.start\|started .*UTC\|finished .*UTC' tests/
+```
+
+Every match that enumerates or counts a closed set you are changing belongs in
+the design scope block. Re-run the greps each time — new enumeration sites arrive
+with new tests, and the defect (a missing line) leaves no token to search for.
+
+## Rule ABS-W — new plugin directory requires a wiki page
+
+Any change that creates `plugins/<kind>/<id>/manifest.yaml` MUST include
+`docs/wiki/plugins/<id>.md` in scope. The `lint-doc-freshness` gate
+(`scripts/lib/lint-doc-freshness.sh`) enforces this at test time against the
+real repo tree — it fails if the wiki page is absent or lacks a prose opening
+paragraph. This is an absence-by-omission gap: there is no old value to grep
+for, because the defect is the missing new file.
+
+**Exception — `kind: persona` plugins:** `kind: persona` manifests are
+data-only (no `plugin.sh`, no hooks) and share a single index page at
+`docs/wiki/plugins/personas.md`. Adding a new persona requires editing
+`docs/wiki/plugins/personas.md` to list the new id (one known, stable file)
+rather than creating a per-id page. The `lint-doc-freshness` gate enforces
+that `personas.md` exists and that every persona id appears as a literal
+string in it; per-id pages for personas are not required and will trigger
+orphan failures if present.

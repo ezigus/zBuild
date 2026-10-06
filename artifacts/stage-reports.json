@@ -2,10 +2,17 @@
   "scope_files": [
     ".github/issues/keepers-manifest.yaml",
     "core/pipeline/dispatch-rc.sh",
+    "core/pipeline/disposition.sh",
     "docs/adr/ADR-001-plugin-contract.md",
     "docs/adr/ADR-054-stage-contract.md",
+    "docs/adr/ADR-063-budget-disclosure-and-partial-output.md",
     "docs/wiki/plugins/review-report.md",
-    "plugins/agent/review-lens/plugin.sh"
+    "plugins/agent/impact/tests/impact-prompt-contract-test.sh",
+    "plugins/agent/review-lens/plugin.sh",
+    "plugins/agent/review-lens/tests/review-lens-v2-budget-test.sh",
+    "scripts/lib/lint-disposition-words.sh",
+    "tests/unit/exhausted-disposition-retired-test.sh",
+    "tests/unit/stage-budget-note-test.sh"
   ],
   "wiring_files": []
 }
