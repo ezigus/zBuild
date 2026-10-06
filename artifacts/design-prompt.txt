@@ -139,30 +139,7 @@ Fix ADR-028 and its guard test to reflect that review-lens and review-report ARE
 
 Every requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `SPEC-1[code]: <behaviour> covers: R-1 R-2`. A requirement the code already meets is covered by a [done] SPEC with evidence.
 
-### PRIOR DESIGN (a previous attempt on this issue — a hypothesis, not a fact)
-The repository has moved since this design was written. Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW; anything that no longer holds is dropped or re-derived, and the design says what changed and why. Keep what still holds; do not start over.
-
-### SINCE THE PRIOR DESIGN (engine-collected)
-- The prior design was authored 2026-10-05T09:24:47Z (commit f96bfa44).
-- Commits on this branch since then: 11.
-- ADRs added or changed since (re-check every decision that cites one of these, or one they supersede):
-  - docs/adr/ADR-021-pipeline-cycle-semantics.md
-  - docs/adr/ADR-036-acceptance-contract-teeth.md
-  - docs/adr/ADR-037-objective-gates-vs-semantic-judgment.md
-  - docs/adr/ADR-038-adversarial-multilens-review-report.md
-  - docs/adr/ADR-040-composable-gate-lens-taxonomy.md
-  - docs/adr/ADR-046-design-verify-shift-left.md
-  - docs/adr/ADR-050-prior-work-reuse-contract.md
-  - docs/adr/ADR-053-test-flake-policy.md
-  - docs/adr/ADR-055-inter-stage-data-contract-v2.md — Supersedes: ADR-020 (inter-stage data contract) — presented as a clean v2 at the current stable state; ADR-020 is retired in-place for audit history.
-  - docs/adr/ADR-067-prompts-speak-plainly.md
-  - docs/adr/ADR-068-nested-loops-and-finding-answers.md — Supersedes: ADR-045 (bounded typed backward-route), ADR-061 (fault-class vocabulary)
-  - docs/adr/ADR-069-requirement-status.md
-  - docs/adr/ADR-070-one-requirement-list.md
-- Files in the prior design's scope changed since (its claims about them may be stale):
-  - plugins/agent/review-lens/plugin.sh
-  - plugins/agent/review-report/lib/lenses.sh
-  - config/adr-enforcement-baseline.txt
+### PRIOR DESIGN (written earlier in this run — refine it against the feedback below; the tree has not moved)
 
 # Design — #2035: ADR-028 closeout: mark review-lens and review-report as migrated
 
@@ -175,10 +152,9 @@ to `_llm_envelope_parse --schema-gate`.
 
 **Context.** The guard test has a latent bug: its SPEC-3 grep for
 `extract_first_json_object` in `review-lens/plugin.sh` does not exclude comment
-lines. A comment at `plugin.sh:394` ("schema-gated envelope parser replaces bare
-`extract_first_json_object`") matches the grep, causing SPEC-3 to take the "not
-migrated" branch and pass for the wrong reason. The stale ADR claim goes
-undetected. Additionally, the pre-#2035 SPEC-2 loop only checks `plan`,
+lines. A comment at `plugin.sh:403` matches the grep, causing SPEC-3 to take
+the "not migrated" branch and pass for the wrong reason. The stale ADR claim
+goes undetected. Additionally, the SPEC-2 loop only checks `plan`,
 `security-lens`, and `monitor` — it never checks `review-lens` or
 `review-report` — so no assertion would have failed even if the migration had
 been incomplete.
@@ -187,24 +163,29 @@ been incomplete.
 1. `tests/unit/adr-migration-claims-test.sh` — expand SPEC-2 loop to cover
    `review-lens` and `review-report` (searching all non-test `.sh` files per
    plugin directory, since `review-report`'s migration lives in `lib/lenses.sh`);
-   fix SPEC-3 grep to exclude comment-only lines (`^[^#]*`); add a new SPEC-1
-   assertion that the ADR contains no stale "not migrated" claim for these
-   plugins.
+   fix SPEC-3 grep to exclude comment-only lines (`^[^#]*`); add a new assertion
+   tagged `[#2035/SPEC-1]` that ADR-028 contains no stale "not migrated" claim
+   for these plugins.
 2. `docs/adr/ADR-028-shared-llm-agent-framework.md` — update §Migration: add
    `_review_lens_envelope_schema_ok` and `_rr_lens_envelope_schema_ok` to the
    per-stage gates list; replace the stale "not migrated" paragraph with a dated
-   migration note citing #1840/#1843. The 2026-09-02 correction note is
-   preserved.
+   migration note citing #1840/#1843.
 
-**SPEC-2 and SPEC-3 are [guard], not [change].** The migration patterns are
-pre-existing code (`review-lens/plugin.sh` and `review-report/lib/lenses.sh`
-both already contain `_llm_envelope_parse --schema-gate` before this change).
-Test assertions checking for these patterns pass on old code — tagging them
-[change] caused tautology failures in acceptance-gate (negctl). The real
-[change] is SPEC-1: the ADR's stale "**not** migrated" claim causes SPEC-1 to
-fail on old code and pass only after the ADR is corrected. WIRING is therefore
-`docs/adr/ADR-028-shared-llm-agent-framework.md` (reverting it restores the
-stale claim; SPEC-1 then fails).
+**Note on tag changes from prior design.** ADR-069 (PR #2304, 2026-10-05)
+retired the `[guard]` tag — the design-gate rejects it as UNKNOWN_STATUS. The
+prior design used `[guard]` for SPEC-2 through SPEC-6 and `[change]` for
+SPEC-1. This revision replaces `[guard]` with `[done]` plus evidence (for
+pre-existing code in the plugin files) or `[no-code]` (for test-only fixes),
+and replaces `[change]` with `[code]`. ADR-070 (also 2026-10-05) requires
+`covers: R-X` on every SPEC; all SPECs have been updated. SPEC-5 and SPEC-6
+from the prior design are subsumed into SPEC-2[done] and SPEC-3[done] since the
+schema-gate function names are part of the same evidence lines.
+
+The real `[code]` requirement is SPEC-1: the ADR's stale "**not** migrated"
+claim causes the new `[#2035/SPEC-1]` assertion to fail on old code, and pass
+only after the ADR is corrected. WIRING is therefore
+`docs/adr/ADR-028-shared-llm-agent-framework.md` — reverting it restores the
+stale claim and SPEC-1 fails.
 
 ```scope
 docs/adr/ADR-028-shared-llm-agent-framework.md
@@ -214,27 +195,24 @@ plugins/agent/review-report/lib/lenses.sh
 plugins/agent/review-report/plugin.sh
 plugins/agent/review-lens/tests/review-lens-v2-result-test.sh
 config/adr-enforcement-baseline.txt
+docs/audits/adr-2026-10-03/batch-3.md
 ```
 
 ```acceptance
-SPEC-1[change]: tests/unit/adr-migration-claims-test.sh contains an assertion that ADR-028 does not contain a stale "not migrated" claim for review-lens or review-report; this assertion fails before the ADR is updated (stale text present) and passes after.
-SPEC-2[guard]: review-lens/plugin.sh uses _llm_envelope_parse --schema-gate; the explicit file-level assertion added to adr-migration-claims-test.sh passes both before and after this change (migration pre-exists from #1840).
-SPEC-3[guard]: review-report/lib/lenses.sh uses _llm_envelope_parse --schema-gate; the explicit file-level assertion added to adr-migration-claims-test.sh passes both before and after this change (migration pre-exists from #1843).
-SPEC-4[guard]: tests/unit/adr-migration-claims-test.sh SPEC-3 grep excludes comment-only lines (^[^#]*extract_first_json_object) so the comment at plugin.sh:394 does not trigger the wrong branch; passes both before and after.
-SPEC-5[guard]: review-lens/plugin.sh uses _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok (pre-existing; confirmed by the SPEC-2 loop expansion and by review-lens-v2-result-test.sh SPEC-4).
-SPEC-6[guard]: review-report/lib/lenses.sh uses _llm_envelope_parse --schema-gate _rr_lens_envelope_schema_ok (pre-existing; confirmed by the SPEC-2 loop expansion).
+SPEC-1[code]: the guard test contains an assertion that ADR-028 does not name review-lens or review-report as not migrated; this assertion fails when the ADR has stale text (lines 189 and 193) and passes after those lines are updated covers: R-1 R-4
+SPEC-2[done]: review-lens/plugin.sh calls _llm_envelope_parse --schema-gate _review_lens_envelope_schema_ok at its rc=0 parse site covers: R-2 R-3 evidence: plugins/agent/review-lens/plugin.sh:407 plugins/agent/review-lens/tests/review-lens-v2-result-test.sh
+SPEC-3[done]: review-report/lib/lenses.sh calls _llm_envelope_parse --schema-gate _rr_lens_envelope_schema_ok at its rc=0 parse site covers: R-2 R-3 evidence: plugins/agent/review-report/lib/lenses.sh:168
+SPEC-4[no-code]: the SPEC-3 grep in adr-migration-claims-test.sh uses the pattern ^[^#]*extract_first_json_object so the comment at review-lens/plugin.sh:403 no longer triggers the not-migrated branch covers: R-1 R-5
+SPEC-5[no-code]: the SPEC-2 loop in adr-migration-claims-test.sh checks every non-test .sh file under plugins/agent/review-lens/ and plugins/agent/review-report/ for _llm_envelope_parse; both pass because the migration is pre-existing covers: R-2 R-3 R-5
 WIRING: docs/adr/ADR-028-shared-llm-agent-framework.md
 TESTFILES:
 SPEC-1: tests/unit/adr-migration-claims-test.sh
-SPEC-2: tests/unit/adr-migration-claims-test.sh
-SPEC-3: tests/unit/adr-migration-claims-test.sh
 SPEC-4: tests/unit/adr-migration-claims-test.sh
-SPEC-5: tests/unit/adr-migration-claims-test.sh plugins/agent/review-lens/tests/review-lens-v2-result-test.sh
-SPEC-6: tests/unit/adr-migration-claims-test.sh
+SPEC-5: tests/unit/adr-migration-claims-test.sh
 ```
 
 ```supersedes
-tests/unit/adr-migration-claims-test.sh [SPEC-3]: old assertion label "the ADR does not claim review-lens is migrated" was reached via a wrong-branch pass (comment-including grep found plugin.sh:394's comment, treating it as un-migrated code); after the fix, the comment-excluding grep finds no match and the "review-lens migrated — no stale claim possible" branch is taken instead.
+tests/unit/adr-migration-claims-test.sh [SPEC-3]: the old assertion label "the ADR does not claim review-lens is migrated" was reached via a wrong-branch pass — the comment-including grep matched plugin.sh:403, treating it as un-migrated code, so SPEC-3 took the not-migrated branch and passed; after the fix the comment-excluding grep finds no match, the migrated branch is taken, and the assertion instead checks the ADR for stale claims
 ```
 
 LOOP_COMPLETE
