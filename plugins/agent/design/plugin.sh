@@ -488,6 +488,11 @@ the block when no existing check changes meaning.
 Keep the prose focused and under 200 lines (the scope block and acceptance
 block may be as long as completeness requires). Emit LOOP_COMPLETE when done.
 DESIGN_PROMPT
+    # #2306 (ADR-070 §3): the issue's requirements, numbered by the engine; every
+    # one is covered by a SPEC, and the design-gate checks that by script.
+    local _req_f="" _reqs; [[ -s "${ZBUILD_STAGE_INPUTS:-}" ]] && _req_f="$(jq -r '.inputs.requirements // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null)"
+    _reqs="$(acceptance_requirements_list "${_req_f:-$artifact_dir/requirements.json}")"
+    [[ -n "$_reqs" ]] && printf '\n## Requirements from the issue (numbered by the engine)\n%s\n\nEvery requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `SPEC-1[code]: <behaviour> covers: R-1 R-2`. A requirement the code already meets is covered by a [done] SPEC with evidence.\n' "$_reqs" >> "$prompt_input_file"
 
     # design_impact_cycle feedback: on iter ≥ 2, splice prior impact gap-report
     # and prior design.md into the prompt so design EXPANDS its scope block

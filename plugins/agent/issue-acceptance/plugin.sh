@@ -56,11 +56,15 @@ _ia_prompt() {
 You will be shown:
 
 ISSUE — what was asked for, in the requester's own words. This is the standard.
+ISSUE REQUIREMENTS — the issue's requirements, numbered R-1, R-2, … by the pipeline.
 REQUIREMENTS — what the design committed to, each with what was done about it.
 DIFF — the change as built.
 TEST VERDICT — whether the test suite passed.
 
-For every requirement the ISSUE states, decide whether the DIFF meets it IN FULL.
+Judge every requirement in ISSUE REQUIREMENTS: decide whether the DIFF meets it
+IN FULL, and name an unmet one by its id and words (R-2: <its words>). Read the
+ISSUE for what a requirement means. When none are listed under ISSUE REQUIREMENTS,
+judge every requirement the ISSUE states.
 Judge against the issue's own words, not the SPECs: a SPEC that narrowed a
 requirement does not make the narrowed version enough. A requirement met only
 partly — a subset of the cases, a weaker condition, some of the files — is unmet.
@@ -88,6 +92,9 @@ Do not suggest code. Answer only.
 
 ISSUE:
 $1
+
+ISSUE REQUIREMENTS:
+${5:-<none listed>}
 
 REQUIREMENTS:
 $2
@@ -155,7 +162,10 @@ issue_acceptance_run() {
         && tier="$(resolve_tier issue-acceptance "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null || printf 'T2')"
 
     local _task _framed _pid="product-owner" _pdir _f
-    _task="$(_ia_prompt "$issue" "${acc:-<none>}" "${diff:-<no diff>}" "${test_verdict:-unknown}")"
+    # #2306 (ADR-070 §4): the issue's requirements as intake numbered them.
+    local _reqs=""; declare -F acceptance_requirements_list >/dev/null 2>&1 \
+        && _reqs="$(acceptance_requirements_list "$(_ia_input requirements)")"
+    _task="$(_ia_prompt "$issue" "${acc:-<none>}" "${diff:-<no diff>}" "${test_verdict:-unknown}" "$_reqs")"
     _framed="$_task"
     if declare -f persona_stage_framing >/dev/null 2>&1; then
         if declare -f resolve_persona >/dev/null 2>&1; then

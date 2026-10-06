@@ -65,6 +65,10 @@ config:
 inputs:
   - id: design
     required: true
+  # #2306 (ADR-070): the issue's requirements, numbered by intake. Absent on a
+  # --goal run, so not required.
+  - id: requirements
+    required: false
 
 outputs:
   - id: design_gate_result

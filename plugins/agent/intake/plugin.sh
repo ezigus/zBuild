@@ -26,6 +26,8 @@ source "$_INTAKE_DIR/lib/issue-state.sh"
 source "$_INTAKE_DIR/lib/branch-names.sh"
 # shellcheck source=lib/branch-ops.sh
 source "$_INTAKE_DIR/lib/branch-ops.sh"
+# shellcheck source=lib/requirements.sh
+source "$_INTAKE_DIR/lib/requirements.sh"
 
 # ─── v2 result writer ────────────────────────────────────────────────────────
 # _intake_write_result <art_dir> <verdict> <disposition> <reason> [data-json]
@@ -125,6 +127,10 @@ _intake_run_inner() {
 
     local goal="${ZBUILD_GOAL:-}"
     local issue="${ZBUILD_ISSUE:-0}"
+    # #2306 (ADR-070 §2): only an issue has a requirement list; a list left by an
+    # earlier run must not be read as this run's.
+    local _raw_json="" fetched_ok=""
+    [[ -n "$_art" ]] && rm -f "$_art/requirements.json"
 
     # Support --issue mode: when goal text is absent, derive it from the issue number.
     # Runner exports ZBUILD_GOAL="" in --issue runs, so we fall back rather than hard-fail.
@@ -166,7 +172,6 @@ _intake_run_inner() {
             # inlining it as --jq turns into a quoting maze, and a filter that
             # cannot be read is a filter nobody can check.
             local _cmt_max="${ZBUILD_INTAKE_COMMENT_MAX_BYTES:-4000}"
-            local _raw_json=""
             _raw_json="$(run_captured_command intake gh issue view "$issue" \
                 --json title,body,comments)"
             gh_rc=$?
@@ -194,6 +199,7 @@ _intake_run_inner() {
                     fetched="${_head}## Additional context from issue comments${_cmts}"
                 fi
                 goal="$fetched"
+                fetched_ok=1
             elif [[ "${ZBUILD_INTAKE_ALLOW_PLACEHOLDER:-0}" == "1" ]]; then
                 # #1804: still reachable, but only when asked for. An offline
                 # smoke run is legitimate — it just has to say so.
@@ -310,6 +316,11 @@ _intake_run_inner() {
                 "Fail-closed: work does not proceed on the current branch, which may be main."
             return 1
         fi
+    fi
+
+    # #2306 (ADR-070 §1): the issue's requirements, numbered by the engine.
+    if [[ -n "$fetched_ok" && -n "$_art" ]] && ! _intake_write_requirements "$_art" "$_raw_json"; then
+        warn "intake_run: could not write $_art/requirements.json — later stages judge the issue text alone"
     fi
 
     _intake_write_result "$_art" "pass" "complete" \

@@ -71,6 +71,16 @@ outputs:
     format: text
     primary: false
     required: false
+  # #2306 (ADR-070 §1): the issue's requirements, numbered R-1, R-2, … by the
+  # engine. Written only for an issue run (a --goal run has no issue), so
+  # required:false; design, design-gate, spec-coverage and issue-acceptance
+  # read it as their `requirements` input.
+  - id: requirements
+    path: "${artifact_dir}/requirements.json"
+    type: requirements.json@1
+    format: json
+    primary: false
+    required: false
   # ADR-055 §9: this stage's statement of what it DID. required:true —
   # written on every terminal verdict, so absence means something went wrong.
   - id: intake_summary

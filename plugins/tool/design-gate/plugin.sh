@@ -2,10 +2,10 @@
 # plugins/tool/design-gate/plugin.sh — Design Gate Stage (ADR-046, ADR-037 §1/§3, #1218)
 #
 # Kind: tool  Tier: T0  (NO LLM — ADR-037 §3 invariant)
-# The PRE-build mechanical structural gate for the design stage. Runs five checks
-# (C1..C5), reports ALL violations in one pass, and writes verdict=pass|fail to
-# design-gate-result.json. Every check reads design.md and the files it names;
-# nothing is executed (C6, the [guard] baseline run, went with [guard] — #2304,
+# The PRE-build mechanical structural gate for the design stage. Runs six checks
+# (C1..C5, C7), reports ALL violations in one pass, and writes verdict=pass|fail
+# to design-gate-result.json. Every check reads design.md and the files it names
+# (C7 also reads intake's requirements.json — #2306, ADR-070); nothing is executed (C6, the [guard] baseline run, went with [guard] — #2304,
 # ADR-069). Always returns rc=0 — the verdict lives in the artifact (ADR-040
 # verdict-in-artifact convention); the design_verify_cycle's exit_when reads
 # .verdict.
@@ -113,6 +113,10 @@ _dg_plain() {
         CONTENTS_NOT_BEHAVIOUR*) printf '%s describes what a file contains, not what the code does — describe the behaviour someone could observe (an input and what happens), or, if the code already does it, mark it [done] with evidence' "$id" ;;
         MISSING_TESTFILE_FOR_SPEC*) printf '%s has no test file listed — add a "%s: <test file>" line under TESTFILES:' "$id" "$id" ;;
         "WIRING_MISSING ("*) printf 'the acceptance block does not say which existing file calls the new code — add a WIRING: line naming it, or WIRING: none if nothing calls it yet' ;;
+        REQUIREMENT_NOT_COVERED*) local _rt="${rest#* (}"; _rt="${_rt%)}"
+            # The requirement's own words go last, unquoted, so quotes inside them
+            # cannot break the sentence (review #2320).
+            printf 'requirement %s from the issue is not covered by any SPEC: %s. End the line of the SPEC that delivers it with " covers: %s" (before any " evidence: "), or add a SPEC for it; if the code already does it, a [done] SPEC with evidence covers it' "$id" "$_rt" "$id" ;;
         WIRING_MISSING*)     printf 'the WIRING file %s does not exist — name a file that exists in the repository, or WIRING: none' "$id" ;;
         *) printf '%s' "$v" ;;
     esac
@@ -141,6 +145,11 @@ design_gate_run() {
     local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo "$_DG_ROOT")}"
 
     local -a violations=()
+    # #2306 (ADR-070 §3): the issue's numbered requirements; absent on a goal run.
+    local req_json=""
+    [[ -n "${ZBUILD_STAGE_INPUTS:-}" ]] && req_json="$(jq -r '.inputs.requirements // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+    [[ -n "$req_json" ]] || req_json="$artifacts_dir/requirements.json"
+    local _covered=" "
 
     # ── C1 SCOPE: non-empty ```scope block ──────────────────────────────────
     if ! _dg_scope_nonempty "$design_md"; then
@@ -165,6 +174,7 @@ design_gate_run() {
         while IFS= read -r _spec; do
             [[ -z "$_spec" ]] && continue
             _acceptance_spec_line "$_blk" "$_spec" || continue
+            _covered+="${_ACC_SPEC_COVERS//,/ } "
             case "$_ACC_SPEC_STATUS" in
                 "")      violations+=("NO_STATUS $_spec (requirement carries no [code], [no-code] or [done] status)") ;;
                 no-code) : ;;
@@ -193,6 +203,20 @@ design_gate_run() {
                 *)       violations+=("UNKNOWN_STATUS $_spec [${_ACC_SPEC_TAG}] (not a status)") ;;
             esac
         done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
+    fi
+
+    # ── C7 REQUIREMENTS (#2306, ADR-070 §3): every requirement intake numbered
+    # is covered by at least one SPEC, whatever its status. Read by script, so
+    # no model decides what the issue asked for.
+    if [[ $_accept_ok -eq 1 && -s "$req_json" ]]; then
+        local _rid _rtext
+        # Unit separator, not @tsv: @tsv would double every backslash in the
+        # text (review #2320). Intake strips control characters, so it never occurs.
+        while IFS=$'\x1f' read -r _rid _rtext; do
+            [[ -z "$_rid" ]] && continue
+            [[ "$_covered" == *" $_rid "* ]] \
+                || violations+=("REQUIREMENT_NOT_COVERED $_rid ($_rtext)")
+        done < <(jq -r '.requirements[]? | .id + "\u001f" + (.text | gsub("[[:cntrl:]]"; " "))' "$req_json" 2>/dev/null || true)
     fi
 
     # ── C5 WIRING: section present ("none" ok); each concrete path exists ────

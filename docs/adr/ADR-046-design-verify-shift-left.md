@@ -150,3 +150,9 @@ still-tautological SPEC hard-fails cleanly after one re-author pass — no ping-
 - **C6 GUARD-BASELINE** (#1777) is removed with `[guard]`. The design-gate runs nothing again, and its result has no `guard_precheck` block.
 
 The feedback file says each of these in plain words (#2269). Verification: `tests/unit/design-gate-test.sh` G1–G6, `tests/unit/design-gate-feedback-plain-test.sh`.
+
+### Amendment (2026-10-05, #2306) — C7 every issue requirement is covered (ADR-070)
+
+- **C7 REQUIREMENTS**: when intake wrote `requirements.json` (an issue run), every requirement in it (`R-1`, `R-2`, …) is named after ` covers: ` on at least one SPEC line, whatever that SPEC's status. A requirement nobody covers is `REQUIREMENT_NOT_COVERED R-n (<its text>)`, and the feedback names it and its words in plain English. A goal run has no list and skips the check. The number C6 stays retired.
+
+Verification: `tests/unit/requirements-list-test.sh` Q3.

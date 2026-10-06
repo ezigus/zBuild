@@ -148,13 +148,16 @@ acceptance_list_spec_ids() {
 #                    done (the design-gate rejects [guard], so a new design
 #                    never carries it; an old one still reads sensibly).
 #   _ACC_SPEC_REST   everything after the colon, leading space trimmed
-#   _ACC_SPEC_TEXT   what it requires: REST, stopping before ` evidence: ` when
-#                    the requirement is done (the evidence is not a requirement)
+#   _ACC_SPEC_TEXT   what it requires: REST, stopping before ` covers: ` and,
+#                    when the requirement is done, before ` evidence: ` (neither
+#                    is part of the requirement)
+#   _ACC_SPEC_COVERS the issue requirement ids after ` covers: ` (R-1 R-3), up
+#                    to any ` evidence: ` — space separated (#2306, ADR-070 §3)
 # Returns 1 when the block has no such line. Stops at TESTFILES: — the per-SPEC
 # binding lines there share the `SPEC-n:` shape, and a path is not a requirement.
 _acceptance_spec_line() {
     local _block="${1:-}" _sid="${2:-}" _l
-    _ACC_SPEC_TAG="" _ACC_SPEC_STATUS="" _ACC_SPEC_REST="" _ACC_SPEC_TEXT=""
+    _ACC_SPEC_TAG="" _ACC_SPEC_STATUS="" _ACC_SPEC_REST="" _ACC_SPEC_TEXT="" _ACC_SPEC_COVERS=""
     [[ -n "$_block" && -n "$_sid" ]] || return 1
     while IFS= read -r _l; do
         [[ "$_l" == "TESTFILES:" ]] && break
@@ -162,13 +165,17 @@ _acceptance_spec_line() {
             _ACC_SPEC_TAG="${BASH_REMATCH[3]}"
             _ACC_SPEC_REST="${_l#*:}"
             _ACC_SPEC_REST="${_ACC_SPEC_REST#"${_ACC_SPEC_REST%%[![:space:]]*}"}"
-            _ACC_SPEC_TEXT="$_ACC_SPEC_REST"
+            _ACC_SPEC_TEXT="${_ACC_SPEC_REST%% covers: *}"
+            if [[ "$_ACC_SPEC_REST" == *" covers: "* ]]; then
+                _ACC_SPEC_COVERS="${_ACC_SPEC_REST#* covers: }"
+                _ACC_SPEC_COVERS="${_ACC_SPEC_COVERS%% evidence: *}"
+            fi
             case "$_ACC_SPEC_TAG" in
                 "")          _ACC_SPEC_STATUS="" ;;
                 code|change) _ACC_SPEC_STATUS="code" ;;
                 no-code)     _ACC_SPEC_STATUS="no-code" ;;
                 done|guard)  _ACC_SPEC_STATUS="done"
-                             _ACC_SPEC_TEXT="${_ACC_SPEC_REST%% evidence: *}" ;;
+                             _ACC_SPEC_TEXT="${_ACC_SPEC_TEXT%% evidence: *}" ;;
                 *)           _ACC_SPEC_STATUS="unknown:$_ACC_SPEC_TAG" ;;
             esac
             return 0
@@ -198,10 +205,36 @@ acceptance_spec_evidence() {
     block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
     _acceptance_spec_line "$block_output" "$spec_id" || return 0
     [[ "$_ACC_SPEC_STATUS" == "done" && "$_ACC_SPEC_REST" == *" evidence: "* ]] || return 0
+    local _ev="${_ACC_SPEC_REST#* evidence: }"
     local -a _items=()
-    read -ra _items <<< "${_ACC_SPEC_REST#* evidence: }"
+    # %% (from the FIRST " covers: "), not %: evidence ends where covers begins.
+    read -ra _items <<< "${_ev%% covers: *}"
     [[ ${#_items[@]} -gt 0 ]] && printf '%s\n' "${_items[@]}"
     return 0
+}
+
+# acceptance_spec_covers <design_md> <spec_id>  (#2306, ADR-070 §3)
+# Echoes the issue requirement ids the SPEC says it covers — the items after
+# ` covers: ` on its line, up to any ` evidence: ` — one per line. Empty when it
+# names none.
+acceptance_spec_covers() {
+    local design_md="${1:-}" spec_id="${2:-}" block_output
+    [[ -n "$design_md" && -n "$spec_id" && -f "$design_md" ]] || return 0
+    block_output="$(extract_acceptance_block "$design_md" 2>/dev/null)" || return 0
+    _acceptance_spec_line "$block_output" "$spec_id" || return 0
+    local -a _ids=()
+    read -ra _ids <<< "${_ACC_SPEC_COVERS//,/ }"
+    [[ ${#_ids[@]} -gt 0 ]] && printf '%s\n' "${_ids[@]}"
+    return 0
+}
+
+# acceptance_requirements_list <requirements.json>  (#2306, ADR-070 §4)
+# The issue's requirements as every stage is shown them: one `- R-n: <text>`
+# line each, in order. Empty when the file is absent or unreadable (a goal run).
+acceptance_requirements_list() {
+    local f="${1:-}"
+    [[ -n "$f" && -s "$f" ]] || return 0
+    jq -r '.requirements[]? | "- \(.id): \(.text)"' "$f" 2>/dev/null || true
 }
 
 # acceptance_spec_text <design_md> <spec_id>  (#1978)
@@ -663,7 +696,8 @@ acceptance_requirements_for_judge() {
             *)       printf '  Status: needs work (code) — its test failed on the old code and passes now\n'; continue ;;
         esac
         [[ "$_ACC_SPEC_STATUS" == "done" && "$_ACC_SPEC_REST" == *" evidence: "* ]] || continue
-        local -a _evs=(); read -ra _evs <<< "${_ACC_SPEC_REST#* evidence: }"
+        local _evl="${_ACC_SPEC_REST#* evidence: }"
+        local -a _evs=(); read -ra _evs <<< "${_evl%% covers: *}"
         for ev in "${_evs[@]+"${_evs[@]}"}"; do
             printf '  Evidence: %s\n' "$ev"
             path="$ev" n=1
