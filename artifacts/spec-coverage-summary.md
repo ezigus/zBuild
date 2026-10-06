@@ -1,0 +1,5 @@
+## spec-coverage — covered
+
+- All five requirements map to a SPEC that fully demands the required behaviour — R-1/R-2 to SPEC-1[done] (stage-budget-note-test.sh, merged in #2253), R-3 to SPEC-2[done] (impact-prompt-contract-test.sh), R-4 to SPEC-3[no-code] (six targeted prose edits with exhausted-disposition-retired-test.sh), and R-5 to SPEC-4[done].
+
+- every requirement the issue states maps to a declared SPEC
