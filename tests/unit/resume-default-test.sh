@@ -24,7 +24,9 @@
 # R6–R11 [guard] design runs in each case the old reuse rule turned on:
 #             ZBUILD_RESUME=0, changed issue text, a finding nobody owned (R8),
 #             an ordinary failed gate (R8b), a rewind, an uncovered spec, and
-#             a gate pass for a different design.md
+#             a gate pass for a different design.md.
+#             With the reuse rule gone no code path tells these apart: each
+#             one guards against a skip coming back under that condition.
 # R12 [change] design-gate records the hash of the design.md it judged
 set -uo pipefail
 
@@ -95,7 +97,8 @@ DESIGN_EVENTS="$TEST_TEMP_DIR/design-events"; : > "$DESIGN_EVENTS"
 route_to_model_loop() {
     echo call >> "$MODEL_CALLS"
     cp "$2" "$MOCK_PROMPT_COPY" 2>/dev/null || true
-    printf '# Design (fresh)\n\n```scope\nfoo.sh\n```\n' > "$MOCK_DESIGN_WRITE_PATH"
+    # A complete design (scope + acceptance), so the stage reaches its success path.
+    printf '# Design (fresh)\n\n```scope\nfoo.sh\n```\n\n```acceptance\nSPEC-1[change]: an empty input returns rc 1\nWIRING: none\nTESTFILES:\nSPEC-1: tests/unit/resume-default-test.sh\n```\n' > "$MOCK_DESIGN_WRITE_PATH"
     _ROUTE_LOOP_FINAL_OUTPUT="ok"; _ROUTE_LOOP_ITERATIONS=1
     _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
     _ROUTE_LOOP_INPUT_TOKENS=0; _ROUTE_LOOP_OUTPUT_TOKENS=0
@@ -136,7 +139,8 @@ _design_case() {
     : > "$MODEL_CALLS"; : > "$DESIGN_EVENTS"
     ( cd "$FIX" && ZBUILD_STATE_DIR="$d/state" ZBUILD_RESTORED_ARTIFACTS_DIR="$rr/artifacts" ZBUILD_RESUME="$resume" \
         MOCK_DESIGN_WRITE_PATH="$ad/design.md" MOCK_PROMPT_COPY="$d/prompt-seen.txt" \
-        _design_stage_run_inner "$d/state/scope-manifest.md" "$ad/plan.json" "$ad/design.md" "$ad" ) >/dev/null 2>&1 || true
+        _design_stage_run_inner "$d/state/scope-manifest.md" "$ad/plan.json" "$ad/design.md" "$ad" ) >/dev/null 2>&1
+    echo "$?" > "$d/stage-rc"
     wc -l < "$MODEL_CALLS" | tr -d ' '
 }
 
@@ -146,6 +150,7 @@ if grep -qx 'design.reused' "$DESIGN_EVENTS"; then
 else
     assert_pass "[R5] ...and emits no design.reused"
 fi
+assert_eq "[R5] ...and the design stage finishes successfully" "0" "$(cat "$TEST_TEMP_DIR/r5/stage-rc" 2>/dev/null)"
 assert_contains "[R5] ...this run's design is the one the model wrote" \
     "$(cat "$TEST_TEMP_DIR/r5/state/artifacts/design.md" 2>/dev/null)" "Design (fresh)"
 _r5_prompt="$(cat "$TEST_TEMP_DIR/r5/prompt-seen.txt" 2>/dev/null)"
