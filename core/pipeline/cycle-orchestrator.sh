@@ -2140,7 +2140,8 @@ _cycle_iter_dispatch() {
     _CYCLE_VERIFIED_ITER="$iter"
     _CYCLE_VERIFIED_BLOB="$blob"
     unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_ID ZBUILD_STAGE_IO_SEQ_LABEL
-    [[ "${_CYCLE_NEST_DEPTH:-0}" -eq 0 ]] && unset ZBUILD_OUTER_ROUND
+    # ZBUILD_OUTER_ROUND is cleared by the cycle_orchestrator_run wrapper, on
+    # every way out of the outer loop (#2325); each round re-sets it.
     # #566: restore caller's ZBUILD_CURRENT_STAGE — preserves prior value if
     # set, or unsets (we own the var only within this loop).
     if [[ $_prior_stage_set -eq 1 ]]; then

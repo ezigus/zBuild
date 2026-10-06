@@ -119,6 +119,10 @@ _checkpoint_prior_body() {
 #
 # The first round seen starts at 0: notes that predate any record are of unknown
 # origin, and are read as today rather than called stale.
+#
+# Rounds only move forward, so the sidecar's entries are in rising round order
+# and only the last one matters. A round number lower than the last would be
+# read as a new round, which marks more notes as earlier rather than fewer.
 _checkpoint_round_offset() {
     local cp_path="$1" cur="${ZBUILD_OUTER_ROUND:-}"
     [[ "$cur" =~ ^[0-9]+$ ]] || return 0

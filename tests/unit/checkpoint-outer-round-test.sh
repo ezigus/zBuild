@@ -66,7 +66,9 @@ assert_eq "[O1] the outer round is cleared when the outer loop ends" "unset" "${
 # cleared on that path too, or every stage after the loop sees a fixed round.
 print_test_section "O6: the outer round is cleared when the outer loop stops early"
 # shellcheck source=../lib/nested-loop-rounds-fixture.sh
-source "$REPO_ROOT/tests/lib/nested-loop-rounds-fixture.sh"   # its own dispatch again
+# Re-source the fixture: O1 replaced its cycle_dispatch_stage with one that logs
+# rounds, and O6 needs the fixture's own, which honours BUILD=blocked.
+source "$REPO_ROOT/tests/lib/nested-loop-rounds-fixture.sh"
 DESIGN_GATE=pass TEST=fail BUILD=blocked _run; o6_rc=$?
 assert_eq "[O6] fixture: the outer loop stopped early (blocked, rc 5)" "5" "$o6_rc"
 assert_eq "[O6] the outer round is cleared after an early stop" "unset" "${ZBUILD_OUTER_ROUND:-unset}"
