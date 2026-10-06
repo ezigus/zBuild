@@ -32,6 +32,11 @@ _ZBUILD_STAGE_CHECKPOINT_LOADED=1
 # and a second first-line guard would fight it.
 _ZB_CHECKPOINT_MARKER='## STAGE CHECKPOINT (engine-managed)'
 
+# #2326: the words for an earlier run's work are defined once, in the prior-work seam.
+# shellcheck source=./prior-output-reader.sh
+declare -F prior_output_is_earlier_run >/dev/null 2>&1 || \
+    source "$(dirname "${BASH_SOURCE[0]}")/prior-output-reader.sh"
+
 # ─── _checkpoint_declared_path <manifest> <state_dir> ────────────────────────
 # Echo the resolved path of the outputs[] entry carrying `role: checkpoint`, or
 # empty when the manifest declares none.
@@ -196,7 +201,16 @@ checkpoint_prompt_block() {
         printf '%s\n' "$earlier"
     fi
 
-    if [[ -n "${prior//[[:space:]]/}" ]]; then
+    # #2326 (ADR-050 §8): notes an earlier run saved are that run's, for
+    # reference only — never this stage's own exploration to build on.
+    if [[ -n "${prior//[[:space:]]/}" && ! -s "$cp_path" ]]; then
+        printf '\n### NOTES FROM AN EARLIER RUN (reference only)\n\n'
+        printf 'These notes are %s.\n' "$ZB_EARLIER_RUN_LABEL"
+        printf 'They say what that run explored, not where the work stands now: anything\n'
+        printf 'they call done was not done in this run. Start from the current state of the\n'
+        printf 'repository and the inputs you were given.\n\n'
+        printf '%s\n' "$prior"
+    elif [[ -n "${prior//[[:space:]]/}" ]]; then
         printf '\n### PRIOR EXPLORATION (resumed from checkpoint)\n\n'
         printf 'A previous attempt at this stage ran out of budget. This is what it\n'
         printf 'recorded. Build on it — do NOT re-derive it from scratch.\n\n'

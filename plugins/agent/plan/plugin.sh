@@ -532,14 +532,17 @@ $_plan_instructions"
     # Gated on ZBUILD_RESTORED_ARTIFACTS_DIR so this fires ONLY on a genuine
     # cross-run restore — plan is a leaf, so it must never pick up stale/leaked
     # cycle-feedback env or its OWN same-run local plan.json (#842 leaf contract).
-    local _prior_plan_json=""
+    local _prior_plan_json="" _prior_plan_path=""
     if [[ -n "${ZBUILD_RESTORED_ARTIFACTS_DIR:-}" ]]; then
-        _prior_plan_json="$(_read_prior_output "plan.json" 2>/dev/null || true)"
-        [[ -n "$_prior_plan_json" ]] && \
-            _prior_plan_json="$(printf '%s' "$_prior_plan_json" | _zbuild_sanitize_for_llm)"
+        _prior_plan_path="$(_prior_output_path "plan.json" 2>/dev/null || true)"
+        [[ -n "$_prior_plan_path" ]] && \
+            _prior_plan_json="$(_zbuild_sanitize_for_llm 2>/dev/null < "$_prior_plan_path" || true)"
     fi
     if [[ -n "${_prior_plan_json//[[:space:]]/}" ]]; then
         prompt+=$'\n## PRIOR PLAN (a previous attempt on this issue — reference & refine; verify against the CURRENT scope)\n\n'
+        # #2326 (ADR-050 §8): say so when it is an earlier run's, not this run's.
+        prior_output_is_earlier_run "$_prior_plan_path" && \
+            prompt+="This plan is ${ZB_EARLIER_RUN_LABEL}."$'\n\n'
         prompt+="$_prior_plan_json"$'\n'
     fi
 

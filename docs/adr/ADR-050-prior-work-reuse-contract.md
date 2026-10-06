@@ -1,6 +1,7 @@
 # ADR-050 — Prior-Work Reuse Contract (durable artifact store + per-stage self-seeding)
 
 **Status:** Accepted (2026-07-23)
+**Amended:** 2026-10-06 (#2326) — §8: anything a stage reads from an earlier run's saved work is labelled as that run's, for reference only, wherever it shows (input index, prompts, input events), and a stage that judges results never counts it as this run's result.
 **Amended:** 2026-10-06 (#2324) — design-gate no longer writes `data.design_sha`; its only reader was the reuse rule #2299 withdrew. Every statement below now names its test.
 **Amended:** 2026-10-05 (#2299) — design always runs. The #2225 rule that kept a prior run's design without a model call is withdrawn; a restored design reaches the prompt as a reference to check (§6: never skip the stage on the basis of prior output).
 **Amended:** 2026-09-16 (#2111) — a run that ends `aborted` with `reason=llm_rate_limited` (ADR-054 §6) persists like any other outcome; re-adding the trigger label after the reset resumes from the state branch. The daemon's completion comment names the reset text so the operator knows when.
@@ -164,9 +165,11 @@ resolution order (first hit wins):
 3. **Local state fallback** (`${ZBUILD_STATE_DIR}/artifacts/<artifact>`).
 4. Not found → empty, `return 0` (silent-fail).
 
-A stage does not know or care _which_ source supplied the content; it injects the
-result into its prompt as an advisory `## PRIOR <X> (reference — refine, do not
-recreate)` section.
+A stage does not choose _which_ source supplied the content; it injects the
+result into its prompt as an advisory `## PRIOR <X>` section. Amended by §8
+(#2326): when the source is the earlier run's copy, the section says so —
+`_prior_output_path` returns the path, and `prior_output_is_earlier_run` tells
+the stage which kind it got.
 
 ### 6. Stage-authoring contract (what a new stage MUST do)
 
@@ -244,6 +247,37 @@ Building #1074 showed the sequence cannot happen:
 So hydrate needs no "local is newer" detector and persist needs no failure marker. What hydrate
 does need, and what was actually missing, is the **fetch**: on a fresh clone neither ref exists, so
 restore reported "first run" for an issue with plenty of prior work.
+
+### 8. Amendment (#2326) — an earlier run's work is labelled, and never counted as this run's result
+
+**Status:** Accepted (2026-10-06). The same rule ADR-063 §5 (#2325) applies across the rounds of one run,
+applied across runs.
+
+A stage may read what an earlier run saved (restored into `$ZBUILD_RESTORED_ARTIFACTS_DIR`). That work
+was not produced by this run, and the earlier run's result may not have been accepted. Until #2326
+nothing said so: a declared input with no copy from this run fell back to the earlier run's copy
+silently (#2095 keeps that fallback), the index and the prompt listed it like any other input, and
+review-aggregator would have counted a lens's verdict from last run for a lens that wrote nothing this
+run.
+
+- **Labelled everywhere it shows.** One wording, defined once (`ZB_EARLIER_RUN_LABEL` in
+  `scripts/lib/prior-output-reader.sh`): *"from an earlier run — reference only, not this run's
+  result"*.
+  - The input index (`stage-inputs/<stage>.json`) lists every path served from an earlier run's copy
+    under `earlier_run`. A path from this run is not listed; with none, the key is absent.
+  - The prompt's input block puts the label next to each such path and says what it means.
+  - The engine records each one as a `stage.input.earlier_run` event (`stage`, `input`, `path`).
+  - A stage that seeds itself from its own earlier work — design, plan, impact, build's prior summary —
+    labels it when it came from an earlier run, and only then.
+  - Notes an earlier run saved as it went (the checkpoint, ADR-063 §5) appear under
+    `### NOTES FROM AN EARLIER RUN (reference only)`, not as this stage's own exploration to build on.
+- **Never counted as this run's result.** A stage that judges results — a gate (`convergence: gate`) or
+  a stage that aggregates others' results (`aggregates:`, e.g. review-aggregator) — is never handed an
+  earlier run's copy. For it, a result this run did not produce is missing: an optional input is
+  handed over as this run's (absent) path, and a required one refuses the dispatch (`INPUT_MISSING`).
+  This extends §3 from the gate's own verdict to every result a gate reads.
+- **Hand-overs keep working.** A stage that does not judge still reads the earlier copy when this run
+  has none (#2095); it is labelled, not withheld.
 
 ## Consequences
 
@@ -349,6 +383,8 @@ no model ever reads that line.
 - Implementation notes (pr-open edits the existing open PR, never opens a second, and reports `status=updated`) → `tests/unit/prior-work-reuse-contract-test.sh` C5
 - #2225 (`ZBUILD_RESUME` defaults to 1; `--no-resume` restores nothing yet still fetches and adopts) → `tests/unit/resume-default-test.sh` R1–R4
 - #2324 (design-gate's result has no `design_sha`) → `tests/unit/resume-default-test.sh` R12
+- §8 (#2326: the input index marks an input served from an earlier run's copy, and not this run's; the prompt's input block labels it; the `stage.input.earlier_run` event records it; a gate and review-aggregator treat a result that exists only as an earlier run's copy as missing; a stage that does not judge still reads it) → `tests/unit/earlier-run-reference-test.sh` E1–E5
+- §8 (#2326: design, plan, impact, build's prior summary and an earlier run's saved notes are labelled in the prompt when they came from an earlier run, and not when they came from this run) → `tests/unit/earlier-run-prompt-label-test.sh` L1–L5
 - #2111 (a run aborted with `llm_rate_limited` persists — persist pushes the state branch; the daemon's completion comment names the reset time and says to re-add the label) → `tests/unit/prior-work-reuse-contract-test.sh` C6
 
 ## References

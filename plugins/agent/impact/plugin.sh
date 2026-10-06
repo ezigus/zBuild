@@ -344,14 +344,17 @@ $_impact_instructions"
     # deterministic prefilter above stays authoritative for goldens). Gated on
     # ZBUILD_RESTORED_ARTIFACTS_DIR so it fires ONLY on a genuine cross-run restore
     # (never stale cycle env or impact's OWN same-run local impact.json).
-    local _prior_impact=""
+    local _prior_impact="" _prior_impact_path=""
     if [[ -n "${ZBUILD_RESTORED_ARTIFACTS_DIR:-}" ]]; then
-        _prior_impact="$(_read_prior_output "impact.json" 2>/dev/null || true)"
-        [[ -n "$_prior_impact" ]] && \
-            _prior_impact="$(printf '%s' "$_prior_impact" | _zbuild_sanitize_for_llm)"
+        _prior_impact_path="$(_prior_output_path "impact.json" 2>/dev/null || true)"
+        [[ -n "$_prior_impact_path" ]] && \
+            _prior_impact="$(_zbuild_sanitize_for_llm 2>/dev/null < "$_prior_impact_path" || true)"
     fi
     if [[ -n "${_prior_impact//[[:space:]]/}" ]]; then
         prompt+=$'\n### PRIOR IMPACT (a previous attempt on this issue — reference & refine; re-validate against the CURRENT design)\n'
+        # #2326 (ADR-050 §8): say so when it is an earlier run's, not this run's.
+        prior_output_is_earlier_run "$_prior_impact_path" && \
+            prompt+="This impact result is ${ZB_EARLIER_RUN_LABEL}."$'\n'
         prompt+="$_prior_impact"$'\n'
     fi
     prompt+=$'\n'"$_impact_limits"$'\n'

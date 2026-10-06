@@ -22,6 +22,12 @@
 # one input id (ADR-055 §1.4) — that is what retires review-aggregator's
 # `lens-*.json` wildcard.
 #
+# #2326 (ADR-050 §8): a path served from an earlier run's saved copy is also
+# listed under `earlier_run` (the key is absent when there is none):
+#
+#   {..., "inputs": {"design": "/restored/design.md"},
+#    "earlier_run": ["/restored/design.md"]}
+#
 # Sourced library: inherits the caller's pipefail settings; do NOT add set -euo.
 
 [[ -n "${_ZBUILD_INPUT_RESOLVE_LOADED:-}" ]] && return 0
@@ -51,6 +57,10 @@ declare -F _checkpoint_declared_path >/dev/null 2>&1 || \
 # shellcheck source=../plugin-registry/attempt-archive.sh
 declare -F attempt_latest_copy >/dev/null 2>&1 || \
     source "$_ZBUILD_IR_ROOT/core/plugin-registry/attempt-archive.sh"
+# #2326: the words for an earlier run's work, and the test for one.
+# shellcheck source=../../scripts/lib/prior-output-reader.sh
+declare -F prior_output_is_earlier_run >/dev/null 2>&1 || \
+    source "$_ZBUILD_IR_ROOT/scripts/lib/prior-output-reader.sh"
 # #2152: the manifest index _inputs_scan_manifests reads from.
 # shellcheck source=../plugin-registry/manifest-index.sh
 declare -F manifest_index_rows >/dev/null 2>&1 || \
@@ -308,9 +318,28 @@ _inputs_effective_path() {
             && own="$(attempt_latest_copy "${ZBUILD_ARTIFACT_DIR:-${live%/*}}" "$base")"; then
         printf '%s' "$own"; return 0
     fi
+    # #2326 (ADR-050 §8): a stage that judges results never gets an earlier
+    # run's copy — for it, a result this run did not produce is missing.
     local restored="${ZBUILD_RESTORED_ARTIFACTS_DIR:-}"
-    [[ -n "$restored" && -s "$restored/$base" ]] && { printf '%s' "$restored/$base"; return 0; }
+    if [[ "${_IR_THIS_RUN_ONLY:-0}" != 1 && -n "$restored" && -s "$restored/$base" ]]; then
+        printf '%s' "$restored/$base"; return 0
+    fi
     printf '%s' "$live"
+}
+
+# ─── _inputs_judges_results <manifest> ───────────────────────────────────────
+# rc 0 when the stage judges results: a gate (`convergence: gate`) or a stage
+# that aggregates others' results (`aggregates:`). ADR-050 §8 (#2326): such a
+# stage never counts an earlier run's copy as this run's result. Pure bash read
+# of the two top-level keys — no fork on the dispatch path.
+_inputs_judges_results() {
+    local manifest="${1:-}" line
+    [[ -n "$manifest" && -f "$manifest" ]] || return 1
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        [[ "$line" =~ ^convergence:[[:space:]]*[\"\']?gate[\"\']?([[:space:]]|#|$) ]] && return 0
+        [[ "$line" =~ ^aggregates:[[:space:]]*[^[:space:]#] ]] && return 0
+    done < "$manifest"
+    return 1
 }
 
 # ─── _inputs_declared <manifest> ─────────────────────────────────────────────
@@ -327,6 +356,18 @@ _inputs_declared() {
         [[ -z "$req" ]] && req="true"
         printf '%s|%s\n' "$id" "$req"
     done < <(manifest_graph_get_inputs "$manifest")
+}
+
+# ─── _inputs_note_earlier_run <stage> <input_id> <path> ──────────────────────
+# rc 0 when <path> is an earlier run's saved copy, after recording it on the
+# stage's input event (#2326, ADR-050 §8). rc 1 for this run's own file.
+_inputs_note_earlier_run() {
+    prior_output_is_earlier_run "$3" || return 1
+    if declare -F eb_emit_event >/dev/null 2>&1; then
+        eb_emit_event "stage.input.earlier_run" "stage=$1" "input=$2" "path=$3" \
+            "use=reference_only" 2>/dev/null || true
+    fi
+    return 0
 }
 
 # ─── _inputs_resolve_stage <stage> <plugins_root> <state_dir> [manifest] ─────
@@ -347,7 +388,11 @@ _inputs_resolve_stage() {
 
     _inputs_build_producer_index "$plugins_root" "$state_dir"
 
-    local id req paths line eff tsv=""
+    # Read by _inputs_effective_path through bash's dynamic scope.
+    local _IR_THIS_RUN_ONLY=0
+    _inputs_judges_results "$manifest" && _IR_THIS_RUN_ONLY=1
+
+    local id req paths line eff tsv="" earlier=""
     while IFS='|' read -r id req; do
         [[ -z "$id" ]] && continue
         paths="${_IR_PATHS[$id]:-}"
@@ -371,6 +416,7 @@ _inputs_resolve_stage() {
                     continue
                 fi
                 joined+="${eff}"$'\x1f'
+                _inputs_note_earlier_run "$stage" "$id" "$eff" && earlier+="${eff}"$'\x1f'
             done <<< "$paths"
             tsv+="${id}"$'\t'"A"$'\t'"${joined}"$'\n'
         else
@@ -390,6 +436,7 @@ _inputs_resolve_stage() {
                 continue
             fi
             tsv+="${id}"$'\t'"S"$'\t'"${eff}"$'\n'
+            _inputs_note_earlier_run "$stage" "$id" "$eff" && earlier+="${eff}"$'\x1f'
         fi
     done < <(_inputs_declared "$manifest")
 
@@ -399,14 +446,16 @@ _inputs_resolve_stage() {
     # a jq failure write a zero-byte index and still return 0 — a silent empty
     # handover that reads as "this stage declared nothing".
     local json
-    json="$(printf '%s' "$tsv" | jq -nR --arg stage "$stage" '
+    json="$(printf '%s' "$tsv" | jq -nR --arg stage "$stage" --arg er "$earlier" '
         {schema_version: 1, stage: $stage,
          inputs: ([inputs | split("\t")
                    | {key: .[0],
                       value: (if .[1] == "A"
                               then (.[2] | split("\u001f") | map(select(length > 0)))
                               else .[2] end)}]
-                  | from_entries)}' 2>/dev/null)"
+                  | from_entries)}
+        + (if $er == "" then {}
+           else {earlier_run: ($er | split("\u001f") | map(select(length > 0)))} end)' 2>/dev/null)"
     [[ -n "$json" ]] || return 1
     printf '%s\n' "$json" | atomic_write "$index" || return 1
     printf '%s\n' "$index"
@@ -486,6 +535,9 @@ _inputs_check_required() {
     fi
     [[ -n "$manifest" && -f "$manifest" ]] || return 0
     _inputs_build_producer_index "$plugins_root" "$state_dir"
+    # #2326: a stage that judges results is checked against this run's files only.
+    local _IR_THIS_RUN_ONLY=0
+    _inputs_judges_results "$manifest" && _IR_THIS_RUN_ONLY=1
 
     local -a violations=()
     local id req paths line eff producer present damaged
@@ -561,13 +613,22 @@ stage_inputs_prompt_block() {
     printf 'The engine resolved every input this stage declared. These are the\n'
     printf 'literal paths — read them with your normal file tools. Do NOT guess a\n'
     printf 'filename, and do NOT search the tree for these artifacts.\n\n'
-    jq -r '.inputs | to_entries[]
+    # #2326 (ADR-050 §8): an earlier run's copy is labelled where it is listed.
+    jq -r --arg label "($ZB_EARLIER_RUN_LABEL)" '
+           (.earlier_run // []) as $er
+           | def show: . as $p | $p + (if ($er | index($p)) != null then "   " + $label else "" end);
+           .inputs | to_entries[]
            | if (.value | type) == "array"
-             then "  \(.key):\n" + ([.value[] | "    - \(.)"] | join("\n"))
-             else "  \(.key): \(.value)" end' "$idx" 2>/dev/null
+             then "  \(.key):\n" + ([.value[] | "    - " + show] | join("\n"))
+             else "  \(.key): " + (.value | show) end' "$idx" 2>/dev/null
     printf '\n'
     printf 'A path listed here may not exist yet if its producer declared it\n'
     printf 'optional; treat an absent optional input as empty.\n'
+    if jq -e '(.earlier_run // []) | length > 0' "$idx" >/dev/null 2>&1; then
+        printf '\nA path marked "from an earlier run" is a copy an earlier run saved: this\n'
+        printf 'run has not produced that file. Use it only as a reference. It is not this\n'
+        printf 'run'"'"'s result, and anything it calls done was not done in this run.\n'
+    fi
 }
 
 # ─── _summaries_stage_summary_path <stage> <plugins_root> <state_dir> ────────
