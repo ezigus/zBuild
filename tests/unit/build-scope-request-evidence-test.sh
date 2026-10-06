@@ -64,6 +64,15 @@ RESP7="$(printf 'BLOCKED: x requires tests/unit/order-test.sh (out of scope)\n**
 assert_eq "[E7] a not-reproduced answer names the path build ran" "tests/unit/order-test.sh" \
     "$(_build_not_reproduced "$RESP7")"
 assert_eq "[E7] ...and that file is not requested" "" "$(_build_blocked_request "$RESP7" "$PLAN")"
+# review #2332: the plain (no markdown) form of the new answer reads the path too.
+RESP7B="$(printf 'BLOCKED: x requires tests/unit/order-test.sh (out of scope)\nANSWER test finding 1: nothing to do — not reproduced: tests/unit/order-test.sh\n')"
+assert_eq "[E7] the plain answer form names the path build ran" "tests/unit/order-test.sh" \
+    "$(_build_not_reproduced "$RESP7B")"
+assert_eq "[E7] ...and that file is not requested" "" "$(_build_blocked_request "$RESP7B" "$PLAN")"
+# review #2332: the duplicate check is literal — a path that looks like a glob
+# pattern is not mistaken for another path.
+assert_eq "[E7] a bracketed path is kept beside its look-alike" $'tests/a1.sh\ntests/a[1].sh' \
+    "$(_build_not_reproduced "$(printf 'NOT_REPRODUCED: tests/a1.sh\nNOT_REPRODUCED: tests/a[1].sh\n')")"
 
 print_test_section "E5: an actual out-of-scope edit"
 R5="$(_build_edited_collateral_request "" "" "tests/unit/lint-test.sh")"

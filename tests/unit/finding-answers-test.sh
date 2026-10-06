@@ -187,6 +187,11 @@ assert_eq "[A9] 'not reproduced:' on its own is nothing to do" "nothing to do" \
 assert_contains "[A9] ...and keeps the path" \
     "$(jq -r '.["test finding 3"].why // empty' <<< "$_n" 2>/dev/null)" "tests/unit/c-test.sh"
 
+# review #2332: a colon after the answer word is accepted for every word, not
+# only "not reproduced" — models write "done: <reason>" as often as "done — ".
+_a10="$(ZBUILD_CURRENT_STAGE=build answers_parse 'ANSWER test finding 3: done: fixed the loop')"
+assert_eq "[A10] 'done: reason' is read as done" "done" "$(jq -r '."test finding 3".answer // "absent"' <<< "$_a10")"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))
