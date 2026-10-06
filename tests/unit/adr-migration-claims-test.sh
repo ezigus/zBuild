@@ -65,13 +65,41 @@ else
         "still on the old path: $_unmigrated"
 fi
 
+# ── [#2035/SPEC-5]: review-lens and review-report use the shared parser ────
+# The SPEC-2 loop only checks plugin.sh for plan/security-lens/monitor.
+# review-report's migration lives in lib/lenses.sh, so we check every non-test
+# .sh file in each plugin directory: at least one must call _llm_envelope_parse.
+_unmigrated_rl=""
+for _rl_dir in review-lens review-report; do
+    _rl_dir_path="$REPO_ROOT/plugins/agent/$_rl_dir"
+    [[ -d "$_rl_dir_path" ]] || continue
+    _dir_found=0
+    while IFS= read -r -d '' _f; do
+        if grep -qE '_llm_envelope_(parse|classify)' "$_f"; then
+            _dir_found=1
+        fi
+    done < <(find "$_rl_dir_path" -name '*.sh' -not -path '*/tests/*' -print0)
+    if [[ "$_dir_found" -eq 0 ]]; then
+        _unmigrated_rl+="$_rl_dir "
+    fi
+done
+if [[ -z "$_unmigrated_rl" ]]; then
+    assert_pass "[#2035/SPEC-5]: review-lens and review-report have _llm_envelope_parse in non-test sh files"
+else
+    assert_fail "[#2035/SPEC-5]: review-lens and review-report have _llm_envelope_parse in non-test sh files" \
+        "no _llm_envelope_parse in non-test code: $_unmigrated_rl"
+fi
+
 # ── SPEC-3: a stage NOT migrated is not described as if it were ────────────
 # review-lens is the counter-example the ADR got wrong. It is allowed to stay on
 # `extract_first_json_object` — it fails visibly, emitting review_lens.unparseable
 # and a summary that says the lens reviewed nothing — but the ADR must not claim
 # otherwise. This asserts the two agree, in whichever direction they agree.
+#
+# The grep uses ^[^#]* to exclude comment lines: a comment at plugin.sh:403
+# mentions extract_first_json_object but the actual call is _llm_envelope_parse.
 _rl="$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
-if [[ -f "$_rl" ]] && grep -qE 'extract_first_json_object' "$_rl"; then
+if [[ -f "$_rl" ]] && grep -qE '^[^#]*extract_first_json_object' "$_rl"; then
     # Not migrated. The ADR must say so, or say nothing.
     if grep -qE 'All four Pattern-1 stages.*review' "$ADR"; then
         assert_fail "SPEC-3: the ADR does not claim review-lens is migrated" \
@@ -101,6 +129,44 @@ if [[ -z "$_stale" ]]; then
 else
     assert_fail "SPEC-4: no live code cites a retired ADR as authority" \
         "cited as authority though Retired: $_stale"
+fi
+
+# ── [#2035/SPEC-4]: comment-excluding grep does not fire on review-lens ─────
+# The SPEC-3 grep uses ^[^#]* so a comment at plugin.sh:403 that mentions
+# extract_first_json_object does not trigger the not-migrated branch.
+# After migration, the comment-excluding grep must return no match on plugin.sh.
+_rl_spec4="$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
+if [[ ! -f "$_rl_spec4" ]] || ! grep -qE '^[^#]*extract_first_json_object' "$_rl_spec4"; then
+    assert_pass "[#2035/SPEC-4]: comment-excluding grep does not trigger on review-lens/plugin.sh"
+else
+    assert_fail "[#2035/SPEC-4]: comment-excluding grep does not trigger on review-lens/plugin.sh" \
+        "non-comment extract_first_json_object found; SPEC-3 not-migrated branch would fire"
+fi
+
+# ── [#2035/SPEC-1]: ADR-028 has no stale "not migrated" claim ───────────────
+# After migration, no sentence in ADR-028 should call review-lens or
+# review-report "not migrated". Fails on the current ADR (lines 189 and 193
+# contain that text) and passes once those lines are replaced.
+if grep -qE '(review-lens|review-report).*\*\*not\*\*.*migrat|\*\*not\*\*.*migrat.*(review-lens|review-report)' "$ADR"; then
+    assert_fail "[#2035/SPEC-1]: ADR-028 has no text calling review-lens or review-report not migrated" \
+        "stale not-migrated claim still present in ADR-028"
+else
+    assert_pass "[#2035/SPEC-1]: ADR-028 has no text calling review-lens or review-report not migrated"
+fi
+
+# ── [#2035/SPEC-6]: ADR-028 names the schema-gate functions for both stages ─
+# After migration, ADR-028 must positively name _review_lens_envelope_schema_ok
+# and _rr_lens_envelope_schema_ok in its migration record. Fails on the current
+# ADR (neither name appears) and passes once the ADR update adds the migration note.
+_missing_gates=""
+for _fn in _review_lens_envelope_schema_ok _rr_lens_envelope_schema_ok; do
+    grep -qF "$_fn" "$ADR" || _missing_gates+="$_fn "
+done
+if [[ -z "$_missing_gates" ]]; then
+    assert_pass "[#2035/SPEC-6]: ADR-028 names _review_lens_envelope_schema_ok and _rr_lens_envelope_schema_ok"
+else
+    assert_fail "[#2035/SPEC-6]: ADR-028 names _review_lens_envelope_schema_ok and _rr_lens_envelope_schema_ok" \
+        "missing from ADR-028: $_missing_gates"
 fi
 
 print_test_results
