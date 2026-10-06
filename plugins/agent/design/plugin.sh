@@ -287,33 +287,6 @@ _design_state_blob_url() {
 #   $2 = plan_json_path
 #   $3 = output_design_md path
 #   $4 = artifact_dir
-# _design_prior_reusable <artifact_dir> — rc 0 when the prior run's design may
-# stand as this run's without a model call (#2225): the run resumes (the
-# default), this run has no design yet (so not a rewind), the prior design
-# passed design-gate — a pass recorded for that exact design.md — and
-# spec-coverage found it covered, the prior run did not stop on a finding no
-# stage owned (#2271), and the issue text is byte-identical. Anything else — design runs as before.
-# A resume used to re-run design every time (~20 min, #1835/#1837) because no
-# stage was told it was one.
-_design_prior_reusable() {
-    local ad="$1" rr="${ZBUILD_RESTORED_ARTIFACTS_DIR:-}"
-    [[ "${ZBUILD_RESUME:-1}" != "0" ]] || return 1
-    [[ -n "$rr" && -s "$rr/design.md" ]] || return 1
-    [[ ! -s "$ad/design.md" ]] || return 1
-    [[ "$(jq -r '.verdict // empty' "$rr/design-gate-result.json" 2>/dev/null)" == "pass" ]] || return 1
-    # The pass must be for THIS design.md, not an earlier one that a later
-    # iteration rewrote (or a partial kept after a timeout) — review #2229.
-    local _judged; _judged="$(jq -r '.data.design_sha // empty' "$rr/design-gate-result.json" 2>/dev/null)"
-    [[ -n "$_judged" && "$_judged" == "$(git hash-object "$rr/design.md" 2>/dev/null)" ]] || return 1
-    # The cycle's other exit condition: spec-coverage must have found it covered.
-    [[ "$(jq -r '.verdict // empty' "$rr/spec-coverage-result.json" 2>/dev/null)" == "covered" ]] || return 1
-    # #2271 (ADR-068): a run that stopped because nobody owned a finding left
-    # it for a human — design has to look again.
-    [[ ! -s "$rr/unowned-findings.md" ]] || return 1
-    local now="${ZBUILD_STATE_DIR:-$(dirname "$ad")}/intake.md" prior; prior="$(dirname "$rr")/intake.md"
-    [[ -s "$now" && -s "$prior" ]] && cmp -s "$now" "$prior"
-}
-
 _design_stage_run_inner() {
     local scope_manifest="$1"
     local plan_json_path="$2"
@@ -337,17 +310,9 @@ _design_stage_run_inner() {
     local design_verdict_sidecar="$artifact_dir/design-verdict.json"
     rm -f "$design_verdict_sidecar"
 
-    # #2225: a resumed run keeps a design the prior run already got past its gate.
-    if _design_prior_reusable "$artifact_dir"; then
-        cp "${ZBUILD_RESTORED_ARTIFACTS_DIR}/design.md" "$output_design_md"
-        emit_event "design.reused" "plugin=design" "source=prior_run" >/dev/null 2>&1 || true
-        _design_write_result "$artifact_dir" "pass" "complete" \
-            "reused the prior run's design (it passed design-gate; the issue text is unchanged)"
-        stage_summary_write "$artifact_dir/design-summary.md" "design" "pass" \
-            "reused the prior run's design — it passed design-gate and the issue text is unchanged" \
-            "Resumed run (#2225). Run with --no-resume to write a new design."
-        return 0
-    fi
+    # #2299 (ADR-050 §6): design always runs. A restored prior design reaches
+    # the prompt below as a reference to check — never this run's design as is.
+    # #2035 run 37289704344 kept an untested design in 1 second.
 
     if [[ ! -f "$plan_json_path" ]]; then
         error "_design_stage_run_inner: plan.json not found at $plan_json_path"

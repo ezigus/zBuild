@@ -1,6 +1,7 @@
 # ADR-050 — Prior-Work Reuse Contract (durable artifact store + per-stage self-seeding)
 
 **Status:** Accepted (2026-07-23)
+**Amended:** 2026-10-05 (#2299) — design always runs. The #2225 rule that kept a prior run's design without a model call is withdrawn; a restored design reaches the prompt as a reference to check (§6: never skip the stage on the basis of prior output).
 **Amended:** 2026-09-16 (#2111) — a run that ends `aborted` with `reason=llm_rate_limited` (ADR-054 §6) persists like any other outcome; re-adding the trigger label after the reset resumes from the state branch. The daemon's completion comment names the reset text so the operator knows when.
 **Amended:** 2026-08-23 (#141) — §7: git is the store, the folder is the working copy, and the push moves from CI into an always-run `persist` stage (ADR-059)
 
@@ -303,15 +304,45 @@ time (~20 min on #1835 and #1837) and the loop's rounds reset.
 - **`0` recreates.** `hydrate` restores nothing. It still fetches and adopts the
   saved-work history, so the next snapshot extends it instead of force-pushing a
   new one over it (review #2229).
-- **Each stage decides what `1` means for it.** design keeps the prior run's
-  design without a model call when design-gate passed that exact `design.md`
-  (it now records the hash it judged) and spec-coverage found it covered, the prior run did not
-  send the work back to design (`fault` specification/scope), this run has no
-  design yet (not a rewind), and the issue text (`intake.md`) is byte-identical;
-  otherwise it refines as before. Other stages already continue from restored
-  work (plan's checkpoint, test-author's and build's committed files).
+- **Each stage decides what `1` means for it.** Plan continues from its
+  checkpoint; test-author and build from their committed files. design
+  always runs (amended by #2299, below): the restored design is in its prompt
+  as a reference, never kept as this run's design.
 
-Verification: `tests/unit/resume-default-test.sh` (R1–R9).
+Verification: `tests/unit/resume-default-test.sh` (R1–R4, R12).
+
+## Amendment (2026-10-05, #2299): design always runs
+
+The #2225 bullet above first let design keep the prior run's design without a
+model call when design-gate had passed that exact `design.md`, spec-coverage had
+found it covered, this run had no design yet, and `intake.md` was unchanged.
+That rule never asked whether the run that wrote the design succeeded, or
+whether the design was ever built and tested. #2035 run 37289704344 kept run
+37262225813's design in 1 second; that design had been rewritten in the failed
+run's last round (SPEC-2/3 relabelled `[guard]`), never tested, and the relabel
+went straight into PR #2298. The prompt already tells the model to treat a
+prior design as a reference to verify against the current inputs; a skip means
+no model ever reads that line.
+
+- **design makes its model call on every run**, resumed or not. It emits no
+  `design.reused` (the event is gone).
+- **A restored prior design is a reference.** It reaches the prompt under
+  `## PRIOR DESIGN (a previous attempt on this issue — a hypothesis, not a
+  fact)`, with what has moved since, as §6 and #2172 require.
+- design-gate still records the hash of the `design.md` it judged
+  (`data.design_sha`); nothing skips a stage on it.
+
+## Enforced by
+
+- §2 (state branch, never in work-branch history; snapshots never touch the working tree) → `tests/unit/artifact-persist-test.sh`
+- §4 (a snapshot at each stage boundary; a failed snapshot never aborts the run) → `tests/integration/artifact-snapshot-runner-test.sh`
+- §4 (#1921: persist's own result joins the store; the secret gate runs before the push) → `tests/unit/persist-stage-test.sh`
+- §5 (`_read_prior_output` order) → `tests/unit/prior-output-reader-test.sh`
+- §6 (never skip a stage on the basis of prior output — design always runs, the prior design is a reference in its prompt) → `tests/unit/resume-default-test.sh` R5–R11 (#2299)
+- §7 (persist is an always-run stage; restore never writes over live artifacts) → `tests/unit/template-always-run-test.sh`, `tests/unit/stage-input-resolve-precedence-test.sh`
+- Implementation notes (intake adopts an existing remote work branch) → `tests/integration/intake-branch-ahead-count-test.sh`
+- #2225 (`ZBUILD_RESUME` defaults to 1; `--no-resume` restores nothing yet still fetches and adopts; design-gate records the judged design's hash) → `tests/unit/resume-default-test.sh` R1–R4, R12
+- Not yet enforced (tracked from #2268): §1 (the engine names no stage), §3 (a deterministic gate never reuses a prior verdict), §7's local-ref precedence, the pr-open PR reuse, and #2111.
 
 ## References
 

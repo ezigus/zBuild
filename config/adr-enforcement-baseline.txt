@@ -51,7 +51,6 @@ ADR-046-design-verify-shift-left.md
 ADR-047-stage-agnostic-mechanics.md
 ADR-048-release-versioning-signing.md
 ADR-049-vision-document-standard.md
-ADR-050-prior-work-reuse-contract.md
 ADR-051-engine-owned-stage-keyed-data-provision.md
 ADR-052-engine-owned-run-worktree.md
 ADR-053-test-flake-policy.md
