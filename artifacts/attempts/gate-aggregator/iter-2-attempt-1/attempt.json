@@ -1,0 +1,13 @@
+{
+  "stage": "gate-aggregator",
+  "cycle_iter": 2,
+  "attempt": 1,
+  "rc": "0",
+  "generated_at": "2026-10-06T13:02:57Z",
+  "files": 2,
+  "outputs": {
+    "gate-aggregator-result.json": "changed",
+    "gate-aggregator-summary.md": "unchanged"
+  },
+  "progress": true
+}
