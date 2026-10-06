@@ -160,6 +160,11 @@ _q3 quoted " covers: R-1" " covers: R-2" "" 'say \"which\" file is missing'
 assert_contains "[Q3] (fixture) the quoted requirement is read" "$_VIOL" 'REQUIREMENT_NOT_COVERED R-3 (say "which" file is missing)'
 assert_contains "[Q3] a requirement with quotes in it is quoted once, unbroken" "$_FB" \
     'requirement R-3 from the issue is not covered by any SPEC: say "which" file is missing.'
+# review #2320 round 2: a backslash in a requirement reaches design as written, not doubled.
+_q3 backslash " covers: R-1" " covers: R-2" "" 'see C:\\tmp'
+assert_contains "[Q3] (fixture) the backslash requirement is read" "$_VIOL" 'REQUIREMENT_NOT_COVERED R-3 (see C:'
+assert_contains "[Q3] a backslash in a requirement is not doubled" "$_FB" \
+    'requirement R-3 from the issue is not covered by any SPEC: see C:\tmp.'
 _q3 covered " covers: R-1 R-3" " covers: R-2"
 assert_eq "[Q3] every requirement covered (one by a [done] SPEC) passes" "pass" "$_V"
 _q3 nolist "" "" no-req

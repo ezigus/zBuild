@@ -210,11 +210,13 @@ design_gate_run() {
     # no model decides what the issue asked for.
     if [[ $_accept_ok -eq 1 && -s "$req_json" ]]; then
         local _rid _rtext
-        while IFS=$'\t' read -r _rid _rtext; do
+        # Unit separator, not @tsv: @tsv would double every backslash in the
+        # text (review #2320). Intake strips control characters, so it never occurs.
+        while IFS=$'\x1f' read -r _rid _rtext; do
             [[ -z "$_rid" ]] && continue
             [[ "$_covered" == *" $_rid "* ]] \
                 || violations+=("REQUIREMENT_NOT_COVERED $_rid ($_rtext)")
-        done < <(jq -r '.requirements[]? | [.id, (.text | gsub("[\t\n]"; " "))] | @tsv' "$req_json" 2>/dev/null || true)
+        done < <(jq -r '.requirements[]? | .id + "\u001f" + (.text | gsub("[[:cntrl:]]"; " "))' "$req_json" 2>/dev/null || true)
     fi
 
     # ── C5 WIRING: section present ("none" ok); each concrete path exists ────
