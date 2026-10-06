@@ -217,6 +217,24 @@ C1 (every model-calling plugin declares the file) and C2 (one file per map
 element, and the name cannot leave the artifacts folder), and by
 `scripts/lib/lint-stage-checkpoint.sh` (every declared path resolves).
 
+**Amended 2026-10-06 (#2325): notes from an earlier outer round are labelled.**
+The notes file is kept across the rounds of the outer loop (ADR-068), because
+what a stage explored is still useful. But a new outer round only starts because
+the checks rejected the last one, so those notes do not describe the current
+state: on #2035 run 37262225813, outer round 2's test-author read round 1's
+"Status: DONE" as current and wrote nothing in 45 minutes. In outer round 2 and
+later, the prompt shows the notes an earlier round saved under their own heading,
+saying they are from a previous round whose result was not accepted, for
+reference only. The notes are not changed or deleted. Outer round 1, and a retry
+inside the same round, read as before. The outermost loop publishes its round as
+`ZBUILD_OUTER_ROUND` (an inner loop does not change it); when a round's first
+prompt is built, the engine records in `<notes>.rounds` how long the notes file
+was, and everything before that point belongs to earlier rounds. Enforced by
+`tests/unit/checkpoint-outer-round-test.sh` O1 (each stage knows its outer round,
+nested loops included), O2 (round 2 labels round 1's notes), O3 (round 1 and its
+retries are unchanged), O4 (a retry inside round 2 reads its own notes as before)
+and O5 (the notes file is kept).
+
 ### 6. Carry-forward rides on the existing summary channel
 
 #1986 has every stage publish a summary and every following stage ingest them. A

@@ -89,6 +89,13 @@ _CYCLE_EXIT_COMBINATOR=""
 _CYCLE_UNOWNED=""
 _CYCLE_EXIT_CONDITIONS=()
 
+# #2325 (ADR-063 §5): how many loops this one is nested inside. Only the
+# outermost loop (depth 0) publishes ZBUILD_OUTER_ROUND, so a stage knows which
+# outer round it runs in even though an inner loop restarts its own counter at
+# round 1 each outer round (ADR-068 §2). The stage checkpoint uses it to tell
+# notes saved in an earlier outer round from this round's.
+_CYCLE_NEST_DEPTH=0
+
 # #833: last-evaluated termination predicate, stashed by _cycle_check_until /
 # _cycle_check_abort_when, read by _cycle_render_predicate_result for the
 # cycle OUTPUT banner. kind = exit_when | abort_when.
@@ -1625,6 +1632,7 @@ _cycle_iter_dispatch() {
         _cycle_emit_member_dispatch_start "$_cyc_pos" "$s" "$_member_kind_pre"
         export ZBUILD_CYCLE_ITER="$iter"
         export ZBUILD_CYCLE_ID="${_CYCLE_TRAP_CYCLE_ID}"
+        [[ "${_CYCLE_NEST_DEPTH:-0}" -eq 0 ]] && export ZBUILD_OUTER_ROUND="$iter"
         # Wave 19-B (#718): N-level recursive seq label via prefix accumulation.
         # Each cycle entry appends `.<iter>.<position>` to the inherited prefix
         # in ZBUILD_SEQ_PREFIX. Bottoms out at any depth — single-cycle templates
@@ -1734,8 +1742,10 @@ _cycle_iter_dispatch() {
             # rounds decides whether this outer round may carry on past it.
             local _inner_on_max_var="_TPL_CYCLE_ON_MAX_${s//-/_}"
             local _inner_on_max="${!_inner_on_max_var:-continue}"
+            _CYCLE_NEST_DEPTH=$(( ${_CYCLE_NEST_DEPTH:-0} + 1 ))
             cycle_orchestrator_run "$s" "$state_dir" "$state_file"
             rc=$?
+            _CYCLE_NEST_DEPTH=$(( _CYCLE_NEST_DEPTH - 1 ))
             # Wave 19-B (#718): restore prior seq prefix BEFORE any return path
             # (verdict normal, rc=6, rc=130, rc=143). Prefix must not leak to
             # sibling members of THIS cycle or to callers above.
@@ -2130,6 +2140,8 @@ _cycle_iter_dispatch() {
     _CYCLE_VERIFIED_ITER="$iter"
     _CYCLE_VERIFIED_BLOB="$blob"
     unset ZBUILD_CYCLE_ITER ZBUILD_CYCLE_ID ZBUILD_STAGE_IO_SEQ_LABEL
+    # ZBUILD_OUTER_ROUND is cleared by the cycle_orchestrator_run wrapper, on
+    # every way out of the outer loop (#2325); each round re-sets it.
     # #566: restore caller's ZBUILD_CURRENT_STAGE — preserves prior value if
     # set, or unsets (we own the var only within this loop).
     if [[ $_prior_stage_set -eq 1 ]]; then
@@ -2314,7 +2326,23 @@ _cycle_no_commits_ahead() {
 }
 
 # ─── cycle_orchestrator_run <cycle_id> <state_dir> <state_file> ──────────────
+# #2325: the outermost loop's round (ZBUILD_OUTER_ROUND) is cleared on EVERY way
+# out, not only the normal end, so no stage after the loop sees a stale round.
+# Called without `||` (bash ignores errexit inside a function called from an
+# `||` or `if` list): errexit is saved, the body runs, errexit is restored. The
+# body runs with `set +e` itself, so this changes nothing about how it runs.
 cycle_orchestrator_run() {
+    local _cor_had_e=0 _cor_rc=0
+    [[ $- == *e* ]] && _cor_had_e=1
+    set +e
+    _cycle_orchestrator_run_body "$@"
+    _cor_rc=$?
+    [[ "${_CYCLE_NEST_DEPTH:-0}" -eq 0 ]] && unset ZBUILD_OUTER_ROUND
+    [[ $_cor_had_e -eq 1 ]] && set -e
+    return "$_cor_rc"
+}
+
+_cycle_orchestrator_run_body() {
     local cycle_id="$1" state_dir="$2" state_file="$3"
     # Capture caller's errexit FIRST — orchestrator runs with set +e internally
     # so a stage failure doesn't yank the rug out from a set-e-active caller.

@@ -106,6 +106,47 @@ _checkpoint_prior_body() {
     cat "$restored/$base" 2>/dev/null
 }
 
+# ─── _checkpoint_round_offset <checkpoint_path> ──────────────────────────────
+# #2325: where this outer round's notes begin in the notes file, in bytes. Empty
+# when no outer round is known (ZBUILD_OUTER_ROUND unset): the block then reads
+# exactly as it did before rounds were tracked.
+#
+# The model writes the notes with its own file tools, so the engine cannot stamp
+# them as they are written. Instead a sidecar (<notes>.rounds, one "<round>
+# <bytes>" line per outer round) records how long the file was when each round's
+# first prompt was built. Everything before the current round's offset was saved
+# in an earlier round. The notes file itself is never touched.
+#
+# The first round seen starts at 0: notes that predate any record are of unknown
+# origin, and are read as today rather than called stale.
+#
+# Rounds only move forward, so the sidecar's entries are in rising round order
+# and only the last one matters. A round number lower than the last would be
+# read as a new round, which marks more notes as earlier rather than fewer.
+_checkpoint_round_offset() {
+    local cp_path="$1" cur="${ZBUILD_OUTER_ROUND:-}"
+    [[ "$cur" =~ ^[0-9]+$ ]] || return 0
+    local side="${cp_path}.rounds" size=0
+    [[ -f "$cp_path" ]] && size="$(wc -c 2>/dev/null < "$cp_path")"
+    size="${size//[[:space:]]/}"
+    [[ "$size" =~ ^[0-9]+$ ]] || size=0
+    local last_round="" last_off="" line
+    if [[ -s "$side" ]]; then
+        while IFS= read -r line; do
+            [[ "$line" =~ ^([0-9]+)\ ([0-9]+)$ ]] || continue
+            last_round="${BASH_REMATCH[1]}"; last_off="${BASH_REMATCH[2]}"
+        done < "$side"
+    fi
+    if [[ -z "$last_round" ]]; then
+        last_round="$cur"; last_off=0
+        printf '%s %s\n' "$cur" 0 >> "$side" 2>/dev/null || true
+    elif [[ "$last_round" != "$cur" ]]; then
+        last_round="$cur"; last_off="$size"
+        printf '%s %s\n' "$cur" "$size" >> "$side" 2>/dev/null || true
+    fi
+    printf '%s' "$last_off"
+}
+
 # ─── checkpoint_prompt_block <manifest> <state_dir> ──────────────────────────
 # The engine-owned prompt block for a declaring stage: the literal path, the
 # instruction, and the prior attempt's body when one exists. Empty output when
@@ -117,6 +158,18 @@ checkpoint_prompt_block() {
     [[ -n "$cp_path" ]] || return 0
 
     local prior; prior="$(_checkpoint_prior_body "$cp_path")"
+
+    # #2325: split off the notes an earlier outer round saved. That round's
+    # result was rejected, so its "done" is not this round's.
+    local earlier="" offset; offset="$(_checkpoint_round_offset "$cp_path")"
+    if [[ "$offset" =~ ^[0-9]+$ && "$offset" -gt 0 && -s "$cp_path" ]]; then
+        local size; size="$(wc -c 2>/dev/null < "$cp_path")"; size="${size//[[:space:]]/}"
+        # A file shorter than the offset was rewritten this round: all of it is this round's.
+        if [[ "$size" =~ ^[0-9]+$ && "$size" -ge "$offset" ]]; then
+            earlier="$(head -c "$offset" "$cp_path" 2>/dev/null)"
+            prior="$(tail -c "+$((offset + 1))" "$cp_path" 2>/dev/null)"
+        fi
+    fi
 
     printf '%s\n' "$_ZB_CHECKPOINT_MARKER"
     printf '\n'
@@ -131,6 +184,17 @@ checkpoint_prompt_block() {
     printf 'it will not appear in any diff and cannot violate your scope. Keep it\n'
     printf 'short and factual — a handover note, not a transcript.\n'
     printf 'It does NOT replace your required output; produce that as instructed.\n'
+
+    if [[ -n "${earlier//[[:space:]]/}" ]]; then
+        printf '\n### NOTES FROM THE PREVIOUS ROUND (reference only)\n\n'
+        printf 'These notes were saved in a previous round of this loop. The result of\n'
+        printf 'that round was not accepted by the checks, so the notes do not describe\n'
+        printf 'where the work stands now: anything they call done or finished was not\n'
+        printf 'accepted.\n'
+        printf 'Use them only as a reference for what was already explored. Start from the\n'
+        printf 'current state of the repository and the findings you were given this round.\n\n'
+        printf '%s\n' "$earlier"
+    fi
 
     if [[ -n "${prior//[[:space:]]/}" ]]; then
         printf '\n### PRIOR EXPLORATION (resumed from checkpoint)\n\n'
