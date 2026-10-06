@@ -134,7 +134,7 @@ source "$REPO_ROOT/plugins/tool/design-gate/plugin.sh"
 _ROOT="$TEST_TEMP_DIR/repo"; mkdir -p "$_ROOT/scripts"
 printf 'one\ntwo\nthree\n' > "$_ROOT/scripts/x.sh"
 export ZBUILD_REPO_ROOT="$_ROOT"
-_q3() {   # _q3 <name> <covers-for-SPEC-1> <covers-for-SPEC-2> [no-req]
+_q3() {   # _q3 <name> <covers-for-SPEC-1> <covers-for-SPEC-2> [no-req] [R-3 text as JSON]
     _S="$TEST_TEMP_DIR/q3-$1"; _A="$_S/artifacts"; mkdir -p "$_A"
     printf '{}' > "$_S/pipeline-state.json"
     printf '%s\n' '# Design' '```scope' 'scripts/x.sh' '```' '```acceptance' \
@@ -143,7 +143,7 @@ _q3() {   # _q3 <name> <covers-for-SPEC-1> <covers-for-SPEC-2> [no-req]
         'TESTFILES:' 'SPEC-1: tests/t.sh' 'WIRING: none' '```' > "$_A/design.md"
     [[ "${4:-}" == "no-req" ]] || printf '%s\n' '{"schema_version":1,"source":"checkboxes","requirements":[' \
         '{"id":"R-1","text":"fail on a missing file"},{"id":"R-2","text":"read the file"},' \
-        '{"id":"R-3","text":"say which file is missing"}]}' > "$_A/requirements.json"
+        "{\"id\":\"R-3\",\"text\":\"${5:-say which file is missing}\"}]}" > "$_A/requirements.json"
     design_gate_run "design-gate" "$_S/pipeline-state.json" >/dev/null 2>&1
     _V="$(jq -r '.verdict' "$_A/design-gate-result.json" 2>/dev/null || echo MISSING)"
     _VIOL="$(jq -r '.violations[]' "$_A/design-gate-result.json" 2>/dev/null || true)"
@@ -154,7 +154,12 @@ assert_eq "[Q3] a design that leaves R-3 uncovered fails" "fail" "$_V"
 assert_contains "[Q3] the violation names R-3 and its text" "$_VIOL" "REQUIREMENT_NOT_COVERED R-3 (say which file is missing)"
 assert_eq "[Q3] only the uncovered requirement is named" "1" "$(grep -c 'REQUIREMENT_NOT_COVERED' <<< "$_VIOL")"
 assert_contains "[Q3] the feedback says it in plain words" "$_FB" \
-    'requirement R-3 from the issue ("say which file is missing") is not covered by any SPEC'
+    'requirement R-3 from the issue is not covered by any SPEC: say which file is missing.'
+# review #2320: a requirement whose text has double quotes still reads as one sentence.
+_q3 quoted " covers: R-1" " covers: R-2" "" 'say \"which\" file is missing'
+assert_contains "[Q3] (fixture) the quoted requirement is read" "$_VIOL" 'REQUIREMENT_NOT_COVERED R-3 (say "which" file is missing)'
+assert_contains "[Q3] a requirement with quotes in it is quoted once, unbroken" "$_FB" \
+    'requirement R-3 from the issue is not covered by any SPEC: say "which" file is missing.'
 _q3 covered " covers: R-1 R-3" " covers: R-2"
 assert_eq "[Q3] every requirement covered (one by a [done] SPEC) passes" "pass" "$_V"
 _q3 nolist "" "" no-req

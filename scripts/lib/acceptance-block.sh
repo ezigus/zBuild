@@ -207,6 +207,7 @@ acceptance_spec_evidence() {
     [[ "$_ACC_SPEC_STATUS" == "done" && "$_ACC_SPEC_REST" == *" evidence: "* ]] || return 0
     local _ev="${_ACC_SPEC_REST#* evidence: }"
     local -a _items=()
+    # %% (from the FIRST " covers: "), not %: evidence ends where covers begins.
     read -ra _items <<< "${_ev%% covers: *}"
     [[ ${#_items[@]} -gt 0 ]] && printf '%s\n' "${_items[@]}"
     return 0

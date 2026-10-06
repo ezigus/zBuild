@@ -114,7 +114,9 @@ _dg_plain() {
         MISSING_TESTFILE_FOR_SPEC*) printf '%s has no test file listed — add a "%s: <test file>" line under TESTFILES:' "$id" "$id" ;;
         "WIRING_MISSING ("*) printf 'the acceptance block does not say which existing file calls the new code — add a WIRING: line naming it, or WIRING: none if nothing calls it yet' ;;
         REQUIREMENT_NOT_COVERED*) local _rt="${rest#* (}"; _rt="${_rt%)}"
-            printf 'requirement %s from the issue ("%s") is not covered by any SPEC — end the line of the SPEC that delivers it with " covers: %s" (before any " evidence: "), or add a SPEC for it; if the code already does it, a [done] SPEC with evidence covers it' "$id" "$_rt" "$id" ;;
+            # The requirement's own words go last, unquoted, so quotes inside them
+            # cannot break the sentence (review #2320).
+            printf 'requirement %s from the issue is not covered by any SPEC: %s. End the line of the SPEC that delivers it with " covers: %s" (before any " evidence: "), or add a SPEC for it; if the code already does it, a [done] SPEC with evidence covers it' "$id" "$_rt" "$id" ;;
         WIRING_MISSING*)     printf 'the WIRING file %s does not exist — name a file that exists in the repository, or WIRING: none' "$id" ;;
         *) printf '%s' "$v" ;;
     esac
