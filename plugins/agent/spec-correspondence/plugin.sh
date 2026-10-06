@@ -51,21 +51,11 @@ _sc_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || t
 # Naming the failure mode matters: without it the judge evaluates "is this a
 # good test?", and a good test that tests the wrong thing sails through.
 _sc_prompt() {
-    printf '%s' "You are checking ONE acceptance requirement against ONE test assertion.
+    cat <<EOF
+You are checking ONE acceptance requirement against ONE test assertion.
 
-You will be shown exactly two things:
-
-REQUIREMENT — a single sentence from a design document.
-ASSERTION   — the source of the test assertion tagged as covering it.
-
-You cannot see the implementation. Do not guess what it does.
-Judge only this: if the ASSERTION passes, does that establish the REQUIREMENT?
-
-The failure you are looking for is an assertion that tests something real
-and specific, but not what the requirement says — including asserting its
-opposite. It will look like reasonable test code. That is expected. The
-question is not whether it is a good test. The question is whether it
-tests THIS requirement.
+## What you own
+One judgement: if the ASSERTION passes, does that establish the REQUIREMENT?
 
 Answer in exactly two lines:
 
@@ -83,13 +73,28 @@ Reserve the mismatch verdict for a genuine disagreement between the assertion
 and the requirement. An assertion aimed at the right property but narrower in
 reach is partial, not mismatch.
 
-Do not suggest a fix. Do not rewrite the assertion. Answer only.
+## What you judge against
+Exactly two things, shown at the end of this part:
+
+REQUIREMENT — a single sentence from a design document.
+ASSERTION   — the source of the test assertion tagged as covering it.
+
+The failure you are looking for is an assertion that tests something real
+and specific, but not what the requirement says — including asserting its
+opposite. It will look like reasonable test code. That is expected. The
+question is not whether it is a good test. The question is whether it
+tests THIS requirement.
 
 REQUIREMENT:
 $1
 
 ASSERTION:
-$2"
+$2
+
+## What you must not do
+- You cannot see the implementation. Do not guess what it does.
+- Do not suggest a fix. Do not rewrite the assertion. Answer only.
+EOF
 }
 
 # _sc_call <tier> <task> — frame the task through the persona registry and
@@ -136,11 +141,13 @@ _sc_parse_reason() {
 # one prompt, one answer line per SPEC (#2143).
 _sc_batch_prompt() {
     local -n _bp_ids="$1" _bp_txts="$2" _bp_srcs="$3"
-    printf '%s' "You are checking acceptance requirements against the test assertions tagged as covering them, one pair at a time.
+    cat <<'EOF'
+You are checking acceptance requirements against the test assertions tagged as covering them, one pair at a time.
 
-For EACH pair below, judge only this: if the ASSERTION passes, does that establish the REQUIREMENT? You cannot see the implementation. Do not guess what it does. The failure you are looking for is an assertion that tests something real and specific, but not what the requirement says — including its opposite.
+## What you own
+For EACH pair, one judgement: if the ASSERTION passes, does that establish the REQUIREMENT?
 
-Answer with exactly one line per SPEC, in this form and nothing else — begin each line with that SPEC's identifier from its \`###\` heading, exactly as written there:
+Answer with exactly one line per SPEC, in this form and nothing else — begin each line with that SPEC's identifier from its `###` heading, exactly as written there:
 
 <identifier>: VERDICT: <corresponds, partial, mismatch or uncheckable> | REASON: <one sentence>
 
@@ -149,12 +156,21 @@ Answer with exactly one line per SPEC, in this form and nothing else — begin e
   mismatch    — it tests something else, or the reverse of what is required.
   uncheckable — the requirement is too vague to say what would establish it.
 
-Reserve mismatch for a genuine disagreement. Do not suggest a fix. Do not rewrite anything.
-"
+Reserve mismatch for a genuine disagreement.
+
+## What you judge against
+The pairs below, each a REQUIREMENT and the ASSERTION tagged as covering it. The failure you are looking for is an assertion that tests something real and specific, but not what the requirement says — including its opposite.
+EOF
     local _i
     for (( _i=0; _i<${#_bp_ids[@]}; _i++ )); do
         printf '\n### %s\nREQUIREMENT:\n%s\n\nASSERTION:\n%s\n' "${_bp_ids[_i]}" "${_bp_txts[_i]}" "${_bp_srcs[_i]}"
     done
+    cat <<'EOF'
+
+## What you must not do
+- You cannot see the implementation. Do not guess what it does.
+- Do not suggest a fix. Do not rewrite anything.
+EOF
 }
 
 # _sc_write_result <dir> <verdict> <reason> <counts_json>

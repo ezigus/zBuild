@@ -379,12 +379,8 @@ PLAN_SCHEMA
 
     local _plan_instructions
     _plan_instructions="$(cat <<'PLAN_PROMPT'
-Tool use:
-- Explore with READ-ONLY tools (Read, Grep, Glob, and read-only Bash such as
-  find/grep/cat/git-log) to inspect files within the scope-manifest before
-  producing the plan. Keep exploration TARGETED and bounded (see TURN BUDGET).
-- Do NOT call Edit or Write, and do NOT run any command that modifies the tree.
-  This stage is read-only.
+## What you own
+A plan for the goal below: the plan.json the output contract above describes.
 
 Rules:
 - `schema_version` MUST be the integer 1.
@@ -395,7 +391,15 @@ Rules:
   entry MUST be a string repo-relative path under a scope-manifest prefix.
 - Keep steps small and independently testable.
 
-## Following the issue's own checklists
+## What you judge against
+The goal below, in the issue's own words, and the scope manifest after it.
+
+Tool use:
+- Explore with READ-ONLY tools (Read, Grep, Glob, and read-only Bash such as
+  find/grep/cat/git-log) to inspect files within the scope-manifest before
+  producing the plan. Keep exploration TARGETED and bounded (see TURN BUDGET).
+
+### Following the issue's own checklists
 
 If the goal text contains sections titled "Definition of done", "Acceptance
 criteria", "Anti-patterns", or "5-test trial" (or similar operational
@@ -538,6 +542,11 @@ $_plan_instructions"
         prompt+=$'\n## PRIOR PLAN (a previous attempt on this issue — reference & refine; verify against the CURRENT scope)\n\n'
         prompt+="$_prior_plan_json"$'\n'
     fi
+
+    # #2308: the stage's limits close its own text, after everything it judges
+    # against; the router adds the part every stage shares.
+    prompt+=$'\n## What you must not do\n'
+    prompt+=$'- Do NOT call Edit or Write, and do NOT run any command that modifies the tree.\n  This stage is read-only.\n'
 
     # ADR-032 (#855): the operator override is spliced in AFTER the contract
     # (_plan_instructions) so it follows the shipped charter. ADR-043: it rides

@@ -51,7 +51,7 @@ answers_prompt_block() {
         cat <<'EOF'
 Answer every finding listed above, one line each, in this form:
   ANSWER <stage> finding <n>: done — <what you changed for it>
-  ANSWER <stage> finding <n>: nothing to do — <why it is not yours to change>
+  ANSWER <stage> finding <n>: nothing to do — <why there is nothing for you to change>
 Judge each finding against your own job. Work on one finding can take more than one stage:
 if another stage already did something for it, that does not mean you have nothing to do.
 Say `done` only when you changed something for it, and say what you changed.

@@ -51,9 +51,22 @@ _ia_issue_is_placeholder() {
 }
 
 _ia_prompt() {
-    printf '%s' "You are checking whether a finished CHANGE does what an ISSUE asked for.
+    cat <<EOF
+You are checking whether a finished CHANGE does what an ISSUE asked for.
 
-You will be shown:
+## What you own
+One verdict on the whole issue: does the DIFF meet every requirement the issue
+states, in full — including what its tests must catch?
+
+Answer in at most four lines:
+
+VERDICT: pass | fail | unsure
+REASON: <one sentence>
+UNMET: <semicolon-separated issue requirements the diff does not meet; omit on pass>
+UNSURE: <semicolon-separated requirements you cannot tell are met, each named as listed; omit when sure>
+
+## What you judge against
+Five things, shown at the end of this part:
 
 ISSUE — what was asked for, in the requester's own words. This is the standard.
 ISSUE REQUIREMENTS — the issue's requirements, numbered R-1, R-2, … by the pipeline.
@@ -71,8 +84,8 @@ partly — a subset of the cases, a weaker condition, some of the files — is u
 
 An issue contains more than requirements — context, rationale, links, history.
 Those are not requirements. Judge every requirement the issue states, including
-what its tests must catch (for example \"putting the old code back turns the test
-red\"). The pipeline does not check those for you. For each one, ask: if the
+what its tests must catch (for example "putting the old code back turns the test
+red"). The pipeline does not check those for you. For each one, ask: if the
 change were broken, would its tests catch it? If they would not, it is unmet.
 
 Some REQUIREMENTS were not run against the old code: those that need work but
@@ -80,15 +93,6 @@ no code, and those design says are already done. Nothing but you checks them.
 For one already done, check the claim against the evidence shown. If you cannot
 tell whether such a requirement is met, say so rather than guess: a person will
 check it.
-
-Answer in at most four lines:
-
-VERDICT: pass | fail | unsure
-REASON: <one sentence>
-UNMET: <semicolon-separated issue requirements the diff does not meet; omit on pass>
-UNSURE: <semicolon-separated requirements you cannot tell are met, each named as listed; omit when sure>
-
-Do not suggest code. Answer only.
 
 ISSUE:
 $1
@@ -102,7 +106,13 @@ $2
 DIFF:
 $3
 
-TEST VERDICT: $4"
+TEST VERDICT: $4
+
+## What you must not do
+- Do not suggest code.
+- Do not guess whether a requirement is met: say you are unsure instead.
+- Answer only, in the form above.
+EOF
 }
 
 # _ia_write <dir> <verdict> <disposition> <reason> [unmet_json] [unsure_json]

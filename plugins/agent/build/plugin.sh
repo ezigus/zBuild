@@ -215,7 +215,7 @@ _build_stage_run_inner() {
 
     _build_compose_prompt_body "$prompt_input_file" "$_task_header" "$plan_payload" \
         "$_build_instructions" "$_design_decisions" "$_acceptance_testfiles" \
-        "$_acceptance_spec_ids" "$_iter_n"
+        "$_acceptance_spec_ids" "$_iter_n" "$(_build_compose_limits "$plan_files_csv")"
 
     # ADR-050 (#1581): cross-run seed — when a prior RUN of this issue produced a
     # build-summary (restored onto this runner), append a short advisory note so

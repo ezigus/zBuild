@@ -111,7 +111,8 @@ if grep -qF 'EXISTING CHECKS THIS CHANGE MAKES WRONG' <<< "$_p4"; then
 else
     assert_pass "[S4] no section without a block"
 fi
-assert_contains "[S4] the other-tag rule stands" "$_p4" "never change, move or remove it"
+# #2308: reworded so it no longer fights the checks the author is told to update.
+assert_contains "[S4] the other-tag rule stands" "$_p4" "belongs to other work: leave it as it is"
 
 print_test_section "S5: design is told"
 assert_contains "[S5] design's instructions describe the supersedes block" \

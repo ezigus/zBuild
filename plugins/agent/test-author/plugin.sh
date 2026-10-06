@@ -243,24 +243,37 @@ EXISTING CHECKS THIS CHANGE MAKES WRONG — these assertions exist already and a
 ${sup_block}"
     fi
 
+    # #2308: the stage's own text in three parts; the router adds the shared fourth.
+    local _spec_tag1; _spec_tag1="$(acceptance_spec_tag SPEC-1)"
     local prompt
-    prompt="You are the test author. Write the acceptance assertions for the requirements below, in the language and idiom the target repository already uses.
+    prompt="$(cat <<EOF
+You are the test author. Write the acceptance assertions for the requirements below, in the language and idiom the target repository already uses.
 
-You cannot see the implementation, and you must not guess at it. Write what the requirement DEMANDS, not what some implementation might do. Each assertion must be able to FAIL: if the requirement were not met, your assertion must not pass.
+## What you own
+An assertion for every requirement below, written to its testfile(s)${sup_block:+, and the existing checks listed below brought up to the new behaviour}.
 
-Tag each assertion with the tag shown for its SPEC, exactly as shown, in the assertion's label — e.g. $(acceptance_spec_tag SPEC-1). Tags that carry THIS issue's number are yours: one already there whose SPEC is not in this contract is stale from an earlier design — remove the tag and keep the assertion. Any other tag (a bare [SPEC-n], or one naming another issue) belongs to other work: never change, move or remove it.
+Each assertion must be able to FAIL: if the requirement were not met, your assertion must not pass. Check the new value or file itself — the output, the field, the file's content — not only that the step finished without an error: a test that only checks that something ran passes on the old code too.
 
-REQUIREMENTS:
-${spec_block}
-${sup_section}
+Tag each assertion with the tag shown for its SPEC, exactly as shown, in the assertion's label — e.g. ${_spec_tag1}. Tags that carry THIS issue's number are yours: one already there whose SPEC is not in this contract is stale from an earlier design — remove the tag and keep the assertion.
+
 Some of these testfile(s) may already hold assertions from an earlier attempt at this contract: keep what is right, finish what is missing, fix what is wrong.
 
 Work one testfile at a time: read only what that file's SPECs need, write it to disk, and only then move on — write each file before you plan the next. Do not plan every SPEC up front. Your call has a time limit; a file already written survives it and is continued by the next attempt, and a plan that was never written is lost.
 
-Write or amend only the testfile(s) named above${sup_block:+, and the existing checks listed above}. Do not write, modify or stub any implementation file.
+You will be called again until you are done: what you wrote stays on disk and the next call picks up from it. When EVERY SPEC below has its assertion written to disk, end your reply with a line containing only:
+LOOP_COMPLETE
 
-You will be called again until you are done: what you wrote stays on disk and the next call picks up from it. When EVERY SPEC above has its assertion written to disk, end your reply with a line containing only:
-LOOP_COMPLETE"
+## What you judge against
+The requirements below. Write what each requirement DEMANDS, not what some implementation might do.
+
+REQUIREMENTS:
+${spec_block}${sup_section}
+## What you must not do
+- You cannot see the implementation, and you must not guess at it.
+- Write or amend only the testfile(s) named above${sup_block:+, and the existing checks listed above}. Do not write, modify or stub any implementation file.
+- A tag that does not carry this issue's number (a bare [SPEC-n], or one naming another issue) belongs to other work: leave it as it is${sup_block:+, except on the existing checks listed above}.
+EOF
+)"
 
     # ADR-063 §1 (#2170): the budget reaches the prompt from the values that
     # enforce it — never a literal. Same shape as design/plan/review-lens.

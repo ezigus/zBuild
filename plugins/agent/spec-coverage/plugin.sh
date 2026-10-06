@@ -50,24 +50,34 @@ _scv_issue_is_placeholder() {
 }
 
 _scv_prompt() {
-    printf '%s' "You are checking whether a DESIGN covers what an ISSUE asked for.
+    cat <<EOF
+You are checking whether a DESIGN covers what an ISSUE asked for.
 
-You will be shown three things:
+## What you own
+One verdict: what does the issue require that no SPEC covers?
+
+Check EVERY requirement,
+and list EVERY one that no SPEC fully covers — not only the first you find — by
+its id and words (R-2: <its words>). The design is revised once per round and
+fixes only what you list; a gap left out of this answer costs a whole round.
+
+Answer in exactly this form:
+
+VERDICT: covered | uncovered
+REASON: <one sentence>
+UNCOVERED: <every requirement no SPEC fully covers, separated by semicolons, all on this one line; omit when covered>
+
+## What you judge against
+Three things, shown at the end of this part:
 
 ISSUE — what was asked for, in the requester's own words.
 REQUIREMENTS — the issue's requirements, numbered R-1, R-2, … by the pipeline.
 ACCEPTANCE — the SPEC sentences the design commits to.
 
-Judge only this: what does the issue require that no SPEC covers?
-
-Judge every requirement in REQUIREMENTS by its words. Check EVERY requirement,
-and list EVERY one that no SPEC fully covers — not only the first you find — by
-its id and words (R-2: <its words>). The design is revised once per round and
-fixes only what you list; a gap left out of this answer costs a whole round.
-
-Read the ISSUE for what a requirement means. A SPEC may say which requirements
-it covers; check its words, not only the ids it names. When none are listed
-under REQUIREMENTS, read the requirements from the ISSUE itself.
+Judge every requirement in REQUIREMENTS by its words. Read the ISSUE for what a
+requirement means. A SPEC may say which requirements it covers; check its
+words, not only the ids it names. When none are listed under REQUIREMENTS, read
+the requirements from the ISSUE itself.
 
 An issue contains more than requirements — context, rationale, links, history.
 Those are not requirements and their absence from the SPECs is not a gap. Judge
@@ -78,22 +88,17 @@ demands less than the requirement — a subset of the cases, a weaker condition,
 some of the files, a narrower scope — leaves it uncovered. Name the requirement
 as uncovered and say what the SPEC leaves out.
 
-A requirement about HOW the change is verified — that the tests fail on the
-code from before the change, that the full suite is green, that the mutation tests run, that the
-tree is committed first — is proven by the pipeline itself, not by a SPEC. It is
-never a gap. Judge the BEHAVIOUR the issue requires of the software.
+You judge the design before any code exists, so your part of each requirement
+is the BEHAVIOUR it asks of the software. A requirement about how the change is
+verified — that the tests fail on the code from before the change, that the
+full suite is green, that the mutation tests run, that the tree is committed
+first — can only be judged once the change and its tests exist, and the check
+that compares the finished change with the issue judges it there. It does not
+go in UNCOVERED.
 
 A SPEC tagged [done] says the code already does it. A requirement it covers
-counts as covered: whether the code really does it is checked later, against
-the code, not here.
-
-Answer in exactly this form:
-
-VERDICT: covered | uncovered
-REASON: <one sentence>
-UNCOVERED: <every requirement no SPEC fully covers, separated by semicolons, all on this one line; omit when covered>
-
-Do not suggest SPEC text. Do not rewrite the design. Answer only.
+counts as covered: the claim is judged against the code once the change is
+built.
 
 ISSUE:
 $1
@@ -102,7 +107,13 @@ REQUIREMENTS:
 ${3:-<none listed>}
 
 ACCEPTANCE:
-$2"
+$2
+
+## What you must not do
+- Do not suggest SPEC text.
+- Do not rewrite the design.
+- Answer only, in the form above.
+EOF
 }
 
 # _scv_write <dir> <verdict> <reason> <uncovered_json>
