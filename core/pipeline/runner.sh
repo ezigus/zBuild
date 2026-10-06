@@ -2391,6 +2391,10 @@ main() {
                 _wd_pid=$!
                 set +m
                 wait "$_ar_pid" 2>/dev/null || true
+                # #2333: the leader exiting does not mean its group did. A member
+                # that ignored TERM would lose its KILL when the watchdog is
+                # cancelled below, so KILL the group now; a no-op when it is gone.
+                kill -KILL -- -"$_ar_pid" 2>/dev/null || true
                 kill -TERM -- -"$_wd_pid" 2>/dev/null || true
                 wait "$_wd_pid" 2>/dev/null || true
             ) >/dev/null 2>&1 || true

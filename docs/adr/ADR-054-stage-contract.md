@@ -327,9 +327,11 @@ Each always-run stage runs under a bound: its own `router.timeout_s` from the te
 stage and **everything it started** are stopped: the stage is spawned as its own process group, and
 the bound sends TERM to the group, then KILL after a short grace. Signalling only the stage's own
 PID left the subshell running the hooks alive; a blocked hook outlived the run and wrote into its
-state minutes later. No process from an always-run stage outlives the run. Enforced by
-`tests/integration/runner-release-exit-paths-test.sh` SPEC-6 ("the blocked hook does not outlive
-the run").
+state minutes later. The group is KILLed once its leader has exited, so a member that ignores
+TERM is not spared when the bound's watchdog is cancelled (#2333). No process from an always-run
+stage outlives the run. Enforced by `tests/integration/runner-release-exit-paths-test.sh` SPEC-6
+("the blocked hook does not outlive the run") and SPEC-6b ("a hook child that ignores TERM does
+not outlive the run").
 
 ### 8. Fail-closed artifact scanner contract
 
