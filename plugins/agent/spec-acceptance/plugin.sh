@@ -22,12 +22,9 @@
 # (verdict=pass, reason=precondition_unmet) so it is safe to compose into repos
 # that do not use the SPEC methodology. No model call.
 
-# Size (CLAUDE.md "under 500 lines unless there is a strong reason"): over, and
-# left that way. The file is one contract end to end — SPEC failure vocabulary →
-# disposition → reason — and ADR-021 puts that mapping HERE
-# precisely so the cycle engine stays generic and knows none of this gate's
-# vocabulary. Splitting it would scatter one mapping across two files for a line
-# count, which is how the engine learned a plugin's vocabulary in the first place.
+# The gate's failure vocabulary → disposition → reason mapping lives in this
+# plugin (here and in lib/reason.sh), not in the cycle engine: ADR-021 keeps the
+# engine generic, knowing none of this gate's vocabulary.
 
 [[ -n "${_ZBUILD_ACCEPTANCE_GATE_LOADED:-}" ]] && return 0
 _ZBUILD_ACCEPTANCE_GATE_LOADED=1
