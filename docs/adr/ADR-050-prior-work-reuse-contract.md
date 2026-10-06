@@ -1,6 +1,7 @@
 # ADR-050 — Prior-Work Reuse Contract (durable artifact store + per-stage self-seeding)
 
 **Status:** Accepted (2026-07-23)
+**Amended:** 2026-10-06 (#2324) — design-gate no longer writes `data.design_sha`; its only reader was the reuse rule #2299 withdrew. Every statement below now names its test.
 **Amended:** 2026-10-05 (#2299) — design always runs. The #2225 rule that kept a prior run's design without a model call is withdrawn; a restored design reaches the prompt as a reference to check (§6: never skip the stage on the basis of prior output).
 **Amended:** 2026-09-16 (#2111) — a run that ends `aborted` with `reason=llm_rate_limited` (ADR-054 §6) persists like any other outcome; re-adding the trigger label after the reset resumes from the state branch. The daemon's completion comment names the reset text so the operator knows when.
 **Amended:** 2026-08-23 (#141) — §7: git is the store, the folder is the working copy, and the push moves from CI into an always-run `persist` stage (ADR-059)
@@ -309,7 +310,7 @@ time (~20 min on #1835 and #1837) and the loop's rounds reset.
   always runs (amended by #2299, below): the restored design is in its prompt
   as a reference, never kept as this run's design.
 
-Verification: `tests/unit/resume-default-test.sh` (R1–R4, R12).
+Verification: `tests/unit/resume-default-test.sh` (R1–R4).
 
 ## Amendment (2026-10-05, #2299): design always runs
 
@@ -329,20 +330,26 @@ no model ever reads that line.
 - **A restored prior design is a reference.** It reaches the prompt under
   `## PRIOR DESIGN (a previous attempt on this issue — a hypothesis, not a
   fact)`, with what has moved since, as §6 and #2172 require.
-- design-gate still records the hash of the `design.md` it judged
-  (`data.design_sha`); nothing skips a stage on it.
+- design-gate no longer records the hash of the `design.md` it judged
+  (`data.design_sha`, removed by #2324): nothing read it once the reuse rule
+  was gone.
 
 ## Enforced by
 
+- §1 (the engine snapshots a directory, never a stage: files with names no stage has round-trip; the persistence code names no plugin) → `tests/unit/prior-work-reuse-contract-test.sh` C1
 - §2 (state branch, never in work-branch history; snapshots never touch the working tree) → `tests/unit/artifact-persist-test.sh`
+- §3 (a deterministic gate never reuses a prior verdict: no gate plugin reads prior work; design-gate and gate-aggregator judge the current state despite a restored pass) → `tests/unit/prior-work-reuse-contract-test.sh` C3
 - §4 (a snapshot at each stage boundary; a failed snapshot never aborts the run) → `tests/integration/artifact-snapshot-runner-test.sh`
 - §4 (#1921: persist's own result joins the store; the secret gate runs before the push) → `tests/unit/persist-stage-test.sh`
 - §5 (`_read_prior_output` order) → `tests/unit/prior-output-reader-test.sh`
 - §6 (never skip a stage on the basis of prior output — design always runs, the prior design is a reference in its prompt) → `tests/unit/resume-default-test.sh` R5–R11 (#2299)
 - §7 (persist is an always-run stage; restore never writes over live artifacts) → `tests/unit/template-always-run-test.sh`, `tests/unit/stage-input-resolve-precedence-test.sh`
+- §7 (the local ref wins on read: unpushed local work is what restore returns) → `tests/unit/hydrate-stage-test.sh` SPEC-2
 - Implementation notes (intake adopts an existing remote work branch) → `tests/integration/intake-branch-ahead-count-test.sh`
-- #2225 (`ZBUILD_RESUME` defaults to 1; `--no-resume` restores nothing yet still fetches and adopts; design-gate records the judged design's hash) → `tests/unit/resume-default-test.sh` R1–R4, R12
-- Not yet enforced (tracked from #2268): §1 (the engine names no stage), §3 (a deterministic gate never reuses a prior verdict), §7's local-ref precedence, the pr-open PR reuse, and #2111.
+- Implementation notes (pr-open edits the existing open PR, never opens a second, and reports `status=updated`) → `tests/unit/prior-work-reuse-contract-test.sh` C5
+- #2225 (`ZBUILD_RESUME` defaults to 1; `--no-resume` restores nothing yet still fetches and adopts) → `tests/unit/resume-default-test.sh` R1–R4
+- #2324 (design-gate's result has no `design_sha`) → `tests/unit/resume-default-test.sh` R12
+- #2111 (a run aborted with `llm_rate_limited` persists — persist pushes the state branch; the daemon's completion comment names the reset time and says to re-add the label) → `tests/unit/prior-work-reuse-contract-test.sh` C6
 
 ## References
 

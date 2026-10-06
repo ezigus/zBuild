@@ -244,10 +244,6 @@ design_gate_run() {
         reason="design structural violations: ${#violations[@]} found"
     fi
 
-    # #2225 (review #2229): the verdict names the exact design.md it judged, so a
-    # pass for THIS design can be told from a pass for an earlier one that was
-    # rewritten afterwards. (No run reuses a design on it since #2299.)
-    local _dg_sha; _dg_sha="$(git hash-object "$design_md" 2>/dev/null || true)"
     # #2271 (ADR-068): each violation as a numbered finding, in the sentence
     # design reads — the codes stay in `violations` for code that reads them.
     local _dg_findings="[]" _dg_fv
@@ -255,9 +251,9 @@ design_gate_run() {
         _dg_findings="$(for _dg_fv in "${violations[@]}"; do _dg_plain "$_dg_fv"; printf '\n'; done | stage_findings_json)"
     fi
     atomic_write "$result_path" <<< "$(jq -n --arg v "$verdict" --argjson viol "$violations_json" \
-        --arg r "$reason" --arg sha "$_dg_sha" --argjson fnd "${_dg_findings:-[]}" \
+        --arg r "$reason" --argjson fnd "${_dg_findings:-[]}" \
         '{"result_contract":2,"schema_version":1,"verdict":$v,"disposition":"complete","reason":$r,"violations":$viol,
-          "data":{"design_sha":$sha, "findings":$fnd}}')"
+          "data":{"findings":$fnd}}')"
 
     if [[ "$verdict" == "fail" ]]; then
         {
