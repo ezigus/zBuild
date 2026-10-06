@@ -365,12 +365,12 @@ _mut_recheck_patch() {
     trap "git -C '$REPO_ROOT' worktree remove --force '$wt' >/dev/null 2>&1 || true; rm -rf '$wt' 2>/dev/null || true" RETURN
 
     if ! _mut_add_worktree_verified "$wt" "$file_path"; then
-        printf 'INFRA %s  (patch failed after retries)' "$name" > "${slot_base}.line"
+        printf 'INFRA %s  (patch failed in the parallel run; no clean checkout to re-run it alone)' "$name" > "${slot_base}.line"
         printf 'infra' > "${slot_base}.status"
         return
     fi
     if ( cd "$wt" && bash -c "set -euo pipefail; $patch_code" ) >/dev/null 2>"${slot_base}.patcherr"; then
-        printf 'INFRA %s  (patch failed after retries)' "$name" > "${slot_base}.line"
+        printf 'INFRA %s  (patch failed in the parallel run, applied when re-run alone: a worktree race)' "$name" > "${slot_base}.line"
         printf 'infra' > "${slot_base}.status"
         return
     fi
