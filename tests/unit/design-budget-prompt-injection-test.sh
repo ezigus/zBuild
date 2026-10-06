@@ -34,7 +34,7 @@ route_to_model_loop() {
     local _bt='```'
     if [[ -n "${_MOCK_DESIGN_WRITE_PATH:-}" ]]; then
         mkdir -p "$(dirname "$_MOCK_DESIGN_WRITE_PATH")"
-        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[guard]: works\nWIRING: none\nTESTFILES:\n%s\n' \
+        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: works\nWIRING: none\nTESTFILES:\n%s\n' \
             "$_bt" "$_bt" "$_bt" "$_bt" > "$_MOCK_DESIGN_WRITE_PATH"
     fi
     _ROUTE_LOOP_ITERATIONS=1

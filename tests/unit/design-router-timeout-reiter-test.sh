@@ -68,7 +68,7 @@ route_to_model_loop() {
     local _bt='```'
     if [[ -n "$_MOCK_DESIGN_WRITE_PATH" ]]; then
         mkdir -p "$(dirname "$_MOCK_DESIGN_WRITE_PATH")"
-        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[guard]: works\nWIRING: none\nTESTFILES:\n%s\n' \
+        printf '# Design\n\n## Decision\nMinimal.\n\n%sscope\nfoo.sh\n%s\n\n%sacceptance\nSPEC-1[no-code]: works\nWIRING: none\nTESTFILES:\n%s\n' \
             "$_bt" "$_bt" "$_bt" "$_bt" > "$_MOCK_DESIGN_WRITE_PATH"
     fi
     _ROUTE_LOOP_ITERATIONS=1
@@ -303,7 +303,7 @@ _design_stage_run_inner "$_F_SCOPE" "$_F_PLAN" "$_F_DESIGN" "$_F_ARTIFACTS"
 _rc=$?
 set +e
 assert_eq "[SPEC-12] timeout after a new design → returns rc=0" "0" "$_rc"
-if grep -q '^SPEC-1\[guard\]: works' "$_F_DESIGN" 2>/dev/null; then
+if grep -q '^SPEC-1\[no-code\]: works' "$_F_DESIGN" 2>/dev/null; then
     assert_pass "[SPEC-12] the design this call wrote is kept as written"
 else
     assert_fail "[SPEC-12] the design this call wrote was replaced" \

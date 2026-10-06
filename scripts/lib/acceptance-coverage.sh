@@ -167,22 +167,23 @@ acceptance_find_assertion_label() {
 }
 
 # acceptance_coverage_check <design_md> <repo_root>
-# Level-1 gate over the [change] SPEC-n ids in the design's acceptance block.
+# Level-1 gate over the code SPEC-n ids in the design's acceptance block.
 # Prints one "UNTAGGED <spec_id>" line per spec with no backing tagged
 # assertion. Returns 0 when every gated SPEC-n is tagged (or there are no
 # SPEC-n ids / no acceptance block — those are handled as a no-op pass by the
 # caller), 1 when at least one gated SPEC-n is untagged.
 #
-# #1255: [guard] SPECs are EXEMPT — they assert invariants, not new behavior, so
-# (mirroring the acceptance-gate's negctl guard exemption) they need not carry a
-# [SPEC-n]-tagged test. Classification reuses acceptance_spec_classifier (the
-# same [change]|[guard] parser the design-gate's C3 check uses).
+# #2304 (ADR-069 §4): a done or no-code requirement is EXEMPT — it is not run
+# against the old code, so it need not carry a [SPEC-n]-tagged test here. The
+# status comes from acceptance_spec_status, the parser the design-gate uses.
 acceptance_coverage_check() {
     local design_md="${1:-}" repo_root="${2:-}"
     local spec_id rc=0
     while IFS= read -r spec_id; do
         [[ -z "$spec_id" ]] && continue
-        [[ "$(acceptance_spec_classifier "$design_md" "$spec_id")" == "guard" ]] && continue
+        case "$(acceptance_spec_status "$design_md" "$spec_id")" in
+            done|no-code) continue ;;
+        esac
         if ! acceptance_coverage_spec_tagged "$design_md" "$repo_root" "$spec_id"; then
             printf 'UNTAGGED %s\n' "$spec_id"
             rc=1

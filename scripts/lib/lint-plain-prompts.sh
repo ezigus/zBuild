@@ -19,6 +19,8 @@
 # It refuses engine-internal vocabulary and maintainer notes:
 #   - internal check names: NEGCTL, REACHABILITY, inert, tautolog*, WIRING_MISSING,
 #     UNCLASSIFIED, GUARD_REGRESSED, "negative control";
+#   - the retired [guard] tag (#2304, ADR-069 §8): a model offered it writes it
+#     back, and the design-gate refuses it;
 #   - maintainer notes and internals: ADR-<n>, _TPL_*.
 # Parser keys the engine reads back (WIRING:, TESTFILES:, LOOP_COMPLETE, BLOCKED:)
 # are allowed: the plain question sits beside them in the prompt.
@@ -35,7 +37,7 @@ LIST="$ROOT/config/model-facing-sources.txt"
 [[ -f "$LIST" ]] || { echo "lint-plain-prompts: no $LIST" >&2; exit 1; }
 
 # One extended regex; matched case-sensitively except where noted in the class.
-FORBIDDEN='NEGCTL|REACHABILITY|[Ii]nert|[Tt]autolog|WIRING_MISSING|UNCLASSIFIED|GUARD_REGRESSED|[Nn]egative control|ADR-[0-9]+|_TPL_[A-Z]|RESOLVE'
+FORBIDDEN='NEGCTL|REACHABILITY|[Ii]nert|[Tt]autolog|WIRING_MISSING|UNCLASSIFIED|GUARD_REGRESSED|[Nn]egative control|ADR-[0-9]+|_TPL_[A-Z]|RESOLVE|\[guard\]'
 
 bad=0 files=0
 # A model sees a variable's VALUE, never its name: strip $name / ${…} first.

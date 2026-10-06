@@ -80,6 +80,10 @@ code from before the change, that the full suite is green, that the mutation tes
 tree is committed first — is proven by the pipeline itself, not by a SPEC. It is
 never a gap. Judge the BEHAVIOUR the issue requires of the software.
 
+A SPEC tagged [done] says the code already does it. A requirement it covers
+counts as covered: whether the code really does it is checked later, against
+the code, not here.
+
 Answer in exactly this form:
 
 VERDICT: covered | uncovered

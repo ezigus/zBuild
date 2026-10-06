@@ -18,16 +18,20 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 GIT="$(command -v git)"
 
 # build a repo whose `main` lacks impl and whose feature HEAD adds impl + tests
-_build_repo() {  # _build_repo <name> <head_test_body>
-    local name="$1" body="$2"
+# <impl> (default impl.sh) is the non-test file the branch adds. A done-only
+# design that edits production code fails as unclaimed code (#2304, ADR-069 §5),
+# so the cases that pin other behaviour add docs/impl.md: the backstop does not
+# count docs/ as code, and the negative control still sees a change to run against.
+_build_repo() {  # _build_repo <name> <head_test_body> [<impl>]
+    local name="$1" body="$2" impl="${3:-impl.sh}"
     local repo; repo="$(setup_git_temp_repo "$name")"
     (
         cd "$repo"
         "$GIT" checkout -q -b feature
-        mkdir -p tests
-        printf '#!/usr/bin/env bash\nmy_feature() { return 0; }\n' > impl.sh
+        mkdir -p tests "$(dirname "$impl")"
+        printf '#!/usr/bin/env bash\nmy_feature() { return 0; }\n' > "$impl"
         printf '%s\n' "$body" > tests/feature-test.sh
-        chmod +x tests/feature-test.sh impl.sh
+        chmod +x tests/feature-test.sh "$impl"
         "$GIT" add -A; "$GIT" commit -q -m "feat"
     )
     printf '%s' "$repo"
@@ -156,76 +160,65 @@ set +e; _run_gate "$REPO5"; set -e
 assert_eq "S5: malformed block → rc=1 (fail closed, not skipped)" "1" "$RC"
 assert_eq "S5: verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
 
-# ── S6: guard SPEC with always-passing test → verdict=pass (NEGCTL PASS guard_spec) ─
-# A [guard]-classified SPEC with a test that passes at baseline must be accepted
-# (negctl runs the baseline check, sees pass, emits NEGCTL PASS guard_spec) and
-# not rejected as tautological (which is a [change]-SPEC rule, not a guard rule).
-REPO6="$(_build_repo gate-guard '#!/usr/bin/env bash
-# [SPEC-1] guard: invariant that must not regress
-exit 0')"
+# ── S6 (#2304, ADR-069 §4): an already-done SPEC is not run → verdict=pass ─────
+# Its test would fail everywhere; a done requirement has nothing on the old code
+# to fail, so it is skipped (NEGCTL SKIP already_done), never judged.
+REPO6="$(_build_repo gate-done '#!/usr/bin/env bash
+echo "  ✗ [SPEC-1] would fail if it were run"; exit 1' docs/impl.md)"
 cat > "$REPO6/design.md" <<'EOF'
 ```acceptance
-SPEC-1[guard]: invariant that must not regress
+SPEC-1[done]: the behaviour is already there evidence: docs/impl.md
 TESTFILES:
 tests/feature-test.sh
 ```
 EOF
 set +e; _run_gate "$REPO6"; set -e
-assert_eq "S6: guard SPEC with always-passing test → rc=0" "0" "$RC"
+assert_eq "S6: a done SPEC is not run → rc=0" "0" "$RC"
 assert_eq "S6: verdict=pass" "pass" "$(jq -r .verdict <<<"$RESULT")"
+assert_contains "S6: the pass reason counts it as already done" \
+    "$(jq -r .reason <<<"$RESULT")" "1 already done"
 
-# ── S6b: [SPEC-1][SPEC-2] guard SPEC with invariant regression → verdict=fail ────
-# A [guard]-classified SPEC whose assertion FAILS at baseline must yield
-# verdict=fail with guard_regressed in failures[] and severity=recoverable —
-# the assertion contradicts its own SPEC, and #1583 routes that to build.
-# #2234: the guard prints its OWN ✗ — only that says it fails at the merge-base
-# (a bare `exit 1` is guard_unverified: the rc cannot tell failed from stopped).
-# #2244: a genuine mislabel — ✗ on the old code, ✓ on the new (impl.sh exists
-# only on the branch). A check that printed ✗ on both would be a broken test.
-REPO6b="$(_build_repo gate-guard-regressed '#!/usr/bin/env bash
-if [[ -f "$(dirname "$0")/../impl.sh" ]]; then echo "  ✓ [SPEC-1] guard: invariant"; else echo "  ✗ [SPEC-1] guard: invariant broken at baseline"; exit 1; fi')"
+# ── S6b (#2304, ADR-069 §5): a done-only design cannot carry code ──────────────
+# The change edits impl.sh but its only requirement is [done]: the gate fails on
+# the code nobody claims, and no guard class appears.
+REPO6b="$(_build_repo gate-done-with-code '#!/usr/bin/env bash
+echo "  ✓ [SPEC-1] fine"')"
 cat > "$REPO6b/design.md" <<'EOF'
 ```acceptance
-SPEC-1[guard]: invariant that must not regress
+SPEC-1[done]: the behaviour is already there evidence: impl.sh
 TESTFILES:
 tests/feature-test.sh
 ```
 EOF
 set +e; _run_gate "$REPO6b"; set -e
-assert_eq "[SPEC-1] S6b: guard SPEC with invariant regression → rc=1" "1" "$RC"
-assert_eq "[SPEC-1] S6b: guard regression yields verdict=fail" "fail" "$(jq -r .verdict <<<"$RESULT")"
-assert_contains "[SPEC-2] S6b: guard_regressed in failures[]" \
-    "$(jq -rc .failures <<<"$RESULT")" "guard_regressed"
-# #1583 precedent: a wrong assertion is build-fixable, so the cycle re-iterates
-# and feeds the diagnosis to build. Terminal would strand it — no rewind edge
-# exists for this class, so the run could only die at max_iterations.
-assert_eq "[SPEC-2] S6b: guard_regressed severity=recoverable (build re-authors the assertion)" \
-    "recoverable" "$(jq -r .severity <<<"$RESULT")"
-assert_contains "[SPEC-2] S6b: the reason names the contradiction, not a generic failure" \
-    "$(jq -r .reason <<<"$RESULT")" "the requirement is really a [change]"
+assert_eq "[SPEC-1] S6b: a done-only design that edits code → rc=1" "1" "$RC"
+assert_contains "[SPEC-2] S6b: the failure is the unclaimed code" \
+    "$(jq -rc .failures <<<"$RESULT")" "unclaimed_code:impl.sh"
+assert_eq "[SPEC-2] S6b: no guard class is reported" "false" \
+    "$(jq -r '[.failures[]|test("guard")]|any' <<<"$RESULT")"
 
-# ── S6c: [SPEC-3] guard whose baseline run ERRORS → advisory, does not block ────
-# #1670's third criterion: a guard test that cannot RUN at the merge-base proves
-# nothing about the invariant, so it must warn rather than block. The unit tests
+# ── S6c: [SPEC-3] a test that cannot RUN → advisory, does not block ───────────
+# #1670's third criterion: a test that cannot RUN (rc 127) proves nothing, so it
+# must warn rather than block. The unit tests
 # pin the emitted token; this pins the consequence that actually matters — the
 # gate declares severity=advisory, which gate-aggregator demotes from a
 # blocking fail to a satisfied member (plugin.sh:195,243).
-REPO6c="$(_build_repo gate-guard-harness '#!/usr/bin/env bash
+REPO6c="$(_build_repo gate-harness '#!/usr/bin/env bash
 set -euo pipefail
-# [SPEC-1] guard: invariant
-helper_added_by_this_change')"
+# [SPEC-1] invariant
+helper_added_by_this_change' docs/impl.md)"
 cat > "$REPO6c/design.md" <<'EOF'
 ```acceptance
-SPEC-1[guard]: invariant that must not regress
+SPEC-1[code]: the helper runs
 TESTFILES:
 tests/feature-test.sh
 ```
 EOF
 set +e; _run_gate "$REPO6c"; set -e
-assert_contains "[SPEC-3] S6c: an unrunnable guard baseline is an infra class, not a violation" \
+assert_contains "[SPEC-3] S6c: an unrunnable test is an infra class, not a violation" \
     "$(jq -rc .failures <<<"$RESULT")" "negctl_error:harness"
-assert_eq "[SPEC-3] S6c: guard harness error does NOT become guard_regressed" \
-    "false" "$(jq -r '[.failures[]|test("guard_regressed")]|any' <<<"$RESULT")"
+assert_eq "[SPEC-3] S6c: a harness error does NOT become a test failure" \
+    "false" "$(jq -r '[.failures[]|test("tautology|not_passing_at_head")]|any' <<<"$RESULT")"
 assert_eq "[SPEC-3] S6c: severity=advisory (warns, does not block the cycle)" \
     "advisory" "$(jq -r .severity <<<"$RESULT")"
 # Pin BOTH halves of the two-layer contract: the gate still reports rc=1 ("I
@@ -237,7 +230,7 @@ assert_eq "[SPEC-3] S6c: gate-level rc=1; the aggregator is what demotes it" "1"
 
 # ── S7: change SPEC with tautological test still caught ───────────────────────
 # A [change]-classified SPEC with a tautological test must still fail (negctl
-# runs baseline check for change SPECs; guard-skip must not apply here).
+# runs baseline check for code SPECs; the done/no-code skip must not apply here).
 REPO7="$(_build_repo gate-change-taut '#!/usr/bin/env bash
 # [SPEC-1] change: always true
 exit 0')"
@@ -511,19 +504,19 @@ assert_contains "[SPEC-3] S16c: empty SPEC text renders <no description>" \
     "$SUMMARY" "design : <no description>"
 
 # Verify <none found> when the testfile has no [SPEC-n] tag.
-# Use a guard SPEC so Level-1 coverage check is exempt (guard SPECs skip negctl).
+# Use a done SPEC so Level-1 coverage is exempt (done SPECs are not run).
 REPO16B="$(_build_repo gate-enrich-nolabel '#!/usr/bin/env bash
 # no spec tag in this file
-exit 0')"
+exit 0' docs/impl.md)"
 cat > "$REPO16B/design.md" <<'EOF'
 ```acceptance
-SPEC-1[guard]: some invariant
+SPEC-1[done]: some invariant evidence: docs/impl.md
 TESTFILES:
 tests/feature-test.sh
 ```
 EOF
 set +e; _run_gate_with_summary "$REPO16B"; set -e
-assert_eq "[SPEC-3] S16b: guard SPEC with no tag → rc=0 (skip)" "0" "$RC"
+assert_eq "[SPEC-3] S16b: done SPEC with no tag → rc=0 (skip)" "0" "$RC"
 assert_contains "[SPEC-3] S16b: summary shows <none found> when no assertion tag" \
     "$SUMMARY" "<none found>"
 

@@ -88,6 +88,12 @@ assert_eq "[#2109] no_testfiles only → recoverable (test-author/build can crea
 assert_eq "[#2109] reachability harness error → advisory (infra, never a violation)" "advisory" \
     "$(_ag_classify_disposition "reachability_error:harness:impl.sh tests/t-test.sh")"
 
+# ── #2304 (ADR-069 §5): code nobody claims is fixed by design, next round ────
+assert_eq "[#2304] unclaimed_code only → recoverable (design adds the [code] requirement)" "recoverable" \
+    "$(_ag_classify_disposition "unclaimed_code:scripts/x.sh")"
+assert_eq "[#2304] unclaimed_code is named in the table, not caught by the fallback" "recoverable" \
+    "$(_ag_failure_class_disposition unclaimed_code 2>/dev/null)"
+
 # ── #1959 / #2129: the fallback inverts and is audible ───────────────────────
 # Every entry in the allowlist was added after a run died on the class it was
 # missing (#1583, #1585, #1686, #1670, #2097). A class nobody remembered to

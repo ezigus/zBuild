@@ -415,35 +415,34 @@ path/to/file1
 path/to/file2
 \`\`\`
 
-3. A \`\`\`acceptance block listing the behaviour this change must deliver. Each
-   line is one requirement: a permanent number (SPEC-1, SPEC-2, …), a tag, and
-   ONE behaviour someone could observe and test.
+3. A \`\`\`acceptance block listing what this change must deliver. Each line is
+   one requirement: a permanent number (SPEC-1, SPEC-2, …), a status, and ONE
+   behaviour someone could observe and test.
 
-   The tag answers one question about the requirement's test, run against the
-   code as it is before your change:
-   - \`SPEC-n[change]:\` — the test must
-     fail on the code as it is before your change, and pass after it.
-     Look at the code first:
-     if the behaviour is already there today (the code, manifest or output
-     already exists), it is not a change — tag it [guard]. A [change] whose test already passes can
-     never be tested honestly, and the build stalls on it.
-   - \`SPEC-n[guard]:\` — something that must keep working: its test should
-     pass both before and after your change. Do not force it to fail before.
-   Every requirement line carries one of the two tags.
+   The status says what work the requirement needs. Look at the code before you choose:
+   - \`SPEC-n[code]:\` — it needs code. Its test must fail on the code as it is before your change, and pass after it.
+     If the code already does it, it is not [code]: its test would already pass, and the build stalls on it.
+   - \`SPEC-n[no-code]:\` — it needs work that changes no behaviour: docs, a
+     test, config, or a refactor. Its test must pass after the change; it need not fail before.
+   - \`SPEC-n[done]:\` — the code already does it. Name the evidence at the end of the line, after \` evidence: \` —
+     a file and line (scripts/x.sh:42) or an existing test file, by its path from the repository root,
+     several separated by spaces. Each must exist; a line number must be inside its file. No test is written for it.
+   Every requirement carries one of the three. A change that edits code needs at least one [code] requirement.
 
    Test labels: each test file under TESTFILES holds at least one assertion
    whose label carries the requirement's tag, which includes this issue's
    number — for SPEC-1 of this issue:
    $(acceptance_spec_tag SPEC-1 2>/dev/null || printf '[SPEC-1]'). A shared test
-   may already hold other issues' tags; leave them alone. Each [change]
+   may already hold other issues' tags; leave them alone. Each [code]
    assertion is also run against the code from before your change and must
    fail there, so write ONE requirement per assertion — then each behaviour is
    checked on its own.
 
 The \`\`\`acceptance block format:
 \`\`\`acceptance
-SPEC-1[change]: <one new behavior this change introduces>
-SPEC-2[guard]: <an invariant this change must not break>
+SPEC-1[code]: <one new behaviour this change introduces>
+SPEC-2[no-code]: <docs, a test, config or a refactor that changes no behaviour>
+SPEC-3[done]: <something the code already does> evidence: scripts/x.sh:42
 WIRING: <the existing file that calls the new code>
 TESTFILES:
 SPEC-1: tests/unit/some-test.sh
@@ -453,9 +452,9 @@ SPEC-2: tests/integration/other-test.sh
 Bind each test file to its requirement:
 - Prefix the path with \`SPEC-n: \`, e.g. \`SPEC-1: tests/unit/foo-test.sh\`.
 - Several paths for one requirement: \`SPEC-1: tests/unit/a-test.sh tests/unit/b-test.sh\`
-- Write one \`SPEC-n: path\` line per [change] requirement, so each requirement
-  is proven by its own test file. A path with no \`SPEC-n:\` prefix applies to
-  every requirement.
+- Write one \`SPEC-n: path\` line per [code] requirement, so each requirement
+  is proven by its own test file. A [done] requirement needs none. A path with
+  no \`SPEC-n:\` prefix applies to every requirement.
 
 WIRING: Which existing file calls the new code?
 - Name the file in your scope whose code calls (or loads) the new behaviour:
@@ -546,13 +545,14 @@ DESIGN_PROMPT
         fi
     fi
 
-    # When the acceptance check failed, say what design can do about a [change]
+    # When the acceptance check failed, say what design can do about a [code]
     # requirement whose test already passes (build may not touch acceptance
-    # assertions, ADR-036). The check's findings reach this prompt numbered.
+    # assertions, ADR-036). #2304 (ADR-069): no relabel offer — [done] needs
+    # evidence the design-gate checks.
     if [[ "$(jq -r '.stage_verdicts["acceptance-gate"] // empty' \
             "$(dirname "$artifact_dir")/pipeline-state.json" 2>/dev/null || true)" == "fail" ]]; then
         # #2269: plain words; no other stage named (ADR-061), no ADR number.
-        printf '\nIf the STAGE SUMMARIES say a [change] requirement'"'"'s test already passes on the code from before this change, rewrite that requirement so it describes behaviour that is new (its test fails on the old code and passes after) — or, if the behaviour already exists, tag it [guard]: there is nothing to change, so no test can be made to fail on the old code. The tests cannot be changed later in this run, so this is where it is fixed. Keep every other scope and acceptance entry.\n' \
+        printf '\nIf the STAGE SUMMARIES say a [code] requirement'"'"'s test already passes on the code from before this change, rewrite that requirement so its test fails on the old code and passes after — or, if the code already does it, mark it [done] and name the evidence (a file and line, or an existing test file) after " evidence: ". The evidence is checked. The tests cannot be changed later in this run, so this is where it is fixed. Keep every other scope and acceptance entry.\n' \
             >> "$prompt_input_file"
     fi
 

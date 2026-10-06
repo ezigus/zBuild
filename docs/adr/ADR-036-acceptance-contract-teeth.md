@@ -175,7 +175,8 @@ the cycle budget on a missing `[SPEC-n]` tag (#863 dogfood run 20260618181546-49
 - Only `untagged_spec` failures are surfaced to build. A `tautology:<id>` failure (a
   no-change GUARD SPEC the negative control rejects) is NOT actionable by build — the
   change-vs-guard classification that exempts guards from the negative control is
-  design-side (folded into #913). `negctl_error`/`worktree_failed` (infra) are never
+  design-side (folded into #913). *(Since ADR-069 the classification is a requirement
+  status — `[code]`, `[no-code]`, `[done]` — and design-gate C3 checks it.)* `negctl_error`/`worktree_failed` (infra) are never
   surfaced as build-actionable.
 
 ## Amendment (#956, 2026-06-19) — Level 3: reachability (the wiring negative control)
@@ -286,7 +287,7 @@ precedence highest-first):
 | disposition   | failure classes                                                            | engine effect                                             |
 | ------------- | -------------------------------------------------------------------------- | --------------------------------------------------------- |
 | `terminal`    | no_testfile, malformed_acceptance_block                                    | HALT — cycle does not converge (rc=8), pipeline.end=failed |
-| `recoverable` | untagged_spec:*, tautology:*, inert_wiring:*, guard_regressed:*, not_passing_at_head:*, wiring_not_on_path:* | NON-terminal; build feedback loop (cycle re-iterates); wiring_not_on_path always sets route_target=design; inert_wiring and not_passing_at_head also set fault=specification on ZBUILD_CYCLE_ITER≥2 (Amendments #1711, #2097) |
+| `recoverable` | untagged_spec:*, tautology:*, inert_wiring:*, not_passing_at_head:*, wiring_not_on_path:*, unclaimed_code:* (`guard_regressed:*` and the other guard classes were removed by ADR-069) | NON-terminal; build feedback loop (cycle re-iterates); wiring_not_on_path always sets route_target=design; inert_wiring and not_passing_at_head also set fault=specification on ZBUILD_CYCLE_ITER≥2 (Amendments #1711, #2097) |
 | `advisory`    | negctl_error:* / reachability_error:* (only — resolve/worktree/timeout)    | NON-terminal AND non-blocking for convergence (infra flake)|
 | `none`        | (verdict=pass)                                                             | n/a                                                        |
 
@@ -526,6 +527,8 @@ goes looking for why a green run shipped an untested requirement.
 
 ## Amendment (#1670, 2026-08-04) — guard SPECs: inverted baseline check replaces SKIP
 
+> **Superseded by ADR-069 (#2304 part B, 2026-10-05).** `[guard]` and every guard path are gone: a done requirement (`[done]`, which the old `[guard]` reads as) and a no-code one are not run against the old code at all (`NEGCTL SKIP <id> already_done | no_code`). The text below is kept as history.
+
 **Problem.** `[guard]` SPECs were verified by one thing only: an assertion carrying the label exists.
 The negative control was skipped outright (`NEGCTL SKIP guard_spec`), so nothing connected the SPEC's
 English text to what its assertion actually asserted. Run `20260801085257-41853` shipped the exact
@@ -678,6 +681,8 @@ build genuinely closes in one iteration never reaches the escalation guard.
 `inert_wiring`; generalisation is a follow-up if the pipeline owner wants it.
 
 ## Amendment (#1777, 2026-08-24) — the guard check runs at the design-gate too, and `guard_regressed` routes to design
+
+> **Superseded by ADR-069 (#2304 part B, 2026-10-05).** `[guard]` and every guard path are gone: a done requirement (`[done]`, which the old `[guard]` reads as) and a no-code one are not run against the old code at all (`NEGCTL SKIP <id> already_done | no_code`). The text below is kept as history.
 
 **Problem.** ADR-036 §"Amendment (#1670)" made a `[guard]` SPEC's assertion answerable at the
 merge-base, and the gate has been catching mislabels correctly ever since. It catches them in the
@@ -834,6 +839,9 @@ The gate now does for `tautology:*` what #2097 did for `not_passing_at_head`: on
 `recoverable`. The design prompt's classification rule now says to check the tree before
 tagging `[change]` — behaviour that already exists at the merge-base is a `[guard]` — and
 the route-back replay offers re-tagging as the honest resolution, not only re-authoring.
+*(Superseded by ADR-069: there is no relabel offer. A requirement the code already meets
+is `[done]` with evidence the design-gate checks; otherwise design rewrites it so its test
+fails on the old code.)*
 This is the sentence above ("the change-vs-guard classification … is design-side") made
 operational. Verification: `acceptance-gate-tautology-escalation-test.sh` (iter 1 no fault;
 iter 2 fault + event), `design-prior-gate-feedback-test.sh` T1 (#2157 assertions).
@@ -913,6 +921,8 @@ Verification: `tests/unit/acceptance-negctl-signal-test.sh` (S1–S6).
 
 ### Amendment (2026-09-29, #2234) — not measured is never "failed"
 
+> **Superseded by ADR-069 (#2304 part B, 2026-10-05).** `[guard]` and every guard path are gone: a done requirement (`[done]`, which the old `[guard]` reads as) and a no-code one are not run against the old code at all (`NEGCTL SKIP <id> already_done | no_code`). The text below is kept as history.
+
 The negative control runs HEAD's TESTFILE against the merge-base code (and again at HEAD). On #1835 an earlier `[change]` step in that file called a function that returns non-zero before the change, bare under `set -e`, so the file exited there. Every assertion after that point never ran. The gate read "no verdict for SPEC-18" as "SPEC-18 fails at the merge-base". It reported `guard_regressed`, declared a specification fault, and rewound design three times to relabel a guard that held. Verified: at the merge-base the template still wins, as SPEC-18 says.
 
 **The rule.** Only an assertion's **own** printed verdict is evidence about it. When there is none, the file's output says which of two cases it is.
@@ -935,6 +945,8 @@ Verification: `tests/unit/acceptance-negctl-unreached-test.sh` (U1–U10).
 
 ### Amendment (2026-09-30, #2244, #2243) — a broken guard test, and existing checks the change makes wrong
 
+> **Partly superseded by ADR-069 (#2304 part B, 2026-10-05).** The `guard_test_broken` half (#2244) went with `[guard]`; the `supersedes` half (#2243) stands.
+
 - **`guard_test_broken` (#2244).** A `[guard]`'s own check prints ✗ at the merge-base. The gate now also runs it at HEAD, and if it prints ✗ there too, the check itself is broken: it fails whatever the code does.
   - It is recoverable, not a specification fault.
   - The finding is `about` the testfile.
@@ -945,7 +957,7 @@ Verification: `tests/unit/acceptance-negctl-unreached-test.sh` (U1–U10).
   - Build stays read-only on testfiles.
   - #1842: no stage could make the edit, so build evaded an old grep.
 
-Verification: `tests/unit/acceptance-negctl-guard-broken-test.sh`, `tests/unit/test-author-supersedes-test.sh`.
+Verification: `tests/unit/test-author-supersedes-test.sh` (`tests/unit/acceptance-negctl-guard-broken-test.sh` was deleted with `[guard]`, #2304).
 
 ### Amendment (2026-10-05, #2300) — plugin tests are tests for the test-only skip
 
@@ -956,3 +968,15 @@ The negative control skips with `no_prod_delta` when every changed path is a tes
 - Documentation paths are not test paths; this amendment does not change that.
 
 Verification: `tests/unit/acceptance-negctl-plugin-tests-test.sh` (P1 skip, P2 guard).
+
+### Amendment (2026-10-05, #2304) — code nobody claims fails the check (ADR-069)
+
+Requirements now carry a status (ADR-069 §1): `[code]`, `[no-code]` or `[done]`; the old `[change]` is read as code and `[guard]` as done. A new first check (ADR-069 §5) fails the acceptance check when the branch changes production code (anything except `tests/`, `plugins/<kind>/<id>/tests/`, `docs/` and `*.md`) and no requirement is code. The failure class is `unclaimed_code` (recoverable). The rest of this ADR's guard rules are replaced by ADR-069 in PR B of #2304.
+
+Verification: `tests/unit/acceptance-unclaimed-code-test.sh` (U1–U4).
+
+### Amendment (2026-10-05, #2304 part B) — the guard paths are removed (ADR-069 §3, §4)
+
+The negative control reads each requirement's status. A code requirement (`[code]`, the old `[change]`, or no tag) keeps the rule above: its test must fail on the old code and pass on the new. A done requirement (`[done]`, or an old `[guard]`) and a no-code one are not run: `NEGCTL SKIP <id> already_done` and `NEGCTL SKIP <id> no_code`. With no code requirement at all, no worktree is made. Tag coverage (Level 1) exempts the same two. Removed: the guard half of `acceptance-negctl.sh` (the baseline-only run, `guard_spec`, `guard_regressed`, `guard_unreached`, `guard_unverified`, `guard_test_broken`, `guard_untested`), the design-gate pre-check (#1777), the `acceptance.gate.guard_regressed` event and the guard failure classes. The per-SPEC log scan the guard arm shared with the code arm and reachability is now `_negctl_spec_log_check`. The pass reason counts the requirements checked on the old and new code, already done, and needing no code.
+
+Verification: `tests/unit/acceptance-negctl-status-test.sh` (N1–N5), `tests/unit/acceptance-coverage-test.sh` (C7, C9).

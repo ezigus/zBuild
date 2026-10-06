@@ -42,7 +42,7 @@ REPO="$(setup_git_temp_repo runs-per-file)"   # main @ seed (baseline)
 feature_a() { return 0; }
 feature_b() { return 0; }
 EOS
-    # One file, five [change] SPECs, one [guard] SPEC.
+    # One file, five [code] SPECs; one already-done SPEC in a second file.
     cat > tests/one-test.sh <<'EOS'
 #!/usr/bin/env bash
 impl="$(cd "$(dirname "$0")/.." && pwd)/impl.sh"
@@ -56,8 +56,8 @@ declare -F feature_b >/dev/null && ok "[SPEC-4] feature_b callable" || bad "[SPE
 declare -F feature_a >/dev/null && ok "[SPEC-5] a and b" || bad "[SPEC-5] a and b"
 exit "$FAIL"
 EOS
-    # The guard lives in its own file: under a custom runner the gate judges
-    # by file rc, and one-test.sh is red at baseline by design.
+    # The done SPEC has its own file, so the test can see it is never run
+    # (#2304, ADR-069 §4).
     printf '#!/usr/bin/env bash\necho "  ✓ [SPEC-6] bash still works"\nexit 0\n' > tests/guard-test.sh
     chmod +x tests/one-test.sh tests/guard-test.sh impl.sh
     "$GIT" add -A; "$GIT" commit -q -m "feat: impl + one tagged test file"
@@ -68,12 +68,12 @@ cat > "$DM" <<'EOF2'
 impl.sh
 ```
 ```acceptance
-SPEC-1[change]: feature_a exists
-SPEC-2[change]: feature_b exists
-SPEC-3[change]: feature_a callable
-SPEC-4[change]: feature_b callable
-SPEC-5[change]: a and b
-SPEC-6[guard]: bash still works
+SPEC-1[code]: feature_a exists
+SPEC-2[code]: feature_b exists
+SPEC-3[code]: feature_a callable
+SPEC-4[code]: feature_b callable
+SPEC-5[code]: a and b
+SPEC-6[done]: bash still works evidence: tests/guard-test.sh
 WIRING: impl.sh
 TESTFILES:
 SPEC-1: tests/one-test.sh
@@ -93,13 +93,13 @@ set +e; OUT="$(acceptance_negctl_check "$DM" "$REPO")"; RC=$?; set -e
 for n in 1 2 3 4 5; do
     assert_eq "[#2110-1] SPEC-$n is a valid control" "NEGCTL PASS SPEC-$n" "$(grep "SPEC-$n\$" <<<"$OUT" || true)"
 done
-assert_eq "[#2110-1] SPEC-6 guard holds" "NEGCTL PASS SPEC-6 guard_spec" "$(grep 'SPEC-6' <<<"$OUT" || true)"
+assert_eq "[#2110-1] SPEC-6 is already done, so it is not run" "NEGCTL SKIP SPEC-6 already_done" "$(grep 'SPEC-6' <<<"$OUT" || true)"
 assert_eq "[#2110-1] negctl rc=0" "0" "$RC"
 assert_eq "[#2110-1] one-test.sh was executed exactly twice (baseline + head), not per SPEC" \
     "2" "$(grep -c '/tests/one-test.sh$' "$COUNT" || true)"
-assert_eq "[#2110-1] the guard's file was executed once (baseline only)" \
-    "1" "$(grep -c '/tests/guard-test.sh$' "$COUNT" || true)"
-assert_eq "[#2110-1] three executions in total for 6 SPECs over 2 files" "3" "$(wc -l < "$COUNT" | tr -d ' ')"
+assert_eq "[#2110-1] the done SPEC's file was never executed" \
+    "0" "$(grep -c '/tests/guard-test.sh$' "$COUNT" || true)"
+assert_eq "[#2110-1] two executions in total for 6 SPECs over 2 files" "2" "$(wc -l < "$COUNT" | tr -d ' ')"
 # Per-SPEC diagnostic logs keep their shape: every SPEC still gets its own log with both sections.
 for n in 1 5; do
     assert_contains "[#2110-1] negctl-SPEC-$n.log has a baseline section" \
@@ -107,8 +107,8 @@ for n in 1 5; do
     assert_contains "[#2110-1] negctl-SPEC-$n.log has a head section" \
         "$(cat "$ZBUILD_NEGCTL_ARTIFACT_DIR/negctl-SPEC-$n.log")" "### SPEC-$n head tests/one-test.sh"
 done
-assert_contains "[#2110-1] guard log has only a baseline section" \
-    "$(cat "$ZBUILD_NEGCTL_ARTIFACT_DIR/negctl-SPEC-6.log")" "### SPEC-6 baseline tests/guard-test.sh"
+assert_eq "[#2110-1] the done SPEC writes no run log" "absent" \
+    "$([[ -e "$ZBUILD_NEGCTL_ARTIFACT_DIR/negctl-SPEC-6.log" ]] && echo present || echo absent)"
 
 # ─── [#2110-4] two files whose paths differ only by '/' vs '_' never share a memo ─
 (
@@ -132,7 +132,7 @@ cat > "$DM" <<'EOF2'
 impl.sh
 ```
 ```acceptance
-SPEC-1[change]: feature_a exists
+SPEC-1[code]: feature_a exists
 WIRING:
 impl.sh
 tests/one-test.sh

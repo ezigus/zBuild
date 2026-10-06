@@ -2,7 +2,8 @@
 # Tests: plugins/tool/design-gate — the PRE-build mechanical structural gate
 # (ADR-046, EPIC #1216 issue #1218). T0, no-LLM, no-baseline; pure grep over
 # design.md. Runs 5 structural checks (C1..C5), reports ALL violations in ONE
-# pass, verdict-in-artifact, ALWAYS exits rc=0.
+# pass, verdict-in-artifact, ALWAYS exits rc=0. C3 is the requirement status
+# (#2304, ADR-069): G1–G6 below.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -96,7 +97,7 @@ assert_eq "[SPEC-1] untagged TESTFILE → verdict=pass (C6 removed)" "pass" "$VE
 assert_eq "[SPEC-1] untagged TESTFILE → zero violations" \
     "0" "$(jq -r '.violations|length' "$RESULT_JSON")"
 
-# ─── SPEC-2 (C3 classified): an UNCLASSIFIED SPEC → verdict=fail ──────────────
+# ─── SPEC-2 (C3 status): a requirement with no status → verdict=fail ─────────
 _run_gate_with_md '# Design
 
 ```scope
@@ -104,15 +105,15 @@ scripts/wire.sh
 ```
 
 ```acceptance
-SPEC-1: no classifier here
+SPEC-1: no status here
 TESTFILES:
 tests/a-test.sh
 WIRING: scripts/wire.sh
 ```
 '
 assert_eq "[SPEC-2] unclassified SPEC → verdict=fail" "fail" "$VERDICT"
-assert_contains "[SPEC-2] violation names UNCLASSIFIED SPEC-1" \
-    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "UNCLASSIFIED SPEC-1"
+assert_contains "[SPEC-2] violation names NO_STATUS SPEC-1" \
+    "$(jq -r '.violations|join(" ")' "$RESULT_JSON")" "NO_STATUS SPEC-1"
 
 # ─── SPEC-3 (C5 wiring): a MISSING-WIRING design → verdict=fail ───────────────
 # WIRING section entirely absent from the acceptance block.
@@ -201,7 +202,7 @@ SPEC-1: tests/does-not-exist-test.sh
 _all="$(jq -r '.violations|join(" ")' "$RESULT_JSON")"
 assert_eq "[SPEC-7] multi-violation design → verdict=fail" "fail" "$VERDICT"
 assert_contains "[SPEC-7] reports SCOPE_MISSING in one pass"    "$_all" "SCOPE_MISSING"
-assert_contains "[SPEC-7] reports UNCLASSIFIED in one pass"     "$_all" "UNCLASSIFIED"
+assert_contains "[SPEC-7] reports NO_STATUS in one pass"        "$_all" "NO_STATUS"
 assert_contains "[SPEC-7] reports WIRING_MISSING in one pass"   "$_all" "WIRING_MISSING"
 assert_contains "[SPEC-7] reports MISSING_TESTFILE_FOR_SPEC in one pass" "$_all" "MISSING_TESTFILE_FOR_SPEC"
 
@@ -232,19 +233,71 @@ tests/a-test.sh
 assert_eq "[SPEC-9] feedback file written on a failing verdict" "present" \
     "$([[ -f "$FEEDBACK_PATH" ]] && echo present || echo absent)"
 
-# ─── SPEC-10 (classifier helper): acceptance_spec_is_change / _classifier ────
-# The C3 helper added to acceptance-block.sh distinguishes change/guard/unset.
-_cls_md="$TEST_TEMP_DIR/cls-design.md"
-printf '```acceptance\nSPEC-1[change]: a\nSPEC-2[guard]: b\nSPEC-3: c\nTESTFILES:\ntests/a-test.sh\n```\n' > "$_cls_md"
-assert_eq "[SPEC-10] classifier SPEC-1 == change" "change" "$(acceptance_spec_classifier "$_cls_md" SPEC-1)"
-assert_eq "[SPEC-10] classifier SPEC-2 == guard"  "guard"  "$(acceptance_spec_classifier "$_cls_md" SPEC-2)"
-assert_eq "[SPEC-10] classifier SPEC-3 == '' (unclassified)" "" "$(acceptance_spec_classifier "$_cls_md" SPEC-3)"
-set +e
-acceptance_spec_is_change "$_cls_md" SPEC-1; _isc1=$?
-acceptance_spec_is_change "$_cls_md" SPEC-2; _isc2=$?
-set -e
-assert_eq "[SPEC-10] acceptance_spec_is_change SPEC-1 → 0" "0" "$_isc1"
-assert_eq "[SPEC-10] acceptance_spec_is_change SPEC-2 → 1 (guard)" "1" "$_isc2"
+# ─── G1–G6: requirement status (#2304, ADR-069 §1–§3) ───────────────────────
+# Each requirement carries one status: [code], [no-code] or [done]. A [done]
+# one names evidence that exists in the repository. Only [code] (and the old
+# [change]) needs a test file. Nothing here runs a test (C6 is gone).
+printf 'line one\nline two\nline three\n' > "$ROOT/scripts/three.sh"
+# _g_md <spec line>... — a clean design around the given requirement lines.
+_g_md() {
+    printf '# Design\n\n```scope\nscripts/wire.sh\n```\n\n```acceptance\n'
+    printf '%s\n' "$@"
+    printf 'WIRING: scripts/wire.sh\nTESTFILES:\nSPEC-1: tests/a-test.sh\n```\n'
+}
+_viol() { jq -r '.violations|join(" ")' "$RESULT_JSON"; }
+
+_run_gate_with_md "$(_g_md 'SPEC-1[code]: x' 'SPEC-2: no status here')"
+assert_eq "[G1] a requirement with no status → verdict=fail" "fail" "$VERDICT"
+assert_contains "[G1] the violation names it" "$(_viol)" "NO_STATUS SPEC-2"
+assert_contains "[G1] the feedback says what the three statuses are" "$(cat "$FEEDBACK_PATH")" \
+    "SPEC-2 has no status — tag it [code]"
+
+_run_gate_with_md "$(_g_md 'SPEC-1[code]: x' 'SPEC-2[guard]: an old guard')"
+assert_eq "[G2] an old [guard] tag → verdict=fail" "fail" "$VERDICT"
+assert_contains "[G2] the violation names it" "$(_viol)" "UNKNOWN_STATUS SPEC-2"
+assert_contains "[G2] the feedback tells design what to use instead" "$(cat "$FEEDBACK_PATH")" \
+    "SPEC-2 carries the old guard tag, which is no longer a status"
+# #2304 (ADR-069 §8): the feedback is read by design; the literal tag would be
+# offered back to it, so the sentence names the tag without writing it.
+assert_eq "[G2] the feedback does not write the retired tag itself" "0" \
+    "$(grep -cF '[guard]' "$FEEDBACK_PATH" || true)"
+assert_eq "[G2] ...nor does the finding design answers" "0" \
+    "$(jq -r '.data.findings[].text' "$RESULT_JSON" | grep -cF '[guard]' || true)"
+_run_gate_with_md "$(_g_md 'SPEC-1[code]: x' 'SPEC-2[maybe]: unknown')"
+assert_contains "[G2] an unknown tag is rejected the same way" "$(_viol)" "UNKNOWN_STATUS SPEC-2"
+_run_gate_with_md "$(_g_md 'SPEC-1[change]: x' 'SPEC-2[no-code]: docs')"
+assert_eq "[G2] the old [change] still reads as code, and [no-code] is a status" "pass" "$VERDICT"
+
+_run_gate_with_md "$(_g_md 'SPEC-1[code]: x' 'SPEC-2[done]: already there')"
+assert_eq "[G3] a [done] requirement with no evidence → verdict=fail" "fail" "$VERDICT"
+assert_contains "[G3] the violation names it" "$(_viol)" "DONE_NO_EVIDENCE SPEC-2"
+assert_contains "[G3] the feedback says how to name evidence" "$(cat "$FEEDBACK_PATH")" \
+    "SPEC-2 is marked [done] but names no evidence"
+
+_run_gate_with_md "$(_g_md 'SPEC-1[code]: x' 'SPEC-2[done]: already there evidence: scripts/three.sh:3 tests/a-test.sh')"
+assert_eq "[G4] evidence that exists (path:N within the file, and a file) → pass" "pass" "$VERDICT"
+for _ev in /etc/hosts ../outside.sh scripts/missing.sh scripts/three.sh:4 scripts/three.sh:0 scripts/three.sh:x; do
+    _run_gate_with_md "$(_g_md 'SPEC-1[code]: x' "SPEC-2[done]: already there evidence: $_ev")"
+    assert_contains "[G4] evidence '$_ev' is rejected" "$(_viol)" "DONE_BAD_EVIDENCE SPEC-2 $_ev"
+done
+assert_contains "[G4] the feedback says what is wrong with the evidence" "$(cat "$FEEDBACK_PATH")" \
+    "the evidence scripts/three.sh:x for SPEC-2"
+
+_run_gate_with_md "$(_g_md 'SPEC-1[code]: x' 'SPEC-2[no-code]: docs' 'SPEC-3[done]: there evidence: scripts/three.sh')"
+assert_eq "[G5] [no-code] and [done] need no test file of their own" "pass" "$VERDICT"
+_run_gate_with_md "$(_g_md 'SPEC-1[code]: x' 'SPEC-2[code]: y')"
+assert_contains "[G5] a [code] requirement with no test file is still caught" "$(_viol)" \
+    "MISSING_TESTFILE_FOR_SPEC SPEC-2"
+_run_gate_with_md "$(_g_md 'SPEC-1[code]: x' 'SPEC-2[change]: y')"
+assert_contains "[G5] ...and so is an old [change] one" "$(_viol)" "MISSING_TESTFILE_FOR_SPEC SPEC-2"
+
+_run_gate_with_md "$(_g_md 'SPEC-1[code]: x' 'SPEC-2[guard]: old')"
+assert_eq "[G6] the result carries no guard pre-check block" "absent" \
+    "$(jq -r 'if has("guard_precheck") then "present" else "absent" end' "$RESULT_JSON")"
+assert_eq "[G6] the feedback has no guard coverage section" "0" \
+    "$(grep -c 'Guard baseline' "$FEEDBACK_PATH" || true)"
+assert_eq "[G6] the gate no longer defines a guard pre-check" "absent" \
+    "$(declare -F acceptance_negctl_guard_precheck >/dev/null && echo present || echo absent)"
 
 # ─── SPEC-11 (#1227 fix 1): C1 fence tolerates trailing whitespace ───────────
 # The design stage asserts the scope block with `grep -q '^```scope'`, which

@@ -6,11 +6,14 @@
 # reachability — for verifying a design's acceptance contract. A different repo
 # may bind a different plugin to the same role without adopting SPEC.
 #
+# Level 0: a change that edits production code needs ≥1 [code] requirement
+#          (ADR-069 §5, #2304) — otherwise it fails as unclaimed_code.
 # Level 1: every SPEC-n id in the design ```acceptance block must have ≥1
 #          [SPEC-n]-tagged assertion across the declared TESTFILES.
-# Level 2: each SPEC-n's tagged test must fail at the merge-base baseline and
-#          pass at HEAD (negative control — rejects tautological "green but
-#          inert" tests, the #844 defect class).
+# Level 2: each code SPEC-n's tagged test must fail at the merge-base baseline
+#          and pass at HEAD (negative control — rejects tautological "green but
+#          inert" tests, the #844 defect class). Done and no-code SPECs are not
+#          run (ADR-069 §4).
 # Level 3: if the design declares a WIRING: section, revert each declared file
 #          to merge-base (keeping all other changes at HEAD) and require ≥1
 #          TESTFILE to flip pass→fail — proving the wiring is load-bearing.
@@ -19,12 +22,9 @@
 # (verdict=pass, reason=precondition_unmet) so it is safe to compose into repos
 # that do not use the SPEC methodology. No model call.
 
-# Size (CLAUDE.md "under 500 lines unless there is a strong reason"): over, and
-# left that way. The file is one contract end to end — SPEC failure vocabulary →
-# disposition → reason — and ADR-021 puts that mapping HERE
-# precisely so the cycle engine stays generic and knows none of this gate's
-# vocabulary. Splitting it would scatter one mapping across two files for a line
-# count, which is how the engine learned a plugin's vocabulary in the first place.
+# The gate's failure vocabulary → disposition → reason mapping lives in this
+# plugin (here and in lib/reason.sh), not in the cycle engine: ADR-021 keeps the
+# engine generic, knowing none of this gate's vocabulary.
 
 [[ -n "${_ZBUILD_ACCEPTANCE_GATE_LOADED:-}" ]] && return 0
 _ZBUILD_ACCEPTANCE_GATE_LOADED=1
@@ -59,217 +59,9 @@ source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-reachability.sh"
 # also sourced transitively by negctl/reachability. Load-once sentinel = no-op.
 # shellcheck source=../../../scripts/lib/merge-base.sh
 source "$_ZBUILD_CONTRACT_LIB_DIR/merge-base.sh"
-
-# _ag_resolve_negctl_timeout <stage_id> — per-test negctl/reachability timeout (s).
-# Precedence (ADR-036 #1188): explicit ZBUILD_NEGCTL_TIMEOUT env > per-stage
-# template `negctl_timeout_s:` > 60s default. Env wins so CI/operators (and the
-# timeout test) can force a value regardless of the template default.
-_ag_resolve_negctl_timeout() {
-    local stage_id="${1:-acceptance-gate}"
-    if [[ "${ZBUILD_NEGCTL_TIMEOUT:-}" =~ ^[0-9]+$ ]]; then
-        printf '%s' "$ZBUILD_NEGCTL_TIMEOUT"; return 0
-    fi
-    if declare -F template_stage_negctl_timeout >/dev/null 2>&1; then
-        local v; v="$(template_stage_negctl_timeout "$stage_id" 2>/dev/null || true)"
-        if [[ "$v" =~ ^[0-9]+$ && "$v" -ge 1 ]]; then printf '%s' "$v"; return 0; fi
-    fi
-    printf '60'
-}
-
-# _ag_classify_disposition <failure...> — map this gate's failure classes to the
-# GENERIC member-disposition contract (ADR-021 / ADR-036 §-Disposition) the cycle
-# engine reads. The engine knows NO acceptance-gate failure vocabulary; it only
-# reads the disposition field this function computes. Precedence (highest wins):
-#   terminal    — ≥1 GENUINE, non-build-fixable violation:
-#                 malformed_acceptance_block (design-authored structure / build
-#                 cannot fix). OUTRANKS recoverable. An UNKNOWN class is
-#                 recoverable + evented, never terminal (#1959).
-#   recoverable — build-fixable classes: untagged_spec:*, tautology:*,
-#                 inert_wiring:*, not_passing_at_head:* (#1585/#2097 — the
-#                 assertion has a model author (test-author, #2022); the cycle
-#                 re-iterates with the finding in the stage summaries, the
-#                 negative control re-verifies each iteration).
-#   advisory    — only infra classes: negctl_error:* / reachability_error:*
-#                 (baseline/worktree resolve failures + negctl/reachability
-#                 TIMEOUTS — a flaky sandbox must never hard-fail the pipeline).
-# Empty failure set → "none". Echoes exactly one token.
-_ag_classify_disposition() {
-    local f cls had_recoverable=0 had_advisory=0
-    for f in "$@"; do
-        [[ -n "$f" ]] || continue
-        # The table lives in scripts/lib/acceptance-disposition.sh so the lint
-        # reads the same rows (#1959). Recoverable: untagged_spec, tautology,
-        # inert_wiring (#1585), no_testfile(s) (#2109), not_passing_at_head
-        # (#2097), wiring_not_on_path (#1686), guard_regressed
-        # (#1670). Advisory: negctl_error / reachability_error. Terminal:
-        # malformed_acceptance_block. A terminal class OUTRANKS recoverable.
-        cls="$(_ag_failure_class_disposition "${f%%:*}")"
-        case "$cls" in
-            terminal)    printf 'terminal'; return 0 ;;
-            recoverable) had_recoverable=1 ;;
-            advisory)    had_advisory=1 ;;
-            *)
-                # #1959: a class nobody named RE-ITERATES — max_iterations is
-                # the backstop — and says so. The old `*) terminal` halted the
-                # whole run on the fifth such class in a row.
-                eb_emit_event "acceptance.gate.unknown_failure_class" \
-                    "stage=acceptance-gate" "class=${f%%:*}" "failure=$f" 2>/dev/null || true
-                had_recoverable=1 ;;
-        esac
-    done
-    if [[ $had_recoverable -eq 1 ]]; then printf 'recoverable'; return 0; fi
-    if [[ $had_advisory   -eq 1 ]]; then printf 'advisory';    return 0; fi
-    printf 'none'
-}
-
-# _ag_join_ids <ids...> — compact "/"-join of a whitespace-separated id list,
-# e.g. " SPEC-1 SPEC-8 " → "SPEC-1/SPEC-8" (word-splitting collapses spacing).
-_ag_join_ids() {
-    local out="" id
-    for id in $1; do
-        [[ -z "$id" ]] && continue
-        if [[ -z "$out" ]]; then out="$id"; else out="$out/$id"; fi
-    done
-    printf '%s' "$out"
-}
-
-# _ag_unreached_where <ids> — "SPEC-3 (the file stopped after SPEC-2), …",
-# reading the stop points the NEGCTL lines carried (_ag_unreached_after,
-# dynamic scope from acceptance_gate_run).
-_ag_unreached_where() {
-    local _u _where="" _after
-    for _u in $1; do
-        _after=""
-        if [[ " ${_ag_unreached_after:-} " == *" $_u="* ]]; then
-            _after="${_ag_unreached_after##* $_u=}"; _after="${_after%% *}"
-        fi
-        _where="${_where:+$_where, }$_u${_after:+ (the file stopped after $_after)}"
-    done
-    printf '%s' "$_where"
-}
-
-# _ag_build_reason <failure...> — compose the human-readable operator reason
-# (#1220) that NAMES the offending SPEC ids grouped by violation class, so the
-# operator sees the FULL scope in one message instead of the opaque
-# member_terminal_failure. Repo-agnostic: ids come verbatim from the design's
-# acceptance block. Genuine violations lead; infra classes trail.
-_ag_build_reason() {
-    local f untagged="" taut="" nohead="" notf="" inert="" notpath="" infra="" malformed=0 grd="" nofiles="" sig="" unr="" unb="" unh="" unv="" brk=""
-    for f in "$@"; do
-        case "$f" in
-            tautology:*)            taut="$taut ${f#tautology:}" ;;
-            not_passing_at_head:*)  nohead="$nohead ${f#not_passing_at_head:}" ;;
-            untagged_spec:*)        untagged="$untagged ${f#untagged_spec:}" ;;
-            no_testfile:*)          notf="$notf ${f#no_testfile:}" ;;
-            no_testfiles:*)         nofiles="$nofiles ${f#no_testfiles:}" ;;
-            inert_wiring:*)         inert="$inert ${f#inert_wiring:}" ;;
-            wiring_not_on_path:*)   notpath="$notpath ${f#wiring_not_on_path:}" ;;
-            guard_regressed:*)      grd="$grd ${f#guard_regressed:}" ;;
-            guard_unreached:*)      unr="$unr ${f#guard_unreached:}" ;;
-            unreached_at_base:*)    unb="$unb ${f#unreached_at_base:}" ;;
-            unreached_at_head:*)    unh="$unh ${f#unreached_at_head:}" ;;
-            guard_unverified:*)     unv="$unv ${f#guard_unverified:}" ;;
-            guard_test_broken:*)    brk="$brk ${f#guard_test_broken:}" ;;
-            killed_by_signal:*)     sig="$sig ${f#killed_by_signal:}" ;;
-            malformed_acceptance_block) malformed=1 ;;
-            negctl_error:* | reachability_error:*) infra="$infra $f" ;;
-        esac
-    done
-    local -a clauses=()
-    # #2163: state the finding, never a remedy addressed to another stage.
-    # #2269: each clause says what was tried, what happened, and what to change,
-    # in words the reader was given — never the name of the check.
-    [[ -n "$taut"     ]] && clauses+=("$(_ag_join_ids "$taut"): its test already passes on the code from before this change, so it cannot tell whether the change was made — make it check something the old code gets wrong")
-    [[ -n "$nohead"   ]] && clauses+=("$(_ag_join_ids "$nohead"): its test does not pass on the new code — the code or the test is wrong")
-    [[ -n "$untagged" ]] && clauses+=("$(_ag_join_ids "$untagged"): no assertion in the test files carries its tag — add one labelled with it")
-    [[ -n "$notf"     ]] && clauses+=("$(_ag_join_ids "$notf"): no test file is listed for it under TESTFILES:")
-    [[ -n "$inert"    ]] && clauses+=("$(_ag_join_ids "$inert") was put back to its old version and every test still passed, so it is not what runs the new behaviour — name the file whose code calls it, or write WIRING: none")
-    [[ -n "$nofiles"  ]] && clauses+=("$(_ag_join_ids "$nofiles"): none of the listed test files exist, so putting it back could not be checked")
-    [[ -n "$notpath"  ]] && clauses+=("$(_ag_join_ids "$notpath") is not changed by this change — name a file the change touches, or write WIRING: none")
-    [[ -n "$grd"      ]] && clauses+=("$(_ag_join_ids "$grd") is tagged [guard] but its test fails on the code from before this change — a guard must pass there, so either the test does not match its requirement or the requirement is really a [change]")
-    [[ -n "$unr" ]] && clauses+=("$(_ag_unreached_where "$unr"): the guard's test never ran on the code from before this change — an earlier step in its test file stops the file there, so nothing was measured; the guard itself is not in question")
-    [[ -n "$unb" ]] && clauses+=("$(_ag_unreached_where "$unb"): its test never ran on the code from before this change — an earlier step in its test file stops the file there, so it is not shown to fail on the old code")
-    [[ -n "$unh" ]] && clauses+=("$(_ag_unreached_where "$unh"): its test never ran on the new code — an earlier step in its test file stops the file before the assertion, so it was not checked")
-    [[ -n "$brk" ]] && clauses+=("$(_ag_join_ids "$brk"): its [guard] test fails on the new code too, not only before the change — the test itself is broken (it fails whatever the code does), so the guard's label is not in question")
-    [[ -n "$unv" ]] && clauses+=("$(_ag_join_ids "$unv"): its [guard] test file failed on the old code without printing a ✓/✗ line for the requirement, so a failed check cannot be told from a file that stopped first — make the assertion print its own tagged result")
-    [[ -n "$sig"      ]] && clauses+=("$(_ag_join_ids "$sig"): its test file died on a signal before the assertion ran (not a timeout) — usually a test that signals its own process (\$\$) where no handler exists yet; signal a child process instead")
-    [[ "$malformed" -eq 1 ]] && clauses+=("the acceptance block could not be read")
-    if [[ -n "$infra" ]]; then
-        local _i _ib="" _ir=""
-        for _i in $infra; do
-            case "$_i" in
-                negctl_error:*)       _ib="$_ib ${_i#negctl_error:}" ;;
-                reachability_error:*) _ir="$_ir ${_i#reachability_error:}" ;;
-            esac
-        done
-        [[ -n "$_ib" ]] && clauses+=("the run of $(_ag_join_ids "$_ib")'s test on the code from before this change could not be done (a problem in the pipeline, not in your change)")
-        [[ -n "$_ir" ]] && clauses+=("putting $(_ag_join_ids "$_ir") back to its old version could not be done (a problem in the pipeline, not in your change)")
-    fi
-    local out="" c
-    for c in ${clauses[@]+"${clauses[@]}"}; do
-        if [[ -z "$out" ]]; then out="$c"; else out="$out; $c"; fi
-    done
-    printf 'the acceptance check failed — %s' "$out"
-}
-
-# _ag_noop_precondition_unmet <result_file> <precondition_id> — write the no-op
-# pass artifact + emit the skip/complete events. reason=precondition_unmet
-# generalizes the historical no-acceptance-block skip: when a declared
-# `preconditions` (manifest) is unmet, the SPEC methodology does not apply, so
-# the gate no-ops instead of hard-failing — this is what makes it safe to
-# compose into repos that do not use SPEC.
-_ag_noop_precondition_unmet() {
-    local result_file="$1" pc="$2"
-    printf '{"result_contract":2,"verdict":"pass","reason":"precondition_unmet","precondition":"%s","disposition":"complete","severity":"none","failures":[]}\n' \
-        "$pc" | atomic_write "$result_file"
-    local _summary_dir; _summary_dir="$(dirname "$result_file")"
-    printf 'verdict=pass\nreason=precondition_unmet\nprecondition=%s\n' "$pc" \
-        | atomic_write "${_summary_dir}/acceptance-summary.txt"
-    eb_emit_event "acceptance.gate.skipped" "stage=acceptance-gate" "reason=precondition_unmet" "precondition=$pc"
-    eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=pass"
-}
-
-# _ag_emit_operator_summary <stage_id> <verdict_line>... — surface the concise
-# per-check verdict lines (NEGCTL/REACHABILITY PASS/FAIL/…, one per SPEC and per
-# WIRING target) to the operator via this stage's own stage-io stdout channel
-# (ADR-039 file-only-child + summary; ADR-036 §Operator-summary, #1211). The
-# nested TESTFILE replay is captured to the negctl/reachability diagnostic logs
-# (off the terminal, #1211); the operator sees ONLY this one-line-per-check
-# readout. io-gated on this stage's destinations so a file-only install stays
-# quiet, and routed to ZBUILD_STAGE_IO_FD (default fd 2) — never fd 1 (would
-# collide with the action's $() capture).
-_ag_emit_operator_summary() {
-    local stage_id="$1"; shift
-    [[ $# -eq 0 ]] && return 0
-    declare -F template_stage_io_dests >/dev/null 2>&1 || return 0
-    local dests; dests="$(template_stage_io_dests "$stage_id" 2>/dev/null || true)"
-    grep -qx stdout <<< "$dests" || return 0
-    local io_fd="${ZBUILD_STAGE_IO_FD:-2}"
-    # #1241: mechanical-gate stages open no router/command stage-io span, so this
-    # summary otherwise dangled after the preceding stage's ── end stage-io ──.
-    # Wrap it in a real stage-io span (kind=computed) so it renders inside its own
-    # ── stage-io: <stage> ── / ── end stage-io: <stage> ── frame. begin/end are
-    # called DIRECTLY (not via $()) so the pending-state mutation persists in this
-    # shell — `>/dev/null` suppresses only the seq on fd 1 (which would collide
-    # with the action's $() capture); the banner stays on ZBUILD_STAGE_IO_FD.
-    local _framed=0 _seq=""
-    if declare -F stage_io_begin >/dev/null 2>&1 && declare -F stage_io_end >/dev/null 2>&1; then
-        stage_io_begin --stage "$stage_id" --kind computed \
-            --input "contract summary ($# checks)" >/dev/null || true
-        _seq="${_STAGE_IO_LAST_SEQ:-}"
-        [[ -n "$_seq" ]] && _framed=1
-    fi
-    # shellcheck disable=SC2261
-    {
-        printf 'acceptance-gate — contract summary:\n'
-        printf '  %s\n' "$@"
-    } >&"$io_fd" 2>/dev/null || true
-    if [[ "$_framed" == "1" ]]; then
-        stage_io_end --stage "$stage_id" --kind computed --seq "$_seq" \
-            --output "contract summary: $# checks" --exit-code 0 >/dev/null || true
-    fi
-    return 0
-}
+# The gate's reason, operator summary and small helpers (#2304: keeps this file under 500 lines).
+# shellcheck source=lib/reason.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/reason.sh"
 
 acceptance_gate_run() {
     local _stage_id="$1"
@@ -361,7 +153,10 @@ acceptance_gate_run() {
 
     local verdict="pass"
     local -a failures=()
-    # #1835: "<spec>=<last SPEC the file printed>" for each unreached guard;
+    # #2304: what the pass reason counts (ADR-069) — requirements checked on the
+    # old and new code, already done, and needing no code.
+    local _ag_n_checked=0 _ag_n_done=0 _ag_n_nocode=0
+    # #1835: "<spec>=<last SPEC the file printed>" for each unreached SPEC;
     # read by _ag_build_reason (dynamic scope) to say where the file stopped.
     local _ag_unreached_after=""
     # #1211: one concise verdict line per SPEC (negctl) / per WIRING target
@@ -373,6 +168,25 @@ acceptance_gate_run() {
     # report). Space-delimited set (" SPEC-1 SPEC-2 ") — membership via glob
     # pattern `*" $sid "*`; simpler than declare -A for a small id set.
     local untagged_ids=" "
+
+    # ── Level 0: code nobody claims (#2304, ADR-069 §5) ──────────────────────
+    # A [no-code] or [done] requirement is never run against the old code, so
+    # a change that edits production code needs at least one [code]
+    # requirement — or nothing shows its tests fail without it. Reported with
+    # the other levels in the same pass (#1220), not as an early exit.
+    local _uc_path _uc_n=0 _uc_first=""
+    while IFS= read -r line; do
+        [[ "$line" == "UNCLAIMED_CODE "* ]] || continue
+        _uc_path="${line#UNCLAIMED_CODE }"
+        failures+=("unclaimed_code:$_uc_path")
+        [[ -z "$_uc_first" ]] && _uc_first="$_uc_path"
+        _uc_n=$((_uc_n + 1))
+        verdict="fail"
+    done < <(acceptance_unclaimed_code_check "$design_md" "$repo_root" || true)
+    if [[ "$_uc_n" -gt 0 ]]; then
+        eb_emit_event "acceptance.gate.unclaimed_code" "stage=acceptance-gate" \
+            "files=$_uc_n" "first=$_uc_first"
+    fi
 
     # ── Level 1: SPEC-n tag-presence ─────────────────────────────────────────
     while IFS= read -r line; do
@@ -387,7 +201,7 @@ acceptance_gate_run() {
 
     # ── Level 2: baseline negative-control ───────────────────────────────────
     # #1220: runs REGARDLESS of Level 1's outcome so every violation class (e.g.
-    # a tautological [change] SPEC) is reported in the SAME pass — no whack-a-mole.
+    # a tautological [code] SPEC) is reported in the SAME pass — no whack-a-mole.
     {
         while IFS= read -r line; do
             [[ -z "$line" ]] && continue
@@ -419,7 +233,9 @@ acceptance_gate_run() {
             fi
             summary_lines+=("$_e_enriched")  # #1211: one operator line per SPEC (enriched)
             case "$line" in
-                "NEGCTL PASS "*) : ;;  # control confirmed
+                "NEGCTL PASS "*) _ag_n_checked=$((_ag_n_checked + 1)) ;;  # control confirmed
+                "NEGCTL SKIP "*" already_done") _ag_n_done=$((_ag_n_done + 1)) ;;
+                "NEGCTL SKIP "*" no_code")      _ag_n_nocode=$((_ag_n_nocode + 1)) ;;
                 "NEGCTL SKIP "*) : ;;  # no_impl_delta — legitimate skip
                 "NEGCTL FAIL "*)
                     # "NEGCTL FAIL <spec_id> <reason>"
@@ -440,15 +256,8 @@ acceptance_gate_run() {
                     fi
                     failures+=("$reason:$sid")
                     verdict="fail"
-                    # #1670: guard verdicts ride the same "<spec_id> <reason>"
-                    # shape as every other FAIL line, so only the event differs.
-                    if [[ "$reason" == "guard_regressed" ]]; then
-                        eb_emit_event "acceptance.gate.guard_regressed" "stage=acceptance-gate" \
-                            "spec_id=$sid"
-                    else
-                        eb_emit_event "acceptance.gate.tautology" "stage=acceptance-gate" \
-                            "spec_id=$sid" "reason=$reason"
-                    fi
+                    eb_emit_event "acceptance.gate.tautology" "stage=acceptance-gate" \
+                        "spec_id=$sid" "reason=$reason"
                     ;;
                 "NEGCTL ERROR "*)
                     local detail="${line#NEGCTL ERROR }"
@@ -578,8 +387,9 @@ acceptance_gate_run() {
     fi
     # ADR-054: reason is mandatory; a pass says what it verified. Kept apart
     # from reason_msg, which is the VIOLATION prose the operator summary leads
-    # with (#1220) — a pass must not read as a finding there.
-    local _pass_reason; _pass_reason="all $(acceptance_list_spec_ids "$design_md" 2>/dev/null | grep -c . || true) SPEC(s) verified"
+    # with (#1220) — a pass must not read as a finding there. #2304: it counts
+    # each status, so a pass that checked nothing on the old code says so.
+    local _pass_reason="the acceptance check passed — ${_ag_n_checked} checked on the old and new code, ${_ag_n_done} already done, ${_ag_n_nocode} no code"
     # #2271 (ADR-068): the gate states its findings; it never decides who fixes
     # them. Every stage answers each finding, and the loops carry what nobody in
     # the build loop owns back to design.

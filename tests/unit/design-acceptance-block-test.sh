@@ -6,6 +6,7 @@
 #   (b) rejects a design.md that has a scope block but no acceptance block (rc=1)
 #   (c) leaves existing test files untouched (stub-writer removed; issue #1477)
 #   (d) acceptance-block grammar helpers work correctly
+#   (e) the prompt explains the three requirement statuses (#2304, ADR-069)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -156,22 +157,33 @@ ab_rc=$?
 set +e
 assert_eq "T4: extract_acceptance_block returns 0 on well-formed design.md" "0" "$ab_rc"
 
-# ─── T6: acceptance_spec_is_guard works for [guard]-classified SPEC ──────────
-work_file_t6="$TEST_TEMP_DIR/tc6_design.md"
-_t6_bt='```'
-printf '# Design\n\n%sacceptance\nSPEC-1[guard]: invariant\nSPEC-2[change]: new behavior\nTESTFILES:\ntests/unit/foo-test.sh\ntests/integration/bar-test.sh\n%s\n' \
-    "$_t6_bt" "$_t6_bt" > "$work_file_t6"
-set +e
-acceptance_spec_is_guard "$work_file_t6" "SPEC-1"; t6_guard_rc=$?
-acceptance_spec_is_guard "$work_file_t6" "SPEC-2"; t6_change_rc=$?
-set +e
-assert_eq "T6: [guard] SPEC recognized (rc=0)" "0" "$t6_guard_rc"
-assert_eq "T6: [change] SPEC not a guard (rc=1)" "1" "$t6_change_rc"
+# ─── T6 (#2304, ADR-069 §1/§2): the prompt explains the three statuses ──────
+# Design is told, in plain words, what each status means and how to name the
+# evidence for an already-done requirement. The old tags are not offered.
+_t6_prompt="$(cat "$TEST_TEMP_DIR/t1/state/artifacts/design-prompt.txt" 2>/dev/null)"
+assert_contains "T6: the prompt offers SPEC-n[code]: for work that needs code" "$_t6_prompt" 'SPEC-n[code]:` — it needs code'
+assert_contains "T6: [code] keeps the fail-before, pass-after rule" "$_t6_prompt" \
+    "Its test must fail on the code as it is before your change, and pass after it"
+assert_contains "T6: the prompt offers SPEC-n[no-code]: for work that changes no behaviour" "$_t6_prompt" \
+    'SPEC-n[no-code]:` — it needs work that changes no behaviour'
+assert_contains "T6: [no-code] need not fail before" "$_t6_prompt" "it need not fail before"
+assert_contains "T6: the prompt offers SPEC-n[done]: for what the code already does" "$_t6_prompt" \
+    'SPEC-n[done]:` — the code already does it'
+assert_contains "T6: the evidence syntax is shown" "$_t6_prompt" "after \` evidence: \`"
+assert_contains "T6: the example block carries a [done] line with evidence" "$_t6_prompt" \
+    "SPEC-3[done]: <something the code already does> evidence: scripts/x.sh:42"
+for _old in '[guard]' '[change]'; do
+    if grep -qF -- "$_old" <<< "$_t6_prompt"; then
+        assert_fail "T6: the prompt no longer offers $_old" "found in design-prompt.txt"
+    else
+        assert_pass "T6: the prompt no longer offers $_old"
+    fi
+done
 
 # ─── T7: acceptance_list_spec_ids returns bare ids from classified lines ──────
 work_file_t7="$TEST_TEMP_DIR/tc7_design.md"
 _t7_bt='```'
-printf '# Design\n\n%sacceptance\nSPEC-1[change]: first\nSPEC-2[guard]: second\nSPEC-3: unclassified\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' \
+printf '# Design\n\n%sacceptance\nSPEC-1[code]: first\nSPEC-2[done]: second evidence: foo.sh\nSPEC-3: no status\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' \
     "$_t7_bt" "$_t7_bt" > "$work_file_t7"
 set +e
 t7_out="$(acceptance_list_spec_ids "$work_file_t7")"; t7_rc=$?
@@ -180,20 +192,6 @@ assert_eq "T7: acceptance_list_spec_ids returns 0" "0" "$t7_rc"
 assert_eq "T7: SPEC-1 listed (bare, no classifier)" "1" "$(echo "$t7_out" | grep -c '^SPEC-1$')"
 assert_eq "T7: SPEC-2 listed (bare, no classifier)" "1" "$(echo "$t7_out" | grep -c '^SPEC-2$')"
 assert_eq "T7: SPEC-3 listed (bare, unclassified)" "1" "$(echo "$t7_out" | grep -c '^SPEC-3$')"
-
-# ─── T8: acceptance_spec_is_guard returns correct values for each type ────────
-work_file_t8="$TEST_TEMP_DIR/tc8_design.md"
-_t8_bt='```'
-printf '# Design\n\n%sacceptance\nSPEC-1[guard]: g\nSPEC-2[change]: c\nSPEC-3: u\nTESTFILES:\ntests/unit/foo-test.sh\n%s\n' \
-    "$_t8_bt" "$_t8_bt" > "$work_file_t8"
-set +e
-acceptance_spec_is_guard "$work_file_t8" "SPEC-1"; t8_g=$?
-acceptance_spec_is_guard "$work_file_t8" "SPEC-2"; t8_c=$?
-acceptance_spec_is_guard "$work_file_t8" "SPEC-3"; t8_u=$?
-set +e
-assert_eq "T8: [guard] is guard (rc=0)" "0" "$t8_g"
-assert_eq "T8: [change] is not guard (rc=1)" "1" "$t8_c"
-assert_eq "T8: unclassified is not guard (rc=1)" "1" "$t8_u"
 
 cleanup_test_env
 print_test_results

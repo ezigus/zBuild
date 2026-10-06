@@ -79,15 +79,21 @@ export MOCK_DESIGN_WRITE_PATH="$AD1B/design.md"
 _design_stage_run_inner "$(dirname "$AD1B")/scope-manifest.md" "$AD1B/plan.json" \
     "$AD1B/design.md" "$AD1B" >/dev/null 2>&1 || true
 # #2269: the same instructions, in plain words.
+_t1b="$(cat "$AD1B/design-prompt.txt" 2>/dev/null)"
 assert_contains "T1: a failing acceptance gate yields the rewrite instruction" \
-    "$(cat "$AD1B/design-prompt.txt" 2>/dev/null)" "rewrite that requirement so it describes behaviour that is new"
-# #2157: re-authoring cannot fix a SPEC that describes behaviour already on the
-# baseline (#1840 run 5, SPEC-16/17 — true since #2000, looped two iterations).
-# The replay must offer the honest way out: re-tag it [guard].
-assert_contains "T1 [#2157]: the replay says an already-true behaviour is re-tagged [guard]" \
-    "$(cat "$AD1B/design-prompt.txt" 2>/dev/null)" "if the behaviour already exists, tag it [guard]"
-assert_contains "T1 [#2157]: the classification rule tells design to check the tree before tagging [change]" \
-    "$(cat "$AD1B/design-prompt.txt" 2>/dev/null)" "if the behaviour is already there today"
+    "$_t1b" "rewrite that requirement so its test fails on the old code and passes after"
+# #2304 (ADR-069): the relabel offer is gone. A requirement the code already
+# meets is marked [done] with evidence the design-gate checks — an honest
+# status, not a way to drop the red step (#2035).
+assert_contains "T1 [#2304]: the replay says an already-met requirement is marked [done] with evidence" \
+    "$_t1b" "if the code already does it, mark it [done] and name the evidence"
+if grep -qF 'tag it [guard]' <<< "$_t1b"; then
+    assert_fail "T1 [#2304]: the replay no longer offers to tag a requirement [guard]" "found in design-prompt.txt"
+else
+    assert_pass "T1 [#2304]: the replay no longer offers to tag a requirement [guard]"
+fi
+assert_contains "T1 [#2157]: the status rule tells design to look at the code before choosing" \
+    "$_t1b" "Look at the code before you choose"
 
 # ── T2: design-feedback.md absent → prompt has NO gate-feedback section (no-op) ─
 AD2="$(_setup_fixture)"

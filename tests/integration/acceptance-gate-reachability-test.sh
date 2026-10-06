@@ -304,11 +304,9 @@ tests/feature-test.sh
 EOF
 
 # R6a: ZBUILD_CYCLE_ITER unset — inert_wiring with no fault (first attempt).
-# The [SPEC-2] guard for this half lives in its own file,
-# tests/integration/acceptance-gate-inert-wiring-iter1-test.sh: the guard negative
-# control runs a whole testfile and keys on the FILE's exit code, so a guard tagged
-# here would be reported guard_regressed by R6b's [SPEC-1] change assertions failing
-# at the merge-base — which is those assertions working correctly (#1737).
+# The [SPEC-2] check for this half lives in its own file,
+# tests/integration/acceptance-gate-inert-wiring-iter1-test.sh, so this file's
+# [SPEC-1] assertions failing at the merge-base cannot be read against it (#1737).
 # The assertions below stay untagged and are the local smoke check.
 unset ZBUILD_CYCLE_ITER
 set +e; _run_gate "$REPO_R6"; set -e

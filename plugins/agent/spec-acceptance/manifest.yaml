@@ -74,7 +74,6 @@ provides:
     - acceptance.gate.baseline_resolve_failed
     - acceptance.gate.complete
     - acceptance.gate.file_timeout
-    - acceptance.gate.guard_regressed
     - acceptance.gate.inert_wiring
     - acceptance.gate.no_testfiles
     - acceptance.gate.not_passing_at_head
@@ -86,6 +85,7 @@ provides:
     - acceptance.gate.skipped
     - acceptance.gate.start
     - acceptance.gate.tautology
+    - acceptance.gate.unclaimed_code
     - acceptance.gate.unknown_failure_class
     - acceptance.gate.untagged_spec
     - acceptance.gate.wiring_exempt
@@ -103,6 +103,7 @@ config:
   # scripts/lib/acceptance-disposition.sh does not map; at runtime an unmapped
   # class is recoverable and evented, never terminal.
   valid_failure_classes:
+    - unclaimed_code
     - untagged_spec
     - tautology
     - inert_wiring
@@ -111,10 +112,6 @@ config:
     - not_passing_at_head
     - killed_by_signal
     - wiring_not_on_path
-    - guard_regressed
-    - guard_unreached
-    - guard_unverified
-    - guard_test_broken
     - unreached_at_base
     - unreached_at_head
     - negctl_error

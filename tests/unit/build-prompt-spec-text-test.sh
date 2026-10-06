@@ -23,6 +23,7 @@
 #                    rather than dropping the id or crashing the stage
 #   SPEC-6 [change]: context.sh actually BUILDS the id+text list — a formatter
 #                    that can render text nothing feeds it is inert
+#   B1 (#2304, ADR-069 §6): an already-done requirement is not in build's list
 #   SPEC-5 [change]: build does not author or modify assertions at all (#2022).
 #                    The branching rule this SPEC once described still let build
 #                    decide an assertion did not test its SPEC and rewrite it —
@@ -55,7 +56,8 @@ Some prose the acceptance block does not own.
 ```acceptance
 SPEC-1[change]: test-results.json emits result_contract=2 at the top level
 SPEC-7[change]: plugin-specific fields live under data:{} not at the top level
-SPEC-9[guard]: _test_write_result does not construct artifact paths internally
+SPEC-9[no-code]: _test_write_result does not construct artifact paths internally
+SPEC-11[done]: the result file is written atomically evidence: plugins/tool/test/plugin.sh
 TESTFILES:
 SPEC-1: plugins/tool/test/tests/test-test.sh
 SPEC-7: plugins/tool/test/tests/test-test.sh
@@ -70,7 +72,7 @@ if declare -F acceptance_spec_text >/dev/null 2>&1; then
     assert_eq "[SPEC-1] the text is returned without the id or classifier" \
         "plugin-specific fields live under data:{} not at the top level" \
         "$(acceptance_spec_text "$DESIGN" SPEC-7)"
-    assert_eq "[SPEC-1] a guard SPEC's text resolves the same way" \
+    assert_eq "[SPEC-1] a no-code SPEC's text resolves the same way" \
         "_test_write_result does not construct artifact paths internally" \
         "$(acceptance_spec_text "$DESIGN" SPEC-9)"
     assert_eq "[SPEC-1] an unknown id yields empty, not garbage" "" \
@@ -191,7 +193,10 @@ if declare -F _build_gather_acceptance_specs >/dev/null 2>&1; then
     _gathered="$(_build_gather_acceptance_specs "$DESIGN" 2>/dev/null || true)"
     assert_contains "[SPEC-6] the gathered list pairs SPEC-7 with its text" \
         "$_gathered" "live under data:{} not at the top level"
-    assert_contains "[SPEC-6] every declared id is present" "$_gathered" "SPEC-9"
+    assert_contains "[SPEC-6] every requirement that needs work is present" "$_gathered" "SPEC-9"
+    # #2304 (ADR-069 §6): build is not asked for what is already done.
+    assert_eq "[B1] an already-done requirement is left out of build's list" "0" \
+        "$(grep -c 'SPEC-11\|written atomically' <<< "$_gathered" || true)"
     _no_block="$TEST_TEMP_DIR/no-block.md"
     printf '# no acceptance block\n' > "$_no_block"
     assert_eq "[SPEC-6] a design with no block yields nothing, not an error" "" \

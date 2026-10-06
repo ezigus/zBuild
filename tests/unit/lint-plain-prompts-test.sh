@@ -23,6 +23,9 @@
 #             model (`$inert`, `${_TPL_STAGES[@]}` in a printf line)
 # P8 [change] a comment ends a `\` continuation: the line after it is code, not
 #             the summary call's text
+# P9 [code]   the retired [guard] tag in a heredoc fails: a model reading it
+#             would offer it back, and the design-gate refuses it (#2304,
+#             ADR-069 §8)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -78,6 +81,11 @@ printf '%s\n' 'stage_summary_write "$f" x pass "the check ran" \' '# NEGCTL: why
 _src plugins/x/g.sh; _lint
 assert_eq "[P8] a comment ends a continuation; the next line is code" "0" "$rc"
 [[ $rc -eq 0 ]] || printf '%s\n' "$out"
+
+printf '%s\n' 'cat <<EOF' 'If the code already does it, tag it [guard].' 'EOF' > "$R/plugins/x/h.sh"
+_src plugins/x/h.sh; _lint
+assert_eq "[P9] a heredoc offering the retired [guard] tag fails" "1" "$rc"
+assert_contains "[P9] it names the file and line" "$out" "plugins/x/h.sh:2"
 
 bash "$LINT" "$REPO_ROOT" > "$TEST_TEMP_DIR/real.out" 2>&1; rc=$?
 assert_eq "[P6] the real tree passes" "0" "$rc"

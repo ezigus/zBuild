@@ -76,11 +76,11 @@ assert_eq "[T2] #${_ID}'s own tag covers it" "0" "$_rc"
 print_test_section "T3: the test-output scan"
 LOG="$TEST_TEMP_DIR/out.log"
 printf '  ✗ [SPEC-3] #1328 assertion failing\n  ✓ [#%s/SPEC-3] v2 result\n' "$_ID" > "$LOG"
-if declare -F _negctl_guard_log_check >/dev/null 2>&1; then
-    _rc=0; ZBUILD_ISSUE=${_ID} _negctl_guard_log_check "$LOG" SPEC-3 || _rc=$?
+if declare -F _negctl_spec_log_check >/dev/null 2>&1; then
+    _rc=0; ZBUILD_ISSUE=${_ID} _negctl_spec_log_check "$LOG" SPEC-3 || _rc=$?
     assert_eq "[T3] #${_ID}'s SPEC-3 reads as passing — the other issue's ✗ is not its line" "1" "$_rc"
 else
-    assert_fail "[T3] _negctl_guard_log_check is available" "not defined"
+    assert_fail "[T3] _negctl_spec_log_check is available" "not defined"
 fi
 
 print_test_section "T4: the stale-tag step"

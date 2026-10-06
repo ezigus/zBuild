@@ -21,6 +21,8 @@ source "$_IA_ROOT/core/event-bus/event-bus.sh"
 source "$_IA_ROOT/core/router/route.sh"
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_IA_ROOT/scripts/lib/acceptance-block.sh" 2>/dev/null || true
+# shellcheck source=../../../scripts/lib/test-output-sanitize.sh
+source "$_IA_ROOT/scripts/lib/test-output-sanitize.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/llm-agent.sh
 source "$_IA_ROOT/scripts/lib/llm-agent.sh" 2>/dev/null || true
 # shellcheck source=../../../scripts/lib/router-rc-classify.sh
@@ -54,7 +56,7 @@ _ia_prompt() {
 You will be shown:
 
 ISSUE — what was asked for, in the requester's own words. This is the standard.
-ACCEPTANCE — the SPEC sentences the design committed to.
+REQUIREMENTS — what the design committed to, each with what was done about it.
 DIFF — the change as built.
 TEST VERDICT — whether the test suite passed.
 
@@ -69,18 +71,25 @@ what its tests must catch (for example \"putting the old code back turns the tes
 red\"). The pipeline does not check those for you. For each one, ask: if the
 change were broken, would its tests catch it? If they would not, it is unmet.
 
-Answer in at most three lines:
+Some REQUIREMENTS were not run against the old code: those that need work but
+no code, and those design says are already done. Nothing but you checks them.
+For one already done, check the claim against the evidence shown. If you cannot
+tell whether such a requirement is met, say so rather than guess: a person will
+check it.
 
-VERDICT: pass | fail
+Answer in at most four lines:
+
+VERDICT: pass | fail | unsure
 REASON: <one sentence>
 UNMET: <semicolon-separated issue requirements the diff does not meet; omit on pass>
+UNSURE: <semicolon-separated requirements you cannot tell are met, each named as listed; omit when sure>
 
 Do not suggest code. Answer only.
 
 ISSUE:
 $1
 
-ACCEPTANCE:
+REQUIREMENTS:
 $2
 
 DIFF:
@@ -89,19 +98,22 @@ $3
 TEST VERDICT: $4"
 }
 
-# _ia_write <dir> <verdict> <disposition> <reason> [unmet_json]
+# _ia_write <dir> <verdict> <disposition> <reason> [unmet_json] [unsure_json]
 _ia_write() {
-    local dir="$1" v="$2" d="$3" r="$4" u="${5:-[]}"
+    local dir="$1" v="$2" d="$3" r="$4" u="${5:-[]}" s="${6:-[]}"
     mkdir -p "$dir" 2>/dev/null || true
-    # #2271 (ADR-068): each unmet acceptance item is a numbered finding.
-    local _fnd; _fnd="$(jq -r '.[]? | "The issue requires this and the change does not meet it: " + tostring' <<< "$u" 2>/dev/null | stage_findings_json)"
-    if ! jq -n --arg v "$v" --arg d "$d" --arg r "$r" --argjson u "$u" --argjson fnd "${_fnd:-[]}" \
-        '{result_contract: 2, verdict: $v, disposition: $d, reason: $r, data: {unmet: $u, findings: $fnd}}' \
+    # #2271 (ADR-068): each unmet acceptance item is a numbered finding. #2304
+    # (ADR-069 §7): so is each requirement the judge is not sure of — nothing
+    # else checks it, so a person must.
+    local _fnd; _fnd="$(jq -r --argjson s "$s" '(.[]? | "The issue requires this and the change does not meet it: " + tostring),
+        ($s[] | "Not sure this is met, so a person must check it: " + tostring)' <<< "$u" 2>/dev/null | stage_findings_json)"
+    if ! jq -n --arg v "$v" --arg d "$d" --arg r "$r" --argjson u "$u" --argjson s "$s" --argjson fnd "${_fnd:-[]}" \
+        '{result_contract: 2, verdict: $v, disposition: $d, reason: $r, data: {unmet: $u, unsure: $s, findings: $fnd}}' \
         | atomic_write "$dir/issue-acceptance-result.json"; then
         _ia_emit "issue_acceptance.result.write_failed" "dir=$dir"
     fi
     local _body="- every requirement the issue states is met by the change"
-    [[ "$u" != "[]" ]] && _body="$(jq -r '.[] | "- NOT MET: " + .' <<< "$u" 2>/dev/null || printf -- '- see result')"
+    [[ "$u" != "[]" || "$s" != "[]" ]] && _body="$(jq -r --argjson s "$s" '(.[] | "- NOT MET: " + .), ($s[] | "- NOT SURE, a person must check: " + .)' <<< "$u" 2>/dev/null || printf -- '- see result')"
     [[ "$v" == "unreadable" ]] && _body="- the change was not judged against the issue"
     stage_summary_write "$dir/issue-acceptance-summary.md" "issue-acceptance" "$v" "$r" "$_body"
 }
@@ -128,8 +140,13 @@ issue_acceptance_run() {
         return 0
     fi
 
-    [[ -n "$design_f" && -f "$design_f" ]] && declare -f extract_acceptance_block >/dev/null 2>&1 \
-        && acc="$(extract_acceptance_block "$design_f" 2>/dev/null || true)"
+    # #2304 (ADR-069 §7): the requirements in plain words, by status — never the
+    # raw block's tags — with a done one's evidence, cleaned for the model.
+    local _root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+    [[ -n "$design_f" && -f "$design_f" ]] && declare -f acceptance_requirements_for_judge >/dev/null 2>&1 \
+        && acc="$(acceptance_requirements_for_judge "$design_f" "$_root" 2>/dev/null || true)"
+    declare -F _zbuild_sanitize_for_llm >/dev/null 2>&1 && [[ -n "$acc" ]] \
+        && acc="$(printf '%s\n' "$acc" | _zbuild_sanitize_for_llm)"
     [[ -n "$diff_f" && -f "$diff_f" ]] && diff="$(cat "$diff_f" 2>/dev/null || true)"
     [[ -n "$tests_f" && -f "$tests_f" ]] && test_verdict="$(jq -r '.verdict // empty' "$tests_f" 2>/dev/null || true)"
 
@@ -175,13 +192,15 @@ issue_acceptance_run() {
     fi
 
     # No `| head` (#1886): capture in full, trim in bash.
-    local _v _r _u_line
-    _v="$(grep -oE 'VERDICT:[[:space:]]*(pass|fail)' <<< "$_raw" || true)"
+    local _v _r _u_line _s_line
+    _v="$(grep -oE 'VERDICT:[[:space:]]*(pass|fail|unsure)' <<< "$_raw" || true)"
     _v="${_v%%$'\n'*}"; _v="${_v##*[[:space:]]}"
     _r="$(grep -E '^REASON:' <<< "$_raw" || true)"
     _r="${_r%%$'\n'*}"; _r="${_r#REASON:}"; _r="${_r#"${_r%%[![:space:]]*}"}"
     _u_line="$(grep -E '^UNMET:' <<< "$_raw" || true)"
     _u_line="${_u_line%%$'\n'*}"; _u_line="${_u_line#UNMET:}"
+    _s_line="$(grep -E '^UNSURE:' <<< "$_raw" || true)"
+    _s_line="${_s_line%%$'\n'*}"; _s_line="${_s_line#UNSURE:}"
 
     if [[ -z "$_v" ]]; then
         # ADR-054 §6a: the stage ran but its output cannot be used — retry.
@@ -190,18 +209,28 @@ issue_acceptance_run() {
         return 0
     fi
 
-    local _u_json='[]'
-    if [[ "$_v" == "fail" ]]; then
-        if [[ -n "${_u_line// }" ]]; then
-            _u_json="$(tr ';' '\n' <<< "$_u_line" \
-                | jq -Rsc 'split("\n") | map(sub("^[[:space:]]+";"") | sub("[[:space:]]+$";"")) | map(select(length > 0))' 2>/dev/null || true)"
-            [[ -n "$_u_json" ]] || _u_json='[]'
-        fi
+    local _u_json='[]' _s_json
+    [[ "$_v" == "pass" ]] || _u_json="$(_ia_list "$_u_line")"
+    # #2304 (ADR-069 §7): a requirement the judge is not sure of is never a
+    # pass — whatever the verdict line says — and a person must check it.
+    _s_json="$(_ia_list "$_s_line")"
+    if [[ "$_s_json" != "[]" || "$_v" == "unsure" ]]; then
+        _v="fail"
+        _ia_emit "issue_acceptance.unsure" "count=$(jq 'length' <<< "$_s_json" 2>/dev/null || printf 0)"
     fi
 
     _ia_emit "issue_acceptance.judged" "verdict=$_v"
-    _ia_write "$art" "$_v" "complete" "${_r:-judged the change against the issue}" "$_u_json"
+    _ia_write "$art" "$_v" "complete" "${_r:-judged the change against the issue}" "$_u_json" "$_s_json"
     return 0
+}
+
+# _ia_list <semicolon-separated line> — a JSON array of its trimmed items; "none"
+# (any case) and blanks are dropped.
+_ia_list() {
+    local _j=""
+    [[ -n "${1// }" ]] && _j="$(tr ';' '\n' <<< "$1" \
+        | jq -Rsc 'split("\n") | map(sub("^[[:space:]]+";"") | sub("[[:space:]]+$";"")) | map(select(length > 0 and ascii_downcase != "none"))' 2>/dev/null || true)"
+    printf '%s' "${_j:-[]}"
 }
 
 issue_acceptance_cleanup() { return 0; }

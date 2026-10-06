@@ -2,13 +2,13 @@
 # plugins/tool/design-gate/plugin.sh — Design Gate Stage (ADR-046, ADR-037 §1/§3, #1218)
 #
 # Kind: tool  Tier: T0  (NO LLM — ADR-037 §3 invariant)
-# The PRE-build mechanical structural gate for the design stage. Runs six checks
-# (C1..C6), reports ALL violations in one pass, and writes verdict=pass|fail to
-# design-gate-result.json. C1..C5 are pure grep over design.md; C6 (#1777) is
-# the one check that executes anything — it runs each [guard] SPEC's assertion
-# at the merge-base, and fails open on every infrastructure signal. Always
-# returns rc=0 — the verdict lives in the artifact (ADR-040 verdict-in-artifact
-# convention); the design_verify_cycle's exit_when reads .verdict.
+# The PRE-build mechanical structural gate for the design stage. Runs five checks
+# (C1..C5), reports ALL violations in one pass, and writes verdict=pass|fail to
+# design-gate-result.json. Every check reads design.md and the files it names;
+# nothing is executed (C6, the [guard] baseline run, went with [guard] — #2304,
+# ADR-069). Always returns rc=0 — the verdict lives in the artifact (ADR-040
+# verdict-in-artifact convention); the design_verify_cycle's exit_when reads
+# .verdict.
 #
 # Hook prefix: design_gate_
 # Sourced library: no set -euo pipefail.
@@ -30,11 +30,6 @@ source "$_DG_ROOT/scripts/lib/stage-summary.sh" 2>/dev/null || true
 # edits the block grammar must be gated by ITS copy, not the installed one.
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
 source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh" 2>/dev/null || true
-# #1777: C6 runs each [guard] SPEC's assertion at the merge-base, reusing the
-# acceptance gate's own machinery rather than a second implementation of it.
-# Same contract-lib seam and same reason as acceptance-block.sh above.
-# shellcheck source=../../../scripts/lib/acceptance-negctl.sh
-source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-negctl.sh" 2>/dev/null || true
 
 # Resilient emit — no-op when the event-bus is unavailable (unit-test isolation).
 _dg_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
@@ -57,8 +52,20 @@ _dg_scope_nonempty() {
     [[ $entries -gt 0 ]]
 }
 
+# _dg_evidence_ok <repo_root> <item> — rc 0 when one evidence item of a [done]
+# requirement points at the repository (ADR-069 §2): a repo-relative path (no
+# leading / and no ..) to a file that exists, optionally `:N` with N inside it.
+_dg_evidence_ok() {
+    local root="$1" item="$2" path="$2" n=""
+    if [[ "$item" =~ ^(.+):([0-9]+)$ ]]; then path="${BASH_REMATCH[1]}"; n="${BASH_REMATCH[2]}"; fi
+    [[ -n "$path" && "$path" != /* && "/$path/" != *"/../"* && -f "$root/$path" ]] || return 1
+    [[ -z "$n" ]] && return 0
+    local lines; lines="$(awk 'END { print NR }' "$root/$path" 2>/dev/null)"
+    [[ "$n" -ge 1 && "$n" -le "${lines:-0}" ]]
+}
+
 # ─── design_gate_run ──────────────────────────────────────────────────────────
-# Runs C1..C6, collects ALL violations, writes verdict-in-artifact, emits
+# Runs C1..C5, collects ALL violations, writes verdict-in-artifact, emits
 # design_gate.{pass,fail}. Always rc=0.
 # Args: $1 = stage_id, $2 = state_file
 # _dg_plain <violation> — the sentence design reads for one violation (#2269).
@@ -66,15 +73,19 @@ _dg_scope_nonempty() {
 # file says what to change, in the words design was given.
 _dg_plain() {
     local v="$1" rest="${1#* }"
-    local id="${rest%% *}"
+    local id="${rest%% *}" third="${rest#* }"; third="${third%% *}"
     case "$v" in
         SCOPE_MISSING*)      printf 'design.md has no scope block — add a ```scope block listing every file the change touches' ;;
         ACCEPTANCE_MISSING*) printf 'design.md has no readable ```acceptance block — add one with a line per requirement' ;;
-        UNCLASSIFIED*)       printf '%s has no tag — mark it [change] (its test fails on the code as it is before your change, and passes after) or [guard] (its test passes both before and after)' "$id" ;;
+        NO_STATUS*)          printf '%s has no status — tag it [code] if it needs code (its test fails on the code from before your change and passes after), [no-code] if it needs work that changes no behaviour (docs, a test, config or a refactor), or [done] if the code already does it (then name the evidence after " evidence: ")' "$id" ;;
+        # The retired tag is named, not written: design would copy it back.
+        "UNKNOWN_STATUS "*" [guard] "*) printf '%s carries the old guard tag, which is no longer a status — tag it [done] if the code already does it, naming the evidence after " evidence: ", or [code] if it needs code' "$id" ;;
+        UNKNOWN_STATUS*)     printf '%s is tagged %s, which is not a status — tag it [code] if it needs code, [no-code] if it needs work that changes no behaviour, or [done] if the code already does it, naming the evidence after " evidence: "' "$id" "$third" ;;
+        DONE_NO_EVIDENCE*)   printf '%s is marked [done] but names no evidence — end its line with " evidence: " and a file and line (scripts/x.sh:42) or an existing test file that shows the code already does it' "$id" ;;
+        DONE_BAD_EVIDENCE*)  printf 'the evidence %s for %s does not point at the repository — name a file that exists, by its path from the repository root (no leading / and no ..), with a line number inside the file' "$third" "$id" ;;
         MISSING_TESTFILE_FOR_SPEC*) printf '%s has no test file listed — add a "%s: <test file>" line under TESTFILES:' "$id" "$id" ;;
         "WIRING_MISSING ("*) printf 'the acceptance block does not say which existing file calls the new code — add a WIRING: line naming it, or WIRING: none if nothing calls it yet' ;;
         WIRING_MISSING*)     printf 'the WIRING file %s does not exist — name a file that exists in the repository, or WIRING: none' "$id" ;;
-        GUARD_REGRESSED_AT_BASELINE*) printf '%s is tagged [guard], but its test fails on the code from before this change — a guard must pass there; if this requirement describes a change, tag it [change]' "$id" ;;
         *) printf '%s' "$v" ;;
     esac
 }
@@ -116,42 +127,42 @@ design_gate_run() {
         violations+=("ACCEPTANCE_MISSING (design.md has no parseable \`\`\`acceptance block)")
     fi
 
-    # ── C3 CLASSIFIED + C4 CHANGE-HAS-TESTFILE (need the SPEC list) ──────────
-    local _has_change=0 _spec
+    # ── C3 STATUS + C4 CODE-HAS-TESTFILE (#2304, ADR-069 §1–§3) ─────────────
+    # Every requirement carries a status. [done] names evidence that exists, so
+    # "already done" is a claim the gate can check, not a way to skip the red
+    # step (#2035). Only a code requirement needs a test file of its own.
     if [[ $_accept_ok -eq 1 ]]; then
+        local _blk _spec _ev _ev_n
+        _blk="$(extract_acceptance_block "$design_md" 2>/dev/null || true)"
         while IFS= read -r _spec; do
             [[ -z "$_spec" ]] && continue
-            local _cls; _cls="$(acceptance_spec_classifier "$design_md" "$_spec")"
-            case "$_cls" in
-                change) _has_change=1 ;;
-                guard)  : ;;
-                *)      violations+=("UNCLASSIFIED $_spec (SPEC lacks a [change]|[guard] classifier)") ;;
+            _acceptance_spec_line "$_blk" "$_spec" || continue
+            case "$_ACC_SPEC_STATUS" in
+                "")      violations+=("NO_STATUS $_spec (requirement carries no [code], [no-code] or [done] status)") ;;
+                no-code) : ;;
+                code)
+                    # #1649: existence is deliberately NOT checked — design runs
+                    # before build, so requiring the file forced every design off
+                    # its own proposed test file. The acceptance gate checks it.
+                    # Traversal is dropped by acceptance-block.sh while parsing.
+                    [[ -n "$(acceptance_list_testfiles_for_spec "$design_md" "$_spec" 2>/dev/null || true)" ]] \
+                        || violations+=("MISSING_TESTFILE_FOR_SPEC $_spec (no testfile declared for [code] SPEC)") ;;
+                done)
+                    if [[ "$_ACC_SPEC_TAG" == "guard" ]]; then
+                        violations+=("UNKNOWN_STATUS $_spec [guard] (the retired tag; use [done] with evidence)")
+                        continue
+                    fi
+                    _ev_n=0
+                    while IFS= read -r _ev; do
+                        [[ -z "$_ev" ]] && continue
+                        _ev_n=$((_ev_n + 1))
+                        _dg_evidence_ok "$repo_root" "$_ev" \
+                            || violations+=("DONE_BAD_EVIDENCE $_spec $_ev (not a file in the repository, or the line is outside it)")
+                    done < <(acceptance_spec_evidence "$design_md" "$_spec" 2>/dev/null || true)
+                    [[ $_ev_n -eq 0 ]] && violations+=("DONE_NO_EVIDENCE $_spec ([done] names no evidence)") ;;
+                *)       violations+=("UNKNOWN_STATUS $_spec [${_ACC_SPEC_TAG}] (not a status)") ;;
             esac
         done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
-
-        # C4: only enforced when the change set is non-empty (a guard-only design
-        # need declare no testfile). Each [change] SPEC must declare ≥1 testfile
-        # via its per-SPEC binding or the global pool, and each declared path must
-        # be a sane repo-relative path.
-        #
-        # #1649: existence is deliberately NOT checked — design runs before build,
-        # so requiring the file forced every design off its own proposed test file
-        # and onto a crowded one. The promise is enforced at the acceptance-gate,
-        # after build could have kept it. Traversal is already handled by
-        # acceptance-block.sh, so a guard here would be unreachable.
-        if [[ $_has_change -eq 1 ]]; then
-            local _spec_c4
-            while IFS= read -r _spec_c4; do
-                [[ -z "$_spec_c4" ]] && continue
-                acceptance_spec_is_change "$design_md" "$_spec_c4" || continue
-                local _stf _stf_count=0
-                while IFS= read -r _stf; do
-                    [[ -z "$_stf" ]] && continue
-                    _stf_count=$((_stf_count + 1))
-                done < <(acceptance_list_testfiles_for_spec "$design_md" "$_spec_c4" 2>/dev/null || true)
-                [[ $_stf_count -eq 0 ]] && violations+=("MISSING_TESTFILE_FOR_SPEC $_spec_c4 (no testfile declared for [change] SPEC)")
-            done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
-        fi
     fi
 
     # ── C5 WIRING: section present ("none" ok); each concrete path exists ────
@@ -167,55 +178,6 @@ design_gate_run() {
         fi
     fi
 
-    # ── C6 GUARD-BASELINE: a [guard] SPEC must hold at the merge-base ───────
-    # The number is free — the original C6 (tag-presence) was deleted by #1477.
-    #
-    # A [guard] SPEC asserts an invariant, so its assertion holds at the baseline
-    # by definition. One that FAILS there is a mislabelled [change], or an
-    # assertion inverted relative to its own SPEC text. The acceptance gate
-    # already rejects this (`guard_regressed`), but only AFTER build has spent
-    # its whole iteration budget on the design: #1789 burned 5 iterations and
-    # 2h06m, #1809 burned 2 more and was aborted manually, and both wanted the
-    # same two-word correction. Catching it here costs one design turn.
-    #
-    # FAIL-OPEN, and LOUD ABOUT IT. acceptance_negctl_guard_precheck emits GUARD
-    # SKIP — never GUARD FAIL — for a missing baseline, an unresolvable worktree,
-    # a timeout, an unparseable file, or an untagged guard (#1255), so a design is
-    # never rejected because the check could not run. But a gate that skips
-    # SILENTLY is indistinguishable from a gate that works: that is the
-    # green-but-inert shape this repo keeps paying for (#845, #1044, and the
-    # vacuous `asserts: <none found>` in #1777's own second occurrence). So the
-    # coverage is recorded in the artifact — declared vs verified, with a reason
-    # per unverified SPEC. "verified 0 of 3, testfiles absent" is a fact an
-    # operator can read; "verified 0 of 3, worktree_failed" is visibly a bug and
-    # not a pass.
-    local _gp_declared=0 _gp_verified=0 _gp_failed=0
-    local -a _gp_skips=()
-    if [[ $_accept_ok -eq 1 ]] && declare -f acceptance_negctl_guard_precheck >/dev/null 2>&1; then
-        local _g_line _g_spec _g_reason
-        while IFS= read -r _g_line; do
-            case "$_g_line" in
-                "GUARD FAIL "*)
-                    _g_spec="${_g_line#GUARD FAIL }"; _g_spec="${_g_spec%% *}"
-                    _gp_declared=$((_gp_declared + 1)); _gp_failed=$((_gp_failed + 1))
-                    violations+=("GUARD_REGRESSED_AT_BASELINE $_g_spec (tagged [guard] but its assertion FAILS at the merge-base — a guard holds there by definition; if this SPEC describes a change, tag it [change])")
-                    ;;
-                "GUARD PASS "*)
-                    _gp_declared=$((_gp_declared + 1)); _gp_verified=$((_gp_verified + 1))
-                    ;;
-                "GUARD SKIP "*)
-                    _g_spec="${_g_line#GUARD SKIP }"
-                    _g_reason="${_g_spec#* }"; _g_spec="${_g_spec%% *}"
-                    _gp_declared=$((_gp_declared + 1))
-                    # TAB, not ':' — a reason is free text and the day one
-                    # carries a colon, splitting on the first would silently
-                    # truncate it. A tab cannot appear in either field.
-                    _gp_skips+=("$_g_spec"$'\t'"$_g_reason")
-                    ;;
-            esac
-        done < <(acceptance_negctl_guard_precheck "$design_md" "$repo_root" 2>/dev/null || true)
-    fi
-
     # ── Verdict + artifact ───────────────────────────────────────────────────
     local verdict violations_json reason
     if [[ ${#violations[@]} -eq 0 ]]; then
@@ -226,22 +188,6 @@ design_gate_run() {
         verdict="fail"
         violations_json="$(printf '%s\n' "${violations[@]}" | jq -R . | jq -s .)"
         reason="design structural violations: ${#violations[@]} found"
-    fi
-
-    # Coverage block, present ONLY when the design declares a [guard] SPEC — a
-    # guard-less design keeps today's exact artifact shape (same absent-when-empty
-    # convention as route_target).
-    local _gp_json="null"
-    if [[ $_gp_declared -gt 0 ]]; then
-        local _gp_skips_json="[]"
-        if [[ ${#_gp_skips[@]} -gt 0 ]]; then
-            _gp_skips_json="$(printf '%s\n' "${_gp_skips[@]}" \
-                | jq -R 'select(length>0) | split("\t") | {spec: .[0], reason: (.[1:] | join("\t"))}' \
-                | jq -sc .)"
-        fi
-        _gp_json="$(jq -nc --argjson d "$_gp_declared" --argjson v "$_gp_verified" \
-            --argjson f "$_gp_failed" --argjson s "$_gp_skips_json" \
-            '{declared:$d,verified:$v,failed:$f,skipped:$s}')"
     fi
 
     # #2225 (review #2229): the verdict names the exact design.md it judged, so a
@@ -255,10 +201,9 @@ design_gate_run() {
         _dg_findings="$(for _dg_fv in "${violations[@]}"; do _dg_plain "$_dg_fv"; printf '\n'; done | stage_findings_json)"
     fi
     atomic_write "$result_path" <<< "$(jq -n --arg v "$verdict" --argjson viol "$violations_json" \
-        --argjson gp "$_gp_json" --arg r "$reason" --arg sha "$_dg_sha" --argjson fnd "${_dg_findings:-[]}" \
+        --arg r "$reason" --arg sha "$_dg_sha" --argjson fnd "${_dg_findings:-[]}" \
         '{"result_contract":2,"schema_version":1,"verdict":$v,"disposition":"complete","reason":$r,"violations":$viol,
-          "data":{"design_sha":$sha, "findings":$fnd}}
-         + (if $gp==null then {} else {"guard_precheck":$gp} end)')"
+          "data":{"design_sha":$sha, "findings":$fnd}}')"
 
     if [[ "$verdict" == "fail" ]]; then
         {
@@ -266,14 +211,6 @@ design_gate_run() {
             printf 'The design is not ready to build. Fix these and write design.md again:\n\n'
             local _dg_v
             for _dg_v in "${violations[@]}"; do printf -- '- %s\n' "$(_dg_plain "$_dg_v")"; done
-            # Say what C6 actually managed to check, so a design author is never
-            # left inferring coverage from silence.
-            if [[ $_gp_declared -gt 0 ]]; then
-                printf '\n## Guard baseline coverage\n\n'
-                printf -- '- %d [guard] requirement(s) declared; %d checked on the code from before this change, %d failed there.\n' \
-                    "$_gp_declared" "$_gp_verified" "$_gp_failed"
-                [[ ${#_gp_skips[@]} -gt 0 ]] && printf -- '- not verified: %s\n' "${_gp_skips[*]}"
-            fi
         } | atomic_write "$feedback_path"
         _dg_emit "design_gate.fail" "plugin=design-gate" "violations=${#violations[@]}"
     else

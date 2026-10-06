@@ -30,6 +30,9 @@
 #   SPEC-8 [change]: a SPEC that demands less than its requirement does not
 #                    cover it — fidelity, not just a mapping (#1849)
 #                    (ADR-060 §1/§2)
+#   SPEC-9 [code]  : an issue requirement an already-done SPEC covers counts as
+#                    covered — issue-acceptance checks the claim later (#2304,
+#                    ADR-069 §7); the how-it-is-verified exemption is kept
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -149,6 +152,17 @@ assert_contains "[SPEC-8][change] the prompt says a narrower SPEC leaves the req
     "$_P" "demands less than the requirement"
 assert_contains "[SPEC-8][change] …naming the ways a SPEC narrows (subset of cases, weaker condition)" \
     "$_P" "a subset of the cases"
+
+# #2304 (ADR-069 §7): a [done] SPEC is a claim that the code already does it.
+# This stage reads the issue before any code exists and cannot check the claim;
+# issue-acceptance does, against the code. Here it counts as covered.
+print_test_section "SPEC-9: a requirement an already-done SPEC covers is covered"
+_P9="$(tr -s '[:space:]' ' ' <<< "$_P")"
+assert_contains "[SPEC-9] the prompt says an already-done SPEC covers its requirement" \
+    "$_P9" "A SPEC tagged [done] says the code already does it. A requirement it covers counts as covered"
+assert_contains "[SPEC-9] ...because the claim is checked later, against the code" \
+    "$_P9" "whether the code really does it is checked later"
+assert_contains "[SPEC-9] the how-it-is-verified exemption is kept" "$_P9" "proven by the pipeline itself"
 
 print_test_results
 exit $((FAIL > 0))

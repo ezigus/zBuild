@@ -189,17 +189,19 @@ test_author_run() {
     # ── The contract, and ONLY the contract ─────────────────────────────────
     # #1978: naming a SPEC by id while its requirement sits 130 lines away is
     # how an assertion comes to test something else. The text travels with the id.
-    local sid n=0 spec_block=""
+    local sid n=0 n_done=0 spec_block=""
     while IFS= read -r sid; do
         [[ -n "$sid" ]] || continue
-        local _txt _cls _tfs
+        local _st _txt _tfs
+        _st="$(acceptance_spec_status "$design" "$sid" 2>/dev/null || true)"
+        # #2304 (ADR-069 §6): the code already does a done requirement — no test.
+        if [[ "$_st" == "done" ]]; then n_done=$(( n_done + 1 )); continue; fi
         _txt="$(acceptance_spec_text "$design" "$sid" 2>/dev/null || true)"
-        _cls="$(acceptance_spec_classifier "$design" "$sid" 2>/dev/null || true)"
         _tfs="$(acceptance_list_testfiles_for_spec "$design" "$sid" 2>/dev/null | tr '\n' ' ')"
-        spec_block="${spec_block}- ${sid} [${_cls:-change}] ${_txt}"$'\n'
-        # #2269: what the tag demands of the test, in before-and-after words.
-        if [[ "${_cls:-change}" == guard ]]; then
-            spec_block="${spec_block}    its test must pass both before and after this change"$'\n'
+        spec_block="${spec_block}- ${sid} [${_st:-code}] ${_txt}"$'\n'
+        # #2269: what the status demands of the test, in before-and-after words.
+        if [[ "$_st" == "no-code" ]]; then
+            spec_block="${spec_block}    its test must pass after this change; it need not fail before"$'\n'
         else
             spec_block="${spec_block}    its test must FAIL on the code as it was before this change, and pass after"$'\n'
         fi
@@ -208,6 +210,12 @@ test_author_run() {
         n=$(( n + 1 ))
     done < <(acceptance_list_spec_ids "$design" 2>/dev/null || true)
 
+    if [[ "$n" -eq 0 && "$n_done" -gt 0 ]]; then
+        _ta_emit "test_author.no_contract" "reason=all_done"
+        _ta_write_result "$art" "complete" "complete" \
+            "every requirement is already done — there is no test to write" 0
+        return 0
+    fi
     if [[ "$n" -eq 0 ]]; then
         _ta_emit "test_author.no_contract" "reason=no_specs"
         _ta_write_result "$art" "complete" "complete" \

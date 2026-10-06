@@ -47,6 +47,8 @@ provides:
   result_contract: 2
   events:
     - issue_acceptance.judged
+    # #2304 (ADR-069 §7): the judge could not tell whether a requirement is met.
+    - issue_acceptance.unsure
     - issue_acceptance.unreadable_issue
     - issue_acceptance.result.write_failed
 
