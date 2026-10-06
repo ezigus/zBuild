@@ -124,7 +124,7 @@ render_mode() {
 
 # emit_cycle_banner <mode> <variant> — the pre-rendered output for one pair.
 emit_cycle_banner() {
-    cat "$RENDER_DIR/$2.$1"
+    cat "$RENDER_DIR/$2.$1" 2>/dev/null   # a missing file is reported by the [setup] check
 }
 
 # Pair table: variant
