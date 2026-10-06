@@ -397,3 +397,14 @@ The shape floor (the event goldens and `_TPL_STAGES[N]` tests a pipeline-shape c
 ### Amendment (2026-10-04, #2271)
 
 The gate aggregator no longer rolls up a fault class (ADR-068 §9); it emits the one convergence verdict. Tests: `tests/unit/gate-aggregator-test.sh` TC-10/TC-16, `tests/unit/gate-detail-outputs-test.sh` SPEC-5.
+
+### Amendment (2026-10-05, #2301) — every lens finding reaches the PR body
+
+§4's report splits lens findings in two: `findings` (introduced by this change, and the only ones that count toward merge readiness) and `pre_existing` (the code had the problem before this change). The split decides what is *counted*, never what is *shown*. Every lens finding, including every pre-existing one, reaches the PR body.
+
+- pr-open prints the pre-existing findings in their own section, "Already in the code before this change (not introduced here)", after the advisory section. When there are none, the section is left out.
+- The section is bounded like the advisory list: five bullets inline, the rest in a `<details>` block, each message cut at 300 characters and escaped the same way.
+
+Why: on #2035 the correctness lens found that the change left a header comment stale that the issue had asked to update. The lens marked it pre-existing, pr-open printed only `findings`, and no reader ever saw it.
+
+Test: `tests/unit/pr-open-advisory-review-test.sh` SPEC-24.
