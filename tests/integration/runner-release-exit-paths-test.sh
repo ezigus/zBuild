@@ -95,6 +95,11 @@ build_cleanup() {
         printf '%s\n' "$BASHPID" >> "${RELEASE_MARKER%/*}/hook.pid"
         sleep 120
     fi
+    if [[ "${BLOCK_CLEANUP_IGNORE_TERM:-0}" == "1" ]]; then
+        # #2333: a child that ignores TERM, under a hook shell that does not.
+        ( trap '' TERM; printf '%s\n' "$BASHPID" >> "${RELEASE_MARKER%/*}/hook-child.pid"; sleep 120 ) &
+        wait
+    fi
     return 0
 }
 PLUG
@@ -329,6 +334,34 @@ elif kill -0 "$_hook_pid" 2>/dev/null; then
     for _k in $_hook_kids; do kill -KILL "$_k" 2>/dev/null || true; done
 else
     assert_pass "[SPEC-6] the blocked hook does not outlive the run"
+fi
+
+# ── SPEC-6b (#2333): a child that ignores TERM is killed too ────────────────
+# The bound sends TERM to the hook's group, then KILL after a grace. The runner
+# waited only for the group leader and cancelled the watchdog when it exited, so
+# a member that ignored TERM never got the KILL and outlived the run.
+print_test_section "SPEC-6b: a hook child that ignores TERM does not outlive the run"
+_prep blocking-ignore-term
+export BUILD_RC=0 BLOCK_CLEANUP_IGNORE_TERM=1
+set +e
+( cd "$OVERLAY_REPO" && bash "$RUNNER" --template resume-minimal --goal "release-ignore-term" ) \
+    >"$CASE_DIR/out" 2>&1
+set -e
+unset BLOCK_CLEANUP_IGNORE_TERM
+_child_pid=""
+for _ in $(seq 1 50); do
+    _child_pid="$(head -n 1 "$CASE_DIR/hook-child.pid" 2>/dev/null || true)"
+    [[ -n "$_child_pid" ]] && break; sleep 0.1
+done
+_alive=1
+for _ in $(seq 1 50); do kill -0 "$_child_pid" 2>/dev/null || { _alive=0; break; }; sleep 0.1; done
+if [[ -z "$_child_pid" ]]; then
+    assert_fail "[SPEC-6b] fixture: the child recorded its pid" "no $CASE_DIR/hook-child.pid"
+elif [[ "$_alive" -eq 1 ]]; then
+    assert_fail "[SPEC-6b] a hook child that ignores TERM does not outlive the run" "pid $_child_pid still alive 5s after the runner returned"
+    kill -KILL "$_child_pid" 2>/dev/null || true
+else
+    assert_pass "[SPEC-6b] a hook child that ignores TERM does not outlive the run"
 fi
 
 cleanup_test_env
