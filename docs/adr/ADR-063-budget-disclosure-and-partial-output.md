@@ -170,6 +170,26 @@ Two halves, and neither is optional:
   `core/pipeline/disposition.sh`) fails closed unless it declares otherwise.
   This is now implemented: the cycle-orchestrator suppresses convergence when
   any iteration member carries an unfinished disposition (#2032).
+- **`unavailable` ends the run; it is not an unfinished word.** When a stage's
+  model call fails for a reason other than time, turns or a signal, the stage
+  reports `unavailable`. The engine's response to that word is
+  `halt_unavailable` (ADR-054 §6, enforced since #2111): the run stops there,
+  marked aborted and resumable, and the runner exits 9. So a cycle never gets
+  as far as checking convergence on that call's verdict, even when part of the
+  reply still read as a pass. The unfinished words are the ones the cycle
+  retries; `unavailable` is not retried, so `disposition_unfinished` does not
+  list it. Enforced by `tests/unit/disposition-vocabulary-test.sh` (`[ADR-063
+  §4]` assertions: `unavailable` is not unfinished, and its response is
+  `halt_unavailable`) and `tests/integration/cycle-gate-unavailable-aborts-run-test.sh`
+  (a gate reporting a passing verdict with `unavailable` ends the run with rc 9
+  before gate-aggregator runs).
+- **One stage, several model calls: the first failure is reported.** A stage
+  that makes more than one call (spec-correspondence: one batch call, then one
+  call per SPEC the batch left unjudged) reports the first non-zero exit code
+  it saw, so a later call that succeeds cannot hide an earlier timeout. A stage
+  that read a verdict from a call that then failed still reports that failure
+  (spec-coverage). Enforced by `tests/unit/spec-correspondence-test.sh` and
+  `tests/unit/spec-coverage-test.sh` (`[#2032/review]` assertions).
 
 ### 5. Two implementation shapes, chosen by the work
 

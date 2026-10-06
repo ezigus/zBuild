@@ -73,6 +73,16 @@ for _w in complete unusable throttled broken; do
     if disposition_unfinished "$_w" 2>/dev/null; then assert_fail "[SPEC-2] $_w is not unfinished work"
     else assert_pass "[SPEC-2] $_w is not unfinished work"; fi
 done
+# ADR-063 §4 (review on PR #2262): `unavailable` ends the run instead of being
+# retried, so a cycle never gets to converge on that call's verdict. It is
+# therefore not an "unfinished" word — that list is for words the cycle retries.
+if disposition_unfinished unavailable 2>/dev/null; then
+    assert_fail "[ADR-063 §4] unavailable is not unfinished work (it is not retried)"
+else
+    assert_pass "[ADR-063 §4] unavailable is not unfinished work (it is not retried)"
+fi
+assert_eq "[ADR-063 §4] unavailable ends the run (halt_unavailable), so no cycle converges on it" \
+    "halt_unavailable" "$(disposition_response unavailable 2>/dev/null || echo UNKNOWN)"
 
 # ─── SPEC-3 ──────────────────────────────────────────────────────────────────
 print_test_section "SPEC-3: the template owns the retry budget"
