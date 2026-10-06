@@ -213,8 +213,9 @@ and the review report shows them under that lens. Enforced by
 
 ## Consequences
 
-- **`exhausted` stops being decorative.** Its response table entry and ADR-029's
-  escalation have never executed for an LLM stage; after this they do.
+- **An unfinished stage stops being decorative.** `timed_out` and `out_of_turns`
+  (which #2187 put in place of the retired `exhausted`) route to a retry, and
+  ADR-029's timeout escalation now runs for an LLM stage; before, it never did.
 - **"Was that answer complete?" becomes answerable by a machine**, for every
   stage, without parsing prose.
 - **A stage can be told to stop early, so some answers get worse.** That is the
@@ -240,7 +241,7 @@ Adoption order, cheapest evidence first:
 4. **`plan` and `impact`** — retrofit onto §1's shared block and add §3's
    disposition. Their instructions are already right; only the source of the
    numbers and the machine-readable signal change.
-5. **`build`** — already checkpointed; confirm it reports `exhausted` when the
+5. **`build`** — already checkpointed; confirm it reports `out_of_turns` when the
    iteration budget is spent rather than falling out silently.
 
 The discriminating test, per stage: kill it at its bound and assert the next

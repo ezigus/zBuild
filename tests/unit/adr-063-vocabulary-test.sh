@@ -60,6 +60,14 @@ _escalate_prescriptive="$(grep -c 'exhausted.*escalate\|escalate.*already routes
 assert_eq "[#2032/SPEC-7] §4 does not prescribe exhausted→escalate action (vocabulary retired by #2187)" \
     "0" "$_escalate_prescriptive"
 
+# No section prescribes the retired words, in any form: every paragraph that
+# names `exhausted` or the `escalate` response marks it as history (#2187,
+# retired, earlier). ADR-029's timeout *escalation* is live and not matched.
+# The two checks above only caught the exact "disposition: exhausted" form.
+_retired_paras="$(awk 'BEGIN{RS=""} /`exhausted`|`escalate`|[^a-z_]escalate[^a-z_]/ && !/#2187|retired|earlier/ {n++} END{print n+0}' "$ADR" 2>/dev/null || echo 99)"
+assert_eq "[#2032/SPEC-7] no paragraph prescribes exhausted or escalate (each names it as retired history)" \
+    "0" "$_retired_paras"
+
 # The replacement vocabulary (timed_out / out_of_turns) must be present —
 # retiring the old words without introducing the new ones is not an update.
 _timed_out_count="$(grep -c 'timed_out' "$ADR" 2>/dev/null || true)"
