@@ -1,0 +1,32 @@
+{
+  "result_contract": 2,
+  "verdict": "uncovered",
+  "disposition": "complete",
+  "reason": "SPEC-1 only checks that ADR-028 has no stale \"not migrated\" claim, but no SPEC demands the ADR positively list review-lens and review-report as migrated — deleting lines 189/193 without adding a migration record satisfies SPEC-1 while leaving the first clause of R-4 unverified.",
+  "data": {
+    "uncovered": [
+      "R-4: \"ADR-028 names both stages as migrated",
+      "no sentence in it says otherwise\" — SPEC-1[code] covers only the second clause (no sentence says \"not migrated\")",
+      "no SPEC demands a sentence affirmatively placing review-lens and review-report in §Migration alongside plan, security-lens, and monitor",
+      "removing lines 189 and 193 without adding a positive migration note (dated, citing #1840/#1843) satisfies SPEC-1 but does not satisfy the requirement that the ADR names both stages as migrated"
+    ],
+    "findings": [
+      {
+        "n": 1,
+        "text": "The issue asks for this and no SPEC covers it: R-4: \"ADR-028 names both stages as migrated"
+      },
+      {
+        "n": 2,
+        "text": "The issue asks for this and no SPEC covers it: no sentence in it says otherwise\" — SPEC-1[code] covers only the second clause (no sentence says \"not migrated\")"
+      },
+      {
+        "n": 3,
+        "text": "The issue asks for this and no SPEC covers it: no SPEC demands a sentence affirmatively placing review-lens and review-report in §Migration alongside plan, security-lens, and monitor"
+      },
+      {
+        "n": 4,
+        "text": "The issue asks for this and no SPEC covers it: removing lines 189 and 193 without adding a positive migration note (dated, citing #1840/#1843) satisfies SPEC-1 but does not satisfy the requirement that the ADR names both stages as migrated"
+      }
+    ]
+  }
+}
