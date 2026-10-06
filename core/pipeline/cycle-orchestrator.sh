@@ -2579,6 +2579,19 @@ cycle_orchestrator_run() {
                 "reason=build_mid_flight_not_a_resting_point"
         fi
 
+        # #2032 — generic member-unfinished convergence suppression. When ANY
+        # iteration member carries an unfinished disposition (timed_out,
+        # out_of_turns, interrupted), the exit_when predicate matching is not
+        # a clean resting point — the member did not produce a consumable result.
+        # converged==0 guard prevents double-fire when the build block above
+        # already set converged=1 for the same iter.
+        if [[ "$converged" -eq 0 && "$_iter_did_not_finish" -eq 1 ]]; then
+            converged=1
+            _cycle_emit "cycle.member_unfinished.suppressed_convergence" \
+                "iter=$iter" \
+                "reason=member_did_not_finish"
+        fi
+
         # #1265 — no-committed-changes fail-fast. A convergence that would fire
         # with ZERO commits ahead of the intake baseline (e.g. a scope_violation
         # discarded the entire diff, or the tree was never committed) is a FALSE

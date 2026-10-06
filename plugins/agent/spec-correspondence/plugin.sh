@@ -97,11 +97,14 @@ $2
 EOF
 }
 
-# _sc_call <tier> <task> — frame the task through the persona registry and
-# route it. persona_stage_framing emits "{perspective}\n\n{task}" and returns 1
-# when the persona is absent, in which case the task stands alone (#1627/#1628).
+# _sc_call <tier> <task> [rc_file] — frame the task through the persona registry
+# and route it. persona_stage_framing emits "{perspective}\n\n{task}" and returns
+# 1 when the persona is absent, in which case the task stands alone (#1627/#1628).
+# rc_file: if given, the first non-zero router exit code is kept there (subshell boundary
+# prevents a nameref from crossing; a file survives it — same pattern as
+# review-lens and other stages that need the rc from inside a command substitution).
 _sc_call() {
-    local tier="$1" _task="$2" _framed="$2" _raw=""
+    local tier="$1" _task="$2" _rc_file="${3:-}" _framed="$2" _raw=""
     if declare -f persona_stage_framing >/dev/null 2>&1; then
         local _pid="quality-assurance" _pdir=""
         if declare -f resolve_persona >/dev/null 2>&1; then
@@ -123,7 +126,18 @@ _sc_call() {
     # No 2>/dev/null: the stage-io input banner writes to fd 2 (#491). stdin
     # is /dev/null: a model that drains stdin must not eat a caller's stream (#2108).
     if declare -f route_to_model >/dev/null 2>&1; then
-        _raw="$(route_to_model "$tier" "$_framed" </dev/null || true)"
+        local _call_rc=0
+        _raw="$(route_to_model "$tier" "$_framed" </dev/null)" || _call_rc=$?
+        # The batch call and every fallback call share one rc file. The FIRST
+        # non-zero rc is kept: a later success must not hide an earlier failure
+        # (review on PR #2262), and the first failure is the cause — later calls
+        # ran on whatever time the first one left.
+        if [[ -n "$_rc_file" && "$_call_rc" -ne 0 ]]; then
+            local _prev_rc=0
+            [[ -f "$_rc_file" ]] && _prev_rc="$(cat "$_rc_file" 2>/dev/null || printf '0')"
+            [[ "$_prev_rc" =~ ^[0-9]+$ ]] || _prev_rc=0
+            [[ "$_prev_rc" -ne 0 ]] || printf '%s' "$_call_rc" > "$_rc_file" 2>/dev/null || true
+        fi
     fi
     printf '%s' "$_raw"
 }
@@ -173,14 +187,14 @@ EOF
 EOF
 }
 
-# _sc_write_result <dir> <verdict> <reason> <counts_json>
+# _sc_write_result <dir> <verdict> <reason> <counts_json> [disposition]
 _sc_write_result() {
-    local dir="$1" v="$2" r="$3" d="${4:-{\}}"
+    local dir="$1" v="$2" r="$3" d="${4:-{\}}" disp="${5:-complete}"
     mkdir -p "$dir" 2>/dev/null || true
     # ADR-054 §6: `disposition` says how the STAGE stopped. This stage completed
     # whatever it concluded about the SPECs — the verdict carries that.
-    if ! jq -n --arg v "$v" --arg r "$r" --argjson d "$d" \
-        '{result_contract: 2, verdict: $v, disposition: "complete", reason: $r, data: $d}' \
+    if ! jq -n --arg v "$v" --arg r "$r" --arg disp "$disp" --argjson d "$d" \
+        '{result_contract: 2, verdict: $v, disposition: $disp, reason: $r, data: $d}' \
         | atomic_write "$dir/spec-correspondence-result.json"; then
         _sc_emit "spec_correspondence.result.write_failed" "dir=$dir"
     fi
@@ -256,9 +270,14 @@ spec_correspondence_run() {
     local _i
     for (( _i=0; _i<n; _i++ )); do _verdicts+=(""); _reasons+=(""); done
 
+    # Temp file to capture route_to_model rc across command-substitution boundaries
+    # (#2032/SPEC-4): a nameref cannot cross a subshell; a file survives it.
+    local _sc_rc_file; _sc_rc_file="$(mktemp)" || _sc_rc_file=""
+    [[ -n "$_sc_rc_file" ]] && printf '0' > "$_sc_rc_file" 2>/dev/null || true
+
     if [[ "$n" -gt 0 ]]; then
         local _batch_raw
-        _batch_raw="$(_sc_call "$tier" "$(_sc_batch_prompt _ids _txts _srcs)")"
+        _batch_raw="$(_sc_call "$tier" "$(_sc_batch_prompt _ids _txts _srcs)" "$_sc_rc_file")"
         for (( _i=0; _i<n; _i++ )); do
             # A glob match, not a regex built from the id (review on #2148):
             # nothing in the id can change the pattern, and no grep per SPEC.
@@ -278,7 +297,7 @@ spec_correspondence_run() {
             continue
         fi
         local _one_raw
-        _one_raw="$(_sc_call "$tier" "$(_sc_prompt "${_txts[_i]}" "${_srcs[_i]}")")"
+        _one_raw="$(_sc_call "$tier" "$(_sc_prompt "${_txts[_i]}" "${_srcs[_i]}")" "$_sc_rc_file")"
         _verdicts[_i]="$(_sc_parse_verdict "$_one_raw")"
         _reasons[_i]="$(_sc_parse_reason "$_one_raw")"
     done
@@ -323,11 +342,28 @@ spec_correspondence_run() {
     _sc_emit "spec_correspondence.judged" "specs=$n" "mismatch=$n_mis" "partial=$n_part" "unjudged=$n_unj"
     # #2271 (ADR-068): each SPEC that did not correspond is a numbered finding.
     local _sc_fl="${findings//$'\n'- /$'\n'}"; _sc_fl="${_sc_fl#- }"
+
+    # #2032/SPEC-4: classify the router rc into a disposition word so the engine
+    # can act on it; a non-zero rc means the model was not reached.
+    local _sc_router_rc=0 _sc_disposition="complete"
+    if [[ -n "$_sc_rc_file" && -f "$_sc_rc_file" ]]; then
+        _sc_router_rc="$(cat "$_sc_rc_file" 2>/dev/null || echo 0)"
+        rm -f "$_sc_rc_file" 2>/dev/null || true
+    fi
+    if [[ "$_sc_router_rc" -ne 0 ]]; then
+        local _sc_rv _sc_rr
+        _router_rc_classify "$_sc_router_rc" _sc_rv _sc_rr 2>/dev/null || true
+        # disposition-ok: the model router is not responding
+        _sc_disposition="$(router_reason_disposition "${_sc_rr:-}" 2>/dev/null || true)"
+        [[ -n "$_sc_disposition" ]] || _sc_disposition="unavailable"
+    fi
+
     _sc_write_result "$art" "$worst" "$reason" \
         "$(jq -nc --argjson c "$n_corr" --argjson p "$n_part" --argjson m "$n_mis" \
                   --argjson u "$n_unch" --argjson j "$n_unj" \
                   --argjson fnd "$(stage_findings_json <<< "$_sc_fl")" \
-            '{corresponds:$c, partial:$p, mismatch:$m, uncheckable:$u, unjudged:$j, findings:$fnd}')"
+            '{corresponds:$c, partial:$p, mismatch:$m, uncheckable:$u, unjudged:$j, findings:$fnd}')" \
+        "$_sc_disposition"
     stage_summary_write "$art/spec-correspondence-summary.md" "spec-correspondence" "$worst" \
         "$reason" \
         "${findings:-- every judged assertion tests the SPEC it claims to cover}"

@@ -285,5 +285,90 @@ assert_contains "[#2143] SPECs the clock cut off are unjudged, not invented" \
     "$(cat "$_A3/spec-correspondence-summary.md" 2>/dev/null || true)" "unjudged"
 if [[ "$(wc -l < "$_SC_CALLS" | tr -d ' ')" -le 2 ]]; then assert_pass "[#2143] at most the batch + one fallback call before the clock"; else assert_fail "[#2143] too many calls under the clock" "$(wc -l < "$_SC_CALLS")"; fi
 
+# ─── [#2032/SPEC-4]: route_to_model non-zero rc → disposition classified ────────
+# Before fix: `|| true` in _sc_call discards the rc; _sc_write_result always writes
+#             disposition:"complete".
+# After  fix: the rc is captured, classified via _router_rc_classify +
+#             router_reason_disposition, and the result carries the classified word
+#             (rc=1 → router_rc_nonzero → unavailable).
+print_test_section "[#2032/SPEC-4]: router non-zero rc classified into disposition"
+_SC5="$TEST_TEMP_DIR/run5"; _A5="$_SC5/artifacts"; _R5="$_SC5/repo"
+mkdir -p "$_A5" "$_R5/tests"
+export ZBUILD_REPO_ROOT="$_R5" ZBUILD_ARTIFACT_DIR="$_A5"
+printf 'assert_pass "[SPEC-1] thing holds"\n' > "$_R5/tests/rc-test.sh"
+cat > "$_A5/design.md" <<'EOF'
+# Design
+```acceptance
+SPEC-1[change]: thing holds
+TESTFILES:
+SPEC-1: tests/rc-test.sh
+WIRING: scripts/rc.sh
+```
+EOF
+printf '{}' > "$_SC5/pipeline-state.json"
+# All route_to_model calls return rc=1 (non-zero, no output).
+# Before fix: disposition=complete (rc discarded).
+# After  fix: disposition=unavailable (rc=1 → router_rc_nonzero → unavailable).
+route_to_model() { cat >/dev/null; return 1; }
+set +e; spec_correspondence_run "spec-correspondence" "$_SC5/pipeline-state.json" >/dev/null 2>&1; set -e
+assert_eq "[#2032/SPEC-4] route_to_model rc=1 → disposition=unavailable (not hardcoded complete)" \
+    "unavailable" "$(jq -r '.disposition // empty' "$_A5/spec-correspondence-result.json" 2>/dev/null || echo MISSING)"
+
+# SPEC-4 covers the full non-zero range, not just rc=1.
+# rc=124 (timeout) must also produce a classified disposition — router_reason_disposition
+# maps it to timed_out, which is distinct from both 'unavailable' and hardcoded 'complete'.
+_SC6="$TEST_TEMP_DIR/run6"; _A6="$_SC6/artifacts"; _R6="$_SC6/repo"
+mkdir -p "$_A6" "$_R6/tests"
+export ZBUILD_REPO_ROOT="$_R6" ZBUILD_ARTIFACT_DIR="$_A6"
+printf 'assert_pass "[SPEC-1] thing holds"\n' > "$_R6/tests/rc124-test.sh"
+cat > "$_A6/design.md" <<'EOF'
+# Design
+```acceptance
+SPEC-1[change]: thing holds
+TESTFILES:
+SPEC-1: tests/rc124-test.sh
+WIRING: scripts/rc124.sh
+```
+EOF
+printf '{}' > "$_SC6/pipeline-state.json"
+route_to_model() { cat >/dev/null; return 124; }
+set +e; spec_correspondence_run "spec-correspondence" "$_SC6/pipeline-state.json" >/dev/null 2>&1; set -e
+assert_eq "[#2032/SPEC-4] route_to_model rc=124 → disposition=timed_out (timeout rc also classified, not hardcoded complete)" \
+    "timed_out" "$(jq -r '.disposition // empty' "$_A6/spec-correspondence-result.json" 2>/dev/null || echo MISSING)"
+
+# Review on PR #2262: the batch call and every per-SPEC fallback call share one
+# rc file. The batch times out (rc=124, no reply), the fallback for SPEC-1 then
+# succeeds (rc=0). The stage must still say it timed out: a later success must
+# not hide an earlier failure. Before the fix the fallback's 0 overwrote the 124
+# and the result said `complete`.
+_SC7="$TEST_TEMP_DIR/run7"; _A7="$_SC7/artifacts"; _R7="$_SC7/repo"
+mkdir -p "$_A7" "$_R7/tests"
+export ZBUILD_REPO_ROOT="$_R7" ZBUILD_ARTIFACT_DIR="$_A7"
+printf 'assert_pass "[SPEC-1] thing holds"\n' > "$_R7/tests/mixed-test.sh"
+cat > "$_A7/design.md" <<'EOF'
+# Design
+```acceptance
+SPEC-1[change]: thing holds
+TESTFILES:
+SPEC-1: tests/mixed-test.sh
+WIRING: scripts/mixed.sh
+```
+EOF
+printf '{}' > "$_SC7/pipeline-state.json"
+_SC7_CALLS="$_SC7/calls"; : > "$_SC7_CALLS"
+route_to_model() {
+    cat >/dev/null
+    printf 'x\n' >> "$_SC7_CALLS"
+    local _n; _n="$(wc -l < "$_SC7_CALLS")"; _n="${_n//[[:space:]]/}"
+    if [[ "$_n" -eq 1 ]]; then return 124; fi
+    printf 'VERDICT: corresponds\nREASON: the assertion checks the SPEC'
+    return 0
+}
+set +e; spec_correspondence_run "spec-correspondence" "$_SC7/pipeline-state.json" >/dev/null 2>&1; set -e
+assert_eq "[#2032/review] batch call timed out, fallback call succeeded → one call made it to the fallback" \
+    "2" "$(wc -l < "$_SC7_CALLS" | tr -d '[:space:]')"
+assert_eq "[#2032/review] batch rc=124 then fallback rc=0 → disposition=timed_out (a later success does not hide an earlier timeout)" \
+    "timed_out" "$(jq -r '.disposition // empty' "$_A7/spec-correspondence-result.json" 2>/dev/null || echo MISSING)"
+
 print_test_results
 exit $((FAIL > 0))

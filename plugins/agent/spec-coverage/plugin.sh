@@ -116,17 +116,17 @@ $2
 EOF
 }
 
-# _scv_write <dir> <verdict> <reason> <uncovered_json>
+# _scv_write <dir> <verdict> <reason> <uncovered_json> [disposition]
 _scv_write() {
-    local dir="$1" v="$2" r="$3" u="${4:-[]}"
+    local dir="$1" v="$2" r="$3" u="${4:-[]}" d="${5:-complete}"
     mkdir -p "$dir" 2>/dev/null || true
     # ADR-054 §6: `disposition` says how the STAGE stopped, not what it
     # concluded — this stage completed either way. ADR-060 §1/§2: the finding is
     # structured, never a prose document.
     # #2271 (ADR-068): each uncovered requirement is a numbered finding.
     local _fnd; _fnd="$(jq -r '.[]? | "The issue asks for this and no SPEC covers it: " + tostring' <<< "$u" 2>/dev/null | stage_findings_json)"
-    if ! jq -n --arg v "$v" --arg r "$r" --argjson u "$u" --argjson fnd "${_fnd:-[]}" \
-        '{result_contract: 2, verdict: $v, disposition: "complete", reason: $r,
+    if ! jq -n --arg v "$v" --arg r "$r" --arg d "$d" --argjson u "$u" --argjson fnd "${_fnd:-[]}" \
+        '{result_contract: 2, verdict: $v, disposition: $d, reason: $r,
           data: {uncovered: $u, findings: $fnd}}' \
         | atomic_write "$dir/spec-coverage-result.json"; then
         _scv_emit "spec_coverage.result.write_failed" "dir=$dir"
@@ -206,11 +206,16 @@ spec_coverage_run() {
     local _budget_note=""
     declare -F stage_budget_note >/dev/null 2>&1 && _budget_note="$(stage_budget_note "your verdict")"
     [[ -n "$_budget_note" ]] && _framed+=$'\n\n'"$_budget_note"
-    local _raw=""
+    local _raw="" _rtm_rc=0 _scv_rc_file
+    _scv_rc_file="$(mktemp)" || _scv_rc_file=""
     # No 2>/dev/null on this call: the stage-io input banner writes to fd 2 and
     # suppressing it breaks ADR-015 §v4's ordering (the #491 defect).
     if declare -f route_to_model >/dev/null 2>&1; then
-        _raw="$(route_to_model "$tier" "$_framed" || true)"
+        _raw="$(route_to_model "$tier" "$_framed"; printf '%s' "$?" > "$_scv_rc_file" || true)"
+    fi
+    if [[ -n "$_scv_rc_file" && -f "$_scv_rc_file" ]]; then
+        _rtm_rc="$(cat "$_scv_rc_file" 2>/dev/null || echo 0)"
+        rm -f "$_scv_rc_file" 2>/dev/null || true
     fi
 
     # No `| head`: SIGPIPE kills the writer under errexit for a reason nothing
@@ -223,9 +228,20 @@ spec_coverage_run() {
     _u_line="$(grep -E '^UNCOVERED:' <<< "$_raw" || true)"
     _u_line="${_u_line%%$'\n'*}"; _u_line="${_u_line#UNCOVERED:}"
 
+    # The call's rc is classified on EVERY path (review on PR #2262): a call
+    # that printed a readable verdict and then timed out still timed out.
+    local _scv_disp="complete"
+    if [[ "$_rtm_rc" -ne 0 ]]; then
+        local _scv_rv _scv_rr
+        _router_rc_classify "$_rtm_rc" _scv_rv _scv_rr 2>/dev/null || true
+        # disposition-ok: the model router is not responding
+        _scv_disp="$(router_reason_disposition "${_scv_rr:-}" 2>/dev/null || true)"
+        [[ -n "$_scv_disp" ]] || _scv_disp="unavailable"
+    fi
+
     if [[ -z "$_v" ]]; then
         _scv_write "$art" "unreadable" \
-            "no parseable verdict from the model — the design was not judged" "[]"
+            "no parseable verdict from the model — the design was not judged" "[]" "$_scv_disp"
         return 0
     fi
 
@@ -237,7 +253,7 @@ spec_coverage_run() {
     fi
 
     _scv_emit "spec_coverage.judged" "verdict=$_v"
-    _scv_write "$art" "$_v" "${_r:-judged the design against the issue}" "$_u_json"
+    _scv_write "$art" "$_v" "${_r:-judged the design against the issue}" "$_u_json" "$_scv_disp"
     return 0
 }
 

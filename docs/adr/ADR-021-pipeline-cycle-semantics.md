@@ -3,6 +3,7 @@
 **Status:** Proposed (F1) → Accepted (after F2 / #511)
 **Date:** 2026-05-30
 **Amends:** ADR-006 (resume contract), ADR-013 (canonical stage list), ADR-015 (stage-io v6), ADR-018 (Pattern 2 inner loops), ADR-020 (contract validator)
+**Amended:** 2026-10-05 (#2032) — generic member-unfinished convergence suppression: when any iteration member carries an unfinished disposition (`timed_out`, `out_of_turns`, `interrupted`) and the `exit_when` predicate fires, convergence is suppressed and `cycle.member_unfinished.suppressed_convergence` is emitted. This joins the two existing suppressions: `cycle.build_unfinished.suppressed_convergence` (#1208) fires only when the build member is unfinished; `cycle.no_committed_changes.suppressed_convergence` (#1265) fires when an iteration would converge on zero commits. The new suppression fires for ANY member, on ANY cycle type (including design-only cycles without a build member). The `converged==0` guard prevents double-fire with the build-specific suppression. At `max_iterations` when the suppression fires, the existing #1261 exhaustion path halts with `cycle.timeout_exhausted` and `term_rc=8`.
 **Amended:** 2026-10-05 (#2296) — R2: a `stream-json` capture is judged by the CLI's own records (a refused `rate_limit_event`, the final `result` line), never by text found anywhere in it; a call cut off by its time limit is not a rate limit.
 **Amended:** 2026-09-16 (#2117) — an unchanged tree is not re-verified. When `build` reports `empty_diff` on iter ≥ 2 and the tree fingerprint (HEAD + `git status --porcelain`) equals the one recorded when the previous iteration finished all members, every later member that PASSED then is reused from that iteration (blob entry copied, artifact kept — the #511 Pin-8 pre-iteration cleanup is now per member, right before dispatch — `cycle.iteration.reused` emitted, no dispatch). A member that FAILED re-runs so its iter-aware escalation (#1711, #2097) sees `ZBUILD_CYCLE_ITER` advance; (since #2144 a test pass is always full-suite confirmed by the stage itself, so no run mode is read here). The #1208 "run all tries" contract is intact — iterations still run; they no longer re-verify. #1840 spent 45 min of tests and a 68-min gate on each of three identical trees.
 **Amended by:** ADR-042 — cycle members now resolve their plugin role-then-id via the shared `resolve_stage_plugin` helper, not id-only.
@@ -136,6 +137,7 @@ Registered in `config/event-schema.json::known_types`:
 | `cycle.metric.invalid` | cycle_id, metric, value |
 | `cycle.plateau.skipped` | cycle_id, iter, reason, have, need |
 | `cycle.iter.stale_artifact` | cycle_id, iter, path |
+| `cycle.member_unfinished.suppressed_convergence` | cycle_id, iter, reason=member_did_not_finish (#2032) |
 
 ### Orchestrator surface
 

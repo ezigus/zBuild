@@ -104,6 +104,7 @@
     "cycle.member.blocking_failure",
     "cycle.build_unfinished.suppressed_convergence",
     "cycle.no_committed_changes.suppressed_convergence",
+    "cycle.member_unfinished.suppressed_convergence",
     "cycle.no_committed_changes",
     "cycle.timeout_exhausted",
     "selfhost.contract_lib.snapshot",
