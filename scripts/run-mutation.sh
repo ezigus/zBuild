@@ -28,17 +28,25 @@
 #     before the patch runs — a checkout observed mid-materialization under
 #     N-way concurrency otherwise yields a spurious "(patch failed)".
 #
-# Outcome classification (#1184): three status buckets, not two.
+# Outcome classification (#1184, #2086): four status buckets.
 #   - pass  : mutation CAUGHT (test failed as expected).
 #   - fail  : genuine coverage signal — a SURVIVED mutation (slipped past the
 #             test), or a malformed spec (structural / relevance / empty /
 #             no-op). Fail-worthy: counts toward the score AND the exit code.
-#   - infra : NON-FATAL maintenance signal — a worktree-add / patch failure
-#             that survives the retries+verify above. Excluded from the
-#             `mutation: P/T passed` score AND from the exit code, so a
-#             transient worktree race never sets test verdict=fail or blocks
-#             the pipeline cycle. Surfaced on a separate `mutation-infra:` line
-#             and NEVER routed into any build-feedback loop.
+#   - infra : NON-FATAL maintenance signal — a worktree-add failure that
+#             survives the retries+verify above, or a patch that failed in the
+#             parallel run but applies when re-applied alone (see stale).
+#             Excluded from the `mutation: P/T passed` score AND from the exit
+#             code, so a transient worktree race never sets test verdict=fail
+#             or blocks the pipeline cycle. Surfaced on a separate
+#             `mutation-infra:` line and NEVER routed into any build-feedback
+#             loop.
+#   - stale : the patch's anchor is GONE (#2086). A patch that fails in the
+#             parallel run is re-applied serially, alone, to a fresh clean
+#             checkout; failing there too, it can never apply — the spec has
+#             gone inert. Counts as a failure (score + exit code), its row
+#             names the patch's own error, and a `mutation-stale:` line counts
+#             them, so an inert spec is visible from a single run.
 #
 # Parallelism (#992):
 #   - ZBUILD_MUTATION_PARALLEL_JOBS — UNSET ⇒ CPU-count default (cap 8);
@@ -57,6 +65,7 @@ MUTATE_DIRS=(core plugins scripts tests)
 passed=0
 failed=0
 infra=0
+stale=0
 results=()
 
 # Bounded retries for `git worktree add` + checkout-verify (#1184). Overridable
@@ -306,12 +315,11 @@ _run_one_mutant_in_worktree() {
         return
     fi
 
-    # INFRA (non-fatal): the patch failed against a verified-complete checkout.
-    # Post-verify this is treated as a transient/maintenance signal, not a
-    # coverage gap — it MUST NOT block the cycle or feed build-feedback (#1184).
-    if ! ( cd "$wt" && bash -c "set -euo pipefail; $patch_code" ) >/dev/null 2>&1; then
-        printf 'INFRA %s  (patch failed after retries)' "$name" > "${slot_base}.line"
-        printf 'infra' > "${slot_base}.status"
+    # The patch failed against a verified-complete checkout. That is either
+    # contention (#1184) or an anchor that is gone (#2086); which one is decided
+    # after the parallel run, by _mut_recheck_patch re-applying it alone.
+    if ! ( cd "$wt" && bash -c "set -euo pipefail; $patch_code" ) >/dev/null 2>"${slot_base}.patcherr"; then
+        printf 'patchfail' > "${slot_base}.status"
         return
     fi
 
@@ -336,6 +344,46 @@ _run_one_mutant_in_worktree() {
         printf 'FAIL  %s  (mutation slipped past test — coverage gap)' "$name" > "${slot_base}.line"
         printf 'fail' > "${slot_base}.status"
     fi
+}
+
+# _mut_recheck_patch <doc> <slot_base> — called serially, after every parallel
+# mutant has finished, for a patch that failed in the parallel run (#2086). It
+# re-applies the patch alone to a fresh verified checkout of HEAD: with nothing
+# else running there is nothing to race, so a patch that fails again has lost
+# its anchor for good — STALE, a failure. One that applies only lost a race and
+# keeps the non-fatal INFRA row (#1184). A checkout that cannot be made proves
+# nothing either way, so it stays INFRA.
+_mut_recheck_patch() {
+    local doc="$1" slot_base="$2"
+    local name; name="$(basename "$doc")"
+    local patch_code file_path err=""
+    patch_code="$(cat "${slot_base}.patch")"
+    file_path="$(cat "${slot_base}.file" 2>/dev/null || true)"
+
+    local wt; wt=$(mktemp -d "${TMPDIR:-/tmp}/zb-mut.$$.XXXXXX")
+    # shellcheck disable=SC2064
+    trap "git -C '$REPO_ROOT' worktree remove --force '$wt' >/dev/null 2>&1 || true; rm -rf '$wt' 2>/dev/null || true" RETURN
+
+    if ! _mut_add_worktree_verified "$wt" "$file_path"; then
+        printf 'INFRA %s  (patch failed in the parallel run; no clean checkout to re-run it alone)' "$name" > "${slot_base}.line"
+        printf 'infra' > "${slot_base}.status"
+        return
+    fi
+    if ( cd "$wt" && bash -c "set -euo pipefail; $patch_code" ) >/dev/null 2>"${slot_base}.patcherr"; then
+        printf 'INFRA %s  (patch failed in the parallel run, applied when re-run alone: a worktree race)' "$name" > "${slot_base}.line"
+        printf 'infra' > "${slot_base}.status"
+        return
+    fi
+    # The patch's own last error line names what it looked for and did not find.
+    local l
+    while IFS= read -r l || [[ -n "$l" ]]; do
+        [[ -n "${l//[[:space:]]/}" ]] && err="$l"
+    done < "${slot_base}.patcherr"
+    (( ${#err} > 240 )) && err="${err:0:240}..."
+    [[ -n "$err" ]] || err="(the patch printed no error)"
+    printf 'STALE %s  (patch does not apply to a clean checkout of %s — its anchor is gone; fix or retarget the spec: %s)' \
+        "$name" "${file_path:-its ## File}" "$err" > "${slot_base}.line"
+    printf 'stale' > "${slot_base}.status"
 }
 
 # _mut_owns_worktree <basename> — 0 when a teardown may remove this worktree: it
@@ -485,6 +533,14 @@ for _pid in "${_mut_pids[@]:-}"; do
 done
 _mut_pids=()
 
+# ── Phase C: serial re-apply of every patch that failed in Phase B (#2086).
+#    Nothing else runs now, so a second failure is the spec, not contention. ──
+for d_idx in "${dispatch[@]:-}"; do
+    [[ -z "$d_idx" ]] && continue
+    [[ "$(cat "$job_dir/$d_idx.status" 2>/dev/null || true)" == "patchfail" ]] || continue
+    _mut_recheck_patch "${doc_for_idx[d_idx]}" "$job_dir/$d_idx"
+done
+
 # ── Aggregate in glob order. Gate-decided idx use the stored line; dispatched
 #    idx read the per-slot .line/.status the worktree subshell wrote. ──
 for ((i = 0; i < n_specs; i++)); do
@@ -498,6 +554,7 @@ for ((i = 0; i < n_specs; i++)); do
     case "$status" in
         pass)  passed=$((passed + 1)) ;;
         infra) infra=$((infra + 1))   ;;   # non-fatal: excluded from score + rc
+        stale) stale=$((stale + 1)); failed=$((failed + 1)) ;;   # a failure (#2086)
         *)     failed=$((failed + 1)) ;;
     esac
     results+=("$line")
@@ -519,6 +576,11 @@ fi
 # transient worktree race never sets test verdict=fail or blocks the cycle.
 if [[ $infra -ne 0 ]]; then
     echo "mutation-infra: $infra non-fatal (worktree/patch contention; excluded from score — #1184)"
+fi
+# A stale spec is already a failure in the score; this line makes the cause
+# countable and greppable, never folded into the infra count (#2086).
+if [[ $stale -ne 0 ]]; then
+    echo "mutation-stale: $stale spec(s) whose patch no longer applies to a clean checkout (anchor gone; counted as failures — #2086)"
 fi
 echo "mutation: $passed/$((passed + failed)) passed"
 

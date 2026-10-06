@@ -10,10 +10,10 @@ python3 - <<'PY'
 import pathlib
 p = pathlib.Path("core/memory/contract.sh")
 src = p.read_text()
-# Target only the grep-success branch return; replace first occurrence of
-# the exact line inside memory_has_capability
-old = '    if printf \'%s\' "$caps" | grep -qF "\\"${cap}\\"" 2>/dev/null; then\n        return 0\n    fi\n    return 1\n}'
-new = '    if printf \'%s\' "$caps" | grep -qF "\\"${cap}\\"" 2>/dev/null; then\n        return 1\n    fi\n    return 0\n}'
+# Target only the grep-success branch inside memory_has_capability. The match
+# is a here-string since the SIGPIPE-safe rewrite (was `printf | grep`, #2086).
+old = '    if grep -qF "\\"${cap}\\"" <<< "$caps" 2>/dev/null; then\n        return 0\n    fi\n    return 1\n}'
+new = '    if grep -qF "\\"${cap}\\"" <<< "$caps" 2>/dev/null; then\n        return 1\n    fi\n    return 0\n}'
 assert old in src, f"patch target not found; got: {src[src.find('memory_has_capability'):src.find('memory_has_capability')+400]!r}"
 p.write_text(src.replace(old, new, 1))
 PY

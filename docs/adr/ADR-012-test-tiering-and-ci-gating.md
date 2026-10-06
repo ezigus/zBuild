@@ -66,16 +66,31 @@ Output format: `<tier>: N/M passed` — parseable by CI summary step.
   patch spuriously fails. The harness prunes stale worktrees before dispatch,
   bounded-retries the add with jittered backoff, and VERIFIES the mutated
   `## File` is present + non-empty before applying the patch.
-- **Outcome classification (#1184):** three buckets, not two.
+- **Outcome classification (#1184, amended #2086):** four buckets.
   - `pass` — mutation CAUGHT.
   - `fail` — genuine coverage signal (SURVIVED mutation) or a malformed spec
     (structural / relevance / empty / no-op). Counts toward the `mutation: P/T
     passed` score and the harness exit code.
-  - `infra` — NON-FATAL maintenance signal: a worktree-add / patch failure that
-    survives the retries+verify above. EXCLUDED from the score and the exit
-    code, surfaced on a distinct `mutation-infra:` line. It therefore never
-    rolls up into test verdict=fail (via `framework_parse_mutation` →
-    `test-results.json`) and is NEVER routed into any build-feedback loop.
+  - `infra` — NON-FATAL maintenance signal: a worktree-add failure that
+    survives the retries+verify above, or a patch that failed in the parallel
+    run but applies when re-applied alone (a lost race). EXCLUDED from the
+    score and the exit code, surfaced on a distinct `mutation-infra:` line. It
+    therefore never rolls up into test verdict=fail (via
+    `framework_parse_mutation` → `test-results.json`) and is NEVER routed into
+    any build-feedback loop. Enforced by
+    `tests/integration/mutation-infra-nonfatal-test.sh` and
+    `tests/unit/run-mutation-stale-anchor-test.sh` SPEC-2.
+  - `stale` — the patch's anchor is GONE (#2086). Every patch that fails in the
+    parallel run is re-applied serially, alone, to a fresh clean checkout of
+    HEAD after the parallel run ends. With nothing to race, a second failure
+    means the spec can never apply: it has gone inert and guards nothing. A
+    stale spec is a FAILURE — it counts in the score and the exit code — and
+    its `STALE <spec>` row carries the patch's own error, which names the
+    missing anchor. A `mutation-stale:` line counts them, so one run shows an
+    inert spec without comparing against another branch. (Before #2086 this
+    case was filed as `infra`, and `memory.md` stayed inert on main while the
+    tier read 23/23.) Enforced by `tests/unit/run-mutation-stale-anchor-test.sh`
+    SPEC-1.
 
 ### Coverage policy
 
