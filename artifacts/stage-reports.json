@@ -1,0 +1,11 @@
+{
+  "scope_files": [
+    ".github/issues/keepers-manifest.yaml",
+    "core/pipeline/dispatch-rc.sh",
+    "docs/adr/ADR-001-plugin-contract.md",
+    "docs/adr/ADR-054-stage-contract.md",
+    "docs/wiki/plugins/review-report.md",
+    "plugins/agent/review-lens/plugin.sh"
+  ],
+  "wiring_files": []
+}
