@@ -341,6 +341,8 @@ fi
 # waited only for the group leader and cancelled the watchdog when it exited, so
 # a member that ignored TERM never got the KILL and outlived the run.
 print_test_section "SPEC-6b: a hook child that ignores TERM does not outlive the run"
+# The time bound itself is SPEC-6's check, on the same dispatch path; this
+# case is only about what survives it.
 _prep blocking-ignore-term
 export BUILD_RC=0 BLOCK_CLEANUP_IGNORE_TERM=1
 set +e
@@ -354,7 +356,10 @@ for _ in $(seq 1 50); do
     [[ -n "$_child_pid" ]] && break; sleep 0.1
 done
 _alive=1
-for _ in $(seq 1 50); do kill -0 "$_child_pid" 2>/dev/null || { _alive=0; break; }; sleep 0.1; done
+# Only poll a pid that was recorded; a missing pid is reported as a fixture failure below.
+if [[ -n "$_child_pid" ]]; then
+    for _ in $(seq 1 50); do kill -0 "$_child_pid" 2>/dev/null || { _alive=0; break; }; sleep 0.1; done
+fi
 if [[ -z "$_child_pid" ]]; then
     assert_fail "[SPEC-6b] fixture: the child recorded its pid" "no $CASE_DIR/hook-child.pid"
 elif [[ "$_alive" -eq 1 ]]; then
