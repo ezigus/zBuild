@@ -1,0 +1,15 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 1 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 1,
+    "owned_files": [
+      "tests/unit/exhausted-disposition-retired-test.sh"
+    ],
+    "testfiles": {
+      "tests/unit/exhausted-disposition-retired-test.sh": "327459d46c586e1fdd1a9d75c7868c68b5a04636"
+    }
+  }
+}

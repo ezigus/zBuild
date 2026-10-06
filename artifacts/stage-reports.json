@@ -14,5 +14,10 @@
     "tests/unit/exhausted-disposition-retired-test.sh",
     "tests/unit/stage-budget-note-test.sh"
   ],
-  "wiring_files": []
+  "wiring_files": [],
+  "owned_files": {
+    "test-author": [
+      "tests/unit/exhausted-disposition-retired-test.sh"
+    ]
+  }
 }

@@ -1,0 +1,2 @@
+# authored_by: test-author
+628c22fa9d7e8846eed0f0b7ad72fa4ac764ebc6b5fe897e15612e42d7c0bc10  tests/unit/exhausted-disposition-retired-test.sh
