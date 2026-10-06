@@ -65,6 +65,8 @@ source "$_BUILD_DIR/lib/scope.sh"
 source "$_BUILD_DIR/lib/commit.sh"
 # shellcheck source=lib/summary.sh
 source "$_BUILD_DIR/lib/summary.sh"
+# shellcheck source=lib/round.sh
+source "$_BUILD_DIR/lib/round.sh"
 
 # ─── run ────────────────────────────────────────────────────────────────────
 build_stage_run() {
@@ -243,6 +245,8 @@ _build_stage_run_inner() {
     local tier; tier="$(resolve_tier build "$_BUILD_DIR")" || return 1
     local max_iter; max_iter="$(_route_resolve_max_iterations 2>/dev/null || echo 10)"
     [[ "$max_iter" =~ ^[0-9]+$ ]] || max_iter=10
+    # #2323: before this pass writes anything — a re-dispatch continues the round.
+    _build_round_open "$output_summary_json" "$repo_root"
     # ─── #511 F2: cycle-budget clamp ─────────────────────────────────────────
     # When running INSIDE a cycle iter (ZBUILD_CYCLE_ITER set by orchestrator),
     # clamp the inner agent-loop max_iterations to 15 to bound worst-case cost
@@ -315,8 +319,14 @@ _build_stage_run_inner() {
         jq -n \
             --argjson schema_version 4 \
             --argjson iterations "${iterations:-0}" \
-            '{"schema_version":$schema_version,"result_contract":2,"verdict":"incomplete",
-              "disposition":"interrupted","reason":"sigint","iterations":$iterations}' \
+            --argjson round "$(_build_round_json "${iterations:-0}" 2>/dev/null || printf 'null')" \
+            '# #2323: an interrupted pass reports no file counts, only that it was
+            # interrupted; it carries the round so the next pass of the same round
+            # continues the count. Widening here would claim stats for a pass that
+            # did not finish.
+            {"schema_version":$schema_version,"result_contract":2,"verdict":"incomplete",
+              "disposition":"interrupted","reason":"sigint","iterations":$iterations}
+             + (if $round != null then {passes: $round.passes, round: $round} else {} end)' \
             | atomic_write "$output_summary_json" 2>/dev/null || true
         # Best-effort: clear `git add -N` intent-to-add entries so a downstream
         # `git diff HEAD` after the abort sees a clean index.
@@ -382,6 +392,8 @@ _build_stage_run_inner() {
     fi
     local files_changed_count
     files_changed_count="$(printf '%s' "$files_changed_json" | jq 'length' 2>/dev/null || echo 0)"
+    # #2323: the result reports the round — what earlier passes committed too.
+    _build_round_widen "$repo_root"
 
     # ─── Write build-summary.json ─────────────────────────────────────────────────
     local issue="${ZBUILD_ISSUE:-0}"; [[ "$issue" =~ ^[0-9]+$ ]] || issue=0
@@ -445,7 +457,7 @@ _build_stage_run_inner() {
     # #2178: the files it needed outside scope are part of what build reports.
     local _needs_line; _needs_line="$(_build_scope_needs_line "$artifact_dir/build-summary.json")"
     stage_summary_write "$artifact_dir/build-summary.md" "build" "$build_verdict" \
-        "changed $files_changed_count file(s) over $iterations iteration(s)" \
+        "changed $files_changed_count file(s) over $_BUILD_ROUND_PASSES pass(es), $(_build_round_total_iterations "$iterations") iteration(s)" \
         "$(printf -- '- lines: +%s / -%s\n- terminated: %s\n- scope violation: %s%s' "$lines_added" "$lines_removed" "$terminated_reason" "$scope_violation" "${_needs_line:+$'\n'$_needs_line}")"
     emit_event "plugin.result" "stage=build" \
         "plugin=build" \
@@ -453,6 +465,7 @@ _build_stage_run_inner() {
         "lines_added=$lines_added" \
         "lines_removed=$lines_removed" \
         "iterations=$iterations" \
+        "passes=$_BUILD_ROUND_PASSES" \
         "terminated_reason=$terminated_reason" \
         "scope_violation=$scope_violation" \
         "verdict=$build_verdict" \

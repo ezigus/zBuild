@@ -319,6 +319,7 @@ _build_write_build_summary() {
         --arg build_disposition "${build_disposition:-}" \
         --arg build_reason_v2 "${build_reason:-}" \
         --arg build_data_kind "${build_data_kind:-}" \
+        --argjson round "$(_build_round_json "${iterations:-0}" 2>/dev/null || printf 'null')" \
         '{
             schema_version: $schema_version,
             result_contract: 2,
@@ -342,6 +343,8 @@ _build_write_build_summary() {
 
         + (if $scope_expansion_request != null then {scope_expansion_request: $scope_expansion_request} else {} end)
         + (if $failing_acceptance_testfile != "" then {failing_acceptance_testfile: $failing_acceptance_testfile} else {} end)
+        # #2323: the round, so a re-dispatch in the same round continues it.
+        + (if $round != null then {passes: $round.passes, round: $round} else {} end)
         # `.data` is composed ONCE (review #2184). As two `+` terms each read
         # `.data` from the expression INPUT — null under `jq -n` — not from the
         # accumulating object, so the later term replaced the earlier one and

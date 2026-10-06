@@ -420,3 +420,12 @@ Verification: `tests/unit/verdict-undeclared-word-test.sh`, `tests/unit/lint-ver
 ### Amendment (2026-10-04, #2271)
 
 §4: rc 11 (`route_back`) is retired from the engine's vocabulary with the backward route itself (ADR-068). Test: `tests/unit/dispatch-rc-test.sh` SPEC-5.
+
+### Amendment (2026-10-06, #2323) — §5: a stage's result reports the whole round
+
+A retry (§6a) dispatches the stage again, and each dispatch writes its result to the same path. The result must still describe **everything the stage did in that cycle round**, not only its last pass. On #2032 run 37289606005, round 2's build committed one file on its first pass, ended on three router timeouts (`timed_out`), was re-dispatched, and changed nothing on the second pass; the result then read "changed 0 file(s) over 1 iteration(s)".
+
+- Build counts files changed from the HEAD the round's first pass started on, and the passes it ran: "changed N file(s) over P pass(es), I iteration(s)"; `files_changed`, `passes` and the `plugin.result` event agree. The round is carried in build's own result (`.round`, keyed by run, cycle and iteration — `plugins/agent/build/lib/round.sh`); a new round starts its own count.
+- A round that changed a file is not an empty-diff resting point, even when its last pass changed nothing.
+
+Verification: `tests/unit/build-round-summary-test.sh` (R1: first pass commits one file, second changes nothing → 1 file over 2 passes; R2: the next round starts at 0 over 1).
