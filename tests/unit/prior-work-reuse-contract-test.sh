@@ -195,7 +195,7 @@ _c6_step="$(awk '
 _c6_step="${_c6_step//\$\{\{ github.repository \}\}/o/r}"
 # review #2336: the extraction depends on the step's indentation. If the YAML is
 # ever reformatted, fail here, not on text that happens to match.
-assert_contains "[C6] fixture: the completion step was read whole" "$_c6_step" 'ABORT_REASON" == "llm_rate_limited"' 
+assert_contains "[C6] fixture: the completion step was read whole" "$_c6_step" 'ABORT_REASON" == "llm_rate_limited"'
 _c6_body="$TEST_TEMP_DIR/c6-body"
 (
     gh() { while [[ $# -gt 0 ]]; do [[ "$1" == "--body" ]] && printf '%s' "$2" > "$_c6_body"; shift; done; }
