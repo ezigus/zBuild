@@ -228,15 +228,18 @@ spec_coverage_run() {
     _u_line="$(grep -E '^UNCOVERED:' <<< "$_raw" || true)"
     _u_line="${_u_line%%$'\n'*}"; _u_line="${_u_line#UNCOVERED:}"
 
+    # The call's rc is classified on EVERY path (review on PR #2262): a call
+    # that printed a readable verdict and then timed out still timed out.
+    local _scv_disp="complete"
+    if [[ "$_rtm_rc" -ne 0 ]]; then
+        local _scv_rv _scv_rr
+        _router_rc_classify "$_rtm_rc" _scv_rv _scv_rr 2>/dev/null || true
+        # disposition-ok: the model router is not responding
+        _scv_disp="$(router_reason_disposition "${_scv_rr:-}" 2>/dev/null || true)"
+        [[ -n "$_scv_disp" ]] || _scv_disp="unavailable"
+    fi
+
     if [[ -z "$_v" ]]; then
-        local _scv_disp="complete"
-        if [[ "$_rtm_rc" -ne 0 ]]; then
-            local _scv_rv _scv_rr
-            _router_rc_classify "$_rtm_rc" _scv_rv _scv_rr 2>/dev/null || true
-            # disposition-ok: the model router is not responding
-            _scv_disp="$(router_reason_disposition "${_scv_rr:-}" 2>/dev/null || true)"
-            [[ -n "$_scv_disp" ]] || _scv_disp="unavailable"
-        fi
         _scv_write "$art" "unreadable" \
             "no parseable verdict from the model — the design was not judged" "[]" "$_scv_disp"
         return 0
@@ -250,7 +253,7 @@ spec_coverage_run() {
     fi
 
     _scv_emit "spec_coverage.judged" "verdict=$_v"
-    _scv_write "$art" "$_v" "${_r:-judged the design against the issue}" "$_u_json"
+    _scv_write "$art" "$_v" "${_r:-judged the design against the issue}" "$_u_json" "$_scv_disp"
     return 0
 }
 

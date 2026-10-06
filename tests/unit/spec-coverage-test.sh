@@ -192,5 +192,18 @@ assert_eq "[#2032/SPEC-3] rc=0 for any non-zero router rc (not a stage failure)"
 assert_eq "[#2032/SPEC-3] route_to_model rc=1 → disposition=unavailable (any non-zero rc classified, not hardcoded complete)" \
     "unavailable" "$(_res '.disposition')"
 
+# Review on PR #2262: a call that printed a readable verdict and THEN timed out
+# still timed out. Before the fix the rc was classified only when no verdict
+# was found, so this path wrote disposition `complete`.
+_setup sc3_partial "# Add a --dry-run flag, and make it refuse a missing config"
+route_to_model() { printf 'VERDICT: covered\nREASON: every requirement maps to a SPEC\n'; return 124; }
+set +e; spec_coverage_run "spec-coverage" "$_S/pipeline-state.json"; _rc_s3c=$?; set -e
+route_to_model() { printf '%s' "$2" > "$_SCV_PROMPT"; printf '%s' "$_SCV_REPLY"; return 0; }
+assert_eq "[#2032/review] verdict printed then rc=124 → the verdict is still read" \
+    "covered" "$(_res '.verdict')"
+assert_eq "[#2032/review] verdict printed then rc=124 → disposition=timed_out (the timeout is reported even when a verdict was read)" \
+    "timed_out" "$(_res '.disposition')"
+assert_eq "[#2032/review] verdict printed then rc=124 → rc=0, not a stage failure" "0" "$_rc_s3c"
+
 print_test_results
 exit $((FAIL > 0))
