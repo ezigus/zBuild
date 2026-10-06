@@ -70,15 +70,15 @@ remaining gap) AND no STAGE SUMMARY below is headed "— its findings, to answer
 emit \`LOOP_COMPLETE\` immediately. Do NOT keep iterating when there is
 nothing left to do. While any STAGE SUMMARY is headed that way, finishing
 with no change needs each of its findings answered: \`done\` (you changed
-something for it), \`nothing to do\` with the reason, or not reproduced.
+something for it), or \`nothing to do\` with the reason.
 
 ### When a finding does not reproduce
 If a failing summary names a test and that test PASSES when you run it on this
-tree, say so and stop. Emit, on its own line before the sentinel:
+tree, say so and stop. Answer that finding, on its own line before the sentinel:
 
-    NOT_REPRODUCED: <the path you ran>
+    ANSWER <stage> finding <n>: nothing to do — not reproduced: <the path you ran>
 
-one line per path. This is a REPORT, not a verdict: the pipeline re-runs the
+one line per finding. This is a REPORT, not a verdict: the pipeline re-runs the
 stage that raised the finding to check. Do not keep searching for the cause of
 a failure you cannot produce, and do not change code to chase one.
 

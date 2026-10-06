@@ -18,6 +18,9 @@
 # M5 [change] the plain-prompt lint refuses RESOLVE in model-facing text
 # M6 [change] the run-status comment and the cycle banner do not label their
 #             count RESOLVE
+# M7 [change] one answer vocabulary: the prompt asks for `nothing to do — not
+#             reproduced: <path>` and offers no separate NOT_REPRODUCED form
+#             (#2322: the router did not know that word, so the answer was lost)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -58,6 +61,13 @@ else
 fi
 assert_contains "[M2] it names the heading the summaries actually use" "$PROMPT" "$_heading"
 assert_contains "[M3] finishing with no change needs each finding answered" "$PROMPT" "nothing to do"
+if grep -qF 'NOT_REPRODUCED' <<< "$PROMPT"; then
+    assert_fail "[M7] the build prompt offers no separate NOT_REPRODUCED form" "$(grep -F NOT_REPRODUCED <<< "$PROMPT")"
+else
+    assert_pass "[M7] the build prompt offers no separate NOT_REPRODUCED form"
+fi
+assert_contains "[M7] it asks for nothing to do, with not reproduced as the reason" "$PROMPT" \
+    "nothing to do — not reproduced: <the path you ran>"
 
 # The prior-attempt context, for a build that changed nothing and one that did.
 # shellcheck disable=SC2329  # called by the context reader

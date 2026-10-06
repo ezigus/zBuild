@@ -158,11 +158,20 @@ _build_scope_needs_line() {
 
 # _build_not_reproduced <response_text> — the paths the model reported as not
 # reproducing, one per line (#2183). Its own fact: it ran them and they passed.
+# Read from build's answer `ANSWER … : nothing to do — not reproduced: <path>`
+# (#2322), markdown and case allowed, and from the older `NOT_REPRODUCED: <path>`.
 _build_not_reproduced() {
-    printf '%s\n' "${1:-}" \
-        | sed -n 's/^[[:space:]]*NOT_REPRODUCED:[[:space:]]*//p' \
-        | sed 's/[[:space:]]*$//' \
-        | awk 'NF && !seen[$0]++' 2>/dev/null || true
+    local line seen="" restore re
+    re='^[[:space:]>*`_-]*(answer[[:space:]].*[[:space:]])?not[ _]reproduced[*`_]*[[:space:]]*:[[:space:]]*[*`]*([^[:space:]*`]+)'
+    restore="$(shopt -p nocasematch)"
+    shopt -s nocasematch
+    while IFS= read -r line; do
+        [[ "$line" =~ $re ]] || continue
+        case "$seen" in *$'\n'"${BASH_REMATCH[2]}"$'\n'*) continue ;; esac
+        seen+=$'\n'"${BASH_REMATCH[2]}"$'\n'
+        printf '%s\n' "${BASH_REMATCH[2]}"
+    done <<< "${1:-}"
+    eval "$restore"
 }
 
 _build_write_build_summary() {
