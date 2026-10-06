@@ -148,5 +148,14 @@ else
     assert_fail "[SPEC-5] redaction.marker_neutralized is NOT registered in event-schema.json known_types"
 fi
 
+# [#2032] cycle.member_unfinished.suppressed_convergence is emitted dynamically via
+# _cycle_emit (structurally invisible to the emit-site scan above), so it must be
+# explicitly confirmed present in the engine known_types.
+if grep -qxF "cycle.member_unfinished.suppressed_convergence" <<< "$_engine_types"; then
+    assert_pass "[#2032] cycle.member_unfinished.suppressed_convergence is registered in event-schema.json known_types"
+else
+    assert_fail "[#2032] cycle.member_unfinished.suppressed_convergence is NOT registered in event-schema.json known_types"
+fi
+
 print_test_results
 exit $((FAIL > 0))
