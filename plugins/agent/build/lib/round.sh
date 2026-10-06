@@ -37,7 +37,7 @@ _build_round_open() {
             --arg c "${ZBUILD_CYCLE_ID:-}" --arg i "${ZBUILD_CYCLE_ITER:-0}" \
             '.round // empty | select(.run_id == $r and .cycle_id == $c and .iter == $i)
              | [(.base // ""), (.passes // 0), (.iterations // 0)] | @tsv' \
-            "$summary_json" 2>/dev/null || true)
+            "$summary_json" 2>/dev/null || true) || true   # no match: read hits EOF (rc 1) under set -e
     [[ "$passes" =~ ^[0-9]+$ && "$iters" =~ ^[0-9]+$ ]] || return 0
     [[ -n "$base" ]] && git -C "$repo_root" merge-base --is-ancestor "$base" HEAD 2>/dev/null || return 0
     _BUILD_ROUND_BASE="$base"
