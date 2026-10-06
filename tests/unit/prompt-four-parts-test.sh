@@ -243,6 +243,13 @@ for _s in "${STAGES[@]}"; do
         "$(grep -cxF -- "${OWN_RULE:-<no rule>}" "$_f6.2" 2>/dev/null || true)"
     assert_eq "[F6] $_s: ...and no second shared part" "1" "$(grep -cxF -- "$H_CONDUCT" "$_f6.2" 2>/dev/null || true)"
 done
+# spec-correspondence's batch prompt too (review #2321 round 2).
+_funnel spec-correspondence "$RAW/spec-correspondence-batch.txt" "$TEST_TEMP_DIR/f6-batch.1"
+_funnel spec-correspondence "$TEST_TEMP_DIR/f6-batch.1" "$TEST_TEMP_DIR/f6-batch.2"
+assert_eq "[F6] spec-correspondence (batch): a second pass adds no second no-override rule" "1" \
+    "$(grep -cxF -- "${OWN_RULE:-<no rule>}" "$TEST_TEMP_DIR/f6-batch.2" 2>/dev/null || true)"
+assert_eq "[F6] spec-correspondence (batch): ...and no second shared part" "1" \
+    "$(grep -cxF -- "$H_CONDUCT" "$TEST_TEMP_DIR/f6-batch.2" 2>/dev/null || true)"
 
 # ─── T1: test-author checks the value itself ────────────────────────────────
 _ta="$(cat "$RAW/test-author.txt" 2>/dev/null)"
