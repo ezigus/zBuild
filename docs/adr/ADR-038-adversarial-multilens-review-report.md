@@ -156,3 +156,19 @@ and the wall-clock before/after) is verified on the next pipeline run, not in
 unit tests, which stub the model.
 
 Verification: `plugins/agent/review-lens/tests/review-lens-context-unit-test.sh` (C1–C9).
+
+## Amendment (2026-10-05): the planned scope is design's scope block (#2302)
+
+**Evidence.** On #2035 every lens prompt's "THE PLANNED SCOPE" section read
+`+ ./`. It was filled from the `scope_manifest` input, which is the redaction
+allow-list, not the plan, so the scope lens had no file list to compare the
+change against.
+
+**Decision.** The planned scope given to a lens (item 1 of the 2026-09-28
+amendment) is the files listed in the design's ```` ```scope ```` block, read
+with `acceptance_list_scope` (`scripts/lib/acceptance-block.sh`), the same list
+build is given. The `scope_manifest` input is not shown to a lens. A design
+with no scope block gives no planned-scope section.
+
+Verification: `plugins/agent/review-lens/tests/review-lens-context-unit-test.sh`
+(C12; C3 now reads the scope block too).

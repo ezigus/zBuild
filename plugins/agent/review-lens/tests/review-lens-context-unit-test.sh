@@ -29,6 +29,10 @@
 #              file that still says so, and the aggregator lists it as
 #              pre-existing (review on #2215: the lens's own normalization
 #              dropped the field, and C7 fed the aggregator by hand)
+# C12 [change] the planned scope is the design's ```scope block, not the
+#              redaction allow-list the engine passes as scope_manifest (#2302:
+#              on #2035 the section read "+ ./", so the scope lens had no file
+#              list to compare the change against); no scope block, no section
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -68,8 +72,13 @@ SPEC-3[change]: SPEC-TEXT-MARKER validate writes a v2 result
 TESTFILES:
 tests/x-test.sh
 ```
+
+```scope
+plugins/agent/validate/SCOPE-MARKER.sh
+```
 EOF
-printf '+ SCOPE-MARKER plugins/agent/validate/\n' > "$TEST_TEMP_DIR/scope-manifest.md"
+# The engine's scope_manifest is the redaction allow-list (#2302), as on #2035.
+printf '+ ./\n' > "$TEST_TEMP_DIR/scope-manifest.md"
 printf 'diff --git a/plugins/agent/validate/plugin.sh b/plugins/agent/validate/plugin.sh\n+ changed\n' > "$ART/diff.patch"
 jq -n --arg i "$TEST_TEMP_DIR/intake.md" --arg d "$ART/design.md" --arg s "$TEST_TEMP_DIR/scope-manifest.md" --arg p "$ART/diff.patch" \
     '{inputs:{intake_goal:$i, design:$d, scope_manifest:$s, diff_patch:$p}}' > "$TEST_TEMP_DIR/stage-inputs/review-lens.json"
@@ -135,6 +144,40 @@ if grep -qiE "untouched|did not touch" <<< "$_scope"; then
     assert_fail "[C9] the scope lens does not report planned-but-untouched files" "$_scope"
 else
     assert_contains "[C9] it still reports unplanned edits" "$_scope" "did not list"
+fi
+
+print_test_section "C12: the planned scope comes from the design's scope block (#2302)"
+# _rl_planned_section <prompt> — the planned-scope section, up to the next heading.
+_rl_planned_section() {
+    awk '/^## THE PLANNED SCOPE/{on=1; print; next} on && /^## /{exit} on{print}' <<< "$1"
+}
+cat > "$ART/design.md" <<'EOF'
+# Design
+
+```scope
+scripts/lib/alpha-planned.sh
+tests/unit/beta-planned-test.sh
+```
+EOF
+_review_lens_run_inner scope "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-scope.json" "$ART" >/dev/null 2>&1 || true
+_sec="$(_rl_planned_section "$(cat "$PROMPT_F" 2>/dev/null || true)")"
+assert_contains "[C12] the section lists the design's first scoped file" "$_sec" "scripts/lib/alpha-planned.sh"
+assert_contains "[C12] the section lists the design's second scoped file" "$_sec" "tests/unit/beta-planned-test.sh"
+if grep -qF -- '+ ./' <<< "$_sec"; then
+    assert_fail "[C12] the section does not carry the redaction allow-list" "found '+ ./' in: $_sec"
+else
+    assert_pass "[C12] the section does not carry the redaction allow-list"
+fi
+printf '# Design\n\nno scope block here\n' > "$ART/design.md"
+: > "$PROMPT_F"
+_review_lens_run_inner scope "$TEST_TEMP_DIR/scope-manifest.md" "$ART/diff.patch" "$ART/lens-scope.json" "$ART" >/dev/null 2>&1 || true
+_P12="$(cat "$PROMPT_F" 2>/dev/null || true)"
+if [[ -z "$_P12" ]]; then
+    assert_fail "[C12] the lens still ran without a scope block" "no prompt captured"
+elif grep -qF 'THE PLANNED SCOPE' <<< "$_P12"; then
+    assert_fail "[C12] no scope block, no planned-scope section" "$(_rl_planned_section "$_P12")"
+else
+    assert_pass "[C12] no scope block, no planned-scope section"
 fi
 
 print_test_section "C10: introduced survives the lens's own result file"

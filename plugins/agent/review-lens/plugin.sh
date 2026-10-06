@@ -162,9 +162,9 @@ _rl_input() {
     jq -r --arg id "$1" '.inputs[$id] // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true
 }
 
-# _rl_context [scope_manifest] — what the change was for: the issue, its SPECs,
-# and the planned scope, each bounded and sanitised like the evidence. Every
-# piece is optional; an absent one is simply left out.
+# _rl_context — what the change was for: the issue, its SPECs, the design's
+# decisions and planned scope, each bounded and sanitised like the evidence.
+# Every piece is optional; an absent one is simply left out.
 # _rl_requirements_readable <design.md> — the acceptance block as a reviewer
 # reads it (#2269): each requirement with what its tag means, the file that
 # calls the new code, and the test files that check each one.
@@ -185,7 +185,7 @@ _rl_requirements_readable() {
 }
 
 _rl_context() {
-    local scope="${1:-}" f out="" _txt
+    local f out="" _txt
     f="$(_rl_input intake_goal)"
     if [[ -n "$f" && -s "$f" ]]; then
         _txt="$(head -c 6000 "$f" | _zbuild_sanitize_for_llm)"
@@ -205,10 +205,12 @@ _rl_context() {
         _txt="$(printf '%s' "${_txt:0:6000}" | _zbuild_sanitize_for_llm)"
         [[ -n "${_txt//[[:space:]]/}" ]] && out+=$'## THE DESIGN DECISIONS (what the design chose, and why)\n'"$_txt"$'\n\n'
     fi
-    [[ -n "$scope" ]] || scope="$(_rl_input scope_manifest)"
-    if [[ -n "$scope" && -s "$scope" ]]; then
-        _txt="$(head -c 4000 "$scope" | _zbuild_sanitize_for_llm)"
-        out+=$'## THE PLANNED SCOPE (files the plan expected to change)\n'"$_txt"$'\n'
+    # #2302: the files design planned to change — its ```scope block. Not the
+    # scope_manifest input: that is the redaction allow-list ("+ ./" on #2035).
+    if [[ -n "$f" && -s "$f" ]]; then
+        _txt="$(acceptance_list_scope "$f" 2>/dev/null || true)"
+        _txt="$(printf '%s' "${_txt:0:4000}" | _zbuild_sanitize_for_llm)"
+        [[ -n "${_txt//[[:space:]]/}" ]] && out+=$'## THE PLANNED SCOPE (files the plan expected to change)\n'"$_txt"$'\n'
     fi
     printf '%s' "$out"
 }
@@ -268,9 +270,9 @@ review_lens_run() {
 # Args: $1=lens  $2=scope_manifest  $3=evidence(file)  $4=out lens-<name>.json
 #       $5=(optional) artifact dir for the intermediate redacted prompt
 _review_lens_run_inner() {
-    # $2 is the scope manifest: its content goes into the lens prompt as the
-    # planned scope (_rl_context, ADR-038 amendment). Redaction of the assembled
-    # prompt is the router's, by construction (ADR-043).
+    # $2 (the scope manifest) is the redaction allow-list, not the plan: the
+    # planned scope comes from design's ```scope block (_rl_context, #2302).
+    # Redaction of the assembled prompt is the router's, by construction (ADR-043).
     local lens="$1" evidence="$3" out="$4"
     local artifact_dir="${5:-$(dirname "$out")}"
     local _rl_start_s="$SECONDS"
@@ -292,7 +294,7 @@ _review_lens_run_inner() {
     fi
 
     # ─── Build the single-lens prompt ──────────────────────────────────────
-    local prompt; prompt="$(_rl_build_lens_prompt "$lens" "$evidence_content" "$(_rl_context "${2:-}")")"
+    local prompt; prompt="$(_rl_build_lens_prompt "$lens" "$evidence_content" "$(_rl_context)")"
     # No PRIOR REVIEW: a lens is not shown its own earlier verdict, as no
     # judging stage is (#2212) — it re-judges from the change, not from itself.
 
