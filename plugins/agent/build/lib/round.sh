@@ -28,16 +28,16 @@ _build_round_open() {
     _BUILD_ROUND_PASSES=1
     _BUILD_ROUND_PRIOR_ITERS=0
     [[ -n "${ZBUILD_RUN_ID:-}" && -s "$summary_json" ]] || return 0
-    local rec
-    rec="$(jq -c --arg r "${ZBUILD_RUN_ID}" --arg c "${ZBUILD_CYCLE_ID:-}" \
-            --arg i "${ZBUILD_CYCLE_ITER:-0}" \
-            '.round // empty | select(.run_id == $r and .cycle_id == $c and .iter == $i)' \
-            "$summary_json" 2>/dev/null || true)"
-    [[ -n "$rec" ]] || return 0
+    # A first pass has no round on record: tell that in bash, with no process
+    # (ADR-065 fork budget), before asking jq for the three fields at once.
+    local _sj=""; IFS= read -r -d '' _sj < "$summary_json" || true
+    [[ "$_sj" == *'"round"'* ]] || return 0
     local base passes iters
-    base="$(jq -r '.base // ""' <<< "$rec" 2>/dev/null || true)"
-    passes="$(jq -r '.passes // 0' <<< "$rec" 2>/dev/null || echo 0)"
-    iters="$(jq -r '.iterations // 0' <<< "$rec" 2>/dev/null || echo 0)"
+    IFS=$'\t' read -r base passes iters < <(jq -r --arg r "${ZBUILD_RUN_ID}" \
+            --arg c "${ZBUILD_CYCLE_ID:-}" --arg i "${ZBUILD_CYCLE_ITER:-0}" \
+            '.round // empty | select(.run_id == $r and .cycle_id == $c and .iter == $i)
+             | [(.base // ""), (.passes // 0), (.iterations // 0)] | @tsv' \
+            "$summary_json" 2>/dev/null || true)
     [[ "$passes" =~ ^[0-9]+$ && "$iters" =~ ^[0-9]+$ ]] || return 0
     [[ -n "$base" ]] && git -C "$repo_root" merge-base --is-ancestor "$base" HEAD 2>/dev/null || return 0
     _BUILD_ROUND_BASE="$base"
@@ -50,22 +50,30 @@ _build_round_open() {
 # Reads and sets the caller's files_changed_json / lines_added / lines_removed /
 # files_changed_count (dynamic scope). A first pass is left exactly as it was.
 _build_round_widen() {
-    local repo_root="$1" head
-    head="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
-    [[ -n "$_BUILD_ROUND_BASE" && -n "$head" && "$head" != "$_BUILD_ROUND_BASE" ]] || return 0
-    local committed numstat a r _p add=0 rem=0
-    committed="$(git -C "$repo_root" diff --name-only "$_BUILD_ROUND_BASE" HEAD 2>/dev/null || true)"
-    [[ -n "$committed" ]] || return 0
-    numstat="$(git -C "$repo_root" diff --numstat "$_BUILD_ROUND_BASE" HEAD 2>/dev/null || true)"
-    while IFS=$'\t' read -r a r _p; do
+    local repo_root="$1"
+    # A first pass is the whole round: the caller's figures already cover it.
+    [[ -n "$_BUILD_ROUND_BASE" && "$_BUILD_ROUND_PASSES" -gt 1 ]] || return 0
+    # One git call gives the paths and the line counts; empty means the round's
+    # earlier passes committed nothing (or this is its first pass).
+    local numstat a r p add=0 rem=0 paths=""
+    numstat="$(git -C "$repo_root" diff --numstat --no-renames "$_BUILD_ROUND_BASE" HEAD 2>/dev/null || true)"
+    [[ -n "$numstat" ]] || return 0
+    while IFS=$'\t' read -r a r p; do
+        [[ -n "$p" ]] || continue
         [[ "$a" =~ ^[0-9]+$ ]] && add=$(( add + a ))
         [[ "$r" =~ ^[0-9]+$ ]] && rem=$(( rem + r ))
+        paths+="$p"$'\n'
     done <<< "$numstat"
-    files_changed_json="$(jq -c --arg c "$committed" \
-        '(. + ($c | split("\n") | map(select(length > 0)))) | unique' \
-        <<< "${files_changed_json:-[]}" 2>/dev/null || printf '%s' "${files_changed_json:-[]}")"
-    # shellcheck disable=SC2034  # the caller's local, set via dynamic scope
-    files_changed_count="$(jq 'length' <<< "$files_changed_json" 2>/dev/null || echo 0)"
+    local both
+    both="$(jq -r --arg c "$paths" \
+        '((. + ($c | split("\n") | map(select(length > 0)))) | unique) as $u
+         | ($u | length | tostring) + "\t" + ($u | tojson)' \
+        <<< "${files_changed_json:-[]}" 2>/dev/null || true)"
+    if [[ -n "$both" ]]; then
+        # shellcheck disable=SC2034  # the caller's locals, set via dynamic scope
+        files_changed_count="${both%%$'\t'*}"
+        files_changed_json="${both#*$'\t'}"
+    fi
     lines_added=$(( ${lines_added:-0} + add ))
     lines_removed=$(( ${lines_removed:-0} + rem ))
 }
@@ -76,20 +84,18 @@ _build_round_total_iterations() {
     printf '%s' "$(( _BUILD_ROUND_PRIOR_ITERS + n ))"
 }
 
-# _build_round_record <summary_json> <this_pass_iterations>
-# Stamps the round onto the result this pass wrote, so the next pass of the
-# same round continues it. Fail-open: bookkeeping never changes the verdict.
-_build_round_record() {
-    local summary_json="$1" total
-    [[ -s "$summary_json" ]] || return 0
-    total="$(_build_round_total_iterations "${2:-0}")"
-    local out
-    out="$(jq -c --arg r "${ZBUILD_RUN_ID:-}" --arg c "${ZBUILD_CYCLE_ID:-}" \
-            --arg i "${ZBUILD_CYCLE_ITER:-0}" --arg b "$_BUILD_ROUND_BASE" \
-            --argjson p "$_BUILD_ROUND_PASSES" --argjson n "$total" \
-            '. + {passes: $p, round: {run_id: $r, cycle_id: $c, iter: $i, base: $b,
-                                     passes: $p, iterations: $n}}' \
-            "$summary_json" 2>/dev/null || true)"
-    [[ -n "$out" ]] || return 0
-    atomic_write "$summary_json" <<< "$out" 2>/dev/null || true
+# _build_round_json <this_pass_iterations> — the round as a JSON object, built in
+# bash with no process (ADR-065 fork budget): the summary writer folds it into its
+# own single write. Its values are ids, numbers and a commit hash; anything else
+# gives `null`, and the round simply starts over next pass.
+_build_round_json() {
+    local total r="${ZBUILD_RUN_ID:-}" c="${ZBUILD_CYCLE_ID:-}" i="${ZBUILD_CYCLE_ITER:-0}"
+    total="$(( _BUILD_ROUND_PRIOR_ITERS + ${1:-0} ))"
+    local re='^[A-Za-z0-9._:-]*$'
+    if [[ "$r" =~ $re && "$c" =~ $re && "$i" =~ $re && "$_BUILD_ROUND_BASE" =~ $re ]]; then
+        printf '{"run_id":"%s","cycle_id":"%s","iter":"%s","base":"%s","passes":%d,"iterations":%d}' \
+            "$r" "$c" "$i" "$_BUILD_ROUND_BASE" "$_BUILD_ROUND_PASSES" "$total"
+    else
+        printf 'null'
+    fi
 }

@@ -319,10 +319,11 @@ _build_stage_run_inner() {
         jq -n \
             --argjson schema_version 4 \
             --argjson iterations "${iterations:-0}" \
+            --argjson round "$(_build_round_json "${iterations:-0}" 2>/dev/null || printf 'null')" \
             '{"schema_version":$schema_version,"result_contract":2,"verdict":"incomplete",
-              "disposition":"interrupted","reason":"sigint","iterations":$iterations}' \
+              "disposition":"interrupted","reason":"sigint","iterations":$iterations}
+             + (if $round != null then {passes: $round.passes, round: $round} else {} end)' \
             | atomic_write "$output_summary_json" 2>/dev/null || true
-        _build_round_record "$output_summary_json" "${iterations:-0}"
         # Best-effort: clear `git add -N` intent-to-add entries so a downstream
         # `git diff HEAD` after the abort sees a clean index.
         git -C "$repo_root" reset -q 2>/dev/null || true
@@ -398,7 +399,6 @@ _build_stage_run_inner() {
     local loop_output_tokens="${_ROUTE_LOOP_OUTPUT_TOKENS:-0}"
     local build_verdict=""
     _build_write_build_summary
-    _build_round_record "$output_summary_json" "$iterations"
 
     # ─── #587: post-loop discrepancy + numstat summary (no banner) ───────────
     # Originally (#498) this emitted a [computed] stage_io banner pair after
