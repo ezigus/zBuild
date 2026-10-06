@@ -1,7 +1,15 @@
 {
   "scope_files": [
+    "config/adr-enforcement-baseline.txt",
     "docs/adr/ADR-028-shared-llm-agent-framework.md",
+    "docs/audits/adr-2026-10-03/batch-3.md",
+    "plugins/agent/review-lens/plugin.sh",
+    "plugins/agent/review-lens/tests/review-lens-v2-result-test.sh",
+    "plugins/agent/review-report/lib/lenses.sh",
+    "plugins/agent/review-report/plugin.sh",
     "tests/unit/adr-migration-claims-test.sh"
   ],
-  "wiring_files": []
+  "wiring_files": [
+    "docs/adr/ADR-028-shared-llm-agent-framework.md"
+  ]
 }
