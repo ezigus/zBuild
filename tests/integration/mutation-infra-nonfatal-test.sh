@@ -48,17 +48,21 @@ FIXDIR="$TEST_TEMP_DIR/mutation"
 mkdir -p "$FIXDIR"
 
 # (a) INFRA: the mutated `## File` exists (verify passes), but the patch exits
-#     non-zero against the verified checkout → classified infra (non-fatal).
+#     non-zero against the verified checkout, then applies when the runner
+#     re-applies it alone (a marker outside the worktree records the first try)
+#     → a lost race, classified infra (non-fatal). A patch that fails on that
+#     re-apply too has lost its anchor and is a failure instead (#2086,
+#     tests/unit/run-mutation-stale-anchor-test.sh).
 cat > "$FIXDIR/01-patchfail.md" <<'EOF'
 ## File
 `scripts/run-mutation.sh`
 
 ## Mutation
-Synthetic infra outcome: verify passes (file present), then the patch fails.
+Synthetic infra outcome: verify passes (file present), then the patch fails once.
 
 ## Patch
 ```bash
-exit 1
+if [[ ! -e "$ZB_TRANSIENT_MARK" ]]; then : > "$ZB_TRANSIENT_MARK"; exit 1; fi
 ```
 
 ## Expected failing test
@@ -103,6 +107,7 @@ _run_fixture() {
     set +e
     ZBUILD_MUTATION_DIR="$FIXDIR" \
     ZBUILD_MUTATION_PARALLEL_JOBS="$jobs" \
+    ZB_TRANSIENT_MARK="$TEST_TEMP_DIR/transient-$jobs.mark" \
         bash "$RUNNER" > "$out" 2>/dev/null
     local rc=$?
     set -e
@@ -154,6 +159,7 @@ cp "$FIXDIR/01-patchfail.md" "$ALLDIR/01-patchfail.md"
 ALL_OUT="$TEST_TEMP_DIR/allinfra.out"
 set +e
 ZBUILD_MUTATION_DIR="$ALLDIR" ZBUILD_MUTATION_PARALLEL_JOBS=2 \
+    ZB_TRANSIENT_MARK="$TEST_TEMP_DIR/transient-all.mark" \
     bash "$RUNNER" > "$ALL_OUT" 2>/dev/null
 all_rc=$?
 set -e
