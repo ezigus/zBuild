@@ -61,6 +61,16 @@ assert_eq "[O1] no stage runs without an outer round" \
     "0" "$(grep -c 'outer=unset' "$ROUNDS_LOG" || true)"
 assert_eq "[O1] the outer round is cleared when the outer loop ends" "unset" "${ZBUILD_OUTER_ROUND:-unset}"
 
+# ─── O6: cleared on every way out of the outer loop ─────────────────────────
+# A blocked build loop stops the run early (ADR-068, rc 5). The round must be
+# cleared on that path too, or every stage after the loop sees a fixed round.
+print_test_section "O6: the outer round is cleared when the outer loop stops early"
+# shellcheck source=../lib/nested-loop-rounds-fixture.sh
+source "$REPO_ROOT/tests/lib/nested-loop-rounds-fixture.sh"   # its own dispatch again
+DESIGN_GATE=pass TEST=fail BUILD=blocked _run; o6_rc=$?
+assert_eq "[O6] fixture: the outer loop stopped early (blocked, rc 5)" "5" "$o6_rc"
+assert_eq "[O6] the outer round is cleared after an early stop" "unset" "${ZBUILD_OUTER_ROUND:-unset}"
+
 # ─── the checkpoint block ───────────────────────────────────────────────────
 # shellcheck source=../../core/pipeline/verdict.sh
 source "$REPO_ROOT/core/pipeline/verdict.sh" 2>/dev/null || true

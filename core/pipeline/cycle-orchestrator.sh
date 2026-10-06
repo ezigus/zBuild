@@ -2325,7 +2325,23 @@ _cycle_no_commits_ahead() {
 }
 
 # ─── cycle_orchestrator_run <cycle_id> <state_dir> <state_file> ──────────────
+# #2325: the outermost loop's round (ZBUILD_OUTER_ROUND) is cleared on EVERY way
+# out, not only the normal end, so no stage after the loop sees a stale round.
+# Called without `||` (bash ignores errexit inside a function called from an
+# `||` or `if` list): errexit is saved, the body runs, errexit is restored. The
+# body runs with `set +e` itself, so this changes nothing about how it runs.
 cycle_orchestrator_run() {
+    local _cor_had_e=0 _cor_rc=0
+    [[ $- == *e* ]] && _cor_had_e=1
+    set +e
+    _cycle_orchestrator_run_body "$@"
+    _cor_rc=$?
+    [[ "${_CYCLE_NEST_DEPTH:-0}" -eq 0 ]] && unset ZBUILD_OUTER_ROUND
+    [[ $_cor_had_e -eq 1 ]] && set -e
+    return "$_cor_rc"
+}
+
+_cycle_orchestrator_run_body() {
     local cycle_id="$1" state_dir="$2" state_file="$3"
     # Capture caller's errexit FIRST — orchestrator runs with set +e internally
     # so a stage failure doesn't yank the rug out from a set-e-active caller.
