@@ -334,16 +334,18 @@ acceptance_negctl_check() {
     # Each SPEC's status, read once (ADR-069 §1). With no code requirement
     # there is nothing to run, and no worktree is made.
     local -A _statuses=()
+    local -a _sid_order=()
     local _blk _sid _any_code=0
     _blk="$(extract_acceptance_block "$design_md" 2>/dev/null || true)"
     while IFS= read -r _sid; do
         [[ -n "$_sid" ]] || continue
         _acceptance_spec_line "$_blk" "$_sid" || _ACC_SPEC_STATUS=""
         _statuses[$_sid]="$_ACC_SPEC_STATUS"
+        _sid_order+=("$_sid")
         [[ "$_ACC_SPEC_STATUS" == "done" || "$_ACC_SPEC_STATUS" == "no-code" ]] || _any_code=1
     done < <(acceptance_list_spec_ids "$design_md" 2>/dev/null || true)
-    if [[ "$_any_code" -eq 0 && ${#_statuses[@]} -gt 0 ]]; then
-        for _sid in $(acceptance_list_spec_ids "$design_md" 2>/dev/null || true); do
+    if [[ "$_any_code" -eq 0 && ${#_sid_order[@]} -gt 0 ]]; then
+        for _sid in "${_sid_order[@]}"; do
             [[ "${_statuses[$_sid]}" == "done" ]] && printf 'NEGCTL SKIP %s already_done\n' "$_sid" \
                 || printf 'NEGCTL SKIP %s no_code\n' "$_sid"
         done

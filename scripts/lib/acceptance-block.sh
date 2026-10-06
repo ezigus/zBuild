@@ -9,6 +9,10 @@
 # altering their control flow. This matches the no-side-effect-on-source
 # convention of the sibling core/ and scripts/lib/ libraries. The function
 # below is self-contained (guarded parameter expansions + explicit returns).
+#
+# Size: over 500 lines, deliberately, for the reason acceptance-negctl.sh gives.
+# A sibling file under scripts/lib that this one sources would join
+# _runner_contract_lib_closure and widen ADR-057 gate 2 for every later issue.
 
 [[ -n "${_ACCEPTANCE_BLOCK_LOADED:-}" ]] && return 0
 _ACCEPTANCE_BLOCK_LOADED=1
