@@ -1,0 +1,15 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 4 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 4,
+    "owned_files": [
+      "tests/unit/adr-migration-claims-test.sh"
+    ],
+    "testfiles": {
+      "tests/unit/adr-migration-claims-test.sh": "cc748437ac77bdedc5dbcd96e9faace632407ba0"
+    }
+  }
+}

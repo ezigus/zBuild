@@ -1,0 +1,5 @@
+# authored_by: test-author
+e9f1a59c3ee04e7858d982e1e1eced80a13192a9ae2efeb0ad2cbf652cffaf33  tests/unit/adr-migration-claims-test.sh
+e9f1a59c3ee04e7858d982e1e1eced80a13192a9ae2efeb0ad2cbf652cffaf33  tests/unit/adr-migration-claims-test.sh
+e9f1a59c3ee04e7858d982e1e1eced80a13192a9ae2efeb0ad2cbf652cffaf33  tests/unit/adr-migration-claims-test.sh
+e9f1a59c3ee04e7858d982e1e1eced80a13192a9ae2efeb0ad2cbf652cffaf33  tests/unit/adr-migration-claims-test.sh

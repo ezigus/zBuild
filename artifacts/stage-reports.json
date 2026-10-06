@@ -11,5 +11,10 @@
   ],
   "wiring_files": [
     "docs/adr/ADR-028-shared-llm-agent-framework.md"
-  ]
+  ],
+  "owned_files": {
+    "test-author": [
+      "tests/unit/adr-migration-claims-test.sh"
+    ]
+  }
 }
