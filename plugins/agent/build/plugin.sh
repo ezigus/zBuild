@@ -320,7 +320,11 @@ _build_stage_run_inner() {
             --argjson schema_version 4 \
             --argjson iterations "${iterations:-0}" \
             --argjson round "$(_build_round_json "${iterations:-0}" 2>/dev/null || printf 'null')" \
-            '{"schema_version":$schema_version,"result_contract":2,"verdict":"incomplete",
+            '# #2323: an interrupted pass reports no file counts, only that it was
+            # interrupted; it carries the round so the next pass of the same round
+            # continues the count. Widening here would claim stats for a pass that
+            # did not finish.
+            {"schema_version":$schema_version,"result_contract":2,"verdict":"incomplete",
               "disposition":"interrupted","reason":"sigint","iterations":$iterations}
              + (if $round != null then {passes: $round.passes, round: $round} else {} end)' \
             | atomic_write "$output_summary_json" 2>/dev/null || true

@@ -39,7 +39,7 @@ _build_round_open() {
              | [(.base // ""), (.passes // 0), (.iterations // 0)] | @tsv' \
             "$summary_json" 2>/dev/null || true) || true   # no match: read hits EOF (rc 1) under set -e
     [[ "$passes" =~ ^[0-9]+$ && "$iters" =~ ^[0-9]+$ ]] || return 0
-    [[ -n "$base" ]] && git -C "$repo_root" merge-base --is-ancestor "$base" HEAD 2>/dev/null || return 0
+    { [[ -n "$base" ]] && git -C "$repo_root" merge-base --is-ancestor "$base" HEAD 2>/dev/null; } || return 0
     _BUILD_ROUND_BASE="$base"
     _BUILD_ROUND_PASSES=$(( passes + 1 ))
     _BUILD_ROUND_PRIOR_ITERS="$iters"
