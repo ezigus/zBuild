@@ -134,7 +134,7 @@ _See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Pl
 - `verdict` is `pass` on every run that produced a report — findings move
   `merge_readiness`, never the verdict — and `error` only on the broken paths
   (no state file, no output path, no model tier). `valid_verdicts: [pass, error]`.
-- `disposition` is `complete`, or `exhausted` when a lens call returned non-zero
+- `disposition` is `complete`, or `out_of_turns` when a lens call returned non-zero
   (ADR-063 §3); `broken` on the error paths. rc is 0 or 1 (ADR-054 §4).
 - Every lens prompt opens with a TURN BUDGET block whose numbers come from
   `_route_resolve_max_turns` / `_route_resolve_timeout` (ADR-063 §1).

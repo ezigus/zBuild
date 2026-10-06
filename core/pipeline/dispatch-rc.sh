@@ -163,7 +163,7 @@ dispatch_rc_legacy_reason() {
 # Only three map, and each is an exact fit against §6's own wording:
 #
 #   9  llm_unavailable  → unavailable  "halt; operator action required"
-#   10 scope_too_large  → exhausted    "more budget, or the work must shrink"
+#   10 scope_too_large  → out_of_turns (ADR-054 §6a, #2187)
 #   130/143 signal      → interrupted  "retry as-is"
 #
 # The rest — blocked, cycle_abort, blocking_member_failure, config_invalid —

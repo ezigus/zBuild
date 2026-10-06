@@ -376,7 +376,7 @@ _review_lens_run_inner() {
     stage_signal_end
 
     # rc=10 (budget/turn exhaustion — ADR-063 §3): distinct from advisory rc=0
-    # degrade paths. Write disposition:exhausted and propagate rc=10 so the engine
+    # degrade paths. Write disposition:out_of_turns and propagate rc=10 so the engine
     # can apply the §3 escalation (disposition.sh:97 → route.sh:749 +50% retry).
     if [[ "$router_rc" -eq 10 ]]; then
         _review_lens_write_result "$out" "degraded" "out_of_turns" "budget_exhausted" \
