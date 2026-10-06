@@ -29,11 +29,16 @@ setup_test_env "runner-cycle-banners"
 
 mkdir -p "$GOLDEN_DIR"
 
-# emit_cycle_banner <mode> <variant>
-# Runs in a clean subshell so helpers.sh re-initializes color palette under
-# NO_COLOR=1 (layout) or FORCE_COLOR=1 (colored).
-emit_cycle_banner() {
-    local mode="$1" variant="$2"
+# render_mode <mode> renders every variant for one color mode in ONE clean
+# shell: sourcing runner.sh costs ~2.5s, so sourcing it once per variant made
+# this file take ~98s (#2327). helpers.sh re-initializes the color palette at
+# source time under NO_COLOR=1 (layout) or FORCE_COLOR=1 (colored); each
+# variant then runs in its own ( ) subshell so no call can leak state into the
+# next. Output (fd 1 + fd 2) lands in $RENDER_DIR/<variant>.<mode>.
+RENDER_DIR="$TEST_TEMP_DIR/rendered"
+mkdir -p "$RENDER_DIR"
+render_mode() {
+    local mode="$1"
     local env_pre=""
     if [[ "$mode" == "layout" ]]; then
         env_pre="unset FORCE_COLOR; export NO_COLOR=1"
@@ -51,54 +56,63 @@ emit_cycle_banner() {
         mkdir -p \"\$ZBUILD_STATE_DIR\" \"\$ZBUILD_EVENTS_DIR\"
         source '$REPO_ROOT/core/pipeline/runner.sh'
 
-        case '$variant' in
-            entry-build-test)
-                _render_cycle_entry build-test 5 'build,test'
-                ;;
-            iter-divider-2-5)
-                _render_cycle_iter_divider build-test 2 5
-                ;;
-            iter-divider-2-5-nested)
-                ZBUILD_SEQ_PREFIX='4.1' _render_cycle_iter_divider build-test 2 5
-                ;;
-            iter-complete-pass)
-                _render_cycle_iter_complete 2 pass -1 1 4
-                ;;
-            exit-converged)
-                _render_cycle_exit build-test converged 2 5
-                ;;
-            exit-max-iterations)
-                _render_cycle_exit build-test max_iterations 5 5
-                ;;
-            exit-plateau)
-                _render_cycle_exit build-test plateau 3 5
-                ;;
-            exit-divergence)
-                _render_cycle_exit build-test divergence 3 5
-                ;;
-            exit-aborted)
-                _render_cycle_exit build-test aborted 2 5
-                ;;
-            exit-verdict-missing)
-                _render_cycle_exit build-test verdict_missing 2 5
-                ;;
-            exit-blocked)
-                _render_cycle_exit build-test blocked 2 5
-                ;;
-            exit-error)
-                _render_cycle_exit build-test error 2 5
-                ;;
-            exit-config-invalid)
-                _render_cycle_exit build-test config_invalid 0 5
-                ;;
-            exit-unknown)
-                _render_cycle_exit build-test some_typo_reason 2 5
-                ;;
-            exit-unowned)
-                _render_cycle_exit build-test unowned_finding 1 3
-                ;;
-        esac
-    " 2>&1
+        for variant in $ALL_VARIANTS; do
+            (
+            case \"\$variant\" in
+                entry-build-test)
+                    _render_cycle_entry build-test 5 'build,test'
+                    ;;
+                iter-divider-2-5)
+                    _render_cycle_iter_divider build-test 2 5
+                    ;;
+                iter-divider-2-5-nested)
+                    ZBUILD_SEQ_PREFIX='4.1' _render_cycle_iter_divider build-test 2 5
+                    ;;
+                iter-complete-pass)
+                    _render_cycle_iter_complete 2 pass -1 1 4
+                    ;;
+                exit-converged)
+                    _render_cycle_exit build-test converged 2 5
+                    ;;
+                exit-max-iterations)
+                    _render_cycle_exit build-test max_iterations 5 5
+                    ;;
+                exit-plateau)
+                    _render_cycle_exit build-test plateau 3 5
+                    ;;
+                exit-divergence)
+                    _render_cycle_exit build-test divergence 3 5
+                    ;;
+                exit-aborted)
+                    _render_cycle_exit build-test aborted 2 5
+                    ;;
+                exit-verdict-missing)
+                    _render_cycle_exit build-test verdict_missing 2 5
+                    ;;
+                exit-blocked)
+                    _render_cycle_exit build-test blocked 2 5
+                    ;;
+                exit-error)
+                    _render_cycle_exit build-test error 2 5
+                    ;;
+                exit-config-invalid)
+                    _render_cycle_exit build-test config_invalid 0 5
+                    ;;
+                exit-unknown)
+                    _render_cycle_exit build-test some_typo_reason 2 5
+                    ;;
+                exit-unowned)
+                    _render_cycle_exit build-test unowned_finding 1 3
+                    ;;
+            esac
+            ) > '$RENDER_DIR/'\"\$variant\".'$mode' 2>&1
+        done
+    " || true
+}
+
+# emit_cycle_banner <mode> <variant> — the pre-rendered output for one pair.
+emit_cycle_banner() {
+    cat "$RENDER_DIR/$2.$1"
 }
 
 # Pair table: variant
@@ -119,6 +133,10 @@ declare -a VARIANTS=(
     "exit-unknown"
 )
 declare -a MODES=("layout" "colored")
+ALL_VARIANTS="${VARIANTS[*]} exit-unowned"
+for mode in "${MODES[@]}"; do
+    render_mode "$mode"
+done
 
 for variant in "${VARIANTS[@]}"; do
     for mode in "${MODES[@]}"; do
@@ -221,7 +239,6 @@ verify_glyph "verdict-missing" "⚠" "verdict_missing"
 verify_glyph "blocked" "✗" "blocked"
 verify_glyph "error" "✗" "error/default"
 
-cleanup_test_env
 # #2271 (ADR-068): a loop that hands back a finding none of its stages owns
 # ends early by design — the banner says so in words, never the raw token.
 _uo="$(emit_cycle_banner layout exit-unowned || true)"
@@ -232,5 +249,6 @@ else
     assert_pass "[#2271] the banner never shows the raw reason token"
 fi
 
+cleanup_test_env
 print_test_results
 exit "$FAIL"
