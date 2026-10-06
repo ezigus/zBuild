@@ -331,6 +331,11 @@ _run_gate_with_md "$(_g_md 'SPEC-1[code]: an empty input returns rc 1' 'SPEC-2[d
 assert_eq "[G7] guard: a [done] requirement may describe what a file contains" "pass" "$VERDICT"
 _run_gate_with_md "$(_g_md 'SPEC-1[code]: an empty input returns rc 1' 'SPEC-2[no-code]: docs/x.md contains the new section')"
 assert_eq "[G7] guard: a [no-code] requirement may describe what a file contains" "pass" "$VERDICT"
+# One bad [code] requirement with no test file draws both violations in the
+# same pass (review #2319): the gate reports everything at once (SPEC-7).
+_run_gate_with_md "$(_g_md 'SPEC-1[code]: an empty input returns rc 1' 'SPEC-2[code]: plugin.sh contains `_bar`')"
+assert_contains "[G7] a contents-only requirement with no test file is named for the missing test file" "$(_viol)" "MISSING_TESTFILE_FOR_SPEC SPEC-2"
+assert_contains "[G7] ...and, in the same pass, for describing contents" "$(_viol)" "CONTENTS_NOT_BEHAVIOUR SPEC-2"
 
 # ─── SPEC-11 (#1227 fix 1): C1 fence tolerates trailing whitespace ───────────
 # The design stage asserts the scope block with `grep -q '^```scope'`, which
