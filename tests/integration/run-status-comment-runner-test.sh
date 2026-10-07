@@ -156,7 +156,8 @@ if wait_for_event "$ZBUILD_TEST_SLOW_MARK" 'running' 600 0.1; then
     intake_seq="$(jq -r 'select(.type=="plugin.run.start" and .stage=="intake") | .seq' "$EVENTS_JSONL" | tail -1)"
     assert_contains "[SPEC-4] the running intake row is in the final body" "$(last_body)" "**${intake_seq} intake**"
     assert_contains "[SPEC-4] …still marked running (it never ended)" "$(last_body | grep -F "**${intake_seq} intake**")" '→ running'
-    assert_contains "[SPEC-4] the final header names the signal" "$(last_body)" 'sigterm'
+    # #2330: the header says why in words, naming the signal; not the code.
+    assert_contains "[SPEC-4] the final header names the signal" "$(last_body)" 'told to stop (TERM signal)'
     assert_eq "[SPEC-4] no sidecar left behind after TERM" "0" "$(sidecars)"
 else
     assert_fail "[SPEC-4] the slow intake started" "marker never appeared; stderr: $(tail -5 "$TEST_TEMP_DIR/runner4.stderr")"

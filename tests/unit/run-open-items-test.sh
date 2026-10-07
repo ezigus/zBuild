@@ -110,6 +110,9 @@ _w2="$(run_end_words max_iterations 2)"; _guard "$_w2"
 assert_contains "[O3] out of rounds, with the count" "$_w2" "ran out of rounds with 2 open items"
 _w3="$(run_end_words max_iterations 0)"; _guard "$_w3"
 assert_contains "[O3] out of rounds, nothing recorded" "$_w3" "ran out of rounds"
+# A signal stop keeps which signal it was, in words (review of #2330).
+assert_contains "[O3] a TERM stop names the signal" "$(run_end_words sigterm 0)" "told to stop (TERM signal)"
+assert_contains "[O3] an interrupt names the signal" "$(run_end_words sigint 0)" "interrupted (INT signal, Ctrl-C)"
 for _r in max_iterations_tests_failing unowned_finding blocking_member_failure member_terminal_failure \
           blocked blocked_on_scope cycle_abort sigint sigterm llm_rate_limited llm_unavailable \
           scope_too_large design_timeout_exhausted no_committed_changes some_new_code ""; do
