@@ -160,7 +160,7 @@ engine re-interprets.
 recovery layer. Measurement closed that out: the kind was never merely unbuilt, it was
 **superseded**, and by the very field this section points at. `disposition` (ADR-054 §6,
 `core/pipeline/disposition.sh`) answers all four action verbs a recovery plugin existed
-to return — `retry` → `interrupted`/`throttled`, `escalate` → `exhausted` (`exhausted` retired #2187; now `out_of_turns`), `abort` →
+to return — `retry` → `interrupted`/`throttled`, `escalate` → `exhausted` (`exhausted` retired 2026-09-25 by #2187; now `out_of_turns`), `abort` →
 `unavailable`/`broken` — and `backtrack` is `route_back` (ADR-045), shipped separately.
 
 More decisively, ADR-054 **inverted the premise**: *"The response table lives HERE, not in

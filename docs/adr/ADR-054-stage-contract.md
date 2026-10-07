@@ -160,7 +160,7 @@ The destination is never new. Every one of these already had a declared channel 
 | `124` timeout | `interrupted` (§6). Never reaches the runner today: the router absorbs it and publishes `_ROUTE_LOOP_TERMINATED_REASON=router_timeout` | #1823 |
 | rate limit | `unavailable` (§6) since #2111 (was `throttled`, #1823): the run ends, resumable when the limit resets | #1823 / #2111 |
 | `9` llm_unavailable | `unavailable` (§6) — "halt; operator action required" is what rc=9 already meant | #1823 |
-| `10` scope_too_large | `exhausted` (§6) — "more budget, or the work must shrink". The matching *verdict* string migrates in #1832. **(superseded by §6a / #2187 — now `out_of_turns`)** | #1823 / #1832 |
+| `10` scope_too_large | `exhausted` (§6) — "more budget, or the work must shrink". The matching *verdict* string migrates in #1832. **(superseded 2026-09-25 by §6a / #2187 — now `out_of_turns`)** | #1823 / #1832 |
 | `11` route_back | ADR-045 routing state (`_CYCLE_ROUTE_BACK_*`, `cycle.route_back`). The `route_target` vocabulary is #1767 | ADR-045 / #1767 |
 | `8` blocking_member_failure | ADR-013's `blocking:true` halt and ADR-021's `disposition: terminal` member contract | ADR-013 / ADR-021 |
 | `5` blocked | `_CYCLE_LAST_TERMINATED_REASON ∈ {blocked, no_committed_changes}` + `cycle.blocked` (ADR-021 #528/#1265) | ADR-021 |

@@ -56,6 +56,10 @@ done
 _dispatch_bare="$(grep -c 'scope_too_large.*→.*exhausted' "$DISPATCH_RC" 2>/dev/null || true)"
 assert_eq "[#2222/SPEC-3] dispatch-rc.sh rc=10 comment does not map scope_too_large to bare exhausted (replaced with out_of_turns per §6a/#2187)" \
     "0" "$_dispatch_bare"
+# The row keeps telling a reader what to do: §6a's action for out_of_turns is retry.
+_dispatch_action="$(grep -cE 'scope_too_large.*out_of_turns.*"retry' "$DISPATCH_RC" 2>/dev/null || true)"
+assert_gt "[#2222/SPEC-3] dispatch-rc.sh rc=10 row still says what to do (§6a: retry), not only where the rule lives" \
+    "$_dispatch_action" "0"
 
 # ── Site 2: review-lens/plugin.sh degrade-path comment ───────────────────────
 # The comment at line 379 described the degrade path as writing
@@ -93,11 +97,10 @@ _adr054_note="$(grep -c 'scope_too_large.*out_of_turns\|scope_too_large.*§6a\|s
 assert_gt "[#2222/SPEC-3] ADR-054 rc=10 scope_too_large table row carries a backward-pointer note (§6a, #2187, or out_of_turns) marking it superseded" \
     "$_adr054_note" "0"
 
-# The "dated" requirement is satisfied when §6a in ADR-054 carries an explicit
-# ISO-format date in its heading.  The backward-pointer references §6a, so the
-# pointer IS dated when §6a itself has a date.  Fails if §6a has no such date.
-_adr054_dated="$(grep -cE '6a\..*\(20[0-9]{2}-[0-9]{2}-[0-9]{2}' "$ADR054" 2>/dev/null || true)"
-assert_gt "[#2222/SPEC-3] ADR-054 §6a section heading carries an explicit ISO date (anchors the dated backward-pointer note)" \
+# The issue asks for a DATED pointer: the date is on the pointer itself, so a
+# reader of this row sees when the word was retired without leaving it.
+_adr054_dated="$(grep -cE 'scope_too_large.*(superseded|retired)[^|]*20[0-9]{2}-[0-9]{2}-[0-9]{2}' "$ADR054" 2>/dev/null || true)"
+assert_gt "[#2222/SPEC-3] ADR-054 rc=10 row's backward-pointer carries its date" \
     "$_adr054_dated" "0"
 
 # ── Site 6: ADR-001 retirement passage — inline backward-pointer added ────────
@@ -108,6 +111,9 @@ assert_gt "[#2222/SPEC-3] ADR-054 §6a section heading carries an explicit ISO d
 _adr001_note="$(grep -c 'exhausted.*#2187\|#2187.*exhausted' "$ADR001" 2>/dev/null || true)"
 assert_gt "[#2222/SPEC-3] ADR-001 exhausted passage carries a backward-pointer note naming #2187 (marks the word as retired vocabulary)" \
     "$_adr001_note" "0"
+_adr001_dated="$(grep -cE 'exhausted.*retired[^)]*20[0-9]{2}-[0-9]{2}-[0-9]{2}.*#2187|exhausted.*retired[^)]*#2187[^)]*20[0-9]{2}-[0-9]{2}-[0-9]{2}' "$ADR001" 2>/dev/null || true)"
+assert_gt "[#2222/SPEC-3] ADR-001 exhausted pointer carries its date" \
+    "$_adr001_dated" "0"
 
 # ── R-4 acceptance grep (a): disposition:exhausted — codebase-wide ───────────
 # Searches core/, plugins/, scripts/, docs/, .github/, and config/ for any

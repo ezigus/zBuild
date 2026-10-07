@@ -160,10 +160,10 @@ dispatch_rc_legacy_reason() {
 # The subset of legacy rcs that ADR-054 §6 has a word for, so a reader on the
 # disposition channel gets the same answer as one on the reason channel.
 #
-# Only three map, and each is an exact fit against §6's own wording:
+# Only three map, and each is an exact fit against §6's own wording (§6a for rc 10):
 #
 #   9  llm_unavailable  → unavailable  "halt; operator action required"
-#   10 scope_too_large  → out_of_turns (ADR-054 §6a, #2187)
+#   10 scope_too_large  → out_of_turns "retry" (ADR-054 §6a, #2187)
 #   130/143 signal      → interrupted  "retry as-is"
 #
 # The rest — blocked, cycle_abort, blocking_member_failure, config_invalid —
