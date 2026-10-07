@@ -109,6 +109,9 @@ DESIGN SCOPE BLOCK:
 - plugins/agent/review-lens/tests/review-lens-v2-budget-test.sh
 - tests/unit/exhausted-disposition-retired-test.sh
 
+### PRIOR IMPACT (a previous attempt on this issue — reference & refine; re-validate against the CURRENT design)
+{"schema_version":1,"verdict":"complete","missing":[],"result_contract":2,"disposition":"complete","reason":"verdict:complete"}
+
 ## What you must not do
 - Do NOT call Edit, Write, or Bash. This stage is read-only.
 - NEVER list a path you cannot verify is present in the repo. Non-existent
