@@ -316,7 +316,11 @@ export ZBUILD_GOAL="parity fixture goal"
 # A smoke fixture is the legitimate exception, and now it says so explicitly.
 export ZBUILD_INTAKE_ALLOW_PLACEHOLDER=1
 export ZBUILD_REPO_ROOT="$MOCK_REPO"
-export ZBUILD_TEST_CMD="true"                 # test stage runs this in tmp dir
+# The test stage runs this in a tmp dir. #1798: it must print a summary the
+# test plugin can read — a bare `true` prints nothing, so the stage honestly
+# reported `error` (summary_unavailable) and the run carried on regardless,
+# which is the defect #1798 fixes. One passing suite line, run-tests.sh's shape.
+export ZBUILD_TEST_CMD="printf 'unit: 1/1 passed\n'"
 # Issue #484: intake's new branch path needs a real git repo; this fixture
 # stubs git on PATH so we can't run real symbolic-ref/checkout. The parity
 # test is about engine env-agnosticism, not branch behavior — skip it here.
