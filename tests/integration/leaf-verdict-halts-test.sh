@@ -20,8 +20,8 @@
 #   Truncated JSON and non-JSON end the run as a rejected result
 #   (contract_violation:malformed_json), and so does a v2 verdict word the stage
 #   never declared (contract_violation:unknown_verdict) — both since #2231. Kept
-#   here so the whole row is pinned in one place. A v1 result's unrecognised
-#   word is still softened to `warn` by the reader; that leniency is #1850's.
+#   here so the whole row is pinned in one place. (A v1 plugin no longer loads
+#   at all since #1850 — v1-retired-test.sh R1/R2.)
 # SPEC-3 [change]: a stage the template marks `blocking: false` is advisory:
 #   its failing verdict is recorded and the run goes on.
 # SPEC-4 [guard]: pass and warn-class verdicts (pass, degraded) still complete.
@@ -159,10 +159,9 @@ for _loop in "linear:leaf-verdict-halt:0" "units:leaf-verdict-halt-units:1"; do
     done
 
     print_test_section "[SPEC-2][guard] $_name loop — a result that is not a verdict is not success"
-    _vl_leaf 1
+    _vl_leaf 2
     VL_BODY='{"verdict":"pa'; _expect_halt "SPEC-2 $_name truncated JSON" "$_tpl" "$_cyc" "malformed_json"
     VL_BODY='this is not a result'; _expect_halt "SPEC-2 $_name non-JSON" "$_tpl" "$_cyc" "malformed_json"
-    _vl_leaf 2
     VL_BODY="$(_v2 splendid)"; _expect_halt "SPEC-2 $_name undeclared word" "$_tpl" "$_cyc" "unknown_verdict"
 
     print_test_section "[SPEC-3][change] $_name loop — a stage marked blocking: false is advisory"

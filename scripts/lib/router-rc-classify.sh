@@ -207,7 +207,7 @@ _router_rc_classify() {
 # and per stage on the linear path, so it is the right key.
 #
 # The stage id is interpolated into a filesystem path, so it is constrained to
-# a plain id — the same guard _verdict_read_stage_sidecar applies. Anything else
+# a plain id (no '/' or '..'). Anything else
 # falls back to the unscoped name rather than escaping the state dir.
 _router_throttle_marker_path() {
     [[ -z "${ZBUILD_STATE_DIR:-}" ]] && return 0

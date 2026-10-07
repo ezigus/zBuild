@@ -64,9 +64,15 @@ assert_eq "[SPEC-3] no manifest declares provides.artifact_type" "" "${_s3_hits%
 # local-report destination is switched off.
 print_test_section "SPEC-4. output-github-comment declares its outputs"
 _ogc="$REPO_ROOT/plugins/tool/output-github-comment/manifest.yaml"
-_s4_primary="$(manifest_graph_result_filename "$_ogc" 2>/dev/null || echo "<rc1>")"
-assert_eq "[SPEC-4] output-github-comment primary output is output-body.md" \
-    "output-body.md" "$_s4_primary"
+# #1850: it writes no stage result, so it declares no primary output — but the
+# file it always writes is still declared, and required.
+if grep -qE 'path:.*/output-body\.md' "$_ogc" 2>/dev/null; then
+    assert_pass "[SPEC-4] output-github-comment declares output-body.md"
+else
+    assert_fail "[SPEC-4] output-github-comment declares output-body.md" "not declared"
+fi
+assert_eq "[SPEC-4] ...and, writing no stage result, declares no primary (#1850)" \
+    "0" "$(grep -c 'primary: true' "$_ogc" 2>/dev/null || true)"
 if grep -qE 'path:.*report-\$\{ZBUILD_RUN_ID\}\.md' "$_ogc" 2>/dev/null; then
     assert_pass "[SPEC-4b] the toggleable local report is declared too"
 else

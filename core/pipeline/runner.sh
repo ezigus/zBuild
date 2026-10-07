@@ -2976,21 +2976,10 @@ main() {
             _CYCLE_DISPATCH_STATUS="failed"
             return 9
         fi
-        # #1823 (ADR-054 §4b): narrow ONLY a v2 stage, and only here. A v1
-        # plugin's rc is still its sole channel; v1 plugins that have not yet
-        # migrated to contract v2 return exactly what they always did and nothing
-        # unmigrated changes behaviour. A v2 stage declared a `disposition`, so
-        # it has somewhere else to say everything its rc was carrying, and is
-        # held to {0,1}. #1850 drops the gate.
-        #
-        # The version comes back on STDOUT from a cheap probe. It must NOT ride a
-        # global: the readers above are all invoked as `x="$(...)"`, and a `$()`
-        # is a subshell whose assignments never reach here — a global would have
-        # read its default forever and this gate would never have fired.
-        local _cd_contract; _cd_contract="$(_verdict_probe_contract "$state_dir" "$_cd_manifest")"
-        if [[ "$_cd_contract" =~ ^[0-9]+$ ]] && [[ "$_cd_contract" -ge "$_ZBUILD_CONTRACT_V2" ]]; then
-            _cd_rc="$(dispatch_rc_narrow "$_cd_rc")"
-        fi
+        # #1823 / #1850 (ADR-054 §4): every stage is held to rc ∈ {0,1}. A stage
+        # speaks contract v2, so it declared a `disposition` and has somewhere
+        # else to say everything its rc used to carry.
+        _cd_rc="$(dispatch_rc_narrow "$_cd_rc")"
         return $_cd_rc
     }
 
@@ -3070,12 +3059,9 @@ main() {
         # then a parallel member is not re-dispatched on `interrupted` or
         # `throttled`, which is worth knowing rather than discovering.
         #
-        # The narrowing below is still correct: a v2 stage HAS somewhere else to
-        # say what its rc was carrying, which is the whole condition for it.
-        local _pd_contract; _pd_contract="$(_verdict_probe_contract "$state_dir" "$_pd_manifest")"
-        if [[ "$_pd_contract" =~ ^[0-9]+$ ]] && [[ "$_pd_contract" -ge "$_ZBUILD_CONTRACT_V2" ]]; then
-            _pd_rc="$(dispatch_rc_narrow "$_pd_rc")"
-        fi
+        # The narrowing below is still correct: every stage speaks v2 (#1850), so
+        # it HAS somewhere else to say what its rc was carrying.
+        _pd_rc="$(dispatch_rc_narrow "$_pd_rc")"
         return $_pd_rc
     }
 
