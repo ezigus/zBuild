@@ -1,0 +1,60 @@
+### SPEC-3 baseline tests/unit/exhausted-disposition-retired-test.sh
+
+[38;2;0;212;255m[1m  exhausted disposition retired — SPEC-3 (#2222)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;248;113;113m✗[0m [#2222/SPEC-3] dispatch-rc.sh rc=10 comment does not map scope_too_large to bare exhausted (replaced with out_of_turns per §6a/#2187)
+    [2mexpected: 0, got: 1[0m
+  [38;2;248;113;113m✗[0m [#2222/SPEC-3] review-lens/plugin.sh degrade-path comment does not name disposition:exhausted (renamed to out_of_turns)
+    [2mexpected: 0, got: 1[0m
+  [38;2;248;113;113m✗[0m [#2222/SPEC-3] review-report.md carries no occurrence of exhausted (disposition word fully replaced with out_of_turns)
+    [2mexpected: 0, got: 1[0m
+  [38;2;248;113;113m✗[0m [#2222/SPEC-3] keepers-manifest.yaml does not prescribe disposition: exhausted (replaced with out_of_turns per §6a/#2187)
+    [2mexpected: 0, got: 1[0m
+  [38;2;248;113;113m✗[0m [#2222/SPEC-3] ADR-054 rc=10 scope_too_large table row carries a backward-pointer note (§6a, #2187, or out_of_turns) marking it superseded
+    [2mexpected >0, got: 0[0m
+  [38;2;74;222;128m✓[0m [#2222/SPEC-3] ADR-054 §6a section heading carries an explicit ISO date (anchors the dated backward-pointer note)
+  [38;2;248;113;113m✗[0m [#2222/SPEC-3] ADR-001 exhausted passage carries a backward-pointer note naming #2187 (marks the word as retired vocabulary)
+    [2mexpected >0, got: 0[0m
+UNACCEPTABLE (disposition:exhausted): /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.wtVPjV/plugins/agent/review-lens/plugin.sh:379:    # degrade paths. Write disposition:exhausted and propagate rc=10 so the engine
+UNACCEPTABLE (disposition:exhausted): /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.wtVPjV/.github/issues/keepers-manifest.yaml:1430:      cost.budget_exceeded event; `disposition: exhausted` escalates (ADR-054 §6).
+  [38;2;248;113;113m✗[0m [#2222/SPEC-3] R-4 acceptance grep (a): no un-annotated disposition:exhausted assignment survives in the codebase
+    [2mexpected: 0, got: 2[0m
+UNACCEPTABLE (→ exhausted): /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/zb-negctl.wtVPjV/core/pipeline/dispatch-rc.sh:166:#   10 scope_too_large  → exhausted    "more budget, or the work must shrink"
+  [38;2;248;113;113m✗[0m [#2222/SPEC-3] R-4 acceptance grep (b): no un-annotated → exhausted disposition mapping survives in the codebase
+    [2mexpected: 0, got: 1[0m
+  [38;2;74;222;128m✓[0m [#2222/SPEC-3] R-4 acceptance grep (c): no un-annotated shell-assignment disposition=exhausted survives in production code
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m8 of 10 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#2222/SPEC-3] dispatch-rc.sh rc=10 comment does not map scope_too_large to bare exhausted (replaced with out_of_turns per §6a/#2187)
+  [38;2;248;113;113m✗[0m [#2222/SPEC-3] review-lens/plugin.sh degrade-path comment does not name disposition:exhausted (renamed to out_of_turns)
+  [38;2;248;113;113m✗[0m [#2222/SPEC-3] review-report.md carries no occurrence of exhausted (disposition word fully replaced with out_of_turns)
+  [38;2;248;113;113m✗[0m [#2222/SPEC-3] keepers-manifest.yaml does not prescribe disposition: exhausted (replaced with out_of_turns per §6a/#2187)
+  [38;2;248;113;113m✗[0m [#2222/SPEC-3] ADR-054 rc=10 scope_too_large table row carries a backward-pointer note (§6a, #2187, or out_of_turns) marking it superseded
+  [38;2;248;113;113m✗[0m [#2222/SPEC-3] ADR-001 exhausted passage carries a backward-pointer note naming #2187 (marks the word as retired vocabulary)
+  [38;2;248;113;113m✗[0m [#2222/SPEC-3] R-4 acceptance grep (a): no un-annotated disposition:exhausted assignment survives in the codebase
+  [38;2;248;113;113m✗[0m [#2222/SPEC-3] R-4 acceptance grep (b): no un-annotated → exhausted disposition mapping survives in the codebase
+
+### SPEC-3 head tests/unit/exhausted-disposition-retired-test.sh
+
+[38;2;0;212;255m[1m  exhausted disposition retired — SPEC-3 (#2222)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#2222/SPEC-3] dispatch-rc.sh rc=10 comment does not map scope_too_large to bare exhausted (replaced with out_of_turns per §6a/#2187)
+  [38;2;74;222;128m✓[0m [#2222/SPEC-3] review-lens/plugin.sh degrade-path comment does not name disposition:exhausted (renamed to out_of_turns)
+  [38;2;74;222;128m✓[0m [#2222/SPEC-3] review-report.md carries no occurrence of exhausted (disposition word fully replaced with out_of_turns)
+  [38;2;74;222;128m✓[0m [#2222/SPEC-3] keepers-manifest.yaml does not prescribe disposition: exhausted (replaced with out_of_turns per §6a/#2187)
+  [38;2;74;222;128m✓[0m [#2222/SPEC-3] ADR-054 rc=10 scope_too_large table row carries a backward-pointer note (§6a, #2187, or out_of_turns) marking it superseded
+  [38;2;74;222;128m✓[0m [#2222/SPEC-3] ADR-054 §6a section heading carries an explicit ISO date (anchors the dated backward-pointer note)
+  [38;2;74;222;128m✓[0m [#2222/SPEC-3] ADR-001 exhausted passage carries a backward-pointer note naming #2187 (marks the word as retired vocabulary)
+  [38;2;74;222;128m✓[0m [#2222/SPEC-3] R-4 acceptance grep (a): no un-annotated disposition:exhausted assignment survives in the codebase
+  [38;2;74;222;128m✓[0m [#2222/SPEC-3] R-4 acceptance grep (b): no un-annotated → exhausted disposition mapping survives in the codebase
+  [38;2;74;222;128m✓[0m [#2222/SPEC-3] R-4 acceptance grep (c): no un-annotated shell-assignment disposition=exhausted survives in production code
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 10 tests passed[0m
+
