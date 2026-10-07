@@ -1,0 +1,71 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "824 of 824 tests passed",
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 526/526 passed (4 skipped)\nintegration: 261/261 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 824/824 passed (4 skipped)",
+  "run_mode": "full",
+  "exit_code": 0,
+  "data": {
+    "exit_code": 0,
+    "passed": 824,
+    "failed": 0,
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 526/526 passed (4 skipped)\nintegration: 261/261 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 824/824 passed (4 skipped)",
+    "diff_applied": false,
+    "test_cmd": "npm test",
+    "run_mode": "full",
+    "timing": {
+      "tiers": {
+        "lint": 163278,
+        "e2e": 201840,
+        "golden": 5880,
+        "unit": 709755,
+        "integration": 903111
+      },
+      "slowest_files": [
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.jgoOrZ/tests/integration/unowned-finding-test.sh",
+          "ms": 226739
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.jgoOrZ/tests/integration/unowned-finding-stale-test.sh",
+          "ms": 160963
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.jgoOrZ/tests/unit/core-pipeline-cycle-reuse-and-route-back-test.sh",
+          "ms": 160624
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.jgoOrZ/tests/unit/run-status-comment-render-test.sh",
+          "ms": 157827
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.jgoOrZ/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 156554
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.jgoOrZ/tests/unit/core-pipeline-cycle-stall-break-test.sh",
+          "ms": 140116
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.jgoOrZ/tests/integration/cycle-multi-exit-when-e2e-test.sh",
+          "ms": 137137
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.jgoOrZ/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 130948
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.jgoOrZ/tests/integration/run-status-comment-runner-test.sh",
+          "ms": 119192
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.jgoOrZ/tests/unit/stage-resolution-parity-test.sh",
+          "ms": 117895
+        }
+      ]
+    },
+    "tree_sha": "6855dd8a83ee975beb50e3043df41e45948cc9ce",
+    "findings": []
+  }
+}
