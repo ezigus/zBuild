@@ -19,7 +19,7 @@
 #   (a) `disposition: exhausted` pattern — no un-annotated occurrence in codebase
 #   (b) `→ exhausted` mapping pattern — no un-annotated occurrence in codebase
 #
-#   SPEC-3[no-code] (#2222): Every non-historical occurrence of `exhausted` as a
+#   SPEC-3[code] (#2222): Every non-historical occurrence of `exhausted` as a
 #     disposition label is removed or annotated with a dated backward-pointer note
 #     so the R-4 acceptance grep finds it only in explicitly historical text.
 #     tag: [#2222/SPEC-3]
@@ -45,7 +45,7 @@ ADR001="$REPO_ROOT/docs/adr/ADR-001-plugin-contract.md"
 
 for _f in "$DISPATCH_RC" "$REVIEW_LENS" "$REVIEW_REPORT" "$KEEPERS_MANIFEST" "$ADR054" "$ADR001"; do
     if [[ ! -f "$_f" ]]; then
-        assert_fail "[#2222/SPEC-3] required file exists" "not found: $_f"
+        assert_fail "required file for SPEC-3 (#2222) check" "not found: $_f"
     fi
 done
 
@@ -92,6 +92,13 @@ assert_eq "[#2222/SPEC-3] keepers-manifest.yaml does not prescribe disposition: 
 _adr054_note="$(grep -c 'scope_too_large.*out_of_turns\|scope_too_large.*§6a\|scope_too_large.*#2187' "$ADR054" 2>/dev/null || true)"
 assert_gt "[#2222/SPEC-3] ADR-054 rc=10 scope_too_large table row carries a backward-pointer note (§6a, #2187, or out_of_turns) marking it superseded" \
     "$_adr054_note" "0"
+
+# The "dated" requirement is satisfied when §6a in ADR-054 carries an explicit
+# ISO-format date in its heading.  The backward-pointer references §6a, so the
+# pointer IS dated when §6a itself has a date.  Fails if §6a has no such date.
+_adr054_dated="$(grep -cE '6a\..*\(20[0-9]{2}-[0-9]{2}-[0-9]{2}' "$ADR054" 2>/dev/null || true)"
+assert_gt "[#2222/SPEC-3] ADR-054 §6a section heading carries an explicit ISO date (anchors the dated backward-pointer note)" \
+    "$_adr054_dated" "0"
 
 # ── Site 6: ADR-001 retirement passage — inline backward-pointer added ────────
 # The ADR-001 retirement note listed `escalate → exhausted` as a disposition
@@ -153,6 +160,29 @@ done < <(grep -rn '→[[:space:]]*exhausted' \
     2>/dev/null || true)
 assert_eq "[#2222/SPEC-3] R-4 acceptance grep (b): no un-annotated → exhausted disposition mapping survives in the codebase" \
     "0" "$_r4_arrow"
+
+# ── R-4 acceptance grep (c): shell-assignment forms — production code ─────────
+# Checks core/, plugins/, and scripts/ for shell-assignment forms of the retired
+# disposition: disposition="exhausted" (JSON/shell string) or set_disposition
+# exhausted (function-call form).  These are distinct from the comment/prose forms
+# above; any surviving un-annotated instance is a prescriptive disposition label.
+# (lint-disposition-words.sh enforces this at CI; this assertion confirms it.)
+#
+# [#2222/SPEC-3]
+_r4_shell=0
+while IFS= read -r _hit; do
+    _line="${_hit#*:*:}"
+    grep -qE '_exhausted|exhausted_' <<< "$_line" && continue
+    grep -qE '#2187|retired|superseded|out_of_turns' <<< "$_line" && continue
+    _r4_shell=$((_r4_shell + 1))
+    printf 'UNACCEPTABLE (shell-assignment exhausted): %s\n' "$_hit" >&2
+done < <(grep -rn 'disposition[[:space:]]*=[[:space:]]*"exhausted"\|set_disposition[[:space:]]\+exhausted' \
+    "$REPO_ROOT/core" \
+    "$REPO_ROOT/plugins" \
+    "$REPO_ROOT/scripts" \
+    2>/dev/null || true)
+assert_eq "[#2222/SPEC-3] R-4 acceptance grep (c): no un-annotated shell-assignment disposition=exhausted survives in production code" \
+    "0" "$_r4_shell"
 
 cleanup_test_env
 print_test_results
