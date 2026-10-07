@@ -1,0 +1,25 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "design_produced",
+  "data": {
+    "authored_at": "2026-10-07T11:26:01Z",
+    "authored_at_commit": "b44db19c67217adc6ac9c6e9e63160c88b90b59e",
+    "wiring_files": [
+      "plugins/tool/pr-open/plugin.sh"
+    ],
+    "scope_files": [
+      "plugins/tool/pr-open/plugin.sh",
+      "plugins/tool/pr-open/lib/advisory-section.sh",
+      "plugins/tool/pr-open/manifest.yaml",
+      "plugins/tool/pr-open/tests/pr-open-test.sh",
+      "plugins/agent/pr-delivery/plugin.sh",
+      "tests/integration/pr-pipeline-test.sh",
+      "tests/unit/plugin-artifact-goldens-test.sh",
+      "tests/golden/pr-result-artifact.golden",
+      "docs/wiki/plugins/pr.md",
+      "core/pipeline/state_helpers.sh"
+    ]
+  }
+}

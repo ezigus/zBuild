@@ -1,9 +1,17 @@
 {
   "scope_files": [
+    "core/pipeline/state_helpers.sh",
+    "docs/wiki/plugins/pr.md",
+    "plugins/agent/pr-delivery/plugin.sh",
     "plugins/tool/pr-open/lib/advisory-section.sh",
     "plugins/tool/pr-open/manifest.yaml",
     "plugins/tool/pr-open/plugin.sh",
-    "plugins/tool/pr-open/tests/pr-open-test.sh"
+    "plugins/tool/pr-open/tests/pr-open-test.sh",
+    "tests/golden/pr-result-artifact.golden",
+    "tests/integration/pr-pipeline-test.sh",
+    "tests/unit/plugin-artifact-goldens-test.sh"
   ],
-  "wiring_files": []
+  "wiring_files": [
+    "plugins/tool/pr-open/plugin.sh"
+  ]
 }
