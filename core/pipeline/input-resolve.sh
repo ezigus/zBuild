@@ -332,6 +332,9 @@ _inputs_effective_path() {
 # that aggregates others' results (`aggregates:`). ADR-050 §8 (#2326): such a
 # stage never counts an earlier run's copy as this run's result. Pure bash read
 # of the two top-level keys — no fork on the dispatch path.
+# `aggregates:` takes one value, a convergence marker (ADR-040 §4), so only the
+# single-line form `aggregates: <marker>` is read; a YAML list there is not a
+# valid manifest.
 _inputs_judges_results() {
     local manifest="${1:-}" line
     [[ -n "$manifest" && -f "$manifest" ]] || return 1

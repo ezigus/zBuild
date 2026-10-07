@@ -182,6 +182,9 @@ printf '{"verdict":"pass","files_changed":["earlier.sh"]}\n' > "$B_RESTORED/buil
 P5="$(_build_case "$B_RESTORED" "$B_STATE")"
 assert_contains "[L5] the earlier build summary still reaches the prompt" "$P5" "earlier.sh"
 assert_contains "[L5] ...labelled as from an earlier run" "$P5" "$LABEL"
+# The label is its own sentence on its own line, not run into what follows.
+assert_eq "[L5] ...on a line of its own" "This build summary is ${LABEL}." \
+    "$(grep -F "This build summary is" <<< "$P5")"
 printf '{"verdict":"pass","files_changed":["this-run.sh"]}\n' > "$B_STATE/artifacts/build-summary.json"
 P5g="$(_build_case "$B_RESTORED" "$B_STATE")"
 assert_contains "[L5-guard] this run's summary is the one carried" "$P5g" "this-run.sh"

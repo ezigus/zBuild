@@ -58,7 +58,7 @@ _build_read_prior_build_summary() {
     # Only a run with restored work can have one, so no lookup otherwise.
     if [[ -n "${ZBUILD_RESTORED_ARTIFACTS_DIR:-}" ]] \
             && prior_output_is_earlier_run "$(_prior_output_path "build-summary.json" 2>/dev/null)"; then
-        printf 'This build summary is %s. ' "$ZB_EARLIER_RUN_LABEL"
+        printf 'This build summary is %s.\n' "$ZB_EARLIER_RUN_LABEL"
     fi
     local verdict n_files files
     verdict="$(printf '%s' "$raw" | jq -r '.verdict // "unknown"' 2>/dev/null || echo unknown)"

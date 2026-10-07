@@ -202,6 +202,15 @@ if [[ "$_g" == "$RESTORED/"* ]]; then
 else
     assert_pass "[E4] a gate is not handed the earlier run's copy"
 fi
+# "Missing" means what it means for any input this run has not written: the
+# index names this run's own path, and no file is there.
+assert_eq "[E4] ...it is given this run's own path, as for any input not yet written" \
+    "$ART/old-doc.md" "$_g"
+if [[ ! -e "$ART/old-doc.md" ]]; then
+    assert_pass "[E4] ...and no file is there"
+else
+    assert_fail "[E4] ...and no file is there" "$ART/old-doc.md exists"
+fi
 assert_eq "[E4] ...so the gate reads no body for it" "<unreadable>" "$(_seen er-gate body)"
 assert_eq "[E4] ...and its own input is still this run's" \
     "$ART/fresh-doc.md" "$(jq -r '.inputs.fresh_doc // empty' "$(_index er-gate)" 2>/dev/null)"
