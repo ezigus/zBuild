@@ -67,7 +67,7 @@ _stage_unmigrated_reason() {
         grep -qE '^[^#]*_llm_envelope_(parse|classify)' "$f" && calls=1
         grep -qE '^[^#]*extract_first_json_object' "$f" && bare+="${f#"$dir"/} "
     done < <(find "$dir" -name '*.sh' -not -path '*/tests/*' -print0)
-    [[ -n "$bare" ]] && { printf 'calls extract_first_json_object in %s' "$bare"; return 0; }
+    [[ -n "$bare" ]] && { printf 'calls extract_first_json_object in %s' "${bare% }"; return 0; }
     [[ "$calls" -eq 1 ]] || printf 'never calls _llm_envelope_parse'
 }
 
