@@ -1,0 +1,19 @@
+NEGCTL PASS SPEC-1
+      design : When state.status is "failed", pr-open forces _draft_bool=true before invoking gh, regardless of _TP…
+      asserts: assert_exit_code "[#1799/SPEC-1] state.status=failed: rc=0" "0" "$rc10"
+NEGCTL PASS SPEC-2
+      design : When any state.cycle_iterations[*].status equals "max_iterations", pr-open forces _draft_bool=true b…
+      asserts: assert_exit_code "[#1799/SPEC-2] cycle max_iterations: rc=0" "0" "$rc11"
+NEGCTL PASS SPEC-3
+      design : When SPEC-1 or SPEC-2 applies, the PR body includes a convergence section naming which cycle was unc…
+      asserts: assert_exit_code "[#1799/SPEC-3] convergence body: rc=0" "0" "$rc12"
+NEGCTL PASS SPEC-4
+      design : When gate_aggregator_result (from ZBUILD_STAGE_INPUTS) is present with a failing verdict, the PR bod…
+      asserts: assert_exit_code "[#1799/SPEC-4] gate_aggregator body: rc=0" "0" "$rc13"
+NEGCTL SKIP SPEC-5 already_done
+      design : A run with state.status not "failed", no max_iterations cycle, and _TPL_PR_DRAFT unset produces a no…
+      asserts: <none found>
+NEGCTL SKIP SPEC-6 already_done
+      design : _TPL_PR_DRAFT=true forces draft=true regardless of run status, because the _TPL_PR_DRAFT normalizati…
+      asserts: <none found>
+REACHABILITY PASS plugins/tool/pr-open/plugin.sh

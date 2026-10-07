@@ -1,0 +1,183 @@
+### SPEC-2 baseline plugins/tool/pr-open/tests/pr-open-test.sh
+
+[38;2;0;212;255m[1m  plugin: pr-open (draft PR, safety guards — issue #344)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m2. Blocked when review verdict is 'block'[0m
+[38;2;248;113;113m[1m✗[0m pr_open: refusing to open PR — review verdict is 'block'
+  [38;2;74;222;128m✓[0m blocked verdict returns rc=0 (blocked is a verdict outcome, not error) (exit 0)
+  [38;2;74;222;128m✓[0m pr-result.json written on block
+  [38;2;74;222;128m✓[0m pr-result.json verdict=blocked
+
+  [38;2;0;212;255m2b. Blocked when NO review signal (neither review.json nor review-report.json)[0m
+[38;2;248;113;113m[1m✗[0m pr_open: refusing to open PR — no review signal (neither review.json nor the review_report input; fail-closed per ADR-001)
+  [38;2;74;222;128m✓[0m no review signal returns rc=0 (blocked is a verdict outcome, not error) (exit 0)
+  [38;2;74;222;128m✓[0m pr-result.json written when no review signal
+  [38;2;74;222;128m✓[0m pr-result.json verdict=blocked when no review signal
+  [38;2;74;222;128m✓[0m pr-result.json reason names the missing review signal
+
+  [38;2;0;212;255m2c. Advisory-review mode: review-report.json present (no review.json) → opens PR[0m
+[38;2;250;204;21m[1m⚠[0m pr_open: review.json absent — advisory-review mode (review_report input present; ADR-040 lenses never block, #1142)
+  [38;2;74;222;128m✓[0m advisory mode (review-report.json present) opens PR rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m advisory mode: verdict=pass (not blocked on advisory review)
+
+  [38;2;0;212;255m3. Blocked when current branch is main[0m
+[38;2;248;113;113m[1m✗[0m pr_open: refusing to open PR from branch 'main' — use a feature branch
+  [38;2;74;222;128m✓[0m main branch returns rc=1 (infrastructure error, not verdict outcome) (exit 1)
+  [38;2;74;222;128m✓[0m pr-result.json written for main branch guard
+  [38;2;74;222;128m✓[0m pr-result.json verdict=error for main branch
+
+  [38;2;0;212;255m4. Successful PR open with mocked git and gh[0m
+  [38;2;74;222;128m✓[0m successful PR open returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m pr-result.json written on success
+  [38;2;74;222;128m✓[0m pr-url.txt written on success (ADR-013 canonical)
+  [38;2;74;222;128m✓[0m pr-result.json data.status=opened
+  [38;2;74;222;128m✓[0m pr-result.json data.pr_url is non-empty
+  [38;2;74;222;128m✓[0m [SPEC-5] pr-result.json data.draft=false (non-draft default, _TPL_PR_DRAFT unset)
+  [38;2;74;222;128m✓[0m pr-result.json data.branch=zbuild/issue-999
+
+  [38;2;0;212;255m7. pr-open is T0: no model.route without redaction (issue #360)[0m
+  [38;2;74;222;128m✓[0m no model.route events from pr-open (T0 invariant holds)
+  [38;2;74;222;128m✓[0m ADR-004 invariant: every pr-open model.route immediately preceded by redaction.applied (same run_id)
+
+  [38;2;0;212;255m8. _TPL_PR_DRAFT=true: --draft passed to gh; pr-result.json draft=true[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] _TPL_PR_DRAFT=true: open returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-6] _TPL_PR_DRAFT=true: --draft passed to gh pr create
+  [38;2;74;222;128m✓[0m [SPEC-6] _TPL_PR_DRAFT=true: pr-result.json data.draft=true
+
+  [38;2;0;212;255m9. Existing open PR is reused/updated instead of aborting (#1581)[0m
+  [38;2;74;222;128m✓[0m existing PR: returns rc=0 (no abort) (exit 0)
+  [38;2;74;222;128m✓[0m existing PR: data.status=updated
+  [38;2;74;222;128m✓[0m existing PR: data.pr_number=42
+  [38;2;74;222;128m✓[0m existing PR: gh pr edit was called
+  [38;2;74;222;128m✓[0m existing PR: gh pr create NOT called
+
+  [38;2;0;212;255m10. [#1799/SPEC-1] state.status=failed forces _draft_bool=true[0m
+  [38;2;74;222;128m✓[0m [#1799/SPEC-1] state.status=failed: rc=0 (exit 0)
+  [38;2;248;113;113m✗[0m [#1799/SPEC-1] state.status=failed forces data.draft=true
+    [2mkey .data.draft: expected true, got: false[0m
+  [38;2;248;113;113m✗[0m [#1799/SPEC-1] state.status=failed: --draft passed to gh
+    [2mgh args did not contain --draft[0m
+
+  [38;2;0;212;255m11. [#1799/SPEC-2] cycle_iterations max_iterations forces _draft_bool=true[0m
+  [38;2;74;222;128m✓[0m [#1799/SPEC-2] cycle max_iterations: rc=0 (exit 0)
+  [38;2;248;113;113m✗[0m [#1799/SPEC-2] cycle max_iterations forces data.draft=true
+    [2mkey .data.draft: expected true, got: false[0m
+  [38;2;248;113;113m✗[0m [#1799/SPEC-2] cycle max_iterations: --draft passed to gh
+    [2mgh args did not contain --draft[0m
+
+  [38;2;0;212;255m12. [#1799/SPEC-3] PR body names unconverged cycle, iterations, 'not converged'[0m
+  [38;2;74;222;128m✓[0m [#1799/SPEC-3] convergence body: rc=0 (exit 0)
+  [38;2;248;113;113m✗[0m [#1799/SPEC-3] PR body contains phrase 'not converged'
+    [2mphrase absent from body[0m
+  [38;2;248;113;113m✗[0m [#1799/SPEC-3] PR body names the unconverged cycle (cycle-build)
+    [2mcycle id absent from body[0m
+  [38;2;248;113;113m✗[0m [#1799/SPEC-3] PR body contains iteration count (5)
+    [2miteration count absent from body[0m
+
+  [38;2;0;212;255m13. [#1799/SPEC-4] failing gate_aggregator_result: gates and reason in PR body[0m
+  [38;2;74;222;128m✓[0m [#1799/SPEC-4] gate_aggregator body: rc=0 (exit 0)
+  [38;2;248;113;113m✗[0m [#1799/SPEC-4] PR body names failing gate: gate-security
+    [2mgate name absent from body[0m
+  [38;2;248;113;113m✗[0m [#1799/SPEC-4] PR body names failing gate: gate-tests
+    [2mgate name absent from body[0m
+  [38;2;248;113;113m✗[0m [#1799/SPEC-4] PR body contains gate-aggregator reason
+    [2mreason absent from body[0m
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m10 of 43 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1799/SPEC-1] state.status=failed forces data.draft=true
+  [38;2;248;113;113m✗[0m [#1799/SPEC-1] state.status=failed: --draft passed to gh
+  [38;2;248;113;113m✗[0m [#1799/SPEC-2] cycle max_iterations forces data.draft=true
+  [38;2;248;113;113m✗[0m [#1799/SPEC-2] cycle max_iterations: --draft passed to gh
+  [38;2;248;113;113m✗[0m [#1799/SPEC-3] PR body contains phrase 'not converged'
+  [38;2;248;113;113m✗[0m [#1799/SPEC-3] PR body names the unconverged cycle (cycle-build)
+  [38;2;248;113;113m✗[0m [#1799/SPEC-3] PR body contains iteration count (5)
+  [38;2;248;113;113m✗[0m [#1799/SPEC-4] PR body names failing gate: gate-security
+  [38;2;248;113;113m✗[0m [#1799/SPEC-4] PR body names failing gate: gate-tests
+  [38;2;248;113;113m✗[0m [#1799/SPEC-4] PR body contains gate-aggregator reason
+
+### SPEC-2 head plugins/tool/pr-open/tests/pr-open-test.sh
+
+[38;2;0;212;255m[1m  plugin: pr-open (draft PR, safety guards — issue #344)[0m
+[2m  ══════════════════════════════════════════[0m
+
+
+  [38;2;0;212;255m2. Blocked when review verdict is 'block'[0m
+[38;2;248;113;113m[1m✗[0m pr_open: refusing to open PR — review verdict is 'block'
+  [38;2;74;222;128m✓[0m blocked verdict returns rc=0 (blocked is a verdict outcome, not error) (exit 0)
+  [38;2;74;222;128m✓[0m pr-result.json written on block
+  [38;2;74;222;128m✓[0m pr-result.json verdict=blocked
+
+  [38;2;0;212;255m2b. Blocked when NO review signal (neither review.json nor review-report.json)[0m
+[38;2;248;113;113m[1m✗[0m pr_open: refusing to open PR — no review signal (neither review.json nor the review_report input; fail-closed per ADR-001)
+  [38;2;74;222;128m✓[0m no review signal returns rc=0 (blocked is a verdict outcome, not error) (exit 0)
+  [38;2;74;222;128m✓[0m pr-result.json written when no review signal
+  [38;2;74;222;128m✓[0m pr-result.json verdict=blocked when no review signal
+  [38;2;74;222;128m✓[0m pr-result.json reason names the missing review signal
+
+  [38;2;0;212;255m2c. Advisory-review mode: review-report.json present (no review.json) → opens PR[0m
+[38;2;250;204;21m[1m⚠[0m pr_open: review.json absent — advisory-review mode (review_report input present; ADR-040 lenses never block, #1142)
+  [38;2;74;222;128m✓[0m advisory mode (review-report.json present) opens PR rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m advisory mode: verdict=pass (not blocked on advisory review)
+
+  [38;2;0;212;255m3. Blocked when current branch is main[0m
+[38;2;248;113;113m[1m✗[0m pr_open: refusing to open PR from branch 'main' — use a feature branch
+  [38;2;74;222;128m✓[0m main branch returns rc=1 (infrastructure error, not verdict outcome) (exit 1)
+  [38;2;74;222;128m✓[0m pr-result.json written for main branch guard
+  [38;2;74;222;128m✓[0m pr-result.json verdict=error for main branch
+
+  [38;2;0;212;255m4. Successful PR open with mocked git and gh[0m
+  [38;2;74;222;128m✓[0m successful PR open returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m pr-result.json written on success
+  [38;2;74;222;128m✓[0m pr-url.txt written on success (ADR-013 canonical)
+  [38;2;74;222;128m✓[0m pr-result.json data.status=opened
+  [38;2;74;222;128m✓[0m pr-result.json data.pr_url is non-empty
+  [38;2;74;222;128m✓[0m [SPEC-5] pr-result.json data.draft=false (non-draft default, _TPL_PR_DRAFT unset)
+  [38;2;74;222;128m✓[0m pr-result.json data.branch=zbuild/issue-999
+
+  [38;2;0;212;255m7. pr-open is T0: no model.route without redaction (issue #360)[0m
+  [38;2;74;222;128m✓[0m no model.route events from pr-open (T0 invariant holds)
+  [38;2;74;222;128m✓[0m ADR-004 invariant: every pr-open model.route immediately preceded by redaction.applied (same run_id)
+
+  [38;2;0;212;255m8. _TPL_PR_DRAFT=true: --draft passed to gh; pr-result.json draft=true[0m
+  [38;2;74;222;128m✓[0m [SPEC-6] _TPL_PR_DRAFT=true: open returns rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m [SPEC-6] _TPL_PR_DRAFT=true: --draft passed to gh pr create
+  [38;2;74;222;128m✓[0m [SPEC-6] _TPL_PR_DRAFT=true: pr-result.json data.draft=true
+
+  [38;2;0;212;255m9. Existing open PR is reused/updated instead of aborting (#1581)[0m
+  [38;2;74;222;128m✓[0m existing PR: returns rc=0 (no abort) (exit 0)
+  [38;2;74;222;128m✓[0m existing PR: data.status=updated
+  [38;2;74;222;128m✓[0m existing PR: data.pr_number=42
+  [38;2;74;222;128m✓[0m existing PR: gh pr edit was called
+  [38;2;74;222;128m✓[0m existing PR: gh pr create NOT called
+
+  [38;2;0;212;255m10. [#1799/SPEC-1] state.status=failed forces _draft_bool=true[0m
+  [38;2;74;222;128m✓[0m [#1799/SPEC-1] state.status=failed: rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m [#1799/SPEC-1] state.status=failed forces data.draft=true
+  [38;2;74;222;128m✓[0m [#1799/SPEC-1] state.status=failed: --draft passed to gh
+
+  [38;2;0;212;255m11. [#1799/SPEC-2] cycle_iterations max_iterations forces _draft_bool=true[0m
+  [38;2;74;222;128m✓[0m [#1799/SPEC-2] cycle max_iterations: rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m [#1799/SPEC-2] cycle max_iterations forces data.draft=true
+  [38;2;74;222;128m✓[0m [#1799/SPEC-2] cycle max_iterations: --draft passed to gh
+
+  [38;2;0;212;255m12. [#1799/SPEC-3] PR body names unconverged cycle, iterations, 'not converged'[0m
+  [38;2;74;222;128m✓[0m [#1799/SPEC-3] convergence body: rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m [#1799/SPEC-3] PR body contains phrase 'not converged'
+  [38;2;74;222;128m✓[0m [#1799/SPEC-3] PR body names the unconverged cycle (cycle-build)
+  [38;2;74;222;128m✓[0m [#1799/SPEC-3] PR body contains iteration count (5)
+
+  [38;2;0;212;255m13. [#1799/SPEC-4] failing gate_aggregator_result: gates and reason in PR body[0m
+  [38;2;74;222;128m✓[0m [#1799/SPEC-4] gate_aggregator body: rc=0 (exit 0)
+  [38;2;74;222;128m✓[0m [#1799/SPEC-4] PR body names failing gate: gate-security
+  [38;2;74;222;128m✓[0m [#1799/SPEC-4] PR body names failing gate: gate-tests
+  [38;2;74;222;128m✓[0m [#1799/SPEC-4] PR body contains gate-aggregator reason
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 43 tests passed[0m
+
