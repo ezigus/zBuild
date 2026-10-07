@@ -1,0 +1,12 @@
+
+> zbuild@0.1.0 test
+> bash tests/run-all.sh
+
+unit: 529/529 passed (4 skipped)
+integration: 262/262 passed
+e2e: 10/10 passed
+golden: 1/1 passed
+mutation: 25/25 passed
+lint: 1/1 passed
+
+total: 828/828 passed (4 skipped)

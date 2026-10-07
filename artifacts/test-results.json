@@ -1,0 +1,71 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "828 of 828 tests passed",
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 529/529 passed (4 skipped)\nintegration: 262/262 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 828/828 passed (4 skipped)",
+  "run_mode": "full",
+  "exit_code": 0,
+  "data": {
+    "exit_code": 0,
+    "passed": 828,
+    "failed": 0,
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 529/529 passed (4 skipped)\nintegration: 262/262 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 828/828 passed (4 skipped)",
+    "diff_applied": false,
+    "test_cmd": "npm test",
+    "run_mode": "full",
+    "timing": {
+      "tiers": {
+        "lint": 116972,
+        "e2e": 149589,
+        "golden": 4636,
+        "unit": 509676,
+        "integration": 695477
+      },
+      "slowest_files": [
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.egSxwI/tests/integration/unowned-finding-last-round-test.sh",
+          "ms": 155560
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.egSxwI/tests/integration/unowned-finding-test.sh",
+          "ms": 153558
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.egSxwI/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 119744
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.egSxwI/tests/unit/core-pipeline-cycle-reuse-and-route-back-test.sh",
+          "ms": 113193
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.egSxwI/tests/unit/run-status-comment-render-test.sh",
+          "ms": 110209
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.egSxwI/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 107678
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.egSxwI/tests/integration/unowned-finding-stale-test.sh",
+          "ms": 107426
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.egSxwI/tests/unit/core-pipeline-cycle-stall-break-test.sh",
+          "ms": 93621
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.egSxwI/tests/integration/cycle-multi-exit-when-e2e-test.sh",
+          "ms": 90133
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.egSxwI/tests/integration/run-status-comment-runner-test.sh",
+          "ms": 87950
+        }
+      ]
+    },
+    "tree_sha": "5ee9baca4c77e4e3ea867668547a59c67f3b350c",
+    "findings": []
+  }
+}
