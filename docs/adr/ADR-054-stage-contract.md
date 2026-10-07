@@ -3,6 +3,7 @@
 **Status:** Accepted (2026-08-09)
 **Date:** 2026-08-09
 **Issue:** #1820
+**Amended:** 2026-10-07 (#1798) — §4: a leaf stage whose verdict is fail-class ends the run unless its template marks it `blocking: false` (Amendment at the end).
 **Amended:** 2026-09-16 (#2111) — §6: a rate limit observed by the router resolves to `unavailable`, not `throttled`. The engine now enforces `halt_unavailable` on the cycle dispatch path (it was announced only): the run ends `aborted` with `reason=llm_rate_limited` and the reset text under `.rate_limit.message`, state persisted for ADR-050 resume. `throttled` stays in the closed set with no rate-limit emitter. Waiting and retrying re-entered the same limit for five iterations on #1840/#1841, re-verifying an unchanged tree each time.
 **Amended:** 2026-08-23 (#141) — §7: the three-actor table is run-keyed in every row; the **issue** is a second scope, and `release` gains the `always-run` attribute plus a `persist` sibling (ADR-059).
 **Amended:** 2026-08-23 (#1920) — §7: the `release` "deletes nothing" promise scoped to the run's own lifecycle; operator-invoked reclamation (`zbuild cleanup --state-dirs`) named as a third actor with its own clock and guards.
@@ -431,3 +432,13 @@ A retry (§6a) dispatches the stage again, and each dispatch writes its result t
 - A round that changed a file is not an empty-diff resting point, even when its last pass changed nothing.
 
 Verification: `tests/unit/build-round-summary-test.sh` (R1: first pass commits one file, second changes nothing → 1 file over 2 passes; R2: the next round starts at 0 over 1).
+
+### Amendment (2026-10-07, #1798) — §4: a leaf stage that reports a failure ends the run
+
+rc says whether a stage *ran*; the verdict says how it *went*. A cycle already acts on its members' verdicts. A leaf stage — one outside any cycle or map: `hydrate`, `intake`, `plan`, `review-aggregator`, `pr`, and `deployed.yaml`'s `deploy`, `validate`, `monitor` — did not: the runner read its verdict, recorded it, picked a glyph from it, and marked the stage `complete`, so a run whose intake, plan or pr reported `fail` with rc 0 ended `success` and opened a pull request. #2231 closed the rejected-result case (a contract violation); this closes the well-formed result that says it failed.
+
+- A leaf whose verdict is fail-class (`fail`, `error`, `block`, `scope_violation`, `corrupt_diff`) ends the run on both paths a leaf finishes on (the dispatch-unit loop and the linear loop): the stage is `failed`, the run ends `failed` with `reason=stage_failed:<the stage's word>`, and no later stage runs.
+- A template marks a leaf advisory with `blocking: false` (ADR-013's attribute, now recorded when false as well as true); its failing verdict is recorded and the run goes on. `deployed.yaml` marks `monitor` so, as ADR-013's table lists it.
+- pass- and warn-class verdicts (`pass`, `complete`, `degraded`, …) complete as before.
+
+Verification: `tests/integration/leaf-verdict-halts-test.sh` (SPEC-1–4, both loops), `tests/unit/template-blocking-reset-test.sh` SPEC-5/6, `tests/unit/run-open-items-test.sh` O3 (the end in words).

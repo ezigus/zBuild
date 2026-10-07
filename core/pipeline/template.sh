@@ -105,7 +105,7 @@ load_template() {
     export _TPL_PR_DRAFT
 
     # Scrub ALL _TPL_STAGE_BLOCKING_<id> exports at load-entry, unconditionally.
-    # BL| rows are emitted only for blocking:true stages, so any stale export —
+    # BL| rows are emitted only for stages that declare blocking:, so any stale export —
     # left by a prior load_template call, by a stage that is absent from this
     # template's flow entirely, OR inherited from the process environment on a
     # cold-start first load — would otherwise survive and mis-mark a non-blocking
@@ -598,9 +598,11 @@ load_template() {
                 # Format: <stage_id>|true
                 local bl_id bl_val
                 IFS='|' read -r bl_id bl_val <<< "$payload"
-                [[ "$bl_val" == "true" ]] || continue
+                # #1798: `false` is recorded too — it is how a template marks a
+                # leaf advisory, so its failing verdict does not end the run.
+                [[ "$bl_val" == "true" || "$bl_val" == "false" ]] || continue
                 local bl_safe="${bl_id//-/_}"
-                printf -v "_TPL_STAGE_BLOCKING_${bl_safe}" '%s' "true"
+                printf -v "_TPL_STAGE_BLOCKING_${bl_safe}" '%s' "$bl_val"
                 export "_TPL_STAGE_BLOCKING_${bl_safe}"
                 ;;
         esac
@@ -2303,7 +2305,7 @@ _tpl_translate_new_shape() {
         }
         # ADR-013 (CQ-3 / issue #863): BL| rows for blocking leaf stages.
         for (k in sec_blocking_val) {
-            if (sec_blocking_val[k] == "true") print "BL|" k "|true"
+            if (sec_blocking_val[k] == "true" || sec_blocking_val[k] == "false") print "BL|" k "|" sec_blocking_val[k]
         }
         # Now defs stream (separator US, second half)
         printf "%s", US
@@ -2572,7 +2574,9 @@ template_stage_router_retries() {
 }
 
 # ADR-013 (CQ-3 / issue #863): per-stage blocking attribute (true/empty).
-# Returns "true" when stage is a blocking cycle member; empty otherwise.
+# Returns "true" when the stage is declared blocking, "false" when it is declared
+# advisory (#1798: a leaf's failing verdict then does not end the run), empty
+# when the template says nothing.
 template_stage_blocking() {
     local stage_id="$1"
     local safe_id="${stage_id//-/_}"

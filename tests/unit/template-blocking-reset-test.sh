@@ -109,5 +109,31 @@ load_template "$TPL_C"
 got4="${_TPL_STAGE_BLOCKING_secret_scan:-}"
 assert_eq "[SPEC-4] load_template C (secret-scan absent from flow): export cleared (empty)" "" "$got4"
 
+# ── [SPEC-5]: `blocking: false` is recorded (#1798) ───────────────────────────
+# A leaf's failing verdict ends the run unless its template marks it advisory;
+# `false` is that mark, so the loader must keep it rather than drop it.
+print_test_section "[SPEC-5]: blocking: false is recorded as false (#1798)"
+TPL_D="$TEST_TEMP_DIR/tpl-d.yaml"
+cat > "$TPL_D" <<'EOF'
+flow:
+  - secret-scan
+
+secret-scan:
+  roles: [secret_scan]
+  blocking: false
+EOF
+load_template "$TPL_D"
+assert_eq "[SPEC-5] blocking: false → template_stage_blocking says false" "false" "$(template_stage_blocking secret-scan)"
+load_template "$TPL_B"
+assert_eq "[SPEC-5] ...and a later load without it clears it" "" "$(template_stage_blocking secret-scan)"
+
+# ── [SPEC-6]: deployed.yaml's monitor is advisory, as ADR-013 lists it ────────
+# ADR-013's stage table gives monitor `blocking: false`: a monitor that cannot
+# reach its target degrades, it does not fail a run whose change already shipped.
+print_test_section "[SPEC-6]: deployed.yaml marks monitor advisory (ADR-013)"
+load_template "$REPO_ROOT/config/templates/deployed.yaml" >/dev/null 2>&1 || true
+assert_eq "[SPEC-6] deployed.yaml: monitor is blocking: false" "false" "$(template_stage_blocking monitor)"
+assert_eq "[SPEC-6] deployed.yaml: deploy is not marked advisory" "" "$(template_stage_blocking deploy)"
+
 cleanup_test_env
 print_test_results

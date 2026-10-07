@@ -43,7 +43,6 @@ stage.start
 plugin.run.start
 plugin.result
 plugin.run.complete
-cycle.member.disposition.halt
 stage.complete
 artifact.snapshot.saved
 stage.start

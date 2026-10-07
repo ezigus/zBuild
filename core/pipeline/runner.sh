@@ -182,6 +182,37 @@ _runner_leaf_contract_halt() {
     return 0
 }
 
+# ─── _runner_leaf_verdict_halt <state_file> <stage> <class> <raw> ────────────
+# #1798 (ADR-054 §4): a leaf stage that reports a failure ends the run; rc 0
+# when it did. <class> is the classified verdict the runner already read
+# (runner_read_stage_verdict: fail, or a structural word passed through);
+# <raw> is the stage's own word, which the run's end names. A cycle acts on its
+# members' verdicts; a leaf used to record one, pick a glyph from it and
+# complete anyway. A template opts a stage out with `blocking: false`
+# (ADR-013) — advisory by declaration, never by accident.
+_runner_leaf_verdict_halt() {
+    local sf="$1" st="$2" v="${3:-}" raw="${4:-}"
+    case "$v" in
+        fail|error|block|scope_violation|corrupt_diff) ;;
+        *) return 1 ;;
+    esac
+    [[ "$(template_stage_blocking "$st" 2>/dev/null)" == "false" ]] && return 1
+    [[ -n "$raw" && "$raw" != "missing" ]] || raw="$v"
+    _update_stage_status "$sf" "$st" "failed"
+    _zbuild_state_set_stage_verdict "$sf" "$st" "$v"
+    _set_pipeline_status "$sf" "failed"
+    # No `rc=` field: the stage exited 0, so a verdict-triggered stage.fail
+    # carries the stage's word (`verdict=`) instead — as the contract halt
+    # carries `reason=` alone. A consumer of stage.fail reads either shape.
+    eb_emit_event "stage.fail" "stage=$st" "verdict=$raw" "reason=stage_failed:$raw" 2>/dev/null || true
+    eb_emit_event "pipeline.end" "status=failed" "stage=$st" "reason=stage_failed:$raw" \
+        "run_id=${_runner_run_id:-}" "issue=${_runner_issue:-}" 2>/dev/null || true
+    _render_pipeline_end "failed" "$st"
+    _runner_ended=true
+    error "Stage $st reported $raw — the run stops here"
+    return 0
+}
+
 # ─── _runner_attempt_made_progress <artifact_dir> <stage> <iter> (#2187) ─────
 # Attempts are numbered from 1 (attempt-archive.sh writes n+1).
 # rc 0 when the stage's LATEST attempt in this iteration changed any of its
@@ -3529,6 +3560,10 @@ main() {
                     if _runner_leaf_contract_halt "$state_file" "$_ust" "${_CYCLE_DISPATCH_REASON:-}"; then
                         return 1
                     fi
+                    if _runner_leaf_verdict_halt "$state_file" "$_ust" "${_CYCLE_DISPATCH_VERDICT:-pass}" \
+                            "${_CYCLE_DISPATCH_VERDICT_RAW:-}"; then
+                        return 1
+                    fi
                     _update_stage_status "$state_file" "$_ust" "complete"
                     _zbuild_state_set_stage_verdict "$state_file" "$_ust" "${_CYCLE_DISPATCH_VERDICT:-pass}"
                     eb_emit_event "stage.complete" "stage=$_ust" "verdict=${_CYCLE_DISPATCH_VERDICT:-pass}" \
@@ -3817,7 +3852,6 @@ main() {
         fi
 
         if [[ $rc -eq 0 ]]; then
-            _update_stage_status "$state_file" "$stage" "complete"
             # #507: resolve verdict from the plugin's manifest-declared primary
             # output. Glyph + color reflect the actual verdict, not just rc=0.
             local _verdict_manifest="" _verdict_class="pass"
@@ -3831,6 +3865,16 @@ main() {
                     "$(runner_read_stage_reason "$state_dir" "$_verdict_manifest" "$stage" 0 2>/dev/null || true)"; then
                 return 1
             fi
+            # The stage's own word is read only for a failing verdict: a passing
+            # leaf costs no extra process (ADR-065 fork budget).
+            if [[ "$_verdict_class" =~ ^(fail|error|block|scope_violation|corrupt_diff)$ ]] \
+                    && _runner_leaf_verdict_halt "$state_file" "$stage" "$_verdict_class" \
+                        "$(runner_read_stage_verdict_raw "$state_dir" "$_verdict_manifest" "$stage" 0 2>/dev/null || true)"; then
+                return 1
+            fi
+            # Marked complete only once neither halt fired, as the dispatch-unit
+            # loop does — a halting stage is never written `complete` (review #2342).
+            _update_stage_status "$state_file" "$stage" "complete"
             # Persist verdict for observability/resume (schema-additive).
             _zbuild_state_set_stage_verdict "$state_file" "$stage" "$_verdict_class"
             eb_emit_event "stage.complete" "stage=$stage" "verdict=$_verdict_class"

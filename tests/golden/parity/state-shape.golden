@@ -28,7 +28,7 @@
     "pr": "pass",
     "review-aggregator": "pass",
     "review_lenses": "pass",
-    "test": "error"
+    "test": "pass"
   },
   "status": "complete"
 }
