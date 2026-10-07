@@ -1,0 +1,14 @@
+the acceptance check failed — this change edits code (.github/issues/keepers-manifest.yaml, core/pipeline/dispatch-rc.sh, plugins/agent/review-lens/plugin.sh) but no requirement says what that code must now do — add a [code] requirement with a test
+NEGCTL SKIP SPEC-1 already_done
+      design : Every model-calling stage (including impact, security-lens, spec-coverage, issue-acceptance) renders…
+      asserts: <none found>
+NEGCTL SKIP SPEC-2 already_done
+      design : impact's existing prompt-contract assertions pass unchanged.
+      asserts: <none found>
+NEGCTL SKIP SPEC-3 no_code
+      design : Every non-historical occurrence of `exhausted` as a disposition label is removed or annotated with a…
+      asserts: assert_fail "[#2222/SPEC-3] required file exists" "not found: $_f"
+NEGCTL SKIP SPEC-4 already_done
+      design : npm test and npm run lint are green after the six prose edits.
+      asserts: <none found>
+REACHABILITY EXEMPT none
