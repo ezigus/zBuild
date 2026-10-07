@@ -13,5 +13,10 @@
   ],
   "wiring_files": [
     "plugins/tool/pr-open/plugin.sh"
-  ]
+  ],
+  "owned_files": {
+    "test-author": [
+      "plugins/tool/pr-open/tests/pr-open-test.sh"
+    ]
+  }
 }

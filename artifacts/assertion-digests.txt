@@ -1,0 +1,5 @@
+# authored_by: test-author
+9397dce8f817f3e3d1e398f9335956f27f0775490c62befc6e1d72cbfe33d5d7  plugins/tool/pr-open/tests/pr-open-test.sh
+9397dce8f817f3e3d1e398f9335956f27f0775490c62befc6e1d72cbfe33d5d7  plugins/tool/pr-open/tests/pr-open-test.sh
+9397dce8f817f3e3d1e398f9335956f27f0775490c62befc6e1d72cbfe33d5d7  plugins/tool/pr-open/tests/pr-open-test.sh
+9397dce8f817f3e3d1e398f9335956f27f0775490c62befc6e1d72cbfe33d5d7  plugins/tool/pr-open/tests/pr-open-test.sh
