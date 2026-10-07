@@ -201,6 +201,9 @@ _runner_leaf_verdict_halt() {
     _update_stage_status "$sf" "$st" "failed"
     _zbuild_state_set_stage_verdict "$sf" "$st" "$v"
     _set_pipeline_status "$sf" "failed"
+    # No `rc=` field: the stage exited 0, so a verdict-triggered stage.fail
+    # carries the stage's word (`verdict=`) instead — as the contract halt
+    # carries `reason=` alone. A consumer of stage.fail reads either shape.
     eb_emit_event "stage.fail" "stage=$st" "verdict=$raw" "reason=stage_failed:$raw" 2>/dev/null || true
     eb_emit_event "pipeline.end" "status=failed" "stage=$st" "reason=stage_failed:$raw" \
         "run_id=${_runner_run_id:-}" "issue=${_runner_issue:-}" 2>/dev/null || true
@@ -3849,7 +3852,6 @@ main() {
         fi
 
         if [[ $rc -eq 0 ]]; then
-            _update_stage_status "$state_file" "$stage" "complete"
             # #507: resolve verdict from the plugin's manifest-declared primary
             # output. Glyph + color reflect the actual verdict, not just rc=0.
             local _verdict_manifest="" _verdict_class="pass"
@@ -3870,6 +3872,9 @@ main() {
                         "$(runner_read_stage_verdict_raw "$state_dir" "$_verdict_manifest" "$stage" 0 2>/dev/null || true)"; then
                 return 1
             fi
+            # Marked complete only once neither halt fired, as the dispatch-unit
+            # loop does — a halting stage is never written `complete` (review #2342).
+            _update_stage_status "$state_file" "$stage" "complete"
             # Persist verdict for observability/resume (schema-additive).
             _zbuild_state_set_stage_verdict "$state_file" "$stage" "$_verdict_class"
             eb_emit_event "stage.complete" "stage=$stage" "verdict=$_verdict_class"
