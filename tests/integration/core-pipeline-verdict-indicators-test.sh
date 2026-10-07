@@ -157,11 +157,14 @@ _install_verdict_fixture verdict-indicator-test
 _make_verdict_plugin test tool test-results.json '{"verdict":"fail"}' tester
 set +e; _run_pipeline_template verdict-indicator-test; rc=$?; set -e
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
-if grep -E "✗.*Stage.*test.*complete" <<<"$err" >/dev/null; then
+# #1798: a failing verdict now ENDS the run, so the ✗ is on the line that says
+# the stage reported it — not on a "complete" line, which no longer prints.
+if grep -E "✗.*Stage test reported fail" <<<"$err" >/dev/null; then
     assert_pass "test verdict=fail -> ✗ on test line"
 else
-    assert_fail "test verdict=fail -> ✗ on test line" "$(grep -i 'test.*complete' <<<"$err" || echo 'no line')"
+    assert_fail "test verdict=fail -> ✗ on test line" "$(grep -i 'test' <<<"$err" || echo 'no line')"
 fi
+assert_eq "test verdict=fail -> ✗ on test line: the run stops (rc 1)" "1" "$rc"
 
 # ─── Scenario 3: build scope_violation=true → ✗ on build line ────────────────
 # #1095 (PC2): minimal single-stage fixture roster — the assertion only inspects
@@ -175,11 +178,14 @@ _install_verdict_fixture verdict-indicator-build
 _make_verdict_plugin build agent build-summary.json '{"verdict":"scope_violation","scope_violation":true}' builder
 set +e; _run_pipeline_template verdict-indicator-build; rc=$?; set -e
 err="$(cat "$TEST_TEMP_DIR/runner.err")"
-if grep -E "✗.*Stage.*build.*complete" <<<"$err" >/dev/null; then
+# #1798: a failing verdict now ENDS the run, so the ✗ is on the line that says
+# the stage reported it — not on a "complete" line, which no longer prints.
+if grep -E "✗.*Stage build reported scope_violation" <<<"$err" >/dev/null; then
     assert_pass "build scope_violation=true -> ✗ on build line"
 else
-    assert_fail "build scope_violation=true -> ✗ on build line" "$(grep -i 'build.*complete' <<<"$err" || echo 'no line')"
+    assert_fail "build scope_violation=true -> ✗ on build line" "$(grep -i 'build' <<<"$err" || echo 'no line')"
 fi
+assert_eq "build scope_violation=true -> ✗ on build line: the run stops (rc 1)" "1" "$rc"
 
 # ─── Scenario 4: review request_changes → ⚠ on review line ───────────────────
 # #1095 (PC2): minimal single-stage fixture roster — the assertion only inspects

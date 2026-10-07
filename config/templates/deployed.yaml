@@ -299,6 +299,10 @@ validate:
 monitor:
   gate: auto
   roles: [monitor]
+  # ADR-013: monitor is non-blocking — a monitor that cannot reach its target
+  # degrades; it does not fail a run whose change already shipped. A leaf's
+  # failing verdict otherwise ends the run (#1798).
+  blocking: false
   io:
     destinations: [file, stdout]
     tail_lines: 200

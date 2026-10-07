@@ -5,8 +5,9 @@ defaults:
   strategy: fanout
 
 # Minimal single-stage roster: exercises the test verdict→indicator mapping
-# without booting the full ~14-stage standard roster. The runner halts on
-# rc!=0 only; synthetic plugins return 0, so the verdict drives the glyph.
+# without booting the full ~14-stage standard roster. Synthetic plugins return
+# 0, so the verdict drives the glyph — and, since #1798, a failing verdict also
+# ends the run.
 stages:
   - id: test
     gate: auto
