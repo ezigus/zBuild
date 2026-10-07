@@ -1,0 +1,273 @@
+diff --git a/.github/issues/keepers-manifest.yaml b/.github/issues/keepers-manifest.yaml
+index d452b469..10988f51 100644
+--- a/.github/issues/keepers-manifest.yaml
++++ b/.github/issues/keepers-manifest.yaml
+@@ -1427,7 +1427,7 @@ issues:
+     body: |
+       Enforce per-run token cap based on budget remaining (cost ledger).
+       Refuse to dispatch further model calls when cap reached; emit
+-      cost.budget_exceeded event; `disposition: exhausted` escalates (ADR-054 §6).
++      cost.budget_exceeded event; `disposition: out_of_turns` escalates (ADR-054 §6a).
+     state: closed
+     closed_reason: 'Closed via GitHub (live state: closed at 2026-05-27T10:19:06Z). Recorded by manifest-sync.'
+   - id: ccli-6
+diff --git a/core/pipeline/dispatch-rc.sh b/core/pipeline/dispatch-rc.sh
+index 3c3c2b74..117372bd 100644
+--- a/core/pipeline/dispatch-rc.sh
++++ b/core/pipeline/dispatch-rc.sh
+@@ -163,7 +163,7 @@ dispatch_rc_legacy_reason() {
+ # Only three map, and each is an exact fit against §6's own wording:
+ #
+ #   9  llm_unavailable  → unavailable  "halt; operator action required"
+-#   10 scope_too_large  → exhausted    "more budget, or the work must shrink"
++#   10 scope_too_large  → out_of_turns (ADR-054 §6a, #2187)
+ #   130/143 signal      → interrupted  "retry as-is"
+ #
+ # The rest — blocked, cycle_abort, blocking_member_failure, config_invalid —
+diff --git a/docs/adr/ADR-001-plugin-contract.md b/docs/adr/ADR-001-plugin-contract.md
+index d448aff8..ca3670e8 100644
+--- a/docs/adr/ADR-001-plugin-contract.md
++++ b/docs/adr/ADR-001-plugin-contract.md
+@@ -160,7 +160,7 @@ engine re-interprets.
+ recovery layer. Measurement closed that out: the kind was never merely unbuilt, it was
+ **superseded**, and by the very field this section points at. `disposition` (ADR-054 §6,
+ `core/pipeline/disposition.sh`) answers all four action verbs a recovery plugin existed
+-to return — `retry` → `interrupted`/`throttled`, `escalate` → `exhausted`, `abort` →
++to return — `retry` → `interrupted`/`throttled`, `escalate` → `exhausted` (`exhausted` retired #2187; now `out_of_turns`), `abort` →
+ `unavailable`/`broken` — and `backtrack` is `route_back` (ADR-045), shipped separately.
+ 
+ More decisively, ADR-054 **inverted the premise**: *"The response table lives HERE, not in
+diff --git a/docs/adr/ADR-054-stage-contract.md b/docs/adr/ADR-054-stage-contract.md
+index 066bd3ae..a9c5957f 100644
+--- a/docs/adr/ADR-054-stage-contract.md
++++ b/docs/adr/ADR-054-stage-contract.md
+@@ -160,7 +160,7 @@ The destination is never new. Every one of these already had a declared channel
+ | `124` timeout | `interrupted` (§6). Never reaches the runner today: the router absorbs it and publishes `_ROUTE_LOOP_TERMINATED_REASON=router_timeout` | #1823 |
+ | rate limit | `unavailable` (§6) since #2111 (was `throttled`, #1823): the run ends, resumable when the limit resets | #1823 / #2111 |
+ | `9` llm_unavailable | `unavailable` (§6) — "halt; operator action required" is what rc=9 already meant | #1823 |
+-| `10` scope_too_large | `exhausted` (§6) — "more budget, or the work must shrink". The matching *verdict* string migrates in #1832 | #1823 / #1832 |
++| `10` scope_too_large | `exhausted` (§6) — "more budget, or the work must shrink". The matching *verdict* string migrates in #1832. **(superseded by §6a / #2187 — now `out_of_turns`)** | #1823 / #1832 |
+ | `11` route_back | ADR-045 routing state (`_CYCLE_ROUTE_BACK_*`, `cycle.route_back`). The `route_target` vocabulary is #1767 | ADR-045 / #1767 |
+ | `8` blocking_member_failure | ADR-013's `blocking:true` halt and ADR-021's `disposition: terminal` member contract | ADR-013 / ADR-021 |
+ | `5` blocked | `_CYCLE_LAST_TERMINATED_REASON ∈ {blocked, no_committed_changes}` + `cycle.blocked` (ADR-021 #528/#1265) | ADR-021 |
+diff --git a/docs/wiki/plugins/review-report.md b/docs/wiki/plugins/review-report.md
+index 0d918de5..24d55a9b 100644
+--- a/docs/wiki/plugins/review-report.md
++++ b/docs/wiki/plugins/review-report.md
+@@ -134,7 +134,7 @@ _See [[Pipeline-and-Stages]] for how this plugin is dispatched, and [[Writing-Pl
+ - `verdict` is `pass` on every run that produced a report — findings move
+   `merge_readiness`, never the verdict — and `error` only on the broken paths
+   (no state file, no output path, no model tier). `valid_verdicts: [pass, error]`.
+-- `disposition` is `complete`, or `exhausted` when a lens call returned non-zero
++- `disposition` is `complete`, or `out_of_turns` when a lens call returned non-zero
+   (ADR-063 §3); `broken` on the error paths. rc is 0 or 1 (ADR-054 §4).
+ - Every lens prompt opens with a TURN BUDGET block whose numbers come from
+   `_route_resolve_max_turns` / `_route_resolve_timeout` (ADR-063 §1).
+diff --git a/plugins/agent/review-lens/plugin.sh b/plugins/agent/review-lens/plugin.sh
+index 500891c0..ed9fd39b 100644
+--- a/plugins/agent/review-lens/plugin.sh
++++ b/plugins/agent/review-lens/plugin.sh
+@@ -376,7 +376,7 @@ _review_lens_run_inner() {
+     stage_signal_end
+ 
+     # rc=10 (budget/turn exhaustion — ADR-063 §3): distinct from advisory rc=0
+-    # degrade paths. Write disposition:exhausted and propagate rc=10 so the engine
++    # degrade paths. Write disposition:out_of_turns and propagate rc=10 so the engine
+     # can apply the §3 escalation (disposition.sh:97 → route.sh:749 +50% retry).
+     if [[ "$router_rc" -eq 10 ]]; then
+         _review_lens_write_result "$out" "degraded" "out_of_turns" "budget_exhausted" \
+diff --git a/tests/unit/exhausted-disposition-retired-test.sh b/tests/unit/exhausted-disposition-retired-test.sh
+new file mode 100644
+index 00000000..4e8ac115
+--- /dev/null
++++ b/tests/unit/exhausted-disposition-retired-test.sh
+@@ -0,0 +1,189 @@
++#!/usr/bin/env bash
++# tests/unit/exhausted-disposition-retired-test.sh — SPEC-3 acceptance: no live
++# prescriptive uses of `exhausted` as a disposition label survive issue #2222.
++#
++# ADR-054 §6a (2026-09-25, #2187) retired `exhausted` from the disposition set,
++# replacing it with `out_of_turns` (turn budget hit) and `timed_out` (wall-clock
++# hit).  Issue #2222 cleans up six non-functional sites that still named the word
++# in a prescriptive — not explicitly historical — way.
++#
++# Six sites are checked below, one assertion per site:
++#   1. core/pipeline/dispatch-rc.sh:166 comment
++#   2. plugins/agent/review-lens/plugin.sh:379 comment
++#   3. docs/wiki/plugins/review-report.md:137 prose
++#   4. .github/issues/keepers-manifest.yaml:1430 body
++#   5. docs/adr/ADR-054-stage-contract.md:163 rc=10 table row (annotated, not removed)
++#   6. docs/adr/ADR-001-plugin-contract.md:163 retirement passage (annotated, not removed)
++#
++# Two R-4 acceptance-grep assertions follow the per-site checks:
++#   (a) `disposition: exhausted` pattern — no un-annotated occurrence in codebase
++#   (b) `→ exhausted` mapping pattern — no un-annotated occurrence in codebase
++#
++#   SPEC-3[code] (#2222): Every non-historical occurrence of `exhausted` as a
++#     disposition label is removed or annotated with a dated backward-pointer note
++#     so the R-4 acceptance grep finds it only in explicitly historical text.
++#     tag: [#2222/SPEC-3]
++set -uo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "exhausted disposition retired — SPEC-3 (#2222)"
++setup_test_env "exhausted-disposition-retired"
++
++DISPATCH_RC="$REPO_ROOT/core/pipeline/dispatch-rc.sh"
++REVIEW_LENS="$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
++REVIEW_REPORT="$REPO_ROOT/docs/wiki/plugins/review-report.md"
++KEEPERS_MANIFEST="$REPO_ROOT/.github/issues/keepers-manifest.yaml"
++ADR054="$REPO_ROOT/docs/adr/ADR-054-stage-contract.md"
++ADR001="$REPO_ROOT/docs/adr/ADR-001-plugin-contract.md"
++
++for _f in "$DISPATCH_RC" "$REVIEW_LENS" "$REVIEW_REPORT" "$KEEPERS_MANIFEST" "$ADR054" "$ADR001"; do
++    if [[ ! -f "$_f" ]]; then
++        assert_fail "required file for SPEC-3 (#2222) check" "not found: $_f"
++    fi
++done
++
++# ── Site 1: dispatch-rc.sh rc-table comment ──────────────────────────────────
++# The comment at line 166 listed rc=10 scope_too_large as mapping to `exhausted`.
++# After the fix it must say `out_of_turns (ADR-054 §6a, #2187)` instead.
++# Fails when the bare `→ exhausted` form is still present.
++_dispatch_bare="$(grep -c 'scope_too_large.*→.*exhausted' "$DISPATCH_RC" 2>/dev/null || true)"
++assert_eq "[#2222/SPEC-3] dispatch-rc.sh rc=10 comment does not map scope_too_large to bare exhausted (replaced with out_of_turns per §6a/#2187)" \
++    "0" "$_dispatch_bare"
++
++# ── Site 2: review-lens/plugin.sh degrade-path comment ───────────────────────
++# The comment at line 379 described the degrade path as writing
++# "disposition:exhausted".  After the fix it must name disposition:out_of_turns.
++# The compound token `budget_exhausted` at line 382 is a reason/detail argument,
++# not a disposition word, and does not match `disposition:exhausted`.
++_lens_comment="$(grep -c 'disposition:exhausted' "$REVIEW_LENS" 2>/dev/null || true)"
++assert_eq "[#2222/SPEC-3] review-lens/plugin.sh degrade-path comment does not name disposition:exhausted (renamed to out_of_turns)" \
++    "0" "$_lens_comment"
++
++# ── Site 3: review-report.md wiki prose ──────────────────────────────────────
++# The wiki line listed `exhausted` as the disposition value emitted when a lens
++# call returned non-zero.  After the fix it must name `out_of_turns`.
++# Checks the whole file: any occurrence of the word is a prescriptive reference
++# in this disposition-vocabulary document.
++_wiki_exhausted="$(grep -c 'exhausted' "$REVIEW_REPORT" 2>/dev/null || true)"
++assert_eq "[#2222/SPEC-3] review-report.md carries no occurrence of exhausted (disposition word fully replaced with out_of_turns)" \
++    "0" "$_wiki_exhausted"
++
++# ── Site 4: keepers-manifest.yaml issue body ─────────────────────────────────
++# The manifest body at line 1430 contained "`disposition: exhausted` escalates".
++# After the fix it must use `disposition: out_of_turns`.
++# Fails when the prescriptive `disposition: exhausted` form is still present.
++_manifest_exhausted="$(grep -c 'disposition: exhausted' "$KEEPERS_MANIFEST" 2>/dev/null || true)"
++assert_eq "[#2222/SPEC-3] keepers-manifest.yaml does not prescribe disposition: exhausted (replaced with out_of_turns per §6a/#2187)" \
++    "0" "$_manifest_exhausted"
++
++# ── Site 5: ADR-054 rc=10 table row — annotated with backward-pointer ────────
++# The table row at ADR-054 line 163 retains `exhausted` as a historical record
++# of what §6 originally said, but must carry a dated backward-pointer note so
++# it is unambiguously marked superseded.  The note must mention §6a, #2187, or
++# the replacement word `out_of_turns` on the same table row as `scope_too_large`.
++# Fails when the row has not been annotated.
++_adr054_note="$(grep -c 'scope_too_large.*out_of_turns\|scope_too_large.*§6a\|scope_too_large.*#2187' "$ADR054" 2>/dev/null || true)"
++assert_gt "[#2222/SPEC-3] ADR-054 rc=10 scope_too_large table row carries a backward-pointer note (§6a, #2187, or out_of_turns) marking it superseded" \
++    "$_adr054_note" "0"
++
++# The "dated" requirement is satisfied when §6a in ADR-054 carries an explicit
++# ISO-format date in its heading.  The backward-pointer references §6a, so the
++# pointer IS dated when §6a itself has a date.  Fails if §6a has no such date.
++_adr054_dated="$(grep -cE '6a\..*\(20[0-9]{2}-[0-9]{2}-[0-9]{2}' "$ADR054" 2>/dev/null || true)"
++assert_gt "[#2222/SPEC-3] ADR-054 §6a section heading carries an explicit ISO date (anchors the dated backward-pointer note)" \
++    "$_adr054_dated" "0"
++
++# ── Site 6: ADR-001 retirement passage — inline backward-pointer added ────────
++# The ADR-001 retirement note listed `escalate → exhausted` as a disposition
++# mapping.  After the fix that passage must carry an inline note citing #2187
++# so a reader knows the word is retired vocabulary, not a current prescription.
++# Fails when the passage has not been annotated with a reference to #2187.
++_adr001_note="$(grep -c 'exhausted.*#2187\|#2187.*exhausted' "$ADR001" 2>/dev/null || true)"
++assert_gt "[#2222/SPEC-3] ADR-001 exhausted passage carries a backward-pointer note naming #2187 (marks the word as retired vocabulary)" \
++    "$_adr001_note" "0"
++
++# ── R-4 acceptance grep (a): disposition:exhausted — codebase-wide ───────────
++# Searches core/, plugins/, scripts/, docs/, .github/, and config/ for any
++# occurrence of `disposition: exhausted` (the assignment form) that is NOT on a
++# line already carrying a backward-pointer annotation (#2187, retired, superseded,
++# or out_of_turns).  Such a line is a non-historical prescriptive use that must
++# not survive.  Compound tokens (_exhausted / exhausted_) are excluded because
++# they are reason/detail strings, not disposition labels.
++#
++# [#2222/SPEC-3]
++_r4_assign=0
++while IFS= read -r _hit; do
++    _line="${_hit#*:*:}"
++    grep -qE '_exhausted|exhausted_' <<< "$_line" && continue
++    grep -qE '#2187|retired|superseded|out_of_turns' <<< "$_line" && continue
++    _r4_assign=$((_r4_assign + 1))
++    printf 'UNACCEPTABLE (disposition:exhausted): %s\n' "$_hit" >&2
++done < <(grep -rn 'disposition[[:space:]]*:[[:space:]]*exhausted' \
++    "$REPO_ROOT/core" \
++    "$REPO_ROOT/plugins" \
++    "$REPO_ROOT/scripts" \
++    "$REPO_ROOT/docs" \
++    "$REPO_ROOT/.github" \
++    "$REPO_ROOT/config" \
++    2>/dev/null || true)
++assert_eq "[#2222/SPEC-3] R-4 acceptance grep (a): no un-annotated disposition:exhausted assignment survives in the codebase" \
++    "0" "$_r4_assign"
++
++# ── R-4 acceptance grep (b): → exhausted mapping — codebase-wide ─────────────
++# Searches the same directories for any `→ exhausted` disposition-mapping pattern
++# (arrow notation used in comments and ADR tables) that is NOT on a line carrying
++# a backward-pointer annotation.  An unannotated arrow mapping is a prescriptive
++# statement that `exhausted` is a live disposition word.
++#
++# [#2222/SPEC-3]
++_r4_arrow=0
++while IFS= read -r _hit; do
++    _line="${_hit#*:*:}"
++    grep -qE '_exhausted|exhausted_' <<< "$_line" && continue
++    grep -qE '#2187|retired|superseded|out_of_turns' <<< "$_line" && continue
++    _r4_arrow=$((_r4_arrow + 1))
++    printf 'UNACCEPTABLE (→ exhausted): %s\n' "$_hit" >&2
++done < <(grep -rn '→[[:space:]]*exhausted' \
++    "$REPO_ROOT/core" \
++    "$REPO_ROOT/plugins" \
++    "$REPO_ROOT/scripts" \
++    "$REPO_ROOT/docs" \
++    "$REPO_ROOT/.github" \
++    "$REPO_ROOT/config" \
++    2>/dev/null || true)
++assert_eq "[#2222/SPEC-3] R-4 acceptance grep (b): no un-annotated → exhausted disposition mapping survives in the codebase" \
++    "0" "$_r4_arrow"
++
++# ── R-4 acceptance grep (c): shell-assignment forms — production code ─────────
++# Checks core/, plugins/, and scripts/ for shell-assignment forms of the retired
++# disposition: disposition="exhausted" (JSON/shell string) or set_disposition
++# exhausted (function-call form).  These are distinct from the comment/prose forms
++# above; any surviving un-annotated instance is a prescriptive disposition label.
++# (lint-disposition-words.sh enforces this at CI; this assertion confirms it.)
++#
++# [#2222/SPEC-3]
++_r4_shell=0
++while IFS= read -r _hit; do
++    _line="${_hit#*:*:}"
++    grep -qE '_exhausted|exhausted_' <<< "$_line" && continue
++    grep -qE '#2187|retired|superseded|out_of_turns' <<< "$_line" && continue
++    _r4_shell=$((_r4_shell + 1))
++    printf 'UNACCEPTABLE (shell-assignment exhausted): %s\n' "$_hit" >&2
++done < <(grep -rn 'disposition[[:space:]]*=[[:space:]]*"exhausted"\|set_disposition[[:space:]]\+exhausted' \
++    "$REPO_ROOT/core" \
++    "$REPO_ROOT/plugins" \
++    "$REPO_ROOT/scripts" \
++    2>/dev/null || true)
++assert_eq "[#2222/SPEC-3] R-4 acceptance grep (c): no un-annotated shell-assignment disposition=exhausted survives in production code" \
++    "0" "$_r4_shell"
++
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
