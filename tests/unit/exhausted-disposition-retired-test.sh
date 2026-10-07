@@ -103,6 +103,12 @@ _adr054_dated="$(grep -cE 'scope_too_large.*(superseded|retired)[^|]*20[0-9]{2}-
 assert_gt "[#2222/SPEC-3] ADR-054 rc=10 row's backward-pointer carries its date" \
     "$_adr054_dated" "0"
 
+# The §6 disposition table itself: its `exhausted` row reads as current unless
+# the row says it was retired (review #2341). Dated, like the rc=10 row.
+_adr054_s6_row="$(grep -cE '^\| `exhausted` \|.*(superseded|retired)[^|]*20[0-9]{2}-[0-9]{2}-[0-9]{2}' "$ADR054" 2>/dev/null || true)"
+assert_gt "[#2222/SPEC-3] ADR-054 §6 table's exhausted row carries a dated pointer to §6a" \
+    "$_adr054_s6_row" "0"
+
 # ── Site 6: ADR-001 retirement passage — inline backward-pointer added ────────
 # The ADR-001 retirement note listed `escalate → exhausted` as a disposition
 # mapping.  After the fix that passage must carry an inline note citing #2187

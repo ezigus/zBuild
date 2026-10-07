@@ -220,7 +220,7 @@ Conflating these is the defect this section exists to prevent — `pass|warn|fai
 | `complete` | Nothing went wrong |
 | `interrupted` | Retry as-is |
 | `throttled` | Wait, then retry (retained; no rate-limit emitter since #2111) |
-| `exhausted` | More budget, or the work must shrink |
+| `exhausted` | More budget, or the work must shrink. **(retired 2026-09-25 by §6a / #2187 — now `out_of_turns` or `timed_out`, response: retry)** |
 | `unavailable` | Halt; operator action required — a rate limit lands here (#2111): the run ends `aborted/llm_rate_limited`, resumable |
 | `broken` | Halt; it is a defect |
 
