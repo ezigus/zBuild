@@ -1,0 +1,13 @@
+{
+  "stage": "shape-floor",
+  "cycle_iter": 2,
+  "attempt": 1,
+  "rc": "0",
+  "generated_at": "2026-10-07T01:28:04Z",
+  "files": 2,
+  "outputs": {
+    "shape-floor-result.json": "changed",
+    "shape-floor-detail.md": "unchanged"
+  },
+  "progress": true
+}
