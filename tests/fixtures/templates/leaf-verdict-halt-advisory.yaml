@@ -1,0 +1,20 @@
+id: leaf-verdict-halt-advisory
+name: Leaf verdict halts — flat flow (linear loop) — vl-leaf advisory
+extends: simple
+defaults:
+  strategy: fanout
+
+# leaf-verdict-halts-test.sh (#1798): `vl-leaf` writes a result whose verdict
+# the test chooses; `vl-after` records that it ran. A flat flow has no cycle, so
+# the runner takes the linear loop (every flat overlay, ZBUILD_CYCLES_ENABLED=0).
+flow:
+  - vl-leaf
+  - vl-after
+
+vl-leaf:
+  gate: auto
+  # The template marks this stage advisory: its failure does not end the run.
+  blocking: false
+
+vl-after:
+  gate: auto

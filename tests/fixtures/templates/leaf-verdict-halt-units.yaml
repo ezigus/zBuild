@@ -1,0 +1,32 @@
+id: leaf-verdict-halt-units
+name: Leaf verdict halts — flow with a cycle (dispatch-unit loop)
+extends: simple
+defaults:
+  strategy: fanout
+
+# Same leaves as leaf-verdict-halt.yaml plus a one-member cycle. The cycle is
+# what sends the runner through the dispatch-unit loop, the path every shipped
+# template takes; the leaves around it are the subject (#1798).
+flow:
+  - vl-leaf
+  - vl_cycle
+  - vl-after
+
+vl_cycle:
+  type: cycle
+  flow:
+    - vl-noop
+  exit_when:
+    all:
+      - { stage: vl-noop, field: verdict, op: eq, value: pass }
+  max_iterations: 1
+  on_max: continue
+
+vl-leaf:
+  gate: auto
+
+vl-noop:
+  gate: auto
+
+vl-after:
+  gate: auto
