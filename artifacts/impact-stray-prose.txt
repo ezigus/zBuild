@@ -1,0 +1,11 @@
+Based on my thorough analysis of the design scope and codebase, I've investigated:
+
+1. `_pr_open_compose_body` signature change — only one caller (`plugin.sh:355`, in scope). No other callers.
+2. `tests/unit/pr-open-v2-result-test.sh` — state files use `{"issue":1849,"branch":"..."}` with no `.status` field; draft logic won't activate. Not invalidated.
+3. `tests/unit/pr-open-v2-inputs-test.sh` — SPEC-14 checks for hardcoded file paths (`review-report.json`, `plan.json`, `test-results.json`). The change adds `gate_aggregator_result` via `ZBUILD_STAGE_INPUTS` key (no hardcoded `.json` path). Existing assertions won't fail.
+4. `tests/unit/pr-open-advisory-review-test.sh` — calls `_pr_open_run_inner` with a state file without `.status`; draft remains false. Not invalidated.
+5. `tests/unit/pr-delivery-v2-result-test.sh` — `_mk_state` produces `{"issue":1844,"branch":"..."}` with no `.status`; D6 only checks top-level `has("draft")` which stays false. Not invalidated.
+6. `tests/unit/pr-open-detached-head-test.sh` — uses `gate_aggregator_result` only in merge paths (M1–M3), not pr-open paths. Not invalidated.
+7. Integration tests (`cycle-on-max-pipeline-continues-test.sh`, etc.) — none check `data.draft` in pr-result.json. Not invalidated.
+8. `core/pipeline/cycle-orchestrator.sh` — writes `.cycle_iterations[*].status`; the change reads this field but doesn't modify or rename it. No assertions broken.
+9. ADR files — no existing ADR statement is changed or invalidated by this feature.
