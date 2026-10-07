@@ -183,14 +183,16 @@ Add `--schema-gate <func>` to `_llm_envelope_parse`. When provided and the LAST-
 - `_test_assessment_envelope_schema_ok` — type==object, schema_version==1, verdict in {pass,fail,error,inconclusive}, summary string, required_changes array, agrees_with_build_complete boolean
 - `_security_lens_envelope_schema_ok` — type==object, findings array (no schema_version in LLM response for this stage)
 - `_plan_envelope_schema_ok` — type==object, schema_version==1, non-empty steps[] array (pre-existing gate from #1052, now the framework schema-gate for the plan stage)
+- `_review_lens_envelope_schema_ok` — type==object, findings array (review-lens, #1840)
+- `_rr_lens_envelope_schema_ok` — type==object, score number, findings array (review-report `lib/lenses.sh`, #1843)
 
-**Migration.** `plan`, `security-lens` and `monitor` call `_llm_envelope_parse --schema-gate`. `impact` uses its own two-phase parser deliberately — see ADR-060 §"the divergence is deliberate", which records why collapsing it onto the shared helper would *loosen* it.
+**Migration.** `plan`, `security-lens`, `monitor`, `review-lens` (#1840), and `review-report` (#1843) call `_llm_envelope_parse --schema-gate`. `impact` uses its own two-phase parser deliberately — see ADR-060 §"the divergence is deliberate", which records why collapsing it onto the shared helper would *loosen* it.
 
-`review-lens` and `review-report` are **not** migrated: both still call bare `extract_first_json_object` with no schema gate and no recovery, so a reply carrying a prose preamble is discarded rather than recovered. They fail visibly rather than silently — `review-lens` emits `review_lens.unparseable` and writes a summary saying the lens reviewed nothing, with "Absence here is not evidence of a clean change" — so this is a gap, not a live hazard. Tracked separately.
+*Corrected 2026-10-06 (#2035).* Until this date the paragraph here said `review-lens` and `review-report` were not migrated. That stopped being true when #1840 and #1843 moved both onto the shared parser; the ADR was not updated with them. `tests/unit/adr-migration-claims-test.sh` (SPEC-2, SPEC-3) now checks both stages against this paragraph.
 
 *Corrected 2026-09-02.* This paragraph previously asserted that the migration was complete across four stages, one of which had been deleted months earlier and one of which was never migrated. The wrong sentence is not reproduced here: a reader — person or agent — who meets it takes it as settled and builds on it, and that is exactly how a claim nobody can check comes to read like a claim that is true. `tests/unit/adr-migration-claims-test.sh` now checks this paragraph against the code, so it cannot drift back into fiction unnoticed.
 
-- `security-lens`: its rc=0 parse routes through `_llm_envelope_parse --schema-gate <stage>_envelope_schema_ok`. `test_assessment` was deleted (#979). `review-lens` was **not** migrated — see the Migration note below.
+- `security-lens`: its rc=0 parse routes through `_llm_envelope_parse --schema-gate <stage>_envelope_schema_ok`. `test_assessment` was deleted (#979).
 - `plan`: its rc=0 parse routes through `_llm_envelope_parse --schema-gate _plan_envelope_schema_ok`, and its stage-local `_plan_recover_envelope_json` (scripts/lib/plan-context.sh) now delegates to `_llm_recover_envelope_json` — the duplicated awk brace-grammar is retired. plan's STRICT happy-path validator (which additionally requires `files[]` be strings) stays authoritative for rc=0 acceptance, so a recovered-but-invalid envelope remains a `schema_violation`. plan's `router_rc != 0` sidecar-recovery path (max_turns budget exhaustion) is unchanged and continues to call `_plan_recover_envelope_json` (now framework-backed).
 
 `impact` retains its stage-local `_impact_recover_envelope_json` helper by design — it is not part of this migration.

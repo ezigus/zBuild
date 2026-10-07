@@ -7,9 +7,11 @@
 #    security-lens — are migrated to call _llm_envelope_parse --schema-gate in
 #    place of their prior extract_first_json_object calls."
 #
-# Two things were wrong with that sentence. `review-lens` still calls bare
-# `extract_first_json_object`, and `test_assessment` was DELETED in #979 — the
-# ADR names a stage that has not existed for months as evidence of completeness.
+# Two things were wrong with that sentence. `test_assessment` was DELETED in
+# #979 — the ADR named a stage that had not existed for months as evidence of
+# completeness — and `review-lens` was then still on bare
+# `extract_first_json_object`. review-lens (#1840) and review-report (#1843)
+# have since moved to the shared parser (#2035), so all five are now checked.
 #
 # A reader — a person or an agent — takes "all four are migrated" as settled and
 # builds on it. That is the failure mode behind this whole issue family: a claim
@@ -51,12 +53,30 @@ else
 fi
 
 # ── SPEC-2: every stage claimed migrated actually uses the shared parser ───
-# The claim, checked against the code rather than against itself.
+# The claim, checked against the code rather than against itself. A stage's
+# parser can live outside plugin.sh (review-report's is in lib/lenses.sh), so
+# every non-test .sh file in the plugin directory counts. Only code lines count:
+# a comment that names the old parser (review-lens explains why it left it) is
+# not a call.
+_MIGRATED_STAGES="plan security-lens monitor review-lens review-report"
+
+# Prints why <plugin dir> is not migrated; prints nothing when it is.
+_stage_unmigrated_reason() {
+    local dir="$1" f calls=0 bare=""
+    while IFS= read -r -d '' f; do
+        grep -qE '^[^#]*_llm_envelope_(parse|classify)' "$f" && calls=1
+        grep -qE '^[^#]*extract_first_json_object' "$f" && bare+="${f#"$dir"/} "
+    done < <(find "$dir" -name '*.sh' -not -path '*/tests/*' -print0)
+    [[ -n "$bare" ]] && { printf 'calls extract_first_json_object in %s' "${bare% }"; return 0; }
+    [[ "$calls" -eq 1 ]] || printf 'never calls _llm_envelope_parse'
+}
+
 _unmigrated=""
-for _s in plan security-lens monitor; do
-    _p="$REPO_ROOT/plugins/agent/$_s/plugin.sh"
-    [[ -f "$_p" ]] || continue
-    grep -qE '_llm_envelope_(parse|classify)' "$_p" || _unmigrated+="$_s "
+for _s in $_MIGRATED_STAGES; do
+    _d="$REPO_ROOT/plugins/agent/$_s"
+    if [[ ! -d "$_d" ]]; then _unmigrated+="$_s (no plugin directory); "; continue; fi
+    _why="$(_stage_unmigrated_reason "$_d")"
+    [[ -z "$_why" ]] || _unmigrated+="$_s ($_why); "
 done
 if [[ -z "$_unmigrated" ]]; then
     assert_pass "SPEC-2: every stage claimed migrated uses the shared parser"
@@ -65,23 +85,46 @@ else
         "still on the old path: $_unmigrated"
 fi
 
-# ── SPEC-3: a stage NOT migrated is not described as if it were ────────────
-# review-lens is the counter-example the ADR got wrong. It is allowed to stay on
-# `extract_first_json_object` — it fails visibly, emitting review_lens.unparseable
-# and a summary that says the lens reviewed nothing — but the ADR must not claim
-# otherwise. This asserts the two agree, in whichever direction they agree.
-_rl="$REPO_ROOT/plugins/agent/review-lens/plugin.sh"
-if [[ -f "$_rl" ]] && grep -qE 'extract_first_json_object' "$_rl"; then
-    # Not migrated. The ADR must say so, or say nothing.
-    if grep -qE 'All four Pattern-1 stages.*review' "$ADR"; then
-        assert_fail "SPEC-3: the ADR does not claim review-lens is migrated" \
-            "review-lens still calls extract_first_json_object; the ADR says otherwise"
+# Negative control: SPEC-2's check must see a bare call put back. Copy each of
+# the two newly migrated plugins, add one code-line call, and expect a reason.
+for _s in review-lens review-report; do
+    _nc="$TEST_TEMP_DIR/negctl-$_s"
+    cp -R "$REPO_ROOT/plugins/agent/$_s" "$_nc"
+    # shellcheck disable=SC2016  # the $1 is written into the copied plugin, not expanded here
+    printf '\n_negctl() { extract_first_json_object "$1"; }\n' >> "$_nc/plugin.sh"
+    _why="$(_stage_unmigrated_reason "$_nc")"
+    assert_contains "SPEC-2 negative control: a bare extract_first_json_object call in $_s is caught" \
+        "$_why" "extract_first_json_object"
+done
+# ...and a comment naming the old parser is not a call.
+_nc="$TEST_TEMP_DIR/negctl-comment"
+cp -R "$REPO_ROOT/plugins/agent/review-report" "$_nc"
+printf '\n    # extract_first_json_object is the old parser\n' >> "$_nc/plugin.sh"
+assert_eq "SPEC-2 negative control: a comment naming extract_first_json_object is not a call" \
+    "" "$(_stage_unmigrated_reason "$_nc")"
+
+# ── SPEC-3: the ADR names review-lens and review-report as migrated ────────
+# The ADR said both were "**not** migrated" long after the code moved (#1840,
+# #1843). The code is migrated (SPEC-2), so the ADR must say so, name each
+# stage's schema gate, and keep no sentence saying the opposite.
+_mig_line="$(grep -E '^\*\*Migration\.\*\*' "$ADR" || true)"
+for _s in review-lens review-report; do
+    assert_contains "SPEC-3: ADR-028's Migration paragraph lists $_s" "$_mig_line" "\`$_s\`"
+done
+for _g in _review_lens_envelope_schema_ok:review-lens _rr_lens_envelope_schema_ok:review-report; do
+    _fn="${_g%%:*}"
+    grep -rqE "^${_fn}\(\)" "$REPO_ROOT/plugins/agent/${_g#*:}" \
+        || assert_fail "SPEC-3 setup: $_fn is defined in ${_g#*:}" "not found — update this test"
+    if grep -qF "\`$_fn\`" "$ADR"; then
+        assert_pass "SPEC-3: ADR-028 names the schema gate $_fn"
     else
-        assert_pass "SPEC-3: the ADR does not claim review-lens is migrated"
+        assert_fail "SPEC-3: ADR-028 names the schema gate $_fn" "not named"
     fi
-else
-    assert_pass "SPEC-3: review-lens migrated — no stale claim possible"
-fi
+done
+# shellcheck disable=SC2016  # backticks are literal markdown in the pattern
+_stale_claim="$(grep -nE '(review-lens|review-report).*\*\*not\*\* migrated|\*\*not\*\* migrated.*(review-lens|review-report)|`review-lens` was \*\*not\*\*' "$ADR" || true)"
+assert_eq "SPEC-3: no sentence in ADR-028 says review-lens or review-report is not migrated" \
+    "" "$_stale_claim"
 
 # ── SPEC-4: no live code cites a RETIRED ADR as its authority ──────────────
 # llm-agent.sh cited "ADR-022 v2" for envelope validation. ADR-022 is Retired
