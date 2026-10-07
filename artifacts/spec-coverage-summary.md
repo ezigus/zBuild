@@ -1,0 +1,5 @@
+## spec-coverage — covered
+
+- Every requirement maps to at least one SPEC that fully demands the required behaviour — draft forcing on failure (SPEC-1), draft forcing on max_iterations (SPEC-2), body convergence section with iterations and "not converged" (SPEC-3), body naming failing gates and reason (SPEC-4), passing-run non-draft policy unchanged (SPEC-5), explicit pr_draft:true override (SPEC-6), and regression test existence for both new paths (SPEC-1 and SPEC-2 both cover R-7 with test-file entries).
+
+- every requirement the issue states maps to a declared SPEC
