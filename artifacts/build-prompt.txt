@@ -1,4 +1,4 @@
-============== ZBUILD BUILD — iter 2/10 ==============
+============== ZBUILD BUILD — iter 1/10 ==============
 ## What you own
 ### INSTRUCTIONS
 Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
@@ -114,7 +114,22 @@ issue-acceptance) was shipped in #2252/#2253 and is not in scope here.
 5. `ADR-054` line 163 rc=10 table row: add dated note `(superseded by §6a / #2187 — now out_of_turns)`
 6. `ADR-001` line 163 historical retirement note: add inline note `(exhausted retired #2187; now out_of_turns)`
 
-After all six, the R-4 acceptance grep finds `exhausted` only in:
+Although these are comment and prose edits only (no change to observable runtime
+behaviour), three of the six files are shell scripts or YAML configs; SPEC-3 is
+therefore marked [code] so the negctl check runs against the pre-change tree and
+confirms each assertion fails there.
+
+**Scope of the R-4 grep.** The acceptance grep (R-4) covers `core plugins scripts
+docs/wiki .github/issues docs/adr/ADR-001* docs/adr/ADR-054*` — exactly the paths
+the issue names. `tests/` is intentionally excluded because the test file itself
+uses `exhausted` in grep patterns and comment descriptions (meta-references, not
+prescriptive disposition statements). Shell-assignment forms (`disposition="exhausted"`,
+`set_disposition exhausted`) in production code are already caught by
+`lint-disposition-words.sh`; only the comment and prose forms remain in scope here.
+The backward-pointer notes in ADR-054 and ADR-001 cite `#2187`, which carries a
+timestamp and serves as the date proxy the "dated" requirement specifies.
+
+After all six edits, the R-4 grep finds `exhausted` only in:
 - ADR-054 §6 original vocabulary table (~line 223) — superseded section header
 - ADR-054 §6a history prose (lines 239, 258) — explicitly labelled as retired
 - ADR-001 line 163 — inside the 2026-08-20 #1900 retirement note (with new pointer)
@@ -174,4 +189,4 @@ You may ONLY touch files listed here. Refuse any out-of-scope edit.
 - If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.
 
 ## PRIOR BUILD (a previous attempt on this issue — continue, do not restart)
-A previous attempt on this issue ended build with verdict=pass and touched 6 file(s): .github/issues/keepers-manifest.yaml, core/pipeline/dispatch-rc.sh, docs/adr/ADR-001-plugin-contract.md, docs/adr/ADR-054-stage-contract.md, docs/wiki/plugins/review-report.md, plugins/agent/review-lens/plugin.sh. That work is likely already committed on this branch (check `git log` / `git diff`). Continue or refine it — do NOT restart from scratch, and emit LOOP_COMPLETE immediately if the change is already present and no STAGE SUMMARY is headed "— its findings, to answer".
+A previous attempt on this issue ended build with verdict=pass having changed nothing (0 files). That is not evidence the work is done: read the STAGE SUMMARIES below — a summary headed "— its findings, to answer" means a check is red on this tree and there is work to do. Do not restart from scratch; continue from what is on this branch (check `git log` / `git diff`).
