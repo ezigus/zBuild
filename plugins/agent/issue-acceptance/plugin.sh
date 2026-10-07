@@ -91,8 +91,8 @@ change were broken, would its tests catch it? If they would not, it is unmet.
 Some REQUIREMENTS were not run against the old code: those that need work but
 no code, and those design says are already done. Nothing but you checks them.
 For one already done, check the claim against the evidence shown. If you cannot
-tell whether such a requirement is met, say so rather than guess: a person will
-check it.
+tell whether such a requirement is met, say so rather than guess: the run then
+reports it as open, with what would settle it.
 
 ISSUE:
 $1
@@ -121,16 +121,19 @@ _ia_write() {
     mkdir -p "$dir" 2>/dev/null || true
     # #2271 (ADR-068): each unmet acceptance item is a numbered finding. #2304
     # (ADR-069 §7): so is each requirement the judge is not sure of — nothing
-    # else checks it, so a person must.
-    local _fnd; _fnd="$(jq -r --argjson s "$s" '(.[]? | "The issue requires this and the change does not meet it: " + tostring),
-        ($s[] | "Not sure this is met, so a person must check it: " + tostring)' <<< "$u" 2>/dev/null | stage_findings_json)"
+    # else checks it. #2330: each says what would settle it, never who must.
+    local _fnd; _fnd="$(jq -r --argjson s "$s" '(.[]? | "The issue requires this and the change does not meet it: " + tostring
+            + ". What would settle it: a change that meets this requirement in full."),
+        ($s[] | "Not sure this requirement is met: " + tostring
+            + ". What would settle it: a test that fails when this requirement is not met, or the code or document that shows it is met.")' \
+        <<< "$u" 2>/dev/null | stage_findings_json)"
     if ! jq -n --arg v "$v" --arg d "$d" --arg r "$r" --argjson u "$u" --argjson s "$s" --argjson fnd "${_fnd:-[]}" \
         '{result_contract: 2, verdict: $v, disposition: $d, reason: $r, data: {unmet: $u, unsure: $s, findings: $fnd}}' \
         | atomic_write "$dir/issue-acceptance-result.json"; then
         _ia_emit "issue_acceptance.result.write_failed" "dir=$dir"
     fi
     local _body="- every requirement the issue states is met by the change"
-    [[ "$u" != "[]" || "$s" != "[]" ]] && _body="$(jq -r --argjson s "$s" '(.[] | "- NOT MET: " + .), ($s[] | "- NOT SURE, a person must check: " + .)' <<< "$u" 2>/dev/null || printf -- '- see result')"
+    [[ "$u" != "[]" || "$s" != "[]" ]] && _body="$(jq -r --argjson s "$s" '(.[] | "- NOT MET: " + .), ($s[] | "- NOT SURE: " + . + " — what would settle it: a test that fails when it is not met, or the code or document that shows it is met")' <<< "$u" 2>/dev/null || printf -- '- see result')"
     [[ "$v" == "unreadable" ]] && _body="- the change was not judged against the issue"
     stage_summary_write "$dir/issue-acceptance-summary.md" "issue-acceptance" "$v" "$r" "$_body"
 }
@@ -232,7 +235,7 @@ issue_acceptance_run() {
     local _u_json='[]' _s_json
     [[ "$_v" == "pass" ]] || _u_json="$(_ia_list "$_u_line")"
     # #2304 (ADR-069 §7): a requirement the judge is not sure of is never a
-    # pass — whatever the verdict line says — and a person must check it.
+    # pass — whatever the verdict line says — and is reported as open.
     _s_json="$(_ia_list "$_s_line")"
     if [[ "$_s_json" != "[]" || "$_v" == "unsure" ]]; then
         _v="fail"

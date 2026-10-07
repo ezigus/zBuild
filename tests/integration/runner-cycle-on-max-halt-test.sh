@@ -106,8 +106,9 @@ print_test_section "H5: a failing event bus"
 # `set -e`, as runner.sh runs (this harness otherwise runs main with it off).
 H5="$(_run cycle-halt-minimal 2 max_iterations 'eval "$(declare -f eb_emit_event | sed "1s/eb_emit_event/_zb_real_emit/")"; eb_emit_event() { [[ "$1" == pipeline.end ]] && return 1; _zb_real_emit "$@"; }; set -e')"
 assert_eq "[H5] review is still not dispatched" "0" "$(_dispatched "$H5" review)"
+# #2330: the halt path's last message is now in words; it still ends the path.
 assert_contains "[H5] the halt path runs to its end (its message is printed)" \
-    "$(cat "$H5/runner.log" 2>/dev/null)" "the run stops here"
+    "$(cat "$H5/runner.log" 2>/dev/null)" "no later stage runs"
 
 cleanup_test_env
 print_test_results

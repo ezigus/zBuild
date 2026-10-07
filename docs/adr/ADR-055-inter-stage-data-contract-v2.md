@@ -464,7 +464,7 @@ The engine no longer resolves who owns a finding: `about`, `under_review` and th
 
 issue-acceptance judges every requirement the issue states, including what its tests must catch (for example "putting the old code back turns the test red"). For each one it asks: if the change were broken, would its tests catch it? If they would not, the requirement is unmet. Its prompt used to say a requirement about how the change is verified "is proven by the pipeline itself; never judge it here". The pipeline does not prove those. On #2035 the stage passed PR #2298 although the guard loop the issue asked for was not expanded and a bare parser call left every test green. A SPEC that narrowed a requirement still does not make the narrowed version enough. spec-coverage keeps its exemption: it maps requirements before any code exists.
 
-What issue-acceptance reads for each requirement, and what it does when it is not sure, is ADR-069 §7 (#2304): it gets every requirement's status in plain words, a done one's evidence, and may answer that a person must check.
+What issue-acceptance reads for each requirement, and what it does when it is not sure, is ADR-069 §7 (#2304): it gets every requirement's status in plain words, a done one's evidence, and may answer that it is not sure, which is reported as an open item with what would settle it (#2330).
 
 Enforced by: `tests/unit/issue-acceptance-test.sh` SPEC-9, which builds the prompt with the plugin's own composer.
 

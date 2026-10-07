@@ -72,7 +72,7 @@ jobs:
     # it was SKIPPED. `always()` fires on a skipped dependency too, and this
     # workflow triggers on ANY label added to ANY issue — so every unrelated
     # label change ran this job, stripped the `zbuild-run` trigger, and commented
-    # "pipeline finished with result: `skipped`" on an issue where nothing ran.
+    # that the pipeline had ended `skipped` on an issue where nothing ran.
     # Observed on #1957, #1959 and #1961 (#1966 F4).
     if: always() && needs.pipeline.result != 'skipped'
     env:
@@ -111,25 +111,16 @@ jobs:
             || echo "Label already removed or not present — continuing."
 
       - name: Post run-completion comment
+        # #2330 (ADR-068 §8): the comment says why the run ended and names each
+        # open item with what would settle it, in plain words — never a bare
+        # result word or the engine's codes. One builder, tested on its own.
+        env:
+          OPEN_ITEMS: ${{ needs.pipeline.outputs.open_items }}
+          END_WORDS: ${{ needs.pipeline.outputs.end_words }}
         run: |
-          if [[ "$PIPELINE_RESULT" == "success" ]]; then
-            body="**zbuild pipeline completed successfully.**  Run: ${RUN_URL}"
-          elif [[ "$ABORT_REASON" == "llm_rate_limited" ]]; then
-            # #2111: the run ended on the account's rate limit — nothing to fix;
-            # re-add the label after the reset and ADR-050 resumes from the
-            # state branch.
-            body="**zbuild pipeline aborted: LLM rate-limited** (${ABORT_DETAIL:-reset time not reported}). State was persisted — re-add \`zbuild-run\` after the reset to resume.  Run: ${RUN_URL}"
-          elif [[ -n "$ABORT_REASON" ]]; then
-            body="**zbuild pipeline aborted: \`${ABORT_REASON}\`.**  Run: ${RUN_URL}"
-          elif [[ "$PIPELINE_RESULT" == "cancelled" ]]; then
-            # #2145: a 6-hour GitHub kill is `cancelled`, not a failure — say
-            # what it was and that ADR-050 resumes from the state branch.
-            # #2166: a hand cancel is `cancelled` too; the clock decides the words.
-            source scripts/lib/run-status-comment.sh
-            body="$(rsc_cancel_closing "${STARTED:-}")  Run: ${RUN_URL}"
-          else
-            body="**zbuild pipeline finished with result: \`${PIPELINE_RESULT}\`.**  Run: ${RUN_URL}"
-          fi
+          source scripts/lib/run-open-items.sh
+          source scripts/lib/run-status-comment.sh
+          body="$(run_completion_body "$PIPELINE_RESULT" "$ABORT_REASON" "$ABORT_DETAIL" "$RUN_URL" "${STARTED:-}" "${OPEN_ITEMS:-}" "${END_WORDS:-}")"
           gh issue comment "${ISSUE_NUMBER}" \
             --repo "${{ github.repository }}" \
             --body "$body"

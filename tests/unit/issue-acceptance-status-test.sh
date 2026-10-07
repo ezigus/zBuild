@@ -15,9 +15,10 @@
 #           a short excerpt of the cited file as committed (HEAD), cleaned of
 #           terminal colour codes. No raw [code]/[no-code]/[done] tag reaches it.
 # I2 [code] the judge may say it is not sure about named requirements: the result
-#           is a fail, data.unsure lists them, each is a numbered finding saying a
-#           person must check it, and issue_acceptance.unsure is emitted and
-#           declared in the manifest.
+#           is a fail, data.unsure lists them, each is a numbered finding saying
+#           what is unresolved and what would settle it (never who must check it,
+#           #2330), and issue_acceptance.unsure is emitted and declared in the
+#           manifest.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -102,7 +103,7 @@ for _tag in '[code]' '[no-code]' '[done]'; do
     assert_eq "[I1] no raw $_tag tag reaches the judge" "0" "$(grep -cF "$_tag" <<< "$_p" || true)"
 done
 
-print_test_section "I2: not sure → fail, data.unsure, a finding a person must check, an event"
+print_test_section "I2: not sure → fail, data.unsure, a finding saying what would settle it, an event"
 _setup i2
 _IA_ANSWER=$'VERDICT: unsure\nREASON: cannot tell whether the docs cover the flag\nUNSURE: SPEC-2 the flag is documented'
 : > "$ZBUILD_EVENTS_JSONL"
@@ -110,8 +111,11 @@ _run; _rc=$?
 assert_eq "[I2] rc=0 (the verdict is in the artifact)" "0" "$_rc"
 assert_eq "[I2] verdict=fail" "fail" "$(_res .verdict)"
 assert_eq "[I2] data.unsure lists the requirement" "SPEC-2 the flag is documented" "$(_res '.data.unsure[0]')"
-assert_contains "[I2] a numbered finding says a person must check it" \
-    "$(_res '.data.findings[0].text')" "a person must check"
+assert_contains "[I2] a numbered finding says what would settle it (#2330)" \
+    "$(_res '.data.findings[0].text')" "What would settle it:"
+_f2="$(_res '.data.findings[0].text') $(cat "$_A/issue-acceptance-summary.md" 2>/dev/null)"
+assert_eq "[I2] ...and never says who must check it: no 'a person' or 'human' (#2330)" "0" \
+    "$(grep -ciE 'a person|human' <<< "$_f2" || true)"
 assert_contains "[I2] ...naming the requirement" "$(_res '.data.findings[0].text')" "SPEC-2 the flag is documented"
 assert_contains "[I2] issue_acceptance.unsure is emitted" "$(cat "$ZBUILD_EVENTS_JSONL")" "issue_acceptance.unsure"
 assert_contains "[I2] the manifest declares the event" "$(cat "$PLUGIN_DIR/manifest.yaml")" "- issue_acceptance.unsure"

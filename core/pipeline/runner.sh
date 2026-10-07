@@ -900,6 +900,7 @@ _render_pipeline_end() {
                 "$color" "${BOLD:-}" "$glyph" "${RESET:-}" \
                 "$word" "$detail_status" "$run_id" "$issue" "$dur"
         } >&2
+        _runner_render_open_items "$status" || true
         return 0
     fi
 
@@ -914,6 +915,22 @@ _render_pipeline_end() {
         printf '%b%b%s%b Pipeline %s: %s run_id=%s issue=%s (took %s)\n' \
             "$color" "${BOLD:-}" "$glyph" "${RESET:-}" \
             "$word" "$detail_status" "$run_id" "$issue" "$dur"
+    } >&2
+    _runner_render_open_items "$status" || true
+}
+
+# _runner_render_open_items <status> — #2330 (ADR-068 §8): a run that did not
+# pass ends by saying why in words and naming each open item, with what would
+# settle it. pipeline.end keeps the engine's code; this is what a reader sees.
+_runner_render_open_items() {
+    case "${1:-}" in failed|interrupted|aborted) ;; *) return 0 ;; esac
+    [[ -n "${_runner_state_file:-}" ]] && declare -F open_items_markdown >/dev/null 2>&1 || return 0
+    local sd="${_runner_state_file%/*}" items n
+    items="$(open_items_markdown "$sd")" || items=""
+    n=0; [[ -n "$items" ]] && n="$(grep -c '^[0-9][0-9]*\. ' <<< "$items" || true)"
+    {
+        printf 'The run %s.\n' "$(run_end_words "${_CYCLE_LAST_TERMINATED_REASON:-}" "$n")"
+        [[ -n "$items" ]] && printf '%s\n' "$items"
     } >&2
 }
 
@@ -1183,6 +1200,9 @@ _render_cycle_exit() {
             # the loop hands it back; the outer loop goes round or stops.
             glyph="⚠"; color="${YELLOW:-}"
             text="Cycle ${cycle_id} ended early (${iter}/${max}): no stage in it owns a finding"
+            # #2330: on its last round the loop did not end early — it stopped.
+            [[ "$iter" == "$max" ]] \
+                && text="Cycle ${cycle_id} stopped on its last round (${iter}/${max}): open items no stage could act on"
             ;;
         error|config_invalid)
             glyph="✗"; color="${RED:-}"
@@ -3184,7 +3204,7 @@ main() {
                                 "run_id=$_runner_run_id" "issue=$_runner_issue"
                             _render_pipeline_end "aborted"
                             _runner_ended=true
-                            error "Cycle $_cyc_id aborted rc=$_rc: $(_runner_llm_abort_reason)${_RUNNER_LLM_ABORT_DETAIL:+ — $_RUNNER_LLM_ABORT_DETAIL}"
+                            error "Cycle $_cyc_id: the run $(run_end_words "$(_runner_llm_abort_reason)" 0)${_RUNNER_LLM_ABORT_DETAIL:+ — $_RUNNER_LLM_ABORT_DETAIL}"
                             return 9
                         fi
                         # #1052: rc=10 = scope_too_large; status=aborted (mirrors rc=9).
@@ -3200,7 +3220,7 @@ main() {
                                 "run_id=$_runner_run_id" "issue=$_runner_issue"
                             _render_pipeline_end "aborted"
                             _runner_ended=true
-                            error "Cycle $_cyc_id aborted rc=$_rc: scope_too_large — SPLIT THIS ISSUE"
+                            error "Cycle $_cyc_id: the run $(run_end_words scope_too_large 0)"
                             return 10
                         fi
                         # ADR-027 (Wave 17-B #703): rc=6 cycle_abort halts
@@ -3233,7 +3253,7 @@ main() {
                             "run_id=$_runner_run_id" "issue=$_runner_issue"
                         _render_pipeline_end "failed"
                         _runner_ended=true
-                        error "Cycle $_cyc_id terminated rc=$_rc reason=$_CYCLE_LAST_TERMINATED_REASON"
+                        error "Cycle $_cyc_id: the run $(run_end_words "$_CYCLE_LAST_TERMINATED_REASON" 0)"
                         # #1791: a newer engine may already have fixed this.
                         _runner_report_engine_drift "$_CYCLE_LAST_TERMINATED_REASON" || true
                         # Codex P2 on #616 / Wave 15-F: propagate rc=130 + rc=143
@@ -3289,7 +3309,7 @@ main() {
                                     "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
                                 _render_pipeline_end "failed" || true
                                 _runner_ended=true
-                                error "Cycle $_cyc_id did not converge (reason=$_CYCLE_LAST_TERMINATED_REASON) and is on_max: halt — the run stops here; no later stage runs"
+                                error "Cycle $_cyc_id did not pass: the run $(run_end_words "$_CYCLE_LAST_TERMINATED_REASON" 0); no later stage runs"
                                 return 1
                                 ;;
                         esac
@@ -3579,7 +3599,7 @@ main() {
                 "reason=$_RUNNER_CYCLE_UNCONVERGED_REASON" \
                 "run_id=$_runner_run_id" "issue=$_runner_issue"
             _runner_ended=true
-            error "Pipeline failed — cycle '$_RUNNER_CYCLE_UNCONVERGED_ID' did not converge (reason=$_RUNNER_CYCLE_UNCONVERGED_REASON); run_id=$_runner_run_id"
+            error "Pipeline failed — cycle '$_RUNNER_CYCLE_UNCONVERGED_ID' did not pass: the run $(run_end_words "$_RUNNER_CYCLE_UNCONVERGED_REASON" 0); run_id=$_runner_run_id"
             return 1
         fi
 

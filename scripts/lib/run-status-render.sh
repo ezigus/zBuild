@@ -13,6 +13,8 @@ _RSC_ROOT="${_RSC_ROOT:-$(cd "$_RSC_RENDER_DIR/../.." && pwd)}"
 : "${ZBUILD_STATUS_COMMENT_MAX_BYTES:=60000}"   # GitHub rejects > 65,536; keep headroom
 : "${ZBUILD_STATUS_COMMENT_SUMMARY_CHARS:=200}" # first line of a stage summary
 _RSC_MARKER_PREFIX='<!-- zbuild-run-status run_id='
+# shellcheck source=./run-open-items.sh
+source "$_RSC_ROOT/scripts/lib/run-open-items.sh"   # run_end_words, open_items_* (#2330)
 
 # ─── rsc_byte_len <string> — bytes, not chars (the GitHub limit is bytes) ───
 rsc_byte_len() {
@@ -276,7 +278,7 @@ rsc_render_row() {
 # ─── rsc_render_header <model_json> <state_dir> [status_override] ───────────
 rsc_render_header() {
     local model="$1" state_dir="$2" override="${3:-}"
-    local run_id issue sha branch started status reason detail pr current updated
+    local run_id issue sha branch started status reason detail pr current updated end_reason
     run_id="$(jq -r '.header.run_id // ""' <<< "$model")"
     issue="$(jq -r '.header.issue // ""' <<< "$model")"
     sha="$(jq -r '.header.engine_sha // ""' <<< "$model")"; sha="${sha:0:7}"
@@ -285,6 +287,7 @@ rsc_render_header() {
     status="$(jq -r '.terminal.status // ""' <<< "$model")"
     reason="$(jq -r '.terminal.reason // ""' <<< "$model")"
     detail="$(jq -r '.terminal.detail // ""' <<< "$model")"
+    end_reason="$(jq -r '.terminal.end_reason // ""' <<< "$model")"
     if [[ -z "$status" && -s "$state_dir/pipeline-state.json" ]]; then
         # Events silent on the end → the state file is the next best witness.
         local st; st="$(jq -r '.status // ""' "$state_dir/pipeline-state.json" 2>/dev/null || true)"
@@ -325,11 +328,24 @@ rsc_render_header() {
     [[ -n "${GITHUB_SERVER_URL:-}" && -n "${GITHUB_REPOSITORY:-}" && -n "${GITHUB_RUN_ID:-}" ]] \
         && meta+=" · [run log](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})"
     [[ -n "$pr" ]] && meta+=" · PR ${pr}"
+    # #2330: the reason in words; the events keep the engine's code.
     if [[ -n "$reason" ]]; then
-        meta+=" · ${reason}"
+        meta+=" · $(run_end_words "$reason" 0)"
         [[ -n "$detail" ]] && meta+=" — ${detail}"
     fi
     printf '%s\n' "$meta"
+    # #2330 (ADR-068 §8): once the run has ended without passing, each open
+    # item, with what would settle it.
+    case "$status" in
+        running|complete|success|complete_unconverged) ;;
+        *)
+            local items; items="$(open_items_markdown "$state_dir")"
+            if [[ -n "$items" ]]; then
+                local words; words="$(run_end_words "${end_reason:-$reason}" "$(grep -c '^[0-9][0-9]*\. ' <<< "$items" || true)")"
+                printf '\n**%s:**\n\n%s\n' "${words^}" "$items"
+            fi
+            ;;
+    esac
     # Current stage: the newest open row, only while the run is live.
     if [[ "$status" == "running" ]]; then
         current="$(jq -r '. as $m | [$m.order[] | $m.rows[.] | select(.kind != "reused" and .verdict == null)] | last | if . == null then "" else "\(.seq) \(.stage)" end' <<< "$model")"

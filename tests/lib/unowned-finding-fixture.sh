@@ -91,8 +91,8 @@ _ans() {   # _ans <stage> <answer> <why> — record this stage's answer to "acc 
     mkdir -p "$FA"
     jq -nc --arg a "$2" --arg w "$3" --arg b "$1" '{"acc finding 1": {answer:$a, why:$w, by:$b}}' > "$FA/$1.json"
 }
-# The stub. ACC always fails with one finding; TA/BUILD/DESIGN set each stage's
-# answer to it (absent = no answer).
+# The stub. ACC always fails with one finding (ACC_UNSURE: one it is not sure
+# of); TA/BUILD/DESIGN set each stage's answer to it (absent = no answer).
 # shellcheck disable=SC2329
 cycle_dispatch_stage() {
     local stage="$1" iter="$2"
@@ -101,9 +101,17 @@ cycle_dispatch_stage() {
     case "$stage" in
         acc)
             _CYCLE_DISPATCH_VERDICT="fail"
-            jq -n '{result_contract:2, verdict:"fail", disposition:"complete", reason:"one problem",
-                    data:{findings:[{n:1, text:"config/event-schema.json is not the file that calls the new code"}]}}' \
-                > "$ZBUILD_STATE_DIR/artifacts/acc-result.json" ;;
+            if [[ -n "${ACC_UNSURE:-}" ]]; then
+                # #2330: a check that cannot tell whether a requirement is met.
+                jq -n '{result_contract:2, verdict:"fail", disposition:"complete", reason:"not sure",
+                        data:{unsure:["R-1: the flag is documented"],
+                              findings:[{n:1, text:"Not sure this requirement is met: R-1: the flag is documented. What would settle it: a test that fails when the flag is not documented."}]}}' \
+                    > "$ZBUILD_STATE_DIR/artifacts/acc-result.json"
+            else
+                jq -n '{result_contract:2, verdict:"fail", disposition:"complete", reason:"one problem",
+                        data:{findings:[{n:1, text:"config/event-schema.json is not the file that calls the new code"}]}}' \
+                    > "$ZBUILD_STATE_DIR/artifacts/acc-result.json"
+            fi ;;
         test_author) [[ -n "${TA:-}" ]] && _ans test_author "$TA" "the test checks what the requirement says" ;;
         build)       [[ -n "${BUILD:-}" ]] && _ans build "$BUILD" "the code passes the tests it was given" ;;
         design)      [[ -n "${DESIGN:-}" ]] && _ans design "$DESIGN" "the wiring choice is right as written" ;;
@@ -113,7 +121,9 @@ cycle_dispatch_stage() {
 }
 
 _run() {
-    : > "$LOG"; : > "$ZBUILD_EVENTS_JSONL"; rm -rf "$FA" "$ZBUILD_STATE_DIR/artifacts/unowned-findings.md"
+    : > "$LOG"; : > "$ZBUILD_EVENTS_JSONL"
+    rm -rf "$FA" "$ZBUILD_STATE_DIR/artifacts/unowned-findings.md" "$ZBUILD_STATE_DIR/artifacts/open-items.json" \
+        "$ZBUILD_STATE_DIR/unowned-yield.json"
     local sf="$ZBUILD_STATE_DIR/pipeline-state.json"
     rm -f "$sf" "$sf.bak" "$sf.lock"
     jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$sf"
