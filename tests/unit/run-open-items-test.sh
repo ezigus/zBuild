@@ -59,6 +59,9 @@ _GUARDED=""   # every report text produced below, for O7
 _guard() { _GUARDED+=$'\n'"$1"; }
 
 # ─── a state dir that ended on failing checks ───────────────────────────────
+# An existing state dir with nothing in it. It must exist: with TMPDIR unset
+# (Linux CI) the status renderer makes its temp file inside the state dir.
+mkdir -p "$TEST_TEMP_DIR/empty"
 S1="$TEST_TEMP_DIR/s1"; mkdir -p "$S1/artifacts"
 jq -n '{result_contract:2, verdict:"fail", reason:"not sure one requirement is met",
         data:{unsure:["R-1: the flag is documented"],
@@ -103,6 +106,25 @@ _md2="$(open_items_markdown "$S2")"
 assert_contains "[O2] the other reports list the same item" "$_md2" "config/x.json is not the file that calls the new code"
 assert_eq "[O2] ...and only the items the report names" "1" "$(open_items_count "$S2")"
 
+print_test_section "O2b: a check not sure of one item reports that item, not its others"
+S3="$TEST_TEMP_DIR/s3"; mkdir -p "$S3/artifacts"
+jq -n '{result_contract:2, verdict:"fail",
+        data:{unsure:["R-2: the flag is documented"],
+              findings:[{n:1, text:"The issue requires this and the change does not meet it: R-1: the command exits 2"},
+                        {n:2, text:"Not sure this requirement is met: R-2: the flag is documented. What would settle it: a test."}]}}' \
+    > "$S3/artifacts/judge-result.json"
+_unowned_last_round_report "$S3"; _rc3=$?
+_rep3="$(cat "$S3/artifacts/unowned-findings.md" 2>/dev/null)"
+assert_eq "[O2b] the report is written" "0" "$_rc3"
+assert_contains "[O2b] it names the item the check is not sure of" "$_rep3" "judge finding 2"
+assert_eq "[O2b] ...and not the check's other finding" "0" "$(grep -c 'judge finding 1' <<< "$_rep3" || true)"
+assert_eq "[O2b] ...so one item is open" "1" "$(open_items_count "$S3")"
+S4="$TEST_TEMP_DIR/s4"; mkdir -p "$S4/artifacts"
+jq -n '{result_contract:2, verdict:"Passed", data:{unsure:["R-1: x"], findings:[{n:1, text:"Not sure this requirement is met: R-1: x"}]}}' \
+    > "$S4/artifacts/judge-result.json"
+_unowned_last_round_report "$S4"; _rc4=$?
+assert_eq "[O2b] a passing check is never open, whatever case its verdict is in (same rule as the list)" "1" "$_rc4"
+
 print_test_section "O3: the end reason is words"
 _w1="$(run_end_words unowned_finding 1)"; _guard "$_w1"
 assert_contains "[O3] items no stage could act on" "$_w1" "stopped with 1 open item"
@@ -136,6 +158,9 @@ assert_contains "[O4] a passing run says so" "$_c3" "completed successfully"
 _c4="$(run_completion_body failure llm_rate_limited "resets 12pm (UTC)" "https://x/run/4" "" "" "")"; _guard "$_c4"
 assert_contains "[O4] a rate-limited run says when to resume" "$_c4" "resets 12pm (UTC)"
 _c5="$(run_completion_body failure cycle_abort "" "https://x/run/5" "" "" "")"; _guard "$_c5"
+_c6="$(run_completion_body failure cycle_abort "" "https://x/run/6" "" "$(open_items_markdown "$S1")" "")"; _guard "$_c6"
+assert_contains "[O4] a stop with a reason still counts its open items in the headline" \
+    "$(head -n 1 <<< "$_c6")" "with 3 open items"
 assert_contains "[O4] an aborted run names the reason in words" "$_c5" "$(run_end_words cycle_abort 0)"
 
 print_test_section "O5: the status comment lists each open item once the run ended"
@@ -195,6 +220,8 @@ assert_contains "[O8] ...as a workflow output" "$_pw" 'open_items: ${{ steps.abo
 
 print_test_section "O9: the runner says in words why a loop ended the run"
 _rn="$(grep -E '^[[:space:]]*error "(Cycle|Pipeline failed)' "$REPO_ROOT/core/pipeline/runner.sh" || true)"
+# Not vacuous: the five lines that say a loop ended the run are all found.
+assert_eq "[O9] the runner's five loop-ending lines are found" "5" "$(grep -c . <<< "$_rn" || true)"
 assert_eq "[O9] no such line prints rc=N or the reason code" "" \
     "$(grep -E 'rc=\$_rc|reason=\$_(CYCLE_LAST_TERMINATED|RUNNER_CYCLE_UNCONVERGED)_REASON|: scope_too_large' <<< "$_rn" || true)"
 assert_eq "[O9] each says why through run_end_words" "$(grep -c . <<< "$_rn")" \

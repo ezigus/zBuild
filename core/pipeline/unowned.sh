@@ -165,10 +165,16 @@ _unowned_last_round_report() {
         [[ -s "$f" ]] && unsure+=("$f")
     done
     if [[ ${#unsure[@]} -gt 0 ]]; then
-        refs="$(jq -n -c --argjson refs "$refs" '
+        # Only the findings that name an item the check is not sure of; when
+        # none names one, every finding of that check, so no unsure item is lost.
+        refs="$(jq -n -c --argjson refs "$refs" "$_OPEN_ITEMS_JQ_PASSED"'
             $refs + [ inputs as $r | (input_filename | split("/") | last | sub("-result\\.json$"; "")) as $c
-                      | $r | select(type == "object" and .verdict != "pass" and ((.data.unsure // []) | length) > 0)
-                      | (.data.findings // [])[] | "\($c) finding \(.n)" ] | unique' "${unsure[@]}" 2>/dev/null || printf '%s' "$refs")"
+                      | $r | select(type == "object" and (passed | not) and ((.data.unsure // []) | length) > 0)
+                      | [.data.unsure[] | tostring] as $u
+                      | (.data.findings // []) as $f
+                      | ([ $f[] | select(.text as $t | any($u[]; . as $i | ($t // "") | contains($i))) ]) as $m
+                      | (if ($m | length) > 0 then $m else $f end)[] | "\($c) finding \(.n)" ] | unique' \
+            "${unsure[@]}" 2>/dev/null || printf '%s' "$refs")"
     fi
     [[ -n "$refs" && "$refs" != "[]" ]] || return 1
     local -a ans=(); local m answers='[]'

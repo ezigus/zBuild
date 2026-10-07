@@ -21,6 +21,10 @@
 _ZBUILD_RUN_OPEN_ITEMS_LOADED=1
 
 _OPEN_ITEMS_SETTLE_RE='[[:space:]]*What would settle it:[[:space:]]*'
+# The one rule for a check result that passed — every reader of results uses it.
+# shellcheck disable=SC2034  # read by core/pipeline/unowned.sh
+_OPEN_ITEMS_JQ_PASSED='def passed: (.verdict // "" | ascii_downcase)
+    | IN("pass", "passed", "approve", "approved", "complete", "success", "skip", "skipped", "");'
 
 # open_items_json <state_dir> — [{ref, opener, text, answers}] (answers may be []).
 open_items_json() {
@@ -34,11 +38,10 @@ open_items_json() {
     [[ ${#files[@]} -gt 0 ]] || { printf '[]'; return 0; }
     # A result is a check's when it carries a verdict; it is open when that
     # verdict is not a pass. input_filename names the check: <check>-result.json.
-    jq -n -c '
+    jq -n -c "$_OPEN_ITEMS_JQ_PASSED"'
         [ inputs as $r | (input_filename | split("/") | last | sub("-result\\.json$"; "")) as $c
           | $r | select(type == "object" and (.verdict | type) == "string")
-          | select(.verdict | ascii_downcase | IN("pass", "passed", "approve", "approved", "complete",
-                                                  "success", "skip", "skipped", "") | not)
+          | select(passed | not)
           | if ((.data.findings // []) | length) > 0 then
                 (.data.findings[] | {ref: "\($c) finding \(.n)", opener: $c, text: (.text // ""), answers: []})
             else
@@ -145,7 +148,9 @@ run_completion_body() {
     elif [[ "$reason" == "llm_rate_limited" ]]; then
         body="**zbuild pipeline $(run_end_words "$reason" 0)** (${detail:-the reset time was not reported}). State was persisted — re-add \`zbuild-run\` after the reset to resume."
     elif [[ -n "$reason" ]]; then
-        body="**zbuild pipeline $(run_end_words "$reason" 0).**"
+        local n=0
+        [[ -n "$items" ]] && n="$(grep -c '^[0-9][0-9]*\. ' <<< "$items" || true)"
+        body="**zbuild pipeline $(run_end_words "$reason" "$n").**"
     elif [[ "$result" == "cancelled" ]] && declare -F rsc_cancel_closing >/dev/null 2>&1; then
         body="$(rsc_cancel_closing "$started")"
     elif [[ -n "$words" ]]; then
