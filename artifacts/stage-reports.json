@@ -1,0 +1,9 @@
+{
+  "scope_files": [
+    "plugins/tool/pr-open/lib/advisory-section.sh",
+    "plugins/tool/pr-open/manifest.yaml",
+    "plugins/tool/pr-open/plugin.sh",
+    "plugins/tool/pr-open/tests/pr-open-test.sh"
+  ],
+  "wiring_files": []
+}
