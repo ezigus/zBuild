@@ -54,6 +54,12 @@ _build_read_design_decisions() {
 _build_read_prior_build_summary() {
     local raw; raw="$(_read_prior_output "build-summary.json" 2>/dev/null || true)"
     [[ -z "${raw//[[:space:]]/}" ]] && return 0
+    # #2326 (ADR-050 §8): say so when it is an earlier run's, not this run's.
+    # Only a run with restored work can have one, so no lookup otherwise.
+    if [[ -n "${ZBUILD_RESTORED_ARTIFACTS_DIR:-}" ]] \
+            && prior_output_is_earlier_run "$(_prior_output_path "build-summary.json" 2>/dev/null)"; then
+        printf 'This build summary is %s.\n' "$ZB_EARLIER_RUN_LABEL"
+    fi
     local verdict n_files files
     verdict="$(printf '%s' "$raw" | jq -r '.verdict // "unknown"' 2>/dev/null || echo unknown)"
     n_files="$(printf '%s' "$raw" | jq -r '(.files_changed // []) | length' 2>/dev/null || echo 0)"

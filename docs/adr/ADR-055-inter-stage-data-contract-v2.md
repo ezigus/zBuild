@@ -467,3 +467,9 @@ issue-acceptance judges every requirement the issue states, including what its t
 What issue-acceptance reads for each requirement, and what it does when it is not sure, is ADR-069 §7 (#2304): it gets every requirement's status in plain words, a done one's evidence, and may answer that a person must check.
 
 Enforced by: `tests/unit/issue-acceptance-test.sh` SPEC-9, which builds the prompt with the plugin's own composer.
+
+### Amendment (2026-10-06, #2326) — the index says which inputs are an earlier run's
+
+§1.2 keeps prior-run reuse outside the input model, but since #2095 a declared input with no copy from this run falls back to the copy an earlier run saved. The index now says so: every such path is also listed under `earlier_run`, and the prompt's input block labels it as from an earlier run, for reference only. A stage that judges results (`convergence: gate`, or `aggregates:`) is never handed one. The rule is ADR-050 §8.
+
+Enforced by: `tests/unit/earlier-run-reference-test.sh` E1–E5.

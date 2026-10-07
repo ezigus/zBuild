@@ -189,23 +189,30 @@ _design_gate_failed() {
 # ADR-050 (#1581): Tier 1 = intra-cycle (iter≥2 prior_design.txt); Tier 2 = restored
 # artifact from a prior run. No state-dir fallback: ./state may hold the CURRENT
 # run's design.md, not a prior, and returning it outside a cycle would be wrong.
-_design_read_prior_design() {
+# _design_prior_design_path prints the path; the reader cats it. #2326: the
+# path is what says whether the design is an earlier run's.
+_design_prior_design_path() {
     local iter="${ZBUILD_CYCLE_ITER:-}"
     local fb_dir="${ZBUILD_CYCLE_FEEDBACK_DIR:-}"
 
     # Tier 1: intra-cycle self-feedback (iter >= 2)
     if [[ -n "$iter" && -n "$fb_dir" && "$iter" =~ ^[0-9]+$ ]] && (( iter >= 2 )); then
         local cycle_f="$fb_dir/design.txt"
-        [[ -s "$cycle_f" ]] && { cat "$cycle_f" 2>/dev/null; return 0; }
+        [[ -s "$cycle_f" ]] && { printf '%s' "$cycle_f"; return 0; }
     fi
 
     # Tier 2: cross-run restored artifact
     local restored_dir="${ZBUILD_RESTORED_ARTIFACTS_DIR:-}"
     if [[ -n "$restored_dir" ]]; then
         local restored_f="$restored_dir/design.md"
-        [[ -s "$restored_f" ]] && { cat "$restored_f" 2>/dev/null; return 0; }
+        [[ -s "$restored_f" ]] && { printf '%s' "$restored_f"; return 0; }
     fi
 
+    return 0
+}
+_design_read_prior_design() {
+    local f; f="$(_design_prior_design_path)"
+    [[ -n "$f" ]] && cat "$f" 2>/dev/null
     return 0
 }
 
@@ -495,21 +502,20 @@ DESIGN_PROMPT
     # that invariant with the splice moved: the engine's STAGE SUMMARIES block
     # carries design-gate's feedback now, so design only decides how to WORD the
     # refinement instruction — from the recorded verdict, not from a file read.
-    local _prior_design_body
+    local _prior_design_body=""
     # ADR-050 (#1826): check ZBUILD_STAGE_INPUTS for the 'design' input first —
     # input-resolve.sh already consolidates Tier-1 and Tier-2 when writing the
     # index, so we don't need to run the tier-1/tier-2 logic separately. Fall
-    # back to _design_read_prior_design when the index is absent or has no entry
+    # back to _design_prior_design_path when the index is absent or has no entry
     # so existing test fixtures that set ZBUILD_CYCLE_FEEDBACK_DIR directly work.
     local _si_design_path=""
     if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -s "${ZBUILD_STAGE_INPUTS:-}" ]]; then
         _si_design_path="$(jq -r '.inputs.design // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
     fi
-    if [[ -n "$_si_design_path" && -s "$_si_design_path" ]]; then
-        _prior_design_body="$(cat "$_si_design_path" 2>/dev/null || true)"
-    else
-        _prior_design_body="$(_design_read_prior_design 2>/dev/null || true)"
+    if [[ -z "$_si_design_path" || ! -s "$_si_design_path" ]]; then
+        _si_design_path="$(_design_prior_design_path 2>/dev/null || true)"
     fi
+    [[ -n "$_si_design_path" ]] && _prior_design_body="$(cat "$_si_design_path" 2>/dev/null || true)"
     if [[ -n "$_prior_design_body" ]]; then
         # #2172: a design carried over from a PRIOR RUN is a HYPOTHESIS about
         # a repository that has moved since it was written. The engine says
@@ -523,6 +529,9 @@ DESIGN_PROMPT
             printf '\n### PRIOR DESIGN (written earlier in this run — refine it against the feedback below; the tree has not moved)\n' >> "$prompt_input_file"
         else
             printf '\n### PRIOR DESIGN (a previous attempt on this issue — a hypothesis, not a fact)\n' >> "$prompt_input_file"
+            # #2326 (ADR-050 §8): say so when it is an earlier run's, not this run's.
+            prior_output_is_earlier_run "$_si_design_path" && \
+                printf 'This design is %s.\n' "$ZB_EARLIER_RUN_LABEL" >> "$prompt_input_file"
             printf 'The repository has moved since this design was written. Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW; anything that no longer holds is dropped or re-derived, and the design says what changed and why. Keep what still holds; do not start over.\n' >> "$prompt_input_file"
             _design_prior_drift_block >> "$prompt_input_file"
         fi
