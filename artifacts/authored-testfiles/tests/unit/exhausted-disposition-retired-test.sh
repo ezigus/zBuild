@@ -15,6 +15,10 @@
 #   5. docs/adr/ADR-054-stage-contract.md:163 rc=10 table row (annotated, not removed)
 #   6. docs/adr/ADR-001-plugin-contract.md:163 retirement passage (annotated, not removed)
 #
+# Two R-4 acceptance-grep assertions follow the per-site checks:
+#   (a) `disposition: exhausted` pattern — no un-annotated occurrence in codebase
+#   (b) `→ exhausted` mapping pattern — no un-annotated occurrence in codebase
+#
 #   SPEC-3[no-code] (#2222): Every non-historical occurrence of `exhausted` as a
 #     disposition label is removed or annotated with a dated backward-pointer note
 #     so the R-4 acceptance grep finds it only in explicitly historical text.
@@ -65,9 +69,10 @@ assert_eq "[#2222/SPEC-3] review-lens/plugin.sh degrade-path comment does not na
 # ── Site 3: review-report.md wiki prose ──────────────────────────────────────
 # The wiki line listed `exhausted` as the disposition value emitted when a lens
 # call returned non-zero.  After the fix it must name `out_of_turns`.
-# Fails when `exhausted` still appears adjacent to a lens-call description.
-_wiki_exhausted="$(grep -c 'exhausted.*lens call' "$REVIEW_REPORT" 2>/dev/null || true)"
-assert_eq "[#2222/SPEC-3] review-report.md does not list exhausted as the disposition value for a failed lens call" \
+# Checks the whole file: any occurrence of the word is a prescriptive reference
+# in this disposition-vocabulary document.
+_wiki_exhausted="$(grep -c 'exhausted' "$REVIEW_REPORT" 2>/dev/null || true)"
+assert_eq "[#2222/SPEC-3] review-report.md carries no occurrence of exhausted (disposition word fully replaced with out_of_turns)" \
     "0" "$_wiki_exhausted"
 
 # ── Site 4: keepers-manifest.yaml issue body ─────────────────────────────────
@@ -96,6 +101,58 @@ assert_gt "[#2222/SPEC-3] ADR-054 rc=10 scope_too_large table row carries a back
 _adr001_note="$(grep -c 'exhausted.*#2187\|#2187.*exhausted' "$ADR001" 2>/dev/null || true)"
 assert_gt "[#2222/SPEC-3] ADR-001 exhausted passage carries a backward-pointer note naming #2187 (marks the word as retired vocabulary)" \
     "$_adr001_note" "0"
+
+# ── R-4 acceptance grep (a): disposition:exhausted — codebase-wide ───────────
+# Searches core/, plugins/, scripts/, docs/, .github/, and config/ for any
+# occurrence of `disposition: exhausted` (the assignment form) that is NOT on a
+# line already carrying a backward-pointer annotation (#2187, retired, superseded,
+# or out_of_turns).  Such a line is a non-historical prescriptive use that must
+# not survive.  Compound tokens (_exhausted / exhausted_) are excluded because
+# they are reason/detail strings, not disposition labels.
+#
+# [#2222/SPEC-3]
+_r4_assign=0
+while IFS= read -r _hit; do
+    _line="${_hit#*:*:}"
+    grep -qE '_exhausted|exhausted_' <<< "$_line" && continue
+    grep -qE '#2187|retired|superseded|out_of_turns' <<< "$_line" && continue
+    _r4_assign=$((_r4_assign + 1))
+    printf 'UNACCEPTABLE (disposition:exhausted): %s\n' "$_hit" >&2
+done < <(grep -rn 'disposition[[:space:]]*:[[:space:]]*exhausted' \
+    "$REPO_ROOT/core" \
+    "$REPO_ROOT/plugins" \
+    "$REPO_ROOT/scripts" \
+    "$REPO_ROOT/docs" \
+    "$REPO_ROOT/.github" \
+    "$REPO_ROOT/config" \
+    2>/dev/null || true)
+assert_eq "[#2222/SPEC-3] R-4 acceptance grep (a): no un-annotated disposition:exhausted assignment survives in the codebase" \
+    "0" "$_r4_assign"
+
+# ── R-4 acceptance grep (b): → exhausted mapping — codebase-wide ─────────────
+# Searches the same directories for any `→ exhausted` disposition-mapping pattern
+# (arrow notation used in comments and ADR tables) that is NOT on a line carrying
+# a backward-pointer annotation.  An unannotated arrow mapping is a prescriptive
+# statement that `exhausted` is a live disposition word.
+#
+# [#2222/SPEC-3]
+_r4_arrow=0
+while IFS= read -r _hit; do
+    _line="${_hit#*:*:}"
+    grep -qE '_exhausted|exhausted_' <<< "$_line" && continue
+    grep -qE '#2187|retired|superseded|out_of_turns' <<< "$_line" && continue
+    _r4_arrow=$((_r4_arrow + 1))
+    printf 'UNACCEPTABLE (→ exhausted): %s\n' "$_hit" >&2
+done < <(grep -rn '→[[:space:]]*exhausted' \
+    "$REPO_ROOT/core" \
+    "$REPO_ROOT/plugins" \
+    "$REPO_ROOT/scripts" \
+    "$REPO_ROOT/docs" \
+    "$REPO_ROOT/.github" \
+    "$REPO_ROOT/config" \
+    2>/dev/null || true)
+assert_eq "[#2222/SPEC-3] R-4 acceptance grep (b): no un-annotated → exhausted disposition mapping survives in the codebase" \
+    "0" "$_r4_arrow"
 
 cleanup_test_env
 print_test_results
