@@ -1686,6 +1686,9 @@ _cycle_iter_dispatch() {
                     [[ $_had_e -eq 1 ]] && set -e
                     return 8
                 fi
+                # #2330: the loop runs again; what it hands back is recorded afresh,
+                # so a finding acted on since is never reported at the end.
+                _unowned_clear_yield "$state_dir"
             fi
             set +e
             # Wave 19-B (#718): set ZBUILD_SEQ_PREFIX to this member's label so
@@ -2791,6 +2794,12 @@ _cycle_orchestrator_run_body() {
             local _exh_tests_reported=0 _exh_tests_failing=0
             _cycle_tests_reported "$verdicts_blob" && _exh_tests_reported=1
             _cycle_tests_failing "$verdicts_blob" && _exh_tests_failing=1
+            # #2330 (ADR-068 §8): an `unowned: halt` loop with no round left still
+            # reports the items no stage could act on — the check before the
+            # yielding loop runs only when another round is coming.
+            local _exh_unowned=0
+            [[ "${_CYCLE_UNOWNED:-}" == "halt" ]] \
+                && _unowned_last_round_report "$state_dir" "${_CYCLE_STAGES[@]}" && _exh_unowned=1
             # #1261: reason-aware exhaustion (timeout-exhaustion exception to the
             # ADR-019 on_max=continue fall-through). When the TERMINATING iteration
             # was interrupted by a router timeout (a member surfaced the repo-neutral
@@ -2809,7 +2818,11 @@ _cycle_orchestrator_run_body() {
             # id) — build_test_cycle ALWAYS runs `test`, so it has a signal and is
             # unaffected (scope: design-only for now, #1261); a future verifier-less
             # cycle inherits the same fail-fast.
-            if [[ "$_iter_did_not_finish" -eq 1 && "$_exh_tests_reported" -eq 0 ]]; then
+            if [[ "$_exh_unowned" -eq 1 ]]; then
+                _CYCLE_LAST_TERMINATED_REASON="unowned_finding"
+                _cycle_emit "cycle.unowned_finding" "iter=$iter" "action=halt" 2>/dev/null || true
+                overall_status="unowned_finding"; term_rc=8
+            elif [[ "$_iter_did_not_finish" -eq 1 && "$_exh_tests_reported" -eq 0 ]]; then
                 eb_emit_event "cycle.timeout_exhausted" \
                     "cycle_id=$cycle_id" "iter=$iter" \
                     "reason=design_timeout_exhausted" 2>/dev/null || true

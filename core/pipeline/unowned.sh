@@ -19,6 +19,8 @@
 _ZBUILD_UNOWNED_LOADED=1
 
 _UNOWNED_YIELD_FILE="unowned-yield.json"
+# shellcheck source=../../scripts/lib/run-open-items.sh
+source "${_CYCLE_ORCH_ROOT:-${BASH_SOURCE[0]%/*}/../..}/scripts/lib/run-open-items.sh"
 
 # _cycle_stage_answers_findings <stage> — rc 0 when the stage answers findings.
 # Every stage that calls a model declares a save-as-you-go output (ADR-063 §5,
@@ -111,16 +113,8 @@ _unowned_halt_check() {
     local sd="$1"; shift
     local yf="$sd/$_UNOWNED_YIELD_FILE"
     [[ -s "$yf" ]] || return 1
-    local -a leaves=() ans=(); local m l
-    for m in "$@"; do
-        local sv="_TPL_CYCLE_STAGES_${m//-/_}"
-        if declare -F _tpl_flow_leaves >/dev/null 2>&1 && [[ -n "${!sv:-}" ]]; then
-            while IFS= read -r l; do [[ -n "$l" ]] && leaves+=("$l"); done < <(_tpl_flow_leaves "$m")
-        else
-            leaves+=("$m")
-        fi
-    done
-    while IFS= read -r m; do [[ -n "$m" ]] && ans+=("$m"); done < <(_unowned_answerers "${leaves[@]}")
+    local -a ans=(); local m
+    while IFS= read -r m; do [[ -n "$m" ]] && ans+=("$m"); done < <(_unowned_leaf_answerers "$@")
     [[ ${#ans[@]} -gt 0 ]] || return 1
     local answers refs still
     answers="$(_unowned_answers_of "$sd" "${ans[@]}")"
@@ -133,8 +127,61 @@ _unowned_halt_check() {
     still="$(_unowned_refs "$answers" "${ans[@]}")"
     still="$(jq -c --argjson refs "$refs" '[ .[] | select(. as $r | $refs | index($r)) ]' <<< "${still:-[]}" 2>/dev/null || printf '[]')"
     [[ -n "$still" && "$still" != "[]" ]] || return 1
-    _unowned_report "$sd" "$still" "$(jq -c --argjson a "$answers" '.answers + $a' "$yf" 2>/dev/null || printf '[]')"
+    _unowned_report "$sd" "$still" "$(jq -c --argjson a "$answers" '.answers + $a' "$yf" 2>/dev/null || printf '[]')" halt
     return 0
+}
+
+# _unowned_leaf_answerers <member...> — the stages that answer findings among
+# these members, a nested loop expanded to its stages; one per line.
+_unowned_leaf_answerers() {
+    local -a leaves=(); local m l
+    for m in "$@"; do
+        local sv="_TPL_CYCLE_STAGES_${m//-/_}"
+        if declare -F _tpl_flow_leaves >/dev/null 2>&1 && [[ -n "${!sv:-}" ]]; then
+            while IFS= read -r l; do [[ -n "$l" ]] && leaves+=("$l"); done < <(_tpl_flow_leaves "$m")
+        else
+            leaves+=("$m")
+        fi
+    done
+    [[ ${#leaves[@]} -gt 0 ]] || return 0
+    _unowned_answerers "${leaves[@]}"
+}
+
+# _unowned_last_round_report <state_dir> <member...> — #2330: the outer loop
+# (`unowned: halt`) has no round left, so the check above, which runs only when
+# another round is coming, never will. Items no stage could act on are reported
+# now: the findings a loop handed back this round, and the findings of every
+# check that is not sure an item is met (`data.unsure`). <member...> are the
+# outer loop's members; their answers go in the report. rc 0 when it was written.
+_unowned_last_round_report() {
+    local sd="$1"; shift
+    local yf="$sd/$_UNOWNED_YIELD_FILE" refs='[]' prior='[]' f
+    if [[ -s "$yf" ]]; then
+        refs="$(jq -c '.refs // []' "$yf" 2>/dev/null || printf '[]')"
+        prior="$(jq -c '.answers // []' "$yf" 2>/dev/null || printf '[]')"
+    fi
+    local -a unsure=()
+    for f in "$sd"/artifacts/*-result.json; do
+        [[ -s "$f" ]] && unsure+=("$f")
+    done
+    if [[ ${#unsure[@]} -gt 0 ]]; then
+        refs="$(jq -n -c --argjson refs "$refs" '
+            $refs + [ inputs as $r | (input_filename | split("/") | last | sub("-result\\.json$"; "")) as $c
+                      | $r | select(type == "object" and .verdict != "pass" and ((.data.unsure // []) | length) > 0)
+                      | (.data.findings // [])[] | "\($c) finding \(.n)" ] | unique' "${unsure[@]}" 2>/dev/null || printf '%s' "$refs")"
+    fi
+    [[ -n "$refs" && "$refs" != "[]" ]] || return 1
+    local -a ans=(); local m answers='[]'
+    while IFS= read -r m; do [[ -n "$m" ]] && ans+=("$m"); done < <(_unowned_leaf_answerers "$@")
+    [[ ${#ans[@]} -gt 0 ]] && answers="$(_unowned_answers_of "$sd" "${ans[@]}")"
+    _unowned_report "$sd" "$refs" "$(jq -c --argjson a "${answers:-[]}" '. + $a' <<< "$prior" 2>/dev/null || printf '%s' "$prior")" last_round
+    return 0
+}
+
+# _unowned_clear_yield <state_dir> — the loop that handed findings back is about
+# to run again: what it hands back now is recorded afresh.
+_unowned_clear_yield() {
+    rm -f "$1/$_UNOWNED_YIELD_FILE" 2>/dev/null || true
 }
 
 # _unowned_yielder <state_dir> — the loop that yielded a finding this round, or "".
@@ -153,20 +200,32 @@ _unowned_finding_text() {
     jq -r --argjson n "$n" '(.data.findings // [])[]? | select(.n == $n) | .text' "$res" 2>/dev/null || true
 }
 
-# _unowned_report <state_dir> <refs_json> <answers_json> — the report a human
-# reads when the run stops for a finding nobody owns.
+# _unowned_report <state_dir> <refs_json> <answers_json> <why> — the report read
+# when the run stops on items no stage could act on (#2330: in plain words, each
+# item with what is unresolved and what would settle it). <why> is `halt` (every
+# stage that could change something answered "nothing to do") or `last_round`
+# (no round was left). The items also go to artifacts/open-items.json, which
+# every other report of the run's end lists (scripts/lib/run-open-items.sh).
 _unowned_report() {
-    local sd="$1" refs="$2" answers="$3" ref op n
+    local sd="$1" refs="$2" answers="$3" why="${4:-halt}" ref op n items='[]'
     mkdir -p "$sd/artifacts" 2>/dev/null || true
+    while IFS= read -r ref; do
+        [[ -n "$ref" ]] || continue
+        op="${ref%% finding *}"; n="${ref##* finding }"
+        items="$(jq -c --arg r "$ref" --arg o "$op" --arg t "$(_unowned_finding_text "$sd" "$op" "$n")" \
+            --argjson a "${answers:-[]}" \
+            '. + [{ref: $r, opener: $o, text: $t,
+                   answers: ([ $a[]? | select(.ref == $r) ] | unique_by(.by) | map({by, answer, why}))}]' \
+            <<< "$items" 2>/dev/null || printf '%s' "$items")"
+    done < <(jq -r '.[]' <<< "$refs" 2>/dev/null)
+    printf '%s\n' "$items" > "$sd/artifacts/open-items.json" 2>/dev/null || true
     {
-        printf '# Findings no stage owns\n\n'
-        printf 'Every stage that could change something answered "nothing to do" to these, so the run stopped instead of going round again.\n'
-        while IFS= read -r ref; do
-            [[ -n "$ref" ]] || continue
-            op="${ref%% finding *}"; n="${ref##* finding }"
-            printf '\n## %s (opened by %s)\n\n%s\n\n' "$ref" "$op" "$(_unowned_finding_text "$sd" "$op" "$n")"
-            jq -r --arg r "$ref" '[ .[] | select(.ref == $r) ] | unique_by(.by) | .[] | "- \(.by): \(.answer) — \(.why)"' \
-                <<< "$answers" 2>/dev/null || true
-        done < <(jq -r '.[]' <<< "$refs" 2>/dev/null)
+        printf '# Open items the run could not settle\n\n'
+        if [[ "$why" == "last_round" ]]; then
+            printf 'The run used its last round with these items still open, and no stage that ran could act on them.\n\n'
+        else
+            printf 'Every stage that could change something answered that it had nothing to do for these items, so the run stopped instead of going round again.\n\n'
+        fi
+        open_items_render "$items" 1
     } > "$sd/artifacts/unowned-findings.md" 2>/dev/null || true
 }

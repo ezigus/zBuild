@@ -141,7 +141,10 @@ ev 14:12:00 pipeline.aborted 9 deploy run_id=r-2131 issue=90000042 reason=llm_ra
 ev 14:12:00 pipeline.end "" "" status=aborted run_id=r-2131 issue=90000042
 body="$(rsc_render_body "$EV" "$STATE")"
 assert_contains "[SPEC-5] header status from pipeline.end" "$body" '**aborted**'
-assert_contains "[SPEC-5] header carries the abort reason and detail" "$body" 'llm_rate_limited — LLM rate-limited — resets 12pm (UTC)'
+# #2330 (ADR-068 §8): the reason in words, never the engine's code.
+assert_contains "[SPEC-5] header carries the abort reason in words, and the detail" "$body" \
+    "stopped: the model's usage limit was reached — LLM rate-limited — resets 12pm (UTC)"
+assert_eq "[SPEC-5] ...not the reason code" "0" "$(grep -c 'llm_rate_limited' <<< "$body" || true)"
 assert_eq "[SPEC-5] no current stage once terminal" "0" "$(grep -c -F 'current: **' <<< "$body")"
 assert_contains "[SPEC-5] the row killed mid-way keeps its start and inputs" "$body" \
     '**10:11 AM ET → running** · **9 deploy** · inputs: plan, design'

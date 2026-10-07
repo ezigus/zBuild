@@ -1,7 +1,7 @@
 # ADR-068 — Nested loops and finding answers: the engine never decides who owns a finding
 
 **Status:** Accepted (2026-10-04)
-**Issue:** #2271
+**Issue:** #2271; §8 amended by #2330 (2026-10-06)
 **Supersedes:** ADR-045 (bounded typed backward-route), ADR-061 (fault-class vocabulary)
 **Amends:** ADR-021, ADR-027, ADR-040, ADR-046, ADR-047, ADR-054 §4, ADR-055 (finding-owner amendment)
 **Related:** ADR-063 §5 (every model-calling stage declares a save-as-you-go output), ADR-066, ADR-067
@@ -32,6 +32,8 @@ Each misroute was fixed with another rule (#1777, #2157, #1847, #1846). In #2032
    - **`unowned: halt`** on the outer loop: just before the yielding loop comes round again, every stage that answers findings and ran in between (the design loop's stages, impact, …) is checked. If all of them answered `nothing to do` to that finding, nobody owns it. The run stops and writes `artifacts/unowned-findings.md`, listing each finding, the stage that opened it, and every answer with its why.
    - An early hand-back is recorded as such: the loop's state reads `unowned_finding`, and its banner says it ended early.
    - One `done` from anyone keeps a finding where it is. A member that should have answered and did not counts as not disclaiming. Each round counts only answers given in it: a loop clears its stages' answers when a round starts.
+   - **The last round still reports (#2330).** The check above runs only when another round is coming. When an `unowned: halt` loop has no round left, the run stops with the same report if a loop handed a finding back in that round, or a check is not sure an item is met (`data.unsure`). The loop's state reads `unowned_finding`, and the report lists every answer given. A loop that runs again has its earlier hand-back cleared first, so a finding acted on since is never reported.
+   - **Every report names each open item in plain words (#2330).** Every place a run reports how it ended or what is still open — the report above, the issue completion comment, the live status comment, the end-of-run banner and the runner's last lines, and each finding written for the next round — names each item: what is unresolved and what would settle it (the concrete check, evidence or change that would close it). A finding may say what would settle it itself, after `What would settle it:`; otherwise the report says that its check no longer reporting it settles it. A run that ends on ordinary failing checks lists their findings the same way. The words never contain the engine's codes or numbers (`max_iterations`, `unowned`, yield, halt, `disposition`, raw verdict codes, rc numbers) and never say who must act ("a person must check"): the reader may be a person, an agent or a later run, so they say what must be checked. Events keep their machine codes.
 9. **No fault classes.** No stage writes a `fault`, the gate aggregator rolls none up, and rc 11 is retired from the engine's vocabulary (ADR-054 §4).
 
 ## Consequences
@@ -43,7 +45,8 @@ Each misroute was fixed with another rule (#1777, #2157, #1847, #1846). In #2032
 
 ## Implementation Notes
 
-- `core/pipeline/unowned.sh`: answer counting (`_unowned_yield_check`, `_unowned_halt_check`, the report).
+- `core/pipeline/unowned.sh`: answer counting (`_unowned_yield_check`, `_unowned_halt_check`, `_unowned_last_round_report`, the report).
+- `scripts/lib/run-open-items.sh` (#2330): the open items every report lists (`open_items_markdown`), the end reason in words (`run_end_words`), and the completion comment (`run_completion_body`). The status comment (`run-status-render.sh`), the end-of-run banner (`runner.sh`) and the two workflows read them.
 - `scripts/lib/stage-answers.sh`: the answer request the router appends, and the parser the router records replies with (`answers_record` → `<state>/finding-answers/<unit>.json`).
 - `scripts/lib/stage-summary.sh` `stage_findings_json`: every check writes `data.findings` through it.
 - `core/pipeline/input-resolve.sh`: lists each finding with its opener and gives every reader one framing.
@@ -59,4 +62,6 @@ Each misroute was fixed with another rule (#1777, #2157, #1847, #1846). In #2032
 - §6, §7 → `tests/unit/finding-answers-test.sh` A1–A10 (A7: the request comes after the findings the funnel adds, #2294; A8: the accepted line shapes, #2322; A9: not reproduced is recorded as `nothing to do`, #2322; A10: a colon after the answer word is accepted for every word, #2332)
 - §6 (one vocabulary in build) → `tests/unit/build-prompt-summary-marker-test.sh` M7 (build's prompt asks for `nothing to do — not reproduced: <path>` and offers no `NOT_REPRODUCED` form); `tests/unit/build-scope-request-evidence-test.sh` E7 (build still reads the path it ran from that answer)
 - §8 → `tests/integration/unowned-finding-test.sh` U1–U4, U8; `tests/integration/unowned-finding-stale-test.sh` U5–U7, U9; `tests/unit/runner-render-cycle-divider-test.sh` (the hand-back banner)
+- §8 (the last round still reports, #2330) → `tests/integration/unowned-finding-last-round-test.sh` L1 (a hand-back on the last round), L2 (an item a check is not sure of), L3 (ordinary failing checks are still listed); `tests/integration/unowned-finding-stale-test.sh` U5 (the end-of-run report lists every answer)
+- §8 (plain words in every report, #2330) → `tests/unit/run-open-items-test.sh` O1 (failing checks listed, each with what would settle it), O2 (the report is the shared list), O3 (the end reason in words), O4 (the completion comment), O5 (the status comment), O6 (the end-of-run banner), O7 (guard: no internal term, code, number or "a person"/"human"), O8 (the workflows build the completion comment from these words), O9 (the runner's last lines), O10 (the last-round banner); `tests/integration/unowned-finding-last-round-test.sh` L4 (guard on the report); `tests/unit/issue-acceptance-status-test.sh` I2 (the finding for the next round says what would settle it, never who must check it)
 - §9 → `tests/unit/no-fault-routing-test.sh` R2–R4; `tests/unit/dispatch-rc-test.sh` SPEC-5 (rc 11 retired)

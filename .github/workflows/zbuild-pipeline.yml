@@ -48,6 +48,14 @@ on:
       abort_detail:
         description: "pipeline-state.json .rate_limit.message when the run aborted on a rate limit; empty otherwise"
         value: ${{ jobs.pipeline.outputs.abort_detail }}
+      # #2330 (ADR-068 §8): what is still open when the run ends, in plain
+      # words, and why it ended — so the completion comment names each item.
+      open_items:
+        description: "each open item and what would settle it (markdown list); empty when none"
+        value: ${{ jobs.pipeline.outputs.open_items }}
+      end_words:
+        description: "why the run ended, in words"
+        value: ${{ jobs.pipeline.outputs.end_words }}
 
 
 permissions:
@@ -62,6 +70,8 @@ jobs:
     outputs:
       abort_reason: ${{ steps.abort.outputs.reason }}
       abort_detail: ${{ steps.abort.outputs.detail }}
+      open_items: ${{ steps.abort.outputs.open_items }}
+      end_words: ${{ steps.abort.outputs.end_words }}
 
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -349,6 +359,18 @@ jobs:
           if [[ -n "$reason" ]]; then
             echo "::notice title=zbuild aborted::${reason}${detail:+ — $detail}"
           fi
+          # #2330: each open item and why the run ended, in plain words, cleaned
+          # by the scope redactor before it leaves the runner.
+          items=""; words=""
+          if [[ -n "${ZBUILD_STATE_DIR:-}" && -d "$ZBUILD_STATE_DIR" ]]; then
+            source "${ZBUILD_HOME:-$HOME/.local/share/zbuild}/scripts/lib/run-open-items.sh" 2>/dev/null || true
+            if declare -F open_items_outbound >/dev/null 2>&1; then
+              items="$(open_items_outbound "$ZBUILD_STATE_DIR")"
+              words="$(run_end_words "$(run_end_reason "$ZBUILD_STATE_DIR")" "$(open_items_count "$ZBUILD_STATE_DIR")")"
+            fi
+          fi
+          delim="ZBUILD_OPEN_ITEMS_$RANDOM$RANDOM"
+          { printf 'open_items<<%s\n%s\n%s\n' "$delim" "$items" "$delim"; printf 'end_words=%s\n' "${words//$'\n'/ }"; } >> "$GITHUB_OUTPUT"
 
       - name: Surface persist result
         # #1921/#1966: persist-result.json records WHY a snapshot was skipped,

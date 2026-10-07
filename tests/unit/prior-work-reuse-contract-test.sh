@@ -195,12 +195,14 @@ _c6_step="$(awk '
 _c6_step="${_c6_step//\$\{\{ github.repository \}\}/o/r}"
 # review #2336: the extraction depends on the step's indentation. If the YAML is
 # ever reformatted, fail here, not on text that happens to match.
-assert_contains "[C6] fixture: the completion step was read whole" "$_c6_step" 'ABORT_REASON" == "llm_rate_limited"'
+# #2330: the step builds its body with run_completion_body, from the checkout.
+assert_contains "[C6] fixture: the completion step was read whole" "$_c6_step" 'gh issue comment'
 _c6_body="$TEST_TEMP_DIR/c6-body"
 (
     gh() { while [[ $# -gt 0 ]]; do [[ "$1" == "--body" ]] && printf '%s' "$2" > "$_c6_body"; shift; done; }
     export PIPELINE_RESULT=failure ABORT_REASON=llm_rate_limited ABORT_DETAIL="resets 3pm (UTC)" \
         ISSUE_NUMBER=7 RUN_URL=https://example.invalid/run
+    cd "$REPO_ROOT" || exit 1
     eval "$_c6_step"
 ) >/dev/null 2>&1 || true
 _c6_text="$(cat "$_c6_body" 2>/dev/null)"

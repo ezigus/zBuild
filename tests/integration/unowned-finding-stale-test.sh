@@ -12,12 +12,14 @@
 #
 # U5 [change] design disclaims it but a later outer-loop stage before the build
 #             loop (impact) answers `done` → the run carries on: one `done`
-#             from anyone keeps a finding (review #2291)
+#             from anyone keeps a finding (review #2291); the report written
+#             when the last round ends lists impact's answer (#2330)
 # U6 [change] an early hand-back is recorded as such in the loop's state, not
 #             as rounds exhausted
 # U7 [change] an answer left over from an earlier run or round never counts:
-#             a stage that answers nothing this round does not disclaim
-#             (review #2291 round 2)
+#             a stage that answers nothing this round does not disclaim — the
+#             build loop runs again (review #2291 round 2; #2330: the last round
+#             writes its own report, so the stop is read from the dispatches)
 # U9 [change] the same for a map member's per-unit answer file
 #             (<stage>.<element>.json) — review #2291 round 3
 set -uo pipefail
@@ -36,8 +38,10 @@ source "$REPO_ROOT/tests/lib/unowned-finding-fixture.sh"
 
 print_test_section "U5: a later outer-loop stage does the work"
 TA="nothing to do" BUILD="nothing to do" DESIGN="nothing to do" IMPACT="done" _run
-assert_eq "[U5] no report — impact did work on it" "absent" \
-    "$( [[ -s "$ZBUILD_STATE_DIR/artifacts/unowned-findings.md" ]] && echo present || echo absent )"
+# #2330: the build loop hands the finding back again on the last round, so the
+# report at the end lists it — with impact's `done` among the answers.
+assert_contains "[U5] the end-of-run report shows impact's answer" \
+    "$(cat "$ZBUILD_STATE_DIR/artifacts/unowned-findings.md" 2>/dev/null)" "impact: done"
 assert_eq "[U5] the build loop runs again, from round 1" "2" "$(_count test_author 1)"
 
 print_test_section "U6: the early hand-back is recorded as such"
@@ -49,7 +53,9 @@ print_test_section "U7: a leftover answer does not count"
 # _run clears the answers directory, then this case leaves design's answer from
 # an earlier run in place; design answers nothing this time.
 _run_with_stale() {
-    : > "$LOG"; : > "$ZBUILD_EVENTS_JSONL"; rm -rf "$FA" "$ZBUILD_STATE_DIR/artifacts/unowned-findings.md"
+    : > "$LOG"; : > "$ZBUILD_EVENTS_JSONL"
+    rm -rf "$FA" "$ZBUILD_STATE_DIR/artifacts/unowned-findings.md" "$ZBUILD_STATE_DIR/artifacts/open-items.json" \
+        "$ZBUILD_STATE_DIR/unowned-yield.json"
     _ans design "nothing to do" "left over from an earlier run"
     local sf="$ZBUILD_STATE_DIR/pipeline-state.json"
     rm -f "$sf" "$sf.bak" "$sf.lock"
@@ -59,12 +65,15 @@ _run_with_stale() {
     cycle_orchestrator_run outer_loop "$ZBUILD_STATE_DIR" "$sf" >/dev/null 2>&1
 }
 TA="nothing to do" BUILD="nothing to do" DESIGN="" IMPACT="nothing to do" _run_with_stale
-assert_eq "[U7] no report — design said nothing this time" "absent" \
-    "$( [[ -s "$ZBUILD_STATE_DIR/artifacts/unowned-findings.md" ]] && echo present || echo absent )"
+# #2330: the report written on the last round is not this stop; the build loop
+# running again in round 2 is what shows the leftover answer did not count.
+assert_eq "[U7] not stopped — design said nothing this time: the build loop runs again" "2" "$(_count test_author 1)"
 
 print_test_section "U9: a leftover per-unit answer does not count"
 _run_with_stale_unit() {
-    : > "$LOG"; : > "$ZBUILD_EVENTS_JSONL"; rm -rf "$FA" "$ZBUILD_STATE_DIR/artifacts/unowned-findings.md"
+    : > "$LOG"; : > "$ZBUILD_EVENTS_JSONL"
+    rm -rf "$FA" "$ZBUILD_STATE_DIR/artifacts/unowned-findings.md" "$ZBUILD_STATE_DIR/artifacts/open-items.json" \
+        "$ZBUILD_STATE_DIR/unowned-yield.json"
     mkdir -p "$FA"
     jq -nc '{"acc finding 1": {answer:"nothing to do", why:"left over", by:"design.unit"}}' > "$FA/design.unit.json"
     local sf="$ZBUILD_STATE_DIR/pipeline-state.json"
@@ -75,8 +84,7 @@ _run_with_stale_unit() {
     cycle_orchestrator_run outer_loop "$ZBUILD_STATE_DIR" "$sf" >/dev/null 2>&1
 }
 TA="nothing to do" BUILD="nothing to do" DESIGN="" IMPACT="nothing to do" _run_with_stale_unit
-assert_eq "[U9] no report — the per-unit answer was left over" "absent" \
-    "$( [[ -s "$ZBUILD_STATE_DIR/artifacts/unowned-findings.md" ]] && echo present || echo absent )"
+assert_eq "[U9] not stopped — the per-unit answer was left over: the build loop runs again" "2" "$(_count test_author 1)"
 
 cleanup_test_env
 print_test_results
