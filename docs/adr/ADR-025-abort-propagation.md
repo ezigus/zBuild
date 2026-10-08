@@ -55,6 +55,7 @@ dispatcher — runner, cycle orchestrator, future strategy plugins —
 participates in both layers.
 
 ### Layer 1 — rc=130 propagation chokepoint helper
+**(superseded 2026-10-08 by the #1850 amendment below — the abort is a recorded word; every helper returns 0 or 1)**
 
 A single framework-owned helper, `_zbuild_propagate_abort`, lives in
 `scripts/lib/abort-propagation.sh`. Signature:
@@ -92,6 +93,7 @@ A second helper, `_zbuild_check_abort`, also lives in
 _zbuild_check_abort
   returns 130 if "${ZBUILD_STATE_DIR}/.abort.signal" exists, else 0
 ```
+**(superseded 2026-10-08 by the #1850 amendment below — the abort is a recorded word; every helper returns 0 or 1)**
 
 ## Dispatch site contract
 
@@ -103,7 +105,7 @@ Every dispatcher MUST:
    (post-flight, rc-driven).
 
 Both helpers return 130 on abort; the dispatcher propagates that rc
-upward via `|| return $?` or equivalent. Future orchestrators inherit
+upward via `|| return $?` or equivalent. **(superseded 2026-10-08 by the #1850 amendment below — the abort is a recorded word; every helper returns 0 or 1)** Future orchestrators inherit
 correct behavior by convention — the contract is the same two helper
 calls at the same two points in every loop.
 
@@ -142,6 +144,7 @@ not replace them. This matches the ADR-024 amendment's additive-trap
 discipline for the test harness.
 
 ## SIGTERM extension
+**(superseded 2026-10-08 by the #1850 amendment below — the abort is a recorded word; every helper returns 0 or 1)**
 
 ADR-025 anticipates rc=143 (128 + SIGTERM) carrying the same semantics
 as rc=130. The `_zbuild_propagate_abort` helper returns the abort rc it
@@ -354,6 +357,28 @@ ADR-025 ships in **Proposed** status. The status flips from Proposed to
 **Accepted** when Wave 15-B (#684) merges — the same pattern used by
 ADR-015 (flipped on #438) and ADR-024 (flipped on #673). No code, no
 test, no event-schema changes in this PR. Only the ADR text.
+
+## Amendment (2026-10-08, #1850) — the abort is a word; no rc carries it
+
+ADR-054 §4 makes exit codes binary everywhere, the engine's own paths included. This ADR's two layers carried the abort *as* an rc (130, then 143, and later 6, 9 and 10 joined), and every reader mapped those numbers its own way — `cycle_orchestrator_run` collapsed a nested `cycle_abort` into `config_invalid` (#1860). The layers stay; what they carry changes.
+
+- **An abort is recorded once, as a word:** `sigint`, `sigterm`, `cycle_abort`, `llm_unavailable`, `llm_rate_limited` or `scope_too_large`. It is held in the process (`_ZB_ABORT_REASON`) and written into the sentinel `${ZBUILD_STATE_DIR}/.abort.signal`, which still crosses subshells and env scrubs (ADR-024). The first recorded abort wins. An empty sentinel reads as `sigint`.
+- **The helpers return 0 or 1.** `_zbuild_abort <word>` records and returns 1; `_zbuild_abort_reason` reads the word back (from the sentinel when this process has none); `_zbuild_check_abort` is 1 when an abort is recorded; `_zbuild_propagate_abort <rc>` is 1 only when the child failed *and* an abort is recorded. `_zbuild_arm_abort_sentinel [word]` records (default `sigint`); disarming clears both channels.
+- **Every signal handler records the word:** the runner's (`_runner_signal_trap`), the cycle's (`_cycle_on_signal`) and the parallel group's (`_parallel_on_signal`). An `abort_when` match records `cycle_abort`; an unavailable model records `llm_unavailable` / `llm_rate_limited`.
+- **The runner ends on the word**, in one place (`_runner_end_on_abort`): `sigint` / `sigterm` / `cycle_abort` → status `interrupted`; `llm_unavailable` / `llm_rate_limited` / `scope_too_large` → status `aborted`. `pipeline.aborted` carries the word as its reason. The process exits 1 — the signal is in that reason, not in 130 or 143.
+
+The dispatch-site contract is unchanged in shape: pre-flight `_zbuild_check_abort || return 1`, post-flight `_zbuild_propagate_abort $? || return 1`.
+
+## Enforced by
+
+- Decision, both layers (#1850: the abort is recorded once as a word, in-process and in the sentinel; the first wins; every helper returns 0 or 1; no state dir → in-process only) → `tests/unit/abort-propagation-test.sh` A1–A9
+- Dispatch site contract — the cycle orchestrator (pre-flight before each member, post-flight after a leaf; the signal handler records the word; a leaf abort ends the loop `aborted` with its reason) → `tests/unit/core-pipeline-cycle-orchestrator-run-test.sh` T9, T14
+- Dispatch site contract — the parallel group (a signal kills the in-flight members, records `sigint`, and the group returns 1) → `tests/integration/parallel-orchestrator-test.sh` T4
+- #1850 (the runner ends on the word: status and `pipeline.aborted` reason per word; `main` returns 1) → `tests/unit/runner-cycle-rc-action-mapping-test.sh`
+- No engine path returns or reads an abort rc (130, 143, 6, 9, 10) → `tests/unit/dispatch-rc-guard-test.sh` SPEC-1, SPEC-16
+- Cleanup contract (the EXIT trap clears the sentinel; `pipeline.aborted reason=sigint` on Ctrl-C) → `tests/integration/full-pipeline-sigint-test.sh`
+- SIGTERM extension (`reason=sigterm`) → `tests/integration/sigterm-aborts-pipeline-test.sh`
+- Resume clears a stale sentinel before the first pre-flight → `tests/integration/resume-after-sigint-test.sh`
 
 ## References
 

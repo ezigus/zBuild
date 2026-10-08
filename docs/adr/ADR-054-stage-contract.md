@@ -174,6 +174,8 @@ The destination is never new. Every one of these already had a declared channel 
 
 #### 4b. Coexistence: v1 keeps its rc, v2 is narrowed
 
+**(superseded 2026-10-08 by the #1850 amendment below — v1 is refused at load; every stage is narrowed; the inventory is zero)**
+
 **The narrowing is gated on `result_contract`, not applied to every plugin at once.**
 
 A v1 plugin's exit code is still its *only* channel. `plan` reports `scope_too_large` as rc=10 and has no result field in which to say it; `design`, `validate` and `monitor` all `return 2` for a missing `state_file` per ADR-001 §Runtime. Narrowing every plugin today would delete the meaning of all 25 in a single step, and the engine would keep running past conditions that currently stop it — an oversized scope would no longer abort.
@@ -387,7 +389,7 @@ The distinction that matters: `rc=1` routing and `init`/`finalize` are deleted b
 |---|----------|--------------|
 | 1 | Two hooks; `init`/`finalize` deleted | ADR-056 / #1828 — landed |
 | 2 | `run(stage_id, state_file, resolved_inputs)` | #1826 |
-| 4 | rc ∈ {0,1}; classify an `rc=1` that left no result | #1823 — landed; legacy mapping removed by #1850 |
+| 4 | rc ∈ {0,1}; classify an `rc=1` that left no result | #1823 — landed; legacy mapping removed and the engine's own paths narrowed by #1850 — landed |
 | 5 | One result file, `result_contract` version key | #1821 — landed; negotiation #1824 |
 | 6 | Disposition vocabulary + engine response table | #1822; verdict migration #1832; `valid_verdicts` enforcement #1708 |
 | 7 | `cleanup(scope)`; teardown stage; `clean.yaml` | #1829, after single-owner traps #1759 |
@@ -442,3 +444,20 @@ rc says whether a stage *ran*; the verdict says how it *went*. A cycle already a
 - pass- and warn-class verdicts (`pass`, `complete`, `degraded`, …) complete as before.
 
 Verification: `tests/integration/leaf-verdict-halts-test.sh` (SPEC-1–4, both loops), `tests/unit/template-blocking-reset-test.sh` SPEC-5/6, `tests/unit/run-open-items-test.sh` O3 (the end in words).
+
+### Amendment (2026-10-08, #1850) — §4/§5: one contract, and rc is binary everywhere
+
+§4b's end state, delivered. Versioned coexistence is over, and the engine's own paths hold the rule §4 states for stages.
+
+**The result contract (§4b, §5).**
+- `result_contract: 2` is the only version the engine accepts (`_ZBUILD_CONTRACT_MIN=2`, the single declaration in `core/contract/version.sh`). A stage plugin that declares 1, or none, is refused at load with a message naming the plugin and the accepted range. A plugin with no primary output (a persona, a backend) is not a stage and is not asked.
+- The v1 reader, the `<stage>-verdict.json` sidecar as a verdict source, and the legacy rc mapping (`dispatch_rc_legacy_reason`) are deleted, not bypassed.
+- Every lenient no-result default is a structural failure: no manifest, no primary declared, a non-JSON primary, a JSON primary with no `.verdict`, and an absent result (`contract_violation:*`). A leaf that exits 0 having written nothing ends the run.
+
+**rc is binary on the engine's own paths (§4, §4a).** Every signal §4a lists now travels on its declared channel and nothing returns or reads the number:
+- A loop (`cycle_orchestrator_run`) returns 0 when it converged, else 1, and says how it ended in words — `_CYCLE_LAST_OUTCOME` (`converged`, `unconverged`, `interrupted`, `failed`, `aborted`) and `_CYCLE_LAST_TERMINATED_REASON`. The runner acts on the outcome. A nested `cycle_abort` reaches the operator as `cycle_abort`, never as `config_invalid` (#1860).
+- An abort — Ctrl-C, a kill, an `abort_when` match, an unavailable or rate-limited model, an oversized scope — is a word recorded once on ADR-025's channel. The run ends on that word: `interrupted` or `aborted`, with `pipeline.aborted reason=<word>`. The runner process exits 1.
+- A parallel group returns 0/1. A dispatch strategy returns 0/1 and names why on `_ZB_STRATEGY_OUTCOME`. An orchestration backend's `orch_collect` returns 0/1 and names mixed results `partial` on `_ORCH_COLLECT_OUTCOME` (it was rc 2).
+- Usage errors and the startup preflight refusal return 1 (they were 2).
+
+Verification: `tests/unit/v1-retired-test.sh` R1–R7 and `tests/unit/dispatched-stage-plugins-v2-test.sh` G1/G2 (the contract); `tests/integration/leaf-verdict-halts-test.sh` SPEC-5 (a leaf that writes nothing ends the run); `tests/unit/dispatch-rc-guard-test.sh` SPEC-1/SPEC-16 (every guarded engine file at zero — returns and reads); `tests/unit/core-pipeline-cycle-orchestrator-run-test.sh` and `tests/unit/runner-cycle-rc-action-mapping-test.sh` (outcome words and what the runner does with each, `cycle_abort` distinct from `config_invalid`); `tests/unit/abort-propagation-test.sh` (the abort word); `tests/unit/map-strategy-test.sh` (strategy outcomes); `tests/integration/core-orch-contract-test.sh`, `plugins/tool/orch-sequential/tests/orch-sequential-test.sh`, `plugins/tool/orch-mock/tests/orch-mock-test.sh` (`partial`).

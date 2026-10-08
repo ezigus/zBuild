@@ -39,7 +39,7 @@ _zbuild_abort_reason() {
     local _sentinel _word=""
     _sentinel="$(_zbuild_abort_sentinel_path)"
     [[ -n "$_sentinel" && -e "$_sentinel" ]] || return 0
-    IFS= read -r _word < "$_sentinel" 2>/dev/null || true
+    IFS= read -r _word 2>/dev/null < "$_sentinel" || true
     printf '%s' "${_word:-sigint}"
 }
 

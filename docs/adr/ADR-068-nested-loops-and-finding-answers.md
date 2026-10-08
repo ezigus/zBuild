@@ -50,9 +50,9 @@ Each misroute was fixed with another rule (#1777, #2157, #1847, #1846). In #2032
 - `scripts/lib/stage-answers.sh`: the answer request the router appends, and the parser the router records replies with (`answers_record` → `<state>/finding-answers/<unit>.json`).
 - `scripts/lib/stage-summary.sh` `stage_findings_json`: every check writes `data.findings` through it.
 - `core/pipeline/input-resolve.sh`: lists each finding with its opener and gives every reader one framing.
-- `core/pipeline/cycle-orchestrator.sh`: the end-of-round rule for nested loops, `unowned: yield|halt`, and rc 5/9 passing straight up from an inner loop.
+- `core/pipeline/cycle-orchestrator.sh`: the end-of-round rule for nested loops, `unowned: yield|halt`, and rc 5/9 passing straight up from an inner loop. **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=interrupted` (`blocked`) / `aborted` (abort word `llm_unavailable` / `llm_rate_limited`))**
 - `core/pipeline/template.sh`: the `unowned:` key (`UO` row), the `route_back` refusal, the flow-ordered stage list, and the loop validator over each loop's full expansion.
-- An inner loop that is blocked (rc 5) or whose model call is unavailable or rate-limited (rc 9) stops the run rather than going round; going round would only repeat it.
+- An inner loop that is blocked (rc 5) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=interrupted`)** or whose model call is unavailable or rate-limited (rc 9) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=aborted`, abort word `llm_unavailable` / `llm_rate_limited`)** stops the run rather than going round; going round would only repeat it.
 
 ## Enforced by
 
