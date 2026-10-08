@@ -3,7 +3,7 @@
 #
 # Verifies that the file-backed consecutive-failure counter persists across
 # sequential invocations within a shared pipeline run state dir, that the
-# threshold-based abort (rc=9) fires at the right count, and that the
+# threshold-based abort (rc=1 + the word llm_unavailable, #1850) fires at the right count, and that the
 # terminal message carries the run_id and count for operator diagnosis.
 #
 # Integration concern: the counter is a FILE under ZBUILD_STATE_DIR — not a
@@ -39,13 +39,17 @@ export ZBUILD_RUN_ID="itest-fail-fast-$$"
 # ─── I1 [SPEC-2]: counter accumulates across sequential calls → abort ─────────
 # Two separate _zbuild_record_cli_fail calls (simulating two different plugin
 # invocations sharing the same state dir) must reach the threshold and trigger
-# rc=9. This is the core CHANGE behavior introduced by #1024.
+# an abort (rc=1, word llm_unavailable). This is the core CHANGE behavior introduced by #1024.
 _zbuild_reset_cli_fail
 _zbuild_record_cli_fail   # simulates review-stage failure
 _zbuild_record_cli_fail   # simulates test_assessment-stage failure
 
 _llm_check_cli_fail_abort; _i1_rc=$?
-assert_eq "[SPEC-2] counter accumulates across sequential records: two → rc=9" "9" "$_i1_rc"
+# #1850 (ADR-054 §4, ADR-025): rc 1, and the abort is the recorded word (was rc 9).
+assert_eq "[SPEC-2] counter accumulates across sequential records: two → rc=1" "1" "$_i1_rc"
+assert_eq "[SPEC-2] the abort is recorded as llm_unavailable" "llm_unavailable" \
+    "$(cat "$ZBUILD_STATE_DIR/.abort.signal" 2>/dev/null)"
+_zbuild_disarm_abort_sentinel
 
 # ─── I2 [SPEC-7]: single failure below threshold → no abort (guard) ──────────
 # The abort must NOT fire after just one failure when threshold=2.
@@ -62,6 +66,7 @@ _zbuild_reset_cli_fail
 _zbuild_record_cli_fail
 _zbuild_record_cli_fail
 _i3_msg="$(_llm_check_cli_fail_abort 2>&1 || true)"
+_zbuild_disarm_abort_sentinel
 assert_contains "[SPEC-5] abort message contains ZBUILD_RUN_ID" "$_i3_msg" "$ZBUILD_RUN_ID"
 assert_contains "[SPEC-5] abort message contains failure count (2)" "$_i3_msg" "2"
 
@@ -79,7 +84,10 @@ _zbuild_reset_cli_fail
 export ZBUILD_LLM_FAIL_THRESHOLD=1
 _zbuild_record_cli_fail   # count=1 ≥ threshold=1 → abort immediately
 _llm_check_cli_fail_abort; _i5_rc=$?
-assert_eq "I5: threshold=1 → single failure triggers abort (rc=9)" "9" "$_i5_rc"
+assert_eq "I5: threshold=1 → single failure triggers abort (rc=1)" "1" "$_i5_rc"
+assert_eq "I5: the abort is recorded as llm_unavailable" "llm_unavailable" \
+    "$(cat "$ZBUILD_STATE_DIR/.abort.signal" 2>/dev/null)"
+_zbuild_disarm_abort_sentinel
 export ZBUILD_LLM_FAIL_THRESHOLD=2
 
 # Restore so guard check below uses threshold=2.
