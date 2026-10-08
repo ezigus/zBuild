@@ -49,6 +49,8 @@ print_test_header "dispatch-rc guard — the legacy rc inventory is a ratchet (#
 # The repo default `grep` may be ugrep; use the system one for stable -cE.
 SYSGREP=/usr/bin/grep
 
+# #1850 added the strategies' shared helpers, stage-scratch, disposition, the
+# contract validator and the orch backends' collect, all now 0.
 # The engine files ADR-054 §4 names. Scoped deliberately: scripts/lib/worktree.sh,
 # scripts/lib/git-remote.sh, core/output/stage-io.sh and friends have their own
 # unrelated private rc vocabularies that collide numerically but are not the
@@ -76,6 +78,13 @@ core/pipeline/strategies/sequential.sh|0
 core/pipeline/strategies/composite.sh|0
 core/plugin-registry/lifecycle.sh|0
 scripts/lib/abort-propagation.sh|0
+core/pipeline/strategies/common.sh|0
+core/pipeline/stage-scratch.sh|0
+core/pipeline/disposition.sh|0
+core/pipeline/contract-validator.sh|0
+core/orch/local_engine.sh|0
+plugins/tool/orch-mock/plugin.sh|0
+plugins/tool/orch-sequential/plugin.sh|0
 "
 
 _LEGACY_RE='(return|exit)[[:space:]]+(2|3|4|5|6|7|8|9|10|11|124|130|137|143)([[:space:]]|;|$)'

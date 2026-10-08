@@ -102,23 +102,23 @@ _run_fx_validator() {
     set -e
 }
 
-# FAIL-A: cycle whose exit_when targets a convergence:advisory member → rc=2.
+# FAIL-A: cycle whose exit_when targets a convergence:advisory member → rc=1 (#1850: was 2).
 _reset_tpl_state
 _TPL_CYCLES=(c1)
 export _TPL_CYCLE_UNTIL_STAGE_c1="l_adv"
 export _TPL_CYCLE_STAGES_c1="g_gate,l_adv"
 _run_fx_validator "$(printf 'g_gate\nl_adv\n')"
-assert_eq "FAIL-A: cycle exit_when on advisory → preflight fails (rc=2)" "2" "$FX_RC"
+assert_eq "FAIL-A: cycle exit_when on advisory → preflight fails (rc=1)" "1" "$FX_RC"
 assert_contains "FAIL-A: message names the cycle + advisory verdict" "$FX_OUT" "convergence:advisory but a cycle requires a convergence:gate"
 unset _TPL_CYCLE_UNTIL_STAGE_c1 _TPL_CYCLE_STAGES_c1
 
-# FAIL-B: parallel aggregate:advisory group with NO aggregator stage → rc=2.
+# FAIL-B: parallel aggregate:advisory group with NO aggregator stage → rc=1.
 _reset_tpl_state
 _TPL_PARALLEL_GROUPS=(p1)
 export _TPL_PARALLEL_AGGREGATE_p1="advisory"
 export _TPL_PARALLEL_FLOW_p1="l_adv"
 _run_fx_validator "$(printf 'l_adv\n')"
-assert_eq "FAIL-B: advisory group with no aggregator → preflight fails (rc=2)" "2" "$FX_RC"
+assert_eq "FAIL-B: advisory group with no aggregator → preflight fails (rc=1)" "1" "$FX_RC"
 assert_contains "FAIL-B: message names the group + ADR-040" "$FX_OUT" "no explicit convergence:advisory aggregator"
 unset _TPL_PARALLEL_AGGREGATE_p1 _TPL_PARALLEL_FLOW_p1
 

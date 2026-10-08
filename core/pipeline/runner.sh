@@ -2963,7 +2963,10 @@ main() {
             # engine DECIDED to stop, and on which word, instead of reconstructing it
             # from an rc. It is also what gives `disposition_halts` a caller on the
             # dispatch path, which is the gap #1887 exists to close.
+            # A word off the list also "halts" (it fails closed, #1850) but is
+            # reported as a contract violation, not announced as a decision here.
             if [[ -n "$_CYCLE_DISPATCH_DISPOSITION" ]] \
+               && disposition_is_valid "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null \
                && disposition_halts "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null; then
                 eb_emit_event "cycle.member.disposition.halt" \
                     "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" "member=$_cd_stage" \

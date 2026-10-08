@@ -47,14 +47,14 @@ assert_eq "[SPEC-1] _runner_validate_startup_preflight is defined in runner.sh" 
     assert_eq "[SPEC-2] warn mode: rc=0 even with violations" "0" "$_pf_rc"
 }
 
-# ─── SPEC-3: enforce mode — violations present → rc=2 ────────────────────────
+# ─── SPEC-3: enforce mode — violations present → rc=1 (#1850: was 2) ─────────
 {
     set +e
     ZBUILD_CONTRACT_VALIDATOR=enforce \
         _pf_out_enforce="$(_runner_validate_startup_preflight "__SPEC3_SYNTHETIC__" 2>&1)"
     _pf_rc_enforce=$?
     set -e
-    assert_eq "[SPEC-3] enforce mode: rc=2 with violations" "2" "$_pf_rc_enforce"
+    assert_eq "[SPEC-3] enforce mode: rc=1 with violations" "1" "$_pf_rc_enforce"
 }
 
 # ─── SPEC-4: no violations → rc=0 in both modes ──────────────────────────────

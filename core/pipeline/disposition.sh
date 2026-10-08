@@ -116,10 +116,10 @@ disposition_response() {
 # ─── disposition_halts <disposition> ────────────────────────────────────────
 # rc 0 when the engine must stop the run. Derived from the response table rather
 # than restating it, so the two can never disagree.
-# rc 2 (not 1) for a non-member: "I cannot answer" is not "it does not halt", and
-# a caller must have already treated the unknown word as a structural failure.
+# A non-member HALTS (#1850, ADR-054 §4 — it was a third rc, 2): an unknown word
+# is a structural failure, so the one safe answer is to stop.
 disposition_halts() {
-    local r; r="$(disposition_response "${1-}")" || return 2
+    local r; r="$(disposition_response "${1-}")" || return 0
     case "$r" in
         halt_*) return 0 ;;
         *)      return 1 ;;
@@ -131,9 +131,10 @@ disposition_halts() {
 # DISPOSITION, not of the stage — this is the inversion ADR-054 §6 describes.
 # Derived from the response table, which is what makes "nothing both halts and
 # retries" structurally true rather than a rule someone has to remember.
-# rc 2 for a non-member, on the same terms as disposition_halts.
+# A non-member is not retryable: it halts (see disposition_halts), and nothing
+# both halts and retries.
 disposition_retryable() {
-    local r; r="$(disposition_response "${1-}")" || return 2
+    local r; r="$(disposition_response "${1-}")" || return 1
     case "$r" in
         retry|retry_after_wait) return 0 ;;
         *)                      return 1 ;;

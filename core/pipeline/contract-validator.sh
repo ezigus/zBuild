@@ -20,7 +20,7 @@
 # Wave 12-D so the validator is now safe to fail-closed by default. In
 # `warn` mode (explicit opt-out), violations are reported on stderr and a
 # `pipeline.preflight.fail` event is emitted, but the pipeline is allowed
-# to proceed; in `enforce` mode (default) the function returns rc=2 and
+# to proceed; in `enforce` mode (default) the function returns rc=1 (#1850: was 2) and
 # the runner halts before any stage starts.
 #
 # Output-uniqueness rule (ADR-020 amendment §D, Wave 12-A): each output
@@ -206,7 +206,7 @@ _contract_validate_pipeline() {
             eb_emit_event "pipeline.preflight.config_invalid" \
                 "reason=unknown_validator_mode" "value=$mode" \
                 "accepted=enforce|warn|off" 2>/dev/null || true
-            return 2
+            return 1
             ;;
     esac
 
@@ -803,7 +803,8 @@ _contract_validate_pipeline() {
         return 0
     fi
 
-    # enforce: write preflight_failed status and return 2
+    # enforce: write preflight_failed status and return 1 (#1850: was 2 — the
+    # status and the pipeline.preflight.* events say why)
     if [[ -n "$state_file" ]]; then
         local sdir; sdir="$(dirname "$state_file")"
         mkdir -p "$sdir" 2>/dev/null || true
@@ -816,5 +817,5 @@ _contract_validate_pipeline() {
                 2>/dev/null | atomic_write "$state_file" 2>/dev/null || true
         fi
     fi
-    return 2
+    return 1
 }

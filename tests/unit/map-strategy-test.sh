@@ -244,7 +244,8 @@ unset _MAP_DIM_lenses5
 # ─── SPEC-6: element/dimension identity is validated → no shell injection ──────
 # #1295 Copilot: map_element/map_dimension are baked as single-quoted literals
 # into the generated work-unit script. A value with ', whitespace, or a newline
-# must fail closed (rc=2), never produce a work unit that breaks out of quotes.
+# must fail closed (rc=1 since #1850, ADR-054 §4 — it was 2), never produce a
+# work unit that breaks out of quotes.
 print_test_section "SPEC-6: map_element/map_dimension validated fail-closed (no injection)"
 
 # A legal element/dimension still produces a work unit (baseline).
@@ -272,8 +273,8 @@ set +e
 _wu_bad="$(_strategy_make_work_unit "$MAP_PLUGIN_DIR" "review" "$STATE_FILE" "generic" "$_inject" "lenses" 2>/dev/null)"
 _bad_rc=$?
 set -e
-if [[ "$_bad_rc" -eq 2 && -z "$_wu_bad" ]]; then
-    assert_pass "SPEC-6: element with ' fails closed (rc=2), no work unit emitted"
+if [[ "$_bad_rc" -eq 1 && -z "$_wu_bad" ]]; then
+    assert_pass "SPEC-6: element with ' fails closed (rc=1), no work unit emitted"
 else
     assert_fail "SPEC-6: element with ' must fail closed" "rc=$_bad_rc path=$_wu_bad"
 fi
@@ -288,23 +289,23 @@ set +e
 _strategy_make_work_unit "$MAP_PLUGIN_DIR" "review" "$STATE_FILE" "generic" $'a\nb' "lenses" >/dev/null 2>&1
 _nl_rc=$?
 set -e
-assert_exit_code "SPEC-6: element with newline fails closed (rc=2)" "2" "$_nl_rc"
+assert_exit_code "SPEC-6: element with newline fails closed (rc=1)" "1" "$_nl_rc"
 
 # Illegal dimension: '-' is not a shell-array-safe token → fail closed.
 set +e
 _strategy_make_work_unit "$MAP_PLUGIN_DIR" "review" "$STATE_FILE" "generic" "security" "bad-dim" >/dev/null 2>&1
 _dim_rc=$?
 set -e
-assert_exit_code "SPEC-6: dimension with '-' fails closed (rc=2)" "2" "$_dim_rc"
+assert_exit_code "SPEC-6: dimension with '-' fails closed (rc=1)" "1" "$_dim_rc"
 
 # ─── SPEC-7: map_element set without map_dimension → fail closed (minor #1312) ─
-print_test_section "SPEC-7: map_element without map_dimension fails closed (rc=2)"
+print_test_section "SPEC-7: map_element without map_dimension fails closed (rc=1)"
 
 set +e
 _strategy_make_work_unit "$MAP_PLUGIN_DIR" "review" "$STATE_FILE" "generic" "security" "" >/dev/null 2>&1
 _no_dim_rc=$?
 set -e
-assert_exit_code "SPEC-7: map_element set + empty map_dimension fails closed (rc=2)" "2" "$_no_dim_rc"
+assert_exit_code "SPEC-7: map_element set + empty map_dimension fails closed (rc=1)" "1" "$_no_dim_rc"
 
 # ─── SPEC-8: max_parallel cap is honored ─────────────────────────────────────
 # #1312: _strategy_run_map must enforce the concurrency cap via batched dispatch.

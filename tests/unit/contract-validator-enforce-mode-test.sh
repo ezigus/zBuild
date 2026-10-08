@@ -4,7 +4,9 @@
 #
 # A manifest with a required input whose source: stage:X has no declared
 # producer must:
-#   - return rc=2 in default (no env override) mode  [enforce is default]
+#   - return rc=1 in default (no env override) mode  [enforce is default]
+#     (#1850, ADR-054 §4: was rc=2; the refusal is named by the preflight_failed
+#     status and the pipeline.preflight.* events, not by the number)
 #   - return rc=0 when ZBUILD_CONTRACT_VALIDATOR=warn is set  [opt-out works]
 set -euo pipefail
 
@@ -48,11 +50,11 @@ source "$REPO_ROOT/core/pipeline/contract-validator.sh"
 STATE_FILE="$TEST_TEMP_DIR/state/pipeline-state.json"
 mkdir -p "$(dirname "$STATE_FILE")"
 
-# TC-1: Default mode (env unset) is now enforce → rc=2 on violation
+# TC-1: Default mode (env unset) is now enforce → rc=1 on violation
 unset ZBUILD_CONTRACT_VALIDATOR
 rc=0
 err_out="$(_contract_validate_pipeline "consumer" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
-assert_eq "TC-1: default (unset) mode is enforce — rc=2 on missing producer" "2" "$rc"
+assert_eq "TC-1: default (unset) mode is enforce — rc=1 on missing producer" "1" "$rc"
 assert_contains "TC-1: structured error emitted" "$err_out" "Pipeline cannot start"
 
 # TC-2: state stub is written in default (enforce) mode
@@ -87,11 +89,11 @@ else
     assert_pass "TC-3: warn mode did NOT write preflight_failed stub (status='${status_val:-<no file>}')"
 fi
 
-# TC-4: Explicit ZBUILD_CONTRACT_VALIDATOR=enforce still rc=2 (back-compat)
+# TC-4: Explicit ZBUILD_CONTRACT_VALIDATOR=enforce still refuses (rc=1)
 rc=0
 ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "consumer" \
     "$PLUGINS_ROOT" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
-assert_eq "TC-4: explicit enforce returns rc=2" "2" "$rc"
+assert_eq "TC-4: explicit enforce returns rc=1" "1" "$rc"
 
 # ═══ #1888: an unrecognised mode must FAIL CLOSED, not silently become warn ══
 # The `*)` arm used to set mode=warn under a comment reading "degrade to warn
@@ -104,7 +106,7 @@ assert_eq "TC-4: explicit enforce returns rc=2" "2" "$rc"
 rc=0
 err_out="$(ZBUILD_CONTRACT_VALIDATOR=enfoce _contract_validate_pipeline \
     "consumer" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
-assert_eq "[#1888] TC-5: typo'd mode 'enfoce' is refused (rc=2, was rc=0/warn)" "2" "$rc"
+assert_eq "[#1888] TC-5: typo'd mode 'enfoce' is refused (rc=1, was rc=0/warn)" "1" "$rc"
 assert_contains "[#1888] TC-5: the message names the rejected value" "$err_out" "enfoce"
 assert_contains "[#1888] TC-5: the message names the accepted set" "$err_out" "enforce | warn | off"
 
@@ -112,13 +114,13 @@ assert_contains "[#1888] TC-5: the message names the accepted set" "$err_out" "e
 rc=0
 ZBUILD_CONTRACT_VALIDATOR=Enforce _contract_validate_pipeline "consumer" \
     "$PLUGINS_ROOT" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
-assert_eq "[#1888] TC-6: 'Enforce' is refused rather than assumed" "2" "$rc"
+assert_eq "[#1888] TC-6: 'Enforce' is refused rather than assumed" "1" "$rc"
 
 # TC-7: a trailing space (the shape a CI yaml value arrives in) is refused.
 rc=0
 ZBUILD_CONTRACT_VALIDATOR="enforce " _contract_validate_pipeline "consumer" \
     "$PLUGINS_ROOT" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
-assert_eq "[#1888] TC-7: 'enforce ' with a trailing space is refused" "2" "$rc"
+assert_eq "[#1888] TC-7: 'enforce ' with a trailing space is refused" "1" "$rc"
 
 # TC-8 GUARD: the three real modes are untouched. A refusal that also broke a
 # valid mode would trade one silent failure for a loud one.

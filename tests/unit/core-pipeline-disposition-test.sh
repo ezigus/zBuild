@@ -175,12 +175,12 @@ assert_exit_code "disposition_response refuses an unknown word" 1 \
     "$(_rc_of disposition_response "wedged")"
 assert_eq "disposition_response prints nothing for an unknown word" "" \
     "$(disposition_response wedged 2>/dev/null || true)"
-# rc 2, not 1: "I cannot answer" is a different statement from "it does not
-# halt" / "it is not retryable". A caller that collapsed them would read an
-# unrecognized word as a benign, non-halting one.
-assert_exit_code "disposition_halts returns 2 (not 1) for an unknown word" 2 \
+# #1850 (ADR-054 §4): no third rc. An unknown word fails CLOSED on both
+# questions — it halts, and it is not retryable — so a caller can never read an
+# unrecognized word as a benign, non-halting one (what rc 2 used to guard).
+assert_exit_code "disposition_halts: an unknown word halts (fails closed)" 0 \
     "$(_rc_of disposition_halts "wedged")"
-assert_exit_code "disposition_retryable returns 2 (not 1) for an unknown word" 2 \
+assert_exit_code "disposition_retryable: an unknown word is not retryable" 1 \
     "$(_rc_of disposition_retryable "wedged")"
 
 unk_dir="$TEST_TEMP_DIR/plugins/unkstage"

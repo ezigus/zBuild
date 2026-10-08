@@ -51,7 +51,7 @@ Mechanically decidable, not a judgement call. Any of:
 
 **Gate 3 — Would a defect a *reviewer would not catch* stop the next run from starting? → `By-hand`**
 
-The blast-radius gate, and the one no prior document names. `_contract_validate_pipeline` runs in `runner.sh:main()` after `load_template` and **before the first stage dispatches**; in `enforce` mode it writes `status: preflight_failed` and returns rc=2. A wrong change there halts every subsequent run before intake — including the runs you would use to fix it. Same class: `install.sh`, the template loader, `runner.sh:main()`, the event bus.
+The blast-radius gate, and the one no prior document names. `_contract_validate_pipeline` runs in `runner.sh:main()` after `load_template` and **before the first stage dispatches**; in `enforce` mode it writes `status: preflight_failed` and returns rc=2. **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1; the status says why)** A wrong change there halts every subsequent run before intake — including the runs you would use to fix it. Same class: `install.sh`, the template loader, `runner.sh:main()`, the event bus.
 
 *Worked example:* #1768 opens source validation from 17 of 50 inputs to all 50. Ten inputs fail under the wider check before the accompanying fixes. A mistake there is not one bad PR; it is a pipeline that will not start.
 

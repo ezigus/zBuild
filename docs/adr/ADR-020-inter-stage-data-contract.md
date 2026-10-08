@@ -131,10 +131,10 @@ succeeds and before the `--dry-run` short-circuit:
 5. On any violation: emit `pipeline.preflight.fail reason=missing_input`
    with `mode=warn|enforce`. In `warn`, print the structured error and
    return 0 (allow the pipeline to proceed). In `enforce`, write a minimal
-   state.json with `status: preflight_failed` and return rc=2.
+   state.json with `status: preflight_failed` and return rc=2. **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1; `status: preflight_failed` and the `pipeline.preflight.*` events say why)**
 
 The runner halts BEFORE intake's `plugin.run.start` fires when the
-validator returns rc=2 — verified by the keystone integration test
+validator returns rc=2 **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1; `status: preflight_failed` and the `pipeline.preflight.*` events say why)** — verified by the keystone integration test
 `tests/integration/pipeline-preflight-missing-stage-test.sh`.
 
 ### Rollout escape hatch
