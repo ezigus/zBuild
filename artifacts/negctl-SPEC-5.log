@@ -1,0 +1,83 @@
+### SPEC-5 baseline tests/unit/worktree-sparse-legacy-test.sh
+
+[38;2;0;212;255m[1m  per-worktree sparse-checkout excludes legacy/ (#1802)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1802/SPEC-1] zbuild_worktree_acquire returns 0 and creates the worktree
+  [38;2;248;113;113m✗[0m [#1802/SPEC-1] legacy/frozen.sh must not be checked out in the worktree
+    [2mfound: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/worktree-sparse-legacy.bh2RfL/wt/spec1/legacy/frozen.sh[0m
+  [38;2;74;222;128m✓[0m [#1802/SPEC-1] legacy/migrated/tombstone.md is readable (migrated/ included)
+  [38;2;74;222;128m✓[0m [#1802/SPEC-2] zbuild_worktree_enter create returns 0
+  [38;2;248;113;113m✗[0m [#1802/SPEC-2 create] legacy/frozen.sh must not be checked out in the worktree
+    [2mfound: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/worktree-sparse-legacy.bh2RfL/wt/spec2-create/legacy/frozen.sh[0m
+  [38;2;74;222;128m✓[0m [#1802/SPEC-2 create] legacy/migrated/tombstone.md is readable (migrated/ included)
+  [38;2;74;222;128m✓[0m [#1802/SPEC-2] zbuild_worktree_enter adopt_local returns 0
+  [38;2;248;113;113m✗[0m [#1802/SPEC-2 adopt_local] legacy/frozen.sh must not be checked out in the worktree
+    [2mfound: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/worktree-sparse-legacy.bh2RfL/wt/spec2-local/legacy/frozen.sh[0m
+  [38;2;74;222;128m✓[0m [#1802/SPEC-2 adopt_local] legacy/migrated/tombstone.md is readable (migrated/ included)
+  [38;2;74;222;128m✓[0m [#1802/SPEC-2] zbuild_worktree_enter adopt_remote returns 0
+  [38;2;248;113;113m✗[0m [#1802/SPEC-2 adopt_remote] legacy/frozen.sh must not be checked out in the worktree
+    [2mfound: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/worktree-sparse-legacy.bh2RfL/wt/spec2-remote/legacy/frozen.sh[0m
+  [38;2;74;222;128m✓[0m [#1802/SPEC-2 adopt_remote] legacy/migrated/tombstone.md is readable (migrated/ included)
+  [38;2;74;222;128m✓[0m [#1802/SPEC-3] worktree for branch-switch test created
+  [38;2;74;222;128m✓[0m [#1802/SPEC-3] git checkout to another branch inside the worktree succeeded
+  [38;2;248;113;113m✗[0m [#1802/SPEC-3] legacy/frozen.sh must remain absent after branch switch
+    [2mfound after checkout: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/worktree-sparse-legacy.bh2RfL/wt/spec3/legacy/frozen.sh[0m
+HEAD is now at 74db3a8 init
+  [38;2;74;222;128m✓[0m [#1802/SPEC-4] manually created worktree (no sparse) setup succeeded
+  [38;2;74;222;128m✓[0m [#1802/SPEC-4] pre-condition: legacy/frozen.sh present before acquire
+  [38;2;74;222;128m✓[0m [#1802/SPEC-4] zbuild_worktree_acquire reuse path returns 0
+  [38;2;248;113;113m✗[0m [#1802/SPEC-4] reuse path must apply sparse: legacy/frozen.sh must be absent
+    [2mfound after acquire: /home/runner/work/_temp/zbuild-state/scratch/acceptance-gate/worktree-sparse-legacy.bh2RfL/wt/spec4-resume/legacy/frozen.sh[0m
+  [38;2;74;222;128m✓[0m [#1802/SPEC-4] legacy/migrated/ present after reuse (migrated/ included)
+  [38;2;74;222;128m✓[0m [#1802/SPEC-5] main checkout core.sparseCheckout is absent or false
+  [38;2;248;113;113m✗[0m [#1802/SPEC-5] extensions.worktreeConfig must be true in the main checkout
+    [2mvalue: <not set>[0m
+  [38;2;74;222;128m✓[0m [#1802/SPEC-5] main checkout working tree still has legacy/frozen.sh (not sparse)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;248;113;113m[1m7 of 23 tests failed[0m
+
+  [38;2;248;113;113m✗[0m [#1802/SPEC-1] legacy/frozen.sh must not be checked out in the worktree
+  [38;2;248;113;113m✗[0m [#1802/SPEC-2 create] legacy/frozen.sh must not be checked out in the worktree
+  [38;2;248;113;113m✗[0m [#1802/SPEC-2 adopt_local] legacy/frozen.sh must not be checked out in the worktree
+  [38;2;248;113;113m✗[0m [#1802/SPEC-2 adopt_remote] legacy/frozen.sh must not be checked out in the worktree
+  [38;2;248;113;113m✗[0m [#1802/SPEC-3] legacy/frozen.sh must remain absent after branch switch
+  [38;2;248;113;113m✗[0m [#1802/SPEC-4] reuse path must apply sparse: legacy/frozen.sh must be absent
+  [38;2;248;113;113m✗[0m [#1802/SPEC-5] extensions.worktreeConfig must be true in the main checkout
+
+### SPEC-5 head tests/unit/worktree-sparse-legacy-test.sh
+
+[38;2;0;212;255m[1m  per-worktree sparse-checkout excludes legacy/ (#1802)[0m
+[2m  ══════════════════════════════════════════[0m
+
+  [38;2;74;222;128m✓[0m [#1802/SPEC-1] zbuild_worktree_acquire returns 0 and creates the worktree
+  [38;2;74;222;128m✓[0m [#1802/SPEC-1] legacy/frozen.sh is absent from the worktree
+  [38;2;74;222;128m✓[0m [#1802/SPEC-1] legacy/migrated/tombstone.md is readable (migrated/ included)
+  [38;2;74;222;128m✓[0m [#1802/SPEC-2] zbuild_worktree_enter create returns 0
+  [38;2;74;222;128m✓[0m [#1802/SPEC-2 create] legacy/frozen.sh is absent from the worktree
+  [38;2;74;222;128m✓[0m [#1802/SPEC-2 create] legacy/migrated/tombstone.md is readable (migrated/ included)
+  [38;2;74;222;128m✓[0m [#1802/SPEC-2] zbuild_worktree_enter adopt_local returns 0
+  [38;2;74;222;128m✓[0m [#1802/SPEC-2 adopt_local] legacy/frozen.sh is absent from the worktree
+  [38;2;74;222;128m✓[0m [#1802/SPEC-2 adopt_local] legacy/migrated/tombstone.md is readable (migrated/ included)
+  [38;2;74;222;128m✓[0m [#1802/SPEC-2] zbuild_worktree_enter adopt_remote returns 0
+  [38;2;74;222;128m✓[0m [#1802/SPEC-2 adopt_remote] legacy/frozen.sh is absent from the worktree
+  [38;2;74;222;128m✓[0m [#1802/SPEC-2 adopt_remote] legacy/migrated/tombstone.md is readable (migrated/ included)
+  [38;2;74;222;128m✓[0m [#1802/SPEC-3] worktree for branch-switch test created
+  [38;2;74;222;128m✓[0m [#1802/SPEC-3] git checkout to another branch inside the worktree succeeded
+  [38;2;74;222;128m✓[0m [#1802/SPEC-3] legacy/frozen.sh absent after branch switch (sparse persists)
+HEAD is now at 74db3a8 init
+  [38;2;74;222;128m✓[0m [#1802/SPEC-4] manually created worktree (no sparse) setup succeeded
+  [38;2;74;222;128m✓[0m [#1802/SPEC-4] pre-condition: legacy/frozen.sh present before acquire
+  [38;2;74;222;128m✓[0m [#1802/SPEC-4] zbuild_worktree_acquire reuse path returns 0
+  [38;2;74;222;128m✓[0m [#1802/SPEC-4] reuse path applied sparse: legacy/frozen.sh absent
+  [38;2;74;222;128m✓[0m [#1802/SPEC-4] legacy/migrated/ present after reuse (migrated/ included)
+  [38;2;74;222;128m✓[0m [#1802/SPEC-5] main checkout core.sparseCheckout is absent or false
+  [38;2;74;222;128m✓[0m [#1802/SPEC-5] extensions.worktreeConfig=true (per-worktree isolation active)
+  [38;2;74;222;128m✓[0m [#1802/SPEC-5] main checkout working tree still has legacy/frozen.sh (not sparse)
+
+[2m  ──────────────────────────────────────────[0m
+
+  [38;2;74;222;128m[1mAll 23 tests passed[0m
+

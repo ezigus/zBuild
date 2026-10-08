@@ -1,0 +1,23 @@
+the acceptance check failed — SPEC-2: its test already passes on the code from before this change, so it cannot tell whether the change was made — make it check something the old code gets wrong
+NEGCTL PASS SPEC-1
+      design : zbuild_worktree_acquire, called with a run_id against a repo whose checkout includes files under leg…
+      asserts: assert_pass "[#1802/SPEC-1] zbuild_worktree_acquire returns 0 and creates the worktree"
+NEGCTL FAIL SPEC-2 tautology
+      design : zbuild_worktree_enter, called in any mode (create, adopt_local, or adopt_remote), returns 0 and the …
+      asserts: assert_pass "[#1802/SPEC-2] zbuild_worktree_enter create returns 0"
+NEGCTL PASS SPEC-3
+      design : when git checkout is run inside a linked worktree that zbuild already configured with sparse-checkou…
+      asserts: assert_pass "[#1802/SPEC-3] worktree for branch-switch test created"
+NEGCTL PASS SPEC-4
+      design : when zbuild_worktree_acquire is called on a linked worktree that already has sparse-checkout configu…
+      asserts: assert_pass "[#1802/SPEC-4] manually created worktree (no sparse) setup succeeded"
+NEGCTL PASS SPEC-5
+      design : after zbuild_worktree_acquire or zbuild_worktree_enter configures sparse-checkout on a linked worktr…
+      asserts: assert_pass "[#1802/SPEC-5] main checkout core.sparseCheckout is absent or false"
+NEGCTL SKIP SPEC-6 no_code
+      design : ADR-059 §2 is amended to document the per-worktree sparse-checkout decision and the zbuild_worktree_…
+      asserts: <none found>
+NEGCTL SKIP SPEC-7 no_code
+      design : ADR-059-issue-vs-run-keying.md is removed from config/adr-enforcement-baseline.txt and ADR-059 carri…
+      asserts: <none found>
+REACHABILITY PASS scripts/lib/worktree.sh
