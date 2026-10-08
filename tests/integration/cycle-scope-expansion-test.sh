@@ -2,7 +2,8 @@
 # Integration: governed scope expansion in the cycle orchestrator (#840 / ADR-030).
 # Drives cycle_orchestrator_run with a mock dispatch that emits a
 # scope_expansion_request (reported by the build member, #2189), and verifies:
-#   - non-expandable / floor / unenabled-class request → blocked_on_scope (rc=7)
+#   - non-expandable / floor / unenabled-class request → blocked_on_scope (rc=1,
+#     outcome interrupted; rc=7 before #1850, ADR-054 §4)
 #     in ONE iter (the dogfood-loop fix: never grind to max_iterations).
 #   - grantable collateral request → grant (ZBUILD_SCOPE_EXPANSION_GRANT set),
 #     cycle CONTINUES and can then converge.
@@ -82,7 +83,7 @@ MOCK_TEST_VERDICTS="fail,fail,fail,fail,fail"
 MOCK_REQUEST_ITER=1
 MOCK_REQUEST_JSON='{"files":[{"path":"tests/unit/foo-test.sh","category":"collateral_tests","evidence":"x","reason":"pins old"}]}'
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-assert_eq "T1: rc=7 (blocked_on_scope)" "7" "$rc"
+assert_eq "T1: rc=1, outcome interrupted (blocked_on_scope)" "1 interrupted" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
 assert_eq "T1: reason=blocked_on_scope" "blocked_on_scope" "$_CYCLE_LAST_TERMINATED_REASON"
 assert_eq "T1: abandoned in iter 1 (no loop)" "1" "$_CYCLE_LAST_ITERATIONS"
 assert_event_emitted "T1: cycle.scope.denied emitted" "$ZBUILD_EVENTS_JSONL" "cycle.scope.denied"
@@ -94,7 +95,8 @@ MOCK_TEST_VERDICTS="fail,fail,fail,fail,fail"
 MOCK_REQUEST_ITER=1
 MOCK_REQUEST_JSON='{"files":[{"path":"legacy/x.sh","category":"collateral_tests","evidence":"x","reason":"need legacy"}]}'
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-assert_eq "T2: floor path → rc=7 (blocked_on_scope)" "7" "$rc"
+assert_eq "T2: floor path → rc=1, outcome interrupted, reason blocked_on_scope" \
+    "1 interrupted blocked_on_scope" "$rc ${_CYCLE_LAST_OUTCOME:-unset} ${_CYCLE_LAST_TERMINATED_REASON:-unset}"
 assert_eq "T2: abandoned iter 1" "1" "$_CYCLE_LAST_ITERATIONS"
 
 # ─── T3: grantable collateral request → grant + cycle continues/converges ─

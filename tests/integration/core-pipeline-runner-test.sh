@@ -92,23 +92,28 @@ OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
 install_template_overlay "$OVERLAY_REPO" runner-state-dir-minimal
 cd "$OVERLAY_REPO"
 
-# ─── Test 1: no args → exits 2 ──────────────────────────────────────────────
-set +e; bash "$RUNNER" 2>/dev/null; rc=$?; set -e
-assert_eq "no args exits 2" "2" "$rc"
+# ─── Test 1: no args → exits 1 with the usage ──────────────────────────────
+# #1850 (ADR-054 §4): a usage error exits 1 like every other failure (it was
+# 2); the message — not the number — says it was a usage error.
+set +e; _err="$(bash "$RUNNER" 2>&1 >/dev/null)"; rc=$?; set -e
+assert_eq "no args exits 1" "1" "$rc"
+assert_contains "no args prints the usage" "$_err" "Usage: runner.sh"
 
 # ─── Test 2: --help → exits 0 ───────────────────────────────────────────────
 set +e; bash "$RUNNER" --help >/dev/null 2>&1; rc=$?; set -e
 assert_eq "--help exits 0" "0" "$rc"
 
-# ─── Test 3: --issue with no value → exits 2 (controlled, not unbound var) ──
-# NOT an identity: `--issue` is deliberately given NO value here, and the 2 is
-# the file descriptor in `2>/dev/null`. The test asserts the runner rejects a
-# valueless flag with rc=2.
-set +e; bash "$RUNNER" --issue 2>/dev/null; rc=$?; set -e  # lint-test-identity:allow
-assert_eq "--issue with no value exits 2" "2" "$rc"
+# ─── Test 3: --issue with no value → exits 1 (controlled, not unbound var) ──
+# NOT an identity: `--issue` is deliberately given NO value here. The test
+# asserts the runner rejects a valueless flag with rc=1 (#1850: was rc=2) and
+# says which flag — a controlled refusal, not an unbound-variable crash.
+set +e; _err="$(bash "$RUNNER" --issue 2>&1 >/dev/null)"; rc=$?; set -e  # lint-test-identity:allow
+assert_eq "--issue with no value exits 1" "1" "$rc"
+assert_contains "--issue with no value names the flag" "$_err" "--issue requires a value"
 
-set +e; bash "$RUNNER" --goal 2>/dev/null; rc=$?; set -e
-assert_eq "--goal with no value exits 2" "2" "$rc"
+set +e; _err="$(bash "$RUNNER" --goal 2>&1 >/dev/null)"; rc=$?; set -e
+assert_eq "--goal with no value exits 1" "1" "$rc"
+assert_contains "--goal with no value names the flag" "$_err" "--goal requires a value"
 
 # ─── Test 4: dry-run prints the plan without executing ──────────────────────
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"

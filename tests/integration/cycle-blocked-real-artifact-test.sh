@@ -13,7 +13,8 @@
 #      primary output (the real path the runner uses)
 #   3. The resolved verdict feeds into the verdicts blob
 #   4. _cycle_detect_blocked fires on raw "error"
-#   5. cycle_orchestrator_run aborts at iter 1 (not 3), rc=5, reason=blocked
+#   5. cycle_orchestrator_run aborts at iter 1 (not 3), rc=1, outcome
+#      interrupted, reason=blocked (#1850, ADR-054 §4: was rc=5)
 #
 # Existing core-pipeline-cycle-blocked-integration-test.sh stubs
 # cycle_dispatch_stage directly and hard-codes _CYCLE_DISPATCH_VERDICT, so
@@ -141,7 +142,7 @@ cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
 rc=$?
 set -e
 
-assert_eq "B1: orchestrator rc=5 (blocked)" "5" "$rc"
+assert_eq "B1: orchestrator rc=1, outcome interrupted (blocked)" "1 interrupted" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
 assert_eq "B2: terminated at iter 1 (only ONE iteration ran)" "1" "$_CYCLE_LAST_ITERATIONS"
 assert_eq "B3: reason=blocked" "blocked" "$_CYCLE_LAST_TERMINATED_REASON"
 assert_event_emitted "B4: cycle.blocked event fired" \

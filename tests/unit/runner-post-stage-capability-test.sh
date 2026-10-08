@@ -94,7 +94,8 @@ assert_eq "SPEC-2c: a stage without the capability reads empty (merge skipped)" 
 set +e
 out="$(bash "$RUNNER" --issue "$_ZB_ID" --dry-run --template no_such_template_xyz 2>&1)"; _rc=$?
 set +e
-assert_eq "SPEC-3: missing template → fail-closed (rc=2)" "2" "$_rc"
+# #1850 (ADR-054 §4): the refusal exits 1 (was 2); the message names the cause.
+assert_eq "SPEC-3: missing template → fail-closed (rc=1)" "1" "$_rc"
 assert_contains "SPEC-3: error names the missing template / not found" "$out" "not found"
 
 cleanup_test_env

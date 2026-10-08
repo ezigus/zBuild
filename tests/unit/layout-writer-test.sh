@@ -62,7 +62,8 @@ _drive() {
         # shellcheck disable=SC1091
         source "$REPO_ROOT/core/pipeline/runner.sh" 2>/dev/null
         resolve_template_file() { echo "$REPO_ROOT/tests/fixtures/templates/two-cycles.yaml"; }
-        cycle_orchestrator_run() { _CYCLE_LAST_TERMINATED_REASON="converged"; _CYCLE_LAST_ITERATIONS=1; return 0; }
+        # #1850: the loop names its end on _CYCLE_LAST_OUTCOME, as the real one does.
+        cycle_orchestrator_run() { _CYCLE_LAST_TERMINATED_REASON="converged"; _CYCLE_LAST_OUTCOME="converged"; _CYCLE_LAST_ITERATIONS=1; return 0; }
         _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/build"; }
         runner_read_stage_verdict() { echo "pass"; }
         # #1850: the leaf contract check reads the reason channel too, which

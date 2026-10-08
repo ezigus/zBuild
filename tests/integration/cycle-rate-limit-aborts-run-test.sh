@@ -435,7 +435,9 @@ assert_eq "[#2111] no second cycle iteration" "0" "$(jq -c 'select(.type=="cycle
 state_reason="$(jq -r '.reason // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null || true)"
 assert_eq "[#2111] pipeline-state.json records reason=llm_rate_limited (ADR-050 resume reads status=aborted)" "llm_rate_limited" "$state_reason"
 assert_eq "[#2111] pipeline-state.json status=aborted" "aborted" "$(jq -r '.status // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null || true)"
-assert_eq "[#2111] the runner exits 9 (the llm-abort rc, #1024) — not 0, not 4" "9" "${_RUNNER_RC:-}"
+# #1850 (ADR-054 §4): was 9 (the llm-abort rc, #1024). Every halt exits 1; the
+# llm_rate_limited word above (event + state) is what says why.
+assert_eq "[#2111] the runner exits 1 — not 0, not the old llm-abort rc 9" "1" "${_RUNNER_RC:-}"
 
 cleanup_test_env
 print_test_results

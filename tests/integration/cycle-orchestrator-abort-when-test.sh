@@ -2,9 +2,13 @@
 # Integration: ADR-027 abort_when predicate semantics (Wave 17-B, #703).
 #
 # abort_when (optional) is a predicate that, when matched, terminates the
-# pipeline by returning a new rc class (rc=6 cycle_abort) that propagates
-# outward through every enclosing cycle to the runner. Distinct from rc=130
-# (SIGINT abort) and rc=5 (blocked).
+# pipeline: the loop returns 1, ends with outcome aborted and reason
+# cycle_abort, and records the abort word `cycle_abort` (ADR-025), which every
+# enclosing cycle and the runner read on their way out. Distinct from a SIGINT
+# abort (word sigint) and from blocked (outcome interrupted, no abort word).
+#
+# #1850 (ADR-054 §4): this used to be a new rc class, rc=6. No rc carries the
+# reason any more — the word does.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -92,36 +96,43 @@ cycle_orchestrator_run "bt_cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE"
 rc=$?
 set -e
 
-# T2: rc=6 (new cycle_abort class) — distinct from 0/1/2/3/4/5/130.
-assert_eq "T2: orchestrator returns rc=6 cycle_abort" "6" "$rc"
+# T2: rc=1 with outcome aborted — the word, not a number, says cycle_abort.
+assert_eq "T2: orchestrator returns rc=1, outcome aborted" "1 aborted" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
 
 # T3: terminated reason set.
 assert_eq "T3: reason=cycle_abort" "cycle_abort" "$_CYCLE_LAST_TERMINATED_REASON"
 
-# T4: _zbuild_propagate_abort recognizes rc=6 (propagates outward).
+# T4: the abort is recorded as the word cycle_abort, so an enclosing
+# dispatcher's post-flight check propagates the loop's rc=1 outward.
 # shellcheck source=../../scripts/lib/abort-propagation.sh
 source "$REPO_ROOT/scripts/lib/abort-propagation.sh"
+assert_eq "T4: the recorded abort word is cycle_abort" "cycle_abort" "$(_zbuild_abort_reason)"
 set +e
-_zbuild_propagate_abort 6; rc2=$?
+_zbuild_propagate_abort "$rc"; rc2=$?
 set -e
-assert_eq "T4: _zbuild_propagate_abort 6 returns 6" "6" "$rc2"
+assert_eq "T4: _zbuild_propagate_abort on the loop's rc=1 propagates (returns 1)" "1" "$rc2"
 
-# T5: rc=6 NOT generated for benign rc (smoke check).
+# T5: a benign rc is never an abort (smoke check).
 set +e
 _zbuild_propagate_abort 0; rc3=$?
 set -e
 assert_eq "T5: rc=0 returns 0 (non-abort)" "0" "$rc3"
 
-# T6 (Copilot P1): grep the runner source to confirm rc=6 is in the halt
-# class. This is a structural assertion — if a future change drops rc=6
-# from the runner dispatch table, abort_when would silently no-op at the
-# pipeline level even though the orchestrator returned cycle_abort.
+# T6 (Copilot P1): structural — the runner ends the run on the recorded abort
+# WORD, and no longer branches on rc=6 (#1850). If it still read the number,
+# a loop returning 1 for cycle_abort would fall through as an ordinary failed
+# cycle and abort_when would silently no-op at the pipeline level. The
+# behavior (cycle_abort → status interrupted, pipeline.aborted reason
+# cycle_abort) is pinned by runner-cycle-rc-action-mapping-test.sh.
 RUNNER_FILE="$REPO_ROOT/core/pipeline/runner.sh"
-if grep -E '_rc -eq 6' "$RUNNER_FILE" >/dev/null 2>&1; then
-    assert_pass "T6: runner halt-class includes rc=6"
+if grep -qE '_rc -eq 6' "$RUNNER_FILE" 2>/dev/null; then
+    assert_fail "T6: runner reads the abort word, not rc=6" \
+        "runner.sh still branches on rc=6: $(grep -nE '_rc -eq 6' "$RUNNER_FILE" | tr '\n' ' ')"
+elif ! grep -q '_zbuild_abort_reason' "$RUNNER_FILE" 2>/dev/null; then
+    assert_fail "T6: runner reads the abort word, not rc=6" \
+        "runner.sh never calls _zbuild_abort_reason"
 else
-    assert_fail "T6: runner halt-class includes rc=6" \
-        "runner.sh does not branch on rc=6 in cycle dispatch table"
+    assert_pass "T6: runner reads the abort word, not rc=6"
 fi
 
 print_test_results

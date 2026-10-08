@@ -236,41 +236,47 @@ _probe_left="$(cat "$_runner" "$REPO_ROOT/core/pipeline/verdict.sh" | $SYSGREP -
 assert_eq "[SPEC-4] the contract probe is gone (#1850)" "0" "$_probe_left"
 
 # ─────────────────────────────────────────────────────────────────────────────
-print_test_section "5. _cycle_handle_terminal_rc has both 130 and 143 arms"
+print_test_section "5. the cycle.complete fan-in reads the reason word, not an rc"
 
 # ADR-054 §4 recorded the asymmetry: _cycle_handle_terminal_rc had a 130) arm
-# but no 143) arm, so SIGTERM fell to *) reason="error". #1860 merged them into
-# a combined 130|143) arm. This assertion fails if only the 143 part is removed
-# (e.g. reverted to bare `130)`), proving it tests the arm not just the boundary.
+# but no 143) arm, so SIGTERM fell to *) reason="error"; #1860 merged them into
+# a combined 130|143) arm. #1850 removes the reason for the arms: the loop
+# returns 0/1 and says why on _CYCLE_LAST_TERMINATED_REASON, so the fan-in is
+# _cycle_handle_terminal <cycle_id> <state_file>, which reads that word. An arm
+# keyed on a number can no longer go missing for one signal, because there is
+# no number to key on.
 _orch="$REPO_ROOT/core/pipeline/cycle-orchestrator.sh"
 
-# The combined arm must exist: `130|143)` in the case statement.
-if $SYSGREP -q '130|143)[[:space:]]*reason="aborted"' "$_orch" 2>/dev/null; then
-    assert_pass "[SPEC-5] _cycle_handle_terminal_rc has a combined 130|143 arm"
+# The rc-keyed helper is gone, from the orchestrator and from its caller.
+_old_left="$(cat "$_orch" "$_runner" | $SYSGREP -c '_cycle_handle_terminal_rc' 2>/dev/null)" || _old_left=0
+assert_eq "[SPEC-5] no _cycle_handle_terminal_rc remains (orchestrator + runner)" \
+    "0" "${_old_left//[$'\n\r ']/}"
+
+# Bound the window to the function's own body, not a fixed line count: a
+# `-A N` window silently starts missing lines once the function grows past N.
+_func_block="$(awk '/^_cycle_handle_terminal\(\) \{/ {f=1} f {print} f && /^\}$/ {exit}' "$_orch")"
+if [[ -n "$_func_block" ]]; then
+    assert_pass "[SPEC-5] _cycle_handle_terminal is defined in the orchestrator"
 else
-    assert_fail "[SPEC-5] _cycle_handle_terminal_rc has a combined 130|143 arm" \
-        "the 130|143) reason=aborted arm is missing; SIGTERM falls to *) reason=error"
+    assert_fail "[SPEC-5] _cycle_handle_terminal is defined in the orchestrator" \
+        "no '_cycle_handle_terminal() {' in $_orch"
 fi
 
-# The 143 pattern must appear within _cycle_handle_terminal_rc specifically,
-# not just anywhere in the file (guard against a stray match elsewhere).
-# Bound the window to the function's own case block, not a fixed line count: a
-# `-A N` window silently starts missing the arm once the case grows past N, and
-# fails an unrelated edit with a message about the wrong thing.
-_func_block="$(awk '/^_cycle_handle_terminal_rc\(\) \{/ {f=1} f {print} f && /^    esac$/ {exit}' "$_orch")"
-if $SYSGREP -q '143)' <<< "$_func_block"; then
-    assert_pass "[SPEC-5] the 143 arm is inside _cycle_handle_terminal_rc"
+# It reads the reason word — the one channel that names a SIGINT and a SIGTERM
+# end alike (reason=aborted) — instead of mapping an rc to a reason.
+if $SYSGREP -q '_CYCLE_LAST_TERMINATED_REASON' <<< "$_func_block"; then
+    assert_pass "[SPEC-5] _cycle_handle_terminal reads _CYCLE_LAST_TERMINATED_REASON"
 else
-    assert_fail "[SPEC-5] the 143 arm is inside _cycle_handle_terminal_rc" \
-        "143 not found in the _cycle_handle_terminal_rc case block"
+    assert_fail "[SPEC-5] _cycle_handle_terminal reads _CYCLE_LAST_TERMINATED_REASON" \
+        "the fan-in does not read the reason word"
 fi
 
-# The 130 arm must also still be present (distinct from 143 removal regression).
-if $SYSGREP -q '130' <<< "$_func_block"; then
-    assert_pass "[SPEC-5] the 130 arm is still present in _cycle_handle_terminal_rc"
+# And no signal-number arm survives inside it.
+if $SYSGREP -qE '(^|[^0-9])(130|143)([^0-9]|$)' <<< "$_func_block"; then
+    assert_fail "[SPEC-5] _cycle_handle_terminal keys on no signal rc" \
+        "130/143 still appears in the fan-in: $($SYSGREP -nE '(^|[^0-9])(130|143)([^0-9]|$)' <<< "$_func_block" | tr '\n' ' ')"
 else
-    assert_fail "[SPEC-5] the 130 arm is still present in _cycle_handle_terminal_rc" \
-        "130 not found in the _cycle_handle_terminal_rc case block"
+    assert_pass "[SPEC-5] _cycle_handle_terminal keys on no signal rc"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

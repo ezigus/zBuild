@@ -44,7 +44,10 @@ fi
 print_test_section "L6: a blocked build loop stops the run"
 DESIGN_GATE=pass TEST=fail BUILD=blocked _run; rc=$?
 assert_eq "[L6] the outer loop does not go round" "1" "$(_count design 1)"
-assert_eq "[L6] the run stops as blocked (rc=5), not as a config error" "5" "$rc"
+# #1850 (ADR-054 §4): was rc=5. Blocked and a config error both return 1 and
+# both end interrupted, so the reason word is what tells them apart.
+assert_eq "[L6] the run stops as blocked (rc=1, interrupted, reason blocked), not as a config error" \
+    "1 interrupted blocked" "$rc ${_CYCLE_LAST_OUTCOME:-unset} ${_CYCLE_LAST_TERMINATED_REASON:-unset}"
 
 cleanup_test_env
 print_test_results

@@ -1,18 +1,23 @@
 #!/usr/bin/env bash
-# Integration: cycle-orchestrator honors SIGINT (rc=130) propagation
+# Integration: cycle-orchestrator honors SIGINT propagation
 # (ADR-025 / Wave 15-B #684).
 #
 # Wave 15 dogfood `20260604061056-1003` discovered that
-# _cycle_iter_dispatch swallowed rc=130 from a stage and treated it as a
+# _cycle_iter_dispatch swallowed a stage's SIGINT and treated it as a
 # generic fail (fail++), so the cycle kept iterating after Ctrl-C. This
 # test asserts:
-#   T1. cycle_dispatch_stage returning 130 makes cycle_orchestrator_run
-#       return 130 immediately — no further stages or iterations are
-#       dispatched.
+#   T1. a stage that records the abort word sigint and returns 1 makes
+#       cycle_orchestrator_run return 1 immediately with outcome aborted —
+#       no further stages or iterations are dispatched.
 #   T2. The cycle terminated_reason is "aborted".
 #   T3. A sentinel file written between iterations (simulating a sibling
 #       subshell catching SIGINT) makes the outer iter loop bail at the
-#       next iter boundary with rc=130 — pre-flight check works.
+#       next iter boundary — pre-flight check works.
+#   T4. _cycle_on_signal records the word (sigterm) and does not return 130.
+#
+# #1850 (ADR-054 §4, ADR-025): no rc carries the abort any more — it was 130.
+# An abort is a recorded WORD (_zbuild_abort_reason); an empty sentinel file
+# reads as sigint. Every loop end is rc 0/1 plus _CYCLE_LAST_OUTCOME.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -46,13 +51,14 @@ _seed_state() {
     : > "$TEST_TEMP_DIR/dispatch-trace"
 }
 
-# ─── T1: rc=130 from a stage halts the cycle immediately ──────────────────
+# ─── T1: a stage's recorded SIGINT halts the cycle immediately ────────────
 
-print_test_section "T1: rc=130 from dispatch halts cycle with rc=130"
+print_test_section "T1: a stage that records sigint halts the cycle: rc=1, outcome aborted"
 
 _seed_state
 
-# Mock dispatch hook — first call returns rc=130 (simulating SIGINT).
+# Mock dispatch hook — first call records the abort word sigint and returns 1
+# (what a stage killed by Ctrl-C reports since #1850; it used to return 130).
 # Any subsequent call would indicate the cycle kept iterating after
 # the abort signal — that is the dogfood bug, which must NOT happen.
 cycle_dispatch_stage() {
@@ -61,9 +67,10 @@ cycle_dispatch_stage() {
     printf '%s|%s|%s\n' "$DISPATCH_CALLS" "$stage" "$iter" >> "$TEST_TEMP_DIR/dispatch-trace"
     _CYCLE_DISPATCH_VERDICT="fail"
     _CYCLE_DISPATCH_STATUS="failed"
-    # First call: pretend the child died from SIGINT (rc=130).
+    # First call: pretend the child died from SIGINT.
     if [[ $DISPATCH_CALLS -eq 1 ]]; then
-        return 130
+        _zbuild_abort sigint
+        return 1
     fi
     # Any further calls would be a bug — return 0 to make the assertion clearer.
     return 0
@@ -76,9 +83,12 @@ cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
 rc=$?
 set -e
 
-assert_eq "T1: cycle_orchestrator_run rc=130" "130" "$rc"
+assert_eq "T1: cycle_orchestrator_run rc=1, outcome aborted" "1 aborted" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
+assert_eq "T1: the recorded abort word is sigint" "sigint" "$(_zbuild_abort_reason)"
 assert_eq "T1: dispatch called exactly once (no further iterations)" "1" "$DISPATCH_CALLS"
 assert_eq "T1: terminated_reason=aborted" "aborted" "$_CYCLE_LAST_TERMINATED_REASON"
+# The word lives in-process as well as in the sentinel; clear both for T2.
+_zbuild_disarm_abort_sentinel
 
 # ─── T2: sentinel file written between iters halts at next iter boundary ──
 
@@ -88,7 +98,7 @@ _seed_state
 
 # Mock dispatch hook — first iter (2 stages) passes; arm the sentinel after
 # iter 1's last stage. The outer iter loop's pre-flight should observe the
-# sentinel before starting iter 2 and bail with rc=130.
+# sentinel before starting iter 2 and bail (rc=1, outcome aborted).
 cycle_dispatch_stage() {
     local stage="$1" iter="$2"
     DISPATCH_CALLS=$((DISPATCH_CALLS + 1))
@@ -111,13 +121,16 @@ cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
 rc=$?
 set -e
 
-assert_eq "T2: cycle_orchestrator_run rc=130 (sentinel pre-flight)" "130" "$rc"
+assert_eq "T2: cycle_orchestrator_run rc=1, outcome aborted (sentinel pre-flight)" \
+    "1 aborted" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
+assert_eq "T2: an empty sentinel reads as the abort word sigint" "sigint" "$(_zbuild_abort_reason)"
 # 2 dispatches in iter 1; iter 2 must not start ⇒ exactly 2 calls.
 assert_eq "T2: dispatch called exactly twice (iter 2 never starts)" "2" "$DISPATCH_CALLS"
 assert_eq "T2: terminated_reason=aborted" "aborted" "$_CYCLE_LAST_TERMINATED_REASON"
 
-# Clean up the sentinel so it doesn't leak into T3.
+# Clean up the sentinel (and the in-process word) so neither leaks into T3.
 rm -f "$ZBUILD_STATE_DIR/.abort.signal"
+_zbuild_disarm_abort_sentinel
 
 # ─── T3: sentinel written between stages within one iter halts mid-iter ───
 
@@ -148,10 +161,35 @@ cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
 rc=$?
 set -e
 
-assert_eq "T3: cycle_orchestrator_run rc=130" "130" "$rc"
+assert_eq "T3: cycle_orchestrator_run rc=1, outcome aborted" "1 aborted" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
 # build ran once; test must NOT run.
 assert_eq "T3: dispatch called exactly once (test never starts)" "1" "$DISPATCH_CALLS"
 
+rm -f "$ZBUILD_STATE_DIR/.abort.signal"
+_zbuild_disarm_abort_sentinel
+
+# ─── T4: the cycle's own signal handler records the word ─────────────────
+# #1850: _cycle_on_signal used to `return 130`; the number was the only record
+# that a signal had arrived. Now it records sigint/sigterm (ADR-025) so the
+# next dispatch boundary sees it, and returns no signal code. Run in a subshell
+# so the handler's trap clearing cannot touch this file's shell.
+
+print_test_section "T4: _cycle_on_signal SIGTERM records sigterm, returns no 130"
+
+_seed_state
+t4_out="$(
+    _CYCLE_TRAP_CYCLE_ID="build-test"; _CYCLE_TRAP_ITER=1
+    _t4_rc=0
+    _cycle_on_signal SIGTERM || _t4_rc=$?
+    printf '%s %s' "$_t4_rc" "$(_zbuild_abort_reason)"
+)"
+t4_rc="${t4_out%% *}"
+assert_eq "T4: _cycle_on_signal SIGTERM records the word sigterm" "sigterm" "${t4_out#* }"
+if [[ "$t4_rc" == "130" || "$t4_rc" == "143" ]]; then
+    assert_fail "T4: _cycle_on_signal returns no signal rc" "returned $t4_rc"
+else
+    assert_pass "T4: _cycle_on_signal returns no signal rc (rc=$t4_rc)"
+fi
 rm -f "$ZBUILD_STATE_DIR/.abort.signal"
 
 # ─── SPEC-3: cycle handler takes the INT slot from the runner handler ─────────
@@ -185,11 +223,12 @@ spec3_result=$(
         _CYCLE_M="$TEST_TEMP_DIR/spec3-cycle-marker"
 
         # Simulate the runner's handler (installed by the runner on startup).
-        _runner_signal_trap() { touch "$_RUNNER_M"; exit 143; }
+        # Both sims exit 1, as the real handlers do since #1850 (it was 143).
+        _runner_signal_trap() { touch "$_RUNNER_M"; exit 1; }
         trap '_runner_signal_trap TERM' TERM
 
         # Simulate cycle installing its own handler (_cycle_install_traps).
-        _cycle_on_signal_sim() { touch "$_CYCLE_M"; exit 143; }
+        _cycle_on_signal_sim() { touch "$_CYCLE_M"; exit 1; }
         trap '_cycle_on_signal_sim TERM' TERM
 
         # The cycle handler must now own the slot, not the runner's.
@@ -203,7 +242,7 @@ spec3_result=$(
             exit 1
         fi
 
-        # Report BEFORE invoking: the sim handler exits 143, so anything echoed
+        # Report BEFORE invoking: the sim handler exits, so anything echoed
         # after it never runs and the diagnostic is permanently empty. That dead
         # variable shipped in the first cut and was caught in review.
         echo "cycle_handler_owned_slot"

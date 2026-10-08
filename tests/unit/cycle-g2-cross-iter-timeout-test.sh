@@ -105,8 +105,10 @@ _p2="$(_persist_build)"; [[ "$_p2" =~ ^[0-9]+$ ]] || _p2=0
 [[ "$_p2" -ge 2 ]] \
     && assert_pass "[persist] restored counter carried across re-entry (persist grew to $_p2 ≥ 2)" \
     || assert_fail "[persist] counter did not persist across re-entry" "persist=$_p2"
-assert_eq "[no-abandon] second invocation does NOT abandon on timeout (rc=8 by-severity, not 4)" \
-    "8" "$rc2"
+# #1850: was rc=8 (not 4). Now rc=1 and the word says failed (exhausted with
+# failing tests), not interrupted (the old abandon).
+assert_eq "[no-abandon] second invocation does NOT abandon on timeout (rc=1, outcome failed by-severity, not interrupted)" \
+    "1 failed" "$rc2 ${_CYCLE_LAST_OUTCOME:-unset}"
 if [[ "$_CYCLE_LAST_TERMINATED_REASON" == "timeout_abandoned" ]]; then
     assert_fail "[no-abandon] reason is not timeout_abandoned" "$_CYCLE_LAST_TERMINATED_REASON"
 else

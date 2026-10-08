@@ -176,8 +176,9 @@ ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins" \
     > "$TEST_TEMP_DIR/t5.out" 2> "$TEST_TEMP_DIR/t5.err"
 t5_rc=$?
 set -e
-if [[ $t5_rc -eq 2 ]]; then
-    assert_pass "T5: --from-stage build refused with rc=2 (Pin 14)"
+# #1850 (ADR-054 §4): the refusal exits 1 (was 2); the message below names it.
+if [[ $t5_rc -eq 1 ]]; then
+    assert_pass "T5: --from-stage build refused with rc=1 (Pin 14)"
 else
     assert_fail "T5: --from-stage build should be refused" "rc=$t5_rc"
 fi

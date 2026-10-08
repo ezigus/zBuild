@@ -109,10 +109,11 @@ assert_contains "[SPEC-1] the failure detail reaches the prompt" \
 assert_contains "[SPEC-1] and it is framed as findings to answer, not passive context" \
     "$_SUMMARY_BLOCK" "its findings, to answer"
 
-print_test_section "SPEC-3: empty_diff + gate!=pass ⇒ runs ALL iters → rc=2 (no early stall-break, #1208)"
+print_test_section "SPEC-3: empty_diff + gate!=pass ⇒ runs ALL iters → rc=1, outcome unconverged (no early stall-break, #1208)"
 _GA_VERDICT="fail"
 _run_cycle "stall"
-assert_eq "[SPEC-3] cycle rc=2 (unconverged→review)" "2" "$_RUN_RC"
+# #1850 (ADR-054 §4): was rc=2. The loop returns 1 and names the end.
+assert_eq "[SPEC-3] cycle rc=1, outcome unconverged (→review)" "1 unconverged" "$_RUN_RC ${_CYCLE_LAST_OUTCOME:-unset}"
 assert_eq "[SPEC-3] terminated reason is max_iterations (not stalled — early break removed)" \
     "max_iterations" "${_CYCLE_LAST_TERMINATED_REASON:-}"
 assert_eq "[SPEC-3] ran ALL 3 iterations (no early terminator)" "3" "${_CYCLE_LAST_ITERATIONS:-}"

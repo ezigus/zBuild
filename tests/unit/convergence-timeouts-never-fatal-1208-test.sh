@@ -12,8 +12,9 @@
 #
 # SPECs:
 #   1 timeout-never-fatal          — build times out every iter (tests green) →
-#                                     cycle NEVER halts (no rc=4/5/8), runs all
-#                                     iters, ends unconverged→review (rc=2). No
+#                                     cycle NEVER halts (no interrupted/failed
+#                                     end), runs all iters, ends unconverged→review
+#                                     (rc=1, outcome unconverged). No
 #                                     cycle.member.timeout_abandoned.
 #   2 no-false-converge-on-unfinished — build did_not_finish + gate/test=pass →
 #                                     iteration does NOT converge; suppression
@@ -22,8 +23,13 @@
 #                                     green → converge on iter 1 (rc=0), NOT a stall.
 #   4 only-fatal-at-exhaustion     — needs iters 1..3 red then iter 4 green →
 #                                     converges at iter 4 (NOT abandoned early).
-#   5 by-severity-at-exhaustion    — exhausted + tests failing → rc=8 (failed halt);
-#                                     exhausted + tests passing-but-unclean → rc=2.
+#   5 by-severity-at-exhaustion    — exhausted + tests failing → rc=1, outcome
+#                                     failed (halt); exhausted + tests passing-but-
+#                                     unclean → rc=1, outcome unconverged.
+#
+# #1850 (ADR-054 §4): the loop returns 0 or 1 and names how it ended on
+# _CYCLE_LAST_OUTCOME; every pin below that used to read rc=2 / rc=8 reads
+# "rc outcome" together, so unconverged and failed stay distinct.
 #   6 retry>2                      — a 4-iteration convergence is not abandoned
 #                                     by the old G2 2x rule (== SPEC-4 evidence).
 #   9 build-never-short-circuits   — clean stall (empty_diff, LOOP_COMPLETE) +
@@ -139,18 +145,20 @@ _seed() {
 _run() {
     # $1 = template fixture, $2 = MOCK_PLAN
     _seed
+    unset _CYCLE_LAST_OUTCOME
     load_template "$1"
     MOCK_PLAN="$2"
     set +e
     cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
     RUN_RC=$?
     set +e
+    RUN_END="$RUN_RC ${_CYCLE_LAST_OUTCOME:-unset}"
 }
 
 # ─── SPEC-1: timeout never fatal ─────────────────────────────────────────────
 print_test_section "SPEC-1: build times out every iter (tests green) → never a halt; runs all iters"
 _run "$FIXT/cycle-converges-iter2.yaml" "build:dnf,dnf,dnf,dnf,dnf;test:pass,pass,pass,pass,pass"
-assert_eq "[SPEC-1] cycle does not halt on timeout — rc=2 (unconverged→review)" "2" "$RUN_RC"
+assert_eq "[SPEC-1] cycle does not halt on timeout — rc=1, outcome unconverged (→review)" "1 unconverged" "$RUN_END"
 [[ "${_CYCLE_LAST_ITERATIONS:-0}" -eq 5 ]] \
     && assert_pass "[SPEC-1] ran all 5 iterations (no early abandon), got ${_CYCLE_LAST_ITERATIONS:-?}" \
     || assert_fail "[SPEC-1] ran all 5 iterations" "got ${_CYCLE_LAST_ITERATIONS:-?}"
@@ -167,7 +175,7 @@ fi
 # new mock it carries "incomplete" (the new raw verdict for an interrupted build).
 print_test_section "SPEC-2/SPEC-5: build disposition=interrupted + tests pass → NOT converged; suppression event"
 _run "$FIXT/cycle-max-iter.yaml" "build:dnf,dnf,dnf;test:pass,pass,pass"
-assert_eq "[SPEC-2] not converged (mid-flight build) — rc=2" "2" "$RUN_RC"
+assert_eq "[SPEC-2] not converged (mid-flight build) — rc=1, outcome unconverged" "1 unconverged" "$RUN_END"
 assert_contains "[SPEC-2] suppression event emitted" \
     "$(cat "$ZBUILD_EVENTS_JSONL")" "cycle.build_unfinished.suppressed_convergence"
 if grep -q '"reason":"converged"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
@@ -209,25 +217,26 @@ _run "$FIXT/cycle-converges-iter2.yaml" \
 assert_eq "[SPEC-4/6] converges at iter 4 (rc=0) — no early terminator" "0" "$RUN_RC"
 assert_eq "[SPEC-4/6] iteration count is 4 (>2, G2 does not bite)" "4" "${_CYCLE_LAST_ITERATIONS:-}"
 
-# ─── SPEC-5(a): exhaustion + tests failing → rc=8 (failed halt) ──────────────
-print_test_section "SPEC-5a: exhausted with tests failing → rc=8 (status=failed halt)"
+# ─── SPEC-5(a): exhaustion + tests failing → rc=1, outcome failed (halt) ─────
+print_test_section "SPEC-5a: exhausted with tests failing → rc=1, outcome failed (status=failed halt)"
 _run "$FIXT/cycle-converges-iter2.yaml" "build:pass;test:fail"
-assert_eq "[SPEC-5a] exhausted + failing tests → rc=8" "8" "$RUN_RC"
+assert_eq "[SPEC-5a] exhausted + failing tests → rc=1, outcome failed" "1 failed" "$RUN_END"
 
-# ─── SPEC-5(b)+SPEC-9: exhaustion + tests passing but unclean build → rc=2 ───
-print_test_section "SPEC-5b/9: exhausted, tests pass but build mid-flight every iter → rc=2 (review)"
+# ─── SPEC-5(b)+SPEC-9: exhaustion + tests passing but unclean build → unconverged
+print_test_section "SPEC-5b/9: exhausted, tests pass but build mid-flight every iter → rc=1, outcome unconverged (review)"
 _run "$FIXT/cycle-converges-iter2.yaml" "build:dnf;test:pass"
-assert_eq "[SPEC-5b] exhausted + passing tests (unclean) → rc=2 (unconverged→review)" "2" "$RUN_RC"
+assert_eq "[SPEC-5b] exhausted + passing tests (unclean) → rc=1, outcome unconverged (→review)" "1 unconverged" "$RUN_END"
 
-# ─── SPEC-5(c): non-test gate fails + tests pass + test-results absent → rc=2 ─
-# Residual false-fatal guard: at exhaustion the hard-fail (rc=8) must key ONLY on
+# ─── SPEC-5(c): non-test gate fails + tests pass + test-results absent → unconverged
+# Residual false-fatal guard: at exhaustion the hard-fail (outcome failed; rc=8
+# before #1850) must key ONLY on
 # the authoritative test signal (test.verdict==fail OR test-results .failed>0),
 # NEVER on the GENERIC failure_count. A failing NON-test gate (which inflates the
 # generic failure_count) with PASSING tests and NO test-results artifact (the
-# #511 Pin-10 override did not apply) must resolve to rc=2 (unconverged→review),
-# NOT rc=8. Red-first: on the pre-hardening code (has_test && failure_count>0)
-# this returned rc=8.
-print_test_section "SPEC-5c: failing non-test gate + passing tests + no test-results → rc=2 (not rc=8)"
+# #511 Pin-10 override did not apply) must resolve to outcome unconverged
+# (→review), NOT failed. Red-first: on the pre-hardening code (has_test &&
+# failure_count>0) this returned the failed halt.
+print_test_section "SPEC-5c: failing non-test gate + passing tests + no test-results → unconverged (not failed)"
 _5C_TPL="$TEST_TEMP_DIR/spec5c-gate-cycle.yaml"
 cat > "$_5C_TPL" <<'YAML'
 id: spec5c
@@ -280,11 +289,13 @@ cycle_dispatch_stage() {
 source "$REPO_ROOT/tests/lib/cycle-report-stub.sh"
 zb_stub_reports_tests test
 load_template "$_5C_TPL"
+unset _CYCLE_LAST_OUTCOME
 set +e
 cycle_orchestrator_run "build-test" "$_5C_SD" "$_5C_SD/pipeline-state.json"
 _5C_RC=$?
 set +e
-assert_eq "[SPEC-5c] non-test gate fail + tests pass + no test-results → rc=2 (not rc=8)" "2" "$_5C_RC"
+assert_eq "[SPEC-5c] non-test gate fail + tests pass + no test-results → rc=1, outcome unconverged (not failed)" \
+    "1 unconverged" "$_5C_RC ${_CYCLE_LAST_OUTCOME:-unset}"
 
 # ─── SPEC-8: repo-agnostic — no zbuild plugin id / path / test-format in path ─
 print_test_section "SPEC-8: exercised convergence path is repo-neutral (generic member ids only)"

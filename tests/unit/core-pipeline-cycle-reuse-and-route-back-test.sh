@@ -51,9 +51,10 @@ assert_eq "[SPEC-5] …and reused on each of the other two" "2" "$_n_reused"
 _n_ag_f="$(grep -c '"cycle.member.dispatch.complete".*"member":"acceptance-gate"' "$ZBUILD_EVENTS_JSONL" || true)"
 assert_eq "[SPEC-5b] the FAILING acceptance-gate is reused too (dispatched once)" "1" "$_n_ag_f"
 _AG_VERDICT="pass"
-# #2271: no jump back. Exhausted with the suite failing is rc 8; nested in the
-# outer loop, that ends the round and the outer loop goes round from design.
-assert_eq "[SPEC-5] exhausted with tests failing ⇒ rc=8" "8" "$_RUN_RC"
+# #2271: no jump back. Exhausted with the suite failing is a failed end (rc 1,
+# outcome failed — rc 8 before #1850, ADR-054 §4); nested in the outer loop,
+# that ends the round and the outer loop goes round from design.
+assert_eq "[SPEC-5] exhausted with tests failing ⇒ rc=1, outcome failed" "1 failed" "$_RUN_RC ${_CYCLE_LAST_OUTCOME:-unset}"
 assert_eq "[SPEC-5] …with reason max_iterations_tests_failing" "max_iterations_tests_failing" "${_CYCLE_LAST_TERMINATED_REASON:-}"
 _TEST_VERDICT="pass"
 
@@ -95,7 +96,8 @@ print_test_section "SPEC-6: a denied scope request ends the build loop after one
 _BUILD_SCOPE_REQUEST='{"files":[{"path":"tests/unit/other-test.sh","category":"collateral_tests","evidence":"","reason":"named in test feedback"}]}'
 _GA_VERDICT="fail"
 _run_cycle "scope-rb"
-assert_eq "[SPEC-6] the loop ends blocked_on_scope (rc=7)" "7" "$_RUN_RC"
+assert_eq "[SPEC-6] the loop ends blocked_on_scope (rc=1, outcome interrupted; was rc=7)" \
+    "1 interrupted" "$_RUN_RC ${_CYCLE_LAST_OUTCOME:-unset}"
 assert_eq "[SPEC-6] after ONE iteration — no grinding" "1" "${_CYCLE_LAST_ITERATIONS:-}"
 assert_eq "[SPEC-6] …with its reason" "blocked_on_scope" "${_CYCLE_LAST_TERMINATED_REASON:-}"
 assert_eq "[SPEC-6] the denial itself is still recorded" "1" \

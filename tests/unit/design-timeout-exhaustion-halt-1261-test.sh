@@ -14,24 +14,28 @@
 # TIMEOUT-driven when a member surfaces the repo-neutral `did_not_finish` verdict
 # (build's #1208 verdict; design's #1261 verdict). At exhaustion, if that tail is
 # present AND the cycle has NO authoritative verifier signal (no `test` member
-# verdict / no test-results.json), HALT (rc=8, reason=design_timeout_exhausted)
+# verdict / no test-results.json), HALT (rc=1, outcome failed,
+# reason=design_timeout_exhausted)
 # even under on_max=continue. A CONTENT non-convergence (no did_not_finish tail)
 # keeps the ADR-019 continue fall-through. GENERIC: keys on the timeout signal +
 # absence of a test signal, NOT the `design` stage id — build_test_cycle ALWAYS
 # runs `test` (has a signal) so it is unaffected.
 #
 # SPECs:
-#   1 [change] design times out EVERY iter → cycle HALTS rc=8, reason
-#              design_timeout_exhausted, cycle.timeout_exhausted emitted. Does
-#              NOT converge, does NOT fall through as unconverged→review (rc=2).
+#   1 [change] design times out EVERY iter → cycle HALTS rc=1, outcome failed,
+#              reason design_timeout_exhausted, cycle.timeout_exhausted emitted.
+#              Does NOT converge, does NOT fall through as outcome unconverged.
 #   2 [guard]  design-gate fails on CONTENT 3× (design produces a real design.md,
-#              NO did_not_finish tail) → rc=2 (unconverged→review, on_max=continue
+#              NO did_not_finish tail) → rc=1, outcome unconverged (→review, on_max=continue
 #              honored, ADR-019 UNCHANGED). No design_timeout_exhausted.
 #   3 [guard]  a converging design (design-gate passes) → rc=0. Unaffected.
 #   4 [guard/build-neutral] a build_test_cycle-shaped cycle (has a `test` member)
-#              whose build times out every iter but tests PASS → rc=2 (the #1208
+#              whose build times out every iter but tests PASS → outcome unconverged (the #1208
 #              contract), NOT design_timeout_exhausted. Proves build_test_cycle is
 #              untouched (scope: design-only).
+#
+# #1850 (ADR-054 §4): the loop returns 0 or 1 and names its end on
+# _CYCLE_LAST_OUTCOME; the pins that read rc=8 / rc=2 now read "rc outcome".
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -185,16 +189,18 @@ _run() {
     _seed
     load_template "$1"
     MOCK_PLAN="$3"
+    unset _CYCLE_LAST_OUTCOME
     set +e
     cycle_orchestrator_run "$2" "$ZBUILD_STATE_DIR" "$STATE_FILE"
     RUN_RC=$?
     set +e
+    RUN_END="$RUN_RC ${_CYCLE_LAST_OUTCOME:-unset}"
 }
 
 # ─── SPEC-1: persistent design timeout → HALT (design_timeout_exhausted) ──────
-print_test_section "SPEC-1: design times out every iter → rc=8, reason=design_timeout_exhausted (no fall-through)"
+print_test_section "SPEC-1: design times out every iter → rc=1, outcome failed, reason=design_timeout_exhausted (no fall-through)"
 _run "$DESIGN_TPL" "design-verify" "design:dnf,dnf,dnf;design-gate:fail,fail,fail"
-assert_eq "[SPEC-1] persistent design timeout HALTS with rc=8" "8" "$RUN_RC"
+assert_eq "[SPEC-1] persistent design timeout HALTS: rc=1, outcome failed" "1 failed" "$RUN_END"
 assert_eq "[SPEC-1] terminal reason is design_timeout_exhausted" \
     "design_timeout_exhausted" "${_CYCLE_LAST_TERMINATED_REASON:-}"
 assert_contains "[SPEC-1] cycle.complete carries reason=design_timeout_exhausted" \
@@ -212,10 +218,10 @@ fi
 assert_eq "[SPEC-9] design timeout halt fires on disposition=interrupted (not old verdict=did_not_finish)" \
     "design_timeout_exhausted" "${_CYCLE_LAST_TERMINATED_REASON:-}"
 
-# ─── SPEC-2 [guard]: CONTENT non-convergence keeps ADR-019 continue (rc=2) ────
-print_test_section "SPEC-2: design-gate fails on CONTENT 3x (no timeout) → rc=2 (on_max=continue, ADR-019 unchanged)"
+# ─── SPEC-2 [guard]: CONTENT non-convergence keeps ADR-019 continue (unconverged)
+print_test_section "SPEC-2: design-gate fails on CONTENT 3x (no timeout) → rc=1, outcome unconverged (on_max=continue, ADR-019 unchanged)"
 _run "$DESIGN_TPL" "design-verify" "design:pass,pass,pass;design-gate:fail,fail,fail"
-assert_eq "[SPEC-2] content non-convergence → rc=2 (unconverged→review)" "2" "$RUN_RC"
+assert_eq "[SPEC-2] content non-convergence → rc=1, outcome unconverged (→review)" "1 unconverged" "$RUN_END"
 if [[ "${_CYCLE_LAST_TERMINATED_REASON:-}" == "design_timeout_exhausted" ]]; then
     assert_fail "[SPEC-2] content fail must NOT be treated as timeout exhaustion" \
         "reason=${_CYCLE_LAST_TERMINATED_REASON}"
@@ -234,9 +240,10 @@ _run "$DESIGN_TPL" "design-verify" "design:pass;design-gate:pass"
 assert_eq "[SPEC-3] converging design → rc=0" "0" "$RUN_RC"
 
 # ─── SPEC-4 [guard]: build_test_cycle (has `test`) is UNTOUCHED ──────────────
-print_test_section "SPEC-4: build times out every iter but tests PASS → rc=2 (#1208), NOT design_timeout_exhausted"
+print_test_section "SPEC-4: build times out every iter but tests PASS → rc=1, outcome unconverged (#1208), NOT design_timeout_exhausted"
 _run "$BUILD_TPL" "build-test" "build:dnf,dnf,dnf;test:pass,pass,pass"
-assert_eq "[SPEC-4] build_test_cycle timeout + passing tests → rc=2 (unchanged #1208 contract)" "2" "$RUN_RC"
+assert_eq "[SPEC-4] build_test_cycle timeout + passing tests → rc=1, outcome unconverged (unchanged #1208 contract)" \
+    "1 unconverged" "$RUN_END"
 if [[ "${_CYCLE_LAST_TERMINATED_REASON:-}" == "design_timeout_exhausted" ]]; then
     assert_fail "[SPEC-4] build_test_cycle must NOT trip the timeout-exhaustion halt (out of scope)" \
         "reason=${_CYCLE_LAST_TERMINATED_REASON}"

@@ -11,8 +11,10 @@
 #   (T1) With flag on, the runner shell has `monitor` (-m) option set —
 #        verified by injecting a probe plugin that records `$-` and
 #        `set -o monitor` output. Flag-off: no `-m`.
-#   (T2) With flag on, SIGTERM mid-build still produces rc=143 + the
-#        Wave 15-B sentinel/event chain (regression of trap composition).
+#   (T2) With flag on, SIGTERM mid-build still produces exit 1 + the
+#        Wave 15-B sentinel/event chain (regression of trap composition) —
+#        the signal is named by pipeline.aborted reason=sigterm (#1850,
+#        ADR-054 §4: the exit status was 143).
 #
 # Wave 15-H lays the foundation for future backgrounded stages (e.g.
 # parallel strategy fanout); the trap's PG-kill loop is exercised here
@@ -149,7 +151,7 @@ else
         "got: $opts_on"
 fi
 
-# ─── T2: SIGTERM with flag-on still produces rc=143 + Wave 15-B chain ────────
+# ─── T2: SIGTERM with flag-on still produces exit 1 + Wave 15-B chain ────────
 print_test_section "T2: end-to-end SIGTERM with flag-on (regression of trap chain)"
 
 # Reuse $PROBE_PLUGINS (= TEST_TEMP_DIR/plugins). Override build/test/intake.
@@ -231,9 +233,12 @@ set -e
 end_ts=$(date +%s)
 sig_to_exit=$(( end_ts - sig_ts ))
 
-assert_eq "runner exits 143 (flag-on, SIGTERM)" "143" "$runner_rc"
+# #1850: was 143. Every halt exits 1; the word below says it was SIGTERM.
+assert_eq "runner exits 1, not 143 (flag-on, SIGTERM)" "1" "$runner_rc"
+assert_eq "pipeline.aborted carries reason=sigterm exactly" "sigterm" \
+    "$(jq -r 'select(.type=="pipeline.aborted") | .data.reason // empty' "$E2E_EVENTS_JSONL" 2>/dev/null | sort -u | tr -d '\n')"
 
-# Budget: hang-backstop only (#1059). The abort proof is the rc=143 +
+# Budget: hang-backstop only (#1059). The abort proof is the exit 1 + reason +
 # TEST_RAN-absence assertions; this generous bound just catches a true hang
 # (was a tight ≤5s that flaked on the macOS matrix).
 if [[ "$sig_to_exit" -le 60 ]]; then

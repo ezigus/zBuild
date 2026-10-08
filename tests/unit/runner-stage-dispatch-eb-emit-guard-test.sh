@@ -53,8 +53,13 @@ _ZB_REPO="$(zb_test_repo eb-emit-guard)"
 # _drive_with_failing_eb runs the pipeline with eb_emit_event stubbed to return
 # non-zero for the given event type. Captures stderr to verify warn output.
 # Args: _cycle_rc _reason _fail_event
+# #1850 (ADR-054 §4): a loop says how it ended on _CYCLE_LAST_OUTCOME, not in
+# its rc, so the stub writes it as the real orchestrator does: converged for
+# rc 0, unconverged for the max_iterations rc=1 end.
 _drive_with_failing_eb() {
     local _cycle_rc="$1" _reason="${2:-converged}" _fail_event="${3:-stage.start}"
+    local _outcome="unconverged"
+    [[ "$_cycle_rc" == "0" ]] && _outcome="converged"
     local _tmp; _tmp="$(mktemp -d "$TEST_TEMP_DIR/m-XXXXXX")"
     local _stderr="$_tmp/stderr.log"
     (
@@ -73,7 +78,7 @@ _drive_with_failing_eb() {
         # #979: resolve the owned two-cycles fixture (retired standard.yaml).
         resolve_template_file() { echo "$REPO_ROOT/tests/fixtures/templates/two-cycles.yaml"; }
 
-        eval "cycle_orchestrator_run() { _CYCLE_LAST_TERMINATED_REASON=\"$_reason\"; _CYCLE_LAST_ITERATIONS=1; return $_cycle_rc; }"
+        eval "cycle_orchestrator_run() { _CYCLE_LAST_TERMINATED_REASON=\"$_reason\"; _CYCLE_LAST_OUTCOME=\"$_outcome\"; _CYCLE_LAST_ITERATIONS=1; return $_cycle_rc; }"
         eval "_TARGET_FAIL_EVENT='$_fail_event'"
 
         eb_emit_event() {

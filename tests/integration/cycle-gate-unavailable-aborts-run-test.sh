@@ -417,7 +417,9 @@ abort_reason="$(jq -r 'select(.type=="pipeline.aborted") | .data.reason' "$EVENT
 assert_eq "[ADR-063 §4] pipeline.aborted reason=llm_unavailable" "llm_unavailable" "$abort_reason"
 assert_eq "[ADR-063 §4] pipeline-state.json status=aborted (resumable, ADR-050)" "aborted" \
     "$(jq -r '.status // empty' "$STATE_DIR/pipeline-state.json" 2>/dev/null || true)"
-assert_eq "[ADR-063 §4] the runner exits 9 (the llm-abort rc) — not 0" "9" "${_RUNNER_RC:-}"
+# #1850 (ADR-054 §4): was 9 (the llm-abort rc). Every halt exits 1; the
+# llm_unavailable word above (event + state) is what says why.
+assert_eq "[ADR-063 §4] the runner exits 1 — not 0, not the old llm-abort rc 9" "1" "${_RUNNER_RC:-}"
 
 cleanup_test_env
 print_test_results

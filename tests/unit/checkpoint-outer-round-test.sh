@@ -62,7 +62,8 @@ assert_eq "[O1] no stage runs without an outer round" \
 assert_eq "[O1] the outer round is cleared when the outer loop ends" "unset" "${ZBUILD_OUTER_ROUND:-unset}"
 
 # ─── O6: cleared on every way out of the outer loop ─────────────────────────
-# A blocked build loop stops the run early (ADR-068, rc 5). The round must be
+# A blocked build loop stops the run early (ADR-068; rc 1, outcome interrupted —
+# rc 5 before #1850, ADR-054 §4). The round must be
 # cleared on that path too, or every stage after the loop sees a fixed round.
 print_test_section "O6: the outer round is cleared when the outer loop stops early"
 # shellcheck source=../lib/nested-loop-rounds-fixture.sh
@@ -70,7 +71,8 @@ print_test_section "O6: the outer round is cleared when the outer loop stops ear
 # rounds, and O6 needs the fixture's own, which honours BUILD=blocked.
 source "$REPO_ROOT/tests/lib/nested-loop-rounds-fixture.sh"
 DESIGN_GATE=pass TEST=fail BUILD=blocked _run; o6_rc=$?
-assert_eq "[O6] fixture: the outer loop stopped early (blocked, rc 5)" "5" "$o6_rc"
+assert_eq "[O6] fixture: the outer loop stopped early (blocked: rc 1, outcome interrupted)" \
+    "1 interrupted" "$o6_rc ${_CYCLE_LAST_OUTCOME:-unset}"
 assert_eq "[O6] the outer round is cleared after an early stop" "unset" "${ZBUILD_OUTER_ROUND:-unset}"
 
 # ─── the checkpoint block ───────────────────────────────────────────────────

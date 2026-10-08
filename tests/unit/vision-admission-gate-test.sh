@@ -11,8 +11,12 @@
 #           overage count and '--condense' hint
 #   SPEC-5  over-length diagnostic contains body word count
 #   SPEC-6  over-length diagnostic reports correct overage (count − 300)
-#   SPEC-7  runner exits rc=2 on missing vision when ZBUILD_VISION_GATE=enforce
-#   SPEC-8  runner exits rc=2 on malformed vision when ZBUILD_VISION_GATE=enforce
+#   SPEC-7  runner exits rc=1 + pipeline.end status=preflight_failed on missing
+#           vision when ZBUILD_VISION_GATE=enforce
+#   SPEC-8  runner exits rc=1 + pipeline.end status=preflight_failed on malformed
+#           vision when ZBUILD_VISION_GATE=enforce
+#   (#1850, ADR-054 §4: every refusal exits 1 — it was rc=2 — and the
+#   preflight_failed word on pipeline.end is what says the gate fired.)
 #   SPEC-9  runner proceeds (rc≠2 gate-related) when ZBUILD_VISION_GATE=off
 #   SPEC-10 validate_vision_doc over-length message contains 'Run: zbuild vision init --condense'
 set -euo pipefail
@@ -156,7 +160,7 @@ fi
 assert_contains "[SPEC-10] over-length message contains actionable hint" \
     "$diag" "Run: zbuild vision init --condense"
 
-# ── SPEC-7: runner exits rc=2 on missing vision (enforce mode) ───────────────
+# ── SPEC-7: runner exits rc=1, preflight_failed, on missing vision (enforce) ─
 # We test runner.sh subprocess behavior in a minimal overlay repo.
 RUNNER="$REPO_ROOT/core/pipeline/runner.sh"
 
@@ -182,11 +186,13 @@ gate_out="$(
     ZBUILD_VISION_GATE=enforce \
     bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" 2>&1
 )" || rc=$?
-assert_eq "[SPEC-7] runner rc=2 on missing vision (enforce)" "2" "$rc"
+assert_eq "[SPEC-7] runner rc=1 on missing vision (enforce)" "1" "$rc"
+assert_eq "[SPEC-7] pipeline.end says the gate refused (status=preflight_failed)" "preflight_failed" \
+    "$(jq -r 'select(.type=="pipeline.end") | .data.status // empty' "$TEST_TEMP_DIR/gate-events/events.jsonl" 2>/dev/null | sort -u | tr -d '\n')"
 assert_contains "[SPEC-7] runner names search paths in message" "$gate_out" ".zbuild/vision.md"
 assert_contains "[SPEC-7] runner includes zbuild vision init hint" "$gate_out" "zbuild vision init"
 
-# ── SPEC-8: runner exits rc=2 on malformed vision (enforce mode) ─────────────
+# ── SPEC-8: runner exits rc=1, preflight_failed, on malformed vision (enforce)
 MALFORMED_REPO="$(setup_git_temp_repo malformed-vision-repo)"
 install_template_overlay "$MALFORMED_REPO" runner-state-dir-minimal
 # Place an over-word-count vision doc (fails new word-cap-only validator);
@@ -207,7 +213,9 @@ malformed_out="$(
     ZBUILD_VISION_GATE=enforce \
     bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" 2>&1
 )" || rc=$?
-assert_eq "[SPEC-8] runner rc=2 on malformed vision (enforce)" "2" "$rc"
+assert_eq "[SPEC-8] runner rc=1 on malformed vision (enforce)" "1" "$rc"
+assert_eq "[SPEC-8] pipeline.end says the gate refused (status=preflight_failed)" "preflight_failed" \
+    "$(jq -r 'select(.type=="pipeline.end") | .data.status // empty' "$TEST_TEMP_DIR/malformed-events/events.jsonl" 2>/dev/null | sort -u | tr -d '\n')"
 assert_contains "[SPEC-8] runner message references --condense" "$malformed_out" "--condense"
 
 # ── SPEC-9: runner proceeds when ZBUILD_VISION_GATE=off ──────────────────────
@@ -227,11 +235,12 @@ gate_off_out="$(
     ZBUILD_VISION_GATE=off \
     bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" 2>&1
 )" || rc=$?
-# rc=0 means the pipeline ran (and possibly succeeded); rc=2 would mean the gate fired.
-# We assert rc is NOT 2 (gate did not fire on missing vision when off).
-if [[ "$rc" -eq 2 ]]; then
-    assert_fail "[SPEC-9] ZBUILD_VISION_GATE=off must not return rc=2 for missing vision" \
-        "got rc=2, output: ${gate_off_out:0:200}"
+# #1850: the rc no longer tells a gate refusal (1) from any other failed run (1),
+# so the gate firing is read from its word: pipeline.end status=preflight_failed.
+_gate_off_end="$(jq -r 'select(.type=="pipeline.end") | .data.status // empty' "$TEST_TEMP_DIR/gate-off-events/events.jsonl" 2>/dev/null | sort -u | tr -d '\n')"
+if [[ "$_gate_off_end" == "preflight_failed" ]]; then
+    assert_fail "[SPEC-9] ZBUILD_VISION_GATE=off must not refuse a missing vision" \
+        "pipeline.end status=preflight_failed (rc=$rc), output: ${gate_off_out:0:200}"
 else
     assert_pass "[SPEC-9] ZBUILD_VISION_GATE=off: runner proceeds past vision gate (rc=$rc)"
 fi

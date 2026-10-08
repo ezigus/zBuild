@@ -42,7 +42,8 @@ print_test_section "L1: the build loop hands the finding back on the last round"
 TA="nothing to do" BUILD="nothing to do" DESIGN="done" _run; rc=$?
 _rep="$(cat "$REP" 2>/dev/null)"; _GUARDED+=$'\n'"$_rep"
 assert_eq "[L1] it was the last round: the build loop ran in both outer rounds" "2" "$(_count test_author 1)"
-assert_eq "[L1] the run stops as failed" "8" "$rc"
+# #1850 (ADR-054 §4): was rc=8; the loop returns 1 and names a failed end.
+assert_eq "[L1] the run stops as failed" "1 failed" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
 assert_contains "[L1] the report names the item" "$_rep" "acc finding 1"
 assert_contains "[L1] ...what is unresolved" "$_rep" "is not the file that calls the new code"
 assert_contains "[L1] ...what would settle it" "$_rep" "What would settle it:"
@@ -54,7 +55,7 @@ print_test_section "L2: a check is not sure of an item on the last round"
 ACC_UNSURE=1 TA="done" BUILD="done" DESIGN="done" _run; rc=$?
 _rep="$(cat "$REP" 2>/dev/null)"; _GUARDED+=$'\n'"$_rep"
 assert_eq "[L2] the build loop used every round: nothing handed it back" "2" "$(_count acc 3)"
-assert_eq "[L2] the run stops as failed" "8" "$rc"
+assert_eq "[L2] the run stops as failed" "1 failed" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
 assert_contains "[L2] the report names the item" "$_rep" "R-1: the flag is documented"
 assert_contains "[L2] ...and what would settle it" "$_rep" "What would settle it: a test that fails when the flag is not documented"
 
