@@ -1,0 +1,170 @@
+============== ZBUILD BUILD — iter 1/10 ==============
+## What you own
+### INSTRUCTIONS
+Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
+
+You have Read, Edit, Write, and
+Bash tools available. Your job is to edit the working tree to implement the
+ORIGINAL TASK below.
+
+### How the loop works
+- Each iteration you may make code changes via Edit/Write/Bash.
+- After each iteration the pipeline captures `git diff HEAD` and feeds it
+  back to you so you can verify progress.
+- Do NOT emit a unified diff in your response — the pipeline derives the
+  canonical `diff.patch` artifact from `git diff HEAD` automatically.
+
+### Saying you are done
+Emit `LOOP_COMPLETE` on its own line as the FINAL line of your response
+WHEN the implementation is complete — whether you just finished it OR
+it was already done before you started. If the branch already contains
+the required changes (check `git log` for commits + `git diff` for any
+remaining gap) AND no STAGE SUMMARY below is headed "— its findings, to answer",
+emit `LOOP_COMPLETE` immediately. Do NOT keep iterating when there is
+nothing left to do. While any STAGE SUMMARY is headed that way, finishing
+with no change needs each of its findings answered: `done` (you changed
+something for it), or `nothing to do` with the reason.
+
+### When a finding does not reproduce
+If a failing summary names a test and that test PASSES when you run it on this
+tree, say so and stop. Answer that finding, on its own line before the sentinel:
+
+    ANSWER <stage> finding <n>: nothing to do — not reproduced: <the path you ran>
+
+one line per finding. This is a REPORT, not a verdict: the pipeline re-runs the
+stage that raised the finding to check. Do not keep searching for the cause of
+a failure you cannot produce, and do not change code to chase one.
+
+### Budget
+- Each iteration is ONE model call bounded by a 900-second wall clock; a
+  command that runs longer than ~2 minutes will cost you the whole call.
+- Finish this call's work and commit before ~630s. Work you saved
+  survives a timeout; the call itself returns nothing, so say what is left as you go.
+- Do NOT run `npm test`, the full suite, or `npm run lint` — the pipeline has
+  already run them and their findings are in the STAGE SUMMARIES below. Run
+  only the one failing test file a summary names, and only after changing code.
+- A STAGE SUMMARY headed "— its findings, to answer" is red RIGHT NOW on this tree.
+  Start from the failing line it quotes.
+
+### Commit message (#608)
+Before the final `LOOP_COMPLETE` line, emit a single line of the form:
+
+    COMMIT_SUMMARY: <one-line description of this iteration's change>
+
+Keep it under 72 characters, present tense, imperative mood (e.g.
+"add foo parser" not "added"). The pipeline uses this as the git commit
+message for the per-iteration commit it creates on your behalf. If you
+omit this line the pipeline falls back to the plan title.
+
+## What you judge against
+### ORIGINAL TASK (immutable across iterations)
+# Plan: Exclude legacy/ from issue worktrees via sparse-checkout
+
+**Goal:** Apply sparse-checkout to every issue worktree so legacy/ is absent (except legacy/migrated/), eliminating the ~50% tree overhead from every repo-wide agent search, without affecting the operator's main checkout.
+
+## Steps
+1. Write the regression test first (TDD). tests/unit/worktree-sparse-legacy-test.sh builds a real git repo with a legacy/ tree (including legacy/migrated/sentinel.md), calls zbuild_worktree_acquire and zbuild_worktree_enter, then asserts: (a) legacy/ content is absent except legacy/migrated/; (b) legacy/migrated/ files are present; (c) a branch switch inside the worktree retains the exclusion; (d) a second zbuild_worktree_acquire call (reuse path) retains the exclusion; (e) git -C <repo_root> config core.sparseCheckout is not 'true' in the main checkout after the operation. This test must fail (red) at the merge-base before any implementation change.
+   - Files: `tests/unit/worktree-sparse-legacy-test.sh`
+   - Estimated lines: 85
+2. Add sparse-checkout support to scripts/lib/worktree.sh. (a) New internal helper _zbuild_worktree_apply_sparse <wt> <repo_root>: enables extensions.worktreeConfig=true on the main repo's .git/config (per-worktree isolation; does not change main checkout's sparsity), then runs 'git -C "$wt" sparse-checkout set --no-cone /* !/legacy/ /legacy/migrated/' inside the linked worktree. (b) New public function zbuild_worktree_include_legacy_path <wt> <path>: calls 'git -C "$wt" sparse-checkout add "$path"' to widen the sparse set for a keeper PR that must read or git-rm a specific legacy source. (c) Call _zbuild_worktree_apply_sparse at the reuse return (zbuild_worktree_acquire line ~182) and after the new-tree post-condition check (line ~203). (d) Call _zbuild_worktree_apply_sparse at the reuse return (zbuild_worktree_enter line ~242) and after the new-tree creation (line ~282).
+   - Files: `scripts/lib/worktree.sh`
+   - Estimated lines: 38
+3. Amend ADR-059 §2 to record the sparse-checkout decision: add a paragraph under 'Why the worktree belongs to the issue' stating that legacy/ is excluded via per-worktree sparse-checkout (extensions.worktreeConfig) with legacy/migrated/ kept materialised, and that a run whose scope names a legacy/ path must call zbuild_worktree_include_legacy_path to widen the sparse set before operating on that path. Add the required '## Enforced by' section naming tests/unit/worktree-sparse-legacy-test.sh (new, §2 sparse exclusion), tests/unit/worktree-location-test.sh (§2 issue-keyed path shape, SPEC-9 through SPEC-11), and tests/unit/legacy-e1-tombstone-test.sh (§2 legacy/migrated/ intact). Then remove ADR-059-issue-vs-run-keying.md from config/adr-enforcement-baseline.txt so lint-adr-enforced-by.sh stops exempting it.
+   - Files: `docs/adr/ADR-059-issue-vs-run-keying.md`, `config/adr-enforcement-baseline.txt`
+   - Estimated lines: 18
+
+## Notes
+Sparse-checkout pattern rationale: '/*' includes everything by default; '!/legacy/' excludes the entire legacy tree; '/legacy/migrated/' re-includes only the tombstone subdirectory. This is a no-cone pattern (--no-cone) because the default cone mode would not correctly handle negation patterns. extensions.worktreeConfig must be set on the main repo before the per-worktree sparse-checkout file is written; without it, git writes a shared sparse-checkout file and ALL worktrees (including the operator's main checkout) become sparse. Setting extensions.worktreeConfig is safe and additive — it does not alter any existing checkout; it only enables per-WT config files going forward. The guard test for 'main checkout not made sparse' checks git -C repo_root config core.sparseCheckout and asserts it is absent or false. The keeper-PR widening function (zbuild_worktree_include_legacy_path) is explicitly requested by the issue ('say how') but is not yet called by any engine code — the call site is in the engine's scope-reading stage, which is out of scope for this issue. The function ships but the caller is a follow-up. Branch-switch retention: once sparse-checkout is set via worktreeConfig, it persists through git checkout calls inside the linked worktree — this is a property of git's sparse-checkout mechanism, not something zbuild needs to actively maintain. The test verifies it. ADR-002 is not amended here because the sparse-checkout decision is a worktree-materialisation property (§2 of ADR-059), not a change to the sentinel protocol or the pruning protocol that ADR-002 governs. The issue references 'ADR-002' only as context for the established legacy/ exclusion convention, not as the locus of the new statement.
+
+### DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
+# Design: Exclude legacy/ from issue worktrees via sparse-checkout (#1802)
+
+## Summary
+
+**Goal:** Apply per-worktree sparse-checkout to every issue worktree so `legacy/` is absent (except `legacy/migrated/`), eliminating the ~50% tree overhead every repo-wide agent search currently pays.
+
+**Context:** `legacy/` is a frozen, never-executed reference copy (~50% of the tree). Every agent running inside an issue worktree traverses it at full cost. ADR-059 §2 already notes that `legacy/` is materialised once per issue instead of once per run (#1802); this issue writes the mechanism that makes that note true.
+
+**Decision:** Add `_zbuild_worktree_apply_sparse <wt> <repo_root>` to `scripts/lib/worktree.sh`. It sets `extensions.worktreeConfig=true` on the main repo config (enabling per-worktree isolation), then runs `git -C "$wt" sparse-checkout set --no-cone -- '/*' '!/legacy/' '/legacy/migrated/'` inside the linked worktree. Call it at every return point of both `zbuild_worktree_acquire` (new creation and reuse) and `zbuild_worktree_enter` (all three modes, new creation and reuse). Also ship `zbuild_worktree_include_legacy_path <wt> <path>` for keeper PRs that must read or `git rm` a specific legacy source before migration. Amend ADR-059 §2 to document the decision and add the required `## Enforced by` section; remove ADR-059 from `config/adr-enforcement-baseline.txt`.
+
+**Why `extensions.worktreeConfig`:** Without it, `git sparse-checkout set` writes `$repo/.git/info/sparse-checkout`, which is shared across all worktrees including the main checkout — making every linked worktree operation sparsify the operator's tree. `extensions.worktreeConfig=true` directs git to write `$repo/.git/worktrees/<name>/sparse-checkout` instead; the main checkout's sparsity is never touched.
+
+**Pattern rationale:** `--no-cone` mode is required because cone mode cannot express negation patterns. The pattern `/* !/legacy/ /legacy/migrated/` includes everything by default, excludes the entire `legacy/` subtree, and re-includes `legacy/migrated/` so tombstones remain readable from within the worktree.
+
+**Branch-switch retention:** Once sparse-checkout is set via `worktreeConfig`, it persists through `git checkout` calls inside the linked worktree. This is a property of git's mechanism, not something zBuild must actively maintain.
+
+
+
+LOOP_COMPLETE
+Where a design decision above conflicts with the plan, follow the design decision.
+
+### ACCEPTANCE TESTS (you MUST make these pass)
+These tests were written before your code. Make them pass by changing code only. Each requirement below is checked by the assertion labelled with its tag (for SPEC-1 of this issue: [#1802/SPEC-1]).
+- SPEC-1: tests/unit/worktree-sparse-legacy-test.sh
+- SPEC-2: tests/unit/worktree-sparse-legacy-test.sh
+- SPEC-3: tests/unit/worktree-sparse-legacy-test.sh
+- SPEC-4: tests/unit/worktree-sparse-legacy-test.sh
+- SPEC-5: tests/unit/worktree-sparse-legacy-test.sh
+- SPEC-6: docs/adr/ADR-059-issue-vs-run-keying.md
+- SPEC-7: config/adr-enforcement-baseline.txt
+
+What each SPEC requires:
+- [#1802/SPEC-1] zbuild_worktree_acquire, called with a run_id against a repo whose checkout includes files under legacy/, returns 0 and produces a linked worktree whose working directory contains no checked-out path under legacy/ other than paths under legacy/migrated/
+- [#1802/SPEC-2] zbuild_worktree_enter, called in any mode (create, adopt_local, or adopt_remote), returns 0 and the resulting linked worktree's working directory contains no checked-out path under legacy/ other than paths under legacy/migrated/
+- [#1802/SPEC-3] when git checkout is run inside a linked worktree that zbuild already configured with sparse-checkout, the working directory afterwards still contains no checked-out path under legacy/ other than paths under legacy/migrated/ — the exclusion survives the branch switch
+- [#1802/SPEC-4] when zbuild_worktree_acquire is called on a linked worktree that already has sparse-checkout configured (resume path), it re-applies the sparse pattern and the worktree's working directory still contains no checked-out path under legacy/ other than paths under legacy/migrated/
+- [#1802/SPEC-5] after zbuild_worktree_acquire or zbuild_worktree_enter configures sparse-checkout on a linked worktree, git config in the main checkout reports core.sparseCheckout as absent or false — extensions.worktreeConfig isolates the per-worktree config and leaves the main checkout non-sparse
+- [#1802/SPEC-6] ADR-059 §2 is amended to document the per-worktree sparse-checkout decision and the zbuild_worktree_include_legacy_path widening protocol for keeper PRs
+- [#1802/SPEC-7] ADR-059-issue-vs-run-keying.md is removed from config/adr-enforcement-baseline.txt and ADR-059 carries a valid ## Enforced by section naming tests/unit/worktree-sparse-legacy-test.sh
+
+### REQUIREMENTS YOUR CODE MUST MEET
+Your change is done when the test for every requirement below passes.
+- [#1802/SPEC-1] zbuild_worktree_acquire, called with a run_id against a repo whose checkout includes files under legacy/, returns 0 and produces a linked worktree whose working directory contains no checked-out path under legacy/ other than paths under legacy/migrated/
+  → its test is already written; make it pass
+- [#1802/SPEC-2] zbuild_worktree_enter, called in any mode (create, adopt_local, or adopt_remote), returns 0 and the resulting linked worktree's working directory contains no checked-out path under legacy/ other than paths under legacy/migrated/
+  → its test is already written; make it pass
+- [#1802/SPEC-3] when git checkout is run inside a linked worktree that zbuild already configured with sparse-checkout, the working directory afterwards still contains no checked-out path under legacy/ other than paths under legacy/migrated/ — the exclusion survives the branch switch
+  → its test is already written; make it pass
+- [#1802/SPEC-4] when zbuild_worktree_acquire is called on a linked worktree that already has sparse-checkout configured (resume path), it re-applies the sparse pattern and the worktree's working directory still contains no checked-out path under legacy/ other than paths under legacy/migrated/
+  → its test is already written; make it pass
+- [#1802/SPEC-5] after zbuild_worktree_acquire or zbuild_worktree_enter configures sparse-checkout on a linked worktree, git config in the main checkout reports core.sparseCheckout as absent or false — extensions.worktreeConfig isolates the per-worktree config and leaves the main checkout non-sparse
+  → its test is already written; make it pass
+- [#1802/SPEC-6] ADR-059 §2 is amended to document the per-worktree sparse-checkout decision and the zbuild_worktree_include_legacy_path widening protocol for keeper PRs
+  → its test is already written; make it pass
+- [#1802/SPEC-7] ADR-059-issue-vs-run-keying.md is removed from config/adr-enforcement-baseline.txt and ADR-059 carries a valid ## Enforced by section naming tests/unit/worktree-sparse-legacy-test.sh
+  → its test is already written; make it pass
+
+## What you must not do
+The acceptance testfiles listed above are read-only for this stage: the engine denies edits to them, and a mechanical check restores any change. They are the contract you implement against, written before your implementation existed. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion. If you believe an assertion genuinely does not test its SPEC, say so in your output and do not edit it.
+
+### Scope (plan.files[])
+You may ONLY touch files listed here. Refuse any out-of-scope edit.
+  - scripts/lib/worktree.sh
+  - tests/unit/worktree-sparse-legacy-test.sh
+  - docs/adr/ADR-059-issue-vs-run-keying.md
+  - config/adr-enforcement-baseline.txt
+  - tests/unit/worktree-location-test.sh
+  - tests/integration/worktree-ownership-test.sh
+  - tests/unit/legacy-e1-tombstone-test.sh
+  - tests/integration/cleanup-cli-e2e-test.sh
+  - tests/integration/intake-branch-held-diagnostic-test.sh
+  - core/pipeline/runner.sh
+
+### Rules
+- Touch only files in the scope list above.
+- Do not run `git commit` — the pipeline owns commit semantics.
+- NEVER run a command that mutates git branch state or the working tree —
+  no `git checkout -b`/`switch`/`commit`/`push`/`tag`/`reset`. You are running
+  INSIDE the pipeline's own checkout; switching or creating a branch hijacks the
+  run. The pipeline owns the branch.
+- If you must exercise a command you are building (or any command that could
+  publish, tag, push, or otherwise mutate state), run it in `--dry-run` mode.
+  Do everything you can to verify behavior without side effects.
+- Keep changes minimal and aligned with the plan.
+- Clean up scratch siblings of the files you edit (`*.bak`, `*.orig`,
+  `*.rej`, `*.head`, `*.tmp`, `*~`). `sed -i.bak` and
+  `git show HEAD:f > f.head` both leave one behind — prefer `sed -i` with no
+  suffix, and delete any comparison scratch before you finish. Out-of-scope
+  scratch is removed for you; any OTHER out-of-scope path voids the whole
+  iteration, so do not rely on the cleanup.
+- If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.
