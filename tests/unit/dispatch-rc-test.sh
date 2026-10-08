@@ -308,6 +308,15 @@ assert_eq "[SPEC-8] rc=143 observed as a signal → interrupted" "interrupted" \
 assert_eq "[SPEC-8] an observed rate limit → unavailable (#2111)" "unavailable" \
     "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 9 "" 1)"
 
+print_test_section "SPEC-9 (#1850): a stage killed by Ctrl-C or kill names the abort word"
+# The raw status is read here, at the boundary, and nowhere else: a child that
+# died of SIGINT/SIGTERM records the ADR-025 abort word before the rc narrows.
+assert_eq "[SPEC-9] 130 (SIGINT) names sigint" "sigint" "$(dispatch_rc_signal_word 130)"
+assert_eq "[SPEC-9] 143 (SIGTERM) names sigterm" "sigterm" "$(dispatch_rc_signal_word 143)"
+assert_eq "[SPEC-9] 137 (SIGKILL) names no abort word" "" "$(dispatch_rc_signal_word 137)"
+assert_eq "[SPEC-9] 1 names no abort word" "" "$(dispatch_rc_signal_word 1)"
+assert_eq "[SPEC-9] 124 (timeout) names no abort word" "" "$(dispatch_rc_signal_word 124)"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

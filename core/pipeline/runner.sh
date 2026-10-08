@@ -1188,7 +1188,7 @@ _render_cycle_iter_complete() {
 #   blocked         → ✗ RED+BOLD (sibling #528)
 #   error/config_invalid → ✗ RED+BOLD
 #   unknown (typo)  → ✗ RED+BOLD (fail loud)
-# Emitted by the runner AFTER cycle_orchestrator_run via _cycle_handle_terminal_rc.
+# Emitted by the runner AFTER cycle_orchestrator_run via _cycle_handle_terminal.
 _render_cycle_exit() {
     local cycle_id="$1" reason="$2" iter="$3" max="$4"
     local glyph color text
@@ -3801,6 +3801,13 @@ main() {
             # rc=0: the strategies dispatch generated work units that call
             # plugin_hook_call, so scan_plugin_outputs has already run per member.
         fi
+        # #1850 (ADR-054 §4, ADR-025): the boundary reads the raw status once —
+        # a stage killed by Ctrl-C or kill records the abort word, even when this
+        # shell's own trap never fired (a harness that ignores SIGINT) — and the
+        # rc narrows to 0/1 for everything after it.
+        local _ls_word; _ls_word="$(dispatch_rc_signal_word "$rc")"
+        [[ -n "$_ls_word" ]] && _zbuild_arm_abort_sentinel "$_ls_word"
+        rc="$(dispatch_rc_narrow "$rc")"
 
         if [[ $rc -eq 0 ]]; then
             # #507: resolve verdict from the plugin's manifest-declared primary

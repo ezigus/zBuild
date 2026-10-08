@@ -10,7 +10,8 @@
 # validator path, KEEP-set plugin.)
 #
 # Assertions (enforce mode):
-#   - rc=2 from the runner (validator returns 2, runner propagates it)
+#   - rc=1 from the runner (validator returns 1, runner propagates it;
+#     #1850, ADR-054 §4 — it was 2; status=preflight_failed says why)
 #   - intake's `plugin.run.start` event is NOT emitted (halts BEFORE any stage)
 #   - structured error on stderr names 'build' and 'plan'
 #   - `pipeline.preflight.fail` event in events.jsonl
@@ -85,10 +86,10 @@ out1="$TEST_TEMP_DIR/run1.out"
 ( cd "$OVERLAY_REPO" && ZBUILD_CONTRACT_VALIDATOR=enforce bash "$DRIVER" ) >"$out1" 2>"$err1" || true
 exit_code1="$(grep -E '^EXIT_CODE=' "$out1" 2>/dev/null | tail -1 | cut -d= -f2 || echo "")"
 
-if [[ "$exit_code1" == "2" ]]; then
-    assert_pass "enforce: runner exits rc=2 on missing producer"
+if [[ "$exit_code1" == "1" ]]; then
+    assert_pass "enforce: runner exits rc=1 on missing producer"
 else
-    assert_fail "enforce: runner exits rc=2 on missing producer" \
+    assert_fail "enforce: runner exits rc=1 on missing producer" \
         "got exit code '$exit_code1'; stderr-tail: $(tail -10 "$err1" 2>/dev/null | tr '\n' ' ')"
 fi
 

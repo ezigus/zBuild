@@ -373,7 +373,7 @@ The dispatch-site contract is unchanged in shape: pre-flight `_zbuild_check_abor
 
 - Decision, both layers (#1850: the abort is recorded once as a word, in-process and in the sentinel; the first wins; every helper returns 0 or 1; no state dir → in-process only) → `tests/unit/abort-propagation-test.sh` A1–A9
 - Dispatch site contract — the cycle orchestrator (pre-flight before each member, post-flight after a leaf; the signal handler records the word; a leaf abort ends the loop `aborted` with its reason) → `tests/unit/core-pipeline-cycle-orchestrator-run-test.sh` T9, T14
-- Dispatch site contract — the parallel group (a signal kills the in-flight members, records `sigint`, and the group returns 1) → `tests/integration/parallel-orchestrator-test.sh` T4
+- Dispatch site contract — the parallel group (a signal kills the in-flight members, records its word, and the group returns 1) → `tests/integration/parallel-orchestrator-test.sh` T4
 - #1850 (the runner ends on the word: status and `pipeline.aborted` reason per word; `main` returns 1) → `tests/unit/runner-cycle-rc-action-mapping-test.sh`
 - No engine path returns or reads an abort rc (130, 143, 6, 9, 10) → `tests/unit/dispatch-rc-guard-test.sh` SPEC-1, SPEC-16
 - Cleanup contract (the EXIT trap clears the sentinel; `pipeline.aborted reason=sigint` on Ctrl-C) → `tests/integration/full-pipeline-sigint-test.sh`

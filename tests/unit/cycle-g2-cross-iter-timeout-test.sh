@@ -89,8 +89,11 @@ _TPL_CYCLE_MAX_build_test=1
 MOCK_PLAN="build:timeout;test:fail"
 _CYCLE_TRAP_CYCLE_ID="outer-cycle"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc1=$?; set -e
-assert_contains "T1: single-iter timeout is non-fatal (rc 2 or 8 by-severity, never 4)" \
-    "2 8" "$rc1"
+# #1850: rc 1, and the outcome word says it ran out (unconverged or failed by
+# severity) — never `interrupted`, which a config error or an abandon would be.
+assert_eq "T1: single-iter timeout returns 1" "1" "$rc1"
+assert_contains "T1: single-iter timeout is non-fatal (unconverged or failed by severity, never interrupted)" \
+    "unconverged failed" "${_CYCLE_LAST_OUTCOME:-unset}"
 _p1="$(_persist_build)"
 assert_eq "[persist] inv1 accumulated timeout counter=1 in persist map" "1" "$_p1"
 

@@ -222,7 +222,9 @@ assert_contains "[O8] the pipeline workflow hands over the open items" "$_pw" "o
 assert_contains "[O8] ...as a workflow output" "$_pw" 'open_items: ${{ steps.abort.outputs.open_items }}'
 
 print_test_section "O9: the runner says in words why a loop ended the run"
-_rn="$(grep -E '^[[:space:]]*error "(Cycle|Pipeline failed)' "$REPO_ROOT/core/pipeline/runner.sh" || true)"
+# #1850: the two abort endings are one shared function, _runner_end_on_abort,
+# whose lines name the unit ("cycle <id>: the run …").
+_rn="$(grep -E '^[[:space:]]*error "(Cycle|Pipeline failed|\$\{_ea_unit)' "$REPO_ROOT/core/pipeline/runner.sh" || true)"
 # Not vacuous: the five lines that say a loop ended the run are all found.
 assert_eq "[O9] the runner's five loop-ending lines are found" "5" "$(grep -c . <<< "$_rn" || true)"
 assert_eq "[O9] no such line prints rc=N or the reason code" "" \

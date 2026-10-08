@@ -113,7 +113,7 @@ rc=0
 err_out="$(ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "intake
 build
 extra_build" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
-assert_eq "TC-1: enforce returns rc=2 on duplicate output id" "2" "$rc"
+assert_eq "TC-1: enforce returns rc=1 on duplicate output id (#1850: was 2)" "1" "$rc"
 assert_contains "TC-1: error names the duplicate id" "$err_out" "diff_patch"
 assert_contains "TC-1: error names producer 'build'" "$err_out" "build"
 assert_contains "TC-1: error names producer 'extra_build'" "$err_out" "extra_build"

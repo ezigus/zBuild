@@ -231,7 +231,7 @@ _ff_reset
 _zbuild_record_cli_fail
 _zbuild_record_cli_fail
 set +e; _llm_check_cli_fail_abort; rc=$?; set -e
-assert_eq "[SPEC-2] two failures (at threshold=2) → abort rc=9" "9" "$rc"
+assert_eq "[SPEC-2] two failures (at threshold=2) → abort rc=1 (#1850: was 9; the word is llm_unavailable)" "1" "$rc"
 
 # FF3: custom threshold via ZBUILD_LLM_FAIL_THRESHOLD.
 _ff_reset
@@ -242,7 +242,7 @@ set +e; _llm_check_cli_fail_abort; rc=$?; set -e
 assert_eq "FF3: two failures below threshold=3 → no abort" "0" "$rc"
 _zbuild_record_cli_fail
 set +e; _llm_check_cli_fail_abort; rc=$?; set -e
-assert_eq "FF3: three failures at threshold=3 → abort rc=9" "9" "$rc"
+assert_eq "FF3: three failures at threshold=3 → abort rc=1" "1" "$rc"
 export ZBUILD_LLM_FAIL_THRESHOLD=2
 
 # FF4 [SPEC-5]: abort message includes run_id.

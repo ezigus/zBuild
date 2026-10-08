@@ -87,6 +87,18 @@ dispatch_rc_observation() {
     return 0
 }
 
+# ─── dispatch_rc_signal_word <raw_rc> (#1850) ────────────────────────────────
+# The ADR-025 abort word for a stage that died of Ctrl-C or kill: sigint (130),
+# sigterm (143); nothing otherwise. Read from the raw status, before narrowing,
+# like the observation above — the one place a raw rc is read.
+dispatch_rc_signal_word() {
+    case "${1-}" in
+        130) printf 'sigint' ;;
+        143) printf 'sigterm' ;;
+    esac
+    return 0
+}
+
 # ─── dispatch_rc_failure_disposition <observation> [rate_limited] ───────────
 # ADR-054 §4's fallback table: the ONE place the engine is permitted to infer,
 # and it infers a DISPOSITION, not a verdict.

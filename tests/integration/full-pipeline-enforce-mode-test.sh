@@ -10,7 +10,7 @@
 # Scenario B: broken template (broken-contract-missing-producer fixture) —
 # build expects stage:plan but the template omits it (#979: reworked from the
 # retired standard-missing-test/review→stage:test coupling).
-#   - default mode (no env override) → runner rc=2 BEFORE any stage runs
+#   - default mode (no env override) → runner rc=1 BEFORE any stage runs (#1850: was 2)
 #   - structured error printed on stderr
 #   - pipeline.preflight.fail event emitted
 #   - no plugin.run.start for intake (halts at pre-flight)
@@ -61,17 +61,17 @@ exit \$_rc
 DRV
 chmod +x "$DRIVER"
 
-# ── Scenario B: broken template → default mode refuses with rc=2 ────────────
+# ── Scenario B: broken template → default mode refuses with rc=1 ────────────
 err1="$TEST_TEMP_DIR/run1.err"
 out1="$TEST_TEMP_DIR/run1.out"
 ( cd "$OVERLAY_REPO" && bash "$DRIVER" --goal "should be rejected" --template broken-contract-missing-producer ) \
     >"$out1" 2>"$err1" || true
 exit_code1="$(grep -E '^EXIT_CODE=' "$out1" 2>/dev/null | tail -1 | cut -d= -f2 || echo "")"
 
-if [[ "$exit_code1" == "2" ]]; then
-    assert_pass "default-mode: broken template → runner exits rc=2"
+if [[ "$exit_code1" == "1" ]]; then
+    assert_pass "default-mode: broken template → runner exits rc=1"
 else
-    assert_fail "default-mode: broken template → runner exits rc=2" \
+    assert_fail "default-mode: broken template → runner exits rc=1" \
         "got exit code '$exit_code1'; stderr-tail: $(tail -10 "$err1" 2>/dev/null | tr '\n' ' ')"
 fi
 

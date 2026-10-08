@@ -242,7 +242,12 @@ assert_eq "T3: impact ran (no short-circuit on sibling failure)" "1" \
 load_template "$TPL"
 
 # ── T4: SIGINT mid-run kills in-flight member children (no orphans). ─────────
-print_test_section "T4: SIGINT mid-run kills in-flight members (no orphans)"
+# The signal is SIGTERM, not SIGINT: under the suite this file runs as a
+# background job, which starts with SIGINT ignored, and bash cannot trap a signal
+# ignored at entry — `kill -INT` did nothing, the members ran their 30s out, and
+# "no orphans" passed only because they had finished (#1850). TERM reaches the
+# same handler and is never ignored for a background job.
+print_test_section "T4: a signal mid-run kills in-flight members (no orphans)"
 
 _seed_state
 PID_DIR="$TEST_TEMP_DIR/pids"; rm -rf "$PID_DIR"; mkdir -p "$PID_DIR"
@@ -260,6 +265,7 @@ parallel_dispatch_stage() {
 }
 
 # Run the group in a backgrounded subshell so the test can signal it mid-flight.
+_t4_start=$(date +%s)
 ( parallel_group_run "gates" "$ZBUILD_STATE_DIR" "$STATE_FILE" >/dev/null 2>&1 ) &
 pg_pid=$!
 
@@ -280,13 +286,19 @@ for f in "$PID_DIR"/*.pid; do
 done
 assert_eq "T4: all 3 members launched before signal" "3" "${#member_pids[@]}"
 
-# Signal the group → its INT trap kills in-flight children and records the
-# abort as a word (#1850, ADR-025); the group returns 1, never 130.
-kill -INT "$pg_pid" 2>/dev/null || true
+# Signal the group → its trap kills in-flight children and records the abort as
+# a word (#1850, ADR-025); the group returns 1, never 143.
+kill -TERM "$pg_pid" 2>/dev/null || true
 pg_rc=0
 wait "$pg_pid" 2>/dev/null || pg_rc=$?
-assert_eq "T4 [#1850]: the group returns 1 after SIGINT, not a signal code" "1" "$pg_rc"
-assert_eq "T4 [#1850]: the abort is recorded as the word sigint" "sigint" \
+_t4_secs=$(( $(date +%s) - _t4_start ))
+if [[ "$_t4_secs" -lt 15 ]]; then
+    assert_pass "T4: the signal ended the group early (${_t4_secs}s; members run 30s)"
+else
+    assert_fail "T4: the signal ended the group early" "${_t4_secs}s — the members ran out; the signal never reached the handler"
+fi
+assert_eq "T4 [#1850]: the group returns 1 after the signal, not a signal code" "1" "$pg_rc"
+assert_eq "T4 [#1850]: the abort is recorded as the word sigterm" "sigterm" \
     "$(cat "$ZBUILD_STATE_DIR/.abort.signal" 2>/dev/null)"
 rm -f "$ZBUILD_STATE_DIR/.abort.signal"
 
@@ -299,7 +311,7 @@ for _pid in "${member_pids[@]}"; do
         kill -KILL "$_pid" 2>/dev/null || true
     fi
 done
-assert_eq "T4: no orphaned member processes after SIGINT" "0" "$orphans"
+assert_eq "T4: no orphaned member processes after the signal" "0" "$orphans"
 assert_event_emitted "T4: parallel.group.complete (status=aborted) emitted" \
     "$ZBUILD_EVENTS_JSONL" "parallel.group.complete"
 
