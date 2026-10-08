@@ -192,7 +192,18 @@ _loop build_test_cycle 3 3 max_iterations
 _run
 _ev="$(jq -c 'select(.type=="plugin.result")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -n 1)"
 assert_contains "[U7] plugin.result carries draft=true" "$_ev" '"draft":"true"'
-assert_contains "[U7] ...and the reason" "$_ev" "build_test_cycle"
+assert_contains "[U7] ...and the whole reason, as one field" "$_ev" '"draft_reason":"build_test_cycle stopped after round 3 of 3"'
+
+# ─── U8 ─────────────────────────────────────────────────────────────────────
+print_test_section "U8: lib/unsettled.sh works on its own"
+# It escapes with the definitions advisory-section.sh holds; sourced alone it
+# must load them itself, not silently render without escaping (review #2343).
+_u8_gates="$TEST_TEMP_DIR/u8-gates.json"
+jq -n '{result_contract:2, verdict:"fail", disposition:"complete", reason:"a <b>bold</b> claim", failed:["x"]}' > "$_u8_gates"
+_fresh_state; zb_engine_loop_state "$STATE_FILE" build_test_cycle 1 3 complete
+_u8="$(bash -c 'source "$1/scripts/lib/helpers.sh" 2>/dev/null; source "$1/plugins/tool/pr-open/lib/unsettled.sh"; _pr_open_unsettled "$2" "$3"' _ "$REPO_ROOT" "$STATE_FILE" "$_u8_gates" 2>&1)"
+assert_contains "[U8] sourced alone, it still renders the gate check" "$_u8" "The final gate check did not pass"
+assert_not_contains "[U8] ...and still escapes" "$_u8" "<b>"
 
 unset -f git gh
 cleanup_test_env

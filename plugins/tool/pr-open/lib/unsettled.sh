@@ -20,6 +20,14 @@
 # The run's own `status` is not read: the engine marks a run failed only on the
 # paths that stop it, and the pr stage never runs after those.
 
+# It escapes every value with the jq definitions advisory-section.sh holds
+# (_PR_OPEN_FINDING_JQ_DEFS). plugin.sh sources that first; sourced on its own
+# this file loads it, rather than render without escaping (review #2343).
+if [[ -z "${_PR_OPEN_FINDING_JQ_DEFS:-}" ]]; then
+    # shellcheck source=advisory-section.sh
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/advisory-section.sh"
+fi
+
 # The hidden line zBuild puts in a description when IT made the PR a draft, so
 # a later settled run turns back to ready only a draft zBuild made — never one a
 # person made.
