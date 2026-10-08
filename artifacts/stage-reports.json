@@ -1,9 +1,17 @@
 {
   "scope_files": [
     "config/adr-enforcement-baseline.txt",
+    "core/pipeline/runner.sh",
     "docs/adr/ADR-059-issue-vs-run-keying.md",
     "scripts/lib/worktree.sh",
+    "tests/integration/cleanup-cli-e2e-test.sh",
+    "tests/integration/intake-branch-held-diagnostic-test.sh",
+    "tests/integration/worktree-ownership-test.sh",
+    "tests/unit/legacy-e1-tombstone-test.sh",
+    "tests/unit/worktree-location-test.sh",
     "tests/unit/worktree-sparse-legacy-test.sh"
   ],
-  "wiring_files": []
+  "wiring_files": [
+    "scripts/lib/worktree.sh"
+  ]
 }

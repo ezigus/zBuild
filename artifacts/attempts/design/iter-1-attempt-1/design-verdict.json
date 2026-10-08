@@ -1,0 +1,25 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "design_produced",
+  "data": {
+    "authored_at": "2026-10-08T11:43:36Z",
+    "authored_at_commit": "2ae004fa774e936cc324816976cc29a032ebe275",
+    "wiring_files": [
+      "scripts/lib/worktree.sh"
+    ],
+    "scope_files": [
+      "scripts/lib/worktree.sh",
+      "tests/unit/worktree-sparse-legacy-test.sh",
+      "docs/adr/ADR-059-issue-vs-run-keying.md",
+      "config/adr-enforcement-baseline.txt",
+      "tests/unit/worktree-location-test.sh",
+      "tests/integration/worktree-ownership-test.sh",
+      "tests/unit/legacy-e1-tombstone-test.sh",
+      "tests/integration/cleanup-cli-e2e-test.sh",
+      "tests/integration/intake-branch-held-diagnostic-test.sh",
+      "core/pipeline/runner.sh"
+    ]
+  }
+}
