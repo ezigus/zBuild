@@ -404,3 +404,25 @@ ends the run as `failed` (reason `design_not_converged`) for a person to look at
 - The words: the template says `halt`, and `abort` (the word runner-final-status used) means the same.
 
 Verification: `tests/integration/runner-cycle-on-max-halt-test.sh`.
+
+### Amendment (2026-10-07, #1799) — a fall-through PR is a draft that says why
+
+The `on_max: continue` fall-through hands an attempt that did not settle to
+whoever reviews it. It still opens a PR — that is the point — but the PR must not
+look finished:
+
+- When any loop's last recorded status (`cycle_iterations.<loop id>.status`, as
+  the engine writes it, for whichever loops the template declares) is not
+  `complete`, or the final gate roll-up (`gate_aggregator_result`) did not
+  pass, `pr-open` opens the PR as a draft.
+- Its description starts with the reason: each such loop by id, with the round
+  it stopped at and its limit (`current_iter` of `max_iterations`) and why, then
+  the failing gates. Every value is escaped.
+- A re-run onto an existing PR applies the same rule to it: it is turned into a
+  draft, and turned back to ready only if zBuild made it a draft (a hidden
+  marker in the description) — never a draft a person made.
+- The result (`data.draft_reason`), the `plugin.result` event and the stage
+  summary record it.
+
+Verification: `plugins/tool/pr-open/tests/pr-open-unsettled-test.sh` (U1–U7),
+whose state is written by the engine's own loop writers.
