@@ -255,7 +255,7 @@ assert_contains "--template runner-state-dir-minimal dry-run shows build"   "$ou
 # (was a hardcoded built-in `intake security-lens output` roster — `output` was
 # never a real stage). A run/preview needs a valid template.
 set +e; out="$(bash "$RUNNER" --issue "$_ZB_ID2" --dry-run --template nonexistent 2>&1)"; _rc_nt=$?; set -e
-assert_eq "missing template fails closed (rc=2) [#1283]" "2" "$_rc_nt"
+assert_eq "missing template fails closed (rc=1; #1850 — was 2) [#1283]" "1" "$_rc_nt"
 assert_contains "missing template error names the template" "$out" "not found"
 
 # ─── Test 12: role-based dispatch — resolver path executes correctly ───────────
@@ -319,7 +319,7 @@ rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 # Reuse platforms.json from test 13: ["node", "ios"]
 # node: resolve finds build-agent-node (platform=node) → exit 0
 # ios:  resolve finds build-agent (generic)             → exit 1
-# → success_count=1, fail_count=1 → partial (rc=2)
+# → success_count=1, fail_count=1 → partial (rc=1, _ZB_STRATEGY_OUTCOME=partial — #1850)
 
 set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "partial fanout failure exits 1" "1" "$rc"
