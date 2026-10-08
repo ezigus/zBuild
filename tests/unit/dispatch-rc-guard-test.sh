@@ -317,5 +317,24 @@ while IFS='|' read -r _file _pin; do
 done <<< "$_PINNED"
 assert_eq "[#1850/SPEC-16] no guarded engine file reads an rc as a legacy number" "" "$_s16_reads"
 
+# ─────────────────────────────────────────────────────────────────────────────
+print_test_section "[#1850/SPEC-17] every dispatch boundary checks for an abort before it dispatches"
+
+# ADR-025's pre-flight belongs at the hook call itself, not only in the caller's
+# loop: cycle_dispatch_stage re-dispatches a retryable stage (after a wait), and
+# parallel_dispatch_stage runs each member — a Ctrl-C recorded meanwhile must
+# stop the next model call, not be read after it (#1850 review).
+for _fn in cycle_dispatch_stage parallel_dispatch_stage; do
+    _body="$(awk -v f="    ${_fn}() {" '$0 == f {p=1} p {print} p && /^    }$/ {exit}' "$_runner")"
+    _hook_ln="$($SYSGREP -n 'plugin_hook_call ' <<< "$_body" | head -1 | cut -d: -f1 || true)"
+    _chk_ln="$($SYSGREP -n '_zbuild_check_abort' <<< "$_body" | head -1 | cut -d: -f1 || true)"
+    if [[ -n "$_hook_ln" && -n "$_chk_ln" && "$_chk_ln" -lt "$_hook_ln" ]]; then
+        assert_pass "[SPEC-17] $_fn checks for an abort before plugin_hook_call"
+    else
+        assert_fail "[SPEC-17] $_fn checks for an abort before plugin_hook_call" \
+            "check at line ${_chk_ln:-absent}, hook call at line ${_hook_ln:-absent} of the function"
+    fi
+done
+
 print_test_results
 exit $((FAIL > 0))

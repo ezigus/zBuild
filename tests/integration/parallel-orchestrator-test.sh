@@ -9,7 +9,7 @@
 #   - each member gets an INDEPENDENT stage-io seq label (no collision)
 #   - the PARENT writes all stage statuses serially (members touch no state)
 #   - on_member_error: continue → group rc=0; collect → group rc=1 (both run all)
-#   - a SIGINT mid-run kills in-flight member children (no orphans)
+#   - a signal mid-run (TERM — see T4) kills in-flight member children (no orphans)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

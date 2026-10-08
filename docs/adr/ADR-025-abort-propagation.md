@@ -376,6 +376,7 @@ The dispatch-site contract is unchanged in shape: pre-flight `_zbuild_check_abor
 - Dispatch site contract — the parallel group (a signal kills the in-flight members, records its word, and the group returns 1) → `tests/integration/parallel-orchestrator-test.sh` T4
 - #1850 (the runner ends on the word: status and `pipeline.aborted` reason per word; `main` returns 1) → `tests/unit/runner-cycle-rc-action-mapping-test.sh`
 - No engine path returns or reads an abort rc (130, 143, 6, 9, 10) → `tests/unit/dispatch-rc-guard-test.sh` SPEC-1, SPEC-16
+- Dispatch site contract — the pre-flight sits at the hook call itself, in both dispatch boundaries (a retry after a wait, and each parallel member, never start once an abort is recorded) → `tests/unit/dispatch-rc-guard-test.sh` SPEC-17
 - Cleanup contract (the EXIT trap clears the sentinel; `pipeline.aborted reason=sigint` on Ctrl-C) → `tests/integration/full-pipeline-sigint-test.sh`
 - SIGTERM extension (`reason=sigterm`) → `tests/integration/sigterm-aborts-pipeline-test.sh`
 - Resume clears a stale sentinel before the first pre-flight → `tests/integration/resume-after-sigint-test.sh`

@@ -2885,6 +2885,12 @@ main() {
             # that failed died with no stage.fail and no pipeline.end (#1844 run
             # 37066147994's pr stage).
             local _cd_had_e=0; case $- in *e*) _cd_had_e=1 ;; esac
+            # ADR-025 pre-flight at the hook call itself, so a retry after a
+            # wait never starts once an abort is recorded (#1850 review).
+            if ! _zbuild_check_abort; then
+                _CYCLE_DISPATCH_STATUS="failed"
+                return 1
+            fi
             set +e; plugin_hook_call "$_cd_plugin_dir" run "$_cd_stage" "$_cd_state"; _cd_rc=$?
             [[ $_cd_had_e -eq 1 ]] && set -e
             _cd_manifest="$_cd_plugin_dir/manifest.yaml"
@@ -3057,6 +3063,12 @@ main() {
         _router_clear_throttle_marker
         # #2265: restore the caller's errexit (see cycle_dispatch_stage).
         local _pd_had_e=0; case $- in *e*) _pd_had_e=1 ;; esac
+        # ADR-025 pre-flight: a member that starts after an abort is recorded
+        # does not make its model call (#1850 review).
+        if ! _zbuild_check_abort; then
+            _PARALLEL_DISPATCH_STATUS="failed"
+            return 1
+        fi
         set +e; plugin_hook_call "$_pd_plugin_dir" run "$_pd_stage" "$_pd_state"; _pd_rc=$?
         [[ $_pd_had_e -eq 1 ]] && set -e
         local _pd_manifest="$_pd_plugin_dir/manifest.yaml"
