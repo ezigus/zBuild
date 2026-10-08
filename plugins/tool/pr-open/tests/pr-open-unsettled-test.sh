@@ -161,12 +161,13 @@ assert_not_contains "[U3] ...and no warning" "$(_body)" "did not settle"
 print_test_section "U4: the final gate roll-up did not pass"
 _fresh_state; EXISTING_PR=""
 _loop build_test_cycle 2 3 complete
-_gates fail '["acceptance-gate","test"]' "gates failed: acceptance-gate <b>test</b>"
+_gates fail '["acceptance-gate","test"]' "acceptance-gate: SPEC-3 <b>still fails</b> at the merge-base"
 _run
 assert_contains "[U4] a failed gate roll-up → draft" "$(cat "$TEST_TEMP_DIR/create.args" 2>/dev/null)" "--draft"
 _b="$(_body)"
 assert_contains "[U4] the failing gates are listed" "$_b" "acceptance-gate, test"
-assert_not_contains "[U4] ...and the reason is escaped, not raw HTML" "$_b" "<b>"
+assert_contains "[U4] the reason is shown when it adds something" "$_b" "still fails"
+assert_not_contains "[U4] ...escaped, not raw HTML" "$_b" "<b>"
 
 # ─── U5 ─────────────────────────────────────────────────────────────────────
 print_test_section "U5: a re-run onto an open ready PR"

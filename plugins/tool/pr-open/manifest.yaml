@@ -62,6 +62,10 @@ inputs:
     required: false
   - id: test_results
     required: false
+  # #1799: the final gate roll-up. When it did not pass, the PR is a draft and
+  # its failing gates are named at the top of the description.
+  - id: gate_aggregator_result
+    required: false
   # review.json is still read by path: its producer (the standard.yaml `review`
   # stage) was retired (#979), so it cannot be declared — an input with no
   # producer fails the lint-contract graph check. A per-repo overlay may still
