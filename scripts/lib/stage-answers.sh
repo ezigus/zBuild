@@ -17,7 +17,8 @@ _ZBUILD_STAGE_ANSWERS_LOADED=1
 # An answer without its opener's run count would settle nothing (ADR-068 §10),
 # so the counter is loaded wherever answers are recorded.
 # shellcheck source=../../core/pipeline/open-findings.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/core/pipeline/open-findings.sh"
+_sa_dir="${BASH_SOURCE[0]%/*}"; [[ "$_sa_dir" == "${BASH_SOURCE[0]}" ]] && _sa_dir=.
+source "$_sa_dir/../../core/pipeline/open-findings.sh"
 
 _ZB_ANSWERS_MARKER="=== ANSWER EVERY FINDING ==="
 # A finding line as input-resolve.sh renders it.

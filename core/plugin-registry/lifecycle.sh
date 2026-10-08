@@ -24,7 +24,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/write-ownership.sh"
 # shellcheck source=attempt-archive.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/attempt-archive.sh"
 # shellcheck source=../pipeline/open-findings.sh
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../pipeline/open-findings.sh"
+# Parameter expansion, not $(dirname): this file is sourced by every engine
+# process (ADR-065 fork budget).
+_lc_of_dir="${BASH_SOURCE[0]%/*}"; [[ "$_lc_of_dir" == "${BASH_SOURCE[0]}" ]] && _lc_of_dir=.
+source "$_lc_of_dir/../pipeline/open-findings.sh"
 
 # ─── scan_plugin_outputs — fail-closed artifact-presence scanner (#288) ─────
 # ADR-001 §Fail-closed scanner contract:
@@ -477,9 +480,11 @@ plugin_hook_call() {
     )
     local rc=$?
     # ADR-068 §10: the stage has run again, so answers to what it reported
-    # before settle nothing now. Counted whatever its rc.
-    if [[ "$hook_name" == "run" && -n "${1:-}" && -n "${2:-}" ]]; then
-        open_findings_stage_ran "$(dirname "$2")" "$1"
+    # before settle nothing now. Counted whatever its rc — and only under an
+    # absolute state file, the same rule as the job folder above: a relative one
+    # resolves against the CWD, the repository under change.
+    if [[ "$hook_name" == "run" && -n "${1:-}" && "${2:-}" == /* ]]; then
+        open_findings_stage_ran "${2%/*}" "$1"
     fi
 
     if [[ $rc -eq 0 ]]; then
