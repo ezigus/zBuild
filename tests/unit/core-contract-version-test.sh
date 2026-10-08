@@ -28,10 +28,10 @@ fi
 # shellcheck source=../../core/contract/version.sh
 source "$REPO_ROOT/core/contract/version.sh"
 
-# TC-2 [SPEC-2]: the range is legible and covers coexistence (v1 and v2).
-assert_eq "[SPEC-2] TC-2: range renders as MIN..MAX" "1..2" "$(contract_version_range)"
+# TC-2 [SPEC-2]: the range is legible. Since #1850 it is v2 only.
+assert_eq "[SPEC-2] TC-2: range renders as MIN..MAX" "2..2" "$(contract_version_range)"
 set +e; contract_version_supported 1; r1=$?; contract_version_supported 2; r2=$?; set -e
-assert_eq "[SPEC-2] TC-2: v1 supported during coexistence" "0" "$r1"
+assert_eq "[SPEC-2] TC-2: v1 is no longer supported (#1850)" "1" "$r1"
 assert_eq "[SPEC-2] TC-2: v2 supported" "0" "$r2"
 
 # TC-3 [SPEC-2]: outside the range, and non-integers, are unsupported. A typo'd
@@ -42,10 +42,11 @@ for bad in 0 3 99 "v2" "2.0" "" "1x"; do
     assert_eq "[SPEC-2] TC-3: '$bad' is unsupported" "1" "$rc"
 done
 
-# TC-4 [SPEC-3]: an ABSENT declaration resolves to v1 while coexistence is on.
-assert_eq "[SPEC-3] TC-4: absent resolves to the coexistence default" "1" "$(contract_version_resolve "")"
+# TC-4 [SPEC-3]: an ABSENT declaration resolves to v1, which is out of the
+# range since #1850 — so it is refused, never read as an implied v1.
+assert_eq "[SPEC-3] TC-4: absent resolves to the v1 default" "1" "$(contract_version_resolve "")"
 set +e; contract_version_check "" "plugin 'x'" >/dev/null; rc=$?; set -e
-assert_eq "[SPEC-3] TC-4: absent is accepted while v1 is in range" "0" "$rc"
+assert_eq "[SPEC-3] TC-4: absent is refused now that v1 is out of the range" "1" "$rc"
 
 # TC-5 [SPEC-4]: the refusal message names the subject, the declared version and
 # the accepted range — the three facts needed to act without reading the source.
@@ -60,19 +61,16 @@ case "$msg" in
     *) assert_fail "[SPEC-4] TC-5: message names the declared version" "got: $msg" ;;
 esac
 case "$msg" in
-    *"1..2"*) assert_pass "[SPEC-4] TC-5: message names the accepted range" ;;
+    *"2..2"*) assert_pass "[SPEC-4] TC-5: message names the accepted range" ;;
     *) assert_fail "[SPEC-4] TC-5: message names the accepted range" "got: $msg" ;;
 esac
 
-# TC-6 [SPEC-5]: dropping v1 is a ONE-LINE change. Simulate #1850 by moving the
-# floor and assert the consequence lands without touching any other file: an
-# absent declaration stops being legible.
-(
-    _ZBUILD_CONTRACT_MIN=2
-    set +e; contract_version_supported 1; a=$?; contract_version_check "" "plugin 'y'" >/dev/null; b=$?; set -e
-    [[ "$a" -eq 1 && "$b" -eq 1 ]] && exit 0 || exit 1
-)
-assert_eq "[SPEC-5] TC-6: raising MIN alone retires v1 and the absent default" "0" "$?"
+# TC-6 [SPEC-5]: dropping v1 was a ONE-LINE change (#1850): the floor in the
+# single declaration is 2, and that alone retires v1 and the absent default.
+assert_eq "[SPEC-5] TC-6: the declared floor is 2" "1" \
+    "$(grep -cE '^_ZBUILD_CONTRACT_MIN=2$' "$REPO_ROOT/core/contract/version.sh" 2>/dev/null || true)"
+set +e; contract_version_supported 1; a=$?; contract_version_check "" "plugin 'y'" >/dev/null; b=$?; set -e
+assert_eq "[SPEC-5] TC-6: ...so v1 and an absent declaration are both refused" "1 1" "$a $b"
 
 # TC-7 [SPEC-6]: the bounds are declared in EXACTLY ONE place. A second copy is
 # how a range becomes advisory — the reader drifts from the validator and each
@@ -108,11 +106,12 @@ fi
 # than an unspeakable one.
 # shellcheck source=../../core/plugin-registry/manifest-validation.sh
 source "$REPO_ROOT/core/plugin-registry/manifest-validation.sh"
-_mk() { # <file> <id> [declared-contract]
+_mk() { # <file> <id> [declared-contract] — a stage plugin: it declares a primary output
     {
         printf 'id: %s\nname: Test\nkind: tool\nversion: 0.1.0\n' "$2"
-        printf 'hooks:\n  run: test_run\nprovides:\n  artifact_type: t.json\n'
+        printf 'hooks:\n  run: test_run\nprovides:\n  role: t\n'
         if [[ -n "${3:-}" ]]; then printf '  result_contract: %s\n' "$3"; fi
+        printf 'outputs:\n  - id: result\n    path: ${artifact_dir}/t-result.json\n    type: t.json@1\n    required: true\n    primary: true\n'
     } > "$1"
 }
 _mk "$TEST_TEMP_DIR/ok.yaml"   "ok-plugin"   2
@@ -125,31 +124,26 @@ validate_manifest "$TEST_TEMP_DIR/none.yaml" >/dev/null 2>&1; none_rc=$?
 bad_out="$(validate_manifest "$TEST_TEMP_DIR/bad.yaml" 2>&1)"; bad_rc=$?
 set -e
 assert_eq "[SPEC-7] TC-8: in-range manifest loads" "0" "$ok_rc"
-assert_eq "[SPEC-7] TC-8: manifest with no declaration loads (v1)" "0" "$none_rc"
+assert_eq "[SPEC-7] TC-8: a stage plugin with no declaration is REFUSED (v1 is gone, #1850)" "1" "$none_rc"
 assert_eq "[SPEC-7] TC-8: out-of-range manifest is REFUSED at load" "1" "$bad_rc"
 case "$bad_out" in
-    *"bad-plugin"*"1..2"*) assert_pass "[SPEC-7] TC-8: refusal names the plugin and the range" ;;
+    *"bad-plugin"*"2..2"*) assert_pass "[SPEC-7] TC-8: refusal names the plugin and the range" ;;
     *) assert_fail "[SPEC-7] TC-8: refusal names the plugin and the range" "got: $bad_out" ;;
 esac
 
-# TC-9 [SPEC-5]: the #1850 one-line drop has to work THROUGH validate_manifest,
-# not just through the library. TC-6 proves the lib refuses an absent
-# declaration once MIN rises; this proves the validator does too. The two are
-# only equivalent if validate_manifest checks unconditionally — short-circuiting
-# on an empty declaration passes every undeclared plugin, and those are exactly
-# the ones #1850 must catch. Run in a subshell so the raised floor cannot leak.
+# TC-9 [SPEC-5]: the floor works THROUGH validate_manifest, not just the
+# library: an undeclared stage plugin is refused naming itself and the range,
+# and a declared v2 one still loads.
 (
-    _ZBUILD_CONTRACT_MIN=2
     set +e
     out_none="$(validate_manifest "$TEST_TEMP_DIR/none.yaml" 2>&1)"; rc_none=$?
     out_v2="$(validate_manifest "$TEST_TEMP_DIR/ok.yaml" 2>&1)";     rc_v2=$?
     set -e
-    # undeclared → refused; declared v2 → still fine.
     [[ "$rc_none" -eq 1 && "$out_none" == *"none-plugin"*"2..2"* && "$rc_v2" -eq 0 ]] && exit 0
     printf 'none rc=%s out=%s | v2 rc=%s\n' "$rc_none" "$out_none" "$rc_v2" >&2
     exit 1
 )
-assert_eq "[SPEC-5] TC-9: raising MIN refuses undeclared plugins at load, keeps v2" "0" "$?"
+assert_eq "[SPEC-5] TC-9: undeclared stage plugins are refused at load, v2 loads" "0" "$?"
 
 cleanup_test_env
 print_test_results

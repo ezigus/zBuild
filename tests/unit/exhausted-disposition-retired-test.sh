@@ -56,10 +56,17 @@ done
 _dispatch_bare="$(grep -c 'scope_too_large.*→.*exhausted' "$DISPATCH_RC" 2>/dev/null || true)"
 assert_eq "[#2222/SPEC-3] dispatch-rc.sh rc=10 comment does not map scope_too_large to bare exhausted (replaced with out_of_turns per §6a/#2187)" \
     "0" "$_dispatch_bare"
-# The row keeps telling a reader what to do: §6a's action for out_of_turns is retry.
+# The row kept telling a reader what to do (§6a's action for out_of_turns is
+# retry) — until #1850 deleted the whole legacy rc table it sat in. Either the
+# row is gone with its table, or it still says what to do.
+_dispatch_row="$(grep -cE '^#[[:space:]]+10 scope_too_large' "$DISPATCH_RC" 2>/dev/null || true)"
 _dispatch_action="$(grep -cE 'scope_too_large.*out_of_turns.*"retry' "$DISPATCH_RC" 2>/dev/null || true)"
-assert_gt "[#2222/SPEC-3] dispatch-rc.sh rc=10 row still says what to do (§6a: retry), not only where the rule lives" \
-    "$_dispatch_action" "0"
+if [[ "${_dispatch_row:-0}" -eq 0 ]]; then
+    assert_pass "[#2222/SPEC-3] dispatch-rc.sh's legacy rc=10 row is gone with its table (#1850)"
+else
+    assert_gt "[#2222/SPEC-3] dispatch-rc.sh rc=10 row still says what to do (§6a: retry), not only where the rule lives" \
+        "$_dispatch_action" "0"
+fi
 
 # ── Site 2: review-lens/plugin.sh degrade-path comment ───────────────────────
 # The comment at line 379 described the degrade path as writing

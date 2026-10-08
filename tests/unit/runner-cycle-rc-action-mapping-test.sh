@@ -61,6 +61,9 @@ _drive() {
         }"
         _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/build"; }
         runner_read_stage_verdict() { echo "request_changes"; }
+        # #1850: the leaf contract check reads the reason channel too, which
+        # would report this stub's missing result; stub it with the verdict.
+        runner_read_stage_reason() { echo ""; }
         plugin_hook_call() {
             local state="$4"; local artdir; artdir="$(dirname "$state")/artifacts"; mkdir -p "$artdir"
             printf '{"verdict":"request_changes"}' > "$artdir/review.json"

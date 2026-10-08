@@ -13,8 +13,8 @@
 # V1 [change] a manifest declaring result_contract: 2 with a non-JSON primary
 #             fails validation, naming the primary
 # V2 [guard]  result_contract: 2 with a JSON primary passes
-# V3 [guard]  a v1 manifest with a non-JSON primary still passes (the sidecar
-#             channel is v1's)
+# V3 [change] a manifest declaring no result_contract (v1) with a non-JSON
+#             primary no longer loads — v1 and its sidecar are gone (#1850)
 # V4 [change] every shipped v2 manifest's primary output is JSON
 # V5 [change] a JSON primary written in single quotes, or with a trailing
 #             comment, still passes (review on #2285: it was read as non-JSON)
@@ -60,8 +60,8 @@ if _valid "$D"; then assert_pass "[V2] a v2 manifest with a JSON primary passes"
 else assert_fail "[V2] a v2 manifest with a JSON primary passes" "$(cat "$TEST_TEMP_DIR/err")"; fi
 
 D="$TEST_TEMP_DIR/v3"; _mf "$D" "" '${artifact_dir}/fx-url.txt'
-if _valid "$D"; then assert_pass "[V3] a v1 manifest with a non-JSON primary passes"
-else assert_fail "[V3] a v1 manifest with a non-JSON primary passes" "$(cat "$TEST_TEMP_DIR/err")"; fi
+if _valid "$D"; then assert_fail "[V3] a v1 manifest with a non-JSON primary no longer loads (#1850)" "it passed"
+else assert_pass "[V3] a v1 manifest with a non-JSON primary no longer loads (#1850)"; fi
 
 D="$TEST_TEMP_DIR/v5"; _mf "$D" 2 "'\${artifact_dir}/fx-result.json'   # the stage's v2 result"
 if _valid "$D"; then assert_pass "[V5] a quoted, commented JSON primary passes"

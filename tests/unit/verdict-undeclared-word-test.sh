@@ -13,7 +13,8 @@
 # V2 [guard]  a declared verdict still classifies as before (complete → pass)
 # V3 [guard]  a manifest that declares no list (absent or []) is not checked here
 #             (the lint owns a missing declaration)
-# V4 [guard]  a v1 result is unchanged (the check is part of the v2 contract)
+# V4 [change] a v1 result is refused outright since #1850 (it used to be read
+#             as v1 and skip this check)
 # V5 [guard]  an inline flow list `valid_verdicts: [complete, error]` is honoured
 # V6 [change] a scalar `valid_verdicts: pass` is not a list — the parser says so
 #             (`invalid`), the reader does not treat it as one (review #2247)
@@ -71,7 +72,7 @@ assert_eq "[V1] an undeclared verdict (broken) is error, not warn" "error" "$(_r
 assert_contains "[V1] ...and the event names it" "$(cat "$ZBUILD_EVENTS_JSONL")" "unknown_verdict:broken"
 assert_eq "[V1] even banana" "error" "$(_read banana)"
 assert_eq "[V2] a declared verdict still classifies (complete → pass)" "pass" "$(_read complete)"
-assert_eq "[V4] a v1 result is unchanged (undeclared → warn)" "warn" "$(_read banana v1)"
+assert_eq "[V4] a v1 result is refused, whatever its word (#1850)" "error" "$(_read banana v1)"
 
 _manifest '  valid_verdicts: []'
 assert_eq "[V3] an empty declaration is not checked here" "warn" "$(_read banana)"

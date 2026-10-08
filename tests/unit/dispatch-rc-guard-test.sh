@@ -182,13 +182,13 @@ else
         "clear=${_clear_line:-absent} dispatch=${_hook_line:-absent}"
 fi
 
-# Both stage-dispatch boundaries apply the v2 gate. A contract that held at one
-# of them would make a v2 stage's rc depend on which kind of group it was
+# Both stage-dispatch boundaries narrow (unconditionally since #1850). A rule that held at one
+# of them would make a stage's rc depend on which kind of group it was
 # composed into — and "the rule wired into one of two call sites" is the exact
 # defect this PR hit three times.
 _cyc_narrow="$($SYSGREP -c '_cd_rc="$(dispatch_rc_narrow "$_cd_rc")"' "$_runner" 2>/dev/null)" || _cyc_narrow=0
 _par_narrow="$($SYSGREP -c '_pd_rc="$(dispatch_rc_narrow "$_pd_rc")"' "$_runner" 2>/dev/null)" || _par_narrow=0
-assert_eq "[SPEC-3] cycle_dispatch_stage applies the v2 narrowing gate" "1" "${_cyc_narrow//[$'\n\r ']/}"
+assert_eq "[SPEC-3] cycle_dispatch_stage narrows the rc" "1" "${_cyc_narrow//[$'\n\r ']/}"
 assert_eq "[SPEC-3] parallel_dispatch_stage applies it too" "1" "${_par_narrow//[$'\n\r ']/}"
 
 # And both clear the throttle marker before dispatching.
@@ -219,9 +219,12 @@ else
     assert_pass "[SPEC-4] no gate reads a contract global"
 fi
 
-# The version must arrive on stdout, at BOTH boundaries.
-_probe_uses="$($SYSGREP -c '_verdict_probe_contract "$state_dir"' "$_runner" 2>/dev/null)" || _probe_uses=0
-assert_eq "[SPEC-4] both boundaries fetch the version via stdout" "2" "${_probe_uses//[$'\n\r ']/}"
+# #1850: there is no version gate any more — every stage speaks v2, so BOTH
+# boundaries narrow unconditionally, and the probe that fed the gate is gone.
+_narrow_uses="$($SYSGREP -cE '^[[:space:]]+_(cd|pd)_rc="\$\(dispatch_rc_narrow "\$_(cd|pd)_rc"\)"$' "$_runner" 2>/dev/null)" || _narrow_uses=0
+assert_eq "[SPEC-4] both boundaries narrow unconditionally (#1850)" "2" "${_narrow_uses//[$'\n\r ']/}"
+_probe_left="$(cat "$_runner" "$REPO_ROOT/core/pipeline/verdict.sh" | $SYSGREP -c '_verdict_probe_contract' 2>/dev/null)" || _probe_left=0
+assert_eq "[SPEC-4] the contract probe is gone (#1850)" "0" "$_probe_left"
 
 # ─────────────────────────────────────────────────────────────────────────────
 print_test_section "5. _cycle_handle_terminal_rc has both 130 and 143 arms"

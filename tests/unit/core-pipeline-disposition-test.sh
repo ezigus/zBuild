@@ -235,8 +235,8 @@ assert_file_not_exists "the engine did not fabricate a result file" \
 # letting the two disagree by omission.
 assert_eq "died (rc=1) with no manifest to read -> broken" \
     "broken" "$(runner_read_stage_disposition "$STATE_DIR" "" "noplugin" 1)"
-assert_eq "...but a CLEAN exit with no manifest declares nothing (v1 contract-bypass)" \
-    "" "$(runner_read_stage_disposition "$STATE_DIR" "" "noplugin" 0)"
+assert_eq "...and a CLEAN exit with no manifest is broken too (#1850: no contract-bypass)" \
+    "broken" "$(runner_read_stage_disposition "$STATE_DIR" "" "noplugin" 0)"
 
 # A result that exists but is unparseable is a defect too — the stage claimed
 # to have written an answer and did not.
@@ -255,31 +255,24 @@ jq -nc '{result_contract:2,verdict:"incomplete",disposition:"interrupted",reason
 assert_eq "died (rc=1) but declared interrupted -> interrupted, not broken" \
     "interrupted" "$(runner_read_stage_disposition "$STATE_DIR" "$alive_dir/manifest.yaml" "alivestage" 1)"
 
-# ═══ 7. v1 results are untouched — versioned coexistence ════════════════════
-# Nothing writes a v2 result today. A v1 stage declares no disposition, so the
-# response table is not consulted and today's verdict-driven control flow runs
-# unchanged. This is what keeps the ADR-021 member-disposition contract
-# (terminal|recoverable|advisory|none, on the SAME field name) inert: those
-# artifacts are v1, so the closed-set check never sees them.
-print_test_section "v1 results declare no disposition (the table is not consulted)"
+# ═══ 7. v1 results are refused (#1850) ═════════════════════════════════════
+# Versioned coexistence ended with #1850: a result with no result_contract is
+# v1, which the engine no longer reads — it is a structural failure (broken),
+# not a result that "declares no disposition". That includes a v1 artifact
+# carrying ADR-021's member vocabulary (terminal|recoverable|…) on the same
+# field: every gate writes v2 now, so that collision has no live writer.
+print_test_section "a v1 result is broken, whatever it carries"
 
 v1_dir="$TEST_TEMP_DIR/plugins/v1stage"
 _make_manifest "$v1_dir" "v1stage" "${ART_DIR}/v1-result.json"
 jq -nc '{verdict:"pass"}' > "$ART_DIR/v1-result.json"
-assert_eq "v1 result -> empty disposition" \
-    "" "$(runner_read_stage_disposition "$STATE_DIR" "$v1_dir/manifest.yaml" "v1stage" 0)"
-assert_eq "v1 result still classifies exactly as before" \
-    "pass" "$(runner_read_stage_verdict "$STATE_DIR" "$v1_dir/manifest.yaml" "v1stage" 0)"
-
-# The collision guard, stated as a test: a v1 artifact carrying ADR-021's
-# `terminal` is NOT a structural failure. Break this and the acceptance gate's
-# cycle-halt path (cycle-orchestrator.sh `_cycle_member_terminal_failure`)
-# turns into a contract violation on every failing gate.
+assert_eq "v1 result -> broken (#1850)" \
+    "broken" "$(runner_read_stage_disposition "$STATE_DIR" "$v1_dir/manifest.yaml" "v1stage" 0)"
+assert_eq "v1 result -> verdict error (#1850)" \
+    "error" "$(runner_read_stage_verdict "$STATE_DIR" "$v1_dir/manifest.yaml" "v1stage" 0)"
 jq -nc '{verdict:"fail",disposition:"terminal",reason:"acceptance gate"}' > "$ART_DIR/v1-result.json"
-assert_eq "v1 ADR-021 disposition=terminal is NOT a structural failure" \
-    "fail" "$(runner_read_stage_verdict "$STATE_DIR" "$v1_dir/manifest.yaml" "v1stage" 0)"
-assert_eq "v1 ADR-021 disposition is not surfaced on the v2 channel" \
-    "" "$(runner_read_stage_disposition "$STATE_DIR" "$v1_dir/manifest.yaml" "v1stage" 0)"
+assert_eq "a v1 artifact carrying ADR-021's terminal -> refused as contract 1" \
+    "contract_violation:unsupported_contract:1" "$(runner_read_stage_reason "$STATE_DIR" "$v1_dir/manifest.yaml" "v1stage" 0)"
 
 # ═══ 8. The disposition appears on the dispatch event ═══════════════════════
 print_test_section "the disposition is surfaced on the dispatch event"
@@ -302,11 +295,12 @@ assert_eq "the event carries the engine's response to it" "retry_after_wait" \
     "$(jq -r 'select(.type=="cycle.member.dispatch.complete") | .data.disposition_response // ""' \
         "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
 
-# A v1 dispatch declares nothing, and the event must not invent a value.
+# A dispatch with no disposition on the channel (none was read), and the event
+# must not invent a value.
 : > "$ZBUILD_EVENTS_JSONL"
 _CYCLE_DISPATCH_DISPOSITION=""
 _cycle_emit_member_dispatch_complete 0 "build" 0 "pass" "complete"
-assert_eq "a v1 dispatch reports an empty disposition, not a default" "" \
+assert_eq "an empty disposition is reported empty, not a default" "" \
     "$(jq -r 'select(.type=="cycle.member.dispatch.complete") | .data.disposition // ""' \
         "$ZBUILD_EVENTS_JSONL" 2>/dev/null | head -1)"
 

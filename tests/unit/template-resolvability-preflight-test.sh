@@ -73,6 +73,7 @@ outputs:
     primary: true
 provides:
   role: frobnicator
+  result_contract: 2
 EOF
 
 # Fixture template whose flow uses the fictitious stage as a leaf (role-bound).

@@ -129,6 +129,7 @@ hooks:
   run: s6_run
 provides:
   role: s6_legacy
+  result_contract: 2
   artifact_type: findings.json
 outputs:
   - id: s6_result

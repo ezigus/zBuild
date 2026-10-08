@@ -19,9 +19,8 @@
 # which is precisely the failure ADR-054 §6 says `interrupted` and `throttled`
 # exist to prevent, and the reason #1798 is gated on this issue.
 #
-# Scope note: the legacy rcs are MAPPED here, not removed. #1850 deletes the
-# mapping together with the v1 result reader — its acceptance says so in as many
-# words. What changes now is that they are interpreted in ONE place.
+# #1850 deleted the legacy rc mapping together with the v1 result reader; this
+# file pins that it is gone (section 5).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -166,60 +165,22 @@ assert_gt "[SPEC-4] throttled waits > 0s before retrying" \
     "$(disposition_wait_s throttled)" "0"
 
 # ─────────────────────────────────────────────────────────────────────────────
-print_test_section "5. Legacy rc mapping (the v1 boundary — #1850 deletes it)"
+print_test_section "5. The legacy rc mapping is gone (#1850)"
 
-assert_eq "[SPEC-5] rc 5 → blocked"                  "blocked" "$(dispatch_rc_legacy_reason 5)"
-assert_eq "[SPEC-5] rc 6 → cycle_abort"              "cycle_abort" "$(dispatch_rc_legacy_reason 6)"
-assert_eq "[SPEC-5] rc 8 → blocking_member_failure"  "blocking_member_failure" "$(dispatch_rc_legacy_reason 8)"
-assert_eq "[SPEC-5] rc 9 → llm_unavailable"          "llm_unavailable" "$(dispatch_rc_legacy_reason 9)"
-assert_eq "[SPEC-5] rc 10 → scope_too_large"         "scope_too_large" "$(dispatch_rc_legacy_reason 10)"
-# [SPEC-13] (#1832, ADR-054 §6): scope_too_large remains as the rc=10 dispatch signal label.
-# The design decision keeps it as log/event vocabulary for the abort reason — it is a
-# dispatch-rc signal, NOT a verdict string. Guard: must not be removed from legacy mapping.
-assert_eq "[SPEC-13] rc 10 → scope_too_large (dispatch signal, not verdict; unchanged by #1832)" \
-    "scope_too_large" "$(dispatch_rc_legacy_reason 10)"
-assert_eq "[SPEC-5] rc 11 is retired (#2271)"        "" "$(dispatch_rc_legacy_reason 11)"
-assert_eq "[SPEC-5] rc 4 → config_invalid"           "config_invalid" "$(dispatch_rc_legacy_reason 4)"
-
-# 130 and 143 must AGREE. _cycle_handle_terminal_rc has a `130)` arm and no
-# `143)` arm, so a SIGTERM falls through to `*) reason="error"` and is reported
-# to an operator as an ordinary error rather than an abort. Naming both here is
-# what makes the two signals agree.
-assert_eq "[SPEC-5] rc 130 (SIGINT) → aborted"  "aborted" "$(dispatch_rc_legacy_reason 130)"
-assert_eq "[SPEC-5] rc 143 (SIGTERM) → aborted, the same word as SIGINT" \
-    "aborted" "$(dispatch_rc_legacy_reason 143)"
-
-# Refusing to answer is the point: a caller wanting a word for 42 has already
-# lost, and a plausible-looking default would bury that.
-assert_eq "[SPEC-5] an unmapped rc returns 1 and prints nothing" \
-    "1" "$(_rc_of dispatch_rc_legacy_reason 42)"
-assert_eq "[SPEC-5] an unmapped rc prints nothing" "" "$(dispatch_rc_legacy_reason 42 || true)"
-assert_eq "[SPEC-5] rc 0 has no legacy reason" "1" "$(_rc_of dispatch_rc_legacy_reason 0)"
-
-# Only the three legacy codes ADR-054 §6 has an exact word for map to a
-# disposition. Each is a wording match against the §6 table, not a judgement
-# call: 9 is "halt; operator action required", 10 is "more budget, or the work
-# must shrink", a signal is "retry as-is".
-assert_eq "[SPEC-5] rc 9 → unavailable"        "unavailable" "$(dispatch_rc_legacy_disposition 9)"
-assert_eq "[SPEC-5] rc 10 → out_of_turns (#2187)" "out_of_turns" "$(dispatch_rc_legacy_disposition 10)"
-assert_eq "[SPEC-5] rc 130 → interrupted"      "interrupted" "$(dispatch_rc_legacy_disposition 130)"
-assert_eq "[SPEC-5] rc 143 → interrupted"      "interrupted" "$(dispatch_rc_legacy_disposition 143)"
-
-# The control-flow codes map to NOTHING, deliberately. They are decisions the
-# cycle made, not statements about whether a stage got far enough to produce a
-# verdict worth reading. ADR-054 §4 re-homes them onto routing state (ADR-045)
-# and the blocking-member halt (ADR-013). Forcing them into the disposition set
-# would be the invented default the contract exists to forbid.
-for _cf in 4 5 6 8 11; do
-    assert_eq "[SPEC-5] rc $_cf has NO disposition (it is control flow)" \
-        "1" "$(_rc_of dispatch_rc_legacy_disposition "$_cf")"
+# #1850 deleted it with the v1 result reader. A stage that died leaving no
+# result is classified from what the boundary OBSERVED (section 3), never from
+# the number it chose — so there is no table to keep in step any more.
+for _fn in dispatch_rc_legacy_reason dispatch_rc_legacy_disposition; do
+    if declare -F "$_fn" >/dev/null 2>&1; then
+        assert_fail "[SPEC-5] $_fn is deleted" "still defined"
+    else
+        assert_pass "[SPEC-5] $_fn is deleted"
+    fi
 done
-
-# Whatever the mapping does produce must be in the closed set.
-for _rc in 9 10 130 143; do
-    assert_eq "[SPEC-5] rc $_rc maps into the closed disposition set" \
-        "0" "$(_rc_of disposition_is_valid "$(dispatch_rc_legacy_disposition "$_rc")")"
-done
+# What the mapping's signal rows said is still true, from the observation alone.
+assert_eq "[SPEC-5] SIGINT and SIGTERM both read as interrupted, by observation" \
+    "interrupted interrupted" \
+    "$(dispatch_rc_failure_disposition "$(dispatch_rc_observation 130)" 0) $(dispatch_rc_failure_disposition "$(dispatch_rc_observation 143)" 0)"
 
 # ─────────────────────────────────────────────────────────────────────────────
 print_test_section "6. runner_read_stage_disposition honours the observation"
@@ -262,10 +223,11 @@ assert_eq "[SPEC-6] no result + nothing observed → broken" "broken" \
 assert_eq "[SPEC-6] omitting the observation still yields broken (#1822 shape)" \
     "broken" "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 1)"
 
-# rc=0 never classifies — there is no failure to explain, and an observation on
-# a successful dispatch must not invent one.
-assert_eq "[SPEC-6] rc=0 yields no disposition even with an observation" \
-    "" "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 0 signal 0)"
+# rc=0 is not classified by observation — but since #1850 a clean exit that
+# left no result is broken: the stage said it finished and the engine holds
+# nothing. The observation does not soften that into `interrupted`.
+assert_eq "[SPEC-6] rc=0 with no result is broken, observation or not (#1850)" \
+    "broken" "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 0 signal 0)"
 
 # A DECLARED disposition always wins over the engine's inference. rc fills the
 # silence; it never overwrites a stage that spoke for itself. Without this, a
@@ -328,38 +290,22 @@ export ZBUILD_STATE_DIR="$_saved_state_dir"
 [[ -e "$PWD/.throttled.signal" ]] && assert_fail "[SPEC-7] no marker fabricated under cwd" "found $PWD/.throttled.signal"
 
 # ─────────────────────────────────────────────────────────────────────────────
-print_test_section "8. A legacy rc outranks the observation-based fallback"
+print_test_section "8. With no result, only the observation classifies — never the number (#1850)"
 
-# Review finding: a v1 stage exiting 9 or 10 with no result resolved to `broken`
-# because the legacy mapping was computed and never consulted. Both still halt,
-# so no control flow changed — but `broken` tells an operator "this is our own
-# defect" for what is actually a service outage or an oversized scope, and that
-# distinction is the entire reason `unavailable` and `broken` are separate words
-# (#1822: they differ in what is reported, not in the stopping).
+# The legacy mapping once turned rc 9 into `unavailable` and rc 10 into
+# `out_of_turns` for a v1 stage that could say nothing else. Every stage is v2
+# now and records those causes itself (router_reason_disposition), so a stage
+# that exits with NO result has crashed whatever number it chose: broken. Only
+# what the boundary observed about its death changes that.
 rm -f "$_sd/artifacts/fx-result.json"
 
-assert_eq "[SPEC-8] rc=9 with no result → unavailable, not broken" "unavailable" \
+assert_eq "[SPEC-8] rc=9 with no result and nothing observed → broken" "broken" \
     "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 9 "" 0)"
-assert_eq "[SPEC-8] rc=10 with no result → out_of_turns, not broken (#2187)" "out_of_turns" \
+assert_eq "[SPEC-8] rc=10 with no result and nothing observed → broken" "broken" \
     "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 10 "" 0)"
-assert_eq "[SPEC-8] rc=143 with no result → interrupted" "interrupted" \
-    "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 143 "" 0)"
-
-# Each drives a genuinely different operator-facing response.
-assert_eq "[SPEC-8] unavailable halts for an OPERATOR, not as a defect" \
-    "halt_unavailable" "$(disposition_response unavailable)"
-assert_eq "[SPEC-8] out_of_turns retries rather than halting (#2187)" \
-    "retry" "$(disposition_response out_of_turns)"
-
-# A legacy code with no §6 word still falls through to the observation table.
-assert_eq "[SPEC-8] rc=5 (blocked) has no word, so it stays broken" "broken" \
-    "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 5 "" 0)"
-assert_eq "[SPEC-8] rc=8 likewise stays broken" "broken" \
-    "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 8 "" 0)"
-
-# A rate limit still wins: it is evidence about THIS dispatch, where a legacy rc
-# is a coexistence-era translation — and (#2111) it ends the run.
-assert_eq "[SPEC-8] an observed rate limit outranks a legacy rc" "unavailable" \
+assert_eq "[SPEC-8] rc=143 observed as a signal → interrupted" "interrupted" \
+    "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 143 "$(dispatch_rc_observation 143)" 0)"
+assert_eq "[SPEC-8] an observed rate limit → unavailable (#2111)" "unavailable" \
     "$(runner_read_stage_disposition "$_sd" "$_pd/manifest.yaml" fx 9 "" 1)"
 
 cleanup_test_env

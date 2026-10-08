@@ -862,8 +862,13 @@ MOCKEOF
 }
 
 # ── mock_plugin_factory ───────────────────────────────────────────────────────
-# Creates a minimal valid plugin directory under $TEST_TEMP_DIR/plugins/.
+# Creates a minimal valid stage plugin directory under $TEST_TEMP_DIR/plugins/.
 # Prints the directory path to stdout.
+#
+# #1850: the engine reads result contract v2 only, and a stage that leaves no
+# readable v2 result has failed. So the mock declares result_contract 2 and a
+# JSON primary, and writes a v2 result before returning <exit_code>: `pass` on 0,
+# `error`/`broken` otherwise (a stage that fails still says so).
 #
 # Usage: mock_plugin_factory <id> [kind=agent] [exit_code=0] [platform=] [role=] [version=0.0.1]
 mock_plugin_factory() {
@@ -883,11 +888,29 @@ requires:
     - redaction
 EOF
     [[ -n "$platform" ]] && printf 'platform: %s\n' "$platform" >> "$dir/manifest.yaml"
-    if [[ -n "$role" ]]; then
-        printf 'provides:\n  role: %s\n' "$role" >> "$dir/manifest.yaml"
-    fi
+    printf 'provides:\n  result_contract: 2\n' >> "$dir/manifest.yaml"
+    [[ -n "$role" ]] && printf '  role: %s\n' "$role" >> "$dir/manifest.yaml"
+    cat >> "$dir/manifest.yaml" <<EOF
+outputs:
+  - id: ${id//-/_}_result
+    path: \${artifact_dir}/${id}-result.json
+    type: ${id}-result.json@1
+    format: json
+    required: true
+    primary: true
+config:
+  valid_verdicts: [pass, error]
+EOF
+    local _verdict=pass _disp=complete
+    [[ "$exit_code" -ne 0 ]] && { _verdict=error; _disp=broken; }
     cat > "$dir/plugin.sh" <<EOF
-${fn}() { return $exit_code; }
+${fn}() {
+    local _art; _art="\${ZBUILD_ARTIFACT_DIR:-\$(dirname "\$2")/artifacts}"
+    mkdir -p "\$_art"
+    printf '{"result_contract":2,"verdict":"%s","disposition":"%s","reason":"mock %s"}' \\
+        "$_verdict" "$_disp" "$id" > "\$_art/${id}-result.json"
+    return $exit_code
+}
 EOF
     printf '%s\n' "$dir"
 }

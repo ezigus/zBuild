@@ -3841,8 +3841,13 @@ main() {
             # #507: resolve verdict from the plugin's manifest-declared primary
             # output. Glyph + color reflect the actual verdict, not just rc=0.
             local _verdict_manifest="" _verdict_class="pass"
-            local _verdict_plugin_dir=""
-            _verdict_plugin_dir="$(resolve_stage_plugin "$stage" "$plugins_root" 2>/dev/null || true)"
+            # #1850: read the verdict from the plugin that actually RAN. A stage
+            # dispatched by id (no roles, or roles no plugin provides — the rc 4
+            # fallback above) has plugin_dir set; role resolution would find no
+            # manifest for it, and "no manifest" is a failure now, not `unknown`.
+            local _verdict_plugin_dir="${plugin_dir:-}"
+            [[ -n "$_verdict_plugin_dir" ]] || \
+                _verdict_plugin_dir="$(resolve_stage_plugin "$stage" "$plugins_root" 2>/dev/null || true)"
             if [[ -n "$_verdict_plugin_dir" ]]; then
                 _verdict_manifest="$_verdict_plugin_dir/manifest.yaml"
             fi

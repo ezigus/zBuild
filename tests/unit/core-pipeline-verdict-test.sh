@@ -48,7 +48,18 @@ outputs:
     type: $type
     required: true
     primary: true
+config:
+  valid_verdicts: [complete, skip, pass, fail, error, corrupt_diff, approve, request_changes, block, scope_violation]
+provides:
+  result_contract: 2
 EOF
+}
+
+# _v2w <json> <file> — write a fixture result as a v2 result (#1850: the engine
+# reads v2 only): the fixture's fields plus result_contract, a `complete`
+# disposition and a reason, unless the fixture names its own.
+_v2w() {
+    jq -c '. + {result_contract: 2, disposition: (.disposition // "complete"), reason: (.reason // "fixture")}' <<< "$1" > "$2"
 }
 
 # ─── Test: verdict_classify pure mapping ─────────────────────────────────────
@@ -91,10 +102,10 @@ print_test_section "[SPEC-3] no unknown_verdict event for complete or skip"
 spec3_dir="$TEST_TEMP_DIR/plugins/impact"
 _make_manifest "$spec3_dir" "impact" "${ART_DIR}/impact-result.json" "impact_result"
 
-printf '%s' '{"verdict":"complete"}' > "$ART_DIR/impact-result.json"
+_v2w '{"verdict":"complete"}' "$ART_DIR/impact-result.json"
 runner_read_stage_verdict "$STATE_DIR" "$spec3_dir/manifest.yaml" "impact" 0 >/dev/null
 
-printf '%s' '{"verdict":"skip"}' > "$ART_DIR/impact-result.json"
+_v2w '{"verdict":"skip"}' "$ART_DIR/impact-result.json"
 runner_read_stage_verdict "$STATE_DIR" "$spec3_dir/manifest.yaml" "impact" 0 >/dev/null
 
 unk_count=$(grep -c '"pipeline.indicator.unknown_verdict"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
@@ -104,27 +115,27 @@ assert_eq "[SPEC-3] no pipeline.indicator.unknown_verdict emitted for complete o
 print_test_section "rc != 0 overrides verdict"
 m_dir="$TEST_TEMP_DIR/plugins/test"
 _make_manifest "$m_dir" "test" "${ART_DIR}/test-results.json" "test_results"
-printf '%s' '{"verdict":"pass"}' > "$ART_DIR/test-results.json"
+_v2w '{"verdict":"pass"}' "$ART_DIR/test-results.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$m_dir/manifest.yaml" "test" 1)"
 assert_eq "rc=1 forces fail even when verdict=pass" "fail" "$got"
 
 # ─── Test: test verdict pass / fail / error ──────────────────────────────────
 print_test_section "test plugin verdict mapping"
-printf '%s' '{"verdict":"pass"}' > "$ART_DIR/test-results.json"
+_v2w '{"verdict":"pass"}' "$ART_DIR/test-results.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$m_dir/manifest.yaml" "test" 0)"
 assert_eq "test verdict=pass -> pass" "pass" "$got"
 
-printf '%s' '{"verdict":"fail"}' > "$ART_DIR/test-results.json"
+_v2w '{"verdict":"fail"}' "$ART_DIR/test-results.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$m_dir/manifest.yaml" "test" 0)"
 assert_eq "test verdict=fail -> fail" "fail" "$got"
 
-printf '%s' '{"verdict":"error"}' > "$ART_DIR/test-results.json"
+_v2w '{"verdict":"error"}' "$ART_DIR/test-results.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$m_dir/manifest.yaml" "test" 0)"
 # #550: structural-failure raw verdicts pass through unclassified so the
 # cycle blocked predicate can distinguish them from generic "fail".
 assert_eq "test verdict=error -> error (pass-through #550)" "error" "$got"
 
-printf '%s' '{"verdict":"corrupt_diff","reason":"diff_apply_failed"}' > "$ART_DIR/test-results.json"
+_v2w '{"verdict":"corrupt_diff","reason":"diff_apply_failed"}' "$ART_DIR/test-results.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$m_dir/manifest.yaml" "test" 0)"
 assert_eq "test verdict=corrupt_diff -> corrupt_diff (pass-through #550)" "corrupt_diff" "$got"
 
@@ -132,15 +143,15 @@ assert_eq "test verdict=corrupt_diff -> corrupt_diff (pass-through #550)" "corru
 print_test_section "review plugin verdict mapping"
 r_dir="$TEST_TEMP_DIR/plugins/review"
 _make_manifest "$r_dir" "review" "${ART_DIR}/review.json" "review"
-printf '%s' '{"verdict":"approve"}' > "$ART_DIR/review.json"
+_v2w '{"verdict":"approve"}' "$ART_DIR/review.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$r_dir/manifest.yaml" "review" 0)"
 assert_eq "review verdict=approve -> pass" "pass" "$got"
 
-printf '%s' '{"verdict":"request_changes"}' > "$ART_DIR/review.json"
+_v2w '{"verdict":"request_changes"}' "$ART_DIR/review.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$r_dir/manifest.yaml" "review" 0)"
 assert_eq "review verdict=request_changes -> warn" "warn" "$got"
 
-printf '%s' '{"verdict":"block"}' > "$ART_DIR/review.json"
+_v2w '{"verdict":"block"}' "$ART_DIR/review.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$r_dir/manifest.yaml" "review" 0)"
 # #550: block is a structural-failure class — passes through unclassified.
 assert_eq "review verdict=block -> block (pass-through #550)" "block" "$got"
@@ -155,24 +166,24 @@ print_test_section "build plugin verdict derivation"
 b_dir="$TEST_TEMP_DIR/plugins/build"
 _make_manifest "$b_dir" "build" "${ART_DIR}/build-summary.json" "build_summary"
 
-printf '%s' '{"verdict":"pass","scope_violation":false}' > "$ART_DIR/build-summary.json"
+_v2w '{"verdict":"pass","scope_violation":false}' "$ART_DIR/build-summary.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$b_dir/manifest.yaml" "build" 0)"
 assert_eq "build verdict=pass -> pass" "pass" "$got"
 
-printf '%s' '{"verdict":"scope_violation","scope_violation":true}' > "$ART_DIR/build-summary.json"
+_v2w '{"verdict":"scope_violation","scope_violation":true}' "$ART_DIR/build-summary.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$b_dir/manifest.yaml" "build" 0)"
 assert_eq "build verdict=scope_violation -> fail" "fail" "$got"
 
-printf '%s' '{"verdict":"pass","scope_violation":false}' > "$ART_DIR/build-summary.json"
+_v2w '{"verdict":"pass","scope_violation":false}' "$ART_DIR/build-summary.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$b_dir/manifest.yaml" "build" 0)"
 assert_eq "build .verdict=pass -> pass" "pass" "$got"
 
 # #550: build corrupt_diff also passes through (structural-failure class).
-printf '%s' '{"verdict":"corrupt_diff","scope_violation":false}' > "$ART_DIR/build-summary.json"
+_v2w '{"verdict":"corrupt_diff","scope_violation":false}' "$ART_DIR/build-summary.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$b_dir/manifest.yaml" "build" 0)"
 assert_eq "build .verdict=corrupt_diff -> corrupt_diff (pass-through #550)" "corrupt_diff" "$got"
 
-printf '%s' '{"verdict":"error"}' > "$ART_DIR/build-summary.json"
+_v2w '{"verdict":"error"}' "$ART_DIR/build-summary.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$b_dir/manifest.yaml" "build" 0)"
 assert_eq "build .verdict=error -> error (pass-through #550)" "error" "$got"
 
@@ -180,20 +191,24 @@ assert_eq "build .verdict=error -> error (pass-through #550)" "error" "$got"
 print_test_section "plan plugin no .verdict field -> pass"
 p_dir="$TEST_TEMP_DIR/plugins/plan"
 _make_manifest "$p_dir" "plan" "${ART_DIR}/plan.json" "plan"
-printf '%s' '{"steps":[]}' > "$ART_DIR/plan.json"
+_v2w '{"steps":[]}' "$ART_DIR/plan.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$p_dir/manifest.yaml" "plan" 0)"
-assert_eq "plan present, no .verdict -> pass" "pass" "$got"
+# #1850: a v2 result always carries a verdict; one with none is a violation
+# (it used to read as a clean pass).
+assert_eq "a result with no .verdict -> error (missing_field, #1850)" "error" "$got"
 
-# ─── Test: missing artifact -> warn + stage.verdict.missing event ────────────
-print_test_section "missing primary artifact emits stage.verdict.missing"
+# ─── Test: missing artifact -> structural failure (#1850; was warn) ──────────
+print_test_section "missing primary artifact at rc 0 is a contract violation"
 : > "$ZBUILD_EVENTS_JSONL"
 rm -f "$ART_DIR/test-results.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$m_dir/manifest.yaml" "test" 0)"
-assert_eq "missing artifact -> warn" "warn" "$got"
-miss_count=$(grep -c '"stage.verdict.missing"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
+assert_eq "missing artifact -> error (#1850)" "error" "$got"
+miss_count=$(grep -c '"stage.verdict.contract_violation"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)
 [[ "$miss_count" -ge 1 ]] \
-    && assert_pass "stage.verdict.missing emitted on absent artifact" \
-    || assert_fail "stage.verdict.missing emitted on absent artifact" "got $miss_count"
+    && assert_pass "stage.verdict.contract_violation emitted on absent artifact" \
+    || assert_fail "stage.verdict.contract_violation emitted on absent artifact" "got $miss_count"
+assert_eq "missing artifact -> reason contract_violation:missing_result" "contract_violation:missing_result" \
+    "$(runner_read_stage_reason "$STATE_DIR" "$m_dir/manifest.yaml" "test" 0)"
 
 # ─── Test: malformed JSON -> structural failure (ADR-054 / #1821) ────────────
 # WAS `warn` (a yellow glyph, run continues). A stage that exits 0 and writes
@@ -225,21 +240,21 @@ got="$(runner_read_stage_reason "$STATE_DIR" "$m_dir/manifest.yaml" "test" 0)"
 assert_eq "malformed JSON -> reason names the violation" \
     "contract_violation:malformed_json" "$got"
 
-# ─── Test: non-JSON primary (e.g. pr-url.txt) -> presence = pass ─────────────
-print_test_section "non-JSON primary path -> presence = pass"
+# ─── Test: non-JSON primary -> structural failure (#1850; was presence = pass) ─
+print_test_section "non-JSON primary path -> contract violation"
 pr_dir="$TEST_TEMP_DIR/plugins/pr"
 _make_manifest "$pr_dir" "pr" "${ART_DIR}/pr-url.txt" "pr_url" "pr-url.txt"
 printf 'https://example/pr/1\n' > "$ART_DIR/pr-url.txt"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$pr_dir/manifest.yaml" "pr" 0)"
-assert_eq "non-JSON primary present -> pass" "pass" "$got"
+assert_eq "non-JSON primary present -> error (#1850)" "error" "$got"
 
-# ─── Test: no manifest -> unknown (contract-bypass display path) ─────────────
-print_test_section "no manifest -> unknown"
+# ─── Test: no manifest -> structural failure (#1850; was unknown) ─────────────
+print_test_section "no manifest -> contract violation"
 got="$(runner_read_stage_verdict "$STATE_DIR" "" "ghost" 0)"
-assert_eq "absent manifest -> unknown" "unknown" "$got"
+assert_eq "absent manifest -> error (#1850)" "error" "$got"
 
-# ─── Test: manifest without primary -> pass (rc-fallback) ────────────────────
-print_test_section "manifest without primary -> pass on rc=0"
+# ─── Test: manifest without primary -> structural failure (#1850; was pass) ──
+print_test_section "manifest without primary -> contract violation on rc=0"
 np_dir="$TEST_TEMP_DIR/plugins/noprim"
 mkdir -p "$np_dir"
 cat > "$np_dir/manifest.yaml" <<'EOF'
@@ -259,12 +274,11 @@ outputs:
     required: true
 EOF
 got="$(runner_read_stage_verdict "$STATE_DIR" "$np_dir/manifest.yaml" "noprim" 0)"
-assert_eq "no primary declared, rc=0 -> pass" "pass" "$got"
+assert_eq "no primary declared, rc=0 -> error (#1850)" "error" "$got"
 
 # ═══ ADR-054 / #1821 — the v2 result contract ════════════════════════════════
-# Versioned coexistence: the engine reads v1 (today's shape, no result_contract)
-# and v2 (result_contract:2 with the mandatory scalars) side by side, so plugins
-# migrate one per PR rather than in a flag day.
+# The engine read v1 (no result_contract) and v2 side by side while plugins
+# migrated one per PR. #1850 ended that: v2 only.
 #
 # The version key is `result_contract`, NOT `schema_version`: schema_version is
 # already the ARTIFACT's own schema, independently per type (build-summary.json
@@ -284,11 +298,13 @@ _write_v2() {
        "$jqf + {data:{v2stage:{note:\"engine never interprets this\"}}}" > "$_v2_result"
 }
 
-print_test_section "v1 and v2 fixtures both resolve through one reader"
-# v1 fixture: no result_contract at all — the default.
+print_test_section "a v1 fixture fails; a v2 fixture resolves"
+# v1 fixture: no result_contract at all — no longer read (#1850).
 jq -nc '{verdict:"pass"}' > "$_v2_result"
-assert_eq "v1 fixture (no result_contract) -> pass" \
-    "pass" "$(runner_read_stage_verdict "$STATE_DIR" "$v2_dir/manifest.yaml" "v2stage" 0)"
+assert_eq "v1 fixture (no result_contract) -> error (#1850)" \
+    "error" "$(runner_read_stage_verdict "$STATE_DIR" "$v2_dir/manifest.yaml" "v2stage" 0)"
+assert_eq "v1 fixture -> the reason names the unsupported contract" "contract_violation:unsupported_contract:1" \
+    "$(runner_read_stage_reason "$STATE_DIR" "$v2_dir/manifest.yaml" "v2stage" 0)"
 # v2 fixture: complete and well-formed.
 _write_v2 pass complete "all four mandatory fields present"
 assert_eq "v2 fixture (complete) -> pass" \
@@ -328,9 +344,14 @@ print_test_section "unknown verdict emits a diagnostic that names the artifact"
 # refactored away, and `2>/dev/null || true` swallowed it. An operator would get
 # a drift warning naming no file. Assert the payload, not just the event count.
 : > "$ZBUILD_EVENTS_JSONL"
-printf '%s' '{"verdict":"xyzzy"}' > "$_v2_result"
-assert_eq "unrecognised verdict -> warn" \
-    "warn" "$(runner_read_stage_verdict "$STATE_DIR" "$v2_dir/manifest.yaml" "v2stage" 0)"
+# #1850: a v2 result whose manifest declares no verdict list (the lint's to
+# refuse) is the one way an unrecognised word still reaches the warn path.
+nl_dir="$TEST_TEMP_DIR/plugins/nolist"
+_make_manifest "$nl_dir" "v2stage" "${ART_DIR}/v2-result.json" "result" "json"
+sed -i.bak '/^config:/,/^  valid_verdicts:/d' "$nl_dir/manifest.yaml" && rm -f "$nl_dir/manifest.yaml.bak"
+jq -nc '{result_contract:2,verdict:"xyzzy",disposition:"complete",reason:"r"}' > "$_v2_result"
+assert_eq "unrecognised verdict (no declared list) -> warn" \
+    "warn" "$(runner_read_stage_verdict "$STATE_DIR" "$nl_dir/manifest.yaml" "v2stage" 0)"
 _uv_line="$(grep '"pipeline.indicator.unknown_verdict"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
 if grep -q 'v2-result.json' <<< "$_uv_line"; then
     assert_pass "unknown_verdict event carries a non-empty artifact path"
@@ -353,11 +374,11 @@ print_test_section "the contract key is NOT schema_version (regression guard)"
 # summary was read as a v2 result and failed for a missing `disposition`,
 # flipping stage_verdicts.build from "fail" to "error" on a clean run.
 # A v2 result is identified by `result_contract`, which nothing else uses.
+# Since #1850 such an artifact is refused — and the reason proves which key was
+# read: contract 1 (absent result_contract), never schema_version's 4.
 jq -nc '{schema_version:4,verdict:"fail",files_changed:[],iterations:1}' > "$_v2_result"
-assert_eq "schema_version:4 artifact is v1 — classified on .verdict alone" \
-    "fail" "$(runner_read_stage_verdict "$STATE_DIR" "$v2_dir/manifest.yaml" "v2stage" 0)"
-assert_eq "schema_version:4 artifact raises no contract violation" \
-    "" "$(runner_read_stage_reason "$STATE_DIR" "$v2_dir/manifest.yaml" "v2stage" 0)"
+assert_eq "schema_version:4 artifact with no result_contract -> refused as contract 1" \
+    "contract_violation:unsupported_contract:1" "$(runner_read_stage_reason "$STATE_DIR" "$v2_dir/manifest.yaml" "v2stage" 0)"
 # And the two keys are orthogonal: a v2 result may carry its own artifact schema.
 jq -nc '{schema_version:4,result_contract:2,verdict:"pass",disposition:"complete",reason:"both keys present"}' > "$_v2_result"
 assert_eq "result_contract:2 alongside schema_version:4 -> read as v2" \
@@ -373,7 +394,7 @@ assert_eq "disposition is readable" "interrupted" \
 # instead of in #1822 where the response table lives.
 assert_eq "disposition does NOT alter the verdict class" "fail" \
     "$(runner_read_stage_verdict "$STATE_DIR" "$v2_dir/manifest.yaml" "v2stage" 0)"
-assert_eq "v1 artifacts expose no disposition" "" \
+assert_eq "a v1 artifact is broken at rc 0 (#1850)" "broken" \
     "$(printf '%s' "$(jq -nc '{verdict:"pass"}' > "$_v2_result"; \
         runner_read_stage_disposition "$STATE_DIR" "$v2_dir/manifest.yaml" "v2stage" 0)")"
 

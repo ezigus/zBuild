@@ -89,13 +89,12 @@ _manifest "$TEST_TEMP_DIR/m/backend"    some-backend     tool "" ""
 _manifest "$TEST_TEMP_DIR/m/persona"    some-persona     persona "" ""
 
 _load() { validate_manifest "$1/manifest.yaml" 2>&1; }
-set +e
-_out_u="$(_load "$TEST_TEMP_DIR/m/undeclared")"; _rc_u=$?
-_out_1="$(_load "$TEST_TEMP_DIR/m/v1")"; _rc_1=$?
-_load "$TEST_TEMP_DIR/m/v2" >/dev/null; _rc_2=$?
-_load "$TEST_TEMP_DIR/m/backend" >/dev/null; _rc_b=$?
-_load "$TEST_TEMP_DIR/m/persona" >/dev/null; _rc_p=$?
-set -e
+_rc_u=0 _rc_1=0 _rc_2=0 _rc_b=0 _rc_p=0
+_out_u="$(_load "$TEST_TEMP_DIR/m/undeclared")" || _rc_u=$?
+_out_1="$(_load "$TEST_TEMP_DIR/m/v1")" || _rc_1=$?
+_load "$TEST_TEMP_DIR/m/v2" >/dev/null || _rc_2=$?
+_load "$TEST_TEMP_DIR/m/backend" >/dev/null || _rc_b=$?
+_load "$TEST_TEMP_DIR/m/persona" >/dev/null || _rc_p=$?
 assert_eq "[R1] a stage plugin declaring no result_contract is refused" "1" "$_rc_u"
 assert_contains "[R1] ...naming the plugin" "$_out_u" "undeclared-stage"
 assert_contains "[R1] ...and the accepted range" "$_out_u" "2..2"
