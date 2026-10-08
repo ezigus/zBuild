@@ -145,15 +145,18 @@ bad_unit="$(orch_work_unit 'echo "bad output"; exit 2')"
 orch_dispatch "$pool" "$good_unit"
 orch_dispatch "$pool" "$bad_unit" 2>/dev/null || true
 
+# Collected into a file, not $( ): the outcome word is a global the subshell
+# would drop.
 set +e
-mixed_collected="$(orch_collect "$pool")"
+orch_collect "$pool" > "$TEST_TEMP_DIR/mixed.out"
 mixed_rc=$?
 set -e
+mixed_collected="$(cat "$TEST_TEMP_DIR/mixed.out")"
 
-# orch_collect returns first non-zero rc (2 from the bad unit)
-assert_exit_code \
-    "orch_collect returns first non-zero rc from mixed work units" \
-    "2" "$mixed_rc"
+# #1850 (ADR-054 §4): mixed results are a failure (rc 1) that says it was
+# partial in a word, not in rc 2.
+assert_exit_code "orch_collect returns 1 for mixed work units" "1" "$mixed_rc"
+assert_eq "orch_collect names mixed results partial" "partial" "${_ORCH_COLLECT_OUTCOME:-}"
 
 assert_contains \
     "orch_collect output includes good unit output" \

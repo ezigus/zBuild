@@ -72,9 +72,10 @@ orch_collect "all-fail" --timeout 10 >/dev/null 2>&1
 collect_rc=$?
 set -e
 assert_eq "orch_collect rc=1 when all units exit non-zero" "1" "$collect_rc"
+assert_eq "orch_collect names all-fail failed" "failed" "${_ORCH_COLLECT_OUTCOME:-}"
 
-# ─── Test 5: dispatch + collect — partial (rc=2) ───────────────────────────
-print_test_section "5. orch_collect rc=2 when mixed results (ADR-011 contract)"
+# ─── Test 5: dispatch + collect — partial (#1850: rc 1 + the word) ─────────
+print_test_section "5. orch_collect names mixed results partial (ADR-011, ADR-054 §4)"
 orch_spawn "partial" 0 ""
 orch_dispatch "partial" 'exit 0' >/dev/null
 orch_dispatch "partial" 'exit 5' >/dev/null
@@ -84,7 +85,8 @@ set +e
 orch_collect "partial" --timeout 10 >/dev/null 2>&1
 collect_rc=$?
 set -e
-assert_eq "orch_collect rc=2 when results are mixed" "2" "$collect_rc"
+assert_eq "orch_collect rc=1 when results are mixed" "1" "$collect_rc"
+assert_eq "orch_collect names mixed results partial" "partial" "${_ORCH_COLLECT_OUTCOME:-}"
 
 # ─── Test 6: shutdown removes pool dir ──────────────────────────────────────
 print_test_section "6. shutdown cleans up the pool directory"

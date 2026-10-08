@@ -40,7 +40,7 @@ source "$_ZBUILD_ROOT/core/config/config.sh"
 zbuild_config_init
 # shellcheck source=../memory/contract.sh
 source "$_ZBUILD_ROOT/core/memory/contract.sh"
-memory_init || { echo "runner: memory backend failed to initialize" >&2; exit 2; }
+memory_init || { echo "runner: memory backend failed to initialize" >&2; exit 1; }
 source "$_ZBUILD_ROOT/core/detect/platforms.sh"
 source "$_ZBUILD_ROOT/core/pipeline/template.sh"
 source "$_ZBUILD_ROOT/core/pipeline/template-resolver.sh"
@@ -629,13 +629,13 @@ _runner_validate_leaf_resolvability() {
     # non-identifier is a programming error, not runtime data.
     if [[ ! "$_arr_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
         error "_runner_validate_leaf_resolvability: invalid array name '${_arr_name}'"
-        return 2
+        return 1
     fi
     # bash errors on a nameref that resolves to itself; reject it with our own
     # message rather than a raw "circular name reference" from the shell.
     if [[ "$_arr_name" == "_stages" ]]; then
         error "_runner_validate_leaf_resolvability: array name '_stages' collides with the nameref"
-        return 2
+        return 1
     fi
     # Warm the manifest cache in THIS shell before resolving anything. Every
     # resolution below reads manifests through `$( )`, and an associative-array
@@ -763,7 +763,7 @@ _runner_validate_startup_preflight() {
     fi
 
     # enforce: fail-closed
-    return 2
+    return 1
 }
 
 # _runner_resume_intent <no_resume:true|false> — 1 (resume: reuse prior work)
@@ -1431,7 +1431,7 @@ _runner_contract_lib_closure() {
 # dogfood of a grammar change unlandable.
 _runner_snapshot_contract_libs() {
     local src_lib="$1" snapshot_dir="$2"
-    [[ -z "$src_lib" || -z "$snapshot_dir" ]] && return 2
+    [[ -z "$src_lib" || -z "$snapshot_dir" ]] && return 1
     [[ -d "$src_lib" ]] || return 1
     mkdir -p "$snapshot_dir" || return 1
     local _lib _copied=0
@@ -1674,13 +1674,13 @@ main() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --issue)
-                [[ -z "${2:-}" ]] && { error "--issue requires a value"; _usage; return 2; }
+                [[ -z "${2:-}" ]] && { error "--issue requires a value"; _usage; return 1; }
                 issue="$2"; shift 2 ;;
             --goal)
-                [[ -z "${2:-}" ]] && { error "--goal requires a value"; _usage; return 2; }
+                [[ -z "${2:-}" ]] && { error "--goal requires a value"; _usage; return 1; }
                 goal="$2"; shift 2 ;;
             --template)
-                [[ -z "${2:-}" ]] && { error "--template requires a value"; _usage; return 2; }
+                [[ -z "${2:-}" ]] && { error "--template requires a value"; _usage; return 1; }
                 template="$2"; shift 2 ;;
             --dry-run)    dry_run=true;    shift ;;
             --resume)     resume_mode=true; shift ;;
@@ -1688,10 +1688,10 @@ main() {
             --force)      force=true;      shift ;;
             --self-host)  self_host=true;  shift ;;
             --from-stage)
-                [[ -z "${2:-}" ]] && { error "--from-stage requires a value"; _usage; return 2; }
+                [[ -z "${2:-}" ]] && { error "--from-stage requires a value"; _usage; return 1; }
                 from_stage="$2"; shift 2 ;;
             --help|-h)  _usage; return 0 ;;
-            *) error "Unknown argument: $1"; _usage; return 2 ;;
+            *) error "Unknown argument: $1"; _usage; return 1 ;;
         esac
     done
 
@@ -1708,14 +1708,14 @@ main() {
     if [[ -z "$issue" && -z "$goal" ]]; then
         error "Must specify --issue <N> or --goal \"<text>\""
         _usage
-        return 2
+        return 1
     fi
 
     # --from-stage is only valid in resume mode
     if [[ -n "$from_stage" ]] && ! $resume_mode; then
         error "--from-stage is only valid with --resume"
         _usage
-        return 2
+        return 1
     fi
 
     local plugins_root="${ZBUILD_PLUGINS_ROOT:-$_ZBUILD_ROOT/plugins}"
@@ -1739,7 +1739,7 @@ main() {
     # Copilot finding): use $PWD, not $_ZBUILD_ROOT (the install tree).
     if ! template_file="$(resolve_template_file "$template" "$PWD" 2>&1)"; then
         error "$template_file"
-        return 2
+        return 1
     fi
 
     # Cross-check: ZBUILD_STATE_FILE vs --issue (issue #296 Δ-4)
@@ -1750,14 +1750,14 @@ main() {
           && -f "${ZBUILD_STATE_FILE}" ]]; then
         if ! jq empty "${ZBUILD_STATE_FILE}" >/dev/null 2>&1; then
             error "ZBUILD_STATE_FILE='${ZBUILD_STATE_FILE}' is not valid JSON; refusing to honor it alongside --issue $issue (fail-closed)"
-            return 2
+            return 1
         fi
         local _existing_issue
         _existing_issue="$(jq -r '.issue // ""' "${ZBUILD_STATE_FILE}" 2>/dev/null || true)"
         if [[ -n "$_existing_issue" && "$_existing_issue" != "null" \
               && "$_existing_issue" != "0" && "$_existing_issue" != "$issue" ]]; then
             error "ZBUILD_STATE_FILE points at run for issue $_existing_issue but --issue is $issue (mismatch); aborting to avoid silent override"
-            return 2
+            return 1
         fi
     fi
 
@@ -1778,10 +1778,10 @@ main() {
         # shipped `simple` template, which resolves; this branch fires only on an
         # explicitly-named template whose file is absent.)
         error "Template '$template' not found (no file at '$template_file'); cannot run without a valid template — check the --template name or install the template"
-        return 2
+        return 1
     elif ! load_template "$template_file"; then
         error "Failed to load template '$template' (see error above); aborting"
-        return 2
+        return 1
     elif [[ ${#_TPL_STAGES[@]} -gt 0 ]]; then
         active_stages=("${_TPL_STAGES[@]}")
         # #1826: _TPL_STAGES is an ARRAY and so cannot be exported, but the `map:`
@@ -1811,13 +1811,13 @@ main() {
         if ! $dry_run && ! $resume_mode \
             && ! _runner_validate_leaf_resolvability active_stages "$plugins_root"; then
             error "Failed to load template '$template' — a stage resolves to no plugin (see above); aborting"
-            return 2
+            return 1
         fi
     else
         # ADR-047 §6: fail-closed (was a hardcoded built-in roster). A template that
         # loads but declares zero stages is malformed — an empty pipeline can't run.
         error "Template '$template' defines no stages; cannot run an empty pipeline (the template is malformed)"
-        return 2
+        return 1
     fi
 
     # ADR-020 (#496) pre-flight inter-stage data contract validator.
@@ -1847,7 +1847,7 @@ main() {
             eb_emit_event "pipeline.end" "status=preflight_failed" \
                 "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
             _render_pipeline_end "preflight_failed"
-            return 2
+            return 1
         fi
     }
 
@@ -1862,7 +1862,7 @@ main() {
         eb_emit_event "pipeline.end" "status=preflight_failed" \
             "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
         _render_pipeline_end "preflight_failed"
-        return 2
+        return 1
     fi
 
     # ADR-049 §Phase-1.1 (#1360): vision-document admission gate.
@@ -1885,7 +1885,7 @@ main() {
                     eb_emit_event "pipeline.end" "status=preflight_failed" \
                         "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
                     _render_pipeline_end "preflight_failed"
-                    return 2
+                    return 1
                 else
                     warn "Vision document not found (searched: $_vg_search_hint). Run: zbuild vision init"
                 fi
@@ -1901,7 +1901,7 @@ main() {
                         eb_emit_event "pipeline.end" "status=preflight_failed" \
                             "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
                         _render_pipeline_end "preflight_failed"
-                        return 2
+                        return 1
                     else
                         warn "Vision document validation failed. Fix the issues above or run: zbuild vision init --condense"
                     fi
@@ -1961,7 +1961,7 @@ main() {
         done
         if ! $_fs_valid; then
             error "--from-stage '$from_stage' is not a known stage (active stages: ${active_stages[*]})"
-            return 2
+            return 1
         fi
         # #511 Pin 14: refuse --from-stage that lands INSIDE a cycle OR
         # AFTER a cycle (former case would silently skip cycle iters and
@@ -2015,7 +2015,7 @@ main() {
                     "reason=inside_cycle_or_after" "from_stage=$from_stage" \
                     "cycle_id=${_fs_cycle_id:-}" 2>/dev/null || true
                 error "--from-stage '$from_stage' lands inside or after a cycle ('${_fs_cycle_id:-after-cycle}') — refused. Resume the cycle from its first stage or omit --from-stage."
-                return 2
+                return 1
             fi
         fi
     fi
@@ -2525,17 +2525,16 @@ main() {
     }
     # #612 / Wave 15-F (#686): INT/TERM trap — flag the signal cause then
     # exit. Setting the marker + reason before exit lets the EXIT trap emit
-    # `pipeline.aborted reason=<sigint|sigterm>`.
-    # `exit 130` (SIGINT) or `exit 143` (SIGTERM) triggers _runner_abort_trap
-    # (EXIT) which writes state + events.
-    # ADR-025 (Wave 15-B #684): arm the cross-subshell abort sentinel FIRST so
-    # any in-flight subshell (cycle iter, strategy fanout) sees the signal via
-    # _zbuild_check_abort even if the abort rc has not yet propagated up to
-    # them. Composition is additive — the existing `exit 130` body is preserved
-    # and a parallel `exit 143` path is added for SIGTERM.
+    # `pipeline.aborted reason=<sigint|sigterm>`; `exit 1` triggers
+    # _runner_abort_trap (EXIT) which writes state + events. The signal is in
+    # that reason, not in the exit status (#1850, ADR-054 §4 — it was 130/143).
+    # ADR-025 (Wave 15-B #684): record the abort word in the cross-subshell
+    # sentinel FIRST so any in-flight subshell (cycle iter, strategy fanout)
+    # sees it via _zbuild_check_abort at its next boundary.
     _runner_signal_trap() {
-        local _sig="${1:-INT}"
-        _zbuild_arm_abort_sentinel
+        local _sig="${1:-INT}" _word="sigint"
+        [[ "$_sig" == "TERM" ]] && _word="sigterm"
+        _zbuild_arm_abort_sentinel "$_word"
         _RUNNER_SIGINT_RECEIVED=1
         # Wave 15-H (#688): flag-gated process-group signal forwarding. When
         # `set -m` is on (via ZBUILD_RUNNER_JOB_CONTROL=1 at startup), every
@@ -2616,20 +2615,9 @@ main() {
                 disown $! 2>/dev/null || true
             fi
         fi
-        case "$_sig" in
-            TERM)
-                _RUNNER_ABORT_REASON="sigterm"
-                # Re-raise the standard 128+SIGTERM exit code so the parent
-                # shell sees the cancellation, not a clean 0.
-                exit 143
-                ;;
-            *)
-                _RUNNER_ABORT_REASON="sigint"
-                # Re-raise the standard 128+SIGINT exit code so the parent
-                # shell sees the cancellation, not a clean 0.
-                exit 130
-                ;;
-        esac
+        _RUNNER_ABORT_REASON="$_word"
+        # Not a clean 0: the parent sees the run failed; why is in the events.
+        exit 1
     }
     trap '_runner_abort_trap' EXIT
     # Wave 15-F (#686): TERM is now trapped with the same semantics as INT
@@ -2758,9 +2746,10 @@ main() {
     fi
 
     # ─── _runner_note_llm_abort <state_dir> <manifest> <stage> <rc> (#2111) ──
-    # Records WHY the run is about to abort on rc=9 so the abort arms can name
-    # it: llm_rate_limited when the router saw a 429 (marker) or the stage said
-    # so, else llm_unavailable; the detail is the reset text the router surfaced.
+    # Records WHY the run is about to abort on an unavailable model so the abort
+    # can name it: llm_rate_limited when the router saw a 429 (marker) or the
+    # stage said so, else llm_unavailable; the detail is the reset text the
+    # router surfaced.
     _RUNNER_LLM_ABORT_REASON=""
     _RUNNER_LLM_ABORT_DETAIL=""
     _runner_note_llm_abort() {
@@ -2784,8 +2773,53 @@ main() {
         esac
         _RUNNER_LLM_ABORT_DETAIL="${_na_detail}"
     }
-    # _runner_llm_abort_reason — the word the abort arms record and emit.
+    # _runner_llm_abort_reason — the word the abort records and emits.
     _runner_llm_abort_reason() { printf '%s' "${_RUNNER_LLM_ABORT_REASON:-llm_unavailable}"; }
+
+    # ─── _runner_end_on_abort <state_file> <unit> (#1850) ───────────────────
+    # The run ends on a recorded abort (ADR-025); the word says how — it used to
+    # be rc 6, 9, 10, 130 or 143, each read by its own copy of this block.
+    # <unit> names where, as the event key: cycle=<id> | stage=<id> | parallel=<id>.
+    #   llm_unavailable | llm_rate_limited | scope_too_large → status aborted:
+    #     something outside the work stopped it; resumable (ADR-050).
+    #   sigint | sigterm | cycle_abort → status interrupted.
+    _runner_end_on_abort() {
+        local _ea_state="$1" _ea_unit="$2" _ea_word _ea_detail="${_RUNNER_LLM_ABORT_DETAIL:-}"
+        _ea_word="$(_zbuild_abort_reason)"
+        _ea_word="${_ea_word:-sigint}"
+        case "$_ea_word" in
+            llm_unavailable|llm_rate_limited|scope_too_large)
+                _set_pipeline_status "$_ea_state" "aborted"
+                [[ "$_ea_word" == scope_too_large ]] \
+                    || _zbuild_runner_write_llm_abort "$_ea_state" "$_ea_word" "$_ea_detail"
+                eb_emit_event "pipeline.aborted" "$_ea_unit" \
+                    "run_id=$_runner_run_id" "issue=$_runner_issue" \
+                    "reason=$_ea_word" "detail=$_ea_detail" "status=aborted" 2>/dev/null || true
+                eb_emit_event "pipeline.end" "status=aborted" "$_ea_unit" \
+                    "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
+                _render_pipeline_end "aborted" || true
+                _runner_ended=true
+                error "${_ea_unit%%=*} ${_ea_unit#*=}: the run $(run_end_words "$_ea_word" 0)${_ea_detail:+ — $_ea_detail}"
+                ;;
+            *)
+                _set_pipeline_status "$_ea_state" "interrupted"
+                # #612 / Wave 15-F (#686): the postmortem event stream answers
+                # "was this Ctrl-C / kill / an abort_when?" from the reason.
+                _RUNNER_SIGINT_RECEIVED=1
+                _RUNNER_ABORT_REASON="$_ea_word"
+                eb_emit_event "pipeline.aborted" "$_ea_unit" \
+                    "run_id=$_runner_run_id" "issue=$_runner_issue" \
+                    "reason=$_ea_word" "status=interrupted" 2>/dev/null || true
+                eb_emit_event "pipeline.end" "status=failed" "$_ea_unit" \
+                    "reason=$_ea_word" \
+                    "run_id=$_runner_run_id" "issue=$_runner_issue" 2>/dev/null || true
+                _render_pipeline_end "failed" || true
+                _runner_ended=true
+                error "${_ea_unit%%=*} ${_ea_unit#*=}: the run $(run_end_words "$_ea_word" 0)"
+                ;;
+        esac
+        return 1
+    }
 
 
     # cycle_dispatch_stage hook — F1 uses the same per-stage path that the
@@ -2966,15 +3000,16 @@ main() {
         fi
         # #2111: `unavailable` HALTS — the table's halt_unavailable response
         # was announced but never enforced (#1887 closed that gap for the
-        # retry words only). Something outside us is down: return the runner's
-        # LLM-abort rc so the run ends aborted, resumable (ADR-050), instead of
-        # re-verifying an unchanged tree until max_iterations. The reason and
-        # the reset text ride globals the rc=9 arms read.
+        # retry words only). Something outside us is down: record the abort
+        # word so the run ends aborted, resumable (ADR-050), instead of
+        # re-verifying an unchanged tree until max_iterations. The reset text
+        # rides a global the abort ending reads (#1850: the word, not rc 9).
         if [[ -n "$_CYCLE_DISPATCH_DISPOSITION" ]] \
            && [[ "$(disposition_response "$_CYCLE_DISPATCH_DISPOSITION" 2>/dev/null || true)" == "halt_unavailable" ]]; then
             _runner_note_llm_abort "$state_dir" "$_cd_manifest" "$_cd_stage" "$_cd_rc"
             _CYCLE_DISPATCH_STATUS="failed"
-            return 9
+            _zbuild_abort "$(_runner_llm_abort_reason)"
+            return 1
         fi
         # #1823 / #1850 (ADR-054 §4): every stage is held to rc ∈ {0,1}. A stage
         # speaks contract v2, so it declared a `disposition` and has somewhere
@@ -3161,110 +3196,64 @@ main() {
                     # cycle-as-member branch). Unset after the call so the var
                     # never leaks into the next dispatch unit.
                     export ZBUILD_SEQ_PREFIX="$_runner_cardinal"
-                    # ADR-021 + #766: cycle_orchestrator_run may return rc∈{1,2,3}
-                    # for soft termination (max_iterations/plateau/divergence).
-                    # A bare function-call statement whose return value is non-zero
-                    # under `set -e` causes the runner shell to exit, bypassing the
-                    # rc-table branches below. Wrap the call in `&& _rc=0 || _rc=$?`
-                    # so the rc is captured without tripping set -e. (The earlier
-                    # `set +e` + post-restore pattern was fragile because callees
-                    # could re-enable set -e mid-stream — observed in run_id
+                    # ADR-021 + #766: cycle_orchestrator_run returns 1 for every
+                    # loop that did not converge, including the soft endings the
+                    # run carries on past. A bare function-call statement whose
+                    # return value is non-zero under `set -e` causes the runner
+                    # shell to exit, bypassing the outcome branches below. Wrap
+                    # the call in `&& _rc=0 || _rc=$?` so the rc is captured
+                    # without tripping set -e. (The earlier `set +e` +
+                    # post-restore pattern was fragile because callees could
+                    # re-enable set -e mid-stream — observed in run_id
                     # 20260608223447-42915 where pipeline.abort fired between
                     # cycle.complete and where cycle.unconverged should have emitted.)
                     cycle_orchestrator_run "$_cyc_id" "$state_dir" "$state_file" && _rc=0 || _rc=$?
                     unset ZBUILD_SEQ_PREFIX
                     _runner_rearm_traps
-                    _cycle_handle_terminal_rc "$_rc" "$_cyc_id" "$state_file" || true
+                    _cycle_handle_terminal "$_cyc_id" "$state_file" || true
+                    # #1850 (ADR-054 §4): how the loop ended is a word, never the rc.
+                    local _cyc_outcome="${_CYCLE_LAST_OUTCOME:-}"
+                    [[ -n "$_cyc_outcome" ]] || { [[ $_rc -eq 0 ]] && _cyc_outcome="converged" || _cyc_outcome="interrupted"; }
                     # #1217 review fix (SHOULD-FIX): a previously-unconverged
-                    # cycle that now converges (rc=0) clears the stale unconverged signal so the
+                    # cycle that now converges clears the stale unconverged signal so the
                     # final-status aggregator doesn't report a false-fail after
                     # a successful correction. Scoped to the SAME cycle id so a
                     # different, still-unconverged cycle is never masked when an
                     # unrelated cycle converges.
-                    if [[ $_rc -eq 0 && "${_RUNNER_CYCLE_UNCONVERGED_ID:-}" == "$_cyc_id" ]]; then
+                    if [[ "$_cyc_outcome" == "converged" && "${_RUNNER_CYCLE_UNCONVERGED_ID:-}" == "$_cyc_id" ]]; then
                         _RUNNER_CYCLE_UNCONVERGED=0
                         _RUNNER_CYCLE_UNCONVERGED_REASON=""
                         _RUNNER_CYCLE_UNCONVERGED_ID=""
                         _RUNNER_CYCLE_UNCONVERGED_ON_MAX=""
                     fi
-                    # #511 Pin 7 / #527 / #528 — halt-vs-continue rc table:
-                    # rc 0 (converged)         → CONTINUE; happy path.
-                    # rc 1 (max_iter)          → CONTINUE; review gate runs;
-                    #                            mark _RUNNER_CYCLE_UNCONVERGED=1.
-                    # rc 2 (plateau)           → CONTINUE; review gate runs;
-                    #                            mark _RUNNER_CYCLE_UNCONVERGED=1.
-                    # rc 3 (divergence)        → CONTINUE; review gate runs;
-                    #                            mark _RUNNER_CYCLE_UNCONVERGED=1.
-                    # rc 4 (config_invalid)    → HALT; status=interrupted.
-                    # rc 5 (blocked, #528)     → HALT; status=interrupted. Review
-                    #                            does NOT run on blocked (upstream
-                    #                            input structurally broken).
-                    # rc 7 (blocked_on_scope,  → HALT; status=interrupted. #840:
-                    #   ADR-030)                  build needs out-of-scope files
-                    #                            the policy won't grant; review is
-                    #                            pointless. Operator widens scope.
-                    # rc 8 (blocking_member    → HALT; status=failed. ADR-013: a
-                    #   _failure, ADR-013)        blocking CQ member (cq-preflight,
-                    #                            cq-audit-plan, cq-cycle) failed.
-                    # rc 130 (aborted=SIGINT)  → HALT; status=interrupted.
-                    # rc 143 (aborted=SIGTERM) → HALT; status=interrupted (Wave 15-F).
-                    if [[ $_rc -eq 4 || $_rc -eq 5 || $_rc -eq 6 || $_rc -eq 7 || $_rc -eq 8 || $_rc -eq 9 || $_rc -eq 10 || $_rc -eq 130 || $_rc -eq 143 ]]; then
-                        # #1024: rc=9 = llm_unavailable; status=aborted (distinct from interrupted).
-                        if [[ $_rc -eq 9 ]]; then
-                            _set_pipeline_status "$state_file" "aborted"
-                            _zbuild_runner_write_llm_abort "$state_file" "$(_runner_llm_abort_reason)" "${_RUNNER_LLM_ABORT_DETAIL:-}"
-                            eb_emit_event "pipeline.aborted" "cycle=$_cyc_id" \
-                                "run_id=$_runner_run_id" "issue=$_runner_issue" \
-                                "reason=$(_runner_llm_abort_reason)" "detail=${_RUNNER_LLM_ABORT_DETAIL:-}" \
-                                "status=aborted" 2>/dev/null || true
-                            eb_emit_event "pipeline.end" "status=aborted" "cycle=$_cyc_id" \
-                                "run_id=$_runner_run_id" "issue=$_runner_issue"
-                            _render_pipeline_end "aborted"
-                            _runner_ended=true
-                            error "Cycle $_cyc_id: the run $(run_end_words "$(_runner_llm_abort_reason)" 0)${_RUNNER_LLM_ABORT_DETAIL:+ — $_RUNNER_LLM_ABORT_DETAIL}"
-                            return 9
-                        fi
-                        # #1052: rc=10 = scope_too_large; status=aborted (mirrors rc=9).
-                        # The plan stage exhausted its turn budget without a complete
-                        # plan — the issue is too large. Terminal, distinct from
-                        # rc=8 blocking_member_failure and rc=9 llm_unavailable.
-                        if [[ $_rc -eq 10 ]]; then
-                            _set_pipeline_status "$state_file" "aborted"
-                            eb_emit_event "pipeline.aborted" "cycle=$_cyc_id" \
-                                "run_id=$_runner_run_id" "issue=$_runner_issue" \
-                                "reason=scope_too_large" "status=aborted" 2>/dev/null || true
-                            eb_emit_event "pipeline.end" "status=aborted" "cycle=$_cyc_id" \
-                                "run_id=$_runner_run_id" "issue=$_runner_issue"
-                            _render_pipeline_end "aborted"
-                            _runner_ended=true
-                            error "Cycle $_cyc_id: the run $(run_end_words scope_too_large 0)"
-                            return 10
-                        fi
-                        # ADR-027 (Wave 17-B #703): rc=6 cycle_abort halts
-                        # the pipeline + propagates outward distinctly from
-                        # signal-driven aborts (rc=130/143) and blocked
-                        # (rc=5). The runner emits pipeline.aborted with
-                        # reason=cycle_abort and returns rc=6 to its caller.
-                        # ADR-013: rc=8 (blocking_member_failure) → status=failed.
-                        if [[ $_rc -eq 8 ]]; then
-                            _set_pipeline_status "$state_file" "failed"
-                        else
-                            _set_pipeline_status "$state_file" "interrupted"
-                        fi
-                        # #612 / Wave 15-F (#686): distinguish signal-driven cycle
-                        # abort (SIGINT or SIGTERM) so the postmortem event stream
-                        # can answer "was this Ctrl-C / kill?" without parsing
-                        # per-cycle terminated_reason fields.
-                        if [[ $_rc -eq 130 || $_rc -eq 143 || $_rc -eq 6 ]]; then
-                            local _abort_reason="sigint"
-                            [[ $_rc -eq 143 ]] && _abort_reason="sigterm"
-                            [[ $_rc -eq 6 ]] && _abort_reason="cycle_abort"
-                            _RUNNER_SIGINT_RECEIVED=1
-                            _RUNNER_ABORT_REASON="$_abort_reason"
-                            eb_emit_event "pipeline.aborted" "cycle=$_cyc_id" \
-                                "run_id=$_runner_run_id" "issue=$_runner_issue" \
-                                "reason=$_abort_reason" "status=interrupted" 2>/dev/null || true
-                        fi
+                    # #511 Pin 7 / #527 / #528 — halt-vs-continue, by outcome:
+                    # converged   → CONTINUE; happy path.
+                    # unconverged → CONTINUE; review gate runs;
+                    #               mark _RUNNER_CYCLE_UNCONVERGED=1 (max_iterations,
+                    #               plateau, divergence). `on_max: halt` stops (#2241).
+                    # interrupted → HALT; status=interrupted. Config invalid, blocked
+                    #               (#528: upstream input structurally broken, review
+                    #               does NOT run), blocked_on_scope (#840, ADR-030:
+                    #               build needs out-of-scope files the policy won't
+                    #               grant; the operator widens scope).
+                    # failed      → HALT; status=failed. ADR-013: a blocking member
+                    #               failed, or the loop ran out with tests failing.
+                    # aborted     → HALT on the recorded abort word (ADR-025):
+                    #               sigint/sigterm/cycle_abort → interrupted;
+                    #               llm_unavailable/llm_rate_limited/scope_too_large
+                    #               → aborted (#1024, #1052, #2111).
+                    if [[ "$_cyc_outcome" == "aborted" ]]; then
+                        _runner_end_on_abort "$state_file" "cycle=$_cyc_id" || true
+                        # #1791: a newer engine may already have fixed this —
+                        # not asked when something outside the work stopped it.
+                        case "$(_zbuild_abort_reason)" in
+                            llm_unavailable|llm_rate_limited|scope_too_large) ;;
+                            *) _runner_report_engine_drift "$_CYCLE_LAST_TERMINATED_REASON" || true ;;
+                        esac
+                        return 1
+                    fi
+                    if [[ "$_cyc_outcome" == "interrupted" || "$_cyc_outcome" == "failed" ]]; then
+                        _set_pipeline_status "$state_file" "$_cyc_outcome"
                         eb_emit_event "pipeline.end" "status=failed" "cycle=$_cyc_id" \
                             "reason=$_CYCLE_LAST_TERMINATED_REASON" \
                             "run_id=$_runner_run_id" "issue=$_runner_issue"
@@ -3273,15 +3262,9 @@ main() {
                         error "Cycle $_cyc_id: the run $(run_end_words "$_CYCLE_LAST_TERMINATED_REASON" 0)"
                         # #1791: a newer engine may already have fixed this.
                         _runner_report_engine_drift "$_CYCLE_LAST_TERMINATED_REASON" || true
-                        # Codex P2 on #616 / Wave 15-F: propagate rc=130 + rc=143
-                        # distinctly so callers can distinguish Ctrl-C / kill from
-                        # a generic cycle failure.
-                        if [[ $_rc -eq 130 || $_rc -eq 143 || $_rc -eq 6 ]]; then
-                            return $_rc
-                        fi
                         return 1
                     fi
-                    if [[ $_rc -eq 1 || $_rc -eq 2 || $_rc -eq 3 ]]; then
+                    if [[ "$_cyc_outcome" == "unconverged" ]]; then
                         _RUNNER_CYCLE_UNCONVERGED=1
                         _RUNNER_CYCLE_UNCONVERGED_REASON="$_CYCLE_LAST_TERMINATED_REASON"
                         _RUNNER_CYCLE_UNCONVERGED_ID="$_cyc_id"
@@ -3354,25 +3337,15 @@ main() {
                     parallel_group_run "$_pg_id" "$state_dir" "$state_file" && _rc=0 || _rc=$?
                     unset ZBUILD_SEQ_PREFIX
                     _runner_rearm_traps
-                    if [[ $_rc -eq 130 || $_rc -eq 143 ]]; then
-                        local _pg_abort_reason="sigint"
-                        [[ $_rc -eq 143 ]] && _pg_abort_reason="sigterm"
-                        _RUNNER_SIGINT_RECEIVED=1
-                        _RUNNER_ABORT_REASON="$_pg_abort_reason"
-                        _set_pipeline_status "$state_file" "interrupted"
-                        eb_emit_event "pipeline.aborted" "parallel=$_pg_id" \
-                            "run_id=$_runner_run_id" "issue=$_runner_issue" \
-                            "reason=$_pg_abort_reason" "status=interrupted" 2>/dev/null || true
-                        eb_emit_event "pipeline.end" "status=failed" "parallel=$_pg_id" \
-                            "run_id=$_runner_run_id" "issue=$_runner_issue"
-                        _render_pipeline_end "failed"
-                        _runner_ended=true
+                    # A signal mid-group: the group recorded the abort word and
+                    # returned 1 (#1850 — it used to be 130/143).
+                    if ! _zbuild_propagate_abort "$_rc"; then
+                        _runner_end_on_abort "$state_file" "parallel=$_pg_id" || true
                         unset ZBUILD_CURRENT_STAGE
-                        error "Parallel group $_pg_id aborted (rc=$_rc)"
-                        return "$_rc"
+                        return 1
                     fi
                     if [[ $_rc -ne 0 ]]; then
-                        # rc=1 (on_member_error=collect, a member failed) or a
+                        # on_member_error=collect and a member failed, or a
                         # config error → halt the pipeline as failed.
                         _set_pipeline_status "$state_file" "failed"
                         eb_emit_event "pipeline.end" "status=failed" "parallel=$_pg_id" \
@@ -3514,23 +3487,13 @@ main() {
                     unset ZBUILD_CURRENT_STAGE ZBUILD_STAGE_IO_SEQ_LABEL
                     if [[ $_rc -ne 0 ]]; then
                         _update_stage_status "$state_file" "$_ust" "failed"
-                        if [[ $_rc -eq 9 ]]; then
-                            # #1024: llm_unavailable abort — status=aborted.
-                            _set_pipeline_status "$state_file" "aborted"
-                            _zbuild_runner_write_llm_abort "$state_file" "$(_runner_llm_abort_reason)" "${_RUNNER_LLM_ABORT_DETAIL:-}"
+                        # #1024 / #1850: a recorded abort word (an unavailable
+                        # model, a signal) ends the run on its own terms.
+                        if ! _zbuild_propagate_abort "$_rc"; then
                             eb_emit_event "stage.fail" "stage=$_ust" "rc=$_rc" \
                                 || { _r=$?; warn "eb_emit_event stage.fail failed (rc=$_r)"; true; }
-                            eb_emit_event "pipeline.aborted" "stage=$_ust" \
-                                "run_id=$_runner_run_id" "issue=$_runner_issue" \
-                                "reason=$(_runner_llm_abort_reason)" "detail=${_RUNNER_LLM_ABORT_DETAIL:-}" \
-                                "status=aborted" 2>/dev/null || true
-                            eb_emit_event "pipeline.end" "status=aborted" "stage=$_ust" "rc=$_rc" \
-                                "run_id=$_runner_run_id" "issue=$_runner_issue" \
-                                || { _r=$?; warn "eb_emit_event pipeline.end status=aborted failed (rc=$_r)"; true; }
-                            _render_pipeline_end "aborted" "$_ust" "$_rc"
-                            _runner_ended=true
-                            error "Stage $_ust aborted (rc=$_rc): LLM CLI unavailable"
-                            return 9
+                            _runner_end_on_abort "$state_file" "stage=$_ust" || true
+                            return 1
                         fi
                         _set_pipeline_status "$state_file" "interrupted"
                         eb_emit_event "stage.fail" "stage=$_ust" "rc=$_rc" \
@@ -3656,15 +3619,12 @@ main() {
         # ADR-025 (Wave 15-B #684) pre-flight: the sentinel may have been
         # armed by SIGINT or SIGTERM between iterations. Bail BEFORE spawning
         # the next stage so the abort observes within one stage boundary.
-        # Existing post-flight rc=130/143 check at the end of this loop body
-        # stays. Wave 15-F (#686): if the signal trap recorded reason=sigterm,
-        # propagate 143 rather than 130 so callers see the distinct rc.
+        # The post-flight check at the end of this loop body stays. The EXIT
+        # trap emits pipeline.aborted with the recorded word (#686, #1850).
         if ! _zbuild_check_abort; then
             _RUNNER_SIGINT_RECEIVED=1
-            if [[ "${_RUNNER_ABORT_REASON:-sigint}" == "sigterm" ]]; then
-                return 143
-            fi
-            return 130
+            _RUNNER_ABORT_REASON="$(_zbuild_abort_reason)"
+            return 1
         fi
         _runner_linear_cardinal=$(( _runner_linear_cardinal + 1 ))
         # When resuming, skip stages already marked complete unless --from-stage overrides
@@ -3920,64 +3880,17 @@ main() {
             error "Stage $stage partially failed  ${DIM}(finished ${_f1_ts} · ${_f1_dur})${RESET}"
             return 1
         else
-            # ADR-001: exit 1 (recoverable) and 2 (fatal) both halt v1.
             _update_stage_status "$state_file" "$stage" "failed"
-            # #1024: rc=9 = llm_unavailable abort — pipeline status is "aborted",
-            # not "interrupted". Handle before the general failure path.
-            if [[ $rc -eq 9 ]]; then
-                _set_pipeline_status "$state_file" "aborted"
-                _zbuild_runner_write_llm_abort "$state_file" "$(_runner_llm_abort_reason)" "${_RUNNER_LLM_ABORT_DETAIL:-}"
+            # #1024 / #612 / #1850: a recorded abort word (an unavailable model,
+            # Ctrl-C, a kill) ends the run on its own terms — the word, not
+            # rc 9 / 10 / 130 / 143.
+            if ! _zbuild_propagate_abort "$rc"; then
                 eb_emit_event "stage.fail" "stage=$stage" "rc=$rc"
-                eb_emit_event "pipeline.aborted" "stage=$stage" \
-                    "run_id=$_runner_run_id" "issue=$_runner_issue" \
-                    "reason=$(_runner_llm_abort_reason)" "detail=${_RUNNER_LLM_ABORT_DETAIL:-}" \
-                    "status=aborted" 2>/dev/null || true
-                eb_emit_event "pipeline.end" "status=aborted" "stage=$stage" "rc=$rc" \
-                    "run_id=$_runner_run_id" "issue=$_runner_issue"
-                _render_pipeline_end "aborted" "$stage" "$rc"
-                _runner_ended=true
-                local _fa_ts _fa_dur
-                _fa_ts="$(_runner_now_short)"
-                _fa_dur="$(_runner_duration_token "$stage")"
-                error "Stage $stage aborted (rc=$rc, finished ${_fa_ts} · ${_fa_dur}): LLM CLI unavailable"
-                return 9
-            fi
-            # #1052: rc=10 = scope_too_large abort — pipeline status is "aborted"
-            # (mirrors the rc=9 llm_unavailable path). Plan exhausted its turn
-            # budget without a complete plan — the issue is too large. Distinct
-            # from rc=8 (blocking_member_failure) and rc=9 (llm_unavailable).
-            if [[ $rc -eq 10 ]]; then
-                _set_pipeline_status "$state_file" "aborted"
-                eb_emit_event "stage.fail" "stage=$stage" "rc=$rc"
-                eb_emit_event "pipeline.aborted" "stage=$stage" \
-                    "run_id=$_runner_run_id" "issue=$_runner_issue" \
-                    "reason=scope_too_large" "status=aborted" 2>/dev/null || true
-                eb_emit_event "pipeline.end" "status=aborted" "stage=$stage" "rc=$rc" \
-                    "run_id=$_runner_run_id" "issue=$_runner_issue"
-                _render_pipeline_end "aborted" "$stage" "$rc"
-                _runner_ended=true
-                local _sa_ts _sa_dur
-                _sa_ts="$(_runner_now_short)"
-                _sa_dur="$(_runner_duration_token "$stage")"
-                error "Stage $stage aborted (rc=$rc, finished ${_sa_ts} · ${_sa_dur}): scope_too_large — SPLIT THIS ISSUE"
-                return 10
+                _runner_end_on_abort "$state_file" "stage=$stage" || true
+                return 1
             fi
             _set_pipeline_status "$state_file" "interrupted"
             eb_emit_event "stage.fail" "stage=$stage" "rc=$rc"
-            # #612 / Wave 15-F (#686): rc=130 (SIGINT) or rc=143 (SIGTERM)
-            # from a stage means the signal-propagation chain reached us
-            # (route_to_model_loop saw child rc=130/143 → build plugin
-            # propagated → here). Emit `pipeline.aborted reason=<sigint|sigterm>`
-            # so postmortems can distinguish Ctrl-C / kill from OOM/fatal errors.
-            if [[ $rc -eq 130 || $rc -eq 143 ]]; then
-                local _abort_reason="sigint"
-                [[ $rc -eq 143 ]] && _abort_reason="sigterm"
-                _RUNNER_SIGINT_RECEIVED=1
-                _RUNNER_ABORT_REASON="$_abort_reason"
-                eb_emit_event "pipeline.aborted" "stage=$stage" \
-                    "run_id=$_runner_run_id" "issue=$_runner_issue" \
-                    "reason=$_abort_reason" "status=interrupted" 2>/dev/null || true
-            fi
             eb_emit_event "pipeline.end" "status=failed" "stage=$stage" "rc=$rc" \
                 "run_id=$_runner_run_id" "issue=$_runner_issue"
             _render_pipeline_end "failed" "$stage" "$rc"
@@ -3988,12 +3901,6 @@ main() {
             _f2_ts="$(_runner_now_short)"
             _f2_dur="$(_runner_duration_token "$stage")"
             error "Stage $stage failed (rc=$rc, finished ${_f2_ts} · ${_f2_dur})"
-            # Codex P2 on #616 / Wave 15-F: propagate rc=130 + rc=143
-            # distinctly so callers can distinguish operator Ctrl-C / kill
-            # from a generic stage failure.
-            if [[ $rc -eq 130 || $rc -eq 143 ]]; then
-                return $rc
-            fi
             return 1
         fi
 

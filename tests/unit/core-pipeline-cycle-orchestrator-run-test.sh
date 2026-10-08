@@ -141,6 +141,10 @@ assert_event_emitted "cycle.complete on _cycle_handle_terminal" "$ZBUILD_EVENTS_
 _CYCLE_TRAP_CYCLE_ID="t9"; _CYCLE_TRAP_ITER=2
 ( _cycle_on_signal SIGTERM >/dev/null 2>&1; exit $? ) || true
 assert_event_emitted "cycle.aborted on signal" "$ZBUILD_EVENTS_JSONL" "cycle.aborted"
+# #1850: the handler records the abort as a word the next boundary reads — it
+# ran in a subshell, so the sentinel is what crosses back.
+assert_eq "T9 [#1850]: the signal is recorded as the word sigterm" "sigterm" "$(_zbuild_abort_reason)"
+_zbuild_disarm_abort_sentinel
 
 # T10: state_init creates cycle_iterations[id] entry
 _seed

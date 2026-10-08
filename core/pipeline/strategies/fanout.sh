@@ -75,15 +75,17 @@ _strategy_run_fanout() {
     # and orch_collect would return 0 (no results) — misreported as success.
     if [[ "$dispatch_count" -gt 0 ]]; then
         local collect_rc=0
+        _ORCH_COLLECT_OUTCOME=""
         orch_collect "$pool_id" --timeout "${ZBUILD_ORCH_TIMEOUT:-300}" || collect_rc=$?
 
-        # orch_collect exit codes: 0=all pass, 1=all fail, 2=partial.
+        # orch_collect: 0 = all passed; 1 otherwise, partial named on
+        # _ORCH_COLLECT_OUTCOME (#1850 — it was rc 2).
         if [[ $collect_rc -eq 0 ]]; then
             success_count=$((success_count + 1))
             # #1906: no artifact check here. Each work unit calls plugin_hook_call
             # (strategies/common.sh), so scan_plugin_outputs has already enforced
             # every declared output for every dispatched plugin.
-        elif [[ $collect_rc -eq 2 ]]; then
+        elif [[ "${_ORCH_COLLECT_OUTCOME:-}" == "partial" ]]; then
             success_count=$((success_count + 1))
             fail_count=$((fail_count + 1))
         else

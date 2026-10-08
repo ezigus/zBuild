@@ -123,9 +123,9 @@ orch_collect() {
         rm -rf "$pool_dir"
         return 0
     elif [[ "$pass_count" -gt 0 ]]; then
-        return 2  # partial
+        _ORCH_COLLECT_OUTCOME="partial"; return 1   # #1850: the word, not rc 2
     else
-        return 1  # all failed
+        _ORCH_COLLECT_OUTCOME="failed"; return 1
     fi
 }
 

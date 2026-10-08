@@ -2,7 +2,7 @@
 # core/orch/local_engine.sh — shared dispatch/collect/poll/shutdown for the
 # local-execution orchestrator backends (orch-bash-parallel, orch-ruflo-hive).
 # Extracted from those two plugins in #281 because they had ~80% duplication
-# and the #269 0/1/2 normaliser fix had to be applied twice (and still missed
+# and the #269 normaliser fix had to be applied twice (and still missed
 # orch-mock — caught belatedly in #278). Single source of truth now.
 #
 # Pool layout (caller chooses prefix + pid subdir name):
@@ -97,18 +97,20 @@ _orch_local_dispatch_workunit() {
 
 # _orch_local_collect_results <pool_dir> <pid_subdir> <timeout_s>
 # Polls .exit files for every slot in <pool_dir>/<pid_subdir>/; streams
-# stdout/stderr. Returns the 0/1/2 normalised orch contract code:
+# stdout/stderr. Returns the normalised orch contract code:
 #   0 = all dispatched work units exited 0  (pool dir removed)
-#   1 = all dispatched work units exited non-zero (pool dir preserved)
-#   2 = mixed: at least one pass and at least one fail (pool dir preserved)
+#   1 = otherwise (pool dir preserved); _ORCH_COLLECT_OUTCOME says which —
+#       `failed` (all exited non-zero) or `partial` (at least one passed).
+#       #1850 (ADR-054 §4): `partial` used to be rc 2.
 # Work-unit exit codes are normalised — original rc is not passed through.
-# Single source of truth for the 0/1/2 normaliser (#269 + #278 + #281).
+# Single source of truth for the normaliser (#269 + #278 + #281).
 _orch_local_collect_results() {
     local pool_dir="$1"
     local pid_subdir="$2"
     local timeout_s="${3:-0}"
+    _ORCH_COLLECT_OUTCOME="failed"
 
-    [[ -d "${pool_dir}/${pid_subdir}" ]] || return 0
+    [[ -d "${pool_dir}/${pid_subdir}" ]] || { _ORCH_COLLECT_OUTCOME="passed"; return 0; }
 
     local pass_count=0 fail_count=0
     local deadline=0
@@ -146,11 +148,14 @@ _orch_local_collect_results() {
 
     if [[ "$fail_count" -eq 0 ]]; then
         rm -rf "$pool_dir"
+        _ORCH_COLLECT_OUTCOME="passed"
         return 0
     elif [[ "$pass_count" -gt 0 ]]; then
-        return 2  # partial
+        _ORCH_COLLECT_OUTCOME="partial"
+        return 1
     else
-        return 1  # all failed
+        _ORCH_COLLECT_OUTCOME="failed"
+        return 1
     fi
 }
 

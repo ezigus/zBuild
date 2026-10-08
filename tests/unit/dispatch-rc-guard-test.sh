@@ -16,9 +16,9 @@
 #   * a count that FALLS fails    — progress must be locked in, not left
 #                                   as slack for the next one to spend
 #
-# When #1850 empties these, the pin goes to zero across the board and the
-# ratchet becomes the plain rule its own acceptance describes. Until then this
-# is the honest version of that assertion: the vocabulary cannot grow.
+# #1850 emptied these: the pin is zero across the board and §SPEC-16 below
+# states the plain rule its acceptance describes. The ratchet stays so a raise
+# names the file that grew.
 #
 # Counting `return N` / `exit N` textually is deliberately crude. It cannot be
 # fooled in the direction that matters — adding a new private rc adds a line —
@@ -67,9 +67,9 @@ SYSGREP=/usr/bin/grep
 # now a v2 disposition, not a special rc), lowering the count back to 35.
 # #1850 deletes them with the rest of the vocabulary.
 _PINNED="
-core/pipeline/runner.sh|35
-core/pipeline/cycle-orchestrator.sh|29
-core/pipeline/parallel-orchestrator.sh|4
+core/pipeline/runner.sh|0
+core/pipeline/cycle-orchestrator.sh|0
+core/pipeline/parallel-orchestrator.sh|0
 core/pipeline/strategies/map.sh|0
 core/pipeline/strategies/fanout.sh|0
 core/pipeline/strategies/sequential.sh|0
@@ -277,18 +277,30 @@ assert_eq "[SPEC-7] lifecycle.sh still has 0 legacy rc returns after write-bound
     "0" "$_wb_lc"
 
 # ─────────────────────────────────────────────────────────────────────────────
-print_test_section "[#1835/SPEC-16] runner.sh legacy-rc count lowered from 36 to 35"
+print_test_section "[#1850/SPEC-16] the plain rule: no engine path returns or reads a legacy rc"
 
-# [#1835/SPEC-16][change]: the leaf-path `stage:*` case rc=10 block that handled
-# plan turn-budget exhaustion was deleted in the v2 migration (#1835). Its
-# deletion lowers the legacy-rc count in runner.sh from 36 to 35.  The _PINNED
-# ratchet above already pins runner.sh to 35; this section adds an explicitly-
-# tagged assertion so the acceptance-gate's NEGCTL check can locate it.
-# Fails at the merge-base (runner.sh still carries the rc=10 block → count=36).
-_s16_runner_count="$(_count_legacy "$REPO_ROOT/core/pipeline/runner.sh")"
-_s16_runner_count="${_s16_runner_count//[$'\n\r ']/}"
-assert_eq "[#1835/SPEC-16] runner.sh legacy-rc count is 35 after rc=10 block deletion" "35" \
-    "$_s16_runner_count"
+# #1850 emptied the inventory, so the ratchet is now the rule ADR-054 §4 states:
+# every pin above is 0. Asserted on its own so a later raise of one pin cannot
+# quietly turn the rule back into a ratchet.
+_s16_bad=""
+while IFS='|' read -r _file _pin; do
+    [[ -z "$_file" ]] && continue
+    [[ "$_pin" == "0" ]] || _s16_bad+="$_file=$_pin "
+done <<< "$_PINNED"
+assert_eq "[#1850/SPEC-16] every guarded engine file is pinned at 0" "" "$_s16_bad"
+
+# The other half of "returns or interprets": a reader comparing an rc against a
+# legacy number (`[[ $rc -eq 9 ]]`, `case "$rc" in 130|143)`) is the vocabulary
+# kept alive on the receiving side. Crude on purpose, like the count above.
+_INTERP_RE='(rc|_rc|rc_[a-z0-9_]*)"?[[:space:]]+-(eq|ne)[[:space:]]+(2|3|4|5|6|7|8|9|10|11|124|130|137|143)([^0-9]|$)'
+_CASE_RE='^[[:space:]]*(2|3|4|5|6|7|8|9|10|11|124|130|137|143)(\|[0-9]+)*\)'
+_s16_reads=""
+while IFS='|' read -r _file _pin; do
+    [[ -z "$_file" || ! -f "$REPO_ROOT/$_file" ]] && continue
+    _hits="$($SYSGREP -nE "$_INTERP_RE|$_CASE_RE" "$REPO_ROOT/$_file" 2>/dev/null | $SYSGREP -vE '^[0-9]+:[[:space:]]*#' || true)"
+    [[ -n "$_hits" ]] && _s16_reads+="$_file: ${_hits//$'\n'/; } "
+done <<< "$_PINNED"
+assert_eq "[#1850/SPEC-16] no guarded engine file reads an rc as a legacy number" "" "$_s16_reads"
 
 print_test_results
 exit $((FAIL > 0))

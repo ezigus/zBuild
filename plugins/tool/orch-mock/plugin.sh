@@ -105,10 +105,10 @@ orch_dispatch() {
 # ─── orch_collect ────────────────────────────────────────────────────────────
 # Contract: orch_collect <pool_id> [--timeout S]
 # Mock: iterates all result files in dispatch order; prints stdout of every
-#       work unit.  Returns 0/1/2 per the orch contract (#269):
+#       work unit.  Returns per the orch contract (#269, #1850):
 #         0 — all work units exited 0 (success)
-#         1 — all work units exited non-zero (complete failure)
-#         2 — mixed: at least one passed and at least one failed (partial)
+#         1 — otherwise; _ORCH_COLLECT_OUTCOME names it `failed` (all exited
+#             non-zero) or `partial` (at least one passed) — once rc 2
 #       --timeout is accepted but ignored (mock is synchronous).
 orch_collect() {
     local pool_id="$1"
@@ -117,9 +117,11 @@ orch_collect() {
 
     local pool_dir
     pool_dir="$(_orch_mock_pool_dir "$pool_id")"
+    _ORCH_COLLECT_OUTCOME="failed"
 
     if [[ ! -d "${pool_dir}/results" ]]; then
         # Pool was never initialized — nothing to collect.
+        _ORCH_COLLECT_OUTCOME="passed"
         return 0
     fi
 
@@ -148,11 +150,14 @@ orch_collect() {
     done
 
     if [[ "$fail_count" -eq 0 ]]; then
+        _ORCH_COLLECT_OUTCOME="passed"
         return 0
     elif [[ "$pass_count" -gt 0 ]]; then
-        return 2  # partial
+        _ORCH_COLLECT_OUTCOME="partial"
+        return 1
     else
-        return 1  # all failed
+        _ORCH_COLLECT_OUTCOME="failed"
+        return 1
     fi
 }
 
