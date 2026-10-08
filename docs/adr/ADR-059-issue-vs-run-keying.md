@@ -133,20 +133,33 @@ reclaiming after the fact.
 The invariant ADR-052 established survives unchanged and is restated here: **no plugin decides
 which tree it works in.** The engine still acquires it; only the key changes.
 
-**Per-worktree sparse-checkout (#1802).** Every issue worktree excludes `legacy/` — the frozen
+**Per-worktree sparse-checkout (#1802).** Every issue worktree leaves out `legacy/` — the frozen
 reference import (~50% of the tree) — so agents working inside the worktree never traverse it.
-`_zbuild_worktree_apply_sparse` runs `git sparse-checkout set --no-cone -- '/*' '!/legacy/'
-'/legacy/migrated/'` inside each linked worktree, keeping `legacy/migrated/` visible so tombstone
-files remain readable. `extensions.worktreeConfig=true` is set on the main repository so the
-sparse configuration is stored in the worktree's own git directory rather than the shared
-`.git/info/sparse-checkout`; the operator's main checkout is never made sparse. The exclusion is
-applied at every acquisition point: initial creation and the reuse (resume) path of
-`zbuild_worktree_acquire`, and all three modes of `zbuild_worktree_enter`.
+`_zbuild_worktree_apply_sparse` (`scripts/lib/worktree-sparse.sh`) runs
+`git sparse-checkout set --no-cone -- '/*' '!/legacy/' '/legacy/migrated/'` inside each linked
+worktree, keeping `legacy/migrated/` visible so tombstone files remain readable. It runs at every
+acquisition point: initial creation and the reuse (resume) path of `zbuild_worktree_acquire`, and
+all three modes of `zbuild_worktree_enter`.
 
-A keeper PR that must read or `git rm` a specific legacy source before migration calls
-`zbuild_worktree_include_legacy_path <wt> <path>` to widen the sparse pattern for that path alone,
-without re-enabling the rest of `legacy/`. The widening is additive and idempotent; the exclusion
-of all other `legacy/` paths is preserved.
+- **Main checkout untouched.** `extensions.worktreeConfig=true` stores the sparse configuration in
+  the worktree's own git directory, so the operator's main checkout is never made sparse. It is
+  written to the main repository only when unset. An operator's explicit `false` is kept: sparse is
+  skipped for that repository, with a warning.
+- **Fails open.** Leaving `legacy/` out is an optimisation, not a safety property — build's
+  write-scope already refuses `legacy/` (`scope_floor_denied`). So a git older than 2.35, an
+  explicit `extensions.worktreeConfig=false`, or a failing `git sparse-checkout` never stops the
+  run: stderr names the step and git's own error, and the run continues with the full tree.
+- **Re-application keeps widenings.** A re-acquire sets the base patterns again, carrying over any
+  keeper widening already present (an anchored plain path under `/legacy/`); any other pattern a
+  pre-existing sparse config held is dropped.
+
+A keeper prune that must read or `git rm` one legacy source before migration widens the tree with
+`zbuild_worktree_include_legacy_path <wt> legacy/<path>`. The path must be a plain relative path
+strictly under `legacy/`: option-shaped arguments, pattern syntax (`* ? [ ] ! \`), a leading `/`
+and `..` are refused, and it is passed after `--`. The widening covers that path alone and
+survives every later re-acquire. **The engine does not call it**: build may never write `legacy/`
+(`scope_floor_denied`), so the prune is done by hand per the CLAUDE.md pruning protocol, and this
+helper is the operator's tool for doing it inside an issue worktree.
 
 ### 3. Prior work is stored in git, and the folder is the working copy
 
@@ -403,3 +416,8 @@ committed, stash ablates nothing and reports a false pass.
   enter configure sparse in the linked worktree (SPEC-1, SPEC-2), the exclusion survives a branch
   switch (SPEC-3), the reuse path re-applies the pattern (SPEC-4), and the main checkout is left
   non-sparse via `extensions.worktreeConfig` (SPEC-5)
+- `tests/unit/worktree-sparse-hardening-test.sh` — §2 fails open (a failing `sparse-checkout` or a
+  git older than 2.35 warns and the run continues with the full tree), `extensions.worktreeConfig`
+  is written only when unset and an explicit `false` is kept, `zbuild_worktree_include_legacy_path`
+  refuses every non-plain path, its widening survives re-acquire and re-enter and allows `git rm`,
+  and a re-acquire over a foreign sparse config lands on the base patterns plus keeper widenings
