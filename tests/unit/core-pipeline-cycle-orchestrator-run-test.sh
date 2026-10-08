@@ -339,4 +339,38 @@ assert_eq "[SPEC-8] a cycle_abort reports cycle_abort, not config_invalid" \
 # assertions above would pass against a function that echoed whatever it got.
 assert_eq "[SPEC-8] no reason recorded still reports error" "error" "$(_t15_reason_for "")"
 
+# T16 (#1850 review): a loop that cannot write the next round's feedback has
+# hit an infrastructure failure, not an abort — no abort word exists, so its
+# reason is `error`, and the words agree (outcome interrupted, reason error).
+_seed
+load_template "$FIXT/cycle-max-iter.yaml"
+cycle_dispatch_stage() {
+    if [[ "$1" == "test" ]]; then _CYCLE_DISPATCH_VERDICT="fail"; _CYCLE_DISPATCH_STATUS="failed"; return 1; fi
+    _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_STATUS="complete"; return 0
+}
+eval "_t16_saved_$(declare -f _cycle_apply_feedback)"
+_cycle_apply_feedback() { return 1; }
+: > "$ZBUILD_EVENTS_JSONL"
+set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc_t16=$?; set -e
+eval "$(declare -f _t16_saved__cycle_apply_feedback | sed 's/^_t16_saved__cycle_apply_feedback/_cycle_apply_feedback/')"
+assert_eq "T16 [#1850]: a feedback write failure returns 1" "1" "$rc_t16"
+assert_eq "T16 [#1850]: ...ends interrupted" "interrupted" "${_CYCLE_LAST_OUTCOME:-}"
+assert_eq "T16 [#1850]: ...with the reason error, not aborted (no abort happened)" "error" "${_CYCLE_LAST_TERMINATED_REASON:-}"
+assert_eq "T16 [#1850]: ...and records no abort word" "" "$(_zbuild_abort_reason)"
+assert_eq "T16 [#1850]: cycle.complete says error" "error" \
+    "$(jq -r 'select(.type == "cycle.complete") | .data.reason' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)"
+
+# T17 (#1850 review): cycle.complete is emitted once per loop run. The runner
+# calls the terminal fan-in again after the loop returns, as a backstop for a
+# way out that did not; that second call must not emit a second event.
+_seed
+load_template "$FIXT/cycle-converges-iter2.yaml"
+MOCK_VERDICTS="build:pass;test:pass"
+cycle_dispatch_stage() { _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_STATUS="complete"; return 0; }
+: > "$ZBUILD_EVENTS_JSONL"
+set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; set -e
+_cycle_handle_terminal "build-test" "$STATE_FILE"
+assert_eq "T17 [#1850]: one cycle.complete per loop run, the runner's backstop call included" "1" \
+    "$(jq -r 'select(.type == "cycle.complete") | .type' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | grep -c . || true)"
+
 print_test_results

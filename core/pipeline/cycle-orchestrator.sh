@@ -2222,6 +2222,10 @@ _cycle_iter_dispatch() {
 _cycle_member_halt_reason() {
     local d="${_CYCLE_DISPATCH_DISPOSITION:-}"
     [[ -n "$d" ]] || return 1
+    # A word off the list is a contract violation, read as a failing verdict
+    # (verdict.sh) — not a halt decided here; the runner's announcement uses the
+    # same guard (#1850 review).
+    disposition_is_valid "$d" 2>/dev/null || return 1
     disposition_halts "$d" 2>/dev/null || return 1
     case "$(disposition_response "$d" 2>/dev/null)" in
         halt_misconfigured|halt_broken) ;;
@@ -2296,15 +2300,22 @@ _cycle_member_terminal_failure() {
 # event is idempotent at this layer since it carries reason; duplicate fd-2
 # banners are guarded via _CYCLE_EXIT_BANNER_EMITTED).
 _CYCLE_EXIT_BANNER_EMITTED=0
+# cycle.complete once per loop run: the loop's own way out emits it and the
+# runner's backstop call must not emit it again (#1850 review). Keyed by loop
+# id, so an inner loop's event never silences its outer loop's.
+declare -gA _CYCLE_COMPLETE_EMITTED=()
 _cycle_handle_terminal() {
     local cycle_id="$1"
     # #1850 (ADR-054 §4): the reason every way out of the loop already set —
     # converged, max_iterations, blocked, cycle_abort, aborted, … — not a number
     # read back through a table. A way out that set none reports `error`.
     local reason="${_CYCLE_LAST_TERMINATED_REASON:-error}"
-    eb_emit_event "cycle.complete" \
-        "cycle_id=$cycle_id" "iter=${_CYCLE_LAST_ITERATIONS}" \
-        "reason=$reason" 2>/dev/null || true
+    if [[ -z "${_CYCLE_COMPLETE_EMITTED[$cycle_id]:-}" ]]; then
+        eb_emit_event "cycle.complete" \
+            "cycle_id=$cycle_id" "iter=${_CYCLE_LAST_ITERATIONS}" \
+            "reason=$reason" 2>/dev/null || true
+        _CYCLE_COMPLETE_EMITTED[$cycle_id]=1
+    fi
     # Exit banner via registered hook — event emitted FIRST (durable above),
     # banner SECOND (best-effort). Idempotency guard: emit at most once per
     # cycle_orchestrator_run terminal fan-in. Reset by the next cycle
@@ -2400,6 +2411,7 @@ _cycle_orchestrator_run_body() {
     _CYCLE_NOT_REPRODUCED=0   # #2183: per-cycle, never inherited from the last one
     # #524: reset exit-banner idempotency flag for this cycle run.
     _CYCLE_EXIT_BANNER_EMITTED=0
+    _CYCLE_COMPLETE_EMITTED[$cycle_id]=""
     _CYCLE_ITER_START_MS=()
     # #833: reset per-iter cycle-banner seq counters for this run.
     _CYCLE_IO_SEQ=()
@@ -2953,11 +2965,13 @@ _cycle_orchestrator_run_body() {
 
         # Not terminating — wire feedback for next iter.
         if ! _cycle_apply_feedback "$(( iter + 1 ))" "$state_dir"; then
-            _CYCLE_LAST_TERMINATED_REASON="aborted"
+            # An infrastructure failure, not an abort: no abort word exists, so
+            # the reason is `error` (#1850 review — it said `aborted`).
+            _CYCLE_LAST_TERMINATED_REASON="error"
             _cycle_state_write_iter_atomic "$state_file" "$cycle_id" "$iter" \
                 "$h_verdict" "$h_status" "$failure_count" "aborted" || true
             # #524 Pin 8: route through central helper (emits cycle.complete
-            # + exit banner) with reason=aborted.
+            # + exit banner) with reason=error.
             _cycle_handle_terminal "$cycle_id" "$state_file"
             _cycle_clear_traps
             _CYCLE_LAST_OUTCOME="interrupted"
