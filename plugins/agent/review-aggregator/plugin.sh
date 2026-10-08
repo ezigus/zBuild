@@ -35,6 +35,9 @@ _RA_DIR="$_ZBUILD_PLUGIN_DIR"; : "$_RA_DIR"
 _RA_ROOT="$_ZBUILD_PLUGIN_ROOT"
 # shellcheck source=../../../core/event-bus/event-bus.sh
 source "$_RA_ROOT/core/event-bus/event-bus.sh"
+# stage_findings_json — the findings writer every check uses (ADR-068 §5).
+# shellcheck source=../../../scripts/lib/stage-summary.sh
+source "$_RA_ROOT/scripts/lib/stage-summary.sh"
 # render_review_report_md + atomic_write arrive via plugin-bootstrap (helpers.sh
 # + artifact-render.sh); no explicit source needed.
 
@@ -290,6 +293,19 @@ _review_aggregator_run_inner() {
         | . + {result_contract: 2, verdict: "complete", disposition: "complete",
                reason: "aggregated \($total) lens result(s)"}' \
         "$out_json" 2>/dev/null | atomic_write "$out_json" || true
+
+    # ADR-068 §10: every concern a lens raised, low and medium included, is a
+    # numbered finding — delivered, answered, and open until someone acts on it.
+    # The advisory section of the PR still renders `.findings`; this is what the
+    # engine counts. Pre-existing issues are not this change's findings.
+    local _ra_lines _ra_f
+    _ra_lines="$(jq -r '(.findings // [])[]
+        | "\(.severity // "unknown"): \(.file // "(no file)")\(if .line then ":\(.line)" else "" end) — "
+          + ((.messages // []) | join("; ") | gsub("[\r\n]+"; " "))
+          + " (lens: \((.lenses // []) | join(", ")))"' "$out_json" 2>/dev/null || true)"
+    _ra_f="$(stage_findings_json <<< "$_ra_lines")"
+    jq --argjson f "${_ra_f:-[]}" '.data = ((.data // {}) + {findings: $f})' "$out_json" 2>/dev/null \
+        | atomic_write "$out_json" || true
 
     local merge_readiness
     merge_readiness="$(jq -r '.merge_readiness // "advisory"' "$out_json" 2>/dev/null || echo advisory)"
