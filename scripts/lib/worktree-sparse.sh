@@ -108,6 +108,12 @@ zbuild_worktree_include_legacy_path() {
         printf '  give a relative path under legacy/ (not legacy/ itself) with no * ? [ ] ! \\ or .. in it.\n' >&2
         return 2
     fi
+    # `sparse-checkout add` appends even an existing line; skip it so repeated
+    # widenings do not pile up duplicate patterns.
+    local line
+    while IFS= read -r line; do
+        [[ "$line" == "/$path" ]] && return 0
+    done < <(git -C "$wt" sparse-checkout list 2>/dev/null || true)
     if ! err="$(git -C "$wt" sparse-checkout add -- "/$path" 2>&1 >/dev/null)"; then
         printf 'zbuild_worktree_include_legacy_path: git sparse-checkout add failed in %s: %s\n' \
             "$wt" "${err:-<no git output>}" >&2

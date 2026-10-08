@@ -136,7 +136,8 @@ _WTW="$(zbuild_worktree_acquire widen "$_R" 2>/dev/null)"
 _before="$(git -C "$_WTW" sparse-checkout list 2>&1)"
 for _bad in "" "legacy" "legacy/" "--cone" "/legacy/frozen.sh" "src/work.sh" \
             "legacy/*" "legacy/fr?zen.sh" "legacy/[f]rozen.sh" "!legacy/frozen.sh" \
-            "legacy/../src/work.sh" "legacy/sub/../frozen.sh" $'legacy/a\nb' 'legacy/a\b'; do
+            "legacy/../src/work.sh" "legacy/sub/../frozen.sh" "legacy//frozen.sh" \
+            "legacy/./frozen.sh" $'legacy/a\nb' 'legacy/a\b'; do
     zbuild_worktree_include_legacy_path "$_WTW" "$_bad" >/dev/null 2>"$_ERR"; _rc=$?
     if [[ "$_rc" -ne 0 && -s "$_ERR" ]]; then
         assert_pass "[#1802/WIDEN-ARGS] rejects '${_bad//$'\n'/\\n}' with a message"
@@ -159,6 +160,12 @@ assert_eq "[#1802/WIDEN] accepts legacy/frozen.sh" "0" "$_rc"
 [[ ! -f "$_WTW/legacy/sub/other.sh" ]] \
     && assert_pass "[#1802/WIDEN] legacy/sub/other.sh stays excluded" \
     || assert_fail "[#1802/WIDEN] widening one path must not re-include the rest of legacy/"
+# Idempotent: the same widening twice is rc=0 and adds no second pattern line.
+_list1="$(git -C "$_WTW" sparse-checkout list 2>&1)"
+zbuild_worktree_include_legacy_path "$_WTW" "legacy/frozen.sh" >/dev/null 2>"$_ERR"; _rc=$?
+assert_eq "[#1802/WIDEN] a second identical widening returns 0" "0" "$_rc"
+assert_eq "[#1802/WIDEN] a second identical widening leaves the pattern set unchanged" \
+    "$_list1" "$(git -C "$_WTW" sparse-checkout list 2>&1)"
 
 # ── RESUME: acquire's reuse path keeps the widening ──────────────────────────
 _again="$(zbuild_worktree_acquire widen "$_R" 2>"$_ERR")"; _rc=$?
@@ -181,7 +188,9 @@ git -C "$_WTW" reset -q --hard
 
 # ── RESUME: enter's reuse path keeps the widening ────────────────────────────
 _WTE="$(cd "$_R" && zbuild_worktree_enter widen-enter zbuild/widen-enter create 2>/dev/null)"
-zbuild_worktree_include_legacy_path "$_WTE" "legacy/sub/other.sh" >/dev/null 2>&1
+# A directory widening (trailing slash) is accepted: it names one subtree.
+zbuild_worktree_include_legacy_path "$_WTE" "legacy/sub/" >/dev/null 2>"$_ERR"; _rc=$?
+assert_eq "[#1802/WIDEN] accepts a directory, legacy/sub/" "0" "$_rc"
 _again="$(cd "$_R" && zbuild_worktree_enter widen-enter zbuild/widen-enter create 2>"$_ERR")"; _rc=$?
 assert_eq "[#1802/RESUME] re-enter returns 0" "0" "$_rc"
 [[ -f "$_WTE/legacy/sub/other.sh" && ! -f "$_WTE/legacy/frozen.sh" ]] \
