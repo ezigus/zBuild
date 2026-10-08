@@ -51,6 +51,19 @@ git -C "$TARGET" config user.email t@t; git -C "$TARGET" config user.name t
 # was slow and whether it was more work (user+sys up) or a slower box (real
 # up, CPU flat). Sets _OUT/_RC.
 _LAUNCHES=0; _LAUNCH_LINES=""
+# bash's `time` prints the fraction digit by digit, and when the milliseconds
+# round up to 1000 the carry comes out as '0'+10 — `13.:00` for 14.000 (seen
+# once in six suites, #1850). Undo exactly that carry; anything else stays as
+# printed, so SPEC-9 still fails on a value that is not a number.
+_time_carry() {
+    local v="$1"
+    if [[ "$v" =~ ^([0-9]+)\.:([0-9]*)$ ]]; then
+        # same number of fraction digits as printed, all zero
+        printf '%d.%0*d' "$(( BASH_REMATCH[1] + 1 ))" "$(( ${#BASH_REMATCH[2]} + 1 ))" 0
+    else
+        printf '%s' "$v"
+    fi
+}
 _launch() {
     local label="$1" dir="$2" cli="$3"; shift 3
     local tf; tf="$(mktemp "$TEST_TEMP_DIR/launch.XXXXXX")"
@@ -59,6 +72,7 @@ _launch() {
     { TIMEFORMAT='%R %U %S'; time { _OUT="$(cd "$dir" && bash "$cli" pipeline start --issue "$_ZB_ID" --dry-run "$@" 2>&1)"; _RC=$?; }; } 2> "$tf"
     _LAUNCHES=$((_LAUNCHES + 1))
     local r u y; read -r r u y < "$tf"; rm -f "$tf"
+    r="$(_time_carry "${r:-}")"; u="$(_time_carry "${u:-}")"; y="$(_time_carry "${y:-}")"
     local line; line="$(printf 'launch %s real=%s user=%s sys=%s' "$label" "${r:-?}" "${u:-?}" "${y:-?}")"
     printf '%s\n' "$line"; _LAUNCH_LINES+="$line"$'\n'
 }
