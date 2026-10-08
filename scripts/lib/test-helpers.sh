@@ -892,6 +892,27 @@ EOF
     printf '%s\n' "$dir"
 }
 
+# ── zb_engine_loop_state ──────────────────────────────────────────────────────
+# Writes one loop's record into a pipeline-state.json with the ENGINE's own
+# writers (_cycle_state_init / _cycle_state_write_iter_atomic,
+# core/pipeline/cycle-orchestrator.sh): <rounds> rounds, then <final status>.
+# #1799: a hand-written `cycle_iterations` holds whatever its author assumed —
+# a field the engine never writes passed a test that wrote it itself.
+# scripts/lib/lint-test-engine-state.sh refuses a hand-written one.
+#
+# Usage: zb_engine_loop_state <state_file> <loop id> <rounds> <limit> <final status>
+zb_engine_loop_state() {
+    local sf="$1" id="$2" rounds="$3" limit="$4" final="$5" root
+    root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+    ( source "$root/core/pipeline/cycle-orchestrator.sh" >/dev/null 2>&1
+      _cycle_state_init "$sf" "$id" "$(dirname "$sf")/$id-history.jsonl" "$limit" || exit 1
+      local n
+      for (( n = 1; n <= rounds; n++ )); do
+          _cycle_state_write_iter_atomic "$sf" "$id" "$n" fail failed 1 in_progress || exit 1
+      done
+      _cycle_state_write_iter_atomic "$sf" "$id" "$rounds" fail failed 1 "$final" )
+}
+
 # ── Standard-pipeline roster: REMOVED (#979, EPIC #1277) ──────────────────────
 # The _ZBUILD_STANDARD_ROSTER array + standard_stage_ids / standard_stage_count /
 # register_standard_pipeline_stubs helpers were deleted when standard.yaml (the

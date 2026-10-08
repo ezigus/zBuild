@@ -75,6 +75,12 @@ npm run lint       # shellcheck + lint
   produces the same two files and a weaker test, because the assertion was still authored while
   looking at the code. Use it to verify an inherited test, never as a substitute for the ordering.
 - **State the red step in the PR body**: the assertion, and how it failed before the fix.
+- **Data another part of the engine writes is checked against its writer** (#1799). When a change reads
+  something another part of the code writes — pipeline-state.json, another stage's result, an event — open
+  the writer and use the names it really writes, when it writes them. A test makes such data with the
+  writer's own code (e.g. `zb_engine_loop_state` for loop state; `lint-test-engine-state.sh` refuses a
+  hand-written `cycle_iterations`), never by hand: hand-made data holds whatever its author assumed. A
+  review of such a change checks this too.
 - ALWAYS run tests after making code changes.
 - CI enforces a **29% statement coverage floor** on `core/` + `scripts/lib/` (issue #372, raised in Wave 4). Target is 70% — will be raised incrementally as test depth improves. If Coverage CI fails, run `bash scripts/check-coverage.sh` locally to see per-file coverage. The denominator counts every in-scope `.sh` file on disk, including ones no test ever sources (#1761) — a new untested file lowers the number rather than being invisible to it.
 - ALWAYS verify the relevant test passes before opening a PR.

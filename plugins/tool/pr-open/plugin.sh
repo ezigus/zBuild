@@ -28,6 +28,8 @@ source "$_PR_OPEN_ROOT/scripts/lib/run-branch.sh"
 source "$_PR_OPEN_ROOT/scripts/lib/merge-base.sh"
 # shellcheck source=lib/advisory-section.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/advisory-section.sh"
+# shellcheck source=lib/unsettled.sh
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/unsettled.sh"
 
 # ─── pr_open_run ─────────────────────────────────────────────────────────────
 # Entry point invoked by the pipeline runner.
@@ -134,11 +136,24 @@ _pr_open_run_inner() {
     # and nowhere else. lifecycle.sh exports ZBUILD_STAGE_INPUTS for every
     # dispatched stage — pr-delivery, which sources this plugin, included — so
     # the index names the caller's inputs (review_report, plan, test_results).
-    local advisory_report="" plan_json="" test_results_json=""
+    local advisory_report="" plan_json="" test_results_json="" gate_result=""
     if [[ -n "${ZBUILD_STAGE_INPUTS:-}" && -f "${ZBUILD_STAGE_INPUTS:-}" ]]; then
         advisory_report="$(jq -r '.inputs.review_report // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
         plan_json="$(jq -r '.inputs.plan // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
         test_results_json="$(jq -r '.inputs.test_results // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+        gate_result="$(jq -r '.inputs.gate_aggregator_result // empty' "$ZBUILD_STAGE_INPUTS" 2>/dev/null || true)"
+    fi
+
+    # #1799 (ADR-019 fall-through): a run whose work did not settle still opens
+    # its PR, as a draft, saying why at the top (lib/unsettled.sh). Line 1 of the
+    # answer is the short reason; the rest is the description's warning block.
+    local _unsettled _draft_reason="" _unsettled_block="" _forced_draft=false
+    _unsettled="$(_pr_open_unsettled "$state_file" "$gate_result")"
+    if [[ -n "$_unsettled" ]]; then
+        _draft_reason="${_unsettled%%$'\n'*}"
+        _unsettled_block="${_unsettled#*$'\n'}"
+        [[ "$_draft_bool" == "true" ]] || _forced_draft=true
+        _draft_bool="true"
     fi
 
     # ── Safety check 1: refuse if on main or master ──────────────────────────
@@ -353,7 +368,7 @@ _pr_open_run_inner() {
 
     local pr_body
     pr_body="$(_pr_open_compose_body "$issue_num" "$plan_summary" "$review_json_path" \
-        "$review_verdict" "$advisory_report" "$test_verdict")"
+        "$review_verdict" "$advisory_report" "$test_verdict" "$_unsettled_block" "$_forced_draft")"
 
     local -a _gh_args=()
     [[ "${_draft_bool}" == "true" ]] && _gh_args+=("--draft")
@@ -365,9 +380,11 @@ _pr_open_run_inner() {
     local existing_pr_number
     existing_pr_number="$(_pr_open_existing_number "$target_branch")"
 
-    local gh_output pr_url pr_number
+    local gh_output pr_url pr_number _draft_note=""
     if [[ -n "$existing_pr_number" ]]; then
-        # PR already exists: update it instead of creating
+        # PR already exists: update it instead of creating. #1799: first bring
+        # its draft state in line with this run (it reads the OLD description).
+        _draft_note="$(_pr_open_sync_draft "$existing_pr_number" "$_draft_bool")"
         if ! gh_output="$(gh pr edit "$existing_pr_number" --title "$pr_title" --body "$pr_body" 2>&1)"; then
             error "pr_open: gh pr edit failed: $gh_output"
             stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
@@ -393,7 +410,8 @@ _pr_open_run_inner() {
                 # Retry detection in case PR was created between list and create
                 existing_pr_number="$(_pr_open_existing_number "$target_branch")"
                 if [[ -n "$existing_pr_number" ]]; then
-                    # Re-update the PR and treat as updated
+                    # Re-update the PR and treat as updated (#1799: draft state too)
+                    _draft_note="$(_pr_open_sync_draft "$existing_pr_number" "$_draft_bool")"
                     if ! gh_output="$(gh pr edit "$existing_pr_number" --title "$pr_title" --body "$pr_body" 2>&1)"; then
                         error "pr_open: gh pr edit (race recovery) failed: $gh_output"
                         stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "error" \
@@ -470,15 +488,18 @@ _pr_open_run_inner() {
         --argjson draft "${_draft_bool}" \
         --arg branch "$target_branch" \
         --argjson issue "${issue_num:-0}" \
+        --arg draft_reason "$_draft_reason" \
         '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":("PR "+$status),
-          "data":{"status":$status,"pr_url":$pr_url,"pr_number":$pr_number,"draft":$draft,"branch":$branch,"issue":$issue}}' \
+          "data":({"status":$status,"pr_url":$pr_url,"pr_number":$pr_number,"draft":$draft,"branch":$branch,"issue":$issue}
+            + (if $draft_reason != "" then {draft_reason:$draft_reason} else {} end))}' \
         > "$output_pr_result_json"
 
     stage_summary_write "$artifacts_dir/pr-open-summary.md" "pr-open" "pass" \
-        "opened PR ${pr_number}" \
-        "$(printf -- '- pr: %s' "${pr_url}")"
+        "opened PR ${pr_number}${_draft_reason:+ as a draft: the run did not settle}" \
+        "$(printf -- '- pr: %s' "${pr_url}")${_draft_reason:+$'\n'"- draft because: ${_draft_reason}"}${_draft_note:+$'\n'"- note: ${_draft_note}"}"
     emit_event "plugin.result" "plugin=pr-open" \
-        "stage=pr" "pr_url=${pr_url}" "pr_number=${pr_number}" "action=${pr_status}"
+        "stage=pr" "pr_url=${pr_url}" "pr_number=${pr_number}" "action=${pr_status}" \
+        "draft=${_draft_bool}" ${_draft_reason:+"draft_reason=${_draft_reason}"}
     return 0
 }
 
