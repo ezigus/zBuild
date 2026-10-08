@@ -64,15 +64,21 @@ cycle_dispatch_stage() {
 source "$REPO_ROOT/tests/lib/cycle-report-stub.sh"
 zb_stub_reports_tests test
 
-# T1: bad args → rc=4
+# #1850 (ADR-054 §4): a loop returns 0 (converged) or 1, and says how it ended
+# in words — _CYCLE_LAST_OUTCOME and _CYCLE_LAST_TERMINATED_REASON.
+# T1: bad args → rc=1, interrupted / config_invalid
 set +e; cycle_orchestrator_run "" "" ""; rc=$?; set -e
-assert_eq "bad args → rc=4" "4" "$rc"
+assert_eq "bad args → rc=1" "1" "$rc"
+assert_eq "bad args → outcome interrupted" "interrupted" "${_CYCLE_LAST_OUTCOME:-}"
+assert_eq "bad args → reason config_invalid" "config_invalid" "${_CYCLE_LAST_TERMINATED_REASON:-}"
 
-# T2: invalid cycle id (no template loaded) → rc=4
+# T2: invalid cycle id (no template loaded) → rc=1, interrupted / config_invalid
 _seed
 load_template "$FIXT/cycle-converges-iter2.yaml"
 set +e; cycle_orchestrator_run "no-such-cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-assert_eq "unknown cycle id → rc=4 (config_invalid)" "4" "$rc"
+assert_eq "unknown cycle id → rc=1" "1" "$rc"
+assert_eq "unknown cycle id → outcome interrupted" "interrupted" "${_CYCLE_LAST_OUTCOME:-}"
+assert_eq "unknown cycle id → reason config_invalid" "config_invalid" "${_CYCLE_LAST_TERMINATED_REASON:-}"
 
 # T3: converges on iter 1 → state contains cycle_iterations.status=complete
 _seed
@@ -80,19 +86,22 @@ load_template "$FIXT/cycle-converges-iter2.yaml"
 MOCK_VERDICTS="build:pass;test:pass"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
 assert_eq "iter 1 converges → rc=0" "0" "$rc"
+assert_eq "iter 1 converges → outcome converged" "converged" "${_CYCLE_LAST_OUTCOME:-}"
 ci_status="$(jq -r '.cycle_iterations["build-test"].status' "$STATE_FILE")"
 assert_eq "state.cycle_iterations.status=complete" "complete" "$ci_status"
 iter_len="$(jq -r '.cycle_iterations["build-test"].iter | length' "$STATE_FILE")"
 assert_eq "1 iter recorded in state" "1" "$iter_len"
 
-# T4: max_iterations exhausted with FAILING tests → rc=8 (#1208 by-severity) +
+# T4: max_iterations exhausted with FAILING tests → failed (#1208 by-severity) +
 # history populated. (#1208: exhaustion is the single fatal condition; failing
-# tests → hard-fail rc=8. Early plateau/divergence terminators were removed.)
+# tests → hard fail. Early plateau/divergence terminators were removed.)
 _seed
 load_template "$FIXT/cycle-max-iter.yaml"
 MOCK_VERDICTS="build:pass,pass,pass;test:fail,fail,fail"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-assert_eq "exhausted with failing tests → rc=8 (by-severity halt)" "8" "$rc"
+assert_eq "exhausted with failing tests → rc=1" "1" "$rc"
+assert_eq "exhausted with failing tests → outcome failed (by-severity halt)" "failed" "${_CYCLE_LAST_OUTCOME:-}"
+assert_eq "exhausted with failing tests → reason names it" "max_iterations_tests_failing" "${_CYCLE_LAST_TERMINATED_REASON:-}"
 hist="$ZBUILD_STATE_DIR/cycle-build-test-history.jsonl"
 assert_file_exists "history file written" "$hist"
 hl="$(wc -l < "$hist" | tr -d ' ')"
@@ -120,11 +129,12 @@ assert_file_exists "JSONL row file exists" "$H"
 verdict="$(jq -r '.verdict' "$H")"
 assert_eq "row verdict=pass" "pass" "$verdict"
 
-# T8: handle_terminal_rc emits cycle.complete
+# T8: the terminal fan-in emits cycle.complete
 : > "$ZBUILD_EVENTS_JSONL"
 _CYCLE_LAST_ITERATIONS=2
-_cycle_handle_terminal_rc 0 "manual" "$STATE_FILE"
-assert_event_emitted "cycle.complete on handle_terminal_rc" "$ZBUILD_EVENTS_JSONL" "cycle.complete"
+_CYCLE_LAST_TERMINATED_REASON="converged"
+_cycle_handle_terminal "manual" "$STATE_FILE"
+assert_event_emitted "cycle.complete on _cycle_handle_terminal" "$ZBUILD_EVENTS_JSONL" "cycle.complete"
 
 # T9: signal handler emits cycle.aborted
 : > "$ZBUILD_EVENTS_JSONL"
@@ -163,7 +173,7 @@ _seed
 load_template "$FIXT/cycle-converges-iter2.yaml"
 _CYCLE_TRAP_CYCLE_ID=""
 set +e; cycle_orchestrator_run "no-such-cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc_t12b=$?; set -e
-assert_eq "T12 config_invalid rc=4" "4" "$rc_t12b"
+assert_eq "T12 config_invalid rc=1" "1" "$rc_t12b"
 assert_eq "[SPEC-2] _CYCLE_TRAP_CYCLE_ID cleared after config_invalid return" "" "$_CYCLE_TRAP_CYCLE_ID"
 
 # [SPEC-3]: two sequential top-level calls — second must NOT be misclassified as
@@ -182,7 +192,7 @@ set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; r
 _CYCLE_TIMEOUT_RUN_PERSIST["review-remediation:s1"]=3
 set +e; cycle_orchestrator_run "review-remediation" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc_t12c_2=$?; set -e
 assert_eq "T12c first call rc=0" "0" "$rc_t12c_1"
-assert_eq "T12c second call config_invalid rc=4" "4" "$rc_t12c_2"
+assert_eq "T12c second call config_invalid rc=1" "1" "$rc_t12c_2"
 assert_eq "[SPEC-3] second sequential top-level call clears stale persist (not restores)" "" "${_CYCLE_TIMEOUT_RUN[s1]:-}"
 
 # ── N2 (#1800, #2271): a nested cycle that ends unconverged is recorded ──────
@@ -267,17 +277,20 @@ sv_count="$(jq '.stage_verdicts | length' "$STATE_FILE")"
 assert_eq "[SPEC-6] stage_verdicts key count equals member count (2)" "2" "$sv_count"
 
 # T14 (#1800): the LEAF branch's own abort propagation. _zbuild_propagate_abort
-# fires for rc 6/9/10/130/143 returned by a leaf dispatch and returns before the
-# bottom-of-loop write, so this path needs its own pairing — the same argument as
-# the nested-cycle early returns in N2, on the branch that dispatches most stages.
+# fires for a failed leaf dispatch with an abort recorded (#1850: the word, not
+# an rc) and returns before the bottom-of-loop write, so this path needs its own
+# pairing — the same argument as the nested-cycle early returns in N2, on the
+# branch that dispatches most stages.
 _seed
 load_template "$FIXT/cycle-converges-iter2.yaml"
-# Shadow the shared mock: `test` aborts with rc=9 (llm_unavailable, #1024).
+# Shadow the shared mock: `test` aborts — llm_unavailable (#1024), recorded as
+# the abort word.
 cycle_dispatch_stage() {
     local stage="$1"
     if [[ "$stage" == "test" ]]; then
         _CYCLE_DISPATCH_VERDICT="llm_unavailable"; _CYCLE_DISPATCH_STATUS="failed"
-        return 9
+        _zbuild_abort llm_unavailable
+        return 1
     fi
     _CYCLE_DISPATCH_VERDICT="pass"; _CYCLE_DISPATCH_STATUS="complete"
     return 0
@@ -287,14 +300,13 @@ cycle_dispatch_stage() {
 source "$REPO_ROOT/tests/lib/cycle-report-stub.sh"
 zb_stub_reports_tests test
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc_t14=$?; set -e
-# _cycle_iter_dispatch returns 9, but cycle_orchestrator_run's catch-all collapses
-# every abort rc except 8/11/130 to rc=4 — the same collapse #1225 called out for
-# rc=11 and fixed only for rc=11. Pinned as-is: out of scope for #1800, and it is
-# exactly why the state record below has to carry the outcome on its own.
-# #2111: rc=9 (llm_unavailable) is an ABORT the runner owns — it must reach the
-# runner as 9, not collapse to 4 (config_invalid) as the generic arm did.
-assert_eq "T14 [#2111]: a leaf abort rc=9 propagates as 9 to the runner" "9" "$rc_t14"
+# #2111: llm_unavailable is an ABORT the runner owns — it must reach the runner
+# as an abort, not collapse into config_invalid as the old generic arm did.
+assert_eq "T14 [#1850]: a leaf abort returns 1" "1" "$rc_t14"
+assert_eq "T14 [#1850]: the outcome is aborted" "aborted" "${_CYCLE_LAST_OUTCOME:-}"
 assert_eq "T14 [#2111]: the terminating reason names it" "llm_unavailable" "${_CYCLE_LAST_TERMINATED_REASON:-}"
+assert_eq "T14 [#1850]: the abort word is still recorded for the runner" "llm_unavailable" "$(_zbuild_abort_reason)"
+_zbuild_disarm_abort_sentinel
 t14_ss="$(jq -r '.stage_statuses.test // "missing"' "$STATE_FILE")"
 assert_eq "[SPEC-4] leaf member in stage_statuses on abort propagation" "aborted" "$t14_ss"
 t14_sv="$(jq -r '.stage_verdicts.test // "missing"' "$STATE_FILE")"
@@ -303,27 +315,24 @@ assert_eq "[SPEC-5] leaf member in stage_verdicts on abort propagation" "aborted
 t14_build_ss="$(jq -r '.stage_statuses.build // "missing"' "$STATE_FILE")"
 assert_eq "[SPEC-6] earlier member's record survives the aborting sibling" "complete" "$t14_build_ss"
 
-# T15 (#1860): the terminal-rc fan-in maps SIGTERM to `aborted`, like SIGINT.
-# ADR-054 §4 recorded the asymmetry: `_cycle_handle_terminal_rc` had a `130)`
-# arm and no `143)`, so a SIGTERM-killed cycle reported reason=error while
-# dispatch_rc_legacy_reason already called both `aborted` — the two layers
-# disagreed about the same signal. Asserted through the function itself, not at
-# the dispatch boundary, which is where the mapping was already correct.
+# T15 (#1860, #1850): the terminal fan-in reports the loop's own reason word.
+# ADR-054 §4 recorded the asymmetry: the rc-keyed fan-in had a `130)` arm and no
+# `143)`, so a SIGTERM-killed cycle reported reason=error. Since #1850 the fan-in
+# reads `_CYCLE_LAST_TERMINATED_REASON` — what every way out already sets — so
+# there is no table for the two signals to disagree in.
 _t15_reason_for() {
     : > "$ZBUILD_EVENTS_JSONL"
     _CYCLE_EXIT_BANNER_EMITTED=0
-    _cycle_handle_terminal_rc "$1" "build-test" "$STATE_FILE" || true
+    _CYCLE_LAST_TERMINATED_REASON="$1"
+    _cycle_handle_terminal "build-test" "$STATE_FILE" || true
     jq -r 'select(.type == "cycle.complete") | .data.reason' \
         "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1
 }
-assert_eq "[SPEC-8] rc=143 (SIGTERM) reports aborted, not error" \
-    "aborted" "$(_t15_reason_for 143)"
-assert_eq "[SPEC-8] rc=130 (SIGINT) still reports aborted" \
-    "aborted" "$(_t15_reason_for 130)"
-# Not decoration: an rc with no arm must still reach `*) reason="error"`, or the
-# two assertions above would pass against a function that answered `aborted` to
-# everything.
-assert_eq "[SPEC-8] an rc with no arm still falls through to error" \
-    "error" "$(_t15_reason_for 99)"
+assert_eq "[SPEC-8] an aborted loop reports aborted" "aborted" "$(_t15_reason_for aborted)"
+assert_eq "[SPEC-8] a cycle_abort reports cycle_abort, not config_invalid" \
+    "cycle_abort" "$(_t15_reason_for cycle_abort)"
+# Not decoration: a loop that set no reason must still report error, or the two
+# assertions above would pass against a function that echoed whatever it got.
+assert_eq "[SPEC-8] no reason recorded still reports error" "error" "$(_t15_reason_for "")"
 
 print_test_results

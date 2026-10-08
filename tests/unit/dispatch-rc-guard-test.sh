@@ -75,7 +75,7 @@ core/pipeline/strategies/fanout.sh|0
 core/pipeline/strategies/sequential.sh|0
 core/pipeline/strategies/composite.sh|0
 core/plugin-registry/lifecycle.sh|0
-scripts/lib/abort-propagation.sh|6
+scripts/lib/abort-propagation.sh|0
 "
 
 _LEGACY_RE='(return|exit)[[:space:]]+(2|3|4|5|6|7|8|9|10|11|124|130|137|143)([[:space:]]|;|$)'

@@ -280,9 +280,15 @@ for f in "$PID_DIR"/*.pid; do
 done
 assert_eq "T4: all 3 members launched before signal" "3" "${#member_pids[@]}"
 
-# Signal the group → its INT trap kills in-flight children + returns 130.
+# Signal the group → its INT trap kills in-flight children and records the
+# abort as a word (#1850, ADR-025); the group returns 1, never 130.
 kill -INT "$pg_pid" 2>/dev/null || true
-wait "$pg_pid" 2>/dev/null || true
+pg_rc=0
+wait "$pg_pid" 2>/dev/null || pg_rc=$?
+assert_eq "T4 [#1850]: the group returns 1 after SIGINT, not a signal code" "1" "$pg_rc"
+assert_eq "T4 [#1850]: the abort is recorded as the word sigint" "sigint" \
+    "$(cat "$ZBUILD_STATE_DIR/.abort.signal" 2>/dev/null)"
+rm -f "$ZBUILD_STATE_DIR/.abort.signal"
 
 # Give the OS a moment to reap, then verify every member process is dead.
 sleep 0.5
@@ -337,6 +343,14 @@ impact 3" "$(cat "$HOOK_LOG")"
 # compatibility that no longer applies once the Bash 5 floor is enforced.
 # After this change the label is gone; the comment is factual about drain order.
 # Fails at merge-base (where the label exists) and passes once it is removed.
+# ── T6 (#1850, ADR-054 §4): a group that cannot run returns 1, not 4. ────────
+print_test_section "T6: a group that cannot run returns 1"
+_seed_state
+_t6_rc=0; parallel_group_run "" "" "" >/dev/null 2>&1 || _t6_rc=$?
+assert_eq "T6: missing arguments → rc=1" "1" "$_t6_rc"
+_t6_rc=0; parallel_group_run "no-such-group" "$ZBUILD_STATE_DIR" "$STATE_FILE" >/dev/null 2>&1 || _t6_rc=$?
+assert_eq "T6: a group with no members → rc=1" "1" "$_t6_rc"
+
 _ORCH="$REPO_ROOT/core/pipeline/parallel-orchestrator.sh"
 _bash32_label=$(grep -c 'bash-3\.2-safe' "$_ORCH" 2>/dev/null || true)
 assert_eq "[SPEC-5] 'bash-3.2-safe' label removed from parallel-orchestrator.sh FIFO pool comment" \

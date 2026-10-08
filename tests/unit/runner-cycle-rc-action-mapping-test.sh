@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
-# Unit test (#527): runner's cycle rc → (action, final pipeline_status) mapping.
+# Unit test (#527, #1850): what the runner does when a loop ends.
 #
-# Table-driven coverage of the rc dispatch table at runner.sh dispatch loop:
-#   rc=0   → continue, status=complete  (converged)
-#   rc=1   → continue, status=failed    (max_iterations, _RUNNER_CYCLE_UNCONVERGED=1)
-#   rc=2   → continue, status=failed    (plateau)
-#   rc=3   → continue, status=failed    (divergence)
-#   rc=4   → halt,     status=interrupted (config_invalid)
-#   rc=5   → halt,     status=interrupted (blocked, #528)
-#   rc=130 → halt,     status=interrupted (aborted)
+# Since #1850 (ADR-054 §4) a loop returns 0 (it converged) or 1 (it did not),
+# and says how it ended on declared channels: `_CYCLE_LAST_OUTCOME`, the
+# reason `_CYCLE_LAST_TERMINATED_REASON`, and — for an abort — the recorded
+# abort word (ADR-025). The runner reads those words; it never reads a number.
+#
+#   outcome       reason                    abort word        → action, status
+#   converged     converged                                   → continue, complete
+#   unconverged   max_iterations|plateau|…                    → continue, failed
+#   interrupted   config_invalid|blocked                      → halt, interrupted
+#   failed        blocking_member_failure                     → halt, failed
+#   aborted       aborted                   sigint            → halt, interrupted
+#   aborted       cycle_abort               cycle_abort       → halt, interrupted
+#   aborted       llm_unavailable           llm_unavailable   → halt, aborted
+#
+# Every halt returns 1 from main — never 130, 6 or 9.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,7 +37,7 @@ _ZB_ISSUE="$(zb_test_issue)"
 _ZB_REPO="$(zb_test_repo rc-action-mapping)"
 
 _drive() {
-    local _rc="$1" _reason="$2"
+    local _rc="$1" _outcome="$2" _reason="$3" _word="$4"
     local _tmp; _tmp="$(mktemp -d "$TEST_TEMP_DIR/m-XXXXXX")"
     (
         set +e
@@ -56,7 +63,9 @@ _drive() {
                 return 0
             fi
             _CYCLE_LAST_TERMINATED_REASON=\"$_reason\"
+            _CYCLE_LAST_OUTCOME=\"$_outcome\"
             _CYCLE_LAST_ITERATIONS=1
+            [[ -n \"$_word\" ]] && _zbuild_abort \"$_word\"
             return $_rc
         }"
         _find_plugin_for_stage() { echo "$REPO_ROOT/plugins/agent/build"; }
@@ -69,21 +78,26 @@ _drive() {
             printf '{"verdict":"request_changes"}' > "$artdir/review.json"
             return 0
         }
-        main --issue "$_ZB_ISSUE" --template two-cycles >/dev/null 2>&1
+        # main turns errexit on; capture its rc without letting that end the subshell.
+        _mrc=0
+        main --issue "$_ZB_ISSUE" --template two-cycles >/dev/null 2>&1 && _mrc=0 || _mrc=$?
+        printf '%s' "$_mrc" > "$_tmp/main-rc"
     )
     printf '%s' "$_tmp"
 }
 
-# Expected (rc, reason, expected_status, expected_review_ran[1/0])
+# rc | outcome | reason | abort word | expected status | review ran (1/0)
 _cases=(
-    "0|converged|complete|1"
-    "1|max_iterations|failed|1"
-    "2|plateau|failed|1"
-    "3|divergence|failed|1"
-    "4|config_invalid|interrupted|0"
-    "5|blocked|interrupted|0"
-    "8|blocking_member_failure|failed|0"
-    "130|aborted|interrupted|0"
+    "0|converged|converged||complete|1"
+    "1|unconverged|max_iterations||failed|1"
+    "1|unconverged|plateau||failed|1"
+    "1|unconverged|divergence||failed|1"
+    "1|interrupted|config_invalid||interrupted|0"
+    "1|interrupted|blocked||interrupted|0"
+    "1|failed|blocking_member_failure||failed|0"
+    "1|aborted|aborted|sigint|interrupted|0"
+    "1|aborted|cycle_abort|cycle_abort|interrupted|0"
+    "1|aborted|llm_unavailable|llm_unavailable|aborted|0"
 )
 
 # ONE drive per case (#1946). Each _drive runs the WHOLE runner and writes both
@@ -93,23 +107,32 @@ _cases=(
 # its 480s bound. Drive once, index the results.
 declare -a _dirs=()
 for _row in "${_cases[@]}"; do
-    IFS='|' read -r _rc _reason _ _ <<< "$_row"
-    _dirs+=("$(_drive "$_rc" "$_reason")")
+    IFS='|' read -r _rc _outcome _reason _word _ _ <<< "$_row"
+    _dirs+=("$(_drive "$_rc" "$_outcome" "$_reason" "$_word")")
 done
 
 for _i in "${!_cases[@]}"; do
-    IFS='|' read -r _rc _reason _exp_status _exp_review <<< "${_cases[$_i]}"
+    IFS='|' read -r _rc _outcome _reason _word _exp_status _exp_review <<< "${_cases[$_i]}"
     _dir="${_dirs[$_i]}"
     _state="$_dir/state/pipeline-state.json"
     _got_status="$(jq -r '.status' "$_state" 2>/dev/null)"
-    assert_eq "rc=$_rc → pipeline_status=$_exp_status" "$_exp_status" "$_got_status"
+    assert_eq "$_outcome/$_reason → pipeline_status=$_exp_status" "$_exp_status" "$_got_status"
+    _got_main_rc="$(cat "$_dir/main-rc" 2>/dev/null)"
+    if [[ "$_exp_review" == "0" ]]; then
+        assert_eq "$_outcome/$_reason → main returns 1, not a reason code" "1" "$_got_main_rc"
+    fi
+    if [[ -n "$_word" ]]; then
+        _ab="$(jq -r 'select(.type=="pipeline.aborted") | .data.reason // empty' \
+            "$_dir/events/events.jsonl" 2>/dev/null | sort -u | tr '\n' ' ')"
+        assert_eq "$_outcome/$_reason → pipeline.aborted names the abort word" "$_word " "$_ab"
+    fi
     # #979: two-cycles.yaml (owned fixture) wraps plan as a leaf + design_impact_cycle (design+impact)
     # and review inside the outer build_review_cycle (ADR-026). The only top-level
     # stage:* unit is intake. Use `intake` as a smoke that stage:* dispatch
     # ran when rc∈{0,1,2,3} (continue path).
     _got_intake="$(jq -r '.stage_statuses.intake // "absent"' "$_state" 2>/dev/null)"
     if [[ "$_exp_review" == "1" ]]; then
-        assert_eq "rc=$_rc → intake dispatched (stage_statuses.intake=complete) [#842]" \
+        assert_eq "$_outcome/$_reason → intake dispatched (stage_statuses.intake=complete) [#842]" \
             "complete" "$_got_intake"
     fi
     # Halt-class cases (rc∈{4,5,130}) abort before reaching pipeline finalize;
@@ -120,13 +143,13 @@ done
 # _RUNNER_CYCLE_UNCONVERGED flag — verified indirectly through pipeline_status,
 # but also assert the cycle.unconverged event ONLY fires for rc∈{1,2,3}.
 for _i in "${!_cases[@]}"; do
-    IFS='|' read -r _rc _reason _exp_status _exp_review <<< "${_cases[$_i]}"
+    IFS='|' read -r _rc _outcome _reason _word _exp_status _exp_review <<< "${_cases[$_i]}"
     _ev="${_dirs[$_i]}/events/events.jsonl"
     _count="$(grep -c '"type":"cycle.unconverged"' "$_ev" 2>/dev/null)"
     [[ -z "$_count" ]] && _count=0
-    case "$_rc" in
-        1|2|3) assert_eq "rc=$_rc → cycle.unconverged emitted once" "1" "$_count" ;;
-        *)     assert_eq "rc=$_rc → cycle.unconverged NOT emitted" "0" "$_count" ;;
+    case "$_outcome" in
+        unconverged) assert_eq "$_outcome/$_reason → cycle.unconverged emitted once" "1" "$_count" ;;
+        *)           assert_eq "$_outcome/$_reason → cycle.unconverged NOT emitted" "0" "$_count" ;;
     esac
 done
 
@@ -139,14 +162,14 @@ done
 # the moment a case is added or reordered above.
 _dir8=""
 for _i in "${!_cases[@]}"; do
-    [[ "${_cases[$_i]%%|*}" == "8" ]] && { _dir8="${_dirs[$_i]}"; break; }
+    [[ "${_cases[$_i]}" == *"|blocking_member_failure|"* ]] && { _dir8="${_dirs[$_i]}"; break; }
 done
 # ONE failure per cause. If the rc=8 case is gone the assertion below cannot
 # run at all, and letting it run anyway against an empty path reported a SECOND,
 # misleading failure ("status was not failed") for the same single defect —
 # sending the reader after a state-file bug that does not exist.
 if [[ -z "$_dir8" ]]; then
-    echo "  DIAGNOSTIC: no rc=8 case in _cases — [SPEC-3] cannot run" >&2
+    echo "  DIAGNOSTIC: no blocking_member_failure case in _cases — [SPEC-3] cannot run" >&2
     FAIL=$((FAIL + 1))
 else
     _state8="$_dir8/state/pipeline-state.json"
@@ -158,7 +181,7 @@ else
         ls -R "$_dir8" >&2 2>/dev/null || true
     fi
     _got8="$(jq -r '.status' "$_state8" 2>/dev/null)"
-    assert_eq "[SPEC-3] rc=8 (blocking_member_failure) → state-file status=failed" "failed" "$_got8"
+    assert_eq "[SPEC-3] blocking_member_failure → state-file status=failed" "failed" "$_got8"
 fi
 
 print_test_results
