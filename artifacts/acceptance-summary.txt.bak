@@ -1,9 +1,10 @@
+the acceptance check failed — SPEC-2: its test already passes on the code from before this change, so it cannot tell whether the change was made — make it check something the old code gets wrong
 NEGCTL PASS SPEC-1
       design : zbuild_worktree_acquire, called with a run_id against a repo whose checkout includes files under leg…
       asserts: assert_pass "[#1802/SPEC-1] zbuild_worktree_acquire returns 0 and creates the worktree"
-NEGCTL PASS SPEC-2
+NEGCTL FAIL SPEC-2 tautology
       design : zbuild_worktree_enter, called in any mode (create, adopt_local, or adopt_remote), returns 0 and the …
-      asserts: assert_fail "[#1802/SPEC-2] zbuild_worktree_enter create must return 0 and produce a worktree" \
+      asserts: assert_pass "[#1802/SPEC-2] zbuild_worktree_enter create returns 0"
 NEGCTL PASS SPEC-3
       design : when git checkout is run inside a linked worktree that zbuild already configured with sparse-checkou…
       asserts: assert_pass "[#1802/SPEC-3] worktree for branch-switch test created"
