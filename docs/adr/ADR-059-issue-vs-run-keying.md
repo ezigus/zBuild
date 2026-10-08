@@ -133,6 +133,21 @@ reclaiming after the fact.
 The invariant ADR-052 established survives unchanged and is restated here: **no plugin decides
 which tree it works in.** The engine still acquires it; only the key changes.
 
+**Per-worktree sparse-checkout (#1802).** Every issue worktree excludes `legacy/` — the frozen
+reference import (~50% of the tree) — so agents working inside the worktree never traverse it.
+`_zbuild_worktree_apply_sparse` runs `git sparse-checkout set --no-cone -- '/*' '!/legacy/'
+'/legacy/migrated/'` inside each linked worktree, keeping `legacy/migrated/` visible so tombstone
+files remain readable. `extensions.worktreeConfig=true` is set on the main repository so the
+sparse configuration is stored in the worktree's own git directory rather than the shared
+`.git/info/sparse-checkout`; the operator's main checkout is never made sparse. The exclusion is
+applied at every acquisition point: initial creation and the reuse (resume) path of
+`zbuild_worktree_acquire`, and all three modes of `zbuild_worktree_enter`.
+
+A keeper PR that must read or `git rm` a specific legacy source before migration calls
+`zbuild_worktree_include_legacy_path <wt> <path>` to widen the sparse pattern for that path alone,
+without re-enabling the rest of `legacy/`. The widening is additive and idempotent; the exclusion
+of all other `legacy/` paths is preserved.
+
 ### 3. Prior work is stored in git, and the folder is the working copy
 
 ADR-050 already keys prior work by issue (`zbuild/state/issue-<N>`). This ADR does not add a
@@ -381,3 +396,10 @@ committed, stash ablates nothing and reports a false pass.
 - #887, #888 (what run-keying was chosen for), #1658, #1869 (what it cost), #1640 (wrong-tree
   defect class), #1664, #1688, #1764 (the concurrency this creates), #1921 (zero on origin),
   #1878 (the snapshot was never called), #1632 (retention), #1802, #34, #141, #142
+
+## Enforced by
+
+- `tests/unit/worktree-sparse-legacy-test.sh` — §2 per-worktree sparse-checkout: acquire and
+  enter configure sparse in the linked worktree (SPEC-1, SPEC-2), the exclusion survives a branch
+  switch (SPEC-3), the reuse path re-applies the pattern (SPEC-4), and the main checkout is left
+  non-sparse via `extensions.worktreeConfig` (SPEC-5)
