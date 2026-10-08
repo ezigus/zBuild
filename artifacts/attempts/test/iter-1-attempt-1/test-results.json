@@ -1,0 +1,71 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "832 of 832 tests passed",
+  "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 531/531 passed (4 skipped)\nintegration: 264/264 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 832/832 passed (4 skipped)",
+  "run_mode": "full",
+  "exit_code": 0,
+  "data": {
+    "exit_code": 0,
+    "passed": 832,
+    "failed": 0,
+    "test_output": "\n> zbuild@0.1.0 test\n> bash tests/run-all.sh\n\nunit: 531/531 passed (4 skipped)\nintegration: 264/264 passed\ne2e: 10/10 passed\ngolden: 1/1 passed\nmutation: 25/25 passed\nlint: 1/1 passed\n\ntotal: 832/832 passed (4 skipped)",
+    "diff_applied": false,
+    "test_cmd": "npm test",
+    "run_mode": "full",
+    "timing": {
+      "tiers": {
+        "lint": 185190,
+        "e2e": 177404,
+        "golden": 6535,
+        "unit": 616909,
+        "integration": 902945
+      },
+      "slowest_files": [
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.LQ5k1c/tests/integration/unowned-finding-last-round-test.sh",
+          "ms": 198884
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.LQ5k1c/tests/integration/unowned-finding-test.sh",
+          "ms": 183150
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.LQ5k1c/tests/integration/cycle-acceptance-terminal-failure-test.sh",
+          "ms": 150010
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.LQ5k1c/tests/unit/core-pipeline-cycle-reuse-and-route-back-test.sh",
+          "ms": 145931
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.LQ5k1c/tests/integration/unowned-finding-stale-test.sh",
+          "ms": 143168
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.LQ5k1c/tests/integration/runner-release-exit-paths-test.sh",
+          "ms": 130017
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.LQ5k1c/tests/unit/run-status-comment-render-test.sh",
+          "ms": 120979
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.LQ5k1c/tests/integration/cycle-multi-exit-when-e2e-test.sh",
+          "ms": 118245
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.LQ5k1c/tests/integration/run-status-comment-runner-test.sh",
+          "ms": 116788
+        },
+        {
+          "file": "/home/runner/work/_temp/zbuild-state/scratch/test/zbuild-test-stage.LQ5k1c/tests/unit/core-pipeline-cycle-stall-break-test.sh",
+          "ms": 113701
+        }
+      ]
+    },
+    "tree_sha": "21c7201566f744eb60e659aa86bf1d6371f1010f",
+    "findings": []
+  }
+}
