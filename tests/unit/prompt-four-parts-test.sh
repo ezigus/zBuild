@@ -27,6 +27,10 @@
 #           round: a second pass adds no second rule and no second shared part
 # T1 [code] test-author is told to check the new value or file itself, not only
 #           that the step finished without an error
+# F8 [code] the shared part tells every stage — in any repository — to read data
+#           the way the code that writes it writes it, and to make test data
+#           with that code, never by hand (#1799: pr-open read a field the
+#           engine never writes, and its test invented the field)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -257,6 +261,16 @@ assert_contains "[T1] test-author is told to check the new value or file itself"
     "$_ta" "the new value or file itself"
 assert_contains "[T1] ...not only that the step finished without an error" \
     "$_ta" "not only that the step finished without an error"
+
+# ─── F8: read data the way its writer writes it ─────────────────────────────
+print_test_section "F8. the shared part: read data the way its writer writes it (#1799)"
+_cb="$(stage_conduct_block)"
+assert_contains "[F8] the shared part tells a stage to open the code that writes the data it reads" \
+    "$_cb" "open the code that writes it"
+assert_contains "[F8] ...to use the names and shapes that code really produces" \
+    "$_cb" "names and shapes it really produces"
+assert_contains "[F8] ...and to make test data with that code, not by hand" \
+    "$_cb" "should make it with that code,"
 
 cleanup_test_env
 print_test_results

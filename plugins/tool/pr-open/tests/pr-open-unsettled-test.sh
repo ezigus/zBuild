@@ -61,18 +61,8 @@ jq -n --arg a "$ART" '{inputs: {review_report: ($a + "/review-report.json"),
     gate_aggregator_result: ($a + "/gate-aggregator-result.json")}}' > "$STATE_DIR/stage-inputs.json"
 export ZBUILD_STAGE_INPUTS="$STATE_DIR/stage-inputs.json"
 
-# The engine's loop writers, sourced in a subshell so nothing else leaks in.
-# _loop <name> <rounds used> <limit> <final status>
-_loop() {
-    ( source "$REPO_ROOT/core/pipeline/cycle-orchestrator.sh" >/dev/null 2>&1
-      _cycle_state_init "$STATE_FILE" "$1" "$STATE_DIR/$1-history.jsonl" "$3" || exit 1
-      local n
-      for (( n = 1; n <= $2; n++ )); do
-          _cycle_state_write_iter_atomic "$STATE_FILE" "$1" "$n" fail failed 1 in_progress || exit 1
-      done
-      _cycle_state_write_iter_atomic "$STATE_FILE" "$1" "$2" fail failed 1 "$4" ) \
-        || assert_fail "[setup] the engine's loop writers ran for $1" "they failed"
-}
+# The engine's own loop writers, via the shared helper (scripts/lib/test-helpers.sh).
+_loop() { zb_engine_loop_state "$STATE_FILE" "$@" || assert_fail "[setup] the engine's loop writers ran for $1" "they failed"; }
 _fresh_state() {
     printf '{"schema_version":1,"run_id":"t","issue":"999","status":"running","stage_statuses":{}}\n' > "$STATE_FILE"
     rm -f "$RESULT" "$GATES" "$ZBUILD_EVENTS_JSONL"

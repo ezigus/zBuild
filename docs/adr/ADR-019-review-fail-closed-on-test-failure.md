@@ -425,4 +425,7 @@ look finished:
   summary record it.
 
 Verification: `plugins/tool/pr-open/tests/pr-open-unsettled-test.sh` (U1–U7),
-whose state is written by the engine's own loop writers.
+whose state is written by the engine's own loop writers through
+`zb_engine_loop_state`; `scripts/lib/lint-test-engine-state.sh` (tested by
+`tests/unit/lint-test-engine-state-test.sh`) refuses a test that writes
+`cycle_iterations` by hand.
