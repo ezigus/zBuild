@@ -936,6 +936,22 @@ zb_engine_loop_state() {
       _cycle_state_write_iter_atomic "$sf" "$id" "$rounds" fail failed 1 "$final" )
 }
 
+# ── mock_v2_result_line ───────────────────────────────────────────────────────
+# Prints one shell line that writes the v2 result mock_plugin_factory's manifest
+# declares (`${artifact_dir}/<id>-result.json`). For a test that replaces the
+# factory's plugin.sh with its own body: embed `$(mock_v2_result_line <id>)` in
+# the unquoted heredoc, or the stage exits 0 with no readable result — which
+# #1850 makes a failure.
+#
+# Usage: mock_v2_result_line <id> [verdict=pass] [disposition=complete]
+mock_v2_result_line() {
+    local id="$1" verdict="${2:-pass}" disp="${3:-complete}"
+    # shellcheck disable=SC2016  # the $-expressions are for the stub, not here
+    printf '%s' 'local _art; _art="${ZBUILD_ARTIFACT_DIR:-$(dirname "$2")/artifacts}"; mkdir -p "$_art"; '
+    printf "printf '%%s' '{\"result_contract\":2,\"verdict\":\"%s\",\"disposition\":\"%s\",\"reason\":\"mock %s\"}' > \"\$_art/%s-result.json\"" \
+        "$verdict" "$disp" "$id" "$id"
+}
+
 # ── Standard-pipeline roster: REMOVED (#979, EPIC #1277) ──────────────────────
 # The _ZBUILD_STANDARD_ROSTER array + standard_stage_ids / standard_stage_count /
 # register_standard_pipeline_stubs helpers were deleted when standard.yaml (the

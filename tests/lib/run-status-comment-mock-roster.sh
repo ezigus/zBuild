@@ -8,25 +8,9 @@
 
 _make_plugin() {
     local id="$1" role="${2:-}" rc="${3:-0}"
-    local dir="$PLUGINS_ROOT/agent/$id"
-    mkdir -p "$dir"
-    local fn="${id//-/_}_run"
-    cat > "$dir/manifest.yaml" <<EOF
-id: $id
-name: Test $id
-kind: agent
-version: 0.0.1
-hooks:
-  run: $fn
-requires:
-  core:
-    - redaction
-${role:+provides:
-  role: $role}
-EOF
-    cat > "$dir/plugin.sh" <<PLUG
-${fn}() { return $rc; }
-PLUG
+    # #1850: a v2 stage stub (result_contract 2, JSON primary, a v2 result that
+    # says pass on rc 0 and error/broken otherwise) — mock_plugin_factory's.
+    mock_plugin_factory "$id" agent "$rc" "" "$role" >/dev/null
 }
 
 _make_design_plugin() {
@@ -44,18 +28,27 @@ requires:
     - redaction
 provides:
   role: designer
+  result_contract: 2
 outputs:
   - id: design_out
     path: ${artifact_dir}/design.md
     type: text/markdown
     required: true
+  - id: design_result
+    path: ${artifact_dir}/design-verdict.json
+    type: json
+    required: true
     primary: true
+config:
+  valid_verdicts: [pass, error, incomplete]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 design_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
     printf '# Design\n```scope\nf.txt\n```\n' > "$state_dir/artifacts/design.md"
+    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub design"}' \
+        > "$state_dir/artifacts/design-verdict.json"
     return 0
 }
 PLUG
@@ -76,18 +69,21 @@ requires:
     - redaction
 provides:
   role: impact_analyzer
+  result_contract: 2
 outputs:
   - id: impact_out
     path: ${artifact_dir}/impact.json
     type: json
     required: true
     primary: true
+config:
+  valid_verdicts: [complete, incomplete, error]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 impact_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
-    printf '{"schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":"ok"}' \
+    printf '{"result_contract":2,"disposition":"complete","reason":"stub","schema_version":1,"verdict":"complete","missing":[],"impact_feedback_md":"ok"}' \
         > "$state_dir/artifacts/impact.json"
     return 0
 }
@@ -109,18 +105,21 @@ requires:
     - redaction
 provides:
   role: planner
+  result_contract: 2
 outputs:
   - id: plan_out
     path: ${artifact_dir}/plan.json
     type: json
     required: true
     primary: true
+config:
+  valid_verdicts: [pass, error]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 plan_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
-    printf '{"schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["f.txt"],"estimated_lines":1}],"estimated_total_lines":1,"notes":""}' \
+    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub plan","schema_version":1,"title":"t","goal":"g","steps":[{"id":"step-1","description":"d","files":["f.txt"],"estimated_lines":1}],"estimated_total_lines":1,"notes":""}' \
         > "$state_dir/artifacts/plan.json"
     return 0
 }
@@ -145,12 +144,15 @@ requires:
     - redaction
 provides:
   role: acceptance_gate
+  result_contract: 2
 outputs:
   - id: gate_result
     path: ${artifact_dir}/acceptance-gate-result.json
     type: json
     required: true
     primary: true
+config:
+  valid_verdicts: [pass, fail]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 acceptance_gate_run() {
@@ -158,19 +160,19 @@ acceptance_gate_run() {
     mkdir -p "$state_dir/artifacts"
     local f="${ZBUILD_TEST_GATE_FAILURE:-}"
     if [[ -z "$f" ]]; then
-        printf '{"verdict":"pass","disposition":"none","failures":[]}' \
+        printf '{"result_contract":2,"verdict":"pass","disposition":"complete","severity":"none","reason":"no failures","failures":[]}' \
             > "$state_dir/artifacts/acceptance-gate-result.json"
         return 0
     fi
-    # Mirror the real gate's class→disposition mapping (ADR-021 / ADR-036): the
-    # engine reads ONLY this generic disposition field, not the failure class.
+    # Mirror the real gate's class→severity mapping (ADR-021 / ADR-036): the
+    # engine reads ONLY this generic severity field (#2161), not the failure class.
     local disp
     case "$f" in
         untagged_spec:*)                        disp="recoverable" ;;
         negctl_error:* | reachability_error:*)  disp="advisory" ;;
         *)                                      disp="terminal" ;;
     esac
-    printf '{"verdict":"fail","disposition":"%s","failures":["%s"]}' "$disp" "$f" \
+    printf '{"result_contract":2,"verdict":"fail","disposition":"complete","severity":"%s","reason":"%s","failures":["%s"]}' "$disp" "$f" "$f" \
         > "$state_dir/artifacts/acceptance-gate-result.json"
     return 1
 }
@@ -194,18 +196,21 @@ requires:
     - redaction
 provides:
   role: design_gate
+  result_contract: 2
 outputs:
   - id: design_gate_out
     path: ${artifact_dir}/design-gate.json
     type: json
     required: true
     primary: true
+config:
+  valid_verdicts: [pass, fail]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 design_gate_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
-    printf '{"schema_version":1,"verdict":"pass","summary":"ok"}' \
+    printf '{"result_contract":2,"disposition":"complete","reason":"stub","schema_version":1,"verdict":"pass","summary":"ok"}' \
         > "$state_dir/artifacts/design-gate.json"
     return 0
 }
@@ -234,18 +239,21 @@ requires:
     - redaction
 provides:
   role: gate_aggregator
+  result_contract: 2
 outputs:
   - id: gate_aggregator_out
     path: ${artifact_dir}/gate-aggregator.json
     type: json
     required: true
     primary: true
+config:
+  valid_verdicts: [pass, fail]
 EOF
     cat > "$dir/plugin.sh" <<'PLUG'
 gate_aggregator_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
-    printf '{"schema_version":1,"verdict":"pass","summary":"ok","gates":[]}' \
+    printf '{"result_contract":2,"disposition":"complete","reason":"stub","schema_version":1,"verdict":"pass","summary":"ok","gates":[]}' \
         > "$state_dir/artifacts/gate-aggregator.json"
     return 0
 }
@@ -294,55 +302,27 @@ MANIFEST
 build_run() {
     local state_dir; state_dir="$(dirname "$2")"
     mkdir -p "$state_dir/artifacts"
-    printf '%s\n' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"","data":{}}' \
+    printf '%s\n' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub build","data":{}}' \
         > "$state_dir/artifacts/build-summary.json"
     return 0
 }
 PLUG
 }
+# #1850: test and the slow intake are v2 stages built by mock_plugin_factory;
+# intake's own body still writes the factory's v2 result after its optional sleep.
 _make_test_plugin() {
-    local dir="$PLUGINS_ROOT/agent/test"
-    mkdir -p "$dir"
-    cat > "$dir/manifest.yaml" <<'MANIFEST'
-id: test
-name: Test test (passing)
-kind: agent
-version: 0.0.1
-hooks:
-  run: test_run
-requires:
-  core:
-    - redaction
-provides:
-  role: tester
-MANIFEST
-    cat > "$dir/plugin.sh" <<'PLUG'
-test_run() { return 0; }
-PLUG
+    mock_plugin_factory "test" agent 0 "" "tester" >/dev/null
 }
 
 _make_slow_intake_plugin() {
-    local dir="$PLUGINS_ROOT/agent/intake"
-    mkdir -p "$dir"
-    cat > "$dir/manifest.yaml" <<'MANIFEST'
-id: intake
-name: Test intake (optionally slow)
-kind: agent
-version: 0.0.1
-hooks:
-  run: intake_run
-requires:
-  core:
-    - redaction
-provides:
-  role: intake
-MANIFEST
-    cat > "$dir/plugin.sh" <<'PLUG'
+    local dir; dir="$(mock_plugin_factory "intake" agent 0 "" "intake")"
+    cat > "$dir/plugin.sh" <<PLUG
 intake_run() {
-    if [[ -n "${ZBUILD_TEST_SLOW_MARK:-}" ]]; then
-        printf 'running\n' > "$ZBUILD_TEST_SLOW_MARK"
+    if [[ -n "\${ZBUILD_TEST_SLOW_MARK:-}" ]]; then
+        printf 'running\n' > "\$ZBUILD_TEST_SLOW_MARK"
         sleep 20
     fi
+    $(mock_v2_result_line intake)
     return 0
 }
 PLUG
