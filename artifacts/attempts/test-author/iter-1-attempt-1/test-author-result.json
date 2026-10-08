@@ -1,0 +1,19 @@
+{
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "authored acceptance assertions for 7 SPEC(s) from the design contract",
+  "data": {
+    "specs_covered": 7,
+    "owned_files": [
+      "config/adr-enforcement-baseline.txt",
+      "docs/adr/ADR-059-issue-vs-run-keying.md",
+      "tests/unit/worktree-sparse-legacy-test.sh"
+    ],
+    "testfiles": {
+      "config/adr-enforcement-baseline.txt": "62d2596be8f989fc798baa8daf93a9cacaf464c9",
+      "docs/adr/ADR-059-issue-vs-run-keying.md": "008efefa637ad0aa4a8c5e92e521f905d7617333",
+      "tests/unit/worktree-sparse-legacy-test.sh": "cc36c3620f5e9f4f36a74e427032df076cfbe141"
+    }
+  }
+}

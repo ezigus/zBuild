@@ -13,5 +13,12 @@
   ],
   "wiring_files": [
     "scripts/lib/worktree.sh"
-  ]
+  ],
+  "owned_files": {
+    "test-author": [
+      "config/adr-enforcement-baseline.txt",
+      "docs/adr/ADR-059-issue-vs-run-keying.md",
+      "tests/unit/worktree-sparse-legacy-test.sh"
+    ]
+  }
 }

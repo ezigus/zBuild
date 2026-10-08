@@ -1,0 +1,8 @@
+# authored_by: test-author
+34b93eeb75827472696954d1c8886942461db507356941a04ecddd58be6d561b  tests/unit/worktree-sparse-legacy-test.sh
+34b93eeb75827472696954d1c8886942461db507356941a04ecddd58be6d561b  tests/unit/worktree-sparse-legacy-test.sh
+34b93eeb75827472696954d1c8886942461db507356941a04ecddd58be6d561b  tests/unit/worktree-sparse-legacy-test.sh
+34b93eeb75827472696954d1c8886942461db507356941a04ecddd58be6d561b  tests/unit/worktree-sparse-legacy-test.sh
+34b93eeb75827472696954d1c8886942461db507356941a04ecddd58be6d561b  tests/unit/worktree-sparse-legacy-test.sh
+53f198c3ef8a176bbb932b5719745f99e96ba913f1219739f068ce3dc62977ae  docs/adr/ADR-059-issue-vs-run-keying.md
+e2b50847b0118840d281e0b65588a4d70fd7e1c257daeb05aff4fd693e07c453  config/adr-enforcement-baseline.txt
