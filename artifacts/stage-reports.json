@@ -1,0 +1,9 @@
+{
+  "scope_files": [
+    "config/adr-enforcement-baseline.txt",
+    "docs/adr/ADR-059-issue-vs-run-keying.md",
+    "scripts/lib/worktree.sh",
+    "tests/unit/worktree-sparse-legacy-test.sh"
+  ],
+  "wiring_files": []
+}
