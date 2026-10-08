@@ -142,7 +142,11 @@ Apply sparse-checkout to every issue worktree so legacy/ is absent (except legac
 
 Every requirement above must be covered by at least one SPEC. End each SPEC line with ` covers: ` and the ids of the requirements it covers, before any ` evidence: ` — for example `SPEC-1[code]: <behaviour> covers: R-1 R-2`. A requirement the code already meets is covered by a [done] SPEC with evidence.
 
-### PRIOR DESIGN (written earlier in this run — refine it against the feedback below; the tree has not moved)
+### PRIOR DESIGN (a previous attempt on this issue — a hypothesis, not a fact)
+The repository has moved since this design was written. Every claim it makes about the repository — an ADR it relies on, a file it lists, a hook, field or convention it declares — is re-checked against the tree as it is NOW; anything that no longer holds is dropped or re-derived, and the design says what changed and why. Keep what still holds; do not start over.
+
+### SINCE THE PRIOR DESIGN (engine-collected)
+- The prior design's date is unknown: treat every claim it makes as unverified until you have checked it.
 
 # Design: Exclude legacy/ from issue worktrees via sparse-checkout (#1802)
 
@@ -174,11 +178,11 @@ core/pipeline/runner.sh
 ```
 
 ```acceptance
-SPEC-1[code]: after zbuild_worktree_acquire, the linked worktree contains no files under legacy/ except those under legacy/migrated/ covers: R-1 R-3 R-6
-SPEC-2[code]: after zbuild_worktree_enter (create, adopt_local, or adopt_remote mode), the linked worktree contains no files under legacy/ except those under legacy/migrated/ covers: R-1 R-3 R-6
-SPEC-3[code]: a git checkout inside a linked worktree (branch switch) does not restore legacy/ content — the sparse exclusion persists covers: R-1 R-6
-SPEC-4[code]: a second zbuild_worktree_acquire call for an already-sparse worktree (resume path) retains the exclusion — legacy/ is still absent covers: R-1 R-6
-SPEC-5[code]: the main checkout's core.sparseCheckout config is absent or false after sparse-checkout is applied to a linked worktree (extensions.worktreeConfig isolates per-worktree config) covers: R-2 R-4 R-5
+SPEC-1[code]: when zbuild_worktree_acquire creates a new linked worktree for a repo that has files under legacy/, it configures sparse-checkout so that git ls-files inside the worktree reports no path under legacy/ other than paths under legacy/migrated/ covers: R-1 R-3 R-6
+SPEC-2[code]: when zbuild_worktree_enter creates a linked worktree in any mode (create, adopt_local, or adopt_remote), it configures sparse-checkout so that git ls-files inside the worktree reports no path under legacy/ other than paths under legacy/migrated/ covers: R-1 R-3 R-6
+SPEC-3[code]: when git checkout is run inside a linked worktree that zbuild already configured with sparse-checkout, git ls-files afterwards still reports no path under legacy/ other than paths under legacy/migrated/ — the exclusion survives the branch switch covers: R-1 R-6
+SPEC-4[code]: when zbuild_worktree_acquire is called on a linked worktree that already has sparse-checkout configured (resume path), it re-applies the sparse pattern and git ls-files still reports no path under legacy/ other than paths under legacy/migrated/ covers: R-1 R-6
+SPEC-5[code]: after zbuild_worktree_acquire or zbuild_worktree_enter configures sparse-checkout on a linked worktree, git config in the main checkout reports core.sparseCheckout as absent or false — extensions.worktreeConfig isolates the per-worktree config and leaves the main checkout non-sparse covers: R-2 R-4 R-5
 SPEC-6[no-code]: ADR-059 §2 is amended to document the per-worktree sparse-checkout decision and the zbuild_worktree_include_legacy_path widening protocol for keeper PRs covers: R-1 R-2
 SPEC-7[no-code]: ADR-059-issue-vs-run-keying.md is removed from config/adr-enforcement-baseline.txt and ADR-059 carries a valid ## Enforced by section naming tests/unit/worktree-sparse-legacy-test.sh covers: R-1
 WIRING:
