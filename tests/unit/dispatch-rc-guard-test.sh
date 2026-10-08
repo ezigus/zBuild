@@ -70,9 +70,9 @@ _PINNED="
 core/pipeline/runner.sh|35
 core/pipeline/cycle-orchestrator.sh|29
 core/pipeline/parallel-orchestrator.sh|4
-core/pipeline/strategies/map.sh|6
-core/pipeline/strategies/fanout.sh|2
-core/pipeline/strategies/sequential.sh|1
+core/pipeline/strategies/map.sh|0
+core/pipeline/strategies/fanout.sh|0
+core/pipeline/strategies/sequential.sh|0
 core/pipeline/strategies/composite.sh|0
 core/plugin-registry/lifecycle.sh|0
 scripts/lib/abort-propagation.sh|6

@@ -28,7 +28,7 @@ _strategy_map_resolve_dimension() {
     # Validate dimension name to prevent variable-name injection.
     if [[ ! "$dim" =~ ^[a-zA-Z0-9_]{1,64}$ ]]; then
         warn "map: invalid dimension name: ${dim}" || true
-        return 2
+        return 1
     fi
     # Read the caller's _MAP_DIM_<name> array by reference (Bash 5+ floor — see
     # scripts/lib/compat.sh). The name was validated above, guarding the target.
@@ -126,6 +126,10 @@ _map_unit_element() {
 }
 
 _strategy_run_map() {
+    # #1850 (ADR-054 §4): rc is 0 or 1; WHY rides this word, which the caller
+    # reads in the same shell — ok | partial | empty | no_plugin | bad_dimension
+    # | infra_failed | failed.
+    _ZB_STRATEGY_OUTCOME="failed"
     local pool_id="$1" stage="$2" roles_out="$3" state_file="$4" plugins_root="$5"
     local dimension="${6:-platforms}" env_target="${7:-}"
     local max_raw="${8:-}" on_member_error="${9:-collect}"
@@ -140,7 +144,8 @@ _strategy_run_map() {
         # Invalid/unknown dimension name — fail closed. Distinct from empty (rc=3);
         # the runner does NOT map rc=5 to 0, so this surfaces as a real failure.
         orch_shutdown "$pool_id" 2>/dev/null || true
-        return 5
+        _ZB_STRATEGY_OUTCOME="bad_dimension"
+        return 1
     fi
 
     local -a elements=()
@@ -151,7 +156,8 @@ _strategy_run_map() {
 
     if [[ ${#elements[@]} -eq 0 ]]; then
         orch_shutdown "$pool_id" 2>/dev/null || true
-        return 3
+        _ZB_STRATEGY_OUTCOME="empty"
+        return 0
     fi
 
     # #1312: resolve the concurrency cap (mirrors ADR-039 FIFO pool).
@@ -221,7 +227,8 @@ _strategy_run_map() {
     if ! $any_plugin_found; then
         _strategy_cleanup_work_units "${wu_list[@]+"${wu_list[@]}"}"
         orch_shutdown "$pool_id" 2>/dev/null || true
-        return 4
+        _ZB_STRATEGY_OUTCOME="no_plugin"
+        return 1
     fi
 
     # #1312: FIFO-pool batch dispatch — respects max_parallel cap (ADR-039 model).
@@ -315,7 +322,8 @@ _strategy_run_map() {
     # subject to on_member_error. rc=6 is distinct from member outcomes (0/1/2) so
     # the runner surfaces it as a real failure even under on_member_error=continue.
     if $infra_failed; then
-        return 6
+        _ZB_STRATEGY_OUTCOME="infra_failed"
+        return 1
     fi
 
     # #1312: on_member_error=collect (default) — propagate failure outward (group
@@ -333,11 +341,12 @@ _strategy_run_map() {
     # a failure. (parallel defaults empty→continue; map defaults empty→collect per
     # its strategy: call-site contract, but both fall through to their safe default.)
     if [[ "$on_member_error" == "continue" ]]; then
+        _ZB_STRATEGY_OUTCOME="ok"
         return 0
     fi
 
-    if   [[ $fail_count -eq 0 ]];    then return 0
-    elif [[ $success_count -gt 0 ]]; then return 2
-    else                                  return 1
+    if   [[ $fail_count -eq 0 ]];    then _ZB_STRATEGY_OUTCOME="ok"; return 0
+    elif [[ $success_count -gt 0 ]]; then _ZB_STRATEGY_OUTCOME="partial"; return 1
+    else                                  _ZB_STRATEGY_OUTCOME="failed"; return 1
     fi
 }

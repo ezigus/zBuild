@@ -22,6 +22,10 @@ _ZBUILD_STRATEGY_COMPOSITE_LOADED=1
 #   3. Returns rc=1 so the caller treats the stage as a hard failure
 #      instead of an empty success.
 _strategy_run_composite() {
+    # #1850 (ADR-054 §4): rc is 0 or 1; WHY rides this word, which the caller
+    # reads in the same shell — ok | partial | empty | no_plugin | bad_dimension
+    # | infra_failed | failed.
+    _ZB_STRATEGY_OUTCOME="failed"
     local pool_id="$1" stage="${2:-unknown}"
     local platforms_csv platforms_len=0
     if declare -p _DETECTED_PLATFORMS >/dev/null 2>&1; then

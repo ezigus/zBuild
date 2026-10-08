@@ -2,7 +2,8 @@
 # Tests: core/pipeline/strategies/map.sh — unit tests (issue #1285, ADR-047)
 # SPEC-1: platform dimension dispatches one-per-platform (byte-identical to fanout)
 # SPEC-2: non-platform declared dimension dispatches one-per-element
-# SPEC-3: empty dimension → no dispatch, no error (rc=3, caller maps to 0)
+# SPEC-3: empty dimension → no dispatch, no error (rc 0, outcome `empty`; #1850:
+#         the reason rides _ZB_STRATEGY_OUTCOME, never a private rc)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -124,7 +125,7 @@ else
 fi
 
 # ─── SPEC-3: empty dimension → no dispatch, no error ─────────────────────────
-print_test_section "SPEC-3: empty dimension → no dispatch, rc=3 (caller maps to 0)"
+print_test_section "SPEC-3: empty dimension → no dispatch, rc 0, outcome empty (#1850)"
 
 declare -a _MAP_DIM_empty=()
 export _MAP_DIM_empty
@@ -135,7 +136,8 @@ _strategy_run_map "map-pool-003" "intake" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_R
 empty_rc=$?
 set -e
 
-assert_exit_code "SPEC-3: empty dimension exits 3 (no elements)" "3" "$empty_rc"
+assert_exit_code "SPEC-3: empty dimension exits 0 (no elements is not a failure)" "0" "$empty_rc"
+assert_eq "SPEC-3: ...and says so: outcome empty" "empty" "${_ZB_STRATEGY_OUTCOME:-}"
 
 empty_dispatch_count=0; empty_dispatch_count=$(/usr/bin/grep -c "^orch_dispatch" "$ORCH_SPY_LOG" 2>/dev/null) || empty_dispatch_count=0
 if [[ "$empty_dispatch_count" -eq 0 ]]; then
@@ -153,21 +155,23 @@ _strategy_run_map "map-pool-004" "intake" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_R
 empty_plat_rc=$?
 set -e
 
-assert_exit_code "SPEC-3: empty _DETECTED_PLATFORMS exits 3" "3" "$empty_plat_rc"
+assert_exit_code "SPEC-3: empty _DETECTED_PLATFORMS exits 0" "0" "$empty_plat_rc"
+assert_eq "SPEC-3: ...outcome empty" "empty" "${_ZB_STRATEGY_OUTCOME:-}"
 
-# ─── SPEC-4: invalid dimension name → fail-closed rc=5 (NOT empty rc=3) ───────
-print_test_section "SPEC-4: invalid dimension name fails closed (rc=5, not masqueraded as empty)"
+# ─── SPEC-4: invalid dimension name → fail-closed rc 1, outcome bad_dimension ─
+print_test_section "SPEC-4: invalid dimension name fails closed (rc 1, outcome bad_dimension — not empty)"
 
 _DETECTED_PLATFORMS=("ios")
 : > "$ORCH_SPY_LOG"
 set +e
-# "bad name" contains a space → fails the dimension-name allowlist → rc=2 in the
-# resolver → rc=5 from _strategy_run_map. Must NOT collapse to empty (rc=3).
+# "bad name" contains a space → fails the dimension-name allowlist → the
+# resolver fails → _strategy_run_map fails. Must NOT collapse to empty.
 _strategy_run_map "map-pool-005" "intake" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" "bad name"
 bad_rc=$?
 set -e
 
-assert_exit_code "SPEC-4: invalid dimension exits 5 (fail-closed, distinct from empty)" "5" "$bad_rc"
+assert_exit_code "SPEC-4: invalid dimension exits 1 (fail-closed)" "1" "$bad_rc"
+assert_eq "SPEC-4: ...outcome bad_dimension, distinct from empty" "bad_dimension" "${_ZB_STRATEGY_OUTCOME:-}"
 
 bad_dispatch_count=0; bad_dispatch_count=$(/usr/bin/grep -c "^orch_dispatch" "$ORCH_SPY_LOG" 2>/dev/null) || bad_dispatch_count=0
 if [[ "$bad_dispatch_count" -eq 0 ]]; then
@@ -614,11 +618,11 @@ orch_dispatch() { orch_dispatch_orig "$@"; }
 orch_collect()  { orch_collect_orig "$@"; }
 orch_shutdown() { orch_shutdown_orig "$@"; }
 
-# rc MUST be the infra-fail code (6), not a member outcome — proves the infra path
-# fired and fails closed even under on_member_error=continue (which would otherwise
-# force rc=0). A bare non-zero check would pass vacuously if a member rc leaked; pin
-# the exact infra code.
-assert_exit_code "SPEC-12: orch_spawn failure → rc=6 (infra fail-closed) despite on_member_error=continue" "6" "$spec12_rc"
+# The OUTCOME must be the infra failure, not a member outcome — proves the infra
+# path fired and fails closed even under on_member_error=continue (which would
+# otherwise force rc 0). #1850: the word, not a private rc, says which.
+assert_exit_code "SPEC-12: orch_spawn failure → rc 1 despite on_member_error=continue" "1" "$spec12_rc"
+assert_eq "SPEC-12: ...outcome infra_failed (the infra path fired)" "infra_failed" "${_ZB_STRATEGY_OUTCOME:-}"
 if [[ "$spec12_rc" -ne 0 ]]; then
     assert_pass "SPEC-12: orch_spawn failure fails closed (non-zero) even under on_member_error=continue (rc=$spec12_rc)"
 else

@@ -3473,7 +3473,7 @@ main() {
                         "$_mg_max" "$_mg_on_err"
                     _rc=$?
                     set -e
-                    [[ $_rc -eq 3 ]] && _rc=0  # empty dimension = no dispatch = ok
+                    # #1850: an empty dimension returns 0 (outcome `empty`).
                     if [[ $_rc -ne 0 ]]; then
                         _set_pipeline_status "$state_file" "failed"
                         eb_emit_event "pipeline.end" "status=failed" "map=$_mg_id" \
@@ -3481,7 +3481,7 @@ main() {
                         _render_pipeline_end "failed"
                         _runner_ended=true
                         unset ZBUILD_CURRENT_STAGE
-                        error "map group '$_mg_id' failed (rc=$_rc)"
+                        error "map group '$_mg_id' failed (${_ZB_STRATEGY_OUTCOME:-failed})"
                         return 1
                     fi
                     _update_stage_status "$state_file" "$_mg_id" "complete"
@@ -3745,6 +3745,8 @@ main() {
         local roles_out; roles_out="$(template_stage_roles "$stage" 2>/dev/null || true)"
         local strategy; strategy="$(template_stage_strategy "$stage" 2>/dev/null || echo "fanout")"
         local plugin_dir="" rc=0
+        # #1850: a strategy's outcome word belongs to THIS stage's dispatch only.
+        _ZB_STRATEGY_OUTCOME=""
 
         if [[ -z "$roles_out" ]]; then
             # No roles in template — resolve by stage ID (backward-compat).
@@ -3800,12 +3802,10 @@ main() {
                     # map over a declared dimension (ADR-047): "map:lenses", "map:mutants", etc.
                     local _map_dim="${_effective_strategy#map:}"
                     set +e; _strategy_run_map "$pool_id" "$stage" "$roles_out" "$state_file" "$plugins_root" "$_map_dim"; rc=$?; set -e
-                    [[ $rc -eq 3 ]] && rc=0  # empty dimension = no dispatch = success
                     ;;
                 map)
                     # map with default dimension (platforms) — equivalent to fanout
                     set +e; _strategy_run_map "$pool_id" "$stage" "$roles_out" "$state_file" "$plugins_root" "platforms"; rc=$?; set -e
-                    [[ $rc -eq 3 ]] && rc=0
                     ;;
                 *)
                     # fanout (default) — parallel dispatch
@@ -3813,11 +3813,13 @@ main() {
                     ;;
             esac
 
-            # rc=4 from strategy means "no plugin found for any role" — fall back to direct ID
-            # match (backward-compat for plugins named by stage ID rather than role).
-            # rc=1/2 are execution failures; the fallback must NOT fire for those, or a failed
-            # role-based stage could be silently masked by a passing stage-id plugin.
-            if [[ $rc -eq 4 ]]; then
+            # Outcome no_plugin means "no plugin found for any role" — fall back to
+            # direct ID match (backward-compat for plugins named by stage ID rather
+            # than role). A failed or partial run is an execution failure; the
+            # fallback must NOT fire for those, or a failed role-based stage could
+            # be silently masked by a passing stage-id plugin. #1850: the strategy
+            # says which on _ZB_STRATEGY_OUTCOME, not on a private rc.
+            if [[ $rc -ne 0 && "${_ZB_STRATEGY_OUTCOME:-}" == "no_plugin" ]]; then
                 plugin_dir="$(_find_plugin_for_stage "$stage" "$plugins_root" || true)"
                 if [[ -z "$plugin_dir" ]]; then
                     _update_stage_status "$state_file" "$stage" "failed"
@@ -3900,7 +3902,7 @@ main() {
             # helper rather than deleted: a divergent second copy is how this class
             # of defect gets manufactured. #1807 owns removing the loop itself.
             _runner_snapshot_artifacts "$state_dir" "$stage"
-        elif [[ $rc -eq 2 ]]; then
+        elif [[ "${_ZB_STRATEGY_OUTCOME:-}" == "partial" ]]; then
             # Partial fanout: at least one platform succeeded and at least one failed.
             # State uses "failed" (ADR-006 enum); partial detail is in the event payload.
             _update_stage_status "$state_file" "$stage" "failed"
