@@ -246,7 +246,7 @@ normally. Build-side consumption of `inert_wiring` (so build self-corrects) is #
 
 ## Amendment (#1188, 2026-07-01) — timeout classification + infra failures are non-terminal
 
-The gate is mechanical, so a false hard-fail halts the whole pipeline (rc=8) with no
+The gate is mechanical, so a false hard-fail halts the whole pipeline (rc=8) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=failed`)** with no
 recovery. Two robustness gaps caused exactly that:
 
 1. **Timeout misclassification.** Each SPEC test runs under `timeout ${ZBUILD_NEGCTL_TIMEOUT}`
@@ -286,7 +286,7 @@ precedence highest-first):
 
 | disposition   | failure classes                                                            | engine effect                                             |
 | ------------- | -------------------------------------------------------------------------- | --------------------------------------------------------- |
-| `terminal`    | no_testfile, malformed_acceptance_block                                    | HALT — cycle does not converge (rc=8), pipeline.end=failed |
+| `terminal`    | no_testfile, malformed_acceptance_block                                    | HALT — cycle does not converge (rc=8) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=failed`)**, pipeline.end=failed |
 | `recoverable` | untagged_spec:*, tautology:*, inert_wiring:*, not_passing_at_head:*, wiring_not_on_path:*, unclaimed_code:* (`guard_regressed:*` and the other guard classes were removed by ADR-069) | NON-terminal; build feedback loop (cycle re-iterates); wiring_not_on_path always sets route_target=design; inert_wiring and not_passing_at_head also set fault=specification on ZBUILD_CYCLE_ITER≥2 (Amendments #1711, #2097) |
 | `advisory`    | negctl_error:* / reachability_error:* (only — resolve/worktree/timeout)    | NON-terminal AND non-blocking for convergence (infra flake)|
 | `none`        | (verdict=pass)                                                             | n/a                                                        |
@@ -341,7 +341,7 @@ that build must not touch acceptance assertions (else it games the gate). The on
 
 Therefore, on a tautology failure, the acceptance-gate adds a generic scalar `route_target: "design"`
 to `acceptance-gate-result.json` (verdict / disposition / rc UNCHANGED — still `fail` / `terminal` /
-rc=1, which yields the `member_terminal_failure` rc=8 the route_back guard needs). The
+rc=1, which yields the `member_terminal_failure` rc=8 **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=failed`)** the route_back guard needs). The
 gate-aggregator rolls a failed gate's `route_target` up into `verdict == route_design`, and
 `simple.yaml`'s `build_test_cycle` route_back (ADR-045) rewinds to `design_verify_cycle` (ADR-046)
 so design re-authors the assertion, reading the focused `design-feedback.md` the aggregator wrote.
@@ -388,7 +388,7 @@ orthogonal to the don't-weaken charter (which forbids relaxing a *real* requirem
 - **Build's charter is relaxed for flagged tautologies only.** A gate-flagged tautological SPEC is
   explicitly re-authorable; every other acceptance assertion remains protected by the don't-weaken rule.
 - **No gaming, by construction.** The mechanical negative-control (Level 2 above) re-runs on the next
-  iteration and rejects a still-tautological result; the cycle budget applies (`max_iterations` -> `rc=8`).
+  iteration and rejects a still-tautological result; the cycle budget applies (`max_iterations` -> `rc=8`) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=failed`)**.
 
 The generic `route_target` carrier + the `build_test_cycle` `route_back` edge are **retained but
 dormant** (no failure class currently sets `route_target`), ready for any genuinely design-rooted
@@ -399,7 +399,7 @@ class a future ADR might introduce.
 
 **Completes #1583.** #1583 stopped routing a tautology to design (removed `route_target: "design"`),
 but left its **disposition** as `terminal` — and a `terminal` disposition HALTS the `build_test_cycle`
-(`member_terminal_failure`, `rc=8`) at iteration 1, so build never re-iterates. Net effect of #1583
+(`member_terminal_failure`, `rc=8`) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=failed`)** at iteration 1, so build never re-iterates. Net effect of #1583
 alone: the failure mode changed from "deadlock via design" to "immediate terminal halt" — build still
 could not fix it. Live evidence: #1576 re-run (30088647752) — `acceptance-gate-result.json` had
 `route_target: null` (the #1583 fix working) but `disposition: terminal`, ending the cycle at iter 1/5.
@@ -474,7 +474,7 @@ named a file unrelated to this commit, which only design can correct.
 
 **Why recoverable, not terminal?** `wiring_not_on_path` is design-rooted (only the design stage can
 correct the WIRING declaration), but it must be `recoverable` for the route_back to fire: a `terminal`
-disposition halts the `build_test_cycle` with `member_terminal_failure` (rc=8) BEFORE the
+disposition halts the `build_test_cycle` with `member_terminal_failure` (rc=8) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=failed`)** BEFORE the
 gate-aggregator can read `route_target` and emit `route_design`. `recoverable` lets the aggregator
 run, read `route_target=design`, and produce `verdict=route_design` — which the cycle runner's
 `route_back` guard matches, rewinding to `design_verify_cycle`. The cycle budget (`max_iterations`)

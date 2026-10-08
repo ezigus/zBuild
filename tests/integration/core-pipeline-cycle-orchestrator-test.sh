@@ -87,21 +87,24 @@ assert_event_emitted "T1: cycle.complete emitted" "$ZBUILD_EVENTS_JSONL" "cycle.
 
 # T2: max_iterations termination — never converges, failing tests every iter.
 # #1208: early plateau/divergence terminators were removed; the cycle runs ALL
-# iterations and terminates by-severity. Failing tests at exhaustion → rc=8.
+# iterations and terminates by-severity. Failing tests at exhaustion → rc=1,
+# outcome failed (#1850, ADR-054 §4: was rc=8).
 _seed_state
 load_template "$FIXT/cycle-max-iter.yaml"
 MOCK_VERDICTS="build:pass,pass,pass;test:fail,fail,fail"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-assert_eq "T2: exhausted with failing tests → rc=8 (#1208 by-severity)" "8" "$rc"
+assert_eq "T2: exhausted with failing tests → rc=1, outcome failed (#1208 by-severity)" \
+    "1 failed" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
 
 # T3: #1208 — plateau is NO LONGER an early terminator. A flat-failing run over
 # the cycle-plateau fixture (max_iterations=6) runs to exhaustion and terminates
-# by-severity (failing tests → rc=8); NO cycle.plateau early-terminator event.
+# by-severity (failing tests → rc=1, outcome failed); NO cycle.plateau early-terminator event.
 _seed_state
 load_template "$FIXT/cycle-plateau.yaml"
 MOCK_VERDICTS="build:pass,pass,pass,pass,pass,pass;test:fail,fail,fail,fail,fail,fail"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-assert_eq "T3: no early plateau exit — exhausted with failing tests → rc=8" "8" "$rc"
+assert_eq "T3: no early plateau exit — exhausted with failing tests → rc=1, outcome failed" \
+    "1 failed" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
 if grep -q '"cycle.plateau"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null; then
     assert_fail "T3: no cycle.plateau early-terminator event (#1208)" "cycle.plateau emitted"
 else

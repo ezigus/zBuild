@@ -105,7 +105,7 @@ _reset
 export _TPL_CYCLE_STAGES_c1="iso-producer,iso-sees"
 export _TPL_CYCLE_UNTIL_STAGE_c1="iso-sees"
 _run "$(printf 'iso-producer\niso-sees\n')"
-assert_eq "[SPEC-1][change] a model-judged gate with only same-cycle inputs is refused" "2" "$RC"
+assert_eq "[SPEC-1][change] a model-judged gate with only same-cycle inputs is refused" "1" "$RC"
 assert_contains "[SPEC-1][change] and the message names the stage" "$OUT" "iso-sees"
 assert_contains "[SPEC-1][change] and says the standard is re-authored by the judged party" \
     "$OUT" "re-authored by the party it judges"
@@ -129,7 +129,7 @@ _reset
 export _TPL_CYCLE_STAGES_c1="iso-producer,iso-noinput"
 export _TPL_CYCLE_UNTIL_STAGE_c1="iso-noinput"
 _run "$(printf 'iso-producer\niso-noinput\n')"
-assert_eq "[SPEC-4][change] a model-judged gate declaring NO inputs is refused" "2" "$RC"
+assert_eq "[SPEC-4][change] a model-judged gate declaring NO inputs is refused" "1" "$RC"
 assert_contains "[SPEC-4][change] and says it showed no standard at all" "$OUT" "cannot show that the standard"
 
 # ── SPEC-5: advisory model stages are untouched (today's review-lens) ──────

@@ -3,13 +3,15 @@
 # composes additively to:
 #   1. arm the cross-subshell abort sentinel (Layer 2);
 #   2. set _RUNNER_SIGINT_RECEIVED=1 (existing #612 behavior);
-#   3. exit 130 (triggering _runner_abort_trap EXIT);
+#   3. exit 1 (triggering _runner_abort_trap EXIT) — the signal is named by the
+#      event's reason, not the exit status (#1850, ADR-054 §4: it was 130);
 #   4. the EXIT trap emits `pipeline.aborted reason=sigint` AND disarms
 #      the sentinel so the next zbuild invocation in the same state dir
 #      does not see a stale signal.
 #
 # This test simulates the kernel-pgroup SIGINT path the way #612 already
-# does: by having a mock plugin return rc=130 directly. The new
+# does: by having a mock plugin arm the sentinel and return rc=130 directly
+# (what the kernel hands back for a child killed by Ctrl-C). The new
 # assertions (vs #612's sigint-aborts-pipeline-test.sh) target Wave 15-B
 # specifics: the sentinel file lifecycle and the runner's linear-loop
 # pre-flight bail.
@@ -114,8 +116,11 @@ elapsed=$(( end_ts - start_ts ))
 
 # ─── Assertions ─────────────────────────────────────────────────────────────
 
-print_test_section "T1: runner exits rc=130 distinctly (SIGINT chain)"
-assert_eq "runner rc=130" "130" "$runner_rc"
+print_test_section "T1: runner exits 1 and names sigint (SIGINT chain)"
+# #1850: was rc=130. Every halt returns 1; the abort word rides pipeline.aborted.
+assert_eq "runner rc=1 (not 130)" "1" "$runner_rc"
+assert_eq "pipeline.aborted carries reason=sigint" "sigint" \
+    "$(jq -r 'select(.type=="pipeline.aborted") | .data.reason // empty' "$EVENTS_JSONL" 2>/dev/null | sort -u | tr -d '\n')"
 
 print_test_section "T2: pipeline halts within 6s (no further iterations)"
 # Budget matches the #612 sigint-aborts-pipeline-test baseline; with the

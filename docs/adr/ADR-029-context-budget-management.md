@@ -49,7 +49,7 @@ The orchestrator emits `cycle.context.compressed` event with `original_chars`, `
 > (`cycle.member.timeout_abandoned` / `return 4` deleted); the timed-out attempt simply
 > consumes an iteration and the cycle retries — each attempt is cheap because the build
 > self-yields on an empty diff. At exhaustion the outcome is split **by severity** (tests
-> failing → `rc=8` halt; tests passing-but-unclean → `rc=2` unconverged→review). The
+> failing → `rc=8` halt; **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=failed`)** tests passing-but-unclean → `rc=2` unconverged→review) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=unconverged`)**. The
 > per-member timeout **counter** and the `cycle.member.timeout` event are RETAINED to
 > feed **G3** (below), which is KEPT. NB: with #1208 Changes 1–2 a build timeout now
 > surfaces as `verdict=did_not_finish` (not `verdict=error reason=router_timeout`), so

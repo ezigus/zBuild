@@ -3,15 +3,21 @@
 #
 # Drives runner.sh in-process with stubs for cycle_orchestrator_run + the review plugin
 # dispatch, mimicking the subprocess boundary the runner crosses in production:
-#   - cycle returns rc∈{1,2,3} (max_iter, plateau, divergence) — non-zero but continue
+#   - cycle returns rc=1 with outcome unconverged (max_iter, plateau, divergence)
+#     — non-zero but continue
 #   - review stage runs and writes review.json (the ADR-019 fail-closed coercion path)
 #   - runner MUST set pipeline_status="failed" (NOT "complete") at the end of dispatch
-#   - new event `cycle.unconverged` MUST fire with reason matching the rc
+#   - new event `cycle.unconverged` MUST fire with reason matching the loop's reason
 #   - stage_statuses[test]="failed" MUST be set so review's coercion has unambiguous signal
 #   - pipeline.end status=failed exactly once
 #
 # Positive control: rc=0 (converged) + review approve → status=complete (only success path).
-# Halt locks: rc=4 (config_invalid), rc=5 (blocked, #528), rc=130 → status=interrupted, review SKIPPED.
+# Halt locks: outcome interrupted (config_invalid; blocked, #528) and outcome
+# aborted (abort word sigint) → status=interrupted, review SKIPPED, main returns 1.
+#
+# #1850 (ADR-054 §4): a loop returns 0 or 1 and says how it ended on
+# _CYCLE_LAST_OUTCOME (+ the abort word, ADR-025); the stub writes them as the
+# real orchestrator does. The cases used to be keyed rc 1/2/3/4/5/130.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -84,7 +90,7 @@ CFT_OVERLAY_REPO="$(setup_git_temp_repo cycle-fallthrough-overlay)"
 install_template_overlay "$CFT_OVERLAY_REPO" cycle-fallthrough-minimal
 
 _run_case() {
-    local _case_rc="$1" _case_reason="$2" _review_verdict="$3"
+    local _case_rc="$1" _case_outcome="$2" _case_reason="$3" _case_word="$4" _review_verdict="$5"
     # Hermeticity guard (#1571): the shared $TEST_TEMP_DIR is a /var/folders temp
     # that can be reaped mid-run under a saturated macOS parallel pool. Recreate
     # it right before use and fail LOUDLY if mktemp still fails, so a per-case
@@ -105,11 +111,14 @@ _run_case() {
         export ZBUILD_STATE_DIR="$_case_tmp/state"; mkdir -p "$ZBUILD_STATE_DIR"
         export ZBUILD_STATE_FILE="$ZBUILD_STATE_DIR/pipeline-state.json"
 
-        # Stub cycle orchestrator: return configured rc, set the LAST_TERMINATED_REASON
-        # the way the real orchestrator does (see core/pipeline/cycle-orchestrator.sh).
+        # Stub cycle orchestrator: return configured rc, set the outcome, the
+        # LAST_TERMINATED_REASON and (for an abort) the abort word the way the
+        # real orchestrator does (see core/pipeline/cycle-orchestrator.sh).
         eval "cycle_orchestrator_run() {
             _CYCLE_LAST_TERMINATED_REASON=\"$_case_reason\"
+            _CYCLE_LAST_OUTCOME=\"$_case_outcome\"
             _CYCLE_LAST_ITERATIONS=3
+            [[ -n \"$_case_word\" ]] && _zbuild_abort \"$_case_word\"
             return $_case_rc
         }"
         # Stub plugin resolution: every stage maps to a valid plugin dir (the dir
@@ -126,6 +135,9 @@ _run_case() {
                 *)      echo \"pass\" ;;
             esac
         }"
+        # #1850: the leaf contract check reads the reason channel too, which
+        # would report the stubbed dispatch's missing result; stub it with the verdict.
+        runner_read_stage_reason() { echo ""; }
         # Stub stage dispatch — write minimal artifacts for review, skip the rest.
         eval "plugin_hook_call() {
             local dir=\"\$1\" hook=\"\$2\" stage=\"\$3\" state=\"\$4\"
@@ -142,13 +154,17 @@ _run_case() {
         # Keep the runner's output: discarding it to /dev/null is why #1609's
         # empty-state failures carried no diagnostic signal for months.
         cd "$CFT_OVERLAY_REPO" || exit 1
-        main --issue "$_ZB_ISSUE" --template cycle-fallthrough-minimal >"$_case_tmp/runner.log" 2>&1
-        printf '%s' "$?" > "$_case_tmp/runner.rc"
+        # main turns errexit on; capture its rc without letting that end the
+        # subshell before the rc is written (a halt returns 1, #1850).
+        _mrc=0
+        main --issue "$_ZB_ISSUE" --template cycle-fallthrough-minimal >"$_case_tmp/runner.log" 2>&1 \
+            && _mrc=0 || _mrc=$?
+        printf '%s' "$_mrc" > "$_case_tmp/runner.rc"
     )
     printf '%s' "$_case_tmp"
 }
 
-# _run_case_resilient <rc> <reason> <verdict> — _run_case plus ONE bounded retry,
+# _run_case_resilient <rc> <outcome> <reason> <abort-word> <verdict> — _run_case plus ONE bounded retry,
 # taken only when the case temp dir itself has disappeared. A vanished dir is an
 # unambiguous environment reap (#1571: the shared $TEST_TEMP_DIR lives on a
 # /var/folders temp that can be reaped mid-run under a saturated macOS parallel
@@ -161,16 +177,16 @@ _run_case() {
 # fails it loudly instead. The warning is always recorded so the flake rate stays
 # measurable instead of being silently papered over.
 _run_case_resilient() {
-    local _rc="$1" _reason="$2" _verdict="$3"
+    local _rc="$1" _outcome="$2" _reason="$3" _word="$4" _verdict="$5"
     local _dir
-    _dir="$(_run_case "$_rc" "$_reason" "$_verdict")"
+    _dir="$(_run_case "$_rc" "$_outcome" "$_reason" "$_word" "$_verdict")"
     # A missing state file is NOT part of this condition: if the dir is gone the file
     # cannot exist, and if the dir is present we must not retry. `! -d` is the whole
     # discriminator — pairing it with a state check would imply two independent
     # signals where there is only one.
     if [[ ! -d "$_dir" ]]; then
         local _msg
-        _msg="WARN(#1609): case rc=${_rc} lost its temp dir mid-run (environment reap) — retried once"
+        _msg="WARN(#1609): case ${_outcome}/${_reason} lost its temp dir mid-run (environment reap) — retried once"
         printf '  %s\n' "$_msg" >&2
         # stderr alone is NOT enough to keep the flake rate measurable: run-tests.sh
         # only cat's a test file's output when the file FAILS (run-tests.sh:129/249/473),
@@ -180,13 +196,13 @@ _run_case_resilient() {
         if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
             printf -- '- %s\n' "$_msg" >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
         fi
-        _dir="$(_run_case "$_rc" "$_reason" "$_verdict")"
+        _dir="$(_run_case "$_rc" "$_outcome" "$_reason" "$_word" "$_verdict")"
     fi
     printf '%s' "$_dir"
 }
 
-# ─── Case A: rc=1 (max_iterations) — the original silent-failure bug ───────────
-A_DIR="$(_run_case_resilient 1 "max_iterations" "request_changes")"
+# ─── Case A: unconverged (max_iterations) — the original silent-failure bug ───
+A_DIR="$(_run_case_resilient 1 unconverged "max_iterations" "" "request_changes")"
 A_STATE="$A_DIR/state/pipeline-state.json"
 A_EVENTS="$A_DIR/events/events.jsonl"
 if _require_state "A" "$A_DIR"; then
@@ -215,12 +231,12 @@ if _require_state "A" "$A_DIR"; then
     fi
 fi
 
-# ─── Case B: rc=2 (plateau) — same shape, different reason ─────────────────────
-B_DIR="$(_run_case_resilient 2 "plateau" "request_changes")"
+# ─── Case B: unconverged (plateau) — same shape, different reason ─────────────
+B_DIR="$(_run_case_resilient 1 unconverged "plateau" "" "request_changes")"
 B_STATE="$B_DIR/state/pipeline-state.json"
 B_EVENTS="$B_DIR/events/events.jsonl"
 if _require_state "B" "$B_DIR"; then
-    assert_eq "B: rc=2 plateau → pipeline_status=failed" \
+    assert_eq "B: unconverged/plateau → pipeline_status=failed" \
         "failed" "$(jq -r '.status' "$B_STATE" 2>/dev/null)"
     if grep -q '"reason":"plateau"' "$B_EVENTS" 2>/dev/null; then
         assert_pass "B: cycle.unconverged reason=plateau"
@@ -229,12 +245,12 @@ if _require_state "B" "$B_DIR"; then
     fi
 fi
 
-# ─── Case C: rc=3 (divergence) — same shape ────────────────────────────────────
-C_DIR="$(_run_case_resilient 3 "divergence" "request_changes")"
+# ─── Case C: unconverged (divergence) — same shape ────────────────────────────
+C_DIR="$(_run_case_resilient 1 unconverged "divergence" "" "request_changes")"
 C_STATE="$C_DIR/state/pipeline-state.json"
 C_EVENTS="$C_DIR/events/events.jsonl"
 if _require_state "C" "$C_DIR"; then
-    assert_eq "C: rc=3 divergence → pipeline_status=failed" \
+    assert_eq "C: unconverged/divergence → pipeline_status=failed" \
         "failed" "$(jq -r '.status' "$C_STATE" 2>/dev/null)"
     if grep -q '"reason":"divergence"' "$C_EVENTS" 2>/dev/null; then
         assert_pass "C: cycle.unconverged reason=divergence"
@@ -244,7 +260,7 @@ if _require_state "C" "$C_DIR"; then
 fi
 
 # ─── Case D: positive control — rc=0 converged + review approve → status=complete ─
-D_DIR="$(_run_case_resilient 0 "converged" "approve")"
+D_DIR="$(_run_case_resilient 0 converged "converged" "" "approve")"
 D_STATE="$D_DIR/state/pipeline-state.json"
 D_EVENTS="$D_DIR/events/events.jsonl"
 if _require_state "D" "$D_DIR"; then
@@ -255,32 +271,41 @@ if _require_state "D" "$D_DIR"; then
     assert_eq "D: cycle.unconverged NOT emitted on converged path" "0" "$D_UNCONV"
 fi
 
-# ─── Case E: rc=4 (config_invalid) — halt, review SKIPPED, status=interrupted ─
-E_DIR="$(_run_case_resilient 4 "config_invalid" "approve")"
+# ─── Case E: interrupted (config_invalid) — halt, review SKIPPED, status=interrupted
+E_DIR="$(_run_case_resilient 1 interrupted "config_invalid" "" "approve")"
 E_STATE="$E_DIR/state/pipeline-state.json"
 if _require_state "E" "$E_DIR"; then
-    assert_eq "E: rc=4 config_invalid → status=interrupted" \
+    assert_eq "E: interrupted/config_invalid → status=interrupted" \
         "interrupted" "$(jq -r '.status' "$E_STATE" 2>/dev/null)"
     assert_eq "E: review SKIPPED on halt path" \
         "null" "$(jq -r '.stage_statuses.review // "null"' "$E_STATE" 2>/dev/null)"
+    assert_eq "E: main returns 1 on the halt (#1850: never a reason code)" \
+        "1" "$(cat "$E_DIR/runner.rc" 2>/dev/null)"
 fi
 
-# ─── Case F: rc=5 (blocked, #528) — halt, review SKIPPED, status=interrupted ───
-F_DIR="$(_run_case_resilient 5 "blocked" "approve")"
+# ─── Case F: interrupted (blocked, #528) — halt, review SKIPPED, status=interrupted
+F_DIR="$(_run_case_resilient 1 interrupted "blocked" "" "approve")"
 F_STATE="$F_DIR/state/pipeline-state.json"
 if _require_state "F" "$F_DIR"; then
-    assert_eq "F: rc=5 blocked (#528) → status=interrupted" \
+    assert_eq "F: interrupted/blocked (#528) → status=interrupted" \
         "interrupted" "$(jq -r '.status' "$F_STATE" 2>/dev/null)"
-    assert_eq "F: review SKIPPED on rc=5 halt path" \
+    assert_eq "F: review SKIPPED on the blocked halt path" \
         "null" "$(jq -r '.stage_statuses.review // "null"' "$F_STATE" 2>/dev/null)"
+    assert_eq "F: main returns 1 on the halt (#1850: never a reason code)" \
+        "1" "$(cat "$F_DIR/runner.rc" 2>/dev/null)"
 fi
 
-# ─── Case G: rc=130 (aborted) — halt, review SKIPPED ───────────────────────────
-G_DIR="$(_run_case_resilient 130 "aborted" "approve")"
+# ─── Case G: aborted (abort word sigint) — halt, review SKIPPED ───────────────
+# #1850: was rc=130. The loop returns 1, ends aborted, and the word sigint is
+# recorded; the runner names it on pipeline.aborted and returns 1.
+G_DIR="$(_run_case_resilient 1 aborted "aborted" sigint "approve")"
 G_STATE="$G_DIR/state/pipeline-state.json"
 if _require_state "G" "$G_DIR"; then
-    assert_eq "G: rc=130 aborted → status=interrupted" \
+    assert_eq "G: aborted (sigint) → status=interrupted" \
         "interrupted" "$(jq -r '.status' "$G_STATE" 2>/dev/null)"
+    assert_eq "G: main returns 1, not 130" "1" "$(cat "$G_DIR/runner.rc" 2>/dev/null)"
+    assert_eq "G: pipeline.aborted names the abort word sigint" "sigint" \
+        "$(jq -r 'select(.type=="pipeline.aborted") | .data.reason // empty' "$G_DIR/events/events.jsonl" 2>/dev/null | sort -u | tr -d '\n')"
 fi
 
 print_test_results

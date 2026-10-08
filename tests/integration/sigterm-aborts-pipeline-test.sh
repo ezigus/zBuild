@@ -3,7 +3,8 @@
 # SIGINT. Sending kill -TERM to the runner mid-build:
 #   - causes the runner's INT/TERM trap to fire on TERM,
 #   - records _RUNNER_ABORT_REASON=sigterm,
-#   - exits 143 (128+SIGTERM),
+#   - exits 1 (#1850, ADR-054 §4: the signal is named by the event's reason
+#     word, not the exit status — it was 143),
 #   - the EXIT trap emits `pipeline.aborted reason=sigterm status=interrupted`,
 #   - subsequent stages (test, review, ...) never run.
 #
@@ -12,7 +13,7 @@
 # delivery: backgrounded runner + `kill -TERM <runner_pid>`.
 #
 # Assertions:
-#   - Runner exits 143 distinctly (not 0, not 1, not 130).
+#   - Runner exits 1 (not 0, not 143), and pipeline.aborted says sigterm (not sigint).
 #   - Wall-clock ≤ 5s (signal handler exits promptly).
 #   - `test` stage never runs (sentinel file absent).
 #   - pipeline-state.json status=interrupted.
@@ -181,16 +182,17 @@ printf '%s' "$runner_rc" > "$RC_FILE"
 
 assert_pass "runner exited (rc=$runner_rc)"
 
-# (1) Runner must exit 143 (128 + SIGTERM) — the distinctive parity rc.
-if [[ "$runner_rc" == "143" ]]; then
-    assert_pass "runner exits 143 distinctly on SIGTERM"
+# (1) Runner exits 1 — every halt does (#1850). What made 143 distinctive, the
+#     parity with SIGINT, is now carried by the reason word in (5).
+if [[ "$runner_rc" == "1" ]]; then
+    assert_pass "runner exits 1 on SIGTERM (not 143)"
 else
-    assert_fail "runner exits 143 distinctly on SIGTERM" \
+    assert_fail "runner exits 1 on SIGTERM (not 143)" \
         "got rc=$runner_rc. Stderr tail: $(tail -c 600 "$TEST_TEMP_DIR/runner.stderr" 2>/dev/null)"
 fi
 
 # (2) Wall-clock budget: hang-backstop only (#1059). The trap-fired proof is the
-#     rc=143 + TEST_RAN-absence + single pipeline.aborted assertions; this generous
+#     TEST_RAN-absence + pipeline.aborted reason=sigterm assertions; this generous
 #     bound just catches a true hang (was a tight ≤9s that flaked on macOS).
 if [[ "$elapsed" -le 60 ]]; then
     assert_pass "pipeline halted in ≤60s (actual=${elapsed}s)"
@@ -217,12 +219,13 @@ fi
 
 # (5) pipeline.aborted event with reason=sigterm emitted.
 if [[ -f "$EVENTS_JSONL" ]]; then
-    _aborted_lines="$(grep '"type":"pipeline.aborted"' "$EVENTS_JSONL" || true)"
-    if grep -q 'sigterm' <<< "$_aborted_lines"; then
+    # .data.reason exactly — the word is now the only record of which signal.
+    _aborted_reason="$(jq -r 'select(.type=="pipeline.aborted") | .data.reason // empty' "$EVENTS_JSONL" 2>/dev/null | sort -u | tr -d '\n')"
+    if [[ "$_aborted_reason" == "sigterm" ]]; then
         assert_pass "pipeline.aborted event emitted with reason=sigterm"
     else
         assert_fail "pipeline.aborted event emitted with reason=sigterm" \
-            "events tail: $(tail -c 800 "$EVENTS_JSONL" 2>/dev/null)"
+            "reason='$_aborted_reason'; events tail: $(tail -c 800 "$EVENTS_JSONL" 2>/dev/null)"
     fi
 else
     assert_fail "events.jsonl exists" "missing: $EVENTS_JSONL"

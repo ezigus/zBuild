@@ -139,12 +139,11 @@ printf '%s' "$elapsed" > "$ELAPSED_FILE"
 # (0) Runner finished — captured rc.
 assert_pass "runner exited (rc=$runner_rc)"
 
-# Codex P2 on #616: runner must distinguish SIGINT (rc=130) from generic failure (rc=1)
-if [[ "$runner_rc" -eq 130 ]]; then
-    assert_pass "runner exits 130 distinctly on SIGINT (not generic rc=1)"
-else
-    assert_fail "runner exits 130 distinctly on SIGINT" "got rc=$runner_rc"
-fi
+# Codex P2 on #616: the runner must tell SIGINT apart from a generic failure.
+# #1850 (ADR-054 §4): it no longer does that with its exit status (was 130) —
+# every halt exits 1 and the word on pipeline.aborted says why. So: exit 1,
+# and the abort is named sigint (checked exactly in (4) below).
+assert_eq "runner exits 1 on SIGINT (not 130 — the reason is the event's word)" "1" "$runner_rc"
 
 # (1) Wall-clock budget: hang-backstop only (#1059). The real abort proof is the
 #     call-count + single pipeline.aborted assertions below; this generous bound
@@ -176,12 +175,13 @@ fi
 
 # (4) pipeline.aborted event with reason=sigint emitted.
 if [[ -f "$EVENTS_JSONL" ]]; then
-    _aborted_lines="$(grep '"type":"pipeline.aborted"' "$EVENTS_JSONL" || true)"
-    if grep -q 'sigint' <<< "$_aborted_lines"; then
+    # .data.reason exactly — the word is now the only record of the signal.
+    _aborted_reason="$(jq -r 'select(.type=="pipeline.aborted") | .data.reason // empty' "$EVENTS_JSONL" 2>/dev/null | sort -u | tr -d '\n')"
+    if [[ "$_aborted_reason" == "sigint" ]]; then
         assert_pass "pipeline.aborted event emitted with reason=sigint"
     else
         assert_fail "pipeline.aborted event emitted with reason=sigint" \
-            "events tail: $(tail -c 800 "$EVENTS_JSONL" 2>/dev/null)"
+            "reason='$_aborted_reason'; events tail: $(tail -c 800 "$EVENTS_JSONL" 2>/dev/null)"
     fi
 else
     assert_fail "events.jsonl exists" "missing: $EVENTS_JSONL"

@@ -105,12 +105,13 @@ cat > "$STATE_FILE" <<EOF
 }
 EOF
 
-# ─── Test 1: ZBUILD_STATE_FILE points at issue 100 + --issue 200 → exits 2 ─
+# ─── Test 1: ZBUILD_STATE_FILE points at issue 100 + --issue 200 → exits 1 ─
+# #1850 (ADR-054 §4): a refusal exits 1 (it was 2); the message says why.
 set +e
 ZBUILD_STATE_FILE="$STATE_FILE" bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID1" --resume 2>"$TEST_TEMP_DIR/stderr1"
 rc=$?
 set -e
-assert_eq "mismatch (state=$_ZB_ID2, --issue=$_ZB_ID1) exits non-zero" "2" "$rc"
+assert_eq "mismatch (state=$_ZB_ID2, --issue=$_ZB_ID1) exits non-zero (1)" "1" "$rc"
 if grep -q "mismatch\|aborting" "$TEST_TEMP_DIR/stderr1"; then
     assert_pass "mismatch error message is clear"
 else
@@ -185,7 +186,7 @@ ZBUILD_STATE_FILE="$CORRUPT_STATE_FILE" \
     bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID3" --dry-run >/dev/null 2>"$TEST_TEMP_DIR/stderr6"
 rc=$?
 set -e
-assert_eq "corrupt state file + --issue → exits 2 (fail-closed)" "2" "$rc"
+assert_eq "corrupt state file + --issue → exits 1 (fail-closed; was 2 before #1850)" "1" "$rc"
 if grep -q "not valid JSON" "$TEST_TEMP_DIR/stderr6"; then
     assert_pass "corrupt-JSON error message is clear"
 else

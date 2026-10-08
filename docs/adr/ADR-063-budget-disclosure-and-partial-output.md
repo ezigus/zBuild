@@ -174,14 +174,14 @@ Two halves, and neither is optional:
   model call fails for a reason other than time, turns or a signal, the stage
   reports `unavailable`. The engine's response to that word is
   `halt_unavailable` (ADR-054 §6, enforced since #2111): the run stops there,
-  marked aborted and resumable, and the runner exits 9. So a cycle never gets
+  marked aborted and resumable, and the runner exits 9. **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + abort word `llm_unavailable` / `llm_rate_limited`)** So a cycle never gets
   as far as checking convergence on that call's verdict, even when part of the
   reply still read as a pass. The unfinished words are the ones the cycle
   retries; `unavailable` is not retried, so `disposition_unfinished` does not
   list it. Enforced by `tests/unit/disposition-vocabulary-test.sh` (`[ADR-063
   §4]` assertions: `unavailable` is not unfinished, and its response is
   `halt_unavailable`) and `tests/integration/cycle-gate-unavailable-aborts-run-test.sh`
-  (a gate reporting a passing verdict with `unavailable` ends the run with rc 9
+  (a gate reporting a passing verdict with `unavailable` ends the run with rc 9 **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + abort word `llm_unavailable`)**
   before gate-aggregator runs).
 - **One stage, several model calls: the first failure is reported.** A stage
   that makes more than one call (spec-correspondence: one batch call, then one

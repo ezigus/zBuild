@@ -7,8 +7,9 @@
 # a single parameterised assertion would report "one of five" and leave the
 # operator to find which.
 #
-# Paths covered: rc=0, rc=1, rc=130 (SIGINT), SIGTERM to the runner, and a
-# release hook that hangs past its own timeout_s.
+# Paths covered: rc=0, rc=1, a stage killed by SIGINT (rc=130 + the recorded
+# abort word), SIGTERM to the runner, and a release hook that hangs past its
+# own timeout_s.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -77,11 +78,17 @@ PLUG
 # `runner-release-exit-paths-test.sh` already does this correctly with
 # BUILD_STARTED; this is the same idea. The marker can only appear once the stage
 # is genuinely executing, so load can only delay it, never fake it.
+# #1850: the stage writes the v2 result its manifest (mock_plugin_factory's)
+# promises — pass on rc 0, error/broken otherwise — so a run that should succeed
+# is not failed for leaving no readable result.
 _arm_outcome() {
+    local _v=pass _d=complete
+    [[ "${2:-0}" -ne 0 ]] && { _v=error; _d=broken; }
     cat > "$PLUGINS_ROOT/agent/outcome/plugin.sh" <<PLUG
 outcome_run() {
     : > "\${STAGE_STARTED:-/dev/null}"
     ${1:-:}
+    $(mock_v2_result_line outcome "$_v" "$_d")
     return ${2:-0}
 }
 PLUG
@@ -116,14 +123,23 @@ _arm_release; _arm_outcome "" 1
 _run_case "rc1" skip
 assert_file_exists "[SPEC-2] release ran on a non-zero stage rc" "$RELEASE_MARKER"
 
-# ─── [SPEC-3][change] rc=130 — the SIGINT path ─────────────────────────────
-print_test_section "[SPEC-3][change] release runs on the SIGINT path (rc=130)"
-_arm_release; _arm_outcome "" 130
+# ─── [SPEC-3][change] the SIGINT path ─────────────────────────────────────
+# #1850 (ADR-054 §4, ADR-025): the SIGINT path is the recorded abort word, not
+# rc=130 — a bare 130 from a stage is just a failed stage now. So the stage
+# does what a Ctrl-C does to the process group: the sentinel is armed (empty =
+# sigint) and the child dies with 130. The run must end on the abort path —
+# exit 1, status interrupted — or this case would only repeat SPEC-2.
+print_test_section "[SPEC-3][change] release runs on the SIGINT path (abort word sigint)"
+_arm_release
+# shellcheck disable=SC2016  # expanded by the stage at run time, not here
+_arm_outcome ': > "$ZBUILD_STATE_DIR/.abort.signal"' 130
 _run_case "rc130" skip
-assert_file_exists "[SPEC-3] release ran on rc=130" "$RELEASE_MARKER"
+assert_file_exists "[SPEC-3] release ran on the SIGINT path" "$RELEASE_MARKER"
+assert_eq "[SPEC-3] the run took the abort path: exit 1 (not 130), status interrupted" \
+    "1 interrupted" "$_CASE_RC $(jq -r '.status // "MISSING"' "$TEST_TEMP_DIR/state-rc130/pipeline-state.json" 2>/dev/null)"
 
 # ─── [SPEC-4][change] SIGTERM delivered to the runner itself ───────────────
-# Distinct from rc=130: there the stage returned a code, here the signal is
+# Distinct from SPEC-3: there the stage returned a code, here the signal is
 # delivered to the runner process while a stage is still executing. #1759's
 # re-armed INT/TERM traps are what give this path somewhere to hang off.
 print_test_section "[SPEC-4][change] release runs when the runner is SIGTERMed mid-stage"

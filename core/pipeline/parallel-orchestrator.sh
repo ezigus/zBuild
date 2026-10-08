@@ -7,12 +7,12 @@
 #
 # Public surface:
 #   parallel_group_run <group_id> <state_dir> <state_file>
-#     rc: 0   = all members succeeded, OR on_member_error=continue (member
-#               failures are advisory and do not fail the group)
-#         1   = one+ member failed AND on_member_error=collect (failures
-#               collected → the group fails)
-#         4   = config error (no members / no dispatch hook / bad args)
-#         130 = aborted (SIGINT/SIGTERM observed mid-run)
+#     rc: 0 = all members succeeded, OR on_member_error=continue (member
+#             failures are advisory and do not fail the group)
+#         1 = one+ member failed AND on_member_error=collect, the group could
+#             not run (no members / no dispatch hook / bad args), or a signal
+#             arrived mid-run — then the abort word is recorded (ADR-025) and
+#             is what says so, not the rc (#1850, ADR-054 §4)
 #     Sets globals:
 #       _PARALLEL_LAST_VERDICTS_BLOB  JSON {"<member>":{"verdict":..,"status":..}}
 #       _PARALLEL_LAST_FAILURE_COUNT  int (members with rc!=0)
@@ -38,6 +38,8 @@ source "$_PARALLEL_ORCH_ROOT/core/pipeline/template.sh"
 # Parent-serial state writes use _update_stage_status / _zbuild_state_set_stage_verdict.
 # shellcheck source=./state_helpers.sh
 source "$_PARALLEL_ORCH_ROOT/core/pipeline/state_helpers.sh"
+# shellcheck source=../../scripts/lib/abort-propagation.sh
+source "$_PARALLEL_ORCH_ROOT/scripts/lib/abort-propagation.sh"
 
 # ─── Constants ───────────────────────────────────────────────────────────────
 # Hard cap mirrors scripts/run-mutation.sh::_zb_default_jobs — a many-core host
@@ -96,7 +98,8 @@ _parallel_emit() {
 # Mirror cycle-orchestrator's split: the group owns ONLY INT/TERM; the runner
 # owns EXIT. The drain loop waits on every member before returning, so the sole
 # orphan risk is a signal mid-wait — covered here. On signal: kill in-flight
-# members (incl. their plugin/LLM subprocesses), clear traps, return 130.
+# members (incl. their plugin/LLM subprocesses), record the abort word, clear
+# traps. The drain loop then sees the recorded abort and the group returns 1.
 _parallel_install_traps() {
     trap '_parallel_on_signal SIGINT' INT
     trap '_parallel_on_signal SIGTERM' TERM
@@ -121,12 +124,13 @@ _parallel_kill_inflight() {
     done
 }
 _parallel_on_signal() {
-    local sig="$1"
+    local sig="$1" word="sigint"
+    [[ "$sig" == "SIGTERM" ]] && word="sigterm"
+    _zbuild_arm_abort_sentinel "$word"
     _parallel_emit "parallel.group.complete" "status=aborted" "signal=$sig"
     _parallel_kill_inflight
     _parallel_clear_traps
     _PARALLEL_PIDS=()
-    return 130
 }
 
 # ─── _parallel_run_member <member> <state_dir> <state_file> <slot> ────────────
@@ -186,7 +190,7 @@ parallel_group_run() {
     local group_id="$1" state_dir="$2" state_file="$3"
     if [[ -z "$group_id" || -z "$state_dir" || -z "$state_file" ]]; then
         error "parallel_group_run: group_id, state_dir, state_file required"
-        return 4
+        return 1
     fi
     local safe="${group_id//-/_}"
 
@@ -197,7 +201,7 @@ parallel_group_run() {
     if ! declare -F parallel_dispatch_stage >/dev/null 2>&1; then
         error "parallel_orchestrator: no parallel_dispatch_stage hook registered (runner wires this)"
         _parallel_emit "parallel.group.complete" "status=error" "reason=no_dispatch_hook"
-        return 4
+        return 1
     fi
 
     local flow_var="_TPL_PARALLEL_FLOW_${safe}"
@@ -205,7 +209,7 @@ parallel_group_run() {
     if [[ -z "$flow_csv" ]]; then
         error "parallel group '$group_id': no members declared"
         _parallel_emit "parallel.group.complete" "status=error" "reason=no_members"
-        return 4
+        return 1
     fi
     local IFS_save="$IFS"; IFS=','
     # shellcheck disable=SC2206
@@ -263,6 +267,12 @@ parallel_group_run() {
         export ZBUILD_CURRENT_STAGE="$_prior_stage"
     else
         unset ZBUILD_CURRENT_STAGE
+    fi
+    # A signal mid-run: the members were killed and the group-complete event is
+    # out; there is nothing to aggregate.
+    if ! _zbuild_check_abort; then
+        _PARALLEL_TRAP_GROUP_ID=""
+        return 1
     fi
 
     # ── Aggregate AFTER join, in member-DECLARATION order (deterministic). The

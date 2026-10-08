@@ -904,7 +904,7 @@ alternative hooks (or none) without changing orchestrator code.
 **Emission ordering** (silent-failure mitigation): for each terminal event,
 the durable event (`cycle.iteration.complete`, `cycle.complete`) is emitted
 FIRST and the operator banner SECOND, mirroring v4's stage-start contract.
-All terminal-rc paths fan in through `_cycle_handle_terminal_rc`, which
+All terminal-rc paths fan in through `_cycle_handle_terminal_rc` **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now `_cycle_handle_terminal <cycle_id>`, reading `_CYCLE_LAST_TERMINATED_REASON`)**, which
 emits `cycle.complete` then invokes `cycle_exit_hook` once per cycle run
 (idempotent via `_CYCLE_EXIT_BANNER_EMITTED`).
 
@@ -1074,7 +1074,7 @@ previously only plugin subshells sourced stage-io. The finalizer still emits
 the `stage.io.error reason=output_never_emitted` diagnostic event for every
 kind, but it is **kind-aware for the file write**: `kind=cycle` is skipped, so
 an orphaned cycle INPUT begin (e.g. the cycle aborted between the INPUT begin
-and the OUTPUT end via a blocking-member `rc=8` or SIGINT `rc=130`) never
+and the OUTPUT end via a blocking-member `rc=8` or SIGINT `rc=130`) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=failed` / `aborted` with abort word `sigint`)** never
 produces a `<cycle_id>-<seq>.partial.json` artifact. This preserves the
 kind=cycle "fd-2 only, NEVER file" invariant on abnormal exit, not just the
 happy path.

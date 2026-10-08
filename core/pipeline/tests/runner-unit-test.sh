@@ -74,11 +74,12 @@ _run_runner_rc_env() {
     echo "$rc"
 }
 
-# ─── Section 1: missing required argument → exit 2 ───────────────────────────
-print_test_section "Section 1: missing --issue and --goal → exit 2"
+# #1850 (ADR-054 §4): a usage error exits 1 (it was 2); the message says what.
+# ─── Section 1: missing required argument → exit 1 ───────────────────────────
+print_test_section "Section 1: missing --issue and --goal → exit 1"
 
 rc="$(_run_runner_rc)"
-assert_eq "no args → exit 2" "2" "$rc"
+assert_eq "no args → exit 1" "1" "$rc"
 
 # ─── Section 2: --help exits 0 ───────────────────────────────────────────────
 print_test_section "Section 2: --help → exit 0"
@@ -90,41 +91,41 @@ assert_eq "--help → exit 0" "0" "$rc"
 rc="$(_run_runner_rc -h)"
 assert_eq "-h → exit 0" "0" "$rc"
 
-# ─── Section 4: unknown argument → exit 2 ────────────────────────────────────
-print_test_section "Section 4: unknown argument → exit 2"
+# ─── Section 4: unknown argument → exit 1 ────────────────────────────────────
+print_test_section "Section 4: unknown argument → exit 1"
 
 rc="$(_run_runner_rc --bogus-flag)"
-assert_eq "unknown arg → exit 2" "2" "$rc"
+assert_eq "unknown arg → exit 1" "1" "$rc"
 
-# ─── Section 5: --issue missing value → exit 2 ───────────────────────────────
-print_test_section "Section 5: --issue with no value → exit 2"
+# ─── Section 5: --issue missing value → exit 1 ───────────────────────────────
+print_test_section "Section 5: --issue with no value → exit 1"
 
 rc="$(_run_runner_rc --issue)"
-assert_eq "--issue with no value → exit 2" "2" "$rc"
+assert_eq "--issue with no value → exit 1" "1" "$rc"
 
-# ─── Section 6: --goal missing value → exit 2 ────────────────────────────────
-print_test_section "Section 6: --goal with no value → exit 2"
+# ─── Section 6: --goal missing value → exit 1 ────────────────────────────────
+print_test_section "Section 6: --goal with no value → exit 1"
 
 rc="$(_run_runner_rc --goal)"
-assert_eq "--goal with no value → exit 2" "2" "$rc"
+assert_eq "--goal with no value → exit 1" "1" "$rc"
 
-# ─── Section 7: --template missing value → exit 2 ────────────────────────────
-print_test_section "Section 7: --template with no value → exit 2"
+# ─── Section 7: --template missing value → exit 1 ────────────────────────────
+print_test_section "Section 7: --template with no value → exit 1"
 
 rc="$(_run_runner_rc --template)"
-assert_eq "--template with no value → exit 2" "2" "$rc"
+assert_eq "--template with no value → exit 1" "1" "$rc"
 
-# ─── Section 8: --from-stage without --resume → exit 2 ──────────────────────
-print_test_section "Section 8: --from-stage without --resume → exit 2"
+# ─── Section 8: --from-stage without --resume → exit 1 ──────────────────────
+print_test_section "Section 8: --from-stage without --resume → exit 1"
 
 rc="$(_run_runner_rc --issue "$_ZB_ID1" --from-stage intake)"
-assert_eq "--from-stage without --resume → exit 2" "2" "$rc"
+assert_eq "--from-stage without --resume → exit 1" "1" "$rc"
 
-# ─── Section 9: --from-stage with no value → exit 2 ─────────────────────────
-print_test_section "Section 9: --from-stage with no value → exit 2"
+# ─── Section 9: --from-stage with no value → exit 1 ─────────────────────────
+print_test_section "Section 9: --from-stage with no value → exit 1"
 
 rc="$(_run_runner_rc --issue "$_ZB_ID1" --resume --from-stage)"
-assert_eq "--from-stage with no value → exit 2" "2" "$rc"
+assert_eq "--from-stage with no value → exit 1" "1" "$rc"
 
 # ─── Section 10: --resume with no existing state file → exit 1 ───────────────
 print_test_section "Section 10: --resume with no state file → exit 1"
@@ -142,8 +143,8 @@ rc="$(_run_runner_rc_in_overlay --template runner-state-dir-minimal --issue "$_Z
 assert_eq "--dry-run → exit 0" "0" "$rc"
 assert_contains "--dry-run output mentions 'dry-run'" "$out" "dry-run"
 
-# ─── Section 12: ZBUILD_STATE_FILE issue mismatch → exit 2 ───────────────────
-print_test_section "Section 12: ZBUILD_STATE_FILE with wrong issue → exit 2"
+# ─── Section 12: ZBUILD_STATE_FILE issue mismatch → exit 1 ───────────────────
+print_test_section "Section 12: ZBUILD_STATE_FILE with wrong issue → exit 1"
 
 MISMATCH_STATE="$TEST_TEMP_DIR/state/mismatch-state.json"
 # issue:7 is deliberately NOT the id the run is started with — this fixture
@@ -156,15 +157,17 @@ jq -n '{schema_version:1,run_id:"r1",issue:7,stage_statuses:{},
          updated_at:"2026-01-01T00:00:00Z"}' > "$MISMATCH_STATE"
 
 rc="$(_run_runner_rc_env "ZBUILD_STATE_FILE=$MISMATCH_STATE" --issue "$_ZB_ID1")"
-assert_eq "ZBUILD_STATE_FILE issue mismatch → exit 2" "2" "$rc"
+assert_eq "ZBUILD_STATE_FILE issue mismatch → exit 1" "1" "$rc"
+_mm_out="$(env "ZBUILD_STATE_FILE=$MISMATCH_STATE" bash "$REPO_ROOT/core/pipeline/runner.sh" --issue "$_ZB_ID1" 2>&1)" || true
+assert_contains "ZBUILD_STATE_FILE issue mismatch → says so" "$_mm_out" "(mismatch)"
 
-# ─── Section 13: ZBUILD_STATE_FILE with corrupt JSON → exit 2 ────────────────
-print_test_section "Section 13: ZBUILD_STATE_FILE with corrupt JSON → exit 2"
+# ─── Section 13: ZBUILD_STATE_FILE with corrupt JSON → exit 1 ────────────────
+print_test_section "Section 13: ZBUILD_STATE_FILE with corrupt JSON → exit 1"
 
 CORRUPT_STATE="$TEST_TEMP_DIR/state/corrupt-state.json"
 printf 'not valid json {{{\n' > "$CORRUPT_STATE"
 rc="$(_run_runner_rc_env "ZBUILD_STATE_FILE=$CORRUPT_STATE" --issue "$_ZB_ID1")"
-assert_eq "ZBUILD_STATE_FILE corrupt JSON → exit 2" "2" "$rc"
+assert_eq "ZBUILD_STATE_FILE corrupt JSON → exit 1" "1" "$rc"
 
 # ─── Section 14: ZBUILD_STATE_FILE matching issue passes the cross-check ──────
 print_test_section "Section 14: ZBUILD_STATE_FILE with matching issue passes cross-check"
@@ -177,18 +180,13 @@ jq -n --argjson issue "$_ZB_ID1" '{schema_version:1,run_id:"r2",issue:$issue,sta
          status:"in_progress",
          updated_at:"2026-01-01T00:00:00Z"}' > "$MATCH_STATE"
 
-# The cross-check only fires; the run still fails downstream (no plugin). rc != 2.
-rc="$(_run_runner_rc_env "ZBUILD_STATE_FILE=$MATCH_STATE" --issue "$_ZB_ID1")"
-# Should NOT be rc=2 (the mismatch sentinel); the cross-check passes.
-if [[ "$rc" != "2" ]]; then
-    assert_pass "ZBUILD_STATE_FILE matching issue does not hit mismatch guard (rc=$rc)"
+# The cross-check only fires; the run still fails downstream (no plugin). Since
+# #1850 every failure is rc 1, so the guard is told apart by what it prints.
+out_check="$(env "ZBUILD_STATE_FILE=$MATCH_STATE" bash "$REPO_ROOT/core/pipeline/runner.sh" --issue "$_ZB_ID1" 2>&1)" || true
+if grep -q "(mismatch)" <<< "$out_check"; then
+    assert_fail "ZBUILD_STATE_FILE matching issue should not trigger mismatch guard"
 else
-    out_check="$(env "ZBUILD_STATE_FILE=$MATCH_STATE" bash "$REPO_ROOT/core/pipeline/runner.sh" --issue "$_ZB_ID1" 2>&1)" || true
-    if grep -q "mismatch" <<< "$out_check"; then
-        assert_fail "ZBUILD_STATE_FILE matching issue should not trigger mismatch guard"
-    else
-        assert_pass "ZBUILD_STATE_FILE matching issue does not trigger mismatch guard"
-    fi
+    assert_pass "ZBUILD_STATE_FILE matching issue does not trigger mismatch guard"
 fi
 
 cleanup_test_env

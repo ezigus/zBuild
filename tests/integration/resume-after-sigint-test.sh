@@ -16,13 +16,14 @@
 #      T5), but kill -9 / host crash / any path skipping the EXIT trap can
 #      leave a stale sentinel. Without the defensive disarm at resume
 #      entry, the first pre-flight in the dispatch loop would observe the
-#      stale sentinel and re-abort the resumed run with rc=130. This test
+#      stale sentinel and re-abort the resumed run (as sigint). This test
 #      simulates that hard-kill case by pre-arming the sentinel between
 #      the abort and the resume.
 #
 # The test drives:
 #   Phase 1 — fresh run with intake=success, build returns rc=130
-#             → runner exits 130, state=interrupted, stage[intake]=complete,
+#             → runner exits 1 with pipeline.aborted reason=sigint (#1850,
+#               ADR-054 §4: it used to exit 130), state=interrupted, stage[intake]=complete,
 #               stage[build]=failed-or-in_progress
 #   Phase 2 — leave (or pre-arm) the sentinel file, then --resume the run
 #             with build now succeeding, plus a marker test stage
@@ -104,7 +105,7 @@ mock_plugin_factory "test"   "tool"  0 >/dev/null
 
 # ── Phase 1 ────────────────────────────────────────────────────────────────
 # build_run arms the sentinel (mimicking the runner SIGINT trap firing in a
-# sibling subshell) AND returns 130. The runner's rc=130 path → exit 130 →
+# sibling subshell) AND returns 130. The runner sees the recorded abort → exit 1 →
 # _runner_abort_trap EXIT, which writes status=interrupted and disarms the
 # sentinel. So after Phase 1 the sentinel is gone (matches full-pipeline-
 # sigint-test.sh T5). We re-arm it explicitly below for Phase 2 to simulate
@@ -121,6 +122,7 @@ TEST_MARKER="$TEST_TEMP_DIR/test-stage-ran-marker"
 cat > "$PLUGINS_ROOT/tool/test/plugin.sh" <<PLUG
 test_run() {
     : > "${TEST_MARKER}"
+    $(mock_v2_result_line test)
     return 0
 }
 PLUG
@@ -134,8 +136,11 @@ set -e
 
 state_file="$STATE_DIR/pipeline-state.json"
 
-print_test_section "P1.T1: phase 1 runner exits rc=130 (SIGINT chain halted)"
-assert_eq "phase1 rc=130" "130" "$phase1_rc"
+print_test_section "P1.T1: phase 1 runner exits 1 and names sigint (SIGINT chain halted)"
+assert_eq "phase1 rc=1 (not 130)" "1" "$phase1_rc"
+# Read before phase 2 appends to the same event log.
+assert_eq "phase1 pipeline.aborted carries reason=sigint" "sigint" \
+    "$(jq -r 'select(.type=="pipeline.aborted") | .data.reason // empty' "$EVENTS_JSONL" 2>/dev/null | sort -u | tr -d '\n')"
 
 print_test_section "P1.T2: pipeline-state.json exists and status=interrupted (ADR-006)"
 if [[ ! -f "$state_file" ]]; then
@@ -188,6 +193,7 @@ INTAKE_RESUME_MARKER="$TEST_TEMP_DIR/intake-ran-on-resume"
 cat > "$PLUGINS_ROOT/agent/intake/plugin.sh" <<PLUG
 intake_run() {
     : > "${INTAKE_RESUME_MARKER}"
+    $(mock_v2_result_line intake)
     return 0
 }
 PLUG
@@ -196,6 +202,7 @@ BUILD_RESUME_MARKER="$TEST_TEMP_DIR/build-ran-on-resume"
 cat > "$PLUGINS_ROOT/agent/build/plugin.sh" <<PLUG
 build_run() {
     : > "${BUILD_RESUME_MARKER}"
+    $(mock_v2_result_line build)
     return 0
 }
 PLUG

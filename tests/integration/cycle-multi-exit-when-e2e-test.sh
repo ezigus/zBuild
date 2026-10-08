@@ -19,7 +19,11 @@
 # SPEC-2: all: a single failing condition keeps the cycle iterating, then
 #         converges once the offending gate is fixed on a later iteration.
 # SPEC-3: all: a persistently-failing condition NEVER converges (exhausts to
-#         max_iterations; on_max=continue → by-severity rc=2, never a false pass).
+#         max_iterations; on_max=continue → by-severity rc=1, outcome
+#         unconverged — never a false pass).
+#
+# #1850 (ADR-054 §4): a loop returns 0 (converged) or 1; how it ended is the word
+# on _CYCLE_LAST_OUTCOME. The two exhaustion pins used to read rc=2.
 # SPEC-4: any: converges when at least one condition passes.
 # SPEC-5: any: converges only via a passing condition — all failing exhausts.
 set -euo pipefail
@@ -107,7 +111,8 @@ assert_eq "SPEC-2: all — iterated once before converging (converged on iter 2)
 # ── SPEC-3: all: a persistently-failing condition NEVER converges ─────────────
 # acceptance-gate always fails; every other gate passes. all: can never be
 # satisfied → the cycle exhausts max_iterations (5). on_max=continue → the
-# by-severity cascade returns rc=2 (passing-but-unconverged → route to review),
+# by-severity cascade returns rc=1, outcome unconverged (passing-but-unconverged
+# → route to review),
 # never a false convergence.
 cycle_dispatch_stage() {
     local stage="$1"
@@ -126,7 +131,8 @@ set +e
 cycle_orchestrator_run "build-test-cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
-assert_eq "SPEC-3: all — one gate always fails → rc=2 (unconverged, by-severity)" "2" "$rc"
+assert_eq "SPEC-3: all — one gate always fails → rc=1, outcome unconverged (by-severity)" \
+    "1 unconverged" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
 assert_eq "SPEC-3: all — terminated reason=max_iterations (no false convergence)" "max_iterations" "${_CYCLE_LAST_TERMINATED_REASON:-MISSING}"
 assert_eq "SPEC-3: all — ran all 5 iterations" "5" "${_CYCLE_LAST_ITERATIONS:-0}"
 converged_ev=$(jq -c 'select(.type=="cycle.complete" and .data.cycle_id=="build-test-cycle" and .data.reason=="converged")' \
@@ -171,7 +177,8 @@ set +e
 cycle_orchestrator_run "build-test-cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE" >/dev/null 2>&1
 rc=$?
 set -e
-assert_eq "SPEC-5: any — no gate passes → rc=2 (unconverged, by-severity)" "2" "$rc"
+assert_eq "SPEC-5: any — no gate passes → rc=1, outcome unconverged (by-severity)" \
+    "1 unconverged" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
 assert_eq "SPEC-5: any — terminated reason=max_iterations (no false convergence)" "max_iterations" "${_CYCLE_LAST_TERMINATED_REASON:-MISSING}"
 assert_eq "SPEC-5: any — ran all 5 iterations" "5" "${_CYCLE_LAST_ITERATIONS:-0}"
 

@@ -12,8 +12,8 @@
 # migrate one at a time (#1833-#1849), so something has to say which versions are
 # legible RIGHT NOW, in one place, versioned with the engine.
 #
-# THE RANGE BELOW IS THAT ONE PLACE. Dropping v1 (#1850) is a one-line change:
-# set _ZBUILD_CONTRACT_MIN=2. A guard test asserts no second copy of these bounds
+# THE RANGE BELOW IS THAT ONE PLACE. #1850 dropped v1 by raising
+# _ZBUILD_CONTRACT_MIN to 2 here, and nowhere else. A guard test asserts no second copy of these bounds
 # exists anywhere in core/, scripts/ or plugins/ — a duplicated bound is how a
 # range becomes advisory.
 #
@@ -23,7 +23,7 @@
 _ZBUILD_CONTRACT_VERSION_LOADED=1
 
 # ─── The declared range ─────────────────────────────────────────────────────
-_ZBUILD_CONTRACT_MIN=1
+_ZBUILD_CONTRACT_MIN=2
 _ZBUILD_CONTRACT_MAX=2
 
 # The version at which a result carries the ADR-054 shape (disposition, reason,
@@ -32,10 +32,9 @@ _ZBUILD_CONTRACT_MAX=2
 # literal at the reader is precisely the second copy #1824 exists to prevent.
 _ZBUILD_CONTRACT_V2=2
 
-# The version assumed when a plugin or result file declares none. Coexistence
-# reads an undeclared contract as v1; when v1 leaves the range this default stops
-# being legible on its own and contract_version_check refuses it — which is the
-# point, and is what makes #1850 a one-line change rather than a sweep.
+# The version assumed when a plugin or result file declares none: v1, which is
+# out of the range since #1850, so contract_version_check refuses an undeclared
+# contract — an absent version is a structural failure, never an implied v1.
 _ZBUILD_CONTRACT_DEFAULT=1
 
 # ─── contract_version_range ─────────────────────────────────────────────────

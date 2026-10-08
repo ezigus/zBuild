@@ -313,7 +313,7 @@ assert_json_key "[SPEC-7] gate-aggregator any-fail → verdict=fail" \
 
 W="$(_mkwork ga-7-advisory)"
 _write_all_ga "$W/artifacts" "pass"
-printf '{"result_contract":2,"verdict":"fail","disposition":"advisory","reason":"infra flake"}\n' \
+printf '{"result_contract":2,"verdict":"fail","disposition":"complete","severity":"advisory","reason":"infra flake"}\n' \
     > "$W/artifacts/acceptance-gate-result.json"
 set +e; gate_aggregator_run "gate-aggregator" "$W/state.json" >/dev/null 2>&1; _rc=$?; set -e
 assert_json_key "[SPEC-7] gate-aggregator advisory-demoted → verdict=pass" \

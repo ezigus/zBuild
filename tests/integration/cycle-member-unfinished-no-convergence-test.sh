@@ -4,7 +4,8 @@
 # carries an unfinished disposition (timed_out, out_of_turns, interrupted),
 # the cycle must NOT converge — it emits cycle.member_unfinished.suppressed_convergence
 # and iterates. At max_iterations with an unfinished tail, the suppression
-# fires first, then the existing #1261 exhaustion path halts with term_rc=8.
+# fires first, then the existing #1261 exhaustion path halts (rc=1, outcome
+# failed — term_rc=8 before #1850, ADR-054 §4).
 #
 #   SPEC-1[change] (#2032): exit_when match + unfinished member disposition → convergence
 #                           suppressed, cycle.member_unfinished.suppressed_convergence
@@ -16,7 +17,7 @@
 #   SPEC-6[change] (#2032): at max_iterations when last iter has an unfinished member,
 #                           the §4/A suppression fires (preventing false complete) and the
 #                           cycle takes the #1261 exhaustion path: cycle.timeout_exhausted
-#                           with reason=design_timeout_exhausted and term_rc=8.
+#                           with reason=design_timeout_exhausted, rc=1, outcome failed.
 #                           FAILS before: cycle converges rc=0 (no suppression block)
 set -uo pipefail
 
@@ -194,18 +195,18 @@ assert_eq "[#2032/SPEC-1] suppression fires when member has interrupted disposit
 assert_eq "[#2032/SPEC-1] cycle iterated after interrupted suppression (2 dispatch calls)" \
     "2" "$_mock_call"
 
-# ── SPEC-6[change]: at max_iterations with unfinished member → term_rc=8 ──────
+# ── SPEC-6[change]: at max_iterations with unfinished member → rc=1, failed ───
 # max_iterations=1: the only iter has verdict=pass (exit_when matches) but
 # disposition=timed_out.
 # Before fix: §4/A suppression absent → converged==0 → rc=0 (false complete).
 # After  fix: §4/A suppression sets converged=1 → max_iterations path fires →
-#             _iter_did_not_finish==1 && _exh_tests_reported==0 → term_rc=8,
+#             _iter_did_not_finish==1 && _exh_tests_reported==0 → rc=1, outcome failed,
 #             cycle.timeout_exhausted emitted with reason=design_timeout_exhausted.
 
 _run_cycle "$TPL_B" "design-max1" "timed_out"
 
-assert_eq "[#2032/SPEC-6] at max_iterations with unfinished member → term_rc=8 (not rc=0 false complete)" \
-    "8" "$RUN_RC"
+assert_eq "[#2032/SPEC-6] at max_iterations with unfinished member → rc=1, outcome failed (not rc=0 false complete)" \
+    "1 failed" "$RUN_RC ${_CYCLE_LAST_OUTCOME:-unset}"
 _s6_ev="$(grep -c '"cycle.timeout_exhausted"' "$ZBUILD_EVENTS_JSONL" 2>/dev/null || true)"
 assert_eq "[#2032/SPEC-6] cycle.timeout_exhausted emitted" \
     "1" "$_s6_ev"

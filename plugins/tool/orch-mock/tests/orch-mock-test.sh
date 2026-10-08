@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests: orch-mock orch_collect honors the 0/1/2 contract (PR #269) — issue #277
+# Tests: orch-mock orch_collect honors the orch contract — 0/1 plus the partial word (PR #269, #1850) — issue #277
 # Sibling backends (orch-sequential, orch-bash-parallel, orch-ruflo-hive) were
 # normalised in #269; orch-mock was missed. This test guards the fix.
 set -euo pipefail
@@ -10,7 +10,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 source "$REPO_ROOT/scripts/lib/helpers.sh"
 source "$REPO_ROOT/scripts/lib/test-helpers.sh"
 
-print_test_header "orch-mock — orch_collect returns 0/1/2 per orch contract"
+print_test_header "orch-mock — orch_collect returns 0/1 and names partial per orch contract"
 
 setup_test_env "plugin-orch-mock"
 export ORCH_MOCK_DIR="$TEST_TEMP_DIR/orch-mock"
@@ -39,7 +39,7 @@ orch_shutdown "$pool"
 # First exit code is intentionally NOT 1 — pre-fix code returned the first
 # non-zero rc encountered, so if the first failure were 1 this assertion
 # would pass on the buggy version. Putting 5 first makes the test
-# discriminating: only the 0/1/2 normaliser can return 1 here.
+# discriminating: only the normaliser can return 1 here.
 pool="m2-all-fail"
 orch_spawn "$pool" 3 ""
 orch_dispatch "$pool" "$(orch_work_unit 'exit 5')" >/dev/null
@@ -66,11 +66,9 @@ set +e
 orch_collect "$pool" >/dev/null
 rc=$?
 set -e
-if [[ $rc -eq 2 ]]; then
-    assert_pass "M3: mixed returns 2 (got $rc) — partial-failure signal"
-else
-    assert_fail "M3: mixed returns 2" "got $rc (pre-fix would have been 1, not 2)"
-fi
+# #1850 (ADR-054 §4): rc 1, and the partial-failure signal is the word.
+assert_eq "M3: mixed returns 1" "1" "$rc"
+assert_eq "M3: mixed is named partial" "partial" "${_ORCH_COLLECT_OUTCOME:-}"
 orch_shutdown "$pool"
 
 # ─── M4: empty pool → 0 ──────────────────────────────────────────────────────

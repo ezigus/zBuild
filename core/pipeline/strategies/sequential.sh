@@ -28,6 +28,10 @@ source "${_ZBUILD_STRATEGIES_DIR_SEQ}/common.sh"
 #   1 — any collect/dispatch failure
 #   4 — no plugin found for any role (caller may fall back to stage-id lookup)
 _strategy_run_sequential() {
+    # #1850 (ADR-054 §4): rc is 0 or 1; WHY rides this word, which the caller
+    # reads in the same shell — ok | partial | empty | no_plugin | bad_dimension
+    # | infra_failed | failed.
+    _ZB_STRATEGY_OUTCOME="failed"
     local pool_id="$1" stage="$2" roles_out="$3" state_file="$4" plugins_root="$5"
     local any_plugin_found=false
 
@@ -68,6 +72,7 @@ _strategy_run_sequential() {
     done <<< "$roles_out"
 
     orch_shutdown "$pool_id" 2>/dev/null || true
-    $any_plugin_found || return 4
+    $any_plugin_found || { _ZB_STRATEGY_OUTCOME="no_plugin"; return 1; }
+    _ZB_STRATEGY_OUTCOME="ok"
     return 0
 }

@@ -176,8 +176,9 @@ ZBUILD_PLUGINS_ROOT="$REPO_ROOT/plugins" \
     > "$TEST_TEMP_DIR/t5.out" 2> "$TEST_TEMP_DIR/t5.err"
 t5_rc=$?
 set -e
-if [[ $t5_rc -eq 2 ]]; then
-    assert_pass "T5: --from-stage build refused with rc=2 (Pin 14)"
+# #1850 (ADR-054 §4): the refusal exits 1 (was 2); the message below names it.
+if [[ $t5_rc -eq 1 ]]; then
+    assert_pass "T5: --from-stage build refused with rc=1 (Pin 14)"
 else
     assert_fail "T5: --from-stage build should be refused" "rc=$t5_rc"
 fi
@@ -215,7 +216,7 @@ done
 # aggregator never rolls it up.
 printf '{"verdict":"fail","reason":"missing_floor_files","fault":"scope"}\n' \
     > "$T6_ART_DIR/shape-floor-result.json"
-printf '{"verdict":"fail","disposition":"recoverable","failures":["tautology:SPEC-1"]}\n' \
+printf '{"result_contract":2,"verdict":"fail","disposition":"complete","severity":"recoverable","reason":"tautology","failures":["tautology:SPEC-1"]}\n' \
     > "$T6_ART_DIR/acceptance-gate-result.json"
 printf '{"verdict":"fail","test_output":"FAIL tests/unit/sigpipe-antipattern-guard-test.sh"}\n' \
     > "$T6_ART_DIR/test-results.json"

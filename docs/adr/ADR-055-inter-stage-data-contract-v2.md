@@ -186,7 +186,7 @@ When the runner resumes a pipeline, the pre-flight validator runs the same contr
 `_contract_validate_pipeline` in `core/pipeline/contract-validator.sh` runs in `core/pipeline/runner.sh:main()` immediately after `load_template` succeeds and before the `--dry-run` short-circuit. Controlled by `ZBUILD_CONTRACT_VALIDATOR` env var:
 
 - `warn` — violations print and emit events; pipeline continues.
-- `enforce` — violations write `status: preflight_failed` (ADR-006) and return rc=2. The runner halts BEFORE intake fires.
+- `enforce` — violations write `status: preflight_failed` (ADR-006) and return rc=2. **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1; `status: preflight_failed` and the `pipeline.preflight.*` events say why)** The runner halts BEFORE intake fires.
 - `off` — validator skipped.
 
 The keystone integration test that verifies enforce-mode behavior is `tests/integration/pipeline-preflight-missing-stage-test.sh`.

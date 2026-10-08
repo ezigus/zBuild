@@ -22,10 +22,9 @@ provides:
 
 config:
   severity_order: [critical, high, medium, low, info]
-  # #1708 contract: a plugin with a primary output declares the verdicts it can
-  # write. This one writes rendered markdown, not a result document — no verdict
-  # is ever produced, so the set is explicitly empty rather than absent.
-  valid_verdicts: []
+  # #1850: no `valid_verdicts` and no primary output. This plugin writes rendered
+  # markdown, never a stage result, and no template dispatches it as a stage —
+  # a primary output is the declaration "my result is here", which it is not.
 
 # #1906: this plugin previously declared `provides.artifact_type: [report.md]`
 # and NO outputs[] at all — the one plugin whose artifact check came from
@@ -41,7 +40,6 @@ outputs:
     type: output-body.md@1
     format: markdown
     required: true
-    primary: true
   # Written by the local-report destination (core/output/destinations.sh:38),
   # which is on by default but opt-out via ZBUILD_OUTPUT_LOCAL_REPORT=0 — hence
   # required:false. The run id is expanded from the environment by #1803's

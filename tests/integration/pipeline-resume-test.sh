@@ -186,7 +186,8 @@ INT_EVENTS_DIR="$TEST_TEMP_DIR/int_events"
 mkdir -p "$INT_PLUGINS_ROOT/agent/intake" "$INT_PLUGINS_ROOT/agent/build" \
          "$INT_STATE_DIR" "$INT_EVENTS_DIR"
 
-# The fixture's two leaf stages both succeed.
+# The fixture's two leaf stages both succeed. #1850: each is a v2 stage — it
+# declares result_contract 2 and a JSON primary, and writes a v2 pass there.
 for _plugin in intake build; do
     _fn="${_plugin//-/_}_run"
     cat > "$INT_PLUGINS_ROOT/agent/$_plugin/manifest.yaml" <<EOF
@@ -199,8 +200,27 @@ hooks:
 requires:
   core:
     - redaction
+provides:
+  result_contract: 2
+outputs:
+  - id: ${_fn}_result
+    path: \${artifact_dir}/${_plugin}-result.json
+    type: ${_plugin}-result.json@1
+    format: json
+    required: true
+    primary: true
+config:
+  valid_verdicts: [pass]
 EOF
-    printf '%s() { return 0; }\n' "$_fn" > "$INT_PLUGINS_ROOT/agent/$_plugin/plugin.sh"
+    cat > "$INT_PLUGINS_ROOT/agent/$_plugin/plugin.sh" <<EOF
+${_fn}() {
+    local _art; _art="\${ZBUILD_ARTIFACT_DIR:-\$(dirname "\$2")/artifacts}"
+    mkdir -p "\$_art"
+    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub"}' \\
+        > "\$_art/${_plugin}-result.json"
+    return 0
+}
+EOF
 done
 
 # #1270: per-repo overlay repo; the runner resolves the fixture from CWD=$PWD.
@@ -259,8 +279,9 @@ if [[ -f "$INT_EVENTS_DIR/events.jsonl" ]]; then
     assert_eq "integration: pipeline.resume event emitted" "1" "$_resume_event"
 fi
 
-# ─── Integration: --from-stage unknown value exits 2 ──────────────────────────
-print_test_section "integration: --from-stage with unknown stage exits 2"
+# ─── Integration: --from-stage unknown value exits 1 ──────────────────────────
+# #1850 (ADR-054 §4): a refusal exits 1 (it was 2); the message says which.
+print_test_section "integration: --from-stage with unknown stage exits 1"
 
 set +e
 ( cd "$INT_OVERLAY_REPO" && env \
@@ -273,14 +294,16 @@ set +e
     ZBUILD_EVENTS_DB="$INT_EVENTS_DIR/events.db" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     PATH="$PATH" HOME="$HOME" \
-    bash "$RUNNER" --template runner-state-dir-minimal --resume --issue "$_ZB_ID" --from-stage "nonexistent-stage" ) 2>/dev/null
+    bash "$RUNNER" --template runner-state-dir-minimal --resume --issue "$_ZB_ID" --from-stage "nonexistent-stage" ) 2>"$TEST_TEMP_DIR/fs-unknown.err"
 _fs_rc=$?
 set -e
 
-assert_eq "--from-stage unknown stage exits 2" "2" "$_fs_rc"
+assert_eq "--from-stage unknown stage exits 1" "1" "$_fs_rc"
+assert_contains "--from-stage unknown stage says it is not a known stage" \
+    "$(cat "$TEST_TEMP_DIR/fs-unknown.err" 2>/dev/null)" "is not a known stage"
 
-# ─── Integration: --from-stage without --resume exits 2 ───────────────────────
-print_test_section "integration: --from-stage without --resume exits 2"
+# ─── Integration: --from-stage without --resume exits 1 ───────────────────────
+print_test_section "integration: --from-stage without --resume exits 1"
 
 # Reset state for a fresh start scenario
 jq -n \
@@ -300,11 +323,13 @@ set +e
     ZBUILD_EVENTS_DB="$INT_EVENTS_DIR/events.db" \
     ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json" \
     PATH="$PATH" HOME="$HOME" \
-    bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" --from-stage "intake" ) 2>/dev/null
+    bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID" --from-stage "intake" ) 2>"$TEST_TEMP_DIR/fs-noresume.err"
 _noresume_rc=$?
 set -e
 
-assert_eq "--from-stage without --resume exits 2" "2" "$_noresume_rc"
+assert_eq "--from-stage without --resume exits 1" "1" "$_noresume_rc"
+assert_contains "--from-stage without --resume says it needs --resume" \
+    "$(cat "$TEST_TEMP_DIR/fs-noresume.err" 2>/dev/null)" "only valid with --resume"
 
 cleanup_test_env
 print_test_results

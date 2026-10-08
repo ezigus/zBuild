@@ -67,12 +67,14 @@ orch_shutdown <pool_id>                               # cleanup
 orch_capabilities                                     # → JSON
 ```
 
+**(superseded 2026-10-08 by ADR-054 §4 / #1850 — now `orch_collect` returns 0 (all passed) or 1, naming mixed results on `_ORCH_COLLECT_OUTCOME=partial`)**
+
 **`orch_collect` exit code convention (all implementations must honour this):**
 - `0` — all dispatched work units exited 0 (success); pool dir removed.
 - `1` — all dispatched work units exited non-zero (complete failure).
-- `2` — mixed results: at least one unit passed and at least one failed (partial).
+- `2` — mixed results: at least one unit passed and at least one failed (partial). **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_ORCH_COLLECT_OUTCOME=partial`)**
 
-Work-unit exit codes are normalised — individual codes are not passed through. Strategies use `2` to emit `stage.fail reason=partial` via the runner.
+Work-unit exit codes are normalised — individual codes are not passed through. Strategies use `2` to emit `stage.fail reason=partial` via the runner. **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_ZB_STRATEGY_OUTCOME=partial`)**
 
 **Phase 0.5 default implementation**: `plugins/tool/orch-sequential/` — single-process, in-order dispatch. Chosen as the default for Phase 0.5 because it has zero coordination surface and the smallest reference impl of the 0/1/2 normalisation contract. The `.zbuild/config.yaml` snippet below shows how to opt in to one of the optional backends.
 

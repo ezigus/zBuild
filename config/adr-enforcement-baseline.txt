@@ -27,7 +27,6 @@ ADR-021-pipeline-cycle-semantics.md
 ADR-022-test-assessment-stage.md
 ADR-023-install-isolation.md
 ADR-024-subprocess-env-isolation.md
-ADR-025-abort-propagation.md
 ADR-026-review-remediation-cycle.md
 ADR-027-recursive-flow-template-format.md
 ADR-028-shared-llm-agent-framework.md

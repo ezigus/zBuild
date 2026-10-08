@@ -7,12 +7,15 @@
 # resources must be freed however the run ends. A single missed exit path leaks
 # whatever that stage spawned (#1748: suites observed alive 15+ min after exit).
 #
-# Why SIGINT is driven as rc=130 rather than `kill -INT`: this harness starts
+# Why SIGINT is driven by the stage rather than `kill -INT`: this harness starts
 # non-interactively with SIGINT inherited as SIG_IGN, and POSIX forbids a child
 # from un-ignoring it — so `kill -INT` is silently dropped and the assertion
 # would pass standalone while proving nothing. The repo's existing
 # sigint-aborts-pipeline-test.sh drives the same chain the same way: the child
-# returns 130, which is exactly what the kernel produces on Ctrl-C.
+# returns 130, which is exactly what the kernel produces on Ctrl-C. Since #1850
+# (ADR-054 §4, ADR-025) a signal is a recorded WORD, not an rc, so the stage
+# also arms the abort sentinel (empty = sigint), as the runner's INT trap in
+# the process group would.
 #
 # Assertion in every case: the stub stages' cleanup hooks recorded `release`
 # (and never `purge`) in the marker file.
@@ -56,7 +59,8 @@ mock_plugin_factory "test"   "tool"  0 >/dev/null
 # no-op rather than a witness.
 # Re-emit the manifest rather than appending: `cleanup:` has to sit inside the
 # contiguous `hooks:` block, and mock_plugin_factory already wrote `requires:`
-# after it.
+# after it. #1850: the re-emitted manifest keeps the factory's v2 declaration —
+# result_contract 2 and a JSON primary each run hook below writes.
 for _spec in "agent/intake:intake:intake_cleanup" "agent/build:build:build_cleanup" "tool/test:test:test_cleanup"; do
     _dir="${_spec%%:*}"; _rest="${_spec#*:}"; _id="${_rest%%:*}"; _fn="${_rest#*:}"
     _kind="${_dir%%/*}"
@@ -71,12 +75,27 @@ hooks:
 requires:
   core:
     - redaction
+provides:
+  result_contract: 2
+outputs:
+  - id: ${_id//-/_}_result
+    path: \${artifact_dir}/${_id}-result.json
+    type: ${_id}-result.json@1
+    format: json
+    required: true
+    primary: true
+config:
+  valid_verdicts: [pass, error]
 EOF
 done
 
 # Stubs: run honours env-driven rc/sleep; cleanup records "<stage>:<scope>".
 cat > "$PLUGINS_ROOT/agent/intake/plugin.sh" <<'PLUG'
-intake_run() { return 0; }
+intake_run() {
+    local _art; _art="${ZBUILD_ARTIFACT_DIR:-$(dirname "$2")/artifacts}"; mkdir -p "$_art"
+    printf '%s' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub"}' > "$_art/intake-result.json"
+    return 0
+}
 intake_cleanup() { printf 'intake:%s\n' "${3:-NOSCOPE}" >> "${RELEASE_MARKER}"; return 0; }
 PLUG
 cat > "$PLUGINS_ROOT/agent/build/plugin.sh" <<'PLUG'
@@ -84,6 +103,13 @@ build_run() {
     : > "${BUILD_STARTED:-/dev/null}"
     if [[ "${BUILD_SLEEP:-0}" == "1" ]]; then
         local _i; for _i in $(seq 1 300); do sleep 0.1; done
+    fi
+    local _art; _art="${ZBUILD_ARTIFACT_DIR:-$(dirname "$2")/artifacts}"; mkdir -p "$_art"
+    [[ "${BUILD_ARM_ABORT:-0}" == "1" ]] && : > "${ZBUILD_STATE_DIR}/.abort.signal"
+    if [[ "${BUILD_RC:-0}" == "0" ]]; then
+        printf '%s' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub"}' > "$_art/build-result.json"
+    else
+        printf '%s' '{"result_contract":2,"verdict":"error","disposition":"broken","reason":"stub failure"}' > "$_art/build-result.json"
     fi
     return "${BUILD_RC:-0}"
 }
@@ -104,7 +130,11 @@ build_cleanup() {
 }
 PLUG
 cat > "$PLUGINS_ROOT/tool/test/plugin.sh" <<'PLUG'
-test_run() { return 0; }
+test_run() {
+    local _art; _art="${ZBUILD_ARTIFACT_DIR:-$(dirname "$2")/artifacts}"; mkdir -p "$_art"
+    printf '%s' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub"}' > "$_art/test-result.json"
+    return 0
+}
 test_cleanup() { printf 'test:%s\n' "${3:-NOSCOPE}" >> "${RELEASE_MARKER}"; return 0; }
 PLUG
 
@@ -127,7 +157,7 @@ _prep() {
     export RELEASE_MARKER="$CASE_DIR/release-marker"
     export BUILD_STARTED="$CASE_DIR/build-started"
     : > "$RELEASE_MARKER"
-    unset BUILD_RC BUILD_SLEEP 2>/dev/null || true
+    unset BUILD_RC BUILD_SLEEP BUILD_ARM_ABORT 2>/dev/null || true
 }
 
 # _assert_released <case> <stage>... — EVERY named stage released, purge never.
@@ -197,14 +227,20 @@ else
 fi
 _assert_released "SPEC-2" intake build
 
-# ── SPEC-3: SIGINT propagation chain (child rc=130) ──────────────────────────
-print_test_section "SPEC-3: exit path = SIGINT chain (stage rc 130)"
+# ── SPEC-3: SIGINT propagation chain (child rc=130 + abort word) ─────────────
+print_test_section "SPEC-3: exit path = SIGINT chain (stage rc 130, sentinel armed)"
 _prep sigint
-export BUILD_RC=130
+export BUILD_RC=130 BUILD_ARM_ABORT=1
 set +e
 ( cd "$OVERLAY_REPO" && bash "$RUNNER" --template resume-minimal --goal "release-sigint" ) \
     >"$CASE_DIR/out" 2>&1
+_rc=$?
 set -e
+# #1850: the run really took the SIGINT path — exit 1 (not 130) and the abort
+# named sigint — or this case would only repeat SPEC-2's non-zero rc.
+assert_eq "[SPEC-3] runner exits 1 on the SIGINT chain (not 130)" "1" "$_rc"
+assert_eq "[SPEC-3] pipeline.aborted carries reason=sigint" "sigint" \
+    "$(jq -r 'select(.type=="pipeline.aborted") | .data.reason // empty' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | sort -u | tr -d '\n')"
 _assert_released "SPEC-3" intake build
 
 # ── SPEC-4: external SIGTERM ─────────────────────────────────────────────────

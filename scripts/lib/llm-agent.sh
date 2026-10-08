@@ -29,6 +29,8 @@ _ZBUILD_LLM_AGENT_LOADED=1
 _LLM_AGENT_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./router-rc-classify.sh
 source "$_LLM_AGENT_LIB_DIR/router-rc-classify.sh"
+# shellcheck source=./abort-propagation.sh
+source "$_LLM_AGENT_LIB_DIR/abort-propagation.sh"
 # shellcheck source=./helpers.sh
 [[ -z "${_ZBUILD_HELPERS_LOADED:-}" ]] && source "$_LLM_AGENT_LIB_DIR/helpers.sh"
 
@@ -487,11 +489,11 @@ _zbuild_reset_cli_fail() {
     return 0
 }
 
-# _llm_check_cli_fail_abort — returns 9 when the consecutive CLI failure count
+# _llm_check_cli_fail_abort — returns 1 when the consecutive CLI failure count
 # has reached ZBUILD_LLM_FAIL_THRESHOLD (default 2); returns 0 otherwise.
-# When rc=9 is returned, emits pipeline.aborted reason=llm_unavailable and
-# prints a clear terminal message to stderr. The runner handles the actual
-# state-file writes and pipeline.end events when it observes rc=9.
+# On abort it records the word llm_unavailable (ADR-025; #1850 — it was rc 9),
+# emits pipeline.llm_unavailable and prints a clear terminal message to stderr.
+# The runner ends the run on the recorded word.
 _llm_check_cli_fail_abort() {
     local _threshold="${ZBUILD_LLM_FAIL_THRESHOLD:-2}"
     local _path; _path="$(_zbuild_cli_fail_counter_path)"
@@ -504,7 +506,7 @@ _llm_check_cli_fail_abort() {
         local _run_id="${ZBUILD_RUN_ID:-unknown}"
         # Emit only the llm_unavailable signal here. The runner is the single
         # authoritative source of pipeline.aborted reason=llm_unavailable when it
-        # observes rc=9 (core/pipeline/runner.sh) — emitting it here too would
+        # reads the recorded word (core/pipeline/runner.sh) — emitting it here too would
         # produce duplicate abort events for one run (Copilot review on #1024).
         emit_event "pipeline.llm_unavailable" \
             "reason=llm_unavailable" \
@@ -513,7 +515,8 @@ _llm_check_cli_fail_abort() {
             "run_id=$_run_id" 2>/dev/null || true
         printf '✗ Pipeline aborted: the model CLI failed %s consecutive times (run_id=%s). Check your claude CLI installation and API key.\n' \
             "$_count" "$_run_id" >&2
-        return 9
+        _zbuild_abort llm_unavailable
+        return 1
     fi
     return 0
 }

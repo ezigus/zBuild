@@ -205,7 +205,7 @@ err_out="$(ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "intake
 plan
 build
 review" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
-assert_eq "TC-4: enforce mode returns rc=2 on violation" "2" "$rc"
+assert_eq "TC-4: enforce mode returns rc=1 on violation (#1850: was 2)" "1" "$rc"
 assert_contains "TC-4: enforce mode emits 'test'" "$err_out" "test"
 
 # TC-5: enforce-failure writes preflight_failed state stub
@@ -238,7 +238,7 @@ rc=0
 err_out="$(ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "intake
 plan
 test" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
-assert_eq "TC-6: but a name no stage produces still fails enforce" "2" "$rc"
+assert_eq "TC-6: but a name no stage produces still fails enforce" "1" "$rc"
 assert_contains "TC-6: and is reported as unresolved, not misordered" "$err_out" "INPUT_UNRESOLVED"
 
 # TC-7: External source allowlist — goal_string is OK
@@ -276,7 +276,7 @@ outputs:
 EOF
 rc=0
 err_out="$(ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "design" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
-assert_eq "TC-8: bogus external id detected" "2" "$rc"
+assert_eq "TC-8: bogus external id detected" "1" "$rc"
 assert_contains_regex "TC-8: bogus external diagnostic" "$err_out" "external|allowlist"
 rm -f "$STATE_FILE"
 rm -rf "$PLUGINS_ROOT/agent/bad-ext"
@@ -314,20 +314,20 @@ EOF
 rc=0
 err_out="$(ZBUILD_CONTRACT_VALIDATOR=enforce _contract_validate_pipeline "intake
 design" "$PLUGINS_ROOT" "$STATE_FILE" 2>&1)" || rc=$?
-assert_eq "TC-9: unknown var detected" "2" "$rc"
+assert_eq "TC-9: unknown var detected" "1" "$rc"
 assert_contains_regex "TC-9: unknown var diagnostic" "$err_out" "bogus_var|unknown variable"
 rm -f "$STATE_FILE"
 rm -rf "$PLUGINS_ROOT/agent/bad-var"
 
 # TC-10: enforce-default (Wave 12-E #664) — empty ZBUILD_CONTRACT_VALIDATOR
-# now means `enforce`. A missing producer must therefore return rc=2.
+# now means `enforce`. A missing producer must therefore return rc=1.
 unset ZBUILD_CONTRACT_VALIDATOR
 rc=0
 _contract_validate_pipeline "intake
 plan
 build
 review" "$PLUGINS_ROOT" "$STATE_FILE" >/dev/null 2>&1 || rc=$?
-assert_eq "TC-10: default (unset) ≡ enforce (rc=2 on violation)" "2" "$rc"
+assert_eq "TC-10: default (unset) ≡ enforce (rc=1 on violation)" "1" "$rc"
 rm -f "$STATE_FILE"
 
 cleanup_test_env

@@ -45,13 +45,13 @@ _stage_scratch_key() {
     # A stage is required before the element is folded in. Without this a
     # dispatch that knows its map element but not its stage yields the key
     # "-security" — non-empty, so the caller gets a directory instead of the
-    # rc=2 refusal, and six lens members with no stage between them would share
+    # refusal, and six lens members with no stage between them would share
     # it. The element qualifies an owner; it cannot be one.
-    [[ -n "$stage" ]] || return 2
+    [[ -n "$stage" ]] || return 1
     # `run-tmp` belongs to zbuild_run_tmpdir (ADR-058 C10), which sits in this
     # same scratch/ namespace. A stage allowed to mint it would share the run's
     # ambient temp root and have its working files reclaimed by another owner.
-    [[ "$stage" == "run-tmp" ]] && return 2
+    [[ "$stage" == "run-tmp" ]] && return 1
     local key="$stage"
     [[ -n "$element" ]] && key="${key}-${element}"
     key="${key//[^A-Za-z0-9_-]/_}"
@@ -73,15 +73,16 @@ _stage_scratch_key() {
 # path resolved with no state dir in sight must still be per-run, or two
 # concurrent runs share it.
 #
-# rc=2 when no stage can be named: a scratch dir with no owner is a shared
-# temp dir with extra steps, which is the thing this file exists to end.
+# rc=1 and no path when no stage can be named (#1850: was rc=2): a scratch dir
+# with no owner is a shared temp dir with extra steps, which is the thing this
+# file exists to end.
 stage_scratch_dir() {
     local state_dir="${1:-${ZBUILD_STATE_DIR:-}}"
     local stage="${2:-${ZBUILD_CURRENT_STAGE:-}}"
     local element="${3:-${ZBUILD_MAP_ELEMENT:-}}"
 
     local key; key="$(_stage_scratch_key "$stage" "$element")"
-    [[ -n "$key" ]] || return 2
+    [[ -n "$key" ]] || return 1
 
     local base="${ZBUILD_SCRATCH_ROOT:-}"
     [[ -n "$base" ]] || base="$state_dir"
@@ -97,12 +98,12 @@ stage_scratch_dir() {
 # (strategies/common.sh): scratch holds raw prompts and raw model output on a
 # shared CI runner, so it is never group- or world-readable.
 #
-# rc=2 unnameable stage; rc=1 the directory could not be created. Both are
-# non-fatal to the caller — the dispatch seam simply does not export the vars,
+# rc=1: an unnameable stage (no path printed) or the directory could not be
+# created (a warning names it). Both are non-fatal to the caller — the dispatch seam simply does not export the vars,
 # and every consumer keeps the `${TMPDIR:-/tmp}` fallback it has today.
 stage_scratch_ensure() {
     local dir
-    dir="$(stage_scratch_dir "$@")" || return 2
+    dir="$(stage_scratch_dir "$@")" || return 1
     if ! { mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null; }; then
         if declare -F warn >/dev/null 2>&1; then
             warn "stage-scratch: cannot create scratch dir: ${dir}" || true

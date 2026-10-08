@@ -223,10 +223,11 @@ rm -f "$STATE_FILE" "${STATE_FILE}.bak" "${STATE_FILE}.lock"
 jq -n '{schema_version:1, stage_statuses:{}, updated_at:"seed"}' > "$STATE_FILE"
 
 # Inner ALWAYS returns test=fail → inner hits max_iterations=3 with FAILING tests.
-# #1208 by-severity: exhaustion with failing tests → rc=8 (the single fatal
-# condition — never ship failing/incomplete work). A nested rc=8 propagates to
-# the outer as a blocking_member_failure (cycle-orchestrator.sh:1278), so the
-# outer HALTS (rc=8) and does NOT dispatch the downstream review — a failing
+# #1208 by-severity: exhaustion with failing tests → outcome failed (the single
+# fatal condition — never ship failing/incomplete work). A nested failed loop
+# propagates to the outer as a blocking_member_failure, so the outer HALTS
+# (rc=1, outcome failed — rc=8 before #1850, ADR-054 §4) and does NOT dispatch
+# the downstream review — a failing
 # build/test cycle is NOT rescued by an advisory review gate. (Pre-#1208 the
 # inner exhaustion returned rc=1 and the outer's review could approve a still-
 # failing tree — exactly the #944 false-`complete` class this fixes.)
@@ -264,11 +265,13 @@ inner_start=$(jq -c 'select(.type=="cycle.member.dispatch.start" and .data.cycle
 # #2271 (ADR-068): with an outer round left, the outer loop goes round instead
 # of halting — so the inner loop runs once per outer round (max_iterations 2).
 # The #1208 guarantee holds on the LAST round: exhausted with failing tests is
-# never rescued, it propagates as blocking_member_failure (rc 8).
+# never rescued, it propagates as blocking_member_failure (rc 1 + that word).
 assert_eq "inner_cycle dispatch.start emitted once per outer round (instrumentation intact)" "2" "$inner_start"
 
 inner_member_complete_rc=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="inner_cycle") | .data.rc' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)
-assert_eq "inner_cycle's last dispatch.complete rc=8 (#1208: exhausted with failing tests)" "8" "$inner_member_complete_rc"
+# #1850: the nested loop returns 1 like any failed member; the verdict word
+# below (blocking_member_failure) is what says why — it used to be rc=8.
+assert_eq "inner_cycle's last dispatch.complete rc=1 (#1208: exhausted with failing tests)" "1" "$inner_member_complete_rc"
 
 inner_member_complete_verdict=$(jq -r 'select(.type=="cycle.member.dispatch.complete" and .data.member=="inner_cycle") | .data.verdict' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | tail -1)
 assert_eq "inner_cycle dispatch.complete verdict=blocking_member_failure (propagated)" \
@@ -294,7 +297,10 @@ assert_eq "an inner LEAF member still reports its own disposition" \
 review_dispatched=$(jq -c 'select(.type=="cycle.member.dispatch.start" and .data.cycle_id=="outer_cycle" and .data.member=="review")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "review NOT dispatched after a failing inner cycle (#1208 halt, no rescue)" "0" "$review_dispatched"
 
-assert_eq "outer cycle halts rc=8 (blocking_member_failure propagated)" "8" "$rc"
+# #1850: was rc=8. The outer returns 1 and names a failed end, for the
+# blocking_member_failure reason — not unconverged, not interrupted.
+assert_eq "outer cycle halts rc=1, outcome failed, reason blocking_member_failure (propagated)" \
+    "1 failed blocking_member_failure" "$rc ${_CYCLE_LAST_OUTCOME:-unset} ${_CYCLE_LAST_TERMINATED_REASON:-unset}"
 
 print_test_results
 cleanup_test_env

@@ -99,14 +99,15 @@ fi
 # A scratch dir with no owner is a shared temp dir with extra steps.
 _norc=0
 stage_scratch_dir "$JOB_DIR" "" "" >/dev/null 2>&1 || _norc=$?
-assert_eq "[SPEC-1] a dispatch with no stage to name gets no scratch dir (rc=2)" "2" "$_norc"
+# #1850 (ADR-054 §4): refused with rc=1 (was 2); the path being empty is what says so.
+assert_eq "[SPEC-1] a dispatch with no stage to name gets no scratch dir (rc=1)" "1" "$_norc"
 
 # The element cannot stand in for the stage. Without a stage guard the key is
 # "-security": non-empty, so the caller gets a directory instead of a refusal,
 # and six lens members with no stage between them would all share it.
 _elrc=0
 _elout="$(stage_scratch_dir "$JOB_DIR" "" "security" 2>/dev/null)" || _elrc=$?
-assert_eq "[SPEC-1] a map element with no stage is refused too (rc=2)" "2" "$_elrc"
+assert_eq "[SPEC-1] a map element with no stage is refused too (rc=1)" "1" "$_elrc"
 assert_eq "[SPEC-1] a map element with no stage yields no path" "" "$_elout"
 
 # ── SPEC-1: ensure creates it 0700 ──────────────────────────────────────────

@@ -380,8 +380,8 @@ _inputs_note_earlier_run() {
 # engine actually dispatched.
 _inputs_resolve_stage() {
     local stage="$1" plugins_root="$2" state_dir="$3" manifest="${4:-}"
-    # The stage id is interpolated into a filesystem path. Same guard as
-    # _verdict_read_stage_sidecar — a value with '/' or '..' must never traverse.
+    # The stage id is interpolated into a filesystem path: a value with '/' or
+    # '..' must never traverse.
     [[ "$stage" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]] || return 1
     [[ -n "$state_dir" ]] || return 1
     if [[ -z "$manifest" ]]; then

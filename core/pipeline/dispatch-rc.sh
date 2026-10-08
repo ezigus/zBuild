@@ -29,13 +29,12 @@
 #
 # ─── What this file does NOT do ─────────────────────────────────────────────
 #
-# It does not rip the legacy numbers out. They still flow inside the engine
-# during versioned coexistence, and #1850 deletes them together with the v1
-# result reader — its acceptance says so in as many words ("the legacy rc
-# mapping (5, 8, 9, 10, 11) is deleted"). What changes here is that a legacy
-# number is interpreted in exactly ONE place (`dispatch_rc_legacy_reason`)
-# instead of at each reader, so there is a single thing for #1850 to remove and
-# a single answer to "what does 8 mean today".
+# It has no table translating a stage's exit number into a word any more.
+# #1850 deleted `dispatch_rc_legacy_reason` / `dispatch_rc_legacy_disposition`
+# together with the v1 result reader: every stage declares its own disposition,
+# and a stage that died leaving none is classified from what the dispatch
+# boundary OBSERVED about its death (dispatch_rc_observation), never from the
+# number it chose.
 
 [[ -n "${_ZBUILD_DISPATCH_RC_SH_LOADED:-}" ]] && return 0
 _ZBUILD_DISPATCH_RC_SH_LOADED=1
@@ -88,6 +87,18 @@ dispatch_rc_observation() {
     return 0
 }
 
+# ─── dispatch_rc_signal_word <raw_rc> (#1850) ────────────────────────────────
+# The ADR-025 abort word for a stage that died of Ctrl-C or kill: sigint (130),
+# sigterm (143); nothing otherwise. Read from the raw status, before narrowing,
+# like the observation above — the one place a raw rc is read.
+dispatch_rc_signal_word() {
+    case "${1-}" in
+        130) printf 'sigint' ;;
+        143) printf 'sigterm' ;;
+    esac
+    return 0
+}
+
 # ─── dispatch_rc_failure_disposition <observation> [rate_limited] ───────────
 # ADR-054 §4's fallback table: the ONE place the engine is permitted to infer,
 # and it infers a DISPOSITION, not a verdict.
@@ -125,61 +136,3 @@ dispatch_rc_failure_disposition() {
     esac
 }
 
-# ─── dispatch_rc_legacy_reason <raw_rc> ─────────────────────────────────────
-# THE v1 boundary. A legacy engine rc becomes the reason word the engine
-# already sets for it on `_CYCLE_LAST_TERMINATED_REASON` — this function does
-# not invent a vocabulary, it names the one that is already there, so a reader
-# can consult a word instead of re-interpreting a number.
-#
-# Prints nothing and returns 1 for a code with no legacy meaning, so a caller
-# cannot mistake "I have no word for this" for a word.
-#
-# DELETED WHOLESALE BY #1850, together with the v1 result reader. Nothing new
-# may be added here — that is what the guard test in
-# tests/unit/dispatch-rc-guard-test.sh pins.
-#
-# 143 is mapped alongside 130: `_cycle_handle_terminal_rc` now has a combined
-# `130|143) reason="aborted"` arm (#1860), so SIGTERM and SIGINT agree at both
-# the dispatch boundary and the orchestrator's own fan-in table. Prior to #1860
-# only this boundary mapped 143→aborted; the orchestrator fell through to error.
-dispatch_rc_legacy_reason() {
-    case "${1-}" in
-        4)     printf 'config_invalid' ;;
-        5)     printf 'blocked' ;;
-        6)     printf 'cycle_abort' ;;
-        8)     printf 'blocking_member_failure' ;;
-        9)     printf 'llm_unavailable' ;;
-        10)    printf 'scope_too_large' ;;
-        130)   printf 'aborted' ;;
-        143)   printf 'aborted' ;;
-        *)     return 1 ;;
-    esac
-}
-
-# ─── dispatch_rc_legacy_disposition <raw_rc> ────────────────────────────────
-# The subset of legacy rcs that ADR-054 §6 has a word for, so a reader on the
-# disposition channel gets the same answer as one on the reason channel.
-#
-# Only three map, and each is an exact fit against §6's own wording (§6a for rc 10):
-#
-#   9  llm_unavailable  → unavailable  "halt; operator action required"
-#   10 scope_too_large  → out_of_turns "retry" (ADR-054 §6a, #2187)
-#   130/143 signal      → interrupted  "retry as-is"
-#
-# The rest — blocked, cycle_abort, blocking_member_failure, config_invalid —
-# deliberately map to NOTHING. They are control-flow decisions
-# the cycle made, not statements about whether a stage got far enough to
-# produce a verdict worth reading, and ADR-054 §4 re-homes them onto routing
-# state (ADR-045) and the blocking-member halt (ADR-013) rather than onto §6.
-# Forcing them into the disposition set would be the invented default the whole
-# contract exists to forbid.
-#
-# Prints nothing and returns 1 when there is no mapping.
-dispatch_rc_legacy_disposition() {
-    case "${1-}" in
-        9)        printf 'unavailable' ;;
-        10)       printf 'out_of_turns' ;;
-        130|143)  printf 'interrupted' ;;
-        *)        return 1 ;;
-    esac
-}

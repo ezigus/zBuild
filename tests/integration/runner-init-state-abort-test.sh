@@ -56,6 +56,7 @@ kind: $kind
 version: 0.0.1
 provides:
   role: $role
+  result_contract: 2
 hooks:
   run: $fn
 requires:
@@ -69,6 +70,15 @@ outputs:
     path: \${artifact_dir}/$id-summary.md
     required: true
     summary: true
+  # #1850: the v2 result is the primary — the engine reads nothing else.
+  - id: ${id//-/_}_result
+    type: $id-result.json@1
+    format: json
+    path: \${artifact_dir}/$id-result.json
+    required: true
+    primary: true
+config:
+  valid_verdicts: [pass]
 EOF
     cat > "$dir/plugin.sh" <<EOF
 ${fn}() {
@@ -77,6 +87,8 @@ ${fn}() {
     local _d="\${ZBUILD_ARTIFACT_DIR:-\$(dirname "\${2:-/tmp/x}")/artifacts}"
     mkdir -p "\$_d" 2>/dev/null || true
     printf '## %s — pass\n\n- stub stage\n' "$id" > "\$_d/$id-summary.md" 2>/dev/null || true
+    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub"}' \\
+        > "\$_d/$id-result.json" 2>/dev/null || true
     return 0
 }
 EOF

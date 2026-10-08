@@ -105,8 +105,10 @@ EOF
 
 # Inner never converges but its TESTS PASS: build/test emit verdict=pass while the
 # inner exit_when requires test.verdict==approve (a value `test` never emits), so
-# the inner exhausts max_iterations UNCONVERGED-BUT-PASSING → #1208 rc=2 (soft,
-# non-halting) — NOT rc=8 (a failing-test inner would hard-halt the outer, #1208).
+# the inner exhausts max_iterations UNCONVERGED-BUT-PASSING → #1208 outcome
+# unconverged (soft, non-halting) — NOT outcome failed (a failing-test inner
+# would hard-halt the outer, #1208). Both return rc=1 since #1850 (ADR-054 §4;
+# they were rc=2 / rc=8) — the outcome word is what differs.
 # This keeps the inner non-fatal so the outer re-dispatches it across outer iters,
 # exercising the iter+history reset (the actual regression under test) without the
 # #944 anti-pattern of advisory-review-rescuing failing tests.

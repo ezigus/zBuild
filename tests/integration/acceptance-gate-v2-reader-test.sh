@@ -159,7 +159,8 @@ assert_eq "[SPEC-4] …and not on severity=recoverable" "" "$_m"
 printf '{"result_contract":2,"verdict":"fail","disposition":"complete","severity":"advisory","reason":"negctl harness","failures":["negctl_error:harness:SPEC-1"]}\n' > "$SD/artifacts/adv.json"
 assert_eq "[SPEC-4] the aggregator demotes severity=advisory to non-blocking" "advisory" "$(_ga_read_gate_verdict "$SD/artifacts/adv.json")"
 printf '{"verdict":"fail","disposition":"advisory","reason":"legacy fixture"}\n' > "$SD/artifacts/adv1.json"
-assert_eq "[SPEC-4] a v1-shaped fixture with the word in disposition still demotes (fallback)" "advisory" "$(_ga_read_gate_verdict "$SD/artifacts/adv1.json")"
+# #1850: the v1 fallback is gone — the word in `disposition` no longer demotes.
+assert_eq "[SPEC-4] a v1-shaped fixture with the word in disposition no longer demotes (#1850)" "fail" "$(_ga_read_gate_verdict "$SD/artifacts/adv1.json")"
 
 cleanup_test_env
 print_test_results

@@ -3,7 +3,8 @@
 #
 # Drives cycle_orchestrator_run directly with mock cycle_dispatch_stage hook
 # that emits verdict=error to trigger _cycle_detect_blocked. Verifies:
-#   I1: error iter 1 → blocked at iter 1 (not 3); rc=5; reason=blocked
+#   I1: error iter 1 → blocked at iter 1 (not 3); rc=1, outcome interrupted;
+#       reason=blocked (#1850, ADR-054 §4: the loop returns 0/1, was rc=5)
 #   I2: fail-then-pass → converges normally (regression: blocked NOT on fail)
 #   I3: cycle.blocked + cycle.complete reason=blocked emitted in order
 #   I5: termination priority — until-pass + blocked simultaneous → converged wins
@@ -73,12 +74,12 @@ cycle_dispatch_stage() {
 source "$REPO_ROOT/tests/lib/cycle-report-stub.sh"
 zb_stub_reports_tests test
 
-# ─── I1: verdict=error iter 1 → blocked at iter 1, rc=5, reason=blocked ─────
+# ─── I1: verdict=error iter 1 → blocked at iter 1, rc=1 interrupted, reason=blocked
 _seed_state
 load_template "$FIXT/cycle-blocked.yaml"
 MOCK_VERDICTS="build:pass,pass,pass,pass,pass;test:error,fail,fail,fail,fail"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-assert_eq "I1: orchestrator rc=5 (blocked)" "5" "$rc"
+assert_eq "I1: orchestrator rc=1, outcome interrupted (blocked)" "1 interrupted" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
 assert_eq "I1: terminated at iter 1 (no retry of structural error)" "1" "$_CYCLE_LAST_ITERATIONS"
 assert_eq "I1: reason=blocked" "blocked" "$_CYCLE_LAST_TERMINATED_REASON"
 
@@ -95,7 +96,7 @@ _seed_state
 load_template "$FIXT/cycle-blocked.yaml"
 MOCK_VERDICTS="build:pass;test:error"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-assert_eq "I3: rc=5 (blocked)" "5" "$rc"
+assert_eq "I3: rc=1, outcome interrupted (blocked)" "1 interrupted" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
 assert_event_emitted "I3: cycle.blocked emitted" "$ZBUILD_EVENTS_JSONL" "cycle.blocked"
 assert_event_emitted "I3: cycle.complete emitted" "$ZBUILD_EVENTS_JSONL" "cycle.complete"
 # Check ordering: cycle.iteration.complete before cycle.blocked before cycle.complete(reason=blocked)
@@ -139,7 +140,9 @@ load_template "$FIXT/cycle-plateau.yaml"
 MOCK_VERDICTS="build:pass,pass,pass,pass,pass;test:fail,fail,fail,fail,fail"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
 # #1208: plateau early-exit removed — the cycle runs to max_iterations and
-# terminates by-severity (failing tests → rc=8), not the old plateau rc=2.
-assert_eq "I7b: cycle-plateau runs to exhaustion, failing tests → rc=8 (#1208)" "8" "$rc"
+# terminates by-severity (failing tests → rc=1, outcome failed), not the old
+# plateau (outcome unconverged).
+assert_eq "I7b: cycle-plateau runs to exhaustion, failing tests → rc=1, outcome failed (#1208)" \
+    "1 failed" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
 
 print_test_results

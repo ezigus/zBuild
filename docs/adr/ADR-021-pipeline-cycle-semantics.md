@@ -149,6 +149,8 @@ cycle_orchestrator_run <cycle_id> <state_dir> <state_file>
         _CYCLE_LAST_HISTORY_FILE
 ```
 
+**(superseded 2026-10-08 by ADR-054 §4 / #1850 — now `cycle_orchestrator_run` returns 0 iff converged, else 1, naming the ending on `_CYCLE_LAST_OUTCOME` ∈ converged | unconverged | interrupted | failed | aborted)**
+
 Internal helpers (`_cycle_*`) own template loading, dispatch, traps, history
 JSONL, structured `until` eval, max-iter check, plateau/divergence detection,
 feedback file wiring, and atomic per-iter state writes.
@@ -197,7 +199,7 @@ hierarchy"). The orchestrator stays event-emit + control-flow only and
 calls three optional hook functions when declared:
 `cycle_iter_begin_hook`, `cycle_iter_complete_hook`, `cycle_exit_hook`.
 
-Banner emission is single-fan-in through `_cycle_handle_terminal_rc`, which
+Banner emission is single-fan-in through `_cycle_handle_terminal_rc` **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now `_cycle_handle_terminal <cycle_id>`, reading `_CYCLE_LAST_TERMINATED_REASON`)**, which
 emits `cycle.complete` (durable) FIRST and then invokes the exit hook
 (best-effort) — mirroring the v4 stage-start ordering contract. The
 inline `cycle.plateau` / `cycle.divergence` diagnostic events still emit
@@ -306,13 +308,13 @@ copies under `state/cycle-<id>/iter-<N>/artifacts/` are out of scope.
 ### Pipeline halt-vs-continue (#511 Pin 7)
 
 The runner CONTINUES to the next dispatch unit on cycle rc ∈
-{0 converged, 1 max_iterations, 2 plateau, 3 divergence} so the review
+{0 converged, 1 max_iterations, 2 plateau, 3 divergence} **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=unconverged`)** so the review
 stage runs and the ADR-019 fail-closed gate (#485) fires as the FINAL
-arbiter. Halt only on rc=4 (config_invalid) and rc=130 (aborted).
+arbiter. Halt only on rc=4 (config_invalid) and rc=130 (aborted). **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=interrupted` (`config_invalid`) / `aborted` (abort word `sigint` / `sigterm`))**
 
 ### `--from-stage` rejection (#511 Pin 14)
 
-`runner.sh --from-stage <S>` is REFUSED with rc=2 when `<S>` is a member
+`runner.sh --from-stage <S>` is REFUSED with rc=2 **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `pipeline.from_stage.rejected`)** when `<S>` is a member
 of any cycle, OR appears strictly after a cycle in the dispatch order.
 Either case would produce non-deterministic feedback state or consume
 stale test artifacts. Event: `pipeline.from_stage.rejected
@@ -337,18 +339,18 @@ entirely. Never silent emit.
 
 The cycle orchestrator MUST NOT mutate `pipeline_status` on any termination rc.
 Only the runner's dispatch-unit loop writes terminal pipeline status. On cycle
-rc∈{1,2,3} the runner continues to the next dispatch unit (typically `review`)
+rc∈{1,2,3} **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=unconverged`)** the runner continues to the next dispatch unit (typically `review`)
 with `pipeline_status="in_progress"` preserved; the `cycle_iterations[<id>].status`
 field retains its non-converged terminal value AND a new `_RUNNER_CYCLE_UNCONVERGED`
 flag ensures the final pipeline status reflects the unconverged outcome (failed,
 not complete). Review's ADR-019 fail-closed gate (#485) is the sole verdict-class
 arbiter; the runner's status flag is independent.
 
-On rc=4 (config_invalid), rc=5 (blocked, #528), rc=130 (aborted) the
+On rc=4 (config_invalid), rc=5 (blocked, #528), rc=130 (aborted) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=interrupted` (`config_invalid`, `blocked`) / `aborted` (abort word `sigint` / `sigterm`))** the
 runner halts immediately: `pipeline_status="interrupted"`, `pipeline.end
 status=failed`, no further dispatch units run.
 
-Additionally, when the cycle terminates rc∈{1,2,3} the runner sets
+Additionally, when the cycle terminates rc∈{1,2,3} **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=unconverged`)** the runner sets
 `stage_statuses[<until-stage>]=failed` (typically `test`) BEFORE dispatching
 review, so review's `_review_derive_test_status` sees an unambiguous failure
 signal and the ADR-019 coercion path fires deterministically. A new event
@@ -374,7 +376,7 @@ still fire when applicable. Blocked is bypassed when `until.value == "error"`
 (operator template explicitly converging on error).
 
 **Return code 5 allocation:** rc=5 halts the pipeline (review does NOT run on
-blocked). Runner halt set: `{4, 5, 130}`. Rationale: upstream input is
+blocked). Runner halt set: `{4, 5, 130}`. **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=interrupted` (reason `blocked`); the runner halts on `interrupted` / `failed` / `aborted`)** Rationale: upstream input is
 structurally broken; running review on `verdict=error` produces noise + burns
 tokens.
 
@@ -703,7 +705,7 @@ the last `window` history rows and fires when **no consecutive pair shows a
 strict decrease** — i.e. every one of the `window - 1` deltas among those rows
 is ≤ 0 (`failure_count[i] >= failure_count[i-1]`, no improvement). So `window`
 is a count of iterations, not of pairs: `window: 2` inspects 2 rows / 1 delta.
-It reuses the existing exit surface: `rc=2`, `reason=plateau`, `cycle.plateau`
+It reuses the existing exit surface: `rc=2`, `reason=plateau` **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=unconverged`)**, `cycle.plateau`
 event — distinguished from the tuple path by `evidence=velocity_flat` (vs
 `verdict_tuple_identical`), set via the
 `_CYCLE_PLATEAU_TYPE`/`_CYCLE_LAST_PLATEAU_EVIDENCE` global. The `cycle.plateau`
@@ -802,7 +804,7 @@ contract:
 > A cycle member MAY declare `disposition: terminal | recoverable | advisory` in
 > its primary-output result artifact. When a member's artifact records
 > `verdict: fail`, the cycle reads its `disposition`:
-> - `terminal`  → HALT: the cycle does not converge (rc=8, pipeline.end=failed),
+> - `terminal`  → HALT: the cycle does not converge (rc=8, pipeline.end=failed) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=failed`)**,
 >   even if a downstream advisory stage (e.g. review) approved. The engine emits
 >   `cycle.member.terminal_failure` carrying the failing `member` id.
 > - `recoverable` → NON-terminal: the pipeline does not hard-fail; the cycle
@@ -822,7 +824,7 @@ primary-output basename). No plugin id, artifact filename, or failure-class stri
 survives in the engine. A plugin owns its own class→disposition mapping (for the
 acceptance-gate, see ADR-036 Phase-2 amendment). This is orthogonal to the ADR-013
 `blocking:true` mechanism, which stays an immediate, rc-only halt during member
-dispatch (both surface as rc=8 → reason `blocking_member_failure` for blocking:true,
+dispatch (both surface as rc=8 **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=failed`)** → reason `blocking_member_failure` for blocking:true,
 `member_terminal_failure` for the disposition path).
 
 ## Amendment — Timeouts never fatal; single fatal = exhaustion-without-convergence (issue #1208, 2026-07-03)
@@ -858,9 +860,9 @@ LOOP_COMPLETE-vs-timeout, roster-driven gate/test verdict, `failure_count`,
 5. **The single fatal condition** is the cycle reaching `max_iterations` without ever
    converging. At exhaustion the outcome splits **by severity** using the generic test
    verdict + `failure_count`: tests failing (`test.verdict==fail` OR `failure_count>0`)
-   → `term_rc=8` (runner `status=failed`, HALT — a nested inner cycle's rc=8 propagates
+   → `term_rc=8` **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=failed`)** (runner `status=failed`, HALT — a nested inner cycle's rc=8 propagates
    as `blocking_member_failure`, so a failing build/test cycle is **never** rescued by an
-   advisory review); tests passing-but-unconverged → `term_rc=2` (unconverged→review;
+   advisory review); tests passing-but-unconverged → `term_rc=2` **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=unconverged`)** (unconverged→review;
    `on_max` honored at the runner).
 
 **Removed early terminators.** The velocity_plateau / plateau / divergence early
@@ -869,7 +871,7 @@ cycle runs ALL its tries (each cheap: the build self-yields on an empty diff), a
 plateau signal only classifies the exhaustion outcome. The detector functions remain
 defined (dormant, for potential reuse) but are no longer wired into the cascade.
 `_cycle_detect_blocked` is retained for genuine structural failures (raw verdict
-`error`/`corrupt_diff`/`block` — NOT a timeout, which iterates → rc=5 halt).
+`error`/`corrupt_diff`/`block` — NOT a timeout, which iterates → rc=5 halt **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=interrupted`)**, reason `blocked`).
 
 Supersedes the ADR-021 termination priority order (§Decision points) for the
 build/test cycle: `converged → abort_when → scope-deny → max_iterations(by-severity) →
@@ -953,7 +955,7 @@ The exhaustion path (`max_iterations` reached without a clean convergence) gains
 a THIRD by-severity outcome ahead of the existing split, keyed on a generic,
 repo-neutral timeout signal:
 
-- **`design_timeout_exhausted` (rc=8, HALT, `status=failed`)** — the TERMINATING
+- **`design_timeout_exhausted` (rc=8, HALT, `status=failed`) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=failed`)**** — the TERMINATING
   iteration was interrupted by a router timeout (a member surfaced the
   repo-neutral `did_not_finish` verdict — build's #1208 verdict, design's #1261
   verdict on a `design-verdict.json` sidecar) AND the cycle has NO authoritative
@@ -963,8 +965,8 @@ repo-neutral timeout signal:
   `on_max: continue` (ADR-019 Amendment #1261). A new diagnostic event
   `cycle.timeout_exhausted` (cycle_id, iter, reason) is emitted at the halt.
 - Otherwise the pre-existing split stands: tests failing →
-  `max_iterations_tests_failing` (rc=8); tests passing-but-unclean →
-  `max_iterations` (rc=2, unconverged→review, `on_max` honored).
+  `max_iterations_tests_failing` (rc=8) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=failed`)**; tests passing-but-unclean →
+  `max_iterations` (rc=2, unconverged→review, `on_max` honored) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=unconverged`)**.
 
 **Never reroutes.** A `design_timeout_exhausted` terminal is an INFRA failure,
 never a correctable content terminal, so it is EXCLUDED from the ADR-045
@@ -985,10 +987,10 @@ follow-up, deliberately out of scope for #1261.
 A parallel, additive guard alongside the `did_not_finish` (#1208/#1261) mid-flight suppression. A convergence that would fire with **zero commits ahead of the run's intake baseline** is a FALSE convergence: the branch has nothing to ship, so review passes on an uncommitted tree and `pr` aborts later with "No commits between main and branch" (#1214 dogfood). Root trigger: a `scope_violation` zeroed `diff.patch` + skipped the commit, discarding the legit in-scope work too.
 
 - **Suppression (mirrors `did_not_finish`).** After the until-predicate fires (`converged==0`), if `_cycle_no_commits_ahead` (HEAD == `intake-baseline-ref.txt` SHA, 0 commits) AND the build member's verdict `!= empty_diff`, set `converged=1` and emit `cycle.no_committed_changes.suppressed_convergence`. EXEMPT `empty_diff` — the legit nothing-to-do resting point (#1208/#895) converges and has nothing to commit by design.
-- **Terminal (rc=5, blocked-class).** In the by-severity ladder, AFTER `_scope_action` resolution and the `max_iterations` check, if `_no_committed_changes` AND `_scope_action != grant`: `overall_status=no_committed_changes`, `term_rc=5`, emit `cycle.no_committed_changes`. rc=5 halts the pipeline immediately (never reaches review/`pr`) and, like `blocked`, NEVER route_backs (only rc=2/rc=8 reroute). When `_scope_action == grant` the #870/#840 expansion lets the next iter commit, so the cycle does NOT terminate (falls through to iterate).
-- **Reason enum extension.** `cycle.complete reason` rc=5 now restates `_CYCLE_LAST_TERMINATED_REASON ∈ {blocked, no_committed_changes}`.
+- **Terminal (rc=5, blocked-class).** In the by-severity ladder, AFTER `_scope_action` resolution and the `max_iterations` check, if `_no_committed_changes` AND `_scope_action != grant`: `overall_status=no_committed_changes`, `term_rc=5`, emit `cycle.no_committed_changes`. rc=5 halts the pipeline immediately **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=interrupted`)** (never reaches review/`pr`) and, like `blocked`, NEVER route_backs (only rc=2/rc=8 reroute). When `_scope_action == grant` the #870/#840 expansion lets the next iter commit, so the cycle does NOT terminate (falls through to iterate).
+- **Reason enum extension.** `cycle.complete reason` rc=5 **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=interrupted`)** now restates `_CYCLE_LAST_TERMINATED_REASON ∈ {blocked, no_committed_changes}`.
 - **Repo-neutral / fail-soft.** Keys only on commit-count + build verdict — no stage id / language / path. Absent/empty `intake-baseline-ref.txt` (resumed / non-intake run) → the predicate returns false, so the guard never false-fires.
 
 ### Amendment (2026-10-04, #2271) — nested loops, no backward route
 
-ADR-068 supersedes the rc 11 `route_back` row of this ADR's terminal table. An inner loop that ends without converging ends the outer round when it declares `on_max: halt` or ran out with tests failing (rc 8); the outer loop goes round, each inner loop restarting at round 1. With no outer rounds left, rc 8 still stops the run. A loop may declare `unowned: yield | halt` (ADR-068 §8). Tests: `tests/integration/nested-loop-rounds-test.sh`, `tests/integration/nested-loop-rounds-build-test.sh`, `tests/integration/unowned-finding-test.sh`, `tests/integration/unowned-finding-stale-test.sh`.
+ADR-068 supersedes the rc 11 `route_back` row of this ADR's terminal table. An inner loop that ends without converging ends the outer round when it declares `on_max: halt` or ran out with tests failing (rc 8) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=failed`)**; the outer loop goes round, each inner loop restarting at round 1. With no outer rounds left, rc 8 still stops the run. A loop may declare `unowned: yield | halt` (ADR-068 §8). Tests: `tests/integration/nested-loop-rounds-test.sh`, `tests/integration/nested-loop-rounds-build-test.sh`, `tests/integration/unowned-finding-test.sh`, `tests/integration/unowned-finding-stale-test.sh`.

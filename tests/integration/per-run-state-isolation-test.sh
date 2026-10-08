@@ -158,7 +158,11 @@ fi
 # ─── T5: events captured per-run (a build stub captures ZBUILD_EVENTS_DIR) ──
 ENVCAP="$TEST_TEMP_DIR/envcap.txt"
 cat > "$PLUGINS_ROOT/agent/build/plugin.sh" <<EOF
-build_run() { env | grep '^ZBUILD_EVENTS_DIR=' > "$ENVCAP" 2>/dev/null || true; return 0; }
+build_run() {
+    env | grep '^ZBUILD_EVENTS_DIR=' > "$ENVCAP" 2>/dev/null || true
+    $(mock_v2_result_line build)
+    return 0
+}
 EOF
 run_pipeline "run-ddd"
 ev="$(cat "$ENVCAP" 2>/dev/null || echo)"
@@ -174,7 +178,11 @@ esac
 RESUME_DIR="$HOME_DIR/.zbuild/state/runs/run-eee"; mkdir -p "$RESUME_DIR"
 ENVCAP2="$TEST_TEMP_DIR/envcap2.txt"
 cat > "$PLUGINS_ROOT/agent/build/plugin.sh" <<EOF
-build_run() { env | grep '^ZBUILD_EVENTS_DIR=' > "$ENVCAP2" 2>/dev/null || true; return 0; }
+build_run() {
+    env | grep '^ZBUILD_EVENTS_DIR=' > "$ENVCAP2" 2>/dev/null || true
+    $(mock_v2_result_line build)
+    return 0
+}
 EOF
 set +e
 # #1240: scrub ambient ZBUILD_STATE_ROOT (the #1127 nested-sandbox fence) so

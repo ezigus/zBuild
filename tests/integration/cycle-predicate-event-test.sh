@@ -156,7 +156,14 @@ _TPL_STAGES=(); _TPL_CYCLES=()
 load_template "$TPL2" || assert_fail "template load"
 
 set +e; cycle_orchestrator_run "the_cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-assert_eq "cycle aborts rc=6 (cycle_abort)" "6" "$rc"
+# #1850 (ADR-054 §4, ADR-025): was rc=6. The loop returns 1, ends aborted for
+# reason cycle_abort, and records the abort word cycle_abort.
+assert_eq "cycle aborts: rc=1, outcome aborted, reason cycle_abort" \
+    "1 aborted cycle_abort" "$rc ${_CYCLE_LAST_OUTCOME:-unset} ${_CYCLE_LAST_TERMINATED_REASON:-unset}"
+assert_eq "cycle aborts: the recorded abort word is cycle_abort" \
+    "cycle_abort" "$(_zbuild_abort_reason 2>/dev/null)"
+# The recorded abort would end the next section's loop at its pre-flight check.
+_zbuild_disarm_abort_sentinel
 
 aw_count=$(jq -c 'select(.type=="cycle.predicate.evaluated" and .data.kind=="abort_when")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')
 assert_eq "exactly one cycle.predicate.evaluated kind=abort_when emitted" "1" "$aw_count"
@@ -203,10 +210,11 @@ load_template "$TPL1" || assert_fail "template load"
 
 # max_iterations=2, dispatch returns "request_changes" (rc=0, no failing test)
 # every time, no abort_when → cycle runs both iters and terminates at exhaustion.
-# #1208 by-severity: no test verdict==fail and failure_count==0 → rc=2
-# (unconverged→review), not the old max_iterations rc=1.
+# #1208 by-severity: no test verdict==fail and failure_count==0 → rc=1, outcome
+# unconverged (→review; rc=2 before #1850), not a failed end.
 set +e; cycle_orchestrator_run "the_cycle" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-assert_eq "cycle reaches exhaustion, tests not failing → rc=2 (unconverged→review, #1208)" "2" "$rc"
+assert_eq "cycle reaches exhaustion, tests not failing → rc=1, outcome unconverged (→review, #1208)" \
+    "1 unconverged" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
 
 # Two iters → two exit_when evaluations, both match=false
 nomatch_count=$(jq -c 'select(.type=="cycle.predicate.evaluated" and .data.kind=="exit_when" and .data.match=="false")' "$ZBUILD_EVENTS_JSONL" 2>/dev/null | wc -l | tr -d ' ')

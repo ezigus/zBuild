@@ -2,7 +2,8 @@
 # Tests: core/pipeline/strategies/map.sh — unit tests (issue #1285, ADR-047)
 # SPEC-1: platform dimension dispatches one-per-platform (byte-identical to fanout)
 # SPEC-2: non-platform declared dimension dispatches one-per-element
-# SPEC-3: empty dimension → no dispatch, no error (rc=3, caller maps to 0)
+# SPEC-3: empty dimension → no dispatch, no error (rc 0, outcome `empty`; #1850:
+#         the reason rides _ZB_STRATEGY_OUTCOME, never a private rc)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -124,7 +125,7 @@ else
 fi
 
 # ─── SPEC-3: empty dimension → no dispatch, no error ─────────────────────────
-print_test_section "SPEC-3: empty dimension → no dispatch, rc=3 (caller maps to 0)"
+print_test_section "SPEC-3: empty dimension → no dispatch, rc 0, outcome empty (#1850)"
 
 declare -a _MAP_DIM_empty=()
 export _MAP_DIM_empty
@@ -135,7 +136,8 @@ _strategy_run_map "map-pool-003" "intake" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_R
 empty_rc=$?
 set -e
 
-assert_exit_code "SPEC-3: empty dimension exits 3 (no elements)" "3" "$empty_rc"
+assert_exit_code "SPEC-3: empty dimension exits 0 (no elements is not a failure)" "0" "$empty_rc"
+assert_eq "SPEC-3: ...and says so: outcome empty" "empty" "${_ZB_STRATEGY_OUTCOME:-}"
 
 empty_dispatch_count=0; empty_dispatch_count=$(/usr/bin/grep -c "^orch_dispatch" "$ORCH_SPY_LOG" 2>/dev/null) || empty_dispatch_count=0
 if [[ "$empty_dispatch_count" -eq 0 ]]; then
@@ -153,21 +155,23 @@ _strategy_run_map "map-pool-004" "intake" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_R
 empty_plat_rc=$?
 set -e
 
-assert_exit_code "SPEC-3: empty _DETECTED_PLATFORMS exits 3" "3" "$empty_plat_rc"
+assert_exit_code "SPEC-3: empty _DETECTED_PLATFORMS exits 0" "0" "$empty_plat_rc"
+assert_eq "SPEC-3: ...outcome empty" "empty" "${_ZB_STRATEGY_OUTCOME:-}"
 
-# ─── SPEC-4: invalid dimension name → fail-closed rc=5 (NOT empty rc=3) ───────
-print_test_section "SPEC-4: invalid dimension name fails closed (rc=5, not masqueraded as empty)"
+# ─── SPEC-4: invalid dimension name → fail-closed rc 1, outcome bad_dimension ─
+print_test_section "SPEC-4: invalid dimension name fails closed (rc 1, outcome bad_dimension — not empty)"
 
 _DETECTED_PLATFORMS=("ios")
 : > "$ORCH_SPY_LOG"
 set +e
-# "bad name" contains a space → fails the dimension-name allowlist → rc=2 in the
-# resolver → rc=5 from _strategy_run_map. Must NOT collapse to empty (rc=3).
+# "bad name" contains a space → fails the dimension-name allowlist → the
+# resolver fails → _strategy_run_map fails. Must NOT collapse to empty.
 _strategy_run_map "map-pool-005" "intake" "$ROLES_OUT" "$STATE_FILE" "$PLUGINS_ROOT" "bad name"
 bad_rc=$?
 set -e
 
-assert_exit_code "SPEC-4: invalid dimension exits 5 (fail-closed, distinct from empty)" "5" "$bad_rc"
+assert_exit_code "SPEC-4: invalid dimension exits 1 (fail-closed)" "1" "$bad_rc"
+assert_eq "SPEC-4: ...outcome bad_dimension, distinct from empty" "bad_dimension" "${_ZB_STRATEGY_OUTCOME:-}"
 
 bad_dispatch_count=0; bad_dispatch_count=$(/usr/bin/grep -c "^orch_dispatch" "$ORCH_SPY_LOG" 2>/dev/null) || bad_dispatch_count=0
 if [[ "$bad_dispatch_count" -eq 0 ]]; then
@@ -240,7 +244,8 @@ unset _MAP_DIM_lenses5
 # ─── SPEC-6: element/dimension identity is validated → no shell injection ──────
 # #1295 Copilot: map_element/map_dimension are baked as single-quoted literals
 # into the generated work-unit script. A value with ', whitespace, or a newline
-# must fail closed (rc=2), never produce a work unit that breaks out of quotes.
+# must fail closed (rc=1 since #1850, ADR-054 §4 — it was 2), never produce a
+# work unit that breaks out of quotes.
 print_test_section "SPEC-6: map_element/map_dimension validated fail-closed (no injection)"
 
 # A legal element/dimension still produces a work unit (baseline).
@@ -268,8 +273,8 @@ set +e
 _wu_bad="$(_strategy_make_work_unit "$MAP_PLUGIN_DIR" "review" "$STATE_FILE" "generic" "$_inject" "lenses" 2>/dev/null)"
 _bad_rc=$?
 set -e
-if [[ "$_bad_rc" -eq 2 && -z "$_wu_bad" ]]; then
-    assert_pass "SPEC-6: element with ' fails closed (rc=2), no work unit emitted"
+if [[ "$_bad_rc" -eq 1 && -z "$_wu_bad" ]]; then
+    assert_pass "SPEC-6: element with ' fails closed (rc=1), no work unit emitted"
 else
     assert_fail "SPEC-6: element with ' must fail closed" "rc=$_bad_rc path=$_wu_bad"
 fi
@@ -284,23 +289,23 @@ set +e
 _strategy_make_work_unit "$MAP_PLUGIN_DIR" "review" "$STATE_FILE" "generic" $'a\nb' "lenses" >/dev/null 2>&1
 _nl_rc=$?
 set -e
-assert_exit_code "SPEC-6: element with newline fails closed (rc=2)" "2" "$_nl_rc"
+assert_exit_code "SPEC-6: element with newline fails closed (rc=1)" "1" "$_nl_rc"
 
 # Illegal dimension: '-' is not a shell-array-safe token → fail closed.
 set +e
 _strategy_make_work_unit "$MAP_PLUGIN_DIR" "review" "$STATE_FILE" "generic" "security" "bad-dim" >/dev/null 2>&1
 _dim_rc=$?
 set -e
-assert_exit_code "SPEC-6: dimension with '-' fails closed (rc=2)" "2" "$_dim_rc"
+assert_exit_code "SPEC-6: dimension with '-' fails closed (rc=1)" "1" "$_dim_rc"
 
 # ─── SPEC-7: map_element set without map_dimension → fail closed (minor #1312) ─
-print_test_section "SPEC-7: map_element without map_dimension fails closed (rc=2)"
+print_test_section "SPEC-7: map_element without map_dimension fails closed (rc=1)"
 
 set +e
 _strategy_make_work_unit "$MAP_PLUGIN_DIR" "review" "$STATE_FILE" "generic" "security" "" >/dev/null 2>&1
 _no_dim_rc=$?
 set -e
-assert_exit_code "SPEC-7: map_element set + empty map_dimension fails closed (rc=2)" "2" "$_no_dim_rc"
+assert_exit_code "SPEC-7: map_element set + empty map_dimension fails closed (rc=1)" "1" "$_no_dim_rc"
 
 # ─── SPEC-8: max_parallel cap is honored ─────────────────────────────────────
 # #1312: _strategy_run_map must enforce the concurrency cap via batched dispatch.
@@ -614,11 +619,11 @@ orch_dispatch() { orch_dispatch_orig "$@"; }
 orch_collect()  { orch_collect_orig "$@"; }
 orch_shutdown() { orch_shutdown_orig "$@"; }
 
-# rc MUST be the infra-fail code (6), not a member outcome — proves the infra path
-# fired and fails closed even under on_member_error=continue (which would otherwise
-# force rc=0). A bare non-zero check would pass vacuously if a member rc leaked; pin
-# the exact infra code.
-assert_exit_code "SPEC-12: orch_spawn failure → rc=6 (infra fail-closed) despite on_member_error=continue" "6" "$spec12_rc"
+# The OUTCOME must be the infra failure, not a member outcome — proves the infra
+# path fired and fails closed even under on_member_error=continue (which would
+# otherwise force rc 0). #1850: the word, not a private rc, says which.
+assert_exit_code "SPEC-12: orch_spawn failure → rc 1 despite on_member_error=continue" "1" "$spec12_rc"
+assert_eq "SPEC-12: ...outcome infra_failed (the infra path fired)" "infra_failed" "${_ZB_STRATEGY_OUTCOME:-}"
 if [[ "$spec12_rc" -ne 0 ]]; then
     assert_pass "SPEC-12: orch_spawn failure fails closed (non-zero) even under on_member_error=continue (rc=$spec12_rc)"
 else

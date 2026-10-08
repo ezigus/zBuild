@@ -52,7 +52,8 @@ _rc_of() { local rc=0; "$@" >/dev/null 2>&1 || rc=$?; printf '%s' "$rc"; }
 
 # Build a stub stage whose `run` hook does <body>. It declares a primary output
 # and never writes it, so every case here is "rc non-zero, nothing to read" —
-# the exact shape #1823 classifies.
+# the exact shape #1823 classifies. #1850: it speaks result contract v2 (the
+# only one the engine loads), so a body that does write a result writes v2.
 _mkstage() {
     local id="$1"
     local body="$2"
@@ -65,10 +66,14 @@ kind: tool
 version: 0.0.1
 hooks:
   run: ${id}_run
+provides:
+  result_contract: 2
 outputs:
   - id: result
     path: \${artifact_dir}/${id}-result.json
     primary: true
+config:
+  valid_verdicts: [pass, fail]
 EOF
     cat > "$dir/plugin.sh" <<EOF
 ${id}_run() { $body }
@@ -100,17 +105,10 @@ _dispatch() {
     _LAST_RATE_LIMITED=0
     if _router_throttle_observed; then _LAST_RATE_LIMITED=1; fi
     # Mirror the runner's ACTUAL sequence, not a convenient approximation. The
-    # readers below run inside `$()` exactly as cycle_dispatch_stage runs them,
-    # because that is what makes the difference: a version smuggled out of a
-    # reader on a global dies at the subshell boundary, and the gate then reads
-    # its default forever. #1823 shipped precisely that for one commit — the
-    # gate was inert and every test still passed, because this helper was
-    # calling a reader directly instead of doing what the runner does.
-    _LAST_CONTRACT="$(_verdict_probe_contract "$ZBUILD_STATE_DIR" "$dir/manifest.yaml")"
-    _LAST_NARROW_RC="$raw"
-    if [[ "$_LAST_CONTRACT" =~ ^[0-9]+$ ]] && [[ "$_LAST_CONTRACT" -ge 2 ]]; then
-        _LAST_NARROW_RC="$(dispatch_rc_narrow "$raw")"
-    fi
+    # readers below run inside `$()` exactly as cycle_dispatch_stage runs them.
+    # #1850: every stage speaks v2, so the narrowing is unconditional — the
+    # contract-version gate that used to sit here (and its probe) are gone.
+    _LAST_NARROW_RC="$(dispatch_rc_narrow "$raw")"
     _LAST_DISPOSITION="$(runner_read_stage_disposition \
         "$ZBUILD_STATE_DIR" "$dir/manifest.yaml" "$id" \
         "$_LAST_NARROW_RC" "$_LAST_OBSERVATION" "$_LAST_RATE_LIMITED")"
@@ -126,14 +124,12 @@ _dispatch "$_d" sigterm_stage
 # normally, every assertion below would still pass while testing nothing.
 assert_eq "[SPEC-1] the subshell really died by SIGTERM (raw rc 143)" "143" "$_LAST_RAW_RC"
 assert_eq "[SPEC-1] the boundary observes a signal" "signal" "$_LAST_OBSERVATION"
-# This stub is v1 (it writes no result), so its rc is NOT narrowed — the runner
-# still sees 143 and its existing abort handling is untouched. The narrowing is
-# v2-only until #1850; section 7 pins both halves of that rule.
-assert_eq "[SPEC-1] a v1 stage's rc is NOT narrowed (coexistence)" "143" "$_LAST_NARROW_RC"
-# The classification is additive and applies either way — which is the whole
-# point: an unmigrated stage gets an honest disposition today without any
-# change to the rc it reports.
-assert_eq "[SPEC-1] but the disposition is classified regardless of version" \
+# #1850: every stage is held to rc ∈ {0,1} (ADR-054 §4), so the 143 is narrowed
+# to 1 at the boundary. The signal survives as the observation taken from the
+# RAW status before the narrowing — which is why the disposition below is still
+# `interrupted`. Section 7 pins the narrowing for every shape of stage.
+assert_eq "[SPEC-1] the stage's rc is narrowed to 1 (#1850: no v1 coexistence)" "1" "$_LAST_NARROW_RC"
+assert_eq "[SPEC-1] but the disposition is classified from the raw status" \
     "interrupted" "$_LAST_DISPOSITION"
 assert_eq "[SPEC-1] a killed stage is interrupted, NOT broken" "interrupted" "$_LAST_DISPOSITION"
 assert_eq "[SPEC-1] and therefore the engine retries rather than halting" \
@@ -239,29 +235,20 @@ assert_eq "[SPEC-6] the marker did NOT leak into the next dispatch" "0" "$_LAST_
 assert_eq "[SPEC-6] so the next unexplained failure is broken again" "broken" "$_LAST_DISPOSITION"
 
 # ─────────────────────────────────────────────────────────────────────────────
-print_test_section "7. v1 keeps its rc; only v2 is narrowed"
+print_test_section "7. Every stage is narrowed; a v1 result is a violation (#1850)"
 
-# The coexistence rule. A v1 plugin's exit code is still its ONLY channel —
-# `plan` reports scope_too_large as rc=10 and has no result field to say it in —
-# so narrowing every plugin today would delete the meaning of all 25 at once.
-# v2 stages declare a `disposition`, so they have somewhere else to say
-# everything the rc was carrying, and only they are held to {0,1}.
-#
-# Without this gate the change is not additive: `plan`'s rc=10 would arrive at
-# the runner as 1, the scope_too_large abort would never fire, and an oversized
-# scope would run on instead of stopping. No existing test covers that path
-# through the runner, so nothing would have caught it.
+# #1850 retired the coexistence rule. Before it, a v1 stage's rc was its only
+# channel (`plan`'s rc=10 meant scope_too_large) so only v2 stages were narrowed.
+# Every stage now speaks v2 and declares a `disposition`, so the number carries
+# nothing the result does not — and a stage that says nothing has nothing a
+# number could add: rc=10 with no result is `broken`, not a legacy word.
 
-_d="$(_mkstage v1_scope_stage 'return 10;')"
-_dispatch "$_d" v1_scope_stage
-assert_eq "[SPEC-7] a v1 stage declares contract 1" "1" "$_LAST_CONTRACT"
-assert_eq "[SPEC-7] and its rc=10 passes through UNCHANGED" "10" "$_LAST_NARROW_RC"
-# The legacy meaning is still recoverable as a word, so a reader that wants the
-# declared vocabulary can have it without the number.
-assert_eq "[SPEC-7] while rc=10 still maps to out_of_turns (#2187; was exhausted)" \
-    "out_of_turns" "$(dispatch_rc_legacy_disposition "$_LAST_RAW_RC")"
-assert_eq "[SPEC-7] and to its declared reason word" \
-    "scope_too_large" "$(dispatch_rc_legacy_reason "$_LAST_RAW_RC")"
+_d="$(_mkstage no_result_rc10_stage 'return 10;')"
+_dispatch "$_d" no_result_rc10_stage
+assert_eq "[SPEC-7] a stage returning 10 really returned 10" "10" "$_LAST_RAW_RC"
+assert_eq "[SPEC-7] and is narrowed to 1 even with no result" "1" "$_LAST_NARROW_RC"
+assert_eq "[SPEC-7] and rc=10 is no longer read as a legacy word: it is broken" \
+    "broken" "$_LAST_DISPOSITION"
 
 # A v2 stage returning the same rc IS narrowed — it declared a disposition, so
 # nothing is lost by dropping the number.
@@ -270,7 +257,6 @@ _d="$(_mkstage v2_scope_stage '
         > "$ZBUILD_STATE_DIR/artifacts/v2_scope_stage-result.json"
     return 10;')"
 _dispatch "$_d" v2_scope_stage
-assert_eq "[SPEC-7] a v2 stage declares contract 2" "2" "$_LAST_CONTRACT"
 assert_eq "[SPEC-7] its raw rc really was 10" "10" "$_LAST_RAW_RC"
 assert_eq "[SPEC-7] and it IS narrowed to 1" "1" "$_LAST_NARROW_RC"
 assert_eq "[SPEC-7] with the meaning carried by its declared word" \
@@ -289,66 +275,39 @@ assert_contains "[SPEC-7] and is reported as a contract violation naming the wor
     "$(runner_read_stage_reason "$ZBUILD_STATE_DIR" "$_d/manifest.yaml" v2_bogus_stage 1)" \
     "unknown_disposition:wedged"
 
-# A v1 stage is NOT held to the dictionary — it declares no disposition at all,
-# and absence is not an off-set word. This is what lets 25 unmigrated plugins
-# keep running while the F-wave converts them one PR at a time.
+# #1850: a v1 result — no result_contract — is no longer read at all. It is a
+# contract violation, so the stage resolves to broken and its reason channel
+# names the unsupported contract instead of staying blank.
 _d="$(_mkstage v1_plain_stage '
     printf %s "{\"verdict\":\"fail\"}" \
         > "$ZBUILD_STATE_DIR/artifacts/v1_plain_stage-result.json"
     return 1;')"
 _dispatch "$_d" v1_plain_stage
-assert_eq "[SPEC-7] a v1 result is not judged against the dictionary" "1" "$_LAST_CONTRACT"
-assert_eq "[SPEC-7] and yields no disposition rather than a violation" "" "$_LAST_DISPOSITION"
-assert_eq "[SPEC-7] its reason channel carries no contract violation" \
-    "" "$(runner_read_stage_reason "$ZBUILD_STATE_DIR" "$_d/manifest.yaml" v1_plain_stage 1)"
+assert_eq "[SPEC-7] a v1 result resolves to broken" "broken" "$_LAST_DISPOSITION"
+assert_contains "[SPEC-7] and its reason channel names the unsupported contract" \
+    "$(runner_read_stage_reason "$ZBUILD_STATE_DIR" "$_d/manifest.yaml" v1_plain_stage 1)" \
+    "contract_violation:unsupported_contract:1"
 
 # ─────────────────────────────────────────────────────────────────────────────
-print_test_section "8. The version cannot travel on a global (inert-gate guard)"
+print_test_section "8. The narrowing depends on no reader's answer"
 
-# THE regression this section exists for. For one commit the gate read
-# `_ZBUILD_LAST_RESULT_CONTRACT`, set inside _verdict_read_result — which every
-# public reader invokes from inside `$(...)`. A `$()` is a subshell, so the
-# assignment never reached the caller, the gate always saw the default, and v2
-# narrowing NEVER FIRED. Every test still passed: the unit tests called the
-# readers directly, and the guard test asserted the gate LINES existed, which a
-# line that does nothing satisfies perfectly.
-#
-# So this asserts the mechanism, not the text: the version must survive being
-# fetched the way the runner fetches it.
-
+# Before #1850 the narrowing was gated on the result's contract version, and for
+# one commit (#1823) that gate read a global set inside `$()` — invisible to the
+# caller, so the gate was inert and every test passed. #1850 removed the gate:
+# the boundary narrows unconditionally, so there is no answer to smuggle. Both
+# halves still hold end to end — a v2 stage that wrote a result and a stage
+# that wrote nothing are both narrowed.
 _d="$(_mkstage inert_probe_stage '
     printf %s "{\"result_contract\":2,\"verdict\":\"fail\",\"disposition\":\"broken\",\"reason\":\"x\"}" \
         > "$ZBUILD_STATE_DIR/artifacts/inert_probe_stage-result.json"
-    return 1;')"
-
-# Demonstrate the trap directly: a global set inside a command substitution is
-# invisible to the caller. If this ever starts passing, bash changed and the
-# whole concern is moot — but it will not.
-_ZBUILD_PROBE_CANARY=""
-_canary_setter() { _ZBUILD_PROBE_CANARY="set-inside"; printf 'output'; }
-_ignored="$(_canary_setter)"
-assert_eq "[SPEC-8] a global assigned inside \$() does NOT reach the caller" \
-    "" "$_ZBUILD_PROBE_CANARY"
-
-# End to end through the dispatch helper, which now mirrors the runner. The
-# dispatch has to happen FIRST — the stage writes its result when the hook runs,
-# so probing before it would read an absent file and correctly answer 1.
+    return 10;')"
 _dispatch "$_d" inert_probe_stage
+assert_eq "[SPEC-8] a v2 stage that wrote a result is narrowed" "1" "$_LAST_NARROW_RC"
+assert_eq "[SPEC-8] and keeps its declared word" "broken" "$_LAST_DISPOSITION"
 
-# The real thing: the probe returns the version through stdout, so it survives
-# the same boundary that swallowed the global.
-assert_eq "[SPEC-8] the contract probe returns 2 through stdout" \
-    "2" "$(_verdict_probe_contract "$ZBUILD_STATE_DIR" "$_d/manifest.yaml")"
-assert_eq "[SPEC-8] the boundary sees contract 2" "2" "$_LAST_CONTRACT"
-assert_eq "[SPEC-8] so a v2 stage's rc IS narrowed — the gate actually fires" \
-    "1" "$_LAST_NARROW_RC"
-
-# The negative half: a v1 stage in the same helper must NOT be narrowed. Without
-# this, an implementation that narrowed everything would satisfy the above.
-_d="$(_mkstage inert_probe_v1_stage 'return 10;')"
-_dispatch "$_d" inert_probe_v1_stage
-assert_eq "[SPEC-8] a v1 stage still reports contract 1" "1" "$_LAST_CONTRACT"
-assert_eq "[SPEC-8] and its rc survives un-narrowed" "10" "$_LAST_NARROW_RC"
+_d="$(_mkstage inert_probe_silent_stage 'return 10;')"
+_dispatch "$_d" inert_probe_silent_stage
+assert_eq "[SPEC-8] a stage that wrote nothing is narrowed too" "1" "$_LAST_NARROW_RC"
 
 cleanup_test_env
 print_test_results

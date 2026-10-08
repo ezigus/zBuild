@@ -28,6 +28,10 @@ source "${_ZBUILD_STRATEGIES_DIR_FANOUT}/common.sh"
 #   2 — partial (at least one success, at least one fail); callers treat as stage fail
 #   4 — no plugin found for any role (caller may fall back to stage-id lookup)
 _strategy_run_fanout() {
+    # #1850 (ADR-054 §4): rc is 0 or 1; WHY rides this word, which the caller
+    # reads in the same shell — ok | partial | empty | no_plugin | bad_dimension
+    # | infra_failed | failed.
+    _ZB_STRATEGY_OUTCOME="failed"
     local pool_id="$1" stage="$2" roles_out="$3" state_file="$4" plugins_root="$5"
     local success_count=0 fail_count=0 any_plugin_found=false dispatch_count=0
     local -a work_units=() dispatched_plugins=()
@@ -63,22 +67,25 @@ _strategy_run_fanout() {
     if ! $any_plugin_found; then
         _strategy_cleanup_work_units "${work_units[@]+"${work_units[@]}"}"
         orch_shutdown "$pool_id" 2>/dev/null || true
-        return 4
+        _ZB_STRATEGY_OUTCOME="no_plugin"
+        return 1
     fi
 
     # Only collect if at least one dispatch succeeded; otherwise pool is empty
     # and orch_collect would return 0 (no results) — misreported as success.
     if [[ "$dispatch_count" -gt 0 ]]; then
         local collect_rc=0
+        _ORCH_COLLECT_OUTCOME=""
         orch_collect "$pool_id" --timeout "${ZBUILD_ORCH_TIMEOUT:-300}" || collect_rc=$?
 
-        # orch_collect exit codes: 0=all pass, 1=all fail, 2=partial.
+        # orch_collect: 0 = all passed; 1 otherwise, partial named on
+        # _ORCH_COLLECT_OUTCOME (#1850 — it was rc 2).
         if [[ $collect_rc -eq 0 ]]; then
             success_count=$((success_count + 1))
             # #1906: no artifact check here. Each work unit calls plugin_hook_call
             # (strategies/common.sh), so scan_plugin_outputs has already enforced
             # every declared output for every dispatched plugin.
-        elif [[ $collect_rc -eq 2 ]]; then
+        elif [[ "${_ORCH_COLLECT_OUTCOME:-}" == "partial" ]]; then
             success_count=$((success_count + 1))
             fail_count=$((fail_count + 1))
         else
@@ -89,9 +96,9 @@ _strategy_run_fanout() {
     _strategy_cleanup_work_units "${work_units[@]+"${work_units[@]}"}"
     orch_shutdown "$pool_id" 2>/dev/null || true
 
-    if   [[ $fail_count -eq 0 ]];    then return 0
-    elif [[ $success_count -gt 0 ]]; then return 2
-    else                                  return 1
+    if   [[ $fail_count -eq 0 ]];    then _ZB_STRATEGY_OUTCOME="ok"; return 0
+    elif [[ $success_count -gt 0 ]]; then _ZB_STRATEGY_OUTCOME="partial"; return 1
+    else                                  _ZB_STRATEGY_OUTCOME="failed"; return 1
     fi
 }
 

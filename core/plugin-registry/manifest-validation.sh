@@ -430,27 +430,31 @@ validate_manifest() {
     # read it — build declared 1 while summary.sh:193 wrote 4 (#602). That version
     # now lives where the artifact does, in `outputs[].type: <schema-id>@<n>`.
     # Same distinction verdict.sh:209 draws for the result file's own key.
-    # Checked UNCONDITIONALLY — an absent declaration is a declaration of v1, and
-    # it has to travel the same path as a stated one. Short-circuiting on empty
-    # looks equivalent today (v1 is in range, so both accept) and stops being
-    # equivalent the moment #1850 raises the floor: the undeclared plugins are
-    # exactly the ones that must then be refused, and a guard here would wave
-    # every one of them through while the declared stragglers got caught. That
-    # would make the acceptance — "an absent version becomes a structural failure
-    # when the v1 reader is dropped" — quietly false, and #1850 would no longer
-    # be a one-line change. contract_version_check owns the absent case.
+    # #1850: checked for every plugin that writes a STAGE RESULT — one that
+    # declares a `primary: true` output, which is the declaration "my result is
+    # here" (ADR-054 §5). For such a plugin an absent declaration is v1, travels
+    # the same path as a stated one, and is refused now that v1 is out of the
+    # range: an absent version is a structural failure, never an implied v1.
+    # A plugin with no primary output (a persona, an orch/memory/cache backend,
+    # a helper the engine calls itself) writes no stage result, so it has no
+    # result contract to declare; dispatched-stage-plugins-v2-test.sh checks
+    # that no template dispatches one as a stage. Plain bash, no fork (ADR-065).
     local _decl_contract
     _decl_contract="$(yaml_get "$manifest" "provides.result_contract" 2>/dev/null || true)"
     local _pid_c; _pid_c="$(yaml_get "$manifest" "id" 2>/dev/null || true)"
-    local _msg
-    if ! _msg="$(contract_version_check "$_decl_contract" "plugin '${_pid_c:-unknown}'")"; then
+    local _msg _has_prim=0 _hp_line
+    while IFS= read -r _hp_line || [[ -n "$_hp_line" ]]; do
+        [[ "$_hp_line" =~ ^[[:space:]]+primary:[[:space:]]*true ]] && { _has_prim=1; break; }
+    done < "$manifest"
+    if [[ $_has_prim -eq 1 || -n "$_decl_contract" ]] \
+            && ! _msg="$(contract_version_check "$_decl_contract" "plugin '${_pid_c:-unknown}'")"; then
         error "validate_manifest($manifest): $_msg"
         errors=$((errors + 1))
     fi
     # ADR-054 §5 (#1844): a v2 stage's result file IS its primary output. A
     # non-JSON primary (design.md, pr-url.txt) makes the engine read the stage
-    # as v1 — its disposition and reason are never seen. ADR-047 §3's
-    # `<stage>-verdict.json` sidecar is the verdict channel for v1 stages only.
+    # as v1 — its disposition and reason are never seen. (ADR-047 §3's
+    # `<stage>-verdict.json` sidecar was v1's channel; #1850 retired it.)
     if [[ "$_decl_contract" =~ ^[0-9]+$ && "$_decl_contract" -ge "$_ZBUILD_CONTRACT_V2" ]]; then
         # Plain bash, no fork: this runs for every plugin at load (ADR-065).
         local _prim_c="" _pc_line _pc_in=0 _pc_path="" _pc_prim=0

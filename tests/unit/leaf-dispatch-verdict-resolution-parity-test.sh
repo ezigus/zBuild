@@ -62,6 +62,8 @@ hooks:
   run: my_impl_plugin_run
 requires:
   core: [event-bus]
+provides:
+  result_contract: 2
 inputs: []
 outputs:
   - id: my_result
@@ -69,10 +71,12 @@ outputs:
     type: json
     required: true
     primary: true
+config:
+  valid_verdicts: [pass]
 EOF
 
 # Write a passing verdict artifact so runner_read_stage_verdict returns 'pass'.
-printf '%s' '{"verdict":"pass"}' > "$ART_DIR/my-result.json"
+printf '%s' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"fixture"}' > "$ART_DIR/my-result.json"
 
 FIXTURE_PLUGINS_ROOT="$TEST_TEMP_DIR/plugins"
 
@@ -99,12 +103,14 @@ _id_only_dir="$(_find_plugin_for_stage "my-stage" "$FIXTURE_PLUGINS_ROOT" 2>/dev
 assert_eq "[SPEC-1] baseline: _find_plugin_for_stage returns empty for role-bound stage" \
     "" "$_id_only_dir"
 
-# Simulate the OLD (broken) leaf path: empty dir → empty manifest → verdict=unknown.
+# Simulate the OLD (broken) leaf path: empty dir → empty manifest. That used to
+# read as verdict=unknown and the run went on; #1850 (ADR-054 §5) makes "no
+# manifest at rc 0" a contract violation, so it now reads as `error`.
 _old_manifest=""
 [[ -n "$_id_only_dir" ]] && _old_manifest="$_id_only_dir/manifest.yaml"
 _old_verdict="$(runner_read_stage_verdict "$STATE_DIR" "$_old_manifest" "my-stage" 0)"
-assert_eq "[SPEC-1] old leaf path (_find_plugin_for_stage): verdict is 'unknown' (baseline failure)" \
-    "unknown" "$_old_verdict"
+assert_eq "[SPEC-1] old leaf path (_find_plugin_for_stage): no manifest is 'error' (#1850; was unknown)" \
+    "error" "$_old_verdict"
 
 # Simulate the FIXED leaf path: resolve_stage_plugin finds dir via role → real verdict.
 _new_dir="$(resolve_stage_plugin "my-stage" "$FIXTURE_PLUGINS_ROOT" 2>/dev/null || true)"

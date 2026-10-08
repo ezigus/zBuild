@@ -53,26 +53,17 @@ mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 : > "$LABEL_LOG"
 
 # Custom plugin factory: each plugin logs the observed seq label and stage name.
+# #1850: the manifest is mock_plugin_factory's v2 one; the body logs, then writes
+# the v2 result it declares.
 _make_logging_plugin() {
     local id="$1"
-    local dir="$PLUGINS_ROOT/agent/$id"
-    mkdir -p "$dir"
+    local dir; dir="$(mock_plugin_factory "$id" agent 0)"
     local fn="${id//-/_}_run"
-    cat > "$dir/manifest.yaml" <<EOF
-id: $id
-name: Test $id
-kind: agent
-version: 0.0.1
-hooks:
-  run: $fn
-requires:
-  core:
-    - redaction
-EOF
     cat > "$dir/plugin.sh" <<EOF
 ${fn}() {
     printf 'stage=%s label=%s\n' "$id" "\${ZBUILD_STAGE_IO_SEQ_LABEL:-MISSING}" \
         >> "\${ZBUILD_SEQ_LABEL_LOG:-/dev/null}"
+    $(mock_v2_result_line "$id")
     return 0
 }
 EOF

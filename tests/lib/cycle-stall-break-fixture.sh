@@ -117,5 +117,5 @@ _run_cycle() {
 # empty_diff that never converges no longer terminates early — the cycle uses ALL
 # its iterations (each cheap: build self-yields on an empty diff) and then
 # terminates by-severity. Here the mock's `test` stage passes (gate-aggregator
-# fails), so exhaustion routes to rc=2 (unconverged→review, reason
+# fails), so exhaustion routes to rc=1, outcome unconverged (→review, reason
 # max_iterations), NOT the old reason=stalled / ≤2-iter early break.

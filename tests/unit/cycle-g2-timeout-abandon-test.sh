@@ -7,7 +7,8 @@
 # that: the ONLY fatal condition is the cycle exhausting max_iterations without a
 # clean, passing convergence. A timed-out attempt simply consumes an iteration
 # and the cycle retries; the by-severity cascade routes the EXHAUSTION outcome
-# (tests failing → rc=8 halt; tests passing → rc=2 unconverged→review). The
+# (tests failing → outcome failed, a halt; tests passing → outcome unconverged
+# →review; both rc=1 since #1850, ADR-054 §4 — they were rc=8 / rc=2). The
 # per-member timeout counter + G3 max_turns escalation are retained (see
 # cycle-g3-maxturns-escalation-test.sh); only the abandon is gone.
 set -euo pipefail
@@ -83,7 +84,8 @@ _seed
 load_template "$FIXT/cycle-max-iter.yaml"
 MOCK_PLAN="build:timeout,timeout,timeout;test:fail,fail,fail"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-assert_eq "T1: NO abandon; exhausted with failing tests → rc=8 (by-severity)" "8" "$rc"
+assert_eq "T1: NO abandon; exhausted with failing tests → rc=1, outcome failed (by-severity)" \
+    "1 failed" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
 if [[ "$_CYCLE_LAST_TERMINATED_REASON" == "timeout_abandoned" ]]; then
     assert_fail "T1: reason is NOT timeout_abandoned (G2 removed)" "$_CYCLE_LAST_TERMINATED_REASON"
 else

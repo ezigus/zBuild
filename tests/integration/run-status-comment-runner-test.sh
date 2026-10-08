@@ -139,9 +139,10 @@ git -C "$_ZB_REPO" remote set-url origin https://github.com/testuser/testrepo.gi
 
 # ─── SPEC-4: TERM mid-run — the running row keeps its start; final says why ─
 # The slow stage is intake, a LINEAR stage: the runner's own trap answers a
-# TERM there with exit 143 + pipeline.aborted reason=sigterm. (A TERM during
-# a CYCLE member is answered by _cycle_on_signal, which emits cycle.aborted
-# and returns 130 from the handler — the run then carries on; filed separately.)
+# TERM there with exit 1 + pipeline.aborted reason=sigterm (#1850, ADR-054 §4:
+# the exit status was 143; the word is the record now). (A TERM during a CYCLE
+# member is answered by _cycle_on_signal, which emits cycle.aborted and records
+# the abort word sigterm for the next dispatch boundary.)
 print_test_section "[SPEC-4] SIGTERM mid-run"
 export ZBUILD_TEST_SLOW_MARK="$TEST_TEMP_DIR/slow.mark"; rm -f "$ZBUILD_TEST_SLOW_MARK"
 _reset
@@ -152,7 +153,9 @@ if wait_for_event "$ZBUILD_TEST_SLOW_MARK" 'running' 600 0.1; then
     sleep 1
     kill -TERM "$RUNNER_PID" 2>/dev/null || true
     set +e; wait "$RUNNER_PID"; rc4=$?; set -e
-    assert_eq "[SPEC-4] runner exits 143 on TERM" "143" "$rc4"
+    assert_eq "[SPEC-4] runner exits 1 on TERM (not 143)" "1" "$rc4"
+    assert_eq "[SPEC-4] pipeline.aborted carries reason=sigterm" "sigterm" \
+        "$(jq -r 'select(.type=="pipeline.aborted") | .data.reason // empty' "$EVENTS_JSONL" 2>/dev/null | sort -u | tr -d '\n')"
     intake_seq="$(jq -r 'select(.type=="plugin.run.start" and .stage=="intake") | .seq' "$EVENTS_JSONL" | tail -1)"
     assert_contains "[SPEC-4] the running intake row is in the final body" "$(last_body)" "**${intake_seq} intake**"
     assert_contains "[SPEC-4] …still marked running (it never ended)" "$(last_body | grep -F "**${intake_seq} intake**")" '→ running'

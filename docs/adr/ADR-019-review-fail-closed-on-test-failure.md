@@ -344,7 +344,7 @@ motivated #507.
 
 ### Note (#527): cycle-unconverged signal propagation
 
-When the outer build/test cycle (ADR-021) terminates non-converged (rc∈{1,2,3}:
+When the outer build/test cycle (ADR-021) terminates non-converged (rc∈{1,2,3}: **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=unconverged`)**
 max_iterations, plateau, divergence), the runner now sets
 `stage_statuses[<until-stage>]=failed` (typically `test`) BEFORE dispatching
 review. This ensures `_review_derive_test_status` has an unambiguous failure
@@ -374,7 +374,7 @@ timeout — a member surfaced the repo-neutral `did_not_finish` verdict (build's
 #1208 verdict; design's #1261 verdict, carried on a `design-verdict.json`
 sidecar) — AND the cycle has NO authoritative verifier signal (no `test` member
 verdict and no `test-results.json`), the cycle HALTS with terminal reason
-`design_timeout_exhausted` (rc=8 → pipeline `status=failed`) even though
+`design_timeout_exhausted` (rc=8 → pipeline `status=failed`) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_CYCLE_LAST_OUTCOME=failed`)** even though
 `on_max: continue`. This is NOT `on_max: halt` (too blunt — it would also
 hard-fail a genuine CONTENT non-convergence): a content non-convergence has no
 `did_not_finish` tail and keeps the fall-through above.

@@ -131,10 +131,10 @@ succeeds and before the `--dry-run` short-circuit:
 5. On any violation: emit `pipeline.preflight.fail reason=missing_input`
    with `mode=warn|enforce`. In `warn`, print the structured error and
    return 0 (allow the pipeline to proceed). In `enforce`, write a minimal
-   state.json with `status: preflight_failed` and return rc=2.
+   state.json with `status: preflight_failed` and return rc=2. **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1; `status: preflight_failed` and the `pipeline.preflight.*` events say why)**
 
 The runner halts BEFORE intake's `plugin.run.start` fires when the
-validator returns rc=2 — verified by the keystone integration test
+validator returns rc=2 **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1; `status: preflight_failed` and the `pipeline.preflight.*` events say why)** — verified by the keystone integration test
 `tests/integration/pipeline-preflight-missing-stage-test.sh`.
 
 ### Rollout escape hatch
@@ -234,7 +234,7 @@ are NOT modified in this PR:
   `(intake, security-lens, output)`. The pre-flight validator only sees
   what `load_template` produced, so this fallback path is contract-bypass
   by construction.
-- **Strategy rc=4 fallback** (runner.sh:444-465) — when the role-based
+- **Strategy rc=4 fallback** **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_ZB_STRATEGY_OUTCOME=no_plugin`)** (runner.sh:444-465) — when the role-based
   strategy dispatch finds no plugin for any role, the runner falls back
   to ID-based resolution. A successful fallback dispatches a plugin whose
   inputs were never declared in any template's roles.
@@ -245,7 +245,7 @@ behavior change scoped to the explicit-violation path.
 
 > _Tracking-issue creation for the bypass-path audit is pending; the
 > two known bypasses (template-missing fallback at runner.sh:158-165
-> and strategy rc=4 fallback) remain documented here until then._
+> and strategy rc=4 fallback) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_ZB_STRATEGY_OUTCOME=no_plugin`)** remain documented here until then._
 
 ## Consequences
 
@@ -281,7 +281,7 @@ behavior change scoped to the explicit-violation path.
   disk, beyond stage_statuses).
 - `dynamic_inputs: from_role:` for CQ lens fan-in (decision #8 — now inside cq-cycle).
 - Audit the two known contract-bypass paths (template-missing fallback,
-  strategy rc=4 fallback) and either bring them under the contract or
+  strategy rc=4 fallback) **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1 + `_ZB_STRATEGY_OUTCOME=no_plugin`)** and either bring them under the contract or
   document them in ADR-001.
 
 ## Implementation Notes (Phase 1, issue #496)

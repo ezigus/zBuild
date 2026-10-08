@@ -11,28 +11,28 @@ _ZBUILD_ROOT="${_ZBUILD_ROOT:-$(cd "${_ZBUILD_STRATEGIES_DIR}/../../.." && pwd)}
 
 # ─── _strategy_validate_stage ────────────────────────────────────────────────
 # Allowlist: non-empty, no path-traversal sequences, no shell metacharacters.
-# exit 0: valid; exit 2: invalid.
+# exit 0: valid; exit 1: invalid (#1850, ADR-054 §4 — was 2; the warning names why).
 _strategy_validate_stage() {
     local stage="$1"
-    [[ -z "$stage" ]] && return 2
+    [[ -z "$stage" ]] && return 1
     # Strict allowlist — identical to platform: prevents ' injection in the
     # heredoc literal and path-traversal in scratch dir names.
     if [[ ! "$stage" =~ ^[a-zA-Z0-9_-]{1,64}$ ]]; then
         warn "strategy: invalid stage name: ${stage}" || true
-        return 2
+        return 1
     fi
     return 0
 }
 
 # ─── _strategy_validate_platform ─────────────────────────────────────────────
 # Allowlist: non-empty, ^[a-zA-Z0-9_-]{1,64}$.
-# exit 0: valid; exit 2: invalid.
+# exit 0: valid; exit 1: invalid.
 _strategy_validate_platform() {
     local platform="$1"
-    [[ -z "$platform" ]] && return 2
+    [[ -z "$platform" ]] && return 1
     if [[ ! "$platform" =~ ^[a-zA-Z0-9_-]{1,64}$ ]]; then
         warn "strategy: invalid platform name: ${platform}" || true
-        return 2
+        return 1
     fi
     return 0
 }
@@ -55,7 +55,8 @@ _strategy_orch_scratch_dir() {
 # Creates a self-contained executable shell script that calls plugin_hook_call.
 # Validates stage and platform before baking into the script body.
 # Prints the path of the temp file; caller is responsible for cleanup (rm -f).
-# exit 0: success; exit 2: validation failure; exit 1: temp file creation failure.
+# exit 0: success; exit 1: a validation failure or the temp file could not be
+# created — the warning says which (#1850: validation was exit 2).
 #
 # map_element / map_dimension (issue #1295, ADR-047 §2): generic element identity
 # for non-platform map dimensions. When set, exports to the work unit:
@@ -73,9 +74,9 @@ _strategy_make_work_unit() {
     local plugin_dir="$1" stage="$2" state_file="$3" platform="${4:-generic}"
     local map_element="${5:-}" map_dimension="${6:-}" env_target="${7:-}" unit_element="${8:-}"
 
-    _strategy_validate_stage "$stage"   || return 2
-    _strategy_validate_platform "$platform" || return 2
-    [[ -z "$plugin_dir" ]] && { warn "strategy: _strategy_make_work_unit: empty plugin_dir" || true; return 2; }
+    _strategy_validate_stage "$stage"   || return 1
+    _strategy_validate_platform "$platform" || return 1
+    [[ -z "$plugin_dir" ]] && { warn "strategy: _strategy_make_work_unit: empty plugin_dir" || true; return 1; }
     # #1295 Copilot: map_element/map_dimension are baked as single-quoted literals
     # into the work-unit script — a value with ', whitespace, or a newline would
     # break out of the quotes (shell-injection). Fail closed with an actionable
@@ -83,27 +84,27 @@ _strategy_make_work_unit() {
     # token used to name a bash array (_MAP_DIM_<dim>), so no '-'.
     if [[ -n "$map_element" && ! "$map_element" =~ ^[a-zA-Z0-9_-]{1,64}$ ]]; then
         warn "strategy: invalid map element: ${map_element} (expected ^[A-Za-z0-9_-]{1,64}$)" || true
-        return 2
+        return 1
     fi
     # #1312 (minor): map_element set but map_dimension empty → ambiguous work-unit
     # identity (ZBUILD_MAP_DIMENSION would be '' in the baked script). Fail closed.
     if [[ -n "$map_element" && -z "$map_dimension" ]]; then
         warn "strategy: map_element set but map_dimension is empty — dimension required" || true
-        return 2
+        return 1
     fi
     if [[ -n "$map_dimension" && ! "$map_dimension" =~ ^[a-zA-Z0-9_]{1,64}$ ]]; then
         warn "strategy: invalid map dimension: ${map_dimension} (expected ^[A-Za-z0-9_]{1,64}$)" || true
-        return 2
+        return 1
     fi
     # unit_element (#1706): the caller's name for this member after the stage
     # (`<element>` or `<role>.<element>`); baked like the others, so validated.
     if [[ -n "$unit_element" && ! "$unit_element" =~ ^[a-zA-Z0-9_-]{1,64}(\.[a-zA-Z0-9_-]{1,64})?$ ]]; then
         warn "strategy: invalid unit element: ${unit_element}" || true
-        return 2
+        return 1
     fi
     if [[ -n "$env_target" && ! "$env_target" =~ ^[a-zA-Z_][a-zA-Z0-9_]{0,63}$ ]]; then
         warn "strategy: invalid env_target var name: ${env_target}" || true
-        return 2
+        return 1
     fi
 
     local scratch_dir; scratch_dir="$(_strategy_orch_scratch_dir)"

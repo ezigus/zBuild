@@ -19,7 +19,7 @@
 #   _cycle_clear_traps   / _cycle_on_signal     / _cycle_record_iter_outcome /
 #   _cycle_check_until   / _cycle_check_max_iterations /
 #   _cycle_detect_plateau / _cycle_detect_divergence /
-#   _cycle_apply_feedback / _cycle_handle_terminal_rc
+#   _cycle_apply_feedback / _cycle_handle_terminal
 #
 # Sourced library: do not add `set -euo pipefail` here.
 
@@ -228,9 +228,10 @@ _cycle_emit_member_dispatch_complete() {
 }
 
 # ─── Trap composition (silent-failure findings #5, #6) ───────────────────────
-# Cycle owns ONLY INT/TERM. Runner owns EXIT. On signal: emit cycle.aborted,
-# clear traps, return 130. Must be re-installed after each stage dispatch
-# because route.sh::_route_loop_install_traps clobbers without saving.
+# Cycle owns ONLY INT/TERM. Runner owns EXIT. On signal: record the abort word
+# (ADR-025 — the next dispatch boundary sees it), emit cycle.aborted, clear
+# traps. Must be re-installed after each stage dispatch because
+# route.sh::_route_loop_install_traps clobbers without saving.
 _cycle_install_traps() {
     trap '_cycle_on_signal SIGINT' INT
     trap '_cycle_on_signal SIGTERM' TERM
@@ -239,7 +240,9 @@ _cycle_clear_traps() {
     trap - INT TERM
 }
 _cycle_on_signal() {
-    local sig="$1"
+    local sig="$1" word="sigint"
+    [[ "$sig" == "SIGTERM" ]] && word="sigterm"
+    _zbuild_arm_abort_sentinel "$word"
     _CYCLE_LAST_TERMINATED_REASON="aborted"
     eb_emit_event "cycle.aborted" \
         "cycle_id=${_CYCLE_TRAP_CYCLE_ID:-unknown}" \
@@ -247,7 +250,6 @@ _cycle_on_signal() {
         "signal=$sig" 2>/dev/null || true
     _cycle_clear_traps
     _CYCLE_TRAP_CYCLE_ID=''
-    return 130
 }
 
 # ─── _cycle_member_is_blocking <stage_id> ────────────────────────────────────
@@ -272,7 +274,7 @@ _cycle_member_is_blocking() {
 #   _CYCLE_UNTIL_VALUE  (string)
 #   _CYCLE_PLATEAU_WINDOW / _CYCLE_DIVERGENCE_WINDOW / _CYCLE_VELOCITY_PLATEAU_WINDOW
 #   _CYCLE_FEEDBACK[]   (flat list: "from_stage:from_output:to_stage:to_field:required")
-# Returns: 0 valid; 4 invalid (emits cycle.config.invalid).
+# Returns: 0 valid; 1 invalid (emits cycle.config.invalid).
 _cycle_load_template() {
     local cycle_id="$1"
     local safe="${cycle_id//-/_}"
@@ -308,7 +310,7 @@ _cycle_load_template() {
     if [[ -z "$stages_csv" ]]; then
         error "cycle '$cycle_id': no stages declared"
         _cycle_emit "cycle.config.invalid" "reason=no_stages"
-        return 4
+        return 1
     fi
     local IFS_save="$IFS"; IFS=','
     # shellcheck disable=SC2206
@@ -320,13 +322,13 @@ _cycle_load_template() {
         error "cycle '$cycle_id': max_iterations required (integer 1..${_CYCLE_ABSOLUTE_MAX})"
         _cycle_emit "cycle.config.invalid" "reason=max_iterations_missing_or_nonint" \
             "value=${_CYCLE_MAX_ITER:-<unset>}"
-        return 4
+        return 1
     fi
     if [[ "$_CYCLE_MAX_ITER" -lt 1 || "$_CYCLE_MAX_ITER" -gt "$_CYCLE_ABSOLUTE_MAX" ]]; then
         error "cycle '$cycle_id': max_iterations must be 1..${_CYCLE_ABSOLUTE_MAX}, got: $_CYCLE_MAX_ITER"
         _cycle_emit "cycle.config.invalid" "reason=max_iterations_out_of_range" \
             "value=$_CYCLE_MAX_ITER" "absolute_max=$_CYCLE_ABSOLUTE_MAX"
-        return 4
+        return 1
     fi
 
     _CYCLE_ON_MAX="${!on_max_var:-continue}"
@@ -337,7 +339,7 @@ _cycle_load_template() {
         error "cycle '$cycle_id': on_max must be continue|halt, got: $_CYCLE_ON_MAX"
         _cycle_emit "cycle.config.invalid" "reason=on_max_invalid" \
             "value=$_CYCLE_ON_MAX"
-        return 4
+        return 1
     fi
 
     # #1284 (ADR-047): check for multi-condition exit_when first. When present,
@@ -352,14 +354,14 @@ _cycle_load_template() {
                 error "cycle '$cycle_id': exit_when combinator must be all|any, got: $_CYCLE_EXIT_COMBINATOR"
                 _cycle_emit "cycle.config.invalid" "reason=exit_when_combinator_invalid" \
                     "value=$_CYCLE_EXIT_COMBINATOR"
-                return 4
+                return 1
                 ;;
         esac
         local ew_count="${!ew_count_var:-0}"
         if ! [[ "$ew_count" =~ ^[0-9]+$ ]] || [[ "$ew_count" -lt 1 ]]; then
             error "cycle '$cycle_id': exit_when multi-condition count must be >=1, got: $ew_count"
             _cycle_emit "cycle.config.invalid" "reason=exit_when_count_invalid"
-            return 4
+            return 1
         fi
         local ew_i ew_s ew_f ew_o ew_v
         for (( ew_i=1; ew_i<=ew_count; ew_i++ )); do
@@ -371,14 +373,14 @@ _cycle_load_template() {
             if [[ -z "$ew_s" || -z "$ew_f" || -z "$ew_o" || -z "$ew_v" ]]; then
                 error "cycle '$cycle_id': exit_when condition $ew_i: {stage,field,op,value} all required"
                 _cycle_emit "cycle.config.invalid" "reason=exit_when_condition_incomplete" "index=$ew_i"
-                return 4
+                return 1
             fi
             case "$ew_f" in
                 verdict|status) ;;
                 *)
                     error "cycle '$cycle_id': exit_when condition $ew_i: field must be verdict|status, got: $ew_f"
                     _cycle_emit "cycle.config.invalid" "reason=exit_when_field_invalid" "value=$ew_f"
-                    return 4
+                    return 1
                     ;;
             esac
             case "$ew_o" in
@@ -386,7 +388,7 @@ _cycle_load_template() {
                 *)
                     error "cycle '$cycle_id': exit_when condition $ew_i: op must be eq|ne, got: $ew_o"
                     _cycle_emit "cycle.config.invalid" "reason=exit_when_op_invalid" "value=$ew_o"
-                    return 4
+                    return 1
                     ;;
             esac
             local _cs_ok=0 _cs
@@ -396,7 +398,7 @@ _cycle_load_template() {
             if [[ $_cs_ok -ne 1 ]]; then
                 error "cycle '$cycle_id': exit_when condition $ew_i: stage '$ew_s' is not in cycle stages (${_CYCLE_STAGES[*]})"
                 _cycle_emit "cycle.config.invalid" "reason=exit_when_stage_outside_cycle" "value=$ew_s"
-                return 4
+                return 1
             fi
             _CYCLE_EXIT_CONDITIONS+=("${ew_s}|${ew_f}|${ew_o}|${ew_v}")
         done
@@ -410,7 +412,7 @@ _cycle_load_template() {
               || -z "$_CYCLE_UNTIL_OP" || -z "$_CYCLE_UNTIL_VALUE" ]]; then
             error "cycle '$cycle_id': until.{stage,field,op,value} all required"
             _cycle_emit "cycle.config.invalid" "reason=until_incomplete"
-            return 4
+            return 1
         fi
         # v1 whitelist
         case "$_CYCLE_UNTIL_FIELD" in
@@ -419,7 +421,7 @@ _cycle_load_template() {
                 error "cycle '$cycle_id': until.field must be verdict|status, got: $_CYCLE_UNTIL_FIELD"
                 _cycle_emit "cycle.config.invalid" "reason=until_field_invalid" \
                     "value=$_CYCLE_UNTIL_FIELD"
-                return 4
+                return 1
                 ;;
         esac
         case "$_CYCLE_UNTIL_OP" in
@@ -428,7 +430,7 @@ _cycle_load_template() {
                 error "cycle '$cycle_id': until.op must be eq|ne, got: $_CYCLE_UNTIL_OP"
                 _cycle_emit "cycle.config.invalid" "reason=until_op_invalid" \
                     "value=$_CYCLE_UNTIL_OP"
-                return 4
+                return 1
                 ;;
         esac
         # until.stage must be in cycle.stages
@@ -440,7 +442,7 @@ _cycle_load_template() {
             error "cycle '$cycle_id': until.stage '$_CYCLE_UNTIL_STAGE' is not in cycle stages (${_CYCLE_STAGES[*]})"
             _cycle_emit "cycle.config.invalid" "reason=until_stage_outside_cycle" \
                 "value=$_CYCLE_UNTIL_STAGE"
-            return 4
+            return 1
         fi
     fi
 
@@ -838,7 +840,7 @@ _cycle_render_predicate_result() {
 # _TPL_CYCLE_ABORT_WHEN_* fields. Returns 0 if predicate fired (abort), else 1.
 # Missing field → 1 (NEVER spuriously abort). No event-emit here — the caller
 # in cycle_orchestrator_run emits cycle.complete reason=cycle_abort via the
-# terminal-rc fan-in.
+# terminal fan-in.
 _cycle_check_abort_when() {
     local blob="$1"
     local safe="${_CYCLE_TRAP_CYCLE_ID//-/_}"
@@ -1526,10 +1528,14 @@ _CYCLE_VERIFIED_FP=""
 _CYCLE_VERIFIED_ITER=""
 _CYCLE_VERIFIED_BLOB=""
 
+# Returns 0 when every member ran (the round's verdicts are in the blob), else 1
+# with _CYCLE_ITER_OUTCOME naming why: failed | interrupted | aborted | error
+# (#1850, ADR-054 §4 — the word, never an rc).
 _cycle_iter_dispatch() {
     local iter="$1" state_file="$2"
     _CYCLE_LAST_VERDICTS_BLOB="{}"
     _CYCLE_LAST_FAILURE_COUNT=0
+    _CYCLE_ITER_OUTCOME="error"
 
     if ! declare -F cycle_dispatch_stage >/dev/null 2>&1; then
         error "cycle_orchestrator: no cycle_dispatch_stage hook registered (F2 wires this)"
@@ -1566,9 +1572,9 @@ _cycle_iter_dispatch() {
     local _cyc_pos=0
     # ADR-027 (Wave 17-B #703): cycle-as-member support. For each cycle
     # member, check `_TPL_STAGE_TYPE_<member>` — if it's `cycle`, recurse
-    # into cycle_orchestrator_run for that nested cycle and map its terminal
-    # rc onto the verdict blob (converged→pass, others→fail). rc=6 (the new
-    # cycle_abort class) propagates outward unchanged.
+    # into cycle_orchestrator_run for that nested cycle and map how it ended
+    # onto the verdict blob (converged→pass, others→fail). An abort (e.g.
+    # cycle_abort) propagates outward unchanged, its word recorded.
     for s in "${_CYCLE_STAGES[@]}"; do
         # Wave 19-C-2 (#726) defensive clear. Every member dispatch starts
         # from a known-empty RAW baseline. The runner's cycle_dispatch_stage
@@ -1592,12 +1598,13 @@ _cycle_iter_dispatch() {
         # armed by the runner's SIGINT trap between this stage and the last.
         # Bail before spawning the next child so the abort observes at the
         # earliest possible dispatch boundary. THIS is the dogfood-bug fix:
-        # Wave 15 dogfood saw rc=130 swallowed because the previous shape
+        # Wave 15 dogfood saw a Ctrl-C swallowed because the previous shape
         # treated every non-zero rc as a generic stage failure (fail++) and
         # kept iterating after Ctrl-C.
         if ! _zbuild_check_abort; then
             [[ $_had_e -eq 1 ]] && set -e
-            return 130
+            _CYCLE_ITER_OUTCOME="aborted"
+            return 1
         fi
         _cyc_pos=$(( _cyc_pos + 1 ))
         # Wave 19-D-1 (#731): emit start event BEFORE dispatching this member.
@@ -1684,7 +1691,8 @@ _cycle_iter_dispatch() {
                     _cycle_state_write_member_atomic "$state_file" "$s" "failed" "unowned_finding" || true
                     _cycle_clear_traps
                     [[ $_had_e -eq 1 ]] && set -e
-                    return 8
+                    _CYCLE_ITER_OUTCOME="failed"
+                    return 1
                 fi
                 # #2330: the loop runs again; what it hands back is recorded afresh,
                 # so a finding acted on since is never reported at the end.
@@ -1748,10 +1756,11 @@ _cycle_iter_dispatch() {
             _CYCLE_NEST_DEPTH=$(( ${_CYCLE_NEST_DEPTH:-0} + 1 ))
             cycle_orchestrator_run "$s" "$state_dir" "$state_file"
             rc=$?
+            local _inner_outcome="${_CYCLE_LAST_OUTCOME:-}"
             _CYCLE_NEST_DEPTH=$(( _CYCLE_NEST_DEPTH - 1 ))
             # Wave 19-B (#718): restore prior seq prefix BEFORE any return path
-            # (verdict normal, rc=6, rc=130, rc=143). Prefix must not leak to
-            # sibling members of THIS cycle or to callers above.
+            # (verdict normal, or an inner loop that stops the run). Prefix must
+            # not leak to sibling members of THIS cycle or to callers above.
             if [[ $_prior_seq_prefix_set -eq 1 ]]; then
                 export ZBUILD_SEQ_PREFIX="$_prior_seq_prefix"
             else
@@ -1782,18 +1791,28 @@ _cycle_iter_dispatch() {
             _CYCLE_EXIT_CONDITIONS=( ${_outer_exit_conds[@]+"${_outer_exit_conds[@]}"} )
             # #2271 (ADR-068): an inner loop that ends without converging ends
             # this outer round when it may not be carried past — it declares
-            # `on_max: halt`, or it ran out with tests failing (rc 8). The outer
-            # loop then goes round from the top, each inner loop with a fresh
-            # counter. With no outer rounds left, rc 8 still stops the run.
-            local _end_round=0
+            # `on_max: halt`, or it ran out with tests failing (`failed`). The
+            # outer loop then goes round from the top, each inner loop with a
+            # fresh counter. With no outer rounds left, `failed` still stops the
+            # run.
+            # #1850: which inner endings stop the run is read from the inner
+            # loop's outcome and reason, not an rc: an abort; a block
+            # (blocked / no_committed_changes); `failed` on the last round.
+            local _end_round=0 _inner_stops=""
             [[ "$_inner_reason" == "unowned_finding" ]] && _end_round=1
-            if [[ $rc -ne 0 && $rc -ne 5 && $rc -ne 6 && $rc -ne 9 && $rc -ne 130 && $rc -ne 143 ]]; then
-                if [[ $rc -eq 8 ]]; then
-                    (( iter < _CYCLE_MAX_ITER )) && { _end_round=1; rc=2; }
-                elif [[ "$_inner_on_max" == "halt" ]]; then
-                    _end_round=1
-                fi
-            fi
+            case "$_inner_outcome" in
+                converged) ;;
+                aborted) _inner_stops="aborted" ;;
+                interrupted)
+                    case "$_inner_reason" in
+                        blocked|no_committed_changes) _inner_stops="blocked" ;;
+                        *) [[ "$_inner_on_max" == "halt" ]] && _end_round=1 ;;
+                    esac ;;
+                failed)
+                    if (( iter < _CYCLE_MAX_ITER )); then _end_round=1
+                    else _inner_stops="failed"; fi ;;
+                *) [[ "$_inner_on_max" == "halt" ]] && _end_round=1 ;;
+            esac
             # #1822: the same leak Wave 19-C-2 (#726) fixed for the verdict
             # channel, one channel over. The inner run dispatches its own leaf
             # members, each publishing _CYCLE_DISPATCH_DISPOSITION; on return the
@@ -1803,7 +1822,7 @@ _cycle_iter_dispatch() {
             _CYCLE_DISPATCH_DISPOSITION=""
             _CYCLE_DISPATCH_DATA_KIND=""
             [[ $_had_e -eq 1 ]] && set -e
-            # Map nested-cycle terminal rc → outer verdict/status.
+            # Map how the nested cycle ended → outer verdict/status.
             # Wave 19-C-2 (#726): set RAW symmetrically with the classified
             # VERDICT so the outer's blob entry for this nested-cycle member
             # has both channels populated. Without this, _CYCLE_DISPATCH_VERDICT_RAW
@@ -1812,47 +1831,60 @@ _cycle_iter_dispatch() {
             # predicate (line 870+) reads RAW first, so a leaked inner value
             # would corrupt the outer's verdict accumulation. The nested
             # cycle's own predicates already terminated correctly; the
-            # outer's perspective on this member is "converged pass" (rc=0)
-            # or "failed fail" (rc!=0).
+            # outer's perspective on this member is "converged pass" or
+            # "failed fail" (otherwise).
             # Wave 19-D-1 (#731/#734 Copilot review): emit
-            # cycle.member.dispatch.complete BEFORE returning on abort rcs
-            # (6/130/143) so the documented start+complete pairing holds
-            # even on abort paths. Without this, forensics see a start
+            # cycle.member.dispatch.complete BEFORE returning on an inner ending
+            # that stops the run, so the documented start+complete pairing
+            # holds on those paths too. Without this, forensics see a start
             # with no matching complete and cannot reconstruct the
             # dispatched-but-aborted sequence.
-            case "$rc" in
-                0) _CYCLE_DISPATCH_VERDICT="pass"
-                   _CYCLE_DISPATCH_VERDICT_RAW="pass"
-                   _CYCLE_DISPATCH_STATUS="complete" ;;
-                6) # cycle_abort propagates outward immediately.
-                   _CYCLE_LAST_TERMINATED_REASON="cycle_abort"
-                   _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "cycle_abort" "aborted"
-                   _cycle_state_write_member_atomic "$state_file" "$s" "aborted" "cycle_abort" || true
+            case "$_inner_stops" in
+                aborted)
+                   # An abort (cycle_abort, a signal, an unavailable model)
+                   # propagates outward immediately; its word stays recorded.
+                   local _ab_word; _ab_word="$(_zbuild_abort_reason)"
+                   [[ -n "$_ab_word" ]] || _zbuild_abort cycle_abort || true
+                   case "$_inner_reason" in
+                       cycle_abort|aborted) _CYCLE_LAST_TERMINATED_REASON="$_inner_reason"
+                           _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "$_inner_reason" "aborted"
+                           _cycle_state_write_member_atomic "$state_file" "$s" "aborted" "$_inner_reason" || true ;;
+                       *)  # #2271: an unavailable or rate-limited model call stops
+                           # the run — going round would only repeat it.
+                           _CYCLE_LAST_TERMINATED_REASON="${_inner_reason:-}"
+                           _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "${_inner_reason:-aborted}" "failed"
+                           _cycle_state_write_member_atomic "$state_file" "$s" "failed" "${_inner_reason:-aborted}" || true ;;
+                   esac
                    _cycle_clear_traps
-                   return 6 ;;
-                8) # blocking_member_failure propagates outward.
+                   _CYCLE_ITER_OUTCOME="aborted"
+                   return 1 ;;
+                failed)
+                   # blocking_member_failure propagates outward.
                    _CYCLE_LAST_TERMINATED_REASON="blocking_member_failure"
                    _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "blocking_member_failure" "failed"
                    _cycle_state_write_member_atomic "$state_file" "$s" "failed" "blocking_member_failure" || true
                    _cycle_clear_traps
-                   return 8 ;;
-                5|9) # #2271: a nested loop that is blocked (5) or whose model call
-                   # is unavailable / rate-limited (9) stops the run — going round
-                   # would only repeat it. The inner loop's reason travels with it.
-                   _CYCLE_LAST_TERMINATED_REASON="${_inner_reason:-}"
+                   _CYCLE_ITER_OUTCOME="failed"
+                   return 1 ;;
+                blocked)
+                   # #2271: a nested loop that is blocked stops the run — going
+                   # round would only repeat it. Its reason travels with it.
+                   _CYCLE_LAST_TERMINATED_REASON="${_inner_reason:-blocked}"
                    _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "${_inner_reason:-blocked}" "failed"
                    _cycle_state_write_member_atomic "$state_file" "$s" "failed" "${_inner_reason:-blocked}" || true
                    _cycle_clear_traps
-                   return "$rc" ;;
-                130|143)
-                   _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "aborted" "aborted"
-                   _cycle_state_write_member_atomic "$state_file" "$s" "aborted" "aborted" || true
-                   _cycle_clear_traps
-                   return "$rc" ;;
-                *) _CYCLE_DISPATCH_VERDICT="fail"
-                   _CYCLE_DISPATCH_VERDICT_RAW="fail"
-                   _CYCLE_DISPATCH_STATUS="failed" ;;
+                   _CYCLE_ITER_OUTCOME="interrupted"
+                   return 1 ;;
             esac
+            if [[ "$_inner_outcome" == "converged" ]]; then
+                _CYCLE_DISPATCH_VERDICT="pass"
+                _CYCLE_DISPATCH_VERDICT_RAW="pass"
+                _CYCLE_DISPATCH_STATUS="complete"
+            else
+                _CYCLE_DISPATCH_VERDICT="fail"
+                _CYCLE_DISPATCH_VERDICT_RAW="fail"
+                _CYCLE_DISPATCH_STATUS="failed"
+            fi
             verdict="$_CYCLE_DISPATCH_VERDICT"
             status="$_CYCLE_DISPATCH_STATUS"
             blob="$(jq -c --arg s "$s" --arg v "$verdict" --arg st "$status" \
@@ -1861,7 +1893,7 @@ _cycle_iter_dispatch() {
                 fail=$(( fail + 1 ))
             fi
             # Wave 19-D-1 (#731): nested-cycle dispatch.complete with verdict
-            # mapped from the nested cycle's terminal rc.
+            # mapped from how the nested cycle ended.
             _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "$verdict" "$status"
             _cycle_state_write_member_atomic "$state_file" "$s" "$_CYCLE_DISPATCH_STATUS" "$_CYCLE_DISPATCH_VERDICT" || true
             if [[ $_end_round -eq 1 ]]; then
@@ -1883,6 +1915,7 @@ _cycle_iter_dispatch() {
                 _cycle_emit "cycle.config.invalid" "iter=$iter" "stage=$s" \
                     "reason=no_parallel_orchestrator"
                 [[ $_had_e -eq 1 ]] && set -e
+                _CYCLE_ITER_OUTCOME="error"
                 return 1
             fi
             set +e
@@ -1905,22 +1938,26 @@ _cycle_iter_dispatch() {
             # reassert the cycle's ownership for the rest of this iter.
             _cycle_install_traps
             [[ $_had_e -eq 1 ]] && set -e
-            # Map group terminal rc → outer verdict/status. rc=0 (all members
-            # passed, or on_member_error=continue) → pass; 130/143 (signal)
-            # propagate outward; everything else (collect failure / config) → fail.
-            case "$rc" in
-                0) _CYCLE_DISPATCH_VERDICT="pass"
-                   _CYCLE_DISPATCH_VERDICT_RAW="pass"
-                   _CYCLE_DISPATCH_STATUS="complete" ;;
-                130|143)
-                   _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "aborted" "aborted"
-                   _cycle_state_write_member_atomic "$state_file" "$s" "aborted" "aborted" || true
-                   _cycle_clear_traps
-                   return "$rc" ;;
-                *) _CYCLE_DISPATCH_VERDICT="fail"
-                   _CYCLE_DISPATCH_VERDICT_RAW="fail"
-                   _CYCLE_DISPATCH_STATUS="failed" ;;
-            esac
+            # Map the group's end → outer verdict/status. rc=0 (all members
+            # passed, or on_member_error=continue) → pass; a recorded abort (a
+            # signal mid-group) propagates outward; anything else (collect
+            # failure / config) → fail.
+            if ! _zbuild_propagate_abort "$rc"; then
+                _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "aborted" "aborted"
+                _cycle_state_write_member_atomic "$state_file" "$s" "aborted" "aborted" || true
+                _cycle_clear_traps
+                _CYCLE_ITER_OUTCOME="aborted"
+                return 1
+            fi
+            if [[ $rc -eq 0 ]]; then
+                _CYCLE_DISPATCH_VERDICT="pass"
+                _CYCLE_DISPATCH_VERDICT_RAW="pass"
+                _CYCLE_DISPATCH_STATUS="complete"
+            else
+                _CYCLE_DISPATCH_VERDICT="fail"
+                _CYCLE_DISPATCH_VERDICT_RAW="fail"
+                _CYCLE_DISPATCH_STATUS="failed"
+            fi
             verdict="$_CYCLE_DISPATCH_VERDICT"
             status="$_CYCLE_DISPATCH_STATUS"
             blob="$(jq -c --arg s "$s" --arg v "$verdict" --arg st "$status" \
@@ -1974,35 +2011,24 @@ _cycle_iter_dispatch() {
         else
             unset ZBUILD_ROUTER_MAX_TURNS_OVERRIDE
         fi
-        # ADR-025 (Wave 15-B #684) post-flight: rc=130 from the child means
-        # SIGINT propagated up through the dispatch chain. Surface 130 from
-        # this iter so the outer for-iter loop returns 130 to the runner,
-        # which already maps rc=130 → pipeline.aborted reason=sigint.
-        # Copilot P1 on #693: use the ADR-025-recommended `|| return $?`
-        # form. `_zbuild_propagate_abort "$rc"` as a bare command after
-        # the `set -e` restore above could terminate the function
-        # immediately under errexit before any explicit `return` ran.
-        # The `||` form inhibits errexit for the call and lets the
-        # explicit `return $?` carry the abort rc cleanly.
+        # ADR-025 (Wave 15-B #684) post-flight: a failed child with an abort
+        # recorded (a signal, an unavailable model — the word, #1850) ends this
+        # iteration; the runner reads the word and ends the run.
+        # Copilot P1 on #693: called in an `if`, never as a bare command after
+        # the `set -e` restore above, which could end the function under
+        # errexit before the explicit `return` ran.
         # Wave 19-D-1 (#731/#734 Copilot review): emit dispatch.complete
-        # BEFORE propagating an abort rc so the start+complete pairing
-        # holds on signal-driven aborts (rc=130/143) and rc=6 from leaf
-        # stages. The RAW verdict isn't yet read (predicate-blob update
-        # happens BELOW), so report "aborted" as both verdict and status.
-        # Use the `|| _propagate_rc=$?` form to BOTH capture the rc AND
-        # inhibit errexit at the call site (the same reason the prior
-        # `|| return $?` form was chosen — see runner.sh:1278 comment).
-        # `if ! _zbuild_propagate_abort ...; then $?` loses the original
-        # rc because bash's `!` resets $? to 0/1 of the negation.
-        local _propagate_rc=0
-        _zbuild_propagate_abort "$rc" || _propagate_rc=$?
-        if [[ $_propagate_rc -ne 0 ]]; then
+        # BEFORE propagating the abort so the start+complete pairing holds.
+        # The RAW verdict isn't yet read (predicate-blob update happens
+        # BELOW), so report "aborted" as both verdict and status.
+        if ! _zbuild_propagate_abort "$rc"; then
             _cycle_emit_member_dispatch_complete "$_cyc_pos" "$s" "$rc" "aborted" "aborted"
-            # #1800: the leaf branch's own abort propagation (rc 6/9/10/130/143).
-            # Pairs the state write with the event on the same terms as the
-            # nested-cycle and parallel-group propagate-outward paths.
+            # #1800: the leaf branch's own abort propagation. Pairs the state
+            # write with the event on the same terms as the nested-cycle and
+            # parallel-group propagate-outward paths.
             _cycle_state_write_member_atomic "$state_file" "$s" "aborted" "aborted" || true
-            return "$_propagate_rc"
+            _CYCLE_ITER_OUTCOME="aborted"
+            return 1
         fi
         # Wave 19-A (#717): prefer the RAW verdict for cycle predicate
         # evaluation (exit_when / abort_when / until compare against the raw
@@ -2062,7 +2088,7 @@ _cycle_iter_dispatch() {
 
         # CQ-3 / ADR-013 (#863): blocking member enforcement. If the member
         # is in the ADR-013 blocking table and returned non-zero, halt the
-        # cycle immediately (rc=8) so the pipeline can emit status=failed.
+        # cycle immediately (`failed`) so the pipeline can emit status=failed.
         # #2187: a member whose disposition halts the run stops the cycle here,
         # through the same terminal path, naming the word and the reason.
         local _halt_why=""
@@ -2074,7 +2100,8 @@ _cycle_iter_dispatch() {
             _CYCLE_LAST_VERDICTS_BLOB="$blob"
             _CYCLE_LAST_FAILURE_COUNT="$fail"
             [[ $_had_e -eq 1 ]] && set -e
-            return 8
+            _CYCLE_ITER_OUTCOME="failed"
+            return 1
         fi
 
         # ─── ADR-029 G2 abandon REMOVED (#1208); G3 escalation retained ──
@@ -2195,6 +2222,10 @@ _cycle_iter_dispatch() {
 _cycle_member_halt_reason() {
     local d="${_CYCLE_DISPATCH_DISPOSITION:-}"
     [[ -n "$d" ]] || return 1
+    # A word off the list is a contract violation, read as a failing verdict
+    # (verdict.sh) — not a halt decided here; the runner's announcement uses the
+    # same guard (#1850 review).
+    disposition_is_valid "$d" 2>/dev/null || return 1
     disposition_halts "$d" 2>/dev/null || return 1
     case "$(disposition_response "$d" 2>/dev/null)" in
         halt_misconfigured|halt_broken) ;;
@@ -2245,9 +2276,9 @@ _cycle_member_terminal_failure() {
         [[ -s "$result" ]] || continue
         jq -e '.verdict == "fail"' "$result" >/dev/null 2>&1 || continue
         # #2161: the cycle-policy word is `severity`; `disposition` is ADR-054's
-        # "how did the stage stop". A v1-shaped result (no severity) still
-        # carries the word in disposition — read that as the fallback.
-        disp="$(jq -r '.severity // .disposition // ""' "$result" 2>/dev/null || echo "")"
+        # "how did the stage stop" and never holds it. #1850 removed the v1
+        # fallback that read the word from disposition.
+        disp="$(jq -r '.severity // ""' "$result" 2>/dev/null || echo "")"
         if [[ "$disp" == "terminal" ]]; then
             _CYCLE_TERMINAL_MEMBER_ID="$member"
             _CYCLE_TERMINAL_MEMBER_REASON="$(jq -r '.reason // ""' "$result" 2>/dev/null || echo "")"
@@ -2258,9 +2289,9 @@ _cycle_member_terminal_failure() {
     return 1
 }
 
-# ─── _cycle_handle_terminal_rc — runner-facing helper ────────────────────────
-# Maps orchestrator rc → reason → (a) cycle.complete event (durable, fd-event)
-# and (b) operator-fd-2 exit banner via registered `cycle_exit_hook`.
+# ─── _cycle_handle_terminal <cycle_id> — runner-facing helper ────────────────
+# The loop's reason → (a) cycle.complete event (durable, fd-event) and
+# (b) operator-fd-2 exit banner via registered `cycle_exit_hook`.
 # Silent-failure mitigation #8: this is the SINGLE choke point for cycle exit
 # banner emission. All inline `cycle.complete` emit sites (max_iterations,
 # plateau, divergence, aborted) route through here OR explicitly invoke the
@@ -2269,38 +2300,25 @@ _cycle_member_terminal_failure() {
 # event is idempotent at this layer since it carries reason; duplicate fd-2
 # banners are guarded via _CYCLE_EXIT_BANNER_EMITTED).
 _CYCLE_EXIT_BANNER_EMITTED=0
-_cycle_handle_terminal_rc() {
-    local rc="$1" cycle_id="$2" state_file="$3"
-    local reason
-    case "$rc" in
-        0)   reason="converged" ;;
-        1)   reason="max_iterations" ;;
-        # #1117: rc=2 is the plateau-class soft-continue bucket. The no-progress
-        # stall-break shares this rc but sets a distinct _CYCLE_LAST_TERMINATED_REASON
-        # ("stalled"); prefer it so cycle.complete restates the real terminal
-        # reason. Genuine plateau paths set the reason to "plateau", so this is a
-        # no-op for them.
-        2)   reason="${_CYCLE_LAST_TERMINATED_REASON:-plateau}" ;;
-        3)   reason="divergence" ;;
-        4)   reason="${_CYCLE_LAST_TERMINATED_REASON:-config_invalid}" ;;
-        # rc=5 covers structural `blocked` AND #1265 `no_committed_changes`; both
-        # set _CYCLE_LAST_TERMINATED_REASON, so restate it (default: blocked).
-        5)   reason="${_CYCLE_LAST_TERMINATED_REASON:-blocked}" ;;
-        6)   reason="cycle_abort" ;;
-        7)   reason="blocked_on_scope" ;;
-        # rc=8 covers two paths, both of which set _CYCLE_LAST_TERMINATED_REASON:
-        # ADR-013 blocking:true → "blocking_member_failure" (immediate, rc-only);
-        # the ADR-021 disposition=terminal path → "member_terminal_failure".
-        8)   reason="${_CYCLE_LAST_TERMINATED_REASON:-blocking_member_failure}" ;;
-        130|143) reason="aborted" ;;
-        *)       reason="error" ;;
-    esac
-    eb_emit_event "cycle.complete" \
-        "cycle_id=$cycle_id" "iter=${_CYCLE_LAST_ITERATIONS}" \
-        "reason=$reason" 2>/dev/null || true
+# cycle.complete once per loop run: the loop's own way out emits it and the
+# runner's backstop call must not emit it again (#1850 review). Keyed by loop
+# id, so an inner loop's event never silences its outer loop's.
+declare -gA _CYCLE_COMPLETE_EMITTED=()
+_cycle_handle_terminal() {
+    local cycle_id="$1"
+    # #1850 (ADR-054 §4): the reason every way out of the loop already set —
+    # converged, max_iterations, blocked, cycle_abort, aborted, … — not a number
+    # read back through a table. A way out that set none reports `error`.
+    local reason="${_CYCLE_LAST_TERMINATED_REASON:-error}"
+    if [[ -z "${_CYCLE_COMPLETE_EMITTED[$cycle_id]:-}" ]]; then
+        eb_emit_event "cycle.complete" \
+            "cycle_id=$cycle_id" "iter=${_CYCLE_LAST_ITERATIONS}" \
+            "reason=$reason" 2>/dev/null || true
+        _CYCLE_COMPLETE_EMITTED[$cycle_id]=1
+    fi
     # Exit banner via registered hook — event emitted FIRST (durable above),
     # banner SECOND (best-effort). Idempotency guard: emit at most once per
-    # cycle_orchestrator_run terminal-rc fan-in. Reset by the next cycle
+    # cycle_orchestrator_run terminal fan-in. Reset by the next cycle
     # entry hook invocation.
     if [[ "${_CYCLE_EXIT_BANNER_EMITTED:-0}" != "1" ]]; then
         if declare -F cycle_exit_hook >/dev/null 2>&1; then
@@ -2309,6 +2327,17 @@ _cycle_handle_terminal_rc() {
         fi
         _CYCLE_EXIT_BANNER_EMITTED=1
     fi
+}
+
+# The reason a loop records for a recorded abort: a signal reads `aborted`
+# (what cycle.complete always said for Ctrl-C / kill); any other word is itself
+# the reason (cycle_abort, llm_unavailable, llm_rate_limited, scope_too_large).
+_cycle_abort_reason_word() {
+    local w; w="$(_zbuild_abort_reason)"
+    case "$w" in
+        ""|sigint|sigterm) printf 'aborted' ;;
+        *) printf '%s' "$w" ;;
+    esac
 }
 
 # ─── _cycle_no_commits_ahead <state_dir> (#1265) ────────────────────────────
@@ -2329,6 +2358,11 @@ _cycle_no_commits_ahead() {
 }
 
 # ─── cycle_orchestrator_run <cycle_id> <state_dir> <state_file> ──────────────
+# Returns 0 when the loop converged, else 1 (#1850, ADR-054 §4). How it ended is
+# in words: _CYCLE_LAST_OUTCOME — converged | unconverged (out of rounds, the
+# run may carry on) | interrupted (it could not go on: config, blocked, scope) |
+# failed (it must not go on: a blocking member, tests failing at the end) |
+# aborted (an abort word is recorded, ADR-025) — and _CYCLE_LAST_TERMINATED_REASON.
 # #2325: the outermost loop's round (ZBUILD_OUTER_ROUND) is cleared on EVERY way
 # out, not only the normal end, so no stage after the loop sees a stale round.
 # Called without `||` (bash ignores errexit inside a function called from an
@@ -2338,11 +2372,18 @@ cycle_orchestrator_run() {
     local _cor_had_e=0 _cor_rc=0
     [[ $- == *e* ]] && _cor_had_e=1
     set +e
+    _CYCLE_LAST_OUTCOME=""
     _cycle_orchestrator_run_body "$@"
     _cor_rc=$?
+    # A way out that named no outcome is read from its rc: success converged,
+    # anything else could not go on.
+    if [[ -z "$_CYCLE_LAST_OUTCOME" ]]; then
+        if [[ $_cor_rc -eq 0 ]]; then _CYCLE_LAST_OUTCOME="converged"
+        else _CYCLE_LAST_OUTCOME="interrupted"; fi
+    fi
     [[ "${_CYCLE_NEST_DEPTH:-0}" -eq 0 ]] && unset ZBUILD_OUTER_ROUND
     [[ $_cor_had_e -eq 1 ]] && set -e
-    return "$_cor_rc"
+    [[ "$_CYCLE_LAST_OUTCOME" == "converged" ]]
 }
 
 _cycle_orchestrator_run_body() {
@@ -2354,7 +2395,8 @@ _cycle_orchestrator_run_body() {
     set +e
     if [[ -z "$cycle_id" || -z "$state_dir" || -z "$state_file" ]]; then
         error "cycle_orchestrator_run: cycle_id, state_dir, state_file required"
-        { [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 4; }
+        _CYCLE_LAST_TERMINATED_REASON="config_invalid"; _CYCLE_LAST_OUTCOME="interrupted"
+        { [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 1; }
     fi
 
     # ADR-029 G2/G3 cross-iteration persistence (#844): capture the outer cycle's
@@ -2369,6 +2411,7 @@ _cycle_orchestrator_run_body() {
     _CYCLE_NOT_REPRODUCED=0   # #2183: per-cycle, never inherited from the last one
     # #524: reset exit-banner idempotency flag for this cycle run.
     _CYCLE_EXIT_BANNER_EMITTED=0
+    _CYCLE_COMPLETE_EMITTED[$cycle_id]=""
     _CYCLE_ITER_START_MS=()
     # #833: reset per-iter cycle-banner seq counters for this run.
     _CYCLE_IO_SEQ=()
@@ -2400,8 +2443,8 @@ _cycle_orchestrator_run_body() {
         done
     fi
     if ! _cycle_load_template "$cycle_id"; then
-        _CYCLE_LAST_TERMINATED_REASON="config_invalid"
-        { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 4; }
+        _CYCLE_LAST_TERMINATED_REASON="config_invalid"; _CYCLE_LAST_OUTCOME="interrupted"
+        { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 1; }
     fi
 
     local history_file="$state_dir/cycle-${cycle_id}-history.jsonl"
@@ -2411,7 +2454,8 @@ _cycle_orchestrator_run_body() {
 
     _cycle_state_init "$state_file" "$cycle_id" "$history_file" "$_CYCLE_MAX_ITER" || {
         error "cycle_orchestrator_run: state init failed for $cycle_id"
-        { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 4; }
+        _CYCLE_LAST_TERMINATED_REASON="error"; _CYCLE_LAST_OUTCOME="interrupted"
+        { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 1; }
     }
 
     _cycle_install_traps
@@ -2483,9 +2527,9 @@ _cycle_orchestrator_run_body() {
         # is honored at the iter boundary (not buried until the next stage
         # boundary inside _cycle_iter_dispatch).
         if ! _zbuild_check_abort; then
-            _CYCLE_LAST_TERMINATED_REASON="aborted"
+            _CYCLE_LAST_TERMINATED_REASON="$(_cycle_abort_reason_word)"; _CYCLE_LAST_OUTCOME="aborted"
             _cycle_clear_traps
-            { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 130; }
+            { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 1; }
         fi
 
         # Dispatch the cycle's stages in order.
@@ -2493,50 +2537,31 @@ _cycle_orchestrator_run_body() {
         _cycle_iter_dispatch "$iter" "$state_file"
         local _iter_rc=$?
         [[ $_ORCH_HAD_E -eq 1 ]] && set -e
-        # CQ-3 / ADR-013 (#863): blocking member failure — propagate rc=8 outward
-        # immediately so runner.sh can emit pipeline.end status=failed.
-        if [[ $_iter_rc -eq 8 ]]; then
-            _cycle_clear_traps
-            { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 8; }
-        fi
-        # ADR-025 (Wave 15-B #684): rc=130 from the per-iter dispatch is the
-        # abort signal — surface it distinctly from the generic error path
-        # (rc=4 / config_invalid) so the runner can map it to
-        # pipeline.aborted reason=sigint. Without this branch, the old
-        # `if ! _cycle_iter_dispatch` shape collapses 130 into 4.
-        if [[ $_iter_rc -eq 130 ]]; then
-            _CYCLE_LAST_TERMINATED_REASON="aborted"
-            _cycle_clear_traps
-            _CYCLE_TRAP_CYCLE_ID=''
-            return 130
-        fi
-        # #2111: rc=9 is the LLM-abort the runner owns (#1024: unavailable;
-        # #2111: rate-limited). It must reach the runner as 9 so the run ends
-        # aborted — the generic arm below read it as config_invalid (rc=4),
-        # which is how "the API is down" became "your template is broken".
-        if [[ $_iter_rc -eq 9 ]]; then
-            _CYCLE_LAST_TERMINATED_REASON="llm_unavailable"
-            _cycle_clear_traps
-            _CYCLE_TRAP_CYCLE_ID=''
-            return 9
-        fi
-        # #2271: rc=5 is a nested loop that is blocked — structural, so going
-        # round would only repeat it. Passed up as 5 (its reason kept), not
-        # collapsed into config_invalid (rc=4) below.
-        if [[ $_iter_rc -eq 5 ]]; then
-            _CYCLE_LAST_TERMINATED_REASON="${_CYCLE_LAST_TERMINATED_REASON:-blocked}"
-            _cycle_clear_traps
-            _CYCLE_TRAP_CYCLE_ID=''
-            return "$_iter_rc"   # the inner loop's own rc, passed through
-        fi
+        # The round stopped before every member ran (#1850: the word, not an rc).
+        #   failed      — ADR-013 blocking member / unowned finding: the runner
+        #                 emits pipeline.end status=failed. Reason already set.
+        #   aborted     — ADR-025: an abort word is recorded (a signal, a
+        #                 cycle_abort from a nested loop, an unavailable model).
+        #                 Never collapsed into config_invalid (#1860, #2111).
+        #   interrupted — a nested loop that is blocked (#2271): structural, so
+        #                 going round would only repeat it. Its reason is kept.
+        #   error       — anything else (no dispatch hook, …).
         if [[ $_iter_rc -ne 0 ]]; then
-            # #1208: the ADR-029 G2 abandon (rc=4 reason=timeout_abandoned) was
-            # removed, so this generic non-zero-dispatch path is the only writer
-            # of the reason here — set it unconditionally.
-            _CYCLE_LAST_TERMINATED_REASON="error"
+            case "${_CYCLE_ITER_OUTCOME:-error}" in
+                failed)      _CYCLE_LAST_OUTCOME="failed" ;;
+                aborted)     _CYCLE_LAST_OUTCOME="aborted"
+                             [[ "${_CYCLE_LAST_TERMINATED_REASON:-}" == cycle_abort ]] \
+                                 || _CYCLE_LAST_TERMINATED_REASON="$(_cycle_abort_reason_word)" ;;
+                interrupted) _CYCLE_LAST_OUTCOME="interrupted"
+                             _CYCLE_LAST_TERMINATED_REASON="${_CYCLE_LAST_TERMINATED_REASON:-blocked}" ;;
+                *)           _CYCLE_LAST_OUTCOME="interrupted"
+                             # #1208: the ADR-029 G2 abandon was removed, so this
+                             # path is the only writer of the reason here.
+                             _CYCLE_LAST_TERMINATED_REASON="error" ;;
+            esac
             _cycle_clear_traps
             _CYCLE_TRAP_CYCLE_ID=''
-            return 4
+            return 1
         fi
         # Re-install (defensive — _cycle_iter_dispatch re-installs inside the
         # per-stage loop but a stage might have left them cleared on the path
@@ -2630,7 +2655,7 @@ _cycle_orchestrator_run_body() {
         # uncommitted tree and `pr` aborts ~38 min later with "No commits between
         # main and branch" (#1214 dogfood). Suppress it here (mirror the
         # did_not_finish pattern) and, unless a governed scope grant lets the next
-        # iter commit, terminate no_committed_changes below (rc=5, blocked-class).
+        # iter commit, terminate no_committed_changes below (blocked-class).
         # EXEMPT the legit empty_diff resting point (#1208/#895): "nothing to do"
         # with green gates genuinely converges and has nothing to commit by design.
         #
@@ -2675,8 +2700,8 @@ _cycle_orchestrator_run_body() {
             "$h_verdict" "$h_status" "$failure_count" || true
 
         # ADR-027 (Wave 17-B #703): abort_when predicate. If matched, the
-        # cycle returns rc=6 (cycle_abort) which propagates through every
-        # enclosing cycle to the runner via _zbuild_propagate_abort. Evaluated
+        # cycle ends aborted and records the word cycle_abort, which every
+        # enclosing cycle and the runner read (ADR-025, #1850). Evaluated
         # AFTER exit_when so converged-via-exit_when takes priority on tie.
         # Wave 19-E (#737): defensive set +e dance around the abort_when call,
         # mirroring the symmetric guard around the exit_when predicate above.
@@ -2713,7 +2738,7 @@ _cycle_orchestrator_run_body() {
         # Decide overall status for the SINGLE atomic write (ADR-021: never
         # split state writes within an iter boundary).
         local overall_status="in_progress"
-        local term_rc=-1
+        local term_outcome=""
         local _term_member _term_reason
         # Call directly (not via $()) so the member id + reason globals survive
         # (a command-substitution subshell would drop them, #1220); stdout is
@@ -2730,7 +2755,7 @@ _cycle_orchestrator_run_body() {
             # violation class) over the opaque token; fall back when absent.
             _term_reason="${_CYCLE_TERMINAL_MEMBER_REASON:-}"
             _CYCLE_LAST_TERMINATED_REASON="${_term_reason:-member_terminal_failure}"
-            overall_status="member_terminal_failure"; term_rc=8
+            overall_status="member_terminal_failure"; term_outcome="failed"
             eb_emit_event "cycle.member.terminal_failure" \
                 "cycle_id=$cycle_id" "member=$_term_member" \
                 "reason=member_terminal_failure" \
@@ -2738,15 +2763,15 @@ _cycle_orchestrator_run_body() {
                 2>/dev/null || true
         elif [[ "$converged" -eq 0 ]]; then
             _CYCLE_LAST_TERMINATED_REASON="converged"
-            overall_status="complete"; term_rc=0
+            overall_status="complete"; term_outcome="converged"
         elif [[ "$abort_matched" -eq 0 ]]; then
             _CYCLE_LAST_TERMINATED_REASON="cycle_abort"
-            overall_status="cycle_abort"; term_rc=6
+            overall_status="cycle_abort"; term_outcome="aborted"
         elif [[ "$_scope_action" == "deny" ]]; then
             # #840: build needs out-of-scope files the policy won't grant (or
             # the cycle is not expandable). Abandon cleanly — never loop.
             _CYCLE_LAST_TERMINATED_REASON="blocked_on_scope"
-            overall_status="blocked_on_scope"; term_rc=7
+            overall_status="blocked_on_scope"; term_outcome="interrupted"
         elif [[ "${_CYCLE_UNOWNED:-}" == "yield" ]] \
              && _unowned_yield_check "$state_dir" "$cycle_id" "${_CYCLE_STAGES[@]}"; then
             # #2271 (ADR-068): every member here that answers findings said
@@ -2754,7 +2779,7 @@ _cycle_orchestrator_run_body() {
             # early; the outer loop goes round from the top, carrying it.
             _CYCLE_LAST_TERMINATED_REASON="unowned_finding"
             _cycle_emit "cycle.unowned_finding" "iter=$iter" "action=yield" 2>/dev/null || true
-            overall_status="unowned_finding"; term_rc=2
+            overall_status="unowned_finding"; term_outcome="unconverged"
         elif _cycle_check_max_iterations "$iter" "$_CYCLE_MAX_ITER"; then
             # #1208 — THE single fatal condition: the cycle exhausted its
             # iteration budget WITHOUT a clean, passing convergence. Split
@@ -2763,9 +2788,9 @@ _cycle_orchestrator_run_body() {
             # test-format), so this works identically for an iOS/Swift, Go, or
             # Python target:
             #   tests FAILING (test.verdict==fail OR failure_count>0) → hard-fail
-            #     term_rc=8 → runner status=failed, HALT (never ship an
+            #     `failed` → runner status=failed, HALT (never ship an
             #     incomplete/failing tree — the #944 false-`complete` cure).
-            #   tests PASSING but not cleanly converged → term_rc=2
+            #   tests PASSING but not cleanly converged → `unconverged`
             #     (unconverged→review; on_max is honored at the runner). Never a
             #     silent `complete` on an unfinished build (mid-flight suppression
             #     above already blocked that this iter).
@@ -2785,7 +2810,7 @@ _cycle_orchestrator_run_body() {
             # gate failures whenever the #511 Pin-10 test-results override did NOT
             # apply (results absent/malformed) — keying on the artifact avoids that
             # entirely. Results absent/malformed while tests pass → NOT a hard-fail
-            # → rc=2 (unconverged->review). A cycle with no test-results cannot
+            # → unconverged->review. A cycle with no test-results cannot
             # assert test failure via clause (b). GENERIC: test-results.json is the
             # roster's test artifact (ADR-044 count contract feeds it) — no plugin
             # id / language / path assumption beyond the canonical `test` member.
@@ -2810,7 +2835,7 @@ _cycle_orchestrator_run_body() {
             # consume. Continuing
             # under on_max=continue would carry that empty artifact forward (design
             # → build implements from nothing, the #1261 bug). HALT with a distinct
-            # terminal reason instead (rc=8 → runner status=failed). This is NOT
+            # terminal reason instead (`failed` → runner status=failed). This is NOT
             # on_max:halt (too blunt — it would also hard-fail a genuine CONTENT
             # non-convergence): a content non-convergence has no did_not_finish tail
             # and keeps the ADR-019 continue below. GENERIC/repo-neutral: keys only
@@ -2821,41 +2846,41 @@ _cycle_orchestrator_run_body() {
             if [[ "$_exh_unowned" -eq 1 ]]; then
                 _CYCLE_LAST_TERMINATED_REASON="unowned_finding"
                 _cycle_emit "cycle.unowned_finding" "iter=$iter" "action=halt" 2>/dev/null || true
-                overall_status="unowned_finding"; term_rc=8
+                overall_status="unowned_finding"; term_outcome="failed"
             elif [[ "$_iter_did_not_finish" -eq 1 && "$_exh_tests_reported" -eq 0 ]]; then
                 eb_emit_event "cycle.timeout_exhausted" \
                     "cycle_id=$cycle_id" "iter=$iter" \
                     "reason=design_timeout_exhausted" 2>/dev/null || true
                 _CYCLE_LAST_TERMINATED_REASON="design_timeout_exhausted"
-                overall_status="max_iterations"; term_rc=8
+                overall_status="max_iterations"; term_outcome="failed"
             elif [[ "$_exh_tests_failing" -eq 1 ]]; then
                 _CYCLE_LAST_TERMINATED_REASON="max_iterations_tests_failing"
-                overall_status="max_iterations"; term_rc=8
+                overall_status="max_iterations"; term_outcome="failed"
             else
                 _CYCLE_LAST_TERMINATED_REASON="max_iterations"
-                overall_status="max_iterations"; term_rc=2
+                overall_status="max_iterations"; term_outcome="unconverged"
             fi
         elif [[ "$_no_committed_changes" -eq 1 && "$_scope_action" != "grant" ]]; then
             # #1265: the iteration would have converged on ZERO committed changes
             # (a scope_violation discarded the diff, or nothing was ever committed)
             # and no governed scope grant is pending to let the next iter commit.
-            # Halt terminally (rc=5 blocked-class → the pipeline stops before
+            # Halt terminally (blocked-class → the pipeline stops before
             # review/pr) instead of shipping
             # an empty branch to a confusing `pr` abort. When _scope_action==grant
             # the #870/#840 expansion lets the next iter commit, so we do NOT
             # terminate (fall through to in_progress and iterate).
             _CYCLE_LAST_TERMINATED_REASON="no_committed_changes"
-            overall_status="no_committed_changes"; term_rc=5
+            overall_status="no_committed_changes"; term_outcome="interrupted"
             _cycle_emit "cycle.no_committed_changes" \
                 "iter=$iter" "build_verdict=$_build_verdict" \
                 "reason=zero_commits_ahead_of_intake_baseline"
         elif _cycle_detect_blocked "$verdicts_blob" "$iter"; then
             # #528: structural cannot-progress class (raw verdict error/corrupt_diff/
-            # block — NOT a timeout, which iterates). rc=5 halts the pipeline.
+            # block — NOT a timeout, which iterates). It halts the pipeline.
             # #1208: retained as the ONLY early terminator besides converge/abort/
             # scope-deny — genuine structural failures still halt fast.
             _CYCLE_LAST_TERMINATED_REASON="blocked"
-            overall_status="blocked"; term_rc=5
+            overall_status="blocked"; term_outcome="interrupted"
         fi
 
         # Single atomic state write per iter boundary.
@@ -2904,48 +2929,58 @@ _cycle_orchestrator_run_body() {
                 --output "$_cycle_out_body" >/dev/null || true
         fi
 
-        if [[ $term_rc -ge 0 ]]; then
-            # #524 Pin 8: route ALL terminal-rc paths through
-            # _cycle_handle_terminal_rc — single fan-in for cycle.complete
+        if [[ -n "$term_outcome" ]]; then
+            # #524 Pin 8: route ALL terminal paths through
+            # _cycle_handle_terminal — single fan-in for cycle.complete
             # event + operator exit banner. The blocked diagnostic (cycle.blocked)
             # stays inline since it carries termination-specific evidence the
             # central helper doesn't know about.
-            # #1208: the term_rc=2 (stalled/plateau) and term_rc=3 (divergence)
-            # early terminators were removed — term_rc=2 now means only
+            # #1208: the stalled/plateau and divergence early terminators were
+            # removed — `unconverged` here means only
             # "exhausted, tests passing → unconverged→review" (reason
             # max_iterations), which needs no extra diagnostic event beyond
             # cycle.complete. The plateau/velocity/divergence DETECTOR functions
             # remain defined (dormant, for reuse) but are no longer invoked.
-            case "$term_rc" in
-                5) # #528: emit cycle.blocked between cycle.iteration.complete
+            case "$overall_status" in
+                blocked|no_committed_changes)
+                   # #528: emit cycle.blocked between cycle.iteration.complete
                    # (already emitted above) and cycle.complete reason=blocked
                    # — strict event ordering per MED #9. cycle.complete itself
-                   # is emitted by _cycle_handle_terminal_rc below (#524 fan-in).
+                   # is emitted by _cycle_handle_terminal below (#524 fan-in).
                    eb_emit_event "cycle.blocked" "cycle_id=$cycle_id" "iter=$iter" \
                        "stage=${_CYCLE_BLOCKED_STAGE:-unknown}" \
                        "verdict=${_CYCLE_BLOCKED_VERDICT:-unknown}" \
                        "feedback_missing=false" 2>/dev/null || true ;;
             esac
-            _cycle_handle_terminal_rc "$term_rc" "$cycle_id" "$state_file"
+            # ADR-027: an abort_when match is an abort — recorded as the word so
+            # every enclosing loop and the runner see it (#1850).
+            [[ "$term_outcome" == "aborted" ]] && { _zbuild_abort cycle_abort || true; }
+            _cycle_handle_terminal "$cycle_id" "$state_file"
             _cycle_clear_traps
-            { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return "$term_rc"; }
+            # The wrapper returns 0 or 1 from the outcome; a test here would trip
+            # the errexit just restored.
+            _CYCLE_LAST_OUTCOME="$term_outcome"
+            { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 0; }
         fi
 
         # Not terminating — wire feedback for next iter.
         if ! _cycle_apply_feedback "$(( iter + 1 ))" "$state_dir"; then
-            _CYCLE_LAST_TERMINATED_REASON="aborted"
+            # An infrastructure failure, not an abort: no abort word exists, so
+            # the reason is `error` (#1850 review — it said `aborted`).
+            _CYCLE_LAST_TERMINATED_REASON="error"
             _cycle_state_write_iter_atomic "$state_file" "$cycle_id" "$iter" \
                 "$h_verdict" "$h_status" "$failure_count" "aborted" || true
             # #524 Pin 8: route through central helper (emits cycle.complete
-            # + exit banner). rc=130 → reason=aborted in handler map.
-            _cycle_handle_terminal_rc 130 "$cycle_id" "$state_file"
+            # + exit banner) with reason=error.
+            _cycle_handle_terminal "$cycle_id" "$state_file"
             _cycle_clear_traps
-            { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 4; }
+            _CYCLE_LAST_OUTCOME="interrupted"
+            { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 1; }
         fi
     done
 
     # Loop fell through without hitting max_iterations in the body — defensive
-    _CYCLE_LAST_TERMINATED_REASON="max_iterations"
+    _CYCLE_LAST_TERMINATED_REASON="max_iterations"; _CYCLE_LAST_OUTCOME="unconverged"
     _cycle_clear_traps
     { _CYCLE_TRAP_CYCLE_ID=''; [[ $_ORCH_HAD_E -eq 1 ]] && set -e; return 1; }
 }

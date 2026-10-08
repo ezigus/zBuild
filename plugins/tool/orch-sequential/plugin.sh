@@ -98,8 +98,10 @@ orch_dispatch() {
 # Iterates all result files; prints stdout; returns first non-zero rc.
 # --timeout is accepted for contract compatibility but ignored (synchronous).
 orch_collect() {
-    # Exit code convention: 0=all pass, 1=all fail, 2=partial (some pass some fail).
+    # 0 = all passed; 1 otherwise, _ORCH_COLLECT_OUTCOME = partial | failed
+    # (#1850: `partial` was rc 2).
     local pool_id="$1"
+    _ORCH_COLLECT_OUTCOME="failed"
     # Accept --timeout flag without error; value is discarded.
     _orch_seq_validate_pool_id "$pool_id" "orch_collect" || return 1
 
@@ -107,6 +109,7 @@ orch_collect() {
     local pass_count=0 fail_count=0
 
     if [[ ! -d "${pool_dir}/results" ]]; then
+        _ORCH_COLLECT_OUTCOME="passed"
         return 0
     fi
 
@@ -126,11 +129,14 @@ orch_collect() {
 
     if [[ "$fail_count" -eq 0 ]]; then
         rm -rf "$pool_dir"
+        _ORCH_COLLECT_OUTCOME="passed"
         return 0
     elif [[ "$pass_count" -gt 0 ]]; then
-        return 2  # partial
+        _ORCH_COLLECT_OUTCOME="partial"
+        return 1
     else
-        return 1  # all failed
+        _ORCH_COLLECT_OUTCOME="failed"
+        return 1
     fi
 }
 

@@ -95,11 +95,13 @@ load_template "$FIXT/cycle-max-iter.yaml"
 # build:timeout,timeout,timeout → iter1 captures base, iter2+ see escalation.
 # The mock template has no per-stage max_turns, so base = default 25; the bumped
 # value = 25 + 50% = 37 (rounded down). #1208: G2 abandon is REMOVED, so the
-# cycle runs to max_iterations and terminates by-severity (tests fail → rc=8)
-# instead of abandoning at iter 2 (rc=4). G3 escalation on iter 2 is unchanged.
+# cycle runs to max_iterations and terminates by-severity (tests fail → rc=1,
+# outcome failed; rc=8 before #1850) instead of abandoning at iter 2 (the old
+# rc=4). G3 escalation on iter 2 is unchanged.
 MOCK_PLAN="build:timeout,timeout,timeout;test:fail,fail,fail"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-assert_eq "T1: exhausted with failing tests → rc=8 (G2 abandon removed, #1208)" "8" "$rc"
+assert_eq "T1: exhausted with failing tests → rc=1, outcome failed (G2 abandon removed, #1208)" \
+    "1 failed" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
 
 # Find the build:2:... record — iter 2's dispatch must have seen OVERRIDE=37.
 build_iter2=""

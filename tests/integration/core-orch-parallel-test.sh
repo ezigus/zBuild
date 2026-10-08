@@ -7,7 +7,7 @@
 # Pool lifecycle:
 #   1. orch_spawn   <pool_id>          — creates pool dir structure
 #   2. orch_dispatch <pool_id> <file>  — launches background job; returns slot_id
-#   3. orch_collect  <pool_id> [--timeout S] — waits for all jobs; exit 0=all pass 1=all fail 2=partial
+#   3. orch_collect  <pool_id> [--timeout S] — waits for all jobs; exit 0=all pass, else 1 (+ _ORCH_COLLECT_OUTCOME)
 #   4. orch_shutdown <pool_id>         — SIGTERM/SIGKILL workers; rm -rf pool dir
 set -euo pipefail
 
@@ -152,8 +152,9 @@ else
 fi
 
 # ─── Test 5: non-zero exit — worker exits 42 → orch_collect returns 1 (all-fail) ─
-# orch_collect normalises work-unit exit codes to the 0/1/2 contract:
-# 0=all pass, 1=all fail, 2=partial. The original 42 is not passed through.
+# orch_collect normalises work-unit exit codes to 0 (all pass) / 1, naming
+# mixed results `partial` on _ORCH_COLLECT_OUTCOME (#1850). The original 42 is
+# not passed through.
 print_test_section "5. Worker exits 42 → orch_collect returns 1 (all-fail convention)"
 
 pool="$(_pool t5)"
@@ -168,6 +169,7 @@ collect_rc=$?
 set -e
 
 assert_exit_code "orch_collect returns 1 (all-fail) for non-zero worker exit" "1" "$collect_rc"
+assert_eq "orch_collect names all-fail failed (#1850)" "failed" "${_ORCH_COLLECT_OUTCOME:-}"
 
 # On failure, pool dir should remain (not cleaned up)
 pool_dir="$(_orch_par_pool_dir "$pool")"  # #898: per-run namespaced path

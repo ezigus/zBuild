@@ -155,8 +155,11 @@ REVIEW_FIXTURE="$ZBUILD_STATE_DIR/artifacts/review.json"
 mkdir -p "$(dirname "$REVIEW_FIXTURE")"
 cat > "$REVIEW_FIXTURE" <<'EOF'
 {
+  "result_contract": 2,
   "schema_version": 1,
   "verdict": "approve",
+  "disposition": "complete",
+  "reason": "approved",
   "confidence": 0.97,
   "issues": [],
   "summary": "test fixture"
@@ -166,7 +169,8 @@ EOF
 # only needs a manifest declaring the primary output that carries `.verdict`, so
 # use a minimal local fixture manifest (review.json primary) rather than the
 # deleted plugin's — the two-channel raw/classified read is the generic mechanic
-# under test, independent of any specific plugin.
+# under test, independent of any specific plugin. #1850: both speak result
+# contract v2, the only one the engine reads.
 REVIEW_MANIFEST="$TEST_TEMP_DIR/review-manifest.yaml"
 cat > "$REVIEW_MANIFEST" <<'EOF'
 id: review-verdict-fixture
@@ -176,12 +180,15 @@ version: 0.0.1
 provides:
   artifact_type: review.json
   schema_version: 1
+  result_contract: 2
 outputs:
   - id: review
     path: "${artifact_dir}/review.json"
     type: review.json
     required: true
     primary: true
+config:
+  valid_verdicts: [approve, request_changes]
 EOF
 RAW=$(runner_read_stage_verdict_raw "$ZBUILD_STATE_DIR" "$REVIEW_MANIFEST" "review" 0)
 assert_eq "T7: runner_read_stage_verdict_raw returns raw 'approve' (not classified 'pass')" "approve" "$RAW"

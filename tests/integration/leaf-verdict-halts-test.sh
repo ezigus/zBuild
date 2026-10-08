@@ -20,11 +20,16 @@
 #   Truncated JSON and non-JSON end the run as a rejected result
 #   (contract_violation:malformed_json), and so does a v2 verdict word the stage
 #   never declared (contract_violation:unknown_verdict) — both since #2231. Kept
-#   here so the whole row is pinned in one place. A v1 result's unrecognised
-#   word is still softened to `warn` by the reader; that leniency is #1850's.
+#   here so the whole row is pinned in one place. (A v1 plugin no longer loads
+#   at all since #1850 — v1-retired-test.sh R1/R2.)
 # SPEC-3 [change]: a stage the template marks `blocking: false` is advisory:
 #   its failing verdict is recorded and the run goes on.
 # SPEC-4 [guard]: pass and warn-class verdicts (pass, degraded) still complete.
+# SPEC-5 (#1850): a leaf that exits 0 having written no result at all ends the
+#   run, and the RUN fails, not merely the verdict. [guard] a primary marked
+#   `required: true` was already refused by the artifact check (#1803);
+#   [change] one that is not was softened to `warn` by the reader and the run
+#   went on.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -55,9 +60,9 @@ export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
 export VL_AFTER_LOG="$AFTER_LOG"
 mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
-# _plugin <id> <contract: 1|2> <body of the run function>
+# _plugin <id> <contract: 1|2> <body of the run function> [required: true|false]
 _plugin() {
-    local id="$1" contract="$2" fn="${1//-/_}_run" dir="$PLUGINS_ROOT/tool/$1"
+    local id="$1" contract="$2" fn="${1//-/_}_run" dir="$PLUGINS_ROOT/tool/$1" req="${4:-true}"
     mkdir -p "$dir"
     {
         cat <<EOF
@@ -77,7 +82,7 @@ outputs:
   - id: ${fn}_out
     path: \${artifact_dir}/$id-result.json
     type: json
-    required: true
+    required: $req
     primary: true
 config:
   valid_verdicts: [pass, degraded, fail, error, block, scope_violation, corrupt_diff]
@@ -90,8 +95,8 @@ EOF
 # vl-leaf writes exactly VL_BODY (a whole result file), so a case can be a v2
 # result, a v1 result, or bytes that are not a result at all. Its manifest is
 # rewritten per case: VL_CONTRACT 2 declares contract v2, 1 leaves it v1.
-_vl_leaf() {
-    _plugin vl-leaf "$1" '    printf "%s" "${VL_BODY:?}" > "$d/vl-leaf-result.json"; return 0'
+_vl_leaf() {  # <contract> [required]
+    _plugin vl-leaf "$1" '    if [[ -n "${VL_BODY:-}" ]]; then printf "%s" "$VL_BODY" > "$d/vl-leaf-result.json"; fi; return 0' "${2:-true}"
 }
 _plugin vl-noop 2 '    printf '"'"'{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"ok"}'"'"' > "$d/vl-noop-result.json"; return 0'
 _plugin vl-after 2 '    printf '"'"'ran\n'"'"' >> "${VL_AFTER_LOG:?}"
@@ -154,15 +159,20 @@ for _loop in "linear:leaf-verdict-halt:0" "units:leaf-verdict-halt-units:1"; do
     done
 
     print_test_section "[SPEC-2][guard] $_name loop — a result that is not a verdict is not success"
-    _vl_leaf 1
+    _vl_leaf 2
     VL_BODY='{"verdict":"pa'; _expect_halt "SPEC-2 $_name truncated JSON" "$_tpl" "$_cyc" "malformed_json"
     VL_BODY='this is not a result'; _expect_halt "SPEC-2 $_name non-JSON" "$_tpl" "$_cyc" "malformed_json"
-    _vl_leaf 2
     VL_BODY="$(_v2 splendid)"; _expect_halt "SPEC-2 $_name undeclared word" "$_tpl" "$_cyc" "unknown_verdict"
 
     print_test_section "[SPEC-3][change] $_name loop — a stage marked blocking: false is advisory"
     _vl_leaf 2
     VL_BODY="$(_v2 fail)"; _expect_goes_on "SPEC-3 $_name advisory fail" "$_tpl-advisory" "$_cyc"
+
+    print_test_section "[SPEC-5][change] $_name loop — exit 0 with no result written ends the run (#1850)"
+    VL_BODY=""; _expect_halt "SPEC-5 $_name absent required result" "$_tpl" "$_cyc" ""
+    _vl_leaf 2 false
+    VL_BODY=""; _expect_halt "SPEC-5 $_name absent result, primary not marked required" "$_tpl" "$_cyc" "contract_violation:missing_result"
+    _vl_leaf 2
 
     print_test_section "[SPEC-4][guard] $_name loop — pass and warn still complete"
     VL_BODY="$(_v2 pass)"; _expect_goes_on "SPEC-4 $_name pass" "$_tpl" "$_cyc"

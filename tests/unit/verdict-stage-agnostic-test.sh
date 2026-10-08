@@ -2,9 +2,10 @@
 # tests/unit/verdict-stage-agnostic-test.sh — EPIC #1277 / issue #1280.
 #
 # Fictitious-stage harness (ADR-047 §3): the verdict reader names NO stage. A
-# stage PUSHES its verdict to the canonical channel — the primary artifact's
-# .verdict when JSON, else a <stage>-verdict.json sidecar for a non-JSON primary.
-# The normalizer overlays only rc≠0→fail and channel-missing→warn.
+# stage PUSHES its verdict to the canonical channel — the .verdict of its v2
+# result, which is its primary artifact. #1850 retired the <stage>-verdict.json
+# sidecar a non-JSON primary once used, and the channel-missing→warn overlay: a
+# stage with no readable v2 result has failed.
 #
 # This proves a fictitiously-named stage's verdict is read with ZERO stage-specific
 # code in the mechanic: verdict.sh contains no fixture stage-name literal and is
@@ -60,35 +61,42 @@ outputs:
     type: $type
     required: true
     primary: true
+provides:
+  result_contract: 2
+config:
+  valid_verdicts: [approve, block]
 EOF
 }
 
-# ─── SPEC-1: fictitious NON-JSON-primary stage pushes verdict via sidecar ─────
+# ─── SPEC-1: a fictitious stage pushes `block` in its v2 result ──────────────
 FROB="$TEST_TEMP_DIR/plugins/frobnicate"
-_make_manifest "$FROB" "frobnicate" "${ART_DIR}/frobnicate.md" "frob_doc" "markdown"
-printf '# frobnicated\n' > "$ART_DIR/frobnicate.md"
-printf '%s' '{"verdict":"block"}' > "$ART_DIR/frobnicate-verdict.json"
+_make_manifest "$FROB" "frobnicate" "${ART_DIR}/frobnicate-result.json" "frob_result" "json"
+printf '%s' '{"result_contract":2,"verdict":"block","disposition":"complete","reason":"r"}' > "$ART_DIR/frobnicate-result.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$FROB/manifest.yaml" "frobnicate" 0)"
-assert_eq "SPEC-1: non-JSON primary + sidecar verdict=block -> classified fail" "fail" "$got"
+assert_eq "SPEC-1: v2 result verdict=block -> block (structural pass-through #550)" "block" "$got"
 raw="$(runner_read_stage_verdict_raw "$STATE_DIR" "$FROB/manifest.yaml" "frobnicate" 0)"
-assert_eq "SPEC-1: raw channel returns the pushed sidecar verdict 'block'" "block" "$raw"
+assert_eq "SPEC-1: raw channel returns the pushed verdict 'block'" "block" "$raw"
 
-# ─── SPEC-2: same stage, NO sidecar → presence == pass ───────────────────────
-rm -f "$ART_DIR/frobnicate-verdict.json"
-got="$(runner_read_stage_verdict "$STATE_DIR" "$FROB/manifest.yaml" "frobnicate" 0)"
-assert_eq "SPEC-2: non-JSON primary present, no sidecar -> pass" "pass" "$got"
+# ─── SPEC-2: a non-JSON primary cannot carry a result — and no sidecar speaks
+# for it any more (#1850): the stage has failed, whatever file sits beside it.
+DOC="$TEST_TEMP_DIR/plugins/docstage"
+_make_manifest "$DOC" "docstage" "${ART_DIR}/docstage.md" "doc" "markdown"
+printf '# a document\n' > "$ART_DIR/docstage.md"
+printf '%s' '{"verdict":"approve"}' > "$ART_DIR/docstage-verdict.json"
+got="$(runner_read_stage_verdict "$STATE_DIR" "$DOC/manifest.yaml" "docstage" 0)"
+assert_eq "SPEC-2: non-JSON primary, even with a sidecar -> error (#1850)" "error" "$got"
 
 # ─── SPEC-3: fictitious JSON-primary stage pushes .verdict directly ──────────
 WIDGET="$TEST_TEMP_DIR/plugins/widget"
 _make_manifest "$WIDGET" "widget" "${ART_DIR}/widget.json" "widget_out" "json"
-printf '%s' '{"verdict":"approve"}' > "$ART_DIR/widget.json"
+printf '%s' '{"result_contract":2,"verdict":"approve","disposition":"complete","reason":"r"}' > "$ART_DIR/widget.json"
 got="$(runner_read_stage_verdict "$STATE_DIR" "$WIDGET/manifest.yaml" "widget" 0)"
 assert_eq "SPEC-3: JSON primary .verdict=approve -> classified pass" "pass" "$got"
 raw="$(runner_read_stage_verdict_raw "$STATE_DIR" "$WIDGET/manifest.yaml" "widget" 0)"
 assert_eq "SPEC-3: raw channel returns pushed .verdict 'approve'" "approve" "$raw"
 
 # ─── SPEC-4: the mechanic is stage-agnostic ──────────────────────────────────
-if grep -qE '"frobnicate"|"widget"' "$VERDICT_SH"; then
+if grep -qE '"frobnicate"|"widget"|"docstage"' "$VERDICT_SH"; then
     assert_fail "SPEC-4a: verdict.sh names no fixture stage" "found a fixture stage-name literal"
 else
     assert_pass "SPEC-4a: verdict.sh names no fixture stage (verdict is a pushed channel)"

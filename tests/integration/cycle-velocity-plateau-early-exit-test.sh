@@ -5,7 +5,8 @@
 # all tries" — the only fatal condition is exhausting max_iterations without a
 # clean, passing convergence). This test now asserts the REVERSED contract: a
 # flat-failing cycle runs ALL its iterations (does NOT bail at the velocity
-# window) and terminates BY-SEVERITY at exhaustion — failing tests → rc=8. No
+# window) and terminates BY-SEVERITY at exhaustion — failing tests → rc=1,
+# outcome failed (rc=8 before #1850, ADR-054 §4). No
 # cycle.plateau early-terminator event fires (the detector function still exists
 # for potential reuse but is no longer wired into the cascade).
 set -euo pipefail
@@ -53,11 +54,12 @@ zb_stub_reports_tests test
 source "$REPO_ROOT/core/pipeline/template.sh"
 
 # T1: flat-failing velocity does NOT early-exit — runs to max_iterations=5 and
-# terminates by-severity (failing tests → rc=8). NOT reason=plateau at iter 2.
+# terminates by-severity (failing tests → rc=1, outcome failed). NOT reason=plateau at iter 2.
 _seed_state
 load_template "$FIXT/cycle-velocity-plateau.yaml"
 set +e; cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"; rc=$?; set -e
-assert_eq "T1: no early exit — exhausted with failing tests → rc=8 (by-severity)" "8" "$rc"
+assert_eq "T1: no early exit — exhausted with failing tests → rc=1, outcome failed (by-severity)" \
+    "1 failed" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
 assert_eq "T1: ran ALL 5 iterations (velocity plateau no longer bails at window=2)" \
     "5" "$_CYCLE_LAST_ITERATIONS"
 if [[ "$_CYCLE_LAST_TERMINATED_REASON" == "plateau" ]]; then

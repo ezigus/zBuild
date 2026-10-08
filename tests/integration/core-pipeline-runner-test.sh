@@ -92,23 +92,28 @@ OVERLAY_REPO="$(setup_git_temp_repo tpl-overlay-repo)"
 install_template_overlay "$OVERLAY_REPO" runner-state-dir-minimal
 cd "$OVERLAY_REPO"
 
-# ─── Test 1: no args → exits 2 ──────────────────────────────────────────────
-set +e; bash "$RUNNER" 2>/dev/null; rc=$?; set -e
-assert_eq "no args exits 2" "2" "$rc"
+# ─── Test 1: no args → exits 1 with the usage ──────────────────────────────
+# #1850 (ADR-054 §4): a usage error exits 1 like every other failure (it was
+# 2); the message — not the number — says it was a usage error.
+set +e; _err="$(bash "$RUNNER" 2>&1 >/dev/null)"; rc=$?; set -e
+assert_eq "no args exits 1" "1" "$rc"
+assert_contains "no args prints the usage" "$_err" "Usage: runner.sh"
 
 # ─── Test 2: --help → exits 0 ───────────────────────────────────────────────
 set +e; bash "$RUNNER" --help >/dev/null 2>&1; rc=$?; set -e
 assert_eq "--help exits 0" "0" "$rc"
 
-# ─── Test 3: --issue with no value → exits 2 (controlled, not unbound var) ──
-# NOT an identity: `--issue` is deliberately given NO value here, and the 2 is
-# the file descriptor in `2>/dev/null`. The test asserts the runner rejects a
-# valueless flag with rc=2.
-set +e; bash "$RUNNER" --issue 2>/dev/null; rc=$?; set -e  # lint-test-identity:allow
-assert_eq "--issue with no value exits 2" "2" "$rc"
+# ─── Test 3: --issue with no value → exits 1 (controlled, not unbound var) ──
+# NOT an identity: `--issue` is deliberately given NO value here. The test
+# asserts the runner rejects a valueless flag with rc=1 (#1850: was rc=2) and
+# says which flag — a controlled refusal, not an unbound-variable crash.
+set +e; _err="$(bash "$RUNNER" --issue 2>&1 >/dev/null)"; rc=$?; set -e  # lint-test-identity:allow
+assert_eq "--issue with no value exits 1" "1" "$rc"
+assert_contains "--issue with no value names the flag" "$_err" "--issue requires a value"
 
-set +e; bash "$RUNNER" --goal 2>/dev/null; rc=$?; set -e
-assert_eq "--goal with no value exits 2" "2" "$rc"
+set +e; _err="$(bash "$RUNNER" --goal 2>&1 >/dev/null)"; rc=$?; set -e
+assert_eq "--goal with no value exits 1" "1" "$rc"
+assert_contains "--goal with no value names the flag" "$_err" "--goal requires a value"
 
 # ─── Test 4: dry-run prints the plan without executing ──────────────────────
 rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
@@ -250,30 +255,16 @@ assert_contains "--template runner-state-dir-minimal dry-run shows build"   "$ou
 # (was a hardcoded built-in `intake security-lens output` roster — `output` was
 # never a real stage). A run/preview needs a valid template.
 set +e; out="$(bash "$RUNNER" --issue "$_ZB_ID2" --dry-run --template nonexistent 2>&1)"; _rc_nt=$?; set -e
-assert_eq "missing template fails closed (rc=2) [#1283]" "2" "$_rc_nt"
+assert_eq "missing template fails closed (rc=1; #1850 — was 2) [#1283]" "1" "$_rc_nt"
 assert_contains "missing template error names the template" "$out" "not found"
 
 # ─── Test 12: role-based dispatch — resolver path executes correctly ───────────
 # Helpers for role-based plugins (provides.role field)
+# #1850: a role plugin is a v2 stage plugin like any other — mock_plugin_factory
+# builds it with the role (and platform) on its manifest.
 _make_role_plugin() {
     local id="$1" role="$2" exit_code="${3:-0}"
-    local dir="$TEST_TEMP_DIR/plugins/agent/$id"
-    mkdir -p "$dir"
-    local fn; fn="${id//-/_}_run"
-    cat > "$dir/manifest.yaml" <<EOF
-id: $id
-name: Role Plugin $id
-kind: agent
-version: 0.0.1
-hooks:
-  run: $fn
-requires:
-  core:
-    - redaction
-provides:
-  role: $role
-EOF
-    printf '%s() { return %d; }\n' "$fn" "$exit_code" > "$dir/plugin.sh"
+    mock_plugin_factory "$id" agent "$exit_code" "" "$role" >/dev/null
 }
 
 rm -rf "$PLUGINS_ROOT/agent/" "$PLUGINS_ROOT/tool/"
@@ -317,24 +308,7 @@ assert_eq "fanout 2 platforms: 4 plugin.run.start events (2 stages × 2)" "4" "$
 # Requires _make_platform_role_plugin helper.
 _make_platform_role_plugin() {
     local id="$1" role="$2" platform="$3" exit_code="${4:-0}"
-    local dir="$TEST_TEMP_DIR/plugins/agent/$id"
-    mkdir -p "$dir"
-    local fn; fn="${id//-/_}_run"
-    cat > "$dir/manifest.yaml" <<EOF
-id: $id
-name: Platform Role Plugin $id
-kind: agent
-version: 0.0.1
-hooks:
-  run: $fn
-requires:
-  core:
-    - redaction
-platform: $platform
-provides:
-  role: $role
-EOF
-    printf '%s() { return %d; }\n' "$fn" "$exit_code" > "$dir/plugin.sh"
+    mock_plugin_factory "$id" agent "$exit_code" "$platform" "$role" >/dev/null
 }
 
 # build-agent (generic, exit 1) = ios fallback fails
@@ -345,7 +319,7 @@ rm -f "$EVENTS_JSONL" "$STATE_DIR/pipeline-state.json"
 # Reuse platforms.json from test 13: ["node", "ios"]
 # node: resolve finds build-agent-node (platform=node) → exit 0
 # ios:  resolve finds build-agent (generic)             → exit 1
-# → success_count=1, fail_count=1 → partial (rc=2)
+# → success_count=1, fail_count=1 → partial (rc=1, _ZB_STRATEGY_OUTCOME=partial — #1850)
 
 set +e; bash "$RUNNER" --template runner-state-dir-minimal --issue "$_ZB_ID2" >/dev/null 2>&1; rc=$?; set -e   # #619: suppress info banner
 assert_eq "partial fanout failure exits 1" "1" "$rc"

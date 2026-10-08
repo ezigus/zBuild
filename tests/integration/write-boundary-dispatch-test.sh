@@ -67,9 +67,19 @@ unset ZBUILD_REPO_ROOT 2>/dev/null || true
 unset ZBUILD_SCRATCH_ROOT 2>/dev/null || true
 
 # ── Fixture factory ───────────────────────────────────────────────────────────
+# #1850: the engine reads result contract v2 only, and a stage that exits 0
+# without a readable v2 primary has failed (broken). So the fixture declares its
+# result as a v2 primary, and a body that means "the stage finished" writes
+# $_V2_PASS there. An optional 4th arg declares a second required output, which
+# lets SPEC-3 miss a declared output while its result is still readable.
+_V2_PASS='{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"fixture"}'
 _make_fixture() {
-    local _dir="$1" _id="$2" _body="$3"
+    local _dir="$1" _id="$2" _body="$3" _extra="${4:-}" _extra_out=""
     mkdir -p "$_dir"
+    [[ -n "$_extra" ]] && _extra_out="
+  - name: ${_extra}
+    path: \${artifact_dir}/${_id}-${_extra}.json
+    required: true"
     cat > "$_dir/manifest.yaml" <<MEOF
 id: ${_id}
 name: ${_id}
@@ -77,10 +87,15 @@ kind: tool
 version: 0.0.1
 hooks:
   run: ${_id}_run
+provides:
+  result_contract: 2
 outputs:
   - name: result
     path: \${artifact_dir}/${_id}-result.json
     required: true
+    primary: true${_extra_out}
+config:
+  valid_verdicts: [pass]
 MEOF
     cat > "$_dir/plugin.sh" <<PEOF
 ${_id}_run() {
@@ -94,8 +109,6 @@ print_test_section "SPEC-2: write-boundary violation overrides disposition=compl
 
 FX2="$TEST_TEMP_DIR/plugins/wb-fx2"
 _make_fixture "$FX2" "wb-fx2" "
-    # Write the declared artifact (so scan_plugin_outputs is happy).
-    echo '{}' > \"\${ZBUILD_ARTIFACT_DIR:-\${artifact_dir:-}}/wb-fx2-result.json\"
     # Write a v2 result declaring disposition=complete.
     cat > \"\${ZBUILD_ARTIFACT_DIR:-\${artifact_dir:-}}/wb-fx2-result.json\" <<'REOF'
 {\"result_contract\":2,\"disposition\":\"complete\",\"verdict\":\"pass\",\"reason\":\"declared complete on purpose\"}
@@ -147,10 +160,15 @@ assert_eq "[SPEC-2] write-boundary violation overrides disposition=complete → 
 print_test_section "SPEC-3: missing declared output resolves to broken"
 
 FX3="$TEST_TEMP_DIR/plugins/wb-fx3"
+# #1850: FX3 writes a readable v2 result (complete) and misses its SECOND
+# declared output. Without a readable result the stage would be broken for
+# that alone (missing_result), and the assertion below would prove nothing
+# about the artifact-contract marker.
 _make_fixture "$FX3" "wb-fx3" "
-    # Intentionally does NOT write the declared artifact.
+    printf '%s' '$_V2_PASS' > \"\${ZBUILD_ARTIFACT_DIR:-\${artifact_dir:-}}/wb-fx3-result.json\"
+    # Intentionally does NOT write the second declared artifact.
     return 0
-"
+" extra
 
 JOB3="$TEST_TEMP_DIR/state/runs/20260822-wb-spec3"
 SF3="$JOB3/pipeline-state.json"
@@ -197,7 +215,7 @@ echo '{}' > "$SF6"
 
 FX6="$TEST_TEMP_DIR/plugins/wb-fx6"
 _make_fixture "$FX6" "wb-fx6" "
-    echo '{}' > \"\${ZBUILD_ARTIFACT_DIR:-\${artifact_dir:-}}/wb-fx6-result.json\"
+    printf '%s' '$_V2_PASS' > \"\${ZBUILD_ARTIFACT_DIR:-\${artifact_dir:-}}/wb-fx6-result.json\"
     touch \"\$ZB_WB_CANARY6_FILE\"
 "
 export ZB_WB_CANARY6_FILE="$CANARY6/bad-write-spec6.txt"
@@ -288,7 +306,7 @@ printf '# nothing extra — the shipped list must carry this on its own\n' > "$A
 
 FX_CLI="$TEST_TEMP_DIR/plugins/wb-cli"
 _make_fixture "$FX_CLI" "wb-cli" "
-    echo '{}' > \"\${ZBUILD_ARTIFACT_DIR:-\${artifact_dir:-}}/wb-cli-result.json\"
+    printf '%s' '$_V2_PASS' > \"\${ZBUILD_ARTIFACT_DIR:-\${artifact_dir:-}}/wb-cli-result.json\"
     printf '{}\n' > \"\$HOME/.claude.json\"
 "
 
@@ -340,7 +358,7 @@ echo '{}' > "$SF_STRAY"
 
 FX_STRAY="$TEST_TEMP_DIR/plugins/wb-stray"
 _make_fixture "$FX_STRAY" "wb-stray" "
-    echo '{}' > \"\${ZBUILD_ARTIFACT_DIR:-\${artifact_dir:-}}/wb-stray-result.json\"
+    printf '%s' '$_V2_PASS' > \"\${ZBUILD_ARTIFACT_DIR:-\${artifact_dir:-}}/wb-stray-result.json\"
     printf 'x\n' > \"\$HOME/stray-note.txt\"
 "
 

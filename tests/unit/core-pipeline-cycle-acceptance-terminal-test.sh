@@ -86,7 +86,7 @@ _reset()      { rm -f "$ACC" "$CUST"; }
 # ── [SPEC-1] disposition=terminal on a member → terminal (rc 0), echoes member ─
 _CYCLE_STAGES=(build acceptance-gate review)
 
-_reset; _write_acc '{"verdict":"fail","disposition":"terminal","failures":["malformed_acceptance_block"]}'
+_reset; _write_acc '{"verdict":"fail","severity":"terminal","failures":["malformed_acceptance_block"]}'
 set +e; out="$(_cycle_member_terminal_failure "$STATE_DIR")"; rc=$?; set -e
 assert_eq "[SPEC-1] terminal disposition → terminal (rc=0)" "0" "$rc"
 assert_eq "[SPEC-1] echoes the failing member id" "acceptance-gate" "$out"
@@ -100,7 +100,7 @@ assert_eq "[SPEC-1] echoes the failing member id" "acceptance-gate" "$out"
 # cycle re-iterates), so a genuinely-terminal class is used here —
 # malformed_acceptance_block carries SPEC ids in its reason too, exercising the
 # same reason-surfacing path.
-_reset; _write_acc '{"verdict":"fail","disposition":"terminal","reason":"acceptance-gate: SPEC-1/SPEC-8 malformed acceptance block — design must re-author","failures":["malformed_acceptance_block:SPEC-1","malformed_acceptance_block:SPEC-8"]}'
+_reset; _write_acc '{"verdict":"fail","severity":"terminal","reason":"acceptance-gate: SPEC-1/SPEC-8 malformed acceptance block — design must re-author","failures":["malformed_acceptance_block:SPEC-1","malformed_acceptance_block:SPEC-8"]}'
 _CYCLE_TERMINAL_MEMBER_REASON="__stale__"
 set +e; _cycle_member_terminal_failure "$STATE_DIR"; rc=$?; set -e
 assert_eq "[#1220] terminal with reason → terminal (rc=0)" "0" "$rc"
@@ -110,19 +110,26 @@ assert_contains "[#1220] surfaces member reason (names the class)" "$_CYCLE_TERM
 # ── [#1220] no reason field on a terminal member → global cleared ──────────────
 # Fail-safe: absent reason must not leak a stale value; downstream falls back to
 # the opaque token only when the plugin provides nothing.
-_reset; _write_acc '{"verdict":"fail","disposition":"terminal","failures":["malformed_acceptance_block"]}'
+_reset; _write_acc '{"verdict":"fail","severity":"terminal","failures":["malformed_acceptance_block"]}'
 _CYCLE_TERMINAL_MEMBER_REASON="__stale__"
 set +e; _cycle_member_terminal_failure "$STATE_DIR"; rc=$?; set -e
 assert_eq "[#1220] terminal without reason → rc=0" "0" "$rc"
 assert_eq "[#1220] no reason field → global cleared" "" "$_CYCLE_TERMINAL_MEMBER_REASON"
 
+# ── [#1850] the v1 shape — the word in `disposition`, no `severity` — is no
+# longer read: the cycle-policy word lives in `severity` (#2161), and a v2
+# disposition is ADR-054's closed set, which never contains `terminal`.
+_reset; _write_acc '{"verdict":"fail","disposition":"terminal","failures":["malformed_acceptance_block"]}'
+rc=0; out="$(_cycle_member_terminal_failure "$STATE_DIR")" || rc=$?
+assert_eq "[#1850] a v1-shape disposition=terminal (no severity) → NOT terminal (rc=1)" "1" "$rc"
+
 # ── [SPEC-2] disposition=recoverable → NOT terminal (rc 1) — #951 preserved ────
-_reset; _write_acc '{"verdict":"fail","disposition":"recoverable","failures":["untagged_spec:SPEC-1"]}'
+_reset; _write_acc '{"verdict":"fail","severity":"recoverable","failures":["untagged_spec:SPEC-1"]}'
 set +e; _cycle_member_terminal_failure "$STATE_DIR"; rc=$?; set -e
 assert_eq "[SPEC-2] recoverable → NOT terminal (rc=1)" "1" "$rc"
 
 # ── [SPEC-5] disposition=advisory → NOT terminal (rc 1) — infra non-blocking ───
-_reset; _write_acc '{"verdict":"fail","disposition":"advisory","failures":["negctl_error:timeout:SPEC-1"]}'
+_reset; _write_acc '{"verdict":"fail","severity":"advisory","failures":["negctl_error:timeout:SPEC-1"]}'
 set +e; _cycle_member_terminal_failure "$STATE_DIR"; rc=$?; set -e
 assert_eq "[SPEC-5] advisory → NOT terminal (rc=1)" "1" "$rc"
 
@@ -132,21 +139,21 @@ set +e; _cycle_member_terminal_failure "$STATE_DIR"; rc=$?; set -e
 assert_eq "[SPEC-2] disposition absent → NOT terminal (rc=1)" "1" "$rc"
 
 # ── verdict=pass is never terminal regardless of disposition. ──────────────────
-_reset; _write_acc '{"verdict":"pass","disposition":"none","failures":[]}'
+_reset; _write_acc '{"verdict":"pass","severity":"none","failures":[]}'
 set +e; _cycle_member_terminal_failure "$STATE_DIR"; rc=$?; set -e
 assert_eq "[SPEC-2] verdict=pass → NOT terminal (rc=1)" "1" "$rc"
 
 # ── [DECOUPLING] a NON-acceptance member declaring terminal ALSO halts. ────────
 # Proves the engine is plugin-agnostic: no literal "acceptance-gate" knowledge.
 _CYCLE_STAGES=(build custom-check review)
-_reset; _write_cust '{"verdict":"fail","disposition":"terminal","failures":["policy_violation"]}'
+_reset; _write_cust '{"verdict":"fail","severity":"terminal","failures":["policy_violation"]}'
 set +e; out="$(_cycle_member_terminal_failure "$STATE_DIR")"; rc=$?; set -e
 assert_eq "[DECOUPLING] non-acceptance member terminal → terminal (rc=0)" "0" "$rc"
 assert_eq "[DECOUPLING] echoes the custom member id" "custom-check" "$out"
 
 # ── [SPEC-3] membership guard: artifact present but member NOT in the cycle. ───
 _CYCLE_STAGES=(build test)
-_reset; _write_acc '{"verdict":"fail","disposition":"terminal","failures":["malformed_acceptance_block"]}'
+_reset; _write_acc '{"verdict":"fail","severity":"terminal","failures":["malformed_acceptance_block"]}'
 set +e; _cycle_member_terminal_failure "$STATE_DIR"; rc=$?; set -e
 assert_eq "[SPEC-3] not a member → never blocks (rc=1)" "1" "$rc"
 

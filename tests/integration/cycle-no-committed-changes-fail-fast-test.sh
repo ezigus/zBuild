@@ -1,15 +1,16 @@
 #!/usr/bin/env bash
 # Integration test (#1265, SPEC-4): a cycle iteration that WOULD converge with
 # ZERO commits ahead of the intake baseline AND build verdict != empty_diff does
-# NOT converge — it terminates no_committed_changes (rc=5) so the pipeline halts
+# NOT converge — it terminates no_committed_changes (rc=1, outcome interrupted;
+# rc=5 before #1850, ADR-054 §4) so the pipeline halts
 # before review/pr instead of shipping an empty branch to a confusing `pr` abort.
 #
 # Reproduces the #1214 dogfood: a scope_violation discarded the entire diff +
 # skipped the commit (HEAD == baseline), the suite passed on the uncommitted
 # tree, the final cycle member passed → the cycle "converged" on nothing.
 #
-# RED at baseline: today the cycle converges rc=0. GREEN after: rc=5,
-# reason=no_committed_changes.
+# RED at baseline: today the cycle converges rc=0. GREEN after: rc=1, outcome
+# interrupted, reason=no_committed_changes.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -96,8 +97,9 @@ cycle_orchestrator_run "build_test_cycle" "$ZBUILD_STATE_DIR" "$ZBUILD_STATE_FIL
 RC=$?
 set +e
 
-# ── (1) NOT a clean converge — halts blocked-class rc=5 ─────────────────────
-assert_eq "0-commit scope_violation: cycle rc=5 (halt, not converged)" "5" "$RC"
+# ── (1) NOT a clean converge — halts blocked-class (rc=1, outcome interrupted)
+assert_eq "0-commit scope_violation: cycle rc=1, outcome interrupted (halt, not converged)" \
+    "1 interrupted" "$RC ${_CYCLE_LAST_OUTCOME:-unset}"
 assert_eq "0-commit scope_violation: reason=no_committed_changes" \
     "no_committed_changes" "${_CYCLE_LAST_TERMINATED_REASON:-}"
 
@@ -118,7 +120,7 @@ fi
 # format), the no_committed_changes guard must be EXEMPT — "nothing to do" is a
 # valid resting point, not a failure to commit.
 # CHANGE-behavior: at baseline (old code: _build_verdict != "empty_diff"), a
-# verdict=pass stub was not exempted → no_committed_changes fired → rc=5.
+# verdict=pass stub was not exempted → no_committed_changes fired (a halt).
 # After #1832 (new code: _build_kind != "empty_diff"), kind=empty_diff is exempt.
 #
 # This REDEFINES cycle_dispatch_stage, shadowing the definition above for the

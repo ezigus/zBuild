@@ -121,7 +121,7 @@ _ga_build_roster() {
 # Reads one gate's recorded verdict from its result artifact. Echoes a status
 # token for the aggregate:
 #   pass|skip      → the gate is satisfied (skip = ran, nothing to check)
-#   advisory       → verdict=fail BUT the gate declared disposition=advisory
+#   advisory       → verdict=fail BUT the gate declared severity=advisory
 #                    (generic member-disposition contract, ADR-021): a non-
 #                    blocking failure (e.g. an infra flake) that must NOT block
 #                    convergence. Satisfied for aggregation.
@@ -140,13 +140,13 @@ _ga_read_gate_verdict() {
     case "$v" in
         pass | skip) echo "$v" ;;
         fail | error)
-            # disposition=advisory demotes a fail to a non-blocking status so an
+            # severity=advisory demotes a fail to a non-blocking status so an
             # infra-flake never blocks convergence (recoverable/terminal/absent
             # stay blocking — recoverable drives another build iteration).
-            # #2161: the word lives in `severity`; a v1-shaped result still
-            # carries it in `disposition` (fallback).
+            # #2161: the word lives in `severity`.
             local disp
-            disp="$(jq -r '.severity // .disposition // ""' "$result_path" 2>/dev/null || echo "")"
+            # #1850: `severity` only — the v1 fallback to `disposition` is gone.
+            disp="$(jq -r '.severity // ""' "$result_path" 2>/dev/null || echo "")"
             if [[ "$disp" == "advisory" ]]; then echo "advisory"; else echo "fail"; fi
             ;;
         *)           echo "malformed" ;;

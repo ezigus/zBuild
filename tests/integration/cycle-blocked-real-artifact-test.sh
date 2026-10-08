@@ -13,7 +13,8 @@
 #      primary output (the real path the runner uses)
 #   3. The resolved verdict feeds into the verdicts blob
 #   4. _cycle_detect_blocked fires on raw "error"
-#   5. cycle_orchestrator_run aborts at iter 1 (not 3), rc=5, reason=blocked
+#   5. cycle_orchestrator_run aborts at iter 1 (not 3), rc=1, outcome
+#      interrupted, reason=blocked (#1850, ADR-054 §4: was rc=5)
 #
 # Existing core-pipeline-cycle-blocked-integration-test.sh stubs
 # cycle_dispatch_stage directly and hard-codes _CYCLE_DISPATCH_VERDICT, so
@@ -54,20 +55,23 @@ mkdir -p "$ART_DIR"
 TEST_MANIFEST="$REPO_ROOT/plugins/tool/test/manifest.yaml"
 [[ -f "$TEST_MANIFEST" ]] || { echo "test plugin manifest missing: $TEST_MANIFEST"; exit 1; }
 
+# #1850: the real test plugin speaks result contract v2, so each result below is
+# a v2 one — a result without result_contract would read as `error` for the
+# violation alone, and A1 would pass without testing the verdict pass-through.
 # A1: verdict=error (mirrors what PR #553 plugin.sh writes on diff_apply_failed)
-printf '%s\n' '{"verdict":"error","reason":"diff_apply_failed","tests_run":0,"tests_passed":0,"tests_failed":0}' \
+printf '%s\n' '{"result_contract":2,"verdict":"error","disposition":"complete","reason":"diff_apply_failed","tests_run":0,"tests_passed":0,"tests_failed":0}' \
     > "$ART_DIR/test-results.json"
 got="$(runner_read_stage_verdict "$ZBUILD_STATE_DIR" "$TEST_MANIFEST" "test" 0)"
 assert_eq "A1: real test plugin verdict=error → 'error' (NOT 'fail')" "error" "$got"
 
 # A2: verdict=fail still classifies to 'fail' (no regression)
-printf '%s\n' '{"verdict":"fail","tests_run":3,"tests_passed":2,"tests_failed":1}' \
+printf '%s\n' '{"result_contract":2,"verdict":"fail","disposition":"complete","reason":"1 test failed","tests_run":3,"tests_passed":2,"tests_failed":1}' \
     > "$ART_DIR/test-results.json"
 got="$(runner_read_stage_verdict "$ZBUILD_STATE_DIR" "$TEST_MANIFEST" "test" 0)"
 assert_eq "A2: real test plugin verdict=fail → 'fail' (no regression)" "fail" "$got"
 
 # A3: verdict=pass still classifies to 'pass'
-printf '%s\n' '{"verdict":"pass","tests_run":3,"tests_passed":3,"tests_failed":0}' \
+printf '%s\n' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"all tests passed","tests_run":3,"tests_passed":3,"tests_failed":0}' \
     > "$ART_DIR/test-results.json"
 got="$(runner_read_stage_verdict "$ZBUILD_STATE_DIR" "$TEST_MANIFEST" "test" 0)"
 assert_eq "A3: real test plugin verdict=pass → 'pass'" "pass" "$got"
@@ -100,7 +104,7 @@ cycle_dispatch_stage() {
             manifest="$REPO_ROOT/plugins/agent/build/manifest.yaml"
             art="$ZBUILD_STATE_DIR/artifacts/build-summary.json"
             mkdir -p "$(dirname "$art")"
-            printf '%s\n' '{"verdict":"pass","scope_violation":false}' > "$art"
+            printf '%s\n' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"built","scope_violation":false}' > "$art"
             ;;
         test)
             manifest="$REPO_ROOT/plugins/tool/test/manifest.yaml"
@@ -113,7 +117,7 @@ cycle_dispatch_stage() {
             # pipeline engine reads the verdict from the artifact rather
             # than the plugin exit code").
             printf '%s\n' \
-                '{"verdict":"error","reason":"diff_apply_failed","tests_run":0,"tests_passed":0,"tests_failed":0}' \
+                '{"result_contract":2,"verdict":"error","disposition":"complete","reason":"diff_apply_failed","tests_run":0,"tests_passed":0,"tests_failed":0}' \
                 > "$art"
             rc=0
             ;;
@@ -138,7 +142,7 @@ cycle_orchestrator_run "build-test" "$ZBUILD_STATE_DIR" "$STATE_FILE"
 rc=$?
 set -e
 
-assert_eq "B1: orchestrator rc=5 (blocked)" "5" "$rc"
+assert_eq "B1: orchestrator rc=1, outcome interrupted (blocked)" "1 interrupted" "$rc ${_CYCLE_LAST_OUTCOME:-unset}"
 assert_eq "B2: terminated at iter 1 (only ONE iteration ran)" "1" "$_CYCLE_LAST_ITERATIONS"
 assert_eq "B3: reason=blocked" "blocked" "$_CYCLE_LAST_TERMINATED_REASON"
 assert_event_emitted "B4: cycle.blocked event fired" \

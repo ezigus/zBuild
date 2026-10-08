@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Unit (#766): the runner's cycle-dispatch call site must capture rc∈{1,2,3}
-# WITHOUT tripping set -e even when the orchestrator (or its callees) re-enable
-# set -e mid-stream. The legacy `set +e; orch_run; _rc=$?; set -e` pattern was
+# Unit (#766): the runner's cycle-dispatch call site must capture a non-zero
+# rc WITHOUT tripping set -e even when the orchestrator (or its callees)
+# re-enable set -e mid-stream. Since #1850 (ADR-054 §4) the loop returns only 0
+# or 1 and names how it ended on _CYCLE_LAST_OUTCOME (it used to be rc 1/2/3). The legacy `set +e; orch_run; _rc=$?; set -e` pattern was
 # fragile because callees could turn set -e back on, causing the rc=1 return
 # to abort the runner shell before the rc-table branches at runner.sh:1281.
 #
@@ -71,19 +72,23 @@ t3_check() (
 t3_rc=$(t3_check 2>&1 || true)
 assert_eq "T3: new pattern captures rc=0 cleanly" "0" "$t3_rc"
 
-# T4: NEW pattern handles rc=2 (plateau), rc=3 (divergence) cleanly.
-_rc2_callee() { set -e; return 2; }
-_rc3_callee() { set -e; return 3; }
+# T4: NEW pattern keeps the outcome word a loop sets before returning 1 — a
+# plateau and an interrupted end both return 1 (#1850; they were rc=2 / rc=4),
+# so the word is the only thing the runner can branch on, and the idiom must
+# not lose it.
+_unconverged_callee() { set -e; _CYCLE_LAST_OUTCOME="unconverged"; return 1; }
+_interrupted_callee() { set -e; _CYCLE_LAST_OUTCOME="interrupted"; return 1; }
 t4_check() (
     set -e
     _rc=99
-    _rc2_callee && _rc=0 || _rc=$?
-    echo -n "${_rc}|"
-    _rc3_callee && _rc=0 || _rc=$?
-    echo "$_rc"
+    _unconverged_callee && _rc=0 || _rc=$?
+    echo -n "${_rc} ${_CYCLE_LAST_OUTCOME:-unset}|"
+    _interrupted_callee && _rc=0 || _rc=$?
+    echo "${_rc} ${_CYCLE_LAST_OUTCOME:-unset}"
 )
 t4_rc=$(t4_check 2>&1 || true)
-assert_eq "T4: new pattern captures rc=2 and rc=3 cleanly under set -e" "2|3" "$t4_rc"
+assert_eq "T4: new pattern captures rc=1 and keeps the outcome word under set -e" \
+    "1 unconverged|1 interrupted" "$t4_rc"
 
 cleanup_test_env
 print_test_results
