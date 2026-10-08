@@ -1,0 +1,18 @@
+{
+  "result_contract": 2,
+  "schema_version": 1,
+  "verdict": "fail",
+  "disposition": "complete",
+  "reason": "design structural violations: 1 found",
+  "violations": [
+    "CONTENTS_NOT_BEHAVIOUR SPEC-1 (describes file contents, not behaviour)"
+  ],
+  "data": {
+    "findings": [
+      {
+        "n": 1,
+        "text": "SPEC-1 describes what a file contains, not what the code does — describe the behaviour someone could observe (an input and what happens), or, if the code already does it, mark it [done] with evidence"
+      }
+    ]
+  }
+}
