@@ -215,7 +215,7 @@ done
 # aggregator never rolls it up.
 printf '{"verdict":"fail","reason":"missing_floor_files","fault":"scope"}\n' \
     > "$T6_ART_DIR/shape-floor-result.json"
-printf '{"verdict":"fail","disposition":"recoverable","failures":["tautology:SPEC-1"]}\n' \
+printf '{"result_contract":2,"verdict":"fail","disposition":"complete","severity":"recoverable","reason":"tautology","failures":["tautology:SPEC-1"]}\n' \
     > "$T6_ART_DIR/acceptance-gate-result.json"
 printf '{"verdict":"fail","test_output":"FAIL tests/unit/sigpipe-antipattern-guard-test.sh"}\n' \
     > "$T6_ART_DIR/test-results.json"
