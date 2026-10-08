@@ -73,11 +73,17 @@ _assert_sparse "#1802/SPEC-1" "$_WT_ACQ"
 # ── SPEC-2 (create mode): zbuild_worktree_enter ──────────────────────────────
 _WT_CREATE="$(cd "$_R" && zbuild_worktree_enter spec2-create zbuild/spec2-create create 2>/dev/null)"
 _rc=$?
-if [[ "$_rc" -eq 0 && -d "$_WT_CREATE" ]]; then
-    assert_pass "[#1802/SPEC-2] zbuild_worktree_enter create returns 0"
-else
-    assert_fail "[#1802/SPEC-2] zbuild_worktree_enter create must return 0" \
+# Primary [#1802/SPEC-2] assertion checks the sparse outcome — not just exit code.
+# On old code zbuild_worktree_enter succeeds (rc=0) but leaves legacy/frozen.sh in
+# the worktree; this assertion therefore fails before the fix and passes after it.
+if [[ "$_rc" -ne 0 || ! -d "$_WT_CREATE" ]]; then
+    assert_fail "[#1802/SPEC-2] zbuild_worktree_enter create must return 0 and produce a worktree" \
         "rc=$_rc path=${_WT_CREATE:-<empty>}"
+elif [[ -f "$_WT_CREATE/legacy/frozen.sh" ]]; then
+    assert_fail "[#1802/SPEC-2] zbuild_worktree_enter create must not check out legacy/ in the worktree" \
+        "found: $_WT_CREATE/legacy/frozen.sh"
+else
+    assert_pass "[#1802/SPEC-2] zbuild_worktree_enter create: legacy/frozen.sh absent from worktree"
 fi
 _assert_sparse "#1802/SPEC-2 create" "$_WT_CREATE"
 
@@ -85,9 +91,9 @@ _assert_sparse "#1802/SPEC-2 create" "$_WT_CREATE"
 _WT_LOCAL="$(cd "$_R" && zbuild_worktree_enter spec2-local second adopt_local 2>/dev/null)"
 _rc=$?
 if [[ "$_rc" -eq 0 && -d "$_WT_LOCAL" ]]; then
-    assert_pass "[#1802/SPEC-2] zbuild_worktree_enter adopt_local returns 0"
+    assert_pass "[#1802/SPEC-2 adopt_local] zbuild_worktree_enter adopt_local returns 0"
 else
-    assert_fail "[#1802/SPEC-2] zbuild_worktree_enter adopt_local must return 0" \
+    assert_fail "[#1802/SPEC-2 adopt_local] zbuild_worktree_enter adopt_local must return 0" \
         "rc=$_rc path=${_WT_LOCAL:-<empty>}"
 fi
 _assert_sparse "#1802/SPEC-2 adopt_local" "$_WT_LOCAL"
@@ -102,9 +108,9 @@ git -C "$_R" fetch --quiet origin 2>/dev/null
 _WT_REMOTE="$(cd "$_R" && zbuild_worktree_enter spec2-remote zbuild/spec2-remote adopt_remote origin/main 2>/dev/null)"
 _rc=$?
 if [[ "$_rc" -eq 0 && -d "$_WT_REMOTE" ]]; then
-    assert_pass "[#1802/SPEC-2] zbuild_worktree_enter adopt_remote returns 0"
+    assert_pass "[#1802/SPEC-2 adopt_remote] zbuild_worktree_enter adopt_remote returns 0"
 else
-    assert_fail "[#1802/SPEC-2] zbuild_worktree_enter adopt_remote must return 0" \
+    assert_fail "[#1802/SPEC-2 adopt_remote] zbuild_worktree_enter adopt_remote must return 0" \
         "rc=$_rc path=${_WT_REMOTE:-<empty>}"
 fi
 _assert_sparse "#1802/SPEC-2 adopt_remote" "$_WT_REMOTE"
