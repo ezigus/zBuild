@@ -54,6 +54,8 @@
 #   - ZBUILD_MUTATION_TEST_TIMEOUT  — per-mutant test bound (seconds, default
 #     300; 0 ⇒ no timeout).
 #   - ZBUILD_MUTATION_DIR           — override the spec dir (for tests).
+#   - ZBUILD_MUTATION_KILL_GRACE    — seconds between the timeout's TERM and its
+#                                     KILL (default 10).
 
 set -euo pipefail
 
@@ -110,10 +112,26 @@ if [[ ! "$_MUT_TEST_TIMEOUT" =~ ^[0-9]+$ ]]; then
     echo "run-mutation.sh: invalid ZBUILD_MUTATION_TEST_TIMEOUT='$_MUT_TEST_TIMEOUT' (want non-negative integer seconds); using 300" >&2
     _MUT_TEST_TIMEOUT=300
 fi
+# TERM is followed by KILL after a grace, as run-tests.sh does: a test that
+# ignores TERM (on purpose — runner-status-comment-hook-test's SPEC-5 child)
+# otherwise holds the tier forever; on #1850 a suite ran 8h57m that way.
+# timeout signals the whole process group, so the KILL reaches that child too.
+_MUT_KILL_GRACE="${ZBUILD_MUTATION_KILL_GRACE:-10}"
+[[ "$_MUT_KILL_GRACE" =~ ^[0-9]+$ ]] || _MUT_KILL_GRACE=10
 _mut_tout=()
 if [[ "$_MUT_TEST_TIMEOUT" != "0" ]]; then
-    if   command -v gtimeout >/dev/null 2>&1; then _mut_tout=("gtimeout" "$_MUT_TEST_TIMEOUT")
-    elif command -v timeout  >/dev/null 2>&1; then _mut_tout=("timeout"  "$_MUT_TEST_TIMEOUT")
+    _mut_tout_bin=""
+    if   command -v gtimeout >/dev/null 2>&1; then _mut_tout_bin="gtimeout"
+    elif command -v timeout  >/dev/null 2>&1; then _mut_tout_bin="timeout"
+    fi
+    if [[ -n "$_mut_tout_bin" ]]; then
+        # Probe -k rather than assume it: a binary without it keeps the
+        # TERM-only bound instead of failing every mutant.
+        if "$_mut_tout_bin" -k 1 1 true >/dev/null 2>&1; then
+            _mut_tout=("$_mut_tout_bin" "-k" "$_MUT_KILL_GRACE" "$_MUT_TEST_TIMEOUT")
+        else
+            _mut_tout=("$_mut_tout_bin" "$_MUT_TEST_TIMEOUT")
+        fi
     fi
 fi
 
