@@ -38,42 +38,24 @@ mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 
 # ─── Intake stub: writes scope-manifest.md ───────────────────────────────────
 _intake_dir="$PLUGINS_ROOT/agent/intake"
-mkdir -p "$_intake_dir"
-cat > "$_intake_dir/manifest.yaml" <<'EOF'
-id: intake
-name: Stub intake
-kind: agent
-version: 0.0.1
-hooks:
-  run: intake_run
-requires:
-  core:
-    - redaction
-EOF
+# #1850: a v2 stage (mock_plugin_factory's manifest); the body writes its v2 result.
+mock_plugin_factory "intake" agent 0 >/dev/null
 cat > "$_intake_dir/plugin.sh" <<'PLUGEOF'
 intake_run() {
     local state_file="${2:-}"
     local state_dir; state_dir="$(dirname "${state_file:-$ZBUILD_STATE_DIR/state.json}")"
     mkdir -p "$state_dir"
     printf 'scope: all\n' > "$state_dir/scope-manifest.md"
+    local _art; _art="${ZBUILD_ARTIFACT_DIR:-$(dirname "$2")/artifacts}"; mkdir -p "$_art"
+    printf '%s' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub intake"}' > "$_art/intake-result.json"
     return 0
 }
 PLUGEOF
 
 # ─── Plan stub: writes plan.json with steps[].files[] ────────────────────────
 _plan_dir="$PLUGINS_ROOT/agent/plan"
-mkdir -p "$_plan_dir"
-cat > "$_plan_dir/manifest.yaml" <<'EOF'
-id: plan
-name: Stub plan
-kind: agent
-version: 0.0.1
-hooks:
-  run: plan_run
-requires:
-  core:
-    - redaction
-EOF
+# #1850: a v2 stage (mock_plugin_factory's manifest); the body writes its v2 result.
+mock_plugin_factory "plan" agent 0 >/dev/null
 cat > "$_plan_dir/plugin.sh" <<'PLUGEOF'
 plan_run() {
     local state_file="${2:-}"
@@ -88,24 +70,16 @@ plan_run() {
   ]
 }
 JSONEOF
+    local _art; _art="${ZBUILD_ARTIFACT_DIR:-$(dirname "$2")/artifacts}"; mkdir -p "$_art"
+    printf '%s' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub plan"}' > "$_art/plan-result.json"
     return 0
 }
 PLUGEOF
 
 # ─── Design stub: emits plugin.run.start and writes design.md ────────────────
 _design_dir="$PLUGINS_ROOT/agent/design"
-mkdir -p "$_design_dir"
-cat > "$_design_dir/manifest.yaml" <<'EOF'
-id: design
-name: Stub design
-kind: agent
-version: 0.0.1
-hooks:
-  run: design_run
-requires:
-  core:
-    - redaction
-EOF
+# #1850: a v2 stage (mock_plugin_factory's manifest); the body writes its v2 result.
+mock_plugin_factory "design" agent 0 >/dev/null
 cat > "$_design_dir/plugin.sh" <<'PLUGEOF'
 design_run() {
     local state_file="${2:-}"
@@ -136,6 +110,8 @@ MDEOF
     if declare -f emit_event >/dev/null 2>&1; then
         emit_event "plugin.run.complete" "plugin=design" "stage=design"
     fi
+    local _art; _art="${ZBUILD_ARTIFACT_DIR:-$(dirname "$2")/artifacts}"; mkdir -p "$_art"
+    printf '%s' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub design"}' > "$_art/design-result.json"
     return 0
 }
 PLUGEOF

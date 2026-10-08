@@ -83,7 +83,8 @@ _FIXTURE_TPL="$REPO_ROOT/tests/fixtures/templates/nested-cycle-seq.yaml"
 
 # Mock plugin factory: every plugin logs the seq label + the visibility of
 # ZBUILD_SEQ_PREFIX (so the assertions can pin both the recursive prefix shape
-# AND the no-leak-into-pre/post-cycle-stages contract).
+# AND the no-leak-into-pre/post-cycle-stages contract). #1850: each is a v2
+# stage — result_contract 2, a JSON primary, a v2 result written there.
 # $2 is the fixture's declared role: resolve_stage_plugin fails closed on a
 # stage that declares roles: but resolves none, so a stub needs provides.role.
 _make_plugin() {
@@ -98,11 +99,20 @@ kind: agent
 version: 0.0.1
 provides:
   role: $role
+  result_contract: 2
 hooks:
   run: $fn
 requires:
   core:
     - redaction
+outputs:
+  - id: ${id}_result
+    path: \${artifact_dir}/${id}-result.json
+    type: json
+    required: true
+    primary: true
+config:
+  valid_verdicts: [pass]
 EOF
     cat > "$dir/plugin.sh" <<PLUGIN
 ${fn}() {
@@ -111,13 +121,17 @@ ${fn}() {
         "\${ZBUILD_STAGE_IO_SEQ_LABEL:-MISSING}" \\
         "\${ZBUILD_SEQ_PREFIX:-UNSET}" \\
         >> "\${ZBUILD_SEQ_LABEL_LOG:-/dev/null}"
+    local state_dir; state_dir="\$(dirname "\$2")"
+    mkdir -p "\$state_dir/artifacts"
+    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub"}' \\
+        > "\$state_dir/artifacts/${id}-result.json"
     return 0
 }
 PLUGIN
 }
 
 # Override for test: declares a primary output so exit_when can read the verdict,
-# and writes {"verdict":"pass"} so inner_cycle converges after iter 1.
+# and writes a v2 result with <verdict> so inner_cycle converges after iter 1.
 _make_verdict_plugin() {
     local id="$1" verdict="$2" role="$3"
     local dir="$PLUGINS_ROOT/agent/$id"
@@ -129,6 +143,7 @@ kind: agent
 version: 0.0.1
 provides:
   role: $role
+  result_contract: 2
 hooks:
   run: $fn
 requires:
@@ -140,6 +155,8 @@ outputs:
     type: json
     required: true
     primary: true
+config:
+  valid_verdicts: [$verdict]
 EOF
     cat > "$dir/plugin.sh" <<PLUG
 ${fn}() {
@@ -150,7 +167,8 @@ ${fn}() {
         >> "\${ZBUILD_SEQ_LABEL_LOG:-/dev/null}"
     local state_dir; state_dir="\$(dirname "\$2")"
     mkdir -p "\$state_dir/artifacts"
-    printf '{"verdict":"$verdict"}' > "\$state_dir/artifacts/${id}.json"
+    printf '{"result_contract":2,"verdict":"$verdict","disposition":"complete","reason":"stub"}' \\
+        > "\$state_dir/artifacts/${id}.json"
     return 0
 }
 PLUG

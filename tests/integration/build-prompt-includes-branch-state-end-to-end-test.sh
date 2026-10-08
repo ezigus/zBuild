@@ -89,24 +89,16 @@ BASELINE_SHA="$(git -C "$REPO" rev-parse HEAD)"
 ) >/dev/null
 
 # ─── Intake stub: writes intake-baseline-ref.txt into $ZBUILD_STATE_DIR ─────
-mkdir -p "$PLUGINS_ROOT/agent/intake"
-cat > "$PLUGINS_ROOT/agent/intake/manifest.yaml" <<EOF
-id: intake
-name: Intake (writes baseline ref)
-kind: agent
-version: 0.0.1
-hooks:
-  run: intake_run
-requires:
-  core:
-    - redaction
-EOF
+# #1850: the manifest is mock_plugin_factory's v2 one; the body below writes
+# the v2 result it declares.
+mock_plugin_factory "intake" "agent" 0 >/dev/null
 cat > "$PLUGINS_ROOT/agent/intake/plugin.sh" <<EOF
 intake_run() {
     # Reads ZBUILD_STATE_DIR from runner-exported env (the #618 contract).
     # If it's unset, the file lands in /intake-baseline-ref.txt which fails fast.
     : "\${ZBUILD_STATE_DIR:?intake_run: ZBUILD_STATE_DIR not exported by runner}"
     printf '%s' "$BASELINE_SHA" > "\$ZBUILD_STATE_DIR/intake-baseline-ref.txt"
+    $(mock_v2_result_line intake)
     return 0
 }
 EOF
@@ -118,24 +110,14 @@ EOF
 PROMPT_FILE_FOR_BUILD="$TEST_TEMP_DIR/build-static-prompt.txt"
 echo "static build prompt body" > "$PROMPT_FILE_FOR_BUILD"
 
-mkdir -p "$PLUGINS_ROOT/agent/build"
-cat > "$PLUGINS_ROOT/agent/build/manifest.yaml" <<EOF
-id: build
-name: Build (calls route_to_model_loop)
-kind: agent
-version: 0.0.1
-hooks:
-  run: build_run
-requires:
-  core:
-    - redaction
-EOF
+mock_plugin_factory "build" "agent" 0 >/dev/null
 cat > "$PLUGINS_ROOT/agent/build/plugin.sh" <<EOF
 # shellcheck disable=SC1091
 source "$REPO_ROOT/core/router/route.sh"
 build_run() {
     : "\${ZBUILD_STATE_DIR:?build_run: ZBUILD_STATE_DIR not exported by runner}"
     route_to_model_loop T2 "$PROMPT_FILE_FOR_BUILD" "$REPO" 1 >/dev/null 2>&1 || true
+    $(mock_v2_result_line build)
     return 0
 }
 EOF

@@ -45,7 +45,8 @@ EVENTS_JSONL="$TEST_TEMP_DIR/events/events.jsonl"
 mkdir -p "$TEST_TEMP_DIR/events"
 
 # A stub that WRITES A REAL ARTIFACT. Today's runner-level stubs write nothing,
-# which is exactly why they never exercised the snapshot path.
+# which is exactly why they never exercised the snapshot path. #1850: the result
+# it writes is the v2 primary its manifest declares.
 _make_artifact_plugin() {
     local id="$1" kind="${2:-agent}" role="${3:-$1}"
     local dir="$PLUGINS_ROOT/$kind/$id"
@@ -64,16 +65,26 @@ hooks:
   run: $fn
 provides:
   role: $role
+  result_contract: 2
 requires:
   core:
     - redaction
+outputs:
+  - id: ${fn}_result
+    path: \${artifact_dir}/${id}-result.json
+    type: ${id}-result.json@1
+    format: json
+    required: true
+    primary: true
+config:
+  valid_verdicts: [pass]
 EOF
     cat > "$dir/plugin.sh" <<EOF
 ${fn}() {
     local _ad="\${ZBUILD_ARTIFACT_DIR:-\${ZBUILD_STATE_DIR:-.}/artifacts}"
     mkdir -p "\$_ad"
     printf 'artifact written by %s\n' "$id" > "\$_ad/${id}-output.txt"
-    printf '{"schema_version":1,"verdict":"pass"}\n' > "\$_ad/${id}-result.json"
+    printf '{"result_contract":2,"schema_version":1,"verdict":"pass","disposition":"complete","reason":"stub"}\n' > "\$_ad/${id}-result.json"
     return 0
 }
 EOF

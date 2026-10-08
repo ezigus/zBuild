@@ -71,6 +71,7 @@ requires:
   core: [event-bus]
 provides:
   role: $ROLE
+  result_contract: 2
 inputs: []
 outputs:
   - id: rbl_out
@@ -78,13 +79,15 @@ outputs:
     type: json
     required: true
     primary: true
+config:
+  valid_verdicts: [pass]
 EOF
 cat > "$_dir/plugin.sh" <<'EOF'
 rbl_provider_run() {
     local state_file="$2"
     local state_dir; state_dir="$(dirname "$state_file")"
     mkdir -p "$state_dir/artifacts"
-    printf '%s' '{"verdict":"pass"}' > "$state_dir/artifacts/rbl-result.json"
+    printf '%s' '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"rbl stub"}' > "$state_dir/artifacts/rbl-result.json"
     return 0
 }
 EOF

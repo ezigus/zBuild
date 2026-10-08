@@ -61,12 +61,14 @@ WORK_BRANCH="zbuild/issue-$_ZB_ID-wt"
 
 # Stage 1 stub — stands in for intake's branch checkout. It does exactly what the
 # real plugin does (checkout in whatever tree it is standing in) and, crucially,
-# knows NOTHING about worktrees: under ADR-052 it must not have to.
+# knows NOTHING about worktrees: under ADR-052 it must not have to. #1850: each
+# stub writes the v2 result its (mock_plugin_factory) manifest declares.
 _write_intake_stub() {
     cat > "$PLUGINS_ROOT/agent/intake/plugin.sh" <<EOF
 intake_run() {
     git checkout -q -b "$WORK_BRANCH" >/dev/null 2>&1 || return 2
     printf '%s\n' "$WORK_BRANCH" > "\${ZBUILD_STATE_DIR}/intake-branch.txt"
+    $(mock_v2_result_line intake)
     return 0
 }
 EOF
@@ -78,7 +80,8 @@ EOF
 # any other way would not be reproducing the bug.
 # <rc> lets a case make the run FAIL here, before any later stage could notice.
 _write_build_stub() {
-    local rc="${1:-0}"
+    local rc="${1:-0}" _v=pass _d=complete
+    [[ "$rc" -ne 0 ]] && { _v=error; _d=broken; }
     cat > "$PLUGINS_ROOT/agent/build/plugin.sh" <<EOF
 build_run() {
     local repo_root="\${ZBUILD_REPO_ROOT:-\$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
@@ -87,6 +90,7 @@ build_run() {
     git -C "\$repo_root" -c user.email=p@l -c user.name=zbuild-pipeline \
         commit -qm "build stage output" >/dev/null 2>&1
     printf '%s\n' "\$repo_root" > "\${ZBUILD_STATE_DIR}/build-repo-root.txt"
+    $(mock_v2_result_line build "$_v" "$_d")
     return $rc
 }
 EOF
@@ -212,7 +216,10 @@ TARGET="$TARGET_PREV"
 _write_intake_stub
 _write_build_stub 0
 cat > "$PLUGINS_ROOT/agent/intake/plugin.sh" <<EOF
-intake_run() { return 0; }   # branch already exists in the worktree from run-fresh
+intake_run() {   # branch already exists in the worktree from run-fresh
+    $(mock_v2_result_line intake)
+    return 0
+}
 EOF
 run_pipeline "run-fresh"
 _resume_build_root="$(cat "$SD_FRESH/build-repo-root.txt" 2>/dev/null || echo "")"

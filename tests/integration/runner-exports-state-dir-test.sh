@@ -50,25 +50,16 @@ mkdir -p "$STATE_DIR" "$TEST_TEMP_DIR/events"
 # ─── Stub plugins ────────────────────────────────────────────────────────────
 # All stages succeed; the BUILD stub captures its env to a file so we can
 # assert ZBUILD_STATE_DIR was exported by the runner.
+# #1850: the manifest is mock_plugin_factory's v2 one; the body captures the env
+# and then writes the v2 result the manifest promises.
 _make_capture_plugin() {
     local id="$1" kind="${2:-agent}"
-    local dir="$PLUGINS_ROOT/$kind/$id"
-    mkdir -p "$dir"
+    local dir; dir="$(mock_plugin_factory "$id" "$kind" 0)"
     local fn; fn="${id//-/_}_run"
-    cat > "$dir/manifest.yaml" <<EOF
-id: $id
-name: Capture $id
-kind: $kind
-version: 0.0.1
-hooks:
-  run: $fn
-requires:
-  core:
-    - redaction
-EOF
     cat > "$dir/plugin.sh" <<EOF
 ${fn}() {
     env | grep '^ZBUILD_' > "$ENV_CAPTURE" 2>/dev/null || true
+    $(mock_v2_result_line "$id")
     return 0
 }
 EOF

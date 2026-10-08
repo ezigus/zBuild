@@ -84,6 +84,7 @@ cat > "$PROBE_PLUGINS/agent/intake/plugin.sh" <<PROBE
 intake_run() {
     echo "dash=\$-" > "${PROBE_OPTS_FILE}"
     set -o | grep -E '^monitor' >> "${PROBE_OPTS_FILE}" 2>/dev/null || true
+    $(mock_v2_result_line intake)
     return 0
 }
 PROBE
@@ -166,7 +167,7 @@ export E2E_BUILD_STARTED E2E_TEST_RAN
 
 # Restore intake to a no-op (was overridden by probe).
 cat > "$PROBE_PLUGINS/agent/intake/plugin.sh" <<PLUG
-intake_run() { return 0; }
+intake_run() { $(mock_v2_result_line intake); return 0; }
 PLUG
 
 # Build plugin: short polling loop so the trap can fire within budget.
@@ -181,11 +182,12 @@ build_run() {
     for _i in \$(seq 1 30); do
         sleep 0.1
     done
+    $(mock_v2_result_line build)
     return 0
 }
 PLUG
 cat > "$PROBE_PLUGINS/tool/test/plugin.sh" <<PLUG
-test_run() { : > "${E2E_TEST_RAN}"; return 0; }
+test_run() { : > "${E2E_TEST_RAN}"; $(mock_v2_result_line test); return 0; }
 PLUG
 
 # #1270: the runner resolves the fixture from $PWD, so cd into the overlay repo

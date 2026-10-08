@@ -186,7 +186,8 @@ INT_EVENTS_DIR="$TEST_TEMP_DIR/int_events"
 mkdir -p "$INT_PLUGINS_ROOT/agent/intake" "$INT_PLUGINS_ROOT/agent/build" \
          "$INT_STATE_DIR" "$INT_EVENTS_DIR"
 
-# The fixture's two leaf stages both succeed.
+# The fixture's two leaf stages both succeed. #1850: each is a v2 stage — it
+# declares result_contract 2 and a JSON primary, and writes a v2 pass there.
 for _plugin in intake build; do
     _fn="${_plugin//-/_}_run"
     cat > "$INT_PLUGINS_ROOT/agent/$_plugin/manifest.yaml" <<EOF
@@ -199,8 +200,27 @@ hooks:
 requires:
   core:
     - redaction
+provides:
+  result_contract: 2
+outputs:
+  - id: ${_fn}_result
+    path: \${artifact_dir}/${_plugin}-result.json
+    type: ${_plugin}-result.json@1
+    format: json
+    required: true
+    primary: true
+config:
+  valid_verdicts: [pass]
 EOF
-    printf '%s() { return 0; }\n' "$_fn" > "$INT_PLUGINS_ROOT/agent/$_plugin/plugin.sh"
+    cat > "$INT_PLUGINS_ROOT/agent/$_plugin/plugin.sh" <<EOF
+${_fn}() {
+    local _art; _art="\${ZBUILD_ARTIFACT_DIR:-\$(dirname "\$2")/artifacts}"
+    mkdir -p "\$_art"
+    printf '{"result_contract":2,"verdict":"pass","disposition":"complete","reason":"stub"}' \\
+        > "\$_art/${_plugin}-result.json"
+    return 0
+}
+EOF
 done
 
 # #1270: per-repo overlay repo; the runner resolves the fixture from CWD=$PWD.

@@ -44,6 +44,10 @@ _make_verdict_plugin() {
     local dir="$PLUGINS_ROOT/$kind/$id"
     mkdir -p "$dir"
     local fn; fn="${id//-/_}_run"
+    # #1850: the stub speaks result contract v2 — the JSON it writes gains the
+    # mandatory fields, and its verdict is the one word it declares.
+    local verdict; verdict="$(jq -r '.verdict' <<<"$json")"
+    json="$(jq -c '. + {result_contract: 2, disposition: "complete", reason: "stub"}' <<<"$json")"
     # Agent plugins must declare redaction in requires.core (registry rule).
     local core_list="[event-bus]"
     if [[ "$kind" == "agent" ]]; then
@@ -60,20 +64,19 @@ hooks:
 requires:
   core: $core_list
 EOF
-        if [[ -n "$role" ]]; then
-            cat <<EOF
-provides:
-  role: $role
-EOF
-        fi
+        printf 'provides:\n  result_contract: 2\n'
+        [[ -n "$role" ]] && printf '  role: %s\n' "$role"
         cat <<EOF
 inputs: []
 outputs:
   - id: ${id}_out
     path: \${artifact_dir}/$out_rel
-    type: json
+    type: ${id}-out.json@1
+    format: json
     required: true
     primary: true
+config:
+  valid_verdicts: [$verdict]
 EOF
     } > "$dir/manifest.yaml"
     cat > "$dir/plugin.sh" <<EOF

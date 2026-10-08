@@ -77,11 +77,17 @@ PLUG
 # `runner-release-exit-paths-test.sh` already does this correctly with
 # BUILD_STARTED; this is the same idea. The marker can only appear once the stage
 # is genuinely executing, so load can only delay it, never fake it.
+# #1850: the stage writes the v2 result its manifest (mock_plugin_factory's)
+# promises — pass on rc 0, error/broken otherwise — so a run that should succeed
+# is not failed for leaving no readable result.
 _arm_outcome() {
+    local _v=pass _d=complete
+    [[ "${2:-0}" -ne 0 ]] && { _v=error; _d=broken; }
     cat > "$PLUGINS_ROOT/agent/outcome/plugin.sh" <<PLUG
 outcome_run() {
     : > "\${STAGE_STARTED:-/dev/null}"
     ${1:-:}
+    $(mock_v2_result_line outcome "$_v" "$_d")
     return ${2:-0}
 }
 PLUG

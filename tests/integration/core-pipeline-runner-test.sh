@@ -255,25 +255,11 @@ assert_contains "missing template error names the template" "$out" "not found"
 
 # ─── Test 12: role-based dispatch — resolver path executes correctly ───────────
 # Helpers for role-based plugins (provides.role field)
+# #1850: a role plugin is a v2 stage plugin like any other — mock_plugin_factory
+# builds it with the role (and platform) on its manifest.
 _make_role_plugin() {
     local id="$1" role="$2" exit_code="${3:-0}"
-    local dir="$TEST_TEMP_DIR/plugins/agent/$id"
-    mkdir -p "$dir"
-    local fn; fn="${id//-/_}_run"
-    cat > "$dir/manifest.yaml" <<EOF
-id: $id
-name: Role Plugin $id
-kind: agent
-version: 0.0.1
-hooks:
-  run: $fn
-requires:
-  core:
-    - redaction
-provides:
-  role: $role
-EOF
-    printf '%s() { return %d; }\n' "$fn" "$exit_code" > "$dir/plugin.sh"
+    mock_plugin_factory "$id" agent "$exit_code" "" "$role" >/dev/null
 }
 
 rm -rf "$PLUGINS_ROOT/agent/" "$PLUGINS_ROOT/tool/"
@@ -317,24 +303,7 @@ assert_eq "fanout 2 platforms: 4 plugin.run.start events (2 stages × 2)" "4" "$
 # Requires _make_platform_role_plugin helper.
 _make_platform_role_plugin() {
     local id="$1" role="$2" platform="$3" exit_code="${4:-0}"
-    local dir="$TEST_TEMP_DIR/plugins/agent/$id"
-    mkdir -p "$dir"
-    local fn; fn="${id//-/_}_run"
-    cat > "$dir/manifest.yaml" <<EOF
-id: $id
-name: Platform Role Plugin $id
-kind: agent
-version: 0.0.1
-hooks:
-  run: $fn
-requires:
-  core:
-    - redaction
-platform: $platform
-provides:
-  role: $role
-EOF
-    printf '%s() { return %d; }\n' "$fn" "$exit_code" > "$dir/plugin.sh"
+    mock_plugin_factory "$id" agent "$exit_code" "$platform" "$role" >/dev/null
 }
 
 # build-agent (generic, exit 1) = ios fallback fails
