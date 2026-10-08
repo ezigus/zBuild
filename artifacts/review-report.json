@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "merge_readiness": "needs_attention",
+  "lenses": [
+    {
+      "name": "correctness",
+      "score": 7,
+      "ran": true,
+      "findings": [
+        {
+          "file": "scripts/lib/worktree.sh",
+          "category": "logic",
+          "severity": "low",
+          "line": 299,
+          "message": "_zbuild_worktree_apply_sparse silences all stderr from both git calls with 2>/dev/null, unlike every other git invocation in the file which captures and prints error output; when either command fails the caller receives rc=5 with no diagnostic, making the failure opaque to operators.",
+          "introduced": true
+        },
+        {
+          "file": "scripts/lib/worktree.sh",
+          "category": "logic",
+          "severity": "low",
+          "line": 312,
+          "message": "zbuild_worktree_include_legacy_path does not validate that $path starts with 'legacy/', so a caller passing an arbitrary path (e.g. 'src/' or an absolute path) would silently widen the sparse set beyond the stated contract of a legacy source for keeper PRs.",
+          "introduced": true
+        },
+        {
+          "file": "tests/unit/worktree-sparse-legacy-test.sh",
+          "category": "coverage",
+          "severity": "medium",
+          "line": 147,
+          "message": "SPEC-4 fixture creates a worktree via plain 'git worktree add --detach' with no sparse-checkout configured, but SPEC-4 requires the pre-condition to be a worktree that already has sparse-checkout configured; the re-apply-over-existing-sparse scenario (idempotency) is not exercised by the test.",
+          "introduced": true
+        }
+      ]
+    },
+    {
+      "name": "performance",
+      "score": 9,
+      "ran": true,
+      "findings": [
+        {
+          "file": "scripts/lib/worktree.sh",
+          "category": "redundant I/O",
+          "severity": "low",
+          "line": 299,
+          "message": "`git -C \"$repo_root\" config extensions.worktreeConfig true` is called on every worktree acquisition including the reuse/resume path, but `extensions.worktreeConfig` is a repository-wide setting that only needs to be written once; re-writing the same value on every resume is O(n) in the number of runs per issue where O(1) would suffice.",
+          "introduced": true
+        }
+      ]
+    },
+    {
+      "name": "red-team",
+      "score": 6,
+      "ran": true,
+      "findings": [
+        {
+          "file": "scripts/lib/worktree.sh",
+          "category": "injection",
+          "severity": "medium",
+          "line": 312,
+          "message": "zbuild_worktree_include_legacy_path calls `git -C \"$wt\" sparse-checkout add \"$path\"` without a `--` end-of-options separator, so a caller-supplied path beginning with `--` (e.g., `--cone`) is interpreted by git as a flag rather than a pattern — `--cone` would switch the worktree from no-cone mode to cone mode, silently destroying the `!/legacy/` negation patterns and re-enabling full legacy/ materialisation for that worktree.",
+          "introduced": true
+        },
+        {
+          "file": "scripts/lib/worktree.sh",
+          "category": "logic",
+          "severity": "low",
+          "line": 299,
+          "message": "`git -C \"$repo_root\" config extensions.worktreeConfig true` permanently writes to the main checkout's `.git/config` and is never reverted, even after all linked worktrees are removed; a repo owner who had deliberately set `extensions.worktreeConfig=false` would have that overridden silently with no mechanism to restore it.",
+          "introduced": true
+        },
+        {
+          "file": "tests/unit/worktree-sparse-legacy-test.sh",
+          "category": "coverage",
+          "severity": "low",
+          "line": 145,
+          "message": "The SPEC-4 resume-path fixture creates a worktree with no sparse config at all, not one that already has sparse-checkout configured as the spec requires; the test therefore does not verify that `sparse-checkout set` overwrites an existing conflicting pattern rather than merging with it, leaving a gap if a future git version changes merge semantics.",
+          "introduced": true
+        }
+      ]
+    },
+    {
+      "name": "scope",
+      "score": 10,
+      "ran": true,
+      "findings": []
+    },
+    {
+      "name": "security",
+      "score": 8,
+      "ran": true,
+      "findings": [
+        {
+          "file": "scripts/lib/worktree.sh",
+          "category": "injection",
+          "severity": "medium",
+          "line": 312,
+          "message": "`zbuild_worktree_include_legacy_path` passes the `path` argument directly to `git sparse-checkout add \"$path\"` without validating that it begins with `legacy/` or that it does not contain git pattern syntax (`!`, `*`); a caller passing `/legacy/` would re-include the entire frozen tree, `/*!/*` would disable the exclusion entirely, and `!/legacy/migrated/` would remove tombstone visibility — this change introduces the public API with no guard.",
+          "introduced": true
+        },
+        {
+          "file": "scripts/lib/worktree.sh",
+          "category": "coverage",
+          "severity": "low",
+          "line": 299,
+          "message": "Both git commands in `_zbuild_worktree_apply_sparse` redirect stderr to `/dev/null`; if `git sparse-checkout set` fails (version incompatibility, corrupted worktree metadata, filesystem permission), there is no diagnostic output and operators cannot determine why a worktree was left non-sparse, reducing security auditability.",
+          "introduced": true
+        }
+      ]
+    },
+    {
+      "name": "sre",
+      "score": 0,
+      "ran": false,
+      "findings": []
+    }
+  ],
+  "findings": [
+    {
+      "file": "scripts/lib/worktree.sh",
+      "category": "coverage",
+      "line": 299,
+      "severity": "low",
+      "lenses": [
+        "security"
+      ],
+      "messages": [
+        "Both git commands in `_zbuild_worktree_apply_sparse` redirect stderr to `/dev/null`; if `git sparse-checkout set` fails (version incompatibility, corrupted worktree metadata, filesystem permission), there is no diagnostic output and operators cannot determine why a worktree was left non-sparse, reducing security auditability."
+      ]
+    },
+    {
+      "file": "scripts/lib/worktree.sh",
+      "category": "injection",
+      "line": 312,
+      "severity": "medium",
+      "lenses": [
+        "red-team",
+        "security"
+      ],
+      "messages": [
+        "`zbuild_worktree_include_legacy_path` passes the `path` argument directly to `git sparse-checkout add \"$path\"` without validating that it begins with `legacy/` or that it does not contain git pattern syntax (`!`, `*`); a caller passing `/legacy/` would re-include the entire frozen tree, `/*!/*` would disable the exclusion entirely, and `!/legacy/migrated/` would remove tombstone visibility — this change introduces the public API with no guard.",
+        "zbuild_worktree_include_legacy_path calls `git -C \"$wt\" sparse-checkout add \"$path\"` without a `--` end-of-options separator, so a caller-supplied path beginning with `--` (e.g., `--cone`) is interpreted by git as a flag rather than a pattern — `--cone` would switch the worktree from no-cone mode to cone mode, silently destroying the `!/legacy/` negation patterns and re-enabling full legacy/ materialisation for that worktree."
+      ]
+    },
+    {
+      "file": "scripts/lib/worktree.sh",
+      "category": "logic",
+      "line": 299,
+      "severity": "low",
+      "lenses": [
+        "correctness",
+        "red-team"
+      ],
+      "messages": [
+        "_zbuild_worktree_apply_sparse silences all stderr from both git calls with 2>/dev/null, unlike every other git invocation in the file which captures and prints error output; when either command fails the caller receives rc=5 with no diagnostic, making the failure opaque to operators.",
+        "`git -C \"$repo_root\" config extensions.worktreeConfig true` permanently writes to the main checkout's `.git/config` and is never reverted, even after all linked worktrees are removed; a repo owner who had deliberately set `extensions.worktreeConfig=false` would have that overridden silently with no mechanism to restore it."
+      ]
+    },
+    {
+      "file": "scripts/lib/worktree.sh",
+      "category": "logic",
+      "line": 312,
+      "severity": "low",
+      "lenses": [
+        "correctness"
+      ],
+      "messages": [
+        "zbuild_worktree_include_legacy_path does not validate that $path starts with 'legacy/', so a caller passing an arbitrary path (e.g. 'src/' or an absolute path) would silently widen the sparse set beyond the stated contract of a legacy source for keeper PRs."
+      ]
+    },
+    {
+      "file": "scripts/lib/worktree.sh",
+      "category": "redundant I/O",
+      "line": 299,
+      "severity": "low",
+      "lenses": [
+        "performance"
+      ],
+      "messages": [
+        "`git -C \"$repo_root\" config extensions.worktreeConfig true` is called on every worktree acquisition including the reuse/resume path, but `extensions.worktreeConfig` is a repository-wide setting that only needs to be written once; re-writing the same value on every resume is O(n) in the number of runs per issue where O(1) would suffice."
+      ]
+    },
+    {
+      "file": "tests/unit/worktree-sparse-legacy-test.sh",
+      "category": "coverage",
+      "line": 145,
+      "severity": "medium",
+      "lenses": [
+        "correctness",
+        "red-team"
+      ],
+      "messages": [
+        "SPEC-4 fixture creates a worktree via plain 'git worktree add --detach' with no sparse-checkout configured, but SPEC-4 requires the pre-condition to be a worktree that already has sparse-checkout configured; the re-apply-over-existing-sparse scenario (idempotency) is not exercised by the test.",
+        "The SPEC-4 resume-path fixture creates a worktree with no sparse config at all, not one that already has sparse-checkout configured as the spec requires; the test therefore does not verify that `sparse-checkout set` overwrites an existing conflicting pattern rather than merging with it, leaving a gap if a future git version changes merge semantics."
+      ]
+    }
+  ],
+  "pre_existing": [],
+  "summary": "1 of 6 lens(es) did not run (sre) — their review is missing, not clean. 6 merge-readiness finding(s) across 6 lens(es) (0 critical, 0 high).",
+  "escalation_note": "Some lenses did not run, so this report is incomplete; re-run the review before merging. Advisory only — this does not block the pipeline.",
+  "did_not_run": [
+    "sre"
+  ],
+  "result_contract": 2,
+  "verdict": "complete",
+  "disposition": "complete",
+  "reason": "aggregated 6 lens result(s)"
+}
