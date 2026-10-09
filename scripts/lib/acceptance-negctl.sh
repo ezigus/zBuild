@@ -23,7 +23,7 @@
 #
 # Size: over 500 lines, deliberately. A sibling loaded as `source "$DIR/x.sh"`
 # would join _runner_contract_lib_closure — the set that decides whether a run
-# grades itself (ADR-057 gate 2) — and widen it for a cosmetic gain. It would
+# grades itself (ADR-057 §5) — and widen it for a cosmetic gain. It would
 # not change what a self-grading run reads: that snapshot copies every
 # top-level lib (#1752).
 #

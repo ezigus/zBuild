@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-08-12)
 **Date:** 2026-08-12
 **Issue:** #1768
-**Amended:** 2026-08-22 (#1918) — §2 gate 3 narrowed to account for the human merge gate, and gate 3b added for a diff that cannot be pushed at all; 2026-10-09 (#1752) — §5 the self-grading snapshot copies every top-level `scripts/lib/*.sh`, and the closure only decides whether a run self-grades
+**Amended:** 2026-08-22 (#1918) — §2 gate 3 narrowed to account for the human merge gate, and gate 3b added for a diff that cannot be pushed at all; 2026-10-09 (#1752) — §5 the self-grading snapshot copies every top-level `scripts/lib/*.sh`, and the closure only decides whether a run self-grades; 2026-10-09 (Dogfood by default) — §2 gates 2 and 3 are retired: a self-grading change and a change with a large blast radius are `Dogfood`, with no warning line; only gate 1 and gate 3b take work off the dogfood path
 **Amends:** ADR-036 (§"Self-hosting note" — its rule that grammar-extending changes must be hand-landed was superseded by #1783 and never updated; see §5)
 **Related:** ADR-023 (install isolation), ADR-047 (stage-agnostic mechanics — its own dogfood carve-out, §5), ADR-050 (prior-work reuse), ADR-055 (inter-stage data contract v2)
 
@@ -33,6 +33,14 @@ So the question is **not** "can the run test this change?" — it almost never c
 
 ### 2. The gates, in order — first match wins
 
+> **Amended 2026-10-09 — Dogfood by default; gates 2 and 3 are retired.**
+>
+> The live gates are **gate 1** (`Design Decision needed`), **gate 3b** (`By-hand`), and **gate 4** (`Dogfood`, the default). Gates 2 and 3 below no longer apply; their text is kept as history. Work they used to match is `Dogfood`, and its issue carries no Build Mode line and no warning about self-grading or blast radius.
+>
+> Why: both gates sent work to the slow path to guard against a defect that CI and the human merge gate already stand in front of (`allow_auto_merge=false`; every PR is merged by a person after CI is green). Taking that work off the dogfood path also hid engine defects that only a run finds. The #1752 run was a self-grading change under gate 2 and was dogfooded anyway; it exposed two engine defects — the self-grading snapshot missed a sibling lib, and the acceptance gate passed having checked nothing — which were fixed in #2349. A By-hand build would have shown neither.
+>
+> The engine still detects and reports a self-grading run (§5); that is information for the operator, not a Build Mode rule.
+
 Gates 1, 2, 3, 3b, then 4 as the default. Gate 3b was added by the #1918 amendment below and is numbered `3b` rather than `5` deliberately: gate 4 is the fallthrough and issues already cite it by number, so nothing may be inserted after it.
 
 **Gate 1 — Is the decision already made? → `Design Decision needed`**
@@ -41,7 +49,7 @@ The work requires resolving a conflict between accepted documents, choosing a vo
 
 *Worked example:* #1768 turned out to rest on ADR-046 and ADR-055 disagreeing about whether `source: artifacts` existed, with neither marked superseded and ADR-055 not referencing ADR-046 at all. No run could have resolved that.
 
-**Gate 2 — Does the run grade itself with the code being changed? → `By-hand`**
+**Gate 2 — Does the run grade itself with the code being changed? → `By-hand`** *(retired 2026-10-09 — see the amendment above; such work is `Dogfood`)*
 
 Mechanically decidable, not a judgement call. Any of:
 
@@ -49,7 +57,7 @@ Mechanically decidable, not a judgement call. Any of:
 - the change alters how verdicts or dispositions are read.
 - the change alters the template or the stage roster — the running pipeline is the artifact being modified (ADR-047).
 
-**Gate 3 — Would a defect a *reviewer would not catch* stop the next run from starting? → `By-hand`**
+**Gate 3 — Would a defect a *reviewer would not catch* stop the next run from starting? → `By-hand`** *(retired 2026-10-09 — see the amendment above; such work is `Dogfood`)*
 
 The blast-radius gate, and the one no prior document names. `_contract_validate_pipeline` runs in `runner.sh:main()` after `load_template` and **before the first stage dispatches**; in `enforce` mode it writes `status: preflight_failed` and returns rc=2. **(superseded 2026-10-08 by ADR-054 §4 / #1850 — now rc 1; the status says why)** A wrong change there halts every subsequent run before intake — including the runs you would use to fix it. Same class: `install.sh`, the template loader, `runner.sh:main()`, the event bus.
 
@@ -81,7 +89,7 @@ This is the default and should remain the common case.
 
 A Build Mode value carries a verdict with no argument. Every non-`Dogfood` marking states, in one line in the issue body, which gate it matched and why:
 
-> **Build Mode: By-hand** — gate 3: changes the pre-flight validator, which runs before the first stage; a bad merge halts every subsequent run before intake.
+> **Build Mode: By-hand** — gate 3b: edits `.github/workflows/zbuild-pipeline.yml`, which the run's App token cannot push (#1780).
 
 `Dogfood` needs no line, being the default.
 
@@ -95,34 +103,36 @@ ADR-036 states that grammar-extending changes must be hand-landed because the co
 
 > the whole point is that the snapshot tracks the tree as build changes it. #963's guard implemented the opposite property — "a mid-run edit cannot mutate what the readers parse" — which is exactly what makes a dogfood of a grammar change unlandable.
 
-So a contract-grammar change **is** dogfoodable. It is also **self-grading** — the run's gates read the code build just wrote — which is why it lands under gate 2 as `By-hand` by default rather than being forbidden. The engine surfaces the condition: `_RUNNER_SELF_GRADE_REASON` is emitted once per run so the operator can see it happened.
+So a contract-grammar change **is** dogfoodable. It is also **self-grading** — the run's gates read the code build just wrote — which is why it landed under gate 2 as `By-hand` by default rather than being forbidden. **(Amended 2026-10-09: gate 2 is retired; a self-grading change is `Dogfood`, §2.)** The engine surfaces the condition: `_RUNNER_SELF_GRADE_REASON` is emitted once per run so the operator can see it happened.
 
 > **Amended 2026-10-09 (#1752): the snapshot copies all of `scripts/lib`.**
 >
 > The snapshot used to copy only `_runner_contract_lib_closure`. That closure follows lines of the form `source "$VAR/<file>.sh"` and no other form. In run 37920468204 for #1752, build moved a helper into a new sibling and loaded it with `source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/timeout-cmd.sh"`. The sibling was not copied, the gates failed to load, and the acceptance check passed having checked nothing (ADR-036, amendment of the same date). `helpers.sh` is loaded the same way and had never been in the snapshot either; it worked only because the callers had usually loaded it already.
 >
 > - `_runner_snapshot_contract_libs` copies every top-level `scripts/lib/*.sh`, so the snapshot is a self-contained root whatever form a `source` line takes. It does not copy the subdirectories `signing/` and `versioning/`: only `release-tarball.sh` and `version.sh` load them, and no contract reader loads those two.
-> - `_runner_contract_lib_closure` still decides **whether** a run self-grades (`_runner_design_targets_contract_lib`), and so still defines the gate-2 set below. It no longer decides **what** is copied.
+> - `_runner_contract_lib_closure` still decides **whether** a run self-grades (`_runner_design_targets_contract_lib`), and so still defines the self-grading set below. It no longer decides **what** is copied.
 
 ## Consequences
 
 **Positive**
 - A marking can be checked against a rule instead of taken on trust.
-- Gate 2 is computable rather than argued.
+- Gate 2 is computable rather than argued. *(Gates 2 and 3 retired 2026-10-09, §2.)*
 - Gate 3 names a real hazard that three prior documents missed — and, as amended, no longer fires for defects the human merge gate would catch.
+- *(2026-10-09)* With gates 2 and 3 retired, almost all work is dogfooded, so engine defects surface in runs instead of hiding behind hand builds.
 - Gate 3b gives §3 a gate to name for the one class of work that provably cannot be dogfooded.
 - ADR-036's stale advice stops sending work to the slow path unnecessarily.
 
 **Negative / costs**
 - Gate 3b is a workaround with an expiry: it encodes a token-permission defect (#1780) as a Build Mode rule. It must be removed when #1780 closes, and nothing enforces that it will be.
 - The field still has no automated consumer; nothing enforces these gates. That is deliberate — inventing a consumer for an advisory field would be scope no one asked for — but it means the gates rely on being read.
+- *(2026-10-09)* A self-grading or high-blast-radius change now runs through the pipeline; a defect in it is caught by CI and the human merge gate, not by keeping it off the dogfood path.
 - 204 blank items are not triaged by this ADR. It defines the target state; the backfill is separate work.
 
 ## Implementation Notes
 
 No code. Verification is `npm run lint` (which runs the docs checks) plus re-deriving the gate-2 file set with `_runner_contract_lib_closure` rather than trusting the count quoted in §2.
 
-**Re-derive the gate-2 set; never copy it — and derive the closure, not the array.** (Since 2026-10-09 the closure is the gate-2 set only; the snapshot copies every top-level lib, §5.) The two are different numbers and reading the wrong one is the easy mistake: `_RUNNER_CONTRACT_LIB_ENTRYPOINTS` (`core/pipeline/runner.sh`) lists **six** basenames, but the gate is about `_runner_contract_lib_closure`, which follows same-directory `source` lines from each and resolved to **eight** at #1918 (2026-08-22):
+**Re-derive the self-grading set; never copy it — and derive the closure, not the array.** (Gate 2 is retired, 2026-10-09; the closure still decides whether a run self-grades, which the engine reports. Since the same date the closure is that set only; the snapshot copies every top-level lib, §5.) The two are different numbers and reading the wrong one is the easy mistake: `_RUNNER_CONTRACT_LIB_ENTRYPOINTS` (`core/pipeline/runner.sh`) lists **six** basenames, but the gate is about `_runner_contract_lib_closure`, which follows same-directory `source` lines from each and resolved to **eight** at #1918 (2026-08-22):
 
 ```
 acceptance-block.sh  acceptance-coverage.sh  acceptance-negctl.sh
@@ -138,12 +148,12 @@ bash -c 'source core/pipeline/runner.sh 2>/dev/null; _runner_contract_lib_closur
 
 **Checking gate 3b:** `git diff --name-only <merge-base>.. -- '.github/workflows/**'` — any output means `By-hand` until #1780 closes.
 
-**Checking gate 3's merge-gate premise:** `gh api repos/:owner/:repo --jq .allow_auto_merge` — `false` means a human stands in front of every merge, which is what narrows the gate.
+**Checking gate 3's merge-gate premise** *(gate 3 retired 2026-10-09)*: `gh api repos/:owner/:repo --jq .allow_auto_merge` — `false` means a human stands in front of every merge, which is what narrows the gate.
 
 ## Enforced by
 
-- §1, §3, §4 and gates 1, 3 and 3b are triage rules for the Build Mode field. No code reads the field (see Consequences), so there is nothing for a test to run. Each marking records its gate in the issue body, and a reader checks it there.
-- §2 gate 2, which says the set is computed from `_runner_contract_lib_closure`: `tests/unit/runner-contract-lib-seam-test.sh` SPEC-1 checks that the closure includes the transitive dependencies, and SPEC-4/SPEC-5 check that a WIRING target inside the set is detected and one outside it is not. `tests/unit/engine-stage-reports-test.sh` SPEC-4 checks that detection reads the reported wiring.
+- §1, §3, §4, gates 1 and 3b, and the 2026-10-09 retirement of gates 2 and 3 are triage rules for the Build Mode field. No code reads the field (see Consequences), so there is nothing for a test to run. Each marking records its gate in the issue body, and a reader checks it there.
+- The self-grading set (formerly gate 2; the engine still reports it, §5), computed from `_runner_contract_lib_closure`: `tests/unit/runner-contract-lib-seam-test.sh` SPEC-1 checks that the closure includes the transitive dependencies, and SPEC-4/SPEC-5 check that a WIRING target inside the set is detected and one outside it is not. `tests/unit/engine-stage-reports-test.sh` SPEC-4 checks that detection reads the reported wiring.
 - §5, the snapshot that tracks the tree: `tests/unit/runner-contract-lib-seam-test.sh` SPEC-3 checks there is no once-guard, and `tests/integration/self-host-snapshot-tracks-tree-test.sh` checks that a refresh picks up an edit and that the source tree is never written. `tests/integration/self-host-contract-lib-redirect-test.sh` checks that the gate reads the run's own grammar.
 - §5 amendment (2026-10-09): `tests/unit/runner-contract-lib-seam-test.sh` SPEC-6 checks that a sibling loaded with the `$(cd …)` form, and `helpers.sh`, are in the snapshot and load from it. SPEC-7 checks that every top-level lib of the real tree is in the snapshot. SPEC-2 checks that every same-directory dependency resolves inside it.
 

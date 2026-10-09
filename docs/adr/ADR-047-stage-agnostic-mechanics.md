@@ -169,6 +169,10 @@ modified — so confidence is substituted by these deterministic gates):
 > in #1819's sequencing section — with no single place stating when work is dogfooded, hand-built,
 > or blocked on a decision. ADR-057 consolidates them and adds a fourth (blast radius on merge)
 > that none of the three named. The rule stated here is unchanged; it is now gate 2's third clause.
+>
+> **Retired 2026-10-09 (ADR-057 §2).** Gate 2 is retired, and with it this rule: a change that
+> removes or renames a stage is `Dogfood`. The run still executes the installed engine from
+> `main` (ADR-057 §1); CI and the human merge gate judge the change.
 
 - **A** (#1278) — this ADR + amendments + agnostic base-prompt scrub.
 - **E** (#1279) — lint-contract scope derived from manifest contract-participation (§5 rule).
