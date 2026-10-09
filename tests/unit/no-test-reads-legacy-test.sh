@@ -6,7 +6,8 @@
 # the #1752 run. legacy/ is a frozen reference, not something zBuild's tests depend on; only
 # legacy/migrated/ (the tombstones, kept in every worktree) may be read.
 #
-# Scans every test tier for `$REPO_ROOT/legacy/…` outside legacy/migrated/. A fixture tree
+# Scans every test tier for `$REPO_ROOT/legacy/…`, or `$SOME_DIR/../legacy/…` (a path climbing
+# out of the test's own directory), outside legacy/migrated/. A fixture tree
 # under a temp dir (`$TEST_TEMP_DIR/legacy`, `$FAKE_ROOT/legacy`, …) is not the real tree and
 # is not matched. A `grep -v "^$REPO_ROOT/legacy/"` filter only drops paths, so it is allowed.
 set -euo pipefail
@@ -19,10 +20,10 @@ print_test_header "no test reads legacy/ (ADR-059 §2)"
 
 _offenders="$(
     {
-        grep -rnE '\$\{?REPO_ROOT\}?/legacy/' \
+        grep -rnE '\$\{?(REPO_ROOT\}?|[A-Za-z_]+\}?(/\.\.)+)/legacy/' \
             "$REPO_ROOT/tests" "$REPO_ROOT/plugins" "$REPO_ROOT/core" --include='*.sh' 2>/dev/null || true
     } | { grep -v '/no-test-reads-legacy-test.sh:' || true; } \
-      | { grep -vE '\$\{?REPO_ROOT\}?/legacy/migrated/' || true; } \
+      | { grep -vE '/legacy/migrated/' || true; } \
       | { grep -vE '\^\$\{?REPO_ROOT\}?/legacy/' || true; } \
       | { grep -vE '^[^:]*:[0-9]+:[[:space:]]*#' || true; } \
       | sort -u
