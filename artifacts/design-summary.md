@@ -1,0 +1,6 @@
+## design — pass
+
+- authored design.md — 19 file(s) in scope, 7 acceptance SPEC(s)
+
+- scope: core/event-bus/event-bus.sh,scripts/lib/run-status-comment.sh,tests/unit/event-bus-timestamp-test.sh,tests/unit/run-status-comment-loop-test.sh,tests/e2e/fork-budget-test.sh,docs/adr/ADR-065-process-budget.md,config/adr-enforcement-baseline.txt,docs/adr/ADR-064-run-status-comment.md,docs/adr/ADR-009-platform-aware-modularity.md,tests/unit/core-event-bus-test.sh,tests/unit/engine-event-shape-test.sh,tests/unit/event-bus-seq-envelope-test.sh,tests/unit/event-bus-concurrency-test.sh,tests/unit/event-bus-ansi-strip-test.sh,tests/unit/run-status-comment-gh-test.sh,tests/mutation/event-bus.md,tests/mutation/event-bus-ansi-strip.md,tests/integration/strategy-platform-env-test.sh,tests/golden/parity/run-fixture.sh
+- artifact: design.md

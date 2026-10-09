@@ -1,0 +1,35 @@
+{
+  "result_contract": 2,
+  "verdict": "pass",
+  "disposition": "complete",
+  "reason": "design_produced",
+  "data": {
+    "authored_at": "2026-10-09T23:45:56Z",
+    "authored_at_commit": "d4272ae54d8b02461160c9c9b836dc34386ef810",
+    "wiring_files": [
+      "core/event-bus/event-bus.sh",
+      "scripts/lib/run-status-comment.sh"
+    ],
+    "scope_files": [
+      "core/event-bus/event-bus.sh",
+      "scripts/lib/run-status-comment.sh",
+      "tests/unit/event-bus-timestamp-test.sh",
+      "tests/unit/run-status-comment-loop-test.sh",
+      "tests/e2e/fork-budget-test.sh",
+      "docs/adr/ADR-065-process-budget.md",
+      "config/adr-enforcement-baseline.txt",
+      "docs/adr/ADR-064-run-status-comment.md",
+      "docs/adr/ADR-009-platform-aware-modularity.md",
+      "tests/unit/core-event-bus-test.sh",
+      "tests/unit/engine-event-shape-test.sh",
+      "tests/unit/event-bus-seq-envelope-test.sh",
+      "tests/unit/event-bus-concurrency-test.sh",
+      "tests/unit/event-bus-ansi-strip-test.sh",
+      "tests/unit/run-status-comment-gh-test.sh",
+      "tests/mutation/event-bus.md",
+      "tests/mutation/event-bus-ansi-strip.md",
+      "tests/integration/strategy-platform-env-test.sh",
+      "tests/golden/parity/run-fixture.sh"
+    ]
+  }
+}
