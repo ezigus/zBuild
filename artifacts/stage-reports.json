@@ -22,5 +22,10 @@
   ],
   "wiring_files": [
     "core/router/route.sh"
-  ]
+  ],
+  "owned_files": {
+    "test-author": [
+      "tests/integration/router-loop-emits-model-events-test.sh"
+    ]
+  }
 }

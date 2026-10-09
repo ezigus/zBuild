@@ -1,0 +1,4 @@
+# authored_by: test-author
+9ec8243ab2ece5d0fc85862e8258436a45d4975a85479eecd136b2313e57153b  tests/integration/router-loop-emits-model-events-test.sh
+9ec8243ab2ece5d0fc85862e8258436a45d4975a85479eecd136b2313e57153b  tests/integration/router-loop-emits-model-events-test.sh
+9ec8243ab2ece5d0fc85862e8258436a45d4975a85479eecd136b2313e57153b  tests/integration/router-loop-emits-model-events-test.sh
