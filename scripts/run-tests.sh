@@ -28,14 +28,21 @@ _RT_FILE_TIMEOUT="${ZBUILD_TEST_FILE_TIMEOUT:-480}"
 # rather than running it, so an unsupporting binary degrades to the TERM-only
 # bound instead of failing the suite.
 _rt_tout=()
+_RT_KILL_GRACE="${ZBUILD_TEST_KILL_GRACE:-10}"
 if [[ "$_RT_FILE_TIMEOUT" != "0" ]]; then
   # shellcheck source=./lib/timeout-cmd.sh
   if ! declare -F _acceptance_timeout_prefix >/dev/null 2>&1; then
     source "$SCRIPT_DIR/lib/timeout-cmd.sh"
   fi
-  ZBUILD_NEGCTL_KILL_GRACE="${ZBUILD_TEST_KILL_GRACE:-10}"
+  export ZBUILD_NEGCTL_KILL_GRACE="$_RT_KILL_GRACE"
   _acceptance_timeout_prefix "$_RT_FILE_TIMEOUT"
-  _rt_tout=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")
+  if [[ "${#_ACCEPTANCE_TOUT[@]}" -gt 0 ]]; then
+    _rt_tout=("${_ACCEPTANCE_TOUT[0]}")
+    if [[ "${_ACCEPTANCE_TIMEOUT_KILL_OK:-no}" == "yes" ]]; then
+      _rt_tout+=("-k" "$_RT_KILL_GRACE")
+    fi
+    _rt_tout+=("$_RT_FILE_TIMEOUT")
+  fi
 fi
 
 # _rt_is_timeout_rc <rc> — true when the rc is the shape a killed file exits

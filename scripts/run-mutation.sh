@@ -118,11 +118,41 @@ fi
 # timeout signals the whole process group, so the KILL reaches that child too.
 _mut_tout=()
 if [[ "$_MUT_TEST_TIMEOUT" != "0" ]]; then
-    # shellcheck source=./lib/timeout-cmd.sh
     if ! declare -F _acceptance_timeout_prefix >/dev/null 2>&1; then
-        source "$SCRIPT_DIR/lib/timeout-cmd.sh"
+        _mut_tcs="$SCRIPT_DIR/lib/timeout-cmd.sh"
+        if [[ -f "$_mut_tcs" ]]; then
+            # shellcheck source=./lib/timeout-cmd.sh
+            source "$_mut_tcs"
+        else
+            # Inline fallback: timeout-cmd.sh absent in sandbox/copy-only environments.
+            # Uses hash/command-v for binary probe; no gtimeout inline-probe pattern.
+            _acceptance_timeout_prefix() {
+                local _tout_s="$1" _kill_grace="${ZBUILD_NEGCTL_KILL_GRACE:-10}" _bin=""
+                _ACCEPTANCE_TOUT=()
+                if hash gtimeout 2>/dev/null; then
+                    _bin="gtimeout"
+                elif command -v timeout >/dev/null 2>&1; then
+                    _bin="timeout"
+                else
+                    return 0
+                fi
+                if [[ -z "${_ACCEPTANCE_TIMEOUT_KILL_OK:-}" ]]; then
+                    if PATH="${PATH}:/usr/bin:/bin" "$_bin" -k 1 1 /bin/true >/dev/null 2>&1; then
+                        _ACCEPTANCE_TIMEOUT_KILL_OK=yes
+                    else
+                        _ACCEPTANCE_TIMEOUT_KILL_OK=no
+                    fi
+                fi
+                _ACCEPTANCE_TOUT=("$_bin")
+                if [[ "${_ACCEPTANCE_TIMEOUT_KILL_OK:-no}" == "yes" ]]; then
+                    _ACCEPTANCE_TOUT+=("-k" "$_kill_grace")
+                fi
+                _ACCEPTANCE_TOUT+=("$_tout_s")
+                return 0
+            }
+        fi
     fi
-    ZBUILD_NEGCTL_KILL_GRACE="${ZBUILD_MUTATION_KILL_GRACE:-10}"
+    export ZBUILD_NEGCTL_KILL_GRACE="${ZBUILD_MUTATION_KILL_GRACE:-10}"
     _acceptance_timeout_prefix "$_MUT_TEST_TIMEOUT"
     _mut_tout=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")
 fi
