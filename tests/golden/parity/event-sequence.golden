@@ -32,7 +32,9 @@ prompt.summaries.injected
 redaction.counter_skipped
 redaction.applied
 loop.iteration
+model.route
 router.max_turns.flag_omitted
+model.outcome
 loop.complete
 build.commit.created
 plugin.result

@@ -1827,6 +1827,7 @@ ${_stat:-  (no changes)}"
         eb_emit_event "loop.iteration" \
             "tier=$tier" "iteration=$iter" "max_iterations=$max_iterations" \
             "model_id=$_ROUTE_MODEL_ID" "cwd=$cwd" 2>/dev/null || true
+        _route_emit_model_route "$tier" "$secs"
 
         # #505: build operator-facing banner_input that DEDUPES the static
         # prompt + REPLACES the cumulative diff section with a pointer once
@@ -2342,6 +2343,11 @@ ${_diff_pointer}"
         # ADR-003 amendment: the iteration's cost, as the provider reports it.
         _route_record_call "$(<"$json_file")"
         _route_update_ledger
+        _ROUTE_INPUT_TOKENS=$in_tok
+        _ROUTE_OUTPUT_TOKENS=$out_tok
+        _ROUTE_CACHE_READ="$(jq -r '.usage.cache_read_input_tokens // 0' "$json_file" 2>/dev/null || echo 0)"
+        _ROUTE_CACHE_CREATION="$(jq -r '.usage.cache_creation_input_tokens // 0' "$json_file" 2>/dev/null || echo 0)"
+        _route_emit_outcome "$tier" "$secs"
         # #608: expose the most recent iteration's LLM text so the build plugin
         # can parse the COMMIT_SUMMARY marker after the loop returns.
         _ROUTE_LOOP_LAST_RESPONSE="$result_text"
