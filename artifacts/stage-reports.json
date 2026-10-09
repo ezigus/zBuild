@@ -1,7 +1,26 @@
 {
   "scope_files": [
+    "config/event-schema.json",
     "core/router/route.sh",
-    "tests/integration/router-loop-emits-model-events-test.sh"
+    "docs/adr/ADR-003-models-as-data.md",
+    "docs/adr/ADR-018-stage-invocation-modes.md",
+    "tests/e2e/parity-local-vs-ci-test.sh",
+    "tests/golden/engine-event-model-outcome.golden",
+    "tests/golden/engine-event-model-route.golden",
+    "tests/golden/golden-contracts-test.sh",
+    "tests/golden/parity/event-sequence.golden",
+    "tests/golden/parity/run-fixture.sh",
+    "tests/golden/router-success-event-sequence.golden",
+    "tests/integration/core-router-route-test.sh",
+    "tests/integration/router-cache-metrics-test.sh",
+    "tests/integration/router-loop-emits-model-events-test.sh",
+    "tests/integration/router-loop-preserves-error-artifacts-test.sh",
+    "tests/integration/router-loop-rc124-honors-sentinel-test.sh",
+    "tests/integration/router-precondition-test.sh",
+    "tests/unit/engine-event-shape-test.sh",
+    "tests/unit/router-provider-modules-test.sh"
   ],
-  "wiring_files": []
+  "wiring_files": [
+    "core/router/route.sh"
+  ]
 }
