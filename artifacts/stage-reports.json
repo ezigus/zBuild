@@ -1,17 +1,25 @@
 {
   "scope_files": [
+    "config/adr-enforcement-baseline.txt",
     "core/router/route.sh",
     "docs/adr/ADR-036-acceptance-contract-teeth.md",
     "package.json",
+    "plugins/agent/build/lib/summary.sh",
     "scripts/lib/acceptance-block.sh",
+    "scripts/lib/acceptance-negctl.sh",
+    "scripts/lib/acceptance-reachability.sh",
     "scripts/lib/gh-automation.sh",
     "scripts/lib/lint-bare-timeout.sh",
     "scripts/lib/timeout-cmd.sh",
     "scripts/release.sh",
     "scripts/run-mutation.sh",
     "scripts/run-tests.sh",
+    "tests/unit/acceptance-negctl-test.sh",
     "tests/unit/lint-bare-timeout-test.sh",
     "tests/unit/timeout-cmd-helper-test.sh"
   ],
-  "wiring_files": []
+  "wiring_files": [
+    "package.json",
+    "scripts/lib/acceptance-block.sh"
+  ]
 }
