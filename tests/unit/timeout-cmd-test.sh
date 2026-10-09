@@ -2,12 +2,13 @@
 # Tests: scripts/lib/timeout-cmd.sh — the one shared timeout helper (#1752, ADR-036
 # amendment 2026-10-09).
 #
-# H1-H3  on a host with only `gtimeout`, the helper builds a gtimeout bound, with
-#        `-k <grace>` when the binary supports it (grace from the argument, else
-#        ZBUILD_NEGCTL_KILL_GRACE, else 10)
-# H4     `none` asks for a TERM-only bound: no `-k`, and no probe is spent on it
-# H5     the `-k` probe runs once per process
-# H6     no binary at all → empty bound, rc 0 (the caller runs unbounded — never
+# H1-H3  on a host with only `gtimeout`, the helper builds a gtimeout bound with
+#        `-k <grace>` (grace from the argument, else ZBUILD_NEGCTL_KILL_GRACE,
+#        else 10)
+# H4     a gtimeout that rejects `-k` → TERM-only bound
+# H5     `none` asks for a TERM-only bound: no `-k`, and no probe is spent on it
+# H6     the `-k` probe runs once per process
+# H7     no binary at all → empty bound, rc 0 (the caller runs unbounded — never
 #        skips the command)
 # C1-C2  the contract-lib snapshot carries the helper: the closure lists it, and
 #        acceptance-block.sh loaded from a snapshot defines the helper (the first
@@ -83,22 +84,22 @@ assert_eq "[H2] a grace argument feeds -k" \
     "rc=0 argv=gtimeout -k 4 33" "$(_bound "$GT_ONLY" 33 4)"
 assert_eq "[H3] with no grace argument ZBUILD_NEGCTL_KILL_GRACE feeds -k" \
     "rc=0 argv=gtimeout -k 7 33" "$(ZBUILD_NEGCTL_KILL_GRACE=7 _bound "$GT_ONLY" 33)"
-assert_eq "[H3] a gtimeout without -k → TERM-only bound" \
+assert_eq "[H4] a gtimeout without -k → TERM-only bound" \
     "rc=0 argv=gtimeout 33" "$(_bound "$NOK:$FARM" 33 4)"
 
 : > "$GT_LOG"
-assert_eq "[H4] 'none' → TERM-only bound" "rc=0 argv=gtimeout 33" "$(_bound "$GT_ONLY" 33 none)"
-assert_eq "[H4] 'none' spends no -k probe" "" "$(cat "$GT_LOG")"
+assert_eq "[H5] 'none' → TERM-only bound" "rc=0 argv=gtimeout 33" "$(_bound "$GT_ONLY" 33 none)"
+assert_eq "[H5] 'none' spends no -k probe" "" "$(cat "$GT_LOG")"
 
 : > "$GT_LOG"
 _twice="$(env -u _ACCEPTANCE_TIMEOUT_KILL_OK PATH="$GT_ONLY" "$BASH" -c '
     source "$1"; _acceptance_timeout_prefix 5; _acceptance_timeout_prefix 6 2
     printf "%s\n" "${_ACCEPTANCE_TOUT[*]}"' _ "$HELPER" 2>&1)"
-assert_eq "[H5] the second call still binds" "gtimeout -k 2 6" "$_twice"
-assert_eq "[H5] the -k probe ran once in the process" "1" \
+assert_eq "[H6] the second call still binds" "gtimeout -k 2 6" "$_twice"
+assert_eq "[H6] the -k probe ran once in the process" "1" \
     "$(/usr/bin/grep -c -- '^-k 1 1 ' "$GT_LOG" || true)"
 
-assert_eq "[H6] neither binary → empty bound, rc 0" "rc=0 argv=" "$(_bound "$FARM" 33)"
+assert_eq "[H7] neither binary → empty bound, rc 0" "rc=0 argv=" "$(_bound "$FARM" 33)"
 
 print_test_section "C: the contract-lib snapshot carries the helper"
 # shellcheck source=/dev/null

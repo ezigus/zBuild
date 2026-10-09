@@ -65,7 +65,8 @@ FNR == 1 { reset() }
         }
         # N (top level) or C (inside $(...))
         if (c == "\\") { code = code substr(raw, i, 2); i++; continue }
-        if (c == "#" && (i == 1 || substr(raw, i - 1, 1) ~ /[ \t;]/)) break
+        # `#` starts a comment where a word starts: after a blank or an operator.
+        if (c == "#" && (i == 1 || substr(raw, i - 1, 1) ~ /[ \t;&|()]/)) break
         if (c == "\047") { depth++; ctx[depth] = "S"; code = code " "; continue }
         if (c == "\"") { depth++; ctx[depth] = "D"; code = code " "; continue }
         if (c2 == "$(") { depth++; ctx[depth] = "C"; par[depth] = 0; code = code c2; i++; continue }

@@ -69,6 +69,7 @@ assert_eq "[L2] the probe inside scripts/lib/timeout-cmd.sh is the helper itself
 print_test_section "L3: mentions of the word pass"
 assert_eq "[L3] a comment"             "rc=0" "$(_rc scripts '# timeout 5 is what we used to call')"
 assert_eq "[L3] a trailing comment"    "rc=0" "$(_rc scripts 'x=1  # then timeout 5 cmd')"
+assert_eq "[L3] a comment right after an operator" "rc=0" "$(_rc scripts 'case "$x" in a)# off; timeout 5 y')"
 assert_eq "[L3] inside a string"       "rc=0" "$(_rc scripts 'info "checks-wait (timeout ${s}s)"')"
 assert_eq "[L3] inside single quotes"  "rc=0" "$(_rc scripts "echo 'x; timeout 5 y'")"
 assert_eq "[L3] a variable name"       "rc=0" "$(_rc scripts 'local timeout_secs=3; ZBUILD_TEST_FILE_TIMEOUT=1')"
