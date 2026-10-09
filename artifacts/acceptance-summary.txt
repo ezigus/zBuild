@@ -1,0 +1,1 @@
+verdict=pass reason=no_spec_lines
