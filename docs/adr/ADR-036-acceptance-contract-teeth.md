@@ -237,7 +237,7 @@ that reverts the *wiring* instead of the implementation:
 > gate 2 treats as `By-hand` by default rather than as forbidden, with the engine emitting
 > `_RUNNER_SELF_GRADE_REASON` once per run so the condition is visible.
 >
-> **Amended 2026-10-09 (ADR-057 §2):** gate 2 is retired. A self-grading change is `Dogfood`;
+> **Amended 2026-10-09 (#2351, ADR-057 §2):** gate 2 is retired. A self-grading change is `Dogfood`;
 > the engine still reports that the run graded itself.
 
 **Self-hosting note:** because Level 3 (and the `WIRING:` grammar) extends what the gate

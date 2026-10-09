@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-08-12)
 **Date:** 2026-08-12
 **Issue:** #1768
-**Amended:** 2026-08-22 (#1918) — §2 gate 3 narrowed to account for the human merge gate, and gate 3b added for a diff that cannot be pushed at all; 2026-10-09 (#1752) — §5 the self-grading snapshot copies every top-level `scripts/lib/*.sh`, and the closure only decides whether a run self-grades; 2026-10-09 (Dogfood by default) — §2 gates 2 and 3 are retired: a self-grading change and a change with a large blast radius are `Dogfood`, with no warning line; only gate 1 and gate 3b take work off the dogfood path
+**Amended:** 2026-08-22 (#1918) — §2 gate 3 narrowed to account for the human merge gate, and gate 3b added for a diff that cannot be pushed at all; 2026-10-09 (#1752) — §5 the self-grading snapshot copies every top-level `scripts/lib/*.sh`, and the closure only decides whether a run self-grades; 2026-10-09 (#2351, Dogfood by default) — §2 gates 2 and 3 are retired: a self-grading change and a change with a large blast radius are `Dogfood`, with no warning line; only gate 1 and gate 3b take work off the dogfood path
 **Amends:** ADR-036 (§"Self-hosting note" — its rule that grammar-extending changes must be hand-landed was superseded by #1783 and never updated; see §5)
 **Related:** ADR-023 (install isolation), ADR-047 (stage-agnostic mechanics — its own dogfood carve-out, §5), ADR-050 (prior-work reuse), ADR-055 (inter-stage data contract v2)
 
@@ -33,7 +33,7 @@ So the question is **not** "can the run test this change?" — it almost never c
 
 ### 2. The gates, in order — first match wins
 
-> **Amended 2026-10-09 — Dogfood by default; gates 2 and 3 are retired.**
+> **Amended 2026-10-09 (#2351) — Dogfood by default; gates 2 and 3 are retired.**
 >
 > The live gates are **gate 1** (`Design Decision needed`), **gate 3b** (`By-hand`), and **gate 4** (`Dogfood`, the default). Gates 2 and 3 below no longer apply; their text is kept as history. Work they used to match is `Dogfood`, and its issue carries no Build Mode line and no warning about self-grading or blast radius.
 >
@@ -130,7 +130,7 @@ So a contract-grammar change **is** dogfoodable. It is also **self-grading** —
 
 ## Implementation Notes
 
-No code. Verification is `npm run lint` (which runs the docs checks) plus re-deriving the gate-2 file set with `_runner_contract_lib_closure` rather than trusting the count quoted in §2.
+No code. Verification is `npm run lint` (which runs the docs checks) plus re-deriving the self-grading set with `_runner_contract_lib_closure` rather than trusting the count quoted in §2.
 
 **Re-derive the self-grading set; never copy it — and derive the closure, not the array.** (Gate 2 is retired, 2026-10-09; the closure still decides whether a run self-grades, which the engine reports. Since the same date the closure is that set only; the snapshot copies every top-level lib, §5.) The two are different numbers and reading the wrong one is the easy mistake: `_RUNNER_CONTRACT_LIB_ENTRYPOINTS` (`core/pipeline/runner.sh`) lists **six** basenames, but the gate is about `_runner_contract_lib_closure`, which follows same-directory `source` lines from each and resolved to **eight** at #1918 (2026-08-22):
 

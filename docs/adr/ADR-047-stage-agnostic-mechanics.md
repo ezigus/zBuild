@@ -170,7 +170,7 @@ modified — so confidence is substituted by these deterministic gates):
 > or blocked on a decision. ADR-057 consolidates them and adds a fourth (blast radius on merge)
 > that none of the three named. The rule stated here is unchanged; it is now gate 2's third clause.
 >
-> **Retired 2026-10-09 (ADR-057 §2).** Gate 2 is retired, and with it this rule: a change that
+> **Retired 2026-10-09 (#2351, ADR-057 §2).** Gate 2 is retired, and with it this rule: a change that
 > removes or renames a stage is `Dogfood`. The run still executes the installed engine from
 > `main` (ADR-057 §1); CI and the human merge gate judge the change.
 
