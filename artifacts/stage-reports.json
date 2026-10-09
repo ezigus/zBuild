@@ -16,6 +16,8 @@
     "scripts/run-tests.sh",
     "tests/unit/acceptance-negctl-test.sh",
     "tests/unit/lint-bare-timeout-test.sh",
+    "tests/unit/run-mutation-empty-dir-clean-gate-test.sh",
+    "tests/unit/run-mutation-stale-anchor-test.sh",
     "tests/unit/timeout-cmd-helper-test.sh"
   ],
   "wiring_files": [
