@@ -79,6 +79,8 @@ stage contains no LLM/router call; the review stage emits a report and never blo
 
 - `auto_unless_flagged` (**default**) — auto-merge when every objective gate is green AND the review
   report flags nothing top-severity / lenses agree; otherwise escalate to a human PR.
+  **(amended 2026-10-08 by ADR-068 §10 — and no finding is still open: a low or medium one nobody
+  acted on also escalates; the PR is a draft and says which)**
 - `auto` — merge whenever objective gates are green; the report is informational only.
 - `manual` — always stop at a PR with the report attached; a human merges.
 

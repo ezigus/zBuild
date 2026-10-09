@@ -14,6 +14,8 @@
 #            → auto-merge: merge-result.json status=merged, gh pr merge called (CHANGE)
 #   [SPEC-6] auto_unless_flagged + gate verdict=fail + merge_readiness=ready
 #            → PR open: pr-url.txt written, gh pr merge NOT called (GUARD)
+#   [SPEC-8] auto_unless_flagged + gate pass + advisory + an open low finding
+#            → PR open, gh pr merge NOT called (ADR-068 §10, CHANGE)
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -248,6 +250,38 @@ _merge_calls7="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
 _gh_merge7=0
 [[ "$_merge_calls7" == *"merged"* ]] && _gh_merge7=1
 assert_eq "[SPEC-7] gh pr merge NOT called for high-severity finding (advisory)" "0" "$_gh_merge7"
+
+# ─── SPEC-8: gate pass + advisory + one LOW finding nobody acted on → PR open ─
+# ADR-068 §10: a low or medium concern is a finding too, and one still open
+# counts against a clean finish — the policy never merges past it. Same inputs
+# as SPEC-5, which merges, plus the aggregator's finding (written by the
+# findings writer every check uses) and the stage recorded as run.
+print_test_section "SPEC-8: auto_unless_flagged + gate pass + advisory + an open low finding → PR open"
+
+_sf8="$(_setup_run s8 pass advisory)"
+_art8="$(dirname "$_sf8")/artifacts"
+(
+    source "$REPO_ROOT/scripts/lib/stage-summary.sh"
+    source "$REPO_ROOT/core/pipeline/state_helpers.sh"
+    _f8="$(stage_findings_json <<< "low: tests/unit/x-test.sh:12 — the test only checks the exit code (lens: correctness)")"
+    jq -n --argjson f "$_f8" '{schema_version:1, result_contract:2, verdict:"complete", disposition:"complete",
+        reason:"aggregated 1 lens result(s)", merge_readiness:"advisory",
+        findings:[{severity:"low", file:"tests/unit/x-test.sh", line:12, messages:["the test only checks the exit code"]}],
+        data:{findings:$f}}' > "$_art8/review-report.json"
+    _update_stage_status "$_sf8" "review-aggregator" "complete"
+) >/dev/null 2>&1
+> "$_MERGE_RECORD"
+
+export _TPL_MERGE_POLICY="auto_unless_flagged"
+( ZBUILD_STAGE_INPUTS="$(dirname "$_sf8")/stage-inputs.json" pr_stage_run "pr" "$_sf8" ) >/dev/null 2>&1; _rc8=$?
+
+assert_eq "[SPEC-8] pr_stage_run exits 0 on PR-open path (open finding)" "0" "$_rc8"
+assert_file_exists "[SPEC-8] pr-url.txt written (an open finding stops the auto-merge)" "$_art8/pr-url.txt"
+assert_file_not_exists "[SPEC-8] no merge-result.json while a finding is open" "$_art8/merge-result.json"
+_merge_calls8="$(cat "$_MERGE_RECORD" 2>/dev/null || true)"
+_gh_merge8=0
+[[ "$_merge_calls8" == *"merged"* ]] && _gh_merge8=1
+assert_eq "[SPEC-8] gh pr merge NOT called while a finding is open" "0" "$_gh_merge8"
 
 # ─── Results ──────────────────────────────────────────────────────────────────
 print_test_results

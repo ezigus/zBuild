@@ -167,7 +167,16 @@ _pr_stage_run_inner() {
                 "$_review_report" 2>/dev/null || echo 0)"
             [[ "$_auf_top_sev" =~ ^[0-9]+$ ]] || _auf_top_sev=0
         fi
-        if [[ "$_auf_gate_verdict" == "pass" && "$_auf_top_sev" -eq 0 && \
+        # ADR-068 §10: never merge past a finding nobody acted on — a low or
+        # medium one included. The PR opens and says which (pr-open's warning).
+        local _auf_open=0
+        if ! declare -F open_findings_count >/dev/null 2>&1; then
+            # shellcheck source=../../../core/pipeline/open-findings.sh
+            source "$_PR_ROOT/core/pipeline/open-findings.sh" 2>/dev/null || true
+        fi
+        declare -F open_findings_count >/dev/null 2>&1 && _auf_open="$(open_findings_count "$state_file")"
+        [[ "$_auf_open" =~ ^[0-9]+$ ]] || _auf_open=1
+        if [[ "$_auf_gate_verdict" == "pass" && "$_auf_top_sev" -eq 0 && "$_auf_open" -eq 0 && \
               ( "$_auf_readiness" == "ready" || "$_auf_readiness" == "advisory" ) ]]; then
             local merge_plugin="$_PR_ROOT/plugins/tool/merge/plugin.sh"
             if [[ -f "$merge_plugin" ]]; then
