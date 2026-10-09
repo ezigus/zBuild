@@ -1,0 +1,209 @@
+============== ZBUILD BUILD — iter 1/10 ==============
+## What you own
+### INSTRUCTIONS
+Reason about correctness first: a change is done when every assertion in the acceptance suite passes, edge cases are handled, and the implementation does exactly what the plan says, no more and no less. Prefer the simplest implementation that satisfies the acceptance contract, treat every failing test as an obligation to understand before touching anything else, and flag any gap between the stated task and what the code actually achieves.
+
+You have Read, Edit, Write, and
+Bash tools available. Your job is to edit the working tree to implement the
+ORIGINAL TASK below.
+
+### How the loop works
+- Each iteration you may make code changes via Edit/Write/Bash.
+- After each iteration the pipeline captures `git diff HEAD` and feeds it
+  back to you so you can verify progress.
+- Do NOT emit a unified diff in your response — the pipeline derives the
+  canonical `diff.patch` artifact from `git diff HEAD` automatically.
+
+### Saying you are done
+Emit `LOOP_COMPLETE` on its own line as the FINAL line of your response
+WHEN the implementation is complete — whether you just finished it OR
+it was already done before you started. If the branch already contains
+the required changes (check `git log` for commits + `git diff` for any
+remaining gap) AND no STAGE SUMMARY below is headed "— its findings, to answer",
+emit `LOOP_COMPLETE` immediately. Do NOT keep iterating when there is
+nothing left to do. While any STAGE SUMMARY is headed that way, finishing
+with no change needs each of its findings answered: `done` (you changed
+something for it), or `nothing to do` with the reason.
+
+### When a finding does not reproduce
+If a failing summary names a test and that test PASSES when you run it on this
+tree, say so and stop. Answer that finding, on its own line before the sentinel:
+
+    ANSWER <stage> finding <n>: nothing to do — not reproduced: <the path you ran>
+
+one line per finding. This is a REPORT, not a verdict: the pipeline re-runs the
+stage that raised the finding to check. Do not keep searching for the cause of
+a failure you cannot produce, and do not change code to chase one.
+
+### Budget
+- Each iteration is ONE model call bounded by a 900-second wall clock; a
+  command that runs longer than ~2 minutes will cost you the whole call.
+- Finish this call's work and commit before ~630s. Work you saved
+  survives a timeout; the call itself returns nothing, so say what is left as you go.
+- Do NOT run `npm test`, the full suite, or `npm run lint` — the pipeline has
+  already run them and their findings are in the STAGE SUMMARIES below. Run
+  only the one failing test file a summary names, and only after changing code.
+- A STAGE SUMMARY headed "— its findings, to answer" is red RIGHT NOW on this tree.
+  Start from the failing line it quotes.
+
+### Commit message (#608)
+Before the final `LOOP_COMPLETE` line, emit a single line of the form:
+
+    COMMIT_SUMMARY: <one-line description of this iteration's change>
+
+Keep it under 72 characters, present tense, imperative mood (e.g.
+"add foo parser" not "added"). The pipeline uses this as the git commit
+message for the per-iteration commit it creates on your behalf. If you
+omit this line the pipeline falls back to the plan title.
+
+## What you judge against
+### ORIGINAL TASK (immutable across iterations)
+# Plan: Factor gtimeout-first probe into shared helper and lint for bare timeout
+
+**Goal:** Replace six hand-copied gtimeout-first probes with a single shared helper in scripts/lib/timeout-cmd.sh, convert all six sites to use it, and add a lint that fails on any bare \`timeout\` call in core/, scripts/, or plugins/.
+
+## Steps
+1. Write the bare-timeout lint test first (TDD red step). Creates a fixture tree with a planted bare \`timeout\` call, runs the not-yet-existing lint against it, and asserts rc=1. A second assertion runs the lint against a clean fixture and asserts rc=0. A third assertion verifies that a \`# lint-bare-timeout:allow\` exemption suppresses the finding. Confirms the test fails before any implementation exists.
+   - Files: `tests/unit/lint-bare-timeout-test.sh`
+   - Estimated lines: 90
+2. Write the shared-helper regression tests (TDD red step). Two fixtures: (a) a synthetic PATH containing only a recording \`gtimeout\` shim (no \`timeout\` binary) — verifies that after calling \`_acceptance_timeout_prefix\`, the emitted command uses gtimeout; (b) a PATH with neither binary — verifies \`_ACCEPTANCE_TOUT\` is empty and the helper returns 0 (no false pass, caller runs unbounded). Also includes the #1532 inert_build regression: a genuinely failing acceptance testfile still yields inert_build after the helper is shared. Uses a PATH shim, not \`test-helpers.sh:374\`'s mock, per the constraint.
+   - Files: `tests/unit/timeout-cmd-helper-test.sh`
+   - Estimated lines: 120
+3. Create scripts/lib/timeout-cmd.sh. Move \`_acceptance_timeout_prefix\` verbatim from acceptance-block.sh into this file (function body unchanged, keeping the \`_ACCEPTANCE_TOUT\` output contract and the \`_ACCEPTANCE_TIMEOUT_KILL_OK\` once-per-process cache). Add a file header citing #1752 and ADR-036. No other functions; callers that need only the binary build their own array from \`_ACCEPTANCE_TOUT\`.
+   - Files: `scripts/lib/timeout-cmd.sh`
+   - Estimated lines: 55
+4. Update scripts/lib/acceptance-block.sh: remove the \`_acceptance_timeout_prefix\` function definition (lines ~359–381) and replace it with a guard-sourced \`source\` of scripts/lib/timeout-cmd.sh (matching the pattern already used in plugins/agent/build/lib/summary.sh:23-25 for idempotent sourcing). The function's name, the \`_ACCEPTANCE_TOUT\` contract, and the \`_ACCEPTANCE_TIMEOUT_KILL_OK\` cache variable are all preserved — only the definition site moves.
+   - Files: `scripts/lib/acceptance-block.sh`
+   - Estimated lines: 12
+5. Update core/router/route.sh at both probe sites (lines ~1046 and ~1943). Remove the 3-line inline \`if command -v gtimeout / elif command -v timeout\` block at each site. Add a guard-source of scripts/lib/timeout-cmd.sh near the top of the file (once). At each call site, replace the inline probe with \`_acceptance_timeout_prefix "$_local_secs"\` (sync) and \`_acceptance_timeout_prefix "$_iter_local_secs"\` (loop), then assign \`_tout_cmd=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")\`. rc semantics (124/137) are unchanged; the router sites gain \`-k\` support from the shared helper, which is a safe improvement.
+   - Files: `core/router/route.sh`
+   - Estimated lines: 15
+6. Update scripts/run-tests.sh. Remove the 12-line inline probe+array-build block starting at line ~34 (the \`_rt_tout_bin\` declaration through the closing \`fi\`). Add a guard-source of scripts/lib/timeout-cmd.sh. Replace the block with \`_acceptance_timeout_prefix "$_RT_FILE_TIMEOUT"\` and \`_rt_tout=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")\`. The \`_RT_KILL_GRACE\` variable is superseded by the helper's \`ZBUILD_NEGCTL_KILL_GRACE\` env var (same default: 10); ensure the env var is set or pass a local override.
+   - Files: `scripts/run-tests.sh`
+   - Estimated lines: 10
+7. Update scripts/run-mutation.sh. Remove the 16-line inline probe+array-build block starting at line ~124 (the \`_mut_tout_bin\` declaration through the closing \`fi\`). Add a guard-source of scripts/lib/timeout-cmd.sh. Replace with \`_acceptance_timeout_prefix "$_MUT_TEST_TIMEOUT"\` and \`_mut_tout=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")\`. Same kill-grace env-var alignment as step-6.
+   - Files: `scripts/run-mutation.sh`
+   - Estimated lines: 10
+8. Update scripts/lib/gh-automation.sh. Remove the 6-line inline probe block at line ~191 (the \`timeout_cmd\` string variable declaration through the closing \`fi\`). Add a guard-source of scripts/lib/timeout-cmd.sh. Replace with \`_acceptance_timeout_prefix "$timeout_val"\` and build the invocation from \`_ACCEPTANCE_TOUT\`. (gh-automation.sh previously had no \`-k\` probe; the shared helper adds it, consistent with the other sites.)
+   - Files: `scripts/lib/gh-automation.sh`
+   - Estimated lines: 8
+9. Create scripts/lib/lint-bare-timeout.sh. Scans core/, scripts/, plugins/ for bare \`timeout \` word-boundary occurrences in *.sh files (not \`gtimeout\`, not inside comments). Per-line opt-out: \`# lint-bare-timeout:allow: <reason>\`. Exempts scripts/lib/test-helpers.sh with an inline comment in the lint explaining why (the mock is a \`timeout\` that just execs — exempt to avoid false positives). Exempts this lint file itself (self-reference). Also add \`# lint-bare-timeout:allow: release tooling (Initiative 1.1) — behavior fix out of scope for #1752\` to scripts/release.sh line 629 so the lint covers it explicitly rather than silently skipping.
+   - Files: `scripts/lib/lint-bare-timeout.sh`, `scripts/release.sh`
+   - Estimated lines: 95
+10. Wire the new lint into package.json by appending \`&& bash scripts/lib/lint-bare-timeout.sh\` to the \`lint\` script string. This makes \`npm run lint\` enforce the bare-timeout rule in CI and locally.
+   - Files: `package.json`
+   - Estimated lines: 3
+11. Amend docs/adr/ADR-036-acceptance-contract-teeth.md with a dated amendment paragraph stating: every timeout bound in core/, scripts/, and plugins/ is resolved through \`_acceptance_timeout_prefix\` (scripts/lib/timeout-cmd.sh); a bare \`timeout\` call is a lint failure. Add an \`## Enforced by\` section naming scripts/lib/lint-bare-timeout.sh and tests/unit/lint-bare-timeout-test.sh per CLAUDE.md/#2268. This satisfies the ADR-036 amendment acceptance criterion.
+   - Files: `docs/adr/ADR-036-acceptance-contract-teeth.md`
+   - Estimated lines: 25
+
+## Notes
+Key constraints verified in code: (1) `_acceptance_timeout_prefix` keeps its name and `_ACCEPTANCE_TOUT`/`_ACCEPTANCE_TIMEOUT_KILL_OK` contract — plugins/agent/build/lib/summary.sh:23,433 sources and calls it directly. (2) route.sh sites currently have no `-k` probe; the shared helper adds it, which is a safe improvement (a killed-timeout still yields rc=137, unchanged). (3) `scripts/release.sh:629` is a bare `timeout` in release tooling; fixing its behavior is explicitly out of scope per the issue; it gets an inline `# lint-bare-timeout:allow` exemption comment. (4) The no-`timeout`-host test MUST NOT use the `test-helpers.sh:374` mock (it ignores duration and just execs); it must use a PATH-resident recording shim. (5) Conflict with #1730 in `route_to_model_loop` — the issue notes this textually; the plan should be landed after #1730 or before it with a coordination note, but the plan itself is not blocked. (6) `_acceptance_timeout_prefix` is guard-sourced by summary.sh using a `declare -F` pattern (lines 23-25) — the same guard-source pattern should be used everywhere to avoid double-definition errors. (7) `run-tests.sh` and `run-mutation.sh` use a local kill-grace variable (`_RT_KILL_GRACE`, `_MUT_KILL_GRACE`) backed by env vars; after refactoring, the shared helper reads `ZBUILD_NEGCTL_KILL_GRACE` (default 10) — step-6/7 must ensure the caller exports the right env var or that the defaults align (both default to 10, so no behavioral change on default paths). Gap: the exact guard-source path arithmetic for `timeout-cmd.sh` in `route.sh` (which lives under `core/`) needs to be verified at implementation time — the path `$(dirname ${BASH_SOURCE[0]})/../../scripts/lib/timeout-cmd.sh` or similar.
+
+### DESIGN DECISIONS (from the design stage — honor these directives; they refine the plan)
+# Design: Factor gtimeout-first probe into shared helper and add bare-timeout lint (issue #1752)
+
+## Architectural decision summary
+
+**Goal.** Six places in the codebase each copy the same three-to-twelve line probe (`gtimeout`-first binary discovery + optional `-k` probe). This is a DRY violation: each copy can drift (the `route.sh` sites lack `-k` support today), and adding a new probe site means copying again.
+
+**Context.** `_acceptance_timeout_prefix` already exists in `scripts/lib/acceptance-block.sh` (#1660) as the canonical version of this probe, used by the two acceptance-gate libs. The six other sites are unaware of it. `scripts/lib/timeout-cmd.sh` does not yet exist.
+
+**Decision.** Extract `_acceptance_timeout_prefix` from `acceptance-block.sh` into a new, standalone `scripts/lib/timeout-cmd.sh`. Replace each of the six inline probes with a guard-sourced call to the shared helper. Add `scripts/lib/lint-bare-timeout.sh` that fails on any bare `timeout` command invocation in `core/`, `scripts/`, or `plugins/`, wired into `npm run lint` via `package.json`. Amend ADR-036 with an `## Enforced by` entry. `release.sh:629`'s bare `timeout` call is exempted inline with a stated reason.
+
+**Kill-grace alignment.** `run-tests.sh` uses `ZBUILD_TEST_KILL_GRACE` and `run-mutation.sh` uses `ZBUILD_MUTATION_KILL_GRACE`; the shared helper reads `ZBUILD_NEGCTL_KILL_GRACE`. Callers must pass the correct env var before calling the helper (e.g., `ZBUILD_NEGCTL_KILL_GRACE="${ZBUILD_TEST_KILL_GRACE:-10}" _acceptance_timeout_prefix ...`) so the per-caller config is not silently dropped.
+
+**`summary.sh` guard sentinel.** `plugins/agent/build/lib/summary.sh:23` uses `declare -F _acceptance_timeout_prefix` to guard-source `acceptance-block.sh`. After the move, this sentinel identifies "has timeout-cmd.sh been sourced?" — which may not equal "has acceptance-block.sh been sourced?". In the actual execution path, `build/plugin.sh:47` always sources `acceptance-block.sh` before `summary.sh` is reached, so the guard is dormant; but it should be updated to check a function unique to `acceptance-block.sh` (e.g., `acceptance_list_spec_ids`) to keep its semantics correct.
+
+**Lint detection gap.** The old inline probe pattern (`command -v gtimeout ... || command -v timeout`) uses `timeout` as an argument to `command -v`, not as a command invocation — the bare-`timeout` lint cannot detect a site that retains the old pattern rather than calling the helper. SPEC-8 closes this gap with a structural grep that asserts every converted site contains `_acceptance_timeout_prefix` and no `command -v gtimeout` inline pattern.
+Where a design decision above conflicts with the plan, follow the design decision.
+
+### ACCEPTANCE TESTS (you MUST make these pass)
+These tests were written before your code. Make them pass by changing code only. Each requirement below is checked by the assertion labelled with its tag (for SPEC-1 of this issue: [#1752/SPEC-1]).
+- SPEC-1: tests/unit/timeout-cmd-helper-test.sh
+- SPEC-2: tests/unit/timeout-cmd-helper-test.sh
+- SPEC-3: tests/unit/timeout-cmd-helper-test.sh
+- SPEC-4: tests/unit/lint-bare-timeout-test.sh
+- SPEC-5: tests/unit/lint-bare-timeout-test.sh
+- SPEC-6: tests/unit/lint-bare-timeout-test.sh
+- SPEC-7: tests/unit/lint-bare-timeout-test.sh
+- SPEC-8: tests/unit/timeout-cmd-helper-test.sh
+- SPEC-9: tests/unit/timeout-cmd-helper-test.sh
+- SPEC-10: tests/unit/timeout-cmd-helper-test.sh
+
+What each SPEC requires:
+- [#1752/SPEC-1] sourcing `scripts/lib/timeout-cmd.sh` and calling `_acceptance_timeout_prefix` on a PATH containing only `gtimeout` (no `timeout` binary) populates `_ACCEPTANCE_TOUT` with `gtimeout` as the binary
+- [#1752/SPEC-2] sourcing `scripts/lib/timeout-cmd.sh` and calling `_acceptance_timeout_prefix` on a PATH with neither `gtimeout` nor `timeout` leaves `_ACCEPTANCE_TOUT` empty and returns 0
+- [#1752/SPEC-3] a genuinely failing acceptance testfile (zero diff + red testfile) passed to the build plugin's false-completion guard still produces `inert_build` after the helper is shared
+- [#1752/SPEC-4] `scripts/lib/lint-bare-timeout.sh` exits 1 when a `.sh` file in the scanned tree invokes bare `timeout` as a command; exits 0 on a clean fixture; a `# lint-bare-timeout:allow` comment on the flagged line suppresses the finding
+- [#1752/SPEC-5] `scripts/release.sh` line ~629 has a `# lint-bare-timeout:allow: <reason>` comment on the bare `timeout` invocation line
+- [#1752/SPEC-6] `docs/adr/ADR-036-acceptance-contract-teeth.md` contains a dated amendment paragraph stating that every timeout bound in `core/`, `scripts/`, and `plugins/` resolves through `_acceptance_timeout_prefix` (`scripts/lib/timeout-cmd.sh`) and that a bare `timeout` call is a lint failure; the file also contains an `## Enforced by` section naming `scripts/lib/lint-bare-timeout.sh` and `tests/unit/lint-bare-timeout-test.sh`
+- [#1752/SPEC-7] `package.json`'s `lint` script string contains an invocation of `scripts/lib/lint-bare-timeout.sh`; after all six probe sites are converted and `release.sh:629` is exempted, running `bash scripts/lib/lint-bare-timeout.sh` on the repository tree exits 0
+- [#1752/SPEC-8] a structural test greps each of the six converted files (`core/router/route.sh`, `scripts/run-tests.sh`, `scripts/run-mutation.sh`, `scripts/lib/gh-automation.sh`, `scripts/lib/acceptance-block.sh`) and asserts (a) at least one occurrence of `_acceptance_timeout_prefix` and (b) zero occurrences of the old `command -v gtimeout` inline-probe pattern in each; this closes the detection gap because the lint cannot flag a retained inline probe (it uses `timeout` as an argument to `command -v`, not as an invocation)
+- [#1752/SPEC-9] in a simulated environment where only `gtimeout` is on PATH (no system `timeout`), the converted probe logic for each of the five non-acceptance-gate call sites (`core/router/route.sh` sync path, `core/router/route.sh` loop path, `scripts/run-tests.sh`, `scripts/run-mutation.sh`, `scripts/lib/gh-automation.sh`) produces a non-empty timeout-command variable whose first element is `gtimeout`, confirming each site still bounds its command on a macOS-style host
+- [#1752/SPEC-10] when `ZBUILD_TEST_KILL_GRACE=42` is set and gtimeout supports `-k`, the converted `scripts/run-tests.sh` probe logic produces a kill-grace value of `42` in the resulting command array; when `ZBUILD_MUTATION_KILL_GRACE=7` is set, the converted `scripts/run-mutation.sh` probe logic produces `7`; this verifies the per-caller bridge `ZBUILD_NEGCTL_KILL_GRACE="${CALLER_KILL_GRACE:-10}"` is wired correctly before each helper call
+
+### REQUIREMENTS YOUR CODE MUST MEET
+Your change is done when the test for every requirement below passes.
+- [#1752/SPEC-1] sourcing `scripts/lib/timeout-cmd.sh` and calling `_acceptance_timeout_prefix` on a PATH containing only `gtimeout` (no `timeout` binary) populates `_ACCEPTANCE_TOUT` with `gtimeout` as the binary
+  → its test is already written; make it pass
+- [#1752/SPEC-2] sourcing `scripts/lib/timeout-cmd.sh` and calling `_acceptance_timeout_prefix` on a PATH with neither `gtimeout` nor `timeout` leaves `_ACCEPTANCE_TOUT` empty and returns 0
+  → its test is already written; make it pass
+- [#1752/SPEC-3] a genuinely failing acceptance testfile (zero diff + red testfile) passed to the build plugin's false-completion guard still produces `inert_build` after the helper is shared
+  → its test is already written; make it pass
+- [#1752/SPEC-4] `scripts/lib/lint-bare-timeout.sh` exits 1 when a `.sh` file in the scanned tree invokes bare `timeout` as a command; exits 0 on a clean fixture; a `# lint-bare-timeout:allow` comment on the flagged line suppresses the finding
+  → its test is already written; make it pass
+- [#1752/SPEC-5] `scripts/release.sh` line ~629 has a `# lint-bare-timeout:allow: <reason>` comment on the bare `timeout` invocation line
+  → its test is already written; make it pass
+- [#1752/SPEC-6] `docs/adr/ADR-036-acceptance-contract-teeth.md` contains a dated amendment paragraph stating that every timeout bound in `core/`, `scripts/`, and `plugins/` resolves through `_acceptance_timeout_prefix` (`scripts/lib/timeout-cmd.sh`) and that a bare `timeout` call is a lint failure; the file also contains an `## Enforced by` section naming `scripts/lib/lint-bare-timeout.sh` and `tests/unit/lint-bare-timeout-test.sh`
+  → its test is already written; make it pass
+- [#1752/SPEC-7] `package.json`'s `lint` script string contains an invocation of `scripts/lib/lint-bare-timeout.sh`; after all six probe sites are converted and `release.sh:629` is exempted, running `bash scripts/lib/lint-bare-timeout.sh` on the repository tree exits 0
+  → its test is already written; make it pass
+- [#1752/SPEC-8] a structural test greps each of the six converted files (`core/router/route.sh`, `scripts/run-tests.sh`, `scripts/run-mutation.sh`, `scripts/lib/gh-automation.sh`, `scripts/lib/acceptance-block.sh`) and asserts (a) at least one occurrence of `_acceptance_timeout_prefix` and (b) zero occurrences of the old `command -v gtimeout` inline-probe pattern in each; this closes the detection gap because the lint cannot flag a retained inline probe (it uses `timeout` as an argument to `command -v`, not as an invocation)
+  → its test is already written; make it pass
+- [#1752/SPEC-9] in a simulated environment where only `gtimeout` is on PATH (no system `timeout`), the converted probe logic for each of the five non-acceptance-gate call sites (`core/router/route.sh` sync path, `core/router/route.sh` loop path, `scripts/run-tests.sh`, `scripts/run-mutation.sh`, `scripts/lib/gh-automation.sh`) produces a non-empty timeout-command variable whose first element is `gtimeout`, confirming each site still bounds its command on a macOS-style host
+  → its test is already written; make it pass
+- [#1752/SPEC-10] when `ZBUILD_TEST_KILL_GRACE=42` is set and gtimeout supports `-k`, the converted `scripts/run-tests.sh` probe logic produces a kill-grace value of `42` in the resulting command array; when `ZBUILD_MUTATION_KILL_GRACE=7` is set, the converted `scripts/run-mutation.sh` probe logic produces `7`; this verifies the per-caller bridge `ZBUILD_NEGCTL_KILL_GRACE="${CALLER_KILL_GRACE:-10}"` is wired correctly before each helper call
+  → its test is already written; make it pass
+
+## What you must not do
+The acceptance testfiles listed above are read-only for this stage: the engine denies edits to them, and a mechanical check restores any change. They are the contract you implement against, written before your implementation existed. A failing assertion means YOUR CODE is wrong — fix the code. You MUST NOT weaken, delete, retag or re-author any assertion. If you believe an assertion genuinely does not test its SPEC, say so in your output and do not edit it.
+
+### Scope (plan.files[])
+You may ONLY touch files listed here. Refuse any out-of-scope edit.
+  - scripts/lib/timeout-cmd.sh
+  - scripts/lib/lint-bare-timeout.sh
+  - scripts/lib/acceptance-block.sh
+  - core/router/route.sh
+  - scripts/run-tests.sh
+  - scripts/run-mutation.sh
+  - scripts/lib/gh-automation.sh
+  - scripts/release.sh
+  - package.json
+  - docs/adr/ADR-036-acceptance-contract-teeth.md
+  - config/adr-enforcement-baseline.txt
+  - tests/unit/timeout-cmd-helper-test.sh
+  - tests/unit/lint-bare-timeout-test.sh
+  - tests/unit/acceptance-negctl-test.sh
+  - scripts/lib/acceptance-negctl.sh
+  - scripts/lib/acceptance-reachability.sh
+  - plugins/agent/build/lib/summary.sh
+
+### Rules
+- Touch only files in the scope list above.
+- Do not run `git commit` — the pipeline owns commit semantics.
+- NEVER run a command that mutates git branch state or the working tree —
+  no `git checkout -b`/`switch`/`commit`/`push`/`tag`/`reset`. You are running
+  INSIDE the pipeline's own checkout; switching or creating a branch hijacks the
+  run. The pipeline owns the branch.
+- If you must exercise a command you are building (or any command that could
+  publish, tag, push, or otherwise mutate state), run it in `--dry-run` mode.
+  Do everything you can to verify behavior without side effects.
+- Keep changes minimal and aligned with the plan.
+- Clean up scratch siblings of the files you edit (`*.bak`, `*.orig`,
+  `*.rej`, `*.head`, `*.tmp`, `*~`). `sed -i.bak` and
+  `git show HEAD:f > f.head` both leave one behind — prefer `sed -i` with no
+  suffix, and delete any comparison scratch before you finish. Out-of-scope
+  scratch is removed for you; any OTHER out-of-scope path voids the whole
+  iteration, so do not rely on the cleanup.
+- If satisfying a gate requires a file outside your scope, do not work around it — emit `BLOCKED: <gate> requires <file> (out of scope)` and stop.

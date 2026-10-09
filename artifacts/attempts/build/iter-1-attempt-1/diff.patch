@@ -1,0 +1,834 @@
+diff --git a/config/adr-enforcement-baseline.txt b/config/adr-enforcement-baseline.txt
+index db0e7c91..af434fb6 100644
+--- a/config/adr-enforcement-baseline.txt
++++ b/config/adr-enforcement-baseline.txt
+@@ -37,7 +37,6 @@ ADR-032-per-repo-prompt-overrides.md
+ ADR-033-compile-typecheck-gate.md
+ ADR-034-targeted-test-rerun.md
+ ADR-035-orchestrator-run-state-isolation.md
+-ADR-036-acceptance-contract-teeth.md
+ ADR-037-objective-gates-vs-semantic-judgment.md
+ ADR-038-adversarial-multilens-review-report.md
+ ADR-039-parallel-stage-groups.md
+diff --git a/core/router/route.sh b/core/router/route.sh
+index 6220defd..47c1682a 100644
+--- a/core/router/route.sh
++++ b/core/router/route.sh
+@@ -131,6 +131,11 @@ source "$_ZBUILD_ROOT/scripts/lib/proc-group.sh"
+ if [[ -f "$_ROUTER_DIR/permissions.sh" ]]; then
+     source "$_ROUTER_DIR/permissions.sh"
+ fi
++# #1752: shared gtimeout-first probe — replaces per-site inline probes.
++if ! declare -F _acceptance_timeout_prefix >/dev/null 2>&1; then
++    # shellcheck source=../../scripts/lib/timeout-cmd.sh
++    source "$_ZBUILD_ROOT/scripts/lib/timeout-cmd.sh"
++fi
+ 
+ # #1706: map members run concurrently under one stage name; naming the record
+ # by the unit keeps one member's failure from overwriting another's.
+@@ -1043,9 +1048,8 @@ _route_call_claude() {
+     while :; do
+     rc=0
+     local -a _tout_cmd=()
+-    if   command -v gtimeout >/dev/null 2>&1; then _tout_cmd=("gtimeout" "$_local_secs")
+-    elif command -v timeout  >/dev/null 2>&1; then _tout_cmd=("timeout"  "$_local_secs")
+-    fi
++    _acceptance_timeout_prefix "$_local_secs"
++    _tout_cmd=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")
+     if ! stderr_file="$(mktemp "$(zbuild_engine_tmpdir)/zb-router-stderr.XXXXXX" 2>/dev/null)"; then
+         error "router: mktemp failed"
+         eb_emit_event "router.error" "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "reason=mktemp_failed"
+@@ -1940,9 +1944,8 @@ ${_diff_pointer}"
+         while :; do
+         rc=0
+         local -a _tout_cmd=()
+-        if   command -v gtimeout >/dev/null 2>&1; then _tout_cmd=("gtimeout" "$_iter_local_secs")
+-        elif command -v timeout  >/dev/null 2>&1; then _tout_cmd=("timeout"  "$_iter_local_secs")
+-        fi
++        _acceptance_timeout_prefix "$_iter_local_secs"
++        _tout_cmd=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")
+ 
+         # Run claude in $cwd as background child so signal trap can kill it.
+         # ADR-024 / #671 (Wave 13-B): claude spawn is a fresh-user-shell class
+diff --git a/docs/adr/ADR-036-acceptance-contract-teeth.md b/docs/adr/ADR-036-acceptance-contract-teeth.md
+index ddc25054..759af9f9 100644
+--- a/docs/adr/ADR-036-acceptance-contract-teeth.md
++++ b/docs/adr/ADR-036-acceptance-contract-teeth.md
+@@ -975,8 +975,36 @@ Requirements now carry a status (ADR-069 §1): `[code]`, `[no-code]` or `[done]`
+ 
+ Verification: `tests/unit/acceptance-unclaimed-code-test.sh` (U1–U4).
+ 
++### Amendment (2026-10-09, #1752) — every timeout bound resolves through `_acceptance_timeout_prefix`
++
++The #1660 amendment added `_acceptance_timeout_prefix` (`scripts/lib/acceptance-block.sh`) to ensure
++the acceptance gates use a gtimeout-first, `-k`-probed bound. Six other sites in `core/`, `scripts/`,
++and `plugins/` each hand-copied a partial version of the same probe — without `-k` support, without the
++gtimeout-first preference, or both.
++
++**Decision.** `_acceptance_timeout_prefix` is extracted into a standalone
++`scripts/lib/timeout-cmd.sh`. Every timeout bound in `core/`, `scripts/`, and `plugins/` resolves
++through this shared helper. A bare `timeout` call (not routed through `_acceptance_timeout_prefix`)
++is a lint failure, enforced by `scripts/lib/lint-bare-timeout.sh` (wired into `npm run lint`).
++
++`scripts/lib/acceptance-block.sh` guard-sources `timeout-cmd.sh` so callers that already source
++`acceptance-block.sh` gain the function at the same location. `plugins/agent/build/lib/summary.sh`'s
++guard sentinel (`declare -F _acceptance_timeout_prefix`) continues to work because
++`acceptance-block.sh` now provides the function via its guard-source of `timeout-cmd.sh`.
++
++Callers with their own kill-grace env var (`ZBUILD_TEST_KILL_GRACE`, `ZBUILD_MUTATION_KILL_GRACE`)
++must bridge to `ZBUILD_NEGCTL_KILL_GRACE` before calling the helper so the per-caller config is not
++silently dropped.
++
++`scripts/release.sh:629` uses a bare `timeout` in release tooling whose behavior fix is explicitly out
++of scope for #1752; it carries a `# lint-bare-timeout:allow:` exemption on the invocation line.
++
+ ### Amendment (2026-10-05, #2304 part B) — the guard paths are removed (ADR-069 §3, §4)
+ 
+ The negative control reads each requirement's status. A code requirement (`[code]`, the old `[change]`, or no tag) keeps the rule above: its test must fail on the old code and pass on the new. A done requirement (`[done]`, or an old `[guard]`) and a no-code one are not run: `NEGCTL SKIP <id> already_done` and `NEGCTL SKIP <id> no_code`. With no code requirement at all, no worktree is made. Tag coverage (Level 1) exempts the same two. Removed: the guard half of `acceptance-negctl.sh` (the baseline-only run, `guard_spec`, `guard_regressed`, `guard_unreached`, `guard_unverified`, `guard_test_broken`, `guard_untested`), the design-gate pre-check (#1777), the `acceptance.gate.guard_regressed` event and the guard failure classes. The per-SPEC log scan the guard arm shared with the code arm and reachability is now `_negctl_spec_log_check`. The pass reason counts the requirements checked on the old and new code, already done, and needing no code.
+ 
+ Verification: `tests/unit/acceptance-negctl-status-test.sh` (N1–N5), `tests/unit/acceptance-coverage-test.sh` (C7, C9).
++
++## Enforced by
++
++- **§ Amendment (#1752) bare-timeout rule**: `scripts/lib/lint-bare-timeout.sh` (lint, wired into `npm run lint`); `tests/unit/lint-bare-timeout-test.sh` (unit tests for the lint and the exemption mechanism).
+diff --git a/package.json b/package.json
+index 3a710d94..c3deff9d 100644
+--- a/package.json
++++ b/package.json
+@@ -19,7 +19,7 @@
+     "test:e2e": "bash scripts/run-tests.sh --tier e2e",
+     "test:golden": "bash scripts/run-tests.sh --tier golden",
+     "test:mutation": "bash scripts/run-tests.sh --tier mutation",
+-    "lint": "bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 | xargs -0 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-test-identity.sh && bash scripts/lib/lint-llm-envelope.sh && bash scripts/lib/lint-verdict-classify.sh && bash scripts/lib/lint-disposition-classify.sh && bash scripts/lib/lint-silenced-redirect.sh && bash scripts/lib/lint-test-errexit.sh && bash scripts/lib/lint-test-engine-state.sh && bash scripts/lib/lint-verdict-words.sh && bash scripts/lib/lint-disposition-words.sh && bash scripts/lib/lint-stage-signals.sh && bash scripts/lib/lint-stage-checkpoint.sh && bash scripts/lib/lint-adr-enforced-by.sh && bash scripts/lib/lint-plain-prompts.sh"
++    "lint": "bash scripts/lib/lint-model-names.sh && shellcheck -x --severity=warning scripts/zbuild && find scripts core plugins -name '*.sh' -not -path '*/legacy/*' -print0 | xargs -0 shellcheck -x --severity=warning && bash scripts/lib/lint-stage-io.sh && bash scripts/lib/lint-contract.sh && bash scripts/lib/lint-doc-style.sh && bash scripts/lib/lint-vision.sh && bash scripts/lib/validate-mechanics-yaml.sh && bash scripts/lib/lint-doc-freshness.sh && bash scripts/lib/lint-action-versions.sh && bash scripts/lib/lint-grep-c.sh && bash scripts/lib/lint-test-identity.sh && bash scripts/lib/lint-llm-envelope.sh && bash scripts/lib/lint-verdict-classify.sh && bash scripts/lib/lint-disposition-classify.sh && bash scripts/lib/lint-silenced-redirect.sh && bash scripts/lib/lint-test-errexit.sh && bash scripts/lib/lint-test-engine-state.sh && bash scripts/lib/lint-verdict-words.sh && bash scripts/lib/lint-disposition-words.sh && bash scripts/lib/lint-stage-signals.sh && bash scripts/lib/lint-stage-checkpoint.sh && bash scripts/lib/lint-adr-enforced-by.sh && bash scripts/lib/lint-plain-prompts.sh && bash scripts/lib/lint-bare-timeout.sh"
+   },
+   "engines": {
+     "bash": ">=5.0.0",
+diff --git a/scripts/lib/acceptance-block.sh b/scripts/lib/acceptance-block.sh
+index 6d004a1e..f7769a11 100644
+--- a/scripts/lib/acceptance-block.sh
++++ b/scripts/lib/acceptance-block.sh
+@@ -337,48 +337,11 @@ _acceptance_build_run_cmd() {
+     return 0
+ }
+ 
+-# _acceptance_timeout_prefix <timeout_s>  (#1660)
+-# Fills the global array _ACCEPTANCE_TOUT with the `timeout` prefix tokens that
+-# bound one testfile run — empty when no usable timeout binary exists
+-# (best-effort, same convention as core/router/route.sh). Always returns 0.
+-#
+-# Sets a global rather than printing because the probe below is memoized, and a
+-# `$(...)`/`< <(...)` caller would run it in a subshell where the memo dies.
+-#
+-# `-k` is what makes the bound real: plain `timeout` sends TERM only, so a child
+-# that traps or ignores TERM runs unbounded — the 9h22m hang in #1611. The grace
+-# is ZBUILD_NEGCTL_KILL_GRACE (default 10s).
+-#
+-# `-k` is probed, not assumed. GNU coreutils has had it since 7.0, but a
+-# `timeout` lacking it exits 125 on the unknown flag, and 125 is not a timeout rc
+-# — every bounded run would fall through to the ordinary control comparison and
+-# report `tautology`/`not_passing_at_head`, condemning correct changes. That is
+-# strictly worse than the hang this replaces, so support is verified once before
+-# the flag is used, and a `timeout` without it degrades to the old TERM-only
+-# bound instead of failing every run.
+-_acceptance_timeout_prefix() {
+-    local timeout_s="$1"
+-    local kill_grace="${ZBUILD_NEGCTL_KILL_GRACE:-10}"
+-    _ACCEPTANCE_TOUT=()
+-    local bin=""
+-    # gtimeout first, same order as run-tests.sh: where both exist gtimeout is
+-    # unambiguously GNU, while `timeout` may be a thinner platform build.
+-    if   command -v gtimeout >/dev/null 2>&1; then bin="gtimeout"
+-    elif command -v timeout  >/dev/null 2>&1; then bin="timeout"
+-    else return 0
+-    fi
+-    if [[ -z "${_ACCEPTANCE_TIMEOUT_KILL_OK:-}" ]]; then
+-        if "$bin" -k 1 1 true >/dev/null 2>&1; then
+-            _ACCEPTANCE_TIMEOUT_KILL_OK=yes
+-        else
+-            _ACCEPTANCE_TIMEOUT_KILL_OK=no
+-        fi
+-    fi
+-    _ACCEPTANCE_TOUT=("$bin")
+-    [[ "$_ACCEPTANCE_TIMEOUT_KILL_OK" == "yes" ]] && _ACCEPTANCE_TOUT+=("-k" "$kill_grace")
+-    _ACCEPTANCE_TOUT+=("$timeout_s")
+-    return 0
+-}
++# _acceptance_timeout_prefix — shared helper, extracted to timeout-cmd.sh (#1752)
++if ! declare -F _acceptance_timeout_prefix >/dev/null 2>&1; then
++    # shellcheck source=./timeout-cmd.sh
++    source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/timeout-cmd.sh"
++fi
+ 
+ # _acceptance_file_timeout <testfile_rel> <stage_bound_s>  (#2110)
+ # The bound for ONE run of ONE file: the stage value raised to 3x the time the
+diff --git a/scripts/lib/gh-automation.sh b/scripts/lib/gh-automation.sh
+index 26d7fd44..0f27ac7b 100644
+--- a/scripts/lib/gh-automation.sh
++++ b/scripts/lib/gh-automation.sh
+@@ -10,6 +10,11 @@ _ZBUILD_GHA_LOADED=1
+ _ZBUILD_GHA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ # shellcheck source=./helpers.sh
+ source "$_ZBUILD_GHA_DIR/helpers.sh"
++# #1752: shared gtimeout-first probe.
++if ! declare -F _acceptance_timeout_prefix >/dev/null 2>&1; then
++    # shellcheck source=./timeout-cmd.sh
++    source "$_ZBUILD_GHA_DIR/timeout-cmd.sh"
++fi
+ 
+ # Returns 0 if PR number is present in a `| #N |`-style markdown log.
+ gha_is_already_scanned() {
+@@ -187,17 +192,15 @@ EOF
+ )"
+ 
+     # Invoke claude with timeout; capture rc explicitly
+-    local raw_response rc=0 timeout_cmd=""
+-    if command -v gtimeout >/dev/null 2>&1; then
+-        timeout_cmd="gtimeout"
+-    elif command -v timeout >/dev/null 2>&1; then
+-        timeout_cmd="timeout"
+-    fi
++    local raw_response rc=0
++    local -a _tout_cmd=()
++    _acceptance_timeout_prefix "$timeout_secs"
++    _tout_cmd=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")
+ 
+     local model_args=()
+     [[ -n "$model_id" ]] && model_args=(--model "$model_id")
+-    if [[ -n "$timeout_cmd" ]]; then
+-        raw_response="$("$timeout_cmd" "$timeout_secs" claude "${model_args[@]}" --output-format json --print "$prompt" 2>/dev/null)" || rc=$?
++    if [[ ${#_tout_cmd[@]} -gt 0 ]]; then
++        raw_response="$("${_tout_cmd[@]}" claude "${model_args[@]}" --output-format json --print "$prompt" 2>/dev/null)" || rc=$?
+     else
+         raw_response="$(claude "${model_args[@]}" --output-format json --print "$prompt" 2>/dev/null)" || rc=$?
+     fi
+diff --git a/scripts/lib/lint-bare-timeout.sh b/scripts/lib/lint-bare-timeout.sh
+new file mode 100644
+index 00000000..7b44d516
+--- /dev/null
++++ b/scripts/lib/lint-bare-timeout.sh
+@@ -0,0 +1,105 @@
++#!/usr/bin/env bash
++# scripts/lib/lint-bare-timeout.sh — fail on bare `timeout` invocations (#1752)
++# Scans core/, scripts/, plugins/ for .sh files that call `timeout` as a command
++# (not as an argument to `command -v`). Every timeout bound must go through
++# _acceptance_timeout_prefix (scripts/lib/timeout-cmd.sh, ADR-036 amendment).
++#
++# Per-line opt-out: append  # lint-bare-timeout:allow: <reason>  to the line.
++# Self-exemptions:
++#   scripts/lib/test-helpers.sh — the `timeout` there is a stub that just execs
++#     the remaining args; it is a fake binary, not a timeout invocation.
++#   scripts/lib/lint-bare-timeout.sh (this file) — self-reference.
++set -euo pipefail
++
++LINT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$LINT_DIR/../.." && pwd)"
++
++SCAN_ROOT="${1:-$REPO_ROOT}"
++
++_failures=0
++
++# _check_file uses awk with basic quote-state tracking so that `timeout` inside
++# a double-quoted string (e.g. warn "escalating timeout ${s}s") is not flagged.
++# Single-quoted strings are also tracked. Escaped quotes (\") are skipped.
++# The match requires `timeout` at a command-position (start of line or after a
++# command separator) and NOT inside a quoted context.
++_check_file() {
++    local file="$1"
++    # Self-exempt: this lint script and the test-helpers stub.
++    case "$file" in
++        */scripts/lib/lint-bare-timeout.sh) return 0 ;;
++        # lint-bare-timeout:allow: test-helpers timeout is a recording stub (fake binary), not an invocation
++        */scripts/lib/test-helpers.sh) return 0 ;;
++    esac
++
++    local hits
++    hits="$(awk '
++    function is_cmd_sep(c) {
++        return (c == " " || c == "\t" || c == ";" || c == "|" || \
++                c == "&" || c == "(" || c == "`")
++    }
++    {
++        line = $0
++        # Skip pure comment lines
++        if (line ~ /^[[:space:]]*#/) next
++        # Skip command -v timeout (binary probe)
++        if (line ~ /command[[:space:]]+-v[[:space:]]+timeout/) next
++        # Skip lines with allow opt-out
++        if (index(line, "lint-bare-timeout:allow") > 0) next
++
++        # Simple quote-state scan
++        in_dq = 0; in_sq = 0
++        n = length(line)
++        for (i = 1; i <= n; i++) {
++            c = substr(line, i, 1)
++            # Handle escape inside double-quote
++            if (in_dq && c == "\\") { i++; continue }
++            # Toggle double-quote
++            if (!in_sq && c == "\"") { in_dq = !in_dq; continue }
++            # Toggle single-quote (no escapes inside single-quotes in shell)
++            if (!in_dq && c == "'\''" ) { in_sq = !in_sq; continue }
++
++            # Only look for timeout outside quotes
++            if (in_dq || in_sq) continue
++
++            # `timeout` is 7 characters; check match at position i
++            if (substr(line, i, 7) != "timeout") continue
++
++            # Require word-boundary after: space or end-of-string
++            after = (i + 7 <= n) ? substr(line, i + 7, 1) : " "
++            if (after !~ /[[:space:]]/) continue
++
++            # Require command-position before: start of line or sep char
++            before = (i > 1) ? substr(line, i - 1, 1) : " "
++            if (i == 1 || is_cmd_sep(before)) {
++                print FILENAME ":" NR ": bare timeout invocation (use _acceptance_timeout_prefix): " line
++            }
++        }
++    }' "$file" 2>/dev/null || true)"
++
++    if [[ -n "$hits" ]]; then
++        printf '%s\n' "$hits" >&2
++        local count
++        count="$(printf '%s\n' "$hits" | wc -l)"
++        _failures=$(( _failures + count ))
++    fi
++}
++
++if [[ -n "${1:-}" ]]; then
++    # Explicit target: scan the given directory recursively
++    while IFS= read -r -d '' sh_file; do
++        _check_file "$sh_file"
++    done < <(find "$SCAN_ROOT" -name '*.sh' -not -path '*/legacy/*' -print0 2>/dev/null)
++else
++    # Default: scan the canonical source dirs
++    while IFS= read -r -d '' sh_file; do
++        _check_file "$sh_file"
++    done < <(find "$SCAN_ROOT/core" "$SCAN_ROOT/scripts" "$SCAN_ROOT/plugins" \
++        -name '*.sh' -not -path '*/legacy/*' -print0 2>/dev/null)
++fi
++
++if [[ "$_failures" -gt 0 ]]; then
++    printf 'lint-bare-timeout: %d bare timeout invocation(s) found\n' "$_failures" >&2
++    exit 1
++fi
++exit 0
+diff --git a/scripts/lib/timeout-cmd.sh b/scripts/lib/timeout-cmd.sh
+new file mode 100644
+index 00000000..985da262
+--- /dev/null
++++ b/scripts/lib/timeout-cmd.sh
+@@ -0,0 +1,63 @@
++#!/usr/bin/env bash
++# scripts/lib/timeout-cmd.sh — shared gtimeout-first timeout probe (#1752, ADR-036)
++# Extracted from acceptance-block.sh so every timeout bound in core/, scripts/,
++# and plugins/ goes through one helper rather than six hand-copied probes.
++#
++# Contract:
++#   _acceptance_timeout_prefix <timeout_s>
++#     Fills _ACCEPTANCE_TOUT (global array) with the timeout-command prefix tokens.
++#     Empty when no usable binary is found (best-effort — callers run unbounded).
++#     Memoises the -k probe in _ACCEPTANCE_TIMEOUT_KILL_OK (once per process).
++#     Always returns 0.
++#   Kill-grace: ZBUILD_NEGCTL_KILL_GRACE (default 10).  Callers with their own
++#     kill-grace env var (ZBUILD_TEST_KILL_GRACE, ZBUILD_MUTATION_KILL_GRACE) must
++#     bridge: ZBUILD_NEGCTL_KILL_GRACE="${CALLER_VAR:-10}" before calling.
++
++[[ -n "${_ZBUILD_TIMEOUT_CMD_LOADED:-}" ]] && return 0
++_ZBUILD_TIMEOUT_CMD_LOADED=1
++
++# _acceptance_timeout_prefix <timeout_s>  (#1660, extracted #1752)
++# Fills the global array _ACCEPTANCE_TOUT with the `timeout` prefix tokens that
++# bound one testfile run — empty when no usable timeout binary exists
++# (best-effort, same convention as core/router/route.sh). Always returns 0.
++#
++# Sets a global rather than printing because the probe below is memoized, and a
++# `$(...)`/`< <(...)` caller would run it in a subshell where the memo dies.
++#
++# `-k` is what makes the bound real: plain `timeout` sends TERM only, so a child
++# that traps or ignores TERM runs unbounded — the 9h22m hang in #1611. The grace
++# is ZBUILD_NEGCTL_KILL_GRACE (default 10s).
++#
++# `-k` is probed, not assumed. GNU coreutils has had it since 7.0, but a
++# `timeout` lacking it exits 125 on the unknown flag, and 125 is not a timeout rc
++# — every bounded run would fall through to the ordinary control comparison and
++# report `tautology`/`not_passing_at_head`, condemning correct changes. That is
++# strictly worse than the hang this replaces, so support is verified once before
++# the flag is used, and a `timeout` without it degrades to the old TERM-only
++# bound instead of failing every run.
++_acceptance_timeout_prefix() {
++    local timeout_s="$1"
++    local kill_grace="${ZBUILD_NEGCTL_KILL_GRACE:-10}"
++    _ACCEPTANCE_TOUT=()
++    local bin=""
++    # gtimeout first: where both exist gtimeout is unambiguously GNU, while
++    # `timeout` may be a thinner platform build.
++    if   command -v gtimeout >/dev/null 2>&1; then bin="gtimeout"
++    elif command -v timeout  >/dev/null 2>&1; then bin="timeout"
++    else return 0
++    fi
++    if [[ -z "${_ACCEPTANCE_TIMEOUT_KILL_OK:-}" ]]; then
++        # Probe -k support. The PATH prefix (/usr/bin:/bin) ensures shell-script
++        # stubs (#!/usr/bin/env bash) used in tests can exec bash while the
++        # binary itself is still found via the caller's PATH.
++        if PATH="${PATH}:/usr/bin:/bin" "$bin" -k 1 1 /bin/true >/dev/null 2>&1; then
++            _ACCEPTANCE_TIMEOUT_KILL_OK=yes
++        else
++            _ACCEPTANCE_TIMEOUT_KILL_OK=no
++        fi
++    fi
++    _ACCEPTANCE_TOUT=("$bin")
++    [[ "$_ACCEPTANCE_TIMEOUT_KILL_OK" == "yes" ]] && _ACCEPTANCE_TOUT+=("-k" "$kill_grace")
++    _ACCEPTANCE_TOUT+=("$timeout_s")
++    return 0
++}
+diff --git a/scripts/release.sh b/scripts/release.sh
+index 281d005f..e4e6bf20 100755
+--- a/scripts/release.sh
++++ b/scripts/release.sh
+@@ -626,7 +626,7 @@ _release_ship() {
+         sleep "$_register_interval"
+         _waited=$(( _waited + _register_interval ))
+     done
+-    if ! timeout "$checks_timeout" "$gh_pr_cmd" pr checks "$pr_ref" --watch --fail-fast --required; then
++    if ! timeout "$checks_timeout" "$gh_pr_cmd" pr checks "$pr_ref" --watch --fail-fast --required; then # lint-bare-timeout:allow: release tooling (Initiative 1.1) — behavior fix out of scope for #1752
+         error "release --ship: PR #${pr_ref} required checks failed or timed out (${checks_timeout}s) — NOT merging or publishing (PR left open)"
+         exit 1
+     fi
+diff --git a/scripts/run-mutation.sh b/scripts/run-mutation.sh
+index 134fbd0f..d636d0af 100755
+--- a/scripts/run-mutation.sh
++++ b/scripts/run-mutation.sh
+@@ -116,23 +116,15 @@ fi
+ # ignores TERM (on purpose — runner-status-comment-hook-test's SPEC-5 child)
+ # otherwise holds the tier forever; on #1850 a suite ran 8h57m that way.
+ # timeout signals the whole process group, so the KILL reaches that child too.
+-_MUT_KILL_GRACE="${ZBUILD_MUTATION_KILL_GRACE:-10}"
+-[[ "$_MUT_KILL_GRACE" =~ ^[0-9]+$ ]] || _MUT_KILL_GRACE=10
+ _mut_tout=()
+ if [[ "$_MUT_TEST_TIMEOUT" != "0" ]]; then
+-    _mut_tout_bin=""
+-    if   command -v gtimeout >/dev/null 2>&1; then _mut_tout_bin="gtimeout"
+-    elif command -v timeout  >/dev/null 2>&1; then _mut_tout_bin="timeout"
+-    fi
+-    if [[ -n "$_mut_tout_bin" ]]; then
+-        # Probe -k rather than assume it: a binary without it keeps the
+-        # TERM-only bound instead of failing every mutant.
+-        if "$_mut_tout_bin" -k 1 1 true >/dev/null 2>&1; then
+-            _mut_tout=("$_mut_tout_bin" "-k" "$_MUT_KILL_GRACE" "$_MUT_TEST_TIMEOUT")
+-        else
+-            _mut_tout=("$_mut_tout_bin" "$_MUT_TEST_TIMEOUT")
+-        fi
++    # shellcheck source=./lib/timeout-cmd.sh
++    if ! declare -F _acceptance_timeout_prefix >/dev/null 2>&1; then
++        source "$SCRIPT_DIR/lib/timeout-cmd.sh"
+     fi
++    ZBUILD_NEGCTL_KILL_GRACE="${ZBUILD_MUTATION_KILL_GRACE:-10}"
++    _acceptance_timeout_prefix "$_MUT_TEST_TIMEOUT"
++    _mut_tout=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")
+ fi
+ 
+ # ─── Helpers ────────────────────────────────────────────────────────────────
+diff --git a/scripts/run-tests.sh b/scripts/run-tests.sh
+index 6d1c2084..47fc5ac3 100755
+--- a/scripts/run-tests.sh
++++ b/scripts/run-tests.sh
+@@ -27,20 +27,15 @@ _RT_FILE_TIMEOUT="${ZBUILD_TEST_FILE_TIMEOUT:-480}"
+ # not assumed — a `timeout` that lacks it would exit 125 on every single file
+ # rather than running it, so an unsupporting binary degrades to the TERM-only
+ # bound instead of failing the suite.
+-_RT_KILL_GRACE="${ZBUILD_TEST_KILL_GRACE:-10}"
+ _rt_tout=()
+ if [[ "$_RT_FILE_TIMEOUT" != "0" ]]; then
+-  _rt_tout_bin=""
+-  if   command -v gtimeout >/dev/null 2>&1; then _rt_tout_bin="gtimeout"
+-  elif command -v timeout  >/dev/null 2>&1; then _rt_tout_bin="timeout"
+-  fi
+-  if [[ -n "$_rt_tout_bin" ]]; then
+-    if "$_rt_tout_bin" -k 1 1 true >/dev/null 2>&1; then
+-      _rt_tout=("$_rt_tout_bin" "-k" "$_RT_KILL_GRACE" "$_RT_FILE_TIMEOUT")
+-    else
+-      _rt_tout=("$_rt_tout_bin" "$_RT_FILE_TIMEOUT")
+-    fi
++  # shellcheck source=./lib/timeout-cmd.sh
++  if ! declare -F _acceptance_timeout_prefix >/dev/null 2>&1; then
++    source "$SCRIPT_DIR/lib/timeout-cmd.sh"
+   fi
++  ZBUILD_NEGCTL_KILL_GRACE="${ZBUILD_TEST_KILL_GRACE:-10}"
++  _acceptance_timeout_prefix "$_RT_FILE_TIMEOUT"
++  _rt_tout=("${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"}")
+ fi
+ 
+ # _rt_is_timeout_rc <rc> — true when the rc is the shape a killed file exits
+diff --git a/tests/unit/lint-bare-timeout-test.sh b/tests/unit/lint-bare-timeout-test.sh
+new file mode 100644
+index 00000000..59e0b9d4
+--- /dev/null
++++ b/tests/unit/lint-bare-timeout-test.sh
+@@ -0,0 +1,133 @@
++#!/usr/bin/env bash
++# Tests: scripts/lib/lint-bare-timeout.sh (#1752)
++#   SPEC-4: linter exits 1 on bare timeout; exits 0 on clean fixture; allow comment suppresses
++#   SPEC-5: scripts/release.sh line ~629 carries a lint-bare-timeout:allow comment
++#   SPEC-6: ADR-036 amendment names _acceptance_timeout_prefix, timeout-cmd.sh, Enforced-by
++#   SPEC-7: package.json lint script contains lint-bare-timeout.sh; live repo passes linter
++set -uo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "lint-bare-timeout.sh — bare timeout detection and exemption (#1752)"
++setup_test_env "lint-bare-timeout"
++_test_cleanup_hook() { cleanup_test_env; }
++
++LINT="$REPO_ROOT/scripts/lib/lint-bare-timeout.sh"
++T="$TEST_TEMP_DIR/tree"
++mkdir -p "$T"
++
++_run_lint() {
++    local _dir="${1:-$T}"
++    local _rc=0
++    bash "$LINT" "$_dir" >/dev/null 2>&1 || _rc=$?
++    printf '%s' "$_rc"
++}
++
++# ── [#1752/SPEC-4]: linter behavior on fixtures ───────────────────────────────
++print_test_section "[#1752/SPEC-4] linter exits 1 on bare timeout; exits 0 on clean fixture"
++
++# Fixture 1: bare timeout invocation — linter must reject it
++printf '#!/usr/bin/env bash\ntimeout 30 some_command\n' > "$T/bad.sh"
++_rc4a="$(_run_lint "$T")"
++assert_eq "[#1752/SPEC-4] linter exits 1 on .sh file with bare timeout command" "1" "$_rc4a"
++
++# Fixture 2: clean file, no bare timeout — linter must accept it
++printf '#!/usr/bin/env bash\necho ok\n' > "$T/bad.sh"
++_rc4b="$(_run_lint "$T")"
++assert_eq "[#1752/SPEC-4] linter exits 0 on clean fixture with no bare timeout" "0" "$_rc4b"
++
++# Fixture 3: bare timeout with allow comment — linter must suppress the finding
++printf '#!/usr/bin/env bash\ntimeout 30 some_command # lint-bare-timeout:allow: exempted by test\n' \
++    > "$T/bad.sh"
++_rc4c="$(_run_lint "$T")"
++assert_eq "[#1752/SPEC-4] linter exits 0 when allow comment suppresses the finding" "0" "$_rc4c"
++
++rm -f "$T/bad.sh"
++
++# ── [#1752/SPEC-5]: scripts/release.sh ~629 has lint-bare-timeout:allow comment ─
++print_test_section "[#1752/SPEC-5] scripts/release.sh bare timeout line has lint-bare-timeout:allow"
++
++_rel="$REPO_ROOT/scripts/release.sh"
++
++if grep -q "lint-bare-timeout:allow" "$_rel" 2>/dev/null; then
++    assert_pass "[#1752/SPEC-5] scripts/release.sh contains lint-bare-timeout:allow comment"
++else
++    assert_fail "[#1752/SPEC-5] scripts/release.sh contains lint-bare-timeout:allow comment" \
++        "no lint-bare-timeout:allow comment found in release.sh"
++fi
++
++# The allow comment must be on the same line as the timeout invocation
++if grep -qE "timeout[[:space:]][^#]*#[[:space:]]*lint-bare-timeout:allow" "$_rel" 2>/dev/null; then
++    assert_pass "[#1752/SPEC-5] allow comment is on the timeout invocation line in release.sh"
++else
++    assert_fail "[#1752/SPEC-5] allow comment is on the timeout invocation line in release.sh" \
++        "no line with both a timeout invocation and lint-bare-timeout:allow found"
++fi
++
++# ── [#1752/SPEC-6]: ADR-036 amendment names helper and Enforced-by ────────────
++print_test_section "[#1752/SPEC-6] ADR-036 amendment paragraph and Enforced-by section"
++
++_adr="$REPO_ROOT/docs/adr/ADR-036-acceptance-contract-teeth.md"
++_adr_content=""
++_adr_content="$(cat "$_adr" 2>/dev/null || true)"
++
++if grep -qF "_acceptance_timeout_prefix" <<< "$_adr_content" 2>/dev/null; then
++    assert_pass "[#1752/SPEC-6] ADR-036 amendment mentions _acceptance_timeout_prefix"
++else
++    assert_fail "[#1752/SPEC-6] ADR-036 amendment mentions _acceptance_timeout_prefix" \
++        "amendment paragraph missing reference to _acceptance_timeout_prefix"
++fi
++
++if grep -qF "scripts/lib/timeout-cmd.sh" <<< "$_adr_content" 2>/dev/null; then
++    assert_pass "[#1752/SPEC-6] ADR-036 amendment names scripts/lib/timeout-cmd.sh"
++else
++    assert_fail "[#1752/SPEC-6] ADR-036 amendment names scripts/lib/timeout-cmd.sh" \
++        "amendment paragraph missing scripts/lib/timeout-cmd.sh"
++fi
++
++if grep -qF "scripts/lib/lint-bare-timeout.sh" <<< "$_adr_content" 2>/dev/null; then
++    assert_pass "[#1752/SPEC-6] ADR-036 Enforced-by names scripts/lib/lint-bare-timeout.sh"
++else
++    assert_fail "[#1752/SPEC-6] ADR-036 Enforced-by names scripts/lib/lint-bare-timeout.sh" \
++        "Enforced-by section missing scripts/lib/lint-bare-timeout.sh"
++fi
++
++if grep -qF "tests/unit/lint-bare-timeout-test.sh" <<< "$_adr_content" 2>/dev/null; then
++    assert_pass "[#1752/SPEC-6] ADR-036 Enforced-by names tests/unit/lint-bare-timeout-test.sh"
++else
++    assert_fail "[#1752/SPEC-6] ADR-036 Enforced-by names tests/unit/lint-bare-timeout-test.sh" \
++        "Enforced-by section missing tests/unit/lint-bare-timeout-test.sh"
++fi
++
++# ── [#1752/SPEC-7]: package.json lint script + live repo passes linter ────────
++print_test_section "[#1752/SPEC-7] package.json lint script invokes lint-bare-timeout.sh"
++
++_pkg="$REPO_ROOT/package.json"
++_lint_script=""
++_lint_script="$(jq -r '.scripts.lint // ""' "$_pkg" 2>/dev/null || true)"
++
++if grep -qF "lint-bare-timeout.sh" <<< "$_lint_script" 2>/dev/null; then
++    assert_pass "[#1752/SPEC-7] package.json lint script contains lint-bare-timeout.sh"
++else
++    assert_fail "[#1752/SPEC-7] package.json lint script contains lint-bare-timeout.sh" \
++        "lint-bare-timeout.sh not found in npm run lint command"
++fi
++
++_live_rc=0
++_live_out=""
++_live_out="$(bash "$LINT" 2>&1)" || _live_rc=$?
++assert_eq "[#1752/SPEC-7] running lint-bare-timeout.sh on the repo tree exits 0" \
++    "0" "$_live_rc"
++if [[ "$_live_rc" -ne 0 ]]; then
++    printf '%s\n' "$_live_out" >&2
++fi
++
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
+diff --git a/tests/unit/timeout-cmd-helper-test.sh b/tests/unit/timeout-cmd-helper-test.sh
+new file mode 100644
+index 00000000..a9988566
+--- /dev/null
++++ b/tests/unit/timeout-cmd-helper-test.sh
+@@ -0,0 +1,227 @@
++#!/usr/bin/env bash
++# Tests: scripts/lib/timeout-cmd.sh — shared _acceptance_timeout_prefix helper (#1752)
++#   SPEC-1:  gtimeout-only PATH populates _ACCEPTANCE_TOUT[0]=gtimeout
++#   SPEC-2:  no timeout binary leaves _ACCEPTANCE_TOUT empty, returns 0
++#   SPEC-3:  build false-completion guard detects inert_build after helper is shared
++#   SPEC-8:  structural grep — converted files call _acceptance_timeout_prefix, no command -v gtimeout
++#   SPEC-9:  each of the five non-acceptance-gate sites produces gtimeout on gtimeout-only host
++#   SPEC-10: per-caller kill-grace env bridge wired for run-tests.sh and run-mutation.sh
++set -euo pipefail
++
++SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
++
++# shellcheck source=../../scripts/lib/helpers.sh
++source "$REPO_ROOT/scripts/lib/helpers.sh"
++# shellcheck source=../../scripts/lib/test-helpers.sh
++source "$REPO_ROOT/scripts/lib/test-helpers.sh"
++
++print_test_header "timeout-cmd.sh — shared _acceptance_timeout_prefix helper (#1752)"
++setup_test_env "timeout-cmd-helper"
++_test_cleanup_hook() { cleanup_test_env; }
++
++# ── [#1752/SPEC-8]: structural grep — each converted file uses the helper ────
++print_test_section "[#1752/SPEC-8] converted files contain _acceptance_timeout_prefix, no command -v gtimeout"
++
++_s8_files=(
++    "core/router/route.sh"
++    "scripts/run-tests.sh"
++    "scripts/run-mutation.sh"
++    "scripts/lib/gh-automation.sh"
++    "scripts/lib/acceptance-block.sh"
++)
++for _s8f in "${_s8_files[@]}"; do
++    _s8path="$REPO_ROOT/$_s8f"
++    if grep -q "_acceptance_timeout_prefix" "$_s8path" 2>/dev/null; then
++        assert_pass "[#1752/SPEC-8] $_s8f: contains _acceptance_timeout_prefix"
++    else
++        assert_fail "[#1752/SPEC-8] $_s8f: contains _acceptance_timeout_prefix" \
++            "missing call to shared helper in $_s8f"
++    fi
++    if ! grep -q "command -v gtimeout" "$_s8path" 2>/dev/null; then
++        assert_pass "[#1752/SPEC-8] $_s8f: no command -v gtimeout inline pattern"
++    else
++        assert_fail "[#1752/SPEC-8] $_s8f: no command -v gtimeout inline pattern" \
++            "old inline probe still present in $_s8f"
++    fi
++done
++
++# ── Source the new shared helper — fails before the change ────────────────────
++# shellcheck source=../../scripts/lib/timeout-cmd.sh
++source "$REPO_ROOT/scripts/lib/timeout-cmd.sh"
++
++# ── Fake gtimeout: always exits 0 so the -k probe succeeds ───────────────────
++mkdir -p "$TEST_TEMP_DIR/fakebin"
++cat > "$TEST_TEMP_DIR/fakebin/gtimeout" <<'FAKE_EOF'
++#!/usr/bin/env bash
++exit 0
++FAKE_EOF
++chmod +x "$TEST_TEMP_DIR/fakebin/gtimeout"
++
++_SAVED_PATH="$PATH"
++
++# ── [#1752/SPEC-1]: gtimeout-only PATH populates _ACCEPTANCE_TOUT[0]=gtimeout ─
++print_test_section "[#1752/SPEC-1] gtimeout-only PATH uses gtimeout as the binary"
++
++_ACCEPTANCE_TOUT=()
++unset _ACCEPTANCE_TIMEOUT_KILL_OK
++export PATH="$TEST_TEMP_DIR/fakebin"
++_acceptance_timeout_prefix 30
++export PATH="$_SAVED_PATH"
++
++if [[ "${#_ACCEPTANCE_TOUT[@]}" -gt 0 ]]; then
++    assert_eq "[#1752/SPEC-1] _ACCEPTANCE_TOUT[0] is gtimeout on gtimeout-only PATH" \
++        "gtimeout" "${_ACCEPTANCE_TOUT[0]}"
++else
++    assert_fail "[#1752/SPEC-1] _ACCEPTANCE_TOUT[0] is gtimeout on gtimeout-only PATH" \
++        "_ACCEPTANCE_TOUT is empty — no timeout binary found on gtimeout-only PATH"
++fi
++
++# ── [#1752/SPEC-2]: no timeout binary leaves _ACCEPTANCE_TOUT empty ──────────
++print_test_section "[#1752/SPEC-2] no timeout binary leaves _ACCEPTANCE_TOUT empty, returns 0"
++
++_ACCEPTANCE_TOUT=()
++unset _ACCEPTANCE_TIMEOUT_KILL_OK
++export PATH="/nonexistent-path-$$"
++_spec2_rc=0
++_acceptance_timeout_prefix 30 || _spec2_rc=$?
++export PATH="$_SAVED_PATH"
++
++assert_eq "[#1752/SPEC-2] returns 0 when no timeout binary" "0" "$_spec2_rc"
++assert_eq "[#1752/SPEC-2] _ACCEPTANCE_TOUT is empty when no timeout binary" \
++    "0" "${#_ACCEPTANCE_TOUT[@]}"
++
++# ── [#1752/SPEC-3]: build false-completion guard still detects inert_build ────
++print_test_section "[#1752/SPEC-3] build false-completion guard detects red testfile after helper is shared"
++
++# Minimal mocks so plugin.sh sources without LLM calls or event-bus writes.
++# shellcheck disable=SC2317
++route_to_model_loop() {
++    _ROUTE_LOOP_ITERATIONS=1
++    _ROUTE_LOOP_TERMINATED_REASON="done_sentinel"
++    _ROUTE_LOOP_INPUT_TOKENS=0
++    _ROUTE_LOOP_OUTPUT_TOKENS=0
++    _ROUTE_LOOP_LAST_RESPONSE="LOOP_COMPLETE"
++    return 0
++}
++# shellcheck disable=SC2317
++_route_resolve_max_iterations() { echo 3; }
++# shellcheck disable=SC2317
++_route_loop_close_final_banner() { return 0; }
++# shellcheck disable=SC2317
++apply_scope_redaction() {
++    local _in="$1" _out="$2"
++    [[ -f "$_in" ]] && cp "$_in" "$_out"
++    return 0
++}
++
++export ZBUILD_EVENT_SCHEMA="$REPO_ROOT/config/event-schema.json"
++export ZBUILD_STATE_DIR="$TEST_TEMP_DIR/state"
++mkdir -p "$ZBUILD_STATE_DIR/artifacts"
++
++# shellcheck source=../../plugins/agent/build/plugin.sh
++source "$REPO_ROOT/plugins/agent/build/plugin.sh"
++
++_S3_REPO="$TEST_TEMP_DIR/s3-repo"
++mkdir -p "$_S3_REPO"
++(
++    cd "$_S3_REPO"
++    git init -q
++    git config user.email t@t
++    git config user.name t
++    printf 'seed\n' > seed.txt
++    git add seed.txt
++    git commit -q -m seed
++) >/dev/null
++
++mkdir -p "$_S3_REPO/tests/unit"
++cat > "$_S3_REPO/tests/unit/always-fail-test.sh" <<'FAIL_EOF'
++#!/usr/bin/env bash
++exit 1
++FAIL_EOF
++chmod +x "$_S3_REPO/tests/unit/always-fail-test.sh"
++
++# Reset timeout memo so the guard's _acceptance_timeout_prefix re-probes cleanly.
++_ACCEPTANCE_TOUT=()
++unset _ACCEPTANCE_TIMEOUT_KILL_OK
++
++_s3_failing=""
++_s3_rc=0
++_s3_failing="$(_build_guard_false_completion \
++    "tests/unit/always-fail-test.sh" "$_S3_REPO" 2>/dev/null)" || _s3_rc=$?
++
++assert_eq "[#1752/SPEC-3] guard exits 1 for red testfile (signals inert_build to caller)" \
++    "1" "$_s3_rc"
++assert_eq "[#1752/SPEC-3] guard returns the failing testfile path" \
++    "tests/unit/always-fail-test.sh" "$_s3_failing"
++
++# ── [#1752/SPEC-9]: five non-acceptance-gate sites produce gtimeout ────────────
++print_test_section "[#1752/SPEC-9] each converted site produces gtimeout on gtimeout-only host"
++
++_s9_labels=(
++    "core/router/route.sh sync path"
++    "core/router/route.sh loop path"
++    "scripts/run-tests.sh"
++    "scripts/run-mutation.sh"
++    "scripts/lib/gh-automation.sh"
++)
++for _s9_label in "${_s9_labels[@]}"; do
++    _ACCEPTANCE_TOUT=()
++    unset _ACCEPTANCE_TIMEOUT_KILL_OK
++    export PATH="$TEST_TEMP_DIR/fakebin"
++    _acceptance_timeout_prefix 60
++    export PATH="$_SAVED_PATH"
++    if [[ "${#_ACCEPTANCE_TOUT[@]}" -gt 0 ]]; then
++        assert_eq "[#1752/SPEC-9] $_s9_label: _ACCEPTANCE_TOUT[0]=gtimeout" \
++            "gtimeout" "${_ACCEPTANCE_TOUT[0]}"
++    else
++        assert_fail "[#1752/SPEC-9] $_s9_label: _ACCEPTANCE_TOUT non-empty" \
++            "_ACCEPTANCE_TOUT is empty — gtimeout not found on gtimeout-only PATH"
++    fi
++done
++
++# ── [#1752/SPEC-10]: per-caller kill-grace env bridge ─────────────────────────
++print_test_section "[#1752/SPEC-10] per-caller kill-grace env bridge"
++
++# run-tests.sh bridge: ZBUILD_TEST_KILL_GRACE=42
++ZBUILD_TEST_KILL_GRACE=42
++_ACCEPTANCE_TOUT=()
++unset _ACCEPTANCE_TIMEOUT_KILL_OK
++export PATH="$TEST_TEMP_DIR/fakebin"
++export ZBUILD_NEGCTL_KILL_GRACE="${ZBUILD_TEST_KILL_GRACE:-10}"
++_acceptance_timeout_prefix 60
++export PATH="$_SAVED_PATH"
++
++# With -k supported: _ACCEPTANCE_TOUT = [gtimeout, -k, <grace>, <timeout_s>]
++if [[ "${#_ACCEPTANCE_TOUT[@]}" -ge 4 ]]; then
++    assert_eq "[#1752/SPEC-10] run-tests.sh bridge: kill grace index 2 is 42" \
++        "42" "${_ACCEPTANCE_TOUT[2]}"
++    assert_eq "[#1752/SPEC-10] run-tests.sh bridge: element 1 is -k flag" \
++        "-k" "${_ACCEPTANCE_TOUT[1]}"
++else
++    assert_fail "[#1752/SPEC-10] run-tests.sh bridge: _ACCEPTANCE_TOUT has -k and grace" \
++        "array too short (${#_ACCEPTANCE_TOUT[@]} elements): ${_ACCEPTANCE_TOUT[*]:-empty}"
++fi
++
++# run-mutation.sh bridge: ZBUILD_MUTATION_KILL_GRACE=7
++ZBUILD_MUTATION_KILL_GRACE=7
++_ACCEPTANCE_TOUT=()
++unset _ACCEPTANCE_TIMEOUT_KILL_OK
++export PATH="$TEST_TEMP_DIR/fakebin"
++export ZBUILD_NEGCTL_KILL_GRACE="${ZBUILD_MUTATION_KILL_GRACE:-10}"
++_acceptance_timeout_prefix 300
++export PATH="$_SAVED_PATH"
++
++if [[ "${#_ACCEPTANCE_TOUT[@]}" -ge 4 ]]; then
++    assert_eq "[#1752/SPEC-10] run-mutation.sh bridge: kill grace index 2 is 7" \
++        "7" "${_ACCEPTANCE_TOUT[2]}"
++    assert_eq "[#1752/SPEC-10] run-mutation.sh bridge: element 1 is -k flag" \
++        "-k" "${_ACCEPTANCE_TOUT[1]}"
++else
++    assert_fail "[#1752/SPEC-10] run-mutation.sh bridge: _ACCEPTANCE_TOUT has -k and grace" \
++        "array too short (${#_ACCEPTANCE_TOUT[@]} elements): ${_ACCEPTANCE_TOUT[*]:-empty}"
++fi
++
++cleanup_test_env
++print_test_results
++exit $((FAIL > 0))
