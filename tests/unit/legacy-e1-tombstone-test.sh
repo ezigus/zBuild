@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Guard: keeper e-1 (live-updating GitHub comment, PATCH, atomic id) is
 # migrated by #2131, and the pruning protocol (docs/KEEPERS.md) says what that
-# means on disk: the legacy source is gone, a tombstone names the new home,
-# and every doc that cited the legacy path points at the tombstone or the
-# new lib — so the claim "migrated" stays checkable (the #2034 rule).
+# means on disk: a tombstone names the new home, and every doc that cited the
+# legacy path points at the tombstone or the new lib — so the claim "migrated"
+# stays checkable (the #2034 rule). Only legacy/migrated/ is read: issue
+# worktrees leave the rest of legacy/ out (ADR-059 §2), so a check that the
+# source is gone would pass there whether it was gone or not.
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=../../scripts/lib/test-helpers.sh
@@ -16,7 +18,6 @@ assert_contains "[SPEC-1] tombstone names the new lib" "$(cat "$TOMB" 2>/dev/nul
 assert_contains "[SPEC-1] tombstone links the issue" "$(cat "$TOMB" 2>/dev/null)" '#2131'
 assert_contains "[SPEC-1] tombstone names the legacy source it replaces" "$(cat "$TOMB" 2>/dev/null)" 'legacy/scripts/lib/pipeline-github.sh'
 
-assert_file_not_exists "[SPEC-2] the legacy source is removed" "$REPO_ROOT/legacy/scripts/lib/pipeline-github.sh"
 
 # Docs that cited the legacy path now cite the migration, not a file that is gone.
 # A mention of the removed path is fine only when the same line says where it went.

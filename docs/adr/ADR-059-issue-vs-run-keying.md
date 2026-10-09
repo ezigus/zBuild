@@ -149,6 +149,11 @@ all three modes of `zbuild_worktree_enter`.
   write-scope already refuses `legacy/` (`scope_floor_denied`). So a git older than 2.35, an
   explicit `extensions.worktreeConfig=false`, or a failing `git sparse-checkout` never stops the
   run: stderr names the step and git's own error, and the run continues with the full tree.
+- **No test reads `legacy/`.** A test runs inside the issue worktree during a run's test stage,
+  where `legacy/` is absent — so a test that reads a frozen legacy file fails in every run while
+  CI, a full checkout, stays green (#1752's run, after #1802). Tests may read `legacy/migrated/`
+  only. A ported keeper pins what it carried over in its own files, not by comparing against the
+  legacy source.
 - **Re-application keeps widenings.** A re-acquire sets the base patterns again, carrying over any
   keeper widening already present (an anchored plain path under `/legacy/`); any other pattern a
   pre-existing sparse config held is dropped.
@@ -421,3 +426,5 @@ committed, stash ablates nothing and reports a false pass.
   is written only when unset and an explicit `false` is kept, `zbuild_worktree_include_legacy_path`
   refuses every non-plain path, its widening survives re-acquire and re-enter and allows `git rm`,
   and a re-acquire over a foreign sparse config lands on the base patterns plus keeper widenings
+- `tests/unit/no-test-reads-legacy-test.sh` — §2 no test reads `legacy/`: every test tier is
+  scanned for a `$REPO_ROOT/legacy/` path outside `legacy/migrated/`
