@@ -1,0 +1,7 @@
+## spec-correspondence — partial
+
+- judged 10 SPEC(s): 8 correspond, 2 partial, 0 mismatch, 0 uncheckable, 0 unjudged
+
+- SPEC-6 partial: The assertion checks for the presence of key identifier strings (`_acceptance_timeout_prefix`, `scripts/lib/timeout-cmd.sh`, both enforcement filenames) but does not check for a dated paragraph, does not verify the ADR states "a bare `timeout` call is a lint failure", and does not confirm the enforcement filenames appear under an `## Enforced by` section heading.
+- SPEC-9 partial: The loop calls `_acceptance_timeout_prefix 60` identically for every iteration; the five labels appear only in assertion messages, so the test exercises the shared helper five times with the same setup rather than each site's actual call-site code, establishing only that the helper resolves `gtimeout` (already covered by SPEC-1) rather than that each specific call site is wired correctly.
+
