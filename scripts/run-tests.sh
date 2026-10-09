@@ -27,20 +27,14 @@ _RT_FILE_TIMEOUT="${ZBUILD_TEST_FILE_TIMEOUT:-480}"
 # not assumed — a `timeout` that lacks it would exit 125 on every single file
 # rather than running it, so an unsupporting binary degrades to the TERM-only
 # bound instead of failing the suite.
+# The binary and the -k probe come from the shared helper (#1752).
 _RT_KILL_GRACE="${ZBUILD_TEST_KILL_GRACE:-10}"
+# shellcheck source=./lib/timeout-cmd.sh
+source "$SCRIPT_DIR/lib/timeout-cmd.sh"
 _rt_tout=()
 if [[ "$_RT_FILE_TIMEOUT" != "0" ]]; then
-  _rt_tout_bin=""
-  if   command -v gtimeout >/dev/null 2>&1; then _rt_tout_bin="gtimeout"
-  elif command -v timeout  >/dev/null 2>&1; then _rt_tout_bin="timeout"
-  fi
-  if [[ -n "$_rt_tout_bin" ]]; then
-    if "$_rt_tout_bin" -k 1 1 true >/dev/null 2>&1; then
-      _rt_tout=("$_rt_tout_bin" "-k" "$_RT_KILL_GRACE" "$_RT_FILE_TIMEOUT")
-    else
-      _rt_tout=("$_rt_tout_bin" "$_RT_FILE_TIMEOUT")
-    fi
-  fi
+  _acceptance_timeout_prefix "$_RT_FILE_TIMEOUT" "$_RT_KILL_GRACE"
+  _rt_tout=(${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"})
 fi
 
 # _rt_is_timeout_rc <rc> — true when the rc is the shape a killed file exits

@@ -626,7 +626,9 @@ _release_ship() {
         sleep "$_register_interval"
         _waited=$(( _waited + _register_interval ))
     done
-    if ! timeout "$checks_timeout" "$gh_pr_cmd" pr checks "$pr_ref" --watch --fail-fast --required; then
+    # #1752 left this call as it is: release tooling (Initiative 1.1), and moving
+    # it to the shared helper changes how --ship behaves on macOS — its own issue.
+    if ! timeout "$checks_timeout" "$gh_pr_cmd" pr checks "$pr_ref" --watch --fail-fast --required; then # lint-bare-timeout:allow: release tooling; changing its behaviour is outside #1752
         error "release --ship: PR #${pr_ref} required checks failed or timed out (${checks_timeout}s) — NOT merging or publishing (PR left open)"
         exit 1
     fi

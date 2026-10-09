@@ -37,6 +37,9 @@ awk '
     /^trap .*_mut_teardown/ { next }
     { print }
 ' "$HARNESS" > "$HARNESS_SUB"
+# The sub-script loads the shared timeout helper from lib/ beside itself (#1752).
+mkdir -p "$TEST_TEMP_DIR/lib"
+cp "$REPO_ROOT/scripts/lib/timeout-cmd.sh" "$TEST_TEMP_DIR/lib/timeout-cmd.sh"
 
 # Save the test-harness EXIT trap so we can restore it after sourcing, even
 # though the awk strip above already removes the run-mutation trap install.

@@ -115,6 +115,10 @@ source "$_ZBUILD_ROOT/scripts/lib/stage-answers.sh"
 _zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/stage-conduct.sh"
 # shellcheck source=../../scripts/lib/stage-conduct.sh
 source "$_ZBUILD_ROOT/scripts/lib/stage-conduct.sh"
+# #1752: the one shared timeout helper; both model-call paths bound through it.
+_zbuild_route_require "$_ZBUILD_ROOT/scripts/lib/timeout-cmd.sh"
+# shellcheck source=../../scripts/lib/timeout-cmd.sh
+source "$_ZBUILD_ROOT/scripts/lib/timeout-cmd.sh"
 # VIS-C (ADR-049): vision-document loader/validator — guard-idempotent source.
 # Loaded here so _route_redact_prompt (shared funnel for single-shot + loop)
 # can inject the advisory Intent preamble into every stage prompt.
@@ -1042,10 +1046,10 @@ _route_call_claude() {
     local stderr_file rc response
     while :; do
     rc=0
-    local -a _tout_cmd=()
-    if   command -v gtimeout >/dev/null 2>&1; then _tout_cmd=("gtimeout" "$_local_secs")
-    elif command -v timeout  >/dev/null 2>&1; then _tout_cmd=("timeout"  "$_local_secs")
-    fi
+    # TERM-only (`none`), as this bound has always been: a -k here would turn
+    # a hang into rc=137, which the retry-on-timeout path does not treat as 124.
+    _acceptance_timeout_prefix "$_local_secs" none
+    local -a _tout_cmd=(${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"})
     if ! stderr_file="$(mktemp "$(zbuild_engine_tmpdir)/zb-router-stderr.XXXXXX" 2>/dev/null)"; then
         error "router: mktemp failed"
         eb_emit_event "router.error" "tier=$tier" "model_id=$_ROUTE_MODEL_ID" "reason=mktemp_failed"
@@ -1939,10 +1943,9 @@ ${_diff_pointer}"
         local _iter_attempt=0 _iter_local_secs="$secs"
         while :; do
         rc=0
-        local -a _tout_cmd=()
-        if   command -v gtimeout >/dev/null 2>&1; then _tout_cmd=("gtimeout" "$_iter_local_secs")
-        elif command -v timeout  >/dev/null 2>&1; then _tout_cmd=("timeout"  "$_iter_local_secs")
-        fi
+        # TERM-only, as in _route_call_claude (#1752).
+        _acceptance_timeout_prefix "$_iter_local_secs" none
+        local -a _tout_cmd=(${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"})
 
         # Run claude in $cwd as background child so signal trap can kill it.
         # ADR-024 / #671 (Wave 13-B): claude spawn is a fresh-user-shell class

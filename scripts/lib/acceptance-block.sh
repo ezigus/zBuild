@@ -24,6 +24,12 @@ _ACCEPTANCE_BLOCK_LOADED=1
 # 1 = the id, 3 = the tag (empty when the line has none).
 _ACCEPTANCE_SPEC_RE='^(SPEC-[0-9]+)(\[([a-z-]+)\])?:'
 
+# The shared timeout helper (#1752), loaded as a same-directory
+# `source "$DIR/<file>.sh"` line so _runner_contract_lib_closure lists it too.
+_ACCEPTANCE_BLOCK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=./timeout-cmd.sh
+source "$_ACCEPTANCE_BLOCK_DIR/timeout-cmd.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" timeout-cmd.sh"
+
 # #2010: zbuild_engine_tmpdir names where engine code writes temp files (the
 # run memo, #2110). Lazy-sourced, same pattern acceptance-reachability.sh uses:
 # this file is sourced from several entry points and cannot assume helpers.sh
@@ -338,48 +344,8 @@ _acceptance_build_run_cmd() {
     return 0
 }
 
-# _acceptance_timeout_prefix <timeout_s>  (#1660)
-# Fills the global array _ACCEPTANCE_TOUT with the `timeout` prefix tokens that
-# bound one testfile run — empty when no usable timeout binary exists
-# (best-effort, same convention as core/router/route.sh). Always returns 0.
-#
-# Sets a global rather than printing because the probe below is memoized, and a
-# `$(...)`/`< <(...)` caller would run it in a subshell where the memo dies.
-#
-# `-k` is what makes the bound real: plain `timeout` sends TERM only, so a child
-# that traps or ignores TERM runs unbounded — the 9h22m hang in #1611. The grace
-# is ZBUILD_NEGCTL_KILL_GRACE (default 10s).
-#
-# `-k` is probed, not assumed. GNU coreutils has had it since 7.0, but a
-# `timeout` lacking it exits 125 on the unknown flag, and 125 is not a timeout rc
-# — every bounded run would fall through to the ordinary control comparison and
-# report `tautology`/`not_passing_at_head`, condemning correct changes. That is
-# strictly worse than the hang this replaces, so support is verified once before
-# the flag is used, and a `timeout` without it degrades to the old TERM-only
-# bound instead of failing every run.
-_acceptance_timeout_prefix() {
-    local timeout_s="$1"
-    local kill_grace="${ZBUILD_NEGCTL_KILL_GRACE:-10}"
-    _ACCEPTANCE_TOUT=()
-    local bin=""
-    # gtimeout first, same order as run-tests.sh: where both exist gtimeout is
-    # unambiguously GNU, while `timeout` may be a thinner platform build.
-    if   command -v gtimeout >/dev/null 2>&1; then bin="gtimeout"
-    elif command -v timeout  >/dev/null 2>&1; then bin="timeout"
-    else return 0
-    fi
-    if [[ -z "${_ACCEPTANCE_TIMEOUT_KILL_OK:-}" ]]; then
-        if "$bin" -k 1 1 true >/dev/null 2>&1; then
-            _ACCEPTANCE_TIMEOUT_KILL_OK=yes
-        else
-            _ACCEPTANCE_TIMEOUT_KILL_OK=no
-        fi
-    fi
-    _ACCEPTANCE_TOUT=("$bin")
-    [[ "$_ACCEPTANCE_TIMEOUT_KILL_OK" == "yes" ]] && _ACCEPTANCE_TOUT+=("-k" "$kill_grace")
-    _ACCEPTANCE_TOUT+=("$timeout_s")
-    return 0
-}
+# _acceptance_timeout_prefix lives in timeout-cmd.sh (#1752), loaded above —
+# the one helper every timeout bound in core/, scripts/ and plugins/ uses.
 
 # _acceptance_file_timeout <testfile_rel> <stage_bound_s>  (#2110)
 # The bound for ONE run of ONE file: the stage value raised to 3x the time the

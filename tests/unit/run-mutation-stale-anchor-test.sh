@@ -39,6 +39,9 @@ done
 SANDBOX="$TEST_TEMP_DIR/sandbox"
 mkdir -p "$SANDBOX/scripts" "$SANDBOX/core" "$SANDBOX/tests/unit"
 cp "$REPO_ROOT/scripts/run-mutation.sh" "$SANDBOX/scripts/run-mutation.sh"
+# run-mutation.sh loads the shared timeout helper beside it (#1752).
+mkdir -p "$SANDBOX/scripts/lib"
+cp "$REPO_ROOT/scripts/lib/timeout-cmd.sh" "$SANDBOX/scripts/lib/timeout-cmd.sh"
 printf 'widget_ok() {\n    return 0\n}\n' > "$SANDBOX/core/widget.sh"
 printf 'source core/widget.sh\nwidget_ok\n' > "$SANDBOX/tests/unit/widget-test.sh"
 (

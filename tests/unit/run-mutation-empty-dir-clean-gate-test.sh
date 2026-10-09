@@ -32,6 +32,9 @@ if [[ -z "$REAL_GIT" ]]; then
 fi
 
 cp "$REPO_ROOT/scripts/run-mutation.sh" "$SANDBOX/scripts/run-mutation.sh"
+# run-mutation.sh loads the shared timeout helper beside it (#1752).
+mkdir -p "$SANDBOX/scripts/lib"
+cp "$REPO_ROOT/scripts/lib/timeout-cmd.sh" "$SANDBOX/scripts/lib/timeout-cmd.sh"
 (
     cd "$SANDBOX"
     "$REAL_GIT" init -q -b main 2>/dev/null || "$REAL_GIT" init -q
@@ -39,7 +42,7 @@ cp "$REPO_ROOT/scripts/run-mutation.sh" "$SANDBOX/scripts/run-mutation.sh"
     "$REAL_GIT" config user.name "zbuild-test"
     "$REAL_GIT" config commit.gpgsign false
     echo "initial" > core/dummy.sh
-    "$REAL_GIT" add core/dummy.sh scripts/run-mutation.sh
+    "$REAL_GIT" add core/dummy.sh scripts/run-mutation.sh scripts/lib/timeout-cmd.sh
     "$REAL_GIT" commit -q -m "seed"
 ) >/dev/null 2>&1
 

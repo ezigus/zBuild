@@ -28,8 +28,9 @@ prereqs_ok=true
 # macOS: ensure the formulae zbuild cannot run well without and that the base
 # system lacks — Bash 5 (system /bin/bash is frozen at 3.2), flock (the local-fs
 # claim backend requires it for atomicity), and coreutils for `gtimeout` (macOS
-# has no `timeout`; route.sh and scripts/run-tests.sh use gtimeout to bound model
-# calls + hung test files — without it those timeouts silently no-op). Idempotent;
+# has no `timeout`; every timeout bound — model calls, hung test files, the
+# acceptance gates — is built by scripts/lib/timeout-cmd.sh, gtimeout first, and
+# without either binary those bounds silently no-op). Idempotent;
 # only attempts when Homebrew is present.
 if [[ "$(uname -s)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
     command -v flock    >/dev/null 2>&1 || brew install flock
