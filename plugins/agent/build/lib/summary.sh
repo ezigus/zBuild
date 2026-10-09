@@ -20,7 +20,10 @@ if ! declare -F _zbuild_make_fresh_shell >/dev/null 2>&1; then
     # shellcheck source=../../../../scripts/lib/env-scrub.sh
     source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../scripts/lib" && pwd)/env-scrub.sh" 2>/dev/null || true
 fi
-if ! declare -F _acceptance_timeout_prefix >/dev/null 2>&1; then
+# Keyed on _acceptance_file_timeout, not _acceptance_timeout_prefix: the latter
+# lives in timeout-cmd.sh (#1752), which route.sh loads too, so it can be defined
+# while acceptance-block.sh is not.
+if ! declare -F _acceptance_file_timeout >/dev/null 2>&1; then
     # shellcheck source=../../../../scripts/lib/acceptance-block.sh
     source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../../scripts/lib" && pwd)/acceptance-block.sh" 2>/dev/null || true
 fi

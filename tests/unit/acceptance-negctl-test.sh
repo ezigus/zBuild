@@ -544,12 +544,13 @@ assert_eq "[SPEC-4] rc=137 TESTFILE does not emit not_passing_at_head" \
 
 # ── NC-R: [SPEC-2] run-tests.sh also wires -k for SIGKILL escalation ─────────
 # The same SIGTERM-ignoring defect can hang run-tests.sh per-file timeouts.
-# Structural: the _rt_tout assignment in scripts/run-tests.sh must carry -k.
+# Structural: scripts/run-tests.sh builds _rt_tout through the shared helper
+# with its kill grace, which is what adds -k (#1752).
 # In the reachability worktree, REPO_ROOT → worktree; run-tests.sh at baseline
 # has no -k → grep returns 0 ≠ 1 → test flips → reachability gate passes.
 # (Behavioural proof of the same wiring lives in run-tests-timeout-report-test.sh.)
 assert_eq "[SPEC-2] run-tests.sh _rt_tout wires -k for SIGKILL escalation" "1" \
-    "$(grep -cF '"-k" "$_RT_KILL_GRACE"' "$REPO_ROOT/scripts/run-tests.sh")"
+    "$(grep -cF '_acceptance_timeout_prefix "$_RT_FILE_TIMEOUT" "$_RT_KILL_GRACE"' "$REPO_ROOT/scripts/run-tests.sh")"
 
 # ── NC-S…NC-U retired with [guard] (#2304, ADR-069): they tested how the guard
 # arm attributed a shared file's failure. Per-SPEC attribution for code SPECs is

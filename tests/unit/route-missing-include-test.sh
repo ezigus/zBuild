@@ -64,6 +64,8 @@ _INCLUDES=(
     scripts/lib/stage-checkpoint.sh
     scripts/lib/stage-answers.sh
     scripts/lib/stage-conduct.sh
+    # #1752: the shared timeout helper both model-call paths bound through.
+    scripts/lib/timeout-cmd.sh
 )
 
 # _stub_tree — a minimal install tree: route.sh verbatim, every include a stub.

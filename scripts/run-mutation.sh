@@ -104,7 +104,7 @@ _mut_resolve_jobs() {
     printf '%s' "$j"
 }
 
-# Per-mutant test timeout probe (mirrors run-tests.sh:18-24). 0 ⇒ no timeout.
+# Per-mutant test timeout (same helper as run-tests.sh). 0 ⇒ no timeout.
 # Validate: a non-integer would make `timeout` exit non-zero immediately, which
 # the harness would miscount as "caught" (PASS) — masking an uncaught mutation.
 _MUT_TEST_TIMEOUT="${ZBUILD_MUTATION_TEST_TIMEOUT:-300}"
@@ -118,21 +118,14 @@ fi
 # timeout signals the whole process group, so the KILL reaches that child too.
 _MUT_KILL_GRACE="${ZBUILD_MUTATION_KILL_GRACE:-10}"
 [[ "$_MUT_KILL_GRACE" =~ ^[0-9]+$ ]] || _MUT_KILL_GRACE=10
+# The binary and the -k probe come from the shared helper (#1752); a binary
+# without -k keeps the TERM-only bound instead of failing every mutant.
+# shellcheck source=./lib/timeout-cmd.sh
+source "$SCRIPT_DIR/lib/timeout-cmd.sh"
 _mut_tout=()
 if [[ "$_MUT_TEST_TIMEOUT" != "0" ]]; then
-    _mut_tout_bin=""
-    if   command -v gtimeout >/dev/null 2>&1; then _mut_tout_bin="gtimeout"
-    elif command -v timeout  >/dev/null 2>&1; then _mut_tout_bin="timeout"
-    fi
-    if [[ -n "$_mut_tout_bin" ]]; then
-        # Probe -k rather than assume it: a binary without it keeps the
-        # TERM-only bound instead of failing every mutant.
-        if "$_mut_tout_bin" -k 1 1 true >/dev/null 2>&1; then
-            _mut_tout=("$_mut_tout_bin" "-k" "$_MUT_KILL_GRACE" "$_MUT_TEST_TIMEOUT")
-        else
-            _mut_tout=("$_mut_tout_bin" "$_MUT_TEST_TIMEOUT")
-        fi
-    fi
+    _acceptance_timeout_prefix "$_MUT_TEST_TIMEOUT" "$_MUT_KILL_GRACE"
+    _mut_tout=(${_ACCEPTANCE_TOUT[@]+"${_ACCEPTANCE_TOUT[@]}"})
 fi
 
 # ─── Helpers ────────────────────────────────────────────────────────────────

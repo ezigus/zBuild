@@ -440,7 +440,7 @@ Two things make that safe, and both are load-bearing:
   likewise not a timeout rc — every bounded run would be condemned rather than run. Support is
   verified once per process; a binary without it degrades to the old TERM-only bound.
 
-Both gates build the bound through one helper, `_acceptance_timeout_prefix` (`acceptance-block.sh`),
+Both gates build the bound through one helper, `_acceptance_timeout_prefix` (`acceptance-block.sh`; since #1752 `scripts/lib/timeout-cmd.sh`, see below),
 which also resolves `gtimeout` — previously only `run-tests.sh` did, leaving the acceptance gates
 effectively unbounded on a macOS host with GNU coreutils but no POSIX `timeout`.
 
@@ -991,3 +991,47 @@ In run 37920468204 for #1752, the self-grading snapshot left out a lib the gate'
 - **The other gates that read these libs.** shape-floor already failed with `library_load_failure` when `_sf_shape_floor` was undefined (#1758). It now also fails when the load list is non-empty, for example when `impact-prefilter.sh` did not load. secret-scan used to skip as `no_baseline` when `merge-base.sh` did not load, which passed a diff nobody scanned. It now fails with `library_load_failure` and `disposition: broken`. design-gate already failed closed: a missing `extract_acceptance_block` reads as `ACCEPTANCE_MISSING`.
 
 Verification: `tests/integration/acceptance-gate-fails-closed-test.sh` F1–F7; the control case there is the same fixture passing with every lib present.
+
+### Amendment (2026-10-09, #1752) — every timeout bound goes through one helper
+
+The #1660 amendment above put both acceptance gates' bound in one helper, `_acceptance_timeout_prefix`. The rest of the engine still resolved its own: six sites each hand-copied the "`gtimeout`, else `timeout`" probe (macOS has no `timeout`; Homebrew's coreutils installs it as `gtimeout` only), and a seventh, build's false-completion guard, called `timeout` bare — on a macOS host it never ran its testfile, and every `empty_diff` build with an acceptance block was falsely `inert_build` (#2113).
+
+- **The rule.** Every timeout bound in `core/`, `scripts/` and `plugins/` is resolved through the shared helper `_acceptance_timeout_prefix` in `scripts/lib/timeout-cmd.sh`. A bare `timeout` (or `gtimeout`) call is a lint failure, and so is a hand-written probe for either binary outside that file. A line may opt out with `# lint-bare-timeout:allow: <reason>`; the reason is required. `scripts/release.sh`'s `pr checks` call is opted out (release tooling; changing its behaviour is its own issue). `scripts/lib/test-helpers.sh` is not scanned: its `timeout` is a test-only mock.
+- **The helper.** `_acceptance_timeout_prefix <timeout_s> [kill_grace|none]` fills `_ACCEPTANCE_TOUT` with `<bin> [-k <grace>] <timeout_s>`, `gtimeout` first. The grace defaults to `ZBUILD_NEGCTL_KILL_GRACE` (10s), so the acceptance gates' contract is unchanged; `run-tests.sh` and `run-mutation.sh` pass their own (`ZBUILD_TEST_KILL_GRACE`, `ZBUILD_MUTATION_KILL_GRACE`); the router and `gh-automation.sh` pass `none` and keep the TERM-only bound they always had. `-k` is still probed once per process. With neither binary the bound is empty and the caller runs its command unbounded — never skips it. Exit codes are untouched: 124 is a timeout and 137 a kill, as before.
+- **The gates load it like every contract lib.** `acceptance-block.sh` loads the helper with a same-directory `source "$DIR/timeout-cmd.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" timeout-cmd.sh"` line: `_runner_contract_lib_closure` lists it, the self-grading snapshot carries it, and a failed load fails the gate (the amendment above). The first #1752 run loaded it another way, the snapshot of that day left it out, and the gate passed having checked nothing.
+
+## Enforced by
+
+- §1 → `tests/unit/acceptance-block-test.sh` TC-7 (`acceptance_list_spec_ids` returns the ids); `tests/unit/acceptance-coverage-test.sh` C6 (bare legacy `SPEC:` lines carry no id and are not checked)
+- §2 → `tests/unit/acceptance-coverage-test.sh` C1–C5 (an untagged SPEC is named; zero or missing TESTFILES count as untagged); `tests/integration/acceptance-gate-test.sh` S3 (`acceptance.gate.untagged_spec`)
+- §3 → `tests/unit/acceptance-negctl-test.sh` NC-A (load-bearing passes), NC-B and NC-D (tautology, the #844 shape), NC-C (`not_passing_at_head`), NC-E (merge-base equals HEAD gives a per-SPEC `no_impl_delta` skip); `tests/integration/acceptance-gate-test.sh` S1, S2, S7; `tests/unit/merge-base-default-branch-test.sh` MB-1–MB-5
+- §4 → `tests/integration/acceptance-gate-test.sh` S4 (no block gives `precondition_unmet`), S9 (placeholder block), S5 (malformed block fails closed); `tests/integration/acceptance-gate-v2-reader-test.sh` SPEC-3
+- §5 → `tests/unit/template-simple-yaml-test.sh` SPEC-2 (acceptance-gate after shape-floor), SPEC-14 (member of `build_test_cycle`)
+- Amendment (2026-07-01) → `tests/unit/template-simple-yaml-test.sh` SPEC-3 (`acceptance-gate` binds role `acceptance_gate`); `tests/integration/acceptance-gate-test.sh` S4, S9
+- Amendment (#951) → `tests/unit/build-acceptance-spec-feedback-test.sh` L1a–L1c (build's prompt lists every SPEC id)
+- Amendment (#956) → `tests/integration/acceptance-gate-reachability-test.sh` R1–R5; `tests/unit/acceptance-block-test.sh` TC-8–TC-13 (`acceptance_list_wiring`, path-traversal guard); `tests/unit/acceptance-gate-reachability-test.sh` #2109-B1, B2, B4, B5; `tests/unit/acceptance-gate-runs-per-file-test.sh` #2110-1 to #2110-4
+- Amendment (#1188) → `tests/unit/acceptance-negctl-test.sh` NC-G, NC-H; `tests/integration/acceptance-gate-test.sh` S8; `tests/unit/acceptance-gate-reachability-test.sh` REACH-GUARD
+- Amendment (Phase 2) → `tests/unit/acceptance-disposition-classify-test.sh`; `tests/unit/core-pipeline-cycle-acceptance-terminal-test.sh` SPEC-1, SPEC-2, SPEC-5, DECOUPLING; `tests/unit/gate-aggregator-test.sh` TC-8
+- Amendment (#1211) → `tests/integration/acceptance-gate-quiet-test.sh` SPEC-1–SPEC-4
+- Amendment (#1219) → superseded (#1583, then ADR-068/#2271); `tests/integration/acceptance-gate-test.sh` S13, S14 check that no fault is set
+- Amendment (#1265) → `tests/integration/cycle-no-committed-changes-fail-fast-test.sh`; `tests/unit/pr-open-zero-commits-halts-test.sh` SPEC-21
+- Amendment (#1583) → `tests/integration/acceptance-gate-test.sh` S12; `tests/unit/build-acceptance-spec-feedback-test.sh` L2c, L2d (retired by #2022)
+- Amendment (#1585) → `tests/unit/acceptance-disposition-classify-test.sh` (`tautology`, `inert_wiring` recoverable); `tests/integration/acceptance-gate-test.sh` S10, S12
+- Amendment (#1660) → `tests/unit/acceptance-negctl-test.sh` NC-O, NC-P, NC-P2, NC-P3, NC-Q, NC-R; `tests/unit/acceptance-gate-reachability-test.sh` REACH-KILL-1, REACH-KILL-2; the `gtimeout` resolution: `tests/unit/timeout-cmd-test.sh` H1, `tests/unit/timeout-cmd-sites-test.sh` S6
+- Amendment (#1686) → `tests/unit/acceptance-gate-reachability-test.sh` REACH-NOPATH-1/4/5; `tests/integration/acceptance-gate-test.sh` S15; `tests/unit/acceptance-disposition-classify-test.sh` (`wiring_not_on_path` recoverable). Its route-to-design step is superseded by ADR-068 (#2271): `tests/unit/no-fault-routing-test.sh` R2
+- Amendment (#1684) → `tests/integration/acceptance-gate-test.sh` S16, S16b, S16c, S16d; `tests/unit/acceptance-coverage-test.sh` C10–C16; `tests/unit/acceptance-block-test.sh` TC-19–TC-23
+- Amendment (#1670), Amendment (#1777) → superseded by ADR-069 (the `[guard]` paths are gone): `tests/unit/no-guard-paths-test.sh` N1, N2
+- Amendment (#1715) → `tests/integration/acceptance-gate-test.sh` S17, S18, S19; `tests/unit/acceptance-negctl-test.sh` NC-K, NC-K2, NC-K3
+- Amendment (#1711), Amendment (#2157), and the iteration-2 escalation in Amendment (#2097) → superseded by ADR-068 (#2271), which removed escalation and fault routing: `tests/unit/no-fault-routing-test.sh` R2; `tests/integration/acceptance-gate-reachability-test.sh` R6a, R6b
+- Amendment (#2022) → `tests/unit/template-simple-yaml-test.sh` SPEC-14; `tests/unit/test-author-test.sh` SPEC-1–SPEC-3; `tests/unit/lifecycle-testfile-deny-role-test.sh` SPEC-1–SPEC-3; `tests/unit/assertion-integrity-test.sh` SPEC-1, SPEC-2
+- Amendment (#2097) → `tests/unit/acceptance-disposition-classify-test.sh` (`not_passing_at_head` recoverable); `tests/integration/acceptance-gate-test.sh` S14
+- Amendment (#2161) → `tests/integration/acceptance-gate-v2-reader-test.sh` SPEC-1–SPEC-4; `tests/unit/gate-v2-contract-test.sh` SPEC-15; `tests/unit/core-pipeline-cycle-acceptance-terminal-test.sh`
+- Amendment (2026-09-28, a tag carries its issue) → `tests/unit/issue-scoped-spec-tags-test.sh` T1–T5
+- Amendment (2026-09-28, a signal is not a timeout) → `tests/unit/acceptance-negctl-signal-test.sh` S1–S6, S8
+- Amendment (#2234) → `tests/unit/acceptance-negctl-unreached-test.sh` U2, U8–U12
+- Amendment (#2244, #2243) → `tests/unit/test-author-supersedes-test.sh` S1–S6 (`guard_test_broken` went with `[guard]`, #2304)
+- Amendment (#2300) → `tests/unit/acceptance-negctl-plugin-tests-test.sh` P1, P2
+- Amendment (#2304) → `tests/unit/acceptance-unclaimed-code-test.sh` U1–U4; `tests/integration/acceptance-gate-test.sh` S6b
+- Amendment (#2304 part B) → `tests/unit/acceptance-negctl-status-test.sh` N1–N5; `tests/unit/acceptance-coverage-test.sh` C7, C9; `tests/integration/acceptance-gate-test.sh` S6
+- Amendment (#1752 run 37920468204, the gate fails closed) → `tests/integration/acceptance-gate-fails-closed-test.sh` F1–F7; `tests/unit/runner-contract-lib-seam-test.sh` SPEC-6, SPEC-7
+- Amendment (#1752) → `scripts/lib/lint-bare-timeout.sh` (in `npm run lint`), proven by `tests/unit/lint-bare-timeout-test.sh` L1 (a planted bare call fails, in every command position), L2 (a hand-written probe outside the helper fails), L3–L5 (mentions, opt-outs with a reason, the test-helpers mock), L6 (the real tree passes; `npm run lint` runs it), L7 (`release.sh` is opted out with a reason); `tests/unit/timeout-cmd-test.sh` H1–H6 (the helper on a `gtimeout`-only host; `none`; the `-k` probe once per process; no binary → empty bound, rc 0), C1–C3 (the contract-lib closure and snapshot carry the helper; build's guard still loads `acceptance-block.sh`); `tests/unit/timeout-cmd-sites-test.sh` S1–S7 (each converted site bounds its command on a `gtimeout`-only host; a red acceptance testfile still yields `inert_build`)

@@ -117,11 +117,12 @@ assert_eq "[SPEC-6] the two notes are not run together without a space" "0" \
     "$(printf '%s\n' "$OUT" | grep -c 'skipped,1 timed out')"
 
 # ─── RT-K-STRUCT: unconditional structural wiring check ──────────────────────
-# The _rt_tout assignment in run-tests.sh must wire "-k" so a SIGTERM-ignoring
-# child is escalated to SIGKILL. Runs without a timeout binary, which is why it
-# is structural; RT-K below proves the same wiring behaviourally.
+# run-tests.sh must build _rt_tout through the shared helper WITH its kill grace,
+# so a SIGTERM-ignoring child is escalated to SIGKILL (#1752: the helper adds -k).
+# Runs without a timeout binary, which is why it is structural; RT-K below
+# proves the same wiring behaviourally.
 assert_eq "RT-K-STRUCT: run-tests.sh _rt_tout wires -k for SIGKILL escalation" "1" \
-    "$(grep -cF '"-k" "$_RT_KILL_GRACE"' "$RUN_TESTS")"
+    "$(grep -cF '_acceptance_timeout_prefix "$_RT_FILE_TIMEOUT" "$_RT_KILL_GRACE"' "$RUN_TESTS")"
 
 # ─── RT-K: SIGTERM-ignoring file is escalated to SIGKILL via -k ───────────────
 # Proves the -k wiring in _rt_tout is load-bearing. Without -k, `timeout` hangs
