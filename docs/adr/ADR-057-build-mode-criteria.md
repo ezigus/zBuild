@@ -3,7 +3,7 @@
 **Status:** Accepted (2026-08-12)
 **Date:** 2026-08-12
 **Issue:** #1768
-**Amended:** 2026-08-22 (#1918) — §2 gate 3 narrowed to account for the human merge gate, and gate 3b added for a diff that cannot be pushed at all
+**Amended:** 2026-08-22 (#1918) — §2 gate 3 narrowed to account for the human merge gate, and gate 3b added for a diff that cannot be pushed at all; 2026-10-09 (#1752) — §5 the self-grading snapshot copies every top-level `scripts/lib/*.sh`, and the closure only decides whether a run self-grades
 **Amends:** ADR-036 (§"Self-hosting note" — its rule that grammar-extending changes must be hand-landed was superseded by #1783 and never updated; see §5)
 **Related:** ADR-023 (install isolation), ADR-047 (stage-agnostic mechanics — its own dogfood carve-out, §5), ADR-050 (prior-work reuse), ADR-055 (inter-stage data contract v2)
 
@@ -97,6 +97,13 @@ ADR-036 states that grammar-extending changes must be hand-landed because the co
 
 So a contract-grammar change **is** dogfoodable. It is also **self-grading** — the run's gates read the code build just wrote — which is why it lands under gate 2 as `By-hand` by default rather than being forbidden. The engine surfaces the condition: `_RUNNER_SELF_GRADE_REASON` is emitted once per run so the operator can see it happened.
 
+> **Amended 2026-10-09 (#1752): the snapshot copies all of `scripts/lib`.**
+>
+> The snapshot used to copy only `_runner_contract_lib_closure`. That closure follows lines of the form `source "$VAR/<file>.sh"` and no other form. In run 37920468204 for #1752, build moved a helper into a new sibling and loaded it with `source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/timeout-cmd.sh"`. The sibling was not copied, the gates failed to load, and the acceptance check passed having checked nothing (ADR-036, amendment of the same date). `helpers.sh` is loaded the same way and had never been in the snapshot either; it worked only because the callers had usually loaded it already.
+>
+> - `_runner_snapshot_contract_libs` copies every top-level `scripts/lib/*.sh`, so the snapshot is a self-contained root whatever form a `source` line takes. It does not copy the subdirectories `signing/` and `versioning/`: only `release-tarball.sh` and `version.sh` load them, and no contract reader loads those two.
+> - `_runner_contract_lib_closure` still decides **whether** a run self-grades (`_runner_design_targets_contract_lib`), and so still defines the gate-2 set below. It no longer decides **what** is copied.
+
 ## Consequences
 
 **Positive**
@@ -115,7 +122,7 @@ So a contract-grammar change **is** dogfoodable. It is also **self-grading** —
 
 No code. Verification is `npm run lint` (which runs the docs checks) plus re-deriving the gate-2 file set with `_runner_contract_lib_closure` rather than trusting the count quoted in §2.
 
-**Re-derive the gate-2 set; never copy it — and derive the closure, not the array.** The two are different numbers and reading the wrong one is the easy mistake: `_RUNNER_CONTRACT_LIB_ENTRYPOINTS` (`core/pipeline/runner.sh`) lists **six** basenames, but the gate is about `_runner_contract_lib_closure`, which follows same-directory `source` lines from each and resolved to **eight** at #1918 (2026-08-22):
+**Re-derive the gate-2 set; never copy it — and derive the closure, not the array.** (Since 2026-10-09 the closure is the gate-2 set only; the snapshot copies every top-level lib, §5.) The two are different numbers and reading the wrong one is the easy mistake: `_RUNNER_CONTRACT_LIB_ENTRYPOINTS` (`core/pipeline/runner.sh`) lists **six** basenames, but the gate is about `_runner_contract_lib_closure`, which follows same-directory `source` lines from each and resolved to **eight** at #1918 (2026-08-22):
 
 ```
 acceptance-block.sh  acceptance-coverage.sh  acceptance-negctl.sh
@@ -132,6 +139,13 @@ bash -c 'source core/pipeline/runner.sh 2>/dev/null; _runner_contract_lib_closur
 **Checking gate 3b:** `git diff --name-only <merge-base>.. -- '.github/workflows/**'` — any output means `By-hand` until #1780 closes.
 
 **Checking gate 3's merge-gate premise:** `gh api repos/:owner/:repo --jq .allow_auto_merge` — `false` means a human stands in front of every merge, which is what narrows the gate.
+
+## Enforced by
+
+- §1, §3, §4 and gates 1, 3 and 3b are triage rules for the Build Mode field. No code reads the field (see Consequences), so there is nothing for a test to run. Each marking records its gate in the issue body, and a reader checks it there.
+- §2 gate 2, which says the set is computed from `_runner_contract_lib_closure`: `tests/unit/runner-contract-lib-seam-test.sh` SPEC-1 checks that the closure includes the transitive dependencies, and SPEC-4/SPEC-5 check that a WIRING target inside the set is detected and one outside it is not. `tests/unit/engine-stage-reports-test.sh` SPEC-4 checks that detection reads the reported wiring.
+- §5, the snapshot that tracks the tree: `tests/unit/runner-contract-lib-seam-test.sh` SPEC-3 checks there is no once-guard, and `tests/integration/self-host-snapshot-tracks-tree-test.sh` checks that a refresh picks up an edit and that the source tree is never written. `tests/integration/self-host-contract-lib-redirect-test.sh` checks that the gate reads the run's own grammar.
+- §5 amendment (2026-10-09): `tests/unit/runner-contract-lib-seam-test.sh` SPEC-6 checks that a sibling loaded with the `$(cd …)` form, and `helpers.sh`, are in the snapshot and load from it. SPEC-7 checks that every top-level lib of the real tree is in the snapshot. SPEC-2 checks that every same-directory dependency resolves inside it.
 
 ## References
 

@@ -21,17 +21,13 @@ GIT="$(command -v git)"
 # ── Working-tree grammar: copy the real grammar libs, then EXTEND acceptance-
 # block.sh to recognize a NEW testfiles sentinel token `TESTS:` that the installed
 # reader does not. Models a #956-style grammar extension living only in the
-# working tree. merge-base.sh is copied because negctl/reachability source it from
-# their own dir, and default-branch.sh because merge-base.sh sources IT (#1655) —
-# unguarded, so an override dir missing it fails hard. Production derives this
-# set transitively (_runner_contract_lib_closure); this list is the hand-written
-# stand-in for the same closure.
+# working tree. Every top-level lib is copied, as the production snapshot does
+# (_runner_snapshot_contract_libs, #1752): a hand-picked list here once left out
+# env-scrub.sh, and the gate graded without it unnoticed until the gate began
+# failing on a lib that did not load.
 OVERRIDE_LIB="$TEST_TEMP_DIR/wt-lib"
 mkdir -p "$OVERRIDE_LIB"
-for f in acceptance-block.sh acceptance-coverage.sh acceptance-negctl.sh \
-         acceptance-reachability.sh merge-base.sh default-branch.sh; do
-    cp "$REPO_ROOT/scripts/lib/$f" "$OVERRIDE_LIB/$f"
-done
+cp "$REPO_ROOT"/scripts/lib/*.sh "$OVERRIDE_LIB/"
 # Grammar extension: accept `TESTS:` as an alias of the `TESTFILES:` section start
 # inside extract_acceptance_block (its normalized output still emits `TESTFILES:`,
 # so the sibling parsers need no change).

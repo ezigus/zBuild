@@ -97,6 +97,7 @@ _ag_unreached_where() {
 # acceptance block. Genuine violations lead; infra classes trail.
 _ag_build_reason() {
     local f untagged="" taut="" nohead="" notf="" inert="" notpath="" infra="" malformed=0 nofiles="" sig="" unb="" unh=""
+    local loadfail="" nothing=""
     local -a unclaimed=()
     for f in "$@"; do
         case "$f" in
@@ -112,10 +113,15 @@ _ag_build_reason() {
             unreached_at_head:*)    unh="$unh ${f#unreached_at_head:}" ;;
             killed_by_signal:*)     sig="$sig ${f#killed_by_signal:}" ;;
             malformed_acceptance_block) malformed=1 ;;
+            gate_load_failed:*)     loadfail="${f#gate_load_failed:}" ;;
+            nothing_checked:*)      nothing="${f#nothing_checked:}" ;;
             negctl_error:* | reachability_error:*) infra="$infra $f" ;;
         esac
     done
     local -a clauses=()
+    # #1752: nothing below was checked, so these lead.
+    [[ -n "$loadfail" ]] && clauses+=("its own code did not load ($loadfail), so no requirement was checked — this is not a pass")
+    [[ -n "$nothing" ]] && clauses+=("the acceptance block lists $nothing requirement(s) and none of them was checked — the check stopped before reporting on any, so this is not a pass")
     # #2163: state the finding, never a remedy addressed to another stage.
     # #2269: each clause says what was tried, what happened, and what to change,
     # in words the reader was given — never the name of the check.
@@ -156,6 +162,49 @@ _ag_build_reason() {
         if [[ -z "$out" ]]; then out="$c"; else out="$out; $c"; fi
     done
     printf 'the acceptance check failed — %s' "$out"
+}
+
+# The lib functions acceptance_gate_run calls. One undefined after loading means
+# a lib did not load whole; the gate must not grade with what is left (#1752).
+_AG_REQUIRED_FNS=(
+    extract_acceptance_block acceptance_list_spec_ids acceptance_list_testfiles
+    acceptance_list_testfiles_for_spec acceptance_spec_desc
+    acceptance_find_assertion_label acceptance_list_wiring
+    acceptance_unclaimed_code_check acceptance_coverage_check
+    acceptance_negctl_check acceptance_reachability_check
+    zbuild_resolve_merge_base _acceptance_file_timeout
+)
+
+# _ag_load_problems — print what of the gate's code did not load: the files a
+# `source` failed on (recorded in _ZBUILD_CONTRACT_LOAD_ERRORS by plugin.sh and
+# the libs) and the required functions that are undefined. Empty = all loaded.
+_ag_load_problems() {
+    local out="" f
+    for f in ${_ZBUILD_CONTRACT_LOAD_ERRORS:-}; do
+        [[ " $out " == *" $f "* ]] || out="${out:+$out }$f"
+    done
+    for f in "${_AG_REQUIRED_FNS[@]}"; do
+        declare -F "$f" >/dev/null 2>&1 || out="${out:+$out }$f()"
+    done
+    printf '%s' "$out"
+}
+
+# _ag_fail_load <result_file> <problems> — the gate could not load its code:
+# write a failing result that says so (ADR-036 amendment 2026-10-09). `broken`:
+# the gate could not do its work, whatever the change is.
+_ag_fail_load() {
+    local result_file="$1" problems="$2"
+    local failures_json reason fnd
+    failures_json="$(printf 'gate_load_failed:%s\n' $problems | jq -R . | jq -sc .)"
+    reason="$(_ag_build_reason "gate_load_failed:${problems// /, }")"
+    fnd="$(printf '%s\n' "${reason#the acceptance check failed — }" | stage_findings_json)"
+    jq -cn --arg r "$reason" --argjson f "$failures_json" --argjson fnd "${fnd:-[]}" \
+        '{result_contract:2,verdict:"fail",disposition:"broken",severity:"terminal",reason:$r,failures:$f,data:{findings:$fnd}}' \
+        | atomic_write "$result_file"
+    printf 'verdict=fail\nreason=%s\n' "$reason" \
+        | atomic_write "$(dirname "$result_file")/acceptance-summary.txt"
+    eb_emit_event "acceptance.gate.load_failed" "stage=acceptance-gate" "missing=$problems"
+    eb_emit_event "acceptance.gate.complete" "stage=acceptance-gate" "verdict=fail"
 }
 
 # _ag_noop_precondition_unmet <result_file> <precondition_id> — write the no-op

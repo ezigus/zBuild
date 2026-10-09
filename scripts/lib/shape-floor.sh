@@ -37,9 +37,9 @@ _ZBUILD_SHAPE_FLOOR_LOADED=1
 
 _SF_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./merge-base.sh
-source "$_SF_LIB_DIR/merge-base.sh"
+source "$_SF_LIB_DIR/merge-base.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" merge-base.sh"
 # shellcheck source=./impact-prefilter.sh
-source "$_SF_LIB_DIR/impact-prefilter.sh"
+source "$_SF_LIB_DIR/impact-prefilter.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" impact-prefilter.sh"
 
 # ─── _sf_diff_files <repo_root> ──────────────────────────────────────────────
 # Prints changed file paths (one per line) between merge-base and HEAD.

@@ -15,7 +15,7 @@ _ACCEPTANCE_COVERAGE_LOADED=1
 
 _ACCEPTANCE_COVERAGE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./acceptance-block.sh
-source "$_ACCEPTANCE_COVERAGE_DIR/acceptance-block.sh"
+source "$_ACCEPTANCE_COVERAGE_DIR/acceptance-block.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-block.sh"
 
 # acceptance_coverage_spec_tagged <design_md> <repo_root> <spec_id>
 # Returns 0 if at least one declared TESTFILE that exists on disk contains the

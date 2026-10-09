@@ -31,6 +31,11 @@ _ag_failure_class_disposition() {
         # is complete and terminal still outranks recoverable in a mixed set.
         malformed_acceptance_block)
             printf 'terminal' ;;
+        # The gate could not do its work (#1752): its code did not load, or
+        # its check reported on none of the SPECs. Nothing was checked, so no
+        # iteration can be graded — halt and say why, never pass.
+        gate_load_failed|nothing_checked)
+            printf 'terminal' ;;
         *)  : ;;
     esac
 }

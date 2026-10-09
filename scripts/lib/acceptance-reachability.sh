@@ -21,16 +21,16 @@ _ACCEPTANCE_REACHABILITY_LOADED=1
 
 _ACCEPTANCE_REACHABILITY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./acceptance-block.sh
-source "$_ACCEPTANCE_REACHABILITY_DIR/acceptance-block.sh"
+source "$_ACCEPTANCE_REACHABILITY_DIR/acceptance-block.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-block.sh"
 # shellcheck source=env-scrub.sh
-source "$_ACCEPTANCE_REACHABILITY_DIR/env-scrub.sh"
+source "$_ACCEPTANCE_REACHABILITY_DIR/env-scrub.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" env-scrub.sh"
 # #2109: the per-[SPEC-n] log scan is negctl's (#1969); one rule, two callers.
 if ! declare -F _negctl_spec_log_check >/dev/null 2>&1; then
     # shellcheck source=acceptance-negctl.sh
-    source "$_ACCEPTANCE_REACHABILITY_DIR/acceptance-negctl.sh"
+    source "$_ACCEPTANCE_REACHABILITY_DIR/acceptance-negctl.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-negctl.sh"
 fi
 # shellcheck source=./merge-base.sh
-source "$_ACCEPTANCE_REACHABILITY_DIR/merge-base.sh"
+source "$_ACCEPTANCE_REACHABILITY_DIR/merge-base.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" merge-base.sh"
 
 # #2010: zbuild_engine_tmpdir names where engine code writes temp files.
 # Lazy-sourced, same pattern lifecycle.sh uses for stage-scratch.sh: this
@@ -38,7 +38,7 @@ source "$_ACCEPTANCE_REACHABILITY_DIR/merge-base.sh"
 # arrived first. helpers.sh sources only compat.sh, so there is no cycle.
 if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
     # shellcheck source=./helpers.sh
-    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/helpers.sh" 2>/dev/null || true
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/helpers.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" helpers.sh"
 fi
 
 

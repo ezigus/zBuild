@@ -128,6 +128,38 @@ mk_design "$D_DECOY" "vendor/other/merge-base.sh"
 _out3="$(_runner_design_targets_contract_lib "$D_DECOY" "$LIB" 2>/dev/null || true)"
 assert_eq "[SPEC-5] a same-named file outside scripts/lib does not trigger it" "" "$_out3"
 
+# ─── SPEC-6 / SPEC-7: the snapshot copies all of scripts/lib (ADR-057 §5) ────
+# #1752 run 37920468204: build moved a helper into a new sibling and loaded it
+# with `source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/<file>.sh"`. The
+# closure does not follow that form, so the sibling was left out of the snapshot,
+# the gates failed to load, and the acceptance check passed having checked
+# nothing. helpers.sh is loaded the same way today and was never copied either.
+print_test_section "6. the snapshot copies every top-level lib, however it is loaded"
+
+T6="$TEST_TEMP_DIR/tree6/scripts/lib"
+mkdir -p "$T6"
+for _f in "$LIB"/*.sh; do cp "$_f" "$T6/" 2>/dev/null || true; done
+printf '#!/usr/bin/env bash\nzb_sibling_1752() { printf sibling-loaded; }\n' > "$T6/zb-sibling-1752.sh"
+printf '\n# shellcheck source=/dev/null\nsource "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/zb-sibling-1752.sh"\n' \
+    >> "$T6/acceptance-block.sh"
+SNAP6="$TEST_TEMP_DIR/snap6"
+_runner_snapshot_contract_libs "$T6" "$SNAP6" >/dev/null 2>&1 || true
+assert_file_exists "[SPEC-6] a sibling loaded with the \$(cd …) form is in the snapshot" \
+    "$SNAP6/zb-sibling-1752.sh"
+assert_file_exists "[SPEC-6] helpers.sh (loaded with the \$(cd …) form) is in the snapshot" \
+    "$SNAP6/helpers.sh"
+_s6="$(bash -c 'source "$1/acceptance-block.sh" >/dev/null 2>&1; zb_sibling_1752' _ "$SNAP6" 2>/dev/null || true)"
+assert_eq "[SPEC-6] the snapshot's acceptance-block.sh loads the sibling from the snapshot" \
+    "sibling-loaded" "$_s6"
+
+SNAP7="$TEST_TEMP_DIR/snap7"
+_runner_snapshot_contract_libs "$LIB" "$SNAP7" >/dev/null 2>&1 || true
+_absent=""
+for _f in "$LIB"/*.sh; do
+    [[ -f "$SNAP7/${_f##*/}" ]] || _absent="$_absent ${_f##*/}"
+done
+assert_eq "[SPEC-7] every top-level scripts/lib/*.sh of the real tree is in the snapshot" "" "$_absent"
+
 cleanup_test_env
 print_test_results
 exit $((FAIL > 0))

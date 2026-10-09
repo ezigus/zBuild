@@ -13,7 +13,7 @@ _ZBUILD_MERGE_BASE_LOADED=1
 
 _ZBUILD_MERGE_BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./default-branch.sh
-source "$_ZBUILD_MERGE_BASE_DIR/default-branch.sh"
+source "$_ZBUILD_MERGE_BASE_DIR/default-branch.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" default-branch.sh"
 
 # zbuild_resolve_merge_base [<repo_root>]
 # Echoes the merge-base SHA of HEAD against the default branch, or EMPTY when

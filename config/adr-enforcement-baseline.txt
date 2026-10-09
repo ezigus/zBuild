@@ -56,7 +56,6 @@ ADR-053-test-flake-policy.md
 ADR-054-stage-contract.md
 ADR-055-inter-stage-data-contract-v2.md
 ADR-056-run-cleanup-only-lifecycle.md
-ADR-057-build-mode-criteria.md
 ADR-058-engine-write-boundary.md
 ADR-060-stages-return-structure.md
 ADR-062-engine-owned-reclamation.md

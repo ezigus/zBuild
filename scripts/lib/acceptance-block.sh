@@ -11,8 +11,9 @@
 # below is self-contained (guarded parameter expansions + explicit returns).
 #
 # Size: over 500 lines, deliberately, for the reason acceptance-negctl.sh gives.
-# A sibling file under scripts/lib that this one sources would join
-# _runner_contract_lib_closure and widen ADR-057 gate 2 for every later issue.
+#
+# Every `source` here records a failed load in _ZBUILD_CONTRACT_LOAD_ERRORS
+# rather than swallowing it; the gates fail on a non-empty list (#1752).
 
 [[ -n "${_ACCEPTANCE_BLOCK_LOADED:-}" ]] && return 0
 _ACCEPTANCE_BLOCK_LOADED=1
@@ -29,7 +30,7 @@ _ACCEPTANCE_SPEC_RE='^(SPEC-[0-9]+)(\[([a-z-]+)\])?:'
 # arrived first. helpers.sh sources only compat.sh, so there is no cycle.
 if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
     # shellcheck source=./helpers.sh
-    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/helpers.sh" 2>/dev/null || true
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/helpers.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" helpers.sh"
 fi
 
 # extract_acceptance_block <design_md>
