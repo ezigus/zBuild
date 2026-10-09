@@ -1,0 +1,7 @@
+{
+  "scope_files": [
+    "core/router/route.sh",
+    "tests/integration/router-loop-emits-model-events-test.sh"
+  ],
+  "wiring_files": []
+}
