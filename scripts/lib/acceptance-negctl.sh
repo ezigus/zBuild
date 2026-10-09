@@ -21,9 +21,11 @@
 # Granularity: each SPEC is judged by its own [spec_id]-tagged ✓/✗ lines in the
 # file's output (#1969), falling back to the file rc where it printed none.
 #
-# Size: over 500 lines, deliberately. A sibling file under scripts/lib would
-# join _runner_contract_lib_closure (runner.sh follows same-directory `source`
-# lines), which widens ADR-057 gate 2 for a cosmetic gain.
+# Size: over 500 lines, deliberately. A sibling loaded as `source "$DIR/x.sh"`
+# would join _runner_contract_lib_closure — the set that decides whether a run
+# grades itself (ADR-057 gate 2) — and widen it for a cosmetic gain. It would
+# not change what a self-grading run reads: that snapshot copies every
+# top-level lib (#1752).
 #
 # Source-only; no `set -e` at top level (would mutate caller options).
 
@@ -34,7 +36,7 @@
 # arrived first. helpers.sh sources only compat.sh, so there is no cycle.
 if ! declare -F zbuild_engine_tmpdir >/dev/null 2>&1; then
     # shellcheck source=./helpers.sh
-    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/helpers.sh" 2>/dev/null || true
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")/." && pwd)/helpers.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" helpers.sh"
 fi
 
 [[ -n "${_ACCEPTANCE_NEGCTL_LOADED:-}" ]] && return 0
@@ -42,15 +44,15 @@ _ACCEPTANCE_NEGCTL_LOADED=1
 
 _ACCEPTANCE_NEGCTL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./acceptance-block.sh
-source "$_ACCEPTANCE_NEGCTL_DIR/acceptance-block.sh"
+source "$_ACCEPTANCE_NEGCTL_DIR/acceptance-block.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-block.sh"
 # shellcheck source=./acceptance-coverage.sh
-source "$_ACCEPTANCE_NEGCTL_DIR/acceptance-coverage.sh"
+source "$_ACCEPTANCE_NEGCTL_DIR/acceptance-coverage.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-coverage.sh"
 # shellcheck source=./merge-base.sh
-source "$_ACCEPTANCE_NEGCTL_DIR/merge-base.sh"
+source "$_ACCEPTANCE_NEGCTL_DIR/merge-base.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" merge-base.sh"
 # #1644: the sandbox below scrubs runner state via the SAME contract the test
 # stage uses, instead of a second, partial hand-list that keeps falling behind.
 # shellcheck source=env-scrub.sh
-source "$_ACCEPTANCE_NEGCTL_DIR/env-scrub.sh"
+source "$_ACCEPTANCE_NEGCTL_DIR/env-scrub.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" env-scrub.sh"
 
 # _acceptance_is_test_path <path> — a test file: under tests/, or under a
 # plugin's own plugins/<kind>/<id>/tests/ (#2300).

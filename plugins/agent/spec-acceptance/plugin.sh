@@ -47,18 +47,21 @@ source "$_AG_ROOT/scripts/lib/stage-summary.sh"
 source "$_AG_ROOT/core/output/stage-io.sh"
 # #963: source the read-only grammar libs from _ZBUILD_CONTRACT_LIB_DIR (set by
 # zbuild_plugin_bootstrap above) so a self-host run reads the working-tree grammar.
+# A lib that fails to load is recorded, never swallowed: the gate fails on it
+# (ADR-036 amendment 2026-10-09, #1752). The libs record their own dependencies
+# in the same list.
 # shellcheck source=../../../scripts/lib/acceptance-block.sh
-source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh"
+source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-block.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-block.sh"
 # shellcheck source=../../../scripts/lib/acceptance-coverage.sh
-source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-coverage.sh"
+source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-coverage.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-coverage.sh"
 # shellcheck source=../../../scripts/lib/acceptance-negctl.sh
-source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-negctl.sh"
+source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-negctl.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-negctl.sh"
 # shellcheck source=../../../scripts/lib/acceptance-reachability.sh
-source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-reachability.sh"
+source "$_ZBUILD_CONTRACT_LIB_DIR/acceptance-reachability.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" acceptance-reachability.sh"
 # merge-base.sh (zbuild_resolve_merge_base) — needed by the precondition check;
 # also sourced transitively by negctl/reachability. Load-once sentinel = no-op.
 # shellcheck source=../../../scripts/lib/merge-base.sh
-source "$_ZBUILD_CONTRACT_LIB_DIR/merge-base.sh"
+source "$_ZBUILD_CONTRACT_LIB_DIR/merge-base.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" merge-base.sh"
 # The gate's reason, operator summary and small helpers (#2304: keeps this file under 500 lines).
 # shellcheck source=lib/reason.sh
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/reason.sh"
@@ -109,6 +112,16 @@ acceptance_gate_run() {
 
     eb_emit_event "acceptance.gate.start" "stage=acceptance-gate"
 
+    # ── The gate's own code loaded (#1752) ───────────────────────────────────
+    # Checked before anything else: a gate missing part of its code cannot even
+    # read the preconditions, and whatever it concluded would be a guess.
+    local _ag_load_problem
+    _ag_load_problem="$(_ag_load_problems)"
+    if [[ -n "$_ag_load_problem" ]]; then
+        _ag_fail_load "$result_file" "$_ag_load_problem"
+        return 1
+    fi
+
     # ── Precondition 1: design acceptance block present ──────────────────────
     # The methodology-adoption discriminator (generalizes the historical no-block
     # skip). Distinguish ABSENT from MALFORMED: extract_acceptance_block returns
@@ -156,6 +169,9 @@ acceptance_gate_run() {
     # #2304: what the pass reason counts (ADR-069) — requirements checked on the
     # old and new code, already done, and needing no code.
     local _ag_n_checked=0 _ag_n_done=0 _ag_n_nocode=0
+    # #1752: SPECs a NEGCTL line named, whatever it said, and whether negctl
+    # reported a run-wide error — together they tell "checked nothing" apart.
+    local _ag_statused=" " _ag_negctl_error=0
     # #1835: "<spec>=<last SPEC the file printed>" for each unreached SPEC;
     # read by _ag_build_reason (dynamic scope) to say where the file stopped.
     local _ag_unreached_after=""
@@ -214,6 +230,7 @@ acceptance_gate_run() {
             elif [[ "$line" =~ ^NEGCTL\ ERROR\ (timeout|sigkill):(SPEC-[0-9]+) ]]; then
                 _e_eid="${BASH_REMATCH[2]}"
             fi
+            [[ -n "$_e_eid" ]] && _ag_statused="$_ag_statused$_e_eid "
             if [[ -n "$_e_eid" ]]; then
                 local _e_desc _e_label _e_tf_line
                 _e_desc="$(acceptance_spec_desc "$design_md" "$_e_eid")"
@@ -260,6 +277,7 @@ acceptance_gate_run() {
                         "spec_id=$sid" "reason=$reason"
                     ;;
                 "NEGCTL ERROR "*)
+                    [[ -z "$_e_eid" ]] && _ag_negctl_error=1
                     local detail="${line#NEGCTL ERROR }"
                     failures+=("negctl_error:$detail")
                     verdict="fail"
@@ -287,6 +305,18 @@ acceptance_gate_run() {
             esac
         done < <(acceptance_negctl_check "$design_md" "$repo_root" || true)
     }
+
+    # #1752: a block with SPEC lines where the negative control named none of
+    # them evaluated nothing — its code died before reporting. Not a pass.
+    if [[ "$_ag_statused" == " " && "$_ag_negctl_error" -eq 0 ]]; then
+        local _ag_nspec
+        _ag_nspec="$(acceptance_list_spec_ids "$design_md" 2>/dev/null | awk 'NF { n++ } END { print n + 0 }')"
+        if [[ "$_ag_nspec" -gt 0 ]]; then
+            failures+=("nothing_checked:$_ag_nspec")
+            verdict="fail"
+            eb_emit_event "acceptance.gate.nothing_checked" "stage=acceptance-gate" "specs=$_ag_nspec"
+        fi
+    fi
 
     # ── Level 3: reachability (WIRING load-bearing check) ────────────────────
     # #1220: runs REGARDLESS of Level 1/2 outcome (still gated on a WIRING:
@@ -384,6 +414,8 @@ acceptance_gate_run() {
         failures_json="$(printf '%s\n' "${failures[@]}" | jq -R . | jq -s .)"
         severity="$(_ag_classify_disposition "${failures[@]}")"
         reason_msg="$(_ag_build_reason "${failures[@]}")"
+        # #1752: a check that reported on nothing did not do its work.
+        [[ " ${failures[*]} " == *" nothing_checked:"* ]] && disposition="broken"
     fi
     # ADR-054: reason is mandatory; a pass says what it verified. Kept apart
     # from reason_msg, which is the VIOLATION prose the operator summary leads

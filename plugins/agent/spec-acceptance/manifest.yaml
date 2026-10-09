@@ -75,7 +75,9 @@ provides:
     - acceptance.gate.complete
     - acceptance.gate.file_timeout
     - acceptance.gate.inert_wiring
+    - acceptance.gate.load_failed
     - acceptance.gate.no_testfiles
+    - acceptance.gate.nothing_checked
     - acceptance.gate.not_passing_at_head
     - acceptance.gate.negctl_harness_error
     - acceptance.gate.negctl_timeout
@@ -117,6 +119,8 @@ config:
     - negctl_error
     - reachability_error
     - malformed_acceptance_block
+    - gate_load_failed
+    - nothing_checked
   tier_default: T1
 
 inputs:

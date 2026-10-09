@@ -29,7 +29,9 @@ source "$_SS_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 # #1783: source via the contract-reader seam — merge-base resolution decides the
 # baseline this scan diffs against, so it belongs to the same seam.
 # shellcheck source=../../../scripts/lib/merge-base.sh
-source "$_ZBUILD_CONTRACT_LIB_DIR/merge-base.sh" 2>/dev/null || true
+# A failed load is recorded, not swallowed (#1752): without merge-base the scan
+# would read "no baseline" and skip, which passes a diff nobody scanned.
+source "$_ZBUILD_CONTRACT_LIB_DIR/merge-base.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" merge-base.sh"
 
 # Resilient emit — no-op when event-bus is unavailable (unit-test isolation).
 # shellcheck source=../../../scripts/lib/secret-patterns.sh
@@ -149,6 +151,15 @@ secret_scan_run() {
     fi
     mkdir -p "$artifacts_dir"
     local result_path="$artifacts_dir/secret-scan-result.json"
+
+    if ! declare -F zbuild_resolve_merge_base >/dev/null 2>&1 || [[ -n "${_ZBUILD_CONTRACT_LOAD_ERRORS:-}" ]]; then
+        jq -n '{"result_contract":2,"verdict":"fail","disposition":"broken","reason":"library_load_failure","finding_count":0,"findings":[]}' \
+            | atomic_write "$result_path"
+        stage_summary_write "$artifacts_dir/secret-scan-detail.md" "secret-scan" "fail" \
+            "library load failure — merge-base.sh did not load whole (${_ZBUILD_CONTRACT_LOAD_ERRORS:- merge-base.sh} ); the diff was not scanned"
+        _ss_emit "plugin.result" "plugin=secret-scan" "verdict=fail"
+        return 0
+    fi
 
     local repo_root="${ZBUILD_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo)}"
     local base=""

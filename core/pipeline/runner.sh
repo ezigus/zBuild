@@ -1381,11 +1381,10 @@ _runner_report_engine_drift() {
 # identical every iteration, and the cycle burns its whole budget on a phantom
 # the builder cannot fix. #1783.
 #
-# The entry points a seam consumer may source directly. The rest of the set is
-# DERIVED (see _runner_contract_lib_closure) rather than hand-listed: the old
-# hand-list had already drifted — acceptance-negctl.sh sources env-scrub.sh and
-# shape-floor.sh sources impact-prefilter.sh, neither of which was copied, and
-# both `source` lines are unguarded, so a snapshot missing them fails hard.
+# The entry points a seam consumer may source directly. The closure below
+# decides WHETHER a run self-grades (_runner_design_targets_contract_lib); it is
+# derived rather than hand-listed because the old hand-list had drifted. It no
+# longer decides WHAT is copied: the snapshot takes every top-level lib (#1752).
 _RUNNER_CONTRACT_LIB_ENTRYPOINTS=(
     acceptance-block.sh
     acceptance-coverage.sh
@@ -1396,10 +1395,10 @@ _RUNNER_CONTRACT_LIB_ENTRYPOINTS=(
 )
 
 # _runner_contract_lib_closure <src_lib> — echo the transitive set of lib
-# basenames the seam needs, one per line. Follows same-directory `source` lines
-# from each entry point so the snapshot is a self-contained root: a lib sourced
-# by a lib is resolved against the SNAPSHOT dir at read time, so it must be
-# present or the source fails.
+# basenames the contract readers are built from, one per line, following
+# `source "$VAR/<file>.sh"` lines from each entry point. Only the self-grade
+# DETECTION reads it: a lib loaded any other way (`$(cd …)/x.sh`) is not
+# followed, which is why the snapshot no longer copies from it (#1752).
 _runner_contract_lib_closure() {
     local src_lib="${1:-}"
     [[ -n "$src_lib" && -d "$src_lib" ]] || return 1
@@ -1422,8 +1421,14 @@ _runner_contract_lib_closure() {
 }
 
 # _runner_snapshot_contract_libs <src_lib> <snapshot_dir>
-# Copy the derived closure into the run's state dir. The installed engine tree
-# is never written to, so ADR-023 holds.
+# Copy every top-level <src_lib>/*.sh into the run's state dir (ADR-057 §5). A
+# lib sourced by a lib resolves against the SNAPSHOT dir, so the snapshot must
+# be a self-contained root whatever form the `source` line takes. #1752 run
+# 37920468204 copied only the closure: a new sibling loaded via `$(cd …)` was
+# left out, the gates failed to load, and the acceptance check passed having
+# checked nothing. The subdirectories (signing/, versioning/) are not copied:
+# only release-tarball.sh and version.sh load them, and no reader loads those.
+# The installed engine tree is never written to, so ADR-023 holds.
 #
 # NO once-guard (#1783): the whole point is that the snapshot tracks the tree as
 # build changes it. #963's guard implemented the opposite property — "a mid-run
@@ -1435,12 +1440,12 @@ _runner_snapshot_contract_libs() {
     [[ -d "$src_lib" ]] || return 1
     mkdir -p "$snapshot_dir" || return 1
     local _lib _copied=0
-    while IFS= read -r _lib; do
-        [[ -z "$_lib" ]] && continue
-        if cp -f "$src_lib/$_lib" "$snapshot_dir/$_lib" 2>/dev/null; then
+    for _lib in "$src_lib"/*.sh; do
+        [[ -f "$_lib" ]] || continue
+        if cp -f "$_lib" "$snapshot_dir/${_lib##*/}" 2>/dev/null; then
             _copied=$((_copied + 1))
         fi
-    done < <(_runner_contract_lib_closure "$src_lib")
+    done
     (( _copied > 0 )) || return 1
     return 0
 }
@@ -1474,7 +1479,7 @@ _runner_design_targets_contract_lib() {
 # Point the contract readers at the run's OWN tree when this run edits one of
 # their libs, and keep that snapshot current as build changes the tree.
 #
-# Idempotent and cheap (a handful of small files), so it is safe to call before
+# Idempotent and cheap (under a hundred small files), so it is safe to call before
 # every cycle member dispatch — which is what guarantees a gate reads the copy
 # build just wrote rather than the one from the previous iteration.
 #

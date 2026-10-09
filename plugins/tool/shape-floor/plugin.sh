@@ -29,7 +29,8 @@ source "$_SF_ROOT/core/event-bus/event-bus.sh" 2>/dev/null || true
 # #1783: source via the contract-reader seam so a run that edits the floor's own
 # lib is measured by its copy rather than the installed engine's.
 # shellcheck source=../../../scripts/lib/shape-floor.sh
-source "$_ZBUILD_CONTRACT_LIB_DIR/shape-floor.sh" 2>/dev/null || true
+# A failed load is recorded, not swallowed (#1752): shape_floor_run fails on it.
+source "$_ZBUILD_CONTRACT_LIB_DIR/shape-floor.sh" || _ZBUILD_CONTRACT_LOAD_ERRORS+=" shape-floor.sh"
 
 # Resilient emit — no-op when event-bus is unavailable (unit-test isolation).
 _sf_emit() { declare -f eb_emit_event >/dev/null 2>&1 && eb_emit_event "$@" || true; }
@@ -53,12 +54,13 @@ shape_floor_run() {
     local result_path="$artifacts_dir/shape-floor-result.json"
     local repo_root="${ZBUILD_REPO_ROOT:-$_SF_ROOT}"
 
-    if ! declare -f _sf_shape_floor >/dev/null 2>&1; then
-        # Library failed to load — halts instead of silently skipping (#1758).
+    # Library failed to load — halts instead of silently skipping (#1758). #1752:
+    # so does a library whose own dependency failed (the libs record it).
+    if ! declare -f _sf_shape_floor >/dev/null 2>&1 || [[ -n "${_ZBUILD_CONTRACT_LOAD_ERRORS:-}" ]]; then
         jq -n '{"result_contract":2,"verdict":"fail","disposition":"broken","reason":"library_load_failure"}' \
             | atomic_write "$result_path"
         stage_summary_write "$artifacts_dir/shape-floor-detail.md" "shape-floor" "fail" \
-            "library load failure — shape-floor.sh did not load; floor check disabled"
+            "library load failure — shape-floor.sh did not load whole (${_ZBUILD_CONTRACT_LOAD_ERRORS:- shape-floor.sh} ); floor check disabled"
         _sf_emit "plugin.result" "plugin=shape-floor" "verdict=fail"
         return 0
     fi
